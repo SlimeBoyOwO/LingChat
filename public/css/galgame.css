@@ -1,0 +1,511 @@
+/* 基础样式重置 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.5); /* 文字阴影增强可读性 */
+}
+
+body {
+  font-family: "TanukiMagic", "方正喵呜", "Segoe UI", sans-serif;
+  color: white;
+  height: 100vh;
+  overflow: hidden;
+  background-color: #ffffff;
+
+  background-size: cover; /* 确保背景图片覆盖整个容器 */
+  background-position: center bottom; /* 水平居中，垂直底部对齐 */
+  background-attachment: fixed; /* 固定背景图片 */
+}
+
+canvas {
+  position: fixed; /* 使用 fixed 定位 */
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1; /* 将 canvas 置于底层 */
+}
+
+.container {
+  position: relative;
+  height: 100%;
+  width: 100%;
+}
+
+#history-panel {
+  position: fixed;
+  top: 30px;
+  right: 40px;
+  z-index: 1000;
+}
+
+#history-toggle {
+  padding: 12px 20px;
+  background-color: #d2e5ff;
+  color: rgb(80, 128, 252);
+  font-size: 20px;
+  font-weight: bold;
+  border: 0.5px solid #e5ecf1; /* 银灰色边框 */
+  border-radius: 8px; /* 稍微增大圆角 */
+  cursor: pointer;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15); /* 底部阴影 */
+  transition: all 0.3s ease; /* 添加过渡效果 */
+}
+
+/* 添加悬停效果 */
+#history-toggle:hover {
+  background-color: #b8d7ff;
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2); /* 悬停时阴影更明显 */
+  transform: translateY(-2px); /* 轻微上浮效果 */
+}
+
+/* 点击效果 */
+#history-toggle:active {
+  transform: translateY(1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+#history-content {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 75vw;
+  height: 75vh;
+  background-color: #fff;
+  border-radius: 15px;
+  box-shadow: 0 5px 30px rgba(0, 0, 0, 0.3);
+  border: 2px solid #e5ecf1; /* 银灰色边框 */
+  display: flex;
+  flex-direction: column;
+  visibility: hidden;
+  opacity: 0;
+  transition: all 0.3s ease;
+  z-index: -1; /* 隐藏时置于底层 */
+}
+
+#history-content.show {
+  visibility: visible;
+  opacity: 1;
+  z-index: 1000; /* 显示时置于顶层 */
+}
+
+.history-header {
+  padding: 15px 20px;
+  background-color: #cbe0ff;
+  color: rgb(33, 120, 174);
+  text-align: center;
+  border-top-left-radius: 15px;
+  border-top-right-radius: 15px;
+}
+
+.history-header h3 {
+  margin: 0;
+  font-size: 1.5em;
+}
+
+.history-body {
+  flex: 1;
+  padding: 20px;
+  background-color: #f5f5f5;
+  overflow-y: auto;
+  margin: 10px;
+  border-radius: 8px;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+#history-list {
+  min-height: 100%;
+}
+
+.history-footer {
+  padding: 15px;
+  text-align: right;
+  background-color: #f8f9fa;
+  border-bottom-left-radius: 15px;
+  border-bottom-right-radius: 15px;
+}
+
+#clear-history {
+  padding: 8px 16px;
+  background-color: #e74c3c;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: background-color 0.3s;
+}
+
+#clear-history:hover {
+  background-color: #c0392b;
+}
+
+.history-item {
+  padding: 12px;
+  margin-bottom: 10px;
+  background-color: white;
+  border-radius: 6px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.history-item p {
+  margin: 5px 0;
+  line-height: 1.4;
+  color: #333;
+}
+
+.history-item p strong {
+  color: #4a6fa5;
+}
+
+/* 人物图像样式 */
+.main-box {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.avatar-container {
+  position: absolute;
+  height: 100%;
+  width: 100%;
+}
+
+.main-box img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 102%;
+  object-fit: contain;
+  object-position: center;
+  z-index: 1;
+}
+
+/* 修复后的聊天框样式 */
+.chatbox-box {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  z-index: 2;
+  /* 修改后的渐变 - 从底部向上渐变 */
+  background: linear-gradient(
+    to top,
+    rgba(0, 14, 39, 0.7) 0%,
+    rgba(0, 14, 39, 0.6) 100%
+  );
+  padding: 15px;
+  backdrop-filter: blur(1px);
+}
+
+/* 顶部渐变透明效果 */
+.chatbox-box::before {
+  content: "";
+  position: absolute;
+  top: -40px;
+  left: 0;
+  right: 0;
+  height: 40px;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 14, 39, 0.3) 50%,
+    rgba(0, 14, 39, 0.6) 100%
+  );
+  pointer-events: none;
+}
+
+.chatbox-main {
+  width: 60%;
+}
+
+.chatbox-title-part {
+  display: flex;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+
+.chatbox-title {
+  font-size: 24px;
+  font-weight: bold;
+  color: white;
+  margin-right: 15px;
+}
+
+.chatbox-subtitle {
+  font-size: 20px;
+  font-weight: bold;
+  color: #6eb4ff;
+}
+
+.chatbox-emotion {
+  font-size: 20px;
+  font-weight: bold;
+  color: #ff77dd;
+  margin: auto;
+}
+
+.chatbox-line {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.3);
+  margin: 6px 0 6px 0;
+}
+
+.chatbox-inputbox {
+  display: flex;
+  flex-direction: column;
+}
+
+#inputMessage {
+  width: 100%;
+  min-height: 40px;
+  background: rgba(255, 255, 255, 0);
+  border: none;
+  color: white;
+  font-size: 20px;
+  font-weight: bold;
+  resize: none;
+  margin: 5px 0px;
+  outline: none;
+  transition: all 0.3s;
+}
+
+#inputMessage::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+#sendButton {
+  align-self: flex-end;
+  background: rgba(0, 14, 39, 0);
+  color: rgb(4, 188, 255);
+  border: none;
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+#sendButton:hover {
+  background: rgba(0, 14, 39, 0);
+  color: rgba(136, 255, 251, 0.827);
+}
+
+#sendButton:disabled {
+  background: #333;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* 状态信息样式 */
+#status {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  z-index: 3;
+  padding: 5px 10px;
+  border-radius: 5px;
+  font-size: 14px;
+}
+
+/* 音频播放器样式 */
+#audioPlayer {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  z-index: 3;
+  width: 200px;
+}
+
+#audioStatus {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  z-index: 3;
+  padding: 5px 10px;
+  border-radius: 5px;
+  font-size: 14px;
+}
+
+/* 标题样式 */
+h1 {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  color: white;
+  text-shadow: 0 0 10px rgba(0, 0, 0, 0.7);
+  font-size: 24px;
+}
+
+/* 修改全局字体设置 */
+body,
+input,
+textarea,
+button,
+select {
+  font-family: "TanukiMagic", "方正喵呜", "Segoe UI", sans-serif;
+  color: white;
+}
+
+/* 确保所有文本元素都继承相同的字体和文字阴影 */
+.chatbox-title,
+.chatbox-subtitle,
+#inputMessage,
+#sendButton {
+  font-family: inherit; /* 继承父元素字体 */
+  text-shadow: inherit; /* 继承文字阴影 */
+}
+
+/* 调整特定元素的字体大小和粗细 */
+.chatbox-title {
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.chatbox-subtitle {
+  font-size: 20px;
+  font-weight: bold;
+  color: #6eb4ff;
+}
+
+#inputMessage {
+  font-size: 20px;
+  font-weight: bold;
+}
+
+#sendButton {
+  font-size: 20px;
+  font-weight: bold;
+  transform: scaleX(1.5);
+}
+
+/* 生气时的跳动动画 */
+@keyframes angryJump {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  20% {
+    transform: translateY(-15px) scale(1.03);
+  }
+  40% {
+    transform: translateY(0) scale(1);
+  }
+  60% {
+    transform: translateY(-5px) scale(1.01);
+  }
+  80% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* 认真思考 */
+@keyframes seriousThink {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(5px) scale(1);
+  }
+}
+
+/* 其他表情动画示例 */
+@keyframes happyBounce {
+  0%,
+  50%,
+  100% {
+    transform: translateY(0px);
+  }
+  25%,
+  75% {
+    transform: translateY(-10px);
+  }
+}
+
+/* 呼吸动画关键帧 */
+@keyframes breathing {
+  0%,
+  100% {
+    transform: scale(1); /* 正常大小 */
+  }
+  50% {
+    transform: scale(1.005); /* 轻微放大 */
+  }
+}
+
+/* 动画基础类 */
+.character-animation {
+  animation-fill-mode: both !important;
+}
+
+.normal {
+  animation: breathing 4s ease-in-out infinite !important;
+}
+
+/* 特定动画类 */
+.angry-jump {
+  animation-name: angryJump;
+  animation-duration: 0.8s;
+  animation-timing-function: ease-out;
+}
+
+.happy-bounce {
+  animation-name: happyBounce;
+  animation-duration: 0.6s;
+  animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.serious-think {
+  animation-name: seriousThink;
+  animation-duration: 0.6s;
+  animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* 气泡固定定位样式 */
+.bubble {
+  position: absolute;
+  background-size: contain;
+  background-repeat: no-repeat;
+  width: 50%;
+  height: 50%;
+  pointer-events: none;
+  z-index: 2;
+
+  /* 固定显示在人物右上方 */
+  top: 5%;
+  left: 20%;
+
+  /* 默认隐藏 */
+  opacity: 0;
+  transition: opacity 0.3s;
+
+  /* 初始缩放 */
+  transform: scale(1);
+}
+
+/* 气泡显示时的动画 */
+.bubble.show {
+  opacity: 1;
+}
+
+/* 不同表情的气泡样式 */
+.bubble.angry {
+  transform: scale(1);
+}
+
+.bubble.happy {
+  transform: scale(1);
+}
+
+.hidden {
+  display: none;
+}

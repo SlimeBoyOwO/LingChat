@@ -1,0 +1,1 @@
+my_app_signed.apk filter=lfs diff=lfs merge=lfs -text
