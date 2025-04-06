@@ -18,4 +18,4 @@
 - [zcchat](https://github.com/Zao-chen/ZcChat): 本项目的灵感来源，可以在这里找到Vits模型和人物素材
 
 ## 许可证
-[MIT](LICENSE) © YourName
+[MIT](LICENSE) © 诺一 钦灵
