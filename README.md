@@ -8,11 +8,13 @@
 - ✅ 在菜单更改设置并且浏览当前历史记录。
 
 ## 如何使用？
-1. 下载好仓库内的东西，确保有所有对应的库
-2. 从网盘下载情感分类模型，放在backend/emotion_model_12emo中
-3. 启动backend中的run.bat，启动根目录的run_server.bat即可启动
-4. 输入localhost:3000 进入聊天界面，左上角显示已连接服务器则表示完成
-5. 为了使用语音功能，请前往链接下载vits链接程序！程序默认监听23456语音端口
+1. 下载好仓库内的东西，确保你下载了nodejs和python环境
+2. 点击backend/install.bat安装必要的库
+3. 从网盘下载情感分类模型，放在backend/emotion_model_12emo中
+4. 由于隐私原因，请在deepseek.py输入自己的api或者自己改写程序接入其他api
+5. 启动backend中的run.bat，启动根目录的run_server.bat即可启动
+6. 输入localhost:3000 进入聊天界面，左上角显示已连接服务器则表示完成
+7. 为了使用语音功能，请前往链接下载vits链接程序！程序默认监听23456语音端口
 
 ## 相关链接
 - [simple-vits-api](https://github.com/Artrajz/vits-simple-api): 该项目实现了基于 VITS 的简单语音合成 API。
