@@ -3,8 +3,6 @@ import json
 import asyncio
 import websockets
 import glob
-from pydub import AudioSegment
-from pydub.playback import play
 from deepseek import DeepSeek
 import re
 from predictor import EmotionClassifier  # 导入情绪分类器
