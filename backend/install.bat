@@ -5,5 +5,5 @@ pip install transformers
 pip install torch
 pip install aiohttp
 pip install playsound
-pip install websockets
+pip install websockets==12.0
 pip install langdetect
