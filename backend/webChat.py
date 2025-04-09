@@ -8,12 +8,14 @@ import re
 from predictor import EmotionClassifier  # 导入情绪分类器
 from VitsTTS import VitsTTS              # 导入语音生成
 from logger import Logger
+from langDetect import LangDetect
 
 logger = Logger()
 deepseek = DeepSeek()
 emotion_classifier = EmotionClassifier()
+langDetect = LangDetect()
 tts_engine = VitsTTS(
-    api_url="http://192.168.31.228:23456/voice/vits",
+    api_url="http://127.0.0.1:23456/voice/vits",
     speaker_id=4,
     lang="ja"  # 根据角色设定调整
 )
@@ -27,33 +29,63 @@ COLOR_EMOTION = "\033[93m" # 黄色（用于情绪显示）
 COLOR_RESET = "\033[0m"  # 重置颜色
 
 def analyze_emotions(text):
-    """分析文本中每个【】标记的情绪，并额外提取日语部分"""
-    # 提取所有【】内的情绪词及其后续文本
+    """分析文本中每个【】标记的情绪，并提取日语和中文部分"""
+    # 改进后的正则表达式，更灵活地匹配各种情况
     emotion_segments = re.findall(r'(【(.*?)】)([^【】]*)', text)
     
     results = []
     for i, (full_tag, emotion_tag, following_text) in enumerate(emotion_segments, 1):
-
-        # 统一处理中文/英文括号（根据实际数据选择一种）
-        following_text = following_text.replace('(', '（').replace(')', '）')  # 英文转中文括号（可选）
+        # 统一处理括号（兼容中英文括号）
+        following_text = following_text.replace('(', '（').replace(')', '）')
         
-        # 提取日语部分（#...#）
-        japanese_match = re.search(r'#(.*?)#', following_text)
-        japanese_text = japanese_match.group(1) if japanese_match else ""
+        # 提取日语部分（<...>），改进匹配模式
+        japanese_match = re.search(r'<(.*?)>', following_text)
+        japanese_text = japanese_match.group(1).strip() if japanese_match else ""
         
-        # 提取动作部分（（...））
-        motion_match = re.search(r'（(.*?)）', following_text)  # 确保是中文括号
-        motion_text = motion_match.group(1) if motion_match else ""
+        # 提取动作部分（（...）），改进匹配模式
+        motion_match = re.search(r'（(.*?)）', following_text)
+        motion_text = motion_match.group(1).strip() if motion_match else ""
         
-        # 清理后的文本
-        cleaned_text = re.sub(r'#.*?#|（.*?）', '', following_text).strip()
-        japanese_text = re.sub(r'（.*?）', '', japanese_text).strip()
-
-        if not following_text and not japanese_text and not motion_text:  # 跳过完全空的文本
+        # 清理后的文本（移除日语部分和动作部分）
+        cleaned_text = re.sub(r'<.*?>|（.*?）', '', following_text).strip()
+        
+        # 清理日语文本中的动作部分
+        if japanese_text:
+            japanese_text = re.sub(r'（.*?）', '', japanese_text).strip()
+        
+        # 跳过完全空的文本
+        if not any([following_text, japanese_text, motion_text]):
             continue
         
-        # 对情绪标签单独预测
-        predicted = emotion_classifier.predict(emotion_tag)
+        # 改进语言检测和处理
+        try:
+            if japanese_text and cleaned_text:
+                # 如果两者都有内容，才进行语言检测和交换
+                lang_jp = langDetect.detect_language(japanese_text)
+                lang_clean = langDetect.detect_language(cleaned_text)
+                
+                if (lang_jp in ['Chinese', 'Chinese_ABS'] and lang_clean in ['Japanese', 'Chinese']) and \
+                    lang_clean != 'Chinese_ABS':
+                        cleaned_text, japanese_text = japanese_text, cleaned_text
+
+
+        except Exception as e:
+            # 语言检测失败时保持原样
+            print(f"Language detection error: {e}")
+        
+        # 对情绪标签单独预测，增加错误处理
+        try:
+            predicted = emotion_classifier.predict(emotion_tag)
+            prediction_result = {
+                "label": predicted["label"],
+                "confidence": predicted["confidence"]
+            }
+        except Exception as e:
+            print(f"Emotion prediction error for '{emotion_tag}': {e}")
+            prediction_result = {
+                "label": "unknown",
+                "confidence": 0.0
+            }
         
         results.append({
             "index": i,
@@ -61,8 +93,8 @@ def analyze_emotions(text):
             "following_text": cleaned_text,
             "motion_text": motion_text,
             "japanese_text": japanese_text,
-            "predicted": predicted["label"],
-            "confidence": predicted["confidence"],
+            "predicted": prediction_result["label"],
+            "confidence": prediction_result["confidence"],
             "voice_file": os.path.join(temp_voice_dir, f"part_{i}.{tts_engine.format}")
         })
     
