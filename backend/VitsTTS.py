@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 class VitsTTS:
-    def __init__(self, api_url="http://192.168.31.228:23456/voice/vits", speaker_id=4, audio_format="wav", lang="ja"):
+    def __init__(self, api_url="http://127.0.0.1:23456/voice/vits", speaker_id=4, audio_format="wav", lang="ja", enable=True):
         """
         初始化VITS语音合成器
         :param api_url: API端点地址
@@ -19,6 +19,7 @@ class VitsTTS:
         self.lang = lang
         self.temp_dir = Path("temp_voice")
         self.temp_dir.mkdir(exist_ok=True)
+        self.enable = enable
 
     async def generate_voice(self, text, file_name, save_file=False):
         """
@@ -27,6 +28,9 @@ class VitsTTS:
         :param save_file: 是否保留生成的音频文件
         :return: 音频文件路径 (失败返回None)
         """
+        if not self.enable:
+            return ""
+
         params = {
             "text": text,
             "id": self.speaker_id,
@@ -44,6 +48,8 @@ class VitsTTS:
             return str(output_file)
         except aiohttp.ClientError as e:
             print(f"[VitsTTS] 请求失败: {str(e)}")
+            print(f"[VitsTTS] 语音功能已禁用，请刷新浏览器或重启程序安装simple-voice-api打开语音功能")
+            self.enable = False
         except Exception as e:
             print(f"[VitsTTS] 生成失败: {str(e)}")
         return None

@@ -17,7 +17,8 @@ langDetect = LangDetect()
 tts_engine = VitsTTS(
     api_url="http://127.0.0.1:23456/voice/vits",
     speaker_id=4,
-    lang="ja"  # 根据角色设定调整
+    lang="ja",  # 根据角色设定调整
+    #enbale=False      #如果你没有配置simple-voice-api，请去掉这一行最开始的#号
 )
 temp_voice_dir = "../public/audio"
 os.makedirs(temp_voice_dir, exist_ok=True)
@@ -185,7 +186,7 @@ async def process_ai_response(ai_response, user_message):
     
     
 
-async def handle_client(websocket, path):
+async def handle_client(websocket):
     print("Python 服务: 新的连接建立")
     
     try:
