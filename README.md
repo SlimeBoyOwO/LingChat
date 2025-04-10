@@ -15,11 +15,13 @@
 5. 启动backend中的run.bat，启动根目录的run_server.bat即可启动
 6. 输入localhost:3000 进入聊天界面，左上角显示已连接服务器则表示完成
 7. 为了使用语音功能，请前往链接下载vits链接程序！程序默认监听23456语音端口
+8. 程序默认导入的模型是zcchat地址->讨论区->角色示范（丛雨）->vits模型下载好之后在simple-vits-api的目录的/data/models里面解压，再启动就ok了
+9. 如果需要使用其他模型，在webChat.py的Vits实现函数更改相关设定即可
 
 ## 相关设定
 1. 在deepseek.py里的settings设定角色性格和你的设定（别忘了自己的API一定要填写）
 2. 可以更换/public/pictures/lingling/里面的立绘+修改/public/css/galgame.css里的代码实现自定义角色或表情动作气泡
-3. 目前不接入simple-vits-api会有对话bug，可以等更新或者自己改改代码就行啦
+3. /public/js/talk.js 里面可以设定不同的心情和不同的动作，目前有12种情绪，由于模型是自己训练的所以更新要等一段时间啦
 
 ## 相关链接
 - [emotion_model_12emo](https://pan.baidu.com/s/16Dy53KX3jIjACY5fCctKDA)：请在这里下载emotion_model_12emo，提取码：0721
