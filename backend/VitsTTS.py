@@ -1,6 +1,5 @@
 import aiohttp
 import asyncio
-from playsound import playsound
 import os
 from pathlib import Path
 
@@ -67,7 +66,6 @@ class VitsTTS:
             return False
 
         try:
-            playsound(audio_file)
             return True
         except Exception as e:
             print(f"[VitsTTS] 播放失败: {str(e)}")
@@ -96,7 +94,6 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     audio = loop.run_until_complete(tts.async_generate_voice("こんにちは", "greeting"))
     if audio:
-        playsound(audio)
         os.remove(audio)  # 手动清理
     
     # 方式2: 生成并立即播放(自动清理)
