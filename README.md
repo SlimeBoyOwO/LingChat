@@ -58,6 +58,7 @@ python -m pip install -r requirements.txt
 ## 相关链接
 - [emotion_model_12emo 百度网盘](https://pan.baidu.com/s/16Dy53KX3jIjACY5fCctKDA)：请在这里下载emotion_model_12emo，提取码：0721
 - [emotion_model_12emo 123云盘](https://www.123865.com/s/7YDfjv-KRK5v): 或这里下载emotion_model_12emom更快一点如果你没有百度网盘会员
+- [emotion_model_12emo Google云盘](https://drive.google.com/file/d/1LWdJYYc3QaYbzHupt5DDaM1lCeG-X5vd/view?usp=sharing): 如果你是非大陆或者海外朋友，下载这个
 - [simple-vits-api](https://github.com/Artrajz/vits-simple-api): 该项目实现了基于 VITS 的简单语音合成 API。建议下载GPU版本，速度快
 - [zcchat](https://github.com/Zao-chen/ZcChat): 本项目的灵感来源，可以在这里找到Vits模型和人物素材
 
