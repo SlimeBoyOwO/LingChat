@@ -24,7 +24,8 @@
 3. /public/js/talk.js 里面可以设定不同的心情和不同的动作，目前有12种情绪，由于模型是自己训练的所以更新要等一段时间啦
 
 ## 相关链接
-- [emotion_model_12emo](https://pan.baidu.com/s/16Dy53KX3jIjACY5fCctKDA)：请在这里下载emotion_model_12emo，提取码：0721
+- [emotion_model_12emo 百度网盘](https://pan.baidu.com/s/16Dy53KX3jIjACY5fCctKDA)：请在这里下载emotion_model_12emo，提取码：0721
+- [emotion_model_12emo 123云盘](https://www.123865.com/s/7YDfjv-KRK5v): 或这里下载emotion_model_12emom更快一点如果你没有百度网盘会员
 - [simple-vits-api](https://github.com/Artrajz/vits-simple-api): 该项目实现了基于 VITS 的简单语音合成 API。建议下载GPU版本，速度快
 - [zcchat](https://github.com/Zao-chen/ZcChat): 本项目的灵感来源，可以在这里找到Vits模型和人物素材
 
