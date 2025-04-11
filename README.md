@@ -7,7 +7,18 @@
 - ✅ 在logs中记录你们聊天的记录。
 - ✅ 在菜单更改设置并且浏览当前历史记录。
 
-## 安装 (INSTALL)
+## 如何使用？（文字描述版本，适合小白）
+1. 下载好仓库内的东西，确保你下载了nodejs和python环境
+2. 点击backend/install.bat安装必要的库（该库是全局安装的！！如果你电脑已经有python环境了谨慎操作）
+3. 从网盘下载情感分类模型，放在backend/emotion_model_12emo中
+4. *由于隐私原因，请在deepseek.py输入自己的api或者自己改写程序接入其他api*
+5. 启动backend中的run.bat，启动根目录的run_server.bat即可启动
+6. 输入localhost:3000 进入聊天界面，左上角显示已连接服务器则表示完成
+7. 为了使用语音功能，请前往链接下载vits链接程序！程序默认监听23456语音端口
+8. 程序默认导入的模型是zcchat地址->讨论区->角色示范（丛雨）->vits模型下载好之后在simple-vits-api的目录的/data/models里面解压，再启动就ok了
+9. 如果需要使用其他模型，在webChat.py的Vits实现函数更改相关设定即可
+
+## 安装 (INSTALL)（程序员首选）
 ### 系统依赖
 #### python 环境
 需要 python3.10
@@ -38,18 +49,6 @@ python -m pip install gunicorn
 # pip install eunjeon  -i https://pypi.artrajz.cn/simple/
 python -m pip install -r requirements.txt
 ```
-
-
-## 如何使用？
-1. 下载好仓库内的东西，确保你下载了nodejs和python环境
-2. 点击backend/install.bat安装必要的库（该库是全局安装的！！如果你电脑已经有python环境了谨慎操作）
-3. 从网盘下载情感分类模型，放在backend/emotion_model_12emo中
-4. *由于隐私原因，请在deepseek.py输入自己的api或者自己改写程序接入其他api*
-5. 启动backend中的run.bat，启动根目录的run_server.bat即可启动
-6. 输入localhost:3000 进入聊天界面，左上角显示已连接服务器则表示完成
-7. 为了使用语音功能，请前往链接下载vits链接程序！程序默认监听23456语音端口
-8. 程序默认导入的模型是zcchat地址->讨论区->角色示范（丛雨）->vits模型下载好之后在simple-vits-api的目录的/data/models里面解压，再启动就ok了
-9. 如果需要使用其他模型，在webChat.py的Vits实现函数更改相关设定即可
 
 ## 相关设定
 1. 在deepseek.py里的settings设定角色性格和你的设定（别忘了自己的API一定要填写）
