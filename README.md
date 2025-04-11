@@ -7,6 +7,39 @@
 - ✅ 在logs中记录你们聊天的记录。
 - ✅ 在菜单更改设置并且浏览当前历史记录。
 
+## 安装 (INSTALL)
+### 系统依赖
+#### python 环境
+需要 python3.10
+
+#### Windows
+Microsoft C++ Build Tools:
+https://visualstudio.microsoft.com/visual-cpp-build-tools/
+
+
+### 准备项目
+```bash
+git clone git@github.com:SlimeBoyOwO/LingChat.git
+cd LingChat
+```
+
+### 安装 venv 环境
+```bash
+python3.10 -m venv .venv
+```
+
+### 安装 vits-simple-api
+```bash
+git submodule init
+git submodule update
+cd third_party/vits-simple-api
+python -m pip install gunicorn
+# for windows:
+# pip install eunjeon  -i https://pypi.artrajz.cn/simple/
+python -m pip install -r requirements.txt
+```
+
+
 ## 如何使用？
 1. 下载好仓库内的东西，确保你下载了nodejs和python环境
 2. 点击backend/install.bat安装必要的库（该库是全局安装的！！如果你电脑已经有python环境了谨慎操作）
