@@ -1,5 +1,5 @@
 @echo off
-:: 基础Python库安装
+echo :: "基础Python库安装"
 pip install openai
 pip install transformers
 pip install torch
