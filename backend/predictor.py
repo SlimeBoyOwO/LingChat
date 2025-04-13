@@ -15,7 +15,7 @@ class EmotionClassifier:
         
         # 从保存的配置加载标签映射
         config_path = os.path.join(model_path, "label_mapping.json")
-        with open(config_path, "r") as f:
+        with open(config_path, "r", encoding='utf=8') as f:
             label_config = json.load(f)
         self.id2label = label_config["id2label"]
         self.label2id = label_config["label2id"]
