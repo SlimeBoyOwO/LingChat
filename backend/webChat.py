@@ -168,7 +168,7 @@ async def process_ai_response(ai_response, user_message):
     # 2. 分析情绪片段
     emotion_segments = analyze_emotions(ai_response)
     if not emotion_segments:
-        print("未检测到有效情绪片段")
+        print("未检测到有效情绪片段，请检查deepseek.py中的apikey是否正确填写")
         return
     
     # 3. 生成语音文件
@@ -187,7 +187,7 @@ async def process_ai_response(ai_response, user_message):
     
 
 async def handle_client(websocket):
-    print("Python 服务: 新的连接建立")
+    print("Python 服务: 新的连接建立，若钦灵长时间未回复，请刷新浏览器聊天界面重试")
     
     try:
         async for message in websocket:
