@@ -10,26 +10,10 @@ Win10 以上，Win7经过测试无法运行！
 - ✅ 在logs中记录你们聊天的记录。
 - ✅ 在菜单更改设置并且浏览当前历史记录。
 
-## 如何使用？（文字描述版本，适合小白）
-1. 下载好仓库内的东西，确保你下载了nodejs和python环境
-2. **点击backend/install.bat**安装必要的库（该库是全局安装的！！如果你电脑已经有python环境了谨慎操作）
-3. 从网盘**下载情感分类模型**，放在backend/emotion_model_12emo中
-4. **由于隐私原因，请在deepseek.py输入自己的api或者自己改写程序接入其他api**
-5. 启动backend中的**run.bat**，启动根目录的**run_server.bat**即可启动
-6. **输入localhost:3000 进入聊天界面**，左上角显示已连接服务器则表示完成
-7. **为了使用语音功能，请前往链接下载vits链接程序！程序默认监听23456语音端口**
-8. 程序默认导入的模型是zcchat地址->讨论区->角色示范（丛雨）->vits模型下载好之后在simple-vits-api的目录的/data/models里面解压，再启动就ok了
-9. 如果需要使用其他模型，在webChat.py的Vits实现函数更改相关设定即可
-
-## 安装 (INSTALL)（程序员首选）
+## 安装 (INSTALL)
 ### 系统依赖
 #### python 环境
 需要 python3.10
-
-#### Windows
-Microsoft C++ Build Tools:
-https://visualstudio.microsoft.com/visual-cpp-build-tools/
-
 
 ### 准备项目
 ```bash
@@ -37,25 +21,47 @@ git clone git@github.com:SlimeBoyOwO/LingChat.git
 cd LingChat
 ```
 
+### 安装 vits-simple-api
+下载链接 https://github.com/Artrajz/vits-simple-api/releases
+根据你的环境选择 vits-simple-api-windows* 的CPU或者GPU下载.
+或者根据 https://github.com/Artrajz/vits-simple-api/blob/main/README_zh.md 从源码安装.
+
+#### 添加 vits-simple-api 的音源
+从这里 https://github.com/Zao-chen/ZcChat/discussions 下载相应的vits包.
+放置到 vits-simple-api 目录下的 data\models 目录.
+
+#### 测试 vits-simple-api
+运行 `start.bat` 访问 http://127.0.0.1:23456
+
+### 下载 emotion_model_12emo
+参见下面的 **相关链接** 下载 `model.safetensors`.
+放置到 emotion_model_12emo 目录下.
+
 ### 安装 venv 环境
 ```bash
 python3.10 -m venv .venv
 ```
 
-### 安装 vits-simple-api
+### 安装 backend 依赖
 ```bash
-git submodule init
-git submodule update
-cd third_party/vits-simple-api
-python -m pip install gunicorn
-# for windows:
-# pip install eunjeon  -i https://pypi.artrajz.cn/simple/
-python -m pip install -r requirements.txt
+source .venv/Scripts/activate
+pip install -r backend/requirements.txt
 ```
 
+
+
+## 如何使用？
+1. 下载好仓库内的东西，确保你下载了nodejs和python环境
+2. 点击backend/install.bat安装必要的库（该库是全局安装的！！如果你电脑已经有python环境了谨慎操作）
+3. 从网盘下载情感分类模型，放在backend/emotion_model_12emo中
+4. *由于隐私原因，请在deepseek.py输入自己的api或者自己改写程序接入其他api*
+5. 启动backend中的run.bat，启动根目录的run_server.bat即可启动
+6. 输入localhost:3000 进入聊天界面，左上角显示已连接服务器则表示完成
+7. 为了使用语音功能，请前往链接下载vits链接程序！程序默认监听23456语音端口
+8. 程序默认导入的模型是zcchat地址->讨论区->角色示范（丛雨）->vits模型下载好之后在simple-vits-api的目录的/data/models里面解压，再启动就ok了
+9. 如果需要使用其他模型，在webChat.py的Vits实现函数更改相关设定即可
+
 ## 相关设定
-1. 在deepseek.py里的settings设定角色性格和你的设定（别忘了自己的API一定要填写）
-2. 可以更换/public/pictures/lingling/里面的立绘+修改/public/css/galgame.css里的代码实现自定义角色或表情动作气泡
 3. /public/js/talk.js 里面可以设定不同的心情和不同的动作，目前有12种情绪，由于模型是自己训练的所以更新要等一段时间啦
 
 ## 相关链接
@@ -69,7 +75,6 @@ python -m pip install -r requirements.txt
 - 本项目为了快速开发用了很多AI工具，有做的不好的地方欢迎指出！
 - 会随着项目的知名度提供更便利清晰的自定义功能的！目前实在没时间啦...
 - 本项目更多作为一个超小型的学习项目，由于文件结构非常简单，欢迎有兴趣的人学习。
-
 ## 其他
 > 本项目使用的气泡+音效素材来源于碧蓝档案，请勿商用
 > 默认简单狼狼立绘是自绘，表情差分源于AI，如果你想自己创作可使用 Novelai 网站
