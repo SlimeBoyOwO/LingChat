@@ -10,21 +10,53 @@ Win10 以上，Win7经过测试无法运行！
 - ✅ 在logs中记录你们聊天的记录。
 - ✅ 在菜单更改设置并且浏览当前历史记录。
 
-## 如何使用？（文字描述版本，适合小白）
+## 如何使用？
+
+1，下载并安装python3.10，**安装时请勾选Add python.exe to PATH**
+
+- [64位版本](https://www.python.org/ftp/python/3.10.11/python-3.10.11-amd64.exe)
+- [32位版本](https://www.python.org/ftp/python/3.10.11/python-3.10.11.exe)
+
+2，下载并安装Node.js
+
+- [64位版本](https://nodejs.org/dist/v22.14.0/node-v22.14.0-x64.msi)
+
+- [32位版本](https://nodejs.org/dist/v22.14.0/node-v22.14.0-x86.msi)
+
+3，从网盘**下载情感分类模型**，放在backend/emotion_model_12emo中。
+
+- [百度网盘](https://pan.baidu.com/s/16Dy53KX3jIjACY5fCctKDA)：请在这里下载emotion_model_12emo，提取码：0721
+- [123云盘](https://www.123865.com/s/7YDfjv-KRK5v): 如果你没有百度网盘会员，请从下载emotion_model_12emom
+- [Google云盘](https://drive.google.com/file/d/1LWdJYYc3QaYbzHupt5DDaM1lCeG-X5vd/view?usp=sharing): 如果你是非大陆或者海外朋友，下载这个
+
+4，在[backend/predictor.py](https://github.com/SlimeBoyOwO/LingChat/blob/main/backend/predictor.py)里填写你的deepseek apikey，deepseek apikey登录[DeepSeek 开放平台](https://platform.deepseek.com/usage)后获取。
+
+5，双击[start.bat](https://github.com/SlimeBoyOwO/LingChat/blob/main/start.bat)一键启动。初次启动需要确保网络通畅，并耐心等待约20分钟。若中途网络问题导致安装丢包，请手动删除.venv并再次双击
+
+6*，若要使用语音功能，请下载[simple-vits-api](https://github.com/Artrajz/vits-simple-api)链接程序。该项目实现了基于 VITS 的简单语音合成 API。建议下载GPU版本，速度快。程序默认监听23456语音端口，程序默认导入的模型是zcchat地址->讨论区->角色示范（丛雨）->vits模型下载好之后在simple-vits-api的目录的/data/models里面解压，再启动就ok了
+
+
+
+### 若一键包出现BUG，可采用备选方案：
+
+```markdown
 1. 下载好仓库内的东西，确保你下载了nodejs和python环境
-2. **点击backend/install.bat**安装必要的库（该库是全局安装的！！如果你电脑已经有python环境了谨慎操作）
-3. 从网盘**下载情感分类模型**，放在backend/emotion_model_12emo中
-4. **由于隐私原因，请在deepseek.py输入自己的api或者自己改写程序接入其他api**
-5. 启动backend中的**run.bat**，启动根目录的**run_server.bat**即可启动
-6. **输入localhost:3000 进入聊天界面**，左上角显示已连接服务器则表示完成
-7. **为了使用语音功能，请前往链接下载vits链接程序！程序默认监听23456语音端口**
+2. 点击backend/install.bat安装必要的库（该库是全局安装的！！如果你电脑已经有python环境了谨慎操作）
+3. 从网盘下载情感分类模型，放在backend/emotion_model_12emo中
+4. 由于隐私原因，请在deepseek.py输入自己的api或者自己改写程序接入其他api
+5. 启动backend中的run.bat，启动根目录的run_server.bat即可启动
+6. 输入localhost:3000 进入聊天界面，左上角显示已连接服务器则表示完成
+7. 为了使用语音功能，请前往链接下载vits链接程序！程序默认监听23456语音端口
 8. 程序默认导入的模型是zcchat地址->讨论区->角色示范（丛雨）->vits模型下载好之后在simple-vits-api的目录的/data/models里面解压，再启动就ok了
 9. 如果需要使用其他模型，在webChat.py的Vits实现函数更改相关设定即可
+```
+
+
 
 ## 安装 (INSTALL)（程序员首选）
 ### 系统依赖
 #### python 环境
-需要 python3.10
+- 本项目基于python-3.10开发，经测试也兼容python-3.11和python-3.12，不兼容python-3.13
 
 #### Windows
 Microsoft C++ Build Tools:
