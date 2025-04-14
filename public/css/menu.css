@@ -160,7 +160,7 @@
 
 /* 背景类 */
 body.bg-default {
-  background-image: url("../pictures/backgrounds/homepage_bg3.jpg");
+  background-image: url("../pictures/backgrounds/homepage_bg.jpeg"); /*更正文件名错误*/
 }
 
 body.bg-night {
