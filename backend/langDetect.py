@@ -71,3 +71,5 @@ if __name__ == "__main__":
     for text, expected in test_cases:
         result = detecter.detect_language(text)
         print(f"输入: {text} | 检测结果: {result} | 预期: {expected} | {'✓' if result == expected else '✗'}")
+
+    input("等你宝宝")
