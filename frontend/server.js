@@ -25,7 +25,26 @@ app.get("/about", (req, res) => {
 let pythonSocket = null;
 
 function connectToPython() {
-  const ws = new WebSocket("ws://0.0.0.0:8765");
+  // 添加协议头
+  const ws = new WebSocket("ws://python-backend:8765", {
+    headers: {
+      Origin: "http://node-frontend:3000",
+      Connection: "Upgrade",
+      Upgrade: "websocket",
+    },
+  });
+
+  // 添加握手验证
+  ws.onopen = () => {
+    console.log("WebSocket 握手成功");
+    ws.send(
+      JSON.stringify({
+        type: "handshake",
+        protocol: "websocket",
+        version: "13", // WebSocket 协议版本
+      })
+    );
+  };
 
   ws.on("open", () => {
     console.log("已连接到 Python 服务");
