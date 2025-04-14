@@ -222,11 +222,18 @@ async def main():
     asyncio.set_event_loop(loop)
     
     # 修改主机地址为 0.0.0.0（允许 Docker 外部访问）
+    # 修改 WebSocket 服务器配置
     server = await websockets.serve(
-        handle_client, 
-        "0.0.0.0",  # 关键修改！不能用 localhost
+        handle_client,
+        "0.0.0.0",
         8765,
-        ping_interval=None
+        ping_interval=None,
+        # 添加以下配置
+        ping_timeout=None,
+        close_timeout=None,
+        max_size=2**25,  # 32MB
+        # 放宽跨域限制
+        origins=None  # 允许所有来源
     )
     
     print("Python WebSocket 服务运行在 ws://0.0.0.0:8765")
