@@ -22,18 +22,17 @@ Win10 以上，Win7经过测试无法运行！
 2，下载并安装Node.js
 
 - [64位版本](https://nodejs.org/dist/v22.14.0/node-v22.14.0-x64.msi)
-
 - [32位版本](https://nodejs.org/dist/v22.14.0/node-v22.14.0-x86.msi)
 
 3，从网盘**下载情感分类模型**，放在backend/emotion_model_12emo中。
 
 - [百度网盘](https://pan.baidu.com/s/16Dy53KX3jIjACY5fCctKDA)：请在这里下载emotion_model_12emo，提取码：0721
-- [123云盘](https://www.123865.com/s/7YDfjv-KRK5v): 如果你没有百度网盘会员，请从下载emotion_model_12emom
+- [123云盘](https://www.123865.com/s/7YDfjv-KRK5v): 如果你没有百度网盘会员，请从这里下载emotion_model_12emom
 - [Google云盘](https://drive.google.com/file/d/1LWdJYYc3QaYbzHupt5DDaM1lCeG-X5vd/view?usp=sharing): 如果你是非大陆或者海外朋友，下载这个
 
-4，在[backend/predictor.py](https://github.com/SlimeBoyOwO/LingChat/blob/main/backend/predictor.py)里填写你的deepseek apikey，deepseek apikey登录[DeepSeek 开放平台](https://platform.deepseek.com/usage)后获取。
+4，在[backend/predictor.py](https://github.com/SlimeBoyOwO/LingChat/blob/main/backend/predictor.py)里填写你的deepseek apikey，deepseek apikey登录[DeepSeek 开放平台](https://platform.deepseek.com/usage)后获取。请妥善保管自己的deepseek apikey。
 
-5，双击[start.bat](https://github.com/SlimeBoyOwO/LingChat/blob/main/start.bat)一键启动。初次启动需要确保网络通畅，并耐心等待约20分钟。若中途网络问题导致安装丢包，请手动删除.venv并再次双击。
+5，双击[start.bat](https://github.com/SlimeBoyOwO/LingChat/blob/main/start.bat)一键启动。初次启动需要确保网络通畅，并耐心等待约20分钟。若中途网络问题导致安装丢包，请手动删除.venv文件夹，并再次双击start.bat。
 
 6，若要使用语音功能，请下载[simple-vits-api](https://github.com/Artrajz/vits-simple-api)链接程序。该项目实现了基于 VITS 的简单语音合成 API。建议下载GPU版本，速度快。程序默认监听23456语音端口，程序默认导入的模型是zcchat地址->讨论区->角色示范（丛雨）->vits模型下载好之后在simple-vits-api的目录的/data/models里面解压，再启动就ok了
 
