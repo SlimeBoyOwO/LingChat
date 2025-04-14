@@ -15,3 +15,9 @@ __pycache__
 
 # Ignore build files
 node_modules/
+
+# Ignore model files
+*.safetensors
+
+# Ignore logs
+logs/*.log

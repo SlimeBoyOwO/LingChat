@@ -8,8 +8,7 @@
 - ✅ 在菜单更改设置并且浏览当前历史记录。
 
 ## 安装 (INSTALL)
-### 系统依赖
-#### python 环境
+### python 环境
 需要 python3.10
 
 ### 准备项目
@@ -18,21 +17,33 @@ git clone git@github.com:SlimeBoyOwO/LingChat.git
 cd LingChat
 ```
 
+### 安装 vits-simple-api
+下载链接 https://github.com/Artrajz/vits-simple-api/releases
+根据你的环境选择 vits-simple-api-windows* 的CPU或者GPU下载.
+或者根据 https://github.com/Artrajz/vits-simple-api/blob/main/README_zh.md 从源码安装.
+
+#### 添加 vits-simple-api 的音源
+从这里 https://github.com/Zao-chen/ZcChat/discussions 下载相应的vits包.
+放置到 vits-simple-api 目录下的 data\models 目录.
+
+#### 测试 vits-simple-api
+运行 `start.bat` 访问 http://127.0.0.1:23456
+
+### 下载 emotion_model_12emo
+参见下面的 **相关链接** 下载 `model.safetensors`.
+放置到 emotion_model_12emo 目录下.
+
 ### 安装 venv 环境
 ```bash
 python3.10 -m venv .venv
 ```
 
-### 安装 vits-simple-api
+### 安装 backend 依赖
 ```bash
-git submodule init
-git submodule update
-cd third_party/vits-simple-api
-python -m pip install gunicorn
-# for windows:
-# pip install eunjeon  -i https://pypi.artrajz.cn/simple/
-python -m pip install -r requirements.txt
+source .venv/Scripts/activate
+pip install -r backend/requirements.txt
 ```
+
 
 
 ## 如何使用？
