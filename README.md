@@ -12,11 +12,6 @@
 #### python 环境
 需要 python3.10
 
-#### Windows
-Microsoft C++ Build Tools:
-https://visualstudio.microsoft.com/visual-cpp-build-tools/
-
-
 ### 准备项目
 ```bash
 git clone git@github.com:SlimeBoyOwO/LingChat.git
