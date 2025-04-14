@@ -1,21 +1,22 @@
-# emotion_interactive_8emo.py
 from transformers import BertTokenizer, BertForSequenceClassification
 import torch
 import os
 import json
+from pathlib import Path
 
 class EmotionClassifier:
     def __init__(self, model_path="./emotion_model_12emo"):
         """加载12类情绪分类模型"""
         # 加载模型和分词器
-        self.tokenizer = BertTokenizer.from_pretrained(model_path)
+        model_path = Path("./emotion_model_12emo").resolve()
+        self.tokenizer = BertTokenizer.from_pretrained(str(model_path), local_files_only=True)
         self.model = BertForSequenceClassification.from_pretrained(model_path)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
         
         # 从保存的配置加载标签映射
         config_path = os.path.join(model_path, "label_mapping.json")
-        with open(config_path, "r") as f:
+        with open(config_path, "r", encoding='utf-8') as f: 
             label_config = json.load(f)
         self.id2label = label_config["id2label"]
         self.label2id = label_config["label2id"]
