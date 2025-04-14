@@ -69,7 +69,25 @@ _※出现其他报错请截图反馈_
 9. 如果需要使用其他模型，在webChat.py的Vits实现函数更改相关设定即可
 ```
 
+## 相关设定
 
+1. 在deepseek.py里的settings设定角色性格和你的设定（别忘了自己的API一定要填写）
+2. 可以更换/public/pictures/lingling/里面的立绘+修改/public/css/galgame.css里的代码实现自定义角色或表情动作气泡
+3. /public/js/talk.js 里面可以设定不同的心情和不同的动作，目前有12种情绪，由于模型是自己训练的所以更新要等一段时间啦
+
+## 相关链接
+
+- [emotion_model_12emo 百度网盘](https://pan.baidu.com/s/16Dy53KX3jIjACY5fCctKDA)：请在这里下载emotion_model_12emo，提取码：0721
+- [emotion_model_12emo 123云盘](https://www.123865.com/s/7YDfjv-KRK5v): 或这里下载emotion_model_12emom更快一点如果你没有百度网盘会员
+- [emotion_model_12emo Google云盘](https://drive.google.com/file/d/1LWdJYYc3QaYbzHupt5DDaM1lCeG-X5vd/view?usp=sharing): 如果你是非大陆或者海外朋友，下载这个
+- [simple-vits-api](https://github.com/Artrajz/vits-simple-api): 该项目实现了基于 VITS 的简单语音合成 API。建议下载GPU版本，速度快
+- [zcchat](https://github.com/Zao-chen/ZcChat): 本项目的灵感来源，可以在这里找到Vits模型和人物素材
+
+## 一些小话
+
+- 本项目为了快速开发用了很多AI工具，有做的不好的地方欢迎指出！
+- 会随着项目的知名度提供更便利清晰的自定义功能的！目前实在没时间啦...
+- 本项目更多作为一个超小型的学习项目，由于文件结构非常简单，欢迎有兴趣的人学习。
 
 ## For 开发者：
 
@@ -111,23 +129,17 @@ _※出现其他报错请截图反馈_
    source .venv/bin/activate
    ```
 
-   激活后，你的命令行提示符前面通常会显示 `(.venv)`，表示你现在操作的是这个虚拟环境。之后安装的 Python 包将仅限于此环境。
-
 5. **安装 Python 依赖**
 
    ```bash
    pip install -r requirements.txt
    ```
 
-   这会根据 `requirements.txt` 文件列出的清单，安装所有必要的 Python 库到当前的 `.venv` 环境中。
-
 6. **安装 Node.js 依赖 (前端需要)**
 
    ```bash
    npm install
    ```
-
-   这会读取项目根目录下的 `package.json` 文件，并安装前端所需的 Node.js 依赖项到 `node_modules` 文件夹。
 
 7. **运行后端服务 (webChat.py)**
    *你需要让这个进程在后台运行，否则它会占用你的终端。这里提供几种常见方法：*
@@ -138,11 +150,6 @@ _※出现其他报错请截图反馈_
      nohup python backend/webChat.py &
      ```
 
-     - `nohup`：表示即使你关闭了 SSH 连接，进程也不会被终止。
-     - `&`：表示在后台运行。
-     - 输出（包括错误）默认会写入到当前目录的 `nohup.out` 文件中。你可以用 `tail -f nohup.out` 查看实时日志。
-     - 记下这个进程的 PID（通常命令执行后会显示 `[1] PID_NUMBER`），以便后续需要时可以手动停止（`kill PID_NUMBER`）。
-
    * **方法二：使用 `screen` 或 `tmux` (推荐，更易管理)**
      如果你熟悉 `screen` 或 `tmux`，可以创建一个会话来运行后端：
 
@@ -152,8 +159,6 @@ _※出现其他报错请截图反馈_
      python backend/webChat.py # 运行后端
      ```
 
-     `tmux` 的用法类似 (`tmux new -s backend_lingchat`, `python backend/webChat.py`, `Ctrl+B D`, `tmux attach -t backend_lingchat`)。
-
 8. **运行前端服务 (server.js)**
    *同样，前端服务也需要后台运行。*
 
@@ -162,8 +167,6 @@ _※出现其他报错请截图反馈_
      ```bash
      nohup node server.js &
      ```
-
-     同样，输出会进 `nohup.out` (如果后端也用了 nohup，它们的输出会混在一起，建议分别重定向，例如 `nohup python backend/webChat.py > backend.log 2>&1 &` 和 `nohup node server.js > frontend.log 2>&1 &`)。
 
    * **方法二：使用 `screen` 或 `tmux`**
      可以在另一个 `screen` 或 `tmux` 会话中运行前端：
@@ -181,35 +184,28 @@ _※出现其他报错请截图反馈_
      pm2 start backend/webChat.py --name lingchat-backend --interpreter python3 
      pm2 start server.js --name lingchat-frontend
      ```
-
-     **注意:** 使用 `pm2` 启动 Python 脚本时，如果脚本依赖虚拟环境，最好在激活虚拟环境的终端里运行 `pm2 start` 命令，或者在 `pm2` 配置中指定虚拟环境的 Python 解释器路径 (`.venv/bin/python3`)。直接使用 `--interpreter python3` 可能不会自动找到虚拟环境的包。
-
+     
 ### 在Winows环境部署该项目
 
-1. **打开终端:**
-
-   *   按 `Win + R`，输入 `cmd` 并回车，打开命令提示符。
-   *   或者按 `Win + R`，输入 `powershell` 并回车，打开 PowerShell。
-
-2. **克隆项目仓库:**
+1. **克隆项目仓库:**
 
    ```bash
    git clone https://github.com/SlimeBoyOwO/LingChat.git
    ```
 
-3. **进入项目目录:**
+2. **进入项目目录:**
 
    ```bash
    cd LingChat
    ```
 
-4. **创建 Python 虚拟环境:**
+3. **创建 Python 虚拟环境:**
 
    ```bash
    python -m venv .venv
    ```
 
-5. **激活 Python 虚拟环境:**
+4. **激活 Python 虚拟环境:**
 
    * **在 cmd.exe 中:**
 
@@ -223,19 +219,19 @@ _※出现其他报错请截图反馈_
      .venv\Scripts\Activate.ps1
      ```
 
-6. **安装 Python 依赖:** (确保虚拟环境已激活，提示符前有 `(.venv)`)
+5. **安装 Python 依赖:** (确保虚拟环境已激活，提示符前有 `(.venv)`)
 
    ```bash
    pip install -r requirements.txt
    ```
 
-7. **安装 Node.js 依赖:** (不需要激活 Python 虚拟环境，可以在项目根目录直接执行)
+6. **安装 Node.js 依赖:** (不需要激活 Python 虚拟环境，可以在项目根目录直接执行)
 
    ```bash
    npm install
    ```
 
-8. **运行后端服务 (webChat.py) 和 前端服务 (server.js):**
+7. **运行后端服务 (webChat.py) 和 前端服务 (server.js):**
 
    * **运行后端:**
 
@@ -243,17 +239,13 @@ _※出现其他报错请截图反馈_
      python backend/webChat.py
      ```
 
-     这个窗口将显示后端的日志输出，并且会一直运行，不要关闭它。
-
    * **运行前端:**
 
      ```bash
      node server.js
      ```
 
-     这个窗口将显示前端的日志输出，同样不要关闭它。
-
-9. 安装 vits-simple-api
+8. 安装 vits-simple-api
 
 ```bash
 git submodule init
@@ -265,25 +257,6 @@ python -m pip install gunicorn
 python -m pip install -r requirements.txt
 ```
 
-## 相关设定
-
-1. 在deepseek.py里的settings设定角色性格和你的设定（别忘了自己的API一定要填写）
-2. 可以更换/public/pictures/lingling/里面的立绘+修改/public/css/galgame.css里的代码实现自定义角色或表情动作气泡
-3. /public/js/talk.js 里面可以设定不同的心情和不同的动作，目前有12种情绪，由于模型是自己训练的所以更新要等一段时间啦
-
-## 相关链接
-
-- [emotion_model_12emo 百度网盘](https://pan.baidu.com/s/16Dy53KX3jIjACY5fCctKDA)：请在这里下载emotion_model_12emo，提取码：0721
-- [emotion_model_12emo 123云盘](https://www.123865.com/s/7YDfjv-KRK5v): 或这里下载emotion_model_12emom更快一点如果你没有百度网盘会员
-- [emotion_model_12emo Google云盘](https://drive.google.com/file/d/1LWdJYYc3QaYbzHupt5DDaM1lCeG-X5vd/view?usp=sharing): 如果你是非大陆或者海外朋友，下载这个
-- [simple-vits-api](https://github.com/Artrajz/vits-simple-api): 该项目实现了基于 VITS 的简单语音合成 API。建议下载GPU版本，速度快
-- [zcchat](https://github.com/Zao-chen/ZcChat): 本项目的灵感来源，可以在这里找到Vits模型和人物素材
-
-## 一些小话
-
-- 本项目为了快速开发用了很多AI工具，有做的不好的地方欢迎指出！
-- 会随着项目的知名度提供更便利清晰的自定义功能的！目前实在没时间啦...
-- 本项目更多作为一个超小型的学习项目，由于文件结构非常简单，欢迎有兴趣的人学习。
 
 ## 其他
 
