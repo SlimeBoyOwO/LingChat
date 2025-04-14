@@ -1,3 +1,5 @@
+:: 项目的一键安装包
+
 @echo off
 SETLOCAL ENABLEDELAYEDEXPANSION
 
