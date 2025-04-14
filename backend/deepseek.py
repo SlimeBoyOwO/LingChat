@@ -3,7 +3,7 @@ from openai import OpenAI
 class DeepSeek:
     def __init__(self):
         # OpenAI API 初始化
-        self.client = OpenAI(api_key="在这里输入自己的API秘钥，在deepseek.com的右上角中申请", base_url="https://api.deepseek.com")
+        self.client = OpenAI(api_key="换成自己的API，在deepseek.com申请", base_url="https://api.deepseek.com")
 
         self.settings = """
         以下是你的人设：
