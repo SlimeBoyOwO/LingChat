@@ -25,7 +25,7 @@ app.get("/about", (req, res) => {
 let pythonSocket = null;
 
 function connectToPython() {
-  const ws = new WebSocket("ws://localhost:8765");
+  const ws = new WebSocket("ws://0.0.0.0:8765");
 
   ws.on("open", () => {
     console.log("已连接到 Python 服务");
@@ -96,5 +96,5 @@ wss.on("connection", (ws) => {
 
 // 启动服务器
 server.listen(PORT, () => {
-  console.log(`服务器运行在 http://localhost:${PORT}`);
+  console.log(`服务器运行在 http://0.0.0.0:${PORT}`);
 });
