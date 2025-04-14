@@ -58,7 +58,7 @@ function connectToPython() {
   });
 
   ws.on("close", () => {
-    console.log("Python 服务连接断开，5秒后重试...若一直无法成功连接，请检查另一个打开的命令行窗口内有无报错");
+    console.log("Python 服务连接断开，5秒后重试...若一直无法成功连接，请检查另一个打开的终端窗口(名字叫LingChat Backend)有无报错");
     pythonSocket = null;
     setTimeout(connectToPython, 5000);
   });
