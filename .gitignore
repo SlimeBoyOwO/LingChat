@@ -11,7 +11,7 @@ __pycache__
 
 # Ignore local env
 .venv/
-.env/
+.env
 
 # Ignore third_party
 third_party/vits-simple-api-*
@@ -24,3 +24,7 @@ node_modules/
 
 # Ignore logs
 logs/*.log
+backend/logs/*.log
+
+# Ignore generated audio file
+public/audio/

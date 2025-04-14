@@ -1,9 +1,19 @@
+import os
+import dotenv
 from openai import OpenAI
 
 class DeepSeek:
-    def __init__(self):
+    def __init__(self, api_key=None):
         # OpenAI API 初始化
-        self.client = OpenAI(api_key="换成自己的API，在deepseek.com申请", base_url="https://api.deepseek.com")
+        if not api_key:
+            dotenv.load_dotenv()
+            api_key = os.environ.get("API_KEY")
+            
+        if api_key is None:
+            raise ValueError("API_KEY is not set, 设置环境变量API_KEY为自己的, 或修改.env文件, API_KEY在deepseek.com申请")
+        
+        
+        self.client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
 
         self.settings = """
         以下是你的人设：

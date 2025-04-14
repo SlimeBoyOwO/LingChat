@@ -5,3 +5,4 @@ aiohttp
 playsound
 websockets==12.0
 langdetect
+python-dotenv

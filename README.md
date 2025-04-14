@@ -112,7 +112,7 @@ python3.10 -m venv .venv
 
 ### 安装 backend 依赖
 ```bash
-source .venv/Scripts/activate
+. .venv/Scripts/activate
 pip install -r backend/requirements.txt
 ```
 
