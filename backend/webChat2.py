@@ -225,11 +225,11 @@ async def main():
     server = await websockets.serve(
         handle_client, 
         "0.0.0.0",  # 关键修改！不能用 localhost
-        8765,
+        8766,
         ping_interval=None
     )
     
-    print("Python WebSocket 服务运行在 ws://0.0.0.0:8765")
+    print("Python WebSocket 服务运行在 ws://0.0.0.0:8766")
     await server.wait_closed()
 
 if __name__ == "__main__":
