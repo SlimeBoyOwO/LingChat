@@ -14,7 +14,9 @@ Win10 以上，Win7经过测试无法运行！
 
 ## 如何使用？
 
-1，下载并安装python3.10，**安装时请勾选Add python.exe to PATH**
+1，下载并安装python3.10，**※※安装时请勾选Add python.exe to PATH※※**
+
+<img src="https://s1.imagehub.cc/images/2025/04/15/bf275367a931767a4636940e2a2dca75.png" alt="Python" style="zoom:50%;" />
 
 - [64位版本](https://www.python.org/ftp/python/3.10.11/python-3.10.11-amd64.exe)
 - [32位版本](https://www.python.org/ftp/python/3.10.11/python-3.10.11.exe)
@@ -36,20 +38,7 @@ Win10 以上，Win7经过测试无法运行！
 
 6，若要使用语音功能，请下载[simple-vits-api](https://github.com/Artrajz/vits-simple-api)链接程序。该项目实现了基于 VITS 的简单语音合成 API。建议下载GPU版本，速度快。程序默认监听23456语音端口，程序默认导入的模型是zcchat地址->讨论区->角色示范（丛雨）->vits模型下载好之后在simple-vits-api的目录的/data/models里面解压，再启动就ok了
 
-_※目前已知问题：若电脑配置较低，python后端启动较慢，需要等待命令行窗口显示：_
-
-```
-JS:
-服务器运行在 http://localhost:3000
-已连接到 Python 服务
-新的客户端连接
-
-py：
-Python WebSocket 服务运行在 ws://localhost:8765
-Python 服务: 新的连接建立
-```
-
-_代表后端成功启动后，刷新网页才可以使用。_
+_※目前已知问题：若电脑配置较低，python后端启动较慢，需要等待命令行窗口显示后端成功链接后，刷新浏览器_
 
 _※出现其他报错请截图反馈_
 
