@@ -1,7 +1,7 @@
---index-url https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+--extra-index-url https://download.pytorch.org/whl/cpu
 
 openai>=1.68.2
 transformers==4.50.0
-torch==2.6.0
+torch==2.6.0 # Pip will now also look for this in the extra-index-url
 aiohttp>=3.10.3
 websockets==12.0
