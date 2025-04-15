@@ -1,9 +1,13 @@
 from openai import OpenAI
+import os
 
 class DeepSeek:
-    def __init__(self):
-        # OpenAI API 初始化
-        self.client = OpenAI(api_key="阿巴阿巴", base_url="https://api.deepseek.com")
+    def __init__(self, api_key=None, base_url=None):
+        # OpenAI API 初始化    
+        api_key = api_key or os.environ.get("CHAT_API_KEY")
+        base_url = base_url or os.environ.get("CHAT_BASE_URL", "https://api.deepseek.com")
+            
+        self.client = OpenAI(api_key=api_key, base_url=base_url)
 
         self.settings = """
         以下是你的人设：
