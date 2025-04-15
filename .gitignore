@@ -1,0 +1,30 @@
+# Ignore operating system files
+.DS_Store
+Thumbs.db
+
+# Ignore IDE files
+.vscode/
+.idea/
+
+# Ignore cache files
+__pycache__
+
+# Ignore local env
+.venv/
+.env
+
+# Ignore third_party
+third_party/vits-simple-api-*
+
+# Ignore build files
+node_modules/
+
+# Ignore model files
+*.safetensors
+
+# Ignore logs
+logs/*.log
+backend/logs/*.log
+
+# Ignore generated audio file
+public/audio/
