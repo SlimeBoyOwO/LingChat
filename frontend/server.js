@@ -7,10 +7,16 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-const PORT = 3000;
+require('dotenv').config();
+
+const ADDR = process.env.FRONTEND_ADDR || "localhost";
+const BIND_ADDR = process.env.FRONTEND_BIND_ADDR || "0.0.0.0";
+const PORT = process.env.FRONTEND_PORT || 3000;
+const BACKEND_ADDR = process.env.BACKEND_ADDR || "localhost";
+const BACKEND_PORT = process.env.BACKEND_PORT || 8765;
 
 // 静态文件服务
-app.use(express.static("public"));
+app.use(express.static(path.join(__dirname, "public")));
 
 // 为每个页面添加路由
 app.get("/", (req, res) => {
@@ -26,9 +32,9 @@ let pythonSocket = null;
 
 function connectToPython() {
   // 添加协议头
-  const ws = new WebSocket("ws://python-backend:8765", {
+  const ws = new WebSocket(`ws://${BACKEND_ADDR}:${BACKEND_PORT}`, {
     headers: {
-      Origin: "http://node-frontend:3000",
+      Origin: `http://${ADDR}:${PORT}`,
       Connection: "Upgrade",
       Upgrade: "websocket",
     },
@@ -114,6 +120,6 @@ wss.on("connection", (ws) => {
 });
 
 // 启动服务器
-server.listen(PORT, () => {
-  console.log(`服务器运行在 http://0.0.0.0:${PORT}`);
+server.listen(PORT, BIND_ADDR, () => {
+  console.log(`服务器运行在 http://${BIND_ADDR}:${PORT}`);
 });
