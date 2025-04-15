@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 class VitsTTS:
-    def __init__(self, api_url="http://127.0.0.1:23456/voice/vits", speaker_id=4, audio_format="wav", lang="ja", enable=True):
+    def __init__(self, api_url=None, speaker_id=4, audio_format="wav", lang="ja", enable=True):
         """
         初始化VITS语音合成器
         :param api_url: API端点地址
@@ -12,8 +12,8 @@ class VitsTTS:
         :param audio_format: 音频格式 (默认wav)
         :param lang: 语言代码 (默认ja-日语)
         """
-        self.api_url = api_url
-        self.speaker_id = speaker_id
+        self.api_url = api_url or os.environ.get("VITS_API_URL", "http://127.0.0.1:23456/voice/vits")
+        self.speaker_id = speaker_id or int(os.environ.get("VITS_SPEAKER_ID", 4))
         self.format = audio_format
         self.lang = lang
         self.temp_dir = Path("temp_voice")
