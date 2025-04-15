@@ -18,6 +18,7 @@ third_party/vits-simple-api-*
 
 # Ignore build files
 node_modules/
+frontend/node_modules/
 
 # Ignore model files
 *.safetensors
