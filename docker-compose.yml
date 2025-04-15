@@ -9,6 +9,8 @@ services:
       - ./backend:/app
     environment:
       - FLASK_ENV=development
+    env_file:
+      - .env
     networks:
       - app-network
 
