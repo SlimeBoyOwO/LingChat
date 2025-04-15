@@ -3,8 +3,8 @@ from datetime import datetime
 
 class Logger:
 
-    def __init__(self):
-        self.log_dir = "logs"
+    def __init__(self, log_dir=None):
+        self.log_dir = log_dir or os.environ.get("BACKEND_LOG_DIR", "logs")
         os.makedirs(self.log_dir, exist_ok=True)
         self.log_file = self.setup_logging()
     
