@@ -108,8 +108,19 @@ const expressionConfig = {
   },
 };
 
+// 获取当前域名，如果为空则使用 localhost
+const host = window.location.host || 'localhost';
+let protocol;
+if (window.location.protocol === 'http:') {
+    protocol = 'ws';
+} else if (window.location.protocol === 'https:') {
+    protocol = 'wss';
+} else {
+    // 若为 file:// 协议，默认使用 ws
+    protocol = 'ws';
+}
 // 创建 WebSocket 连接
-const socket = new WebSocket("ws://localhost:3000/ws");
+const socket = new WebSocket(`${protocol}://${host}:3000/ws`);    
 
 // const socket = new WebSocket("wss://frp-oil.com:58025//ws");
 
