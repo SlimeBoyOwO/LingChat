@@ -13,6 +13,8 @@ const characterImg = document.querySelector(".main-box img");
 const characterContainer = document.querySelector(".avatar-container");
 const audioPlayerBubble = document.getElementById("audioPlayerBubble");
 
+const writer = new TypeWriter(inputMessage);
+
 // 统一的表情配置
 const expressionConfig = {
   厌恶: {
@@ -108,8 +110,20 @@ const expressionConfig = {
   },
 };
 
+// 获取当前域名，如果为空则使用 localhost
+const host = window.location.hostname || 'localhost';
+let protocol;
+if (window.location.protocol === 'http:') {
+    protocol = 'ws';
+} else if (window.location.protocol === 'https:') {
+    protocol = 'wss';
+} else {
+    // 若为 file:// 协议，默认使用 ws
+    protocol = 'ws';
+}
 // 创建 WebSocket 连接
-const socket = new WebSocket("ws://localhost:3000/ws");
+const socket = new WebSocket(`${protocol}://${host}:3000/ws`);
+    
 
 // const socket = new WebSocket("wss://frp-oil.com:58025//ws");
 
@@ -144,7 +158,7 @@ socket.addEventListener("message", (event) => {
   }
 });
 
-let textSpeed = localStorage.getItem("textSpeed") || "medium"; // 默认中等速度
+let numSpeed = localStorage.getItem("numSpeed") || "50"; // 默认中等速度
 
 function changeEmotion(emotion) {
   changeExpression(emotion);
@@ -232,6 +246,7 @@ function enableInput() {
   inputMessage.placeholder = "输入消息...";
   avatarTitle.innerText = "可爱的你";
   avatarSubTitle.innerText = "狼狼大学";
+  writer.stop();
 }
 
 // 禁用输入框并显示思考状态
@@ -265,7 +280,7 @@ function displayMessage(data) {
   const resMessage =
     data.message + (data.motionText ? ` （${data.motionText}）` : "");
 
-  typeWriter(responseMessage, resMessage, textSpeed);
+    writer.start(resMessage, numSpeed);
 
   const emotion = data.emotion;
   avatarEmotion.innerText = data.originalTag;
@@ -278,7 +293,7 @@ function displayMessage(data) {
   // 处理音频播放
   if (data.audioFile) {
     audioStatus.textContent = "准备播放音频...";
-    const audioUrl = `/audio/${data.audioFile}`;
+    const audioUrl = `../audio/${data.audioFile}`;
 
     audioPlayer.src = audioUrl;
     audioPlayer.load();
@@ -376,8 +391,8 @@ function sendOrContinue() {
 
 // 暴露设置速度的函数
 function setTextSpeed(speed) {
-  textSpeed = speed;
-  localStorage.setItem("textSpeed", speed);
+  numSpeed = speed;
+  localStorage.setItem("numSpeed", numSpeed);
 }
 
 // 发送按钮点击事件
