@@ -1,5 +1,8 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 
+fastapi==0.104.1
+uvicorn==0.24.0
+pydantic==2.4.2
 openai>=1.68.2
 transformers==4.50.0
 torch==2.6.0 # Pip will now also look for this in the extra-index-url
