@@ -13,6 +13,8 @@ const characterImg = document.querySelector(".main-box img");
 const characterContainer = document.querySelector(".avatar-container");
 const audioPlayerBubble = document.getElementById("audioPlayerBubble");
 
+const writer = new TypeWriter(inputMessage);
+
 // 统一的表情配置
 const expressionConfig = {
   厌恶: {
@@ -232,6 +234,7 @@ function enableInput() {
   inputMessage.placeholder = "输入消息...";
   avatarTitle.innerText = "可爱的你";
   avatarSubTitle.innerText = "狼狼大学";
+  writer.stop();
 }
 
 // 禁用输入框并显示思考状态
@@ -265,7 +268,7 @@ function displayMessage(data) {
   const resMessage =
     data.message + (data.motionText ? ` （${data.motionText}）` : "");
 
-  typeWriter(responseMessage, resMessage, textSpeed);
+  writer.start(resMessage, textSpeed);
 
   const emotion = data.emotion;
   avatarEmotion.innerText = data.originalTag;
