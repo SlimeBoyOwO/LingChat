@@ -12,19 +12,17 @@
 - 一键docker run的编写
 - 项目路径整理
 
-## Debug:
+## main上的兼容性改进，其他分支也应注意此问题
 
-- [main]修改requirements.txt的torch版本为2.6.0，以防镜像站没有2.0.1版本导致pip失败
-- [main]修改start.bat文件的编码为UFT-8，换行符为CRLF，提高兼容性
+- [main]修改了requirements.txt的torch版本为2.6.0，以防镜像站没有2.0.1版本导致pip失败
+- [main]修改了start.bat文件的编码为UFT-8，换行符为CRLF，提高兼容性
+- [main]backend路径问题。若使用start.bat启动，需要在predictor.py导入情绪模型的路径中添加一层/backend，这是因为start.bat和WebChat.py运行的根目录不一致，后续更新请注意启动路径问题。
 
 ## 进行中:
 
 - 验证.bat启动方式在各种电脑均可一键启动
 - 验证docker run启动方式的兼容性
 - 验证Linux环境下的兼容性
-- [main]backend路径问题
-
-
 
 ## 计划:
 
@@ -32,8 +30,6 @@
 - 将前端和后端合并为同一个Docker镜像
 - 在README新增docker部署教程，修订Linux部署教程
 - 打包python环境或发布编译版本，增强环境兼容性
-
-
 
 ## 已知问题/风险:
 
