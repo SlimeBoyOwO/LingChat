@@ -14,7 +14,9 @@ Win10 以上，Win7经过测试无法运行！
 
 ## 如何使用？
 
-1，下载并安装python3.10，**安装时请勾选Add python.exe to PATH**
+1，下载并安装python3.10，**※※安装时请勾选Add python.exe to PATH※※**
+
+<img src="https://s1.imagehub.cc/images/2025/04/15/bf275367a931767a4636940e2a2dca75.png" alt="Python" style="zoom:50%;" />
 
 - [64位版本](https://www.python.org/ftp/python/3.10.11/python-3.10.11-amd64.exe)
 - [32位版本](https://www.python.org/ftp/python/3.10.11/python-3.10.11.exe)
@@ -30,39 +32,34 @@ Win10 以上，Win7经过测试无法运行！
 - [123云盘](https://www.123865.com/s/7YDfjv-KRK5v): 如果你没有百度网盘会员，请从此处下载emotion_model_12emom
 - [Google云盘](https://drive.google.com/file/d/1LWdJYYc3QaYbzHupt5DDaM1lCeG-X5vd/view?usp=sharing): 如果你是非大陆或者海外朋友，下载这个
 
-4，在[backend/predictor.py](https://github.com/SlimeBoyOwO/LingChat/blob/main/backend/predictor.py)里填写你的deepseek apikey，deepseek apikey登录[DeepSeek 开放平台](https://platform.deepseek.com/usage)后获取。请妥善保管自己的apikey。
+4，在[backend/deepseek.py](https://github.com/SlimeBoyOwO/LingChat/blob/main/backend/deepseek.py)里填写你的deepseek apikey，deepseek apikey登录[DeepSeek 开放平台](https://platform.deepseek.com/usage)后获取。请妥善保管自己的apikey。
 
 5，双击[start.bat](https://github.com/SlimeBoyOwO/LingChat/blob/main/start.bat)一键启动。初次启动需要确保网络通畅，并耐心等待约20分钟。若中途网络问题导致安装丢包，请手动删除.venv并再次双击。
 
-6，若要使用语音功能，请下载[simple-vits-api](https://github.com/Artrajz/vits-simple-api)链接程序。该项目实现了基于 VITS 的简单语音合成 API。建议下载GPU版本，速度快。程序默认监听23456语音端口，程序默认导入的模型是zcchat地址->讨论区->角色示范（丛雨）->vits模型下载好之后在simple-vits-api的目录的/data/models里面解压，再启动就ok了
+6，若要使用语音功能，请下载[simple-vits-api](https://github.com/Artrajz/vits-simple-api)链接程序。该项目实现了基于 VITS 的简单语音合成 API。建议下载GPU版本，速度快。程序默认监听23456语音端口，程序默认导入的模型是zcchat地址->讨论区->角色示范（丛雨）->vits模型下载好之后在simple-vits-api的目录的/data/models里面解压，再启动就ok了;如果需要使用其他模型，在webChat.py的Vits实现函数更改相关设定即可.
 
-_※目前已知问题：若电脑配置较低，python后端启动较慢，需要等待命令行窗口显示：_
-
-```
-JS:
-服务器运行在 http://localhost:3000
-已连接到 Python 服务
-新的客户端连接
-
-py：
-Python WebSocket 服务运行在 ws://localhost:8765
-Python 服务: 新的连接建立
-```
-
-_代表后端成功启动后，刷新网页才可以使用。_
+_※目前已知问题：若电脑配置较低，python后端启动较慢，需要等待命令行窗口显示后端成功链接后，刷新浏览器_
 
 _※出现其他报错请截图反馈_
 
+### 若你是开发人员，可以这样启动：
+1，在vs code或者pycharm创建虚拟环境，安装requirements.txt的依赖。如果你想使用全局环境，可选择backend/install.bat，把依赖装入全局环境。
 
+2，在deepseek.py填写你的apikey；本项目前端是根目录下的server.js，后端是backend/Wechat.py，保持这两个的运行，然后打开浏览器访问http://localhost:3000/
 
-### 若一键包出现BUG，可采用备选方案：
+3，若手动启动WebChat.py，请打开predictor.py，按照注释删去/backend，这是因为start.bat和WebChat.py相隔了一个/backend文件夹，导致路径访问不同.
+
+4，有bug和报错请及时反馈，我们会非常感谢你！
+
+### 备用方案
+（使用backend/install.bat，把依赖装入全局环境；使用run.bat在全局环境中运行后端，使用run_server.bat运行前端，目前不推荐）：
 
 ```markdown
 1. 下载好仓库内的东西，确保你下载了nodejs和python环境
 2. 点击backend/install.bat安装必要的库（该库是全局安装的！！如果你电脑已经有python环境了谨慎操作）
 3. 从网盘下载情感分类模型，放在backend/emotion_model_12emo中
 4. 由于隐私原因，请在deepseek.py输入自己的api或者自己改写程序接入其他api
-5. 启动backend中的run.bat，启动根目录的run_server.bat即可启动
+5. 启动backend中的run.bat，启动根目录的run_server.bat即可启动。注意，使用该方案启动，请打开predictor.py，按照注释删去/backend
 6. 输入localhost:3000 进入聊天界面，左上角显示已连接服务器则表示完成
 7. 为了使用语音功能，请前往链接下载vits链接程序！程序默认监听23456语音端口
 8. 程序默认导入的模型是zcchat地址->讨论区->角色示范（丛雨）->vits模型下载好之后在simple-vits-api的目录的/data/models里面解压，再启动就ok了
