@@ -12,13 +12,17 @@
 - 一键docker run的编写
 - 项目路径整理
 
+## Debug:
 
+- [main]修改requirements.txt的torch版本为2.6.0，以防镜像站没有2.0.1版本导致pip失败
+- [main]修改start.bat文件的编码为UFT-8，换行符为CRLF，提高兼容性
 
 ## 进行中:
 
 - 验证.bat启动方式在各种电脑均可一键启动
 - 验证docker run启动方式的兼容性
 - 验证Linux环境下的兼容性
+- [main]backend路径问题
 
 
 
