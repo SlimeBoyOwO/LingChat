@@ -12,7 +12,9 @@ __pycache__
 # Ignore local env
 .venv/
 .env
-
+*.env
+!.env.example
+!.env.example.docker
 # Ignore third_party
 third_party/vits-simple-api-*
 

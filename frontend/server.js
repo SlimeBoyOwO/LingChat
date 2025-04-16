@@ -14,17 +14,17 @@ const BIND_ADDR = process.env.FRONTEND_BIND_ADDR || "0.0.0.0";
 const PORT = process.env.FRONTEND_PORT || 3000;
 const BACKEND_ADDR = process.env.BACKEND_ADDR || "localhost";
 const BACKEND_PORT = process.env.BACKEND_PORT || 8765;
-
+const PUBLICPATH = process.env.PUBLICPATH || '../public'
 // 静态文件服务
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static(path.join(__dirname, PUBLICPATH)));
 
 // 为每个页面添加路由
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public/pages/index.html"));
+  res.sendFile(path.join(__dirname, `${PUBLICPATH}/pages/index.html`));
 });
 
 app.get("/about", (req, res) => {
-  res.sendFile(path.join(__dirname, "public/pages/about.html"));
+  res.sendFile(path.join(__dirname, `${PUBLICPATH}/pages/about.html`));
 });
 
 // 连接到 Python WebSocket 服务
