@@ -32,7 +32,7 @@ Win10 以上，Win7经过测试无法运行！
 - [123云盘](https://www.123865.com/s/7YDfjv-KRK5v): 如果你没有百度网盘会员，请从此处下载emotion_model_12emom
 - [Google云盘](https://drive.google.com/file/d/1LWdJYYc3QaYbzHupt5DDaM1lCeG-X5vd/view?usp=sharing): 如果你是非大陆或者海外朋友，下载这个
 
-4，在[backend/predictor.py](https://github.com/SlimeBoyOwO/LingChat/blob/main/backend/predictor.py)里填写你的deepseek apikey，deepseek apikey登录[DeepSeek 开放平台](https://platform.deepseek.com/usage)后获取。请妥善保管自己的apikey。
+4，在[backend/deepseek.py](https://github.com/SlimeBoyOwO/LingChat/blob/main/backend/deepseek.py)里填写你的deepseek apikey，deepseek apikey登录[DeepSeek 开放平台](https://platform.deepseek.com/usage)后获取。请妥善保管自己的apikey。
 
 5，双击[start.bat](https://github.com/SlimeBoyOwO/LingChat/blob/main/start.bat)一键启动。初次启动需要确保网络通畅，并耐心等待约20分钟。若中途网络问题导致安装丢包，请手动删除.venv并再次双击。
 
