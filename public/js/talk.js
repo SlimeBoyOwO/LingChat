@@ -109,7 +109,7 @@ const expressionConfig = {
 };
 
 // 获取当前域名，如果为空则使用 localhost
-const host = window.location.host || 'localhost';
+const host = window.location.hostname || 'localhost';
 let protocol;
 if (window.location.protocol === 'http:') {
     protocol = 'ws';
