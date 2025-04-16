@@ -19,8 +19,9 @@ langDetect = LangDetect()
 tts_engine = VitsTTS(
     # enbale=False      #如果你没有配置simple-voice-api，请去掉这一行最开始的#号
 )
+PUBLICPATH = os.environ.get("PUBLICPATH")
 
-temp_voice_dir = os.environ.get("TEMP_VOICE_DIR", "public/audio")
+temp_voice_dir = os.environ.get("TEMP_VOICE_DIR", "%s/audio" % (PUBLICPATH))
 os.makedirs(temp_voice_dir, exist_ok=True)
 
 # ANSI 颜色代码
