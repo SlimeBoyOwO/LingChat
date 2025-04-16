@@ -58,6 +58,12 @@ _※出现其他报错请截图反馈_
 9. 如果需要使用其他模型，在webChat.py的Vits实现函数更改相关设定即可
 ```
 
+### 若你是开发人员，可以这样启动：
+1，在vs code或者pycharm创建虚拟环境，安装requirements.txt的依赖
+2，在deepseek.py填写你的apikey；本项目前端是根目录下的server.js，后端是backend/Wechat.py，保持这两个的运行，然后打开浏览器访问http://localhost:3000/
+3，若手动启动Wechat.py，请打开predictor.py，按照注释删去/backend，这是因为start.bat和Wechat.py相隔了一个/backend文件夹，导致路径访问不同
+4，有bug和报错请及时反馈，我们会非常感谢你！
+
 ## 相关设定
 
 1. 在deepseek.py里的settings设定角色性格和你的设定（别忘了自己的API一定要填写）
