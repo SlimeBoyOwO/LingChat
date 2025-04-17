@@ -2,7 +2,7 @@
 #menu-panel {
   position: fixed;
   top: 30px;
-  right: 180px;
+  right: 30px;
   z-index: 1000;
 }
 
@@ -12,17 +12,23 @@
   color: rgb(80, 128, 252);
   font-size: 20px;
   font-weight: bold;
-  border: 0.5px solid #e5ecf1; /* 银灰色边框 */
-  border-radius: 8px; /* 稍微增大圆角 */
+  border: 0.5px solid #e5ecf1;
+  /* 银灰色边框 */
+  border-radius: 8px;
+  /* 稍微增大圆角 */
   cursor: pointer;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15); /* 底部阴影 */
-  transition: all 0.3s ease; /* 添加过渡效果 */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  /* 底部阴影 */
+  transition: all 0.3s ease;
+  /* 添加过渡效果 */
 }
 
 #menu-toggle:hover {
   background-color: #b8d7ff;
-  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2); /* 悬停时阴影更明显 */
-  transform: translateY(-2px); /* 轻微上浮效果 */
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+  /* 悬停时阴影更明显 */
+  transform: translateY(-2px);
+  /* 轻微上浮效果 */
 }
 
 #menu-content {
@@ -30,12 +36,14 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 75vw;
+  /* width: 75vw;
   max-width: 600px;
   height: 75vh;
-  max-height: 500px;
+  max-height: 500px; */
+  /* 取消高宽限制，与"galgame.css"中的第10行冲突 */
   background-color: #fff;
-  border-radius: 15px;
+  /* border-radius: 15px; */
+  /* 取消圆角，因为将设置为单独页面而非选项卡 */
   box-shadow: 0 5px 30px rgba(0, 0, 0, 0.3);
   display: flex;
   flex-direction: column;
@@ -43,20 +51,31 @@
   visibility: hidden;
   opacity: 0;
   transition: all 0.3s ease;
-  z-index: -1; /* 隐藏时置于底层 */
+  z-index: -1;
+  /* 隐藏时置于底层 */
 }
 
 .menu-header {
   padding: 15px 20px;
   background-color: #5d7eb6;
   color: white;
-  text-align: center;
+  height: 57px;
 }
 
 .menu-body {
   flex: 1;
   padding: 20px;
   overflow-y: auto;
+  visibility: hidden;
+  opacity: 0;
+  height: calc(100% - 121px);
+  width: 100%;
+  position: absolute;
+}
+
+.menu-body.show {
+  visibility: visible;
+  opacity: 1;
 }
 
 .menu-section {
@@ -68,36 +87,6 @@
   color: #444;
   border-bottom: 1px solid #eee;
   padding-bottom: 8px;
-}
-
-/* 文字速度选项样式 */
-.speed-options {
-  display: flex;
-  gap: 10px;
-  margin-top: 10px;
-}
-
-.speed-option {
-  flex: 1;
-  padding: 8px 12px;
-  background-color: #60606083;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.speed-option.active {
-  background-color: #5d7eb6;
-  color: white;
-}
-
-.speed-option:hover {
-  background-color: #aac7ce;
-}
-
-.speed-option.active:hover {
-  background-color: #4a6da5;
 }
 
 /* 背景选择选项样式 */
@@ -126,7 +115,9 @@
 
 .bg-option img {
   width: 100%;
-  height: 80px;
+  /* height: 80px; */
+  aspect-ratio: 16 / 9;
+  /* 移除高度限制，以比例显示为替代 */
   object-fit: cover;
   border-radius: 3px;
   margin-bottom: 5px;
@@ -139,7 +130,8 @@
 
 .menu-footer {
   padding: 15px;
-  text-align: center;
+  text-align: right;
+  /* 修改对其方向从居中对齐为右对齐 */
   background-color: #f8f9fa;
 }
 
@@ -155,20 +147,270 @@
 #menu-content.show {
   visibility: visible;
   opacity: 1;
-  z-index: 1000; /* 显示时置于顶层 */
+  z-index: 1000;
+  /* 显示时置于顶层 */
 }
 
 /* 背景类 */
 body.bg-default {
-  background-image: url("../pictures/backgrounds/homepage_bg.jpeg"); /*更正文件名错误*/
+  background-image: url("../pictures/backgrounds/homepage_bg.jpeg");
 }
 
 body.bg-night {
   background-image: url("../pictures/backgrounds/homepage_bg2.jpg");
-  color: #fff; /* 夜间模式的文字颜色 */
+  color: #fff;
+  /* 夜间模式的文字颜色 */
 }
 
 body.bg-white {
   background-image: none;
   background-color: #fff;
+}
+
+/* 隐藏range控件默认样式 */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+  outline: 0;
+  transform: translate(0%, 20%);
+  background-color: transparent;
+}
+
+/* 定义range控件轨道的样式 */
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 10px;
+  background: linear-gradient(to right, #006fa7, #7dd2fd);
+}
+
+/* 定义range控件容器的样式 */
+input[type="range" i]::-webkit-slider-container {
+  height: 20px;
+  overflow: hidden;
+}
+
+/* 定义range控件拇指的样式 */
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  background-image: url("../pictures/icons/thumb.png");
+  background-size: cover;
+  cursor: w-resize;
+  /* 背景图片覆盖 */
+  background-position: center bottom;
+  /* 水平居中，垂直底部对齐 */
+  background-attachment: fixed;
+  /* 固定背景图片 */
+  background-repeat: no-repeat;
+  /* 不重复背景图片 */
+  border: 1px solid transparent;
+  margin-top: -7px;
+}
+
+div#speed-text-test {
+  width: 100%;
+  background-color: rgba(0, 14, 39, 0.7);
+  padding: 5px 0px;
+  border-radius: 17px;
+  min-height: 40px;
+}
+
+div#speed-text-test>span {
+  text-align: center;
+  width: 100%;
+  display: inline-block;
+}
+
+/* 设置子div.menu-item共享一排 */
+.menu-section {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 25px;
+}
+
+.menu-section>div.menu-item {
+  padding-bottom: 15px;
+  display: inline-block;
+  width: 50%;
+}
+
+.maxbody {
+  display: flex;
+  overflow-y: auto;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+}
+
+div#menu-content>div.menu-header>div {
+  display: inline-block;
+  position: fixed;
+}
+
+div#menu-content>div.menu-header>div#menu-title {
+  left: 20px;
+}
+
+div#menu-content>div.menu-header>div#menu-buttons {
+  right: 20px;
+  top: 3px;
+}
+
+div#menu-content>div.menu-header>div#menu-buttons>button {
+  font-size: 1.17em;
+  display: inline-block;
+  cursor: pointer;
+  border-radius: 17px;
+  border-style: unset;
+  border-color: unset;
+  border-image: unset;
+  padding: 10px 25px;
+  margin: 0px 5px;
+  background-color: #d2e5ff;
+  color: rgb(80, 128, 252);
+  font-weight: bold;
+  border: 0.5px solid #e5ecf1;
+  /* 银灰色边框 */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  /* 底部阴影 */
+  transition: all 0.3s;
+}
+
+div#menu-content>div.menu-header>div#menu-buttons>button:hover,
+div#menu-content>div.menu-header>div#menu-buttons>button.show {
+  color: rgba(0, 0, 0, 1);
+  background-color: #669de5;
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+  /* 悬停时阴影更明显 */
+  transform: translateY(-2px);
+  /* 轻微上浮效果 */
+  border: 0.5px solid #669de5;
+}
+
+/* 点击效果 */
+div#menu-content>div.menu-header>div#menu-buttons>button:active {
+  transform: translateY(1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* 高亮时不可点击，鼠标图标恢复原样 */
+div#menu-content>div.menu-header>div#menu-buttons>button.show {
+  pointer-events: none;
+  cursor: default;
+}
+
+div#menu-panel>div#menu-content>div.maxbody>div.menu-body>div.menu-section>div.menu-item>span {
+  color: #000;
+  display: inline-block;
+  width: 35px;
+  text-align: center;
+}
+
+input[type="range"] {
+  width: calc(100% - 80px);
+}
+
+button#clear-history {
+  visibility: hidden;
+  opacity: 0;
+}
+
+button#clear-history.show {
+  visibility: visible;
+  opacity: 1;
+}
+
+.history-body {
+  padding: 20px;
+  background-color: #f5f5f5;
+  overflow-y: auto;
+  margin: 10px;
+  height: calc(100% - 20px);
+  border-radius: 8px;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+#history-list {
+  min-height: 100%;
+}
+
+#clear-history {
+  padding: 8px 16px;
+  background-color: #e74c3c;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: background-color 0.3s;
+}
+
+#clear-history:hover {
+  background-color: #c0392b;
+}
+
+.history-item {
+  padding: 12px;
+  margin-bottom: 10px;
+  background-color: white;
+  border-radius: 6px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.history-item p {
+  margin: 5px 0;
+  line-height: 1.4;
+  color: #333;
+}
+
+.history-item p strong {
+  color: #4a6fa5;
+}
+
+/* 状态信息样式 */
+#status {
+  padding: 5px 10px;
+  border-radius: 5px;
+  font-size: 14px;
+  display: inline-block;
+}
+
+#menu-title>h3 {
+  display: inline-block;
+}
+
+#audioStatus {
+  position: absolute;
+  bottom: 10px;
+  color: #000;
+  padding: 5px 10px;
+  border-radius: 5px;
+  font-size: 14px;
+}
+
+/* 响应式 700px */
+@media (max-width: 700px) {
+  .menu-section>div.menu-item {
+    padding-bottom: 15px;
+    display: inline;
+    width: 100%;
+  }
+}
+
+#kuosan-test {
+  text-align: center;
+  background-color: #000;
+  padding: 5px 0;
+  border-radius: 30px;
+}
+
+#qinlingtest {
+  width: 65%;
+  height: auto;
+  aspect-ratio: 1 / 1;
 }
