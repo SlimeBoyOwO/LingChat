@@ -10,7 +10,7 @@ services:
     environment:
       - FLASK_ENV=development
     env_file:
-      - .env
+      - .env.docker
     networks:
       - app-network
 
