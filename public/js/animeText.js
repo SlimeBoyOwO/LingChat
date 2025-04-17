@@ -3,23 +3,22 @@ class TypeWriter {
     this.element = element;
     this.timer = null;
     this.abortController = null;
+    this.speed;
   }
 
-  start(text, textSpeed) {
+  start(text, numSpeed) {
     // 停止上一个动画
     this.stop();
-
-    let speed = 50;
-    switch (textSpeed) {
-      case "medium":
-        speed = 50;
-        break;
-      case "slow":
-        speed = 80;
-        break;
-      case "fast":
-        speed = 20;
-        break;
+    if(numSpeed !== null && numSpeed !== undefined && Number.isInteger(numSpeed)) {
+      // 如果 speed 是数字，直接使用
+      this.speed = numSpeed;
+    } else if(numSpeed !== null && numSpeed !== undefined ){
+      // 如果 speed 是字符串，尝试转换为数字
+      this.speed = Number.parseInt(numSpeed, 10);
+    } else {
+      // numSpeed 为空或未定义，在控制台警告并使用默认值
+      console.warn("速度值未定义，将采用默认速度。");
+      this.speed = 50; // 默认值
     }
 
     this.abortController = new AbortController();
@@ -40,7 +39,7 @@ class TypeWriter {
         this.stop();
         this.element.style.borderRight = "none";
       }
-    }, speed);
+    }, this.speed);
   }
 
   stop() {
