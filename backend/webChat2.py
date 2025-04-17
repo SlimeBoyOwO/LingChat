@@ -234,6 +234,8 @@ async def main():
     print("Python WebSocket 服务运行在 ws://0.0.0.0:8766")
     await server.wait_closed()
 
+# test
+
 if __name__ == "__main__":
     print("程序启动！")
     asyncio.run(main())
