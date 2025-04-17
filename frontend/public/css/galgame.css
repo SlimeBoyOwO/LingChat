@@ -6,10 +6,16 @@
   text-shadow: 0 0 2px rgba(0, 0, 0, 0.5); /* 文字阴影增强可读性 */
 }
 
+/* 对html和body设置100%高度和宽度，以确保子元素可以使用百分比正确覆盖页面内容 */
+html, body, #menu-content{
+  height: 100%;
+  width: 100%;
+}
+
 body {
   font-family: "TanukiMagic", "方正喵呜", "Segoe UI", sans-serif;
   color: white;
-  height: 100vh;
+  /* height: 100vh; */ /* 此元素与第10行的第12行冲突 */
   overflow: hidden;
   background-color: #ffffff;
 
@@ -31,133 +37,6 @@ canvas {
   position: relative;
   height: 100%;
   width: 100%;
-}
-
-#history-panel {
-  position: fixed;
-  top: 30px;
-  right: 40px;
-  z-index: 1000;
-}
-
-#history-toggle {
-  padding: 12px 20px;
-  background-color: #d2e5ff;
-  color: rgb(80, 128, 252);
-  font-size: 20px;
-  font-weight: bold;
-  border: 0.5px solid #e5ecf1; /* 银灰色边框 */
-  border-radius: 8px; /* 稍微增大圆角 */
-  cursor: pointer;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15); /* 底部阴影 */
-  transition: all 0.3s ease; /* 添加过渡效果 */
-}
-
-/* 添加悬停效果 */
-#history-toggle:hover {
-  background-color: #b8d7ff;
-  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2); /* 悬停时阴影更明显 */
-  transform: translateY(-2px); /* 轻微上浮效果 */
-}
-
-/* 点击效果 */
-#history-toggle:active {
-  transform: translateY(1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-#history-content {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 75vw;
-  height: 75vh;
-  background-color: #fff;
-  border-radius: 15px;
-  box-shadow: 0 5px 30px rgba(0, 0, 0, 0.3);
-  border: 2px solid #e5ecf1; /* 银灰色边框 */
-  display: flex;
-  flex-direction: column;
-  visibility: hidden;
-  opacity: 0;
-  transition: all 0.3s ease;
-  z-index: -1; /* 隐藏时置于底层 */
-}
-
-#history-content.show {
-  visibility: visible;
-  opacity: 1;
-  z-index: 1000; /* 显示时置于顶层 */
-}
-
-.history-header {
-  padding: 15px 20px;
-  background-color: #cbe0ff;
-  color: rgb(33, 120, 174);
-  text-align: center;
-  border-top-left-radius: 15px;
-  border-top-right-radius: 15px;
-}
-
-.history-header h3 {
-  margin: 0;
-  font-size: 1.5em;
-}
-
-.history-body {
-  flex: 1;
-  padding: 20px;
-  background-color: #f5f5f5;
-  overflow-y: auto;
-  margin: 10px;
-  border-radius: 8px;
-  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.1);
-}
-
-#history-list {
-  min-height: 100%;
-}
-
-.history-footer {
-  padding: 15px;
-  text-align: right;
-  background-color: #f8f9fa;
-  border-bottom-left-radius: 15px;
-  border-bottom-right-radius: 15px;
-}
-
-#clear-history {
-  padding: 8px 16px;
-  background-color: #e74c3c;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.9em;
-  transition: background-color 0.3s;
-}
-
-#clear-history:hover {
-  background-color: #c0392b;
-}
-
-.history-item {
-  padding: 12px;
-  margin-bottom: 10px;
-  background-color: white;
-  border-radius: 6px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-}
-
-.history-item p {
-  margin: 5px 0;
-  line-height: 1.4;
-  color: #333;
-}
-
-.history-item p strong {
-  color: #4a6fa5;
 }
 
 /* 人物图像样式 */
@@ -186,6 +65,7 @@ canvas {
   object-fit: contain;
   object-position: center;
   z-index: 1;
+  filter: drop-shadow(0 0 18px rgba(255, 255, 255, 0.7)); /* 添加白色阴影 */
 }
 
 /* 修复后的聊天框样式 */
@@ -303,17 +183,6 @@ canvas {
   opacity: 0.7;
 }
 
-/* 状态信息样式 */
-#status {
-  position: absolute;
-  top: 20px;
-  left: 20px;
-  z-index: 3;
-  padding: 5px 10px;
-  border-radius: 5px;
-  font-size: 14px;
-}
-
 /* 音频播放器样式 */
 #audioPlayer {
   position: absolute;
@@ -321,16 +190,6 @@ canvas {
   left: 10px;
   z-index: 3;
   width: 200px;
-}
-
-#audioStatus {
-  position: absolute;
-  bottom: 10px;
-  right: 10px;
-  z-index: 3;
-  padding: 5px 10px;
-  border-radius: 5px;
-  font-size: 14px;
 }
 
 /* 标题样式 */
@@ -504,8 +363,4 @@ select {
 
 .bubble.happy {
   transform: scale(1);
-}
-
-.hidden {
-  display: none;
 }
