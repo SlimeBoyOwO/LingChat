@@ -1,122 +1,139 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>钦灵 Chat</title>
-    <link rel="stylesheet" href="../css/galgame.css" />
-    <link rel="stylesheet" href="../css/menu.css" />
-  </head>
-  <body class="bg-default">
-    <div class="container">
-      <div id="status">正在连接服务器...</div>
 
-      <div id="history-panel">
-        <button id="history-toggle">历史记录</button>
-        <div id="history-content" class="hidden">
-          <div class="history-header">
-            <h3>对话历史</h3>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>钦灵 Chat</title>
+  <link rel="stylesheet" href="../css/galgame.css" />
+  <link rel="stylesheet" href="../css/menu.css" />
+</head>
+
+<body class="bg-default">
+  <div class="container">
+    <div id="menu-panel">
+      <button id="menu-toggle">菜单</button>
+      <div id="menu-content" class="hidden">
+        <div class="menu-header">
+          <div id="menu-title">
+            <h3>设置菜单</h3>
+            <div id="status">正在连接服务器...</div>
           </div>
-          <div class="history-body">
-            <div id="history-list"></div>
-          </div>
-          <div class="history-footer">
-            <button id="clear-history">清空历史</button>
+          <div id="menu-buttons">
+            <button id="menu-text" class="">📃 文本</button>
+            <button id="menu-image" class="">🖼 图像</button>
+            <button id="menu-sound" class="">🔊 声音</button>
+            <button id="menu-history" class="">🔎 对话历史</button>
           </div>
         </div>
-      </div>
-
-      <div id="menu-panel">
-        <button id="menu-toggle">菜单</button>
-        <div id="menu-content" class="hidden">
-          <div class="menu-header">
-            <h3>设置菜单</h3>
-          </div>
-          <div class="menu-body">
+        <div class="maxbody">
+          <div class="menu-body" id="text-page">
             <div class="menu-section">
-              <h4>文字显示速度</h4>
-              <div class="speed-options">
-                <button class="speed-option" data-speed="fast">快</button>
-                <button class="speed-option" data-speed="medium">中</button>
-                <button class="speed-option" data-speed="slow">慢</button>
+              <div class="menu-item">
+                <h4>文字显示速度</h4>
+                <span>MAX</span>
+                <input id="speed-option" type="range" min="0" max="200" value="50" />
+                <span>MIN</span>
+              </div>
+              <div class="menu-item">
+                <h4>显示样本</h4>
+                <div id="speed-text-test">
+                  <span id="testmessage">钦灵 Chat，测试文本显示速度</span>
+                </div>
               </div>
             </div>
-
+          </div>
+          <div class="menu-body" id="image-page">
             <div class="menu-section">
               <h4>背景选择</h4>
               <div class="bg-options">
                 <div class="bg-option" data-bg="default">
-                  <img
-                    src="../pictures/backgrounds/homepage_bg.jpeg"
-                    alt="默认背景"
-                  />
+                  <img src="../pictures/backgrounds/homepage_bg.jpeg" alt="默认背景" />
                   <span>默认</span>
                 </div>
                 <div class="bg-option" data-bg="night">
-                  <img
-                    src="../pictures/backgrounds/homepage_bg2.jpg"
-                    alt="夜晚背景"
-                  />
+                  <img src="../pictures/backgrounds/homepage_bg2.jpg" alt="夜晚背景" />
                   <span>夜晚</span>
                 </div>
                 <div class="bg-option" data-bg="white">
-                  <img
-                    src="../pictures/backgrounds/纯白背景.png"
-                    alt="白色背景"
-                  />
+                  <img src="../pictures/backgrounds/纯白背景.png" alt="白色背景" />
                   <span>白色</span>
                 </div>
               </div>
             </div>
-          </div>
-          <div class="menu-footer">
-            <button id="close-menu">关闭</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="main-box">
-        <div class="avatar-container character-animation normal">
-          <img src="../pictures/qinling/正常.png" />
-          <div class="bubble"></div>
-        </div>
-
-        <div class="chatbox-box">
-          <div class="chatbox-main">
-            <div class="chatbox-title-part">
-              <div class="chatbox-title">
-                <div id="character">可爱的你</div>
+            <div class="menu-section">
+              <div class="menu-item">
+                <h4>角色圣光扩散设置</h4>
+                <span>MIN</span>
+                <input id="filter-kuosan" type="range" min="0" max="100" value="18" />
+                <span>MAX</span>
               </div>
-              <div class="chatbox-subtitle">
-                <div id="character-sub">狼狼大学</div>
-              </div>
-              <div class="chatbox-emotion">
-                <div id="character-emotion"></div>
+              <div class="menu-item">
+                <h4>显示样本</h4>
+                <div id="kuosan-test">
+                  <img id="qinlingtest" style="" src="../pictures/qinling/正常.png" />
+                </div>
               </div>
             </div>
-            <div class="chatbox-line"></div>
-            <div class="chatbox-inputbox">
-              <textarea
-                id="inputMessage"
-                placeholder="在这里输入消息..."
-              ></textarea>
-              <button id="sendButton" disabled>▼</button>
+          </div>
+          <div class="menu-body" id="sound-page">
+
+          </div>
+          <div class="menu-body" id="history-page">
+            <div class="history-body">
+              <div id="history-list"></div>
             </div>
           </div>
         </div>
+        <div class="menu-footer">
+          <div id="audioStatus"></div>
+          <button id="clear-history">清空历史</button>
+          <button id="close-menu">关闭</button>
+        </div>
       </div>
-
-      <audio id="audioPlayer" controls style="display: none"></audio>
-      <audio id="audioPlayerBubble" controls style="display: none"></audio>
-      <div id="audioStatus"></div>
     </div>
 
-    <canvas id="canvas" width="1584" height="379"></canvas>
+    <div class="main-box">
+      <div class="avatar-container character-animation normal">
+        <img id="qinling" style="" src="../pictures/qinling/正常.png" />
+        <div class="bubble"></div>
+      </div>
 
-    <script src="../js/animeText.js"></script>
-    <script src="../js/history.js"></script>
-    <script src="../js/talk.js"></script>
-    <script src="../js/starParticle.js"></script>
-    <script src="../js/menu.js"></script>
-  </body>
+      <div class="chatbox-box">
+        <div class="chatbox-main">
+          <div class="chatbox-title-part">
+            <div class="chatbox-title">
+              <div id="character">可爱的你</div>
+            </div>
+            <div class="chatbox-subtitle">
+              <div id="character-sub">狼狼大学</div>
+            </div>
+            <div class="chatbox-emotion">
+              <div id="character-emotion"></div>
+            </div>
+          </div>
+          <div class="chatbox-line"></div>
+          <div class="chatbox-inputbox">
+            <textarea id="inputMessage" placeholder="在这里输入消息..."></textarea>
+            <button id="sendButton" disabled>▼</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <audio id="audioPlayer" controls style="display: none"></audio>
+    <audio id="audioPlayerBubble" controls style="display: none"></audio>
+  </div>
+
+  <canvas id="canvas" width="1584" height="379"></canvas>
+
+  <script src="../js/animeText.js"></script>
+  <script src="../js/history.js"></script>
+  <script src="../js/talk.js"></script>
+  <script src="../js/starParticle.js"></script>
+  <script src="../js/image.js"></script>
+  <script src="../js/sound.js"></script>
+  <script src="../js/menu.js"></script>
+</body>
+
 </html>

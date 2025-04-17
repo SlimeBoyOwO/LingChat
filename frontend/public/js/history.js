@@ -1,5 +1,14 @@
-const historyToggle = document.getElementById("history-toggle");
-const historyContent = document.getElementById("history-content");
+const menuText = document.getElementById("menu-text");
+const textPage = document.getElementById("text-page");
+
+const menuImage = document.getElementById("menu-image");
+const imagePage = document.getElementById("image-page");
+
+const menuSound = document.getElementById("menu-sound");
+const soundPage = document.getElementById("sound-page");
+
+const historyToggle = document.getElementById("menu-history");
+const historyContent = document.getElementById("history-page");
 const historyList = document.getElementById("history-list");
 const clearHistoryBtn = document.getElementById("clear-history");
 
@@ -23,16 +32,17 @@ function initHistoryPanel() {
 
   // 切换显示/隐藏
   historyToggle.addEventListener("click", () => {
-    historyContent.classList.toggle("show");
-    if (historyContent.classList.contains("show")) {
+    historyToggle.classList.add("show");
+    historyContent.classList.add("show");
+    clearHistoryBtn.classList.add("show");
+    menuText.classList.remove("show");
+    textPage.classList.remove("show");
+    menuImage.classList.remove("show");
+    imagePage.classList.remove("show");
+    menuSound.classList.remove("show");
+    soundPage.classList.remove("show");
+    if (historyContent.classList.add("show")) {
       renderHistory();
-    }
-  });
-
-  // 点击外部关闭
-  document.addEventListener("click", (e) => {
-    if (!historyContent.contains(e.target) && e.target !== historyToggle) {
-      historyContent.classList.remove("show");
     }
   });
 }
