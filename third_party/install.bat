@@ -34,3 +34,7 @@ if %errorlevel% == 0 (
 :: Delete the temporary compressed file
 del %CURRENT_DIR%vits-simple-api-windows-cpu-v0.6.16.7z
 del %CURRENT_DIR%YuzuSoft_Vits.zip
+
+echo Installation complete!
+pause
+exit
