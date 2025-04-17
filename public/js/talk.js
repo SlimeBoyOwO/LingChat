@@ -122,7 +122,8 @@ if (window.location.protocol === 'http:') {
     protocol = 'ws';
 }
 // 创建 WebSocket 连接
-const socket = new WebSocket(`${protocol}://${host}:3000/ws`);    
+const socket = new WebSocket(`${protocol}://${host}:3000/ws`);
+    
 
 // const socket = new WebSocket("wss://frp-oil.com:58025//ws");
 
@@ -157,7 +158,7 @@ socket.addEventListener("message", (event) => {
   }
 });
 
-let textSpeed = localStorage.getItem("textSpeed") || "medium"; // 默认中等速度
+let numSpeed = localStorage.getItem("numSpeed") || "50"; // 默认中等速度
 
 function changeEmotion(emotion) {
   changeExpression(emotion);
@@ -279,7 +280,7 @@ function displayMessage(data) {
   const resMessage =
     data.message + (data.motionText ? ` （${data.motionText}）` : "");
 
-  writer.start(resMessage, textSpeed);
+    writer.start(resMessage, numSpeed);
 
   const emotion = data.emotion;
   avatarEmotion.innerText = data.originalTag;
@@ -292,7 +293,7 @@ function displayMessage(data) {
   // 处理音频播放
   if (data.audioFile) {
     audioStatus.textContent = "准备播放音频...";
-    const audioUrl = `/audio/${data.audioFile}`;
+    const audioUrl = `../audio/${data.audioFile}`;
 
     audioPlayer.src = audioUrl;
     audioPlayer.load();
@@ -390,8 +391,8 @@ function sendOrContinue() {
 
 // 暴露设置速度的函数
 function setTextSpeed(speed) {
-  textSpeed = speed;
-  localStorage.setItem("textSpeed", speed);
+  numSpeed = speed;
+  localStorage.setItem("numSpeed", numSpeed);
 }
 
 // 发送按钮点击事件
