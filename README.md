@@ -12,8 +12,14 @@
 
 ## 打包相关
 
-新建了WebChat.exe.py。WebChat.exe.py保持原功能不变，但是现在他运行后，会在python代码内部直接启动前端server.js和浏览器窗口（在之前，这两者依靠.bat启动），为后续编译python环境做准备。
+现在把windows程序和docker程序分开了。
 
-由于WebChat.exe.py实现了原start.bat的部分功能，现在新增start-new.bat，在创建虚拟环境后只会启动WebChat.exe.py单个文件，而不再启动server.js和浏览器窗口。
+windows程序对应的后端是Webchat.windows.py，现相比之前，现在Webchat会在python代码内部直接启动前端server.js和浏览器窗口（在之前，这两者依靠.bat启动），为后续编译python环境做准备。
 
-现在可以对项目进行编译了，并且好消息是，现在他只会弹出一个终端运行窗口，更加的美观
+- 对应start.windows.bat启动
+
+原Webchat.py名称修改为Webchat.docker.py，不改变其功能，这是因为docker分前端和后端。
+
+- 对应start.docker.bat启动
+
+现在可以随时对项目进行编译了，可以轻松打包环境，点击exe即可启动。并且好消息是，现在他只会弹出一个终端运行窗口，更加的美观
