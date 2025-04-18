@@ -1,10 +1,6 @@
 package service
 
 import (
-	"LingChat/api"
-	"LingChat/internal/clients/VitsTTS"
-	"LingChat/internal/clients/emotionPredictor"
-	"LingChat/internal/clients/llm"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,6 +8,11 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"LingChat/api"
+	"LingChat/internal/clients/VitsTTS"
+	"LingChat/internal/clients/emotionPredictor"
+	"LingChat/internal/clients/llm"
 )
 
 type LingChatService struct {
@@ -32,7 +33,7 @@ func NewLingChatService(epClient *emotionPredictor.Client, vtClient *VitsTTS.Cli
 
 func (l *LingChatService) EmoPredictBatch(ctx context.Context, results []Result) []Result {
 	var wg sync.WaitGroup
-	resultsChanel := make(chan struct {
+	resultsChannel := make(chan struct {
 		index      int
 		Predicted  string
 		Confidence float64
@@ -43,7 +44,7 @@ func (l *LingChatService) EmoPredictBatch(ctx context.Context, results []Result)
 			defer wg.Done()
 			resp, err := l.emotionPredictorClient.Predict(ctx, result.OriginalTag, 0.08)
 			if err != nil {
-				resultsChanel <- struct {
+				resultsChannel <- struct {
 					index      int
 					Predicted  string
 					Confidence float64
@@ -51,7 +52,7 @@ func (l *LingChatService) EmoPredictBatch(ctx context.Context, results []Result)
 					index, "unknown", 0.0,
 				}
 			} else {
-				resultsChanel <- struct {
+				resultsChannel <- struct {
 					index      int
 					Predicted  string
 					Confidence float64
@@ -62,12 +63,16 @@ func (l *LingChatService) EmoPredictBatch(ctx context.Context, results []Result)
 		}(i, result)
 	}
 
-	for result := range resultsChanel {
+	go func() {
+		wg.Wait()
+		close(resultsChannel)
+	}()
+
+	for result := range resultsChannel {
 		index := result.index
 		results[index].Confidence = result.Confidence
 		results[index].Predicted = result.Predicted
 	}
-	wg.Wait()
 	return results
 }
 
