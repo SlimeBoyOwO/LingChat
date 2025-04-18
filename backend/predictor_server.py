@@ -4,6 +4,7 @@ from typing import List, Dict, Optional
 import uvicorn
 from predictor import EmotionClassifier
 import os
+import dotenv
 
 app = FastAPI(
     title="Emotion Classification API",
@@ -53,10 +54,14 @@ async def predict_emotion(request: PredictionRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
+    dotenv.load_dotenv()
+    host = os.environ.get("EMOTION_BIND_ADDR", "0.0.0.0")
+    port = os.environ.get("EMOTION_PORT", 8000)
+    
     uvicorn.run(
         "predictor_server:app",
-        host="0.0.0.0",
-        port=8000,
+        host=host,
+        port=port,
         workers=1,
         log_level="info"
     ) 
