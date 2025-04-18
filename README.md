@@ -10,3 +10,8 @@
 
 把`.env.example.docker`复制为`.env.docker`并填写里面的`CHAT_API_KEY`.
 
+## 打包相关
+
+新建了WebChat.exe.py，该py现在运行后会直接启动前端js和浏览器窗口，为后续编译python环境做准备。
+
+原start.bat会启动前端js和浏览器窗口，现在start-new.bat现在只会启动WebChat.exe.py单个文件
