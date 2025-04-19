@@ -9,7 +9,7 @@ ECHO Current directory: %CD%
 
 SET VENV_DIR=.venv
 SET REQUIREMENTS_FILE=requirements.txt
-SET BACKEND_SCRIPT=backend\webChat.exe.py
+SET BACKEND_SCRIPT=backend\webChat.windows.py
 SET FRONTEND_SCRIPT=frontend\server.js
 SET BROWSER_URL=http://localhost:3000/
 
