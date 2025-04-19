@@ -29,27 +29,27 @@ IF NOT EXIST %REQUIREMENTS_FILE% (
     PAUSE
     EXIT /B 1
 )
-:: 尝试查找并使用 Python 3.10, 3.11, 或 3.12 (优先 3.10)
+:: 尝试查找并使用 Python 3.10, 3.11, 或 3.12 (优先 3.12)
 SET PYTHON_EXE=
-ECHO Searching for Python 3.10...
-WHERE py -3.10 >nul 2>nul
+ECHO Searching for Python 3.12...
+WHERE py -3.12 >nul 2>nul
 IF %ERRORLEVEL% EQU 0 (
-    SET PYTHON_EXE=py -3.10
-    ECHO Found Python 3.10 via 'py' launcher.
+    SET PYTHON_EXE=py -3.12
+    ECHO Found Python 3.12 via 'py' launcher.
     GOTO FoundPython
 )
-ECHO Python 3.10 not found via 'py'. Searching for Python 3.11...
+ECHO Python 3.12 not found via 'py'. Searching for Python 3.11...
 WHERE py -3.11 >nul 2>nul
 IF %ERRORLEVEL% EQU 0 (
     SET PYTHON_EXE=py -3.11
     ECHO Found Python 3.11 via 'py' launcher.
     GOTO FoundPython
 )
-ECHO Python 3.11 not found via 'py'. Searching for Python 3.12...
-WHERE py -3.12 >nul 2>nul
+ECHO Python 3.11 not found via 'py'. Searching for Python 3.10...
+WHERE py -3.10 >nul 2>nul
 IF %ERRORLEVEL% EQU 0 (
-    SET PYTHON_EXE=py -3.12
-    ECHO Found Python 3.12 via 'py' launcher.
+    SET PYTHON_EXE=py -3.10
+    ECHO Found Python 3.10 via 'py' launcher.
     GOTO FoundPython
 )
 ECHO ERROR: Could not find Python 3.10, 3.11, or 3.12 using the 'py' launcher.
@@ -105,8 +105,8 @@ IF NOT EXIST %BACKEND_SCRIPT% (
    PAUSE
    EXIT /B 1
 )
-ECHO Launching backend in a new window titled "LingChat Backend" (Window will stay open)...
+ECHO Launching backend in a new window titled "LingChat" (Window will stay open)...
 :: Use cmd /k to keep the backend window open after the script finishes or errors
-START "LingChat Backend" cmd /k "%VENV_DIR%\Scripts\python.exe %BACKEND_SCRIPT%"
+START "LingChat" cmd /k "%VENV_DIR%\Scripts\python.exe %BACKEND_SCRIPT%"
 ECHO Backend process started in a separate window. Waiting a few seconds...
 TIMEOUT /T 5 /NOBREAK > NUL
