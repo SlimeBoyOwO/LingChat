@@ -14,6 +14,17 @@ Win10 以上，Win7经过测试无法运行！
 
 ## 如何使用？
 
+### 使用测试版本
+
+- 下载右方Releases → LingChat v0.1.0-alpha → LingChat.zip并解压。
+- 下载并安装Node.js | [64位版本](https://nodejs.org/dist/v22.14.0/node-v22.14.0-x64.msi) | [32位版本](https://nodejs.org/dist/v22.14.0/node-v22.14.0-x86.msi) |
+- 使用记事本打开.env，在.env中填入你的apikey。deepseek apikey登录[DeepSeek 开放平台](https://platform.deepseek.com/usage)后获取。请妥善保管自己的apikey。
+- 点击LingChat.exe启动程序
+
+- (非必须):若要使用语音功能，请下载[simple-vits-api](https://github.com/Artrajz/vits-simple-api)链接程序。该项目实现了基于 VITS 的简单语音合成 API。建议下载GPU版本，速度快。程序默认监听23456语音端口，程序默认导入的模型是zcchat地址->讨论区->角色示范（丛雨）->vits模型下载好之后在simple-vits-api的目录的/data/models里面解压，再启动就ok了;如果需要使用其他模型，在webChat.py的Vits实现函数更改相关设定即可。
+
+### 备用方案
+
 1，下载并安装python3.10，**※※安装时请勾选Add python.exe to PATH※※**
 
 <img src="https://s1.imagehub.cc/images/2025/04/15/bf275367a931767a4636940e2a2dca75.png" alt="Python" style="zoom:50%;" />
@@ -51,20 +62,6 @@ _※出现其他报错请截图反馈_
 
 4，有bug和报错请及时反馈，我们会非常感谢你！
 
-### 备用方案
-（使用backend/install.bat，把依赖装入全局环境；使用run.bat在全局环境中运行后端，使用run_server.bat运行前端，目前不推荐）：
-
-```markdown
-1. 下载好仓库内的东西，确保你下载了nodejs和python环境
-2. 点击backend/install.bat安装必要的库（该库是全局安装的！！如果你电脑已经有python环境了谨慎操作）
-3. 从网盘下载情感分类模型，放在backend/emotion_model_12emo中
-4. 由于隐私原因，请在deepseek.py输入自己的api或者自己改写程序接入其他api
-5. 启动backend中的run.bat，启动根目录的run_server.bat即可启动。注意，使用该方案启动，请打开predictor.py，按照注释删去/backend
-6. 输入localhost:3000 进入聊天界面，左上角显示已连接服务器则表示完成
-7. 为了使用语音功能，请前往链接下载vits链接程序！程序默认监听23456语音端口
-8. 程序默认导入的模型是zcchat地址->讨论区->角色示范（丛雨）->vits模型下载好之后在simple-vits-api的目录的/data/models里面解压，再启动就ok了
-9. 如果需要使用其他模型，在webChat.py的Vits实现函数更改相关设定即可
-```
 
 ## 相关设定
 
