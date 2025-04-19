@@ -1,25 +1,14 @@
-## 该docker部署问题修复差不多了
+# [0.1.0-alpha] - 2025-04-19-待发布(develop)
 
-1. 已知问题：docker的python端不会有日志输出，很奇怪
+## Added
 
-## 运行前配置
+- 优化了浏览器UI界面
+- 增加了docker部署方式
+- 将系统提示词、apikey、语音连接等可配置项统一调到.env
+- 添加了一些BUG
 
-把`.env.example`复制为`.env`并填写里面的`CHAT_API_KEY`.
+## Fixed
 
-## docker运行配置
-
-把`.env.example.docker`复制为`.env.docker`并填写里面的`CHAT_API_KEY`.
-
-## 打包相关
-
-现在把windows程序和docker程序分开了。
-
-windows程序对应的后端是Webchat.windows.py，现相比之前，现在Webchat会在python代码内部直接启动前端server.js和浏览器窗口（在之前，这两者依靠.bat启动），为后续编译python环境做准备。
-
-- 对应start.windows.bat启动
-
-原Webchat.py名称修改为Webchat.docker.py，不改变其功能，这是因为docker分前端和后端。
-
-- 对应start.docker.bat启动
-
-现在可以随时对项目进行编译了，可以轻松打包环境，点击exe即可启动。并且好消息是，现在他只会弹出一个终端运行窗口，更加的美观
+- 修复了快速点击发送键会导致AI输出进入用户输入，并截成好多段，自动发送大量请求的问题
+- 修复了更换白天背景后显示为白色的问题
+- 修复了大量BUG和兼容性问题
