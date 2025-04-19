@@ -32,17 +32,46 @@ func NewLingChatService(epClient *emotionPredictor.Client, vtClient *VitsTTS.Cli
 }
 
 func (l *LingChatService) EmoPredictBatch(ctx context.Context, results []Result) []Result {
-	// TODO: 并发加速
-	for i := range results {
-		result := &results[i]
-		resp, err := l.emotionPredictorClient.Predict(ctx, result.OriginalTag, 0.08)
-		if err != nil {
-			result.Predicted = "unknown"
-			result.Confidence = 0.0
-		} else {
-			result.Predicted = resp.Label
-			result.Confidence = resp.Confidence
-		}
+	var wg sync.WaitGroup
+	resultsChannel := make(chan struct {
+		index      int
+		Predicted  string
+		Confidence float64
+	}, len(results))
+	for i, result := range results {
+		wg.Add(1)
+		go func(index int, result Result) {
+			defer wg.Done()
+			resp, err := l.emotionPredictorClient.Predict(ctx, result.OriginalTag, 0.08)
+			if err != nil {
+				resultsChannel <- struct {
+					index      int
+					Predicted  string
+					Confidence float64
+				}{
+					index, "unknown", 0.0,
+				}
+			} else {
+				resultsChannel <- struct {
+					index      int
+					Predicted  string
+					Confidence float64
+				}{
+					index, resp.Label, resp.Confidence,
+				}
+			}
+		}(i, result)
+	}
+
+	go func() {
+		wg.Wait()
+		close(resultsChannel)
+	}()
+
+	for result := range resultsChannel {
+		index := result.index
+		results[index].Confidence = result.Confidence
+		results[index].Predicted = result.Predicted
 	}
 	return results
 }
@@ -70,11 +99,9 @@ func (l *LingChatService) LingChat(ctx context.Context, msg api.Message) ([]api.
 	emotionSegments = l.EmoPredictBatch(ctx, emotionSegments)
 
 	return l.CreateResponse(emotionSegments, msg.Content), nil
-
 }
 
 func (l *LingChatService) CreateResponse(results []Result, userMessage string) []api.Response {
-
 	var resp []api.Response
 	for i, result := range results {
 		resp = append(resp, api.Response{
