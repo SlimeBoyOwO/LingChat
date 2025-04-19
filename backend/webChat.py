@@ -20,7 +20,7 @@ tts_engine = VitsTTS(
     lang="ja",  # 根据角色设定调整
     #enbale=False      #如果你没有配置simple-voice-api，请去掉这一行最开始的#号
 )
-temp_voice_dir = "../public/audio"
+temp_voice_dir = "./public/audio"
 os.makedirs(temp_voice_dir, exist_ok=True)
 
 # ANSI 颜色代码
