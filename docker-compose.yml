@@ -6,7 +6,7 @@ services:
     ports:
       - "8765:8765"
     volumes:
-      - ./backend:/app
+      - ./volume/data:/app/audio
     environment:
       - FLASK_ENV=development
     env_file:
@@ -21,11 +21,14 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./frontend:/app
+      - ./volume/data:/app/public/audio
     depends_on:
       - python-backend
     networks:
       - app-network
+
+# 如果使用vits语音docker，请将其docker加入lingchat container network, 否则后端无法与其通信生成语音
+# docker network connect lingchat_app-network vits-simple-api-vits
 
 networks:
   app-network:
