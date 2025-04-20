@@ -1,11 +1,6 @@
 package service
 
 import (
-	"LingChat/api"
-	"LingChat/internal/clients/VitsTTS"
-	"LingChat/internal/clients/emotionPredictor"
-	"LingChat/internal/clients/llm"
-	"LingChat/internal/config"
 	"context"
 	"fmt"
 	"log"
@@ -13,13 +8,17 @@ import (
 	"testing"
 
 	"github.com/joho/godotenv"
+
+	"LingChat/api"
+	"LingChat/internal/clients/VitsTTS"
+	"LingChat/internal/clients/emotionPredictor"
+	"LingChat/internal/clients/llm"
+	"LingChat/internal/config"
 )
 
-var (
-	conf    *config.Config
-	service *LingChatService
-	ctx     = context.Background()
-)
+var conf *config.Config
+var service *LingChatService
+var ctx = context.Background()
 
 func init() {
 	fmt.Println(os.Getwd())
