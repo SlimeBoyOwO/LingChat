@@ -1,6 +1,7 @@
 package VitsTTS
 
 import (
+	"LingChat/internal/config"
 	"context"
 	"fmt"
 	"io"
@@ -24,11 +25,13 @@ type Client struct {
 func NewClient(url string, tempDir string) *Client {
 	httpClient := resty.New()
 	httpClient.SetTimeout(time.Second * 120)
+	conf := config.GetConfigFromEnv()
+
 	return &Client{
 		Client:      *httpClient,
 		URL:         url,
 		TempDir:     tempDir,
-		SpeakerID:   4,
+		SpeakerID:   conf.Vits.SpeakerID,
 		AudioFormat: "wav",
 		Enable:      true,
 	}
@@ -41,7 +44,7 @@ func (c *Client) VoiceVITS(ctx context.Context, text string) ([]byte, error) {
 			"text": text,
 			"id":   strconv.Itoa(c.SpeakerID),
 		}).
-		Get(c.URL + "/voice/vits")
+		Get(c.URL)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +64,7 @@ func (c *Client) VoiceVITSStream(ctx context.Context, text string) (io.ReadClose
 			"streaming": "true",
 		}).
 		SetDoNotParseResponse(true).
-		Get(c.URL + "/voice/vits")
+		Get(c.URL)
 	if err != nil {
 		return nil, err
 	}

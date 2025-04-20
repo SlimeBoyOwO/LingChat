@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 )
@@ -48,7 +49,7 @@ func GetConfigFromEnv() *Config {
 	// 从环境变量读取整数值
 	vitsSpkID, _ := strconv.Atoi(os.Getenv("VITS_SPEAKER_ID"))
 	backendPort, _ := strconv.Atoi(os.Getenv("BACKEND_PORT"))
-
+	fmt.Printf("%v", vitsSpkID)
 	// 创建并返回配置结构体
 	return &Config{
 		Chat: ChatConfig{
