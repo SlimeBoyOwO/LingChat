@@ -1,22 +1,21 @@
 package main
 
 import (
-	"fmt"
-	"log"
-	"net/http"
-
-	"github.com/joho/godotenv"
-
 	"LingChat/api"
 	"LingChat/internal/clients/VitsTTS"
 	"LingChat/internal/clients/emotionPredictor"
 	"LingChat/internal/clients/llm"
 	"LingChat/internal/config"
 	"LingChat/internal/service"
+	"fmt"
+	"log"
+	"net/http"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {
-	err := godotenv.Load()
+	err := godotenv.Load(".env")
 	if err != nil {
 		log.Fatal("无法加载 .env 文件: ", err)
 	}
@@ -32,10 +31,10 @@ func main() {
 	wsServer := api.NewWebSocketHandler(chatService.ChatHandler)
 
 	// 设置路由
-	http.HandleFunc("/ws", wsServer.HandleWebSocket)
+	http.HandleFunc("/", wsServer.HandleWebSocket)
 
 	// 构建服务器地址
-	serverAddr := fmt.Sprintf("%s:%d", conf.Backend.Addr, conf.Backend.Port)
+	serverAddr := fmt.Sprintf("%s:%d", conf.Backend.BindAddr, conf.Backend.Port)
 
 	// 启动服务器
 	log.Printf("WebSocket服务器启动在 %s", serverAddr)
