@@ -1,4 +1,11 @@
-:: 项目的一键安装与启动
+:: 本项目基于python3.12开发，可能兼容3.11和3.10，不兼容3.13。
+
+:: 脚本功能：
+:: 1，检测根目录下有无.venv文件夹，若有，跳转至3
+:: 2，使用电脑上的python 3.12在.venv下根据requirements.txt创建虚拟环境
+:: 3，启动后端backend\webChat.py
+:: 4，启动前端端frontend\server.js
+:: 5，打开浏览器访问http://localhost:3000/
 
 @echo off
 SETLOCAL ENABLEDELAYEDEXPANSION
@@ -22,6 +29,7 @@ IF EXIST %VENV_DIR%\ (
     ECHO Virtual environment not found. Attempting to create one...
     GOTO CreateEnv
 )
+
 :CreateEnv
 :: 检查 requirements.txt 是否存在
 IF NOT EXIST %REQUIREMENTS_FILE% (
@@ -31,33 +39,33 @@ IF NOT EXIST %REQUIREMENTS_FILE% (
 )
 :: 尝试查找并使用 Python 3.10, 3.11, 或 3.12 (优先 3.10)
 SET PYTHON_EXE=
-
-
-ECHO Python 3.11 not found via 'py'. Searching for Python 3.12...
+ECHO Searching for Python 3.12...
 WHERE py -3.12 >nul 2>nul
 IF %ERRORLEVEL% EQU 0 (
     SET PYTHON_EXE=py -3.12
     ECHO Found Python 3.12 via 'py' launcher.
     GOTO FoundPython
 )
-ECHO Searching for Python 3.10...
-WHERE py -3.10 >nul 2>nul
+
+:: If Python 3.12 was not found via 'py', try checking the standard 'python' command
+ECHO Python 3.12 not found via 'py'. Searching for 'python' command and checking version...
+WHERE python >nul 2>nul
 IF %ERRORLEVEL% EQU 0 (
-    SET PYTHON_EXE=py -3.10
-    ECHO Found Python 3.10 via 'py' launcher.
-    GOTO FoundPython
+    FOR /F "tokens=2 delims=." %%v IN ('python --version 2^>^&1') DO (
+        IF "%%v" == "12" (
+            SET PYTHON_EXE=python
+            ECHO Found compatible Python 3.12 via 'python' command.
+            GOTO FoundPython
+        )
+    )
 )
-ECHO Python 3.10 not found via 'py'. Searching for Python 3.11...
-WHERE py -3.11 >nul 2>nul
-IF %ERRORLEVEL% EQU 0 (
-    SET PYTHON_EXE=py -3.11
-    ECHO Found Python 3.11 via 'py' launcher.
-    GOTO FoundPython
-)
-ECHO ERROR: Could not find Python 3.10, 3.11, or 3.12 using the 'py' launcher.
-ECHO Please ensure Python 3.10-3.12 is installed and the 'py.exe' launcher is in your PATH.
+
+:: If still not found, show error
+ECHO ERROR: Could not find Python 3.12 using the 'py' launcher or as the default 'python'.
+ECHO Please ensure Python 3.12 is installed and accessible via 'py -3.12' or 'python' in your PATH.
 PAUSE
 EXIT /B 1
+
 :FoundPython
 ECHO Creating virtual environment using %PYTHON_EXE%...
 %PYTHON_EXE% -m venv %VENV_DIR%
