@@ -30,6 +30,7 @@ Win10 以上，Win7经过测试无法运行！
 1. backend是Python的后端程序，frontend是nodejs html javascript css的前端文件；start.bat默认使用python3.12创建.venv虚拟环境
 2. 可以更换/public/pictures/lingling/里面的立绘+修改/public/css/galgame.css里的代码实现自定义角色或表情动作气泡
 3. /public/js/talk.js 里面可以设定不同的心情和不同的动作，目前有12种情绪，由于模型是自己训练的所以更新要等一段时间啦
+4. main只会发布稳定版，使用最新功能请切换至develop分支
 
 ## 相关链接
 
