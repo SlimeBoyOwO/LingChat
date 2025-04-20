@@ -31,6 +31,15 @@ IF NOT EXIST %REQUIREMENTS_FILE% (
 )
 :: 尝试查找并使用 Python 3.10, 3.11, 或 3.12 (优先 3.10)
 SET PYTHON_EXE=
+
+
+ECHO Python 3.11 not found via 'py'. Searching for Python 3.12...
+WHERE py -3.12 >nul 2>nul
+IF %ERRORLEVEL% EQU 0 (
+    SET PYTHON_EXE=py -3.12
+    ECHO Found Python 3.12 via 'py' launcher.
+    GOTO FoundPython
+)
 ECHO Searching for Python 3.10...
 WHERE py -3.10 >nul 2>nul
 IF %ERRORLEVEL% EQU 0 (
@@ -43,13 +52,6 @@ WHERE py -3.11 >nul 2>nul
 IF %ERRORLEVEL% EQU 0 (
     SET PYTHON_EXE=py -3.11
     ECHO Found Python 3.11 via 'py' launcher.
-    GOTO FoundPython
-)
-ECHO Python 3.11 not found via 'py'. Searching for Python 3.12...
-WHERE py -3.12 >nul 2>nul
-IF %ERRORLEVEL% EQU 0 (
-    SET PYTHON_EXE=py -3.12
-    ECHO Found Python 3.12 via 'py' launcher.
     GOTO FoundPython
 )
 ECHO ERROR: Could not find Python 3.10, 3.11, or 3.12 using the 'py' launcher.
