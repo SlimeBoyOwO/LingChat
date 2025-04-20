@@ -259,7 +259,7 @@ async def process_ai_response(ai_response, user_message):
 
     emotion_segments = analyze_emotions(ai_response)
     if not emotion_segments:
-        print("警告: 未在AI响应中检测到有效的情绪/文本片段。")
+        print("警告: 未在AI响应中检测到有效的情绪/文本片段。请检查.env文件中apikey是否填写无误，或登录网站检查apikey是否还有余额")
         return []
 
     # print("\n开始生成语音文件...") # 可以取消注释以查看此信息
@@ -276,7 +276,7 @@ async def process_ai_response(ai_response, user_message):
 
 
 async def handle_client(websocket):
-    print("Python 服务: 新的连接建立，若钦灵长时间未回复，请刷新浏览器聊天界面重试")
+    print("Python 服务: 新的连接建立")
     try:
         async for message in websocket:
             try:
