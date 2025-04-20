@@ -19,70 +19,37 @@ Win10 以上，Win7经过测试无法运行！
 
 - (非必须):若要使用语音功能，请下载[simple-vits-api](https://github.com/Artrajz/vits-simple-api)链接程序。该项目实现了基于 VITS 的简单语音合成 API。建议下载GPU版本，速度快。程序默认监听23456语音端口，程序默认导入的模型是zcchat地址->讨论区->角色示范（丛雨）->vits模型下载好之后在simple-vits-api的目录的/data/models里面解压，再启动就ok了;如果需要使用其他模型，在webChat.py的Vits实现函数更改相关设定即可。
 
-### 备用方案
-
-1，下载并安装python3.10，**※※安装时请勾选Add python.exe to PATH※※**
-
-<img src="https://s1.imagehub.cc/images/2025/04/15/bf275367a931767a4636940e2a2dca75.png" alt="Python" style="zoom:50%;" />
-
-- [64位版本](https://www.python.org/ftp/python/3.10.11/python-3.10.11-amd64.exe)
-- [32位版本](https://www.python.org/ftp/python/3.10.11/python-3.10.11.exe)
-
-2，下载并安装Node.js
-
-- [64位版本](https://nodejs.org/dist/v22.14.0/node-v22.14.0-x64.msi)
-- [32位版本](https://nodejs.org/dist/v22.14.0/node-v22.14.0-x86.msi)
-
-3，从网盘**下载情感分类模型**，放在backend/emotion_model_12emo中。
-
-- [百度网盘](https://pan.baidu.com/s/16Dy53KX3jIjACY5fCctKDA)：请在这里下载emotion_model_12emo，提取码：0721
-- [123云盘](https://www.123865.com/s/7YDfjv-KRK5v): 如果你没有百度网盘会员，请从此处下载emotion_model_12emom
-- [Google云盘](https://drive.google.com/file/d/1LWdJYYc3QaYbzHupt5DDaM1lCeG-X5vd/view?usp=sharing): 如果你是非大陆或者海外朋友，下载这个
-
-4，在[backend/deepseek.py](https://github.com/SlimeBoyOwO/LingChat/blob/main/backend/deepseek.py)里填写你的deepseek apikey，deepseek apikey登录[DeepSeek 开放平台](https://platform.deepseek.com/usage)后获取。请妥善保管自己的apikey。
-
-5，双击[start.bat](https://github.com/SlimeBoyOwO/LingChat/blob/main/start.bat)一键启动。初次启动需要确保网络通畅，并耐心等待约20分钟。若中途网络问题导致安装丢包，请手动删除.venv并再次双击。
-
-6，若要使用语音功能，请下载[simple-vits-api](https://github.com/Artrajz/vits-simple-api)链接程序。该项目实现了基于 VITS 的简单语音合成 API。建议下载GPU版本，速度快。程序默认监听23456语音端口，程序默认导入的模型是zcchat地址->讨论区->角色示范（丛雨）->vits模型下载好之后在simple-vits-api的目录的/data/models里面解压，再启动就ok了;如果需要使用其他模型，在webChat.py的Vits实现函数更改相关设定即可.
-
 _※目前已知问题：若电脑配置较低，python后端启动较慢，需要等待命令行窗口显示后端成功链接后，刷新浏览器_
 
 _※出现其他报错请截图反馈_
 
-### 若你是开发人员，可以这样启动：
-1，在vs code或者pycharm创建虚拟环境，安装requirements.txt的依赖。如果你想使用全局环境，可选择backend/install.bat，把依赖装入全局环境。
+### **下载情感分类模型（exe用户不需要这个）**（）
 
-2，在deepseek.py填写你的apikey；本项目前端是根目录下的server.js，后端是backend/Wechat.py，保持这两个的运行，然后打开浏览器访问http://localhost:3000/
+- [emotion_model_12emo 百度网盘](https://pan.baidu.com/s/16Dy53KX3jIjACY5fCctKDA)：请在这里下载emotion_model_12emo，提取码：0721
+- [emotion_model_12emo 123云盘](https://www.123865.com/s/7YDfjv-KRK5v): 或这里下载emotion_model_12emom更快一点如果你没有百度网盘会员
+- [emotion_model_12emo Google云盘](https://drive.google.com/file/d/1LWdJYYc3QaYbzHupt5DDaM1lCeG-X5vd/view?usp=sharing): 如果你是非大陆或者海外朋友，下载这个
 
-3，若手动启动WebChat.py，请打开predictor.py，按照注释删去/backend，这是因为start.bat和WebChat.py相隔了一个/backend文件夹，导致路径访问不同.
+## 相关设定（For 开发者们）
 
-4，有bug和报错请及时反馈，我们会非常感谢你！
-
-
-## 相关设定
-
-1. 在deepseek.py里的settings设定角色性格和你的设定（别忘了自己的API一定要填写）
+1. backend是Python的后端程序，frontend是nodejs html javascript css的前端文件
 2. 可以更换/public/pictures/lingling/里面的立绘+修改/public/css/galgame.css里的代码实现自定义角色或表情动作气泡
 3. /public/js/talk.js 里面可以设定不同的心情和不同的动作，目前有12种情绪，由于模型是自己训练的所以更新要等一段时间啦
 
 ## 相关链接
 
-- [emotion_model_12emo 百度网盘](https://pan.baidu.com/s/16Dy53KX3jIjACY5fCctKDA)：请在这里下载emotion_model_12emo，提取码：0721
-- [emotion_model_12emo 123云盘](https://www.123865.com/s/7YDfjv-KRK5v): 或这里下载emotion_model_12emom更快一点如果你没有百度网盘会员
-- [emotion_model_12emo Google云盘](https://drive.google.com/file/d/1LWdJYYc3QaYbzHupt5DDaM1lCeG-X5vd/view?usp=sharing): 如果你是非大陆或者海外朋友，下载这个
 - [simple-vits-api](https://github.com/Artrajz/vits-simple-api): 该项目实现了基于 VITS 的简单语音合成 API。建议下载GPU版本，速度快
 - [zcchat](https://github.com/Zao-chen/ZcChat): 本项目的灵感来源，可以在这里找到Vits模型和人物素材
 
 ## 一些小话
 
 - 本项目为了快速开发用了很多AI工具，有做的不好的地方欢迎指出！
-- 会随着项目的知名度提供更便利清晰的自定义功能的！目前实在没时间啦...
+- 感谢一路结识的开发者，都是香软可爱又厉害的大佬们~ 如果你有开发意向可以联系我！
 - 本项目更多作为一个超小型的学习项目，由于文件结构非常简单，欢迎有兴趣的人学习。
 
 ## 其他
 
-> 本项目使用的气泡+音效素材来源于碧蓝档案，请勿商用
-> 默认简单狼狼立绘是自绘，表情差分源于AI，如果你想自己创作可使用 Novelai 网站
+> 本项目使用的气泡+音效素材来源于碧蓝档案，请勿商用  
+> 默认简单狼狼立绘是自绘，表情差分源于AI，如果你想自己创作可使用 Novelai 网站  
 > 有其他问题可以B站私信捏
 
 © 诺一 钦灵
