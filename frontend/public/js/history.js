@@ -2,7 +2,7 @@ const menuText = document.getElementById("menu-text");
 const textPage = document.getElementById("text-page");
 
 const menuImage = document.getElementById("menu-image");
-const imagePage = document.getElementById("image-page");
+const imagePage = document.getElementById("image-page") || document.getElementById("background-page");
 
 const menuSound = document.getElementById("menu-sound");
 const soundPage = document.getElementById("sound-page");
@@ -22,33 +22,41 @@ let currentConversation = {
 // 初始化历史记录面板
 function initHistoryPanel() {
   // 清空历史记录
-  clearHistoryBtn.addEventListener("click", () => {
-    if (confirm("确定要清空所有历史记录吗？")) {
-      conversationHistory = [];
-      localStorage.setItem("chatHistory", JSON.stringify(conversationHistory));
-      renderHistory();
-    }
-  });
+  if (clearHistoryBtn) {
+    clearHistoryBtn.addEventListener("click", () => {
+      if (confirm("确定要清空所有历史记录吗？")) {
+        conversationHistory = [];
+        localStorage.setItem("chatHistory", JSON.stringify(conversationHistory));
+        renderHistory();
+      }
+    });
+  }
 
   // 切换显示/隐藏
-  historyToggle.addEventListener("click", () => {
-    historyToggle.classList.add("show");
-    historyContent.classList.add("show");
-    clearHistoryBtn.classList.add("show");
-    menuText.classList.remove("show");
-    textPage.classList.remove("show");
-    menuImage.classList.remove("show");
-    imagePage.classList.remove("show");
-    menuSound.classList.remove("show");
-    soundPage.classList.remove("show");
-    if (historyContent.classList.add("show")) {
+  if (historyToggle) {
+    historyToggle.addEventListener("click", () => {
+      // 历史页面不使用动画
+      if (historyToggle) historyToggle.classList.add("show");
+      if (historyContent) historyContent.classList.add("show");
+      if (clearHistoryBtn) clearHistoryBtn.classList.add("show");
+      
+      // 确保元素存在再操作它们
+      if (menuText) menuText.classList.remove("show");
+      if (textPage) textPage.classList.remove("show");
+      if (menuImage) menuImage.classList.remove("show");
+      if (imagePage) imagePage.classList.remove("show");
+      if (menuSound) menuSound.classList.remove("show");
+      if (soundPage) soundPage.classList.remove("show");
+      
       renderHistory();
-    }
-  });
+    });
+  }
 }
 
 // 渲染历史记录
 function renderHistory() {
+  if (!historyList) return; // 如果historyList不存在，直接返回
+  
   historyList.innerHTML = "";
 
   if (conversationHistory.length === 0) {
