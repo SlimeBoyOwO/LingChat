@@ -187,7 +187,7 @@ async def process_ai_response(ai_response, user_message):
     
 
 async def handle_client(websocket):
-    print("Python 服务: 新的连接建立，若钦灵长时间未回复，请刷新浏览器聊天界面重试")
+    print("Python 服务: 新的连接建立")
     
     try:
         async for message in websocket:

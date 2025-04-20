@@ -27,7 +27,7 @@ class DeepSeek:
 
         try:
             response = self.client.chat.completions.create(
-                model="deepseek-chat",
+                model=os.environ.get("MODEL_TYPE"),
                 messages=self.messages,
                 stream=False
             )
