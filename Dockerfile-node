@@ -1,0 +1,9 @@
+FROM node:22-alpine
+ENV ROOT /usr/src/app
+WORKDIR ${ROOT}
+COPY frontend/package.json .
+RUN npm install
+COPY frontend/ .
+COPY .env .
+EXPOSE 3000
+CMD ["node", "server.js"]

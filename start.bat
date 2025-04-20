@@ -1,3 +1,5 @@
+:: 项目的一键安装与启动
+
 @echo off
 SETLOCAL ENABLEDELAYEDEXPANSION
 
@@ -8,7 +10,7 @@ ECHO Current directory: %CD%
 SET VENV_DIR=.venv
 SET REQUIREMENTS_FILE=requirements.txt
 SET BACKEND_SCRIPT=backend\webChat.py
-SET FRONTEND_SCRIPT=server.js
+SET FRONTEND_SCRIPT=frontend\server.js
 SET BROWSER_URL=http://localhost:3000/
 
 :: 1. 检查 .venv 目录是否存在

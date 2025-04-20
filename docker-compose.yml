@@ -1,0 +1,32 @@
+services:
+  python-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile-python
+    ports:
+      - "8765:8765"
+    volumes:
+      - ./backend:/app
+    environment:
+      - FLASK_ENV=development
+    env_file:
+      - .env
+    networks:
+      - app-network
+
+  node-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile-node
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+    depends_on:
+      - python-backend
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge

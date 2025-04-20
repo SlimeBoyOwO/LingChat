@@ -9,17 +9,18 @@ from predictor import EmotionClassifier  # 导入情绪分类器
 from VitsTTS import VitsTTS              # 导入语音生成
 from logger import Logger
 from langDetect import LangDetect
-import dotenv
 
-dotenv.load_dotenv()
 logger = Logger()
 deepseek = DeepSeek()
 emotion_classifier = EmotionClassifier()
 langDetect = LangDetect()
 tts_engine = VitsTTS(
+    api_url="http://127.0.0.1:23456/voice/vits",
+    speaker_id=4,
+    lang="ja",  # 根据角色设定调整
     #enbale=False      #如果你没有配置simple-voice-api，请去掉这一行最开始的#号
 )
-temp_voice_dir = "./public/audio"
+temp_voice_dir = "../frontend/public/audio"
 os.makedirs(temp_voice_dir, exist_ok=True)
 
 # ANSI 颜色代码
@@ -221,24 +222,19 @@ async def main():
     asyncio.set_event_loop(loop)
     
     # 修改主机地址为 0.0.0.0（允许 Docker 外部访问）
-    # 修改 WebSocket 服务器配置
-    bind_addr = os.environ.get("BACKEND_BIND_ADDR", "0.0.0.0")
-    bind_port = os.environ.get("BACKEND_PORT", 8765)
+    # 修改为允许跨域
     server = await websockets.serve(
-        handle_client,
-        bind_addr,
-        bind_port,
+        handle_client, 
+        "0.0.0.0",
+        8766,
         ping_interval=None,
-        # 添加以下配置
-        ping_timeout=None,
-        close_timeout=None,
-        max_size=2**25,  # 32MB
-        # 放宽跨域限制
-        origins=None  # 允许所有来源
-    )
+        # 添加跨域支持
+        origins=["http://node-frontend:3000", "http://localhost:3000"])
     
-    print(f"Python WebSocket 服务运行在 ws://{bind_addr}:{bind_port}")
+    print("Python WebSocket 服务运行在 ws://0.0.0.0:8766")
     await server.wait_closed()
+
+# test
 
 if __name__ == "__main__":
     print("程序启动！")
