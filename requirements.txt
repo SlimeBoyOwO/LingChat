@@ -1,8 +1,0 @@
---index-url https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
-
-openai
-transformers
-torch
-aiohttp
-websockets
-langdetect
