@@ -11,4 +11,4 @@ COPY backend/ .
 COPY .env.docker .env
 EXPOSE 8765
 
-CMD ["python", "webChat.py"]
+CMD ["python", "webChat.docker.py"]
