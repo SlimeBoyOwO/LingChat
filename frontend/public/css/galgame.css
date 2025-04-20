@@ -7,7 +7,9 @@
 }
 
 /* 对html和body设置100%高度和宽度，以确保子元素可以使用百分比正确覆盖页面内容 */
-html, body, #menu-content{
+html,
+body,
+#menu-content {
   height: 100%;
   width: 100%;
 }
@@ -266,6 +268,40 @@ select {
   }
 }
 
+/* 被惊吓的跳动 */
+@keyframes suprisedJump {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  40% {
+    transform: translateY(-10px) scale(1.02);
+  }
+  80% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* 发情的配套动作 */
+@keyframes heartBeat {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  20% {
+    transform: translateY(0px) scale(1.03);
+  }
+  40% {
+    transform: translateY(0) scale(1);
+  }
+  60% {
+    transform: translateY(0px) scale(1.03);
+  }
+  80% {
+    transform: translateY(0) scale(1);
+  }
+}
+
 /* 认真思考 */
 @keyframes seriousThink {
   0%,
@@ -277,7 +313,22 @@ select {
   }
 }
 
-/* 其他表情动画示例 */
+/* 难为情 */
+@keyframes embarrassedEmo {
+  0%,
+  50%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  25% {
+    transform: translateX(5px) scale(1);
+  }
+  75% {
+    transform: translateX(-5px) scale(1);
+  }
+}
+
+/* 高兴的跳动 */
 @keyframes happyBounce {
   0%,
   50%,
@@ -286,6 +337,17 @@ select {
   }
   25%,
   75% {
+    transform: translateY(-10px);
+  }
+}
+
+/* 调皮的跳动 */
+@keyframes naughtyBounce {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
     transform: translateY(-10px);
   }
 }
@@ -325,6 +387,30 @@ select {
 
 .serious-think {
   animation-name: seriousThink;
+  animation-duration: 0.6s;
+  animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.embarrassed-emo {
+  animation-name: embarrassedEmo;
+  animation-duration: 0.3s;
+  animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.naughty-bounce {
+  animation-name: naughtyBounce;
+  animation-duration: 0.3s;
+  animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.suprised-jump {
+  animation-name: suprisedJump;
+  animation-duration: 0.3s;
+  animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.heart-beat {
+  animation-name: heartBeat;
   animation-duration: 0.6s;
   animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
