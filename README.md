@@ -16,7 +16,7 @@ Win10 以上，Win7经过测试无法运行！
 
 ### 使用测试版本
 
-- 在[v0.1.0-alpha发布页](https://github.com/SlimeBoyOwO/LingChat/releases/tag/v0.1.0-alpha)中下载[LingChat.zip](https://github.com/SlimeBoyOwO/LingChat/releases/download/v0.1.0-alpha/LingChat.zip)，并解压。
+- 在[v0.1.0-beta发布页](https://github.com/SlimeBoyOwO/LingChat/releases/tag/v0.1.0-beta)中下载[LingChat.zip](https://github.com/SlimeBoyOwO/LingChat/releases/download/v0.1.0-beta/LingChat.zip)，并解压。
 - 下载并安装Node.js | [64位版本](https://nodejs.org/dist/v22.14.0/node-v22.14.0-x64.msi) | [32位版本](https://nodejs.org/dist/v22.14.0/node-v22.14.0-x86.msi) |
 - 使用记事本打开.env，在.env中填入你的apikey。deepseek apikey登录[DeepSeek 开放平台](https://platform.deepseek.com/usage)后获取。请妥善保管自己的apikey。
 - 点击LingChat.exe启动程序
