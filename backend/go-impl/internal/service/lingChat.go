@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"syscall"
 )
 
 type LingChatService struct {
@@ -156,8 +155,6 @@ func (l *LingChatService) GenerateVoice(ctx context.Context, textSegments []Resu
 	audioDataList := make([][]byte, len(textSegments))
 	var firstErr error
 
-	mask := syscall.Umask(0)
-	defer syscall.Umask(mask)
 	// 从通道中读取结果
 	for result := range results {
 		if result.err != nil && firstErr == nil {
@@ -170,7 +167,7 @@ func (l *LingChatService) GenerateVoice(ctx context.Context, textSegments []Resu
 			voiceFile := textSegments[result.index].VoiceFile
 			// 确保目录存在
 			dir := filepath.Dir(voiceFile)
-			if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+			if err := os.MkdirAll(dir, 0755); err != nil {
 				log.Printf("Failed to create directory %s: %v", dir, err)
 				continue
 			}
