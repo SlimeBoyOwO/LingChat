@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"time"
 
-	"LingChat/internal/config"
-
 	"github.com/go-resty/resty/v2"
 )
 
@@ -23,18 +21,16 @@ type Client struct {
 	Enable      bool
 }
 
-func NewClient(url string, tempDir string) *Client {
+func NewClient(url string, tempDir string, speakerid int) *Client {
 	httpClient := resty.New()
 	httpClient.SetTimeout(time.Second * 120)
-	conf := config.GetConfigFromEnv()
 
 	return &Client{
 		Client:      *httpClient,
 		URL:         url,
 		TempDir:     tempDir,
-		SpeakerID:   conf.Vits.SpeakerID,
-		AudioFormat: "wav",
-		Enable:      true,
+		SpeakerID:   speakerid,
+		AudioFormat: "wav", Enable: true,
 	}
 }
 
@@ -45,7 +41,7 @@ func (c *Client) VoiceVITS(ctx context.Context, text string) ([]byte, error) {
 			"text": text,
 			"id":   strconv.Itoa(c.SpeakerID),
 		}).
-		Get(c.URL)
+		Get(c.URL + "/voice/vits")
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +61,7 @@ func (c *Client) VoiceVITSStream(ctx context.Context, text string) (io.ReadClose
 			"streaming": "true",
 		}).
 		SetDoNotParseResponse(true).
-		Get(c.URL)
+		Get(c.URL + "/voice/vits")
 	if err != nil {
 		return nil, err
 	}
