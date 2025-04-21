@@ -21,14 +21,14 @@ type Client struct {
 	Enable      bool
 }
 
-func NewClient(url string, tempDir string) *Client {
+func NewClient(url string, tempDir string, speakerid int) *Client {
 	httpClient := resty.New()
 	httpClient.SetTimeout(time.Second * 120)
 	return &Client{
 		Client:      *httpClient,
 		URL:         url,
 		TempDir:     tempDir,
-		SpeakerID:   4,
+		SpeakerID:   speakerid,
 		AudioFormat: "wav",
 		Enable:      true,
 	}
