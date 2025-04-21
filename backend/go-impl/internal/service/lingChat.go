@@ -1,10 +1,6 @@
 package service
 
 import (
-	"LingChat/api"
-	"LingChat/internal/clients/VitsTTS"
-	"LingChat/internal/clients/emotionPredictor"
-	"LingChat/internal/clients/llm"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,6 +8,11 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"LingChat/api"
+	"LingChat/internal/clients/VitsTTS"
+	"LingChat/internal/clients/emotionPredictor"
+	"LingChat/internal/clients/llm"
 )
 
 type LingChatService struct {
@@ -167,13 +168,13 @@ func (l *LingChatService) GenerateVoice(ctx context.Context, textSegments []Resu
 			voiceFile := textSegments[result.index].VoiceFile
 			// 确保目录存在
 			dir := filepath.Dir(voiceFile)
-			if err := os.MkdirAll(dir, 0755); err != nil {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
 				log.Printf("Failed to create directory %s: %v", dir, err)
 				continue
 			}
 
 			// 写入文件
-			if err := os.WriteFile(voiceFile, result.data, 0644); err != nil {
+			if err := os.WriteFile(voiceFile, result.data, 0o644); err != nil {
 				log.Printf("Failed to write file %s: %v", voiceFile, err)
 				continue
 			}
