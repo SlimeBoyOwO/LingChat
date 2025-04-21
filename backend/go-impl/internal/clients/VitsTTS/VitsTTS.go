@@ -30,7 +30,8 @@ func NewClient(url string, tempDir string, speakerid int) *Client {
 		URL:         url,
 		TempDir:     tempDir,
 		SpeakerID:   speakerid,
-		AudioFormat: "wav", Enable: true,
+		AudioFormat: "wav",
+		Enable:      true,
 	}
 }
 
