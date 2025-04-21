@@ -1,29 +1,28 @@
 package main
 
 import (
-	"fmt"
-	"log"
-	"net/http"
-
 	"LingChat/api"
 	"LingChat/internal/clients/VitsTTS"
 	"LingChat/internal/clients/emotionPredictor"
 	"LingChat/internal/clients/llm"
 	"LingChat/internal/config"
 	"LingChat/internal/service"
+	"fmt"
+	"log"
+	"net/http"
 
 	"github.com/joho/godotenv"
 )
 
 func main() {
-	err := godotenv.Load(".env")
+	err := godotenv.Load()
 	if err != nil {
 		log.Fatal("无法加载 .env 文件: ", err)
 	}
 	conf := config.GetConfigFromEnv()
 
 	emotionPredictorClient := emotionPredictor.NewClient(conf.Emotion.URL)
-	vitsTTSClient := VitsTTS.NewClient(conf.Vits.APIURL, conf.TempDirs.VoiceDir)
+	vitsTTSClient := VitsTTS.NewClient(conf.Vits.APIURL, conf.TempDirs.VoiceDir, conf.Vits.SpeakerID)
 	llmClient := llm.NewLLMClient(conf.Chat.BaseURL, conf.Chat.APIKey)
 
 	chatService := service.NewLingChatService(emotionPredictorClient, vitsTTSClient, llmClient, conf.TempDirs.VoiceDir)
