@@ -44,6 +44,7 @@ func (l *LingChatService) EmoPredictBatch(ctx context.Context, results []Result)
 			defer wg.Done()
 			resp, err := l.emotionPredictorClient.Predict(ctx, result.OriginalTag, 0.08)
 			if err != nil {
+				log.Printf("Failed to predict emotion: %v", err)
 				resultsChannel <- struct {
 					index      int
 					Predicted  string
@@ -78,6 +79,7 @@ func (l *LingChatService) EmoPredictBatch(ctx context.Context, results []Result)
 
 func (l *LingChatService) LingChat(ctx context.Context, msg api.Message) ([]api.Response, error) {
 	if msg.Type != "message" {
+
 		return nil, fmt.Errorf("invalid type: %s", msg.Type)
 	}
 
@@ -203,7 +205,7 @@ func cleanTempVoiceFiles(tempVoiceDir string) {
 	}
 }
 
-func (l *LingChatService) ChatHandler(rawMsg []byte) ([]byte, error) {
+func (l *LingChatService) ChatHandler(rawMsg []byte) ([]api.Sentence, error) {
 	var msg api.Message
 	err := json.Unmarshal(rawMsg, &msg)
 	if err != nil {
@@ -219,11 +221,15 @@ func (l *LingChatService) ChatHandler(rawMsg []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	responseJSON, err := json.Marshal(resp)
-	if err != nil {
-		err = fmt.Errorf("JSON 序列化错误: %w", err)
-		log.Println(err)
-		return nil, err
+	var respSentences []api.Sentence
+	for _, msg := range resp {
+		msgJSON, err := json.Marshal(msg)
+		if err != nil {
+			err = fmt.Errorf("JSON 序列化错误: %w", err)
+			log.Println(err)
+		}
+		respSentences = append(respSentences, msgJSON)
 	}
-	return responseJSON, nil
+
+	return respSentences, nil
 }
