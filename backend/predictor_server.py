@@ -1,6 +1,6 @@
 import os
 from contextlib import asynccontextmanager
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 import dotenv
 import uvicorn
@@ -9,9 +9,7 @@ from predictor import EmotionClassifier
 from pydantic import BaseModel
 
 
-# 初始化分类器
-
-classifier = None
+classifier = None  # 初始化分类器
 
 
 @asynccontextmanager
