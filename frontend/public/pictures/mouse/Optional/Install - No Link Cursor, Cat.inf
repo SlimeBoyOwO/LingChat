@@ -1,0 +1,52 @@
+; Blue Archive (Millennium Edition)
+
+[Version]
+signature="$CHICAGO$"
+
+[DefaultInstall]
+CopyFiles = Scheme.Cur, Scheme.Txt
+AddReg    = Scheme.Reg
+
+[DestinationDirs]
+Scheme.Cur = 10,"%CUR_DIR%"
+Scheme.Txt = 10,"%CUR_DIR%"
+
+[Scheme.Reg]
+HKCU,"Control Panel\Cursors\Schemes","%SCHEME_NAME%",,"%10%\%CUR_DIR%\%pointer%,%10%\%CUR_DIR%\%help%,%10%\%CUR_DIR%\%work%,%10%\%CUR_DIR%\%busy%,%10%\%CUR_DIR%\%cross%,%10%\%CUR_DIR%\%Text%,%10%\%CUR_DIR%\%Hand%,%10%\%CUR_DIR%\%unavailiable%,%10%\%CUR_DIR%\%Vert%,%10%\%CUR_DIR%\%Horz%,%10%\%CUR_DIR%\%Dgn1%,%10%\%CUR_DIR%\%Dgn2%,%10%\%CUR_DIR%\%move%,%10%\%CUR_DIR%\%alternate%,%10%\%CUR_DIR%\%link%"
+
+; -- Common Information
+
+[Scheme.Cur]
+millennium_base.ani
+millennium_help_rio.cur
+millennium_background_aris.ani
+cat.ani
+millennium_text.cur
+millennium_block.cur
+millennium_NS.cur
+millennium_EW.cur
+millennium_diag1.cur
+millennium_diag2.cur
+millennium_move.cur
+millennium_link.cur
+millennium_areaselect.cur
+millennium_pen.cur
+millennium_alternative.cur
+[Strings]
+CUR_DIR       = "Cursors\Blue Archive (Millennium Edition)"
+SCHEME_NAME   = "Blue Archive (Millennium Edition)"
+pointer       = "millennium_base.ani"
+help          = "millennium_help_rio.cur"
+work          = "millennium_background_aris.ani"
+busy          = "cat.ani"
+text          = "millennium_text.cur"
+unavailiable  = "millennium_block.cur"
+vert          = "millennium_NS.cur"
+horz          = "millennium_EW.cur"
+dgn1          = "millennium_diag1.cur"
+dgn2          = "millennium_diag2.cur"
+move          = "millennium_move.cur"
+link          = "millennium_link.cur"
+cross         = "millennium_areaselect.cur"
+hand          = "millennium_pen.cur"
+alternate     = "millennium_alternative.cur"

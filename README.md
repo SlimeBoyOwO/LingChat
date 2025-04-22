@@ -1,12 +1,14 @@
-## 该docker部署问题修复差不多了
+# [0.1.0-alpha] - 2025-04-19-待发布(develop)
 
-1. 已知问题：docker的python端不会有日志输出，很奇怪
+## Added
 
-## 运行前配置
+- 优化了浏览器UI界面
+- 增加了docker部署方式
+- 将系统提示词、apikey、语音连接等可配置项统一调到.env
+- 添加了一些BUG
 
-把`.env.example`复制为`.env`并填写里面的`CHAT_API_KEY`.
+## Fixed
 
-## docker运行配置
-
-把`.env.example.docker`复制为`.env.docker`并填写里面的`CHAT_API_KEY`.
-
+- 修复了快速点击发送键会导致AI输出进入用户输入，并截成好多段，自动发送大量请求的问题
+- 修复了更换白天背景后显示为白色的问题
+- 修复了大量BUG和兼容性问题
