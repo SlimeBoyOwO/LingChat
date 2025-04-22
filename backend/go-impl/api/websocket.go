@@ -30,8 +30,10 @@ type Response struct {
 	Error           string `json:"error,omitempty"`
 }
 
+type Sentence []byte
+
 // MessageHandler 定义消息处理接口
-type MessageHandler func([]byte) ([]byte, error)
+type MessageHandler func([]byte) ([]Sentence, error)
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -39,7 +41,7 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin:     func(r *http.Request) bool { return true }, // 允许所有来源
 }
 
-var TestHandler MessageHandler = func(rawMsg []byte) ([]byte, error) {
+var TestHandler MessageHandler = func(rawMsg []byte) ([]Sentence, error) {
 	var msg Message
 	err := json.Unmarshal(rawMsg, &msg)
 	if err != nil {
@@ -63,7 +65,7 @@ var TestHandler MessageHandler = func(rawMsg []byte) ([]byte, error) {
 		log.Println(err)
 		return nil, err
 	}
-	return responseJSON, nil
+	return []Sentence{responseJSON}, nil
 }
 
 // WebSocketHandler 管理 WebSocket 连接
@@ -118,9 +120,11 @@ func (s *WebSocketHandler) HandleWebSocket(w http.ResponseWriter, r *http.Reques
 		}
 
 		// 发送响应
-		if err := conn.WriteMessage(websocket.TextMessage, rawResp); err != nil {
-			log.Printf("发送响应失败: %v", err)
-			break
+		for _, msg := range rawResp {
+			if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+				log.Printf("发送响应失败: %v", err)
+				break
+			}
 		}
 	}
 
