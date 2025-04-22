@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Dict, Optional
@@ -6,14 +7,29 @@ from predictor import EmotionClassifier
 import os
 import dotenv
 
-app = FastAPI(
-    title="Emotion Classification API",
-    description="API for emotion classification using BERT model",
-    version="1.0.0"
-)
 
 # 初始化分类器
 classifier = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global classifier
+    try:
+        model_path = os.environ.get("EMOTION_MODEL_PATH", "./emotion_model_12emo")
+        classifier = EmotionClassifier(model_path)
+    except Exception as e:
+        raise Exception(f"Failed to initialize classifier: {str(e)}")
+    
+    yield
+    
+
+app = FastAPI(
+    title="Emotion Classification API",
+    description="API for emotion classification using BERT model",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
 
 class PredictionRequest(BaseModel):
     text: str
@@ -28,15 +44,6 @@ class PredictionResponse(BaseModel):
     confidence: float
     top3: List[EmotionResult]
     warning: Optional[str] = None
-
-@app.on_event("startup")
-async def startup_event():
-    global classifier
-    try:
-        model_path = os.environ.get("EMOTION_MODEL_PATH", "./emotion_model_12emo")
-        classifier = EmotionClassifier(model_path)
-    except Exception as e:
-        raise Exception(f"Failed to initialize classifier: {str(e)}")
 
 @app.get("/health")
 async def health_check():
