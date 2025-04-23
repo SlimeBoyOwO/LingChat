@@ -8,7 +8,7 @@ def check_python_venv():
 
     # check current dir is project root
     if cwd != os.path.dirname(os.path.dirname(os.path.abspath(__file__))):
-        input("请在LingChat目录下运行此脚本! 执行 python script/start.py")
+        input("请在LingChat目录下运行此脚本! 执行 python scripts/start.py")
         exit(1)
 
     venv_dir = os.path.join(cwd, ".venv")
