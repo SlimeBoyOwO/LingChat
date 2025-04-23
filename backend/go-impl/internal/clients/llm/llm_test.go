@@ -12,7 +12,7 @@ func TestLLMClient_Chat(t *testing.T) {
 	ctx := context.Background()
 
 	// 测试基本聊天功能
-	response, err := client.Chat(ctx, "你好")
+	response, err := client.Chat(ctx, "你好", "deepseek-chat")
 	if err != nil {
 		t.Fatalf("Chat failed: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestLLMClient_ConcurrentAccess(t *testing.T) {
 
 	for i := 0; i < concurrency; i++ {
 		go func() {
-			_, err := client.Chat(ctx, "你好")
+			_, err := client.Chat(ctx, "你好", "deepseek-chat")
 			if err != nil {
 				t.Errorf("Concurrent chat failed: %v", err)
 			}

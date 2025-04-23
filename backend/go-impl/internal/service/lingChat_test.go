@@ -30,14 +30,14 @@ func init() {
 	fmt.Println(conf.Chat.BaseURL)
 
 	emotionPredictorClient := emotionPredictor.NewClient(conf.Emotion.URL)
-	vitsTTSClient := VitsTTS.NewClient(conf.Vits.APIURL, conf.TempDirs.VoiceDir)
+	vitsTTSClient := VitsTTS.NewClient(conf.Vits.APIURL, conf.TempDirs.VoiceDir, 0)
 	llmClient := llm.NewLLMClient(conf.Chat.BaseURL, conf.Chat.APIKey)
 
 	service = NewLingChatService(emotionPredictorClient, vitsTTSClient, llmClient, conf.TempDirs.VoiceDir)
 }
 
 func Test_ChatAndParse(t *testing.T) {
-	rawResp, err := service.llmClient.Chat(ctx, "你好")
+	rawResp, err := service.llmClient.Chat(ctx, "你好", "deepseek-chat")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,5 +48,7 @@ func Test_LingChat(t *testing.T) {
 	fmt.Println(service.LingChat(ctx, api.Message{
 		Type:    "message",
 		Content: "你好",
-	}))
+	},
+		"deepseek-chat",
+	))
 }

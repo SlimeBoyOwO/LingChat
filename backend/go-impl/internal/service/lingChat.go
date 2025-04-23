@@ -19,14 +19,16 @@ type LingChatService struct {
 	emotionPredictorClient *emotionPredictor.Client
 	VitsTTSClient          *VitsTTS.Client
 	llmClient              *llm.LLMClient
+	ConfigModel            string
 	tempFilePath           string
 }
 
-func NewLingChatService(epClient *emotionPredictor.Client, vtClient *VitsTTS.Client, llmClient *llm.LLMClient, path string) *LingChatService {
+func NewLingChatService(epClient *emotionPredictor.Client, vtClient *VitsTTS.Client, llmClient *llm.LLMClient, configModel string, path string) *LingChatService {
 	return &LingChatService{
 		emotionPredictorClient: epClient,
 		VitsTTSClient:          vtClient,
 		llmClient:              llmClient,
+		ConfigModel:            configModel,
 		tempFilePath:           path,
 	}
 }
@@ -80,12 +82,12 @@ func (l *LingChatService) EmoPredictBatch(ctx context.Context, results []Result)
 func (l *LingChatService) LingChat(ctx context.Context, msg api.Message) ([]api.Response, error) {
 	if msg.Type != "message" {
 
-		return nil, fmt.Errorf("invalid type: %s", msg.Type)
+		return nil, fmt.Errorf("invalid type: %s, %s", msg.Type, msg.Content)
 	}
 
 	cleanTempVoiceFiles(l.tempFilePath)
 
-	rawLLMResp, err := l.llmClient.Chat(ctx, msg.Content)
+	rawLLMResp, err := l.llmClient.Chat(ctx, msg.Content, l.ConfigModel)
 	if err != nil {
 		err = fmt.Errorf("LLM Chat error: %w", err)
 		return nil, err
