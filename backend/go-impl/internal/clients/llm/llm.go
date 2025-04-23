@@ -68,7 +68,7 @@ func NewLLMClient(baseURL, apiKey string) *LLMClient {
 	}
 }
 
-func (l *LLMClient) Chat(ctx context.Context, message string) (string, error) {
+func (l *LLMClient) Chat(ctx context.Context, message string, model string) (string, error) {
 	// 添加用户消息
 	l.mu.Lock()
 	l.messages = append(l.messages, openai.ChatCompletionMessage{
@@ -83,7 +83,7 @@ func (l *LLMClient) Chat(ctx context.Context, message string) (string, error) {
 	resp, err := l.client.CreateChatCompletion(
 		ctx,
 		openai.ChatCompletionRequest{
-			Model:    "deepseek-chat",
+			Model:    model,
 			Messages: messages,
 		},
 	)
