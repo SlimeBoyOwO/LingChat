@@ -18,6 +18,7 @@ type Config struct {
 type ChatConfig struct {
 	APIKey  string `json:"api_key,omitempty" yaml:"api_key,omitempty"`
 	BaseURL string `json:"base_url" yaml:"base_url"`
+	Model   string `json:"model" yaml:"model"`
 }
 
 // BackendConfig 后端服务配置
@@ -53,6 +54,7 @@ func GetConfigFromEnv() *Config {
 		Chat: ChatConfig{
 			APIKey:  os.Getenv("CHAT_API_KEY"),
 			BaseURL: os.Getenv("CHAT_BASE_URL"),
+			Model:   os.Getenv("MODEL_TYPE"),
 		},
 		Backend: BackendConfig{
 			LogDir:   os.Getenv("BACKEND_LOG_DIR"),
