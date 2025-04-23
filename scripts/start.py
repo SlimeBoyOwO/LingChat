@@ -11,6 +11,7 @@ def check_python_venv():
         input("请在LingChat目录下运行此脚本! 执行 python script/start.py")
         exit(1)
 
+    venv_dir = os.path.join(cwd, ".venv")
     if not os.path.exists(venv_dir):
         # create virtual environment
         input(f"没有找到虚拟环境, 按任意键创建虚拟环境.")
@@ -25,7 +26,6 @@ def check_python_venv():
 
     # Get the current Python executable path
     python_executable = sys.executable
-    venv_dir = os.path.join(cwd, ".venv")
 
     if not python_executable.startswith(venv_dir):
         input("请在虚拟环境中运行此脚本! 执行 .venv/Scripts/activate 以激活虚拟环境.")
@@ -54,7 +54,7 @@ def start_vits():
         exit(1)
 
     subprocess.run(
-        ["py310/python.exe", "app.py"],
+        ["third_party/vits-simple-api-windows-cpu-v0.6.16/py310/python.exe", "app.py"],
         cwd="third_party/vits-simple-api-windows-cpu-v0.6.16",
     )
 
