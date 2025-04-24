@@ -50,9 +50,15 @@
 }
 
 @keyframes fadeInOut {
-  0% { opacity: 0; }
-  50% { opacity: 1; }
-  100% { opacity: 0; }
+  0% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 
 /* 菜单内容切换动画 */
@@ -91,6 +97,7 @@
 }
 
 /* 菜单显示/隐藏动画 */
+/*
 #menu-content {
   transition: opacity 0.5s ease, visibility 0.5s ease, transform 0.5s ease;
 }
@@ -98,9 +105,10 @@
 #menu-content.show {
   animation: menuFadeIn 0.5s ease forwards;
 }
+*/
 
 #menu-content.hide {
-  animation: menuFadeOut 0.5s ease forwards;
+  animation: menuFadeOut 0.2s ease forwards;
 }
 
 @keyframes menuFadeIn {
@@ -126,7 +134,7 @@
   to {
     opacity: 0;
     visibility: hidden;
-    transform: translate(-50%, -50%) scale(0.9);
+    transform: translate(-50%, -50%) scale(1);
     z-index: -1;
   }
 }
