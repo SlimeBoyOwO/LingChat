@@ -1,29 +1,31 @@
-class TypeWriter {
+export class TypeWriter {
   constructor(element) {
     this.element = element;
     this.timer = null;
     this.abortController = null;
-    this.speed;
+    this.speed = 50; // 默认速度
+    this.isFinished = false;
+    this.onFinishCallback = null;
   }
 
   start(text, numSpeed) {
     // 停止上一个动画
     this.stop();
-    if(numSpeed !== null && numSpeed !== undefined && Number.isInteger(numSpeed)) {
-      // 如果 speed 是数字，直接使用
-      this.speed = numSpeed;
-    } else if(numSpeed !== null && numSpeed !== undefined ){
-      // 如果 speed 是字符串，尝试转换为数字
-      this.speed = Number.parseInt(numSpeed, 10);
+    this.isFinished = false;
+
+    if (numSpeed !== null && numSpeed !== undefined) {
+      this.speed = Number.isInteger(numSpeed)
+        ? numSpeed
+        : Number.parseInt(numSpeed, 10) || 50;
     } else {
-      // numSpeed 为空或未定义，在控制台警告并使用默认值
       console.warn("速度值未定义，将采用默认速度。");
-      this.speed = 50; // 默认值
+      this.speed = 50;
     }
 
     this.abortController = new AbortController();
     let i = 0;
     this.element.value = "";
+    this.element.textContent = "";
 
     this.timer = setInterval(() => {
       if (this.abortController.signal.aborted) {
@@ -33,13 +35,22 @@ class TypeWriter {
 
       if (i < text.length) {
         this.element.value += text.charAt(i);
+        this.element.textContent += text.charAt(i);
         i++;
         this.element.scrollTop = this.element.scrollHeight;
       } else {
-        this.stop();
-        this.element.style.borderRight = "none";
+        this.finish();
       }
     }, this.speed);
+  }
+
+  finish() {
+    this.stop();
+    this.isFinished = true;
+    this.element.style.borderRight = "none";
+    if (this.onFinishCallback) {
+      this.onFinishCallback();
+    }
   }
 
   stop() {
@@ -51,5 +62,14 @@ class TypeWriter {
       this.abortController.abort();
       this.abortController = null;
     }
+    this.isFinished = false;
+  }
+
+  checkFinished() {
+    return this.isFinished;
+  }
+
+  onFinish(callback) {
+    this.onFinishCallback = callback;
   }
 }
