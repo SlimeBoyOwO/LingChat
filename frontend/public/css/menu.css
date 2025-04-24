@@ -1,4 +1,20 @@
 /* 菜单面板基础样式 - 与历史记录类似但可以自定义 */
+#frontpage-effect {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 99999;
+  pointer-events: none;
+}
+
+#frontpage-effect img {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+}
+
 #menu-panel {
   position: fixed;
   top: 30px;
@@ -9,7 +25,7 @@
 #menu-toggle {
   padding: 12px 20px;
   background-color: #d2e5ff;
-  color: #3D8DFF;
+  color: #3d8dff;
   font-size: 20px;
   font-weight: bold;
   border: 0.5px solid #e5ecf1;
@@ -36,21 +52,14 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  /* width: 75vw;
-  max-width: 600px;
-  height: 75vh;
-  max-height: 500px; */
-  /* 取消高宽限制，与"galgame.css"中的第10行冲突 */
   background-color: #fff;
-  /* border-radius: 15px; */
-  /* 取消圆角，因为将设置为单独页面而非选项卡 */
   box-shadow: 0 5px 30px rgba(0, 0, 0, 0.3);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   visibility: hidden;
   opacity: 0;
-  transition: all 0.3s ease;
+  /*transition: all 0.3s ease;*/
   z-index: -1;
   /* 隐藏时置于底层 */
 }
@@ -247,8 +256,7 @@ body.bg-white {
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
-  width: 100%;  /* 改回100% */
-  height: 8px;
+  width: 100%; /* 改回100% */
   margin: 10px 0;
   background-color: transparent;
   position: relative;
@@ -259,14 +267,14 @@ input[type="range"]::-webkit-slider-runnable-track {
   width: 100%;
   height: 8px;
   border-radius: 4px;
-  background: linear-gradient(to right, #3D8DFF, #a8caff);
+  background: linear-gradient(to left, #3d8dff, #a8caff);
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
   transition: all 0.3s ease;
 }
 
 /* 滑块轨道悬停效果 */
 input[type="range"]:hover::-webkit-slider-runnable-track {
-  background: linear-gradient(to right, #5a9dff, #c4ddff);
+  background: linear-gradient(to left, #5a9dff, #c4ddff);
   height: 10px;
 }
 
@@ -285,7 +293,7 @@ input[type="range"]::-webkit-slider-thumb {
   background: #ffffff;
   border-radius: 50%;
   cursor: grab;
-  border: 2px solid #3D8DFF;
+  border: 2px solid #3d8dff;
   margin-top: -7px;
   transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
   transform-origin: center;
@@ -312,40 +320,17 @@ input[type="range"]:active::-webkit-slider-thumb {
 /* 文本显示速度测试区域样式优化 */
 div#speed-text-test {
   width: 100%;
-  background-color: rgba(0, 10, 30, 0.85);
-  padding: 14px 20px; /* 减少顶部内边距 */
-  border-radius: 12px;
-  min-height: 54px; /* 稍微减小最小高度 */
-  margin-top: 5px; /* 减少顶部边距 */
-  margin-bottom: 0; /* 确保没有底部边距 */
-  box-shadow: inset 0 1px 5px rgba(0, 0, 0, 0.3), 0 0 20px rgba(0, 0, 0, 0.1);
-  transition: all 0.3s ease;
-  position: relative;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  display: flex; /* 使用flex布局 */
-  align-items: flex-end; /* 使内容靠近底部 */
+  background-color: rgba(0, 14, 39, 0.7);
+  padding: 5px 0px;
+  border-radius: 17px;
+  min-height: 40px;
 }
 
-div#speed-text-test:hover {
-  background-color: rgba(0, 8, 25, 0.9);
-  box-shadow: inset 0 1px 8px rgba(0, 0, 0, 0.4), 0 0 25px rgba(0, 0, 0, 0.15);
-}
-
-div#speed-text-test>span {
+div#speed-text-test > span {
   text-align: center;
   width: 100%;
   display: inline-block;
-  padding: 5px;
-  padding-bottom: 3px; /* 减少底部内边距 */
-  font-size: 1.5em; /* 字号更大 */
-  color: #f0ffff; /* 亮白色（带微蓝色调） */
-  font-family: 'Microsoft YaHei', '微软雅黑', sans-serif; /* 微软雅黑字体 */
-  letter-spacing: 0.02em; /* 减小字间距 */
-  word-spacing: 0.05em; /* 减小词间距 */
-  line-height: 1.4; /* 稍微减小行高，使内容更紧凑 */
-  font-weight: 400; /* 适中的字重 */
-  text-shadow: none; /* 无发光效果 */
-  align-self: flex-end; /* 使内容靠近底部 */
+  color: white;
 }
 
 /* 打字效果样式 */
@@ -361,8 +346,13 @@ div#speed-text-test>span {
 }
 
 @keyframes cursor-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
 }
 
 /* 文字打字动画效果 */
@@ -382,11 +372,18 @@ div#speed-text-test>span {
   gap: 20px;
 }
 
-.menu-section>div.menu-item {
+.menu-section > div.menu-item {
   padding-bottom: 10px; /* 减少底部内边距 */
   display: flex;
   flex-direction: column;
   width: calc(50% - 10px);
+}
+
+.menu-section > div.menu-item-big {
+  padding-bottom: 10px; /* 减少底部内边距 */
+  display: flex;
+  flex-direction: column;
+  width: calc(100% - 10px);
 }
 
 /* 滑块标签布局优化 */
@@ -426,6 +423,10 @@ div#speed-text-test>span {
   width: 100%; /* 确保宽度为100% */
 }
 
+.slider-container span {
+  color: black;
+}
+
 .maxbody {
   display: flex;
   overflow-y: auto;
@@ -434,21 +435,21 @@ div#speed-text-test>span {
   flex-direction: column;
 }
 
-div#menu-content>div.menu-header>div {
+div#menu-content > div.menu-header > div {
   display: inline-block;
   position: fixed;
 }
 
-div#menu-content>div.menu-header>div#menu-title {
+div#menu-content > div.menu-header > div#menu-title {
   left: 20px;
 }
 
-div#menu-content>div.menu-header>div#menu-buttons {
+div#menu-content > div.menu-header > div#menu-buttons {
   right: 20px;
   top: 3px;
 }
 
-div#menu-content>div.menu-header>div#menu-buttons>button {
+div#menu-content > div.menu-header > div#menu-buttons > button {
   font-size: 1.17em;
   display: inline-block;
   cursor: pointer;
@@ -459,7 +460,7 @@ div#menu-content>div.menu-header>div#menu-buttons>button {
   padding: 10px 25px;
   margin: 0px 5px;
   background-color: #d2e5ff;
-  color: #3D8DFF;
+  color: #3d8dff;
   font-weight: bold;
   border: 0.5px solid #e5ecf1;
   /* 银灰色边框 */
@@ -468,30 +469,36 @@ div#menu-content>div.menu-header>div#menu-buttons>button {
   transition: all 0.3s;
 }
 
-div#menu-content>div.menu-header>div#menu-buttons>button:hover,
-div#menu-content>div.menu-header>div#menu-buttons>button.show {
+div#menu-content > div.menu-header > div#menu-buttons > button:hover,
+div#menu-content > div.menu-header > div#menu-buttons > button.show {
   color: rgba(0, 0, 0, 1);
-  background-color: #3D8DFF;
+  background-color: #3d8dff;
   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
   /* 悬停时阴影更明显 */
   transform: translateY(-2px);
   /* 轻微上浮效果 */
-  border: 0.5px solid #3D8DFF;
+  border: 0.5px solid #3d8dff;
 }
 
 /* 点击效果 */
-div#menu-content>div.menu-header>div#menu-buttons>button:active {
+div#menu-content > div.menu-header > div#menu-buttons > button:active {
   transform: translateY(1px);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 /* 高亮时不可点击，鼠标图标恢复原样 */
-div#menu-content>div.menu-header>div#menu-buttons>button.show {
+div#menu-content > div.menu-header > div#menu-buttons > button.show {
   pointer-events: none;
   cursor: default;
 }
 
-div#menu-panel>div#menu-content>div.maxbody>div.menu-body>div.menu-section>div.menu-item>span {
+div#menu-panel
+  > div#menu-content
+  > div.maxbody
+  > div.menu-body
+  > div.menu-section
+  > div.menu-item
+  > span {
   color: #000;
   display: inline-block;
   width: 35px;
@@ -499,6 +506,18 @@ div#menu-panel>div#menu-content>div.maxbody>div.menu-body>div.menu-section>div.m
 }
 
 /* 添加专门针对光晕滑块的样式 */
+#filter-kuosan {
+  cursor: default; /* 默认光标样式 */
+}
+
+#filter-kuosan:hover {
+  cursor: grab; /* 鼠标悬停时样式 */
+}
+
+#filter-kuosan:active {
+  cursor: grabbing; /* 鼠标按下时样式 */
+}
+
 input#filter-kuosan {
   width: 100%; /* 确保宽度足够 */
   margin: 0 10px;
@@ -561,7 +580,7 @@ button#clear-history.show {
 }
 
 .history-item p strong {
-  color: #3D8DFF;
+  color: #3d8dff;
 }
 
 /* 状态信息样式 */
@@ -572,7 +591,7 @@ button#clear-history.show {
   display: inline-block;
 }
 
-#menu-title>h3 {
+#menu-title > h3 {
   display: inline-block;
 }
 
@@ -587,7 +606,7 @@ button#clear-history.show {
 
 /* 响应式 700px */
 @media (max-width: 700px) {
-  .menu-section>div.menu-item {
+  .menu-section > div.menu-item {
     padding-bottom: 15px;
     display: inline;
     width: 100%;
@@ -608,15 +627,58 @@ button#clear-history.show {
   background-image: var(--current-bg, none);
   background-size: cover;
   background-position: center;
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3), inset 0 0 30px rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3),
+    inset 0 0 30px rgba(255, 255, 255, 0.1);
   position: fixed;
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 1000;
-  border: 2px solid #3D8DFF;
+  border: 2px solid #3d8dff;
   transition: all 0.3s ease; /* 添加过渡效果 */
   overflow: hidden;
+}
+
+#kuosan-preview-box {
+  text-align: center;
+  height: 400px;
+}
+#kuosan-preview-box p {
+  color: black;
+}
+
+#kuosan-preview {
+  margin-top: 25px;
+  text-align: center;
+  background-image: url("../pictures/backgrounds/homepage_bg.jpeg");
+  background-size: cover;
+  background-position: center;
+  border-radius: 8px;
+  box-shadow: rgba(0, 0, 0, 0.2) 0px 4px 8px;
+  position: relative;
+  overflow: hidden;
+  height: 400px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: margin-top 0.3s ease-in-out;
+}
+
+#kousan-preview p {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  position: relative;
+}
+
+#kuosan-preview-img {
+  width: 100%;
+  height: 102%;
+  position: relative;
+  z-index: 2;
+  transition: filter 0.3s ease-in-out;
+  object-fit: contain;
 }
 
 /* 只在背景设置页面显示预览 */
@@ -628,8 +690,14 @@ button#clear-history.show {
 /* 删除重复的显示代码 */
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateX(-50%) translateY(20px); }
-  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }
 
 /* 胶囊型开关样式 */
@@ -654,10 +722,11 @@ button#clear-history.show {
   font-weight: normal;
   margin-left: 60px;
   position: relative;
+  color: black;
 }
 
 .toggle-container label:before {
-  content: '';
+  content: "";
   width: 50px;
   height: 24px;
   background: #e0e0e0;
@@ -668,7 +737,7 @@ button#clear-history.show {
 }
 
 .toggle-container label:after {
-  content: '';
+  content: "";
   width: 20px;
   height: 20px;
   background: white;
@@ -676,11 +745,11 @@ button#clear-history.show {
   left: -58px;
   border-radius: 10px;
   transition: all 0.3s ease;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .toggle-container input[type="checkbox"]:checked + label:before {
-  background: linear-gradient(to right, #3D8DFF, #ffffff);
+  background: linear-gradient(to right, #3d8dff, #ffffff);
 }
 
 .toggle-container input[type="checkbox"]:checked + label:after {
@@ -731,7 +800,7 @@ button#clear-history.show {
 
 #ai-model-select:focus {
   outline: none;
-  border-color: #3D8DFF;
+  border-color: #3d8dff;
   box-shadow: 0 0 0 2px rgba(61, 141, 255, 0.2);
 }
 
