@@ -30,3 +30,7 @@ backend/logs/*.log
 # Ignore generated audio file
 public/audio/
 frontend/public/audio/
+
+# Ignore npm files
+package-lock.json
+package.json
