@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/joho/godotenv"
-	
+
 	"LingChat/api"
 	"LingChat/internal/clients/VitsTTS"
 	"LingChat/internal/clients/emotionPredictor"
@@ -26,7 +26,7 @@ func main() {
 	vitsTTSClient := VitsTTS.NewClient(conf.Vits.APIURL, conf.TempDirs.VoiceDir, conf.Vits.SpeakerID)
 	llmClient := llm.NewLLMClient(conf.Chat.BaseURL, conf.Chat.APIKey)
 
-	chatService := service.NewLingChatService(emotionPredictorClient, vitsTTSClient, llmClient, conf.TempDirs.VoiceDir)
+	chatService := service.NewLingChatService(emotionPredictorClient, vitsTTSClient, llmClient, conf.Chat.Model, conf.TempDirs.VoiceDir)
 
 	// 创建WebSocket服务器
 	wsServer := api.NewWebSocketHandler(chatService.ChatHandler)
