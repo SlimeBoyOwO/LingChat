@@ -308,7 +308,7 @@ async def handle_client(websocket):
                         fallback_response = {
                             "type": "reply",
                             "message": "抱歉，我暂时无法处理您的请求。",
-                            "emotion": "neutral",
+                            "emotion": "害羞",
                             "originalMessage": user_message,
                             "isMultiPart": False, "partIndex": 0, "totalParts": 1
                         }
