@@ -17,6 +17,8 @@ Win10 以上，Win7经过测试无法运行！
 - 使用记事本打开.env，在.env中填入你的apikey。deepseek apikey登录[DeepSeek 开放平台](https://platform.deepseek.com/usage)后获取。请妥善保管自己的apikey。
 - 点击LingChat.exe启动程序
 
+- **重要**: 最近我们移除了node_modules，如果你启动时候出现了 Error: Cannot find module 'express' 这种错误，请WIN+R并CD到当前目录并且输入npm install express或其他任何在'xx'内的模块！
+
 - (非必须):若要使用语音功能，请下载[simple-vits-api](https://github.com/Artrajz/vits-simple-api)链接程序。该项目实现了基于 VITS 的简单语音合成 API。建议下载GPU版本，速度快。程序默认监听23456语音端口，程序默认导入的模型是zcchat地址->讨论区->角色示范（丛雨）->vits模型下载好之后在simple-vits-api的目录的/data/models里面解压，再启动就ok了;如果需要使用其他模型，在.env的Vits实现函数更改相关设定即可。
 
 ### 下载情感分类模型
