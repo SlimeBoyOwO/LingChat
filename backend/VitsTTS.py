@@ -61,7 +61,7 @@ class VitsTTS:
         :return: 是否成功
         """
         loop = asyncio.get_event_loop()
-        audio_file = loop.run_until_complete(self.async_generate_voice(text, "temp"))
+        audio_file = loop.run_until_complete(self.generate_voice(text, "temp"))
         if not audio_file:
             return False
 
@@ -92,7 +92,7 @@ if __name__ == "__main__":
     
     # 方式1: 仅生成不播放 (异步)
     loop = asyncio.get_event_loop()
-    audio = loop.run_until_complete(tts.async_generate_voice("こんにちは", "greeting"))
+    audio = loop.run_until_complete(tts.generate_voice("こんにちは", "greeting"))
     if audio:
         os.remove(audio)  # 手动清理
     

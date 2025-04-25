@@ -58,7 +58,7 @@ async def predict_emotion(request: PredictionRequest):
     if classifier is None:
         raise HTTPException(status_code=500, detail="Classifier not initialized")
     try:
-        result = classifier.predict(request.text, request.confidence_threshold)
+        result = classifier.predict(request.text, request.confidence_threshold or 0.08)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -67,7 +67,7 @@ async def predict_emotion(request: PredictionRequest):
 if __name__ == "__main__":
     dotenv.load_dotenv()
     host = os.environ.get("EMOTION_BIND_ADDR", "0.0.0.0")
-    port = os.environ.get("EMOTION_PORT", 8000)
+    port = int(os.environ.get("EMOTION_PORT", 8000))
 
     uvicorn.run(
         "predictor_server:app", host=host, port=port, workers=1, log_level="info"

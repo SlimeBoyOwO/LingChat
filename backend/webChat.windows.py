@@ -425,9 +425,9 @@ async def main():
     # --- 启动后端 (WebSocket 服务器) ---
     server = None
     websocket_running = False
+    bind_port = int(os.environ.get("BACKEND_PORT", 8765))
+    bind_addr = os.environ.get("BACKEND_BIND_ADDR", "0.0.0.0")
     try:
-        bind_port = int(os.environ.get("BACKEND_PORT", 8765))
-        bind_addr = os.environ.get("BACKEND_BIND_ADDR", "0.0.0.0")
 
         print(f"\n准备启动 Python WebSocket 后端服务器...")
         server = await websockets.serve(

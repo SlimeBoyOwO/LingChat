@@ -223,7 +223,7 @@ async def main():
     # 修改主机地址为 0.0.0.0（允许 Docker 外部访问）
     # 修改 WebSocket 服务器配置
     bind_addr = os.environ.get("BACKEND_BIND_ADDR", "0.0.0.0")
-    bind_port = os.environ.get("BACKEND_PORT", 8765)
+    bind_port = int(os.environ.get("BACKEND_PORT", 8765))
     server = await websockets.serve(
         handle_client,
         bind_addr,
