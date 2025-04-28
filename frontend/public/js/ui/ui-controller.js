@@ -37,8 +37,16 @@ export class UIController {
     EventBus.on("chat:message", (data) => {
       DOM.input.placeholder = "";
 
+      let displayText = "";
+
+      if (data.motionText && data.motionText !== "") {
+        displayText = data.content + "（" + data.motionText + "）";
+      } else {
+        displayText = data.content;
+      }
+
       // 显示消息内容
-      this.writer.start(data.content, this.speed);
+      this.writer.start(displayText, this.speed);
 
       // 更新情绪
       if (data.emotion) {
