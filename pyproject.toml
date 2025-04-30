@@ -1,0 +1,14 @@
+[tool.poetry]
+name = "py-ling-chat"
+version = "0.1.0"
+description = ""
+authors = ["0x00-pl <0x00.pl@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.13"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
