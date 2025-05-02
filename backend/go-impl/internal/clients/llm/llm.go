@@ -161,3 +161,29 @@ func (l *LLMClient) ChatStream(ctx context.Context, message string) (<-chan stri
 
 	return ch, nil
 }
+
+func (l *LLMClient) DumpMessage() []openai.ChatCompletionMessage {
+	return l.messages
+}
+
+func (l *LLMClient) LoadMessage(msg []openai.ChatCompletionMessage) []openai.ChatCompletionMessage {
+	l.messages, msg = msg, l.messages
+	if len(msg) < 1 {
+		return nil
+	}
+	return msg
+}
+
+// func (l *LLMClient) LoadMessage(data []byte) ([]byte, error) {
+// 	var msg []openai.ChatCompletionMessage
+// 	err := json.Unmarshal(data, &msg)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	oldMsg := l.messages
+// 	l.messages = msg
+// 	if len(oldMsg) == 0 {
+// 		oldMsg = nil
+// 	}
+// 	return json.Marshal(msg)
+// }
