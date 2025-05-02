@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/sashabaranov/go-openai"
+
 	"LingChat/api"
 	"LingChat/internal/clients/VitsTTS"
 	"LingChat/internal/clients/emotionPredictor"
@@ -234,4 +236,12 @@ func (l *LingChatService) ChatHandler(rawMsg []byte) ([]api.Sentence, error) {
 	}
 
 	return respSentences, nil
+}
+
+func (l *LingChatService) GetChatHistory(ctx context.Context) []openai.ChatCompletionMessage {
+	return l.llmClient.DumpMessage()
+}
+
+func (l *LingChatService) LoadChatHistory(ctx context.Context, msg []openai.ChatCompletionMessage) []openai.ChatCompletionMessage {
+	return l.llmClient.LoadMessage(msg)
 }
