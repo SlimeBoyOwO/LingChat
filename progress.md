@@ -9,6 +9,7 @@
 - 提高编译版本启动方式的兼容性
 - 提高docker run启动方式的兼容性
 - 提高Linux环境下部署的兼容性
+- 扩展到18情绪分类器
 
 ## 计划:
 
@@ -18,6 +19,7 @@
 ## 已知问题/风险:
 
 - docker的python端不会有日志输出，很奇怪
+- 打开菜单动画有概率会和galgame社精一样闪屏，原因未知
 
 ## 弃用计划：
 - 将前端和后端合并为同一个Docker镜像（不符合规范&&有潜在风险）
@@ -36,6 +38,7 @@
 - 优化了网页性能
 - 修复EmoPredictBatch并发未关闭channel导致死锁的bug，以及typo
 - 添加go backend README, 将gomod、dockerfile和README对golang的版本要求统一降至1.21
+- 优化了动画兵添加了更多动画
 
 ## main上的兼容性改进，其他分支也应注意此问题
 
