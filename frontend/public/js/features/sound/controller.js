@@ -34,11 +34,13 @@ export class SoundController {
       this.domUtils.hideElements([
         DOM.menuImage,
         DOM.imagePage,
+        DOM.menuSave,
         DOM.history.toggle,
         DOM.history.content,
         DOM.history.clearBtn,
         DOM.menuText,
         DOM.textPage,
+        DOM.savePage,
       ]);
 
       setTimeout(() => {
