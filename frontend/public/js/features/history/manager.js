@@ -49,10 +49,12 @@ export class HistoryManager {
     this.domUtils.hideElements([
       DOM.menuText,
       DOM.textPage,
+      DOM.menuSave,
       DOM.menuImage,
       DOM.imagePage,
       DOM.menuSound,
       DOM.soundPage,
+      DOM.savePage,
     ]);
 
     this.render();

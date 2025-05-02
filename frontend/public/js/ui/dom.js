@@ -41,6 +41,9 @@ export const DOM = {
   menuSound: document.getElementById("menu-sound"),
   soundPage: document.getElementById("sound-page"),
 
+  menuSave: document.getElementById("menu-save"),
+  savePage: document.getElementById("save-page"),
+
   // 文本部分
   text: {
     speedInput: document.getElementById("speed-option"),

@@ -450,15 +450,15 @@ div#menu-content > div.menu-header > div#menu-buttons {
 }
 
 div#menu-content > div.menu-header > div#menu-buttons > button {
-  font-size: 1.17em;
+  font-size: 1em;
   display: inline-block;
   cursor: pointer;
-  border-radius: 17px;
+  border-radius: 12px;
   border-style: unset;
   border-color: unset;
   border-image: unset;
-  padding: 10px 25px;
-  margin: 0px 5px;
+  padding: 10px 20px;
+  margin: 2px 5px;
   background-color: #d2e5ff;
   color: #3d8dff;
   font-weight: bold;
@@ -503,6 +503,78 @@ div#menu-panel
   display: inline-block;
   width: 35px;
   text-align: center;
+}
+
+/* 存档页面样式 */
+.save-list-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  color: black;
+}
+
+.save-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 15px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: all 0.3s ease;
+}
+
+.save-item:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-2px);
+}
+
+.save-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.save-date {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.7);
+}
+
+.save-title {
+  font-size: 22px;
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+.save-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.save-btn {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.2s ease;
+}
+
+.load-btn {
+  background-color: rgba(100, 149, 237, 0.8);
+  color: white;
+}
+
+.load-btn:hover {
+  background-color: cornflowerblue;
+}
+
+.save-btn {
+  background-color: rgba(60, 179, 113, 0.8);
+  color: white;
+}
+
+.save-btn:hover {
+  background-color: mediumseagreen;
 }
 
 /* 添加专门针对光晕滑块的样式 */

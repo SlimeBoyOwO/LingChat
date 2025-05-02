@@ -7,6 +7,7 @@ import { HistoryManager } from "./features/history/manager.js";
 import { SoundController } from "./features/sound/controller.js";
 import { MenuController } from "./features/menu/controller.js";
 import { ImageController } from "./features/image/controller.js";
+import { SaveController } from "./features/save/controller.js";
 
 // 初始化模块
 const host = window.location.hostname || "localhost";
@@ -23,6 +24,7 @@ const chatManager = new ChatManager({
 const soundController = new SoundController();
 const menuController = new MenuController(uiController);
 const imageController = new ImageController();
+const saveController = new SaveController();
 
 // 多模块组合处理函数
 
