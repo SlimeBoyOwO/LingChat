@@ -59,9 +59,11 @@ export class ImageController {
       DOM.history.content,
       DOM.history.clearBtn,
       DOM.menuText,
+      DOM.menuSave,
       DOM.textPage,
       DOM.menuSound,
       DOM.soundPage,
+      DOM.savePage,
     ]);
 
     this.updatePreviewBackground();

@@ -96,6 +96,7 @@ export class MenuController {
       DOM.menuContent,
       DOM.menuText,
       DOM.textPage,
+      DOM.menuSave,
       DOM.history.toggle,
       DOM.history.content,
       DOM.history.clearBtn,
@@ -103,6 +104,7 @@ export class MenuController {
       DOM.imagePage,
       DOM.menuSound,
       DOM.soundPage,
+      DOM.savePage,
     ]);
 
     DOM.menuContent.classList.add("hide");
