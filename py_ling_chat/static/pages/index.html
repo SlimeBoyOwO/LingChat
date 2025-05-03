@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>钦灵 Chat</title>
+    <link rel="stylesheet" href="../css/galgame.css" />
+    <link rel="stylesheet" href="../css/menu.css" />
+    <link rel="stylesheet" href="../css/animation.css" />
+    <link rel="stylesheet" href="../css/browser-compat.css" />
+    <link rel="stylesheet" href="../css/load-animation.css" />
+    <link
+      rel="icon"
+      href="../pictures/icons/小猫Ling.svg"
+      type="image/svg+xml"
+    />
+  </head>
+
+  <body class="bg-default">
+    <div id="loader">
+      <div class="ears-container">
+        <div class="ear ear-left"></div>
+        <div class="ear ear-right"></div>
+      </div>
+
+      <div class="loading-text">你的小可爱正在准备中</div>
+    </div>
+    <div id="frontpage-effect"></div>
+    <div class="container">
+      <div id="menu-panel">
+        <button id="menu-toggle">菜单</button>
+        <div id="menu-content">
+          <div class="menu-header">
+            <div id="menu-title">
+              <h3>设置菜单</h3>
+              <div id="status">正在连接服务器...</div>
+            </div>
+            <div id="menu-buttons">
+              <button id="menu-text" class="">📄文本</button>
+              <button id="menu-image" class="">🏜️背景</button>
+              <button id="menu-sound" class="">🔊声音</button>
+              <button id="menu-save" class="">🎬存档</button>
+              <button id="menu-history" class="">📖对话历史</button>
+            </div>
+          </div>
+          <div class="maxbody">
+            <div class="menu-body" id="text-page">
+              <div class="menu-section">
+                <div class="menu-item">
+                  <h4>⚡ 文字显示速度</h4>
+                  <div class="line"></div>
+                  <div class="slider-container">
+                    <span>慢</span>
+                    <input
+                      id="speed-option"
+                      type="range"
+                      min="100"
+                      max="200"
+                      value="150"
+                    />
+                    <span>快</span>
+                  </div>
+                </div>
+                <div class="menu-item">
+                  <h4>📝 显示样本</h4>
+                  <div class="line"></div>
+                  <div id="speed-text-test">
+                    <span id="testmessage">钦灵 Chat，测试文本显示速度</span>
+                  </div>
+                </div>
+                <div class="menu-item">
+                  <h4>✨ 页面切换动画</h4>
+                  <div class="line"></div>
+                  <div class="toggle-container">
+                    <input type="checkbox" id="animation-toggle" checked />
+                    <label for="animation-toggle">启用动画</label>
+                  </div>
+                </div>
+                <div class="menu-item">
+                  <h4>🤖 当前AI模型</h4>
+                  <div class="line"></div>
+                  <div class="model-selection-container">
+                    <select id="ai-model-select" style="display: none">
+                      <option value="gpt-3.5">GPT-3.5</option>
+                      <option value="gpt-4">GPT-4</option>
+                      <option value="claude">Claude</option>
+                      <option value="gemini">Gemini</option>
+                      <option value="llama">Llama</option>
+                    </select>
+                    <div id="model-info-display">
+                      <span id="model-status">正在获取模型信息...</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="menu-body" id="background-page">
+              <div class="menu-section">
+                <h4>🎨 背景选择</h4>
+                <div class="line"></div>
+                <div class="bg-options">
+                  <div class="bg-option" data-bg="default">
+                    <img
+                      src="../pictures/backgrounds/homepage_bg.jpeg"
+                      alt="默认背景"
+                    />
+                    <span>默认</span>
+                  </div>
+                  <div class="bg-option" data-bg="night">
+                    <img
+                      src="../pictures/backgrounds/homepage_bg2.jpg"
+                      alt="夜晚背景"
+                    />
+                    <span>夜晚</span>
+                  </div>
+                  <div class="bg-option" data-bg="white">
+                    <img
+                      src="../pictures/backgrounds/纯白背景.png"
+                      alt="白色背景"
+                    />
+                    <span>白色</span>
+                  </div>
+                  <!-- 自定义背景选项将在这里动态添加 -->
+                </div>
+                <div class="upload-bg-container">
+                  <button class="upload-bg-btn" id="upload-bg-btn">
+                    上传自定义背景
+                  </button>
+                  <input
+                    type="file"
+                    id="upload-bg-input"
+                    class="upload-bg-input"
+                    accept="image/*"
+                  />
+                  <span id="upload-status"></span>
+                </div>
+              </div>
+              <div class="menu-section">
+                <div class="menu-item-big">
+                  <h4>💫 角色圣光扩散设置</h4>
+                  <div class="line"></div>
+                  <div class="slider-container">
+                    <span>弱</span>
+                    <input
+                      id="filter-kuosan"
+                      type="range"
+                      min="0"
+                      max="50"
+                      step="1"
+                      value="18"
+                    />
+                    <span>强</span>
+                  </div>
+                  <div id="kuosan-preview-box">
+                    <div>
+                      <p>圣光效果预览</p>
+                    </div>
+                    <div id="kuosan-preview">
+                      <img
+                        id="kuosan-preview-img"
+                        src="../pictures/qinling/正常.png"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="menu-body" id="sound-page">
+              <!--==========新修改 头==========-->
+              <div class="menu-section">
+                <div class="menu-item">
+                  <h4>👩 角色音量</h4>
+                  <div class="line"></div>
+                  <div class="slider-container">
+                    <span>弱</span>
+                    <input
+                      id="VolumeAudioPlayer"
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value="75"
+                    />
+                    <span>强</span>
+                  </div>
+                  <!--input的step的作用是:
+                    简单解释就是每次拖动的的时候一次性会增加几格，例如上述控件，若将step的值更改为10，那你每次拖动变化的值都是10，例如0,10,20,30,40,50...
+                    理解吧？若仍无法理解，你可以把这个疑问向ai大模型请教请教。
+                    -->
+                </div>
+                <div class="menu-item">
+                  <h4>💬 气泡音量</h4>
+                  <div class="line"></div>
+                  <div class="slider-container">
+                    <span>弱</span>
+                    <input
+                      id="VolumeBubbleAudio"
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value="75"
+                    />
+                    <span>强</span>
+                  </div>
+                </div>
+                <div class="menu-item">
+                  <h4>🎶 背景音量</h4>
+                  <div class="line"></div>
+                  <div class="slider-container">
+                    <span>弱</span>
+                    <input
+                      id="VolumeBackAudioPlayer"
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value="75"
+                    />
+                    <span>强</span>
+                  </div>
+                </div>
+                <div class="menu-item">
+                  <h4>🔊 音量测试设置</h4>
+                  <div class="line"></div>
+                  <div style="display: flex; justify-content: space-around">
+                    <button id="testAudioPlayer" class="button">
+                      测试角色音量
+                    </button>
+                    <button id="testBubbleAudio" class="button">
+                      测试气泡音量
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div class="menu-section">
+                <div class="menu-item-big">
+                  <h4>⚙ 背景音乐设置</h4>
+                  <div class="line"></div>
+                  <div id="music-controls" class="Music-List a">
+                    <button
+                      id="play-pause-music"
+                      class="button"
+                      style="width: 145px"
+                    >
+                      ▶/⏸ 播放/暂停
+                    </button>
+                    <button id="stop-music" class="button" style="width: 83px">
+                      ■ 停止
+                    </button>
+                    <span id="music-name">未选择音乐</span>
+                  </div>
+                  <!-- 音乐列表插入点 -->
+                  <div id="Music-list" class="Music-List b">
+                    <div class="Music-List da">
+                      <div>只因你太美 - 蔡徐坤</div>
+                      <div>
+                        <button class="button Music-List db">删除</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="Music-List c">
+                    <button id="add-music" class="button" style="width: unset">
+                      ➕ 添加音乐
+                    </button>
+                    <input
+                      type="file"
+                      id="music-upload"
+                      accept=".mp3,.wav,.flac,.webm,.weba,.ogg,.m4a"
+                      style="color: black"
+                    />
+                  </div>
+                </div>
+              </div>
+              <!--==========新修改 尾==========-->
+            </div>
+          </div>
+          <div class="menu-body" id="save-page">
+            <div class="menu-section">
+              <div class="menu-item-big">
+                <div class="save-list-container">
+                  <h4>⚙️ 存档管理</h4>
+                  <div class="line"></div>
+                  <!-- 对话列表插入点 -->
+                  <div id="conversation-list"></div>
+                </div>
+              </div>
+              <div class="menu-item">
+                <div class="save-create-container">
+                  <h4>🎀 新建对话</h4>
+                  <div class="line"></div>
+                  <div class="upload-input-container">
+                    <h4>输入标题：</h4>
+                    <input
+                      type="text"
+                      id="new-convo-title"
+                      placeholder="请输入对话标题..."
+                    />
+                    <button id="create-convo-btn" class="save-btn">
+                      写入新存档
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div class="menu-item">
+                <h4>📥 上传日志文档载入对话</h4>
+                <div class="line"></div>
+                <div class="upload-area">
+                  <input type="file" id="log-upload" accept=".log,.txt" />
+                  <button id="upload-btn">上传日志文件</button>
+                  <div id="upload-status"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="menu-body" id="history-page">
+            <div class="history-body">
+              <h4>🎵 以下是你们的回忆~</h4>
+              <div id="history-list"></div>
+            </div>
+          </div>
+          <div id="kuosan-test">
+            <img id="qinlingtest" src="../pictures/qinling/正常.png" />
+          </div>
+          <div class="menu-footer">
+            <div id="audioStatus"></div>
+            <button id="clear-history">清空历史</button>
+            <button id="close-menu">关闭</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="main-box">
+        <div class="avatar-container character-animation normal">
+          <img id="qinling" src="../pictures/qinling/正常.png" />
+          <div class="bubble"></div>
+        </div>
+
+        <div class="chatbox-box">
+          <div class="chatbox-main">
+            <div class="chatbox-title-part">
+              <div class="chatbox-title">
+                <div id="character">Lovely You</div>
+              </div>
+              <div class="chatbox-subtitle">
+                <div id="character-sub">Youtube</div>
+              </div>
+              <div class="chatbox-emotion">
+                <div id="character-emotion"></div>
+              </div>
+            </div>
+            <div class="chatbox-line"></div>
+            <div class="chatbox-inputbox">
+              <textarea
+                id="inputMessage"
+                placeholder="在这里输入消息..."
+              ></textarea>
+              <button id="sendButton" disabled>▼</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <audio id="audioPlayer" controls style="display: none"></audio>
+      <audio id="audioPlayerBubble" controls style="display: none"></audio>
+      <audio id="audioPlayerEffect" controls style="display: none"></audio>
+      <audio id="BackAudioPlayer" controls style="display: none"></audio>
+    </div>
+
+    <canvas id="canvas" width="1584" height="379"></canvas>
+
+    <script type="module" src="../js/app.js"></script>
+    <script type="module" src="../js/ui/notice.js"></script>
+  </body>
+</html>
