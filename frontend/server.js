@@ -7,7 +7,7 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-require('dotenv').config();
+require("dotenv").config();
 
 const ADDR = process.env.FRONTEND_ADDR || "localhost";
 const BIND_ADDR = process.env.FRONTEND_BIND_ADDR || "0.0.0.0";

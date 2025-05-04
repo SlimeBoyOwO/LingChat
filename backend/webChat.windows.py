@@ -366,8 +366,8 @@ async def main():
 
 
     # --- 启动前端服务器 ---
-    frontend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'frontend'))
-    server_js_path = os.path.join(frontend_dir, 'server.js')
+    frontend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'frontend', 'server'))
+    server_js_path = os.path.join(frontend_dir, "app.js")
     frontend_port = os.environ.get('FRONTEND_PORT', '3000')
     frontend_url = f"http://localhost:{frontend_port}"
 
