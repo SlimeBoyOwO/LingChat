@@ -16,7 +16,7 @@ classifier = None  # 初始化分类器
 async def lifespan(app: FastAPI):
     global classifier
     try:
-        model_path = os.environ.get("EMOTION_MODEL_PATH", "./emotion_model_12emo")
+        model_path = os.environ.get("EMOTION_MODEL_PATH", "./emotion_model_18emo")
         classifier = EmotionClassifier(model_path)
     except Exception as e:
         raise Exception(f"Failed to initialize classifier: {str(e)}")

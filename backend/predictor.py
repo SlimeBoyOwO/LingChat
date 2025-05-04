@@ -8,7 +8,7 @@ class EmotionClassifier:
     def __init__(self, model_path=None):
         """加载12类情绪分类模型"""
         # 加载模型和分词器
-        model_path = model_path or os.environ.get("EMOTION_MODEL_PATH", "./emotion_model_12emo")
+        model_path = model_path or os.environ.get("EMOTION_MODEL_PATH", "./emotion_model_18emo")
         model_path = Path(model_path).resolve()
         self.tokenizer = BertTokenizer.from_pretrained(model_path, local_files_only=True)
         self.model = BertForSequenceClassification.from_pretrained(model_path)
