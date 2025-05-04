@@ -88,7 +88,7 @@ export const EMOTION_CONFIG = {
     bubbleImage: "../pictures/animation/流泪.webp",
     bubbleClass: "none",
     audio: "../audio_effects/伤心.wav",
-    avatar: "../pictures/qinling/哭泣.png",
+    avatar: "../pictures/qinling/伤心.png",
   },
   心动: {
     animation: "none",

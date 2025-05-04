@@ -71,9 +71,21 @@ export class ChatManager {
 
     this.isProcessing = true;
     this.currentMessagePart = this.messageQueue.shift();
+
+    let displayText = "";
+    if (!this.currentMessagePart) {
+      displayText = ""; // 处理 null 情况
+    } else {
+      displayText =
+        this.currentMessagePart.motionText &&
+        this.currentMessagePart.motionText !== ""
+          ? `${this.currentMessagePart.message}（${this.currentMessagePart.motionText}）`
+          : this.currentMessagePart.message;
+    }
+
     this.historyManager.addMessage(
       null,
-      this.currentMessagePart.message,
+      displayText,
       this.currentMessagePart.partIndex ===
         this.currentMessagePart.totalParts - 1
     );
