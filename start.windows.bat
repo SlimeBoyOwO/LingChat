@@ -1,9 +1,9 @@
-:: 项目的一键安装与启动
+:: Project one-click installation and startup
 
 @echo off
 SETLOCAL ENABLEDELAYEDEXPANSION
 
-:: 设置项目根目录为当前脚本所在目录
+:: Set project root directory to current script location
 cd /d "%~dp0"
 ECHO Current directory: %CD%
 
@@ -13,7 +13,7 @@ SET BACKEND_SCRIPT=backend\webChat.windows.py
 SET FRONTEND_SCRIPT=frontend\server.js
 SET BROWSER_URL=http://localhost:3000/
 
-:: 1. 检查 .venv 目录是否存在
+:: 1. Check if .venv directory exists
 ECHO Checking for virtual environment (%VENV_DIR%)...
 IF EXIST %VENV_DIR%\ (
     ECHO Found existing virtual environment.
@@ -23,13 +23,13 @@ IF EXIST %VENV_DIR%\ (
     GOTO CreateEnv
 )
 :CreateEnv
-:: 检查 requirements.txt 是否存在
+:: Check if requirements.txt exists
 IF NOT EXIST %REQUIREMENTS_FILE% (
     ECHO ERROR: %REQUIREMENTS_FILE% not found in the current directory. Cannot create environment.
     PAUSE
     EXIT /B 1
 )
-:: 尝试查找并使用 Python 3.10, 3.11, 或 3.12 (优先 3.12)
+:: Try to find and use Python 3.10, 3.11, or 3.12 (priority 3.12)
 SET PYTHON_EXE=
 ECHO Searching for Python 3.12...
 WHERE py -3.12 >nul 2>nul
@@ -65,7 +65,7 @@ IF %ERRORLEVEL% NEQ 0 (
     EXIT /B 1
 )
 ECHO Virtual environment created successfully.
-:: 激活新环境并安装依赖
+:: Activate new environment and install dependencies
 ECHO Activating virtual environment for dependency installation...
 CALL %VENV_DIR%\Scripts\activate.bat
 IF %ERRORLEVEL% NEQ 0 (
@@ -86,7 +86,7 @@ ECHO Dependencies installed successfully.
 GOTO RunBackend
 
 :ActivateEnv
-:: 激活现有环境
+:: Activate existing environment
 
 ECHO Activating existing virtual environment...
 CALL %VENV_DIR%\Scripts\activate.bat
@@ -98,7 +98,7 @@ IF %ERRORLEVEL% NEQ 0 (
 ECHO Virtual environment activated.
 
 :RunBackend
-:: 2. 运行后端 Python 脚本 (在单独的窗口中，保持打开)
+:: 2. Run backend Python script (in a separate window, keep open)
 ECHO Starting Python backend (%BACKEND_SCRIPT%)...
 IF NOT EXIST %BACKEND_SCRIPT% (
    ECHO ERROR: Backend script not found at %BACKEND_SCRIPT%
