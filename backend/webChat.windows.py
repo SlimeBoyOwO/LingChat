@@ -5,17 +5,17 @@ import websockets
 import glob
 from deepseek import DeepSeek
 import re
-from predictor import EmotionClassifier  # 导入情绪分类器
-from VitsTTS import VitsTTS              # 导入语音生成
+from predictor import EmotionClassifier  
+from VitsTTS import VitsTTS              
 from logger import Logger
 from langDetect import LangDetect
 import dotenv
-import subprocess # 用于运行外部命令 (Node.js)
-import webbrowser # 用于打开浏览器
-import time       # 用于添加延迟
-import atexit     # 用于注册退出时执行的函数
-import sys        # 用于获取可执行文件路径等
-import signal     # --- 新增：用于捕获系统信号 ---
+import subprocess 
+import webbrowser 
+import time       
+import atexit     
+import sys        
+import signal     
 
 dotenv.load_dotenv()
 logger = Logger()
@@ -86,21 +86,14 @@ def kill_node_process():
 def handle_signal(sig, frame):
     """处理操作系统信号 (如 SIGTERM, SIGINT)"""
     print(f"\n收到信号 {signal.Signals(sig).name} ({sig})，开始优雅关闭...")
-    # 直接调用清理函数。注意：在信号处理器中执行复杂操作或 I/O 可能有风险，
-    # 但终止子进程通常是可接受的。
     kill_node_process()
-    # 在信号处理后强制退出 Python 进程，确保脚本终止
-    # 使用 os._exit 会立即退出，不执行 further cleanup (like finally blocks or other atexit handlers)
-    # 使用 sys.exit 会尝试进行清理，但可能在信号处理上下文中行为不确定
-    # 为了确保子进程被杀掉后主进程也退出，os._exit(0) 更可靠
     print("信号处理完成，正在强制退出 Python 脚本...")
-    os._exit(0) # 使用 0 表示正常退出状态码
+    os._exit(0)
 
 # --- 注册退出处理函数 (仍然有用，处理正常退出和未捕获异常) ---
 atexit.register(kill_node_process)
 
 
-# ... (analyze_emotions, generate_voice_files, play_voice_files, text_to_speech, create_responses 不变) ...
 def analyze_emotions(text):
     """分析文本中每个【】标记的情绪，并提取日语和中文部分"""
     # 改进后的正则表达式，更灵活地匹配各种情况
@@ -332,19 +325,12 @@ async def handle_client(websocket):
 async def main():
     global node_process, _cleanup_called # 声明我们要修改全局变量
     print("main函数加载中...")
-    _cleanup_called = False # 确保每次启动 main 时重置清理标志
+    _cleanup_called = False
 
-    # --- 注册信号处理器 ---
-    # SIGINT: 通常由 Ctrl+C 发送
-    # SIGTERM: 标准的终止信号 (例如 kill <pid>, systemd stop, terminal close)
-    # SIGHUP: 终端挂断信号 (在某些系统上关闭终端会发送)
-    # SIGBREAK: Windows 上的 Ctrl+Break
     signals_to_catch = (signal.SIGINT, signal.SIGTERM)
     if sys.platform != "win32":
-         # SIGHUP 在 Windows 上不可用或意义不同
         signals_to_catch += (signal.SIGHUP,)
     else:
-         # SIGBREAK 仅在 Windows 上可用
         signals_to_catch += (signal.SIGBREAK,)
 
     for sig in signals_to_catch:
@@ -378,7 +364,7 @@ async def main():
             node_command,
             cwd=frontend_dir,
             creationflags=creationflags,
-            start_new_session=start_new_session # 在 POSIX 上创建新会话
+            start_new_session=start_new_session
         )
         print(f"前端服务器进程已启动 (PID: {node_process.pid})。")
 
@@ -419,7 +405,7 @@ async def main():
             ping_interval=20, ping_timeout=20, close_timeout=10,
             max_size=2**25, origins=None
         )
-        websocket_running = True # 标记 WebSocket 已成功启动
+        websocket_running = True
         print(f"Python WebSocket 服务正在运行于 ws://{bind_addr}:{bind_port}")
         print("服务已就绪，等待客户端连接...")
         print("按 Ctrl+C 或关闭终端以停止服务。")
@@ -439,7 +425,6 @@ async def main():
             print("正在关闭 Python WebSocket 服务...")
             server.close()
             try:
-                # 短暂等待服务器关闭完成
                 await asyncio.wait_for(server.wait_closed(), timeout=5.0)
                 print("Python WebSocket 服务已关闭。")
             except asyncio.TimeoutError:
