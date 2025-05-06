@@ -5,7 +5,7 @@ from typing import List, Optional
 import dotenv
 import uvicorn
 from fastapi import FastAPI, HTTPException
-from predictor import EmotionClassifier
+from core.predictor import EmotionClassifier
 from pydantic import BaseModel
 
 
