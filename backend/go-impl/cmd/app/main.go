@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/joho/godotenv"
 
@@ -14,10 +16,14 @@ import (
 	"LingChat/internal/clients/emotionPredictor"
 	"LingChat/internal/clients/llm"
 	"LingChat/internal/config"
+	"LingChat/internal/data"
 	"LingChat/internal/service"
 )
 
 func main() {
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
 
 	// init Config
 	err := godotenv.Load()
@@ -31,9 +37,22 @@ func main() {
 	vitsTTSClient := VitsTTS.NewClient(conf.Vits.APIURL, conf.TempDirs.VoiceDir, conf.Vits.SpeakerID)
 	llmClient := llm.NewLLMClient(conf.Chat.BaseURL, conf.Chat.APIKey)
 
+	// init Data
+	entClient, err := data.NewEntClient(ctx, conf.Data.DataBase.Driver, conf.Data.DataBase.Source, conf.Data.DataBase.AutoMigrate)
+	if err != nil {
+		log.Fatal(err)
+	}
+	data, cleanup, err := data.NewData(entClient, nil)
+	defer cleanup()
+	if err != nil {
+		log.Fatal(err)
+	}
+	_ = data
+
 	// init Service
 	chatService := service.NewLingChatService(emotionPredictorClient, vitsTTSClient, llmClient, conf.Chat.Model, conf.TempDirs.VoiceDir)
 
+	// init HTTP server
 	chatRoute := v1.NewChatRoute(chatService)
 	httpEngine := routes.NewHTTPEngine(conf.Backend.BindAddr+":9876", chatRoute)
 	_, err = httpEngine.Run()
