@@ -3,12 +3,12 @@ import json
 import asyncio
 import websockets
 import glob
-from deepseek import DeepSeek
+from core.deepseek import DeepSeek
 import re
-from predictor import EmotionClassifier  # 导入情绪分类器
-from VitsTTS import VitsTTS              # 导入语音生成
-from logger import Logger
-from langDetect import LangDetect
+from core.predictor import EmotionClassifier  # 导入情绪分类器
+from core.VitsTTS import VitsTTS              # 导入语音生成
+from core.logger import Logger
+from core.langDetect import LangDetect
 import dotenv
 
 dotenv.load_dotenv()
