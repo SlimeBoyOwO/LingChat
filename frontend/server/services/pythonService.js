@@ -29,7 +29,7 @@ function connectToPython(wss) {
   // *** 在这里直接实现广播逻辑 ***
   ws.on("message", (messageBuffer) => {
     const messageString = messageBuffer.toString("utf8");
-    console.log("收到 Python 消息:", messageString);
+    // console.log("收到 Python 消息:", messageString);                 <=====调试再打开
 
     // 检查 wssInstance 是否已设置
     if (!wssInstance) {
