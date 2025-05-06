@@ -7,11 +7,22 @@ import (
 
 // Config 应用程序的总体配置
 type Config struct {
+	Data     Data           `json:"data" yaml:"data"`
 	Chat     ChatConfig     `json:"chat" yaml:"chat"`
 	Backend  BackendConfig  `json:"backend" yaml:"backend"`
 	Vits     VitsConfig     `json:"vits" yaml:"vits"`
 	Emotion  EmotionConfig  `json:"emotion" yaml:"emotion"`
 	TempDirs TempDirsConfig `json:"temp_dirs" yaml:"temp_dirs"`
+}
+
+type Data struct {
+	DataBase DataBase
+}
+
+type DataBase struct {
+	Driver      string `json:"driver" yaml:"driver"`
+	Source      string `json:"source" yaml:"source"`
+	AutoMigrate bool   `json:"auto_migrate" yaml:"auto_migrate"`
 }
 
 // ChatConfig 聊天API配置
@@ -49,8 +60,18 @@ func GetConfigFromEnv() *Config {
 	// 从环境变量读取整数值
 	vitsSpkID, _ := strconv.Atoi(os.Getenv("VITS_SPEAKER_ID"))
 	backendPort, _ := strconv.Atoi(os.Getenv("BACKEND_PORT"))
+
+	autoMigrate, _ := strconv.ParseBool(os.Getenv("AUTO_MIGRATE"))
+
 	// 创建并返回配置结构体
 	return &Config{
+		Data: Data{
+			DataBase{
+				Driver:      os.Getenv("DATABASE_DRIVER"),
+				Source:      os.Getenv("DATABASE_SOURCE"),
+				AutoMigrate: autoMigrate,
+			},
+		},
 		Chat: ChatConfig{
 			APIKey:  os.Getenv("CHAT_API_KEY"),
 			BaseURL: os.Getenv("CHAT_BASE_URL"),
