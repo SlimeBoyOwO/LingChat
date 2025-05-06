@@ -156,7 +156,7 @@ func (l *LingChatService) GenerateVoice(ctx context.Context, textSegments []Resu
 				data  []byte
 				err   error
 			}{idx, audioData, err}
-		}(i, segment.FollowingText)
+		}(i, segment.JapaneseText)
 	}
 
 	// 等待所有goroutine完成
