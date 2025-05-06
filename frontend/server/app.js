@@ -28,7 +28,13 @@ wss.on("connection", (ws) => {
 
   ws.on("message", (message) => {
     const msgString = message.toString("utf8");
-    console.log("收到客户端消息:", msgString);
+    const parsedMessage = JSON.parse(msgString); // 尝试解析消息
+
+    // 检查消息类型是否为 "ping"，如果是则跳过 debug 日志
+    if (parsedMessage.type !== "ping") {
+      console.log("收到客户端消息:", msgString);
+    }
+
     const pythonSocket = pythonService.getPythonSocket();
 
     if (pythonSocket && pythonSocket.readyState === WebSocket.OPEN) {
