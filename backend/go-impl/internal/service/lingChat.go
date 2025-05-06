@@ -82,9 +82,16 @@ func (l *LingChatService) EmoPredictBatch(ctx context.Context, results []Result)
 }
 
 func (l *LingChatService) LingChat(ctx context.Context, msg api.Message) ([]api.Response, error) {
-	if msg.Type != "message" {
-
-		return nil, fmt.Errorf("invalid type: %s, %s", msg.Type, msg.Content)
+	switch msg.Type {
+	case "message":
+	case "handshake":
+		log.Printf("handshake with message:\"%s\"\n", msg.Content)
+		return nil, nil
+	case "ping":
+		log.Println("Ping received, Pong")
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("invalid type \"%s\" with message: \"%s\"", msg.Type, msg.Content)
 	}
 
 	cleanTempVoiceFiles(l.tempFilePath)
