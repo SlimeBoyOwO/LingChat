@@ -213,11 +213,9 @@ def play_voice_files(text_segments):
 async def text_to_speech(text, output_file):
     """生成单个语音文件"""
     if not text or not text.strip():
-        # print(f"跳过为空的文本的语音生成: {output_file}") # 可以取消注释以查看此信息
         return
     try:
         await tts_engine.generate_voice(text, output_file, True)
-        # print(f"成功生成语音文件: {output_file}") # 可以取消注释以查看此信息
     except Exception as e:
         print(f"为文本 '{text}' 生成语音文件 {output_file} 时出错: {e}")
 
@@ -248,7 +246,6 @@ async def process_ai_response(ai_response, user_message):
     if os.path.exists(temp_voice_dir) and tts_engine.format:
         voice_pattern = os.path.join(temp_voice_dir, f"*.{tts_engine.format}")
         old_files = glob.glob(voice_pattern)
-        # print(f"清理旧语音文件 ({voice_pattern}): {len(old_files)} 个") # 可以取消注释以查看此信息
         for file in old_files:
             try:
                 os.remove(file)
@@ -262,9 +259,7 @@ async def process_ai_response(ai_response, user_message):
         print("警告: 未在AI响应中检测到有效的情绪/文本片段。请检查.env文件中apikey是否填写无误，或登录网站检查apikey是否还有余额")
         return []
 
-    # print("\n开始生成语音文件...") # 可以取消注释以查看此信息
     await generate_voice_files(emotion_segments)
-    # print("语音文件生成完成 (或跳过)。") # 可以取消注释以查看此信息
 
     responses = create_responses(emotion_segments, user_message)
 
@@ -281,7 +276,6 @@ async def handle_client(websocket):
         async for message in websocket:
             try:
                 data = json.loads(message)
-                # print(f"\n>>> Python 收到消息: {data}") # Debugging print
 
                 if data.get('type') == 'message':
                     user_message = data.get('content', '')
@@ -301,7 +295,6 @@ async def handle_client(websocket):
                         print(f"准备发送 {len(responses)} 个消息片段到前端...")
                         for response in responses:
                             await websocket.send(json.dumps(response))
-                            # print(f"  已发送片段: index={response['partIndex']}, emotion={response['emotion']}, msg='{response['message'][:20]}...'") # Debugging print
                             await asyncio.sleep(0.1)
                     else:
                         print("没有生成有效的回复片段。发送回退消息。")
@@ -356,11 +349,8 @@ async def main():
 
     for sig in signals_to_catch:
         try:
-            # 将信号处理委托给 handle_signal 函数
             signal.signal(sig, handle_signal)
-            # print(f"已注册信号 {signal.Signals(sig).name} ({sig}) 的处理器") # Debugging print
         except (OSError, ValueError, AttributeError) as e:
-            # 某些环境或平台可能不支持所有信号
             print(f"警告: 无法注册信号 {sig} 的处理器: {e}")
     # --- 信号注册结束 ---
 
@@ -381,9 +371,7 @@ async def main():
     print(f"  命令: {' '.join(node_command)}")
 
     try:
-        # Windows specific flag to potentially help with cleanup, though terminate/kill is primary
         creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == 'win32' else 0
-        # POSIX specific flag to put node in its own session, might help isolate it
         start_new_session = True if sys.platform != 'win32' else False
 
         node_process = subprocess.Popen(
@@ -391,9 +379,6 @@ async def main():
             cwd=frontend_dir,
             creationflags=creationflags,
             start_new_session=start_new_session # 在 POSIX 上创建新会话
-            # stdout=subprocess.PIPE, # 取消注释以捕获输出
-            # stderr=subprocess.PIPE, # 取消注释以捕获输出
-            # text=True
         )
         print(f"前端服务器进程已启动 (PID: {node_process.pid})。")
 
@@ -403,7 +388,6 @@ async def main():
         if node_process.poll() is not None:
              print(f"错误：前端服务器进程似乎已意外退出，退出码: {node_process.poll()}")
              print("请检查上面的前端服务器日志输出以获取详细信息。")
-             # 不需要手动调用 kill_node_process，因为 atexit 会处理
              return
 
         print(f"尝试在默认浏览器中打开: {frontend_url}")
@@ -416,10 +400,10 @@ async def main():
 
     except FileNotFoundError:
         print("\n错误：找不到 'node' 命令。请确保 Node.js 已安装并添加到 PATH。")
-        return # atexit 会尝试清理（虽然可能没启动 node）
+        return
     except Exception as e:
         print(f"\n启动前端服务器或打开浏览器时发生未知错误: {e}")
-        return # atexit 会尝试清理
+        return
     # --- 前端启动结束 ---
 
     # --- 启动后端 (WebSocket 服务器) ---
@@ -439,10 +423,6 @@ async def main():
         print(f"Python WebSocket 服务正在运行于 ws://{bind_addr}:{bind_port}")
         print("服务已就绪，等待客户端连接...")
         print("按 Ctrl+C 或关闭终端以停止服务。")
-
-        # 保持服务器运行，直到被关闭 (例如通过信号处理程序中的 os._exit 或正常结束)
-        # await server.wait_closed() # 在这里等待会导致 finally 块可能执行不到
-        # 使用 asyncio.Future 来无限期等待，除非被取消或设置结果
         await asyncio.Future()
 
     except OSError as e:
@@ -454,8 +434,6 @@ async def main():
     except Exception as e:
         print(f"\n启动或运行 WebSocket 服务器时发生未知错误: {e}")
     finally:
-        # 这个 finally 块主要用于关闭 WebSocket 服务器
-        # Node 进程的关闭主要由 atexit 和 signal handlers 负责
         print("\n进入 main 函数的 finally 块...")
         if server and websocket_running:
             print("正在关闭 Python WebSocket 服务...")
@@ -468,50 +446,19 @@ async def main():
                 print("警告: 等待 WebSocket 服务关闭超时。")
             except Exception as close_err:
                 print(f"关闭 WebSocket 服务时出错: {close_err}")
-
-        # Node 进程的关闭应该由 atexit 或信号处理器触发
-        # 但为了保险起见，如果前面的清理没被调用，可以再尝试一次
-        # if not _cleanup_called: # 检查标志
-        #     print("Finally 块检测到清理未执行，尝试调用 kill_node_process...")
-        #     kill_node_process() # 这可能在异步环境中行为不确定，最好依赖 atexit/signal
-
         print("main 函数 finally 块执行完毕。")
-    # --- 后端启动结束 ---
 
 
 if __name__ == "__main__":
     print("程序启动！")
     loop = None
     try:
-        # 运行主异步函数
         asyncio.run(main())
     except KeyboardInterrupt:
-        # Ctrl+C 通常会触发 SIGINT，被我们的信号处理器捕获
         print("\n收到 KeyboardInterrupt (可能是 SIGINT 信号)... 清理应由信号处理器或 atexit 处理。")
     except SystemExit as e:
-        # 捕获由 sys.exit() 或 os._exit() (在信号处理器中) 引起的退出
         print(f"程序通过 SystemExit({e.code}) 退出。")
     except Exception as e:
          print(f"\n程序顶层发生未捕获异常: {e}")
-         # 即使发生未捕获异常，atexit 处理器也应该会运行
     finally:
-        # 这里的 finally 块会在 asyncio.run() 结束后执行
-        # atexit 注册的函数会在 Python 解释器退出前执行，通常比这里晚
-        print("Python 脚本主执行流程结束，等待 atexit 清理 (如果需要)...")
-        # 确保 node 进程在任何退出情况下都被处理 (atexit 是主要机制)
-        # kill_node_process() # 重复调用会被内部标志阻止
-
-        # 检查并取消所有剩余的 asyncio 任务（如果需要，但 asyncio.run 通常会处理）
-        # try:
-        #     if loop and loop.is_running():
-        #         print("正在取消剩余的 asyncio 任务...")
-        #         tasks = asyncio.all_tasks(loop=loop)
-        #         for task in tasks:
-        #             task.cancel()
-        #         # loop.run_until_complete(loop.shutdown_asyncgens()) # 关闭异步生成器
-        #         # loop.close() # 关闭循环
-        #         print("Asyncio 任务已取消。")
-        # except Exception as loop_err:
-        #     print(f"关闭 asyncio 循环时出错: {loop_err}")
-
         print("程序最终退出。")
