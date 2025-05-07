@@ -4,11 +4,8 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"reflect"
 
 	"github.com/gin-gonic/gin"
-
-	"LingChat/api/routes/v1"
 )
 
 func NewEngine() (*gin.Engine, error) {
@@ -25,10 +22,11 @@ type HttpEngine struct {
 	Engine *gin.Engine
 	Addr   string
 
-	ChatRouteV1 *v1.ChatRoute
+	// ChatRouteV1 *v1.ChatRoute
+	routes []Route
 }
 
-func NewHTTPEngine(addr string, chatRoute *v1.ChatRoute) *HttpEngine {
+func NewHTTPEngine(addr string, routes ...Route) *HttpEngine {
 
 	engine, err := NewEngine()
 	if err != nil {
@@ -36,9 +34,10 @@ func NewHTTPEngine(addr string, chatRoute *v1.ChatRoute) *HttpEngine {
 	}
 
 	return &HttpEngine{
-		Engine:      engine,
-		Addr:        addr,
-		ChatRouteV1: chatRoute,
+		Engine: engine,
+		Addr:   addr,
+		// ChatRouteV1: chatRoute,
+		routes: routes,
 	}
 }
 
@@ -49,11 +48,14 @@ type Route interface {
 func (h *HttpEngine) RegisterRoutes() {
 	eg := h.Engine.Group("/api")
 
-	v := reflect.ValueOf(*h)
-	for i := 0; i < v.NumField(); i++ {
-		if router, ok := v.Field(i).Interface().(Route); ok {
-			router.RegisterRoute(eg)
-		}
+	// v := reflect.ValueOf(*h)
+	// for i := 0; i < v.NumField(); i++ {
+	// 	if router, ok := v.Field(i).Interface().(Route); ok {
+	// 		router.RegisterRoute(eg)
+	// 	}
+	// }
+	for _, route := range h.routes {
+		route.RegisterRoute(eg)
 	}
 }
 

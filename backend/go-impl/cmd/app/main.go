@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	"LingChat/internal/config"
 	"LingChat/internal/data"
 	"LingChat/internal/service"
+	"LingChat/pkg/jwt"
 )
 
 func main() {
@@ -32,29 +34,38 @@ func main() {
 	}
 	conf := config.GetConfigFromEnv()
 
+	// init pkg instances
+	secBytes, err := base64.StdEncoding.DecodeString(conf.Server.JWTSecret)
+	if err != nil {
+		log.Fatal("decode jwt secret failed: ", err)
+	}
+	j := jwt.NewJWT(secBytes, "LingChat-Backend")
+
 	// init Clients
 	emotionPredictorClient := emotionPredictor.NewClient(conf.Emotion.URL)
 	vitsTTSClient := VitsTTS.NewClient(conf.Vits.APIURL, conf.TempDirs.VoiceDir, conf.Vits.SpeakerID)
 	llmClient := llm.NewLLMClient(conf.Chat.BaseURL, conf.Chat.APIKey)
 
-	// init Data
+	// init Data & Repos
 	entClient, err := data.NewEntClient(ctx, conf.Data.DataBase.Driver, conf.Data.DataBase.Source, conf.Data.DataBase.AutoMigrate)
 	if err != nil {
 		log.Fatal(err)
 	}
-	data, cleanup, err := data.NewData(entClient, nil)
+	d, cleanup, err := data.NewData(entClient, nil)
 	defer cleanup()
 	if err != nil {
 		log.Fatal(err)
 	}
-	_ = data
+	userRepo := data.NewUserRepo(d)
 
 	// init Service
 	chatService := service.NewLingChatService(emotionPredictorClient, vitsTTSClient, llmClient, conf.Chat.Model, conf.TempDirs.VoiceDir)
+	userService := service.NewUserService(userRepo, j)
 
 	// init HTTP server
-	chatRoute := v1.NewChatRoute(chatService)
-	httpEngine := routes.NewHTTPEngine(conf.Backend.BindAddr+":9876", chatRoute)
+	chatRoute := v1.NewChatRoute(chatService, userRepo, j)
+	userRoute := v1.NewUserRoute(userService)
+	httpEngine := routes.NewHTTPEngine(conf.Backend.BindAddr+":9876", chatRoute, userRoute)
 	_, err = httpEngine.Run()
 	if err != nil {
 		log.Fatal(err)
