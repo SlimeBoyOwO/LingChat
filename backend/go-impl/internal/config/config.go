@@ -7,6 +7,7 @@ import (
 
 // Config 应用程序的总体配置
 type Config struct {
+	Server   Server         `json:"server" yaml:"server"`
 	Data     Data           `json:"data" yaml:"data"`
 	Chat     ChatConfig     `json:"chat" yaml:"chat"`
 	Backend  BackendConfig  `json:"backend" yaml:"backend"`
@@ -15,8 +16,12 @@ type Config struct {
 	TempDirs TempDirsConfig `json:"temp_dirs" yaml:"temp_dirs"`
 }
 
+type Server struct {
+	JWTSecret string `json:"jwt_secret" yaml:"jwt_secret"`
+}
+
 type Data struct {
-	DataBase DataBase
+	DataBase DataBase `json:"database" yaml:"database"`
 }
 
 type DataBase struct {
@@ -65,6 +70,9 @@ func GetConfigFromEnv() *Config {
 
 	// 创建并返回配置结构体
 	return &Config{
+		Server: Server{
+			JWTSecret: os.Getenv("JWT_SECRET"),
+		},
 		Data: Data{
 			DataBase{
 				Driver:      os.Getenv("DATABASE_DRIVER"),
