@@ -20,7 +20,6 @@ func (Shadow) Fields() []ent.Field {
 			Immutable().
 			Unique(),
 		field.String("password").
-			NotEmpty().
 			Sensitive(),
 		// 用户ID，通过边关系可以自动填充
 		field.Int64("user_id").
