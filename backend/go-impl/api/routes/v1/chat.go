@@ -6,23 +6,30 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/sashabaranov/go-openai"
 
+	"LingChat/api/routes/middleware"
+	"LingChat/internal/data"
 	"LingChat/internal/service"
+	"LingChat/pkg/jwt"
 )
 
 type ChatRoute struct {
 	lingChatService *service.LingChatService
+	userRepo        data.UserRepo
+	jwt             *jwt.JWT
 }
 
-func NewChatRoute(lingChatService *service.LingChatService) *ChatRoute {
+func NewChatRoute(lingChatService *service.LingChatService, userRepo data.UserRepo, jwt *jwt.JWT) *ChatRoute {
 	return &ChatRoute{
 		lingChatService: lingChatService,
+		userRepo:        userRepo,
+		jwt:             jwt,
 	}
 }
 
 func (c *ChatRoute) RegisterRoute(r *gin.RouterGroup) {
 	rg := r.Group("/v1/chat")
 	{
-		rg.GET("/history", c.getChatHistory)
+		rg.GET("/history", middleware.TokenAuth(false, c.jwt, c.userRepo), c.getChatHistory)
 		rg.POST("/history", c.loadChatHistory)
 	}
 }
