@@ -42,6 +42,8 @@ func (User) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("shadow", Shadow.Type).
 			Unique(),
+		edge.To("conversations", Conversation.Type).
+			Comment("The conversations owned by the user"),
 	}
 }
 
