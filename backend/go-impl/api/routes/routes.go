@@ -2,10 +2,24 @@ package routes
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+)
+
+const (
+	banner = `
+    __    _             ________          __ 
+   / /   (_)___  ____ _/ ____/ /_  ____ _/ /_
+  / /   / / __ \/ __ ·/ /   / __ \/ __ ·/ __/
+ / /___/ / / / / /_/ / /___/ / / / /_/ / /_  
+/_____/_/_/ /_/\__, /\____/_/ /_/\__,_/\__/  
+              /____/                         
+
+Server Started at %s
+`
 )
 
 func NewEngine() (*gin.Engine, error) {
@@ -71,5 +85,8 @@ func (h *HttpEngine) Run() (*http.Server, error) {
 			log.Fatalf("listen: %s\n", err)
 		}
 	}()
+
+	fmt.Printf(banner, h.Addr)
+
 	return srv, nil
 }
