@@ -9,10 +9,11 @@ from core.websocket_server import WebSocketServer
 
 load_dotenv()
 
+ai_service = AIService()
+
 async def handle_websocket_message(websocket, data):
     """处理WebSocket消息"""
     if data.get('type') == 'message':
-        ai_service = AIService()
         responses = await ai_service.process_message(data.get('content', ''))
         
         if responses:
