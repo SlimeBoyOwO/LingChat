@@ -12,6 +12,10 @@ RUN go mod download
 # Copy the source code
 COPY . .
 
+RUN go generate ./...
+
+RUN go mod tidy
+
 # Build the application
 RUN go build -o main ./cmd/app
 
