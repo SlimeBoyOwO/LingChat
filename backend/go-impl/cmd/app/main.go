@@ -57,10 +57,13 @@ func main() {
 		log.Fatal(err)
 	}
 	userRepo := data.NewUserRepo(d)
+	conversationRepo := data.NewConversationRepo(d)
+	legacyTempChatContext := data.NewLegacyTempChatContext()
 
 	// init Service
-	chatService := service.NewLingChatService(emotionPredictorClient, vitsTTSClient, llmClient, conf.Chat.Model, conf.TempDirs.VoiceDir)
 	userService := service.NewUserService(userRepo, j)
+	conversationService := service.NewConversationService(conversationRepo, legacyTempChatContext, conf.Chat.Model)
+	chatService := service.NewLingChatService(emotionPredictorClient, vitsTTSClient, llmClient, conversationService, conf.Chat.Model, conf.TempDirs.VoiceDir)
 
 	// init HTTP server
 	chatRoute := v1.NewChatRoute(chatService, userRepo, j)

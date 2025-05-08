@@ -7,6 +7,8 @@ import (
 	"github.com/sashabaranov/go-openai"
 
 	"LingChat/api/routes/middleware"
+	"LingChat/api/routes/v1/request"
+	"LingChat/api/routes/v1/response"
 	"LingChat/internal/data"
 	"LingChat/internal/service"
 	"LingChat/pkg/jwt"
@@ -36,7 +38,7 @@ func (c *ChatRoute) RegisterRoute(r *gin.RouterGroup) {
 }
 
 func (c *ChatRoute) chatCompletion(ctx *gin.Context) {
-	var req ChatCompletionRequest
+	var req request.ChatCompletionRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"error": "请求格式错误: " + err.Error(),
@@ -44,7 +46,7 @@ func (c *ChatRoute) chatCompletion(ctx *gin.Context) {
 		return
 	}
 
-	resp, err := c.lingChatService.LingChat(ctx, req.Message)
+	resp, err := c.lingChatService.LingChat(ctx, req.Message, req.ConversationID, req.PrevMessageID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"error": "处理聊天请求失败: " + err.Error(),
@@ -54,10 +56,10 @@ func (c *ChatRoute) chatCompletion(ctx *gin.Context) {
 
 	ctx.JSON(http.StatusOK, gin.H{
 		"code": http.StatusOK,
-		"data": gin.H{
-			"conversation_id": 0,
-			"message_id":      0,
-			"messages":        resp,
+		"data": response.CompletionResponse{
+			ConversationID: resp.ConversationID,
+			MessageID:      resp.MessageID,
+			Messages:       resp.Messages,
 		},
 	})
 }
@@ -76,11 +78,7 @@ func (c *ChatRoute) loadChatHistory(ctx *gin.Context) {
 		return
 	}
 
-	response := c.lingChatService.LoadChatHistory(ctx, messages)
+	resp := c.lingChatService.LoadChatHistory(ctx, messages)
 
-	ctx.JSON(http.StatusOK, response)
-}
-
-type ChatCompletionRequest struct {
-	Message string `json:"message"`
+	ctx.JSON(http.StatusOK, resp)
 }

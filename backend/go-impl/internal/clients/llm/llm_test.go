@@ -21,13 +21,7 @@ func TestLLMClient_Chat(t *testing.T) {
 		t.Error("Expected non-empty response")
 	}
 
-	// 验证消息历史是否正确更新
-	client.mu.RLock()
-	if len(client.messages) != 3 { // system prompt + user message + assistant response
-		t.Errorf("Expected 3 messages in history, got %d", len(client.messages))
-	}
-	client.mu.RUnlock()
-	fmt.Println(client.messages)
+	fmt.Println("Response:", response)
 }
 
 func TestLLMClient_ChatStream(t *testing.T) {
@@ -63,13 +57,6 @@ func TestLLMClient_ChatStream(t *testing.T) {
 	if fullResponse == "" {
 		t.Error("Expected non-empty stream response")
 	}
-
-	// 验证消息历史是否正确更新
-	client.mu.RLock()
-	if len(client.messages) != 3 { // system prompt + user message + assistant response
-		t.Errorf("Expected 3 messages in history, got %d", len(client.messages))
-	}
-	client.mu.RUnlock()
 }
 
 func TestLLMClient_ConcurrentAccess(t *testing.T) {
@@ -94,12 +81,4 @@ func TestLLMClient_ConcurrentAccess(t *testing.T) {
 	for i := 0; i < concurrency; i++ {
 		<-done
 	}
-
-	// 验证消息历史是否正确更新
-	client.mu.RLock()
-	expectedMessages := 1 + concurrency*2 // system prompt + (user message + assistant response) * concurrency
-	if len(client.messages) != expectedMessages {
-		t.Errorf("Expected %d messages in history, got %d", expectedMessages, len(client.messages))
-	}
-	client.mu.RUnlock()
 }

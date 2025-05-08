@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"LingChat/api/routes/v1/request"
 	"LingChat/internal/data"
 	"LingChat/internal/data/ent/ent"
 	"LingChat/internal/service"
@@ -30,7 +31,7 @@ func (u *UserRoute) RegisterRoute(r *gin.RouterGroup) {
 
 // register 用户注册处理
 func (u *UserRoute) register(c *gin.Context) {
-	var req UserRequest
+	var req request.UserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"code": http.StatusBadRequest,
@@ -69,7 +70,7 @@ func (u *UserRoute) register(c *gin.Context) {
 
 // login 用户登录处理
 func (u *UserRoute) login(c *gin.Context) {
-	var req UserRequest
+	var req request.UserRequest
 	var user *ent.User
 	var token string
 	var err error
@@ -110,11 +111,4 @@ func (u *UserRoute) login(c *gin.Context) {
 			"token":    token,
 		},
 	})
-}
-
-// UserRequest 用户请求结构
-type UserRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Email    string `json:"email"`
 }
