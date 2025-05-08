@@ -81,7 +81,7 @@ func (l *LingChatService) EmoPredictBatch(ctx context.Context, results []Result)
 	return results
 }
 
-func (l *LingChatService) LingChat(ctx context.Context, msg api.Message) ([]api.Response, error) {
+func (l *LingChatService) LingChatByWS(ctx context.Context, msg api.Message) ([]api.Response, error) {
 	switch msg.Type {
 	case "message":
 	case "handshake":
@@ -94,9 +94,14 @@ func (l *LingChatService) LingChat(ctx context.Context, msg api.Message) ([]api.
 		return nil, fmt.Errorf("invalid type \"%s\" with message: \"%s\"", msg.Type, msg.Content)
 	}
 
+	return l.LingChat(ctx, msg.Content)
+}
+
+func (l *LingChatService) LingChat(ctx context.Context, message string) ([]api.Response, error) {
+
 	cleanTempVoiceFiles(l.tempFilePath)
 
-	rawLLMResp, err := l.llmClient.Chat(ctx, msg.Content, l.ConfigModel)
+	rawLLMResp, err := l.llmClient.Chat(ctx, message, l.ConfigModel)
 	if err != nil {
 		err = fmt.Errorf("LLM Chat error: %w", err)
 		return nil, err
@@ -111,7 +116,7 @@ func (l *LingChatService) LingChat(ctx context.Context, msg api.Message) ([]api.
 	}
 	emotionSegments = l.EmoPredictBatch(ctx, emotionSegments)
 
-	return l.CreateResponse(emotionSegments, msg.Content), nil
+	return l.CreateResponse(emotionSegments, message), nil
 }
 
 func (l *LingChatService) CreateResponse(results []Result, userMessage string) []api.Response {
@@ -225,7 +230,7 @@ func (l *LingChatService) ChatHandler(rawMsg []byte) ([]api.Sentence, error) {
 		return nil, err
 	}
 
-	resp, err := l.LingChat(context.Background(), msg)
+	resp, err := l.LingChatByWS(context.Background(), msg)
 	if err != nil {
 		err = fmt.Errorf("LingChat error: %w", err)
 		log.Println(err)

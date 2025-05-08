@@ -11,13 +11,6 @@ import (
 	"LingChat/internal/service"
 )
 
-// UserRequest 用户请求结构
-type UserRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Email    string `json:"email"`
-}
-
 type UserRoute struct {
 	userService service.UserService
 }
@@ -117,4 +110,11 @@ func (u *UserRoute) login(c *gin.Context) {
 			"token":    token,
 		},
 	})
+}
+
+// UserRequest 用户请求结构
+type UserRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Email    string `json:"email"`
 }
