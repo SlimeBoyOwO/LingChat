@@ -29,9 +29,30 @@ func NewChatRoute(lingChatService *service.LingChatService, userRepo data.UserRe
 func (c *ChatRoute) RegisterRoute(r *gin.RouterGroup) {
 	rg := r.Group("/v1/chat")
 	{
+		rg.POST("/completion", middleware.TokenAuth(false, c.jwt, c.userRepo), c.chatCompletion)
 		rg.GET("/history", middleware.TokenAuth(false, c.jwt, c.userRepo), c.getChatHistory)
-		rg.POST("/history", c.loadChatHistory)
+		rg.POST("/history", middleware.TokenAuth(false, c.jwt, c.userRepo), c.loadChatHistory)
 	}
+}
+
+func (c *ChatRoute) chatCompletion(ctx *gin.Context) {
+	var req ChatCompletionRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "请求格式错误: " + err.Error(),
+		})
+		return
+	}
+
+	resp, err := c.lingChatService.LingChat(ctx, req.Message)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"error": "处理聊天请求失败: " + err.Error(),
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, resp)
 }
 
 func (c *ChatRoute) getChatHistory(ctx *gin.Context) {
@@ -50,5 +71,13 @@ func (c *ChatRoute) loadChatHistory(ctx *gin.Context) {
 
 	response := c.lingChatService.LoadChatHistory(ctx, messages)
 
-	ctx.JSON(http.StatusOK, response)
+	ctx.JSON(http.StatusOK, gin.H{
+		"code": http.StatusOK,
+		"data": response,
+	},
+	)
+}
+
+type ChatCompletionRequest struct {
+	Message string `json:"message"`
 }
