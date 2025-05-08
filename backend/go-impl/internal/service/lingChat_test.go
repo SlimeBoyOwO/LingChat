@@ -45,7 +45,7 @@ func Test_ChatAndParse(t *testing.T) {
 }
 
 func Test_LingChat(t *testing.T) {
-	fmt.Println(service.LingChat(ctx, api.Message{
+	fmt.Println(service.LingChatByWS(ctx, api.Message{
 		Type:    "message",
 		Content: "你好",
 	},
