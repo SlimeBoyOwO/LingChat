@@ -26,6 +26,7 @@ COPY --from=builder /app/.env .
 
 # Expose port 8765
 EXPOSE 8765
+EXPOSE 9876
 
 # Command to run the executable
 CMD ["./main"] 
