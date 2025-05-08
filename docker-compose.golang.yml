@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8765:8765"
+      - "9876:9876"
     volumes:
       - ./volume/data:/app/audio
     env_file:
