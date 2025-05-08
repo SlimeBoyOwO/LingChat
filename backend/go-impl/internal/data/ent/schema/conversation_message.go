@@ -31,7 +31,7 @@ func (ConversationMessage) Fields() []ent.Field {
 		field.Enum("role").
 			Values(RoleSystem, RoleUser, RoleAssistant).
 			Comment("The role of the message sender"),
-		field.String("content").
+		field.Text("content").
 			Comment("The content of the message"),
 		field.JSON("parent_message_ids", []int{}).
 			Optional().
