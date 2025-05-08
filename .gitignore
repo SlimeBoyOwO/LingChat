@@ -1,0 +1,26 @@
+# .gitignore 文件内容
+# 虚拟环境
+.venv/
+venv/
+
+# 构建产物
+dist/
+site/
+build/
+*.egg-info/
+.tox/
+.coverage
+coverage.*
+htmlcov
+
+# 缓存和IDE文件
+__pycache__/
+*.py[cod]
+.DS_Store
+.idea/
+.vscode/
+
+# 日志文件和临时文件
+*.log
+*.tmp
+*.db
