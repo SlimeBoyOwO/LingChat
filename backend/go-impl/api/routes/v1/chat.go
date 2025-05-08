@@ -52,7 +52,14 @@ func (c *ChatRoute) chatCompletion(ctx *gin.Context) {
 		return
 	}
 
-	ctx.JSON(http.StatusOK, resp)
+	ctx.JSON(http.StatusOK, gin.H{
+		"code": http.StatusOK,
+		"data": gin.H{
+			"conversation_id": 0,
+			"message_id":      0,
+			"messages":        resp,
+		},
+	})
 }
 
 func (c *ChatRoute) getChatHistory(ctx *gin.Context) {
@@ -71,11 +78,7 @@ func (c *ChatRoute) loadChatHistory(ctx *gin.Context) {
 
 	response := c.lingChatService.LoadChatHistory(ctx, messages)
 
-	ctx.JSON(http.StatusOK, gin.H{
-		"code": http.StatusOK,
-		"data": response,
-	},
-	)
+	ctx.JSON(http.StatusOK, response)
 }
 
 type ChatCompletionRequest struct {
