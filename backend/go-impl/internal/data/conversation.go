@@ -20,7 +20,8 @@ var (
 type ConversationRepo interface {
 	// 对话相关操作
 	CreateEmptyConversation(ctx context.Context, title string, userID int64) (*ent.Conversation, error)
-	CreateConversationWithInitialMessage(ctx context.Context, title string, userID int64, role, content, model string) (*ent.Conversation, *ent.ConversationMessage, error)
+	CreateConversationWithInitialMessage(ctx context.Context, title string, userID int64, content, model string) (*ent.Conversation, *ent.ConversationMessage, error)
+	CreateConversationWithMessages(ctx context.Context, title string, userID int64, messages ...MessageInput) (*ent.Conversation, []*ent.ConversationMessage, error)
 	GetConversation(ctx context.Context, id int64) (*ent.Conversation, error)
 	GetConversationWithMessages(ctx context.Context, id int64) (*ent.Conversation, []*ent.ConversationMessage, error)
 	ListConversations(ctx context.Context, userID int64, offset, limit int) ([]*ent.Conversation, int, error)
@@ -28,8 +29,9 @@ type ConversationRepo interface {
 	DeleteConversation(ctx context.Context, id int64) error
 
 	// 消息相关操作
-	CreateHeadMessage(ctx context.Context, conversationID int64, role, content, model string) (*ent.ConversationMessage, error)
+	CreateHeadSystemMessage(ctx context.Context, conversationID int64, content, model string) (*ent.ConversationMessage, error)
 	AppendMessage(ctx context.Context, prevMessageID int64, role, content, model string) (*ent.ConversationMessage, error)
+	AppendMessageToConversation(ctx context.Context, conversationID int64, role, content, model string) (*ent.ConversationMessage, error)
 	GetMessage(ctx context.Context, id int64) (*ent.ConversationMessage, error)
 	ListMessages(ctx context.Context, conversationID int64, offset, limit int) ([]*ent.ConversationMessage, int, error)
 	GetMessageChain(ctx context.Context, messageID int64) ([]*ent.ConversationMessage, error)
@@ -57,7 +59,7 @@ func (r *conversationRepo) CreateEmptyConversation(ctx context.Context, title st
 }
 
 // CreateConversationWithInitialMessage 创建新对话并添加初始消息
-func (r *conversationRepo) CreateConversationWithInitialMessage(ctx context.Context, title string, userID int64, role, content, model string) (*ent.Conversation, *ent.ConversationMessage, error) {
+func (r *conversationRepo) CreateConversationWithInitialMessage(ctx context.Context, title string, userID int64, content, model string) (*ent.Conversation, *ent.ConversationMessage, error) {
 	// 开始事务
 	tx, err := r.data.db.Tx(ctx)
 	if err != nil {
@@ -76,7 +78,7 @@ func (r *conversationRepo) CreateConversationWithInitialMessage(ctx context.Cont
 	// 创建初始消息
 	msgCreate := tx.ConversationMessage.Create().
 		SetConversationID(conv.ID).
-		SetRole(conversationmessage.Role(role)).
+		SetRole(conversationmessage.RoleSystem).
 		SetContent(content).
 		SetParentMessageIds([]int{}) // 空的父消息ID数组
 
@@ -179,8 +181,8 @@ func (r *conversationRepo) DeleteConversation(ctx context.Context, id int64) err
 		Exec(ctx)
 }
 
-// CreateHeadMessage 为空对话创建第一条消息
-func (r *conversationRepo) CreateHeadMessage(ctx context.Context, conversationID int64, role, content, model string) (*ent.ConversationMessage, error) {
+// CreateHeadSystemMessage 为空对话创建第一条消息(一定是system message)
+func (r *conversationRepo) CreateHeadSystemMessage(ctx context.Context, conversationID int64, content, model string) (*ent.ConversationMessage, error) {
 	// 检查对话是否存在
 	conv, err := r.GetConversation(ctx, conversationID)
 	if err != nil {
@@ -209,7 +211,7 @@ func (r *conversationRepo) CreateHeadMessage(ctx context.Context, conversationID
 	// 创建头消息
 	msgCreate := tx.ConversationMessage.Create().
 		SetConversationID(conversationID).
-		SetRole(conversationmessage.Role(role)).
+		SetRole(conversationmessage.RoleSystem).
 		SetContent(content).
 		SetParentMessageIds([]int{}) // 空的父消息ID数组
 
@@ -393,4 +395,122 @@ func (r *conversationRepo) UpdateMessageStatus(ctx context.Context, id int64, st
 	return r.data.db.ConversationMessage.UpdateOneID(id).
 		SetStatus(status).
 		Exec(ctx)
+}
+
+// MessageInput 定义创建消息的输入结构
+type MessageInput struct {
+	Role    string
+	Content string
+	Model   string
+}
+
+// CreateConversationWithMessages 创建新对话并添加多条消息
+func (r *conversationRepo) CreateConversationWithMessages(ctx context.Context, title string, userID int64, messages ...MessageInput) (*ent.Conversation, []*ent.ConversationMessage, error) {
+	if len(messages) == 0 {
+		return nil, nil, errors.New("至少需要一条消息")
+	}
+	if messages[0].Role != string(conversationmessage.RoleSystem) {
+		return nil, nil, errors.New("invalid head message: role is not system")
+	}
+
+	// 开始事务
+	tx, err := r.data.db.Tx(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// 创建对话
+	conv, err := tx.Conversation.Create().
+		SetTitle(title).
+		SetUserID(userID).
+		Save(ctx)
+	if err != nil {
+		return nil, nil, tx.Rollback()
+	}
+
+	var createdMsgs []*ent.ConversationMessage
+	var prevMsg *ent.ConversationMessage
+
+	// 创建所有消息并链接它们
+	for i, msgInput := range messages {
+		parentIds := []int{}
+		if prevMsg != nil {
+			// 如果有前一条消息，则将其ID添加到父消息ID列表
+			parentIds = append(prevMsg.ParentMessageIds, int(prevMsg.ID))
+		}
+
+		// 创建消息
+		msgCreate := tx.ConversationMessage.Create().
+			SetConversationID(conv.ID).
+			SetRole(conversationmessage.Role(msgInput.Role)).
+			SetContent(msgInput.Content).
+			SetParentMessageIds(parentIds)
+
+		if msgInput.Model != "" {
+			msgCreate.SetModel(msgInput.Model)
+		}
+
+		// 设置状态
+		msgCreate.SetStatus("created")
+
+		// 保存消息
+		msg, err := msgCreate.Save(ctx)
+		if err != nil {
+			return nil, nil, tx.Rollback()
+		}
+
+		// 将消息添加到结果列表
+		createdMsgs = append(createdMsgs, msg)
+
+		// 如果有前一条消息，更新其 nextMessageID
+		if prevMsg != nil {
+			err = tx.ConversationMessage.UpdateOne(prevMsg).
+				SetNextMessageID(msg.ID).
+				Exec(ctx)
+			if err != nil {
+				return nil, nil, tx.Rollback()
+			}
+		}
+
+		// 更新前一条消息引用
+		prevMsg = msg
+
+		// 如果是最后一条消息，更新对话的最新消息ID
+		if i == len(messages)-1 {
+			err = tx.Conversation.UpdateOne(conv).
+				SetLatestMessageID(msg.ID).
+				Exec(ctx)
+			if err != nil {
+				return nil, nil, tx.Rollback()
+			}
+		}
+	}
+
+	// 提交事务
+	if err := tx.Commit(); err != nil {
+		return nil, nil, err
+	}
+
+	return conv, createdMsgs, nil
+}
+
+// AppendMessageToConversation 向对话的最新消息后追加消息，如果对话还没有消息则创建第一条消息
+func (r *conversationRepo) AppendMessageToConversation(ctx context.Context, conversationID int64, role, content, model string) (*ent.ConversationMessage, error) {
+	// 获取对话
+	conv, err := r.GetConversation(ctx, conversationID)
+	if err != nil {
+		return nil, ErrConversationNotFound
+	}
+
+	// 检查对话是否有最新消息
+	if conv.LatestMessageID == nil {
+		if role != string(conversationmessage.RoleSystem) {
+			return nil, errors.New("conversation has no message yet and role is not system")
+		}
+		// 对话没有消息，创建头消息
+		return r.CreateHeadSystemMessage(ctx, conversationID, content, model)
+	}
+
+	// 对话有最新消息，追加到最新消息后
+	return r.AppendMessage(ctx, *conv.LatestMessageID, role, content, model)
 }
