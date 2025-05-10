@@ -1,4 +1,4 @@
-from user_model import UserModel, UserConversationModel
+from py_ling_chat.database.user_model import UserModel, UserConversationModel
 
 # 创建用户
 # try:
@@ -7,9 +7,9 @@ from user_model import UserModel, UserConversationModel
 # except ValueError as ve:
 #     print("用户创建失败：", ve)
 
-# 获取用户的所有对话
-
-user_id = 1
-conversations = UserConversationModel.get_user_conversations(user_id)
-for conv in conversations:
-    print(conv)
+if __name__ == "__main__":
+    # 获取用户的所有对话
+    user_id = 1
+    conversations = UserConversationModel.get_user_conversations(user_id)
+    for conv in conversations:
+        print(conv)

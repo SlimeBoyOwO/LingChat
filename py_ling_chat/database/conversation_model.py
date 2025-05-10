@@ -1,6 +1,6 @@
 from typing import List, Dict, Optional
-from database import get_db_connection, Role
 import json
+from py_ling_chat.database.database import get_db_connection, Role
 
 
 class ConversationModel:
