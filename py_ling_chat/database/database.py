@@ -2,10 +2,13 @@ import sqlite3
 import os  # 添加os模块用于路径操作
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
+
+from py_ling_chat.utils.runtime_path import root_path
 
 # 修改数据库路径到data目录
-DATA_DIR = "data"
-DB_NAME = os.path.join(DATA_DIR, "chat_system.db")  # 使用os.path.join确保跨平台兼容性
+DATA_DIR = root_path / "data"
+DB_NAME = DATA_DIR / "chat_system.db"
 
 
 class Role(Enum):
@@ -16,8 +19,7 @@ class Role(Enum):
 
 def init_db():
     # 确保data目录存在
-    if not os.path.exists(DATA_DIR):
-        os.makedirs(DATA_DIR)
+    Path(DATA_DIR).mkdir(parents=True, exist_ok=True)
     
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -84,8 +86,7 @@ def init_db():
 
 def get_db_connection():
     # 确保data目录存在
-    if not os.path.exists(DATA_DIR):
-        os.makedirs(DATA_DIR)
+    Path(DATA_DIR).mkdir(parents=True, exist_ok=True)
     
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row  # 允许以字典方式访问结果
@@ -116,7 +117,7 @@ def main():
             print(f"{col['name']}: {col['type']}")
     
     conn.close()
-    print(f"\n数据库初始化完成，数据库文件位置: {os.path.abspath(DB_NAME)}")
+    print(f"\n数据库初始化完成，数据库文件位置: {Path(DB_NAME).resolve()}")
     print("表结构验证通过。")
 
 

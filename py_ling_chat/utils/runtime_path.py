@@ -7,4 +7,4 @@ def get_root_path() -> Path:
         return Path(sys._MEIPASS)
     return Path(__file__).resolve().parent.parent.parent
 
-root_path = get_root_path()
+root_path: Path = get_root_path()
