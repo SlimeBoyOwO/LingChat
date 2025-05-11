@@ -69,6 +69,7 @@ export class UIController {
       DOM.avatar.title.textContent = "可爱的你";
       DOM.avatar.subtitle.textContent = "Bilibili";
       DOM.avatar.emotion.textContent = "";
+      this.writer.stop();
     });
 
     // 等待AI回复事件
