@@ -31,6 +31,7 @@ runtime_logs/*.log
 # Ignore generated audio file
 public/audio/
 frontend/public/audio/
+backend/go-impl/internal/data/ent/ent
 
 # Ignore npm files
 package-lock.json

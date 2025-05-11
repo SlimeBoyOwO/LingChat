@@ -10,6 +10,8 @@ class DeepSeek:
         self.client = OpenAI(api_key=api_key, base_url=base_url)
 
         self.settings = os.environ.get("SYSTEM_PROMPT")
+
+        self.debug_mode = os.environ.get("DEBUG_MODE", "False").lower() == "true"
         
         # 强化系统指令
         self.messages = [
@@ -24,6 +26,13 @@ class DeepSeek:
             print("再见！")
             return "程序终止"
         self.messages.append({"role": "user", "content": user_input})
+
+        # 若Debug模式开启，则截取发送到llm的文字信息打印到终端
+        if self.debug_mode:
+            print("\n------ 开发者模式：以下信息被发送给了llm ------")
+            for message in self.messages:
+                print(f"Role: {message['role']}\nContent: {message['content']}\n")
+            print("------ 结束 ------")
 
         try:
             response = self.client.chat.completions.create(

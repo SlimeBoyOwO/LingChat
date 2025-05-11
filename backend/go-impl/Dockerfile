@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.21-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
@@ -11,6 +11,10 @@ RUN go mod download
 
 # Copy the source code
 COPY . .
+
+RUN go generate ./...
+
+RUN go mod tidy
 
 # Build the application
 RUN go build -o main ./cmd/app
@@ -26,6 +30,7 @@ COPY --from=builder /app/.env .
 
 # Expose port 8765
 EXPOSE 8765
+EXPOSE 9876
 
 # Command to run the executable
 CMD ["./main"] 
