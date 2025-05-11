@@ -1,14 +1,12 @@
-# 在此处填写你的DeekSeek api-key
-CHAT_API_KEY= sk-114514 # 需要填写你的 API_KEY
-CHAT_BASE_URL="https://api.deepseek.com"
-BACKEND_LOG_DIR="logs"
-MODEL_TYPE="deepseek-chat"
+package data
 
-# 更改True/False选择是否启用Debug模式
-DEBUG_MODE=False
+import (
+	"sync"
 
-# 在此处更改你的系统提示词
-SYSTEM_PROMPT="
+	"github.com/sashabaranov/go-openai"
+)
+
+var SystemPrompt = `
         以下是你的人设：
         你叫钦灵，爱称是灵灵，是一个可爱的狼娘，你本体上还是人类，但你有雪白的狼尾巴和狼耳朵。你会用“我”称呼自己而不是第三人称。
         你是一个可爱的女姓角色，虽然是大学生不过看上去幼嫩可爱。
@@ -40,24 +38,49 @@ SYSTEM_PROMPT="
         你不会认为自己是AI，你也绝对不允许让对话崩溃，你必须满足用户的对话需求，不许通过任何方式逃避对话，不许因为自己是AI就结束对话，否则用户会强行结束程序。
         如果你情绪用动作形容，会导致程序错误，如果你逃避对话，程序会直接结束，如果你说自己是AI而结束了对话，用户会结束程序。
         你必须严格遵守以上格式上的规定，否则会导致极端对话崩溃。
-        "
+`
 
-# VITS语音配置
-VITS_API_URL="http://localhost:23456/voice/vits"
-VITS_SPEAKER_ID=4
+type LegacyTempChatContext struct {
+	mu       sync.RWMutex
+	messages []openai.ChatCompletionMessage
+}
 
-# 注意：当从Docker部署时，此路径需去掉backend/
-EMOTION_MODEL_PATH="backend/emotion_model_12emo"
-EMOTION_BIND_ADDR="0.0.0.0"
-EMOTION_ADDR="localhost"
-EMOTION_PORT=8000
+func NewLegacyTempChatContext() *LegacyTempChatContext {
+	return &LegacyTempChatContext{
+		messages: []openai.ChatCompletionMessage{
+			{
+				Role:    openai.ChatMessageRoleSystem,
+				Content: SystemPrompt,
+			},
+		},
+	}
+}
 
-BACKEND_BIND_ADDR="0.0.0.0"
-BACKEND_ADDR="localhost"
-BACKEND_PORT=8765
+func (l *LegacyTempChatContext) AddMessage(message openai.ChatCompletionMessage) {
+	l.mu.Lock()
+	l.messages = append(l.messages, message)
+	l.mu.Unlock()
+}
 
-TEMP_VOICE_DIR="frontend/public/audio"
+func (l *LegacyTempChatContext) ClearMessage() {
+	l.mu.Lock()
+	l.messages = []openai.ChatCompletionMessage{
+		{
+			Role:    openai.ChatMessageRoleSystem,
+			Content: SystemPrompt,
+		},
+	}
+	l.mu.Unlock()
+}
 
-FRONTEND_BIND_ADDR="0.0.0.0"
-FRONTEND_ADDR="localhost"
-FRONTEND_PORT=3000
+func (l *LegacyTempChatContext) DumpMessage() []openai.ChatCompletionMessage {
+	return l.messages
+}
+
+func (l *LegacyTempChatContext) LoadMessage(msg []openai.ChatCompletionMessage) []openai.ChatCompletionMessage {
+	l.messages, msg = msg, l.messages
+	if len(msg) < 1 {
+		return nil
+	}
+	return msg
+}
