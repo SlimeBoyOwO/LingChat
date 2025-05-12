@@ -1,5 +1,5 @@
-from .ai_service import AIService
-from .logger import logger
+from py_ling_chat.core.ai_service import AIService
+from py_ling_chat.core.logger import logger
 import os
 
 class ServiceManager:
