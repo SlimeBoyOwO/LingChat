@@ -5,13 +5,13 @@ import re
 from typing import List, Dict, Optional
 from datetime import datetime
 
-from .deepseek import DeepSeek
-from .predictor import EmotionClassifier  # 导入情绪分类器
-from .VitsTTS import VitsTTS              # 导入语音生成
-from .langDetect import LangDetect
-from .logger import logger, TermColors
-from .dialog_logger import DialogLogger
-from .pic_analyzer import DesktopAnalyzer
+from py_ling_chat.core.deepseek import DeepSeek
+from py_ling_chat.core.predictor import EmotionClassifier  # 导入情绪分类器
+from py_ling_chat.core.VitsTTS import VitsTTS              # 导入语音生成
+from py_ling_chat.core.langDetect import LangDetect
+from py_ling_chat.core.logger import logger, TermColors
+from py_ling_chat.core.dialog_logger import DialogLogger
+from py_ling_chat.core.pic_analyzer import DesktopAnalyzer
 
 # 常量定义
 TEMP_VOICE_DIR = "../public/audio"

@@ -5,7 +5,7 @@ import json
 import copy
 from datetime import datetime
 #from .logger import log_debug, log_info, log_error, log_text
-from .logger import logger
+from py_ling_chat.core.logger import logger
 from dotenv import load_dotenv
 import requests
 
@@ -75,7 +75,7 @@ class DeepSeek:
                 logger.debug("------ RAG配置结束 ------\n")
                 
             # 动态导入，避免在未启用RAG时也必须安装相关依赖
-            from .RAG import RAGSystem
+            from py_ling_chat.core.RAG import RAGSystem
             self.rag_system = RAGSystem(config)
             rag_initialized = self.rag_system.initialize()
             if rag_initialized:
