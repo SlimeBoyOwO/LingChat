@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from core.service_manager import service_manager
+from py_ling_chat.core.service_manager import service_manager
 
 router = APIRouter(prefix="/api/v1/chat/info", tags=["Chat Info"])
 
