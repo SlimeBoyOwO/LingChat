@@ -6,3 +6,4 @@ torch
 aiohttp
 websockets
 dotenv
+uvicorn
