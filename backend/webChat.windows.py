@@ -27,6 +27,21 @@ async def handle_websocket_message(websocket, data):
                 await asyncio.sleep(0.1)
 
 async def main():
+    # ASCII Art LING CHAT Logo
+    logo = [
+    "", 
+    "", 
+    "█╗       ██╗ ███╗   ██╗  ██████╗      █████╗ ██╗  ██╗  █████╗  ████████╗",
+    "██║      ██║ ████╗  ██║ ██╔════╝     ██╔═══╝ ██║  ██║ ██╔══██╗ ╚══██╔══╝",
+    "██║      ██║ ██╔██╗ ██║ ██║  ███╗    ██║     ███████║ ███████║    ██║   ",
+    "██║      ██║ ██║╚██╗██║ ██║   ██║    ██║     ██╔══██║ ██╔══██║    ██║   ",
+    "███████╗ ██║ ██║ ╚████║ ╚██████╔╝     █████╗ ██║  ██║ ██║  ██║    ██║   ",
+    "╚══════╝ ╚═╝ ╚═╝  ╚═══╝  ╚═════╝      ╚════╝ ╚═╝  ╚═╝ ╚═╝  ╚═╝    ╚═╝   "
+    ]
+    for line in logo:
+        logger.log_text(line)
+    logger.log_text("\n") # Add a newline for spacing after the logo
+
     # 初始化前端管理器
     frontend = FrontendManager(logger)
     frontend_dir = os.path.abspath(os.path.join(
