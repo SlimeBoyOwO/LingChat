@@ -74,14 +74,11 @@ function connectToPython(wss) {
   });
 
   ws.on("error", (error) => {
-    logger.error(`Python 服务连接错误: ${error.message}`);
+    logger.error(`Python 服务连接失败，正在尝试重新连接 ${error.message}`);
     pythonSocket = null;
   });
 
   ws.on("close", (code, reason) => {
-    logger.info(
-      `正在尝试重新连接Python服务：code=${code}, reason=${reason.toString()}`
-    );
     pythonSocket = null;
     // 重连时也需要 wss 实例
     setTimeout(() => connectToPython(wssInstance), 5000); // 传递存储的 wssInstance

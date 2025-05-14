@@ -66,8 +66,7 @@ async def main():
     
     try:
         await ws_server.start()
-        logger.info("服务已就绪，等待客户端连接...")
-        logger.log_text("按 Ctrl+C 停止服务")
+        logger.info("WebSocket服务器已就绪")
         await asyncio.Future()  # 永久运行
     except KeyboardInterrupt:
         logger.info("\n接收到终止信号")
