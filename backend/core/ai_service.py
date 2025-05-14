@@ -24,11 +24,11 @@ COLOR = {
 }
 
 class AIService:
-    def __init__(self):
+    def __init__(self, logger=None):
         """初始化所有服务组件"""
-        self.logger = Logger()
-        self.deepseek = DeepSeek()
-        self.emotion_classifier = EmotionClassifier()
+        self.logger = logger or Logger()
+        self.deepseek = DeepSeek(logger=self.logger)
+        self.emotion_classifier = EmotionClassifier(logger=self.logger)
         self.lang_detector = LangDetect()
         self.tts_engine = self._init_tts_engine()
         self._prepare_directories()
@@ -41,7 +41,8 @@ class AIService:
         return VitsTTS(
             api_url="http://127.0.0.1:23456/voice/vits",
             speaker_id=4,
-            lang="ja"
+            lang="ja",
+            logger=self.logger
         )
     
     def _prepare_directories(self):
@@ -69,15 +70,16 @@ class AIService:
         # 分析情绪片段
         emotion_segments = self._analyze_emotions(ai_response)
         if not emotion_segments:
+            self.logger.warning("未检测到有效情绪片段")
             raise ValueError("未检测到有效情绪片段")
         
         # 生成语音和构造响应
         await self._generate_voice_files(emotion_segments)
-        responses =  self._create_responses(emotion_segments, user_message)
+        responses = self._create_responses(emotion_segments, user_message)
     
-        print("\n--- AI 回复分析结果 ---")
-        self._play_voice_files(emotion_segments)
-        print("--- 分析结束 ---")
+        self.logger.debug("--- AI 回复分析结果 ---")
+        self._log_analysis_result(emotion_segments)
+        self.logger.debug("--- 分析结束 ---")
 
         return responses
     
@@ -122,10 +124,9 @@ class AIService:
                         lang_clean != 'Chinese_ABS':
                             cleaned_text, japanese_text = japanese_text, cleaned_text
 
-
             except Exception as e:
                 # 语言检测失败时保持原样
-                print(f"语言检测错误: {e}")
+                self.logger.warning(f"语言检测错误: {e}")
 
             # 对情绪标签单独预测，增加错误处理
             try:
@@ -135,7 +136,7 @@ class AIService:
                     "confidence": predicted["confidence"]
                 }
             except Exception as e:
-                print(f"情绪预测错误 '{emotion_tag}': {e}")
+                self.logger.error(f"情绪预测错误 '{emotion_tag}': {e}")
                 prediction_result = {
                     "label": "unknown",
                     "confidence": 0.0
@@ -189,22 +190,23 @@ class AIService:
     
     def _log_conversation(self, speaker: str, message: str):
         """记录对话日志"""
-        color = COLOR["user"] if speaker == "用户" else COLOR["ai"]
-        print(f"\n{color}{speaker}:{COLOR['reset']} {message}")
+        log_message = f"{speaker}: {message}"
+        self.logger.info_white_text(log_message)
         self.logger.log_conversation(speaker, message)
 
-    def _play_voice_files(self, segments):
+    def _log_analysis_result(self, segments):
+        """记录分析结果"""
         for segment in segments:
-            print(f"\n分析结果 (片段 {segment['index']}):")
-            print(f"  原始标记: 【{segment['original_tag']}】")
-            print(f"  中文文本: {segment['following_text']}")
+            self.logger.debug(f"\n分析结果 (片段 {segment['index']}):")
+            self.logger.debug(f"  原始标记: 【{segment['original_tag']}】")
+            self.logger.debug(f"  中文文本: {segment['following_text']}")
             if segment['motion_text']:
-                print(f"  动作文本: （{segment['motion_text']}）")
+                self.logger.debug(f"  动作文本: （{segment['motion_text']}）")
             if segment['japanese_text']:
-                print(f"  日文文本: <{segment['japanese_text']}>")
-            print(f"  预测情绪: {segment['predicted']} (置信度: {segment['confidence']:.2%})")
+                self.logger.debug(f"  日文文本: <{segment['japanese_text']}>")
+            self.logger.debug(f"  预测情绪: {segment['predicted']} (置信度: {segment['confidence']:.2%})")
             if os.path.exists(segment['voice_file']):
-                print(f"  对应语音: {os.path.basename(segment['voice_file'])}")
+                self.logger.debug(f"  对应语音: {os.path.basename(segment['voice_file'])}")
             else:
                 if segment['japanese_text']:
-                    print(f"  对应语音: (未生成或生成失败)")
+                    self.logger.debug(f"  对应语音: (未生成或生成失败)")
