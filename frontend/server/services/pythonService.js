@@ -1,5 +1,6 @@
 const WebSocket = require("ws");
 const { backend } = require("../config");
+const logger = require("../utils/logger");
 // handlePythonMessage 和 requestService 现在可能不再用于主要的消息转发流程
 // const { handlePythonMessage } = require("./requestService");
 
@@ -11,29 +12,29 @@ let wssInstance = null; // 新增：用于存储从 app.js 传过来的 wss 实�
 function connectToPython(wss) {
   // 存储 wss 实例，以便在回调函数中使用
   if (!wss) {
-    console.error(
+    logger.error(
       "WSS instance is required for connectToPython to enable broadcasting."
     );
     // 你可以在这里决定是抛出错误还是允许连接但不广播
   }
   wssInstance = wss;
 
-  console.log(`尝试连接到 Python 服务: ws://${backend.addr}:${backend.port}`);
+  logger.debug(`尝试连接到 Python 服务: ws://${backend.addr}:${backend.port}`);
   const ws = new WebSocket(`ws://${backend.addr}:${backend.port}`); // 简化连接头信息，通常不需要手动设置
 
   ws.on("open", () => {
-    console.log("已连接到 Python 服务");
+    logger.debug("已连接到 Python 服务");
     pythonSocket = ws;
   });
 
   // *** 在这里直接实现广播逻辑 ***
   ws.on("message", (messageBuffer) => {
     const messageString = messageBuffer.toString("utf8");
-    // console.log("收到 Python 消息:", messageString);                 <=====调试再打开
+    // logger.debug("收到 Python 消息:", messageString);                 <=====调试再打开
 
     // 检查 wssInstance 是否已设置
     if (!wssInstance) {
-      console.error(
+      logger.error(
         "WSS instance not available, cannot broadcast message from Python."
       );
       return; // 如果没有 wss 实例，无法广播
@@ -68,18 +69,18 @@ function connectToPython(wss) {
       //   // 执行上面的广播代码
       // }
     } catch (e) {
-      console.error("处理 Python 响应并广播时出错:", e);
+      logger.error("处理 Python 响应并广播时出错:", e);
     }
   });
 
   ws.on("error", (error) => {
-    console.error("Python 服务连接错误:", error.message);
+    logger.error(`Python 服务连接错误: ${error.message}`);
     pythonSocket = null;
   });
 
   ws.on("close", (code, reason) => {
-    console.log(
-      `Python 服务连接断开: code=${code}, reason=${reason.toString()}. 5秒后重试...`
+    logger.info(
+      `正在尝试重新连接Python服务：code=${code}, reason=${reason.toString()}`
     );
     pythonSocket = null;
     // 重连时也需要 wss 实例

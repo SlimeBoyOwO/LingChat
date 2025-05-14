@@ -7,11 +7,13 @@ import atexit
 import signal
 import sys
 from typing import Optional
+from .logger import Logger
 
 class FrontendManager:
-    def __init__(self):
+    def __init__(self, logger: Optional[Logger] = None):
         self.process: Optional[subprocess.Popen] = None
         self._cleanup_called = False
+        self.logger = logger or Logger()
         self._register_cleanup()
 
     def start_frontend(self, frontend_dir: str, port: str = "3000") -> bool:
@@ -19,7 +21,7 @@ class FrontendManager:
         server_js_path = os.path.join(frontend_dir, "app.js")
         
         if not os.path.isfile(server_js_path):
-            print(f"Error: Frontend script not found at {server_js_path}")
+            self.logger.error(f"前端脚本未找到: {server_js_path}")
             return False
 
         try:
@@ -29,21 +31,21 @@ class FrontendManager:
                 creationflags=self._get_creation_flags(),
                 start_new_session=sys.platform != "win32"
             )
-            print(f"Frontend server started (PID: {self.process.pid})")
+            self.logger.info(f"前端服务器已启动 (PID: {self.process.pid})")
             
             time.sleep(3)  # 等待服务器启动
             if self.process.poll() is not None:
-                print(f"Frontend server exited with code {self.process.poll()}")
+                self.logger.error(f"前端服务器退出，错误码: {self.process.poll()}")
                 return False
             
             self._open_browser(f"http://localhost:{port}")
             return True
             
         except FileNotFoundError:
-            print("Error: 'node' command not found. Please install Node.js.")
+            self.logger.error("未找到'node'命令. 请安装Node.js")
             return False
         except Exception as e:
-            print(f"Failed to start frontend: {e}")
+            self.logger.error(f"启动前端失败: {e}")
             return False
 
     def stop_frontend(self):
@@ -52,7 +54,7 @@ class FrontendManager:
             return
 
         self._cleanup_called = True
-        print("\nStopping frontend server...")
+        self.logger.info("正在停止前端服务器...")
         
         try:
             if self.process.poll() is None:
@@ -63,7 +65,7 @@ class FrontendManager:
                     self.process.kill()
                     self.process.wait(timeout=2)
         except Exception as e:
-            print(f"Error stopping frontend: {e}")
+            self.logger.error(f"停止前端出错: {e}")
         finally:
             self.process = None
 
@@ -71,9 +73,9 @@ class FrontendManager:
         """尝试在浏览器中打开URL"""
         try:
             webbrowser.open(url)
-            print(f"Opened browser at {url}")
+            self.logger.info(f"已在浏览器中打开: {url}")
         except Exception as e:
-            print(f"Failed to open browser: {e}")
+            self.logger.error(f"打开浏览器失败: {e}")
 
     def _get_creation_flags(self):
         """获取平台特定的进程创建标志"""
@@ -94,10 +96,10 @@ class FrontendManager:
             try:
                 signal.signal(sig, self._handle_signal)
             except (OSError, ValueError, AttributeError) as e:
-                print(f"Warning: Could not register signal {sig}: {e}")
+                self.logger.warning(f"无法注册信号 {sig}: {e}")
 
     def _handle_signal(self, sig, frame):
         """处理操作系统信号"""
-        print(f"\nReceived signal {signal.Signals(sig).name}, shutting down...")
+        self.logger.info(f"收到信号 {signal.Signals(sig).name}，正在关闭...")
         self.stop_frontend()
         sys.exit(0)
