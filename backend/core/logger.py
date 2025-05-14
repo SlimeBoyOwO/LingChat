@@ -36,10 +36,16 @@ class Color:
     RESET = "\033[0m"
 
 class Logger:
-    def __init__(self, log_dir=None):
-        self.log_dir = log_dir or os.environ.get("BACKEND_LOG_DIR", "logs")
-        os.makedirs(self.log_dir, exist_ok=True)
-        self.log_file = self.setup_logging()
+    def __init__(self):
+        # 应用日志配置
+        self.app_log_dir = os.environ.get("APP_LOG_DIR", "log")
+        os.makedirs(self.app_log_dir, exist_ok=True)
+        self.app_log_file = self._setup_app_logging()
+
+        # 对话日志配置 (保持原有逻辑和环境变量 BACKEND_LOG_DIR)
+        self.conversation_log_dir = os.environ.get("BACKEND_LOG_DIR", "logs")
+        os.makedirs(self.conversation_log_dir, exist_ok=True)
+        self.conversation_log_file = self._setup_conversation_logging()
         
         log_level_str = os.environ.get("LOG_LEVEL", "INFO").upper()
         try:
@@ -61,24 +67,44 @@ class Logger:
             "warning": Color.YELLOW
         }
     
-    def setup_logging(self):
-        """配置日志文件路径"""
-        # 获取现有日志文件数量
-        existing_logs = [f for f in os.listdir(self.log_dir) if f.endswith('.log')]
-        next_num = len(existing_logs)
-        
-        # 创建日志文件路径
-        log_file = os.path.join(self.log_dir, f"{next_num}.log")
-        
-        # 写入第一行（日期时间）
-        with open(log_file, 'w', encoding='utf-8') as f:
+    def _setup_app_logging(self):
+        """配置应用程序日志文件路径 (例如: log/0.log)"""
+        try:
+            existing_logs = [f for f in os.listdir(self.app_log_dir) if f.endswith('.log') and f[:-4].isdigit()]
+            next_num = 0
+            if existing_logs:
+                next_num = max(int(f[:-4]) for f in existing_logs) + 1
+        except FileNotFoundError:
+            # 如果目录刚创建，listdir可能会在此刻失败（尽管 makedirs exist_ok=True）
+            # 或其他权限问题，安全起见，从0开始
+            existing_logs = []
+            next_num = 0
+            
+        app_log_file_path = os.path.join(self.app_log_dir, f"{next_num}.log")
+        with open(app_log_file_path, 'a', encoding='utf-8') as f:
+            f.write(f"--- Application Log Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+        return app_log_file_path
+
+    def _setup_conversation_logging(self):
+        """配置对话日志文件路径 (例如: logs/0.log)，保持原有格式"""
+        try:
+            existing_logs = [f for f in os.listdir(self.conversation_log_dir) if f.endswith('.log') and f[:-4].isdigit()]
+            next_num = 0
+            if existing_logs:
+                next_num = max(int(f[:-4]) for f in existing_logs) + 1
+        except FileNotFoundError:
+            existing_logs = []
+            next_num = 0
+
+        conv_log_file_path = os.path.join(self.conversation_log_dir, f"{next_num}.log")
+        # 对话日志通常每个会话（或每次启动）是一个新文件，或追加到特定文件，这里保持了每次启动新文件并写日期的逻辑
+        with open(conv_log_file_path, 'w', encoding='utf-8') as f: 
             f.write(f"对话日期: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-        
-        return log_file
+        return conv_log_file_path
 
     def log_conversation(self, role, content):
-        """记录对话内容到日志文件"""
-        with open(self.log_file, 'a', encoding='utf-8') as f:
+        """记录对话内容到专门的对话日志文件"""
+        with open(self.conversation_log_file, 'a', encoding='utf-8') as f:
             f.write(f"{role}: {content}\n\n")
 
     def _log(self, level: LogLevel, message: str, file_output: bool = True, force_message_color: Optional[str] = None):
@@ -100,7 +126,7 @@ class Logger:
         
         if file_output:
             plain_log_prefix = f"[{config['prefix']}]" 
-            with open(self.log_file, 'a', encoding='utf-8') as f:
+            with open(self.app_log_file, 'a', encoding='utf-8') as f:
                 f.write(f"{now} {plain_log_prefix} {message}\n")
 
     def log_text(self, message: str):
