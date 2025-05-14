@@ -24,6 +24,7 @@ frontend/node_modules/
 *.safetensors
 
 # Ignore logs
+log/*.log
 logs/*.log
 backend/logs/*.log
 runtime_logs/*.log
