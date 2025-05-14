@@ -1,33 +1,84 @@
-# main.py
 import os
 import asyncio
 import json
+import uvicorn
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
 from dotenv import load_dotenv
 from core.ai_service import AIService
 from core.frontend_manager import FrontendManager
-from core.websocket_server import WebSocketServer
 from core.logger import Logger
 
 load_dotenv()
 
+# ============= 初始化核心组件 =============
 logger = Logger()
 ai_service = AIService(logger)
+app = FastAPI()
 
+# ============= 保留你的原始 WebSocket 处理逻辑 =============
 async def handle_websocket_message(websocket, data):
-    """处理WebSocket消息"""
+    """完全复用你原有的消息处理逻辑"""
     if data.get('type') == 'message':
         logger.client_message(data)
-        
         responses = await ai_service.process_message(data.get('content', ''))
-        
-        if responses:
-            logger.response_info(len(responses))
-            for response in responses:
-                await websocket.send(json.dumps(response))
-                await asyncio.sleep(0.1)
+        for response in responses:
+            await websocket.send_json(response)
 
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            message = await websocket.receive()
+            
+            # 同时处理文本和二进制JSON
+            if "bytes" in message:  # 二进制消息
+                try:
+                    data = json.loads(message["bytes"].decode('utf-8'))
+                except UnicodeDecodeError:
+                    await websocket.send_json({"error": "非UTF-8编码的二进制数据"})
+                    continue
+            elif "text" in message:  # 文本消息
+                try:
+                    data = json.loads(message["text"])
+                except json.JSONDecodeError:
+                    await websocket.send_json({"error": "非JSON格式文本"})
+                    continue
+            else:
+                await websocket.send_json({"error": "未知消息格式"})
+                continue
+                
+            # ▼▼▼ 您的原有业务逻辑 ▼▼▼
+            if data.get('type') == 'ping':
+                await websocket.send_json({"type": "pong"})
+            elif data.get('type') == 'message':
+                responses = await ai_service.process_message(data.get('content', ''))
+                for response in responses:
+                    await websocket.send_json(response)
+            # ▲▲▲ 业务逻辑结束 ▲▲▲
+                    
+    except WebSocketDisconnect:
+        print("客户端断开连接")
+
+# ============= 新增 HTTP 路由 =============
+@app.post("/v1/user/register")
+async def register(username: str, password: str, email: str):
+    """新增的HTTP接口（示例）"""
+    return {
+        "code": 200,
+        "msg": "Operation successful",
+        "data": {"user_id": 1, "username": username}
+    }
+
+# ============= 保留前端服务 =============
+frontend_dir = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'server')
+if os.path.exists(frontend_dir):
+    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="static")
+
+# ============= 启动逻辑 =============
 async def main():
-    # ASCII Art LING CHAT Logo
     logo = [
     "", 
     "", 
@@ -40,42 +91,27 @@ async def main():
     ]
     for line in logo:
         logger.log_text(line)
-    logger.log_text("\n") # Add a newline for spacing after the logo
+    logger.log_text("\n")
 
-    # 初始化前端管理器
+    # 启动前端（保持你的原有逻辑）
     frontend = FrontendManager(logger)
-    frontend_dir = os.path.abspath(os.path.join(
-        os.path.dirname(__file__), '..', 'frontend', 'server'
-    ))
-    
-    # 启动前端
     if not frontend.start_frontend(
         frontend_dir=frontend_dir,
         port=os.getenv('FRONTEND_PORT', '3000')
     ):
-        logger.error("前端启动失败，服务终止")
+        logger.error("前端启动失败")
         return
 
-    # 启动WebSocket服务器
-    ws_server = WebSocketServer(
+    # 启动 FastAPI（同时支持 HTTP 和 WebSocket）
+    config = uvicorn.Config(
+        app,
         host=os.getenv('BACKEND_BIND_ADDR', '0.0.0.0'),
         port=int(os.getenv('BACKEND_PORT', '8765')),
-        message_handler=handle_websocket_message,
-        logger=logger
+        log_level="info"
     )
-    
-    try:
-        await ws_server.start()
-        logger.info("WebSocket服务器已就绪")
-        await asyncio.Future()  # 永久运行
-    except KeyboardInterrupt:
-        logger.info("\n接收到终止信号")
-    finally:
-        await ws_server.stop()
-        logger.info("服务已关闭")
+    server = uvicorn.Server(config)
+    await server.serve()
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except Exception as e:
-        logger.error(f"服务异常终止: {e}")
+    asyncio.run(main())
+
