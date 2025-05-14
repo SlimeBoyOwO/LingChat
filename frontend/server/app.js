@@ -6,6 +6,7 @@ const bodyParser = require("body-parser");
 const config = require("./config");
 const websocketConfig = require("./config/websocket");
 const pythonService = require("./services/pythonService");
+const logger = require("./utils/logger");
 
 const app = express();
 const server = http.createServer(app);
@@ -24,7 +25,7 @@ app.use("/api", require("./routes/envRoutes"));
 
 // WebSocket 处理
 wss.on("connection", (ws) => {
-  console.log("新的客户端连接");
+  logger.debug("新的客户端连接");
 
   ws.on("message", (message) => {
     const msgString = message.toString("utf8");
@@ -32,7 +33,7 @@ wss.on("connection", (ws) => {
 
     // 检查消息类型是否为 "ping"，如果是则跳过 debug 日志
     if (parsedMessage.type !== "ping") {
-      console.log("收到客户端消息:", msgString);
+      logger.debug(`收到客户端消息: ${msgString}`);
     }
 
     const pythonSocket = pythonService.getPythonSocket();
@@ -50,7 +51,7 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", () => {
-    console.log("客户端断开连接");
+    logger.debug("客户端断开连接");
   });
 });
 
@@ -59,7 +60,7 @@ pythonService.connectToPython(wss);
 
 // 启动服务器
 server.listen(config.frontend.port, config.frontend.bindAddr, () => {
-  console.log(
+  logger.debug(
     `Server running at http://${config.frontend.addr}:${config.frontend.port}`
   );
 });
