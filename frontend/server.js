@@ -78,7 +78,7 @@ function connectToPython() {
   });
 
   ws.on("error", (error) => {
-    console.error("Python 服务连接错误:", error);
+    console.error("Python 服务连接错误", error);
     pythonSocket = null;
   });
 
