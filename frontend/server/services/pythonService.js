@@ -19,8 +19,10 @@ function connectToPython(wss) {
   }
   wssInstance = wss;
 
-  logger.debug(`尝试连接到 Python 服务: ws://${backend.addr}:${backend.port}`);
-  const ws = new WebSocket(`ws://${backend.addr}:${backend.port}`); // 简化连接头信息，通常不需要手动设置
+  logger.debug(
+    `尝试连接到 Python 服务: ws://${backend.addr}:${backend.port}/ws`
+  );
+  const ws = new WebSocket(`ws://${backend.addr}:${backend.port}/ws`); // 简化连接头信息，通常不需要手动设置
 
   ws.on("open", () => {
     logger.debug("已连接到 Python 服务");
