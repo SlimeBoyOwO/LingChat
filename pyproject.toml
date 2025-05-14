@@ -10,7 +10,13 @@ python = "^3.13"
 dotenv = "^0.9.9"
 fastapi = "^0.115.12"
 uvicorn = "^0.34.3"
+requests = "^2.32.4"
+aiohttp = "^3.12.11"
 
+[[tool.poetry.source]]
+name = "torchcpu"
+url = "https://download.pytorch.org/whl/cpu"
+priority = "explicit"
 
 [build-system]
 requires = ["poetry-core"]
