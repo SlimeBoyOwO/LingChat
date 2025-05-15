@@ -5,10 +5,12 @@ import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from core.ai_service import AIService
 from core.frontend_manager import FrontendManager
 from core.logger import Logger
+from api.chat_history import router as chat_history_router
 
 load_dotenv()
 
@@ -56,14 +58,7 @@ async def websocket_endpoint(websocket: WebSocket):
         print("客户端断开连接")
 
 # ============= 新增 HTTP 路由 =============
-@app.post("/v1/user/register")
-async def register(username: str, password: str, email: str):
-    """新增的HTTP接口（示例）"""
-    return {
-        "code": 200,
-        "msg": "Operation successful",
-        "data": {"user_id": 1, "username": username}
-    }
+app.include_router(chat_history_router)
 
 # ============= 保留前端服务 =============
 frontend_dir = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'server')
@@ -89,7 +84,7 @@ async def main():
     config = uvicorn.Config(
         app,
         host=os.getenv('BACKEND_BIND_ADDR', '0.0.0.0'),
-        port=int(os.getenv('BACKEND_PORT', '8765')),
+        port=int(os.getenv('FRONTEND_PORT', '8765')),
         log_level="info"
     )
     server = uvicorn.Server(config)
