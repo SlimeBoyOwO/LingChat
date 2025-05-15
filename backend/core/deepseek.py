@@ -49,6 +49,7 @@ class DeepSeek:
             )
             ai_response = response.choices[0].message.content
             self.messages.append({"role": "assistant", "content": ai_response})
+            # self.logger.log_text(self.messages)
             self.logger.debug("成功获取LLM响应")
 
             return ai_response
@@ -56,3 +57,7 @@ class DeepSeek:
         except Exception as e:
             self.logger.error(f"LLM请求失败: {str(e)}")
             return "ERROR"
+
+    def load_memory(self, memory):
+        self.messages = memory
+        self.logger.log_text("记忆存档已经加载")

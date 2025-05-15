@@ -63,6 +63,9 @@ class AIService:
             self.logger.error(f"处理消息时出错: {e}")
             return None
     
+    def load_memory(self, memory):
+        self.deepseek.load_memory(memory)
+    
     async def _process_ai_response(self, ai_response: str, user_message: str) -> List[Dict]:
         """处理AI回复的完整流程"""
         self._clean_temp_voice_files()
