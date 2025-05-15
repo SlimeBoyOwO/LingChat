@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 
 import uvicorn
+import webview
 from api.chat_history import router as chat_history_router
 from api.chat_info import router as chat_info_router
 from api.chat_main import websocket_endpoint
@@ -72,7 +73,14 @@ async def run(app: FastAPI):
 
 
 def start_webview():
-    print('TODO: 启动WebView')
+    webview.create_window(
+        "Ling Chat",
+        url=f"http://127.0.0.1:{os.getenv('BACKEND_PORT', '8765')}/",
+        width=1200,
+        height=800,
+        resizable=True,
+        fullscreen=False)
+    webview.start()
 
 
 def main():
