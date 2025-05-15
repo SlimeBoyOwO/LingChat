@@ -6,6 +6,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
 from core.ai_service import AIService
 from core.frontend_manager import FrontendManager
@@ -58,12 +59,27 @@ async def websocket_endpoint(websocket: WebSocket):
         print("客户端断开连接")
 
 # ============= 新增 HTTP 路由 =============
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # 你的前端地址
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(chat_history_router)
 
 # ============= 保留前端服务 =============
-frontend_dir = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'server')
-if os.path.exists(frontend_dir):
-    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="static")
+# frontend_dir = os.path.join(os.path.dirname(__file__), '..', 'frontend')
+# === 静态资源目录：public ===
+# === 挂载 public 目录到根路径 / ===
+frontend_dir = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'public')
+app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="static")
+
+# === 设置默认访问 / 跳转到 index 页面 ===
+@app.get("/")
+async def root():
+    return RedirectResponse(url="/pages/index.html")
 
 # ============= 启动逻辑 =============
 async def main():
@@ -72,19 +88,19 @@ async def main():
     logger.log_text("\n")
 
     # 启动前端
-    frontend = FrontendManager(logger)
-    if not frontend.start_frontend(
-        frontend_dir=frontend_dir,
-        port=os.getenv('FRONTEND_PORT', '3000')
-    ):
-        logger.error("前端启动失败")
-        return
+    # frontend = FrontendManager(logger)
+    # if not frontend.start_frontend(
+    #     frontend_dir=frontend_dir,
+    #     port=os.getenv('FRONTEND_PORT', '3000')
+    # ):
+    #     logger.error("前端启动失败")
+    #     return
 
     # 启动 FastAPI（同时支持 HTTP 和 WebSocket）
     config = uvicorn.Config(
         app,
         host=os.getenv('BACKEND_BIND_ADDR', '0.0.0.0'),
-        port=int(os.getenv('FRONTEND_PORT', '8765')),
+        port=int(os.getenv('BACKEND_PORT', '8765')),
         log_level="info"
     )
     server = uvicorn.Server(config)
