@@ -12,8 +12,9 @@ import { SaveController } from "./features/save/controller.js";
 // 初始化模块
 const protocol = window.location.protocol === "https:" ? "wss" : "ws";
 const host = window.location.hostname;
-const wsPort = 8765; // 你的 FastAPI 端口
-const wsUrl = `${protocol}://${host}:${wsPort}/ws`;
+// 使用当前页面的主机和端口，确保WebSocket连接到正确的服务器
+const port = window.location.port || (protocol === "wss" ? "443" : "80");
+const wsUrl = `${protocol}://${host}:${port}/ws`;
 const socket = new ChatSocket(wsUrl);
 
 const uiController = new UIController();
