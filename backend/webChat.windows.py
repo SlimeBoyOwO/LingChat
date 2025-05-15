@@ -16,6 +16,16 @@ load_dotenv()
 logger = Logger()
 ai_service = AIService(logger)
 app = FastAPI()
+logo = [
+    "", 
+    "", 
+    "█╗       ██╗ ███╗   ██╗  ██████╗      █████╗ ██╗  ██╗  █████╗  ████████╗",
+    "██║      ██║ ████╗  ██║ ██╔════╝     ██╔═══╝ ██║  ██║ ██╔══██╗ ╚══██╔══╝",
+    "██║      ██║ ██╔██╗ ██║ ██║  ███╗    ██║     ███████║ ███████║    ██║   ",
+    "██║      ██║ ██║╚██╗██║ ██║   ██║    ██║     ██╔══██║ ██╔══██║    ██║   ",
+    "███████╗ ██║ ██║ ╚████║ ╚██████╔╝     █████╗ ██║  ██║ ██║  ██║    ██║   ",
+    "╚══════╝ ╚═╝ ╚═╝  ╚═══╝  ╚═════╝      ╚════╝ ╚═╝  ╚═╝ ╚═╝  ╚═╝    ╚═╝   "
+    ]
 
 # ============= 保留你的原始 WebSocket 处理逻辑 =============
 async def handle_websocket_message(websocket, data):
@@ -33,31 +43,14 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             message = await websocket.receive()
             
-            # 同时处理文本和二进制JSON
-            if "bytes" in message:  # 二进制消息
-                try:
-                    data = json.loads(message["bytes"].decode('utf-8'))
-                except UnicodeDecodeError:
-                    await websocket.send_json({"error": "非UTF-8编码的二进制数据"})
-                    continue
-            elif "text" in message:  # 文本消息
-                try:
-                    data = json.loads(message["text"])
-                except json.JSONDecodeError:
-                    await websocket.send_json({"error": "非JSON格式文本"})
-                    continue
-            else:
-                await websocket.send_json({"error": "未知消息格式"})
-                continue
-                
-            # ▼▼▼ 您的原有业务逻辑 ▼▼▼
+            data = json.loads(message["bytes"].decode('utf-8'))
+
             if data.get('type') == 'ping':
                 await websocket.send_json({"type": "pong"})
             elif data.get('type') == 'message':
                 responses = await ai_service.process_message(data.get('content', ''))
                 for response in responses:
                     await websocket.send_json(response)
-            # ▲▲▲ 业务逻辑结束 ▲▲▲
                     
     except WebSocketDisconnect:
         print("客户端断开连接")
@@ -79,21 +72,11 @@ if os.path.exists(frontend_dir):
 
 # ============= 启动逻辑 =============
 async def main():
-    logo = [
-    "", 
-    "", 
-    "█╗       ██╗ ███╗   ██╗  ██████╗      █████╗ ██╗  ██╗  █████╗  ████████╗",
-    "██║      ██║ ████╗  ██║ ██╔════╝     ██╔═══╝ ██║  ██║ ██╔══██╗ ╚══██╔══╝",
-    "██║      ██║ ██╔██╗ ██║ ██║  ███╗    ██║     ███████║ ███████║    ██║   ",
-    "██║      ██║ ██║╚██╗██║ ██║   ██║    ██║     ██╔══██║ ██╔══██║    ██║   ",
-    "███████╗ ██║ ██║ ╚████║ ╚██████╔╝     █████╗ ██║  ██║ ██║  ██║    ██║   ",
-    "╚══════╝ ╚═╝ ╚═╝  ╚═══╝  ╚═════╝      ╚════╝ ╚═╝  ╚═╝ ╚═╝  ╚═╝    ╚═╝   "
-    ]
     for line in logo:
         logger.log_text(line)
     logger.log_text("\n")
 
-    # 启动前端（保持你的原有逻辑）
+    # 启动前端
     frontend = FrontendManager(logger)
     if not frontend.start_frontend(
         frontend_dir=frontend_dir,
