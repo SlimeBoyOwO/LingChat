@@ -2,6 +2,7 @@ const express = require("express");
 const http = require("http");
 const path = require("path");
 const WebSocket = require("ws");
+const proxy = require("express-http-proxy");
 const bodyParser = require("body-parser");
 const config = require("./config");
 const websocketConfig = require("./config/websocket");
@@ -22,6 +23,9 @@ app.use("/", require("./routes/webRoutes"));
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api", require("./routes/modelRoutes"));
 app.use("/api", require("./routes/envRoutes"));
+
+// 转发 /api/v1/chat 到 FastAPI
+app.use("/api/v1/chat", proxy("http://localhost:8765"));
 
 // WebSocket 处理
 wss.on("connection", (ws) => {
