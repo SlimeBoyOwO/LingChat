@@ -5,6 +5,7 @@ import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
@@ -73,13 +74,18 @@ app.include_router(chat_history_router)
 # frontend_dir = os.path.join(os.path.dirname(__file__), '..', 'frontend')
 # === 静态资源目录：public ===
 # === 挂载 public 目录到根路径 / ===
-frontend_dir = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'public')
-app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="static")
+frontend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'frontend', 'public')
 
-# === 设置默认访问 / 跳转到 index 页面 ===
 @app.get("/")
-async def root():
-    return RedirectResponse(url="/pages/index.html")
+async def index():
+    return FileResponse(os.path.join(frontend_dir, "pages", "index.html"))
+
+@app.get("/about")
+async def about():
+    return FileResponse(os.path.join(frontend_dir, "pages", "about.html"))
+
+# 静态文件服务（处理其他未匹配的请求）
+app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="static")
 
 # ============= 启动逻辑 =============
 async def main():
