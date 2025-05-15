@@ -10,9 +10,10 @@ import { ImageController } from "./features/image/controller.js";
 import { SaveController } from "./features/save/controller.js";
 
 // 初始化模块
-const host = window.location.hostname || "localhost";
 const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-const wsUrl = `${protocol}://${host}:3000/ws`;
+const host = window.location.hostname;
+const wsPort = 8765; // 你的 FastAPI 端口
+const wsUrl = `${protocol}://${host}:${wsPort}/ws`;
 const socket = new ChatSocket(wsUrl);
 
 const uiController = new UIController();
