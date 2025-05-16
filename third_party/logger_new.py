@@ -24,26 +24,19 @@ ANIMATION_STYLES = {
     'heartbeat': ['♡', '♥'],
 }
 
-try:
-    from wcwidth import wcswidth
-except ImportError:
-    sys.stderr.write(
-        "\033[93m警告: 未找到 'wcwidth' 模块。 "
-        "将使用基础宽度计算方法处理 CJK 字符。 "
-        "为了精确的显示宽度，请安装 'wcwidth' (pip install wcwidth)。\033[0m\n"
-    )
-    sys.stderr.flush()
-    def wcswidth(s):
-        """回退 wcswidth, 将非 ASCII 字符视为宽度2。"""
-        if not isinstance(s, str):
-             return len(s) if s else 0
-        length = 0
-        for char_ in s:
-            if ord(char_) < 128:
-                length += 1
-            else:
-                length += 2
-        return length
+sys.stderr.flush()
+def wcswidth(s):
+    """回退 wcswidth, 将非 ASCII 字符视为宽度2。"""
+    if not isinstance(s, str):
+         return len(s) if s else 0
+    length = 0
+    for char_ in s:
+        if ord(char_) < 128:
+            length += 1
+        else:
+            length += 2
+    return length
+
 
 class TermColors:
     GREY = '\033[90m'
@@ -236,7 +229,7 @@ def initialize_logger(app_name="AppLogger", config_debug_mode=True, show_timesta
             log_filename = datetime.now().strftime("%Y-%m-%d_%H-%M-%S.log")
             log_filepath = os.path.join(LOG_FILE_DIRECTORY, log_filename)
 
-            file_handler = logging.FileHandler(log_filepath, encoding='utf-8') # 指定 UTF-8 编码
+            file_handler = logging.FileHandler(log_filepath, encoding='utf-8')
 
             file_formatter = logging.Formatter(
                 '%(asctime)s - %(levelname)s - %(name)s - %(message)s',
