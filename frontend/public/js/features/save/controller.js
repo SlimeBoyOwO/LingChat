@@ -85,6 +85,23 @@ export class SaveController {
           </div>
         `;
         container.appendChild(item);
+
+        item.querySelector(".load-btn").addEventListener("click", async () => {
+          const convoId = convo.id;
+          const detailResp = await fetch(
+            `/api/v1/chat/history/load?user_id=1&conversation_id=${convoId}`
+          );
+          const detailResult = await detailResp.json();
+
+          if (detailResult.code !== 200) {
+            console.error("读取失败", detailResult);
+            return;
+          }
+
+          const messages = detailResult.data.messages || [];
+          // 你可以将消息显示到页面某处，例如 console.log:
+          console.log("对话内容：", messages);
+        });
       });
     } catch (error) {
       console.error("加载失败", error);
