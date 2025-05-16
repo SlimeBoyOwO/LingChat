@@ -4,12 +4,10 @@ import json
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
-from core.ai_service import AIService
+from core.service_manager import service_manager
 from core.frontend_manager import FrontendManager
 from core.logger import Logger
 from api.chat_history import router as chat_history_router
@@ -18,7 +16,6 @@ load_dotenv()
 
 # ============= 初始化核心组件 =============
 logger = Logger()
-ai_service = AIService(logger)
 app = FastAPI()
 logo = [
     "", 
@@ -36,7 +33,7 @@ async def handle_websocket_message(websocket, data):
     """完全复用你原有的消息处理逻辑"""
     if data.get('type') == 'message':
         logger.client_message(data)
-        responses = await ai_service.process_message(data.get('content', ''))
+        responses = await service_manager.ai_service.process_message(data.get('content', ''))
         for response in responses:
             await websocket.send_json(response)
 
@@ -46,15 +43,20 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             message = await websocket.receive()
-            print(message)
-            data = json.loads(message["text"])
+            # 首先检查是否是断开消息
+            if message.get('type') == 'websocket.disconnect':
+                logger.info(f"客户端断开连接，代码: {message.get('code')}")
+            else:
+                print(message)
+                data = json.loads(message["text"])
 
-            if data.get('type') == 'ping':
-                await websocket.send_json({"type": "pong"})
-            elif data.get('type') == 'message':
-                responses = await ai_service.process_message(data.get('content', ''))
-                for response in responses:
-                    await websocket.send_json(response)
+                if data.get('type') == 'ping':
+                    await websocket.send_json({"type": "pong"})
+                elif data.get('type') == 'message':
+                    responses = await service_manager.ai_service.process_message(data.get('content', ''))
+                    for response in responses:
+                        await websocket.send_json(response)
+            
                     
     except WebSocketDisconnect:
         print("客户端断开连接")
@@ -71,9 +73,6 @@ app.add_middleware(
 app.include_router(chat_history_router)
 
 # ============= 保留前端服务 =============
-# frontend_dir = os.path.join(os.path.dirname(__file__), '..', 'frontend')
-# === 静态资源目录：public ===
-# === 挂载 public 目录到根路径 / ===
 frontend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'frontend', 'public')
 
 @app.get("/")

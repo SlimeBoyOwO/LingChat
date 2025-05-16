@@ -59,5 +59,7 @@ class DeepSeek:
             return "ERROR"
 
     def load_memory(self, memory):
-        self.messages = memory
-        self.logger.log_text("记忆存档已经加载")
+        self.messages = [msg.copy() for msg in memory]  # 列表推导式深拷贝每个消息字典
+        self.logger.info("记忆存档已经加载")
+        self.logger.info(f"内容是：{memory}")
+        self.logger.info(f"新的messages是：{self.messages}")
