@@ -65,6 +65,7 @@ class AIService:
     
     def load_memory(self, memory):
         self.deepseek.load_memory(memory)
+        self.logger.info("新的记忆已经被加载")
     
     async def _process_ai_response(self, ai_response: str, user_message: str) -> List[Dict]:
         """处理AI回复的完整流程"""

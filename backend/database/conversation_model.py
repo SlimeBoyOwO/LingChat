@@ -21,7 +21,7 @@ class ConversationModel:
         return conv_id
 
     @staticmethod
-    def load_conversation(user_id: int, messages: List[Dict[str, str]], title: Optional[str] = None) -> int:
+    def save_conversation(user_id: int, messages: List[Dict[str, str]], title: Optional[str] = None) -> int:
         """
         将完整对话插入数据库
         :param user_id: 所属用户ID
