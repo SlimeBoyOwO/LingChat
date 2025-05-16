@@ -17,7 +17,7 @@ url = "https://pypi.tuna.tsinghua.edu.cn/simple"
 priority = "primary"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.11,<3.14"
 dotenv = "^0.9.9"
 fastapi = "^0.115.12"
 uvicorn = "^0.34.3"
@@ -25,6 +25,7 @@ requests = "^2.32.4"
 aiohttp = "^3.12.11"
 torch = {version = "^2.7.1+cpu", source = "torchcpu"}
 transformers = "^4.52.4"
+pywebview = "^5.4"
 
 [build-system]
 requires = ["poetry-core"]
