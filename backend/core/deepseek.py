@@ -1,5 +1,7 @@
 from openai import OpenAI
 import os
+import json
+import copy
 from .logger import Logger
 
 class DeepSeek:
@@ -25,6 +27,11 @@ class DeepSeek:
         ]
         
         self.logger.debug("DeepSeek LLM 服务已初始化")
+    
+    def __setattr__(self, name, value):
+        if name == "messages":
+            print(f"[setattr] messages 被修改！新值: {value}")
+        super().__setattr__(name, value)
 
     def process_message(self, user_input):
         if user_input.lower() in ["退出", "结束"]:
@@ -59,7 +66,9 @@ class DeepSeek:
             return "ERROR"
 
     def load_memory(self, memory):
-        self.messages = [msg.copy() for msg in memory]  # 列表推导式深拷贝每个消息字典
+        if isinstance(memory, str):
+            memory = json.loads(memory)  # 将JSON字符串转为Python列表
+        self.messages = copy.deepcopy(memory)  # 使用深拷贝
         self.logger.info("记忆存档已经加载")
         self.logger.info(f"内容是：{memory}")
         self.logger.info(f"新的messages是：{self.messages}")
