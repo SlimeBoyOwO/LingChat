@@ -10,6 +10,20 @@ ENABLE_FILE_LOGGING = True  # 是否启用文件日志记录
 LOG_FILE_DIRECTORY = "run_logs"  # 日志文件存储的相对目录
 LOG_FILE_LEVEL = logging.DEBUG # 可以设置为 logging.INFO, logging.WARNING, logging.ERROR
 
+ANIMATION_STYLES = {
+    'braille': ['⢿', '⣻', '⣽', '⣾', '⣷', '⣯', '⣟', '⡿'],
+    'spinner': ['-', '\\', '|', '/'],
+    'dots': ['.  ', '.. ', '...', ' ..', '  .', '   '],
+    'arrows': ['←', '↖', '↑', '↗', '→', '↘', '↓', '↙'],
+    'moon': ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'],
+    'clock': ['🕛', '🕐', '🕑', '🕒', '🕓', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙', '🕚'],
+    'directional_arrows_unicode': ['⬆️', '↗️', '➡️', '↘️', '⬇️', '↙️', '⬅️', '↖️'],
+    'traffic_lights': ['🔴', '🟡', '🟢'],
+    'growth_emoji': ['🌱', '🌿', '🌳'],
+    'weather_icons': ['☀️', '☁️', '🌧️', '⚡️'],
+    'heartbeat': ['♡', '♥'],
+}
+
 try:
     from wcwidth import wcswidth
 except ImportError:
@@ -52,13 +66,6 @@ _is_animating = False
 _current_animation_line_width = 0
 _animation_state_lock = threading.Lock()
 
-ANIMATION_STYLES = {
-    'braille': ['⢿', '⣻', '⣽', '⣾', '⣷', '⣯', '⣟', '⡿'],
-    'spinner': ['-', '\\', '|', '/'],
-    'dots': ['.  ', '.. ', '...', ' ..', '  .', '   '],
-    'arrows': ['←', '↖', '↑', '↗', '→', '↘', '↓', '↙'],
-    'moon': ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'],
-}
 DEFAULT_ANIMATION_STYLE_KEY = 'braille'
 DEFAULT_ANIMATION_COLOR = TermColors.WHITE
 
