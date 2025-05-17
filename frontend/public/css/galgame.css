@@ -143,6 +143,7 @@ canvas {
 .chatbox-inputbox {
   display: flex;
   flex-direction: column;
+  white-space: pre-line; /* 保留 \n 并换行 */
 }
 
 #inputMessage {

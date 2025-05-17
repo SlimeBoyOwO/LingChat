@@ -27,6 +27,7 @@ class EventBus {
           console.error(`事件处理错误 [${event}]:`, e);
         }
       });
+      console.log(`${event} 事件被触发`);
     }
   }
 }
