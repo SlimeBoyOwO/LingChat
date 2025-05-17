@@ -13,6 +13,7 @@ export class ConversationLoader {
     }
 
     this.bindEvents();
+    this.loadConversations(1); // 初始加载第一页
   }
 
   async loadConversations(page = 1) {
@@ -64,15 +65,16 @@ export class ConversationLoader {
     const title = convo.title || "未命名对话";
 
     const item = document.createElement("div");
-    item.className = "save-item";
+    item.className = "conversation-item";
     item.innerHTML = `
-        <div class="save-info">
-          <span class="save-date">${dateStr}</span>
-          <span class="save-title">${title}</span>
+        <div class="conversation-info">
+          <span class="conversation-date">${dateStr}</span>
+          <span class="conversation-title">${title}</span>
         </div>
-        <div class="save-actions">
-          <button class="save-btn load-btn" data-id="${convo.id}">读档</button>
-          <button class="save-btn save-btn" data-id="${convo.id}">存档</button>
+        <div class="conversation-actions">
+          <button class="action-btn load-btn" data-id="${convo.id}">读取</button>
+          <button class="action-btn save-btn" data-id="${convo.id}">保存</button>
+          <button class="action-btn delete-btn" data-id="${convo.id}">删除</button>
         </div>
       `;
 
@@ -81,14 +83,25 @@ export class ConversationLoader {
   }
 
   bindItemEvents(item, convo) {
+    // 读取按钮事件
     item.querySelector(".load-btn").addEventListener("click", async () => {
-      await this.loadConversationDetail(convo.id);
+      await this.loadUserConversation(convo.id);
     });
 
-    // 可以在这里添加存档按钮的事件处理
+    // 保存按钮事件
+    item.querySelector(".save-btn").addEventListener("click", async () => {
+      await this.saveUserConversation(convo.id);
+    });
+
+    // 删除按钮事件
+    item.querySelector(".delete-btn").addEventListener("click", async () => {
+      if (confirm("确定要删除这个对话吗？")) {
+        await this.deleteUserConversation(convo.id);
+      }
+    });
   }
 
-  async loadConversationDetail(convoId) {
+  async loadUserConversation(convoId) {
     try {
       const response = await fetch(
         `/api/v1/chat/history/load?user_id=${this.userId}&conversation_id=${convoId}`
@@ -99,38 +112,125 @@ export class ConversationLoader {
         throw new Error(result.message || "读取失败");
       }
 
-      const messages = result.data.messages || [];
-      this.onConversationLoaded(messages);
+      this.onConversationLoaded(result.data);
     } catch (error) {
       console.error("读取失败", error);
       this.onLoadError(error);
     }
   }
 
+  async saveUserConversation(convoId) {
+    try {
+      const response = await fetch("/api/v1/chat/history/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: this.userId,
+          conversation_id: convoId,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.code !== 200) {
+        throw new Error(result.message || "保存失败");
+      }
+
+      alert("对话保存成功！");
+      this.loadConversations(); // 刷新列表
+    } catch (error) {
+      console.error("保存失败", error);
+      alert(`保存失败: ${error.message}`);
+    }
+  }
+
+  async deleteUserConversation(convoId) {
+    try {
+      const response = await fetch("/api/v1/chat/history/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: this.userId,
+          conversation_id: convoId,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.code !== 200) {
+        throw new Error(result.message || "删除失败");
+      }
+
+      alert("对话删除成功！");
+      this.loadConversations(); // 刷新列表
+    } catch (error) {
+      console.error("删除失败", error);
+      alert(`删除失败: ${error.message}`);
+    }
+  }
+
+  async createUserConversation() {
+    const titleInput = document.getElementById("new-convo-title");
+    const title = titleInput.value.trim();
+
+    if (!title) {
+      alert("请输入对话标题！");
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/v1/chat/history/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: this.userId,
+          title: title,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.code !== 200) {
+        throw new Error(result.message || "创建失败");
+      }
+
+      alert("对话创建成功！");
+      titleInput.value = "";
+      this.loadConversations(); // 刷新列表
+    } catch (error) {
+      console.error("创建失败", error);
+      alert(`创建失败: ${error.message}`);
+    }
+  }
+
   bindEvents() {
-    // 可以在这里绑定分页按钮等事件
+    const createBtn = document.getElementById("create-convo-btn");
+    if (createBtn) {
+      createBtn.addEventListener("click", () => this.createUserConversation());
+    }
   }
 
   showLoading() {
-    this.container.innerHTML = "<p>加载中...</p>";
+    this.container.innerHTML = "<div class='loading'>加载中...</div>";
   }
 
   showError(message) {
-    this.container.innerHTML = `<p>${message}</p>`;
+    this.container.innerHTML = `<div class='error'>${message}</div>`;
   }
 
   showEmpty() {
-    this.container.innerHTML = "<p>暂无对话记录</p>";
+    this.container.innerHTML = "<div class='empty'>暂无对话记录</div>";
   }
 
-  // 以下方法可以被子类覆盖或通过事件监听实现
-  onConversationLoaded(messages) {
-    console.log("对话内容：", messages);
-    // 实际应用中可以触发自定义事件或回调
+  // 可被子类覆盖的方法
+  onConversationLoaded(data) {
+    console.log("对话内容已加载:", data);
+    // 实际应用中应该触发一个事件或调用回调
+    // 例如: this.options.onConversationLoaded?.(data);
   }
 
   onLoadError(error) {
     console.error("加载对话详情失败", error);
-    // 可以显示错误提示等
+    alert(`加载失败: ${error.message}`);
   }
 }

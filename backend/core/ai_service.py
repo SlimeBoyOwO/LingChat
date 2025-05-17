@@ -214,3 +214,6 @@ class AIService:
             else:
                 if segment['japanese_text']:
                     self.logger.debug(f"  对应语音: (未生成或生成失败)")
+    
+    def get_memory(self):
+        return self.deepseek.get_messsages()
