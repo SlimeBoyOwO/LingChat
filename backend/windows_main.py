@@ -32,7 +32,7 @@ logo = [
 async def handle_websocket_message(websocket, data):
     """完全复用你原有的消息处理逻辑"""
     if data.get('type') == 'message':
-        logger.client_message(data)
+        # logger.client_message(data)
         responses = await service_manager.ai_service.process_message(data.get('content', ''))
         for response in responses:
             await websocket.send_json(response)
