@@ -24,3 +24,4 @@ __pycache__/
 *.log
 *.tmp
 *.db
+.env
