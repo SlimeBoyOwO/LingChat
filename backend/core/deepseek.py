@@ -67,3 +67,6 @@ class DeepSeek:
         self.logger.info("记忆存档已经加载")
         self.logger.info(f"内容是：{memory}")
         self.logger.info(f"新的messages是：{self.messages}")
+
+    def get_messsages(self):
+        return self.messages
