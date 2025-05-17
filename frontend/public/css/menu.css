@@ -506,14 +506,14 @@ div#menu-panel
 }
 
 /* 存档页面样式 */
-.save-list-container {
+.conversation-list-container {
   display: flex;
   flex-direction: column;
   gap: 20px;
   color: black;
 }
 
-.save-item {
+.conversation-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -524,33 +524,34 @@ div#menu-panel
   transition: all 0.3s ease;
 }
 
-.save-item:hover {
+.conversation-item:hover {
   background-color: rgba(255, 255, 255, 0.15);
   transform: translateY(-2px);
 }
 
-.save-info {
+.conversation-info {
   display: flex;
   flex-direction: column;
 }
 
-.save-date {
+.conversation-date {
   font-size: 14px;
   color: rgba(0, 0, 0, 0.7);
 }
 
-.save-title {
+.conversation-title {
   font-size: 22px;
   font-weight: 500;
   margin-top: 2px;
+  color: black;
 }
 
-.save-actions {
+.conversation-actions {
   display: flex;
   gap: 8px;
 }
 
-.save-btn {
+.action-btn {
   padding: 10px 16px;
   border: none;
   border-radius: 8px;
@@ -575,6 +576,15 @@ div#menu-panel
 
 .save-btn:hover {
   background-color: mediumseagreen;
+}
+
+.delete-btn {
+  background-color: rgba(246, 35, 35, 0.8);
+  color: white;
+}
+
+.delete-btn:hover {
+  background-color: maroon;
 }
 
 /* 添加专门针对光晕滑块的样式 */

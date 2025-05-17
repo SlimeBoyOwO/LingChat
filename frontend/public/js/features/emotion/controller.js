@@ -51,8 +51,6 @@ export class EmotionController {
         src: config.audio,
       });
       // 设置音频源并播放
-      console.log(`${emotion} 音频播放ing`);
-      console.log(`${config.audio} 路径追踪`);
       DOM.bubbleAudio.src = config.audio;
       DOM.bubbleAudio.load(); // 重新加载音频
       DOM.bubbleAudio.play();
