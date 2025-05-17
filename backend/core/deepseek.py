@@ -27,11 +27,6 @@ class DeepSeek:
         ]
         
         self.logger.debug("DeepSeek LLM 服务已初始化")
-    
-    def __setattr__(self, name, value):
-        if name == "messages":
-            print(f"[setattr] messages 被修改！新值: {value}")
-        super().__setattr__(name, value)
 
     def process_message(self, user_input):
         if user_input.lower() in ["退出", "结束"]:

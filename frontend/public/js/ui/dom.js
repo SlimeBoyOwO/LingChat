@@ -76,6 +76,9 @@ export const DOM = {
     kousanPreviewImg: document.getElementById("kuosan-preview-img"),
     kuosanTest: document.getElementById("kuosan-test"),
   },
+
+  // 存档部分
+  save: {},
 };
 
 // 安全元素访问
