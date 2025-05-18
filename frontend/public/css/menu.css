@@ -598,10 +598,6 @@ div#menu-panel
   margin: 20px 0;
 }
 
-#log-upload {
-  display: none; /* 隐藏默认文件输入 */
-}
-
 #upload-btn {
   background-color: #4caf50;
   color: white;
