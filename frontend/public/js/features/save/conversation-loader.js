@@ -1,3 +1,5 @@
+import { DOM } from "../../ui/dom.js";
+
 export class ConversationLoader {
   constructor(containerId, userId, options = {}) {
     this.container = document.getElementById(containerId);
@@ -207,6 +209,62 @@ export class ConversationLoader {
     const createBtn = document.getElementById("create-convo-btn");
     if (createBtn) {
       createBtn.addEventListener("click", () => this.createUserConversation());
+    }
+
+    // 文件上传处理
+    DOM.save.uploadBtn.addEventListener("click", () => {
+      DOM.save.uploadBtn.click();
+    });
+
+    // 当用户选择文件后触发上传处理
+    DOM.save.fileInput.addEventListener("change", async () => {
+      await this.uploadUserLogFile();
+    });
+  }
+
+  async uploadUserLogFile() {
+    console.log("触发了点击事件");
+    const fileInput = document.getElementById("log-upload");
+    const statusDiv = document.getElementById("upload-status");
+
+    if (!fileInput.files.length) {
+      statusDiv.textContent = "请先选择文件";
+      return;
+    }
+
+    const file = fileInput.files[0];
+
+    try {
+      statusDiv.textContent = "正在处理文件...";
+
+      // 读取文件内容
+      const text = await file.text();
+
+      // 发送到后端处理
+      const response = await fetch("/api/v1/chat/history/process-log", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          filename: file.name,
+          content: text,
+          user_id: this.userId, // 从当前会话获取
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        statusDiv.textContent = `成功导入 ${result.processed_count} 条对话记录`;
+        // 刷新对话列表
+        this.loadConversations();
+      } else {
+        statusDiv.textContent = `处理失败: ${result.message}`;
+      }
+    } catch (error) {
+      statusDiv.textContent = `上传失败: ${error.message}`;
+      console.error("上传错误:", error);
     }
   }
 
