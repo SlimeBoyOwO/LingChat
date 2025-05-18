@@ -2,9 +2,11 @@
 
 from fastapi import APIRouter, Query, HTTPException, Request
 from typing import List
+from datetime import datetime
 from database.user_model import UserConversationModel
 from database.conversation_model import ConversationModel
 from core.service_manager import service_manager
+from utils.function import Function
 
 router = APIRouter(prefix="/api/v1/chat/history", tags=["Chat History"])
 
@@ -189,3 +191,42 @@ async def delete_user_conversation(request: Request):
             status_code=500,
             detail=f"删除对话失败: {str(e)}"
         )
+    
+@router.post("/process-log")
+async def process_log_file(request: Request):
+    try:
+        data = await request.json()
+        content = data.get('content')
+        user_id = data.get('user_id')
+        
+        if not content or not user_id:
+            raise HTTPException(status_code=400, detail="缺少必要参数")
+        
+        # 解析日志文件
+        dialog_datetime, messages = Function.parse_chat_log(content)
+        if not messages:
+            raise HTTPException(status_code=400, detail="日志文件未包含有效对话")
+        
+        # 添加到记忆系统
+        service_manager.ai_service.load_memory(messages)
+        
+        # 同时创建新对话记录（可选）
+        title = f"导入对话 {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        conversation_id = ConversationModel.create_conversation(
+            user_id=user_id,
+            messages=messages,
+            title=title
+        )
+
+        print(f"导入对话为 {dialog_datetime} 的时间成功")
+        print(f"导入的信息是 {messages}")
+
+        
+        return {
+            "success": True,
+            "processed_count": len(messages),
+            "conversation_id": conversation_id
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"处理日志文件失败: {str(e)}")

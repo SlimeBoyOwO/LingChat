@@ -78,7 +78,10 @@ export const DOM = {
   },
 
   // 存档部分
-  save: {},
+  save: {
+    uploadBtn: document.getElementById("upload-btn"),
+    fileInput: document.getElementById("log-upload"),
+  },
 };
 
 // 安全元素访问
