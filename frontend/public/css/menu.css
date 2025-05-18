@@ -587,6 +587,35 @@ div#menu-panel
   background-color: maroon;
 }
 
+.upload-area {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border: 2px dashed #ccc;
+  border-radius: 5px;
+  text-align: center;
+  margin: 20px 0;
+}
+
+#log-upload {
+  display: none; /* 隐藏默认文件输入 */
+}
+
+#upload-btn {
+  background-color: #4caf50;
+  color: white;
+  padding: 10px 15px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#upload-status {
+  margin-top: 10px;
+  color: #666;
+}
+
 /* 添加专门针对光晕滑块的样式 */
 #filter-kuosan {
   cursor: default; /* 默认光标样式 */
