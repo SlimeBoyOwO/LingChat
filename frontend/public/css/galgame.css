@@ -349,7 +349,7 @@ select {
     transform: translateY(0px);
   }
   50% {
-    transform: translateY(-10px);
+    transform: translateY(-4px);
   }
 }
 
@@ -370,7 +370,7 @@ select {
 }
 
 .normal {
-  animation: breathing 4s ease-in-out infinite !important;
+  animation: breathing 4s ease-in-out infinite;
 }
 
 /* 特定动画类 */
@@ -378,42 +378,49 @@ select {
   animation-name: angryJump;
   animation-duration: 0.8s;
   animation-timing-function: ease-out;
+  animation-iteration-count: 1;
 }
 
 .happy-bounce {
   animation-name: happyBounce;
   animation-duration: 0.6s;
   animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation-iteration-count: 1;
 }
 
 .serious-think {
   animation-name: seriousThink;
   animation-duration: 0.6s;
   animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation-iteration-count: 1;
 }
 
 .embarrassed-emo {
   animation-name: embarrassedEmo;
   animation-duration: 0.3s;
   animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation-iteration-count: 1;
 }
 
 .naughty-bounce {
   animation-name: naughtyBounce;
   animation-duration: 0.3s;
   animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation-iteration-count: 1;
 }
 
 .suprised-jump {
   animation-name: suprisedJump;
   animation-duration: 0.3s;
   animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation-iteration-count: 1;
 }
 
 .heart-beat {
   animation-name: heartBeat;
   animation-duration: 0.6s;
   animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation-iteration-count: 1;
 }
 
 /* 气泡固定定位样式 */

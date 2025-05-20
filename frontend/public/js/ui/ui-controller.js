@@ -57,6 +57,8 @@ export class UIController {
       // 处理音频
       if (data.audioFile) {
         DOM.audioPlayer.src = `../audio/${data.audioFile}`;
+        console.log(`语音的路径是：../audio/${data.audioFile}`);
+        DOM.audioPlayer.load();
         DOM.audioPlayer.play();
       }
     });

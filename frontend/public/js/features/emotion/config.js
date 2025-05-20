@@ -70,7 +70,7 @@ export const EMOTION_CONFIG = {
     avatar: "../pictures/qinling/无奈.png",
   },
   兴奋: {
-    animation: "none",
+    animation: "happy-bounce",
     bubbleImage: "../pictures/animation/聊天.webp",
     bubbleClass: "none",
     audio: "../audio_effects/聊天.wav",
@@ -91,21 +91,21 @@ export const EMOTION_CONFIG = {
     avatar: "../pictures/qinling/伤心.png",
   },
   心动: {
-    animation: "none",
+    animation: "heart-beat",
     bubbleImage: "../pictures/animation/心动.webp",
     bubbleClass: "none",
     audio: "../audio_effects/喜爱.wav",
     avatar: "../pictures/qinling/害羞.png",
   },
   调皮: {
-    animation: "none",
+    animation: "naughty-bounce",
     bubbleImage: "../pictures/animation/高兴.webp",
     bubbleClass: "none",
     audio: "../audio_effects/愉快.wav",
     avatar: "../pictures/qinling/调皮.png",
   },
   难为情: {
-    animation: "none",
+    animation: "embarrassed-emo",
     bubbleImage: "../pictures/animation/难为情.webp",
     bubbleClass: "none",
     audio: "../audio_effects/察觉.wav",
