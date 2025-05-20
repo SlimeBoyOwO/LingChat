@@ -91,6 +91,7 @@ export class MenuController {
     DOM.menuContent.classList.add("hide");
     setTimeout(() => {
       DOM.menuContent.classList.remove("hide");
+      DOM.menuContent.classList.remove("show");
     }, 200);
   }
 
