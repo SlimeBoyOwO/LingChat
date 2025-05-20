@@ -86,7 +86,7 @@ export class MenuController {
   }
 
   closeAllPanels() {
-    this.domUtils.hideElements([]);
+    this.domUtils.hideMenuElements();
 
     DOM.menuContent.classList.add("hide");
     setTimeout(() => {
