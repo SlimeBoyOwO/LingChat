@@ -612,6 +612,14 @@ div#menu-panel
   color: #666;
 }
 
+#log-upload {
+  color: #000;
+}
+
+#new-convo-title {
+  color: #000;
+}
+
 /* 添加专门针对光晕滑块的样式 */
 #filter-kuosan {
   cursor: default; /* 默认光标样式 */
