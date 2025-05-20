@@ -1,4 +1,4 @@
-from database.user_model import UserModel, UserConversationModel
+from .user_model import UserModel, UserConversationModel
 
 # 创建用户
 # try:
@@ -12,4 +12,4 @@ from database.user_model import UserModel, UserConversationModel
 user_id = 1
 conversations = UserConversationModel.get_user_conversations(user_id)
 for conv in conversations:
-    print(f"对话ID: {conv['id']}, 标题: {conv['title']}, 更新时间: {conv['updated_at']}")
+    print(conv)
