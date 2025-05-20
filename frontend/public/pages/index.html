@@ -27,18 +27,19 @@
               <div id="status">正在连接服务器...</div>
             </div>
             <div id="menu-buttons">
-              <button id="menu-text" class="">文本</button>
-              <button id="menu-image" class="">背景</button>
-              <button id="menu-sound" class="">声音</button>
-              <button id="menu-save" class="">存档</button>
-              <button id="menu-history" class="">对话历史</button>
+              <button id="menu-text" class="">📄文本</button>
+              <button id="menu-image" class="">🏜️背景</button>
+              <button id="menu-sound" class="">🔊声音</button>
+              <button id="menu-save" class="">🎬存档</button>
+              <button id="menu-history" class="">📖对话历史</button>
             </div>
           </div>
           <div class="maxbody">
             <div class="menu-body" id="text-page">
               <div class="menu-section">
                 <div class="menu-item">
-                  <h4>文字显示速度</h4>
+                  <h4>⚡ 文字显示速度</h4>
+                  <div class="line"></div>
                   <div class="slider-container">
                     <span>慢</span>
                     <input
@@ -52,20 +53,23 @@
                   </div>
                 </div>
                 <div class="menu-item">
-                  <h4>显示样本</h4>
+                  <h4>📝 显示样本</h4>
+                  <div class="line"></div>
                   <div id="speed-text-test">
                     <span id="testmessage">钦灵 Chat，测试文本显示速度</span>
                   </div>
                 </div>
                 <div class="menu-item">
-                  <h4>页面切换动画</h4>
+                  <h4>✨ 页面切换动画</h4>
+                  <div class="line"></div>
                   <div class="toggle-container">
                     <input type="checkbox" id="animation-toggle" checked />
                     <label for="animation-toggle">启用动画</label>
                   </div>
                 </div>
                 <div class="menu-item">
-                  <h4>当前AI模型</h4>
+                  <h4>🤖 当前AI模型</h4>
+                  <div class="line"></div>
                   <div class="model-selection-container">
                     <select id="ai-model-select" style="display: none">
                       <option value="gpt-3.5">GPT-3.5</option>
@@ -83,7 +87,8 @@
             </div>
             <div class="menu-body" id="background-page">
               <div class="menu-section">
-                <h4>背景选择</h4>
+                <h4>🎨 背景选择</h4>
+                <div class="line"></div>
                 <div class="bg-options">
                   <div class="bg-option" data-bg="default">
                     <img
@@ -123,7 +128,8 @@
               </div>
               <div class="menu-section">
                 <div class="menu-item-big">
-                  <h4>角色圣光扩散设置</h4>
+                  <h4>💫 角色圣光扩散设置</h4>
+                  <div class="line"></div>
                   <div class="slider-container">
                     <span>弱</span>
                     <input
@@ -148,27 +154,44 @@
                 </div>
               </div>
             </div>
-            <div class="menu-body" id="sound-page"></div>
+            <div class="menu-body" id="sound-page">
+              <div class="menu-section">
+                <div class="menu-item">
+                  <h4>🔊 音量设置</h4>
+                  <div class="line"></div>
+                </div>
+              </div>
+            </div>
             <div class="menu-body" id="save-page">
               <div class="menu-section">
                 <div class="menu-item-big">
                   <div class="save-list-container">
-                    <h4>存档管理</h4>
+                    <h4>⚙️ 存档管理</h4>
+                    <div class="line"></div>
                     <!-- 对话列表插入点 -->
                     <div id="conversation-list"></div>
                   </div>
+                </div>
+                <div class="menu-item">
                   <div class="save-create-container">
-                    <h4>新建对话</h4>
-                    <input
-                      type="text"
-                      id="new-convo-title"
-                      placeholder="请输入对话标题..."
-                    />
-                    <button id="create-convo-btn" class="save-btn">
-                      写入新存档
-                    </button>
+                    <h4>🎀 新建对话</h4>
+                    <div class="line"></div>
+                    <div class="upload-input-container">
+                      <h4>输入标题：</h4>
+                      <input
+                        type="text"
+                        id="new-convo-title"
+                        placeholder="请输入对话标题..."
+                      />
+                      <button id="create-convo-btn" class="save-btn">
+                        写入新存档
+                      </button>
+                    </div>
                   </div>
-                  <!-- 文件上传表单 -->
+                </div>
+                <div class="menu-item">
+                  <h4>📥 上传日志文档载入对话</h4>
+                  <div class="line"></div>
                   <div class="upload-area">
                     <input type="file" id="log-upload" accept=".log,.txt" />
                     <button id="upload-btn">上传日志文件</button>
@@ -179,6 +202,7 @@
             </div>
             <div class="menu-body" id="history-page">
               <div class="history-body">
+                <h4>🎵 以下是你们的回忆~</h4>
                 <div id="history-list"></div>
               </div>
             </div>
