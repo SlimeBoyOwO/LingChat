@@ -32,6 +32,10 @@ export const DomUtils = {
     elements.forEach((el) => el?.classList.remove("show"));
   },
 
+  hideMenuElements() {
+    this.ALL_PANEL_ELEMENTS.forEach((e1) => e1?.classList.remove("show"));
+  },
+
   /**
    * 切换元素显示状态
    * @param {HTMLElement} element
