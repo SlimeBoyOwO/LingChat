@@ -46,16 +46,13 @@ export class SaveController {
       this.domUtils.showElements([DOM.menuContent, DOM.menuSave, DOM.savePage]);
 
       // 隐藏其他面板元素
-      this.domUtils.hideElements([
-        DOM.menuImage,
-        DOM.imagePage,
-        DOM.history.toggle,
-        DOM.history.content,
-        DOM.history.clearBtn,
-        DOM.menuText,
-        DOM.textPage,
-        DOM.soundPage,
-      ]);
+      this.domUtils.hideElements(
+        this.domUtils.getOtherPanelElements([
+          DOM.menuContent,
+          DOM.menuSave,
+          DOM.savePage,
+        ])
+      );
 
       await this.conversationLoader.loadConversations();
 

@@ -46,16 +46,13 @@ export class HistoryManager {
       DOM.history.content,
       DOM.history.clearBtn,
     ]);
-    this.domUtils.hideElements([
-      DOM.menuText,
-      DOM.textPage,
-      DOM.menuSave,
-      DOM.menuImage,
-      DOM.imagePage,
-      DOM.menuSound,
-      DOM.soundPage,
-      DOM.savePage,
-    ]);
+    this.domUtils.hideElements(
+      this.domUtils.getOtherPanelElements([
+        DOM.history.toggle,
+        DOM.history.content,
+        DOM.history.clearBtn,
+      ])
+    );
 
     this.render();
   }
