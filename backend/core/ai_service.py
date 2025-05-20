@@ -129,7 +129,6 @@ class AIService:
                             cleaned_text, japanese_text = japanese_text, cleaned_text
 
             except Exception as e:
-                # 语言检测失败时保持原样
                 self.logger.warning(f"语言检测错误: {e}")
 
             # 对情绪标签单独预测，增加错误处理

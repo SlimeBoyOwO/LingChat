@@ -36,6 +36,7 @@ export class EmotionController {
 
     // 处理动画效果
     if (config.animation !== "none") {
+      DOM.avatar.container.classList.remove(this.currentEmotion);
       DOM.avatar.container.classList.add(config.animation);
     }
 
@@ -96,7 +97,7 @@ export class EmotionController {
 
   _handleAnimationEnd() {
     this._clearCurrentEffects();
-    DOM.avatar.container.classList.add("idle-animation");
+    DOM.avatar.container.classList.add("normal");
   }
 
   destroy() {
