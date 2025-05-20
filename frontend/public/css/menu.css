@@ -387,13 +387,17 @@ div#speed-text-test > span {
 }
 
 /* 滑块标签布局优化 */
-.menu-item h4 {
-  margin-bottom: 15px;
-  font-weight: 500;
-  color: #333;
-}
 
 /* 滑块容器布局 */
+.menu-item {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 10px;
+  margin: 5px 0;
+  backdrop-filter: blur(5px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
 .menu-item span {
   margin: 0 10px;
   font-size: 0.9em;
@@ -506,11 +510,11 @@ div#menu-panel
 }
 
 /* 存档页面样式 */
-.conversation-list-container {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  color: black;
+#conversation-list {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr); /* 两列布局 */
+  gap: 20px; /* 列间距 */
+  padding: 10px;
 }
 
 .conversation-item {
@@ -522,6 +526,19 @@ div#menu-panel
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.2);
   transition: all 0.3s ease;
+  /* 确保每个item高度一致 */
+  min-height: 100px;
+}
+
+/* 添加响应式布局 */
+@media (max-width: 900px) {
+  #conversation-list {
+    grid-template-columns: 1fr; /* 在较小屏幕上切换回单列 */
+  }
+}
+
+button {
+  white-space: nowrap;
 }
 
 .conversation-item:hover {
@@ -587,6 +604,13 @@ div#menu-panel
   background-color: maroon;
 }
 
+.upload-input-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-evenly;
+  height: 80px;
+}
+
 .upload-area {
   display: flex;
   justify-content: space-between;
@@ -595,7 +619,6 @@ div#menu-panel
   border: 2px dashed #ccc;
   border-radius: 5px;
   text-align: center;
-  margin: 20px 0;
 }
 
 #upload-btn {
@@ -617,7 +640,16 @@ div#menu-panel
 }
 
 #new-convo-title {
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
   color: #000;
+}
+
+#create-convo-btn {
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
 }
 
 /* 添加专门针对光晕滑块的样式 */
@@ -658,6 +690,7 @@ button#clear-history.show {
   box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.1);
   position: relative; /* 添加相对定位 */
   z-index: 2; /* 确保历史内容在上层 */
+  color: #333;
 }
 
 #history-list {
@@ -940,4 +973,14 @@ button#clear-history.show {
 
 #model-status.error {
   color: #f44336;
+}
+
+.line {
+  width: 100%;
+  height: 3px;
+  background-color: #0080ab;
+  margin: 2px auto;
+  opacity: 1;
+  border: none;
+  margin-bottom: 10px;
 }
