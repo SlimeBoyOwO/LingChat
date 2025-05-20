@@ -3,7 +3,7 @@ import time
 import base64
 from io import BytesIO
 from datetime import datetime
-from PIL import ImageGrab
+# from PIL import ImageGrab
 from dotenv import load_dotenv
 from py_ling_chat.core.logger import logger
 import requests
@@ -35,7 +35,7 @@ class DesktopAnalyzer:
     def capture_desktop(self):
         """截取整个桌面并返回Base64编码"""
         # 截取屏幕
-        screenshot = ImageGrab.grab()
+        screenshot = b"<temporary down>" # ImageGrab.grab()
         
         # 将截图转为Base64编码
         buffered = BytesIO()
