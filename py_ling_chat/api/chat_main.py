@@ -49,12 +49,6 @@ class WebSocketManager:
             print("客户端断开连接")
         except Exception as e:
             logger.error(f"WebSocket连接错误: {e}")
-            try:
-                await websocket.close(code=1011, reason=f"内部错误: {str(e)}")
-            except:
-                pass
-
-ws_manager = WebSocketManager()
 
 async def websocket_endpoint(websocket: WebSocket):
-    await ws_manager.handle_websocket(websocket)
+    await WebSocketManager().handle_websocket(websocket)

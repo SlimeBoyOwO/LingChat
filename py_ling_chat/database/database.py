@@ -4,10 +4,10 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
-from py_ling_chat.utils.runtime_path import root_path
+from py_ling_chat.utils.runtime_path import user_data_path
 
 # 修改数据库路径到data目录
-DATA_DIR = root_path / "data"
+DATA_DIR = user_data_path
 DB_NAME = DATA_DIR / "chat_system.db"
 
 

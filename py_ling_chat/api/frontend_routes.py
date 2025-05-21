@@ -3,10 +3,9 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import os
 
-router = APIRouter()
+from py_ling_chat.utils.runtime_path import package_root, static_path
 
-root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-frontend_dir = os.path.join(root_dir, 'frontend', 'public')
+router = APIRouter()
 
 # ✅ 自定义 StaticFiles（禁用缓存）
 class NoCacheStaticFiles(StaticFiles):
@@ -20,7 +19,7 @@ class NoCacheStaticFiles(StaticFiles):
 # ✅ 托管所有静态资源（保持原有路径结构）
 # 注意：这里改为返回 StaticFiles 实例，由上层 app.mount() 调用
 def get_static_files():
-    return NoCacheStaticFiles(directory=frontend_dir)
+    return NoCacheStaticFiles(directory=static_path)
 
 # ✅ 保持原有HTML路由
 def get_file_response(file_path: str) -> FileResponse:
@@ -34,8 +33,8 @@ def get_file_response(file_path: str) -> FileResponse:
 
 @router.get("/")
 async def index():
-    return get_file_response(os.path.join(frontend_dir, "pages", "index.html"))
+    return get_file_response(os.path.join(static_path, "pages", "index.html"))
 
 @router.get("/about")
 async def about():
-    return get_file_response(os.path.join(frontend_dir, "pages", "about.html"))
+    return get_file_response(os.path.join(static_path, "pages", "about.html"))
