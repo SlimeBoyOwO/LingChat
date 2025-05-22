@@ -3,12 +3,12 @@ import torch
 import os
 import json
 from pathlib import Path
-from .logger import Logger
+from .logger import log_debug, log_info, log_warning, log_error, initialize_logger, TermColors
 
 class EmotionClassifier:
     def __init__(self, model_path=None, logger=None):
         """加载情绪分类模型"""
-        self.logger = logger or Logger()
+        self.logger = logger  # 保留参数以兼容旧代码，但不再使用
         
         # 加载模型和分词器
         try:
@@ -27,17 +27,28 @@ class EmotionClassifier:
             self.label2id = label_config["label2id"]
             
             self._log_label_mapping()
-            self.logger.emotion_model_status(True, f"已成功加载情绪分类模型: {model_path.name}")
+            self._log_emotion_model_status(True, f"已成功加载情绪分类模型: {model_path.name}")
         except Exception as e:
-            self.logger.emotion_model_status(False, f"加载情绪分类模型失败: {e}")
+            self._log_emotion_model_status(False, f"加载情绪分类模型失败: {e}")
             self.id2label = {}
             self.label2id = {}
 
     def _log_label_mapping(self):
         """记录标签映射关系"""
-        self.logger.debug("\n加载的标签映射关系:")
+        log_debug("\n加载的标签映射关系:")
         for id, label in self.id2label.items():
-            self.logger.debug(f"{id}: {label}")
+            log_debug(f"{id}: {label}")
+
+    def _log_emotion_model_status(self, is_success: bool, details: str = None):
+        """情绪模型加载状态记录，兼容旧接口"""
+        status = "情绪分类模型加载正常" if is_success else "情绪分类模型加载异常"
+        status_color = TermColors.GREEN if is_success else TermColors.RED
+        status_symbol = "✔" if is_success else "✖"
+        
+        if details:
+            log_info(f"{status_color}{status_symbol}{TermColors.RESET} {status} - {details}")
+        else:
+            log_info(f"{status_color}{status_symbol}{TermColors.RESET} {status}")
 
     def predict(self, text, confidence_threshold=0.08):
         """预测文本情绪（带置信度阈值过滤）"""
@@ -65,7 +76,7 @@ class EmotionClassifier:
             
             # 低置信度处理
             if pred_prob < confidence_threshold:
-                self.logger.debug(f"情绪识别置信度低: {text} -> 不确定 ({pred_prob:.2%})")
+                log_debug(f"情绪识别置信度低: {text} -> 不确定 ({pred_prob:.2%})")
                 return {
                     "label": "不确定",
                     "confidence": pred_prob,
@@ -74,14 +85,14 @@ class EmotionClassifier:
                 }
             
             label = self.id2label.get(str(pred_id), "未知")
-            self.logger.debug(f"情绪识别: {text} -> {label} ({pred_prob:.2%})")
+            log_debug(f"情绪识别: {text} -> {label} ({pred_prob:.2%})")
             return {
                 "label": label,
                 "confidence": pred_prob,
                 "top3": top3
             }
         except Exception as e:
-            self.logger.error(f"情绪预测错误: {e}")
+            log_error(f"情绪预测错误: {e}")
             return {
                 "label": "未知",
                 "confidence": 0.0,
@@ -106,8 +117,9 @@ def main():
     
     # 初始化分类器
     try:
-        logger = Logger()
-        classifier = EmotionClassifier(logger=logger)
+        # 初始化logger
+        initialize_logger(app_name="情绪分类器", config_debug_mode=True)
+        classifier = EmotionClassifier()
         print("\n模型加载成功！输入文本进行分析，输入 ':q' 退出")
     except Exception as e:
         print(f"\n模型加载失败: {str(e)}")

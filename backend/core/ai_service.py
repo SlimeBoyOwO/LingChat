@@ -7,7 +7,7 @@ from typing import List, Dict, Optional
 from .deepseek import DeepSeek
 from .predictor import EmotionClassifier  # 导入情绪分类器
 from .VitsTTS import VitsTTS              # 导入语音生成
-from .logger import Logger
+from .logger import log_debug, log_info, log_warning, log_error, log_info_color, TermColors
 from .langDetect import LangDetect
 
 # 常量定义
@@ -26,9 +26,9 @@ COLOR = {
 class AIService:
     def __init__(self, logger=None):
         """初始化所有服务组件"""
-        self.logger = logger or Logger()
-        self.deepseek = DeepSeek(logger=self.logger)
-        self.emotion_classifier = EmotionClassifier(logger=self.logger)
+        self.logger = logger  # 保留参数以兼容旧代码，但不再使用
+        self.deepseek = DeepSeek(logger=logger)
+        self.emotion_classifier = EmotionClassifier(logger=logger)
         self.lang_detector = LangDetect()
         self.tts_engine = self._init_tts_engine()
         self._prepare_directories()
@@ -60,12 +60,12 @@ class AIService:
             # 2. 分析情绪和生成语音
             return await self._process_ai_response(ai_response, user_message)
         except Exception as e:
-            self.logger.error(f"处理消息时出错: {e}")
+            log_error(f"处理消息时出错: {e}")
             return None
     
     def load_memory(self, memory):
         self.deepseek.load_memory(memory)
-        self.logger.info("新的记忆已经被加载")
+        log_info("新的记忆已经被加载")
     
     async def _process_ai_response(self, ai_response: str, user_message: str) -> List[Dict]:
         """处理AI回复的完整流程"""
@@ -74,16 +74,16 @@ class AIService:
         # 分析情绪片段
         emotion_segments = self._analyze_emotions(ai_response)
         if not emotion_segments:
-            self.logger.warning("未检测到有效情绪片段")
+            log_warning("未检测到有效情绪片段")
             raise ValueError("未检测到有效情绪片段")
         
         # 生成语音和构造响应
         await self._generate_voice_files(emotion_segments)
         responses = self._create_responses(emotion_segments, user_message)
     
-        self.logger.debug("--- AI 回复分析结果 ---")
+        log_debug("--- AI 回复分析结果 ---")
         self._log_analysis_result(emotion_segments)
-        self.logger.debug("--- 分析结束 ---")
+        log_debug("--- 分析结束 ---")
 
         return responses
     
@@ -129,7 +129,7 @@ class AIService:
                             cleaned_text, japanese_text = japanese_text, cleaned_text
 
             except Exception as e:
-                self.logger.warning(f"语言检测错误: {e}")
+                log_warning(f"语言检测错误: {e}")
 
             # 对情绪标签单独预测，增加错误处理
             try:
@@ -139,7 +139,7 @@ class AIService:
                     "confidence": predicted["confidence"]
                 }
             except Exception as e:
-                self.logger.error(f"情绪预测错误 '{emotion_tag}': {e}")
+                log_error(f"情绪预测错误 '{emotion_tag}': {e}")
                 prediction_result = {
                     "label": "unknown",
                     "confidence": 0.0
@@ -189,30 +189,34 @@ class AIService:
             try:
                 os.remove(file)
             except OSError as e:
-                self.logger.warning(f"删除文件 {file} 失败: {e}")
+                log_warning(f"删除文件 {file} 失败: {e}")
     
     def _log_conversation(self, speaker: str, message: str):
         """记录对话日志"""
         log_message = f"{speaker}: {message}"
-        self.logger.info_white_text(log_message)
-        self.logger.log_conversation(speaker, message)
+        log_info_color(log_message, TermColors.WHITE)
+        
+        # 适配旧的log_conversation方法，写入对话日志文件
+        # 新的logger中可能不支持这个功能，或者需要特殊处理
+        with open(os.path.join("logs", "conversation.log"), 'a', encoding='utf-8') as f:
+            f.write(f"{speaker}: {message}\n\n")
 
     def _log_analysis_result(self, segments):
         """记录分析结果"""
         for segment in segments:
-            self.logger.debug(f"\n分析结果 (片段 {segment['index']}):")
-            self.logger.debug(f"  原始标记: 【{segment['original_tag']}】")
-            self.logger.debug(f"  中文文本: {segment['following_text']}")
+            log_debug(f"\n分析结果 (片段 {segment['index']}):")
+            log_debug(f"  原始标记: 【{segment['original_tag']}】")
+            log_debug(f"  中文文本: {segment['following_text']}")
             if segment['motion_text']:
-                self.logger.debug(f"  动作文本: （{segment['motion_text']}）")
+                log_debug(f"  动作文本: （{segment['motion_text']}）")
             if segment['japanese_text']:
-                self.logger.debug(f"  日文文本: <{segment['japanese_text']}>")
-            self.logger.debug(f"  预测情绪: {segment['predicted']} (置信度: {segment['confidence']:.2%})")
+                log_debug(f"  日文文本: <{segment['japanese_text']}>")
+            log_debug(f"  预测情绪: {segment['predicted']} (置信度: {segment['confidence']:.2%})")
             if os.path.exists(segment['voice_file']):
-                self.logger.debug(f"  对应语音: {os.path.basename(segment['voice_file'])}")
+                log_debug(f"  对应语音: {os.path.basename(segment['voice_file'])}")
             else:
                 if segment['japanese_text']:
-                    self.logger.debug(f"  对应语音: (未生成或生成失败)")
+                    log_debug(f"  对应语音: (未生成或生成失败)")
     
     def get_memory(self):
         return self.deepseek.get_messsages()
