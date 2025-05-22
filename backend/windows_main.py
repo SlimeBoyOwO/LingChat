@@ -53,13 +53,58 @@ async def websocket_endpoint(websocket: WebSocket):
                 if data.get('type') == 'ping':
                     await websocket.send_json({"type": "pong"})
                 elif data.get('type') == 'message':
-                    responses = await service_manager.ai_service.process_message(data.get('content', ''))
-                    for response in responses:
-                        await websocket.send_json(response)
+                    # 添加错误处理
+                    try:
+                        responses = await service_manager.ai_service.process_message(data.get('content', ''))
+                        
+                        # 处理responses为None的情况
+                        if responses is None:
+                            log_error("AI服务返回了None响应")
+                            error_response = {
+                                "type": "reply",
+                                "emotion": "sad",
+                                "originalTag": "错误",
+                                "message": "抱歉，处理您的消息时出现了问题。",
+                                "motionText": "困惑",
+                                "audioFile": None,
+                                "originalMessage": data.get('content', ''),
+                                "isMultiPart": False,
+                                "partIndex": 0,
+                                "totalParts": 1
+                            }
+                            await websocket.send_json(error_response)
+                        else:
+                            # 正常发送响应
+                            for response in responses:
+                                await websocket.send_json(response)
+                    except Exception as e:
+                        log_error(f"处理消息时发生异常: {e}")
+                        try:
+                            # 发送错误响应
+                            await websocket.send_json({
+                                "type": "reply",
+                                "emotion": "sad",
+                                "originalTag": "错误",
+                                "message": f"处理消息时出错: {str(e)}",
+                                "motionText": "困惑",
+                                "audioFile": None,
+                                "originalMessage": data.get('content', ''),
+                                "isMultiPart": False,
+                                "partIndex": 0,
+                                "totalParts": 1
+                            })
+                        except:
+                            log_error("无法发送错误响应")
             
                     
     except WebSocketDisconnect:
         print("客户端断开连接")
+    except Exception as e:
+        log_error(f"WebSocket连接错误: {e}")
+        try:
+            await websocket.close(code=1011, reason=f"内部错误: {str(e)}")
+        except:
+            pass
 
 # ============= 新增 HTTP 路由 =============
 app.add_middleware(
