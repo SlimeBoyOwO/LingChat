@@ -28,6 +28,8 @@ log/*.log
 logs/*.log
 backend/logs/*.log
 runtime_logs/*.log
+run_logs/
+backend/run_logs/
 
 # Ignore generated audio file
 public/audio/
