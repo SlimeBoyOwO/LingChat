@@ -9,13 +9,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from core.service_manager import service_manager
 from core.frontend_manager import FrontendManager
-from core.logger import Logger
+from core.logger import initialize_logger, log_info, log_error, log_text
 from api.chat_history import router as chat_history_router
 
 load_dotenv()
 
 # ============= 初始化核心组件 =============
-logger = Logger()
+initialize_logger(app_name="LingChat", config_debug_mode=True)
 app = FastAPI()
 logo = [
     "", 
@@ -45,7 +45,7 @@ async def websocket_endpoint(websocket: WebSocket):
             message = await websocket.receive()
             # 首先检查是否是断开消息
             if message.get('type') == 'websocket.disconnect':
-                logger.info(f"客户端断开连接，代码: {message.get('code')}")
+                log_info(f"客户端断开连接，代码: {message.get('code')}")
             else:
                 print(message)
                 data = json.loads(message["text"])
@@ -89,8 +89,8 @@ app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="static")
 # ============= 启动逻辑 =============
 async def main():
     for line in logo:
-        logger.log_text(line)
-    logger.log_text("\n")
+        log_text(line)
+    log_text("\n")
 
     # 启动前端
     # frontend = FrontendManager(logger)
