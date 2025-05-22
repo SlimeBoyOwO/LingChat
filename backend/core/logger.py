@@ -6,6 +6,9 @@ import threading
 from datetime import datetime
 import os
 import re  # Import re for ANSI stripping
+import itertools
+import traceback
+from typing import Optional, Dict, List, Any, Union, Callable
 
 # 日志配置
 ENABLE_FILE_LOGGING = True  # 是否启用文件日志记录
@@ -305,22 +308,78 @@ def get_logger():
             _logger.debug("日志记录器在显式初始化之前被访问，已使用默认值进行初始化")
     return _logger
 
-def log_debug(message, *args, **kwargs): get_logger().debug(message, *args, **kwargs)
+def log_debug(message, exc_info=False):
+    """记录调试级别日志"""
+    if _logger is None:
+        print(f"{TermColors.GREY}[DEBUG]: {message}{TermColors.RESET}")
+    else:
+        _logger.debug(message, exc_info=exc_info)
 
-def log_info(message, *args, **kwargs): get_logger().info(message, *args, **kwargs)
+def log_info(message, exc_info=False):
+    """记录信息级别日志"""
+    if _logger is None:
+        print(f"[INFO]: {message}")
+    else:
+        _logger.info(message, exc_info=exc_info)
 
-def log_warning(message, *args, **kwargs): get_logger().warning(message, *args, **kwargs)
+def log_warning(message, exc_info=False):
+    """记录警告级别日志"""
+    if _logger is None:
+        print(f"{TermColors.YELLOW}[WARNING]: {message}{TermColors.RESET}")
+    else:
+        _logger.warning(message, exc_info=exc_info)
 
-def log_error(message, *args, **kwargs): get_logger().error(message, *args, **kwargs)
+def log_error(message, exc_info=False):
+    """记录错误级别日志"""
+    if _logger is None:
+        print(f"{TermColors.RED}[ERROR]: {message}{TermColors.RESET}")
+        if exc_info:
+            traceback.print_exc()
+    else:
+        _logger.error(message, exc_info=exc_info)
 
-def log_info_color(message, color_code=TermColors.GREEN, *args, **kwargs):
-    get_logger().info(f"{color_code}{message}{TermColors.RESET}", *args, **kwargs)
+def log_critical(message: str, exc_info: bool = False) -> None:
+    """记录严重错误级别日志"""
+    if _logger is None:
+        print(f"{TermColors.RED}{TermColors.BOLD}[CRITICAL]: {message}{TermColors.RESET}")
+        if exc_info:
+            traceback.print_exc()
+    else:
+        _logger.critical(message, exc_info=exc_info)
 
-def log_warning_color(message, color_code=TermColors.YELLOW, *args, **kwargs):
-    get_logger().warning(f"{color_code}{message}{TermColors.RESET}", *args, **kwargs)
+def log_info_color(message: str, color: str = TermColors.GREEN, exc_info: bool = False) -> None:
+    """使用自定义颜色输出信息"""
+    if _logger is None:
+        print(f"{color}[INFO]: {message}{TermColors.RESET}")
+        if exc_info:
+            traceback.print_exc()
+    else:
+        # 由于logger不支持ANSI颜色代码，使用print并模仿日志格式
+        print(f"{color}[INFO]: {message}{TermColors.RESET}")
+        if exc_info:
+            traceback.print_exc()
 
-def log_error_color(message, color_code=TermColors.RED, *args, **kwargs):
-    get_logger().error(f"{color_code}{message}{TermColors.RESET}", *args, **kwargs)
+def log_warning_color(message: str, color: str = TermColors.YELLOW, exc_info: bool = False) -> None:
+    """使用自定义颜色输出警告"""
+    if _logger is None:
+        print(f"{color}[WARNING]: {message}{TermColors.RESET}")
+        if exc_info:
+            traceback.print_exc()
+    else:
+        print(f"{color}[WARNING]: {message}{TermColors.RESET}")
+        if exc_info:
+            traceback.print_exc()
+
+def log_error_color(message: str, color: str = TermColors.RED, exc_info: bool = False) -> None:
+    """使用自定义颜色输出错误"""
+    if _logger is None:
+        print(f"{color}[ERROR]: {message}{TermColors.RESET}")
+        if exc_info:
+            traceback.print_exc()
+    else:
+        print(f"{color}[ERROR]: {message}{TermColors.RESET}")
+        if exc_info:
+            traceback.print_exc()
 
 def log_rag_output(message, *args, **kwargs):  # Example of a domain-specific logger
     get_logger().info(f"{TermColors.BLUE}{message}{TermColors.RESET}", *args, **kwargs)

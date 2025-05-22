@@ -36,6 +36,57 @@ class AIService:
         self.temp_voice_dir = os.environ.get("TEMP_VOICE_DIR", "frontend/public/audio")
         os.makedirs(self.temp_voice_dir, exist_ok=True)
         
+        # 初始化RAG系统配置
+        self._init_rag_config()
+        
+    def _init_rag_config(self):
+        """初始化RAG相关配置并加载RAG系统"""
+        # 创建配置对象
+        class Config:
+            def __init__(self, **kwargs):
+                for key, value in kwargs.items():
+                    setattr(self, key, value)
+                    
+        # 从环境变量中加载RAG配置
+        use_rag = os.environ.get("USE_RAG", "False").lower() == "true"
+        ai_name = os.environ.get("AI_NAME", "钦灵")
+        debug_mode = os.environ.get("DEBUG_MODE", "False").lower() == "true"
+        rag_history_path = os.environ.get("RAG_HISTORY_PATH", "rag_chat_history")
+        chroma_db_path = os.environ.get("CHROMA_DB_PATH", "chroma_db_store")
+        rag_retrieval_count = int(os.environ.get("RAG_RETRIEVAL_COUNT", "3"))
+        rag_candidate_multiplier = int(os.environ.get("RAG_CANDIDATE_MULTIPLIER", "3"))
+        rag_context_m_before = int(os.environ.get("RAG_CONTEXT_M_BEFORE", "2"))
+        rag_context_n_after = int(os.environ.get("RAG_CONTEXT_N_AFTER", "2"))
+        rag_prompt_prefix = os.environ.get("RAG_PROMPT_PREFIX", 
+                                        "以下是根据你的问题从历史对话中检索到的相关片段，其中包含了对话发生的大致时间：")
+        rag_prompt_suffix = os.environ.get("RAG_PROMPT_SUFFIX", "")
+        
+        # 创建配置对象
+        rag_config = Config(
+            USE_RAG=use_rag,
+            AI_NAME=ai_name,
+            DEBUG_MODE=debug_mode,
+            RAG_HISTORY_PATH=rag_history_path,
+            CHROMA_DB_PATH=chroma_db_path,
+            RAG_RETRIEVAL_COUNT=rag_retrieval_count,
+            RAG_CANDIDATE_MULTIPLIER=rag_candidate_multiplier,
+            RAG_CONTEXT_M_BEFORE=rag_context_m_before,
+            RAG_CONTEXT_N_AFTER=rag_context_n_after,
+            RAG_PROMPT_PREFIX=rag_prompt_prefix,
+            RAG_PROMPT_SUFFIX=rag_prompt_suffix
+        )
+        
+        # 初始化RAG系统
+        if use_rag:
+            log_info("正在初始化RAG系统...")
+            rag_initialized = self.deepseek.init_rag_system(rag_config)
+            if rag_initialized:
+                log_info_color("RAG系统初始化成功", TermColors.GREEN)
+            else:
+                log_warning_color("RAG系统初始化失败或禁用", TermColors.YELLOW)
+        else:
+            log_info("RAG系统已禁用")
+        
     def _init_tts_engine(self) -> VitsTTS:
         """初始化TTS引擎"""
         return VitsTTS(
@@ -61,7 +112,22 @@ class AIService:
             return await self._process_ai_response(ai_response, user_message)
         except Exception as e:
             log_error(f"处理消息时出错: {e}")
-            return None
+            log_debug(f"详细错误信息: ", exc_info=True)
+            
+            # 创建一个简单的错误响应，保证返回值是可迭代的列表
+            error_response = [{
+                "type": "reply",
+                "emotion": "sad",
+                "originalTag": "错误",
+                "message": f"抱歉，处理消息时出现错误: {str(e)}",
+                "motionText": "困惑",
+                "audioFile": None,
+                "originalMessage": user_message,
+                "isMultiPart": False,
+                "partIndex": 0,
+                "totalParts": 1
+            }]
+            return error_response
     
     def load_memory(self, memory):
         self.deepseek.load_memory(memory)
@@ -75,7 +141,17 @@ class AIService:
         emotion_segments = self._analyze_emotions(ai_response)
         if not emotion_segments:
             log_warning("未检测到有效情绪片段")
-            raise ValueError("未检测到有效情绪片段")
+            # 创建一个默认的情绪片段，而不是抛出异常
+            emotion_segments = [{
+                "index": 1,
+                "original_tag": "normal",
+                "following_text": ai_response,
+                "motion_text": "",
+                "japanese_text": "",
+                "predicted": "normal",
+                "confidence": 0.8,
+                "voice_file": os.path.join(self.temp_voice_dir, f"part_1.{self.tts_engine.format}")
+            }]
         
         # 生成语音和构造响应
         await self._generate_voice_files(emotion_segments)
@@ -91,6 +167,12 @@ class AIService:
         """分析文本中每个【】标记的情绪，并提取日语和中文部分"""
         # 改进后的正则表达式，更灵活地匹配各种情况
         emotion_segments = re.findall(r'(【(.*?)】)([^【】]*)', text)
+        
+        # 如果没有找到情绪标签，检查是否需要自动添加一个默认标签
+        if not emotion_segments:
+            log_warning(f"未在文本中找到【】格式的情绪标签，将尝试添加默认标签")
+            # 可选：返回一个空列表，让上层函数决定如何处理
+            return []
 
         results = []
         for i, (full_tag, emotion_tag, following_text) in enumerate(emotion_segments, 1):
@@ -141,8 +223,8 @@ class AIService:
             except Exception as e:
                 log_error(f"情绪预测错误 '{emotion_tag}': {e}")
                 prediction_result = {
-                    "label": "unknown",
-                    "confidence": 0.0
+                    "label": "normal",
+                    "confidence": 0.5
                 }
 
             results.append({
@@ -161,11 +243,19 @@ class AIService:
     
     async def _generate_voice_files(self, segments: List[Dict]):
         """生成语音文件"""
-        tasks = [
-            self.tts_engine.generate_voice(seg["japanese_text"], seg["voice_file"], True)
-            for seg in segments if seg["japanese_text"]
-        ]
-        await asyncio.gather(*tasks)
+        tasks = []
+        for seg in segments:
+            if seg["japanese_text"]:
+                # 只有在有日语文本时才生成语音
+                tasks.append(self.tts_engine.generate_voice(seg["japanese_text"], seg["voice_file"], True))
+            elif seg["following_text"] and not seg.get("japanese_text"):
+                # 如果没有日语文本但有中文文本，记录日志
+                log_warning(f"片段 {seg['index']} 没有日语文本，跳过语音生成")
+                
+        if tasks:
+            await asyncio.gather(*tasks)
+        else:
+            log_warning("没有任何片段包含日语文本，跳过所有语音生成")
     
     def _create_responses(self, segments: List[Dict], user_message: str) -> List[Dict]:
         """构造响应消息"""
@@ -196,10 +286,17 @@ class AIService:
         log_message = f"{speaker}: {message}"
         log_info_color(log_message, TermColors.WHITE)
         
+        # 确保logs目录存在
+        logs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
+        os.makedirs(logs_dir, exist_ok=True)
+        
         # 适配旧的log_conversation方法，写入对话日志文件
-        # 新的logger中可能不支持这个功能，或者需要特殊处理
-        with open(os.path.join("logs", "conversation.log"), 'a', encoding='utf-8') as f:
-            f.write(f"{speaker}: {message}\n\n")
+        try:
+            with open(os.path.join(logs_dir, "conversation.log"), 'a', encoding='utf-8') as f:
+                f.write(f"{speaker}: {message}\n\n")
+        except Exception as e:
+            log_error(f"无法写入对话日志: {e}")
+            # 继续执行，不应影响主流程
 
     def _log_analysis_result(self, segments):
         """记录分析结果"""
