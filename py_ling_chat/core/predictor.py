@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 # from .logger import log_debug, log_info, log_warning, log_error, initialize_logger, TermColors
 from py_ling_chat.core.logger import logger, TermColors
+from py_ling_chat.utils.runtime_path import package_root
+
 
 class EmotionClassifier:
     def __init__(self, model_path=None):
@@ -12,8 +14,8 @@ class EmotionClassifier:
     
         # 加载模型和分词器
         try:
-            model_path = model_path or os.environ.get("EMOTION_MODEL_PATH", "./emotion_model_18emo")
-            model_path = Path(model_path).resolve()
+            model_path = model_path or package_root / "emotion_model_12emo"
+            model_path: Path = Path(model_path).resolve()
             self.tokenizer = BertTokenizer.from_pretrained(model_path, local_files_only=True)
             self.model = BertForSequenceClassification.from_pretrained(model_path)
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
