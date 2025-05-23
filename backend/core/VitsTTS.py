@@ -67,9 +67,15 @@ class VitsTTS:
         status_symbol = "✔" if is_running else "✖"
         
         if details:
-            logger.info(f"{status_color}{status_symbol}{TermColors.RESET} {status} - {details}")
+            if is_running:
+                logger.info(f"{status_color}{status_symbol}{TermColors.RESET} {status} - {details}")
+            else:
+                logger.warning(f"{status_color}{status_symbol}{TermColors.RESET} {status} - {details}")
         else:
-            logger.info(f"{status_color}{status_symbol}{TermColors.RESET} {status}")
+            if is_running:
+                logger.info(f"{status_color}{status_symbol}{TermColors.RESET} {status}")
+            else:
+                logger.warning(f"{status_color}{status_symbol}{TermColors.RESET} {status}")
 
     async def generate_voice(self, text, file_name, save_file=False):
         """

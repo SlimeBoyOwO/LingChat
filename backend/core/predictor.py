@@ -46,9 +46,15 @@ class EmotionClassifier:
         status_symbol = "✔" if is_success else "✖"
         
         if details:
-            logger.info(f"{status_color}{status_symbol}{TermColors.RESET} {status} - {details}")
+            if is_success:
+                logger.info(f"{status_color}{status_symbol}{TermColors.RESET} {status} - {details}")
+            else:
+                logger.error(f"{status_color}{status_symbol}{TermColors.RESET} {status} - {details}")
         else:
-            logger.info(f"{status_color}{status_symbol}{TermColors.RESET} {status}")
+            if is_success:
+                logger.info(f"{status_color}{status_symbol}{TermColors.RESET} {status}")
+            else:
+                logger.error(f"{status_color}{status_symbol}{TermColors.RESET} {status}")
 
     def predict(self, text, confidence_threshold=0.08):
         """预测文本情绪（带置信度阈值过滤）"""
