@@ -2,6 +2,7 @@ from openai import OpenAI
 import os
 import json
 import copy
+from datetime import datetime
 #from .logger import log_debug, log_info, log_error, log_text
 from .new_logger import logger
 from dotenv import load_dotenv
@@ -32,6 +33,10 @@ class DeepSeek:
         self.client = OpenAI(api_key=api_key, base_url=base_url)
         self.settings = os.environ.get("SYSTEM_PROMPT", "你是一个AI助手，请尽可能准确地回答问题。")
         self.model_type = os.environ.get("MODEL_TYPE", "deepseek-chat")
+        
+        # 是否发送当前时间
+        self.send_current_time = os.environ.get("SEND_CURRENT_TIME", "False").lower() == "true"
+        logger.debug(f"发送当前时间功能状态: {'启用' if self.send_current_time else '禁用'}")
         
         self.messages = [
             {
@@ -99,6 +104,27 @@ class DeepSeek:
         # 使用RAG增强上下文
         current_context = self.messages.copy()
         rag_messages = []
+        
+        # 添加当前时间信息（如果启用）
+        if self.send_current_time:
+            current_time = datetime.now().strftime("%Y年%m月%d日 %H:%M:%S")
+            time_message = {
+                "role": "system",
+                "content": f"当前系统时间是：{current_time}，请在回答中参考这个时间信息，尤其是与日期相关的内容。"
+            }
+            
+            system_index = -1
+            for i, msg in enumerate(current_context):
+                if msg["role"] == "system":
+                    system_index = i
+                    break
+            
+            if system_index != -1:
+                current_context.insert(system_index, time_message)
+            else:
+                current_context.insert(0, time_message)
+                
+            logger.debug(f"已添加当前时间信息: {current_time}")
         
         if self.use_rag and self.rag_system:
             try:
