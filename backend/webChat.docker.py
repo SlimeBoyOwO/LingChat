@@ -7,13 +7,12 @@ from core.deepseek import DeepSeek
 import re
 from core.predictor import EmotionClassifier  # 导入情绪分类器
 from core.VitsTTS import VitsTTS              # 导入语音生成
-from core.logger import initialize_logger, log_debug, log_info, log_warning, log_error, log_text
+from core.new_logger import logger
 from core.langDetect import LangDetect
 import dotenv
 
 dotenv.load_dotenv()
-# 初始化日志
-initialize_logger(app_name="LingChat", config_debug_mode=True)
+# 获取日志级别已应用于logger初始化，无需额外操作
 deepseek = DeepSeek()
 emotion_classifier = EmotionClassifier()
 langDetect = LangDetect()
@@ -72,7 +71,7 @@ def analyze_emotions(text):
 
         except Exception as e:
             # 语言检测失败时保持原样
-            log_warning(f"语言检测错误: {e}")
+            logger.warning(f"语言检测错误: {e}")
         
         # 对情绪标签单独预测，增加错误处理
         try:
@@ -82,7 +81,7 @@ def analyze_emotions(text):
                 "confidence": predicted["confidence"]
             }
         except Exception as e:
-            log_error(f"情绪预测错误 '{emotion_tag}': {e}")
+            logger.error(f"情绪预测错误 '{emotion_tag}': {e}")
             prediction_result = {
                 "label": "unknown",
                 "confidence": 0.0
@@ -117,9 +116,9 @@ def play_voice_files(text_segments):
     """顺序播放生成的语音文件"""
     for segment in text_segments:
         if os.path.exists(segment["voice_file"]):
-            log_info(f"\n播放: 【{segment['original_tag']}】{segment['following_text']}")
-            log_info(f"\n日文翻译: {segment['japanese_text']}")
-            log_info(f"预测情绪: {segment['predicted']} (置信度: {segment['confidence']:.2%})")
+            logger.info(f"\n播放: 【{segment['original_tag']}】{segment['following_text']}")
+            logger.info(f"\n日文翻译: {segment['japanese_text']}")
+            logger.info(f"预测情绪: {segment['predicted']} (置信度: {segment['confidence']:.2%})")
             # 使用 pydub 播放音频，避免文件占用问题
             
 
@@ -160,26 +159,26 @@ async def process_ai_response(ai_response, user_message):
             try:
                 os.remove(file)
             except Exception as e:
-                log_warning(f"删除文件 {file} 时出错: {e}")
+                logger.warning(f"删除文件 {file} 时出错: {e}")
 
     # 1. 打印原始回复
-    log_info(f"\n钦灵: {ai_response}")
+    logger.info(f"\n钦灵: {ai_response}")
     
     # 2. 分析情绪片段
     emotion_segments = analyze_emotions(ai_response)
     if not emotion_segments:
-        log_error("未检测到有效情绪片段，请检查deepseek.py中的apikey是否正确填写")
+        logger.error("未检测到有效情绪片段，请检查deepseek.py中的apikey是否正确填写")
         return
     
     # 3. 生成语音文件
-    log_info("\n生成语音文件中...")
+    logger.info("\n生成语音文件中...")
     await generate_voice_files(emotion_segments)
 
     # 4. 构造消息包
     responses = create_responses(emotion_segments, user_message)
 
     # 5. 播放并显示分析结果
-    log_info("\n语音分析结果:")
+    logger.info("\n语音分析结果:")
     play_voice_files(emotion_segments)
 
     return responses
@@ -187,12 +186,12 @@ async def process_ai_response(ai_response, user_message):
     
 
 async def handle_client(websocket):
-    log_info("Python 服务: 新的连接建立")
+    logger.info("Python 服务: 新的连接建立")
     
     try:
         async for message in websocket:
             data = json.loads(message)
-            log_debug(f"Python 收到消息: {data}")
+            logger.debug(f"Python 收到消息: {data}")
             
             if data.get('type') == 'message':
                 user_message = data.get('content', '')
@@ -213,17 +212,17 @@ async def handle_client(websocket):
                             await websocket.send(json.dumps(response))
                             await asyncio.sleep(0.1)
                 except Exception as e:
-                    log_error(f"\n处理AI响应时出错: {str(e)}")
+                    logger.error(f"\n处理AI响应时出错: {str(e)}")
                     await websocket.send(json.dumps({"error": str(e)}))
                 
     except websockets.exceptions.ConnectionClosedOK:
-        log_info("Python 服务: 连接正常关闭")
+        logger.info("Python 服务: 连接正常关闭")
     except Exception as e:
-        log_error(f"Python 服务: 发生错误 - {e}")
+        logger.error(f"Python 服务: 发生错误 - {e}")
 
 async def main():
     # 显式创建事件循环（兼容 Docker 和 Windows）
-    log_info("main函数加载中")
+    logger.info("main函数加载中")
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
@@ -244,9 +243,9 @@ async def main():
         origins=None  # 允许所有来源
     )
     
-    log_info(f"Python WebSocket 服务运行在 ws://{bind_addr}:{bind_port}")
+    logger.info(f"Python WebSocket 服务运行在 ws://{bind_addr}:{bind_port}")
     await server.wait_closed()
 
 if __name__ == "__main__":
-    log_info("程序启动！")
+    logger.info("程序启动！")
     asyncio.run(main())
