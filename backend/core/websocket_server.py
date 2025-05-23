@@ -2,7 +2,8 @@
 import websockets
 import json
 from typing import Callable, Optional
-from .logger import log_debug, log_info, log_error, TermColors
+# from .logger import log_debug, log_info, log_error, TermColors
+from .new_logger import logger, TermColors
 
 class WebSocketServer:
     def __init__(self, 
@@ -18,8 +19,8 @@ class WebSocketServer:
 
     async def _handle_client(self, websocket):
         """处理客户端连接"""
-        log_debug("新的客户端连接")
-        log_info("新的客户端连接建立")
+        logger.debug("新的客户端连接")
+        logger.info("新的客户端连接建立")
         
         try:
             async for message in websocket:
@@ -28,12 +29,12 @@ class WebSocketServer:
                     if self.message_handler:
                         await self.message_handler(websocket, data)
                 except json.JSONDecodeError:
-                    log_error("收到无效的JSON数据")
+                    logger.error("收到无效的JSON数据")
                 except Exception as e:
-                    log_error(f"处理消息时出错: {e}")
+                    logger.error(f"处理消息时出错: {e}")
 
         except websockets.exceptions.ConnectionClosed:
-            log_info("客户端断开连接")
+            logger.info("客户端断开连接")
 
     async def start(self):
         """启动WebSocket服务器"""
@@ -60,6 +61,6 @@ class WebSocketServer:
         status_symbol = "✔" if is_running else "✖"
         
         if details:
-            log_info(f"{status_color}{status_symbol}{TermColors.RESET} {status} - {details}")
+            logger.info(f"{status_color}{status_symbol}{TermColors.RESET} {status} - {details}")
         else:
-            log_info(f"{status_color}{status_symbol}{TermColors.RESET} {status}")
+            logger.info(f"{status_color}{status_symbol}{TermColors.RESET} {status}")
