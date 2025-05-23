@@ -45,8 +45,5 @@ memory-bank/
 
 # Ignore 数据库淫荡对话历史
 chat_system.db
-
-# Ignore 记忆测试暂存区
-记忆测试/
 chroma_db_store/
 rag_chat_history/
