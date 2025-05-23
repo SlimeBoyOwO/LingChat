@@ -1,5 +1,5 @@
 from .ai_service import AIService
-from .logger import log_info
+from .new_logger import logger
 import os
 
 class ServiceManager:
@@ -7,7 +7,7 @@ class ServiceManager:
     
     def __init__(self):
         self.ai_service = AIService()
-        log_info(f"🧠🧠🧠 ai_service 初始化，进程 ID: {os.getpid()}")
+        logger.info(f"🧠🧠🧠 ai_service 初始化，进程 ID: {os.getpid()}")
     
     @classmethod
     def get_instance(cls):
