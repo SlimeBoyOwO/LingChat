@@ -58,7 +58,7 @@ class Logger:
     def __init__(
         self,
         app_name: str = "AppLogger",
-        debug_mode: Optional[bool] = None,
+        log_level: Optional[str] = None,
         show_timestamp: Optional[bool] = None,
         enable_file_logging: bool = True,
         log_file_directory: str = "run_logs",
@@ -68,7 +68,7 @@ class Logger:
         
         Args:
             app_name: 应用名称
-            debug_mode: 是否调试模式 (None 时从环境变量读取)
+            log_level: 日志级别 (None 时从环境变量读取)
             show_timestamp: 是否显示时间戳 (None 时从环境变量读取)
             enable_file_logging: 是否启用文件日志
             log_file_directory: 日志文件目录
@@ -81,7 +81,8 @@ class Logger:
 
         # 初始化配置
         self.app_name = app_name
-        self.debug_mode = self._get_bool_env('DEBUG_MODE', debug_mode)
+        self.log_level = self._get_log_level(log_level)
+        self.print_context = self._get_bool_env('PRINT_CONTEXT', None)
         self.show_timestamp = self._get_bool_env('CONSOLE_SHOW_TIMESTAMP', show_timestamp)
         self.enable_file_logging = enable_file_logging
         self.log_file_directory = log_file_directory
@@ -99,6 +100,24 @@ class Logger:
         
         self._initialized = True
 
+    def _get_log_level(self, explicit_level: Optional[str]) -> int:
+        """获取日志级别配置"""
+        if explicit_level is not None:
+            level_str = explicit_level
+        else:
+            level_str = os.environ.get('LOG_LEVEL', 'INFO')
+        
+        # 转换字符串日志级别为logging模块的常量
+        level_map = {
+            'DEBUG': logging.DEBUG,
+            'INFO': logging.INFO,
+            'WARNING': logging.WARNING,
+            'ERROR': logging.ERROR,
+            'CRITICAL': logging.CRITICAL
+        }
+        
+        return level_map.get(level_str.upper(), logging.INFO)
+
     def _get_bool_env(self, env_var: str, explicit_value: Optional[bool]) -> bool:
         """获取布尔型配置，优先使用显式设置，其次环境变量"""
         if explicit_value is not None:
@@ -109,7 +128,7 @@ class Logger:
         """初始化日志处理器"""
         self._logger = logging.getLogger(self.app_name)
         self._logger.propagate = False
-        self._logger.setLevel(logging.DEBUG if self.debug_mode else logging.INFO)
+        self._logger.setLevel(self.log_level)
 
         # 清除现有处理器
         for handler in self._logger.handlers[:]:
@@ -130,6 +149,7 @@ class Logger:
         """创建控制台日志处理器"""
         handler = AnimationAwareStreamHandler(sys.stdout)
         handler.setFormatter(ColoredFormatter(self.show_timestamp))
+        handler.setLevel(self.log_level)
         return handler
 
     def _create_file_handler(self) -> Optional[logging.Handler]:
@@ -151,6 +171,11 @@ class Logger:
                 f"{TermColors.RED}Error: Failed to initialize file logging: {e}{TermColors.RESET}\n"
             )
             return None
+
+    # 新增方法：检查是否可以打印上下文
+    def should_print_context(self) -> bool:
+        """检查是否应该打印上下文，只有在DEBUG级别且PRINT_CONTEXT为True时才打印"""
+        return self.log_level <= logging.DEBUG and self.print_context
 
     # 以下是日志方法
     def debug(self, message: str, exc_info: bool = False):

@@ -313,13 +313,27 @@ class RAGSystem:
             logger.warning("RAG: 无有效会话消息可供保存。")
             return None
         
-        # 过滤掉系统提示词，只保留用户和助手的消息
-        filtered_messages = [msg for msg in session_messages if msg.get('role') in ['user', 'assistant']]
-        
-        # 检查并添加调试信息
-        if len(filtered_messages) < len(session_messages) and getattr(self.config, 'DEBUG_MODE', False):
-            system_msgs = [msg.get('content', '')[:50] + "..." for msg in session_messages if msg.get('role') == 'system']
-            logger.debug(f"RAG: 过滤了 {len(session_messages) - len(filtered_messages)} 条系统消息: {system_msgs}")
+        # 过滤出不属于同一会话的消息
+        filtered_messages = []
+        if len(session_messages) > 0 and 'session_id' in session_messages[0]:
+            # 提取所有会话ID，并获取最主要的会话ID
+            session_ids = [msg.get('session_id') for msg in session_messages if 'session_id' in msg]
+            main_session_id = max(set(session_ids), key=session_ids.count) if session_ids else None
+            
+            # 只保留主要会话ID的消息
+            if main_session_id:
+                filtered_messages = [msg for msg in session_messages if msg.get('session_id') == main_session_id]
+            
+        # 如果没有根据session_id过滤，或过滤后为空，则使用原始消息列表
+        if not filtered_messages:
+            filtered_messages = session_messages
+            
+        # 日志记录过滤情况
+        if len(filtered_messages) < len(session_messages) and logger.should_print_context():
+            logger.debug(f"RAG: 根据session_id过滤后，消息数量从 {len(session_messages)} 减少到 {len(filtered_messages)}")
+            
+        # 移除系统消息
+        filtered_messages = [msg for msg in filtered_messages if msg.get('role') != 'system']
         
         if not filtered_messages:
             logger.warning("RAG: 过滤后无有效会话消息可供保存。")
@@ -451,7 +465,7 @@ class RAGSystem:
             logger.debug(f"RAG: ChromaDB返回 {len(results['ids'][0])} 个候选结果。")
             
             # 详细记录候选结果
-            if getattr(self.config, 'DEBUG_MODE', False):
+            if logger.should_print_context():
                 logger.debug("\n------ RAG候选结果详情 ------")
                 for i in range(min(5, len(results['ids'][0]))):  # 只显示前5个，避免过多输出
                     try:
@@ -523,7 +537,7 @@ class RAGSystem:
                     logger.debug(f"RAG: 添加上下文块 (ID {core_doc_id}). LLM的RAG消息总数: {len(final_rag_messages)}")
                     
                     # 详细记录上下文数据统计
-                    if getattr(self.config, 'DEBUG_MODE', False):
+                    if logger.should_print_context():
                         block_chars = sum(len(msg.get('content', '')) for msg in potential_block_messages)
                         msg_types = {}
                         for msg in potential_block_messages:
@@ -563,8 +577,7 @@ class RAGSystem:
             logger.debug("RAG: RAG功能已禁用，跳过检索准备。")
             return []
             
-        debug_mode = getattr(self.config, 'DEBUG_MODE', False)
-        if debug_mode:
+        if logger.should_print_context():
             logger.debug(f"\n------ RAG准备阶段 ------")
             logger.debug(f"RAG: 开始为用户输入准备RAG上下文，输入长度: {len(user_input)} 字符")
             logger.debug(f"RAG: 用户输入前100字符: \"{user_input[:100]}\"{'...' if len(user_input) > 100 else ''}")
@@ -615,8 +628,8 @@ class RAGSystem:
         
         if system_prompts_in_results:
             logger.warning_color("警告: RAG检索结果中包含系统提示词，这可能导致提示词重复", TermColors.YELLOW)
-            for i, msg in enumerate(system_prompts_in_results):
-                if debug_mode:
+            if logger.should_print_context():
+                for i, msg in enumerate(system_prompts_in_results):
                     content = msg.get('content', '')
                     shortened = content[:100] + ('...' if len(content) > 100 else '')
                     logger.debug(f"检测到的系统提示[{i+1}]: {shortened}")
@@ -628,7 +641,7 @@ class RAGSystem:
                                    msg.get('content') == rag_suffix or
                                    (msg.get('content', '').startswith('[历史对话片段'))]
             
-            if debug_mode:
+            if logger.should_print_context():
                 logger.debug(f"RAG: 从结果中过滤了 {original_count - len(rag_context_messages)} 条系统提示词")
             
         result_messages = []
@@ -638,7 +651,7 @@ class RAGSystem:
             "以下是根据你的问题从历史对话中检索到的相关片段，其中包含了对话发生的大致时间：")
         if rag_prefix_content and rag_prefix_content.strip():
             result_messages.append({"role": "system", "content": rag_prefix_content})
-            if debug_mode:
+            if logger.should_print_context():
                 logger.debug(f"RAG: 添加前缀提示: \"{rag_prefix_content[:100]}\"{'...' if len(rag_prefix_content) > 100 else ''}")
             
         # 添加RAG检索消息
@@ -648,11 +661,11 @@ class RAGSystem:
         rag_suffix_content = getattr(self.config, 'RAG_PROMPT_SUFFIX', "")
         if rag_suffix_content and rag_suffix_content.strip():
             result_messages.append({"role": "system", "content": rag_suffix_content})
-            if debug_mode:
+            if logger.should_print_context():
                 logger.debug(f"RAG: 添加后缀提示: \"{rag_suffix_content[:100]}\"{'...' if len(rag_suffix_content) > 100 else ''}")
         
         # 统计和记录消息角色分布
-        if debug_mode:
+        if logger.should_print_context():
             role_counts = {}
             total_chars = 0
             for msg in result_messages:
