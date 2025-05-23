@@ -17,6 +17,15 @@ RAG_CONTEXT_N_AFTER=2                  # 后向上下文窗口大小
 # RAG提示配置
 RAG_PROMPT_PREFIX="以下是根据你的问题从历史对话中检索到的相关片段，其中包含了对话发生的大致时间："  # RAG前缀提示
 RAG_PROMPT_SUFFIX=""                   # RAG后缀提示（可选）
+
+# 日志级别，可选：DEBUG/INFO/WARNING/ERROR
+LOG_LEVEL=DEBUG
+
+# 是否打印发送给LLM的完整上下文，仅当LOG_LEVEL=DEBUG时生效
+PRINT_CONTEXT=True
+
+# 是否在系统提示词之前发送当前系统时间给LLM
+SEND_CURRENT_TIME=True                 # 设置为true或false
 ```
 
 ## 安装依赖
