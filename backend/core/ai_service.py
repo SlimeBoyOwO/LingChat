@@ -49,7 +49,9 @@ class AIService:
         # 从环境变量中加载RAG配置
         use_rag = os.environ.get("USE_RAG", "False").lower() == "true"
         ai_name = os.environ.get("AI_NAME", "钦灵")
-        debug_mode = os.environ.get("DEBUG_MODE", "False").lower() == "true"
+        # 这里使用LOG_LEVEL判断是否为DEBUG模式
+        log_level_str = os.environ.get("LOG_LEVEL", "INFO").upper()
+        print_context = os.environ.get("PRINT_CONTEXT", "False").lower() == "true"
         rag_history_path = os.environ.get("RAG_HISTORY_PATH", "rag_chat_history")
         chroma_db_path = os.environ.get("CHROMA_DB_PATH", "chroma_db_store")
         rag_retrieval_count = int(os.environ.get("RAG_RETRIEVAL_COUNT", "3"))
@@ -64,7 +66,8 @@ class AIService:
         rag_config = Config(
             USE_RAG=use_rag,
             AI_NAME=ai_name,
-            DEBUG_MODE=debug_mode,
+            LOG_LEVEL=log_level_str,
+            PRINT_CONTEXT=print_context,
             RAG_HISTORY_PATH=rag_history_path,
             CHROMA_DB_PATH=chroma_db_path,
             RAG_RETRIEVAL_COUNT=rag_retrieval_count,

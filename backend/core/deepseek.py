@@ -31,7 +31,6 @@ class DeepSeek:
             
         self.client = OpenAI(api_key=api_key, base_url=base_url)
         self.settings = os.environ.get("SYSTEM_PROMPT", "你是一个AI助手，请尽可能准确地回答问题。")
-        self.debug_mode = os.environ.get("DEBUG_MODE", "False").lower() == "true"
         self.model_type = os.environ.get("MODEL_TYPE", "deepseek-chat")
         
         self.messages = [
@@ -55,7 +54,7 @@ class DeepSeek:
             
         try:
             # 记录RAG初始化的详细配置
-            if self.debug_mode:
+            if logger.should_print_context():
                 logger.debug("\n------ RAG初始化配置详情 ------")
                 config_attrs = [attr for attr in dir(config) if not attr.startswith('_') and not callable(getattr(config, attr))]
                 for attr in sorted(config_attrs):
@@ -70,7 +69,7 @@ class DeepSeek:
             if rag_initialized:
                 logger.info("RAG系统初始化成功")
                 
-                if self.debug_mode:
+                if logger.should_print_context():
                     # 记录初始化后的状态信息
                     history_count = 0
                     chroma_count = 0
@@ -145,8 +144,8 @@ class DeepSeek:
                 logger.error(f"RAG处理过程中出错: {e}")
                 logger.debug(f"RAG process error: {e}", exc_info=True)
 
-        # 若Debug模式开启，则截取发送到llm的文字信息打印到终端
-        if self.debug_mode:
+        # 若打印上下文选项开启且在DEBUG级别，则截取发送到llm的文字信息打印到终端
+        if logger.should_print_context():
             logger.debug("\n------ 开发者模式：以下信息被发送给了llm ------")
             for message in current_context:
                 logger.debug(f"Role: {message['role']}\nContent: {message['content']}\n")
@@ -226,7 +225,7 @@ class DeepSeek:
         logger.info(f"新的messages是：{self.messages}")
         
         # 调试信息：详细记录记忆加载前后的变化
-        if self.debug_mode:
+        if logger.should_print_context():
             new_messages_count = len(self.messages)
             
             # 记录消息类型统计
