@@ -9,13 +9,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from core.service_manager import service_manager
 from core.frontend_manager import FrontendManager
-from core.logger import initialize_logger, log_info, log_error, log_text
+# from core.logger import initialize_logger, log_info, log_error, log_text
+from core.new_logger import logger
 from api.chat_history import router as chat_history_router
 
 load_dotenv()
 
 # ============= 初始化核心组件 =============
-initialize_logger(app_name="LingChat", config_debug_mode=True)
 app = FastAPI()
 logo = [
     "", 
@@ -45,7 +45,7 @@ async def websocket_endpoint(websocket: WebSocket):
             message = await websocket.receive()
             # 首先检查是否是断开消息
             if message.get('type') == 'websocket.disconnect':
-                log_info(f"客户端断开连接，代码: {message.get('code')}")
+                logger.info(f"客户端断开连接，代码: {message.get('code')}")
             else:
                 print(message)
                 data = json.loads(message["text"])
@@ -59,7 +59,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         
                         # 处理responses为None的情况
                         if responses is None:
-                            log_error("AI服务返回了None响应")
+                            logger.error("AI服务返回了None响应")
                             error_response = {
                                 "type": "reply",
                                 "emotion": "sad",
@@ -78,7 +78,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             for response in responses:
                                 await websocket.send_json(response)
                     except Exception as e:
-                        log_error(f"处理消息时发生异常: {e}")
+                        logger.error(f"处理消息时发生异常: {e}")
                         try:
                             # 发送错误响应
                             await websocket.send_json({
@@ -94,13 +94,13 @@ async def websocket_endpoint(websocket: WebSocket):
                                 "totalParts": 1
                             })
                         except:
-                            log_error("无法发送错误响应")
+                            logger.error("无法发送错误响应")
             
                     
     except WebSocketDisconnect:
         print("客户端断开连接")
     except Exception as e:
-        log_error(f"WebSocket连接错误: {e}")
+        logger.error(f"WebSocket连接错误: {e}")
         try:
             await websocket.close(code=1011, reason=f"内部错误: {str(e)}")
         except:
@@ -134,8 +134,8 @@ app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="static")
 # ============= 启动逻辑 =============
 async def main():
     for line in logo:
-        log_text(line)
-    log_text("\n")
+        print(line)
+    print("")
 
     # 启动前端
     # frontend = FrontendManager(logger)

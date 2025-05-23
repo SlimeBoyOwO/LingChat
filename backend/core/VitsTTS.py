@@ -2,10 +2,11 @@ import aiohttp
 import asyncio
 import os
 from pathlib import Path
-from .logger import log_debug, log_info, log_warning, log_error, TermColors, initialize_logger
+# from .logger import log_debug, log_info, log_warning, log_error, TermColors, initialize_logger
+from .new_logger import logger, TermColors
 
 class VitsTTS:
-    def __init__(self, api_url=None, speaker_id=4, audio_format="wav", lang="ja", enable=True, logger=None):
+    def __init__(self, api_url=None, speaker_id=4, audio_format="wav", lang="ja", enable=True):
         """
         初始化VITS语音合成器
         :param api_url: API端点地址
@@ -14,7 +15,6 @@ class VitsTTS:
         :param lang: 语言代码 (默认ja-日语)
         :param logger: 日志记录器
         """
-        self.logger = logger  # 保留参数以兼容旧代码，但不再使用
         self.api_url = api_url or os.environ.get("VITS_API_URL", "http://127.0.0.1:23456/voice/vits")
         self.speaker_id = speaker_id or int(os.environ.get("VITS_SPEAKER_ID", 4))
         self.format = audio_format
@@ -67,9 +67,9 @@ class VitsTTS:
         status_symbol = "✔" if is_running else "✖"
         
         if details:
-            log_info(f"{status_color}{status_symbol}{TermColors.RESET} {status} - {details}")
+            logger.info(f"{status_color}{status_symbol}{TermColors.RESET} {status} - {details}")
         else:
-            log_info(f"{status_color}{status_symbol}{TermColors.RESET} {status}")
+            logger.info(f"{status_color}{status_symbol}{TermColors.RESET} {status}")
 
     async def generate_voice(self, text, file_name, save_file=False):
         """
@@ -79,11 +79,11 @@ class VitsTTS:
         :return: 音频文件路径 (失败返回None)
         """
         if not self.enable:
-            log_warning("TTS服务未启用，跳过语音生成")
+            logger.warning("TTS服务未启用，跳过语音生成")
             return None
             
         if not text or not text.strip():
-            log_debug("提供的文本为空，跳过语音生成")
+            logger.debug("提供的文本为空，跳过语音生成")
             return None
 
         params = {
@@ -100,14 +100,14 @@ class VitsTTS:
                     response.raise_for_status()  
                     with open(output_file, "wb") as f:
                         f.write(await response.read())
-                    log_debug(f"语音生成成功: {os.path.basename(output_file)} (文本: \"{text}\")")
+                    logger.debug(f"语音生成成功: {os.path.basename(output_file)} (文本: \"{text}\")")
             return output_file
         except aiohttp.ClientResponseError as e: 
-            log_error(f"语音生成HTTP请求失败 (URL: {e.request_info.url}, 状态: {e.status}, 消息: {e.message}) 文本: \"{text}\"")
+            logger.error(f"语音生成HTTP请求失败 (URL: {e.request_info.url}, 状态: {e.status}, 消息: {e.message}) 文本: \"{text}\"")
         except aiohttp.ClientError as e:  
-            log_error(f"语音生成网络或客户端错误 (类型: {type(e).__name__}, 消息: {str(e)}) 文本: \"{text}\"")
+            logger.error(f"语音生成网络或客户端错误 (类型: {type(e).__name__}, 消息: {str(e)}) 文本: \"{text}\"")
         except asyncio.TimeoutError: 
-            log_error(f"语音生成请求超时 (URL: {self.api_url}) 文本: \"{text}\"")
+            logger.error(f"语音生成请求超时 (URL: {self.api_url}) 文本: \"{text}\"")
         except Exception as e: 
             error_type = type(e).__name__
             error_str = str(e)
@@ -118,7 +118,7 @@ class VitsTTS:
             if error_repr and error_repr.strip() and error_repr != error_str:
                  log_msg += f", 详细: {error_repr}"
             log_msg += f") 文本: \"{text}\""
-            log_error(log_msg)
+            logger.error(log_msg)
         return None
 
     def play_voice(self, text, auto_cleanup=True):
@@ -148,7 +148,7 @@ class VitsTTS:
             try:
                 file.unlink()
             except Exception as e:
-                log_warning(f"清理临时文件失败 {file.name}: {str(e)}")
+                logger.warning(f"清理临时文件失败 {file.name}: {str(e)}")
 
     def __del__(self):
         """析构时自动清理"""
@@ -157,7 +157,6 @@ class VitsTTS:
 # 使用示例
 if __name__ == "__main__":
     # 初始化logger
-    initialize_logger(app_name="VITS_TTS", config_debug_mode=True)
     tts = VitsTTS(speaker_id=4)
     
     # 异步生成
