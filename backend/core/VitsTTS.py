@@ -64,7 +64,7 @@ class VitsTTS:
         """语音服务状态记录，兼容旧接口"""
         status = "语音服务已运行" if is_running else "语音服务未运行"
         status_color = TermColors.GREEN if is_running else TermColors.RED
-        status_symbol = "✔" if is_running else "✖"
+        status_symbol = "√" if is_running else "×"
         
         if details:
             if is_running:
