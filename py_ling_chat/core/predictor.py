@@ -14,7 +14,7 @@ class EmotionClassifier:
     
         # 加载模型和分词器
         try:
-            model_path = model_path or package_root / "emotion_model_12emo"
+            model_path = model_path or package_root / "third_party" / "emotion_model_12emo"
             model_path: Path = Path(model_path).resolve()
             self.tokenizer = BertTokenizer.from_pretrained(model_path, local_files_only=True)
             self.model = BertForSequenceClassification.from_pretrained(model_path)
