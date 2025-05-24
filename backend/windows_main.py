@@ -137,16 +137,6 @@ async def main():
         print(line)
     print("")
 
-    # 启动前端
-    # frontend = FrontendManager(logger)
-    # if not frontend.start_frontend(
-    #     frontend_dir=frontend_dir,
-    #     port=os.getenv('FRONTEND_PORT', '3000')
-    # ):
-    #     logger.error("前端启动失败")
-    #     return
-
-    # 启动 FastAPI（同时支持 HTTP 和 WebSocket）
     config = uvicorn.Config(
         app,
         host=os.getenv('BACKEND_BIND_ADDR', '0.0.0.0'),
@@ -154,7 +144,27 @@ async def main():
         log_level="info"
     )
     server = uvicorn.Server(config)
-    await server.serve()
+    try:
+        print("正在启动HTTP服务器...")
+        server_task = asyncio.create_task(server.serve())
+        
+        while not server.started:
+            await asyncio.sleep(0.1)
+                
+        import subprocess
+        import sys
+        
+        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        lingchat_exe = os.path.join(root_dir, "frontend", "LingChatWeb.exe")
+        
+        if os.path.exists(lingchat_exe):
+            subprocess.Popen(lingchat_exe)
+        else:
+            logger.error(f"错误: 找不到 {lingchat_exe}")
+        await server_task
+        
+    except Exception as e:
+        logger.error(f"服务器启动错误: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())

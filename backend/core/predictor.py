@@ -43,7 +43,7 @@ class EmotionClassifier:
         """情绪模型加载状态记录，兼容旧接口"""
         status = "情绪分类模型加载正常" if is_success else "情绪分类模型加载异常"
         status_color = TermColors.GREEN if is_success else TermColors.RED
-        status_symbol = "✔" if is_success else "✖"
+        status_symbol = "√" if is_success else "×"
         
         if details:
             if is_success:
