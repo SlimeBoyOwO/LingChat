@@ -984,3 +984,61 @@ button#clear-history.show {
   border: none;
   margin-bottom: 10px;
 }
+/*==========新修改 头==========*/
+
+.button {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.2s ease;
+  background-color: rgba(100, 149, 237, 0.8);
+  color: white;
+  width: 45%;
+}
+
+#music-name {
+  display: inline-flex;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #333;
+  width: calc(100% - 145px - 95px);
+}
+
+.Music-List {
+  margin: 0 10px;
+  background-color: #f0f0f0;
+  border: 1px solid #d1d5db;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  color: black;
+}
+
+.Music-List.a {
+  border-radius: 15px 15px 0 0;
+}
+
+.Music-List.b {
+  min-height: 25vh;
+  border-radius: 0;
+}
+
+.Music-List.c {
+  border-radius: 0 0 15px 15px;
+}
+
+.Music-List.da {  
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.Music-List.db {
+  background-color: rgba(255, 0, 0, 0.8);
+  width: unset;
+  padding: 10px 20px;
+  color: white;
+}
+/*==========新修改 尾==========*/
