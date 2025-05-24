@@ -82,3 +82,5 @@ IF NOT EXIST %BACKEND_SCRIPT% (
 )
 START "LingChat" cmd /k "%VENV_DIR%\Scripts\python.exe %BACKEND_SCRIPT%"
 TIMEOUT /T 5 /NOBREAK > NUL
+
+start "" "%~dp0LingChat.exe"
