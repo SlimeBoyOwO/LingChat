@@ -6,33 +6,48 @@ from datetime import datetime
 #from .logger import log_debug, log_info, log_error, log_text
 from .new_logger import logger
 from dotenv import load_dotenv
+import requests
 
 class DeepSeek:
     def __init__(self, api_key=None, base_url=None):
         load_dotenv()
            
-        api_key = api_key or os.environ.get("CHAT_API_KEY") or os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            try:
-                with open(".env", "r") as f:
-                    for line in f:
-                        if line.strip().startswith("CHAT_API_KEY"):
-                            key_part = line.split("#")[0].strip()
-                            if "=" in key_part:
-                                api_key = key_part.split("=", 1)[1].strip()
-                                logger.debug("从.env文件直接读取API key成功")
-                                break
-            except Exception as e:
-                logger.error(f"尝试直接读取.env文件失败: {e}")
-        base_url = base_url or os.environ.get("CHAT_BASE_URL", "https://api.deepseek.com")
-        if not api_key:
-            logger.error("API key 未找到！请在 .env 文件中设置 CHAT_API_KEY 或 OPENAI_API_KEY")
-            raise ValueError("API key 未找到！请在 .env 文件中设置 CHAT_API_KEY 或 OPENAI_API_KEY")
-        logger.debug(f"API key 状态：{'已加载' if api_key else '未加载'}")
-            
-        self.client = OpenAI(api_key=api_key, base_url=base_url)
+        # 获取LLM类型
+        self.llm_provider = os.environ.get("LLM_PROVIDER", "deepseek").lower()
+        logger.debug(f"LLM提供商: {self.llm_provider}")
+        
+        # Ollama配置
+        self.use_ollama = self.llm_provider == "ollama"
+        if self.use_ollama:
+            self.ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+            self.model_type = os.environ.get("OLLAMA_MODEL", "llama3")
+            logger.debug(f"Ollama 服务地址: {self.ollama_base_url}")
+            logger.debug(f"Ollama 模型: {self.model_type}")
+        else:
+            # DeepSeek配置
+            api_key = api_key or os.environ.get("CHAT_API_KEY") or os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                try:
+                    with open(".env", "r") as f:
+                        for line in f:
+                            if line.strip().startswith("CHAT_API_KEY"):
+                                key_part = line.split("#")[0].strip()
+                                if "=" in key_part:
+                                    api_key = key_part.split("=", 1)[1].strip()
+                                    logger.debug("从.env文件直接读取API key成功")
+                                    break
+                except Exception as e:
+                    logger.error(f"尝试直接读取.env文件失败: {e}")
+            base_url = base_url or os.environ.get("CHAT_BASE_URL", "https://api.deepseek.com")
+            if not api_key:
+                logger.error("API key 未找到！请在 .env 文件中设置 CHAT_API_KEY 或 OPENAI_API_KEY")
+                raise ValueError("API key 未找到！请在 .env 文件中设置 CHAT_API_KEY 或 OPENAI_API_KEY")
+            logger.debug(f"API key 状态：{'已加载' if api_key else '未加载'}")
+                
+            self.client = OpenAI(api_key=api_key, base_url=base_url)
+            self.model_type = os.environ.get("MODEL_TYPE", "deepseek-chat")
+        
         self.settings = os.environ.get("SYSTEM_PROMPT", "你是一个AI助手，请尽可能准确地回答问题。")
-        self.model_type = os.environ.get("MODEL_TYPE", "deepseek-chat")
         
         # 是否发送当前时间
         self.send_current_time = os.environ.get("SEND_CURRENT_TIME", "False").lower() == "true"
@@ -49,7 +64,7 @@ class DeepSeek:
         self.use_rag = os.environ.get("USE_RAG", "False").lower() == "true"
         self.rag_system = None
         
-        logger.debug("DeepSeek LLM 服务已初始化")
+        logger.debug(f"{self.llm_provider.capitalize()} LLM 服务已初始化")
         
     def init_rag_system(self, config):
         """初始化RAG系统（如果启用）"""
@@ -93,6 +108,38 @@ class DeepSeek:
         except Exception as e:
             logger.error(f"初始化RAG系统时出错: {e}")
             return False
+
+    def call_ollama_api(self, messages):
+        """
+        调用Ollama API获取回复
+        """
+        try:
+            logger.debug(f"正在请求Ollama API: {self.ollama_base_url}/api/chat")
+            
+            payload = {
+                "model": self.model_type,
+                "messages": messages,
+                "stream": False
+            }
+            
+            response = requests.post(
+                f"{self.ollama_base_url}/api/chat",
+                json=payload
+            )
+            
+            if response.status_code != 200:
+                error_msg = f"Ollama API返回错误: {response.status_code} - {response.text}"
+                logger.error(error_msg)
+                return None, error_msg
+                
+            response_json = response.json()
+            return response_json.get("message", {}).get("content", ""), None
+            
+        except Exception as e:
+            error_msg = f"调用Ollama API时出错: {str(e)}"
+            logger.error(error_msg)
+            logger.debug(f"Ollama API错误详情:", exc_info=True)
+            return None, error_msg
 
     def process_message(self, user_input):
         if user_input.lower() in ["退出", "结束"]:
@@ -201,13 +248,21 @@ class DeepSeek:
             logger.debug("------ 结束 ------")
 
         try:
-            logger.debug("正在发送请求到DeepSeek LLM...")
-            response = self.client.chat.completions.create(
-                model=self.model_type,
-                messages=current_context,
-                stream=False
-            )
-            ai_response = response.choices[0].message.content
+            # 根据不同的LLM提供商选择不同的API调用方式
+            if self.use_ollama:
+                logger.debug(f"正在发送请求到Ollama服务，使用模型: {self.model_type}...")
+                ai_response, error = self.call_ollama_api(current_context)
+                if error:
+                    raise Exception(error)
+            else:
+                logger.debug(f"正在发送请求到DeepSeek LLM，使用模型: {self.model_type}...")
+                response = self.client.chat.completions.create(
+                    model=self.model_type,
+                    messages=current_context,
+                    stream=False
+                )
+                ai_response = response.choices[0].message.content
+            
             self.messages.append({"role": "assistant", "content": ai_response})
             
             # 如果启用了RAG系统，保存本次会话到RAG历史记录
