@@ -89,21 +89,6 @@ export class UIController {
       }
     });
 
-    // 测试思考事件
-    EventBus.on("chat:thinking_test", (isThinking) => {
-      if (isThinking) {
-        DOM.input.disabled = true;
-        DOM.input.value = "";
-        this.emotionSystem.setEmotion("AI思考");
-        DOM.input.placeholder = "灵灵正在思考...";
-        DOM.avatar.title.textContent = "钦灵";
-        DOM.avatar.subtitle.textContent = "Slime Studio";
-        DOM.avatar.emotion.textContent = "";
-      } else {
-        DOM.input.disabled = false;
-      }
-    });
-
     // 监听 WebSocket 状态更新
     EventBus.on("connection:open", () => {
       if (DOM.status) DOM.status.textContent = "✅ 已连接服务器";
