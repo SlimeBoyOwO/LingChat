@@ -31,6 +31,28 @@ platformdirs = "^4.3.8"
 python-multipart = "^0.0.20"
 websockets = "^15.0.1"
 
+[tool.poetry.group.vits.dependencies]
+logzero = "^1.7.0"
+ngrok = "^1.4"
+flask = "^3.1.1"
+flask-apscheduler = "^1.13.1"
+flask-login = "^0.6.3"
+flask-wtf = "^1.2.2"
+flask-cors = "^6.0.1"
+pypinyin-dict = "^0.9.0"
+jieba = "^0.42.1"
+py-cpuinfo = "^9.0.0"
+psutil = "^7.0.0"
+llvmlite = "^0.44.0"
+librosa = "^0.11.0"
+vector-quantize-pytorch = "^1.22.16"
+cn2an = "^0.5.23"
+num2words = "^0.5.14"
+pyopenjtalk = "^0.4.1"
+jaconv = "^0.4.0"
+g2p-en = "^2.1.0"
+mecab-python3 = "^1.0.10"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
