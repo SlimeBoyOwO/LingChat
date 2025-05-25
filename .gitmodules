@@ -1,3 +1,0 @@
-[submodule "py_ling_chat/third_party/vits_simple_api"]
-	path = py_ling_chat/third_party/vits_simple_api
-	url = git@github.com:Artrajz/vits-simple-api.git
