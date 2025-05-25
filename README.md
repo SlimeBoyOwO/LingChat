@@ -13,7 +13,7 @@ Win10 以上，linux请用docker部署，Win7目前待测试
 
 ### 下载&使用exe程序
 
-- 在[Release]([https://github.com/SlimeBoyOwO/LingChat/releases/tag/v0.1.0-beta](https://github.com/SlimeBoyOwO/LingChat/releases))中下载附件，并解压。
+- 在[Release](https://github.com/SlimeBoyOwO/LingChat/releases)中下载附件，并解压。
 - 解压后，使用记事本打开app文件夹.env，在.env中填入你的apikey。deepseek apikey登录[DeepSeek 开放平台](https://platform.deepseek.com/usage)后获取。请妥善保管自己的apikey。
 - 点击LingChat.exe启动程序
 
