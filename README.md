@@ -17,22 +17,22 @@ Win10 以上，linux请用docker部署，Win7目前待测试
 - 解压后，使用记事本打开app文件夹.env，在.env中填入你的apikey。deepseek apikey登录[DeepSeek 开放平台](https://platform.deepseek.com/usage)后获取。请妥善保管自己的apikey。
 - 点击LingChat.exe启动程序
 
-- **重要**: 最近我们移除了node_modules，如果你启动时候出现了 Error: Cannot find module 'express' 这种错误，请WIN+R并CD到当前目录并且输入npm install express或其他任何在'xx'内的模块！
-
 - (非必须):若要使用语音功能，请下载[simple-vits-api](https://github.com/Artrajz/vits-simple-api)链接程序。该项目实现了基于 VITS 的简单语音合成 API。建议下载GPU版本，速度快。程序默认监听23456语音端口，程序默认导入的模型是zcchat地址->讨论区->角色示范（丛雨）->vits模型下载好之后在simple-vits-api的目录的/data/models里面解压，再启动就ok了;如果需要使用其他模型，在.env的Vits实现函数更改相关设定即可。
 
 ### 下载情感分类模型
-情感分类模型已包含在Releases中，双击exe即可启动。但源代码中不包含模型，若你想使用源代码，需要单独下载：
-- [emotion_model_12emo 百度网盘](https://pan.baidu.com/s/16Dy53KX3jIjACY5fCctKDA)：请在这里下载emotion_model_12emo，提取码：0721
-- [emotion_model_12emo 123云盘](https://www.123865.com/s/7YDfjv-KRK5v): 或这里下载emotion_model_12emom更快一点如果你没有百度网盘会员
-- [emotion_model_12emo Google云盘](https://drive.google.com/file/d/1LWdJYYc3QaYbzHupt5DDaM1lCeG-X5vd/view?usp=sharing): 如果你是非大陆或者海外朋友，下载这个
+情感分类模型已包含在Releases中，双击exe即可启动。源代码内不包含，请手动下载release然后移动过去。
+
+## 使用相关说明
+- 0.2.0 版本还处于测试版本，请在使用的时候注意以下几点：
+- 在.env中有这么一行配置：  USE_RAG=false           # 是否启用RAG系统，设置为true或false
+- 若此项开启，说明你的每一次对话都会作为永久记忆的一部分，请**不要在开启这个RAG模式的情况下使用存档功能，否则可能出现未知严重BUG**
 
 ## 相关设定（For 开发者们）
 
-1. backend是Python的后端程序，frontend是nodejs html javascript css的前端文件；start.bat默认使用python3.12创建.venv虚拟环境
+1. backend是Python的后端程序，frontend是html javascript css的前端文件；start.bat默认使用python3.12创建.venv虚拟环境
 2. 可以更换/public/pictures/lingling/里面的立绘+修改/public/css/galgame.css里的代码实现自定义角色或表情动作气泡
-3. /public/js/talk.js 里面可以设定不同的心情和不同的动作，目前有12种情绪，由于模型是自己训练的所以更新要等一段时间啦
-4. main只会发布稳定版，使用最新功能请切换至develop分支
+3. /public/js/emotion 里面可以设定不同的心情和不同的动作，目前有18种情绪，更多情绪和模型优化还在更新
+4. **main只会发布稳定版，使用最新功能请切换至develop分支**
 
 ## 相关链接
 
