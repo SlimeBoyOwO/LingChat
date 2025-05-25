@@ -290,13 +290,13 @@ select {
     transform: translateY(0) scale(1);
   }
   20% {
-    transform: translateY(0px) scale(1.03);
+    transform: translateY(0px) scale(1.015);
   }
   40% {
     transform: translateY(0) scale(1);
   }
   60% {
-    transform: translateY(0px) scale(1.03);
+    transform: translateY(0px) scale(1.015);
   }
   80% {
     transform: translateY(0) scale(1);
@@ -418,7 +418,7 @@ select {
 
 .heart-beat {
   animation-name: heartBeat;
-  animation-duration: 0.6s;
+  animation-duration: 0.8s;
   animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
   animation-iteration-count: 1;
 }
