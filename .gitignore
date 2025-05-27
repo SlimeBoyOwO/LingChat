@@ -24,13 +24,26 @@ frontend/node_modules/
 *.safetensors
 
 # Ignore logs
+log/*.log
 logs/*.log
 backend/logs/*.log
+runtime_logs/*.log
+run_logs/
+backend/run_logs/
 
 # Ignore generated audio file
 public/audio/
 frontend/public/audio/
+backend/go-impl/internal/data/ent/ent
 
 # Ignore npm files
 package-lock.json
 package.json
+
+# Ignore 风雪的个人文件目录
+memory-bank/
+
+# Ignore 数据库淫荡对话历史
+chat_system.db
+chroma_db_store/
+rag_chat_history/

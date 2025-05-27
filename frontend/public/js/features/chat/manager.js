@@ -71,9 +71,21 @@ export class ChatManager {
 
     this.isProcessing = true;
     this.currentMessagePart = this.messageQueue.shift();
+
+    let displayText = "";
+    if (!this.currentMessagePart) {
+      displayText = ""; // 处理 null 情况
+    } else {
+      displayText =
+        this.currentMessagePart.motionText &&
+        this.currentMessagePart.motionText !== ""
+          ? `${this.currentMessagePart.message}（${this.currentMessagePart.motionText}）`
+          : this.currentMessagePart.message;
+    }
+
     this.historyManager.addMessage(
       null,
-      this.currentMessagePart.message,
+      displayText,
       this.currentMessagePart.partIndex ===
         this.currentMessagePart.totalParts - 1
     );
@@ -106,16 +118,18 @@ export class ChatManager {
       content: text,
     };
 
-    this.connection.send(message);
+    EventBus.emit("chat:thinking", true);
+
+    // 先确保音频开始播放再发送消息
+    setTimeout(() => {
+      this.connection.send(message);
+    }, 600); // 300ms延迟确保音频已启动
     this.historyManager.addMessage(text, null, false);
 
     // 更新状态
     this.isWaitingForResponse = true;
     this.messageQueue = [];
     this.isProcessing = false;
-
-    EventBus.emit("chat:message-sent", message);
-    EventBus.emit("chat:thinking", true);
   }
 
   handleContinue() {

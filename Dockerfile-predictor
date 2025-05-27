@@ -31,7 +31,8 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # 复制应用代码和模型
-COPY backend/predictor.py backend/predictor_server.py ./
+COPY backend/core/predictor.py ./core/
+COPY backend/predictor_server.py ./
 COPY backend/emotion_model_12emo ./emotion_model_12emo/
 
 # 设置环境变量

@@ -6,8 +6,8 @@
 /* 现代高对比度支持 */
 @media (forced-colors: active) {
   /* 确保交互元素在高对比度模式下可见 */
-  button, 
-  input[type="button"], 
+  button,
+  input[type="button"],
   input[type="submit"],
   input[type="range"],
   input[type="checkbox"] + label,
@@ -20,31 +20,44 @@
     color: ButtonText;
     border: 1px solid ButtonText;
   }
-  
+
   /* 确保文本在高对比度模式下可读 */
-  body, p, h1, h2, h3, h4, h5, h6, span, div {
+  body,
+  p,
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  span,
+  div {
     color: CanvasText;
   }
-  
+
   /* 确保图像在高对比度模式下可见 */
-  img, svg {
+  img,
+  svg {
     forced-color-adjust: none;
   }
-  
+
   /* 菜单样式适配高对比度模式 */
-  #menu-content, .menu-body, .menu-header, .menu-footer {
+  #menu-content,
+  .menu-body,
+  .menu-header,
+  .menu-footer {
     background-color: Canvas;
     color: CanvasText;
     border-color: ButtonText;
   }
-  
+
   /* 确保聊天框在高对比度模式下可见 */
   .chatbox-box {
     background-color: Canvas;
     color: CanvasText;
     border: 1px solid ButtonText;
   }
-  
+
   /* 输入框适配高对比度模式 */
   #inputMessage {
     background-color: Field;
@@ -55,7 +68,9 @@
 
 /* 动画减少偏好兼容 */
 @media (prefers-reduced-motion: reduce) {
-  *, ::before, ::after {
+  *,
+  ::before,
+  ::after {
     animation-duration: 0.01s !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01s !important;
@@ -75,8 +90,8 @@
 /* 针对旧版Safari的修复 */
 @supports (-webkit-overflow-scrolling: touch) {
   /* iOS Safari特定修复 */
-  input, textarea {
-    -webkit-appearance: none;
+  input,
+  textarea {
     border-radius: 0;
   }
 }
@@ -87,4 +102,4 @@
   input[type="range"]::-moz-range-thumb {
     border: none;
   }
-} 
+}

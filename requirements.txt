@@ -6,3 +6,6 @@ torch
 aiohttp
 websockets
 dotenv
+uvicorn
+sentence-transformers
+chromadb
