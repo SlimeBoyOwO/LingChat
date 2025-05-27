@@ -80,34 +80,18 @@ export class MenuController {
 
   showTextPanel() {
     this.domUtils.showElements([DOM.menuText, DOM.textPage]);
-    this.domUtils.hideElements([
-      DOM.history.toggle,
-      DOM.history.content,
-      DOM.history.clearBtn,
-      DOM.menuImage,
-      DOM.imagePage,
-      DOM.menuSound,
-      DOM.soundPage,
-    ]);
+    this.domUtils.hideElements(
+      this.domUtils.getOtherPanelElements([DOM.menuText, DOM.textPage])
+    );
   }
 
   closeAllPanels() {
-    this.domUtils.hideElements([
-      DOM.menuContent,
-      DOM.menuText,
-      DOM.textPage,
-      DOM.history.toggle,
-      DOM.history.content,
-      DOM.history.clearBtn,
-      DOM.menuImage,
-      DOM.imagePage,
-      DOM.menuSound,
-      DOM.soundPage,
-    ]);
+    this.domUtils.hideMenuElements();
 
     DOM.menuContent.classList.add("hide");
     setTimeout(() => {
       DOM.menuContent.classList.remove("hide");
+      DOM.menuContent.classList.remove("show");
     }, 200);
   }
 

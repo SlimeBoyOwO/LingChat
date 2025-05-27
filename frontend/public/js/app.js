@@ -7,11 +7,14 @@ import { HistoryManager } from "./features/history/manager.js";
 import { SoundController } from "./features/sound/controller.js";
 import { MenuController } from "./features/menu/controller.js";
 import { ImageController } from "./features/image/controller.js";
+import { SaveController } from "./features/save/controller.js";
 
 // 初始化模块
-const host = window.location.hostname || "localhost";
 const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-const wsUrl = `${protocol}://${host}:3000/ws`;
+const host = window.location.hostname;
+// 使用当前页面的主机和端口，确保WebSocket连接到正确的服务器
+const port = window.location.port || (protocol === "wss" ? "443" : "80");
+const wsUrl = `${protocol}://${host}:${port}/ws`;
 const socket = new ChatSocket(wsUrl);
 
 const uiController = new UIController();
@@ -23,6 +26,7 @@ const chatManager = new ChatManager({
 const soundController = new SoundController();
 const menuController = new MenuController(uiController);
 const imageController = new ImageController();
+const saveController = new SaveController();
 
 // 多模块组合处理函数
 

@@ -9,3 +9,7 @@ torch==2.6.0 # Pip will now also look for this in the extra-index-url
 aiohttp>=3.10.3
 websockets==12.0
 python-dotenv
+
+# RAG系统依赖（可选）
+sentence-transformers>=2.2.2
+chromadb>=0.4.13

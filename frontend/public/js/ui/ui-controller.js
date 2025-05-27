@@ -37,8 +37,16 @@ export class UIController {
     EventBus.on("chat:message", (data) => {
       DOM.input.placeholder = "";
 
+      let displayText = "";
+
+      if (data.motionText && data.motionText !== "") {
+        displayText = data.content + "（" + data.motionText + "）";
+      } else {
+        displayText = data.content;
+      }
+
       // 显示消息内容
-      this.writer.start(data.content, this.speed);
+      this.writer.start(displayText, this.speed);
 
       // 更新情绪
       if (data.emotion) {
@@ -49,6 +57,8 @@ export class UIController {
       // 处理音频
       if (data.audioFile) {
         DOM.audioPlayer.src = `../audio/${data.audioFile}`;
+        console.log(`语音的路径是：../audio/${data.audioFile}`);
+        DOM.audioPlayer.load();
         DOM.audioPlayer.play();
       }
     });
@@ -61,6 +71,7 @@ export class UIController {
       DOM.avatar.title.textContent = "可爱的你";
       DOM.avatar.subtitle.textContent = "Bilibili";
       DOM.avatar.emotion.textContent = "";
+      this.writer.stop();
     });
 
     // 等待AI回复事件
