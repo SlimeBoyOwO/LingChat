@@ -50,19 +50,10 @@ export class ImageController {
   }
 
   showImagePanel() {
-    // 显示图片面板
     this.domUtils.showElements([DOM.menuImage, DOM.imagePage]);
-
-    // 隐藏其他面板
-    this.domUtils.hideElements([
-      DOM.history.toggle,
-      DOM.history.content,
-      DOM.history.clearBtn,
-      DOM.menuText,
-      DOM.textPage,
-      DOM.menuSound,
-      DOM.soundPage,
-    ]);
+    this.domUtils.hideElements(
+      this.domUtils.getOtherPanelElements([DOM.menuImage, DOM.imagePage])
+    );
 
     this.updatePreviewBackground();
   }

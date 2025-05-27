@@ -387,13 +387,17 @@ div#speed-text-test > span {
 }
 
 /* 滑块标签布局优化 */
-.menu-item h4 {
-  margin-bottom: 15px;
-  font-weight: 500;
-  color: #333;
-}
 
 /* 滑块容器布局 */
+.menu-item {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 10px;
+  margin: 5px 0;
+  backdrop-filter: blur(5px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
 .menu-item span {
   margin: 0 10px;
   font-size: 0.9em;
@@ -450,15 +454,15 @@ div#menu-content > div.menu-header > div#menu-buttons {
 }
 
 div#menu-content > div.menu-header > div#menu-buttons > button {
-  font-size: 1.17em;
+  font-size: 1em;
   display: inline-block;
   cursor: pointer;
-  border-radius: 17px;
+  border-radius: 12px;
   border-style: unset;
   border-color: unset;
   border-image: unset;
-  padding: 10px 25px;
-  margin: 0px 5px;
+  padding: 10px 20px;
+  margin: 2px 5px;
   background-color: #d2e5ff;
   color: #3d8dff;
   font-weight: bold;
@@ -505,6 +509,149 @@ div#menu-panel
   text-align: center;
 }
 
+/* 存档页面样式 */
+#conversation-list {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr); /* 两列布局 */
+  gap: 20px; /* 列间距 */
+  padding: 10px;
+}
+
+.conversation-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 15px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: all 0.3s ease;
+  /* 确保每个item高度一致 */
+  min-height: 100px;
+}
+
+/* 添加响应式布局 */
+@media (max-width: 900px) {
+  #conversation-list {
+    grid-template-columns: 1fr; /* 在较小屏幕上切换回单列 */
+  }
+}
+
+button {
+  white-space: nowrap;
+}
+
+.conversation-item:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-2px);
+}
+
+.conversation-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.conversation-date {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.7);
+}
+
+.conversation-title {
+  font-size: 22px;
+  font-weight: 500;
+  margin-top: 2px;
+  color: black;
+}
+
+.conversation-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.action-btn {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.2s ease;
+}
+
+.load-btn {
+  background-color: rgba(100, 149, 237, 0.8);
+  color: white;
+}
+
+.load-btn:hover {
+  background-color: cornflowerblue;
+}
+
+.save-btn {
+  background-color: rgba(60, 179, 113, 0.8);
+  color: white;
+}
+
+.save-btn:hover {
+  background-color: mediumseagreen;
+}
+
+.delete-btn {
+  background-color: rgba(246, 35, 35, 0.8);
+  color: white;
+}
+
+.delete-btn:hover {
+  background-color: maroon;
+}
+
+.upload-input-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-evenly;
+  height: 80px;
+}
+
+.upload-area {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border: 2px dashed #ccc;
+  border-radius: 5px;
+  text-align: center;
+}
+
+#upload-btn {
+  background-color: #4caf50;
+  color: white;
+  padding: 10px 15px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#upload-status {
+  margin-top: 10px;
+  color: #666;
+}
+
+#log-upload {
+  color: #000;
+}
+
+#new-convo-title {
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  color: #000;
+}
+
+#create-convo-btn {
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
 /* 添加专门针对光晕滑块的样式 */
 #filter-kuosan {
   cursor: default; /* 默认光标样式 */
@@ -543,6 +690,7 @@ button#clear-history.show {
   box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.1);
   position: relative; /* 添加相对定位 */
   z-index: 2; /* 确保历史内容在上层 */
+  color: #333;
 }
 
 #history-list {
@@ -826,3 +974,71 @@ button#clear-history.show {
 #model-status.error {
   color: #f44336;
 }
+
+.line {
+  width: 100%;
+  height: 3px;
+  background-color: #0080ab;
+  margin: 2px auto;
+  opacity: 1;
+  border: none;
+  margin-bottom: 10px;
+}
+/*==========新修改 头==========*/
+
+.button {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.2s ease;
+  background-color: rgba(100, 149, 237, 0.8);
+  color: white;
+  width: 45%;
+}
+
+#music-name {
+  display: inline-flex;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #333;
+  width: calc(100% - 145px - 95px);
+}
+
+.Music-List {
+  margin: 0 10px;
+  background-color: #f0f0f0;
+  border: 1px solid #d1d5db;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  color: black;
+}
+
+.Music-List.a {
+  border-radius: 15px 15px 0 0;
+}
+
+.Music-List.b {
+  min-height: 25vh;
+  border-radius: 0;
+}
+
+.Music-List.c {
+  border-radius: 0 0 15px 15px;
+}
+
+.Music-List.da {  
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.Music-List.db {
+  background-color: rgba(255, 0, 0, 0.8);
+  width: unset;
+  padding: 10px 20px;
+  color: white;
+}
+/*==========新修改 尾==========*/
