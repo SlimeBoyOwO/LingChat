@@ -4,7 +4,7 @@ import os
 import json
 from pathlib import Path
 # from .logger import log_debug, log_info, log_warning, log_error, initialize_logger, TermColors
-from .new_logger import logger, TermColors
+from .logger import logger, TermColors
 
 class EmotionClassifier:
     def __init__(self, model_path=None):

@@ -8,7 +8,7 @@ import signal
 import sys
 from typing import Optional
 # from .logger import log_debug, log_info, log_warning, log_error
-from .new_logger import logger
+from .logger import logger
 
 class FrontendManager:
     def __init__(self, logger=None):

@@ -3,7 +3,7 @@ import asyncio
 import os
 from pathlib import Path
 # from .logger import log_debug, log_info, log_warning, log_error, TermColors, initialize_logger
-from .new_logger import logger, TermColors
+from .logger import logger, TermColors
 
 class VitsTTS:
     def __init__(self, api_url=None, speaker_id=4, audio_format="wav", lang="ja", enable=True):
