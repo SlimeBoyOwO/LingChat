@@ -287,7 +287,7 @@ class AIService:
         logger.info_color(log_message, TermColors.WHITE)
         
         # 确保logs目录存在
-        logs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
+        logs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "logs")
         os.makedirs(logs_dir, exist_ok=True)
         
         # 适配旧的log_conversation方法，写入对话日志文件
