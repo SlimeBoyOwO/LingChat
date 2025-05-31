@@ -93,7 +93,6 @@ class AIService:
         """初始化TTS引擎"""
         return VitsTTS(
             api_url="http://127.0.0.1:23456/voice/vits",
-            speaker_id=4,
             lang="ja",
         )
     
