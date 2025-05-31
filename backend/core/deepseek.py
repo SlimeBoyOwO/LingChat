@@ -4,7 +4,7 @@ import json
 import copy
 from datetime import datetime
 #from .logger import log_debug, log_info, log_error, log_text
-from .new_logger import logger
+from .logger import logger
 from dotenv import load_dotenv
 import requests
 

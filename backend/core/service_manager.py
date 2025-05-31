@@ -1,5 +1,5 @@
 from .ai_service import AIService
-from .new_logger import logger
+from .logger import logger
 import os
 
 class ServiceManager:

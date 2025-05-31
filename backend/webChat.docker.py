@@ -7,7 +7,7 @@ from core.deepseek import DeepSeek
 import re
 from core.predictor import EmotionClassifier  # 导入情绪分类器
 from core.VitsTTS import VitsTTS              # 导入语音生成
-from core.new_logger import logger
+from core.logger import logger
 from core.langDetect import LangDetect
 import dotenv
 
