@@ -102,7 +102,7 @@ class VitsTTS:
         output_file = str(file_name) 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(self.api_url, params=params, timeout=10) as response:
+                async with session.get(self.api_url, params=params, timeout=100) as response:
                     response.raise_for_status()  
                     with open(output_file, "wb") as f:
                         f.write(await response.read())
