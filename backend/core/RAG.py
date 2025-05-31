@@ -6,7 +6,7 @@ import re
 import torch
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional, Any
-from .new_logger import logger, TermColors
+from .logger import logger, TermColors
 
 # from .logger import (
 #    initialize_logger,

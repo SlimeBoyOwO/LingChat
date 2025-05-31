@@ -8,7 +8,8 @@ from .deepseek import DeepSeek
 from .predictor import EmotionClassifier  # 导入情绪分类器
 from .VitsTTS import VitsTTS              # 导入语音生成
 from .langDetect import LangDetect
-from .new_logger import logger, TermColors
+from .logger import logger, TermColors
+from .dialog_logger import DialogLogger
 
 # 常量定义
 TEMP_VOICE_DIR = "../public/audio"
@@ -30,6 +31,7 @@ class AIService:
         self.emotion_classifier = EmotionClassifier()
         self.lang_detector = LangDetect()
         self.tts_engine = self._init_tts_engine()
+        self.dialog_logger = DialogLogger()
         self._prepare_directories()
 
         self.temp_voice_dir = os.environ.get("TEMP_VOICE_DIR", "frontend/public/audio")
@@ -285,18 +287,7 @@ class AIService:
         """记录对话日志"""
         log_message = f"{speaker}: {message}"
         logger.info_color(log_message, TermColors.WHITE)
-        
-        # 确保logs目录存在
-        logs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "logs")
-        os.makedirs(logs_dir, exist_ok=True)
-        
-        # 适配旧的log_conversation方法，写入对话日志文件
-        try:
-            with open(os.path.join(logs_dir, "conversation.log"), 'a', encoding='utf-8') as f:
-                f.write(f"{speaker}: {message}\n\n")
-        except Exception as e:
-            logger.error(f"无法写入对话日志: {e}")
-            # 继续执行，不应影响主流程
+        self.dialog_logger.log_conversation(speaker,message)
 
     def _log_analysis_result(self, segments):
         """记录分析结果"""

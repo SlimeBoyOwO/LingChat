@@ -24,12 +24,9 @@ frontend/node_modules/
 *.safetensors
 
 # Ignore logs
-data/log/*.log
-data/logs/*.log
-backend/logs/*.log
-runtime_logs/*.log
-run_logs/
-backend/run_logs/
+*.log
+
+backend/data/logs
 
 # Ignore generated audio file
 public/audio/

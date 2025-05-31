@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from core.service_manager import service_manager
 from core.frontend_manager import FrontendManager
 # from core.logger import initialize_logger, log_info, log_error, log_text
-from core.new_logger import logger
+from core.logger import logger
 from api.chat_history import router as chat_history_router
 
 load_dotenv()
