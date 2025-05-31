@@ -19,7 +19,7 @@ class VitsTTS:
         self.speaker_id = speaker_id or int(os.environ.get("VITS_SPEAKER_ID", 4))
         self.format = audio_format
         self.lang = lang
-        self.temp_dir = Path("temp_voice")
+        self.temp_dir = Path(os.environ.get("TEMP_VOICE_DIR", "frontend/public/audio"))
         self.temp_dir.mkdir(exist_ok=True)
         self.enable = enable
         
