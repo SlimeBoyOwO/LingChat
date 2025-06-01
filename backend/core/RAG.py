@@ -8,20 +8,6 @@ from datetime import datetime
 from typing import List, Dict, Tuple, Optional, Any
 from .logger import logger, TermColors
 
-# from .logger import (
-#    initialize_logger,
-#    start_loading_animation,
-#    stop_loading_animation,
-#    TermColors,
-#    log_debug,
-#    log_info,
-#    log_warning,
-#    log_error,
-#    log_info_color,
-#    log_warning_color,
-#    log_error_color
-#)
-
 # 全局变量
 _sentence_transformer_imported_ok = True
 _chromadb_imported_ok = True
@@ -133,7 +119,7 @@ class RAGSystem:
             
             return True
         except Exception as e:
-            logger.error_color(f"RAG组件初始化过程中发生错误: {e}")
+            logger.error(f"RAG组件初始化过程中发生错误: {e}")
             logger.debug(f"RAG Initialization Error during component setup: {e}", exc_info=True)
             self.embedding_model = None
             self.chroma_client = None
@@ -603,7 +589,7 @@ class RAGSystem:
             else:
                 rag_final_msg = "RAG检索完毕 (未找到相关历史)"
         except Exception as e_rag:
-            logger.error_color(f"RAG检索过程中发生错误: {e_rag}")
+            logger.error(f"RAG检索过程中发生错误: {e_rag}")
             logger.debug(f"RAG retrieval error: {e_rag}", exc_info=True)
             rag_final_msg = "RAG检索失败"
             rag_success_flag = False
