@@ -111,7 +111,24 @@ class AIService:
             self._log_conversation("钦灵", ai_response)
             
             # 2. 分析情绪和生成语音
-            return await self._process_ai_response(ai_response, user_message)
+            final_response = await self._process_ai_response(ai_response, user_message)
+            if final_response is None:
+                logger.error("AI服务返回了None响应")
+                error_response = [{
+                                "type": "reply",
+                                "emotion": "sad",
+                                "originalTag": "错误",
+                                "message": "抱歉，处理您的消息时出现了问题。",
+                                "motionText": "困惑",
+                                "audioFile": None,
+                                "originalMessage": user_message,
+                                "isMultiPart": False,
+                                "partIndex": 0,
+                                "totalParts": 1
+                            }]
+                return error_response
+            else: return final_response
+                
         except Exception as e:
             logger.error(f"处理消息时出错: {e}")
             logger.error(f"详细错误信息: ", exc_info=True)
