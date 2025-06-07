@@ -1,4 +1,5 @@
 import { DOM } from "../../ui/dom.js";
+import { saveRequest } from "./request.js";
 
 export class ConversationLoader {
   constructor(containerId, userId, options = {}) {
@@ -24,25 +25,18 @@ export class ConversationLoader {
     try {
       this.showLoading();
 
-      const response = await this.fetchConversations(page);
-      const result = await response.json();
+      const data = await this.fetchConversations(page);
 
-      if (result.code !== 200) {
-        throw new Error(result.message || "获取对话失败");
-      }
-
-      this.renderConversations(result.data.conversations);
+      this.renderConversations(data.conversations);
     } catch (error) {
       console.error("加载失败", error);
       this.showError("加载失败");
     }
   }
 
-  async fetchConversations(page) {
+  fetchConversations(page) {
     const { pageSize } = this.options;
-    return fetch(
-      `/api/v1/chat/history/list?user_id=${this.userId}&page=${page}&page_size=${pageSize}`
-    );
+    return saveRequest.list(this.userId, page, pageSize)
   }
 
   renderConversations(conversations) {
@@ -103,75 +97,38 @@ export class ConversationLoader {
     });
   }
 
-  async loadUserConversation(convoId) {
-    try {
-      const response = await fetch(
-        `/api/v1/chat/history/load?user_id=${this.userId}&conversation_id=${convoId}`
-      );
-      const result = await response.json();
-
-      if (result.code !== 200) {
-        throw new Error(result.message || "读取失败");
-      }
-
-      this.onConversationLoaded(result.data);
-    } catch (error) {
-      console.error("读取失败", error);
+  loadUserConversation(convoId) {
+    return saveRequest.load(this.userId, convoId)
+    .then(data => {
+      this.onConversationLoaded(data);
+    })
+    .catch(error => {
+      console.log(error)
       this.onLoadError(error);
-    }
+    })
   }
 
-  async saveUserConversation(convoId) {
-    try {
-      const response = await fetch("/api/v1/chat/history/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: this.userId,
-          conversation_id: convoId,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (result.code !== 200) {
-        throw new Error(result.message || "保存失败");
-      }
-
-      alert("对话保存成功！");
-      this.loadConversations(); // 刷新列表
-    } catch (error) {
-      console.error("保存失败", error);
-      alert(`保存失败: ${error.message}`);
-    }
+  saveUserConversation(convoId) {
+    return saveRequest.save(this.userId, convoId)
+    .then(data => {
+      this.loadConversations();
+    })
+    .catch(error => {
+      console.log(error)
+    })
   }
 
-  async deleteUserConversation(convoId) {
-    try {
-      const response = await fetch("/api/v1/chat/history/delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: this.userId,
-          conversation_id: convoId,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (result.code !== 200) {
-        throw new Error(result.message || "删除失败");
-      }
-
-      alert("对话删除成功！");
-      this.loadConversations(); // 刷新列表
-    } catch (error) {
-      console.error("删除失败", error);
-      alert(`删除失败: ${error.message}`);
-    }
+  deleteUserConversation(convoId) {
+    return saveRequest.delete(this.userId, convoId)
+    .then(data => {
+      this.loadConversations();
+    })
+    .catch(error => {
+      console.log(error)
+    })
   }
 
-  async createUserConversation() {
+  createUserConversation() {
     const titleInput = document.getElementById("new-convo-title");
     const title = titleInput.value.trim();
 
@@ -180,29 +137,14 @@ export class ConversationLoader {
       return;
     }
 
-    try {
-      const response = await fetch("/api/v1/chat/history/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: this.userId,
-          title: title,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (result.code !== 200) {
-        throw new Error(result.message || "创建失败");
-      }
-
-      alert("对话创建成功！");
+    return saveRequest.create(this.userId, title)
+    .then(data => {
       titleInput.value = "";
-      this.loadConversations(); // 刷新列表
-    } catch (error) {
-      console.error("创建失败", error);
-      alert(`创建失败: ${error.message}`);
-    }
+      this.loadConversations();
+    })
+    .catch(error => {
+      console.log(error)
+    })
   }
 
   bindEvents() {
