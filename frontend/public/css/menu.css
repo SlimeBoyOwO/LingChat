@@ -1042,3 +1042,80 @@ button#clear-history.show {
   color: white;
 }
 /*==========新修改 尾==========*/
+
+/* UI提示框的样式 */
+
+.not-notice {
+  display: none;
+}
+.notice {
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+  border: 0.5px solid #3d8dff;
+  border-radius: 6px;
+  display: block;
+  z-index: 999999;
+  width: 300px;
+  height: 100px;
+  position: fixed;
+  background-color: #d2e5ff;
+  color: #3d8dff;
+}
+.notice-header {
+  position: absolute;
+  top: 0;
+  bottom: 60%;
+  padding: 5%;
+}
+.notice-message {
+  position: absolute;
+  top: 40%;
+  bottom: 0;
+  padding: 5%;
+}
+.notice-icon {
+  display: inline-block;
+}
+.notice-type {
+  display: inline-block;
+}
+.notice.LT {
+  left: 6%;
+  top: 6%;
+}
+.notice.LB {
+  left: 6%;
+  bottom: 6%;
+}
+.notice.RT {
+  right: 6%;
+  top: 6%;
+}
+.notice.RB {
+  right: 6%;
+  bottom: 6%;
+}
+.notice.LM {
+  left: 26%;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.notice.RM {
+  right: 6%;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.notice.TM {  
+  left: 50%;
+  top: 6%;
+  transform: translateX(-50%);
+}
+.notice.BM {
+  left: 50%;
+  bottom: 6%;
+  transform: translateX(-50%);
+}
+.notice.MM {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
