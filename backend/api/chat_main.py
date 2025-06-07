@@ -14,12 +14,12 @@ class WebSocketManager:
                 if message.get('type') == 'websocket.disconnect':
                     logger.info(f"客户端断开连接，代码: {message.get('code')}")
                 else:
-                    print(message)
                     data = json.loads(message["text"])
 
                     if data.get('type') == 'ping':
                         await websocket.send_json({"type": "pong"})
                     elif data.get('type') == 'message':
+                        print(message)
                         # 添加错误处理
                         try:
                             responses = await service_manager.ai_service.process_message(data.get('content', ''))
