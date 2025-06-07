@@ -3,6 +3,7 @@ import glob
 import asyncio
 import re
 from typing import List, Dict, Optional
+from datetime import datetime
 
 from .deepseek import DeepSeek
 from .predictor import EmotionClassifier  # 导入情绪分类器
@@ -173,6 +174,7 @@ class AIService:
             }]
         
         # 生成语音和构造响应
+        self._delete_voice_files()
         await self._generate_voice_files(emotion_segments)
         responses = self._create_responses(emotion_segments, user_message)
     
@@ -245,6 +247,8 @@ class AIService:
                     "label": "normal",
                     "confidence": 0.5
                 }
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
             results.append({
                 "index": i,
@@ -255,7 +259,7 @@ class AIService:
                 "predicted": prediction_result["label"],
                 "confidence": prediction_result["confidence"],
                 # 使用 os.path.basename 确保只包含文件名
-                "voice_file": os.path.join(self.temp_voice_dir, f"part_{i}.{self.tts_engine.format}")
+                "voice_file": os.path.join(self.temp_voice_dir, f"{timestamp}_part_{i}.{self.tts_engine.format}")
             })
 
         return results
@@ -275,6 +279,9 @@ class AIService:
             await asyncio.gather(*tasks)
         else:
             logger.warning("没有任何片段包含日语文本，跳过所有语音生成")
+    
+    def _delete_voice_files(self):
+        self.tts_engine.cleanup()
     
     def _create_responses(self, segments: List[Dict], user_message: str) -> List[Dict]:
         """构造响应消息"""
