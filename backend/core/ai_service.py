@@ -35,6 +35,18 @@ class AIService:
         self.dialog_logger = DialogLogger()
         self._prepare_directories()
 
+        self.ai_name = os.environ.get("AI_NAME", "在env填写名字捏")
+        self.ai_subtitle = os.environ.get("AI_SCHOOL", "在env填写学校捏")
+        self.user_name = os.environ.get("USER_NAME", "在env填写名字捏")
+        self.user_subtitle = os.environ.get("USER_SCHOOL", "在env填写学校捏")
+        self.ai_settings = os.environ.get("SYSTEM_PROMPT", "你是一个AI助手，请尽可能准确地回答问题。")
+        self.messages = [
+            {
+                "role": "system", 
+                "content": self.ai_settings
+            }
+        ]
+
         self.temp_voice_dir = os.environ.get("TEMP_VOICE_DIR", "frontend/public/audio")
         os.makedirs(self.temp_voice_dir, exist_ok=True)
         
@@ -107,7 +119,7 @@ class AIService:
         """处理用户消息的完整流程"""
         try:
             # 1. 获取AI回复
-            ai_response = self.deepseek.process_message(user_message)
+            ai_response = self.deepseek.process_message(self.messages, user_message)
             self._log_conversation("用户", user_message)
             self._log_conversation("钦灵", ai_response)
             
@@ -150,7 +162,7 @@ class AIService:
             return error_response
     
     def load_memory(self, memory):
-        self.deepseek.load_memory(memory)
+        self.deepseek.load_memory(self.messages, memory)
         logger.info("新的记忆已经被加载")
     
     async def _process_ai_response(self, ai_response: str, user_message: str) -> List[Dict]:
@@ -331,4 +343,4 @@ class AIService:
                     logger.debug(f"  对应语音: (未生成或生成失败)")
     
     def get_memory(self):
-        return self.deepseek.get_messsages()
+        return self.messages

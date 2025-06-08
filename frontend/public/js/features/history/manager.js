@@ -1,5 +1,6 @@
 import { DOM } from "../../ui/dom.js";
 import { DomUtils } from "../../utils/dom-utils.js";
+import EventBus from "../../core/event-bus.js";
 
 export class HistoryManager {
   constructor() {
@@ -10,6 +11,10 @@ export class HistoryManager {
       aiResponses: [],
     };
     this.domUtils = DomUtils;
+    this.ai_name = "默认";
+    this.ai_subtitle = "默认";
+    this.user_name = "默认";
+    this.user_subtitle = "默认";
 
     this.init();
   }
@@ -29,6 +34,14 @@ export class HistoryManager {
       "click",
       this.toggleHistoryPanel.bind(this)
     );
+
+    EventBus.on("ui:name-updated", (names) => {
+      this.ai_name = names.ai_name;
+      this.ai_subtitle = names.ai_subtitle;
+      this.user_name = names.user_name;
+      this.user_subtitle = names.user_subtitle;
+      this.render();
+    });
   }
 
   handleClearHistory() {
@@ -67,9 +80,9 @@ export class HistoryManager {
             .map(
               (conv, index) => `
           <div class="history-item">
-            <p><strong>你:</strong> ${conv.userMessage}</p>
+            <p><strong>${this.user_name}:</strong> ${conv.userMessage}</p>
             ${conv.aiResponses
-              .map((res) => `<p><strong>钦灵:</strong> ${res}</p>`)
+              .map((res) => `<p><strong>${this.ai_name}:</strong> ${res}</p>`)
               .join("")}
           </div>
         `

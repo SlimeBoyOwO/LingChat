@@ -3,6 +3,7 @@ import asyncio
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from api.chat_history import router as chat_history_router
+from api.chat_info import router as chat_info_router
 from api.chat_main import websocket_endpoint
 from api.frontend_routes import router as frontend_router, get_static_files
 from core.server import Server
@@ -22,7 +23,9 @@ async def add_no_cache_headers(request: Request, call_next):
 
 # 注册路由
 app.include_router(chat_history_router)
+app.include_router(chat_info_router)
 app.include_router(frontend_router)
+
 app.websocket("/ws")(websocket_endpoint)
 
 # 静态文件服务
