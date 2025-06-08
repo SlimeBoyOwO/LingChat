@@ -6,7 +6,7 @@ export class MenuController {
   constructor(uiController) {
     this.numSpeed = 150;
     this.settingsSpeed = false;
-    this.message = "钦灵 Chat，测试文本显示速度";
+    this.message = "Ling Chat，测试文本显示速度";
     this.restartTimer = null;
     this.domUtils = DomUtils;
     this.uiController = uiController;
