@@ -9,3 +9,4 @@ dotenv
 uvicorn
 sentence-transformers
 chromadb
+python-multipart

@@ -2,6 +2,7 @@ import os
 import asyncio
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
+from api.chat_music import router as chat_music_router
 from api.chat_history import router as chat_history_router
 from api.chat_info import router as chat_info_router
 from api.chat_main import websocket_endpoint
@@ -25,6 +26,7 @@ async def add_no_cache_headers(request: Request, call_next):
 app.include_router(chat_history_router)
 app.include_router(chat_info_router)
 app.include_router(frontend_router)
+app.include_router(chat_music_router)
 
 app.websocket("/ws")(websocket_endpoint)
 
