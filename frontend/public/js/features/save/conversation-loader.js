@@ -1,5 +1,5 @@
 import { DOM } from "../../ui/dom.js";
-import { saveRequest } from "./request.js";
+import { request } from "../../core/request.js";
 
 export class ConversationLoader {
   constructor(containerId, userId, options = {}) {
@@ -21,7 +21,7 @@ export class ConversationLoader {
 
   async loadConversations(page = 1) {
     if (!this.container) return;
-
+  
     try {
       this.showLoading();
 
@@ -36,7 +36,7 @@ export class ConversationLoader {
 
   fetchConversations(page) {
     const { pageSize } = this.options;
-    return saveRequest.list(this.userId, page, pageSize)
+    return request.saveList(this.userId, page, pageSize);
   }
 
   renderConversations(conversations) {
@@ -98,7 +98,7 @@ export class ConversationLoader {
   }
 
   loadUserConversation(convoId) {
-    return saveRequest.load(this.userId, convoId)
+    return request.saveLoad(this.userId, convoId)
     .then(data => {
       this.onConversationLoaded(data);
     })
@@ -109,7 +109,7 @@ export class ConversationLoader {
   }
 
   saveUserConversation(convoId) {
-    return saveRequest.save(this.userId, convoId)
+    return request.saveSave(this.userId, convoId)
     .then(data => {
       this.loadConversations();
     })
@@ -119,7 +119,7 @@ export class ConversationLoader {
   }
 
   deleteUserConversation(convoId) {
-    return saveRequest.delete(this.userId, convoId)
+    return request.saveDelete(this.userId, convoId)
     .then(data => {
       this.loadConversations();
     })
@@ -137,7 +137,7 @@ export class ConversationLoader {
       return;
     }
 
-    return saveRequest.create(this.userId, title)
+    return request.saveCreate(this.userId, title)
     .then(data => {
       titleInput.value = "";
       this.loadConversations();
