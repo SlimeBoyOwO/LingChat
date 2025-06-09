@@ -11,6 +11,7 @@ from .VitsTTS import VitsTTS              # 导入语音生成
 from .langDetect import LangDetect
 from .logger import logger, TermColors
 from .dialog_logger import DialogLogger
+from .pic_analyzer import DesktopAnalyzer
 
 # 常量定义
 TEMP_VOICE_DIR = "../public/audio"
@@ -33,6 +34,7 @@ class AIService:
         self.lang_detector = LangDetect()
         self.tts_engine = self._init_tts_engine()
         self.dialog_logger = DialogLogger()
+        self.desktop_analyzer = DesktopAnalyzer()
         self._prepare_directories()
 
         self.ai_name = os.environ.get("AI_NAME", "在env填写名字捏")
@@ -117,6 +119,20 @@ class AIService:
     
     async def process_message(self, user_message: str) -> Optional[List[Dict]]:
         """处理用户消息的完整流程"""
+
+        # 获取当前系统时间并格式化为指定格式
+        current_time = datetime.now().strftime("%Y/%m/%d %H:%M")
+        
+        # 新增系统回复部分，添加时间和图像感知（如果有必要的话）
+        user_message += f"\n{{系统：时间：{current_time} "
+        
+        # 修复contains语法问题，使用Python的in运算符
+        if "看看我的桌面" in user_message:
+            analyze_info = self.desktop_analyzer.analyze_desktop()
+            user_message += "桌面内容：" + analyze_info
+        
+        user_message += "}"
+
         try:
             # 1. 获取AI回复
             ai_response = self.deepseek.process_message(self.messages, user_message)

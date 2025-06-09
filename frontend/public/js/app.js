@@ -45,14 +45,10 @@ document.addEventListener("DOMContentLoaded", () => {
 // 页面加载完成后执行的函数
 window.addEventListener("load", function () {
   const loader = document.getElementById("loader");
-  const mainContent = document.getElementById("main-content");
 
   // 模拟一个最小加载时间，防止动画一闪而过
   setTimeout(() => {
     // 隐藏加载动画
     loader.classList.add("hidden");
-
-    // 显示主内容
-    mainContent.classList.add("visible");
   }, 1500); // 你可以根据需要调整这里的延迟时间（单位：毫秒）
 });
