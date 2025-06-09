@@ -3,7 +3,7 @@ import glob
 import asyncio
 import re
 from typing import List, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from .deepseek import DeepSeek
 from .predictor import EmotionClassifier  # 导入情绪分类器
@@ -36,6 +36,10 @@ class AIService:
         self.dialog_logger = DialogLogger()
         self.desktop_analyzer = DesktopAnalyzer()
         self._prepare_directories()
+
+        # 这里记录上次对话的时间
+        self.last_time = datetime.now()
+        self.sys_time_counter = 0
 
         self.ai_name = os.environ.get("AI_NAME", "在env填写名字捏")
         self.ai_subtitle = os.environ.get("AI_SCHOOL", "在env填写学校捏")
@@ -116,27 +120,49 @@ class AIService:
     def _prepare_directories(self):
         """准备必要的目录"""
         os.makedirs(TEMP_VOICE_DIR, exist_ok=True)
+
+    def _append_user_message(self, user_message: str) -> str:
+        """处理用户消息，添加系统信息"""
+        current_time = datetime.now()
+        processed_message = user_message
+
+        sys_time_part = ""
+        sys_desktop_part = ""
+        
+        # 检查是否需要添加时间提醒
+        if (self.last_time and 
+            (current_time - self.last_time > timedelta(hours=1))) or \
+            self.sys_time_counter < 1:
+            
+            formatted_time = current_time.strftime("%Y/%m/%d %H:%M")
+            sys_time_part = f"{formatted_time} "
+            
+            if self.sys_time_counter >= 10:
+                self.sys_time_counter = 0
+        
+        # 检查是否需要分析桌面
+        if "看桌面" in user_message or "看看我的桌面" in user_message:
+            analyze_info = self.desktop_analyzer.analyze_desktop()
+            sys_desktop_part = f"桌面信息: {analyze_info}"
+        
+        if sys_time_part or sys_desktop_part:
+            processed_message += "\n{系统: " + (sys_time_part if sys_time_part else "") + (sys_desktop_part if sys_desktop_part else "") + "}"
+
+        # 更新最后交互时间和计数器
+        self.last_time = current_time
+        self.sys_time_counter += 1
+        
+        return processed_message
     
     async def process_message(self, user_message: str) -> Optional[List[Dict]]:
         """处理用户消息的完整流程"""
 
-        # 获取当前系统时间并格式化为指定格式
-        current_time = datetime.now().strftime("%Y/%m/%d %H:%M")
-        
-        # 新增系统回复部分，添加时间和图像感知（如果有必要的话）
-        user_message += f"\n{{系统：时间：{current_time} "
-        
-        # 修复contains语法问题，使用Python的in运算符
-        if "看看我的桌面" in user_message:
-            analyze_info = self.desktop_analyzer.analyze_desktop()
-            user_message += "桌面内容：" + analyze_info
-        
-        user_message += "}"
+        processed_user_message = self._append_user_message(user_message)
 
         try:
             # 1. 获取AI回复
-            ai_response = self.deepseek.process_message(self.messages, user_message)
-            self._log_conversation("用户", user_message)
+            ai_response = self.deepseek.process_message(self.messages, processed_user_message)
+            self._log_conversation("用户", processed_user_message)
             self._log_conversation("钦灵", ai_response)
             
             # 2. 分析情绪和生成语音
