@@ -107,8 +107,8 @@ export class UIController {
       DOM.input.placeholder = "输入消息...";
       DOM.input.disabled = false;
       DOM.input.value = "";
-      DOM.avatar.title.textContent = self.user_name;
-      DOM.avatar.subtitle.textContent = self.user_subtitle;
+      DOM.avatar.title.textContent = this.user_name;
+      DOM.avatar.subtitle.textContent = this.user_subtitle;
       DOM.avatar.emotion.textContent = "";
       this.writer.stop();
     });
@@ -120,8 +120,8 @@ export class UIController {
         DOM.input.value = "";
         this.emotionSystem.setEmotion("AI思考");
         DOM.input.placeholder = "灵灵正在思考...";
-        DOM.avatar.title.textContent = self.ai_name;
-        DOM.avatar.subtitle.textContent = self.ai_subtitle;
+        DOM.avatar.title.textContent = this.ai_name;
+        DOM.avatar.subtitle.textContent = this.ai_subtitle;
         DOM.avatar.emotion.textContent = "";
       } else {
         DOM.input.disabled = false;
