@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Dict, List, Any, Optional
 from openai import OpenAI
 import os
 import json
@@ -9,57 +9,289 @@ from .logger import logger
 from dotenv import load_dotenv
 import requests
 
-class DeepSeek:
-    def __init__(self, api_key=None, base_url=None):
+# =====================
+# 抽象基类
+# =====================
+class BaseLLMClient:
+    """
+    所有大模型API客户端的抽象基类，定义统一接口，便于多模型适配和扩展。
+    """
+    def __init__(self, api_key=None, base_url=None, model_type=None):
+        self.api_key = api_key
+        self.base_url = base_url
+        self.model_type = model_type
+
+    def chat(self, messages: List[Dict], **kwargs) -> str:
+        """
+        统一聊天接口，所有子类需实现。
+        :param messages: 标准OpenAI格式消息（支持多模态扩展）
+        :return: 回复内容字符串
+        """
+        raise NotImplementedError
+
+    def supports_multimodal(self) -> bool:
+        """
+        是否支持多模态（图片/音频等）。如支持，子类需重写。
+        """
+        return False
+
+# =====================
+# DeepSeek 官方API
+# =====================
+class DeepSeekClient(BaseLLMClient):
+    """
+    DeepSeek 官方API客户端，兼容OpenAI格式。
+    """
+    def __init__(self, api_key=None, base_url=None, model_type=None):
+        super().__init__(api_key, base_url or "https://api.deepseek.com", model_type or "deepseek-chat")
+        self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+
+    def chat(self, messages: List[Dict], **kwargs) -> str:
+        """
+        调用DeepSeek官方API获取回复。
+        """
+        response = self.client.chat.completions.create(
+            model=self.model_type,
+            messages=messages,
+            stream=False
+        )
+        return response.choices[0].message.content
+
+# =====================
+# Qwen 官方API
+# =====================
+class QwenClient(BaseLLMClient):
+    """
+    Qwen（通义千问）官方API客户端。
+    """
+    def __init__(self, api_key=None, base_url=None, model_type=None):
+        super().__init__(api_key, base_url or "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation", model_type or "qwen-turbo")
+
+    def chat(self, messages: List[Dict], **kwargs) -> str:
+        """
+        调用Qwen官方API获取回复。
+        """
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": self.model_type,
+            "input": {"messages": messages},
+            "parameters": {"result_format": "message"}
+        }
+        resp = requests.post(self.base_url, headers=headers, json=payload)
+        resp.raise_for_status()
+        return resp.json()["output"]["choices"][0]["message"]["content"]
+
+# =====================
+# OpenAI GPT 官方API
+# =====================
+class GPTClient(BaseLLMClient):
+    """
+    OpenAI GPT 官方API客户端。
+    """
+    def __init__(self, api_key=None, base_url=None, model_type=None):
+        super().__init__(api_key, base_url or "https://api.openai.com/v1", model_type or "gpt-3.5-turbo")
+        self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+
+    def chat(self, messages: List[Dict], **kwargs) -> str:
+        """
+        调用OpenAI官方API获取回复。
+        """
+        response = self.client.chat.completions.create(
+            model=self.model_type,
+            messages=messages,
+            stream=False
+        )
+        return response.choices[0].message.content
+
+# =====================
+# Claude 官方API
+# =====================
+class ClaudeClient(BaseLLMClient):
+    """
+    Claude 官方API客户端。
+    """
+    def __init__(self, api_key=None, base_url=None, model_type=None):
+        super().__init__(api_key, base_url or "https://api.anthropic.com/v1/messages", model_type or "claude-3-opus-20240229")
+
+    def chat(self, messages: List[Dict], **kwargs) -> str:
+        """
+        调用Claude官方API获取回复。需将OpenAI格式转换为Anthropic格式。
+        """
+        headers = {
+            "x-api-key": self.api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json"
+        }
+        # Claude消息格式转换
+        claude_msgs = []
+        for msg in messages:
+            if msg["role"] == "user":
+                claude_msgs.append({"role": "user", "content": msg["content"]})
+            elif msg["role"] == "assistant":
+                claude_msgs.append({"role": "assistant", "content": msg["content"]})
+            elif msg["role"] == "system":
+                # Claude不直接支持system，可拼接到user前
+                if claude_msgs and claude_msgs[0]["role"] == "user":
+                    claude_msgs[0]["content"] = msg["content"] + "\n" + claude_msgs[0]["content"]
+                else:
+                    claude_msgs.insert(0, {"role": "user", "content": msg["content"]})
+        payload = {
+            "model": self.model_type,
+            "max_tokens": 2048,
+            "messages": claude_msgs
+        }
+        resp = requests.post(self.base_url, headers=headers, json=payload)
+        resp.raise_for_status()
+        return resp.json()["content"][0]["text"]
+
+# =====================
+# Gemini 官方API
+# =====================
+class GeminiClient(BaseLLMClient):
+    """
+    Gemini 官方API客户端。
+    """
+    def __init__(self, api_key=None, base_url=None, model_type=None):
+        super().__init__(api_key, base_url or "https://generativelanguage.googleapis.com/v1beta/models", model_type or "gemini-pro")
+
+    def chat(self, messages: List[Dict], **kwargs) -> str:
+        """
+        调用Gemini官方API获取回复。需将OpenAI格式转换为Gemini格式。
+        """
+        url = f"{self.base_url}/{self.model_type}:generateContent?key={self.api_key}"
+        # Gemini消息格式转换
+        gemini_msgs = []
+        for msg in messages:
+            if msg["role"] == "user":
+                gemini_msgs.append({"parts": [{"text": msg["content"]}], "role": "user"})
+            elif msg["role"] == "assistant":
+                gemini_msgs.append({"parts": [{"text": msg["content"]}], "role": "model"})
+        payload = {"contents": gemini_msgs}
+        resp = requests.post(url, json=payload)
+        resp.raise_for_status()
+        return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+
+# =====================
+# Ollama 本地API
+# =====================
+class OllamaClient(BaseLLMClient):
+    """
+    Ollama 本地部署API客户端。
+    """
+    def __init__(self, api_key=None, base_url=None, model_type=None):
+        super().__init__(api_key, base_url or "http://localhost:11434", model_type or "llama3")
+
+    def chat(self, messages: List[Dict], **kwargs) -> str:
+        """
+        调用Ollama本地API获取回复。
+        """
+        payload = {
+            "model": self.model_type,
+            "messages": messages,
+            "stream": False
+        }
+        resp = requests.post(f"{self.base_url}/api/chat", json=payload)
+        resp.raise_for_status()
+        return resp.json().get("message", {}).get("content", "")
+
+# =====================
+# LM Studio 本地API
+# =====================
+class LMStudioClient(BaseLLMClient):
+    """
+    LM Studio 本地部署API客户端。
+    """
+    def __init__(self, api_key=None, base_url=None, model_type=None):
+        super().__init__(api_key, base_url or "http://localhost:1234/v1", model_type or "lmstudio-model")
+
+    def chat(self, messages: List[Dict], **kwargs) -> str:
+        """
+        调用LM Studio本地API获取回复。
+        """
+        payload = {
+            "model": self.model_type,
+            "messages": messages,
+            "stream": False
+        }
+        resp = requests.post(f"{self.base_url}/chat/completions", json=payload)
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"]
+
+# =====================
+# 统一入口服务
+# =====================
+class LLMService:
+    """
+    统一大模型服务入口，根据配置选择不同的LLM客户端，支持RAG和多模态扩展。
+    """
+    def __init__(self, api_key=None, base_url=None, model_type=None, provider=None):
         load_dotenv()
-           
-        # 获取LLM类型
-        self.llm_provider = os.environ.get("LLM_PROVIDER", "deepseek").lower()
-        logger.debug(f"LLM提供商: {self.llm_provider}")
-        
-        # Ollama配置
-        self.use_ollama = self.llm_provider == "ollama"
-        if self.use_ollama:
-            self.ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-            self.model_type = os.environ.get("OLLAMA_MODEL", "llama3")
-            logger.debug(f"Ollama 服务地址: {self.ollama_base_url}")
-            logger.debug(f"Ollama 模型: {self.model_type}")
+        self.provider = (provider or os.environ.get("LLM_PROVIDER", "deepseek")).lower()
+        # 根据provider自动获取对应的key、base_url、model_type
+        if self.provider == "deepseek":
+            self.api_key = api_key or os.environ.get("CHAT_API_KEY")
+            self.base_url = base_url or os.environ.get("CHAT_BASE_URL", "https://api.deepseek.com")
+            self.model_type = model_type or os.environ.get("MODEL_TYPE", "deepseek-chat")
+        elif self.provider == "qwen":
+            self.api_key = api_key or os.environ.get("QWEN_API_KEY")
+            self.base_url = base_url or os.environ.get("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation")
+            self.model_type = model_type or os.environ.get("QWEN_MODEL_TYPE", "qwen-turbo")
+        elif self.provider == "gpt":
+            self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
+            self.base_url = base_url or os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+            self.model_type = model_type or os.environ.get("OPENAI_MODEL_TYPE", "gpt-3.5-turbo")
+        elif self.provider == "claude":
+            self.api_key = api_key or os.environ.get("CLAUDE_API_KEY")
+            self.base_url = base_url or os.environ.get("CLAUDE_BASE_URL", "https://api.anthropic.com/v1/messages")
+            self.model_type = model_type or os.environ.get("CLAUDE_MODEL_TYPE", "claude-3-opus-20240229")
+        elif self.provider == "gemini":
+            self.api_key = api_key or os.environ.get("GEMINI_API_KEY")
+            self.base_url = base_url or os.environ.get("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/models")
+            self.model_type = model_type or os.environ.get("GEMINI_MODEL_TYPE", "gemini-pro")
+        elif self.provider == "ollama":
+            self.api_key = api_key  # 本地部署通常不需要key
+            self.base_url = base_url or os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+            self.model_type = model_type or os.environ.get("OLLAMA_MODEL", "llama3")
+        elif self.provider == "lmstudio":
+            self.api_key = api_key  # 本地部署通常不需要key
+            self.base_url = base_url or os.environ.get("LMSTUDIO_BASE_URL", "http://localhost:1234/v1")
+            self.model_type = model_type or os.environ.get("LMSTUDIO_MODEL", "lmstudio-model")
         else:
-            # DeepSeek配置
-            api_key = api_key or os.environ.get("CHAT_API_KEY") or os.getenv("OPENAI_API_KEY")
-            if not api_key:
-                try:
-                    with open(".env", "r") as f:
-                        for line in f:
-                            if line.strip().startswith("CHAT_API_KEY"):
-                                key_part = line.split("#")[0].strip()
-                                if "=" in key_part:
-                                    api_key = key_part.split("=", 1)[1].strip()
-                                    logger.debug("从.env文件直接读取API key成功")
-                                    break
-                except Exception as e:
-                    logger.error(f"尝试直接读取.env文件失败: {e}")
-            base_url = base_url or os.environ.get("CHAT_BASE_URL", "https://api.deepseek.com")
-            if not api_key:
-                logger.error("API key 未找到！请在 .env 文件中设置 CHAT_API_KEY 或 OPENAI_API_KEY")
-                raise ValueError("API key 未找到！请在 .env 文件中设置 CHAT_API_KEY 或 OPENAI_API_KEY")
-            logger.debug(f"API key 状态：{'已加载' if api_key else '未加载'}")
-                
-            self.client = OpenAI(api_key=api_key, base_url=base_url)
-            self.model_type = os.environ.get("MODEL_TYPE", "deepseek-chat")
-        
-        # 是否发送当前时间
+            raise ValueError(f"未知的LLM_PROVIDER: {self.provider}")
+        self.client = self._init_client()
         self.send_current_time = os.environ.get("SEND_CURRENT_TIME", "False").lower() == "true"
-        logger.debug(f"发送当前时间功能状态: {'启用' if self.send_current_time else '禁用'}")
-        
-        # RAG 系统
         self.use_rag = os.environ.get("USE_RAG", "False").lower() == "true"
         self.rag_system = None
-        
-        logger.debug(f"{self.llm_provider.capitalize()} LLM 服务已初始化")
-        
+        logger.debug(f"LLMService初始化，provider={self.provider}")
+
+    def _init_client(self):
+        """
+        根据provider选择对应的LLM客户端。
+        """
+        if self.provider == "deepseek":
+            return DeepSeekClient(self.api_key, self.base_url, self.model_type)
+        elif self.provider == "qwen":
+            return QwenClient(self.api_key, self.base_url, self.model_type)
+        elif self.provider == "gpt":
+            return GPTClient(self.api_key, self.base_url, self.model_type)
+        elif self.provider == "claude":
+            return ClaudeClient(self.api_key, self.base_url, self.model_type)
+        elif self.provider == "gemini":
+            return GeminiClient(self.api_key, self.base_url, self.model_type)
+        elif self.provider == "ollama":
+            return OllamaClient(self.api_key, self.base_url, self.model_type)
+        elif self.provider == "lmstudio":
+            return LMStudioClient(self.api_key, self.base_url, self.model_type)
+        else:
+            raise ValueError(f"未知的LLM_PROVIDER: {self.provider}")
+
     def init_rag_system(self, config):
-        """初始化RAG系统（如果启用）"""
+        """
+        初始化RAG系统（如启用）。
+        """
         if not self.use_rag:
             logger.debug("RAG系统未启用，跳过初始化")
             return False
@@ -101,39 +333,10 @@ class DeepSeek:
             logger.error(f"初始化RAG系统时出错: {e}")
             return False
 
-    def call_ollama_api(self, messages):
-        """
-        调用Ollama API获取回复
-        """
-        try:
-            logger.debug(f"正在请求Ollama API: {self.ollama_base_url}/api/chat")
-            
-            payload = {
-                "model": self.model_type,
-                "messages": messages,
-                "stream": False
-            }
-            
-            response = requests.post(
-                f"{self.ollama_base_url}/api/chat",
-                json=payload
-            )
-            
-            if response.status_code != 200:
-                error_msg = f"Ollama API返回错误: {response.status_code} - {response.text}"
-                logger.error(error_msg)
-                return None, error_msg
-                
-            response_json = response.json()
-            return response_json.get("message", {}).get("content", ""), None
-            
-        except Exception as e:
-            error_msg = f"调用Ollama API时出错: {str(e)}"
-            logger.error(error_msg)
-            logger.debug(f"Ollama API错误详情:", exc_info=True)
-            return None, error_msg
-
     def process_message(self, messages: List[Dict], user_input: str):
+        """
+        处理用户输入，自动调用RAG和LLM，返回回复内容。
+        """
         if user_input.lower() in ["退出", "结束"]:
             logger.info("用户请求终止程序")
             return "程序终止"
@@ -203,11 +406,7 @@ class DeepSeek:
                 # 计算并输出RAG消息的总长度（字符数）
                 total_rag_chars = sum(len(msg.get('content', '')) for msg in rag_messages)
                 logger.debug(f"RAG增强内容总长度: {total_rag_chars} 字符")
-                
-                # 输出模型名称和其他参数
-                logger.debug(f"使用模型: {self.model_type}")
-                
-                # 分析RAG消息类型统计
+                logger.debug(f"使用模型: {self.client.model_type}")
                 role_counts = {}
                 for msg in rag_messages:
                     role = msg.get('role', 'unknown')
@@ -219,21 +418,7 @@ class DeepSeek:
             logger.debug("------ 结束 ------")
 
         try:
-            # 根据不同的LLM提供商选择不同的API调用方式
-            if self.use_ollama:
-                logger.debug(f"正在发送请求到Ollama服务，使用模型: {self.model_type}...")
-                ai_response, error = self.call_ollama_api(current_context)
-                if error:
-                    raise Exception(error)
-            else:
-                logger.debug(f"正在发送请求到DeepSeek LLM，使用模型: {self.model_type}...")
-                response = self.client.chat.completions.create(
-                    model=self.model_type,
-                    messages=current_context,
-                    stream=False
-                )
-                ai_response = response.choices[0].message.content
-            
+            ai_response = self.client.chat(current_context)
             messages.append({"role": "assistant", "content": ai_response})
             
             # 如果启用了RAG系统，保存本次会话到RAG历史记录
@@ -305,4 +490,6 @@ class DeepSeek:
                 else:
                     logger.debug("过滤后无历史消息可添加到RAG")
             except Exception as e:
-                    logger.error(f"将加载的记忆添加到RAG历史记录时出错: {e}")
+                logger.error(f"将加载的记忆添加到RAG历史记录时出错: {e}")
+
+DeepSeek = LLMService
