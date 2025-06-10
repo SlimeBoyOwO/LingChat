@@ -39,3 +39,7 @@ async def index():
 @router.get("/about")
 async def about():
     return get_file_response(os.path.join(frontend_dir, "pages", "about.html"))
+
+@router.get("/settings")
+async def settings():
+    return get_file_response(os.path.join(frontend_dir, "pages", "settings.html"))
