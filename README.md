@@ -12,7 +12,8 @@
 ## 陪伴系功能更新
 
 - **桌宠启动模式**：开发轻量化的启动模式，只有人物，无边框，可选方形背景或背景透明，会显示在桌面顶层
-- **添加视觉能力**：添加多模态支持，让AI拥有桌面视野，后续基于多模态视觉开发各种陪伴功能。若DeepSeek迟迟不更新原生多模态，可以考虑使用Qwen
+- **添加视觉能力**✅：添加多模态支持，让AI拥有桌面视野，后续基于多模态视觉开发各种陪伴功能。若DeepSeek迟迟不更新原生多模态，可以考虑使用Qwen
+
 
 
 
@@ -30,7 +31,7 @@
   - 日报功能，通过可靠的稳定的信源，再完善一套好用的Prompt，以角色的性格和口吻播报当日新闻/本周新闻
   - 可能的后续其他功能
 - **角色切换**：增加 AI 角色切换功能，增加 AI 名称修改
-- **设置窗口**：用可视化的设置UI代替手动修改.env
+- **设置窗口**✅：用可视化的设置UI代替手动修改.env
 - **启动速度优化**：取消重量级库的依赖，优化启动速递
 - **永久记忆更新**：添加可以意见清除RAG缓存的.bat
 - **启动动画添加**：在启动时添加日志动画，以点缀跳过漫长的启动等待
@@ -52,3 +53,6 @@
   - 编写长线剧情和新人设
 - **画手**
   - 需要对大量使用AI工具有包容心——大部分画手不能容忍AI工具
+
+# Collaborator
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section --> <!-- prettier-ignore-start --> <!-- markdownlint-disable --> <table> <tbody> <tr> <td align="center" valign="top" width="25%"> <a href="https://github.com/SlimeBoyOwO"><img src="https://avatars.githubusercontent.com/SlimeBoyOwO?s=100" width="100px;" alt="SlimeBoyOwO"/><br /><sub><b>钦灵</b></sub></a><br /> </td> <td align="center" valign="top" width="25%"> <a href="https://github.com/T-Auto"><img src="https://avatars.githubusercontent.com/T-Auto?s=100" width="100px;" alt="T-Auto"/><br /><sub><b>风雪</b></sub></a><br /> </td> <td align="center" valign="top" width="25%"> <a href="https://github.com/Vickko"><img src="https://avatars.githubusercontent.com/Vickko?s=100" width="100px;" alt="Vickko"/><br /><sub><b>vickko</b></sub></a><br /> </td> <td align="center" valign="top" width="25%"> <a href="https://github.com/0x00-pl"><img src="https://avatars.githubusercontent.com/0x00-pl?s=100" width="100px;" alt="0x00‑pl"/><br /><sub><b>PL</b></sub></a><br /> </td> </tr> </tbody> </table>
