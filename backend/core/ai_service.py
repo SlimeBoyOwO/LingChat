@@ -137,8 +137,7 @@ class AIService:
             formatted_time = current_time.strftime("%Y/%m/%d %H:%M")
             sys_time_part = f"{formatted_time} "
             
-            if self.sys_time_counter >= 10:
-                self.sys_time_counter = 0
+            
         
         # 检查是否需要分析桌面
         if "看桌面" in user_message or "看看我的桌面" in user_message:
@@ -151,6 +150,10 @@ class AIService:
         # 更新最后交互时间和计数器
         self.last_time = current_time
         self.sys_time_counter += 1
+
+        # 每三次嗷一声时间提醒
+        if self.sys_time_counter >= 2:
+                self.sys_time_counter = 0
         
         return processed_message
     
