@@ -1,31 +1,15 @@
-"""
-LingChat - 自包含桌面宠物模块 (项目集成版)
-
-功能:
-- 一个独立的、可拖动的桌面宠物窗口。
-- 与 DeepSeek 等兼容 OpenAI 格式的 LLM 进行对话。
-- 从项目根目录的 .env 文件加载 CHAT_API_KEY 和 SYSTEM_PROMPT。
-- 调用项目内的本地情绪分类模型(`backend/emotion_model_18emo`)来分析 LLM 的回复。
-- 根据分析出的情绪，切换项目内 `frontend/public/pictures/qinling/` 目录下的角色立绘。
-- 所有日志记录在 `backend/desktop_pet/logs` 文件夹中。
-- 自动计算并使用项目内的相对路径，无需手动配置。
-
-运行方式:
-1. 确保已安装所有依赖: pip install PyQt6 openai python-dotenv torch transformers
-2. 确保项目根目录 .env 文件已配置 CHAT_API_KEY 和 SYSTEM_PROMPT。
-3. 从项目根目录(develop/)运行此脚本: python backend/desktop_pet/desktop_pet.py
-"""
 import sys
 import os
 import json
 import logging
-import re  # <--- MODIFICATION START ---> (导入re模块)
+import re
 from datetime import datetime
 from pathlib import Path
+from functools import partial
 
 # --- GUI ---
-from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QLineEdit
-from PyQt6.QtGui import QPixmap, QMouseEvent, QFont, QIcon
+from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QLineEdit, QPushButton, QHBoxLayout, QMenu
+from PyQt6.QtGui import QPixmap, QMouseEvent, QFont, QIcon, QAction
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QPoint
 
 # --- AI & 模型 ---
@@ -207,10 +191,19 @@ class DesktopPet(QWidget):
 
         self.conversation_history = [{"role": "system", "content": CONFIG["SYSTEM_PROMPT"]}]
         
-        # <--- MODIFICATION START --->
-        # 新增状态变量，用于管理多段回复
         self.current_response_segments = []
         self.current_segment_index = 0
+        
+        # <--- MODIFICATION START: 新增尺寸和拖动相关变量 --->
+        self.drag_position = QPoint()
+        self.original_pixmap = None # 用于存储当前情绪的原始（未缩放）图片
+        self.current_scale = 0.33   # 默认缩放比例
+        self.SIZE_OPTIONS = {
+            "小 (x0.25)": 0.25,
+            "中 (x0.33)": 0.33,
+            "大 (x0.50)": 0.50,
+            "超大 (x0.75)": 0.75,
+        }
         # <--- MODIFICATION END --->
 
         if not CONFIG["API_KEY"]:
@@ -233,7 +226,7 @@ class DesktopPet(QWidget):
 
         self.setup_ui()
         self.update_pet_emotion(CONFIG["DEFAULT_EMOTION"])
-        self.drag_position = QPoint()
+
 
     def load_character_images(self):
         character_path = CONFIG["CHARACTER_IMAGE_PATH"] / CONFIG["CHARACTER_NAME"]
@@ -263,44 +256,111 @@ class DesktopPet(QWidget):
 
         self.chat_bubble = QLabel(self.initial_message, self)
         self.chat_bubble.setFont(QFont("Microsoft YaHei", 10))
-        self.chat_bubble.setStyleSheet("background-color: rgba(255, 255, 255, 0.9); border-radius: 15px; padding: 10px; color: black; border: 1px solid rgba(0, 0, 0, 0.1);")
+        self.chat_bubble.setStyleSheet("""
+            background-color: rgba(52, 152, 219, 0.85);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            border-radius: 15px;
+            padding: 10px;
+        """)
         self.chat_bubble.setWordWrap(True)
         self.chat_bubble.hide()
 
+        input_layout = QHBoxLayout()
+        
         self.input_box = QLineEdit(self)
         self.input_box.setPlaceholderText("在这里输入后按Enter...")
         self.input_box.setFont(QFont("Microsoft YaHei", 9))
-        self.input_box.setStyleSheet("background-color: rgba(245, 245, 245, 0.95); border: 1px solid #ccc; border-radius: 10px; padding: 5px 8px;")
-        self.input_box.returnPressed.connect(self.handle_input) # <--- MODIFICATION: 连接到新的处理函数
+        self.input_box.setStyleSheet("""
+            QLineEdit {
+                background-color: rgba(41, 128, 185, 0.8);
+                color: white;
+                border: 1px solid rgba(255, 255, 255, 0.4);
+                border-radius: 10px;
+                padding: 5px 8px;
+            }
+            QLineEdit:focus {
+                border: 1px solid rgba(255, 255, 255, 0.9);
+                background-color: rgba(52, 152, 219, 0.9);
+            }
+        """)
 
+        button_style = """
+            QPushButton {
+                background-color: rgba(52, 152, 219, 0.85);
+                color: white;
+                border: 1px solid rgba(255, 255, 255, 0.5);
+                border-radius: 10px;
+                padding: 5px 10px;
+                font-family: 'Microsoft YaHei';
+                font-size: 9pt;
+            }
+            QPushButton:hover {
+                background-color: rgba(62, 172, 239, 0.9);
+            }
+            QPushButton:pressed {
+                background-color: rgba(41, 128, 185, 0.95);
+            }
+        """
+        self.send_button = QPushButton("发送", self)
+        self.send_button.setStyleSheet(button_style)
+        self.send_button.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        self.next_button = QPushButton("下一句", self)
+        self.next_button.setStyleSheet(button_style)
+        self.next_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.next_button.hide()
+
+        self.send_button.clicked.connect(self.start_new_chat)
+        self.next_button.clicked.connect(self.display_next_segment)
+        self.input_box.returnPressed.connect(self.send_button.click)
+        
+        input_layout.addWidget(self.input_box)
+        input_layout.addWidget(self.send_button)
+        input_layout.addWidget(self.next_button)
+        
         self.pet_label = QLabel(self)
         self.pet_label.setScaledContents(True)
+        
+        # <--- MODIFICATION START: 使用变量设置初始尺寸 --->
         if not error_mode:
             default_pixmap = self.emotion_pixmaps[CONFIG["DEFAULT_EMOTION"]]
-            self.pet_label.setFixedSize(int(default_pixmap.width() / 3), int(default_pixmap.height() / 3))
+            initial_width = int(default_pixmap.width() * self.current_scale)
+            initial_height = int(default_pixmap.height() * self.current_scale)
+            self.pet_label.setFixedSize(initial_width, initial_height)
         else:
              self.pet_label.setFixedSize(128, 128)
+        # <--- MODIFICATION END --->
 
         self.layout.addWidget(self.chat_bubble)
         self.layout.addWidget(self.pet_label, 0, Qt.AlignmentFlag.AlignCenter)
-        self.layout.addWidget(self.input_box)
+        self.layout.addLayout(input_layout)
         self.adjustSize()
 
-    # <--- MODIFICATION START --->
+    def _update_ui_mode(self, mode: str):
+        if mode == 'IDLE':
+            self.input_box.setEnabled(True)
+            self.send_button.show()
+            self.next_button.hide()
+            self.input_box.setPlaceholderText("在这里输入后按Enter...")
+            self.input_box.setFocus()
+        elif mode == 'THINKING':
+            self.input_box.setEnabled(False)
+            self.send_button.hide()
+            self.next_button.hide()
+            self.input_box.setPlaceholderText("AI正在思考中...")
+        elif mode == 'RESPONDING_MULTI':
+            self.input_box.setEnabled(False)
+            self.send_button.hide()
+            self.next_button.show()
+            self.input_box.setPlaceholderText("请按“下一句”继续...")
+            self.next_button.setFocus()
+
     def _parse_ai_response(self, text):
-        """
-        解析AI的完整回复，将其拆分为多个片段。
-        此逻辑移植自 core/ai_service.py
-        """
         segments = []
-        # 正则表达式，用于匹配 【情绪标签】中文<日文>（动作） 这样的格式
         pattern = re.findall(r'(【(.*?)】)([^【】]*)', text)
-        
         for i, (full_tag, emotion_tag, following_text) in enumerate(pattern):
-            # 提取中文部分（移除日文和动作）
             chinese_text = re.sub(r'<.*?>|（.*?）', '', following_text).strip()
-            
-            # 只有当中文部分不为空时，才认为是一个有效的片段
             if chinese_text:
                 segments.append({
                     "original_tag": emotion_tag.strip(),
@@ -308,36 +368,26 @@ class DesktopPet(QWidget):
                 })
         return segments
 
-    def handle_input(self):
-        """
-        处理用户在输入框按下的回车键。
-        - 如果正在显示多段回复，则显示下一段。
-        - 否则，发起新的对话。
-        """
-        # 检查是否正在显示多段回复
-        if self.current_response_segments:
-            self.display_next_segment()
-        else:
-            self.start_new_chat()
-
     def display_next_segment(self):
-        """显示多段回复中的下一个片段，或在结束后重置状态。"""
-        self.current_segment_index += 1
-        
-        # 检查是否还有更多片段
         if self.current_segment_index < len(self.current_response_segments):
             segment = self.current_response_segments[self.current_segment_index]
+            
+            emotion_tag = segment.get('original_tag', CONFIG['DEFAULT_EMOTION'])
+            predicted_emotion = self.classifier.predict(emotion_tag)
+            self.update_pet_emotion(predicted_emotion)
+            
             self.show_bubble(segment['chinese_text'])
+            self._update_ui_mode('RESPONDING_MULTI')
+            
+            self.current_segment_index += 1
         else:
-            # 所有片段都已显示完毕，重置状态
             self.chat_bubble.hide()
             self.current_response_segments = []
             self.current_segment_index = 0
             self.update_pet_emotion(CONFIG["DEFAULT_EMOTION"])
-            self.input_box.setPlaceholderText("在这里输入后按Enter...")
+            self._update_ui_mode('IDLE')
 
     def start_new_chat(self):
-        """获取用户输入并启动新的聊天线程。"""
         user_input = self.input_box.text().strip()
         if not user_input or not CONFIG["API_KEY"]:
             return
@@ -348,66 +398,54 @@ class DesktopPet(QWidget):
         
         self.show_bubble("思考中...")
         self.update_pet_emotion(CONFIG["THINKING_EMOTION"])
+        self._update_ui_mode('THINKING')
         
-        self.input_box.setPlaceholderText("AI正在思考中...")
-
         self.worker = ChatWorker(self.conversation_history)
         self.worker.response_ready.connect(self.handle_response)
         self.worker.error_occurred.connect(self.handle_error)
         self.worker.start()
-    # <--- MODIFICATION END --->
 
+    # <--- MODIFICATION START: 关键改动，更新情绪时应用当前缩放比例 --->
     def update_pet_emotion(self, emotion_name):
-        if emotion_name in self.emotion_pixmaps:
-            self.pet_label.setPixmap(self.emotion_pixmaps[emotion_name])
-        else:
+        pixmap = self.emotion_pixmaps.get(emotion_name)
+        if not pixmap:
             self.logger.warning(f"找不到情绪 '{emotion_name}' 的图片，使用默认图片 '{CONFIG['DEFAULT_EMOTION']}'。")
-            self.pet_label.setPixmap(self.emotion_pixmaps[CONFIG["DEFAULT_EMOTION"]])
+            pixmap = self.emotion_pixmaps[CONFIG["DEFAULT_EMOTION"]]
+        
+        # 存储原始图片，用于后续缩放计算
+        self.original_pixmap = pixmap
+        self.pet_label.setPixmap(self.original_pixmap)
+        
+        # 根据当前缩放比例调整 QLabel 的大小
+        scaled_width = int(self.original_pixmap.width() * self.current_scale)
+        scaled_height = int(self.original_pixmap.height() * self.current_scale)
+        self.pet_label.setFixedSize(scaled_width, scaled_height)
+        
+        # 自动调整整个窗口的大小以适应内容
+        self.adjustSize()
+    # <--- MODIFICATION END --->
 
     def handle_response(self, response_text):
         self.logger.info(f"AI原始回复: {response_text}")
         self.conversation_history.append({"role": "assistant", "content": response_text})
-
-        # <--- MODIFICATION START --->
-        # 解析回复
         segments = self._parse_ai_response(response_text)
-
-        self.input_box.setPlaceholderText("在这里输入后按Enter...")
-
         if segments:
-            # 如果是多段式回复
             self.current_response_segments = segments
             self.current_segment_index = 0
-            
-            # 根据第一个片段的情绪来设置立绘
-            first_emotion_tag = segments[0]['original_tag']
-            predicted_emotion = self.classifier.predict(first_emotion_tag)
-            self.update_pet_emotion(predicted_emotion)
-            
-            # 显示第一个片段的中文文本
-            self.show_bubble(segments[0]['chinese_text'])
-            
-            # 更新输入框提示，告知用户可以按回车继续
-            if len(segments) > 1:
-                self.input_box.setPlaceholderText("按Enter查看下一句...")
-
+            self.display_next_segment()
         else:
-            # 如果是普通回复（没有特定格式），则按原逻辑处理
             predicted_emotion = self.classifier.predict(response_text)
             self.update_pet_emotion(predicted_emotion)
             self.show_bubble(response_text)
-        # <--- MODIFICATION END --->
+            self._update_ui_mode('IDLE')
 
     def handle_error(self, error_message):
         self.logger.error(f"处理错误: {error_message}")
         self.update_pet_emotion(CONFIG["ERROR_EMOTION"])
         self.show_bubble(error_message)
-        # <--- MODIFICATION START --->
-        # 发生错误时，也需要重置多段回复的状态
         self.current_response_segments = []
         self.current_segment_index = 0
-        self.input_box.setPlaceholderText("在这里输入后按Enter...")
-        # <--- MODIFICATION END --->
+        self._update_ui_mode('IDLE')
 
     def show_bubble(self, text):
         self.chat_bubble.setText(text)
@@ -415,18 +453,74 @@ class DesktopPet(QWidget):
         self.chat_bubble.adjustSize()
         self.adjustSize()
 
+    # <--- MODIFICATION START: 新增右键菜单调整大小功能 --->
+    def contextMenuEvent(self, event):
+        # 仅在点击宠物图片或背景时显示菜单
+        child_widget = self.childAt(event.pos())
+        if child_widget is not None and child_widget != self.pet_label:
+            return
+
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: rgba(41, 128, 185, 0.9);
+                color: white;
+                border: 1px solid rgba(255, 255, 255, 0.5);
+            }
+            QMenu::item:selected {
+                background-color: rgba(52, 152, 219, 1.0);
+            }
+        """)
+
+        size_group = []
+        for text, scale in self.SIZE_OPTIONS.items():
+            action = QAction(text, self, checkable=True)
+            action.setChecked(scale == self.current_scale)
+            # 使用 functools.partial 或 lambda 来传递参数
+            action.triggered.connect(partial(self.resize_pet, scale))
+            menu.addAction(action)
+            size_group.append(action)
+        
+        menu.addSeparator()
+        menu.addAction("退出").triggered.connect(self.close)
+        
+        menu.exec(event.globalPos())
+
+    def resize_pet(self, scale):
+        if self.current_scale == scale:
+            return
+
+        self.logger.info(f"调整立绘大小，新缩放比例: {scale}")
+        self.current_scale = scale
+        
+        if self.original_pixmap:
+            new_width = int(self.original_pixmap.width() * self.current_scale)
+            new_height = int(self.original_pixmap.height() * self.current_scale)
+            self.pet_label.setFixedSize(new_width, new_height)
+            self.adjustSize() # 重新计算并调整整个窗口大小
+    # <--- MODIFICATION END --->
+
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
-            self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            event.accept()
+            child_widget = self.childAt(event.pos())
+            if child_widget is None or child_widget == self.pet_label:
+                self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+                event.accept()
 
     def mouseMoveEvent(self, event: QMouseEvent):
-        if event.buttons() == Qt.MouseButton.LeftButton:
+        if event.buttons() == Qt.MouseButton.LeftButton and not self.drag_position.isNull():
             self.move(event.globalPosition().toPoint() - self.drag_position)
             event.accept()
     
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        self.drag_position = QPoint()
+        event.accept()
+
     def mouseDoubleClickEvent(self, event: QMouseEvent):
-        self.close()
+        # 双击退出功能保留，但只在可拖动区域生效
+        child_widget = self.childAt(event.pos())
+        if child_widget is None or child_widget == self.pet_label:
+            self.close()
 
 # ==============================================================================
 # ---                           程序主入口                          ---
@@ -439,7 +533,6 @@ if __name__ == '__main__':
     load_dotenv(PROJECT_ROOT / ".env")
     
     CONFIG["API_KEY"] = os.environ.get("CHAT_API_KEY")
-    # 从.env加载的PROMPT会覆盖默认值
     CONFIG["SYSTEM_PROMPT"] = os.environ.get("SYSTEM_PROMPT", CONFIG["SYSTEM_PROMPT"])
 
     logger = Logger(log_dir=CONFIG["LOG_DIRECTORY"])
@@ -449,7 +542,6 @@ if __name__ == '__main__':
     logger.info(f"角色图片路径: {CONFIG['CHARACTER_IMAGE_PATH'] / CONFIG['CHARACTER_NAME']}")
     logger.info(f"情绪模型路径: {CONFIG['EMOTION_MODEL_PATH']}")
     logger.info(f"API Key 已{'加载' if CONFIG['API_KEY'] else '未加载'}")
-
 
     app = QApplication(sys.argv)
     
