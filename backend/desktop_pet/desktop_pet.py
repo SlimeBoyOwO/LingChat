@@ -238,6 +238,10 @@ class VisionWorker(QThread):
             base_url=CONFIG["VD_BASE_URL"],
         )
 
+        logger.info(f"XXX视觉API是 {self.vision_client.api_key}")
+        logger.info(f"XXX视觉URL是 {self.vision_client.base_url}")
+        logger.info(f"XXX视觉模型 是 {CONFIG['VD_MODEL']}")
+
     def run(self):
         try:
             logger.info("向视觉模型发送请求以获取描述...")
@@ -752,6 +756,7 @@ if __name__ == '__main__':
     CONFIG["CHAT_BASE_URL"] = os.environ.get("CHAT_BASE_URL", CONFIG["CHAT_BASE_URL"])
     CONFIG["VD_API_KEY"] = os.environ.get("VD_API_KEY", CONFIG["VD_API_KEY"])
     CONFIG["VD_BASE_URL"] = os.environ.get("VD_BASE_URL", CONFIG["VD_BASE_URL"])
+    CONFIG["VD_MODEL"] = os.environ.get("VD_MODEL", CONFIG["VD_MODEL"])
     CONFIG["SYSTEM_PROMPT"] = os.environ.get("SYSTEM_PROMPT", CONFIG["SYSTEM_PROMPT"])
     
     # 创建必要的目录
@@ -770,6 +775,10 @@ if __name__ == '__main__':
     logger.info(f"角色: {CONFIG['CHARACTER_NAME']}")
     logger.info(f"聊天API Key 已{'加载' if CONFIG['CHAT_API_KEY'] and CONFIG['CHAT_API_KEY'] != 'sk-111' else '未加载或使用默认占位符'}")
     logger.info(f"视觉API Key 已{'加载' if CONFIG['VD_API_KEY'] and CONFIG['VD_API_KEY'] != 'sk-111' else '未加载或使用默认占位符'}")
+
+    logger.info(f"视觉API是 {CONFIG['VD_API_KEY']}")
+    logger.info(f"视觉URL是 {CONFIG['VD_BASE_URL']}")
+    logger.info(f"视觉模型 是 {CONFIG['VD_MODEL']}")
 
     # 启动Qt应用
     app = QApplication(sys.argv)
