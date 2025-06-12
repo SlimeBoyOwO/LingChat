@@ -19,7 +19,7 @@ class DesktopAnalyzer:
         Args:
             model (str): 使用的AI模型，默认为'Pro/Qwen/Qwen2.5-VL-7B-Instruct'
         """
-        self.model = model
+        self.model = os.environ.get("VD_MODEL") or model
         self.api_key = os.environ.get("VD_API_KEY") or ""
 
         if(self.api_key == "sk-114514" or self.api_key == ""):
@@ -27,7 +27,8 @@ class DesktopAnalyzer:
         else:
             logger.info("【视觉识别】你填写了VD_API_KEY，现在你可以输入“看看我的桌面”加任意提示词实现让灵灵看桌面的功能哦~")
 
-        self.base_url = "https://api.siliconflow.cn/v1/chat/completions"
+        self.base_url = os.environ.get("VD_BASE_URL") or "https://api.siliconflow.cn/v1"
+        self.base_url += "/chat/completions" 
         self.last_response_time = None
         self.last_input_tokens = None
         self.last_output_tokens = None
