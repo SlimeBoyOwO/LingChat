@@ -141,7 +141,8 @@ class AIService:
         
         # 检查是否需要分析桌面
         if "看桌面" in user_message or "看看我的桌面" in user_message:
-            analyze_info = self.desktop_analyzer.analyze_desktop()
+            analyze_prompt = "\"" + user_message + "\"" + "以上是用户发的消息，请你根据以上消息，获取桌面画面中的重点内容，用100字描述"
+            analyze_info = self.desktop_analyzer.analyze_desktop(analyze_prompt)
             sys_desktop_part = f"桌面信息: {analyze_info}"
         
         if sys_time_part or sys_desktop_part:
