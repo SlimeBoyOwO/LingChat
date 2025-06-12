@@ -26,11 +26,13 @@ from transformers import BertTokenizer, BertForSequenceClassification
 
 try:
     SCRIPT_DIR = Path(__file__).resolve().parent
-    # 修正项目根目录的计算，以匹配您的结构
-    PROJECT_ROOT = SCRIPT_DIR.parent.parent 
+    # FIX 1: 修正项目根目录的计算，使其更可靠
+    # 假设脚本位于 /path/to/project/backend/desktop_pet/，则项目根目录是 /path/to/project/
+    PROJECT_ROOT = SCRIPT_DIR.parent.parent
 except NameError:
+    # 如果作为脚本直接运行或在某些IDE中，__file__可能不存在
     SCRIPT_DIR = Path.cwd()
-    PROJECT_ROOT = SCRIPT_DIR.parent
+    PROJECT_ROOT = SCRIPT_DIR.parent # 根据你的结构调整
 
 CONFIG = {
     # --- 聊天API 配置 (将从 .env 加载) ---
@@ -50,15 +52,15 @@ CONFIG = {
     # --- 文件路径配置 (自动计算) ---
     "CHARACTER_NAME": "qinling",
     "CHARACTER_IMAGE_PATH": PROJECT_ROOT / "frontend" / "public" / "pictures",
-    # --- FIX 2: 修正情绪模型路径，使用 PROJECT_ROOT ---
+    # FIX 2: 修正情绪模型路径。根据日志，它应该在项目根目录下。
     "EMOTION_MODEL_PATH": PROJECT_ROOT / "emotion_model_18emo",
     "LOG_DIRECTORY": SCRIPT_DIR / "logs",
     "SCREENSHOT_DIRECTORY": SCRIPT_DIR / "screenshots",
 
-    # --- 默认状态 ---
+    # --- 默认状态 (确保有对应的 .png 图片) ---
     "DEFAULT_EMOTION": "正常",
-    "THINKING_EMOTION": "思考",
-    "ERROR_EMOTION": "困惑",
+    "THINKING_EMOTION": "思考", # 确保 '思考.png' 存在
+    "ERROR_EMOTION": "困惑",    # 确保 '困惑.png' 存在
 }
 
 # ==============================================================================
@@ -113,6 +115,7 @@ class EmotionClassifier:
 
         try:
             if not model_path.exists():
+                # 这个错误是日志中报告的第一个关键错误
                 raise FileNotFoundError(f"情绪模型路径不存在: {model_path}")
 
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -129,19 +132,23 @@ class EmotionClassifier:
             
             with open(mapping_path, 'r', encoding='utf-8') as f:
                 label_config = json.load(f)
-            # 兼容两种可能的映射格式
+            
+            # 兼容 id2label 和 label2id 两种格式
             if "id2label" in label_config:
-                self.id2label = {int(k): v for k, v in label_config["id2label"].items()}
+                self.id2label = label_config["id2label"]
             elif "label2id" in label_config:
-                self.id2label = {v: k for k, v in label_config["label2id"].items()}
+                self.id2label = {str(v): k for k, v in label_config["label2id"].items()}
 
             if not self.id2label:
                 raise ValueError("label_mapping.json 格式不正确或为空")
             
+            # 确保字典的键是字符串，以匹配后面 `str(pred_id)`
+            self.id2label = {str(k): v for k, v in self.id2label.items()}
+            
             self.logger.info(f"成功加载情绪分类模型: {model_path.name}")
         except Exception as e:
             self.logger.error(f"加载情绪分类模型失败: {e}", exc_info=True)
-            self.model = None
+            self.model = None # 确保模型加载失败时，self.model为None
 
     def predict(self, text):
         if not self.model:
@@ -161,7 +168,8 @@ class EmotionClassifier:
                 logits = outputs.logits
                 pred_id = torch.argmax(logits, dim=1).item()
             
-            predicted_label = self.id2label.get(pred_id, CONFIG["DEFAULT_EMOTION"])
+            # FIX 3: 使用 str(pred_id) 作为键来查找，因为JSON加载的键是字符串
+            predicted_label = self.id2label.get(str(pred_id), CONFIG["DEFAULT_EMOTION"])
             self.logger.info(f"情绪预测: '{text[:30]}...' -> '{predicted_label}'")
             return predicted_label
 
@@ -169,7 +177,9 @@ class EmotionClassifier:
             self.logger.error(f"情绪预测时发生错误: {e}")
             return CONFIG["ERROR_EMOTION"]
 
-# ... (ChatWorker 和 VisionWorker 类保持不变) ...
+# ==============================================================================
+# ---                      与API交互的后台线程                      ---
+# ==============================================================================
 class ChatWorker(QThread):
     response_ready = pyqtSignal(str)
     error_occurred = pyqtSignal(str)
@@ -233,12 +243,13 @@ class VisionWorker(QThread):
             self.description_ready.emit(image_description)
 
         except Exception as e:
+            # 日志中的 openai.AuthenticationError 在这里被捕获
             logger.error(f"视觉模型请求出错: {e}", exc_info=True)
             self.error_occurred.emit(f"呜...分析图片时出错了，请检查VD_API_KEY和网络。")
 
 
 # ==============================================================================
-# ---           【已修复】截图覆盖层 (Multi-Monitor & DPI Aware)        ---
+# ---           【已合并】截图覆盖层 (Multi-Monitor & DPI Aware)        ---
 # ==============================================================================
 class ScreenshotOverlay(QWidget):
     screenshot_taken = pyqtSignal(QPixmap)
@@ -264,7 +275,6 @@ class ScreenshotOverlay(QWidget):
         monitor_geo = self.screen.geometry()
         ratio = self.screen.devicePixelRatio()
         
-        # --- FIX 1: 使用正确的 API 获取虚拟桌面几何信息 ---
         virtual_desktop_geo = self.screen.virtualGeometry()
         
         offset_from_virtual_origin = monitor_geo.topLeft() - virtual_desktop_geo.topLeft()
@@ -342,7 +352,6 @@ class ScreenshotOverlay(QWidget):
 # ---                           主窗口 (桌宠)                         ---
 # ==============================================================================
 class DesktopPet(QWidget):
-    # ... (初始化和大部分方法保持不变) ...
     def __init__(self, logger_instance, classifier_instance):
         super().__init__()
         self.logger = logger_instance
@@ -357,6 +366,7 @@ class DesktopPet(QWidget):
         self.current_scale = 0.33
         self.SIZE_OPTIONS = {"小 (x0.25)": 0.25, "中 (x0.33)": 0.33, "大 (x0.50)": 0.50, "超大 (x0.75)": 0.75}
 
+        # 检查API Keys
         if not CONFIG["CHAT_API_KEY"] or CONFIG["CHAT_API_KEY"] == "sk-111":
             self.logger.error("错误：CHAT_API_KEY未在 .env 文件中设置！")
             self.initial_message = "聊天API Key未设置，我无法思考哦！"
@@ -389,7 +399,7 @@ class DesktopPet(QWidget):
         for file in character_path.glob("*.png"):
             pixmaps[file.stem] = QPixmap(str(file))
         if not pixmaps or CONFIG["DEFAULT_EMOTION"] not in pixmaps:
-            self.logger.error(f"角色图片资源不完整或默认情绪图片缺失。")
+            self.logger.error(f"角色图片资源不完整或默认情绪图片 '{CONFIG['DEFAULT_EMOTION']}.png' 缺失。")
             return None
         self.logger.info(f"成功为角色'{CONFIG['CHARACTER_NAME']}'加载 {len(pixmaps)} 张情绪图片。")
         return pixmaps
@@ -450,7 +460,6 @@ class DesktopPet(QWidget):
         QTimer.singleShot(200, self._create_screenshot_overlays)
 
     def _create_screenshot_overlays(self):
-        # --- FIX 1: 使用正确的 API 获取虚拟桌面几何信息并截图 ---
         primary_screen = QApplication.primaryScreen()
         if not primary_screen:
             self.logger.error("无法获取主屏幕信息！截图功能失败。")
@@ -469,7 +478,6 @@ class DesktopPet(QWidget):
 
         for screen in QApplication.screens():
             overlay = ScreenshotOverlay(screen, full_desktop_pixmap)
-            # 连接信号，确保截图完成后能正确处理
             overlay.screenshot_taken.connect(self.handle_screenshot_finished)
             overlay.finished.connect(self.cleanup_overlays)
             overlay.show()
@@ -484,8 +492,6 @@ class DesktopPet(QWidget):
         self.activateWindow()
 
     def handle_screenshot_finished(self, pixmap):
-        # 注意：此函数现在会在 cleanup_overlays 之前被调用
-        # 首先保存截图并开始处理，然后 cleanup_overlays 会被调用以恢复界面
         save_dir = CONFIG["SCREENSHOT_DIRECTORY"]
         save_path = save_dir / f"screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
         pixmap.save(str(save_path), "PNG")
@@ -497,7 +503,6 @@ class DesktopPet(QWidget):
         base64_image = base64.b64encode(buffer.data()).decode("utf-8")
         buffer.close()
         
-        # 在主窗口上显示状态，即使它现在是隐藏的
         self.show_bubble("正在识别图片内容...")
         self.update_pet_emotion(CONFIG["THINKING_EMOTION"])
         self._update_ui_mode('THINKING')
@@ -507,7 +512,6 @@ class DesktopPet(QWidget):
         self.vision_worker.error_occurred.connect(self.handle_error)
         self.vision_worker.start()
 
-    # ... (其余所有方法，如 _update_ui_mode, _parse_ai_response, start_new_chat 等，保持不变) ...
     def _update_ui_mode(self, mode: str):
         is_idle = (mode == 'IDLE')
         self.screenshot_button.setEnabled(is_idle)
@@ -610,8 +614,16 @@ class DesktopPet(QWidget):
         
         if pixmap:
             self.original_pixmap = pixmap
-            self.pet_label.setPixmap(self.original_pixmap)
-            self.resize_pet(self.current_scale, force_update=True)
+            # 应用缩放并更新显示
+            scaled_pixmap = self.original_pixmap.scaled(
+                int(self.original_pixmap.width() * self.current_scale),
+                int(self.original_pixmap.height() * self.current_scale),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+            self.pet_label.setPixmap(scaled_pixmap)
+            self.pet_label.setFixedSize(scaled_pixmap.size())
+            self.adjustSize()
 
     def handle_response(self, response_text):
         self.logger.info(f"AI原始回复: {response_text}")
@@ -654,12 +666,13 @@ class DesktopPet(QWidget):
             menu.addAction("退出").triggered.connect(self.close)
             menu.exec(event.globalPos())
 
-    def resize_pet(self, scale, force_update=False):
-        if self.current_scale == scale and not force_update: return
+    def resize_pet(self, scale):
+        if self.current_scale == scale: return
         self.current_scale = scale
+        # 重新应用情绪和大小
         if self.original_pixmap:
-            self.pet_label.setFixedSize(int(self.original_pixmap.width() * self.current_scale), int(self.original_pixmap.height() * self.current_scale))
-            self.adjustSize()
+             self.update_pet_emotion(self.emotion_pixmaps.keys()[0] if not self.original_pixmap else [k for k,v in self.emotion_pixmaps.items() if v == self.original_pixmap][0])
+             self.adjustSize()
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton and self.childAt(event.pos()) in [None, self.pet_label]:
@@ -684,29 +697,37 @@ class DesktopPet(QWidget):
 # ---                           程序主入口                          ---
 # ==============================================================================
 if __name__ == '__main__':
+    # 确保System Prompt包含格式要求
     if "【情绪】" not in CONFIG["SYSTEM_PROMPT"]:
          CONFIG["SYSTEM_PROMPT"] += " 你的回复必须遵循格式：【情绪】中文回复<日文翻译>（动作描述）。一段回复中可以包含多个这样的格式。"
 
+    # 加载环境变量
     env_path = PROJECT_ROOT / ".env"
     load_dotenv(dotenv_path=env_path)
     
+    # 从环境变量覆盖默认配置
     CONFIG["CHAT_API_KEY"] = os.environ.get("CHAT_API_KEY", CONFIG["CHAT_API_KEY"])
     CONFIG["CHAT_BASE_URL"] = os.environ.get("CHAT_BASE_URL", CONFIG["CHAT_BASE_URL"])
     CONFIG["VD_API_KEY"] = os.environ.get("VD_API_KEY", CONFIG["VD_API_KEY"])
     CONFIG["VD_BASE_URL"] = os.environ.get("VD_BASE_URL", CONFIG["VD_BASE_URL"])
     CONFIG["SYSTEM_PROMPT"] = os.environ.get("SYSTEM_PROMPT", CONFIG["SYSTEM_PROMPT"])
     
+    # 创建必要的目录
+    CONFIG["LOG_DIRECTORY"].mkdir(parents=True, exist_ok=True)
     CONFIG["SCREENSHOT_DIRECTORY"].mkdir(parents=True, exist_ok=True)
 
+    # 初始化日志记录器
     logger = Logger(log_dir=CONFIG["LOG_DIRECTORY"])
     logger.info("================== 桌面宠物启动 ==================")
     logger.info(f"项目根目录: {PROJECT_ROOT}")
     logger.info(f".env 文件路径: {env_path} (存在: {env_path.exists()})")
     logger.info(f"情绪模型路径: {CONFIG['EMOTION_MODEL_PATH']} (存在: {CONFIG['EMOTION_MODEL_PATH'].exists()})")
+    logger.info(f"角色图片路径: {CONFIG['CHARACTER_IMAGE_PATH'] / CONFIG['CHARACTER_NAME']} (存在: {(CONFIG['CHARACTER_IMAGE_PATH'] / CONFIG['CHARACTER_NAME']).exists()})")
     logger.info(f"角色: {CONFIG['CHARACTER_NAME']}")
     logger.info(f"聊天API Key 已{'加载' if CONFIG['CHAT_API_KEY'] and CONFIG['CHAT_API_KEY'] != 'sk-111' else '未加载或使用默认占位符'}")
     logger.info(f"视觉API Key 已{'加载' if CONFIG['VD_API_KEY'] and CONFIG['VD_API_KEY'] != 'sk-111' else '未加载或使用默认占位符'}")
 
+    # 启动Qt应用
     app = QApplication(sys.argv)
     
     try:
@@ -716,10 +737,11 @@ if __name__ == '__main__':
         sys.exit(app.exec())
     except Exception as e:
         logger.error(f"程序启动时发生致命错误: {e}", exc_info=True)
+        # 提供GUI错误提示
         msg_box = QMessageBox()
         msg_box.setIcon(QMessageBox.Icon.Critical)
         msg_box.setText("程序启动失败！")
-        msg_box.setInformativeText(f"发生了一个严重错误，请查看日志文件获取详细信息。\n\n错误: {e}")
+        msg_box.setInformativeText(f"发生了一个严重错误，请检查日志文件获取详细信息。\n\n错误: {e}")
         msg_box.setWindowTitle("致命错误")
         msg_box.exec()
         sys.exit(1)
