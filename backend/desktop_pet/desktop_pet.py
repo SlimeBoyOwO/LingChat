@@ -24,15 +24,27 @@ from transformers import BertTokenizer, BertForSequenceClassification
 # ---                           配置区域                           ---
 # ==============================================================================
 
+# --- 核心路径计算 (高鲁棒性) ---
+# 1. 获取脚本文件所在的目录，这是最可靠的锚点。
+# 示例: 如果脚本是 D:\Auto\Github\LingChat\develop\backend\desktop_pet\desktop_pet.py
+# SCRIPT_DIR 会是 D:\Auto\Github\LingChat\develop\backend\desktop_pet
 try:
     SCRIPT_DIR = Path(__file__).resolve().parent
-    # FIX 1: 修正项目根目录的计算，使其更可靠
-    # 假设脚本位于 /path/to/project/backend/desktop_pet/，则项目根目录是 /path/to/project/
-    PROJECT_ROOT = SCRIPT_DIR.parent.parent
 except NameError:
-    # 如果作为脚本直接运行或在某些IDE中，__file__可能不存在
+    # 如果在某些特殊环境（如某些交互式shell）__file__可能不存在。
+    # 此时使用当前工作目录作为后备，但这不够可靠，并打印警告。
+    print("警告: 无法通过 __file__ 确定脚本路径，将使用当前工作目录。这可能导致路径错误。")
     SCRIPT_DIR = Path.cwd()
-    PROJECT_ROOT = SCRIPT_DIR.parent # 根据你的结构调整
+
+# 2. 从脚本目录推导项目中的其他关键目录。
+# BACKEND_DIR 会是 D:\Auto\Github\LingChat\develop\backend
+BACKEND_DIR = SCRIPT_DIR.parent 
+
+# PROJECT_ROOT 会是 D:\Auto\Github\LingChat\develop
+PROJECT_ROOT = BACKEND_DIR.parent
+
+# .env 文件路径 (通常在项目根目录)
+ENV_PATH = PROJECT_ROOT / ".env"
 
 CONFIG = {
     # --- 聊天API 配置 (将从 .env 加载) ---
@@ -49,11 +61,13 @@ CONFIG = {
     "SYSTEM_PROMPT": "你是一个名为'灵灵'的AI助手，请用可爱、简洁、口语化的方式回答问题。你的回复必须遵循格式：【情绪】中文回复<日文翻译>（动作描述）。一段回复中可以包含多个这样的格式。",
     "SCREENSHOT_PROMPT": "你是一个图像描述专家。请用简洁的语言客观地描述这张图片的核心内容。你的描述将作为输入，由另一个AI来回答。请不要进行任何评价或联想，只描述你看到了什么。",
 
-    # --- 文件路径配置 (自动计算) ---
+    # --- 文件路径配置 (基于上面计算出的路径) ---
     "CHARACTER_NAME": "qinling",
     "CHARACTER_IMAGE_PATH": PROJECT_ROOT / "frontend" / "public" / "pictures",
-    # FIX 2: 修正情绪模型路径。根据日志，它应该在项目根目录下。
-    "EMOTION_MODEL_PATH": PROJECT_ROOT / "emotion_model_18emo",
+    
+    # FIX: 情绪模型路径修正。它位于 backend 目录下，与 desktop_pet 目录同级。
+    "EMOTION_MODEL_PATH": BACKEND_DIR / "emotion_model_18emo",
+    
     "LOG_DIRECTORY": SCRIPT_DIR / "logs",
     "SCREENSHOT_DIRECTORY": SCRIPT_DIR / "screenshots",
 
@@ -114,18 +128,25 @@ class EmotionClassifier:
         self.id2label = {}
 
         try:
+            # 检查模型路径是否存在
             if not model_path.exists():
-                # 这个错误是日志中报告的第一个关键错误
                 raise FileNotFoundError(f"情绪模型路径不存在: {model_path}")
+            
+            # 检查模型路径是否是一个目录，并且包含必要的文件
+            # transformers.from_pretrained 期望一个目录
+            if not model_path.is_dir():
+                raise ValueError(f"情绪模型路径 '{model_path}' 不是一个目录。")
 
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             self.logger.info(f"情绪分类模型将使用设备: {self.device}")
 
-            self.tokenizer = BertTokenizer.from_pretrained(model_path, local_files_only=True)
-            self.model = BertForSequenceClassification.from_pretrained(model_path, local_files_only=True)
+            # 尝试从本地文件加载模型和分词器
+            self.tokenizer = BertTokenizer.from_pretrained(str(model_path), local_files_only=True)
+            self.model = BertForSequenceClassification.from_pretrained(str(model_path), local_files_only=True)
             self.model.to(self.device)
             self.model.eval()
 
+            # 加载标签映射文件
             mapping_path = model_path / "label_mapping.json"
             if not mapping_path.exists():
                  raise FileNotFoundError(f"找不到标签映射文件: {mapping_path}")
@@ -168,7 +189,7 @@ class EmotionClassifier:
                 logits = outputs.logits
                 pred_id = torch.argmax(logits, dim=1).item()
             
-            # FIX 3: 使用 str(pred_id) 作为键来查找，因为JSON加载的键是字符串
+            # 使用 str(pred_id) 作为键来查找，因为JSON加载的键是字符串
             predicted_label = self.id2label.get(str(pred_id), CONFIG["DEFAULT_EMOTION"])
             self.logger.info(f"情绪预测: '{text[:30]}...' -> '{predicted_label}'")
             return predicted_label
@@ -536,11 +557,15 @@ class DesktopPet(QWidget):
 
     def _parse_ai_response(self, text):
         segments = []
+        # 检查是否包含预期的格式标记
         if '【' not in text or '】' not in text:
+            # 如果没有格式，尝试清理并作为单个默认情绪段落
             cleaned_text = re.sub(r'<.*?>|（.*?）', '', text).strip()
             if cleaned_text:
                 segments.append({"original_tag": CONFIG["DEFAULT_EMOTION"], "chinese_text": cleaned_text})
             return segments
+        
+        # 按格式标记分割
         parts = text.split('【')
         for part in parts:
             if '】' not in part:
@@ -548,10 +573,15 @@ class DesktopPet(QWidget):
             try:
                 emotion_tag, content = part.split('】', 1)
             except ValueError:
+                # 如果分割失败，跳过此部分
                 continue
+            
+            # 提取中文文本，去除日文翻译和动作描述
             chinese_text = re.sub(r'<[^>]*>|（[^）]*）', '', content).strip()
             if chinese_text:
                 segments.append({"original_tag": emotion_tag.strip(), "chinese_text": chinese_text})
+        
+        # 如果解析后没有得到任何有效片段，则将整个回复作为默认情绪处理
         if not segments:
             self.logger.warning(f"无法从回复中解析出格式化片段，将显示完整回复: {text}")
             cleaned_text = re.sub(r'<.*?>|（.*?）|【.*?】', '', text).strip()
@@ -562,12 +592,14 @@ class DesktopPet(QWidget):
     def display_next_segment(self):
         if self.current_segment_index < len(self.current_response_segments):
             segment = self.current_response_segments[self.current_segment_index]
+            # 使用情绪分类模型预测情绪
             predicted_emotion = self.classifier.predict(segment.get('original_tag', CONFIG['DEFAULT_EMOTION']))
             self.update_pet_emotion(predicted_emotion)
             self.show_bubble(segment['chinese_text'])
             self._update_ui_mode('RESPONDING_MULTI')
             self.current_segment_index += 1
         else:
+            # 所有片段显示完毕
             self.chat_bubble.hide()
             self.current_response_segments = []
             self.current_segment_index = 0
@@ -582,7 +614,7 @@ class DesktopPet(QWidget):
         if self.screenshot_context:
             final_prompt = f"我刚才截了一张图，内容是：“{self.screenshot_context}”。现在，关于这张图，我的问题是：“{user_input}”"
             self.logger.info(f"结合截图上下文生成新提问: {final_prompt}")
-            self.screenshot_context = None
+            self.screenshot_context = None # 清除截图上下文，避免下次聊天继续使用
 
         self.logger.info(f"用户输入 (原始): {user_input}")
         self.conversation_history.append({"role": "user", "content": final_prompt})
@@ -632,19 +664,20 @@ class DesktopPet(QWidget):
         if segments:
             self.current_response_segments = segments
             self.current_segment_index = 0
-            self.display_next_segment()
+            self.display_next_segment() # 开始显示第一个片段
         else:
-            self.logger.warning("解析后的片段为空，将不显示任何内容。")
-            self.handle_error("AI的回复格式好像有点问题，我没看懂...")
+            # 如果解析失败，直接显示原始回复并处理为错误状态
+            self.logger.warning("解析后的片段为空，将显示原始回复并进入错误状态。")
+            self.handle_error(f"AI的回复格式好像有点问题，我没看懂... (原始回复: {response_text[:50]}...)")
 
     def handle_error(self, error_message):
         self.logger.error(f"处理错误: {error_message}")
-        self.screenshot_context = None
+        self.screenshot_context = None # 清除任何截图上下文
         self.update_pet_emotion(CONFIG["ERROR_EMOTION"])
         self.show_bubble(error_message)
-        self.current_response_segments = []
+        self.current_response_segments = [] # 清除待显示片段
         self.current_segment_index = 0
-        self._update_ui_mode('IDLE')
+        self._update_ui_mode('IDLE') # 恢复到空闲模式
 
     def show_bubble(self, text):
         self.chat_bubble.setText(text)
@@ -653,28 +686,37 @@ class DesktopPet(QWidget):
         self.adjustSize()
 
     def contextMenuEvent(self, event):
+        # 只有在点击宠物本身或背景时才显示右键菜单
         if self.childAt(event.pos()) in [None, self.pet_label]:
             menu = QMenu(self)
             menu.setStyleSheet("QMenu { background-color: rgba(41, 128, 185, 0.9); color: white; border: 1px solid rgba(255, 255, 255, 0.5); } QMenu::item:selected { background-color: rgba(52, 152, 219, 1.0); }")
+            
             size_menu = menu.addMenu("调整大小")
             for text, scale in self.SIZE_OPTIONS.items():
                 action = QAction(text, self, checkable=True)
                 action.setChecked(scale == self.current_scale)
                 action.triggered.connect(partial(self.resize_pet, scale))
                 size_menu.addAction(action)
+            
             menu.addSeparator()
             menu.addAction("退出").triggered.connect(self.close)
             menu.exec(event.globalPos())
 
     def resize_pet(self, scale):
-        if self.current_scale == scale: return
+        if self.current_scale == scale: return # 如果大小没变，则不操作
         self.current_scale = scale
-        # 重新应用情绪和大小
-        if self.original_pixmap:
-             self.update_pet_emotion(self.emotion_pixmaps.keys()[0] if not self.original_pixmap else [k for k,v in self.emotion_pixmaps.items() if v == self.original_pixmap][0])
-             self.adjustSize()
+        # 重新应用当前情绪和大小
+        # 找到当前显示的原始情绪名称，然后更新
+        current_emotion_name = CONFIG["DEFAULT_EMOTION"]
+        for emo_name, pixmap in self.emotion_pixmaps.items():
+            if pixmap == self.original_pixmap:
+                current_emotion_name = emo_name
+                break
+        self.update_pet_emotion(current_emotion_name)
+        self.adjustSize() # 调整窗口大小以适应新的宠物图片大小
 
     def mousePressEvent(self, event: QMouseEvent):
+        # 只有在点击宠物本身或背景时才允许拖动
         if event.button() == Qt.MouseButton.LeftButton and self.childAt(event.pos()) in [None, self.pet_label]:
             self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             event.accept()
@@ -689,6 +731,7 @@ class DesktopPet(QWidget):
         event.accept()
 
     def mouseDoubleClickEvent(self, event: QMouseEvent):
+        # 只有在双击宠物本身或背景时才退出
         if self.childAt(event.pos()) in [None, self.pet_label]:
             self.close()
 
@@ -702,8 +745,7 @@ if __name__ == '__main__':
          CONFIG["SYSTEM_PROMPT"] += " 你的回复必须遵循格式：【情绪】中文回复<日文翻译>（动作描述）。一段回复中可以包含多个这样的格式。"
 
     # 加载环境变量
-    env_path = PROJECT_ROOT / ".env"
-    load_dotenv(dotenv_path=env_path)
+    load_dotenv(dotenv_path=ENV_PATH)
     
     # 从环境变量覆盖默认配置
     CONFIG["CHAT_API_KEY"] = os.environ.get("CHAT_API_KEY", CONFIG["CHAT_API_KEY"])
@@ -719,8 +761,10 @@ if __name__ == '__main__':
     # 初始化日志记录器
     logger = Logger(log_dir=CONFIG["LOG_DIRECTORY"])
     logger.info("================== 桌面宠物启动 ==================")
+    logger.info(f"脚本目录: {SCRIPT_DIR}")
+    logger.info(f"后端目录: {BACKEND_DIR}")
     logger.info(f"项目根目录: {PROJECT_ROOT}")
-    logger.info(f".env 文件路径: {env_path} (存在: {env_path.exists()})")
+    logger.info(f".env 文件路径: {ENV_PATH} (存在: {ENV_PATH.exists()})")
     logger.info(f"情绪模型路径: {CONFIG['EMOTION_MODEL_PATH']} (存在: {CONFIG['EMOTION_MODEL_PATH'].exists()})")
     logger.info(f"角色图片路径: {CONFIG['CHARACTER_IMAGE_PATH'] / CONFIG['CHARACTER_NAME']} (存在: {(CONFIG['CHARACTER_IMAGE_PATH'] / CONFIG['CHARACTER_NAME']).exists()})")
     logger.info(f"角色: {CONFIG['CHARACTER_NAME']}")
