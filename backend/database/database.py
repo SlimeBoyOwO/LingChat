@@ -44,9 +44,22 @@ def init_db():
         owned_user INTEGER NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (character) REFERENCES characters(id) ON DELETE CASCADE,
         FOREIGN KEY (owned_user) REFERENCES users(id) ON DELETE CASCADE,
         FOREIGN KEY (last_message_id) REFERENCES messages(id) ON DELETE SET NULL
     )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS characters (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_name TEXT NOT NULL DEFAULT '默认用户',
+        user_subtitle TEXT NOT NULL DEFAULT '默认学校',
+        ai_name TEXT NOT NULL DEFAULT '默认狼狼',
+        ai_subtitle TEXT NOT NULL DEFAULT '默认 Studio',
+        ai_prompt TEXT NOT NULL DEFAULT 'ERROR',
+        resource_path TEXT NOT NULL DEFAULT '',
+    )           
     """)
 
     # 创建消息表
