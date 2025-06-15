@@ -24,12 +24,9 @@ frontend/node_modules/
 *.safetensors
 
 # Ignore logs
-log/*.log
-logs/*.log
-backend/logs/*.log
-runtime_logs/*.log
-run_logs/
-backend/run_logs/
+*.log
+
+backend/data/logs
 
 # Ignore generated audio file
 public/audio/
@@ -47,3 +44,6 @@ memory-bank/
 chat_system.db
 chroma_db_store/
 rag_chat_history/
+
+#
+release/

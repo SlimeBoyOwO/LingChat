@@ -3,7 +3,7 @@ import asyncio
 import os
 from pathlib import Path
 # from .logger import log_debug, log_info, log_warning, log_error, TermColors, initialize_logger
-from .new_logger import logger, TermColors
+from .logger import logger, TermColors
 
 class VitsTTS:
     def __init__(self, api_url=None, speaker_id=4, audio_format="wav", lang="ja", enable=True):
@@ -19,7 +19,7 @@ class VitsTTS:
         self.speaker_id = speaker_id or int(os.environ.get("VITS_SPEAKER_ID", 4))
         self.format = audio_format
         self.lang = lang
-        self.temp_dir = Path("temp_voice")
+        self.temp_dir = Path(os.environ.get("TEMP_VOICE_DIR", "frontend/public/audio"))
         self.temp_dir.mkdir(exist_ok=True)
         self.enable = enable
         
@@ -102,7 +102,7 @@ class VitsTTS:
         output_file = str(file_name) 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(self.api_url, params=params, timeout=10) as response:
+                async with session.get(self.api_url, params=params, timeout=100) as response:
                     response.raise_for_status()  
                     with open(output_file, "wb") as f:
                         f.write(await response.read())
