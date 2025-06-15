@@ -3,7 +3,7 @@ import websockets
 import json
 from typing import Callable, Optional
 # from .logger import log_debug, log_info, log_error, TermColors
-from .new_logger import logger, TermColors
+from .logger import logger, TermColors
 
 class WebSocketServer:
     def __init__(self, 

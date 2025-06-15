@@ -10,7 +10,7 @@ export class SoundController {
 
   init() {
     this.bindEvents();
-    this.AudioSetting();
+    this.setupAudioControls();
   }
 
   bindEvents() {
@@ -24,14 +24,12 @@ export class SoundController {
     this.processing = true;
 
     requestAnimationFrame(() => {
-      // 显示声音相关元素
       this.domUtils.showElements([
         DOM.menuContent,
         DOM.menuSound,
         DOM.soundPage,
       ]);
 
-      // 隐藏其他面板元素
       this.domUtils.hideElements([
         DOM.menuImage,
         DOM.imagePage,
@@ -50,7 +48,7 @@ export class SoundController {
     });
   }
 
-  // 可扩展的音频控制方法
+  // 音频播放控制
   playBubbleSound() {
     if (DOM.bubbleAudio) {
       DOM.bubbleAudio.currentTime = 0;
@@ -59,150 +57,238 @@ export class SoundController {
   }
 
   stopAllSounds() {
-    [DOM.audioPlayer, DOM.bubbleAudio].forEach((player) => {
-      if (player) {
-        player.pause();
-        player.currentTime = 0;
+    [DOM.audioPlayer, DOM.bubbleAudio, DOM.BackAudioPlayer].forEach(
+      (player) => {
+        if (player) {
+          player.pause();
+          player.currentTime = 0;
+        }
       }
-    });
+    );
   }
 
-  // ==========新修改 头==========
+  // ========== 音频控制设置 ===========
+  setupAudioControls() {
+    // 音量控制
+    this.setupVolumeControls();
 
-  AudioSetting() {
-    // 音量修改
+    // 测试按钮
+    this.setupTestButtons();
+
+    // 背景音乐控制
+    this.setupBackgroundMusic();
+
+    // 初始化音乐列表
+    this.loadMusicList();
+
+    // 上传事件监听
+    this.setupUploadHandler();
+  }
+
+  setupVolumeControls() {
     DOM.VolumeAudioPlayer.addEventListener("input", (e) => {
       DOM.audioPlayer.volume = e.target.value / 100;
     });
+
     DOM.VolumeBubbleAudio.addEventListener("input", (e) => {
       DOM.bubbleAudio.volume = e.target.value / 100;
     });
+
     DOM.VolumeBackAudioPlayer.addEventListener("input", (e) => {
       DOM.BackAudioPlayer.volume = e.target.value / 100;
     });
+  }
 
-    // 音量测试
-    DOM.TestAudioPlayer.addEventListener("click", (e) => {
-      DOM.audioPlayer.src = "/audio/%E8%A7%92%E8%89%B2%E9%9F%B3%E9%87%8F%E6%B5%8B%E8%AF%95.wav";
-      DOM.audioPlayer.play();
-    });
-    DOM.TestBubbleAudio.addEventListener("click", (e) => {
-      DOM.bubbleAudio.src = "/audio_effects/%E7%96%91%E9%97%AE.wav";
-      DOM.bubbleAudio.play();
+  setupTestButtons() {
+    DOM.TestAudioPlayer.addEventListener("click", () => {
+      this.playTestSound(DOM.audioPlayer, "/audio/角色音量测试.wav");
     });
 
-    // 背景音乐
-    // 播放 暂停 以及停止逻辑 （由于后端尚未配置，将无法使用加载和上传音乐列表；暂时使用https://files.a2942.top:5904/indexmusic/music/list/Kozoro%20-%20Where%20We%20Belong.mp3代替测试音频）
-    DOM.BackAudioPlayer.src = "https://files.a2942.top:5904/indexmusic/music/list/Kozoro%20-%20Where%20We%20Belong.mp3";
-    DOM.MusicName.textContent = "Kozoro - Where We Belong";
-    DOM.BackAudioPlayer.loop = true; // 循环播放
-    DOM.PlayPauseMusic.addEventListener("click", (e) => {
-      if (DOM.BackAudioPlayer.paused) {
-        DOM.BackAudioPlayer.play();
-      } else {
-        DOM.BackAudioPlayer.pause();
-      }
-    });
-    // 停止音乐
-    DOM.StopMusic.addEventListener("click", (e) => {
-      DOM.BackAudioPlayer.pause();
-      DOM.BackAudioPlayer.currentTime = 0;
-    });
-
-    function updatelist() {
-      // 加载音乐列表，name and url 
-      fetch("/api/v1/chat/back-music/list")
-        .then((response) => response.json())
-        .then((data) => {
-          data.forEach((item) => {
-            const musicItem = document.createElement("div");
-            musicItem.className = "Music-List da";
-
-            const musicName = document.createElement("div");
-            musicName.textContent = item.name;
-
-            const deleteButtonContainer = document.createElement("div");
-            const deleteButton = document.createElement("button");
-            deleteButton.className = "button Music-List db";
-            deleteButton.textContent = "删除";
-
-            deleteButton.addEventListener("click", () => {
-              fetch(`/api/v1/chat/back-music/delete?url=${encodeURIComponent(item.url)}`, {
-                method: "DELETE",
-              })
-                .then((response) => {
-                  if (response.ok) {
-                    alert("音乐删除成功");
-                    DOM.MusicList.innerHTML = ""; // 清空列表
-                    updatelist();
-                  } else {
-                    alert("音乐删除失败");
-                  }
-                })
-                .catch((error) => {
-                  console.error("Error:", error);
-                  alert("音乐删除失败");
-                });
-            });
-
-            deleteButtonContainer.appendChild(deleteButton);
-            musicItem.appendChild(musicName);
-            musicItem.appendChild(deleteButtonContainer);
-            DOM.MusicList.appendChild(musicItem);
-          });
-        })
-        .catch((error) => {
-          console.error("Error:", error);
-        });
-    }
-
-    updatelist();
-
-    //处理音乐上传
-    DOM.AddMusic.addEventListener("click", (e) => {
-      if (DOM.MusicUpload.value) {
-        // 判断是否是音乐文件
-        if (
-          DOM.MusicUpload.value.endsWith(".mp3") ||
-          DOM.MusicUpload.value.endsWith(".wav") ||
-          DOM.MusicUpload.value.endsWith(".flac") ||
-          DOM.MusicUpload.value.endsWith(".webm") ||
-          DOM.MusicUpload.value.endsWith(".weba") ||
-          DOM.MusicUpload.value.endsWith(".ogg") ||
-          DOM.MusicUpload.value.endsWith(".m4a") ||
-          DOM.MusicUpload.value.endsWith(".oga")
-        ) {
-          // /api/v1/chat/back-music/upload?file=***&name=***
-          const file = DOM.MusicUpload.files[0];
-          const formData = new FormData();
-          formData.append("file", file);
-          formData.append("name", file.name);
-          fetch("/api/v1/chat/back-music/upload", {
-            method: "POST",
-            body: formData,
-          })
-            .then((response) => {
-              if (response.ok) {
-                alert("音乐上传成功");
-                DOM.MusicUpload.value = "";
-                DOM.MusicList.innerHTML = ""; // 清空列表
-                updatelist();
-              } else {
-                alert("音乐上传失败");
-              }
-            })
-            .catch((error) => {
-              console.error("Error:", error);
-              alert("音乐上传失败");
-            });
-        } else {
-          alert("请上传正确的音乐文件");
-        }
-      } else {
-        alert("请先选择音乐文件");
-      }
+    DOM.TestBubbleAudio.addEventListener("click", () => {
+      this.playTestSound(DOM.bubbleAudio, "/audio_effects/疑问.wav");
     });
   }
 
-  // ==========新修改 尾==========
+  playTestSound(player, url) {
+    if (!player) return;
+
+    player.src = url;
+    player.play().catch((e) => {
+      console.error("播放测试音效失败:", e);
+    });
+  }
+
+  setupBackgroundMusic() {
+    // 初始化背景音乐播放器
+    DOM.BackAudioPlayer.loop = true;
+
+    // 播放/暂停按钮
+    DOM.PlayPauseMusic.addEventListener("click", () => {
+      if (DOM.BackAudioPlayer.paused) {
+        this.playCurrentMusic();
+      } else {
+        DOM.BackAudioPlayer.pause();
+      }
+      this.updatePlayButtonIcon();
+    });
+
+    // 停止按钮
+    DOM.StopMusic.addEventListener("click", () => {
+      DOM.BackAudioPlayer.pause();
+      DOM.BackAudioPlayer.currentTime = 0;
+      this.updatePlayButtonIcon();
+    });
+  }
+
+  playCurrentMusic() {
+    if (!DOM.BackAudioPlayer.src) {
+      // 如果没有选中音乐，尝试播放列表第一首
+      const firstItem = DOM.MusicList.querySelector(".Music-List");
+      if (firstItem) {
+        this.playMusicFromItem(firstItem);
+      }
+      return;
+    }
+
+    DOM.BackAudioPlayer.play().catch((e) => {
+      console.error("播放音乐失败:", e);
+    });
+  }
+
+  updatePlayButtonIcon() {
+    // 这里可以添加更新播放按钮图标的逻辑
+    const icon = DOM.PlayPauseMusic.querySelector("i");
+    if (icon) {
+      icon.className = DOM.BackAudioPlayer.paused ? "icon-play" : "icon-pause";
+    }
+  }
+
+  async loadMusicList() {
+    try {
+      const response = await fetch("/api/v1/chat/back-music/list");
+      if (!response.ok) throw new Error("获取音乐列表失败");
+
+      const musicList = await response.json();
+      this.renderMusicList(musicList);
+    } catch (error) {
+      console.error("加载音乐列表错误:", error);
+      // 可以显示错误提示给用户
+    }
+  }
+
+  renderMusicList(musicList) {
+    DOM.MusicList.innerHTML = "";
+
+    musicList.forEach((item) => {
+      const musicItem = document.createElement("div");
+      musicItem.className = "Music-List da";
+      musicItem.dataset.url = item.url;
+
+      // 音乐名称（可点击播放）
+      const musicName = document.createElement("div");
+      musicName.textContent = item.name;
+      musicName.className = "music-name";
+      musicName.addEventListener("click", () =>
+        this.playMusicFromItem(musicItem)
+      );
+
+      // 删除按钮
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "button Music-List db";
+      deleteBtn.textContent = "删除";
+      deleteBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.deleteMusicItem(item.url);
+      });
+
+      musicItem.appendChild(musicName);
+      musicItem.appendChild(deleteBtn);
+      DOM.MusicList.appendChild(musicItem);
+    });
+  }
+
+  async playMusicFromItem(item) {
+    const url = item.dataset.url;
+    if (!url) return;
+
+    try {
+      DOM.BackAudioPlayer.src = url;
+      DOM.BackAudioPlayer.play().catch((e) => {
+        console.error("播放失败:", e);
+      });
+
+      // 更新当前播放显示
+      DOM.MusicName.textContent = item.querySelector(".music-name").textContent;
+      this.updatePlayButtonIcon();
+    } catch (error) {
+      console.error("播放音乐错误:", error);
+    }
+  }
+
+  async deleteMusicItem(url) {
+    if (!confirm("确定要删除这首音乐吗？")) return;
+
+    try {
+      const response = await fetch(
+        `/api/v1/chat/back-music/delete?url=${encodeURIComponent(url)}`,
+        { method: "DELETE" }
+      );
+
+      if (!response.ok) throw new Error("删除失败");
+
+      this.loadMusicList(); // 刷新列表
+    } catch (error) {
+      console.error("删除音乐错误:", error);
+      alert("删除音乐失败");
+    }
+  }
+
+  setupUploadHandler() {
+    DOM.AddMusic.addEventListener("click", async () => {
+      const fileInput = DOM.MusicUpload;
+      if (!fileInput.files || fileInput.files.length === 0) {
+        alert("请先选择音乐文件");
+        return;
+      }
+
+      const file = fileInput.files[0];
+      const fileName = file.name;
+      const fileExt = fileName.slice(fileName.lastIndexOf(".")).toLowerCase();
+
+      // 验证文件类型
+      const allowedExts = [
+        ".mp3",
+        ".wav",
+        ".flac",
+        ".webm",
+        ".weba",
+        ".ogg",
+        ".m4a",
+        ".oga",
+      ];
+      if (!allowedExts.includes(fileExt)) {
+        alert("请上传支持的音频格式: " + allowedExts.join(", "));
+        return;
+      }
+
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const response = await fetch("/api/v1/chat/back-music/upload", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!response.ok) throw new Error("上传失败");
+
+        alert("音乐上传成功");
+        fileInput.value = ""; // 清空文件选择
+        this.loadMusicList(); // 刷新列表
+      } catch (error) {
+        console.error("上传音乐错误:", error);
+        alert("音乐上传失败");
+      }
+    });
+  }
 }
