@@ -61,7 +61,7 @@ class Logger:
         log_level: Optional[str] = None,
         show_timestamp: Optional[bool] = None,
         enable_file_logging: bool = True,
-        log_file_directory: str = "run_logs",
+        log_file_directory: str = os.path.join("data", "run_logs"),
         log_file_level: int = logging.DEBUG
     ):
         """初始化日志记录器

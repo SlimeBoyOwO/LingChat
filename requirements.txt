@@ -9,3 +9,6 @@ dotenv
 uvicorn
 sentence-transformers
 chromadb
+python-multipart
+pyqt6
+mss

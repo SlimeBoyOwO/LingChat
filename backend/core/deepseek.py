@@ -1,10 +1,11 @@
+from typing import Dict, List
 from openai import OpenAI
 import os
 import json
 import copy
 from datetime import datetime
 #from .logger import log_debug, log_info, log_error, log_text
-from .new_logger import logger
+from .logger import logger
 from dotenv import load_dotenv
 import requests
 
@@ -47,18 +48,9 @@ class DeepSeek:
             self.client = OpenAI(api_key=api_key, base_url=base_url)
             self.model_type = os.environ.get("MODEL_TYPE", "deepseek-chat")
         
-        self.settings = os.environ.get("SYSTEM_PROMPT", "你是一个AI助手，请尽可能准确地回答问题。")
-        
         # 是否发送当前时间
         self.send_current_time = os.environ.get("SEND_CURRENT_TIME", "False").lower() == "true"
         logger.debug(f"发送当前时间功能状态: {'启用' if self.send_current_time else '禁用'}")
-        
-        self.messages = [
-            {
-                "role": "system", 
-                "content": self.settings
-            }
-        ]
         
         # RAG 系统
         self.use_rag = os.environ.get("USE_RAG", "False").lower() == "true"
@@ -141,37 +133,16 @@ class DeepSeek:
             logger.debug(f"Ollama API错误详情:", exc_info=True)
             return None, error_msg
 
-    def process_message(self, user_input):
+    def process_message(self, messages: List[Dict], user_input: str):
         if user_input.lower() in ["退出", "结束"]:
             logger.info("用户请求终止程序")
             return "程序终止"
             
-        self.messages.append({"role": "user", "content": user_input})
+        messages.append({"role": "user", "content": user_input})
         
         # 使用RAG增强上下文
-        current_context = self.messages.copy()
+        current_context = messages.copy()
         rag_messages = []
-        
-        # 添加当前时间信息（如果启用）
-        if self.send_current_time:
-            current_time = datetime.now().strftime("%Y年%m月%d日 %H:%M:%S")
-            time_message = {
-                "role": "system",
-                "content": f"当前系统时间是：{current_time}，请在回答中参考这个时间信息，尤其是与日期相关的内容。"
-            }
-            
-            system_index = -1
-            for i, msg in enumerate(current_context):
-                if msg["role"] == "system":
-                    system_index = i
-                    break
-            
-            if system_index != -1:
-                current_context.insert(system_index, time_message)
-            else:
-                current_context.insert(0, time_message)
-                
-            logger.debug(f"已添加当前时间信息: {current_time}")
         
         if self.use_rag and self.rag_system:
             try:
@@ -226,7 +197,7 @@ class DeepSeek:
             # 增加更详细的RAG信息日志
             if self.use_rag and rag_messages:
                 logger.debug("\n------ RAG增强信息详情 ------")
-                logger.debug(f"原始消息数: {len(self.messages)}，RAG增强后消息数: {len(current_context)}")
+                logger.debug(f"原始消息数: {len(messages)}，RAG增强后消息数: {len(current_context)}")
                 logger.debug(f"RAG增强消息数量: {len(rag_messages)}，位置: 系统提示后、用户消息前")
                 
                 # 计算并输出RAG消息的总长度（字符数）
@@ -263,12 +234,12 @@ class DeepSeek:
                 )
                 ai_response = response.choices[0].message.content
             
-            self.messages.append({"role": "assistant", "content": ai_response})
+            messages.append({"role": "assistant", "content": ai_response})
             
             # 如果启用了RAG系统，保存本次会话到RAG历史记录
             if self.use_rag and self.rag_system:
                 try:
-                    self.rag_system.add_session_to_history(self.messages)
+                    self.rag_system.add_session_to_history(messages)
                     logger.debug("当前会话已保存到RAG历史记录")
                 except Exception as e:
                     logger.error(f"保存会话到RAG历史记录失败: {e}")
@@ -283,35 +254,33 @@ class DeepSeek:
             
             # 创建一个有意义的错误响应，而不只是"ERROR"
             error_message = f"【生气】抱歉，我在处理您的请求时遇到了问题: {str(e)[:100]}"
-            # 将错误响应添加到消息历史
-            self.messages.append({"role": "assistant", "content": error_message})
             
             return error_message
 
-    def load_memory(self, memory):
+    def load_memory(self, messages, memory):
         """
         加载记忆存档到会话
         
         Args:
             memory: 包含对话历史的记忆存档，可以是JSON字符串或Python对象
         """
-        original_messages_count = len(self.messages)
+        original_messages_count = len(messages)
         
         if isinstance(memory, str):
             memory = json.loads(memory)  # 将JSON字符串转为Python列表
-        self.messages = copy.deepcopy(memory)  # 使用深拷贝
+        messages = copy.deepcopy(memory)  # 使用深拷贝
         
         logger.info("记忆存档已经加载")
         logger.info(f"内容是：{memory}")
-        logger.info(f"新的messages是：{self.messages}")
+        logger.info(f"新的messages是：{messages}")
         
         # 调试信息：详细记录记忆加载前后的变化
         if logger.should_print_context():
-            new_messages_count = len(self.messages)
+            new_messages_count = len(messages)
             
             # 记录消息类型统计
             role_counts = {}
-            for msg in self.messages:
+            for msg in messages:
                 role = msg.get('role', 'unknown')
                 role_counts[role] = role_counts.get(role, 0) + 1
                 
@@ -321,20 +290,19 @@ class DeepSeek:
             logger.debug(f"原始消息数: {original_messages_count}, 加载后消息数: {new_messages_count}")
             logger.debug(f"消息角色分布: {role_stats}")
             logger.debug(f"------ 记忆加载结束 ------\n")
-            
-            # 如果启用了RAG，尝试将加载的记忆添加到RAG历史记录
-            if self.use_rag and self.rag_system:
-                try:
-                    # 过滤掉系统提示词，只保留用户和助手的消息
-                    filtered_messages = [msg for msg in self.messages if msg.get('role') in ['user', 'assistant']]
-                    
-                    if filtered_messages:
-                        self.rag_system.add_session_to_history(filtered_messages)
-                        logger.debug(f"加载的记忆已添加到RAG历史记录 (过滤后: {len(filtered_messages)}/{len(self.messages)} 条消息)")
-                    else:
-                        logger.debug("过滤后无历史消息可添加到RAG")
-                except Exception as e:
-                    logger.error(f"将加载的记忆添加到RAG历史记录时出错: {e}")
 
-    def get_messsages(self):
-        return self.messages
+    # 暂未调用该段代码↓        
+    def load_memory_to_rag(self, messages):
+        # 如果启用了RAG，尝试将加载的记忆添加到RAG历史记录
+        if self.use_rag and self.rag_system:
+            try:
+                # 过滤掉系统提示词，只保留用户和助手的消息
+                filtered_messages = [msg for msg in messages if msg.get('role') in ['user', 'assistant']]
+                    
+                if filtered_messages:
+                    self.rag_system.add_session_to_history(filtered_messages)
+                    logger.debug(f"加载的记忆已添加到RAG历史记录 (过滤后: {len(filtered_messages)}/{len(messages)} 条消息)")
+                else:
+                    logger.debug("过滤后无历史消息可添加到RAG")
+            except Exception as e:
+                    logger.error(f"将加载的记忆添加到RAG历史记录时出错: {e}")
