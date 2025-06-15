@@ -10,6 +10,13 @@ export class UIController {
     this.writer = new TypeWriter(DOM.input);
     this.speed = 50;
 
+    this.ai_name = "钦灵";
+    this.ai_subtitle = "Slime Studio";
+    this.user_name = "可爱的你";
+    this.user_subtitle = "Bilibili";
+
+    this.userId = 1;
+
     // 绑定实例方法
     this.handleSend = this.handleSend.bind(this);
     this.handleKeyPress = this.handleKeyPress.bind(this);
@@ -20,11 +27,43 @@ export class UIController {
   init() {
     this.bindEventListeners();
     this.setupGlobalHandlers();
+    this.getAndApplyAIInfo();
   }
 
   destroy() {
     DOM.sendBtn?.removeEventListener("click", this.handleSend);
     document?.removeEventListener("keypress", this.handleKeyPress);
+  }
+
+  async getAndApplyAIInfo() {
+    try {
+      const response = await fetch(
+        `/api/v1/chat/info/names?user_id=${this.userId}`
+      );
+      const result = await response.json();
+
+      if (result.code !== 200) {
+        throw new Error(result.message || "读取失败");
+      }
+
+      this.ai_name = result.data.ai_name;
+      this.ai_subtitle = result.data.ai_subtitle;
+      this.user_name = result.data.user_name;
+      this.user_subtitle = result.data.user_subtitle;
+
+      DOM.avatar.title.textContent = this.user_name;
+      DOM.avatar.subtitle.textContent = this.user_subtitle;
+
+      // 发送事件，方便其他地方监听
+      EventBus.emit("ui:name-updated", {
+        ai_name: this.ai_name,
+        ai_subtitle: this.ai_subtitle,
+        user_name: this.user_name,
+        user_subtitle: this.user_subtitle,
+      });
+    } catch (error) {
+      console.log("读取失败", error);
+    }
   }
 
   bindEventListeners() {
@@ -68,8 +107,8 @@ export class UIController {
       DOM.input.placeholder = "输入消息...";
       DOM.input.disabled = false;
       DOM.input.value = "";
-      DOM.avatar.title.textContent = "可爱的你";
-      DOM.avatar.subtitle.textContent = "Bilibili";
+      DOM.avatar.title.textContent = this.user_name;
+      DOM.avatar.subtitle.textContent = this.user_subtitle;
       DOM.avatar.emotion.textContent = "";
       this.writer.stop();
     });
@@ -81,8 +120,8 @@ export class UIController {
         DOM.input.value = "";
         this.emotionSystem.setEmotion("AI思考");
         DOM.input.placeholder = "灵灵正在思考...";
-        DOM.avatar.title.textContent = "钦灵";
-        DOM.avatar.subtitle.textContent = "Slime Studio";
+        DOM.avatar.title.textContent = this.ai_name;
+        DOM.avatar.subtitle.textContent = this.ai_subtitle;
         DOM.avatar.emotion.textContent = "";
       } else {
         DOM.input.disabled = false;

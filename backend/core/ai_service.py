@@ -3,12 +3,15 @@ import glob
 import asyncio
 import re
 from typing import List, Dict, Optional
+from datetime import datetime, timedelta
 
 from .deepseek import DeepSeek
 from .predictor import EmotionClassifier  # 导入情绪分类器
 from .VitsTTS import VitsTTS              # 导入语音生成
 from .langDetect import LangDetect
-from .new_logger import logger, TermColors
+from .logger import logger, TermColors
+from .dialog_logger import DialogLogger
+from .pic_analyzer import DesktopAnalyzer
 
 # 常量定义
 TEMP_VOICE_DIR = "../public/audio"
@@ -30,7 +33,25 @@ class AIService:
         self.emotion_classifier = EmotionClassifier()
         self.lang_detector = LangDetect()
         self.tts_engine = self._init_tts_engine()
+        self.dialog_logger = DialogLogger()
+        self.desktop_analyzer = DesktopAnalyzer()
         self._prepare_directories()
+
+        # 这里记录上次对话的时间
+        self.last_time = datetime.now()
+        self.sys_time_counter = 0
+
+        self.ai_name = os.environ.get("AI_NAME", "在env填写名字捏")
+        self.ai_subtitle = os.environ.get("AI_SCHOOL", "在env填写学校捏")
+        self.user_name = os.environ.get("USER_NAME", "在env填写名字捏")
+        self.user_subtitle = os.environ.get("USER_SCHOOL", "在env填写学校捏")
+        self.ai_settings = os.environ.get("SYSTEM_PROMPT", "你是一个AI助手，请尽可能准确地回答问题。")
+        self.messages = [
+            {
+                "role": "system", 
+                "content": self.ai_settings
+            }
+        ]
 
         self.temp_voice_dir = os.environ.get("TEMP_VOICE_DIR", "frontend/public/audio")
         os.makedirs(self.temp_voice_dir, exist_ok=True)
@@ -93,24 +114,80 @@ class AIService:
         """初始化TTS引擎"""
         return VitsTTS(
             api_url="http://127.0.0.1:23456/voice/vits",
-            speaker_id=4,
             lang="ja",
         )
     
     def _prepare_directories(self):
         """准备必要的目录"""
         os.makedirs(TEMP_VOICE_DIR, exist_ok=True)
+
+    def _append_user_message(self, user_message: str) -> str:
+        """处理用户消息，添加系统信息"""
+        current_time = datetime.now()
+        processed_message = user_message
+
+        sys_time_part = ""
+        sys_desktop_part = ""
+        
+        # 检查是否需要添加时间提醒
+        if (self.last_time and 
+            (current_time - self.last_time > timedelta(hours=1))) or \
+            self.sys_time_counter < 1:
+            
+            formatted_time = current_time.strftime("%Y/%m/%d %H:%M")
+            sys_time_part = f"{formatted_time} "
+            
+            
+        
+        # 检查是否需要分析桌面
+        if "看桌面" in user_message or "看看我的桌面" in user_message:
+            analyze_prompt = "\"" + user_message + "\"" + "以上是用户发的消息，请你根据以上消息，获取桌面画面中的重点内容，用100字描述"
+            analyze_info = self.desktop_analyzer.analyze_desktop(analyze_prompt)
+            sys_desktop_part = f"桌面信息: {analyze_info}"
+        
+        if sys_time_part or sys_desktop_part:
+            processed_message += "\n{系统: " + (sys_time_part if sys_time_part else "") + (sys_desktop_part if sys_desktop_part else "") + "}"
+
+        # 更新最后交互时间和计数器
+        self.last_time = current_time
+        self.sys_time_counter += 1
+
+        # 每三次嗷一声时间提醒
+        if self.sys_time_counter >= 2:
+                self.sys_time_counter = 0
+        
+        return processed_message
     
     async def process_message(self, user_message: str) -> Optional[List[Dict]]:
         """处理用户消息的完整流程"""
+
+        processed_user_message = self._append_user_message(user_message)
+
         try:
             # 1. 获取AI回复
-            ai_response = self.deepseek.process_message(user_message)
-            self._log_conversation("用户", user_message)
+            ai_response = self.deepseek.process_message(self.messages, processed_user_message)
+            self._log_conversation("用户", processed_user_message)
             self._log_conversation("钦灵", ai_response)
             
             # 2. 分析情绪和生成语音
-            return await self._process_ai_response(ai_response, user_message)
+            final_response = await self._process_ai_response(ai_response, user_message)
+            if final_response is None:
+                logger.error("AI服务返回了None响应")
+                error_response = [{
+                                "type": "reply",
+                                "emotion": "sad",
+                                "originalTag": "错误",
+                                "message": "抱歉，处理您的消息时出现了问题。",
+                                "motionText": "困惑",
+                                "audioFile": None,
+                                "originalMessage": user_message,
+                                "isMultiPart": False,
+                                "partIndex": 0,
+                                "totalParts": 1
+                            }]
+                return error_response
+            else: return final_response
+                
         except Exception as e:
             logger.error(f"处理消息时出错: {e}")
             logger.error(f"详细错误信息: ", exc_info=True)
@@ -131,7 +208,7 @@ class AIService:
             return error_response
     
     def load_memory(self, memory):
-        self.deepseek.load_memory(memory)
+        self.deepseek.load_memory(self.messages, memory)
         logger.info("新的记忆已经被加载")
     
     async def _process_ai_response(self, ai_response: str, user_message: str) -> List[Dict]:
@@ -155,6 +232,7 @@ class AIService:
             }]
         
         # 生成语音和构造响应
+        self._delete_voice_files()
         await self._generate_voice_files(emotion_segments)
         responses = self._create_responses(emotion_segments, user_message)
     
@@ -227,6 +305,8 @@ class AIService:
                     "label": "normal",
                     "confidence": 0.5
                 }
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
             results.append({
                 "index": i,
@@ -237,7 +317,7 @@ class AIService:
                 "predicted": prediction_result["label"],
                 "confidence": prediction_result["confidence"],
                 # 使用 os.path.basename 确保只包含文件名
-                "voice_file": os.path.join(self.temp_voice_dir, f"part_{i}.{self.tts_engine.format}")
+                "voice_file": os.path.join(self.temp_voice_dir, f"{timestamp}_part_{i}.{self.tts_engine.format}")
             })
 
         return results
@@ -257,6 +337,9 @@ class AIService:
             await asyncio.gather(*tasks)
         else:
             logger.warning("没有任何片段包含日语文本，跳过所有语音生成")
+    
+    def _delete_voice_files(self):
+        self.tts_engine.cleanup()
     
     def _create_responses(self, segments: List[Dict], user_message: str) -> List[Dict]:
         """构造响应消息"""
@@ -286,18 +369,7 @@ class AIService:
         """记录对话日志"""
         log_message = f"{speaker}: {message}"
         logger.info_color(log_message, TermColors.WHITE)
-        
-        # 确保logs目录存在
-        logs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
-        os.makedirs(logs_dir, exist_ok=True)
-        
-        # 适配旧的log_conversation方法，写入对话日志文件
-        try:
-            with open(os.path.join(logs_dir, "conversation.log"), 'a', encoding='utf-8') as f:
-                f.write(f"{speaker}: {message}\n\n")
-        except Exception as e:
-            logger.error(f"无法写入对话日志: {e}")
-            # 继续执行，不应影响主流程
+        self.dialog_logger.log_conversation(speaker,message)
 
     def _log_analysis_result(self, segments):
         """记录分析结果"""
@@ -317,4 +389,4 @@ class AIService:
                     logger.debug(f"  对应语音: (未生成或生成失败)")
     
     def get_memory(self):
-        return self.deepseek.get_messsages()
+        return self.messages
