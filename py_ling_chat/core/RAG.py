@@ -7,6 +7,7 @@ import torch
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional, Any
 from py_ling_chat.core.logger import logger, TermColors
+from py_ling_chat.utils.runtime_path import user_data_path
 
 # 全局变量
 _sentence_transformer_imported_ok = True
@@ -101,7 +102,7 @@ class RAGSystem:
             self.embedding_model = SentenceTransformer(self.EMBEDDING_MODEL_NAME, device=device)
             logger.debug(f"RAG: Sentence Transformer模型 ({self.EMBEDDING_MODEL_NAME}) 加载成功。当前使用 {device} 进行RAG向量库匹配的推理。")
 
-            chroma_db_path = getattr(self.config, 'CHROMA_DB_PATH', './chroma_db_store')
+            chroma_db_path = getattr(self.config, 'CHROMA_DB_PATH', user_data_path / 'chroma_db_store')
             logger.debug(f"RAG: 初始化ChromaDB客户端 (记忆库将存储在 '{chroma_db_path}').")
             self.chroma_client = chromadb.PersistentClient(path=chroma_db_path)
             logger.debug(f"RAG: ChromaDB客户端初始化成功 (数据路径: {chroma_db_path})。")
@@ -137,7 +138,7 @@ class RAGSystem:
             logger.debug("RAG: 组件未初始化或RAG已禁用，跳过历史数据加载。")
             return 0, 0
             
-        history_path = getattr(self.config, 'RAG_HISTORY_PATH', './rag_chat_history')
+        history_path = getattr(self.config, 'RAG_HISTORY_PATH', user_data_path / 'rag_chat_history')
         if not os.path.exists(history_path):
             logger.warning(f"RAG: 历史对话路径不存在: {history_path}，将创建该目录。")
             os.makedirs(history_path, exist_ok=True)
@@ -374,7 +375,7 @@ class RAGSystem:
             str: 历史记录文件路径
         """
         now = datetime.now()
-        history_base_path = getattr(self.config, 'RAG_HISTORY_PATH', './rag_chat_history')
+        history_base_path = getattr(self.config, 'RAG_HISTORY_PATH', user_data_path / 'rag_chat_history')
         year_month_path = os.path.join(history_base_path, now.strftime("%Y年%m月"))
         day_path = os.path.join(year_month_path, now.strftime("%d日"))
         os.makedirs(day_path, exist_ok=True)

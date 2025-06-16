@@ -12,9 +12,10 @@ from py_ling_chat.api.chat_main import websocket_endpoint
 from py_ling_chat.api.chat_music import router as chat_music_router
 from py_ling_chat.api.frontend_routes import router as frontend_router, get_static_files
 from py_ling_chat.core.logger import logger
-from py_ling_chat.utils.runtime_path import static_path
+from py_ling_chat.utils.runtime_path import static_path, user_data_path
 
 load_dotenv()
+load_dotenv(user_data_path / ".env")  # 加载用户数据目录下的环境变量
 
 app = FastAPI()
 
