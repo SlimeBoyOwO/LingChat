@@ -6,12 +6,12 @@ import webview
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 
-from api.chat_history import router as chat_history_router
-from api.chat_info import router as chat_info_router
-from api.chat_main import websocket_endpoint
-from api.chat_music import router as chat_music_router
-from api.frontend_routes import router as frontend_router, get_static_files
-from core.logger import logger
+from py_ling_chat.api.chat_history import router as chat_history_router
+from py_ling_chat.api.chat_info import router as chat_info_router
+from py_ling_chat.api.chat_main import websocket_endpoint
+from py_ling_chat.api.chat_music import router as chat_music_router
+from py_ling_chat.api.frontend_routes import router as frontend_router, get_static_files
+from py_ling_chat.core.logger import logger
 from py_ling_chat.utils.runtime_path import static_path
 
 load_dotenv()
