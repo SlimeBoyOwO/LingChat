@@ -7,6 +7,8 @@ venv/
 dist/
 site/
 build/
+data/*
+!data/.gitkeep
 *.egg-info/
 .tox/
 .coverage
