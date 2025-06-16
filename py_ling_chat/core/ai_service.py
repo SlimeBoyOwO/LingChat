@@ -12,6 +12,7 @@ from py_ling_chat.core.langDetect import LangDetect
 from py_ling_chat.core.logger import logger, TermColors
 from py_ling_chat.core.dialog_logger import DialogLogger
 from py_ling_chat.core.pic_analyzer import DesktopAnalyzer
+from py_ling_chat.utils.runtime_path import user_data_path
 
 # 常量定义
 TEMP_VOICE_DIR = "../public/audio"
@@ -69,8 +70,8 @@ class AIService:
         # 这里使用LOG_LEVEL判断是否为DEBUG模式
         log_level_str = os.environ.get("LOG_LEVEL", "INFO").upper()
         print_context = os.environ.get("PRINT_CONTEXT", "False").lower() == "true"
-        rag_history_path = os.environ.get("RAG_HISTORY_PATH", "rag_chat_history")
-        chroma_db_path = os.environ.get("CHROMA_DB_PATH", "chroma_db_store")
+        rag_history_path = os.environ.get("RAG_HISTORY_PATH", user_data_path / "rag_chat_history")
+        chroma_db_path = os.environ.get("CHROMA_DB_PATH", user_data_path / "chroma_db_store")
         rag_retrieval_count = int(os.environ.get("RAG_RETRIEVAL_COUNT", "3"))
         rag_candidate_multiplier = int(os.environ.get("RAG_CANDIDATE_MULTIPLIER", "3"))
         rag_context_m_before = int(os.environ.get("RAG_CONTEXT_M_BEFORE", "2"))

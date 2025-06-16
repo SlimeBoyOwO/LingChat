@@ -22,6 +22,19 @@ def get_package_root() -> Path:
     # 开发环境：基于当前文件的路径推导包根目录
     return Path(__file__).parent.parent  # 根据实际层级调整
 
+def get_user_data_path() -> Path:
+    """
+    获取用户数据目录
+    Returns:
+        Path: 用户数据目录的 Path 对象
+    """
+    if getattr(sys, 'frozen', False):
+        # PyInstaller 单文件模式
+        if hasattr(sys, '_MEIPASS'):
+            return Path(user_data_dir(appname=APP_NAME, appauthor=APP_AUTHOR))
+    return get_package_root() / "data"  # 开发环境使用 package 根目录下的 data 文件夹
+
+
 # 应用信息（用于构建平台特定路径）
 APP_NAME = "py_ling_chat"
 APP_AUTHOR = "py_ling_chat"  # Windows 用于 AppData\Roaming\MyCompany\MyApp
@@ -29,5 +42,14 @@ APP_AUTHOR = "py_ling_chat"  # Windows 用于 AppData\Roaming\MyCompany\MyApp
 package_root: Path = get_package_root()
 
 static_path: Path = package_root / "static"
-user_data_path: Path = Path(user_data_dir(appname=APP_NAME, appauthor=APP_AUTHOR))
+user_data_path: Path = get_user_data_path()  # 用户数据目录
 temp_path: Path = Path(tempfile.gettempdir())  # 获取系统临时目录
+
+__all__ = [
+    "package_root",
+    "static_path",
+    "user_data_path",
+    "temp_path",
+    "APP_NAME",
+    "APP_AUTHOR"
+]
