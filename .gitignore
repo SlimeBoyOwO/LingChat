@@ -47,3 +47,4 @@ rag_chat_history/
 
 #
 release/
+.openmcp/
