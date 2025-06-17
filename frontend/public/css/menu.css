@@ -992,6 +992,7 @@ button#clear-history.show {
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 20px;
   padding: 15px;
+  width: 100%;
 }
 
 .character-card {

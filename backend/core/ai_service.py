@@ -48,7 +48,7 @@ class AIService:
         self.messages = [
             {
                 "role": "system", 
-                "content": self.ai_settings
+                "content": self.ai_prompt
             }
         ]
 
@@ -242,10 +242,11 @@ class AIService:
             self.ai_subtitle = settings.get("ai_subtitle","ai_subtitle未设定")
             self.user_name = settings.get("user_name", "user_name未设定")
             self.user_subtitle = settings.get("user_subtitle", "user_subtitle未设定")
-            self.ai_settings = settings.get("system_prompt", "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息")
+            self.ai_prompt = settings.get("system_prompt", "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息")
             self.speaker_id = int(settings.get("speaker_id", 4))
             self.character_path = settings.get("resource_path")
             self.character_id = settings.get("character_id")
+            self.settings = settings
         else:
             logger.error("角色信息settings没有被正常导入，请检查问题！")
 
@@ -433,6 +434,6 @@ class AIService:
         self.messages = [
             {
                 "role": "system", 
-                "content": self.ai_settings
+                "content": self.ai_prompt
             }
         ]
