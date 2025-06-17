@@ -3,6 +3,7 @@ import { DOM } from "./ui/dom.js";
 import { ChatManager } from "./features/chat/manager.js";
 import { UIController } from "./ui/ui-controller.js";
 import { StarField } from "./features/background/star-field.js";
+import { CharacterController } from "./features/character/controller.js";
 import { HistoryManager } from "./features/history/manager.js";
 import { SoundController } from "./features/sound/controller.js";
 import { MenuController } from "./features/menu/controller.js";
@@ -27,6 +28,7 @@ const soundController = new SoundController();
 const menuController = new MenuController(uiController);
 const imageController = new ImageController();
 const saveController = new SaveController();
+const characterController = new CharacterController(uiController);
 
 // 多模块组合处理函数
 

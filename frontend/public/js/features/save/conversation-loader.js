@@ -21,7 +21,7 @@ export class ConversationLoader {
 
   async loadConversations(page = 1) {
     if (!this.container) return;
-  
+
     try {
       this.showLoading();
 
@@ -97,35 +97,32 @@ export class ConversationLoader {
     });
   }
 
-  loadUserConversation(convoId) {
-    return request.saveLoad(this.userId, convoId)
-    .then(data => {
+  async loadUserConversation(convoId) {
+    try {
+      const data = await request.saveLoad(this.userId, convoId);
       this.onConversationLoaded(data);
-    })
-    .catch(error => {
-      console.log(error)
+    } catch (error) {
+      console.log(error);
       this.onLoadError(error);
-    })
+    }
   }
 
-  saveUserConversation(convoId) {
-    return request.saveSave(this.userId, convoId)
-    .then(data => {
+  async saveUserConversation(convoId) {
+    try {
+      const data = await request.saveSave(this.userId, convoId);
       this.loadConversations();
-    })
-    .catch(error => {
-      console.log(error)
-    })
+    } catch (error) {
+      console.log(error);
+    }
   }
 
-  deleteUserConversation(convoId) {
-    return request.saveDelete(this.userId, convoId)
-    .then(data => {
+  async deleteUserConversation(convoId) {
+    try {
+      const data = await request.saveDelete(this.userId, convoId);
       this.loadConversations();
-    })
-    .catch(error => {
-      console.log(error)
-    })
+    } catch (error) {
+      console.log(error);
+    }
   }
 
   createUserConversation() {
@@ -137,14 +134,15 @@ export class ConversationLoader {
       return;
     }
 
-    return request.saveCreate(this.userId, title)
-    .then(data => {
-      titleInput.value = "";
-      this.loadConversations();
-    })
-    .catch(error => {
-      console.log(error)
-    })
+    return request
+      .saveCreate(this.userId, title)
+      .then((data) => {
+        titleInput.value = "";
+        this.loadConversations();
+      })
+      .catch((error) => {
+        console.log(error);
+      });
   }
 
   bindEvents() {
@@ -225,6 +223,7 @@ export class ConversationLoader {
   // 可被子类覆盖的方法
   onConversationLoaded(data) {
     console.log("对话内容已加载:", data);
+
     // 实际应用中应该触发一个事件或调用回调
     // 例如: this.options.onConversationLoaded?.(data);
   }

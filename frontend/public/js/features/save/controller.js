@@ -1,6 +1,7 @@
 import { DOM } from "../../ui/dom.js";
 import { DomUtils } from "../../utils/dom-utils.js";
 import { ConversationLoader } from "./conversation-loader.js";
+import EventBus from "../../core/event-bus.js";
 
 export class SaveController {
   constructor() {
@@ -22,8 +23,7 @@ export class SaveController {
     // 覆盖 ConversationLoader 的默认回调方法
     this.conversationLoader.onConversationLoaded = (messages) => {
       console.log("对话内容加载完成:", messages);
-      // 在这里处理加载的对话内容
-      // 例如更新UI或触发其他操作
+      EventBus.emit("system:character_updated", {});
     };
 
     this.conversationLoader.onLoadError = (error) => {
