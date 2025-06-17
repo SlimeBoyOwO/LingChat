@@ -140,10 +140,10 @@ class Logger:
         self._logger.addHandler(console_handler)
 
         # 文件处理器
-        if self.enable_file_logging:
-            file_handler = self._create_file_handler()
-            if file_handler:
-                self._logger.addHandler(file_handler)
+        # if self.enable_file_logging:
+        #    file_handler = self._create_file_handler()
+        #    if file_handler:
+        #        self._logger.addHandler(file_handler)
 
     def _create_console_handler(self) -> logging.Handler:
         """创建控制台日志处理器"""
