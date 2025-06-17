@@ -1,7 +1,46 @@
+import re
+import os
 from datetime import datetime
 from typing import List, Dict
 
 class Function:
+    @staticmethod
+    def parse_enhanced_txt(file_path):
+        """
+        解析settings.txt，包含里面的全部信息并且附带文件路径。
+
+        Args:
+            file_path (str): settings.txt的文件路径。
+
+        Returns:
+            settings :(dict) 返回角色的所有信息。
+        """
+        settings = {}
+        with open(file_path, 'r', encoding='utf-8') as file:
+            content = file.read()
+        
+        single_line_pattern = re.compile(r'^(\w+)\s*=\s*(.*?)\s*$', re.MULTILINE)
+        multi_line_pattern = re.compile(r'^(\w+)\s*=\s*"""(.*?)"""\s*$', re.MULTILINE | re.DOTALL)
+        
+        for match in multi_line_pattern.finditer(content):
+            key = match.group(1)
+            value = match.group(2).strip()
+            settings[key] = value
+        
+        for match in single_line_pattern.finditer(content):
+            key = match.group(1)
+            if key not in settings:
+                value = match.group(2).strip()
+                if (value.startswith('"') and value.endswith('"')) or \
+                (value.startswith("'") and value.endswith("'")):
+                    value = value[1:-1]
+                settings[key] = value
+        
+        dir_path = os.path.dirname(file_path)
+        settings['resource_path'] = dir_path
+
+        return settings
+
     @staticmethod
     def parse_chat_log(content: str) -> List[Dict[str, str]]:
         """
