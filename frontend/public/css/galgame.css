@@ -68,6 +68,9 @@ canvas {
   object-position: center;
   z-index: 1;
   filter: drop-shadow(0 0 18px rgba(255, 255, 255, 0.7)); /* 添加白色阴影 */
+
+  transform: scale(1.9);
+  transform-origin: center -3%;
 }
 
 /* 修复后的聊天框样式 */

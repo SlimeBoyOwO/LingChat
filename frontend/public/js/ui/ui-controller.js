@@ -54,6 +54,10 @@ export class UIController {
       this.user_subtitle = result.data.user_subtitle;
       this.character_id = result.data.character_id;
 
+      // 动态设置 transform 和 transform-origin
+      DOM.avatar.img.style.transform = `scale(${result.data.scale})`; // 调整缩放
+      DOM.avatar.img.style.transformOrigin = `center ${result.data.offset}%`; // 调整放大基准点
+
       this.resetAvatar();
 
       // 发送事件，方便其他地方监听
