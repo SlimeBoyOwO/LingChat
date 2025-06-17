@@ -31,7 +31,9 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE NOT NULL,
         password TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        last_chat_character INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (last_chat_character) REFERENCES characters(id) ON DELETE SET DEFAULT
     )
     """)
 
@@ -42,6 +44,7 @@ def init_db():
         title TEXT NOT NULL DEFAULT 'New Conversation',
         last_message_id INTEGER,
         owned_user INTEGER NOT NULL,
+        character INTEGER,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (character) REFERENCES characters(id) ON DELETE CASCADE,
@@ -53,12 +56,8 @@ def init_db():
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS characters (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_name TEXT NOT NULL DEFAULT '默认用户',
-        user_subtitle TEXT NOT NULL DEFAULT '默认学校',
-        ai_name TEXT NOT NULL DEFAULT '默认狼狼',
-        ai_subtitle TEXT NOT NULL DEFAULT '默认 Studio',
-        ai_prompt TEXT NOT NULL DEFAULT 'ERROR',
-        resource_path TEXT NOT NULL DEFAULT '',
+        title TEXT NOT NULL DEFAULT '默认',
+        resource_path TEXT NOT NULL DEFAULT 'game_data/characters/default'
     )           
     """)
 
