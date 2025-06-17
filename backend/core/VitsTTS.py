@@ -2,7 +2,6 @@ import aiohttp
 import asyncio
 import os
 from pathlib import Path
-# from .logger import log_debug, log_info, log_warning, log_error, TermColors, initialize_logger
 from .logger import logger, TermColors
 
 class VitsTTS:
@@ -22,8 +21,6 @@ class VitsTTS:
         self.temp_dir = Path(os.environ.get("TEMP_VOICE_DIR", "frontend/public/audio"))
         self.temp_dir.mkdir(exist_ok=True)
         self.enable = enable
-        
-        # 检查语音服务可用性
         self.service_checked = False
 
     async def _check_service(self):
@@ -85,7 +82,6 @@ class VitsTTS:
 
     async def generate_voice(self, text, file_name, speaker_id, save_file=False):
         """异步生成语音文件"""
-        # 确保服务已经检查过
         await self.ensure_service_checked()
         
         if not self.enable:
@@ -166,10 +162,9 @@ class VitsTTS:
 
 # 使用示例
 if __name__ == "__main__":
-    # 初始化logger
+
     tts = VitsTTS(speaker_id=4)
     
-    # 异步生成
     async def test_voice():
         audio = await tts.generate_voice("こんにちは", "greeting.wav")
         if audio:
