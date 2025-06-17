@@ -16,6 +16,7 @@ export class UIController {
     this.user_subtitle = "Bilibili";
 
     this.userId = 1;
+    this.character_id = 1;
 
     // 绑定实例方法
     this.handleSend = this.handleSend.bind(this);
@@ -35,10 +36,11 @@ export class UIController {
     document?.removeEventListener("keypress", this.handleKeyPress);
   }
 
+  // 这里是整个ui初始化的地方，务必重视
   async getAndApplyAIInfo() {
     try {
       const response = await fetch(
-        `/api/v1/chat/info/names?user_id=${this.userId}`
+        `/api/v1/chat/info/init?user_id=${this.userId}`
       );
       const result = await response.json();
 
@@ -50,9 +52,9 @@ export class UIController {
       this.ai_subtitle = result.data.ai_subtitle;
       this.user_name = result.data.user_name;
       this.user_subtitle = result.data.user_subtitle;
+      this.character_id = result.data.character_id;
 
-      DOM.avatar.title.textContent = this.user_name;
-      DOM.avatar.subtitle.textContent = this.user_subtitle;
+      this.resetAvatar();
 
       // 发送事件，方便其他地方监听
       EventBus.emit("ui:name-updated", {
@@ -66,12 +68,26 @@ export class UIController {
     }
   }
 
+  resetAvatar() {
+    DOM.avatar.title.textContent = this.user_name;
+    DOM.avatar.subtitle.textContent = this.user_subtitle;
+
+    this.emotionSystem.setEmotion("正常", { force: true });
+    DOM.image.kousanPreviewImg.src =
+      "/api/v1/chat/character/get_avatar/正常.png";
+  }
+
   bindEventListeners() {
     DOM.sendBtn?.addEventListener("click", this.handleSend);
     document?.addEventListener("keypress", this.handleKeyPress);
   }
 
   setupGlobalHandlers() {
+    // 更新角色和信息事件
+    EventBus.on("system:character_updated", () => {
+      this.getAndApplyAIInfo();
+    });
+
     // 接受消息事件
     EventBus.on("chat:message", (data) => {
       DOM.input.placeholder = "";
@@ -96,7 +112,6 @@ export class UIController {
       // 处理音频
       if (data.audioFile) {
         DOM.audioPlayer.src = `../audio/${data.audioFile}`;
-        console.log(`语音的路径是：../audio/${data.audioFile}`);
         DOM.audioPlayer.load();
         DOM.audioPlayer.play();
       }
