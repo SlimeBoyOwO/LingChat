@@ -3,8 +3,8 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
 
-from .vectorconfig import VectorStoreConfig
-from .graphconfig import LlmConfig, GraphStoreConfig
+from .vector_config import VectorStoreConfig
+from .graph_config import LlmConfig, GraphStoreConfig
 
 class MemoryConfig(BaseModel):
     vector_store: VectorStoreConfig = Field(

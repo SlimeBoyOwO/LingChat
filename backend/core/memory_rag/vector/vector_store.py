@@ -2,7 +2,7 @@
 
 from typing import Any, Dict, Optional
 
-from memoryrag.config.base import MemoryConfig
+from memory_rag.config.base import MemoryConfig
 
 
 def get_default_vector_config():
