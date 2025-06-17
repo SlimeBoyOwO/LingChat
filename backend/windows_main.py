@@ -43,7 +43,7 @@ app.websocket("/ws")(websocket_endpoint)
 
 # 静态文件服务
 frontend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'frontend', 'public')
-app.mount("/", get_static_files(), name="static")  # 托管静态文件
+app.mount("/", get_static_files(), name="static")
 
 if __name__ == "__main__":
     server = Server(app)
