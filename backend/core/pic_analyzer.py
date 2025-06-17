@@ -35,10 +35,8 @@ class DesktopAnalyzer:
         
     def capture_desktop(self):
         """截取整个桌面并返回Base64编码"""
-        # 截取屏幕
         screenshot = ImageGrab.grab()
         
-        # 将截图转为Base64编码
         buffered = BytesIO()
         screenshot.save(buffered, format="PNG")
         base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
@@ -53,11 +51,10 @@ class DesktopAnalyzer:
         Args:
             input_tokens (int): 输入token数量
             output_tokens (int): 输出token数量
-            
+
         Returns:
             float: 计算费用（元）
         """
-        # 注意：这里需要根据趋动云的实际计费标准调整
         input_cost = (input_tokens / 1000) * 0.00035
         output_cost = (output_tokens / 1000) * 0.00035
         return round(input_cost + output_cost, 4)
@@ -72,11 +69,9 @@ class DesktopAnalyzer:
         Returns:
             str: AI生成的描述文本
         """
-        # 截取桌面并获取Base64编码
         desktop_base64 = self.capture_desktop()
         image_data = f"data:image/png;base64,{desktop_base64}"
         
-        # 构建请求头和数据
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
@@ -96,7 +91,6 @@ class DesktopAnalyzer:
             "max_tokens": 1024
         }
 
-        # 记录开始时间并发送请求
         start_time = time.time()
         response = requests.post(self.base_url, headers=headers, json=payload)
         response_data = response.json()
@@ -104,7 +98,6 @@ class DesktopAnalyzer:
         if "choices" not in response_data:
             raise Exception(f"请求失败: {response_data}")
         
-        # 记录性能数据
         self.last_response_time = time.time() - start_time
         self.last_input_tokens = response_data.get("usage", {}).get("prompt_tokens", 0)
         self.last_output_tokens = response_data.get("usage", {}).get("completion_tokens", 0)

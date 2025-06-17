@@ -1,6 +1,5 @@
 class LangDetect:
     def __init__(self):
-        # 定义Unicode范围
         self.chinese_ranges = [
             (0x4E00, 0x9FFF),    # 基本汉字
             (0x3400, 0x4DBF),    # 扩展A
@@ -30,26 +29,22 @@ class LangDetect:
             str: "Chinese", "Japanese" 或 "Unknown"
         """
         
-        # 统计字符类型
         chinese_count = 0
         japanese_count = 0
         
         for char in text:
             code = ord(char)
             
-            # 检查中文
             for start, end in self.chinese_ranges:
                 if start <= code <= end:
                     chinese_count += 1
                     break
                     
-            # 检查日文
             for start, end in self.japanese_ranges:
                 if start <= code <= end:
                     japanese_count += 1
                     break
         
-        # 判断结果
         if chinese_count > 0 and japanese_count == 0:
             return "Chinese_ABS"
         elif japanese_count < chinese_count:
