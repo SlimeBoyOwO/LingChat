@@ -30,7 +30,9 @@ async def init_web_infos(user_id: int):
             "ai_subtitle": ai_service.ai_subtitle,
             "user_name": ai_service.user_name,
             "user_subtitle": ai_service.user_subtitle,
-            "character_id": ai_service.character_id
+            "character_id": ai_service.character_id,
+            "scale": ai_service.settings.get("scale",1.0),
+            "offset": ai_service.settings.get("offset",0)
         }
         return {
             "code": 200,
