@@ -24,7 +24,7 @@ class VitsTTS:
         self.enable = enable
         
         # 检查语音服务可用性
-        asyncio.run(self._check_service())
+        self.service_checked = False
 
     async def _check_service(self):
         """检查语音服务是否可用"""
@@ -77,13 +77,17 @@ class VitsTTS:
             else:
                 logger.warning(f"{status_color}{status_symbol}{TermColors.RESET} {status}")
 
-    async def generate_voice(self, text, file_name, save_file=False):
-        """
-        异步生成语音文件
-        :param text: 要合成的文本
-        :param save_file: 是否保留生成的音频文件
-        :return: 音频文件路径 (失败返回None)
-        """
+    async def ensure_service_checked(self):
+        """确保服务检查已完成"""
+        if not self.service_checked:
+            await self._check_service()
+            self.service_checked = True
+
+    async def generate_voice(self, text, file_name, speaker_id, save_file=False):
+        """异步生成语音文件"""
+        # 确保服务已经检查过
+        await self.ensure_service_checked()
+        
         if not self.enable:
             logger.warning("TTS服务未启用，跳过语音生成")
             return None
@@ -94,7 +98,7 @@ class VitsTTS:
 
         params = {
             "text": text,
-            "id": self.speaker_id,
+            "id": speaker_id if speaker_id else self.speaker_id,
             "format": self.format,
             "lang": self.lang
         }

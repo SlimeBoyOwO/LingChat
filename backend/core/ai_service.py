@@ -2,6 +2,7 @@ import os
 import glob
 import asyncio
 import re
+import json, copy
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 
@@ -27,12 +28,11 @@ COLOR = {
 }
 
 class AIService:
-    def __init__(self):
+    def __init__(self, settings: dict):
         """初始化所有服务组件"""
         self.deepseek = DeepSeek()
         self.emotion_classifier = EmotionClassifier()
         self.lang_detector = LangDetect()
-        self.tts_engine = self._init_tts_engine()
         self.dialog_logger = DialogLogger()
         self.desktop_analyzer = DesktopAnalyzer()
         self._prepare_directories()
@@ -41,11 +41,10 @@ class AIService:
         self.last_time = datetime.now()
         self.sys_time_counter = 0
 
-        self.ai_name = os.environ.get("AI_NAME", "在env填写名字捏")
-        self.ai_subtitle = os.environ.get("AI_SCHOOL", "在env填写学校捏")
-        self.user_name = os.environ.get("USER_NAME", "在env填写名字捏")
-        self.user_subtitle = os.environ.get("USER_SCHOOL", "在env填写学校捏")
-        self.ai_settings = os.environ.get("SYSTEM_PROMPT", "你是一个AI助手，请尽可能准确地回答问题。")
+        self.import_settings(settings=settings)
+
+        self.tts_engine = self._init_tts_engine()
+        
         self.messages = [
             {
                 "role": "system", 
@@ -115,6 +114,7 @@ class AIService:
         return VitsTTS(
             api_url="http://127.0.0.1:23456/voice/vits",
             lang="ja",
+            speaker_id=self.speaker_id
         )
     
     def _prepare_directories(self):
@@ -208,8 +208,47 @@ class AIService:
             return error_response
     
     def load_memory(self, memory):
-        self.deepseek.load_memory(self.messages, memory)
+        original_messages_count = len(self.messages)
+        
+        if isinstance(memory, str):
+            memory = json.loads(memory)  # 将JSON字符串转为Python列表
+        self.messages = copy.deepcopy(memory)  # 使用深拷贝
+        
+        logger.info("记忆存档已经加载")
+        logger.info(f"内容是：{memory}")
+        logger.info(f"新的messages是：{self.messages}")
+        
+        # 调试信息：详细记录记忆加载前后的变化
+        if logger.should_print_context():
+            new_messages_count = len(self.messages)
+            
+            # 记录消息类型统计
+            role_counts = {}
+            for msg in self.messages:
+                role = msg.get('role', 'unknown')
+                role_counts[role] = role_counts.get(role, 0) + 1
+                
+            role_stats = ", ".join([f"{role}: {count}" for role, count in role_counts.items()])
+            
+            logger.debug("\n------ 记忆加载详情 ------")
+            logger.debug(f"原始消息数: {original_messages_count}, 加载后消息数: {new_messages_count}")
+            logger.debug(f"消息角色分布: {role_stats}")
+            logger.debug(f"------ 记忆加载结束 ------\n")
         logger.info("新的记忆已经被加载")
+
+    def import_settings(self, settings: dict):
+        if(settings):
+            self.ai_name = settings.get("ai_name","ai_name未设定")
+            self.ai_subtitle = settings.get("ai_subtitle","ai_subtitle未设定")
+            self.user_name = settings.get("user_name", "user_name未设定")
+            self.user_subtitle = settings.get("user_subtitle", "user_subtitle未设定")
+            self.ai_settings = settings.get("system_prompt", "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息")
+            self.speaker_id = int(settings.get("speaker_id", 4))
+            self.character_path = settings.get("resource_path")
+            self.character_id = settings.get("character_id")
+        else:
+            logger.error("角色信息settings没有被正常导入，请检查问题！")
+
     
     async def _process_ai_response(self, ai_response: str, user_message: str) -> List[Dict]:
         """处理AI回复的完整流程"""
@@ -250,7 +289,6 @@ class AIService:
         # 如果没有找到情绪标签，检查是否需要自动添加一个默认标签
         if not emotion_segments:
             logger.warning(f"未在文本中找到【】格式的情绪标签，将尝试添加默认标签")
-            # 可选：返回一个空列表，让上层函数决定如何处理
             return []
 
         results = []
@@ -328,7 +366,7 @@ class AIService:
         for seg in segments:
             if seg["japanese_text"]:
                 # 只有在有日语文本时才生成语音
-                tasks.append(self.tts_engine.generate_voice(seg["japanese_text"], seg["voice_file"], True))
+                tasks.append(self.tts_engine.generate_voice(seg["japanese_text"], seg["voice_file"], self.speaker_id, True))
             elif seg["following_text"] and not seg.get("japanese_text"):
                 # 如果没有日语文本但有中文文本，记录日志
                 logger.warning(f"片段 {seg['index']} 没有日语文本，跳过语音生成")
@@ -390,3 +428,11 @@ class AIService:
     
     def get_memory(self):
         return self.messages
+    
+    def reset_memory(self):
+        self.messages = [
+            {
+                "role": "system", 
+                "content": self.ai_settings
+            }
+        ]
