@@ -3,14 +3,12 @@ import torch
 import os
 import json
 from pathlib import Path
-# from .logger import log_debug, log_info, log_warning, log_error, initialize_logger, TermColors
 from .logger import logger, TermColors
 
 class EmotionClassifier:
     def __init__(self, model_path=None):
         """加载情绪分类模型"""
     
-        # 加载模型和分词器
         try:
             model_path = model_path or os.environ.get("EMOTION_MODEL_PATH", "./emotion_model_18emo")
             model_path = Path(model_path).resolve()
@@ -19,7 +17,6 @@ class EmotionClassifier:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             self.model.to(self.device)
             
-            # 从保存的配置加载标签映射
             config_path = os.path.join(model_path, "label_mapping.json")
             with open(config_path, "r", encoding='utf-8') as f: 
                 label_config = json.load(f)
@@ -59,7 +56,6 @@ class EmotionClassifier:
     def predict(self, text, confidence_threshold=0.08):
         """预测文本情绪（带置信度阈值过滤）"""
         try:
-            # 编码输入
             inputs = self.tokenizer(
                 text, 
                 truncation=True, 
@@ -67,20 +63,16 @@ class EmotionClassifier:
                 return_tensors="pt"
             ).to(self.device)
             
-            # 推理
             with torch.no_grad():
                 outputs = self.model(**inputs)
                 probs = torch.softmax(outputs.logits, dim=1)
             
-            # 处理结果
             pred_prob, pred_id = torch.max(probs, dim=1)
             pred_prob = pred_prob.item()
             pred_id = pred_id.item()
             
-            # 获取Top3结果
             top3 = self._get_top3(probs)
             
-            # 低置信度处理
             if pred_prob < confidence_threshold:
                 logger.debug(f"情绪识别置信度低: {text} -> 不确定 ({pred_prob:.2%})")
                 return {
@@ -121,9 +113,7 @@ def main():
     print("【情绪分类器】")
     print("="*40)
     
-    # 初始化分类器
     try:
-        # 初始化logger
         classifier = EmotionClassifier()
         print("\n模型加载成功！输入文本进行分析，输入 ':q' 退出")
     except Exception as e:
@@ -137,17 +127,14 @@ def main():
         try:
             text = input("\n请输入要分析的文本: ").strip()
             
-            # 退出命令
             if text.lower() in [':q', ':quit', 'exit']:
                 print("\n退出程序")
                 break
                 
-            # 空输入处理
             if not text:
                 print("输入不能为空！")
                 continue
                 
-            # 预测并打印结果
             result = classifier.predict(text)
             print("\n" + "="*30)
             print(f"📝 文本: {text}")
