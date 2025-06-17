@@ -1,6 +1,6 @@
 from mcp.server.fastmcp import FastMCP
-from memoryrag.graph import MemoryGraph
-from memoryrag.vector import MemoryVector
+from memory_rag.graph import MemoryGraph
+from memory_rag.vector import MemoryVector
 
 mcp = FastMCP("graph-rag-memory",version="0.1.0")
 

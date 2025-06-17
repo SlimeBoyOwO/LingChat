@@ -2,7 +2,7 @@ import os
 from typing import Any, Dict, Optional
 from langchain_community.graphs import Neo4jGraph
 
-from memoryrag.config.base import MemoryConfig
+from memory_rag.config.base import MemoryConfig
 
 def get_default_graph_config():
     NEO4J_URL = os.getenv("NEO4J_URL", "bolt://localhost:7687")
