@@ -23,7 +23,6 @@ class Server:
     async def start_frontend_app(self):
         try:
             import subprocess
-            # 获取项目根目录（backend的父目录）
             root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             lingchat_exe = os.path.join(root_dir, "frontend", "LingChatWeb.exe")
             
