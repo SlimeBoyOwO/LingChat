@@ -5,6 +5,7 @@ Thumbs.db
 # Ignore IDE files
 .vscode/
 .idea/
+python-embed/
 
 # Ignore cache files
 __pycache__
