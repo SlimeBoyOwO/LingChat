@@ -147,9 +147,56 @@ def main():
         print("⚠️ 未找到 requirements.txt 或文件为空，跳过安装依赖。")
 
     # 步骤 6: 创建启动器
-    launcher_content = f"""@echo off
-rem 使用相对路径启动应用
-"%~dp0python-embed\\python.exe" "%~dp0main.py"
+    launcher_content = f"""
+@echo off
+SETLOCAL ENABLEDELAYEDEXPANSION
+
+REM Change directory to the script's location
+cd /d "%~dp0" > nul 2>&1
+
+REM --- Configuration ---
+SET PYTHON_EMBED_EXE=python-embed\python.exe
+SET BACKEND_SCRIPT=backend\windows_main.py
+REM BROWSER_URL is no longer relevant if there's no frontend to open, but kept if you wish to open something else later.
+SET BROWSER_URL=http://localhost:3000/ 
+
+ECHO Starting application using embedded Python...
+ECHO.
+
+REM --- Pre-run Checks ---
+IF NOT EXIST "%PYTHON_EMBED_EXE%" (
+    ECHO ERROR: Embedded Python not found at %PYTHON_EMBED_EXE%.
+    ECHO Please ensure the 'python-embed' directory exists and contains python.exe.
+    PAUSE
+    EXIT /B 1
+)
+
+IF NOT EXIST "%BACKEND_SCRIPT%" (
+    ECHO ERROR: Backend script not found at %BACKEND_SCRIPT%.
+    PAUSE
+    EXIT /B 1
+)
+
+REM --- Start Backend Server ---
+ECHO Starting Backend Server...
+REM The empty "" after START is a placeholder for the window title.
+REM Using cmd /k to keep the window open for viewing logs.
+START "Backend" cmd /k ""%PYTHON_EMBED_EXE%" "%BACKEND_SCRIPT%""
+
+REM --- Wait for backend to initialize (optional, adjust as needed) ---
+ECHO Waiting 5 seconds for backend to start...
+TIMEOUT /T 5 /NOBREAK > NUL
+
+REM --- Optional: Open Browser (if backend provides a web UI directly or for testing) ---
+REM If your backend serves a web UI directly, uncomment the line below.
+REM ECHO Opening application in browser at %BROWSER_URL%
+REM START "" "%BROWSER_URL%"
+
+ECHO.
+ECHO Backend startup initiated. Please see the new command window for server logs.
+
+ENDLOCAL
+EXIT /B 0
 """
     launcher_path = PROJECT_ROOT / "run.bat"
     with open(launcher_path, 'w', encoding='utf-8') as f:
