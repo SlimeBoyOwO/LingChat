@@ -100,28 +100,30 @@ def main():
     # --- 已修正：自动查找 ._pth 文件，不再硬编码文件名 ---
     print(f"🔧 正在查找 ._pth 文件以启用 site-packages...")
     try:
-        # 使用 glob 查找 python*._pth 文件，这更稳健
         pth_file = next(PYTHON_EMBED_DIR.glob("python*._pth"))
         print(f"   找到了: {pth_file.name}")
-    except StopIteration:
-        print(f"❌ 错误: 在 {PYTHON_EMBED_DIR} 目录中未找到 ._pth 文件。构建中断。")
-        sys.exit(1)
-
-    with open(pth_file, 'r+') as f:
-        content = f.read()
-        if "#import site" in content:
-            content = content.replace("#import site", "import site")
+        
+        # 读取并修改 ._pth 文件内容
+        with open(pth_file, 'r+') as f:
+            lines = f.readlines()
             f.seek(0)
             f.truncate()
-            f.write(content)
-            print("✔️ 已在 ._pth 文件中启用 'import site'。")
-        elif "import site" in content:
-            print("✔️ 'import site' 已启用，无需修改。")
-        else:
-            # 如果连 #import site 都没有，就追加一行
-            f.seek(0, 2) # 移到文件末尾
-            f.write("\nimport site\n")
-            print("✔️ ._pth 文件中未找到 import site，已在末尾追加。")
+            
+            # 确保包含关键配置
+            for line in lines:
+                if line.strip() == "#import site":
+                    f.write("import site\n")
+                else:
+                    f.write(line)
+            
+            # 添加项目路径（确保不重复添加）
+            if "../backend/\n" not in lines:
+                f.write("../backend/\n")
+            print("✔️ 已配置 ._pth 文件：启用 import site 并添加 ../backend/")
+            
+    except StopIteration:
+        print(f"❌ 错误: 未找到 ._pth 文件")
+        sys.exit(1)
             
     # 步骤 4: 安装 pip
     python_exe = PYTHON_EMBED_DIR / "python.exe"
