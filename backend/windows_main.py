@@ -2,27 +2,15 @@
 
 import os
 import sys
-import random # 导入 random 模块
 
 try:
     from core.logger import logger, TermColors
+    from utils.easter_egg import get_random_loading_message # <--- 新增导入
 except ImportError as e:
-    print(f"错误：无法导入日志模块。请确保 'core' 目录位置正确。 {e}")
+    print(f"错误：无法导入核心模块。请确保 'core' 和 'utils' 目录位置正确。 {e}")
     sys.exit(1)
 
-# --- 彩蛋：随机启动文案列表 ---
-LOADING_MESSAGES = [
-    "万恶的Python在导入他忠诚的pytorch...",
-    "给LingChat点点star喵，给LingChat点点star谢谢喵",
-    "你知道吗？钦灵本人比AI钦灵更可爱",
-    "本项目的Python只用0.1秒就可以导入完全部的依赖，剩下的时间只是它在尝试把自己编译成go以防被vickko删除",
-    "其实风雪并不会写代码，她只是趴在键盘上睡着了，然后恰好对LingChat提交了commit",
-    "正在加载PL的代码... 等等，编译器找不到bug，它以为自己出错了。",
-    "喵？喵~ 喵！",
-    "你们看到云小姐了吗？嗯嗯，她没有失踪也没有怎么样的，我们只是想让你知道，她很可爱",
-]
-
-selected_loading_message = random.choice(LOADING_MESSAGES)
+selected_loading_message = get_random_loading_message()
 logger.start_loading_animation(message=selected_loading_message, animation_style="clock")
 load_success = False
 try:
