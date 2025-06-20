@@ -45,7 +45,7 @@ memory-bank/
 chat_system.db
 chroma_db_store/
 rag_chat_history/
-
+browser_data/
 #
 release/zip/
 .openmcp/
