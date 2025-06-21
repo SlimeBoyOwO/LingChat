@@ -23,25 +23,18 @@ export const DOM = {
   bubbleAudio: document.getElementById("audioPlayerBubble"),
   effectAudio: document.getElementById("audioPlayerEffect"),
 
-// ==========新修改 头==========
-// 信息解释： 添加背景音量以及控制角色音量、气泡提示音以及背景音乐的音量控制
   BackAudioPlayer: document.getElementById("BackAudioPlayer"),
-  // 音量滑条
   VolumeAudioPlayer: document.getElementById("VolumeAudioPlayer"),
   VolumeBubbleAudio: document.getElementById("VolumeBubbleAudio"),
   VolumeBackAudioPlayer: document.getElementById("VolumeBackAudioPlayer"),
-// 信息解释： 此处为角色声音、气泡提示音的测试按钮
   TestAudioPlayer: document.getElementById("testAudioPlayer"),
   TestBubbleAudio: document.getElementById("testBubbleAudio"),
-// 背景音乐
   PlayPauseMusic: document.getElementById("play-pause-music"),
   StopMusic: document.getElementById("stop-music"),
   MusicName: document.getElementById("music-name"),
   MusicList: document.getElementById("Music-list"),
   AddMusic: document.getElementById("add-music"),
   MusicUpload: document.getElementById("music-upload"),
-
-// ==========新修改 尾==========
 
   // 特效背景
   canvas: document.getElementById("canvas"),
@@ -51,6 +44,9 @@ export const DOM = {
   menuToggle: document.getElementById("menu-toggle"),
   menuContent: document.getElementById("menu-content"),
   closeMenu: document.getElementById("close-menu"),
+
+  menuCharacter: document.getElementById("menu-character"),
+  characterPage: document.getElementById("character-page"),
 
   menuText: document.getElementById("menu-text"),
   textPage: document.getElementById("text-page"),
@@ -77,6 +73,8 @@ export const DOM = {
     list: document.getElementById("history-list"),
     clearBtn: document.getElementById("clear-history"),
   },
+
+  // 角色部分
 
   // 图像部分
   image: {
