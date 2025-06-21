@@ -54,7 +54,7 @@ export class ConversationLoader {
   }
 
   createConversationItem(convo) {
-    const createdAt = new Date(convo.created_at);
+    const createdAt = new Date(convo.updated_at);
     const dateStr = `${createdAt.getFullYear()}.${
       createdAt.getMonth() + 1
     }.${createdAt.getDate()}`;
