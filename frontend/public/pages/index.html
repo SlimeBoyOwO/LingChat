@@ -36,6 +36,7 @@
               <div id="status">正在连接服务器...</div>
             </div>
             <div id="menu-buttons">
+              <button id="menu-character" class="">🐺角色</button>
               <button id="menu-text" class="">📄文本</button>
               <button id="menu-image" class="">🏜️背景</button>
               <button id="menu-sound" class="">🔊声音</button>
@@ -44,6 +45,15 @@
             </div>
           </div>
           <div class="maxbody">
+            <div class="menu-body" id="character-page">
+              <div class="menu-section">
+                <h4>🎭 角色列表</h4>
+                <div class="line"></div>
+                <div id="character-list" class="character-grid">
+                  <!-- 角色卡片将通过JavaScript动态添加 -->
+                </div>
+              </div>
+            </div>
             <div class="menu-body" id="text-page">
               <div class="menu-section">
                 <div class="menu-item">
@@ -156,10 +166,7 @@
                       <p>圣光效果预览</p>
                     </div>
                     <div id="kuosan-preview">
-                      <img
-                        id="kuosan-preview-img"
-                        src="../pictures/qinling/正常.png"
-                      />
+                      <img id="kuosan-preview-img" />
                     </div>
                   </div>
                 </div>
@@ -320,7 +327,7 @@
             </div>
           </div>
           <div id="kuosan-test">
-            <img id="qinlingtest" src="../pictures/qinling/正常.png" />
+            <img id="qinlingtest" />
           </div>
           <div class="menu-footer">
             <div id="audioStatus"></div>
@@ -332,7 +339,7 @@
 
       <div class="main-box">
         <div class="avatar-container character-animation normal">
-          <img id="qinling" src="../pictures/qinling/正常.png" />
+          <img id="qinling" />
           <div class="bubble"></div>
         </div>
 

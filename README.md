@@ -7,7 +7,7 @@ Win10 以上，linux 请用 docker 部署，Win7 目前待测试 目前 0.2.0 �
 - 0.2.0 版本还处于测试版本，请在使用的时候注意以下几点，本版本 RAG 功能需要你能**挂梯子**，下版本就不需要啦，大学生忙着考试呢（）：
 - 在.env 中有这么一行配置： USE_RAG=false # 是否启用 RAG 系统，设置为 true 或 false
 - 若此项开启，说明你的每一次对话都会作为永久记忆的一部分，请**不要在开启这个 RAG 模式的情况下使用存档功能，否则可能出现未知严重 BUG**
-- 如果出现语音问题（如重复播放老版本语音），请换个浏览器输入 localhost:8765 进入页面解决，此 bug 已修复但尚未发布修复版本，你可以下载使用develop的开发版本。
+- 如果出现语音问题（如重复播放老版本语音），请换个浏览器输入 localhost:8765 进入页面解决，此 bug 已修复但尚未发布修复版本，你可以下载使用 develop 的开发版本。
 
 ## 功能列表
 
@@ -29,7 +29,7 @@ Win10 以上，linux 请用 docker 部署，Win7 目前待测试 目前 0.2.0 �
 ### 下载&使用最新的开发测试版本
 
 - LingChat 几乎每天都在更新，但是很长时间才会发布一个 release 版本。如果你想抢先使用新功能，或者想为 LingChat 项目做贡献，但是自己不会写代码，我们也欢迎你体验最新的开发版并及时向我们汇报 Bug。
-- 关于如何使用develop的源代码，可以参照[使用教程](https://github.com/SlimeBoyOwO/LingChat/blob/develop/others/document/%E6%BA%90%E4%BB%A3%E7%A0%81%E4%BD%BF%E7%94%A8.md)
+- 关于如何使用 develop 的源代码，可以参照[使用教程](https://github.com/SlimeBoyOwO/LingChat/blob/develop/others/document/%E6%BA%90%E4%BB%A3%E7%A0%81%E4%BD%BF%E7%94%A8.md)
 
 ### 下载情感分类模型
 
