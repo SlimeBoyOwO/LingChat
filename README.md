@@ -1,69 +1,62 @@
-# v0.3.0版本更新前瞻
+## 支持操作系统：
 
-![b3377564da7e05ecf2600aaae896db66](https://github.com/user-attachments/assets/25dac3ec-7cf7-4675-819c-a055e4b3b928)
+Win10 以上，linux 请用 docker 部署，Win7 目前待测试 目前 0.2.0 版本是测试版，0.1.0 稳定但缺少游戏存读档，永久记忆，18 情绪和多最新版本功能，请自行选择
 
-看什么看，不知道github可以发动图吗
+## 使用相关说明
 
-## 帮助文档编写
+- 0.2.0 版本还处于测试版本，请在使用的时候注意以下几点，本版本 RAG 功能需要你能**挂梯子**，下版本就不需要啦，大学生忙着考试呢（）：
+- 在.env 中有这么一行配置： USE_RAG=false # 是否启用 RAG 系统，设置为 true 或 false
+- 若此项开启，说明你的每一次对话都会作为永久记忆的一部分，请**不要在开启这个 RAG 模式的情况下使用存档功能，否则可能出现未知严重 BUG**
+- 如果出现语音问题（如重复播放老版本语音），请换个浏览器输入 localhost:8765 进入页面解决，此 bug 已修复但尚未发布修复版本，你可以下载使用 develop 的开发版本。
 
-- 编写详细的帮助文档，包括小白教程和开发须知，使用超链接在Readme引用
-  -  [Linux部署教程](others/document/Linux部署教程.md) 
-  -  [Release部署教程](others/document/Release部署教程.md) 
-  -  [开发文档](others/document/开发文档.md) 
+## 功能列表
 
-## 长剧情功能更新
+- ✅ 使用 18 种差分表情立绘，动作，音效，聊天气泡及语音与用户对话
+- ✅ 在菜单更改设置并且导入聊天历史记录。
+- ✅ 支持跨越对话的永久记忆，几乎不增加 Token 消耗。
+- ✅ 支持使用 deepseek、标准 OpenAI 接口及 ollama 本地模型
 
-- **场景CG联动**：添加将场景CG以prompt发送到llm的功能，以及随着剧情推进改变场景CG的功能。
-  - 实现CG影响对话，如，在场景为卧室CG时向llm发送：“现在你们在卧室里，时间是晚上”。此外，要给予AI自行改变场景的能力，如随剧情推进，场景从卧室切换为学校，或者同场景傍晚切换到黑夜。**此功能为长线剧情更新的必要前置**
-  - 注意，由于已经有了发送系统时间功能，配置文件中应提供选项，使用系统时间，使用CG时间，不发送时间；此外，考虑增加随系统时间切换CG（白天→黄昏→夜晚）功能。
-- **大地图功能**：考虑添加大地图功能，例如，点击“家”就回家，点击“学校”就去学校，同时影响CG和对话，可能还会影响剧情。这里可以参考夏日口袋的大地图与长线剧情线设计。
-- **长线剧情系统**：可以参考安科文学和跑团的长线剧情AI应用与实现
+## 如何使用？
 
+### 下载&使用 exe 程序
 
-## 陪伴系功能更新
+- 在[Release](https://github.com/SlimeBoyOwO/LingChat/releases)中下载附件，并解压。
+- 解压后，使用记事本打开 app 文件夹.env，在.env 中填入你的 apikey。deepseek apikey 登录[DeepSeek 开放平台](https://platform.deepseek.com/usage)后获取。请妥善保管自己的 apikey。
+- 点击 LingChat.exe 启动程序
+- (非必须):若要使用语音功能，请下载[simple-vits-api](https://github.com/Artrajz/vits-simple-api)链接程序。该项目实现了基于 VITS 的简单语音合成 API。建议下载 GPU 版本，速度快。程序默认监听 23456 语音端口，程序默认导入的模型是 zcchat 地址->讨论区->角色示范（丛雨）->vits 模型下载好之后在 simple-vits-api 的目录的/data/models 里面解压，再启动就 ok 了;如果需要使用其他模型，在.env 的 Vits 实现函数更改相关设定即可。
+- app 文件夹内的 rag_chat_history 文件夹的所有对话记忆将被永久储存。打开 RAG 开关后，本轮对话将会储存在 rag_chat_history 文件夹内。**如果你手动更改了该文件夹内部的对话记录，请手动删除 app 文件夹下的整个 chroma_db_store 文件夹以更新记忆库**。该文件夹是提高启动速度的永久记忆缓存区域。
 
-- **桌宠启动模式**✅：开发轻量化的启动模式，只有人物，无边框，可选方形背景或背景透明，会显示在桌面顶层
-- **添加视觉能力**✅：添加多模态支持，让AI拥有桌面视野，后续基于多模态视觉开发各种陪伴功能。若DeepSeek迟迟不更新原生多模态，可以考虑使用Qwen
+### 下载&使用最新的开发测试版本
 
+- LingChat 几乎每天都在更新，但是很长时间才会发布一个 release 版本。如果你想抢先使用新功能，或者想为 LingChat 项目做贡献，但是自己不会写代码，我们也欢迎你体验最新的开发版并及时向我们汇报 Bug。
+- 关于如何使用 develop 的源代码，可以参照[使用教程](https://github.com/SlimeBoyOwO/LingChat/blob/develop/others/document/%E6%BA%90%E4%BB%A3%E7%A0%81%E4%BD%BF%E7%94%A8.md)
 
+### 下载情感分类模型
 
+情感分类模型已包含在 Releases 中，双击 exe 即可启动。源代码内不包含，请手动下载 release 然后移动过去。
 
-## 系统底层设计与优化
+## 相关设定（For 开发者们）
 
-- **llm接口重构**：重构deepseek.py，分别兼容以下接口：
-  - DeepSeek，Qwen，GPT，Claude，Gemini官方接口
-  - 支持多模态传输的标准格式第三方OpenAI请求
-  - 标准Ollama，LM Studio本地部署接口
-  - 未来可不断扩展新增的接口格式
-- **手机适配**：重构前端界面，适配手机UI，未来可能登录官方服务器使用；若有安卓开发成员，可以考虑开发轻量化的手机版本
-- **语音接口**：添加GPTSoVIS以及其他主流语音实现的支持
-- **网络接口**：添加可以在网络获取信息的接口，可能可以实现：
-  - 官方团队维护和发布的虚拟世界突发事件，让LingChat宇宙的事件演进
-  - 日报功能，通过可靠的稳定的信源，再完善一套好用的Prompt，以角色的性格和口吻播报当日新闻/本周新闻
-  - 可能的后续其他功能
-- **角色切换**✅：增加 AI 角色切换功能，增加 AI 名称修改
-- **设置窗口**✅：用可视化的设置UI代替手动修改.env
-- **启动速度优化**：取消重量级库的依赖，优化启动速递
-- **永久记忆更新**：添加可以意见清除RAG缓存的.bat
-- **启动动画添加**：在启动时添加日志动画，以点缀跳过漫长的启动等待
-- **依赖去除**：本地化RAG，取消必须连接抱脸的限制
-- **降低延迟**：将语音改为流式传输，减少等待时间
+1. backend 是 Python 的后端程序，frontend 是 html javascript css 的前端文件；start.bat 默认使用 python3.12 创建.venv 虚拟环境
+2. 可以更换/public/pictures/lingling/里面的立绘+修改/public/css/galgame.css 里的代码实现自定义角色或表情动作气泡
+3. /public/js/emotion 里面可以设定不同的心情和不同的动作，目前有 18 种情绪，更多情绪和模型优化还在更新
+4. **main 只会发布稳定版，使用最新功能请切换至 develop 分支**
 
+## 相关链接
 
-## 服务器与团队规划
+- [simple-vits-api](https://github.com/Artrajz/vits-simple-api): 该项目实现了基于 VITS 的简单语音合成 API。建议下载 GPU 版本，速度快
+- [zcchat](https://github.com/Zao-chen/ZcChat): 本项目的灵感来源，可以在这里找到 Vits 模型和人物素材
 
-- **新成员招募**：在新视频发布招募公告
-- **服务器维护团队**
-  - 维护LingChat项目的官方服务器
-  - 维护和发布的虚拟世界突发事件，让LingChat宇宙的事件演进
-- **AI炼丹师**
-  - 制作/训练新人物的vits语音
-  - 使用AI绘制大量的场景CG和人物立绘
-  - 制作符合LingChat画风的CG和人物lora，搭建ComfyUI工作流，通过controlnet实现通过输入人物提示词就直接生成18个差分表情，以支持用户的立绘自定义，直接导入本项目（tip：这确实是可以实现的）
-- **编剧**
-  - 编写长线剧情和新人设
-- **画手**
-  - 需要对大量使用AI工具有包容心——大部分画手不能容忍AI工具
+## 一些小话
 
-# Collaborator
-<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section --> <!-- prettier-ignore-start --> <!-- markdownlint-disable --> <table> <tbody> <tr> <td align="center" valign="top" width="25%"> <a href="https://github.com/SlimeBoyOwO"><img src="https://avatars.githubusercontent.com/SlimeBoyOwO?s=100" width="100px;" alt="SlimeBoyOwO"/><br /><sub><b>钦灵</b></sub></a><br /> </td> <td align="center" valign="top" width="25%"> <a href="https://github.com/T-Auto"><img src="https://avatars.githubusercontent.com/T-Auto?s=100" width="100px;" alt="T-Auto"/><br /><sub><b>风雪</b></sub></a><br /> </td> <td align="center" valign="top" width="25%"> <a href="https://github.com/Vickko"><img src="https://avatars.githubusercontent.com/Vickko?s=100" width="100px;" alt="Vickko"/><br /><sub><b>vickko</b></sub></a><br /> </td> <td align="center" valign="top" width="25%"> <a href="https://github.com/0x00-pl"><img src="https://avatars.githubusercontent.com/0x00-pl?s=100" width="100px;" alt="0x00‑pl"/><br /><sub><b>PL</b></sub></a><br /> </td> </tr> </tbody> </table>
+- 本项目为了快速开发用了很多 AI 工具，有做的不好的地方欢迎指出！
+- 感谢一路结识的开发者，都是香软可爱又厉害的大佬们~ 如果你有开发意向可以联系我！
+- 本项目更多作为一个超小型的学习项目，由于文件结构非常简单，欢迎有兴趣的人学习。
+
+## 其他
+
+> 本项目使用的气泡+音效素材来源于碧蓝档案，请勿商用  
+> 默认简单狼狼立绘是自绘，表情差分源于 AI，如果你想自己创作可使用 Novelai 网站  
+> 有其他问题可以 B 站私信捏
+
+© 诺一 钦灵
