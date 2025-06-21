@@ -1,5 +1,9 @@
 # v0.3.0版本更新前瞻
 
+![b3377564da7e05ecf2600aaae896db66](https://github.com/user-attachments/assets/25dac3ec-7cf7-4675-819c-a055e4b3b928)
+
+看什么看，不知道github可以发动图吗
+
 ## 帮助文档编写
 
 - 编写详细的帮助文档，包括小白教程和开发须知，使用超链接在Readme引用
