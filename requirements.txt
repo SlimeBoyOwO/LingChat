@@ -11,6 +11,7 @@ sentence-transformers
 chromadb
 python-multipart
 pyqt6
+PyQt6-WebEngine
 mss
 
 #memory-server
