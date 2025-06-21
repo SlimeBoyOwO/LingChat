@@ -4,7 +4,6 @@ import os
 import json
 import copy
 from datetime import datetime
-#from .logger import log_debug, log_info, log_error, log_text
 from .logger import logger
 from dotenv import load_dotenv
 import requests
@@ -256,40 +255,6 @@ class DeepSeek:
             error_message = f"【生气】抱歉，我在处理您的请求时遇到了问题: {str(e)[:100]}"
             
             return error_message
-
-    def load_memory(self, messages, memory):
-        """
-        加载记忆存档到会话
-        
-        Args:
-            memory: 包含对话历史的记忆存档，可以是JSON字符串或Python对象
-        """
-        original_messages_count = len(messages)
-        
-        if isinstance(memory, str):
-            memory = json.loads(memory)  # 将JSON字符串转为Python列表
-        messages = copy.deepcopy(memory)  # 使用深拷贝
-        
-        logger.info("记忆存档已经加载")
-        logger.info(f"内容是：{memory}")
-        logger.info(f"新的messages是：{messages}")
-        
-        # 调试信息：详细记录记忆加载前后的变化
-        if logger.should_print_context():
-            new_messages_count = len(messages)
-            
-            # 记录消息类型统计
-            role_counts = {}
-            for msg in messages:
-                role = msg.get('role', 'unknown')
-                role_counts[role] = role_counts.get(role, 0) + 1
-                
-            role_stats = ", ".join([f"{role}: {count}" for role, count in role_counts.items()])
-            
-            logger.debug("\n------ 记忆加载详情 ------")
-            logger.debug(f"原始消息数: {original_messages_count}, 加载后消息数: {new_messages_count}")
-            logger.debug(f"消息角色分布: {role_stats}")
-            logger.debug(f"------ 记忆加载结束 ------\n")
 
     # 暂未调用该段代码↓        
     def load_memory_to_rag(self, messages):

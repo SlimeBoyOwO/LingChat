@@ -16,36 +16,14 @@ export class SoundController {
   bindEvents() {
     if (!DOM.menuSound) return;
 
-    DOM.menuSound.addEventListener("click", () => this.toggleSoundPanel());
+    DOM.menuSound.addEventListener("click", () => this.showSoundPanel());
   }
 
-  toggleSoundPanel() {
-    if (this.processing) return;
-    this.processing = true;
-
-    requestAnimationFrame(() => {
-      this.domUtils.showElements([
-        DOM.menuContent,
-        DOM.menuSound,
-        DOM.soundPage,
-      ]);
-
-      this.domUtils.hideElements([
-        DOM.menuImage,
-        DOM.imagePage,
-        DOM.menuSave,
-        DOM.history.toggle,
-        DOM.history.content,
-        DOM.history.clearBtn,
-        DOM.menuText,
-        DOM.textPage,
-        DOM.savePage,
-      ]);
-
-      setTimeout(() => {
-        this.processing = false;
-      }, 300);
-    });
+  showSoundPanel() {
+    this.domUtils.showElements([DOM.menuSound, DOM.soundPage]);
+    this.domUtils.hideElements(
+      this.domUtils.getOtherPanelElements([DOM.menuSound, DOM.soundPage])
+    );
   }
 
   // 音频播放控制
