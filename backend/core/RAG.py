@@ -15,34 +15,21 @@ try:
     from sentence_transformers import SentenceTransformer
 except ImportError:
     _sentence_transformer_imported_ok = False
-    sys.stderr.write(
-        f"{TermColors.RED}错误: 'sentence-transformers' 模块未找到，但 RAG 功能已启用。\n"
-        f"请安装: pip install sentence-transformers{TermColors.RESET}\n")
-    sys.stderr.flush()
-
+    # Placeholder class if sentence-transformers is not found
     class SentenceTransformer:
         def __init__(self, *args, **kwargs): pass
-
         def encode(self, *args, **kwargs): raise NotImplementedError("SentenceTransformer is not available.")
 
 try:
     import chromadb
 except ImportError:
     _chromadb_imported_ok = False
-    sys.stderr.write(
-        f"{TermColors.RED}错误: 'chromadb' 模块未找到，但 RAG 功能已启用。\n"
-        f"请安装: pip install chromadb{TermColors.RESET}\n")
-    sys.stderr.flush()
-
+    # Placeholder class if chromadb is not found
     class chromadb:
         class PersistentClient:
             def __init__(self, *args, **kwargs): pass
-
-            def get_or_create_collection(self, *args, **kwargs): raise NotImplementedError(
-                "chromadb is not available.")
-
-        def get_collection(self, *args, **kwargs): raise NotImplementedError(
-            "chromadb is not available.")
+            def get_or_create_collection(self, *args, **kwargs): raise NotImplementedError("chromadb is not available.")
+        def get_collection(self, *args, **kwargs): raise NotImplementedError("chromadb is not available.")
 
 
 class RAGSystem:
@@ -56,7 +43,6 @@ class RAGSystem:
     3. 在处理用户输入时，调用 `prepare_rag_messages(user_input)` 获取上下文。
     4. 在会话结束时，调用 `add_session_to_history(session_messages)` 将对话存入历史记录。
     '''
-    
     def __init__(self, config):
         '''
         初始化RAG系统实例。设置RAG系统的初始状态，包括加载配置、初始化核心组件变量为None。
@@ -91,18 +77,32 @@ class RAGSystem:
             return False
 
         if not _sentence_transformer_imported_ok:
-            logger.error("RAG组件初始化失败: SentenceTransformer 模块未能成功导入。")
+            logger.error(f"RAG组件初始化失败: 'sentence-transformers' 模块未找到。请运行: pip install sentence-transformers")
             return False
         if not _chromadb_imported_ok:
-            logger.error("RAG组件初始化失败: ChromaDB 模块未能成功导入。")
+            logger.error(f"RAG组件初始化失败: 'chromadb' 模块未找到。请运行: pip install chromadb")
             return False
 
         logger.debug("开始初始化RAG组件...")
         try:
-            logger.debug(f"RAG: 初始化Sentence Transformer模型: {self.EMBEDDING_MODEL_NAME}")
+            # Construct the local model path relative to the current file (RAG.py)
+            # RAG.py is in 'backend/core/'
+            # Model should be in 'backend/core/memory_rag/models/all-MiniLM-L6-v2'
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            local_model_path = os.path.join(script_dir, 'memory_rag', 'models', self.EMBEDDING_MODEL_NAME)
+
+            logger.info(f"RAG: 准备从本地路径加载嵌入模型: {local_model_path}")
+
+            if not os.path.isdir(local_model_path):
+                logger.error(f"本地模型路径不存在或不是文件夹: {local_model_path}")
+                logger.error("请确保模型已下载到 'backend/core/memory_rag/models' 目录下。")
+                logger.error("您可以运行 'backend/core/memory_rag/download_model.py' 脚本来下载模型。")
+                return False
+
+            logger.debug(f"RAG: 初始化Sentence Transformer模型...")
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            self.embedding_model = SentenceTransformer(self.EMBEDDING_MODEL_NAME, device=device)
-            logger.debug(f"RAG: Sentence Transformer模型 ({self.EMBEDDING_MODEL_NAME}) 加载成功。当前使用 {device} 进行RAG向量库匹配的推理。")
+            self.embedding_model = SentenceTransformer(local_model_path, device=device)
+            logger.debug(f"RAG: 本地Sentence Transformer模型 ({self.EMBEDDING_MODEL_NAME}) 加载成功。当前使用 {device} 进行RAG向量库匹配的推理。")
 
             chroma_db_path = getattr(self.config, 'CHROMA_DB_PATH', './chroma_db_store')
             logger.debug(f"RAG: 初始化ChromaDB客户端 (记忆库将存储在 '{chroma_db_path}').")
