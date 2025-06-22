@@ -1,17 +1,22 @@
 import logging
 from typing import Dict, List, Optional
 
-import chromadb
-from chromadb.config import Settings
+from pydantic import BaseModel
 
-from pydantic import BaseModel, Field, model_validator
+try:
+    import chromadb
+    from chromadb.config import Settings
+except ImportError:
+    raise ImportError("The 'chromadb' library is required. Please install it using 'pip install chromadb'.")
 
 logger = logging.getLogger(__name__)
+
 
 class OutputData(BaseModel):
     id: Optional[str]  # memory id
     score: Optional[float]  # distance
     payload: Optional[Dict]  # metadata
+
 
 class ChromaDB():
     def __init__(
@@ -38,17 +43,13 @@ class ChromaDB():
             self.settings = Settings(anonymized_telemetry=False)
 
             if host and port:
-                self.settings.chroma_server_host = host
-                self.settings.chroma_server_http_port = port
-                self.settings.chroma_api_impl = "chromadb.api.fastapi.FastAPI"
+                # 如果指定了 host 和 port，使用 HttpClient
+                self.client = chromadb.HttpClient(host=host, port=port)
             else:
+                # 使用 PersistentClient 替代 Client + Settings
                 if path is None:
                     path = "db"
-
-            self.settings.persist_directory = path
-            self.settings.is_persistent = True
-
-            self.client = chromadb.Client(self.settings)
+                self.client = chromadb.PersistentClient(path=path)
 
         self.collection_name = collection_name
         self.collection = self.create_col(collection_name)
@@ -220,78 +221,3 @@ class ChromaDB():
         logger.warning(f"Resetting index {self.collection_name}...")
         self.delete_col()
         self.collection = self.create_col(self.collection_name)
-
-
-class VectorStoreConfig(BaseModel):
-    provider: str = Field(
-        description="Provider of the vector store (e.g., 'qdrant', 'chroma', 'upstash_vector')",
-        default="chroma",
-    )
-    config: Optional[Dict] = Field(
-        description="Configuration for the specific vector store", 
-        default_factory=lambda: {"collection_name": "openmemory"}
-    )
-
-    _provider_configs: Dict[str, str] = {
-        "qdrant": "QdrantConfig",
-        "chroma": "ChromaDbConfig",
-        "pgvector": "PGVectorConfig",
-        "pinecone": "PineconeConfig",
-        "mongodb": "MongoDBConfig",
-        "milvus": "MilvusDBConfig",
-        "upstash_vector": "UpstashVectorConfig",
-        "azure_ai_search": "AzureAISearchConfig",
-        "redis": "RedisDBConfig",
-        "elasticsearch": "ElasticsearchConfig",
-        "vertex_ai_vector_search": "GoogleMatchingEngineConfig",
-        "opensearch": "OpenSearchConfig",
-        "supabase": "SupabaseConfig",
-        "weaviate": "WeaviateConfig",
-        "faiss": "FAISSConfig",
-        "langchain": "LangchainConfig",
-    }
-
-    @model_validator(mode="after")
-    def validate_and_create_config(self) -> "VectorStoreConfig":
-        provider = self.provider
-        config = self.config
-
-        if provider not in self._provider_configs:
-            raise ValueError(f"Unsupported vector store provider: {provider}")
-
-        # 直接使用同一文件中的ChromaDB类
-        if provider == "chroma":
-            config_class = ChromaDB
-        else:
-            # 对于其他provider，保持原有的导入方式
-            module = __import__(
-                f"mem0.configs.vector_stores.{provider}",
-                fromlist=[self._provider_configs[provider]],
-            )
-            config_class = getattr(module, self._provider_configs[provider])
-
-        if config is None:
-            config = {}
-
-        if not isinstance(config, dict):
-            if not isinstance(config, config_class):
-                raise ValueError(f"Invalid config type for provider {provider}")
-            return self
-
-        # 为ChromaDB设置默认值
-        if provider == "chroma":
-            # 设置默认collection_name
-            if "collection_name" not in config:
-                config["collection_name"] = "openmemory"
-            
-            # 设置默认路径
-            if "path" not in config:
-                import os
-                # 获取项目根路径
-                current_dir = os.path.dirname(os.path.abspath(__file__))
-                project_root = os.path.join(current_dir, '..', '..', '..', '..')  # 从backend/core/memory_rag/config回到项目根目录
-                project_root = os.path.abspath(project_root)
-                config["path"] = os.path.join(project_root, "data", "chroma_db_store")
-
-        self.config = config_class(**config)
-        return self
