@@ -114,10 +114,13 @@ export class UIController {
       }
 
       // 处理音频
-      if (data.audioFile) {
+      if (data.audioFile && data.audioFile !== "none") {
+        this.writer.setSoundEnabled(false);
         DOM.audioPlayer.src = `../audio/${data.audioFile}`;
         DOM.audioPlayer.load();
         DOM.audioPlayer.play();
+      } else {
+        this.writer.setSoundEnabled(true);
       }
     });
 
