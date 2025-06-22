@@ -333,14 +333,19 @@ class AIService:
         tasks = []
         for seg in segments:
             if seg["japanese_text"]:
-                tasks.append(self.tts_engine.generate_voice(seg["japanese_text"], seg["voice_file"], self.speaker_id, True))
+                output_file = self.tts_engine.generate_voice(seg["japanese_text"], seg["voice_file"], self.speaker_id, True)
+                if output_file is not None:
+                    tasks.append(output_file)
+                else:
+                    seg["voice_file"] = "none"
+                
             elif seg["following_text"] and not seg.get("japanese_text"):
                 logger.warning(f"片段 {seg['index']} 没有日语文本，跳过语音生成")
                 
         if tasks:
             await asyncio.gather(*tasks)
-        else:
-            logger.warning("没有任何片段包含日语文本，跳过所有语音生成")
+        # else:
+            # logger.warning("没有任何片段包含日语文本，跳过所有语音生成")
     
     def _delete_voice_files(self):
         self.tts_engine.cleanup()
