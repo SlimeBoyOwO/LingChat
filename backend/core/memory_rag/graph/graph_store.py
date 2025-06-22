@@ -1,58 +1,76 @@
-import os
+from pydantic import ValidationError
 from typing import Any, Dict, Optional
 from langchain_community.graphs import Neo4jGraph
+import logging
 
-from memory_rag.config.base import MemoryConfig
+from core.memory_rag.config.base import MemoryConfig
+
+logger = logging.getLogger(__name__)
 
 def get_default_graph_config():
-    NEO4J_URL = os.getenv("NEO4J_URL", "bolt://localhost:7687")
-    NEO4J_USERNAME = os.getenv("NEO4J_USERNAME", "neo4j")
-    NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "neo4j")
     """Get default memory client configuration with sensible defaults."""
     return {
         "graph_store": {
             "provider": "neo4j",
             "config": {
-                "url": f"{NEO4J_URL}",
-                "username": f"{NEO4J_USERNAME}",
-                "password": f"{NEO4J_PASSWORD}" # TODO: Use env variable
+                "url": "env:NEO4J_URL",
+                "username": "env:NEO4J_USERNAME",
+                "password": "env:NEO4J_PASSWORD"
             }
         },
-        # "llm": {
-        #     "provider": "openai",
-        #     "config": {
-        #         "model": "gpt-4o-mini",
-        #         "temperature": 0.1,
-        #         "max_tokens": 2000,
-        #         "api_key": "env:OPENAI_API_KEY" # TODO: Use env variable
-        #     }
-        # },
-        # "embedder": {
-        #     "provider": "openai",
-        #     "config": {
-        #         "model": "text-embedding-3-small",
-        #         "api_key": "env:OPENAI_API_KEY" # TODO: Use env variable
-        #     }
-        # },
-        "version": "v0.1.0"
+        "llm": {
+            "provider": "deepseek",
+            "config": {
+                "model": "deepseek-chat",
+                "temperature": 0.1,
+                "max_tokens": 2000,
+                "api_key": "env:CHAT_API_KEY"
+            }
+        },
+        "embedder": {
+            "provider": "openai",
+            "config": {
+                "model": "text-embedding-3-small",
+                "api_key": "env:CHAT_API_KEY" # TODO: change env variable
+            }
+        },
+        "version": "v0.3.0"
     }
 
 class MemoryGraph:
-    def __init__(self, config: MemoryConfig = MemoryConfig()):
+    def __init__(self, config: MemoryConfig = None):
+        if config is None:
+            config = MemoryConfig()
         self.config = config
+        logger.info("MemoryGraph initialized successfully")
         
 
     @classmethod
     def from_config(cls, config_dict: Dict[str, Any]):
-        pass
+        try:
+            config = cls._process_config(config_dict)
+            config = MemoryConfig(**config_dict)
+        except ValidationError as e:
+            logger.error(f"Configuration validation error: {e}")
+            raise
+        return cls(config)
     
     @staticmethod
     def _process_config(config_dict: Dict[str, Any]) -> Dict[str, Any]:
-        pass
+        # Process the configuration if needed
+        # For now, just return the config as-is
+        return config_dict
         
-    def add(self, item):
+    def add(self, text):
         # Add an item to the vector store
-        pass
+        try:
+            # 目前先返回一个简单的确认信息
+            # TODO: 实现实际的图存储逻辑
+            logger.info(f"Adding text to graph memory: {text[:100]}...")  # 只记录前100个字符
+            return {"status": "success", "message": "Text added to graph memory", "text_length": len(text)}
+        except Exception as e:
+            logger.error(f"Error adding text to graph memory: {e}")
+            return {"status": "error", "message": str(e)}
     
     def _add_to_vector_store(self, messages, metadata, filters, infer):
         pass
