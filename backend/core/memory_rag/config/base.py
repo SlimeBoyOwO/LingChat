@@ -3,6 +3,9 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
 
+from .llms import BaseLlmConfig
+
+from .embedder_config import EmbedderConfig
 from .vector_config import VectorStoreConfig
 from .graph_config import LlmConfig, GraphStoreConfig
 
@@ -14,6 +17,10 @@ class MemoryConfig(BaseModel):
     llm: LlmConfig = Field(
         description="Configuration for the language model",
         default_factory=LlmConfig,
+    )
+    embedder: EmbedderConfig = Field(
+        description="Configuration for the embedding model",
+        default_factory=EmbedderConfig,
     )
     graph_store: GraphStoreConfig = Field(
         description="Configuration for the graph",
