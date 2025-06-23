@@ -1,4 +1,231 @@
 import eventListener from "./event-bus.js"
+class Request {
+  constructor() {
+    this.fetch = (url, options = {}) => {
+      return fetch(url, options)
+      .then(message => {
+        if (message.ok) {
+          return message.json()
+        } else {
+          throw message.json()
+        }
+      })
+    }
+    this.send = (method, url, information) => {
+      if (method === 'GET') {
+        url = new URL(url, window.location)
+        const search = url.searchParams
+        for (const key in information) {
+          search.append(key, information[key])
+        }
+        return this.fetch(url)
+      }
+      if (method === 'POST') {
+        return this.fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(information),
+        })
+      }
+    }
+  }
+  
+  characterGetAll() {
+    return this.send(
+      'GET',
+      '/api/v1/chat/character/get_all_characters',
+      {}
+    )
+    .then(result => {
+      return result.data
+    })
+    .catch(result => {
+      throw new Error(result.message)
+    })
+  }
+  characterSelect(userId, characterId) {
+    return this.send(
+      'POST',
+      '/api/v1/chat/character/select_character',
+      {
+        user_id: userId,
+        character_id: characterId,
+      }
+    )
+    .then(result => {
+      return result.character
+    })
+    .catch(result => {
+      throw new Error(result.detail)
+    })
+  }
+
+
+  historyList(userId, page, pageSize) {
+    return this.send(
+      'GET',
+      '/api/v1/chat/history/list',
+      {
+        user_id: userId,
+        page: page,
+        page_size: pageSize,
+      }
+    )
+    .then(result => {
+      return result.data.conversations
+    })
+    .catch(result => {
+      throw new Error(`${result.msg}:${result.error}`)
+    })
+  }
+
+  historyLoad(userId, convoId) {
+    return this.send(
+      'GET',
+      '/api/v1/chat/history/load',
+      {
+        user_id: userId,
+        conversation_id: convoId,
+      }
+    )
+    .then(result => {
+      return result.data
+    })
+    .catch(result => {
+      throw new Error(`${result.msg}:${result.error}`)
+    })
+  }
+
+  historySave(userId, convoId) {
+    return this.send(
+      'POST',
+      '/api/v1/chat/history/save',
+      {
+        user_id: userId,
+        conversation_id: convoId,
+      }
+    )
+    .then(result => {
+      return result.data.conversation_id
+    })
+    .catch(result => {
+      throw new Error(result.detail)
+    })
+  }
+  
+  historyDelete(userId, convoId) {
+    return this.send(
+      'POST',
+      '/api/v1/chat/history/delete',
+      {
+        user_id: userId,
+        conversation_id: convoId,
+      }
+    )
+    .then(result => {
+      return result.data.conversation_id
+    })
+    .catch(result => {
+      throw new Error(result.detail)
+    })
+  }
+
+  historyCreate(userId, title) {
+    return this.send(
+      'POST',
+      '/api/v1/chat/history/create',
+      {
+        user_id: userId,
+        title: title,
+      }
+    )
+    .then(result => {
+      return result.data.conversation_id
+    })
+    .catch(result => {
+      throw new Error(result.detail)
+    })
+  }
+
+  histortyInput(userId, text, fileName) {
+    return this.send(
+      'POST',
+      '/api/v1/chat/history/process-log',
+      {
+        user_id: userId,
+        content: text,
+        filename: fileName,
+      }
+    )
+    .catch(result => {
+      throw new Error(result.detail)
+    })
+  }
+
+  histortyOutput() {}
+
+  informationGet(userId) {
+    return this.send(
+      'GET',
+      '/api/v1/chat/info/init',
+      {
+        user_id: userId,
+      }
+    )
+    .then(result => {
+      return result.data
+    })
+    .catch(result => {
+      throw new Error(`${result.msg}:${result.error}`)
+    })
+  }
+
+  backmusicList() {
+    return this.send(
+      'GET',
+      '/api/v1/chat/back-music/list',
+      {}
+    )
+    .catch(result => {
+      throw new Error(result.detail)
+    })
+  }
+
+  backmusicUpload() {
+    return this.send(
+      'POST',
+      '/api/v1/chat/back-music/upload',
+      {}
+    )
+    .then(result => {
+      return
+    })
+    .catch(result => {
+      throw new Error(result.detail)
+    })
+  }
+  backmusicDelete(url) {
+    return this.send(
+      'Delete',
+      '/api/v1/chat/back-music/delete',
+      {
+        url: url,
+      }
+    )
+    .then(result => {
+      return
+    })
+    .catch(result => {
+      throw new Error(result.detail)
+    })
+  }
+
+
+}
+const request = new Request()
+export default request
+
+
 
 const requestUtils = {
   praseFetchError: (error) => {
@@ -41,124 +268,5 @@ const requestUtils = {
       case '/porcess-log': return '处理存档完成'
       default: '未知存档事件'
     }
-  },
-}
-
-export const request = {
-  fetch: (apiVerison, commandType, command, query, options) => {
-    return fetch(`${apiVerison}${commandType}${command}${query}`, options)
-    .then(response => {
-      return response.json()
-    })
-    .catch(error => {
-      eventListener.emit("notice:error", requestUtils.praseFetchError(error.name))
-      throw error
-    })
-    .then(result => {
-      if (result.code === 200) {
-        return result.data
-      } else {
-        throw new Error(result.message);
-      };
-    })
-  },
-  GET: (apiVerison, commandType, command, query) => {
-    query = query.replace(/[\s\n\r]/g, '')
-    return request.fetch(apiVerison, commandType, command, query, {})
-  },
-  POST: (apiVerison, commandType, command, body) => {
-    return request.fetch(apiVerison, commandType, command, '', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-  },
-  send: (requestType, apiVerison, commandType, command, information) => {
-  
-    if (requestType === 'GET') {
-      return request.GET(apiVerison, commandType, command, information)
-    } 
-    if (requestType === 'POST') {
-      return request.POST(apiVerison, commandType, command, information)
-    }
-  },
-  v1Send: (requestType, commandType, command, information) => {
-    return request.send(requestType, '/api/v1/chat', commandType, command, information)
-  },
-
-  saveSend: (requestType, command, information) => {
-    if (command !== '/list') {
-      eventListener.emit("notice:loading", requestUtils.praseSaveLoading(command))
-    }
-   return request.v1Send(requestType, "/history", command, information)
-   .then(data => {
-      if (command !== '/list') {
-        eventListener.emit("notice:success", requestUtils.praseSaveSuccess(command))
-      }
-      return data
-   })
-   .catch(error => {
-      if (command !== '/list') {
-        eventListener.emit("notice:error", requestUtils.praseSaveError(command))
-      }
-      throw error
-   })
-  },
-  saveList: (userId, page, pageSize) => {
-    return request.saveSend('GET', '/list', `
-      ?user_id=${userId}
-      &page=${page}
-      &page_size=${pageSize}
-    `)
-  },
-  saveLoad: (userId, convoId) => {
-    return request.saveSend('GET', '/load', `
-      ?user_id=${userId}
-      &conversation_id=${convoId}
-    `)
-  },
-  saveSave: (userId, convoId) => {
-    return request.saveSend('POST', '/save', {
-      user_id: userId,
-      conversation_id: convoId,
-    })
-  },
-  saveDelete: (userId, convoId) => {
-    return request.saveSend('POST', '/delete', {
-      user_id: userId,
-      conversation_id: convoId,
-    })
-  },
-  saveCreate: (userId, title) => {
-    return request.saveSend('POST', '/create', {
-      user_id: userId,
-      title: title,
-    })
-  },
-  saveInput: (userId, text, file) => {
-    return request.saveSend('POST', '/process-log', {
-      filename: file.name,
-      content: text,
-      user_id: userId,
-    })
-  },
-  // saveOutput: () => {
-  //   return request.saveSend()
-  // }
-
-  infoSend: (requestType, command, information) => {
-   return request.v1Send(requestType, "/info", command, information)
-  },
-  infoGet: (userId) =>  {
-    return request.infoSend('GET', '', `
-      ?user_id=${userId}
-    `)
-  },
-
-  backmusicSend: (requestType, command, information) => {
-   return request.v1Send(requestType, "/back-music", command, information)
-  },
-  backmusicList: () =>  {
-    return request.infoSend('GET', 'list', '')
   },
 }
