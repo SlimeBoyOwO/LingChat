@@ -5,6 +5,117 @@ from typing import List, Dict
 
 class Function:
     @staticmethod
+    def detect_language(text):
+        """
+        判断输入文本是中文还是日文
+        
+        参数:
+            text (str): 要检测的文本
+            
+        返回:
+            str: "Chinese", "Japanese" 或 "Unknown"
+        """
+        chinese_ranges = [
+            (0x4E00, 0x9FFF),    # 基本汉字
+            (0x3400, 0x4DBF),    # 扩展A
+            (0x20000, 0x2A6DF),  # 扩展B
+            (0x2A700, 0x2B73F),  # 扩展C
+            (0x2B740, 0x2B81F),  # 扩展D
+            (0x2B820, 0x2CEAF),  # 扩展E
+            (0xF900, 0xFAFF),    # 兼容汉字
+            (0x3300, 0x33FF),    # 兼容符号
+        ]
+        
+        japanese_ranges = [
+            (0x3040, 0x309F),    # 平假名
+            (0x30A0, 0x30FF),    # 片假名
+            (0x31F0, 0x31FF),    # 片假名音标扩展
+            (0xFF65, 0xFF9F),    # 半角片假名
+        ]
+        
+        chinese_count = 0
+        japanese_count = 0
+        
+        for char in text:
+            code = ord(char)
+            
+            for start, end in chinese_ranges:
+                if start <= code <= end:
+                    chinese_count += 1
+                    break
+                    
+            for start, end in japanese_ranges:
+                if start <= code <= end:
+                    japanese_count += 1
+                    break
+        
+        if chinese_count > 0 and japanese_count == 0:
+            return "Chinese_ABS"
+        elif japanese_count < chinese_count:
+            return "Chinese"
+        else:
+            return "Japanese"
+        
+    @staticmethod
+    def fix_ai_generated_text(text: str) -> str:
+        """规范化带有情绪标签的文本，修正不符合格式的部分"""
+        # 首先使用原函数的正则表达式分割文本
+        emotion_segments = re.findall(r'(【(.*?)】)([^【】]*)', text)
+        
+        if not emotion_segments:
+            return text  # 如果没有找到任何情绪标签，返回原文本
+        
+        normalized_parts = []
+        
+        for full_tag, emotion_tag, following_text in emotion_segments:
+            following_text = following_text.replace('(', '（').replace(')', '）')
+            
+            # 提取日语部分和动作文本（与原函数一致）
+            japanese_match = re.search(r'<(.*?)>', following_text)
+            japanese_text = japanese_match.group(1).strip() if japanese_match else ""
+            
+            motion_match = re.search(r'（(.*?)）', following_text)
+            motion_text = motion_match.group(1).strip() if motion_match else ""
+            
+            cleaned_text = re.sub(r'<.*?>|（.*?）', '', following_text).strip()
+            
+            # 如果日语文本存在，移除其中的动作标注
+            if japanese_text:
+                japanese_text = re.sub(r'（.*?）', '', japanese_text).strip()
+            
+            # 检查是否需要交换日语和中文文本
+            if japanese_text and cleaned_text:
+                try:
+                    lang_jp = Function.detect_language(japanese_text)
+                    lang_clean = Function.detect_language(cleaned_text)
+                    
+                    if (lang_jp in ['Chinese', 'Chinese_ABS'] and 
+                        lang_clean in ['Japanese', 'Chinese'] and 
+                        lang_clean != 'Chinese_ABS'):
+                        # 交换位置
+                        cleaned_text, japanese_text = japanese_text, cleaned_text
+                except Exception as e:
+                    print(f"语言检测错误: {e}")
+            
+            # 重建规范化后的文本部分
+            normalized_part = full_tag
+            if cleaned_text:
+                normalized_part += cleaned_text
+            if japanese_text:
+                normalized_part += f"<{japanese_text}>"
+            if motion_text:
+                normalized_part += f"（{motion_text}）"
+            
+            # 检查是否有有效内容（至少要有情绪标签和中文部分）
+            if cleaned_text or (japanese_text and not cleaned_text):
+                normalized_parts.append(normalized_part)
+        
+        # 重新组合规范化后的文本
+        return "".join(normalized_parts)
+
+
+
+    @staticmethod
     def parse_enhanced_txt(file_path):
         """
         解析settings.txt，包含里面的全部信息并且附带文件路径。

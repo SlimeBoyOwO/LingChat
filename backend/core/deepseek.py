@@ -137,7 +137,7 @@ class DeepSeek:
             logger.info("用户请求终止程序")
             return "程序终止"
             
-        messages.append({"role": "user", "content": user_input})
+        # messages.append({"role": "user", "content": user_input})
         
         # 使用RAG增强上下文
         current_context = messages.copy()
@@ -233,7 +233,8 @@ class DeepSeek:
                 )
                 ai_response = response.choices[0].message.content
             
-            messages.append({"role": "assistant", "content": ai_response})
+            # TODO 在传入给ai之前，最好先检验一下这个对话是否是健全的
+            # messages.append({"role": "assistant", "content": ai_response})
             
             # 如果启用了RAG系统，保存本次会话到RAG历史记录
             if self.use_rag and self.rag_system:
