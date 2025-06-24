@@ -10,6 +10,13 @@ ai_subtitle = Slime Studio
 user_name = 莱姆
 user_subtitle = Bilibili
 speaker_id = 4
+thinking_message = 灵灵正在思考中...
+
+scale = 1.0
+offset = 0
+
+bubble_top = 5
+bubble_left = 20
 
 system_prompt = """
 以下是你的人设：
