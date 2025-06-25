@@ -15,6 +15,7 @@ export class UIController {
     this.ai_subtitle = "Slime Studio";
     this.user_name = "可爱的你";
     this.user_subtitle = "Bilibili";
+    this.think_message = "灵灵正在思考ing...";
 
     this.userId = 1;
     this.character_id = 1;
@@ -46,10 +47,15 @@ export class UIController {
       this.user_name = data.user_name;
       this.user_subtitle = data.user_subtitle;
       this.character_id = data.character_id;
+      this.think_message = result.data.thinking_message;
 
       // 动态设置 transform 和 transform-origin
       DOM.avatar.img.style.transform = `scale(${data.scale})`; // 调整缩放
       DOM.avatar.img.style.transformOrigin = `center ${data.offset}%`; // 调整放大基准点
+
+      // 设置bubble的css样式中的top和left
+      DOM.avatar.bubble.style.top = `${data.bubble_top}%`;
+      DOM.avatar.bubble.style.left = `${data.bubble_left}%`;
 
       this.resetAvatar();
 
@@ -135,7 +141,7 @@ export class UIController {
         DOM.input.disabled = true;
         DOM.input.value = "";
         this.emotionSystem.setEmotion("AI思考");
-        DOM.input.placeholder = "灵灵正在思考...";
+        DOM.input.placeholder = this.think_message;
         DOM.avatar.title.textContent = this.ai_name;
         DOM.avatar.subtitle.textContent = this.ai_subtitle;
         DOM.avatar.emotion.textContent = "";
