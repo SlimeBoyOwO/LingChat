@@ -8,16 +8,35 @@ from fastapi import FastAPI, Request
 
 from py_ling_chat.api.chat_history import router as chat_history_router
 from py_ling_chat.api.chat_info import router as chat_info_router
+from py_ling_chat.api.chat_character import router as chat_character_router
 from py_ling_chat.api.chat_main import websocket_endpoint
 from py_ling_chat.api.chat_music import router as chat_music_router
 from py_ling_chat.api.frontend_routes import router as frontend_router, get_static_files
-from py_ling_chat.core.logger import logger
+from py_ling_chat.core.logger import logger, TermColors
+from py_ling_chat.database import init_db
+from py_ling_chat.database.character_model import CharacterModel
 from py_ling_chat.utils.runtime_path import static_path, user_data_path
 
 load_dotenv()
 load_dotenv(user_data_path / ".env")  # 加载用户数据目录下的环境变量
 
 app = FastAPI()
+
+def init_system():
+    try:
+        logger.info("正在初始化数据库...")
+        init_db()
+
+        logger.info("正在同步游戏角色数据...")
+        charaModel = CharacterModel()
+        charaModel.sync_characters_from_game_data("game_data")
+
+        logger.stop_loading_animation(success=True, final_message="应用加载成功")
+
+    except (ImportError, Exception) as e:
+        logger.error(f"应用启动时发生严重错误: {e}", exc_info=True)
+        logger.stop_loading_animation(success=False, final_message="应用加载失败，程序将退出")
+        raise e
 
 
 @app.middleware("http")
@@ -34,12 +53,14 @@ app.include_router(chat_history_router)
 app.include_router(chat_info_router)
 app.include_router(frontend_router)
 app.include_router(chat_music_router)
+app.include_router(chat_character_router)
 
 app.websocket("/ws")(websocket_endpoint)
 
 # 静态文件服务
 frontend_dir = static_path.resolve()
 app.mount("/", get_static_files(), name="static")  # 托管静态文件
+logger.info_color("所有组件初始化完毕，服务器准备就绪。", color=TermColors.CYAN)
 
 
 def print_logo():
