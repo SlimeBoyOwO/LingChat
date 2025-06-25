@@ -1,5 +1,6 @@
 import { DOM } from "../../ui/dom.js";
 import { DomUtils } from "../../utils/dom-utils.js";
+import request from "../../core/request.js";
 
 export class CharacterController {
   constructor(ui_controller) {
@@ -57,16 +58,11 @@ export class CharacterController {
     );
   }
 
-  async fetchCharacters() {
-    try {
-      const response = await fetch("/api/v1/chat/character/get_all_characters");
-      if (!response.ok)
-        throw new Error(`HTTP error! status: ${response.status}`);
-
-      const data = await response.json();
-
+  fetchCharacters() {
+    return request.characterGetAll()
+    .then(list => {
       // 处理角色数据并生成头像URL
-      return data.data.map((char) => ({
+      return list.map((char) => ({
         id: char.character_id,
         title: char.title,
         info: char.info || "暂无角色描述",
@@ -77,10 +73,11 @@ export class CharacterController {
             )}`
           : "../pictures/characters/default.png",
       }));
-    } catch (error) {
+    })
+    .catch(error => {
       console.error("获取角色列表失败:", error);
       return [];
-    }
+    })
   }
 
   renderCharacters(characters) {
@@ -105,36 +102,13 @@ export class CharacterController {
   }
 
   async selectCharacter(characterId) {
-    try {
-      // 1. 发送POST请求切换角色
-      const response = await fetch("/api/v1/chat/character/select_character", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          user_id: this.userId,
-          character_id: characterId,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-
-      // 2. 更新UI选中状态
+    return request.characterSelect(this.userId, characterId)
+    .then(character => {
       this.updateSelectedStatus(characterId);
-
-      // 3. 可以在这里更新当前显示的角色信息
-      await this.ui_controller.getAndApplyAIInfo();
-
-      // 4. (可选) 显示成功通知
-    } catch (error) {
+      return this.ui_controller.getAndApplyAIInfo();
+    })
+    .catch(error => {
       console.error("切换角色失败:", error);
-
-      // (可选) 显示错误通知
-    }
+    })
   }
 }
