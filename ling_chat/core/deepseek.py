@@ -4,7 +4,7 @@ import os
 import json
 import copy
 from datetime import datetime
-from py_ling_chat.core.logger import logger
+from ling_chat.core.logger import logger
 from dotenv import load_dotenv
 import requests
 

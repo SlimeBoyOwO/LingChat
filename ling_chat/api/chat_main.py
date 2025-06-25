@@ -1,8 +1,8 @@
 import json
 import asyncio
 from fastapi import WebSocket, WebSocketDisconnect
-from py_ling_chat.core.logger import logger
-from py_ling_chat.core.service_manager import service_manager
+from ling_chat.core.logger import logger
+from ling_chat.core.service_manager import service_manager
 
 class WebSocketManager:
     async def handle_websocket(self, websocket: WebSocket):

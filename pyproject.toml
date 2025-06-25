@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "py-ling-chat"
+name = "ling-chat"
 version = "0.1.0"
 description = ""
 authors = ["0x00-pl <0x00.pl@gmail.com>"]
@@ -35,6 +35,9 @@ openai = "^1.85.0"
 platformdirs = "^4.3.8"
 python-multipart = "^0.0.20"
 websockets = "^15.0.1"
+mcp = "^1.9.4"
+fastmcp = "^2.9.0"
+mss = "^10.0.0"
 
 #[tool.poetry.group.vits.dependencies]
 #logzero = "^1.7.0"
@@ -69,9 +72,6 @@ websockets = "^15.0.1"
 #phonemizer = "3.2.1"
 #eunjeon = {version = "^0.4.0", source = "artrajz", markers = "sys_platform == 'win32'"}
 #python_mecab_ko = {version = "*", markers = "sys_platform != 'win32'"}
-mcp = "^1.9.4"
-fastmcp = "^2.9.0"
-mss = "^10.0.0"
 
 [build-system]
 requires = ["poetry-core"]

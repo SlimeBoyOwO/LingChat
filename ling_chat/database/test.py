@@ -1,4 +1,4 @@
-from py_ling_chat.database.conversation_model import ConversationModel
+from ling_chat.database.conversation_model import ConversationModel
 
 # example_messages = [
 #     {"role": "system", "content": "你是一个狼娘"},

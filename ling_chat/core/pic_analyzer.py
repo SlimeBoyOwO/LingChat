@@ -5,7 +5,7 @@ from io import BytesIO
 from datetime import datetime
 # from PIL import ImageGrab
 from dotenv import load_dotenv
-from py_ling_chat.core.logger import logger
+from ling_chat.core.logger import logger
 import requests
 import json
 

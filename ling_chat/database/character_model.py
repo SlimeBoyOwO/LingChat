@@ -1,7 +1,7 @@
 from typing import List, Dict, Optional
 import os
-from py_ling_chat.utils.function import Function
-from py_ling_chat.database import get_db_connection
+from ling_chat.utils.function import Function
+from ling_chat.database import get_db_connection
 
 
 class CharacterModel:

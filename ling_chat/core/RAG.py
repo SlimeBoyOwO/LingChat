@@ -6,7 +6,7 @@ import re
 import torch
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional, Any
-from py_ling_chat.core.logger import logger, TermColors
+from ling_chat.core.logger import logger, TermColors
 
 _sentence_transformer_imported_ok = True
 _chromadb_imported_ok = True

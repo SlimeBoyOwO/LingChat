@@ -2,8 +2,8 @@ import aiohttp
 import asyncio
 import os
 from pathlib import Path
-from py_ling_chat.core.logger import logger, TermColors
-from py_ling_chat.utils.runtime_path import temp_path
+from ling_chat.core.logger import logger, TermColors
+from ling_chat.utils.runtime_path import temp_path
 
 
 class VitsTTS:

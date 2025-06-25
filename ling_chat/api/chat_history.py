@@ -3,11 +3,11 @@
 from fastapi import APIRouter, Query, HTTPException, Request
 from typing import List
 from datetime import datetime
-from py_ling_chat.database.user_model import UserModel, UserConversationModel
-from py_ling_chat.database.character_mode import CharacterModel
-from py_ling_chat.database.conversation_model import ConversationModel
-from py_ling_chat.core.service_manager import service_manager
-from py_ling_chat.utils.function import Function
+from ling_chat.database.user_model import UserModel, UserConversationModel
+from ling_chat.database.character_mode import CharacterModel
+from ling_chat.database.conversation_model import ConversationModel
+from ling_chat.core.service_manager import service_manager
+from ling_chat.utils.function import Function
 
 router = APIRouter(prefix="/api/v1/chat/history", tags=["Chat History"])
 
