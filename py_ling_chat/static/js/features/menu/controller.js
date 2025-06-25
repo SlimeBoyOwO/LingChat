@@ -11,6 +11,7 @@ export class MenuController {
     this.domUtils = DomUtils;
     this.uiController = uiController;
     this.typeWriter = new TypeWriter(DOM.text.testMessage);
+    this.typeWriter.setSoundEnabled(false);
     this.init();
   }
 
