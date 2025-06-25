@@ -5,7 +5,7 @@ from py_ling_chat.database.database import get_db_connection, Role
 
 class ConversationModel:
     @staticmethod
-    def create_conversation(user_id: int, messages: List[Dict[str, str]], title: Optional[str] = None) -> int:
+    def create_conversation(user_id: int, messages: List[Dict[str, str]], character_id: int, title: Optional[str] = None) -> int:
         """
         将完整对话插入数据库
         :param user_id: 所属用户ID
@@ -32,8 +32,8 @@ class ConversationModel:
         try:
             # 1. 插入对话
             cursor.execute(
-                "INSERT INTO conversations (title, owned_user) VALUES (?, ?)",
-                (title, user_id)
+                "INSERT INTO conversations (title, owned_user, character) VALUES (?, ?, ?)",
+                (title, user_id, character_id)
             )
             conversation_id = cursor.lastrowid
             
@@ -292,7 +292,22 @@ class ConversationModel:
             raise e
         finally:
             conn.close()
-    
+
+    @staticmethod
+    def get_conversation_character(conversation_id: int) -> int:
+        conn = get_db_connection()
+        try:
+            cursor = conn.execute(
+                "SELECT character from conversations where id = ?",
+                (conversation_id,)
+            )
+            result = cursor.fetchone()
+            if result is None:
+                return None
+            return result[0]
+        finally:
+            conn.close()
+
     @staticmethod
     def delete_conversation(conversation_id: int) -> bool:
         """

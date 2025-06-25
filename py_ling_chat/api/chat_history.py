@@ -3,7 +3,8 @@
 from fastapi import APIRouter, Query, HTTPException, Request
 from typing import List
 from datetime import datetime
-from py_ling_chat.database.user_model import UserConversationModel
+from py_ling_chat.database.user_model import UserModel, UserConversationModel
+from py_ling_chat.database.character_mode import CharacterModel
 from py_ling_chat.database.conversation_model import ConversationModel
 from py_ling_chat.core.service_manager import service_manager
 from py_ling_chat.utils.function import Function
@@ -29,7 +30,12 @@ async def list_user_conversations(user_id: int, page: int = 1, page_size: int = 
 async def load_user_conversations(user_id: int, conversation_id: int):
     try:
         result = ConversationModel.get_conversation_messages(conversation_id=conversation_id)
+        character_id = ConversationModel.get_conversation_character(conversation_id=conversation_id)
         if(result != None):
+            UserModel.update_user_character(user_id=user_id, character_id=character_id)
+            settings = CharacterModel.get_character_settings_by_id(character_id=character_id)
+            settings["character_id"] = character_id
+            service_manager.ai_service.import_settings(settings)
             service_manager.ai_service.load_memory(result)
             print("成功调用记忆存储")
             return {
@@ -68,11 +74,15 @@ async def create_user_conversations(request: Request):
         messages = service_manager.ai_service.get_memory()
         if not messages:  # 处理空消息情况
             print("消息记录是空的，请检查错误！！！！！！！！")
+
+        # 获取这个对话的角色
+        character_id = service_manager.ai_service.character_id
         
         # 创建对话
         conversation_id = ConversationModel.create_conversation(
             user_id=user_id,
             messages=messages,
+            character_id=character_id,
             title=title
         )
         
