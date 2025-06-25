@@ -31,8 +31,11 @@ async def init_web_infos(user_id: int):
             "user_name": ai_service.user_name,
             "user_subtitle": ai_service.user_subtitle,
             "character_id": ai_service.character_id,
+            "thinking_message": ai_service.settings.get("thinking_message", "灵灵正在思考中..."),
             "scale": ai_service.settings.get("scale",1.0),
-            "offset": ai_service.settings.get("offset",0)
+            "offset": ai_service.settings.get("offset",0),
+            "bubble_top": ai_service.settings.get("bubble_top", 5),
+            "bubble_left": ai_service.settings.get("bubble_left", 20)
         }
         return {
             "code": 200,
