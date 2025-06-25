@@ -3,6 +3,9 @@ class Request {
   constructor() {
     this.fetch = (url, options = {}) => {
       return fetch(url, options)
+      .catch(error => {
+        console.error(error)
+      })
       .then(message => {
         if (message.ok) {
           return message.json()
@@ -27,9 +30,43 @@ class Request {
           body: JSON.stringify(information),
         })
       }
+      if (method === 'DELETE') {
+        url = new URL(url, window.location)
+        const search = url.searchParams
+        for (const key in information) {
+          search.append(key, information[key])
+        }
+        return this.fetch(url, {method: 'DELETE'})
+      }
     }
   }
   
+  configGet() {
+    return this.send(
+      'GET',
+      '/api/settings/config',
+      {}
+    )
+    .then(result => {
+      return result
+    })
+    .catch(result => {
+      throw new Error('无法加载配置')
+    })
+  }
+  configSet(formData) {
+    return this.send(
+      'POST',
+      '/api/settings/config',
+      formData
+    )
+    .then(result => {
+      return
+    })
+    .catch(result => {
+      throw new Error(result.detail)
+    })
+  }
   characterGetAll() {
     return this.send(
       'GET',
@@ -191,11 +228,11 @@ class Request {
     })
   }
 
-  backmusicUpload() {
+  backmusicUpload(formData) {
     return this.send(
       'POST',
       '/api/v1/chat/back-music/upload',
-      {}
+      formData
     )
     .then(result => {
       return
@@ -206,10 +243,10 @@ class Request {
   }
   backmusicDelete(url) {
     return this.send(
-      'Delete',
+      'DELETE',
       '/api/v1/chat/back-music/delete',
       {
-        url: url,
+        url: encodeURI(url),
       }
     )
     .then(result => {
