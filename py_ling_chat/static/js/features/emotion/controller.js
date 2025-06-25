@@ -20,7 +20,7 @@ export class EmotionController {
    */
   setEmotion(emotion, { force = false } = {}) {
     if (!EMOTION_CONFIG[emotion]) {
-      console.warn(`未知表情: ${emotion}`);
+      console.log(`未知表情: ${emotion}`);
       return;
     }
 
@@ -31,7 +31,31 @@ export class EmotionController {
 
     // 更新头像图片
     if (config.avatar && config.avatar !== "none") {
-      DOM.avatar.img.src = config.avatar;
+      try {
+        // 显示加载状态
+        DOM.avatar.img.classList.add("loading");
+
+        // 创建新的Image对象预加载
+        const img = new Image();
+        img.onload = () => {
+          // 加载完成后替换src
+          DOM.avatar.img.src = img.src;
+          DOM.avatar.img.classList.remove("loading");
+        };
+        img.onerror = () => {
+          console.log(`加载头像失败: ${config.avatar}`);
+          DOM.avatar.img.classList.remove("loading");
+          // 可以设置一个默认头像
+          DOM.avatar.img.src = "/api/v1/chat/character/get_avatar/正常.png";
+        };
+
+        // 添加时间戳防止缓存
+        const timestamp = Date.now();
+        img.src = `${config.avatar}?t=${timestamp}`;
+      } catch (error) {
+        console.error("设置表情头像时出错:", error);
+        DOM.avatar.img.classList.remove("loading");
+      }
     }
 
     // 处理动画效果

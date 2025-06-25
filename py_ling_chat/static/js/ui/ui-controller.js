@@ -14,8 +14,10 @@ export class UIController {
     this.ai_subtitle = "Slime Studio";
     this.user_name = "可爱的你";
     this.user_subtitle = "Bilibili";
+    this.think_message = "灵灵正在思考ing...";
 
     this.userId = 1;
+    this.character_id = 1;
 
     // 绑定实例方法
     this.handleSend = this.handleSend.bind(this);
@@ -35,10 +37,11 @@ export class UIController {
     document?.removeEventListener("keypress", this.handleKeyPress);
   }
 
+  // 这里是整个ui初始化的地方，务必重视
   async getAndApplyAIInfo() {
     try {
       const response = await fetch(
-        `/api/v1/chat/info/names?user_id=${this.userId}`
+        `/api/v1/chat/info/init?user_id=${this.userId}`
       );
       const result = await response.json();
 
@@ -50,9 +53,18 @@ export class UIController {
       this.ai_subtitle = result.data.ai_subtitle;
       this.user_name = result.data.user_name;
       this.user_subtitle = result.data.user_subtitle;
+      this.character_id = result.data.character_id;
+      this.think_message = result.data.thinking_message;
 
-      DOM.avatar.title.textContent = this.user_name;
-      DOM.avatar.subtitle.textContent = this.user_subtitle;
+      // 动态设置 transform 和 transform-origin
+      DOM.avatar.img.style.transform = `scale(${result.data.scale})`; // 调整缩放
+      DOM.avatar.img.style.transformOrigin = `center ${result.data.offset}%`; // 调整放大基准点
+
+      // 设置bubble的css样式中的top和left
+      DOM.avatar.bubble.style.top = `${result.data.bubble_top}%`;
+      DOM.avatar.bubble.style.left = `${result.data.bubble_left}%`;
+
+      this.resetAvatar();
 
       // 发送事件，方便其他地方监听
       EventBus.emit("ui:name-updated", {
@@ -66,12 +78,26 @@ export class UIController {
     }
   }
 
+  resetAvatar() {
+    DOM.avatar.title.textContent = this.user_name;
+    DOM.avatar.subtitle.textContent = this.user_subtitle;
+
+    this.emotionSystem.setEmotion("正常", { force: true });
+    DOM.image.kousanPreviewImg.src =
+      "/api/v1/chat/character/get_avatar/正常.png";
+  }
+
   bindEventListeners() {
     DOM.sendBtn?.addEventListener("click", this.handleSend);
     document?.addEventListener("keypress", this.handleKeyPress);
   }
 
   setupGlobalHandlers() {
+    // 更新角色和信息事件
+    EventBus.on("system:character_updated", () => {
+      this.getAndApplyAIInfo();
+    });
+
     // 接受消息事件
     EventBus.on("chat:message", (data) => {
       DOM.input.placeholder = "";
@@ -94,11 +120,13 @@ export class UIController {
       }
 
       // 处理音频
-      if (data.audioFile) {
+      if (data.audioFile && data.audioFile !== "none") {
+        this.writer.setSoundEnabled(false);
         DOM.audioPlayer.src = `../audio/${data.audioFile}`;
-        console.log(`语音的路径是：../audio/${data.audioFile}`);
         DOM.audioPlayer.load();
         DOM.audioPlayer.play();
+      } else {
+        this.writer.setSoundEnabled(true);
       }
     });
 
@@ -119,7 +147,7 @@ export class UIController {
         DOM.input.disabled = true;
         DOM.input.value = "";
         this.emotionSystem.setEmotion("AI思考");
-        DOM.input.placeholder = "灵灵正在思考...";
+        DOM.input.placeholder = this.think_message;
         DOM.avatar.title.textContent = this.ai_name;
         DOM.avatar.subtitle.textContent = this.ai_subtitle;
         DOM.avatar.emotion.textContent = "";
