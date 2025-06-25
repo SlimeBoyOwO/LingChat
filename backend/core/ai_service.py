@@ -9,10 +9,11 @@ from datetime import datetime, timedelta
 from .deepseek import DeepSeek
 from .predictor import EmotionClassifier  # 导入情绪分类器
 from .VitsTTS import VitsTTS              # 导入语音生成
-from .langDetect import LangDetect
 from .logger import logger, TermColors
 from .dialog_logger import DialogLogger
 from .pic_analyzer import DesktopAnalyzer
+
+from utils.function import Function
 
 TEMP_VOICE_DIR = "../public/audio"
 WS_HOST = "localhost"
@@ -30,7 +31,6 @@ class AIService:
         """初始化所有服务组件"""
         self.deepseek = DeepSeek()
         self.emotion_classifier = EmotionClassifier()
-        self.lang_detector = LangDetect()
         self.dialog_logger = DialogLogger()
         self.desktop_analyzer = DesktopAnalyzer()
         self._prepare_directories()
@@ -129,7 +129,7 @@ class AIService:
             sys_time_part = f"{formatted_time} "
         
         if "看桌面" in user_message or "看看我的桌面" in user_message:
-            analyze_prompt = "\"" + user_message + "\"" + "以上是用户发的消息，请你根据以上消息，获取桌面画面中的重点内容，用100字描述"
+            analyze_prompt = "\"" + user_message + "\"" + "以上是用户发的消息，请切合用户实际获取信息的需要，获取桌面画面中的重点内容，用200字描述主体部分即可。"
             analyze_info = self.desktop_analyzer.analyze_desktop(analyze_prompt)
             sys_desktop_part = f"桌面信息: {analyze_info}"
         
@@ -151,7 +151,13 @@ class AIService:
 
         try:
             # 1. 获取AI回复
+            self.messages.append({"role": "user", "content": processed_user_message})
             ai_response = self.deepseek.process_message(self.messages, processed_user_message)
+
+            # 1.5 修复ai回复中可能出错的部分，防止下一次对话被带歪
+            ai_response = Function.fix_ai_generated_text(ai_response)
+            self.messages.append({"role": "assistant", "content": ai_response})
+
             self._log_conversation("用户", processed_user_message)
             self._log_conversation("钦灵", ai_response)
             
@@ -290,8 +296,8 @@ class AIService:
 
             try:
                 if japanese_text and cleaned_text:
-                    lang_jp = self.lang_detector.detect_language(japanese_text)
-                    lang_clean = self.lang_detector.detect_language(cleaned_text)
+                    lang_jp = Function.detect_language(japanese_text)
+                    lang_clean = Function.detect_language(cleaned_text)
 
                     if (lang_jp in ['Chinese', 'Chinese_ABS'] and lang_clean in ['Japanese', 'Chinese']) and \
                         lang_clean != 'Chinese_ABS':

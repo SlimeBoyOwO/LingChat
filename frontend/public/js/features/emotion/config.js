@@ -13,7 +13,7 @@ export const EMOTION_CONFIG = {
     bubbleImage: "../pictures/animation/高兴.webp",
     bubbleClass: "happy",
     audio: "../audio_effects/喜悦.wav",
-    avatar: `${API_CONFIG.AVATAR.BASE}/高兴或自信.png`,
+    avatar: `${API_CONFIG.AVATAR.BASE}/高兴.png`,
   },
   担心: {
     animation: "none",
@@ -34,7 +34,7 @@ export const EMOTION_CONFIG = {
     bubbleImage: "../pictures/animation/紧张.webp",
     bubbleClass: "none",
     audio: "../audio_effects/尴尬.wav",
-    avatar: `${API_CONFIG.AVATAR.BASE}/尴尬或紧张.png`,
+    avatar: `${API_CONFIG.AVATAR.BASE}/紧张.png`,
   },
   害怕: {
     animation: "none",
@@ -97,7 +97,7 @@ export const EMOTION_CONFIG = {
     bubbleImage: "../pictures/animation/心动.webp",
     bubbleClass: "none",
     audio: "../audio_effects/喜爱.wav",
-    avatar: `${API_CONFIG.AVATAR.BASE}/害羞.png`,
+    avatar: `${API_CONFIG.AVATAR.BASE}/心动.png`,
   },
   调皮: {
     animation: "naughty-bounce",
@@ -111,21 +111,21 @@ export const EMOTION_CONFIG = {
     bubbleImage: "../pictures/animation/难为情.webp",
     bubbleClass: "none",
     audio: "../audio_effects/察觉.wav",
-    avatar: `${API_CONFIG.AVATAR.BASE}/难为情.png`,
+    avatar: `${API_CONFIG.AVATAR.BASE}/羞耻.png`,
   },
   自信: {
     animation: "none",
     bubbleImage: "../pictures/animation/高兴.webp",
     bubbleClass: "none",
     audio: "../audio_effects/愉快.wav",
-    avatar: `${API_CONFIG.AVATAR.BASE}/高兴或自信.png`,
+    avatar: `${API_CONFIG.AVATAR.BASE}/自信.png`,
   },
   惊讶: {
     animation: "none",
     bubbleImage: "../pictures/animation/惊讶.webp",
     bubbleClass: "none",
     audio: "../audio_effects/察觉.wav",
-    avatar: `${API_CONFIG.AVATAR.BASE}/害怕.png`,
+    avatar: `${API_CONFIG.AVATAR.BASE}/惊讶.png`,
   },
   正常: {
     animation: "none",
