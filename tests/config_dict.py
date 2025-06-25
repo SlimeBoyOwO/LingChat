@@ -6,9 +6,9 @@ import os
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from py_ling_chat.core.memory_rag.vector.vector_store import get_default_vector_config
-from py_ling_chat.core.memory_rag.graph.graph_store import get_default_graph_config
-from py_ling_chat.core.memory_client import _parse_environment_variables
+from ling_chat.core.memory_rag.vector.vector_store import get_default_vector_config
+from ling_chat.core.memory_rag.graph.graph_store import get_default_graph_config
+from ling_chat.core.memory_client import _parse_environment_variables
 
 def main():
     # Get the default vector configuration

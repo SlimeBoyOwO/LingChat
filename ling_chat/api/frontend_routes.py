@@ -3,7 +3,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import os
 
-from py_ling_chat.utils.runtime_path import package_root, static_path
+from ling_chat.utils.runtime_path import package_root, static_path
 
 router = APIRouter()
 

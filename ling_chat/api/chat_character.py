@@ -1,11 +1,11 @@
 import os
 from fastapi import APIRouter, Body, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
-from core.service_manager import service_manager
-from database.character_model import CharacterModel
-from database.user_model import UserModel
-from utils.function import Function
-from core.logger import logger
+from ling_chat.core.service_manager import service_manager
+from ling_chat.database.character_model import CharacterModel
+from ling_chat.database.user_model import UserModel
+from ling_chat.utils.function import Function
+from ling_chat.core.logger import logger
 
 router = APIRouter(prefix="/api/v1/chat/character", tags=["Chat Character"])
 

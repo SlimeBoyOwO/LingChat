@@ -6,14 +6,14 @@ import json, copy
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 
-from py_ling_chat.core.deepseek import DeepSeek
-from py_ling_chat.core.predictor import EmotionClassifier  # 导入情绪分类器
-from py_ling_chat.core.VitsTTS import VitsTTS  # 导入语音生成
-from py_ling_chat.core.logger import logger, TermColors
-from py_ling_chat.core.dialog_logger import DialogLogger
-from py_ling_chat.core.pic_analyzer import DesktopAnalyzer
+from ling_chat.core.deepseek import DeepSeek
+from ling_chat.core.predictor import EmotionClassifier  # 导入情绪分类器
+from ling_chat.core.VitsTTS import VitsTTS  # 导入语音生成
+from ling_chat.core.logger import logger, TermColors
+from ling_chat.core.dialog_logger import DialogLogger
+from ling_chat.core.pic_analyzer import DesktopAnalyzer
 
-from py_ling_chat.core.utils.function import Function
+from ling_chat.core.utils.function import Function
 
 TEMP_VOICE_DIR = "../public/audio"
 WS_HOST = "localhost"

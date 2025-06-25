@@ -1,4 +1,4 @@
-from py_ling_chat.database.database import get_db_connection
+from ling_chat.database.database import get_db_connection
 from typing import Optional, List, Dict
 import hashlib
 

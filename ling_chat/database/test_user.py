@@ -1,4 +1,4 @@
-from py_ling_chat.database.user_model import UserModel, UserConversationModel
+from ling_chat.database.user_model import UserModel, UserConversationModel
 
 # 创建用户
 # try:

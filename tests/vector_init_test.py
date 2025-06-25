@@ -6,8 +6,8 @@ import os
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from py_ling_chat.core.memory_client import _parse_environment_variables
-from py_ling_chat.core.memory_rag.vector import MemoryVector, get_default_vector_config
+from ling_chat.core.memory_client import _parse_environment_variables
+from ling_chat.core.memory_rag.vector import MemoryVector, get_default_vector_config
 
 def test_memory_vector_initialization():
     # Get the default vector configuration

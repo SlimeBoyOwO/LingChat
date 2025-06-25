@@ -4,8 +4,8 @@ import os
 import json
 from pathlib import Path
 # from .logger import log_debug, log_info, log_warning, log_error, initialize_logger, TermColors
-from py_ling_chat.core.logger import logger, TermColors
-from py_ling_chat.utils.runtime_path import package_root
+from ling_chat.core.logger import logger, TermColors
+from ling_chat.utils.runtime_path import package_root
 
 
 class EmotionClassifier:
