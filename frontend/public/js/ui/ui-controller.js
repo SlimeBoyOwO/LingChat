@@ -40,36 +40,37 @@ export class UIController {
 
   // 这里是整个ui初始化的地方，务必重视
   getAndApplyAIInfo() {
-    return request.informationGet(this.userId)
-    .then(data => {
-      this.ai_name = data.ai_name;
-      this.ai_subtitle = data.ai_subtitle;
-      this.user_name = data.user_name;
-      this.user_subtitle = data.user_subtitle;
-      this.character_id = data.character_id;
-      this.think_message = result.data.thinking_message;
+    return request
+      .informationGet(this.userId)
+      .then((data) => {
+        this.ai_name = data.ai_name;
+        this.ai_subtitle = data.ai_subtitle;
+        this.user_name = data.user_name;
+        this.user_subtitle = data.user_subtitle;
+        this.character_id = data.character_id;
+        this.think_message = data.thinking_message;
 
-      // 动态设置 transform 和 transform-origin
-      DOM.avatar.img.style.transform = `scale(${data.scale})`; // 调整缩放
-      DOM.avatar.img.style.transformOrigin = `center ${data.offset}%`; // 调整放大基准点
+        // 动态设置 transform 和 transform-origin
+        DOM.avatar.img.style.transform = `scale(${data.scale})`; // 调整缩放
+        DOM.avatar.img.style.transformOrigin = `center ${data.offset}%`; // 调整放大基准点
 
-      // 设置bubble的css样式中的top和left
-      DOM.avatar.bubble.style.top = `${data.bubble_top}%`;
-      DOM.avatar.bubble.style.left = `${data.bubble_left}%`;
+        // 设置bubble的css样式中的top和left
+        DOM.avatar.bubble.style.top = `${data.bubble_top}%`;
+        DOM.avatar.bubble.style.left = `${data.bubble_left}%`;
 
-      this.resetAvatar();
+        this.resetAvatar();
 
-      // 发送事件，方便其他地方监听
-      EventBus.emit("ui:name-updated", {
-        ai_name: this.ai_name,
-        ai_subtitle: this.ai_subtitle,
-        user_name: this.user_name,
-        user_subtitle: this.user_subtitle,
+        // 发送事件，方便其他地方监听
+        EventBus.emit("ui:name-updated", {
+          ai_name: this.ai_name,
+          ai_subtitle: this.ai_subtitle,
+          user_name: this.user_name,
+          user_subtitle: this.user_subtitle,
+        });
+      })
+      .catch((error) => {
+        console.log("读取失败", error);
       });
-    })
-    .catch(error => {
-      console.log("读取失败", error);
-    })
   }
 
   resetAvatar() {
