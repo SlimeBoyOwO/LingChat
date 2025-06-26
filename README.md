@@ -1,6 +1,5 @@
 # LingChat 带动作与情感检测的人工智能对话GalGame
-![logoasdfasdf](https://github.com/user-attachments/assets/64a38737-e7bc-40c7-ba33-37b3d38bffea)
-
+![454545644](https://github.com/user-attachments/assets/509269df-afcc-465e-8333-0dec9eb8e89e)
 ## 支持操作系统：
 
 Win10 以上，linux 请用 docker 部署，Win7 目前待测试 目前 0.2.0 版本是测试版，0.1.0 稳定但缺少游戏存读档，永久记忆，18 情绪和多最新版本功能，请自行选择
