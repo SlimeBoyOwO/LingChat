@@ -12,6 +12,7 @@ __pycache__
 
 # Ignore local env
 .venv/
+venv/
 .env
 .env.docker
 # Ignore third_party
