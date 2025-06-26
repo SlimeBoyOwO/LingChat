@@ -13,7 +13,7 @@ from ling_chat.core.logger import logger, TermColors
 from ling_chat.core.dialog_logger import DialogLogger
 from ling_chat.core.pic_analyzer import DesktopAnalyzer
 
-from ling_chat.core.utils.function import Function
+from ling_chat.utils.function import Function
 
 TEMP_VOICE_DIR = "../public/audio"
 WS_HOST = "localhost"
@@ -130,7 +130,7 @@ class AIService:
             sys_time_part = f"{formatted_time} "
 
         if "看桌面" in user_message or "看看我的桌面" in user_message:
-            analyze_prompt = "\"" + user_message + "\"" + "以上是用户发的消息，请你根据以上消息，获取桌面画面中的重点内容，用100字描述"
+            analyze_prompt = "\"" + user_message + "\"" + "以上是用户发的消息，请切合用户实际获取信息的需要，获取桌面画面中的重点内容，用200字描述主体部分即可。"
             analyze_info = self.desktop_analyzer.analyze_desktop(analyze_prompt)
             sys_desktop_part = f"桌面信息: {analyze_info}"
 

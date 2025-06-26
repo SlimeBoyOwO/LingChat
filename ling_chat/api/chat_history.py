@@ -4,7 +4,7 @@ from fastapi import APIRouter, Query, HTTPException, Request
 from typing import List
 from datetime import datetime
 from ling_chat.database.user_model import UserModel, UserConversationModel
-from ling_chat.database.character_mode import CharacterModel
+from ling_chat.database.character_model import CharacterModel
 from ling_chat.database.conversation_model import ConversationModel
 from ling_chat.core.service_manager import service_manager
 from ling_chat.utils.function import Function
