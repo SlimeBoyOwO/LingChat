@@ -4,10 +4,11 @@ from fastapi.responses import JSONResponse
 from pathlib import Path
 from typing import List, Dict
 import shutil
+from ling_chat.utils.runtime_path import static_path
 
 router = APIRouter(prefix="/api/v1/chat/back-music", tags=["Background Music"])
 
-MUSIC_DIR = Path("frontend/public/music")
+MUSIC_DIR = static_path / "music"
 ALLOWED_EXTENSIONS = {'.mp3', '.wav', '.flac', '.webm', '.weba', '.ogg', '.m4a', '.oga'}
 
 @router.get("/list", response_model=List[Dict[str, str]])

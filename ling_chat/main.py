@@ -29,7 +29,7 @@ def init_system():
 
         logger.info("正在同步游戏角色数据...")
         charaModel = CharacterModel()
-        charaModel.sync_characters_from_game_data("game_data")
+        charaModel.sync_characters_from_game_data(static_path)
 
         logger.stop_loading_animation(success=True, final_message="应用加载成功")
 
