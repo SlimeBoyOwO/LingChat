@@ -15,7 +15,7 @@ class VitsTTS:
         :param logger: 日志记录器
         """
         self.api_url = api_url or os.environ.get("VITS_API_URL", "http://127.0.0.1:23456/voice/vits")
-        self.speaker_id = speaker_id or int(os.environ.get("VITS_SPEAKER_ID", 4))
+        self.speaker_id = speaker_id or 4
         self.format = audio_format
         self.lang = lang
         self.temp_dir = Path(os.environ.get("TEMP_VOICE_DIR", "frontend/public/audio"))
@@ -98,6 +98,8 @@ class VitsTTS:
             "format": self.format,
             "lang": self.lang
         }
+
+        print(params)
 
         output_file = str(file_name) 
         try:
