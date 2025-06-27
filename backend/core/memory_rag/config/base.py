@@ -7,7 +7,8 @@ from .llms import BaseLlmConfig
 
 from .embedder_config import EmbedderConfig
 from .vector_config import VectorStoreConfig
-from .graph_config import LlmConfig, GraphStoreConfig
+from .llms import LlmConfig
+from .graph_config import GraphStoreConfig
 
 class MemoryConfig(BaseModel):
     vector_store: VectorStoreConfig = Field(
