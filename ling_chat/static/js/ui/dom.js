@@ -64,6 +64,7 @@ export const DOM = {
   text: {
     speedInput: document.getElementById("speed-option"),
     testMessage: document.getElementById("testmessage"),
+    soundEffectToggle: document.getElementById("sound-effect-toggle"),
   },
 
   // 菜单历史部分
@@ -75,6 +76,10 @@ export const DOM = {
   },
 
   // 角色部分
+  character: {
+    refreshCharactersBtn: document.getElementById("refresh-characters-btn"),
+    openWebBtn: document.getElementById("open-web-btn"),
+  },
 
   // 图像部分
   image: {

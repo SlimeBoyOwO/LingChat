@@ -120,7 +120,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     showLoader(true);
     saveStatus.textContent = "";
-
     try {
       const response = await fetch("/api/settings/config", {
         method: "POST",
@@ -133,7 +132,6 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!response.ok) {
         throw new Error(result.detail || "保存失败");
       }
-
       saveStatus.textContent = result.message;
       saveStatus.style.color = "var(--success-color)";
 
@@ -174,6 +172,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (error) {
       console.error(error);
       settingsForm.innerHTML = `<p style="color: red;">加载配置失败: ${error.message}</p>`;
+      return;
     } finally {
       showLoader(false);
     }
