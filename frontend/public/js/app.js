@@ -9,6 +9,7 @@ import { SoundController } from "./features/sound/controller.js";
 import { MenuController } from "./features/menu/controller.js";
 import { ImageController } from "./features/image/controller.js";
 import { SaveController } from "./features/save/controller.js";
+import './ui/background/controller.js'
 
 // 初始化模块
 const protocol = window.location.protocol === "https:" ? "wss" : "ws";
