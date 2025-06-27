@@ -1,5 +1,9 @@
 import { DOM } from "../../ui/dom.js";
 import { DomUtils } from "../../utils/dom-utils.js";
+import eventListener from '../../core/event-bus.js'
+import request from "../../core/request.js";
+
+
 
 export class ImageController {
   constructor() {
@@ -11,7 +15,7 @@ export class ImageController {
 
   init() {
     this.bindEvents();
-    // this.loadCustomBackgrounds();
+    this.loadCustomBackgrounds();
     this.initKuosan();
     this.updatePreviewBackground();
   }
@@ -134,8 +138,17 @@ export class ImageController {
 
   // 检查是否已存在自定义背景
   loadCustomBackgrounds() {
-    // 获取所有自定义背景
-    const customBgs = [];
+
+
+    // 暂时未接入后端先这样吧
+    const customBgs = [
+      {
+        id: 'sss',
+        name: '自定义背景',
+        dataUrl: '../pictures/icons/小猫Ling.svg',
+        timestamp: 100,
+      }
+    ];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key.startsWith("customBg_")) {
@@ -230,6 +243,7 @@ export class ImageController {
       document.body.classList.add(`bg-custom-${id}`);
 
       // 直接设置背景图片
+      eventListener.emit('background:change', dataUrl)
       document.body.style.backgroundImage = `url(${dataUrl})`;
       document.body.style.backgroundSize = "cover";
       document.body.style.backgroundPosition = "center";
