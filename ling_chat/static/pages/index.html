@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="../css/animation.css" />
     <link rel="stylesheet" href="../css/browser-compat.css" />
     <link rel="stylesheet" href="../css/load-animation.css" />
+    <link rel="stylesheet" href="../css/menu/image.css" />
     <link
       rel="icon"
       href="../pictures/icons/小猫Ling.svg"
@@ -16,7 +17,7 @@
     />
   </head>
 
-  <body class="bg-default">
+  <body>
     <div id="loader">
       <div class="ears-container">
         <div class="ear ear-left"></div>
@@ -47,10 +48,34 @@
           <div class="maxbody">
             <div class="menu-body" id="character-page">
               <div class="menu-section">
-                <h4>🎭 角色列表</h4>
+                <h4>🐈 角色列表</h4>
                 <div class="line"></div>
                 <div id="character-list" class="character-grid">
                   <!-- 角色卡片将通过JavaScript动态添加 -->
+                </div>
+              </div>
+              <div class="menu-section">
+                <div class="menu-item">
+                  <h4>🎶 刷新人物列表</h4>
+                  <div class="line"></div>
+                  <a
+                    style="margin-top: 20px"
+                    class="big-button"
+                    id="refresh-characters-btn"
+                  >
+                    点我刷新~
+                  </a>
+                </div>
+                <div class="menu-item">
+                  <h4>📙 创意工坊</h4>
+                  <div class="line"></div>
+                  <a
+                    id="open-web-btn"
+                    style="margin-top: 20px"
+                    class="big-button"
+                  >
+                    进入“创意工坊”
+                  </a>
                 </div>
               </div>
             </div>
@@ -87,20 +112,25 @@
                   </div>
                 </div>
                 <div class="menu-item">
-                  <h4>🤖 当前AI模型</h4>
+                  <h4>🌏 无语音音效开关</h4>
                   <div class="line"></div>
-                  <div class="model-selection-container">
-                    <select id="ai-model-select" style="display: none">
-                      <option value="gpt-3.5">GPT-3.5</option>
-                      <option value="gpt-4">GPT-4</option>
-                      <option value="claude">Claude</option>
-                      <option value="gemini">Gemini</option>
-                      <option value="llama">Llama</option>
-                    </select>
-                    <div id="model-info-display">
-                      <span id="model-status">正在获取模型信息...</span>
-                    </div>
+                  <div class="toggle-container">
+                    <input type="checkbox" id="sound-effect-toggle" checked />
+                    <label for="sound-effect-toggle"
+                      >启用无vits的时候的对话音效</label
+                    >
                   </div>
+                </div>
+                <div class="menu-item">
+                  <h4>⚙ 相关设置界面</h4>
+                  <div class="line"></div>
+                  <a
+                    href="/settings"
+                    style="margin-top: 20px; text-align: center"
+                    class="big-button"
+                  >
+                    进入设置页面
+                  </a>
                 </div>
               </div>
             </div>
@@ -108,28 +138,7 @@
               <div class="menu-section">
                 <h4>🎨 背景选择</h4>
                 <div class="line"></div>
-                <div class="bg-options">
-                  <div class="bg-option" data-bg="default">
-                    <img
-                      src="../pictures/backgrounds/homepage_bg.jpeg"
-                      alt="默认背景"
-                    />
-                    <span>默认</span>
-                  </div>
-                  <div class="bg-option" data-bg="night">
-                    <img
-                      src="../pictures/backgrounds/homepage_bg2.jpg"
-                      alt="夜晚背景"
-                    />
-                    <span>夜晚</span>
-                  </div>
-                  <div class="bg-option" data-bg="white">
-                    <img
-                      src="../pictures/backgrounds/纯白背景.png"
-                      alt="白色背景"
-                    />
-                    <span>白色</span>
-                  </div>
+                <div id="background-list" class="character-grid">
                   <!-- 自定义背景选项将在这里动态添加 -->
                 </div>
                 <div class="upload-bg-container">
@@ -173,7 +182,6 @@
               </div>
             </div>
             <div class="menu-body" id="sound-page">
-              <!--==========新修改 头==========-->
               <div class="menu-section">
                 <div class="menu-item">
                   <h4>👩 角色音量</h4>
@@ -190,10 +198,6 @@
                     />
                     <span>强</span>
                   </div>
-                  <!--input的step的作用是:
-                    简单解释就是每次拖动的的时候一次性会增加几格，例如上述控件，若将step的值更改为10，那你每次拖动变化的值都是10，例如0,10,20,30,40,50...
-                    理解吧？若仍无法理解，你可以把这个疑问向ai大模型请教请教。
-                    -->
                 </div>
                 <div class="menu-item">
                   <h4>💬 气泡音量</h4>
@@ -279,7 +283,6 @@
                   </div>
                 </div>
               </div>
-              <!--==========新修改 尾==========-->
             </div>
           </div>
           <div class="menu-body" id="save-page">
@@ -339,7 +342,7 @@
 
       <div class="main-box">
         <div class="avatar-container character-animation normal">
-          <img id="qinling" />
+          <img id="qinling" onerror="this.src='/frontend/public/pictures/Image/Default-OC.png'" />
           <div class="bubble"></div>
         </div>
 
@@ -377,6 +380,5 @@
     <canvas id="canvas" width="1584" height="379"></canvas>
 
     <script type="module" src="../js/app.js"></script>
-    <script type="module" src="../js/ui/notice.js"></script>
   </body>
 </html>

@@ -1,5 +1,6 @@
 import { DOM } from "../../ui/dom.js";
 import { DomUtils } from "../../utils/dom-utils.js";
+import request from "../../core/request.js";
 
 export class SoundController {
   constructor() {
@@ -79,7 +80,7 @@ export class SoundController {
 
   setupTestButtons() {
     DOM.TestAudioPlayer.addEventListener("click", () => {
-      this.playTestSound(DOM.audioPlayer, "/audio/角色音量测试.wav");
+      this.playTestSound(DOM.audioPlayer, "/audio_effects/角色音量测试.wav");
     });
 
     DOM.TestBubbleAudio.addEventListener("click", () => {
@@ -141,17 +142,15 @@ export class SoundController {
     }
   }
 
-  async loadMusicList() {
-    try {
-      const response = await fetch("/api/v1/chat/back-music/list");
-      if (!response.ok) throw new Error("获取音乐列表失败");
-
-      const musicList = await response.json();
-      this.renderMusicList(musicList);
-    } catch (error) {
-      console.error("加载音乐列表错误:", error);
-      // 可以显示错误提示给用户
-    }
+  loadMusicList() {
+    return request
+      .backmusicList()
+      .then((list) => {
+        this.renderMusicList(list);
+      })
+      .catch((error) => {
+        console.error("加载音乐列表错误:", error);
+      });
   }
 
   renderMusicList(musicList) {
@@ -186,7 +185,9 @@ export class SoundController {
   }
 
   async playMusicFromItem(item) {
-    const url = item.dataset.url;
+    const url = `/api/v1/chat/back-music/music_file/${encodeURIComponent(
+      item.dataset.url
+    )}`;
     if (!url) return;
 
     try {
@@ -205,20 +206,15 @@ export class SoundController {
 
   async deleteMusicItem(url) {
     if (!confirm("确定要删除这首音乐吗？")) return;
-
-    try {
-      const response = await fetch(
-        `/api/v1/chat/back-music/delete?url=${encodeURIComponent(url)}`,
-        { method: "DELETE" }
-      );
-
-      if (!response.ok) throw new Error("删除失败");
-
-      this.loadMusicList(); // 刷新列表
-    } catch (error) {
-      console.error("删除音乐错误:", error);
-      alert("删除音乐失败");
-    }
+    return request
+      .backmusicDelete(url)
+      .then(() => {
+        this.loadMusicList(); // 刷新列表
+      })
+      .catch((error) => {
+        console.error("删除音乐错误:", error);
+        alert("删除音乐失败");
+      });
   }
 
   setupUploadHandler() {
