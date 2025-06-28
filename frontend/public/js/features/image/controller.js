@@ -1,5 +1,9 @@
 import { DOM } from "../../ui/dom.js";
 import { DomUtils } from "../../utils/dom-utils.js";
+import eventListener from '../../core/event-bus.js'
+import request from "../../core/request.js";
+
+
 
 export class ImageController {
   constructor() {
@@ -11,7 +15,7 @@ export class ImageController {
 
   init() {
     this.bindEvents();
-    // this.loadCustomBackgrounds();
+    this.loadCustomBackgrounds();
     this.initKuosan();
     this.updatePreviewBackground();
   }
@@ -134,31 +138,36 @@ export class ImageController {
 
   // 检查是否已存在自定义背景
   loadCustomBackgrounds() {
-    // 获取所有自定义背景
-    const customBgs = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key.startsWith("customBg_")) {
-        const bgData = JSON.parse(localStorage.getItem(key));
-        customBgs.push({
-          id: key.replace("customBg_", ""),
-          name: bgData.name,
-          dataUrl: bgData.dataUrl,
-          timestamp: bgData.timestamp,
-        });
+    return request.backgroundList()
+    .then(list => {
+      const customBgs = list;
+
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key.startsWith("customBg_")) {
+          const bgData = JSON.parse(localStorage.getItem(key));
+          customBgs.push({
+            id: key.replace("customBg_", ""),
+            name: bgData.name,
+            dataUrl: bgData.dataUrl,
+            timestamp: bgData.timestamp,
+          });
+        }
       }
-    }
-
-    // 按照时间戳排序，最新的在前面
-    customBgs.sort((a, b) => b.timestamp - a.timestamp);
-
-    // 移除现有的自定义背景选项
-    document.querySelectorAll(".bg-option.custom").forEach((el) => el.remove());
-
-    // 添加自定义背景选项
-    customBgs.forEach((bg) => {
-      this.addCustomBgOption(bg.id, bg.name, bg.dataUrl);
-    });
+  
+      // 按照时间戳排序，最新的在前面
+      customBgs.sort((a, b) => b.timestamp - a.timestamp);
+  
+      // 移除现有的自定义背景选项
+      document.querySelectorAll(".bg-option.custom").forEach((el) => el.remove());
+  
+      // 添加自定义背景选项
+      customBgs.forEach((bg) => {
+        this.addCustomBgOption(bg.id, bg.name, bg.dataUrl);
+      });
+    })
+    
+ 
   }
 
   // 添加自定义背景选项到界面
@@ -180,35 +189,39 @@ export class ImageController {
 
       if (confirm(`确定要删除"${name}"吗？`)) {
         // 删除localStorage中的数据
-        localStorage.removeItem(`customBg_${id}`);
 
-        // 如果当前正在使用这个背景，则切换到默认背景
-        if (document.body.classList.contains(`bg-custom-${id}`)) {
-          document.body.className = "";
-          document.body.classList.add("bg-default");
+        return request.backgroundDelete(id)
+        .then(() => {
 
-          // 设置默认背景图片
-          document.body.style.backgroundImage =
-            "url(../pictures/backgrounds/homepage_bg.jpeg)";
-          document.body.style.backgroundSize = "cover";
-          document.body.style.backgroundPosition = "center";
+          // 如果当前正在使用这个背景，则切换到默认背景
+          if (document.body.classList.contains(`bg-custom-${id}`)) {
+            document.body.className = "";
+            document.body.classList.add("bg-default");
 
-          localStorage.setItem("background", "default");
+            // 设置默认背景图片
+            document.body.style.backgroundImage =
+              "url(../pictures/backgrounds/homepage_bg.jpeg)";
+            document.body.style.backgroundSize = "cover";
+            document.body.style.backgroundPosition = "center";
 
-          // 更新背景选项的active状态
-          document
-            .querySelectorAll(".bg-option")
-            .forEach((bg) => bg.classList.remove("active"));
-          document
-            .querySelector('.bg-option[data-bg="default"]')
-            .classList.add("active");
+            localStorage.setItem("background", "default");
 
-          // 更新圣光显示样本背景
-          this.updatePreviewBackground();
-        }
+            // 更新背景选项的active状态
+            document
+              .querySelectorAll(".bg-option")
+              .forEach((bg) => bg.classList.remove("active"));
+            document
+              .querySelector('.bg-option[data-bg="default"]')
+              .classList.add("active");
 
-        // 从DOM中移除这个选项
-        bgOption.remove();
+            // 更新圣光显示样本背景
+            this.updatePreviewBackground();
+            
+            // 从DOM中移除这个选项
+            bgOption.remove();
+
+          }
+        })
       }
     });
 
@@ -230,6 +243,7 @@ export class ImageController {
       document.body.classList.add(`bg-custom-${id}`);
 
       // 直接设置背景图片
+      eventListener.emit('background:change', dataUrl)
       document.body.style.backgroundImage = `url(${dataUrl})`;
       document.body.style.backgroundSize = "cover";
       document.body.style.backgroundPosition = "center";
@@ -264,9 +278,20 @@ export class ImageController {
     DOM.image.uploadStatus.textContent = "正在处理...";
     DOM.image.uploadStatus.style.color = "blue";
 
-    const reader = new FileReader();
-    reader.onload = (event) => this.processImage(event.target.result);
-    reader.readAsDataURL(file);
+
+    const formData = new FormData();
+    formData.append("file", file);
+    return request.backgroundUpload(formData)
+    .then(() => {
+      alert("图片上传成功");
+    })
+    .catch(error => {
+      console.error("上传图片错误:", error);
+      alert("图片上传失败");
+    })
+    // const reader = new FileReader();
+    // reader.onload = (event) => this.processImage(event.target.result);
+    // reader.readAsDataURL(file);
   }
 
   processImage(dataUrl) {
