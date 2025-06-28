@@ -33,6 +33,7 @@ Win10 以上，linux 请用 docker 部署，Win7 目前待测试 目前 0.2.0 �
 
 - LingChat 几乎每天都在更新，但是很长时间才会发布一个 release 版本。如果你想抢先使用新功能，或者想为 LingChat 项目做贡献，但是自己不会写代码，我们也欢迎你体验最新的开发版并及时向我们汇报 Bug。
 - 关于如何使用 develop 的源代码，可以参照[使用教程](https://github.com/SlimeBoyOwO/LingChat/blob/develop/others/document/%E6%BA%90%E4%BB%A3%E7%A0%81%E4%BD%BF%E7%94%A8.md)
+- LingChat现已支持长线预设剧情模式，你可以参照[剧情创作指南](https://github.com/SlimeBoyOwO/LingChat/blob/main/others/document/AI-Galgame%20%E5%89%A7%E6%83%85%E5%88%9B%E4%BD%9C%E6%8C%87%E5%8D%97)撰写属于你的Galgame！
 
 ### 下载情感分类模型
 
