@@ -257,6 +257,45 @@ class Request {
     })
   }
 
+  backgroundList() {
+    return this.send(
+      'GET',
+      '/api/v1/chat/background/list',
+      {}
+    )
+    .catch(result => {
+      throw new Error(result.detail)
+    })
+  }
+  backgroundUpload(formData) {
+    return this.send(
+      'POST',
+      '/api/v1/chat/background/upload',
+      formData
+    )
+    .then(result => {
+      return
+    })
+    .catch(result => {
+      throw new Error(result.detail)
+    })
+  }
+  backgroundDelete(id) {
+    return this.send(
+      'DELETE',
+      '/api/v1/chat/background/delete',
+      {
+        id: id,
+      }
+    )
+    .then(result => {
+      return
+    })
+    .catch(result => {
+      throw new Error(result.detail)
+    })
+  }
+
 
 }
 const request = new Request()
