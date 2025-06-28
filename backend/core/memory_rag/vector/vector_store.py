@@ -1,7 +1,9 @@
+import json
 from pydantic import ValidationError
 from typing import Any, Dict, Optional
 import logging
 
+from core.memory_rag.utils import *
 from core.memory_rag.config.base import MemoryConfig
 from core.memory_rag.factory import EmbedderFactory, LlmFactory, VectorStoreFactory
 
@@ -28,10 +30,10 @@ def get_default_vector_config():
             }
         },
         "embedder": {
-            "provider": "sentence_transformers",
+            "provider": "qwen",
             "config": {
-                "model": "all-MiniLM-L6-v2"
-                # "api_key": "env:CHAT_API_KEY"
+                "model": "text-embedding-v4",
+                "api_key": "env:DASHSCOPE_API_KEY"
             }
         },
         "version": "v0.3.0"
@@ -83,16 +85,58 @@ class MemoryVector:
             logger.error(f"Configuration validation error: {e}")
             raise
         
-    def add(self, item):
-        # Add an item to the vector store
-        print("adding memory")
-        return {"status": "success", "message": "Text added to vector memory", "text_length": len(item)}
+    def add(
+        self, 
+        messages, 
+        user_id: Optional[str] = None, 
+        character_id: Optional[str] = None, 
+        metadata: Optional[Dict[str, Any]] = None,
+        infer: bool = False):
+        # build filters
+
+
+        # check messages type
+        if isinstance(messages, str):
+            messages = [{"role": "user", "content": messages}]
+
+        elif isinstance(messages, dict):
+            messages = [messages]
+
+        elif not isinstance(messages, list):
+            raise ValueError("messages must be str, dict, or list[dict]")
+        
+        # add memory data
+        vector_store_result = future1.result()
+
+        logger.info("adding vector memory")
+        return {"results": vector_store_result}
     
     def _add_to_vector_store(self, messages, metadata, filters, infer):
-        pass
-    
-    def _add_to_graph(self, messages, filters):
-        pass
+        if not infer:
+            pass
+
+        parsed_messages = parse_messages(messages)
+        system_prompt, user_prompt = get_fact_retrieval_messages(parsed_messages)
+
+        response = self.llm.generate_response(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+        )
+
+        try:
+            response = remove_code_blocks(response)
+            new_retrieved_facts = json.loads(response)["facts"]
+        except Exception as e:
+            logging.error(f"Error in new_retrieved_facts: {e}")
+            new_retrieved_facts = []
+
+        if not new_retrieved_facts:
+            logger.debug("No new facts retrieved from input. Skipping memory update LLM call.")
+
+        
     
     def get(self, memory_id):
         pass
@@ -121,4 +165,13 @@ class MemoryVector:
         pass
     
     def reset(self):
+        pass
+
+    def _create_memory():
+        pass
+
+    def _update_memory():
+        pass
+
+    def _delete_memory():
         pass

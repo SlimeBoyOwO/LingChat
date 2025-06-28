@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, List, Optional
+from typing import Any, ClassVar, Dict, List, Optional
 
 import chromadb
 from chromadb.config import Settings
@@ -7,6 +7,42 @@ from chromadb.config import Settings
 from pydantic import BaseModel, Field, model_validator
 
 logger = logging.getLogger(__name__)
+
+class ChromaDbConfig(BaseModel):
+    try:
+        from chromadb.api.client import Client
+    except ImportError:
+        raise ImportError("The 'chromadb' library is required. Please install it using 'pip install chromadb'.")
+    Client: ClassVar[type] = Client
+
+    collection_name: str = Field("mem0", description="Default name for the collection")
+    client: Optional[Client] = Field(None, description="Existing ChromaDB client instance")
+    path: Optional[str] = Field(None, description="Path to the database directory")
+    host: Optional[str] = Field(None, description="Database connection remote host")
+    port: Optional[int] = Field(None, description="Database connection remote port")
+
+    @model_validator(mode="before")
+    def check_host_port_or_path(cls, values):
+        host, port, path = values.get("host"), values.get("port"), values.get("path")
+        if not path and not (host and port):
+            raise ValueError("Either 'host' and 'port' or 'path' must be provided.")
+        return values
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_extra_fields(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        allowed_fields = set(cls.model_fields.keys())
+        input_fields = set(values.keys())
+        extra_fields = input_fields - allowed_fields
+        if extra_fields:
+            raise ValueError(
+                f"Extra fields not allowed: {', '.join(extra_fields)}. Please input only the following fields: {', '.join(allowed_fields)}"
+            )
+        return values
+
+    model_config = {
+        "arbitrary_types_allowed": True,
+    }
 
 class OutputData(BaseModel):
     id: Optional[str]  # memory id
@@ -38,17 +74,13 @@ class ChromaDB():
             self.settings = Settings(anonymized_telemetry=False)
 
             if host and port:
-                self.settings.chroma_server_host = host
-                self.settings.chroma_server_http_port = port
-                self.settings.chroma_api_impl = "chromadb.api.fastapi.FastAPI"
+                # 如果指定了 host 和 port，使用 HttpClient
+                self.client = chromadb.HttpClient(host=host, port=port)
             else:
+                # 使用 PersistentClient 替代 Client + Settings
                 if path is None:
                     path = "db"
-
-            self.settings.persist_directory = path
-            self.settings.is_persistent = True
-
-            self.client = chromadb.Client(self.settings)
+                self.client = chromadb.PersistentClient(path=path)
 
         self.collection_name = collection_name
         self.collection = self.create_col(collection_name)
@@ -100,6 +132,7 @@ class ChromaDB():
         collection = self.client.get_or_create_collection(
             name=name,
             embedding_function=embedding_fn,
+            metadata={"hnsw:space": "cosine"}
         )
         return collection
 
@@ -233,22 +266,22 @@ class VectorStoreConfig(BaseModel):
     )
 
     _provider_configs: Dict[str, str] = {
-        "qdrant": "QdrantConfig",
+        # "qdrant": "QdrantConfig",
         "chroma": "ChromaDbConfig",
-        "pgvector": "PGVectorConfig",
-        "pinecone": "PineconeConfig",
-        "mongodb": "MongoDBConfig",
-        "milvus": "MilvusDBConfig",
-        "upstash_vector": "UpstashVectorConfig",
-        "azure_ai_search": "AzureAISearchConfig",
-        "redis": "RedisDBConfig",
-        "elasticsearch": "ElasticsearchConfig",
-        "vertex_ai_vector_search": "GoogleMatchingEngineConfig",
-        "opensearch": "OpenSearchConfig",
-        "supabase": "SupabaseConfig",
-        "weaviate": "WeaviateConfig",
-        "faiss": "FAISSConfig",
-        "langchain": "LangchainConfig",
+        # "pgvector": "PGVectorConfig",
+        # "pinecone": "PineconeConfig",
+        # "mongodb": "MongoDBConfig",
+        # "milvus": "MilvusDBConfig",
+        # "upstash_vector": "UpstashVectorConfig",
+        # "azure_ai_search": "AzureAISearchConfig",
+        # "redis": "RedisDBConfig",
+        # "elasticsearch": "ElasticsearchConfig",
+        # "vertex_ai_vector_search": "GoogleMatchingEngineConfig",
+        # "opensearch": "OpenSearchConfig",
+        # "supabase": "SupabaseConfig",
+        # "weaviate": "WeaviateConfig",
+        # "faiss": "FAISSConfig",
+        # "langchain": "LangchainConfig",
     }
 
     @model_validator(mode="after")
@@ -259,13 +292,13 @@ class VectorStoreConfig(BaseModel):
         if provider not in self._provider_configs:
             raise ValueError(f"Unsupported vector store provider: {provider}")
 
-        # 直接使用同一文件中的ChromaDB类
+        # 直接使用同一文件中的ChromaDbConfig类
         if provider == "chroma":
-            config_class = ChromaDB
+            config_class = ChromaDbConfig
         else:
             # 对于其他provider，保持原有的导入方式
             module = __import__(
-                f"mem0.configs.vector_stores.{provider}",
+                f"{provider}",
                 fromlist=[self._provider_configs[provider]],
             )
             config_class = getattr(module, self._provider_configs[provider])
@@ -277,21 +310,10 @@ class VectorStoreConfig(BaseModel):
             if not isinstance(config, config_class):
                 raise ValueError(f"Invalid config type for provider {provider}")
             return self
-
-        # 为ChromaDB设置默认值
-        if provider == "chroma":
-            # 设置默认collection_name
-            if "collection_name" not in config:
-                config["collection_name"] = "openmemory"
-            
-            # 设置默认路径
-            if "path" not in config:
-                import os
-                # 获取项目根路径
-                current_dir = os.path.dirname(os.path.abspath(__file__))
-                project_root = os.path.join(current_dir, '..', '..', '..', '..')  # 从backend/core/memory_rag/config回到项目根目录
-                project_root = os.path.abspath(project_root)
-                config["path"] = os.path.join(project_root, "data", "chroma_db_store")
-
+        
+        # also check if path in allowed keys for pydantic model, and whether config extra fields are allowed
+        if "path" not in config and "path" in config_class.__annotations__:
+            config["path"] = "data/chroma_db_store"
+        
         self.config = config_class(**config)
         return self
