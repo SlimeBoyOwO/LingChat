@@ -16,7 +16,7 @@ def get_memory_client_safe():
         return None
 
 @mcp.tool(description="Add a new memory. This method is called everytime the user informs anything about themselves, their preferences, or anything that has any relevant information which can be useful in the future conversation. This can also be called when the user asks you to remember something.")
-async def add_memories(text: str) -> str:
+async def add_memories(text: str) -> str: # TODO: Add character Id type for add memory
     memory_client = get_memory_client_safe()
 
     if memory_client is None:
@@ -33,7 +33,7 @@ async def add_memories(text: str) -> str:
             return "No response from memory client."
     
     except Exception as e:
-        logging.exception("Error adding to memory")
+        logging.exception(f"Error adding to memory: {e}")
         return f"Error adding to memory: {e}"
 
 @mcp.tool()
