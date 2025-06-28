@@ -13,7 +13,7 @@ class EmbedderConfig(BaseModel):
     def validate_config(cls, v, values):
         provider = values.data.get("provider")
         if provider in [
-            "sentence_transformers",
+            "qwen",
             "openai",
             "ollama",
             "huggingface",
