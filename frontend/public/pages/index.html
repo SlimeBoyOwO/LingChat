@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="../css/animation.css" />
     <link rel="stylesheet" href="../css/browser-compat.css" />
     <link rel="stylesheet" href="../css/load-animation.css" />
+    <link rel="stylesheet" href="../css/menu/image.css" />
     <link
       rel="icon"
       href="../pictures/icons/小猫Ling.svg"
@@ -16,7 +17,7 @@
     />
   </head>
 
-  <body class="bg-default">
+  <body>
     <div id="loader">
       <div class="ears-container">
         <div class="ear ear-left"></div>
@@ -52,6 +53,7 @@
                 <div id="character-list" class="character-grid">
                   <!-- 角色卡片将通过JavaScript动态添加 -->
                 </div>
+                <div class="line"></div>
               </div>
             </div>
             <div class="menu-body" id="text-page">
@@ -108,28 +110,7 @@
               <div class="menu-section">
                 <h4>🎨 背景选择</h4>
                 <div class="line"></div>
-                <div class="bg-options">
-                  <div class="bg-option" data-bg="default">
-                    <img
-                      src="../pictures/backgrounds/homepage_bg.jpeg"
-                      alt="默认背景"
-                    />
-                    <span>默认</span>
-                  </div>
-                  <div class="bg-option" data-bg="night">
-                    <img
-                      src="../pictures/backgrounds/homepage_bg2.jpg"
-                      alt="夜晚背景"
-                    />
-                    <span>夜晚</span>
-                  </div>
-                  <div class="bg-option" data-bg="white">
-                    <img
-                      src="../pictures/backgrounds/纯白背景.png"
-                      alt="白色背景"
-                    />
-                    <span>白色</span>
-                  </div>
+                <div id="background-list" class="character-grid">
                   <!-- 自定义背景选项将在这里动态添加 -->
                 </div>
                 <div class="upload-bg-container">
@@ -143,32 +124,6 @@
                     accept="image/*"
                   />
                   <span id="upload-status"></span>
-                </div>
-              </div>
-              <div class="menu-section">
-                <div class="menu-item-big">
-                  <h4>💫 角色圣光扩散设置</h4>
-                  <div class="line"></div>
-                  <div class="slider-container">
-                    <span>弱</span>
-                    <input
-                      id="filter-kuosan"
-                      type="range"
-                      min="0"
-                      max="50"
-                      step="1"
-                      value="18"
-                    />
-                    <span>强</span>
-                  </div>
-                  <div id="kuosan-preview-box">
-                    <div>
-                      <p>圣光效果预览</p>
-                    </div>
-                    <div id="kuosan-preview">
-                      <img id="kuosan-preview-img" />
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>
