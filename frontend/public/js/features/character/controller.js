@@ -15,7 +15,6 @@ export class CharacterController {
     try {
       const characters = await this.fetchCharacters();
       this.renderCharacters(characters);
-
       this.bindEvents();
       this.updateSelectedStatus(this.ui_controller.character_id);
     } catch (error) {
@@ -58,10 +57,9 @@ export class CharacterController {
     );
   }
 
-  fetchCharacters() {
-    return request.characterGetAll()
-    .then(list => {
-      // 处理角色数据并生成头像URL
+  async fetchCharacters() {
+    try {
+      const list = await request.characterGetAll();
       return list.map((char) => ({
         id: char.character_id,
         title: char.title,
@@ -73,11 +71,10 @@ export class CharacterController {
             )}`
           : "../pictures/characters/default.png",
       }));
-    })
-    .catch(error => {
+    } catch (error) {
       console.error("获取角色列表失败:", error);
       return [];
-    })
+    }
   }
 
   renderCharacters(characters) {
@@ -102,13 +99,14 @@ export class CharacterController {
   }
 
   async selectCharacter(characterId) {
-    return request.characterSelect(this.userId, characterId)
-    .then(character => {
-      this.updateSelectedStatus(characterId);
-      return this.ui_controller.getAndApplyAIInfo();
-    })
-    .catch(error => {
-      console.error("切换角色失败:", error);
-    })
+    return request
+      .characterSelect(this.userId, characterId)
+      .then((character) => {
+        this.updateSelectedStatus(characterId);
+        return this.ui_controller.getAndApplyAIInfo();
+      })
+      .catch((error) => {
+        console.error("切换角色失败:", error);
+      });
   }
 }
