@@ -54,6 +54,10 @@ export class UIController {
         DOM.avatar.img.style.transform = `scale(${data.scale})`; // 调整缩放
         DOM.avatar.img.style.transformOrigin = `center ${data.offset}%`; // 调整放大基准点
 
+        // 顺便设置预览图像里面的同样的设定
+        DOM.image.kousanPreviewImg.style.transform = `scale(${data.scale})`; // 调整缩放
+        DOM.image.kousanPreviewImg.style.transformOrigin = `center ${data.offset}%`; // 调整放大基准点
+
         // 设置bubble的css样式中的top和left
         DOM.avatar.bubble.style.top = `${data.bubble_top}%`;
         DOM.avatar.bubble.style.left = `${data.bubble_left}%`;
@@ -78,8 +82,7 @@ export class UIController {
     DOM.avatar.subtitle.textContent = this.user_subtitle;
 
     this.emotionSystem.setEmotion("正常", { force: true });
-    // DOM.image.kousanPreviewImg.src =
-    //  "/api/v1/chat/character/get_avatar/正常.png";
+    DOM.image.kousanPreviewImg.src = `/api/v1/chat/character/get_avatar/正常.png?t=${Date.now()}`;
   }
 
   bindEventListeners() {
