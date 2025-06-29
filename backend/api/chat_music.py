@@ -1,14 +1,22 @@
 import os
 from fastapi import APIRouter, UploadFile, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from pathlib import Path
 from typing import List, Dict
 import shutil
 
 router = APIRouter(prefix="/api/v1/chat/back-music", tags=["Background Music"])
 
-MUSIC_DIR = Path("frontend/public/music")
+MUSIC_DIR = Path(os.path.join("game_data","musics"))
 ALLOWED_EXTENSIONS = {'.mp3', '.wav', '.flac', '.webm', '.weba', '.ogg', '.m4a', '.oga'}
+
+@router.get("/music_file/{music_file}")
+async def get_specific_avatar(music_file: str):
+    file_path = os.path.join("game_data", "musics", music_file)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="没有找到音乐文件")
+    
+    return FileResponse(file_path)
 
 @router.get("/list", response_model=List[Dict[str, str]])
 async def get_music_list():
@@ -27,7 +35,7 @@ async def get_music_list():
             if file.is_file() and file.suffix.lower() in ALLOWED_EXTENSIONS:
                 music_files.append({
                     "name": file.stem,
-                    "url": f"/music/{file.name}"
+                    "url": file.name,
                 })
         
         return music_files

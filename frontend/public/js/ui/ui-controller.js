@@ -78,8 +78,8 @@ export class UIController {
     DOM.avatar.subtitle.textContent = this.user_subtitle;
 
     this.emotionSystem.setEmotion("正常", { force: true });
-    DOM.image.kousanPreviewImg.src =
-      "/api/v1/chat/character/get_avatar/正常.png";
+    // DOM.image.kousanPreviewImg.src =
+    //  "/api/v1/chat/character/get_avatar/正常.png";
   }
 
   bindEventListeners() {

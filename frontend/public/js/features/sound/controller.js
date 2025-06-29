@@ -143,13 +143,14 @@ export class SoundController {
   }
 
   loadMusicList() {
-    return request.backmusicList()
-    .then(list => {
-      this.renderMusicList(list);
-    })
-    .catch(error => {
-      console.error("加载音乐列表错误:", error);
-    })
+    return request
+      .backmusicList()
+      .then((list) => {
+        this.renderMusicList(list);
+      })
+      .catch((error) => {
+        console.error("加载音乐列表错误:", error);
+      });
   }
 
   renderMusicList(musicList) {
@@ -184,7 +185,9 @@ export class SoundController {
   }
 
   async playMusicFromItem(item) {
-    const url = item.dataset.url;
+    const url = `/api/v1/chat/back-music/music_file/${encodeURIComponent(
+      item.dataset.url
+    )}`;
     if (!url) return;
 
     try {
@@ -203,14 +206,15 @@ export class SoundController {
 
   async deleteMusicItem(url) {
     if (!confirm("确定要删除这首音乐吗？")) return;
-    return request.backmusicDelete(url)
-    .then(() => {
-      this.loadMusicList(); // 刷新列表
-    })
-    .catch(error => {
-      console.error("删除音乐错误:", error);
-      alert("删除音乐失败");
-    })
+    return request
+      .backmusicDelete(url)
+      .then(() => {
+        this.loadMusicList(); // 刷新列表
+      })
+      .catch((error) => {
+        console.error("删除音乐错误:", error);
+        alert("删除音乐失败");
+      });
   }
 
   setupUploadHandler() {
@@ -240,19 +244,20 @@ export class SoundController {
         alert("请上传支持的音频格式: " + allowedExts.join(", "));
         return;
       }
-      
+
       const formData = new FormData();
       formData.append("file", file);
-      return request.backmusicUpload(formData)
-      .then(() => {
-        alert("音乐上传成功");
-        fileInput.value = ""; // 清空文件选择
-        this.loadMusicList(); // 刷新列表
-      })
-      .catch(error => {
-        console.error("上传音乐错误:", error);
-        alert("音乐上传失败");
-      })
+      return request
+        .backmusicUpload(formData)
+        .then(() => {
+          alert("音乐上传成功");
+          fileInput.value = ""; // 清空文件选择
+          this.loadMusicList(); // 刷新列表
+        })
+        .catch((error) => {
+          console.error("上传音乐错误:", error);
+          alert("音乐上传失败");
+        });
     });
   }
 }

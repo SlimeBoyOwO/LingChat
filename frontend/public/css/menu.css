@@ -237,12 +237,8 @@
 }
 
 /* 背景类 */
-body.bg-default {
-  background-image: url("../pictures/backgrounds/homepage_bg.jpeg");
-}
 
 body.bg-night {
-  background-image: url("../pictures/backgrounds/homepage_bg2.jpg");
   color: #fff;
   /* 夜间模式的文字颜色 */
 }
