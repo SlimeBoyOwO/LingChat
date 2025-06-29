@@ -18,7 +18,6 @@ try:
 ###################你应该把正式的导入写在这里###################
     import asyncio
     from fastapi import FastAPI, Request
-    from fastapi.staticfiles import StaticFiles
     from api.chat_music import router as chat_music_router
     from api.chat_history import router as chat_history_router
     from api.chat_info import router as chat_info_router
