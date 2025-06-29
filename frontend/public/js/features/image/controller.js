@@ -1,5 +1,6 @@
 import { DOM } from "../../ui/dom.js";
 import { DomUtils } from "../../utils/dom-utils.js";
+import { KousanManager } from "./kuosan-manager.js";
 import request from "../../core/request.js";
 
 export class ImageController {
@@ -7,6 +8,7 @@ export class ImageController {
     this.backgroundList = document.getElementById("background-list");
     this.domUtils = DomUtils;
     this.currentSelectedCard = null; // 跟踪当前选中的卡片
+    this.kousanManager = new KousanManager();
     this.init();
   }
 
@@ -20,7 +22,9 @@ export class ImageController {
       const savedBg = localStorage.getItem("selectedBackground");
       if (savedBg) {
         const card = this.findCardByUrl(savedBg);
-        if (card) this.selectBackground(card, savedBg);
+        if (card) {
+          this.selectBackground(card, savedBg);
+        }
       }
     } catch (error) {
       console.error("加载背景图片失败", error);
@@ -63,7 +67,6 @@ export class ImageController {
   async fetchBackgrounds() {
     try {
       const { data } = await request.backgroundList();
-      console.log(data);
       return data.map((background) => ({
         title: background.title,
         // 使用新的文件获取接口
@@ -126,6 +129,9 @@ export class ImageController {
     document.body.style.backgroundPosition = "center";
     document.body.style.backgroundAttachment = "fixed";
     document.body.style.backgroundRepeat = "no-repeat";
+
+    // 让预览区也更新
+    this.kousanManager.updatePreviewBackground(bgUrl);
 
     // 保存当前选中的卡片
     this.currentSelectedCard = card;
