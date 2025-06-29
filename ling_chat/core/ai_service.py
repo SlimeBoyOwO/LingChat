@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 
 from ling_chat.core.deepseek import DeepSeek
 from ling_chat.core.predictor import EmotionClassifier  # 导入情绪分类器
-from ling_chat.core.VitsTTS import VitsTTS  # 导入语音生成
+from ling_chat.core.VitsTTS.vits_tts import VitsTTS  # 导入语音生成
 from ling_chat.core.logger import logger, TermColors
 from ling_chat.core.dialog_logger import DialogLogger
 from ling_chat.core.pic_analyzer import DesktopAnalyzer
@@ -105,11 +105,7 @@ class AIService:
 
     def _init_tts_engine(self) -> VitsTTS:
         """初始化TTS引擎"""
-        return VitsTTS(
-            api_url="http://127.0.0.1:23456/voice/vits",
-            lang="ja",
-            speaker_id=self.speaker_id
-        )
+        return VitsTTS()
 
     def _prepare_directories(self):
         """准备必要的目录"""
@@ -236,6 +232,7 @@ class AIService:
             self.user_subtitle = settings.get("user_subtitle", "user_subtitle未设定")
             self.ai_prompt = settings.get("system_prompt",
                                           "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息")
+            self.model_name = settings.get("model_name", None)
             self.speaker_id = int(settings.get("speaker_id", 4))
             self.character_path = settings.get("resource_path")
             self.character_id = settings.get("character_id")
@@ -342,8 +339,8 @@ class AIService:
         tasks = []
         for seg in segments:
             if seg["japanese_text"]:
-                output_file = self.tts_engine.generate_voice(seg["japanese_text"], seg["voice_file"], self.speaker_id,
-                                                             True)
+                output_file = self.tts_engine.generate_voice(seg["japanese_text"], seg["voice_file"],
+                                                             speaker_id=self.speaker_id, model_name=self.model_name)
                 if output_file is not None:
                     tasks.append(output_file)
                 else:
