@@ -14,8 +14,7 @@ export class ImageController {
 
   async init() {
     try {
-      const backgrounds = await this.fetchBackgrounds();
-      this.renderBackgrounds(backgrounds);
+      await this.refreshBackground();
       this.bindEvents();
 
       // 从本地存储恢复选中的背景
@@ -29,6 +28,11 @@ export class ImageController {
     } catch (error) {
       console.error("加载背景图片失败", error);
     }
+  }
+
+  async refreshBackground() {
+    const backgrounds = await this.fetchBackgrounds();
+    this.renderBackgrounds(backgrounds);
   }
 
   findCardByUrl(url) {
@@ -54,6 +58,20 @@ export class ImageController {
         const bgUrl = selectBtn.dataset.backgroundUrl;
         this.selectBackground(card, bgUrl);
       }
+    });
+
+    // 背景上传处理
+    DOM.image.uploadBgBtn?.addEventListener("click", () =>
+      DOM.image.uploadBgInput?.click()
+    );
+
+    // 自定义背景上传处理
+    DOM.image.uploadBgInput?.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      // TODO 设定上传
+      this.uploadBackground(file);
     });
   }
 
@@ -138,5 +156,39 @@ export class ImageController {
 
     // 这里可以添加保存到本地存储的逻辑
     localStorage.setItem("selectedBackground", bgUrl);
+  }
+
+  async uploadBackground(file) {
+    const fileName = file.name;
+    const fileExt = fileName.slice(fileName.lastIndexOf(".")).toLowerCase();
+
+    // 验证文件类型
+    const allowedExts = [
+      ".jpg",
+      ".png",
+      ".webp",
+      ".bmp",
+      ".svg",
+      ".tif",
+      ".gif",
+    ];
+    if (!allowedExts.includes(fileExt)) {
+      alert("请上传支持的图片格式: " + allowedExts.join(", "));
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+    // 添加 name 参数（使用文件名作为默认值）
+    formData.append("name", fileName);
+
+    const response = await fetch("/api/v1/chat/background/upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) throw new Error("上传失败");
+
+    this.refreshBackground();
   }
 }

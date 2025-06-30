@@ -80,7 +80,7 @@ export class SoundController {
 
   setupTestButtons() {
     DOM.TestAudioPlayer.addEventListener("click", () => {
-      this.playTestSound(DOM.audioPlayer, "/audio/角色音量测试.wav");
+      this.playTestSound(DOM.audioPlayer, "/audio_effects/角色音量测试.wav");
     });
 
     DOM.TestBubbleAudio.addEventListener("click", () => {
@@ -245,19 +245,24 @@ export class SoundController {
         return;
       }
 
-      const formData = new FormData();
-      formData.append("file", file);
-      return request
-        .backmusicUpload(formData)
-        .then(() => {
-          alert("音乐上传成功");
-          fileInput.value = ""; // 清空文件选择
-          this.loadMusicList(); // 刷新列表
-        })
-        .catch((error) => {
-          console.error("上传音乐错误:", error);
-          alert("音乐上传失败");
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const response = await fetch("/api/v1/chat/back-music/upload", {
+          method: "POST",
+          body: formData,
         });
+
+        if (!response.ok) throw new Error("上传失败");
+
+        alert("音乐上传成功");
+        fileInput.value = ""; // 清空文件选择
+        this.loadMusicList(); // 刷新列表
+      } catch (error) {
+        console.error("上传音乐错误:", error);
+        alert("音乐上传失败");
+      }
     });
   }
 }
