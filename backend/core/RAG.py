@@ -502,7 +502,7 @@ class RAGSystem:
                     session_time_str = msg_obj.get("_session_timestamp_str", "未知时间")
 
                     if msg_content and msg_content not in added_message_contents_to_llm:
-                        contextualized_content = f"[历史对话片段 - {session_time_str}] {msg_content}"
+                        contextualized_content = f"[历史对话片段] {msg_content}"
                         potential_block_messages.append({"role": msg_role, "content": contextualized_content})
                         is_core = " (核心检索)" if j == original_idx else ""
                         context_block_display_info.append(
