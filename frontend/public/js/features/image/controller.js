@@ -24,6 +24,16 @@ export class ImageController {
         if (card) {
           this.selectBackground(card, savedBg);
         }
+      } else {
+        const randomCard = this.getRandomCard();
+        if (randomCard) {
+          this.selectBackground(
+            randomCard,
+            randomCard.querySelector(".background-select-btn").dataset
+              .backgroundUrl
+          );
+          console.log("已选随机背景");
+        }
       }
     } catch (error) {
       console.error("加载背景图片失败", error);
@@ -33,6 +43,15 @@ export class ImageController {
   async refreshBackground() {
     const backgrounds = await this.fetchBackgrounds();
     this.renderBackgrounds(backgrounds);
+  }
+
+  getRandomCard() {
+    const cards = this.backgroundList.querySelectorAll(".background-card");
+    if (cards.length === 0) {
+      return null; // 如果没有卡片，返回null
+    }
+    const randomIndex = Math.floor(Math.random() * cards.length);
+    return cards[randomIndex];
   }
 
   findCardByUrl(url) {
