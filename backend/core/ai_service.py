@@ -47,6 +47,7 @@ class AIService:
         self.use_rag = os.environ.get("USE_RAG", "False").lower() == "true"
         self.rag_systems_cache = {}  # 缓存RAG实例 {character_id: rag_system_instance}
         self.rag_config = None       # 存储RAG配置
+        self.session_file_path = None
         self.active_rag_system = None # 当前激活的RAG实例
 
         self.import_settings(settings=settings)
@@ -498,8 +499,10 @@ class AIService:
     
     def _save_messages_to_rag(self, messages):
         if self.use_rag and self.active_rag_system:
+            if not self.session_file_path:
+                self.session_file_path = self.active_rag_system.get_history_filepath()
             try:
-                self.active_rag_system.add_session_to_history(messages)
+                self.active_rag_system.add_session_to_history(messages, session_filepath=self.session_file_path)
                 logger.debug("当前会话已保存到RAG历史记录")
             except Exception as e:
                 logger.error(f"保存会话到RAG历史记录失败: {e}")
