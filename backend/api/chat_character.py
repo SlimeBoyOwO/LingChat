@@ -9,6 +9,15 @@ from core.logger import logger
 
 router = APIRouter(prefix="/api/v1/chat/character", tags=["Chat Character"])
 
+@router.post("/refresh_characters")
+async def refresh_characters():
+    try:
+        CharacterModel.sync_characters_from_game_data("game_data")
+        return {"success": True}
+    except Exception as e:
+        logger.error(f"刷新人物列表请求失败: {str(e)}")
+        raise HTTPException(status_code=500, detail="刷新人物列表失败")
+
 @router.get("/get_avatar/{avatar_file}")
 async def get_specific_avatar(avatar_file: str):
     ai_service = service_manager.ai_service

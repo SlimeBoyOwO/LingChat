@@ -48,12 +48,35 @@
           <div class="maxbody">
             <div class="menu-body" id="character-page">
               <div class="menu-section">
-                <h4>🎭 角色列表</h4>
+                <h4>🐈 角色列表</h4>
                 <div class="line"></div>
                 <div id="character-list" class="character-grid">
                   <!-- 角色卡片将通过JavaScript动态添加 -->
                 </div>
-                <div class="line"></div>
+              </div>
+              <div class="menu-section">
+                <div class="menu-item">
+                  <h4>🎶 刷新人物列表</h4>
+                  <div class="line"></div>
+                  <a
+                    style="margin-top: 20px"
+                    class="big-button"
+                    id="refresh-characters-btn"
+                  >
+                    点我刷新~
+                  </a>
+                </div>
+                <div class="menu-item">
+                  <h4>📙 创意工坊</h4>
+                  <div class="line"></div>
+                  <a
+                    href="https://github.com/SlimeBoyOwO/LingChat/discussions"
+                    style="margin-top: 20px"
+                    class="big-button"
+                  >
+                    进入“创意工坊”
+                  </a>
+                </div>
               </div>
             </div>
             <div class="menu-body" id="text-page">
@@ -89,20 +112,15 @@
                   </div>
                 </div>
                 <div class="menu-item">
-                  <h4>🤖 当前AI模型</h4>
+                  <h4>⚙ 相关设置界面</h4>
                   <div class="line"></div>
-                  <div class="model-selection-container">
-                    <select id="ai-model-select" style="display: none">
-                      <option value="gpt-3.5">GPT-3.5</option>
-                      <option value="gpt-4">GPT-4</option>
-                      <option value="claude">Claude</option>
-                      <option value="gemini">Gemini</option>
-                      <option value="llama">Llama</option>
-                    </select>
-                    <div id="model-info-display">
-                      <span id="model-status">正在获取模型信息...</span>
-                    </div>
-                  </div>
+                  <a
+                    href="/settings"
+                    style="margin-top: 20px; text-align: center"
+                    class="big-button"
+                  >
+                    进入设置页面
+                  </a>
                 </div>
               </div>
             </div>

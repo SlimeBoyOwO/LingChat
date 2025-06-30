@@ -40,6 +40,10 @@ export class CharacterController {
       this.showCharacterPanel()
     );
 
+    DOM.character.refreshCharactersBtn?.addEventListener("click", () =>
+      this.refreshCharacters()
+    );
+
     document.querySelectorAll(".character-select-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
         this.selectCharacter(btn.dataset.characterId);
@@ -55,6 +59,32 @@ export class CharacterController {
         DOM.characterPage,
       ])
     );
+  }
+
+  async refreshCharacters() {
+    try {
+      const response = await fetch(
+        "/api/v1/chat/character/refresh_characters",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      alert("刷新成功");
+      return data;
+    } catch (error) {
+      alert("刷新失败");
+      console.error("刷新失败:", error);
+      throw error;
+    }
   }
 
   async fetchCharacters() {
