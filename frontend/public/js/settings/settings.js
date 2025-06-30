@@ -1,5 +1,3 @@
-import request from "../core/request.js";
-
 document.addEventListener("DOMContentLoaded", () => {
   const navMenu = document.getElementById("nav-menu");
   const settingsForm = document.getElementById("settings-form");
@@ -122,8 +120,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
     showLoader(true);
     saveStatus.textContent = "";
-    return request.configSet(formData)
-    .then(async () => {
+    try {
+      const response = await fetch("/api/settings/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.detail || "保存失败");
+      }
       saveStatus.textContent = result.message;
       saveStatus.style.color = "var(--success-color)";
 
@@ -134,26 +142,24 @@ document.addEventListener("DOMContentLoaded", () => {
       if (activeLink) {
         renderForm(activeLink.dataset.category, activeLink.dataset.subcategory);
       }
-      return
-    })
-    .catch(error => {
+    } catch (error) {
       saveStatus.textContent = `错误: ${error.message}`;
       saveStatus.style.color = "red";
-      return
-    })
-    .then(() => {
+    } finally {
       showLoader(false);
       setTimeout(() => {
         saveStatus.textContent = "";
       }, 5000);
-    })
+    }
   });
 
   // 初始加载配置
   async function loadConfig(selectFirst = true) {
     showLoader(true);
-    return request.configGet()
-    .then(configData => {
+    try {
+      const response = await fetch("/api/settings/config");
+      if (!response.ok) throw new Error("无法加载配置");
+      configData = await response.json();
       renderNavMenu();
 
       if (selectFirst) {
@@ -163,16 +169,13 @@ document.addEventListener("DOMContentLoaded", () => {
           firstSubLink.click();
         }
       }
-      return
-    })
-    .catch(error => {
+    } catch (error) {
       console.error(error);
       settingsForm.innerHTML = `<p style="color: red;">加载配置失败: ${error.message}</p>`;
-      return
-    })
-    .then(() => {
+      return;
+    } finally {
       showLoader(false);
-    })
+    }
   }
 
   loadConfig();
