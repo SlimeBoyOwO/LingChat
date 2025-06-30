@@ -1,4 +1,4 @@
-from .deepseek import DeepSeekProvider
+from .web_llm import WebLLMProvider
 from .ollama import OllamaProvider
 from .lmstudio import LMStudioProvider
 from .base import BaseLLMProvider
@@ -18,9 +18,9 @@ class LLMProviderFactory:
         provider_type = provider_type.lower()
         
         try:
-            if provider_type == "deepseek":
+            if provider_type == "webllm":
                 logger.info("创建通用联网大模型提服务提供商")
-                return DeepSeekProvider()
+                return WebLLMProvider()
             elif provider_type == "ollama":
                 logger.info("创建OLLAMA服务提供商")
                 return OllamaProvider()

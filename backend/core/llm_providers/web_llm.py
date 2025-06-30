@@ -4,7 +4,7 @@ from typing import Dict, List
 from core.logger import logger
 import os
 
-class DeepSeekProvider(BaseLLMProvider):
+class WebLLMProvider(BaseLLMProvider):
     def __init__(self):
         super().__init__()
         self.client = None
