@@ -95,7 +95,7 @@ class AIService:
 
         if use_rag:
             logger.info("正在初始化RAG系统...")
-            rag_initialized = self.deepseek.init_rag_system(rag_config)
+            rag_initialized = self.deepseek.init_rag_system(rag_config, self.character_id)
             if rag_initialized:
                 logger.info("RAG系统初始化成功")
             else:
@@ -237,6 +237,10 @@ class AIService:
             self.character_path = settings.get("resource_path")
             self.character_id = settings.get("character_id")
             self.settings = settings
+
+            if self.deepseek.use_rag:
+                logger.info(f"检测到角色切换，正在为角色 (ID: {self.character_id}) 准备长期记忆...")
+                self.deepseek.switch_rag_system_character(self.character_id)
         else:
             logger.error("角色信息settings没有被正常导入，请检查问题！")
 

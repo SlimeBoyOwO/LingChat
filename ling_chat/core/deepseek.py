@@ -54,52 +54,74 @@ class DeepSeek:
 
         # RAG 系统
         self.use_rag = os.environ.get("USE_RAG", "False").lower() == "true"
-        self.rag_system = None
+        self.rag_systems_cache = {}  # 缓存RAG实例 {character_id: rag_system_instance}
+        self.rag_config = None  # 存储RAG配置
+        self.active_rag_system = None  # 当前激活的RAG实例
 
         logger.debug(f"{self.llm_provider.capitalize()} LLM 服务已初始化")
 
-    def init_rag_system(self, config):
+    def init_rag_system(self, config, initial_character_id: int):
         """初始化RAG系统（如果启用）"""
         if not self.use_rag:
             logger.debug("RAG系统未启用，跳过初始化")
             return False
 
+        self.rag_config = config  # 存储配置以备后用
+        return self.switch_rag_system_character(initial_character_id)
+
+    def switch_rag_system_character(self, character_id: int) -> bool:
+        """切换或初始化指定角色的RAG系统"""
+        if not self.use_rag:
+            return False
+
+        # 如果已缓存，直接切换
+        if character_id in self.rag_systems_cache:
+            self.active_rag_system = self.rag_systems_cache[character_id]
+            logger.info(f"RAG记忆库已切换至已缓存的角色 (ID: {character_id})")
+            return True
+
+        # 如果未缓存，则创建新的实例
         try:
+            from .RAG import RAGSystem
+            logger.info(f"正在为新角色 (ID: {character_id}) 初始化RAG记忆库...")
+
             # 记录RAG初始化的详细配置
             if logger.should_print_context():
                 logger.debug("\n------ RAG初始化配置详情 ------")
-                config_attrs = [attr for attr in dir(config) if
-                                not attr.startswith('_') and not callable(getattr(config, attr))]
+                config_attrs = [attr for attr in dir(self.rag_config) if
+                                not attr.startswith('_') and not callable(getattr(self.rag_config, attr))]
                 for attr in sorted(config_attrs):
-                    value = getattr(config, attr)
+                    value = getattr(self.rag_config, attr)
                     logger.debug(f"RAG配置: {attr} = {value}")
                 logger.debug("------ RAG配置结束 ------\n")
 
-            # 动态导入，避免在未启用RAG时也必须安装相关依赖
-            from .RAG import RAGSystem
-            self.rag_system = RAGSystem(config)
-            rag_initialized = self.rag_system.initialize()
-            if rag_initialized:
-                logger.info("RAG系统初始化成功")
+            new_rag_system = RAGSystem(self.rag_config, character_id)  # 传入character_id
+
+            if new_rag_system.initialize():
+                self.rag_systems_cache[character_id] = new_rag_system
+                self.active_rag_system = new_rag_system
+                logger.info(f"角色 (ID: {character_id}) 的RAG记忆库初始化成功并已缓存。")
 
                 if logger.should_print_context():
                     # 记录初始化后的状态信息
                     history_count = 0
                     chroma_count = 0
-                    if hasattr(self.rag_system, 'flat_historical_messages'):
-                        history_count = len(self.rag_system.flat_historical_messages)
-                    if self.rag_system.chroma_collection:
-                        chroma_count = self.rag_system.chroma_collection.count()
+                    if hasattr(new_rag_system, 'flat_historical_messages'):
+                        history_count = len(new_rag_system.flat_historical_messages)
+                    if new_rag_system.chroma_collection:
+                        chroma_count = new_rag_system.chroma_collection.count()
 
                     logger.debug(f"RAG初始化状态: 历史消息数={history_count}, ChromaDB条目数={chroma_count}")
+
+                return True
             else:
-                logger.info("RAG系统初始化失败或被禁用")
-            return rag_initialized
+                logger.error(f"为角色 (ID: {character_id}) 初始化RAG记忆库失败。")
+                return False
         except ImportError as e:
             logger.error(f"RAG模块: {e}")
             return False
         except Exception as e:
-            logger.error(f"初始化RAG系统时出错: {e}")
+            logger.error(f"切换RAG角色 (ID: {character_id}) 时出错: {e}", exc_info=True)
             return False
 
     def call_ollama_api(self, messages):
@@ -145,10 +167,10 @@ class DeepSeek:
         current_context = messages.copy()
         rag_messages = []
 
-        if self.use_rag and self.rag_system:
+        if self.use_rag and self.active_rag_system:
             try:
                 logger.debug("正在调用RAG系统检索相关历史信息...")
-                rag_messages = self.rag_system.prepare_rag_messages(user_input)
+                rag_messages = self.active_rag_system.prepare_rag_messages(user_input)
                 if rag_messages:
                     logger.debug(f"RAG系统返回了 {len(rag_messages)} 条上下文增强消息")
 
@@ -241,9 +263,9 @@ class DeepSeek:
             # messages.append({"role": "assistant", "content": ai_response})
 
             # 如果启用了RAG系统，保存本次会话到RAG历史记录
-            if self.use_rag and self.rag_system:
+            if self.use_rag and self.active_rag_system:
                 try:
-                    self.rag_system.add_session_to_history(messages)
+                    self.active_rag_system.add_session_to_history(messages)
                     logger.debug("当前会话已保存到RAG历史记录")
                 except Exception as e:
                     logger.error(f"保存会话到RAG历史记录失败: {e}")
@@ -264,13 +286,13 @@ class DeepSeek:
     # 暂未调用该段代码↓
     def load_memory_to_rag(self, messages):
         # 如果启用了RAG，尝试将加载的记忆添加到RAG历史记录
-        if self.use_rag and self.rag_system:
+        if self.use_rag and self.active_rag_system:
             try:
                 # 过滤掉系统提示词，只保留用户和助手的消息
                 filtered_messages = [msg for msg in messages if msg.get('role') in ['user', 'assistant']]
 
                 if filtered_messages:
-                    self.rag_system.add_session_to_history(filtered_messages)
+                    self.active_rag_system.add_session_to_history(filtered_messages)
                     logger.debug(
                         f"加载的记忆已添加到RAG历史记录 (过滤后: {len(filtered_messages)}/{len(messages)} 条消息)")
                 else:

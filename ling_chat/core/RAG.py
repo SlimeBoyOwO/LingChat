@@ -51,19 +51,25 @@ class RAGSystem:
     4. 在会话结束时，调用 `add_session_to_history(session_messages)` 将对话存入历史记录。
     '''
 
-    def __init__(self, config):
+    def __init__(self, config, character_id: int):
         '''
-        初始化RAG系统实例。设置RAG系统的初始状态，包括加载配置、初始化核心组件变量为None。
-        实际的模型加载和数据库连接在 `initialize` 方法中进行。
+        初始化RAG系统实例，现在与特定角色绑定。
+        :param config: RAG的通用配置
+        :param character_id: 当前AI角色的ID
         '''
+        if not character_id:
+            raise ValueError("RAGSystem必须使用一个有效的character_id进行初始化。")
+
         self.config = config
+        self.character_id = character_id
         self.embedding_model = None
         self.chroma_client = None
         self.chroma_collection = None
         self.historical_sessions_map = {}
         self.flat_historical_messages = []
 
-        self.CHROMA_COLLECTION_NAME = "chat_history_collection_v4"
+        # 动态生成集合名称，基于角色ID
+        self.CHROMA_COLLECTION_NAME = f"rag_collection_char_{self.character_id}"
         self.EMBEDDING_MODEL_NAME = 'all-MiniLM-L6-v2'
 
     def initialize(self) -> bool:
@@ -124,8 +130,8 @@ class RAGSystem:
                 name=self.CHROMA_COLLECTION_NAME,
                 metadata={"hnsw:space": "cosine"}
             )
-            logger.debug(
-                f"RAG: ChromaDB集合 '{self.CHROMA_COLLECTION_NAME}' 已就绪。当前包含 {self.chroma_collection.count()} 条目。")
+            logger.info(
+                f"RAG: 角色 {self.character_id} 的ChromaDB集合 '{self.CHROMA_COLLECTION_NAME}' 已就绪。当前包含 {self.chroma_collection.count()} 条目。")
 
             self.load_historical_data()
 
@@ -157,9 +163,11 @@ class RAGSystem:
             logger.debug("RAG: 组件未初始化或RAG已禁用，跳过历史数据加载。")
             return 0, 0
 
-        history_path = getattr(self.config, 'RAG_HISTORY_PATH', './rag_chat_history')
+        # 为每个角色创建独立的历史记录目录
+        base_path = getattr(self.config, 'RAG_HISTORY_PATH', './rag_chat_history')
+        history_path = os.path.join(base_path, f"character_{self.character_id}")
         if not os.path.exists(history_path):
-            logger.warning(f"RAG: 历史对话路径不存在: {history_path}，将创建该目录。")
+            logger.info(f"RAG: 角色 {self.character_id} 的历史对话路径不存在: {history_path}，将创建该目录。")
             os.makedirs(history_path, exist_ok=True)
             return 0, 0
 
@@ -368,16 +376,17 @@ class RAGSystem:
 
     def get_history_filepath(self) -> str:
         '''
-        为新的会话记录创建一个有组织的、基于日期的文件路径。
+        为新的会话记录创建一个有组织的、基于日期的文件路径，现在按角色分目录存储。
 
         返回:
-        - str: 一个完整的文件路径，例如 `.../rag_chat_history/2023年10月/27日/session_...json`。
+        - str: 一个完整的文件路径，例如 `.../rag_chat_history/character_1/2023年10月/27日/session_...json`。
         注意事项:
-        此方法会自动创建尚不存在的年/月/日目录结构。
+        此方法会自动创建尚不存在的角色/年/月/日目录结构。
         '''
         now = datetime.now()
-        history_base_path = getattr(self.config, 'RAG_HISTORY_PATH', './rag_chat_history')
-        year_month_path = os.path.join(history_base_path, now.strftime("%Y年%m月"))
+        base_path = getattr(self.config, 'RAG_HISTORY_PATH', './rag_chat_history')
+        character_specific_path = os.path.join(base_path, f"character_{self.character_id}")
+        year_month_path = os.path.join(character_specific_path, now.strftime("%Y年%m月"))
         day_path = os.path.join(year_month_path, now.strftime("%d日"))
         os.makedirs(day_path, exist_ok=True)
         session_start_time_str = now.strftime("%Y%m%d_%H%M%S")
