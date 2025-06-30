@@ -1,5 +1,5 @@
 import aiohttp
-from .base_adapter import BaseVitsAdapter
+from ling_chat.core.VitsTTS.base_adapter import BaseVitsAdapter
 
 
 class SBVVitsAdapter(BaseVitsAdapter):
