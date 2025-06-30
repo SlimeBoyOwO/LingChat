@@ -4,6 +4,7 @@ from core.service_manager import service_manager
 from database.user_model import UserModel
 from database.character_model import CharacterModel
 from utils.function import Function
+import traceback
 
 router = APIRouter(prefix="/api/v1/chat/info", tags=["Chat Info"])
     
@@ -44,6 +45,7 @@ async def init_web_infos(user_id: int):
     except Exception as e:
         print("出错了,")
         print(e)
+        traceback.print_exc()  # 这会打印完整的错误堆栈到控制台
         return {
             "code": 500,
             "msg": "Failed to fetch user info",
