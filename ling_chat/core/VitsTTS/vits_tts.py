@@ -1,8 +1,8 @@
 import os
 from pathlib import Path
-from .sva_adapter import SVAVitsAdapter
-from .sbv_adapter import SBVVitsAdapter
-from core.logger import logger
+from ling_chat.core.VitsTTS.sva_adapter import SVAVitsAdapter
+from ling_chat.core.VitsTTS.sbv_adapter import SBVVitsAdapter
+from ling_chat.core.logger import logger
 
 
 class VitsTTS:
