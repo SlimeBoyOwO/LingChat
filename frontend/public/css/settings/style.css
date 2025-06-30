@@ -294,6 +294,25 @@ footer {
   background-color: #8aab7d; /* Darker success color */
 }
 
+#return-button {
+  padding: 12px 28px;
+  border: 2px solid #5e81ac;
+  border-radius: var(--border-radius-medium);
+  font-weight: bold;
+  font-size: 16px;
+  color: var(--nord-polar-night-bg);
+  background-color: #5e81ac;
+  cursor: pointer;
+  transition: all var(--transition-speed);
+  outline: none;
+  text-decoration: none;
+}
+
+#return-button:hover {
+  background-color: #6d8db4; /* Lighter success color */
+  border-color: #6d8db4;
+}
+
 #save-status {
   font-weight: bold;
   transition: color var(--transition-speed);

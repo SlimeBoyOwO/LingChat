@@ -38,6 +38,7 @@ class AIService:
         # 这里记录上次对话的时间
         self.last_time = datetime.now()
         self.sys_time_counter = 0
+        self.time_sense_enabled = os.environ.get("USE_TIME_SENSE",True)
 
         self.import_settings(settings=settings)
 
@@ -117,9 +118,9 @@ class AIService:
         sys_time_part = ""
         sys_desktop_part = ""
         
-        if (self.last_time and 
+        if self.time_sense_enabled and ((self.last_time and 
             (current_time - self.last_time > timedelta(hours=1))) or \
-            self.sys_time_counter < 1:
+            self.sys_time_counter < 1):
             
             formatted_time = current_time.strftime("%Y/%m/%d %H:%M")
             sys_time_part = f"{formatted_time} "
