@@ -48,7 +48,9 @@ class AIService:
         self.rag_config = None       # 存储RAG配置
         self.session_file_path = None
         self.active_rag_system = None # 当前激活的RAG实例
-        self.rag_window = os.environ.get("RAG_WINDOW_COUNT", 5) # 短期记忆窗口大小
+        self.rag_window = int(os.environ.get("RAG_WINDOW_COUNT", 5)) # 短期记忆窗口大小
+        if self.use_rag: 
+            logger.info(f"当前RAG窗口大小是：{self.rag_window}")
 
         self.import_settings(settings=settings)
         
