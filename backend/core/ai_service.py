@@ -225,7 +225,7 @@ class AIService:
             # 如果启用了RAG系统，保存本次会话到RAG历史记录
             self._rag_append_sys_message(current_context, rag_messages, processed_user_message)
             # 若打印上下文选项开启且在DEBUG级别，则截取发送到llm的文字信息打印到终端
-            # self._print_debug_message(current_context, rag_messages, processed_user_message)
+            self._print_debug_message(current_context, rag_messages, processed_user_message)
 
             ai_response = self.llm_model.process_message(current_context)
 
@@ -555,7 +555,7 @@ class AIService:
                 for i, msg in enumerate(current_context):
                     if msg["role"] == "system":
                         last_system_index = i
-                            
+                        
                 # 2. 过滤RAG消息中的系统提示词，避免重复
                 filtered_rag_messages = []
                 for msg in rag_messages:
@@ -572,17 +572,17 @@ class AIService:
                     else:
                         # 非系统消息直接添加
                         filtered_rag_messages.append(msg)
-                    
+                
                 if filtered_rag_messages:
-                    # 找到最后一个系统消息的位置
-                    last_system_index = next(
-                        (i for i, msg in enumerate(reversed(current_context)) 
-                        if msg["role"] == "system"
-                    ), -1)
+                    # 计算插入位置：最后5条消息之后，但至少要在第一个系统消息之后
+                    insert_position = max(
+                        last_system_index + 1,  # 确保在系统消息之后
+                        len(current_context) - min(5, len(current_context))  # 最后5条之后
+                    )
                     
                     # 关键修改：直接操作原列表的切片赋值
-                    current_context[last_system_index+1:last_system_index+1] = [
-                        msg for msg in rag_messages 
+                    current_context[insert_position:insert_position] = [
+                        msg for msg in filtered_rag_messages 
                         if not (msg["role"] == "system" and 
                             any(sys_msg["content"] == msg["content"] 
                                 for sys_msg in current_context[:last_system_index+1]))
