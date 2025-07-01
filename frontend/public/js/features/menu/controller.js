@@ -1,6 +1,7 @@
 import { DOM } from "../../ui/dom.js";
 import { TypeWriter } from "../../ui/type-writer.js";
 import { DomUtils } from "../../utils/dom-utils.js";
+import EventBus from "../../core/event-bus.js";
 
 export class MenuController {
   constructor(uiController) {
@@ -11,6 +12,7 @@ export class MenuController {
     this.domUtils = DomUtils;
     this.uiController = uiController;
     this.typeWriter = new TypeWriter(DOM.text.testMessage);
+    this.typeWriter.setSoundEnabled(false);
     this.init();
   }
 
@@ -30,6 +32,17 @@ export class MenuController {
 
     // 关闭菜单
     DOM.closeMenu?.addEventListener("click", () => this.closeAllPanels());
+
+    // 启动是否开启对话音效
+    DOM.text.soundEffectToggle.addEventListener("change", function () {
+      if (this.checked) {
+        EventBus.emit("sound:enable_effect", true);
+        console.log("123");
+      } else {
+        EventBus.emit("sound:enable_effect", false);
+        console.log("456");
+      }
+    });
   }
 
   playMenuAnimation() {
