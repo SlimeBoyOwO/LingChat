@@ -54,6 +54,7 @@ app.include_router(chat_info_router)
 app.include_router(frontend_router)
 app.include_router(chat_music_router)
 app.include_router(chat_character_router)
+app.include_router(chat_background_router)
 
 app.websocket("/ws")(websocket_endpoint)
 
