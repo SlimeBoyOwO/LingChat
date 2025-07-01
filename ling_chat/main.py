@@ -92,9 +92,12 @@ def run_app():
 
 
 def start_webview():
-    webview.create_window("Ling Chat", url=f"http://127.0.0.1:{os.getenv('BACKEND_PORT', '8765')}/", width=1200,
-        height=800, resizable=True, fullscreen=False)
-    webview.start(http_server=True)
+    webview.create_window(
+        "Ling Chat", url=f"http://127.0.0.1:{os.getenv('BACKEND_PORT', '8765')}/",
+        width=1024, height=768,
+        resizable=True, fullscreen=False
+    )
+    webview.start(http_server=True, icon=static_path / "resources/lingchat.ico")
 
 
 def main():
