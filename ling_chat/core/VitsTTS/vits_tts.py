@@ -3,6 +3,7 @@ from pathlib import Path
 from ling_chat.core.VitsTTS.sva_adapter import SVAVitsAdapter
 from ling_chat.core.VitsTTS.sbv_adapter import SBVVitsAdapter
 from ling_chat.core.logger import logger
+from ling_chat.utils.runtime_path import temp_path
 
 
 class VitsTTS:
@@ -40,7 +41,7 @@ class VitsTTS:
         ) if sbv_api_url else None
 
         self.audio_format = self.format
-        self.temp_dir = Path(os.environ.get("TEMP_VOICE_DIR", "frontend/public/audio"))
+        self.temp_dir = Path(os.environ.get("TEMP_VOICE_DIR", temp_path / "audio"))
         self.temp_dir.mkdir(exist_ok=True)
         self.enable = True  # 初始化时启用
 

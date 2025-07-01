@@ -5,6 +5,7 @@ from ling_chat.database.user_model import UserModel
 from ling_chat.database.character_model import CharacterModel
 from ling_chat.utils.function import Function
 from ling_chat.utils.runtime_path import static_path
+import traceback
 
 router = APIRouter(prefix="/api/v1/chat/info", tags=["Chat Info"])
 
@@ -50,6 +51,7 @@ async def init_web_infos(user_id: int):
     except Exception as e:
         print("出错了,")
         print(e)
+        traceback.print_exc()  # 这会打印完整的错误堆栈到控制台
         return {
             "code": 500,
             "msg": "Failed to fetch user info",

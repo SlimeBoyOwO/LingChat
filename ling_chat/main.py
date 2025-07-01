@@ -6,11 +6,12 @@ import webview
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 
+from ling_chat.api.chat_main import websocket_endpoint
 from ling_chat.api.chat_history import router as chat_history_router
 from ling_chat.api.chat_info import router as chat_info_router
 from ling_chat.api.chat_character import router as chat_character_router
-from ling_chat.api.chat_main import websocket_endpoint
 from ling_chat.api.chat_music import router as chat_music_router
+from ling_chat.api.chat_background import router as chat_background_router
 from ling_chat.api.frontend_routes import router as frontend_router, get_static_files
 from ling_chat.core.logger import logger, TermColors
 from ling_chat.database import init_db

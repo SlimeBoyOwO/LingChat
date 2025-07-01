@@ -14,8 +14,9 @@ from ling_chat.core.dialog_logger import DialogLogger
 from ling_chat.core.pic_analyzer import DesktopAnalyzer
 
 from ling_chat.utils.function import Function
+from ling_chat.utils.runtime_path import temp_path
 
-TEMP_VOICE_DIR = "../public/audio"
+TEMP_VOICE_DIR = temp_path / "audio"
 WS_HOST = "localhost"
 WS_PORT = 8765
 
@@ -39,10 +40,17 @@ class AIService:
         # 这里记录上次对话的时间
         self.last_time = datetime.now()
         self.sys_time_counter = 0
-
-        self.import_settings(settings=settings)
+        self.time_sense_enabled = os.environ.get("USE_TIME_SENSE", True)
 
         self.tts_engine = self._init_tts_engine()
+
+        # RAG 系统
+        self.use_rag = os.environ.get("USE_RAG", "False").lower() == "true"
+        self.rag_systems_cache = {}  # 缓存RAG实例 {character_id: rag_system_instance}
+        self.rag_config = None  # 存储RAG配置
+        self.active_rag_system = None  # 当前激活的RAG实例
+
+        self.import_settings(settings=settings)
 
         self.messages = [
             {
@@ -51,7 +59,7 @@ class AIService:
             }
         ]
 
-        self.temp_voice_dir = os.environ.get("TEMP_VOICE_DIR", "frontend/public/audio")
+        self.temp_voice_dir = os.environ.get("TEMP_VOICE_DIR", temp_path / "audio")
         os.makedirs(self.temp_voice_dir, exist_ok=True)
 
         self._init_rag_config()
@@ -95,13 +103,77 @@ class AIService:
 
         if use_rag:
             logger.info("正在初始化RAG系统...")
-            rag_initialized = self.deepseek.init_rag_system(rag_config, self.character_id)
+            rag_initialized = self.init_rag_system(rag_config, self.character_id)
             if rag_initialized:
                 logger.info("RAG系统初始化成功")
             else:
                 logger.warning("RAG系统初始化失败或禁用")
         else:
             logger.info("RAG系统已禁用")
+
+    def init_rag_system(self, config, initial_character_id: int):
+        """初始化RAG系统（如果启用）"""
+        if not self.use_rag:
+            logger.debug("RAG系统未启用，跳过初始化")
+            return False
+
+        self.rag_config = config  # 存储配置以备后用
+        return self.switch_rag_system_character(initial_character_id)
+
+    def switch_rag_system_character(self, character_id: int) -> bool:
+        """切换或初始化指定角色的RAG系统"""
+        if not self.use_rag:
+            return False
+
+        # 如果已缓存，直接切换
+        if character_id in self.rag_systems_cache:
+            self.active_rag_system = self.rag_systems_cache[character_id]
+            logger.info(f"RAG记忆库已切换至已缓存的角色 (ID: {character_id})")
+            return True
+
+        # 如果未缓存，则创建新的实例
+        try:
+            from .RAG import RAGSystem
+            logger.info(f"正在为新角色 (ID: {character_id}) 初始化RAG记忆库...")
+
+            # 记录RAG初始化的详细配置
+            if logger.should_print_context():
+                logger.debug("\n------ RAG初始化配置详情 ------")
+                config_attrs = [attr for attr in dir(self.rag_config) if
+                                not attr.startswith('_') and not callable(getattr(self.rag_config, attr))]
+                for attr in sorted(config_attrs):
+                    value = getattr(self.rag_config, attr)
+                    logger.debug(f"RAG配置: {attr} = {value}")
+                logger.debug("------ RAG配置结束 ------\n")
+
+            new_rag_system = RAGSystem(self.rag_config, character_id)  # 传入character_id
+
+            if new_rag_system.initialize():
+                self.rag_systems_cache[character_id] = new_rag_system
+                self.active_rag_system = new_rag_system
+                logger.info(f"角色 (ID: {character_id}) 的RAG记忆库初始化成功并已缓存。")
+
+                if logger.should_print_context():
+                    # 记录初始化后的状态信息
+                    history_count = 0
+                    chroma_count = 0
+                    if hasattr(new_rag_system, 'flat_historical_messages'):
+                        history_count = len(new_rag_system.flat_historical_messages)
+                    if new_rag_system.chroma_collection:
+                        chroma_count = new_rag_system.chroma_collection.count()
+
+                    logger.debug(f"RAG初始化状态: 历史消息数={history_count}, ChromaDB条目数={chroma_count}")
+
+                return True
+            else:
+                logger.error(f"为角色 (ID: {character_id}) 初始化RAG记忆库失败。")
+                return False
+        except ImportError as e:
+            logger.error(f"RAG模块: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"切换RAG角色 (ID: {character_id}) 时出错: {e}", exc_info=True)
+            return False
 
     def _init_tts_engine(self) -> VitsTTS:
         """初始化TTS引擎"""
@@ -119,9 +191,9 @@ class AIService:
         sys_time_part = ""
         sys_desktop_part = ""
 
-        if (self.last_time and
-            (current_time - self.last_time > timedelta(hours=1))) or \
-                self.sys_time_counter < 1:
+        if self.time_sense_enabled and ((self.last_time and
+                                         (current_time - self.last_time > timedelta(hours=1))) or \
+                                        self.sys_time_counter < 1):
             formatted_time = current_time.strftime("%Y/%m/%d %H:%M")
             sys_time_part = f"{formatted_time} "
 
@@ -150,11 +222,22 @@ class AIService:
         try:
             # 1. 获取AI回复
             self.messages.append({"role": "user", "content": processed_user_message})
-            ai_response = self.deepseek.process_message(self.messages, processed_user_message)
+            rag_messages = []
+
+            current_context = self.messages.copy()
+            # 如果启用了RAG系统，保存本次会话到RAG历史记录
+            self._rag_append_sys_message(current_context, rag_messages, processed_user_message)
+            # 若打印上下文选项开启且在DEBUG级别，则截取发送到llm的文字信息打印到终端
+            self._print_debug_message(current_context, rag_messages, processed_user_message)
+
+            ai_response = self.deepseek.process_message(current_context, processed_user_message)
 
             # 1.5 修复ai回复中可能出错的部分，防止下一次对话被带歪
             ai_response = Function.fix_ai_generated_text(ai_response)
             self.messages.append({"role": "assistant", "content": ai_response})
+
+            # 如果有RAG系统，则把这段对话保存在RAG中 TODO 只获取最后两条最新的
+            self._save_messages_to_rag(self.messages)
 
             self._log_conversation("用户", processed_user_message)
             self._log_conversation("钦灵", ai_response)
@@ -238,9 +321,9 @@ class AIService:
             self.character_id = settings.get("character_id")
             self.settings = settings
 
-            if self.deepseek.use_rag:
+            if self.use_rag:
                 logger.info(f"检测到角色切换，正在为角色 (ID: {self.character_id}) 准备长期记忆...")
-                self.deepseek.switch_rag_system_character(self.character_id)
+                self.switch_rag_system_character(self.character_id)
         else:
             logger.error("角色信息settings没有被正常导入，请检查问题！")
 
@@ -418,3 +501,116 @@ class AIService:
                 "content": self.ai_prompt
             }
         ]
+
+    def _save_messages_to_rag(self, messages):
+        if self.use_rag and self.active_rag_system:
+            try:
+                self.active_rag_system.add_session_to_history(messages)
+                logger.debug("当前会话已保存到RAG历史记录")
+            except Exception as e:
+                logger.error(f"保存会话到RAG历史记录失败: {e}")
+
+        logger.debug("成功获取LLM响应")
+
+    def _print_debug_message(self, current_context, rag_messages, messages):
+        # if logger.should_print_context():
+        logger.info("\n------ 开发者模式：以下信息被发送给了llm ------")
+        for message in current_context:
+            logger.info(f"Role: {message['role']}\nContent: {message['content']}\n")
+
+        # 增加更详细的RAG信息日志
+        if self.use_rag and rag_messages:
+            logger.info("\n------ RAG增强信息详情 ------")
+            logger.info(f"原始消息数: {len(messages)}，RAG增强后消息数: {len(current_context)}")
+            logger.info(f"RAG增强消息数量: {len(rag_messages)}，位置: 系统提示后、用户消息前")
+
+            # 计算并输出RAG消息的总长度（字符数）
+            total_rag_chars = sum(len(msg.get('content', '')) for msg in rag_messages)
+            logger.info(f"RAG增强内容总长度: {total_rag_chars} 字符")
+
+            # 分析RAG消息类型统计
+            role_counts = {}
+            for msg in rag_messages:
+                role = msg.get('role', 'unknown')
+                role_counts[role] = role_counts.get(role, 0) + 1
+
+            role_stats = ", ".join([f"{role}: {count}" for role, count in role_counts.items()])
+            logger.info(f"RAG消息角色分布: {role_stats}")
+
+        logger.info("------ 结束 ------")
+
+    def _rag_append_sys_message(self, current_context, rag_messages, user_input):
+        if not (self.use_rag and self.active_rag_system):
+            return
+        try:
+            logger.debug("正在调用RAG系统检索相关历史信息...")
+            # 清空原有内容，再 extend 新的消息
+            rag_messages.clear()
+            new_messages = self.active_rag_system.prepare_rag_messages(user_input)
+            rag_messages.extend(new_messages)  # 直接修改外部传入的列表
+            if rag_messages:
+                logger.debug(f"RAG系统返回了 {len(rag_messages)} 条上下文增强消息")
+
+                # 将RAG消息插入到系统提示后，用户消息前
+                # 注意: 防止系统提示重复出现
+                # 1. 找到最后一个系统提示位置
+                last_system_index = -1
+                for i, msg in enumerate(current_context):
+                    if msg["role"] == "system":
+                        last_system_index = i
+
+                # 2. 过滤RAG消息中的系统提示词，避免重复
+                filtered_rag_messages = []
+                for msg in rag_messages:
+                    # 只有当RAG消息是前缀/后缀提示，且不与原系统提示重复时才添加
+                    if msg["role"] == "system":
+                        is_duplicate = False
+                        # 检查是否与原系统提示重复
+                        for sys_msg in current_context[:last_system_index + 1]:
+                            if sys_msg["role"] == "system" and sys_msg["content"] == msg["content"]:
+                                is_duplicate = True
+                                break
+                        if not is_duplicate:
+                            filtered_rag_messages.append(msg)
+                    else:
+                        # 非系统消息直接添加
+                        filtered_rag_messages.append(msg)
+
+                if filtered_rag_messages:
+                    # 找到最后一个系统消息的位置
+                    last_system_index = next(
+                        (i for i, msg in enumerate(reversed(current_context))
+                         if msg["role"] == "system"
+                         ), -1)
+
+                    # 关键修改：直接操作原列表的切片赋值
+                    current_context[last_system_index + 1:last_system_index + 1] = [
+                        msg for msg in rag_messages
+                        if not (msg["role"] == "system" and
+                                any(sys_msg["content"] == msg["content"]
+                                    for sys_msg in current_context[:last_system_index + 1]))
+                    ]
+                else:
+                    logger.debug("所有RAG消息被过滤，未向上下文添加新消息")
+            else:
+                logger.debug("RAG系统未返回相关历史信息")
+        except Exception as e:
+            logger.error(f"RAG处理过程中出错: {e}")
+            logger.debug(f"RAG process error: {e}", exc_info=True)
+
+    # 暂未调用该段代码↓
+    def load_memory_to_rag(self, messages):
+        # 如果启用了RAG，尝试将加载的记忆添加到RAG历史记录
+        if self.use_rag and self.active_rag_system:
+            try:
+                # 过滤掉系统提示词，只保留用户和助手的消息
+                filtered_messages = [msg for msg in messages if msg.get('role') in ['user', 'assistant']]
+
+                if filtered_messages:
+                    self.active_rag_system.add_session_to_history(filtered_messages)
+                    logger.debug(
+                        f"加载的记忆已添加到RAG历史记录 (过滤后: {len(filtered_messages)}/{len(messages)} 条消息)")
+                else:
+                    logger.debug("过滤后无历史消息可添加到RAG")
+            except Exception as e:
+                logger.error(f"将加载的记忆添加到RAG历史记录时出错: {e}")
