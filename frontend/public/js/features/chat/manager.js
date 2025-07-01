@@ -1,4 +1,5 @@
 import EventBus from "../../core/event-bus.js";
+import { DOM } from "../../ui/dom.js";
 
 export class ChatManager {
   constructor({ connection, historyManager }) {
