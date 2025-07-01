@@ -19,6 +19,7 @@ export class UIController {
 
     this.userId = 1;
     this.character_id = 1;
+    this.enable_sound_effects = true;
 
     // 绑定实例方法
     this.handleSend = this.handleSend.bind(this);
@@ -29,7 +30,7 @@ export class UIController {
 
   init() {
     this.bindEventListeners();
-    this.setupGlobalHandlers();
+    this.bindEvents();
     this.getAndApplyAIInfo();
   }
 
@@ -90,7 +91,7 @@ export class UIController {
     document?.addEventListener("keypress", this.handleKeyPress);
   }
 
-  setupGlobalHandlers() {
+  bindEvents() {
     // 更新角色和信息事件
     EventBus.on("system:character_updated", () => {
       this.getAndApplyAIInfo();
@@ -108,9 +109,6 @@ export class UIController {
         displayText = data.content;
       }
 
-      // 显示消息内容
-      this.writer.start(displayText, this.speed);
-
       // 更新情绪
       if (data.emotion) {
         this.emotionSystem.setEmotion(data.emotion);
@@ -126,6 +124,13 @@ export class UIController {
       } else {
         this.writer.setSoundEnabled(true);
       }
+
+      if (!this.enable_sound_effects) {
+        this.writer.setSoundEnabled(false);
+      }
+
+      // 显示消息内容
+      this.writer.start(displayText, this.speed);
     });
 
     // 启用输入事件
@@ -152,6 +157,12 @@ export class UIController {
       } else {
         DOM.input.disabled = false;
       }
+    });
+
+    // 停止哔哔声音
+    EventBus.on("sound:enable_effect", (enabled) => {
+      this.enable_sound_effects = enabled;
+      console.log("监听成功");
     });
 
     // 监听 WebSocket 状态更新

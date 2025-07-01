@@ -86,8 +86,6 @@ class VitsTTS:
         try:
             # 自动选择适配器
             adapter = self._select_adapter(params)
-            logger.info(f"使用适配器: {type(adapter).__name__}")
-            
             audio_data = await adapter.generate_voice(text, params)
             
             output_file = str(file_name)
@@ -99,6 +97,8 @@ class VitsTTS:
             
         except Exception as e:
             logger.error(f"语音生成失败: {str(e)} 文本: \"{text}\"")
+            logger.error(f"TTS服务不可达，已禁用语音，重新启动程序以刷新启动服务")
+            self.enable = False
             return None
         
     def cleanup(self):

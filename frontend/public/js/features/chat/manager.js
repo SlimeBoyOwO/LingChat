@@ -1,4 +1,5 @@
 import EventBus from "../../core/event-bus.js";
+import { DOM } from "../../ui/dom.js";
 
 export class ChatManager {
   constructor({ connection, historyManager }) {
@@ -42,6 +43,16 @@ export class ChatManager {
 
     EventBus.on("chat:enable-input", () => {
       this.enableInput();
+    });
+
+    DOM.text.soundEffectToggle.addEventListener("change", function () {
+      if (this.checked) {
+        EventBus.emit("sound:enable_effect", true);
+        console.log("监听成功4");
+      } else {
+        EventBus.emit("sound:enable_effect", false);
+        console.log("监听成功5");
+      }
     });
   }
 
