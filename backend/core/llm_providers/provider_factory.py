@@ -1,6 +1,7 @@
 from .web_llm import WebLLMProvider
 from .ollama import OllamaProvider
 from .lmstudio import LMStudioProvider
+from .gemini import GeminiProvider
 from .base import BaseLLMProvider
 from typing import Dict, List
 from core.logger import logger
@@ -27,6 +28,9 @@ class LLMProviderFactory:
             elif provider_type == "lmstudio":
                 logger.info("创建LM STUDIO服务提供商")
                 return LMStudioProvider()
+            elif provider_type == "lmstudio":
+                logger.info("创建Gemini服务提供商")
+                return GeminiProvider()
             else:
                 raise ValueError(f"Unsupported provider type: {provider_type}")
         except Exception as e:
