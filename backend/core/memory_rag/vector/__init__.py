@@ -1,1 +1,1 @@
-from .vector_store import MemoryVector
+from .vector_store import MemoryVector, get_default_vector_config

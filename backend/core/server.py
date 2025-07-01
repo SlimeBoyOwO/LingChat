@@ -25,13 +25,13 @@ class Server:
         try:
             import subprocess
             root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            pyqtweb_script = os.path.join(root_dir, "frontend", "pyqtweb.py")
+            exe_path = os.path.join(root_dir, "frontend", "LingChatWeb.exe")
 
-            if os.path.exists(pyqtweb_script):
-                subprocess.Popen([sys.executable, pyqtweb_script])
-                logger.info(f"成功启动前端应用: {pyqtweb_script}")
+            if os.path.exists(exe_path):
+                subprocess.Popen([exe_path])
+                logger.info(f"成功启动前端应用: {exe_path}")
             else:
-                logger.error(f"错误: 找不到前端脚本 {pyqtweb_script}")
+                logger.error(f"错误: 找不到可执行文件 {exe_path}")
         except Exception as e:
             logger.error(f"启动前端应用失败: {e}")
 
