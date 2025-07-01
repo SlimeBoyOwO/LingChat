@@ -1,4 +1,3 @@
-import os
 from fastapi import APIRouter, UploadFile, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
 from pathlib import Path
@@ -15,7 +14,7 @@ ALLOWED_EXTENSIONS = {'.mp3', '.wav', '.flac', '.webm', '.weba', '.ogg', '.m4a',
 @router.get("/music_file/{music_file}")
 async def get_specific_avatar(music_file: str):
     file_path = static_path / "musics" / music_file
-    if not os.path.exists(file_path):
+    if not file_path.exists():
         raise HTTPException(status_code=404, detail="没有找到音乐文件")
 
     return FileResponse(file_path)
