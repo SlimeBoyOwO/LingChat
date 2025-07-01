@@ -64,6 +64,7 @@ export const DOM = {
   text: {
     speedInput: document.getElementById("speed-option"),
     testMessage: document.getElementById("testmessage"),
+    soundEffectToggle: document.getElementById("sound-effect-toggle"),
   },
 
   // 菜单历史部分
