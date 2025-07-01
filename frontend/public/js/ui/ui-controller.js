@@ -162,7 +162,6 @@ export class UIController {
     // 停止哔哔声音
     EventBus.on("sound:enable_effect", (enabled) => {
       this.enable_sound_effects = enabled;
-      console.log("监听成功");
     });
 
     // 监听 WebSocket 状态更新
