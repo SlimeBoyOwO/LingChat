@@ -14,19 +14,49 @@ Windows、Linux均可运行。Linux用户请查看额外的使用说明。
 - 支持自定义角色，可以用自己的oc或者游戏人物与自己对话
 - 清爽的设置菜单，高度自定义的设置选项，可搭配不同背景和音乐聊天
 
-## ❓如何使用
+## ⭐ 快速上手
 
-### 下载&使用 exe 程序
+### Step 0: 开始之前的准备
+- 在DeepSeek或者其他大模型网站中，申请自己的API秘钥，并且保证有余额拱使用 -> [DeepSeek的官方API获取网站](https://platform.deepseek.com/)
+
+### Step 1: 下载软件
 - 在右边的release中，找到最新的版本，下载后缀为.7z的文件，下载完成后解压它。
-- 点击 LingChat.exe 启动程序
+- 点击 `LingChat.exe` 启动程序
 
-- (非必须):若要使用语音功能，请下载[simple-vits-api](https://github.com/Artrajz/vits-simple-api)链接程序。该项目实现了基于 VITS 的简单语音合成 API。建议下载 GPU 版本，速度快。程序默认监听 23456 语音端口，程序默认导入的模型是 zcchat 地址->讨论区->角色示范（丛雨）->vits 模型下载好之后在 simple-vits-api 的目录的/data/models 里面解压，再启动就 ok 了; 如果需要使用其他模型，在.env 的 Vits 实现函数更改相关设定即可。
+### Step 2: 首次启动配置
+- 启动程序后，点开右上角的菜单，点击【文字】部分的【进入设置页面】按钮，输入自己选用的大模型类型和API，模型信息等（**这些是必填信息**）
+- 设置完毕后，滑动到最下方，点击保存配置。关闭黑不溜秋的窗口和LingChat程序，重新点击 `LingChat.exe` 启动程序，就可以使用啦！
+
+### Step 3：基础语音功能使用（从这里开始的以下步骤属于扩展功能，按需进行）
+- 若要使用 `Vits` 语音功能，请下载链接程序[simple-vits-api](https://github.com/Artrajz/vits-simple-api)。
+- 该项目实现了基于 `Vits` 的简单语音合成 API。如果你是核显只能下载CPU版本。如果有独显建议下载 GPU 版本，速度快。
+- 程序默认监听 23456 语音端口，程序默认导入的模型是 zcchat 地址->讨论区->角色示范（丛雨）-> vits
+- 模型下载好之后在 simple-vits-api 的目录的/data/models 里面解压，再启动就 ok 了
+- 如果需要使用其他角色声线，请在`game_data/characters/角色名/settings.txt`中修改`speaker_id`这个属性（0~6可选）
+
+### Step 4：视觉模型功能使用
+- 从通义千问或者其他拥有视觉感知的大模型网站中，获取API -> [阿里云的相关视觉模型API获取网站](https://bailian.console.aliyun.com/?tab=api#/api)
+- 在设置中的VD_API_KEY和VD_MODEL_TYPE中输入自己的密钥和模型类型，该API默认赠送额度，不需要充值，而且肯定够用一辈子了对于这个项目。
+#### 温馨提示：
+> 设定完毕后，可以通过在与AI对话的对话中，包含“看桌面”或者“看看我的桌面”来触发视觉感知，允许AI观察你的屏幕并做出回应   
+
+### Step 5: 扩展语音功能使用（Style-Bert-Vits2模型使用，更好的音色，可自定义训练）
+- 从下方相关链接中，下载Style-Bert-Vits2的Release的最新版本，解压
+- 先决定这个软件（安装后12GB）的安装位置，然后启动里面的`Install-Style-Bert-VITS2.bat`文件（如果之后更改这个软件的位置会有Bug）
+- 耐心等待很长时间后，这个软件会安装好。由于这个项目庞大，所以等待时间非常长
+- 下载完毕后，在`model_assests`目录中，把下载好的Bert-Vits模型解压进去
+- 打开程序的目录，里面有个`server.bat`，启动它即可使用
+#### 温馨提示：
+> 要是想使用这个功能，需要在`game_data/characters/角色名/settings.txt`中设定`model_name`的参数为导入的模型的名字   
+> 模型的名字可以通过启动`app.bat`中的人物列表中查看   
 
 ## 🔗 相关 & 致谢链接
 
-- [Zcchat](https://github.com/Zao-chen/ZcChat): 本项目的灵感来源，可以在这里找到 Vits 模型和人物素材。可以的话也帮他们点个stars吧❤
-- [Simple-Vits-API](https://github.com/Artrajz/vits-simple-api): 该项目实现了基于 VITS 的简单语音合成 API。如果你不是核显建议下载 GPU 版本，速度快。核显就用CPU。
-- [Style-Bert-VITS2](https://github.com/litagin02/Style-Bert-VITS2)：该项目实现了 Bert-VITS 的语音合成和训练，你可以用这个进行 Bert-Vits 语音训练和推理，少量数据量就可以达到很棒效果！
+- [Zcchat](https://github.com/Zao-chen/ZcChat): 本项目的灵感来源，可以在这里找到 `Vits` 模型和人物素材。可以的话也帮他们点个stars吧❤
+- [Simple-Vits-API](https://github.com/Artrajz/vits-simple-api): 该项目实现了基于 `VITS` 的简单语音合成 API。如果你不是核显建议下载 GPU 版本，速度快。核显就用CPU。
+- [Style-Bert-VITS2](https://github.com/litagin02/Style-Bert-VITS2)：该项目实现了 `Bert-VITS` 的语音合成和训练，你可以用这个进行语音训练和推理，少量数据量就可以达到很棒效果！
+- [ProgrammingVTuberLogos](https://github.com/Aikoyori/ProgrammingVTuberLogos)：LingChat 的标题风格，可爱滴捏，画风参考这个项目~
+- 本项目的实现离不开这些优秀开源作品的先驱者，在这里我们送上由衷的致谢
 
 ## 🌸 一些小话
 
