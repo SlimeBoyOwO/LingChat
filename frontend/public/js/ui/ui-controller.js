@@ -3,6 +3,7 @@ import { DOM } from "./dom.js";
 import { TypeWriter } from "./type-writer.js";
 import { EmotionController } from "../features/emotion/controller.js";
 import EventBus from "../core/event-bus.js";
+import request from "../core/request.js";
 
 export class UIController {
   constructor() {
@@ -14,9 +15,11 @@ export class UIController {
     this.ai_subtitle = "Slime Studio";
     this.user_name = "可爱的你";
     this.user_subtitle = "Bilibili";
+    this.think_message = "灵灵正在思考ing...";
 
     this.userId = 1;
     this.character_id = 1;
+    this.enable_sound_effects = true;
 
     // 绑定实例方法
     this.handleSend = this.handleSend.bind(this);
@@ -27,7 +30,7 @@ export class UIController {
 
   init() {
     this.bindEventListeners();
-    this.setupGlobalHandlers();
+    this.bindEvents();
     this.getAndApplyAIInfo();
   }
 
@@ -37,39 +40,42 @@ export class UIController {
   }
 
   // 这里是整个ui初始化的地方，务必重视
-  async getAndApplyAIInfo() {
-    try {
-      const response = await fetch(
-        `/api/v1/chat/info/init?user_id=${this.userId}`
-      );
-      const result = await response.json();
+  getAndApplyAIInfo() {
+    return request
+      .informationGet(this.userId)
+      .then((data) => {
+        this.ai_name = data.ai_name;
+        this.ai_subtitle = data.ai_subtitle;
+        this.user_name = data.user_name;
+        this.user_subtitle = data.user_subtitle;
+        this.character_id = data.character_id;
+        this.think_message = data.thinking_message;
 
-      if (result.code !== 200) {
-        throw new Error(result.message || "读取失败");
-      }
+        // 动态设置 transform 和 transform-origin
+        DOM.avatar.img.style.transform = `scale(${data.scale})`; // 调整缩放
+        DOM.avatar.img.style.transformOrigin = `center ${data.offset}%`; // 调整放大基准点
 
-      this.ai_name = result.data.ai_name;
-      this.ai_subtitle = result.data.ai_subtitle;
-      this.user_name = result.data.user_name;
-      this.user_subtitle = result.data.user_subtitle;
-      this.character_id = result.data.character_id;
+        // 顺便设置预览图像里面的同样的设定
+        DOM.image.kousanPreviewImg.style.transform = `scale(${data.scale})`; // 调整缩放
+        DOM.image.kousanPreviewImg.style.transformOrigin = `center ${data.offset}%`; // 调整放大基准点
 
-      // 动态设置 transform 和 transform-origin
-      DOM.avatar.img.style.transform = `scale(${result.data.scale})`; // 调整缩放
-      DOM.avatar.img.style.transformOrigin = `center ${result.data.offset}%`; // 调整放大基准点
+        // 设置bubble的css样式中的top和left
+        DOM.avatar.bubble.style.top = `${data.bubble_top}%`;
+        DOM.avatar.bubble.style.left = `${data.bubble_left}%`;
 
-      this.resetAvatar();
+        this.resetAvatar();
 
-      // 发送事件，方便其他地方监听
-      EventBus.emit("ui:name-updated", {
-        ai_name: this.ai_name,
-        ai_subtitle: this.ai_subtitle,
-        user_name: this.user_name,
-        user_subtitle: this.user_subtitle,
+        // 发送事件，方便其他地方监听
+        EventBus.emit("ui:name-updated", {
+          ai_name: this.ai_name,
+          ai_subtitle: this.ai_subtitle,
+          user_name: this.user_name,
+          user_subtitle: this.user_subtitle,
+        });
+      })
+      .catch((error) => {
+        console.log("读取失败", error);
       });
-    } catch (error) {
-      console.log("读取失败", error);
-    }
   }
 
   resetAvatar() {
@@ -77,8 +83,7 @@ export class UIController {
     DOM.avatar.subtitle.textContent = this.user_subtitle;
 
     this.emotionSystem.setEmotion("正常", { force: true });
-    DOM.image.kousanPreviewImg.src =
-      "/api/v1/chat/character/get_avatar/正常.png";
+    DOM.image.kousanPreviewImg.src = `/api/v1/chat/character/get_avatar/正常.png?t=${Date.now()}`;
   }
 
   bindEventListeners() {
@@ -86,7 +91,7 @@ export class UIController {
     document?.addEventListener("keypress", this.handleKeyPress);
   }
 
-  setupGlobalHandlers() {
+  bindEvents() {
     // 更新角色和信息事件
     EventBus.on("system:character_updated", () => {
       this.getAndApplyAIInfo();
@@ -104,9 +109,6 @@ export class UIController {
         displayText = data.content;
       }
 
-      // 显示消息内容
-      this.writer.start(displayText, this.speed);
-
       // 更新情绪
       if (data.emotion) {
         this.emotionSystem.setEmotion(data.emotion);
@@ -114,11 +116,21 @@ export class UIController {
       }
 
       // 处理音频
-      if (data.audioFile) {
+      if (data.audioFile && data.audioFile !== "none") {
+        this.writer.setSoundEnabled(false);
         DOM.audioPlayer.src = `../audio/${data.audioFile}`;
         DOM.audioPlayer.load();
         DOM.audioPlayer.play();
+      } else {
+        this.writer.setSoundEnabled(true);
       }
+
+      if (!this.enable_sound_effects) {
+        this.writer.setSoundEnabled(false);
+      }
+
+      // 显示消息内容
+      this.writer.start(displayText, this.speed);
     });
 
     // 启用输入事件
@@ -138,13 +150,18 @@ export class UIController {
         DOM.input.disabled = true;
         DOM.input.value = "";
         this.emotionSystem.setEmotion("AI思考");
-        DOM.input.placeholder = "灵灵正在思考...";
+        DOM.input.placeholder = this.think_message;
         DOM.avatar.title.textContent = this.ai_name;
         DOM.avatar.subtitle.textContent = this.ai_subtitle;
         DOM.avatar.emotion.textContent = "";
       } else {
         DOM.input.disabled = false;
       }
+    });
+
+    // 停止哔哔声音
+    EventBus.on("sound:enable_effect", (enabled) => {
+      this.enable_sound_effects = enabled;
     });
 
     // 监听 WebSocket 状态更新

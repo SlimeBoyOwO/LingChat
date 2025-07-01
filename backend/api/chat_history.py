@@ -1,5 +1,3 @@
-# api/chat_history.py
-
 from fastapi import APIRouter, Query, HTTPException, Request
 from typing import List
 from datetime import datetime

@@ -126,6 +126,33 @@
   justify-content: flex-start;
 }
 
+.big-button {
+  padding: 8px 15px;
+  background-color: #5d7eb6;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: center;
+  font-size: 0.9em;
+  transition: all 0.2s ease;
+  display: block;
+  align-items: center;
+  margin-right: 10px;
+  text-decoration: none;
+}
+
+.big-button:hover {
+  background-color: #4a699e;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.big-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
 .upload-bg-btn {
   padding: 8px 15px;
   background-color: #5d7eb6;
@@ -137,7 +164,7 @@
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
-  margin-right: 10px;
+  margin-left: 20px;
 }
 
 .upload-bg-btn:hover {
@@ -237,12 +264,8 @@
 }
 
 /* 背景类 */
-body.bg-default {
-  background-image: url("../pictures/backgrounds/homepage_bg.jpeg");
-}
 
 body.bg-night {
-  background-image: url("../pictures/backgrounds/homepage_bg2.jpg");
   color: #fff;
   /* 夜间模式的文字颜色 */
 }
@@ -798,7 +821,6 @@ button#clear-history.show {
 #kuosan-preview {
   margin-top: 25px;
   text-align: center;
-  background-image: url("../pictures/backgrounds/homepage_bg.jpeg");
   background-size: cover;
   background-position: center;
   border-radius: 8px;

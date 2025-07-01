@@ -12,6 +12,7 @@ __pycache__
 
 # Ignore local env
 .venv/
+venv/
 .env
 .env.docker
 # Ignore third_party
@@ -41,6 +42,11 @@ package.json
 # Ignore 风雪的个人文件目录
 memory-bank/
 
+#Ignore 其他角色数据文件
+game_data/characters/橘光
+game_data/characters/橘望
+game_data/characters/音理
+
 # Ignore 数据库淫荡对话历史
 chat_system.db
 chroma_db_store/
@@ -49,3 +55,4 @@ browser_data/
 #
 release/zip/
 .openmcp/
+models/
