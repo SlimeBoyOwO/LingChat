@@ -31,6 +31,15 @@ export class MenuController {
 
     // 关闭菜单
     DOM.closeMenu?.addEventListener("click", () => this.closeAllPanels());
+
+    // 启动是否开启对话音效
+    DOM.text.soundEffectToggle.addEventListener("change", function () {
+      if (this.checked) {
+        EventBus.emit("sound:enable_effect", true);
+      } else {
+        EventBus.emit("sound:enable_effect", false);
+      }
+    });
   }
 
   playMenuAnimation() {
