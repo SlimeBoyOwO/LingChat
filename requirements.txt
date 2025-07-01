@@ -5,7 +5,8 @@ transformers
 torch
 aiohttp
 websockets
-dotenv
+python-dotenv
+fastapi
 uvicorn
 sentence-transformers
 chromadb
