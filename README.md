@@ -1,5 +1,6 @@
 # 🐈✨ LingChat - 灵动の人工智能聊天陪伴助手
-![454545644](https://github.com/user-attachments/assets/3cf1bc38-37c0-4ea2-b962-dcbe365e189b)
+![official](https://github.com/user-attachments/assets/ffccbe79-87ed-4dbc-8e60-f400efbbab26)
+
 
 ## 🖥️ 支持操作系统：
 Windows、Linux均可运行。Linux用户请查看额外的使用说明。
