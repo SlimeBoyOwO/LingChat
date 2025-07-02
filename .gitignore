@@ -43,9 +43,9 @@ package.json
 memory-bank/
 
 #Ignore 其他角色数据文件
-game_data/characters/橘光
-game_data/characters/橘望
-game_data/characters/音理
+game_data/characters/**
+!game_data/characters/诺一钦灵/
+!game_data/characters/诺一钦灵/**
 
 # Ignore 数据库淫荡对话历史
 chat_system.db
