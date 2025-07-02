@@ -51,6 +51,10 @@ Windows、Linux均可运行。Linux用户请查看额外的使用说明。
 > 要是想使用这个功能，需要在 `game_data/characters/<角色名>/settings.txt` 中设定 `model_name` 的参数为导入的模型的名字   
 > 模型的名字可以通过启动`app.bat`中的人物列表中查看   
 
+### Step 6: 加入最新版的测试
+- 你可以参考[源代码使用教程](https://github.com/SlimeBoyOwO/LingChat/blob/develop/others/document/%E6%BA%90%E4%BB%A3%E7%A0%81%E4%BD%BF%E7%94%A8.md)来使用LingChat的源代码，并获取最新的开发版更新。
+- 开发版是不稳定的版本，如果遇到任何Bug，欢迎向我们反馈！
+
 ## 🔗 相关 & 致谢链接
 
 - [Zcchat](https://github.com/Zao-chen/ZcChat): 本项目的灵感来源，可以在这里找到 `Vits` 模型和人物素材。可以的话也帮他们点个stars吧❤
