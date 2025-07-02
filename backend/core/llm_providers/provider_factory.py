@@ -28,7 +28,7 @@ class LLMProviderFactory:
             elif provider_type == "lmstudio":
                 logger.info("创建LM STUDIO服务提供商")
                 return LMStudioProvider()
-            elif provider_type == "lmstudio":
+            elif provider_type == "gemini":
                 logger.info("创建Gemini服务提供商")
                 return GeminiProvider()
             else:

@@ -10,6 +10,9 @@ class OllamaProvider(BaseLLMProvider):
         self.base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
         self.model_type = os.environ.get("OLLAMA_MODEL", "llama3")
     
+    def initialize_client(self):
+        pass
+    
     def generate_response(self, messages: List[Dict]) -> str:
         """生成Ollama模型响应"""
         try:
