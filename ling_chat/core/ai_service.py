@@ -6,7 +6,7 @@ import json, copy
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 
-from ling_chat.core.deepseek import DeepSeek
+from ling_chat.core.llm_providers.manager import LLMManager  # 导入LLM管理器
 from ling_chat.core.predictor import EmotionClassifier  # 导入情绪分类器
 from ling_chat.core.VitsTTS.vits_tts import VitsTTS  # 导入语音生成
 from ling_chat.core.logger import logger, TermColors
@@ -31,7 +31,7 @@ COLOR = {
 class AIService:
     def __init__(self, settings: dict):
         """初始化所有服务组件"""
-        self.deepseek = DeepSeek()
+        self.llm_model = LLMManager()
         self.emotion_classifier = EmotionClassifier()
         self.dialog_logger = DialogLogger()
         self.desktop_analyzer = DesktopAnalyzer()
@@ -231,7 +231,7 @@ class AIService:
             # 若打印上下文选项开启且在DEBUG级别，则截取发送到llm的文字信息打印到终端
             self._print_debug_message(current_context, rag_messages, processed_user_message)
 
-            ai_response = self.deepseek.process_message(current_context, processed_user_message)
+            ai_response = self.llm_model.process_message(current_context, processed_user_message)
 
             # 1.5 修复ai回复中可能出错的部分，防止下一次对话被带歪
             ai_response = Function.fix_ai_generated_text(ai_response)
