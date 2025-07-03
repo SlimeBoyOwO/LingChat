@@ -580,15 +580,15 @@ class AIService:
                         filtered_rag_messages.append(msg)
 
                 if filtered_rag_messages:
-                    # 找到最后一个系统消息的位置
-                    last_system_index = next(
-                        (i for i, msg in enumerate(reversed(current_context))
-                         if msg["role"] == "system"
-                         ), -1)
+                    # 计算插入位置：最后5条消息之后，但至少要在第一个系统消息之后
+                    insert_position = max(
+                        last_system_index + 1,  # 确保在系统消息之后
+                        len(current_context) - min(5, len(current_context))  # 最后5条之后
+                    )
 
                     # 关键修改：直接操作原列表的切片赋值
-                    current_context[last_system_index + 1:last_system_index + 1] = [
-                        msg for msg in rag_messages
+                    current_context[insert_position:insert_position] = [
+                        msg for msg in filtered_rag_messages
                         if not (msg["role"] == "system" and
                                 any(sys_msg["content"] == msg["content"]
                                     for sys_msg in current_context[:last_system_index + 1]))
