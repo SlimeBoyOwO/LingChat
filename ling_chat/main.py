@@ -18,6 +18,7 @@ from ling_chat.database import init_db
 from ling_chat.database.character_model import CharacterModel
 from ling_chat.utils.runtime_path import static_path, user_data_path
 
+load_dotenv(".env.example")
 load_dotenv()
 load_dotenv(user_data_path / ".env")  # 加载用户数据目录下的环境变量
 
