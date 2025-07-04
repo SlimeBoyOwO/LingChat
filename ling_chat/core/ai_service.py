@@ -50,6 +50,8 @@ class AIService:
         self.rag_config = None  # 存储RAG配置
         self.session_file_path = None
         self.active_rag_system = None  # 当前激活的RAG实例
+        self.rag_window = os.environ.get("RAG_WINDOW_COUNT", 5) # 短期记忆窗口大小
+
 
         self.import_settings(settings=settings)
 
@@ -556,11 +558,8 @@ class AIService:
 
                 # 将RAG消息插入到系统提示后，用户消息前
                 # 注意: 防止系统提示重复出现
-                # 1. 找到最后一个系统提示位置
-                last_system_index = -1
-                for i, msg in enumerate(current_context):
-                    if msg["role"] == "system":
-                        last_system_index = i
+                # 1. 找到人设提示位置
+                last_system_index = 0
 
                 # 2. 过滤RAG消息中的系统提示词，避免重复
                 filtered_rag_messages = []
@@ -580,10 +579,10 @@ class AIService:
                         filtered_rag_messages.append(msg)
 
                 if filtered_rag_messages:
-                    # 计算插入位置：最后5条消息之后，但至少要在第一个系统消息之后
+                    # 计算插入位置：最后rag_window条消息之后，但至少要在第一个系统消息之后
                     insert_position = max(
                         last_system_index + 1,  # 确保在系统消息之后
-                        len(current_context) - min(5, len(current_context))  # 最后5条之后
+                        len(current_context) - min(self.rag_window, len(current_context))  # 最后N条之后
                     )
 
                     # 关键修改：直接操作原列表的切片赋值
