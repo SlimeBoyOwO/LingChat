@@ -18,7 +18,7 @@ Windows、Linux均可运行。Linux用户请查看额外的使用说明。
 ## ⭐ 快速上手
 
 ### Step 0: 开始之前的准备
-- 在DeepSeek或者其他大模型网站中，申请自己的API密钥，并且保证有余额拱使用 -> [DeepSeek的官方API获取网站](https://platform.deepseek.com/)
+- 在DeepSeek或者其他大模型网站中，申请自己的API密钥，并且保证有余额供使用 -> [DeepSeek的官方API获取网站](https://platform.deepseek.com/)
 
 ### Step 1: 下载软件
 - 在[release](https://github.com/SlimeBoyOwO/LingChat/releases)中，找到最新的版本，下载如 `LingChat.x.x.x.7z` 的文件，下载完成后解压它。
@@ -66,7 +66,7 @@ Windows、Linux均可运行。Linux用户请查看额外的使用说明。
             )
         print(completion.model_dump_json())
         ```
-    3. `VD_BASE_URL` 参数是模型的名称，点击[页面](https://bailian.console.aliyun.com/?tab=model&accounttraceid=bef5c4d0bc384ad294f43f844ed11cd9thwc#/model-market/detail/qwen2.5-vl-7b-instruct)上方模型名称右侧的复制图标即可获取模型名称
+    3. `VD_MODEL` 参数是模型的名称，点击[页面](https://bailian.console.aliyun.com/?tab=model&accounttraceid=bef5c4d0bc384ad294f43f844ed11cd9thwc#/model-market/detail/qwen2.5-vl-7b-instruct)上方模型名称右侧的复制图标即可获取模型名称
 - 阿里云 API 默认赠送额度，不需要充值， *而且对于这个项目肯定够用一辈子了* 。
 #### 温馨提示：
 > 设定完毕后，可以通过在与AI对话的对话中，包含 `“看桌面”` 或者 `“看看我的桌面”` 来触发视觉感知，允许AI观察你的屏幕并做出回应   
