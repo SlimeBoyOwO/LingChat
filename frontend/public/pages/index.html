@@ -182,7 +182,6 @@
               </div>
             </div>
             <div class="menu-body" id="sound-page">
-              <!--==========新修改 头==========-->
               <div class="menu-section">
                 <div class="menu-item">
                   <h4>👩 角色音量</h4>
@@ -199,10 +198,6 @@
                     />
                     <span>强</span>
                   </div>
-                  <!--input的step的作用是:
-                    简单解释就是每次拖动的的时候一次性会增加几格，例如上述控件，若将step的值更改为10，那你每次拖动变化的值都是10，例如0,10,20,30,40,50...
-                    理解吧？若仍无法理解，你可以把这个疑问向ai大模型请教请教。
-                    -->
                 </div>
                 <div class="menu-item">
                   <h4>💬 气泡音量</h4>
@@ -288,7 +283,6 @@
                   </div>
                 </div>
               </div>
-              <!--==========新修改 尾==========-->
             </div>
           </div>
           <div class="menu-body" id="save-page">
@@ -348,7 +342,7 @@
 
       <div class="main-box">
         <div class="avatar-container character-animation normal">
-          <img id="qinling" />
+          <img id="qinling" onerror="this.src='/frontend/public/pictures/Image/Default-OC.png'" />
           <div class="bubble"></div>
         </div>
 
