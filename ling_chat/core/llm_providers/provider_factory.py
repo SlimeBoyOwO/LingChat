@@ -1,10 +1,10 @@
-from .web_llm import WebLLMProvider
-from .ollama import OllamaProvider
-from .lmstudio import LMStudioProvider
-from .gemini import GeminiProvider
-from .base import BaseLLMProvider
+from ling_chat.core.llm_providers.web_llm import WebLLMProvider
+from ling_chat.core.llm_providers.ollama import OllamaProvider
+from ling_chat.core.llm_providers.lmstudio import LMStudioProvider
+from ling_chat.core.llm_providers.gemini import GeminiProvider
+from ling_chat.core.llm_providers.base import BaseLLMProvider
 from typing import Dict, List
-from core.logger import logger
+from ling_chat.core.logger import logger
 
 class LLMProviderFactory:
     @staticmethod

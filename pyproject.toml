@@ -72,6 +72,7 @@ mss = "^10.0.0"
 #phonemizer = "3.2.1"
 #eunjeon = {version = "^0.4.0", source = "artrajz", markers = "sys_platform == 'win32'"}
 #python_mecab_ko = {version = "*", markers = "sys_platform != 'win32'"}
+google-generativeai = "^0.8.5"
 
 [build-system]
 requires = ["poetry-core"]

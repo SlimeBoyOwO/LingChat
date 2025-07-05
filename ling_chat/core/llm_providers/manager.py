@@ -1,7 +1,7 @@
 from typing import Dict, List
-from .provider_factory import LLMProviderFactory
-from .base import BaseLLMProvider
-from core.logger import logger
+from ling_chat.core.llm_providers.provider_factory import LLMProviderFactory
+from ling_chat.core.llm_providers.base import BaseLLMProvider
+from ling_chat.core.logger import logger
 import os
 
 class LLMManager:
