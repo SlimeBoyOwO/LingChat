@@ -1,7 +1,7 @@
 from openai import OpenAI
-from .base import BaseLLMProvider
+from ling_chat.core.llm_providers.base import BaseLLMProvider
 from typing import Dict, List
-from core.logger import logger
+from ling_chat.core.logger import logger
 import os
 
 class WebLLMProvider(BaseLLMProvider):

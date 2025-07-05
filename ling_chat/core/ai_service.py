@@ -233,7 +233,7 @@ class AIService:
             # 如果启用了RAG系统，保存本次会话到RAG历史记录
             self._rag_append_sys_message(current_context, rag_messages, processed_user_message)
             # 若打印上下文选项开启且在DEBUG级别，则截取发送到llm的文字信息打印到终端
-            self._print_debug_message(current_context, rag_messages, processed_user_message)
+            # self._print_debug_message(current_context, rag_messages, processed_user_message)
 
             ai_response = self.llm_model.process_message(current_context, processed_user_message)
 

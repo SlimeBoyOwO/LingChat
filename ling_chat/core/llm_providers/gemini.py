@@ -1,8 +1,8 @@
 import os
 from typing import Dict, List
 import google.generativeai as genai
-from .base import BaseLLMProvider
-from core.logger import logger
+from ling_chat.core.llm_providers.base import BaseLLMProvider
+from ling_chat.core.logger import logger
 
 
 class GeminiProvider(BaseLLMProvider):
