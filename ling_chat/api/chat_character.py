@@ -9,6 +9,28 @@ from ling_chat.core.logger import logger
 
 router = APIRouter(prefix="/api/v1/chat/character", tags=["Chat Character"])
 
+
+@router.post("/refresh_characters")
+async def refresh_characters():
+    try:
+        CharacterModel.sync_characters_from_game_data("game_data")
+        return {"success": True}
+    except Exception as e:
+        logger.error(f"刷新人物列表请求失败: {str(e)}")
+        raise HTTPException(status_code=500, detail="刷新人物列表失败")
+
+
+@router.get("/open_web")
+async def open_creative_web():
+    try:
+        import webbrowser
+        url = "https://github.com/SlimeBoyOwO/LingChat/discussions"
+        webbrowser.open(url)
+    except Exception as e:
+        logger.error(f"无法使用浏览器启动创意工坊: {str(e)}")
+        raise HTTPException(status_code=500, detail="无法使用浏览器启动网页")
+
+
 @router.get("/get_avatar/{avatar_file}")
 async def get_specific_avatar(avatar_file: str):
     ai_service = service_manager.ai_service
@@ -19,10 +41,11 @@ async def get_specific_avatar(avatar_file: str):
 
     return FileResponse(file_path)
 
+
 @router.post("/select_character")
 async def select_character(
-    user_id: int = Body(..., embed=True),
-    character_id: int = Body(..., embed=True)
+        user_id: int = Body(..., embed=True),
+        character_id: int = Body(..., embed=True)
 ):
     try:
         # 1. 验证角色是否存在
@@ -53,6 +76,7 @@ async def select_character(
     except Exception as e:
         logger.error(f"切换角色失败: {str(e)}")
         raise HTTPException(status_code=500, detail="切换角色失败")
+
 
 @router.get("/get_all_characters")
 async def get_all_characters():
