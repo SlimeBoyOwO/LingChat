@@ -1,4 +1,0 @@
-#Ignore 其他角色数据文件
-game_data/characters/**
-!game_data/characters/诺一钦灵/
-!game_data/characters/诺一钦灵/**
