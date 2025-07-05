@@ -45,6 +45,7 @@
 > 1. 视频演示中的灵灵，语音使用的是Style-Bert-Vits2，丛雨的vits模型还需要打磨暂未发布，可以先用Simple-Vits-API，效果差不多  
 > 2. 视频中的音理，请在Discussions区下载人物包，语音请使用Style-Bert-Vits2
 > 3. 建议先使用Simple-Vits-API玩玩，国人开发下载方便，需要扩展再用Style-Bert-Vits2
+> 4. 经过反映，如果你的电脑是核显或者太久以前的电脑，单个语音可能要一分钟才能生成，而GPU可以1秒内生成，而且会有大量报错可能，核显用户大可能只能放弃语音功能了（哭哭）
 
 ### Step 4：视觉模型功能使用
 - 从通义千问或者其他拥有视觉感知的大模型网站中，获取API -> [阿里云的相关视觉模型API获取网站](https://bailian.console.aliyun.com/?tab=api#/api)
