@@ -1,4 +1,4 @@
 #Ignore 其他角色数据文件
-characters/橘光
-characters/橘望
-characters/音理
+game_data/characters/**
+!game_data/characters/诺一钦灵/
+!game_data/characters/诺一钦灵/**
