@@ -36,8 +36,8 @@ CONFIG = {
     "SCREENSHOT_PROMPT": "你是一个图像描述专家。请用简洁的语言客观地描述这张图片的核心内容。你的描述将作为输入，由另一个AI来回答。请不要进行任何评价或联想，只描述你看到了什么。",
 
     # --- 文件路径配置 (基于上面计算出的路径) ---
-    "CHARACTER_NAME": "qinling",
-    "CHARACTER_IMAGE_PATH": PROJECT_ROOT / "frontend" / "public" / "pictures",
+    "CHARACTER_NAME": "诺一钦灵/avatar",
+    "CHARACTER_IMAGE_PATH": PROJECT_ROOT / "game_data" / "characters",
     "EMOTION_MODEL_PATH": BACKEND_DIR / "emotion_model_18emo",
     "LOG_DIRECTORY": SCRIPT_DIR / "logs",
     "SCREENSHOT_DIRECTORY": SCRIPT_DIR / "screenshots",
