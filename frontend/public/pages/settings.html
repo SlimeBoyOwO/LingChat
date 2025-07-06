@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI 对话项目 - 环境配置</title>
+    <link rel="stylesheet" href="../css/settings/style.css" />
+  </head>
+  <body>
+    <div class="settings-container">
+      <aside class="settings-nav">
+        <h1>配置中心</h1>
+        <nav id="nav-menu"><div class="category"><span>基础设置</span><a href="#" class="subcategory active" data-category="基础设置" data-subcategory="API 与 模型 设置">API 与 模型 设置</a><a href="#" class="subcategory" data-category="基础设置" data-subcategory="对话功能设定">对话功能设定</a><a href="#" class="subcategory" data-category="基础设置" data-subcategory="人物设定（桌宠）">人物设定（桌宠）</a></div><div class="category"><span>开发者设置</span><a href="#" class="subcategory" data-category="开发者设置" data-subcategory="RAG系统设定">RAG系统设定</a><a href="#" class="subcategory" data-category="开发者设置" data-subcategory="存储与日志">存储与日志</a><a href="#" class="subcategory" data-category="开发者设置" data-subcategory="Debug信息">Debug信息</a><a href="#" class="subcategory" data-category="开发者设置" data-subcategory="服务端口配置">服务端口配置</a><a href="#" class="subcategory" data-category="开发者设置" data-subcategory="VITS语音与模型">VITS语音与模型</a></div></nav>
+        <div class="nav-footer">
+          <div class="footer-buttons">
+            <button id="save-button" type="button">保存更改</button>
+            <a id="return-button" href="/">返回主页</a>
+          </div>
+          <span id="save-status"></span>
+          <p>
+            该部分的改动，需要点击保存更改并重新启动Lingchat（包括黑色命令窗口）才能生效！
+          </p>
+        </div>
+      </aside>
+      <main class="settings-content">
+        <header>
+          <h2 id="content-title">欢迎</h2>
+          <p id="content-description">请从左侧选择一个配置类别</p>
+        </header>
+        <form id="settings-form"></form>
+        <footer>
+        </footer>
+      </main>
+    </div>
+    <div id="loader" class="loader-overlay">
+      <div class="loader"></div>
+    </div>
+    <script src="../js/settings/settings.js"></script>
+  </body>
+</html>

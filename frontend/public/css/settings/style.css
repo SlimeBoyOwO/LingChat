@@ -1,0 +1,443 @@
+/*
+ * Modern Theme for Settings Page
+ * Matching main site color scheme
+ */
+
+:root {
+  /* Color Palette - Matching main site */
+  --nord-polar-night-bg: #ffffff; /* Main background */
+  --nord-polar-night-bg-lighter: #f5f5f7; /* Lighter background for elements */
+  --nord-polar-night-bg-lightest: #e8e8e8; /* Hover background */
+  --nord-polar-night-accent: #d1d1d1; /* Borders, subtle backgrounds */
+
+  --nord-snow-storm-text: #333333; /* Primary text color */
+  --nord-snow-storm-text-brighter: #1a1a1a; /* Brighter text for labels, titles */
+
+  --nord-frost-info: #5d7eb6; /* Bright accent for selection/focus - matches main site */
+  --nord-frost-info-darker: #4a699e; /* Primary accent, buttons, borders - darker shade */
+  --nord-frost-info-lighter: #7999cc; /* Hover for primary accent - lighter shade */
+
+  --nord-aurora-success: #5d7eb6; /* Success state, primary button - using main accent color */
+  --nord-aurora-warning: #ebcb8b; /* Warning color */
+  --nord-aurora-danger: #bf616a; /* Error/Danger color */
+
+  /* Font & Spacing */
+  --font-family: "Segoe UI", "Microsoft YaHei", system-ui, -apple-system,
+    sans-serif;
+  --border-radius-large: 12px;
+  --border-radius-medium: 8px;
+  --border-radius-small: 6px;
+  --transition-speed: 0.2s;
+}
+
+/* --- Global Styles & Scrollbar --- */
+* {
+  box-sizing: border-box;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--nord-frost-info);
+  outline-offset: 2px;
+}
+
+body {
+  font-family: var(--font-family);
+  margin: 0;
+  background-color: var(--nord-polar-night-bg);
+  color: var(--nord-snow-storm-text);
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Webkit Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 12px;
+}
+::-webkit-scrollbar-track {
+  background: var(--nord-polar-night-bg-lighter);
+  border-radius: var(--border-radius-small);
+}
+::-webkit-scrollbar-thumb {
+  background-color: var(--nord-polar-night-accent);
+  border-radius: var(--border-radius-small);
+  border: 2px solid var(--nord-polar-night-bg);
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--nord-frost-info-darker);
+}
+
+/* --- Main Layout --- */
+.settings-container {
+  display: flex;
+  height: 100vh;
+  background-color: var(--nord-polar-night-bg);
+}
+
+.settings-nav {
+  width: 280px;
+  background-color: var(--nord-polar-night-bg-lighter);
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  border-right: 1px solid var(--nord-polar-night-accent);
+  position: relative;
+  height: 100vh;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.05);
+}
+
+.settings-nav h1 {
+  font-size: 24px;
+  color: var(--nord-frost-info);
+  margin: 10px 0;
+  text-align: center;
+  font-weight: 600;
+  padding: 10px 0;
+  border-bottom: 2px solid var(--nord-frost-info-lighter);
+}
+
+#nav-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+#nav-menu .category > span {
+  font-size: 16px;
+  font-weight: bold;
+  color: white;
+  padding: 10px 15px;
+  display: block;
+  cursor: default;
+  background-color: var(--nord-frost-info);
+  border-radius: var(--border-radius-medium);
+}
+
+#nav-menu .subcategory {
+  display: block;
+  padding: 12px 20px;
+  color: var(--nord-snow-storm-text);
+  text-decoration: none;
+  border-radius: var(--border-radius-medium);
+  margin: 2px 0;
+  transition: background-color var(--transition-speed),
+    color var(--transition-speed);
+  border-left: 4px solid transparent;
+}
+
+#nav-menu .subcategory:hover:not(.active) {
+  background-color: var(--nord-polar-night-bg-lightest);
+}
+
+#nav-menu .subcategory.active {
+  background-color: var(--nord-frost-info);
+  color: white;
+  font-weight: bold;
+  border-left: 4px solid var(--nord-frost-info-darker);
+}
+
+/* --- Content Area --- */
+.settings-content {
+  flex-grow: 1;
+  padding: 20px 40px;
+  background-color: var(--nord-polar-night-bg);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.settings-content header {
+  padding-bottom: 15px;
+  margin-bottom: 25px;
+  border-bottom: 1px solid var(--nord-polar-night-accent);
+}
+
+#content-title {
+  margin: 0;
+  font-size: 28px;
+  color: var(--nord-frost-info);
+  font-weight: 600;
+}
+
+#content-description {
+  margin: 8px 0 0;
+  color: var(--nord-snow-storm-text);
+  font-size: 16px;
+}
+
+#settings-form {
+  flex-grow: 1;
+}
+
+.form-group {
+  margin-bottom: 28px;
+  padding-left: 10px;
+  border-left: 3px solid transparent;
+}
+
+.form-group:hover {
+  border-left-color: var(--nord-frost-info-lighter);
+}
+
+/* --- Form Elements --- */
+.form-group label {
+  display: block;
+  font-weight: bold;
+  margin-bottom: 6px;
+  color: var(--nord-snow-storm-text-brighter);
+  padding: 2px 0;
+}
+
+.form-group .description {
+  font-size: 13px;
+  color: var(--nord-snow-storm-text);
+  opacity: 0.8;
+  margin-top: -4px;
+  margin-bottom: 10px;
+  font-style: italic;
+}
+
+.form-group input[type="text"],
+.form-group textarea {
+  width: 100%;
+  padding: 12px;
+  border: 2px solid var(--nord-polar-night-accent);
+  background-color: var(--nord-polar-night-bg-lighter);
+  border-radius: var(--border-radius-medium);
+  color: var(--nord-snow-storm-text);
+  font-size: 15px;
+  font-family: var(--font-family);
+  transition: border-color var(--transition-speed),
+    background-color var(--transition-speed);
+  outline: none;
+}
+
+.form-group input[type="text"]:focus,
+.form-group textarea:focus {
+  border-color: var(--nord-frost-info);
+  background-color: var(--nord-polar-night-bg);
+}
+
+.form-group textarea {
+  min-height: 140px;
+  resize: vertical;
+}
+
+/* Custom Checkbox (inspired by QCheckBox) */
+.checkbox-container {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: var(--border-radius-medium);
+  transition: background-color var(--transition-speed);
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  user-select: none;
+}
+.checkbox-container:hover {
+  background-color: rgba(93, 126, 182, 0.1); /* 使用主色调的透明版本 */
+}
+.checkbox-container input {
+  display: none;
+}
+.checkbox-container .checkmark {
+  width: 22px;
+  height: 22px;
+  background-color: var(--nord-polar-night-bg-lightest);
+  border: 2px solid var(--nord-frost-info);
+  border-radius: var(--border-radius-small);
+  display: inline-block;
+  position: relative;
+  margin-right: 12px;
+  transition: all var(--transition-speed);
+}
+.checkbox-container input:checked + .checkmark {
+  background-color: var(--nord-frost-info);
+  border-color: var(--nord-frost-info);
+}
+.checkbox-container .checkmark:after {
+  content: "";
+  position: absolute;
+  display: none;
+  left: 7px;
+  top: 3px;
+  width: 5px;
+  height: 10px;
+  border: solid var(--nord-polar-night-bg);
+  border-width: 0 3px 3px 0;
+  transform: rotate(45deg);
+}
+.checkbox-container input:checked + .checkmark:after {
+  display: block;
+}
+
+/* --- Footer & Button --- */
+footer {
+  padding-top: 20px;
+  margin-top: auto;
+  border-top: 1px solid var(--nord-polar-night-accent);
+}
+
+/* 按钮样式 */
+#save-button {
+  padding: 12px 28px;
+  border: 2px solid var(--nord-frost-info);
+  border-radius: var(--border-radius-medium);
+  font-weight: bold;
+  font-size: 16px;
+  color: white;
+  background-color: var(--nord-frost-info);
+  cursor: pointer;
+  transition: all var(--transition-speed);
+  outline: none;
+}
+
+#save-button:hover {
+  background-color: var(--nord-frost-info-darker);
+  border-color: var(--nord-frost-info-darker);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+#save-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+#return-button {
+  padding: 12px 28px;
+  border: 2px solid var(--nord-frost-info);
+  border-radius: var(--border-radius-medium);
+  font-weight: bold;
+  font-size: 16px;
+  color: white;
+  background-color: var(--nord-frost-info);
+  cursor: pointer;
+  transition: all var(--transition-speed);
+  outline: none;
+  text-decoration: none;
+}
+
+#return-button:hover {
+  background-color: var(--nord-frost-info-darker);
+  border-color: var(--nord-frost-info-darker);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+#return-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+#save-status[data-status="success"] {
+  color: #4CAF50; /* 使用标准绿色作为成功状态 */
+}
+
+#save-status[data-status="error"] {
+  color: var(--nord-aurora-danger);
+}
+
+/* --- Loader --- */
+.loader-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(245, 245, 247, 0.8);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+.loader {
+  border: 6px solid var(--nord-polar-night-accent);
+  border-top: 6px solid var(--nord-frost-info);
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- 新增：为多行文本框(Textarea)提供专属样式 --- */
+.form-group textarea.form-control-textarea {
+  min-height: 180px; /* 比普通输入框高得多 */
+  font-size: 16px; /* 字体稍大，更易读 */
+  border-width: 2px; /* 边框更粗 */
+  line-height: 1.6; /* 增加行高，提升可读性 */
+  padding: 15px; /* 更多的内边距 */
+}
+
+.form-group textarea.form-control-textarea:focus {
+  border-color: var(--nord-frost-info);
+  background-color: var(--nord-polar-night-bg);
+}
+
+/* --- 添加配置分类标题样式 --- */
+.settings-category-header {
+  margin: 25px 0 15px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--nord-frost-info);
+}
+
+.settings-category-header h3 {
+  color: var(--nord-frost-info);
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.settings-category-header:first-child {
+  margin-top: 0;
+}
+
+/* 导航底部按钮区域 */
+.nav-footer {
+  margin-top: auto;
+  padding-top: 20px;
+  border-top: 1px solid var(--nord-polar-night-accent);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+}
+
+.nav-footer .footer-buttons {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  gap: 10px;
+}
+
+.nav-footer #save-button,
+.nav-footer #return-button {
+  width: 100%;
+  text-align: center;
+}
+
+.nav-footer p {
+  font-size: 12px;
+  color: var(--nord-snow-storm-text);
+  text-align: center;
+  margin-top: 10px;
+  padding: 0 5px;
+}
+
+.nav-footer #save-status {
+  font-weight: bold;
+  font-size: 14px;
+  transition: color var(--transition-speed);
+}

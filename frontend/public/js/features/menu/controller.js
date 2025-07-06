@@ -1,16 +1,18 @@
 import { DOM } from "../../ui/dom.js";
 import { TypeWriter } from "../../ui/type-writer.js";
 import { DomUtils } from "../../utils/dom-utils.js";
+import EventBus from "../../core/event-bus.js";
 
 export class MenuController {
   constructor(uiController) {
     this.numSpeed = 150;
     this.settingsSpeed = false;
-    this.message = "钦灵 Chat，测试文本显示速度";
+    this.message = "Ling Chat，测试文本显示速度";
     this.restartTimer = null;
     this.domUtils = DomUtils;
     this.uiController = uiController;
     this.typeWriter = new TypeWriter(DOM.text.testMessage);
+    this.typeWriter.setSoundEnabled(false);
     this.init();
   }
 
@@ -30,6 +32,17 @@ export class MenuController {
 
     // 关闭菜单
     DOM.closeMenu?.addEventListener("click", () => this.closeAllPanels());
+
+    // 启动是否开启对话音效
+    DOM.text.soundEffectToggle.addEventListener("change", function () {
+      if (this.checked) {
+        EventBus.emit("sound:enable_effect", true);
+        console.log("123");
+      } else {
+        EventBus.emit("sound:enable_effect", false);
+        console.log("456");
+      }
+    });
   }
 
   playMenuAnimation() {
@@ -80,34 +93,18 @@ export class MenuController {
 
   showTextPanel() {
     this.domUtils.showElements([DOM.menuText, DOM.textPage]);
-    this.domUtils.hideElements([
-      DOM.history.toggle,
-      DOM.history.content,
-      DOM.history.clearBtn,
-      DOM.menuImage,
-      DOM.imagePage,
-      DOM.menuSound,
-      DOM.soundPage,
-    ]);
+    this.domUtils.hideElements(
+      this.domUtils.getOtherPanelElements([DOM.menuText, DOM.textPage])
+    );
   }
 
   closeAllPanels() {
-    this.domUtils.hideElements([
-      DOM.menuContent,
-      DOM.menuText,
-      DOM.textPage,
-      DOM.history.toggle,
-      DOM.history.content,
-      DOM.history.clearBtn,
-      DOM.menuImage,
-      DOM.imagePage,
-      DOM.menuSound,
-      DOM.soundPage,
-    ]);
+    this.domUtils.hideMenuElements();
 
     DOM.menuContent.classList.add("hide");
     setTimeout(() => {
       DOM.menuContent.classList.remove("hide");
+      DOM.menuContent.classList.remove("show");
     }, 200);
   }
 

@@ -7,9 +7,13 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 
+	"github.com/sashabaranov/go-openai"
+
 	"LingChat/api"
+	"LingChat/api/routes/v1/response"
 	"LingChat/internal/clients/VitsTTS"
 	"LingChat/internal/clients/emotionPredictor"
 	"LingChat/internal/clients/llm"
@@ -19,14 +23,26 @@ type LingChatService struct {
 	emotionPredictorClient *emotionPredictor.Client
 	VitsTTSClient          *VitsTTS.Client
 	llmClient              *llm.LLMClient
+	conversationService    *ConversationService
+	ConfigModel            string
 	tempFilePath           string
 }
 
-func NewLingChatService(epClient *emotionPredictor.Client, vtClient *VitsTTS.Client, llmClient *llm.LLMClient, path string) *LingChatService {
+func NewLingChatService(
+	epClient *emotionPredictor.Client,
+	vtClient *VitsTTS.Client,
+	llmClient *llm.LLMClient,
+	conversationService *ConversationService,
+	configModel string,
+	path string,
+) *LingChatService {
+
 	return &LingChatService{
 		emotionPredictorClient: epClient,
 		VitsTTSClient:          vtClient,
 		llmClient:              llmClient,
+		conversationService:    conversationService,
+		ConfigModel:            configModel,
 		tempFilePath:           path,
 	}
 }
@@ -44,6 +60,7 @@ func (l *LingChatService) EmoPredictBatch(ctx context.Context, results []Result)
 			defer wg.Done()
 			resp, err := l.emotionPredictorClient.Predict(ctx, result.OriginalTag, 0.08)
 			if err != nil {
+				log.Printf("Failed to predict emotion: %v", err)
 				resultsChannel <- struct {
 					index      int
 					Predicted  string
@@ -76,17 +93,53 @@ func (l *LingChatService) EmoPredictBatch(ctx context.Context, results []Result)
 	return results
 }
 
-func (l *LingChatService) LingChat(ctx context.Context, msg api.Message) ([]api.Response, error) {
-	if msg.Type != "message" {
-		return nil, fmt.Errorf("invalid type: %s", msg.Type)
+func (l *LingChatService) LingChatByWS(ctx context.Context, msg api.Message) ([]api.Response, error) {
+	switch msg.Type {
+	case "message":
+	case "handshake":
+		log.Printf("handshake with message:\"%s\"\n", msg.Content)
+		return nil, nil
+	case "ping":
+		log.Println("Ping received, Pong")
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("invalid type \"%s\" with message: \"%s\"", msg.Type, msg.Content)
 	}
 
+	resp, err := l.LingChat(ctx, msg.Content, "", "")
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.Messages, nil
+}
+
+func (l *LingChatService) LingChat(ctx context.Context, message string, conversationID, prevMessageID string) (*response.CompletionResponse, error) {
 	cleanTempVoiceFiles(l.tempFilePath)
 
-	rawLLMResp, err := l.llmClient.Chat(ctx, msg.Content)
+	// 记录会话和消息
+	conv, userMsgObj, err := l.conversationService.RecordConversationAndMessage(ctx, message, conversationID, prevMessageID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 获取消息链
+	messages, err := l.conversationService.GetChatContext(ctx, userMsgObj.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 调用LLM获取回复
+	rawLLMResp, err := l.llmClient.Chat(ctx, messages, l.ConfigModel)
 	if err != nil {
 		err = fmt.Errorf("LLM Chat error: %w", err)
 		return nil, err
+	}
+
+	// 将助手回复保存到数据库
+	respMsg, err := l.conversationService.SaveAssistantMessage(ctx, userMsgObj.ID, rawLLMResp)
+	if err != nil {
+		log.Printf("保存助手回复失败: %s", err)
 	}
 
 	emotionSegments := AnalyzeEmotions(rawLLMResp, l.tempFilePath, "wav")
@@ -98,7 +151,11 @@ func (l *LingChatService) LingChat(ctx context.Context, msg api.Message) ([]api.
 	}
 	emotionSegments = l.EmoPredictBatch(ctx, emotionSegments)
 
-	return l.CreateResponse(emotionSegments, msg.Content), nil
+	return &response.CompletionResponse{
+		ConversationID: strconv.Itoa(int(conv.ID)),
+		MessageID:      strconv.Itoa(int(respMsg.ID)),
+		Messages:       l.CreateResponse(emotionSegments, message),
+	}, nil
 }
 
 func (l *LingChatService) CreateResponse(results []Result, userMessage string) []api.Response {
@@ -143,7 +200,7 @@ func (l *LingChatService) GenerateVoice(ctx context.Context, textSegments []Resu
 				data  []byte
 				err   error
 			}{idx, audioData, err}
-		}(i, segment.FollowingText)
+		}(i, segment.JapaneseText)
 	}
 
 	// 等待所有goroutine完成
@@ -203,7 +260,7 @@ func cleanTempVoiceFiles(tempVoiceDir string) {
 	}
 }
 
-func (l *LingChatService) ChatHandler(rawMsg []byte) ([]byte, error) {
+func (l *LingChatService) ChatHandler(rawMsg []byte) ([]api.Sentence, error) {
 	var msg api.Message
 	err := json.Unmarshal(rawMsg, &msg)
 	if err != nil {
@@ -212,18 +269,30 @@ func (l *LingChatService) ChatHandler(rawMsg []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	resp, err := l.LingChat(context.Background(), msg)
+	resp, err := l.LingChatByWS(context.Background(), msg)
 	if err != nil {
 		err = fmt.Errorf("LingChat error: %w", err)
 		log.Println(err)
 		return nil, err
 	}
 
-	responseJSON, err := json.Marshal(resp)
-	if err != nil {
-		err = fmt.Errorf("JSON 序列化错误: %w", err)
-		log.Println(err)
-		return nil, err
+	var respSentences []api.Sentence
+	for _, msg := range resp {
+		msgJSON, err := json.Marshal(msg)
+		if err != nil {
+			err = fmt.Errorf("JSON 序列化错误: %w", err)
+			log.Println(err)
+		}
+		respSentences = append(respSentences, msgJSON)
 	}
-	return responseJSON, nil
+
+	return respSentences, nil
+}
+
+func (l *LingChatService) GetChatHistory(ctx context.Context) []openai.ChatCompletionMessage {
+	return l.conversationService.GetChatHistory(ctx)
+}
+
+func (l *LingChatService) LoadChatHistory(ctx context.Context, msg []openai.ChatCompletionMessage) []openai.ChatCompletionMessage {
+	return l.conversationService.LoadChatHistory(ctx, msg)
 }
