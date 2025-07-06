@@ -18,10 +18,16 @@
 
 #character .character {
   height: 100%;
-  filter: drop-shadow(rgb(255, 255, 255) 0px 0px 10px)  /* 圣光效果 */
+}
+#character .character-image {
+  height: 100%;
+  filter: drop-shadow(rgb(255, 255, 255) 0px 0px 10px)
 }
 
 #character .bubble {
+  width: 100%;
+}
+#character .bubble-image {
   width: 100%;
   position: absolute;
   display: block;
