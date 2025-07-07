@@ -32,13 +32,13 @@
 - 设置完毕后，滑动到最下方，点击保存配置。关闭黑不溜秋的窗口和LingChat程序，重新点击 `LingChat.exe` 启动程序，就可以使用啦！
 > [!IMPORTANT]
 >
-> 1. **有些用户的电脑启动`LingChat.exe`之后会无限卡在加载页，请在现代浏览器如谷歌中中输入`localhost:8765`进入程序**
+> 1. **有些用户的电脑启动`LingChat.exe`之后会无限卡在加载页，请在现代浏览器如谷歌中输入`localhost:8765`进入程序**
 > 2. **当你关闭程序准备重启初始化时候，务必保证前端和后端都关闭（exe或者浏览器的网页，还有cmd窗口），否则可能出现进去人物消失的情况**
 
 ### Step 3：基础语音功能使用（从这里开始的以下步骤属于扩展功能，按需进行）
 - 若要使用 `Vits` 语音功能，请下载链接程序[simple-vits-api](https://github.com/Artrajz/vits-simple-api)。
 - 该项目实现了基于 `Vits` 的简单语音合成 API。如果你是核显只能下载CPU版本。如果有独显建议下载 GPU 版本，速度快。
-- 程序默认监听 23456 语音端口，程序默认导入的模型是 [zcchat 地址-&gt;讨论区-&gt;角色示范（丛雨）-&gt; YuzuSoft_Vits.zip](https://github.com/Zao-chen/zao-chen.github.io/releases/download/%E8%B5%84%E6%BA%90%E4%B8%8B%E8%BD%BD/YuzuSoft_Vits.zip)
+- 程序默认监听 23456 语音端口，程序默认导入的模型是 [ZcChat 地址](https://github.com/Zao-chen/ZcChat) -&gt; 讨论区 -&gt; 角色示范（丛雨）-&gt; [YuzuSoft_Vits.zip](https://github.com/Zao-chen/zao-chen.github.io/releases/download/%E8%B5%84%E6%BA%90%E4%B8%8B%E8%BD%BD/YuzuSoft_Vits.zip)
 - 模型下载好之后将压缩包 `YuzuSoft_Vits.zip` 解压到 simple-vits-api 的/data/models 目录下，再双击根目录下的 `start.bat` 启动就 ok 了
 - 如果需要使用其他角色声线，请在 `game_data/characters/角色名/settings.txt` 中修改 `speaker_id` 这个属性（0~6可选）
 > [!NOTE]
@@ -53,14 +53,14 @@
 **假设你要使用 [qwen2.5-vl-7b-instruct](https://bailian.console.aliyun.com/?tab=model&accounttraceid=bef5c4d0bc384ad294f43f844ed11cd9thwc#/model-market/detail/qwen2.5-vl-7b-instruct) 模型：**
     1. `VD_API_KEY` 参数填写你自己的阿里云 API Key
     2. 查看 `VD_BASE_URL` 需要点击[页面](https://bailian.console.aliyun.com/?tab=model&accounttraceid=bef5c4d0bc384ad294f43f844ed11cd9thwc#/model-market/detail/qwen2.5-vl-7b-instruct)右上角的 `查看API参考`，之后你会在页面右侧看到以下代码，其中的 `base_url` 变量值就是 `VD_BASE_URL` 的值：
-        ```pyhton
+        ```python
         import os
         from openai import OpenAI
 
         client = OpenAI(
             # 若没有配置环境变量，请用百炼API Key将下行替换为：api_key="sk-xxx",
             api_key=os.getenv("DASHSCOPE_API_KEY"),
-            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1", # VD_BASE_URL的值
         )
         completion = client.chat.completions.create(
             model="qwen-vl-plus",  # 此处以qwen-vl-plus为例，可按需更换模型名称。模型列表：https://help.aliyun.com/zh/model-studio/getting-started/models
@@ -88,7 +88,7 @@
 > 模型的名字可以通过启动`app.bat`中的人物列表中查看
 
 ### Step 6: 加入最新版的测试
-- 我们一直在更新LingChat，所有更新都会随时推送到[develop](https://github.com/SlimeBoyOwO/LingChat/tree/develop)中，我们也会在[issuse](https://github.com/SlimeBoyOwO/LingChat/issues)中发布开发日志。
+- 我们一直在更新LingChat，所有更新都会随时推送到[develop](https://github.com/SlimeBoyOwO/LingChat/tree/develop)中，我们也会在[issues](https://github.com/SlimeBoyOwO/LingChat/issues)中发布开发日志。
 - 你可以参考[源代码使用教程](https://github.com/SlimeBoyOwO/LingChat/blob/develop/others/document/%E6%BA%90%E4%BB%A3%E7%A0%81%E4%BD%BF%E7%94%A8.md)来使用LingChat的源代码，并随时获取最新的develop开发版更新。
 - 开发版是不稳定的版本，如果遇到任何Bug，欢迎向我们反馈！
 
@@ -109,7 +109,7 @@
 ## 🔍 其他
 
 > 本项目使用的气泡+音效素材来源于碧蓝档案，其中对话哔哔音效来源于Undertale，请勿商用  
-> 默认简单狼狼立绘是自绘，表情差分源于 AI + 人工修改，如果你想自己创作可使用 Novelai 网站或者自己画
+> 默认简单狼狼立绘是自绘，表情差分源于 AI + 人工修改，如果你想自己创作可使用 NovelAI 网站或者自己画
 > 请对AI生成的东西和使用负责，不要肆意传播不良信息   
 > 有其他问题可以 B 站私信捏~
 
