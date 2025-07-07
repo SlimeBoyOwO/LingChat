@@ -130,7 +130,6 @@
 }
 
 .settings-nav .nav-button:hover {
-    /* background-color: #f0f0f0; */
     color: var(--accent-color); /* 悬停时只改变文字颜色 */
 }
 
@@ -148,7 +147,6 @@
     background: none;
     border-radius: 0;
     padding: 20px;
-    /* overflow-y: auto; */ /* 移除这里的滚动，将滚动控制权交给子元素 */
 }
 
 /* 这是一个通用页面样式，可以放在这里 */
