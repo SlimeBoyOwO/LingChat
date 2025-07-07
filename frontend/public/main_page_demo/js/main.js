@@ -122,10 +122,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (advNav) {
                         const initialActiveAdvLink = advNav.querySelector('.adv-nav-link.active');
                         if (initialActiveAdvLink) {
-                           // 延迟一小段时间执行，确保CSS渲染完成
-                           setTimeout(() => {
-                                moveAdvIndicator(initialActiveAdvLink);
-                           }, 50);
+                            // 切换时，不需要禁用动画，因为用户期望看到过渡
+                            moveAdvIndicator(initialActiveAdvLink);
                         }
                     }
                 }
@@ -176,11 +174,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             });
 
-            // 初始化时移动到激活的链接
+            // 初始化时移动到激活的链接，但要禁用动画
             const initialActiveAdvLink = advancedNav.querySelector('.adv-nav-link.active');
-            if (initialActiveAdvLink) {
-                // 同样，延迟执行以确保渲染完成
-                setTimeout(() => moveAdvIndicator(initialActiveAdvLink), 50);
+            if (initialActiveAdvLink && advIndicator) {
+                // 1. 添加no-transition class来禁用动画
+                advIndicator.classList.add('no-transition');
+                // 2. 立即移动指示器到目标位置
+                moveAdvIndicator(initialActiveAdvLink);
+                // 3. 使用setTimeout(0)将"重新启用动画"推到下一个事件循环
+                //    这确保了浏览器有时间处理瞬时定位，然后再应用过渡效果
+                setTimeout(() => {
+                    advIndicator.classList.remove('no-transition');
+                }, 0);
             }
         }
     }
