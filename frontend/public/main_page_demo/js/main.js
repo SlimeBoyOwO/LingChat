@@ -115,6 +115,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (target.dataset.content === 'text-settings' && textSpeedSlider) {
                     startTyping(textSpeedSlider.value);
                 }
+
+                // 如果切换到高级设置页面，确保二级导航的指示器位置正确
+                if (target.dataset.content === 'advanced-settings') {
+                    const advNav = document.querySelector('.advanced-nav');
+                    if (advNav) {
+                        const initialActiveAdvLink = advNav.querySelector('.adv-nav-link.active');
+                        if (initialActiveAdvLink) {
+                           // 延迟一小段时间执行，确保CSS渲染完成
+                           setTimeout(() => {
+                                moveAdvIndicator(initialActiveAdvLink);
+                           }, 50);
+                        }
+                    }
+                }
             });
         });
 
@@ -122,6 +136,52 @@ document.addEventListener('DOMContentLoaded', () => {
         const initialActiveButton = settingsNav.querySelector('.nav-button.active');
         if (initialActiveButton) {
             moveIndicator(initialActiveButton);
+        }
+
+        // --- 高级设置页面内部的二级导航逻辑 ---
+        const advancedNav = document.querySelector('.advanced-nav');
+        if (advancedNav) {
+            const advIndicator = advancedNav.querySelector('.adv-nav-indicator');
+            const advNavLinks = advancedNav.querySelectorAll('.adv-nav-link');
+            const advContentPages = document.querySelectorAll('.adv-content-page');
+
+            function moveAdvIndicator(target) {
+                if (!advIndicator || !target) return;
+                // target.offsetTop是相对于父元素.advanced-nav的偏移量
+                // .advanced-nav本身有padding，所以offsetTop已经是我们需要的正确值
+                advIndicator.style.top = `${target.offsetTop}px`;
+                advIndicator.style.height = `${target.offsetHeight}px`;
+            }
+
+            advNavLinks.forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault(); // 阻止 a 标签的默认跳转行为
+
+                    const currentActiveLink = advancedNav.querySelector('.adv-nav-link.active');
+                    if (currentActiveLink) {
+                        currentActiveLink.classList.remove('active');
+                    }
+                    const targetLink = e.currentTarget;
+                    targetLink.classList.add('active');
+                    moveAdvIndicator(targetLink); // 移动指示器
+
+                    const targetContentId = targetLink.dataset.content;
+                    advContentPages.forEach(page => {
+                        if (page.id === targetContentId) {
+                            page.classList.add('active');
+                        } else {
+                            page.classList.remove('active');
+                        }
+                    });
+                });
+            });
+
+            // 初始化时移动到激活的链接
+            const initialActiveAdvLink = advancedNav.querySelector('.adv-nav-link.active');
+            if (initialActiveAdvLink) {
+                // 同样，延迟执行以确保渲染完成
+                setTimeout(() => moveAdvIndicator(initialActiveAdvLink), 50);
+            }
         }
     }
 }); 
