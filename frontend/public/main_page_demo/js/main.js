@@ -92,7 +92,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         function switchPage(targetContentId) {
             pages.forEach(page => {
-                page.style.display = page.id === targetContentId ? 'block' : 'none';
+                if (page.id === targetContentId) {
+                    page.classList.add('active');
+                } else {
+                    page.classList.remove('active');
+                }
             });
         }
 
