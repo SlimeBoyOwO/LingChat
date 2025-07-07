@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LingChat - 主界面Demo</title>
+    <link rel="icon" href="../pictures/icons/小猫Ling.svg" type="image/svg+xml">
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/loader.css">
     <!-- Component Styles -->
     <link rel="stylesheet" href="css/components/main_menu.css">
     <link rel="stylesheet" href="css/components/settings_panel.css">
@@ -13,6 +15,16 @@
     <link rel="stylesheet" href="css/components/page_advanced.css">
 </head>
 <body>
+    <div id="loader">
+        <div class="ears-container">
+            <div class="ear ear-left"></div>
+            <div class="ear ear-right"></div>
+        </div>
+        <div class="progress-bar-container">
+            <div class="progress-bar" id="progress-bar"></div>
+        </div>
+        <div class="loading-text">你的小可爱正在准备中</div>
+    </div>
 
     <div class="main-container">
         <img src="../pictures/Image/LingChatLogo.png" alt="LingChat Logo" class="logo">
@@ -533,6 +545,7 @@
         </div>
     </div>
 
+    <script src="js/loader.js"></script>
     <script src="js/main.js" defer></script>
 
 </body>
