@@ -87,52 +87,47 @@
                     <!-- 其他设置页面可以先放在这里，默认隐藏 -->
                     <div class="settings-page" id="text-settings">
                         <div class="settings-columns">
-                            <div class="settings-column">
-                                <!-- 文字显示速度 -->
-                                <div class="setting-item">
-                                    <div class="section-header">
-                                        <h4>文字显示速度</h4>
-                                    </div>
-                                    <div class="slider-container">
-                                        <span>慢</span>
-                                        <input type="range" id="text-speed-slider" min="1" max="100" value="50" aria-label="文字显示速度">
-                                        <span>快</span>
-                                    </div>
+                            <!-- 文字显示速度 -->
+                            <div class="setting-item">
+                                <div class="section-header">
+                                    <h4>文字显示速度</h4>
                                 </div>
-            
-                                <!-- 页面切换动画 -->
-                                <div class="setting-item">
-                                    <div class="section-header">
-                                        <h4>页面切换动画</h4>
-                                    </div>
-                                    <div class="toggle-container">
-                                        <input type="checkbox" id="animation-toggle" class="toggle-input" checked>
-                                        <label for="animation-toggle" class="toggle-label">启用动画</label>
-                                    </div>
+                                <div class="slider-container">
+                                    <span>慢</span>
+                                    <input type="range" id="text-speed-slider" min="1" max="100" value="50" aria-label="文字显示速度">
+                                    <span>快</span>
                                 </div>
-            
+                            </div>
+
+                            <!-- 显示样本 -->
+                            <div class="setting-item">
+                                <div class="section-header">
+                                    <h4>显示样本</h4>
+                                </div>
+                                <div class="text-sample-display">
+                                    <span id="typed-text-sample"></span><span class="typing-cursor"></span>
+                                </div>
                             </div>
             
-                            <div class="settings-column">
-                                <!-- 显示样本 -->
-                                <div class="setting-item">
-                                    <div class="section-header">
-                                        <h4>显示样本</h4>
-                                    </div>
-                                    <div class="text-sample-display">
-                                        <span id="typed-text-sample"></span><span class="typing-cursor"></span>
-                                    </div>
+                            <!-- 页面切换动画 -->
+                            <div class="setting-item">
+                                <div class="section-header">
+                                    <h4>页面切换动画</h4>
                                 </div>
+                                <div class="toggle-container">
+                                    <input type="checkbox" id="animation-toggle" class="toggle-input" checked>
+                                    <label for="animation-toggle" class="toggle-label">启用动画</label>
+                                </div>
+                            </div>
             
-                                <!-- 无语音音效开关 -->
-                                <div class="setting-item">
-                                    <div class="section-header">
-                                        <h4>无语音音效开关</h4>
-                                    </div>
-                                    <div class="toggle-container">
-                                        <input type="checkbox" id="sound-effect-toggle" class="toggle-input" checked>
-                                        <label for="sound-effect-toggle" class="toggle-label">启用无vits时的对话音效</label>
-                                    </div>
+                            <!-- 无语音音效开关 -->
+                            <div class="setting-item">
+                                <div class="section-header">
+                                    <h4>无语音音效开关</h4>
+                                </div>
+                                <div class="toggle-container">
+                                    <input type="checkbox" id="sound-effect-toggle" class="toggle-input" checked>
+                                    <label for="sound-effect-toggle" class="toggle-label">启用无vits时的对话音效</label>
                                 </div>
                             </div>
                         </div>

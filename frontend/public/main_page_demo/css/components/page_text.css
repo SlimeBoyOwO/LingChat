@@ -4,14 +4,17 @@
 
 /* --- 文本设置页面新样式 --- */
 .settings-columns {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0px;
     height: 100%;
 }
 
 .setting-item {
     margin-bottom: 25px;
+    width: 100%;
+    max-width: 900px;
 }
 
 /* 滑块样式 (移植自 menu.css) */

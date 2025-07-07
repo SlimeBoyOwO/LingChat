@@ -2,7 +2,7 @@
 .advanced-settings-container header {
     padding-bottom: 15px;
     margin-bottom: 25px;
-    border-bottom: 1px solid #eee;
+    /* border-bottom: 1px solid #eee; */ /* 移除标题分割线 */
 }
 
 .advanced-settings-container .adv-title {
@@ -76,7 +76,7 @@
     display: flex;
     flex-direction: column;
     gap: 25px;
-    border-right: 1px solid #e5e7eb;
+    /* border-right: 1px solid #e5e7eb; */ /* 移除分割线 */
     overflow-y: auto; /* 当导航项过多时，使其可以独立滚动 */
     position: relative; /* 为指示器提供定位上下文 */
 }
@@ -92,6 +92,11 @@
     border-radius: 6px;
     z-index: 0; /* 确保在链接文字下方 */
     transition: top 0.3s ease-in-out, height 0.3s ease-in-out;
+}
+
+/* 新增：临时禁用过渡动画的类 */
+.adv-nav-indicator.no-transition {
+    transition: none;
 }
 
 .advanced-nav .adv-nav-title {

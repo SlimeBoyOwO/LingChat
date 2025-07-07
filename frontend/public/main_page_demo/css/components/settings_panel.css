@@ -25,7 +25,7 @@
     display: flex;
     align-items: center;
     padding: 10px 15px; /* 调整内边距 */
-    border-bottom: 1px solid #eee; /* 用更细的线 */
+    /* border-bottom: 1px solid #eee; */ /* 移除分割线 */
     position: relative;
     justify-content: space-between; /* 将两端元素推开 */
 }
@@ -99,7 +99,7 @@
     background-color: var(--accent-color);
     border-radius: 2px;
     z-index: 1;
-    transition: left 0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55), width 0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+    transition: left 0.3s ease-in-out, width 0.3s ease-in-out;
 }
 
 .settings-nav .nav-button {

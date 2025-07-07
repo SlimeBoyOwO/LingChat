@@ -1,5 +1,19 @@
-.character-settings {
+#character-settings.active {
+    display: flex;
+    flex-direction: column;
+    align-items: center; /* 水平居中所有子元素 */
+}
+
+#character-settings {
     color: #333;
+    padding: 0 20px; /* 增加一些左右内边距 */
+}
+
+#character-settings > .section-header,
+#character-settings > .character-grid,
+#character-settings > .actions-footer {
+    width: 100%;
+    max-width: 900px; /* 与高级设置保持一致的最大宽度 */
 }
 
 /* --- 角色选择页面新样式 --- */
@@ -21,7 +35,7 @@
 
 .character-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    grid-template-columns: 1fr; /* 从多列网格改为单列 */
     gap: 20px;
     margin-bottom: 30px;
 }
@@ -33,7 +47,7 @@
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
     overflow: hidden;
     transition: all 0.3s ease;
-    border: 1px solid #eee;
+    /* border: 1px solid #eee; */ /* 移除卡片边框 */
 }
 
 .character-card:hover {
@@ -107,14 +121,9 @@
 
 .actions-footer {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1fr; /* 恢复为双列布局，让两个按钮并排显示 */
     gap: 20px;
-}
-
-.action-section {
-    padding: 15px;
-    border: 1px solid #eee;
-    border-radius: 12px;
+    width: 100%;
 }
 
 .action-button {
