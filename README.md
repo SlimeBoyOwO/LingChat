@@ -113,5 +113,6 @@
 > 请对AI生成的东西和使用负责，不要肆意传播不良信息   
 > 有其他问题可以 B 站私信捏~
 
+![LingChat Star History](https://star-history.com/SlimeBoyOwO/LingChat.svg)
 
 © LingChat 制作团队
