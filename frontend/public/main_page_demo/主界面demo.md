@@ -41,3 +41,14 @@
 
 1. 在**文件资源管理器**中，导航到 `LingChat/frontend/public/main_page_demo/` 目录。
 2. 双击 `index.html` 文件，它将在默认浏览器中打开。
+
+## 6. 运行截图
+
+![image](https://github.com/user-attachments/assets/bedcbc49-700f-4eff-90c6-e4807c8d08c4)
+
+![image](https://github.com/user-attachments/assets/72630e8c-17f8-41fd-8eb0-174aeab928ab)
+
+![image](https://github.com/user-attachments/assets/b4e8d099-c0c3-4818-90aa-83ed0eabee2d)
+
+
+
