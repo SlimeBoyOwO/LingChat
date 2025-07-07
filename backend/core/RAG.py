@@ -102,7 +102,7 @@ class RAGSystem:
             if not os.path.isdir(local_model_path):
                 logger.error(f"本地模型路径不存在或不是文件夹: {local_model_path}")
                 logger.error("请确保模型已下载到 'backend/core/memory_rag/models' 目录下。")
-                logger.error("您可以运行 'backend/core/memory_rag/download_model.py' 脚本来下载模型。")
+                logger.error("您可以运行 'backend/core/memory_rag/downloading.py' 脚本来下载模型。")
                 return False
 
             logger.debug(f"RAG: 初始化Sentence Transformer模型...")

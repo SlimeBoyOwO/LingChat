@@ -1,6 +1,5 @@
 import os
 import sys
-from sentence_transformers import SentenceTransformer
 
 def download_embedding_model():
     """
@@ -33,8 +32,14 @@ def download_embedding_model():
 
     os.makedirs(save_path, exist_ok=True)
     print(f"\n[步骤 1/3] 已创建或确认目录存在: {save_path}")
-
+    
     try:
+        mirror_use = str(input("\n[提示] 在中国网络环境中可能无法下载模型，要使用镜像站加速吗？（回答 yes 或者回车忽略）："))
+        if mirror_use == "yes":
+            os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
+        
+        from sentence_transformers import SentenceTransformer
+        
         print("\n[步骤 2/3] 正在从Hugging Face Hub下载模型...")
         print("这个过程可能需要一些时间，取决于您的网络连接。请耐心等待。")
         
