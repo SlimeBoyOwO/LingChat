@@ -116,6 +116,17 @@
     position: relative;
     z-index: 1;
     transition: color 0.3s ease, background-color 0.3s ease;
+    /* 新增flex布局来对齐图标和文字 */
+    display: flex;
+    align-items: center;
+    gap: 8px; /* 图标和文字的间距 */
+}
+
+.settings-nav .nav-button svg {
+    width: 18px; /* 设置图标大小 */
+    height: 18px;
+    stroke-width: 2.5px; /* 图标线条粗细 */
+    flex-shrink: 0; /* 防止图标被压缩 */
 }
 
 .settings-nav .nav-button:hover {
