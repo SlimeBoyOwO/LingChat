@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LingChat - 主界面Demo</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <div class="main-container">
+        <img src="../pictures/Image/LingChatLogo.png" alt="LingChat Logo" class="logo">
+        <!-- 主菜单 -->
+        <div class="main-menu">
+            <nav class="menu-options">
+                <button class="menu-button">继续游戏</button>
+                <button class="menu-button">开始游戏</button>
+                <button class="menu-button">存&emsp;&emsp;档</button>
+                <button class="menu-button" id="settings-button">设&emsp;&emsp;置</button>
+                <button class="menu-button">退出游戏</button>
+            </nav>
+        </div>
+
+        <!-- 设置面板 (默认隐藏) -->
+        <div class="settings-panel" id="settings-panel">
+            <div class="settings-header">
+                <img src="../pictures/Image/LingChatLogo.png" alt="Logo" class="settings-logo">
+                <nav class="settings-nav">
+                    <div class="nav-indicator"></div>
+                    <button class="nav-button active" data-content="character-settings">角色</button>
+                    <button class="nav-button" data-content="text-settings">文本</button>
+                    <button class="nav-button" data-content="background-settings">背景</button>
+                    <button class="nav-button" data-content="sound-settings">声音</button>
+                    <button class="nav-button" data-content="history-settings">对话历史</button>
+                    <button class="nav-button" data-content="advanced-settings">高级设置</button>
+                </nav>
+                <button class="close-button" id="close-settings-button" title="关闭">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div class="settings-body">
+                <main class="settings-content">
+                    <div class="settings-page active" id="character-settings">
+                        
+                        <div class="section-header">
+                            <i class="icon-character"></i>
+                            <h4>角色列表</h4>
+                        </div>
+                        <div class="character-grid">
+                            <div class="character-card">
+                                <div class="character-avatar-container">
+                                    <img src="../../../game_data/characters/诺一钦灵/avatar/正常.png" alt="可爱的小狼娘" class="character-avatar">
+                                </div>
+                                <div class="character-content-wrapper">
+                                    <h5 class="character-title">可爱的小狼娘</h5>
+                                    <p class="character-description">这是一只可爱的小狼娘。喜欢粘你，做娇...又可爱的小程序员。喜欢变态的玩法，是你的好助手~</p>
+                                    <button class="character-select-btn selected">✓ 已选择</button>
+                                </div>
+                            </div>
+                            <!-- 更多角色卡片可以加在这里 -->
+                        </div>
+
+                        <div class="actions-footer">
+                            <div class="action-section">
+                                <div class="section-header">
+                                    <i class="icon-refresh"></i>
+                                    <h5>刷新人物列表</h5>
+                                </div>
+                                <button class="action-button">点我刷新~</button>
+                            </div>
+                            <div class="action-section">
+                                <div class="section-header">
+                                    <i class="icon-workshop"></i>
+                                    <h5>创意工坊</h5>
+                                </div>
+                                <button class="action-button">进入创意工坊</button>
+                            </div>
+                        </div>
+
+                    </div>
+                    <!-- 其他设置页面可以先放在这里，默认隐藏 -->
+                    <div class="settings-page" id="text-settings" style="display: none;">
+                        <div class="settings-columns">
+                            <div class="settings-column">
+                                <!-- 文字显示速度 -->
+                                <div class="setting-item">
+                                    <div class="section-header">
+                                        <h4>文字显示速度</h4>
+                                    </div>
+                                    <div class="slider-container">
+                                        <span>慢</span>
+                                        <input type="range" id="text-speed-slider" min="1" max="100" value="50">
+                                        <span>快</span>
+                                    </div>
+                                </div>
+            
+                                <!-- 页面切换动画 -->
+                                <div class="setting-item">
+                                    <div class="section-header">
+                                        <h4>页面切换动画</h4>
+                                    </div>
+                                    <div class="toggle-container">
+                                        <input type="checkbox" id="animation-toggle" class="toggle-input" checked>
+                                        <label for="animation-toggle" class="toggle-label">启用动画</label>
+                                    </div>
+                                </div>
+            
+                            </div>
+            
+                            <div class="settings-column">
+                                <!-- 显示样本 -->
+                                <div class="setting-item">
+                                    <div class="section-header">
+                                        <h4>显示样本</h4>
+                                    </div>
+                                    <div class="text-sample-display">
+                                        <span id="typed-text-sample"></span><span class="typing-cursor"></span>
+                                    </div>
+                                </div>
+            
+                                <!-- 无语音音效开关 -->
+                                <div class="setting-item">
+                                    <div class="section-header">
+                                        <h4>无语音音效开关</h4>
+                                    </div>
+                                    <div class="toggle-container">
+                                        <input type="checkbox" id="sound-effect-toggle" class="toggle-input" checked>
+                                        <label for="sound-effect-toggle" class="toggle-label">启用无vits时的对话音效</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-page" id="background-settings" style="display: none;"><p>背景设置</p></div>
+                    <div class="settings-page" id="sound-settings" style="display: none;"><p>声音设置</p></div>
+                    <div class="settings-page" id="history-settings" style="display: none;"><p>对话历史</p></div>
+                    <div class="settings-page" id="advanced-settings" style="display: none;"><p>高级设置</p></div>
+                </main>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/main.js" defer></script>
+
+</body>
+</html> 
