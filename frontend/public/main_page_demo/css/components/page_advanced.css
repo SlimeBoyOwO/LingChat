@@ -2,7 +2,6 @@
 .advanced-settings-container header {
     padding-bottom: 15px;
     margin-bottom: 25px;
-    /* border-bottom: 1px solid #eee; */ /* 移除标题分割线 */
 }
 
 .advanced-settings-container .adv-title {
@@ -10,6 +9,7 @@
     font-size: 24px;
     color: var(--accent-color);
     font-weight: 600;
+    position: relative; /* 为指示器提供定位上下文 */
 }
 
 .advanced-settings-container .adv-description {
@@ -76,7 +76,6 @@
     display: flex;
     flex-direction: column;
     gap: 25px;
-    /* border-right: 1px solid #e5e7eb; */ /* 移除分割线 */
     overflow-y: auto; /* 当导航项过多时，使其可以独立滚动 */
     position: relative; /* 为指示器提供定位上下文 */
 }
@@ -146,7 +145,6 @@
 }
 
 .advanced-nav .adv-nav-link.active {
-    /* background-color: var(--accent-color); */ /* 移除背景色，由指示器代替 */
     color: white;
     font-weight: bold;
 }

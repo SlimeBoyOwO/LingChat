@@ -1,13 +1,20 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // --- DOM 元素获取 ---
     const settingsButton = document.getElementById('settings-button');
     const mainContainer = document.querySelector('.main-container');
-    let settingsPanel; // 延迟初始化
+    let settingsPanel; // 设置面板元素，延迟初始化
 
-    // --- 旧的显示/隐藏逻辑 ---
+    // --- 设置面板的显示与隐藏 ---
     const showSettings = () => {
         settingsPanel = document.getElementById('settings-panel');
-        if (settingsPanel) settingsPanel.classList.add('active');
-        setupSettingsInteraction(); // 显示后初始化内部交互
+        if (settingsPanel) {
+            settingsPanel.classList.add('active');
+            // 首次显示时，初始化面板内部的交互逻辑
+            if (!settingsPanel.dataset.initialized) {
+                setupSettingsInteraction();
+                settingsPanel.dataset.initialized = 'true';
+            }
+        }
     };
     
     const hideSettings = () => {
@@ -15,52 +22,57 @@ document.addEventListener('DOMContentLoaded', () => {
         if (settingsPanel) settingsPanel.classList.remove('active');
     };
     
+    // “设置”按钮点击事件：显示面板
     settingsButton.addEventListener('click', (event) => {
-        // 阻止事件冒泡，防止立即触发下面的document监听器
-        event.stopPropagation();
+        event.stopPropagation(); // 阻止事件冒泡，防止触发全局点击事件
         showSettings();
     });
     
-    // 全局点击事件监听器，处理"点击外部关闭"和"关闭按钮"
+    // 全局点击事件：处理“点击外部”或“关闭按钮”来隐藏面板
     document.addEventListener('click', (event) => {
         settingsPanel = document.getElementById('settings-panel');
-
-        // 如果面板不存在或未激活，则不执行任何操作
         if (!settingsPanel || !settingsPanel.classList.contains('active')) {
-            return;
+            return; // 如果面板未激活，则不执行任何操作
         }
 
-        // 检查点击是否发生在设置面板内部
         const clickInsidePanel = settingsPanel.contains(event.target);
+        const isCloseButton = event.target.closest('#close-settings-button');
         
-        // 如果点击发生在"关闭"按钮上，或者点击发生在面板的外部
-        if (event.target.closest('#close-settings-button') || !clickInsidePanel) {
+        if (isCloseButton || !clickInsidePanel) {
             hideSettings();
         }
     });
 
-    // --- 新的设置面板内部交互逻辑 ---
+    /**
+     * @description 初始化设置面板内的所有交互，包括主导航、文本速度预览和高级设置的二级导航。
+     * 该函数只应在面板首次打开时执行一次。
+     */
     function setupSettingsInteraction() {
+        // --- 元素获取 ---
         const settingsNav = document.querySelector('.settings-nav');
-        if (!settingsNav) return; // 如果面板不存在则退出
+        if (!settingsNav) return; 
 
         const indicator = settingsNav.querySelector('.nav-indicator');
         const navButtons = settingsNav.querySelectorAll('.nav-button');
         const pages = document.querySelectorAll('.settings-page');
-
-        // --- 文本速度预览逻辑 ---
         const textSpeedSlider = document.getElementById('text-speed-slider');
         const textSampleDisplay = document.getElementById('typed-text-sample');
+
+        // --- 文本速度预览逻辑 ---
         const sampleText = "Ling Chat：测试文本显示速度";
         let typingInterval;
 
+        /**
+         * @description 根据滑块速度值，模拟打字机效果。
+         * @param {number} speed - 速度值 (1-100)，值越大速度越快。
+         */
         function startTyping(speed) {
-            clearInterval(typingInterval); // 清除上一个定时器
+            clearInterval(typingInterval);
             if (!textSampleDisplay) return;
 
             textSampleDisplay.textContent = '';
             let i = 0;
-            // 将滑块值 (1-100) 映射到打字延迟 (200ms - 10ms)
+            // 将滑块值 (1-100) 线性映射到打字延迟 (200ms - 10ms)。
             const maxDelay = 200;
             const minDelay = 10;
             const delay = maxDelay - ((speed - 1) / 99) * (maxDelay - minDelay);
@@ -76,27 +88,29 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (textSpeedSlider) {
-            textSpeedSlider.addEventListener('input', (e) => {
-                startTyping(e.target.value);
-            });
-            // 初始触发一次
-            startTyping(textSpeedSlider.value);
+            textSpeedSlider.addEventListener('input', (e) => startTyping(e.target.value));
+            startTyping(textSpeedSlider.value); // 初始触发一次
         }
-        // --- 结束 ---
 
+        // --- 主导航栏交互 (顶部) ---
+        
+        /**
+         * @description 将顶部导航的指示器移动到目标按钮。
+         * @param {HTMLElement} target - 目标按钮元素。
+         */
         function moveIndicator(target) {
-            // 现在是水平移动
+            if (!indicator || !target) return;
             indicator.style.left = `${target.offsetLeft}px`;
             indicator.style.width = `${target.offsetWidth}px`;
         }
-
+        
+        /**
+         * @description 根据 data-content 属性切换显示的页面。
+         * @param {string} targetContentId - 目标页面的ID。
+         */
         function switchPage(targetContentId) {
             pages.forEach(page => {
-                if (page.id === targetContentId) {
-                    page.classList.add('active');
-                } else {
-                    page.classList.remove('active');
-                }
+                page.classList.toggle('active', page.id === targetContentId);
             });
         }
 
@@ -122,7 +136,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (advNav) {
                         const initialActiveAdvLink = advNav.querySelector('.adv-nav-link.active');
                         if (initialActiveAdvLink) {
-                            // 切换时，不需要禁用动画，因为用户期望看到过渡
                             moveAdvIndicator(initialActiveAdvLink);
                         }
                     }
@@ -130,7 +143,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        // 初始化指示器位置
         const initialActiveButton = settingsNav.querySelector('.nav-button.active');
         if (initialActiveButton) {
             moveIndicator(initialActiveButton);
@@ -143,46 +155,39 @@ document.addEventListener('DOMContentLoaded', () => {
             const advNavLinks = advancedNav.querySelectorAll('.adv-nav-link');
             const advContentPages = document.querySelectorAll('.adv-content-page');
 
+            /**
+             * @description 将高级设置的二级导航指示器移动到目标链接。
+             * @param {HTMLElement} target - 目标链接元素。
+             */
             function moveAdvIndicator(target) {
                 if (!advIndicator || !target) return;
-                // target.offsetTop是相对于父元素.advanced-nav的偏移量
-                // .advanced-nav本身有padding，所以offsetTop已经是我们需要的正确值
                 advIndicator.style.top = `${target.offsetTop}px`;
                 advIndicator.style.height = `${target.offsetHeight}px`;
             }
 
             advNavLinks.forEach(link => {
                 link.addEventListener('click', (e) => {
-                    e.preventDefault(); // 阻止 a 标签的默认跳转行为
+                    e.preventDefault();
 
                     const currentActiveLink = advancedNav.querySelector('.adv-nav-link.active');
-                    if (currentActiveLink) {
-                        currentActiveLink.classList.remove('active');
-                    }
+                    if (currentActiveLink) currentActiveLink.classList.remove('active');
+                    
                     const targetLink = e.currentTarget;
                     targetLink.classList.add('active');
-                    moveAdvIndicator(targetLink); // 移动指示器
+                    moveAdvIndicator(targetLink);
 
                     const targetContentId = targetLink.dataset.content;
                     advContentPages.forEach(page => {
-                        if (page.id === targetContentId) {
-                            page.classList.add('active');
-                        } else {
-                            page.classList.remove('active');
-                        }
+                        page.classList.toggle('active', page.id === targetContentId);
                     });
                 });
             });
 
-            // 初始化时移动到激活的链接，但要禁用动画
+            // 初始化二级导航指示器位置
             const initialActiveAdvLink = advancedNav.querySelector('.adv-nav-link.active');
             if (initialActiveAdvLink && advIndicator) {
-                // 1. 添加no-transition class来禁用动画
                 advIndicator.classList.add('no-transition');
-                // 2. 立即移动指示器到目标位置
                 moveAdvIndicator(initialActiveAdvLink);
-                // 3. 使用setTimeout(0)将"重新启用动画"推到下一个事件循环
-                //    这确保了浏览器有时间处理瞬时定位，然后再应用过渡效果
                 setTimeout(() => {
                     advIndicator.classList.remove('no-transition');
                 }, 0);
