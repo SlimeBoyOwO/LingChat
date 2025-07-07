@@ -1,3 +1,11 @@
+/* 定义自定义字体 */
+@font-face {
+    font-family: 'Maoken Assorted Sans';
+    src: url('../fonts/MaokenAssortedSans.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+}
+
 :root {
     --accent-color: #79d9ff; /* 从Logo提取的主题粉色 */
 }
