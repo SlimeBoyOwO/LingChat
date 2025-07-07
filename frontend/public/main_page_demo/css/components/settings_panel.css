@@ -141,5 +141,10 @@
 
 /* 这是一个通用页面样式，可以放在这里 */
 .settings-page {
+    display: none; /* 默认隐藏所有页面 */
     color: #333;
+}
+
+.settings-page.active {
+    display: block; /* 只显示带有 active 类的页面 */
 } 
