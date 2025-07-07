@@ -1,0 +1,58 @@
+/* 主容器，用于设置背景和布局 */
+.main-container {
+    width: 100%;
+    height: 100%;
+    background-image: url('../../../pictures/backgrounds/login/X0_6rTZl.png');
+    background-size: cover;
+    background-position: center;
+    display: flex;
+    justify-content: flex-start; /* 将主菜单推到左边 */
+    align-items: center;
+    position: relative;
+}
+
+/* 主菜单 */
+.main-menu {
+    display: flex;
+    flex-direction: column;
+    /* align-items: center; */
+    padding: 20px;
+    margin-left: 5vw; /* 距离左侧边缘一些距离 */
+}
+
+.logo {
+    /* 从主菜单移出，并绝对定位 */
+    position: absolute;
+    top: 100px;
+    right: 100px;
+    width: 1000px; /* 放大 */
+    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3)); /* 添加一点阴影使其更突出 */
+}
+
+.menu-options {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    width: 250px; /* 按钮加宽一点 */
+}
+
+.menu-button {
+    background: transparent; /* 去除背景 */
+    color: white;
+    border: none; /* 去除边框 */
+    padding: 15px;
+    margin: 10px 0;
+    border-radius: 12px;
+    font-size: 48px; /* 字体加大 */
+    font-weight: bold; /* 字体加粗 */
+    cursor: pointer;
+    transition: color 0.3s, text-shadow 0.3s; /* 平滑过渡 */
+    text-shadow: 0 2px 4px rgba(0,0,0,0.5); /* 加一点文字阴影以保证清晰度 */
+    text-align: left; /* 文字左对齐 */
+}
+
+.menu-button:hover {
+    color: #f0f0f0;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.8); /* 悬停时发光效果 */
+    transform: none; /* 移除之前的缩放效果 */
+} 
