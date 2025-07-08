@@ -446,7 +446,7 @@ class AIService:
         total_parts = len(segments)
         return [{
             "type": "reply",
-            "emotion": seg['predicted'],
+            "emotion": seg['predicted'] or seg["original_tag"],
             "originalTag": seg['original_tag'],
             "message": seg['following_text'],
             "motionText": seg['motion_text'],

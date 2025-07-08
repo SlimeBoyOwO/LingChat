@@ -42,10 +42,16 @@ package.json
 # Ignore 风雪的个人文件目录
 memory-bank/
 
-#Ignore 其他角色数据文件
-game_data/characters/橘光
-game_data/characters/橘望
-game_data/characters/音理
+game_data/backgrounds/**  
+!game_data/backgrounds/白天.jpeg
+!game_data/backgrounds/夜晚.jpg
+!game_data/backgrounds
+
+game_data/characters/ 
+!game_data/characters/诺一钦灵
+
+game_data/musics/ 
+!game_data/musics/夜晚音效
 
 # Ignore 数据库淫荡对话历史
 chat_system.db

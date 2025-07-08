@@ -18,6 +18,16 @@ async def refresh_characters():
         logger.error(f"刷新人物列表请求失败: {str(e)}")
         raise HTTPException(status_code=500, detail="刷新人物列表失败")
 
+@router.get("/open_web")
+async def open_creative_web():
+    try:
+        import webbrowser
+        url = "https://github.com/SlimeBoyOwO/LingChat/discussions"
+        webbrowser.open(url)
+    except Exception as e:
+        logger.error(f"无法使用浏览器启动创意工坊: {str(e)}")
+        raise HTTPException(status_code=500, detail="无法使用浏览器启动网页")
+
 @router.get("/get_avatar/{avatar_file}")
 async def get_specific_avatar(avatar_file: str):
     ai_service = service_manager.ai_service
