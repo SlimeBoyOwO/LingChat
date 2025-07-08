@@ -78,6 +78,7 @@ export const DOM = {
   // 角色部分
   character: {
     refreshCharactersBtn: document.getElementById("refresh-characters-btn"),
+    openWebBtn: document.getElementById("open-web-btn"),
   },
 
   // 图像部分

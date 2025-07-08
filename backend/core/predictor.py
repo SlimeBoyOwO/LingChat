@@ -82,7 +82,7 @@ class EmotionClassifier:
                     "warning": f"置信度低于阈值({confidence_threshold:.0%})"
                 }
             
-            label = self.id2label.get(str(pred_id), "未知")
+            label = self.id2label.get(str(pred_id), "")
             logger.debug(f"情绪识别: {text} -> {label} ({pred_prob:.2%})")
             return {
                 "label": label,
@@ -92,7 +92,7 @@ class EmotionClassifier:
         except Exception as e:
             logger.error(f"情绪预测错误: {e}")
             return {
-                "label": "未知",
+                "label": "",
                 "confidence": 0.0,
                 "top3": [],
                 "error": str(e)
@@ -103,7 +103,7 @@ class EmotionClassifier:
         top3_probs, top3_ids = torch.topk(probs, 3)
         return [
             {
-                "label": self.id2label.get(str(idx.item()), "未知"),
+                "label": self.id2label.get(str(idx.item()), ""),
                 "probability": prob.item()
             }
             for prob, idx in zip(top3_probs[0], top3_ids[0])

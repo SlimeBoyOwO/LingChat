@@ -44,6 +44,10 @@ export class CharacterController {
       this.refreshCharacters()
     );
 
+    DOM.character.openWebBtn?.addEventListener("click", () =>
+      this.openCreativeWeb()
+    );
+
     document.querySelectorAll(".character-select-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
         this.selectCharacter(btn.dataset.characterId);
@@ -59,6 +63,22 @@ export class CharacterController {
         DOM.characterPage,
       ])
     );
+  }
+
+  async openCreativeWeb() {
+    try {
+      const response = await fetch("/api/v1/chat/character/open_web");
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      alert("启动失败，请手动去lingchat的discussion网页");
+      console.error("刷新失败:", error);
+      throw error;
+    }
   }
 
   async refreshCharacters() {
