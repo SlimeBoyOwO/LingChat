@@ -16,7 +16,6 @@ from ling_chat.core.pic_analyzer import DesktopAnalyzer
 from ling_chat.utils.function import Function
 from ling_chat.utils.runtime_path import temp_path
 
-TEMP_VOICE_DIR = temp_path / "audio"
 WS_HOST = "localhost"
 WS_PORT = 8765
 
@@ -35,7 +34,7 @@ class AIService:
         self.emotion_classifier = EmotionClassifier()
         self.dialog_logger = DialogLogger()
         self.desktop_analyzer = DesktopAnalyzer()
-        self._prepare_directories()
+        self.temp_voice_dir = temp_path / "audio"
 
         # 这里记录上次对话的时间
         self.last_time = datetime.now()
@@ -63,9 +62,7 @@ class AIService:
             }
         ]
 
-        self.temp_voice_dir = os.environ.get("TEMP_VOICE_DIR", TEMP_VOICE_DIR)
-        os.makedirs(self.temp_voice_dir, exist_ok=True)
-
+        self._prepare_directories()
         self._init_rag_config()
 
     def _init_rag_config(self):
