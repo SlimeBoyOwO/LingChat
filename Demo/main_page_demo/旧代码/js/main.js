@@ -2,120 +2,44 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- DOM 元素获取 ---
     const settingsButton = document.getElementById('settings-button');
     const mainContainer = document.querySelector('.main-container');
-    
-    // 获取其他菜单按钮
-    const menuButtons = document.querySelectorAll('.menu-button');
-    const startGameButton = menuButtons[1]; // 第二个按钮：开始游戏
-    const loadSaveButton = menuButtons[2];  // 第三个按钮：存档
+    let settingsPanel; // 设置面板元素，延迟初始化
 
-    let activePanelId = null; // 跟踪当前打开的面板ID
-
-    // --- 通用面板管理系统 ---
-    
-    /**
-     * 打开指定ID的面板
-     * @param {string} panelId 要打开的面板的ID (如 'settings-panel', 'game-screen-panel')
-     */
-    const openPanel = (panelId) => {
-        // 清理所有已激活的面板类
-        if (activePanelId) {
-            const oldPanelType = activePanelId.replace('-panel', '');
-            document.body.classList.remove('panel-active', `show-${oldPanelType}`);
-        }
-
-        // 添加通用激活类和新面板的特定类
-        let panelType;
-        if (panelId === 'settings-panel') {
-            panelType = 'settings';
-        } else if (panelId === 'game-screen-panel') {
-            panelType = 'game-screen';
-        } else if (panelId === 'load-save-panel') {
-            panelType = 'load-save';
-        } else {
-            panelType = panelId.replace('-panel', '');
-        }
-        
-        document.body.classList.add('panel-active', `show-${panelType}`);
-        activePanelId = panelId;
-
-        // 如果是设置面板，确保其内部交互只初始化一次
-        if (panelId === 'settings-panel') {
-            const settingsPanel = document.getElementById('settings-panel');
-            if (settingsPanel && !settingsPanel.dataset.initialized) {
+    // --- 设置面板的显示与隐藏 ---
+    const showSettings = () => {
+        settingsPanel = document.getElementById('settings-panel');
+        if (settingsPanel) {
+            settingsPanel.classList.add('active');
+            // 首次显示时，初始化面板内部的交互逻辑
+            if (!settingsPanel.dataset.initialized) {
                 setupSettingsInteraction();
                 settingsPanel.dataset.initialized = 'true';
             }
         }
-        // 对于其他面板，也可以在这里添加初始化逻辑
-        // 例如： if (panelId === 'game-screen-panel') { initializeGameScreen(); }
     };
     
-    /**
-     * 关闭当前激活的面板
-     */
-    const closePanel = () => {
-        if (activePanelId) {
-            let panelType;
-            if (activePanelId === 'settings-panel') {
-                panelType = 'settings';
-            } else if (activePanelId === 'game-screen-panel') {
-                panelType = 'game-screen';
-            } else if (activePanelId === 'load-save-panel') {
-                panelType = 'load-save';
-            } else {
-                panelType = activePanelId.replace('-panel', '');
-            }
-            
-            document.body.classList.remove('panel-active', `show-${panelType}`);
-            activePanelId = null;
-        }
+    const hideSettings = () => {
+        settingsPanel = document.getElementById('settings-panel');
+        if (settingsPanel) settingsPanel.classList.remove('active');
     };
     
-    // --- 菜单按钮事件绑定 ---
-    
-    // "设置"按钮点击事件
+    // “设置”按钮点击事件：显示面板
     settingsButton.addEventListener('click', (event) => {
-        event.stopPropagation();
-        openPanel('settings-panel');
+        event.stopPropagation(); // 阻止事件冒泡，防止触发全局点击事件
+        showSettings();
     });
-
-    // "开始游戏"按钮点击事件
-    if (startGameButton) {
-        startGameButton.addEventListener('click', (event) => {
-            event.stopPropagation();
-            openPanel('game-screen-panel');
-        });
-    }
-
-    // "存档"按钮点击事件 (假设这是读取存档功能)
-    if (loadSaveButton) {
-        loadSaveButton.addEventListener('click', (event) => {
-            event.stopPropagation();
-            openPanel('load-save-panel');
-        });
-    }
-
-    // 全局点击事件：处理"点击外部"或"关闭按钮"来隐藏面板
+    
+    // 全局点击事件：处理“点击外部”或“关闭按钮”来隐藏面板
     document.addEventListener('click', (event) => {
-        if (!document.body.classList.contains('panel-active') || !activePanelId) {
-            return; // 如果没有面板激活，则不执行任何操作
+        settingsPanel = document.getElementById('settings-panel');
+        if (!settingsPanel || !settingsPanel.classList.contains('active')) {
+            return; // 如果面板未激活，则不执行任何操作
         }
 
-        const currentActivePanel = document.getElementById(activePanelId);
-        if (!currentActivePanel) return;
-
-        const clickInsidePanel = currentActivePanel.contains(event.target);
-        // 使用 dataset 属性来标识关闭按钮属于哪个面板
-        const clickedCloseButton = event.target.closest('[data-close-panel]');
+        const clickInsidePanel = settingsPanel.contains(event.target);
+        const isCloseButton = event.target.closest('#close-settings-button');
         
-        if (clickedCloseButton) {
-            // 如果点击的是某个面板的关闭按钮，并且该按钮对应当前激活的面板
-            if (clickedCloseButton.dataset.closePanel === activePanelId) {
-                closePanel();
-            }
-        } else if (!clickInsidePanel) {
-            // 如果点击在面板外部，则关闭面板
-            closePanel();
+        if (isCloseButton || !clickInsidePanel) {
+            hideSettings();
         }
     });
 

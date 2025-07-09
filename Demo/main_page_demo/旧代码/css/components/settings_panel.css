@@ -1,0 +1,161 @@
+/* --- 设置面板新样式 (v2) --- */
+.settings-panel {
+    position: fixed;
+    top: 0; /* 从顶部开始定位 */
+    left: 0;
+    width: 100%;
+    height: 100%; /* 高度占满全屏 */
+    transform: translateY(100%);
+    transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    padding: 0;
+    box-sizing: border-box;
+    z-index: 1000;
+    background: rgba(253, 253, 253, 0.8); /* 使用带alpha通道的颜色以实现半透明 */
+    color: #333;
+    /* 添加毛玻璃效果 */
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+}
+
+.settings-panel.active {
+    transform: translateY(0);
+}
+
+.settings-header {
+    display: flex;
+    align-items: center;
+    padding: 10px 15px; /* 调整内边距 */
+    /* border-bottom: 1px solid #eee; */ /* 移除分割线 */
+    position: relative;
+    justify-content: space-between; /* 将两端元素推开 */
+}
+
+.settings-logo {
+    width: 80px; /* logo稍微再小一点 */
+    height: auto;
+    margin-right: 0;
+}
+
+.settings-header h2 { /* 此选择器暂时无用，但保留 */
+    margin: 0;
+    color: #333;
+    text-shadow: none;
+    font-size: 24px;
+    flex-grow: 1;
+    transition: color 0.2s;
+    margin-left: 0; /* 移除 auto margin */
+}
+
+.close-button {
+    /* 重置按钮样式 */
+    background: transparent;
+    border: none;
+    padding: 6px; /* 为背景光晕留出空间 */
+    border-radius: 50%; /* 圆形按钮 */
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #aaa; /* 图标初始颜色 */
+    transition: all 0.3s ease-in-out;
+}
+.close-button:hover {
+    color: var(--accent-color);
+    background-color: rgba(121, 217, 255, 0.1); /* 主题色光晕 */
+    transform: rotate(90deg); /* 旋转动画 */
+}
+
+.close-button svg {
+    width: 28px;
+    height: 28px;
+}
+
+.settings-body {
+    display: flex;
+    height: calc(100% - 68px); /* 重新计算高度 */
+    margin-top: 0;
+}
+
+.settings-nav {
+    position: absolute; /* 使用绝对定位脱离文档流 */
+    left: 50%; /* 定位到中心 */
+    transform: translateX(-50%); /* 向左移动自身宽度的一半，实现完美居中 */
+
+    display: flex;
+    flex-direction: row; /* 水平排列 */
+    padding: 0;
+    border-right: none; /* 移除右边框 */
+    height: 100%; /* 占满header的高度 */
+    align-items: center; /* 垂直居中按钮 */
+}
+
+/* 滑动指示器 */
+.nav-indicator {
+    position: absolute;
+    bottom: 0; /* 贴在导航栏底部 */
+    left: 0; /* JS会更新 */
+    width: 0; /* JS会更新 */
+    height: 4px; /* 指示器变为一条线 */
+    background-color: var(--accent-color);
+    border-radius: 2px;
+    z-index: 1;
+    transition: left 0.3s ease-in-out, width 0.3s ease-in-out;
+}
+
+.settings-nav .nav-button {
+    background: none;
+    color: #555;
+    text-align: center;
+    padding: 10px 15px; /* 调整按钮内边距 */
+    border-radius: 8px; /* 加回一点圆角 */
+    border: none;
+    cursor: pointer;
+    margin: 0 5px; /* 按钮间距 */
+    font-size: 16px;
+    font-weight: bold;
+    position: relative;
+    z-index: 1;
+    transition: color 0.3s ease, background-color 0.3s ease;
+    /* 新增flex布局来对齐图标和文字 */
+    display: flex;
+    align-items: center;
+    gap: 8px; /* 图标和文字的间距 */
+}
+
+.settings-nav .nav-button svg {
+    width: 18px; /* 设置图标大小 */
+    height: 18px;
+    stroke-width: 2.5px; /* 图标线条粗细 */
+    flex-shrink: 0; /* 防止图标被压缩 */
+}
+
+.settings-nav .nav-button:hover {
+    color: var(--accent-color); /* 悬停时只改变文字颜色 */
+}
+
+.settings-nav .nav-button.active {
+    color: var(--accent-color); /* 激活时文字变主题色 */
+    background-color: transparent;
+}
+.settings-nav .nav-button.active:hover {
+    color: var(--accent-color);
+    background-color: transparent; /* 确保激活状态下悬停也没有背景 */
+}
+
+.settings-content {
+    flex-grow: 1;
+    background: none;
+    border-radius: 0;
+    padding: 20px;
+}
+
+/* 这是一个通用页面样式，可以放在这里 */
+.settings-page {
+    display: none; /* 默认隐藏所有页面 */
+    color: #333;
+    height: 100%; /* 让每个页面都撑满父容器的高度 */
+}
+
+.settings-page.active {
+    display: block; /* 只显示带有 active 类的页面 */
+} 

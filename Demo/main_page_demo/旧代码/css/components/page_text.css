@@ -22,8 +22,7 @@
     display: flex;
     align-items: center;
     gap: 15px;
-    color: rgba(255, 255, 255, 0.9); /* 白色文字 */
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    color: #666;
 }
 
 input[type="range"] {
@@ -40,15 +39,13 @@ input[type="range"]::-webkit-slider-runnable-track {
     width: 100%;
     height: 8px;
     border-radius: 4px;
-    background: rgba(255, 255, 255, 0.2); /* 透明白色轨道 */
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+    background: linear-gradient(to left, var(--accent-color), #c4eeff); /* 应用主题色渐变 */
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
     transition: all 0.3s ease;
 }
 
 input[type="range"]:hover::-webkit-slider-runnable-track {
     height: 10px;
-    background: rgba(255, 255, 255, 0.25);
 }
 
 input[type="range"]::-webkit-slider-thumb {
@@ -56,14 +53,14 @@ input[type="range"]::-webkit-slider-thumb {
     appearance: none;
     width: 22px;
     height: 22px;
-    background: linear-gradient(135deg, var(--accent-color), #64b5f6); /* 渐变背景，不再是白色 */
+    background: #ffffff;
     border-radius: 50%;
     cursor: grab;
-    border: 2px solid rgba(255, 255, 255, 0.8); /* 半透明白色边框 */
+    border: 2px solid var(--accent-color); /* 应用主题色 */
     margin-top: -7px;
     transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
     transform-origin: center;
-    box-shadow: 0 4px 12px rgba(121, 217, 255, 0.4), 0 2px 4px rgba(0, 0, 0, 0.2); /* 增强阴影效果 */
+    box-shadow: 0 2px 8px rgba(121, 217, 255, 0.3); /* 应用主题色阴影 */
     position: relative;
     z-index: 2;
 }
@@ -71,8 +68,7 @@ input[type="range"]::-webkit-slider-thumb {
 input[type="range"]::-webkit-slider-thumb:hover,
 input[type="range"]::-webkit-slider-thumb:active {
     transform: scale(1.15);
-    box-shadow: 0 6px 20px rgba(121, 217, 255, 0.6), 0 4px 8px rgba(0, 0, 0, 0.3);
-    background: linear-gradient(135deg, #64b5f6, var(--accent-color)); /* 悬停时反转渐变 */
+    box-shadow: 0 0 12px rgba(121, 217, 255, 0.5); /* 应用主题色阴影 */
 }
 
 input[type="range"]:active::-webkit-slider-thumb {
@@ -94,8 +90,7 @@ input[type="range"]:active::-webkit-slider-thumb {
     position: relative;
     padding-left: 60px;
     font-size: 14px;
-    color: white; /* 修改文字颜色为白色 */
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    color: #333;
 }
 
 .toggle-label::before {
@@ -106,11 +101,9 @@ input[type="range"]:active::-webkit-slider-thumb {
     transform: translateY(-50%);
     width: 50px;
     height: 26px;
-    background-color: rgba(255, 255, 255, 0.2); /* 透明背景 */
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    background-color: #e9ecef;
     border-radius: 13px;
-    transition: all 0.3s ease;
-    backdrop-filter: blur(5px);
+    transition: background-color 0.3s;
 }
 
 .toggle-label::after {
@@ -121,35 +114,28 @@ input[type="range"]:active::-webkit-slider-thumb {
     transform: translateY(-50%);
     width: 20px;
     height: 20px;
-    background: linear-gradient(135deg, #ffffff, #f0f0f0); /* 轻微渐变的白色 */
+    background-color: white;
     border-radius: 50%;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.1);
-    transition: all 0.3s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    transition: left 0.3s;
 }
 
 .toggle-input:checked + .toggle-label::before {
-    background-color: rgba(121, 217, 255, 0.3); /* 半透明主题色 */
-    border-color: var(--accent-color);
-    box-shadow: 0 0 10px rgba(121, 217, 255, 0.3);
+    background-color: var(--accent-color);
 }
 
 .toggle-input:checked + .toggle-label::after {
     left: 26px;
-    background: linear-gradient(135deg, var(--accent-color), #64b5f6); /* 激活时使用主题色渐变 */
-    box-shadow: 0 3px 8px rgba(121, 217, 255, 0.4), 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 /* 文本样本显示区域 */
 .text-sample-display {
-    background: rgba(0, 0, 0, 0.3); /* 半透明黑色背景 */
-    color: #ffffff;
+    background-color: #343a40;
+    color: #f8f9fa;
     padding: 15px 20px;
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
     font-family: 'Courier New', Courier, monospace;
     min-height: 2.5em; /* 确保有足够高度容纳光标 */
-    backdrop-filter: blur(10px);
-    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 /* 打字光标动画 */
