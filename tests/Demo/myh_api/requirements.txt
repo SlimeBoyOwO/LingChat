@@ -1,0 +1,7 @@
+# requirements.txt
+flask>=2.3.0
+openai>=1.0.0
+requests
+websocket-client
+dashscope  # 通义千问SDK
+PyYAML
