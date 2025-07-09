@@ -18,7 +18,7 @@ by [风雪]([T-Auto](https://github.com/T-Auto))
 
 增加长线预设剧情支持，兼容肉鸽旅行/COC/DND/狼人杀等剧本呈现方式，且原生兼容读档存档、多人物同屏和记忆库系统的底层框架。
 
-详见Issues：[【0.4.0开发日志】长剧情系统＆多角色同屏＆随机事件演进＆小游戏框架](https://github.com/SlimeBoyOwO/LingChat/issues/91)，源码位于仓库[NeoChat]([T-Auto/NeoChat: A simple and pure AI conversation platform based on command-line format / 返璞归真的，基于命令行形式的AI对话平台](https://github.com/T-Auto/NeoChat))，剧情方面参考[NeoChat剧情创作指南](https://github.com/T-Auto/NeoChat/blob/main/NeoChat 剧情创作指南.md)
+详见Issues：[【0.4.0开发日志】长剧情系统＆多角色同屏＆随机事件演进＆小游戏框架](https://github.com/SlimeBoyOwO/LingChat/issues/91)，源码位于仓库[NeoChat](https://github.com/T-Auto/NeoChat)，剧情方面参考[NeoChat剧情创作指南](https://github.com/T-Auto/NeoChat/blob/main/NeoChat 剧情创作指南.md)
 
 ## 记忆系统重构
 
