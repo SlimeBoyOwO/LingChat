@@ -23,15 +23,20 @@ class Server:
 
     async def start_frontend_app(self):
         try:
-            import subprocess
-            root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            exe_path = os.path.join(root_dir, "frontend", "LingChatWeb.exe")
+            #前端应用只能用于windows（wine之类不管），不如加个判断可以跳过
+            if sys.platform.startswith('win32'):
+                import subprocess
+                root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                exe_path = os.path.join(root_dir, "frontend", "LingChatWeb.exe")
 
-            if os.path.exists(exe_path):
-                subprocess.Popen([exe_path])
-                logger.info(f"成功启动前端应用: {exe_path}")
+                if os.path.exists(exe_path):
+                    subprocess.Popen([exe_path])
+                    logger.info(f"成功启动前端应用: {exe_path}")
+                else:
+                    logger.error(f"错误: 找不到可执行文件 {exe_path}")
             else:
-                logger.error(f"错误: 找不到可执行文件 {exe_path}")
+                logger.info("非windows系统，不打开前端应用")
+            
         except Exception as e:
             logger.error(f"启动前端应用失败: {e}")
 
