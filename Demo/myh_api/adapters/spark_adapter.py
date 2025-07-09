@@ -5,9 +5,11 @@ from urllib.parse import urlencode
 
 class Adapter:
     def __init__(self, config):
+        # 仅使用config中的凭证
         self.config = config
         
     def create_chat_completion(self, data):
+        # 确保不使用请求中的API key
         messages = data['messages']
         query = messages[-1]['content']
         history = [{'role': msg['role'], 'content': msg['content']} 
@@ -25,7 +27,7 @@ class Adapter:
         ws.send(json.dumps(request))
         result = ''
         while True:
-            response = json.loads(ws.recv())
+            response = json.loads(ws.recv()))
             if response['header']['code'] != 0:
                 raise RuntimeError(f"Spark error: {response['header']}")
             result += response['payload']['choices']['text'][0]['content']

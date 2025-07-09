@@ -2,13 +2,9 @@ openai:
   api_key: "your-openai-key"
   base_url: "https://api.openai.com/v1"
 
-deepseek:  # 添加 DeepSeek 配置
+deepseek:
   api_key: "your-deepseek-key"
   base_url: "https://api.deepseek.com/v1"
-
-minimax:
-  group_id: "your-group-id"
-  api_key: "your-minimax-key"
 
 spark:
   app_id: "your-app-id"
@@ -19,4 +15,8 @@ qwen:
   api_key: "your-qwen-key"
 
 ollama:
-  base_url: "http://localhost:11434"
+  base_url: "http://localhost:11434" #If you are using the ollama model, please use the (ollama-modelname) to call
+
+my_api_keys:
+  - "your-api-key-1"
+  - "your-api-key-2"
