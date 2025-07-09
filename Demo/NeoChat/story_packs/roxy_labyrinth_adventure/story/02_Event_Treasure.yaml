@@ -1,0 +1,20 @@
+SceneConfig:
+  id: 02_Event_Treasure
+  name: 发现宝藏
+Events:
+- 'Type: Narration | Mode: Preset': 在通道的角落，你们发现了一个布满灰尘的古朴宝箱。
+- 'Type: Dialogue | Character: Roxy | Mode: Preset': “看起来是好东西，不过...要小心，{player_name}さん。越是诱人的宝藏，周围可能越危险。”
+- 'Type: Player | Mode: Input': （你打算怎么打开这个宝箱？）
+- 'Type: Action | Tool: Set | Variable: player_last_action':
+    Value: '{player_input}'
+- 'Type: Narration | Mode: Prompt': '你是一个游戏旁白。玩家发现了一个宝箱，他决定这样做："{player_last_action}"。
+
+    请根据玩家的行动，简短地描述他打开宝箱的过程和结果。无论玩家怎么做，结果都是成功打开了宝箱。
+
+    **要求：描述简洁，一两句话即可。**'
+- 'Type: Notice | Mode: Preset | Location: popup': 获得了 50 枚金币和一瓶治疗药水！
+- 'Type: Action | Tool: Calculate | Variable: treasure_found':
+    Expression: '{treasure_found} + 1'
+EndCondition:
+  Type: Linear
+  NextUnitID: 01_Explore_Corridor
