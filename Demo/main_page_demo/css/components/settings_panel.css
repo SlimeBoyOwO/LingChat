@@ -1,68 +1,68 @@
 /* --- 设置面板新样式 (v2) --- */
 .settings-panel {
     position: fixed;
-    top: 0; /* 从顶部开始定位 */
-    left: 0;
+    top: 0;
+    right: 0;
     width: 100%;
-    height: 100%; /* 高度占满全屏 */
-    transform: translateY(100%);
-    transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    height: 100%;
+    transform: translateX(100%);
+    transition: transform 0.6s cubic-bezier(0.8, 0, 0.2, 1), opacity 0.6s cubic-bezier(0.8, 0, 0.2, 1);
+    opacity: 0;
     padding: 0;
     box-sizing: border-box;
     z-index: 1000;
-    background: rgba(253, 253, 253, 0.8); /* 使用带alpha通道的颜色以实现半透明 */
     color: #333;
-    /* 添加毛玻璃效果 */
-    -webkit-backdrop-filter: blur(10px);
-    backdrop-filter: blur(10px);
-}
-
-.settings-panel.active {
-    transform: translateY(0);
+    /* 
+     * 修改点：移除这里的背景色，或设置为 transparent。
+     * 这使得面板本身是透明的，可以透出下方的模糊层。
+     */
+    /* background-color: rgba(0, 0, 0, 0.25); */
+    background-color: transparent;
 }
 
 .settings-header {
     display: flex;
     align-items: center;
-    padding: 10px 15px; /* 调整内边距 */
-    /* border-bottom: 1px solid #eee; */ /* 移除分割线 */
+    padding: 10px 15px;
     position: relative;
-    justify-content: space-between; /* 将两端元素推开 */
+    justify-content: space-between;
+    /* 移除背景，让它透明以显示下方的模糊效果 */
+    /* background: rgba(0, 0, 0, 0.2); */
+}
+
+/* 调整设置面板内的文字颜色，使其在透明背景上更清晰 */
+.settings-header h2,
+.settings-nav .nav-button,
+.settings-content {
+    color: white;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .settings-logo {
-    width: 80px; /* logo稍微再小一点 */
+    width: 80px;
     height: auto;
     margin-right: 0;
-}
-
-.settings-header h2 { /* 此选择器暂时无用，但保留 */
-    margin: 0;
-    color: #333;
-    text-shadow: none;
-    font-size: 24px;
-    flex-grow: 1;
-    transition: color 0.2s;
-    margin-left: 0; /* 移除 auto margin */
+    /* 添加阴影使logo在透明背景上更显眼 */
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
 }
 
 .close-button {
-    /* 重置按钮样式 */
     background: transparent;
     border: none;
-    padding: 6px; /* 为背景光晕留出空间 */
-    border-radius: 50%; /* 圆形按钮 */
+    padding: 6px;
+    border-radius: 50%;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #aaa; /* 图标初始颜色 */
+    color: white; /* 改为白色，更适合透明背景 */
     transition: all 0.3s ease-in-out;
 }
+
 .close-button:hover {
     color: var(--accent-color);
-    background-color: rgba(121, 217, 255, 0.1); /* 主题色光晕 */
-    transform: rotate(90deg); /* 旋转动画 */
+    background-color: rgba(255, 255, 255, 0.1);
+    transform: rotate(90deg);
 }
 
 .close-button svg {
@@ -72,74 +72,76 @@
 
 .settings-body {
     display: flex;
-    height: calc(100% - 68px); /* 重新计算高度 */
+    height: calc(100% - 68px);
     margin-top: 0;
+    /* 移除背景，让它透明以显示下方的模糊效果 */
+    /* background: rgba(0, 0, 0, 0.1); */
 }
 
 .settings-nav {
-    position: absolute; /* 使用绝对定位脱离文档流 */
-    left: 50%; /* 定位到中心 */
-    transform: translateX(-50%); /* 向左移动自身宽度的一半，实现完美居中 */
-
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
     display: flex;
-    flex-direction: row; /* 水平排列 */
+    flex-direction: row;
     padding: 0;
-    border-right: none; /* 移除右边框 */
-    height: 100%; /* 占满header的高度 */
-    align-items: center; /* 垂直居中按钮 */
+    height: 100%;
+    align-items: center;
 }
 
-/* 滑动指示器 */
+/* 滑动指示器样式调整 */
 .nav-indicator {
     position: absolute;
-    bottom: 0; /* 贴在导航栏底部 */
-    left: 0; /* JS会更新 */
-    width: 0; /* JS会更新 */
-    height: 4px; /* 指示器变为一条线 */
+    bottom: 0;
+    left: 0;
+    width: 0;
+    height: 4px;
     background-color: var(--accent-color);
     border-radius: 2px;
     z-index: 1;
     transition: left 0.3s ease-in-out, width 0.3s ease-in-out;
+    /* 添加发光效果 */
+    box-shadow: 0 0 10px rgba(121, 217, 255, 0.4);
 }
 
 .settings-nav .nav-button {
     background: none;
-    color: #555;
+    color: white; /* 改为白色 */
     text-align: center;
-    padding: 10px 15px; /* 调整按钮内边距 */
-    border-radius: 8px; /* 加回一点圆角 */
+    padding: 10px 15px;
+    border-radius: 8px;
     border: none;
     cursor: pointer;
-    margin: 0 5px; /* 按钮间距 */
+    margin: 0 5px;
     font-size: 16px;
     font-weight: bold;
     position: relative;
     z-index: 1;
     transition: color 0.3s ease, background-color 0.3s ease;
-    /* 新增flex布局来对齐图标和文字 */
     display: flex;
     align-items: center;
-    gap: 8px; /* 图标和文字的间距 */
+    gap: 8px;
 }
 
 .settings-nav .nav-button svg {
-    width: 18px; /* 设置图标大小 */
+    width: 18px;
     height: 18px;
-    stroke-width: 2.5px; /* 图标线条粗细 */
-    flex-shrink: 0; /* 防止图标被压缩 */
+    stroke-width: 2.5px;
+    flex-shrink: 0;
 }
 
 .settings-nav .nav-button:hover {
-    color: var(--accent-color); /* 悬停时只改变文字颜色 */
+    color: var(--accent-color);
 }
 
 .settings-nav .nav-button.active {
-    color: var(--accent-color); /* 激活时文字变主题色 */
-    background-color: transparent;
+    color: var(--accent-color);
+    background-color: rgba(255, 255, 255, 0.1); /* 半透明白色背景 */
 }
+
 .settings-nav .nav-button.active:hover {
     color: var(--accent-color);
-    background-color: transparent; /* 确保激活状态下悬停也没有背景 */
+    background-color: rgba(255, 255, 255, 0.15);
 }
 
 .settings-content {
@@ -149,13 +151,22 @@
     padding: 20px;
 }
 
-/* 这是一个通用页面样式，可以放在这里 */
 .settings-page {
-    display: none; /* 默认隐藏所有页面 */
-    color: #333;
-    height: 100%; /* 让每个页面都撑满父容器的高度 */
+    display: none;
+    color: white; /* 改为白色 */
+    height: 100%;
+    /* 添加文字阴影提高可读性 */
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .settings-page.active {
-    display: block; /* 只显示带有 active 类的页面 */
+    display: block;
+}
+
+/* 为设置内容添加半透明背景，提高可读性 */
+.settings-page > * {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 15px;
+    margin-bottom: 15px;
 } 
