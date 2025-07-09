@@ -14,7 +14,7 @@ ALLOWED_EXTENSIONS = {'.jpg', '.png', '.webp', '.bmp', '.svg', '.tif', '.gif'}
 
 @router.get("/background_file/{background_file}")
 async def get_specific_avatar(background_file: str):
-    file_path = static_path / "backgrounds" / background_file
+    file_path = BACKGROUND_DIR / background_file
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Background not found")
 
@@ -24,15 +24,14 @@ async def get_specific_avatar(background_file: str):
 @router.get("/list")
 async def list_all_backgrounds():
     try:
-        backgrounds_dir = static_path / "backgrounds"
-        if not os.path.exists(backgrounds_dir):
+        if not os.path.exists(BACKGROUND_DIR):
             return {"data": [], "message": "背景图片的目录没有找到"}
 
         background_files = []
-        for f in backgrounds_dir.iterdir():
+        for f in BACKGROUND_DIR.iterdir():
             filename = f.name
-            if f.suffix.lower in ('.png', '.jpg', '.jpeg', '.gif', '.bmp'):
-                file_path = backgrounds_dir / filename
+            if f.suffix.lower() in ('.png', '.jpg', '.jpeg', '.gif', '.bmp'):
+                file_path = BACKGROUND_DIR / filename
                 stat = f.stat()
 
                 title = f.stem  # 使用文件名作为标题

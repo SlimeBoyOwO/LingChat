@@ -54,7 +54,6 @@ class AIService:
         if self.use_rag:
             logger.info(f"当前RAG窗口大小是：{self.rag_window}")
 
-
         self.import_settings(settings=settings)
 
         self.messages = [
@@ -64,7 +63,7 @@ class AIService:
             }
         ]
 
-        self.temp_voice_dir = os.environ.get("TEMP_VOICE_DIR", temp_path / "audio")
+        self.temp_voice_dir = os.environ.get("TEMP_VOICE_DIR", TEMP_VOICE_DIR)
         os.makedirs(self.temp_voice_dir, exist_ok=True)
 
         self._init_rag_config()
@@ -186,7 +185,7 @@ class AIService:
 
     def _prepare_directories(self):
         """准备必要的目录"""
-        os.makedirs(TEMP_VOICE_DIR, exist_ok=True)
+        os.makedirs(self.temp_voice_dir, exist_ok=True)
 
     def _append_user_message(self, user_message: str) -> str:
         """处理用户消息，添加系统信息，如时间与是否需要分析桌面"""
@@ -235,7 +234,7 @@ class AIService:
             # 若打印上下文选项开启且在DEBUG级别，则截取发送到llm的文字信息打印到终端
             # self._print_debug_message(current_context, rag_messages, processed_user_message)
 
-            ai_response = self.llm_model.process_message(current_context, processed_user_message)
+            ai_response = self.llm_model.process_message(current_context)
 
             # 1.5 修复ai回复中可能出错的部分，防止下一次对话被带歪
             ai_response = Function.fix_ai_generated_text(ai_response)
@@ -467,7 +466,7 @@ class AIService:
 
     def _clean_temp_voice_files(self):
         """清理临时语音文件"""
-        for file in glob.glob(os.path.join(TEMP_VOICE_DIR, "*.wav")):
+        for file in glob.glob(os.path.join(self.temp_voice_dir, "*.wav")):
             try:
                 os.remove(file)
             except OSError as e:
