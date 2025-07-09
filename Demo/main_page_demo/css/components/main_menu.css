@@ -2,7 +2,7 @@
 .main-container {
     width: 100%;
     height: 100%;
-    background-image: url('../../../pictures/backgrounds/login/X0_6rTZl.png');
+    background-image: url('../../../../frontend/public/pictures/backgrounds/login/X0_6rTZl.png');
     background-size: cover;
     background-position: center;
     display: flex;
