@@ -4,6 +4,10 @@ from datetime import datetime
 from typing import List, Dict
 
 class Function:
+    # 该列表内被管理的字段,在值为空字符串时,会被解析为None
+    HIDE_NONE_FIELDS = [
+        'ai_name', 'ai_subtitle', 'user_name', 'user_subtitle', 'thinking_message', 
+    ]
     @staticmethod
     def detect_language(text):
         """
@@ -130,7 +134,7 @@ class Function:
         with open(file_path, 'r', encoding='utf-8') as file:
             content = file.read()
         
-        single_line_pattern = re.compile(r'^(\w+)\s*=\s*(.*?)\s*$', re.MULTILINE)
+        single_line_pattern = re.compile(r'^(\w+)\s*=(.*?)\s*$', re.MULTILINE) 
         multi_line_pattern = re.compile(r'^(\w+)\s*=\s*"""(.*?)"""\s*$', re.MULTILINE | re.DOTALL)
         
         for match in multi_line_pattern.finditer(content):
@@ -145,6 +149,8 @@ class Function:
                 if (value.startswith('"') and value.endswith('"')) or \
                 (value.startswith("'") and value.endswith("'")):
                     value = value[1:-1]
+                if value == '' and key in Function.HIDE_NONE_FIELDS:
+                    value = None
                 settings[key] = value
         
         dir_path = os.path.dirname(file_path)
