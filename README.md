@@ -6,11 +6,11 @@
 
 ## 服务端支持
 
-by [Vickko]([Vickko (Vickko)](https://github.com/Vickko))
+by [Vickko](https://github.com/Vickko)
 
 基于LingChat 0.3已实现的功能，使用go搭建服务端代码，并提供登录即用的服务。
 
-详见[go-impl分支]([SlimeBoyOwO/LingChat at feat/go-impl](https://github.com/SlimeBoyOwO/LingChat/tree/feat/go-impl))
+详见[go-impl分支]([SlimeBoyOwO/LingChat at feat/go-impl](https://github.com/SlimeBoyOwO/LingChat/tree/feat/go-impl)
 
 ## 游戏引擎重构
 
@@ -18,7 +18,7 @@ by [风雪]([T-Auto](https://github.com/T-Auto))
 
 增加长线预设剧情支持，兼容肉鸽旅行/COC/DND/狼人杀等剧本呈现方式，且原生兼容读档存档、多人物同屏和记忆库系统的底层框架。
 
-详见Issues：[【0.4.0开发日志】长剧情系统＆多角色同屏＆随机事件演进＆小游戏框架](https://github.com/SlimeBoyOwO/LingChat/issues/91)，源码位于仓库[NeoChat](https://github.com/T-Auto/NeoChat)，剧情方面参考[NeoChat剧情创作指南](https://github.com/T-Auto/NeoChat/blob/main/NeoChat 剧情创作指南.md)
+详见Issues：[【0.4.0开发日志】长剧情系统＆多角色同屏＆随机事件演进＆小游戏框架](https://github.com/SlimeBoyOwO/LingChat/issues/91)，源码位于仓库[NeoChat](https://github.com/T-Auto/NeoChat)，剧情方面参考[NeoChat剧情创作指南](https://github.com/T-Auto/NeoChat/blob/main/NeoChat%20%E5%89%A7%E6%83%85%E5%88%9B%E4%BD%9C%E6%8C%87%E5%8D%97.md)
 
 ## 记忆系统重构
 
