@@ -38,7 +38,7 @@ CONFIG = {
     # --- 文件路径配置 (基于上面计算出的路径) ---
     "CHARACTER_NAME": "诺一钦灵/avatar",
     "CHARACTER_IMAGE_PATH": PROJECT_ROOT / "game_data" / "characters",
-    "EMOTION_MODEL_PATH": BACKEND_DIR / "emotion_model_18emo",
+    "EMOTION_MODEL_PATH": PROJECT_ROOT / "backend" / "emotion_model_18emo",
     "LOG_DIRECTORY": SCRIPT_DIR / "logs",
     "SCREENSHOT_DIRECTORY": SCRIPT_DIR / "screenshots",
 
