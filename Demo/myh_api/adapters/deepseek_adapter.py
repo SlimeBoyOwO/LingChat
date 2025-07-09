@@ -4,7 +4,7 @@ import time
 
 class Adapter:
     def __init__(self, config):
-        self.config = config
+        # 仅使用config中的API key
         self.client = OpenAI(
             api_key=config['api_key'],
             base_url=config.get('base_url', 'https://api.deepseek.com/v1')
