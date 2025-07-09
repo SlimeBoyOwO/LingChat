@@ -12,7 +12,7 @@ class LLMProviderFactory:
         """
         创建指定类型的大模型提供者
         
-        :param provider_type: 提供者类型 (deepseek, ollama, lmstudio)
+        :param provider_type: 提供者类型 (webllm, ollama, lmstudio, gemini)
         :param config: 配置字典
         :return: 大模型提供者实例
         """
@@ -32,7 +32,7 @@ class LLMProviderFactory:
                 logger.info("创建Gemini服务提供商")
                 return GeminiProvider()
             else:
-                raise ValueError(f"Unsupported provider type: {provider_type}")
+                raise ValueError(f"暂未支持的提供商: {provider_type}")
         except Exception as e:
             logger.error(f"创建LLM提供商 {provider_type} 失败: {str(e)}")
             raise
