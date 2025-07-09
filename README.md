@@ -10,11 +10,11 @@ by [Vickko](https://github.com/Vickko)
 
 基于LingChat 0.3已实现的功能，使用go搭建服务端代码，并提供登录即用的服务。
 
-详见[go-impl分支]([SlimeBoyOwO/LingChat at feat/go-impl](https://github.com/SlimeBoyOwO/LingChat/tree/feat/go-impl)
+详见[go-impl分支](https://github.com/SlimeBoyOwO/LingChat/tree/feat/go-impl)
 
 ## 游戏引擎重构
 
-by [风雪]([T-Auto](https://github.com/T-Auto))
+by [风雪](https://github.com/T-Auto)
 
 增加长线预设剧情支持，兼容肉鸽旅行/COC/DND/狼人杀等剧本呈现方式，且原生兼容读档存档、多人物同屏和记忆库系统的底层框架。
 
@@ -22,7 +22,7 @@ by [风雪]([T-Auto](https://github.com/T-Auto))
 
 ## 记忆系统重构
 
-by [云]([LtePrince](https://github.com/LtePrince))
+by [云](https://github.com/LtePrince)
 
 重构记忆系统，使用图数据库实现RAG来提升性能。
 
@@ -38,7 +38,7 @@ by [yukito](https://github.com/yukito0209)、[喵](https://github.com/a2942)
 
 ## 模块化的api兼容层
 
-by uwa
+by [uwa](https://github.com/myh1011)
 
 将任意api转为标准openai格式，实现对各种api的系统性支持。
 
