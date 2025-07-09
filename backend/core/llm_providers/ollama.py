@@ -16,7 +16,7 @@ class OllamaProvider(BaseLLMProvider):
     def generate_response(self, messages: List[Dict]) -> str:
         """生成Ollama模型响应"""
         try:
-            logger.debug(f"Sending request to Ollama API: {self.base_url}/api/chat")
+            logger.debug(f"正在给 Ollama 发送请求: {self.base_url}/api/chat")
             
             payload = {
                 "model": self.model_type,
@@ -30,7 +30,7 @@ class OllamaProvider(BaseLLMProvider):
             )
             
             if response.status_code != 200:
-                error_msg = f"Ollama API returned error: {response.status_code} - {response.text}"
+                error_msg = f"Ollama 返回了错误: {response.status_code} - {response.text}"
                 logger.error(error_msg)
                 raise Exception(error_msg)
                 
@@ -38,5 +38,5 @@ class OllamaProvider(BaseLLMProvider):
             return response_json.get("message", {}).get("content", "")
             
         except Exception as e:
-            logger.error(f"Ollama API call failed: {str(e)}")
+            logger.error(f"Ollama 调用失败: {str(e)}")
             raise
