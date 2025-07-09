@@ -1,11 +1,14 @@
 import dashscope
 from dashscope import Generation
 import time
+
 class Adapter:
     def __init__(self, config):
+        # 仅使用config中的API key
         dashscope.api_key = config['api_key']
         
     def create_chat_completion(self, data):
+        # 确保不使用请求中的API key
         response = Generation.call(
             model=data['model'],
             messages=data['messages'],
@@ -30,7 +33,7 @@ class Adapter:
                 "finish_reason": "stop"
             }],
             "usage": {
-                "prompt_tokens": response.usage.input_tokens,  # 修正字段名
+                "prompt_tokens": response.usage.input_tokens,
                 "completion_tokens": response.usage.output_tokens,
                 "total_tokens": response.usage.input_tokens + response.usage.output_tokens
             }
