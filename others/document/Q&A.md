@@ -16,6 +16,78 @@
 
 - 可能你的上一个 Lingchat 没有关闭，或者有其他从程序占用了 8765 这个端口，你可以检查是哪个程序占用的，把它那个程序给关了
 
+#### 极少数出现：哪个浏览器都卡死在加载页面
+- 用记事本打开backend\api\frontend_router.py，把文件内容更换为以下内容，重启程序即可修复：
+```python
+from fastapi import APIRouter, Request, Response  # 新增 Response
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+import os
+from pathlib import Path  # 新增 Path 用于更安全的路径操作
+
+router = APIRouter()
+
+root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+frontend_dir = os.path.join(root_dir, 'frontend', 'public')
+
+# ✅ 自定义 StaticFiles（禁用缓存）
+class NoCacheStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        
+        # ✅ 新增：强制修正 JS 文件的 Content-Type
+        if path.endswith('.js'):
+            response.headers["Content-Type"] = "application/javascript"
+            
+        return response
+
+# ✅ 托管所有静态资源（保持原有路径结构）
+def get_static_files():
+    return NoCacheStaticFiles(directory=frontend_dir)
+
+# ✅ 保持原有HTML路由
+def get_file_response(file_path: str) -> FileResponse:
+    response = FileResponse(file_path)
+    response.headers.update({
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0"
+    })
+    return response
+
+# ✅ 新增：方案二修复方法 - 手动处理关键JS文件
+@router.get("/app.js")  # 假设这是你的主JS文件
+async def serve_app_js():
+    js_path = Path(frontend_dir) / "app.js"  # 根据实际路径调整
+    if not js_path.exists():
+        raise HTTPException(status_code=404)
+    
+    # ✅ 强制返回正确的 Content-Type
+    return Response(
+        content=js_path.read_bytes(),
+        media_type="application/javascript",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache"
+        }
+    )
+
+@router.get("/")
+async def index():
+    return get_file_response(os.path.join(frontend_dir, "pages", "index.html"))
+
+@router.get("/about")
+async def about():
+    return get_file_response(os.path.join(frontend_dir, "pages", "about.html"))
+
+@router.get("/settings")
+async def settings():
+    return get_file_response(os.path.join(frontend_dir, "pages", "settings.html"))
+```
+
 ### 对话问题
 
 #### 提示 402 错误: Your api key is invalid.
