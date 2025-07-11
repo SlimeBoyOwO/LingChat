@@ -39,6 +39,7 @@ fastmcp = "^2.9.0"
 mss = "^10.0.0"
 google-generativeai = "^0.8.5"
 python-dotenv = "^1.1.1"
+py7zr = "^1.0.0"
 
 [build-system]
 requires = ["poetry-core"]

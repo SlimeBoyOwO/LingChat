@@ -3,7 +3,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import os
 
-from ling_chat.utils.runtime_path import package_root, static_path
+from ling_chat.utils.runtime_path import static_path, temp_path
 
 router = APIRouter()
 
@@ -20,6 +20,10 @@ class NoCacheStaticFiles(StaticFiles):
 # 注意：这里改为返回 StaticFiles 实例，由上层 app.mount() 调用
 def get_static_files():
     return NoCacheStaticFiles(directory=static_path)
+
+
+def get_audio_files():
+    return NoCacheStaticFiles(directory=temp_path / "audio")
 
 # ✅ 保持原有HTML路由
 def get_file_response(file_path: str) -> FileResponse:
