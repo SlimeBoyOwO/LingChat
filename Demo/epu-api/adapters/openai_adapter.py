@@ -1,11 +1,16 @@
 import openai
+import httpx  # 添加导入
 
 class Adapter:
     def __init__(self, config):
-        # 仅使用config中的API key
+        # 获取代理设置
+        proxy = config.get('proxy')
+        http_client = httpx.Client(proxy=proxy) if proxy else None
+        
         self.client = openai.OpenAI(
             api_key=config['api_key'],
-            base_url=config.get('base_url', 'https://api.openai.com/v1')
+            base_url=config.get('base_url', 'https://api.openai.com/v1'),
+            http_client=http_client  # 添加代理支持
         )
 
     def create_chat_completion(self, data):

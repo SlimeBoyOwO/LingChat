@@ -12,17 +12,13 @@ MODEL_MAPPING = {
     'gpt-': 'openai_adapter',
     'deepseek-': 'deepseek_adapter',
     'ollama-': 'ollama_adapter',
-    'spark': 'spark_adapter',
-    'qwen': 'qwen_adapter'
 }
 
 def get_adapter(model_name):
     for prefix, adapter in MODEL_MAPPING.items():
         if model_name.startswith(prefix):
             module = importlib.import_module(f'adapters.{adapter}')
-            # 获取对应的配置部分
             config_key = adapter.removesuffix('_adapter')
-            # 确保配置存在
             if config_key not in CONFIG:
                 raise ValueError(f"Missing configuration for {config_key}")
             return module.Adapter(CONFIG[config_key])
