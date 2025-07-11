@@ -42,7 +42,9 @@ by [uwa](https://github.com/myh1011)
 
 将任意api转为标准openai格式，实现对各种api的系统性支持。
 
-详见Demo：[myh_api](https://github.com/SlimeBoyOwO/LingChat/tree/develop/Demo/myh_api)
+详见Demo：[EPU-Api](https://github.com/SlimeBoyOwO/LingChat/tree/develop/Demo/epu-api）
+
+见github [EPU-Api](https://github.com/myh1011/epu_api)
 
 ## 桌宠启动方式
 
