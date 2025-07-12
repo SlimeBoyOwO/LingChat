@@ -36,6 +36,13 @@
 2. 终止相关进程或更改LingChat使用的端口
 3. 重启计算机（终极解决方案）
 
+### 4.ERROR: Could not find Python 3.10, 3.11, or 3.12 using the 'py' launcher.
+**问题**: 找不到Python 3.10, 3.11或3.12
+**解决方案**:
+1. 确保已安装Python 3.10, 3.11或3.12,如未安装请前往下载！下载地址"[https://www.python.org/downloads/](https://www.python.org/downloads/)"
+2. 在Windows上，确保Python安装路径已添加到系统环境变量中
+3. 在Linux上，使用`update-alternatives --config python`设置默认Python版本
+4. 在Mac上，使用`brew install python@3.10`安装Python 3.10
 
 ## 联系支持
 如问题仍未解决，请加入联系开发团队提供以下信息：
