@@ -68,6 +68,8 @@ by [Thz922](https://github.com/Thz922)
 
 by [shadow01a](https://github.com/shadow01a)
 
-尝试安卓端的移植。
+探索安卓端的使用。
 
 详见Issues：[关于新增手机使用本项目的文档 · Issue #128 · SlimeBoyOwO/LingChat](https://github.com/SlimeBoyOwO/LingChat/issues/128)
+
+目前已经有了一个[可用的文档](https://github.com/SlimeBoyOwO/LingChat/blob/develop/others/document/%E6%89%8B%E6%9C%BA%E4%BD%BF%E7%94%A8%E6%95%99%E7%A8%8B.md)
