@@ -88,13 +88,12 @@ curl http://localhost:8090/v1/chat/completions \
 ├── app.py                 # 主应用入口
 ├── config.yaml            # 配置文件
 ├── requirements.txt       # 依赖清单
+├── config.yaml.example    # 配置文件示例
 └── adapters/              # 模型适配器
     ├── __init__.py        # 适配器选择器
     ├── deepseek_adapter.py
     ├── ollama_adapter.py
-    ├── openai_adapter.py
-    ├── qwen_adapter.py
-    └── spark_adapter.py
+    └── openai_adapter.py
 ```
 
 ## 扩展新模型
