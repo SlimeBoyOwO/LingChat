@@ -44,6 +44,30 @@
 3. 在Linux上，使用`update-alternatives --config python`设置默认Python版本
 4. 在Mac上，使用`brew install python@3.10`安装Python 3.10
 
+### 5.ERROR: Failed to activate the existing virtual environment. Check if it's corrupted.
+**问题**: 无法激活现有虚拟环境，可能已损坏
+**解决方案**:
+1. 尝试重新创建虚拟环境
+2. 检查虚拟环境目录的完整性
+3. 确保使用正确的Python版本
+4. 删除现有虚拟环境并重新创建
+   ```bash
+   rm -rf venv
+   python -m venv venv
+   source venv/bin/activate  # Linux/Mac
+   venv\Scripts\activate  # Windows
+   ```
+
+### 6. ERROR: Failed to install the required packages.
+**问题**: 无法安装所需的Python包
+**解决方案**:
+1. 检查网络连接
+2. 确保使用正确的Python版本
+3. 尝试手动安装缺失的包
+   ```bash
+   pip install -r requirements.txt
+   ```
+
 ## 联系支持
 如问题仍未解决，请加入联系开发团队提供以下信息：
 - 错误日志截图
