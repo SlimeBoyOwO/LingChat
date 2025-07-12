@@ -68,6 +68,17 @@
    pip install -r requirements.txt
    ```
 
+### 7.ERROR: Failed to activate the new virtual environment.
+**问题**: 无法激活新的虚拟环境
+**解决方案**:
+1. 确保虚拟环境已正确创建，文件地址在"./venv"
+2. 检查虚拟环境目录是否存在
+3. 尝试手动激活虚拟环境
+```bash
+source venv/bin/activate  # Linux/Mac
+venv\Scripts\activate  # Windows
+```
+
 ## 联系支持
 如问题仍未解决，请加入联系开发团队提供以下信息：
 - 错误日志截图
