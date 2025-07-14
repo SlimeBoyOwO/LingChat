@@ -4,12 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LingChat - 主界面Demo</title>
-    <link rel="icon" href="../pictures/icons/小猫Ling.svg" type="image/svg+xml">
+    <link rel="icon" href="../../frontend/public/pictures/icons/小猫Ling.svg" type="image/svg+xml">
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/loader.css">
     <!-- Component Styles -->
     <link rel="stylesheet" href="css/components/main_menu.css">
     <link rel="stylesheet" href="css/components/settings_panel.css">
+    <link rel="stylesheet" href="css/components/game_panels.css">
     <link rel="stylesheet" href="css/components/page_character.css">
     <link rel="stylesheet" href="css/components/page_text.css">
     <link rel="stylesheet" href="css/components/page_advanced.css">
@@ -26,23 +27,26 @@
         <div class="loading-text">你的小可爱正在准备中</div>
     </div>
 
+    <!-- 主界面容器 -->
     <div class="main-container">
-        <img src="../pictures/Image/LingChatLogo.png" alt="LingChat Logo" class="logo">
-        <!-- 主菜单 -->
-        <div class="main-menu">
-            <nav class="menu-options">
-                <button class="menu-button">继续游戏</button>
-                <button class="menu-button">开始游戏</button>
-                <button class="menu-button">存&emsp;&emsp;档</button>
-                <button class="menu-button" id="settings-button">设&emsp;&emsp;置</button>
-                <button class="menu-button">退出游戏</button>
-            </nav>
+        <!-- 开始界面 -->
+        <div id="start-page">
+            <img src="../../frontend/public/pictures/Image/LingChatLogo.png" alt="LingChat Logo" class="logo">
+            <div class="main-menu">
+                <nav class="menu-options">
+                    <button class="menu-button">继续游戏</button>
+                    <button class="menu-button">开始游戏</button>
+                    <button class="menu-button">存&emsp;&emsp;档</button>
+                    <button class="menu-button" id="settings-button">设&emsp;&emsp;置</button>
+                    <button class="menu-button">退出游戏</button>
+                </nav>
+            </div>
         </div>
 
-        <!-- 设置面板 (默认隐藏) -->
+        <!-- 设置面板 -->
         <div class="settings-panel" id="settings-panel">
             <div class="settings-header">
-                <img src="../pictures/Image/LingChatLogo.png" alt="Logo" class="settings-logo">
+                <img src="../../frontend/public/pictures/Image/LingChatLogo.png" alt="Logo" class="settings-logo">
                 <nav class="settings-nav">
                     <div class="nav-indicator"></div>
                     <button class="nav-button active" data-content="character-settings">
@@ -70,7 +74,7 @@
                         <span>高级设置</span>
                     </button>
                 </nav>
-                <button class="close-button" id="close-settings-button" title="关闭">
+                <button class="close-button" data-close-panel="settings-panel" title="关闭">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
             </div>
@@ -85,7 +89,7 @@
                         <div class="character-grid">
                             <div class="character-card">
                                 <div class="character-avatar-container">
-                                    <img src="../../../game_data/characters/诺一钦灵/avatar/正常.png" alt="可爱的小狼娘" class="character-avatar">
+                                    <img src="../../game_data/characters/诺一钦灵/avatar/正常.png" alt="可爱的小狼娘" class="character-avatar">
                                 </div>
                                 <div class="character-content-wrapper">
                                     <h5 class="character-title">可爱的小狼娘</h5>
@@ -543,10 +547,64 @@
                 </main>
             </div>
         </div>
+
+        <!-- 新的：开始游戏面板 -->
+        <div class="game-screen-panel" id="game-screen-panel">
+            <div class="panel-header">
+                <h2>游戏画面</h2>
+                <button class="close-button" data-close-panel="game-screen-panel" title="关闭">×</button>
+            </div>
+            <div class="panel-body">
+                <div class="game-screen-content">
+                    <h3>欢迎来到 LingChat</h3>
+                    <p>这里是游戏的主界面。您可以与AI角色进行对话，体验沉浸式的交互体验。</p>
+                    <div class="game-action-buttons">
+                        <button class="game-action-btn">开始对话</button>
+                        <button class="game-action-btn">角色设定</button>
+                        <button class="game-action-btn">历史记录</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 新的：读取存档面板 -->
+        <div class="load-save-panel" id="load-save-panel">
+            <div class="panel-header">
+                <h2>读取存档</h2>
+                <button class="close-button" data-close-panel="load-save-panel" title="关闭">×</button>
+            </div>
+            <div class="panel-body">
+                <div class="save-files-container">
+                    <h3>选择存档文件</h3>
+                    <div class="save-file-list">
+                        <div class="save-file-item">
+                            <div class="save-file-info">
+                                <h4>存档 #1</h4>
+                                <p>对话进度：第3章 - 与小狼娘的日常</p>
+                            </div>
+                            <div class="save-file-date">2025-01-09 14:30</div>
+                        </div>
+                        <div class="save-file-item">
+                            <div class="save-file-info">
+                                <h4>存档 #2</h4>
+                                <p>对话进度：第1章 - 初次相遇</p>
+                            </div>
+                            <div class="save-file-date">2025-01-08 20:15</div>
+                        </div>
+                        <div class="save-file-item">
+                            <div class="save-file-info">
+                                <h4>存档 #3</h4>
+                                <p>对话进度：第2章 - 日常互动</p>
+                            </div>
+                            <div class="save-file-date">2025-01-07 16:45</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="js/loader.js"></script>
-    <script src="js/main.js" defer></script>
-
+    <script src="js/main.js"></script>
 </body>
 </html> 

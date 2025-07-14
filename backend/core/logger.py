@@ -59,7 +59,7 @@ class Logger:
         app_name: str = "AppLogger",
         log_level: Optional[str] = None,
         show_timestamp: Optional[bool] = None,
-        enable_file_logging: bool = True,
+        enable_file_logging: Optional[bool] = None,
         log_file_directory: str = os.path.join("data", "run_logs"),
         log_file_level: int = logging.DEBUG
     ):
@@ -82,8 +82,14 @@ class Logger:
         self.log_level = self._get_log_level(log_level)
         self.print_context = self._get_bool_env('PRINT_CONTEXT', None)
         self.show_timestamp = self._get_bool_env('CONSOLE_SHOW_TIMESTAMP', show_timestamp)
-        self.enable_file_logging = enable_file_logging
-        self.log_file_directory = log_file_directory
+        self.enable_file_logging = self._get_bool_env('ENABLE_FILE_LOGGING', enable_file_logging)
+
+        log_dir = os.environ.get('LOG_FILE_DIRECTORY')
+        if not log_dir:
+            print(f"{TermColors.RED}请设置环境变量 'LOG_FILE_DIRECTORY' 来指定日志文件保存目录。{TermColors.RESET}")
+        else:
+            self.log_file_directory = os.path.join(log_dir)
+        
         self.log_file_level = log_file_level
         
         self._animation_thread = None
@@ -132,6 +138,11 @@ class Logger:
         console_handler = self._create_console_handler()
         self._logger.addHandler(console_handler)
 
+        # 添加文件处理器
+        file_handler = self._create_file_handler()
+        if file_handler:
+            self._logger.addHandler(file_handler)
+
     def _create_console_handler(self) -> logging.Handler:
         """创建控制台日志处理器"""
         handler = AnimationAwareStreamHandler(sys.stdout)
@@ -141,6 +152,10 @@ class Logger:
 
     def _create_file_handler(self) -> Optional[logging.Handler]:
         """创建文件日志处理器"""
+        # 增加对enable_file_logging标志的检查
+        if not self.enable_file_logging:
+            return None
+
         try:
             os.makedirs(self.log_file_directory, exist_ok=True)
             log_filename = datetime.now().strftime(f"{self.app_name}_%Y-%m-%d_%H-%M-%S.log")
@@ -296,7 +311,7 @@ class AnimationAwareStreamHandler(logging.StreamHandler):
     def emit(self, record):
         logger = Logger()
         
-        if hasattr(record, 'is_animation_control') and record.is_animation_control:
+        if hasattr(record, 'is_animation_control') and getattr(record, 'is_animation_control', False):
             super().emit(record)
             return
 
@@ -324,7 +339,7 @@ class ColoredFormatter(logging.Formatter):
         self.show_timestamp = show_timestamp
 
     def format(self, record):
-        if hasattr(record, 'is_animation_control') and record.is_animation_control:
+        if hasattr(record, 'is_animation_control') and getattr(record, 'is_animation_control', False):
             return record.getMessage()
 
         timestamp = f"{self.formatTime(record, Logger.DATE_FORMAT)} " if self.show_timestamp else ""

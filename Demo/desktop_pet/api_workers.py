@@ -19,6 +19,7 @@ class ChatWorker(QThread):
         self.client = OpenAI(
             api_key=CONFIG["CHAT_API_KEY"],
             base_url=CONFIG["CHAT_BASE_URL"],
+            default_headers={"x-foo": "bar"}, # 规避openai库的bug
         )
 
     def run(self):
@@ -44,6 +45,7 @@ class VisionWorker(QThread):
         self.vision_client = OpenAI(
             api_key=CONFIG["VD_API_KEY"],
             base_url=CONFIG["VD_BASE_URL"],
+            default_headers={"x-foo": "bar"}, # 规避openai库的bug
         )
 
     def run(self):
