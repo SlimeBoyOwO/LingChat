@@ -7,13 +7,13 @@ from ling_chat.utils.runtime_path import static_path
 
 router = APIRouter(prefix="/api/v1/chat/back-music", tags=["Background Music"])
 
-MUSIC_DIR = static_path / "musics"
+MUSIC_DIR = static_path / "game_data/musics"
 ALLOWED_EXTENSIONS = {'.mp3', '.wav', '.flac', '.webm', '.weba', '.ogg', '.m4a', '.oga'}
 
 
 @router.get("/music_file/{music_file}")
 async def get_specific_avatar(music_file: str):
-    file_path = static_path / "musics" / music_file
+    file_path = MUSIC_DIR / music_file
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="没有找到音乐文件")
 
