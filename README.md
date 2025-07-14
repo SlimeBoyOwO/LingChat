@@ -6,6 +6,7 @@
 - Windows、Linux均可运行。Linux用户请查看额外的使用说明。
 - 社区安装QQ互助群：1055935861【纯安装问题请加入此群，不要去开发者群.jpg】
 - 开发者交流群：aigalgame（Telegram）开发者，安装问题和有兴趣的用户可以加入，欢迎交流和讨论！
+- 安装问题解答文档[用户帮助文档-代码报错](https://github.com/SlimeBoyOwO/LingChat/blob/main/README-help.md), [用户帮助文档-截图报错](https://github.com/SlimeBoyOwO/LingChat/blob/develop/others/document/Q&A.md)
 
 ## 🛠 功能列表
 - [x] 选择你喜欢的人物，陪伴你聊天度过寂寞的夜晚
@@ -99,6 +100,7 @@
 - [Simple-Vits-API](https://github.com/Artrajz/vits-simple-api): 该项目实现了基于 `VITS` 的简单语音合成 API。如果你不是核显建议下载 GPU 版本，速度快。核显就用CPU。
 - [Style-Bert-VITS2](https://github.com/litagin02/Style-Bert-VITS2)：该项目实现了 `Bert-VITS` 的语音合成和训练，你可以用这个进行语音训练和推理，少量数据量就可以达到很棒效果！
 - [ProgrammingVTuberLogos](https://github.com/Aikoyori/ProgrammingVTuberLogos)：LingChat 的标题风格，可爱滴捏，画风参考这个项目~
+- [Emotion Training](https://github.com/SlimeBoyOwO/Emotion-Model-Trainer): 人工智能模型训练，用于实现18种短句情绪识别
 - 本项目的实现离不开这些优秀开源作品的先驱者，在这里我们送上由衷的致谢🌼
 
 ## 🌸 一些小话
