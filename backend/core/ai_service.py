@@ -7,11 +7,11 @@ from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 
 from .llm_providers.manager import LLMManager
-from .predictor import EmotionClassifier  # 导入情绪分类器
 from .VitsTTS.vits_tts import VitsTTS
 from .logger import logger, TermColors
 from .dialog_logger import DialogLogger
 from .pic_analyzer import DesktopAnalyzer
+from core.service_manager import service_manager
 
 from utils.function import Function
 
@@ -30,7 +30,6 @@ class AIService:
     def __init__(self, settings: dict):
         """初始化所有服务组件"""
         self.llm_model = LLMManager()
-        self.emotion_classifier = EmotionClassifier()
         self.dialog_logger = DialogLogger()
         self.desktop_analyzer = DesktopAnalyzer()
         self._prepare_directories()
@@ -392,7 +391,7 @@ class AIService:
                 logger.warning(f"语言检测错误: {e}")
 
             try:
-                predicted = self.emotion_classifier.predict(emotion_tag)
+                predicted = service_manager.emotion_classifier.predict(emotion_tag)
                 prediction_result = {
                     "label": predicted["label"],
                     "confidence": predicted["confidence"]

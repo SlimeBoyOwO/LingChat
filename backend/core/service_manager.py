@@ -1,4 +1,4 @@
-from .ai_service import AIService
+from core.ai_service.core import AIService
 from .logger import logger
 import os
 
