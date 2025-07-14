@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from fastapi import APIRouter
 from ling_chat.core.service_manager import service_manager
 from ling_chat.database.user_model import UserModel
@@ -26,9 +27,9 @@ async def init_web_infos(user_id: int):
             if character is not None and "resource_path" in character:
                 resource_path = Path(character["resource_path"])
             else:
-                resource_path = static_path / "characters/诺一钦灵"
+                resource_path = static_path / "game_data/characters/诺一钦灵"
 
-            settings = Function.parse_enhanced_txt(resource_path / "settings.txt")
+            settings = Function.parse_enhanced_txt(str(resource_path / "settings.txt"))
             settings["character_id"] = last_character_id
             ai_service = service_manager.init_ai_service(settings)
 

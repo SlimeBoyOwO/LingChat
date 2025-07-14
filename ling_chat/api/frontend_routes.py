@@ -5,6 +5,8 @@ import os
 
 from ling_chat.utils.runtime_path import static_path, temp_path
 
+frontend_path = static_path / "frontend"
+
 router = APIRouter()
 
 # ✅ 自定义 StaticFiles（禁用缓存）
@@ -19,7 +21,7 @@ class NoCacheStaticFiles(StaticFiles):
 # ✅ 托管所有静态资源（保持原有路径结构）
 # 注意：这里改为返回 StaticFiles 实例，由上层 app.mount() 调用
 def get_static_files():
-    return NoCacheStaticFiles(directory=static_path)
+    return NoCacheStaticFiles(directory=frontend_path)
 
 
 def get_audio_files():
@@ -37,8 +39,8 @@ def get_file_response(file_path: str) -> FileResponse:
 
 @router.get("/")
 async def index():
-    return get_file_response(os.path.join(static_path, "pages", "index.html"))
+    return get_file_response(frontend_path / "pages/index.html")
 
 @router.get("/about")
 async def about():
-    return get_file_response(os.path.join(static_path, "pages", "about.html"))
+    return get_file_response(frontend_path / "pages/about.html")

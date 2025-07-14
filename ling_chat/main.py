@@ -20,7 +20,7 @@ from ling_chat.api.frontend_routes import router as frontend_router, get_static_
 from ling_chat.core.logger import logger, TermColors
 from ling_chat.database import init_db
 from ling_chat.database.character_model import CharacterModel
-from ling_chat.utils.runtime_path import static_path, user_data_path
+from ling_chat.utils.runtime_path import static_path, user_data_path, third_party_path
 
 load_dotenv(".env.example")
 load_dotenv()
@@ -107,6 +107,8 @@ def extract_archive(archive_path: Path, extract_to: Path):
     :param extract_to: 解压目标目录
     :raises ValueError: 当文件格式不支持时
     """
+    print(f"正在解压 {archive_path} 到 {extract_to}...")
+
     # 确保目标目录存在
     extract_to.mkdir(parents=True, exist_ok=True)
 
@@ -125,8 +127,9 @@ def extract_archive(archive_path: Path, extract_to: Path):
     print(f"成功解压 {archive_path} 到 {extract_to}")
 
 def prepare_vits_directory(vits_path: Path):
+    archive_path = vits_path.parent
     if not vits_path.exists():
-        vits_archive = static_path / "vits-simple-api-windows-cpu-v0.6.16.7z"
+        vits_archive = archive_path / "vits-simple-api-windows-cpu-v0.6.16.7z"
         assert vits_archive.exists(), f"VITS语音合成器压缩包未找到，请手动下载到{vits_archive}。"
         extract_archive(vits_archive, vits_path)
 
@@ -134,27 +137,34 @@ def prepare_vits_directory(vits_path: Path):
 
     vits_model_path = vits_path / "data/models/YuzuSoft_Vits"
     if not vits_model_path.exists():
-        vits_model_archive = static_path / "YuzuSoft_Vits.zip"
+        vits_model_archive = archive_path / "YuzuSoft_Vits.zip"
         assert vits_model_archive.exists(), f"VITS模型压缩包未找到，请手动下载到{vits_model_archive}。"
         extract_archive(vits_model_archive, vits_model_path)
 
     assert vits_model_path.exists(), "VITS模型目录未找到，请检查解压是否成功。"
 
-def start_vits_process():
+def run_vits_process(vits_ready_event: threading.Event, status_ok: list[bool]):
     try:
-        vits_path = static_path / "vits-simple-api-windows-cpu-v0.6.16"
+        vits_path = third_party_path / "vits-simple-api/vits-simple-api-windows-cpu-v0.6.16"
         prepare_vits_directory(vits_path)
 
         vits_process = subprocess.Popen(
-            ["py310/python.exe", "app.py"],
-            cwd=vits_path
-            # stdout=subprocess.PIPE,
-            # stderr=subprocess.PIPE
+            [vits_path / "py310/python.exe", "app.py"],
+            cwd=vits_path,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            bufsize=1,  # 行缓冲
+            text=True  # 文本模式
         )
-        return vits_process
+        for line in vits_process.stdout:
+            logger.info(f'[vits]: {line.strip()}')
+            if "* Running on http:" in line:
+                status_ok[0] = True
+                vits_ready_event.set()
     except Exception as e:
         logger.error(f"启动VITS语音合成器失败: {e}")
-        return None
+        status_ok[0] = False
+        vits_ready_event.set()
 
 
 def start_webview():
@@ -163,12 +173,19 @@ def start_webview():
         width=1024, height=768,
         resizable=True, fullscreen=False
     )
-    webview.start(http_server=True, icon=str(static_path / "resources/lingchat.ico"))
+    webview.start(http_server=True, icon=str(static_path / "game_data/resources/lingchat.ico"))
 
 
 def main():
     print_logo()
-    start_vits_process()
+    vits_ready_event = threading.Event()
+    status_ok = [False]  # 用于检查VITS是否成功启动
+    vits_thread = threading.Thread(target=run_vits_process, args=(vits_ready_event, status_ok), daemon=True)
+    vits_thread.start()  # 启动 vits
+    if not vits_ready_event.wait(timeout=120) and not status_ok[0]:
+        logger.error("VITS语音合成器未能在30秒内启动，请检查配置或手动启动。")
+    else:
+        logger.info("VITS语音合成器已成功启动。")
 
     app_thread = threading.Thread(target=run_app, daemon=True)
     app_thread.start()  # 启动 Uvicorn 服务器线程
