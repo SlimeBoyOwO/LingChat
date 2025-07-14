@@ -6,6 +6,7 @@ from ling_chat.database.character_model import CharacterModel
 from ling_chat.database.user_model import UserModel
 from ling_chat.utils.function import Function
 from ling_chat.core.logger import logger
+from ling_chat.utils.runtime_path import static_path
 
 router = APIRouter(prefix="/api/v1/chat/character", tags=["Chat Character"])
 
@@ -118,7 +119,7 @@ async def get_all_characters():
 @router.get("/character_file/{file_path:path}")
 async def get_character_file(file_path: str):
     """获取角色相关文件(头像等)"""
-    full_path = os.path.join("game_data", "characters", file_path)
+    full_path = static_path / f"game_data/characters{file_path}"
 
     if not os.path.exists(full_path):
         raise HTTPException(status_code=404, detail="文件不存在")

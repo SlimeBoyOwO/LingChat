@@ -8,7 +8,7 @@ from ling_chat.utils.runtime_path import static_path
 
 router = APIRouter(prefix="/api/v1/chat/background", tags=["Chat Character"])
 
-BACKGROUND_DIR = static_path / "backgrounds"
+BACKGROUND_DIR = static_path / "game_data/backgrounds"
 ALLOWED_EXTENSIONS = {'.jpg', '.png', '.webp', '.bmp', '.svg', '.tif', '.gif'}
 
 
