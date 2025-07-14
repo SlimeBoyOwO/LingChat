@@ -38,3 +38,31 @@ run the following command to start the server:
 # or: 
 poetry run python -m py_ling_chat
 ```
+
+## Project Structure
+```
+py_ling_chat
+├── py_ling_chat  # Main package directory
+│   ├── __init__.py
+│   ├── api  # API-related code
+│   ├── core  # Core functionality
+│   ├── database  # Database-related code
+│   ├── static
+│   │   ├── frontend  # Frontend files
+│   │   └── game_data  # Game data files
+│   ├── third_party  # Third-party integrations
+│   │   ├── emotion_model_12emoji  # Emotion model for 12 emojis
+│   │   └── vits-simple-api  # VITS Simple API for text-to-speech
+│   ├── utils  # Utility functions
+│   ├── __init__.py
+│   ├── __main__.py
+│   └── main.py  # Main entry point
+├── data  # User Data files
+├── docs  # Documentation files
+├── tests  # Test files
+├── .env  # Environment variables file (user should create this)
+├── .env.example  # Example environment variables file
+├── .gitignore  # Git ignore file
+├── README.md  # Project README file
+└── pyproject.toml  # Poetry configuration file
+```
