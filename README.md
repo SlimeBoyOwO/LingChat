@@ -23,7 +23,18 @@ poetry install
 ```
 
 ## Usage
+
+### add your key
+create a file named `.env` in the root directory of the project and add your Chat API key to it:
+```text
+CHAT_API_KEY="sk-<here-is-your-key>"
+```
+
+### run the server
 run the following command to start the server:
 ```bash
-python -m py_ling_chat  # or: poetry run python -m py_ling_chat
+# if you installed the package via pip
+# python -m py_ling_chat
+# or: 
+poetry run python -m py_ling_chat
 ```
