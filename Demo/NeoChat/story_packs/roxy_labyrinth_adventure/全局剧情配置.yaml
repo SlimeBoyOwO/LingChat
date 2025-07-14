@@ -1,0 +1,8 @@
+id: roxy_labyrinth_adventure
+name: 与洛琪希的地下迷宫探险
+description: 与你尊敬的老师洛琪希一起，探索充满未知与危险的古代迷宫吧！
+version: 1.1.0
+author: NeoChat AI (Interactive Ver.)
+start_unit_id: 00_Labyrinth_Entrance
+character_roles:
+- Roxy

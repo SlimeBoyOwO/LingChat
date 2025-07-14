@@ -62,3 +62,7 @@ browser_data/
 release/zip/
 .openmcp/
 models/
+
+# 写文档的 obsidian 相关目录
+.obsidian/
+.trash/
