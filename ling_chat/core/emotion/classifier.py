@@ -4,13 +4,14 @@ import os
 import json
 from pathlib import Path
 from ling_chat.core.logger import logger, TermColors
+from ling_chat.utils.runtime_path import third_party_path
 
 class _EmotionClassifierImpl:
     def __init__(self, model_path=None):
         """加载情绪分类模型"""
     
         try:
-            model_path = model_path or os.environ.get("EMOTION_MODEL_PATH", "./emotion_model_18emo")
+            model_path = model_path or os.environ.get("EMOTION_MODEL_PATH", third_party_path / "emotion_model_18emo")
             model_path = Path(model_path).resolve()
             self.tokenizer = BertTokenizer.from_pretrained(model_path, local_files_only=True)
             self.model = BertForSequenceClassification.from_pretrained(model_path)
