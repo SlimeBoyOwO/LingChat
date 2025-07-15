@@ -1,4 +1,4 @@
-from ling_chat.core.ai_service import AIService
+from ling_chat.core.ai_service.core import AIService
 from ling_chat.core.logger import logger
 import os
 

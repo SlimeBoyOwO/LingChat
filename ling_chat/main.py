@@ -11,16 +11,12 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 
 from ling_chat.api.chat_main import websocket_endpoint
-from ling_chat.api.chat_history import router as chat_history_router
-from ling_chat.api.chat_info import router as chat_info_router
-from ling_chat.api.chat_character import router as chat_character_router
-from ling_chat.api.chat_music import router as chat_music_router
-from ling_chat.api.chat_background import router as chat_background_router
-from ling_chat.api.frontend_routes import router as frontend_router, get_static_files, get_audio_files
+from ling_chat.api.routes_manager import RoutesManager
 from ling_chat.core.logger import logger, TermColors
 from ling_chat.database import init_db
 from ling_chat.database.character_model import CharacterModel
 from ling_chat.utils.runtime_path import static_path, user_data_path, third_party_path
+from ling_chat.core.emotion.classifier import EmotionClassifier
 
 load_dotenv(".env.example")
 load_dotenv()
@@ -36,6 +32,9 @@ def init_system():
         logger.info("正在同步游戏角色数据...")
         charaModel = CharacterModel()
         charaModel.sync_characters_from_game_data(str(static_path))
+
+        logger.info("正在加载情绪分类模型...")
+        emotion_classifier = EmotionClassifier()
 
         logger.stop_loading_animation(success=True, final_message="应用加载成功")
 
@@ -54,20 +53,7 @@ async def add_no_cache_headers(request: Request, call_next):
     return response
 
 
-# 注册路由
-app.include_router(chat_history_router)
-app.include_router(chat_info_router)
-app.include_router(frontend_router)
-app.include_router(chat_music_router)
-app.include_router(chat_character_router)
-app.include_router(chat_background_router)
-
-app.websocket("/ws")(websocket_endpoint)
-
-# 静态文件服务
-frontend_dir = static_path.resolve()
-app.mount("/audio", get_audio_files(), name="audio")  # 托管audio文件
-app.mount("/", get_static_files(), name="static")  # 托管静态文件
+routes_manager = RoutesManager(app)    # 挂载路由
 logger.info_color("所有组件初始化完毕，服务器准备就绪。", color=TermColors.CYAN)
 
 
