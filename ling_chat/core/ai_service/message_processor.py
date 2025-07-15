@@ -3,14 +3,15 @@ import re
 from typing import List, Dict
 from datetime import datetime, timedelta
 
+from ling_chat.core.ai_service.voice_maker import VoiceMaker
 from ling_chat.core.pic_analyzer import DesktopAnalyzer
 from ling_chat.core.logger import logger
-from ling_chat.core.emotion.classifier import EmotionClassifier
+from ling_chat.core.emotion.classifier import emotion_classifier
 from ling_chat.utils.function import Function
 
 
 class MessageProcessor:
-    def __init__(self, vits_tts) -> None:
+    def __init__(self, voice_maker: VoiceMaker) -> None:
         # 记录消息发送间隔和次数提示
         self.last_time = datetime.now()
         self.sys_time_counter = 0
@@ -20,7 +21,7 @@ class MessageProcessor:
         self.time_sense_enabled = os.environ.get("USE_TIME_SENSE",True)
 
         # 用于存储语音目录位置，其实在voice_maker已经有了
-        self.voice_maker = vits_tts
+        self.voice_maker = voice_maker
 
     def analyze_emotions(self, text: str) -> List[Dict]:
         """分析文本中每个【】标记的情绪，并提取日语和中文部分"""
@@ -61,7 +62,7 @@ class MessageProcessor:
                 logger.warning(f"语言检测错误: {e}")
 
             try:
-                predicted = EmotionClassifier.get_instance().predict(emotion_tag)
+                predicted = emotion_classifier.predict(emotion_tag)
                 prediction_result = {
                     "label": predicted["label"],
                     "confidence": predicted["confidence"]
@@ -83,7 +84,7 @@ class MessageProcessor:
                 "japanese_text": japanese_text,
                 "predicted": prediction_result["label"],
                 "confidence": prediction_result["confidence"],
-                "voice_file": os.path.join(self.voice_maker.temp_voice_dir, f"{timestamp}_part_{i}.{self.voice_maker.vits_tts.format}")
+                "voice_file": str(self.voice_maker.vits_tts.temp_dir / f"{timestamp}_part_{i}.{self.voice_maker.vits_tts.format}")
             })
 
         return results
