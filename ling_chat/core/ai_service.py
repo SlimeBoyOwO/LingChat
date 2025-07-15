@@ -7,11 +7,12 @@ from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 
 from ling_chat.core.llm_providers.manager import LLMManager  # 导入LLM管理器
-from ling_chat.core.predictor import EmotionClassifier  # 导入情绪分类器
 from ling_chat.core.VitsTTS.vits_tts import VitsTTS  # 导入语音生成
 from ling_chat.core.logger import logger, TermColors
 from ling_chat.core.dialog_logger import DialogLogger
 from ling_chat.core.pic_analyzer import DesktopAnalyzer
+from ling_chat.core.service_manager import service_manager  # 导入情绪分类器
+
 
 from ling_chat.utils.function import Function
 from ling_chat.utils.runtime_path import temp_path
@@ -31,7 +32,6 @@ class AIService:
     def __init__(self, settings: dict):
         """初始化所有服务组件"""
         self.llm_model = LLMManager()
-        self.emotion_classifier = EmotionClassifier()
         self.dialog_logger = DialogLogger()
         self.desktop_analyzer = DesktopAnalyzer()
         self.temp_voice_dir = temp_path / "audio"
@@ -395,7 +395,7 @@ class AIService:
                 logger.warning(f"语言检测错误: {e}")
 
             try:
-                predicted = self.emotion_classifier.predict(emotion_tag)
+                predicted = service_manager.emotion_classifier.predict(emotion_tag)
                 prediction_result = {
                     "label": predicted["label"],
                     "confidence": predicted["confidence"]
