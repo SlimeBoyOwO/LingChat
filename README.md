@@ -4,9 +4,10 @@
 
 ## 🖥️ 支持操作系统：
 - Windows、Linux均可运行。Linux用户请查看额外的使用说明。
-- 社区安装QQ互助群：1055935861【纯安装问题请加入此群，不要去开发者群.jpg】
-- 开发者交流群：aigalgame（Telegram）开发者，安装问题和有兴趣的用户可以加入，欢迎交流和讨论！
+- 社区安装QQ互助群：1055935861【纯安装问题请加入此群，不要去开发者群.jpg，目前好像只能二维码进入了】
 - 安装问题解答文档[用户帮助文档-代码报错](https://github.com/SlimeBoyOwO/LingChat/blob/main/README-help.md), [用户帮助文档-截图报错](https://github.com/SlimeBoyOwO/LingChat/blob/develop/others/document/Q&A.md)
+<img width="281" height="361" alt="image" src="https://github.com/user-attachments/assets/29aa2cb4-6e0e-4105-90b5-ab014b221cd9" />
+
 
 ## 🛠 功能列表
 - [x] 选择你喜欢的人物，陪伴你聊天度过寂寞的夜晚
