@@ -6,7 +6,7 @@ from pathlib import Path
 from ling_chat.core.logger import logger, TermColors
 from ling_chat.utils.runtime_path import third_party_path
 
-class _EmotionClassifierImpl:
+class EmotionClassifier:
     def __init__(self, model_path=None):
         """加载情绪分类模型"""
     
@@ -110,18 +110,5 @@ class _EmotionClassifierImpl:
             for prob, idx in zip(top3_probs[0], top3_ids[0])
         ]
 
-# 单例控制器
-class EmotionClassifier:
-    _instance = None
 
-    def __new__(cls, model_path=None):
-        if cls._instance is None:
-            cls._instance = _EmotionClassifierImpl(model_path)
-        return cls._instance
-
-    @classmethod
-    def get_instance(cls):
-        """显式获取实例（推荐使用此方法）"""
-        if cls._instance is None:
-            raise RuntimeError("情绪分类器未初始化，请先调用 EmotionClassifier()")
-        return cls._instance
+emotion_classifier = EmotionClassifier()
