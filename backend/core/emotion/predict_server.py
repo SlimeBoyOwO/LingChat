@@ -5,7 +5,7 @@ from typing import List, Optional
 import dotenv
 import uvicorn
 from fastapi import FastAPI, HTTPException
-from core.predictor import EmotionClassifier
+from core.emotion.classifier import EmotionClassifier
 from pydantic import BaseModel
 
 
@@ -16,8 +16,7 @@ classifier = None  # 初始化分类器
 async def lifespan(app: FastAPI):
     global classifier
     try:
-        model_path = os.environ.get("EMOTION_MODEL_PATH", "./emotion_model_18emo")
-        classifier = EmotionClassifier(model_path)
+        classifier = EmotionClassifier.get_instance()
     except Exception as e:
         raise Exception(f"Failed to initialize classifier: {str(e)}")
     yield

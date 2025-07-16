@@ -1,8 +1,10 @@
 import requests
-from .base import BaseLLMProvider
-from typing import Dict, List
-from core.logger import logger
 import os
+import json
+
+from .base import BaseLLMProvider
+from typing import Dict, List, AsyncGenerator
+from core.logger import logger
 
 class OllamaProvider(BaseLLMProvider):
     def __init__(self):
@@ -39,4 +41,45 @@ class OllamaProvider(BaseLLMProvider):
             
         except Exception as e:
             logger.error(f"Ollama 调用失败: {str(e)}")
+            raise
+
+    async def generate_stream_response(self, messages: List[Dict]) -> AsyncGenerator[str, None]:
+        """生成Ollama流式响应
+        :param messages: 消息列表
+        :return: 返回一个生成器，每次迭代返回一个内容块
+        """
+        try:
+            logger.debug(f"正在给 Ollama 发送流式请求: {self.base_url}/api/chat")
+            
+            payload = {
+                "model": self.model_type,
+                "messages": messages,
+                "stream": True
+            }
+            
+            with requests.post(
+                f"{self.base_url}/api/chat",
+                json=payload,
+                stream=True
+            ) as response:
+                if response.status_code != 200:
+                    error_msg = f"Ollama 流式返回了错误: {response.status_code} - {response.text}"
+                    logger.error(error_msg)
+                    raise Exception(error_msg)
+                
+                for chunk in response.iter_lines():
+                    if chunk:
+                        decoded_chunk = chunk.decode('utf-8')
+                        if decoded_chunk.strip():  # 确保不是空行
+                            try:
+                                chunk_json = json.loads(decoded_chunk)
+                                content = chunk_json.get("message", {}).get("content", "")
+                                if content:
+                                    yield content
+                            except json.JSONDecodeError:
+                                logger.warning(f"无法解析的响应块: {decoded_chunk}")
+                                continue
+                            
+        except Exception as e:
+            logger.error(f"Ollama 流式调用失败: {str(e)}")
             raise
