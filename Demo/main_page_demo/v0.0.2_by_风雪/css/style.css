@@ -1,7 +1,7 @@
 /* 定义自定义字体 */
 @font-face {
     font-family: 'Maoken Assorted Sans';
-    src: url('../fonts/MaokenAssortedSans.ttf') format('truetype');
+    src: url('../../resource/fonts/MaokenAssortedSans.ttf') format('truetype');
     font-weight: normal;
     font-style: normal;
 }
@@ -49,7 +49,7 @@ body, html {
     height: 100%;
     
     /* 1. 背景图片现在只在这里定义 (使用修正后的路径) */
-    background-image: url('../../../frontend/public/pictures/backgrounds/login/X0_6rTZl.png');
+    background-image: url('../../resource/pics/background.png');
     background-size: cover;
     background-position: center;
     
