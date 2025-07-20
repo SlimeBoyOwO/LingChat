@@ -51,7 +51,7 @@ py_ling_chat
 │   │   ├── frontend  # Frontend files
 │   │   └── game_data  # Game data files
 │   ├── third_party  # Third-party integrations
-│   │   ├── emotion_model_12emoji  # Emotion model for 12 emojis
+│   │   ├── emotion_model_18emo  # Emotion model for 18 emotion
 │   │   └── vits-simple-api  # VITS Simple API for text-to-speech
 │   ├── utils  # Utility functions
 │   ├── __init__.py
