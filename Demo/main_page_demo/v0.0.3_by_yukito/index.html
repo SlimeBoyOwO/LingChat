@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LingChat - 主界面Demo</title>
-    <link rel="icon" href="../../frontend/public/pictures/icons/小猫Ling.svg" type="image/svg+xml">
+    <link rel="icon" href="../resource/pics/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/loader.css">
     <!-- Component Styles -->
@@ -31,7 +31,7 @@
     <div class="main-container">
         <!-- 开始界面 -->
         <div id="start-page">
-            <img src="../../frontend/public/pictures/Image/LingChatLogo.png" alt="LingChat Logo" class="logo">
+            <img src="../resource/pics/LingChatLogo.png" alt="LingChat Logo" class="logo">
             <div class="main-menu">
                 <nav class="menu-options">
                     <button class="menu-button">继续游戏</button>
@@ -46,7 +46,7 @@
         <!-- 设置面板 -->
         <div class="settings-panel" id="settings-panel">
             <div class="settings-header">
-                <img src="../../frontend/public/pictures/Image/LingChatLogo.png" alt="Logo" class="settings-logo">
+                <img src="../resource/pics/LingChatLogo.png" alt="Logo" class="settings-logo">
                 <nav class="settings-nav">
                     <div class="nav-indicator"></div>
                     <button class="nav-button active" data-content="character-settings">
@@ -89,7 +89,7 @@
                         <div class="character-grid">
                             <div class="character-card">
                                 <div class="character-avatar-container">
-                                    <img src="../../game_data/characters/诺一钦灵/avatar/正常.png" alt="可爱的小狼娘" class="character-avatar">
+                                    <img src="../resource/pics/character_normal.png" alt="可爱的小狼娘" class="character-avatar">
                                 </div>
                                 <div class="character-content-wrapper">
                                     <h5 class="character-title">可爱的小狼娘</h5>
@@ -551,17 +551,63 @@
         <!-- 新的：开始游戏面板 -->
         <div class="game-screen-panel" id="game-screen-panel">
             <div class="panel-header">
-                <h2>游戏画面</h2>
+                <h2>选择剧本包</h2>
                 <button class="close-button" data-close-panel="game-screen-panel" title="关闭">×</button>
             </div>
             <div class="panel-body">
-                <div class="game-screen-content">
-                    <h3>欢迎来到 LingChat</h3>
-                    <p>这里是游戏的主界面。您可以与AI角色进行对话，体验沉浸式的交互体验。</p>
-                    <div class="game-action-buttons">
-                        <button class="game-action-btn">开始对话</button>
-                        <button class="game-action-btn">角色设定</button>
-                        <button class="game-action-btn">历史记录</button>
+                <div class="game-selection-container">
+                    <!-- 左侧导航 -->
+                    <div class="game-nav">
+                        <button class="game-nav-btn active" data-category="classic">经典</button>
+                        <button class="game-nav-btn" data-category="minigames">小游戏</button>
+                        <button class="game-nav-btn" data-category="galgame">Galgame</button>
+                    </div>
+                    
+                    <!-- 右侧内容区域 -->
+                    <div class="game-content">
+                        <!-- 经典对话内容 -->
+                        <div class="game-category-content active" id="classic-content">
+                            <h3>经典</h3>
+                            <div class="content-divider"></div>
+                            <div class="empty-content">
+                                <p>经典对话模式开发中...</p>
+                            </div>
+                        </div>
+                        
+                        <!-- 小游戏内容 -->
+                        <div class="game-category-content" id="minigames-content">
+                            <h3>小游戏</h3>
+                            <div class="content-divider"></div>
+                            <div class="games-grid">
+                                <div class="game-item">
+                                    <div class="game-cover-placeholder">
+                                        <div class="game-icon">🐺</div>
+                                    </div>
+                                    <h4>狼人杀</h4>
+                                </div>
+                                <div class="game-item">
+                                    <div class="game-cover-placeholder">
+                                        <div class="game-icon">🕵️</div>
+                                    </div>
+                                    <h4>谁是卧底？</h4>
+                                </div>
+                                <div class="game-item">
+                                    <div class="game-cover-placeholder">
+                                        <div class="game-icon">🎰</div>
+                                    </div>
+                                    <h4>轮盘赌</h4>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Galgame内容 -->
+                        <div class="game-category-content" id="galgame-content">
+                            <h3>Galgame</h3>
+                            <div class="content-divider"></div>
+                            <div class="empty-content">
+                                <p>Galgame模式开发中...</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
