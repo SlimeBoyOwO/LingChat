@@ -1,7 +1,16 @@
+# Ignore operating system files
+.DS_Store
+Thumbs.db
+
 # .gitignore 文件内容
 # 虚拟环境
 .venv/
 venv/
+.env
+.env.docker
+
+# Ignore build files
+node_modules/
 
 # 构建产物
 dist/
@@ -26,5 +35,7 @@ __pycache__/
 *.log
 *.tmp
 *.db
-.env
-.env.docker
+
+# 写文档的 obsidian 相关目录
+.obsidian/
+.trash/
