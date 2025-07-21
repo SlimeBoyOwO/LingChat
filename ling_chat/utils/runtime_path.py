@@ -44,7 +44,7 @@ package_root: Path = get_package_root()
 static_path: Path = package_root / "static"
 third_party_path: Path = package_root / "third_party"  # 第三方资源目录
 user_data_path: Path = get_user_data_path()  # 用户数据目录
-temp_path: Path = Path(tempfile.gettempdir())  # 获取系统临时目录
+temp_path: Path = Path(tempfile.mkdtemp(prefix="ling_chat"))  # 获取系统临时目录
 
 __all__ = [
     "package_root",
