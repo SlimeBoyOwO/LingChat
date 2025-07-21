@@ -4,6 +4,7 @@ import sys
 import time
 import threading
 from datetime import datetime
+from dotenv import load_dotenv
 import os
 import re
 from typing import Optional, Dict, List, Any, Callable
@@ -30,7 +31,6 @@ class Logger:
     _instance = None
     _initialized = False
 
-    # 默认配置
     DEFAULT_ANIMATION_STYLE = 'braille'
     DEFAULT_ANIMATION_COLOR = TermColors.WHITE
     DATE_FORMAT = "%Y-%m-%d-%H:%M:%S"
@@ -59,7 +59,7 @@ class Logger:
             app_name: str = "AppLogger",
             log_level: Optional[str] = None,
             show_timestamp: Optional[bool] = None,
-            enable_file_logging: bool = True,
+            enable_file_logging: Optional[bool] = None,
             log_file_directory: str = os.path.join("data", "run_logs"),
             log_file_level: int = logging.DEBUG
     ):
@@ -76,23 +76,28 @@ class Logger:
         if self._initialized:
             return
 
-        # 初始化配置
+        load_dotenv()
+
         self.app_name = app_name
         self.log_level = self._get_log_level(log_level)
         self.print_context = self._get_bool_env('PRINT_CONTEXT', None)
         self.show_timestamp = self._get_bool_env('CONSOLE_SHOW_TIMESTAMP', show_timestamp)
-        self.enable_file_logging = enable_file_logging
-        self.log_file_directory = log_file_directory
+        self.enable_file_logging = self._get_bool_env('ENABLE_FILE_LOGGING', enable_file_logging)
+
+        log_dir = os.environ.get('LOG_FILE_DIRECTORY')
+        if not log_dir:
+            print(f"{TermColors.RED}请设置环境变量 'LOG_FILE_DIRECTORY' 来指定日志文件保存目录。{TermColors.RESET}")
+        else:
+            self.log_file_directory = os.path.join(log_dir)
+
         self.log_file_level = log_file_level
 
-        # 动画相关状态
         self._animation_thread = None
         self._stop_animation_event = threading.Event()
         self._is_animating = False
         self._current_animation_line_width = 0
         self._animation_lock = threading.Lock()
 
-        # 初始化日志系统
         self._initialize_logger()
 
         self._initialized = True
@@ -104,7 +109,6 @@ class Logger:
         else:
             level_str = os.environ.get('LOG_LEVEL', 'INFO')
 
-        # 转换字符串日志级别为logging模块的常量
         level_map = {
             'DEBUG': logging.DEBUG,
             'INFO': logging.INFO,
@@ -127,20 +131,17 @@ class Logger:
         self._logger.propagate = False
         self._logger.setLevel(self.log_level)
 
-        # 清除现有处理器
         for handler in self._logger.handlers[:]:
             handler.close()
             self._logger.removeHandler(handler)
 
-        # 控制台处理器
         console_handler = self._create_console_handler()
         self._logger.addHandler(console_handler)
 
-        # 文件处理器
-        if self.enable_file_logging:
-            file_handler = self._create_file_handler()
-            if file_handler:
-                self._logger.addHandler(file_handler)
+        # 添加文件处理器
+        file_handler = self._create_file_handler()
+        if file_handler:
+            self._logger.addHandler(file_handler)
 
     def _create_console_handler(self) -> logging.Handler:
         """创建控制台日志处理器"""
@@ -151,6 +152,10 @@ class Logger:
 
     def _create_file_handler(self) -> Optional[logging.Handler]:
         """创建文件日志处理器"""
+        # 增加对enable_file_logging标志的检查
+        if not self.enable_file_logging:
+            return None
+
         try:
             os.makedirs(self.log_file_directory, exist_ok=True)
             log_filename = datetime.now().strftime(f"{self.app_name}_%Y-%m-%d_%H-%M-%S.log")
@@ -169,12 +174,10 @@ class Logger:
             )
             return None
 
-    # 新增方法：检查是否可以打印上下文
     def should_print_context(self) -> bool:
         """检查是否应该打印上下文，只有在DEBUG级别且PRINT_CONTEXT为True时才打印"""
         return self.log_level <= logging.DEBUG and self.print_context
 
-    # 以下是日志方法
     def debug(self, message: str, exc_info: bool = False):
         """记录调试级别日志"""
         self._logger.debug(message, exc_info=exc_info)
@@ -199,14 +202,9 @@ class Logger:
         """使用自定义颜色输出信息"""
         print(f"{color}[INFO]: {message}{TermColors.RESET}")
 
-    # 以下是动画控制方法
-    def start_loading_animation(
-            self,
-            message: str = "Processing",
-            animation_style: str = DEFAULT_ANIMATION_STYLE,
-            color: str = DEFAULT_ANIMATION_COLOR
-    ):
-        """启动加载动画"""
+    def start_loading_animation(self, message: str = "Processing", animation_style: str = DEFAULT_ANIMATION_STYLE,
+                                color: str = DEFAULT_ANIMATION_COLOR):
+        """动画控制方法"""
         with self._animation_lock:
             if self._is_animating:
                 self.debug("Animation already running, not starting another one.")
@@ -218,17 +216,14 @@ class Logger:
                 self.ANIMATION_STYLES[self.DEFAULT_ANIMATION_STYLE]
             )
 
-            # 计算初始宽度
             initial_char = animation_chars[0]
             initial_line = f"{color}{message} {initial_char}{TermColors.RESET} "
             stripped_line = self._strip_ansi_codes(initial_line)
             initial_width = self._wcswidth(stripped_line)
 
-            # 更新状态
             self._is_animating = True
             self._current_animation_line_width = initial_width
 
-            # 启动动画线程
             self._animation_thread = threading.Thread(
                 target=self._animate,
                 args=(message, animation_chars, color),
@@ -250,7 +245,6 @@ class Logger:
                 self._log_final_message(success, final_message)
             return
 
-        # 等待动画线程结束
         if self._animation_thread and self._animation_thread.is_alive():
             self._animation_thread.join(timeout=2)
 
@@ -278,23 +272,19 @@ class Logger:
             char = animation_chars[idx % len(animation_chars)]
             last_char = char
 
-            # 构造动画行并计算宽度
             line = f"{color}{message} {char}{TermColors.RESET} "
             stripped_line = self._strip_ansi_codes(line)
             width = self._wcswidth(stripped_line)
 
-            # 更新状态
             with self._animation_lock:
                 self._current_animation_line_width = width
 
-            # 输出动画
             sys.stdout.write(f"\r{line}")
             sys.stdout.flush()
 
             idx += 1
             time.sleep(0.12)
 
-        # 清理动画行
         final_line = f"{color}{message} {last_char}{TermColors.RESET} "
         stripped_final = self._strip_ansi_codes(final_line)
         width = self._wcswidth(stripped_final)
@@ -302,7 +292,6 @@ class Logger:
         sys.stdout.write("\r" + " " * width + "\r")
         sys.stdout.flush()
 
-    # 实用工具方法
     @staticmethod
     def _strip_ansi_codes(text: str) -> str:
         """移除ANSI转义码"""
@@ -323,16 +312,14 @@ class AnimationAwareStreamHandler(logging.StreamHandler):
     def emit(self, record):
         logger = Logger()
 
-        if hasattr(record, 'is_animation_control') and record.is_animation_control:
+        if hasattr(record, 'is_animation_control') and getattr(record, 'is_animation_control', False):
             super().emit(record)
             return
 
-        # 检查动画状态
         with logger._animation_lock:
             should_clear = logger._is_animating and logger._current_animation_line_width > 0
             width = logger._current_animation_line_width
 
-        # 如果需要，清除动画行
         if should_clear:
             self.acquire()
             try:
@@ -353,17 +340,14 @@ class ColoredFormatter(logging.Formatter):
         self.show_timestamp = show_timestamp
 
     def format(self, record):
-        if hasattr(record, 'is_animation_control') and record.is_animation_control:
+        if hasattr(record, 'is_animation_control') and getattr(record, 'is_animation_control', False):
             return record.getMessage()
 
-        # 时间戳部分
         timestamp = f"{self.formatTime(record, Logger.DATE_FORMAT)} " if self.show_timestamp else ""
 
-        # 消息内容
         message = record.getMessage()
         level = f"[{record.levelname}]: "
 
-        # 根据级别设置颜色
         if record.levelno == logging.DEBUG:
             return f"{TermColors.GREY}{timestamp}{level}{message}{TermColors.RESET}"
 
@@ -378,5 +362,4 @@ class ColoredFormatter(logging.Formatter):
         return f"{timestamp}{color}{level}{TermColors.RESET}{message}"
 
 
-# 全局单例实例
 logger = Logger()
