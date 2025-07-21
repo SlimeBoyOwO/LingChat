@@ -11,7 +11,7 @@ class LLMManager:
         
         :param provider_config: 可选，提供者配置字典。如果为None，则从环境变量加载
         """
-        self.llm_provider_type = os.environ.get("LLM_PROVIDER", "deepseek").lower()
+        self.llm_provider_type = os.environ.get("LLM_PROVIDER", "webllm").lower()
         self.provider = self._initialize_provider()
     
     def _initialize_provider(self) -> 'BaseLLMProvider':
