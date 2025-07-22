@@ -9,6 +9,8 @@ import os
 import re
 from typing import Optional, Dict, List, Any, Callable
 
+from ling_chat.utils.runtime_path import user_data_path
+
 
 class TermColors:
     """ANSI 终端颜色代码"""
@@ -60,7 +62,7 @@ class Logger:
             log_level: Optional[str] = None,
             show_timestamp: Optional[bool] = None,
             enable_file_logging: Optional[bool] = None,
-            log_file_directory: str = os.path.join("data", "run_logs"),
+            log_file_directory: str = str(user_data_path / "run_logs"),
             log_file_level: int = logging.DEBUG
     ):
         """初始化日志记录器
@@ -76,7 +78,7 @@ class Logger:
         if self._initialized:
             return
 
-        load_dotenv()
+        # load_dotenv()
 
         self.app_name = app_name
         self.log_level = self._get_log_level(log_level)
@@ -84,7 +86,7 @@ class Logger:
         self.show_timestamp = self._get_bool_env('CONSOLE_SHOW_TIMESTAMP', show_timestamp)
         self.enable_file_logging = self._get_bool_env('ENABLE_FILE_LOGGING', enable_file_logging)
 
-        log_dir = os.environ.get('LOG_FILE_DIRECTORY')
+        log_dir = log_file_directory or os.environ.get('LOG_FILE_DIRECTORY')
         if not log_dir:
             print(f"{TermColors.RED}请设置环境变量 'LOG_FILE_DIRECTORY' 来指定日志文件保存目录。{TermColors.RESET}")
         else:
