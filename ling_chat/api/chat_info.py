@@ -5,7 +5,7 @@ from ling_chat.core.service_manager import service_manager
 from ling_chat.database.user_model import UserModel
 from ling_chat.database.character_model import CharacterModel
 from ling_chat.utils.function import Function
-from ling_chat.utils.runtime_path import static_path
+from ling_chat.utils.runtime_path import static_path, user_data_path
 import traceback
 
 router = APIRouter(prefix="/api/v1/chat/info", tags=["Chat Info"])
@@ -27,7 +27,7 @@ async def init_web_infos(user_id: int):
             if character is not None and "resource_path" in character:
                 resource_path = Path(character["resource_path"])
             else:
-                resource_path = static_path / "game_data/characters/诺一钦灵"
+                resource_path = user_data_path / "game_data/characters/诺一钦灵"
 
             settings = Function.parse_enhanced_txt(str(resource_path / "settings.txt"))
             settings["character_id"] = last_character_id
