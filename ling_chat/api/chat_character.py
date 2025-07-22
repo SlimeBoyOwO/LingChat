@@ -6,7 +6,7 @@ from ling_chat.database.character_model import CharacterModel
 from ling_chat.database.user_model import UserModel
 from ling_chat.utils.function import Function
 from ling_chat.core.logger import logger
-from ling_chat.utils.runtime_path import static_path
+from ling_chat.utils.runtime_path import static_path, user_data_path
 
 router = APIRouter(prefix="/api/v1/chat/character", tags=["Chat Character"])
 
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/v1/chat/character", tags=["Chat Character"])
 @router.post("/refresh_characters")
 async def refresh_characters():
     try:
-        CharacterModel.sync_characters_from_game_data("game_data")
+        CharacterModel.sync_characters_from_game_data(user_data_path / "game_data")
         return {"success": True}
     except Exception as e:
         logger.error(f"刷新人物列表请求失败: {str(e)}")

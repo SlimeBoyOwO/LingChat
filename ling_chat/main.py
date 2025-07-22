@@ -31,7 +31,7 @@ def init_system():
 
         logger.info("正在同步游戏角色数据...")
         charaModel = CharacterModel()
-        charaModel.sync_characters_from_game_data(str(static_path))
+        charaModel.sync_characters_from_game_data(user_data_path / "game_data")
 
         logger.info("正在加载情绪分类模型...")
         emotion_classifier = EmotionClassifier()
