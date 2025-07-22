@@ -1,7 +1,10 @@
 from typing import List, Dict, Optional
 import os
+from pathlib import Path
+import shutil
 from ling_chat.utils.function import Function
 from ling_chat.database.database import get_db_connection
+from ling_chat.utils.runtime_path import static_path
 
 
 class CharacterModel:
@@ -128,7 +131,7 @@ class CharacterModel:
             conn.close()
 
     @staticmethod
-    def sync_characters_from_game_data(game_data_path: str) -> List[int]:
+    def sync_characters_from_game_data(game_data_path: Path) -> List[int]:
         """从游戏数据目录同步角色信息
         返回新创建的角色ID列表
 
@@ -138,10 +141,16 @@ class CharacterModel:
         3. 删除数据库中资源路径不存在的角色
         """
         new_character_ids = []
-        characters_dir = os.path.join(game_data_path, 'characters')
+        characters_dir = str(game_data_path / 'characters')
 
         if not os.path.exists(characters_dir):
-            raise ValueError(f"角色目录不存在: {characters_dir}")
+            game_data_template_path = static_path / 'game_data/characters'
+            if Path(characters_dir).resolve() == game_data_template_path.resolve():
+                raise ValueError(f"角色目录不存在: {characters_dir}")
+            else:
+                print(f"角色目录不存在: {characters_dir}, 创建默认角色目录")
+                # copy game_data_template_path to characters_dir
+                shutil.copytree(game_data_template_path, characters_dir, dirs_exist_ok=True)
 
         # 获取数据库中所有角色及其资源路径
         all_db_characters = CharacterModel.get_all_characters()
