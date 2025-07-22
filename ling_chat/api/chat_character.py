@@ -119,7 +119,7 @@ async def get_all_characters():
 @router.get("/character_file/{file_path:path}")
 async def get_character_file(file_path: str):
     """获取角色相关文件(头像等)"""
-    full_path = static_path / f"game_data/characters{file_path}"
+    full_path = user_data_path / f"game_data/characters/{file_path}"
 
     if not os.path.exists(full_path):
         raise HTTPException(status_code=404, detail="文件不存在")
