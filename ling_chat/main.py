@@ -30,11 +30,7 @@ def init_system():
         init_db()
 
         logger.info("正在同步游戏角色数据...")
-        charaModel = CharacterModel()
-        charaModel.sync_characters_from_game_data(user_data_path / "game_data")
-
-        logger.info("正在加载情绪分类模型...")
-        emotion_classifier = EmotionClassifier()
+        CharacterModel.sync_characters_from_game_data(user_data_path / "game_data")
 
         logger.stop_loading_animation(success=True, final_message="应用加载成功")
 
@@ -43,6 +39,7 @@ def init_system():
         logger.stop_loading_animation(success=False, final_message="应用加载失败，程序将退出")
         raise e
 
+init_system()  # 初始化系统
 
 @app.middleware("http")
 async def add_no_cache_headers(request: Request, call_next):

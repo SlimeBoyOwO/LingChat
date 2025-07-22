@@ -3,8 +3,10 @@ import os  # 添加os模块用于路径操作
 from datetime import datetime
 from enum import Enum
 
+from ling_chat.utils.runtime_path import user_data_path
+
 # 修改数据库路径到data目录
-DATA_DIR = "data"
+DATA_DIR = user_data_path
 DB_NAME = os.path.join(DATA_DIR, "chat_system.db")  # 使用os.path.join确保跨平台兼容性
 
 
