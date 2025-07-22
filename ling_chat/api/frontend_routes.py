@@ -25,7 +25,9 @@ def get_static_files():
 
 
 def get_audio_files():
-    return NoCacheStaticFiles(directory=temp_path / "audio")
+    audio_path = temp_path / "audio"
+    audio_path.mkdir(exist_ok=True)
+    return NoCacheStaticFiles(directory=audio_path, html=False)
 
 # ✅ 保持原有HTML路由
 def get_file_response(file_path: str) -> FileResponse:
