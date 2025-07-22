@@ -36,15 +36,15 @@ CHAT_API_KEY="sk-<here-is-your-key>"
 run the following command to start the server:
 ```bash
 # if you installed the package via pip
-# python -m py_ling_chat
+# python -m ling_chat
 # or: 
-poetry run python -m py_ling_chat
+poetry run python -m ling_chat
 ```
 
 ## Project Structure
 ```
-py_ling_chat
-├── py_ling_chat  # Main package directory
+ling_chat
+├── ling_chat  # Main package directory
 │   ├── __init__.py
 │   ├── api  # API-related code
 │   ├── core  # Core functionality
