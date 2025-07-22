@@ -10,12 +10,6 @@ name = "torchcpu"
 url = "https://download.pytorch.org/whl/cpu"
 priority = "explicit"
 
-#[[tool.poetry.source]]
-#name = "artrajz"
-#url = "https://pypi.artrajz.cn/simple/"
-#priority = "explicit"
-
-
 [[tool.poetry.source]]
 name = "tuna"
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"
@@ -23,11 +17,11 @@ priority = "primary"
 
 [tool.poetry.dependencies]
 python = "^3.11,<3.14"
-fastapi = "^0.115.12"
-uvicorn = "^0.34.3"
+fastapi = "^0.116.1"
+uvicorn = "^0.35.0"
 requests = "^2.32.4"
 aiohttp = "^3.12.11"
-torch = {version = "^2.7.1+cpu", source = "torchcpu"}
+torch = {version = "==2.7.1+cpu", source = "torchcpu"}
 transformers = "^4.52.4"
 pywebview = "^5.4"
 openai = "^1.85.0"
@@ -40,6 +34,7 @@ mss = "^10.0.0"
 google-generativeai = "^0.8.5"
 python-dotenv = "^1.1.1"
 py7zr = "^1.0.0"
+poetry-core = "^2.1.3"
 
 [build-system]
 requires = ["poetry-core"]
