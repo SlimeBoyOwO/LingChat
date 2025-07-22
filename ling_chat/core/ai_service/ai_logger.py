@@ -1,11 +1,12 @@
 import os
 from datetime import datetime
 from ling_chat.core.logger import logger, TermColors
+from ling_chat.utils.runtime_path import user_data_path
 
 
 class DialogLogger:
     def __init__(self):
-        self.log_dir = os.path.join("data", "logs")
+        self.log_dir = str(user_data_path / "logs")
         os.makedirs(self.log_dir, exist_ok=True)
         self.log_file = self.setup_logging()
     
