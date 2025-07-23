@@ -1,3 +1,5 @@
+import json
+import copy
 from typing import List, Dict, Optional
 import traceback
 
@@ -46,6 +48,15 @@ class AIService:
                 self.rag_manager.switch_rag_system_character(self.character_id)
         else:
             logger.error("角色信息settings没有被正常导入，请检查问题！")
+    
+    def load_memory(self, memory):     
+        if isinstance(memory, str):
+            memory = json.loads(memory)
+        self.memory = copy.deepcopy(memory)
+        
+        logger.info("记忆存档已经加载")
+        logger.info(f"内容是：{memory}")
+        logger.info(f"新的messages是：{self.memory}")
     
     def get_memory(self):
         return self.memory
@@ -149,7 +160,7 @@ class AIService:
                 "japanese_text": "",
                 "predicted": "normal",
                 "confidence": 0.8,
-                "voice_file": os.path.join(self.voice_maker.temp_voice_dir, f"part_1.{self.voice_maker.vits_tts.format}")
+                "voice_file": os.path.join(self.voice_maker.vits_tts.temp_dir, f"part_1.{self.voice_maker.vits_tts.format}")
             }]
         
         responses = self._create_responses(emotion_segments, user_message)
