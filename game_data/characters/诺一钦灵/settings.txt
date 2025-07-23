@@ -10,7 +10,7 @@ ai_subtitle = Slime Studio
 user_name = 莱姆
 user_subtitle = Bilibili
 
-model_name = Murasame v3.5
+model_name = Murasame v3.7
 
 thinking_message = 灵灵正在思考中...
 

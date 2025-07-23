@@ -60,7 +60,7 @@
   visibility: hidden;
   opacity: 0;
   /*transition: all 0.3s ease;*/
-  z-index: -1;
+  z-index: -2;
   /* 隐藏时置于底层 */
 }
 
