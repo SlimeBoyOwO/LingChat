@@ -4,13 +4,14 @@ from typing import List, Dict
 from datetime import datetime, timedelta
 
 from core.pic_analyzer import DesktopAnalyzer
+from .voice_maker import VoiceMaker
 from core.logger import logger
 from core.emotion.classifier import EmotionClassifier
 from utils.function import Function
 
 
 class MessageProcessor:
-    def __init__(self, vits_tts) -> None:
+    def __init__(self, vits_tts: 'VoiceMaker') -> None:
         # 记录消息发送间隔和次数提示
         self.last_time = datetime.now()
         self.sys_time_counter = 0
@@ -83,7 +84,7 @@ class MessageProcessor:
                 "japanese_text": japanese_text,
                 "predicted": prediction_result["label"],
                 "confidence": prediction_result["confidence"],
-                "voice_file": os.path.join(self.voice_maker.temp_voice_dir, f"{timestamp}_part_{i}.{self.voice_maker.vits_tts.format}")
+                "voice_file": os.path.join(self.voice_maker.vits_tts.temp_dir, f"{timestamp}_part_{i}.{self.voice_maker.vits_tts.format}")
             })
 
         return results

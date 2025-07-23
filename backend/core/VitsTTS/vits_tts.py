@@ -39,7 +39,7 @@ class VitsTTS:
         ) if sbv_api_url else None
         
         self.audio_format = self.format
-        self.temp_dir = Path(os.environ.get("TEMP_VOICE_DIR", "frontend/public/audio"))
+        self.temp_dir = Path(os.environ.get("TEMP_VOICE_DIR", "data/voice"))
         self.temp_dir.mkdir(exist_ok=True)
         self.enable = True  # 初始化时启用
 

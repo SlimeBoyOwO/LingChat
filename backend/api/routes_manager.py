@@ -7,6 +7,7 @@ from api.chat_info import router as chat_info_router
 from api.chat_character import router as chat_character_router
 from api.chat_background import router as chat_background_router
 from api.chat_main import websocket_endpoint
+from api.chat_sound import router as chat_sound_router
 from api.frontend_routes import router as frontend_router, get_static_files
 from api.env_config import router as env_config_router
 
@@ -23,6 +24,7 @@ class RoutesManager:
         app.include_router(env_config_router)
         app.include_router(chat_character_router)
         app.include_router(chat_background_router)
+        app.include_router(chat_sound_router)
 
         app.websocket("/ws")(websocket_endpoint)
 

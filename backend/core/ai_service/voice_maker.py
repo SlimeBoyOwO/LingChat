@@ -9,7 +9,6 @@ from core.logger import logger
 class VoiceMaker:
     def __init__(self) -> None:
         self.vits_tts = VitsTTS()
-        self.temp_voice_dir = os.environ.get("TEMP_VOICE_DIR", "frontend/public/audio")
         self.model_name = None
         self.speaker_id = 4
     
@@ -20,14 +19,6 @@ class VoiceMaker:
         """目前来讲，model_name会强制speaker_id变为0用于默认"""
         self.speaker_id = 0
         self.model_name = model_name
-
-    def _init_tts_engine(self):
-        """初始化TTS引擎"""
-        self._prepare_directories()
-    
-    def _prepare_directories(self):
-        """准备必要的目录"""
-        os.makedirs(self.temp_voice_dir, exist_ok=True)
     
     async def generate_voice_files(self, segments: List[Dict]):
         """生成语音文件。只有在有日语文本时才生成语音"""
