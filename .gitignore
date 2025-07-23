@@ -30,6 +30,9 @@ frontend/node_modules/
 
 backend/data/logs
 
+# Ignore 音频文件
+data/voice
+
 # Ignore generated audio file
 public/audio/
 frontend/public/audio/
