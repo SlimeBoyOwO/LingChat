@@ -4,7 +4,7 @@ from pathlib import Path
 from PyInstaller.utils.hooks import collect_submodules
 
 project_root = Path(__file__).resolve().parent
-main_script = str(project_root / "py_ling_chat" / "main.py")
+main_script = str(project_root / "ling_chat" / "main.py")
 
 block_cipher = None
 
@@ -14,11 +14,11 @@ a = Analysis(
     binaries=[],
     datas=[
         # 静态资源
-        ("py_ling_chat/static", "py_ling_chat/static"),
+        ("ling_chat/static", "ling_chat/static"),
         # 数据库文件
         ("data/app.db", "data"),
     ],
-    hiddenimports=collect_submodules('py_ling_chat'),  # 确保子模块能收集
+    hiddenimports=collect_submodules('ling_chat'),  # 确保子模块能收集
     hookspath=[],
     runtime_hooks=[],
     excludes=[],
@@ -35,7 +35,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="py_ling_chat",
+    name="ling_chat",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -51,5 +51,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name="py_ling_chat"
+    name="ling_chat"
 )
