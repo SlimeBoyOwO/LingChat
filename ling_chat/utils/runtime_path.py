@@ -36,8 +36,8 @@ def get_user_data_path() -> Path:
 
 
 # 应用信息（用于构建平台特定路径）
-APP_NAME = "py_ling_chat"
-APP_AUTHOR = "py_ling_chat"  # Windows 用于 AppData\Roaming\MyCompany\MyApp
+APP_NAME = "ling_chat"
+APP_AUTHOR = "ling_chat"  # Windows 用于 AppData\Roaming\MyCompany\MyApp
 
 package_root: Path = get_package_root()
 
