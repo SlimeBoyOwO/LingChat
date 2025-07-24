@@ -42,7 +42,7 @@ class VitsTTS:
 
         self.audio_format = self.format
         self.temp_dir = temp_path / "data/voice"
-        self.temp_dir.mkdir(exist_ok=True)
+        self.temp_dir.mkdir(parents=True, exist_ok=True)
         self.enable = True  # 初始化时启用
 
     def _select_adapter(self, params: dict):
