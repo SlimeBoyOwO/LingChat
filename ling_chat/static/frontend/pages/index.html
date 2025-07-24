@@ -34,15 +34,18 @@
           <div class="menu-header">
             <div id="menu-title">
               <h3>设置菜单</h3>
-              <div id="status">正在连接服务器...</div>
             </div>
             <div id="menu-buttons">
-              <button id="menu-character" class="">🐺角色</button>
-              <button id="menu-text" class="">📄文本</button>
-              <button id="menu-image" class="">🏜️背景</button>
-              <button id="menu-sound" class="">🔊声音</button>
-              <button id="menu-save" class="">🎬存档</button>
-              <button id="menu-history" class="">📖对话历史</button>
+              <button id="menu-character" data-emoji="🐺">
+                <span>角色</span>
+              </button>
+              <button id="menu-text" data-emoji="📄"><span>文本</span></button>
+              <button id="menu-image" data-emoji="🏜️"><span>背景</span></button>
+              <button id="menu-sound" data-emoji="🔊"><span>声音</span></button>
+              <button id="menu-save" data-emoji="🎬"><span>存档</span></button>
+              <button id="menu-history" data-emoji="📖">
+                <span>对话历史</span>
+              </button>
             </div>
           </div>
           <div class="maxbody">
@@ -131,6 +134,11 @@
                   >
                     进入设置页面
                   </a>
+                </div>
+                <div class="menu-item">
+                  <h4>✨ 服务器连接状态</h4>
+                  <div class="line"></div>
+                  <div id="status">正在连接服务器...</div>
                 </div>
               </div>
             </div>
@@ -342,7 +350,10 @@
 
       <div class="main-box">
         <div class="avatar-container character-animation normal">
-          <img id="qinling" onerror="this.src='/frontend/public/pictures/Image/Default-OC.png'" />
+          <img
+            id="qinling"
+            onerror="this.src='/frontend/public/pictures/Image/Default-OC.png'"
+          />
           <div class="bubble"></div>
         </div>
 
