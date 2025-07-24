@@ -41,7 +41,7 @@ class VitsTTS:
         ) if sbv_api_url else None
 
         self.audio_format = self.format
-        self.temp_dir = temp_path / "audio"
+        self.temp_dir = temp_path / "data/voice"
         self.temp_dir.mkdir(exist_ok=True)
         self.enable = True  # 初始化时启用
 
