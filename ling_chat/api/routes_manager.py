@@ -9,6 +9,7 @@ from ling_chat.api.chat_background import router as chat_background_router
 from ling_chat.api.chat_main import websocket_endpoint
 from ling_chat.api.frontend_routes import router as frontend_router, get_static_files, get_audio_files
 from ling_chat.api.env_config import router as env_config_router
+from ling_chat.api.chat_sound import router as chat_sound_router
 
 from ling_chat.core.logger import logger
 
@@ -23,6 +24,7 @@ class RoutesManager:
         app.include_router(env_config_router)
         app.include_router(chat_character_router)
         app.include_router(chat_background_router)
+        app.include_router(chat_sound_router)
 
         app.websocket("/ws")(websocket_endpoint)
 
