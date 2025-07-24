@@ -519,6 +519,37 @@ div#menu-content > div.menu-header > div#menu-buttons > button.show {
   cursor: default;
 }
 
+/* 手机竖屏样式 */
+@media (max-width: 768px) and (orientation: portrait) {
+  #menu-buttons {
+    gap: 6px; /* 减小间距 */
+  }
+
+  #menu-buttons button {
+    width: 36px; /* 固定宽度 */
+    height: 36px; /* 固定高度 */
+    padding: 0;
+    font-size: 20px; /* 放大emoji */
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* 隐藏文本部分 */
+  #menu-buttons button::after {
+    content: attr(data-emoji); /* 使用data属性存储emoji */
+    display: block;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  /* 移除原始文本内容 */
+  #menu-buttons button span {
+    display: none;
+  }
+}
+
 div#menu-panel
   > div#menu-content
   > div.maxbody

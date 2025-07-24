@@ -38,7 +38,7 @@ class WebLLMProvider(BaseLLMProvider):
             logger.error(f"通用网络大模型请求失败: {str(e)}")
             raise
 
-    def generate_stream_response(self, messages: List[Dict]) -> AsyncGenerator[str, None]:
+    async def generate_stream_response(self, messages: List[Dict]) -> AsyncGenerator[str, None]:
         """
         生成流式响应
         :param messages: 消息列表

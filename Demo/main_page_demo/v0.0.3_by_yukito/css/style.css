@@ -1,0 +1,164 @@
+/* 定义自定义字体 */
+@font-face {
+    font-family: 'Maoken Assorted Sans';
+    src: url('../../resource/fonts/MaokenAssortedSans.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+}
+
+:root {
+    --accent-color: #79D9FF; /* 一个生动的天蓝色，可以根据你的品牌调整 */
+}
+
+/* 全局样式和字体 */
+body, html {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    overflow: hidden;
+    background: transparent; /* 确保body背景透明，不遮挡我们的背景图 */
+}
+
+
+/* --- 新增的动画效果 --- */
+
+/* 为动画元素添加过渡效果 */
+.logo, .main-menu, .settings-panel {
+    transition: transform 0.6s cubic-bezier(0.7, 0, 0.2, 1), 
+                opacity 0.6s cubic-bezier(0.7, 0, 0.2, 1);
+}
+
+/* 开始界面的容器 */
+#start-page {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transition: filter 0.6s cubic-bezier(0.7, 0, 0.2, 1),
+                transform 0.6s cubic-bezier(0.7, 0, 0.2, 1);
+}
+
+/* 为了确保高斯模糊能正确显示，我们需要给背景创建一个单独的层 */
+.main-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    
+    /* 1. 背景图片现在只在这里定义 (使用修正后的路径) */
+    background-image: url('../../resource/pics/background.png');
+    background-size: cover;
+    background-position: center;
+    
+    /* 2. 修复：使用 z-index: 0 而不是 -1，确保背景可见 */
+    z-index: 0; 
+    
+    /* 3. 定义我们要过渡的属性：filter */
+    /* 我们使用 filter: brightness() 来模拟蒙版，因为它可以平滑过渡 */
+    filter: blur(0px) brightness(1.0);
+    
+    /* 使用 0.6s 的过渡时间 */
+    transition: filter 0.6s cubic-bezier(0.7, 0, 0.2, 1);
+    
+    /* 确保不阻挡交互 */
+    pointer-events: none;
+}
+
+/* ===== 通用面板系统 ===== */
+/* 定义一个通用的面板打开状态类，用于所有面板共享的效果 */
+body.panel-active .main-container::before {
+    filter: blur(12px) brightness(0.9); /* 通用背景模糊和变暗 */
+}
+
+body.panel-active #start-page {
+    transform: scale(0.98); /* 通用主菜单缩小 */
+}
+
+body.panel-active .main-menu {
+    transform: translateX(-120%);
+    opacity: 0;
+    pointer-events: none;
+}
+
+body.panel-active .logo {
+    transform: translateX(120%);
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* 特定面板的显示规则 */
+body.panel-active.show-settings .settings-panel {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+body.panel-active.show-game-screen .game-screen-panel {
+    transform: translateX(0);
+    opacity: 1;
+    pointer-events: auto;
+}
+
+body.panel-active.show-load-save .load-save-panel {
+    transform: translateX(0);
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* 新面板基础样式 */
+.game-screen-panel,
+.load-save-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 100%;
+    height: 100%;
+    transform: translateX(100%); /* 默认隐藏在右侧 */
+    transition: transform 0.6s cubic-bezier(0.8, 0, 0.2, 1), opacity 0.6s cubic-bezier(0.8, 0, 0.2, 1);
+    opacity: 0;
+    padding: 0;
+    box-sizing: border-box;
+    z-index: 1000;
+    color: white;
+    background-color: transparent; /* 透明背景，透出模糊层 */
+    pointer-events: none; /* 默认不响应事件 */
+}
+
+/* 通用面板内部元素动画 */
+.panel-active .panel-header,
+.panel-active .panel-body {
+    opacity: 0;
+    transform: translateY(30px);
+    animation: fadeInUp 0.5s cubic-bezier(0.7, 0, 0.2, 1) forwards;
+}
+
+/* 各个面板的动画延迟 */
+body.panel-active.show-settings .settings-header { 
+    animation-delay: 0.3s; 
+}
+body.panel-active.show-settings .settings-body { 
+    animation-delay: 0.4s; 
+}
+
+body.panel-active.show-game-screen .panel-header { 
+    animation-delay: 0.3s; 
+}
+body.panel-active.show-game-screen .panel-body { 
+    animation-delay: 0.4s; 
+}
+
+body.panel-active.show-load-save .panel-header { 
+    animation-delay: 0.3s; 
+}
+body.panel-active.show-load-save .panel-body { 
+    animation-delay: 0.4s; 
+}
+
+@keyframes fadeInUp {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
