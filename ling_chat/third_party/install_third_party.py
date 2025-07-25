@@ -1,7 +1,10 @@
 import zipfile
-
 import py7zr
 import requests
+import subprocess
+import tempfile
+from pathlib import Path
+from ling_chat.core.memory_rag.downloading import download_embedding_model
 
 
 def download_file(url: str, save_path: Path) -> None:
@@ -99,7 +102,7 @@ def install_sbv2(sbv2_path: Path, archive_path: Path = None, url: str = None):
     url = url or "https://github.com/litagin02/Style-Bert-VITS2/releases/download/2.6.0/sbv2.zip"
     install_from_archive_or_url(sbv2_path, archive_path, url)
 
-    install_bat_path = sbv2_path / "sbv2/Install-Style-Bert-VITS2-CPU.bat"
+    install_bat_path = sbv2_path / "Install-Style-Bert-VITS2-CPU.bat"
     subprocess.run([install_bat_path], shell=True, check=True)
 
 
@@ -110,3 +113,29 @@ def install_18emo(emo_path: Path, url: str = None):
 
     url = url or "https://www.modelscope.cn/models/kxdw2580/LingChat-emotion-model-18emo/resolve/master/model.safetensors"
     download_file(url, emo_path / "model.safetensors")
+
+def install_rag_model():
+    """
+    安装RAG系统所需的模型
+    """
+    download_embedding_model()
+
+
+if __name__ == "__main__":
+    # 示例：安装VITS语音合成器
+    vits_path = Path("third_party/vits-simple-api/vits-simple-api-windows-cpu-v0.6.16")
+    install_vits(vits_path)
+
+    # 示例：安装VITS模型
+    install_vits_model(vits_path)
+
+    # 示例：安装SBV2语音合成器
+    sbv2_path = Path("third_party/sbv2/sbv2")
+    install_sbv2(sbv2_path)
+
+    # 示例：安装18emo语音合成器
+    emo_path = Path("third_party/emotion_model_18emo/")
+    install_18emo(emo_path)
+
+    # 安装RAG模型
+    install_rag_model()
