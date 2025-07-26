@@ -5,9 +5,9 @@ from core.logger import logger
 from core.llm_providers.manager import LLMManager
 
 class Translator:
-    def __init__(self, voice_maker):
+    def __init__(self, voice_maker, llm_manager=None):
         self.enable:bool = True
-        self.translator_llm:'LLMManager' = LLMManager()
+        self.translator_llm: 'LLMManager' = llm_manager if llm_manager else LLMManager(llm_job="translator")
         self.messages = [{"role": "system", 
         "content": "你是一个二次元角色中文台词翻译师，任务是翻译二次元台词对话，将中文翻译成日语，允许意译，保持流畅自然生动。你的翻译格式和原文完全一致，没有任何多余内容。"}]
         self.voice_maker = voice_maker
