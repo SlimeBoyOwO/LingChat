@@ -5,14 +5,14 @@ from core.logger import logger
 from core.llm_providers.manager import LLMManager
 
 class Translator:
-    def __init__(self, voice_maker, llm_manager=None):
+    def __init__(self, voice_maker):
         self.enable:bool = True
-        self.translator_llm: 'LLMManager' = llm_manager if llm_manager else LLMManager(llm_job="translator")
+        self.translator_llm: 'LLMManager' = LLMManager(llm_job="translator")
         self.messages = [{"role": "system", 
         "content": "你是一个二次元角色中文台词翻译师，任务是翻译二次元台词对话，将中文翻译成日语，允许意译，保持流畅自然生动。你的翻译格式和原文完全一致，没有任何多余内容。"}]
         self.voice_maker = voice_maker
 
-        self.enable_translate:bool = os.environ.get("ENABLE_JAPANESE", "True").lower() == "true"
+        self.enable_translate:bool = os.environ.get("ENABLE_TRANSLATE", "True").lower() == "true"
 
     def get_all_chinese_part(self, results: List[Dict]) -> str:
         result = ""
@@ -21,6 +21,7 @@ class Translator:
         return result
 
     async def translate_ai_response(self, results: List[Dict]):
+        """将中文翻译成日文并合成语音"""
         if not self.enable_translate:
             return
 
@@ -33,35 +34,67 @@ class Translator:
         
         send_messages = self.messages.copy()
         send_messages.append({"role":"user","content":full_chinese_response})
+        
+        if os.environ.get("TRANSLATE_LLM_PROVIDER", "qwen-translate") != "qwen-translate":
+        
+            # 流式处理
+            buffer = ""
+            current_segment_index = 0
 
-        # 流式处理
-        buffer = ""
-        current_segment_index = 0
+            japanese_stream = self.translator_llm.process_message_stream(send_messages)
 
-        japanese_stream = self.translator_llm.process_message_stream(send_messages)
+            async for chunk in japanese_stream:
+                print(chunk, end="", flush=True)
+                buffer += chunk
+                # 检测完整句子
+                while "<" in buffer and ">" in buffer:
+                    start = buffer.index("<")
+                    end = buffer.index(">") + 1
+                    if start < end:
+                        sentence = buffer[start:end]
+                        buffer = buffer[end:]
+                    
+                        # 去除标记符号
+                        clean_sentence = sentence[1:-1]
+                    
+                        # 找到对应的segment并更新
+                        if current_segment_index < len(results):
+                            results[current_segment_index]["japanese_text"] = clean_sentence
+                        
+                            # 实时生成语音
+                            await self.voice_maker.generate_voice_files(
+                                [results[current_segment_index]]
+                            )
+                            logger.info("开始生成下一条语音...")
 
-        async for chunk in japanese_stream:
-            print(chunk, end="", flush=True)
-            buffer += chunk
-            # 检测完整句子
-            while "<" in buffer and ">" in buffer:
+                            current_segment_index += 1
+        else:
+            # 非流式处理 - 等待完整响应
+            japanese_response = self.translator_llm.process_message(send_messages)
+            logger.info(f"完整日语翻译结果: {japanese_response}")
+        
+            # 解析完整响应并提取句子
+            buffer = japanese_response
+            current_segment_index = 0
+        
+            # 处理完整响应中的所有句子
+            while "<" in buffer and ">" in buffer and current_segment_index < len(results):
                 start = buffer.index("<")
                 end = buffer.index(">") + 1
                 if start < end:
                     sentence = buffer[start:end]
                     buffer = buffer[end:]
-                    
+
                     # 去除标记符号
                     clean_sentence = sentence[1:-1]
-                    
+                
                     # 找到对应的segment并更新
-                    if current_segment_index < len(results):
-                        results[current_segment_index]["japanese_text"] = clean_sentence
-                        
-                        # 实时生成语音
-                        await self.voice_maker.generate_voice_files(
-                            [results[current_segment_index]]
-                        )
-                        logger.info("开始生成下一条语音...")
-                        
-                        current_segment_index += 1
+                    results[current_segment_index]["japanese_text"] = clean_sentence
+                
+                    # 生成语音
+                    await self.voice_maker.generate_voice_files(
+                        [results[current_segment_index]]
+                    )
+                    logger.info(f"生成语音完成: {clean_sentence}")
+
+                    current_segment_index += 1
