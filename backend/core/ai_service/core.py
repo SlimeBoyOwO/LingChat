@@ -2,6 +2,7 @@ import json
 import copy
 from typing import List, Dict, Optional
 import traceback
+import time
 
 from .rag_manager import RAGManager
 from .message_processor import MessageProcessor
@@ -22,7 +23,7 @@ class AIService:
         self.llm_model = LLMManager()
         self.ai_logger = AILogger()
         self.voice_maker = VoiceMaker()
-        self.translator = Translator(self.voice_maker, self.llm_model)
+        self.translator = Translator(self.voice_maker)
         self.message_processor = MessageProcessor(self.voice_maker)
 
         self.import_settings(settings)
@@ -34,10 +35,14 @@ class AIService:
             self.ai_subtitle = settings.get("ai_subtitle","ai_subtitle未设定")
             self.user_name = settings.get("user_name", "user_name未设定")
             self.user_subtitle = settings.get("user_subtitle", "user_subtitle未设定")
-            self.ai_prompt = settings.get("system_prompt", "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息")
+
+            if os.environ.get("ENABLE_TRANSLATE", "True").lower() == "true":
+                self.ai_prompt = settings.get("system_prompt_no_ja", "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息")
+            else:
+                self.ai_prompt = settings.get("system_prompt", "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息")
             
             self.voice_maker.set_speark_id(int(settings.get("speaker_id", 4)))
-            self.voice_maker.set_model_name(settings.get("model_name", None))
+            self.voice_maker.set_model_name(settings.get("model_name", ""))
 
             self.character_path = settings.get("resource_path")
             self.character_id = settings.get("character_id")
@@ -86,8 +91,12 @@ class AIService:
 
             # 若打印上下文选项开启且在DEBUG级别，则截取发送到llm的文字信息打印到终端
             # self.ai_logger.print_debug_message(current_context, rag_messages, processed_user_message)
-
+           
+            # 启动一个计时器
+            start_time = time.perf_counter()
             ai_response = self.llm_model.process_message(current_context)
+            end_time = time.perf_counter()
+            logger.debug(f"LLM输出时间: {end_time - start_time} 秒")
 
             # 3. 修复ai回复中可能出错的部分，防止下一次对话被带歪
             ai_response = Function.fix_ai_generated_text(ai_response)
@@ -145,10 +154,14 @@ class AIService:
 
         emotion_segments:List[Dict] = self.message_processor.analyze_emotions(ai_response)
 
+        start_time = time.perf_counter()
         if emotion_segments[0].get("japanese_text") == "":
             await self.translator.translate_ai_response(emotion_segments)
         else:
             await self.voice_maker.generate_voice_files(emotion_segments)
+        end_time = time.perf_counter()
+        logger.debug(f"日语合成时间: {end_time - start_time} 秒")
+
 
         if not emotion_segments:
             logger.warning("未检测到有效情绪片段")
