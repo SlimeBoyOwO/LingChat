@@ -10,7 +10,7 @@ class _EmotionClassifierImpl:
         """加载情绪分类模型"""
     
         try:
-            model_path = model_path or os.environ.get("EMOTION_MODEL_PATH", "./emotion_model_18emo")
+            model_path = model_path or os.environ.get("EMOTION_MODEL_PATH", "./backend/emotion_model_18emo")
             model_path = Path(model_path).resolve()
             self.tokenizer = BertTokenizer.from_pretrained(model_path, local_files_only=True)
             self.model = BertForSequenceClassification.from_pretrained(model_path)
