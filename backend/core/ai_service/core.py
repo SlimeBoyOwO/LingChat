@@ -22,7 +22,7 @@ class AIService:
         self.llm_model = LLMManager()
         self.ai_logger = AILogger()
         self.voice_maker = VoiceMaker()
-        self.translator = Translator(self.voice_maker)
+        self.translator = Translator(self.voice_maker, self.llm_model)
         self.message_processor = MessageProcessor(self.voice_maker)
 
         self.import_settings(settings)
