@@ -5,7 +5,7 @@ import sys
 
 try:
     from core.logger import logger, TermColors
-    from utils.easter_egg import get_random_loading_message # <--- 新增导入
+    from utils.easter_egg import get_random_loading_message
 except ImportError as e:
     print(f"错误：无法导入核心模块。请确保 'core' 和 'utils' 目录位置正确。 {e}")
     sys.exit(1)
