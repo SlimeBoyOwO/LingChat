@@ -1,0 +1,209 @@
+/* 生气时的跳动动画 */
+@keyframes angryJump {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  20% {
+    transform: translateY(-15px) scale(1.03);
+  }
+  40% {
+    transform: translateY(0) scale(1);
+  }
+  60% {
+    transform: translateY(-5px) scale(1.01);
+  }
+  80% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* 被惊吓的跳动 */
+@keyframes suprisedJump {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  40% {
+    transform: translateY(-10px) scale(1.02);
+  }
+  80% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* 发情的配套动作 */
+@keyframes heartBeat {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  20% {
+    transform: translateY(0px) scale(1.015);
+  }
+  40% {
+    transform: translateY(0) scale(1);
+  }
+  60% {
+    transform: translateY(0px) scale(1.015);
+  }
+  80% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* 认真思考 */
+@keyframes seriousThink {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(5px) scale(1);
+  }
+}
+
+/* 难为情 */
+@keyframes embarrassedEmo {
+  0%,
+  50%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  25% {
+    transform: translateX(5px) scale(1);
+  }
+  75% {
+    transform: translateX(-5px) scale(1);
+  }
+}
+
+/* 高兴的跳动 */
+@keyframes happyBounce {
+  0%,
+  50%,
+  100% {
+    transform: translateY(0px);
+  }
+  25%,
+  75% {
+    transform: translateY(-10px);
+  }
+}
+
+/* 调皮的跳动 */
+@keyframes naughtyBounce {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+/* 呼吸动画关键帧 */
+@keyframes breathing {
+  0%,
+  100% {
+    transform: scale(1); /* 正常大小 */
+  }
+  50% {
+    transform: scale(1.005); /* 轻微放大 */
+  }
+}
+
+/* 动画基础类 */
+.character-animation {
+  animation-fill-mode: both !important;
+}
+
+.normal {
+  animation: breathing 4s ease-in-out infinite;
+}
+
+/* 特定动画类 */
+.angry-jump {
+  animation-name: angryJump;
+  animation-duration: 0.8s;
+  animation-timing-function: ease-out;
+  animation-iteration-count: 1;
+}
+
+.happy-bounce {
+  animation-name: happyBounce;
+  animation-duration: 0.6s;
+  animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation-iteration-count: 1;
+}
+
+.serious-think {
+  animation-name: seriousThink;
+  animation-duration: 0.6s;
+  animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation-iteration-count: 1;
+}
+
+.embarrassed-emo {
+  animation-name: embarrassedEmo;
+  animation-duration: 0.3s;
+  animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation-iteration-count: 1;
+}
+
+.naughty-bounce {
+  animation-name: naughtyBounce;
+  animation-duration: 0.3s;
+  animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation-iteration-count: 1;
+}
+
+.suprised-jump {
+  animation-name: suprisedJump;
+  animation-duration: 0.3s;
+  animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation-iteration-count: 1;
+}
+
+.heart-beat {
+  animation-name: heartBeat;
+  animation-duration: 0.8s;
+  animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation-iteration-count: 1;
+}
+
+/* 气泡固定定位样式 */
+.bubble {
+  position: absolute;
+  background-size: contain;
+  background-repeat: no-repeat;
+  width: 50%;
+  height: 50%;
+  pointer-events: none;
+  z-index: 2;
+
+  /* 固定显示在人物右上方 */
+  top: 5%;
+  left: 20%;
+
+  /* 默认隐藏 */
+  opacity: 0;
+  transition: opacity 0.3s;
+
+  /* 初始缩放 */
+  transform: scale(1);
+}
+
+/* 气泡显示时的动画 */
+.bubble.show {
+  opacity: 1;
+}
+
+/* 不同表情的气泡样式 */
+.bubble.angry {
+  transform: scale(1);
+}
+
+.bubble.happy {
+  transform: scale(1);
+}
