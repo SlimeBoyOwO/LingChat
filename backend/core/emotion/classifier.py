@@ -9,7 +9,7 @@ class _EmotionClassifierImpl:
         
         # 检查是否启用了情感分类器
         if os.environ.get("ENABLE_EMOTION_CLASSIFIER", "True").lower() == "false":
-            self._log_emotion_model_status(False, "情绪分类器已通过 ENABLE_EMOTION_CLASSIFIER 环境变量禁用")
+            self._log_emotion_model_status(False, "情绪分类器已通过 ENABLE_EMOTION_CLASSIFIER 环境变量禁用，将直接传递情感标签")
             self.id2label = {}
             self.label2id = {}
             self.model = None
@@ -78,7 +78,7 @@ class _EmotionClassifierImpl:
             }
             
         # 如果传入的文本已经是有效的情感标签，直接返回而不进行预测
-        if text in self.label2id:
+        if text in self.label2id and os.environ.get("ENABLE_DIRECT_EMOTION_CLASSIFIER", "false").lower() == "true":
             logger.debug(f"输入文本 '{text}' 已是有效情感标签，直接返回")
             return {
                 "label": text,
