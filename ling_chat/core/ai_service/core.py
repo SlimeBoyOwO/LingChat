@@ -22,19 +22,21 @@ class AIService:
         self.llm_model = LLMManager()
         self.ai_logger = AILogger()
         self.voice_maker = VoiceMaker()
+        self.translator = Translator(self.voice_maker, self.llm_model)
         self.message_processor = MessageProcessor(self.voice_maker)
 
         self.import_settings(settings)
         self.reset_memory()
-    
+
     def import_settings(self, settings: dict):
-        if(settings):
-            self.ai_name = settings.get("ai_name","ai_name未设定")
-            self.ai_subtitle = settings.get("ai_subtitle","ai_subtitle未设定")
+        if (settings):
+            self.ai_name = settings.get("ai_name", "ai_name未设定")
+            self.ai_subtitle = settings.get("ai_subtitle", "ai_subtitle未设定")
             self.user_name = settings.get("user_name", "user_name未设定")
             self.user_subtitle = settings.get("user_subtitle", "user_subtitle未设定")
-            self.ai_prompt = settings.get("system_prompt", "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息")
-            
+            self.ai_prompt = settings.get("system_prompt",
+                                          "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息")
+
             self.voice_maker.set_speark_id(int(settings.get("speaker_id", 4)))
             self.voice_maker.set_model_name(settings.get("model_name", None))
 
@@ -47,27 +49,27 @@ class AIService:
                 self.rag_manager.switch_rag_system_character(self.character_id)
         else:
             logger.error("角色信息settings没有被正常导入，请检查问题！")
-    
-    def load_memory(self, memory):     
+
+    def load_memory(self, memory):
         if isinstance(memory, str):
             memory = json.loads(memory)
         self.memory = copy.deepcopy(memory)
-        
+
         logger.info("记忆存档已经加载")
         logger.info(f"内容是：{memory}")
         logger.info(f"新的messages是：{self.memory}")
-    
+
     def get_memory(self):
         return self.memory
-    
+
     def reset_memory(self):
         self.memory = [
             {
-                "role": "system", 
+                "role": "system",
                 "content": self.ai_prompt
             }
         ]
-    
+
     async def process_message(self, user_message: str) -> Optional[List[Dict]]:
         """处理用户消息的完整流程"""
 
@@ -118,8 +120,9 @@ class AIService:
             if final_response is None:
                 logger.error("AI服务返回了None响应")
                 return error_response
-            else: return final_response
-                
+            else:
+                return final_response
+
         except Exception as e:
             error_response = [{
                 "type": "reply",
@@ -137,7 +140,7 @@ class AIService:
             traceback.print_exc()  # 这会打印完整的错误堆栈到控制台
             logger.error(f"详细错误信息: ", exc_info=True)
             return error_response
-    
+
     async def _process_ai_response(self, ai_response: str, user_message: str) -> List[Dict]:
         """处理AI回复的完整流程"""
         self.voice_maker.delete_voice_files()
@@ -159,11 +162,12 @@ class AIService:
                 "japanese_text": "",
                 "predicted": "normal",
                 "confidence": 0.8,
-                "voice_file": os.path.join(self.voice_maker.vits_tts.temp_dir, f"part_1.{self.voice_maker.vits_tts.format}")
+                "voice_file": os.path.join(self.voice_maker.vits_tts.temp_dir,
+                                           f"part_1.{self.voice_maker.vits_tts.format}")
             }]
-        
+
         responses = self._create_responses(emotion_segments, user_message)
-    
+
         logger.debug("--- AI 回复分析结果 ---")
         self.ai_logger.log_analysis_result(emotion_segments)
         logger.debug("--- 分析结束 ---")
