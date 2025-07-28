@@ -152,6 +152,8 @@ def save_env_file(new_values: Dict[str, str]):
     一个基于状态机的、健壮的.env文件保存函数。
     此版本根据要求，为多行字符串在引号内增加了前后的换行符。
     """
+    ensure_env_file()
+
     with open(env_file_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
         
