@@ -16,6 +16,7 @@
       <div class="chatbox-inputbox">
         <textarea
           id="inputMessage"
+          ref="textareaRef"
           :placeholder="placeholderText"
           v-model="inputMessage"
           @keydown.enter.exact.prevent="sendOrContinue"
@@ -34,10 +35,14 @@ import { chatHandler } from "../../../api/websocket/handlers/chat-handler";
 import { ref, watch, computed } from "vue";
 import { useGameStore } from "../../../stores/modules/game";
 import { useUIStore } from "../../../stores/modules/ui/ui";
+import { useTypeWriter } from "../../../composables/ui/useTypeWriter";
 
 const inputMessage = ref("");
+const textareaRef = ref<HTMLTextAreaElement | null>(null); // 新增这行
 const gameStore = useGameStore();
 const uiStore = useUIStore();
+
+const { startTyping, stopTyping, isTyping } = useTypeWriter(textareaRef);
 
 // 使用计算属性处理发送状态
 const isSending = computed(() => gameStore.currentStatus === "thinking");
@@ -80,7 +85,8 @@ watch(
   [() => gameStore.currentLine, () => gameStore.currentStatus],
   ([newLine, newStatus]) => {
     if (newLine && newLine !== "" && newStatus === "responding") {
-      inputMessage.value = newLine;
+      inputMessage.value = "";
+      startTyping(newLine, uiStore.typeWriterSpeed);
     } else if (newLine === "" && newStatus === "input") {
       inputMessage.value = "";
     }
