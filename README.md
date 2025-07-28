@@ -25,8 +25,9 @@
 - 在DeepSeek或者其他大模型网站中，申请自己的API密钥，并且保证有余额供使用 -> [DeepSeek的官方API获取网站](https://platform.deepseek.com/)
 
 ### Step 1: 下载软件
-- 在[release](https://github.com/SlimeBoyOwO/LingChat/releases)中，找到最新的版本，下载如 `LingChat_setup.exe` 的文件，下载完成后运行它。
+- 在[release](https://github.com/SlimeBoyOwO/LingChat/releases)中，找到最新的版本，下载如 `LingChat_setup.exe` 的文件，下载完成后运行并安装LingChat。
 - 点击桌面快捷方式或安装目录下的 `LingChat.exe` 启动程序
+- 您也可以使用如LingChat.x.x.x.7z的文件解压后使用
 #### 温馨提示：
 > 解压完成后可能会发生 `LingChat.exe` 不见了的情况，这多半是由于 Windows Defender 把它当病毒干掉了。需要手动打开**Windows安全中心**，选择**病毒和威胁防护**一栏，允许该威胁。
 
