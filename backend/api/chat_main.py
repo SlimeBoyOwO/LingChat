@@ -25,7 +25,7 @@ class WebSocketManager:
                         start_time = time.time()
                         # 添加错误处理
                         try:
-                            responses = await service_manager.ai_service.process_message(data.get('content', ''))
+                            responses = await service_manager.ai_service.process_message_stream_compat(data.get('content', ''))
                             
                             for response in responses:
                                 await websocket.send_json(response)
