@@ -8,16 +8,21 @@ class WebLLMProvider(BaseLLMProvider):
     def __init__(self):
         super().__init__()
         self.client = None
+        self.model_type = None
         self.initialize_client()
     
     def initialize_client(self):
         """初始化DeepSeek客户端"""
         api_key = os.environ.get("CHAT_API_KEY") or os.getenv("OPENAI_API_KEY")
         base_url = os.environ.get("CHAT_BASE_URL", "https://api.deepseek.com")
-        
+
         if not api_key:
-            raise ValueError("没有API_Key怎么跑啊喂！快去填写！")
-            
+            error_message = "没有API_Key怎么跑啊喂！快去设置填写！"
+            logger.warning(error_message)
+            # 不再抛出异常，而是设置client为None表示不可用
+            self.client = None
+            return
+
         self.client = OpenAI(api_key=api_key, base_url=base_url)
         self.model_type = os.environ.get("MODEL_TYPE", "deepseek-chat")
 
@@ -25,6 +30,11 @@ class WebLLMProvider(BaseLLMProvider):
     
     def generate_response(self, messages: List[Dict]) -> str:
         """生成DeepSeek模型响应"""
+        if self.client is None:
+            error_message = "通用网络大模型未初始化，请检查配置"
+            logger.error(error_message)
+            return error_message
+
         try:
             logger.debug(f"正在对通用网络大模型发送请求: {self.model_type}")
             response = self.client.chat.completions.create(
@@ -44,6 +54,12 @@ class WebLLMProvider(BaseLLMProvider):
         :param messages: 消息列表
         :return: 返回一个生成器，每次迭代返回一个chunk
         """
+        if self.client is None:
+            error_message = "通用网络大模型未初始化，请检查配置"
+            logger.error(error_message)
+            yield error_message
+            return
+
         try:
             logger.debug(f"正在对通用网络大模型发送流式请求: {self.model_type}")
             stream = self.client.chat.completions.create(
