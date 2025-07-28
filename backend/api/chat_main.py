@@ -1,5 +1,5 @@
 import json
-import asyncio
+import os
 import socket
 from fastapi import WebSocket, WebSocketDisconnect
 from core.logger import logger
@@ -25,8 +25,11 @@ class WebSocketManager:
                         start_time = time.time()
                         # 添加错误处理
                         try:
-                            responses = await service_manager.ai_service.process_message_stream_compat(data.get('content', ''))
-                            
+                            if os.environ.get("USE_STREAM", "False").lower() == "true":
+                                responses = await service_manager.ai_service.process_message_stream_compat(data.get('content', ''))
+                            else:
+                                responses = await service_manager.ai_service.process_message(data.get('content', ''))
+                                
                             for response in responses:
                                 await websocket.send_json(response)
                             stop_time = time.time()
