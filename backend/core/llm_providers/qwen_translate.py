@@ -44,6 +44,7 @@ class QwenTranslateProvider(BaseLLMProvider):
         translation_options = {
             "source_lang": "auto",
             "target_lang": "ja",
+            "domains": "You are a 2D character dialogue translator, free translation is allowed to ensure fluency, naturalness, and vividness. Your translation format should be identical to the original text, with no extra content added.",
             "terms": [
                 {
                     "source": "<",
@@ -94,6 +95,7 @@ class QwenTranslateProvider(BaseLLMProvider):
         translation_options = {
             "source_lang": "auto",
             "target_lang": "ja",
+            "domains": "You are a 2D character dialogue translator, free translation is allowed to ensure fluency, naturalness, and vividness. Your translation format should be identical to the original text, with no extra content added.",
             "terms": [
                 {
                     "source": "<",
@@ -117,9 +119,16 @@ class QwenTranslateProvider(BaseLLMProvider):
                 }
             )
             
+            # 跟踪已发送的内容
+            sent_content = ""
             for chunk in stream:
                 if chunk.choices[0].delta.content is not None:
-                    yield chunk.choices[0].delta.content
+                    new_content = chunk.choices[0].delta.content
+                    # 计算需要发送的新内容（去除已经发送的部分）
+                    delta_content = new_content[len(sent_content):]
+                    sent_content = new_content
+                    if delta_content:  # 只有当有新内容时才发送
+                        yield delta_content
                     
         except Exception as e:
             logger.error(f"Qwen翻译模型流式请求失败: {str(e)}")
