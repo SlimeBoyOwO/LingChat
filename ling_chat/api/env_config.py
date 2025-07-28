@@ -4,15 +4,32 @@ from fastapi import APIRouter, HTTPException, Request, Body
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from typing import Dict, Any
+from ling_chat.core.logger import logger
+from ling_chat.utils.runtime_path import package_root
 
 router = APIRouter()
-env_file_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env')
+env_file_path = package_root.parent / '.env'
+tmp_env_file_path = package_root.parent / '.env.example'
+
+def ensure_env_file():
+    """
+    确保.env文件存在，如果不存在则从.env.example复制
+    """
+    # fixme: 这里不需要复制整个文件 只需要在加载时按照优先级先后加载两个.env就可以了
+    if not env_file_path.exists() and tmp_env_file_path.exists():
+        logger.warning(".env文件不存在，正在复制.env.example文件到.env")
+
+        with tmp_env_file_path.open('r', encoding='utf-8') as src:
+            with env_file_path.open('w', encoding='utf-8') as dst:
+                dst.write(src.read())
 
 def parse_env_file():
     """
     一个基于状态机的、健壮的.env文件解析器。
     此版本从根本上解决了多行值解析的缺陷。
     """
+    ensure_env_file()
+
     if not os.path.exists(env_file_path):
         return {}
         
