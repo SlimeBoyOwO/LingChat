@@ -8,6 +8,7 @@ export const useUIStore = defineStore("ui", {
     showCharacterEmotion: "",
     showSettings: false,
     currentSettingsTab: "text", // 可以添加当前选中的设置标签页
+    typeWriterSpeed: 50,
   }),
   actions: {
     toggleSettings(show: boolean) {
