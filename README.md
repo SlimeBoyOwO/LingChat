@@ -25,14 +25,14 @@
 - 在DeepSeek或者其他大模型网站中，申请自己的API密钥，并且保证有余额供使用 -> [DeepSeek的官方API获取网站](https://platform.deepseek.com/)
 
 ### Step 1: 下载软件
-- 在[release](https://github.com/SlimeBoyOwO/LingChat/releases)中，找到最新的版本，下载如 `LingChat.x.x.x.7z` 的文件，下载完成后解压它。
-- 点击根目录下的 `LingChat.exe` 启动程序
+- 在[release](https://github.com/SlimeBoyOwO/LingChat/releases)中，找到最新的版本，下载如 `LingChat_setup.exe` 的文件，下载完成后运行它。
+- 点击桌面快捷方式或安装目录下的 `LingChat.exe` 启动程序
 #### 温馨提示：
 > 解压完成后可能会发生 `LingChat.exe` 不见了的情况，这多半是由于 Windows Defender 把它当病毒干掉了。需要手动打开**Windows安全中心**，选择**病毒和威胁防护**一栏，允许该威胁。
 
 ### Step 2: 首次启动配置
 - 启动程序后，点开右上角的菜单，点击【文字】部分的【进入设置页面】按钮，输入自己选用的大模型类型和API，模型信息等（**这些是必填信息**）
-- 设置完毕后，滑动到最下方，点击保存配置。关闭黑不溜秋的窗口和LingChat程序，重新点击 `LingChat.exe` 启动程序，就可以使用啦！
+- 设置完毕后，滑动到最下方，点击保存配置。关闭黑不溜秋的窗口和LingChat程序，重新启动程序，就可以使用啦！
 > [!IMPORTANT]
 >
 > 1. **有些用户的电脑启动`LingChat.exe`之后会无限卡在加载页，请在现代浏览器如谷歌中输入`localhost:8765`进入程序**
@@ -116,6 +116,7 @@
 > 默认简单狼狼立绘是自绘，表情差分源于 AI + 人工修改，如果你想自己创作可使用 NovelAI 网站或者自己画
 > 请对AI生成的东西和使用负责，不要肆意传播不良信息
 > 有其他问题可以提issues捏~
+> 关于硬件调查，我们完全秉持自愿原则，您可以在[Ling Chat硬件调查](https://dash.myhblog.dpdns.org/)中查看调查数据
 
 ## ⭐️ 星星
 [![Star History Chart](https://api.star-history.com/svg?repos=SlimeBoyOwO/LingChat&type=Date)](https://www.star-history.com/#SlimeBoyOwO/LingChat&Date)
