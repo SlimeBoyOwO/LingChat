@@ -10,13 +10,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 
-from ling_chat.api.chat_main import websocket_endpoint
 from ling_chat.api.routes_manager import RoutesManager
 from ling_chat.core.logger import logger, TermColors
 from ling_chat.database import init_db
 from ling_chat.database.character_model import CharacterModel
 from ling_chat.utils.runtime_path import static_path, user_data_path, third_party_path
-from ling_chat.core.emotion.classifier import EmotionClassifier
 
 load_dotenv(".env.example")
 load_dotenv()
