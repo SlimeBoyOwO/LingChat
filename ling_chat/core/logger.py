@@ -87,10 +87,11 @@ class Logger:
         self.enable_file_logging = self._get_bool_env('ENABLE_FILE_LOGGING', enable_file_logging)
 
         log_dir = log_file_directory or os.environ.get('LOG_FILE_DIRECTORY')
-        if not log_dir:
-            print(f"{TermColors.RED}请设置环境变量 'LOG_FILE_DIRECTORY' 来指定日志文件保存目录。{TermColors.RESET}")
+        if self.enable_file_logging and (not log_dir or log_dir == ""):
+            print(f"{TermColors.RED}环境变量 'LOG_FILE_DIRECTORY' 未设置，使用默认路径“data/run_logs”。{TermColors.RESET}")
+            self.log_file_directory = str(user_data_path / "run_logs")
         else:
-            self.log_file_directory = os.path.join(log_dir)
+            self.log_file_directory = str(log_dir)
 
         self.log_file_level = log_file_level
 
