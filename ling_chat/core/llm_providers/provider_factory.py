@@ -20,7 +20,7 @@ class LLMProviderFactory:
         
         try:
             if provider_type == "webllm":
-                logger.info("创建通用联网大模型提服务提供商")
+                logger.info("创建通用联网大模型服务提供商")
                 return WebLLMProvider()
             elif provider_type == "ollama":
                 logger.info("创建OLLAMA服务提供商")
