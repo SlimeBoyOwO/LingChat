@@ -129,8 +129,6 @@ by [Thz922](https://github.com/Thz922)
 
 详见Issues：[为项目添加多语言支持 · Issue #129 · SlimeBoyOwO/LingChat](https://github.com/SlimeBoyOwO/LingChat/issues/129)
 
-
-
 ## 安卓端开发
 
 by [shadow01a](https://github.com/shadow01a)
@@ -139,4 +137,12 @@ by [shadow01a](https://github.com/shadow01a)
 
 详见Issues：[关于新增手机使用本项目的文档 · Issue #128 · SlimeBoyOwO/LingChat](https://github.com/SlimeBoyOwO/LingChat/issues/128)
 
-目前已经有了一个[可用的文档](https://github.com/SlimeBoyOwO/LingChat/blob/develop/others/document/%E6%89%8B%E6%9C%BA%E4%BD%BF%E7%94%A8%E6%95%99%E7%A8%8B.md)
+目前已经有了[可用的文档](https://lingchat.wiki/manual/deployment/android_deploy.html)
+
+## 文档完善
+
+by [foxcyber907](https://github.com/foxcyber907)
+
+拆分文档部分并独立更新。
+
+详见网站 [LingChat Wiki](https://lingchat.wiki/) 或者 [GitHub 仓库](https://github.com/foxcyber907/ling-docs)
