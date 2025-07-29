@@ -1,3 +1,5 @@
+import { useUIStore } from "../../stores/modules/ui/ui";
+
 export class TypeWriter {
   private element: HTMLInputElement | HTMLTextAreaElement;
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -5,7 +7,6 @@ export class TypeWriter {
   private speed: number;
   private isFinished: boolean;
   private onFinishCallback: (() => void) | null;
-  private enableSoundEffect: boolean;
   private audioContext: AudioContext | null;
   private soundBuffers: AudioBuffer[];
   private textBuffers: string;
@@ -18,7 +19,6 @@ export class TypeWriter {
     this.speed = 50; // 默认速度
     this.isFinished = false;
     this.onFinishCallback = null;
-    this.enableSoundEffect = true; // 默认开启音效
     this.audioContext = null;
     this.soundBuffers = [];
     this.textBuffers = "";
@@ -33,7 +33,8 @@ export class TypeWriter {
       await this.loadSounds();
     } catch (e) {
       console.warn("音频初始化失败:", e);
-      this.enableSoundEffect = false;
+      const uiStore = useUIStore();
+      uiStore.enableChatEffectSound = false;
     }
   }
 
@@ -51,14 +52,14 @@ export class TypeWriter {
       this.soundBuffers = await Promise.all(promises);
     } catch (e) {
       console.warn("音效加载失败:", e);
-      this.enableSoundEffect = false;
     }
   }
 
   // 播放随机音效
   private playRandomSound(): void {
+    const uiStore = useUIStore();
     if (
-      !this.enableSoundEffect ||
+      !uiStore.enableChatEffectSound ||
       !this.audioContext ||
       this.soundBuffers.length === 0
     ) {
@@ -84,13 +85,15 @@ export class TypeWriter {
 
   // 设置是否启用音效
   public setSoundEnabled(enabled: boolean): void {
-    this.enableSoundEffect = enabled;
+    const uiStore = useUIStore();
+    uiStore.enableChatEffectSound = enabled;
     if (enabled && !this.audioContext) {
       this.initAudio();
     }
   }
 
   public async start(text: string, numSpeed?: number): Promise<void> {
+    const uiStore = useUIStore();
     // 停止上一个动画
     this.stop();
     this.isFinished = false;
@@ -112,7 +115,7 @@ export class TypeWriter {
     this.textBuffers = "";
 
     // 如果启用音效但音频未初始化，则初始化
-    if (this.enableSoundEffect && !this.audioContext) {
+    if (uiStore.enableChatEffectSound && !this.audioContext) {
       await this.initAudio();
     }
 
