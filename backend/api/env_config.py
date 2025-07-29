@@ -8,24 +8,12 @@ from core.logger import logger
 
 router = APIRouter()
 env_file_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env')
-tmp_env_file_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env.example')
-
-def ensure_env_file():
-    """
-    确保.env文件存在，如果不存在则从.env.example复制
-    """
-    if not os.path.exists(env_file_path) and os.path.exists(tmp_env_file_path):
-        logger.warning(".env文件不存在，正在复制.env.example文件到.env")
-        with open(tmp_env_file_path, 'r', encoding='utf-8') as src:
-            with open(env_file_path, 'w', encoding='utf-8') as dst:
-                dst.write(src.read())
 
 def parse_env_file():
     """
     一个基于状态机的、健壮的.env文件解析器。
     此版本从根本上解决了多行值解析的缺陷。
     """
-    ensure_env_file()
     
     if not os.path.exists(env_file_path):
         return {}
