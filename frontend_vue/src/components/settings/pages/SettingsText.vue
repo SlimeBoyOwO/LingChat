@@ -25,11 +25,15 @@ import { MenuItem } from "../../ui";
 import { Slider } from "../../base";
 import { Text } from "../../base";
 import { Toggle } from "../../base";
+import { useUIStore } from "../../../stores/modules/ui/ui";
 
 const textSpeedSample = ref();
 
+const uiStore = useUIStore();
+
 const textSpeedChange = (data: number) => {
   textSpeedSample.value = data;
+  uiStore.typeWriterSpeed = data;
 };
 const textSpeedLast = (data: number) => {
   console.log(data);
@@ -38,7 +42,7 @@ const animateSwitch = (data: boolean) => {
   console.log(data);
 };
 const voiceSound = (data: boolean) => {
-  console.log(data);
+  uiStore.enableChatEffectSound = data;
 };
 </script>
 
