@@ -257,7 +257,7 @@ class Function:
             print(f"解析聊天记录时发生错误: {str(e)}")
             return None, None
     
-    def load_env_file(self, env_path: str = ".env") -> Dict[str, str]:
+    def load_env_file(self, env_path: str = ".env", init: bool = False) -> Dict[str, str]:
         """
         读取 .env 文件中的所有环境变量并导出到当前环境中
     
@@ -268,17 +268,17 @@ class Function:
             Dict[str, str]: 解析出的环境变量字典
         """
         env_vars = {}
-        
-        if not os.path.exists(env_path):
-            # 尝试从.env.example复制
-            example_path = env_path + ".example"
-            if os.path.exists(example_path):
-                import shutil
-                shutil.copy2(example_path, env_path)
-                print(f"从 {example_path} 复制生成 {env_path}")
-            else:
-                print(f"警告: 找不到环境变量文件 {env_path} 和 {example_path}")
-                return env_vars
+        if init == True:
+            if not os.path.exists(env_path):
+                # 尝试从.env.example复制
+                example_path = env_path + ".example"
+                if os.path.exists(example_path):
+                    import shutil
+                    shutil.copy2(example_path, env_path)
+                    print(f"从 {example_path} 复制生成 {env_path}")
+                else:
+                    print(f"警告: 找不到环境变量文件 {env_path} 和 {example_path}")
+                    return env_vars
         
         with open(env_path, 'r', encoding='utf-8') as file:
             for line in file:
