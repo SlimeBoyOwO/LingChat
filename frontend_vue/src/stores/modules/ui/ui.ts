@@ -9,6 +9,7 @@ export const useUIStore = defineStore("ui", {
     showSettings: false,
     currentSettingsTab: "text", // 可以添加当前选中的设置标签页
     typeWriterSpeed: 50,
+    enableChatEffectSound: true,
   }),
   actions: {
     toggleSettings(show: boolean) {
