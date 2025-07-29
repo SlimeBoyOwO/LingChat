@@ -4,8 +4,8 @@ import os
 import sys
 from utils.function import Function
 
-function_instance = Function()
-env_config = function_instance.load_env_file()
+function = Function()
+env_config = function.load_env_file()
 
 try:
     from core.logger import logger, TermColors
