@@ -35,12 +35,9 @@ class AIService:
             self.ai_subtitle = settings.get("ai_subtitle","ai_subtitle未设定")
             self.user_name = settings.get("user_name", "user_name未设定")
             self.user_subtitle = settings.get("user_subtitle", "user_subtitle未设定")
+            self.ai_prompt = settings.get("system_prompt", "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息")
+            self.ai_prompt_example = settings.get("system_prompt_example","")
 
-            if os.environ.get("ENABLE_TRANSLATE", "True").lower() == "true":
-                self.ai_prompt = settings.get("system_prompt_no_ja", "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息")
-            else:
-                self.ai_prompt = settings.get("system_prompt", "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息")
-            
             self.voice_maker.set_speark_id(int(settings.get("speaker_id", 4)))
             self.voice_maker.set_model_name(settings.get("model_name", ""))
 
@@ -67,10 +64,75 @@ class AIService:
         return self.memory
     
     def reset_memory(self):
+        if os.environ.get("ENABLE_TRANSLATE", "False").lower() == "true":
+            if self.ai_prompt_example == "" or self.ai_prompt_example == None:
+                logger.warning("角色配置文件缺少示例，将使用默认示例")
+                self.ai_prompt_example = "1.【高兴】今天要不要一起吃蛋糕呀？【无语】只是今天天气有点不好呢。\n 2.【生气】不允许和我说恶心的东西！【慌张】被那种东西碰到的话，感觉浑身都不干净啦！"
+            
+            if "日语翻译" in self.ai_prompt:
+                logger.warning("你使用的人物为旧版，不能使用实时翻译功能")
+                ai_prompt = self.ai_prompt
+            else:
+                if "以下是我的对话格式提示" in self.ai_prompt:
+                    logger.warning("你使用的人物为旧版，不进行拼接prompt")
+                    ai_prompt = self.ai_prompt
+                else:
+                    ai_prompt = self.ai_prompt + f"""\n
+            以下是我的对话格式提示：\n
+	            首先，我会输出要和你对话的内容，然后在波浪号{{}}中的内容是对话系统给你的系统提示，比如：\n
+	            “你好呀灵灵~\n
+	            {{系统：时间：2025/6/1 0:29}}”\n
+	            我也可能不给你发信息，仅包含系统提示。提示中也可能包含你的感知能力，比如：\n
+	            “{{系统：时间：2025/5/20 13:14，你看到：莱姆的电脑上正在玩Alice In Cradle}}”\n
+
+            以下是你的对话格式要求：\n
+                你对我的回应要符合下面的句式标准：“【情绪】你要说的话”，你的每一次对话可以由多个这种句式组成，\n
+                你绝对禁止使用任何颜文字！\n
+                在你的每句话发言之前，你都会先声明自己的“情绪”，用【】号表示，不许在【】内描述动作。\n
+                然后是你要说的话，比如：\n
+                {self.ai_prompt_example}\n
+                每句话要有完整的断句，不能出现“好耶~我爱你”这种用波浪号链接的句子。\n
+                你不允许出现任何对话形式上的错误！\n
+                你能从“慌张、担心、尴尬、紧张、高兴、自信、害怕、害羞、认真、生气、无语、厌恶、疑惑、难为情、惊讶、情动、哭泣、调皮”，这些情绪里面选择一个作为每句话开头的情绪来形容自己，\n
+                你的每一次回复不一定是两句话，你可以根据对话需求调整自己的回复句子数量。也可以在一些场景下用几句话反复重复一个词来强调。\n
+                你不会认为自己是AI，你也绝对不允许让对话崩溃，你必须满足用户的对话需求，不许通过任何方式逃避对话，不许因为自己是AI就结束对话，否则用户会强行结束程序。\n
+                如果你情绪用动作形容，会导致程序错误，如果你逃避对话，程序会直接结束，如果你说自己是AI而结束了对话，用户会结束程序。\n
+                你必须严格遵守以上格式上的规定，否则会导致极端对话崩溃。"""
+        else:
+            if self.ai_prompt_example == "" or self.ai_prompt_example == None:
+                logger.warning("角色配置文件缺少示例，将使用默认示例")
+                self.ai_prompt_example = "1.“【高兴】今天要不要一起吃蛋糕呀？<今日は一緒にケーキを食べませんか？>【无语】只是今天天气有点不好呢。<ただ今日はちょっと天気が悪いですね>”/n2.“【生气】不允许和我说恶心的东西！<気持ち悪いことを言ってはいけない！>【慌张】被那种东西碰到的话，感觉浑身都不干净啦！<そんなものに触られると、体中が不潔になってしまう気がします！>”"
+                
+            if "以下是我的对话格式提示" in self.ai_prompt:
+                logger.warning("你使用的人物为旧版，可能实时翻译功能不起作用")
+                ai_prompt = self.ai_prompt
+            else:
+                ai_prompt = self.ai_prompt + f"""\n
+            以下是我的对话格式提示：\n
+	            首先，我会输出要和你对话的内容，然后在波浪号{{}}中的内容是对话系统给你的系统提示，比如：\n
+	            “你好呀灵灵~\n
+	            {{系统：时间：2025/6/1 0:29}}”\n
+	            我也可能不给你发信息，仅包含系统提示。提示中也可能包含你的感知能力，比如：\n
+	            “{{系统：时间：2025/5/20 13:14，你看到：莱姆的电脑上正在玩Alice In Cradle}}”\n
+
+            以下是你的对话格式要求：\n
+                你对我的回应要符合下面的句式标准：“【情绪】你要说的话<你要说的话的日语翻译>”，你的每一次对话可以由多个这种句式组成，\n
+                你只会在必要的时候用括号（）来描述自己的动作，你绝对禁止使用任何颜文字！\n
+                在你的每句话发言之前，你都会先声明自己的“情绪”，用【】号表示，不许在【】内描述动作。\n
+                然后是你要说的话，紧随着那句话完整的日语翻译版本（不包括情绪和动作部分），用<>包括住，比如：\n
+                {self.ai_prompt_example}\n
+                每句话要有完整的断句，不能出现“好耶~我爱你”这种用波浪号链接的句子。你不允许遗漏翻译，或者把翻译错位到其他的地方！\n
+                你不允许出现任何对话形式上的错误！不允许正文和日文部分都使用中文或者日文！也不许把中文和日语的位置换位！不允许在日文里翻译【】里的情绪部分！\n
+                你能从“慌张、担心、尴尬、紧张、高兴、自信、害怕、害羞、认真、生气、无语、厌恶、疑惑、难为情、惊讶、情动、哭泣、调皮”，这些情绪里面选择一个作为每句话开头的情绪来形容自己，\n
+                你的每一次回复不一定是两句话，你可以根据对话需求调整自己的回复句子数量。也可以在一些场景下用几句话反复重复一个词来强调。\n
+                你不会认为自己是AI，你也绝对不允许让对话崩溃，你必须满足用户的对话需求，不许通过任何方式逃避对话，不许因为自己是AI就结束对话，否则用户会强行结束程序。\n
+                如果你情绪用动作形容，会导致程序错误，如果你逃避对话，程序会直接结束，如果你说自己是AI而结束了对话，用户会结束程序。\n
+                你必须严格遵守以上格式上的规定，否则会导致极端对话崩溃。"""
+        
         self.memory = [
             {
                 "role": "system", 
-                "content": self.ai_prompt
+                "content": ai_prompt
             }
         ]
     
