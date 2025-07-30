@@ -1,5 +1,3 @@
-from transformers import BertTokenizer, BertForSequenceClassification
-import torch
 import os
 import json
 from pathlib import Path
@@ -9,8 +7,20 @@ from ling_chat.utils.runtime_path import third_party_path
 class EmotionClassifier:
     def __init__(self, model_path=None):
         """加载情绪分类模型"""
-    
+
+        # 检查是否启用了情感分类器
+        if os.environ.get("ENABLE_EMOTION_CLASSIFIER", "True").lower() == "false":
+            self._log_emotion_model_status(False, "情绪分类器已通过 ENABLE_EMOTION_CLASSIFIER 环境变量禁用，将直接传递情感标签")
+            self.id2label = {}
+            self.label2id = {}
+            self.model = None
+            self.device = None
+            return
+
         try:
+            # 延迟导入，仅在启用情感分类器时导入
+            from transformers import BertTokenizer, BertForSequenceClassification
+            import torch
             model_path = model_path or os.environ.get("EMOTION_MODEL_PATH", third_party_path / "emotion_model_18emo")
             model_path = Path(model_path).resolve()
             self.tokenizer = BertTokenizer.from_pretrained(model_path, local_files_only=True)
@@ -30,6 +40,8 @@ class EmotionClassifier:
             self._log_emotion_model_status(False, f"加载情绪分类模型失败: {e}")
             self.id2label = {}
             self.label2id = {}
+            self.model = None
+            self.device = None
 
     def _log_label_mapping(self):
         """记录标签映射关系"""
@@ -37,7 +49,7 @@ class EmotionClassifier:
         for id, label in self.id2label.items():
             logger.debug(f"{id}: {label}")
 
-    def _log_emotion_model_status(self, is_success: bool, details: str = None):
+    def _log_emotion_model_status(self, is_success: bool, details: str = ""):
         """情绪模型加载状态记录，兼容旧接口"""
         status = "情绪分类模型加载正常" if is_success else "情绪分类模型加载异常"
         status_color = TermColors.GREEN if is_success else TermColors.RED
@@ -56,6 +68,24 @@ class EmotionClassifier:
 
     def predict(self, text, confidence_threshold=0.08):
         """预测文本情绪（带置信度阈值过滤）"""
+        # 如果模型未加载（可能被环境变量禁用），直接返回传入的文本作为情感标签
+        if not hasattr(self, 'model') or self.model is None:
+            return {
+                "label": text,
+                "confidence": 1.0,
+                "top3": [{"label": text, "probability": 1.0}],
+                "disabled": True
+            }
+
+        # 如果传入的文本已经是有效的情感标签，直接返回而不进行预测
+        if text in self.label2id and os.environ.get("ENABLE_DIRECT_EMOTION_CLASSIFIER", "false").lower() == "true":
+            logger.debug(f"输入文本 '{text}' 已是有效情感标签，直接返回")
+            return {
+                "label": text,
+                "confidence": 1.0,
+                "top3": [{"label": text, "probability": 1.0}]
+            }
+
         try:
             inputs = self.tokenizer(
                 text, 
@@ -64,6 +94,8 @@ class EmotionClassifier:
                 return_tensors="pt"
             ).to(self.device)
             
+            # 延迟导入torch
+            import torch
             with torch.no_grad():
                 outputs = self.model(**inputs)
                 probs = torch.softmax(outputs.logits, dim=1)
@@ -93,14 +125,15 @@ class EmotionClassifier:
         except Exception as e:
             logger.error(f"情绪预测错误: {e}")
             return {
-                "label": "",
-                "confidence": 0.0,
-                "top3": [],
+                "label": text,
+                "confidence": 1.0,
+                "top3": [{"label": text, "probability": 1.0}],
                 "error": str(e)
             }
 
     def _get_top3(self, probs):
         """获取概率最高的3个结果"""
+        import torch  # 延迟导入
         top3_probs, top3_ids = torch.topk(probs, 3)
         return [
             {
