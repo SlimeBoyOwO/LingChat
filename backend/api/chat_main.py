@@ -1,8 +1,10 @@
 import json
-import asyncio
+import os
+import socket
 from fastapi import WebSocket, WebSocketDisconnect
 from core.logger import logger
 from core.service_manager import service_manager
+import time
 
 class WebSocketManager:
     async def handle_websocket(self, websocket: WebSocket):
@@ -20,12 +22,18 @@ class WebSocketManager:
                         await websocket.send_json({"type": "pong"})
                     elif data.get('type') == 'message':
                         print(message)
+                        start_time = time.time()
                         # 添加错误处理
                         try:
-                            responses = await service_manager.ai_service.process_message(data.get('content', ''))
-                            
+                            if os.environ.get("USE_STREAM", "False").lower() == "true":
+                                responses = await service_manager.ai_service.process_message_stream_compat(data.get('content', ''))
+                            else:
+                                responses = await service_manager.ai_service.process_message(data.get('content', ''))
+                                
                             for response in responses:
                                 await websocket.send_json(response)
+                            stop_time = time.time()
+                            logger.debug(f"此次对话生成耗时 {stop_time - start_time} 秒。")
 
                         except Exception as e:
                             logger.error(f"处理消息时发生异常: {e}")
@@ -46,13 +54,22 @@ class WebSocketManager:
                             except:
                                 logger.error("无法发送错误响应")      
         except WebSocketDisconnect:
-            print("客户端断开连接")
+            logger.info("客户端断开连接")
+        except ConnectionResetError:
+            logger.info("客户端强制关闭连接")
+        except socket.error as e:
+            if e.errno == 10054:
+                logger.info("远程主机强迫关闭了一个现有的连接")
+            else:
+                logger.error(f"Socket错误: {e}")
         except Exception as e:
             logger.error(f"WebSocket连接错误: {e}")
             try:
                 await websocket.close(code=1011, reason=f"内部错误: {str(e)}")
             except:
                 pass
+        finally:
+            logger.info("WebSocket连接已关闭")
 
 ws_manager = WebSocketManager()
 

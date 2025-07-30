@@ -2,6 +2,10 @@
 
 import os
 import sys
+from utils.function import Function
+
+function = Function()
+env_config = function.load_env_file(init=True)
 
 try:
     from core.logger import logger, TermColors
