@@ -12,9 +12,15 @@ class LLMManager:
         :param provider_config: 可选，提供者配置字典。如果为None，则从环境变量加载
         """
         if not llm_job or llm_job == "main":
-            self.llm_provider_type = os.environ.get("LLM_PROVIDER", "webllm").lower()
+            self.llm_provider_type = os.environ.get("LLM_PROVIDER", "webllm")
+            # 确保provider_type存在
+            provider_type = self.llm_provider_type.lower()
+            logger.info(f"初始化LLM {provider_type} 提供商中...")
         elif llm_job == "translator":
-            self.llm_provider_type = os.environ.get("TRANSLATE_LLM_PROVIDER", "webllm").lower()
+            self.llm_provider_type = os.environ.get("TRANSLATE_LLM_PROVIDER", "qwen-translate")
+            # 确保provider_type存在
+            provider_type = self.llm_provider_type.lower()
+            logger.info(f"初始化翻译模型 {provider_type} 提供商中...")
         
         self.provider = self._initialize_provider()
     
@@ -27,8 +33,6 @@ class LLMManager:
         """
         # 确保provider_type存在
         provider_type = self.llm_provider_type.lower()
-        
-        logger.info(f"初始化大模型 {provider_type} 提供商中...")
         return LLMProviderFactory.create_provider(provider_type)
     
     def process_message(self, messages: List[Dict]):
