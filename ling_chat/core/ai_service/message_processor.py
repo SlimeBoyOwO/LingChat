@@ -104,7 +104,7 @@ class MessageProcessor:
             formatted_time = current_time.strftime("%Y/%m/%d %H:%M")
             sys_time_part = f"{formatted_time} "
         
-        if "看桌面" in user_message or "看看我的桌面" in user_message:
+        if "看桌面" in user_message or "看看我的桌面" in user_message or "看看桌面" in user_message or "看我桌面" in user_message or "看看我桌面" in user_message or "看我的桌面" in user_message or "看下我桌面" in user_message or "看下桌面" in user_message or "看下我的桌面" in user_message:
             analyze_prompt = "\"" + user_message + "\"" + "以上是用户发的消息，请切合用户实际获取信息的需要，获取桌面画面中的重点内容，用200字描述主体部分即可。"
             analyze_info = self.desktop_analyzer.analyze_desktop(analyze_prompt)
             sys_desktop_part = f"桌面信息: {analyze_info}"

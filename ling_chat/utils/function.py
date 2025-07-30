@@ -254,3 +254,69 @@ class Function:
         except Exception as e:
             print(f"解析聊天记录时发生错误: {str(e)}")
             return None, None
+    
+    def load_env_file(self, env_path: str = ".env", init: bool = False) -> Dict[str, str]:
+        """
+        读取 .env 文件中的所有环境变量并导出到当前环境中
+    
+        Args:
+            env_path (str): .env 文件路径，默认为 ".env"
+        
+        Returns:
+            Dict[str, str]: 解析出的环境变量字典
+        """
+        env_vars = {}
+        if init == True:
+            if not os.path.exists(env_path):
+                # 尝试从.env.example复制
+                example_path = env_path + ".example"
+                if os.path.exists(example_path):
+                    import shutil
+                    shutil.copy2(example_path, env_path)
+                    print(f"从 {example_path} 复制生成 {env_path}")
+                else:
+                    print(f"警告: 找不到环境变量文件 {env_path} 和 {example_path}")
+                    return env_vars
+        
+        with open(env_path, 'r', encoding='utf-8') as file:
+            for line in file:
+                # 去除首尾空白字符
+                line = line.strip()
+                
+                # 跳过空行和注释行
+                if not line or line.startswith('#'):
+                    continue
+                
+                # 跳过标记行（如 BEGIN/END）
+                if 'BEGIN' in line or 'END' in line:
+                    if line.startswith('#'):
+                        continue
+                    
+                # 分割键值对
+                if '=' in line:
+                    key, value = line.split('=', 1)
+                    key = key.strip()
+                    value = value.strip()
+                    
+                    # 去除值两端的引号
+                    if value.startswith('"') and value.endswith('"'):
+                        value = value[1:-1]
+                    elif value.startswith("'") and value.endswith("'"):
+                        value = value[1:-1]
+                    
+                    # 去除值后面可能存在的注释
+                    if '#' in value:
+                        value = value.split('#', 1)[0].rstrip()
+                    
+                    # 再次去除可能存在的引号（处理注释后的情况）
+                    value = value.strip()
+                    if value.startswith('"') and value.endswith('"'):
+                        value = value[1:-1]
+                    elif value.startswith("'") and value.endswith("'"):
+                        value = value[1:-1]
+                    
+                    # 设置环境变量
+                    os.environ[key] = value
+                    env_vars[key] = value
+        
+        return env_vars
