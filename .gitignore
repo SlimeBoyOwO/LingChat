@@ -2,30 +2,36 @@
 .DS_Store
 Thumbs.db
 
-# Ignore IDE files
-.vscode/
-.idea/
-python-embed/
-
-# Ignore cache files
-__pycache__
-
-# Ignore local env
+# .gitignore 文件内容
+# 虚拟环境
 .venv/
 venv/
 .env
 .env.docker
-# Ignore third_party
-third_party/vits-simple-api-*
 
 # Ignore build files
 node_modules/
-frontend/node_modules/
 
-# Ignore model files
-*.safetensors
+# 构建产物
+dist/
+site/
+build/
+data/*
+!data/.gitkeep
+*.egg-info/
+.tox/
+.coverage
+coverage.*
+htmlcov
 
-# Ignore logs
+# 缓存和IDE文件
+__pycache__/
+*.py[cod]
+.DS_Store
+.idea/
+.vscode/
+
+# 日志文件和临时文件
 *.log
 
 backend/data/logs
