@@ -2,7 +2,7 @@ import os
 from openai import OpenAI
 from .base import BaseLLMProvider
 from typing import Dict, List, AsyncGenerator
-from core.logger import logger
+from ling_chat.core.logger import logger
 
 class QwenTranslateProvider(BaseLLMProvider):
     def __init__(self):
