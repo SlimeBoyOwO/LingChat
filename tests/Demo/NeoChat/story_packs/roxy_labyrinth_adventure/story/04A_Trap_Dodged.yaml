@@ -1,0 +1,15 @@
+SceneConfig:
+  id: 04A_Trap_Dodged
+  name: 躲开陷阱
+Events:
+- 'Type: Narration | Mode: Prompt': '你是一个游戏旁白。玩家踩到了陷阱，他的下意识反应是："{player_last_action}"。
+
+    请基于这个反应，描述他如何成功躲开了陷阱（比如从墙壁射出的毒箭）。
+
+    **要求：描述简短，一两句话。**'
+- 'Type: Dialogue | Character: Roxy | Mode: Preset': “好险！反应很快嘛，{player_name}さん。”
+- 'Type: Action | Tool: Calculate | Variable: traps_disarmed':
+    Expression: '{traps_disarmed} + 1'
+EndCondition:
+  Type: Linear
+  NextUnitID: 01_Explore_Corridor
