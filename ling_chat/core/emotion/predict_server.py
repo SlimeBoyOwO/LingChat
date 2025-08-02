@@ -2,11 +2,11 @@ import os
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
-import dotenv
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from ling_chat.core.emotion.classifier import EmotionClassifier
+from ling_chat.utils.function import Function
 
 
 classifier = None  # 初始化分类器
@@ -64,7 +64,7 @@ async def predict_emotion(request: PredictionRequest):
 
 
 if __name__ == "__main__":
-    dotenv.load_dotenv()
+    Function.load_env()
     host = os.environ.get("EMOTION_BIND_ADDR", "0.0.0.0")
     port = os.environ.get("EMOTION_PORT", 8000)
 

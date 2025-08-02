@@ -1,9 +1,9 @@
 from mcp.server.fastmcp import FastMCP
-from dotenv import load_dotenv
+from ling_chat.utils.function import Function
 from memory_client import get_memory_client
 import logging
 
-load_dotenv()
+Function.load_env()
 
 mcp = FastMCP("graph-rag-memory",version="0.1.0")
 

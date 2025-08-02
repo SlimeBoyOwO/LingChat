@@ -7,18 +7,21 @@ import uvicorn
 import webview
 import py7zr
 from pathlib import Path
-from dotenv import load_dotenv
 from fastapi import FastAPI, Request
+
+from ling_chat.utils.function import Function
+from ling_chat.utils.runtime_path import static_path, user_data_path, third_party_path
+
+if os.path.exists(".env"):
+    Function.load_env()
+else:
+    Function.load_env(".env.example")
+    Function.load_env(user_data_path / ".env" , init=True) # 加载用户数据目录下的环境变量
 
 from ling_chat.api.routes_manager import RoutesManager
 from ling_chat.core.logger import logger, TermColors
 from ling_chat.database import init_db
 from ling_chat.database.character_model import CharacterModel
-from ling_chat.utils.runtime_path import static_path, user_data_path, third_party_path
-
-load_dotenv(".env.example")
-load_dotenv()
-load_dotenv(user_data_path / ".env")  # 加载用户数据目录下的环境变量
 
 app = FastAPI()
 
@@ -179,3 +182,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
