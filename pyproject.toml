@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ling-chat"
-version = "0.1.0"
+version = "0.3.0"
 description = ""
 authors = ["0x00-pl <0x00.pl@gmail.com>"]
 readme = "README.md"
@@ -31,7 +31,6 @@ mcp = "^1.9.4"
 fastmcp = "^2.9.0"
 mss = "^10.0.0"
 google-generativeai = "^0.8.5"
-python-dotenv = "^1.1.1"
 py7zr = "^1.0.0"
 poetry-core = "^2.1.3"
 torch = {version = "^2.5.1", source = "torchcpu"}
