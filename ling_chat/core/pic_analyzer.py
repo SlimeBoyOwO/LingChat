@@ -4,12 +4,12 @@ import base64
 from io import BytesIO
 from datetime import datetime
 # from PIL import ImageGrab
-from dotenv import load_dotenv
+from ling_chat.utils.function import Function
 from ling_chat.core.logger import logger
 import requests
 import json
 
-load_dotenv()
+Function.load_env()
 
 class DesktopAnalyzer:
     def __init__(self, model="Pro/Qwen/Qwen2.5-VL-7B-Instruct"):
