@@ -75,7 +75,7 @@ def run_app():
     try:
         print("正在启动HTTP服务器...")
         config = uvicorn.Config(app, host=os.getenv('BACKEND_BIND_ADDR', '0.0.0.0'),
-                                port=int(os.getenv('BACKEND_PORT', '8765')), log_level="info")
+                                port=int(os.getenv('BACKEND_PORT', '8765')), log_level=os.getenv("LOG_LEVE","info").lower())
         global app_server
         app_server = uvicorn.Server(config)
         app_server.run()
