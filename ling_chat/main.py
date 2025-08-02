@@ -2,6 +2,8 @@ import os
 import threading
 import subprocess
 import zipfile
+import signal
+import sys
 
 import uvicorn
 import webview
@@ -73,7 +75,7 @@ app_server: uvicorn.Server
 
 def run_app():
     try:
-        print("正在启动HTTP服务器...")
+        logger.info("正在启动HTTP服务器...")
         config = uvicorn.Config(app, host=os.getenv('BACKEND_BIND_ADDR', '0.0.0.0'),
                                 port=int(os.getenv('BACKEND_PORT', '8765')), log_level=os.getenv("LOG_LEVE","info").lower())
         global app_server
@@ -140,11 +142,12 @@ def run_vits_process(vits_ready_event: threading.Event, status_ok: list[bool]):
             bufsize=1,  # 行缓冲
             text=True  # 文本模式
         )
-        for line in vits_process.stdout:
-            logger.info(f'[vits]: {line.strip()}')
-            if "* Running on http:" in line:
-                status_ok[0] = True
-                vits_ready_event.set()
+        if vits_process.stdout:
+            for line in vits_process.stdout:
+                logger.info(f'[vits]: {line.strip()}')
+                if "* Running on http:" in line:
+                    status_ok[0] = True
+                    vits_ready_event.set()
     except Exception as e:
         logger.error(f"启动VITS语音合成器失败: {e}")
         status_ok[0] = False
@@ -152,15 +155,30 @@ def run_vits_process(vits_ready_event: threading.Event, status_ok: list[bool]):
 
 
 def start_webview():
-    webview.create_window(
-        "Ling Chat", url=f"http://127.0.0.1:{os.getenv('BACKEND_PORT', '8765')}/",
-        width=1024, height=768,
-        resizable=True, fullscreen=False
-    )
-    webview.start(http_server=True, icon=str(static_path / "game_data/resources/lingchat.ico"))
+    try:
+        webview.create_window(
+            "Ling Chat", url=f"http://127.0.0.1:{os.getenv('BACKEND_PORT', '8765')}/",
+            width=1024, height=600,
+            resizable=True, fullscreen=False
+        )
+        webview.start(http_server=True, icon=str(static_path / "game_data/resources/lingchat.ico"))
+    except KeyboardInterrupt:
+        logger.info("WebView被中断")
 
+should_exit = False
+def signal_handler(signum, frame):
+    """处理中断"""
+    global should_exit
+    logger.info("接收到中断信号，正在关闭程序...")
+    should_exit = True
+    if 'app_server' in globals():
+        app_server.should_exit = True
+    sys.exit(0)
 
 def main():
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
     print_logo()
     vits_ready_event = threading.Event()
     status_ok = [False]  # 用于检查VITS是否成功启动
@@ -174,12 +192,27 @@ def main():
     app_thread = threading.Thread(target=run_app, daemon=True)
     app_thread.start()  # 启动 Uvicorn 服务器线程
 
-    start_webview()
+    # 检查环境变量决定是否启动前端界面
+    if os.getenv('OPEN_FRONTEND_APP', 'true').lower() == "true":
+        try:
+            start_webview()
+        except KeyboardInterrupt:
+            logger.info("用户关闭程序")
+    else:
+        logger.info("已根据环境变量禁用前端界面")
+        # 让主线程等待并保持后端服务运行
+        try:
+            while not should_exit:
+                app_thread.join(timeout=1)
+        except KeyboardInterrupt:
+            logger.info("正在关闭服务...")
+            signal_handler(signal.SIGINT, None)
 
-    app_server.should_exit = True  # 停止 Uvicorn 服务器
-    app_thread.join()  # 等待线程结束
+    # 确保服务器关闭
+    if 'app_server' in globals():
+        app_server.should_exit = True
+    app_thread.join(timeout=5)
 
 
 if __name__ == "__main__":
     main()
-
