@@ -2,8 +2,6 @@ from abc import ABC
 from typing import Dict, Optional, Union
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-import httpx
-
 class BaseLlmConfig(ABC):
     def __init__(
         self,

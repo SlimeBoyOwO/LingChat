@@ -3,12 +3,12 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
 
-from .llms import BaseLlmConfig
+from ling_chat.core.memory_rag.config.llms import BaseLlmConfig
 
-from .embedder_config import EmbedderConfig
-from .vector_config import VectorStoreConfig
-from .llms import LlmConfig
-from .graph_config import GraphStoreConfig
+from ling_chat.core.memory_rag.config.embedder_config import EmbedderConfig
+from ling_chat.core.memory_rag.config.vector_config import VectorStoreConfig
+from ling_chat.core.memory_rag.config.llms import LlmConfig
+from ling_chat.core.memory_rag.config.graph_config import GraphStoreConfig
 
 class MemoryConfig(BaseModel):
     vector_store: VectorStoreConfig = Field(

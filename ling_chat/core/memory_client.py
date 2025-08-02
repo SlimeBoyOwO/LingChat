@@ -5,7 +5,7 @@ import os
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from ling_chat.core.memory_rag.graph import MemoryGraph, get_default_graph_config
+from ling_chat.core.memory_rag.graph.graph_store import MemoryGraph, get_default_graph_config
 from ling_chat.core.memory_rag.vector import MemoryVector, get_default_vector_config
 
 _memory_client = None

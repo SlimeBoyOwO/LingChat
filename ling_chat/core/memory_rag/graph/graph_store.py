@@ -4,7 +4,7 @@ from langchain_community.graphs import Neo4jGraph
 import logging
 
 from ling_chat.core.memory_rag.config.base import MemoryConfig
-from ling_chat.core.memory_rag.factory import EmbedderFactory, LlmFactory, GraphStoreFactory
+from ling_chat.core.memory_rag.factory.factory import EmbedderFactory, LlmFactory, GraphStoreFactory
 
 logger = logging.getLogger(__name__)
 

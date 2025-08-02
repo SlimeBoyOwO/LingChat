@@ -5,7 +5,7 @@ import logging
 
 from ling_chat.core.memory_rag.utils import *
 from ling_chat.core.memory_rag.config.base import MemoryConfig
-from ling_chat.core.memory_rag.factory import EmbedderFactory, LlmFactory, VectorStoreFactory
+from ling_chat.core.memory_rag.factory.factory import EmbedderFactory, LlmFactory, VectorStoreFactory
 
 logger = logging.getLogger(__name__)
 
