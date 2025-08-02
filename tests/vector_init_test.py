@@ -1,5 +1,5 @@
 import sys
-from dotenv import load_dotenv
+from ling_chat.utils.function import Function
 import os
 
 # 添加项目根目录到 Python 路径
@@ -34,6 +34,6 @@ def test_memory_vector_initialization():
     print("MemoryVector initialization test passed.")
 
 if __name__ == "__main__":
-    load_dotenv()
+    Function.load_env()
     test_memory_vector_initialization()
     print("All tests passed.")

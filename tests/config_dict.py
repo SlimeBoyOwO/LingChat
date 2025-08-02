@@ -1,5 +1,5 @@
 import sys
-from dotenv import load_dotenv
+from ling_chat.utils.function import Function
 import os
 
 # 添加项目根目录到 Python 路径
@@ -29,5 +29,5 @@ def main():
 
 
 if __name__ == "__main__":
-    load_dotenv()
+    Function.load_env()
     main()
