@@ -3,7 +3,6 @@ import os
 from typing import List, Dict
 from ling_chat.core.logger import logger
 from ling_chat.core.llm_providers.manager import LLMManager
-from ling_chat.core.ai_service.voice_maker import VoiceMaker
 
 
 class Translator:
@@ -12,7 +11,7 @@ class Translator:
         self.translator_llm: 'LLMManager' = LLMManager(llm_job="translator")
         self.messages = [{"role": "system",
         "content": "你是一个二次元角色中文台词翻译师，任务是翻译二次元台词对话，将中文翻译成日语，允许意译，保持流畅自然生动。你的翻译格式和原文完全一致，没有任何多余内容。"}]
-        self.voice_maker = VoiceMaker()
+        self.voice_maker = voice_maker
 
         self.enable_translate:bool = os.environ.get("ENABLE_TRANSLATE", "True").lower() == "true"
 
