@@ -4,7 +4,7 @@ from typing import Dict, List, Optional
 
 from openai import OpenAI
 
-from core.memory_rag.config.base import BaseLlmConfig
+from ling_chat.core.memory_rag.config.base import BaseLlmConfig
 
 
 class DeepSeekLLM():

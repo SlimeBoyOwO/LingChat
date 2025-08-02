@@ -12,10 +12,10 @@ try:
 except ImportError:
     raise ImportError("rank_bm25 is not installed. Please install it using pip install rank-bm25")
 
-from core.memory_rag.utils import format_entities
-from core.memory_rag.graph.tools import *
+from ling_chat.core.memory_rag.utils import format_entities
+from ling_chat.core.memory_rag.graph.tools import *
 
-from core.memory_rag.config.base import BaseLlmConfig
+from ling_chat.core.memory_rag.config.base import BaseLlmConfig
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ def load_class(class_type):
 
 class LlmFactory:
     provider_to_class = {
-        "deepseek": "core.memory_rag.llms.deepseek.DeepSeekLLM",
+        "deepseek": "ling_chat.core.memory_rag.llms.deepseek.DeepSeekLLM",
         # "ollama": "mem0.llms.ollama.OllamaLLM",
         # "openai": "mem0.llms.openai.OpenAILLM",
         # "groq": "mem0.llms.groq.GroqLLM",
@@ -56,7 +56,7 @@ class LlmFactory:
 
 class EmbedderFactory:
     provider_to_class = {
-        "qwen": "core.memory_rag.embeddings.qwen.QwenEmbedding",
+        "qwen": "ling_chat.core.memory_rag.embeddings.qwen.QwenEmbedding",
         # "openai": "mem0.embeddings.openai.OpenAIEmbedding",
         # "ollama": "mem0.embeddings.ollama.OllamaEmbedding",
         # "huggingface": "mem0.embeddings.huggingface.HuggingFaceEmbedding",
@@ -89,7 +89,7 @@ class EmbedderFactory:
         
 class VectorStoreFactory:
     provider_to_class = {
-        "chroma": "core.memory_rag.config.vector_config.ChromaDB",
+        "chroma": "ling_chat.core.memory_rag.config.vector_config.ChromaDB",
         # "qdrant": "mem0.vector_stores.qdrant.Qdrant",
         # "pgvector": "mem0.vector_stores.pgvector.PGVector",
         # "milvus": "mem0.vector_stores.milvus.MilvusDB",
