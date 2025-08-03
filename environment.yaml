@@ -8,7 +8,6 @@ dependencies:
   - pip
   - cpuonly
   - pytorch > =2.5.0
-  - pyqt > 6.0
   - pyperclip
   - openai>=1.97.0
   - libtorch>=2.5.0=cpu_*
@@ -22,15 +21,7 @@ dependencies:
   - uvicorn>=0.34.0
   - mss>=9.0.0
   - google-generativeai 
-  - langchain  >=0.3.25
-  - langchain-community >= 0.3.25
-  - langchain-core >= 0.3.65
   - rank-bm25 >= 0.2.2
   - mcp >= 1.10.0
   - fastmcp >= 2.9.0
-  - pip:
-    - mem0ai >= 0.1.108
-    - langchain-neo4j >= 0.4.0
-    - -i https://pypi.tuna.tsinghua.edu.cn/simple
-
 
