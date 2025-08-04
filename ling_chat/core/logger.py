@@ -4,7 +4,6 @@ import sys
 import time
 import threading
 from datetime import datetime
-from dotenv import load_dotenv
 import os
 import re
 from typing import Optional, Dict, List, Any, Callable
@@ -77,8 +76,6 @@ class Logger:
         """
         if self._initialized:
             return
-
-        # load_dotenv()
 
         self.app_name = app_name
         self.log_level = self._get_log_level(log_level)
