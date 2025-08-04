@@ -82,7 +82,7 @@ class RAGManager:
 
         # 如果未缓存，则创建新的实例
         try:
-            from core.RAG import RAGSystem
+            from ling_chat.core.RAG import RAGSystem
             logger.info(f"正在为新角色 (ID: {character_id}) 初始化RAG记忆库...")
             
             # 记录RAG初始化的详细配置
