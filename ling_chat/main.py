@@ -1,18 +1,14 @@
 import os
 import threading
-import subprocess
-import zipfile
 import signal
 import sys
 
 import uvicorn
 import webview
-import py7zr
-from pathlib import Path
 from fastapi import FastAPI, Request
 
 from ling_chat.utils.function import Function
-from ling_chat.utils.runtime_path import static_path, user_data_path, third_party_path
+from ling_chat.utils.runtime_path import static_path, user_data_path
 
 if os.path.exists(".env"):
     Function.load_env()
@@ -24,6 +20,7 @@ from ling_chat.api.routes_manager import RoutesManager
 from ling_chat.core.logger import logger, TermColors
 from ling_chat.database import init_db
 from ling_chat.database.character_model import CharacterModel
+from ling_chat.utils.voice_check import VoiceCheck
 
 app = FastAPI()
 
@@ -72,7 +69,6 @@ def print_logo():
 
 app_server: uvicorn.Server
 
-
 def run_app():
     try:
         logger.info("正在启动HTTP服务器...")
@@ -83,76 +79,6 @@ def run_app():
         app_server.run()
     except Exception as e:
         logger.error(f"服务器启动错误: {e}")
-
-
-def extract_archive(archive_path: Path, extract_to: Path):
-    """
-    解压压缩文件到指定目录，支持7z和zip格式
-
-    :param archive_path: 压缩文件路径(7z或zip)
-    :param extract_to: 解压目标目录
-    :raises ValueError: 当文件格式不支持时
-    """
-    print(f"正在解压 {archive_path} 到 {extract_to}...")
-
-    # 确保目标目录存在
-    extract_to.mkdir(parents=True, exist_ok=True)
-
-    # 根据后缀选择解压方式
-    suffix = archive_path.suffix.lower()
-
-    if suffix == '.7z':
-        with py7zr.SevenZipFile(archive_path, mode='r') as z:
-            z.extractall(path=extract_to)
-    elif suffix == '.zip':
-        with zipfile.ZipFile(archive_path, 'r') as z:
-            z.extractall(path=extract_to)
-    else:
-        raise ValueError(f"不支持的压缩格式: {suffix}. 仅支持 .7z 和 .zip")
-
-    print(f"成功解压 {archive_path} 到 {extract_to}")
-
-def prepare_vits_directory(vits_path: Path):
-    archive_path = vits_path.parent
-    if not vits_path.exists():
-        vits_archive = archive_path / "vits-simple-api-windows-cpu-v0.6.16.7z"
-        assert vits_archive.exists(), f"VITS语音合成器压缩包未找到，请手动下载到{vits_archive}。"
-        extract_archive(vits_archive, vits_path)
-
-    assert vits_path.exists(), "VITS语音合成器目录未找到，请检查解压是否成功。"
-
-    vits_model_path = vits_path / "data/models/YuzuSoft_Vits"
-    if not vits_model_path.exists():
-        vits_model_archive = archive_path / "YuzuSoft_Vits.zip"
-        assert vits_model_archive.exists(), f"VITS模型压缩包未找到，请手动下载到{vits_model_archive}。"
-        extract_archive(vits_model_archive, vits_model_path)
-
-    assert vits_model_path.exists(), "VITS模型目录未找到，请检查解压是否成功。"
-
-def run_vits_process(vits_ready_event: threading.Event, status_ok: list[bool]):
-    try:
-        vits_path = third_party_path / "vits-simple-api/vits-simple-api-windows-cpu-v0.6.16"
-        prepare_vits_directory(vits_path)
-
-        vits_process = subprocess.Popen(
-            [vits_path / "py310/python.exe", "app.py"],
-            cwd=vits_path,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            bufsize=1,  # 行缓冲
-            text=True  # 文本模式
-        )
-        if vits_process.stdout:
-            for line in vits_process.stdout:
-                logger.info(f'[vits]: {line.strip()}')
-                if "* Running on http:" in line:
-                    status_ok[0] = True
-                    vits_ready_event.set()
-    except Exception as e:
-        logger.error(f"启动VITS语音合成器失败: {e}")
-        status_ok[0] = False
-        vits_ready_event.set()
-
 
 def start_webview():
     try:
@@ -184,17 +110,14 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
     
     print_logo()
-    vits_ready_event = threading.Event()
-    status_ok = [False]  # 用于检查VITS是否成功启动
-    vits_thread = threading.Thread(target=run_vits_process, args=(vits_ready_event, status_ok), daemon=True)
-    vits_thread.start()  # 启动 vits
-    if not vits_ready_event.wait(timeout=120) and not status_ok[0]:
-        logger.error("VITS语音合成器未能在30秒内启动，请检查配置或手动启动。")
-    else:
-        logger.info("VITS语音合成器已成功启动。")
 
     app_thread = threading.Thread(target=run_app, daemon=True)
     app_thread.start()  # 启动 Uvicorn 服务器线程
+
+    if os.getenv('VOICE_CHECK', 'false').lower() == "true":
+        VoiceCheck.main()
+    else:
+        logger.info("已根据环境变量禁用语音检查")
 
     # 检查环境变量决定是否启动前端界面
     if os.getenv('OPEN_FRONTEND_APP', 'false').lower() == "true":
