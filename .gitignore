@@ -8,6 +8,7 @@ Thumbs.db
 venv/
 .env
 .env.docker
+python-embed/
 
 # Ignore build files
 node_modules/
