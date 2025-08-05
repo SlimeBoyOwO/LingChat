@@ -161,7 +161,11 @@ def start_webview():
             width=1024, height=600,
             resizable=True, fullscreen=False
         )
-        webview.start(http_server=True, icon=str(static_path / "game_data/resources/lingchat.ico"))
+        webview.start(
+            http_server=True,
+            icon=str(static_path / "game_data/resources/lingchat.ico"),
+            storage_path=str(user_data_path / "webview_storage_path"),
+        )
     except KeyboardInterrupt:
         logger.info("WebView被中断")
 
