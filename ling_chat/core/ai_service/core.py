@@ -15,6 +15,9 @@ from ling_chat.utils.function import Function
 
 import os
 
+from ling_chat.utils.runtime_path import temp_path
+
+
 class AIService:
     def __init__(self, settings: dict):
         self.memory = []
@@ -594,7 +597,7 @@ class AIService:
                 "japanese_text": "",
                 "predicted": "normal",
                 "confidence": 0.8,
-                "voice_file": os.path.join(self.voice_maker.vits_tts.temp_dir, f"part_1.{self.voice_maker.vits_tts.format}")
+                "voice_file": str(temp_path / f"audio/part_1.{self.voice_maker.vits_tts.format}")
             }]
         
         responses = self._create_responses(emotion_segments, user_message)
