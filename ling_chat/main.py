@@ -197,7 +197,7 @@ def main():
     app_thread.start()  # 启动 Uvicorn 服务器线程
 
     # 检查环境变量决定是否启动前端界面
-    if os.getenv('OPEN_FRONTEND_APP', 'true').lower() == "true":
+    if os.getenv('OPEN_FRONTEND_APP', 'false').lower() == "true":
         try:
             start_webview()
         except KeyboardInterrupt:
