@@ -75,3 +75,7 @@ models/
 # Ignore generated files
 *.build/
 *.dist/
+
+# 不必要的大文件
+*.safetensors
+*.onnx
