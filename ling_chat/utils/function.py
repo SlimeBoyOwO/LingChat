@@ -3,6 +3,9 @@ import os
 from datetime import datetime
 from typing import List, Dict
 from pathlib import Path
+from ling_chat.core.logger import logger
+import py7zr
+import zipfile
 
 class Function:
     # 该列表内被管理的字段,在值为空字符串时,会被解析为None
@@ -376,3 +379,35 @@ class Function:
         except Exception as e:
             print(f".env文件加载失败: {e}")
             return env_vars
+
+    @staticmethod
+    def extract_archive(archive_path: Path, extract_to: Path):
+        """
+        解压压缩文件到指定目录，支持7z和zip格式
+
+        :param archive_path: 压缩文件路径(7z或zip)
+        :param extract_to: 解压目标目录
+        :raises ValueError: 当文件格式不支持时
+        """
+        logger.info(f"正在解压 {archive_path} 到 {extract_to}...")
+
+        try:
+            # 确保目标目录存在
+            extract_to.mkdir(parents=True, exist_ok=True)
+
+            # 根据后缀选择解压方式
+            suffix = archive_path.suffix.lower()
+
+            if suffix == '.7z':
+                with py7zr.SevenZipFile(archive_path, mode='r') as z:
+                    z.extractall(path=extract_to)
+                logger.info(f"成功解压 {archive_path} 到 {extract_to}")
+            elif suffix == '.zip':
+                with zipfile.ZipFile(archive_path, 'r') as z:
+                    z.extractall(path=extract_to)
+                logger.info(f"成功解压 {archive_path} 到 {extract_to}")
+            else:
+                logger.warning(f"不支持的压缩格式: {suffix}. 仅支持 .7z 和 .zip")
+            
+        except Exception as e:
+            logger.warning(f"解压失败: {e}")

@@ -2,71 +2,85 @@
 
 ![official](https://github.com/user-attachments/assets/ffccbe79-87ed-4dbc-8e60-f400efbbab26)
 
-## Installation
-### Installation via pip
-you may want to install the package in a virtual environment to avoid conflicts with other packages. You can create a virtual environment using `venv` or `virtualenv`.
+## 安装
+
+### 通过 pip 安装
+
+您可能希望在虚拟环境中安装软件包以避免与其他软件包发生冲突。您可以使用 `venv` 创建虚拟环境。
+
 ```bash
 python -m venv .env
 ```
-then activate the virtual environment:
+
+然后激活虚拟环境：
+
 ```bash
-source .env/bin/activate  # On Linux or macOS
-.env\Scripts\activate  # On Windows
+source .env/bin/activate  # 在 Linux 或 macOS 上
+.env\Scripts\activate  # 在 Windows 上
 ```
-you can install the package using pip:
+
+使用 pip 安装LingChat：
+
 ```bash
 pip install .
 ```
 
-### Installation via poetry
-you can install the package using poetry:
+### 通过 poetry 安装
+
+您可以使用 poetry 安装软件包：
+
 ```bash
 poetry install
 ```
 
-## Usage
+## 使用方法
 
-### add your key
-create a file named `.env` in the root directory of the project and add your Chat API key to it:
+### 添加您的密钥
+
+在项目的根目录中创建一个名为 `.env` 的文件，并将的API 密钥添加到其中：
+
 ```text
-CHAT_API_KEY="sk-<here-is-your-key>"
+CHAT_API_KEY="api key的位置"
 ```
 
-### run the server
-run the following command to start the server:
+### 运行服务器
+
+运行以下命令启动服务器：
+
 ```bash
-# if you installed the package via pip
+# 如果您通过 pip 安装了软件包
 # python -m ling_chat
-# or: 
+# 或者:
 poetry run python -m ling_chat
 ```
 
-## Project Structure
-```
+## 项目结构
+
+```txt
 ling_chat
-├── ling_chat  # Main package directory
+├── ling_chat          # 主包目录
 │   ├── __init__.py
-│   ├── api  # API-related code
-│   ├── core  # Core functionality
-│   ├── database  # Database-related code
+│   ├── api            # API 相关代码
+│   ├── core           # 核心功能
+│   ├── database       # 数据库相关代码
 │   ├── static
-│   │   ├── frontend  # Frontend files
-│   │   └── game_data  # Game data files
-│   ├── third_party  # Third-party integrations
-│   │   ├── emotion_model_18emo  # Emotion model for 18 emotion
-│   │   └── vits-simple-api  # VITS Simple API for text-to-speech
-│   ├── utils  # Utility functions
+│   │   ├── frontend   # 前端文件
+│   │   └── game_data  # 游戏数据文件
+│   ├── third_party    # 第三方集成
+│   │   ├── emotion_model_18emo  # 18种情绪的情感模型
+│   │   └── vits-simple-api      # 用于文本转语音的 VITS Simple API
+│   ├── utils           # 工具函数
 │   ├── __init__.py
 │   ├── __main__.py
-│   └── main.py  # Main entry point
-├── data  # User Data files
-├── docs  # Documentation files
-├── tests  # Test files
-├── .env  # Environment variables file (user should create this)
-├── .env.example  # Example environment variables file
-├── .gitignore  # Git ignore file
-├── README.md  # Project README file
-└── pyproject.toml  # Poetry configuration file
+│   └── main.py         # 主入口点
+├── data                # 用户数据文件
+├── docs                # 文档文件（最新文档已迁移，此为旧版存档）
+├── tests               # 测试文件
+├── .env                # 环境变量文件 (用户应自己创建此文件)
+├── .env.example        # 环境变量示例文件
+├── .gitignore          # Git 忽略文件
+├── README.md           # 项目 README 文件
+└── pyproject.toml      # Poetry 配置文件
 ```
 
 # 更新计划
@@ -115,11 +129,11 @@ by [uwa](https://github.com/myh1011)
 
 ## 桌宠启动方式
 
-*当前无固定人员开发
+by [dada](https://github.com/kono-dada)
 
-添加轻量化的桌宠启动方式。
+提供轻量化的桌宠启动方式。
 
-详见Demo：[desktop_pet](https://github.com/SlimeBoyOwO/LingChat/tree/develop/Demo/desktop_pet)
+现已迁移至：[Ling-Pet项目](https://github.com/kono-dada/Ling-Pet)
 
 ## 多语言框架
 
@@ -135,14 +149,18 @@ by [shadow01a](https://github.com/shadow01a)
 
 探索安卓端的使用。
 
-详见Issues：[关于新增手机使用本项目的文档 · Issue #128 · SlimeBoyOwO/LingChat](https://github.com/SlimeBoyOwO/LingChat/issues/128)
-
 目前已经有了[可用的文档](https://lingchat.wiki/manual/deployment/android_deploy.html)
 
-## 文档完善
+## 文档
 
 by [foxcyber907](https://github.com/foxcyber907)
 
 拆分文档部分并独立更新。
 
 详见网站 [LingChat Wiki](https://lingchat.wiki/) 或者 [GitHub 仓库](https://github.com/foxcyber907/ling-docs)
+
+## 前端重构
+
+使用vue彻底重构前端。
+
+详见[frontend_vue](https://github.com/SlimeBoyOwO/LingChat/tree/develop/frontend_vue)
