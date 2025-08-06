@@ -1,14 +1,28 @@
-from fastapi import APIRouter, UploadFile, HTTPException
+from contextlib import asynccontextmanager
+
+from fastapi import APIRouter, UploadFile, HTTPException, FastAPI
 from fastapi.responses import JSONResponse, FileResponse
 from pathlib import Path
 from typing import List, Dict
 import shutil
-from ling_chat.utils.runtime_path import static_path
+from ling_chat.utils.runtime_path import static_path, user_data_path
 
-router = APIRouter(prefix="/api/v1/chat/back-music", tags=["Background Music"])
-
-MUSIC_DIR = static_path / "game_data/musics"
+TEMPLATE_MUSIC_DIR = static_path / "game_data/musics"
+MUSIC_DIR = user_data_path / "game_data/musics"
 ALLOWED_EXTENSIONS = {'.mp3', '.wav', '.flac', '.webm', '.weba', '.ogg', '.m4a', '.oga'}
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if not MUSIC_DIR.exists():
+        if TEMPLATE_MUSIC_DIR.exists():
+            shutil.copytree(TEMPLATE_MUSIC_DIR, MUSIC_DIR, dirs_exist_ok=True)
+        else:
+            MUSIC_DIR.mkdir(parents=True, exist_ok=True)
+    yield
+
+
+router = APIRouter(prefix="/api/v1/chat/back-music", tags=["Background Music"], lifespan=lifespan)
 
 
 @router.get("/music_file/{music_file}")
