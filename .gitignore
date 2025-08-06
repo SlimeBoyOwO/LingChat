@@ -8,6 +8,7 @@ Thumbs.db
 venv/
 .env
 .env.docker
+python-embed/
 
 # Ignore build files
 node_modules/
@@ -75,3 +76,7 @@ models/
 # Ignore generated files
 *.build/
 *.dist/
+
+# 不必要的大文件
+*.safetensors
+*.onnx
