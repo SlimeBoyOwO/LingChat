@@ -1,5 +1,5 @@
 <template>
-  <span class="icon-wrapper" :style="wrapperStyle" v-html="svg"></span>
+  <span class="icon-wrapper" :style="wrapperStyle" v-html="svg" @click="click"></span>
 </template>
 
 <script setup lang="ts">
@@ -45,6 +45,11 @@ const wrapperStyle = computed(() => ({
   width: `${props.size}px`,
   height: `${props.size}px`,
 }));
+
+const emit = defineEmits(["click"]);
+const click = () => {
+  emit("click");
+};
 </script>
 
 <style scoped>
