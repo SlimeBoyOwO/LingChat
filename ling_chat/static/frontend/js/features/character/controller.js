@@ -98,6 +98,12 @@ export class CharacterController {
       }
 
       const data = await response.json();
+      
+      // 重新渲染画面
+      const characters = await this.fetchCharacters();
+      this.renderCharacters(characters);
+      this.bindEvents();
+      
       alert("刷新成功");
       return data;
     } catch (error) {
