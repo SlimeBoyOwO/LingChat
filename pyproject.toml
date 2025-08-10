@@ -1,3 +1,11 @@
+[project]
+name = "ling-chat"
+version = "0.3.0"
+description = "" # 可选，从 [tool.poetry] 复制过来
+authors = [
+    { name = "0x00-pl", email = "0x00.pl@gmail.com" },
+]
+
 [tool.poetry]
 name = "ling-chat"
 version = "0.3.0"
