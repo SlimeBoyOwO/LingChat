@@ -1,6 +1,6 @@
 <template>
     <Transition name="loader-animation">
-        <div id="loader" v-if="props.loading" :class="{ 'bg-transparent': bgTransparent, 'no-blur': noBlur }">
+        <div id="loader" v-if="props.loading">
             <div class="ears-container">
                 <div class="ear ear-left"></div>
                 <div class="ear ear-right"></div>
@@ -13,9 +13,6 @@
     </Transition>
 </template>
 <script setup lang="ts">
-import { ref } from 'vue'
-const bgTransparent = ref(false);
-const noBlur = ref(false);
 const props = defineProps<{ loading: boolean, progress: number }>()
 </script>
 <style>
