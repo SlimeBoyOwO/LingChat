@@ -1,8 +1,12 @@
-import { ModelInfo } from "./ModelInfo.ts";
+import { API_URLS } from "../consts.ts";
+import { CharacterCard } from "../types/CharacterCard.ts";
+import { ModelInfo } from "../types/ModelInfo.ts";
 export interface Globals {
     model: ModelInfo;
 }
 export interface Settings {
+    current_card: CharacterCard; //当前正在使用的角色卡
+    characterCards: CharacterCard[]; //所有可用的角色卡
     // // API 与 模型 设置 END
     // // 对话功能设定 BEGIN // 配置RAG（检索增强生成）系统，让AI能“记忆”历史对话
     // USE_RAG: boolean; // 是否启用RAG系统 [type:bool]
@@ -53,4 +57,12 @@ export interface Settings {
     // USE_STREAM: boolean; // 是否使用LLM流式生成
     // // 实验性功能 END
     // // 开发者设置 END
+}
+
+export async function initSettings(): Promise<Settings> {
+    return <Settings>{};
+}
+
+export async function initGlobals(): Promise<Globals> {
+    return <Globals>{};
 }

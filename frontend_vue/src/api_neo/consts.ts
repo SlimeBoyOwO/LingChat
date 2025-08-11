@@ -1,7 +1,7 @@
 export const API_URLS = {
-    user_info: "/api/user/info",
-    character_card: "/api/character/card"
-};
+    USER_INFO: "/api/user_info",
+    CHARACTER_CARD: "/api/character_card"
+} as const;
 export const CHAT_LLM_PROVIDERS = ["webllm", "gemini", "ollama", "lmstudio"] as const;
 
 export const TRANSLATE_LLM_PROVIDERS = ["webllm", "gemini", "ollama", "lmstudio", "qwen-translate"] as const;
