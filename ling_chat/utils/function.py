@@ -3,7 +3,6 @@ import os
 from datetime import datetime
 from typing import List, Dict
 from pathlib import Path
-from ling_chat.core.logger import logger
 import py7zr
 import zipfile
 
@@ -389,6 +388,9 @@ class Function:
         :param extract_to: 解压目标目录
         :raises ValueError: 当文件格式不支持时
         """
+        # 避免logger那边的环境变量没拿到，延迟一下import
+        from ling_chat.core.logger import logger
+        
         logger.info(f"正在解压 {archive_path} 到 {extract_to}...")
 
         try:
