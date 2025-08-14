@@ -69,7 +69,7 @@ def install_vits(vits_path: Path, archive_path: Path = None, url: str = None):
     安装VITS语音合成器
     """
     if archive_path is None:
-        default_archive_path = vits_path.praent / "vits-simple-api-windows-cpu-v0.6.16.7z"
+        default_archive_path = vits_path.parent / "vits-simple-api-windows-cpu-v0.6.16.7z"
         if default_archive_path.exists():
             archive_path = default_archive_path
 
@@ -82,7 +82,7 @@ def install_vits_model(vits_path: Path, archive_path: Path = None, url: str = No
     vits_model_path = vits_path / "data/models/YuzuSoft_Vits"
 
     if archive_path is None:
-        default_archive_path = vits_path.praent / "YuzuSoft_Vits.zip"
+        default_archive_path = vits_path.parent / "YuzuSoft_Vits.zip"
         if default_archive_path.exists():
             archive_path = default_archive_path
 
@@ -121,7 +121,7 @@ def install_rag_model():
     download_embedding_model()
 
 
-if __name__ == "__main__":
+def main():
     # 示例：安装VITS语音合成器
     vits_path = Path("third_party/vits-simple-api/vits-simple-api-windows-cpu-v0.6.16")
     install_vits(vits_path)
@@ -139,3 +139,7 @@ if __name__ == "__main__":
 
     # 安装RAG模型
     install_rag_model()
+
+
+if __name__ == "__main__":
+    main()
