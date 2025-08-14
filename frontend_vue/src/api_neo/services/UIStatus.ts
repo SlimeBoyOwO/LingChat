@@ -2,18 +2,16 @@ export interface UIStatus {
     nav_stack: string[];
     isPartialPage: boolean;
     loading: boolean;
-    currentPage: () => string;
+    readonly currentPage: string;
 }
 
 export async function initUIStatus(): Promise<UIStatus> {
-    let result: UIStatus = {
-        nav_stack: ["mainMenu"],
+    return <UIStatus>{
+        nav_stack: [],
         isPartialPage: false,
         loading: true,
-        currentPage: undefined!
+        get currentPage() {
+            return this.nav_stack[this.nav_stack.length - 1];
+        }
     };
-    result.currentPage = () => {
-        return result.nav_stack[result.nav_stack.length - 1];
-    };
-    return result;
 }

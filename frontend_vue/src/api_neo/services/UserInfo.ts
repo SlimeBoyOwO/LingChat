@@ -1,5 +1,4 @@
-import axios from "axios";
-import { CharacterCard } from "../types/CharacterCard.ts";
+import axios from "axios"
 import { API_URLS } from "../consts.ts";
 export interface UserInfo {
     id: number;
@@ -38,11 +37,11 @@ export async function getUserInfo(user_info: UserInfo, username: string, encrypt
         });
 }
 
-export function passwordEncrypter(password: string) {
-    console.error("password encrypter is not implemented"); //! TODO
+export function passwordEncrypt(password: string) {
+    console.error("password encrypt is not implemented"); // TODO
     return password;
 }
 
-export function isLogined(user_info: UserInfo) {
+export function isLogon(user_info: UserInfo) {
     return user_info.id !== undefined && user_info.name !== undefined && user_info.auth_token !== undefined;
 }
