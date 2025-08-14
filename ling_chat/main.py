@@ -2,15 +2,10 @@ import os
 import signal
 import sys
 import time
-import threading
 from typing import Collection
 
 from ling_chat.utils.runtime_path import user_data_path, third_party_path
 from ling_chat.utils.function import Function
-from ling_chat.api.app_server import run_app_in_thread
-from ling_chat.core.webview import start_webview
-from ling_chat.utils.cli import print_logo
-from ling_chat.utils.cli_parser import get_parser
 
 if os.path.exists(".env"):
     Function.load_env()
@@ -22,6 +17,7 @@ else:
         print(f"警告：加载环境变量失败，将使用默认: {e}")
 
 from ling_chat.core.logger import logger
+from ling_chat.utils.cli_parser import get_parser
 from ling_chat.api.app_server import run_app_in_thread
 from ling_chat.core.webview import start_webview
 from ling_chat.utils.cli import print_logo
