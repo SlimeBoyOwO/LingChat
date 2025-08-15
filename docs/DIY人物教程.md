@@ -74,9 +74,11 @@ user_name = 旅人                # 设定玩家的显示名字
 user_subtitle = 列车の乘客       # 设定玩家的副标题
 thinking_message = 音理的心脏为你跳动中.... # 设定思考提示文字
 
-# 二选一部分，以下两行只要写一行进去，看你选择的vits引擎
+# 二选一部分，以下为可选项，看你选择的vits引擎
 speaker_id = 4                 # 选择simple vits api的音色ID（如果使用simple vits api就加上这个）
 model_name = neri              # 选择style bert vits2的模型名
+tts_type = bv2                 #选择使用的tts类型(bv2,sgv,sbv,sva),不填默认sbv
+language = ja                  #选择模型使用的语言，默认ja
 
 
 scale = 1.9                    # 设定人物显示大小
