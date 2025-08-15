@@ -1,7 +1,6 @@
 import aiohttp
 from .base_adapter import BaseVitsAdapter
 
-#对vits-simple-api适配
 class BV2VitsAdapter(BaseVitsAdapter):
     def __init__(self, api_url, speaker_id=0, audio_format="wav", lang="zh"):
         self.api_url = api_url
