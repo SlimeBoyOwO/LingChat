@@ -24,14 +24,8 @@ class VoiceMaker:
 
     def set_tts_type(self, tts_type: str) -> None:
         """设置TTS类型"""
-        if tts_type == "sva":
-            self.tts_type  = "sva"
-        elif tts_type == "sbv":
-            self.tts_type = "sbv"
-        elif tts_type == "gsv":
-            self.tts_type = "gsv"
-        elif tts_type == "bv2":
-            self.tts_type = "bv2"
+        if tts_type in ("bv2", "gsv", "sbv", "sva"):
+            self.tts_type = tts_type
         else:
             raise ValueError(f"未知的TTS类型: {tts_type}")
     

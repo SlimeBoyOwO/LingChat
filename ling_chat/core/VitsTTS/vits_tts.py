@@ -70,7 +70,7 @@ class VitsTTS:
         self.enable = True  # 初始化时启用
 
     def _select_adapter(self, params: dict):
-        """根据tts_type选择适配器(如果传入)"""
+        """根据tts_type选择适配器(如果传入),为空则自动选择"""
         if 'tts_type' in params and params["tts_type"] != "":
             logger.debug(f"根据参数选择TTS适配器: {params['tts_type']}")
             tts_type = params['tts_type']
@@ -93,7 +93,6 @@ class VitsTTS:
             else:
                 raise ValueError(f"未知的TTS类型: {tts_type}")
 
-        """根据参数选择适配器"""
         # 优先检测GPT-SoVITS
         if 'gpt_sovits' in params or self.gsv_adapter:
             return self.gsv_adapter
@@ -112,7 +111,7 @@ class VitsTTS:
 
         #适配Bert-Vits2
         if 'id' in params or ('speaker_id' in params and self.bv2_adapter):
-            if self.sva_adapter is None:
+            if self.bv2_adapter is None:
                 raise ValueError("Bert-Vits2 API适配器未初始化，但传入了id/speaker_id参数")
             return self.bv2_adapter
         
@@ -137,7 +136,7 @@ class VitsTTS:
             return None
 
         # 设置说话人/模型参数
-        if tts_type == "" or "sbv" or "sva":
+        if tts_type in ("", "sbv", "sva"):
             if speaker_id is not None:
                 params["speaker_id" if model_name else "id"] = str(speaker_id)
         if model_name is not None:
