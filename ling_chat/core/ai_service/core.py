@@ -43,8 +43,12 @@ class AIService:
             self.ai_prompt_example = settings.get("system_prompt_example","")
             self.ai_prompt = self.message_processor.sys_prompt_builder(self.ai_prompt, self.ai_prompt_example)
 
-            self.voice_maker.set_speark_id(int(settings.get("speaker_id", 4)))
-            self.voice_maker.set_model_name(settings.get("model_name", ""))
+            # 语音生成相关
+            if settings.get("sbv2api_model_name") != (None or ""):
+                self.voice_maker.set_model_name(settings.get("sbv2api_model_name", ""))
+            else:
+                self.voice_maker.set_model_name(settings.get("model_name", ""))
+                self.voice_maker.set_speark_id(int(settings.get("speaker_id", 4)))
 
             self.character_path = settings.get("resource_path")
             self.character_id = settings.get("character_id")
