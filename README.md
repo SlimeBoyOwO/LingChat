@@ -9,14 +9,14 @@
 您可能希望在虚拟环境中安装软件包以避免与其他软件包发生冲突。您可以使用 `venv` 创建虚拟环境。
 
 ```bash
-python -m venv .env
+python -m venv .venv
 ```
 
 然后激活虚拟环境：
 
 ```bash
-source .env/bin/activate  # 在 Linux 或 macOS 上
-.env\Scripts\activate  # 在 Windows 上
+source .venv/bin/activate  # 在 Linux 或 macOS 上
+.venv\Scripts\activate  # 在 Windows 上
 ```
 
 使用 pip 安装LingChat：
