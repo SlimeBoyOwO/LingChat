@@ -92,38 +92,11 @@ class VitsTTS:
                 return self.bv2_adapter
             else:
                 raise ValueError(f"未知的TTS类型: {tts_type}")
-
-        # 优先检测GPT-SoVITS
-        if 'gpt_sovits' in params or self.gsv_adapter:
-            return self.gsv_adapter
-
-        # 优先检查新API特有的参数
-        if 'model_name' in params or 'model_id' in params:
-            if self.sbv_adapter is None:
-                raise ValueError("新API适配器未初始化，但传入了model_name/model_id参数")
+        elif self.sbv_adapter is not None:
+            logger.warning("未指定tts_type,默认使用sbv")
             return self.sbv_adapter
-        
-        # 其次检查原始API特有参数
-        if 'id' in params or ('speaker_id' in params and self.sva_adapter):
-            if self.sva_adapter is None:
-                raise ValueError("原始API适配器未初始化，但传入了id/speaker_id参数")
-            return self.sva_adapter
-
-        #适配Bert-Vits2
-        if 'id' in params or ('speaker_id' in params and self.bv2_adapter):
-            if self.bv2_adapter is None:
-                raise ValueError("Bert-Vits2 API适配器未初始化，但传入了id/speaker_id参数")
-            return self.bv2_adapter
-        
-        # 默认返回新API适配器(如果存在)
-        if self.sbv_adapter:
-            return self.sbv_adapter
-        
-        # 最后尝试原始API适配器
-        if self.sva_adapter:
-            return self.sva_adapter
-        
-        raise ValueError("没有可用的API适配器")
+        else:
+            raise ValueError("没有可用的API适配器")
 
     async def generate_voice(self, text, file_name, speaker_id=None, model_name=None, tts_type="", **params):
         """生成语音文件"""
