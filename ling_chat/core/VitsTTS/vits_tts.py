@@ -114,8 +114,8 @@ class VitsTTS:
                 params["speaker_id" if model_name else "id"] = str(speaker_id)
         if model_name is not None:
             params["model_name"] = model_name
-        if tts_type != "":
-            params["tts_type"] = tts_type
+            
+        params["tts_type"] = tts_type
         if tts_type == "bv2":
             params["speaker_id"] = speaker_id
             self.bv2_adapter.speaker_id = speaker_id
