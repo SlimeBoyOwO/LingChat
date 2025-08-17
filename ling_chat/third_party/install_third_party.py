@@ -50,21 +50,21 @@ def extract_archive(archive_path: Path, extract_to: Path):
     print(f"成功解压 {archive_path} 到 {extract_to}")
 
 
-def install_from_archive_or_url(dst_path: Path, archive_path: Path = None, url: str = None):
+def install_from_archive_or_url(dst_path: Path, archive_path: Path | None = None, url: str = ""):
     if dst_path.exists():
         pass
-    elif archive_path.exists():
+    elif archive_path and archive_path.exists():
         print(f"使用现有的压缩包目录: {archive_path}")
         extract_archive(archive_path, dst_path)
     elif url is not None:
-        archive_path = archive_path or tempfile.mktemp()
+        archive_path = Path(archive_path) if archive_path else Path(tempfile.mktemp())
         print(f"从URL下载并解压到: {archive_path}")
         download_file(url, archive_path)
         print(f"使用压缩包目录: {archive_path}")
         extract_archive(archive_path, dst_path)
 
 
-def install_vits(vits_path: Path, archive_path: Path = None, url: str = None):
+def install_vits(vits_path: Path, archive_path: Path | None = None, url: str = ""):
     """
     安装VITS语音合成器
     """
@@ -78,7 +78,7 @@ def install_vits(vits_path: Path, archive_path: Path = None, url: str = None):
     install_from_archive_or_url(vits_path, archive_path, url)
 
 
-def install_vits_model(vits_path: Path, archive_path: Path = None, url: str = None):
+def install_vits_model(vits_path: Path, archive_path: Path | None = None, url: str = ""):
     vits_model_path = vits_path / "data/models/YuzuSoft_Vits"
 
     if archive_path is None:
@@ -90,7 +90,8 @@ def install_vits_model(vits_path: Path, archive_path: Path = None, url: str = No
 
     install_from_archive_or_url(vits_model_path, archive_path, url)
 
-def install_sbv2(sbv2_path: Path, archive_path: Path = None, url: str = None):
+
+def install_sbv2(sbv2_path: Path, archive_path: Path | None = None, url: str = ""):
     """
     安装SBV2语音合成器
     """
@@ -106,12 +107,12 @@ def install_sbv2(sbv2_path: Path, archive_path: Path = None, url: str = None):
     subprocess.run([install_bat_path], shell=True, check=True)
 
 
-def install_18emo(emo_path: Path, url: str = None):
+def install_18emo(emo_path: Path, url: str = ""):
     """
     安装18emo语音合成器
     """
 
-    url = url or "https://www.modelscope.cn/models/kxdw2580/LingChat-emotion-model-18emo/resolve/master/model.safetensors"
+    url = url or "https://www.modelscope.cn/models/lingchat-research-studio/LingChat-emotion-model-18emo/resolve/master/model.safetensors"
     download_file(url, emo_path / "model.safetensors")
 
 def install_rag_model():
