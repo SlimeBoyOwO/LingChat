@@ -10,9 +10,9 @@ class BV2VitsAdapter(BaseVitsAdapter):
 
     async def generate_voice(self, text: str, params: dict) -> bytes:
         payload = {
-            "id": self.speaker_id,
+            "id": params.get("speaker_id", self.speaker_id),
             "format": self.audio_format,
-            "lang": self.lang,
+            "lang": params.get("lang", self.lang),
             "length": params.get("length", 1.0), #语速
             "noise": params.get("noise", 0.33), # 采样噪声比例
             "noisew": params.get("noisew", 0.4), # SDP噪声
