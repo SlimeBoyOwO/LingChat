@@ -42,7 +42,7 @@ class VoiceMaker:
             logger.debug(seg)
             if self.lang == "ja":
                 if seg["japanese_text"]:
-                    output_file = self.vits_tts.generate_voice(seg["japanese_text"], seg["voice_file"], speaker_id=self.speaker_id, model_name=self.model_name, tts_type=self.tts_type)
+                    output_file = self.vits_tts.generate_voice(seg["japanese_text"], seg["voice_file"], speaker_id=self.speaker_id, model_name=self.model_name, tts_type=self.tts_type, lang="ja")
                     if output_file is not None:
                         tasks.append(output_file)
                     else:
@@ -50,7 +50,7 @@ class VoiceMaker:
                 elif seg["following_text"] and not seg.get("japanese_text"):
                     logger.warning(f"片段 {seg['index']} 没有日语文本，跳过语音生成")
             elif self.lang == "zh":
-                output_file = self.vits_tts.generate_voice(seg["following_text"], seg["voice_file"], speaker_id=self.speaker_id, model_name=self.model_name, tts_type=self.tts_type)
+                output_file = self.vits_tts.generate_voice(seg["following_text"], seg["voice_file"], speaker_id=self.speaker_id, model_name=self.model_name, tts_type=self.tts_type, lang="zh")
                 if output_file is not None:
                     tasks.append(output_file)
                 else:
