@@ -98,7 +98,7 @@ class VitsTTS:
         else:
             raise ValueError("没有可用的API适配器")
 
-    async def generate_voice(self, text, file_name, speaker_id=None, model_name=None, tts_type="", **params):
+    async def generate_voice(self, text, file_name, speaker_id=None, model_name=None, tts_type="", lang="ja", **params):
         """生成语音文件"""
         if not self.enable:
             logger.warning("TTS服务未启用，跳过语音生成")
@@ -112,13 +112,14 @@ class VitsTTS:
         if tts_type in ("", "sbv", "sva"):
             if speaker_id is not None:
                 params["speaker_id" if model_name else "id"] = str(speaker_id)
+        elif tts_type == "bv2":
+            params["speaker_id"] = speaker_id
         if model_name is not None:
             params["model_name"] = model_name
-            
+
         params["tts_type"] = tts_type
-        if tts_type == "bv2":
-            params["speaker_id"] = speaker_id
-            self.bv2_adapter.speaker_id = speaker_id
+        params["lang"] = params.get("lang", "ja")
+
         try:
             # 选择适配器
             adapter = self._select_adapter(params)
