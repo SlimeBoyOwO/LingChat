@@ -45,6 +45,8 @@ class AIService:
 
             self.voice_maker.set_speark_id(int(settings.get("speaker_id", 4)))
             self.voice_maker.set_model_name(settings.get("model_name", ""))
+            self.voice_maker.set_lang(settings.get("language", "ja"))
+            self.voice_maker.set_tts_type(settings.get("tts_type", "sbv"))
 
             self.character_path = settings.get("resource_path")
             self.character_id = settings.get("character_id")
