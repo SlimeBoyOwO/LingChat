@@ -73,7 +73,7 @@ class VitsTTS:
         ) if gpt_sovits_api_url else None
 
         self.audio_format = self.format
-        self.temp_dir = Path(os.environ.get("TEMP_VOICE_DIR", temp_path / "data/voice"))
+        self.temp_dir = Path(os.environ.get("TEMP_VOICE_DIR", temp_path / "voice"))
         self.temp_dir.mkdir(parents=True, exist_ok=True)
         self.enable = True  # 初始化时启用
 

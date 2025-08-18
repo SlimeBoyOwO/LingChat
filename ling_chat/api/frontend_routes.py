@@ -26,7 +26,7 @@ def get_static_files():
 
 
 def get_audio_files():
-    audio_path = Path(os.environ.get("TEMP_VOICE_DIR", temp_path / "audio"))
+    audio_path = Path(os.environ.get("TEMP_VOICE_DIR", temp_path / "voice"))
     audio_path.mkdir(exist_ok=True)
     return NoCacheStaticFiles(directory=audio_path, html=False)
 
