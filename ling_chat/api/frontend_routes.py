@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import os
+from pathlib import Path
 
 from ling_chat.utils.runtime_path import static_path, temp_path
 
@@ -25,7 +26,7 @@ def get_static_files():
 
 
 def get_audio_files():
-    audio_path = temp_path / "audio"
+    audio_path = Path(os.environ.get("TEMP_VOICE_DIR", temp_path / "audio"))
     audio_path.mkdir(exist_ok=True)
     return NoCacheStaticFiles(directory=audio_path, html=False)
 
@@ -41,8 +42,8 @@ def get_file_response(file_path: str) -> FileResponse:
 
 @router.get("/")
 async def index():
-    return get_file_response(frontend_path / "pages/index.html")
+    return get_file_response(str(frontend_path / "pages/index.html"))
 
 @router.get("/about")
 async def about():
-    return get_file_response(frontend_path / "pages/about.html")
+    return get_file_response(str(frontend_path / "pages/about.html"))
