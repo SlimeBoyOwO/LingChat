@@ -119,12 +119,17 @@ class MessageGenerator:
         emotion_segments:List[Dict] = self.message_processor.analyze_emotions(ai_response)
 
         start_time = time.perf_counter()
-        if emotion_segments[0].get("japanese_text") == "":
-            await self.translator.translate_ai_response(emotion_segments)
-        else:
+        if self.voice_maker.lang == "ja":
+            if emotion_segments[0].get("japanese_text") == "":
+                await self.translator.translate_ai_response(emotion_segments)
+            else:
+                await self.voice_maker.generate_voice_files(emotion_segments)
+            end_time = time.perf_counter()
+            logger.debug(f"日语合成时间: {end_time - start_time} 秒")
+        elif self.voice_maker.lang == "zh":
             await self.voice_maker.generate_voice_files(emotion_segments)
-        end_time = time.perf_counter()
-        logger.debug(f"日语合成时间: {end_time - start_time} 秒")
+            end_time = time.perf_counter()
+            logger.debug(f"中文合成时间: {end_time - start_time} 秒")
 
 
         if not emotion_segments:
