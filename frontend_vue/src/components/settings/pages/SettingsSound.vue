@@ -1,15 +1,15 @@
 <template>
   <MenuPage>
-    <MenuItem title="角色音量">
+    <MenuItem title="角色音量" size="small">
       <Slider @input="" @change="">弱/强</Slider>
     </MenuItem>
-    <MenuItem title="气泡音量">
+    <MenuItem title="气泡音量" size="small">
       <Slider @input="" @change="">弱/强</Slider>
     </MenuItem>
-    <MenuItem title="背景音量">
+    <MenuItem title="背景音量" size="small">
       <Slider @input="" @change="">弱/强</Slider>
     </MenuItem>
-    <MenuItem title="声音测试">
+    <MenuItem title="声音测试" size="small">
       <Button type="big" @click="">测试角色音量</Button>
       <Button type="big" @click="">测试气泡音量</Button>
     </MenuItem>

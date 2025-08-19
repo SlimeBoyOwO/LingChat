@@ -1,23 +1,28 @@
 <template>
-  <MainMenu />
+  <MainChat />
+  <Settings />
 </template>
 
 <script setup lang="ts">
-import { MainMenu } from "./components/views/";
+import MainChat from "./components/views/MainChat.vue";
+import Settings from "./components/settings/SettingsPanel.vue";
 </script>
 
 <style>
 /* 定义自定义字体 */
 @font-face {
-  font-family: 'Maoken Assorted Sans';
-  src: url('./assets/fonts/MaokenAssortedSans.ttf') format('truetype');
+  font-family: "Maoken Assorted Sans";
+  src: url("./assets/fonts/MaokenAssortedSans.ttf") format("truetype");
   font-weight: normal;
   font-style: normal;
   font-display: swap;
 }
 
 :root {
-  --accent-color: #79D9FF;
+  /*全局变量*/
+  --accent-color: #79d9ff;
+  --menu-max-width: 1100px;
+  --menu-max-width-half: 550px;
   /* 一个生动的天蓝色，可以根据你的品牌调整 */
 }
 
@@ -28,7 +33,8 @@ html {
   padding: 0;
   width: 100%;
   height: 100%;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
   overflow: hidden;
   background: transparent;
   /* 确保body背景透明，不遮挡我们的背景图 */

@@ -27,6 +27,7 @@ class WebSocketManager:
                         elif data.get('type') == 'message':
                             print(message)
                             start_time = time.time()
+                            
                             try:
                                 if os.environ.get("USE_STREAM", "False").lower() == "true":
                                     responses = await service_manager.ai_service.process_message_stream_compat(data.get('content', ''))
