@@ -121,7 +121,6 @@ const initIndicator = () => {
       break;
     case "text":
       activeButton = textBtn.value;
-      console.log("忽视");
       break;
     case "background":
       activeButton = backgroundBtn.value;
@@ -139,7 +138,6 @@ const initIndicator = () => {
 
   if (activeButton?.$el) {
     moveIndicator(activeButton.$el);
-    console.log("谢特");
   }
 };
 

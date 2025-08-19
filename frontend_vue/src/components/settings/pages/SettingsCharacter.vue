@@ -6,11 +6,11 @@
       </CharacterList>
     </MenuItem>
 
-    <MenuItem title="刷新人物列表">
+    <MenuItem title="刷新人物列表" size="small">
       <Button type="big" @click="refreshCharacters">点我刷新~</Button>
     </MenuItem>
 
-    <MenuItem title="创意工坊">
+    <MenuItem title="创意工坊" size="small">
       <Button type="big" @click="gotoWorkshop">进入创意工坊</Button>
     </MenuItem>
   </MenuPage>
