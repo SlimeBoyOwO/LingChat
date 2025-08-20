@@ -56,6 +56,8 @@ async def select_character(
 
         # 2. 切换AI服务角色
         character_settings = CharacterModel.get_character_settings_by_id(character_id=character_id)
+        if character_settings is None: return HTTPException(status_code=500, detail="角色不存在")
+
         character_settings["character_id"] = character_id
         service_manager.ai_service.import_settings(settings=character_settings)
         service_manager.ai_service.reset_memory()
