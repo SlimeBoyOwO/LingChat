@@ -8,8 +8,8 @@ import uuid
 from datetime import datetime
 
 import config
-from logger import log_debug, log_info, log_warning, log_error, log_info_color, TermColors
-from llm_interface import chat_with_deepseek
+from .logger import log_debug, log_info, log_warning, log_error, log_info_color, TermColors
+from core.llm_interface import chat_with_deepseek
 
 class GameEngine:
     def __init__(self):
@@ -90,7 +90,7 @@ class GameEngine:
         self.dialogue_history.append(log_entry)
         log_debug(f"添加新对话记录: {log_entry}")
 
-    def load_story_pack(self, story_pack_path, character_selections):
+    def load_story_pack(self, story_pack_path, character_selections, player_data=None):
         """开始一个新游戏"""
         try:
             # 1. 创建存档文件夹
@@ -116,6 +116,14 @@ class GameEngine:
             # 4. 初始化 gamestate.yaml
             with open(os.path.join(self.story_pack_path, 'save', 'gamestate.yaml'), 'r', encoding='utf-8') as f:
                 self.game_state = yaml.safe_load(f) or {}
+
+            # 核心修改: 如果有外部玩家数据，则覆盖 gamestate
+            if player_data:
+                log_debug(f"检测到外部玩家数据，正在更新 gamestate...")
+                self.game_state['player_name'] = player_data.get('player_name', self.game_state.get('player_name', '未知玩家'))
+                self.game_state['player_prompt'] = player_data.get('player_prompt', '')
+                log_debug(f"玩家姓名已设置为: {self.game_state['player_name']}")
+                log_debug(f"玩家设定已加载。")
 
             # 5. 初始化 游戏进度.yaml
             self.progress = {
@@ -315,42 +323,40 @@ class GameEngine:
                 # 构建LLM请求
                 messages = []
                 # 1. 添加角色设定
-                # --- 修复点：格式化角色prompt中的模板变量 ---
                 character_prompt = self._format_string(self.character_files[char_id]['prompt'])
                 messages.append({"role": "system", "content": character_prompt})
+                
                 # 2. 添加对话历史
                 for record in self.dialogue_history[-10:]: # 取最近10条
-                    # 从记录中获取纯文本内容
-                    content = record.get('content') or record.get('data', {}).get('content')
-                    if not content:
+                    content_text = record.get('content') or record.get('data', {}).get('content')
+                    if not content_text:
                         continue
 
                     if record['type'] == 'Dialogue':
                         hist_char_id = record.get('data', {}).get('character_id')
                         if hist_char_id:
-                            # 根据当前要生成对话的角色ID (char_id) 来决定历史记录中的角色是 'assistant' 还是 'user'
                             role = "assistant" if hist_char_id == char_id else "user"
-                            messages.append({"role": role, "content": content}) # 修正: 只发送纯文本内容
-                    
+                            messages.append({"role": role, "content": content_text})
                     elif record['type'] == 'Player':
-                        # 玩家的发言对任何AI角色来说都是 'user'
-                        messages.append({"role": "user", "content": content}) # 修正: 只发送纯文本内容
+                        messages.append({"role": "user", "content": content_text})
+                    elif record['type'] == 'Narration':
+                        messages.append({"role": "user", "content": f"（旁白：{content_text}）"})
 
-                # 3. 添加当前Prompt
-                messages.append({"role": "system", "content": f"这是你的内心独白或行为指引，请根据它生成一句对话。不要把内心独白本身说出来。\n内心独白: {content}"})
+                # --- 核心修复：直接使用 event_content，并赋值给新的、干净的变量 prompt_text ---
+                prompt_text = self._format_string(event_content)
                 
-                # --- 核心修改点 ---
-                # chat_with_deepseek 内部已经处理了流式打印
-                # 它返回的 response 仅用于保存历史记录
+                # 3. 添加当前Prompt
+                messages.append({"role": "user", "content": f"这是你的内心独白或行为指引，请根据它生成一句对话。不要把内心独白本身说出来。\n内心独白: {prompt_text}"})
+                
+                # 调用LLM
                 response = chat_with_deepseek(messages, char_name, color_code=TermColors.CYAN)
 
                 if response:
-                    # 注意：移除了这里的 print() 语句
                     self._add_to_dialogue_history('Dialogue', character_id=char_id, content=response)
                 else:
                     log_error("LLM未能生成响应，游戏可能无法继续。")
                     self.game_over = True
-        
+                
         elif event_type == 'Player':
             if params['Mode'] == 'Input':
                 self.progress['runtime_state'] = 'WaitingForPlayerInput'
@@ -409,8 +415,94 @@ class GameEngine:
         
         elif event_type == 'Chapter':
             print(f"\n{TermColors.GREEN}===== {content['Title']} ====={TermColors.RESET}")
-            print(f"{TermColors.GREY}{content['Description']}{TermColors.RESET}\n")
+            # 检查'Description'是否存在且不为空，如果存在才打印
+            if content.get('Description'):
+                print(f"{TermColors.GREY}{content['Description']}{TermColors.RESET}\n")
             self._add_to_dialogue_history('Chapter', **content)
+
+        # --- 新增: 处理玩家可见、LLM不可见的通知 ---
+        elif event_type == 'PlayerNotice':
+            # 该事件仅向玩家显示信息，不会被记录到对话历史中，因此LLM无法感知
+            log_debug(f"处理 PlayerNotice: {content}")
+            print(f"{TermColors.BLUE}[系统提示]: {content}{TermColors.RESET}")
+            # 注意：这里我们故意不调用 _add_to_dialogue_history
+
+        # --- 新增: 处理LLM可见、玩家不可见的系统动作 ---
+        elif event_type == 'SystemAction':
+            # 该事件在后台调用LLM，并将结果存入变量，玩家看不到这个过程
+            tool = params.get('Tool')
+            var_name = params.get('Variable')
+            if not tool or not var_name:
+                log_error(f"SystemAction 事件缺少 Tool 或 Variable 参数: {params}")
+                return
+
+            if tool == 'Generate':
+                log_info_color("AI 正在幕后构思剧情...", TermColors.MAGENTA)
+                
+                system_prompt = "你是一个富有创造力的游戏剧本助手。请根据以下要求完成任务，并直接输出结果，不要包含任何额外解释。"
+
+                # 检查是否需要包含历史记录
+                include_history = str(params.get('IncludeHistory', 'false')).lower() == 'true'
+                final_user_prompt = content  # YAML中定义且已格式化的prompt
+
+                if include_history:
+                    log_debug("SystemAction: 检测到 IncludeHistory=true，正在构建历史上下文...")
+                    history_count = 15
+                    formatted_history_lines = []
+                    player_name = self.game_state.get('player_name', '你')
+
+                    for record in self.dialogue_history[-history_count:]:
+                        record_content = record.get('content') or record.get('data', {}).get('content')
+                        if not record_content:
+                            continue
+
+                        line = ""
+                        if record['type'] == 'Dialogue':
+                            char_id = record.get('data', {}).get('character_id')
+                            char_name = self.character_files.get(char_id, {}).get('name', '未知角色')
+                            line = f"{char_name}: {record_content}"
+                        elif record['type'] == 'Player':
+                            line = f"{player_name}: {record_content}"
+                        elif record['type'] == 'Narration':
+                            line = f"旁白: {record_content}"
+
+                        if line:
+                            formatted_history_lines.append(line)
+
+                    if formatted_history_lines:
+                        history_text_block = "\n".join(formatted_history_lines)
+                        final_user_prompt = (
+                            "以下是到目前为止的对话历史记录，请将其作为背景参考。历史记录中的发言者已经用前缀标明。\n"
+                            "--- 历史消息开始 ---\n"
+                            f"{history_text_block}\n"
+                            "--- 历史消息结束 ---\n\n"
+                            "历史记录仅供参考。现在，请严格按照下面的指示完成你的任务：\n\n"
+                            f"{content}"
+                        )
+                        log_debug(f"构建的带历史的Prompt: {final_user_prompt[:200]}...")
+                    else:
+                        log_debug("SystemAction: 历史记录为空，不附加历史上下文。")
+
+                messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": final_user_prompt}
+                ]
+
+                generated_content = chat_with_deepseek(
+                    messages, 
+                    character_name="幕后导演", 
+                    is_internal_thought=True
+                )
+
+                if generated_content:
+                    self.game_state[var_name] = generated_content.strip()
+                    log_debug(f"SystemAction 执行完毕, 变量 '{var_name}' 已设置为AI生成的内容。")
+                else:
+                    log_error(f"SystemAction 未能从LLM生成内容，变量 '{var_name}' 未设置。")
+            else:
+                log_warning(f"未知的 SystemAction Tool: {tool}")
+            
+            # 注意：这里同样不调用 _add_to_dialogue_history，因为这是幕后行为
 
         elif event_type == 'Action':
             tool = params['Tool']
@@ -444,7 +536,9 @@ class GameEngine:
             self.progress['runtime_state'] = 'InFreeTime'
             self.progress['free_time_context'] = {
                 'end_condition': end_data,
-                'turns_taken': 0
+                'turns_taken': 0,
+                # 新增：可选的指定互动角色列表（按顺序轮询）
+                'interact_with_list': end_data.get('InteractWith')
             }
             log_info_color(self._format_string(end_data['InstructionToPlayer']), TermColors.BLUE)
         
@@ -521,18 +615,39 @@ class GameEngine:
             
             self._add_to_dialogue_history('Player', content=text)
             
-            # AI 回复 - 使用智能轮询机制
-            # 优先选择DM角色
-            dm_char_id = self.global_config.get('dm_role_id')
-            if dm_char_id and dm_char_id in self.character_files:
-                ai_char_id = dm_char_id
+            # AI 回复 - 使用智能轮询机制（支持 InteractWith 指定列表）
+            characters_for_freetime = context.get('interact_with_list')
+
+            ai_char_id = None
+            if characters_for_freetime:
+                # 过滤无效的角色ID
+                valid_roles = [rid for rid in characters_for_freetime if rid in self.character_files]
+                if len(valid_roles) != len(characters_for_freetime):
+                    log_warning("InteractWith 中包含无效的角色ID，已自动忽略无效项。")
+                characters_for_freetime = valid_roles
+
+                if characters_for_freetime:
+                    last_responder_index = self.progress.get('last_responder_index', -1)
+                    next_responder_index = (last_responder_index + 1) % len(characters_for_freetime)
+                    ai_char_id = characters_for_freetime[next_responder_index]
+                    self.progress['last_responder_index'] = next_responder_index
+                else:
+                    log_warning("自由时间中没有可用的AI角色进行对话（InteractWith 过滤后为空）。")
+                    return
             else:
-                # 如果没有DM，则进行轮询
-                all_ai_roles = self.global_config['character_roles']
+                # 未指定列表：保持默认行为（优先DM，否则按全局角色轮询）
+                dm_char_id = self.global_config.get('dm_role_id') 
+                if dm_char_id and dm_char_id in self.character_files:
+                    ai_char_id = dm_char_id
+                else:
+                    all_ai_roles = [rid for rid in self.global_config['character_roles'] if rid in self.character_files]
+                    if not all_ai_roles:
+                        log_warning("全局配置中没有可用的AI角色。")
+                        return
                 last_responder_index = self.progress.get('last_responder_index', -1)
                 next_responder_index = (last_responder_index + 1) % len(all_ai_roles)
                 ai_char_id = all_ai_roles[next_responder_index]
-                self.progress['last_responder_index'] = next_responder_index  # 记录本次响应者索引
+                self.progress['last_responder_index'] = next_responder_index
             
             ai_char_name = self.character_files[ai_char_id]['name']
 
@@ -551,6 +666,14 @@ class GameEngine:
                      content = record.get('content') or record.get('data', {}).get('content')
                      if content:
                          messages.append({"role": "user", "content": content})
+
+                # --- 【新增代码块开始】 ---
+                # 将旁白作为'user'信息加入，为AI提供故事背景上下文
+                elif record['type'] == 'Narration':
+                     content = record.get('content') or record.get('data', {}).get('content')
+                     if content:
+                        messages.append({"role": "user", "content": f"（旁白：{content}）"})
+                # --- 【新增代码块结束】 ---
             
             response = chat_with_deepseek(messages, ai_char_name, color_code=TermColors.CYAN)
             if response:

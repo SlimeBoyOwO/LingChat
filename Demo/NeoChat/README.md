@@ -13,10 +13,22 @@ A simple and pure AI conversation platform based on command-line format / 返璞
 - **随机事件生成器**：轻量化的剧情引导，如你和你的oc探索地下迷宫的过程中，由LLM生成你们下一个房间的见闻
 - **大量的预设小游戏**：和你的一个甚至多个oc人设玩一把狼人杀，真心话大冒险，甚至恶魔轮盘赌等经典互动游戏
 
+如果你想使用NeoChat编写长剧情故事，或者AI互动小游戏，请参考[NeoChat剧情编写指南](https://github.com/T-Auto/NeoChat/blob/main/NeoChat%20%E5%89%A7%E6%83%85%E5%88%9B%E4%BD%9C%E6%8C%87%E5%8D%97.md)
 
+## 已有剧本
+
+### campus_love_comedy：校园喜剧剧本，Yuki和Aki的故事。
+用来演示全LLM驱动的故事，LLM生成大纲，LLM生成每章细节，驱动故事发展
+
+### roxy_labyrinth_adventure：
+用来演示循环无限剧本，多结局，条件结局和状态机
 
 ## 更新计划
 
 ~ 入口增加小诺
 
 ~ 初始化
+
+~ 开始的时候随机分配人物
+
+~ 人物强制和人物可选

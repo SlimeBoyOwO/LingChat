@@ -1,0 +1,41 @@
+SceneConfig:
+  id: 00_Forced_Partners
+  name: 不情愿的搭档
+Events:
+- 'Type: Chapter | Mode: Preset':
+    Title: 序章：不情愿的搭档
+    Description: 命运的齿轮，以一种意想不到的方式开始转动。
+
+- 'Type: Narration | Mode: Preset': 教导主任刚刚宣布了学校的新规定：期末总成绩排名前两位的学生，也就是你和雪，必须组队完成学园祭的“特别课题研究”。
+- 'Type: Dialogue | Character: Yuki | Mode: Preset': “……开什么玩笑。喂，{player_name}！你听到了吗？别搞错了，我可不是想和你一组！这都是规定，你可别拖我后腿！”
+- 'Type: PlayerNotice | Mode: Preset': 【系统提示：AI 正在幕后构思你们俩的故事大纲...】
+- 'Type: SystemAction | Tool: Generate | Variable: plot_outline | IncludeHistory: true': |
+    你是一位顶级的恋爱喜剧编剧。请为玩家“{player_name}”和傲娇少女“雪”构思一个用于完成学校课题的三章节故事大纲。教导主任刚刚宣布了学校的新规定：期末总成绩排名前两位的学生，也就是玩家和雪，必须组队完成学园祭的“特别课题研究”。
+
+    请严格遵循以下三幕剧结构，直接输出大纲内容，不要包含任何额外解释：
+
+    序章：不情愿的搭档。描述教导主任宣布新规定，玩家和雪被迫组队的情景。
+
+    第一章：头脑风暴与冲突。描述他们如何确定课题方向，以及因性格差异产生的第一次激烈争吵。
+
+    第二章：意外的危机与合作。描述他们在研究过程中遇到的一个重大难题（比如数据丢失、实验失败），以及他们如何抛开成见、首次齐心协力解决问题。
+
+    第三章：成功展示与关系升温。描述他们在学园祭上成功发表研究成果，并在结束后，发生了一个让两人关系暧昧升温的小插曲。
+
+- 'Type: PlayerNotice | Mode: Preset': |
+    由于这是测试剧本，因此将剧情大纲显示出来用于示意。在剧本中删掉本公告则会隐藏后台大纲达到沉浸式剧情。
+    剧情大纲是：
+    {plot_outline}
+
+- 'Type: Dialogue | Character: Yuki | Mode: Prompt': 内心活动：虽然一百个不情愿，但课题还是得做。你清了清嗓子，用公事公办的语气，向{player_name}发起第一次课题讨论。
+
+- 'Type: Player | Mode: Input': （你打算如何回应她，开启你们的第一次“合作”？）
+
+- 'Type: Dialogue | Character: Yuki | Mode: Prompt': 内心活动：你讨厌他，所以请向{player_name}不屑的言论
+
+EndCondition:
+  Type: LimitedFreeTime
+  MaxTurns: 5
+  InstructionToPlayer: 你可以和雪自由讨论课题或闲聊。对话5轮后或当你说出“再见”时，剧情将继续。
+  ExitPromptInInputBox: 再见
+  NextUnitID: 01_Chapter_One_Kickoff
