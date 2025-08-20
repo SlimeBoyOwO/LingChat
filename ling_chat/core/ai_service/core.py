@@ -84,12 +84,12 @@ class AIService:
             }
         ]
     
-    async def process_message(self, user_message: str) -> List[Dict]:
+    async def process_message(self, user_message: str):
         """
         对接函数：调用MessageGenerator的process_message方法处理用户消息
         """
         self.message_generator.memory_init(self.memory)
-        return await self.message_generator.process_message(user_message)
+        await self.message_generator.process_message(user_message)
 
     async def process_message_stream_compat(self, user_message: str):
         """

@@ -3,7 +3,7 @@ from ling_chat.core.VitsTTS.base_adapter import BaseVitsAdapter
 
 
 class SBVVitsAdapter(BaseVitsAdapter):
-    def __init__(self, api_url, speaker_id=0, model_name=0, audio_format="wav", lang="JP"):
+    def __init__(self, api_url, speaker_id=0, model_name="", audio_format="wav", lang="JP"):
         self.api_url = api_url
         self.default_params = {
             "encoding": "utf-8",  # 文本编码
