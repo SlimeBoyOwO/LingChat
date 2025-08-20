@@ -9,8 +9,8 @@ import json
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config
-from llm_interface import chat_with_deepseek
-from logger import log_info, log_error, TermColors, initialize_logger
+from .llm_interface import chat_with_deepseek
+from .logger import log_info, log_error, TermColors, initialize_logger
 
 def save_user_config(user_name):
     """将新的用户信息写入 saves/user.py 文件"""
