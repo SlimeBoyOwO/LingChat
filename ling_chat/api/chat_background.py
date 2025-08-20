@@ -37,12 +37,12 @@ async def list_all_backgrounds():
                 title = f.stem  # 使用文件名作为标题
 
                 background_files.append({
-                    "image_path": filename,
                     "title": title,
-                    "modified_time": stat.st_mtime
+                    "url": filename,
+                    "time": str(stat.st_mtime)
                 })
 
-        background_files.sort(key=lambda x: x["modified_time"], reverse=True)
+        background_files.sort(key=lambda x: x["time"], reverse=True)
 
         if not background_files:
             return {"data": [], "message": "背景图片一个都没找到"}
