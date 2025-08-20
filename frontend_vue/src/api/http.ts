@@ -83,12 +83,21 @@ http.interceptors.request.use(
 // 响应拦截器
 http.interceptors.response.use(
   (response: AxiosResponse<ApiResponse>) => {
-    if (response.data.code === 200) {
-      return response.data.data; // 返回解构后的数据
+    // 检查是否有 code 字段
+    if (response.data && response.data.code !== undefined) {
+      if (response.data.code === 200) {
+        return response.data.data;
+      } else {
+        const error: AppError = new Error(response.data.message || "请求失败");
+        error.code = response.data.code;
+        return Promise.reject(error);
+      }
+    } else if (response.data && response.data.data !== undefined) {
+      // 处理没有 code 但有 data 字段的情况（您的后端结构）
+      return response.data.data;
     } else {
-      const error: AppError = new Error(response.data.message || "请求失败");
-      error.code = response.data.code;
-      return Promise.reject(error);
+      // 其他情况直接返回数据
+      return response.data;
     }
   },
   (error: AxiosError) => {
