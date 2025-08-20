@@ -1,0 +1,25 @@
+SceneConfig:
+  id: 03_Chapter_Three_Finale
+  name: 第三章：关系升温
+Events:
+- 'Type: Chapter | Mode: Preset':
+    Title: 第三章：成功展示与关系升温
+    Description: 在共同努力之后，收获的季节到来了。
+- 'Type: SystemAction | Tool: Generate | Variable: chapter_3_details': '你是一个剧本执行者。这里是总大纲：
+
+    ---
+
+    {plot_outline}
+
+    ---
+
+    现在，请详细描写第三章“成功展示与关系升温”的具体情节，作为故事的结局。直接输出剧情描述。'
+- 'Type: Narration | Mode: Preset': '{chapter_3_details}'
+- 'Type: Dialogue | Character: Yuki | Mode: Prompt': '内心活动：发生了旁白描述的、让你们关系升温的小插曲。你感到非常害羞，脸颊发烫。
+
+    请对{player_name}说一句经典的傲娇台词来掩饰你的害羞，比如“你、你别会错意了！我只是……”'
+- 'Type: Narration | Mode: Preset': 夕阳的光辉洒满教室，属于你们的、独一无二的校园故事，似乎才刚刚开始...
+- 'Type: Notice | Mode: Preset | Location: popup': '感谢游玩！
+
+    你与雪的好感度: {favorability_Yuki}'
+EndCondition: null

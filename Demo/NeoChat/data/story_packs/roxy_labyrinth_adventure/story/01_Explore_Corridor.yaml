@@ -25,7 +25,7 @@ Events:
 EndCondition:
   Type: Conditional
   Cases:
-  - Condition: '{labyrinth_floor} >= 5 and {dice_roll} > 15'
+  - Condition: '{labyrinth_floor} >= 3 and {dice_roll} > 2'
     Then:
       Type: Linear
       NextUnitID: 99_Exit_Labyrinth
