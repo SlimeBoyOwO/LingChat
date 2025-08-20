@@ -6,10 +6,6 @@ export const actions = {
     this.currentLine = text;
   },
 
-  addDialogToHistory(this: GameState, ai_response: any[]): void {
-    // TODO 添加AI回复组到历史中
-  },
-
   setGameStatus(
     this: GameState,
     state: "input" | "thinking" | "responding"

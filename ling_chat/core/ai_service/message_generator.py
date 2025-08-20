@@ -67,7 +67,7 @@ class MessageGenerator:
             ai_response = Function.fix_ai_generated_text(ai_response)
             self.memory.append({"role": "assistant", "content": ai_response})            
 
-            # 4. 如果有RAG系统，则把这段对话保存在RAG中 TODO 只获取最后两条最新的
+            # 4. 如果有RAG系统，则把这段对话保存在RAG中
             if self.use_rag and self.rag_manager:
                 self.rag_manager.save_messages_to_rag(self.memory)
 
