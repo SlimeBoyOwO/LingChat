@@ -4,8 +4,8 @@ import sys
 from datetime import datetime
 
 import config
-from logger import initialize_logger, log_info, log_error, log_warning, log_debug, log_info_color, TermColors
-from game_engine import GameEngine
+from core.logger import initialize_logger, log_info, log_error, log_warning, log_debug, log_info_color, TermColors
+from core.game_engine import GameEngine
 
 def select_from_list(items, prompt):
     if not items:
@@ -64,9 +64,38 @@ def start_new_game():
         # 从列表中移除已选的角色，避免重复选择
         available_chars.remove(chosen_char_file)
 
-    # 4. 初始化游戏引擎
+    # 4. (新增) 选择玩家人设
+    player_data = None
+    player_chars_path = config.PLAYER_CHARACTERS_BASE_PATH
+    available_player_chars = [f for f in os.listdir(player_chars_path) if f.endswith('.yaml')]
+    
+    print(f"\n{TermColors.YELLOW}是否要导入自定义玩家人设？（否则将使用剧本默认设定）{TermColors.RESET}")
+    if available_player_chars:
+        # 在可选列表前增加"跳过"选项
+        display_choices = ["[跳过] 使用剧本默认设定"] + available_player_chars
+        chosen_player_char_file = select_from_list(display_choices, "选择玩家人设")
+
+        # 如果玩家的选择不是"跳过"
+        if chosen_player_char_file and chosen_player_char_file != display_choices[0]:
+            try:
+                player_char_path = os.path.join(player_chars_path, chosen_player_char_file)
+                with open(player_char_path, 'r', encoding='utf-8') as f:
+                    loaded_data = yaml.safe_load(f)
+                    # 校验关键字段
+                    if 'player_name' in loaded_data and 'player_prompt' in loaded_data:
+                        player_data = loaded_data
+                        log_info(f"成功加载玩家人设: {player_data['player_name']}")
+                    else:
+                        log_warning("选择的人设文件缺少 'player_name' 或 'player_prompt' 字段，将使用默认设定。")
+            except (FileNotFoundError, yaml.YAMLError) as e:
+                log_error(f"加载玩家人设文件失败: {e}，将使用默认设定。")
+    else:
+        log_info("未在 'player_characters' 目录中找到任何人设文件，将使用剧本默认设定。")
+
+    # 5. (修改) 初始化游戏引擎
     engine = GameEngine()
-    if engine.load_story_pack(chosen_pack_path, character_selections):
+    # 将加载到的 player_data 传递给引擎
+    if engine.load_story_pack(chosen_pack_path, character_selections, player_data):
         return engine
     return None
 
@@ -129,7 +158,7 @@ def main():
         return
         
     # 确保文件夹存在
-    for path in [config.SAVES_BASE_PATH, config.STORY_PACKS_BASE_PATH, config.CHARACTERS_BASE_PATH]:
+    for path in [config.SAVES_BASE_PATH, config.STORY_PACKS_BASE_PATH, config.CHARACTERS_BASE_PATH, config.PLAYER_CHARACTERS_BASE_PATH]:
         os.makedirs(path, exist_ok=True)
 
     while True:
