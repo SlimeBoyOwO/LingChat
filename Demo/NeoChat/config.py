@@ -16,8 +16,12 @@ SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT")
 # print(SYSTEM_PROMPT)
 
 # 会话与历史记录
-HISTORY_BASE_PATH = "Dialogue_history"    # 聊天记录保存路径
-CHROMA_DB_PATH = "./chroma_db_store"      # RAG缓存路径，ChromaDB持久化存储路径。可安全删除，删除后会根据Json聊天记录重新生成，但更耗时。
+HISTORY_BASE_PATH = "data/Dialogue_history"    # 聊天记录保存路径
+CHROMA_DB_PATH = "data/chroma_db_store"      # RAG缓存路径，ChromaDB持久化存储路径。可安全删除，删除后会根据Json聊天记录重新生成，但更耗时。
+SAVES_BASE_PATH = "data/saves"                 # 游戏存档保存路径
+STORY_PACKS_BASE_PATH = "data/story_packs"     # 剧本包保存路径
+CHARACTERS_BASE_PATH = "data/characters"       # AI角色人设保存路径
+PLAYER_CHARACTERS_BASE_PATH = "data/player_characters" # 玩家人设包保存路径
 
 # 调试与日志
 DEBUG_MODE = False                         #开启/关闭开发者模式。设置为True/False将开关Debug日志。
