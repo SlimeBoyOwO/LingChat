@@ -16,8 +16,6 @@ from ling_chat.core.ai_service.ai_logger import AILogger
 
 from ling_chat.core.messaging.broker import message_broker
 
-from ling_chat.utils.runtime_path import temp_path
-
 class MessageGenerator:
     def __init__(self,
                 voice_maker: VoiceMaker,
@@ -149,7 +147,7 @@ class MessageGenerator:
                 "japanese_text": "",
                 "predicted": "normal",
                 "confidence": 0.8,
-                "voice_file": str(temp_path / f"audio/part_1.{self.voice_maker.vits_tts.format}")
+                "voice_file": "None"
             }]
         
         responses = self.create_responses(emotion_segments, user_message)

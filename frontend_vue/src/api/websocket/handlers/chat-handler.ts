@@ -55,10 +55,12 @@ export class ChatHandler {
     const gameStore = useGameStore();
     const uiStore = useUIStore();
 
+    // 从消息队列出队
     this.currentMessagePart = this.messageQueue.shift() || null;
 
     if (!this.currentMessagePart) return;
 
+    // 显示展示
     const displayText = this.currentMessagePart.motionText
       ? `${this.currentMessagePart.message}（${this.currentMessagePart.motionText}）`
       : this.currentMessagePart.message || "";
@@ -77,6 +79,9 @@ export class ChatHandler {
 
     gameStore.currentLine = displayText;
     gameStore.avatar.emotion = this.currentMessagePart.emotion || "正常";
+    uiStore.currentAvatarAudio = this.currentMessagePart.audioFile || "None";
+
+    // UI中粉色情绪展示内容
     uiStore.showCharacterEmotion = gameStore.avatar.emotion;
   }
 

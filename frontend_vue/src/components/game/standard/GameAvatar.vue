@@ -10,20 +10,25 @@
       src="@/assets/images/avatar_error.png"
     />
     <div ref="avatarBubble" class="bubble"></div>
+    <audio ref="avatarAudio"></audio>
     <audio ref="bubbleAudio"></audio>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch } from "vue";
+import { API_CONFIG } from "../../../controllers/core/config";
 import { useGameStore } from "../../../stores/modules/game";
+import { useUIStore } from "../../../stores/modules/ui/ui";
 import { EmotionController } from "../../../controllers/emotion/controller";
 import "./avatar-animation.css";
 
 const gameStore = useGameStore();
+const uiStore = useUIStore();
 const avatarContainer = ref<HTMLElement | null>(null);
 const avatarImg = ref<HTMLImageElement | null>(null);
 const avatarBubble = ref<HTMLElement | null>(null);
+const avatarAudio = ref<HTMLAudioElement | null>(null);
 const bubbleAudio = ref<HTMLAudioElement | null>(null);
 
 let emotionController: EmotionController | null = null;
@@ -52,6 +57,18 @@ onMounted(() => {
     () => gameStore.avatar.emotion,
     (newEmotion) => {
       emotionController?.setEmotion(newEmotion);
+    }
+  );
+
+  // 响应音频变化
+  watch(
+    () => uiStore.currentAvatarAudio,
+    (newAudio) => {
+      if (avatarAudio.value && newAudio && newAudio !== "None") {
+        avatarAudio.value.src = `${API_CONFIG.VOICE.BASE}/${newAudio}`;
+        avatarAudio.value.load();
+        avatarAudio.value.play();
+      }
     }
   );
 });
