@@ -2,6 +2,7 @@ from typing import Dict, List
 from ling_chat.core.llm_providers.provider_factory import LLMProviderFactory
 from ling_chat.core.llm_providers.base import BaseLLMProvider
 from ling_chat.core.logger import logger
+import asyncio
 import os
 
 class LLMManager:
@@ -41,3 +42,4 @@ class LLMManager:
     async def process_message_stream(self, messages: List[Dict]):
         async for chunk in self.provider.generate_stream_response(messages):
             yield chunk
+            await asyncio.sleep(0)  # 关键：在每个chunk后让出控制权
