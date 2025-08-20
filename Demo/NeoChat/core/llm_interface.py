@@ -5,7 +5,7 @@ import sys
 import time
 
 import config
-from logger import (
+from .logger import (
     log_debug,
     log_info_color,
     log_warning,

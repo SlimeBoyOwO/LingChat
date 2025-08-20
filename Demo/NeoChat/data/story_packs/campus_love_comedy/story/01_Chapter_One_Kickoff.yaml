@@ -1,0 +1,24 @@
+SceneConfig:
+  id: 01_Chapter_One_Kickoff
+  name: 第一章：头脑风暴
+Events:
+- 'Type: Chapter | Mode: Preset':
+    Title: 第一章：头脑风暴与冲突
+    Description: 第一次的合作，似乎从争吵开始...
+- 'Type: SystemAction | Tool: Generate | Variable: chapter_1_details | IncludeHistory: true': '你是一个剧本执行者。这里是总大纲：
+
+    ---
+
+    {plot_outline}
+
+    ---
+
+    现在，请详细描写第一章“头脑风暴与冲突”的具体情节。直接输出剧情描述，不要有额外解释。'
+- 'Type: Narration | Mode: Preset': '{chapter_1_details}'
+- 'Type: Dialogue | Character: Yuki | Mode: Prompt': 内心活动：刚刚发生了旁白所描述的事情。请根据这些情节，对{player_name}说一句符合你傲娇性格的、推动争吵或讨论的话。
+EndCondition:
+  Type: LimitedFreeTime
+  MaxTurns: 5
+  InstructionToPlayer: 你可以和雪自由讨论课题或闲聊。对话5轮后或当你说出“再见”时，剧情将继续。
+  ExitPromptInInputBox: 再见
+  NextUnitID: 02_Chapter_Two_Crisis
