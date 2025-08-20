@@ -32,3 +32,9 @@ export interface AvatarInfo {
   name: string;
   size?: number;
 }
+
+export interface BackgroundImageInfo {
+  title: string;
+  url: string;
+  time: string;
+}
