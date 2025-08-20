@@ -1,7 +1,7 @@
 <template>
   <div class="main-box">
     <GameBackground></GameBackground>
-    <GameAvatar />
+    <GameAvatar ref="gameAvatarRef" />
     <GameDialog />
     <div id="menu-panel">
       <button
@@ -16,7 +16,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { onMounted, ref } from "vue";
 import { useUIStore } from "../../stores/modules/ui/ui";
 import { useGameStore } from "../../stores/modules/game";
 import { GameBackground } from "../game/standard";
@@ -26,6 +26,8 @@ import { getGameInfo } from "../../api/services/game-info";
 
 const uiStore = useUIStore();
 const gameStore = useGameStore();
+
+const gameAvatarRef = ref<InstanceType<typeof GameAvatar> | null>(null);
 
 const openSettings = () => {
   uiStore.toggleSettings(true);
@@ -47,10 +49,16 @@ onMounted(async () => {
     gameStore.avatar.character_id = gameInfo.character_id;
     gameStore.avatar.think_message = gameInfo.thinking_message;
 
-    // 初始化UI界面主角的信息
+    // 初始化UI界面主角的信息 TODO 同时获取人物的【正常】情绪
     uiStore.showCharacterTitle = gameInfo.user_name;
     uiStore.showCharacterSubtitle = gameInfo.user_subtitle;
-    console.log(gameInfo);
+
+    // 触发GameAvatar的setEmotion函数
+    if (gameAvatarRef.value) {
+      gameAvatarRef.value.setEmotion("正常", true);
+    } else {
+      console.log("这个组件不存在");
+    }
   } catch (error) {
     console.error("初始化游戏信息失败:", error);
     // 可以在这里添加错误处理，比如显示错误提示

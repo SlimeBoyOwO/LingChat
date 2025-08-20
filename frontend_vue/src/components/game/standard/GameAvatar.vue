@@ -28,6 +28,11 @@ const bubbleAudio = ref<HTMLAudioElement | null>(null);
 
 let emotionController: EmotionController | null = null;
 
+// 暴露方法给父组件
+const setEmotion = (emotion: string, force: boolean = false) => {
+  emotionController?.setEmotion(emotion, force);
+};
+
 onMounted(() => {
   // 传递 DOM 元素给 controller
   emotionController = new EmotionController({
@@ -53,6 +58,11 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   emotionController?.destroy();
+});
+
+// 暴露方法给父组件
+defineExpose({
+  setEmotion,
 });
 </script>
 
