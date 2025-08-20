@@ -10,9 +10,11 @@ router = APIRouter(prefix="/api/v1/chat/sound", tags=["Chat Sound"])
 @router.get("/get_voice/{voice_file}")
 async def get_specific_sound(voice_file: str):
     
-    voice_dir = temp_path / "data/voice"
+    voice_dir = Path(os.environ.get("TEMP_VOICE_DIR", temp_path / "audio"))
 
     file_path = voice_dir / voice_file
+
+    print("寻找的路径是" + str(file_path))
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Voice not found")
     
