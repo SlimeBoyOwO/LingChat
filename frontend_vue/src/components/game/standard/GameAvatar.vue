@@ -3,12 +3,7 @@
     ref="avatarContainer"
     class="avatar-container character-animation normal"
   >
-    <img
-      ref="avatarImg"
-      class="avatar-img"
-      id="qinling"
-      src="@/assets/images/avatar_error.png"
-    />
+    <div ref="avatarImg" class="avatar-img" id="qinling"></div>
     <div ref="avatarBubble" class="bubble"></div>
     <audio ref="avatarAudio"></audio>
     <audio ref="bubbleAudio"></audio>
@@ -90,14 +85,17 @@ defineExpose({
   width: 100%;
 }
 
-img {
+/* 替换 img 为 div 背景 */
+.avatar-img {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 102%;
-  object-fit: contain;
-  object-position: center;
+  background-size: contain;
+  background-position: center center;
+  background-repeat: no-repeat;
   z-index: 1;
+  transition: background-image 0.2s ease-in-out;
 }
 </style>

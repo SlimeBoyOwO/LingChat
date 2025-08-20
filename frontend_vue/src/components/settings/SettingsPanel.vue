@@ -71,7 +71,7 @@ const uiStore = useUIStore();
   /* 初始状态 */
   opacity: 0;
   backdrop-filter: blur(5px);
-  background-color: rgba(0, 0, 0, 0.1);
+  background-color: rgba(0, 0, 0, 0.45);
 
   /* 过渡效果 */
   transition: opacity 0.3s ease;
