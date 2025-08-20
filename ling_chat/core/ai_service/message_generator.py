@@ -1,3 +1,4 @@
+import asyncio
 import os
 from typing import List, Dict, Optional
 import traceback
@@ -12,6 +13,8 @@ from ling_chat.core.ai_service.rag_manager import RAGManager
 from ling_chat.utils.function import Function
 from ling_chat.core.logger import logger
 from ling_chat.core.ai_service.ai_logger import AILogger
+
+from ling_chat.core.messaging.broker import message_broker
 
 from ling_chat.utils.runtime_path import temp_path
 
@@ -91,8 +94,12 @@ class MessageGenerator:
 
             if final_response is None:
                 logger.error("AI服务返回了None响应")
+                await message_broker.publish("1", error_response[0])
                 return error_response
-            else: return final_response
+            else: 
+                for response in final_response:
+                    await message_broker.publish("1", response)
+                return final_response
                 
         except Exception as e:
             error_response = [{
@@ -156,22 +163,56 @@ class MessageGenerator:
     # 以下是现在使用的流式处理部分
     async def process_sentence(self, sentence: str, emotion_segments: List[Dict]):
         """处理单个句子的情绪分析、翻译和语音合成"""
-        if sentence:
-            # 使用analyze_emotions处理句子
-            sentence_segments = self.message_processor.analyze_emotions(sentence)
-            if sentence_segments:
-                # 更新情绪片段列表
-                emotion_segments.extend(sentence_segments)
+        if not sentence:
+            return
+        
+         # 使用analyze_emotions处理句子 返回情绪-中文-日文等信息
+        sentence_segments:List[Dict] = self.message_processor.analyze_emotions(sentence)
+        if not sentence_segments:
+            logger.warning("句子中没有出现中日或情感，AI回复格式错误")
+            return
+        else:
+            # 翻译句子 TODO 假如翻译句子用的是比较贵的AI，这里不应该每个句子都单独飞过去翻译
+            start_time = time.perf_counter()
+            if sentence_segments[0].get("japanese_text") == "":
+                await self.translator.translate_ai_response(sentence_segments)
+            else:
+                await self.voice_maker.generate_voice_files(sentence_segments)
+            end_time = time.perf_counter()
+            # 更新情绪片段列表
+            emotion_segments.extend(sentence_segments)
+            # 为每个片段生成语音和翻译
 
-                # 为每个片段生成语音和翻译
-                start_time = time.perf_counter()
-                if sentence_segments[0].get("japanese_text") == "":
-                    await self.translator.translate_ai_response(sentence_segments)
-                else:
-                    await self.voice_maker.generate_voice_files(sentence_segments)
-                end_time = time.perf_counter()
-                logger.debug(f"句子处理时间: {end_time - start_time} 秒")
+            logger.debug(f"句子处理时间: {end_time - start_time} 秒")
+    
+    # 句子处理完毕后，立马发送给前端的新process_sentence (流式)
+    async def process_sentence_and_send(self, sentence: str, user_messsage: str, is_final: bool):
+        """处理单个句子的情绪分析、翻译和语音合成，并发送给前端"""
+        if not sentence:
+            return
+        
+        logger.info("开始处理句子" + sentence)
+        sentence_segments:List[Dict] = self.message_processor.analyze_emotions(sentence)
+        if not sentence_segments:
+            logger.warning("句子中没有出现中日或情感，AI回复格式错误")
+            return
+        else:
+            # 翻译句子 TODO 假如翻译句子用的是比较贵的AI，这里不应该每个句子都单独飞过去翻译
+            # 为每个片段生成语音和翻译
+            start_time = time.perf_counter()
+            if sentence_segments[0].get("japanese_text") == "":
+                await self.translator.translate_ai_response(sentence_segments)
+            else:
+                await self.voice_maker.generate_voice_files(sentence_segments)
+            end_time = time.perf_counter()
+            
+            # 当句子准备完毕后，发布这部分的消息
+            response = self.create_response(sentence_segments[0], user_messsage, is_final)
+            await message_broker.publish("1", response)
 
+            logger.debug(f"句子处理时间: {end_time - start_time} 秒")
+        logger.info("句子" + sentence + "处理完毕并发送")
+        
     async def process_message_stream(self, user_message: str):
         """流式处理用户消息，边生成边进行情绪分析、翻译和语音合成"""
 
@@ -192,6 +233,21 @@ class MessageGenerator:
         # 用于存储情绪片段
         emotion_segments = []
 
+        # 创建处理队列
+        sentence_queue = asyncio.Queue(maxsize=10)  # 限制队列大小避免内存爆炸
+        
+        # 启动多个消费者任务（3-5个比较合适）
+        consumer_tasks = []
+        for i in range(3):  # 3个并行消费者
+            task = asyncio.create_task(
+                self._process_sentence_consumer(sentence_queue, user_message, i)
+            )
+            consumer_tasks.append(task)
+
+        # 用于实时显示的内容缓冲区
+        realtime_display_buffer = ""
+        last_display_time = 0
+
         try:
             # 创建流式响应生成器
             ai_response_stream = self.llm_model.process_message_stream(current_context)
@@ -199,28 +255,48 @@ class MessageGenerator:
             buffer = ""
             sentence = ""
 
+            # 打印开始提示
+            print("\n=== AI回复流式输出 ===")
+            
             async for chunk in ai_response_stream:
                 buffer += chunk
                 accumulated_response += chunk
+                realtime_display_buffer += chunk
+
+                # 实时显示流式内容（每收到一定内容或时间间隔显示）
+                current_time = time.time()
+                if (len(realtime_display_buffer) >= 3 or  # 每3个字符显示一次
+                    current_time - last_display_time > 0.1 or  # 或者每100毫秒
+                    '\n' in realtime_display_buffer):  # 或者有换行符
+                    
+                    # 清理情绪标签以便更好地显示
+                    display_text = realtime_display_buffer
+                    if display_text.strip():
+                        print(display_text, end='', flush=True)
+                    
+                    realtime_display_buffer = ""
+                    last_display_time = current_time
 
                 while "【" in buffer:
                     # 如果已经有句子开头，检查是否有结束符
                     if sentence and "】" in buffer:
                         end_index = buffer.index("】")
                         sentence += buffer[:end_index+1]
-                        buffer = buffer[end_index+1:]
+                        buffer = buffer[end_index+1:]         # buffer 删除前面被裁剪的情绪部分【情绪】
 
                         # 检查是否还有内容直到下一个【
                         next_start = buffer.find("【")
                         if next_start != -1:
-                            sentence += buffer[:next_start]
+                            sentence += buffer[:next_start]   # buffer 删除情绪后面跟随的句子和动作等信息"你好呀（摇尾巴）"
                             buffer = buffer[next_start:]
                         else:
                             sentence += buffer
                             buffer = ""
 
                         # 处理完整句子
-                        await self.process_sentence(sentence, emotion_segments)
+                        await sentence_queue.put((sentence, False))
+                        # asyncio.create_task(self.process_sentence_and_send(sentence, user_message, False))
+                        # await self.process_sentence(sentence, emotion_segments)
 
                         sentence = ""
                     else:
@@ -248,12 +324,20 @@ class MessageGenerator:
                                 buffer = ""
 
                             # 处理完整句子
-                            await self.process_sentence(sentence, emotion_segments)
+                            await sentence_queue.put((sentence, False))
+                            # asyncio.create_task(self.process_sentence_and_send(sentence, user_message, False))
+                            # await self.process_sentence(sentence, emotion_segments)
 
                             sentence = ""
                         else:
                             # 不完整的句子部分，继续等待
                             break
+
+            # 显示剩余的内容
+            if realtime_display_buffer:
+                display_text = realtime_display_buffer
+                if display_text.strip():
+                    print(display_text, end='', flush=True)
 
             # 处理最后一个句子
             final_content = sentence + buffer
@@ -262,11 +346,20 @@ class MessageGenerator:
                 final_content = Function.fix_ai_generated_text(final_content)
                 accumulated_response = Function.fix_ai_generated_text(accumulated_response)
 
+                # 显示最后的内容
+                final_display_text = final_content
+                if final_display_text.strip():
+                    print(final_display_text, end='', flush=True)
+
                 # 使用process_sentence方法处理句子
-                await self.process_sentence(final_content, emotion_segments)
+                await sentence_queue.put((final_content, True))
+                # asyncio.create_task(self.process_sentence_and_send(final_content, user_message, True))
+                # await self.process_sentence(final_content, emotion_segments)
+
+            # 打印结束换行
+            print("\n=== 流式输出结束 ===")
 
             # 统一构造响应消息
-            total_parts = len(emotion_segments)
             if emotion_segments:
                 responses = self.create_responses(emotion_segments, user_message)
                 for response in responses:
@@ -274,6 +367,9 @@ class MessageGenerator:
 
             # 将完整响应添加到记忆中
             self.memory.append({"role": "assistant", "content": accumulated_response})
+
+            # 等待所有句子处理完成
+            await sentence_queue.join()
 
             # 如果有RAG系统，则把这段对话保存在RAG中
             if self.use_rag and self.rag_manager:
@@ -302,8 +398,37 @@ class MessageGenerator:
             traceback.print_exc()  # 这会打印完整的错误堆栈到控制台
             logger.error(f"详细错误信息: ", exc_info=True)
             yield error_response
+        finally:
+            # 取消所有消费者任务
+            for task in consumer_tasks:
+                task.cancel()
+            await asyncio.gather(*consumer_tasks, return_exceptions=True)
 
+    async def _process_sentence_consumer(self, queue, user_message, consumer_id):
+        """消费者任务，从队列中取出句子处理"""
+        """多个消费者并行处理句子"""
+        while True:
+            try:
+                sentence, is_final = await queue.get()
+                await self.process_sentence_and_send(sentence, user_message, is_final)
+                queue.task_done()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                queue.task_done()
 
+    def create_response(self, seg: Dict, user_message:str, is_final: bool) -> Dict:
+        """构建单个响应消息"""
+        return {
+            "type": "reply",
+            "emotion": seg['predicted'] or seg["original_tag"],
+            "originalTag": seg['original_tag'],
+            "message": seg['following_text'],
+            "motionText": seg['motion_text'],
+            "audioFile": os.path.basename(seg['voice_file']) if os.path.exists(seg['voice_file']) else None,
+            "originalMessage": user_message,
+            "isFinal": is_final
+        }
     
     def create_responses(self, segments: List[Dict], user_message: str) -> List[Dict]:
         """构造响应消息"""

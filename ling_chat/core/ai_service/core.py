@@ -96,6 +96,7 @@ class AIService:
         这个函数收集所有的流式响应并返回一个列表
         """
         self.message_generator.memory_init(self.memory)
+        logger.info("正在使用流式回复")
         responses = []
         async for response in self.message_generator.process_message_stream(user_message):
             responses.append(response)
