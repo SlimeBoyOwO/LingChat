@@ -49,7 +49,7 @@ onMounted(async () => {
     gameStore.avatar.character_id = gameInfo.character_id;
     gameStore.avatar.think_message = gameInfo.thinking_message;
 
-    // 初始化UI界面主角的信息 TODO 同时获取人物的【正常】情绪
+    // 初始化UI界面主角的信息
     uiStore.showCharacterTitle = gameInfo.user_name;
     uiStore.showCharacterSubtitle = gameInfo.user_subtitle;
 
