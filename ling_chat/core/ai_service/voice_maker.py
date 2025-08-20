@@ -39,7 +39,7 @@ class VoiceMaker:
         """生成语音文件"""
         tasks = []
         for seg in segments:
-            logger.debug(seg)
+            # logger.debug(seg)
             if self.lang == "ja":
                 if seg["japanese_text"]:
                     output_file = self.vits_tts.generate_voice(seg["japanese_text"], seg["voice_file"], speaker_id=self.speaker_id, model_name=self.model_name, tts_type=self.tts_type, lang="ja")

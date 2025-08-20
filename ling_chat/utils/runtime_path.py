@@ -15,7 +15,8 @@ def get_package_root() -> Path:
     if getattr(sys, 'frozen', False):
         # PyInstaller 单文件模式（临时解压目录）
         if hasattr(sys, '_MEIPASS'):
-            return Path(sys._MEIPASS)
+            return Path(sys.executable)
+            # return Path(sys._MEIPASS) 这个地方会出现类型检查错误，@PL，之后查看一下
         # PyInstaller 目录模式（可执行文件所在目录）
         return Path(sys.executable).parent
 
