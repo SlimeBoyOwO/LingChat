@@ -26,7 +26,7 @@ export class EmotionController {
     );
   }
 
-  public setEmotion(emotion: string, { force = false } = {}) {
+  public setEmotion(emotion: string, force: boolean = false) {
     if (!EMOTION_CONFIG[emotion]) {
       console.log(`未知表情: ${emotion}`);
       return;
