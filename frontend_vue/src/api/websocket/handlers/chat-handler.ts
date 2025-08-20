@@ -4,8 +4,11 @@ import { registerHandler, sendWebSocketChatMessage } from "..";
 import { useUIStore } from "../../../stores/modules/ui/ui";
 
 export class ChatHandler {
+  // 消息队列
   private messageQueue: WebSocketChatMessage[] = [];
+  // 当前消息
   private currentMessagePart: WebSocketChatMessage | null = null;
+  // 是否正在回复中
   private isProcessing = false;
 
   constructor() {
@@ -23,11 +26,7 @@ export class ChatHandler {
     const gameStore = useGameStore();
 
     try {
-      if (data.isMultiPart) {
-        this.handleMultiPartMessage(data);
-      } else {
-        this.handleSingleMessage(data);
-      }
+      this.handleChatMessage(data);
       gameStore.currentStatus = "responding";
     } catch (error) {
       console.error("处理回复消息出错:", error);
@@ -35,45 +34,27 @@ export class ChatHandler {
     }
   }
 
-  private handleMultiPartMessage(data: WebSocketChatMessage) {
+  private handleChatMessage(data: WebSocketChatMessage) {
     this.messageQueue.push(data);
-
-    if (data.partIndex === 0 && !this.isProcessing) {
+    if (!this.isProcessing) {
       this.continueMessage();
+      this.isProcessing = true;
     }
   }
 
-  private handleSingleMessage(data: WebSocketChatMessage) {
-    const gameStore = useGameStore();
-
-    const chatMessage = {
-      content: data.message || data.content || "",
-      emotion: data.emotion,
-      audioFile: data.audioFile,
-      isFinal: true,
-      motionText: data.motionText,
-      originalTag: data.originalTag,
-    };
-
-    gameStore.addToDialogHistory({
-      type: "reply",
-      ...chatMessage,
-    });
-
-    gameStore.currentLine = chatMessage.content;
-    gameStore.avatar.emotion = chatMessage.emotion || "正常";
+  public continueMessage() {
+    if (this.currentMessagePart?.isFinal) {
+      // TODO 假如说消息队列还有新来的消息（后台主动发送的消息） 则等待一段时间后立马变成消息回复状态
+      this.resetConversationState();
+    } else {
+      this.processNextMessage();
+    }
   }
 
   private processNextMessage() {
     const gameStore = useGameStore();
     const uiStore = useUIStore();
 
-    if (this.messageQueue.length === 0) {
-      this.isProcessing = false;
-      return;
-    }
-
-    this.isProcessing = true;
     this.currentMessagePart = this.messageQueue.shift() || null;
 
     if (!this.currentMessagePart) return;
@@ -82,11 +63,7 @@ export class ChatHandler {
       ? `${this.currentMessagePart.message}（${this.currentMessagePart.motionText}）`
       : this.currentMessagePart.message || "";
 
-    const isFinal =
-      this.currentMessagePart.partIndex ===
-      this.currentMessagePart.totalParts! - 1;
-
-    this.currentMessagePart.isFinal = isFinal;
+    const isFinal = this.currentMessagePart.isFinal;
 
     gameStore.addToDialogHistory({
       type: "reply",
@@ -120,20 +97,11 @@ export class ChatHandler {
     sendWebSocketChatMessage(WebSocketMessageTypes.MESSAGE, text);
   }
 
-  public continueMessage() {
-    if (this.currentMessagePart?.isFinal) {
-      this.resetConversationState();
-    } else {
-      console.log(this.currentMessagePart?.isFinal);
-      this.processNextMessage();
-    }
-  }
-
   private resetConversationState() {
     const gameStore = useGameStore();
 
     this.currentMessagePart = null;
-    this.messageQueue = [];
+    // this.messageQueue = [];
     this.isProcessing = false;
     gameStore.currentStatus = "input";
     gameStore.currentLine = "";
