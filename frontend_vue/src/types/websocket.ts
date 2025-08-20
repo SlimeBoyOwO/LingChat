@@ -7,16 +7,13 @@ export interface WebSocketMessage {
 
 export interface WebSocketChatMessage {
   type: string;
+  emotion: string;
+  originalTag: string;
   message: string;
-  content?: string;
-  emotion?: string;
-  audioFile?: string;
-  isMultiPart?: boolean;
-  partIndex?: number;
-  totalParts?: number;
-  motionText?: string;
-  originalTag?: string;
-  isFinal?: boolean;
+  motionText: string;
+  audioFile: string;
+  originalMessage: string;
+  isFinal: boolean;
 }
 
 export enum WebSocketMessageTypes {
