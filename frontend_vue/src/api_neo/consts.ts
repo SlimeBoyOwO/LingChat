@@ -1,5 +1,6 @@
 export const API_URLS = {
     USER_INFO: "/api/user/info",
+    USER_DATA: "/api/user/data",
     DEFAULTS: "/api/user/settings/defaults",
     SETTINGS: "/api/user/settings/settings",
     CARD: {
@@ -11,6 +12,11 @@ export const API_URLS = {
         }
     }
 } as const;
+
+export const LIMITS = {
+    MAX_SAVE_COUNT: 10
+} as const;
+
 export const CHAT_LLM_PROVIDERS = ["webllm", "gemini", "ollama", "lmstudio"] as const;
 
 export const TRANSLATE_LLM_PROVIDERS = ["webllm", "gemini", "ollama", "lmstudio", "qwen-translate"] as const;
