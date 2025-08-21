@@ -38,3 +38,15 @@ export interface BackgroundImageInfo {
   url: string;
   time: string;
 }
+
+export interface Character {
+  character_id: string;
+  title: string;
+  info: string;
+  avatar_path: string;
+}
+
+export interface CharacterSelectParams {
+  user_id: string;
+  character_id: string;
+}
