@@ -33,11 +33,3 @@ export interface EmotionData {
   color: string;
   description?: string;
 }
-
-export interface Character {
-  id: string;
-  name: string;
-  avatar: string;
-  personality: string;
-  description?: string;
-}

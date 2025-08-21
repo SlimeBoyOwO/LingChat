@@ -3,10 +3,10 @@
     <div class="character-avatar-container">
       <img :src="avatar" :alt="name" class="character-avatar" />
     </div>
-    <div class="character-content-wrapper">
+    <div class="character-content">
       <h5 class="character-title">{{ name }}</h5>
       <p class="character-description">{{ info }}</p>
-      <Button type="select">✓ 已选择</Button>
+      <Button type="select" class="character-select-btn">✓ 已选择</Button>
     </div>
   </div>
 </template>
@@ -27,58 +27,117 @@ const props = withDefaults(defineProps<CharacterProps>(), {});
 <style scoped>
 .character-card {
   display: flex;
-  background-color: #fff;
-  border-radius: 12px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   overflow: hidden;
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  height: 180px; /* 固定高度保持统一 */
 }
 
 .character-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+  transform: translateY(-3px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
 }
 
 .character-avatar-container {
-  width: 150px;
-  height: 100%;
-  flex-shrink: 0;
-  padding: 15px;
-  box-sizing: border-box;
+  width: 180px;
+  height: 180px;
+  padding: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf3 100%);
+  background-color: #f8f9fa;
+  border-right: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 16px;
 }
 
 .character-avatar {
-  width: 100%;
-  height: auto;
-  object-fit: contain;
+  width: 180px;
+  height: 180px;
+  object-fit: contain; /* 保持原始比例，完整显示 */
   border-radius: 8px;
+  padding: 5px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
-.character-content-wrapper {
+.character-content {
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 15px;
+  padding: 12px;
   position: relative;
 }
 
 .character-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: #333;
-  margin-top: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffffff;
   margin-bottom: 8px;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .character-description {
   font-size: 13px;
-  color: #666;
-  line-height: 1.5;
-  flex-grow: 1;
+  color: #f8f9fa;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
   margin-bottom: 15px;
+  height: 100px;
+}
+
+.character-select-btn {
+  position: absolute;
+  bottom: 15px;
+  right: 15px;
+  background-color: #5e72e4;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.character-select-btn:hover {
+  background-color: #4a5acf;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(94, 114, 228, 0.3);
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .character-card {
+    height: 120px;
+  }
+
+  .character-avatar-container {
+    width: 100px;
+    height: 100px;
+  }
+
+  .character-avatar {
+    width: 85px;
+    height: 85px;
+  }
+
+  .character-title {
+    font-size: 16px;
+  }
+
+  .character-description {
+    font-size: 12px;
+  }
+
+  .character-select-btn {
+    padding: 5px 10px;
+    font-size: 12px;
+  }
 }
 </style>
