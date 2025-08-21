@@ -4,13 +4,14 @@
     <GameAvatar ref="gameAvatarRef" />
     <GameDialog />
     <div id="menu-panel">
-      <button
-        id="menu-toggle"
+      <Button
+        type="nav"
+        icon="text"
         @click="openSettings"
         v-show="uiStore.showSettings !== true"
       >
-        菜单
-      </button>
+        <h3>菜单</h3>
+      </Button>
     </div>
   </div>
 </template>
@@ -23,6 +24,7 @@ import { GameBackground } from "../game/standard";
 import { GameAvatar } from "../game/standard";
 import { GameDialog } from "../game/standard";
 import { getGameInfo } from "../../api/services/game-info";
+import { Button } from "../base";
 
 const uiStore = useUIStore();
 const gameStore = useGameStore();
@@ -78,35 +80,10 @@ onMounted(async () => {
   overflow: hidden;
 }
 
-#menu-toggle {
-  padding: 12px 20px;
-  background-color: #d2e5ff;
-  color: #3d8dff;
-  font-size: 20px;
-  font-weight: bold;
-  border: 0.5px solid #e5ecf1;
-  /* 银灰色边框 */
-  border-radius: 8px;
-  /* 稍微增大圆角 */
-  cursor: pointer;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-  /* 底部阴影 */
-  transition: all 0.3s ease;
-  /* 添加过渡效果 */
-}
-
-#menu-toggle:hover {
-  background-color: #b8d7ff;
-  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
-  /* 悬停时阴影更明显 */
-  transform: translateY(-2px);
-  /* 轻微上浮效果 */
-}
-
 #menu-panel {
   position: fixed;
-  top: 30px;
-  right: 30px;
+  top: 15px;
+  right: 20px;
   z-index: 1000;
 }
 </style>
