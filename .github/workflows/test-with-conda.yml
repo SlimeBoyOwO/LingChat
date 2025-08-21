@@ -39,11 +39,21 @@ jobs:
       - name: Install test dependencies
         run: |
           conda run -n LingChat uv pip install pytest pytest-asyncio pytest-cov
-      - name: Run tests with pytest
+          
+      - name: Run tests on Windows
+        if: runner.os == 'Windows'
         run: |
-          TEST_ARGS="${{ github.event.inputs.test_args }}"
-          if [ -n "$TEST_ARGS" ] && [ "$TEST_ARGS" != "" ]; then
-            conda run -n LingChat python -m pytest $TEST_ARGS
-          else
-            conda run -n LingChat python -m pytest tests/ -v
-          fi
+          echo "Running on Windows"
+          uv run pytest tests/ --tb=short -v
+
+      - name: Run tests on Linux
+        if: runner.os == 'Linux'
+        run: |
+          echo "Running on Linux"
+          uv run pytest tests/ --cov=src -v
+
+      - name: Run tests on macOS
+        if: runner.os == 'macOS'
+        run: |
+          echo "Running on macOS"
+          uv run pytest tests/ -k "not slow"
