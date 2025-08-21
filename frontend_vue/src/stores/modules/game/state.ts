@@ -19,10 +19,11 @@ export interface GameState {
     user_subtitle: string;
     think_message: string;
     emotion: string;
+    originEmotion: string;
   };
   currentLine: string;
   currentStatus: "input" | "thinking" | "responding";
-  dialogHistory: any[];
+  dialogHistory: DialogMessage[];
 }
 
 export const state: GameState = {
@@ -35,6 +36,7 @@ export const state: GameState = {
     user_name: "Lovely You",
     user_subtitle: "Bibilibi",
     think_message: "灵灵正在思考中",
+    originEmotion: "",
   },
   currentLine: "",
   currentStatus: "input",
