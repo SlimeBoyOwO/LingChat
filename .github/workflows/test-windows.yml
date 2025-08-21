@@ -1,0 +1,49 @@
+---
+name: Windows Tests
+
+on:
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      python_version:
+        description: 'Python版本'
+        required: false
+        default: '3.12'
+      test_args:
+        description: '测试参数'
+        required: false
+        default: ''
+
+jobs:
+  test-windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python-version: 
+          - ${{ github.event.inputs.python_version || '3.12' }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install Poetry
+        run: |
+          python -m pip install --upgrade pip
+          pip install poetry
+      - name: Install dependencies
+        run: |
+          poetry install
+      - name: Install test dependencies
+        run: |
+          pip install pytest pytest-asyncio
+      - name: Run tests with pytest
+        run: |
+          $TEST_ARGS = "${{ github.event.inputs.test_args }}"
+          if ($TEST_ARGS -and $TEST_ARGS -ne "") {
+            python -m pytest $TEST_ARGS
+          } else {
+            python -m pytest tests/ -v
+          }
