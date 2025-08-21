@@ -15,6 +15,8 @@
       <SettingsBackground
         v-show="uiStore.currentSettingsTab === 'background'"
       />
+      <SettingsSave v-show="uiStore.currentSettingsTab === 'save'" />
+      <SettingsAdvance v-show="uiStore.currentSettingsTab === 'advance'" />
     </div>
   </div>
 </template>
@@ -26,6 +28,8 @@ import SettingsSound from "./pages/SettingsSound.vue";
 import SettingsHistory from "./pages/SettingsHistory.vue";
 import SettingsCharacter from "./pages/SettingsCharacter.vue";
 import SettingsBackground from "./pages/SettingsBackground.vue";
+import SettingsSave from "./pages/SettingsSave.vue";
+import SettingsAdvance from "./pages/SettingsAdvance.vue";
 import { useUIStore } from "../../stores/modules/ui/ui";
 
 const uiStore = useUIStore();
