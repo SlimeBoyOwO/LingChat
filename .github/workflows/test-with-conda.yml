@@ -47,4 +47,3 @@ jobs:
           else
             conda run -n LingChat python -m pytest tests/ -v
           fi
-        shell: bash
