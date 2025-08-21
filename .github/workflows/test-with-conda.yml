@@ -38,7 +38,7 @@ jobs:
           conda run -n LingChat pip install uv
       - name: Install test dependencies
         run: |
-          conda run -n LingChat uv pip install pytest pytest-asyncio
+          conda run -n LingChat uv pip install pytest pytest-asyncio pytest-cov
       - name: Run tests with pytest
         run: |
           TEST_ARGS="${{ github.event.inputs.test_args }}"
