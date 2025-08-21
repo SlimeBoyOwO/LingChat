@@ -5,7 +5,7 @@ export interface UIStatus {
     readonly currentPage: string;
 }
 
-export async function initUIStatus(): Promise<UIStatus> {
+export function createUIStatusStatic(): UIStatus {
     return <UIStatus>{
         nav_stack: [],
         isPartialPage: false,
