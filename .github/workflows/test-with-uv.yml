@@ -1,5 +1,5 @@
 ---
-name: Windows Tests
+name: Test with uv
 
 on:
   pull_request:
@@ -16,10 +16,11 @@ on:
         default: ''
 
 jobs:
-  test-windows:
-    runs-on: windows-latest
+  test-cross-platform-uv:
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
         python-version: 
           - ${{ github.event.inputs.python_version || '3.12' }}
     
@@ -29,21 +30,18 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install Poetry
+      - name: Install uv
         run: |
-          python -m pip install --upgrade pip
-          pip install poetry
-      - name: Install dependencies
+          pip install uv
+      - name: Sync dependencies with uv
         run: |
-          poetry install
-      - name: Install test dependencies
-        run: |
-          pip install pytest pytest-asyncio
+          uv sync --dev
       - name: Run tests with pytest
         run: |
-          $TEST_ARGS = "${{ github.event.inputs.test_args }}"
-          if ($TEST_ARGS -and $TEST_ARGS -ne "") {
-            python -m pytest $TEST_ARGS
-          } else {
-            python -m pytest tests/ -v
-          }
+          TEST_ARGS="${{ github.event.inputs.test_args }}"
+          if [ -n "$TEST_ARGS" ] && [ "$TEST_ARGS" != "" ]; then
+            uv run pytest $TEST_ARGS
+          else
+            uv run pytest tests/ -v
+          fi
+        shell: bash

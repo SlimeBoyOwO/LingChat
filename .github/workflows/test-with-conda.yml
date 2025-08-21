@@ -1,0 +1,50 @@
+---
+name: Test with Conda
+
+on:
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      python_version:
+        description: 'Python版本'
+        required: false
+        default: '3.12'
+      test_args:
+        description: '测试参数'
+        required: false
+        default: ''
+
+jobs:
+  test-with-conda:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+        python-version: 
+          - ${{ github.event.inputs.python_version || '3.12' }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Conda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniconda-version: "latest"
+          python-version: ${{ matrix.python-version }}
+          environment-file: environment.yaml
+          activate-environment: LingChat
+      - name: Install uv
+        run: |
+          conda run -n LingChat pip install uv
+      - name: Install test dependencies
+        run: |
+          conda run -n LingChat uv pip install pytest pytest-asyncio
+      - name: Run tests with pytest
+        run: |
+          TEST_ARGS="${{ github.event.inputs.test_args }}"
+          if [ -n "$TEST_ARGS" ] && [ "$TEST_ARGS" != "" ]; then
+            conda run -n LingChat python -m pytest $TEST_ARGS
+          else
+            conda run -n LingChat python -m pytest tests/ -v
+          fi
+        shell: bash
