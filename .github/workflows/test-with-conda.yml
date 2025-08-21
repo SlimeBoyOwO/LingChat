@@ -44,16 +44,16 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           echo "Running on Windows"
-          uv run pytest tests/ --tb=short -v
+          conda run -n LingChat uv run pytest tests/ --tb=short -v
 
       - name: Run tests on Linux
         if: runner.os == 'Linux'
         run: |
           echo "Running on Linux"
-          uv run pytest tests/ --cov=src -v
+          conda run -n LingChat uv run pytest tests/ --cov=src -v
 
       - name: Run tests on macOS
         if: runner.os == 'macOS'
         run: |
           echo "Running on macOS"
-          uv run pytest tests/ -k "not slow"
+          conda run -n LingChat uv run pytest tests/ -k "not slow"
