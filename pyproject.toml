@@ -1,16 +1,15 @@
 [project]
 name = "ling-chat"
-version = "0.3.0"
-description = "" # 可选，从 [tool.poetry] 复制过来
+version = "0.4.0beta1"
+description = ""
 authors = [
     { name = "0x00-pl", email = "0x00.pl@gmail.com" },
 ]
-# 添加或修改这一行，允许 Python 3.14
-requires-python = ">=3.14,<3.15" # 确保包含 3.14，如果你知道未来版本也能用，可以改为 `>=3.14`
+requires-python = ">=3.10,<3.15"
 
 [tool.poetry]
 name = "ling-chat"
-version = "0.3.0"
+version = "0.4.0beta1"
 description = ""
 authors = ["0x00-pl <0x00.pl@gmail.com>"]
 readme = "README.md"
@@ -26,8 +25,7 @@ url = "https://pypi.tuna.tsinghua.edu.cn/simple"
 priority = "primary"
 
 [tool.poetry.dependencies]
-# 修改这一行，允许 Python 3.14
-python = "^3.14" # 或者 "^3.10" 但要确保它兼容 3.14。通常直接写目标版本更明确。
+python = ">=3.10,<3.15"
 fastapi = "^0.116.1"
 uvicorn = "^0.35.0"
 requests = "^2.32.4"
@@ -43,7 +41,7 @@ fastmcp = "^2.9.0"
 mss = "^10.0.0"
 google-generativeai = "^0.8.5"
 py7zr = "^1.0.0"
-poetry-core = "^2.1.3" # 这个是构建系统依赖，通常由 Poetry 管理
+poetry-core = "^2.1.3"
 torch = {version = "^2.5.1", source = "torchcpu"}
 sentence-transformers = "^5.0.0"
 chromadb = "^1.0.0"
