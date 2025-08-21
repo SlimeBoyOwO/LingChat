@@ -2,7 +2,19 @@
   <MenuPage>
     <MenuItem title="角色列表">
       <CharacterList>
-        <div id="characters"></div>
+        <div class="character-list character-grid">
+          <CharacterCard
+            v-for="character in characters"
+            :key="character.id"
+            :avatar="character.avatar"
+            :name="character.title"
+            :info="character.info"
+          >
+            <template #actions>
+              <Button type="select"" @click="selectCharacter(character.id)">选择</Button>
+            </template>
+          </CharacterCard>
+        </div>
       </CharacterList>
     </MenuItem>
 
@@ -11,146 +23,134 @@
     </MenuItem>
 
     <MenuItem title="创意工坊" size="small">
-      <Button type="big" @click="gotoWorkshop">进入创意工坊</Button>
+      <Button type="big" @click="openCreativeWeb">进入创意工坊</Button>
     </MenuItem>
   </MenuPage>
 </template>
 
 <script setup lang="ts">
-import { h, createApp, ref, onMounted } from "vue";
+import { ref, onMounted } from "vue";
 import { MenuPage } from "../../ui";
 import { MenuItem } from "../../ui";
 import { Button } from "../../base";
-import Character from "../../ui/Menu/CharacterCard.vue";
+import CharacterCard from "../../ui/Menu/CharacterCard.vue";
 import CharacterList from "../../ui/Menu/CharacterList.vue";
+import {
+  characterGetAll,
+  characterSelect,
+} from "../../../api/services/character";
+import type { Character as ApiCharacter } from "../../../types";
 
-onMounted(() => {
-  interface CharacterInfomation {
-    avatar: string;
-    name: string;
-    info: string;
+interface CharacterCard {
+  id: number;
+  title: string;
+  info: string;
+  avatar: string;
+}
+
+const characters = ref<CharacterCard[]>([]);
+const userId = ref<number>(1);
+
+const fetchCharacters = async (): Promise<CharacterCard[]> => {
+  try {
+    const list = await characterGetAll();
+    return list.map((char: ApiCharacter) => ({
+      id: parseInt(char.character_id),
+      title: char.title,
+      info: char.info || "暂无角色描述",
+      avatar: char.avatar_path
+        ? `/api/v1/chat/character/character_file/${encodeURIComponent(
+            char.avatar_path
+          )}`
+        : "../pictures/characters/default.png",
+    }));
+  } catch (error) {
+    console.error("获取角色列表失败:", error);
+    return [];
   }
-  function mountCharacter(infomation: CharacterInfomation) {
-    const characterNode = h(Character, infomation);
-    const app = createApp({
-      render: () => characterNode,
+};
+
+const loadCharacters = async (): Promise<void> => {
+  try {
+    const characterData = await fetchCharacters();
+    characters.value = characterData;
+  } catch (error) {
+    console.error("加载角色失败:", error);
+  }
+};
+
+const updateSelectedStatus = (): void => {
+  // eventBus.emit("system:character_updated");
+};
+
+const selectCharacter = async (characterId: number): Promise<void> => {
+  try {
+    await characterSelect({
+      user_id: userId.value.toString(),
+      character_id: characterId.toString(),
     });
-    app.mount("#characters");
+    updateSelectedStatus();
+  } catch (error) {
+    console.error("切换角色失败:", error);
   }
+};
 
-  // 这里添加人物
-  mountCharacter({
-    avatar: "",
-    name: "灵灵",
-    info: "闷骚的孩子",
-  });
-  // 这个函数多次调用也只有一个人物，燃尽了
+const refreshCharacters = async (): Promise<void> => {
+  try {
+    const response = await fetch("/api/v1/chat/character/refresh_characters", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    await response.json();
+    alert("刷新成功");
+    await loadCharacters(); // 重新加载角色列表
+  } catch (error) {
+    alert("刷新失败");
+    console.error("刷新失败:", error);
+  }
+};
+
+const openCreativeWeb = async (): Promise<void> => {
+  try {
+    const response = await fetch("/api/v1/chat/character/open_web");
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    await response.json();
+  } catch (error) {
+    alert("启动失败，请手动去lingchat的discussion网页");
+    console.error("打开创意工坊失败:", error);
+  }
+};
+
+// 初始化加载角色列表
+onMounted(() => {
+  loadCharacters();
 });
-
-const refreshCharacters = () => {
-  // 当刷新人物列表的按钮点击之后在这里写处理逻辑
-  console.log("刷新人物列表");
-};
-const gotoWorkshop = () => {
-  // 当创意工坊的按钮点击之后在这里写处理逻辑
-  console.log("进入创意工坊");
-};
 </script>
 
 <style scoped>
-/* --- 角色选择页面新样式 --- */
-
-.section-header {
-  display: flex;
-  align-items: center;
-  border-bottom: 2px solid var(--accent-color);
-  padding-bottom: 8px;
-  margin-bottom: 15px;
-}
-
-.section-header h4,
-.section-header h5 {
-  margin: 0;
-  font-size: 18px;
-  color: #333;
-  font-weight: 600;
-}
-
-.character-card {
-  display: flex;
-  background-color: #fff;
-  border-radius: 12px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
-  overflow: hidden;
-  transition: all 0.3s ease;
-}
-
-.character-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
-}
-
-.character-avatar-container {
-  width: 150px;
-  height: 100%;
-  flex-shrink: 0;
+/*=========角色css部分=========*/
+/* 角色选择网格布局 */
+.character-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
   padding: 15px;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf3 100%);
-}
-
-.character-avatar {
   width: 100%;
-  height: auto;
-  object-fit: contain;
-  border-radius: 8px;
 }
 
-.character-content-wrapper {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  padding: 15px;
-  position: relative;
-}
-
-.character-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: #333;
-  margin-top: 0;
-  margin-bottom: 8px;
-}
-
-.character-description {
-  font-size: 13px;
-  color: #666;
-  line-height: 1.5;
-  flex-grow: 1;
-  margin-bottom: 15px;
-}
-
-.character-select-btn {
-  align-self: flex-end; /* 按钮靠右 */
-  background-color: #ccc;
-  color: #666;
-  border: none;
-  padding: 8px 15px;
-  border-radius: 20px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 13px;
-  font-weight: 500;
-}
-.character-select-btn.selected {
-  background-color: var(--accent-color);
-  color: white;
-}
-.character-select-btn:not(.selected):hover {
-  background-color: #555;
-  color: white;
+@media (max-width: 768px) {
+  .character-grid {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
 }
 </style>

@@ -7,7 +7,6 @@ export type {
   ChatManagerConfig,
   EmotionConfig,
   EmotionData,
-  Character,
 } from "./chat";
 
 // 通用类型定义
