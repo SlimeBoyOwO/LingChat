@@ -4,7 +4,7 @@ import requests
 import subprocess
 import tempfile
 from pathlib import Path
-from ling_chat.core.memory_rag.downloading import download_embedding_model
+from ling_chat.third_party.downloading_RAG_model import download_embedding_model
 
 
 def download_file(url: str, save_path: Path) -> None:
