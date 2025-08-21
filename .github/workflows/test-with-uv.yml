@@ -36,6 +36,7 @@ jobs:
       - name: Sync dependencies with uv
         run: |
           uv sync --dev
+          uv pip install pytest pytest-asyncio pytest-cov
       - name: Run tests with pytest
         run: |
           TEST_ARGS="${{ github.event.inputs.test_args }}"
@@ -44,4 +45,3 @@ jobs:
           else
             uv run pytest tests/ -v
           fi
-        shell: bash
