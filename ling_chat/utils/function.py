@@ -160,7 +160,7 @@ class Function:
         return settings
 
     @staticmethod
-    def parse_chat_log(content: str) -> List[Dict[str, str]]:
+    def parse_chat_log(content: str) -> tuple[datetime | None, List[Dict[str, str]] | None]:
         """
         解析聊天内容字符串，将其转换为JSON所需的聊天记录列表，并提取对话日期。
 

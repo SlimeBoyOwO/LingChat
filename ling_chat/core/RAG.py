@@ -7,6 +7,7 @@ import torch
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional, Any
 from ling_chat.core.logger import logger, TermColors
+from ling_chat.utils.runtime_path import third_party_path
 
 _sentence_transformer_imported_ok = True
 _chromadb_imported_ok = True
@@ -103,15 +104,14 @@ class RAGSystem:
             # Construct the local model path relative to the current file (RAG.py)
             # RAG.py is in 'backend/core/'
             # Model should be in 'backend/core/memory_rag/models/all-MiniLM-L6-v2'
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            local_model_path = os.path.join(script_dir, 'memory_rag', 'models', self.EMBEDDING_MODEL_NAME)
+            local_model_path = os.path.join(third_party_path, 'memory_rag_models', self.EMBEDDING_MODEL_NAME)
 
             logger.info(f"RAG: 准备从本地路径加载嵌入模型: {local_model_path}")
 
             if not os.path.isdir(local_model_path):
                 logger.error(f"本地模型路径不存在或不是文件夹: {local_model_path}")
-                logger.error("请确保模型已下载到 'backend/core/memory_rag/models' 目录下。")
-                logger.error("您可以运行 'backend/core/memory_rag/downloading.py' 脚本来下载模型。")
+                logger.error("请确保模型已下载。")
+                logger.error(f"您可以运行 '{third_party_path}/downloading_RAG_model' 脚本来下载模型。")
                 return False
 
             logger.debug(f"RAG: 初始化Sentence Transformer模型...")
