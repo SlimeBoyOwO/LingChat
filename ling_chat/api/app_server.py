@@ -23,7 +23,6 @@ async def lifespan(app: FastAPI):
         logger.info("正在同步游戏角色数据...")
         CharacterModel.sync_characters_from_game_data(user_data_path / "game_data")
 
-        logger.stop_loading_animation(success=True, final_message="应用加载成功")
         yield
 
     except (ImportError, Exception) as e:
