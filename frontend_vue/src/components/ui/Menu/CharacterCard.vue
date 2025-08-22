@@ -6,7 +6,10 @@
     <div class="character-content">
       <h5 class="character-title">{{ name }}</h5>
       <p class="character-description">{{ info }}</p>
-      <Button type="select" class="character-select-btn">✓ 已选择</Button>
+
+      <div class="character-actions">
+        <slot name="actions"></slot>
+      </div>
     </div>
   </div>
 </template>
@@ -88,27 +91,6 @@ const props = withDefaults(defineProps<CharacterProps>(), {});
   overflow: hidden;
   margin-bottom: 15px;
   height: 100px;
-}
-
-.character-select-btn {
-  position: absolute;
-  bottom: 15px;
-  right: 15px;
-  background-color: #5e72e4;
-  color: white;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 20px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.character-select-btn:hover {
-  background-color: #4a5acf;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 6px rgba(94, 114, 228, 0.3);
 }
 
 /* 响应式调整 */

@@ -66,6 +66,46 @@ onMounted(() => {
       }
     }
   );
+
+  // 响应偏移等状态变化
+  watch(
+    () => gameStore.avatar.offset,
+    (newOffSet) => {
+      if (avatarImg.value && avatarImg.value.style) {
+        avatarImg.value.style.top = newOffSet.toString() + "px";
+      }
+    }
+  );
+
+  // 响应大小变化
+  watch(
+    () => gameStore.avatar.scale,
+    (newScale) => {
+      if (avatarImg.value && avatarImg.value.style) {
+        avatarImg.value.style.transform = `scale(${newScale})`;
+      }
+    }
+  );
+
+  // 响应偏移等状态变化
+  watch(
+    () => gameStore.avatar.bubble_left,
+    (newBubbleLeft) => {
+      if (avatarBubble.value && avatarBubble.value.style) {
+        avatarBubble.value.style.left = newBubbleLeft.toString() + "%";
+      }
+    }
+  );
+
+  // 响应偏移等状态变化
+  watch(
+    () => gameStore.avatar.bubble_top,
+    (newBubbleTop) => {
+      if (avatarBubble.value && avatarBubble.value.style) {
+        avatarBubble.value.style.top = newBubbleTop.toString() + "%";
+      }
+    }
+  );
 });
 
 onBeforeUnmount(() => {
@@ -97,5 +137,6 @@ defineExpose({
   background-repeat: no-repeat;
   z-index: 1;
   transition: background-image 0.2s ease-in-out;
+  transform-origin: center 0%;
 }
 </style>
