@@ -6,17 +6,22 @@ from typing import Collection
 
 from ling_chat.utils.runtime_path import user_data_path, third_party_path
 from ling_chat.utils.function import Function
+from ling_chat.utils.easter_egg import get_random_loading_message
 
 if os.path.exists(".env"):
     Function.load_env()
 else:
     try:
         Function.load_env(".env.example")
-        Function.load_env(user_data_path / ".env", init=True)  # 加载用户数据目录下的环境变量
+        Function.load_env(user_data_path / ".env")  # 加载用户数据目录下的环境变量
     except Exception as e:
         print(f"警告：加载环境变量失败，将使用默认: {e}")
 
 from ling_chat.core.logger import logger
+
+selected_loading_message = get_random_loading_message()
+logger.start_loading_animation(message=selected_loading_message, animation_style="auto")
+
 from ling_chat.utils.cli_parser import get_parser
 from ling_chat.api.app_server import run_app_in_thread
 from ling_chat.core.webview import start_webview
@@ -83,12 +88,14 @@ def main():
 
     # 检查环境变量决定是否启动前端界面
     if os.getenv('OPEN_FRONTEND_APP', 'false').lower() == "true":
+        logger.stop_loading_animation(success=True, final_message="应用加载成功")
         try:
             start_webview()
         except KeyboardInterrupt:
             logger.info("用户关闭程序")
     else:
         logger.info("已根据环境变量禁用前端界面")
+        logger.stop_loading_animation(success=True, final_message="应用加载成功")
         try:
             # 循环等待
             while not should_exit and app_thread.is_alive():

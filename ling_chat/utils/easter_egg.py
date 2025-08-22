@@ -7,6 +7,7 @@ CATEGORIZED_MESSAGES = [
         "weight": 0.5,
         "messages": [
             "万恶的Python在导入他忠诚的pytorch...",
+            "LingChat 正在努力加载中... 稍等一下哦",
         ],
     },
     {
@@ -14,6 +15,7 @@ CATEGORIZED_MESSAGES = [
         "weight": 0.3,
         "messages": [
          "给LingChat点点star喵，给LingChat点点star谢谢喵",
+         "LingChat不能失去彩蛋，就像西方不能失去耶路撒冷！"
         ],
     },
     {
