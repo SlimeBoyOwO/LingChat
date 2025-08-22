@@ -13,9 +13,12 @@
             <template #actions>
               <Button
                 type="select"
-                class="character-select-btn"
+                :class="[
+                  'character-select-btn',
+                  { selected: isSelected(character.id) },
+                ]"
                 @click="selectCharacter(character.id)"
-                >选择</Button
+                >{{ isSelected(character.id) ? "√ 选中" : "选择" }}</Button
               >
             </template>
           </CharacterCard>
@@ -140,6 +143,10 @@ const openCreativeWeb = async (): Promise<void> => {
   }
 };
 
+function isSelected(id: number): boolean {
+  return gameStore.avatar.character_id === id;
+}
+
 // 初始化加载角色列表
 onMounted(() => {
   loadCharacters();
@@ -176,6 +183,10 @@ onMounted(() => {
   background-color: #4a5acf;
   transform: translateY(-1px);
   box-shadow: 0 2px 6px rgba(94, 114, 228, 0.3);
+}
+
+.selected {
+  background-color: #10b981 !important;
 }
 
 @media (max-width: 768px) {
