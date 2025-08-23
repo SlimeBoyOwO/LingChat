@@ -13,7 +13,7 @@
         icon="character"
         @click="() => switchTab('character', 'characterBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'character' }"
-        >角色</Button
+        ><p class="button-text">角色</p></Button
       >
       <Button
         ref="textBtn"
@@ -21,7 +21,7 @@
         icon="text"
         @click="() => switchTab('text', 'textBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'text' }"
-        >文本</Button
+        ><p class="button-text">文本</p></Button
       >
       <Button
         ref="backgroundBtn"
@@ -29,7 +29,7 @@
         icon="background"
         @click="() => switchTab('background', 'backgroundBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'background' }"
-        >背景</Button
+        ><p class="button-text">背景</p></Button
       >
       <Button
         ref="soundBtn"
@@ -37,7 +37,7 @@
         icon="sound"
         @click="() => switchTab('sound', 'soundBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'sound' }"
-        >声音</Button
+        ><p class="button-text">声音</p></Button
       >
       <Button
         ref="historyBtn"
@@ -45,7 +45,7 @@
         icon="history"
         @click="() => switchTab('history', 'historyBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'history' }"
-        >对话历史</Button
+        ><p class="button-text">对话历史</p></Button
       >
       <Button
         ref="saveBtn"
@@ -53,7 +53,7 @@
         icon="save"
         @click="() => switchTab('save', 'saveBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'save' }"
-        >存档</Button
+        ><p class="button-text">存档</p></Button
       >
       <Button
         ref="advanceBtn"
@@ -61,7 +61,7 @@
         icon="advance"
         @click="() => switchTab('advance', 'advanceBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'advance' }"
-        >高级设置</Button
+        ><p class="button-text">高级设置</p></Button
       >
     </nav>
     <Icon
@@ -206,6 +206,9 @@ nav {
   align-items: center;
   flex-grow: 1; /* 允许nav占据可用空间 */
   justify-content: center; /* 居中导航按钮 */
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent-color) transparent;
 }
 
 .nav-indicator {
@@ -238,5 +241,29 @@ nav {
   color: var(--accent-color);
   background-color: rgba(255, 255, 255, 0.1);
   transform: rotate(90deg);
+}
+
+/* 新增媒体查询，用于适配窄屏幕 */
+@media (max-width: 768px) {
+  /* 1. 隐藏 Logo */
+  .settings-logo {
+    display: none;
+  }
+
+  /* 2. 隐藏按钮中的文字 */
+  .button-text {
+    /* 请将 .button-component 替换为 Button 组件的根元素类名 */
+    display: none;
+  }
+
+  /* 3. 调整导航栏布局 */
+  nav {
+    justify-content: space-around; /* 让仅有图标的按钮均匀分布 */
+    flex-grow: 1; /* 占据全部可用空间 */
+  }
+
+  .nav-container {
+    padding: 0 10px; /* 在手机上可以减少一些左右边距 */
+  }
 }
 </style>
