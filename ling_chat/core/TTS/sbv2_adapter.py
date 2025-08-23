@@ -1,15 +1,15 @@
 import aiohttp
-from ling_chat.core.TTS.base_adapter import BaseVitsAdapter
+from ling_chat.core.TTS.base_adapter import TTSBaseAdapter
 
 
-class SBVVitsAdapter(BaseVitsAdapter):
+class SBV2Adapter(TTSBaseAdapter):
     def __init__(self, api_url, speaker_id=0, model_name="", audio_format="wav", lang="JP"):
         self.api_url = api_url
         self.default_params = {
             "encoding": "utf-8",  # 文本编码
             "model_name": model_name,
             "model_id": 0,  # 模型ID (0表示默认)
-            "speaker_id": 0,  # 说话者ID (0表示默认)
+            "speaker_id": speaker_id,  # 说话者ID (0表示默认)
             "sdp_ratio": 0.2,  # SDP/DP混合比
             "noise": 0.6,  # 采样噪声比例
             "noisew": 0.8,  # SDP噪声

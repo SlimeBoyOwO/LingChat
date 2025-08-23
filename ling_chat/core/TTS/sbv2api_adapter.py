@@ -1,10 +1,10 @@
 import aiohttp
 import json
-from ling_chat.core.TTS.base_adapter import BaseVitsAdapter
+from ling_chat.core.TTS.base_adapter import TTSBaseAdapter
 from ling_chat.core.logger import logger
 
 
-class SBV2APIAdapter(BaseVitsAdapter):
+class SBV2APIAdapter(TTSBaseAdapter):
     def __init__(self, api_url, model_name="", length_scale=1, sdp_ratio=0, 
                  speaker_id=0, style_id=0, audio_format="wav"):
         self.api_url = api_url
