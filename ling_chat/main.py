@@ -72,7 +72,6 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
-    print_logo()
     args = get_parser().parse_args()
 
     handel_install(args.install or [])
@@ -89,6 +88,7 @@ def main():
     # 检查环境变量决定是否启动前端界面
     if os.getenv('OPEN_FRONTEND_APP', 'false').lower() == "true":
         logger.stop_loading_animation(success=True, final_message="应用加载成功")
+        print_logo()
         try:
             start_webview()
         except KeyboardInterrupt:
@@ -96,6 +96,7 @@ def main():
     else:
         logger.info("已根据环境变量禁用前端界面")
         logger.stop_loading_animation(success=True, final_message="应用加载成功")
+        print_logo()
         try:
             # 循环等待
             while not should_exit and app_thread.is_alive():
