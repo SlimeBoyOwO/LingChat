@@ -1,32 +1,23 @@
 <template>
   <MenuPage>
     <MenuItem title="👩 角色音量" size="small">
-      <Slider
-        :model-value="uiStore.characterVolume"
-        @update:model-value="updateCharacterVolume"
-      >
-        <span>弱</span>
-        <span>强</span>
+      <Slider v-model="uiStore.characterVolume" @change="updateCharacterVolume">
+        弱/强
       </Slider>
     </MenuItem>
 
     <MenuItem title="💬 气泡音量" size="small">
-      <Slider
-        :model-value="uiStore.bubbleVolume"
-        @update:model-value="updateBubbleVolume"
-      >
-        <span>弱</span>
-        <span>强</span>
+      <Slider @input="updateBubbleVolume" v-model="uiStore.bubbleVolume">
+        弱/强
       </Slider>
     </MenuItem>
 
     <MenuItem title="🎶 背景音量" size="small">
       <Slider
-        :model-value="uiStore.backgroundVolume"
-        @update:model-value="updateBackgroundVolume"
+        @input="updateBackgroundVolume"
+        v-model="uiStore.backgroundVolume"
       >
-        <span>弱</span>
-        <span>强</span>
+        弱/强
       </Slider>
     </MenuItem>
 

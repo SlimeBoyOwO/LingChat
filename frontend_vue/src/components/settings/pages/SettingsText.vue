@@ -1,7 +1,7 @@
 <template>
   <MenuPage>
     <MenuItem title="⚡ 文字显示速度">
-      <Slider @input="textSpeedChange" @change="textSpeedLast">慢/快</Slider>
+      <Slider @change="textSpeedChange">慢/快</Slider>
     </MenuItem>
 
     <MenuItem title="📝 显示文字样本">
@@ -42,9 +42,6 @@ const uiStore = useUIStore();
 const textSpeedChange = (data: number) => {
   textSpeedSample.value = data;
   uiStore.typeWriterSpeed = data;
-};
-const textSpeedLast = (data: number) => {
-  console.log(data);
 };
 const animateSwitch = (data: boolean) => {
   console.log(data);
