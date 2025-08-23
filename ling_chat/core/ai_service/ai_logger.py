@@ -61,7 +61,7 @@ class AILogger:
             logger.info(f"Role: {message['role']}\nContent: {message['content']}\n")
 
         # 增加更详细的RAG信息日志
-        if self.use_rag and rag_messages:
+        if rag_messages:
             logger.info("\n------ RAG增强信息详情 ------")
             logger.info(f"原始消息数: {len(messages)}，RAG增强后消息数: {len(current_context)}")
             logger.info(f"RAG增强消息数量: {len(rag_messages)}，位置: 系统提示后、用户消息前")

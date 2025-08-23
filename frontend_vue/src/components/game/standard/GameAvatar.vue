@@ -3,12 +3,7 @@
     ref="avatarContainer"
     class="avatar-container character-animation normal"
   >
-    <img
-      ref="avatarImg"
-      class="avatar-img"
-      id="qinling"
-      src="@/assets/images/avatar_error.png"
-    />
+    <div ref="avatarImg" class="avatar-img" id="qinling"></div>
     <div ref="avatarBubble" class="bubble"></div>
     <audio ref="avatarAudio"></audio>
     <audio ref="bubbleAudio"></audio>
@@ -71,6 +66,46 @@ onMounted(() => {
       }
     }
   );
+
+  // 响应偏移等状态变化
+  watch(
+    () => gameStore.avatar.offset,
+    (newOffSet) => {
+      if (avatarImg.value && avatarImg.value.style) {
+        avatarImg.value.style.top = newOffSet.toString() + "px";
+      }
+    }
+  );
+
+  // 响应大小变化
+  watch(
+    () => gameStore.avatar.scale,
+    (newScale) => {
+      if (avatarImg.value && avatarImg.value.style) {
+        avatarImg.value.style.transform = `scale(${newScale})`;
+      }
+    }
+  );
+
+  // 响应偏移等状态变化
+  watch(
+    () => gameStore.avatar.bubble_left,
+    (newBubbleLeft) => {
+      if (avatarBubble.value && avatarBubble.value.style) {
+        avatarBubble.value.style.left = newBubbleLeft.toString() + "%";
+      }
+    }
+  );
+
+  // 响应偏移等状态变化
+  watch(
+    () => gameStore.avatar.bubble_top,
+    (newBubbleTop) => {
+      if (avatarBubble.value && avatarBubble.value.style) {
+        avatarBubble.value.style.top = newBubbleTop.toString() + "%";
+      }
+    }
+  );
 });
 
 onBeforeUnmount(() => {
@@ -90,14 +125,18 @@ defineExpose({
   width: 100%;
 }
 
-img {
+/* 替换 img 为 div 背景 */
+.avatar-img {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 102%;
-  object-fit: contain;
-  object-position: center;
+  background-size: contain;
+  background-position: center center;
+  background-repeat: no-repeat;
   z-index: 1;
+  transition: background-image 0.2s ease-in-out;
+  transform-origin: center 0%;
 }
 </style>

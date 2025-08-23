@@ -1,10 +1,10 @@
 import http from "../http";
-import type { Character, CharacterSelectParams } from "../types/character";
+import type { Character, CharacterSelectParams } from "../../types";
 
 export const characterGetAll = async (): Promise<Character[]> => {
   try {
-    const response = await http.get("/v1/chat/character/get_all_characters");
-    return response.data;
+    const data = await http.get("/v1/chat/character/get_all_characters");
+    return data;
   } catch (error: any) {
     throw new Error(error.response?.data?.message || "获取角色列表失败");
   }

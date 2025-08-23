@@ -1,6 +1,6 @@
 <template>
   <button :class="type" :disabled="disabled" @click="click">
-    <Icon :icon="icon" :size="icon_size"></Icon>
+    <Icon v-if="icon" :icon="icon" :size="icon_size"></Icon>
     <slot></slot>
   </button>
 </template>

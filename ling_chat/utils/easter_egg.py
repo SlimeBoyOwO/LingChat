@@ -7,6 +7,7 @@ CATEGORIZED_MESSAGES = [
         "weight": 0.5,
         "messages": [
             "万恶的Python在导入他忠诚的pytorch...",
+            "LingChat 正在努力加载中... 稍等一下哦",
         ],
     },
     {
@@ -14,6 +15,7 @@ CATEGORIZED_MESSAGES = [
         "weight": 0.3,
         "messages": [
          "给LingChat点点star喵，给LingChat点点star谢谢喵",
+         "LingChat不能失去彩蛋，就像西方不能失去耶路撒冷！"
         ],
     },
     {
@@ -26,6 +28,7 @@ CATEGORIZED_MESSAGES = [
             "正在加载PL的代码... 等等，编译器找不到bug，它以为自己出错了。",
             "你们看到云小姐了吗？嗯嗯，她没有失踪也没有怎么样的，我们只是想让你知道，她很可爱",
             "喵？喵~ 喵！",
+            "uwa的代码是用来让你知道，钦灵的代码才是最好的!",
         ],
     },
 ]

@@ -11,6 +11,12 @@
         <div class="chatbox-emotion">
           <div id="character-emotion">{{ uiStore.showCharacterEmotion }}</div>
         </div>
+        <Button
+          type="nav"
+          icon="history"
+          title=""
+          @click="openHistory"
+        ></Button>
       </div>
       <div class="chatbox-line"></div>
       <div class="chatbox-inputbox">
@@ -33,6 +39,7 @@
 <script setup lang="ts">
 import { chatHandler } from "../../../api/websocket/handlers/chat-handler";
 import { ref, watch, computed } from "vue";
+import { Button } from "../../base";
 import { useGameStore } from "../../../stores/modules/game";
 import { useUIStore } from "../../../stores/modules/ui/ui";
 import { useTypeWriter } from "../../../composables/ui/useTypeWriter";
@@ -46,6 +53,11 @@ const { startTyping, stopTyping, isTyping } = useTypeWriter(textareaRef);
 
 // 使用计算属性处理发送状态
 const isSending = computed(() => gameStore.currentStatus === "thinking");
+
+const openHistory = () => {
+  uiStore.toggleSettings(true);
+  uiStore.setSettingsTab("history");
+};
 
 // 使用计算属性处理占位符文本
 const placeholderText = computed(() => {

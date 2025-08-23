@@ -48,6 +48,14 @@
         >对话历史</Button
       >
       <Button
+        ref="saveBtn"
+        type="nav"
+        icon="save"
+        @click="() => switchTab('save', 'saveBtn')"
+        :class="{ active: uiStore.currentSettingsTab === 'save' }"
+        >存档</Button
+      >
+      <Button
         ref="advanceBtn"
         type="nav"
         icon="advance"
@@ -83,6 +91,7 @@ const textBtn = ref<ButtonRef | null>(null);
 const backgroundBtn = ref<ButtonRef | null>(null);
 const soundBtn = ref<ButtonRef | null>(null);
 const historyBtn = ref<ButtonRef | null>(null);
+const saveBtn = ref<ButtonRef | null>(null);
 const advanceBtn = ref<ButtonRef | null>(null);
 
 // 统一处理标签切换
@@ -94,6 +103,7 @@ const switchTab = (tabName: string, refName: string) => {
     backgroundBtn,
     soundBtn,
     historyBtn,
+    saveBtn,
     advanceBtn,
   }[refName];
 
@@ -130,6 +140,9 @@ const initIndicator = () => {
       break;
     case "history":
       activeButton = historyBtn.value;
+      break;
+    case "save":
+      activeButton = saveBtn.value;
       break;
     case "advance":
       activeButton = advanceBtn.value;

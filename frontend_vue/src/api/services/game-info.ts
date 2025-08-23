@@ -7,6 +7,10 @@ export interface GameInfo {
   user_subtitle: string;
   character_id: number;
   thinking_message: string;
+  scale: number;
+  offset: number;
+  bubble_top: number;
+  bubble_left: number;
 }
 
 export const getGameInfo = async (userId: string): Promise<GameInfo> => {
