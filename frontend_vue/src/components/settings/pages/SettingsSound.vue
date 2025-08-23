@@ -7,14 +7,14 @@
     </MenuItem>
 
     <MenuItem title="💬 气泡音量" size="small">
-      <Slider @input="updateBubbleVolume" v-model="uiStore.bubbleVolume">
+      <Slider @change="updateBubbleVolume" v-model="uiStore.bubbleVolume">
         弱/强
       </Slider>
     </MenuItem>
 
     <MenuItem title="🎶 背景音量" size="small">
       <Slider
-        @input="updateBackgroundVolume"
+        @change="updateBackgroundVolume"
         v-model="uiStore.backgroundVolume"
       >
         弱/强
@@ -120,21 +120,18 @@ const fileInput = ref<HTMLInputElement | null>(null);
 // --- Pinia Store 音量控制 ---
 
 const updateCharacterVolume = (value: number) => {
-  uiStore.characterVolume = value;
   if (characterTestPlayer.value) {
     characterTestPlayer.value.volume = value / 100;
   }
 };
 
 const updateBubbleVolume = (value: number) => {
-  uiStore.bubbleVolume = value;
   if (bubbleTestPlayer.value) {
     bubbleTestPlayer.value.volume = value / 100;
   }
 };
 
 const updateBackgroundVolume = (value: number) => {
-  uiStore.backgroundVolume = value;
   if (backgroundAudioPlayer.value) {
     backgroundAudioPlayer.value.volume = value / 100;
   }
