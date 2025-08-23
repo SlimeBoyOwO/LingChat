@@ -1,11 +1,11 @@
-import type { GameState } from "./state";
+import type { GameState, DialogMessage } from "./state";
 
 export const getters = {
   getCurrentLine(state: GameState): string {
     return state.currentLine;
   },
 
-  getDialogHistory(state: GameState): any[] {
+  getDialogHistory(state: GameState): DialogMessage[] {
     return state.dialogHistory;
   },
 

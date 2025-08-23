@@ -79,10 +79,12 @@ export class ChatHandler {
 
     gameStore.currentLine = displayText;
     gameStore.avatar.emotion = this.currentMessagePart.emotion || "正常";
+    gameStore.avatar.originEmotion =
+      this.currentMessagePart.originalTag || "正常";
     uiStore.currentAvatarAudio = this.currentMessagePart.audioFile || "None";
 
     // UI中粉色情绪展示内容
-    uiStore.showCharacterEmotion = gameStore.avatar.emotion;
+    uiStore.showCharacterEmotion = gameStore.avatar.originEmotion;
   }
 
   public sendMessage(text: string) {

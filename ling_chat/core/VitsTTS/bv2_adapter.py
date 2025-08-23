@@ -17,7 +17,7 @@ class BV2VitsAdapter(BaseVitsAdapter):
             "noise": params.get("noise", 0.33), # 采样噪声比例
             "noisew": params.get("noisew", 0.4), # SDP噪声
             "segment_size": params.get("segment_size", 50), #分段阈值
-            "sdp_radio": params.get("sdp_radio", 0.2), # SDP/DP混合比
+            "sdp_radio": params.get("sdp_ratio", 0.2), # SDP/DP混合比
             "text": text
         }
         async with aiohttp.ClientSession() as session:

@@ -4,25 +4,27 @@
     <GameAvatar ref="gameAvatarRef" />
     <GameDialog />
     <div id="menu-panel">
-      <button
-        id="menu-toggle"
+      <Button
+        type="nav"
+        icon="text"
         @click="openSettings"
         v-show="uiStore.showSettings !== true"
       >
-        菜单
-      </button>
+        <h3>菜单</h3>
+      </Button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, ref, watch } from "vue";
 import { useUIStore } from "../../stores/modules/ui/ui";
 import { useGameStore } from "../../stores/modules/game";
 import { GameBackground } from "../game/standard";
 import { GameAvatar } from "../game/standard";
 import { GameDialog } from "../game/standard";
 import { getGameInfo } from "../../api/services/game-info";
+import { Button } from "../base";
 
 const uiStore = useUIStore();
 const gameStore = useGameStore();
@@ -34,36 +36,35 @@ const openSettings = () => {
   uiStore.setSettingsTab("text");
 };
 
-// 初始化游戏信息
-onMounted(async () => {
+const runInitialization = async () => {
+  const userId = "1"; // TODO: 获取真实 userId
   try {
-    // TODO: 从用户store或其他地方获取userId
-    const userId = "1"; // 临时使用固定值，实际应该从用户认证信息中获取
-    const gameInfo = await getGameInfo(userId);
+    await gameStore.initializeGame(userId);
 
-    // 更新 gameStore 中的角色信息
-    gameStore.avatar.character_name = gameInfo.ai_name;
-    gameStore.avatar.character_subtitle = gameInfo.ai_subtitle;
-    gameStore.avatar.user_name = gameInfo.user_name;
-    gameStore.avatar.user_subtitle = gameInfo.user_subtitle;
-    gameStore.avatar.character_id = gameInfo.character_id;
-    gameStore.avatar.think_message = gameInfo.thinking_message;
-
-    // 初始化UI界面主角的信息 TODO 同时获取人物的【正常】情绪
-    uiStore.showCharacterTitle = gameInfo.user_name;
-    uiStore.showCharacterSubtitle = gameInfo.user_subtitle;
-
-    // 触发GameAvatar的setEmotion函数
+    // Action 成功后，处理仅与本组件相关的 UI 逻辑
     if (gameAvatarRef.value) {
       gameAvatarRef.value.setEmotion("正常", true);
     } else {
       console.log("这个组件不存在");
     }
   } catch (error) {
-    console.error("初始化游戏信息失败:", error);
-    // 可以在这里添加错误处理，比如显示错误提示
+    console.log(error);
   }
-});
+};
+
+// 初始化游戏信息
+onMounted(runInitialization);
+
+// 当选中的角色ID改变时，重新执行初始化。
+watch(
+  () => gameStore.avatar.character_id,
+  (newId, oldId) => {
+    if (newId && newId !== oldId) {
+      console.log(`Character ID changed to ${newId}, re-initializing...`);
+      runInitialization();
+    }
+  }
+);
 </script>
 
 <style>
@@ -78,35 +79,10 @@ onMounted(async () => {
   overflow: hidden;
 }
 
-#menu-toggle {
-  padding: 12px 20px;
-  background-color: #d2e5ff;
-  color: #3d8dff;
-  font-size: 20px;
-  font-weight: bold;
-  border: 0.5px solid #e5ecf1;
-  /* 银灰色边框 */
-  border-radius: 8px;
-  /* 稍微增大圆角 */
-  cursor: pointer;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-  /* 底部阴影 */
-  transition: all 0.3s ease;
-  /* 添加过渡效果 */
-}
-
-#menu-toggle:hover {
-  background-color: #b8d7ff;
-  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
-  /* 悬停时阴影更明显 */
-  transform: translateY(-2px);
-  /* 轻微上浮效果 */
-}
-
 #menu-panel {
   position: fixed;
-  top: 30px;
-  right: 30px;
+  top: 15px;
+  right: 20px;
   z-index: 1000;
 }
 </style>

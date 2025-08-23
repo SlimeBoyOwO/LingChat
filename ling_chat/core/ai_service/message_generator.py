@@ -67,7 +67,7 @@ class MessageGenerator:
             ai_response = Function.fix_ai_generated_text(ai_response)
             self.memory.append({"role": "assistant", "content": ai_response})            
 
-            # 4. 如果有RAG系统，则把这段对话保存在RAG中 TODO 只获取最后两条最新的
+            # 4. 如果有RAG系统，则把这段对话保存在RAG中
             if self.use_rag and self.rag_manager:
                 self.rag_manager.save_messages_to_rag(self.memory)
 
@@ -213,6 +213,8 @@ class MessageGenerator:
         
     async def process_message_stream(self, user_message: str):
         """流式处理用户消息，边生成边进行情绪分析、翻译和语音合成"""
+        # 0. 清理之前残留的语音文件
+        self.voice_maker.delete_voice_files()
 
         processed_user_message = self.message_processor.append_user_message(user_message)
 
