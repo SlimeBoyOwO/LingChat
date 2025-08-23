@@ -2,7 +2,10 @@
   <MenuPage>
     <MenuItem title="◈ 历史对话">
       <div class="history-container">
-        <div class="chat-history-container" ref="chatContainer">
+        <div v-if="dialogHistory.length === 0" class="status-message">
+          暂无历史记录，去和ta聊聊天叭(*^▽^*)
+        </div>
+        <div v-else class="chat-history-container" ref="chatContainer">
           <template
             v-for="(message, index) in dialogHistory"
             :key="message.timestamp || index"
@@ -106,5 +109,15 @@ watch(
 /* 为 isFinal 消息的间隔元素添加样式 */
 .final-spacer {
   height: 1em; /* 高度约等于一个空行 */
+}
+
+.status-message {
+  text-align: center;
+  color: #f5f5f5;
+  padding: 2rem;
+  font-size: 24px;
+  font-weight: bold;
+  height: 100%;
+  text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
 }
 </style>
