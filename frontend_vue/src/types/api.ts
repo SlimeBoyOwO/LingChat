@@ -72,3 +72,8 @@ export interface SaveCreateParams {
   user_id: string;
   title: string;
 }
+
+export interface MusicTrack {
+  name: string;
+  url: string;
+}

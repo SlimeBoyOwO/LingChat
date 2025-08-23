@@ -34,7 +34,6 @@ export const saveCreate = async (params: SaveCreateParams): Promise<void> => {
 
 export const saveLoad = async (params: SaveModifyParams): Promise<void> => {
   try {
-    // TODO: 这是个GET方法
     const data = await http.get("/v1/chat/history/load", {
       params: params,
     });

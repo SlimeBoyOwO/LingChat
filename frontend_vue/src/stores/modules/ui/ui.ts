@@ -12,6 +12,9 @@ export const useUIStore = defineStore("ui", {
     enableChatEffectSound: true,
     currentBackground: "@/assets/images/default_bg.jpg",
     currentAvatarAudio: "None",
+    characterVolume: 50,
+    backgroundVolume: 50,
+    bubbleVolume: 50,
   }),
   actions: {
     toggleSettings(show: boolean) {
