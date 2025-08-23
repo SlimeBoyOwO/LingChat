@@ -1,5 +1,6 @@
 import os
 import re
+import uuid
 from typing import List, Dict
 from datetime import datetime, timedelta
 
@@ -84,7 +85,7 @@ class MessageProcessor:
                 "japanese_text": japanese_text,
                 "predicted": prediction_result["label"],
                 "confidence": prediction_result["confidence"],
-                "voice_file": str(self.voice_maker.vits_tts.temp_dir / f"{timestamp}_part_{i}.{self.voice_maker.vits_tts.format}")
+                "voice_file": str(self.voice_maker.vits_tts.temp_dir / f"{uuid.uuid4()}_part_{i}.{self.voice_maker.vits_tts.format}")
             })
 
         return results

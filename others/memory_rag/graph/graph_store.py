@@ -3,8 +3,8 @@ from typing import Any, Dict, Optional
 from langchain_community.graphs import Neo4jGraph
 import logging
 
-from core.memory_rag.config.base import MemoryConfig
-from core.memory_rag.factory import EmbedderFactory, LlmFactory, GraphStoreFactory
+from ling_chat.core.memory_rag.config.base import MemoryConfig
+from ling_chat.core.memory_rag.factory import EmbedderFactory, LlmFactory, GraphStoreFactory
 
 logger = logging.getLogger(__name__)
 

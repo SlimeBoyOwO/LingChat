@@ -5,6 +5,7 @@ from typing import List, Dict
 from pathlib import Path
 import py7zr
 import zipfile
+import shutil
 
 class Function:
     # 该列表内被管理的字段,在值为空字符串时,会被解析为None
@@ -160,7 +161,7 @@ class Function:
         return settings
 
     @staticmethod
-    def parse_chat_log(content: str) -> List[Dict[str, str]]:
+    def parse_chat_log(content: str) -> tuple[datetime | None, List[Dict[str, str]] | None]:
         """
         解析聊天内容字符串，将其转换为JSON所需的聊天记录列表，并提取对话日期。
 
@@ -272,16 +273,26 @@ class Function:
         env_vars: Dict[str, str] = {}
         if init == True:
             if not os.path.exists(env_path):
+                print(f"[WARN]找不到环境变量文件: {env_path}")
                 # 尝试从.env.example复制
                 example_path = ".env.example"
                 if os.path.exists(example_path):
-                    import shutil
+                    print(f"[INFO]无法找到环境变量文件 {env_path}，尝试从 {example_path} 复制")
                     shutil.copy2(example_path, env_path)
-                    print(f"从 {example_path} 复制文件到 {env_path}")
+                    print(f"[INFO]从 {example_path} 复制文件到 {env_path}")
                 else:
-                    print(f"警告: 找不到环境变量文件 {env_path} 和 {example_path}")
+                    print(f"[WARN]找不到环境变量文件 {env_path} 和 {example_path}")
                     return env_vars
         try:
+            if (not os.path.exists(env_path)):
+                example_path = ".env.example"
+                print(f"[WARN]找不到环境变量文件: {env_path}")
+                shutil.copy2(example_path, env_path)
+                print(f"[INFO]从 {example_path} 复制文件到 {env_path}")
+            if  os.path.exists(env_path):
+                print(f"[INFO]正在加载环境变量文件: {env_path}")
+
+
             with open(env_path, 'r', encoding='utf-8') as file:
                 lines = file.readlines()
             
@@ -376,7 +387,7 @@ class Function:
         
             return env_vars
         except Exception as e:
-            print(f".env文件加载失败: {e}")
+            print(f"[ERROR]{env_path}文件加载失败: {e}")
             return env_vars
 
     @staticmethod

@@ -4,7 +4,7 @@ import { useGameStore } from "../../stores/modules/game";
 export interface EmotionDOM {
   avatar: {
     container: HTMLElement;
-    img: HTMLImageElement;
+    img: HTMLElement; // 从 HTMLImageElement 改为 HTMLElement
     bubble: HTMLElement;
   };
   bubbleAudio: HTMLAudioElement;
@@ -46,16 +46,16 @@ export class EmotionController {
         // 创建新的Image对象预加载
         const img = new Image();
         img.onload = () => {
-          // 加载完成后替换src
-          this.DOM.avatar.img.src = img.src;
+          // 加载完成后设置背景图片（关键修改）
+          this.DOM.avatar.img.style.backgroundImage = `url(${img.src})`;
           this.DOM.avatar.img.classList.remove("loading");
         };
         img.onerror = () => {
           console.log(`加载头像失败: ${config.avatar}`);
           this.DOM.avatar.img.classList.remove("loading");
-          // 可以设置一个默认头像
-          this.DOM.avatar.img.src =
-            "/api/v1/chat/character/get_avatar/正常.png";
+          // 设置默认头像背景
+          this.DOM.avatar.img.style.backgroundImage =
+            "url(/api/v1/chat/character/get_avatar/正常.png)";
         };
 
         // 添加时间戳防止缓存

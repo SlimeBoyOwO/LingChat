@@ -15,6 +15,8 @@
       <SettingsBackground
         v-show="uiStore.currentSettingsTab === 'background'"
       />
+      <SettingsSave v-show="uiStore.currentSettingsTab === 'save'" />
+      <SettingsAdvance v-show="uiStore.currentSettingsTab === 'advance'" />
     </div>
   </div>
 </template>
@@ -26,6 +28,8 @@ import SettingsSound from "./pages/SettingsSound.vue";
 import SettingsHistory from "./pages/SettingsHistory.vue";
 import SettingsCharacter from "./pages/SettingsCharacter.vue";
 import SettingsBackground from "./pages/SettingsBackground.vue";
+import SettingsSave from "./pages/SettingsSave.vue";
+import SettingsAdvance from "./pages/SettingsAdvance.vue";
 import { useUIStore } from "../../stores/modules/ui/ui";
 
 const uiStore = useUIStore();
@@ -58,6 +62,26 @@ const uiStore = useUIStore();
 
 .container {
   height: 90%;
+  overflow-y: auto;
+}
+
+.container {
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent-color) transparent;
+}
+
+.container {
+  position: relative;
+}
+
+/* 兼容IE和Edge */
+.container {
+  -ms-overflow-style: -ms-autohiding-scrollbar;
+}
+
+/* 确保滚动条在内容溢出时显示 */
+.container {
+  overflow-y: auto;
 }
 
 .blur-overlay {
@@ -71,7 +95,7 @@ const uiStore = useUIStore();
   /* 初始状态 */
   opacity: 0;
   backdrop-filter: blur(5px);
-  background-color: rgba(0, 0, 0, 0.1);
+  background-color: rgba(0, 0, 0, 0.45);
 
   /* 过渡效果 */
   transition: opacity 0.3s ease;
