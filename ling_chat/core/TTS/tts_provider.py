@@ -1,10 +1,10 @@
 import os
 from pathlib import Path
-from ling_chat.core.TTS.sva_adapter import SVAVitsAdapter
-from ling_chat.core.TTS_adapter import SBVVitsAdapter
+from ling_chat.core.TTS.sva_adapter import SVAAdapter
+from ling_chat.core.TTS.sbv2_adapter import SBV2Adapter
 from ling_chat.core.TTS.gsv_adapter import GPTSoVITSAdapter
 from ling_chat.core.TTS.sbv2api_adapter import SBV2APIAdapter
-from ling_chat.core.TTS.bv2_adapter import BV2VitsAdapter
+from ling_chat.core.TTS.bv2_adapter import BV2Adapter
 from ling_chat.core.logger import logger
 from ling_chat.utils.runtime_path import temp_path
 
@@ -13,7 +13,7 @@ class TTS:
     def __init__(self, 
                  default_speaker_id=4,
                  default_model_name="",
-                 default_tts_type = "sbv",
+                 default_tts_type = "sbv2",
                  default_language = "ja"
                  ):
         """
@@ -27,7 +27,7 @@ class TTS:
         :param default_lang: 默认语言
         """
         sva_api_url = os.environ.get("SIMPLE_VITS_API_URL", "http://127.0.0.1:23456/voice/vits")
-        sbv_api_url = os.environ.get("STYLE_VITS_API_URL", "http://127.0.0.1:5000/voice")
+        sbv2_api_url = os.environ.get("STYLE_BERT_VITS2_API_URL", "http://127.0.0.1:5000/voice")
         sbv2api_api_url = os.environ.get("SBV2API_API_URL", "http://localhost:3000/synthesize")
         bv2_api_url=os.environ.get("BERT_VITS2_API_URL", "http://127.0.0.1:6006/voice/bert-vits2")
         gpt_sovits_api_url = os.environ.get("GPT_SOVITS_API_URL", "http://127.0.0.1:9880/tts")
@@ -37,20 +37,20 @@ class TTS:
 
         self.format = os.environ.get("VOICE_FORMAT", "wav")
 
-        self.sva_adapter = SVAVitsAdapter(
+        self.sva_adapter = SVAAdapter(
             api_url=sva_api_url,
             speaker_id=default_speaker_id,
             audio_format=self.format,
             lang="ja"
         ) if sva_api_url else None
 
-        self.sbv_adapter = SBVVitsAdapter(
-            api_url=sbv_api_url,
+        self.sbv2_adapter = SBV2Adapter(
+            api_url=sbv2_api_url,
             speaker_id=default_speaker_id,
             model_name=default_model_name,
             audio_format=self.format,
             lang="JP"
-        ) if sbv_api_url else None
+        ) if sbv2_api_url else None
 
         self.sbv2api_adapter = SBV2APIAdapter(
             api_url=sbv2api_api_url,
@@ -58,7 +58,7 @@ class TTS:
             audio_format=self.format
         ) if sbv2api_api_url else None
         
-        self.bv2_adapter = BV2VitsAdapter(
+        self.bv2_adapter = BV2Adapter(
             api_url=bv2_api_url,
             speaker_id=default_speaker_id,
             audio_format=self.format,
@@ -89,9 +89,9 @@ class TTS:
 
         # # 优先检查新API特有的参数
         # if 'model_name' in params or 'model_id' in params:
-        #     if self.sbv_adapter is None:
+        #     if self.sbv2_adapter is None:
         #         raise ValueError("新API适配器未初始化，但传入了model_name/model_id参数")
-        #     return self.sbv_adapter
+        #     return self.sbv2_adapter
 
         # # 其次检查原始API特有参数
         # if 'id' in params or ('speaker_id' in params and self.sva_adapter):
@@ -106,8 +106,8 @@ class TTS:
         #     return self.gsv_adapter
 
         # # 默认返回新API适配器(如果存在)
-        # if self.sbv_adapter:
-        #     return self.sbv_adapter
+        # if self.sbv2_adapter:
+        #     return self.sbv2_adapter
 
         # # 最后尝试原始API适配器
         # if self.sva_adapter:
@@ -123,10 +123,10 @@ class TTS:
                 if self.sva_adapter is None:
                     raise ValueError("原始API适配器未初始化，但传入了tts_type=sva参数")
                 return self.sva_adapter
-            elif tts_type == 'sbv':
-                if self.sbv_adapter is None:
+            elif tts_type == 'sbv2':
+                if self.sbv2_adapter is None:
                     raise ValueError("新API适配器未初始化，但传入了tts_type=sbv参数")
-                return self.sbv_adapter
+                return self.sbv2_adapter
             elif tts_type == 'gsv':
                 if self.gsv_adapter is None:
                     raise ValueError("GPT-SoVITS适配器未初始化，但传入了tts_type=gsv参数")
@@ -137,9 +137,9 @@ class TTS:
                 return self.bv2_adapter
             else:
                 raise ValueError(f"未知的TTS类型: {tts_type}")
-        elif self.sbv_adapter is not None:
-            logger.warning("未指定tts_type,默认使用sbv")
-            return self.sbv_adapter
+        elif self.sbv2_adapter is not None:
+            logger.warning("未指定tts_type,默认使用sbv2")
+            return self.sbv2_adapter
         else:
             raise ValueError("没有可用的API适配器")
 
@@ -153,15 +153,7 @@ class TTS:
             logger.debug("提供的文本为空，跳过语音生成")
             return None
 
-        # 设置说话人/模型参数（TODO这里记得改一下）
-        # if self.sbv2api_adapter:
-        #     params["ident"] = model_name
-        # else:
-        #     if speaker_id is not None:
-        #         params["speaker_id" if model_name else "id"] = str(speaker_id)
-        #     if model_name is not None:
-        #         params["model_name"] = model_name
-        if tts_type in ("", "sbv", "sva"):
+        if tts_type in ("", "sbv2", "sva"):
             if speaker_id is not None:
                 params["speaker_id" if model_name else "id"] = str(speaker_id)
         elif tts_type == "bv2":
