@@ -90,9 +90,9 @@ const loadCharacters = async (): Promise<void> => {
   }
 };
 
-const updateSelectedStatus = (): void => {
+const updateSelectedStatus = async (): Promise<void> => {
   const userId = "1";
-  gameStore.initializeGame(userId);
+  await gameStore.initializeGame(userId);
 };
 
 const selectCharacter = async (characterId: number): Promise<void> => {
