@@ -13,7 +13,7 @@ Events:
 
     ---
 
-    现在，请详细描写第一章“头脑风暴与冲突”的具体情节。直接输出剧情描述，不要有额外解释。'
+    现在，请参考之前的对话历史，已经聊过的内容，以及大纲，详细描写具体情节，注意感情的连贯。直接输出剧情描述，不要有额外解释。'
 - 'Type: Narration | Mode: Preset': '{chapter_1_details}'
 - 'Type: Dialogue | Character: Yuki | Mode: Prompt': 内心活动：刚刚发生了旁白所描述的事情。请根据这些情节，对{player_name}说一句符合你傲娇性格的、推动争吵或讨论的话。
 EndCondition:

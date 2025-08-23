@@ -1,0 +1,48 @@
+Events:
+  - "Type: Chapter": # 修正点：为复杂键添加了引号
+      Title: 图书馆的意外相遇
+      Description: "安静的午后，你来到图书馆寻找一本古老的历史参考书。"
+
+  - "Type: Narration": # 修正点：统一格式，添加引号
+      >
+      书架高耸，阳光透过窗户，在空气中投下金色的尘埃。你穿行在一排排书架间，指尖划过书脊，寻找着目标。
+
+  - "Type: Dialogue | Character: qinling | Mode: Preset": # 修正点：这是最关键的错误，已用引号包裹
+      >
+      啊，莱、莱姆同学…你…你也在啊？真巧…我是来找…找资料的！
+
+  - "Type: Narration": # 修正点：统一格式
+      >
+      一个熟悉的声音让你回过头，是钦灵。她抱着一摞书，脸颊微红，似乎没想到会在这里遇见你。
+
+  - "Type: Dialogue | Character: fengxue | Mode: Preset": # 修正点：用引号包裹
+      >
+      哼，图书馆本来就是看书的地方，有什么好巧的。倒是你，莱姆，你那简单的脑子能看懂这里的书吗？
+
+  - "Type: Narration": # 修正点：统一格式
+      >
+      另一个清冷的声音从书架另一侧传来，风雪抱着一本厚厚的专著，用她一贯的挑剔眼神看着你。
+
+  - "Type: Dialogue | Character: moyun | Mode: Preset": # 修正点：用引号包裹
+      >
+      请保持安静，同学们。这里是图书馆。
+
+  - "Type: Narration": # 修正点：统一格式
+      >
+      一个温柔但有力的声音响起，图书管理员墨芸学姐不知何时出现在你们身边，微笑着做了一个“嘘”的手势。
+
+  - "Type: Player | Mode: Preset": # 修正点：用引号包裹
+      >
+      你们…怎么都在这里？
+
+EndCondition:
+  Type: LimitedFreeTime
+  MaxTurns: 3
+  InstructionToPlayer: "你被三个性格各异的女孩包围了。和她们聊聊吧。（输入‘离开’结束对话）"
+  ExitPromptInInputBox: "离开"
+  NextUnitID: "01_Conversation_End"
+  InteractWith:
+    - qinling
+    - fengxue
+    - moyun
+  DialogueOrder: Auto

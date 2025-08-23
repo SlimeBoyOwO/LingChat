@@ -8,6 +8,9 @@ Events:
 
 - 'Type: Narration | Mode: Preset': 教导主任刚刚宣布了学校的新规定：期末总成绩排名前两位的学生，也就是你和雪，必须组队完成学园祭的“特别课题研究”。
 - 'Type: Dialogue | Character: Yuki | Mode: Preset': “……开什么玩笑。喂，{player_name}！你听到了吗？别搞错了，我可不是想和你一组！这都是规定，你可别拖我后腿！”
+
+- 'Type: Player | Mode: Input': 谁拖谁的后腿还说不定呢
+
 - 'Type: PlayerNotice | Mode: Preset': 【系统提示：AI 正在幕后构思你们俩的故事大纲...】
 - 'Type: SystemAction | Tool: Generate | Variable: plot_outline | IncludeHistory: true': |
     你是一位顶级的恋爱喜剧编剧。请为玩家“{player_name}”和傲娇少女“雪”构思一个用于完成学校课题的三章节故事大纲。教导主任刚刚宣布了学校的新规定：期末总成绩排名前两位的学生，也就是玩家和雪，必须组队完成学园祭的“特别课题研究”。
@@ -29,7 +32,7 @@ Events:
 
 - 'Type: Dialogue | Character: Yuki | Mode: Prompt': 内心活动：虽然一百个不情愿，但课题还是得做。你清了清嗓子，用公事公办的语气，向{player_name}发起第一次课题讨论。
 
-- 'Type: Player | Mode: Input': （你打算如何回应她，开启你们的第一次“合作”？）
+- 'Type: Player | Mode: Input': 你以为我喜欢你啊，哼
 
 - 'Type: Dialogue | Character: Yuki | Mode: Prompt': 内心活动：你讨厌他，所以请向{player_name}不屑的言论
 
