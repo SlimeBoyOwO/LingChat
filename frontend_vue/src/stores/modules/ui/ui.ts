@@ -1,20 +1,35 @@
 // stores/ui.ts
 import { defineStore } from "pinia";
 
+interface UIState {
+  showCharacterTitle: string;
+  showCharacterSubtitle: string;
+  showCharacterEmotion: string;
+  showSettings: boolean;
+  currentSettingsTab: string;
+  typeWriterSpeed: number;
+  enableChatEffectSound: boolean;
+  currentBackground: string;
+  currentAvatarAudio: string;
+  characterVolume: number;
+  backgroundVolume: number;
+  bubbleVolume: number;
+}
+
 export const useUIStore = defineStore("ui", {
-  state: () => ({
+  state: (): UIState => ({
     showCharacterTitle: "Lovely You",
     showCharacterSubtitle: "Bilibili",
     showCharacterEmotion: "",
     showSettings: false,
-    currentSettingsTab: "text", // 可以添加当前选中的设置标签页
+    currentSettingsTab: "text",
     typeWriterSpeed: 50,
     enableChatEffectSound: true,
     currentBackground: "@/assets/images/default_bg.jpg",
     currentAvatarAudio: "None",
-    characterVolume: 50,
-    backgroundVolume: 50,
-    bubbleVolume: 50,
+    characterVolume: 80,
+    backgroundVolume: 80,
+    bubbleVolume: 80,
   }),
   actions: {
     toggleSettings(show: boolean) {
