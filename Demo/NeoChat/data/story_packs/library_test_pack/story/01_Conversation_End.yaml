@@ -1,0 +1,10 @@
+Events:
+  - Type: Narration
+    "Narration | 1": >
+      和她们聊了一会儿后，你觉得差不多该离开了。
+
+  - Type: PlayerNotice
+    "PlayerNotice | 1": "你离开了图书馆。"
+
+EndCondition:
+  Type: Linear # 线性结束，游戏将在这里停止
