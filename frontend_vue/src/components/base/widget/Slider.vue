@@ -8,7 +8,7 @@
       :min="min"
       :max="max"
       :step="step"
-      :value="modelValue ? modelValue : max / 2"
+      :value="getValue(modelValue, min, max)"
       @input="onInput"
       @change="onChange"
     />
@@ -78,6 +78,12 @@ const rightLabel = computed(() => {
   }
   return "";
 });
+
+function getValue(modelValue: any, min: number, max: number) {
+  if (modelValue) {
+    return modelValue;
+  } else return (min + max) / 2;
+}
 </script>
 
 <style scoped>
