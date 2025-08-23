@@ -13,7 +13,7 @@ Events:
 
     ---
 
-    现在，请详细描写第二章“意外的危机与合作”的具体情节。直接输出剧情描述。'
+    现在，请参考之前的对话历史，已经聊过的内容，以及大纲，详细描写具体情节，注意感情的连贯。直接输出剧情描述，不要有额外解释。'
 - 'Type: Narration | Mode: Preset': '{chapter_2_details}'
 - 'Type: Dialogue | Character: Yuki | Mode: Prompt': 内心活动：发生了旁白描述的危机。你虽然很着急，但还是努力保持镇定（或者假装镇定）。请对{player_name}说一句话，可以是指示，也可以是略带慌张的抱怨。
 - 'Type: Player | Mode: Input': （面对突发情况，你将如何应对？）
