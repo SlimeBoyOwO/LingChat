@@ -10,8 +10,10 @@
       <Slider @input="" @change="">弱/强</Slider>
     </MenuItem>
     <MenuItem title="声音测试" size="small">
-      <Button type="big" @click="">测试角色音量</Button>
-      <Button type="big" @click="">测试气泡音量</Button>
+      <div class="music-test">
+        <Button type="big" @click="">测试角色音量</Button>
+        <Button type="big" @click="">测试气泡音量</Button>
+      </div>
     </MenuItem>
     <MenuItem title="背景音乐设置"> </MenuItem>
   </MenuPage>
@@ -25,4 +27,9 @@ import { Slider, Button } from "../../base";
 
 <style scoped>
 /* 样式部分 */
+.music-test {
+  display: flex;
+  justify-content: space-around;
+  gap: 20px;
+}
 </style>
