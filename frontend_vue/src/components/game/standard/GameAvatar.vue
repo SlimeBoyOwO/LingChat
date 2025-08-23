@@ -106,6 +106,25 @@ onMounted(() => {
       }
     }
   );
+
+  // 响应音频控制变化
+  watch(
+    () => uiStore.characterVolume,
+    (newVolume) => {
+      if (avatarAudio.value) {
+        avatarAudio.value.volume = newVolume / 100;
+      }
+    }
+  );
+
+  watch(
+    () => uiStore.bubbleVolume,
+    (newVolume) => {
+      if (bubbleAudio.value) {
+        bubbleAudio.value.volume = newVolume / 100;
+      }
+    }
+  );
 });
 
 onBeforeUnmount(() => {
