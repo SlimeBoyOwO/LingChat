@@ -1,15 +1,15 @@
 import os
 from pathlib import Path
-from ling_chat.core.VitsTTS.sva_adapter import SVAVitsAdapter
-from ling_chat.core.VitsTTS.sbv_adapter import SBVVitsAdapter
-from ling_chat.core.VitsTTS.gsv_adapter import GPTSoVITSAdapter
-from ling_chat.core.VitsTTS.sbv2api_adapter import SBV2APIAdapter
-from ling_chat.core.VitsTTS.bv2_adapter import BV2VitsAdapter
+from ling_chat.core.TTS.sva_adapter import SVAVitsAdapter
+from ling_chat.core.TTS_adapter import SBVVitsAdapter
+from ling_chat.core.TTS.gsv_adapter import GPTSoVITSAdapter
+from ling_chat.core.TTS.sbv2api_adapter import SBV2APIAdapter
+from ling_chat.core.TTS.bv2_adapter import BV2VitsAdapter
 from ling_chat.core.logger import logger
 from ling_chat.utils.runtime_path import temp_path
 
 
-class VitsTTS:
+class TTS:
     def __init__(self, 
                  default_speaker_id=4,
                  default_model_name="",
