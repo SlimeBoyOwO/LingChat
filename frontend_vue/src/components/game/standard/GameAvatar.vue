@@ -5,7 +5,7 @@
   >
     <div ref="avatarImg" class="avatar-img" id="qinling"></div>
     <div ref="avatarBubble" class="bubble"></div>
-    <audio ref="avatarAudio"></audio>
+    <audio ref="avatarAudio" @ended="onAudioEnded"></audio>
     <audio ref="bubbleAudio"></audio>
   </div>
 </template>
@@ -16,6 +16,7 @@ import { API_CONFIG } from "../../../controllers/core/config";
 import { useGameStore } from "../../../stores/modules/game";
 import { useUIStore } from "../../../stores/modules/ui/ui";
 import { EmotionController } from "../../../controllers/emotion/controller";
+import { defineEmits } from "vue";
 import "./avatar-animation.css";
 
 const gameStore = useGameStore();
@@ -31,6 +32,13 @@ let emotionController: EmotionController | null = null;
 // 暴露方法给父组件
 const setEmotion = (emotion: string, force: boolean = false) => {
   emotionController?.setEmotion(emotion, force);
+};
+
+const emit = defineEmits(["audio-ended"]);
+
+const onAudioEnded = () => {
+  // 触发事件，通知父组件
+  emit("audio-ended");
 };
 
 onMounted(() => {
