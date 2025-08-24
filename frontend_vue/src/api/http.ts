@@ -3,7 +3,6 @@ import axios, {
   AxiosError,
   AxiosResponse,
   InternalAxiosRequestConfig,
-  AxiosRequestConfig,
 } from "axios";
 
 // 定义响应数据的通用结构

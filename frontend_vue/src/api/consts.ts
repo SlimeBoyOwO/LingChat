@@ -17,6 +17,14 @@ export const LIMITS = {
     MAX_SAVE_COUNT: 10
 } as const;
 
+export const PAGE_LEVELS = {
+    MENU: 0,
+    CHAT: 0,
+    SETTINGS: {
+        
+    }
+}
+
 export const CHAT_LLM_PROVIDERS = ["webllm", "gemini", "ollama", "lmstudio"] as const;
 
 export const TRANSLATE_LLM_PROVIDERS = ["webllm", "gemini", "ollama", "lmstudio", "qwen-translate"] as const;

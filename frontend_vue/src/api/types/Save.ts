@@ -12,6 +12,7 @@ export interface Save {
     __saves: SingleSave[];
     readonly latest: SingleSave;
     readonly count: number;
+    readonly isLoadAvailable: boolean;
     add: (save: SingleSave) => void;
     remove: { (index: number): void; (item: SingleSave): void };
 }
@@ -30,6 +31,9 @@ export function newSave(saves: SingleSave[] = []): Save {
         },
         get count() {
             return this.__saves.length;
+        },
+        get isLoadAvailable() {
+            return this.count !== 0;
         },
         add(save: SingleSave) {
             if (this.count >= LIMITS.MAX_SAVE_COUNT) this.__saves.push(save);
