@@ -6,10 +6,12 @@ import threading
 from datetime import datetime
 import os
 import re  # Import re for ANSI stripping
+from neochat.platform.configuration import config # 导入新的配置对象
 
 # 日志配置
-ENABLE_FILE_LOGGING = True  # 是否启用文件日志记录
-LOG_FILE_DIRECTORY = "run_logs"  # 日志文件存储的相对目录
+ENABLE_FILE_LOGGING = True
+# 从配置中读取日志目录
+LOG_FILE_DIRECTORY = config.paths.logs
 
 # 注意，若环境变量DEBUG_MODE = True/false时，会覆盖LOG_FILE_LEVEL的设置
 LOG_FILE_LEVEL = logging.DEBUG  # 可以设置为 logging.DEBUG，logging.INFO, logging.WARNING, logging.ERROR
