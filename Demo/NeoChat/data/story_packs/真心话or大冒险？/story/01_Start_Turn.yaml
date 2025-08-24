@@ -5,7 +5,7 @@ Events:
   - "Type: Narration | Mode: Prompt": |
       你是一个剧情旁白，你需要为 {player_name} 和 {character_name_participant_1} 两个人生成投骰子的描述。
       {player_name}投出了{player_dice}点，{character_name_participant_1}投出了{AI_dice}点。
-      你可以任意描述。
+      你可以任意描述，但是要清晰的说出每个人投出的点数。
   - "Type: Action | Tool: Random | Variable: whos_turn | Min: 1 | Max: 2": ""
 
 EndCondition:

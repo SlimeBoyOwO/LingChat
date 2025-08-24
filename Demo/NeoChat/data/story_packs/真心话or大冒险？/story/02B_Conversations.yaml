@@ -1,5 +1,5 @@
 Events:
-  - "Type: Dialogue | Character: participant_1 | Mode: Prompt": "你投出了{player_dice}点，而{character_name_participant_1}投出了{AI_dice}点。你要确认本轮是玩真心话还是大冒险，现在请做出回应吧，要考虑之前发生的事情。"
+  - "Type: Dialogue | Character: participant_1 | Mode: Prompt":
 
 EndCondition:
   Type: LimitedFreeTime
