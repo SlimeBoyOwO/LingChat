@@ -38,22 +38,37 @@ export class ChatHandler {
     this.messageQueue.push(data);
     if (!this.isProcessing) {
       this.continueMessage();
-      this.isProcessing = true;
     }
   }
 
-  public continueMessage() {
+  public continueMessage(): boolean {
+    let needWait = false; // 这个用于标记下个消息是否还没到来，要想继续还需要等待的信号
     if (this.currentMessagePart?.isFinal) {
-      // TODO 假如说消息队列还有新来的消息（后台主动发送的消息） 则等待一段时间后立马变成消息回复状态
       this.resetConversationState();
+      if (this.messageQueue.length > 0) {
+        // 假如说消息队列还有新来的消息（后台主动发送的消息） 则等待一段时间后立马变成消息回复状态
+        setTimeout(() => {
+          this.processNextMessage();
+        }, 2000);
+      }
     } else {
-      this.processNextMessage();
+      if (this.messageQueue.length === 0) {
+        // 如果这个消息并非最后一个，但后面的消息还没到，则通知needWait
+        // TODO: 这里增加一些给前端UI的提示，告诉用户要等一下别急
+        needWait = true;
+        console.log("后面的消息还没到，请稍等");
+      } else {
+        this.processNextMessage();
+      }
     }
+    return needWait;
   }
 
   private processNextMessage() {
     const gameStore = useGameStore();
     const uiStore = useUIStore();
+
+    this.isProcessing = true;
 
     // 从消息队列出队
     this.currentMessagePart = this.messageQueue.shift() || null;
