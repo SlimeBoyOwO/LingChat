@@ -1,11 +1,10 @@
 <template>
     <Transition name="fast-loader-animation">
-        <div id="fast-loader" v-if="props.loading" class="fast-loader">
-        </div>
+        <div id="fast-loader" v-if="uiStatus.isLoading && uiStatus.isFastLoad" class="fast-loader" />
     </Transition>
 </template>
 <script setup lang="ts">
-const props = defineProps<{ loading: boolean }>()
+import { uiStatus } from '../../api/store';
 </script>
 <style>
 #fast-loader {

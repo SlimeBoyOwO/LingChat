@@ -1,19 +1,19 @@
 <template>
     <Transition name="loader-animation">
-        <div id="loader" v-if="props.loading">
+        <div id="loader" v-if="uiStatus.isLoading && !uiStatus.isFastLoad">
             <div class="ears-container">
-                <div class="ear ear-left"></div>
-                <div class="ear ear-right"></div>
+                <div class="ear ear-left" />
+                <div class="ear ear-right" />
             </div>
             <div class="progress-bar-container">
-                <div class="progress-bar" :style="{ width: props.progress + '%' }"></div>
+                <div class="progress-bar" :style="{ width: uiStatus.loadProgress + '%' }" />
             </div>
             <p class="loading-text">你的小可爱正在准备中</p>
         </div>
     </Transition>
 </template>
 <script setup lang="ts">
-const props = defineProps<{ loading: boolean, progress: number }>()
+import { uiStatus } from '../../api/store';
 </script>
 <style>
 #loader {
