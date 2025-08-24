@@ -14,6 +14,7 @@ interface UIState {
   characterVolume: number;
   backgroundVolume: number;
   bubbleVolume: number;
+  autoMode: boolean;
 }
 
 export const useUIStore = defineStore("ui", {
@@ -30,6 +31,7 @@ export const useUIStore = defineStore("ui", {
     characterVolume: 80,
     backgroundVolume: 80,
     bubbleVolume: 80,
+    autoMode: false,
   }),
   actions: {
     toggleSettings(show: boolean) {

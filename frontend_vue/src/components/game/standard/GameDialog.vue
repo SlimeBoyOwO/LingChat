@@ -37,6 +37,7 @@
 </template>
 
 <script setup lang="ts">
+import { defineEmits } from "vue";
 import { chatHandler } from "../../../api/websocket/handlers/chat-handler";
 import { ref, watch, computed } from "vue";
 import { Button } from "../../base";
@@ -53,6 +54,8 @@ const { startTyping, stopTyping, isTyping } = useTypeWriter(textareaRef);
 
 // 使用计算属性处理发送状态
 const isSending = computed(() => gameStore.currentStatus === "thinking");
+
+const emit = defineEmits(["player-continued", "dialog-proceed"]);
 
 const openHistory = () => {
   uiStore.toggleSettings(true);
@@ -109,7 +112,7 @@ function sendOrContinue() {
   if (gameStore.currentStatus === "input") {
     send();
   } else if (gameStore.currentStatus === "responding") {
-    continueDialog();
+    continueDialog(true);
   }
 }
 
@@ -119,9 +122,19 @@ function send() {
   inputMessage.value = "";
 }
 
-function continueDialog() {
-  chatHandler.continueMessage();
+function continueDialog(isPlayerTrigger: boolean): boolean {
+  const needWait = chatHandler.continueMessage();
+  if (!needWait) {
+    if (isPlayerTrigger) emit("player-continued");
+    emit("dialog-proceed");
+  }
+
+  return needWait;
 }
+
+defineExpose({
+  continueDialog,
+});
 </script>
 
 <style>
