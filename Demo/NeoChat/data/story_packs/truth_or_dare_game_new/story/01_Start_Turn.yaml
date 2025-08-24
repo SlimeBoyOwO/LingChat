@@ -1,0 +1,22 @@
+# story/00_Start_Turn.yaml
+# 新一轮开始，掷骰子决定顺序
+
+Events:
+  - "Type: Narration | Mode: Preset": 新的一轮开始了！你们开始投掷骰子...
+  - "Type: Narration | Mode: Prompt": |
+      你是一个骰子点数生成器，你需要为 {player_name} 和 {character_name_participant_1} 两个人生成两个骰子点数，
+      你可以任意描述，只要最后描述出两个骰子甩出来的点数，并且说谁的点数最大即可。
+  - "Type: Action | Tool: Random | Variable: whos_turn | Min: 1 | Max: 2": ""
+
+# TODO: 这里随机让AI或者玩家先说话即可，但是由于narration prompt不会进入上下文，所以还是让玩家先发言说一下骰子点数好了
+EndCondition:
+  Type: Conditional
+  Cases:
+    - Condition: "{whos_turn} == 1"
+      Then:
+        Type: Linear
+        NextUnitID: "02_Conversations"
+    - Condition: "{whos_turn} == 2"
+      Then:
+        Type: Linear
+        NextUnitID: "02_Conversations"
