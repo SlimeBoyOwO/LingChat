@@ -120,14 +120,19 @@ class EventHandler:
                 elif record_type == 'Narration':
                     messages.append({"role": "user", "content": f"（旁白：{record_content}）"})
 
-            # 3. 将本次对话的"内心想法"或"行动指引"作为最后的user prompt
-            final_prompt = (
-                f"System: 根据以上对话历史，请你做出回应。你的内心想法或行动指引是：\n"
-                f"{content}\n"
-                f"请直接生成你的对话，不要带上内心独白或额外解释。"
-            )
-            messages.append({"role": "user", "content": final_prompt})
+            # 3只有在提供了具体内容时
+            if content and content.strip():
+                # 如果有内容，则构建并添加包含指引的 final_prompt
+                final_prompt = (
+                    f"System: 根据以上对话历史，请你做出回应。你的内心想法或行动指引是：\n"
+                    f"{content}\n"
+                    f"请直接生成你的对话，不要带上内心独白或额外解释。"
+                )
+                messages.append({"role": "user", "content": final_prompt})
+            # 如果 content 为空或只包含空格，则不添加任何额外的 user prompt，
+            # 让 AI 直接根据历史记录和人设进行回应。
             
+            # 4. 调用LLM
             response = chat_with_deepseek(messages, character.name, color_code=TermColors.CYAN)
             if response:
                 self.state.add_dialogue_history('Dialogue', character_id=char_id, content=response)
