@@ -1,0 +1,24 @@
+# story/01_Player_Turn.yaml
+# 轮到玩家了，AI向玩家提问
+
+Events:
+  - "Type: Narration | Mode: Preset": '瓶口缓缓停下，指向了你！'
+  - "Type: Dialogue | Character: participant_1 | Mode: Preset": '轮到你啦，{player_name}！真心话，还是大冒险？'
+  - "Type: Player | Mode: Input": '' # 等待玩家输入选择
+
+EndCondition:
+  Type: PlayerResponseBranch
+  DeciderCharacterID: participant_1 # 让AI来“感觉”你的选择
+  
+  # 系统判断指令：这是整个分支的核心，它指导LLM如何分析玩家的输入
+  JudgePromptForSystem: |
+    你是一个意图分析系统。请根据玩家的回应，判断他/她是选择了“真心话”还是“大冒险”。
+    - 如果玩家明确选择了“真心话”，或表达了类似“说真话”、“选truth”等意图，请只输出 "TRUTH"。
+    - 如果玩家明确选择了“大冒险”，或表达了类似“挑战”、“选dare”等意图，请只输出 "DARE"。
+    - 你的输出必须且只能是 "TRUTH" 或 "DARE" 这两个词之一。
+    
+  Branches:
+    TRUTH:
+      NextUnitID: 03A_Player_Truth
+    DARE:
+      NextUnitID: 03B_Player_Dare

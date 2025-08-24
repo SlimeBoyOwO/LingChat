@@ -58,26 +58,32 @@ class GameEngine:
                 self._process_end_condition()
                 break
 
-    def _process_end_condition(self):
-        """处理当前剧情单元的结束条件。"""
+# 1) 让 _process_end_condition 支持传入 end_data，并且只读处理
+    def _process_end_condition(self, end_data: dict | None = None):
+        """处理剧情单元的结束条件；不再修改原始 StoryUnit，避免条件被永久写死。"""
         unit = self.state.get_current_story_unit()
-        if not unit or not unit.end_condition:
-            log_info("剧情单元结束，无EndCondition，游戏结束。")
-            self.game_over = True
-            return
+        if end_data is None:
+            if not unit or not unit.end_condition:
+                log_info("剧情单元结束，无EndCondition，游戏结束。")
+                self.game_over = True
+                return
+            end_data = unit.end_condition
 
-        end_data = self.state.format_string(unit.end_condition)
+        end_data = self.state.format_string(end_data)
         end_type = end_data.get('Type')
         log_debug(f"处理EndCondition: {end_type}")
 
         if end_type == 'Linear':
             self.state.transition_to_unit(end_data.get('NextUnitID'))
-        
+
         elif end_type in ['FreeTime', 'LimitedFreeTime']:
             self.state.progress.runtime_state = 'InFreeTime'
             self.state.progress.context['free_time_config'] = end_data
             self.state.progress.context['turns_taken'] = 0
-            self.ui.display_system_message(end_data.get('InstructionToPlayer', '进入自由活动时间。'), color=TermColors.BLUE)
+            self.ui.display_system_message(
+                end_data.get('InstructionToPlayer', '进入自由活动时间。'),
+                color=TermColors.BLUE
+            )
 
         elif end_type == 'Branching':
             method = end_data.get('Method')
@@ -94,22 +100,20 @@ class GameEngine:
             found_match = False
             for case in end_data.get('Cases', []):
                 if self.state.evaluate_condition(case['Condition']):
-                    self._process_end_condition_recursively(case['Then'])
+                    self._process_end_condition(case['Then'])
                     found_match = True
                     break
             if not found_match and 'Else' in end_data:
-                self._process_end_condition_recursively(end_data['Else'])
-        
+                self._process_end_condition(end_data['Else'])
+
         else:
             log_error(f"未知的EndCondition类型: {end_type}")
             self.game_over = True
 
+
     def _process_end_condition_recursively(self, end_data):
-        """用于Conditional内部的递归调用，避免重复日志。"""
-        # 这是一个简化的包装器，实际逻辑仍在 _process_end_condition 中
-        unit = self.state.get_current_story_unit()
-        unit.end_condition = end_data # 临时替换
-        self._process_end_condition()
+        self._process_end_condition(end_data)
+
 
 
     def _wait_for_player_input(self):
@@ -127,6 +131,12 @@ class GameEngine:
 
         self.state.runtime_context['player_input'] = final_input
         self.state.add_dialogue_history('Player', content=final_input)
+        
+        current_unit = self.state.get_current_story_unit()
+        if current_unit and current_unit.end_condition and current_unit.end_condition.get('Type') == 'PlayerResponseBranch':
+            self._execute_player_response_branch(current_unit.end_condition)
+            return
+
         self.state.progress.runtime_state = 'ExecutingEvents'
 
     def _wait_for_player_choice(self):
@@ -246,7 +256,10 @@ class GameEngine:
             record_type = record.get('type')
             if record_type == 'Dialogue':
                 char_id = record.get('data', {}).get('character_id')
-                char_name = self.state.session.characters.get(char_id).name
+                char_name = "未知角色"
+                character = self.state.session.characters.get(char_id)
+                if character:
+                    char_name = character.name
                 line = f"{char_name}: {record_content}"
             elif record_type == 'Player':
                 line = f"{self.state.session.player.name}: {record_content}"
@@ -312,11 +325,11 @@ class GameEngine:
         log_debug(f"AI决定的对话顺序为: {ordered_responders}")
         return ordered_responders if ordered_responders else [participant_ids[0]]
 
-
-    def _execute_ai_choice(self, config: dict):
+    # --- 函数已修改 ---
+    def _execute_ai_choice(self, config_data: dict):
         """执行 AI 决策逻辑。"""
         log_info_color("AI 正在做出决定...", TermColors.BLUE)
-        decider_id = config['DeciderCharacterID']
+        decider_id = config_data['DeciderCharacterID']
         decider = self.state.session.characters.get(decider_id)
         if not decider:
             log_error(f"AI Choice 失败：找不到决策角色 '{decider_id}'。")
@@ -324,7 +337,7 @@ class GameEngine:
             return
 
         # 1. 决策 Call
-        decision_prompt = self.state.format_string(config['DecisionPromptForAI'])
+        decision_prompt = self.state.format_string(config_data['DecisionPromptForAI'])
         messages = [{"role": "system", "content": self.state.format_string(decider.prompt)}]
         messages.append({"role": "system", "content": decision_prompt})
         ai_decision_text = chat_with_deepseek(messages, character_name=f"{decider.name}(内心)", is_internal_thought=True)
@@ -334,11 +347,50 @@ class GameEngine:
             return
         log_debug(f"AI 决策原文: {ai_decision_text}")
 
-        # 2. 判断 Call
-        judge_prompt = self.state.format_string(config['JudgePromptForSystem'])
+        # 2. 判断 Call (已修改)
+        history_context_str = "无"
+        history_lines = []
+        history_count = config.AI_CHOICE_HISTORY_CONTEXT_COUNT
+        for record in self.state.dialogue_history[-history_count:]:
+            record_content = record.get('content') or record.get('data', {}).get('content')
+            if not record_content: continue
+            
+            line = ""
+            record_type = record.get('type')
+            if record_type == 'Dialogue':
+                char_id = record.get('data', {}).get('character_id')
+                char_name = "未知角色"
+                character = self.state.session.characters.get(char_id)
+                if character:
+                    char_name = character.name
+                line = f"{char_name}: {record_content}"
+            elif record_type == 'Player':
+                line = f"{self.state.session.player.name}: {record_content}"
+            elif record_type == 'Narration':
+                line = f"旁白: {record_content}"
+            
+            if line:
+                history_lines.append(line.strip())
+        
+        if history_lines:
+            history_context_str = "\n".join(history_lines)
+
+        # 2.2 构建包含历史上下文的判断Prompt
+        judge_prompt = self.state.format_string(config_data['JudgePromptForSystem'])
+        judge_user_prompt = (
+            "请结合以下最近的对话历史和AI角色的内心决策，进行最终判断。\n\n"
+            "--- 最近对话历史 ---\n"
+            f"{history_context_str}\n"
+            "--- 对话历史结束 ---\n\n"
+            "--- AI角色的内心决策 ---\n"
+            f"{ai_decision_text}\n"
+            "--- 内心决策结束 ---\n\n"
+            "任务：请严格根据以上所有信息进行判断。"
+        )
+
         judge_messages = [
             {"role": "system", "content": judge_prompt},
-            {"role": "user", "content": f"请根据以下AI角色的决策文本进行判断：\n\n---\n{ai_decision_text}\n---"}
+            {"role": "user", "content": judge_user_prompt}
         ]
         judged_result = chat_with_deepseek(judge_messages, character_name="系统判断", is_internal_thought=True)
         if not judged_result:
@@ -350,7 +402,81 @@ class GameEngine:
         final_choice = judged_result.strip().upper()
         log_info_color(f"AI 的选择已被系统判断为: '{final_choice}'", TermColors.GREEN)
         
-        branches = config.get('Branches', {})
+        branches = config_data.get('Branches', {})
+        if final_choice in branches:
+            self.state.transition_to_unit(branches[final_choice]['NextUnitID'])
+        else:
+            log_error(f"判断结果 '{final_choice}' 无效，在 Branches 中找不到匹配项。")
+            self.game_over = True
+
+    def _execute_player_response_branch(self, config_data: dict):
+        """
+        处理基于玩家回应的分支逻辑。
+        在玩家输入后触发，使用LLM判断玩家的回应并选择分支。
+        """
+        log_info_color("AI 正在分析你的回应...", TermColors.BLUE)
+        
+        decider_id = config_data.get('DeciderCharacterID')
+        decider = self.state.session.characters.get(decider_id) if decider_id else None
+        
+        # 1. 构建历史上下文
+        history_lines = []
+        history_count = config.AI_CHOICE_HISTORY_CONTEXT_COUNT
+        for record in self.state.dialogue_history[-history_count:-1]: # 获取直到玩家输入前的历史
+            record_content = record.get('content') or record.get('data', {}).get('content')
+            if not record_content: continue
+            
+            line = ""
+            record_type = record.get('type')
+            if record_type == 'Dialogue':
+                char_id = record.get('data', {}).get('character_id')
+                char_name = self.state.session.characters.get(char_id, "未知角色").name
+                line = f"{char_name}: {record_content}"
+            elif record_type == 'Player':
+                line = f"{self.state.session.player.name}: {record_content}"
+            elif record_type == 'Narration':
+                line = f"旁白: {record_content}"
+            if line:
+                history_lines.append(line.strip())
+        
+        history_context_str = "\n".join(history_lines) if history_lines else "无"
+        player_response = self.state.runtime_context.get('player_input', '')
+
+        # 2. 构建判断Prompt
+        judge_system_prompt = self.state.format_string(config_data['JudgePromptForSystem'])
+        
+        # 如果定义了决策角色，将角色的prompt作为额外的系统提示注入，帮助LLM更好地“扮演”
+        if decider:
+            judge_system_prompt = f"请站在角色 {decider.name} 的角度思考，他/她的人设是：\n{self.state.format_string(decider.prompt)}\n\n---\n\n{judge_system_prompt}"
+
+        judge_user_prompt = (
+            "请结合以下最近的对话历史和玩家的最终回应，进行判断。\n\n"
+            "--- 最近对话历史 ---\n"
+            f"{history_context_str}\n"
+            "--- 对话历史结束 ---\n\n"
+            "--- 玩家的最终回应 ---\n"
+            f"{self.state.session.player.name}: {player_response}\n"
+            "--- 玩家回应结束 ---\n\n"
+            "任务：请严格根据以上所有信息，并遵循你的系统指令进行判断。"
+        )
+
+        judge_messages = [
+            {"role": "system", "content": judge_system_prompt},
+            {"role": "user", "content": judge_user_prompt}
+        ]
+
+        # 3. 调用LLM进行判断
+        judged_result = chat_with_deepseek(judge_messages, character_name="系统判断", is_internal_thought=True)
+        if not judged_result:
+            log_error("系统未能判断玩家的回应。")
+            self.game_over = True
+            return
+
+        # 4. 转换剧情
+        final_choice = judged_result.strip().upper()
+        log_info_color(f"你的回应已被系统判断为: '{final_choice}'", TermColors.GREEN)
+        
+        branches = config_data.get('Branches', {})
         if final_choice in branches:
             self.state.transition_to_unit(branches[final_choice]['NextUnitID'])
         else:

@@ -1,0 +1,11 @@
+# story/04A_AI_Truth.yaml
+# AI选择了真心话
+
+Events:
+  - "Type: Narration | Mode: Preset": '{character_name_participant_1} 选择了...真心话！'
+  - "Type: Player | Mode: Input": '（请向 {character_name_participant_1} 提一个真心话问题）'
+  - "Type: Dialogue | Character: participant_1 | Mode: Prompt": '玩家向你提出了这个真心话问题：“{player_input}”。请根据你的人设，真诚地回答这个问题。'
+
+EndCondition:
+  Type: Linear
+  NextUnitID: '00_Start_Turn' # 结束本轮，循环回到开始

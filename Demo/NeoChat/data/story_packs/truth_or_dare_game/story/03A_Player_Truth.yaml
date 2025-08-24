@@ -1,0 +1,12 @@
+# story/03A_Player_Truth.yaml
+# 玩家选择了真心话
+
+Events:
+  - "Type: Narration | Mode: Preset": '你选择了...真心话！'
+  - "Type: Dialogue | Character: participant_1 | Mode: Prompt": '你是一个游戏伙伴。现在玩家 {player_name} 选择了真心话，请根据你的人设，向他/她提出一个有趣或深刻的真心话问题。'
+  - "Type: Player | Mode: Input": '' # 等待玩家回答
+  - "Type: Dialogue | Character: participant_1 | Mode: Prompt": '玩家对你的真心话问题的回答是：{player_input}。请根据你的性格，对他/她的回答做出回应。'
+
+EndCondition:
+  Type: Linear
+  NextUnitID: '00_Start_Turn' # 结束本轮，循环回到开始
