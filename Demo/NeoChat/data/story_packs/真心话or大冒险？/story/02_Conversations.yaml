@@ -5,6 +5,6 @@ Events:
 EndCondition:
   Type: LimitedFreeTime
   MaxTurns: 500
-  InstructionToPlayer: 你可以随时输入“下一轮”开启下一场游戏
+  InstructionToPlayer: 你可以随时输入包含“下一轮”三个字的句子，开启下一场游戏
   ExitPromptInInputBox: 下一轮
   NextUnitID: 01_Start_Turn
