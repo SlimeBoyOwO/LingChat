@@ -96,6 +96,8 @@ async def delete_music(url: str):
         filename = url.split("/")[-1]
         file_path = MUSIC_DIR / filename
 
+        print("寻找的路径是" + str(file_path))
+
         if not file_path.exists() or not file_path.is_file():
             raise HTTPException(status_code=404, detail="文件未找到")
 

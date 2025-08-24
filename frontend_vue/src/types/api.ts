@@ -50,3 +50,30 @@ export interface CharacterSelectParams {
   user_id: string;
   character_id: string;
 }
+
+export interface SaveInfo {
+  id: string;
+  title: string;
+  updated_at: string;
+}
+
+export interface SaveListParams {
+  user_id: string;
+  page: number;
+  page_size: number;
+}
+
+export interface SaveModifyParams {
+  user_id: string;
+  conversation_id: string;
+}
+
+export interface SaveCreateParams {
+  user_id: string;
+  title: string;
+}
+
+export interface MusicTrack {
+  name: string;
+  url: string;
+}
