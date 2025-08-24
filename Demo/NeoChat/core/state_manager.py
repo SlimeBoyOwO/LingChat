@@ -126,8 +126,21 @@ class StateManager:
         except Exception as e:
             log_warning(f"计算表达式失败: '{expression}'. 错误: {e}")
 
-    def set_random_variable(self, name: str, min_val: int, max_val: int):
-        self.set_variable(name, random.randint(min_val, max_val))
+    def set_random_variable(self, name: str, min_val: Any, max_val: Any):
+        try:
+            i_min = int(min_val)
+            i_max = int(max_val)
+            
+            # 使用 random.choice 从一个包含所有可能整数的列表中选择，这比 randint 更能保证分布
+            possible_values = list(range(i_min, i_max + 1))
+            chosen_value = random.choice(possible_values)
+            self.set_variable(name, chosen_value)
+
+            log_debug(f"随机变量 '{name}' 已从 {possible_values} 中选择值为: {chosen_value}。")
+        except (ValueError, TypeError) as e:
+            # 如果转换失败（例如，脚本中写了非数字），记录警告并设置一个默认值以防游戏崩溃
+            log_warning(f"为 'Random' Action 提供的值无效: min='{min_val}', max='{max_val}'. 错误: {e}")
+            self.set_variable(name, min_val if min_val is not None else 1)
         
     def set_random_choice_variable(self, name: str, choices: List[Any]):
         self.set_variable(name, random.choice(choices))

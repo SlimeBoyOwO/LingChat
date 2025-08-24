@@ -1,0 +1,11 @@
+# story/04B_AI_Dare.yaml
+# AI选择了大冒险
+
+Events:
+  - "Type: Narration | Mode: Preset": '{character_name_participant_1} 选择了...大冒险！'
+  - "Type: Player | Mode: Input": '（请给 {character_name_participant_1} 一个大冒险挑战）'
+  - "Type: Dialogue | Character: participant_1 | Mode: Prompt": '玩家给你安排了这个大冒险挑战：“{player_input}”。请根据你的人设，用文字生动地描述你完成这个挑战的过程。'
+
+EndCondition:
+  Type: Linear
+  NextUnitID: '00_Start_Turn' # 结束本轮，循环回到开始

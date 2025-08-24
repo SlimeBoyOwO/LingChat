@@ -1,0 +1,12 @@
+# story/03B_Player_Dare.yaml
+# 玩家选择了大冒险
+
+Events:
+  - "Type: Narration | Mode: Preset": '你选择了...大冒险！'
+  - "Type: Dialogue | Character: participant_1 | Mode: Prompt": '你是一个游戏伙伴。现在玩家 {player_name} 选择了大冒险，请根据你的人设，给他/她一个可以通过文字描述完成的、充满想象力的挑战。'
+  - "Type: Player | Mode: Input": '（请用文字描述你如何完成这个挑战）' # 等待玩家描述
+  - "Type: Dialogue | Character: participant_1 | Mode: Prompt": '玩家是这样完成你的大冒险挑战的：{player_input}。请根据你的性格，对他/她的表现做出评价或回应。'
+
+EndCondition:
+  Type: Linear
+  NextUnitID: '00_Start_Turn' # 结束本轮，循环回到开始
