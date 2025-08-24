@@ -1,6 +1,6 @@
 import re
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict
 from pathlib import Path
 import py7zr
@@ -424,3 +424,47 @@ class Function:
             
         except Exception as e:
             logger.warning(f"解压失败: {e}")
+
+    @staticmethod
+    def calculate_time_to_next_reminder(schedule_times: list[str]) -> float:
+        
+        """计算到下一个提醒时间的秒数"""
+        now = datetime.now()
+        current_time = now.time()
+        current_time_str = current_time.strftime("%H:%M")
+        
+        # 将时间字符串转换为时间对象
+        process_schedule_times = [datetime.strptime(time_str, "%H:%M").time() for time_str in schedule_times]
+        
+        # 找到下一个提醒时间
+        next_time = None
+        for time_obj in sorted(process_schedule_times):
+            if time_obj > current_time:
+                next_time = time_obj
+                break
+        
+        # 如果没有找到今天的时间，就用明天第一个时间
+        if next_time is None and schedule_times:
+            next_time = schedule_times[0]
+            # 计算到明天这个时间的秒数
+            tomorrow = now + timedelta(days=1)
+            next_datetime = datetime.combine(tomorrow.date(), next_time)
+        else:
+            next_datetime = datetime.combine(now.date(), next_time)
+        
+        time_difference = next_datetime - now
+        return max(0, time_difference.total_seconds())
+    
+    @staticmethod
+    def format_seconds(seconds: float) -> str:
+        """将秒数格式化为易读的时间字符串"""
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        seconds = int(seconds % 60)
+        
+        if hours > 0:
+            return f"{hours}小时{minutes}分{seconds}秒"
+        elif minutes > 0:
+            return f"{minutes}分{seconds}秒"
+        else:
+            return f"{seconds}秒"
