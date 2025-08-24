@@ -1,0 +1,51 @@
+# config.yaml
+# NeoChat 应用程序的主配置文件
+
+llm:
+  # 从 .env 文件中读取 API_KEY 环境变量
+  api_key: ${API_KEY}
+  api_url: "https://api.deepseek.com/chat/completions"
+  model_name: "deepseek-chat"
+  max_tokens: 4096
+  temperature: 0.7
+  timeout_seconds: 180
+  # LLM 对话历史长度限制
+  conversation_history_limit: 50
+  # 自由时间“自动”模式下，用于决策的LLM参考历史数量
+  free_time_history_limit: 15
+  # AIChoice 模式下，系统判断AI决策时参考的历史数量
+  ai_choice_history_context_count: 8
+
+paths:
+  # 用户生成的数据
+  saves: "user_data/saves"
+  user_config: "user_data/user_config.json"
+  chroma_db: "user_data/chroma_db_store"
+  # 游戏静态资源
+  story_packs: "data/story_packs"
+  characters: "data/characters"
+  player_characters: "data/player_characters"
+  # 日志文件
+  logs: "logs/run_logs"
+
+debug:
+  # 开启/关闭开发者模式 (会影响日志级别)
+  mode: false
+  # 是否显示 SentenceTransformer 的嵌入模型进度条
+  show_embedding_progress: false
+
+rag:
+  # 是否启用 RAG 功能
+  enabled: true
+  # RAG 检索出的相关聊天记录数量
+  retrieval_count: 3
+  # 检索到的聊天记录之前的 m 条消息
+  context_m_before: 2
+  # 检索到的聊天记录之后的 n 条消息
+  context_n_after: 2
+  # 为获取 retrieval_count 个块，实际从ChromaDB查询的候选倍数
+  candidate_multiplier: 3
+  # RAG 内容的前缀提示
+  prompt_prefix: "--- 以下是根据你的历史记忆检索到的相关对话片段，请参考它们来回答当前问题。这些是历史信息，不是当前对话的一部分： ---"
+  # RAG 内容的后缀提示
+  prompt_suffix: "--- 以上是历史记忆检索到的内容。请注意，这些内容用于提供背景信息，你不需要直接回应它们，而是基于它们和下面的当前对话来生成回复。 ---"
