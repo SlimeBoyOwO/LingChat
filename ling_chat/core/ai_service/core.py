@@ -1,6 +1,7 @@
 import json
 import copy
 from typing import List, Dict
+import asyncio
 
 from ling_chat.core.ai_service.rag_manager import RAGManager
 from ling_chat.core.ai_service.message_processor import MessageProcessor
@@ -10,6 +11,7 @@ from ling_chat.core.ai_service.translator import Translator
 from ling_chat.core.llm_providers.manager import LLMManager
 from ling_chat.core.logger import logger, TermColors
 from ling_chat.core.ai_service.message_generator import MessageGenerator
+from ling_chat.utils.function import Function
 
 import os
 
@@ -32,6 +34,10 @@ class AIService:
 
         self.import_settings(settings)
         self.reset_memory()
+
+        # TODO: 本代码测试，开机后十秒提醒用户久坐
+        self.schedule_times = ["22:29", "22:30"]  # TODO：默认时间表，午夜凶灵哦
+        self.proceed_next_nodification()
     
     def import_settings(self, settings: dict):
         if(settings):
@@ -102,3 +108,23 @@ class AIService:
         async for response in self.message_generator.process_message_stream(user_message):
             responses.append(response)
         return responses
+    
+    def proceed_next_nodification(self):
+        self.schedule_task.cancel()
+        self.schedule_task = asyncio.create_task(self.send_nodification_by_schedule())
+        
+    async def send_nodification_by_schedule(self):
+        """定义好的函数，在特定时间发送提醒用户不要久坐"""
+        seconds:float = Function.calculate_time_to_next_reminder(self.schedule_times)
+        logger.info("距离下一次提醒还有"+Function.format_seconds(seconds))
+        await asyncio.sleep(seconds)
+        user_message:str = "{时间差不多到啦，关心提醒一下" + self.user_name + "不要久坐吧！}"
+        await self.process_message_stream_compat(user_message)
+        self.proceed_next_nodification()
+
+    async def cleanup(self):
+        """简单的清理方法"""
+        if hasattr(self, 'schedule_task') and self.schedule_task:
+            self.schedule_task.cancel()
+
+    
