@@ -1,0 +1,11 @@
+# story_config.yaml
+# 剧本全局配置文件
+
+id: "truth_or_dare_game_new"
+start_unit_id: "00_Intro"
+
+# 角色席位定义
+# 这个剧本最少需要一个AI角色参与。
+# 你可以在开始新游戏时为 participant_1 选择任意你喜欢的人设。
+character_roles:
+  - "participant_1"

@@ -1,0 +1,10 @@
+Events:
+  - "Type: Narration | Mode: Preset": 又到了愉快的周末~ 你来到了灵灵的家里，一起寻思着怎么消遣周末的愉快时光~。
+  - "Type: Dialogue | Character: participant_1 | Mode: Preset": “哎，{player_name}，最近猫娘发电群一直在玩的真心话大冒险似乎挺有意思的，要不要一起玩呀！”
+  - "Type: Player | Mode: Preset": 唔，那我可要好好探索你的小心灵了哦~
+  - "Type: Narration | Mode: Preset": 灵灵踩着轻盈的脚步拿来了两个骰子，灵巧地扔在了莱姆的手上。
+  - "Type: Dialogue | Character: participant_1 | Mode: Preset": “来叭，我和 {player_name} 的终极对决！”
+
+EndCondition:
+  Type: Linear
+  NextUnitID: 01_Start_Turn
