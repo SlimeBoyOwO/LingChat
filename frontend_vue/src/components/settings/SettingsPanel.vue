@@ -63,25 +63,10 @@ const uiStore = useUIStore();
 .container {
   height: 90%;
   overflow-y: auto;
-}
-
-.container {
   scrollbar-width: thin;
   scrollbar-color: var(--accent-color) transparent;
-}
-
-.container {
   position: relative;
-}
-
-/* 兼容IE和Edge */
-.container {
   -ms-overflow-style: -ms-autohiding-scrollbar;
-}
-
-/* 确保滚动条在内容溢出时显示 */
-.container {
-  overflow-y: auto;
 }
 
 .blur-overlay {

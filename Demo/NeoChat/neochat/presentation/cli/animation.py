@@ -1,15 +1,18 @@
+# neochat/presentation/cli/animation.py
 import os
 import sys
 import time
 import random
 
+# 更新 import 路径
 try:
-    import core.logger as logger
-    from core.logger import TermColors
+    from neochat.platform import logging as logger
+    from neochat.platform.logging import TermColors
 except ImportError:
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    import core.logger as logger
-    from core.logger import TermColors
+    # 这个回退路径在重构后可能不再需要，但保留以防万一
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    from neochat.platform import logging as logger
+    from neochat.platform.logging import TermColors
 
 # ASCII 艺术：NeoChat
 TARGET_ART = """

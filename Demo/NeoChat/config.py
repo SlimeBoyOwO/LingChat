@@ -16,6 +16,7 @@ SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT")
 
 LLM_CONVERSATION_HISTORY_LIMIT = 50 # LLM对话历史长度限制，超过此长度将截断。根据模型和API限制调整。后续将改为RAG系统。
 LLM_FREE_TIME_HISTORY_LIMIT = 15    # 在自由时间的“自动”对话顺序模式下，用于决策的LLM参考的最近历史记录数量。
+AI_CHOICE_HISTORY_CONTEXT_COUNT = 8 # 在 AIChoice 模式下，系统判断AI决策时，额外参考的最近对话历史数量。
 
 # 会话与历史记录
 HISTORY_BASE_PATH = "data/Dialogue_history"    # 聊天记录保存路径 (这个在重构后可能不再直接使用，因为对话历史现在由save_manager管理并随存档保存)
