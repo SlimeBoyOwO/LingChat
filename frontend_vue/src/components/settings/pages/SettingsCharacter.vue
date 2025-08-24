@@ -90,9 +90,9 @@ const loadCharacters = async (): Promise<void> => {
   }
 };
 
-const updateSelectedStatus = (): void => {
+const updateSelectedStatus = async (): Promise<void> => {
   const userId = "1";
-  gameStore.initializeGame(userId);
+  await gameStore.initializeGame(userId);
 };
 
 const selectCharacter = async (characterId: number): Promise<void> => {
@@ -191,7 +191,7 @@ onMounted(() => {
 
 @media (max-width: 768px) {
   .character-grid {
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   }
 }
 </style>
