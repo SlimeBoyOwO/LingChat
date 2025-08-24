@@ -186,6 +186,7 @@ function updateKousan(value: number): void {}
   margin: 0 auto;
 }
 
+/*什么？你问我为什么这里是character-grid? 灵式编程懂不懂！ */
 .character-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -321,6 +322,13 @@ function updateKousan(value: number): void {}
 @media (max-width: 480px) {
   #backgrounds-list {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  /*什么？你问我为什么这里是character-grid? 灵式编程懂不懂！ */
+  .character-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   }
 }
 
