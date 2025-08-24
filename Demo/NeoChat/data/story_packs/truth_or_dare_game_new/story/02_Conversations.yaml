@@ -1,0 +1,10 @@
+Events:
+  - "Type: Player | Mode: Input": ""
+  - "Type: Dialogue | Character: participant_1 | Mode: Prompt": "{player_input}”"
+
+EndCondition:
+  Type: LimitedFreeTime
+  MaxTurns: 500
+  InstructionToPlayer: 你可以随时输入“下一轮”开启下一场游戏
+  ExitPromptInInputBox: 下一轮
+  NextUnitID: 01_Start_Turn
