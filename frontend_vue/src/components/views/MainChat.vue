@@ -1,9 +1,22 @@
 <template>
   <div class="main-box">
     <GameBackground></GameBackground>
-    <GameAvatar ref="gameAvatarRef" />
-    <GameDialog />
+    <GameAvatar ref="gameAvatarRef" @audio-ended="handleAudioFinished" />
+    <GameDialog
+      ref="gameDialogRef"
+      @player-continued="manualTriggerContinue"
+      @dialog-proceed="resetInteraction"
+    />
     <div id="menu-panel">
+      <Button
+        type="nav"
+        icon="play"
+        @click="switchAutoMode"
+        :class="[{ active: uiStore.autoMode }]"
+        v-show="uiStore.showSettings !== true"
+      >
+        <h3>自动</h3>
+      </Button>
       <Button
         type="nav"
         icon="text"
@@ -30,10 +43,15 @@ const uiStore = useUIStore();
 const gameStore = useGameStore();
 
 const gameAvatarRef = ref<InstanceType<typeof GameAvatar> | null>(null);
+const gameDialogRef = ref<InstanceType<typeof GameDialog> | null>(null);
 
 const openSettings = () => {
   uiStore.toggleSettings(true);
   uiStore.setSettingsTab("text");
+};
+
+const switchAutoMode = () => {
+  uiStore.autoMode = !uiStore.autoMode;
 };
 
 const runInitialization = async () => {
@@ -65,6 +83,62 @@ watch(
     }
   }
 );
+
+/* 以下代码为自动AUTO模式逻辑 比较复杂 */
+// 1. 用于存储 setTimeout 返回的 ID
+let timerId: any = null;
+// 2. 状态标志，记录 continue() 是否已被调用
+const isContinueTriggered = ref(false);
+
+// 在新交互开始前调用的重置函数
+const resetInteraction = () => {
+  isContinueTriggered.value = false;
+  if (timerId) {
+    clearTimeout(timerId);
+    timerId = null;
+  }
+};
+
+// 自动播放功能
+const handleAudioFinished = () => {
+  if (!uiStore.autoMode) return;
+  if (isContinueTriggered.value) {
+    console.log("父组件：音频结束了，但用户已手动继续，不做任何事。");
+    return;
+  }
+  if (gameStore.currentStatus !== "responding") return;
+
+  if (timerId) clearTimeout(timerId);
+
+  timerId = setTimeout(() => {
+    if (gameDialogRef.value) {
+      const needWait = gameDialogRef.value.continueDialog(false);
+      if (needWait) {
+        handleAudioFinished();
+      }
+    } else {
+      console.error("无法找到 GameDialog 的实例。");
+    }
+  }, 1000);
+};
+
+// 用户手动触发的函数
+const manualTriggerContinue = () => {
+  // 5. 立即清除定时器，阻止其后续执行
+  console.log("用户主动点击了");
+  if (timerId) {
+    clearTimeout(timerId);
+    timerId = null;
+    console.log("父组件：已取消自动继续的定时器。");
+  }
+
+  // 6. 检查状态，防止重复执行
+  if (!isContinueTriggered.value) {
+    isContinueTriggered.value = true; // 设置标志
+  } else {
+    console.log("父组件：用户重复点击，但方法已执行过，不再调用。");
+  }
+};
 </script>
 
 <style>
@@ -80,6 +154,7 @@ watch(
 }
 
 #menu-panel {
+  display: flex;
   position: fixed;
   top: 15px;
   right: 20px;
