@@ -94,8 +94,39 @@ class EventHandler:
         
         elif params.get('Mode') == 'Prompt':
             messages = [{"role": "system", "content": self.state.format_string(character.prompt)}]
-            # ※※※※※※※※※此处可以添加逻辑来构建更丰富的历史上下文※※※※※※※※※※
-            messages.append({"role": "user", "content": f"System: 请据此做出回复，但是不要说出内心想法。以下是你的内心想法：\n {content}"})
+            
+            # 2. 构建最近的对话历史作为上下文
+            history_count = config.LLM_CONVERSATION_HISTORY_LIMIT
+            for record in self.state.dialogue_history[-history_count:]:
+                record_content = record.get('content') or record.get('data', {}).get('content')
+                if not record_content:
+                    continue
+
+                record_type = record.get('type')
+                
+                if record_type == 'Dialogue':
+                    dialogue_char_id = record.get('data', {}).get('character_id')
+                    if dialogue_char_id == char_id:
+                        messages.append({"role": "assistant", "content": record_content})
+                    else:
+                        other_char = self.state.session.characters.get(dialogue_char_id)
+                        other_char_name = other_char.name if other_char else "某人"
+                        messages.append({"role": "user", "content": f"{other_char_name}: {record_content}"})
+                
+                elif record_type == 'Player':
+                    player_name = self.state.session.player.name or "玩家"
+                    messages.append({"role": "user", "content": f"{player_name}: {record_content}"})
+                
+                elif record_type == 'Narration':
+                    messages.append({"role": "user", "content": f"（旁白：{record_content}）"})
+
+            # 3. 将本次对话的"内心想法"或"行动指引"作为最后的user prompt
+            final_prompt = (
+                f"System: 根据以上对话历史，请你做出回应。你的内心想法或行动指引是：\n"
+                f"{content}\n"
+                f"请直接生成你的对话，不要带上内心独白或额外解释。"
+            )
+            messages.append({"role": "user", "content": final_prompt})
             
             response = chat_with_deepseek(messages, character.name, color_code=TermColors.CYAN)
             if response:
