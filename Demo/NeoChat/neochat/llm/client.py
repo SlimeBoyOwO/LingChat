@@ -1,12 +1,12 @@
+# neochat/llm/client.py
 import requests
 import json
 import sys
-import time
 
-import config
-from .logger import (
+# 导入新的配置和日志模块
+from neochat.platform.configuration import config
+from neochat.platform.logging import (
     log_debug,
-    log_info_color,
     log_warning,
     log_error_color,
     start_loading_animation,
@@ -15,20 +15,37 @@ from .logger import (
 )
 
 def chat_with_deepseek(messages_payload, character_name="AI", is_internal_thought=False, color_code=TermColors.CYAN):
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {config.API_KEY}"}
+    """
+    与 DeepSeek API 进行通信的核心函数。
+    
+    :param messages_payload: 发送给 API 的消息列表。
+    :param character_name: 显示在输出中的角色名。
+    :param is_internal_thought: 是否为内部思考（不显示加载动画和流式输出）。
+    :param color_code: 角色对话颜色。
+    :return: API 返回的完整响应字符串，或在失败时返回 None。
+    """
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {config.llm.api_key}"
+    }
     payload = {
-        "model": config.MODEL_NAME, "messages": messages_payload, "stream": True,
-        "max_tokens": config.MAX_TOKENS, "temperature": config.TEMPERATURE
+        "model": config.llm.model_name,
+        "messages": messages_payload,
+        "stream": True,
+        "max_tokens": config.llm.max_tokens,
+        "temperature": config.llm.temperature
     }
 
-    if config.DEBUG_MODE:
+    if config.debug.mode:
         log_debug(f"--- 发送给 DeepSeek API 的 Payload (角色: {character_name}) ---")
+        # 为了日志清晰，截断过长的 content
         debug_payload_display = json.loads(json.dumps(payload))
         for msg in debug_payload_display.get("messages", []):
             if 'content' in msg and isinstance(msg['content'], str):
                 msg['content'] = msg['content'].replace('\n', ' ')[:150] + ("..." if len(msg['content']) > 150 else "")
         formatted_payload_str = json.dumps(debug_payload_display, ensure_ascii=False, indent=2)
-        for line in formatted_payload_str.splitlines(): log_debug(line)
+        for line in formatted_payload_str.splitlines():
+            log_debug(line)
         log_debug("--- Payload 结束 ---")
 
     assistant_full_response = ""
@@ -38,13 +55,15 @@ def chat_with_deepseek(messages_payload, character_name="AI", is_internal_though
     try:
         if not is_internal_thought:
             animation_msg = f"{TermColors.LIGHT_BLUE}{character_name} 正在思考...{TermColors.RESET}"
-            start_loading_animation(
-                message=animation_msg,
-                animation_style_key='moon',
-            )
+            start_loading_animation(message=animation_msg, animation_style_key='moon')
 
-        response = requests.post(config.API_URL, headers=headers, json=payload, stream=True,
-                                 timeout=config.API_TIMEOUT_SECONDS)
+        response = requests.post(
+            config.llm.api_url,
+            headers=headers,
+            json=payload,
+            stream=True,
+            timeout=config.llm.timeout_seconds
+        )
         response.raise_for_status()
 
         first_chunk_received = False
@@ -73,14 +92,10 @@ def chat_with_deepseek(messages_payload, character_name="AI", is_internal_though
 
         if not is_internal_thought:
             if first_chunk_received:
-                print()
-                api_call_succeeded = True
-            elif response.ok:
-                log_warning("API 响应流结束，但未返回任何文本内容。")
-                api_call_succeeded = True
+                print() # 确保流式输出后换行
+            api_call_succeeded = True
         else:
-            # 内部思考模式，只要有响应就算成功
-            api_call_succeeded = response.ok
+            api_call_succeeded = True
 
     except requests.exceptions.HTTPError as e:
         log_error_color(f"\nAPI请求HTTP错误: {e} - {e.response.status_code} {e.response.reason}")

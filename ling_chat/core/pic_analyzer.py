@@ -3,13 +3,15 @@ import time
 import base64
 from io import BytesIO
 from datetime import datetime
-# from PIL import ImageGrab
+from PIL import ImageGrab
 from ling_chat.utils.function import Function
 from ling_chat.core.logger import logger
 import requests
 import json
 
 Function.load_env()
+
+# TODO: 这个玩意是他妈的同步的，导致这个东西执行的时候，整个程序都会卡死，务必改成异步函数
 
 class DesktopAnalyzer:
     def __init__(self, model="Pro/Qwen/Qwen2.5-VL-7B-Instruct"):
@@ -35,7 +37,7 @@ class DesktopAnalyzer:
     def capture_desktop(self):
         """截取整个桌面并返回Base64编码"""
         # 截取屏幕
-        screenshot = b"<temporary down>" # ImageGrab.grab()
+        screenshot = ImageGrab.grab()
         
         # 将截图转为Base64编码
         buffered = BytesIO()
@@ -102,6 +104,9 @@ class DesktopAnalyzer:
         
         if "choices" not in response_data:
             raise Exception(f"请求失败: {response_data}")
+        
+        logger.info("图片分析结果如下")
+        logger.info(response_data["choices"][0]["message"]["content"])
         
         # 记录性能数据
         self.last_response_time = time.time() - start_time

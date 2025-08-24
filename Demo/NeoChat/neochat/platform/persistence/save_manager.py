@@ -1,17 +1,25 @@
+# neochat/platform/persistence/save_manager.py
 import os
 import shutil
 import yaml
 from datetime import datetime
 from typing import Dict, Optional
 
-import config
-from .models import (GameSession, GameState, GameProgress, ProgressPointer, 
-                     Character, Player, StoryPack, StoryUnit)
-from .logger import log_info, log_error, log_debug
+# 导入新的配置对象和日志模块
+from neochat.platform.configuration import config
+from neochat.platform.logging import log_info, log_error, log_debug
+
+# 导入新的游戏状态和模型定义 (我们将在下一步创建这个文件)
+from neochat.game.state import (
+    GameSession, GameState, GameProgress, ProgressPointer,
+    Character, Player, StoryPack, StoryUnit
+)
 
 class SaveManager:
     """处理所有与文件系统相关的加载和保存操作。"""
+
     def _load_yaml(self, path: str) -> Optional[Dict]:
+        """安全地加载一个YAML文件。"""
         try:
             with open(path, 'r', encoding='utf-8') as f:
                 return yaml.safe_load(f)
@@ -22,15 +30,18 @@ class SaveManager:
             log_error(f"解析YAML文件失败: {path}, 错误: {e}")
             return None
 
-    def _save_yaml(self, path: str, data: Dict):
+    def _save_yaml(self, path: str, data: any):
+        """安全地保存数据到YAML文件。"""
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, 'w', encoding='utf-8') as f:
+                # data可以直接是dataclass实例列表或字典
                 yaml.dump(data, f, allow_unicode=True, sort_keys=False)
         except Exception as e:
             log_error(f"保存YAML文件失败: {path}, 错误: {e}")
-            
+
     def load_story_pack_config(self, pack_path: str) -> Optional[StoryPack]:
+        """从剧本包路径加载 story_config.yaml。"""
         config_path = os.path.join(pack_path, 'story_config.yaml')
         data = self._load_yaml(config_path)
         if data:
@@ -43,13 +54,14 @@ class SaveManager:
         return None
 
     def load_story_units(self, pack_path: str) -> Dict[str, StoryUnit]:
+        """加载一个剧本包中所有的剧情单元。"""
         story_dir = os.path.join(pack_path, 'story')
         units = {}
         if not os.path.isdir(story_dir):
             return units
         for filename in os.listdir(story_dir):
             if filename.endswith('.yaml'):
-                unit_id = filename.split('.')[0]
+                unit_id = os.path.splitext(filename)[0]
                 unit_path = os.path.join(story_dir, filename)
                 data = self._load_yaml(unit_path)
                 if data:
@@ -61,20 +73,24 @@ class SaveManager:
         return units
 
     def create_new_game_session(self, story_pack_path: str, character_selections: Dict[str, str], player_data: Dict) -> Optional[GameSession]:
-        """创建一个全新的游戏会话，并生成存档目录。"""
+        """
+        创建一个全新的游戏会话，并生成存档目录。
+        """
         try:
-            # 1. 创建存档文件夹
+            # 1. 创建存档文件夹 (使用配置中的路径)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            save_path = os.path.join(config.SAVES_BASE_PATH, f"save_{timestamp}")
+            save_path = os.path.join(config.paths.saves, f"save_{timestamp}")
             os.makedirs(os.path.join(save_path, "save"), exist_ok=True)
+
             # 2. 复制剧本和角色文件
             shutil.copytree(story_pack_path, save_path, dirs_exist_ok=True)
             char_dir_in_save = os.path.join(save_path, "character")
             os.makedirs(char_dir_in_save, exist_ok=True)
-            
+
             characters = {}
             for role_id, char_path in character_selections.items():
-                dest_path = os.path.join(char_dir_in_save, f"{os.path.basename(char_path)}")
+                # 目标文件名使用 role_id.yaml，这样加载时更统一
+                dest_path = os.path.join(char_dir_in_save, f"{role_id}.yaml")
                 shutil.copy(char_path, dest_path)
                 char_data = self._load_yaml(dest_path)
                 if char_data:
@@ -86,11 +102,12 @@ class SaveManager:
             story_units = self.load_story_units(save_path)
 
             # 4. 初始化状态
-            initial_gamestate_data = self._load_yaml(os.path.join(save_path, 'save', 'gamestate.yaml')) or {}
+            initial_gamestate_path = os.path.join(save_path, 'save', 'gamestate.yaml')
+            initial_gamestate_data = self._load_yaml(initial_gamestate_path) or {}
             game_state = GameState(variables=initial_gamestate_data)
-            
+
             player = Player(name=player_data.get('player_name', '玩家'), prompt=player_data.get('player_prompt', ''))
-            game_state.set('player_name', player.name) # 将玩家名注入初始状态
+            game_state.set('player_name', player.name)
             for role_id, char in characters.items():
                  game_state.set(f'character_name_{role_id}', char.name)
 
@@ -126,19 +143,20 @@ class SaveManager:
         if save_name:
             session.game_progress.save_name = save_name
         session.game_progress.last_saved_timestamp = datetime.now().isoformat()
-        
+
         save_dir = os.path.join(session.save_path, 'save')
-        
+
         self._save_yaml(os.path.join(save_dir, 'gamestate.yaml'), session.game_state.variables)
         self._save_yaml(os.path.join(save_dir, 'dialogue_history.yaml'), session.dialogue_history)
-        
+
+        # 将 dataclass 转换为字典以便保存
         progress_dict = {
             "save_name": session.game_progress.save_name,
             "story_pack_id": session.game_progress.story_pack_id,
             "last_saved_timestamp": session.game_progress.last_saved_timestamp,
             "runtime_state": session.game_progress.runtime_state,
             "context": session.game_progress.context,
-            "progress_pointer": {
+            "pointer": {
                 "current_unit_id": session.game_progress.pointer.current_unit_id,
                 "last_completed_event_index": session.game_progress.pointer.last_completed_event_index
             }
@@ -146,7 +164,6 @@ class SaveManager:
         self._save_yaml(os.path.join(save_dir, 'game_progress.yaml'), progress_dict)
 
         log_info(f"游戏已保存, 存档名: '{session.game_progress.save_name}'")
-
 
     def load_game_session(self, save_path: str) -> Optional[GameSession]:
         """从存档目录加载完整的游戏会话。"""
@@ -161,7 +178,7 @@ class SaveManager:
             if not progress_data:
                 log_error("存档损坏: 缺少 game_progress.yaml")
                 return None
-            
+
             # 加载剧本和角色
             story_pack_config = self.load_story_pack_config(save_path)
             story_units = self.load_story_units(save_path)
@@ -171,13 +188,13 @@ class SaveManager:
             if os.path.isdir(char_dir):
                 for filename in os.listdir(char_dir):
                     if filename.endswith('.yaml'):
-                        role_id = os.path.splitext(os.path.basename(filename))[0]
+                        role_id = os.path.splitext(filename)[0]
                         char_data = self._load_yaml(os.path.join(char_dir, filename))
                         if char_data:
                             characters[role_id] = Character(role_id=role_id, name=char_data.get('name'), prompt=char_data.get('prompt'))
 
             game_state = GameState(variables=gamestate_data)
-            pointer_data = progress_data.get('progress_pointer', {})
+            pointer_data = progress_data.get('pointer', {})
             game_progress = GameProgress(
                 save_name=progress_data.get('save_name', 'Loaded Save'),
                 story_pack_id=progress_data.get('story_pack_id'),
@@ -203,7 +220,7 @@ class SaveManager:
                 characters=characters,
                 player=player
             )
-            
+
         except Exception as e:
             log_error(f"加载存档失败: {e}", exc_info=True)
             return None
