@@ -1,6 +1,6 @@
 Events:
   - "Type: Player | Mode: Input": ""
-  - "Type: Dialogue | Character: participant_1 | Mode: Prompt": "{player_input}”"
+  - "Type: Dialogue | Character: participant_1 | Mode: Prompt": "请做出回应吧"
 
 EndCondition:
   Type: LimitedFreeTime
