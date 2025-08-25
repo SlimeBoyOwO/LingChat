@@ -32,18 +32,18 @@ declare module "axios" {
     post<T = any>(
       url: string,
       data?: any,
-      config?: AxiosRequestConfig
+      config?: AxiosRequestConfig,
     ): Promise<T>;
     put<T = any>(
       url: string,
       data?: any,
-      config?: AxiosRequestConfig
+      config?: AxiosRequestConfig,
     ): Promise<T>;
     delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>;
     patch<T = any>(
       url: string,
       data?: any,
-      config?: AxiosRequestConfig
+      config?: AxiosRequestConfig,
     ): Promise<T>;
   }
 }
@@ -76,7 +76,7 @@ http.interceptors.request.use(
   },
   (error: AxiosError) => {
     return Promise.reject(error);
-  }
+  },
 );
 
 // 响应拦截器
@@ -121,7 +121,7 @@ http.interceptors.response.use(
     }
 
     return Promise.reject(enhancedError);
-  }
+  },
 );
 
 export default http;
