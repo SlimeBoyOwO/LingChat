@@ -1,7 +1,7 @@
 import aiohttp
-from .base_adapter import BaseVitsAdapter
+from .base_adapter import TTSBaseAdapter
 
-class BV2VitsAdapter(BaseVitsAdapter):
+class BV2Adapter(TTSBaseAdapter):
     def __init__(self, api_url, speaker_id=0, audio_format="wav", lang="zh"):
         self.api_url = api_url
         self.speaker_id = speaker_id
