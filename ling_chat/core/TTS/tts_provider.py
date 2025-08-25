@@ -78,43 +78,6 @@ class TTS:
         self.enable = True  # 初始化时启用
 
     def _select_adapter(self, params: dict):
-        # TODO 这里记得后面校对一下
-        # """根据参数自动选择适配器"""
-
-        # # 优先检测SBV2API
-        # if 'sbv2api_model_name' in params or self.sbv2api_adapter:
-        #     if self.sbv2api_adapter is None:
-        #         raise ValueError("SBV2API适配器未初始化，但传入了sbv2api_model_name参数")
-        #     return self.sbv2api_adapter
-
-        # # 优先检查新API特有的参数
-        # if 'model_name' in params or 'model_id' in params:
-        #     if self.sbv2_adapter is None:
-        #         raise ValueError("新API适配器未初始化，但传入了model_name/model_id参数")
-        #     return self.sbv2_adapter
-
-        # # 其次检查原始API特有参数
-        # if 'id' in params or ('speaker_id' in params and self.sva_adapter):
-        #     if self.sva_adapter is None:
-        #         raise ValueError("原始API适配器未初始化，但传入了id/speaker_id参数")
-        #     return self.sva_adapter
-        
-        # # 最后检测GPT-SoVITS
-        # if 'use_gpt_sovits_zero_shot' in params or self.gsv_adapter:
-        #     if self.gsv_adapter is None:
-        #         raise ValueError("GSV适配器未初始化，但传入了use_gpt_sovits_zero_shot参数")
-        #     return self.gsv_adapter
-
-        # # 默认返回新API适配器(如果存在)
-        # if self.sbv2_adapter:
-        #     return self.sbv2_adapter
-
-        # # 最后尝试原始API适配器
-        # if self.sva_adapter:
-        #     return self.sva_adapter
-
-        # raise ValueError("没有可用的API适配器")
-
         """根据tts_type选择适配器(如果传入),为空则自动选择"""
         if 'tts_type' in params and params["tts_type"] != "":
             logger.debug(f"根据参数选择TTS适配器: {params['tts_type']}")
