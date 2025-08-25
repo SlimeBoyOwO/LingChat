@@ -79,5 +79,4 @@ span {
   background-color: var(--accent-color);
   animation: cursor-blink 0.8s infinite;
 }
-
 </style>

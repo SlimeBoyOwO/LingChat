@@ -56,14 +56,23 @@ button {
   padding: 15px;
   margin: 10px 0;
   border-radius: 12px;
-  /* 使用clamp()实现响应式字体大小 */
-  /* 最小32px, 根据视口宽度的4%缩放, 最大72px */
+  /* 使用 clamp() 实现响应式字体大小 */
+  /* 最小 32px, 根据视口宽度的 4% 缩放，最大 72px */
   font-size: clamp(32px, 4vw, 72px);
   font-weight: normal; /* 字体加粗 */
-  font-family: "Maoken Assorted Sans", -apple-system, BlinkMacSystemFont,
-    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; /* 应用自定义字体，并提供备用字体 */
+  font-family:
+    "Maoken Assorted Sans",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    sans-serif; /* 应用自定义字体，并提供备用字体 */
   cursor: pointer;
-  transition: color 0.3s, text-shadow 0.3s; /* 平滑过渡 */
+  transition:
+    color 0.3s,
+    text-shadow 0.3s; /* 平滑过渡 */
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5); /* 加一点文字阴影以保证清晰度 */
   text-align: left; /* 文字左对齐 */
 }
@@ -108,7 +117,9 @@ button {
   font-weight: bold;
   position: relative;
   z-index: 1;
-  transition: color 0.3s ease, background-color 0.3s ease;
+  transition:
+    color 0.3s ease,
+    background-color 0.3s ease;
   display: flex;
   align-items: center;
   gap: 8px;
