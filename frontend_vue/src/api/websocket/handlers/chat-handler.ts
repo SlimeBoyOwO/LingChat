@@ -33,7 +33,7 @@ export class ChatHandler {
     try {
       this.handleChatMessage(data);
     } catch (error) {
-      console.error("处理回复消息出错:", error);
+      console.error("处理回复消息出错：", error);
       gameStore.currentStatus = "input";
     }
   }
@@ -104,7 +104,7 @@ export class ChatHandler {
       this.currentMessagePart.originalTag || "正常";
     uiStore.currentAvatarAudio = this.currentMessagePart.audioFile || "None";
 
-    // UI中粉色情绪展示内容
+    // UI 中粉色情绪展示内容
     uiStore.showCharacterEmotion = gameStore.avatar.originEmotion;
   }
 

@@ -15,10 +15,14 @@
   .slider-container,
   #sendButton,
   #menu-toggle {
-    forced-color-adjust: none;
+
     background-color: ButtonFace;
-    color: ButtonText;
+
     border: 1px solid ButtonText;
+
+    color: ButtonText;
+
+    forced-color-adjust: none;
   }
 
   /* 确保文本在高对比度模式下可读 */
@@ -32,12 +36,14 @@
   h6,
   span,
   div {
+
     color: CanvasText;
   }
 
   /* 确保图像在高对比度模式下可见 */
   img,
   svg {
+
     forced-color-adjust: none;
   }
 
@@ -46,23 +52,32 @@
   .menu-body,
   .menu-header,
   .menu-footer {
+
     background-color: Canvas;
-    color: CanvasText;
+
     border-color: ButtonText;
+
+    color: CanvasText;
   }
 
   /* 确保聊天框在高对比度模式下可见 */
   .chatbox-box {
+
     background-color: Canvas;
-    color: CanvasText;
+
     border: 1px solid ButtonText;
+
+    color: CanvasText;
   }
 
   /* 输入框适配高对比度模式 */
   #inputMessage {
+
     background-color: Field;
-    color: FieldText;
+
     border: 1px solid ButtonText;
+
+    color: FieldText;
   }
 }
 
@@ -71,10 +86,14 @@
   *,
   ::before,
   ::after {
+
     animation-duration: 0.01s !important;
+
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01s !important;
+
     scroll-behavior: auto !important;
+
+    transition-duration: 0.01s !important;
   }
 }
 
@@ -82,24 +101,28 @@
 @supports (display: grid) {
   /* 使用现代布局技术 */
   .container {
+
     display: grid;
+
     grid-template-rows: 1fr auto;
   }
 }
 
-/* 针对旧版Safari的修复 */
+/* 针对旧版 Safari 的修复 */
 @supports (-webkit-overflow-scrolling: touch) {
-  /* iOS Safari特定修复 */
+  /* iOS Safari 特定修复 */
   input,
   textarea {
+
     border-radius: 0;
   }
 }
 
-/* 针对Firefox的修复 */
-@-moz-document url-prefix() {
-  /* Firefox特定样式 */
+/* 针对 Firefox 的修复 */
+@document url-prefix() {
+  /* Firefox 特定样式 */
   input[type="range"]::-moz-range-thumb {
+
     border: none;
   }
 }

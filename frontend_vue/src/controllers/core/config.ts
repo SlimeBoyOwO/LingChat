@@ -19,7 +19,7 @@ export const API_CONFIG: ApiConfig = {
 
 // 应用配置
 export const APP_CONFIG = {
-  // WebSocket配置
+  // WebSocket 配置
   WEBSOCKET: {
     MAX_RECONNECTS: 5,
     HEARTBEAT_INTERVAL: 30000,
@@ -27,7 +27,7 @@ export const APP_CONFIG = {
     MAX_RECONNECT_DELAY: 30000,
   },
 
-  // UI配置
+  // UI 配置
   UI: {
     LOADER_MIN_DURATION: 1500,
     ANIMATION_DURATION: 300,

@@ -32,7 +32,7 @@ export class TypeWriter {
         (window as any).webkitAudioContext)();
       await this.loadSounds();
     } catch (e) {
-      console.warn("音频初始化失败:", e);
+      console.warn("音频初始化失败：", e);
       const uiStore = useUIStore();
       uiStore.enableChatEffectSound = false;
     }
@@ -51,7 +51,7 @@ export class TypeWriter {
 
       this.soundBuffers = await Promise.all(promises);
     } catch (e) {
-      console.warn("音效加载失败:", e);
+      console.warn("音效加载失败：", e);
     }
   }
 

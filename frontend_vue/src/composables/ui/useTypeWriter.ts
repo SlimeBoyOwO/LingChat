@@ -2,7 +2,7 @@ import { ref, onUnmounted, Ref } from "vue";
 import { TypeWriter } from "../../utils/typewriter/TypeWriter";
 
 export function useTypeWriter(
-  elementRef: Ref<HTMLInputElement | HTMLTextAreaElement | null>
+  elementRef: Ref<HTMLInputElement | HTMLTextAreaElement | null>,
 ) {
   const typeWriter = ref<TypeWriter | null>(null);
   const isTyping = ref(false);

@@ -12,40 +12,61 @@
 
 /* 禁用所有元素的动画和过渡 */
 * {
+
     animation: var(--no-animation);
-    transition: var(--no-transition);
-    animation-duration: var(--zero-duration);
-    transition-duration: var(--zero-duration);
-    transition-delay: var(--zero-duration);
+
     animation-delay: var(--zero-duration);
-    transform-style: flat !important; /* 防止3D变换导致的性能问题 */
+
+    animation-duration: var(--zero-duration);
+
+    transform-style: flat !important; /* 防止 3D 变换导致的性能问题 */
+
+    transition: var(--no-transition);
+
+    transition-delay: var(--zero-duration);
+
+    transition-duration: var(--zero-duration);
 }
 
 /* 圣光效果相关元素 - 保留过渡效果 */
 #qinling, 
 #qinlingtest, 
 #kuosan-preview-img {
-    transition: filter 0.3s ease-in-out, transform 0.3s ease-in-out !important;
+
     animation: none; /* 仍禁用动画，但允许过渡 */
-    transition-duration: 0.3s !important;
+
     transform-style: flat !important;
+
+    transition: filter 0.3s ease-in-out, transform 0.3s ease-in-out !important;
+
+    transition-duration: 0.3s !important;
 }
 
 /* 特定元素的动画禁用 */
-body, div, span, h1, h2, h3, h4, h5, h6, p, a, img:not(#qinling):not(#qinlingtest):not(#kuosan-preview-img), 
+body, div, span, h1, h2, h3, h4, h5, h6, p, a, img:not(#qinling, #qinlingtest, #kuosan-preview-img), 
 button, input, textarea, select, label, 
 .menu-item, .menu-button, .menu-content, .menu-panel, 
 .bg-option, .slider-container, .toggle-container {
-    transition-property: none !important;
-    transition: none !important;
+
     animation: none !important;
-    animation-name: none !important;
-    animation-duration: 0s !important;
+
     animation-delay: 0s !important;
+
+    animation-duration: 0s !important;
+
+    animation-name: none !important;
+
     animation-timing-function: step-start !important;
-    transition-duration: 0s !important;
-    transition-delay: 0s !important;
+
     transform: none !important;
+
+    transition: none !important;
+
+    transition-delay: 0s !important;
+
+    transition-duration: 0s !important;
+
+    transition-property: none !important;
 }
 
 /* 禁用动画类 */
@@ -53,15 +74,21 @@ button, input, textarea, select, label,
 .no-animation *,
 .no-animation *::before,
 .no-animation *::after {
+
     animation: none !important;
-    transition: none !important;
+
     animation-duration: 0s !important;
-    transition-duration: 0s !important;
+
     transform-style: flat !important;
+
+    transition: none !important;
+
+    transition-duration: 0s !important;
 }
 
 /* 滚动平滑禁用 */
 html, body {
+
     scroll-behavior: auto !important;
 }
 
@@ -75,44 +102,56 @@ html, body {
 #kuosan-test,
 .menu-section,
 .menu-item {
-    transition: none !important;
+
     animation: none !important;
+
+    transition: none !important;
 }
 
 /* 确保高优先级 */
 [class] {
-    transition: none !important;
+
     animation: none !important;
+
+    transition: none !important;
 }
 
 /* 禁用滚动动画 */
 @media screen and (prefers-reduced-motion: reduce), 
        screen and (update: slow) {
     * {
+
         animation-duration: 0.001s !important;
-        transition-duration: 0.001s !important;
+
         animation-iteration-count: 1 !important;
+
         scroll-behavior: auto !important;
+
+        transition-duration: 0.001s !important;
     }
 }
 
-/* 禁用hover相关动画 */
+/* 禁用 hover 相关动画 */
 *:hover {
+
     transition: none !important;
 }
 
-/* 禁用所有@keyframes动画 */
+/* 禁用所有@keyframes 动画 */
 @keyframes none {
     from { }
+
     to { }
 }
 
 /* 优化性能相关设置 */
 img, video {
-    will-change: auto !important; /* 防止过度使用will-change导致的性能问题 */
+
+    will-change: auto !important; /* 防止过度使用 will-change 导致的性能问题 */
 }
 
 /* 禁止变换以提高性能 */
 .transform-disabled {
+
     transform: none !important;
 } 

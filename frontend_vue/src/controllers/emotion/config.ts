@@ -36,7 +36,7 @@ export const EMOTION_CONFIG: EmotionConfigMap = {
   },
   生气: {
     animation: "angry-jump",
-    bubbleImage: "../pictures/animation/生气2.webp",
+    bubbleImage: "../pictures/animation/生气 2.webp",
     bubbleClass: "angry",
     audio: "../audio_effects/生气.wav",
     avatar: `${API_CONFIG.AVATAR.BASE}/生气.png`,
@@ -148,7 +148,7 @@ export const EMOTION_CONFIG: EmotionConfigMap = {
   },
   AI思考: {
     animation: "none",
-    bubbleImage: "../pictures/animation/AI思考.webp",
+    bubbleImage: "../pictures/animation/AI 思考.webp",
     bubbleClass: "none",
     audio: "../audio_effects/无语.wav",
     avatar: "none",

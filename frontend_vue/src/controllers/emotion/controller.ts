@@ -22,13 +22,13 @@ export class EmotionController {
     this.animationEndHandler = this._handleAnimationEnd.bind(this);
     this.DOM.avatar.container.addEventListener(
       "animationend",
-      this.animationEndHandler
+      this.animationEndHandler,
     );
   }
 
   public setEmotion(emotion: string, force: boolean = false) {
     if (!EMOTION_CONFIG[emotion]) {
-      console.log(`未知表情: ${emotion}`);
+      console.log(`未知表情：${emotion}`);
       return;
     }
 
@@ -43,7 +43,7 @@ export class EmotionController {
         // 显示加载状态
         this.DOM.avatar.img.classList.add("loading");
 
-        // 创建新的Image对象预加载
+        // 创建新的 Image 对象预加载
         const img = new Image();
         img.onload = () => {
           // 加载完成后设置背景图片（关键修改）
@@ -51,7 +51,7 @@ export class EmotionController {
           this.DOM.avatar.img.classList.remove("loading");
         };
         img.onerror = () => {
-          console.log(`加载头像失败: ${config.avatar}`);
+          console.log(`加载头像失败：${config.avatar}`);
           this.DOM.avatar.img.classList.remove("loading");
           // 设置默认头像背景
           this.DOM.avatar.img.style.backgroundImage =
@@ -62,7 +62,7 @@ export class EmotionController {
         const timestamp = Date.now();
         img.src = `${config.avatar}?t=${timestamp}`;
       } catch (error) {
-        console.error("设置表情头像时出错:", error);
+        console.error("设置表情头像时出错：", error);
         this.DOM.avatar.img.classList.remove("loading");
       }
     }
@@ -121,7 +121,7 @@ export class EmotionController {
     setTimeout(() => {
       this.DOM.avatar.bubble.classList.remove("show");
       this.DOM.avatar.bubble.classList.remove(config.bubbleClass);
-    }, 2000); // 2秒后执行
+    }, 2000); // 2 秒后执行
   }
 
   _handleAnimationEnd() {
@@ -132,7 +132,7 @@ export class EmotionController {
   destroy() {
     this.DOM.avatar.container.removeEventListener(
       "animationend",
-      this.animationEndHandler
+      this.animationEndHandler,
     );
   }
 }

@@ -1,214 +1,333 @@
 /* 基础样式重置 */
 * {
-  margin: 0;
-  padding: 0;
+
   box-sizing: border-box;
-  text-shadow: 0 0 2px rgba(0, 0, 0, 0.5); /* 文字阴影增强可读性 */
+
+  margin: 0;
+
+  padding: 0;
+
+  text-shadow: 0 0 2px rgb(0 0 0 / 50%); /* 文字阴影增强可读性 */
 }
 
-/* 对html和body设置100%高度和宽度，以确保子元素可以使用百分比正确覆盖页面内容 */
+/* 对 html 和 body 设置 100% 高度和宽度，以确保子元素可以使用百分比正确覆盖页面内容 */
 html,
 body,
 #menu-content {
+
   height: 100%;
+
   width: 100%;
 }
 
 body {
-  font-family: "TanukiMagic", "方正喵呜", "Segoe UI", sans-serif;
-  color: white;
-  /* height: 100vh; */ /* 此元素与第10行的第12行冲突 */
-  overflow: hidden;
+
+  background-attachment: fixed; /* 固定背景图片 */
+
   background-color: #ffffff;
 
-  background-size: cover; /* 确保背景图片覆盖整个容器 */
   background-position: center bottom; /* 水平居中，垂直底部对齐 */
-  background-attachment: fixed; /* 固定背景图片 */
+
+  background-size: cover; /* 确保背景图片覆盖整个容器 */
+
+  color: white;
+
+  font-family: TanukiMagic, "方正喵呜", "Segoe UI", sans-serif;
+
+  overflow: hidden;
+
+  /* height: 100vh; */ /* 此元素与第 10 行的第 12 行冲突 */
 }
 
 canvas {
-  position: fixed; /* 使用 fixed 定位 */
-  top: 0;
-  left: 0;
-  width: 100%;
+
   height: 100%;
+
+  left: 0;
+
+  position: fixed; /* 使用 fixed 定位 */
+
+  top: 0;
+
+  width: 100%;
+
   z-index: 0; /* 将 canvas 置于底层 */
 }
 
 .container {
-  position: relative;
+
   height: 100%;
+
+  position: relative;
+
   width: 100%;
 }
 
 /* 人物图像样式 */
 .main-box {
-  position: relative;
-  height: 100%;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
+
   align-items: center;
+
+  display: flex;
+
+  flex-direction: column;
+
+  height: 100%;
+
+  justify-content: flex-end;
+
+  position: relative;
+
+  width: 100%;
 }
 
 .avatar-container {
-  position: absolute;
+
   height: 100%;
+
+  position: absolute;
+
   width: 100%;
+
   z-index: 1;
 }
 
 .main-box img {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
+
+  filter: drop-shadow(0 0 18px rgb(255 255 255 / 70%)); /* 添加白色阴影 */
+
   height: 102%;
+
+  left: 0;
+
   object-fit: contain;
+
   object-position: center;
-  z-index: 1;
-  filter: drop-shadow(0 0 18px rgba(255, 255, 255, 0.7)); /* 添加白色阴影 */
+
+  position: absolute;
+
+  top: 0;
 
   transform: scale(1.9);
+
   transform-origin: center -3%;
+
+  width: 100%;
+
+  z-index: 1;
 }
 
 /* 修复后的聊天框样式 */
 .chatbox-box {
-  position: relative;
-  display: flex;
-  justify-content: center;
-  width: 100%;
-  z-index: 2;
+
+  backdrop-filter: blur(1px);
+
   /* 修改后的渐变 - 从底部向上渐变 */
+
   background: linear-gradient(
     to top,
-    rgba(0, 14, 39, 0.7) 0%,
-    rgba(0, 14, 39, 0.6) 100%
+    rgb(0 14 39 / 70%) 0%,
+    rgb(0 14 39 / 60%) 100%
   );
+
+  display: flex;
+
+  justify-content: center;
+
   padding: 15px;
-  backdrop-filter: blur(1px);
+
+  position: relative;
+
+  width: 100%;
+
+  z-index: 2;
 }
 
 /* 顶部渐变透明效果 */
 .chatbox-box::before {
-  content: "";
-  position: absolute;
-  top: -40px;
-  left: 0;
-  right: 0;
-  height: 40px;
+
   background: linear-gradient(
     to bottom,
     transparent 0%,
-    rgba(0, 14, 39, 0.3) 50%,
-    rgba(0, 14, 39, 0.6) 100%
+    rgb(0 14 39 / 30%) 50%,
+    rgb(0 14 39 / 60%) 100%
   );
+
+  content: "";
+
+  height: 40px;
+
+  left: 0;
+
   pointer-events: none;
+
+  position: absolute;
+
+  right: 0;
+
+  top: -40px;
 }
 
 .chatbox-main {
+
   width: 60%;
 }
 
 .chatbox-title-part {
-  display: flex;
+
   align-items: baseline;
+
+  display: flex;
+
   margin-bottom: 10px;
 }
 
 .chatbox-title {
-  font-size: 24px;
-  font-weight: bold;
+
   color: white;
+
+  font-size: 24px;
+
+  font-weight: bold;
+
   margin-right: 15px;
 }
 
 .chatbox-subtitle {
-  font-size: 20px;
-  font-weight: bold;
+
   color: #6eb4ff;
+
+  font-size: 20px;
+
+  font-weight: bold;
 }
 
 .chatbox-emotion {
-  font-size: 20px;
-  font-weight: bold;
+
   color: #ff77dd;
+
+  font-size: 20px;
+
+  font-weight: bold;
+
   margin: auto;
 }
 
 .chatbox-line {
+
+  background: rgb(255 255 255 / 30%);
+
   height: 1px;
-  background: rgba(255, 255, 255, 0.3);
-  margin: 6px 0 6px 0;
+
+  margin: 6px 0;
 }
 
 .chatbox-inputbox {
+
   display: flex;
+
   flex-direction: column;
+
   white-space: pre-line; /* 保留 \n 并换行 */
 }
 
 #inputMessage {
-  width: 100%;
-  min-height: 40px;
-  background: rgba(255, 255, 255, 0);
+
+  background: rgb(255 255 255 / 0%);
+
   border: none;
+
   color: white;
+
   font-size: 20px;
+
   font-weight: bold;
-  resize: none;
-  margin: 5px 0px;
+
+  margin: 5px 0;
+
+  min-height: 40px;
+
   outline: none;
+
+  resize: none;
+
   transition: all 0.3s;
+
+  width: 100%;
 }
 
 #inputMessage::placeholder {
-  color: rgba(255, 255, 255, 0.5);
+
+  color: rgb(255 255 255 / 50%);
 }
 
 #sendButton {
+
   align-self: flex-end;
-  background: rgba(0, 14, 39, 0);
-  color: rgb(4, 188, 255);
+
+  background: rgb(0 14 39 / 0%);
+
   border: none;
-  padding: 4px 10px;
+
   border-radius: 5px;
+
+  color: rgb(4 188 255);
+
   cursor: pointer;
+
+  padding: 4px 10px;
+
   transition: all 0.3s;
 }
 
 #sendButton:hover {
-  background: rgba(0, 14, 39, 0);
-  color: rgba(136, 255, 251, 0.827);
+
+  background: rgb(0 14 39 / 0%);
+
+  color: rgb(136 255 251 / 82.7%);
 }
 
 #sendButton:disabled {
-  background: #333;
+
+  background: #333333;
+
   cursor: not-allowed;
-  opacity: 0.7;
+
+  opacity: 70%;
 }
 
 /* 音频播放器样式 */
 #audioPlayer {
-  position: absolute;
+
   bottom: 10px;
+
   left: 10px;
-  z-index: 3;
+
+  position: absolute;
+
   width: 200px;
+
+  z-index: 3;
 }
 
 /* 标题样式 */
 h1 {
-  position: absolute;
-  top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 3;
+
   color: white;
-  text-shadow: 0 0 10px rgba(0, 0, 0, 0.7);
+
   font-size: 24px;
+
+  left: 50%;
+
+  position: absolute;
+
+  text-shadow: 0 0 10px rgb(0 0 0 / 70%);
+
+  top: 20px;
+
+  transform: translateX(-50%);
+
+  z-index: 3;
 }
 
 /* 修改全局字体设置 */
@@ -217,8 +336,10 @@ input,
 textarea,
 button,
 select {
-  font-family: "TanukiMagic", "方正喵呜", "Segoe UI", sans-serif;
+
   color: white;
+
+  font-family: TanukiMagic, "方正喵呜", "Segoe UI", sans-serif;
 }
 
 /* 确保所有文本元素都继承相同的字体和文字阴影 */
@@ -226,30 +347,42 @@ select {
 .chatbox-subtitle,
 #inputMessage,
 #sendButton {
+
   font-family: inherit; /* 继承父元素字体 */
+
   text-shadow: inherit; /* 继承文字阴影 */
 }
 
 /* 调整特定元素的字体大小和粗细 */
 .chatbox-title {
+
   font-size: 24px;
+
   font-weight: bold;
 }
 
 .chatbox-subtitle {
-  font-size: 20px;
-  font-weight: bold;
+
   color: #6eb4ff;
+
+  font-size: 20px;
+
+  font-weight: bold;
 }
 
 #inputMessage {
+
   font-size: 20px;
+
   font-weight: bold;
 }
 
 #sendButton {
+
   font-size: 20px;
+
   font-weight: bold;
+
   transform: scaleX(1.5);
 }
 
@@ -257,18 +390,27 @@ select {
 @keyframes angryJump {
   0%,
   100% {
+
     transform: translateY(0) scale(1);
   }
+
   20% {
+
     transform: translateY(-15px) scale(1.03);
   }
+
   40% {
+
     transform: translateY(0) scale(1);
   }
+
   60% {
+
     transform: translateY(-5px) scale(1.01);
   }
+
   80% {
+
     transform: translateY(0) scale(1);
   }
 }
@@ -277,12 +419,17 @@ select {
 @keyframes suprisedJump {
   0%,
   100% {
+
     transform: translateY(0) scale(1);
   }
+
   40% {
+
     transform: translateY(-10px) scale(1.02);
   }
+
   80% {
+
     transform: translateY(0) scale(1);
   }
 }
@@ -291,18 +438,27 @@ select {
 @keyframes heartBeat {
   0%,
   100% {
+
     transform: translateY(0) scale(1);
   }
+
   20% {
-    transform: translateY(0px) scale(1.015);
+
+    transform: translateY(0) scale(1.015);
   }
+
   40% {
+
     transform: translateY(0) scale(1);
   }
+
   60% {
-    transform: translateY(0px) scale(1.015);
+
+    transform: translateY(0) scale(1.015);
   }
+
   80% {
+
     transform: translateY(0) scale(1);
   }
 }
@@ -311,9 +467,12 @@ select {
 @keyframes seriousThink {
   0%,
   100% {
+
     transform: translateY(0) scale(1);
   }
+
   50% {
+
     transform: translateY(5px) scale(1);
   }
 }
@@ -323,12 +482,17 @@ select {
   0%,
   50%,
   100% {
+
     transform: translateY(0) scale(1);
   }
+
   25% {
+
     transform: translateX(5px) scale(1);
   }
+
   75% {
+
     transform: translateX(-5px) scale(1);
   }
 }
@@ -338,10 +502,13 @@ select {
   0%,
   50%,
   100% {
-    transform: translateY(0px);
+
+    transform: translateY(0);
   }
+
   25%,
   75% {
+
     transform: translateY(-10px);
   }
 }
@@ -350,9 +517,12 @@ select {
 @keyframes naughtyBounce {
   0%,
   100% {
-    transform: translateY(0px);
+
+    transform: translateY(0);
   }
+
   50% {
+
     transform: translateY(-4px);
   }
 }
@@ -361,104 +531,152 @@ select {
 @keyframes breathing {
   0%,
   100% {
+
     transform: scale(1); /* 正常大小 */
   }
+
   50% {
+
     transform: scale(1.005); /* 轻微放大 */
   }
 }
 
 /* 动画基础类 */
 .character-animation {
+
   animation-fill-mode: both !important;
 }
 
 .normal {
+
   animation: breathing 4s ease-in-out infinite;
 }
 
 /* 特定动画类 */
 .angry-jump {
-  animation-name: angryJump;
+
   animation-duration: 0.8s;
-  animation-timing-function: ease-out;
+
   animation-iteration-count: 1;
+
+  animation-name: angryJump;
+
+  animation-timing-function: ease-out;
 }
 
 .happy-bounce {
-  animation-name: happyBounce;
+
   animation-duration: 0.6s;
-  animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
   animation-iteration-count: 1;
+
+  animation-name: happyBounce;
+
+  animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 .serious-think {
-  animation-name: seriousThink;
+
   animation-duration: 0.6s;
-  animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
   animation-iteration-count: 1;
+
+  animation-name: seriousThink;
+
+  animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 .embarrassed-emo {
-  animation-name: embarrassedEmo;
+
   animation-duration: 0.3s;
-  animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
   animation-iteration-count: 1;
+
+  animation-name: embarrassedEmo;
+
+  animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 .naughty-bounce {
-  animation-name: naughtyBounce;
+
   animation-duration: 0.3s;
-  animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
   animation-iteration-count: 1;
+
+  animation-name: naughtyBounce;
+
+  animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 .suprised-jump {
-  animation-name: suprisedJump;
+
   animation-duration: 0.3s;
-  animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
   animation-iteration-count: 1;
+
+  animation-name: suprisedJump;
+
+  animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 .heart-beat {
-  animation-name: heartBeat;
+
   animation-duration: 0.8s;
-  animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
   animation-iteration-count: 1;
+
+  animation-name: heartBeat;
+
+  animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 /* 气泡固定定位样式 */
 .bubble {
-  position: absolute;
-  background-size: contain;
-  background-repeat: no-repeat;
-  width: 50%;
-  height: 50%;
-  pointer-events: none;
-  z-index: 2;
 
-  /* 固定显示在人物右上方 */
-  top: 5%;
+  background-repeat: no-repeat;
+
+  background-size: contain;
+
+  height: 50%;
+
   left: 20%;
 
   /* 默认隐藏 */
-  opacity: 0;
-  transition: opacity 0.3s;
+
+  opacity: 0%;
+
+  pointer-events: none;
+
+  position: absolute;
+
+  /* 固定显示在人物右上方 */
+
+  top: 5%;
 
   /* 初始缩放 */
+
   transform: scale(1);
+
+  transition: opacity 0.3s;
+
+  width: 50%;
+
+  z-index: 2;
 }
 
 /* 气泡显示时的动画 */
 .bubble.show {
-  opacity: 1;
+
+  opacity: 100%;
 }
 
 /* 不同表情的气泡样式 */
 .bubble.angry {
+
   transform: scale(1);
 }
 
 .bubble.happy {
+
   transform: scale(1);
 }
