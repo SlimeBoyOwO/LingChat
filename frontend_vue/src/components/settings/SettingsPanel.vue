@@ -8,28 +8,30 @@
       <SettingsNav />
     </div>
     <div class="container">
-      <SettingsText v-show="uiStore.currentSettingsTab === 'text'" />
-      <SettingsSound v-show="uiStore.currentSettingsTab === 'sound'" />
-      <SettingsHistory v-show="uiStore.currentSettingsTab === 'history'" />
-      <SettingsCharacter v-show="uiStore.currentSettingsTab === 'character'" />
-      <SettingsBackground
-        v-show="uiStore.currentSettingsTab === 'background'"
-      />
-      <SettingsSave v-show="uiStore.currentSettingsTab === 'save'" />
-      <SettingsAdvance v-show="uiStore.currentSettingsTab === 'advance'" />
+      <SettingsSave v-show="uiStore.currentSettingsTab === 'save'"/>
+      <SettingsText v-show="uiStore.currentSettingsTab === 'text'"/>
+      <SettingsSound v-show="uiStore.currentSettingsTab === 'sound'"/>
+      <SettingsAdvance v-show="uiStore.currentSettingsTab === 'advance'"/>
+      <SettingsHistory v-show="uiStore.currentSettingsTab === 'history'"/>
+      <SettingsSchedule v-show="uiStore.currentSettingsTab === 'schedule'"/>
+      <SettingsCharacter v-show="uiStore.currentSettingsTab === 'character'"/>
+      <SettingsBackground v-show="uiStore.currentSettingsTab === 'background'"/>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import {
+  SettingsText,
+  SettingsSave,
+  SettingsSound,
+  SettingsHistory,
+  SettingsAdvance,
+  SettingsSchedule,
+  SettingsCharacter,
+  SettingsBackground,
+} from './pages'
 import SettingsNav from "./SettingsNav.vue";
-import SettingsText from "./pages/SettingsText.vue";
-import SettingsSound from "./pages/SettingsSound.vue";
-import SettingsHistory from "./pages/SettingsHistory.vue";
-import SettingsCharacter from "./pages/SettingsCharacter.vue";
-import SettingsBackground from "./pages/SettingsBackground.vue";
-import SettingsSave from "./pages/SettingsSave.vue";
-import SettingsAdvance from "./pages/SettingsAdvance.vue";
 import { useUIStore } from "../../stores/modules/ui/ui";
 
 const uiStore = useUIStore();
