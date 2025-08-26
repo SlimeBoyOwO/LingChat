@@ -16,18 +16,22 @@ export class ChatHandler {
   }
 
   private registerHandlers() {
-    registerHandler(WebSocketMessageTypes.REPLY, (data: any) => {
+    registerHandler(WebSocketMessageTypes.AIREPLY, (data: any) => {
       console.log(data);
-      this.handleReply(data as WebSocketChatMessage);
+      this.handleAIReply(data as WebSocketChatMessage);
+    });
+
+    registerHandler(WebSocketMessageTypes.SYSTEM_NARRATION, (data: any) => {
+      console.log(data);
+      // TODO: 实现旁白消息接受机制 this.handleSystemNarration(data as WebSocketChatMessage);
     });
   }
 
-  private handleReply(data: WebSocketChatMessage) {
+  private handleAIReply(data: WebSocketChatMessage) {
     const gameStore = useGameStore();
 
     try {
       this.handleChatMessage(data);
-      gameStore.currentStatus = "responding";
     } catch (error) {
       console.error("处理回复消息出错:", error);
       gameStore.currentStatus = "input";
@@ -67,6 +71,8 @@ export class ChatHandler {
   private processNextMessage() {
     const gameStore = useGameStore();
     const uiStore = useUIStore();
+
+    gameStore.currentStatus = "responding"; // TODO: 回复阶段，就一直切换到responding模式，防止bug，但具体还需要验证
 
     this.isProcessing = true;
 

@@ -37,127 +37,6 @@ class MessageGenerator:
     def memory_init(self, memory: List[Dict]) -> None:
         self.memory = memory
 
-    
-    # 兼容性：古老的非流式生成函数部分
-    async def process_message(self, user_message: str) -> Optional[List[Dict]]:
-        """处理用户消息的完整流程"""
-
-        processed_user_message = self.message_processor.append_user_message(user_message)
-        
-        try:
-            # 1. 增添用户相关信息
-            self.memory.append({"role": "user", "content": processed_user_message})
-            rag_messages = []
-
-            current_context = self.memory.copy()
-            # 2. 如果启用了RAG系统，保存本次会话到RAG历史记录
-            if self.use_rag and self.rag_manager:
-                self.rag_manager.rag_append_sys_message(current_context, rag_messages, processed_user_message)
-
-            # 若打印上下文选项开启且在DEBUG级别，则截取发送到llm的文字信息打印到终端
-            # self.ai_logger.print_debug_message(current_context, rag_messages, processed_user_message)
-
-            # 启动一个计时器
-            start_time = time.perf_counter()
-            ai_response = self.llm_model.process_message(current_context)
-            end_time = time.perf_counter()
-            logger.debug(f"LLM输出时间: {end_time - start_time} 秒")
-
-            # 3. 修复ai回复中可能出错的部分，防止下一次对话被带歪
-            ai_response = Function.fix_ai_generated_text(ai_response)
-            self.memory.append({"role": "assistant", "content": ai_response})            
-
-            # 4. 如果有RAG系统，则把这段对话保存在RAG中
-            if self.use_rag and self.rag_manager:
-                self.rag_manager.save_messages_to_rag(self.memory)
-
-            self.ai_logger.log_conversation("用户", processed_user_message)
-            self.ai_logger.log_conversation("钦灵", ai_response)
-            
-            # 5. 分析情绪和生成语音
-            final_response = await self.process_ai_response(ai_response, user_message)
-
-            error_response = [{
-                "type": "reply",
-                "emotion": "sad",
-                "originalTag": "错误",
-                "message": f"抱歉，处理消息时出现错误，回复是空的",
-                "motionText": "困惑",
-                "audioFile": None,
-                "originalMessage": user_message,
-                "isMultiPart": False,
-                "partIndex": 0,
-                "totalParts": 1
-            }]
-
-            if final_response is None:
-                logger.error("AI服务返回了None响应")
-                await message_broker.publish("1", error_response[0])
-                return error_response
-            else: 
-                for response in final_response:
-                    await message_broker.publish("1", response)
-                return final_response
-                
-        except Exception as e:
-            error_response = [{
-                "type": "reply",
-                "emotion": "sad",
-                "originalTag": "错误",
-                "message": f"抱歉，处理消息时出现错误: {str(e)}",
-                "motionText": "困惑",
-                "audioFile": None,
-                "originalMessage": user_message,
-                "isMultiPart": False,
-                "partIndex": 0,
-                "totalParts": 1
-            }]
-            logger.error(f"处理消息时出错: {e}")
-            traceback.print_exc()  # 这会打印完整的错误堆栈到控制台
-            logger.error(f"详细错误信息: ", exc_info=True)
-            return error_response
-    
-    async def process_ai_response(self, ai_response: str, user_message: str) -> List[Dict]:
-        """处理AI回复的完整流程"""
-        self.voice_maker.delete_voice_files()
-
-        emotion_segments:List[Dict] = self.message_processor.analyze_emotions(ai_response)
-
-        start_time = time.perf_counter()
-        if self.voice_maker.lang == "ja":
-            if emotion_segments[0].get("japanese_text") == "":
-                await self.translator.translate_ai_response(emotion_segments)
-            else:
-                await self.voice_maker.generate_voice_files(emotion_segments)
-            end_time = time.perf_counter()
-            logger.debug(f"日语合成时间: {end_time - start_time} 秒")
-        elif self.voice_maker.lang == "zh":
-            await self.voice_maker.generate_voice_files(emotion_segments)
-            end_time = time.perf_counter()
-            logger.debug(f"中文合成时间: {end_time - start_time} 秒")
-
-
-        if not emotion_segments:
-            logger.warning("未检测到有效情绪片段")
-            emotion_segments = [{
-                "index": 1,
-                "original_tag": "normal",
-                "following_text": ai_response,
-                "motion_text": "",
-                "japanese_text": "",
-                "predicted": "normal",
-                "confidence": 0.8,
-                "voice_file": "None"
-            }]
-        
-        responses = self.create_responses(emotion_segments, user_message)
-    
-        logger.debug("--- AI 回复分析结果 ---")
-        self.ai_logger.log_analysis_result(emotion_segments)
-        logger.debug("--- 分析结束 ---")
-
-        return responses
-
     # 以下是现在使用的流式处理部分
     async def process_sentence(self, sentence: str, emotion_segments: List[Dict]):
         """处理单个句子的情绪分析、翻译和语音合成"""
@@ -214,7 +93,7 @@ class MessageGenerator:
     async def process_message_stream(self, user_message: str):
         """流式处理用户消息，边生成边进行情绪分析、翻译和语音合成"""
         # 0. 清理之前残留的语音文件
-        self.voice_maker.delete_voice_files()
+        # self.voice_maker.delete_voice_files()         # TODO: 音频清理还是交给用户好了，我们不干涉
 
         processed_user_message = self.message_processor.append_user_message(user_message)
 
