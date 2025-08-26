@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 
-class BaseVitsAdapter(ABC):
+class TTSBaseAdapter(ABC):
     """VITS API适配器基类"""
 
     @abstractmethod
