@@ -1,5 +1,6 @@
 import re
 import os
+import yaml
 from datetime import datetime, timedelta
 from typing import List, Dict
 from pathlib import Path
@@ -502,3 +503,21 @@ class Function:
             return f"{minutes}分{seconds}秒"
         else:
             return f"{seconds}秒"
+    
+    # 方法1：直接读取 YAML 文件
+    @staticmethod
+    def read_yaml_file(file_path):
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                data = yaml.safe_load(file)
+            return data
+        except Exception as e:
+            print(f"读取文件时发生错误: {e}")
+            return None
+
+
+    # 方法2：如果你已经有 YAML 字符串内容
+    @staticmethod
+    def read_yaml_string(yaml_content):
+        data = yaml.safe_load(yaml_content)
+        return data

@@ -13,6 +13,7 @@ from ling_chat.core.llm_providers.manager import LLMManager
 from ling_chat.core.messaging.broker import message_broker
 from ling_chat.core.logger import logger
 from ling_chat.core.ai_service.message_generator import MessageGenerator
+from ling_chat.core.ai_service.script_engine.script_manager import ScriptManager
 from ling_chat.utils.function import Function
 
 import os
@@ -47,6 +48,8 @@ class AIService:
         self.import_settings(settings)
         self.events_scheduler = EventsScheduler(self.user_id, self.user_name, self.ai_name)
         self.events_scheduler.start_nodification_schedules()        # TODO: 这个由前端开关控制
+
+        self.scripts_manager = ScriptManager()
 
         self.reset_memory()
 
@@ -102,6 +105,9 @@ class AIService:
                 "content": self.ai_prompt
             }
         ]
+    
+    async def start_script(self):
+        await self.scripts_manager.start_script()
 
     async def process_message_stream_compat(self, user_message: str):
         """
