@@ -28,12 +28,20 @@ class WebSocketManager:
                 elif message.get('type') == 'message':
                     logger.info("来自客户端的消息：" + str(message))
                     # 将消息转发给 ai_service（不等待响应）
-                    asyncio.create_task(
-                        service_manager.ai_service.process_message_stream_compat(
-                            message.get('content', ''),
-                            # client_id=client_id  # 告知 ai_service 消息来源
+                    if service_manager.ai_service is not None:
+                        # asyncio.create_task(
+                        #     service_manager.ai_service.process_message_stream_compat(
+                        #         message.get('content', ''),
+                        #         # client_id=client_id  # 告知 ai_service 消息来源
+                        #     )
+                        # )
+                        asyncio.create_task(
+                            message_broker.enqueue_ai_message(client_id, message.get('content', ''))
                         )
-                    )
+                    else:
+                        logger.error("尚未初始化，请刷新网页！")
+                        #TODO: 向前端提示或者之后做个刷新系统
+
         except Exception as e:
             logger.error(f"WebSocket连接错误: {e}")
             try:

@@ -91,6 +91,9 @@ watch(
       uiStore.showCharacterTitle = gameStore.avatar.user_name;
       uiStore.showCharacterSubtitle = gameStore.avatar.user_subtitle;
       uiStore.showCharacterEmotion = "";
+    } else {
+      uiStore.showCharacterTitle = gameStore.avatar.character_name;
+      uiStore.showCharacterSubtitle = gameStore.avatar.character_subtitle;
     }
   }
 );
@@ -151,6 +154,8 @@ defineExpose({
   );
   padding: 15px;
   backdrop-filter: blur(1px);
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent-color) transparent;
 }
 
 .chatbox-box::before {

@@ -3,12 +3,12 @@ import asyncio
 import glob
 
 from typing import List, Dict
-from ling_chat.core.VitsTTS.vits_tts import VitsTTS
+from ling_chat.core.TTS.tts_provider import TTS
 from ling_chat.core.logger import logger
 
 class VoiceMaker:
     def __init__(self) -> None:
-        self.vits_tts = VitsTTS()
+        self.tts_provider = TTS()
         self.model_name = None
         self.speaker_id = 4
         self.tts_type = ""
@@ -42,7 +42,7 @@ class VoiceMaker:
             # logger.debug(seg)
             if self.lang == "ja":
                 if seg["japanese_text"]:
-                    output_file = self.vits_tts.generate_voice(seg["japanese_text"], seg["voice_file"], speaker_id=self.speaker_id, model_name=self.model_name, tts_type=self.tts_type, lang="ja")
+                    output_file = self.tts_provider.generate_voice(seg["japanese_text"], seg["voice_file"], speaker_id=self.speaker_id, model_name=self.model_name, tts_type=self.tts_type, lang="ja")
                     if output_file is not None:
                         tasks.append(output_file)
                     else:
@@ -50,7 +50,7 @@ class VoiceMaker:
                 elif seg["following_text"] and not seg.get("japanese_text"):
                     logger.warning(f"片段 {seg['index']} 没有日语文本，跳过语音生成")
             elif self.lang == "zh":
-                output_file = self.vits_tts.generate_voice(seg["following_text"], seg["voice_file"], speaker_id=self.speaker_id, model_name=self.model_name, tts_type=self.tts_type, lang="zh")
+                output_file = self.tts_provider.generate_voice(seg["following_text"], seg["voice_file"], speaker_id=self.speaker_id, model_name=self.model_name, tts_type=self.tts_type, lang="zh")
                 if output_file is not None:
                     tasks.append(output_file)
                 else:
@@ -59,4 +59,4 @@ class VoiceMaker:
             await asyncio.gather(*tasks)
     
     def delete_voice_files(self):
-        self.vits_tts.cleanup()
+        self.tts_provider.cleanup()
