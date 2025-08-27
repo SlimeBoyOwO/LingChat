@@ -20,7 +20,7 @@ class GPTSoVITSAdapter(TTSBaseAdapter):
         # all_yue	全部按粤语识别
         # all_ko	全部按韩文识别
         # auto_yue	粤语多语种自动识别切分
-        self.params = {
+        self.params: dict[str, str|int|float] = {
             "ref_audio_path": ref_audio_path,
             "prompt_text": prompt_text,
             "prompt_lang": prompt_lang,
@@ -49,5 +49,5 @@ class GPTSoVITSAdapter(TTSBaseAdapter):
                     raise RuntimeError(f"TTS请求失败: {await resp.text()}")
                 return await resp.read()
 
-    def get_params(self) -> dict:
+    def get_params(self):
         return self.params
