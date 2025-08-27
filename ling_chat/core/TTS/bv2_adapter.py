@@ -6,7 +6,7 @@ class BV2Adapter(TTSBaseAdapter):
     def __init__(self, api_url: str, speaker_id: int=0, 
                  audio_format: str="wav", lang: str="zh"):
         self.api_url = api_url
-        self.params = {
+        self.params: dict[str, str|int|float] = {
             "id": speaker_id,
             "format": audio_format,   # 可用wav,ogg,silk,mp3,flac
             "lang": lang,   # 语言 (Auto/zh/ja)
@@ -32,12 +32,5 @@ class BV2Adapter(TTSBaseAdapter):
                     raise RuntimeError(f"TTS请求失败: {await response.text()}")
                 return await response.read()
     
-    def get_params(self) -> dict:
-        return {
-            "length": 1.0,
-            "noise": 0.33,
-            "noisew": 0.4,
-            "segment_size": 50,
-            "sdp_radio": 0.2,
-        }
-
+    def get_params(self):
+        return self.params

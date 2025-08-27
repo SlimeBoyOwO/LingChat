@@ -11,7 +11,7 @@ from ling_chat.utils.runtime_path import temp_path
 
 class TTS:
     def __init__(self, 
-                 default_speaker_id=4,
+                 default_speaker_id: int=4,
                  default_model_name: str="",
                  default_tts_type: str = "sbv2",
                  default_language: str = "ja"
@@ -35,6 +35,13 @@ class TTS:
         self.temp_dir = Path(os.environ.get("TEMP_VOICE_DIR", temp_path / "data/voice"))
         self.temp_dir.mkdir(parents=True, exist_ok=True)
         self.enable = True  # 初始化时启用
+        
+        # 提前初始化适配器属性为None，之后就可用判断了（pylance如是说）
+        self.sva_adapter = None
+        self.sbv2_adapter = None
+        self.sbv2api_adapter = None
+        self.bv2_adapter = None
+        self.gsv_adapter = None
 
     def init_sva_adapter(self,speaker_id: int):
         sva_api_url = os.environ.get("SIMPLE_VITS_API_URL", "http://127.0.0.1:23456/voice/vits")
@@ -115,10 +122,8 @@ class TTS:
         else:
             raise ValueError("没有可用的API适配器")
 
-    async def generate_voice(self, text: str, file_name: str,
-                             speaker_id: int=0, model_name: str = "", 
-                             tts_type: str = "", lang: str ="ja", 
-                             **params):
+    async def generate_voice(self, text: str, file_name: str, 
+                             tts_type: str = "", lang: str ="ja") -> str | None:
         """生成语音文件"""
         if not self.enable:
             logger.warning("TTS服务未启用，跳过语音生成")
@@ -127,17 +132,6 @@ class TTS:
         if not text or not text.strip():
             logger.debug("提供的文本为空，跳过语音生成")
             return None
-
-        if tts_type in ("", "sbv2", "sva"):
-            if speaker_id is not None:
-                params["speaker_id" if model_name else "id"] = str(speaker_id)
-        elif tts_type == "bv2":
-            params["speaker_id"] = speaker_id
-
-        if model_name is not None:
-            params["model_name"] = model_name
-
-        params["lang"] = params.get("lang", "ja")
 
         try:
             # 选择适配器

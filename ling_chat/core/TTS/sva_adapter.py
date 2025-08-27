@@ -8,7 +8,7 @@ class SVAAdapter(TTSBaseAdapter):
                  audio_format: str="wav", lang: str="ja"):
         
         self.api_url = api_url
-        self.params = {
+        self.params: dict[str, str|int|float] = {
             "id": speaker_id,
             "format": audio_format,   # 可用wav,ogg,silk,mp3,flac
             "lang": lang,    # 可用auto,mix,zh,ja
@@ -33,5 +33,5 @@ class SVAAdapter(TTSBaseAdapter):
                 response.raise_for_status()
                 return await response.read()
 
-    def get_params(self) -> dict:
+    def get_params(self):
         return self.params.copy()
