@@ -85,19 +85,31 @@ class MessageProcessor:
                 "japanese_text": japanese_text,
                 "predicted": prediction_result["label"],
                 "confidence": prediction_result["confidence"],
-                "voice_file": str(self.voice_maker.vits_tts.temp_dir / f"{uuid.uuid4()}_part_{i}.{self.voice_maker.vits_tts.format}")
+                "voice_file": str(self.voice_maker.tts_provider.temp_dir / f"{uuid.uuid4()}_part_{i}.{self.voice_maker.tts_provider.format}")
             })
 
         return results
     
     def append_user_message(self, user_message: str) -> str:
-        """处理用户消息，添加系统信息，如时间与是否需要分析桌面"""
+        """处理用户消息，添加系统信息，如时间、是否需要分析桌面，以及提取大括号内的用户指令"""
         current_time = datetime.now()
         processed_message = user_message
 
         sys_time_part = ""
         sys_desktop_part = ""
+        user_instruction_part = ""
         
+        # 提取大括号内的用户指令
+        import re
+        bracket_pattern = r"\{([^}]+)\}"
+        bracket_matches = re.findall(bracket_pattern, user_message)
+        
+        if bracket_matches:
+            # 从原始消息中移除大括号内容
+            processed_message = re.sub(bracket_pattern, "", user_message).strip()
+            user_instruction_part = "系统重点提醒: " + "; ".join(bracket_matches)
+        
+        # 时间感知逻辑
         if self.time_sense_enabled and ((self.last_time and 
             (current_time - self.last_time > timedelta(hours=1))) or \
             self.sys_time_counter < 1):
@@ -105,19 +117,32 @@ class MessageProcessor:
             formatted_time = current_time.strftime("%Y/%m/%d %H:%M")
             sys_time_part = f"{formatted_time} "
         
-        if "看桌面" in user_message or "看看我的桌面" in user_message or "看看桌面" in user_message or "看我桌面" in user_message or "看看我桌面" in user_message or "看我的桌面" in user_message or "看下我桌面" in user_message or "看下桌面" in user_message or "看下我的桌面" in user_message:
-            analyze_prompt = "\"" + user_message + "\"" + "以上是用户发的消息，请切合用户实际获取信息的需要，获取桌面画面中的重点内容，用200字描述主体部分即可。"
+        # 桌面分析逻辑
+        desktop_keywords = ["看桌面", "看看我的桌面", "看看桌面", "看我桌面", 
+                        "看看我桌面", "看我的桌面", "看下我桌面", "看下桌面", "看下我的桌面"]
+        
+        if any(keyword in user_message for keyword in desktop_keywords):
+            analyze_prompt = "你是一个图像信息转述者，你将需要把你看到的画面描述给另一个AI让他理解用户的图片内容。"+"\"" + user_message + "\"" + "以上是用户发的消息，请切合用户实际获取信息的需要，获取桌面画面中的重点内容，用200字描述主体部分即可。"
             analyze_info = self.desktop_analyzer.analyze_desktop(analyze_prompt)
             sys_desktop_part = f"桌面信息: {analyze_info}"
         
-        if sys_time_part or sys_desktop_part:
-            processed_message += "\n{系统: " + (sys_time_part if sys_time_part else "") + (sys_desktop_part if sys_desktop_part else "") + "}"
+        # 构建系统提醒部分
+        system_parts = []
+        if sys_time_part:
+            system_parts.append(sys_time_part)
+        if sys_desktop_part:
+            system_parts.append(sys_desktop_part)
+        if user_instruction_part:
+            system_parts.append(user_instruction_part)
+        
+        if system_parts:
+            processed_message += "\n{系统提醒: " + " ".join(system_parts) + "}"
 
         self.last_time = current_time
         self.sys_time_counter += 1
 
         if self.sys_time_counter >= 2:
-                self.sys_time_counter = 0
+            self.sys_time_counter = 0
         
         return processed_message
 

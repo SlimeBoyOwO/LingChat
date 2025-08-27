@@ -1,7 +1,7 @@
 import aiohttp
-from .base_adapter import BaseVitsAdapter
+from .base_adapter import TTSBaseAdapter
 
-class GPTSoVITSAdapter(BaseVitsAdapter):
+class GPTSoVITSAdapter(TTSBaseAdapter):
     def __init__(self, api_url, ref_audio_path="", prompt_text="", prompt_lang="zh"):
         self.api_url = api_url
         self.ref_audio_path = ref_audio_path
