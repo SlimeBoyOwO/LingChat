@@ -25,6 +25,8 @@ const text = ref()
 const sampleText = useSlots().default()[0].children
 
 // 处理组件行为
+
+// 侦测speed的变化重置打字机
 watch(
   () => props.speed,
   () => typewriter(props.speed)
