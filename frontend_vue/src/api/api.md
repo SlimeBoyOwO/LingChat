@@ -1,38 +1,41 @@
 # API 类型定义
 
+> [! WARNING]
+> 文档已经过时,如果有需要根据此文档修改API请comment一下催我更新这个文档
+
 ## 自定义类型
 
 ### ModelInfo
 
 ```json
 {
-  "chat": {
-    "llm_provider": "string",
-    "api_key": "string",
-    "base_url": "string",
-    "model_type": "string",
-    "model_info": {
-      //Only Ollama
-      "base_url": "string",
-      "model": "string",
-      //Only LMStudio
-      "model_type": "string",
-      "base_url": "string",
-      "api_key": "string|null",
-      //Only Gemini
-      "model_type": "string",
-      "base_url": "string"
+    "chat": {
+        "llm_provider": "string",
+        "api_key": "string",
+        "base_url": "string",
+        "model_type": "string",
+        "model_info": {
+            //Only Ollama
+            "base_url": "string",
+            "model": "string",
+            //Only LMStudio
+            "model_type": "string",
+            "base_url": "string",
+            "api_key": "string|null",
+            //Only Gemini
+            "model_type": "string",
+            "base_url": "string"
+        }
+    }, //webllm的model_info为null即可
+    "visual": {
+        "api_key": "string",
+        "base_url": "string",
+        "model": "string"
+    },
+    "translate": {
+        "llm_provider": "string",
+        "api_key": "string"
     }
-  }, //webllm的model_info为null即可
-  "visual": {
-    "api_key": "string",
-    "base_url": "string",
-    "model": "string"
-  },
-  "translate": {
-    "llm_provider": "string",
-    "api_key": "string"
-  }
 }
 ```
 
@@ -40,10 +43,10 @@
 
 ```json
 {
-  "id": "int",
-  "cover": "string", //封面图片的url
-  "title": "string",
-  "description": "string"
+    "id": "int",
+    "cover": "string", //封面图片的url
+    "title": "string",
+    "description": "string"
 }
 ```
 
@@ -63,13 +66,13 @@
 
 ```json
 {
-  "cover": "CharacterCardCover",
-  "player_name": "string",
-  "player_subtitle": "string",
-  "ai_name": "string",
-  "ai_subtitle": "string",
-  "ai_model": "ModelInfo",
-  "ai_avatars": "CharacterAvatars"
+    "cover": "CharacterCardCover",
+    "player_name": "string",
+    "player_subtitle": "string",
+    "ai_name": "string",
+    "ai_subtitle": "string",
+    "ai_model": "ModelInfo",
+    "ai_avatars": "CharacterAvatars"
 }
 ```
 
@@ -83,8 +86,8 @@ POST:
 
 ```json
 {
-  "username": "string",
-  "password": "string" //加密密码
+    "username": "string",
+    "password": "string" //加密密码
 }
 ```
 
@@ -92,9 +95,9 @@ RECV:
 
 ```json
 {
-  "id": "int",
-  "name": "string",
-  "auth_token": "string" //用户认证令牌
+    "id": "int",
+    "name": "string",
+    "auth_token": "string" //用户认证令牌
 }
 ```
 
@@ -104,8 +107,8 @@ POST:
 
 ```json
 {
-  "id": "int",
-  "auth_token": "string"
+    "id": "int",
+    "auth_token": "string"
 }
 ```
 
@@ -113,7 +116,7 @@ RECV:
 
 ```json
 {
-  "model": "ModelInfo"
+    "model": "ModelInfo"
 }
 ```
 
@@ -123,8 +126,8 @@ POST:
 
 ```json
 {
-  "id": "int",
-  "auth_token": "string"
+    "id": "int",
+    "auth_token": "string"
 }
 ```
 
@@ -132,8 +135,8 @@ RECV:
 
 ```json
 {
-  "characterCard": "CharacterCard",
-  "characterCards": "CharacterCardCover[]"
+    "characterCard": "CharacterCard",
+    "characterCards": "CharacterCardCover[]"
 }
 ```
 
@@ -143,7 +146,7 @@ POST:
 
 ```json
 {
-  "id": "int[]"
+    "id": "int[]"
 }
 ```
 
@@ -166,7 +169,7 @@ POST:
 
 ```json
 {
-  "id": "int[]"
+    "id": "int[]"
 }
 ```
 
@@ -192,7 +195,7 @@ POST:
 
 ```json
 {
-  "id": "int[]"
+    "id": "int[]"
 }
 ```
 
@@ -219,7 +222,7 @@ POST:
 
 ```json
 {
-  "name": "string"
+    "name": "string"
 }
 ```
 
