@@ -58,7 +58,7 @@
       <Button
         ref="scheduleBtn"
         type="nav"
-        icon="advance"
+        icon="schedule"
         @click="() => switchTab('schedule', 'scheduleBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'schedule' }"
         ><p class="button-text">日程</p></Button
