@@ -138,12 +138,27 @@ class Function:
 
         single_line_pattern = re.compile(r'^(\w+)\s*=(.*?)\s*$', re.MULTILINE)
         multi_line_pattern = re.compile(r'^(\w+)\s*=\s*"""(.*?)"""\s*$', re.MULTILINE | re.DOTALL)
+        dict_pattern = re.compile(r'^(\w+)\s*=\s*({.*?})\s*$', re.MULTILINE | re.DOTALL)
 
+        # 处理多行字符串
         for match in multi_line_pattern.finditer(content):
             key = match.group(1)
             value = match.group(2).strip()
             settings[key] = value
 
+        # 处理字典类型
+        for match in dict_pattern.finditer(content):
+            key = match.group(1)
+            value = match.group(2).strip()
+            if key not in settings:  # 避免被多行字符串覆盖
+                try:
+                    # 使用eval将字符串转换为字典
+                    settings[key] = eval(value)
+                except:
+                    # 如果解析失败，保留原始字符串
+                    settings[key] = value
+
+        # 处理单行值
         for match in single_line_pattern.finditer(content):
             key = match.group(1)
             if key not in settings:
