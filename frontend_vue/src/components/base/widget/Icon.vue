@@ -1,16 +1,17 @@
 <template>
   <span
-    class="icon-wrapper"
-    :style="wrapperStyle"
     v-html="svg"
-    @click="click"
+    :style="`width:${size}px, height:${size}px`"
+    @click="$emit('click')"
   ></span>
 </template>
 
 <script setup lang="ts">
+
+// 导入外部模块
 import { computed } from "vue";
 
-// 1. 定义图标类型
+// 定义图标类型
 export type IconType =
   | "character"
   | "text"
@@ -24,13 +25,31 @@ export type IconType =
   | "close"
   | "schedule";
 
-// 2. 定义组件props接口
-interface IconProps {
-  icon?: IconType; // 使用明确的图标类型
-  size?: number; // 控制图标大小
-}
+// 定义组件属性
+const props = defineProps({
+  icon: {
+    type: String as () => IconType,
+    default: "character",
+  },
+  size: {
+    type: Number,
+    default: 18,
+  }
+});
 
-// 3. 定义HTML内容（使用Record类型确保类型安全）
+// 定义组件事件
+const emit = defineEmits([
+  "click"
+]);
+
+// 处理组件行为
+
+// 挂载响应svg图标标签
+const svg = computed(() => {
+  return html[props.icon];
+});
+
+// 列举图标资源
 const html: Record<IconType, string> = {
   character: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20a6 6 0 0 0-12 0"/><circle cx="12" cy="10" r="4"/><circle cx="12" cy="12" r="10"/></svg>`,
   text: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="21" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="3" y2="18"/></svg>`,
@@ -45,35 +64,18 @@ const html: Record<IconType, string> = {
   schedule: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-clipboard-list-icon lucide-clipboard-list"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg>`,
 };
 
-const props = withDefaults(defineProps<IconProps>(), {
-  icon: "character",
-  size: 18,
-});
-
-const svg = computed(() => {
-  return html[props.icon];
-});
-
-const wrapperStyle = computed(() => ({
-  width: `${props.size}px`,
-  height: `${props.size}px`,
-}));
-
-const emit = defineEmits(["click"]);
-const click = () => {
-  emit("click");
-};
 </script>
 
 <style scoped>
-.icon-wrapper {
+
+span {
   display: inline-flex;
 }
 
-.icon-wrapper :deep(svg) {
+span :deep(svg) {
+  fill: none;
   width: 100%;
   height: 100%;
-  fill: none;
   stroke: currentColor;
 }
 </style>
