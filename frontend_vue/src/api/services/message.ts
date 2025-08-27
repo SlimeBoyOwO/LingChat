@@ -1,15 +1,20 @@
-import axios, { AxiosRequestConfig } from "axios";
-export default async function send<T = any>(
-  url: string,
-  data?: any,
-  config?: AxiosRequestConfig,
-): Promise<T> {
-  if (data["validateStatus"] === undefined) {
-    data["validateStatus"] = (status: number) =>
-      (status >= 200 && status < 305) || status === 307;
-  }
-  return axios.post<T>(url, data, config).catch((error) => {
-    console.error("Error in API request:", error);
-    throw error;
-  });
+import axios, { AxiosRequestConfig, AxiosResponse } from "axios";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function send<T = any>(
+    url: string,
+    data?: unknown,
+    config?: AxiosRequestConfig
+): Promise<AxiosResponse<T>> {
+    return axios.post<T>(url, data, config).catch(error => {
+        console.error("Error in API request:", error);
+        throw error;
+    });
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function get<T = any>(url: string, params?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
+    return axios.get<T>(url, params).catch(error => {
+        console.error("Error in API request:", error);
+        throw error;
+    });
 }

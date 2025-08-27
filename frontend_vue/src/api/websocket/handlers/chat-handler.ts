@@ -1,19 +1,17 @@
-import { useGameStore } from "../../../stores/modules/game";
-import { WebSocketChatMessage, WebSocketMessageTypes } from "../../../types";
 import { registerHandler, sendWebSocketChatMessage } from "..";
-import { useUIStore } from "../../../stores/modules/ui/ui";
+import { WebSocketChatMessage, WebSocketMessageTypes } from "../../../types";
 
 export class ChatHandler {
-  // 消息队列
-  private messageQueue: WebSocketChatMessage[] = [];
-  // 当前消息
-  private currentMessagePart: WebSocketChatMessage | null = null;
-  // 是否正在回复中
-  private isProcessing = false;
+    // 消息队列
+    private messageQueue: WebSocketChatMessage[] = [];
+    // 当前消息
+    private currentMessagePart: WebSocketChatMessage | null = null;
+    // 是否正在回复中
+    private isProcessing = false;
 
-  constructor() {
-    this.registerHandlers();
-  }
+    constructor() {
+        this.registerHandlers();
+    }
 
   private registerHandlers() {
     registerHandler(WebSocketMessageTypes.AIREPLY, (data: any) => {
@@ -76,64 +74,63 @@ export class ChatHandler {
 
     this.isProcessing = true;
 
-    // 从消息队列出队
-    this.currentMessagePart = this.messageQueue.shift() || null;
+        // 从消息队列出队
+        this.currentMessagePart = this.messageQueue.shift() || null;
 
-    if (!this.currentMessagePart) return;
+        if (!this.currentMessagePart) return;
 
-    // 显示展示
-    const displayText = this.currentMessagePart.motionText
-      ? `${this.currentMessagePart.message}（${this.currentMessagePart.motionText}）`
-      : this.currentMessagePart.message || "";
+        // 显示展示
+        const displayText = this.currentMessagePart.motionText
+            ? `${this.currentMessagePart.message}（${this.currentMessagePart.motionText}）`
+            : this.currentMessagePart.message || "";
 
-    const isFinal = this.currentMessagePart.isFinal;
+        const isFinal = this.currentMessagePart.isFinal;
 
-    gameStore.addToDialogHistory({
-      type: "reply",
-      content: this.currentMessagePart.message,
-      emotion: this.currentMessagePart.emotion,
-      audioFile: this.currentMessagePart.audioFile,
-      isFinal,
-      motionText: this.currentMessagePart.motionText,
-      originalTag: this.currentMessagePart.originalTag,
-    });
+        gameStore.addToDialogHistory({
+            type: "reply",
+            content: this.currentMessagePart.message,
+            emotion: this.currentMessagePart.emotion,
+            audioFile: this.currentMessagePart.audioFile,
+            isFinal,
+            motionText: this.currentMessagePart.motionText,
+            originalTag: this.currentMessagePart.originalTag
+        });
 
-    gameStore.currentLine = displayText;
-    gameStore.avatar.emotion = this.currentMessagePart.emotion || "正常";
-    gameStore.avatar.originEmotion =
-      this.currentMessagePart.originalTag || "正常";
-    uiStore.currentAvatarAudio = this.currentMessagePart.audioFile || "None";
+        gameStore.currentLine = displayText;
+        gameStore.avatar.emotion = this.currentMessagePart.emotion || "正常";
+        gameStore.avatar.originEmotion = this.currentMessagePart.originalTag || "正常";
+        uiStore.currentAvatarAudio = this.currentMessagePart.audioFile || "None";
 
-    // UI 中粉色情绪展示内容
-    uiStore.showCharacterEmotion = gameStore.avatar.originEmotion;
-  }
+        // UI 中粉色情绪展示内容
+        uiStore.showCharacterEmotion = gameStore.avatar.originEmotion;
+    }
 
-  public sendMessage(text: string) {
-    const gameStore = useGameStore();
+    public sendMessage(text: string) {
+        const gameStore = useGameStore();
 
-    if (!text.trim()) return;
+        if (!text.trim()) return;
 
-    gameStore.currentStatus = "thinking";
-    gameStore.addToDialogHistory({
-      type: "message",
-      content: text,
-    });
+        gameStore.currentStatus = "thinking";
+        gameStore.addToDialogHistory({
+            type: "message",
+            content: text
+        });
 
-    this.messageQueue = [];
-    this.isProcessing = false;
+        this.messageQueue = [];
+        this.isProcessing = false;
 
-    sendWebSocketChatMessage(WebSocketMessageTypes.MESSAGE, text);
-  }
+        sendWebSocketChatMessage(WebSocketMessageTypes.MESSAGE, text);
+    }
 
-  private resetConversationState() {
-    const gameStore = useGameStore();
+    private resetConversationState() {
+        const gameStore = useGameStore();
 
-    this.currentMessagePart = null;
-    // this.messageQueue = [];
-    this.isProcessing = false;
-    gameStore.currentStatus = "input";
-    gameStore.currentLine = "";
-  }
+        this.currentMessagePart = null;
+        // this.messageQueue = [];
+        this.isProcessing = false;
+        gameStore.currentStatus = "input";
+        gameStore.currentLine = "";
+    }
 }
 
 // 导出单例
