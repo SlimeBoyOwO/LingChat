@@ -5,7 +5,7 @@ from typing import List, Dict
 
 # 更新 import 路径
 from neochat.platform.configuration import config
-from neochat.llm.client import chat_with_deepseek
+from neochat.llm.client import generate_chat_response
 from neochat.presentation.cli.ui import ConsoleUI
 from neochat.platform.logging import log_info, log_error, TermColors
 
@@ -69,7 +69,7 @@ class SetupWizard:
         current_messages = list(self.messages)
         current_messages.append({"role": "user", "content": user_instruction})
 
-        response = chat_with_deepseek(current_messages, character_name="小诺", color_code=TermColors.CYAN)
+        response = generate_chat_response(current_messages, character_name="小诺", color_code=TermColors.CYAN)
         if response:
             self.messages.append({"role": "assistant", "content": response})
             self.conversation_history.append({"role": "assistant", "content": response})

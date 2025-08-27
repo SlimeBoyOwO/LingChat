@@ -3,7 +3,7 @@ from typing import Dict
 from .base import BaseEventHandler
 
 # 导入新架构下的模块
-from neochat.llm.client import chat_with_deepseek # LLM客户端
+from neochat.llm.client import generate_chat_response # LLM客户端
 from neochat.platform.logging import log_error, TermColors # 日志和颜色
 from neochat.memory.manager import MemoryManager # 记忆管理器
 from neochat.platform.configuration import config # 配置对象
@@ -48,7 +48,7 @@ class DialogueEventHandler(BaseEventHandler):
                 messages.append({"role": "user", "content": final_prompt})
 
             # 4. 调用LLM获取回应
-            response = chat_with_deepseek(messages, character.name, color_code=TermColors.CYAN)
+            response = generate_chat_response(messages, character.name, color_code=TermColors.CYAN)
             if response:
                 self.state.add_dialogue_history('Dialogue', character_id=char_id, content=response)
             else:
