@@ -1,11 +1,17 @@
 import aiohttp
 from ling_chat.core.TTS.base_adapter import TTSBaseAdapter
+from ling_chat.core.logger import logger
 
 
 class SBV2Adapter(TTSBaseAdapter):
-    def __init__(self, api_url, speaker_id=0, model_name="", audio_format="wav", lang="JP"):
+    def __init__(self, api_url, speaker_id: int=0, model_name: str="", 
+                 audio_format: str="wav", lang: str="JP"):
+        # 将 lang 参数转换为 "JP"以适配sbv2的需求
+        if lang == "ja":
+            lang = "JP"
+        
         self.api_url = api_url
-        self.default_params = {
+        self.params = {
             "encoding": "utf-8",  # 文本编码
             "model_name": model_name,
             "model_id": 0,  # 模型ID (0表示默认)
@@ -17,22 +23,23 @@ class SBV2Adapter(TTSBaseAdapter):
             "language": lang,  # 语言 (JP/EN/ZH)
             "split_interval": 0.5,  # 分割间隔(秒)
             "style": "Neutral",  # 语音风格
-            "style_weight": 1.0  # 风格强度
+            "style_weight": 1.0,  # 风格强度
+            "text": ""
         }
 
-    async def generate_voice(self, text: str, params: dict) -> bytes:
-        merged_params = {**self.default_params, **params}
-        merged_params["text"] = text
-        merged_params["speaker_id"] = 0
+    async def generate_voice(self, text: str) -> bytes:
+        params = self.params
+        params["text"] = text
+        logger.debug(f"发送到SBV2的json: {params}")
 
         async with aiohttp.ClientSession() as session:
             async with session.post(
                     self.api_url,
-                    params=merged_params,
-                    headers={"Accept": f"audio/{merged_params.get('format', 'wav')}"}
+                    params=params,
+                    headers={"Accept": f"audio/{params.get('format', 'wav')}"}
             ) as response:
                 response.raise_for_status()
                 return await response.read()
 
-    def get_default_params(self) -> dict:
-        return self.default_params.copy()
+    def get_params(self) -> dict:
+        return self.params.copy()

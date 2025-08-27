@@ -1,32 +1,38 @@
 import aiohttp
-from .base_adapter import TTSBaseAdapter
+from ling_chat.core.TTS.base_adapter import TTSBaseAdapter
+from ling_chat.core.logger import logger
 
 class BV2Adapter(TTSBaseAdapter):
-    def __init__(self, api_url, speaker_id=0, audio_format="wav", lang="zh"):
+    def __init__(self, api_url: str, speaker_id: int=0, 
+                 audio_format: str="wav", lang: str="zh"):
         self.api_url = api_url
-        self.speaker_id = speaker_id
-        self.audio_format = audio_format
-        self.lang = lang
-
-    async def generate_voice(self, text: str, params: dict) -> bytes:
-        payload = {
-            "id": params.get("speaker_id", self.speaker_id),
-            "format": self.audio_format,
-            "lang": params.get("lang", self.lang),
-            "length": params.get("length", 1.0), #语速
-            "noise": params.get("noise", 0.33), # 采样噪声比例
-            "noisew": params.get("noisew", 0.4), # SDP噪声
-            "segment_size": params.get("segment_size", 50), #分段阈值
-            "sdp_radio": params.get("sdp_ratio", 0.2), # SDP/DP混合比
-            "text": text
+        self.params = {
+            "id": speaker_id,
+            "format": audio_format,   # 可用wav,ogg,silk,mp3,flac
+            "lang": lang,   # 语言 (Auto/zh/ja)
+            "length": 1.0, # 语速
+            "noise": 0.33, # 采样噪声比例
+            "noisew": 0.4, # SDP噪声
+            "segment_size": 50, #分段阈值
+            "sdp_radio": 0.2, # SDP/DP混合比
+            "text": ""
         }
+
+    async def generate_voice(self, text: str) -> bytes:
+        params = self.params
+        params["text"] = text
+        logger.debug(f"发送到BV2的json: {params}")
+
         async with aiohttp.ClientSession() as session:
-            async with session.post(self.api_url, json=payload) as resp:
-                if resp.status != 200:
-                    raise RuntimeError(f"TTS请求失败: {await resp.text()}")
-                return await resp.read()
+            async with session.post(
+                self.api_url, 
+                json=params
+            ) as response:
+                if response.status != 200:
+                    raise RuntimeError(f"TTS请求失败: {await response.text()}")
+                return await response.read()
     
-    def get_default_params(self) -> dict:
+    def get_params(self) -> dict:
         return {
             "length": 1.0,
             "noise": 0.33,
