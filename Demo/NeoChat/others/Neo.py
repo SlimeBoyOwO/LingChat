@@ -363,7 +363,7 @@ def get_rag_messages_chroma(query_text, historical_sessions_map):
     return final_rag_messages
 
 # --- DeepSeek API 调用 ---
-def chat_with_deepseek(messages_payload):
+def generate_chat_response(messages_payload):
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {config.API_KEY}"}
     payload = {
         "model": config.MODEL_NAME, "messages": messages_payload, "stream": True,
@@ -625,7 +625,7 @@ def main():
 
         current_session_messages.append(user_message_for_payload)
 
-        assistant_response = chat_with_deepseek(api_payload_messages)
+        assistant_response = generate_chat_response(api_payload_messages)
 
         if assistant_response and assistant_response.strip():
             current_session_messages.append({"role": "assistant", "content": assistant_response})
