@@ -6,7 +6,7 @@ from neochat.game.state import GameSession, StateManager
 from neochat.game.event_handler import EventHandler
 from neochat.presentation.cli.ui import ConsoleUI
 from neochat.platform.persistence.save_manager import SaveManager
-from neochat.llm.client import chat_with_deepseek
+from neochat.llm.client import generate_chat_response
 from neochat.platform.logging import log_info, log_error, log_debug, log_info_color, log_warning, TermColors
 from neochat.game.end_conditions import end_condition_registry
 from neochat.platform.configuration import config
@@ -187,7 +187,7 @@ class GameEngine:
                 )
                 messages.extend(context)
 
-                response = chat_with_deepseek(messages, responder.name, color_code=TermColors.CYAN)
+                response = generate_chat_response(messages, responder.name, color_code=TermColors.CYAN)
                 if response:
                     self.state.add_dialogue_history('Dialogue', character_id=responder_id, content=response)
 
@@ -219,7 +219,7 @@ class GameEngine:
         user_prompt = f"--- 角色信息 ---\n{'\n'.join(character_profiles)}\n\n--- 最近对话历史 ---\n{'\n'.join(history_lines)}\n\n--- 任务 ---\n...（省略，与原版相同）"
         
         messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
-        response_str = chat_with_deepseek(messages, character_name="对话控制器", is_internal_thought=True)
+        response_str = generate_chat_response(messages, character_name="对话控制器", is_internal_thought=True)
         if not response_str: return [participant_ids[0]]
         
         ordered_responders, temp_response_str = [], response_str.strip()
@@ -246,7 +246,7 @@ class GameEngine:
 
         decision_prompt = self.state.format_string(config_data['DecisionPromptForAI'])
         messages = [{"role": "system", "content": self.state.format_string(decider.prompt)}, {"role": "system", "content": decision_prompt}]
-        ai_decision_text = chat_with_deepseek(messages, character_name=f"{decider.name}(内心)", is_internal_thought=True)
+        ai_decision_text = generate_chat_response(messages, character_name=f"{decider.name}(内心)", is_internal_thought=True)
         if not ai_decision_text: self.game_over = True; return
         
         history_lines = []
@@ -258,7 +258,7 @@ class GameEngine:
         judge_prompt = self.state.format_string(config_data['JudgePromptForSystem'])
         judge_user_prompt = f"请结合以下对话历史和AI决策进行判断。\n\n--- 对话历史 ---\n{history_context_str}\n--- AI决策 ---\n{ai_decision_text}\n\n任务：请严格判断。"
         judge_messages = [{"role": "system", "content": judge_prompt}, {"role": "user", "content": judge_user_prompt}]
-        judged_result = chat_with_deepseek(judge_messages, character_name="系统判断", is_internal_thought=True)
+        judged_result = generate_chat_response(judge_messages, character_name="系统判断", is_internal_thought=True)
         if not judged_result: self.game_over = True; return
 
         final_choice = judged_result.strip().upper()

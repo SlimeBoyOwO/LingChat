@@ -3,7 +3,7 @@ from typing import Dict
 from .base import BaseEventHandler
 
 # 导入新架构下的模块
-from neochat.llm.client import chat_with_deepseek # LLM客户端
+from neochat.llm.client import generate_chat_response # LLM客户端
 from neochat.platform.logging import log_error, log_info_color, log_debug, TermColors # 日志和颜色
 from neochat.memory.manager import MemoryManager # 记忆管理器
 from neochat.platform.configuration import config # 配置对象
@@ -54,7 +54,7 @@ class SystemActionEventHandler(BaseEventHandler):
                 # 如果不包含历史，则直接将 content 作为用户提示
                 messages.append({"role": "user", "content": content})
 
-            generated_content = chat_with_deepseek(messages, character_name="幕后导演", is_internal_thought=True)
+            generated_content = generate_chat_response(messages, character_name="幕后导演", is_internal_thought=True)
             if generated_content:
                 self.state.set_variable(var_name, generated_content.strip())
                 log_debug(f"SystemAction 执行完毕, 变量 '{var_name}' 已设置。")

@@ -1,51 +1,122 @@
-# config.yaml
-# NeoChat 应用程序的主配置文件
+# NeoChat 配置文件
 
-llm:
-  # 从 .env 文件中读取 API_KEY 环境变量
-  api_key: ${API_KEY}
-  api_url: "https://api.deepseek.com/chat/completions"
-  model_name: "deepseek-chat"
-  max_tokens: 4096
-  temperature: 0.7
-  timeout_seconds: 180
-  # LLM 对话历史长度限制
-  conversation_history_limit: 50
-  # 自由时间“自动”模式下，用于决策的LLM参考历史数量
-  free_time_history_limit: 15
-  # AIChoice 模式下，系统判断AI决策时参考的历史数量
-  ai_choice_history_context_count: 8
+# 调试与日志
+debug:
+  mode: true # 开启/关闭开发者模式。设置为True/False将开关Debug日志。
 
+# 路径配置
 paths:
-  # 用户生成的数据
+  logs: "logs/run_logs"
   saves: "user_data/saves"
-  user_config: "user_data/user_config.json"
-  chroma_db: "user_data/chroma_db_store"
-  # 游戏静态资源
   story_packs: "data/story_packs"
   characters: "data/characters"
   player_characters: "data/player_characters"
-  # 日志文件
-  logs: "logs/run_logs"
+  user_config: "user_data/user_config.json"
 
-debug:
-  # 开启/关闭开发者模式 (会影响日志级别)
-  mode: false
-  # 是否显示 SentenceTransformer 的嵌入模型进度条
-  show_embedding_progress: false
-
+# RAG (Retrieval Augmented Generation) 设置
 rag:
-  # 是否启用 RAG 功能
-  enabled: true
-  # RAG 检索出的相关聊天记录数量
+  enabled: false # 是否启用RAG功能 (当前为占位符)
   retrieval_count: 3
-  # 检索到的聊天记录之前的 m 条消息
   context_m_before: 2
-  # 检索到的聊天记录之后的 n 条消息
   context_n_after: 2
-  # 为获取 retrieval_count 个块，实际从ChromaDB查询的候选倍数
-  candidate_multiplier: 3
-  # RAG 内容的前缀提示
-  prompt_prefix: "--- 以下是根据你的历史记忆检索到的相关对话片段，请参考它们来回答当前问题。这些是历史信息，不是当前对话的一部分： ---"
-  # RAG 内容的后缀提示
-  prompt_suffix: "--- 以上是历史记忆检索到的内容。请注意，这些内容用于提供背景信息，你不需要直接回应它们，而是基于它们和下面的当前对话来生成回复。 ---"
+
+# --------------------------------------------------------------------------
+# LLM (大语言模型) 配置 - [核心重构部分]
+# --------------------------------------------------------------------------
+llm:
+  # 当前激活的 LLM 服务商。这里的名字必须与下面 providers 列表中的一个键匹配。
+  active_provider: "deepseek_official"
+
+  # API 请求的全局超时时间 (秒)
+  timeout_seconds: 180
+
+  # 对话历史长度限制
+  conversation_history_limit: 50
+  free_time_history_limit: 15
+  ai_choice_history_context_count: 8
+  conversation_settings:
+    # 是否合并连续的用户（user）消息。
+    # 开启后，如果LLM的上下文中出现连续的多条"role: user"消息，
+    # 它们会被自动合并为一条，内容用换行符分隔。
+    # 这有助于避免某些模型在处理此类输入时可能出现的性能下降或混乱。
+    # true: 开启合并 | false: 保持原样
+    merge_consecutive_user_messages: true
+
+  # 服务商配置列表
+  providers:
+    # 1. DeepSeek 官方 API
+    deepseek_official:
+      type: "openai_compatible" # 客户端类型，指向我们的实现
+      api_key: "${DEEPSEEK_API_KEY}" # 从 .env 文件读取 DEEPSEEK_API_KEY
+      base_url: "https://api.deepseek.com"
+      # 对于标准 OpenAI 格式，路径通常是 /v1/chat/completions
+      # DeepSeek 比较特殊，它的路径就是 /chat/completions
+      api_path: "/chat/completions"
+      default_model: "deepseek-chat"
+      default_parameters:
+        temperature: 0.7
+        max_tokens: 4096
+
+    # 2. 标准 OpenAI 接口
+    openai_official:
+      type: "openai_compatible"
+      api_key: "${OPENAI_API_KEY}"
+      base_url: "https://api.openai.com"
+      api_path: "/v1/chat/completions" # 这是标准的 OpenAI 路径
+      default_model: "gpt-4o"
+      default_parameters:
+        temperature: 0.7
+        max_tokens: 4096
+
+    # 3. Ollama (本地运行)
+    ollama_local:
+      type: "openai_compatible"
+      api_key: "ollama" # Ollama 的 API key 可以是任意非空字符串
+      base_url: "http://localhost:11434"
+      api_path: "/v1/chat/completions" # Ollama 同样兼容 OpenAI v1 路径
+      default_model: "qwen2:7b" # 替换为你自己用 `ollama pull` 下载的模型
+      default_parameters:
+        temperature: 0.8
+        # 注意: 本地模型通常没有严格的 max_tokens 限制，但可以设置以控制输出长度
+
+    # 4. LM Studio (本地运行)
+    lm_studio_local:
+      type: "openai_compatible"
+      api_key: "lm-studio" # LM Studio 的 key 也是任意字符串
+      base_url: "http://localhost:1234" # 默认端口
+      api_path: "/v1/chat/completions"
+      default_model: "local-model" # 在 LM Studio UI 中加载的模型会显示在这里
+      default_parameters:
+        temperature: 0.7
+
+    # 5. 阿里云百炼 (DashScope)
+    aliyun_bailian:
+      type: "openai_compatible"
+      api_key: "${BAILIAN_API_KEY}"
+      base_url: "https://dashscope.aliyuncs.com"
+      api_path: "/api/v1/services/aigc/text-generation/generation" # 百炼的路径
+      default_model: "qwen-turbo" # 例如 qwen-turbo, qwen-plus 等
+      default_parameters:
+        temperature: 0.8
+        # 百炼的额外参数可以通过 kwargs 传递，例如 'enable_search': true
+
+    # 6. 硅基流动 (SiliconFlow)
+    siliconflow:
+      type: "openai_compatible"
+      api_key: "${SILICONFLOW_API_KEY}"
+      base_url: "https://api.siliconflow.cn"
+      api_path: "/v1/chat/completions"
+      default_model: "deepseek-ai/deepseek-v2-chat" # 替换为你需要的模型
+      default_parameters:
+        temperature: 0.7
+        max_tokens: 8192
+
+    # 7. 火山引擎 (VolcEngine)
+    volcengine:
+      type: "openai_compatible"
+      api_key: "${VOLCENGINE_API_KEY}" # 火山引擎的 key 格式可能不同，但仍放在这里
+      base_url: "https://maas-api.ml-platform-cn-beijing.volces.com" # 以北京区域为例
+      api_path: "/api/v1/chat/completions"
+      default_model: "Skylark2-pro-4k" # 替换为你需要的模型
+      default_parameters:
+        temperature: 0.7
