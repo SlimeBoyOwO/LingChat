@@ -50,37 +50,37 @@ button {
 }
 
 .menu {
-  background: transparent; /* 去除背景 */
-  color: white;
-  border: none; /* 去除边框 */
-  padding: 15px;
-  margin: 10px 0;
-  border-radius: 12px;
-  /* 使用 clamp() 实现响应式字体大小 */
-  /* 最小 32px, 根据视口宽度的 4% 缩放，最大 72px */
-  font-size: clamp(32px, 4vw, 72px);
-  font-weight: normal; /* 字体加粗 */
-  font-family:
-    "Maoken Assorted Sans",
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    Roboto,
-    "Helvetica Neue",
-    Arial,
-    sans-serif; /* 应用自定义字体，并提供备用字体 */
-  cursor: pointer;
-  transition:
-    color 0.3s,
-    text-shadow 0.3s; /* 平滑过渡 */
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5); /* 加一点文字阴影以保证清晰度 */
-  text-align: left; /* 文字左对齐 */
+    background: transparent; /* 去除背景 */
+    color: white;
+    border: none; /* 去除边框 */
+    padding: 15px;
+    margin: 10px 0;
+    border-radius: 12px;
+    /* 使用 clamp() 实现响应式字体大小 */
+    /* 最小 32px, 根据视口宽度的 4% 缩放，最大 72px */
+    font-size: clamp(32px, 4vw, 72px);
+    font-weight: normal; /* 字体加粗 */
+    font-family:
+        "Maoken Assorted Sans",
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        Roboto,
+        "Helvetica Neue",
+        Arial,
+        sans-serif; /* 应用自定义字体，并提供备用字体 */
+    cursor: pointer;
+    transition:
+        color 0.3s,
+        text-shadow 0.3s; /* 平滑过渡 */
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5); /* 加一点文字阴影以保证清晰度 */
+    text-align: left; /* 文字左对齐 */
 }
 
 .menu:hover {
-  color: #f0f0f0;
-  text-shadow: 0 0 10px rgba(255, 255, 255, 0.8); /* 悬停时发光效果 */
-  transform: none; /* 移除之前的缩放效果 */
+    color: #f0f0f0;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.8); /* 悬停时发光效果 */
+    transform: none; /* 移除之前的缩放效果 */
 }
 
 /* 开始按钮样式 */
@@ -89,20 +89,32 @@ button {
   color: white;
 }
 
+.base-button--start:hover {
+    background-color: #45a049;
 .start:hover {
   background-color: #45a049;
 }
 
 /* 关闭按钮样式 */
+.base-button--close {
+    background-color: #f44336;
+    color: white;
 .close {
   background-color: #f44336;
   color: white;
 }
 
+.base-button--close:hover {
+    background-color: #d32f2f;
 .close:hover {
   background-color: #d32f2f;
 }
 
+/* 禁用状态 */
+.base-button--disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
 
 .nav {
   color: white; /* 改为白色 */
@@ -127,63 +139,63 @@ button {
 }
 
 .nav svg {
-  width: 18px;
-  height: 18px;
-  stroke-width: 2.5px;
-  flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    stroke-width: 2.5px;
+    flex-shrink: 0;
 }
 
 .nav:hover {
-  color: var(--accent-color);
+    color: var(--accent-color);
 }
 .nav.active {
-  color: var(--accent-color);
-  background-color: rgba(255, 255, 255, 0.1); /* 半透明白色背景 */
+    color: var(--accent-color);
+    background-color: rgba(255, 255, 255, 0.1); /* 半透明白色背景 */
 }
 
 .nav.active:hover {
-  color: var(--accent-color);
-  background-color: rgba(255, 255, 255, 0.15);
+    color: var(--accent-color);
+    background-color: rgba(255, 255, 255, 0.15);
 }
 
 .big {
-  width: 100%;
-  padding: 12px;
-  font-size: 16px;
-  font-weight: bold;
-  border-radius: 8px;
-  border: none;
-  cursor: pointer;
-  background-color: #e9ecef;
-  color: #495057;
-  transition: all 0.2s ease;
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+    font-weight: bold;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    background-color: #e9ecef;
+    color: #495057;
+    transition: all 0.2s ease;
 }
 
 .big:hover {
-  background-color: var(--accent-color);
-  color: white;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 10px rgba(121, 217, 255, 0.4);
+    background-color: var(--accent-color);
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(121, 217, 255, 0.4);
 }
 
 .select {
-  align-self: flex-end; /* 按钮靠右 */
-  background-color: #ccc;
-  color: #666;
-  border: none;
-  padding: 8px 15px;
-  border-radius: 20px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 13px;
-  font-weight: 500;
+    align-self: flex-end; /* 按钮靠右 */
+    background-color: #ccc;
+    color: #666;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 13px;
+    font-weight: 500;
 }
 .select.selected {
-  background-color: var(--accent-color);
-  color: white;
+    background-color: var(--accent-color);
+    color: white;
 }
 .select:not(.selected):hover {
-  background-color: #555;
-  color: white;
+    background-color: #555;
+    color: white;
 }
 </style>

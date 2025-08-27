@@ -122,8 +122,8 @@ input[type="range"]::-webkit-slider-runnable-track {
 }
 
 input[type="range"]:hover::-webkit-slider-runnable-track {
-  height: 10px;
-  background: rgba(255, 255, 255, 0.25);
+    height: 10px;
+    background: rgba(255, 255, 255, 0.25);
 }
 
 input[type="range"]::-webkit-slider-thumb {
@@ -151,7 +151,7 @@ input[type="range"]::-webkit-slider-thumb:active {
 }
 
 input[type="range"]:active::-webkit-slider-thumb {
-  cursor: grabbing;
+    cursor: grabbing;
 }
 
 </style>
