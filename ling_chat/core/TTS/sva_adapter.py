@@ -1,8 +1,8 @@
 import aiohttp
-from ling_chat.core.VitsTTS.base_adapter import BaseVitsAdapter
+from ling_chat.core.TTS.base_adapter import TTSBaseAdapter
 
 
-class SVAVitsAdapter(BaseVitsAdapter):
+class SVAAdapter(TTSBaseAdapter):
     def __init__(self, api_url, speaker_id=4, audio_format="wav", lang="ja"):
         self.api_url = api_url
         self.default_params = {
