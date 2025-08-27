@@ -19,13 +19,12 @@ const props = defineProps({
 })
 
 // 定义动态变量
-const text = ref('')
+const text = ref()
 
 // 获取插槽内容
 const sampleText = useSlots().default()[0].children
 
 // 处理组件行为
-
 watch(
   () => props.speed,
   () => typewriter(props.speed)
@@ -54,46 +53,29 @@ const typewriter = (speed) => {
 <style scoped>
 
 div {
-
-  /* 文字效果 */
   color: #ffffff;
-  font-family: 'Courier New', Courier, monospace;
-
-  /* 盒子模型 */
   min-height: 2.5em;
   padding: 15px 20px;
-  border: 1px solid rgba(255, 255, 255, 0.1); 
-
-  /* 修饰元素 */
   border-radius: 12px;
   backdrop-filter: blur(10px);
   background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1); 
   box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.2);
-
+  font-family: 'Courier New', Courier, monospace;
 }
 
 p {
-
-  /* 位置布局 */
   display: inline;
-
 }
 
 span { 
-
-  /* 位置布局 */
-  display: inline-block;
-
-  /* 盒子模型 */
-  height: 1.2em;
   width: 3px;
-  vertical-align: text-bottom;
+  height: 1.2em;
   margin-left: 4px;
+  display: inline-block;
+  vertical-align: text-bottom;
   background-color: var(--accent-color);
-
-  /* 过度动画 */
   animation: cursor-blink 0.8s infinite;
-
 }
 
 </style>
