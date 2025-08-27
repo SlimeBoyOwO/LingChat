@@ -1,69 +1,78 @@
 <template>
-  <div class="slider-wrapper">
-    <span
-      ><slot name="left">{{ leftLabel }}</slot></span
-    >
+  <div>
+    <span><slot name="left">{{ leftLabel }}</slot></span>
     <input
       type="range"
       :min="min"
       :max="max"
       :step="step"
-      :value="getValue(modelValue, min, max)"
-      @input="onInput"
-      @change="onChange"
+      :value="value"
+      @input="$emit('input', Number(value))"
+      @change="$emit('change', Number(value))"
+      v-model="value"
     />
-    <span
-      ><slot name="right">{{ rightLabel }}</slot></span
-    >
+    <span><slot name="right">{{ rightLabel }}</slot></span>
   </div>
 </template>
 
 <script setup lang="ts">
-import { useSlots, computed } from "vue";
-import type { VNode, Slots } from "vue";
 
-// 1. 添加 modelValue 属性来接收 v-model 的值
+// 导入外部模块
+import { useSlots, computed, ref, Slots } from "vue";
+
+// 定义组件属性
 const props = defineProps({
-  modelValue: { type: Number, required: false }, // 接收当前值
-  min: { type: Number, default: 0 },
-  max: { type: Number, default: 100 },
-  step: { type: Number, default: 1 },
+  value: {
+    type: Number,
+    require: false,
+  },
+  min: {
+    type: Number,
+    default: 0,
+  },
+  max: {
+    type: Number,
+    default: 100,
+  },
+  step: {
+    type: Number,
+    default: 1,
+  },
 });
 
-// 2. 修改 emit，添加 update:modelValue
-const emit = defineEmits(["update:modelValue", "change"]);
 
-const onInput = (event: Event) => {
-  const target = event.target as HTMLInputElement;
-  // 触发 update:modelValue 事件以更新 v-model
-  emit("update:modelValue", Number(target.value));
-};
+// 定义组件事件
+const emit = defineEmits([
+  "change",
+  "input",
+]);
 
-const onChange = (event: Event) => {
-  const target = event.target as HTMLInputElement;
-  emit("change", Number(target.value));
-};
+// 定义动态变量
+const value = ref()
 
-// --- Slot 内容处理的改进建议 (更稳健) ---
-// 您原来的方法在某些情况下可能会出错，例如当插槽内容复杂时。
-// 下面的方法是更安全的选择。
+// 获取插槽内容
 const slots: Slots = useSlots();
+
+// 处理组件行为
+
+// 设置滑块默认值为中值
+value.value = (props.min + props.max) /2
+
+// 分别设置滑块两端内容
 const leftLabel = computed(() => {
-  // 检查默认插槽是否存在
   if (slots.default) {
     const defaultSlot = slots.default();
-    // 确保内容是纯文本
     if (
       defaultSlot &&
       defaultSlot[0] &&
       typeof defaultSlot[0].children === "string"
     ) {
-      return defaultSlot[0].children.split("/")[0] || "";
+      const parts = defaultSlot[0].children.split("/");
+      return parts[0] || "";
     }
   }
-  return ""; // 如果没有提供，则返回空字符串
+  return "";
 });
-
 const rightLabel = computed(() => {
   if (slots.default) {
     const defaultSlot = slots.default();
@@ -79,40 +88,37 @@ const rightLabel = computed(() => {
   return "";
 });
 
-function getValue(modelValue: any, min: number, max: number) {
-  if (modelValue) {
-    return modelValue;
-  } else return (min + max) / 2;
-}
 </script>
 
 <style scoped>
+
 div {
+  gap: 15px;
   display: flex;
   align-items: center;
-  gap: 15px;
   color: rgba(255, 255, 255, 0.9); /* 白色文字 */
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 input[type="range"] {
-  -webkit-appearance: none;
-  appearance: none;
   flex-grow: 1;
-  margin: 10px 0;
-  background-color: transparent;
-  position: relative;
   outline: none;
+  margin: 10px 0;
+  appearance: none;
+  position: relative;
+  -webkit-appearance: none;
+  background-color: transparent;
 }
 
 input[type="range"]::-webkit-slider-runnable-track {
   width: 100%;
   height: 8px;
   border-radius: 4px;
+  transition: all 0.3s ease;
   background: rgba(255, 255, 255, 0.2); /* 透明白色轨道 */
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
-  transition: all 0.3s ease;
+
 }
 
 input[type="range"]:hover::-webkit-slider-runnable-track {
@@ -121,38 +127,31 @@ input[type="range"]:hover::-webkit-slider-runnable-track {
 }
 
 input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
+  z-index: 2;
   width: 22px;
   height: 22px;
-  background: linear-gradient(
-    135deg,
-    var(--accent-color),
-    #64b5f6
-  ); /* 渐变背景，不再是白色 */
-  border-radius: 50%;
   cursor: grab;
-  border: 2px solid rgba(255, 255, 255, 0.8); /* 半透明白色边框 */
+  appearance: none;
   margin-top: -7px;
-  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
-  transform-origin: center;
-  box-shadow: 0 4px 12px rgba(121, 217, 255, 0.4), 0 2px 4px rgba(0, 0, 0, 0.2); /* 增强阴影效果 */
   position: relative;
-  z-index: 2;
+  border-radius: 50%;
+  -webkit-appearance: none;
+  transform-origin: center;
+  border: 2px solid rgba(255, 255, 255, 0.8); /* 半透明白色边框 */
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+  background: linear-gradient( 135deg, var(--accent-color), #64b5f6 ); /* 渐变背景 */
+  box-shadow: 0 4px 12px rgba(121, 217, 255, 0.4), 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 input[type="range"]::-webkit-slider-thumb:hover,
 input[type="range"]::-webkit-slider-thumb:active {
   transform: scale(1.15);
+  background: linear-gradient( 135deg, #64b5f6, var(--accent-color));
   box-shadow: 0 6px 20px rgba(121, 217, 255, 0.6), 0 4px 8px rgba(0, 0, 0, 0.3);
-  background: linear-gradient(
-    135deg,
-    #64b5f6,
-    var(--accent-color)
-  ); /* 悬停时反转渐变 */
 }
 
 input[type="range"]:active::-webkit-slider-thumb {
   cursor: grabbing;
 }
+
 </style>

@@ -36,6 +36,8 @@ const id = ref()
 const value = ref()
 
 // 处理组件行为
+
+// 挂载组件生成唯一标识
 onMounted(() => {
   id.value = Math.random().toString(36).substring(2, 9)
 })
