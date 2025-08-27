@@ -29,15 +29,16 @@ class WebSocketManager:
                     logger.info("来自客户端的消息：" + str(message))
                     # 将消息转发给 ai_service（不等待响应）
                     if service_manager.ai_service is not None:
-                        # asyncio.create_task(
-                        #     service_manager.ai_service.process_message_stream_compat(
-                        #         message.get('content', ''),
-                        #         # client_id=client_id  # 告知 ai_service 消息来源
-                        #     )
-                        # )
-                        asyncio.create_task(
-                            message_broker.enqueue_ai_message(client_id, message.get('content', ''))
-                        )
+                        user_message = message.get('content', '')
+                        if user_message == "/开始剧本":
+                            asyncio.create_task(
+                                service_manager.ai_service.start_script()
+                            )
+                            logger.info("开始进行剧本模式")
+                        else:
+                            asyncio.create_task(
+                                message_broker.enqueue_ai_message(client_id, user_message)
+                            )
                     else:
                         logger.error("尚未初始化，请刷新网页！")
                         #TODO: 向前端提示或者之后做个刷新系统
