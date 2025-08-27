@@ -9,7 +9,7 @@ class SBV2APIAdapter(TTSBaseAdapter):
                  speaker_id: int=0, style_id: int=0,
                  audio_format: str="wav"):
         self.api_url = api_url
-        self.params = {
+        self.params: dict[str, str|int|float] = {
             "ident": model_name,
             "length_scale": length_scale,
             "sdp_ratio": sdp_ratio,
@@ -37,5 +37,5 @@ class SBV2APIAdapter(TTSBaseAdapter):
                     raise Exception(f"HTTP {response.status}: {error_detail}")
                 return await response.read()
 
-    def get_params(self) -> dict:
+    def get_params(self):
         return self.params.copy()

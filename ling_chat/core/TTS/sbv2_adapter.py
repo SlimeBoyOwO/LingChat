@@ -4,14 +4,14 @@ from ling_chat.core.logger import logger
 
 
 class SBV2Adapter(TTSBaseAdapter):
-    def __init__(self, api_url, speaker_id: int=0, model_name: str="", 
+    def __init__(self, api_url: str, speaker_id: int=0, model_name: str="", 
                  audio_format: str="wav", lang: str="JP"):
         # 将 lang 参数转换为 "JP"以适配sbv2的需求
         if lang == "ja":
             lang = "JP"
         
         self.api_url = api_url
-        self.params = {
+        self.params: dict[str, str|int|float] = {
             "encoding": "utf-8",  # 文本编码
             "model_name": model_name,
             "model_id": 0,  # 模型ID (0表示默认)
@@ -41,5 +41,5 @@ class SBV2Adapter(TTSBaseAdapter):
                 response.raise_for_status()
                 return await response.read()
 
-    def get_params(self) -> dict:
+    def get_params(self):
         return self.params.copy()
