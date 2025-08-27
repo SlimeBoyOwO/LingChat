@@ -3,7 +3,7 @@ from typing import Dict
 from .base import BaseEventHandler
 
 # 导入新架构下的模块
-from neochat.llm.client import chat_with_deepseek # LLM客户端
+from neochat.llm.client import generate_chat_response # LLM客户端
 from neochat.platform.logging import log_error, log_info, TermColors # 日志和颜色
 from neochat.memory.manager import MemoryManager # 记忆管理器
 from neochat.platform.configuration import config # 配置对象
@@ -40,7 +40,7 @@ class NoticeEventHandler(BaseEventHandler):
             # 添加生成要求
             messages.append({"role": "user", "content": f"请根据以下要求生成一条公告:\n{content}"})
 
-            generated_content = chat_with_deepseek(messages, character_name=dm_name, color_code=TermColors.MAGENTA)
+            generated_content = generate_chat_response(messages, character_name=dm_name, color_code=TermColors.MAGENTA)
             if generated_content:
                 final_content = generated_content
             else:
