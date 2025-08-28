@@ -4,12 +4,9 @@ import base64
 from io import BytesIO
 from datetime import datetime
 from PIL import ImageGrab
-from ling_chat.utils.function import Function
 from ling_chat.core.logger import logger
 import requests
 import json
-
-Function.load_env()
 
 # TODO: 这个玩意是他妈的同步的，导致这个东西执行的时候，整个程序都会卡死，务必改成异步函数
 
