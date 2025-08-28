@@ -10,6 +10,6 @@ class TTSBaseAdapter(ABC):
         pass
 
     @abstractmethod
-    def get_params(self) -> dict[str, str|int|float]:
+    def get_params(self) -> dict[str, str|int|float|bool]:
         """获取某个适配器目前参数的抽象方法"""
         pass
