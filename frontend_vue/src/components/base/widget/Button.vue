@@ -1,39 +1,52 @@
 <template>
-  <button :class="type" :disabled="disabled" @click="click">
-    <Icon v-if="icon" :icon="icon" :size="icon_size"></Icon>
-    <slot></slot>
+  <button
+    :class="type"
+    :disabled="disabled"
+    @click="$emit('click')"
+  >
+  <Icon v-if="icon" :icon="icon" :size="icon_size"></Icon>
+  <slot></slot>
   </button>
 </template>
 
 <script setup lang="ts">
-import Icon from "./Icon.vue";
-import type { IconType } from "./Icon.vue"; // 导入 Icon 组件的类型
 
+// 导入外部模块
+import Icon from "./Icon.vue";
+import type { IconType } from "./Icon.vue";
+
+// 定义组件属性
 interface ButtonProps {
-  type?: "big" | "menu" | "nav" | "select"; // 字面量联合类型
+  type?: "big" | "menu" | "nav" | "select" | "delete" | "add" | "save" | "start" | "close"
   disabled?: boolean;
   icon?: IconType;
   icon_size?: number;
 }
-
 const props = defineProps<ButtonProps>();
-const emit = defineEmits(["click"]);
-const click = () => {
-  emit("click");
-};
-const icon = props.icon;
+
+// 定义组件事件
+const emit = defineEmits([
+  "click"
+]);
+
 </script>
 
 <style scoped>
-/* 基础按钮样式 */
-.base-button {
-  padding: 8px 16px;
-  border-radius: 4px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
+
+button {
   border: none;
   outline: none;
+  cursor: pointer;
+  font-weight: 500;
+  padding: 8px 16px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+/* 禁用状态 */
+.base-button--disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .menu {
@@ -62,34 +75,29 @@ const icon = props.icon;
 }
 
 /* 开始按钮样式 */
-.base-button--start {
+.start {
   background-color: #4caf50;
   color: white;
 }
 
-.base-button--start:hover {
+.start:hover {
   background-color: #45a049;
 }
 
 /* 关闭按钮样式 */
-.base-button--close {
+.close {
   background-color: #f44336;
   color: white;
 }
 
-.base-button--close:hover {
+.close:hover {
   background-color: #d32f2f;
 }
 
-/* 禁用状态 */
-.base-button--disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
 
 .nav {
-  background: none;
   color: white; /* 改为白色 */
+  background: none;
   text-align: center;
   padding: 10px 15px;
   border-radius: 8px;
