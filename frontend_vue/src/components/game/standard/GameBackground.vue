@@ -1,17 +1,46 @@
 <template>
   <div class="game-background" :style="backgroundStyle"></div>
-  <canvas ref="canvasRef" id="canvas"></canvas>
+  <StarField
+    ref="starfieldRef"
+    v-if="uiStore.currentBackgroundEffect === `StarField`"
+    :enabled="starfieldEnabled"
+    :star-count="starCount"
+    :scroll-speed="scrollSpeed"
+    :colors="starColors"
+    @ready="onStarfieldReady"
+  />
+  <Rain
+    v-if="uiStore.currentBackgroundEffect === `Rain`"
+    :enabled="rainEnabled"
+    :intensity="rainIntensity"
+  />
 </template>
 
-<script setup lang="ts">
-import { onMounted, onUnmounted, ref, computed, watch } from "vue";
-import { StarField } from "./particles/StarField";
+<script setup>
+import { ref, computed, watch } from "vue";
 import { useUIStore } from "../../../stores/modules/ui/ui";
+import StarField from "./particles/StarField.vue";
+import Rain from "./particles/Rain.vue";
 
-const canvasRef = ref<HTMLCanvasElement | null>(null);
 const uiStore = useUIStore();
+const starfieldRef = ref(null);
 
-let starField: StarField | null = null;
+// 星空效果控制
+const starfieldEnabled = ref(true);
+const starCount = ref(200);
+const scrollSpeed = ref(0.2);
+const starColors = ref([
+  "rgb(173, 216, 230)",
+  "rgb(176, 224, 230)",
+  "rgb(241, 141, 252)",
+  "rgb(176, 230, 224)",
+  "rgb(173, 230, 216)",
+]);
+
+// 雨滴效果控制
+const showRain = ref(false);
+const rainEnabled = ref(true);
+const rainIntensity = ref(1);
 
 // 计算背景样式
 const backgroundStyle = computed(() => {
@@ -22,26 +51,23 @@ const backgroundStyle = computed(() => {
   };
 });
 
-onMounted(() => {
-  if (canvasRef.value) {
-    starField = new StarField(canvasRef.value);
-  }
+showRain.value = true;
 
-  // 监听背景变化
-  watch(
-    () => uiStore.currentBackground,
-    (newBackground) => {
-      console.log("背景已更新:", newBackground);
-      // 由于使用了 computed，背景会自动更新
+// 星空就绪回调
+const onStarfieldReady = (instance) => {
+  console.log("Starfield ready", instance);
+};
+
+// 根据背景决定是否显示雨滴
+watch(
+  () => uiStore.currentBackgroundEffect,
+  (newBackgroundEffect) => {
+    if (newBackgroundEffect === "Rain") {
+      showRain.value = true;
+    } else if (newBackgroundEffect === "StarField") {
     }
-  );
-});
-
-onUnmounted(() => {
-  if (starField) {
-    starField.destroy();
   }
-});
+);
 </script>
 
 <style scoped>
@@ -54,19 +80,6 @@ onUnmounted(() => {
   background-attachment: fixed;
   background-repeat: no-repeat;
   z-index: -2;
-  transition: background-image 0.5s ease-in-out; /* 添加过渡效果 */
-}
-
-canvas {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  z-index: -1;
-}
-
-body {
-  display: block;
+  transition: background-image 0.5s ease-in-out;
 }
 </style>

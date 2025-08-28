@@ -1,36 +1,44 @@
-interface Star {
-  x: number;
-  y: number;
-  v: number;
-  color: string;
-}
+<template>
+  <canvas ref="canvasRef" class="starfield-canvas"></canvas>
+</template>
 
-interface Config {
-  starCount: number;
-  starSize: number;
-  attractorSize: number;
-  scrollSpeed: number;
-  directionChangeRate: number;
-  colors: string[];
-}
+<script setup>
+import { ref, onMounted, onUnmounted, watch } from "vue";
 
-interface Pointer {
-  x: number;
-  y: number;
-}
+const props = defineProps({
+  enabled: {
+    type: Boolean,
+    default: true,
+  },
+  starCount: {
+    type: Number,
+    default: 200,
+  },
+  scrollSpeed: {
+    type: Number,
+    default: 0.2,
+  },
+  colors: {
+    type: Array,
+    default: () => [
+      "rgb(173, 216, 230)",
+      "rgb(176, 224, 230)",
+      "rgb(241, 141, 252)",
+      "rgb(176, 230, 224)",
+      "rgb(173, 230, 216)",
+    ],
+  },
+});
 
-export class StarField {
-  private canvas: HTMLCanvasElement;
-  private ctx: CanvasRenderingContext2D;
-  private stars: Star[];
-  private config: Config;
-  private pointer: Pointer;
-  private dir: number;
-  private animationId: number | null;
-  private w: number;
-  private h: number;
+const emit = defineEmits(["ready"]);
 
-  constructor(canvas: HTMLCanvasElement) {
+const canvasRef = ref(null);
+const animationId = ref(null);
+const starField = ref(null);
+
+// Star类定义
+class StarFieldRenderer {
+  constructor(canvas, config) {
     this.canvas = canvas;
     const context = canvas.getContext("2d");
     if (!context) throw new Error("Could not get canvas context");
@@ -38,44 +46,37 @@ export class StarField {
 
     this.stars = [];
     this.config = {
-      starCount: 200,
+      starCount: config.starCount,
       starSize: 2,
       attractorSize: 100,
-      scrollSpeed: 0.2,
+      scrollSpeed: config.scrollSpeed,
       directionChangeRate: 0.2,
-      colors: [
-        "rgb(173, 216, 230)",
-        "rgb(176, 224, 230)",
-        "rgb(241, 141, 252)",
-        "rgb(176, 230, 224)",
-        "rgb(173, 230, 216)",
-      ],
+      colors: config.colors,
     };
 
     this.pointer = { x: 0, y: 0 };
     this.dir = Math.PI;
-    this.animationId = null;
     this.w = 0;
     this.h = 0;
 
     this.init();
   }
 
-  private init(): void {
+  init() {
     this.setupCanvas();
     this.createStars();
-    this.startAnimation();
     this.addEventListeners();
+    this.startAnimation();
   }
 
-  private setupCanvas(): void {
+  setupCanvas() {
     this.w = this.canvas.width = window.innerWidth;
     this.h = this.canvas.height = window.innerHeight;
     this.pointer.x = this.w / 2;
     this.pointer.y = this.h / 2;
   }
 
-  private createStars(): void {
+  createStars() {
     for (let i = 0; i < this.config.starCount; i++) {
       const z = this.randomG();
       const color =
@@ -94,7 +95,7 @@ export class StarField {
     this.stars.sort((a, b) => a.v - b.v);
   }
 
-  private update = (timestamp: number): void => {
+  update = (timestamp) => {
     if (this.w !== window.innerWidth || this.h !== window.innerHeight) {
       this.setupCanvas();
     }
@@ -137,38 +138,43 @@ export class StarField {
     this.animationId = requestAnimationFrame(this.update);
   };
 
-  private addEventListeners(): void {
+  addEventListeners() {
     window.addEventListener("resize", this.handleResize);
     this.canvas.addEventListener("mousemove", this.handleMouseMove);
   }
 
-  private handleResize = (): void => {
-    if (this.animationId !== null) {
+  handleResize = () => {
+    if (this.animationId) {
       cancelAnimationFrame(this.animationId);
     }
     this.setupCanvas();
     this.startAnimation();
   };
 
-  private handleMouseMove = (e: MouseEvent): void => {
+  handleMouseMove = (e) => {
     this.pointer.x = e.clientX;
     this.pointer.y = e.clientY;
   };
 
-  private startAnimation(): void {
+  startAnimation() {
     this.animationId = requestAnimationFrame(this.update);
   }
 
-  public destroy(): void {
-    if (this.animationId !== null) {
+  stopAnimation() {
+    if (this.animationId) {
       cancelAnimationFrame(this.animationId);
+      this.animationId = null;
     }
+  }
+
+  destroy() {
+    this.stopAnimation();
     window.removeEventListener("resize", this.handleResize);
     this.canvas.removeEventListener("mousemove", this.handleMouseMove);
   }
 
   // Helper methods
-  private randomInt(min: number, max?: number): number {
+  randomInt(min, max) {
     if (max === undefined) {
       max = min;
       min = 0;
@@ -176,11 +182,94 @@ export class StarField {
     return Math.floor(Math.random() * (max - min) + min);
   }
 
-  private randomG(): number {
+  randomG() {
     return Math.random() * Math.random() * Math.random();
   }
 
-  private modulo(value: number, mod: number): number {
+  modulo(value, mod) {
     return ((value % mod) + mod) % mod;
   }
 }
+
+// 组件逻辑
+onMounted(() => {
+  if (canvasRef.value && props.enabled) {
+    starField.value = new StarFieldRenderer(canvasRef.value, {
+      starCount: props.starCount,
+      scrollSpeed: props.scrollSpeed,
+      colors: props.colors,
+    });
+    emit("ready", starField.value);
+  }
+});
+
+onUnmounted(() => {
+  if (starField.value) {
+    starField.value.destroy();
+  }
+});
+
+// 监听启用状态变化
+watch(
+  () => props.enabled,
+  (newVal) => {
+    if (newVal && canvasRef.value && !starField.value) {
+      starField.value = new StarFieldRenderer(canvasRef.value, {
+        starCount: props.starCount,
+        scrollSpeed: props.scrollSpeed,
+        colors: props.colors,
+      });
+      emit("ready", starField.value);
+    } else if (!newVal && starField.value) {
+      starField.value.destroy();
+      starField.value = null;
+    }
+  }
+);
+
+// 监听配置变化
+watch(
+  () => props.starCount,
+  (newVal) => {
+    if (starField.value) {
+      starField.value.destroy();
+      starField.value = new StarFieldRenderer(canvasRef.value, {
+        starCount: newVal,
+        scrollSpeed: props.scrollSpeed,
+        colors: props.colors,
+      });
+      emit("ready", starField.value);
+    }
+  }
+);
+
+watch(
+  () => props.scrollSpeed,
+  (newVal) => {
+    if (starField.value) {
+      starField.value.config.scrollSpeed = newVal;
+    }
+  }
+);
+
+watch(
+  () => props.colors,
+  (newVal) => {
+    if (starField.value) {
+      starField.value.config.colors = newVal;
+    }
+  }
+);
+</script>
+
+<style scoped>
+.starfield-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  pointer-events: none;
+}
+</style>

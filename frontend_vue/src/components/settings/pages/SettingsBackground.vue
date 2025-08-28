@@ -43,8 +43,11 @@
       </div>
     </MenuItem>
 
-    <MenuItem title="圣光预览">
-      <Slider @input="updateKousan" @change="updateKousan">弱/强</Slider>
+    <MenuItem title="粒子选择" size="large">
+      <div class="effect-list">
+        <Button type="big" @click="updateParticle(`StarField`)">星空</Button>
+        <Button type="big" @click="updateParticle(`Rain`)">雨水</Button>
+      </div>
     </MenuItem>
   </MenuPage>
 </template>
@@ -173,6 +176,10 @@ async function handleFileUpload(event: Event): Promise<void> {
 
 // 更新圣光效果
 function updateKousan(value: number): void {}
+
+function updateParticle(value: string): void {
+  uiStore.currentBackgroundEffect = value;
+}
 </script>
 
 <style scoped>
@@ -308,6 +315,13 @@ function updateKousan(value: number): void {}
 
 .background-select-btn:active {
   transform: translateY(0);
+}
+
+.effect-list {
+  display: flex;
+  justify-content: space-around;
+  gap: 20px;
+  align-items: center;
 }
 
 /* 响应式调整 */
