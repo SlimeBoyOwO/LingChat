@@ -10,6 +10,7 @@ interface UIState {
   typeWriterSpeed: number;
   enableChatEffectSound: boolean;
   currentBackground: string;
+  currentBackgroundEffect: string;
   currentAvatarAudio: string;
   characterVolume: number;
   backgroundVolume: number;
@@ -27,6 +28,7 @@ export const useUIStore = defineStore("ui", {
     typeWriterSpeed: 50,
     enableChatEffectSound: true,
     currentBackground: "@/assets/images/default_bg.jpg",
+    currentBackgroundEffect: "StarField",
     currentAvatarAudio: "None",
     characterVolume: 80,
     backgroundVolume: 80,
