@@ -6,13 +6,11 @@ from nbformat import current_nbformat
 from sqlalchemy import null
 
 from ling_chat.utils.function import Function
-from ling_chat.core.ai_service.script_engine.type import Character, Script, Charpter
+from ling_chat.core.ai_service.script_engine.type import Character, Script, GameContext
+from ling_chat.core.ai_service.script_engine.charpter import Charpter
 from ling_chat.core.logger import logger
-from ling_chat.utils.runtime_path import static_path, user_data_path
-from ling_chat.core.ai_service.script_engine.charpter_manager import CharpterManager
-from ling_chat.core.ai_service.script_engine.events_handler import EventsHandler
-from ling_chat.core.ai_service.script_engine.ends_handler import EndsHandler
-from ling_chat.core.ai_service.script_engine.exceptions import ScriptLoadError
+from ling_chat.utils.runtime_path import user_data_path
+from ling_chat.core.ai_service.script_engine.exceptions import ScriptLoadError, ChapterLoadError, ScriptEngineError
 
 class ScriptManager:
     def __init__(self):
@@ -23,15 +21,9 @@ class ScriptManager:
         self.all_scripts:list[str] = []
         self.get_all_scripts()
 
-        # 辅助模块
-        self.charpter_manager = CharpterManager()
-        self.events_handler:EventsHandler = EventsHandler()
-        self.ends_handler:EndsHandler = EndsHandler()
-
         # 记忆，状态管理
         self.current_script_name = self.all_scripts[0]          # TODO: 默认导入第一个剧本
-        self.current_script:Script|None = None
-        self.characters:list[Character] = []
+        self.game_context: GameContext = GameContext()          # 创建一个空的上下文
         self.current_chartper:Charpter|None = None
 
         self.init_script()
@@ -39,34 +31,35 @@ class ScriptManager:
     def init_script(self):
         script_path = self.scripts_dir / self.current_script_name
         self.current_script = self.get_script(self.current_script_name)
-        self.characters = self._read_characters_from_script(script_path)
-        self.update_charpter(self.current_script.intro_charpter)
+        characters_list = self._read_characters_from_script(script_path)
+        self.game_context.characters = {
+            char.character_id: char for char in characters_list
+        }
     
     async def start_script(self):
+        """
+        剧本的主执行循环，现在变得极为清晰。
+        """
         if self.current_script is None:
-            logger.warning("你还没有选择一个剧本，无法开始剧本")
+            logger.error("剧本不存在，请先导入剧本")
             return
         
         next_charpter_name = self.current_script.intro_charpter
-        while next_charpter_name not in ["END", "ERROR"]:
-            self.update_charpter(next_charpter_name)
-
-            # 处理当前章节的所有事件
-            while not self.events_handler.is_finished():
-                await self.events_handler.process_next_event()
-
-            # 获取下一章节的名称
-            next_charpter_name = self.ends_handler.process_end()
-            logger.info(f"章节结束，准备切换到: {next_charpter_name}")
-
-        logger.info("剧本已经结束")
-    
-    def update_charpter(self, charpter_name: str):
-        charpter_path = self.scripts_dir / self.current_script_name / "Charpters" / (charpter_name + ".yaml")
-        self.current_chartper = self.charpter_manager.get_charpter(str(charpter_path))
-        self.events_handler.import_events(self.current_chartper.events)
-        self.ends_handler.import_end(self.current_chartper.ends)
-
+        
+        while next_charpter_name != "end":
+            try:
+                # 1. 加载章节，返回一个“可运行”的章节对象
+                charpter_path = self.scripts_dir / self.current_script_name / "Charpters" / (next_charpter_name + ".yaml")
+                current_charpter_obj:Charpter = self._get_charpter(charpter_path) # 一个新的辅助方法
+                
+                # 2. 命令章节运行，然后等待结果
+                next_charpter_name = await current_charpter_obj.run()
+                
+            except Exception as e:
+                logger.error(f"运行章节 '{next_charpter_name}' 时发生严重错误: {e}", exc_info=True)
+                raise ScriptEngineError("运行章节的时候发生错误")
+        
+        logger.info("剧本已经结束。")
 
     def get_all_scripts(self):
         self._read_all_scripts()
@@ -80,8 +73,7 @@ class ScriptManager:
         if config is not None:
             return Script(config.get('script_name', 'ERROR'),config.get('description', 'ERROR'),config.get('intro_charpter', 'ERROR'))
         else:
-            # TODO: 错误处理
-            return Script('ERROR','ERROR','ERROR')
+            raise ScriptLoadError("剧本读取出现错误,缺少 story_config.yml 配置文件")
         
     def _read_all_scripts(self):
         
@@ -100,25 +92,23 @@ class ScriptManager:
     def _read_characters_from_script(self, script_path: Path) -> List[Character]:
         """从剧本目录读取角色 (纯 pathlib 实现)"""
         new_characters = []
-        characters_dir = script_path / 'characters' # Path 对象
+        characters_dir = script_path / 'characters'
 
         if not characters_dir.exists() or not characters_dir.is_dir():
-            # 使用更专业的异常和信息
             raise ScriptLoadError(f"剧本 '{script_path.name}' 中缺少 'characters' 文件夹。")
 
-        for character_path in characters_dir.iterdir(): # 迭代 Path 对象
+        for character_path in characters_dir.iterdir():
             # 检查是否是目录，并排除特定名称
             if not character_path.is_dir() or character_path.name == 'avatar':
                 continue
 
-            settings_path = character_path / 'settings.txt' # 使用 / 运算符连接路径
+            settings_path = character_path / 'settings.txt'
             if not settings_path.exists():
                 logger.warning(f"角色目录 '{character_path.name}' 中缺少 settings.txt，已跳过。")
                 continue
 
             try:
                 settings = Function.parse_enhanced_txt(str(settings_path))
-                # resource_path 现在直接是 Path 对象，如果需要字符串再转换
                 
                 character_id = settings.get('character_id', character_path.name)
                 character = Character(
@@ -133,8 +123,14 @@ class ScriptManager:
                 new_characters.append(character)
 
             except Exception as e:
-                # 记录更详细的错误日志
                 logger.error(f"处理角色 '{character_path.name}' 时出错: {e}", exc_info=True)
                 continue
 
         return new_characters
+
+    def _get_charpter(self, charpter_path: Path) -> Charpter:
+        config = Function.read_yaml_file(charpter_path)
+        if config is not None:
+            return Charpter(str(charpter_path), self.game_context, config.get('events',[]), config.get('end',{}))
+        else:
+            raise ChapterLoadError(f"导入 {charpter_path} 剧本的时候出现问题")
