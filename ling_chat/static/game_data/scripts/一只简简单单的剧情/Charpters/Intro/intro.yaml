@@ -1,0 +1,47 @@
+events:
+  # 1. 背景设置事件
+  - type: background
+    image: "序章-城市街道.png"
+
+  - type: narration
+    text: "天上的星星慢慢点缀在了深夜的天空中。"
+
+  - type: narration
+    text: "莱姆独自一人摇摇晃晃的走在空无一人的大街上。"
+
+  - type: narration
+    text: "也许是晚风吹乱了思绪，也许是温度冻结了心灵。"
+
+  - type: narration
+    text: "没有沾染半滴酒，走起路来却是如此的跌跌撞撞。"
+
+  - type: narration
+    text: '"也许一开始不那么做的话，现在的自己会好很多呢..."莱姆轻声对自己呢喃道。'
+
+  - type: narration
+    text: "莱姆收获了自己的小成就和成功，但此时的他似乎并没有收获喜悦。"
+
+  - type: narration
+    text: "他叹着气，默默地前进着。仿佛在拖着一个承重的枷锁，但如何也无法挣脱..."
+
+  - type: dialogue
+    character: "qin_ling"
+    text: "【开心】莱姆？没想到大半夜能碰到你呢！嗨！"
+
+  - type: narration
+    text: "一道熟悉的声音突然响起，莱姆回头望去，一个奇妙的白色毛球物体踱步向他慢慢走去。"
+
+  - type: show_character
+    charater: "qin_ling"
+
+  - type: dialogue
+    character: "qin_ling"
+    text: "【担心】你怎么啦莱姆...看上去状态不太好呢..."
+
+  - type: narration
+    text: "钦灵凑近着打探着莱姆的上上下下，就好似一只好奇的小狼在确定自己的猎物一般。"
+
+# 章节结束处理
+end:
+  type: linear
+  next: "Charpter_1/intro"
