@@ -37,8 +37,8 @@
 </template>
 
 <script setup lang="ts">
-import { defineEmits } from "vue";
 import { chatHandler } from "../../../api/websocket/handlers/chat-handler";
+import { scriptHandler } from "../../../api/websocket/handlers/script-handler";
 import { ref, watch, computed } from "vue";
 import { Button } from "../../base";
 import { useGameStore } from "../../../stores/modules/game";
@@ -71,6 +71,8 @@ const placeholderText = computed(() => {
       return gameStore.avatar.think_message;
     case "responding":
       return "";
+    case "narrating":
+      return "";
     default:
       return "在这里输入消息...";
   }
@@ -91,9 +93,13 @@ watch(
       uiStore.showCharacterTitle = gameStore.avatar.user_name;
       uiStore.showCharacterSubtitle = gameStore.avatar.user_subtitle;
       uiStore.showCharacterEmotion = "";
-    } else {
+    } else if (newStatus === "responding") {
       uiStore.showCharacterTitle = gameStore.avatar.character_name;
       uiStore.showCharacterSubtitle = gameStore.avatar.character_subtitle;
+    } else if (newStatus === "narrating") {
+      uiStore.showCharacterTitle = "";
+      uiStore.showCharacterSubtitle = "";
+      uiStore.showCharacterEmotion = "";
     }
   }
 );
@@ -102,7 +108,11 @@ watch(
 watch(
   [() => gameStore.currentLine, () => gameStore.currentStatus],
   ([newLine, newStatus]) => {
-    if (newLine && newLine !== "" && newStatus === "responding") {
+    if (
+      newLine &&
+      newLine !== "" &&
+      (newStatus === "responding" || newStatus === "narrating")
+    ) {
       inputMessage.value = "";
       startTyping(newLine, uiStore.typeWriterSpeed);
     } else if (newLine === "" && newStatus === "input") {
@@ -116,6 +126,8 @@ function sendOrContinue() {
     send();
   } else if (gameStore.currentStatus === "responding") {
     continueDialog(true);
+  } else if (gameStore.currentStatus === "narrating") {
+    continueScript();
   }
 }
 
@@ -133,6 +145,10 @@ function continueDialog(isPlayerTrigger: boolean): boolean {
   }
 
   return needWait;
+}
+
+function continueScript() {
+  scriptHandler.continueScript();
 }
 
 defineExpose({

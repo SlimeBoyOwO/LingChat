@@ -21,7 +21,7 @@ export class ChatHandler {
       this.handleAIReply(data as WebSocketChatMessage);
     });
 
-    registerHandler(WebSocketMessageTypes.SYSTEM_NARRATION, (data: any) => {
+    registerHandler(WebSocketMessageTypes.SCRIPT_NARRATION, (data: any) => {
       console.log(data);
       // TODO: 实现旁白消息接受机制 this.handleSystemNarration(data as WebSocketChatMessage);
     });

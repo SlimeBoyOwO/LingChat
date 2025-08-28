@@ -1,0 +1,17 @@
+# chapter1/01.yaml
+events:
+  - type: background
+    image: "bg/park_day.png"
+
+  - type: dialogue
+    character: "alice"
+    text: "你好，今天天气真不错呢。"
+
+  - type: dialogue
+    character: "alice"
+    text: "要不要一起去散步？"
+
+# 章节结束处理
+end:
+  type: linear
+  next: "end"
