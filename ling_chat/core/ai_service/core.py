@@ -64,17 +64,10 @@ class AIService:
             self.ai_prompt = settings.get("system_prompt", "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息")
             self.ai_prompt_example = settings.get("system_prompt_example","")
             self.ai_prompt = self.message_processor.sys_prompt_builder(self.ai_prompt, self.ai_prompt_example)
-
-            # 语音生成相关 TODO @影空，这里记得改一下，代码不太优雅
-
-            self.voice_maker.set_speark_id(int(settings.get("speaker_id", 4)))
-            self.voice_maker.set_model_name(settings.get("model_name", ""))
-            # 假如有API，优先级更高
-            if(settings.get("sbv2api_model_name", "") != ""):
-                self.voice_maker.set_model_name(settings.get("sbv2api_model_name", ""))
                 
             self.voice_maker.set_lang(settings.get("language", "ja"))
             self.voice_maker.set_tts_type(settings.get("tts_type", "sbv"))
+            self.voice_maker.set_tts_settings(settings.get("voice_models", {}), self.ai_name)
 
             self.character_path = settings.get("resource_path")
             self.character_id = settings.get("character_id")
