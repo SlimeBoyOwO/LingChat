@@ -59,11 +59,15 @@ class VoiceMaker:
                 elif seg["following_text"] and not seg.get("japanese_text"):
                     logger.warning(f"片段 {seg['index']} 没有日语文本，跳过语音生成")
             elif self.lang == "zh":
-                task = self.tts_provider.generate_voice(seg["following_text"], 
-                                                        seg["voice_file"], 
-                                                        tts_type=self.tts_type, 
-                                                        lang="zh")
-                tasks.append(task)
+                if seg["following_text"]:
+                    task = self.tts_provider.generate_voice(seg["following_text"], 
+                                                            seg["voice_file"], 
+                                                            tts_type=self.tts_type, 
+                                                            lang="zh")
+                    tasks.append(task)
+                else:
+                    logger.warning(f"片段 {seg['index']} 没有中文文本，跳过语音生成\n"
+                                   f"Tips：要真出现这情况，你应该检查LLM是否正常输出。")
         if tasks:
             await asyncio.gather(*tasks)
     
