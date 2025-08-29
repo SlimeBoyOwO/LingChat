@@ -2,6 +2,7 @@ import asyncio
 from ling_chat.utils.function import Function
 from ling_chat.core.messaging.broker import message_broker
 from typing import List, Dict
+import os
 
 from ling_chat.core.logger import logger
 
@@ -16,6 +17,15 @@ class EventsScheduler:
         self.client_id = client_id
         self.user_name = user_name
         self.ai_name = ai_name
+        
+        # TODO 暂时用环境变量管理日程功能的启动，以后可以考虑更换（或者干脆别换了）
+        # 检查环境变量是否启用日程功能
+        self.enabled = os.getenv("ENABLE_SCHEDULE", "true").lower() == "true"
+        if not self.enabled:
+            logger.info("日程功能已通过环境变量禁用")
+            self.schedule_tasks: list[Schedule] = []
+            return
+            
         deflaut_schedule_title = "我的考研计划"
         deflaut_schedule_tasks_content = {
             "09:00": "提醒我起床哦，记得温柔一点❤",
@@ -57,6 +67,9 @@ class EventsScheduler:
         return True
 
     def start_nodification_schedules(self):
+        # 检查是否启用日程功能
+        if not self.enabled:
+            return
         self.proceed_next_nodification()
         logger.info("日程功能已经启动")
     
@@ -67,6 +80,10 @@ class EventsScheduler:
 
     async def send_nodification_by_schedule(self):
         """定义好的函数，在特定时间发送提醒用户日程"""
+        # 检查是否启用日程功能
+        if not self.enabled:
+            return
+            
         # TODO: 这里的话如果有多个日程表会出BUG，暂时懒得修
         for schedule in self.schedule_tasks:
             schedule_times:list = list(schedule.content.keys())
