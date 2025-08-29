@@ -118,8 +118,6 @@ class MessageGenerator:
         
     async def process_message_stream(self, user_message: str):
         """流式处理用户消息，边生成边进行情绪分析、翻译和语音合成"""
-        # 0. 清理之前残留的语音文件
-        # self.voice_maker.delete_voice_files()         # TODO: 音频清理还是交给用户好了，我们不干涉
 
         processed_user_message = self.message_processor.append_user_message(user_message)
 
