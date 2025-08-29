@@ -12,15 +12,16 @@ user_subtitle = Bilibili
 
 voice_models = {
     "sva_speaker_id": "",
-    "sbv2_name": "Murasame v3.7",
+    "sbv2_name": "Ling-v2",
     "sbv2_speaker_id": "0",
     "bv2_speaker_id": "",
-    "sbv2api_name": "Murasame",
+    "sbv2api_name": "Ling v2",
     "sbv2api_speaker_id": "0",
     "gsv_voice_text": "",
     "gsv_voice_filename": "",
+    "aivis_model_uuid": "44f93196-7485-45af-9616-f33adee71846"
 }
-tts_type = "sbv2api"
+tts_type = "aivis"
 
 thinking_message = 灵灵正在思考中...
 
