@@ -19,7 +19,7 @@ class VoiceMaker:
                 self.tts_provider.init_sva_adapter(speaker_id=int(tts_settings["sva_speaker_id"]))
             elif self.tts_type == "sbv2":
                 self.tts_provider.init_sbv2_adapter(speaker_id=int(tts_settings["sbv2_speaker_id"]), 
-                                                     model_name=tts_settings["sbv2_name"])
+                                                    model_name=tts_settings["sbv2_name"])
             elif self.tts_type == "bv2":
                 self.tts_provider.init_bv2_adapter(speaker_id=int(tts_settings["bv2_speaker_id"]), )
             elif self.tts_type == "sbv2api":
@@ -27,13 +27,15 @@ class VoiceMaker:
                                                        speaker_id=int(tts_settings["sbv2api_speaker_id"]))
             elif self.tts_type == "gsv":
                 self.tts_provider.init_gsv_adapter(ref_audio_path=tts_settings["gsv_voice_filename"], 
-                                                     prompt_text=tts_settings["gsv_voice_text"], )
+                                                   prompt_text=tts_settings["gsv_voice_text"], )
+            elif self.tts_type == "aivis":
+                self.tts_provider.init_aivis_adapter(model_uuid=tts_settings["aivis_model_uuid"],)
         except KeyError as e:
             logger.error(f"当前角色卡{name}的TTS设置出错，问题是：{e}")
 
     def set_tts_type(self, tts_type: str) -> None:
         """设置默认的TTS类型"""
-        if tts_type in ("bv2", "gsv", "sbv2", "sva", "sbv2api"):
+        if tts_type in ("bv2", "gsv", "sbv2", "sva", "sbv2api","aivis"):
             self.tts_type = tts_type
         else:
             raise ValueError(f"未知的TTS类型: {tts_type}")

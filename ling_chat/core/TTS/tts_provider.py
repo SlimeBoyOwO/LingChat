@@ -5,6 +5,7 @@ from ling_chat.core.TTS.sbv2_adapter import SBV2Adapter
 from ling_chat.core.TTS.gsv_adapter import GPTSoVITSAdapter
 from ling_chat.core.TTS.sbv2api_adapter import SBV2APIAdapter
 from ling_chat.core.TTS.bv2_adapter import BV2Adapter
+from ling_chat.core.TTS.aivis_adapter import AIVISAdapter
 from ling_chat.core.logger import logger
 from ling_chat.utils.runtime_path import temp_path
 
@@ -42,6 +43,7 @@ class TTS:
         self.sbv2api_adapter = None
         self.bv2_adapter = None
         self.gsv_adapter = None
+        self.aivis_adapter = None
 
     def init_sva_adapter(self,speaker_id: int):
         """
@@ -96,6 +98,25 @@ class TTS:
             lang = language
         )
 
+    def init_aivis_adapter(self, model_uuid: str, speaker_uuid: str|None = None, language: str="ja"):
+        """
+        初始化AIVIS适配器
+
+        :param model_uuid: 模型UUID
+        :param speaker_uuid: 说话人UUID（可选）
+        :param language: 语言选择（目前仅支持ja）
+        """
+        if os.environ.get("AIVIS_API_KRY", "") == "":
+            logger.warning("未设置AIVIS_API_KRY环境变量，请检查是否正确设置")
+            self.enable = False
+            return None
+        self.aivis_adapter = AIVISAdapter(
+            model_uuid=model_uuid,
+            speaker_uuid=speaker_uuid,
+            audio_format=self.format,
+            lang=language
+        )
+
     def init_gsv_adapter(self, ref_audio_path: str, prompt_text: str, prompt_lang: str = "auto"):
         """
         初始化GSV适配器
@@ -123,24 +144,28 @@ class TTS:
 
             if tts_type == 'sva':
                 if self.sva_adapter is None:
-                    raise ValueError("Vits适配器未初始化，但传入了tts_type=sva参数")
+                    raise ValueError("Vits适配器未初始化")
                 return self.sva_adapter
             elif tts_type == 'sbv2':
                 if self.sbv2_adapter is None:
-                    raise ValueError("Style-Bert-Vits2适配器未初始化，但传入了tts_type=sbv参数")
+                    raise ValueError("Style-Bert-Vits2适配器未初始化")
                 return self.sbv2_adapter
             elif tts_type == 'gsv':
                 if self.gsv_adapter is None:
-                    raise ValueError("GPT-SoVITS适配器未初始化，但传入了tts_type=gsv参数")
+                    raise ValueError("GPT-SoVITS适配器未初始化")
                 return self.gsv_adapter
             elif tts_type == 'bv2':
                 if self.bv2_adapter is None:
-                    raise ValueError("Bert-Vits2适配器未初始化，但传入了tts_type=bv2参数")
+                    raise ValueError("Bert-Vits2适配器未初始化")
                 return self.bv2_adapter
             elif tts_type == 'sbv2api':
                 if self.sbv2api_adapter is None:
-                    raise ValueError("sbv2-api适配器未初始化，但传入了tts_type=sbv2api参数")
+                    raise ValueError("sbv2-api适配器未初始化")
                 return self.sbv2api_adapter
+            elif tts_type == 'aivis':
+                if self.aivis_adapter is None:
+                    raise ValueError("AIVIS适配器未初始化")
+                return self.aivis_adapter
             else:
                 raise ValueError(f"未知的TTS类型: {tts_type}")
         elif self.sbv2_adapter is not None:
