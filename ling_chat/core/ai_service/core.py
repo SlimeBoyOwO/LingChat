@@ -66,8 +66,9 @@ class AIService:
             self.ai_prompt = self.message_processor.sys_prompt_builder(self.ai_prompt, self.ai_prompt_example)
                 
             self.voice_maker.set_lang(settings.get("language", "ja"))
-            self.voice_maker.set_tts_type(settings.get("tts_type", "sbv"))
-            self.voice_maker.set_tts_settings(settings.get("voice_models", {}), self.ai_name)
+            self.voice_maker.set_tts(settings.get("tts_type", "sbv"), 
+                                     settings.get("voice_models", {}), 
+                                     self.ai_name)
 
             self.character_path = settings.get("resource_path")
             self.character_id = settings.get("character_id")
