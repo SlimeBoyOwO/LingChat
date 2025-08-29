@@ -62,33 +62,59 @@ class MessageGenerator:
 
             logger.debug(f"句子处理时间: {end_time - start_time} 秒")
     
-    # 句子处理完毕后，立马发送给前端的新process_sentence (流式)
-    async def process_sentence_and_send(self, sentence: str, user_messsage: str, is_final: bool):
-        """处理单个句子的情绪分析、翻译和语音合成，并发送给前端"""
+    ### 改造: 原本的 process_sentence_and_send 方法被改造
+    # 它现在只负责处理句子并“准备”好响应数据，但并不发送
+    async def _process_sentence_and_prepare_response(self, sentence: str, user_message: str, is_final: bool) -> Optional[Dict]:
+        """处理单个句子并准备好响应字典，但不会直接发送。"""
         if not sentence:
-            return
+            return None
         
-        logger.info("开始处理句子" + sentence)
+        logger.info(f"开始处理句子: {sentence}")
         sentence_segments:List[Dict] = self.message_processor.analyze_emotions(sentence)
         if not sentence_segments:
             logger.warning("句子中没有出现中日或情感，AI回复格式错误")
-            return
+            return None
+        
+        start_time = time.perf_counter()
+        if sentence_segments[0].get("japanese_text") == "":
+            await self.translator.translate_ai_response(sentence_segments)
         else:
-            # 翻译句子 TODO 假如翻译句子用的是比较贵的AI，这里不应该每个句子都单独飞过去翻译
-            # 为每个片段生成语音和翻译
-            start_time = time.perf_counter()
-            if sentence_segments[0].get("japanese_text") == "":
-                await self.translator.translate_ai_response(sentence_segments)
-            else:
-                await self.voice_maker.generate_voice_files(sentence_segments)
-            end_time = time.perf_counter()
-            
-            # 当句子准备完毕后，发布这部分的消息
-            response = self.create_response(sentence_segments[0], user_messsage, is_final)
-            await message_broker.publish("1", response)
+            await self.voice_maker.generate_voice_files(sentence_segments)
+        end_time = time.perf_counter()
+        
+        response = self.create_response(sentence_segments[0], user_message, is_final)
+        logger.debug(f"句子处理时间: {end_time - start_time} 秒")
+        return response
+    
+    async def _sequenced_publisher(self, results_store: Dict, publish_events: Dict):
+        """按顺序等待结果，并依次发布它们。"""
+        next_index_to_publish = 0
+        while True:
+            try:
+                if next_index_to_publish not in publish_events:
+                    # 如果生产者还没创建这个索引的事件，就短暂等待
+                    await asyncio.sleep(0.01)
+                    continue
 
-            logger.debug(f"句子处理时间: {end_time - start_time} 秒")
-        logger.info("句子" + sentence + "处理完毕并发送")
+                # 关键：等待，直到对应索引的事件被消费者触发
+                await publish_events[next_index_to_publish].wait()
+                
+                # 从仓库中取出处理好的结果并发布
+                response = results_store.pop(next_index_to_publish)
+                if response:
+                    await message_broker.publish("1", response)
+                
+                # 清理内存并准备发布下一个
+                del publish_events[next_index_to_publish] 
+                
+                # 如果这是最后一个消息，就结束任务
+                if response and response.get("isFinal", False):
+                    break
+                
+                next_index_to_publish += 1
+            except asyncio.CancelledError:
+                break
+
         
     async def process_message_stream(self, user_message: str):
         """流式处理用户消息，边生成边进行情绪分析、翻译和语音合成"""
@@ -112,16 +138,27 @@ class MessageGenerator:
         # 用于存储情绪片段
         emotion_segments = []
 
+        ### 新增: 用于顺序发布的数据结构
+        results_store: Dict[int, Dict] = {}
+        publish_events: Dict[int, asyncio.Event] = {}
+        
+        ### 新增: 启动唯一的“顺序发布者”任务
+        publisher_task = asyncio.create_task(
+            self._sequenced_publisher(results_store, publish_events)
+        )
+
         # 创建处理队列
         sentence_queue = asyncio.Queue(maxsize=10)  # 限制队列大小避免内存爆炸
         
-        # 启动多个消费者任务（3-5个比较合适）
+        # 启动消费者任务...
         consumer_tasks = []
-        for i in range(3):  # 3个并行消费者
+        for i in range(3):
             task = asyncio.create_task(
-                self._process_sentence_consumer(sentence_queue, user_message, i)
+                self._process_sentence_consumer(sentence_queue, user_message, results_store, publish_events, i)
             )
             consumer_tasks.append(task)
+
+        sentence_index = 0  ### 新增: 句子索引计数器
 
         # 用于实时显示的内容缓冲区
         realtime_display_buffer = ""
@@ -173,7 +210,10 @@ class MessageGenerator:
                             buffer = ""
 
                         # 处理完整句子
-                        await sentence_queue.put((sentence, False))
+                        current_index = sentence_index
+                        publish_events[current_index] = asyncio.Event() # 为这个索引创建一个事件
+                        await sentence_queue.put((sentence, current_index, False)) # is_final=False
+                        sentence_index += 1
                         # asyncio.create_task(self.process_sentence_and_send(sentence, user_message, False))
                         # await self.process_sentence(sentence, emotion_segments)
 
@@ -203,7 +243,10 @@ class MessageGenerator:
                                 buffer = ""
 
                             # 处理完整句子
-                            await sentence_queue.put((sentence, False))
+                            current_index = sentence_index
+                            publish_events[current_index] = asyncio.Event() # 为这个索引创建一个事件
+                            await sentence_queue.put((sentence, current_index, False)) # is_final=False
+                            sentence_index += 1
                             # asyncio.create_task(self.process_sentence_and_send(sentence, user_message, False))
                             # await self.process_sentence(sentence, emotion_segments)
 
@@ -230,8 +273,11 @@ class MessageGenerator:
                 if final_display_text.strip():
                     print(final_display_text, end='', flush=True)
 
-                # 使用process_sentence方法处理句子
-                await sentence_queue.put((final_content, True))
+                # 使用process_sentence方法处理最后一个句子
+                current_index = sentence_index
+                publish_events[current_index] = asyncio.Event() # 为这个索引创建一个事件
+                await sentence_queue.put((final_content, current_index, True)) # is_final=False
+                sentence_index += 1
                 # asyncio.create_task(self.process_sentence_and_send(final_content, user_message, True))
                 # await self.process_sentence(final_content, emotion_segments)
 
@@ -278,23 +324,35 @@ class MessageGenerator:
             logger.error(f"详细错误信息: ", exc_info=True)
             yield error_response
         finally:
-            # 取消所有消费者任务
+            # 确保所有任务都被优雅地关闭
             for task in consumer_tasks:
                 task.cancel()
-            await asyncio.gather(*consumer_tasks, return_exceptions=True)
+            publisher_task.cancel()
+            await asyncio.gather(*consumer_tasks, publisher_task, return_exceptions=True)
 
-    async def _process_sentence_consumer(self, queue, user_message, consumer_id):
-        """消费者任务，从队列中取出句子处理"""
-        """多个消费者并行处理句子"""
+    ### 改造: 消费者的功能变为处理并存储结果
+    async def _process_sentence_consumer(self, queue, user_message, results_store, publish_events, consumer_id):
+        """消费者任务：从队列获取句子，处理后将结果存入共享字典，并触发事件。"""
         while True:
             try:
-                sentence, is_final = await queue.get()
-                await self.process_sentence_and_send(sentence, user_message, is_final)
+                task = await queue.get()
+                if task is None: # 收到结束信号
+                    break
+
+                sentence, index, is_final = task
+                # 调用一个只处理不发送的方法，准备好response字典
+                response = await self._process_sentence_and_prepare_response(sentence, user_message, is_final)
+                
+                # 关键：将处理结果存入共享字典
+                results_store[index] = response
+                
+                # 关键：触发事件，通知发布者这个索引的结果已经准备好了
+                if index in publish_events:
+                    publish_events[index].set()
+                
                 queue.task_done()
             except asyncio.CancelledError:
                 break
-            except Exception as e:
-                queue.task_done()
 
     def create_response(self, seg: Dict, user_message:str, is_final: bool) -> Dict:
         """构建单个响应消息"""
