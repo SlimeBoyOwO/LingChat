@@ -21,7 +21,7 @@ voice_models = {
     "gsv_voice_filename": "",
     "aivis_model_uuid": "44f93196-7485-45af-9616-f33adee71846"
 }
-tts_type = "aivis"
+tts_type = "sbv2api"
 
 thinking_message = 灵灵正在思考中...
 
