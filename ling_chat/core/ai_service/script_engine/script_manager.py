@@ -21,17 +21,26 @@ class ScriptManager:
         self.all_scripts:list[str] = []
         self.get_all_scripts()
 
-        # 记忆，状态管理
-        self.current_script_name = self.all_scripts[0]          # TODO: 默认导入第一个剧本
+        self.current_script = None
         self.game_context: GameContext = GameContext()          # 创建一个空的上下文
         self.current_chartper:Charpter|None = None
 
+        # 记忆，状态管理
+        if self.all_scripts is []:
+            logger.error("似乎没有scripts文件夹，请从static中导入")
+            return
+        
+        self.current_script_name = self.all_scripts[0]          # 默认导入第一个剧本
+        
         self.init_script()
     
     def init_script(self):
         script_path = self.scripts_dir / self.current_script_name
         self.current_script = self.get_script(self.current_script_name)
-        characters_list = self._read_characters_from_script(script_path)
+        characters_list:list[Character] = self._read_characters_from_script(script_path)
+        if not characters_list:
+            logger.error("你的剧本不存在任何角色人物")
+            return
         self.game_context.characters = {
             char.character_id: char for char in characters_list
         }
