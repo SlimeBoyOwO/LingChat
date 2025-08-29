@@ -1,12 +1,15 @@
-import { API_URLS } from "../consts.ts";
+import { API_URLS, Locale } from "../consts.ts";
 import { ModelInfo } from "../types/ModelInfo.ts";
-import {send }from "./message.ts";
+import { send } from "./message.ts";
 import { UserInfo } from "./UserInfo.ts";
 
 export interface Defaults {
     model: ModelInfo;
 }
-export interface Settings {}
+export interface Settings {
+    ui_lang: Locale;
+    
+}
 
 export function createDefaultsStatic(): Defaults {
     return <Defaults>{

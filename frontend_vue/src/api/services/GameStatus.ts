@@ -1,5 +1,5 @@
 import { IBubble } from "../types/Bubble.ts";
-import { SingleAvatar } from "../types/CharacterCard.ts";
+import { Emotion, SingleAvatar } from "../types/CharacterCard.ts";
 
 export enum AIStatus {
     IDLE,
@@ -10,9 +10,14 @@ export enum AIStatus {
 
 export interface GameStatus {
     current: {
-        avatar?: SingleAvatar;
         status: AIStatus;
-        bubble?: IBubble
+        name: string;
+        subtitle: string;
+        emotion: Emotion;
+        placeholder: string;
+        text: string;
+        avatar?: SingleAvatar;
+        bubble?: IBubble;
     };
 }
 

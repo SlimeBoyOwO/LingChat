@@ -4,18 +4,19 @@ import { ModelInfo } from "./ModelInfo.ts";
 import { Save, SingleChat } from "./Save.ts";
 
 export type SingleAvatar = string;
+export type Emotion = string;
 type AvatarAudioUrl = string;
+type AvatarImageUrl = string;
+type Color = string;
 
 interface Emotions<T> {
-    //urls
-    happy?: T;
-    sad?: T;
-    angry?: T;
-    // TODO
+    [key: Emotion]: T;
 }
 
-export interface CharacterAvatars extends Emotions<SingleAvatar> {
+export interface CharacterAvatars {
     audios: Emotions<AvatarAudioUrl>;
+    colors: Emotions<Color>;
+    images: Emotions<AvatarImageUrl>;
 }
 
 export interface CharacterCardCover {

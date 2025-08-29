@@ -1,3 +1,5 @@
+import { createI18NStatic } from "./services/I18N";
+
 export const API_URLS = {
     WEBSOCKET: "ws://localhost:8765/ws",
     USER_INFO: "/api/user/info",
@@ -36,6 +38,7 @@ export const LIMITS = {
     MAX_SAVE_COUNT: 10,
     MAX_AVATAR_COUNT: 6
 } as const;
+
 
 export const CHAT_LLM_PROVIDERS = ["webllm", "gemini", "ollama", "lmstudio"] as const;
 

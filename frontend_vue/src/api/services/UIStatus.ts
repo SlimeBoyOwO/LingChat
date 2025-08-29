@@ -1,5 +1,7 @@
 import { CONFIG } from "../consts";
+import { settings } from "../store.ts";
 import { IEffect, IEffectEmpty } from "../types/Effect.ts";
+
 
 export interface UIStatus {
     __nav_stack: string[];
@@ -12,6 +14,7 @@ export interface SingleAudio {
     src: string;
     volume?: number;
     loop?: boolean;
+    onEnded: () => void;
 }
 
 interface GlobalAudios {
@@ -30,6 +33,7 @@ export interface RootUIStatus extends UIStatus {
     isFastLoad: boolean;
     __load_progress: number;
     readonly loadProgress: number;
+    readonly text: { [key: string]: string };
     beginLoading: <T = this>(fast_load?: boolean) => T;
     endLoading: <T = this>() => T;
     setLoadProgress: <T = this>(progress: number, relative?: boolean) => T;
@@ -87,6 +91,9 @@ export function extendToRootUIStatus(uiStatus: UIStatus): RootUIStatus {
         get loadProgress() {
             return this.__load_progress;
         },
+        get text() {
+            return I18N[settings.value.ui_lang]??I18N["zh"];
+        }
         beginLoading(fast_load: boolean = false) {
             this.__load_progress = 0;
             this.isLoading = true;
