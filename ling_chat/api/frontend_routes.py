@@ -42,8 +42,9 @@ def get_file_response(file_path: str) -> FileResponse:
 
 @router.get("/")
 async def index():
-    return get_file_response(str(frontend_path / "pages/index.html"))
+    return get_file_response(str(frontend_path / "index.html"))
 
+# TODO 这个文件新前端不存在
 @router.get("/about")
 async def about():
     return get_file_response(str(frontend_path / "pages/about.html"))
