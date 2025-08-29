@@ -70,6 +70,3 @@ class VoiceMaker:
                                    f"Tips：要真出现这情况，你应该检查LLM是否正常输出。")
         if tasks:
             await asyncio.gather(*tasks)
-    
-    def delete_voice_files(self):
-        self.tts_provider.cleanup()
