@@ -1,14 +1,14 @@
 [project]
 name = "ling-chat"
-version = "0.3.0"
-description = "" # 可选，从 [tool.poetry] 复制过来
+version = "0.3.1-beta1"
+description = ""
 authors = [
     { name = "0x00-pl", email = "0x00.pl@gmail.com" },
 ]
 
 [tool.poetry]
 name = "ling-chat"
-version = "0.3.0"
+version = "0.3.1-beta1"
 description = ""
 authors = ["0x00-pl <0x00.pl@gmail.com>"]
 readme = "README.md"
@@ -51,3 +51,8 @@ sqlalchemy = "^2.0.0"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.0"
+pytest-asyncio = "^0.21.0"
+pytest-cov = "^6.2.1"
