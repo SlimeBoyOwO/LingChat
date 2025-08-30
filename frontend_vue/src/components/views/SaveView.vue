@@ -1,5 +1,5 @@
 <template>
-  <div v-if="uiStatus.currentPage === 'SaveView'"></div>
+    <div v-if="uiStatus.main.currentPage === 'SaveView'"></div>
 </template>
 <script setup lang="ts">
 import { uiStatus } from "../../api/store";

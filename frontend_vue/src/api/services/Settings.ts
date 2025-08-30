@@ -8,7 +8,6 @@ export interface Defaults {
 }
 export interface Settings {
     ui_lang: Locale;
-    
 }
 
 export function createDefaultsStatic(): Defaults {

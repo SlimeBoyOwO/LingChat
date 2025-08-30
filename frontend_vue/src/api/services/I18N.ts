@@ -1,8 +1,9 @@
 import { Translation } from "../../i18n/TranslationBase";
-import zh from "../../i18n/zh"
+import zh from "../../i18n/zh";
+
 export enum Locale {
-    en="en",
-    zh="zh",
+    en = "en",
+    zh = "zh"
 }
 export interface I18N {
     __locale: Locale;
@@ -10,8 +11,8 @@ export interface I18N {
     __locales: { [key in Locale]?: Translation };
     readonly current: Translation;
     readonly fallback: Translation;
-    set: (locale: Locale,fallback?:Locale) => this;
-    get: (key:string) => string;
+    set: (locale: Locale, fallback?: Locale) => this;
+    get: (key: string) => string;
 }
 
 export function createI18NStatic(): I18N {
@@ -22,12 +23,12 @@ export function createI18NStatic(): I18N {
             [Locale.zh]: zh
         },
         get current() {
-            return this.__locales[this.__locale]??{};
+            return this.__locales[this.__locale] ?? {};
         },
         get fallback() {
             return this.__locales[this.__fallback] ?? {};
         },
-        set(locale, fallback=Locale.zh) {
+        set(locale, fallback = Locale.zh) {
             this.__locale = locale;
             this.__fallback = fallback;
             return this;

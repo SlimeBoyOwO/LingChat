@@ -52,9 +52,7 @@ body.bg-default {
   z-index: 1;
 }
 
-.login-panel {
-
-  backdrop-filter: blur(10px); /* 增强背景模糊效果 */
+.login-panel { /* 增强背景模糊效果 */
 
   backdrop-filter: blur(10px); /* Safari 支持 */
 

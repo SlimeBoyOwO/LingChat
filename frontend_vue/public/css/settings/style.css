@@ -326,10 +326,6 @@ body {
   transition: background-color var(--transition-speed);
 
   user-select: none;
-
-  user-select: none;
-
-  user-select: none;
 }
 
 .checkbox-container:hover {

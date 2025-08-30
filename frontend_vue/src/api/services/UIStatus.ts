@@ -1,12 +1,13 @@
 import { CONFIG } from "../consts";
-import { settings } from "../store.ts";
 import { IEffect, IEffectEmpty } from "../types/Effect.ts";
-
 
 export interface UIStatus {
     __nav_stack: string[];
+    __with?: unknown;
     readonly currentPage: string;
     switchPage: <T = this>(page: string) => T;
+    with: <T extends object, This = this>(_with: T) => This;
+    read: <T extends object>() => T;
     back: <T = this>() => T;
 }
 
@@ -33,7 +34,6 @@ export interface RootUIStatus extends UIStatus {
     isFastLoad: boolean;
     __load_progress: number;
     readonly loadProgress: number;
-    readonly text: { [key: string]: string };
     beginLoading: <T = this>(fast_load?: boolean) => T;
     endLoading: <T = this>() => T;
     setLoadProgress: <T = this>(progress: number, relative?: boolean) => T;
@@ -54,65 +54,75 @@ export interface AnimationData {
 }
 
 export function createUIStatusStatic(beginPage: string): UIStatus {
-    return <UIStatus>{
+    const _ui_status = <UIStatus>{
         __nav_stack: [beginPage],
+        __with: undefined,
         isLoading: true,
         isFastLoad: false,
         __load_progress: 0,
         get currentPage() {
-            if (this.__nav_stack.length === 0) {
-                throw new Error("nav_stack is empty.");
-            }
             return this.__nav_stack[this.__nav_stack.length - 1];
         },
         switchPage(page: string) {
+            this.__with = undefined;
             if (this.__nav_stack.length > 0 && this.currentPage === page) {
                 return this;
             }
             const index = this.__nav_stack.indexOf(page);
             if (index !== -1) {
-                this.__nav_stack.splice(index + 1);
+                this.__nav_stack.splice(index);
             }
+            this.__nav_stack.push(page);
             return this;
+        },
+        with(_with) {
+            this.__with = _with;
+            return this;
+        },
+        read<T extends object>() {
+            const temp = this.__with;
+            this.__with = undefined;
+            return temp as T;
         },
         back() {
             this.__nav_stack.pop();
             return this;
         }
     };
+    return _ui_status;
 }
 
 export function extendToRootUIStatus(uiStatus: UIStatus): RootUIStatus {
-    return <RootUIStatus>{
-        ...uiStatus,
-        background_image: CONFIG.DEFAULT_BACKGROUND,
-        background_effect: IEffectEmpty,
-        effect: IEffectEmpty,
-        get loadProgress() {
-            return this.__load_progress;
-        },
-        get text() {
-            return I18N[settings.value.ui_lang]??I18N["zh"];
-        }
-        beginLoading(fast_load: boolean = false) {
-            this.__load_progress = 0;
-            this.isLoading = true;
-            this.isFastLoad = fast_load;
-            return this;
-        },
-        endLoading(ensure: boolean = true) {
-            if (ensure) this.__load_progress = 100;
-            this.isLoading = false;
-            this.isFastLoad = false;
-            return this;
-        },
-        setLoadProgress(progress: number, relative: boolean = false) {
-            const new_progress = relative ? progress : this.__load_progress + progress;
-            this.__load_progress = new_progress < 0 ? 0 : new_progress > 100 ? 100 : new_progress;
-            return this;
-        },
-        audio: <GlobalAudios>{}
-    };
+    Object.defineProperties(
+        uiStatus,
+        Object.getOwnPropertyDescriptors(<RootUIStatus>{
+            background_image: CONFIG.DEFAULT_BACKGROUND,
+            background_effect: IEffectEmpty,
+            effect: IEffectEmpty,
+            get loadProgress() {
+                return this.__load_progress;
+            },
+            beginLoading(fast_load: boolean = false) {
+                this.__load_progress = 0;
+                this.isLoading = true;
+                this.isFastLoad = fast_load;
+                return this;
+            },
+            endLoading(ensure: boolean = true) {
+                if (ensure) this.__load_progress = 100;
+                this.isLoading = false;
+                this.isFastLoad = false;
+                return this;
+            },
+            setLoadProgress(progress: number, relative: boolean = false) {
+                const new_progress = relative ? progress : this.__load_progress + progress;
+                this.__load_progress = new_progress < 0 ? 0 : new_progress > 100 ? 100 : new_progress;
+                return this;
+            },
+            audio: <GlobalAudios>{}
+        })
+    );
+    return uiStatus as RootUIStatus;
 }
 
 export function createNewAnimationData(
