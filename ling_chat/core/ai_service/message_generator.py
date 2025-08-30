@@ -361,6 +361,7 @@ class MessageGenerator:
             "emotion": seg['predicted'] or seg["original_tag"],
             "originalTag": seg['original_tag'],
             "message": seg['following_text'],
+            "japaneseMessage": seg['japanese_text'],
             "motionText": seg['motion_text'],
             "audioFile": os.path.basename(seg['voice_file']) if os.path.exists(seg['voice_file']) else None,
             "originalMessage": user_message,

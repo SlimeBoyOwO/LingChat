@@ -9,8 +9,18 @@ class Translator:
     def __init__(self, voice_maker):
         self.enable:bool = True
         self.translator_llm: 'LLMManager' = LLMManager(llm_job="translator")
-        self.messages = [{"role": "system",
-        "content": "你是一个二次元角色中文台词翻译师，任务是翻译二次元台词对话，将中文翻译成日语，允许意译，保持流畅自然生动。你的翻译格式和原文完全一致，没有任何多余内容。"}]
+        self.messages = [{
+            "role": "system",
+            "content": """
+            你是一个二次元角色中文台词翻译师，任务是翻译二次元台词对话，
+            将中文翻译成日语，允许意译。确保你的翻译符合二次元的发言习惯，而不是生硬的直译，保持流畅自然生动。
+            除了翻译内容，你不提供额外的解释，并且你的翻译句子必须包裹在<>符号内，否则会导致严重错误。
+            比如，原文内容为：
+            <你好呀莱姆，今天过的怎么样呀？><哎？有点不高兴吗？没关系~>
+            那么你的回复内容为：
+            <はいはい、レムちゃん、今日はどうだった？><えっ？なんだかご機嫌ななめ？大丈夫だよ～>
+            """
+            }]
         self.voice_maker = voice_maker
 
         self.enable_translate:bool = os.environ.get("ENABLE_TRANSLATE", "True").lower() == "true"
