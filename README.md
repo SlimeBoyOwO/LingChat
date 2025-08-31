@@ -21,6 +21,10 @@
 
 ## ⭐ 快速上手
 
+### Step -1: 选择适合的版本
+- 最新的 `v0.3.1` 是最新的测试开发版本，在多了许多功能的同时也有一些不完整的功能和小问题，但有极致的回复速度，美化，优化，以及更稳定的AI输出。
+- 最稳定的版本是 `0.3.0` 如果你希望体验 `B站` 上的版本可以使用这个，功能完整但是缺少一些最新的开发内容。
+
 ### Step 0: 开始之前的准备
 - 在DeepSeek或者其他大模型网站中，申请自己的API密钥，并且保证有余额供使用 -> [DeepSeek的官方API获取网站](https://platform.deepseek.com/)
 
@@ -28,7 +32,9 @@
 - 在[release](https://github.com/SlimeBoyOwO/LingChat/releases)中，找到最新的版本，下载如 `LingChat_setup.exe` 的文件，下载完成后运行并安装LingChat。
 - 点击桌面快捷方式或安装目录下的 `LingChat.exe` 启动程序
 - 您也可以使用如LingChat.x.x.x.7z的文件解压后使用
+
 #### 温馨提示：
+
 > 解压完成后可能会发生 `LingChat.exe` 不见了的情况，这多半是由于 Windows Defender 把它当病毒干掉了。需要手动打开**Windows安全中心**，选择**病毒和威胁防护**一栏，允许该威胁。
 
 ### Step 2: 首次启动配置
