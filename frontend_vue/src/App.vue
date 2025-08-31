@@ -1,11 +1,9 @@
 <template>
-  <MainChat />
-  <Settings />
+  <router-view />
 </template>
 
-<script setup lang="ts">
-import MainChat from "./components/views/MainChat.vue";
-import Settings from "./components/settings/SettingsPanel.vue";
+<script setup>
+// 在使用 <router-view> 的情况下，通常不需要在这里再导入具体的页面组件了
 </script>
 
 <style>
