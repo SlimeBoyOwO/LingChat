@@ -3,8 +3,8 @@
 </template>
 
 <script setup lang="ts">
-import { gameStatus } from "../../../api/store";
-import { Position } from "../../../api/types/Bubble";
+import { gameStatus } from "../../../../api/store";
+import { Position } from "../../../../api/types/Bubble";
 
 import "./avatar-animation.css";
 </script>

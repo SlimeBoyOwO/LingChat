@@ -13,9 +13,9 @@
 </template>
 
 <script setup lang="ts">
-import { uiStatus } from "../../api/store";
-import { Button } from "../base";
-import { ChatAvatar, ChatDialog } from "../pages/chat";
+import { uiStatus } from "../../../api/store";
+import { Button } from "../../controls";
+import { ChatAvatar, ChatDialog } from ".";
 
 function mounted() {
     uiStatus.value.main.endLoading();

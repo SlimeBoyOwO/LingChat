@@ -39,11 +39,10 @@
 <script setup lang="ts">
 import { Ref, ref } from "vue";
 
-import { AIStatus } from "../../../api/services/GameStatus";
-import { gameStatus, i18n, uiStatus } from "../../../api/store";
+import { AIStatus } from "../../../../api/services/GameStatus";
+import { gameStatus, i18n, uiStatus } from "../../../../api/store";
 // import { chatHandler } from "../../../api/websocket/handlers/chat-handler";
-import { Button } from "../../base";
-import { IconType } from "../../base/widget/Icon.vue";
+import { Button } from "../../../controls";
 
 function openHistory() {
     uiStatus.value.settings.switchPage("history");

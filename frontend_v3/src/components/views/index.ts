@@ -1,4 +1,5 @@
-export { default as MainMenu } from "./MainMenu.vue";
-export { default as MainChat } from "./MainChat.vue";
-export { default as Loader} from "./Loader.vue";
-export { default as FastLoader} from "./FastLoader.vue";
+export { default as MenuView } from "./MenuView.vue";
+export { default as Background } from "./Background.vue";
+export { default as Effect } from "./Effect.vue";
+export { default as AudioPlayer } from "./AudioPlayer.vue";
+export { default as MainPanel } from "./MainPanel.vue";

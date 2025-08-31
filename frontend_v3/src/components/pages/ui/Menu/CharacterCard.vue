@@ -17,7 +17,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 
-import Button from "../../base/widget/Button.vue";
+import Button from "../../b4ase/widget/Button.vue";
 
 interface CharacterProps {
     avatar?: string;

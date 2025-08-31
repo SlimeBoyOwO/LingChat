@@ -2,16 +2,16 @@
     <div :class="['main-panel', { blur: uiStatus.main.currentPage !== 'MenuView' }]">
         <MenuView />
         <ChatView />
-        <!-- <Settings v-else-if="uiStatus.currentPage === 'settings'" /> -->
-        <SaveView />
+        <SettingsView />
     </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted } from "vue";
 
-import { ChatView, MenuView, SaveView } from ".";
+import { MenuView } from ".";
 import { uiStatus } from "../../api/store";
+import { ChatView, SettingsView } from "../pages";
 
 // import { SettingsPanel as Settings } from '../settings'
 onMounted(() => uiStatus.value.main.switchPage("MenuView"));
