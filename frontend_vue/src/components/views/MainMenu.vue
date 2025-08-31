@@ -88,6 +88,15 @@ function goToCreditsPage() {
   /* 必须保留，为 ::before 提供定位锚点 */
 }
 
+/* 定义自定义字体 */
+@font-face {
+  font-family: "Maoken Assorted Sans";
+  src: url("./assets/fonts/MaokenAssortedSans.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 .body::before {
   content: "";
   position: absolute;
