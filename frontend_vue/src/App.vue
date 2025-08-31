@@ -7,15 +7,6 @@
 </script>
 
 <style>
-/* 定义自定义字体 */
-@font-face {
-  font-family: "Maoken Assorted Sans";
-  src: url("./assets/fonts/MaokenAssortedSans.ttf") format("truetype");
-  font-weight: normal;
-  font-style: normal;
-  font-display: swap;
-}
-
 :root {
   /*全局变量*/
   --accent-color: #79d9ff;
