@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from ling_chat.utils.runtime_path import temp_path
+from ling_chat.core.logger import logger
 
 router = APIRouter(prefix="/api/v1/chat/sound", tags=["Chat Sound"])
 
@@ -14,7 +15,7 @@ async def get_specific_sound(voice_file: str):
 
     file_path = voice_dir / voice_file
 
-    print("寻找的路径是" + str(file_path))
+    logger.debug("语音寻找的路径是" + str(file_path))
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Voice not found")
     

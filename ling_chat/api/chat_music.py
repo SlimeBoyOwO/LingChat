@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import List, Dict
 import shutil
 from ling_chat.utils.runtime_path import static_path, user_data_path
+from ling_chat.core.logger import logger
 
 TEMPLATE_MUSIC_DIR = static_path / "game_data/musics"
 MUSIC_DIR = user_data_path / "game_data/musics"
@@ -96,7 +97,7 @@ async def delete_music(url: str):
         filename = url.split("/")[-1]
         file_path = MUSIC_DIR / filename
 
-        print("寻找的路径是" + str(file_path))
+        logger.debug("删除音乐的寻找的路径是" + str(file_path))
 
         if not file_path.exists() or not file_path.is_file():
             raise HTTPException(status_code=404, detail="文件未找到")
