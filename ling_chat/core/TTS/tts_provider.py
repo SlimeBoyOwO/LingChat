@@ -211,13 +211,3 @@ class TTS:
             logger.error(f"TTS服务不可达，已禁用语音，重新启动程序以刷新启动服务")
             self.enable = False
             return None
-
-    def cleanup(self):
-        """
-        清理所有临时文件
-        """
-        for file in self.temp_dir.glob(f"*.{self.format}"):
-            try:
-                file.unlink()
-            except Exception as e:
-                logger.warning(f"清理临时文件失败 {file.name}: {str(e)}")

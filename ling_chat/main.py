@@ -5,15 +5,15 @@ import time
 from typing import Collection
 
 from ling_chat.utils.runtime_path import user_data_path, third_party_path
-from ling_chat.utils.function import Function
+from ling_chat.utils.load_env import load_env
 from ling_chat.utils.easter_egg import get_random_loading_message
 
 if os.path.exists(".env"):
-    Function.load_env()
+    load_env()
 else:
     try:
-        Function.load_env(".env.example")
-        Function.load_env(user_data_path / ".env")  # 加载用户数据目录下的环境变量
+        load_env(".env.example")
+        load_env(user_data_path / ".env")  # 加载用户数据目录下的环境变量
     except Exception as e:
         print(f"警告：加载环境变量失败，将使用默认: {e}")
 
@@ -28,6 +28,7 @@ from ling_chat.core.webview import start_webview
 from ling_chat.utils.cli import print_logo
 from ling_chat.utils.voice_check import VoiceCheck
 from ling_chat.third_party import install_third_party
+from ling_chat.utils.function import Function
 
 
 def handel_install(install_modules_list: Collection[str]):
@@ -66,6 +67,12 @@ def signal_handler(signum, frame):
     global should_exit
     logger.info("接收到中断信号，正在关闭程序...")
     should_exit = True
+    # 根据环境变量删除临时文件
+    if os.environ.get("CLEAN_TEMP_FILES", "false").lower() == "true":
+        Function().clean_temp_files()
+        logger.info("已删除临时文件")
+    else:
+        logger.info("已根据环境变量禁用临时文件清理")
 
 def main():
     global should_exit
