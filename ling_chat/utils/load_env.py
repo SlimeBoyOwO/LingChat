@@ -2,7 +2,7 @@ import os
 from typing import Dict
 from pathlib import Path
 import shutil
-def load_env(env_path: Path|str = ".env", init: bool = False) -> Dict[str, str]:
+def load_env(env_path: Path|str = ".env") -> Dict[str, str]:
     """
     读取 .env 文件中的所有环境变量并导出到当前环境中
     
@@ -13,26 +13,14 @@ def load_env(env_path: Path|str = ".env", init: bool = False) -> Dict[str, str]:
         Dict[str, str]: 解析出的环境变量字典
     """
     env_vars: Dict[str, str] = {}
-    if init == True:
-        if not os.path.exists(env_path):
-            print(f"[WARN]找不到环境变量文件: {env_path}")
-            # 尝试从.env.example复制
-            example_path = ".env.example"
-            if os.path.exists(example_path):
-                print(f"[INFO]无法找到环境变量文件 {env_path}，尝试从 {example_path} 复制")
-                shutil.copy2(example_path, env_path)
-                print(f"[INFO]从 {example_path} 复制文件到 {env_path}")
-            else:
-                print(f"[WARN]找不到环境变量文件 {env_path} 和 {example_path}")
-                return env_vars
     try:
         if (not os.path.exists(env_path)):
             example_path = ".env.example"
-            print(f"[WARN]找不到环境变量文件: {env_path}")
+            print(f"\033[91m[WARN]\033[0m找不到环境变量文件: {env_path}")
             shutil.copy2(example_path, env_path)
-            print(f"[INFO]从 {example_path} 复制文件到 {env_path}")
+            print(f"\033[92m[INFO]\033[0m从 {example_path} 复制文件到 {env_path}")
         if  os.path.exists(env_path):
-            print(f"[INFO]正在加载环境变量文件: {env_path}")
+            print(f"\033[92m[INFO]\033[0m正在加载环境变量文件: {env_path}")
 
         with open(env_path, 'r', encoding='utf-8') as file:
             lines = file.readlines()
