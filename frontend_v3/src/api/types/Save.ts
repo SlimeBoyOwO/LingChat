@@ -1,4 +1,5 @@
 import { LIMITS } from "../consts";
+import ThrowHelper from "../services/ThrowHelper";
 import { CharacterCard } from "./CharacterCard";
 
 export interface SingleSave {
@@ -41,14 +42,14 @@ export function newSave(saves: SingleSave[] = []): Save {
             if (typeof param === "number") {
                 const index: number = param;
                 if (param < 0 || this.count <= param) {
-                    throw new Error(`Index(${index}) out of range(0~${this.count - 1})`);
+                    ThrowHelper(`Index(${index}) out of range(0~${this.count - 1})`);
                 }
                 this.__saves.splice(index, 1);
             } else {
                 const item: SingleSave = param;
                 const index: number = this.__saves.indexOf(item);
                 if (index === -1) {
-                    throw new Error(`${item} not found in saves`);
+                    ThrowHelper(`${item} not found in saves`);
                 }
                 this.__saves.splice(index, 1);
             }

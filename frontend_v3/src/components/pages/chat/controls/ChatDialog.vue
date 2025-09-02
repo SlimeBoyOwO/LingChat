@@ -39,10 +39,12 @@
 <script setup lang="ts">
 import { Ref, ref } from "vue";
 
+import { PAGES } from "../../../../api/consts";
 import { AIStatus } from "../../../../api/services/GameStatus";
 import { gameStatus, i18n, uiStatus } from "../../../../api/store";
 // import { chatHandler } from "../../../api/websocket/handlers/chat-handler";
 import { Button } from "../../../controls";
+import { IconType } from "../../../controls/Icon.vue";
 
 function openHistory() {
     uiStatus.value.settings.switchPage("history");
@@ -50,13 +52,13 @@ function openHistory() {
 }
 
 function saveGame() {
-    uiStatus.value.settings.switchPage("save").with({ status: "save" }); //TODO 用 enum 替换掉这部分
-    uiStatus.value.main.switchPage("Settings").beginLoading();
+    uiStatus.value.settings.switchPage(PAGES.SETTINGS.SAVE).with({ status: "save" });
+    uiStatus.value.main.switchPage(PAGES.MAIN.SETTINGS).beginLoading();
 }
 
 function loadGame() {
-    uiStatus.value.settings.switchPage("save").with({ status: "load" });
-    uiStatus.value.main.switchPage("Settings").beginLoading();
+    uiStatus.value.settings.switchPage(PAGES.SETTINGS.SAVE).with({ status: "load" });
+    uiStatus.value.main.switchPage(PAGES.MAIN.SETTINGS).beginLoading();
 }
 
 const chat_buttons: {

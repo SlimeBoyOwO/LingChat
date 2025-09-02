@@ -4,7 +4,7 @@
             <ChatAvatar />
             <ChatDialog />
             <div id="menu-panel">
-                <Button type="nav" icon="text" @click="uiStatus.main.switchPage('settings')">
+                <Button type="nav" icon="text" @click="uiStatus.main.switchPage(PAGES.MAIN.SETTINGS).beginLoading(true)">
                     <h3>菜单</h3>
                 </Button>
             </div>
@@ -13,9 +13,11 @@
 </template>
 
 <script setup lang="ts">
+import { PAGES } from "../../../api/consts";
 import { uiStatus } from "../../../api/store";
 import { Button } from "../../controls";
-import { ChatAvatar, ChatDialog } from ".";
+import ChatAvatar from "./controls/ChatAvatar.vue";
+import ChatDialog from "./controls/ChatDialog.vue";
 
 function mounted() {
     uiStatus.value.main.endLoading();

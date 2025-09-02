@@ -1,11 +1,9 @@
 <template>
     <div class="character-card">
-        <div class="character-avatar-container">
-            <img :src="avatar" :alt="name" class="character-avatar" />
-        </div>
+        <img :src="props.cover" :alt="props.title" class="character-avatar" />
         <div class="character-content">
-            <h5 class="character-title">{{ name }}</h5>
-            <p class="character-description">{{ info }}</p>
+            <h5 class="character-title">{{ props.title }}</h5>
+            <p class="character-description">{{ props.description }}</p>
 
             <div class="character-actions">
                 <slot name="actions"></slot>
@@ -15,17 +13,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { CharacterCardCover } from "../../../../api/types/CharacterCard";
 
-import Button from "../../b4ase/widget/Button.vue";
-
-interface CharacterProps {
-    avatar?: string;
-    name?: string;
-    info?: string;
-}
-
-const props = withDefaults(defineProps<CharacterProps>(), {});
+const props = defineProps<CharacterCardCover>();
 </script>
 
 <style scoped>
@@ -34,11 +24,12 @@ const props = withDefaults(defineProps<CharacterProps>(), {});
     background: rgba(255, 255, 255, 0.1);
     backdrop-filter: blur(20px) saturate(180%);
     border-radius: 16px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 4px 12px rgba(0, 255, 255 / 20%);
     overflow: hidden;
     transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-    border: 1px solid rgba(0, 0, 0, 0.05);
-    height: 180px; /* 固定高度保持统一 */
+    border: 1px solid rgba(0, 255, 255 / 20%);
+    height: 180px;
+    /* 固定高度保持统一 */
 }
 
 .character-card:hover {
@@ -61,7 +52,8 @@ const props = withDefaults(defineProps<CharacterProps>(), {});
 .character-avatar {
     width: 180px;
     height: 180px;
-    object-fit: contain; /* 保持原始比例，完整显示 */
+    object-fit: contain;
+    /* 保持原始比例，完整显示 */
     border-radius: 8px;
     padding: 5px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);

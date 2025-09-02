@@ -1,7 +1,7 @@
 <template>
     <Background />
     <MainPanel style="z-index: 1" />
-    <Effect :effect="uiStatus.main.effect" style="z-index: 2" />
+    <Effect style="z-index: 2" :effect="uiStatus.main.effect" />
     <FastLoader style="z-index: 3" />
     <Loader style="z-index: 4" />
     <AudioPlayer :source="uiStatus.main.audio.effect" />

@@ -1,5 +1,5 @@
 <template>
-    <div :class="['main-panel', { blur: uiStatus.main.currentPage !== 'MenuView' }]">
+    <div :class="['main-panel', { blur: uiStatus.main.currentPage !== PAGES.MAIN.MENU }]">
         <MenuView />
         <ChatView />
         <SettingsView />
@@ -10,11 +10,12 @@
 import { onMounted } from "vue";
 
 import { MenuView } from ".";
+import { PAGES } from "../../api/consts";
 import { uiStatus } from "../../api/store";
-import { ChatView, SettingsView } from "../pages";
+import { ChatView } from "../pages/chat";
+import { SettingsView } from "../pages/settings";
 
-// import { SettingsPanel as Settings } from '../settings'
-onMounted(() => uiStatus.value.main.switchPage("MenuView"));
+onMounted(() => uiStatus.value.main.switchPage(PAGES.MAIN.MENU));
 </script>
 
 <style>
@@ -24,31 +25,9 @@ onMounted(() => uiStatus.value.main.switchPage("MenuView"));
     position: relative;
 }
 
-.main-panel::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-
-    /* 2. 修复：使用 z-index: 0 而不是 -1，确保背景可见 */
-    z-index: 0;
-
-    /* 3. 定义我们要过渡的属性：filter */
-    /* 我们使用 filter: brightness() 来模拟蒙版，因为它可以平滑过渡 */
-    filter: blur(0px) brightness(1);
-
-    /* 使用 0.6s 的过渡时间 */
-    transition: filter 0.6s cubic-bezier(0.7, 0, 0.2, 1);
-
-    /* 确保不阻挡交互 */
-    pointer-events: none;
-}
-
-.body.panel-active::before {
-    filter: blur(12px) brightness(0.9);
-    /* 通用背景模糊和变暗 */
+.main-panel.blur {
+    backdrop-filter: blur(8px);
+    transition: backdrop-filter 0.5s ease-in;
 }
 
 /* 主容器，用于设置背景和布局 */
@@ -59,17 +38,6 @@ onMounted(() => uiStatus.value.main.switchPage("MenuView"));
     justify-content: flex-start;
     /* 将主菜单推到左边 */
     align-items: center;
-    position: relative;
-    /* 必须保留，为 ::before 提供定位锚点 */
-}
-
-/* 为动画元素添加过渡效果 */
-.logo,
-.main-menu,
-.settings-panel {
-    transition:
-        transform 0.6s cubic-bezier(0.7, 0, 0.2, 1),
-        opacity 0.6s cubic-bezier(0.7, 0, 0.2, 1);
 }
 
 /* 主菜单 */

@@ -28,7 +28,6 @@ import { uiStatus } from "../../api/store";
     justify-content: center;
     -webkit-backdrop-filter: blur(16px);
     backdrop-filter: blur(16px);
-    z-index: 9999;
     opacity: 1;
 }
 

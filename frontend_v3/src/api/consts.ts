@@ -4,6 +4,7 @@ export const API_URLS = {
     USER_DATA: "/api/user/data",
     DEFAULTS: "/api/user/settings/defaults",
     SETTINGS: "/api/user/settings/settings",
+    SETTINGS_STRUCTURE: "/api/user/settings/structure",
     CARD: {
         CHARACTER: {
             COVER: "/api/card/character/single/cover",
@@ -35,6 +36,18 @@ export const CONFIG = {
 export const LIMITS = {
     MAX_SAVE_COUNT: 10,
     MAX_AVATAR_COUNT: 6
+} as const;
+
+export const PAGES = {
+    MAIN: {
+        MENU: "MenuView",
+        SETTINGS: "SettingsView",
+        CHAT: "ChatView"
+    },
+    SETTINGS: {
+        SAVE: "save",
+        HISTORY: "history"
+    }
 } as const;
 
 export const CHAT_LLM_PROVIDERS = ["webllm", "gemini", "ollama", "lmstudio"] as const;

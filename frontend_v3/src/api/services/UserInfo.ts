@@ -1,6 +1,7 @@
 import { API_URLS } from "../consts.ts";
 import { CharacterCard, CharacterCardCover } from "../types/CharacterCard.ts";
 import { send } from "./message.ts";
+import ThrowHelper from "./ThrowHelper.ts";
 
 export interface UserData {
     readonly isInitialized: boolean;
@@ -48,7 +49,7 @@ export async function getUserInfo(user_info: UserInfo, username: string, encrypt
         password: encrypted_password
     }).then(response => {
         if (response.status != 200) {
-            throw new Error(response.statusText);
+            ThrowHelper(response.statusText);
         }
         loadUserInfo(user_info, response.data.id, response.data.name, response.data.auth_token);
     });

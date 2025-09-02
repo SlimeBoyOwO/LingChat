@@ -1,5 +1,6 @@
 import { CONFIG } from "../consts";
 import { IEffect, IEffectEmpty } from "../types/Effect.ts";
+import ThrowHelper from "./ThrowHelper.ts";
 
 export interface UIStatus {
     __nav_stack: string[];
@@ -7,7 +8,7 @@ export interface UIStatus {
     readonly currentPage: string;
     switchPage: <T = this>(page: string) => T;
     with: <T extends object, This = this>(_with: T) => This;
-    read: <T extends object>() => T;
+    read: <T extends object>() => T | undefined;
     back: <T = this>() => T;
 }
 
@@ -81,7 +82,6 @@ export function createUIStatusStatic(beginPage: string): UIStatus {
         },
         read<T extends object>() {
             const temp = this.__with;
-            this.__with = undefined;
             return temp as T;
         },
         back() {
@@ -93,9 +93,8 @@ export function createUIStatusStatic(beginPage: string): UIStatus {
 }
 
 export function extendToRootUIStatus(uiStatus: UIStatus): RootUIStatus {
-    Object.defineProperties(
-        uiStatus,
-        Object.getOwnPropertyDescriptors(<RootUIStatus>{
+    Object.assign(
+        uiStatus, <RootUIStatus> {
             background_image: CONFIG.DEFAULT_BACKGROUND,
             background_effect: IEffectEmpty,
             effect: IEffectEmpty,
@@ -119,9 +118,8 @@ export function extendToRootUIStatus(uiStatus: UIStatus): RootUIStatus {
                 this.__load_progress = new_progress < 0 ? 0 : new_progress > 100 ? 100 : new_progress;
                 return this;
             },
-            audio: <GlobalAudios>{}
-        })
-    );
+            audio: <GlobalAudios> {}
+        });
     return uiStatus as RootUIStatus;
 }
 
@@ -149,27 +147,27 @@ export function createNewAnimationData(
             return this.__raw_duration;
         },
         setFactor(factor: number) {
-            if (factor < 0) throw new Error("Animation duration factor cannot be negative.");
+            if (factor < 0) ThrowHelper("Animation duration factor cannot be negative.");
             this.__factor = factor;
             return this;
         },
         setDuration(duration: number) {
-            if (duration < 0) throw new Error("Animation duration cannot be negative.");
+            if (duration < 0) ThrowHelper("Animation duration cannot be negative.");
             this.__duration = duration;
             return this;
         },
         setMinDuration(duration: number) {
-            if (duration < 0) throw new Error("Animation duration cannot be negative.");
+            if (duration < 0) ThrowHelper("Animation duration cannot be negative.");
             if (this.__max_duration && duration > this.__max_duration)
-                throw new Error("Minimum animation duration cannot be bigger than maximum animation duration.");
+                ThrowHelper("Minimum animation duration cannot be bigger than maximum animation duration.");
             this.__min_duration = duration;
             return this;
         },
         setMaxDuration(duration: number) {
-            if (duration < 0) throw new Error("Animation duration cannot be negative.");
+            if (duration < 0) ThrowHelper("Animation duration cannot be negative.");
 
             if (duration < this.__min_duration)
-                throw new Error("Maximum animation duration cannot be smaller than minimum animation duration.");
+                ThrowHelper("Maximum animation duration cannot be smaller than minimum animation duration.");
             this.__max_duration = duration;
             return this;
         }

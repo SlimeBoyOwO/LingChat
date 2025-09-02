@@ -1,6 +1,8 @@
+import { SettingNode1 } from "../types/settings.ts";
 import { API_URLS, Locale } from "../consts.ts";
 import { ModelInfo } from "../types/ModelInfo.ts";
 import { send } from "./message.ts";
+import ThrowHelper from "./ThrowHelper.ts";
 import { UserInfo } from "./UserInfo.ts";
 
 export interface Defaults {
@@ -35,8 +37,17 @@ export async function initDefaults(user_info: UserInfo): Promise<Defaults> {
         auth_token: user_info.auth_token
     }).then(response => {
         if (response.status != 200) {
-            throw new Error(response.statusText);
+            ThrowHelper(response.statusText);
         }
         return response.data as Defaults;
+    });
+}
+
+export async function getSettingsStructure(): Promise<SettingNode1> {
+    return send(API_URLS.SETTINGS).then(response => {
+        if (response.status != 200) {
+            ThrowHelper(response.statusText);
+        }
+        return response.data as SettingNode1;
     });
 }

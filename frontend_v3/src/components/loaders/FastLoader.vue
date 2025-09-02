@@ -19,12 +19,11 @@ import { uiStatus } from "../../api/store";
     justify-content: center;
     -webkit-backdrop-filter: blur(5px);
     backdrop-filter: blur(5px);
-    z-index: 9999;
     opacity: 1;
 }
 
 #fast-loader.fast-loader-animation-leave-active {
-    animation: fadeOut 1s ease-out;
+    animation: fadeOut 0.5s ease-out;
 }
 
 @keyframes fadeOut {

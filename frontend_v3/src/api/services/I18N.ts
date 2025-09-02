@@ -1,5 +1,6 @@
 import { Translation } from "../../i18n/TranslationBase";
 import zh from "../../i18n/zh";
+import ThrowHelper from "./ThrowHelper";
 
 export enum Locale {
     en = "en",
@@ -37,10 +38,11 @@ export function createI18NStatic(): I18N {
             if (key in this.current) {
                 return this.current[key];
             }
+            console.warn(`No translation for ${key} was found in ${this.__locale}. Trying fallback.`);
             if (key in this.fallback) {
                 return this.fallback[key];
             }
-            throw new Error(`No translation for ${key} was found in both ${this.__locale} and ${this.__fallback}`);
+            ThrowHelper(`No translation for ${key} was found in both ${this.__locale} and ${this.__fallback}`);
         }
     };
 }
