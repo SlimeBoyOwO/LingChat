@@ -8,7 +8,7 @@ class WebLLMProvider(BaseLLMProvider):
     def __init__(self):
         super().__init__()
         self.client = None
-        self.model_type = None
+        self.model_type = ""
         self.initialize_client()
     
     def initialize_client(self):
@@ -42,6 +42,13 @@ class WebLLMProvider(BaseLLMProvider):
                 messages=messages,
                 stream=False
             )
+            
+            # 检查响应
+            if not response.choices or len(response.choices) == 0:
+                error_message = "API返回了空的choices"
+                logger.error(error_message)
+                return error_message
+                
             return response.choices[0].message.content
             
         except Exception as e:
@@ -69,6 +76,10 @@ class WebLLMProvider(BaseLLMProvider):
             )
 
             for chunk in stream:
+                if not chunk.choices or len(chunk.choices) == 0:
+                    logger.debug(f"收到空choices的chunk: {chunk}")
+                    continue
+                    
                 if chunk.choices[0].delta.content is not None:
                     yield chunk.choices[0].delta.content
 
