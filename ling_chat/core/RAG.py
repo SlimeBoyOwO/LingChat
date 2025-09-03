@@ -26,9 +26,10 @@ except ImportError:
 
 try:
     import chromadb
+    from chromadb.config import Settings
+    _chromadb_imported_ok = True
 except ImportError:
     _chromadb_imported_ok = False
-
 
     # Placeholder class if chromadb is not found
     class chromadb:
@@ -122,7 +123,8 @@ class RAGSystem:
 
             chroma_db_path = getattr(self.config, 'CHROMA_DB_PATH', './chroma_db_store')
             logger.debug(f"RAG: 初始化ChromaDB客户端 (记忆库将存储在 '{chroma_db_path}').")
-            self.chroma_client = chromadb.PersistentClient(path=chroma_db_path)
+            self.chroma_client = chromadb.PersistentClient(path=chroma_db_path, 
+                                                           settings=Settings(anonymized_telemetry=False))
             logger.debug(f"RAG: ChromaDB客户端初始化成功 (数据路径: {chroma_db_path})。")
 
             logger.debug(f"RAG: 获取或创建ChromaDB集合: {self.CHROMA_COLLECTION_NAME}")
