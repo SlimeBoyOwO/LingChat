@@ -1,0 +1,32 @@
+name: Deploy test, coverage and mkdocs into gh-pages
+on:
+  push:
+    branches: [main]
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+
+      - name: Install dependencies
+        run: |
+          pip install poetry
+          poetry install --with=dev
+
+      - name: Run tests with coverage
+        run: >
+          poetry run pytest -v 
+          --junitxml=docs/reports/pytest.xml
+          --html=docs/reports/pytest.html --self-contained-html 
+          --cov=ling_chat
+          --cov-report=html:docs/reports/coverage --cov-report=xml:docs/reports/coverage.xml
+          tests/
+
+      - name: generate tests and coverage badge
+        run: |
+          poetry run genbadge tests -i docs/reports/pytest.xml -o docs/reports/tests-badge.svg
+          poetry run genbadge coverage -i docs/reports/coverage.xml -o docs/reports/coverage-badge.svg
+
+      - name: Generate mkdocs site and deploy to gh-pages
+        run: poetry run mkdocs gh-deploy --force

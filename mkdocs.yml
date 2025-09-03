@@ -1,0 +1,35 @@
+site_name: LingChat Documentation
+site_url: https://SlimeBoyOwO.github.io/LingChat/
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - search.suggest
+    - search.highlight
+  palette:
+    primary: deep purple
+    accent: amber
+
+plugins:
+  - search:
+      lang:
+        - en
+        - zh
+      separator: '[\s\-\.，。？、]+'
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [ ling_chat ]
+
+markdown_extensions:
+  - pymdownx.highlight
+  - pymdownx.superfences
+
+nav:
+  - Home: index.md
+  - Doc: 开发文档.md
+  - Tutorial:
+      - 人物教程: DIY人物教程.md
+      - 剧情指南: AI-Galgame 剧情创作指南.md
+  - Q&A: Q&A.md
