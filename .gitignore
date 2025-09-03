@@ -82,3 +82,4 @@ models/
 # 不必要的大文件
 *.safetensors
 *.onnx
+memory_rag_models/
