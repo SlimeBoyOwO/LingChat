@@ -14,11 +14,17 @@ class LLMManager:
         """
         if not llm_job or llm_job == "main":
             self.llm_provider_type = os.environ.get("LLM_PROVIDER", "webllm")
+            self.model_type = os.environ.get("MODEL_TYPE", "deepseek-chat")
+            self.api_key = os.environ.get("CHAT_API_KEY", "")
+            self.api_url = os.environ.get("CHAT_BASE_URL", "https://api.deepseek.com/v1")
             # 确保provider_type存在
             provider_type = self.llm_provider_type.lower()
             logger.info(f"初始化LLM {provider_type} 提供商中...")
         elif llm_job == "translator":
             self.llm_provider_type = os.environ.get("TRANSLATE_LLM_PROVIDER", "qwen-translate")
+            self.model_type = os.environ.get("TRANSLATE_MODEL", "")
+            self.api_key = os.environ.get("TRANSLATE_API_KEY", "")
+            self.api_url = os.environ.get("TRANSLATE_API_URL", "")
             # 确保provider_type存在
             provider_type = self.llm_provider_type.lower()
             logger.info(f"初始化翻译模型 {provider_type} 提供商中...")
@@ -34,7 +40,11 @@ class LLMManager:
         """
         # 确保provider_type存在
         provider_type = self.llm_provider_type.lower()
-        return LLMProviderFactory.create_provider(provider_type)
+        if provider_type == "webllm":
+            return LLMProviderFactory.create_provider(provider_type, 
+                                                      self.model_type, self.api_key, self.api_url)
+        else:
+            return LLMProviderFactory.create_provider(provider_type)
     
     def process_message(self, messages: List[Dict]):
         return self.provider.generate_response(messages)

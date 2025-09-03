@@ -9,7 +9,8 @@ from ling_chat.core.logger import logger
 
 class LLMProviderFactory:
     @staticmethod
-    def create_provider(provider_type: str) -> BaseLLMProvider:
+    def create_provider(provider_type: str,
+                        model_type: str="", api_key: str="", base_url: str="") -> BaseLLMProvider:
         """
         创建指定类型的大模型提供者
         
@@ -22,7 +23,7 @@ class LLMProviderFactory:
         try:
             if provider_type == "webllm":
                 logger.info("创建通用联网大模型服务提供商")
-                return WebLLMProvider()
+                return WebLLMProvider(model_type, api_key, base_url)
             elif provider_type == "ollama":
                 logger.info("创建OLLAMA服务提供商")
                 return OllamaProvider()
