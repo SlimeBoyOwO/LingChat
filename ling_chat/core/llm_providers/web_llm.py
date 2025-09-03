@@ -5,31 +5,25 @@ from ling_chat.core.logger import logger
 import os
 
 class WebLLMProvider(BaseLLMProvider):
-    def __init__(self):
+    def __init__(self, model_type: str, api_key: str, base_url: str):
         super().__init__()
-        self.client = None
-        self.model_type = ""
-        self.initialize_client()
-    
-    def initialize_client(self):
-        """初始化DeepSeek客户端"""
-        api_key = os.environ.get("CHAT_API_KEY") or os.getenv("OPENAI_API_KEY")
-        base_url = os.environ.get("CHAT_BASE_URL", "https://api.deepseek.com")
-
-        if not api_key:
+        if api_key == ("" or "sk-114514"):
             error_message = "没有API_Key怎么跑啊喂！快去设置填写！"
             logger.warning(error_message)
             # 不再抛出异常，而是设置client为None表示不可用
             self.client = None
             return
-
+        self.api_key = api_key
+        self.base_url = base_url
         self.client = OpenAI(api_key=api_key, base_url=base_url)
-        self.model_type = os.environ.get("MODEL_TYPE", "deepseek-chat")
-
-        logger.info("通用网络大模型初始化完毕！")
+        self.model_type = model_type
+        logger.info("通用网络大模型初始化完毕！" )
+    
+    def initialize_client(self):
+        return super().initialize_client()
     
     def generate_response(self, messages: List[Dict]) -> str:
-        """生成DeepSeek模型响应"""
+        """生成模型响应"""
         if self.client is None:
             error_message = "通用网络大模型未初始化，请检查配置"
             logger.error(error_message)
@@ -42,13 +36,6 @@ class WebLLMProvider(BaseLLMProvider):
                 messages=messages,
                 stream=False
             )
-            
-            # 检查响应
-            if not response.choices or len(response.choices) == 0:
-                error_message = "API返回了空的choices"
-                logger.error(error_message)
-                return error_message
-                
             return response.choices[0].message.content
             
         except Exception as e:
@@ -76,10 +63,6 @@ class WebLLMProvider(BaseLLMProvider):
             )
 
             for chunk in stream:
-                if not chunk.choices or len(chunk.choices) == 0:
-                    logger.debug(f"收到空choices的chunk: {chunk}")
-                    continue
-                    
                 if chunk.choices[0].delta.content is not None:
                     yield chunk.choices[0].delta.content
 
