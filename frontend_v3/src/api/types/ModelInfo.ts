@@ -1,36 +1,37 @@
-export interface OllamaModelInfo {
+interface OllamaModelInfo {
     base_url: string;
     model: string;
 }
 
-export interface LMStudioModelInfo {
+interface LMStudioModelInfo {
     model_type: string;
     base_url: string;
     api_key?: string;
 }
 
-export interface GeminiModelInfo {
+interface GeminiModelInfo {
     model_type: string;
     base_url: string;
 }
 
-export interface ChatModelInfo {
+//聊天生成模型
+interface ChatModelInfo {
     llm_provider: string;
-    api_key: string; // DeepSeek 或其他聊天模型的 API Key
-    base_url: string; // API 的访问地址
-    model_type: string; // 使用的模型类型
+    api_key: string;
+    base_url: string;
+    model_type: string;
     model_info: OllamaModelInfo | LMStudioModelInfo | GeminiModelInfo | null;
 }
-
-export interface VisualModelInfo {
-    api_key: string; // 图像识别模型的 API Key
-    base_url: string; // 视觉模型的 API 访问地址
-    model: string; // 视觉模型的模型类型
+// 视觉模型
+interface VisualModelInfo {
+    api_key: string;
+    base_url: string;
+    model: string;
 }
-
-export interface TranslateModelInfo {
-    llm_provider: string; // 翻译模型提供者（同对话模型 + 一个 qwen-translate）
-    api_key: string; // 翻译模型的 API Key
+// 翻译模型
+interface TranslateModelInfo {
+    llm_provider: string;
+    api_key: string;
 }
 
 export interface ModelInfo {

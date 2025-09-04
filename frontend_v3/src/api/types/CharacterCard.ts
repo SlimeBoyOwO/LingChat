@@ -10,7 +10,7 @@ type AvatarImageUrl = string;
 type Color = string;
 
 interface Emotions<T> {
-    [key: Emotion]: T;
+    [emotion: Emotion]: T;
 }
 
 export interface CharacterAvatars {

@@ -3,19 +3,15 @@
         <div v-for="(control, index) in controls" :key="index">
             <h2>{{ control.bindings.title }}</h2>
             <hr />
-            <component
-                :is="control.element"
-                v-bind="control.bindings"
-                v-if="control.bindings.show"
-            >
-            </component>
+            <component :is="control.element" v-bind="control.bindings" v-if="control.bindings.show"> </component>
         </div>
     </div>
 </template>
 <script setup lang="ts">
 import { SettingPage } from "../../../../api/types/settings";
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import {Icon,IconButton,Input,Slider,Text,Toggle} from "../../../controls";
+import { Icon, IconButton, Input, Slider, Text, Toggle } from "../../../controls";
+
 const { title, controls } = defineProps<{ title: string; controls: SettingPage[] }>();
 </script>
 <style scoped>
@@ -36,7 +32,7 @@ const { title, controls } = defineProps<{ title: string; controls: SettingPage[]
     min-height: 100px;
     border-radius: 20px;
     padding: 15px;
-    display:flex;
+    display: flex;
     flex-direction: column;
     justify-content: space-between;
     overflow-x: hidden;

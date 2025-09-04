@@ -20,18 +20,14 @@ export interface SingleAudio {
     onEnded: () => void;
 }
 
-interface GlobalAudios {
-    effect?: SingleAudio;
-    background?: SingleAudio;
-    avatar?: SingleAudio;
-    voice?: SingleAudio;
-}
-
 export interface RootUIStatus extends UIStatus {
-    background_image: string;
-    background_effect: IEffect;
-    effect: IEffect;
-    audio: GlobalAudios;
+    background: {
+        image: string;
+        effect?: IEffect; //背景效果
+        music?: SingleAudio;
+    };
+    effect?: IEffect; //前景效果
+    audio?: SingleAudio;
     isLoading: boolean;
     isFastLoad: boolean;
     __load_progress: number;
@@ -46,13 +42,13 @@ export interface AnimationData {
     __max_duration?: number;
     __duration: number;
     __factor: number;
-    readonly __raw_duration: number;
-    readonly duration: number;
+    readonly __raw_duration: number; //动画原始时间
+    readonly duration: number; //动画实际的运行时间
     readonly factor: number;
-    setFactor: (factor: number) => this;
-    setMinDuration: (duration: number) => this;
-    setMaxDuration: (duration: number) => this;
-    setDuration: (duration: number) => this;
+    setFactor: (factor: number) => this; //设置动画速度倍率
+    setMinDuration: (duration: number) => this; //最小动画时间
+    setMaxDuration: (duration: number) => this; //最大动画时间
+    setDuration: (duration: number) => this; //设置动画原始时间
 }
 
 export function createUIStatusStatic(beginPage: string): UIStatus {
@@ -100,8 +96,10 @@ export function createUIStatusStatic(beginPage: string): UIStatus {
 
 export function extendToRootUIStatus(uiStatus: UIStatus): RootUIStatus {
     Object.assign(uiStatus, <RootUIStatus>{
-        background_image: CONFIG.DEFAULT_BACKGROUND,
-        background_effect: IEffectEmpty,
+        background: {
+            image: CONFIG.DEFAULT_BACKGROUND,
+            effect: IEffectEmpty
+        },
         effect: IEffectEmpty,
         get loadProgress() {
             return this.__load_progress;
@@ -122,8 +120,7 @@ export function extendToRootUIStatus(uiStatus: UIStatus): RootUIStatus {
             const new_progress = relative ? progress : this.__load_progress + progress;
             this.__load_progress = new_progress < 0 ? 0 : new_progress > 100 ? 100 : new_progress;
             return this;
-        },
-        audio: <GlobalAudios>{}
+        }
     });
     return uiStatus as RootUIStatus;
 }

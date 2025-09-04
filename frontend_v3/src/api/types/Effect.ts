@@ -1,12 +1,14 @@
+import { SingleAudio } from "../services/UIStatus";
+
 export interface IEffect {
-    root?: HTMLCanvasElement;
+    _root?: HTMLCanvasElement; //根元素，在此元素上进行效果绘制
+    audio?: SingleAudio; //音效
     initialize: (root: HTMLCanvasElement) => this;
 }
 
 export const IEffectEmpty: IEffect = {
-    root: undefined,
     initialize(root: HTMLCanvasElement) {
-        this.root = root;
+        this._root = root;
         return this;
     }
 };

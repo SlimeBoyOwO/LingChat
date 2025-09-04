@@ -4,10 +4,7 @@
     <Effect style="z-index: 2" :effect="uiStatus.main.effect" />
     <FastLoader style="z-index: 3" />
     <Loader style="z-index: 4" />
-    <AudioPlayer :source="uiStatus.main.audio.effect" />
-    <AudioPlayer :source="uiStatus.main.audio.background" />
-    <AudioPlayer :source="uiStatus.main.audio.avatar" />
-    <AudioPlayer :source="uiStatus.main.audio.voice" />
+    <AudioPlayer :source="uiStatus.main.audio" />
 </template>
 
 <script setup lang="ts">
