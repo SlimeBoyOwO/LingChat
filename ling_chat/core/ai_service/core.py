@@ -63,7 +63,12 @@ class AIService:
             self.user_subtitle = settings.get("user_subtitle", "user_subtitle未设定")
             self.ai_prompt = settings.get("system_prompt", "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息")
             self.ai_prompt_example = settings.get("system_prompt_example","")
-            self.ai_prompt = self.message_processor.sys_prompt_builder(self.ai_prompt, self.ai_prompt_example)
+            self.ai_prompt_example_old = settings.get("system_prompt_example_old", "")
+            self.ai_prompt = self.message_processor.sys_prompt_builder(self.user_name,
+                                                                       self.ai_name,
+                                                                       self.ai_prompt,
+                                                                       self.ai_prompt_example,
+                                                                       self.ai_prompt_example_old)
                 
             self.voice_maker.set_lang(settings.get("language", "ja"))
             self.voice_maker.set_tts(settings.get("tts_type", "sbv"), 
