@@ -17,7 +17,8 @@ export const API_URLS = {
         BACKGROUND: "/api/image/background"
     },
     AUDIO: {
-        BACKGROUND: "/api/audio/background",
+        BACKGROUND: "/api/audio/background/music",
+        BACKGROUND_EFFECT: "/api/audio/background/effect",
         EFFECT: "/api/audio/effect",
         AVATAR: "/api/audio/avatar"
     }
