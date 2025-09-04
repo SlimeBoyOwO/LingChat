@@ -4,9 +4,13 @@
             <ChatAvatar />
             <ChatDialog />
             <div id="menu-panel">
-                <Button type="nav" icon="text" @click="uiStatus.main.switchPage(PAGES.MAIN.SETTINGS).beginLoading(true)">
-                    <h3>菜单</h3>
-                </Button>
+                <IconButton
+                    type="nav"
+                    icon="text"
+                    @click="uiStatus.main.switchPage(PAGES.MAIN.SETTINGS).beginLoading(true)"
+                    text="menu"
+                >
+                </IconButton>
             </div>
         </div>
     </Transition>
@@ -15,7 +19,7 @@
 <script setup lang="ts">
 import { PAGES } from "../../../api/consts";
 import { uiStatus } from "../../../api/store";
-import { Button } from "../../controls";
+import { IconButton } from "../../controls";
 import ChatAvatar from "./controls/ChatAvatar.vue";
 import ChatDialog from "./controls/ChatDialog.vue";
 

@@ -24,8 +24,12 @@ export interface GameStatus {
 export function createGameStatusStatic(): GameStatus {
     return {
         current: {
-            avatar: undefined,
-            status: AIStatus.IDLE
+            status: AIStatus.IDLE,
+            subtitle: "",
+            emotion: "",
+            placeholder: "Type a message...",
+            text: "",
+            name: ""
         }
     };
 }

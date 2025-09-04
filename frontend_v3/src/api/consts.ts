@@ -42,7 +42,8 @@ export const PAGES = {
     MAIN: {
         MENU: "MenuView",
         SETTINGS: "SettingsView",
-        CHAT: "ChatView"
+        CHAT: "ChatView",
+        CREDITS: "CreditsView"
     },
     SETTINGS: {
         SAVE: "save",

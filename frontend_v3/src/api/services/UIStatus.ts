@@ -4,18 +4,19 @@ import ThrowHelper from "./ThrowHelper.ts";
 
 export interface UIStatus {
     __nav_stack: string[];
-    __with?: unknown;
+    __with?: unknown; //存储附加参数
     readonly currentPage: string;
+    readonly canBack: boolean;
     switchPage: <T = this>(page: string) => T;
-    with: <T extends object, This = this>(_with: T) => This;
-    read: <T extends object>() => T | undefined;
-    back: <T = this>() => T;
+    with: <T extends object, This = this>(_with: T) => This; //在切换页面时传递附加参数
+    read: <T extends object>() => T | undefined; //读取附加参数
+    back: <T = this>() => T; //返回上一页
 }
 
 export interface SingleAudio {
     src: string;
-    volume?: number;
-    loop?: boolean;
+    volume: number;
+    loop: boolean;
     onEnded: () => void;
 }
 
@@ -64,6 +65,9 @@ export function createUIStatusStatic(beginPage: string): UIStatus {
         get currentPage() {
             return this.__nav_stack[this.__nav_stack.length - 1];
         },
+        get canBack() {
+            return this.__nav_stack.length > 1;
+        },
         switchPage(page: string) {
             this.__with = undefined;
             if (this.__nav_stack.length > 0 && this.currentPage === page) {
@@ -76,7 +80,7 @@ export function createUIStatusStatic(beginPage: string): UIStatus {
             this.__nav_stack.push(page);
             return this;
         },
-        with(_with) {
+        with<T extends object>(_with: T) {
             this.__with = _with;
             return this;
         },
@@ -85,7 +89,9 @@ export function createUIStatusStatic(beginPage: string): UIStatus {
             return temp as T;
         },
         back() {
-            this.__nav_stack.pop();
+            if (this.canBack) {
+                this.__nav_stack.pop();
+            }
             return this;
         }
     };
@@ -93,33 +99,32 @@ export function createUIStatusStatic(beginPage: string): UIStatus {
 }
 
 export function extendToRootUIStatus(uiStatus: UIStatus): RootUIStatus {
-    Object.assign(
-        uiStatus, <RootUIStatus> {
-            background_image: CONFIG.DEFAULT_BACKGROUND,
-            background_effect: IEffectEmpty,
-            effect: IEffectEmpty,
-            get loadProgress() {
-                return this.__load_progress;
-            },
-            beginLoading(fast_load: boolean = false) {
-                this.__load_progress = 0;
-                this.isLoading = true;
-                this.isFastLoad = fast_load;
-                return this;
-            },
-            endLoading(ensure: boolean = true) {
-                if (ensure) this.__load_progress = 100;
-                this.isLoading = false;
-                this.isFastLoad = false;
-                return this;
-            },
-            setLoadProgress(progress: number, relative: boolean = false) {
-                const new_progress = relative ? progress : this.__load_progress + progress;
-                this.__load_progress = new_progress < 0 ? 0 : new_progress > 100 ? 100 : new_progress;
-                return this;
-            },
-            audio: <GlobalAudios> {}
-        });
+    Object.assign(uiStatus, <RootUIStatus>{
+        background_image: CONFIG.DEFAULT_BACKGROUND,
+        background_effect: IEffectEmpty,
+        effect: IEffectEmpty,
+        get loadProgress() {
+            return this.__load_progress;
+        },
+        beginLoading(fast_load: boolean = false) {
+            this.__load_progress = 0;
+            this.isLoading = true;
+            this.isFastLoad = fast_load;
+            return this;
+        },
+        endLoading(ensure: boolean = true) {
+            if (ensure) this.__load_progress = 100;
+            this.isLoading = false;
+            this.isFastLoad = false;
+            return this;
+        },
+        setLoadProgress(progress: number, relative: boolean = false) {
+            const new_progress = relative ? progress : this.__load_progress + progress;
+            this.__load_progress = new_progress < 0 ? 0 : new_progress > 100 ? 100 : new_progress;
+            return this;
+        },
+        audio: <GlobalAudios>{}
+    });
     return uiStatus as RootUIStatus;
 }
 

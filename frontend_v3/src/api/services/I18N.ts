@@ -1,6 +1,5 @@
 import { Translation } from "../../i18n/TranslationBase";
 import zh from "../../i18n/zh";
-import ThrowHelper from "./ThrowHelper";
 
 export enum Locale {
     en = "en",
@@ -10,10 +9,10 @@ export interface I18N {
     __locale: Locale;
     __fallback: Locale;
     __locales: { [key in Locale]?: Translation };
-    readonly current: Translation;
+    readonly current: Translation; //? 此getter获取到的是当前语言的翻译而非Locale
     readonly fallback: Translation;
-    set: (locale: Locale, fallback?: Locale) => this;
-    get: (key: string) => string;
+    set: (locale: Locale, fallback?: Locale) => this; // 设定新的locale
+    get: (key: string) => string; // 获取翻译
 }
 
 export function createI18NStatic(): I18N {
@@ -42,7 +41,8 @@ export function createI18NStatic(): I18N {
             if (key in this.fallback) {
                 return this.fallback[key];
             }
-            ThrowHelper(`No translation for ${key} was found in both ${this.__locale} and ${this.__fallback}`);
+            console.error(`No translation for ${key} was found both in ${this.__locale} and ${this.__fallback}.`);
+            return key;
         }
     };
 }

@@ -18,8 +18,10 @@ import { computed, onBeforeMount, onMounted, ref } from "vue";
 import { PAGES } from "../../api/consts";
 import { i18n, uiStatus, userData } from "../../api/store";
 
+//必须保留，首次创建时不会触发动画，这两个用来结束加载
 onBeforeMount(beforeMount);
 onMounted(mounted);
+
 function beforeMount() {
     uiStatus.value.main.background_image = "/src/assets/images/background.png";
 }
@@ -32,12 +34,13 @@ const menuItems = [
         order: 0,
         label: i18n.value("main.continueGame"),
         action: continueGame,
-        visibility: computed(() => (userData.value.current_card?.save.count ?? 0) > 0)
+        visibility: computed(() => (userData.value.current_card?.save.count ?? 0) > 0) //有存档时才显示
     },
     { order: 1, label: i18n.value("main.newGame"), action: newGame, visibility: ref(true) },
     { order: 2, label: i18n.value("main.saveGame"), action: openSave, visibility: ref(true) },
     { order: 3, label: i18n.value("main.settings"), action: openSettings, visibility: ref(true) },
-    { order: 4, label: i18n.value("main.quitGame"), action: quitGame, visibility: ref(true) }
+    { order: 4, label: i18n.value("main.credits"), action: openCredits, visibility: ref(true) },
+    { order: 5, label: i18n.value("main.quitGame"), action: quitGame, visibility: ref(true) }
 ];
 function continueGame() {}
 function newGame() {
@@ -49,6 +52,9 @@ function openSave() {
 }
 function openSettings() {
     uiStatus.value.main.switchPage(PAGES.MAIN.SETTINGS).beginLoading(true);
+}
+function openCredits() {
+    uiStatus.value.main.switchPage(PAGES.MAIN.CREDITS);
 }
 function quitGame() {
     window.close();

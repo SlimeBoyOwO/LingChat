@@ -43,7 +43,7 @@ import { PAGES } from "../../../../api/consts";
 import { AIStatus } from "../../../../api/services/GameStatus";
 import { gameStatus, i18n, uiStatus } from "../../../../api/store";
 // import { chatHandler } from "../../../api/websocket/handlers/chat-handler";
-import { Button } from "../../../controls";
+import { IconButton } from "../../../controls";
 import { IconType } from "../../../controls/Icon.vue";
 
 function openHistory() {

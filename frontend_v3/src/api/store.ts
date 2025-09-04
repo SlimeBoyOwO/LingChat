@@ -1,16 +1,12 @@
 import { computed, ComputedRef, ref, Ref } from "vue";
 
-import { SettingNode1 } from "./types/settings.ts";
+import { Slider } from "../components/controls/index.ts";
 import { createGameStatusStatic, GameStatus } from "./services/GameStatus.ts";
 import { createI18NStatic, I18N } from "./services/I18N.ts";
-import {
-    createDefaultsStatic,
-    createSettingsStatic,
-    Defaults,
-    Settings
-} from "./services/Settings.ts";
+import { createDefaultsStatic, createSettingsStatic, Defaults, Settings } from "./services/Settings.ts";
 import { createUIStatusStatic, extendToRootUIStatus, RootUIStatus, UIStatus } from "./services/UIStatus.ts";
 import { createUserDataStatic, createUserInfoStatic, UserData, UserInfo } from "./services/UserInfo.ts";
+import { SettingNode1 } from "./types/settings.ts";
 
 type UIController = {
     main: RootUIStatus;
@@ -35,31 +31,31 @@ export const i18n: ComputedRef<(key: string) => string> = computed(
 
 export const settings_structure: SettingNode1 = <SettingNode1>{
     text: {
-        icon: "icon_src",
+        icon: "character",
         content: [
             {
-                element: "input",
-                type: "range",
-                title: "",
-                class: "",
-                value: "text",
-                show: true
+                element: Slider,
+                bindings: {
+                    title: "Text Speed",
+                    value: settings.value.text_speed,
+                    show: true
+                }
             }
         ]
     },
     text2: {
-        icon: "icon_src",
+        icon: "character",
         content: {
             text: {
-                icon: "icon_src",
+                icon: "character",
                 content: [
                     {
-                        element: "input",
-                        type: "range",
-                        title: "",
-                        class: "",
-                        value: "text",
-                        show: true
+                        element: Slider,
+                        bindings: {
+                            title: "Text Speed",
+                            value: settings.value.text_speed,
+                            show: true
+                        }
                     }
                 ]
             }

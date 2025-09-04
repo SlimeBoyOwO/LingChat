@@ -1,6 +1,7 @@
-import { SettingNode1 } from "../types/settings.ts";
-import { API_URLS, Locale } from "../consts.ts";
+import { API_URLS } from "../consts.ts";
 import { ModelInfo } from "../types/ModelInfo.ts";
+import { SettingNode1 } from "../types/settings.ts";
+import { Locale } from "./I18N.ts";
 import { send } from "./message.ts";
 import ThrowHelper from "./ThrowHelper.ts";
 import { UserInfo } from "./UserInfo.ts";
@@ -10,6 +11,7 @@ export interface Defaults {
 }
 export interface Settings {
     ui_lang: Locale;
+    text_speed: number;
 }
 
 export function createDefaultsStatic(): Defaults {
@@ -19,7 +21,10 @@ export function createDefaultsStatic(): Defaults {
 }
 
 export function createSettingsStatic(): Settings {
-    return <Settings>{};
+    return <Settings>{
+        ui_lang: "zh",
+        text_speed: 300
+    };
 }
 
 export async function initSettings(user_info: UserInfo): Promise<Settings> {

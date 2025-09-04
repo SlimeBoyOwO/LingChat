@@ -52,6 +52,17 @@ html {
     box-shadow:
         0 8px 32px rgba(0, 0, 0, 0.1),
         inset 0 1px 1px rgba(255, 255, 255, 0.1);
-  transition: border-color 0.2s, box-shadow 0.2s;
+    transition:
+        border-color 0.2s,
+        box-shadow 0.2s;
+}
+
+*:focus-visible {
+    /* 只在Tab控制时，添加此focus */
+    outline: 3px solid #79d9ff;
+    background-color: #79d9ff80;
+}
+button {
+    user-select: none;
 }
 </style>
