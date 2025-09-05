@@ -56,10 +56,7 @@ def handel_run(run_modules_list: Collection[str]):
         elif module == "18emo":
             raise NotImplementedError("18emo 模块的运行函数未实现")
         elif module == "webview":
-            try:
-                start_webview()
-            except KeyboardInterrupt:
-                logger.info("用户关闭程序")
+            run_third_party.run_webview()
         else:
             logger.error(f"未知的运行模块: {module}")
 
