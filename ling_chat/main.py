@@ -55,6 +55,11 @@ def handel_run(run_modules_list: Collection[str]):
             raise NotImplementedError("sbv2 模块的运行函数未实现")
         elif module == "18emo":
             raise NotImplementedError("18emo 模块的运行函数未实现")
+        elif module == "webview":
+            try:
+                start_webview()
+            except KeyboardInterrupt:
+                logger.info("用户关闭程序")
         else:
             logger.error(f"未知的运行模块: {module}")
 
@@ -93,9 +98,10 @@ def main():
         logger.info("已根据环境变量禁用语音检查")
 
     # 检查环境变量决定是否启动前端界面
-    if os.getenv('OPEN_FRONTEND_APP', 'false').lower() == "true":
+    if os.getenv('OPEN_FRONTEND_APP', 'false').lower() == "true":  # fixme: 请使用 --run webview 启动前端界面
         logger.stop_loading_animation(success=True, final_message="应用加载成功")
         print_logo()
+        logger.warning("[Deprecation]: 请使用 --run webview 启动前端界面")  # DeprecationWarning("请使用 --run webview 启动前端界面")
         try:
             start_webview()
         except KeyboardInterrupt:
