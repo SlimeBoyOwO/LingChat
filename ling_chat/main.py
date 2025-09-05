@@ -27,7 +27,7 @@ from ling_chat.api.app_server import run_app_in_thread
 from ling_chat.core.webview import start_webview
 from ling_chat.utils.cli import print_logo
 from ling_chat.utils.voice_check import VoiceCheck
-from ling_chat.third_party import install_third_party
+from ling_chat.third_party import install_third_party, run_third_party
 from ling_chat.utils.function import Function
 
 
@@ -50,7 +50,7 @@ def handel_run(run_modules_list: Collection[str]):
     for module in run_modules_list:
         logger.info(f"正在运行模块: {module}")
         if module == "vits":
-            raise NotImplementedError("vits 模块的运行函数未实现")
+            run_third_party.run_in_thread(run_third_party.run_vits)
         elif module == "sbv2":
             raise NotImplementedError("sbv2 模块的运行函数未实现")
         elif module == "18emo":
