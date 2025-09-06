@@ -1,8 +1,9 @@
 <template>
-    <div id="global-background" :style="{ backgroundImage: `url(${uiStatus.main.background.image})` }">
+    <div id="global-background" >
+        <img :class="{blur:uiStatus.main.background.isBlur}" :src="uiStatus.main.background.image" />
         <Effect id="background-effect" :effect="uiStatus.main.background.effect" />
+        <AudioPlayer :src="uiStatus.main.background.music" />
     </div>
-    <AudioPlayer :src="uiStatus.main.background.music" />
 </template>
 <script setup>
 import { AudioPlayer } from ".";
@@ -17,8 +18,15 @@ import Effect from "./Effect.vue";
     left: 0;
     top: 0;
     pointer-events: none;
-    background-size: cover;
-    background-position: center center;
-    background-repeat: none;
+}
+#global-background img {
+    width: auto;
+    height: auto;
+    position: absolute;
+    pointer-events: none;
+}
+#global-background img.blur {
+    filter: blur(8px);
+    transition: filter 0.5s ease-in;
 }
 </style>

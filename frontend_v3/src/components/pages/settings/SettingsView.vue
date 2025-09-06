@@ -12,6 +12,7 @@ import { settings_structure, uiStatus } from "../../../api/store";
 import SettingsNav from "./controls/SettingsNav.vue";
 
 function mounted() {
+    uiStatus.value.main.background.isBlur = true;
     uiStatus.value.main.endLoading();
 }
 </script>

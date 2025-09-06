@@ -1,14 +1,12 @@
+import * as effects from "../../components/effects";
 import { SingleAudio } from "../services/UIStatus";
 
-export interface IEffect {
-    _root?: HTMLCanvasElement; //根元素，在此元素上进行效果绘制
-    audio?: SingleAudio; //音效
-    initialize: (root: HTMLCanvasElement) => this;
-}
+export type IEffectConfig = object;
 
-export const IEffectEmpty: IEffect = {
-    initialize(root: HTMLCanvasElement) {
-        this._root = root;
-        return this;
-    }
-};
+type Effects = typeof effects.StarField | typeof effects.Rain;
+
+export interface IEffect {
+    type: Effects;
+    audio?: SingleAudio; //音效
+    config?: IEffectConfig; // 如果有需要外部修改的设置，由此导出
+}

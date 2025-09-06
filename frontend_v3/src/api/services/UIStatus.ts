@@ -1,5 +1,5 @@
 import { CONFIG } from "../consts";
-import { IEffect, IEffectEmpty } from "../types/Effect.ts";
+import { IEffect } from "../types/Effect.ts";
 import ThrowHelper from "./ThrowHelper.ts";
 
 export interface UIStatus {
@@ -25,6 +25,7 @@ export interface RootUIStatus extends UIStatus {
         image: string;
         effect?: IEffect; //背景效果
         music?: SingleAudio;
+        isBlur: boolean;
     };
     effect?: IEffect; //前景效果
     audio?: SingleAudio;
@@ -97,10 +98,8 @@ export function createUIStatusStatic(beginPage: string): UIStatus {
 export function extendToRootUIStatus(uiStatus: UIStatus): RootUIStatus {
     Object.assign(uiStatus, <RootUIStatus>{
         background: {
-            image: CONFIG.DEFAULT_BACKGROUND,
-            effect: IEffectEmpty
+            image: CONFIG.DEFAULT_BACKGROUND
         },
-        effect: IEffectEmpty,
         get loadProgress() {
             return this.__load_progress;
         },

@@ -1,4 +1,5 @@
 import { API_URLS } from "../consts.ts";
+import { IEffectConfig } from "../types/Effect.ts";
 import { ModelInfo } from "../types/ModelInfo.ts";
 import { SettingNode1 } from "../types/settings.ts";
 import { Locale } from "./I18N.ts";
@@ -12,6 +13,7 @@ export interface Defaults {
 export interface Settings {
     ui_lang: Locale;
     text_speed: number;
+    effects: { [effect_name: string]: IEffectConfig };
 }
 
 export function createDefaultsStatic(): Defaults {

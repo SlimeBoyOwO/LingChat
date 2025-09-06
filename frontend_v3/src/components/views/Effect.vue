@@ -1,20 +1,14 @@
 <template>
     <div class="effect">
-        <canvas class="effect-canvas" ref="canvas" />
+        <component :is="effect?.type" />
         <AudioPlayer :src="effect?.audio" />
     </div>
 </template>
 <script setup lang="ts">
-import { useTemplateRef, watch } from "vue";
-
 import { IEffect } from "../../api/types/Effect.ts";
 import { AudioPlayer } from "./index.ts";
 
 const { effect } = defineProps<{ effect?: IEffect }>();
-const canvas = useTemplateRef("canvas");
-watch([() => effect, () => canvas], () => {
-    if (canvas.value && effect) effect.initialize(canvas.value);
-});
 </script>
 <style scoped>
 .effect-canvas {

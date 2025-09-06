@@ -23,7 +23,8 @@ onBeforeMount(beforeMount);
 onMounted(mounted);
 
 function beforeMount() {
-    uiStatus.value.main.background_image = "/src/assets/images/background.png";
+    uiStatus.value.main.background.isBlur = false;
+    uiStatus.value.main.background.image = "/src/assets/images/background.png";
 }
 function mounted() {
     uiStatus.value.main.endLoading();

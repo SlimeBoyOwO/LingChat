@@ -86,9 +86,6 @@ function getCurrent() {
     transition:
         color 0.3s ease,
         background-color 0.3s ease;
-    display: flex;
-    align-items: center;
-    gap: 8px;
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 

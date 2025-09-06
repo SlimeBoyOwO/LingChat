@@ -1,5 +1,5 @@
 <template>
-    <div :class="['main-panel', { blur: uiStatus.main.currentPage !== PAGES.MAIN.MENU }]">
+    <div class="main-panel">
         <MenuView />
         <ChatView />
         <Credits />
@@ -25,11 +25,6 @@ onMounted(() => uiStatus.value.main.switchPage(PAGES.MAIN.MENU));
     width: 100%;
     height: 100%;
     position: relative;
-}
-
-.main-panel.blur {
-    backdrop-filter: blur(8px);
-    transition: backdrop-filter 0.5s ease-in;
 }
 
 .menu-container {

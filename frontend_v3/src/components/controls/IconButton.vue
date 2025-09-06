@@ -1,6 +1,6 @@
 <template>
     <button :class="[type, 'icon-button']" :disabled="disabled" @click="$emit('click')">
-        <Icon v-if="icon" :icon="icon" :size="icon_size" />
+        <Icon class="icon-button-part-icon" v-if="icon" :icon="icon" />
         {{ i18n(props.text) }}
     </button>
 </template>
@@ -13,7 +13,6 @@ interface ButtonProps {
     type?: "big" | "menu" | "nav" | "select" | "delete" | "add" | "save" | "start" | "close";
     disabled?: boolean;
     icon?: IconType;
-    icon_size?: number;
     text: string;
 }
 const props = defineProps<ButtonProps>();
@@ -28,14 +27,32 @@ const emit = defineEmits(["click"]);
     --bg-dismiss: #f44336;
     --bg-dismiss-hover: #d32f2f;
 }
+
 .icon-button {
     border: none;
     outline: none;
     cursor: pointer;
     font-weight: 500;
-    padding: 8px 16px;
     border-radius: 4px;
     transition: all 0.2s ease;
+    background: transparent;
+    color: white;
+    font-size: 1rem;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-evenly;
+}
+
+.icon-button .icon-button-part-icon {
+    margin-right: 5px;
+    width: 24px;
+    height: 24px;
+}
+
+.icon-button .icon-button-part-icon {
+    width: 2.5rem;
+    height: 2.5rem;
 }
 
 /* 开始按钮样式 */
@@ -47,6 +64,7 @@ const emit = defineEmits(["click"]);
 .icon-button.start:hover {
     background-color: var(--bg-success-hover);
 }
+
 .icon-button.dismiss {
     background-color: var(--bg-dismiss);
     color: white;
