@@ -25,11 +25,11 @@ export function createGameStatusStatic(): GameStatus {
     return {
         current: {
             status: AIStatus.IDLE,
-            subtitle: "",
-            emotion: "",
+            name: "You",
+            subtitle: "Bilibili",
+            emotion: "Normal",
             placeholder: "Type a message...",
-            text: "",
-            name: ""
+            text: ""
         }
     };
 }

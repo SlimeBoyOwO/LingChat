@@ -1,5 +1,5 @@
 <template>
-    <Transition @after-enter="mounted">
+    <Transition @before-enter="beforeMounted" @after-enter="mounted">
         <div class="main-box" v-if="uiStatus.main.currentPage === 'ChatView'">
             <ChatAvatar />
             <ChatDialog />
@@ -22,6 +22,10 @@ import { uiStatus } from "../../../api/store";
 import { IconButton } from "../../controls";
 import ChatAvatar from "./controls/ChatAvatar.vue";
 import ChatDialog from "./controls/ChatDialog.vue";
+
+function beforeMounted() {
+    uiStatus.value.main.background.image = "/src/assets/images/default_bg.jpg"
+}
 
 function mounted() {
     uiStatus.value.main.endLoading();

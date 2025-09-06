@@ -5,8 +5,8 @@ import ThrowHelper from "./ThrowHelper.ts";
 
 export interface UserData {
     readonly isInitialized: boolean;
-    current_card: CharacterCard | null; // 当前使用中的角色卡
-    available_cards: CharacterCardCover[] | null; // 所有当前可用角色卡的 id
+    current_card?: CharacterCard; // 当前使用中的角色卡
+    available_cards?: CharacterCardCover[]; // 所有当前可用角色卡的 id
 }
 
 export interface UserInfo {
@@ -19,10 +19,8 @@ export interface UserInfo {
 export function createUserDataStatic(): UserData {
     return <UserData>{
         get isInitialized() {
-            return this.current_card != null && this.available_cards != null;
-        },
-        current_card: null,
-        available_cards: null
+            return this.current_card !== undefined && this.available_cards !== undefined;
+        }
     };
 }
 

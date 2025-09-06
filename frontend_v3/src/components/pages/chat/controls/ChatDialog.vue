@@ -1,36 +1,30 @@
 <template>
     <div class="chat-container">
-        <div class="chat-info">
-            <span id="name">{{ gameStatus.current.name }}</span>
-            <span id="subtitle">{{ gameStatus.current.subtitle }}</span>
-            <span id="emotion">{{ gameStatus.current.emotion }}</span>
-            <Button type="nav" icon="history" title="" @click="openHistory"></Button>
-        </div>
-        <hr />
-        <div class="chat-input">
+        <div class="chat-content-area">
+            <div class="chat-info">
+                <span id="name">{{ gameStatus.current.name }}</span>
+                <span id="subtitle">{{ gameStatus.current.subtitle }}</span>
+                <span id="emotion">{{ gameStatus.current.emotion }}</span>
+            </div>
             <textarea
-                id="inputMessage"
-                :placeholder="gameStatus.current.placeholder"
+                id="chat-message"
+                :placeholder="i18n(gameStatus.current.placeholder)"
                 v-model.lazy.trim="gameStatus.current.text"
                 @keydown.enter.exact.prevent="sendOrContinue"
                 :readonly="gameStatus.current.status !== AIStatus.IDLE"
             />
-            <button id="sendButton" :disabled="gameStatus.current.status !== AIStatus.IDLE" @click="sendOrContinue">
-                ▼
-            </button>
         </div>
         <div class="chat-button-container">
             <template v-for="item in chat_buttons">
-                <Button
+                <IconButton
                     class="chat-button"
                     v-if="item.visibility"
                     :icon="item.icon"
                     :key="item.order"
                     @click="item.action"
                     :disabled="!item.enable"
-                >
-                    {{ item.label }}
-                </Button>
+                    :text="item.label"
+                />
             </template>
         </div>
     </div>
@@ -42,7 +36,6 @@ import { Ref, ref } from "vue";
 import { PAGES } from "../../../../api/consts";
 import { AIStatus } from "../../../../api/services/GameStatus";
 import { gameStatus, i18n, uiStatus } from "../../../../api/store";
-// import { chatHandler } from "../../../api/websocket/handlers/chat-handler";
 import { IconButton } from "../../../controls";
 import { IconType } from "../../../controls/Icon.vue";
 
@@ -117,18 +110,18 @@ function continueDialog() {
 </script>
 
 <style>
-.chatbox-box {
+.chat-container {
     position: relative;
-    display: flex;
-    justify-content: center;
     width: 100%;
-    z-index: 2;
+    height: 20%;
+    display:flex;
+    flex-direction:row;
     background: linear-gradient(to top, rgba(0, 14, 39, 0.7) 0%, rgba(0, 14, 39, 0.6) 100%);
     padding: 15px;
     backdrop-filter: blur(1px);
 }
 
-.chatbox-box::before {
+.chat-container::before {
     content: "";
     position: absolute;
     top: -40px;
@@ -138,59 +131,41 @@ function continueDialog() {
     background: linear-gradient(to bottom, transparent 0%, rgba(0, 14, 39, 0.3) 50%, rgba(0, 14, 39, 0.6) 100%);
     pointer-events: none;
 }
-
-.chatbox-main {
-    width: 60%;
+.chat-content-area {
+    width:100%;
+    margin-right:40px;
+    padding: 0 20px;
 }
-
-.chatbox-title-part {
-    display: flex;
-    align-items: baseline;
-    margin-bottom: 10px;
-}
-
-/* 确保所有文本元素都继承相同的字体和文字阴影 */
-.chatbox-title,
-.chatbox-subtitle,
-#inputMessage,
-#sendButton {
-    font-family: inherit;
-    /* 继承父元素字体 */
-    text-shadow: inherit;
-    /* 继承文字阴影 */
+.chat-info {
+    color: white;
+    padding-bottom: 5px;
+    padding-left: 30px;
+    border-bottom: 1px solid aqua;
+    display:flex;
+    align-items:baseline;
 }
 
 /* 调整特定元素的字体大小和粗细 */
-.chatbox-title {
+.chat-info #name {
     font-size: 24px;
     font-weight: bold;
     color: white;
-    margin-right: 15px;
+    margin-right: 2%;
 }
 
-.chatbox-subtitle {
+.chat-info #subtitle {
     font-size: 20px;
     font-weight: bold;
     color: #6eb4ff;
+    margin-right: 10%;
 }
 
-.chatbox-emotion {
+.chat-info #emotion {
     font-size: 20px;
     font-weight: bold;
     color: #ff77dd;
-    margin: auto;
 }
-
-.chatbox-line {
-    height: 1px;
-    background: rgba(255, 255, 255, 0.3);
-    margin: 6px 0 6px 0;
-}
-
-.chatbox-inputbox {
-    display: flex;
-    flex-direction: column;
-    white-space: pre-line;
+#chat-message {
     width: 100%;
     min-height: 40px;
     background: rgba(255, 255, 255, 0);
@@ -199,54 +174,35 @@ function continueDialog() {
     font-size: 20px;
     font-weight: bold;
     resize: none;
-    margin: 5px 0px;
+    padding: 20px;
     outline: none;
     transition: all 0.3s;
 }
-
-#inputMessage {
-    width: 100%;
-    min-height: 40px;
-    background: rgba(255, 255, 255, 0);
-    border: none;
+.chat-button-container {
+    height:100%;
+    width:fit-content;
+    display:flex;
+    align-items:flex-end;
+    flex-direction:column;
+    flex-wrap:wrap;
+}
+.chat-button-container .chat-button {
+    margin:5px 0;
+    height:50px;
+    width:120px;
+    background: transparent;
     color: white;
     font-size: 20px;
     font-weight: bold;
-    resize: none;
-    margin: 5px 0px;
-    outline: none;
+    cursor: pointer;
     transition: all 0.3s;
+    border-radius: 40px;
+    background-color:rgba(255,192,203, 0.5);
 }
-
 #inputMessage::placeholder {
     color: rgba(255, 255, 255, 0.5);
     /* 明亮的灰色 */
     text-shadow: none;
     /* 移除阴影 */
-}
-
-#sendButton {
-    align-self: flex-end;
-    background: rgba(0, 14, 39, 0);
-    color: rgb(4, 188, 255);
-    border: none;
-    padding: 4px 10px;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: all 0.3s;
-    font-size: 20px;
-    font-weight: bold;
-    transform: scaleX(1.5);
-}
-
-#sendButton:hover {
-    background: rgba(0, 14, 39, 0);
-    color: rgba(136, 255, 251, 0.827);
-}
-
-#sendButton:disabled {
-    background: #333;
-    cursor: not-allowed;
-    opacity: 0.7;
 }
 </style>
