@@ -87,7 +87,7 @@ voice_models = {
     "sva_speaker_id": "0",       # 选择simple vits api(vits版本)的音色ID
     "sbv2_name": "",           # 选择style bert vits2的模型名
     "sbv2_speaker_id": "0",     # 选择style bert vits2的模型说话人（不知道默认为0）
-    "bv2_speaker_id": "",        # 选择bert vits2的模型名
+    "bv2_speaker_id": "",        # 选择bert vits2的说话人id
     "sbv2api_name": "",        # 选择sbv2api的模型名
     "sbv2api_speaker_id": "0",   # 选择sbv2api的模型说话人（不知道默认为0）
     "gsv_voice_text": "",        # 填写gpt-sovits的示例音频参考文本
