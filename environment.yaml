@@ -25,7 +25,5 @@ dependencies:
   - requests>=2.0
   - platformdirs>=4.3.8
   - poetry-core>=1.10.0
-  - nbformat
-  - sqlalchemy
   - pip:
     - pywebview>=5.0

@@ -2,9 +2,6 @@ import shutil
 from pathlib import Path
 from typing import List, Dict, Optional
 
-from nbformat import current_nbformat
-from sqlalchemy import null
-
 from ling_chat.utils.function import Function
 from ling_chat.core.ai_service.script_engine.type import Character, Script, GameContext
 from ling_chat.core.ai_service.script_engine.charpter import Charpter
