@@ -42,8 +42,6 @@ poetry-core = "^2.1.3"
 torch = {version = "^2.5.1", source = "torchcpu"}
 sentence-transformers = "^5.0.0"
 chromadb = "^1.0.0"
-nbformat = "^5.10.0"
-sqlalchemy = "^2.0.0"
 
 
 [build-system]
