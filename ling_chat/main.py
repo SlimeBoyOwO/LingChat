@@ -65,7 +65,7 @@ def handel_run(run_modules_list: Collection[str]):
 should_exit = False
 
 def signal_handler(signum, frame):
-    """处理中断信号"""
+    """处理中断信号，测试HOOK"""
     global should_exit
     logger.info("接收到中断信号，正在关闭程序...")
     should_exit = True
