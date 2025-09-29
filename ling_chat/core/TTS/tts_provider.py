@@ -142,7 +142,7 @@ class TTS:
         if tts_type != "":
             logger.debug(f"根据参数选择TTS适配器: {tts_type}")
 
-            if tts_type == 'sva':
+            if tts_type == 'sva-vits':
                 if self.sva_adapter is None:
                     raise ValueError("Vits适配器未初始化")
                 return self.sva_adapter
@@ -154,7 +154,7 @@ class TTS:
                 if self.gsv_adapter is None:
                     raise ValueError("GPT-SoVITS适配器未初始化")
                 return self.gsv_adapter
-            elif tts_type == 'bv2':
+            elif tts_type == 'sva-bv2':
                 if self.bv2_adapter is None:
                     raise ValueError("Bert-Vits2适配器未初始化")
                 return self.bv2_adapter
