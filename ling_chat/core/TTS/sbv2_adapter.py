@@ -11,7 +11,7 @@ class SBV2Adapter(TTSBaseAdapter):
         if lang == "ja":
             lang = "JP"
         
-        self.api_url = os.environ.get("STYLE_BERT_VITS2_API_URL", "http://127.0.0.1:5000/voice")
+        self.api_url = os.environ.get("STYLE_BERT_VITS2_URL", "http://127.0.0.1:5000/voice")
         self.params: dict[str, str|int|float] = {
             "encoding": "utf-8",  # 文本编码
             "model_name": model_name,

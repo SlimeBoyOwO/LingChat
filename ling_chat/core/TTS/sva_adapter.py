@@ -8,7 +8,7 @@ class SVAAdapter(TTSBaseAdapter):
     def __init__(self, speaker_id: int=4, 
                  audio_format: str="wav", lang: str="ja"):
         
-        self.api_url = os.environ.get("SIMPLE_VITS_API_URL", "http://127.0.0.1:23456/voice/vits")
+        self.api_url = os.environ.get("SIMPLE_VITS_API_VITS_URL", "http://127.0.0.1:23456/voice/vits")
         self.params: dict[str, str|int|float] = {
             "id": speaker_id,
             "format": audio_format,   # 可用wav,ogg,silk,mp3,flac
@@ -24,7 +24,7 @@ class SVAAdapter(TTSBaseAdapter):
     async def generate_voice(self, text: str) -> bytes :
         params = self.params
         params["text"] = text
-        logger.debug("发送到SVA的请求:"+ str(params))
+        logger.debug("发送到SVA-Vits的请求:"+ str(params))
 
         async with aiohttp.ClientSession() as session:
             async with session.get(

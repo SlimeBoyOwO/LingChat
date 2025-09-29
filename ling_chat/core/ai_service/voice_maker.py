@@ -63,12 +63,12 @@ class VoiceMaker:
             self.check_tts_availability(tts_settings)
             
             # 根据当前设置的TTS类型进行初始化
-            if self.tts_type == "sva" and self.sva_available:
+            if self.tts_type == "sva-vits" and self.sva_available:
                 self.tts_provider.init_sva_adapter(speaker_id=int(tts_settings["sva_speaker_id"]))
             elif self.tts_type == "sbv2" and self.sbv2_available:
-                self.tts_provider.init_sbv2_adapter(speaker_id=int(tts_settings["sbv2_speaker_id"]), 
+              	self.tts_provider.init_sbv2_adapter(speaker_id=int(tts_settings["sbv2_speaker_id"]), 
                                                     model_name=tts_settings["sbv2_name"])
-            elif self.tts_type == "bv2" and self.bv2_available:
+            elif self.tts_type == "sva-bv2" and self.bv2_available:
                 self.tts_provider.init_bv2_adapter(speaker_id=int(tts_settings["bv2_speaker_id"]))
             elif self.tts_type == "sbv2api" and self.sbv2api_available:
                 self.tts_provider.init_sbv2api_adapter(model_name=tts_settings["sbv2api_name"],
@@ -86,7 +86,7 @@ class VoiceMaker:
 
     def set_tts(self, tts_type: str, tts_settings: dict[str,str], name: str) -> None:
         """设置默认的TTS类型"""
-        available_tts_types = ("bv2", "gsv", "sbv2", "sva", "sbv2api","aivis")
+        available_tts_types = ("sva-bv2", "gsv", "sbv2", "sva-vits", "sbv2api","aivis")
         try:
             if os.environ.get("TTS_TYPE", "") in available_tts_types:
                 self.tts_type = os.environ.get("TTS_TYPE", "")
