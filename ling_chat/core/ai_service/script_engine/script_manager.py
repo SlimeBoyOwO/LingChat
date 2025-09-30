@@ -6,7 +6,7 @@ from ling_chat.utils.function import Function
 from ling_chat.core.ai_service.script_engine.type import Character, Script, GameContext
 from ling_chat.core.ai_service.script_engine.charpter import Charpter
 from ling_chat.core.logger import logger
-from ling_chat.utils.runtime_path import user_data_path
+from ling_chat.utils.runtime_path import user_data_path, package_root
 from ling_chat.core.ai_service.script_engine.exceptions import ScriptLoadError, ChapterLoadError, ScriptEngineError
 
 class ScriptManager:
@@ -23,15 +23,61 @@ class ScriptManager:
         self.current_chartper:Charpter|None = None
 
         # 记忆，状态管理
-        if self.all_scripts is []:
-            logger.error("似乎没有scripts文件夹，请从static中导入")
+        if not self.all_scripts:
+            logger.warning("剧本文件不存在，正在从static目录复制默认剧本...")
+            self._copy_default_scripts()
+            self.get_all_scripts()
+            
+        if not self.all_scripts:
+            logger.error("没有可用的剧本文件")
             return
         
         self.current_script_name = self.all_scripts[0]          # 默认导入第一个剧本
         
         self.init_script()
     
+    def _copy_default_scripts(self):
+        """从static目录复制默认剧本到用户数据目录"""
+        static_scripts_dir = package_root / "static" / "game_data" / "scripts"
+        user_scripts_dir = user_data_path / "game_data" / "scripts"
+        
+        if static_scripts_dir.exists() and static_scripts_dir.is_dir():
+            user_scripts_dir.mkdir(parents=True, exist_ok=True)
+            for script_path in static_scripts_dir.iterdir():
+                dest_path = user_scripts_dir / script_path.name
+                if not dest_path.exists():
+                    if script_path.is_dir():
+                        shutil.copytree(script_path, dest_path)
+                        logger.info(f"已复制剧本: {script_path.name}")
+                    else:
+                        shutil.copy2(script_path, dest_path)
+                        logger.info(f"已复制文件: {script_path.name}")
+        else:
+            logger.error("static目录中没有找到默认剧本文件")
+            
+        # 复制默认角色文件夹
+        static_characters_dir = package_root / "static" / "game_data" / "characters"
+        user_characters_dir = user_data_path / "game_data" / "scripts" / "一只简简单单的剧情" / "characters"
+        
+        if static_characters_dir.exists() and static_characters_dir.is_dir():
+            user_characters_dir.mkdir(parents=True, exist_ok=True)
+            for character_path in static_characters_dir.iterdir():
+                dest_path = user_characters_dir / character_path.name
+                if not dest_path.exists():
+                    if character_path.is_dir():
+                        shutil.copytree(character_path, dest_path)
+                        logger.info(f"已复制默认角色: {character_path.name}")
+                    else:
+                        shutil.copy2(character_path, dest_path)
+                        logger.info(f"已复制角色文件: {character_path.name}")
+        else:
+            logger.error("static目录中没有找到默认角色文件")
+
     def init_script(self):
+        if not hasattr(self, 'current_script_name') or not self.current_script_name:
+            logger.error("没有可用的剧本文件，无法初始化剧本")
+            return
+            
         script_path = self.scripts_dir / self.current_script_name
         self.current_script = self.get_script(self.current_script_name)
         characters_list:list[Character] = self._read_characters_from_script(script_path)
@@ -101,7 +147,22 @@ class ScriptManager:
         characters_dir = script_path / 'characters'
 
         if not characters_dir.exists() or not characters_dir.is_dir():
-            raise ScriptLoadError(f"剧本 '{script_path.name}' 中缺少 'characters' 文件夹。")
+            # 如果剧本缺少characters文件夹，尝试从静态资源复制默认角色
+            static_characters_dir = package_root / "static" / "game_data" / "characters"
+            if static_characters_dir.exists() and static_characters_dir.is_dir():
+                characters_dir.mkdir(parents=True, exist_ok=True)
+                for character_path in static_characters_dir.iterdir():
+                    dest_path = characters_dir / character_path.name
+                    if not dest_path.exists():
+                        if character_path.is_dir():
+                            shutil.copytree(character_path, dest_path)
+                            logger.info(f"已为剧本 '{script_path.name}' 复制默认角色: {character_path.name}")
+                        else:
+                            shutil.copy2(character_path, dest_path)
+                            logger.info(f"已为剧本 '{script_path.name}' 复制角色文件: {character_path.name}")
+                logger.info(f"已为剧本 '{script_path.name}' 创建默认角色文件夹")
+            else:
+                raise ScriptLoadError(f"剧本 '{script_path.name}' 中缺少 'characters' 文件夹，且无法从静态资源复制默认角色。")
 
         for character_path in characters_dir.iterdir():
             # 检查是否是目录，并排除特定名称
