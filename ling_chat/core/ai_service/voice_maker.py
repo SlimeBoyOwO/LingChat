@@ -74,8 +74,14 @@ class VoiceMaker:
                 self.tts_provider.init_sbv2api_adapter(model_name=tts_settings["sbv2api_name"],
                                                        speaker_id=int(tts_settings["sbv2api_speaker_id"]))
             elif self.tts_type == "gsv" and self.gsv_available:
-                self.tts_provider.init_gsv_adapter(ref_audio_path=tts_settings["gsv_voice_filename"], 
-                                                   prompt_text=tts_settings["gsv_voice_text"])
+                # 优先使用环境变量定义的语音文件
+                if os.environ.get("GPT_SOVITS_REF_AUDIO", "") == "":
+                    self.tts_provider.init_gsv_adapter(ref_audio_path=tts_settings["gsv_voice_filename"],
+                                                       prompt_text=tts_settings["gsv_voice_text"])
+                else:
+                    self.tts_provider.init_gsv_adapter(ref_audio_path=os.environ.get("GPT_SOVITS_REF_AUDIO", ""),
+                                                       prompt_text=os.environ.get("GPT_SOVITS_PROMPT_TEXT", ""))
+                    logger.warning("你正在使用环境变量中的GPT-SoVITS配置")
             elif self.tts_type == "aivis" and self.aivis_available:
                 self.tts_provider.init_aivis_adapter(model_uuid=tts_settings["aivis_model_uuid"])
             else:
@@ -92,7 +98,7 @@ class VoiceMaker:
                 self.tts_type = os.environ.get("TTS_TYPE", "")
                 self.set_tts_settings(tts_settings, name)
             else:
-                logger.warning(f"你的环境变量中未设置TTS类型（或是设置错误），将使用角色卡的默认语音合成器！")
+                logger.warning("你的环境变量中未设置TTS类型（或是设置错误），将使用角色卡的默认语音合成器！")
                 if tts_type in available_tts_types:
                     self.tts_type = tts_type
                     self.set_tts_settings(tts_settings, name)
