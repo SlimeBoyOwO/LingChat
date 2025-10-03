@@ -83,28 +83,32 @@ def main():
     
     args = get_parser().parse_args()
 
+    # 根据命令行参数和环境变量决定是否启用前端界面
+    gui_enabled = (not args.nogui) and (os.getenv('OPEN_FRONTEND_APP', 'false').lower() == "true")
+    if args.nogui:
+        logger.info("启用无界面模式，前端界面已禁用")
+    
     handel_install(args.install or [])
     handel_run(args.run or [])
 
     app_thread = run_app_in_thread()
-
 
     if os.getenv('VOICE_CHECK', 'false').lower() == "true":
         VoiceCheck.main()
     else:
         logger.info("已根据环境变量禁用语音检查")
 
-    # 检查环境变量决定是否启动前端界面
-    if os.getenv('OPEN_FRONTEND_APP', 'false').lower() == "true":  # fixme: 请使用 --run webview 启动前端界面
+    # 根据是否启动前端界面做不同处理
+    if gui_enabled:  # fixme: 请使用 --run webview 启动前端界面
         logger.stop_loading_animation(success=True, final_message="应用加载成功")
         print_logo()
-        logger.warning("[Deprecation]: 请使用 --run webview 启动前端界面")  # DeprecationWarning("请使用 --run webview 启动前端界面")
+        logger.warning("[Deprecation]: 请使用 --run webview 启动前端界面，如果依然无法解决问题，请使用 --nogui 启用无前端窗口模式")
         try:
             start_webview()
         except KeyboardInterrupt:
             logger.info("用户关闭程序")
     else:
-        logger.info("已根据环境变量禁用前端界面")
+        logger.info("前端界面已禁用")
         logger.stop_loading_animation(success=True, final_message="应用加载成功")
         print_logo()
         try:
