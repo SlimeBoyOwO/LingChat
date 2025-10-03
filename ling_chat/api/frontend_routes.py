@@ -10,10 +10,18 @@ frontend_path = static_path / "frontend"
 
 router = APIRouter()
 
-# ✅ 自定义 StaticFiles（禁用缓存）
+# ✅ 自定义 StaticFiles（禁用缓存并设置正确的MIME类型）
 class NoCacheStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):
         response = await super().get_response(path, scope)
+        # 设置正确的MIME类型
+        if path.endswith('.js'):
+            response.headers["Content-Type"] = "application/javascript"
+        elif path.endswith('.css'):
+            response.headers["Content-Type"] = "text/css"
+        elif path.endswith('.html'):
+            response.headers["Content-Type"] = "text/html"
+        # 设置缓存控制头
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
