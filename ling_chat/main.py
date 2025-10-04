@@ -23,7 +23,7 @@ from ling_chat.utils.cli_parser import get_parser
 from ling_chat.third_party import install_third_party, run_third_party
 
 
-def handle_install(install_modules_list: Collection[str]):
+def handle_install(install_modules_list: Collection[str], use_mirror=False):
     """处理安装模块"""
     for module in install_modules_list:
         logger.info(f"正在安装模块: {module}")
@@ -35,6 +35,8 @@ def handle_install(install_modules_list: Collection[str]):
             install_third_party.install_sbv2(third_party_path / "sbv2/sbv2")
         elif module == "18emo":
             install_third_party.install_18emo(third_party_path / "emotion_model_18emo")
+        elif module == "rag":
+            install_third_party.install_rag_model(use_mirror=use_mirror)
         else:
             logger.error(f"未知的安装模块: {module}")
 
@@ -58,7 +60,7 @@ def handle_run(run_modules_list: Collection[str]):
 def run_cli_command(args):
     """运行CLI命令，不启动主程序"""
     if args.command == "install":
-        handle_install(args.modules)
+        handle_install(args.modules, use_mirror=args.mirror)
         logger.info("安装完成")
     else:
         logger.error(f"未知的CLI命令: {args.command}")

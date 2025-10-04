@@ -145,11 +145,11 @@ def install_18emo(emo_path: Path, url: str = ""):
     url = url or "https://www.modelscope.cn/models/lingchat-research-studio/LingChat-emotion-model-18emo/resolve/master/model.safetensors"
     download_file(url, emo_path / "model.safetensors")
 
-def install_rag_model():
+def install_rag_model(use_mirror=False):
     """
     安装RAG系统所需的模型
     """
-    download_embedding_model()
+    download_embedding_model(use_mirror=use_mirror)
 
 
 def main():

@@ -9,8 +9,13 @@ def get_parser():
     install_parser.add_argument(
         "modules",
         nargs="+",
-        choices=["vits", "sbv2", "18emo"],
+        choices=["vits", "sbv2", "18emo", "rag"],
         help="Modules to install"
+    )
+    install_parser.add_argument(
+        "--mirror", "-m",
+        action="store_true",
+        help="Use mirror site for downloading models (especially for RAG model)"
     )
 
     # run 主程序启动选项
