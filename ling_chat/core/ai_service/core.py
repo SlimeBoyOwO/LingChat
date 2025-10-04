@@ -71,6 +71,8 @@ class AIService:
                                                                        self.ai_prompt_example_old)
                 
             self.voice_maker.set_lang(settings.get("language", "ja"))
+            # 设置角色路径，以便在TTS设置中使用
+            self.voice_maker.set_character_path(settings.get("resource_path", ""))
             self.voice_maker.set_tts(settings.get("tts_type", "sbv"), 
                                      settings.get("voice_models", {}), 
                                      self.ai_name)
