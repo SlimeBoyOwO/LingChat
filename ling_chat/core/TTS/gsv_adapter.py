@@ -9,7 +9,10 @@ class GPTSoVITSAdapter(TTSBaseAdapter):
                  audio_format: str="wav", text_lang: str="auto",
                  parallel_infer: bool=True
                 ):
-        self.api_url = os.environ.get("GPT_SOVITS_API_URL", "http://127.0.0.1:9880/tts")
+        api_url = os.environ.get("GPT_SOVITS_API_URL", "http://127.0.0.1:9880")
+        # 处理URL末尾斜杠，避免重复
+        self.api_url = api_url.rstrip('/')
+        
         # 支持的语言（v2及以上）：
         # auto 多语种自动识别切分
         # en	英语
@@ -44,7 +47,7 @@ class GPTSoVITSAdapter(TTSBaseAdapter):
 
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                self.api_url,
+                self.api_url + "/tts",
                 json=params
             ) as resp:
                 if resp.status != 200:
