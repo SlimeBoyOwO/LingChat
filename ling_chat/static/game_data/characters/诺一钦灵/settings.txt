@@ -19,6 +19,8 @@ voice_models = {
     "sbv2api_speaker_id": "0",
     "gsv_voice_text": "",
     "gsv_voice_filename": "",
+    "gsv_gpt_model_name": "",
+    "gsv_sovits_model_name": "",
     "aivis_model_uuid": "44f93196-7485-45af-9616-f33adee71846"
 }
 tts_type = "sbv2api"
