@@ -50,7 +50,10 @@ class VoiceMaker:
         # 检查GSV配置
         gsv_voice_filename = tts_settings.get("gsv_voice_filename", "")
         gsv_voice_text = tts_settings.get("gsv_voice_text", "")
-        self.gsv_available = _is_valid(gsv_voice_filename) and _is_valid(gsv_voice_text)
+        gsv_gpt_model_name = tts_settings.get("gsv_gpt_model_name", "")
+        gsv_sovits_model_name = tts_settings.get("gsv_sovits_model_name", "")
+        self.gsv_available = (_is_valid(gsv_voice_filename) and _is_valid(gsv_voice_text)) or \
+                             (_is_valid(gsv_gpt_model_name) and _is_valid(gsv_sovits_model_name))
         
         # 检查AIVIS配置
         aivis_model_uuid = tts_settings.get("aivis_model_uuid", "")
@@ -95,6 +98,40 @@ class VoiceMaker:
                     self.tts_provider.init_gsv_adapter(ref_audio_path=os.environ.get("GPT_SOVITS_REF_AUDIO", ""),
                                                        prompt_text=os.environ.get("GPT_SOVITS_PROMPT_TEXT", ""))
                     logger.warning("你正在使用环境变量中的GPT-SoVITS配置")
+                
+                # 处理模型设置
+                gpt_model_name = tts_settings.get("gsv_gpt_model_name", "")
+                sovits_model_name = tts_settings.get("gsv_sovits_model_name", "")
+                
+                # 检查环境变量中的模型配置
+                env_gpt_model = os.environ.get("GPT_SOVITS_GPT_MODEL", "")
+                env_sovits_model = os.environ.get("GPT_SOVITS_SOVITS_MODEL", "")
+                
+                # 异步设置模型
+                async def _set_models(gpt_model_path: str, sovits_model_path: str):
+                    # 确保gsv_adapter不为None (pylance如是说)
+                    if self.tts_provider.gsv_adapter is not None:
+                        success = await self.tts_provider.gsv_adapter.set_model(gpt_model_path, sovits_model_path)
+                        if success:
+                            logger.info(f"GSV模型设置成功: GPT={gpt_model_path}, SoVITS={sovits_model_path}")
+                        else:
+                            logger.error(f"GSV模型设置失败: GPT={gpt_model_path}, SoVITS={sovits_model_path}")
+                    else:
+                        logger.error("GSV适配器未初始化，无法设置模型")
+                
+                # 如果环境变量中有模型配置，则优先使用环境变量，否则使用setting设置
+                if env_gpt_model and env_sovits_model:
+                    # 创建异步任务
+                    asyncio.create_task(_set_models(env_gpt_model, env_sovits_model))
+                    logger.warning("你正在使用环境变量中的GSV模型配置")
+                elif gpt_model_name and sovits_model_name:
+                    # 构建模型的绝对路径
+                    models_dir = os.path.join(self.character_path, "models", "gsv")
+                    gpt_model_path = os.path.join(models_dir, gpt_model_name)
+                    sovits_model_path = os.path.join(models_dir, sovits_model_name)
+                    
+                    # 创建异步任务
+                    asyncio.create_task(_set_models(gpt_model_path, sovits_model_path))
             elif self.tts_type == "aivis" and self.aivis_available:
                 self.tts_provider.init_aivis_adapter(model_uuid=tts_settings["aivis_model_uuid"])
             else:
