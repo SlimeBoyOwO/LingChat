@@ -8,7 +8,7 @@ class SVAAdapter(TTSBaseAdapter):
     def __init__(self, speaker_id: int=4, 
                  audio_format: str="wav", lang: str="ja"):
         
-        api_url = os.environ.get("SIMPLE_VITS_API_VITS_URL", "http://127.0.0.1:23456")
+        api_url = os.environ.get("SIMPLE_VITS_API_URL", "http://127.0.0.1:23456")
         # 处理URL末尾斜杠，避免重复
         self.api_url = api_url.rstrip('/')
         self.params: dict[str, str|int|float] = {
