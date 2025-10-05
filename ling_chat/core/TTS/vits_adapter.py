@@ -4,7 +4,7 @@ from ling_chat.core.TTS.base_adapter import TTSBaseAdapter
 from ling_chat.core.logger import logger
 
 
-class SVAAdapter(TTSBaseAdapter):
+class VitsAdapter(TTSBaseAdapter):
     def __init__(self, speaker_id: int=4, 
                  audio_format: str="wav", lang: str="ja"):
         
