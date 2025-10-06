@@ -28,7 +28,7 @@ outline:
 
 首先，查看电脑 ip 地址，如果你的电脑是 Windows 系统，先在键盘上同时按下 **Windows徽标键+字母R键** 输入 **cmd** 打开命令提示符，再在黑窗口中输入 **ipconfig** ，回车，窗口中可能出现以下内容：
 
-![cmd-ipconfig](/assets/depoly_android/cmd-ipconfig.webp)
+![cmd-ipconfig](https://lingchat.wiki/assets/depoly_android/cmd-ipconfig.webp)
 
 记下其中的 **IPv4 地址** 后的 **ip地址**。
 
@@ -42,7 +42,7 @@ INFO:     Uvicorn running on http://0.0.0.0:8765 (Press CTRL+C to quit)
 
 打开你的手机浏览器，手机调为横屏，在地址栏输入 **ip地址 + 一个英文的分号（: \) + 端口号** 即可使用。正常情况下如下图：
 
-![手机前端演示](/assets/depoly_android/手机前端演示.webp)
+![手机前端演示](https://lingchat.wiki/assets/depoly_android/手机前端演示.webp)
 
 ## 二、纯手机的使用 {#pure_phone_deploy}
 
@@ -74,23 +74,23 @@ INFO:     Uvicorn running on http://0.0.0.0:8765 (Press CTRL+C to quit)
 
 上下滑动屏幕选择 **修复 android 12** ，回车，看提示选择（一般全回车默认），直到下图：
 
-![](/assets/depoly_android/adb地址-1.webp)
+![](https://lingchat.wiki/assets/depoly_android/adb地址-1.webp)
 
 现在你需要分屏操作，分屏后点击 设置 的 **开发者选项-无线调试** 右边的滑块， 再点击左边 **无线调试** 四个大字（对没错，左边是可以点的），位置如下图：
 
-![](/assets/depoly_android/adb-2.webp)
+![](https://lingchat.wiki/assets/depoly_android/adb-2.webp)
 
 打开新界面后，点击 **使用配对码配对设备** ，弹出以下窗口，此时回到 ZeroTermux，输入 **IP 地址与端口** 中的内容，回车，再输入配对码，弹出下图：
 
-![](/assets/depoly_android/adb-3.webp)
+![](https://lingchat.wiki/assets/depoly_android/adb-3.webp)
 
 在下面的窗口点 **取消** ，上面窗口选择 **不是** 回车，然后按照下面界面另一个 **IP 地址与端口** 填上面窗口的内容，如下图：
 
-![](/assets/depoly_android/adb-4.webp)
+![](https://lingchat.wiki/assets/depoly_android/adb-4.webp)
 
 之后出现下图，配置完毕，关掉下面的设置后，在 **ZeroTermux** 回车回到主界面。
 
-![](/assets/depoly_android/adb-ok.webp)
+![](https://lingchat.wiki/assets/depoly_android/adb-ok.webp)
 
 ### 部署 LingChat
 
@@ -138,20 +138,20 @@ wget https://www.modelscope.cn/models/kxdw2580/LingChat-phone-file/resolve/maste
 
 等待安装完毕后，滑动屏幕选择 **恢复/还原proot容器** 回车，出现下图：
 
-![](/assets/depoly_android/restore-1.webp)
+![](https://lingchat.wiki/assets/depoly_android/restore-1.webp)
 
 选择常规模式，回车，出现以下界面：
 
-![](/assets/depoly_android/restone-2.webp)
+![](https://lingchat.wiki/assets/depoly_android/restone-2.webp)
 
 选右边那个，回车，出现以下界面：
 
-![](/assets/depoly_android/restone-3.webp)
+![](https://lingchat.wiki/assets/depoly_android/restone-3.webp)
 
 输入一个 0 ，回车，等解压完成回车回到主界面。此时再进入 proot 界面，选择当前已安装容器列表，无脑回车即可打开容器。（此时需要等待容器加载完成）
 
 > 如果出现以下界面，直接确定。
-> ![](/assets/depoly_android/batterychoose.webp)
+> ![](https://lingchat.wiki/assets/depoly_android/batterychoose.webp)
 
 OK啦，LingChat安装完毕！接下来到下面学习如何启动它。
 
@@ -325,7 +325,7 @@ cd
 
 配置完成后，每次启动容器之后，就可以输入 `bash lingchat.sh` 打开 LingChat服务端，待没有东西继续输出之后，打开你的手机浏览器，手机调为横屏，在地址栏输入 `127.0.0.1:12746` 即可使用。如下图：
 
-![](/assets/depoly_android/手机前端演示.webp)
+![](https://lingchat.wiki/assets/depoly_android/手机前端演示.webp)
 
 ### 更新 LingChat
 
