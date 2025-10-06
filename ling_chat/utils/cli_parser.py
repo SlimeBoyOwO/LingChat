@@ -25,5 +25,11 @@ def get_parser():
         choices=["vits", "sbv2", "18emo", "webview"],
         help="Modules to run"
     )
+    
+    parser.add_argument(
+        "--nogui",
+        action="store_true",
+        help="启用无界面模式（禁用前端界面）"
+    )
 
     return parser
