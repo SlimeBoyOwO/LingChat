@@ -12,6 +12,7 @@ class VoiceMaker:
         self.speaker_id = 4
         self.tts_type = ""
         self.lang = "ja"  # 默认语言为日语
+        self.character_path = ""  # 添加角色卡路径，以便用于gsv
 
         # 初始化语音合成器可用状态
         self.sva_available = False
@@ -66,7 +67,7 @@ class VoiceMaker:
             if self.tts_type == "sva-vits" and self.sva_available:
                 self.tts_provider.init_sva_adapter(speaker_id=int(tts_settings["sva_speaker_id"]))
             elif self.tts_type == "sbv2" and self.sbv2_available:
-              	self.tts_provider.init_sbv2_adapter(speaker_id=int(tts_settings["sbv2_speaker_id"]), 
+                self.tts_provider.init_sbv2_adapter(speaker_id=int(tts_settings["sbv2_speaker_id"]), 
                                                     model_name=tts_settings["sbv2_name"])
             elif self.tts_type == "sva-bv2" and self.bv2_available:
                 self.tts_provider.init_bv2_adapter(speaker_id=int(tts_settings["bv2_speaker_id"]))
@@ -74,9 +75,21 @@ class VoiceMaker:
                 self.tts_provider.init_sbv2api_adapter(model_name=tts_settings["sbv2api_name"],
                                                        speaker_id=int(tts_settings["sbv2api_speaker_id"]))
             elif self.tts_type == "gsv" and self.gsv_available:
+                # 获取参考音频文件名
+                ref_audio_filename = tts_settings["gsv_voice_filename"]
+                ref_audio_path = ref_audio_filename
+                
+                # 检查参考音频路径是否为绝对路径，如果是则发出警告
+                if os.path.isabs(ref_audio_filename):
+                    logger.warning(f"角色 {name} 的参考音频路径为绝对路径: {ref_audio_filename}，这可能导致gsv出错")
+                
+                # 拼接角色路径
+                ref_audio_path = os.path.join(self.character_path, ref_audio_filename)
+                logger.debug(f"gsv拼接后的参考音频路径: {ref_audio_path}")
+                
                 # 优先使用环境变量定义的语音文件
                 if os.environ.get("GPT_SOVITS_REF_AUDIO", "") == "":
-                    self.tts_provider.init_gsv_adapter(ref_audio_path=tts_settings["gsv_voice_filename"],
+                    self.tts_provider.init_gsv_adapter(ref_audio_path=ref_audio_path,
                                                        prompt_text=tts_settings["gsv_voice_text"])
                 else:
                     self.tts_provider.init_gsv_adapter(ref_audio_path=os.environ.get("GPT_SOVITS_REF_AUDIO", ""),
@@ -114,6 +127,10 @@ class VoiceMaker:
         if lang not in ["ja", "zh"]:
             raise ValueError(f"不支持的语言: {lang}")
         self.lang = lang
+    
+    def set_character_path(self, character_path: str) -> None:
+        """设置角色卡路径"""
+        self.character_path = character_path
     
     async def generate_voice_files(self, segments: List[Dict[str, str]]):
         """生成语音文件"""
