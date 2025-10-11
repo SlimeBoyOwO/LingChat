@@ -97,7 +97,7 @@ def run_main_program(args):
     if args.nogui:
         logger.info("启用无界面模式，前端界面已禁用")
     
-    handel_install(args.install or [])
+    # handle_install(install_modules) TODO: 未来版本可能会启用自动安装功能
 
     # 启动加载动画
     selected_loading_message = get_random_loading_message()
