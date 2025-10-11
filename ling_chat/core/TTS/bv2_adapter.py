@@ -6,7 +6,9 @@ from ling_chat.core.logger import logger
 class BV2Adapter(TTSBaseAdapter):
     def __init__(self, speaker_id: int=0, 
                  audio_format: str="wav", lang: str="zh"):
-        self.api_url = os.environ.get("SIMPLE_VITS_API_BERT_VITS2_URL", "http://127.0.0.1:6006/voice/bert-vits2")
+        api_url = os.environ.get("SIMPLE_VITS_API_URL", "http://127.0.0.1:6006")
+        # 处理URL末尾斜杠，避免重复
+        self.api_url = api_url.rstrip('/')
         self.params: dict[str, str|int|float] = {
             "id": speaker_id,
             "format": audio_format,   # 可用wav,ogg,silk,mp3,flac
@@ -26,7 +28,7 @@ class BV2Adapter(TTSBaseAdapter):
 
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                self.api_url, 
+                self.api_url + "/voice/bert-vits2", 
                 json=params
             ) as response:
                 if response.status != 200:

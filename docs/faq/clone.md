@@ -1,3 +1,8 @@
+---
+title: Clone后修复指南
+description: 详细指导Clone 项目文件后，文件未追踪导致大量文件显示需要 commit 的问题
+---
+
 ## 问题描述
 
 Clone 项目文件后，文件未追踪导致大量文件显示需要 commit

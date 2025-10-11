@@ -11,7 +11,10 @@ class SBV2Adapter(TTSBaseAdapter):
         if lang == "ja":
             lang = "JP"
         
-        self.api_url = os.environ.get("STYLE_BERT_VITS2_URL", "http://127.0.0.1:5000/voice")
+        api_url = os.environ.get("STYLE_BERT_VITS2_URL", "http://127.0.0.1:5000")
+        # 处理URL末尾斜杠，避免重复
+        self.api_url = api_url.rstrip('/')
+        self.audio_format = audio_format
         self.params: dict[str, str|int|float] = {
             "encoding": "utf-8",  # 文本编码
             "model_name": model_name,
@@ -33,11 +36,21 @@ class SBV2Adapter(TTSBaseAdapter):
         params["text"] = text
         logger.debug(f"发送到SBV2的json: {params}")
 
+        # 设置正确的Accept头
+        content_types = {
+            "wav": "audio/wav",
+            "flac": "audio/flac", 
+            "mp3": "audio/mpeg",
+            "aac": "audio/aac",
+            "ogg": "audio/ogg"
+        }
+        accept_header = content_types.get(self.audio_format, "audio/wav")
+
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                    self.api_url,
+                    self.api_url + "/voice",
                     params=params,
-                    headers={"Accept": f"audio/{params.get('format', 'wav')}"}
+                    headers={"Accept": accept_header}
             ) as response:
                 response.raise_for_status()
                 return await response.read()
