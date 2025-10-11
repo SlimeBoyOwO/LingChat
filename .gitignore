@@ -37,15 +37,8 @@ __pycache__/
 # 日志文件和临时文件
 *.log
 
-backend/data/logs
-
 # Ignore 音频文件
 data/voice
-
-# Ignore generated audio file
-public/audio/
-frontend/public/audio/
-backend/go-impl/internal/data/ent/ent
 
 # Ignore 风雪的个人文件目录
 memory-bank/

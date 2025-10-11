@@ -11,10 +11,10 @@ user_name = 莱姆
 user_subtitle = Bilibili
 
 voice_models = {
-    "sva_speaker_id": "",
+    "sva_speaker_id": "0",
     "sbv2_name": "Ling-v2",
     "sbv2_speaker_id": "0",
-    "bv2_speaker_id": "",
+    "bv2_speaker_id": "0",
     "sbv2api_name": "Ling v2",
     "sbv2api_speaker_id": "0",
     "gsv_voice_text": "",
