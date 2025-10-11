@@ -20,7 +20,9 @@ class AIVISAdapter(TTSBaseAdapter):
         :param audio_format: 音频格式 (wav/flac/mp3/aac/opus)
         :param lan: 语言 (BCP47格式, 默认"ja"，目前仅支持ja)
         """
-        self.api_url = os.environ.get("AIVIS_API_URL", "https://api.aivis-project.com/v1/tts/synthesize")
+        api_url = os.environ.get("AIVIS_API_URL", "https://api.aivis-project.com/v1")
+        # 处理URL末尾斜杠，避免重复
+        self.api_url = api_url.rstrip('/')
         self.api_key = os.environ.get("AIVIS_API_KRY", "")
         
         self.params: dict[str, str|int|float|bool|None] = {
@@ -82,7 +84,7 @@ class AIVISAdapter(TTSBaseAdapter):
 
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                    self.api_url,
+                    self.api_url + "/tts/synthesize",
                     json=params,
                     headers=headers
             ) as response:

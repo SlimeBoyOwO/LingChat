@@ -10,7 +10,9 @@ class SBV2APIAdapter(TTSBaseAdapter):
                  speaker_id: int=0, style_id: int=0,
                  audio_format: str="wav"):
         
-        self.api_url = os.environ.get("SBV2API_API_URL", "http://localhost:3000/synthesize")
+        api_url = os.environ.get("SBV2API_API_URL", "http://localhost:3000")
+        # 处理URL末尾斜杠，避免重复
+        self.api_url = api_url.rstrip('/')
         self.params: dict[str, str|int|float] = {
             "ident": model_name,
             "length_scale": length_scale,
@@ -28,7 +30,7 @@ class SBV2APIAdapter(TTSBaseAdapter):
 
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                    self.api_url,
+                    self.api_url + "/synthesize",
                     json=params
             ) as response:
                 if response.status != 200:
