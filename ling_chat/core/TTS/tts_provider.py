@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from ling_chat.core.TTS.sva_adapter import SVAAdapter
+from ling_chat.core.TTS.vits_adapter import VitsAdapter
 from ling_chat.core.TTS.sbv2_adapter import SBV2Adapter
 from ling_chat.core.TTS.gsv_adapter import GPTSoVITSAdapter
 from ling_chat.core.TTS.sbv2api_adapter import SBV2APIAdapter
@@ -51,7 +51,7 @@ class TTS:
 
         :param speaker_id: 说话人ID
         """
-        self.sva_adapter = SVAAdapter(
+        self.sva_adapter = VitsAdapter(
             speaker_id = speaker_id,
             audio_format = self.format,
             lang = "ja"
