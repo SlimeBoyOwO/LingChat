@@ -19,7 +19,7 @@ from ling_chat.utils.function import Function
 import os
 
 class AIService:
-    def __init__(self, settings: dict):
+    def __init__(self, settings: dict[str, str]):
         self.memory = []
         self.user_id = "1"   # TODO: 多用户的时候这里可以改成按照初始化获取
         self.use_rag = os.environ.get("USE_RAG", "False").lower() == "true"
@@ -55,7 +55,7 @@ class AIService:
 
         
     
-    def import_settings(self, settings: dict):
+    def import_settings(self, settings: dict[str, str]) -> None:
         if(settings):
             self.ai_name = settings.get("ai_name","ai_name未设定")
             self.ai_subtitle = settings.get("ai_subtitle","ai_subtitle未设定")
