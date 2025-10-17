@@ -58,7 +58,6 @@ class MessageGenerator:
             end_time = time.perf_counter()
             # 更新情绪片段列表
             emotion_segments.extend(sentence_segments)
-            # 为每个片段生成语音和翻译
 
             logger.debug(f"句子处理时间: {end_time - start_time} 秒")
     

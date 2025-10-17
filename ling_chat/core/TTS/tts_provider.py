@@ -211,3 +211,16 @@ class TTS:
             logger.error(f"TTS服务不可达，已禁用语音，重新启动程序以刷新启动服务")
             self.enable = False
             return None
+    
+    async def generate_voice_stream(self, text: str, file_name: str, 
+                             tts_type: str = "", lang: str ="ja") -> str | None:
+        """
+        生成语音文件流式
+
+        :param text: 要转换为语音的文本
+        :param file_name: 输出文件名
+        :param tts_type: TTS类型，默认为空字符串表示自动选择
+        :param lang: 语言，默认为"ja"
+        :return: 成功时返回输出文件路径，失败时返回None
+        """
+        return None
