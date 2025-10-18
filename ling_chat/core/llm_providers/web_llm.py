@@ -67,5 +67,7 @@ class WebLLMProvider(BaseLLMProvider):
                     yield chunk.choices[0].delta.content
 
         except Exception as e:
-            logger.error(f"通用网络大模型流式请求失败: {str(e)}")
+            logger.error(f"通用网络大模型{self.model_type}流式请求失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
             raise
