@@ -4,7 +4,7 @@
 </template>
 
 <script setup>
-import CursorEffects from './components/CursorEffects.vue';
+import CursorEffects from "./components/effects/CursorEffects.vue";
 // 在使用 <router-view> 的情况下，通常不需要在这里再导入具体的页面组件了
 </script>
 
