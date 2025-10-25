@@ -1,12 +1,14 @@
 <template>
-  <div class="cursor-effects-container"></div>
+  <div class="cursor-effects-container">
+    <svg class="cursor-effects-svg" ref="svgContainer"></svg>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount } from "vue";
+import { onMounted, onBeforeUnmount, ref } from "vue";
 
-interface Particle {
-  element: HTMLElement;
+interface Line {
+  element: SVGLineElement;
   life: number;
 }
 
@@ -15,106 +17,61 @@ interface Point {
   y: number;
 }
 
+// --- SVG 容器引用 ---
+const svgContainer = ref<SVGSVGElement | null>(null);
+
 // --- 拖尾效果状态 ---
-const trailParticles: Particle[] = [];
-const MAX_TRAIL_PARTICLES = 250;
-
-let mouseHistory: Point[] = []; // 存储最近的鼠标位置
-const MOUSE_HISTORY_SIZE = 5; // 取5个点进行平均
-
+const trailLines: Line[] = [];
 let lastAveragePosition: Point | null = null;
 let animationFrameId: number;
 
 // --- 拖尾效果逻辑 ---
-const createTrailParticle = (x: number, y: number) => {
-  if (trailParticles.length >= MAX_TRAIL_PARTICLES) {
-    const oldestParticle = trailParticles.shift();
-    if (oldestParticle) {
-      oldestParticle.element.remove();
-    }
-  }
+const createTrailLine = (p1: Point, p2: Point) => {
+  if (!svgContainer.value) return;
 
-  const element = document.createElement("div");
-  element.className = "cursor-line-particle";
-  element.style.left = `${x}px`;
-  element.style.top = `${y}px`;
-  document.body.appendChild(element);
+  const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  line.setAttribute("x1", p1.x.toString());
+  line.setAttribute("y1", p1.y.toString());
+  line.setAttribute("x2", p2.x.toString());
+  line.setAttribute("y2", p2.y.toString());
+  line.setAttribute("stroke", "#87CEFA");
+  line.setAttribute("stroke-width", "3");
+  line.setAttribute("stroke-linecap", "round");
 
-  trailParticles.push({
-    element,
+  svgContainer.value.appendChild(line);
+
+  trailLines.push({
+    element: line,
     life: 1.0,
   });
 };
 
-const updateTrailParticles = () => {
-  for (let i = trailParticles.length - 1; i >= 0; i--) {
-    const p = trailParticles[i];
-    p.life -= 0.01;
-    p.life /= 1.08;
+const updateTrail = () => {
+  for (let i = trailLines.length - 1; i >= 0; i--) {
+    const line = trailLines[i];
+    line.life -= 0.02; // 调整衰减速度
 
-    if (p.life <= 0) {
-      p.element.remove();
-      trailParticles.splice(i, 1);
+    if (line.life <= 0) {
+      line.element.remove();
+      trailLines.splice(i, 1);
     } else {
-      p.element.style.opacity = p.life.toString();
-      p.element.style.transform = `translate(-50%, -50%) scale(${p.life})`;
+      line.element.setAttribute("stroke-opacity", line.life.toString());
     }
   }
-  animationFrameId = requestAnimationFrame(updateTrailParticles);
-};
-
-const getAveragePosition = (positions: Point[]): Point => {
-  if (positions.length === 0) return { x: 0, y: 0 };
-
-  const sum = positions.reduce(
-    (acc, pos) => {
-      return { x: acc.x + pos.x, y: acc.y + pos.y };
-    },
-    { x: 0, y: 0 }
-  );
-
-  return {
-    x: sum.x / positions.length,
-    y: sum.y / positions.length,
-  };
+  animationFrameId = requestAnimationFrame(updateTrail);
 };
 
 const handleMouseMove = (e: MouseEvent) => {
-  const currentMousePosition: Point = { x: e.clientX, y: e.clientY };
-
-  mouseHistory.push(currentMousePosition);
-  if (mouseHistory.length > MOUSE_HISTORY_SIZE) {
-    mouseHistory.shift();
-  }
-
-  const currentAverage = getAveragePosition(mouseHistory);
+  const currentPosition: Point = { x: e.clientX, y: e.clientY };
 
   if (lastAveragePosition) {
-    const dx = currentAverage.x - lastAveragePosition.x;
-    const dy = currentAverage.y - lastAveragePosition.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-
-    // 只在距离足够大时生成粒子，避免密集生成
-    if (distance > 2) {
-      const particleCount = Math.floor(distance / 1);
-
-      for (let i = 0; i < particleCount; i++) {
-        const ratio = i / particleCount;
-        const x = lastAveragePosition.x + dx * ratio;
-        const y = lastAveragePosition.y + dy * ratio;
-        createTrailParticle(x, y);
-      }
-    }
-
-    createTrailParticle(currentAverage.x, currentAverage.y);
-  } else {
-    createTrailParticle(currentAverage.x, currentAverage.y);
+    createTrailLine(lastAveragePosition, currentPosition);
   }
 
-  lastAveragePosition = currentAverage;
+  lastAveragePosition = currentPosition;
 };
 
-// --- 点击效果逻辑 ---
+// --- 点击效果逻辑 (保持不变) ---
 const handleClick = (e: MouseEvent) => {
   const x = e.clientX;
   const y = e.clientY;
@@ -127,11 +84,8 @@ const handleClick = (e: MouseEvent) => {
 
     const size = Math.random() * 15 + 5; // 大小
     const color = colors[Math.floor(Math.random() * colors.length)];
-
-    // 将不透明度与大小关联
     const opacity = ((size - 5) / 15) * 0.6 + 0.4; // 不透明度
 
-    // 使用CSS变量将随机值传递给动画
     particle.style.setProperty("--triangle-size", `${size}px`);
     particle.style.setProperty("--triangle-color", color);
 
@@ -160,7 +114,6 @@ const handleClick = (e: MouseEvent) => {
 
     document.body.appendChild(particle);
 
-    // 移除粒子
     setTimeout(() => {
       particle.remove();
     }, 1000);
@@ -171,37 +124,32 @@ const handleClick = (e: MouseEvent) => {
 onMounted(() => {
   window.addEventListener("mousemove", handleMouseMove);
   window.addEventListener("click", handleClick);
-  animationFrameId = requestAnimationFrame(updateTrailParticles);
+  animationFrameId = requestAnimationFrame(updateTrail);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("mousemove", handleMouseMove);
   window.removeEventListener("click", handleClick);
   cancelAnimationFrame(animationFrameId);
-  trailParticles.forEach((p) => p.element.remove());
-  trailParticles.length = 0;
-  mouseHistory.length = 0;
+  trailLines.forEach((line) => line.element.remove());
+  trailLines.length = 0;
 });
 </script>
 
 <style>
-/* 拖尾样式 */
-.cursor-line-particle {
+/* SVG 拖尾样式 */
+.cursor-effects-svg {
+  filter: drop-shadow(0 0 2px #87cefa) drop-shadow(0 0 5px #87cefa);
   position: fixed;
-  left: 0;
   top: 0;
-  width: 4px;
-  height: 4px;
-  border-radius: 2px;
-  background-color: #87cefa;
-  box-shadow: 0 0 4px #87cefa, 0 0 8px #87cefa;
+  left: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
   z-index: 9999;
-  transform-origin: center center;
-  transform: translate(-50%, -50%);
 }
 
-/* 点击样式 */
+/* 点击样式 (保持不变) */
 .click-triangle-particle {
   position: fixed;
   pointer-events: none;
