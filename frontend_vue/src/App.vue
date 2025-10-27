@@ -4,8 +4,32 @@
 </template>
 
 <script setup>
+import { onMounted, onUnmounted } from 'vue';
 import CursorEffects from "./components/effects/CursorEffects.vue";
 // 在使用 <router-view> 的情况下，通常不需要在这里再导入具体的页面组件了
+
+const handleKeyDown = (event) => {
+  if (event.key === 'F11') {
+    event.preventDefault();
+    if (window.pywebview && window.pywebview.api && typeof window.pywebview.api.toggle_fullscreen === 'function') {
+      // 调用从 Python 暴露的函数
+      window.pywebview.api.toggle_fullscreen();
+    } else {
+      console.error('全屏API不可用。');
+    }
+  }
+};
+
+onMounted(() => {
+  // 等待 pywebview API 准备就绪
+  window.addEventListener('pywebviewready', () => {
+    window.addEventListener('keydown', handleKeyDown);
+  });
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyDown);
+});
 </script>
 
 <style>
