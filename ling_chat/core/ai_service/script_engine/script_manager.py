@@ -36,6 +36,7 @@ class ScriptManager:
         
         self.init_script()
     
+    
     def _copy_default_scripts(self):
         """从static目录复制默认剧本到用户数据目录"""
         static_scripts_dir = package_root / "static" / "game_data" / "scripts"
@@ -201,3 +202,7 @@ class ScriptManager:
             return Charpter(str(charpter_path), self.game_context, config.get('events',[]), config.get('end',{}))
         else:
             raise ChapterLoadError(f"导入 {charpter_path} 剧本的时候出现问题")
+    
+
+    def get_assests_dir(self) -> Path:
+        return self.scripts_dir / self.current_script_name / "Assests"

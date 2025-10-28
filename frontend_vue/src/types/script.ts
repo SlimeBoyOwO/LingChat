@@ -1,6 +1,6 @@
 export interface ScriptEvent {
   type: string;
-  duration?: number;
+  duration: number;
   isFinal?: boolean;
 }
 

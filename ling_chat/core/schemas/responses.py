@@ -5,6 +5,7 @@ from typing import Optional, Union
 
 class BaseResponse(BaseModel):
     type: str
+    duration: float = -1
 
 class ReplyResponse(BaseResponse):
     type: str = ResponseType.AI_REPLY
@@ -18,7 +19,7 @@ class ReplyResponse(BaseResponse):
 
 class ScriptBackgroundResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_BACKGROUND
-    image: str
+    imagePath: str
 
 class ScriptNarrationResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_NARRATION

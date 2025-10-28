@@ -39,12 +39,15 @@ export class EventQueue {
     // 如果事件需要等待用户继续，就等待
     if (this.shouldWaitForUser(event)) {
       await this.waitForUserContinue();
+    } else {
+      await this.waitForDuration(event.duration);
+      console.log("等待" + event.duration + "秒");
     }
   }
 
   private shouldWaitForUser(event: ScriptEventType): boolean {
     // 根据事件类型判断是否需要等待用户继续
-    return !(event as any).duration; // 没有duration就等待用户
+    return event.duration <= 0; // 没有duration就等待用户
   }
 
   private waitForUserContinue(): Promise<void> {
@@ -95,6 +98,12 @@ export class EventQueue {
       isProcessing: this.isProcessing,
       isWaitingForUser: this.currentResolve !== null,
     };
+  }
+
+  private waitForDuration(duration: number): Promise<void> {
+    return new Promise((resolve) => {
+      setTimeout(resolve, duration * 1000);
+    });
   }
 }
 
