@@ -206,3 +206,5 @@ class ScriptManager:
 
     def get_assests_dir(self) -> Path:
         return self.scripts_dir / self.current_script_name / "Assests"
+    def get_avatar_dir(self, character:str) -> Path:
+        return self.scripts_dir / self.current_script_name / "Character" / character / "avatar"
