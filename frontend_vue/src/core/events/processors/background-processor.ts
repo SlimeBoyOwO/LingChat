@@ -2,7 +2,7 @@ import { IEventProcessor } from "../event-processor";
 import { ScriptBackgroundEvent } from "../../../types";
 import { useGameStore } from "../../../stores/modules/game";
 
-export class BackgroundProcessor implements IEventProcessor {
+export default class BackgroundProcessor implements IEventProcessor {
   canHandle(eventType: string): boolean {
     return eventType === "script_dialogue";
   }

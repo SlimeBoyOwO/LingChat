@@ -3,7 +3,7 @@ import { ScriptDialogueEvent } from "../../../types";
 import { useGameStore } from "../../../stores/modules/game";
 import { useUIStore } from "../../../stores/modules/ui/ui";
 
-export class DialogueProcessor implements IEventProcessor {
+export default class DialogueProcessor implements IEventProcessor {
   canHandle(eventType: string): boolean {
     return eventType === "reply";
   }
