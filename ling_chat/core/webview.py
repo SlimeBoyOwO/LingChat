@@ -8,7 +8,7 @@ class Api:
     def __init__(self):
         self._window = None
 
-    def set_window(self, window):
+    def set_window(self, window) -> None:
         self._window = window
 
     def toggle_fullscreen(self):
@@ -17,7 +17,7 @@ class Api:
 
 def start_webview():
     try:
-        api = Api()
+        api:Api = Api()
         window = webview.create_window(
             "Ling Chat",
             url=f"http://127.0.0.1:{os.getenv('BACKEND_PORT', '8765')}/",
@@ -25,14 +25,20 @@ def start_webview():
             height=600,
             resizable=True,
             fullscreen=False,
-            js_api=api  # 向JavaScript暴露Api类
+            js_api=api,  # 向JavaScript暴露Api类
         )
         api.set_window(window)  # 让Api实例能够访问window对象
 
+        icon_path = static_path / "game_data/resources/lingchat.ico"
+        
+        # print(f"图标路径: {icon_path}")
+        # print(f"图标文件是否存在: {icon_path.exists()}")
+
         webview.start(
             http_server=True,
-            icon=str(static_path / "game_data/resources/lingchat.ico"),
+            icon=str(icon_path),  # 在这里设置图标
             storage_path=str(user_data_path / "webview_storage_path")
         )
+
     except KeyboardInterrupt:
         logger.info("WebView被中断")
