@@ -18,7 +18,7 @@ class ResponseFactory:
     
     @staticmethod
     def create_background(image: str, **kwargs) -> ScriptBackgroundResponse:
-        return ScriptBackgroundResponse(image=image, **kwargs)
+        return ScriptBackgroundResponse(imagePath=image, **kwargs)
     
     @staticmethod
     def create_narration(text: str) -> ScriptNarrationResponse:

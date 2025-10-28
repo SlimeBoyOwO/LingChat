@@ -21,17 +21,5 @@ export default class NarrationProcessor implements IEventProcessor {
     uiStore.showCharacterEmotion = "";
 
     console.log("叙事模式执行" + event.text);
-
-    // 如果有duration，等待指定时间后自动继续
-    if (event.duration) {
-      await this.waitForDuration(event.duration);
-    }
-    // 如果没有duration，事件处理器完成，由event-queue等待用户继续
-  }
-
-  private waitForDuration(duration: number): Promise<void> {
-    return new Promise((resolve) => {
-      setTimeout(resolve, duration);
-    });
   }
 }
