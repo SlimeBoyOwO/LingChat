@@ -7,7 +7,7 @@ class NarrationEvent(BaseEvent):
     """处理对话事件"""
     
     async def execute(self):
-        text = self.event_data.get('text', '')
+        text:str = self.event_data.get('text', '')
         
         logger.info(f"显示对话: 旁白Narration - {text}")
         

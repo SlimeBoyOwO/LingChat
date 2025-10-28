@@ -26,7 +26,7 @@ export interface GameState {
     bubble_left: number;
   };
   currentLine: string;
-  currentStatus: "input" | "thinking" | "responding" | "narrating";
+  currentStatus: "input" | "thinking" | "responding" | "presenting";
   dialogHistory: DialogMessage[];
 }
 

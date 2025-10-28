@@ -37,13 +37,13 @@
 </template>
 
 <script setup lang="ts">
-import { chatHandler } from "../../../api/websocket/handlers/chat-handler";
-import { scriptHandler } from "../../../api/websocket/handlers/script-handler";
 import { ref, watch, computed } from "vue";
 import { Button } from "../../base";
 import { useGameStore } from "../../../stores/modules/game";
 import { useUIStore } from "../../../stores/modules/ui/ui";
 import { useTypeWriter } from "../../../composables/ui/useTypeWriter";
+import { eventQueue } from "../../../core/events/event-queue";
+import { scriptHandler } from "../../../api/websocket/handlers/script-handler";
 
 const inputMessage = ref("");
 const textareaRef = ref<HTMLTextAreaElement | null>(null); // 新增这行
@@ -71,8 +71,6 @@ const placeholderText = computed(() => {
       return gameStore.avatar.think_message;
     case "responding":
       return "";
-    case "narrating":
-      return "";
     default:
       return "在这里输入消息...";
   }
@@ -93,26 +91,15 @@ watch(
       uiStore.showCharacterTitle = gameStore.avatar.user_name;
       uiStore.showCharacterSubtitle = gameStore.avatar.user_subtitle;
       uiStore.showCharacterEmotion = "";
-    } else if (newStatus === "responding") {
-      uiStore.showCharacterTitle = gameStore.avatar.character_name;
-      uiStore.showCharacterSubtitle = gameStore.avatar.character_subtitle;
-    } else if (newStatus === "narrating") {
-      uiStore.showCharacterTitle = "";
-      uiStore.showCharacterSubtitle = "";
-      uiStore.showCharacterEmotion = "";
     }
   }
 );
 
 // 监听 currentLine 和 currentStatus 的变化
 watch(
-  [() => gameStore.currentLine, () => gameStore.currentStatus],
+  [() => uiStore.showCharacterLine, () => gameStore.currentStatus],
   ([newLine, newStatus]) => {
-    if (
-      newLine &&
-      newLine !== "" &&
-      (newStatus === "responding" || newStatus === "narrating")
-    ) {
+    if (newLine && newLine !== "" && newStatus === "responding") {
       inputMessage.value = "";
       startTyping(newLine, uiStore.typeWriterSpeed);
     } else if (newLine === "" && newStatus === "input") {
@@ -126,29 +113,23 @@ function sendOrContinue() {
     send();
   } else if (gameStore.currentStatus === "responding") {
     continueDialog(true);
-  } else if (gameStore.currentStatus === "narrating") {
-    continueScript();
   }
 }
 
 function send() {
   if (!inputMessage.value.trim()) return;
-  chatHandler.sendMessage(inputMessage.value);
+  scriptHandler.sendMessage(inputMessage.value);
   inputMessage.value = "";
 }
 
 function continueDialog(isPlayerTrigger: boolean): boolean {
-  const needWait = chatHandler.continueMessage();
+  const needWait = eventQueue.continue();
   if (!needWait) {
     if (isPlayerTrigger) emit("player-continued");
     emit("dialog-proceed");
   }
 
   return needWait;
-}
-
-function continueScript() {
-  scriptHandler.continueScript();
 }
 
 defineExpose({
