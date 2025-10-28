@@ -3,7 +3,7 @@ import { ScriptNarrationEvent } from "../../../types";
 import { useGameStore } from "../../../stores/modules/game";
 import { useUIStore } from "../../../stores/modules/ui/ui";
 
-export class NarrationProcessor implements IEventProcessor {
+export default class NarrationProcessor implements IEventProcessor {
   canHandle(eventType: string): boolean {
     return eventType === "narration";
   }

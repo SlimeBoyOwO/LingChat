@@ -44,14 +44,7 @@ export class EventQueue {
 
   private shouldWaitForUser(event: ScriptEventType): boolean {
     // 根据事件类型判断是否需要等待用户继续
-    switch (event.type) {
-      case "narration":
-        return !(event as any).duration; // 没有duration就等待用户
-      case "reply":
-        return true; // 对话总是等待用户
-      default:
-        return false;
-    }
+    return !(event as any).duration; // 没有duration就等待用户
   }
 
   private waitForUserContinue(): Promise<void> {

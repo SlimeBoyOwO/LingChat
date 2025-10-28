@@ -1,13 +1,19 @@
 export interface ScriptEvent {
   type: string;
+  duration?: number;
   isFinal?: boolean;
 }
 
 export interface ScriptNarrationEvent extends ScriptEvent {
   type: "narration";
   text: string;
-  duration?: number;
   sceneId?: string;
+}
+
+export interface ScriptPlayerEvent extends ScriptEvent {
+  type: "player";
+  text: string;
+  emotion?: string;
 }
 
 export interface ScriptDialogueEvent extends ScriptEvent {
@@ -25,10 +31,10 @@ export interface ScriptBackgroundEvent extends ScriptEvent {
   type: "background";
   imagePath: string;
   transition?: string;
-  duration?: number;
 }
 
 export type ScriptEventType =
   | ScriptNarrationEvent
   | ScriptDialogueEvent
-  | ScriptBackgroundEvent;
+  | ScriptBackgroundEvent
+  | ScriptPlayerEvent;

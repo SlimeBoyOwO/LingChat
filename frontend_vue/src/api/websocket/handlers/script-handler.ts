@@ -6,6 +6,7 @@ import {
   ScriptNarrationEvent,
   ScriptBackgroundEvent,
   ScriptDialogueEvent,
+  ScriptPlayerEvent,
 } from "../../../types";
 
 export class ScriptHandler {
@@ -27,6 +28,11 @@ export class ScriptHandler {
     registerHandler(WebSocketMessageTypes.SCRIPT_BACKGROUND, (data: any) => {
       console.log("收到背景切换事件:", data);
       eventQueue.addEvent(data as ScriptBackgroundEvent);
+    });
+
+    registerHandler(WebSocketMessageTypes.SCRIPT_PLAYER, (data: any) => {
+      console.log("收到主人公对话事件:", data);
+      eventQueue.addEvent(data as ScriptPlayerEvent);
     });
   }
 

@@ -32,5 +32,9 @@ class ScriptDialogResponse(BaseResponse):
     motionText: Optional[str] = None
     audioFile: Optional[str] = None
 
+class ScriptPlayerResponse(BaseResponse):
+    type: str = ResponseType.SCRIPT_PLAYER
+    text: str
+
 # 所有响应类型
 Response = Union[ReplyResponse, ScriptBackgroundResponse, ScriptNarrationResponse]
