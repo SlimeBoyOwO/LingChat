@@ -28,7 +28,7 @@ const starfieldRef = ref(null);
 // 星空效果控制
 const starfieldEnabled = ref(true);
 const starCount = ref(200);
-const scrollSpeed = ref(0.2);
+const scrollSpeed = ref(0.4);
 const starColors = ref([
   "rgb(173, 216, 230)",
   "rgb(176, 224, 230)",

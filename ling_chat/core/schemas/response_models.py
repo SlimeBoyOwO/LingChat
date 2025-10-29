@@ -1,5 +1,5 @@
 # response_factory.py
-from .responses import ReplyResponse, ScriptBackgroundResponse, ScriptNarrationResponse, ScriptDialogResponse, Response
+from .responses import *
 from typing import Dict
 import os
 
@@ -18,9 +18,13 @@ class ResponseFactory:
     
     @staticmethod
     def create_background(image: str, **kwargs) -> ScriptBackgroundResponse:
-        return ScriptBackgroundResponse(image=image, **kwargs)
+        return ScriptBackgroundResponse(imagePath=image, **kwargs)
     
     @staticmethod
     def create_narration(text: str) -> ScriptNarrationResponse:
         return ScriptNarrationResponse(text=text)
+
+    @staticmethod
+    def create_player_dialogue(text: str) -> ScriptPlayerResponse:
+        return ScriptPlayerResponse(text=text)
 

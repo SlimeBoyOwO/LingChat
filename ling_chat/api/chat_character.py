@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from fastapi import APIRouter, Body, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from ling_chat.core.service_manager import service_manager
@@ -36,7 +37,24 @@ async def open_creative_web():
 async def get_specific_avatar(avatar_file: str):
     ai_service = service_manager.ai_service
 
-    file_path = os.path.join(ai_service.character_path, "avatar", avatar_file)
+    if not ai_service or not ai_service.character_path:
+        raise HTTPException(status_code=404, detail="AIService or character_path not found")
+
+    file_path = Path(ai_service.character_path) / "avatar" / avatar_file
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Avatar not found")
+
+    return FileResponse(file_path)
+
+@router.get("/get_script_avatar/{character}/{emotion}")
+async def get_script_specific_avatar(character: str, emotion: str):
+    ai_service = service_manager.ai_service
+
+    if ai_service:
+        file_path = ai_service.scripts_manager.get_avatar_dir(character) / (emotion + ".png")
+    else:
+        raise HTTPException(status_code=404, detail="AIService not found")
+    
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Avatar not found")
 

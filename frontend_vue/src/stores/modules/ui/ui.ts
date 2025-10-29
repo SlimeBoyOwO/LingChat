@@ -5,6 +5,8 @@ interface UIState {
   showCharacterTitle: string;
   showCharacterSubtitle: string;
   showCharacterEmotion: string;
+  showCharacterLine: string;
+  showCharacterThinkLine: string;
   showSettings: boolean;
   currentSettingsTab: string;
   typeWriterSpeed: number;
@@ -23,6 +25,8 @@ export const useUIStore = defineStore("ui", {
     showCharacterTitle: "Lovely You",
     showCharacterSubtitle: "Bilibili",
     showCharacterEmotion: "",
+    showCharacterLine: "",
+    showCharacterThinkLine: "Ling Ling Thinking...",
     showSettings: false,
     currentSettingsTab: "text",
     typeWriterSpeed: 50,

@@ -2,15 +2,34 @@ import os
 from fastapi import APIRouter, Body, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from pathlib import Path
+from ling_chat.core import ai_service
 from ling_chat.core.logger import logger
 import shutil
 from ling_chat.utils.runtime_path import static_path
+from ling_chat.core.service_manager import service_manager
 
 router = APIRouter(prefix="/api/v1/chat/background", tags=["Chat Character"])
 
 BACKGROUND_DIR = static_path / "game_data/backgrounds"
 ALLOWED_EXTENSIONS = {'.jpg', '.png', '.webp', '.bmp', '.svg', '.tif', '.gif'}
 
+@router.get("/background_script_file/{background_file}")
+async def get_script_background_file(background_file: str):
+    try:
+
+        ai_service = service_manager.ai_service
+        if ai_service is None:
+            raise HTTPException(status_code=404, detail="AISERVICE not found")
+        else:
+            file_path =  ai_service.scripts_manager.get_assests_dir() / "Backgrounds" / background_file
+
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="Background not found")
+
+        return FileResponse(file_path)
+    except Exception as e:
+        # 日志记录异常
+        print(f"An error occurred: {e}")
 
 @router.get("/background_file/{background_file}")
 async def get_specific_avatar(background_file: str):
@@ -55,7 +74,7 @@ async def list_all_backgrounds():
 
 
 @router.post("/upload")
-async def upload_music(file: UploadFile, name: str = None):
+async def upload_music(file: UploadFile, name: str | None = None):
     """
     上传一个背景图片文件到服务器
     """

@@ -1,0 +1,79 @@
+name: 自动构建新前端
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'frontend_vue/**'
+      - '.github/workflows/build-frontend.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'frontend_vue/**'
+  workflow_dispatch:
+
+jobs:
+  build-frontend:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+        lfs: true
+
+    - name: 检查路径变化
+      uses: dorny/paths-filter@v3
+      id: changes
+      with:
+        filters: |
+          frontend:
+            - 'frontend_vue/**'
+
+    - name: 安装 pnpm
+      if: steps.changes.outputs.frontend == 'true'
+      uses: pnpm/action-setup@v4
+      with:
+        version: 9
+
+    - name: 设置 Node.js
+      if: steps.changes.outputs.frontend == 'true'
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'pnpm'
+        cache-dependency-path: 'frontend_vue/pnpm-lock.yaml'
+
+    - name: 安装前端依赖
+      if: steps.changes.outputs.frontend == 'true'
+      working-directory: ./frontend_vue
+      run: pnpm install
+
+    - name: 构建前端项目
+      if: steps.changes.outputs.frontend == 'true'
+      working-directory: ./frontend_vue
+      run: pnpm build
+
+    - name: 替换前端文件
+      if: steps.changes.outputs.frontend == 'true' && github.event_name == 'push'
+      run: |
+        rm -rf ling_chat/static/frontend/*
+        cp -r frontend_vue/dist/* ling_chat/static/frontend/
+
+    - name: 提交构建结果
+      if: steps.changes.outputs.frontend == 'true' && github.event_name == 'push'
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        git add ling_chat/static/frontend/
+
+        if git diff --staged --quiet; then
+          echo "没有文件需要提交"
+        else
+          git commit -m "chore: 自动构建前端 [skip ci]"
+          git push
+        fi
