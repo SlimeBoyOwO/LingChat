@@ -8,7 +8,7 @@ class NarrationEvent(BaseEvent):
     
     async def execute(self):
         text:str = self.event_data.get('text', '')
-        lines:list[str] = text.split("\n")
+        lines: list[str] = [line for line in text.splitlines() if line.strip()]
 
         for text in lines:
             logger.info(f"显示对话: 旁白Narration - {text}")

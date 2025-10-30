@@ -12,6 +12,33 @@ interface EmotionConfigMap {
   [key: string]: EmotionConfig;
 }
 
+interface EmotionMap {
+  [key: string]: string;
+}
+
+export const EMOTION_CONFIG_EMO: EmotionMap = {
+  厌恶: "厌恶",
+  高兴: "高兴",
+  担心: "担心",
+  生气: "生气",
+  紧张: "紧张",
+  害怕: "害怕",
+  害羞: "害羞",
+  慌张: "慌张",
+  认真: "认真",
+  无奈: "无奈",
+  兴奋: "兴奋",
+  疑惑: "疑惑",
+  哭泣: "伤心",
+  心动: "心动",
+  调皮: "调皮",
+  难为情: "羞耻",
+  自信: "自信",
+  惊讶: "惊讶",
+  正常: "正常",
+  AI思考: "none",
+};
+
 export const EMOTION_CONFIG: EmotionConfigMap = {
   厌恶: {
     animation: "none",

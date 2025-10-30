@@ -11,6 +11,7 @@ export interface DialogMessage {
 
 export interface GameState {
   currentScene: string;
+  character: string;
   avatar: {
     character_id: number;
     character_name: string;
@@ -32,6 +33,7 @@ export interface GameState {
 
 export const state: GameState = {
   currentScene: "none",
+  character: "default",
   avatar: {
     character_id: 0,
     emotion: "正常",

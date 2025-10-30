@@ -33,6 +33,7 @@ export const actions = {
       const gameInfo = await getGameInfo(userId);
 
       // 更新 gameStore 自己的状态
+      this.character = "default";
       this.avatar.character_name = gameInfo.ai_name;
       this.avatar.character_subtitle = gameInfo.ai_subtitle;
       this.avatar.user_name = gameInfo.user_name;

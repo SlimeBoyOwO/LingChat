@@ -14,6 +14,10 @@ export default class DialogueProcessor implements IEventProcessor {
 
     // 更新游戏状态显示对话
     gameStore.currentStatus = "responding";
+
+    // 针对剧本模式，获取角色
+    gameStore.character = event.character ? event.character : "default";
+
     gameStore.currentLine = event.motionText
       ? `${event.message} (${event.motionText})`
       : event.message || "";
@@ -33,6 +37,9 @@ export default class DialogueProcessor implements IEventProcessor {
     gameStore.avatar.originEmotion = event.originalTag || "正常";
     uiStore.currentAvatarAudio = event.audioFile || "None";
     uiStore.showCharacterEmotion = gameStore.avatar.originEmotion;
+
+    uiStore.showCharacterTitle = gameStore.avatar.character_name;
+    uiStore.showCharacterSubtitle = gameStore.avatar.character_subtitle;
     // gameStore.currentCharacter = event.character;
 
     // 对话总是等待用户继续，所以这里不需要做任何等待

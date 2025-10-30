@@ -61,7 +61,7 @@ const runInitialization = async () => {
 
     // Action 成功后，处理仅与本组件相关的 UI 逻辑
     if (gameAvatarRef.value) {
-      gameAvatarRef.value.setEmotion("正常", true);
+      gameAvatarRef.value.setEmotion("正常");
     } else {
       console.log("这个组件不存在");
     }
