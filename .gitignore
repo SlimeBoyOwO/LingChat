@@ -48,8 +48,6 @@ game_data/backgrounds/**
 !game_data/backgrounds/夜晚.jpg
 !game_data/backgrounds
 
-game_data/characters/ 
-!game_data/characters/诺一钦灵
 
 game_data/musics/ 
 !game_data/musics/夜晚音效
