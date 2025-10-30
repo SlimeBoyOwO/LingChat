@@ -34,6 +34,14 @@ export class ScriptHandler {
       console.log("收到主人公对话事件:", data);
       eventQueue.addEvent(data as ScriptPlayerEvent);
     });
+
+    registerHandler(
+      WebSocketMessageTypes.SCRIPT_MODIFY_CHARACTER,
+      (data: any) => {
+        console.log("收到主人公对话事件:", data);
+        eventQueue.addEvent(data as ScriptPlayerEvent);
+      }
+    );
   }
 
   public sendMessage(text: string) {

@@ -31,9 +31,9 @@ class Translator:
             result += "<" + i["following_text"] + ">"
         return result
 
-    async def translate_ai_response(self, results: List[Dict]):
+    async def translate_ai_response(self, results: List[Dict], script: bool = True):
         """将中文翻译成日文并合成语音"""
-        if not self.enable_translate:
+        if not self.enable_translate and not script:
             return
 
         full_chinese_response:str = self.get_all_chinese_part(results)
@@ -46,7 +46,7 @@ class Translator:
         send_messages = self.messages.copy()
         send_messages.append({"role":"user","content":full_chinese_response})
 
-        if os.environ.get("TRANSLATE_STREAM", "true") == "true":
+        if os.environ.get("TRANSLATE_STREAM", "true") == "true" and not script:
 
             # 流式处理
             buffer = ""

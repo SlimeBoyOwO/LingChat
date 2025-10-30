@@ -28,4 +28,5 @@ export enum WebSocketMessageTypes {
   SCRIPT_DIALOGUE = "reply", // 角色对话
 
   SCRIPT_BACKGROUND = "background", // 旁白
+  SCRIPT_MODIFY_CHARACTER = "modify_character", // 旁白
 }

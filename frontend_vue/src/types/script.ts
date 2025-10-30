@@ -18,7 +18,7 @@ export interface ScriptPlayerEvent extends ScriptEvent {
 
 export interface ScriptDialogueEvent extends ScriptEvent {
   type: "reply";
-  character: string;
+  character?: string;
   emotion: string;
   originalTag: string;
   message: string;
@@ -33,8 +33,15 @@ export interface ScriptBackgroundEvent extends ScriptEvent {
   transition?: string;
 }
 
+export interface ScriptModifyCharacterEvent extends ScriptEvent {
+  type: "modify_character";
+  character: string;
+  emotion?: string;
+}
+
 export type ScriptEventType =
   | ScriptNarrationEvent
   | ScriptDialogueEvent
   | ScriptBackgroundEvent
-  | ScriptPlayerEvent;
+  | ScriptPlayerEvent
+  | ScriptModifyCharacterEvent;

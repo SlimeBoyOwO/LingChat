@@ -70,6 +70,7 @@ const placeholderText = computed(() => {
     case "thinking":
       return gameStore.avatar.think_message;
     case "responding":
+    case "presenting":
       return "";
     default:
       return "在这里输入消息...";
@@ -91,6 +92,11 @@ watch(
       uiStore.showCharacterTitle = gameStore.avatar.user_name;
       uiStore.showCharacterSubtitle = gameStore.avatar.user_subtitle;
       uiStore.showCharacterEmotion = "";
+    } else if (newStatus === "presenting") {
+      uiStore.showCharacterTitle = "";
+      uiStore.showCharacterSubtitle = "";
+      uiStore.showCharacterEmotion = "";
+      uiStore.showCharacterLine = "";
     }
   }
 );

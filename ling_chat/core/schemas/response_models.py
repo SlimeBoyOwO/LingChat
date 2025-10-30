@@ -7,6 +7,7 @@ class ResponseFactory:
     @staticmethod
     def create_reply(seg: Dict, user_message: str, is_final: bool) -> ReplyResponse:
         return ReplyResponse(
+            character=seg['character'] or "default",
             emotion=seg['predicted'] or seg["original_tag"],
             originalTag=seg['original_tag'],
             message=seg['following_text'],
@@ -27,4 +28,8 @@ class ResponseFactory:
     @staticmethod
     def create_player_dialogue(text: str) -> ScriptPlayerResponse:
         return ScriptPlayerResponse(text=text)
+
+    @staticmethod
+    def create_modify_character(character: str, **kwargs) -> ScriptModifyCharacterResponse:
+        return ScriptModifyCharacterResponse(character = character, **kwargs)
 
