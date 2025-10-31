@@ -13,6 +13,8 @@ interface UIState {
   enableChatEffectSound: boolean;
   currentBackground: string;
   currentBackgroundEffect: string;
+  currentBackgroundMusic: string;
+  currentSoundEffect: string;
   currentAvatarAudio: string;
   characterVolume: number;
   backgroundVolume: number;
@@ -33,6 +35,8 @@ export const useUIStore = defineStore("ui", {
     enableChatEffectSound: true,
     currentBackground: "@/assets/images/default_bg.jpg",
     currentBackgroundEffect: "StarField",
+    currentBackgroundMusic: "None",
+    currentSoundEffect: "None",
     currentAvatarAudio: "None",
     characterVolume: 80,
     backgroundVolume: 80,

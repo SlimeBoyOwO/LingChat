@@ -22,6 +22,18 @@ class ResponseFactory:
         return ScriptBackgroundResponse(imagePath=image, **kwargs)
     
     @staticmethod
+    def create_background_effect(effect: str, **kwargs) -> ScriptBackgroundEffectResponse:
+        return ScriptBackgroundEffectResponse(effect=effect, **kwargs)
+
+    @staticmethod
+    def create_sound(sound: str, **kwargs) -> ScriptSoundResponse:
+        return ScriptSoundResponse(soundPath=sound, **kwargs)
+    
+    @staticmethod
+    def create_music(music: str, **kwargs) -> ScriptMusicResponse:
+        return ScriptMusicResponse(musicPath=music, **kwargs)
+    
+    @staticmethod
     def create_narration(text: str) -> ScriptNarrationResponse:
         return ScriptNarrationResponse(text=text)
 

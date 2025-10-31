@@ -16,7 +16,7 @@ export default class BackgroundProcessor implements IEventProcessor {
     gameStore.currentStatus = "presenting";
 
     let url = event.imagePath
-      ? `/api/v1/chat/background/background_script_file/${encodeURIComponent(
+      ? `/api/v1/chat/script/background_file/${encodeURIComponent(
           event.imagePath
         )}`
       : "../pictures/background/default.png";

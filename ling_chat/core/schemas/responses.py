@@ -24,6 +24,18 @@ class ScriptBackgroundResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_BACKGROUND
     imagePath: str
 
+class ScriptBackgroundEffectResponse(BaseResponse):
+    type: str = ResponseType.SCRIPT_BACKGROUND_EFFECT
+    effect: str
+
+class ScriptSoundResponse(BaseResponse):
+    type: str = ResponseType.SCRIPT_SOUND
+    soundPath: str
+
+class ScriptMusicResponse(BaseResponse):
+    type: str = ResponseType.SCRIPT_MUSIC
+    musicPath: str
+
 class ScriptNarrationResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_NARRATION
     text: str
