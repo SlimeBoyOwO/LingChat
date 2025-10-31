@@ -39,7 +39,8 @@ class ScriptDialogResponse(BaseResponse):
 class ScriptModifyCharacterResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_MODIFY_CHARACTER
     character: str
-    emotion: Optional[str]
+    emotion: Optional[str] = None
+    action: Optional[str] = None
 
 class ScriptPlayerResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_PLAYER

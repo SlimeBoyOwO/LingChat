@@ -37,6 +37,7 @@ export interface ScriptModifyCharacterEvent extends ScriptEvent {
   type: "modify_character";
   character: string;
   emotion?: string;
+  action?: string;
 }
 
 export type ScriptEventType =
