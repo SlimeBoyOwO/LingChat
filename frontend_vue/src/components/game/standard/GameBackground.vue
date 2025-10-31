@@ -14,6 +14,9 @@
     :enabled="rainEnabled"
     :intensity="rainIntensity"
   />
+
+  <audio ref="soundEffectPlayer"></audio>
+  <audio ref="backgroundMusicPlayer" loop></audio>
 </template>
 
 <script setup>
@@ -24,6 +27,9 @@ import Rain from "./particles/Rain.vue";
 
 const uiStore = useUIStore();
 const starfieldRef = ref(null);
+
+const soundEffectPlayer = ref();
+const backgroundMusicPlayer = ref();
 
 // 星空效果控制
 const starfieldEnabled = ref(true);
@@ -65,6 +71,30 @@ watch(
     if (newBackgroundEffect === "Rain") {
       showRain.value = true;
     } else if (newBackgroundEffect === "StarField") {
+    }
+  }
+);
+
+// 监听音效
+watch(
+  () => uiStore.currentSoundEffect,
+  (newAudioUrl) => {
+    if (soundEffectPlayer.value && newAudioUrl && newAudioUrl !== "None") {
+      soundEffectPlayer.value.src = newAudioUrl;
+      soundEffectPlayer.value.load();
+      soundEffectPlayer.value.play();
+    }
+  }
+);
+
+// 监听音效
+watch(
+  () => uiStore.currentBackgroundMusic,
+  (newAudioUrl) => {
+    if (backgroundMusicPlayer.value && newAudioUrl && newAudioUrl !== "None") {
+      backgroundMusicPlayer.value.src = newAudioUrl;
+      backgroundMusicPlayer.value.load();
+      backgroundMusicPlayer.value.play();
     }
   }
 );

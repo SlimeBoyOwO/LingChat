@@ -2,12 +2,7 @@ import { registerHandler, sendWebSocketChatMessage } from "..";
 import { WebSocketMessageTypes } from "../../../types";
 import { eventQueue } from "../../../core/events/event-queue";
 import { useGameStore } from "../../../stores/modules/game";
-import {
-  ScriptNarrationEvent,
-  ScriptBackgroundEvent,
-  ScriptDialogueEvent,
-  ScriptPlayerEvent,
-} from "../../../types";
+import type * as ScriptTypes from "../../../types/script";
 
 export class ScriptHandler {
   constructor() {
@@ -17,29 +12,47 @@ export class ScriptHandler {
   private registerHandlers() {
     registerHandler(WebSocketMessageTypes.SCRIPT_NARRATION, (data: any) => {
       console.log("收到剧本旁白事件:", data);
-      eventQueue.addEvent(data as ScriptNarrationEvent);
+      eventQueue.addEvent(data as ScriptTypes.ScriptNarrationEvent);
     });
 
     registerHandler(WebSocketMessageTypes.SCRIPT_DIALOGUE, (data: any) => {
       console.log("收到剧本对话事件:", data);
-      eventQueue.addEvent(data as ScriptDialogueEvent);
+      eventQueue.addEvent(data as ScriptTypes.ScriptDialogueEvent);
     });
 
     registerHandler(WebSocketMessageTypes.SCRIPT_BACKGROUND, (data: any) => {
       console.log("收到背景切换事件:", data);
-      eventQueue.addEvent(data as ScriptBackgroundEvent);
+      eventQueue.addEvent(data as ScriptTypes.ScriptBackgroundEvent);
     });
 
     registerHandler(WebSocketMessageTypes.SCRIPT_PLAYER, (data: any) => {
       console.log("收到主人公对话事件:", data);
-      eventQueue.addEvent(data as ScriptPlayerEvent);
+      eventQueue.addEvent(data as ScriptTypes.ScriptPlayerEvent);
+    });
+
+    registerHandler(WebSocketMessageTypes.SCRIPT_MUSIC, (data: any) => {
+      console.log("收到背景音乐切换事件:", data);
+      eventQueue.addEvent(data as ScriptTypes.ScriptMusicEvent);
+    });
+
+    registerHandler(
+      WebSocketMessageTypes.SCRIPT_BACKGROUND_EFFECT,
+      (data: any) => {
+        console.log("收到背景特效切换事件:", data);
+        eventQueue.addEvent(data as ScriptTypes.ScriptBackgroundEffectEvent);
+      }
+    );
+
+    registerHandler(WebSocketMessageTypes.SCRIPT_SOUND, (data: any) => {
+      console.log("收到音效切换事件:", data);
+      eventQueue.addEvent(data as ScriptTypes.ScriptSoundEvent);
     });
 
     registerHandler(
       WebSocketMessageTypes.SCRIPT_MODIFY_CHARACTER,
       (data: any) => {
-        console.log("收到主人公对话事件:", data);
-        eventQueue.addEvent(data as ScriptPlayerEvent);
+        console.log("收到修改角色事件:", data);
+        eventQueue.addEvent(data as ScriptTypes.ScriptModifyCharacterEvent);
       }
     );
   }

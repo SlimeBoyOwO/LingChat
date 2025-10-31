@@ -33,6 +33,21 @@ export interface ScriptBackgroundEvent extends ScriptEvent {
   transition?: string;
 }
 
+export interface ScriptBackgroundEffectEvent extends ScriptEvent {
+  type: "background_effect";
+  effect: string;
+}
+
+export interface ScriptSoundEvent extends ScriptEvent {
+  type: "background";
+  soundPath: string;
+}
+
+export interface ScriptMusicEvent extends ScriptEvent {
+  type: "music";
+  musicPath: string;
+}
+
 export interface ScriptModifyCharacterEvent extends ScriptEvent {
   type: "modify_character";
   character: string;
@@ -45,4 +60,7 @@ export type ScriptEventType =
   | ScriptDialogueEvent
   | ScriptBackgroundEvent
   | ScriptPlayerEvent
-  | ScriptModifyCharacterEvent;
+  | ScriptModifyCharacterEvent
+  | ScriptBackgroundEffectEvent
+  | ScriptMusicEvent
+  | ScriptSoundEvent;

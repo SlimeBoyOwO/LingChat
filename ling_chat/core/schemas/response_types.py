@@ -12,6 +12,9 @@ class ResponseType:
     
     # 场景管理系统
     SCRIPT_BACKGROUND = "background" # 背景切换
+    SCRIPT_BACKGROUND_EFFECT = "background_effect" # 背景特效切换
+    SCRIPT_MUSIC = "music" # 背景切换
+    SCRIPT_SOUND = "sound" # 背景切换
 
     # 人物控制系统
     SCRIPT_MODIFY_CHARACTER = "modify_character" # 修改人物
