@@ -45,16 +45,7 @@ export class ScriptHandler {
   }
 
   public sendMessage(text: string) {
-    const gameStore = useGameStore();
-
     if (!text.trim()) return;
-
-    gameStore.currentStatus = "thinking";
-    gameStore.addToDialogHistory({
-      type: "message",
-      content: text,
-    });
-
     sendWebSocketChatMessage(WebSocketMessageTypes.MESSAGE, text);
   }
 }

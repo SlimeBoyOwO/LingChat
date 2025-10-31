@@ -46,8 +46,18 @@ export class EventQueue {
   }
 
   private shouldWaitForUser(event: ScriptEventType): boolean {
-    // 根据事件类型判断是否需要等待用户继续
-    return !event.duration || event.duration <= 0; // 没有duration就等待用户
+    // 明确检查 duration 是否为 null 或 undefined
+    if (event.duration === null || event.duration === undefined) {
+      return true; // 没有设置 duration，等待用户
+    }
+
+    // duration 为负数时等待用户
+    if (event.duration < 0) {
+      return true;
+    }
+
+    // duration 为 0 或正数时，不等待用户
+    return false;
   }
 
   private waitForUserContinue(): Promise<void> {

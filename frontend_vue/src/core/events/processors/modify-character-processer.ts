@@ -10,11 +10,28 @@ export default class ModifyCharacterProcessor implements IEventProcessor {
   async processEvent(event: ScriptModifyCharacterEvent): Promise<void> {
     const gameStore = useGameStore();
 
-    console.log("执行修改角色" + event.character + event.emotion);
-    // 更新游戏状态
+    console.log(
+      "执行修改角色" + event.character + event.emotion + event.action
+    );
+
     gameStore.currentStatus = "presenting";
+
     if (event.character) gameStore.character = event.character;
     else console.warn("角色修改没有角色");
+
+    if (event.action) {
+      switch (event.action) {
+        case "show_character":
+          gameStore.avatar.show = true;
+          break;
+        case "hide_character":
+          gameStore.avatar.show = false;
+          break;
+        default:
+          console.warn("尼玛，没这个action啊: " + event.action);
+      }
+    }
+
     if (event.emotion) gameStore.avatar.emotion = event.emotion;
   }
 }

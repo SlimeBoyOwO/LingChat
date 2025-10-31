@@ -6,6 +6,7 @@ class Script:
     name: str
     description: str
     intro_charpter: str
+    settings: dict
 
 @dataclass
 class Character:
@@ -21,11 +22,19 @@ class Charpter:
     ends: dict
 
 @dataclass
+class Player:
+    user_name: str = ""
+    user_subtitle: str = ""
+
+def create_default_player():
+    return Player()
+
+@dataclass
 class GameContext:
     """
     存储所有运行时共享的游戏状态。
     """
-    # 全局记忆 - 对话历史，用于记录全部对话信息
+    player: Player = field(default_factory=create_default_player)
     dialogue: list[dict] = field(default_factory=list[dict])
 
     # 角色列表 - 局部信息，只把记忆信息传输给需要的小比崽子

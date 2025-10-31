@@ -11,6 +11,7 @@ class ModifyCharacterEvent(BaseEvent):
         character = self.event_data.get('character', '')
         emotion = self.event_data.get('emotion', '')
         duration = self.event_data.get('duration', 1.0)
+        action = self.event_data.get('action','')
         
         # 我觉得这个事件没必要加到历史事件.jpg
         # self.game_context.dialogue.append({
@@ -20,20 +21,31 @@ class ModifyCharacterEvent(BaseEvent):
 
         predictedEmotion = ""
 
-        if emotion is not "AI思考":
-            predicted = emotion_classifier.predict(emotion)
-            prediction_result = {
-                "label": predicted["label"],
-                "confidence": predicted["confidence"]
-            }
-            predictedEmotion = prediction_result['label']
-        else: predictedEmotion = emotion
+        if emotion:
+            if emotion != "AI思考" and emotion != "正常":
+                predicted = emotion_classifier.predict(emotion)
+                prediction_result = {
+                    "label": predicted["label"],
+                    "confidence": predicted["confidence"]
+                }
+                predictedEmotion = prediction_result['label']
+            else: 
+                predictedEmotion = emotion
         
-
-        event_response = ResponseFactory.create_modify_character(character=character, emotion=predictedEmotion, duration=duration)
-        await message_broker.publish("1", 
-            event_response.model_dump()
-        )
+        # 构建参数字典，只包含非空的参数
+        params = {
+            'character': character,
+            'duration': duration
+        }
+        
+        if predictedEmotion:
+            params['emotion'] = predictedEmotion
+        
+        if action:
+            params['action'] = action
+        
+        event_response = ResponseFactory.create_modify_character(**params)
+        await message_broker.publish("1", event_response.model_dump())
     
     @classmethod
     def can_handle(cls, event_type: str) -> bool:

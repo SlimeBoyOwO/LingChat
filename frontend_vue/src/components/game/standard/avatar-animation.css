@@ -120,6 +120,16 @@
 
 .normal {
   animation: breathing 4s ease-in-out infinite;
+  transition: opacity 0.5s ease-in-out;
+}
+
+.avatar-visible {
+  opacity: 1;
+}
+
+.avatar-hidden {
+  opacity: 0;
+  pointer-events: none; /* 可选：隐藏时禁用交互 */
 }
 
 /* 特定动画类 */

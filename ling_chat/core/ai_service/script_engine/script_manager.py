@@ -1,9 +1,11 @@
 import shutil
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import Any, List, Dict, Optional
+
+from numpy import character
 
 from ling_chat.utils.function import Function
-from ling_chat.core.ai_service.script_engine.type import Character, Script, GameContext
+from ling_chat.core.ai_service.script_engine.type import Character, Player, Script, GameContext
 from ling_chat.core.ai_service.script_engine.charpter import Charpter
 from ling_chat.core.logger import logger
 from ling_chat.utils.runtime_path import user_data_path, package_root
@@ -88,6 +90,7 @@ class ScriptManager:
         self.game_context.characters = {
             char.character_id: char for char in characters_list
         }
+        self.game_context.player = Player(self.current_script.settings.get("user_name","无"), self.current_script.settings.get("user_subtitle","无"))
     
     async def start_script(self):
         """
@@ -121,10 +124,25 @@ class ScriptManager:
         script_path = self.scripts_dir / script_name
         return self._read_script_config(script_path)
 
+    def get_script_characters(self, script_name) -> list[dict[str, Any]]:
+        # 暂时的，仅允许读取当前导入剧本的角色
+        characters = self.game_context.characters
+        settings = []
+        for character in characters.values():
+            settings.append(character.settings)
+        
+        return settings
+
+    def get_script_player(self) -> dict:
+        return {
+            'user_name': self.game_context.player.user_name,
+            'user_subtitle': self.game_context.player.user_subtitle,
+        }
+
     def _read_script_config(self, script_path):
         config = Function.read_yaml_file( script_path / "story_config.yaml" )
         if config is not None:
-            return Script(config.get('script_name', 'ERROR'),config.get('description', 'ERROR'),config.get('intro_charpter', 'ERROR'))
+            return Script(config.get('script_name', 'ERROR'),config.get('description', 'ERROR'),config.get('intro_charpter', 'ERROR'), config.get('script_settings', {}))
         else:
             raise ScriptLoadError("剧本读取出现错误,缺少 story_config.yml 配置文件")
         

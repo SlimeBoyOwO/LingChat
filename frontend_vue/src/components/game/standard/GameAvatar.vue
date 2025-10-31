@@ -1,7 +1,7 @@
 <template>
   <div
     :class="containerClasses"
-    class="avatar-container character-animation"
+    class="avatar-container character-animation normal"
     @animationend="handleAnimationEnd"
   >
     <div :style="avatarStyles" class="avatar-img" id="qinling"></div>
@@ -22,18 +22,17 @@ import { useUIStore } from "../../../stores/modules/ui/ui";
 import {
   EMOTION_CONFIG,
   EMOTION_CONFIG_EMO,
-} from "../../../controllers/emotion/config"; // 假设 emotion config 在这里
+} from "../../../controllers/emotion/config";
 import "./avatar-animation.css";
 
 const gameStore = useGameStore();
 const uiStore = useUIStore();
 const emit = defineEmits(["audio-ended"]);
 
-// --- 2. 模板引用（仅用于无法通过声明式处理的场景，如媒体控制） ---
 const avatarAudio = ref<HTMLAudioElement | null>(null);
 const bubbleAudio = ref<HTMLAudioElement | null>(null);
 
-const activeAnimationClass = ref(gameStore.avatar.emotion);
+const activeAnimationClass = ref("normalx");
 const loadedAvatarUrl = ref("");
 const isBubbleVisible = ref(false);
 const currentBubbleImageUrl = ref("");
@@ -45,23 +44,24 @@ const targetAvatarUrl = computed(() => {
 
   const emotionConfig = EMOTION_CONFIG[emotion] || EMOTION_CONFIG["正常"];
 
+  if (emotion === "AI思考") return "none"; // TODO: 神奇的小魔法字符串怎么你了
   if (character && character === "default") return `${emotionConfig.avatar}`;
 
   // TODO: 统一管理API
   return `/api/v1/chat/character/get_script_avatar/${character}/${EMOTION_CONFIG_EMO[emotion]}`;
 });
 
-// 计算容器的 class
 const containerClasses = computed(() => ({
-  // activeAnimationClass 是一个 ref，它会根据表情变化而更新
   [activeAnimationClass.value]: true,
+  "avatar-visible": gameStore.avatar.show,
+  "avatar-hidden": !gameStore.avatar.show,
 }));
 
 // 计算头像图片的 style
 const avatarStyles = computed(() => ({
   // 使用预加载完成的图片 URL
   backgroundImage: `url(${loadedAvatarUrl.value})`,
-  top: `${gameStore.avatar.offset}px`,
+  top: `${gameStore.avatar.offset_y}px`,
   transform: `scale(${gameStore.avatar.scale})`,
 }));
 
@@ -119,12 +119,12 @@ watch(
     const config = EMOTION_CONFIG[newEmotion];
     if (!config) return;
 
-    // a. 处理动画效果 (逻辑不变)
+    // a. 处理动画效果
     if (config.animation && config.animation !== "none") {
       activeAnimationClass.value = config.animation;
     }
 
-    // b. 处理气泡效果 (逻辑不变)
+    // b. 处理气泡效果
     if (config.bubbleImage && config.bubbleImage !== "none") {
       const version = Date.now();
       currentBubbleImageUrl.value = `${config.bubbleImage}?t=${version}#t=0.1`;
@@ -139,14 +139,14 @@ watch(
       }, 2000);
     }
 
-    // c. 播放音效 (逻辑不变)
+    // c. 播放音效
     if (config.audio && config.audio !== "none" && bubbleAudio.value) {
       bubbleAudio.value.src = config.audio;
       bubbleAudio.value.load();
       bubbleAudio.value.play();
     }
   },
-  { immediate: true } // 同样需要立即执行，以应用初始的动画和效果
+  { immediate: true }
 );
 
 // 监听主音频播放

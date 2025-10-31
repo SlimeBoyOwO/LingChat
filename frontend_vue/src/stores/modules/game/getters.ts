@@ -1,4 +1,4 @@
-import type { GameState, DialogMessage } from "./state";
+import type { GameState, DialogMessage, ScriptCharacter } from "./state";
 
 export const getters = {
   getCurrentLine(state: GameState): string {
@@ -9,15 +9,19 @@ export const getters = {
     return state.dialogHistory;
   },
 
-  getAvatarInfo(state: GameState): { character_id: number; emotion: string } {
-    return state.avatar;
-  },
-
   getGameStatus(state: GameState): string {
     return state.currentStatus;
   },
 
   getCurrentScene(state: GameState): string {
     return state.currentScene;
+  },
+
+  // 辅助函数
+  getCharacterByName(
+    state: GameState,
+    name: string
+  ): ScriptCharacter | undefined {
+    return state.script.script_characters.get(name);
   },
 };

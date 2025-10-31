@@ -123,8 +123,21 @@ function sendOrContinue() {
 }
 
 function send() {
-  if (!inputMessage.value.trim()) return;
-  scriptHandler.sendMessage(inputMessage.value);
+  const text = inputMessage.value;
+  if (!text.trim()) return;
+  if (text === "/开始剧本") {
+    gameStore.initializeScript("TODO: 从剧本面板选择剧本");
+    // TODO: 清空背景，清空人物
+    gameStore.avatar.show = false;
+  } else {
+    gameStore.currentStatus = "thinking";
+    gameStore.addToDialogHistory({
+      type: "message",
+      content: text,
+    });
+  }
+
+  scriptHandler.sendMessage(text);
   inputMessage.value = "";
 }
 
