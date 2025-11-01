@@ -80,6 +80,7 @@ embedding_models/
 Pytorch/RAG/embedding_models/
 *.safetensors
 *.onnx
+*.data
 # 发布产物
 release/
 
