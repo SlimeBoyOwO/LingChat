@@ -5,6 +5,7 @@ import { getters } from "./getters";
 
 export const useGameStore = defineStore("game", {
   state: () => state,
-  getters,
-  actions,
+  // cast to any to avoid strict getter signature mismatches (e.g. getters returning functions with params)
+  getters: getters as any,
+  actions: actions as any,
 });
