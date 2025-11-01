@@ -7,6 +7,7 @@
 - Windows、Linux/Macos 均可运行。Linux/Macos 用户请查看额外的使用说明。
 - 社区安装 QQ 互助群：1055935861【纯安装问题请加入此群，不要去开发者群.jpg，目前好像只能二维码进入了】
 - 安装问题解答文档[用户帮助文档-代码报错](https://github.com/SlimeBoyOwO/LingChat/blob/main/README-help.md), [用户帮助文档-截图报错](https://github.com/SlimeBoyOwO/LingChat/blob/develop/others/document/Q&A.md)
+
   <img width="281" height="361" alt="image" src="https://github.com/user-attachments/assets/29aa2cb4-6e0e-4105-90b5-ab014b221cd9" />
 
 ## 🛠 功能列表
