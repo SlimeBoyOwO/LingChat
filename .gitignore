@@ -1,76 +1,126 @@
-# Ignore operating system files
+# ============================================================
+#               通用规则 (General Rules)
+# ============================================================
+
+# 忽略操作系统生成的文件
 .DS_Store
 Thumbs.db
-
-# .gitignore 文件内容
-# 虚拟环境
-.venv/
-venv/
+# 忽略日志文件
+*.log
+logs/
+# 忽略配置文件和敏感信息
 .env
-.env.docker
-python-embed/
+.env.*
+!.env.example
 
-# Ignore build files
-node_modules/
 
-# 构建产物
-dist/
-site/
-build/
-data/*
-!data/.gitkeep
-*.egg-info/
-.tox/
-.coverage
-coverage.*
-htmlcov
 
-# 缓存和IDE文件
-__pycache__/
-*.py[cod]
-.DS_Store
+
+# ============================================================
+#      IDE 和编辑器配置 (IDE & Editor Configuration)
+# ============================================================
+
 .idea/
 .vscode/
 .vs/
+
+
+
+
+# ============================================================
+#                 Python 相关 (Python Specific)
+# ============================================================
+
+# 虚拟环境
+.venv/
+venv/
+python-embed/
+# Python 缓存和编译文件
+__pycache__/
+*.py[cod]
+*.so
+# Python 打包和构建产物，build/与dist/在通用构建产物中已包含
+site/
+*.egg-info/
+# 测试和覆盖率报告
 .pytest_cache/
-
-# 日志文件和临时文件
-*.log
-
-# Ignore 音频文件
-data/voice
-
-# Ignore 风雪的个人文件目录
-memory-bank/
-
-game_data/backgrounds/**  
-!game_data/backgrounds/白天.jpeg
-!game_data/backgrounds/夜晚.jpg
-!game_data/backgrounds
+.tox/
+.coverage
+coverage.*
+htmlcov/
 
 
-game_data/musics/ 
-!game_data/musics/夜晚音效
 
-# Ignore 数据库淫荡对话历史
+
+# ============================================================
+#   前端和通用构建产物 (Frontend & General Build Artifacts)
+# ============================================================
+
+node_modules/
+build/
+dist/
+
+
+
+
+# ============================================================
+#          特定项目文件 (Project Specific Files)
+# ============================================================
+
+# 用户数据文件
+data/*
+# 数据库、聊天记录和本地数据存储
 chat_system.db
 chroma_db_store/
 rag_chat_history/
 browser_data/
-#
-release/zip/
-.openmcp/
+# 大模型文件和本地缓存，这些文件过大很大
 models/
-
-# 写文档的 obsidian 相关目录
-.obsidian/
-.trash/
-
-# Ignore generated files
-*.build/
-*.dist/
-
-# 不必要的大文件
+memory_rag_models/
 *.safetensors
 *.onnx
-memory_rag_models/
+# 发布产物
+release/
+
+
+
+
+# ============================================================
+#         游戏开发资源 (Game Development Assets)
+# ============================================================
+# 规则：默认忽略开发中的资源，但保留部分确定要使用的文件
+
+# 忽略 data 目录下的 voice 文件夹，但保留 data 目录本身，以便跟踪其他文件（如果需要）
+data/voice/
+!data/.gitkeep
+# 忽略 game_data/backgrounds/ 下的所有内容，但不忽略该目录本身，并保留指定的几个背景图
+game_data/backgrounds/**
+!game_data/backgrounds/
+!game_data/backgrounds/白天.jpeg
+!game_data/backgrounds/夜晚.jpg
+# 忽略 game_data/musics/ 目录下的所有内容，但保留指定的音效文件
+game_data/musics/
+!game_data/musics/夜晚音效
+
+
+
+
+# ============================================================
+#        文档和其他工具 (Documentation & Other Tools)
+# ============================================================
+
+# Obsidian 笔记工具的配置和回收站
+.obsidian/
+.trash/
+# 其他工具目录
+.openmcp/
+
+
+
+
+# ============================================================
+#     开发者个人目录 (Developer Personal Directories)
+# ============================================================
+
+# 风雪
+memory-bank/
