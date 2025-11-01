@@ -4,7 +4,7 @@
 
 ## 项目安装教程【25/11/1 更新】
 
-![轮椅级胎教教程](https://github.com/SlimeBoyOwO/LingChat/blob/develop/docs/develop/dev_guide.md)
+[轮椅级胎教教程](https://github.com/SlimeBoyOwO/LingChat/blob/develop/docs/develop/dev_guide.md)
 
 ## 项目结构
 
