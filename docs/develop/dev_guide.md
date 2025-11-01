@@ -1,16 +1,25 @@
+---
+title: LingChat dev版本使用文档
+description: 一份基础的LingChat dev使用文档，教你如何使用 LingChat 的 dev 版本
+outline:
+  level: [2, 3]
+---
+
 # 欢迎你，勇敢的开发者
 
 ## 前言：
 
 - 既然你打开这个文档，说明你已经准备吃 develop 的石山代码了。以下是你要先了解的信息：
 
-1. develop 版本非常**不稳定**，是开发版本，**不保证运行的健壮性**
-2. develop 版本**开发比较激进**，经常留下 bug 或者屎山代码，项目团队不接受无脑的指点，**一切不以代码为基础的指责不予受理**
-3. develop 版本有**最新的大胆的想法，和最优秀的，优化后性能和特性**（确信）
-4. 这个版本比较**适合想要学习代码，或者想参与开发的人，不适合普通用户**！
+1. develop 版本非常 **不稳定** ，是开发版本， **不保证运行的健壮性**
+2. develop 版本 **开发比较激进** ，经常留下 bug 或者屎山代码，项目团队不接受无脑的指点， **一切不以代码为基础的指责不予受理**
+3. develop 版本有 **最新的大胆的想法，和最优秀的，优化后性能和特性** （确信）
+4. 这个版本比较 **适合想要学习代码，或者想参与开发的人，不适合普通用户** ！
 
 > [!NOTE]
-> 本教程以 Python UV + Nodejs pnpm + Sbv2 TTS 为主，有经验者自行选择 conda 或者其他包管理器，按需处理。
+> 本教程以 Python UV + Nodejs pnpm + Sbv2 TTS 为主，有经验者自行选择 conda/mamba 或者其他包管理器，按需处理。
+>
+> 如果你在中国大陆，任何时候都不要忘记给工具配置镜像，具体各工具镜像可问ai
 
 ## 安装教程:
 
@@ -60,7 +69,7 @@ uv pip install .
 
 ```
 npm install -g pnpm
-pnpm install
+pnpm i
 ```
 
 3. 等待执行完毕即可
@@ -94,19 +103,24 @@ D:\NoiProjects\GitHub\temp\LingChat\ling_chat\third_party\emotion_model_18emo
 ### Step 5: 正式运行项目
 
 1. 浏览器输入 `localhost:5173` 可以进入前端页面。打开右上角的高级设置，里面可以配置各种 api 信息还有个性化的开发者选项。点击保存后重启后端程序（Ctrl+C, N）就可以生效了。
-   > [!IMPORTANT]
-   > 没事别特喵碰实验性功能的开关，倒时候整个软件炸了哭了就不关我事了吼
+
+> [!IMPORTANT]
+> 没事别特喵碰实验性功能的开关，倒时候整个软件炸了哭了就不关我事了吼
+
 2. 一切配置完毕后，输入对话，开始聊天吧！
 
 ### Step 6: 语音安装教程
 
+> [!NOTE]
+> 语音部分详细介绍请看 [此文档](../manual/expand/voice.md)，人物卡制作详见 [此文档](character_guide.md)
+
 1. 前往网站 [SBV2](https://github.com/litagin02/Style-Bert-VITS2)
 2. 点进 release，下载最新的 release 文件
-3. 解压，然后点击 install.bat （不是 CPU 的那个），记得选一个好的项目目录，不然后面可能不方便迁移
-4. 如果安装过程有问题，比如出现某个依赖包失败，要自行修改 `pyproject.toml` 内相关依赖包的版本
+3. 解压，然后点击 install.bat （不是 CPU 的那个，当然没有显卡或仅推理可用 CPU 版本），记得选一个好的项目目录（路径全英文），不然后面可能不方便迁移
+4. 如果安装过程有问题，比如出现某个依赖包失败，要自行修改 `pyproject.toml` 内相关依赖包的版本（一般不用）
 5. 安装完毕后会自动弹出一个浏览器窗口，表示安装完毕
 6. 之后需要添加 sbv2 模型，只需要在 model_assests 里面添加即可
-7. 之后，只需要打开该目录的 server.bat 就可以为 Lingchat 启动 Vits 服务了
+7. 之后，只需要打开该目录的 server.bat 就可以为 Lingchat 启动语音服务了
 8. 在 LingChat 中，修改某个角色使用 sbv2 的方法是：
 
 ```
@@ -114,16 +128,16 @@ D:\NoiProjects\GitHub\temp\LingChat\ling_chat\third_party\emotion_model_18emo
 
 voice_models = {
     "sva_speaker_id": "0",
-    "sbv2_name": "Ling-v2",
+    "sbv2_name": "这里填写模型名称",
     "sbv2_speaker_id": "0",
     "bv2_speaker_id": "0",
-    "sbv2api_name": "这里填写模型名称",
+    "sbv2api_name": "",
     "sbv2api_speaker_id": "0",
     "gsv_voice_text": "",
     "gsv_voice_filename": "",
     "gsv_gpt_model_name": "",
     "gsv_sovits_model_name": "",
-    "aivis_model_uuid": "44f93196-7485-45af-9616-f33adee71846"
+    "aivis_model_uuid": ""
 }
 tts_type = "sbv2"
 ```
