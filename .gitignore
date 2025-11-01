@@ -76,13 +76,12 @@ rag_chat_history/
 browser_data/
 # 大模型文件和本地缓存，这些文件过大很大
 models/
-memory_rag_models/
+embedding_models/
+Pytorch/RAG/embedding_models/
 *.safetensors
 *.onnx
 # 发布产物
 release/
-
-
 
 
 # ============================================================
