@@ -76,6 +76,7 @@ export const actions = {
             think_message: characterData.thinking_message,
             emotion: "正常",
             originEmotion: "",
+            show: false,
             scale: characterData.scale,
             offset_y: characterData.offset_y,
             offset_x: characterData.offset_x,
