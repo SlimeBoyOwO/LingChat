@@ -9,7 +9,6 @@ from typing import List, Dict, Tuple, Optional, Any
 from ling_chat.core.logger import logger, TermColors
 from ling_chat.utils.runtime_path import third_party_path
 
-# sentence-transformers 和 torch 的依赖已移除
 _chromadb_imported_ok = True
 try:
     import chromadb
