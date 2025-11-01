@@ -2,57 +2,9 @@
 
 ![official](https://github.com/user-attachments/assets/ffccbe79-87ed-4dbc-8e60-f400efbbab26)
 
-## 安装
+## 项目安装教程【25/11/1 更新】
 
-### 通过 pip 安装
-
-您可能希望在虚拟环境中安装软件包以避免与其他软件包发生冲突。您可以使用 `venv` 创建虚拟环境。
-
-```bash
-python -m venv .venv
-```
-
-然后激活虚拟环境：
-
-```bash
-source .venv/bin/activate  # 在 Linux 或 macOS 上
-.venv\Scripts\activate  # 在 Windows 上
-```
-
-使用 pip 安装LingChat：
-
-```bash
-pip install .
-```
-
-### 通过 poetry 安装
-
-您可以使用 poetry 安装软件包：
-
-```bash
-poetry install
-```
-
-## 使用方法
-
-### 添加您的密钥
-
-在项目的根目录中创建一个名为 `.env` 的文件，并将的API 密钥添加到其中：
-
-```text
-CHAT_API_KEY="api key的位置"
-```
-
-### 运行服务器
-
-运行以下命令启动服务器：
-
-```bash
-# 如果您通过 pip 安装了软件包
-# python -m ling_chat
-# 或者:
-poetry run python -m ling_chat
-```
+![轮椅级胎教教程](https://github.com/SlimeBoyOwO/LingChat/blob/develop/docs/develop/dev_guide.md)
 
 ## 项目结构
 
