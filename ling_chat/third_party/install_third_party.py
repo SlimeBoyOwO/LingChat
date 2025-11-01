@@ -5,7 +5,6 @@ import subprocess
 import tempfile
 from pathlib import Path
 from tqdm import tqdm
-from ling_chat.third_party.downloading_RAG_model import download_embedding_model
 
 
 def download_file(url: str, save_path: Path) -> None:
@@ -149,7 +148,8 @@ def install_rag_model(use_mirror=False):
     """
     安装RAG系统所需的模型
     """
-    download_embedding_model(use_mirror=use_mirror)
+    # download_embedding_model(use_mirror=use_mirror)
+    pass
 
 
 def main():
