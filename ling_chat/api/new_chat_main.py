@@ -27,18 +27,24 @@ class WebSocketManager:
                     await websocket.send_json({"type": "pong"})
                 elif message.get('type') == 'message':
                     logger.info("来自客户端的消息：" + str(message))
-                    # 将消息转发给 ai_service（不等待响应）
-                    if service_manager.ai_service is not None:
+                    # 将消息转发给 ai_service
+                    ai_service = service_manager.ai_service
+                    if ai_service is not None:
                         user_message = message.get('content', '')
                         if user_message == "/开始剧本":
                             asyncio.create_task(
-                                service_manager.ai_service.start_script()
+                                ai_service.start_script()
                             )
                             logger.info("开始进行剧本模式")
                         else:
-                            asyncio.create_task(
-                                message_broker.enqueue_ai_message(client_id, user_message)
-                            )
+                            if ai_service.scripts_manager.is_running:
+                                asyncio.create_task(
+                                    message_broker.enqueue_ai_script_message(client_id, user_message)
+                                )
+                            else:
+                                asyncio.create_task(
+                                    message_broker.enqueue_ai_message(client_id, user_message)
+                                )
                     else:
                         logger.error("尚未初始化，请刷新网页！")
                         #TODO: 向前端提示或者之后做个刷新系统

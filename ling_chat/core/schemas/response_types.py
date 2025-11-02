@@ -16,5 +16,8 @@ class ResponseType:
     SCRIPT_MUSIC = "music" # 背景切换
     SCRIPT_SOUND = "sound" # 背景切换
 
+    # 输入控制系统
+    SCRIPT_INPUT = "input" # 玩家输入
+
     # 人物控制系统
     SCRIPT_MODIFY_CHARACTER = "modify_character" # 修改人物

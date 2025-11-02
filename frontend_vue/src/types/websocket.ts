@@ -30,6 +30,8 @@ export enum WebSocketMessageTypes {
   SCRIPT_BACKGROUND = "background", // 旁白
   SCRIPT_MODIFY_CHARACTER = "modify_character", // 旁白
 
+  SCRIPT_INPUT = "input", // 玩家输入
+
   SCRIPT_BACKGROUND_EFFECT = "background_effect",
   SCRIPT_MUSIC = "music",
   SCRIPT_SOUND = "sound",

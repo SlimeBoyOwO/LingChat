@@ -8,6 +8,7 @@ from typing import Optional, Union
 class BaseResponse(BaseModel):
     type: str
     duration: float = -1
+    isFinal: bool = False
 
 class ReplyResponse(BaseResponse):
     type: str = ResponseType.AI_REPLY
@@ -18,7 +19,6 @@ class ReplyResponse(BaseResponse):
     motionText: Optional[str] = None
     audioFile: Optional[str] = None
     originalMessage: str
-    isFinal: bool
 
 class ScriptBackgroundResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_BACKGROUND
@@ -57,6 +57,10 @@ class ScriptModifyCharacterResponse(BaseResponse):
 class ScriptPlayerResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_PLAYER
     text: str
+
+class ScriptInputResponse(BaseResponse):
+    type: str = ResponseType.SCRIPT_INPUT
+    hint: str
 
 # 所有响应类型
 Response = Union[ReplyResponse, ScriptBackgroundResponse, ScriptNarrationResponse]

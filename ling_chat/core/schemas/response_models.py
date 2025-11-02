@@ -18,6 +18,10 @@ class ResponseFactory:
         )
     
     @staticmethod
+    def create_input(hint: str, **kwargs) -> ScriptInputResponse:
+        return ScriptInputResponse(hint=hint, isFinal=True, **kwargs)
+    
+    @staticmethod
     def create_background(image: str, **kwargs) -> ScriptBackgroundResponse:
         return ScriptBackgroundResponse(imagePath=image, **kwargs)
     

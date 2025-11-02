@@ -55,6 +55,11 @@ export interface ScriptModifyCharacterEvent extends ScriptEvent {
   action?: string;
 }
 
+export interface ScriptInputEvent extends ScriptEvent {
+  type: "input";
+  hint: string;
+}
+
 export type ScriptEventType =
   | ScriptNarrationEvent
   | ScriptDialogueEvent
@@ -63,4 +68,5 @@ export type ScriptEventType =
   | ScriptModifyCharacterEvent
   | ScriptBackgroundEffectEvent
   | ScriptMusicEvent
-  | ScriptSoundEvent;
+  | ScriptSoundEvent
+  | ScriptInputEvent;
