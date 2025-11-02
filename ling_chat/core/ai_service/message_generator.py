@@ -33,6 +33,9 @@ class MessageGenerator:
         self.llm_model = llm_model if llm_model else LLMManager()
         self.ai_logger = ai_logger if ai_logger else AILogger()
         self.function = Function()
+
+        # 并发消费者数量设置，从env读取
+        self.concurrency = int(os.environ.get("COMSUMERS", 3))
     
     def memory_init(self, memory: List[Dict]) -> None:
         self.memory = memory
@@ -149,7 +152,7 @@ class MessageGenerator:
         
         # 启动消费者任务...
         consumer_tasks = []
-        for i in range(3):
+        for i in range(self.concurrency):
             task = asyncio.create_task(
                 self._process_sentence_consumer(sentence_queue, user_message, results_store, publish_events, i)
             )
