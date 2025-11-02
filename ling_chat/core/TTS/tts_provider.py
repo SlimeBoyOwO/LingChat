@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from ling_chat.core.TTS.index_adpater import IndexTTSAdapter
 from ling_chat.core.TTS.vits_adapter import VitsAdapter
 from ling_chat.core.TTS.sbv2_adapter import SBV2Adapter
 from ling_chat.core.TTS.gsv_adapter import GPTSoVITSAdapter
@@ -44,6 +45,7 @@ class TTS:
         self.bv2_adapter = None
         self.gsv_adapter = None
         self.aivis_adapter = None
+        self.index_adapter = None
 
     def init_sva_adapter(self,speaker_id: int):
         """
@@ -131,6 +133,12 @@ class TTS:
             prompt_lang = prompt_lang
         )
 
+    def init_index_adapter(self):
+        """
+        初始化IndexTTS适配器
+        """
+        self.index_adapter = IndexTTSAdapter()
+
     def _select_adapter(self, tts_type: str):
         """
         根据tts_type选择适配器(如果传入),为空则自动选择
@@ -166,6 +174,10 @@ class TTS:
                 if self.aivis_adapter is None:
                     raise ValueError("AIVIS适配器未初始化")
                 return self.aivis_adapter
+            elif tts_type == 'indextts2':
+                if self.index_adapter is None:
+                    raise ValueError("IndexTTS2适配器未初始化")
+                return self.index_adapter
             else:
                 raise ValueError(f"未知的TTS类型: {tts_type}")
         elif self.sbv2_adapter is not None:
@@ -175,7 +187,7 @@ class TTS:
             raise ValueError("没有可用的API适配器")
 
     async def generate_voice(self, text: str, file_name: str, 
-                             tts_type: str = "", lang: str ="ja") -> str | None:
+                             tts_type: str = "", lang: str ="ja", emo: str = "") -> str | None:
         """
         生成语音文件
 
@@ -197,7 +209,11 @@ class TTS:
             # 选择适配器
             adapter = self._select_adapter(tts_type)
 
-            audio_data = await adapter.generate_voice(text)
+            logger.debug("开始生成语音...")
+            if isinstance(adapter, IndexTTSAdapter):
+                audio_data = await adapter.generate_voice(text, emo)
+            else:
+                audio_data = await adapter.generate_voice(text)
 
             output_file = str(file_name)
             with open(output_file, "wb") as f:

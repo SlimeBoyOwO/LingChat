@@ -134,6 +134,9 @@ class VoiceMaker:
                     asyncio.create_task(_set_models(gpt_model_path, sovits_model_path))
             elif self.tts_type == "aivis" and self.aivis_available:
                 self.tts_provider.init_aivis_adapter(model_uuid=tts_settings["aivis_model_uuid"])
+            elif self.tts_type == "indextts2":
+                self.tts_provider.init_index_adapter()
+                self.set_lang("zh")
             else:
                 logger.warning(f"你的环境变量中TTS设置有误，此角色{name}不支持{self.tts_type}，将使用角色卡的默认语音合成器！")
                 raise ValueError
@@ -142,7 +145,7 @@ class VoiceMaker:
 
     def set_tts(self, tts_type: str, tts_settings: dict[str,str], name: str) -> None:
         """设置默认的TTS类型"""
-        available_tts_types = ("sva-bv2", "gsv", "sbv2", "sva-vits", "sbv2api","aivis")
+        available_tts_types = ("sva-bv2", "gsv", "sbv2", "sva-vits", "sbv2api","aivis", "indextts2")
         try:
             if os.environ.get("TTS_TYPE", "") in available_tts_types:
                 self.tts_type = os.environ.get("TTS_TYPE", "")
@@ -187,7 +190,8 @@ class VoiceMaker:
                 if seg["following_text"]:
                     task = self.tts_provider.generate_voice(seg["following_text"], 
                                                             seg["voice_file"], 
-                                                            tts_type=self.tts_type, 
+                                                            tts_type=self.tts_type,
+                                                            emo=seg.get('predict', ''), 
                                                             lang="zh")
                     tasks.append(task)
                 else:
