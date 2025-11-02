@@ -22,6 +22,13 @@ class MessageBroker:
             "type": "user_message", 
             "content": message
         })
+    
+    async def enqueue_ai_script_message(self, client_id: str, message: str):
+        """专门用于将消息加入到AI剧本处理队列"""
+        await self.publish(f"ai_script_input_{client_id}", {
+            "type": "user_message", 
+            "content": message
+        })
 
 # 单例模式
 message_broker = MessageBroker()

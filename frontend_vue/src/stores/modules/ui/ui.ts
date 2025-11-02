@@ -6,6 +6,7 @@ interface UIState {
   showCharacterSubtitle: string;
   showCharacterEmotion: string;
   showCharacterLine: string;
+  showPlayerHintLine: string;
   showCharacterThinkLine: string;
   showSettings: boolean;
   currentSettingsTab: string;
@@ -28,6 +29,7 @@ export const useUIStore = defineStore("ui", {
     showCharacterSubtitle: "Bilibili",
     showCharacterEmotion: "",
     showCharacterLine: "",
+    showPlayerHintLine: "",
     showCharacterThinkLine: "Ling Ling Thinking...",
     showSettings: false,
     currentSettingsTab: "text",

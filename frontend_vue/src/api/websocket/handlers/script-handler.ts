@@ -55,6 +55,11 @@ export class ScriptHandler {
         eventQueue.addEvent(data as ScriptTypes.ScriptModifyCharacterEvent);
       }
     );
+
+    registerHandler(WebSocketMessageTypes.SCRIPT_INPUT, (data: any) => {
+      console.log("收到输入事件:", data);
+      eventQueue.addEvent(data as ScriptTypes.ScriptInputEvent);
+    });
   }
 
   public sendMessage(text: string) {

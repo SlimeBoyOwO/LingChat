@@ -84,6 +84,7 @@ const isInputEnabled = computed(() => gameStore.currentStatus === "input");
 watch(
   () => gameStore.currentStatus,
   (newStatus) => {
+    console.log("游戏状态变为 :", newStatus);
     if (newStatus === "thinking") {
       gameStore.avatar.emotion = "AI思考";
       uiStore.showCharacterTitle = gameStore.avatar.character_name;

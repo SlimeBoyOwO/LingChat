@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any, List, Dict, Optional
 
 from numpy import character
+from sympy import true
 
 from ling_chat.utils.function import Function
 from ling_chat.core.ai_service.script_engine.type import Character, Player, Script, GameContext
@@ -23,6 +24,7 @@ class ScriptManager:
         self.current_script = None
         self.game_context: GameContext = GameContext()          # 创建一个空的上下文
         self.current_chartper:Charpter|None = None
+        self.is_running = False
 
         # 记忆，状态管理
         if not self.all_scripts:
@@ -94,12 +96,13 @@ class ScriptManager:
     
     async def start_script(self):
         """
-        剧本的主执行循环，现在变得极为清晰。
+        剧本的主执行循环
         """
         if self.current_script is None:
             logger.error("剧本不存在，请先导入剧本")
             return
         
+        self.is_running = True
         next_charpter_name = self.current_script.intro_charpter
         
         while next_charpter_name != "end":
@@ -115,6 +118,7 @@ class ScriptManager:
                 logger.error(f"运行章节 '{next_charpter_name}' 时发生严重错误: {e}", exc_info=True)
                 raise ScriptEngineError("运行章节的时候发生错误")
         
+        self.is_running = False
         logger.info("剧本已经结束。")
 
     def get_all_scripts(self):
@@ -226,3 +230,6 @@ class ScriptManager:
         return self.scripts_dir / self.current_script_name / "Assests"
     def get_avatar_dir(self, character:str) -> Path:
         return self.scripts_dir / self.current_script_name / "Characters" / character / "avatar"
+    
+    def is_script_running(self) -> bool:
+        return self.is_running
