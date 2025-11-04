@@ -24,6 +24,9 @@ export default class DialogueProcessor implements IEventProcessor {
 
     gameStore.addToDialogHistory({
       type: "reply",
+      character: event.character
+        ? event.character
+        : gameStore.avatar.character_name,
       content: event.message,
       emotion: event.emotion,
       audioFile: event.audioFile,

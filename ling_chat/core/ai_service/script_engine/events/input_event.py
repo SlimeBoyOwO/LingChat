@@ -21,7 +21,7 @@ class InputEvent(BaseEvent):
         
         # 将用户输入存储到游戏上下文
         self.game_context.dialogue.append({
-            'player': "player",
+            'character': "player",
             'text': user_input,
         })
         

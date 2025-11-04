@@ -1,5 +1,6 @@
 export interface DialogMessage {
   type: "message" | "reply";
+  character: string;
   content: string;
   emotion?: string;
   audioFile?: string;

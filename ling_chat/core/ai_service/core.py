@@ -12,7 +12,7 @@ from ling_chat.core.ai_service.events_scheduler import EventsScheduler
 from ling_chat.core.llm_providers.manager import LLMManager
 from ling_chat.core.messaging.broker import message_broker
 from ling_chat.core.logger import logger
-from ling_chat.core.ai_service.message_generator import MessageGenerator
+from ling_chat.core.ai_service.message_system.message_generator import MessageGenerator
 from ling_chat.core.ai_service.script_engine.script_manager import ScriptManager
 from ling_chat.utils.function import Function
 
@@ -83,7 +83,8 @@ class AIService:
 
             if self.use_rag and self.rag_manager:
                 logger.info(f"检测到角色切换，正在为角色 (ID: {self.character_id}) 准备长期记忆...")
-                self.rag_manager.switch_rag_system_character(self.character_id or 0)
+                self.rag_manager.switch_rag_system_character(int(self.character_id) if self.character_id else 0)
+
         else:
             logger.error("角色信息settings没有被正常导入，请检查问题！")
     
@@ -109,18 +110,6 @@ class AIService:
     
     async def start_script(self):
         await self.scripts_manager.start_script()
-
-    async def process_message_stream_compat(self, user_message: str):
-        """
-        对接函数：与process_message兼容的流式消息处理函数
-        这个函数收集所有的流式响应并返回一个列表
-        """
-        self.message_generator.memory_init(self.memory)
-        logger.info("正在使用流式回复")
-        responses = []
-        async for response in self.message_generator.process_message_stream(user_message):
-            responses.append(response)
-        return responses
     
     async def _process_message_loop(self):
         """后台任务：持续处理AI输入队列中的消息"""
@@ -133,6 +122,7 @@ class AIService:
                     self.message_generator.memory_init(self.memory)
                     
                     # 处理消息并直接发送响应（process_message_stream内部已经处理发送）
+                    # await self.message_generator.process_message_stream(user_message)
                     responses = []
                     async for response in self.message_generator.process_message_stream(user_message):
                         # 收集响应用于日志或其他用途

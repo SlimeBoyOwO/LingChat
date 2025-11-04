@@ -205,6 +205,10 @@ class ScriptManager:
                     character_id=character_id, 
                     settings=settings, 
                     resource_path=str(character_path), 
+                    prompt={
+                        "role": "system", 
+                        "content": settings.get("system_prompt", "系统设定错误")
+                    },
                     memory=[{
                         "role": "system", 
                         "content": settings.get("system_prompt", "系统设定错误")

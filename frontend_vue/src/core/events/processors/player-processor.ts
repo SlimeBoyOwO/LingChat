@@ -17,6 +17,7 @@ export default class PlayerProcessor implements IEventProcessor {
 
     gameStore.addToDialogHistory({
       type: "message",
+      character: gameStore.avatar.user_name,
       content: event.text,
     });
 

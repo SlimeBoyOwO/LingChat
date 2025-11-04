@@ -13,6 +13,7 @@ class Character:
     character_id: str
     settings: dict
     resource_path: str
+    prompt: dict
     memory: list[dict]
 
 @dataclass

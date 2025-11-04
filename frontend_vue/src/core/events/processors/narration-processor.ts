@@ -20,6 +20,12 @@ export default class NarrationProcessor implements IEventProcessor {
     uiStore.showCharacterSubtitle = "";
     uiStore.showCharacterEmotion = "";
 
+    gameStore.addToDialogHistory({
+      type: "message",
+      character: "旁白",
+      content: event.text,
+    });
+
     console.log("叙事模式执行" + event.text);
   }
 }
