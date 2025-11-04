@@ -110,7 +110,7 @@ class MessageProcessor:
         if bracket_matches:
             # 从原始消息中移除大括号内容
             processed_message = re.sub(bracket_pattern, "", user_message).strip()
-            user_instruction_part = "系统重点提醒: " + "; ".join(bracket_matches)
+            user_instruction_part = "旁白: " + "; ".join(bracket_matches)
         
         # 时间感知逻辑
         if self.time_sense_enabled and ((self.last_time and 
@@ -147,6 +147,7 @@ class MessageProcessor:
         if self.sys_time_counter >= 2:
             self.sys_time_counter = 0
         
+        logger.info("处理后的用户信息是:" + processed_message)
         return processed_message
 
     def sys_prompt_builder(self,user_name:str,

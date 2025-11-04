@@ -7,7 +7,7 @@ class ResponseFactory:
     @staticmethod
     def create_reply(seg: Dict, user_message: str, is_final: bool) -> ReplyResponse:
         return ReplyResponse(
-            character=seg['character'] or "default",
+            character=seg.get("character", "default"),
             emotion=seg['predicted'] or seg["original_tag"],
             originalTag=seg['original_tag'],
             message=seg['following_text'],
@@ -15,6 +15,19 @@ class ResponseFactory:
             audioFile=os.path.basename(seg['voice_file']) if os.path.exists(seg['voice_file']) else None,
             originalMessage=user_message,
             isFinal=is_final
+        )
+    
+    @staticmethod
+    def create_error_reply(error_message: str) -> ReplyResponse:
+        return ReplyResponse(
+            character="default",
+            emotion="伤心",
+            originalTag="error",
+            message=error_message,
+            motionText="",
+            audioFile=None,
+            originalMessage="",
+            isFinal=True
         )
     
     @staticmethod

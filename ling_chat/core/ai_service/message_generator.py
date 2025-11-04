@@ -118,19 +118,26 @@ class MessageGenerator:
                 break
 
         
-    async def process_message_stream(self, user_message: str):
+    async def process_message_stream(self, user_message: str, memory: Optional[List[Dict]] = None):
         """流式处理用户消息，边生成边进行情绪分析、翻译和语音合成"""
 
-        processed_user_message = self.message_processor.append_user_message(user_message)
-
-        # 1. 增添用户相关信息
-        self.memory.append({"role": "user", "content": processed_user_message})
+        processed_user_message = ""
+        if not memory:
+            processed_user_message = self.message_processor.append_user_message(user_message)
+            self.memory.append({"role": "user", "content": processed_user_message})
+        else:
+            self.memory_init(memory)
+            
         rag_messages = []
 
-        current_context = self.memory.copy()
-        # 2. 如果启用了RAG系统，保存本次会话到RAG历史记录
-        if self.use_rag and self.rag_manager:
-            self.rag_manager.rag_append_sys_message(current_context, rag_messages, processed_user_message)
+        if memory:
+            current_context = memory.copy()
+        else:
+            current_context = self.memory.copy()
+
+            # 2. 如果启用了RAG系统，保存本次会话到RAG历史记录
+            if self.use_rag and self.rag_manager:
+                self.rag_manager.rag_append_sys_message(current_context, rag_messages, processed_user_message)
 
         # 用于累积完整的响应
         accumulated_response = ""
@@ -291,7 +298,8 @@ class MessageGenerator:
                     yield response
 
             # 将完整响应添加到记忆中
-            self.memory.append({"role": "assistant", "content": accumulated_response})
+            if not memory:
+                self.memory.append({"role": "assistant", "content": accumulated_response})
 
             # 等待所有句子处理完成
             await sentence_queue.join()

@@ -66,7 +66,7 @@ const openHistory = () => {
 const placeholderText = computed(() => {
   switch (gameStore.currentStatus) {
     case "input":
-      return "在这里输入消息...";
+      return uiStore.showPlayerHintLine || "在这里输入消息...";
     case "thinking":
       return gameStore.avatar.think_message;
     case "responding":
@@ -134,6 +134,7 @@ function send() {
     gameStore.currentStatus = "thinking";
     gameStore.addToDialogHistory({
       type: "message",
+      character: gameStore.avatar.user_name,
       content: text,
     });
   }

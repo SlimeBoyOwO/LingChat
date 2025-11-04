@@ -12,7 +12,7 @@
           >
             <div class="message-item">
               <div v-if="message.type === 'message'" class="player-message">
-                <span class="name">{{ gameStore.avatar.user_name }}: </span>
+                <span class="name">{{ message.character }}: </span>
                 <span class="content">{{ message.content }}</span>
               </div>
 
@@ -21,9 +21,7 @@
                 class="ai-reply"
                 :title="`情绪: ${message.originalTag}`"
               >
-                <span class="name"
-                  >{{ gameStore.avatar.character_name }}:
-                </span>
+                <span class="name">{{ message.character }}: </span>
                 <span class="content">
                   {{ message.content }}
                   <template v-if="message.motionText"
