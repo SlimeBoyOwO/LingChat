@@ -130,7 +130,7 @@ class StreamProducer:
         print("\n=== 流式输出结束 ===")
         return accumulated_response
     
-    async def run(self):
+    async def run(self) -> str:
 
         accumulated_response = ""
         sentence_index = 0
@@ -257,3 +257,5 @@ class StreamProducer:
 
         # 打印结束换行
         print("\n=== 流式输出结束 ===")
+
+        return accumulated_response
