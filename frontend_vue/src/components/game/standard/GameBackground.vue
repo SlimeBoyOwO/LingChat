@@ -1,20 +1,27 @@
 <template>
-  <div class="game-background" :style="backgroundStyle"></div>
-  <StarField
-    ref="starfieldRef"
-    v-if="uiStore.currentBackgroundEffect === `StarField`"
-    :enabled="starfieldEnabled"
-    :star-count="starCount"
-    :scroll-speed="scrollSpeed"
-    :colors="starColors"
-    @ready="onStarfieldReady"
-  />
-  <Rain
-    v-if="uiStore.currentBackgroundEffect === `Rain`"
-    :enabled="rainEnabled"
-    :intensity="rainIntensity"
-  />
-
+  <div class="game-background" :style="backgroundStyle">
+    <StarField
+      ref="starfieldRef"
+      v-if="uiStore.currentBackgroundEffect === `StarField`"
+      :enabled="starfieldEnabled"
+      :star-count="starCount"
+      :scroll-speed="scrollSpeed"
+      :colors="starColors"
+      @ready="onStarfieldReady"
+    />
+    <Rain
+      v-if="uiStore.currentBackgroundEffect === `Rain`"
+      :enabled="rainEnabled"
+      :intensity="rainIntensity"
+    />
+    <Sakura
+      v-if="uiStore.currentBackgroundEffect === `Sakura`"
+      :enabled="true"
+      :intensity="1.5"
+    >
+    </Sakura>
+    <
+  </div>
   <audio ref="soundEffectPlayer"></audio>
   <audio ref="backgroundMusicPlayer" loop></audio>
 </template>
@@ -24,6 +31,7 @@ import { ref, computed, watch } from "vue";
 import { useUIStore } from "../../../stores/modules/ui/ui";
 import StarField from "./particles/StarField.vue";
 import Rain from "./particles/Rain.vue";
+import Sakura from "./particles/Sakura.vue";
 
 const uiStore = useUIStore();
 const starfieldRef = ref(null);
