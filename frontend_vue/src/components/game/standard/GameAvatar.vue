@@ -45,7 +45,7 @@ const targetAvatarUrl = computed(() => {
   const emotionConfig = EMOTION_CONFIG[emotion] || EMOTION_CONFIG["正常"];
 
   if (emotion === "AI思考") return "none"; // TODO: 神奇的小魔法字符串怎么你了
-  if (character && character === "default") return `${emotionConfig.avatar}`;
+  if (!gameStore.script.isRunning) return `${emotionConfig.avatar}`;
 
   // TODO: 统一管理API
   return `/api/v1/chat/character/get_script_avatar/${character}/${EMOTION_CONFIG_EMO[emotion]}`;

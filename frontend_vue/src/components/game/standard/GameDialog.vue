@@ -130,6 +130,7 @@ function send() {
     gameStore.initializeScript("TODO: 从剧本面板选择剧本");
     // TODO: 清空背景，清空人物
     gameStore.avatar.show = false;
+    gameStore.script.isRunning = true;
   } else {
     gameStore.currentStatus = "thinking";
     gameStore.addToDialogHistory({

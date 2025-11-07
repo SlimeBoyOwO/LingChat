@@ -16,7 +16,11 @@ export default class DialogueProcessor implements IEventProcessor {
     gameStore.currentStatus = "responding";
 
     // 针对剧本模式，获取角色
-    gameStore.character = event.character ? event.character : "default";
+    gameStore.character = gameStore.script.isRunning
+      ? event.character
+        ? event.character
+        : "ERROR"
+      : gameStore.avatar.character_name;
 
     gameStore.currentLine = event.motionText
       ? `${event.message} (${event.motionText})`
@@ -24,8 +28,10 @@ export default class DialogueProcessor implements IEventProcessor {
 
     gameStore.addToDialogHistory({
       type: "reply",
-      character: event.character
+      character: gameStore.script.isRunning
         ? event.character
+          ? event.character
+          : "ERROR"
         : gameStore.avatar.character_name,
       content: event.message,
       emotion: event.emotion,

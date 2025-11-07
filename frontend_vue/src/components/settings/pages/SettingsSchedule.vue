@@ -1,18 +1,18 @@
 <template>
   <MenuPage>
-    <MenuItem title="主动提醒" size="small">
+    <MenuItem title="主动提醒（请去高级设置-实验功能设置）" size="small">
       <Toggle>是否开启日程主动提醒功能</Toggle>
     </MenuItem>
 
-    <MenuItem title="随机聊天" size="small">
+    <MenuItem title="随机聊天（敬请期待）" size="small">
       <Toggle>是否开启随机间隔主动聊天功能</Toggle>
     </MenuItem>
 
-    <MenuItem title="窥屏权限" size="small">
+    <MenuItem title="窥屏权限（敬请期待）" size="small">
       <Toggle>是否开启主动窥屏聊天功能</Toggle>
     </MenuItem>
 
-    <MenuItem title="日程列表" size="large"> 日程组件 </MenuItem>
+    <MenuItem title="日程列表（敬请期待）" size="large"> 日程组件 </MenuItem>
   </MenuPage>
 </template>
 
