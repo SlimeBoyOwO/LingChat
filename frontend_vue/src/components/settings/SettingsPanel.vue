@@ -1,21 +1,24 @@
 <template>
   <div
     class="blur-overlay"
-    :style="{ opacity: uiStore.showSettings ? 1 : 0 }"
+    v-if="shouldShowOverlay"
+    :style="{ opacity: overlayOpacity }"
   ></div>
   <div class="settings-panel" v-show="uiStore.showSettings">
     <div class="header">
       <SettingsNav />
     </div>
     <div class="container">
-      <SettingsSave v-show="uiStore.currentSettingsTab === 'save'"/>
-      <SettingsText v-show="uiStore.currentSettingsTab === 'text'"/>
-      <SettingsSound v-show="uiStore.currentSettingsTab === 'sound'"/>
-      <SettingsAdvance v-show="uiStore.currentSettingsTab === 'advance'"/>
-      <SettingsHistory v-show="uiStore.currentSettingsTab === 'history'"/>
-      <SettingsSchedule v-show="uiStore.currentSettingsTab === 'schedule'"/>
-      <SettingsCharacter v-show="uiStore.currentSettingsTab === 'character'"/>
-      <SettingsBackground v-show="uiStore.currentSettingsTab === 'background'"/>
+      <SettingsSave v-show="uiStore.currentSettingsTab === 'save'" />
+      <SettingsText v-show="uiStore.currentSettingsTab === 'text'" />
+      <SettingsSound v-show="uiStore.currentSettingsTab === 'sound'" />
+      <SettingsAdvance v-show="uiStore.currentSettingsTab === 'advance'" />
+      <SettingsHistory v-show="uiStore.currentSettingsTab === 'history'" />
+      <SettingsSchedule v-show="uiStore.currentSettingsTab === 'schedule'" />
+      <SettingsCharacter v-show="uiStore.currentSettingsTab === 'character'" />
+      <SettingsBackground
+        v-show="uiStore.currentSettingsTab === 'background'"
+      />
     </div>
   </div>
 </template>
@@ -30,11 +33,36 @@ import {
   SettingsSchedule,
   SettingsCharacter,
   SettingsBackground,
-} from './pages'
+} from "./pages";
 import SettingsNav from "./SettingsNav.vue";
 import { useUIStore } from "../../stores/modules/ui/ui";
+import { ref, watch } from "vue";
 
 const uiStore = useUIStore();
+
+// 添加延迟状态
+const shouldShowOverlay = ref(false);
+const overlayOpacity = ref(0);
+
+watch(
+  () => uiStore.showSettings,
+  (newVal) => {
+    if (newVal) {
+      // 显示时：立即显示元素，然后延迟改变透明度
+      shouldShowOverlay.value = true;
+      setTimeout(() => {
+        overlayOpacity.value = 1;
+      }, 10); // 使用很小的延迟确保浏览器有机会渲染
+    } else {
+      // 隐藏时：先改变透明度，然后延迟隐藏元素
+      overlayOpacity.value = 0;
+      setTimeout(() => {
+        shouldShowOverlay.value = false;
+      }, 100); // 匹配你的动画持续时间
+    }
+  },
+  { immediate: true }
+);
 </script>
 
 <style>

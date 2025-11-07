@@ -45,8 +45,8 @@ class AIService:
         self.output_queue_name = self.user_id              # WebSocket输出队列
         self.processing_task = asyncio.create_task(self._process_message_loop())
 
+        self.events_scheduler = EventsScheduler(self.user_id)
         self.import_settings(settings)
-        self.events_scheduler = EventsScheduler(self.user_id, self.user_name, self.ai_name)
         self.events_scheduler.start_nodification_schedules()        # TODO: 这个由前端开关控制
 
         self.scripts_manager = ScriptManager()
@@ -87,6 +87,9 @@ class AIService:
 
         else:
             logger.error("角色信息settings没有被正常导入，请检查问题！")
+        
+        self.events_scheduler.ai_name = self.ai_name
+        self.events_scheduler.user_name = self.user_name
     
     def load_memory(self, memory):     
         if isinstance(memory, str):

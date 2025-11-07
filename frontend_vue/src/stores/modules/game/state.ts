@@ -13,6 +13,7 @@ export interface DialogMessage {
 export interface ScriptInfo {
   script_name: string;
   script_characters: Map<string, ScriptCharacter>; // 用角色名作为key
+  isRunning: boolean;
 }
 
 export interface ScriptCharacter {
@@ -48,6 +49,7 @@ export const state: GameState = {
   script: {
     script_name: "none",
     script_characters: new Map(),
+    isRunning: false,
   },
   character: "default",
   avatar: {

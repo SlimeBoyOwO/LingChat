@@ -5,12 +5,12 @@ from pathlib import Path
 from ling_chat.core import ai_service
 from ling_chat.core.logger import logger
 import shutil
-from ling_chat.utils.runtime_path import static_path
+from ling_chat.utils.runtime_path import user_data_path
 from ling_chat.core.service_manager import service_manager
 
 router = APIRouter(prefix="/api/v1/chat/background", tags=["Chat Character"])
 
-BACKGROUND_DIR = static_path / "game_data/backgrounds"
+BACKGROUND_DIR = user_data_path / "game_data/backgrounds"
 ALLOWED_EXTENSIONS = {'.jpg', '.png', '.webp', '.bmp', '.svg', '.tif', '.gif'}
 
 @router.get("/background_script_file/{background_file}")
