@@ -76,6 +76,7 @@ class MessageGenerator:
         if not memory:
             processed_user_message = self.message_processor.append_user_message(user_message)
             self.memory.append({"role": "user", "content": processed_user_message})
+            current_context = self.memory.copy()
             if self.use_rag and self.rag_manager:
                 rag_messages = []
                 self.rag_manager.rag_append_sys_message(current_context, rag_messages, processed_user_message)
@@ -110,14 +111,11 @@ class MessageGenerator:
                 consumer_task = asyncio.create_task(consumer.run(), name=f"Consumer-{i}")
                 background_tasks.append(consumer_task)
 
-            # --- 关键修复 ---
             # 生产者任务：立即将生产者作为后台任务启动
-            # 不要在这里等待它
             ai_response_stream = self.llm_model.process_message_stream(current_context)
             producer = StreamProducer(ai_response_stream, sentence_queue, publish_events)
             producer_task = asyncio.create_task(producer.run(), name="Producer")
             background_tasks.append(producer_task)
-            # --- 修复结束 ---
 
             # 4. 现在，主协程的工作是从管道生成结果
             while True:
@@ -145,7 +143,7 @@ class MessageGenerator:
 
             # 6. 后续处理
             if accumulated_response:
-                if memory is None:
+                if not memory:
                     self.memory.append({"role": "assistant", "content": accumulated_response})
                     if self.use_rag and self.rag_manager:
                         self.rag_manager.save_messages_to_rag(self.memory)
