@@ -47,6 +47,7 @@
       <div class="effect-list">
         <Button type="big" @click="updateParticle(`StarField`)">星空</Button>
         <Button type="big" @click="updateParticle(`Rain`)">雨水</Button>
+        <Button type="big" @click="updateParticle(`Sakura`)">樱花</Button>
       </div>
     </MenuItem>
   </MenuPage>
