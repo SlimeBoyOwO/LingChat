@@ -1,4 +1,4 @@
-from updata_main import create_application
+from update_main import create_application
 import time
 def main():
     app = create_application(version_file="version", update_url="http://localhost:5100/updates")
