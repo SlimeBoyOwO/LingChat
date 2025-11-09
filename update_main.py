@@ -3,7 +3,7 @@ import time
 import json
 from pathlib import Path
 from typing import Optional
-from updata_core import UpdateManager, MyUpdateStrategy
+from update_core import UpdateManager, MyUpdateStrategy
 
 
 def load_version_from_file(version_path: Optional[str] = None) -> str:
