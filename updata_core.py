@@ -357,9 +357,14 @@ class UpdateManager:
                 root_path = Path(root)
                 for f in files:
                     rel = (root_path / f).relative_to(src).as_posix()
+                    # skip .git entries
+                    if ".git" in Path(rel).parts:
+                        continue
                     backup_files.add(rel)
                 for d in dirs:
                     reld = (root_path / d).relative_to(src).as_posix()
+                    if ".git" in Path(reld).parts:
+                        continue
                     backup_dirs.add(reld)
 
             for root, dirs, files in os.walk(dst, topdown=False):
@@ -369,7 +374,8 @@ class UpdateManager:
                         rel = (root_path / f).relative_to(dst).as_posix()
                     except Exception:
                         continue
-                    if "backup" in Path(rel).parts:
+                    # skip paths under .git or backup folders
+                    if "backup" in Path(rel).parts or ".git" in Path(rel).parts:
                         continue
                     if rel not in backup_files:
                         try:
@@ -383,7 +389,7 @@ class UpdateManager:
                         reld = dpath.relative_to(dst).as_posix()
                     except Exception:
                         continue
-                    if "backup" in Path(reld).parts:
+                    if "backup" in Path(reld).parts or ".git" in Path(reld).parts:
                         continue
                     if reld in backup_dirs:
                         continue
@@ -396,13 +402,29 @@ class UpdateManager:
 
             for root, dirs, files in os.walk(src):
                 rel_root = Path(root).relative_to(src)
+                # skip restoring .git contents
+                if ".git" in rel_root.parts:
+                    continue
                 target_root = dst / rel_root
                 target_root.mkdir(parents=True, exist_ok=True)
                 for fname in files:
                     sfile = Path(root) / fname
+                    # skip restoring .git files
+                    if ".git" in (rel_root / fname).parts:
+                        continue
                     tfile = target_root / fname
                     try:
                         shutil.copy2(sfile, tfile)
+                    except PermissionError:
+                        # 尝试设置为可写后重试一次（Windows 可用）
+                        try:
+                            os.chmod(tfile, 0o666)
+                        except Exception:
+                            pass
+                        try:
+                            shutil.copy2(sfile, tfile)
+                        except Exception as e:
+                            logger.warning("复制备份文件失败 %s -> %s: %s", sfile, tfile, e)
                     except Exception as e:
                         logger.warning("复制备份文件失败 %s -> %s: %s", sfile, tfile, e)
 
