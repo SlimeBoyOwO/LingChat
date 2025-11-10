@@ -148,7 +148,7 @@ app.update_manager.register_callback("progress_changed", on_progress)
 ---
 
 ## 文件/配置位置
-- 默认 version 文件：d:\code\updatas\version 或 version.json（若存在）
+- 默认 version 文件：~\LingChat\version 或 version.json（若存在）
 - 默认 config：update_config.json（可通过 MyApplication 构造参数更改）
 - 备份目录：默认 backup（可配置）
 
