@@ -126,7 +126,8 @@ const drawParticles = () => {
     p.x += p.vx;
     p.y += p.vy;
     p.vy += 0.05; // 轻微重力
-    p.life -= 1 / (60 * p.maxLife); // 60fps衰减
+    p.life =
+      p.life - 1 / (60 * p.maxLife) < 0 ? 0 : p.life - 1 / (60 * p.maxLife); // 60fps衰减
     p.rotation += p.rotationSpeed;
 
     // 绘制粒子

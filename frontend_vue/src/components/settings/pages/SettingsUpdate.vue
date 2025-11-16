@@ -17,41 +17,56 @@
       <div class="current-version">
         <p><strong>当前版本:</strong> {{ currentVersion }}</p>
         <p><strong>更新状态:</strong> {{ updateStatus }}</p>
-        <p v-if="updateChainInfo && updateChainInfo.update_count > 1" class="update-chain-info">
-          发现 {{ updateChainInfo.update_count }} 个待更新版本: {{ updateChainInfo.current_version }} → {{ updateChainInfo.target_version }}
+        <p
+          v-if="updateChainInfo && updateChainInfo.update_count > 1"
+          class="update-chain-info"
+        >
+          发现 {{ updateChainInfo.update_count }} 个待更新版本:
+          {{ updateChainInfo.current_version }} →
+          {{ updateChainInfo.target_version }}
         </p>
         <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
       </div>
     </MenuItem>
 
     <!-- 操作按钮 -->
-    <MenuItem title="🔄 更新操作" size="small">
+    <MenuItem title="🔄 更新操作" size="large">
       <div class="action-buttons">
-        <Button 
+        <Button
           type="big"
-          @click="checkForUpdates" 
-          :disabled="!backendConnected || isChecking || isDownloading || isRollingBack"
+          @click="checkForUpdates"
+          :disabled="
+            !backendConnected || isChecking || isDownloading || isRollingBack
+          "
           class="left-button"
         >
-          {{ isChecking ? '⏳ 检查中...' : '🔍 检查更新' }}
+          {{ isChecking ? "⏳ 检查中..." : "🔍 检查更新" }}
         </Button>
-        
-        <Button 
+
+        <Button
           type="big"
-          @click="downloadAndApplyUpdate" 
-          :disabled="!backendConnected || !updateAvailable || isChecking || isDownloading || isRollingBack"
+          @click="downloadAndApplyUpdate"
+          :disabled="
+            !backendConnected ||
+            !updateAvailable ||
+            isChecking ||
+            isDownloading ||
+            isRollingBack
+          "
           class="left-button"
         >
-          {{ isDownloading ? '⏳ 下载中...' : '📥 下载并应用更新' }}
+          {{ isDownloading ? "⏳ 下载中..." : "📥 下载并应用更新" }}
         </Button>
-        
-        <Button 
+
+        <Button
           type="big"
-          @click="rollbackUpdate" 
-          :disabled="!backendConnected || isChecking || isDownloading || isRollingBack"
+          @click="rollbackUpdate"
+          :disabled="
+            !backendConnected || isChecking || isDownloading || isRollingBack
+          "
           class="left-button danger"
         >
-          {{ isRollingBack ? '⏳ 回滚中...' : '↩️ 回滚到上次备份' }}
+          {{ isRollingBack ? "⏳ 回滚中..." : "↩️ 回滚到上次备份" }}
         </Button>
       </div>
     </MenuItem>
@@ -60,14 +75,23 @@
     <MenuItem v-if="updateInfo" title="🆕 发现新版本" size="small">
       <div class="update-info">
         <div v-if="updateChain && updateChain.length > 0">
-          <p><strong>发现 {{ updateChain.length }} 个待更新版本:</strong></p>
-          <div v-for="(update, index) in updateChain" :key="index" class="update-chain-item">
-            <p><strong>版本 {{ update.version || '未知' }}</strong> - {{ update.changelog || '无更新说明' }}</p>
+          <p>
+            <strong>发现 {{ updateChain.length }} 个待更新版本:</strong>
+          </p>
+          <div
+            v-for="(update, index) in updateChain"
+            :key="index"
+            class="update-chain-item"
+          >
+            <p>
+              <strong>版本 {{ update.version || "未知" }}</strong> -
+              {{ update.changelog || "无更新说明" }}
+            </p>
           </div>
         </div>
         <div v-else>
           <p><strong>版本:</strong> {{ displayVersion }}</p>
-          <p><strong>更新内容:</strong> {{ updateInfo.changelog || '无' }}</p>
+          <p><strong>更新内容:</strong> {{ updateInfo.changelog || "无" }}</p>
         </div>
       </div>
     </MenuItem>
@@ -76,10 +100,7 @@
     <MenuItem v-if="showProgress" title="📊 更新进度" size="small">
       <div class="progress-container">
         <div class="progress-bar">
-          <div 
-            class="progress-fill" 
-            :style="{ width: progress + '%' }"
-          ></div>
+          <div class="progress-fill" :style="{ width: progress + '%' }"></div>
         </div>
         <p class="progress-text">{{ progressMessage }}</p>
       </div>
@@ -89,7 +110,11 @@
     <MenuItem title="⚙ 更新配置">
       <div class="config-item">
         <label>
-          <input type="checkbox" v-model="config.auto_backup" @change="updateConfig">
+          <input
+            type="checkbox"
+            v-model="config.auto_backup"
+            @change="updateConfig"
+          />
           自动创建备份
         </label>
         <span class="config-help">应用更新前自动创建完整备份</span>
@@ -102,8 +127,12 @@
         <h3>确认回滚</h3>
         <p>确认回滚到上次备份吗？</p>
         <div class="dialog-actions">
-          <Button type="big" @click="confirmRollback" class="danger">确认回滚</Button>
-          <Button type="big" @click="cancelRollback" class="left-button">取消</Button>
+          <Button type="big" @click="confirmRollback" class="danger"
+            >确认回滚</Button
+          >
+          <Button type="big" @click="cancelRollback" class="left-button"
+            >取消</Button
+          >
         </div>
       </div>
     </div>
@@ -114,9 +143,21 @@
         <h3>创建备份</h3>
         <p>是否在应用前创建全量备份？</p>
         <div class="dialog-actions">
-          <Button type="big" @click="confirmUpdateWithBackup(true)" class="left-button">是</Button>
-          <Button type="big" @click="confirmUpdateWithBackup(false)" class="left-button">否</Button>
-          <Button type="big" @click="cancelUpdate" class="left-button">取消</Button>
+          <Button
+            type="big"
+            @click="confirmUpdateWithBackup(true)"
+            class="left-button"
+            >是</Button
+          >
+          <Button
+            type="big"
+            @click="confirmUpdateWithBackup(false)"
+            class="left-button"
+            >否</Button
+          >
+          <Button type="big" @click="cancelUpdate" class="left-button"
+            >取消</Button
+          >
         </div>
       </div>
     </div>
@@ -124,114 +165,120 @@
 </template>
 
 <script>
-import axios from 'axios';
+import axios from "axios";
 import { MenuPage, MenuItem } from "../../ui";
 import { Button } from "../../base";
 
 export default {
-  name: 'SettingsUpdate',
+  name: "SettingsUpdate",
   components: {
     MenuPage,
     MenuItem,
-    Button
+    Button,
   },
   data() {
     return {
       // API基础URL - 根据您的实际部署调整
-      apiBaseUrl: 'http://localhost:5001/api/update',
-      
+      apiBaseUrl: "http://localhost:5001/api/update",
+
       // 应用信息
-      currentVersion: '未知',
+      currentVersion: "未知",
       updateAvailable: false,
-      
+
       // 更新状态
-      updateStatus: 'idle',
+      updateStatus: "idle",
       updateInfo: null,
       updateChain: [],
       updateChainInfo: null,
-      errorMessage: '',
-      
+      errorMessage: "",
+
       // 操作状态
       isChecking: false,
       isDownloading: false,
       isRollingBack: false,
-      
+
       // 进度信息
       progress: 0,
-      progressMessage: '',
+      progressMessage: "",
       showProgress: false,
-      
+
       // 配置
       config: {
-        auto_backup: true
+        auto_backup: true,
       },
-      
+
       // 连接状态
       backendConnected: false,
       connectionRetries: 0,
       maxRetries: 5,
-      
+
       // 对话框状态
       showRollbackDialog: false,
       showBackupDialog: false,
-      
+
       // 轮询状态更新的定时器
-      statusPolling: null
+      statusPolling: null,
     };
   },
-  
+
   mounted() {
     this.checkBackendConnection();
   },
-  
+
   beforeUnmount() {
     this.stopStatusPolling();
   },
-  
+
   computed: {
     isCheckingUpdates() {
-      return this.updateStatus === 'checking';
+      return this.updateStatus === "checking";
     },
-    
+
     isDownloadingUpdates() {
-      return this.updateStatus === 'downloading';
+      return this.updateStatus === "downloading";
     },
-    
+
     isApplyingUpdates() {
-      return this.updateStatus === 'applying';
+      return this.updateStatus === "applying";
     },
-    
+
     isRollingBackUpdates() {
-      return this.updateStatus === 'rolling_back';
+      return this.updateStatus === "rolling_back";
     },
-    
+
     displayVersion() {
-      if (!this.updateInfo) return '未知';
-      return this.updateInfo.target_version || this.updateInfo.version || '未知';
-    }
+      if (!this.updateInfo) return "未知";
+      return (
+        this.updateInfo.target_version || this.updateInfo.version || "未知"
+      );
+    },
   },
-  
+
   methods: {
     // 检查后端连接
     async checkBackendConnection() {
       try {
-        const response = await axios.get(`${this.apiBaseUrl}/health`, { timeout: 5000 });
-        if (response.data && response.data.status === 'ok') {
+        const response = await axios.get(`${this.apiBaseUrl}/health`, {
+          timeout: 5000,
+        });
+        if (response.data && response.data.status === "ok") {
           this.backendConnected = true;
           this.connectionRetries = 0;
-          this.errorMessage = '';
+          this.errorMessage = "";
           this.loadAppInfo();
           this.loadConfig();
           this.startStatusPolling();
-          console.log('成功连接到更新服务');
+          console.log("成功连接到更新服务");
         }
       } catch (error) {
-        console.error('无法连接到后端服务:', error);
+        console.error("无法连接到后端服务:", error);
         this.backendConnected = false;
-        
+
         if (this.connectionRetries < this.maxRetries) {
           this.connectionRetries++;
-          console.log(`重试连接 (${this.connectionRetries}/${this.maxRetries})...`);
+          console.log(
+            `重试连接 (${this.connectionRetries}/${this.maxRetries})...`
+          );
           setTimeout(() => this.checkBackendConnection(), 2000);
         } else {
           this.errorMessage = `无法连接到更新服务。请确保 update_api.py 正在运行在端口 5001。错误: ${error.message}`;
@@ -239,51 +286,57 @@ export default {
         }
       }
     },
-    
+
     // 加载应用信息
     async loadAppInfo() {
       if (!this.backendConnected) return;
-      
+
       try {
-        const response = await axios.get(`${this.apiBaseUrl}/info`, { timeout: 5000 });
+        const response = await axios.get(`${this.apiBaseUrl}/info`, {
+          timeout: 5000,
+        });
         if (response.data) {
-          this.currentVersion = response.data.current_version || '未知';
+          this.currentVersion = response.data.current_version || "未知";
           this.updateAvailable = response.data.update_available || false;
           this.updateChainInfo = response.data.update_chain_info || null;
         }
       } catch (error) {
-        console.error('获取应用信息失败:', error);
-        this.handleApiError(error, '获取应用信息');
+        console.error("获取应用信息失败:", error);
+        this.handleApiError(error, "获取应用信息");
       }
     },
-    
+
     // 加载配置
     async loadConfig() {
       if (!this.backendConnected) return;
-      
+
       try {
-        const response = await axios.get(`${this.apiBaseUrl}/config`, { timeout: 5000 });
+        const response = await axios.get(`${this.apiBaseUrl}/config`, {
+          timeout: 5000,
+        });
         if (response.data) {
           this.config.auto_backup = response.data.auto_backup || true;
         }
       } catch (error) {
-        console.error('获取配置失败:', error);
-        this.handleApiError(error, '获取配置');
+        console.error("获取配置失败:", error);
+        this.handleApiError(error, "获取配置");
       }
     },
-    
+
     // 更新配置
     async updateConfig() {
       if (!this.backendConnected) return;
-      
+
       try {
-        await axios.post(`${this.apiBaseUrl}/config`, this.config, { timeout: 5000 });
+        await axios.post(`${this.apiBaseUrl}/config`, this.config, {
+          timeout: 5000,
+        });
       } catch (error) {
-        console.error('更新配置失败:', error);
-        this.handleApiError(error, '更新配置');
+        console.error("更新配置失败:", error);
+        this.handleApiError(error, "更新配置");
       }
     },
-    
+
     // 开始轮询状态
     startStatusPolling() {
       this.stopStatusPolling(); // 先停止现有的轮询
@@ -291,7 +344,7 @@ export default {
         await this.getUpdateStatus();
       }, 1000); // 每秒更新一次状态
     },
-    
+
     // 停止轮询状态
     stopStatusPolling() {
       if (this.statusPolling) {
@@ -299,50 +352,62 @@ export default {
         this.statusPolling = null;
       }
     },
-    
+
     // 获取更新状态
     async getUpdateStatus() {
       if (!this.backendConnected) return;
-      
+
       try {
-        const response = await axios.get(`${this.apiBaseUrl}/status`, { timeout: 5000 });
+        const response = await axios.get(`${this.apiBaseUrl}/status`, {
+          timeout: 5000,
+        });
         if (response.data) {
           const status = response.data;
-          this.updateStatus = status.status || 'idle';
+          this.updateStatus = status.status || "idle";
           this.progress = status.progress || 0;
-          this.progressMessage = status.message || '';
-          
+          this.progressMessage = status.message || "";
+
           // 更新操作状态
-          this.isChecking = this.updateStatus === 'checking';
-          this.isDownloading = ['downloading', 'applying'].includes(this.updateStatus);
-          this.isRollingBack = this.updateStatus === 'rolling_back';
-          
+          this.isChecking = this.updateStatus === "checking";
+          this.isDownloading = ["downloading", "applying"].includes(
+            this.updateStatus
+          );
+          this.isRollingBack = this.updateStatus === "rolling_back";
+
           // 如果有错误信息
           if (status.error) {
             this.errorMessage = status.error;
-          } else if (this.updateStatus !== 'error') {
+          } else if (this.updateStatus !== "error") {
             // 如果不是错误状态，清除错误消息
-            this.errorMessage = '';
+            this.errorMessage = "";
           }
-          
+
           // 如果有更新信息
           if (status.update_info) {
             this.updateInfo = status.update_info;
             this.updateAvailable = true;
-            
+
             // 处理更新链信息
-            if (status.update_info.update_chain && status.update_info.update_chain.length > 0) {
+            if (
+              status.update_info.update_chain &&
+              status.update_info.update_chain.length > 0
+            ) {
               this.updateChain = status.update_info.update_chain;
             } else {
               this.updateChain = [];
             }
           }
-          
+
           // 根据状态显示进度条
-          this.showProgress = ['checking', 'downloading', 'applying', 'rolling_back'].includes(this.updateStatus);
-          
+          this.showProgress = [
+            "checking",
+            "downloading",
+            "applying",
+            "rolling_back",
+          ].includes(this.updateStatus);
+
           // 如果操作完成，重置状态并重新加载应用信息
-          if (this.updateStatus === 'completed') {
+          if (this.updateStatus === "completed") {
             setTimeout(() => {
               this.loadAppInfo();
               this.updateAvailable = false;
@@ -352,14 +417,17 @@ export default {
           }
         }
       } catch (error) {
-        console.error('获取更新状态失败:', error);
-        this.handleApiError(error, '获取更新状态');
+        console.error("获取更新状态失败:", error);
+        this.handleApiError(error, "获取更新状态");
       }
     },
-    
+
     // 统一的API错误处理
     handleApiError(error, operation) {
-      if (error.code === 'NETWORK_ERROR' || error.message.includes('Network Error')) {
+      if (
+        error.code === "NETWORK_ERROR" ||
+        error.message.includes("Network Error")
+      ) {
         this.backendConnected = false;
         this.errorMessage = `网络错误: 无法连接到更新服务。请确保 update_api.py 正在运行。`;
         this.stopStatusPolling();
@@ -376,28 +444,32 @@ export default {
         this.errorMessage = `${operation}失败: ${error.message}`;
       }
     },
-    
+
     // 检查更新
     async checkForUpdates() {
-      this.errorMessage = '';
-      
+      this.errorMessage = "";
+
       try {
-        const response = await axios.post(`${this.apiBaseUrl}/check`, {}, { timeout: 10000 });
+        const response = await axios.post(
+          `${this.apiBaseUrl}/check`,
+          {},
+          { timeout: 10000 }
+        );
         if (response.data && response.data.success) {
-          this.progressMessage = '正在检查更新...';
+          this.progressMessage = "正在检查更新...";
         } else {
-          this.errorMessage = response.data.error || '检查更新失败';
+          this.errorMessage = response.data.error || "检查更新失败";
         }
       } catch (error) {
-        console.error('检查更新失败:', error);
-        this.handleApiError(error, '检查更新');
+        console.error("检查更新失败:", error);
+        this.handleApiError(error, "检查更新");
       }
     },
-    
+
     // 下载并应用更新
     async downloadAndApplyUpdate() {
-      this.errorMessage = '';
-      
+      this.errorMessage = "";
+
       // 如果有多个更新版本，显示备份确认对话框
       if (this.updateChain && this.updateChain.length > 1) {
         this.showBackupDialog = true;
@@ -406,66 +478,71 @@ export default {
         await this.startUpdate(this.config.auto_backup);
       }
     },
-    
+
     // 开始更新
     async startUpdate(doBackup) {
       try {
-        const response = await axios.post(`${this.apiBaseUrl}/apply`, 
-          { backup: doBackup }, 
+        const response = await axios.post(
+          `${this.apiBaseUrl}/apply`,
+          { backup: doBackup },
           { timeout: 30000 }
         );
-        
+
         if (response.data && response.data.success) {
-          this.progressMessage = '开始下载更新...';
+          this.progressMessage = "开始下载更新...";
         } else {
-          this.errorMessage = response.data.error || '开始更新失败';
+          this.errorMessage = response.data.error || "开始更新失败";
         }
       } catch (error) {
-        console.error('开始更新失败:', error);
-        this.handleApiError(error, '开始更新');
+        console.error("开始更新失败:", error);
+        this.handleApiError(error, "开始更新");
       }
     },
-    
+
     // 确认更新（带备份选项）
     confirmUpdateWithBackup(doBackup) {
       this.showBackupDialog = false;
       this.startUpdate(doBackup);
     },
-    
+
     // 取消更新
     cancelUpdate() {
       this.showBackupDialog = false;
     },
-    
+
     // 回滚更新
     rollbackUpdate() {
       this.showRollbackDialog = true;
     },
-    
+
     // 确认回滚
     async confirmRollback() {
       this.showRollbackDialog = false;
-      this.errorMessage = '';
-      
+      this.errorMessage = "";
+
       try {
-        const response = await axios.post(`${this.apiBaseUrl}/rollback`, {}, { timeout: 30000 });
-        
+        const response = await axios.post(
+          `${this.apiBaseUrl}/rollback`,
+          {},
+          { timeout: 30000 }
+        );
+
         if (response.data && response.data.success) {
-          this.progressMessage = '正在回滚...';
+          this.progressMessage = "正在回滚...";
         } else {
-          this.errorMessage = response.data.error || '开始回滚失败';
+          this.errorMessage = response.data.error || "开始回滚失败";
         }
       } catch (error) {
-        console.error('开始回滚失败:', error);
-        this.handleApiError(error, '开始回滚');
+        console.error("开始回滚失败:", error);
+        this.handleApiError(error, "开始回滚");
       }
     },
-    
+
     // 取消回滚
     cancelRollback() {
       this.showRollbackDialog = false;
-    }
-  }
+    },
+  },
 };
 </script>
 
@@ -473,7 +550,8 @@ export default {
 .connection-status {
   padding: 10px;
   border-radius: 5px;
-  margin-bottom: 15px;
+  padding-bottom: 40px;
+  margin-bottom: 20px;
 }
 
 .connection-status.success {
@@ -510,9 +588,9 @@ export default {
 
 .action-buttons {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 20px;
+  justify-content: space-around;
+  gap: 20px;
+  align-items: center;
 }
 
 .left-button {
@@ -521,6 +599,7 @@ export default {
 }
 
 .left-button.danger {
+  color: rgba(255, 255, 255, 0.9);
   background: rgba(255, 0, 0, 0.3);
   transition: all 0.2s ease;
 }
@@ -639,11 +718,11 @@ export default {
   .action-buttons {
     flex-direction: column;
   }
-  
+
   .left-button {
     width: 100%;
   }
-  
+
   .dialog-actions {
     flex-direction: column;
   }

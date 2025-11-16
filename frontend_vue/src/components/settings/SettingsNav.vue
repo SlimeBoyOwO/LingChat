@@ -21,7 +21,7 @@
         icon="text"
         @click="() => switchTab('text', 'textBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'text' }"
-        ><p class="button-text">文本</p></Button
+        ><p class="button-text">通用</p></Button
       >
       <Button
         ref="backgroundBtn"
@@ -74,9 +74,10 @@
       <Button
         ref="updateBth"
         type="nav"
-        @click="() => switchTab('update','updateBth')"
+        icon="update"
+        @click="() => switchTab('update', 'updateBth')"
         :class="{ active: uiStore.currentSettingsTab === 'update' }"
-        ><p class="button-text">检查更新</p></button
+        ><p class="button-text">检查更新</p></Button
       >
     </nav>
     <Icon
