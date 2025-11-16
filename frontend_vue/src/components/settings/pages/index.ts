@@ -6,3 +6,4 @@ export { default as SettingsHistory } from './SettingsHistory.vue';
 export { default as SettingsSchedule } from './SettingsSchedule.vue';
 export { default as SettingsCharacter } from './SettingsCharacter.vue';
 export { default as SettingsBackground } from './SettingsBackground.vue';
+export { default as SettingsUpdate } from './SettingsUpdate.vue';

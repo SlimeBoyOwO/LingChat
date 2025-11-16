@@ -71,7 +71,14 @@
         :class="{ active: uiStore.currentSettingsTab === 'advance' }"
         ><p class="button-text">高级设置</p></Button
       >
-
+      <Button
+        ref="updateBth"
+        type="nav"
+        icon="update"
+        @click="() => switchTab('update','updateBth')"
+        :class="{ active: uiStore.currentSettingsTab === 'update' }"
+        ><p class="button-text">检查更新</p></button
+      >
     </nav>
     <Icon
       icon="close"
@@ -103,6 +110,7 @@ const historyBtn = ref<ButtonRef | null>(null);
 const saveBtn = ref<ButtonRef | null>(null);
 const advanceBtn = ref<ButtonRef | null>(null);
 const scheduleBtn = ref<ButtonRef | null>(null);
+const updateBtn = ref<ButtonRef | null>(null);
 
 // 统一处理标签切换
 const switchTab = (tabName: string, refName: string) => {
@@ -116,6 +124,7 @@ const switchTab = (tabName: string, refName: string) => {
     saveBtn,
     advanceBtn,
     scheduleBtn,
+    updateBtn,
   }[refName];
 
   if (buttonRef?.value?.$el) {
@@ -160,6 +169,9 @@ const initIndicator = () => {
       break;
     case "schedule":
       activeButton = scheduleBtn.value;
+      break;
+    case "update":
+      activeButton = updateBtn.value;
       break;
   }
 
