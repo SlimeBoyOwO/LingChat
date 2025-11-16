@@ -17,6 +17,9 @@
       <div class="current-version">
         <p><strong>当前版本:</strong> {{ currentVersion }}</p>
         <p><strong>更新状态:</strong> {{ updateStatus }}</p>
+        <p v-if="updateChainInfo && updateChainInfo.update_count > 1" class="update-chain-info">
+          发现 {{ updateChainInfo.update_count }} 个待更新版本: {{ updateChainInfo.current_version }} → {{ updateChainInfo.target_version }}
+        </p>
         <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
       </div>
     </MenuItem>
@@ -56,8 +59,16 @@
     <!-- 更新信息 -->
     <MenuItem v-if="updateInfo" title="🆕 发现新版本" size="small">
       <div class="update-info">
-        <p><strong>版本:</strong> {{ updateInfo.version }}</p>
-        <p><strong>更新内容:</strong> {{ updateInfo.changelog || '无' }}</p>
+        <div v-if="updateChain && updateChain.length > 0">
+          <p><strong>发现 {{ updateChain.length }} 个待更新版本:</strong></p>
+          <div v-for="(update, index) in updateChain" :key="index" class="update-chain-item">
+            <p><strong>版本 {{ update.version || '未知' }}</strong> - {{ update.changelog || '无更新说明' }}</p>
+          </div>
+        </div>
+        <div v-else>
+          <p><strong>版本:</strong> {{ displayVersion }}</p>
+          <p><strong>更新内容:</strong> {{ updateInfo.changelog || '无' }}</p>
+        </div>
       </div>
     </MenuItem>
 
@@ -96,6 +107,19 @@
         </div>
       </div>
     </div>
+
+    <!-- 备份确认对话框 -->
+    <div v-if="showBackupDialog" class="dialog-overlay">
+      <div class="dialog">
+        <h3>创建备份</h3>
+        <p>是否在应用前创建全量备份？</p>
+        <div class="dialog-actions">
+          <Button type="big" @click="confirmUpdateWithBackup(true)" class="left-button">是</Button>
+          <Button type="big" @click="confirmUpdateWithBackup(false)" class="left-button">否</Button>
+          <Button type="big" @click="cancelUpdate" class="left-button">取消</Button>
+        </div>
+      </div>
+    </div>
   </MenuPage>
 </template>
 
@@ -123,6 +147,8 @@ export default {
       // 更新状态
       updateStatus: 'idle',
       updateInfo: null,
+      updateChain: [],
+      updateChainInfo: null,
       errorMessage: '',
       
       // 操作状态
@@ -147,6 +173,7 @@ export default {
       
       // 对话框状态
       showRollbackDialog: false,
+      showBackupDialog: false,
       
       // 轮询状态更新的定时器
       statusPolling: null
@@ -176,6 +203,11 @@ export default {
     
     isRollingBackUpdates() {
       return this.updateStatus === 'rolling_back';
+    },
+    
+    displayVersion() {
+      if (!this.updateInfo) return '未知';
+      return this.updateInfo.target_version || this.updateInfo.version || '未知';
     }
   },
   
@@ -217,6 +249,7 @@ export default {
         if (response.data) {
           this.currentVersion = response.data.current_version || '未知';
           this.updateAvailable = response.data.update_available || false;
+          this.updateChainInfo = response.data.update_chain_info || null;
         }
       } catch (error) {
         console.error('获取应用信息失败:', error);
@@ -296,6 +329,13 @@ export default {
           if (status.update_info) {
             this.updateInfo = status.update_info;
             this.updateAvailable = true;
+            
+            // 处理更新链信息
+            if (status.update_info.update_chain && status.update_info.update_chain.length > 0) {
+              this.updateChain = status.update_info.update_chain;
+            } else {
+              this.updateChain = [];
+            }
           }
           
           // 根据状态显示进度条
@@ -305,6 +345,9 @@ export default {
           if (this.updateStatus === 'completed') {
             setTimeout(() => {
               this.loadAppInfo();
+              this.updateAvailable = false;
+              this.updateInfo = null;
+              this.updateChain = [];
             }, 1000);
           }
         }
@@ -355,8 +398,22 @@ export default {
     async downloadAndApplyUpdate() {
       this.errorMessage = '';
       
+      // 如果有多个更新版本，显示备份确认对话框
+      if (this.updateChain && this.updateChain.length > 1) {
+        this.showBackupDialog = true;
+      } else {
+        // 单个版本更新，使用配置的自动备份设置
+        await this.startUpdate(this.config.auto_backup);
+      }
+    },
+    
+    // 开始更新
+    async startUpdate(doBackup) {
       try {
-        const response = await axios.post(`${this.apiBaseUrl}/apply`, {}, { timeout: 30000 });
+        const response = await axios.post(`${this.apiBaseUrl}/apply`, 
+          { backup: doBackup }, 
+          { timeout: 30000 }
+        );
         
         if (response.data && response.data.success) {
           this.progressMessage = '开始下载更新...';
@@ -367,6 +424,17 @@ export default {
         console.error('开始更新失败:', error);
         this.handleApiError(error, '开始更新');
       }
+    },
+    
+    // 确认更新（带备份选项）
+    confirmUpdateWithBackup(doBackup) {
+      this.showBackupDialog = false;
+      this.startUpdate(doBackup);
+    },
+    
+    // 取消更新
+    cancelUpdate() {
+      this.showBackupDialog = false;
     },
     
     // 回滚更新
@@ -427,6 +495,14 @@ export default {
   margin-bottom: 20px;
 }
 
+.update-chain-info {
+  background-color: rgba(255, 193, 7, 0.2);
+  padding: 8px;
+  border-radius: 4px;
+  margin-top: 8px;
+  border: 1px solid rgba(255, 193, 7, 0.5);
+}
+
 .error-message {
   color: #ff4444;
   font-weight: bold;
@@ -460,6 +536,17 @@ export default {
   border-radius: 5px;
   margin-bottom: 20px;
   border: 1px solid rgba(76, 175, 80, 0.5);
+}
+
+.update-chain-item {
+  margin-bottom: 10px;
+  padding: 8px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+.update-chain-item:last-child {
+  margin-bottom: 0;
 }
 
 .progress-container {
@@ -555,6 +642,10 @@ export default {
   
   .left-button {
     width: 100%;
+  }
+  
+  .dialog-actions {
+    flex-direction: column;
   }
 }
 </style>

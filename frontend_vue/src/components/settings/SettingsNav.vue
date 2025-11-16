@@ -74,7 +74,6 @@
       <Button
         ref="updateBth"
         type="nav"
-        icon="update"
         @click="() => switchTab('update','updateBth')"
         :class="{ active: uiStore.currentSettingsTab === 'update' }"
         ><p class="button-text">检查更新</p></button
