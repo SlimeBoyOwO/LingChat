@@ -19,6 +19,7 @@
       <SettingsBackground
         v-show="uiStore.currentSettingsTab === 'background'"
       />
+      <SettingsUpdate v-show="uiStore.currentSettingsTab === 'update'" />
     </div>
   </div>
 </template>
@@ -33,6 +34,7 @@ import {
   SettingsSchedule,
   SettingsCharacter,
   SettingsBackground,
+  SettingsUpdate,
 } from "./pages";
 import SettingsNav from "./SettingsNav.vue";
 import { useUIStore } from "../../stores/modules/ui/ui";
