@@ -21,7 +21,7 @@ outline:
 通过 git clone 将 [LingChat repo](https://github.com/SlimeBoyOwO/LingChat/) clone 到本地，再进入文件夹。
 
 ```bash
-git clone --depth 1 -b develop https://github.com/SlimeBoyOwO/LingChat.git
+git clone -b develop https://github.com/SlimeBoyOwO/LingChat.git
 git checkout v0.3.1-beta1
 cd LingChat
 ```
@@ -122,6 +122,9 @@ uv pip install -r pyproject.toml -i https://mirrors.aliyun.com/pypi/simple
 
 ### 使用传统方式安装依赖
 
+> [!WARNING]
+> 此方法疑似暂不可用
+
 ```bash
 pip install -i https://mirrors.aliyun.com/pypi/simple -r pyproject.toml
 ```
@@ -150,10 +153,10 @@ LingChat 需要下载一些模型才能正常使用。
 
 ```bash
 cd ling_chat/third_party/emotion_model_18emo
-wget https://www.modelscope.cn/models/kxdw2580/LingChat-emotion-model-18emo/resolve/master/model.safetensors
+wget https://www.modelscope.cn/models/lingchat-research-studio/LingChat-emotion-model-18emo/resolve/master/model.safetensors
 ```
 
-或者运行以下命令直接安装：
+或者运行以下命令直接安装更简单：
 
 ```bash
 python main.py install 18emo
