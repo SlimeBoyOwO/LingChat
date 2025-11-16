@@ -21,6 +21,16 @@ description: 解决LingChat界面显示问题和启动问题，包括加载问�
 
 - 可能你的上一个 Lingchat 没有关闭，或者有其他从程序占用了 8765 这个端口，你可以检查是哪个程序占用的，把它那个程序给关了（或者使用重启大法）
 
+### `d91mError: Failed to initialize file logging: [Errno 13] Permission denied: 一个路径` 或者 `[WinError 5]：拒绝访问：一些英文`
+
+![image](https://lingchat.wiki/assets/faq-screen/path.webp)
+
+在 安装 或 解压 LingChat时，请检查 **不要让 LingChat 在C盘等特殊位置** 
+
+你可以将 LingChat 安装在除 C盘 以外的其它盘或者桌面
+
+Linux等用户请检查 LingChat 文件夹的读写权限等有没有给
+
 ## 对话问题
 
 ### 提示 402 错误: Your api key is invalid
@@ -68,11 +78,11 @@ description: 解决LingChat界面显示问题和启动问题，包括加载问�
 
 ### 生成之后卡死，无报错提示
 
-- 经过测试，部分50系显卡会有这个问题，simple-vits-api似乎暂时不支持部分50系显卡，请使用BERT模型
+- 经过测试，部分50系显卡会有这个问题，simple-vits-api似乎暂时不支持部分50系显卡，请使用其它语音项目
 
 ## Style Bert Vits2 语音问题
 
-> 这个问题太多了，他们写的代码有很大的安装问题。请等待我们日后打包个简单版本
+> 这个问题太多了，可以在群里直接问相关问题，或者使用sbv2api项目
 
 ## 界面问题
 
