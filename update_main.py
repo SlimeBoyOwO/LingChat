@@ -109,7 +109,7 @@ class MyApplication:
         if not self.update_manager.download_update():
             return False
         return self.update_manager.apply_update(backup=backup)
-
+    
     def apply_pending_update(self, backup: bool = False) -> bool:
         return self.start_update(backup=backup)
 
@@ -118,7 +118,32 @@ class MyApplication:
 
     def run(self):
         raise RuntimeError("[Error]无效调用")
-
+    def start_continuous_update(self, backup: bool = False) -> bool:
+        """执行连续更新（如果有多版本）"""
+        if not self.update_manager.get_update_info():
+            if self._pending_update:
+                self.update_manager._update_info = self._pending_update
+            else:
+                raise RuntimeError("没有可用的更新信息，请先 manual_check_update()")
+        
+        # 使用新的连续更新方法
+        if hasattr(self.update_manager, 'perform_continuous_update'):
+            return self.update_manager.perform_continuous_update(backup=backup)
+        else:
+            # 回退到原有逻辑
+            return self.start_update(backup=backup)
+    
+    def get_update_chain_info(self):
+        """获取更新链信息"""
+        update_info = self.update_manager.get_update_info()
+        if update_info and "update_chain" in update_info:
+            return {
+                "current_version": update_info.get("current_version"),
+                "target_version": update_info.get("target_version"),
+                "update_count": update_info.get("update_count", 0),
+                "versions": [info.get("version") for info in update_info.get("update_chain", [])]
+            }
+        return None
 
 def create_application(
     version_file: Optional[str] = None,
