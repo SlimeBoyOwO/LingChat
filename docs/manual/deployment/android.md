@@ -161,22 +161,26 @@ OK啦，LingChat安装完毕！接下来到下面学习如何启动它。
 
 #### 方法二：使用 proot-distro 部署 {#use-proot-distro}
 
-##### 安装 proot-distro
+##### 安装 proot-distro 及 容器
 
-输入以下命令
+输入以下命令 **安装 proot-distro**：
 
 ```bash
 pkg install proot-distro -y
+```
 
+接下来安装 **容器**：
+
+```bash
 proot-distro install debian
 ```
 
 > [!NOTE] 这样安装可能会有点慢或干脆无法下载（github的锅）。此时运行以下命令安装debian：
 >
 > ```bash
-> pkg install wget -y
-> wget https://modelscope.cn/models/kxdw2580/LingChat-phone-file/resolve/master/proot-distro-debian-bookwarm-0721.tar.xz
-> proot-distro restore ./proot-distro-debian-bookwarm-0721.tar.xz
+> pkg install wget -y && 
+> wget https://modelscope.cn/models/lingchat-research-studio/LingChat-phone-file/resolve/master/proot-distro-debian-bookwarm-0721.tar.xz && 
+> proot-distro restore ./proot-distro-debian-bookwarm-0721.tar.xz &&
 > rm -rf proot-distro-debian-bookwarm-0721.tar.xz
 > ```
 
@@ -198,7 +202,7 @@ EOF
 apt update
 
 # 安装依赖
-apt install sqlite3 git git-lfs whet curl -y
+apt install sqlite3 git git-lfs wget curl -y
 
 # 安装git lfs
 git lfs install
@@ -212,9 +216,9 @@ git lfs install
 > 命令加上了加速站，如有介意者自行删除使用官方源。
 
 > [!WARNING]
-> 命令3暂不可用，请使用另外两个命令
+> 命令2和3暂不可用，请使用另外的命令
 
-1. 先运行 `git clone --depth 1 -b develop https://github.com/SlimeBoyOwO/LingChat.git` 然后运行 `git checkout v0.3.1-beta1` ：这会使用官方的 v0.3.1-beta1 版本，功能有所欠缺，有较多bug
+1. 先运行 `git clone -b develop https://ghfast.top/github.com/SlimeBoyOwO/LingChat.git` 然后运行 `cd LingChat && git checkout v0.3.1-beta1 && cd` ：这会使用官方的 v0.3.1-beta1 版本，功能有所欠缺，有较多bug
 
 2. `git clone --depth 1 -b develop https://ghfast.top/github.com/SlimeBoyOwO/LingChat/`  ：这会使用官方的 develop 分支，问题修复和功能更新更及时
 
@@ -228,9 +232,14 @@ git lfs install
 
 ```bash
 # 安装预先打包的 python3.12.10
-wget https://modelscope.cn/models/kxdw2580/LingChat-phone-file/resolve/master/python-3.12.10-lingchat-250707.tar.gz
+wget https://modelscope.cn/models/lingchat-research-studio/LingChat-phone-file/resolve/master/python-3.12.10-lingchat-250707.tar.gz
+
 tar -xzf /root/python-3.12.10-lingchat-250707.tar.gz -C /root
+
 rm -rf python-3.12.10-lingchat-250707.tar.gz
+
+/root/python3.12.10/bin/python3.12 -m pip install uv
+
 ```
 
 安装完毕后即可正常使用，但为了以后简便点，我们还要做一步：
@@ -238,19 +247,21 @@ rm -rf python-3.12.10-lingchat-250707.tar.gz
 ```bash
 # 启动脚本
 tee /root/lingchat.sh > /dev/null << 'EOF'
-cd LingChat
+cd /root/LingChat
 /root/python3.12.10/bin/python3.12 main.py
 EOF
 
 chmod +x /root/lingchat.sh
+
 # 更新脚本
 tee /root/update.sh > /dev/null << 'EOF'
-cd LingChat
+cd /root/LingChat
 git pull
-/root/python3.12.10/bin/python3.12 -m pip install -r pyproject.toml --upgrade
+/root/python3.12.10/bin/python3.12 -m uv pip install -r pyproject.toml
 EOF
 
 chmod +x /root/update.sh
+
 ```
 
 这样以后可以用 `bash lingchat.sh` 启动 LingChat，用 `bash update.sh` 命令更新 LingChat。
@@ -260,9 +271,12 @@ chmod +x /root/update.sh
 运行以下命令：
 
 ```bash
-cd ling_chat/third_party/emotion_model_18emo
-wget https://www.modelscope.cn/models/kxdw2580/LingChat-emotion-model-18emo/resolve/master/model.safetensors
-cd ../../..
+cd /root/LingChat/ling_chat/third_party/emotion_model_18emo
+
+wget https://www.modelscope.cn/models/lingchat-research-studio/LingChat-emotion-model-18emo/resolve/master/model.safetensors
+
+cd
+
 ```
 
 ### 配置 LingChat
@@ -283,21 +297,18 @@ cd ../../..
 然后，在容器中先粘贴以下命令，再粘贴你的 api_key ，回车运行 ：
 
 ```bash
-export TRANSLATE=false
-export API_KEY=
+export TRANSLATE=false && export API_KEY=
 ```
 
 如果有百炼平台的 api_key，先粘贴以下命令，再粘贴你的 api_key ，回车运行 ：
 
 ```bash
-export TRANSLATE=true
-export BAILIAN_API_KEY=
+export TRANSLATE=true && export BAILIAN_API_KEY=
 ```
 
 之后再运行此命令：
 
 ```bash
-cd LingChat
 tee /root/LingChat/.env > /dev/null << EOF
 # 基础设置 BEGIN
 

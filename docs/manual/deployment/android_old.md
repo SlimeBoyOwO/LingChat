@@ -111,14 +111,11 @@ INFO:     Uvicorn running on http://0.0.0.0:8765 (Press CTRL+C to quit)
 在 **ZeroTermux 的终端** 复制执行以下命令，这将下载本人打包好的容器：
 
 ```bash
-mkdir ./storage/downloads/backup
-mkdir ./storage/downloads/backup/containers
-mkdir ./storage/downloads/backup/containers/proot
-cd ./storage/downloads/backup/containers/proot
+mkdir ./storage/downloads/backup && mkdir ./storage/downloads/backup/containers && mkdir ./storage/downloads/backup/containers/proot && cd ./storage/downloads/backup/containers/proot
 
-pkg install wget
+pkg install wget -y
 
-wget https://www.modelscope.cn/models/kxdw2580/LingChat-phone-file/resolve/master/debian-bookworm_arm64-LingChat-dev_2025-07-10_21-38-rootfs_bak.tar.xz
+wget https://www.modelscope.cn/models/lingchat-research-studio/LingChat-phone-file/resolve/master/debian-bookworm_arm64-LingChat-dev_2025-07-10_21-38-rootfs_bak.tar.xz
 
 ```
 
@@ -157,20 +154,24 @@ OK啦，LingChat安装完毕！接下来到下面学习如何启动它。
 
 #### 方法二：使用 proot-distro 部署 {#use-proot-distro}
 
-输入以下命令 **安装 proot-distro**。
+输入以下命令 **安装 proot-distro**：
 
 ```bash
 pkg install proot-distro -y
+```
 
+接下来安装 **容器**：
+
+```bash
 proot-distro install debian
 ```
 
 > [!NOTE] 这样安装可能会有点慢或干脆无法下载（github的锅）。此时运行以下命令安装debian：
 >
 > ```bash
-> pkg install wget -y
-> wget https://modelscope.cn/models/kxdw2580/LingChat-phone-file/resolve/master/proot-distro-debian-bookwarm-0721.tar.xz
-> proot-distro restore ./proot-distro-debian-bookwarm-0721.tar.xz
+> pkg install wget -y && 
+> wget https://modelscope.cn/models/lingchat-research-studio/LingChat-phone-file/resolve/master/proot-distro-debian-bookwarm-0721.tar.xz && 
+> proot-distro restore ./proot-distro-debian-bookwarm-0721.tar.xz && 
 > rm -rf proot-distro-debian-bookwarm-0721.tar.xz
 > ```
 
@@ -181,8 +182,7 @@ proot-distro install debian
 > [!NOTE] 命令都加上了加速站，如有介意者自行删除使用官方源。
 
 ```bash
-git clone --depth 1 https://ghfast.top/github.com/SlimeBoyOwO/LingChat/
-cd LingChat
+git clone https://ghfast.top/github.com/SlimeBoyOwO/LingChat/ && cd LingChat && git checkout 0.3.0 && cd
 ```
 
 克隆完毕后，运行以下命令 **安装 python 及其依赖** ：
@@ -202,9 +202,7 @@ apt update
 apt install sqlite3 -y
 
 #安装预先打包的 python3.12.10
-wget https://modelscope.cn/models/kxdw2580/LingChat-phone-file/resolve/master/python-3.12.10-lingchat-250707.tar.gz
-tar -xzf /root/python-3.12.10-lingchat-250707.tar.gz -C /root
-rm -rf python-3.12.10-lingchat-250707.tar.gz
+wget https://modelscope.cn/models/kxdw2580/LingChat-phone-file/resolve/master/python-3.12.10-lingchat-250707.tar.gz && tar -xzf /root/python-3.12.10-lingchat-250707.tar.gz -C /root && rm -rf python-3.12.10-lingchat-250707.tar.gz
 ```
 
 安装完毕后即可正常使用，但为了以后简便点，我们还要做一步：
@@ -214,9 +212,7 @@ rm -rf python-3.12.10-lingchat-250707.tar.gz
 tee /root/lingchat.sh > /dev/null << 'EOF'
 cd LingChat
 /root/python3.12.10/bin/python3.12 backend/windows_main.py
-EOF
-
-chmod +x /root/lingchat.sh
+EOF && chmod +x /root/lingchat.sh
 ```
 
 这样以后可以用 `bash lingchat.sh` 启动 LingChat。
@@ -243,8 +239,7 @@ export API_KEY=
 之后再运行此命令：
 
 ```bash
-cd LingChat
-tee /root/LingChat/.env > /dev/null << EOF
+cd LingChat && tee /root/LingChat/.env > /dev/null << EOF
 # 基础设置 BEGIN
 
 ## API 与 模型 设置 BEGIN # 配置与AI模型和API相关的密钥和地址
@@ -311,9 +306,7 @@ EMOTION_PORT=8000 # 情感分析服务监听端口
 
 # 开发者设置 END
 
-EOF
-
-cd
+EOF && cd
 
 ```
 

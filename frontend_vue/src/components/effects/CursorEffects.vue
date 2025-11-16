@@ -1,10 +1,7 @@
 <template>
   <div class="cursor-effects-container">
     <!-- Canvas 拖尾轨迹 -->
-    <canvas 
-      ref="canvasRef" 
-      class="cursor-trail-canvas"
-    ></canvas>
+    <canvas ref="canvasRef" class="cursor-trail-canvas"></canvas>
   </div>
 </template>
 
@@ -17,22 +14,45 @@ interface TrailPoint {
   alpha: number;
 }
 
+interface Particle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  size: number;
+  color: string;
+  rotation: number;
+  rotationSpeed: number;
+}
+
 // --- Canvas 引用 ---
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 let ctx: CanvasRenderingContext2D | null = null;
 
 // --- 拖尾效果状态 ---
 const points: TrailPoint[] = [];
-const maxPoints = 10; // 保留最近10个点
-const fadeSpeed = 0.05; // 透明度衰减速度
-let animationId: number;
+let maxPoints = 10; // 动态调整
+const fadeSpeed = 0.05;
+let animationId: number | null = null;
+let isAnimating = false;
+let lastMouseTime = 0;
+const MOUSE_THROTTLE = 16; // ~60fps
+
+// --- 粒子系统 ---
+const particles: Particle[] = [];
+
+// --- 性能监控 ---
+let frameCount = 0;
+let lastFpsTime = 0;
+let currentFps = 60;
 
 // --- 初始化 Canvas ---
 const initCanvas = () => {
   const canvas = canvasRef.value;
   if (!canvas) return;
 
-  // 设置 Canvas 尺寸为窗口大小（考虑设备像素比）
   const dpr = window.devicePixelRatio || 1;
   canvas.width = window.innerWidth * dpr;
   canvas.height = window.innerHeight * dpr;
@@ -45,32 +65,35 @@ const initCanvas = () => {
   }
 };
 
-// --- 绘制平滑曲线拖尾 ---
-const draw = () => {
-  if (!ctx || !canvasRef.value) return;
+// --- 性能监控 ---
+const monitorPerformance = () => {
+  frameCount++;
+  const now = performance.now();
+  if (now - lastFpsTime >= 1000) {
+    currentFps = frameCount;
+    frameCount = 0;
+    lastFpsTime = now;
 
-  const canvas = canvasRef.value;
-  const dpr = window.devicePixelRatio || 1;
-
-  // 清除画布
-  ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
-
-  if (points.length < 2) {
-    animationId = requestAnimationFrame(draw);
-    return;
+    // 自动降级效果
+    if (currentFps < 30) {
+      maxPoints = Math.max(5, maxPoints - 1);
+    } else if (currentFps > 50 && maxPoints < 15) {
+      maxPoints = Math.min(15, maxPoints + 1);
+    }
   }
+};
 
-  // 开始绘制路径
+// --- 绘制拖尾轨迹 ---
+const drawTrail = () => {
+  if (!ctx || points.length < 2) return;
+
   ctx.beginPath();
   ctx.moveTo(points[0].x, points[0].y);
 
   // 使用二次贝塞尔曲线连接点，创建平滑轨迹
   for (let i = 1; i < points.length - 1; i++) {
-    // 计算控制点（当前点和下一个点的中点）
-    const xc = (points[i].x + points[i + 1].x) / 2;
-    const yc = (points[i].y + points[i + 1].y) / 2;
-
-    // 绘制二次贝塞尔曲线
+    const xc = (points[i].x + points[i + 1].x) * 0.5;
+    const yc = (points[i].y + points[i + 1].y) * 0.5;
     ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
   }
 
@@ -81,43 +104,175 @@ const draw = () => {
   }
 
   // 设置线条样式
-  const avgAlpha = points.reduce((sum, p) => sum + p.alpha, 0) / points.length;
+  const avgAlpha = Math.min(1, points[points.length - 1].alpha * 1.5);
   ctx.strokeStyle = `rgba(135, 206, 250, ${avgAlpha})`;
   ctx.lineWidth = 3;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-
-  // 添加发光效果
   ctx.shadowBlur = 10;
   ctx.shadowColor = "#87CEFA";
 
   ctx.stroke();
-
-  // 更新所有点的透明度
-  for (let i = 0; i < points.length; i++) {
-    points[i].alpha -= fadeSpeed;
-  }
-
-  // 移除完全透明的点
-  while (points.length > 0 && points[0].alpha <= 0) {
-    points.shift();
-  }
-
-  animationId = requestAnimationFrame(draw);
 };
 
-// --- 鼠标移动事件处理 ---
+// --- 绘制粒子 ---
+const drawParticles = () => {
+  if (!ctx) return;
+
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+
+    // 更新粒子
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.05; // 轻微重力
+    p.life -= 1 / (60 * p.maxLife); // 60fps衰减
+    p.rotation += p.rotationSpeed;
+
+    // 绘制粒子
+    const alpha = p.life;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate((p.rotation * Math.PI) / 180);
+    ctx.globalAlpha = alpha;
+
+    // 绘制三角形
+    ctx.beginPath();
+    ctx.moveTo(0, -p.size);
+    ctx.lineTo(-p.size * 0.7, p.size * 0.7);
+    ctx.lineTo(p.size * 0.7, p.size * 0.7);
+    ctx.closePath();
+    ctx.fillStyle = p.color;
+    ctx.fill();
+
+    ctx.restore();
+
+    // 移除死亡粒子
+    if (p.life <= 0) {
+      particles.splice(i, 1);
+    }
+  }
+};
+
+// --- 更新点透明度 ---
+const updatePoints = () => {
+  // 批量更新透明度
+  for (let i = points.length - 1; i >= 0; i--) {
+    points[i].alpha -= fadeSpeed;
+    if (points[i].alpha <= 0) {
+      points.splice(i, 1);
+    }
+  }
+
+  // 限制最大点数
+  if (points.length > maxPoints) {
+    points.splice(0, points.length - maxPoints);
+  }
+};
+
+// --- 主绘制循环 ---
+const draw = () => {
+  monitorPerformance();
+
+  if (!ctx || !canvasRef.value) {
+    stopAnimation();
+    return;
+  }
+
+  const canvas = canvasRef.value;
+  const dpr = window.devicePixelRatio || 1;
+
+  // 清除画布
+  ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+
+  let shouldContinue = false;
+
+  // 绘制拖尾
+  if (points.length >= 2) {
+    drawTrail();
+    shouldContinue = shouldContinue || points.length > 0;
+  }
+
+  // 绘制粒子
+  if (particles.length > 0) {
+    drawParticles();
+    shouldContinue = shouldContinue || particles.length > 0;
+  }
+
+  // 更新点状态
+  updatePoints();
+
+  // 条件性继续动画
+  if (shouldContinue) {
+    animationId = requestAnimationFrame(draw);
+  } else {
+    stopAnimation();
+  }
+};
+
+// --- 停止动画 ---
+const stopAnimation = () => {
+  if (animationId) {
+    cancelAnimationFrame(animationId);
+    animationId = null;
+  }
+  isAnimating = false;
+};
+
+// --- 节流的鼠标移动处理 ---
 const handleMouseMove = (e: MouseEvent) => {
-  // 添加新的轨迹点
+  const now = Date.now();
+  if (now - lastMouseTime < MOUSE_THROTTLE) {
+    return;
+  }
+  lastMouseTime = now;
+
   points.push({
     x: e.clientX,
     y: e.clientY,
     alpha: 1.0,
   });
 
-  // 限制点数，防止无限增长
-  if (points.length > maxPoints) {
-    points.shift();
+  // 启动动画循环（如果未运行）
+  if (!isAnimating && animationId === null) {
+    isAnimating = true;
+    animationId = requestAnimationFrame(draw);
+  }
+
+  // 限制点数
+  if (points.length > maxPoints * 1.5) {
+    points.splice(0, points.length - maxPoints);
+  }
+};
+
+// --- 优化的点击效果（使用Canvas替代DOM）---
+const handleClick = (e: MouseEvent) => {
+  const particleCount = 12;
+  const colors = ["#FFC0CB", "#87CEFA"];
+
+  for (let i = 0; i < particleCount; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 2 + 1;
+    const life = Math.random() * 0.8 + 0.7;
+
+    particles.push({
+      x: e.clientX,
+      y: e.clientY,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1.0,
+      maxLife: life,
+      size: Math.random() * 8 + 4,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      rotation: Math.random() * 360,
+      rotationSpeed: (Math.random() - 0.5) * 8,
+    });
+  }
+
+  // 确保动画运行
+  if (!isAnimating && animationId === null) {
+    isAnimating = true;
+    animationId = requestAnimationFrame(draw);
   }
 };
 
@@ -126,70 +281,21 @@ const handleResize = () => {
   initCanvas();
 };
 
-// --- 点击效果逻辑 ---
-const handleClick = (e: MouseEvent) => {
-  const x = e.clientX;
-  const y = e.clientY;
-  const particleCount = 12;
-  const colors = ["#FFC0CB", "#87CEFA"];
-
-  for (let i = 0; i < particleCount; i++) {
-    const particle = document.createElement("div");
-    particle.className = "click-triangle-particle";
-
-    const size = Math.random() * 15 + 5;
-    const color = colors[Math.floor(Math.random() * colors.length)];
-    const opacity = ((size - 5) / 15) * 0.6 + 0.4;
-
-    particle.style.setProperty("--triangle-size", `${size}px`);
-    particle.style.setProperty("--triangle-color", color);
-
-    const angle = Math.random() * Math.PI * 2;
-    const distance = Math.random() * 60 + 30;
-    particle.style.setProperty(
-      "--translate-x",
-      `${Math.cos(angle) * distance}px`
-    );
-    particle.style.setProperty(
-      "--translate-y",
-      `${Math.sin(angle) * distance}px`
-    );
-    particle.style.setProperty(
-      "--initial-rotation",
-      `${Math.random() * 360}deg`
-    );
-    particle.style.setProperty(
-      "--final-rotation",
-      `${Math.random() * 360 + 180}deg`
-    );
-
-    particle.style.left = `${x}px`;
-    particle.style.top = `${y}px`;
-    particle.style.opacity = opacity.toString();
-
-    document.body.appendChild(particle);
-
-    setTimeout(() => {
-      particle.remove();
-    }, 1000);
-  }
-};
-
 // --- 生命周期钩子 ---
 onMounted(() => {
   initCanvas();
   window.addEventListener("mousemove", handleMouseMove);
   window.addEventListener("click", handleClick);
   window.addEventListener("resize", handleResize);
-  animationId = requestAnimationFrame(draw);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("mousemove", handleMouseMove);
   window.removeEventListener("click", handleClick);
   window.removeEventListener("resize", handleResize);
-  cancelAnimationFrame(animationId);
+  stopAnimation();
   points.length = 0;
+  particles.length = 0;
 });
 </script>
 
