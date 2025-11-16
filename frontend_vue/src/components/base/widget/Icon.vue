@@ -7,7 +7,6 @@
 </template>
 
 <script setup lang="ts">
-
 // 导入外部模块
 import { computed } from "vue";
 
@@ -23,7 +22,8 @@ export type IconType =
   | "box"
   | "play"
   | "close"
-  | "schedule";
+  | "schedule"
+  | "update";
 
 // 定义组件属性
 const props = defineProps({
@@ -34,13 +34,11 @@ const props = defineProps({
   size: {
     type: Number,
     default: 18,
-  }
+  },
 });
 
 // 定义组件事件
-const emit = defineEmits([
-  "click"
-]);
+const emit = defineEmits(["click"]);
 
 // 处理组件行为
 
@@ -62,14 +60,15 @@ const html: Record<IconType, string> = {
   advance: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="4" y1="21" y2="14" /><line x1="4" x2="4" y1="10" y2="3" /><line x1="12" x2="12" y1="21" y2="12" /><line x1="12" x2="12" y1="8" y2="3" /><line x1="20" x2="20" y1="21" y2="16" /><line x1="20"x2="20" y1="12" y2="3" /><line x1="2" x2="6" y1="14" y2="14" /><line x1="10" x2="14" y1="8" y2="8" /><line x1="18" x2="22" y1="16" y2="16" /></svg>`,
   close: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`,
   schedule: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-clipboard-list-icon lucide-clipboard-list"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg>`,
+  update: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rss-icon lucide-rss"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>`,
 };
-
 </script>
 
 <style scoped>
-
 span {
   display: inline-flex;
+  min-width: 24px;
+  min-height: 24px;
 }
 
 span :deep(svg) {
@@ -77,5 +76,7 @@ span :deep(svg) {
   width: 100%;
   height: 100%;
   stroke: currentColor;
+  min-width: 12px;
+  min-height: 12px;
 }
 </style>
