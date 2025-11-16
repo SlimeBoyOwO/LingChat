@@ -355,18 +355,20 @@ USE_TIME_SENSE=true # 是否启用时间感知 [type:bool]
 ## RAG系统设定 BEGIN # 配置RAG（检索增强生成）系统，让AI能“记忆”历史对话
 RAG_RETRIEVAL_COUNT=3 # 每次回答时检索的相关历史对话数量
 RAG_WINDOW_COUNT=5 # 取当前的最新N条消息作为短期记忆，之后则是RAG消息，然后是过去的记忆。
-RAG_HISTORY_PATH="data/rag_chat_history" # RAG历史记录存储路径
-CHROMA_DB_PATH="data/chroma_db_store" # ChromaDB向量数据库的存储路径
+RAG_HISTORY_PATH="ling_chat/data/rag_chat_history" # RAG历史记录存储路径
+CHROMA_DB_PATH="ling_chat/data/chroma_db_store" # ChromaDB向量数据库的存储路径
 RAG_PROMPT_PREFIX="--- 以下是根据你的历史记忆检索到的相关对话片段，请参考它们来回答当前问题。这些是历史信息，不是当前对话的一部分： ---" # RAG前缀提示，支持多行
 RAG_PROMPT_SUFFIX="--- 以上是历史记忆检索到的内容。请注意，这些内容用于提供背景信息，你不需要直接回应它们，而是基于它们和下面的当前对话来生成回复。 ---" # RAG后缀提示，支持多行
 ## RAG系统设定 END
 
 ## 存储与日志 BEGIN # 配置日志和其他文件的存储位置
-BACKEND_LOG_DIR="data/logs" # 后端服务日志目录
-APP_LOG_DIR="data/log" # 应用行为日志目录
-TEMP_VOICE_DIR="frontend/public/audio" # 临时生成的语音文件存放目录
+BACKEND_LOG_DIR="ling_chat/data/logs" # 后端服务日志目录
+APP_LOG_DIR="ling_chat/data/log" # 应用行为日志目录
+TEMP_VOICE_DIR="ling_chat/data/temp_voice" # 临时生成的语音文件存放目录
 ENABLE_FILE_LOGGING=false # 是否将日志记录到文件
-LOG_FILE_DIRECTORY="data/run_logs" # 日志文件的存储目录
+LOG_FILE_DIRECTORY="ling_chat/data/run_logs" # 日志文件的存储目录
+CLEAN_TEMP_FILES=true # 是否在关闭后清理临时文件（包括语音等）
+EMOTION_MODEL_PATH="ling_chat/third_party/emotion_model_18emo" # 情感分析模型路径
 ## 存储与日志 END
 
 ## Debug信息 BEGIN # 用于开发和调试的设置
