@@ -20,6 +20,12 @@
       :intensity="1.5"
     >
     </Sakura>
+    <Snow
+      v-if="uiStore.currentBackgroundEffect === `Snow`"
+      :intensity="snowIntensity"
+      :enabled="true"
+    >
+    </Snow>
     <
   </div>
   <audio ref="soundEffectPlayer"></audio>
@@ -32,6 +38,7 @@ import { useUIStore } from "../../../stores/modules/ui/ui";
 import StarField from "./particles/StarField.vue";
 import Rain from "./particles/Rain.vue";
 import Sakura from "./particles/Sakura.vue";
+import Snow from "./particles/Snow.vue";
 
 const uiStore = useUIStore();
 const starfieldRef = ref(null);
@@ -52,9 +59,10 @@ const starColors = ref([
 ]);
 
 // 雨滴效果控制
-const showRain = ref(false);
 const rainEnabled = ref(true);
 const rainIntensity = ref(1);
+
+const snowIntensity = ref(1.5);
 
 // 计算背景样式
 const backgroundStyle = computed(() => {
@@ -65,23 +73,10 @@ const backgroundStyle = computed(() => {
   };
 });
 
-showRain.value = true;
-
 // 星空就绪回调
 const onStarfieldReady = (instance) => {
   console.log("Starfield ready", instance);
 };
-
-// 根据背景决定是否显示雨滴
-watch(
-  () => uiStore.currentBackgroundEffect,
-  (newBackgroundEffect) => {
-    if (newBackgroundEffect === "Rain") {
-      showRain.value = true;
-    } else if (newBackgroundEffect === "StarField") {
-    }
-  }
-);
 
 // 监听音效
 watch(
