@@ -5,12 +5,17 @@ interface UIState {
   showCharacterTitle: string;
   showCharacterSubtitle: string;
   showCharacterEmotion: string;
+  showCharacterLine: string;
+  showPlayerHintLine: string;
+  showCharacterThinkLine: string;
   showSettings: boolean;
   currentSettingsTab: string;
   typeWriterSpeed: number;
   enableChatEffectSound: boolean;
   currentBackground: string;
   currentBackgroundEffect: string;
+  currentBackgroundMusic: string;
+  currentSoundEffect: string;
   currentAvatarAudio: string;
   characterVolume: number;
   backgroundVolume: number;
@@ -23,12 +28,17 @@ export const useUIStore = defineStore("ui", {
     showCharacterTitle: "Lovely You",
     showCharacterSubtitle: "Bilibili",
     showCharacterEmotion: "",
+    showCharacterLine: "",
+    showPlayerHintLine: "",
+    showCharacterThinkLine: "Ling Ling Thinking...",
     showSettings: false,
-    currentSettingsTab: "schedule",
+    currentSettingsTab: "text",
     typeWriterSpeed: 50,
     enableChatEffectSound: true,
     currentBackground: "@/assets/images/default_bg.jpg",
     currentBackgroundEffect: "StarField",
+    currentBackgroundMusic: "None",
+    currentSoundEffect: "None",
     currentAvatarAudio: "None",
     characterVolume: 80,
     backgroundVolume: 80,

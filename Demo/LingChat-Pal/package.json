@@ -12,6 +12,8 @@
   "dependencies": {
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
+    "axios": "^1.13.2",
+    "lingchat-pal": "link:",
     "pinia": "^3.0.3",
     "pinia-plugin-persistedstate": "^4.5.0",
     "vue": "^3.5.13",
