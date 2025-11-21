@@ -36,7 +36,6 @@ import { useGameStore } from "../../stores/modules/game";
 import { GameBackground } from "../game/standard";
 import { GameAvatar } from "../game/standard";
 import { GameDialog } from "../game/standard";
-import { getGameInfo } from "../../api/services/game-info";
 import { Button } from "../base";
 
 const uiStore = useUIStore();
