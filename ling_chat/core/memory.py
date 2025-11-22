@@ -23,17 +23,15 @@ class MemorySystem:
         self.character_id = character_id if character_id is not None else 0
         self.config = config
         
-        # === 配置参数 ===
         # 多少条新消息触发一次总结 (例如 50)
         self.update_interval = self._safe_read_int("MEMORY_UPDATE_INTERVAL", 50)
         # 总结后保留多少条作为上下文重叠 (例如 15)
         self.recent_window = self._safe_read_int("MEMORY_RECENT_WINDOW", 15)
         
-        # === 状态管理 ===
         self.is_updating = False
-        self.last_processed_idx = 0  # 核心指针：指向已归档的历史消息索引
+        self.last_processed_idx = 0
         
-        # === 记忆数据结构 (默认值) ===
+        # 记忆数据结构，可以改
         self.memory_data = {
             "short_term": "暂无近期对话摘要。",
             "long_term": "暂无长期关键经历。",
@@ -41,17 +39,13 @@ class MemorySystem:
             "promises": "暂无未完成的约定。"
         }
         
-        # === 文件路径 ===
         self.memory_dir = user_data_path / "game_data" / "memory"
         self.memory_file = self.memory_dir / f"char_{self.character_id}_structured.json"
         
-        # === LLM ===
         self.llm = LLMManager()
         
-        # === 提示词模板配置 ===
         self._init_prompts()
         
-        # === 加载 ===
         self._load_memory()
 
     def initialize(self) -> bool:
@@ -119,7 +113,6 @@ class MemorySystem:
                 with open(self.memory_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     self.memory_data.update(data.get("data", {}))
-                    # 恢复指针位置
                     self.last_processed_idx = data.get("meta", {}).get("last_processed_idx", 0)
                     logger.info(f"记忆库已加载，历史归档指针位置: {self.last_processed_idx}")
             except Exception as e:
@@ -160,7 +153,6 @@ class MemorySystem:
             return
 
         current_count = len(history_messages)
-        # 计算增量：当前总数 - 上次归档的位置
         delta = current_count - self.last_processed_idx
 
         if delta >= self.update_interval:
@@ -171,26 +163,21 @@ class MemorySystem:
         """启动后台更新任务"""
         self.is_updating = True
         
-        # 提取【未归档】的消息段
-        # 从 last_processed_idx 开始到最新
         new_msgs = history_messages[self.last_processed_idx:]
         
-        # 记录本次更新的目标索引位置 (即当前最新的位置)
         target_idx = len(history_messages)
         
-        # 转换为文本供 LLM 阅读
         chat_text = ""
         for msg in new_msgs:
             role = "User" if msg['role'] == 'user' else "AI"
             content = msg.get('content', '')
-            if not content.startswith("{系统"): # 简单过滤
+            if not content.startswith("{系统"):
                 chat_text += f"{role}: {content}\n"
 
         if not chat_text.strip():
             self.is_updating = False
             return
 
-        # 启动异步任务，传入目标索引
         asyncio.create_task(self._run_update_pipeline(chat_text, target_idx))
 
     async def _run_update_pipeline(self, chat_text: str, new_total_idx: int):
@@ -215,7 +202,6 @@ class MemorySystem:
                 )
                 
                 messages = [{"role": "user", "content": full_prompt}]
-                # 使用 run_in_executor 防止阻塞主线程
                 response = await loop.run_in_executor(None, self.llm.process_message, messages)
                 
                 cleaned = response.strip()
@@ -232,12 +218,9 @@ class MemorySystem:
             
             results = await asyncio.gather(*tasks)
             
-            # 应用更新结果
             for key, new_val in results:
                 self.memory_data[key] = new_val
 
-            # === 关键步骤 ===
-            # 更新成功后，移动指针
             self.last_processed_idx = new_total_idx
             self.save_memory()
             
@@ -245,6 +228,5 @@ class MemorySystem:
 
         except Exception as e:
             logger.error(f"Memory 更新流水线严重错误: {e}", exc_info=True)
-            # 发生错误时不移动指针，下次会重试
         finally:
             self.is_updating = False
