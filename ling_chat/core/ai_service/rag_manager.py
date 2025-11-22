@@ -1,197 +1,148 @@
 import os
+from typing import List, Dict
 from ling_chat.core.logger import logger
 
 class RAGManager:
     def __init__(self):
-        # RAG 系统
-        self.use_rag = os.environ.get("USE_RAG", "False").lower() == "true"
-        self.rag_systems_cache = {}  # 缓存RAG实例 {character_id: rag_system_instance}
-        self.rag_config = None       # 存储RAG配置
-        self.session_file_path = None
-        self.active_rag_system = None # 当前激活的RAG实例
-        self.rag_window = int(os.environ.get("RAG_WINDOW_COUNT", 5)) # 短期记忆窗口大小
+        # 兼容原有开关，或者使用新的 MEMORY_SYSTEM_ENABLED
+        self.use_memory = os.environ.get("USE_MEMORY_SYSTEM", "True").lower() == "true"
+        # 如果原 RAG 开关开启，也视为开启（兼容过渡）
+        if os.environ.get("USE_RAG", "False").lower() == "true":
+            self.use_memory = True
+            
+        self.memory_systems_cache = {}  # 缓存 MemorySystem 实例
+        self.memory_config = None
+        self.active_memory_system = None 
         self.character_id = 0
-        if self.use_rag: 
-            logger.info(f"当前RAG窗口大小是：{self.rag_window}")
-
-        self._init_rag_config()
         
-    def _init_rag_config(self):
-        """初始化RAG相关配置并加载RAG系统"""
+        self._init_config()
+        
+    def _init_config(self):
+        """初始化配置"""
         class Config:
             def __init__(self, **kwargs):
                 for key, value in kwargs.items():
                     setattr(self, key, value)
-                    
-        use_rag = self.use_rag
-        ai_name = os.environ.get("AI_NAME", "钦灵")
-        log_level_str = os.environ.get("LOG_LEVEL", "INFO").upper()
-        print_context = os.environ.get("PRINT_CONTEXT", "False").lower() == "true"
-        rag_history_path = os.environ.get("RAG_HISTORY_PATH", "rag_chat_history")
-        chroma_db_path = os.environ.get("CHROMA_DB_PATH", "chroma_db_store")
-        rag_retrieval_count = int(os.environ.get("RAG_RETRIEVAL_COUNT", "3"))
-        rag_candidate_multiplier = int(os.environ.get("RAG_CANDIDATE_MULTIPLIER", "3"))
-        rag_context_m_before = int(os.environ.get("RAG_CONTEXT_M_BEFORE", "2"))
-        rag_context_n_after = int(os.environ.get("RAG_CONTEXT_N_AFTER", "2"))
-        rag_prompt_prefix = os.environ.get("RAG_PROMPT_PREFIX", 
-                                        "以下是根据你的问题从历史对话中检索到的相关片段，其中包含了对话发生的大致时间：")
-        rag_prompt_suffix = os.environ.get("RAG_PROMPT_SUFFIX", "")
         
-        rag_config = Config(
-            USE_RAG=use_rag,
-            AI_NAME=ai_name,
-            LOG_LEVEL=log_level_str,
-            PRINT_CONTEXT=print_context,
-            RAG_HISTORY_PATH=rag_history_path,
-            CHROMA_DB_PATH=chroma_db_path,
-            RAG_RETRIEVAL_COUNT=rag_retrieval_count,
-            RAG_CANDIDATE_MULTIPLIER=rag_candidate_multiplier,
-            RAG_CONTEXT_M_BEFORE=rag_context_m_before,
-            RAG_CONTEXT_N_AFTER=rag_context_n_after,
-            RAG_PROMPT_PREFIX=rag_prompt_prefix,
-            RAG_PROMPT_SUFFIX=rag_prompt_suffix
-        )
-        
-        if use_rag:
-            logger.info("正在初始化RAG系统...")
-            rag_initialized = self.init_rag_system(rag_config, self.character_id)
-            if rag_initialized:
-                logger.info("RAG系统初始化成功")
-            else:
-                logger.warning("RAG系统初始化失败或禁用")
-        else:
-            logger.info("RAG系统已禁用")
+        # 传递相关环境变量
+        self.memory_config = Config()
 
-    def init_rag_system(self, config, initial_character_id: int):
-        """初始化RAG系统（如果启用）"""
-        self.rag_config = config # 存储配置以备后用
-        return self.switch_rag_system_character(initial_character_id)
+        if self.use_memory:
+            logger.info("正在初始化 Memory Bank 系统...")
+            # 初始加载 ID 为 0 的角色 (或由外部调用 switch)
+            self.switch_rag_system_character(self.character_id)
+        else:
+            logger.info("Memory Bank 系统已禁用")
 
     def switch_rag_system_character(self, character_id: int) -> bool:
-        """切换或初始化指定角色的RAG系统"""
+        """切换或初始化指定角色的 Memory 系统"""
         self.character_id = character_id
 
-        if not self.use_rag:
+        if not self.use_memory:
             return False
 
-        # 如果已缓存，直接切换
-        if character_id in self.rag_systems_cache:
-            self.active_rag_system = self.rag_systems_cache[character_id]
-            logger.info(f"RAG记忆库已切换至已缓存的角色 (ID: {character_id})")
+        if character_id in self.memory_systems_cache:
+            self.active_memory_system = self.memory_systems_cache[character_id]
+            logger.info(f"Memory Bank 已切换至角色 (ID: {character_id})")
             return True
 
-        # 如果未缓存，则创建新的实例
         try:
-            from ling_chat.core.RAG import RAGSystem
-            logger.info(f"正在为新角色 (ID: {character_id}) 初始化RAG记忆库...")
+            # 导入新的 MemorySystem
+            from ling_chat.core.memory import MemorySystem
             
-            # 记录RAG初始化的详细配置
-            if logger.should_print_context():
-                logger.debug("\n------ RAG初始化配置详情 ------")
-                config_attrs = [attr for attr in dir(self.rag_config) if not attr.startswith('_') and not callable(getattr(self.rag_config, attr))]
-                for attr in sorted(config_attrs):
-                    value = getattr(self.rag_config, attr)
-                    logger.debug(f"RAG配置: {attr} = {value}")
-                logger.debug("------ RAG配置结束 ------\n")
+            new_system = MemorySystem(self.memory_config, character_id)
             
-            new_rag_system = RAGSystem(self.rag_config, character_id) # 传入character_id
-            
-            if new_rag_system.initialize():
-                self.rag_systems_cache[character_id] = new_rag_system
-                self.active_rag_system = new_rag_system
-                logger.info(f"角色 (ID: {character_id}) 的RAG记忆库初始化成功并已缓存。")
-                
-                if logger.should_print_context():
-                    # 记录初始化后的状态信息
-                    history_count = 0
-                    chroma_count = 0
-                    if hasattr(new_rag_system, 'flat_historical_messages'):
-                        history_count = len(new_rag_system.flat_historical_messages)
-                    if new_rag_system.chroma_collection:
-                        chroma_count = new_rag_system.chroma_collection.count()
-                    
-                    logger.debug(f"RAG初始化状态: 历史消息数={history_count}, ChromaDB条目数={chroma_count}")
-                
+            if new_system.initialize():
+                self.memory_systems_cache[character_id] = new_system
+                self.active_memory_system = new_system
                 return True
-            else:
-                logger.error(f"为角色 (ID: {character_id}) 初始化RAG记忆库失败。")
-                return False
+            return False
         except ImportError as e:
-            logger.error(f"RAG模块: {e}")
+            logger.error(f"Memory模块导入失败: {e}")
             return False
         except Exception as e:
-            logger.error(f"切换RAG角色 (ID: {character_id}) 时出错: {e}", exc_info=True)
+            logger.error(f"切换角色 (ID: {character_id}) Memory系统出错: {e}", exc_info=True)
             return False
 
-    # 把current_context增加RAG上下文消息
-    def rag_append_sys_message(self, current_context, rag_messages, user_input) -> None:
-        if not (self.use_rag and self.active_rag_system):
+    def rag_append_sys_message(self, current_context: List[Dict], rag_messages: List[Dict], user_input: str) -> None:
+        """
+        逻辑核心：
+        1. 插入 Memory Bank 字符串到 System Prompt 之后。
+        2. 执行步跳检测。
+        3. 根据状态决定是保留全量历史还是截断历史。
+        
+        注意：rag_messages 参数在此处保留用于兼容接口，但不再用于传递检索向量。
+        current_context 会被直接修改。
+        """
+        if not (self.use_memory and self.active_memory_system):
             return
+
         try:
-            logger.debug("正在调用RAG系统检索相关历史信息...")
-            # 清空原有内容，再 extend 新的消息
-            rag_messages.clear()  
-            new_messages = self.active_rag_system.prepare_rag_messages(user_input)
-            rag_messages.extend(new_messages)  # 直接修改外部传入的列表
-            if rag_messages:
-                logger.debug(f"RAG系统返回了 {len(rag_messages)} 条上下文增强消息")
-                    
-                # 将RAG消息插入到系统提示后，用户消息前
-                # 注意: 防止系统提示重复出现
-                # 1. 找到人设提示位置
-                last_system_index = 0
-                        
-                # 2. 过滤RAG消息中的系统提示词，避免重复
-                filtered_rag_messages = []
-                for msg in rag_messages:
-                    # 只有当RAG消息是前缀/后缀提示，且不与原系统提示重复时才添加
-                    if msg["role"] == "system":
-                        is_duplicate = False
-                        # 检查是否与原系统提示重复
-                        for sys_msg in current_context[:last_system_index+1]:
-                            if sys_msg["role"] == "system" and sys_msg["content"] == msg["content"]:
-                                is_duplicate = True
-                                break
-                        if not is_duplicate:
-                            filtered_rag_messages.append(msg)
-                    else:
-                        # 非系统消息直接添加
-                        filtered_rag_messages.append(msg)
-                
-                if filtered_rag_messages:
-                    # 计算插入位置：最后rag_window条消息之后，但至少要在第一个系统消息之后
-                    insert_position = max(
-                        last_system_index + 1,  # 确保在系统消息之后
-                        len(current_context) - min(self.rag_window, len(current_context))  # 最后N条之后
-                    )
-                    
-                    # 关键修改：直接操作原列表的切片赋值
-                    current_context[insert_position:insert_position] = [
-                        msg for msg in filtered_rag_messages 
-                        if not (msg["role"] == "system" and 
-                            any(sys_msg["content"] == msg["content"] 
-                                for sys_msg in current_context[:last_system_index+1]))
-                    ]
-                else:
-                    logger.debug("所有RAG消息被过滤，未向上下文添加新消息")
-            else:
-                logger.debug("RAG系统未返回相关历史信息")
-        except Exception as e:
-            logger.error(f"RAG处理过程中出错: {e}")
-            logger.debug(f"RAG process error: {e}", exc_info=True)
-    
-    def save_messages_to_rag(self, messages):
-        if self.use_rag and self.active_rag_system:
-            if not self.session_file_path:
-                self.session_file_path = self.active_rag_system.get_history_filepath()
-            try:
-                self.active_rag_system.add_session_to_history(messages, session_filepath=self.session_file_path)
-                logger.debug("当前会话已保存到RAG历史记录")
-            except Exception as e:
-                logger.error(f"保存会话到RAG历史记录失败: {e}")
+            # 1. 步跳检测：检查当前历史长度
+            # 排除 system prompt，计算实际对话轮数
+            history_messages = [m for m in current_context if m["role"] != "system"]
+            history_count = len(history_messages)
             
-        logger.debug("成功获取LLM响应")
+            self.active_memory_system.check_and_trigger_update(history_count)
+            
+            # 2. 准备 Memory Prompt
+            memory_prompt_content = self.active_memory_system.get_memory_prompt()
+            memory_message = {"role": "system", "content": memory_prompt_content}
+            
+            # 3. 定位插入点：必须在第一个 System Prompt (人设) 之后
+            # 通常 current_context[0] 是人设
+            insert_index = 0
+            if current_context and current_context[0]["role"] == "system":
+                insert_index = 1
+            
+            # 插入 Memory Prompt
+            # 注意：为了防止重复插入，可以先检查一下
+            # 这里简化逻辑，直接插入，LLM 通常能处理连续的 System Prompt
+            # 或者替换掉旧的 Memory Prompt (如果之前插入过)
+            
+            # 4. 上下文剪裁 (Slicing)
+            # 如果拥有有效的 Memory Bank 且不在更新中，我们只保留最近 N 条
+            # 如果正在更新中，或者还没有生成第一次 Summary，必须保留全量历史
+            
+            final_context = []
+            
+            # 保留原始 System Prompt (人设)
+            if insert_index == 1:
+                final_context.append(current_context[0])
+            
+            # 加入 Memory Bank
+            final_context.append(memory_message)
+            
+            # 处理历史记录
+            if self.active_memory_system.has_valid_memory:
+                # 只有在 Memory Bank 有效时，才截取最近 N 条
+                # 读取窗口大小
+                window = self.active_memory_system.recent_window
+                recent_history = history_messages[-window:] if window < len(history_messages) else history_messages
+                final_context.extend(recent_history)
+                logger.debug(f"MemorySystem: 已截断上下文，保留 Memory Bank + 最近 {len(recent_history)} 条消息")
+            else:
+                # 否则发送全量历史 (等待第一次总结完成)
+                final_context.extend(history_messages)
+                logger.debug(f"MemorySystem: Memory Bank 尚未生成或更新中，发送全量历史 ({len(history_messages)} 条)")
+
+            # 5. 暴力修改 current_context
+            # 清空原列表并填入新列表，以影响外部引用
+            current_context.clear()
+            current_context.extend(final_context)
+
+        except Exception as e:
+            logger.error(f"Memory System 处理出错: {e}", exc_info=True)
+
+    def save_messages_to_rag(self, messages):
+        """
+        保存消息的接口。
+        在 Memory Bank 模式下，这里主要用于触发记录，
+        实际的持久化通常在 trigger_background_update 异步任务中读取内存中的 messages 处理。
+        保留此接口以兼容调用。
+        """
+        # 可以在这里做一些简单的日志记录或者追加写入到本地临时文件
+        pass
 
     def prepare_messages(self, user_input):
-        # 准备RAG增强消息...
         return []
