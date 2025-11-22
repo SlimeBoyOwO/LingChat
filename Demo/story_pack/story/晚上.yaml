@@ -1,7 +1,7 @@
 Events:
   - Type: Narration
     Mode: Preset
-    Content: "新的故事开始了..."
+    Content: New story...
 EndCondition:
   Type: Linear
-  NextUnitID: ""
+  NextUnitID: 白天
