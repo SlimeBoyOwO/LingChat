@@ -1,0 +1,5 @@
+Events:
+  - 'Type: Narration | Mode: Preset': 新场景...
+EndCondition:
+  Type: Linear
+  NextUnitID: 02_test
