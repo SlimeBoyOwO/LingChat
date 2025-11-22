@@ -1,4 +1,5 @@
 import asyncio
+from ling_chat.core.ai_service.config import AIServiceConfig
 from ling_chat.utils.function import Function
 from ling_chat.core.messaging.broker import message_broker
 from ling_chat.utils.runtime_path import user_data_path
@@ -17,8 +18,8 @@ class Schedule:
         self.content = content
 
 class EventsScheduler:
-    def __init__(self, client_id: str):
-        self.client_id = client_id
+    def __init__(self, config: AIServiceConfig):
+        self.config = config
         self.user_name = "用户"
         self.ai_name = "AI助手"
         self.schedule_tasks: list[Schedule] = []
@@ -83,7 +84,8 @@ class EventsScheduler:
             await asyncio.sleep(seconds)
             if self.ai_name == schedule.character:
                 user_message:str = "{时间差不多到啦，" + self.user_name + "之前拜托你提醒他:\"" + schedule.content.get(next_time, "你写的程序的日程系统有BUG，记得去修") + "\"，和" + self.user_name + "主动搭话一下吧~}"
-                await message_broker.enqueue_ai_message(self.client_id, user_message)
+                for client_id in self.config.clients:
+                    await message_broker.enqueue_ai_message(client_id, user_message)
         
         self.proceed_next_nodification()
 
