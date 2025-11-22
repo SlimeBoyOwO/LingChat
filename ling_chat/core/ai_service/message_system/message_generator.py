@@ -70,6 +70,7 @@ class MessageGenerator:
         """
         协调流处理管道并生成响应，避免死锁。
         """
+        rag_messages = []
         # 1. 设置和预处理
         current_context = self.memory.copy() if not memory else memory.copy()
 
@@ -78,8 +79,10 @@ class MessageGenerator:
             self.memory.append({"role": "user", "content": processed_user_message})
             current_context = self.memory.copy()
             if self.use_rag and self.rag_manager:
-                rag_messages = []
                 self.rag_manager.rag_append_sys_message(current_context, rag_messages, processed_user_message)
+
+            if logger.should_print_context():
+                self.ai_logger.print_debug_message(current_context, rag_messages, self.memory) 
 
         # 2. 管道组件的共享状态
         sentence_queue = asyncio.Queue(maxsize=self.concurrency * 2)
