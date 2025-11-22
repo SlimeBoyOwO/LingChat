@@ -3,16 +3,23 @@ export interface StoryEvent {
     Mode?: 'Preset' | 'Prompt' | 'Input';
     Character?: string; 
     Content?: string;   
-    [key: string]: any; // 允许其他字段
-  }
-  
-  export interface EndCondition {
+    [key: string]: any;
+}
+
+export interface VisualConfig {
+    Style?: string; // solid, dashed, dotted
+    Color?: string;
+    Animated?: boolean;
+}
+
+export interface EndCondition {
     Type: 'Linear' | 'Branching' | 'AIChoice' | 'PlayerResponseBranch' | 'Conditional';
     NextUnitID?: string;
     Branches?: Record<string, any>; 
-  }
-  
-  export interface StoryUnitData {
+    _Visual?: Record<string, VisualConfig>; 
+}
+
+export interface StoryUnitData {
     Events: StoryEvent[];
     EndCondition: EndCondition;
-  }
+}

@@ -3,12 +3,12 @@
 @tailwind utilities;
 
 body {
-  @apply bg-gemini-bg text-gray-300 font-mono overflow-hidden;
+  @apply bg-black text-gray-300 font-mono overflow-hidden;
 }
 
 /* 滚动条美化 */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { @apply bg-gemini-bg; }
+::-webkit-scrollbar-track { @apply bg-[#050505]; }
 ::-webkit-scrollbar-thumb { @apply bg-gemini-border rounded; }
 ::-webkit-scrollbar-thumb:hover { @apply bg-gemini-orange; }
 

@@ -1,0 +1,14 @@
+Events:
+  - Type: Player
+    Mode: Preset
+    Content: 嘿，钦灵，你动不动就喊着能用就行的日子结束了，把LingChat还给我！
+  - Type: Dialogue
+    Mode: Preset
+    Content: 想要？那自己来拿！
+    Character: 钦灵
+EndCondition:
+  Type: Branching
+  NextUnitID: '222'
+  Branches:
+    A: 战斗
+    B: 逃跑

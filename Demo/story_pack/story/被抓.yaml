@@ -1,0 +1,7 @@
+Events:
+  - Type: Narration
+    Mode: Preset
+    Content: New story...
+EndCondition:
+  Type: Linear
+  NextUnitID: 被关进地下室

@@ -24,6 +24,10 @@ class StoryUnit(BaseModel):
     filename: str
     content: str # YAML string
 
+class RenameRequest(BaseModel):
+    old_name: str
+    new_name: str
+
 @app.get("/files")
 def list_files():
     """获取所有剧本文件列表"""
@@ -58,6 +62,35 @@ def save_file(unit: StoryUnit):
         return {"status": "success"}
     except yaml.YAMLError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@app.delete("/file/{filename}")
+def delete_file(filename: str):
+    """删除文件"""
+    path = os.path.join(STORY_DIR, f"{filename}.yaml")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="文件不存在")
+    try:
+        os.remove(path)
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/rename")
+def rename_file(req: RenameRequest):
+    """重命名文件"""
+    old_path = os.path.join(STORY_DIR, f"{req.old_name}.yaml")
+    new_path = os.path.join(STORY_DIR, f"{req.new_name}.yaml")
+    
+    if not os.path.exists(old_path):
+        raise HTTPException(status_code=404, detail="源文件不存在")
+    if os.path.exists(new_path):
+        raise HTTPException(status_code=400, detail="目标文件名已存在")
+    
+    try:
+        os.rename(old_path, new_path)
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
