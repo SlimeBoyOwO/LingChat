@@ -5,6 +5,7 @@ from typing import Any, List, Dict, Optional
 from numpy import character
 from sympy import true
 
+from ling_chat.core.ai_service.config import AIServiceConfig
 from ling_chat.utils.function import Function
 from ling_chat.core.ai_service.script_engine.type import Character, Player, Script, GameContext
 from ling_chat.core.ai_service.script_engine.charpter import Charpter
@@ -13,8 +14,9 @@ from ling_chat.utils.runtime_path import user_data_path, package_root
 from ling_chat.core.ai_service.script_engine.exceptions import ScriptLoadError, ChapterLoadError, ScriptEngineError
 
 class ScriptManager:
-    def __init__(self):
+    def __init__(self, config:AIServiceConfig):
         # 全局设定，确定剧本状态
+        self.config = config
         self.scripts_dir = user_data_path / "game_data" / "scripts"
 
         # 全部剧本管理
@@ -225,7 +227,7 @@ class ScriptManager:
     def _get_charpter(self, charpter_path: Path) -> Charpter:
         config = Function.read_yaml_file(charpter_path)
         if config is not None:
-            return Charpter(str(charpter_path), self.game_context, config.get('events',[]), config.get('end',{}))
+            return Charpter(str(charpter_path), self.config, self.game_context, config.get('events',[]), config.get('end',{}))
         else:
             raise ChapterLoadError(f"导入 {charpter_path} 剧本的时候出现问题")
     
