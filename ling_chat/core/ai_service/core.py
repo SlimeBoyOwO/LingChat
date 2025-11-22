@@ -56,11 +56,11 @@ class AIService:
         self.client_tasks: Dict[str, asyncio.Task] = {}
         self.processing_task = asyncio.create_task(self._process_message_loop())
 
-        self.events_scheduler = EventsScheduler(self.user_id)
+        self.events_scheduler = EventsScheduler(self.config)
         self.import_settings(settings)
         self.events_scheduler.start_nodification_schedules()        # TODO: 这个由前端开关控制
 
-        self.scripts_manager = ScriptManager()
+        self.scripts_manager = ScriptManager(self.config)
 
         self.reset_memory()
 

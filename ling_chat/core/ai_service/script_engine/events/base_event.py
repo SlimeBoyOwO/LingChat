@@ -1,11 +1,13 @@
 from abc import ABC, abstractmethod
 from typing import Any
+from ling_chat.core.ai_service.config import AIServiceConfig
 from ling_chat.core.ai_service.script_engine.type import GameContext
 
 class BaseEvent(ABC):
     """事件基类"""
     
-    def __init__(self, event_data: dict[str, Any], game_context: GameContext):
+    def __init__(self, config: AIServiceConfig, event_data: dict[str, Any], game_context: GameContext):
+        self.config = config
         self.event_data = event_data
         self.game_context = game_context
     
