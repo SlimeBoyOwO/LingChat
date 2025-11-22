@@ -159,7 +159,7 @@ const handleLoadSave = async (saveId: string) => {
     });
     // gameStore.loadDialogHistory(saveData);  TODO: 读取的时候，把历史记录也加载进去
     alert(`存档 [${saveId}] 读取成功!`);
-    gameStore.initializeGame(userId);
+    gameStore.initializeGame(userStore.client_id, userId);
   } catch (e: any) {
     console.error("读取存档失败:", e);
     alert(`读取失败: ${e.message}`);
