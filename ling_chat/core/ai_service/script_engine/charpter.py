@@ -1,15 +1,16 @@
+from ling_chat.core.ai_service.config import AIServiceConfig
 from .events_handler import EventsHandler
 from .ends_handler import EndsHandler
 from ling_chat.core.logger import logger
 from ling_chat.core.ai_service.script_engine.type import GameContext
 
 class Charpter:
-    def __init__(self, charpter_id: str, game_context: GameContext, events_data: list[dict], ends_data: dict):
+    def __init__(self, charpter_id: str, config: AIServiceConfig, game_context: GameContext, events_data: list[dict], ends_data: dict):
         self.charpter_id = charpter_id
         
         # 章节内部持有自己的处理器，状态被封装在内部
         self.game_context = game_context
-        self._events_handler = EventsHandler(events_data, game_context)
+        self._events_handler = EventsHandler(config, events_data, game_context)
         self._ends_handler = EndsHandler(ends_data, game_context)
         
         logger.info(f"章节 '{self.charpter_id}' 已初始化。")

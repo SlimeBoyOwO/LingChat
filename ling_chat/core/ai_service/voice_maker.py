@@ -1,7 +1,7 @@
 import asyncio
 import os
 
-from typing import List, Dict, Awaitable
+from typing import Any, List, Dict, Awaitable
 from ling_chat.core.TTS.tts_provider import TTS
 from ling_chat.core.logger import logger
 
@@ -143,7 +143,7 @@ class VoiceMaker:
         except KeyError as e:
             logger.error(f"当前角色卡{name}的TTS设置出错，问题是：{e}")
 
-    def set_tts(self, tts_type: str, tts_settings: dict[str,str], name: str) -> None:
+    def set_tts(self, tts_type: str, tts_settings: dict[Any,Any], name: str) -> None:
         """设置默认的TTS类型"""
         available_tts_types = ("sva-bv2", "gsv", "sbv2", "sva-vits", "sbv2api","aivis", "indextts2")
         try:
