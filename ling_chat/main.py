@@ -2,9 +2,10 @@ import os
 import signal
 import sys
 import time
+import shutil
 from typing import Collection
 
-from ling_chat.utils.runtime_path import user_data_path, third_party_path
+from ling_chat.utils.runtime_path import user_data_path, third_party_path, static_path
 from ling_chat.utils.load_env import load_env
 from ling_chat.utils.easter_egg import get_random_loading_message
 
@@ -22,6 +23,20 @@ from ling_chat.core.logger import logger
 from ling_chat.utils.cli_parser import get_parser
 from ling_chat.third_party import install_third_party, run_third_party
 
+def check_static_copy():
+    """检查静态文件是否已经复制"""
+    # 场景一，假如没有用户game_data目录，则复制
+    if not os.path.exists(user_data_path / "game_data"):
+        shutil.copytree(static_path / "game_data", user_data_path / "game_data")
+        logger.info("静态文件已复制到用户目录")
+    else:
+        # 场景二，假如用户目录下有game_data目录，则检查子目录文件夹是否全部存在
+        # 检查所有static_path/game_data下的子目录
+        for sub_dir in os.listdir(static_path / "game_data"):
+            if not os.path.exists(user_data_path / "game_data" / sub_dir):
+                shutil.copytree(static_path / "game_data" / sub_dir, user_data_path / "game_data" / sub_dir)
+                logger.info(f"检测到缺少文件，静态文件已复制到用户目录: {sub_dir}")
+    
 
 def handle_install(install_modules_list: Collection[str], use_mirror=False):
     """处理安装模块"""
@@ -103,6 +118,8 @@ def run_main_program(args):
     selected_loading_message = get_random_loading_message()
     logger.start_loading_animation(message=selected_loading_message, animation_style="auto")
 
+    # 检查文件完整性
+    check_static_copy()
 
     # 处理运行模块
     handle_run(args.run or [])
