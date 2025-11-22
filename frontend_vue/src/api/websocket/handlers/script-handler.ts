@@ -1,7 +1,7 @@
 import { registerHandler, sendWebSocketChatMessage } from "..";
 import { WebSocketMessageTypes } from "../../../types";
 import { eventQueue } from "../../../core/events/event-queue";
-import { useGameStore } from "../../../stores/modules/game";
+import { useUserStore } from "../../../stores/modules/user/user";
 import type * as ScriptTypes from "../../../types/script";
 
 export class ScriptHandler {
@@ -10,6 +10,11 @@ export class ScriptHandler {
   }
 
   private registerHandlers() {
+    registerHandler(WebSocketMessageTypes.CONNECTION, (data: any) => {
+      console.log("收到链接建立事件:", data);
+      useUserStore().client_id = data.client_id; // 保存client_id
+    });
+
     registerHandler(WebSocketMessageTypes.SCRIPT_NARRATION, (data: any) => {
       console.log("收到剧本旁白事件:", data);
       eventQueue.addEvent(data as ScriptTypes.ScriptNarrationEvent);
