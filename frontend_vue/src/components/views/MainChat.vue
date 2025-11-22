@@ -33,14 +33,15 @@
 import { onMounted, ref, watch } from "vue";
 import { useUIStore } from "../../stores/modules/ui/ui";
 import { useGameStore } from "../../stores/modules/game";
+import { useUserStore } from "../../stores/modules/user/user";
 import { GameBackground } from "../game/standard";
 import { GameAvatar } from "../game/standard";
 import { GameDialog } from "../game/standard";
-import { getGameInfo } from "../../api/services/game-info";
 import { Button } from "../base";
 
 const uiStore = useUIStore();
 const gameStore = useGameStore();
+const userStore = useUserStore();
 
 const gameAvatarRef = ref<InstanceType<typeof GameAvatar> | null>(null);
 const gameDialogRef = ref<InstanceType<typeof GameDialog> | null>(null);
@@ -56,8 +57,9 @@ const switchAutoMode = () => {
 
 const runInitialization = async () => {
   const userId = "1"; // TODO: 获取真实 userId
+
   try {
-    await gameStore.initializeGame(userId);
+    await gameStore.initializeGame(userStore.client_id, userId);
 
     // Action 成功后，处理仅与本组件相关的 UI 逻辑
     if (gameAvatarRef.value) {
@@ -71,7 +73,11 @@ const runInitialization = async () => {
 };
 
 // 初始化游戏信息
-onMounted(runInitialization);
+onMounted(() => {
+  if (userStore.client_id !== "") {
+    runInitialization();
+  }
+});
 
 // 当选中的角色ID改变时，重新执行初始化。
 watch(
@@ -79,6 +85,16 @@ watch(
   (newId, oldId) => {
     if (newId && newId !== oldId) {
       console.log(`Character ID changed to ${newId}, re-initializing...`);
+      runInitialization();
+    }
+  }
+);
+
+// 监听 client_id 的变化
+watch(
+  () => userStore.client_id,
+  (newId) => {
+    if (newId) {
       runInitialization();
     }
   }

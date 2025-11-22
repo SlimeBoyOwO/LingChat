@@ -37,7 +37,7 @@ class ResponsePublisher:
                 if response:
                     logger.info(f"Publishing message index {next_index_to_publish}")
                     await self.output_queue.put(response)
-                    await message_broker.publish("1", response.model_dump())
+                    # await message_broker.publish(self.client_id, response.model_dump())
                 
                 del self.publish_events[next_index_to_publish] 
                 
