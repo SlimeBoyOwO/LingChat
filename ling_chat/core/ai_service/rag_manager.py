@@ -14,7 +14,6 @@ class RAGManager:
         self.active_memory_system = None 
         self.character_id = 0
         
-        # 配置占位
         class Config: pass
         self.memory_config = Config()
         
@@ -64,9 +63,7 @@ class RAGManager:
 
         try:
             ms = self.active_memory_system
-            
-            # === 1. 分离 System Prompt 和 历史记录 ===
-            # current_context 通常包含 [SystemPrompt, Msg1, Msg2, ...]
+
             system_prompt_msg = None
             history_messages = []
             
@@ -76,46 +73,34 @@ class RAGManager:
             else:
                 history_messages = current_context
 
-            # === 2. 触发自动更新检查 ===
-            # 传入全量历史，让 memory.py 判断是否满足更新条件
             ms.check_and_trigger_auto_update(history_messages)
             
-            # === 3. 获取最新的记忆库文本 ===
             memory_text = ms.get_memory_prompt()
             memory_msg = {"role": "system", "content": memory_text}
             
-            # === 4. 智能切片 (Smart Slicing) ===
             # 核心逻辑：我们要发送给 LLM 的是 [已归档记忆] + [衔接上下文] + [未归档新消息]
             # last_processed_idx 指向未归档的第一条消息
-            
             # 计算切片起始点：
             # start_index = 已归档位置 - 回溯窗口 (例如 50 - 15 = 35)
             # 这样 LLM 能看到 35-50 (作为上下文) 以及 50-end (需要处理的新消息)
             slice_start_index = max(0, ms.last_processed_idx - ms.recent_window)
             
-            # 获取切片后的历史记录
             sliced_history = history_messages[slice_start_index:]
             
-            # 日志调试
             total_len = len(history_messages)
             kept_len = len(sliced_history)
             logger.debug(f"Memory Context: 总历史 {total_len} | 已归档至 {ms.last_processed_idx} | "
                          f"切片起始 {slice_start_index} | 实际发送 {kept_len} 条 (回溯窗口 {ms.recent_window})")
 
-            # === 5. 组装最终 Context ===
             final_context = []
             
-            # A. 放入人设 (System Prompt)
             if system_prompt_msg:
                 final_context.append(system_prompt_msg)
             
-            # B. 放入记忆库 (Memory Bank)
             final_context.append(memory_msg)
             
-            # C. 放入切片后的对话历史
             final_context.extend(sliced_history)
 
-            # === 6. 应用回 current_context (原地修改) ===
             current_context.clear()
             current_context.extend(final_context)
 
