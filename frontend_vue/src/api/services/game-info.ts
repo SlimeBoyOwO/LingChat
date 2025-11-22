@@ -13,11 +13,14 @@ export interface GameInfo {
   bubble_left: number;
 }
 
-export const getGameInfo = async (userId: string): Promise<GameInfo> => {
+export const getGameInfo = async (
+  client_id: string,
+  userId: string
+): Promise<GameInfo> => {
   try {
     // 拦截器已解构数据，response.data 直接就是 GameInfo
     const data = await http.get("/v1/chat/info/init", {
-      params: { user_id: userId },
+      params: { client_id: client_id, user_id: userId },
     });
     console.log(data); // 直接输出 GameInfo 数据
     return data;

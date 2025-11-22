@@ -29,9 +29,9 @@ export const actions = {
     this.currentStatus = status;
   },
 
-  async initializeGame(this: GameState, userId: string) {
+  async initializeGame(this: GameState, client_id: string, userId: string) {
     try {
-      const gameInfo = await getGameInfo(userId);
+      const gameInfo = await getGameInfo(client_id, userId);
 
       // 更新 gameStore 自己的状态
       this.character = "default";

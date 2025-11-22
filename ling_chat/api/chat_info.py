@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from fastapi import APIRouter
+from ling_chat.core.ai_service.core import AIService
 from ling_chat.core.service_manager import service_manager
 from ling_chat.database.user_model import UserModel
 from ling_chat.database.character_model import CharacterModel
@@ -12,26 +13,14 @@ router = APIRouter(prefix="/api/v1/chat/info", tags=["Chat Info"])
 
 
 @router.get("/init")
-async def init_web_infos(user_id: int):
+async def init_web_infos(client_id:str ,user_id: int):
     ai_service = service_manager.ai_service
     try:
         # 假如说ai_service没有被初始化，那么就为它初始化
-        if ai_service is None:
-            # dict の 两种访问方式
-            user_info = UserModel.get_user_by_id(user_id=user_id)
-            if user_info is None:
-                UserModel.create_user(username="admin", password="114514")
-                user_info = UserModel.get_user_by_id(user_id=user_id)
-            last_character_id = user_info.get("last_chat_character")
-            character = CharacterModel.get_character_by_id(last_character_id)
-            if character is not None and "resource_path" in character:
-                resource_path = Path(character["resource_path"])
-            else:
-                resource_path = user_data_path / "game_data/characters/诺一钦灵"
-
-            settings = Function.parse_enhanced_txt(str(resource_path / "settings.txt"))
-            settings["character_id"] = last_character_id
-            ai_service = service_manager.init_ai_service(settings)
+        if not ai_service:
+            ai_service = service_manager.init_ai_service()
+        
+        await service_manager.add_client(client_id)
 
         result = {
             "ai_name": ai_service.ai_name,
