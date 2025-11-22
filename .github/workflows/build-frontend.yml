@@ -79,3 +79,11 @@ jobs:
           git commit -m "chore: 自动构建前端 [skip ci]"
           git push origin build/devfrontend --force
         fi
+
+    - name: 无文件变化时 Rebase develop 分支
+      if: steps.changes.outputs.frontend == 'false'
+      run: |
+        git checkout build/devfronten
+        git fetch origin develop
+        git rebase origin/develop
+        git push origin build/devfrontend --force
