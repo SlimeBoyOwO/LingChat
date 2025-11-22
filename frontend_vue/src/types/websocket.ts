@@ -21,6 +21,7 @@ export enum WebSocketMessageTypes {
   MESSAGE = "message", // 用户发送的信息
   STATUS_UPDATE = "status_update", // 静态资源更新
   ERROR = "error",
+  CONNECTION = "connection_established", // 连接建立成功
 
   // 剧本模式下的消息类型
   SCRIPT_NARRATION = "narration", // 旁白
