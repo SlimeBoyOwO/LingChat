@@ -1,0 +1,7 @@
+Events:
+  - Type: Narration
+    Mode: Preset
+    Content: 新的故事开始了...
+EndCondition:
+  Type: Linear
+  NextUnitID: '123'

@@ -1,0 +1,8 @@
+Events:
+  - 'Type: Narration | Mode: Preset': 新场景...
+EndCondition:
+  Type: Branching
+  NextUnitID: 03_test
+  Branches:
+    A: 03_test
+    B: 04_test
