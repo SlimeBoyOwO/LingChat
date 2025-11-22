@@ -4,6 +4,7 @@ import time
 from typing import List, Dict, Optional, AsyncGenerator
 
 from ling_chat.core.ai_service.ai_logger import logger
+from ling_chat.core.ai_service.config import AIServiceConfig
 from ling_chat.core.ai_service.message_processor import MessageProcessor
 from ling_chat.core.ai_service.voice_maker import VoiceMaker
 from ling_chat.core.llm_providers.manager import LLMManager
@@ -22,13 +23,14 @@ from ling_chat.core.ai_service.message_system.stream_producer import StreamProdu
 
 class MessageGenerator:
     def __init__(self,
+                config: AIServiceConfig,
                 voice_maker: VoiceMaker,
                 message_processor: MessageProcessor,
                 translator: Translator,
                 llm_model: LLMManager,
                 rag_manager: Optional[RAGManager],
                 ai_logger: AILogger):
-
+        self.config = config
         self.use_rag = os.environ.get("USE_RAG", "False").lower() == "true"
         self.rag_manager = rag_manager if rag_manager else RAGManager() if self.use_rag else None
         self.voice_maker = voice_maker if voice_maker else VoiceMaker()

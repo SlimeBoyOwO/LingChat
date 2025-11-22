@@ -49,6 +49,7 @@ import {
 } from "../../../api/services/character";
 import type { Character as ApiCharacter } from "../../../types";
 import { useGameStore } from "../../../stores/modules/game";
+import { useUserStore } from "../../../stores/modules/user/user";
 
 interface CharacterCard {
   id: number;
@@ -61,6 +62,7 @@ const characters = ref<CharacterCard[]>([]);
 const userId = ref<number>(1);
 
 const gameStore = useGameStore();
+const userStore = useUserStore();
 
 const fetchCharacters = async (): Promise<CharacterCard[]> => {
   try {
@@ -92,7 +94,7 @@ const loadCharacters = async (): Promise<void> => {
 
 const updateSelectedStatus = async (): Promise<void> => {
   const userId = "1";
-  await gameStore.initializeGame(userId);
+  await gameStore.initializeGame(userStore.client_id, userId);
 };
 
 const selectCharacter = async (characterId: number): Promise<void> => {
