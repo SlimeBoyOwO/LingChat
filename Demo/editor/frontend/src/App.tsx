@@ -1,14 +1,7 @@
-/**
- * App.tsx
- * 
- * 主应用程序组件
- * 包含：ReactFlow 画布、顶部导航栏、右键菜单逻辑、以及与后端的 API 交互
- */
-
 import { useState, useCallback, useEffect } from 'react';
 import ReactFlow, { 
   Background,
-  BackgroundVariant, // 引入背景变体以支持网格线
+  BackgroundVariant,
   Controls, 
   MiniMap,
   useNodesState, 
@@ -23,7 +16,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import axios from 'axios';
 import jsyaml from 'js-yaml';
-import { PlusCircle, Cpu } from 'lucide-react';
+import { PlusCircle, Cpu, Sun, Moon } from 'lucide-react';
 
 import StoryNode from './StoryNode';
 import EditorPanel from './EditorPanel';
@@ -34,17 +27,17 @@ const nodeTypes = { storyNode: StoryNode };
 const API_URL = 'http://localhost:8000';
 
 /**
- * 自定义右键菜单组件
+ * 自定义右键菜单组件 (Neo Style)
  */
 const ContextMenu = ({ x, y, onClose, options }: { x: number, y: number, onClose: () => void, options: { label: string, action: () => void }[] }) => (
   <div 
-    className="fixed bg-black border border-gemini-orange z-50 shadow-[0_0_20px_rgba(255,153,0,0.2)] flex flex-col py-1 min-w-[160px]"
+    className="fixed bg-neo-bg border border-neo-main z-50 shadow-neo flex flex-col py-1 min-w-[160px] neo-bracket"
     style={{ top: y, left: x }}
   >
     {options.map((opt, i) => (
       <button 
         key={i} 
-        className="text-left px-4 py-2.5 text-xs font-bold text-gray-300 hover:bg-gemini-orange hover:text-black transition-colors tracking-wide font-mono"
+        className="text-left px-4 py-2.5 text-xs font-bold text-neo-text hover:bg-neo-main hover:text-neo-bg transition-colors tracking-wide font-mono"
         onClick={(e) => { e.stopPropagation(); opt.action(); onClose(); }}
       >
         {opt.label}
@@ -54,6 +47,12 @@ const ContextMenu = ({ x, y, onClose, options }: { x: number, y: number, onClose
 );
 
 export default function App() {
+  // --- 主题状态 ---
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  
+  // --- CRT 效果状态 ---
+  const [crtEnabled, setCrtEnabled] = useState(true);
+
   // ReactFlow 状态
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -65,6 +64,11 @@ export default function App() {
 
   // 右键菜单状态
   const [menu, setMenu] = useState<{x: number, y: number, type: 'NODE'|'EDGE', targetId: string, sourceFile?: string, handleId?: string} | null>(null);
+
+  // 切换主题副作用
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
 
   // --- API 交互 ---
 
@@ -84,7 +88,7 @@ export default function App() {
 
       // 1. 构建节点 (Nodes)
       let x = 0, y = 0;
-      const GRID_WIDTH = 450; // 加大间距适应网格
+      const GRID_WIDTH = 450;
       const MAX_PER_ROW = 4;
       
       for (let i = 0; i < fileList.length; i++) {
@@ -110,6 +114,11 @@ export default function App() {
       
       // 2. 构建连线 (Edges)
       const newEdges: Edge[] = [];
+      
+      // 定义颜色变量 (HEX) 以适配 ReactFlow (ReactFlow 较难直接使用 CSS 变量做连线)
+      const colorMain = theme === 'dark' ? '#FF9900' : '#CC3300';
+      const colorSub = theme === 'dark' ? '#00CCFF' : '#006D77';
+
       newNodes.forEach(node => {
         try {
           const yamlData = jsyaml.load(loadedFiles[node.id]) as StoryUnitData;
@@ -149,7 +158,7 @@ export default function App() {
 
           // 处理 Linear 连接
           if (end?.Type === 'Linear' && end.NextUnitID) {
-            newEdges.push(createEdge(end.NextUnitID, 'next', '#ff9900'));
+            newEdges.push(createEdge(end.NextUnitID, 'next', colorMain));
           } 
           // 处理分支连接
           else if (end?.Branches) {
@@ -157,7 +166,7 @@ export default function App() {
               let target = end.Branches![branchKey];
               if (typeof target === 'object') target = target.NextUnitID;
               if (target) {
-                newEdges.push(createEdge(target, branchKey, '#00bcd4'));
+                newEdges.push(createEdge(target, branchKey, colorSub));
               }
             });
           }
@@ -169,7 +178,8 @@ export default function App() {
     } catch (err) { console.error("Fetch failed:", err); }
   };
 
-  useEffect(() => { fetchFiles(); }, []);
+  // 当主题或挂载时获取
+  useEffect(() => { fetchFiles(); }, [theme]);
 
   // --- 交互逻辑 ---
 
@@ -208,7 +218,7 @@ export default function App() {
     } catch (e) {
       alert("连线失败：YAML 解析错误");
     }
-  }, [nodes]);
+  }, [nodes, theme]);
 
   // 左键点击节点：打开编辑器
   const onNodeClick: NodeMouseHandler = (_e, node) => {
@@ -355,24 +365,27 @@ export default function App() {
   // --- 菜单选项配置 ---
 
   const getNodeOptions = () => [
-    { label: '✏️ 重命名 (Rename)', action: () => handleRenameNode(menu!.targetId) },
-    { label: '🗑️ 删除 (Delete)', action: () => handleDeleteNode(menu!.targetId) }
+    { label: '✏️ RENAME UNIT', action: () => handleRenameNode(menu!.targetId) },
+    { label: '🗑️ DELETE UNIT', action: () => handleDeleteNode(menu!.targetId) }
   ];
 
   const getEdgeOptions = (edgeData: { sourceFile: string, handleId: string }) => [
-    { label: '🔴 设为红色', action: () => handleEdgeStyle(edgeData.sourceFile, edgeData.handleId, 'Color', '#ff4444') },
-    { label: '🟢 设为绿色', action: () => handleEdgeStyle(edgeData.sourceFile, edgeData.handleId, 'Color', '#44ff44') },
-    { label: '🔵 设为蓝色', action: () => handleEdgeStyle(edgeData.sourceFile, edgeData.handleId, 'Color', '#4444ff') },
-    { label: '⚪ 设为白色', action: () => handleEdgeStyle(edgeData.sourceFile, edgeData.handleId, 'Color', '#ffffff') },
-    { label: '➖ 设为实线', action: () => handleEdgeStyle(edgeData.sourceFile, edgeData.handleId, 'Style', 'solid') },
-    { label: '┄ 设为虚线', action: () => handleEdgeStyle(edgeData.sourceFile, edgeData.handleId, 'Style', 'dashed') },
-    { label: '··· 设为点线', action: () => handleEdgeStyle(edgeData.sourceFile, edgeData.handleId, 'Style', 'dotted') },
-    { label: '🗑️ 删除连线', action: () => handleDeleteEdge(edgeData.sourceFile, edgeData.handleId) },
+    { label: '🔴 COLOR: RED', action: () => handleEdgeStyle(edgeData.sourceFile, edgeData.handleId, 'Color', '#ff4444') },
+    { label: '🟢 COLOR: GREEN', action: () => handleEdgeStyle(edgeData.sourceFile, edgeData.handleId, 'Color', '#44ff44') },
+    { label: '🔵 COLOR: BLUE', action: () => handleEdgeStyle(edgeData.sourceFile, edgeData.handleId, 'Color', '#4444ff') },
+    { label: '⚪ COLOR: WHITE', action: () => handleEdgeStyle(edgeData.sourceFile, edgeData.handleId, 'Color', '#ffffff') },
+    { label: '➖ STYLE: SOLID', action: () => handleEdgeStyle(edgeData.sourceFile, edgeData.handleId, 'Style', 'solid') },
+    { label: '┄ STYLE: DASHED', action: () => handleEdgeStyle(edgeData.sourceFile, edgeData.handleId, 'Style', 'dashed') },
+    { label: '··· STYLE: DOTTED', action: () => handleEdgeStyle(edgeData.sourceFile, edgeData.handleId, 'Style', 'dotted') },
+    { label: '🗑️ DELETE LINK', action: () => handleDeleteEdge(edgeData.sourceFile, edgeData.handleId) },
   ];
 
   // --- 界面渲染 ---
   return (
-    <div className="w-screen h-screen bg-black flex flex-col relative" onClick={() => setMenu(null)}>
+    <div className="w-screen h-screen bg-neo-bg flex flex-col relative overflow-hidden text-neo-text transition-colors duration-300" onClick={() => setMenu(null)}>
+      
+      {/* Visual FX: Dynamic CRT Scanlines */}
+      <div className={`crt-overlay ${!crtEnabled ? 'crt-disabled' : ''}`}></div>
       
       {/* 全局右键菜单 */}
       {menu && (
@@ -384,51 +397,69 @@ export default function App() {
       )}
 
       {/* 
-        === 顶部导航栏 === 
-        已更新：符合 NEO STUDIO PRO 的视觉设计 (竖线 + 粗体文字)
+        === 顶部导航栏 (Neo Industrial Design) === 
       */}
-      <div className="h-16 border-b border-gemini-border flex items-center px-6 justify-between bg-[#050505] z-10 relative shadow-lg select-none">
+      <div className="h-16 border-b border-neo-border flex items-center px-6 justify-between bg-neo-bg/90 backdrop-blur-sm z-20 relative select-none">
         <div className="flex items-center h-full">
           
-          {/* 橙色竖线 */}
-          <div className="w-[3px] h-5 bg-gemini-orange mr-3"></div>
+          {/* 强调竖条 */}
+          <div className="w-[4px] h-6 bg-neo-main mr-4"></div>
 
           {/* Logo 文字组 */}
-          <div className="flex items-baseline" style={{ fontFamily: "'Rajdhani', sans-serif" }}>
-             <span className="text-2xl font-bold text-white">NEO</span>
-             <span className="text-2xl font-bold text-gemini-orange ml-2">STUDIO</span>
-             <span className="text-xs font-bold text-gemini-dim ml-3 tracking-[0.3em]">PRO</span> 
+          <div className="flex items-baseline font-display">
+             <span className="text-3xl font-bold text-neo-text">NEO</span>
+             <span className="text-3xl font-bold text-neo-main ml-2">STUDIO</span>
+             <span className="text-xs font-bold text-neo-dim ml-3 tracking-[0.3em] font-mono">PRO_V3.1</span> 
           </div>
           
           {/* 分隔符 */}
-          <div className="h-8 w-[1px] bg-gemini-border mx-6"></div>
+          <div className="h-8 w-[1px] bg-neo-border mx-8"></div>
           
           {/* 系统状态 */}
           <div className="flex items-center gap-2 opacity-80">
-              <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_5px_#0f0]"></span>
-              <span className="text-[10px] text-gemini-dim font-bold tracking-widest font-mono">SYSTEM ONLINE</span>
+              <span className={`w-1.5 h-1.5 rounded-full ${theme === 'dark' ? 'bg-green-500 shadow-[0_0_5px_#0f0]' : 'bg-green-700'} animate-pulse`}></span>
+              <span className="text-[10px] text-neo-dim font-bold tracking-widest font-mono">SYSTEM ONLINE</span>
           </div>
         </div>
 
-        <button 
-          onClick={async () => {
-             const name = prompt("请输入新单元文件名 (ID):");
-             if (!name) return;
-             const tpl = `Events:\n  - Type: Narration\n    Mode: Preset\n    Content: "New story..."\nEndCondition:\n  Type: Linear\n  NextUnitID: ""`;
-             await saveFileToBackend(name, tpl);
-             fetchFiles();
-          }}
-          className="gemini-btn gemini-btn-primary"
-        >
-          <PlusCircle size={16} /> NEW UNIT
-        </button>
+        <div className="flex items-center gap-4">
+            {/* CRT Toggle */}
+            <button 
+                onClick={() => setCrtEnabled(c => !c)}
+                className="neo-btn neo-btn-ghost p-2"
+                title="Toggle CRT Scanlines"
+            >
+                <Cpu size={16} className={crtEnabled ? 'text-neo-main' : 'text-neo-dim'} />
+            </button>
+            
+            {/* Theme Toggle */}
+            <button 
+                onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
+                className="neo-btn neo-btn-ghost p-2"
+                title="Toggle Protocol"
+            >
+                {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+
+            <button 
+                onClick={async () => {
+                const name = prompt("INPUT UNIT ID:");
+                if (!name) return;
+                const tpl = `Events:\n  - Type: Narration\n    Mode: Preset\n    Content: "Init..."\nEndCondition:\n  Type: Linear\n  NextUnitID: ""`;
+                await saveFileToBackend(name, tpl);
+                fetchFiles();
+                }}
+                className="neo-btn neo-btn-primary"
+            >
+                <PlusCircle size={16} /> NEW UNIT
+            </button>
+        </div>
       </div>
 
       {/* 
         === 画布区域 === 
-        已更新：背景使用网格线 (Lines)
       */}
-      <div className="flex-1 relative z-0">
+      <div className="flex-1 relative z-10">
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -440,21 +471,21 @@ export default function App() {
           onEdgeContextMenu={onEdgeContextMenu}
           nodeTypes={nodeTypes}
           fitView
-          className="bg-black"
+          className="bg-neo-bg transition-colors duration-300"
         >
-          {/* 网格背景配置: Variant.Lines, 深灰线条 */}
+          {/* 网格背景配置 */}
           <Background 
             variant={BackgroundVariant.Lines} 
-            color="#1a1a1a" 
+            color={theme === 'dark' ? 'rgba(255,153,0,0.1)' : 'rgba(60,50,40,0.1)'} 
             gap={40} 
             size={1} 
             lineWidth={1}
           />
-          <Controls className="!bg-black !border-gemini-border !fill-gemini-orange !rounded-none" />
+          <Controls className="!bg-neo-bg !border-neo-border !fill-neo-main !rounded-none shadow-neo" />
           <MiniMap 
-            nodeColor="#ff9900" 
-            maskColor="rgba(0, 0, 0, 0.8)" 
-            className="!bg-black !border !border-gemini-border !rounded-none"
+            nodeColor={theme === 'dark' ? '#FF9900' : '#CC3300'} 
+            maskColor={theme === 'dark' ? 'rgba(0,0,0,0.8)' : 'rgba(232,228,217,0.8)'}
+            className="!bg-neo-bg !border !border-neo-border !rounded-none"
           />
         </ReactFlow>
 
@@ -474,10 +505,10 @@ export default function App() {
       </div>
       
       {/* 底部状态栏 */}
-      <div className="absolute bottom-4 left-4 z-10 text-[10px] text-gemini-dim flex gap-4 pointer-events-none font-mono">
-        <span className="flex items-center gap-2"><Cpu size={10}/> MEMORY INTEGRITY: 100%</span>
+      <div className="absolute bottom-4 left-4 z-20 text-[10px] text-neo-dim flex gap-4 pointer-events-none font-mono select-none">
+        <span className="flex items-center gap-2"><Cpu size={10}/> MEMORY: 100%</span>
         <span className="opacity-50">|</span>
-        <span>SYNC ACTIVE</span>
+        <span>PROTOCOL: {theme.toUpperCase()}</span>
       </div>
     </div>
   );

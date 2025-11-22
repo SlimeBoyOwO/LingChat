@@ -30,7 +30,7 @@ const EditorPanel: React.FC<EditorPanelProps> = ({ fileName, content, onClose, o
       setError(null);
       setMode('GUI'); // 默认尝试 GUI
     } catch (e) {
-      setError("检测到复杂的 YAML 语法，已自动切换至源码模式。");
+      setError("COMPLEX YAML DETECTED. SWITCHING TO SOURCE MODE.");
       setMode('CODE');
     }
   }, [content]);
@@ -46,49 +46,49 @@ const EditorPanel: React.FC<EditorPanelProps> = ({ fileName, content, onClose, o
   };
 
   return (
-    <div className="fixed right-0 top-0 w-[500px] h-full bg-black/90 backdrop-blur-md border-l border-gemini-border shadow-[0_0_50px_rgba(0,0,0,0.8)] z-50 flex flex-col transition-transform duration-300">
+    <div className="fixed right-0 top-0 w-[550px] h-full bg-neo-panel/95 backdrop-blur-md border-l border-neo-border shadow-2xl z-40 flex flex-col transform transition-transform duration-300">
       
       {/* Header */}
-      <div className="h-16 flex items-center justify-between px-6 border-b border-gemini-border bg-gemini-panel relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-1 h-full bg-gemini-orange"></div>
+      <div className="h-16 flex items-center justify-between px-6 border-b border-neo-border bg-neo-bg relative">
+        <div className="absolute top-0 left-0 w-1 h-full bg-neo-main"></div>
         <div>
-          <div className="text-[10px] text-gemini-dim uppercase tracking-widest mb-1">EDITING UNIT</div>
-          <div className="text-gemini-orange font-bold font-mono text-xl tracking-wide truncate w-64">{fileName}</div>
+          <div className="text-[10px] text-neo-dim uppercase tracking-[0.2em] font-bold mb-1">EDITING UNIT</div>
+          <div className="text-neo-main font-display font-bold text-2xl tracking-wide truncate w-64 uppercase">{fileName}</div>
         </div>
         
         <div className="flex items-center gap-2">
-          <div className="flex bg-black border border-gemini-border rounded p-1">
+          <div className="flex bg-neo-bg border border-neo-border p-1">
             <button 
               onClick={() => setMode('GUI')} 
               disabled={!!error}
-              className={`p-1.5 rounded transition-all ${mode === 'GUI' ? 'bg-gemini-orange text-black' : 'text-gemini-dim hover:text-white'}`}
-              title="Visual Editor"
+              className={`p-1.5 transition-all ${mode === 'GUI' ? 'bg-neo-main text-neo-bg' : 'text-neo-dim hover:text-neo-text'}`}
+              title="VISUAL"
             >
               <Layout size={16} />
             </button>
             <button 
               onClick={() => setMode('CODE')} 
-              className={`p-1.5 rounded transition-all ${mode === 'CODE' ? 'bg-gemini-orange text-black' : 'text-gemini-dim hover:text-white'}`}
-              title="YAML Source"
+              className={`p-1.5 transition-all ${mode === 'CODE' ? 'bg-neo-main text-neo-bg' : 'text-neo-dim hover:text-neo-text'}`}
+              title="SOURCE"
             >
               <Code size={16} />
             </button>
           </div>
-          <button onClick={onClose} className="text-gemini-dim hover:text-white p-2 ml-2"><X size={20} /></button>
+          <button onClick={onClose} className="text-neo-dim hover:text-red-500 p-2 ml-2 transition-colors"><X size={20} /></button>
         </div>
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto relative bg-grid-dots">
+      <div className="flex-1 overflow-y-auto relative bg-grid-pattern bg-[length:20px_20px]">
         {error && mode === 'CODE' && (
-            <div className="bg-red-900/20 text-red-400 text-xs p-3 border-b border-red-900 font-mono">
+            <div className="bg-red-900/20 text-red-500 text-xs p-3 border-b border-red-900 font-mono">
                 ! SYSTEM WARNING: {error}
             </div>
         )}
 
         {mode === 'CODE' ? (
           <textarea
-            className="w-full h-full bg-transparent text-green-400 font-mono text-sm p-6 focus:outline-none resize-none leading-relaxed"
+            className="w-full h-full bg-transparent text-neo-sub font-mono text-sm p-6 focus:outline-none resize-none leading-relaxed"
             value={codeContent}
             onChange={(e) => setCodeContent(e.target.value)}
             spellCheck={false}
@@ -101,13 +101,13 @@ const EditorPanel: React.FC<EditorPanelProps> = ({ fileName, content, onClose, o
       </div>
 
       {/* Footer */}
-      <div className="p-6 border-t border-gemini-border bg-gemini-panel">
+      <div className="p-6 border-t border-neo-border bg-neo-bg">
         <button
           onClick={() => onSave(fileName, codeContent)}
-          className="gemini-btn gemini-btn-primary w-full py-3 text-sm"
+          className="neo-btn neo-btn-primary w-full py-3 text-sm"
         >
           <Save size={16} />
-          SAVE & SYNC
+          SAVE & SYNC DATA
         </button>
       </div>
     </div>

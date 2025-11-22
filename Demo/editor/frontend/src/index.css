@@ -2,33 +2,197 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* 🌑 Night Protocol (Default) */
+  --bg-primary: #080808;
+  --bg-secondary: #0e0e10;
+  --border-dim: #333333;
+  --accent-main: #FF9900; /* 琥珀橙 */
+  --accent-sub: #00CCFF;  /* 全息蓝 */
+  --text-main: #E0E0E0;
+  --text-dim: #666666;
+  --grid-line: rgba(255, 153, 0, 0.08);
+  --shadow-glow: 0 0 10px rgba(255, 153, 0, 0.2);
+  --crt-scanline: rgba(18, 16, 16, 0.1);
+  --selection: rgba(255, 153, 0, 0.3);
+}
+
+[data-theme='light'] {
+  /* ☀️ Day Protocol (Industrial Paper) */
+  --bg-primary: #E8E4D9;
+  --bg-secondary: #DND9CC;
+  --border-dim: #B0ACA0;
+  --accent-main: #CC3300; /* 工业锈 */
+  --accent-sub: #006D77;  /* 铜绿青 */
+  --text-main: #2B2B2B;   /* 重铅灰 */
+  --text-dim: #595545;    /* 油污褐 */
+  --grid-line: rgba(60, 50, 40, 0.08);
+  --shadow-glow: 4px 4px 0px rgba(0, 0, 0, 0.1); /* 硬阴影 */
+  --crt-scanline: rgba(89, 85, 69, 0.05);
+  --selection: rgba(204, 51, 0, 0.2);
+}
+
 body {
-  @apply bg-black text-gray-300 font-mono overflow-hidden;
+  background-color: var(--bg-primary);
+  color: var(--text-main);
+  font-family: 'JetBrains Mono', monospace;
+  overflow: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* === Visual FX Layer === */
+
+/* CRT 扫描线层 - 协议 A：夜间模式 (Night Protocol) - "Phosphor Gap" */
+.crt-overlay {
+  pointer-events: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 50%,      /* 仍带有黑色基调 */
+    rgba(0, 0, 0, 0.3) 50%
+  );
+  background-size: 100% 4px;
+  z-index: 9999;
+  animation: scanlineScroll 10s linear infinite, crtFlicker 0.15s infinite;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+}
+
+/* 协议 B：日间模式 (Day Protocol) - "Analog Interference" */
+[data-theme='light'] .crt-overlay {
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0) 50%,
+    rgba(139, 69, 19, 0.15) 50%
+  );
+  background-size: 100% 4px;
+  mix-blend-mode: multiply;
+}
+
+/* CRT 关闭状态 */
+.crt-overlay.crt-disabled {
+  opacity: 0;
+  animation: none;
+}
+
+/* 动画定义：垂直滚动 (The Roll) */
+@keyframes scanlineScroll {
+  0% { 
+    background-position: 0 0; 
+  }
+  100% { 
+    background-position: 0 100%; 
+  }
+}
+
+/* 动画定义：频闪 (The Flicker) */
+@keyframes crtFlicker {
+  0% { 
+    opacity: 0.97; 
+  }
+  50% { 
+    opacity: 1.0; 
+  }
+  100% { 
+    opacity: 0.98; 
+  }
 }
 
 /* 滚动条美化 */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { @apply bg-[#050505]; }
-::-webkit-scrollbar-thumb { @apply bg-gemini-border rounded; }
-::-webkit-scrollbar-thumb:hover { @apply bg-gemini-orange; }
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: var(--border-dim); }
+::-webkit-scrollbar-thumb:hover { background: var(--accent-main); }
 
-/* 通用 Gemini UI 组件类 */
-.gemini-input {
-  @apply w-full bg-black border border-gemini-border px-3 py-2 text-sm text-white focus:border-gemini-orange focus:outline-none transition-colors placeholder-gray-700 font-mono;
+/* === Neo UI Components === */
+
+/* 直角输入框 */
+.neo-input {
+  @apply w-full border px-3 py-2 text-sm transition-colors focus:outline-none bg-transparent font-mono;
+  border-color: var(--border-dim);
+  color: var(--text-main);
+  border-radius: 0px;
+}
+.neo-input:focus {
+  border-color: var(--accent-main);
+  box-shadow: var(--shadow-glow);
 }
 
-.gemini-select {
-  @apply w-full bg-black border border-gemini-border px-3 py-2 text-sm text-white focus:border-gemini-orange focus:outline-none appearance-none cursor-pointer font-mono;
+/* 直角下拉框 */
+.neo-select {
+  @apply neo-input appearance-none cursor-pointer;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23666' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 0.5rem center;
+  background-repeat: no-repeat;
+  background-size: 1.5em 1.5em;
 }
 
-.gemini-label {
-  @apply block text-[10px] uppercase tracking-widest text-gemini-dim mb-1 font-bold;
+/* 工业风格按钮 */
+.neo-btn {
+  @apply px-4 py-1.5 text-xs font-bold uppercase tracking-widest border transition-all flex items-center gap-2 justify-center cursor-pointer select-none;
+  border-radius: 0px;
+  font-family: 'Rajdhani', sans-serif;
+  position: relative;
+  overflow: hidden;
 }
 
-.gemini-btn {
-  @apply px-4 py-1.5 text-xs font-bold uppercase tracking-wider border transition-all flex items-center gap-2 justify-center cursor-pointer;
+/* 主按钮：填充色 */
+.neo-btn-primary {
+  background-color: var(--accent-main);
+  border-color: var(--accent-main);
+  color: var(--bg-primary); /* 反色文字 */
+}
+.neo-btn-primary:hover {
+  filter: brightness(1.1);
+  box-shadow: var(--shadow-glow);
+}
+.neo-btn-primary:active {
+  transform: translate(1px, 1px);
 }
 
-.gemini-btn-primary {
-  @apply bg-gemini-orange text-black border-gemini-orange hover:bg-white hover:text-black hover:shadow-glow;
+/* 幽灵按钮：仅边框 */
+.neo-btn-ghost {
+  border-color: var(--border-dim);
+  color: var(--text-dim);
+  background: transparent;
+}
+.neo-btn-ghost:hover {
+  border-color: var(--text-main);
+  color: var(--text-main);
+}
+
+/* 标签文字 */
+.neo-label {
+  @apply block text-[10px] uppercase tracking-widest mb-1 font-bold;
+  color: var(--text-dim);
+  font-family: 'Rajdhani', sans-serif;
+}
+
+/* 角落装饰 L-Shape (Utility Class) */
+.neo-bracket {
+  position: relative;
+}
+.neo-bracket::before {
+  content: '';
+  position: absolute;
+  top: -1px; left: -1px;
+  width: 8px; height: 8px;
+  border-top: 2px solid var(--accent-main);
+  border-left: 2px solid var(--accent-main);
+  pointer-events: none;
+  z-index: 10;
+}
+.neo-bracket::after {
+  content: '';
+  position: absolute;
+  bottom: -1px; right: -1px;
+  width: 8px; height: 8px;
+  border-bottom: 2px solid var(--accent-main);
+  border-right: 2px solid var(--accent-main);
+  pointer-events: none;
+  z-index: 10;
 }

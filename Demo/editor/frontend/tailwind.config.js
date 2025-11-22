@@ -4,24 +4,31 @@ export default {
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
+  // 启用 class 策略以便手动控制 dark mode
+  darkMode: 'class', 
   theme: {
     extend: {
       colors: {
-        'gemini-bg': '#050505',      // 极深黑背景
-        'gemini-panel': '#0e0e10',   // 面板黑
-        'gemini-border': '#2a2a2a',  // 边框灰
-        'gemini-orange': '#ff9900',  // 核心高亮橙
-        'gemini-dim': '#666666',     // 暗文
-        'gemini-blue': '#00bcd4',    // 分支流向色
+        neo: {
+          bg: 'var(--bg-primary)',
+          panel: 'var(--bg-secondary)',
+          border: 'var(--border-dim)',
+          main: 'var(--accent-main)',
+          sub: 'var(--accent-sub)',
+          text: 'var(--text-main)',
+          dim: 'var(--text-dim)',
+        }
       },
       fontFamily: {
-        mono: ['"JetBrains Mono"', 'monospace'], // 终端字体
-      },
-      boxShadow: {
-        'glow': '0 0 15px rgba(255, 153, 0, 0.2)', // 橙色光晕
+        mono: ['"JetBrains Mono"', 'monospace'],
+        display: ['"Rajdhani"', 'sans-serif'],
+        deco: ['"Orbitron"', 'sans-serif'],
       },
       backgroundImage: {
-        'grid-dots': 'radial-gradient(#333 1px, transparent 1px)', // 点阵背景
+        'grid-pattern': 'linear-gradient(var(--grid-line) 1px, transparent 1px), linear-gradient(90deg, var(--grid-line) 1px, transparent 1px)',
+      },
+      boxShadow: {
+        'neo': 'var(--shadow-glow)',
       }
     },
   },
