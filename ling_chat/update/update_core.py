@@ -650,7 +650,7 @@ class UpdateManager:
         return None
 
 class MyUpdateStrategy(UpdateStrategy):
-    def __init__(self, current_version: str, update_url: str, app_directory: str = "."):
+    def __init__(self, current_version: str, update_url: str, app_directory: str = "./"):
         super().__init__()  # 调用父类初始化
         self.current_version = current_version  # 覆盖默认值
         self.update_url = update_url.rstrip("/")
