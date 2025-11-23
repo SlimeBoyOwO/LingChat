@@ -44,7 +44,7 @@ class MyApplication:
         check_interval: int = 10,
     ):
         self.version = version
-        app_directory = app_dir or os.path.dirname(__file__)
+        app_directory = "./"
         strategy = MyUpdateStrategy(
             current_version=self.version,
             update_url=update_url,
