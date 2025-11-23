@@ -18,6 +18,7 @@
 import { ref, onMounted, watch } from "vue";
 import { getCurrentWindow, Window, LogicalSize } from "@tauri-apps/api/window";
 import { useGameStore } from "../../stores/modules/game";
+import { useUserStore } from "../../stores/modules/user/user";
 
 // 导入组件
 import AvatarContainer from "../game/AvatarContainer.vue";
@@ -29,14 +30,14 @@ import { eventQueue } from "../../core/events/event-queue";
 // 使用ref存储窗口实例
 const mainWindow = ref<Window | null>(null);
 const gameStore = useGameStore();
+const userStore = useUserStore();
 
 const runInitialization = async () => {
   // 初始化窗口实例
-  mainWindow.value = await getCurrentWindow();
 
   const userId = "1"; // TODO: 获取真实 userId
   try {
-    await gameStore.initializeGame(userId);
+    await gameStore.initializeGame(userStore.client_id, userId);
 
     // Action 成功后，处理仅与本组件相关的 UI 逻辑
     // if (gameAvatarRef.value) {
@@ -50,7 +51,19 @@ const runInitialization = async () => {
 };
 
 // 初始化游戏信息
-onMounted(runInitialization);
+onMounted(async () => {
+  mainWindow.value = getCurrentWindow();
+});
+
+// 监听 client_id 的变化
+watch(
+  () => userStore.client_id,
+  (newId) => {
+    if (newId) {
+      runInitialization();
+    }
+  }
+);
 
 // 对话输入框控制
 const showChatInput = ref(false);
