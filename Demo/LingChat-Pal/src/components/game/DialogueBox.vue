@@ -8,7 +8,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
 import { useGameStore } from "../../stores/modules/game";
 import { eventQueue } from "../../core/events/event-queue";
 
@@ -68,6 +68,7 @@ const handleDialogueClick = () => {
   z-index: 30; /* 确保在最顶层 */
   cursor: pointer;
   animation: fadeIn 0.3s ease-in-out;
+  opacity: 0;
 }
 
 .dialogue-content {

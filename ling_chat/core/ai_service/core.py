@@ -55,6 +55,7 @@ class AIService:
         # self.output_queue_name = self.client_id             # WebSocket输出队列
         self.client_tasks: Dict[str, asyncio.Task] = {}
         self.processing_task = asyncio.create_task(self._process_message_loop())
+        self.global_task = asyncio.create_task(self._process_global_messages())
 
         self.events_scheduler = EventsScheduler(self.config)
         self.import_settings(settings)
@@ -196,6 +197,38 @@ class AIService:
         self.config.clients.discard(client_id)
         # 消息处理循环会在下一次迭代时自动取消并清理任务
 
+    async def _process_global_messages(self):
+        """处理全局消息"""
+        global_queue_name = "ai_input_global"
+        try:
+            async for message in self.message_broker.subscribe(global_queue_name):
+                try:
+                    self.is_processing = True
+                    
+                    user_message = message.get("content", "")
+                    if user_message:
+                        self.message_generator.memory_init(self.memory)
+                        
+                        responses = []
+                        async for response in self.message_generator.process_message_stream(user_message):
+                            # 发送给所有客户端
+                            for client_id in self.config.clients:
+                                await message_broker.publish(client_id, response.model_dump())
+                            responses.append(response)
+                        
+                        logger.debug(f"全局消息处理完成，共生成 {len(responses)} 个响应片段")
+                    
+                    self.is_processing = False
+                    
+                except Exception as e:
+                    logger.error(f"处理全局消息时发生错误: {e}")
+                    self.is_processing = False
+        except asyncio.CancelledError:
+            logger.info("全局消息处理任务已被取消")
+        except Exception as e:
+            logger.error(f"全局消息处理发生严重错误: {e}")
+            raise
+
     async def shutdown(self):
         """优雅关闭服务"""
         logger.info("正在关闭AI服务...")
@@ -207,6 +240,13 @@ class AIService:
                 await task
             except asyncio.CancelledError:
                 pass
+        
+        # 取消全局消息处理任务
+        self.global_task.cancel()
+        try:
+            await self.global_task
+        except asyncio.CancelledError:
+            pass
         
         # 取消主处理任务
         self.processing_task.cancel()
