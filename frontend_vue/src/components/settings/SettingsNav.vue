@@ -72,10 +72,10 @@
         ><p class="button-text">高级设置</p></Button
       >
       <Button
-        ref="updateBth"
+        ref="updateBtn"
         type="nav"
         icon="update"
-        @click="() => switchTab('update', 'updateBth')"
+        @click="() => switchTab('update', 'updateBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'update' }"
         ><p class="button-text">检查更新</p></Button
       >
@@ -112,9 +112,11 @@ const advanceBtn = ref<ButtonRef | null>(null);
 const scheduleBtn = ref<ButtonRef | null>(null);
 const updateBtn = ref<ButtonRef | null>(null);
 
-// 统一处理标签切换
-const switchTab = (tabName: string, refName: string) => {
-  uiStore.setSettingsTab(tabName);
+// 设置可重设的值（使用 ref 存储，确保响应式或跨函数访问）
+const oldRefName = ref("textBtn");
+
+// 提取：根据 refName 获取按钮并移动指示器
+const handleIndicatorMove = (currentRefName: string) => {
   const buttonRef = {
     characterBtn,
     textBtn,
@@ -125,7 +127,7 @@ const switchTab = (tabName: string, refName: string) => {
     advanceBtn,
     scheduleBtn,
     updateBtn,
-  }[refName];
+  }[currentRefName];
 
   if (buttonRef?.value?.$el) {
     moveIndicator(buttonRef.value.$el);
@@ -139,6 +141,46 @@ const moveIndicator = (target: HTMLElement) => {
   indicator.value.style.left = `${target.offsetLeft}px`;
   indicator.value.style.width = `${target.offsetWidth}px`;
 };
+
+// 统一处理标签切换
+const switchTab = (tabName: string, refName: string) => {
+  // 记录当前 refName 到 oldRefName
+  oldRefName.value = refName;
+  uiStore.setSettingsTab(tabName);
+  
+  if (!indicator.value) return;
+
+  // 1. 设置过渡动画
+  indicator.value.style.transition = 'left 0.3s cubic-bezier(0.18, 0.89, 0.32, 1), width 0.3s cubic-bezier(0.18, 0.89, 0.32, 1)';
+  
+  // 2. 触发动画（移动指示器）
+  handleIndicatorMove(refName);
+
+  // 3. 使用 setTimeout 延迟执行 unset
+  //    延迟时间设置为 400ms，略长于动画时长 300ms，确保动画完全结束
+  setTimeout(() => {
+    if (indicator.value) { // 再次检查 indicator 是否存在，避免组件卸载后报错
+      indicator.value.style.transition = 'unset';
+    }
+  }, 400); // 延迟 400 毫秒
+};
+
+// 屏幕宽度变化监测器
+const setupResizeObserver = () => {
+  const resizeObserver = new ResizeObserver(entries => {
+    // 宽度变化时，从 oldRefName 提取 refName 并执行逻辑
+    if (oldRefName.value) {
+      handleIndicatorMove(oldRefName.value);
+    }
+  });
+
+  // 监听整个窗口的大小变化
+  resizeObserver.observe(window.document.body);
+
+};
+
+// 初始化监听器
+setupResizeObserver();
 
 // 初始化指示器位置
 const initIndicator = () => {
@@ -246,7 +288,6 @@ nav {
   background-color: var(--accent-color);
   border-radius: 2px;
   z-index: 1;
-  transition: left 0.3s ease-in-out, width 0.3s ease-in-out;
   box-shadow: 0 0 10px rgba(121, 217, 255, 0.4);
 }
 
@@ -269,20 +310,21 @@ nav {
   transform: rotate(90deg);
 }
 
+/* 在 html 的 width 低于 1220px 将会隐藏文字，避免文本换行 */
+@media (max-width: 1220px) {
+  .button-text {
+    display: none;
+  }
+}
+
 /* 新增媒体查询，用于适配窄屏幕 */
 @media (max-width: 768px) {
-  /* 1. 隐藏 Logo */
+  /* 隐藏 Logo */
   .settings-logo {
     display: none;
   }
 
-  /* 2. 隐藏按钮中的文字 */
-  .button-text {
-    /* 请将 .button-component 替换为 Button 组件的根元素类名 */
-    display: none;
-  }
-
-  /* 3. 调整导航栏布局 */
+  /* 调整导航栏布局 */
   nav {
     justify-content: space-around; /* 让仅有图标的按钮均匀分布 */
     flex-grow: 1; /* 占据全部可用空间 */
