@@ -4,7 +4,8 @@
       <input
         v-model="messageText"
         type="text"
-        placeholder="输入消息..."
+        :placeholder="placeholderText"
+        :readonly="!isInputEnabled"
         class="chat-input"
         @keyup.enter="sendMessage"
       />
@@ -29,8 +30,45 @@
 </template>
 
 <script setup lang="ts">
-import { ref, defineEmits, defineProps } from "vue";
+import { ref, watch, computed } from "vue";
 import { scriptHandler } from "../../api/websocket/handlers/script-handler";
+import { useGameStore } from "../../stores/modules/game";
+import { useUIStore } from "../../stores/modules/ui/ui";
+
+const gameStore = useGameStore();
+const uiStore = useUIStore();
+
+// 使用计算属性处理占位符文本
+const placeholderText = computed(() => {
+  switch (gameStore.currentStatus) {
+    case "input":
+      return uiStore.showPlayerHintLine || "输入消息...";
+    case "thinking":
+      return gameStore.avatar.think_message;
+    case "responding":
+      return "聊天ing~";
+    case "presenting":
+      return "";
+    default:
+      return "输入消息...";
+  }
+});
+
+// 监听状态变化 TODO: 这里不应该在这个单元执行
+watch(
+  () => gameStore.currentStatus,
+  (newStatus) => {
+    console.log("游戏状态变为 :", newStatus);
+    if (newStatus === "thinking") {
+      gameStore.avatar.emotion = "AI思考";
+    } else if (newStatus === "input") {
+      uiStore.showCharacterEmotion = "";
+    }
+  }
+);
+
+// 使用计算属性控制输入框是否可编辑
+const isInputEnabled = computed(() => gameStore.currentStatus === "input");
 
 // 定义组件属性
 const props = defineProps({
@@ -53,6 +91,12 @@ const sendMessage = () => {
     // 触发事件通知父组件
     emit("message-sent", messageText.value);
     messageText.value = "";
+    gameStore.currentStatus = "thinking";
+    gameStore.addToDialogHistory({
+      type: "message",
+      character: gameStore.avatar.user_name,
+      content: messageText,
+    });
   }
 };
 </script>

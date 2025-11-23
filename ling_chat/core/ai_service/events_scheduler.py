@@ -84,8 +84,7 @@ class EventsScheduler:
             await asyncio.sleep(seconds)
             if self.ai_name == schedule.character:
                 user_message:str = "{时间差不多到啦，" + self.user_name + "之前拜托你提醒他:\"" + schedule.content.get(next_time, "你写的程序的日程系统有BUG，记得去修") + "\"，和" + self.user_name + "主动搭话一下吧~}"
-                for client_id in self.config.clients:
-                    await message_broker.enqueue_ai_message(client_id, user_message)
+                await message_broker.enqueue_ai_message("global", user_message)
         
         self.proceed_next_nodification()
 
