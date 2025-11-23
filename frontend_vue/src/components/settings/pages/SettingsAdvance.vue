@@ -331,7 +331,7 @@ onMounted(async () => {
   background-color: var(--accent-color);
   border-radius: 6px;
   z-index: 0; /* 确保在链接文字下方 */
-  transition: top 0.3s ease-in-out, height 0.3s ease-in-out;
+  transition: top 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28), height 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28); /* 替换为更加有弹性的效果 */
 }
 
 .advanced-nav .adv-nav-category {
