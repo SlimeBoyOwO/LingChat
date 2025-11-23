@@ -33,8 +33,8 @@ let ctx: CanvasRenderingContext2D | null = null;
 
 // --- 拖尾效果状态 ---
 const points: TrailPoint[] = [];
-let maxPoints = 10; // 动态调整
-const fadeSpeed = 0.05;
+let maxPoints = 36; // 动态调整
+const fadeSpeed = 0.025;
 let animationId: number | null = null;
 let isAnimating = false;
 let lastMouseTime = 0;
@@ -77,8 +77,8 @@ const monitorPerformance = () => {
     // 自动降级效果
     if (currentFps < 30) {
       maxPoints = Math.max(5, maxPoints - 1);
-    } else if (currentFps > 50 && maxPoints < 15) {
-      maxPoints = Math.min(15, maxPoints + 1);
+    } else if (currentFps > 50 && maxPoints < 50) {
+      maxPoints = Math.min(50, maxPoints + 1);
     }
   }
 };
@@ -87,32 +87,59 @@ const monitorPerformance = () => {
 const drawTrail = () => {
   if (!ctx || points.length < 2) return;
 
-  ctx.beginPath();
-  ctx.moveTo(points[0].x, points[0].y);
+  ctx.lineWidth = 3;
+  ctx.lineCap = "butt"; // 使用 butt 消除连接处的重叠变黑问题
+  ctx.lineJoin = "round";
+  ctx.shadowBlur = 10;
+  ctx.shadowColor = "#87CEFA";
 
-  // 使用二次贝塞尔曲线连接点，创建平滑轨迹
+  let startX = points[0].x;
+  let startY = points[0].y;
+  let startAlpha = points[0].alpha;
+
+  // 分段绘制：使用线性渐变填充每一段，确保颜色过渡平滑
   for (let i = 1; i < points.length - 1; i++) {
-    const xc = (points[i].x + points[i + 1].x) * 0.5;
-    const yc = (points[i].y + points[i + 1].y) * 0.5;
-    ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+    const p = points[i];
+    const nextP = points[i + 1];
+    const xc = (p.x + nextP.x) * 0.5;
+    const yc = (p.y + nextP.y) * 0.5;
+    const endAlpha = (p.alpha + nextP.alpha) * 0.5;
+
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.quadraticCurveTo(p.x, p.y, xc, yc);
+    
+    // 创建每一段的渐变
+    const gradient = ctx.createLinearGradient(startX, startY, xc, yc);
+    gradient.addColorStop(0, `rgba(135, 206, 250, ${startAlpha})`);
+    gradient.addColorStop(1, `rgba(135, 206, 250, ${endAlpha})`);
+    ctx.strokeStyle = gradient;
+    ctx.stroke();
+
+    startX = xc;
+    startY = yc;
+    startAlpha = endAlpha;
   }
 
   // 连接到最后一个点
   if (points.length > 1) {
     const last = points[points.length - 1];
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
     ctx.lineTo(last.x, last.y);
+    
+    const gradient = ctx.createLinearGradient(startX, startY, last.x, last.y);
+    gradient.addColorStop(0, `rgba(135, 206, 250, ${startAlpha})`);
+    gradient.addColorStop(1, `rgba(135, 206, 250, ${last.alpha})`);
+    ctx.strokeStyle = gradient;
+    ctx.stroke();
+
+    // 绘制头部圆帽（因为使用了butt，需要手动补圆）
+    ctx.beginPath();
+    ctx.arc(last.x, last.y, 1.5, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(135, 206, 250, ${last.alpha})`;
+    ctx.fill();
   }
-
-  // 设置线条样式
-  const avgAlpha = Math.min(1, points[points.length - 1].alpha * 1.5);
-  ctx.strokeStyle = `rgba(135, 206, 250, ${avgAlpha})`;
-  ctx.lineWidth = 3;
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  ctx.shadowBlur = 10;
-  ctx.shadowColor = "#87CEFA";
-
-  ctx.stroke();
 };
 
 // --- 绘制粒子 ---
