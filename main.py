@@ -8,6 +8,29 @@ from pydantic import BaseModel
 import uvicorn
 from ling_chat.update.update_main import create_application
 import logging
+env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+try:
+    from dotenv import load_dotenv
+    load_dotenv(env_path)
+except Exception:
+    try:
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    v = v.strip().strip('"').strip("'")
+                    os.environ.setdefault(k.strip(), v)
+    except FileNotFoundError:
+        pass
+
+update_base = os.getenv("UPDATE_URL", "http://localhost:5100").strip()
+if update_base.endswith("/updates"):
+    update_url = update_base
+else:
+    update_url = f"{update_base.rstrip('/')}/updates"
 
 # 创建 FastAPI 应用
 update_app = FastAPI(title="Update API", docs_url=None, redoc_url=None)
@@ -29,7 +52,7 @@ logging.getLogger('uvicorn').disabled = True
 # 初始化更新应用
 update_application = create_application(
     version_file="version", 
-    update_url="http://localhost:5100/updates"
+    update_url=update_url
 )
 
 # 状态和配置
@@ -278,10 +301,7 @@ def run_application():
     api_thread = threading.Thread(target=start_update_api, daemon=True)
     api_thread.start()
 
-    print("更新API服务已在后台启动 (端口: 5001)")
-    print("主应用开始运行...")
-    
-    # 启动主应用
+    print("主应用开始运行 http://localhost:8765")
     from ling_chat import main
     main.main()
 
