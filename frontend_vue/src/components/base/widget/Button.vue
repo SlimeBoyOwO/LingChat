@@ -175,4 +175,9 @@ button {
   background-color: #555;
   color: white;
 }
+@media (max-width: 768px) {
+  .moreMenu {
+    background-color: rgba(0, 160, 255, 0.5) !important;
+  }
+}
 </style>

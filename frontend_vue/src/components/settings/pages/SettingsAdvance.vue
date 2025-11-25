@@ -8,7 +8,11 @@
         </div>
 
         <!-- 导航菜单 (左侧) -->
-        <nav ref="navContainerRef" class="advanced-nav">
+        <nav
+          ref="navContainerRef"
+          @click="() => removeMoreMenu()"
+          class="advanced-nav moreMenu"
+        >
           <!-- 滑动指示器 -->
           <div ref="indicatorRef" class="adv-nav-indicator"></div>
 
@@ -133,7 +137,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, reactive, watch, nextTick } from "vue";
+import { ref, onMounted, computed, reactive, watch, nextTick, getCurrentInstance } from "vue";
 import { MenuPage } from "../../ui";
 import { MenuItem } from "../../ui";
 
@@ -148,6 +152,11 @@ const saveStatus = reactive({
   message: "",
   color: "var(--success-color)",
 });
+const instance = getCurrentInstance();
+
+const emit = defineEmits([
+  'remove-more-menu-from-b', // B 组件触发 remove 时通知父组件
+]);
 
 // --- Refs for DOM elements ---
 const navContainerRef = ref<HTMLElement | null>(null);
@@ -262,10 +271,22 @@ const updateIndicatorPosition = () => {
     const top = activeLink.offsetTop;
     const height = activeLink.offsetHeight;
 
-    // 更新指示器的样式
-    indicatorRef.value.style.top = `${top}px`;
-    indicatorRef.value.style.height = `${height}px`;
+    // 更新指示器的样式 解决自动消失，在值非空时才应用参数
+    if(top){indicatorRef.value.style.top = `${top}px`;}
+    if(height){indicatorRef.value.style.height = `${height}px`;}
   }
+};
+
+// --- 监听导航容器尺寸变化 ---
+const setupNavResizeObserver = () => {
+  if (!navContainerRef.value) {return;}
+
+  const resizeObserver = new ResizeObserver(entries => {
+    updateIndicatorPosition();
+  });
+
+  // 监听导航容器
+  resizeObserver.observe(navContainerRef.value);
 };
 
 // 监视 activeSelection 的变化，并在 DOM 更新后移动指示器
@@ -285,11 +306,46 @@ onMounted(async () => {
   // 初始加载后，也需要更新一次指示器位置
   await nextTick();
   updateIndicatorPosition();
+  setupNavResizeObserver();
+});
+
+// 2. 原生 add/removeMoreMenu 逻辑（操作 B 组件自身 DOM）
+const addMoreMenu = () => {
+  const btnEl = navContainerRef.value as HTMLElement | null;
+  if (btnEl) {
+    // console.log('B 组件执行 addMoreMenu');
+    btnEl.classList.add("moreMenu");
+  }
+};
+
+// 2. 修改 removeMoreMenu 函数
+// 当这个函数被调用时，不仅执行自身逻辑，还要通知父组件
+const removeMoreMenu = () => {
+  const btnEl = navContainerRef.value as HTMLElement | null;
+  if (btnEl) {
+    btnEl.classList.remove("moreMenu");
+  }
+  
+  // 关键：向父组件发送事件
+  emit('remove-more-menu-from-b');
+};
+
+defineExpose({
+  addMoreMenu
 });
 </script>
 
 <style scoped>
 /* --- 变量定义 (如果需要) --- */
+
+/* --- 设置最大高度为父容器的100% --- */
+.advanced-settings-box,
+.advanced-settings-grid,
+.advanced-nav,
+.advanced-content {
+  height: 100%;
+  max-height: 100%;
+}
 
 .advanced-settings-box {
   background: rgba(255, 255, 255, 0.1);
@@ -298,7 +354,6 @@ onMounted(async () => {
   padding: 15px;
   width: 100%;
   max-width: var(--menu-max-width);
-  height: 580px; /* 如果内容过多，可以设置最大高度和滚动条 */
 }
 
 /* --- 高级设置页面基础布局 --- */
@@ -317,7 +372,6 @@ onMounted(async () => {
   overflow-y: auto; /* 当导航项过多时，使其可以独立滚动 */
   position: relative; /* 为指示器提供定位上下文 */
   border-right: 1px solid var(--accent-color);
-  max-height: 550px;
   scrollbar-width: thin;
 }
 
@@ -331,7 +385,7 @@ onMounted(async () => {
   background-color: var(--accent-color);
   border-radius: 6px;
   z-index: 0; /* 确保在链接文字下方 */
-  transition: top 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28), height 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28); /* 替换为更加有弹性的效果 */
+  transition: top 0.3s cubic-bezier(0.18, 0.89, 0.32, 1), height 0.3s cubic-bezier(0.18, 0.89, 0.32, 1); /* 替换为更加有弹性的效果 */
 }
 
 .advanced-nav .adv-nav-category {
@@ -384,7 +438,6 @@ onMounted(async () => {
   overflow-y: auto;
   display: flex;
   justify-content: center;
-  max-height: 550px;
 }
 
 .adv-content-page {
@@ -533,6 +586,41 @@ onMounted(async () => {
   }
   100% {
     transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 768px) {
+  .advanced-settings-box {
+    padding: 0px;
+  }
+  
+  .advanced-settings-grid {
+    display: block;
+    grid-template-columns: unset;
+    overflow: hidden;
+    border-radius: 12px;
+  }
+  
+  .advanced-nav {
+    left: -100%;
+    transition: left 0.3s cubic-bezier(0.18, 0.89, 0.32, 1);
+    z-index: 1;
+    backdrop-filter: blur(20px) saturate(180%);
+  }
+
+  .advanced-content {
+    position: relative;
+    padding: 20px;
+    top: -100%;
+  }
+
+  .advanced-settings-container {
+    padding-top: 0px;
+    padding-bottom: 10px;
+  }
+
+  .moreMenu {
+    left: 0%;
   }
 }
 </style>
