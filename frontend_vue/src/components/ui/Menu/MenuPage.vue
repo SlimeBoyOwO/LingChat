@@ -39,5 +39,13 @@
   margin-bottom: 30px;
   gap: 20px;
   max-width: var(--menu-max-width);
+  height: 100%;
+  max-height: 100%;
+}
+
+@media (max-width: 768px) {
+  .settings-columns {
+    padding: 0px;
+  }
 }
 </style>
