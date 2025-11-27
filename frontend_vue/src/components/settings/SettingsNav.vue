@@ -5,7 +5,7 @@
       alt="Logo"
       class="settings-logo"
     />
-    <nav>
+    <nav ref="navContainer">
       <div ref="indicator" class="nav-indicator"></div>
       <Button
         ref="characterBtn"
@@ -67,8 +67,11 @@
         ref="advanceBtn"
         type="nav"
         icon="advance"
-        @click="() => switchTab('advance', 'advanceBtn')"
-        :class="{ active: uiStore.currentSettingsTab === 'advance' }"
+        @click="() => {
+          switchTab('advance', 'advanceBtn');
+          removeMoreMenu();
+        }"
+        :class="{active: uiStore.currentSettingsTab === 'advance'}"
         ><p class="button-text">高级设置</p></Button
       >
       <Button
@@ -76,7 +79,7 @@
         type="nav"
         icon="update"
         @click="() => switchTab('update', 'updateBtn')"
-        :class="{ active: uiStore.currentSettingsTab === 'update' }"
+        :class="{ active: uiStore.currentSettingsTab === 'update'}"
         ><p class="button-text">检查更新</p></Button
       >
     </nav>
@@ -90,13 +93,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from "vue";
+import { ref, onMounted, watch, defineEmits, defineExpose } from "vue";
 import { useUIStore } from "../../stores/modules/ui/ui";
 import { Button } from "../base";
 import Icon from "../base/widget/Icon.vue";
 
+const props = defineProps<{}>();
+
+const emit = defineEmits([
+  'remove-more-menu-from-a', // A 组件触发 remove 时通知父组件
+]);
+
 const uiStore = useUIStore();
 const indicator = ref<HTMLElement | null>(null);
+const navContainer = ref<HTMLElement | null>(null);
 
 // 定义按钮ref的类型
 type ButtonRef = InstanceType<typeof Button>;
@@ -167,6 +177,7 @@ const switchTab = (tabName: string, refName: string) => {
 
 // 屏幕宽度变化监测器
 const setupResizeObserver = () => {
+  if (!navContainer.value) {return;}
   const resizeObserver = new ResizeObserver(entries => {
     // 宽度变化时，从 oldRefName 提取 refName 并执行逻辑
     if (oldRefName.value) {
@@ -174,13 +185,9 @@ const setupResizeObserver = () => {
     }
   });
 
-  // 监听整个窗口的大小变化
-  resizeObserver.observe(window.document.body);
-
+  // 监听nav的大小变化
+  resizeObserver.observe(navContainer.value);
 };
-
-// 初始化监听器
-setupResizeObserver();
 
 // 初始化指示器位置
 const initIndicator = () => {
@@ -225,6 +232,7 @@ const initIndicator = () => {
 // 组件挂载后初始化指示器
 onMounted(() => {
   initIndicator();
+  setupResizeObserver();
 });
 
 // 监听当前标签变化
@@ -237,7 +245,41 @@ watch(
 
 const closeSettings = () => {
   uiStore.toggleSettings(false);
+  // 将 refName 修改为默认的 "textBtn"
+  oldRefName.value = "textBtn";
 };
+
+const addMoreMenu = () => {
+  const btnEl = advanceBtn.value?.$el as HTMLElement | null;
+  if (btnEl) {
+    // console.log('A 组件内部执行 addMoreMenu');
+    btnEl.classList.add("moreMenu");
+  }
+};
+
+// 2. 定义 removeMoreMenu 方法
+const removeMoreMenu = () => {
+  const btnEl = advanceBtn.value?.$el as HTMLElement | null;
+  if (btnEl) {
+    btnEl.classList.remove("moreMenu");
+  }
+  
+  // 向父组件发送事件，告知“我这边已经执行了 remove”
+  emit('remove-more-menu-from-a');
+};
+
+// 3. 关键：将 removeMoreMenu 方法暴露出去，这样父组件才能调用
+defineExpose({
+  addMoreMenu
+});
+
+// 监听父组件转发的 B 组件事件（触发 A 组件自身逻辑）
+// 监听 B 组件的 add 事件，触发 A 组件的 addMoreMenu
+watch(
+  () => { /* 可通过 props 传递状态，或直接监听 emit 事件 */ },
+  () => {},
+  { immediate: true }
+);
 </script>
 
 <style>
@@ -287,7 +329,7 @@ nav {
   height: 4px;
   background-color: var(--accent-color);
   border-radius: 2px;
-  z-index: 1;
+  z-index: 10;
   box-shadow: 0 0 10px rgba(121, 217, 255, 0.4);
 }
 
