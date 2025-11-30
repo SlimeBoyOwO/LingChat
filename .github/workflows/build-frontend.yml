@@ -83,7 +83,7 @@ jobs:
     - name: 无文件变化时 Rebase develop 分支
       if: steps.changes.outputs.frontend == 'false'
       run: |
-        git checkout build/devfronten
+        git checkout build/devfrontend
         git fetch origin develop
         git rebase origin/develop
         git push origin build/devfrontend --force
