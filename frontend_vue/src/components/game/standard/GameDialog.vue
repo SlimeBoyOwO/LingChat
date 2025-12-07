@@ -110,6 +110,7 @@ watch(
       inputMessage.value = "";
       startTyping(newLine, uiStore.typeWriterSpeed);
     } else if (newLine === "" && newStatus === "input") {
+      if (isTyping) stopTyping();
       inputMessage.value = "";
     }
   }
