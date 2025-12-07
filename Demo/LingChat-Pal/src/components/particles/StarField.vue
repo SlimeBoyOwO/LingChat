@@ -50,7 +50,7 @@ class StarFieldRenderer {
       starSize: 2,
       attractorSize: 100,
       scrollSpeed: config.scrollSpeed,
-      directionChangeRate: 0,
+      directionChangeRate: 0.2,
       colors: config.colors,
     };
 
@@ -58,6 +58,10 @@ class StarFieldRenderer {
     this.dir = Math.PI;
     this.w = 0;
     this.h = 0;
+
+    this.fpsLimit = 30; // 限制为30fps
+    this.lastFrameTime = 0;
+    this.frameInterval = 1000 / this.fpsLimit;
 
     this.init();
   }
@@ -96,14 +100,19 @@ class StarFieldRenderer {
   }
 
   update = (timestamp) => {
+    // 帧率控制：如果距离上一帧时间太短，跳过此帧
+    if (timestamp - this.lastFrameTime < this.frameInterval) {
+      this.animationId = requestAnimationFrame(this.update);
+      return;
+    }
+
+    this.lastFrameTime = timestamp;
     if (this.w !== window.innerWidth || this.h !== window.innerHeight) {
       this.setupCanvas();
     }
 
     this.dir =
-      Math.sin((timestamp / 13289) * this.config.directionChangeRate) *
-        Math.PI +
-      0.5;
+      Math.sin((timestamp / 13289) * this.config.directionChangeRate) * Math.PI;
     this.ctx.clearRect(0, 0, this.w, this.h);
     this.ctx.globalCompositeOperation = "lighter";
 
