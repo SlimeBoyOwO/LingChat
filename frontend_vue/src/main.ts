@@ -11,6 +11,9 @@ import "./api/websocket/handlers/script-handler";
 
 import router from "./router"; // './router/index.js' 的简写
 
+// 导入日志转发插件
+import logForwarderPlugin from "./plugins/logForwarder";
+
 const app = createApp(App);
 
 connectWebSocket("ws://localhost:8765/ws");
@@ -19,4 +22,9 @@ initializeEventProcessors();
 
 app.use(createPinia());
 app.use(router);
+app.use(logForwarderPlugin, {
+  // 插件配置
+  appName: "LingChat",
+  version: "1.0.0",
+});
 app.mount("#app");
