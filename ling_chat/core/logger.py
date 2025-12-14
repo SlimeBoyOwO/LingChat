@@ -195,6 +195,10 @@ class Logger:
         """记录错误级别日志"""
         self._logger.error(message, exc_info=exc_info)
 
+    def exception(self, message: str, exc_info: bool = True):
+        """记录异常级别日志（等同于error级别但自动包含异常信息）"""
+        self._logger.error(message, exc_info=exc_info)
+
     def critical(self, message: str, exc_info: bool = False):
         """记录严重错误级别日志"""
         self._logger.critical(message, exc_info=exc_info)
