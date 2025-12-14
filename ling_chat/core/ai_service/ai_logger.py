@@ -56,19 +56,19 @@ class AILogger:
 
     def print_debug_message(self, current_context, rag_messages, messages):
         # if logger.should_print_context():
-        logger.info("\n------ 开发者模式：以下信息被发送给了llm ------")
+        logger.debug("\n------ 开发者模式：以下信息被发送给了llm ------")
         for message in current_context:
-            logger.info(f"Role: {message['role']}\nContent: {message['content']}\n")
+            logger.debug(f"Role: {message['role']}\nContent: {message['content']}\n")
 
         # 增加更详细的RAG信息日志
         if rag_messages:
-            logger.info("\n------ RAG增强信息详情 ------")
-            logger.info(f"原始消息数: {len(messages)}，RAG增强后消息数: {len(current_context)}")
-            logger.info(f"RAG增强消息数量: {len(rag_messages)}，位置: 系统提示后、用户消息前")
+            logger.debug("\n------ RAG增强信息详情 ------")
+            logger.debug(f"原始消息数: {len(messages)}，RAG增强后消息数: {len(current_context)}")
+            logger.debug(f"RAG增强消息数量: {len(rag_messages)}，位置: 系统提示后、用户消息前")
 
             # 计算并输出RAG消息的总长度（字符数）
             total_rag_chars = sum(len(msg.get('content', '')) for msg in rag_messages)
-            logger.info(f"RAG增强内容总长度: {total_rag_chars} 字符")
+            logger.debug(f"RAG增强内容总长度: {total_rag_chars} 字符")
 
             # 分析RAG消息类型统计
             role_counts = {}
@@ -77,6 +77,6 @@ class AILogger:
                 role_counts[role] = role_counts.get(role, 0) + 1
 
             role_stats = ", ".join([f"{role}: {count}" for role, count in role_counts.items()])
-            logger.info(f"RAG消息角色分布: {role_stats}")
+            logger.debug(f"RAG消息角色分布: {role_stats}")
 
-        logger.info("------ 结束 ------")
+        logger.debug("------ 结束 ------")
