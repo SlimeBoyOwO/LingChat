@@ -1,6 +1,50 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-  text-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+@import "tailwindcss";
+
+@theme {
+  /* 字体配置 */
+  --font-sans: , -apple-system, BlinkMacSystemFont, "Microsoft YaHei",
+    sans-serif;
+  --font-mono: , -apple-system, BlinkMacSystemFont, "Microsoft YaHei",
+    sans-serif;
+
+  /* 颜色配置 */
+  --color-brand: var(--accent-color);
+
+  /* 动画配置 */
+  --animate-blob: blob 7s infinite;
+  --animate-fade-in-up: fadeInUp 0.8s ease-out forwards;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+  }
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 8px; /* 垂直滚动条宽度 */
+  height: 8px; /* 水平滚动条高度 */
+}
+
+::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--accent-color);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-color);
 }

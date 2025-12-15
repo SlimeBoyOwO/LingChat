@@ -30,12 +30,10 @@ section {
 
 section.large {
   width: 100%;
-  max-width: var(--menu-max-width);
 }
 
 section.small {
   width: calc(50% - 12.5px); /* 减去一半的margin */
-  max-width: var(--menu-max-width-half);
 }
 
 div {

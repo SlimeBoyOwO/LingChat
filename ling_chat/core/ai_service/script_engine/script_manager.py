@@ -41,8 +41,6 @@ class ScriptManager:
         self.current_script_name = self.all_scripts[0]          # 默认导入第一个剧本
         
         self.init_script()
-    
-    
     def _copy_default_scripts(self):
         """从static目录复制默认剧本到用户数据目录"""
         static_scripts_dir = package_root / "static" / "game_data" / "scripts"
