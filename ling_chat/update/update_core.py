@@ -3,7 +3,6 @@ import time
 import threading
 import json
 import shutil
-import logging
 import requests
 import tempfile
 import hashlib
@@ -14,11 +13,7 @@ from typing import Optional, Dict, Any, Callable, List
 from enum import Enum
 from packaging import version
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger("UpdateManager")
+from ling_chat.core.logger import logger
 
 class UpdateStatus(Enum):
     IDLE = "idle"
