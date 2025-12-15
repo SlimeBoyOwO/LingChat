@@ -75,7 +75,7 @@ const backgroundStyle = computed(() => {
 
 // 星空就绪回调
 const onStarfieldReady = (instance) => {
-  console.log("Starfield ready", instance);
+  console.debug("Starfield ready", instance);
 };
 
 // 监听音效

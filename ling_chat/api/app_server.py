@@ -53,23 +53,25 @@ def run_app():
         logger.info("正在启动HTTP服务器...")
         log_level = os.getenv("LOG_LEVEL", "info").lower()
         
-        # 配置日志处理器，以便将日志写入文件
-        uvicorn_logger = logging.getLogger("uvicorn")
-        uvicorn_access_logger = logging.getLogger("uvicorn.access")
-        uvicorn_logger.handlers.clear()
-        uvicorn_access_logger.handlers.clear()
-        for handler in logger._logger.handlers:
-            uvicorn_logger.addHandler(handler)
-            uvicorn_access_logger.addHandler(handler)
-        uvicorn_logger.setLevel(logger.log_level)
-        uvicorn_access_logger.setLevel(logger.log_level)
+        # 更彻底地禁用 uvicorn 的默认日志配置
+        logging.getLogger("uvicorn").handlers.clear()
+        logging.getLogger("uvicorn.access").handlers.clear()
+        logging.getLogger("uvicorn.error").handlers.clear()
+        logging.getLogger("uvicorn.asgi").handlers.clear()
+        
+        # 禁用 uvicorn 的 propagate，防止日志传播到根日志记录器
+        logging.getLogger("uvicorn").propagate = False
+        logging.getLogger("uvicorn.access").propagate = False
+        logging.getLogger("uvicorn.error").propagate = False
+        logging.getLogger("uvicorn.asgi").propagate = False
         
         config = uvicorn.Config(
             app, 
             host=os.getenv('BACKEND_BIND_ADDR', '0.0.0.0'),
             port=int(os.getenv('BACKEND_PORT', '8765')),
             log_level=log_level,
-            log_config=None
+            log_config=None,  # 不使用 uvicorn 默认的日志配置
+            access_log=False  # 禁用访问日志
         )
         global app_server
         app_server = uvicorn.Server(config)

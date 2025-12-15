@@ -4,7 +4,7 @@
     <MenuItem title="🔗 更新服务连接状态" size="small">
       <div v-if="!backendConnected" class="connection-status error">
         <p>⚠️ 未连接到更新服务</p>
-        <p>请确保 update_api.py 正在运行在端口 5001</p>
+        <p>请确保主应用服务正在运行（一般不可能在非运行状态）</p>
         <Button type="big" @click="checkBackendConnection">重试连接</Button>
       </div>
       <div v-else class="connection-status success">
@@ -178,8 +178,8 @@ export default {
   },
   data() {
     return {
-      // API基础URL - 根据您的实际部署调整
-      apiBaseUrl: "http://localhost:5001/api/update",
+      // API基础URL - 使用相对路径
+      apiBaseUrl: "/api/v1/update",
 
       // 应用信息
       currentVersion: "未知",
@@ -281,7 +281,7 @@ export default {
           );
           setTimeout(() => this.checkBackendConnection(), 2000);
         } else {
-          this.errorMessage = `无法连接到更新服务。请确保 update_api.py 正在运行在端口 5001。错误: ${error.message}`;
+          this.errorMessage = `无法连接到更新服务。请确保主应用服务正在运行。错误: ${error.message}`;
           this.stopStatusPolling();
         }
       }
@@ -429,7 +429,7 @@ export default {
         error.message.includes("Network Error")
       ) {
         this.backendConnected = false;
-        this.errorMessage = `网络错误: 无法连接到更新服务。请确保 update_api.py 正在运行。`;
+        this.errorMessage = `网络错误: 无法连接到更新服务。请确保主应用服务正在运行。`;
         this.stopStatusPolling();
       } else if (error.response) {
         // 服务器返回了错误状态码
