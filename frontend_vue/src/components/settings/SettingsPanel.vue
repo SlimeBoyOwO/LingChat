@@ -5,19 +5,17 @@
     :style="{ opacity: overlayOpacity }"
   ></div>
   <div class="settings-panel" v-show="uiStore.showSettings">
-    <div class="header">
-      <SettingsNav
-        ref="settingsNavRef"
-        @remove-more-menu-from-a="onAddFromA"
-      />
+    <div class="h-[7vh] w-full">
+      <SettingsNav ref="settingsNavRef" @remove-more-menu-from-a="onAddFromA" />
     </div>
-    <div class="container">
+
+    <div class="w-full h-[93vh] overflow-auto">
       <SettingsSave v-show="uiStore.currentSettingsTab === 'save'" />
       <SettingsText v-show="uiStore.currentSettingsTab === 'text'" />
       <SettingsSound v-show="uiStore.currentSettingsTab === 'sound'" />
       <SettingsAdvance
         ref="settingsAdvanceRef"
-        v-show="uiStore.currentSettingsTab === 'advance'" 
+        v-show="uiStore.currentSettingsTab === 'advance'"
         @remove-more-menu-from-b="onAddFromB"
       />
       <SettingsHistory v-show="uiStore.currentSettingsTab === 'history'" />
@@ -51,7 +49,9 @@ const uiStore = useUIStore();
 
 // 获取 A 组件和 B 组件的 Ref 实例
 const settingsNavRef = ref<InstanceType<typeof SettingsNav> | null>(null);
-const settingsAdvanceRef = ref<InstanceType<typeof SettingsAdvance> | null>(null);
+const settingsAdvanceRef = ref<InstanceType<typeof SettingsAdvance> | null>(
+  null
+);
 
 // 添加延迟状态
 const shouldShowOverlay = ref(false);

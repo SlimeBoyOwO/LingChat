@@ -18,9 +18,11 @@
     "vue-tsc": "^2.2.12"
   },
   "dependencies": {
+    "@tailwindcss/vite": "^4.1.18",
     "axios": "^1.11.0",
     "frontend_vue": "link:",
     "pinia": "^3.0.3",
+    "tailwindcss": "^4.1.18",
     "vue-router": "^4.5.1"
   }
 }

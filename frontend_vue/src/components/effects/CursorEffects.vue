@@ -48,6 +48,11 @@ let frameCount = 0;
 let lastFpsTime = 0;
 let currentFps = 60;
 
+// --- 帧率限制 ---
+const TARGET_FPS = 60; // 目标帧率
+const FRAME_INTERVAL = 1000 / TARGET_FPS; // 帧间隔时间（毫秒）
+let lastFrameTime = 0; // 上一帧的时间
+
 // --- 初始化 Canvas ---
 const initCanvas = () => {
   const canvas = canvasRef.value;
@@ -199,7 +204,14 @@ const updatePoints = () => {
 };
 
 // --- 主绘制循环 ---
-const draw = () => {
+const draw = (timestamp: number) => {
+  // 帧率限制：只有当距离上一帧的时间超过设定的帧间隔时才执行绘制
+  if (timestamp - lastFrameTime < FRAME_INTERVAL) {
+    animationId = requestAnimationFrame(draw);
+    return;
+  }
+  
+  lastFrameTime = timestamp;
   monitorPerformance();
 
   if (!ctx || !canvasRef.value) {
@@ -264,6 +276,7 @@ const handleMouseMove = (e: MouseEvent) => {
   // 启动动画循环（如果未运行）
   if (!isAnimating && animationId === null) {
     isAnimating = true;
+    lastFrameTime = performance.now(); // 初始化帧时间
     animationId = requestAnimationFrame(draw);
   }
 
@@ -300,6 +313,7 @@ const handleClick = (e: MouseEvent) => {
   // 确保动画运行
   if (!isAnimating && animationId === null) {
     isAnimating = true;
+    lastFrameTime = performance.now(); // 初始化帧时间
     animationId = requestAnimationFrame(draw);
   }
 };

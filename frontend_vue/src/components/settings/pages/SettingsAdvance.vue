@@ -1,34 +1,47 @@
 <template>
   <MenuPage>
-    <div class="advanced-settings-box">
-      <div class="advanced-settings-grid">
+    <div
+      class="h-[87vh] w-full bg-white/10 p-0 md:p-4 rounded-lg overflow-auto"
+    >
+      <div class="block md:grid grid-cols-[280px_1fr] h-full">
         <!-- 加载动画 -->
-        <div v-if="isLoading" class="loader">
-          <div class="spinner"></div>
+        <div
+          v-if="isLoading"
+          class="fixed inset-0 bg-white/80 flex justify-center items-center z-50"
+        >
+          <div
+            class="border-5 border-gray-200 border-t-brand rounded-full w-12 h-12 animate-spin"
+          ></div>
         </div>
 
         <!-- 导航菜单 (左侧) -->
         <nav
           ref="navContainerRef"
           @click="() => removeMoreMenu()"
-          class="advanced-nav moreMenu"
+          class="-left-full md:left-0 blur transition-all duration-300 ease-[cubic-bezier(0.18,0.89,0.32,1.00)] md:blur-none h-full p-5 flex flex-col justify-start gap-6.25 overflow-y-auto relative border-r border-brand md:moreMenu:left-0"
         >
           <!-- 滑动指示器 -->
-          <div ref="indicatorRef" class="adv-nav-indicator"></div>
+          <div
+            ref="indicatorRef"
+            class="absolute left-5 w-[calc(100%-40px)] bg-brand rounded-lg z-0 transition-all duration-300 ease-[cubic-bezier(0.18,0.89,0.32,1.00)]"
+          ></div>
 
           <div
             v-for="(categoryData, categoryName) in configData"
             :key="categoryName"
-            class="adv-nav-category"
+            class="flex flex-col gap-1 w-full"
           >
-            <span class="category-title">{{ categoryName }}</span>
+            <span
+              class="text-base font-bold px-3.75 py-2.5 block rounded-lg mb-1 text-brand bg-white/10 backdrop-blur-xl backdrop-saturate-150 border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.1),inset_0_1px_1px_rgba(255,255,255,0.1)]"
+              >{{ categoryName }}</span
+            >
             <a
               v-for="(
                 subcategoryData, subcategoryName
               ) in categoryData.subcategories"
               :key="subcategoryName"
               href="#"
-              class="adv-nav-link"
+              class="block px-5 py-3 no-underline rounded-lg text-white transition-colors duration-200 relative z-10 adv-nav-link hover:bg-gray-200 hover:text-black active:text-white active:font-bold"
               :class="{
                 active: isActive(categoryName, subcategoryName.toString()),
               }"
@@ -42,12 +55,16 @@
         </nav>
 
         <!-- 设置内容区域 (右侧) -->
-        <main class="advanced-content">
-          <div v-if="selectedSubcategory" class="adv-content-page active">
-            <div class="advanced-settings-container">
-              <header>
-                <h2 class="adv-title">{{ activeSelection.subcategory }}</h2>
-                <p class="adv-description">
+        <main
+          class="flex justify-center h-full overflow-auto relative -top-full md:top-0 px-10 py-10 md:px-10 md:py-0"
+        >
+          <div v-if="selectedSubcategory" class="w-full active">
+            <div class="pt-2.5 overflow-auto">
+              <header class="pb-4 mb-6 border-b border-brand">
+                <h2 class="m-0 text-2xl text-brand font-semibold">
+                  {{ activeSelection.subcategory }}
+                </h2>
+                <p class="mt-2 text-base">
                   {{
                     selectedSubcategory.description ||
                     `修改 ${activeSelection.subcategory} 的相关配置`
@@ -55,18 +72,21 @@
                 </p>
               </header>
 
-              <form class="settings-form" @submit.prevent="saveSettings">
+              <form @submit.prevent="saveSettings">
                 <div
                   v-for="setting in selectedSubcategory.settings"
                   :key="setting.key"
-                  class="form-group"
+                  class="mb-6"
                 >
                   <!-- 根据 setting.type 渲染不同类型的输入控件 -->
 
                   <!-- Case: 布尔值 (Checkbox) -->
                   <template v-if="setting.type === 'bool'">
-                    <label class="checkbox-label">
+                    <label
+                      class="inline-flex items-center cursor-pointer font-medium text-brand"
+                    >
                       <input
+                        class="mr-2.5 w-4 h-4"
                         type="checkbox"
                         :id="setting.key"
                         :checked="setting.value.toLowerCase() === 'true'"
@@ -79,39 +99,53 @@
                       />
                       {{ setting.key }}
                     </label>
-                    <p class="description">{{ setting.description || "" }}</p>
+                    <p class="text-sm mt-1 mb-2 text-gray-300">
+                      {{ setting.description || "" }}
+                    </p>
                   </template>
 
                   <!-- Case: 文本域 (Textarea) -->
                   <template v-else-if="setting.type === 'textarea'">
-                    <label :for="setting.key">{{ setting.key }}</label>
-                    <p class="description">
+                    <label
+                      class="inline-flex items-center cursor-pointer font-medium text-brand"
+                      :for="setting.key"
+                      >{{ setting.key }}</label
+                    >
+                    <p class="text-sm mt-1 mb-2 text-gray-300">
                       {{ setting.description || "支持多行输入" }}
                     </p>
                     <textarea
                       :id="setting.key"
                       v-model="setting.value"
-                      class="form-control"
+                      class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
                       rows="8"
                     ></textarea>
                   </template>
 
                   <!-- Case: 默认文本 (Text Input) -->
                   <template v-else>
-                    <label :for="setting.key">{{ setting.key }}</label>
-                    <p class="description">{{ setting.description || "" }}</p>
+                    <label
+                      class="inline-flex items-center cursor-pointer font-medium text-brand"
+                      :for="setting.key"
+                      >{{ setting.key }}</label
+                    >
+                    <p class="text-sm mt-1 mb-2 text-gray-300">
+                      {{ setting.description || "" }}
+                    </p>
                     <input
                       type="text"
                       :id="setting.key"
                       v-model="setting.value"
-                      class="form-control"
+                      class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
                     />
                   </template>
                 </div>
               </form>
 
               <!-- 保存操作区域 -->
-              <div class="save-actions">
+              <div
+                class="w-18 px-5 py-2.5 bg-brand text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-colors duration-200 hover:bg-[#0056b3]"
+              >
                 <button @click="saveSettings">保存</button>
                 <p :style="{ color: saveStatus.color }">
                   {{ saveStatus.message }}
@@ -121,7 +155,7 @@
           </div>
           <div
             v-else-if="!isLoading && !Object.keys(configData).length"
-            class="adv-content-page active"
+            class="w-full active"
           >
             <div class="advanced-settings-container">
               <header>
@@ -137,7 +171,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, reactive, watch, nextTick, getCurrentInstance } from "vue";
+import {
+  ref,
+  onMounted,
+  computed,
+  reactive,
+  watch,
+  nextTick,
+  getCurrentInstance,
+} from "vue";
 import { MenuPage } from "../../ui";
 import { MenuItem } from "../../ui";
 
@@ -155,7 +197,7 @@ const saveStatus = reactive({
 const instance = getCurrentInstance();
 
 const emit = defineEmits([
-  'remove-more-menu-from-b', // B 组件触发 remove 时通知父组件
+  "remove-more-menu-from-b", // B 组件触发 remove 时通知父组件
 ]);
 
 // --- Refs for DOM elements ---
@@ -272,16 +314,22 @@ const updateIndicatorPosition = () => {
     const height = activeLink.offsetHeight;
 
     // 更新指示器的样式 解决自动消失，在值非空时才应用参数
-    if(top){indicatorRef.value.style.top = `${top}px`;}
-    if(height){indicatorRef.value.style.height = `${height}px`;}
+    if (top) {
+      indicatorRef.value.style.top = `${top}px`;
+    }
+    if (height) {
+      indicatorRef.value.style.height = `${height}px`;
+    }
   }
 };
 
 // --- 监听导航容器尺寸变化 ---
 const setupNavResizeObserver = () => {
-  if (!navContainerRef.value) {return;}
+  if (!navContainerRef.value) {
+    return;
+  }
 
-  const resizeObserver = new ResizeObserver(entries => {
+  const resizeObserver = new ResizeObserver((entries) => {
     updateIndicatorPosition();
   });
 
@@ -325,302 +373,12 @@ const removeMoreMenu = () => {
   if (btnEl) {
     btnEl.classList.remove("moreMenu");
   }
-  
+
   // 关键：向父组件发送事件
-  emit('remove-more-menu-from-b');
+  emit("remove-more-menu-from-b");
 };
 
 defineExpose({
-  addMoreMenu
+  addMoreMenu,
 });
 </script>
-
-<style scoped>
-/* --- 变量定义 (如果需要) --- */
-
-/* --- 设置最大高度为父容器的100% --- */
-.advanced-settings-box,
-.advanced-settings-grid,
-.advanced-nav,
-.advanced-content {
-  height: 100%;
-  max-height: 100%;
-}
-
-.advanced-settings-box {
-  background: rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 15px;
-  width: 100%;
-  max-width: var(--menu-max-width);
-}
-
-/* --- 高级设置页面基础布局 --- */
-.advanced-settings-grid {
-  display: grid;
-  grid-template-columns: 280px 1fr; /* 侧边栏固定宽度，内容区自适应 */
-}
-
-/* --- 高级设置侧边导航栏 --- */
-.advanced-nav {
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  gap: 25px;
-  overflow-y: auto; /* 当导航项过多时，使其可以独立滚动 */
-  position: relative; /* 为指示器提供定位上下文 */
-  border-right: 1px solid var(--accent-color);
-  scrollbar-width: thin;
-}
-
-/* 二级导航滑动指示器 */
-.adv-nav-indicator {
-  position: absolute;
-  top: 0; /* JS会更新 */
-  left: 20px; /* 左右留出一些边距 */
-  width: calc(100% - 40px); /* 左右留出一些边距 */
-  height: 0; /* JS会更新 */
-  background-color: var(--accent-color);
-  border-radius: 6px;
-  z-index: 0; /* 确保在链接文字下方 */
-  transition: top 0.3s cubic-bezier(0.18, 0.89, 0.32, 1), height 0.3s cubic-bezier(0.18, 0.89, 0.32, 1); /* 替换为更加有弹性的效果 */
-}
-
-.advanced-nav .adv-nav-category {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  width: 100%;
-}
-
-.advanced-nav .category-title {
-  font-size: 16px;
-  font-weight: bold;
-  padding: 10px 15px;
-  display: block;
-  border-radius: 8px;
-  margin-bottom: 5px;
-
-  color: var(--accent-color);
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.125);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1),
-    inset 0 1px 1px rgba(255, 255, 255, 0.1);
-}
-
-.advanced-nav .adv-nav-link {
-  display: block;
-  padding: 12px 20px;
-  text-decoration: none;
-  border-radius: 6px;
-  color: #ffffff;
-  transition: background-color 0.2s, color 0.2s;
-  position: relative; /* 确保文字在指示器上方 */
-  z-index: 1; /* 确保文字在指示器上方 */
-}
-
-.advanced-nav .adv-nav-link:hover:not(.active) {
-  background-color: #e5e7eb;
-}
-
-.advanced-nav .adv-nav-link.active {
-  color: white;
-  font-weight: bold;
-}
-
-/* --- 高级设置内容区 --- */
-.advanced-content {
-  padding: 0 40px;
-  overflow-y: auto;
-  display: flex;
-  justify-content: center;
-}
-
-.adv-content-page {
-  width: 100%;
-  max-width: 900px;
-}
-
-.advanced-settings-container {
-  padding-top: 10px;
-}
-
-.advanced-settings-container header {
-  padding-bottom: 15px;
-  margin-bottom: 25px;
-  border-bottom: 1px solid var(--accent-color);
-}
-
-.advanced-settings-container .adv-title {
-  margin: 0;
-  font-size: 24px;
-  color: var(--accent-color);
-  font-weight: 600;
-}
-
-.advanced-settings-container .adv-description {
-  margin: 8px 0 0;
-  font-size: 16px;
-}
-
-.settings-form {
-  max-width: 800px; /* 限制最大宽度，在宽屏上更美观 */
-}
-
-.form-group {
-  margin-bottom: 24px;
-}
-
-.form-group label:not(.checkbox-label) {
-  display: block;
-  font-weight: bold;
-  margin-bottom: 6px;
-  color: var(--accent-color);
-}
-
-.form-group .description {
-  font-size: 13px;
-  margin-top: 4px;
-  margin-bottom: 8px;
-}
-
-.form-group .form-control {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #fff;
-  border-radius: 8px;
-  font-size: 15px;
-  font-family: inherit;
-  transition: border-color 0.2s, box-shadow 0.2s;
-  resize: vertical;
-
-  color: #fff;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.125);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1),
-    inset 0 1px 1px rgba(255, 255, 255, 0.1);
-}
-
-.form-group .form-control:focus {
-  outline: none;
-  border-color: var(--accent-color);
-  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.2);
-}
-
-/* Checkbox Style */
-.form-group .checkbox-label {
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-  font-weight: 500;
-  color: var(--accent-color);
-}
-
-.form-group .checkbox-label input[type="checkbox"] {
-  margin-right: 10px;
-  width: 16px;
-  height: 16px;
-  accent-color: var(--accent-color);
-}
-
-/* --- 保存操作区域 --- */
-.save-actions {
-  margin-top: 30px;
-  display: flex;
-  align-items: center;
-  gap: 20px;
-}
-
-.save-actions button {
-  padding: 10px 20px;
-  background-color: var(--accent-color);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 15px;
-  font-weight: 500;
-  transition: background-color 0.2s;
-}
-
-.save-actions button:hover {
-  background-color: #0056b3;
-}
-
-.save-actions p {
-  font-weight: bold;
-}
-
-/* --- 加载动画 --- */
-.loader {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(255, 255, 255, 0.8);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 9999;
-}
-
-.spinner {
-  border: 5px solid #f3f3f3;
-  border-top: 5px solid var(--accent-color);
-  border-radius: 50%;
-  width: 50px;
-  height: 50px;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
-}
-
-@media (max-width: 768px) {
-  .advanced-settings-box {
-    padding: 0px;
-  }
-  
-  .advanced-settings-grid {
-    display: block;
-    grid-template-columns: unset;
-    overflow: hidden;
-    border-radius: 12px;
-  }
-  
-  .advanced-nav {
-    left: -100%;
-    transition: left 0.3s cubic-bezier(0.18, 0.89, 0.32, 1);
-    z-index: 1;
-    backdrop-filter: blur(20px) saturate(180%);
-  }
-
-  .advanced-content {
-    position: relative;
-    padding: 20px;
-    top: -100%;
-  }
-
-  .advanced-settings-container {
-    padding-top: 0px;
-    padding-bottom: 10px;
-  }
-
-  .moreMenu {
-    left: 0%;
-  }
-}
-</style>
