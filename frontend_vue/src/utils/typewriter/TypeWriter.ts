@@ -168,6 +168,12 @@ export class TypeWriter {
     this.isFinished = false;
   }
 
+  public clear(): void {
+    this.element.value = "";
+    this.element.textContent = "";
+    this.textBuffers = "";
+  }
+
   public checkFinished(): boolean {
     return this.isFinished;
   }
