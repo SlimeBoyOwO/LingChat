@@ -34,10 +34,15 @@ cd D:\NoiProjects\GitHub\temp
 
 2. 然后，使用下面的命令克隆（需要有 Git 环境，不会问 AI）
 
+方式一:
 ```
 git clone https://github.com/SlimeBoyOwO/LingChat.git
 cd LingChat
 git checkout develop
+```
+方式二:
+```
+git clone -b develop https://github.com/SlimeBoyOwO/LingChat.git
 ```
 
 3. 这样，你就获取了 LingChat 的源码仓库，并且切换到了 develop 开发分支
