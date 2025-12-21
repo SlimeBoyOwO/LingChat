@@ -109,8 +109,9 @@ watch(
     if (newLine && newLine !== "" && newStatus === "responding") {
       inputMessage.value = "";
       startTyping(newLine, uiStore.typeWriterSpeed);
-    } else if (newLine === "" && newStatus === "input") {
-      if (isTyping) stopTyping();
+    } else if (newStatus === "input") {
+      // 只要进入 input 状态就清空，不管 newLine 是什么
+      stopTyping();
       inputMessage.value = "";
     }
   }
