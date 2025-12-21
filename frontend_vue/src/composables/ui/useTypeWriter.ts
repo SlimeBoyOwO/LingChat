@@ -22,6 +22,7 @@ export function useTypeWriter(
 
   const stopTyping = () => {
     typeWriter.value?.stop();
+    typeWriter.value?.clear();
     isTyping.value = false;
   };
 
