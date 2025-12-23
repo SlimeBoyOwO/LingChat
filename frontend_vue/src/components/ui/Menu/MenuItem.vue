@@ -11,14 +11,14 @@
 const props = defineProps({
   title: {
     type: String,
-    default: "默认标题",
+    default: '默认标题',
   },
   size: {
-    type: String as () => "small" | "large",
-    default: "large",
-    validator: (value: string) => ["small", "large"].includes(value),
+    type: String as () => 'small' | 'large',
+    default: 'large',
+    validator: (value: string) => ['small', 'large'].includes(value),
   },
-});
+})
 </script>
 
 <style scoped>

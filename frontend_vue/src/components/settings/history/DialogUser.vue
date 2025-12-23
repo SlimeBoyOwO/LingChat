@@ -1,11 +1,10 @@
 <template>
-    <span class="name">{{ name }}</span>
-    <span>: </span>
-    <span class="content">{{ content }}</span>
-</template >
+  <span class="name">{{ name }}</span>
+  <span>: </span>
+  <span class="content">{{ content }}</span>
+</template>
 
 <script setup lang="ts">
-
 const props = defineProps({
   name: {
     type: String,
@@ -15,12 +14,10 @@ const props = defineProps({
     type: String,
     require: true,
   },
-});
-
+})
 </script>
 <style scoped>
-
-span  {
+span {
   vertical-align: middle;
 }
 
@@ -31,5 +28,4 @@ span  {
 .symbol {
   font-weight: bold;
 }
-
 </style>

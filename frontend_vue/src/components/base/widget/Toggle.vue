@@ -1,12 +1,12 @@
 <template>
   <div>
-    <input 
+    <input
       type="checkbox"
       :id="id"
       :checked="checked"
       @change="$emit('change', value)"
       v-model="value"
-    >
+    />
     <label :for="id">
       <slot></slot>
     </label>
@@ -14,7 +14,6 @@
 </template>
 
 <script setup lang="ts">
-
 // 导入外部模块
 import { ref, onMounted } from 'vue'
 
@@ -27,9 +26,7 @@ const props = defineProps({
 })
 
 // 定义组件事件
-const emit = defineEmits([
-  'change'
-])
+const emit = defineEmits(['change'])
 
 // 定义动态变量
 const id = ref()
@@ -41,11 +38,9 @@ const value = ref()
 onMounted(() => {
   id.value = Math.random().toString(36).substring(2, 9)
 })
-
 </script>
 
 <style scoped>
-
 div {
   display: flex;
   align-items: center;
@@ -90,7 +85,9 @@ label::after {
   transition: all 0.3s ease;
   transform: translateY(-50%);
   background: linear-gradient(135deg, #ffffff, #f0f0f0);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.1);
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.3),
+    0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 input:checked + label::before {
@@ -102,7 +99,8 @@ input:checked + label::before {
 input:checked + label::after {
   left: 26px;
   background: linear-gradient(135deg, var(--accent-color), #64b5f6);
-  box-shadow: 0 3px 8px rgba(121, 217, 255, 0.4), 0 1px 3px rgba(0, 0, 0, 0.2);
+  box-shadow:
+    0 3px 8px rgba(121, 217, 255, 0.4),
+    0 1px 3px rgba(0, 0, 0, 0.2);
 }
-
 </style>

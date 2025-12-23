@@ -13,12 +13,9 @@
             <template #actions>
               <Button
                 type="select"
-                :class="[
-                  'character-select-btn',
-                  { selected: isSelected(character.id) },
-                ]"
+                :class="['character-select-btn', { selected: isSelected(character.id) }]"
                 @click="selectCharacter(character.id)"
-                >{{ isSelected(character.id) ? "√ 选中" : "选择" }}</Button
+                >{{ isSelected(character.id) ? '√ 选中' : '选择' }}</Button
               >
             </template>
           </CharacterCard>
@@ -37,122 +34,117 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
-import { MenuPage } from "../../ui";
-import { MenuItem } from "../../ui";
-import { Button } from "../../base";
-import CharacterCard from "../../ui/Menu/CharacterCard.vue";
-import CharacterList from "../../ui/Menu/CharacterList.vue";
-import {
-  characterGetAll,
-  characterSelect,
-} from "../../../api/services/character";
-import type { Character as ApiCharacter } from "../../../types";
-import { useGameStore } from "../../../stores/modules/game";
-import { useUserStore } from "../../../stores/modules/user/user";
+import { ref, onMounted } from 'vue'
+import { MenuPage } from '../../ui'
+import { MenuItem } from '../../ui'
+import { Button } from '../../base'
+import CharacterCard from '../../ui/Menu/CharacterCard.vue'
+import CharacterList from '../../ui/Menu/CharacterList.vue'
+import { characterGetAll, characterSelect } from '../../../api/services/character'
+import type { Character as ApiCharacter } from '../../../types'
+import { useGameStore } from '../../../stores/modules/game'
+import { useUserStore } from '../../../stores/modules/user/user'
 
 interface CharacterCard {
-  id: number;
-  title: string;
-  info: string;
-  avatar: string;
+  id: number
+  title: string
+  info: string
+  avatar: string
 }
 
-const characters = ref<CharacterCard[]>([]);
-const userId = ref<number>(1);
+const characters = ref<CharacterCard[]>([])
+const userId = ref<number>(1)
 
-const gameStore = useGameStore();
-const userStore = useUserStore();
+const gameStore = useGameStore()
+const userStore = useUserStore()
 
 const fetchCharacters = async (): Promise<CharacterCard[]> => {
   try {
-    const list = await characterGetAll();
+    const list = await characterGetAll()
     return list.map((char: ApiCharacter) => ({
       id: parseInt(char.character_id),
       title: char.title,
-      info: char.info || "暂无角色描述",
+      info: char.info || '暂无角色描述',
       avatar: char.avatar_path
-        ? `/api/v1/chat/character/character_file/${encodeURIComponent(
-            char.avatar_path
-          )}`
-        : "../pictures/characters/default.png",
-    }));
+        ? `/api/v1/chat/character/character_file/${encodeURIComponent(char.avatar_path)}`
+        : '../pictures/characters/default.png',
+    }))
   } catch (error) {
-    console.error("获取角色列表失败:", error);
-    return [];
+    console.error('获取角色列表失败:', error)
+    return []
   }
-};
+}
 
 const loadCharacters = async (): Promise<void> => {
   try {
-    const characterData = await fetchCharacters();
-    characters.value = characterData;
+    const characterData = await fetchCharacters()
+    characters.value = characterData
   } catch (error) {
-    console.error("加载角色失败:", error);
+    console.error('加载角色失败:', error)
   }
-};
+}
 
 const updateSelectedStatus = async (): Promise<void> => {
-  const userId = "1";
-  await gameStore.initializeGame(userStore.client_id, userId);
-};
+  const userId = '1'
+  await gameStore.initializeGame(userStore.client_id, userId)
+}
 
 const selectCharacter = async (characterId: number): Promise<void> => {
   try {
     await characterSelect({
       user_id: userId.value.toString(),
       character_id: characterId.toString(),
-    });
-    updateSelectedStatus();
+    })
+    updateSelectedStatus()
   } catch (error) {
-    console.error("切换角色失败:", error);
+    console.error('切换角色失败:', error)
   }
-};
+}
 
 const refreshCharacters = async (): Promise<void> => {
   try {
-    const response = await fetch("/api/v1/chat/character/refresh_characters", {
-      method: "POST",
+    const response = await fetch('/api/v1/chat/character/refresh_characters', {
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
       },
-    });
+    })
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      throw new Error(`HTTP error! status: ${response.status}`)
     }
 
-    await response.json();
-    alert("刷新成功");
-    await loadCharacters(); // 重新加载角色列表
+    await response.json()
+    alert('刷新成功')
+    await loadCharacters() // 重新加载角色列表
   } catch (error) {
-    alert("刷新失败");
-    console.error("刷新失败:", error);
+    alert('刷新失败')
+    console.error('刷新失败:', error)
   }
-};
+}
 
 const openCreativeWeb = async (): Promise<void> => {
   try {
-    const response = await fetch("/api/v1/chat/character/open_web");
+    const response = await fetch('/api/v1/chat/character/open_web')
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      throw new Error(`HTTP error! status: ${response.status}`)
     }
 
-    await response.json();
+    await response.json()
   } catch (error) {
-    alert("启动失败，请手动去lingchat的discussion网页");
-    console.error("打开创意工坊失败:", error);
+    alert('启动失败，请手动去lingchat的discussion网页')
+    console.error('打开创意工坊失败:', error)
   }
-};
+}
 
 function isSelected(id: number): boolean {
-  return gameStore.avatar.character_id === id;
+  return gameStore.avatar.character_id === id
 }
 
 // 初始化加载角色列表
 onMounted(() => {
-  loadCharacters();
-});
+  loadCharacters()
+})
 </script>
 
 <style scoped>

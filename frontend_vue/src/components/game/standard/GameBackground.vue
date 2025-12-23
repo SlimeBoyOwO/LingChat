@@ -14,11 +14,7 @@
       :enabled="rainEnabled"
       :intensity="rainIntensity"
     />
-    <Sakura
-      v-if="uiStore.currentBackgroundEffect === `Sakura`"
-      :enabled="true"
-      :intensity="1.5"
-    >
+    <Sakura v-if="uiStore.currentBackgroundEffect === `Sakura`" :enabled="true" :intensity="1.5">
     </Sakura>
     <Snow
       v-if="uiStore.currentBackgroundEffect === `Snow`"
@@ -33,74 +29,74 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from "vue";
-import { useUIStore } from "../../../stores/modules/ui/ui";
-import StarField from "./particles/StarField.vue";
-import Rain from "./particles/Rain.vue";
-import Sakura from "./particles/Sakura.vue";
-import Snow from "./particles/Snow.vue";
+import { ref, computed, watch } from 'vue'
+import { useUIStore } from '../../../stores/modules/ui/ui'
+import StarField from './particles/StarField.vue'
+import Rain from './particles/Rain.vue'
+import Sakura from './particles/Sakura.vue'
+import Snow from './particles/Snow.vue'
 
-const uiStore = useUIStore();
-const starfieldRef = ref(null);
+const uiStore = useUIStore()
+const starfieldRef = ref(null)
 
-const soundEffectPlayer = ref();
-const backgroundMusicPlayer = ref();
+const soundEffectPlayer = ref()
+const backgroundMusicPlayer = ref()
 
 // 星空效果控制
-const starfieldEnabled = ref(true);
-const starCount = ref(200);
-const scrollSpeed = ref(0.4);
+const starfieldEnabled = ref(true)
+const starCount = ref(200)
+const scrollSpeed = ref(0.4)
 const starColors = ref([
-  "rgb(173, 216, 230)",
-  "rgb(176, 224, 230)",
-  "rgb(241, 141, 252)",
-  "rgb(176, 230, 224)",
-  "rgb(173, 230, 216)",
-]);
+  'rgb(173, 216, 230)',
+  'rgb(176, 224, 230)',
+  'rgb(241, 141, 252)',
+  'rgb(176, 230, 224)',
+  'rgb(173, 230, 216)',
+])
 
 // 雨滴效果控制
-const rainEnabled = ref(true);
-const rainIntensity = ref(1);
+const rainEnabled = ref(true)
+const rainIntensity = ref(1)
 
-const snowIntensity = ref(1.5);
+const snowIntensity = ref(1.5)
 
 // 计算背景样式
 const backgroundStyle = computed(() => {
   return {
     backgroundImage: uiStore.currentBackground
       ? `url(${uiStore.currentBackground})`
-      : "url(@/assets/images/default_bg.jpg)",
-  };
-});
+      : 'url(@/assets/images/default_bg.jpg)',
+  }
+})
 
 // 星空就绪回调
 const onStarfieldReady = (instance) => {
-  console.debug("Starfield ready", instance);
-};
+  console.debug('Starfield ready', instance)
+}
 
 // 监听音效
 watch(
   () => uiStore.currentSoundEffect,
   (newAudioUrl) => {
-    if (soundEffectPlayer.value && newAudioUrl && newAudioUrl !== "None") {
-      soundEffectPlayer.value.src = newAudioUrl;
-      soundEffectPlayer.value.load();
-      soundEffectPlayer.value.play();
+    if (soundEffectPlayer.value && newAudioUrl && newAudioUrl !== 'None') {
+      soundEffectPlayer.value.src = newAudioUrl
+      soundEffectPlayer.value.load()
+      soundEffectPlayer.value.play()
     }
-  }
-);
+  },
+)
 
 // 监听音效
 watch(
   () => uiStore.currentBackgroundMusic,
   (newAudioUrl) => {
-    if (backgroundMusicPlayer.value && newAudioUrl && newAudioUrl !== "None") {
-      backgroundMusicPlayer.value.src = newAudioUrl;
-      backgroundMusicPlayer.value.load();
-      backgroundMusicPlayer.value.play();
+    if (backgroundMusicPlayer.value && newAudioUrl && newAudioUrl !== 'None') {
+      backgroundMusicPlayer.value.src = newAudioUrl
+      backgroundMusicPlayer.value.load()
+      backgroundMusicPlayer.value.play()
     }
-  }
-);
+  },
+)
 </script>
 
 <style scoped>

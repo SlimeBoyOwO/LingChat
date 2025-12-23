@@ -214,56 +214,56 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from "vue";
-import StarField from "../game/standard/particles/StarField.vue";
+import { ref, onMounted, onBeforeUnmount } from 'vue'
+import StarField from '../game/standard/particles/StarField.vue'
 
 // 新增状态：控制是否已开始播放致谢名单
-const isStarted = ref(false);
+const isStarted = ref(false)
 
-const isFinalMessageVisible = ref(false); // 这个变量在你的原代码中存在，但模板中未使用，我保留了它
-const bgm = ref<HTMLAudioElement | null>(null); // 明确 audio 元素的类型
+const isFinalMessageVisible = ref(false) // 这个变量在你的原代码中存在，但模板中未使用，我保留了它
+const bgm = ref<HTMLAudioElement | null>(null) // 明确 audio 元素的类型
 
-let timer: NodeJS.Timeout | null = null;
+let timer: NodeJS.Timeout | null = null
 
 // 点击开始界面的处理函数
 const startCredits = () => {
-  if (!bgm.value) return; // 防御性编程，确保 bgm 存在
+  if (!bgm.value) return // 防御性编程，确保 bgm 存在
 
   // 1. 设置状态为“已开始”，这将触发 v-if 切换，显示致谢名单
-  isStarted.value = true;
+  isStarted.value = true
 
   // 2. 播放音频
   // 因为这是在用户点击事件后触发的，所以浏览器不会阻止
-  bgm.value.src = "/audio/credit.mp3";
-  bgm.value.load();
+  bgm.value.src = '/audio/credit.mp3'
+  bgm.value.load()
   bgm.value.play().catch((error) => {
-    console.error("音频播放失败:", error);
-  });
+    console.error('音频播放失败:', error)
+  })
 
   // 3. 将设置最终信息的定时器也移到这里
   // 这样可以确保动画从用户点击后才开始计时
-  const animationDuration = 41000; // 41秒
+  const animationDuration = 41000 // 41秒
   timer = setTimeout(() => {
-    isFinalMessageVisible.value = true;
-  }, animationDuration);
-};
+    isFinalMessageVisible.value = true
+  }, animationDuration)
+}
 
 // onMounted 现在可以留空，因为所有逻辑都移到了 startCredits 函数中
 onMounted(() => {
   // 可以在这里做一些与DOM相关的初始化，如果需要的话
-});
+})
 
 // onBeforeUnmount 保持不变，用于清除定时器
 onBeforeUnmount(() => {
   if (timer) {
-    clearTimeout(timer);
+    clearTimeout(timer)
   }
-});
+})
 </script>
 
 <style scoped>
 /* 引入外部字体 */
-@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400&display=swap");
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400&display=swap');
 
 /* 组件根元素，确保其撑满父容器并作为定位上下文 */
 .credits-page-wrapper {
@@ -273,7 +273,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   background-color: #0a0a0c;
   color: #ffffff;
-  font-family: "Noto Sans SC", sans-serif;
+  font-family: 'Noto Sans SC', sans-serif;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -293,13 +293,7 @@ onBeforeUnmount(() => {
     black 80%,
     transparent 100%
   );
-  mask-image: linear-gradient(
-    to bottom,
-    transparent 0%,
-    black 20%,
-    black 80%,
-    transparent 100%
-  );
+  mask-image: linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%);
 }
 
 /* 滚动内容的核心 */
@@ -432,7 +426,7 @@ onBeforeUnmount(() => {
 
 .start-prompt p {
   font-size: 2.2em;
-  font-family: "Noto Sans SC", sans-serif;
+  font-family: 'Noto Sans SC', sans-serif;
   font-weight: 300;
   letter-spacing: 2px;
 }

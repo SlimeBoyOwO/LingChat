@@ -17,6 +17,6 @@
 </template>
 
 <script setup lang="ts">
-import { MenuPage, MenuItem } from "../../ui";
-import { Toggle } from "../../base";
+import { MenuPage, MenuItem } from '../../ui'
+import { Toggle } from '../../base'
 </script>

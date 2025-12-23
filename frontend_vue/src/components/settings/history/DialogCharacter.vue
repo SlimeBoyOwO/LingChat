@@ -4,12 +4,12 @@
     <span class="symbol">:&nbsp</span>
     <span class="content">{{ content }}</span>
     <span class="symbol">&nbsp</span>
-    <span class="icon"><Icon icon="volume" @click="$emit('click')"/></span>
+    <span class="icon"><Icon icon="volume" @click="$emit('click')" /></span>
   </div>
-</template >
+</template>
 
 <script setup lang="ts">
-import { Icon } from "../../base";
+import { Icon } from '../../base'
 
 const props = defineProps({
   name: {
@@ -28,14 +28,12 @@ const props = defineProps({
     type: String,
     require: true,
   },
-});
+})
 
-const emit = defineEmits(["click"]);
-
+const emit = defineEmits(['click'])
 </script>
 <style scoped>
-
-span  {
+span {
   vertical-align: middle;
 }
 
@@ -46,5 +44,4 @@ span  {
 .symbol {
   font-weight: bold;
 }
-
 </style>

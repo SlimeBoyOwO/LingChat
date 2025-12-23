@@ -1,8 +1,6 @@
 <template>
   <MenuPage>
-    <div
-      class="h-[87vh] w-full bg-white/10 p-0 md:p-4 rounded-lg overflow-auto"
-    >
+    <div class="h-[87vh] w-full bg-white/10 p-0 md:p-4 rounded-lg overflow-auto">
       <div class="block md:grid grid-cols-[280px_1fr] h-full">
         <!-- 加载动画 -->
         <div
@@ -36,18 +34,14 @@
               >{{ categoryName }}</span
             >
             <a
-              v-for="(
-                subcategoryData, subcategoryName
-              ) in categoryData.subcategories"
+              v-for="(subcategoryData, subcategoryName) in categoryData.subcategories"
               :key="subcategoryName"
               href="#"
               class="block px-5 py-3 no-underline rounded-lg text-white transition-colors duration-200 relative z-10 adv-nav-link hover:bg-gray-200 hover:text-black active:text-white active:font-bold"
               :class="{
                 active: isActive(categoryName, subcategoryName.toString()),
               }"
-              @click.prevent="
-                selectSubcategory(categoryName, subcategoryName.toString())
-              "
+              @click.prevent="selectSubcategory(categoryName, subcategoryName.toString())"
             >
               {{ subcategoryName }}
             </a>
@@ -82,25 +76,20 @@
 
                   <!-- Case: 布尔值 (Checkbox) -->
                   <template v-if="setting.type === 'bool'">
-                    <label
-                      class="inline-flex items-center cursor-pointer font-medium text-brand"
-                    >
+                    <label class="inline-flex items-center cursor-pointer font-medium text-brand">
                       <input
                         class="mr-2.5 w-4 h-4"
                         type="checkbox"
                         :id="setting.key"
                         :checked="setting.value.toLowerCase() === 'true'"
                         @change="
-                          updateSetting(
-                            setting,
-                            ($event.target as HTMLInputElement).checked
-                          )
+                          updateSetting(setting, ($event.target as HTMLInputElement).checked)
                         "
                       />
                       {{ setting.key }}
                     </label>
                     <p class="text-sm mt-1 mb-2 text-gray-300">
-                      {{ setting.description || "" }}
+                      {{ setting.description || '' }}
                     </p>
                   </template>
 
@@ -112,7 +101,7 @@
                       >{{ setting.key }}</label
                     >
                     <p class="text-sm mt-1 mb-2 text-gray-300">
-                      {{ setting.description || "支持多行输入" }}
+                      {{ setting.description || '支持多行输入' }}
                     </p>
                     <textarea
                       :id="setting.key"
@@ -130,7 +119,7 @@
                       >{{ setting.key }}</label
                     >
                     <p class="text-sm mt-1 mb-2 text-gray-300">
-                      {{ setting.description || "" }}
+                      {{ setting.description || '' }}
                     </p>
                     <input
                       type="text"
@@ -153,10 +142,7 @@
               </div>
             </div>
           </div>
-          <div
-            v-else-if="!isLoading && !Object.keys(configData).length"
-            class="w-full active"
-          >
+          <div v-else-if="!isLoading && !Object.keys(configData).length" class="w-full active">
             <div class="advanced-settings-container">
               <header>
                 <h2 class="adv-title">加载失败</h2>
@@ -171,214 +157,192 @@
 </template>
 
 <script setup lang="ts">
-import {
-  ref,
-  onMounted,
-  computed,
-  reactive,
-  watch,
-  nextTick,
-  getCurrentInstance,
-} from "vue";
-import { MenuPage } from "../../ui";
-import { MenuItem } from "../../ui";
+import { ref, onMounted, computed, reactive, watch, nextTick, getCurrentInstance } from 'vue'
+import { MenuPage } from '../../ui'
+import { MenuItem } from '../../ui'
 
 // --- 响应式状态定义 ---
-const isLoading = ref(false);
-const configData = ref<Record<string, any>>({});
+const isLoading = ref(false)
+const configData = ref<Record<string, any>>({})
 const activeSelection = reactive({
   category: null as string | null,
   subcategory: null as string | null,
-});
+})
 const saveStatus = reactive({
-  message: "",
-  color: "var(--success-color)",
-});
-const instance = getCurrentInstance();
+  message: '',
+  color: 'var(--success-color)',
+})
+const instance = getCurrentInstance()
 
 const emit = defineEmits([
-  "remove-more-menu-from-b", // B 组件触发 remove 时通知父组件
-]);
+  'remove-more-menu-from-b', // B 组件触发 remove 时通知父组件
+])
 
 // --- Refs for DOM elements ---
-const navContainerRef = ref<HTMLElement | null>(null);
-const indicatorRef = ref<HTMLElement | null>(null);
+const navContainerRef = ref<HTMLElement | null>(null)
+const indicatorRef = ref<HTMLElement | null>(null)
 
 // --- 计算属性 ---
 const selectedSubcategory = computed(() => {
   if (activeSelection.category && activeSelection.subcategory) {
-    return configData.value[activeSelection.category]?.subcategories[
-      activeSelection.subcategory
-    ];
+    return configData.value[activeSelection.category]?.subcategories[activeSelection.subcategory]
   }
-  return null;
-});
+  return null
+})
 
 // --- 方法定义 ---
 
 const isActive = (category: string, subcategory: string) => {
-  return (
-    activeSelection.category === category &&
-    activeSelection.subcategory === subcategory
-  );
-};
+  return activeSelection.category === category && activeSelection.subcategory === subcategory
+}
 
 const selectSubcategory = (category: string, subcategory: string) => {
-  activeSelection.category = category;
-  activeSelection.subcategory = subcategory;
-};
+  activeSelection.category = category
+  activeSelection.subcategory = subcategory
+}
 
-const updateSetting = (
-  setting: { key: string; value: string },
-  isChecked: boolean
-) => {
-  setting.value = isChecked ? "true" : "false";
-};
+const updateSetting = (setting: { key: string; value: string }, isChecked: boolean) => {
+  setting.value = isChecked ? 'true' : 'false'
+}
 
 const saveSettings = async () => {
-  if (!selectedSubcategory.value) return;
+  if (!selectedSubcategory.value) return
 
-  const formData: Record<string, string> = {};
-  selectedSubcategory.value.settings.forEach(
-    (setting: { key: string; value: string }) => {
-      formData[setting.key] = setting.value;
-    }
-  );
+  const formData: Record<string, string> = {}
+  selectedSubcategory.value.settings.forEach((setting: { key: string; value: string }) => {
+    formData[setting.key] = setting.value
+  })
 
-  isLoading.value = true;
-  saveStatus.message = "";
+  isLoading.value = true
+  saveStatus.message = ''
 
   try {
-    const response = await fetch("/api/settings/config", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+    const response = await fetch('/api/settings/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(formData),
-    });
+    })
 
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.detail || "保存失败");
+    const result = await response.json()
+    if (!response.ok) throw new Error(result.detail || '保存失败')
 
-    saveStatus.message = result.message;
-    saveStatus.color = "var(--success-color)";
+    saveStatus.message = result.message
+    saveStatus.color = 'var(--success-color)'
 
-    await loadConfig(false);
+    await loadConfig(false)
   } catch (error: any) {
-    saveStatus.message = `错误: ${error.message}`;
-    saveStatus.color = "red";
+    saveStatus.message = `错误: ${error.message}`
+    saveStatus.color = 'red'
   } finally {
-    isLoading.value = false;
+    isLoading.value = false
     setTimeout(() => {
-      saveStatus.message = "";
-    }, 5000);
+      saveStatus.message = ''
+    }, 5000)
   }
-};
+}
 
 const loadConfig = async (selectFirst = true) => {
-  isLoading.value = true;
+  isLoading.value = true
   try {
-    const response = await fetch("/api/settings/config");
-    if (!response.ok) throw new Error("无法加载配置");
+    const response = await fetch('/api/settings/config')
+    if (!response.ok) throw new Error('无法加载配置')
 
-    configData.value = await response.json();
+    configData.value = await response.json()
 
     if (selectFirst && Object.keys(configData.value).length > 0) {
-      const firstCategory = Object.keys(configData.value)[0];
-      const firstSubcategory = Object.keys(
-        configData.value[firstCategory].subcategories
-      )[0];
+      const firstCategory = Object.keys(configData.value)[0]
+      const firstSubcategory = Object.keys(configData.value[firstCategory].subcategories)[0]
       if (firstCategory && firstSubcategory) {
-        selectSubcategory(firstCategory, firstSubcategory);
+        selectSubcategory(firstCategory, firstSubcategory)
       }
     }
   } catch (error: any) {
-    console.error(error);
-    saveStatus.message = `加载配置失败: ${error.message}`;
-    saveStatus.color = "red";
+    console.error(error)
+    saveStatus.message = `加载配置失败: ${error.message}`
+    saveStatus.color = 'red'
   } finally {
-    isLoading.value = false;
+    isLoading.value = false
   }
-};
+}
 
 // --- 导航指示器逻辑 ---
 const updateIndicatorPosition = () => {
-  if (!navContainerRef.value || !indicatorRef.value) return;
+  if (!navContainerRef.value || !indicatorRef.value) return
 
   // 找到当前激活的链接元素
-  const activeLink = navContainerRef.value.querySelector(
-    ".adv-nav-link.active"
-  ) as HTMLElement;
+  const activeLink = navContainerRef.value.querySelector('.adv-nav-link.active') as HTMLElement
 
   if (activeLink) {
     // 计算激活链接相对于导航容器的位置和大小
-    const top = activeLink.offsetTop;
-    const height = activeLink.offsetHeight;
+    const top = activeLink.offsetTop
+    const height = activeLink.offsetHeight
 
     // 更新指示器的样式 解决自动消失，在值非空时才应用参数
     if (top) {
-      indicatorRef.value.style.top = `${top}px`;
+      indicatorRef.value.style.top = `${top}px`
     }
     if (height) {
-      indicatorRef.value.style.height = `${height}px`;
+      indicatorRef.value.style.height = `${height}px`
     }
   }
-};
+}
 
 // --- 监听导航容器尺寸变化 ---
 const setupNavResizeObserver = () => {
   if (!navContainerRef.value) {
-    return;
+    return
   }
 
   const resizeObserver = new ResizeObserver((entries) => {
-    updateIndicatorPosition();
-  });
+    updateIndicatorPosition()
+  })
 
   // 监听导航容器
-  resizeObserver.observe(navContainerRef.value);
-};
+  resizeObserver.observe(navContainerRef.value)
+}
 
 // 监视 activeSelection 的变化，并在 DOM 更新后移动指示器
 watch(
   activeSelection,
   async () => {
     // 等待 Vue 更新 DOM
-    await nextTick();
-    updateIndicatorPosition();
+    await nextTick()
+    updateIndicatorPosition()
   },
-  { deep: true }
-);
+  { deep: true },
+)
 
 // --- 生命周期钩子 ---
 onMounted(async () => {
-  await loadConfig();
+  await loadConfig()
   // 初始加载后，也需要更新一次指示器位置
-  await nextTick();
-  updateIndicatorPosition();
-  setupNavResizeObserver();
-});
+  await nextTick()
+  updateIndicatorPosition()
+  setupNavResizeObserver()
+})
 
 // 2. 原生 add/removeMoreMenu 逻辑（操作 B 组件自身 DOM）
 const addMoreMenu = () => {
-  const btnEl = navContainerRef.value as HTMLElement | null;
+  const btnEl = navContainerRef.value as HTMLElement | null
   if (btnEl) {
     // console.log('B 组件执行 addMoreMenu');
-    btnEl.classList.add("moreMenu");
+    btnEl.classList.add('moreMenu')
   }
-};
+}
 
 // 2. 修改 removeMoreMenu 函数
 // 当这个函数被调用时，不仅执行自身逻辑，还要通知父组件
 const removeMoreMenu = () => {
-  const btnEl = navContainerRef.value as HTMLElement | null;
+  const btnEl = navContainerRef.value as HTMLElement | null
   if (btnEl) {
-    btnEl.classList.remove("moreMenu");
+    btnEl.classList.remove('moreMenu')
   }
 
   // 关键：向父组件发送事件
-  emit("remove-more-menu-from-b");
-};
+  emit('remove-more-menu-from-b')
+}
 
 defineExpose({
   addMoreMenu,
-});
+})
 </script>

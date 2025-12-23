@@ -1,38 +1,29 @@
 <template>
-  <button
-    :class="type"
-    :disabled="disabled"
-    @click="$emit('click')"
-  >
-  <Icon v-if="icon" :icon="icon" :size="icon_size"></Icon>
-  <slot></slot>
+  <button :class="type" :disabled="disabled" @click="$emit('click')">
+    <Icon v-if="icon" :icon="icon" :size="icon_size"></Icon>
+    <slot></slot>
   </button>
 </template>
 
 <script setup lang="ts">
-
 // 导入外部模块
-import Icon from "./Icon.vue";
-import type { IconType } from "./Icon.vue";
+import Icon from './Icon.vue'
+import type { IconType } from './Icon.vue'
 
 // 定义组件属性
 interface ButtonProps {
-  type?: "big" | "menu" | "nav" | "select" | "delete" | "add" | "save" | "start" | "close"
-  disabled?: boolean;
-  icon?: IconType;
-  icon_size?: number;
+  type?: 'big' | 'menu' | 'nav' | 'select' | 'delete' | 'add' | 'save' | 'start' | 'close'
+  disabled?: boolean
+  icon?: IconType
+  icon_size?: number
 }
-const props = defineProps<ButtonProps>();
+const props = defineProps<ButtonProps>()
 
 // 定义组件事件
-const emit = defineEmits([
-  "click"
-]);
-
+const emit = defineEmits(['click'])
 </script>
 
 <style scoped>
-
 button {
   border: none;
   outline: none;
@@ -60,10 +51,19 @@ button {
   /* 最小32px, 根据视口宽度的4%缩放, 最大72px */
   font-size: clamp(32px, 4vw, 72px);
   font-weight: normal; /* 字体加粗 */
-  font-family: "Maoken Assorted Sans", -apple-system, BlinkMacSystemFont,
-    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; /* 应用自定义字体，并提供备用字体 */
+  font-family:
+    'Maoken Assorted Sans',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    sans-serif; /* 应用自定义字体，并提供备用字体 */
   cursor: pointer;
-  transition: color 0.3s, text-shadow 0.3s; /* 平滑过渡 */
+  transition:
+    color 0.3s,
+    text-shadow 0.3s; /* 平滑过渡 */
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5); /* 加一点文字阴影以保证清晰度 */
   text-align: left; /* 文字左对齐 */
 }
@@ -94,7 +94,6 @@ button {
   background-color: #d32f2f;
 }
 
-
 .nav {
   color: white; /* 改为白色 */
   background: none;
@@ -108,7 +107,9 @@ button {
   font-weight: bold;
   position: relative;
   z-index: 1;
-  transition: color 0.3s ease, background-color 0.3s ease;
+  transition:
+    color 0.3s ease,
+    background-color 0.3s ease;
   display: flex;
   align-items: center;
   gap: 8px;
