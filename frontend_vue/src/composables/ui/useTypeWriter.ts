@@ -21,6 +21,7 @@ export function useTypeWriter(elementRef: Ref<HTMLInputElement | HTMLTextAreaEle
 
   const stopTyping = () => {
     typeWriter.value?.stop()
+    typeWriter.value?.clear()
     isTyping.value = false
   }
 
