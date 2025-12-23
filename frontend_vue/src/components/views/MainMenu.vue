@@ -18,65 +18,61 @@
             </button>
           </template>
         </div>
-        <img
-          src="../../assets/images/LingChatLogo.png"
-          alt="LingChatLogo"
-          class="logo"
-        />
+        <img src="../../assets/images/LingChatLogo.png" alt="LingChatLogo" class="logo" />
       </div>
     </Transition>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
-import { Loader, MainChat } from "./";
-import { SettingsPanel as Settings } from "../settings/";
-import { useRouter } from "vue-router";
-const currentPage = ref("mainMenu");
-const loading = ref(true);
-const progress = ref(0);
+import { ref, onMounted } from 'vue'
+import { Loader, MainChat } from './'
+import { SettingsPanel as Settings } from '../settings/'
+import { useRouter } from 'vue-router'
+const currentPage = ref('mainMenu')
+const loading = ref(true)
+const progress = ref(0)
 const menuItems = [
-  { order: 0, label: "继续游戏", action: continueGame, visibility: ref(false) }, //TODO:只在有存档的时候显示
-  { order: 1, label: "开始游戏", action: newGame, visibility: ref(true) },
-  { order: 2, label: "存档", action: openSave, visibility: ref(true) },
-  { order: 3, label: "设置", action: openSettings, visibility: ref(true) },
+  { order: 0, label: '继续游戏', action: continueGame, visibility: ref(false) }, //TODO:只在有存档的时候显示
+  { order: 1, label: '开始游戏', action: newGame, visibility: ref(true) },
+  { order: 2, label: '存档', action: openSave, visibility: ref(true) },
+  { order: 3, label: '设置', action: openSettings, visibility: ref(true) },
   {
     order: 4,
-    label: "致谢名单",
+    label: '致谢名单',
     action: goToCreditsPage,
     visibility: ref(true),
   },
-  { order: 5, label: "退出游戏", action: quitGame, visibility: ref(true) },
-];
-const router = useRouter();
+  { order: 5, label: '退出游戏', action: quitGame, visibility: ref(true) },
+]
+const router = useRouter()
 
 onMounted(() =>
   setInterval(() => {
-    loading.value = false;
-    progress.value = 100;
-  }, 2500)
-);
+    loading.value = false
+    progress.value = 100
+  }, 2500),
+)
 function continueGame() {}
 function newGame() {
-  goToMainPage();
+  goToMainPage()
 }
 function openSave() {
-  currentPage.value = "save";
+  currentPage.value = 'save'
 }
 function openSettings() {
-  currentPage.value = "settings";
+  currentPage.value = 'settings'
 }
 function quitGame() {
-  window.close();
+  window.close()
 }
 function goToMainPage() {
-  console.log("准备跳转到主页面...");
-  router.push("/");
+  console.log('准备跳转到主页面...')
+  router.push('/')
 }
 function goToCreditsPage() {
-  console.log("准备跳转到致谢页面...");
-  router.push("/credit");
+  console.log('准备跳转到致谢页面...')
+  router.push('/credit')
 }
 </script>
 
@@ -90,15 +86,15 @@ function goToCreditsPage() {
 
 /* 定义自定义字体 */
 @font-face {
-  font-family: "Maoken Assorted Sans";
-  src: url("./assets/fonts/MaokenAssortedSans.ttf") format("truetype");
+  font-family: 'Maoken Assorted Sans';
+  src: url('./assets/fonts/MaokenAssortedSans.ttf') format('truetype');
   font-weight: normal;
   font-style: normal;
   font-display: swap;
 }
 
 .body::before {
-  content: "";
+  content: '';
   position: absolute;
   top: 0;
   left: 0;
@@ -106,7 +102,7 @@ function goToCreditsPage() {
   height: 100%;
 
   /* 1. 背景图片现在只在这里定义 (使用修正后的路径) */
-  background-image: url("../../assets/images/background.png");
+  background-image: url('../../assets/images/background.png');
   background-size: cover;
   background-position: center;
 
@@ -145,7 +141,8 @@ function goToCreditsPage() {
 .logo,
 .main-menu,
 .settings-panel {
-  transition: transform 0.6s cubic-bezier(0.7, 0, 0.2, 1),
+  transition:
+    transform 0.6s cubic-bezier(0.7, 0, 0.2, 1),
     opacity 0.6s cubic-bezier(0.7, 0, 0.2, 1);
 }
 
@@ -195,11 +192,20 @@ function goToCreditsPage() {
   font-size: clamp(32px, 4vw, 72px);
   font-weight: normal;
   /* 字体加粗 */
-  font-family: "Maoken Assorted Sans", -apple-system, BlinkMacSystemFont,
-    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family:
+    'Maoken Assorted Sans',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    sans-serif;
   /* 应用自定义字体，并提供备用字体 */
   cursor: pointer;
-  transition: color 0.3s, text-shadow 0.3s;
+  transition:
+    color 0.3s,
+    text-shadow 0.3s;
   /* 平滑过渡 */
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
   /* 加一点文字阴影以保证清晰度 */

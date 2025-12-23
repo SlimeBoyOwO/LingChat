@@ -18,19 +18,19 @@
 
 <script>
 export default {
-  name: "GlassInput",
+  name: 'GlassInput',
 
   inheritAttrs: false,
 
   props: {
     modelValue: {
       type: String,
-      default: "",
+      default: '',
     },
   },
 
-  emits: ["update:modelValue"],
-};
+  emits: ['update:modelValue'],
+}
 </script>
 
 <style scoped>
@@ -53,10 +53,13 @@ export default {
 
   border: 1px solid rgba(255, 255, 255, 0.125);
   border-radius: 8px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1),
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.1),
     inset 0 1px 1px rgba(255, 255, 255, 0.1);
 
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
 
 .form-group .form-control:focus {

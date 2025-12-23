@@ -1,25 +1,25 @@
-import { ScriptEventType } from "../../types";
+import type { ScriptEventType } from '../../types'
 
 export interface IEventProcessor {
-  processEvent(event: ScriptEventType): Promise<void>;
-  canHandle(eventType: string): boolean;
+  processEvent(event: ScriptEventType): Promise<void>
+  canHandle(eventType: string): boolean
 }
 
 export class EventProcessorManager {
-  private processors: IEventProcessor[] = [];
+  private processors: IEventProcessor[] = []
 
   registerProcessor(processor: IEventProcessor) {
-    this.processors.push(processor);
+    this.processors.push(processor)
   }
 
   async processEvent(event: ScriptEventType): Promise<boolean> {
-    const processor = this.processors.find((p) => p.canHandle(event.type));
+    const processor = this.processors.find((p) => p.canHandle(event.type))
     if (processor) {
-      await processor.processEvent(event);
-      return true;
+      await processor.processEvent(event)
+      return true
     }
-    return false;
+    return false
   }
 }
 
-export const eventProcessorManager = new EventProcessorManager();
+export const eventProcessorManager = new EventProcessorManager()

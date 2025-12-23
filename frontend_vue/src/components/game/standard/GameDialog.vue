@@ -11,12 +11,7 @@
         <div class="chatbox-emotion">
           <div id="character-emotion">{{ uiStore.showCharacterEmotion }}</div>
         </div>
-        <Button
-          type="nav"
-          icon="history"
-          title=""
-          @click="openHistory"
-        ></Button>
+        <Button type="nav" icon="history" title="" @click="openHistory"></Button>
       </div>
       <div class="chatbox-line"></div>
       <div class="chatbox-inputbox">
@@ -28,136 +23,131 @@
           @keydown.enter.exact.prevent="sendOrContinue"
           :readonly="!isInputEnabled"
         ></textarea>
-        <button id="sendButton" :disabled="isSending" @click="sendOrContinue">
-          ▼
-        </button>
+        <button id="sendButton" :disabled="isSending" @click="sendOrContinue">▼</button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from "vue";
-import { Button } from "../../base";
-import { useGameStore } from "../../../stores/modules/game";
-import { useUIStore } from "../../../stores/modules/ui/ui";
-import { useTypeWriter } from "../../../composables/ui/useTypeWriter";
-import { eventQueue } from "../../../core/events/event-queue";
-import { scriptHandler } from "../../../api/websocket/handlers/script-handler";
+import { ref, watch, computed } from 'vue'
+import { Button } from '../../base'
+import { useGameStore } from '../../../stores/modules/game'
+import { useUIStore } from '../../../stores/modules/ui/ui'
+import { useTypeWriter } from '../../../composables/ui/useTypeWriter'
+import { eventQueue } from '../../../core/events/event-queue'
+import { scriptHandler } from '../../../api/websocket/handlers/script-handler'
 
-const inputMessage = ref("");
-const textareaRef = ref<HTMLTextAreaElement | null>(null); // 新增这行
-const gameStore = useGameStore();
-const uiStore = useUIStore();
+const inputMessage = ref('')
+const textareaRef = ref<HTMLTextAreaElement | null>(null) // 新增这行
+const gameStore = useGameStore()
+const uiStore = useUIStore()
 
-const { startTyping, stopTyping, isTyping } = useTypeWriter(textareaRef);
+const { startTyping, stopTyping, isTyping } = useTypeWriter(textareaRef)
 
 // 使用计算属性处理发送状态
-const isSending = computed(() => gameStore.currentStatus === "thinking");
+const isSending = computed(() => gameStore.currentStatus === 'thinking')
 
-const emit = defineEmits(["player-continued", "dialog-proceed"]);
+const emit = defineEmits(['player-continued', 'dialog-proceed'])
 
 const openHistory = () => {
-  uiStore.toggleSettings(true);
-  uiStore.setSettingsTab("history");
-};
+  uiStore.toggleSettings(true)
+  uiStore.setSettingsTab('history')
+}
 
 // 使用计算属性处理占位符文本
 const placeholderText = computed(() => {
   switch (gameStore.currentStatus) {
-    case "input":
-      return uiStore.showPlayerHintLine || "在这里输入消息...";
-    case "thinking":
-      return gameStore.avatar.think_message;
-    case "responding":
-    case "presenting":
-      return "";
+    case 'input':
+      return uiStore.showPlayerHintLine || '在这里输入消息...'
+    case 'thinking':
+      return gameStore.avatar.think_message
+    case 'responding':
+    case 'presenting':
+      return ''
     default:
-      return "在这里输入消息...";
+      return '在这里输入消息...'
   }
-});
+})
 
 // 使用计算属性控制输入框是否可编辑
-const isInputEnabled = computed(() => gameStore.currentStatus === "input");
+const isInputEnabled = computed(() => gameStore.currentStatus === 'input')
 
 // 监听状态变化
 watch(
   () => gameStore.currentStatus,
   (newStatus) => {
-    console.log("游戏状态变为 :", newStatus);
-    if (newStatus === "thinking") {
-      gameStore.avatar.emotion = "AI思考";
-      uiStore.showCharacterTitle = gameStore.avatar.character_name;
-      uiStore.showCharacterSubtitle = gameStore.avatar.character_subtitle;
-    } else if (newStatus === "input") {
-      uiStore.showCharacterTitle = gameStore.avatar.user_name;
-      uiStore.showCharacterSubtitle = gameStore.avatar.user_subtitle;
-      uiStore.showCharacterEmotion = "";
-    } else if (newStatus === "presenting") {
-      uiStore.showCharacterTitle = "";
-      uiStore.showCharacterSubtitle = "";
-      uiStore.showCharacterEmotion = "";
-      uiStore.showCharacterLine = "";
+    console.log('游戏状态变为 :', newStatus)
+    if (newStatus === 'thinking') {
+      gameStore.avatar.emotion = 'AI思考'
+      uiStore.showCharacterTitle = gameStore.avatar.character_name
+      uiStore.showCharacterSubtitle = gameStore.avatar.character_subtitle
+    } else if (newStatus === 'input') {
+      uiStore.showCharacterTitle = gameStore.avatar.user_name
+      uiStore.showCharacterSubtitle = gameStore.avatar.user_subtitle
+      uiStore.showCharacterEmotion = ''
+    } else if (newStatus === 'presenting') {
+      uiStore.showCharacterTitle = ''
+      uiStore.showCharacterSubtitle = ''
+      uiStore.showCharacterEmotion = ''
+      uiStore.showCharacterLine = ''
     }
-  }
-);
+  },
+)
 
 // 监听 currentLine 和 currentStatus 的变化
-watch(
-  [() => uiStore.showCharacterLine, () => gameStore.currentStatus],
-  ([newLine, newStatus]) => {
-    if (newLine && newLine !== "" && newStatus === "responding") {
-      inputMessage.value = "";
-      startTyping(newLine, uiStore.typeWriterSpeed);
-    } else if (newLine === "" && newStatus === "input") {
-      if (isTyping) stopTyping();
-      inputMessage.value = "";
-    }
+watch([() => uiStore.showCharacterLine, () => gameStore.currentStatus], ([newLine, newStatus]) => {
+  if (newLine && newLine !== '' && newStatus === 'responding') {
+    inputMessage.value = ''
+    startTyping(newLine, uiStore.typeWriterSpeed)
+  } else if (newLine === '' && newStatus === 'input') {
+    if (isTyping) stopTyping()
+    inputMessage.value = ''
   }
-);
+})
 
 function sendOrContinue() {
-  if (gameStore.currentStatus === "input") {
-    send();
-  } else if (gameStore.currentStatus === "responding") {
-    continueDialog(true);
+  if (gameStore.currentStatus === 'input') {
+    send()
+  } else if (gameStore.currentStatus === 'responding') {
+    continueDialog(true)
   }
 }
 
 function send() {
-  const text = inputMessage.value;
-  if (!text.trim()) return;
-  if (text === "/开始剧本") {
-    gameStore.initializeScript("TODO: 从剧本面板选择剧本");
+  const text = inputMessage.value
+  if (!text.trim()) return
+  if (text === '/开始剧本') {
+    gameStore.initializeScript('TODO: 从剧本面板选择剧本')
     // TODO: 清空背景，清空人物
-    gameStore.avatar.show = false;
-    gameStore.script.isRunning = true;
+    gameStore.avatar.show = false
+    gameStore.script.isRunning = true
   } else {
-    gameStore.currentStatus = "thinking";
+    gameStore.currentStatus = 'thinking'
     gameStore.addToDialogHistory({
-      type: "message",
+      type: 'message',
       character: gameStore.avatar.user_name,
       content: text,
-    });
+    })
   }
 
-  scriptHandler.sendMessage(text);
-  inputMessage.value = "";
+  scriptHandler.sendMessage(text)
+  inputMessage.value = ''
 }
 
 function continueDialog(isPlayerTrigger: boolean): boolean {
-  const needWait = eventQueue.continue();
+  const needWait = eventQueue.continue()
   if (!needWait) {
-    if (isPlayerTrigger) emit("player-continued");
-    emit("dialog-proceed");
+    if (isPlayerTrigger) emit('player-continued')
+    emit('dialog-proceed')
   }
 
-  return needWait;
+  return needWait
 }
 
 defineExpose({
   continueDialog,
-});
+})
 </script>
 
 <style>
@@ -167,11 +157,7 @@ defineExpose({
   justify-content: center;
   width: 100%;
   z-index: 2;
-  background: linear-gradient(
-    to top,
-    rgba(0, 14, 39, 0.7) 0%,
-    rgba(0, 14, 39, 0.6) 100%
-  );
+  background: linear-gradient(to top, rgba(0, 14, 39, 0.7) 0%, rgba(0, 14, 39, 0.6) 100%);
   padding: 15px;
   backdrop-filter: blur(1px);
   scrollbar-width: thin;
@@ -179,7 +165,7 @@ defineExpose({
 }
 
 .chatbox-box::before {
-  content: "";
+  content: '';
   position: absolute;
   top: -40px;
   left: 0;

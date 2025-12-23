@@ -27,28 +27,28 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
-import { MenuPage } from "../../ui";
-import { MenuItem } from "../../ui";
-import { Slider } from "../../base";
-import { Text } from "../../base";
-import { Toggle } from "../../base";
-import { useUIStore } from "../../../stores/modules/ui/ui";
+import { ref } from 'vue'
+import { MenuPage } from '../../ui'
+import { MenuItem } from '../../ui'
+import { Slider } from '../../base'
+import { Text } from '../../base'
+import { Toggle } from '../../base'
+import { useUIStore } from '../../../stores/modules/ui/ui'
 
-const textSpeedSample = ref();
+const textSpeedSample = ref()
 
-const uiStore = useUIStore();
+const uiStore = useUIStore()
 
 const textSpeedChange = (data: number) => {
-  textSpeedSample.value = data;
-  uiStore.typeWriterSpeed = data;
-};
+  textSpeedSample.value = data
+  uiStore.typeWriterSpeed = data
+}
 const animateSwitch = (data: boolean) => {
-  console.log(data);
-};
+  console.log(data)
+}
 const voiceSound = (data: boolean) => {
-  uiStore.enableChatEffectSound = data;
-};
+  uiStore.enableChatEffectSound = data
+}
 </script>
 
 <style scoped>

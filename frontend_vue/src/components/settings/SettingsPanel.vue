@@ -1,9 +1,5 @@
 <template>
-  <div
-    class="blur-overlay"
-    v-if="shouldShowOverlay"
-    :style="{ opacity: overlayOpacity }"
-  ></div>
+  <div class="blur-overlay" v-if="shouldShowOverlay" :style="{ opacity: overlayOpacity }"></div>
   <div class="settings-panel" v-show="uiStore.showSettings">
     <div class="h-[7vh] w-full">
       <SettingsNav ref="settingsNavRef" @remove-more-menu-from-a="onAddFromA" />
@@ -21,9 +17,7 @@
       <SettingsHistory v-show="uiStore.currentSettingsTab === 'history'" />
       <SettingsSchedule v-show="uiStore.currentSettingsTab === 'schedule'" />
       <SettingsCharacter v-show="uiStore.currentSettingsTab === 'character'" />
-      <SettingsBackground
-        v-show="uiStore.currentSettingsTab === 'background'"
-      />
+      <SettingsBackground v-show="uiStore.currentSettingsTab === 'background'" />
       <SettingsUpdate v-show="uiStore.currentSettingsTab === 'update'" />
     </div>
   </div>
@@ -40,57 +34,55 @@ import {
   SettingsCharacter,
   SettingsBackground,
   SettingsUpdate,
-} from "./pages";
-import SettingsNav from "./SettingsNav.vue";
-import { useUIStore } from "../../stores/modules/ui/ui";
-import { ref, watch } from "vue";
+} from './pages'
+import SettingsNav from './SettingsNav.vue'
+import { useUIStore } from '../../stores/modules/ui/ui'
+import { ref, watch } from 'vue'
 
-const uiStore = useUIStore();
+const uiStore = useUIStore()
 
 // 获取 A 组件和 B 组件的 Ref 实例
-const settingsNavRef = ref<InstanceType<typeof SettingsNav> | null>(null);
-const settingsAdvanceRef = ref<InstanceType<typeof SettingsAdvance> | null>(
-  null
-);
+const settingsNavRef = ref<InstanceType<typeof SettingsNav> | null>(null)
+const settingsAdvanceRef = ref<InstanceType<typeof SettingsAdvance> | null>(null)
 
 // 添加延迟状态
-const shouldShowOverlay = ref(false);
-const overlayOpacity = ref(0);
+const shouldShowOverlay = ref(false)
+const overlayOpacity = ref(0)
 
 watch(
   () => uiStore.showSettings,
   (newVal) => {
     if (newVal) {
       // 显示时：立即显示元素，然后延迟改变透明度
-      shouldShowOverlay.value = true;
+      shouldShowOverlay.value = true
       setTimeout(() => {
-        overlayOpacity.value = 1;
-      }, 10); // 使用很小的延迟确保浏览器有机会渲染
+        overlayOpacity.value = 1
+      }, 10) // 使用很小的延迟确保浏览器有机会渲染
     } else {
       // 隐藏时：先改变透明度，然后延迟隐藏元素
-      overlayOpacity.value = 0;
+      overlayOpacity.value = 0
       setTimeout(() => {
-        shouldShowOverlay.value = false;
-      }, 100); // 匹配你的动画持续时间
+        shouldShowOverlay.value = false
+      }, 100) // 匹配你的动画持续时间
     }
   },
-  { immediate: true }
-);
+  { immediate: true },
+)
 
 // 2. 定义事件处理函数
 // 当 A 组件发来 "remove-more-menu-from-a" 事件时
 const onAddFromA = () => {
   // console.log('父组件收到 A 的添加事件，准备通知 B 组件');
   // 调用 B 组件实例上暴露的 removeMoreMenu 方法
-  settingsAdvanceRef.value?.addMoreMenu();
-};
+  settingsAdvanceRef.value?.addMoreMenu()
+}
 
 // 当 B 组件发来 "remove-more-menu-from-b" 事件时
 const onAddFromB = () => {
   // console.log('父组件收到 B 的添加事件，准备通知 A 组件');
   // 调用 A 组件实例上暴露的 removeMoreMenu 方法
-  settingsNavRef.value?.addMoreMenu();
-};
+  settingsNavRef.value?.addMoreMenu()
+}
 </script>
 
 <style>

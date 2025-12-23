@@ -15,16 +15,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
-import Button from "../../base/widget/Button.vue";
+import { ref } from 'vue'
+import Button from '../../base/widget/Button.vue'
 
 interface CharacterProps {
-  avatar?: string;
-  name?: string;
-  info?: string;
+  avatar?: string
+  name?: string
+  info?: string
 }
 
-const props = withDefaults(defineProps<CharacterProps>(), {});
+const props = withDefaults(defineProps<CharacterProps>(), {})
 </script>
 
 <style scoped>
@@ -79,7 +79,7 @@ const props = withDefaults(defineProps<CharacterProps>(), {});
   font-weight: 600;
   color: #ffffff;
   margin-bottom: 8px;
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .character-description {
