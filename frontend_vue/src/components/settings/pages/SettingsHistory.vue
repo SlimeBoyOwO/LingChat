@@ -19,7 +19,6 @@ import { computed, ref, watch } from 'vue'
 import { MenuPage, MenuItem } from '../../ui'
 import { useGameStore } from '../../../stores/modules/game'
 import type { DialogMessage } from '../../../stores/modules/game/state'
-import { Session } from 'inspector'
 import DialogSession from '../history/DialogSession.vue'
 
 const gameStore = useGameStore()

@@ -98,14 +98,15 @@ const drawTrail = () => {
   ctx.shadowBlur = 10
   ctx.shadowColor = '#87CEFA'
 
-  let startX = points[0].x
-  let startY = points[0].y
-  let startAlpha = points[0].alpha
+  let startX = points[0]?.x || 0
+  let startY = points[0]?.y || 0
+  let startAlpha = points[0]?.alpha || 0
 
   // 分段绘制：使用线性渐变填充每一段，确保颜色过渡平滑
   for (let i = 1; i < points.length - 1; i++) {
     const p = points[i]
     const nextP = points[i + 1]
+    if (!p || !nextP) continue
     const xc = (p.x + nextP.x) * 0.5
     const yc = (p.y + nextP.y) * 0.5
     const endAlpha = (p.alpha + nextP.alpha) * 0.5
@@ -129,6 +130,7 @@ const drawTrail = () => {
   // 连接到最后一个点
   if (points.length > 1) {
     const last = points[points.length - 1]
+    if (!last) return
     ctx.beginPath()
     ctx.moveTo(startX, startY)
     ctx.lineTo(last.x, last.y)
@@ -153,6 +155,7 @@ const drawParticles = () => {
 
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i]
+    if (!p) continue
 
     // 更新粒子
     p.x += p.vx
@@ -190,8 +193,10 @@ const drawParticles = () => {
 const updatePoints = () => {
   // 批量更新透明度
   for (let i = points.length - 1; i >= 0; i--) {
-    points[i].alpha -= fadeSpeed
-    if (points[i].alpha <= 0) {
+    const p = points[i]
+    if (!p) continue
+    p.alpha -= fadeSpeed
+    if (p.alpha <= 0) {
       points.splice(i, 1)
     }
   }
@@ -303,7 +308,7 @@ const handleClick = (e: MouseEvent) => {
       life: 1.0,
       maxLife: life,
       size: Math.random() * 8 + 4,
-      color: colors[Math.floor(Math.random() * colors.length)],
+      color: colors[Math.floor(Math.random() * colors.length)] || '#FFC0CB',
       rotation: Math.random() * 360,
       rotationSpeed: (Math.random() - 0.5) * 8,
     })

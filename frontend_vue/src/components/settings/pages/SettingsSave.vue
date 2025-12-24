@@ -57,7 +57,7 @@ import {
   saveGameSave,
   saveDelete,
 } from '../../../api/services/save'
-import { SaveListParams, SaveInfo } from '../../../types'
+import type { SaveInfo } from '../../../types'
 import { useUserStore } from '../../../stores/modules/user/user'
 
 // 定义存档对象类型

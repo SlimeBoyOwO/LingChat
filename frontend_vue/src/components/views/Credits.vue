@@ -223,7 +223,7 @@ const isStarted = ref(false)
 const isFinalMessageVisible = ref(false) // 这个变量在你的原代码中存在，但模板中未使用，我保留了它
 const bgm = ref<HTMLAudioElement | null>(null) // 明确 audio 元素的类型
 
-let timer: NodeJS.Timeout | null = null
+let timer: ReturnType<typeof setTimeout> | null = null
 
 // 点击开始界面的处理函数
 const startCredits = () => {
