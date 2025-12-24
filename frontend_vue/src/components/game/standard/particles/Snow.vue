@@ -72,7 +72,7 @@ const createSnowflake = (): Snowflake => {
   const delay = Math.random() * 10 // 0-10秒延迟
   const opacity = Math.random() * 0.7 + 0.3 // 0.3-1.0透明度
   const horizontalMovement = Math.random() * 100 - 50 // -50px 到 50px
-  const content = snowflakeChars[Math.floor(Math.random() * snowflakeChars.length)]
+  const content = snowflakeChars[Math.floor(Math.random() * snowflakeChars.length)] || '❄'
 
   return {
     id: generateId(),

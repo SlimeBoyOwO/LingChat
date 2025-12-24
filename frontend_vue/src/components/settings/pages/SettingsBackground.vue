@@ -51,7 +51,7 @@ import { MenuItem } from '../../ui'
 import { Button } from '../../base'
 import { Slider } from '../../base'
 import { getBackgroundImages } from '../../../api/services/background'
-import { BackgroundImageInfo } from '../../../types'
+import type { BackgroundImageInfo } from '../../../types'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 
 // 响应式数据
@@ -73,7 +73,7 @@ onMounted(async () => {
     } else if (backgroundList.value.length > 0) {
       // 随机选择一个背景
       const randomIndex = Math.floor(Math.random() * backgroundList.value.length)
-      selectBackground(backgroundList.value[randomIndex].url)
+      selectBackground(backgroundList.value[randomIndex]?.url || '')
       console.log('已选随机背景')
     }
   } catch (error) {

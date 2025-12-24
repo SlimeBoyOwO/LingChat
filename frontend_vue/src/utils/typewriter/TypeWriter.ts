@@ -63,7 +63,9 @@ export class TypeWriter {
 
     const buffer = this.soundBuffers[Math.floor(Math.random() * this.soundBuffers.length)]
     const source = this.audioContext.createBufferSource()
-    source.buffer = buffer
+    if (buffer) {
+      source.buffer = buffer
+    }
 
     // 添加一些随机变化使音效更自然
     source.playbackRate.value = 1.0
@@ -163,9 +165,9 @@ export class TypeWriter {
   }
 
   public clear(): void {
-    this.element.value = "";
-    this.element.textContent = "";
-    this.textBuffers = "";
+    this.element.value = ''
+    this.element.textContent = ''
+    this.textBuffers = ''
   }
 
   public checkFinished(): boolean {

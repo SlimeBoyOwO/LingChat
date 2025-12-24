@@ -21,7 +21,8 @@
 
 <script setup lang="ts">
 // 导入外部模块
-import { useSlots, computed, ref, Slots } from 'vue'
+import { useSlots, computed, ref } from 'vue'
+import type { Slots } from 'vue'
 
 // 定义组件属性
 const props = defineProps({

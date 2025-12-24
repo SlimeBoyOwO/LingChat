@@ -219,7 +219,7 @@ const handlePlayPause = () => {
   } else {
     // 如果没有 src，播放列表第一首
     if (!backgroundAudioPlayer.value.src && musicList.value.length > 0) {
-      playMusic(musicList.value[0])
+      playMusic(musicList.value[0] || { name: '', url: '' })
     } else {
       backgroundAudioPlayer.value.play().catch((e) => console.error('恢复播放失败:', e))
     }
@@ -243,7 +243,7 @@ const triggerFileUpload = () => {
 const handleFileSelect = (event: Event) => {
   const target = event.target as HTMLInputElement
   if (target.files && target.files.length > 0) {
-    selectedFile.value = target.files[0]
+    selectedFile.value = target.files?.[0] || null
   } else {
     selectedFile.value = null
   }

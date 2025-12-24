@@ -251,9 +251,14 @@ const loadConfig = async (selectFirst = true) => {
 
     if (selectFirst && Object.keys(configData.value).length > 0) {
       const firstCategory = Object.keys(configData.value)[0]
-      const firstSubcategory = Object.keys(configData.value[firstCategory].subcategories)[0]
-      if (firstCategory && firstSubcategory) {
-        selectSubcategory(firstCategory, firstSubcategory)
+      if (firstCategory) {
+        const firstSubcategory = Object.keys(
+          configData.value[firstCategory]?.subcategories || {},
+        )[0]
+
+        if (firstCategory && firstSubcategory) {
+          selectSubcategory(firstCategory, firstSubcategory)
+        }
       }
     }
   } catch (error: any) {
