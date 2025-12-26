@@ -9,6 +9,8 @@ description = ""
 authors = [
     { name = "0x00-pl", email = "0x00.pl@gmail.com" },
 ]
+requires-python = ">=3.13"  # ⭐ 添加这行，解决警告
+
 dependencies = [
     "fastapi>=0.116.1",
     "uvicorn>=0.35.0",
@@ -26,22 +28,32 @@ dependencies = [
     "onnxruntime>=1.17.0",
     "numpy>=1.24.0",
     "pillow>=10.0.0",
-    "ruff>=0.14.10",
 ]
 
+# 保留给其他工具（如 poetry/pdm）的兼容配置
 [project.optional-dependencies]
 dev = [
+    "ruff>=0.14.10",
     "pytest>=7.0",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=6.2.1",
 ]
 
-# 新增部分：明确告诉 setuptools 只打包 ling_chat 目录
 [tool.setuptools]
 packages = ["ling_chat"]
 
+# ⭐⭐ 修改这里的 uv 配置 ⭐⭐
 [tool.uv]
 index-strategy = "unsafe-best-match"
+
+# ⭐ 关键修复：使用正确的 uv 语法
+[dependency-groups]
+dev = [
+    "ruff>=0.14.10",
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=6.2.1",
+]
 
 [[tool.uv.index]]
 name = "tuna"

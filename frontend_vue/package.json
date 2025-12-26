@@ -16,6 +16,8 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.18",
+    "@tanstack/vue-query": "^5.92.1",
+    "@vueuse/core": "^14.1.0",
     "axios": "^1.13.2",
     "pinia": "^3.0.4",
     "tailwindcss": "^4.1.18",
@@ -23,6 +25,7 @@
     "vue-router": "^4.6.3"
   },
   "devDependencies": {
+    "@tanstack/vue-query-devtools": "^6.1.2",
     "@tsconfig/node24": "^24.0.3",
     "@types/node": "^24.10.1",
     "@vitejs/plugin-vue": "^6.0.2",
