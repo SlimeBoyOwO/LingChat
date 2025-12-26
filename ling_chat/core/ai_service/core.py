@@ -1,6 +1,6 @@
 import json
 import copy
-from typing import List, Dict
+from typing import Dict
 import asyncio
 
 from ling_chat.core.ai_service.rag_manager import RAGManager
@@ -15,7 +15,6 @@ from ling_chat.core.ai_service.config import AIServiceConfig
 from ling_chat.core.logger import logger
 from ling_chat.core.ai_service.message_system.message_generator import MessageGenerator
 from ling_chat.core.ai_service.script_engine.script_manager import ScriptManager
-from ling_chat.utils.function import Function
 
 import os
 

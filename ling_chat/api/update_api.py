@@ -1,10 +1,7 @@
 from fastapi import APIRouter, HTTPException
-from typing import Optional
 from pydantic import BaseModel
 import os
 import threading
-import time
-import logging
 from ..update.update_main import create_application
 
 router = APIRouter(prefix="/api/v1/update", tags=["Update"])

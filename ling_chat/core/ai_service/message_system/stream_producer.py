@@ -1,7 +1,5 @@
 import asyncio
-import os
-from typing import List, Dict, Optional
-import traceback
+from typing import Dict
 import time
 
 from ling_chat.utils.function import Function

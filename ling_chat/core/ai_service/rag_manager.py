@@ -1,6 +1,6 @@
 import os
 from typing import List, Dict
-from ling_chat.core.logger import logger, TermColors
+from ling_chat.core.logger import logger
 
 class RAGManager:
     def __init__(self):

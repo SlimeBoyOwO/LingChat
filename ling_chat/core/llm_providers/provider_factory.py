@@ -4,7 +4,6 @@ from ling_chat.core.llm_providers.lmstudio import LMStudioProvider
 from ling_chat.core.llm_providers.gemini import GeminiProvider
 from ling_chat.core.llm_providers.base import BaseLLMProvider
 from ling_chat.core.llm_providers.qwen_translate import QwenTranslateProvider
-from typing import Dict, List
 from ling_chat.core.logger import logger
 
 class LLMProviderFactory:

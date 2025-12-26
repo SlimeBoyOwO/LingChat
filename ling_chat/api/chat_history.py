@@ -1,5 +1,4 @@
-from fastapi import APIRouter, Query, HTTPException, Request
-from typing import List
+from fastapi import APIRouter, HTTPException, Request
 from datetime import datetime
 from ling_chat.database.user_model import UserModel, UserConversationModel
 from ling_chat.database.character_model import CharacterModel

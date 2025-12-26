@@ -1,7 +1,6 @@
 import os
-from pathlib import Path
-from fastapi import APIRouter, Body, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 from ling_chat.core.service_manager import service_manager
 
 router = APIRouter(prefix="/api/v1/chat/script", tags=["Chat Script"])

@@ -6,7 +6,6 @@ from typing import List, Dict
 from pathlib import Path
 import py7zr
 import zipfile
-import shutil
 from ling_chat.utils.runtime_path import temp_path
 from ling_chat.core.logger import logger
 

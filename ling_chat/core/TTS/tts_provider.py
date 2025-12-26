@@ -224,7 +224,7 @@ class TTS:
 
         except Exception as e:
             logger.error(f"语音生成失败: {str(e)} 文本: \"{text}\"")
-            logger.error(f"TTS服务不可达，已禁用语音，重新启动程序以刷新启动服务")
+            logger.error("TTS服务不可达，已禁用语音，重新启动程序以刷新启动服务")
             self.enable = False
             return None
     

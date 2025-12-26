@@ -3,7 +3,7 @@ from ling_chat.core.ai_service.config import AIServiceConfig
 from ling_chat.utils.function import Function
 from ling_chat.core.messaging.broker import message_broker
 from ling_chat.utils.runtime_path import user_data_path
-from typing import List, Dict
+from typing import Dict
 from pathlib import Path
 import re
 import os
