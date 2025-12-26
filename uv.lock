@@ -964,7 +964,6 @@ dependencies = [
     { name = "python-multipart" },
     { name = "pywebview" },
     { name = "requests" },
-    { name = "ruff" },
     { name = "uvicorn" },
     { name = "websockets" },
 ]
@@ -974,6 +973,15 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
+    { name = "ruff" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
 ]
 
 [package.metadata]
@@ -995,11 +1003,19 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.20" },
     { name = "pywebview", specifier = ">=5.4" },
     { name = "requests", specifier = ">=2.32.4" },
-    { name = "ruff", specifier = ">=0.14.10" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.14.10" },
     { name = "uvicorn", specifier = ">=0.35.0" },
     { name = "websockets", specifier = ">=15.0.1" },
 ]
 provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=7.0" },
+    { name = "pytest-asyncio", specifier = ">=0.21.0" },
+    { name = "pytest-cov", specifier = ">=6.2.1" },
+    { name = "ruff", specifier = ">=0.14.10" },
+]
 
 [[package]]
 name = "markdown-it-py"
