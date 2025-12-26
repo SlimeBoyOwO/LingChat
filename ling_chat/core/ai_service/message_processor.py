@@ -29,7 +29,7 @@ class MessageProcessor:
         emotion_segments = re.findall(r'(【(.*?)】)([^【】]*)', text)
         
         if not emotion_segments:
-            logger.warning(f"未在文本中找到【】格式的情绪标签，将尝试添加默认标签")
+            logger.warning("未在文本中找到【】格式的情绪标签，将尝试添加默认标签")
             return []
 
         results = []

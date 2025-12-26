@@ -3,7 +3,6 @@ from ling_chat.core.ai_service.script_engine.utils.script_function import Script
 from ling_chat.core.messaging.broker import message_broker
 from ling_chat.core.logger import logger
 from ling_chat.core.schemas.response_models import ResponseFactory
-from typing import Any, Dict
 
 class InputEvent(BaseEvent):
     """处理输入对话信息事件"""

@@ -1,8 +1,7 @@
 import os
-from fastapi import APIRouter, Body, HTTPException, UploadFile
+from fastapi import APIRouter, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from pathlib import Path
-from ling_chat.core import ai_service
 from ling_chat.core.logger import logger
 import shutil
 from ling_chat.utils.runtime_path import user_data_path

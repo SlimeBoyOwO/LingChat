@@ -52,7 +52,7 @@ class AILogger:
                 logger.debug(f"  对应语音: {os.path.basename(segment['voice_file'])}")
             else:
                 if segment['japanese_text']:
-                    logger.debug(f"  对应语音: (未生成或生成失败)")
+                    logger.debug("  对应语音: (未生成或生成失败)")
 
     def print_debug_message(self, current_context, rag_messages, messages):
         # if logger.should_print_context():

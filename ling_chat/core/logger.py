@@ -7,7 +7,7 @@ from datetime import datetime
 import os
 import re
 import random
-from typing import Optional, Dict, List, Any, Callable
+from typing import Optional, List
 
 from ling_chat.utils.runtime_path import user_data_path
 

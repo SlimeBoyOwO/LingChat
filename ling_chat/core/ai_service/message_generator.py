@@ -329,7 +329,7 @@ class MessageGenerator:
             }
             logger.error(f"处理消息时出错: {e}")
             traceback.print_exc()  # 这会打印完整的错误堆栈到控制台
-            logger.error(f"详细错误信息: ", exc_info=True)
+            logger.error("详细错误信息: ", exc_info=True)
             yield error_response
         finally:
             # 确保所有任务都被优雅地关闭

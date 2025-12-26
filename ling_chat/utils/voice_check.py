@@ -11,7 +11,7 @@ class VoiceCheck:
     def prepare_vits_directory(vits_path: Path):
         archive_path = vits_path.parent
         if not vits_path.exists():
-            vits_archive = archive_path / f"vits-simple-api-windows-cpu-v*.7z"
+            vits_archive = archive_path / "vits-simple-api-windows-cpu-v*.7z"
             assert vits_archive.exists(), f"VITS语音合成器压缩包未找到，请手动下载到{vits_archive}。"
             Function.extract_archive(vits_archive, vits_path)
 

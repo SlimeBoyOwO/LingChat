@@ -2,7 +2,6 @@ from ling_chat.core.ai_service.script_engine.events.base_event import BaseEvent
 from ling_chat.core.schemas.response_models import ResponseFactory
 from ling_chat.core.messaging.broker import message_broker
 from ling_chat.core.emotion.classifier import emotion_classifier
-from ling_chat.core.logger import logger
 
 class ModifyCharacterEvent(BaseEvent):
     """处理角色修改事件"""

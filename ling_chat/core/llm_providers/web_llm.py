@@ -2,7 +2,6 @@ from openai import OpenAI
 from ling_chat.core.llm_providers.base import BaseLLMProvider
 from typing import Dict, List, AsyncGenerator
 from ling_chat.core.logger import logger
-import os
 
 class WebLLMProvider(BaseLLMProvider):
     def __init__(self, model_type: str, api_key: str, base_url: str):

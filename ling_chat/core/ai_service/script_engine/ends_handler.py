@@ -1,5 +1,4 @@
 from ling_chat.core.ai_service.script_engine.type import GameContext
-from ling_chat.core.logger import logger
 
 class EndsHandler:
     def __init__(self, end_action:dict, game_context: GameContext):

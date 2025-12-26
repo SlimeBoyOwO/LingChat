@@ -3,9 +3,7 @@
 接收前端转发的控制台输出，并按照不同控制台输出等级分类为不同日志等级
 """
 import traceback
-from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Request, Body
-from fastapi.responses import JSONResponse
 
 from ling_chat.core.console_log_service import console_log_service
 from ling_chat.core.schemas.console_logs import (
@@ -180,7 +178,7 @@ async def update_level_mapping(
         if mapping.console_log_level != console_level:
             raise HTTPException(
                 status_code=400,
-                detail=f"映射配置中的console_level必须与路径参数一致"
+                detail="映射配置中的console_level必须与路径参数一致"
             )
 
         # 更新映射

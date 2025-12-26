@@ -1,10 +1,9 @@
 import asyncio
-from typing import List, Dict, Optional
+from typing import Dict
 
 from ling_chat.core.ai_service.ai_logger import logger
 from ling_chat.core.logger import logger
 
-from ling_chat.core.messaging.broker import message_broker
 
 from ling_chat.core.schemas.responses import ReplyResponse
 

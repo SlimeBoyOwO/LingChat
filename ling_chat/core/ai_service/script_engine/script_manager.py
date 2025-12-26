@@ -1,9 +1,7 @@
 import shutil
 from pathlib import Path
-from typing import Any, List, Dict, Optional
+from typing import Any, List
 
-from numpy import character
-from sympy import true
 
 from ling_chat.core.ai_service.config import AIServiceConfig
 from ling_chat.utils.function import Function

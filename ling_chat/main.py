@@ -1,6 +1,5 @@
 import os
 import signal
-import sys
 import time
 import shutil
 from typing import Collection

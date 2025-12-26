@@ -7,7 +7,7 @@ from ling_chat.database.character_model import CharacterModel
 from ling_chat.database.user_model import UserModel
 from ling_chat.utils.function import Function
 from ling_chat.core.logger import logger
-from ling_chat.utils.runtime_path import static_path, user_data_path
+from ling_chat.utils.runtime_path import user_data_path
 
 router = APIRouter(prefix="/api/v1/chat/character", tags=["Chat Character"])
 

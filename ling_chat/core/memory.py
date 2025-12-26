@@ -2,8 +2,7 @@ import os
 import json
 import asyncio
 import time
-from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict
 
 from ling_chat.core.logger import logger, TermColors
 from ling_chat.utils.runtime_path import user_data_path

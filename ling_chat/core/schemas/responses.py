@@ -1,6 +1,4 @@
 # responses.py
-from unittest.mock import Base
-from numpy import character
 from pydantic import BaseModel
 from .response_types import ResponseType
 from typing import Optional, Union
