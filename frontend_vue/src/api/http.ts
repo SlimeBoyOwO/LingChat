@@ -89,6 +89,24 @@ http.interceptors.response.use(
     }
   },
   (error: AxiosError) => {
+    // 动态导入通知（避免循环依赖）
+    import('../composables/ui/useNotification').then(({ useNotification }) => {
+      const { showError } = useNotification();
+
+      // 安全访问响应数据
+      const responseData = (error.response?.data as any) || {};
+      const statusCode = error.response?.status;
+
+      // 提取错误消息
+      let errorMessage = responseData.message || responseData.detail || error.message || "网络错误";
+
+      // 显示错误通知
+      showError({
+        statusCode,
+        message: errorMessage,
+      });
+    });
+
     // 安全访问响应数据
     const responseData = (error.response?.data as ApiResponse) || {}
     const errorMessage = responseData.message || error.message || '网络错误'
@@ -101,8 +119,9 @@ http.interceptors.response.use(
     if (error.response) {
       switch (error.response.status) {
         case 401:
-          window.location.href = '/login'
-          break
+          // 401 不自动跳转，让通知系统处理
+          // window.location.href = "/login";
+          break;
         case 403:
           // 权限相关处理
           break

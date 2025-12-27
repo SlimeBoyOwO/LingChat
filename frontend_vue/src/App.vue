@@ -1,11 +1,27 @@
 <template>
   <router-view />
   <CursorEffects />
+  
+  <!-- 全局通知组件 -->
+  <Notification
+    :type="notificationState.type"
+    :title="notificationState.title"
+    :message="notificationState.message"
+    :avatarUrl="notificationState.avatarUrl"
+    :duration="notificationState.duration"
+    :is-visible="notificationState.isVisible"
+  />
 </template>
 
 <script setup>
-import { onMounted, onUnmounted } from 'vue'
-import CursorEffects from '@/components/effects/CursorEffects.vue'
+import { onMounted, onUnmounted } from 'vue';
+import CursorEffects from "./components/effects/CursorEffects.vue";
+import Notification from "./components/ui/Notification.vue";
+import { useNotification } from "./composables/ui/useNotification";
+
+// 获取全局通知状态
+const { notificationState } = useNotification();
+
 // 在使用 <router-view> 的情况下，通常不需要在这里再导入具体的页面组件了
 
 const handleKeyDown = (event) => {
