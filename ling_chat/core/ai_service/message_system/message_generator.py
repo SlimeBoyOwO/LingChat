@@ -123,8 +123,38 @@ class MessageGenerator:
             background_tasks.append(producer_task)
 
             # 4. 现在，主协程的工作是从管道生成结果
+            # 需要同时监听 producer_task 以便捕获 LLM 异常
             while True:
-                response = await output_queue.get()
+                # 创建一个获取队列的任务
+                queue_get_task = asyncio.create_task(output_queue.get())
+                
+                # 同时等待队列和producer任务，看哪个先完成
+                done, pending = await asyncio.wait(
+                    [queue_get_task, producer_task],
+                    return_when=asyncio.FIRST_COMPLETED
+                )
+                
+                # 检查 producer_task 是否出错
+                if producer_task in done:
+                    # 取消队列获取任务
+                    queue_get_task.cancel()
+                    try:
+                        await queue_get_task
+                    except asyncio.CancelledError:
+                        pass
+                    
+                    # 检查 producer 是否有异常
+                    if producer_task.exception():
+                        raise producer_task.exception()
+                    
+                    # 如果 producer 正常完成但队列还没有数据，继续等待队列
+                    if queue_get_task not in done:
+                        response = await output_queue.get()
+                    else:
+                        response = queue_get_task.result()
+                else:
+                    response = queue_get_task.result()
+                
                 yield response
                 # 当收到最终消息时循环自然结束
                 if response.isFinal:
@@ -159,10 +189,37 @@ class MessageGenerator:
 
         except Exception as e:
             logger.error(f"消息流管道中发生错误: {e}", exc_info=True)
-            error_response = ResponseFactory.create_error_reply(str(e))
-            import traceback
-            traceback.print_exc()
-            yield error_response
+            
+            # 准备错误代码（前端负责翻译）
+            from ling_chat.core.messaging.broker import message_broker
+            error_message = str(e)
+            error_code = "default_error"  # 默认错误代码
+            
+            # 检查错误类型，确定错误代码
+            if "401" in error_message or "Api key is invalid" in error_message or "AuthenticationError" in str(type(e)):
+                error_code = "401"
+            elif "404" in error_message:
+                error_code = "404"
+            elif "网络" in error_message or "connection" in error_message.lower():
+                error_code = "network_error"
+            
+            # 发送错误代码到前端（由前端翻译）
+            error_data = {
+                "type": "error",
+                "error_code": error_code,
+                "detail": str(e)  # 原始错误信息，用于调试
+            }
+            
+            for client_id in self.config.clients:
+                await message_broker.publish(client_id, error_data)
+            
+            # 发送状态重置消息，让前端回到输入状态
+            reset_data = {
+                "type": "status_reset",
+                "status": "input"
+            }
+            for client_id in self.config.clients:
+                await message_broker.publish(client_id, reset_data)
         finally:
             # 7. 最终清理：取消任何可能仍在运行的任务
             for task in background_tasks:

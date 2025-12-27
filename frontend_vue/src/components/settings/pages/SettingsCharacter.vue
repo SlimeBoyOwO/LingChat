@@ -91,13 +91,49 @@ const updateSelectedStatus = async (): Promise<void> => {
 
 const selectCharacter = async (characterId: number): Promise<void> => {
   try {
-    await characterSelect({
+    const result = await characterSelect({
       user_id: userId.value.toString(),
       character_id: characterId.toString(),
-    })
-    updateSelectedStatus()
+    });
+    updateSelectedStatus();
+    
+    // 获取切换后角色的文件夹名
+    const folderName = result?.character?.folder_name;
+    
+    if (folderName) {
+      // 加载新角色的提示配置
+      const { useNotification } = await import("../../../composables/ui/useNotification");
+      const { loadTips, showSuccess, getSwitchTip, tipsAvailable } = useNotification();
+      
+      // 加载新角色的 tips.txt
+      await loadTips(folderName);
+      
+      // 只有当 public 中存在该角色的 tips.txt 时才显示弹窗
+      if (tipsAvailable) {
+        const successTip = getSwitchTip('success');
+        showSuccess({
+          title: successTip.title,
+          message: successTip.message,
+        });
+      } else {
+        console.log(`角色 ${folderName} 没有 tips.txt，不显示切换成功弹窗`);
+      }
+    }
   } catch (error) {
-    console.error('切换角色失败:', error)
+    console.error("切换角色失败:", error);
+    
+    // 切换失败通知（从角色配置文件读取提示，如果有的话）
+    const { useNotification } = await import("../../../composables/ui/useNotification");
+    const { showError, getSwitchTip, tipsAvailable } = useNotification();
+    
+    // 只有当当前角色有 tips.txt 时才显示失败弹窗
+    if (tipsAvailable) {
+      const failTip = getSwitchTip('fail');
+      showError({
+        title: failTip.title,
+        message: failTip.message,
+      });
+    }
   }
 }
 
