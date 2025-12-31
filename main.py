@@ -3,29 +3,18 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # 加载环境变量
-env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
-try:
-    from dotenv import load_dotenv
-    load_dotenv(env_path)
-except Exception:
-    try:
-        with open(env_path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                if "=" in line:
-                    k, v = line.split("=", 1)
-                    v = v.strip().strip('"').strip("'")
-                    os.environ.setdefault(k.strip(), v)
-    except FileNotFoundError:
-        pass
+from ling_chat.utils.runtime_path import user_data_path
+from ling_chat.utils.load_env import load_env
 
-def run_application():
-    """运行主应用程序"""
-    print("主应用开始运行 http://localhost:8765")
-    from ling_chat import main
-    main.main()
+if os.path.exists(".env"):
+    load_env()
+else:
+    try:
+        load_env(".env.example")
+        load_env(user_data_path / ".env")  # 加载用户数据目录下的环境变量
+    except Exception as e:
+        print(f"\033[91m[警告]\033[0m：加载环境变量失败，将使用默认。\n 错误为: {e}")
 
 if __name__ == "__main__":
-    run_application()
+    from ling_chat import main
+    main.main()
