@@ -1,21 +1,15 @@
 <template>
   <MenuPage>
-    <MenuItem title="角色列表">
+    <MenuItem title="服装列表">
       <CharacterList>
         <div class="character-list character-grid">
-          <CharacterCard
-            v-for="character in characters"
-            :key="character.id"
-            :avatar="character.avatar"
-            :name="character.title"
-            :info="character.info"
-          >
+          <CharacterCard v-for="cloth in clothes" :avatar="cloth.avatar" :name="cloth.title">
             <template #actions>
               <Button
                 type="select"
-                :class="['character-select-btn', { selected: isSelected(character.id) }]"
-                @click="selectCharacter(character.id)"
-                >{{ isSelected(character.id) ? '√ 选中' : '选择' }}</Button
+                :class="['character-select-btn', { selected: isSelected(cloth.title) }]"
+                @click="selectClothes(cloth.title)"
+                >{{ isSelected(cloth.title) ? '√ 选中' : '选择' }}</Button
               >
             </template>
           </CharacterCard>
@@ -23,7 +17,7 @@
       </CharacterList>
     </MenuItem>
 
-    <MenuItem title="刷新人物列表" size="small">
+    <MenuItem title="刷新服装列表" size="small">
       <Button type="big" @click="refreshCharacters">点我刷新~</Button>
     </MenuItem>
 
@@ -41,46 +35,46 @@ import { Button } from '../../base'
 import CharacterCard from '../../ui/Menu/CharacterCard.vue'
 import CharacterList from '../../ui/Menu/CharacterList.vue'
 import { characterGetAll, characterSelect } from '../../../api/services/character'
-import type { Character as ApiCharacter } from '../../../types'
+import type { Clothes } from '../../../types'
 import { useGameStore } from '../../../stores/modules/game'
 import { useUserStore } from '../../../stores/modules/user/user'
+import { getAllClothes } from '@/api/services/clothes'
 
-interface CharacterCard {
-  id: number
+interface ClothesCard {
   title: string
-  info: string
   avatar: string
 }
 
-const characters = ref<CharacterCard[]>([])
+const clothes = ref<ClothesCard[]>([])
 const userId = ref<number>(1)
 
 const gameStore = useGameStore()
 const userStore = useUserStore()
 
-const fetchCharacters = async (): Promise<CharacterCard[]> => {
+const currentClothes = gameStore.clothes_name
+
+const fetchClothes = async (): Promise<ClothesCard[]> => {
   try {
-    const list = await characterGetAll()
-    return list.map((char: ApiCharacter) => ({
-      id: parseInt(char.character_id),
-      title: char.title,
-      info: char.info || '暂无角色描述',
-      avatar: char.avatar_path
-        ? `/api/v1/chat/character/character_file/${encodeURIComponent(char.avatar_path)}`
+    const list = await getAllClothes()
+    return list.map((clothes: Clothes) => ({
+      title: clothes.title,
+      avatar: clothes.avatar
+        ? `/api/v1/chat/clothes/clothes_file/${encodeURIComponent(`${clothes.avatar}\\正常.png`)}`
         : '../pictures/characters/default.png',
     }))
   } catch (error) {
-    console.error('获取角色列表失败:', error)
+    console.error('获取服装列表失败:', error)
     return []
   }
 }
 
-const loadCharacters = async (): Promise<void> => {
+const loadClothes = async (): Promise<void> => {
   try {
-    const characterData = await fetchCharacters()
-    characters.value = characterData
+    const new_clothes = await fetchClothes()
+    clothes.value = new_clothes
+    console.log('clothes:', clothes)
   } catch (error) {
-    console.error('加载角色失败:', error)
+    console.error('加载服装失败:', error)
   }
 }
 
@@ -89,34 +83,13 @@ const updateSelectedStatus = async (): Promise<void> => {
   await gameStore.initializeGame(userStore.client_id, userId)
 }
 
-const selectCharacter = async (characterId: number): Promise<void> => {
-  try {
-    await characterSelect({
-      user_id: userId.value.toString(),
-      character_id: characterId.toString(),
-    })
-    updateSelectedStatus()
-  } catch (error) {
-    console.error('切换角色失败:', error)
-  }
+const selectClothes = async (clothes_name: string): Promise<void> => {
+  // To do : update settings
 }
 
 const refreshCharacters = async (): Promise<void> => {
   try {
-    const response = await fetch('/api/v1/chat/character/refresh_characters', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    })
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-
-    await response.json()
-    alert('刷新成功')
-    await loadCharacters() // 重新加载角色列表
+    await loadClothes() // 重新加载角色列表
   } catch (error) {
     alert('刷新失败')
     console.error('刷新失败:', error)
@@ -125,7 +98,7 @@ const refreshCharacters = async (): Promise<void> => {
 
 const openCreativeWeb = async (): Promise<void> => {
   try {
-    const response = await fetch('/api/v1/chat/character/open_web')
+    const response = await fetch('/api/v1/chat/clothes/open_web')
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
     }
@@ -137,13 +110,13 @@ const openCreativeWeb = async (): Promise<void> => {
   }
 }
 
-function isSelected(id: number): boolean {
-  return gameStore.avatar.character_id === id
+function isSelected(name: string): boolean {
+  return gameStore.avatar.clothes_name === name
 }
 
 // 初始化加载角色列表
 onMounted(() => {
-  loadCharacters()
+  loadClothes()
 })
 </script>
 

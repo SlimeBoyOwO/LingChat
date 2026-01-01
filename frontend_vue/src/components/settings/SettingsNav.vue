@@ -242,7 +242,7 @@ const initIndicator = () => {
       break
     case 'clothes':
       activeButton = clothesBtn.value
-      break;
+      break
   }
 
   if (activeButton?.$el) {
