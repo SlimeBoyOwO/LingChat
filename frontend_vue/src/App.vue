@@ -2,25 +2,15 @@
   <router-view />
   <CursorEffects />
   
-  <!-- 全局通知组件 -->
-  <Notification
-    :type="notificationState.type"
-    :title="notificationState.title"
-    :message="notificationState.message"
-    :avatarUrl="notificationState.avatarUrl"
-    :duration="notificationState.duration"
-    :is-visible="notificationState.isVisible"
-  />
+  <!-- 全局通知组件（直接从 uiStore 读取状态） -->
+  <Notification />
 </template>
 
 <script setup>
 import { onMounted, onUnmounted } from 'vue';
 import CursorEffects from "./components/effects/CursorEffects.vue";
 import Notification from "./components/ui/Notification.vue";
-import { useNotification } from "./composables/ui/useNotification";
-
-// 获取全局通知状态
-const { notificationState } = useNotification();
+import { initUIStore } from "./stores/modules/ui/ui";
 
 // 在使用 <router-view> 的情况下，通常不需要在这里再导入具体的页面组件了
 
@@ -41,6 +31,9 @@ const handleKeyDown = (event) => {
 }
 
 onMounted(() => {
+  // 初始化 UI Store（加载角色 tips）
+  initUIStore()
+  
   // 等待 pywebview API 准备就绪
   window.addEventListener('pywebviewready', () => {
     window.addEventListener('keydown', handleKeyDown)
