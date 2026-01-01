@@ -46,6 +46,11 @@ export interface Character {
   avatar_path: string
 }
 
+export interface Clothes {
+  title: string
+  avatar: string
+}
+
 export interface CharacterSelectParams {
   user_id: string
   character_id: string
