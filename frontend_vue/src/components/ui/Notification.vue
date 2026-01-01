@@ -1,11 +1,11 @@
 <template>
   <Transition name="slide-in">
-    <div v-if="isVisible" class="notification" :class="typeClass">
+    <div v-if="uiStore.notification.isVisible" class="notification" :class="typeClass">
       <!-- 角色头像区域 -->
       <div class="notification-avatar">
         <img 
-          v-if="avatarUrl" 
-          :src="avatarUrl" 
+          v-if="uiStore.notification.avatarUrl" 
+          :src="uiStore.notification.avatarUrl" 
           alt="avatar"
           class="avatar-image"
         />
@@ -14,10 +14,10 @@
       <!-- 文字内容区域 -->
       <div class="notification-content">
         <div class="notification-title">
-          {{ title || '[通知标题]' }}
+          {{ uiStore.notification.title || '[通知标题]' }}
         </div>
         <div class="notification-message">
-          {{ message || '[通知内容]' }}
+          {{ uiStore.notification.message || '[通知内容]' }}
         </div>
       </div>
     </div>
@@ -25,52 +25,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue';
-import type { NotificationType } from '../../composables/ui/useNotification';
+import { computed } from 'vue';
+import { useUIStore } from '../../stores/modules/ui/ui';
 
-interface Props {
-  type?: NotificationType;
-  title?: string;
-  message?: string;
-  avatarUrl?: string;
-  duration?: number;
-  isVisible?: boolean;
-}
-
-const props = withDefaults(defineProps<Props>(), {
-  type: 'info',
-  title: '',
-  message: '',
-  avatarUrl: '',
-  duration: 3000,
-  isVisible: false,
-});
-
-const isVisible = ref(props.isVisible);
+const uiStore = useUIStore();
 
 // 根据类型返回对应的CSS类
-const typeClass = computed(() => `notification-${props.type}`);
-
-// 监听外部传入的 isVisible 变化
-watch(() => props.isVisible, (newVal) => {
-  isVisible.value = newVal;
-});
+const typeClass = computed(() => `notification-${uiStore.notification.type}`);
 </script>
 
 <style scoped>
+@reference "tailwindcss";
+
 .notification {
-  position: fixed;
-  top: 20px;
-  left: 0;
-  z-index: 10000;
-  
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  
-  padding: 16px 24px;
-  min-width: 320px;
-  max-width: 480px;
+  @apply fixed top-5 left-0 z-[10000];
+  @apply flex items-center gap-4;
+  @apply px-6 py-4 min-w-80 max-w-[480px];
   
   /* 玻璃态效果 */
   background: linear-gradient(135deg, 
@@ -120,33 +90,21 @@ watch(() => props.isVisible, (newVal) => {
 }
 
 .notification-avatar {
-  flex-shrink: 0;
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  overflow: hidden;
+  @apply shrink-0 w-16 h-16 rounded-full overflow-hidden;
+  @apply flex items-center justify-center;
   background: rgba(255, 255, 255, 0.1);
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .avatar-image {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  @apply w-full h-full object-cover;
 }
 
 .notification-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  @apply flex-1 flex flex-col gap-1.5;
 }
 
 .notification-title {
-  font-size: 16px;
-  font-weight: 600;
+  @apply text-base font-semibold;
   color: rgba(255, 255, 255, 0.95);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
@@ -168,9 +126,8 @@ watch(() => props.isVisible, (newVal) => {
 }
 
 .notification-message {
-  font-size: 14px;
+  @apply text-sm leading-relaxed;
   color: rgba(255, 255, 255, 0.8);
-  line-height: 1.4;
 }
 
 /* 动画 */

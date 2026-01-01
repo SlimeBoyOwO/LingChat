@@ -44,6 +44,7 @@ import { characterGetAll, characterSelect } from '../../../api/services/characte
 import type { Character as ApiCharacter } from '../../../types'
 import { useGameStore } from '../../../stores/modules/game'
 import { useUserStore } from '../../../stores/modules/user/user'
+import { useUIStore } from '../../../stores/modules/ui/ui'
 
 interface CharacterCard {
   id: number
@@ -57,6 +58,7 @@ const userId = ref<number>(1)
 
 const gameStore = useGameStore()
 const userStore = useUserStore()
+const uiStore = useUIStore()
 
 const fetchCharacters = async (): Promise<CharacterCard[]> => {
   try {
@@ -94,45 +96,37 @@ const selectCharacter = async (characterId: number): Promise<void> => {
     const result = await characterSelect({
       user_id: userId.value.toString(),
       character_id: characterId.toString(),
-    });
-    updateSelectedStatus();
+    })
+    updateSelectedStatus()
     
     // 获取切换后角色的文件夹名
-    const folderName = result?.character?.folder_name;
+    const folderName = result?.character?.folder_name
     
     if (folderName) {
       // 加载新角色的提示配置
-      const { useNotification } = await import("../../../composables/ui/useNotification");
-      const { loadTips, showSuccess, getSwitchTip, tipsAvailable } = useNotification();
-      
-      // 加载新角色的 tips.txt
-      await loadTips(folderName);
+      await uiStore.loadCharacterTips(folderName)
       
       // 只有当 public 中存在该角色的 tips.txt 时才显示弹窗
-      if (tipsAvailable) {
-        const successTip = getSwitchTip('success');
-        showSuccess({
+      if (uiStore.tipsAvailable) {
+        const successTip = uiStore.getSwitchTip('success')
+        uiStore.showSuccess({
           title: successTip.title,
           message: successTip.message,
-        });
+        })
       } else {
-        console.log(`角色 ${folderName} 没有 tips.txt，不显示切换成功弹窗`);
+        console.log(`角色 ${folderName} 没有 tips.txt，不显示切换成功弹窗`)
       }
     }
   } catch (error) {
-    console.error("切换角色失败:", error);
-    
-    // 切换失败通知（从角色配置文件读取提示，如果有的话）
-    const { useNotification } = await import("../../../composables/ui/useNotification");
-    const { showError, getSwitchTip, tipsAvailable } = useNotification();
+    console.error("切换角色失败:", error)
     
     // 只有当当前角色有 tips.txt 时才显示失败弹窗
-    if (tipsAvailable) {
-      const failTip = getSwitchTip('fail');
-      showError({
+    if (uiStore.tipsAvailable) {
+      const failTip = uiStore.getSwitchTip('fail')
+      uiStore.showError({
         title: failTip.title,
         message: failTip.message,
-      });
+      })
     }
   }
 }

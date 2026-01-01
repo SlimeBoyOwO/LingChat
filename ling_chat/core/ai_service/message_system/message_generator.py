@@ -203,7 +203,7 @@ class MessageGenerator:
             elif "网络" in error_message or "connection" in error_message.lower():
                 error_code = "network_error"
             
-            # 发送错误代码到前端（由前端翻译）
+            # 1. 发送错误代码到前端（由前端翻译显示弹窗）
             error_data = {
                 "type": "error",
                 "error_code": error_code,
@@ -213,13 +213,17 @@ class MessageGenerator:
             for client_id in self.config.clients:
                 await message_broker.publish(client_id, error_data)
             
-            # 发送状态重置消息，让前端回到输入状态
+            # 2. 发送状态重置消息，让前端回到输入状态
             reset_data = {
                 "type": "status_reset",
                 "status": "input"
             }
             for client_id in self.config.clients:
                 await message_broker.publish(client_id, reset_data)
+            
+            # 3. 同时生成错误响应对象（供后端调用方使用）
+            error_response = ResponseFactory.create_error_reply(str(e))
+            yield error_response
         finally:
             # 7. 最终清理：取消任何可能仍在运行的任务
             for task in background_tasks:
