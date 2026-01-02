@@ -431,8 +431,10 @@ onUnmounted(() => {
   width: 180px;
   height: 180px;
   position: relative;
-  border: none;
-  background: transparent;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
 }
 
 .ring {
@@ -440,6 +442,21 @@ onUnmounted(() => {
   height: 100%;
   transform: rotate(-90deg);
   overflow: visible;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+/* 去掉部分浏览器/系统环境可能给 SVG 或可聚焦元素绘制的“直角白框” */
+.ring-section,
+.ring-section :deep(svg),
+.ring-section :deep(svg:focus),
+.ring-section :deep(svg:focus-visible),
+.ring-section :deep(*:focus),
+.ring-section :deep(*:focus-visible) {
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 .track {
@@ -590,6 +607,7 @@ onUnmounted(() => {
   margin: 0;
 }
 .no-spin {
+  appearance: textfield;
   -moz-appearance: textfield; 
   width: 32px;
   background: transparent;
