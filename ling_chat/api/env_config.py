@@ -3,6 +3,7 @@ import re
 from fastapi import APIRouter, HTTPException, Body
 from typing import Dict, Any
 from ling_chat.utils.runtime_path import package_root
+from ling_chat.utils.runtime_config import apply_runtime_config_changes
 
 router = APIRouter()
 env_file_path = package_root.parent / '.env'
@@ -206,6 +207,8 @@ async def get_config():
 async def save_config(new_values: Dict[str, str] = Body(...)):
     try:
         save_env_file(new_values)
-        return {"status": "success", "message": "配置已成功保存！"}
+        # 看这里！！保存文件后，进行运行时热更新
+        apply_runtime_config_changes(new_values)
+        return {"status": "success", "message": "配置已成功保存并已生效！"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save .env file: {str(e)}")
