@@ -9,8 +9,8 @@
 <!--请总结你的改动：哪些核心文件被修改了？实现了什么功能？-->
 
 - [ ] This is NOT a breaking change. / 这不是一个破坏性变更。
-<!-- If your changes is not a breaking change, please check the checkbox above (put an 'x' inside the brackets) -->
-<!-- 如果您的更改不是破坏性变更，请勾选上方的复选框（在括号内打“x”） -->
+<!-- If your changes is a breaking change, please check the checkbox above (put an 'x' inside the brackets) -->
+<!-- 如果您的更改是破坏性变更，请勾选上方的复选框（在括号内打“x”） -->
 
 ### 📸 Screenshots or Test Results / 运行截图或测试结果
 
