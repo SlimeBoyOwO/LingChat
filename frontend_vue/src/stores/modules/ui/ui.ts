@@ -49,8 +49,8 @@ const DEFAULT_AVATAR = '/characters/诺一钦灵/头像.png'
 
 // 防抖相关
 const notificationDebounceMap = new Map<string, number>()
-const DEBOUNCE_MS_NETWORK = 10000  // "未注明的错误" 10秒
-const DEBOUNCE_MS_DEFAULT = 3000   // 其他 3秒
+const DEBOUNCE_MS_NETWORK = 10000 // "未注明的错误" 10秒
+const DEBOUNCE_MS_DEFAULT = 3000 // 其他 3秒
 
 let hideTimer: number | null = null
 
@@ -87,7 +87,8 @@ export const useUIStore = defineStore('ui', {
     },
     tipsMap: {},
     tipsAvailable: false,
-    currentCharacterFolder: localStorage.getItem(STORAGE_KEY_CHARACTER_FOLDER) || DEFAULT_CHARACTER_FOLDER,
+    currentCharacterFolder:
+      localStorage.getItem(STORAGE_KEY_CHARACTER_FOLDER) || DEFAULT_CHARACTER_FOLDER,
   }),
 
   actions: {
@@ -134,13 +135,13 @@ export const useUIStore = defineStore('ui', {
         const newTipsMap: Record<string, { title: string; message: string }> = {}
 
         // 解析 txt 格式：代码 = 标题 | 内容
-        text.split('\n').forEach(line => {
+        text.split('\n').forEach((line) => {
           line = line.trim()
           if (!line || line.startsWith('#')) return
 
-          const [code, content] = line.split('=').map(s => s.trim())
+          const [code, content] = line.split('=').map((s) => s.trim())
           if (code && content) {
-            const [title, message] = content.split('|').map(s => s.trim())
+            const [title, message] = content.split('|').map((s) => s.trim())
             if (title && message) {
               newTipsMap[code] = { title, message }
             }
@@ -172,9 +173,16 @@ export const useUIStore = defineStore('ui', {
       message?: string
       avatarUrl?: string
       duration?: number
-      skipTipsCheck?: boolean  // 跳过 tips 检查（用于网络错误等必须显示的通知）
+      skipTipsCheck?: boolean // 跳过 tips 检查（用于网络错误等必须显示的通知）
     }) {
-      const { type = 'info', title = '', message = '', avatarUrl, duration = 3000, skipTipsCheck = false } = options
+      const {
+        type = 'info',
+        title = '',
+        message = '',
+        avatarUrl,
+        duration = 3000,
+        skipTipsCheck = false,
+      } = options
 
       // 如果当前角色没有配置 tips.txt，且没有跳过检查，则不显示弹窗
       if (!this.tipsAvailable && !skipTipsCheck) {
@@ -250,7 +258,8 @@ export const useUIStore = defineStore('ui', {
 
       // 优先使用错误代码查询
       if (errorCode) {
-        const tip = this.tipsMap[errorCode] || this.tipsMap['default_error'] || { title: '错误', message: '发生了未知错误' }
+        const tip = this.tipsMap[errorCode] ||
+          this.tipsMap['default_error'] || { title: '错误', message: '发生了未知错误' }
         finalTitle = title || tip.title
         finalMessage = message || tip.message
       }
@@ -293,12 +302,7 @@ export const useUIStore = defineStore('ui', {
     /**
      * 显示信息通知
      */
-    showInfo(options: {
-      title?: string
-      message?: string
-      avatarUrl?: string
-      duration?: number
-    }) {
+    showInfo(options: { title?: string; message?: string; avatarUrl?: string; duration?: number }) {
       this.showNotification({ ...options, type: 'info' })
     },
 
@@ -319,10 +323,12 @@ export const useUIStore = defineStore('ui', {
      */
     getSwitchTip(type: 'success' | 'fail') {
       const key = type === 'success' ? 'switch_success' : 'switch_fail'
-      return this.tipsMap[key] || {
-        title: type === 'success' ? '切换成功' : '切换失败',
-        message: type === 'success' ? '角色已切换' : '切换时出了问题'
-      }
+      return (
+        this.tipsMap[key] || {
+          title: type === 'success' ? '切换成功' : '切换失败',
+          message: type === 'success' ? '角色已切换' : '切换时出了问题',
+        }
+      )
     },
   },
 })
@@ -338,4 +344,3 @@ export function initUIStore() {
   const store = useUIStore()
   store.loadCharacterTips(store.currentCharacterFolder)
 }
-
