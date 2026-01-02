@@ -34,7 +34,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { MenuPage } from '../../ui'
 import { MenuItem } from '../../ui'
 import { Button } from '../../base'
