@@ -11,7 +11,7 @@ export interface GameInfo {
   offset: number
   bubble_top: number
   bubble_left: number
-  clothes: Array<string>
+  clothes: object
   clothes_name: string
 }
 

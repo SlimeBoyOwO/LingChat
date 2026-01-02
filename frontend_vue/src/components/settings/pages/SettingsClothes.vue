@@ -18,7 +18,7 @@
     </MenuItem>
 
     <MenuItem title="刷新服装列表" size="small">
-      <Button type="big" @click="refreshCharacters">点我刷新~</Button>
+      <Button type="big" @click="refreshClothes">点我刷新~</Button>
     </MenuItem>
 
     <MenuItem title="创意工坊" size="small">
@@ -28,13 +28,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { MenuPage } from '../../ui'
 import { MenuItem } from '../../ui'
 import { Button } from '../../base'
 import CharacterCard from '../../ui/Menu/CharacterCard.vue'
 import CharacterList from '../../ui/Menu/CharacterList.vue'
-import { characterGetAll, characterSelect } from '../../../api/services/character'
 import type { Clothes } from '../../../types'
 import { useGameStore } from '../../../stores/modules/game'
 import { useUserStore } from '../../../stores/modules/user/user'
@@ -46,12 +45,7 @@ interface ClothesCard {
 }
 
 const clothes = ref<ClothesCard[]>([])
-const userId = ref<number>(1)
-
 const gameStore = useGameStore()
-const userStore = useUserStore()
-
-const currentClothes = gameStore.clothes_name
 
 const fetchClothes = async (): Promise<ClothesCard[]> => {
   try {
@@ -78,18 +72,15 @@ const loadClothes = async (): Promise<void> => {
   }
 }
 
-const updateSelectedStatus = async (): Promise<void> => {
-  const userId = '1'
-  await gameStore.initializeGame(userStore.client_id, userId)
-}
-
 const selectClothes = async (clothes_name: string): Promise<void> => {
-  // To do : update settings
+  console.log('gameStore:', gameStore)
+  gameStore.avatar.clothes_name = clothes_name
+  // send message to AI
 }
 
-const refreshCharacters = async (): Promise<void> => {
+const refreshClothes = async (): Promise<void> => {
   try {
-    await loadClothes() // 重新加载角色列表
+    await loadClothes() // 重新加载服装列表
   } catch (error) {
     alert('刷新失败')
     console.error('刷新失败:', error)
@@ -118,10 +109,18 @@ function isSelected(name: string): boolean {
 onMounted(() => {
   loadClothes()
 })
+
+// 角色切换时重新加载服装
+watch(
+  () => gameStore.avatar.character_id,
+  () => {
+    loadClothes()
+  },
+)
 </script>
 
 <style scoped>
-/*=========角色css部分=========*/
+/*=========服装css部分，沿用character css=========*/
 /* 角色选择网格布局 */
 .character-grid {
   display: grid;

@@ -37,15 +37,18 @@ const currentBubbleClass = ref('')
 
 const targetAvatarUrl = computed(() => {
   const character = gameStore.character // 获取当前角色
+  const clothes_name = gameStore.avatar.clothes_name ?? 'default' // 获取当前服装
   const emotion = gameStore.avatar.emotion // 获取当前表情
 
   const emotionConfig = EMOTION_CONFIG[emotion] || EMOTION_CONFIG['正常']
 
   if (emotion === 'AI思考') return 'none' // TODO: 神奇的小魔法字符串怎么你了
-  if (!gameStore.script.isRunning) return `${emotionConfig?.avatar ?? ''}`
+
+  const avatarUrl = `${emotionConfig?.avatar}/${clothes_name}`
+  if (!gameStore.script.isRunning) return `${emotionConfig?.avatar ? avatarUrl : ''}`
 
   // TODO: 统一管理API
-  return `/api/v1/chat/character/get_script_avatar/${character}/${EMOTION_CONFIG_EMO[emotion]}`
+  return `/api/v1/chat/character/get_script_avatar/${character}/${clothes_name}/${EMOTION_CONFIG_EMO[emotion]}`
 })
 
 const containerClasses = computed(() => ({
@@ -106,6 +109,13 @@ watch(
 watch(
   () => gameStore.avatar.character_id,
   (newCharacterID) => {
+    updateAvatarImage(targetAvatarUrl.value)
+  },
+)
+
+watch(
+  () => gameStore.avatar.clothes_name,
+  () => {
     updateAvatarImage(targetAvatarUrl.value)
   },
 )

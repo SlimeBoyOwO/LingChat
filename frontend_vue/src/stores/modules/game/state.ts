@@ -29,7 +29,7 @@ export interface ScriptCharacter {
   bubble_top: number
   bubble_left: number
   show: boolean
-  clothes: Array<string>
+  clothes: object
   clothes_name: string
 }
 
@@ -69,8 +69,8 @@ export const state: GameState = {
     bubble_top: 5,
     bubble_left: 20,
     show: true,
-    clothes: [],
-    clothes_name: '',
+    clothes: {},
+    clothes_name: 'default',
   },
   currentLine: '',
   currentStatus: 'input',
