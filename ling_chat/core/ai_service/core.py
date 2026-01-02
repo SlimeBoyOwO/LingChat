@@ -101,6 +101,46 @@ class AIService:
         
         self.events_scheduler.ai_name = self.ai_name
         self.events_scheduler.user_name = self.user_name
+
+    def apply_runtime_config(self, updates: dict[str, str]) -> None:
+        """
+        根据运行时更新的配置，热重载关键组件，避免重启。
+        仅在有相关键变动时做最小开销的重建。
+        """
+        try:
+            llm_keys = {
+                "LLM_PROVIDER", "MODEL_TYPE", "CHAT_API_KEY", "CHAT_BASE_URL",
+                "TRANSLATE_LLM_PROVIDER", "TRANSLATE_MODEL", "TRANSLATE_API_KEY", "TRANSLATE_API_URL"
+            }
+            if any(k in updates for k in llm_keys):
+                self.llm_model = LLMManager()
+                self.message_generator.llm_model = self.llm_model
+                logger.info("运行时配置更新：LLMManager 已重建并替换。")
+
+            if any(k in updates for k in {"USE_RAG", "USE_MEMORY_SYSTEM"}):
+                new_use_rag = os.environ.get("USE_RAG", "False").lower() == "true" or \
+                              os.environ.get("USE_MEMORY_SYSTEM", "True").lower() == "true"
+                self.message_generator.use_rag = new_use_rag
+                if new_use_rag and self.rag_manager is None:
+                    self.rag_manager = RAGManager()
+                    self.message_generator.rag_manager = self.rag_manager
+                    logger.info("运行时配置更新：RAG 已启用并初始化。")
+                if not new_use_rag and self.rag_manager is not None:
+                    self.rag_manager = None
+                    self.message_generator.rag_manager = None
+                    logger.info("运行时配置更新：RAG 已关闭。")
+
+            if "COMSUMERS" in updates:
+                try:
+                    new_concurrency = int(os.environ.get("COMSUMERS", self.message_generator.concurrency))
+                    if new_concurrency > 0:
+                        self.message_generator.concurrency = new_concurrency
+                        logger.info(f"运行时配置更新：并发消费者数量设置为 {new_concurrency}")
+                except Exception:
+                    logger.warning("COMSUMERS 配置无效，忽略。")
+
+        except Exception as e:
+            logger.error(f"应用运行时配置失败: {e}", exc_info=True)
     
     def load_memory(self, memory):     
         if isinstance(memory, str):
