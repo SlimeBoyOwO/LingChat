@@ -60,6 +60,17 @@ export interface ScriptInputEvent extends ScriptEvent {
   hint: string
 }
 
+export interface ScriptErrorEvent extends ScriptEvent {
+  type: 'error'
+  error_code?: string
+  message?: string
+}
+
+export interface ScriptStatusResetEvent extends ScriptEvent {
+  type: 'status_reset'
+  status?: string
+}
+
 export type ScriptEventType =
   | ScriptNarrationEvent
   | ScriptDialogueEvent
@@ -70,3 +81,5 @@ export type ScriptEventType =
   | ScriptMusicEvent
   | ScriptSoundEvent
   | ScriptInputEvent
+  | ScriptErrorEvent
+  | ScriptStatusResetEvent
