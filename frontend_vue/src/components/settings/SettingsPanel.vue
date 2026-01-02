@@ -19,7 +19,6 @@
       <SettingsCharacter v-show="uiStore.currentSettingsTab === 'character'" />
       <SettingsBackground v-show="uiStore.currentSettingsTab === 'background'" />
       <SettingsUpdate v-show="uiStore.currentSettingsTab === 'update'" />
-      <SettingsClothes v-show="uiStore.currentSettingsTab === 'clothes'" />
     </div>
   </div>
 </template>

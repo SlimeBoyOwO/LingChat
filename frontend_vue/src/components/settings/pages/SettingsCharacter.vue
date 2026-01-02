@@ -9,6 +9,9 @@
             :avatar="character.avatar"
             :name="character.title"
             :info="character.info"
+            :clothes="character.clothes || []"
+            :selectClothes="selectClothes"
+            :isClothesSelected="isClothesSelected"
           >
             <template #actions>
               <Button
@@ -40,8 +43,8 @@ import { MenuItem } from '../../ui'
 import { Button } from '../../base'
 import CharacterCard from '../../ui/Menu/CharacterCard.vue'
 import CharacterList from '../../ui/Menu/CharacterList.vue'
-import { characterGetAll, characterSelect } from '../../../api/services/character'
-import type { Character as ApiCharacter } from '../../../types'
+import { characterGetAll, characterSelect, clothesGetAll } from '../../../api/services/character'
+import type { Character as ApiCharacter, Clothes } from '../../../types'
 import { useGameStore } from '../../../stores/modules/game'
 import { useUserStore } from '../../../stores/modules/user/user'
 import { useUIStore } from '../../../stores/modules/ui/ui'
@@ -51,6 +54,7 @@ interface CharacterCard {
   title: string
   info: string
   avatar: string
+  clothes?: Clothes[]
 }
 
 const characters = ref<CharacterCard[]>([])
@@ -60,9 +64,11 @@ const gameStore = useGameStore()
 const userStore = useUserStore()
 const uiStore = useUIStore()
 
+console.log("characters:", characters);
 const fetchCharacters = async (): Promise<CharacterCard[]> => {
   try {
     const list = await characterGetAll()
+    const clothes = await clothesGetAll()
     return list.map((char: ApiCharacter) => ({
       id: parseInt(char.character_id),
       title: char.title,
@@ -70,6 +76,12 @@ const fetchCharacters = async (): Promise<CharacterCard[]> => {
       avatar: char.avatar_path
         ? `/api/v1/chat/character/character_file/${encodeURIComponent(char.avatar_path)}`
         : '../pictures/characters/default.png',
+      clothes: isSelected(parseInt(char.character_id)) ? clothes.map((clothes: Clothes) => ({
+        title: clothes.title,
+        avatar: clothes.avatar
+          ? `/api/v1/chat/clothes/clothes_file/${encodeURIComponent(`${clothes.avatar}\\icon.png`)}`
+          : '../pictures/characters/default.png',
+      })) : []
     }))
   } catch (error) {
     console.error('获取角色列表失败:', error)
@@ -153,6 +165,11 @@ const refreshCharacters = async (): Promise<void> => {
   }
 }
 
+const selectClothes = async (clothes_name: string): Promise<void> => {
+  gameStore.avatar.clothes_name = clothes_name
+  // TODO: send message to AI
+}
+
 const openCreativeWeb = async (): Promise<void> => {
   try {
     const response = await fetch('/api/v1/chat/character/open_web')
@@ -171,10 +188,23 @@ function isSelected(id: number): boolean {
   return gameStore.avatar.character_id === id
 }
 
+function isClothesSelected(clothes_name: string): boolean {
+  return gameStore.avatar.clothes_name === clothes_name;
+}
+
+
 // 初始化加载角色列表
 onMounted(() => {
   loadCharacters()
 })
+
+// 角色切换时重新加载服装
+watch(
+  () => gameStore.avatar.character_id,
+  () => {
+    loadCharacters()
+  },
+)
 </script>
 
 <style scoped>
@@ -182,7 +212,7 @@ onMounted(() => {
 /* 角色选择网格布局 */
 .character-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  /* grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); */
   gap: 20px;
   padding: 15px;
   width: 100%;
@@ -214,8 +244,8 @@ onMounted(() => {
 }
 
 @media (max-width: 768px) {
-  .character-grid {
+  /* .character-grid {
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  }
+  } */
 }
 </style>
