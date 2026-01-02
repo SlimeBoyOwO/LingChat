@@ -97,7 +97,7 @@ http.interceptors.response.use(
     const statusCode = error.response?.status
 
     // 提取错误消息
-    const errorMessage = responseData.message || responseData.detail || error.message || "网络错误"
+    const errorMessage = responseData.message || responseData.detail || error.message || '网络错误'
 
     // 显示错误通知
     uiStore.showError({

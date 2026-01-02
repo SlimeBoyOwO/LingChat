@@ -1,16 +1,19 @@
 <template>
   <router-view />
   <CursorEffects />
-  
+
   <!-- 全局通知组件（直接从 uiStore 读取状态） -->
   <Notification />
+  <!-- 左上角番茄钟开关与面板 -->
+  <PomodoroPanel />
 </template>
 
 <script setup>
-import { onMounted, onUnmounted } from 'vue';
-import CursorEffects from "./components/effects/CursorEffects.vue";
-import Notification from "./components/ui/Notification.vue";
-import { initUIStore } from "./stores/modules/ui/ui";
+import { onMounted, onUnmounted } from 'vue'
+import CursorEffects from './components/effects/CursorEffects.vue'
+import Notification from './components/ui/Notification.vue'
+import PomodoroPanel from './components/pomodoro/PomodoroPanel.vue'
+import { initUIStore } from './stores/modules/ui/ui'
 
 // 在使用 <router-view> 的情况下，通常不需要在这里再导入具体的页面组件了
 
@@ -33,7 +36,7 @@ const handleKeyDown = (event) => {
 onMounted(() => {
   // 初始化 UI Store（加载角色 tips）
   initUIStore()
-  
+
   // 等待 pywebview API 准备就绪
   window.addEventListener('pywebviewready', () => {
     window.addEventListener('keydown', handleKeyDown)
