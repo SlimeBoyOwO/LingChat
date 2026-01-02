@@ -59,6 +59,18 @@ export class ScriptHandler {
       console.log('收到输入事件:', data)
       eventQueue.addEvent(data as ScriptTypes.ScriptInputEvent)
     })
+
+    // 错误事件 - 通过 eventQueue 统一处理
+    registerHandler(WebSocketMessageTypes.ERROR, (data: any) => {
+      console.log('收到错误消息:', data)
+      eventQueue.addEvent({ ...data, type: 'error', duration: 0 } as ScriptTypes.ScriptErrorEvent)
+    })
+
+    // 状态重置事件 - 通过 eventQueue 统一处理
+    registerHandler('status_reset', (data: any) => {
+      console.log('收到状态重置消息:', data)
+      eventQueue.addEvent({ ...data, type: 'status_reset', duration: 0 } as ScriptTypes.ScriptStatusResetEvent)
+    })
   }
 
   public sendMessage(text: string) {

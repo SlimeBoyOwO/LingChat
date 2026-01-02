@@ -151,6 +151,8 @@ class AIService:
                 except Exception as e:
                     logger.error(f"处理消息时发生错误: {e}")
                     self.is_processing = False
+                    # 错误通知由 message_generator 处理
+                    
         except asyncio.CancelledError:
             logger.info(f"客户端 {client_id} 的消息处理任务已被取消")
         except Exception as e:
@@ -224,6 +226,7 @@ class AIService:
                 except Exception as e:
                     logger.error(f"处理全局消息时发生错误: {e}")
                     self.is_processing = False
+                    # 错误通知由 message_generator 处理
         except asyncio.CancelledError:
             logger.info("全局消息处理任务已被取消")
         except Exception as e:
