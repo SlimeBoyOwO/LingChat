@@ -92,6 +92,34 @@ class RAGManager:
             logger.debug(f"Memory Context: 总历史 {total_len} | 已归档至 {ms.last_processed_idx} | "
                          f"切片起始 {slice_start_index} | 实际发送 {kept_len} 条 (回溯窗口 {ms.recent_window})")
 
+            # 保护：若切片后没有任何历史（例如 recent_window 过小或 last_processed_idx == len(history)）
+            # 则至少保留最后一个用户消息或最末若干条消息，避免仅发送 memorybank
+            if not sliced_history and history_messages:
+                # 优先保留最后一个用户消息
+                last_user_idx = None
+                for idx in range(len(history_messages) - 1, -1, -1):
+                    if history_messages[idx].get("role") == "user" and history_messages[idx].get("content", "").strip():
+                        last_user_idx = idx
+                        break
+                # 至少回溯一个最小窗口（1），若能定位到用户消息则从该处开始
+                minimal_window = max(1, getattr(ms, "recent_window", 0))
+                if last_user_idx is not None:
+                    start_idx = max(0, last_user_idx)
+                    sliced_history = history_messages[start_idx:]
+                else:
+                    sliced_history = history_messages[-minimal_window:]
+            
+            # 统计角色分布与校验是否包含用户消息（便于排查问题）
+            try:
+                role_counts = {}
+                for msg in sliced_history:
+                    r = msg.get("role", "unknown")
+                    role_counts[r] = role_counts.get(r, 0) + 1
+                has_user = any(msg.get("role") == "user" and msg.get("content", "").strip() for msg in sliced_history)
+                logger.debug(f"Memory Context 校验: 角色分布={role_counts} | 含用户消息={has_user}")
+            except Exception:
+                pass
+
             final_context = []
             
             if system_prompt_msg:

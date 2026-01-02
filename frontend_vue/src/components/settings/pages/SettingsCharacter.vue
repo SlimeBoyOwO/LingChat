@@ -98,14 +98,14 @@ const selectCharacter = async (characterId: number): Promise<void> => {
       character_id: characterId.toString(),
     })
     updateSelectedStatus()
-    
+
     // 获取切换后角色的文件夹名
     const folderName = result?.character?.folder_name
-    
+
     if (folderName) {
       // 加载新角色的提示配置
       await uiStore.loadCharacterTips(folderName)
-      
+
       // 只有当 public 中存在该角色的 tips.txt 时才显示弹窗
       if (uiStore.tipsAvailable) {
         const successTip = uiStore.getSwitchTip('success')
@@ -118,8 +118,8 @@ const selectCharacter = async (characterId: number): Promise<void> => {
       }
     }
   } catch (error) {
-    console.error("切换角色失败:", error)
-    
+    console.error('切换角色失败:', error)
+
     // 只有当当前角色有 tips.txt 时才显示失败弹窗
     if (uiStore.tipsAvailable) {
       const failTip = uiStore.getSwitchTip('fail')
