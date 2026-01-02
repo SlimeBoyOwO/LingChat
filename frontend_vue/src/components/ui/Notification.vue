@@ -3,14 +3,14 @@
     <div v-if="uiStore.notification.isVisible" class="notification" :class="typeClass">
       <!-- 角色头像区域 -->
       <div class="notification-avatar">
-        <img 
-          v-if="uiStore.notification.avatarUrl" 
-          :src="uiStore.notification.avatarUrl" 
+        <img
+          v-if="uiStore.notification.avatarUrl"
+          :src="uiStore.notification.avatarUrl"
           alt="avatar"
           class="avatar-image"
         />
       </div>
-      
+
       <!-- 文字内容区域 -->
       <div class="notification-content">
         <div class="notification-title">
@@ -25,13 +25,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
-import { useUIStore } from '../../stores/modules/ui/ui';
+import { computed } from 'vue'
+import { useUIStore } from '../../stores/modules/ui/ui'
 
-const uiStore = useUIStore();
+const uiStore = useUIStore()
 
 // 根据类型返回对应的CSS类
-const typeClass = computed(() => `notification-${uiStore.notification.type}`);
+const typeClass = computed(() => `notification-${uiStore.notification.type}`)
 </script>
 
 <style scoped>
@@ -41,24 +41,21 @@ const typeClass = computed(() => `notification-${uiStore.notification.type}`);
   @apply fixed top-5 left-0 z-[10000];
   @apply flex items-center gap-4;
   @apply px-6 py-4 min-w-80 max-w-[480px];
-  
+
   /* 玻璃态效果 */
-  background: linear-gradient(135deg, 
-    rgba(30, 30, 40, 0.95) 0%,
-    rgba(20, 20, 30, 0.90) 100%
-  );
+  background: linear-gradient(135deg, rgba(30, 30, 40, 0.95) 0%, rgba(20, 20, 30, 0.9) 100%);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  
+
   border-radius: 0 16px 16px 0;
-  box-shadow: 
+  box-shadow:
     4px 4px 20px rgba(0, 0, 0, 0.4),
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 /* 类型样式 */
 .notification-error {
-  box-shadow: 
+  box-shadow:
     0 0 15px rgba(255, 100, 100, 0.5),
     0 0 30px rgba(255, 100, 100, 0.3),
     0 0 45px rgba(255, 100, 100, 0.15),
@@ -66,7 +63,7 @@ const typeClass = computed(() => `notification-${uiStore.notification.type}`);
 }
 
 .notification-success {
-  box-shadow: 
+  box-shadow:
     0 0 15px rgba(100, 255, 150, 0.5),
     0 0 30px rgba(100, 255, 150, 0.3),
     0 0 45px rgba(100, 255, 150, 0.15),
@@ -74,7 +71,7 @@ const typeClass = computed(() => `notification-${uiStore.notification.type}`);
 }
 
 .notification-info {
-  box-shadow: 
+  box-shadow:
     0 0 15px rgba(100, 180, 255, 0.5),
     0 0 30px rgba(100, 180, 255, 0.3),
     0 0 45px rgba(100, 180, 255, 0.15),
@@ -82,7 +79,7 @@ const typeClass = computed(() => `notification-${uiStore.notification.type}`);
 }
 
 .notification-warning {
-  box-shadow: 
+  box-shadow:
     0 0 15px rgba(255, 200, 100, 0.5),
     0 0 30px rgba(255, 200, 100, 0.3),
     0 0 45px rgba(255, 200, 100, 0.15),
@@ -133,8 +130,9 @@ const typeClass = computed(() => `notification-${uiStore.notification.type}`);
 /* 动画 */
 .slide-in-enter-active,
 .slide-in-leave-active {
-  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), 
-              opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .slide-in-enter-from {

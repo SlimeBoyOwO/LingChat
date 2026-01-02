@@ -69,7 +69,11 @@ export class ScriptHandler {
     // 状态重置事件 - 通过 eventQueue 统一处理
     registerHandler('status_reset', (data: any) => {
       console.log('收到状态重置消息:', data)
-      eventQueue.addEvent({ ...data, type: 'status_reset', duration: 0 } as ScriptTypes.ScriptStatusResetEvent)
+      eventQueue.addEvent({
+        ...data,
+        type: 'status_reset',
+        duration: 0,
+      } as ScriptTypes.ScriptStatusResetEvent)
     })
   }
 
