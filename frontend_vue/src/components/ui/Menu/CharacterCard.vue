@@ -7,6 +7,22 @@
       <h5 class="character-title">{{ name }}</h5>
       <p class="character-description">{{ info }}</p>
 
+      <div v-if="clothes && clothes.length > 0" class="character-clothes">
+        <div class="clothes-list">
+          <div v-for="cloth in clothes" class="clothes-content" @click="selectClothes && selectClothes(cloth.title)">
+            <img
+              v-bind:class="{ selected : isClothesSelected && isClothesSelected(cloth.title) }"
+              :key="cloth.title"
+              :src="cloth.avatar"
+              class="cloth-thumbnail"
+              :alt="cloth.title"
+            />
+            <p class="clothes-title">{{ cloth.title }}</p>
+          </div>
+        </div>
+        
+      </div>
+
       <div class="character-actions">
         <slot name="actions"></slot>
       </div>
@@ -17,11 +33,15 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import Button from '../../base/widget/Button.vue'
+import type { Clothes } from '@/types'
 
 interface CharacterProps {
   avatar?: string
   name?: string
   info?: string
+  clothes?: Clothes[]
+  selectClothes?: (clothes_name: string) => Promise<void>
+  isClothesSelected?: (clothes_name: string) => boolean
 }
 
 const props = withDefaults(defineProps<CharacterProps>(), {})
@@ -38,6 +58,7 @@ const props = withDefaults(defineProps<CharacterProps>(), {})
   transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
   border: 1px solid rgba(0, 0, 0, 0.05);
   height: 180px; /* 固定高度保持统一 */
+  width: 100%;
 }
 
 .character-card:hover {
@@ -88,9 +109,68 @@ const props = withDefaults(defineProps<CharacterProps>(), {})
   line-height: 1.4;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  overflow: hidden;
-  margin-bottom: 15px;
+  overflow-y: auto;
+  margin-bottom: 8px;
+  height: 60px;
+}
+
+.character-clothes {
+  display: flex;
+  flex-direction: row;
+  width: calc(100% - 80px);
   height: 100px;
+  margin-bottom: 5px;
+  overflow: hidden;
+}
+
+.clothes-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 10px;
+  color: #ffffff;
+  margin-bottom: 2px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 50px;
+}
+
+.clothes-content:hover {
+    box-shadow: inset 0px 100px rgba(0, 0, 0, 0.1);
+    transition: box-shadow 0.3s ease-in-out;
+}
+
+.clothes-title {
+  font-size: 10px;
+  font-weight: 500;
+  color: #ffffff;
+  width: 50px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.clothes-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-bottom: 4px;
+  overflow-y: auto;
+  width: 100%;
+}
+
+.cloth-thumbnail.selected {
+  border: 3px solid #79d9ff
+}
+
+.cloth-thumbnail {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 /* 响应式调整 */
@@ -115,6 +195,16 @@ const props = withDefaults(defineProps<CharacterProps>(), {})
 
   .character-description {
     font-size: 12px;
+    height: 40px;
+  }
+
+  .character-clothes {
+    margin-bottom: 0px;
+  }
+
+  .cloth-thumbnail {
+    width: 20px;
+    height: 20px;
   }
 
   .character-select-btn {

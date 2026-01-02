@@ -18,14 +18,6 @@
         ><p class="hidden xl:block">角色</p></Button
       >
       <Button
-        ref="clothesBtn"
-        type="nav"
-        icon="clothes"
-        @click="() => switchTab('clothes', 'clothesBtn')"
-        :class="{ active: uiStore.currentSettingsTab === 'clothes' }"
-        ><p class="hidden xl:block">换衣</p></Button
-      >
-      <Button
         ref="textBtn"
         type="nav"
         icon="text"
@@ -133,7 +125,6 @@ const saveBtn = ref<ButtonRef | null>(null)
 const advanceBtn = ref<ButtonRef | null>(null)
 const scheduleBtn = ref<ButtonRef | null>(null)
 const updateBtn = ref<ButtonRef | null>(null)
-const clothesBtn = ref<ButtonRef | null>(null)
 
 // 设置可重设的值（使用 ref 存储，确保响应式或跨函数访问）
 const oldRefName = ref('textBtn')
@@ -150,7 +141,6 @@ const handleIndicatorMove = (currentRefName: string) => {
     advanceBtn,
     scheduleBtn,
     updateBtn,
-    clothesBtn,
   }[currentRefName]
 
   if (buttonRef?.value?.$el) {
@@ -239,9 +229,6 @@ const initIndicator = () => {
       break
     case 'update':
       activeButton = updateBtn.value
-      break
-    case 'clothes':
-      activeButton = clothesBtn.value
       break
   }
 
