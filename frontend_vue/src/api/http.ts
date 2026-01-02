@@ -5,6 +5,7 @@ import type {
   InternalAxiosRequestConfig,
   AxiosRequestConfig,
 } from 'axios'
+import { useUIStore } from '../stores/modules/ui/ui'
 
 // 定义响应数据的通用结构
 interface ApiResponse<T = any> {
@@ -89,19 +90,35 @@ http.interceptors.response.use(
     }
   },
   (error: AxiosError) => {
-    // 安全访问响应数据
-    const responseData = (error.response?.data as ApiResponse) || {}
-    const errorMessage = responseData.message || error.message || '网络错误'
+    const uiStore = useUIStore()
 
-    const enhancedError: AppError = new Error(errorMessage)
+    // 安全访问响应数据
+    const responseData = (error.response?.data as any) || {}
+    const statusCode = error.response?.status
+
+    // 提取错误消息
+    const errorMessage = responseData.message || responseData.detail || error.message || "网络错误"
+
+    // 显示错误通知
+    uiStore.showError({
+      statusCode,
+      message: errorMessage,
+    })
+
+    // 安全访问响应数据
+    const responseDataTyped = (error.response?.data as ApiResponse) || {}
+    const errorMsg = responseDataTyped.message || error.message || '网络错误'
+
+    const enhancedError: AppError = new Error(errorMsg)
     enhancedError.status = error.response?.status
-    enhancedError.code = responseData.code
+    enhancedError.code = responseDataTyped.code
     enhancedError.response = error.response
 
     if (error.response) {
       switch (error.response.status) {
         case 401:
-          window.location.href = '/login'
+          // 401 不自动跳转，让通知系统处理
+          // window.location.href = "/login";
           break
         case 403:
           // 权限相关处理

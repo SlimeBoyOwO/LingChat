@@ -86,12 +86,16 @@ async def select_character(
             character_id=character_id
         )
 
-        # 3. 可以返回切换后的角色信息
+        # 3. 从 resource_path 提取文件夹名
+        folder_name = os.path.basename(character.get("resource_path", ""))
+
+        # 4. 返回切换后的角色信息
         return {
             "success": True,
             "character": {
                 "id": character.get("id"),
-                "title": character.get("title")
+                "title": character.get("title"),
+                "folder_name": folder_name  # 用于前端加载角色专属提示
             }
         }
     except Exception as e:
