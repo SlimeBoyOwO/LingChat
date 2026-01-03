@@ -1,12 +1,27 @@
 <template>
-  <div class="character-card">
-    <div class="character-avatar-container">
-      <img :src="avatar" :alt="name" class="character-avatar" />
+  <div
+    class="flex bg-white/10 backdrop-blur-[20px] backdrop-saturate-180 rounded-2xl shadow-[0_4px_12px_rgba(0,0,0,0.08)] overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.25,0.8,0.25,1)] border border-black/5 h-45 w-full hover:-translate-y-0.75 hover:shadow-[0_6px_16px_rgba(0,0,0,0.12)] md:h-45 max-md:h-30"
+  >
+    <div
+      class="w-45 h-45 p-2.5 flex items-center justify-center bg-[#f8f9fa] border-r border-black/5 rounded-2xl max-md:w-25 max-md:h-25"
+    >
+      <img
+        :src="avatar"
+        :alt="name"
+        class="w-45 h-45 object-contain rounded-lg p-1.25 shadow-[0_2px_4px_rgba(0,0,0,0.05)] max-md:w-21.25 max-md:h-21.25"
+      />
     </div>
-    <div class="character-content">
-      <h5 class="character-title">{{ name }}</h5>
-      <p class="character-description">{{ info }}</p>
-
+    <div class="flex-1 flex flex-col p-3 relative">
+      <h5
+        class="font-semibold text-white mb-2 font-['Segoe_UI',Tahoma,Geneva,Verdana,sans-serif] text-[16px] md:text-[18px]"
+      >
+        {{ name }}
+      </h5>
+      <p
+        class="text-[#f8f9fa] leading-[1.4] overflow-y-auto mb-2 text-[12px] h-10 md:text-[13px] md:h-15"
+      >
+        {{ info }}
+      </p>
       <div class="character-actions">
         <slot name="actions"></slot>
       </div>
@@ -15,111 +30,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import Button from '../../base/widget/Button.vue'
+import type { Clothes } from '@/types'
 
 interface CharacterProps {
   avatar?: string
   name?: string
   info?: string
+  clothes?: Clothes[]
+  selectClothes?: (clothes_name: string) => Promise<void>
+  isClothesSelected?: (clothes_name: string) => boolean
 }
 
 const props = withDefaults(defineProps<CharacterProps>(), {})
 </script>
-
-<style scoped>
-.character-card {
-  display: flex;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(20px) saturate(180%);
-  border-radius: 16px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  overflow: hidden;
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-  border: 1px solid rgba(0, 0, 0, 0.05);
-  height: 180px; /* 固定高度保持统一 */
-}
-
-.character-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
-}
-
-.character-avatar-container {
-  width: 180px;
-  height: 180px;
-  padding: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: #f8f9fa;
-  border-right: 1px solid rgba(0, 0, 0, 0.05);
-  border-radius: 16px;
-}
-
-.character-avatar {
-  width: 180px;
-  height: 180px;
-  object-fit: contain; /* 保持原始比例，完整显示 */
-  border-radius: 8px;
-  padding: 5px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-}
-
-.character-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  padding: 12px;
-  position: relative;
-}
-
-.character-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #ffffff;
-  margin-bottom: 8px;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-}
-
-.character-description {
-  font-size: 13px;
-  color: #f8f9fa;
-  line-height: 1.4;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  margin-bottom: 15px;
-  height: 100px;
-}
-
-/* 响应式调整 */
-@media (max-width: 768px) {
-  .character-card {
-    height: 120px;
-  }
-
-  .character-avatar-container {
-    width: 100px;
-    height: 100px;
-  }
-
-  .character-avatar {
-    width: 85px;
-    height: 85px;
-  }
-
-  .character-title {
-    font-size: 16px;
-  }
-
-  .character-description {
-    font-size: 12px;
-  }
-
-  .character-select-btn {
-    padding: 5px 10px;
-    font-size: 12px;
-  }
-}
-</style>

@@ -1,11 +1,30 @@
 import { ref } from 'vue'
 import type { WebSocketHandler } from '../../types'
+import { useUIStore } from '../../stores/modules/ui/ui'
+import { useGameStore } from '../../stores/modules/game'
 
 const socket = ref<WebSocket | null>(null)
 const handlers = new Map<string, WebSocketHandler>()
 const reconnectAttempts = ref(0)
 const maxReconnectAttempts = 5
 const reconnectDelay = 3000
+
+// 显示连接错误并重置状态的辅助函数
+const handleConnectionError = (errorMessage: string = '无法连接到服务器') => {
+  const uiStore = useUIStore()
+  const gameStore = useGameStore()
+
+  // 显示错误通知
+  uiStore.showError({
+    errorCode: 'network_error',
+    message: errorMessage,
+  })
+
+  // 重置游戏状态
+  gameStore.currentStatus = 'input'
+  gameStore.currentLine = ''
+  console.log('游戏状态已重置为: input (WebSocket断开)')
+}
 
 export const connectWebSocket = (url: string) => {
   socket.value = new WebSocket(url)
@@ -57,6 +76,8 @@ export const sendWebSocketMessage = (type: string, data: any) => {
     socket.value.send(JSON.stringify({ type, data }))
     return true
   }
+  // 发送失败时显示错误
+  handleConnectionError('后端服务未连接，请启动后端服务')
   return false
 }
 
@@ -65,6 +86,8 @@ export const sendWebSocketChatMessage = (type: string, content: string) => {
     socket.value.send(JSON.stringify({ type, content }))
     return true
   }
+  // 发送失败时显示错误
+  handleConnectionError('后端服务未连接，请启动后端服务')
   return false
 }
 

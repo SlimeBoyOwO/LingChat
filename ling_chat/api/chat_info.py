@@ -21,6 +21,8 @@ async def init_web_infos(client_id:str ,user_id: int):
             "user_name": ai_service.user_name,
             "user_subtitle": ai_service.user_subtitle,
             "character_id": ai_service.character_id,
+            "clothes_name": ai_service.clothes_name,
+            "clothes": ai_service.clothes,
             "thinking_message": ai_service.settings.get("thinking_message", "灵灵正在思考中..."),
             "scale": ai_service.settings.get("scale", 1.0),
             "offset": ai_service.settings.get("offset", 0),
