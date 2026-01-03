@@ -1,6 +1,11 @@
 <template>
   <div class="pomodoro-entry">
-    <Button type="nav" :class="['entry-btn', { active: enabled }]" @click="toggleEnabled">
+    <Button
+      type="nav"
+      :class="['entry-btn', { active: enabled }]"
+      @click="toggleEnabled"
+      v-show="!uiStore.showSettings"
+    >
       <span class="entry-icon">🍅</span>
       <h3>番茄钟</h3>
     </Button>
@@ -151,9 +156,11 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import Button from '../base/widget/Button.vue'
 import { useGameStore } from '../../stores/modules/game'
+import { useUIStore } from '@/stores/modules/ui/ui'
 import { scriptHandler } from '../../api/websocket/handlers/script-handler'
 
 const gameStore = useGameStore()
+const uiStore = useUIStore()
 
 const STORAGE_KEY_ENABLED = 'pomodoro_enabled'
 const STORAGE_KEY_REMAINING = 'pomodoro_remaining_ms'
