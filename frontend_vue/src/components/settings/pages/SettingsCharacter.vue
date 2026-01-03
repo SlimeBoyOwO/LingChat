@@ -2,7 +2,7 @@
   <MenuPage>
     <MenuItem title="角色列表">
       <CharacterList>
-        <div class="character-list character-grid">
+        <div class="character-list character-grid grid gap-5 p-3.75 w-full">
           <CharacterCard
             v-for="character in characters"
             :key="character.id"
@@ -14,20 +14,24 @@
             :isClothesSelected="isClothesSelected"
           >
             <template #actions>
-
-                <Button
-                  type="nav"
-                  :class="['clothes-select-btn', { dim: !isSelected(character.id) }]"
-                  @click="() => showClothesPopup(character)"
-                  >{{ '选择服装' }}</Button
-                >
-                <Button
-                  type="select"
-                  :class="['character-select-btn', { selected: isSelected(character.id) }]"
-                  @click="selectCharacter(character.id)"
-                  >{{ isSelected(character.id) ? '√ 选中' : '选择' }}</Button
-                >
-
+              <Button
+                type="nav"
+                :class="[
+                  'clothes-select-btn bottom-3.75 right-20 text-white border-none p-[6px_12px] rounded-[20px] cursor-pointer transition-all duration-200 ease-in font-medium hover:bg-[#4a5acf] hover:-translate-y-px hover:shadow-[0_2px_6px_rgba(94,114,228,0.3)]',
+                  { dim: !isSelected(character.id) },
+                ]"
+                @click="() => showClothesPopup(character)"
+                >{{ '选择服装' }}</Button
+              >
+              <Button
+                type="select"
+                :class="[
+                  'character-select-btn bottom-3.75 right-3.75 text-white border-none p-[6px_12px] rounded-[20px] cursor-pointer transition-all duration-200 ease-in font-medium text-[13px] hover:bg-[#4a5acf] hover:-translate-y-px hover:shadow-[0_2px_6px_rgba(94,114,228,0.3)]',
+                  { selected: isSelected(character.id) },
+                ]"
+                @click="selectCharacter(character.id)"
+                >{{ isSelected(character.id) ? '√ 选中' : '选择' }}</Button
+              >
             </template>
           </CharacterCard>
         </div>
@@ -45,22 +49,38 @@
 
   <!-- Clothes Popup Modal -->
   <Transition name="modal">
-    <div v-if="isClothesPopupVisible" class="modal-overlay" @click="closeClothesPopup">
-      <div class="modal-container" @click.stop>
-        <div class="modal-header">
-          <div class="modal-title-section">
+    <div
+      v-if="isClothesPopupVisible"
+      class="fixed top-0 left-0 w-full h-full flex items-center justify-center z-20 p-5 backdrop-blur-sm"
+      @click="closeClothesPopup"
+    >
+      <div
+        class="modal-container bg-[linear-gradient(135deg,rgba(255,255,255,0.15)_0%,rgba(255,255,255,0.05)_100%)] backdrop-blur-[30px] backdrop-saturate-180 rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.4),inset_0_0_1px_rgba(255,255,255,0.3)] border border-white/20 max-w-200 w-full max-h-[90vh] overflow-hidden flex flex-col md:rounded-2xl"
+        @click.stop
+      >
+        <div
+          class="p-[24px_30px] border-b border-white/10 flex items-center justify-between bg-[linear-gradient(180deg,rgba(255,255,255,0.1)_0%,rgba(255,255,255,0.05)_100%)] md:p-[16px_20px]"
+        >
+          <div class="flex items-center gap-4 max-[480px]:gap-3">
             <img
               v-if="selectedCharacter"
               :src="selectedCharacter.avatar"
               :alt="selectedCharacter.title"
-              class="modal-character-avatar"
+              class="w-14 h-14 rounded-xl object-cover border-2 border-white/30 shadow-[0_4px_12px_rgba(0,0,0,0.2)] md:w-12 md:h-12"
             />
             <div>
-              <h2 class="modal-title">{{ selectedCharacter?.title }}</h2>
-              <p class="modal-subtitle">选择服装</p>
+              <h2
+                class="text-[24px] font-bold text-white m-0 text-shadow-[0_2px_8px_rgba(0,0,0,0.3)] md:text-[20px]"
+              >
+                {{ selectedCharacter?.title }}
+              </h2>
+              <p class="text-[14px] text-white/70 m-0 mt-1">选择服装</p>
             </div>
           </div>
-          <button class="modal-close-btn" @click="closeClothesPopup">
+          <button
+            class="w-10 h-10 rounded-full border-none bg-white/10 text-white cursor-pointer flex items-center justify-center transition-all duration-300 ease-in backdrop-blur-[10px] hover:bg-[rgba(255,86,86,0.8)] hover:rotate-90 hover:shadow-[0_4px_12px_rgba(255,86,86,0.4)] max-[480px]:w-9 max-[480px]:h-9"
+            @click="closeClothesPopup"
+          >
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="24"
@@ -78,21 +98,30 @@
           </button>
         </div>
 
-        <div class="modal-body">
+        <div class="m p-7.5 overflow-y-auto flex-1 md:p-5">
           <div
             v-if="selectedCharacter?.clothes && selectedCharacter.clothes.length > 0"
-            class="clothes-grid"
+            class="grid gap-5 grid-cols-[repeat(auto-fill,minmax(150px,1fr))] md:gap-3.75 md:grid-cols-[repeat(auto-fill,minmax(120px,1fr))] max-[480px]:grid-cols-2 max-[480px]:gap-3"
           >
             <div
               v-for="cloth in selectedCharacter.clothes"
               :key="cloth.title"
-              class="clothes-item"
+              class="clothes-item bg-white/8 border-2 border-white/10 rounded-2xl p-3 cursor-pointer transition-all duration-300 ease-in-out relative overflow-hidden hover:-translate-y-1 hover:scale-[1.02] hover:border-[#79d9ff]/50 hover:shadow-[0_8px_24px_rgba(0,0,0,0.3),0_0_20px_rgba(121,217,255,0.2)] md:p-2.5"
               :class="{ 'clothes-item-selected': isClothesSelected(cloth.title) }"
               @click="selectClothes(cloth.title)"
             >
-              <div class="clothes-image-wrapper">
-                <img :src="cloth.avatar" :alt="cloth.title" class="clothes-image" />
-                <div v-if="isClothesSelected(cloth.title)" class="clothes-checkmark">
+              <div
+                class="relative w-full aspect-square rounded-xl overflow-hidden mb-2.5 bg-black/20"
+              >
+                <img
+                  :src="cloth.avatar"
+                  :alt="cloth.title"
+                  class="w-full h-full object-contain transition-transform duration-300 ease-in hover:scale-110"
+                />
+                <div
+                  v-if="isClothesSelected(cloth.title)"
+                  class="clothes-checkmark absolute top-2 right-2 w-[32px] h-[32px] bg-[#79d9ff] rounded-full flex items-center justify-center text-black shadow-[0_4px_12px_rgba(121,217,255,0.6)]"
+                >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="20"
@@ -108,10 +137,17 @@
                   </svg>
                 </div>
               </div>
-              <p class="clothes-name">{{ cloth.title }}</p>
+              <p
+                class="text-[14px] font-semibold text-white text-center m-0 whitespace-nowrap overflow-hidden text-ellipsis text-shadow-[0_2px_4px_rgba(0,0,0,0.3)] md:text-[12px]"
+              >
+                {{ cloth.title }}
+              </p>
             </div>
           </div>
-          <div v-else class="no-clothes-message">
+          <div
+            v-else
+            class="no-clothes-message flex flex-col items-center justify-center p-[60px_20px] text-white/60 text-center"
+          >
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="64"
@@ -143,7 +179,7 @@ import { MenuItem } from '../../ui'
 import { Button } from '../../base'
 import CharacterCard from '../../ui/Menu/CharacterCard.vue'
 import CharacterList from '../../ui/Menu/CharacterList.vue'
-import { characterGetAll, characterSelect  } from '../../../api/services/character'
+import { characterGetAll, characterSelect } from '../../../api/services/character'
 import type { Character as ApiCharacter, Clothes } from '../../../types'
 import { useGameStore } from '../../../stores/modules/game'
 import { useUserStore } from '../../../stores/modules/user/user'
@@ -181,7 +217,7 @@ const fetchCharacters = async (): Promise<CharacterCard[]> => {
         ? char.clothes.map((clothes: Clothes) => ({
             title: clothes.title,
             avatar: clothes.avatar
-              ? `/api/v1/chat/clothes/clothes_file/${encodeURIComponent(`${clothes.avatar}\\正常.png`)}`
+              ? `/api/v1/chat/character/clothes_file/${encodeURIComponent(`${clothes.avatar}\\正常.png`)}`
               : '../pictures/characters/default.png',
           }))
         : [],
@@ -323,24 +359,14 @@ watch(
 /*=========角色css部分=========*/
 /* 角色选择网格布局 */
 .character-grid {
-  display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 20px;
-  padding: 15px;
-  width: 100%;
 }
 
 .clothes-select-btn {
   position: absolute;
-  bottom: 15px;
-  right: 80px;
   background-color: #5e72e4;
-  color: white;
-  border: none;
   padding: 6px 12px;
   border-radius: 20px;
-  cursor: pointer;
-  transition: all 0.2s ease;
   font-size: 13px;
   font-weight: 500;
 }
@@ -352,15 +378,10 @@ watch(
 
 .character-select-btn {
   position: absolute;
-  bottom: 15px;
-  right: 15px;
   background-color: #5e72e4;
   color: white;
-  border: none;
   padding: 6px 12px;
   border-radius: 20px;
-  cursor: pointer;
-  transition: all 0.2s ease;
   font-size: 13px;
   font-weight: 500;
 }
@@ -375,141 +396,7 @@ watch(
   background-color: #10b981 !important;
 }
 
-/*=========服装弹窗css部分=========*/
-/* Modal Overlay */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  backdrop-filter: blur(8px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2;
-  padding: 20px;
-}
-
-/* Modal Container */
-.modal-container {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.05) 100%);
-  backdrop-filter: blur(30px) saturate(180%);
-  border-radius: 24px;
-  box-shadow:
-    0 20px 60px rgba(0, 0, 0, 0.4),
-    0 0 1px rgba(255, 255, 255, 0.3) inset;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  max-width: 800px;
-  width: 100%;
-  max-height: 90vh;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-/* Modal Header */
-.modal-header {
-  padding: 24px 30px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
-}
-
-.modal-title-section {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.modal-character-avatar {
-  width: 56px;
-  height: 56px;
-  border-radius: 12px;
-  object-fit: cover;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-}
-
-.modal-title {
-  font-size: 24px;
-  font-weight: 700;
-  color: #ffffff;
-  margin: 0;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-}
-
-.modal-subtitle {
-  font-size: 14px;
-  color: rgba(255, 255, 255, 0.7);
-  margin: 4px 0 0 0;
-}
-
-.modal-close-btn {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(255, 255, 255, 0.1);
-  color: #ffffff;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.3s ease;
-  backdrop-filter: blur(10px);
-}
-
-.modal-close-btn:hover {
-  background: rgba(255, 86, 86, 0.8);
-  transform: rotate(90deg);
-  box-shadow: 0 4px 12px rgba(255, 86, 86, 0.4);
-}
-
-/* Modal Body */
-.modal-body {
-  padding: 30px;
-  overflow-y: auto;
-  flex: 1;
-}
-
-.modal-body::-webkit-scrollbar {
-  width: 8px;
-}
-
-.modal-body::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 10px;
-}
-
-.modal-body::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 10px;
-}
-
-.modal-body::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
-}
-
 /* Clothes Grid */
-.clothes-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 20px;
-}
-
-.clothes-item {
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  padding: 12px;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  border: 2px solid rgba(255, 255, 255, 0.1);
-  position: relative;
-  overflow: hidden;
-}
 
 .clothes-item::before {
   content: '';
@@ -543,40 +430,7 @@ watch(
     0 0 20px rgba(121, 217, 255, 0.4);
 }
 
-.clothes-image-wrapper {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 1;
-  border-radius: 12px;
-  overflow: hidden;
-  margin-bottom: 10px;
-  background: rgba(0, 0, 0, 0.2);
-}
-
-.clothes-image {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  transition: transform 0.3s ease;
-}
-
-.clothes-item:hover .clothes-image {
-  transform: scale(1.1);
-}
-
 .clothes-checkmark {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 32px;
-  height: 32px;
-  background: #79d9ff;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #000;
-  box-shadow: 0 4px 12px rgba(121, 217, 255, 0.6);
   animation: checkmark-pop 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
 }
 
@@ -590,29 +444,6 @@ watch(
   100% {
     transform: scale(1);
   }
-}
-
-.clothes-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: #ffffff;
-  text-align: center;
-  margin: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-/* No Clothes Message */
-.no-clothes-message {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px 20px;
-  color: rgba(255, 255, 255, 0.6);
-  text-align: center;
 }
 
 .no-clothes-message svg {
@@ -649,40 +480,8 @@ watch(
 
 /* Responsive Design */
 @media (max-width: 768px) {
-  .modal-container {
-    max-width: 95%;
-    max-height: 95vh;
-    border-radius: 16px;
-  }
-
-  .modal-header {
-    padding: 16px 20px;
-  }
-
-  .modal-title {
-    font-size: 20px;
-  }
-
-  .modal-character-avatar {
-    width: 48px;
-    height: 48px;
-  }
-
-  .modal-body {
-    padding: 20px;
-  }
-
-  .clothes-grid {
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 15px;
-  }
-
-  .clothes-item {
-    padding: 10px;
-  }
-
-  .clothes-name {
-    font-size: 12px;
+  .character-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   }
 }
 
