@@ -39,13 +39,3 @@ async def get_clothes_file(file_path: str):
         raise HTTPException(status_code=404, detail="文件不存在")
 
     return FileResponse(file_path)
-
-@router.get("/open_web")
-async def open_creative_web():
-    try:
-        import webbrowser
-        url = "https://github.com/SlimeBoyOwO/LingChat/discussions"
-        webbrowser.open(url)
-    except Exception as e:
-        logger.error(f"无法使用浏览器启动创意工坊: {str(e)}")
-        raise HTTPException(status_code=500, detail="无法使用浏览器启动网页")
