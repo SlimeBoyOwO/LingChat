@@ -14,24 +14,18 @@
             :isClothesSelected="isClothesSelected"
           >
             <template #actions>
-              <Button
-                type="nav"
-                :class="[
-                  'clothes-select-btn bottom-3.75 right-20 text-white border-none p-[6px_12px] rounded-[20px] cursor-pointer transition-all duration-200 ease-in font-medium hover:bg-[#4a5acf] hover:-translate-y-px hover:shadow-[0_2px_6px_rgba(94,114,228,0.3)]',
-                  { dim: !isSelected(character.id) },
-                ]"
-                @click="() => showClothesPopup(character)"
-                >{{ '选择服装' }}</Button
-              >
-              <Button
-                type="select"
-                :class="[
-                  'character-select-btn bottom-3.75 right-3.75 text-white border-none p-[6px_12px] rounded-[20px] cursor-pointer transition-all duration-200 ease-in font-medium text-[13px] hover:bg-[#4a5acf] hover:-translate-y-px hover:shadow-[0_2px_6px_rgba(94,114,228,0.3)]',
-                  { selected: isSelected(character.id) },
-                ]"
-                @click="selectCharacter(character.id)"
-                >{{ isSelected(character.id) ? '√ 选中' : '选择' }}</Button
-              >
+                <Button
+                  type="nav"
+                  :class="['clothes-select-btn bottom-3.75 right-20 text-white border-none p-[6px_12px] rounded-[20px] cursor-pointer transition-all duration-200 ease-in font-medium hover:bg-[#4a5acf] hover:-translate-y-px hover:shadow-[0_2px_6px_rgba(94,114,228,0.3)]', { dim: !isSelected(character.id) }]"
+                  @click="() => showClothesPopup(character)"
+                  >{{ '选择服装' }}</Button
+                >
+                <Button
+                  type="select"
+                  :class="['character-select-btn bottom-3.75 right-3.75 text-white border-none p-[6px_12px] rounded-[20px] cursor-pointer transition-all duration-200 ease-in font-medium text-[13px] hover:bg-[#4a5acf] hover:-translate-y-px hover:shadow-[0_2px_6px_rgba(94,114,228,0.3)]', { selected: isSelected(character.id) }]"
+                  @click="selectCharacter(character.id)"
+                  >{{ isSelected(character.id) ? '√ 选中' : '选择' }}</Button
+                >
             </template>
           </CharacterCard>
         </div>
@@ -45,131 +39,99 @@
     <MenuItem title="创意工坊" size="small">
       <Button type="big" @click="openCreativeWeb">进入创意工坊</Button>
     </MenuItem>
-  </MenuPage>
 
-  <!-- Clothes Popup Modal -->
-  <Transition name="modal">
-    <div
-      v-if="isClothesPopupVisible"
-      class="fixed top-0 left-0 w-full h-full flex items-center justify-center z-20 p-5 backdrop-blur-sm"
-      @click="closeClothesPopup"
-    >
-      <div
-        class="modal-container bg-[linear-gradient(135deg,rgba(255,255,255,0.15)_0%,rgba(255,255,255,0.05)_100%)] backdrop-blur-[30px] backdrop-saturate-180 rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.4),inset_0_0_1px_rgba(255,255,255,0.3)] border border-white/20 max-w-200 w-full max-h-[90vh] overflow-hidden flex flex-col md:rounded-2xl"
-        @click.stop
-      >
-        <div
-          class="p-[24px_30px] border-b border-white/10 flex items-center justify-between bg-[linear-gradient(180deg,rgba(255,255,255,0.1)_0%,rgba(255,255,255,0.05)_100%)] md:p-[16px_20px]"
-        >
-          <div class="flex items-center gap-4 max-[480px]:gap-3">
-            <img
-              v-if="selectedCharacter"
-              :src="selectedCharacter.avatar"
-              :alt="selectedCharacter.title"
-              class="w-14 h-14 rounded-xl object-cover border-2 border-white/30 shadow-[0_4px_12px_rgba(0,0,0,0.2)] md:w-12 md:h-12"
-            />
-            <div>
-              <h2
-                class="text-[24px] font-bold text-white m-0 text-shadow-[0_2px_8px_rgba(0,0,0,0.3)] md:text-[20px]"
-              >
-                {{ selectedCharacter?.title }}
-              </h2>
-              <p class="text-[14px] text-white/70 m-0 mt-1">选择服装</p>
+    <!-- Clothes Popup Modal -->
+    <Transition name="modal">
+      <div v-if="isClothesPopupVisible" class="fixed top-0 left-0 w-full h-full flex items-center justify-center z-20 p-5 backdrop-blur-sm" @click="closeClothesPopup">
+        <div class="modal-container bg-[linear-gradient(135deg,rgba(255,255,255,0.15)_0%,rgba(255,255,255,0.05)_100%)] backdrop-blur-[30px] backdrop-saturate-180 rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.4),inset_0_0_1px_rgba(255,255,255,0.3)] border border-white/20 max-w-200 w-full max-h-[90vh] overflow-hidden flex flex-col md:rounded-2xl" @click.stop>
+          <div class="p-[24px_30px] border-b border-white/10 flex items-center justify-between bg-[linear-gradient(180deg,rgba(255,255,255,0.1)_0%,rgba(255,255,255,0.05)_100%)] md:p-[16px_20px]">
+            <div class="flex items-center gap-4 max-[480px]:gap-3">
+              <img
+                v-if="selectedCharacter"
+                :src="selectedCharacter.avatar"
+                :alt="selectedCharacter.title"
+                class="w-14 h-14 rounded-xl object-cover border-2 border-white/30 shadow-[0_4px_12px_rgba(0,0,0,0.2)] md:w-12 md:h-12"
+              />
+              <div>
+                <h2 class="text-[24px] font-bold text-white m-0 text-shadow-[0_2px_8px_rgba(0,0,0,0.3)] md:text-[20px]">{{ selectedCharacter?.title }}</h2>
+                <p class="text-[14px] text-white/70 m-0 mt-1">选择服装</p>
+              </div>
             </div>
+            <button class="w-10 h-10 rounded-full border-none bg-white/10 text-white cursor-pointer flex items-center justify-center transition-all duration-300 ease-in backdrop-blur-[10px] hover:bg-[rgba(255,86,86,0.8)] hover:rotate-90 hover:shadow-[0_4px_12px_rgba(255,86,86,0.4)] max-[480px]:w-9 max-[480px]:h-9" @click="closeClothesPopup">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
           </div>
-          <button
-            class="w-10 h-10 rounded-full border-none bg-white/10 text-white cursor-pointer flex items-center justify-center transition-all duration-300 ease-in backdrop-blur-[10px] hover:bg-[rgba(255,86,86,0.8)] hover:rotate-90 hover:shadow-[0_4px_12px_rgba(255,86,86,0.4)] max-[480px]:w-9 max-[480px]:h-9"
-            @click="closeClothesPopup"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
-        </div>
 
-        <div class="m p-7.5 overflow-y-auto flex-1 md:p-5">
-          <div
-            v-if="selectedCharacter?.clothes && selectedCharacter.clothes.length > 0"
-            class="grid gap-5 grid-cols-[repeat(auto-fill,minmax(150px,1fr))] md:gap-3.75 md:grid-cols-[repeat(auto-fill,minmax(120px,1fr))] max-[480px]:grid-cols-2 max-[480px]:gap-3"
-          >
+          <div class="m	p-7.5 overflow-y-auto flex-1 md:p-5">
             <div
-              v-for="cloth in selectedCharacter.clothes"
-              :key="cloth.title"
-              class="clothes-item bg-white/8 border-2 border-white/10 rounded-2xl p-3 cursor-pointer transition-all duration-300 ease-in-out relative overflow-hidden hover:-translate-y-1 hover:scale-[1.02] hover:border-[#79d9ff]/50 hover:shadow-[0_8px_24px_rgba(0,0,0,0.3),0_0_20px_rgba(121,217,255,0.2)] md:p-2.5"
-              :class="{ 'clothes-item-selected': isClothesSelected(cloth.title) }"
-              @click="selectClothes(cloth.title)"
+              v-if="selectedCharacter?.clothes && selectedCharacter.clothes.length > 0"
+              class="grid gap-5 grid-cols-[repeat(auto-fill,minmax(150px,1fr))] md:gap-3.75 md:grid-cols-[repeat(auto-fill,minmax(120px,1fr))] max-[480px]:grid-cols-2 max-[480px]:gap-3"
             >
               <div
-                class="relative w-full aspect-square rounded-xl overflow-hidden mb-2.5 bg-black/20"
+                v-for="cloth in selectedCharacter.clothes"
+                :key="cloth.title"
+                class="clothes-item bg-white/8 border-2 border-white/10 rounded-2xl p-3 cursor-pointer transition-all duration-300 ease-in-out relative overflow-hidden hover:-translate-y-1 hover:scale-[1.02] hover:border-[#79d9ff]/50 hover:shadow-[0_8px_24px_rgba(0,0,0,0.3),0_0_20px_rgba(121,217,255,0.2)] md:p-2.5"
+                :class="{ 'clothes-item-selected': isClothesSelected(cloth.title) }"
+                @click="selectClothes(cloth.title)"
               >
-                <img
-                  :src="cloth.avatar"
-                  :alt="cloth.title"
-                  class="w-full h-full object-contain transition-transform duration-300 ease-in hover:scale-110"
-                />
-                <div
-                  v-if="isClothesSelected(cloth.title)"
-                  class="clothes-checkmark absolute top-2 right-2 w-[32px] h-[32px] bg-[#79d9ff] rounded-full flex items-center justify-center text-black shadow-[0_4px_12px_rgba(121,217,255,0.6)]"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="3"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                  </svg>
+                <div class="relative w-full aspect-square rounded-xl overflow-hidden mb-2.5 bg-black/20">
+                  <img :src="cloth.avatar" :alt="cloth.title" class="w-full h-full object-contain transition-transform duration-300 ease-in hover:scale-110" />
+                  <div v-if="isClothesSelected(cloth.title)" class="clothes-checkmark absolute top-2 right-2 w-[32px] h-[32px] bg-[#79d9ff] rounded-full flex items-center justify-center text-black shadow-[0_4px_12px_rgba(121,217,255,0.6)]">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="3"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                  </div>
                 </div>
+                <p class="text-[14px] font-semibold text-white text-center m-0 whitespace-nowrap overflow-hidden text-ellipsis text-shadow-[0_2px_4px_rgba(0,0,0,0.3)] md:text-[12px]">{{ cloth.title }}</p>
               </div>
-              <p
-                class="text-[14px] font-semibold text-white text-center m-0 whitespace-nowrap overflow-hidden text-ellipsis text-shadow-[0_2px_4px_rgba(0,0,0,0.3)] md:text-[12px]"
-              >
-                {{ cloth.title }}
-              </p>
             </div>
-          </div>
-          <div
-            v-else
-            class="no-clothes-message flex flex-col items-center justify-center p-[60px_20px] text-white/60 text-center"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="64"
-              height="64"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path
-                d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"
-              ></path>
-              <line x1="7" y1="7" x2="7.01" y2="7"></line>
-            </svg>
-            <p>暂无可用服装</p>
+            <div v-else class="no-clothes-message flex flex-col items-center justify-center p-[60px_20px] text-white/60 text-center">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="64"
+                height="64"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path
+                  d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"
+                ></path>
+                <line x1="7" y1="7" x2="7.01" y2="7"></line>
+              </svg>
+              <p>暂无可用服装</p>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  </Transition>
+    </Transition>
+  </MenuPage>
 </template>
 
 <script setup lang="ts">
@@ -179,7 +141,7 @@ import { MenuItem } from '../../ui'
 import { Button } from '../../base'
 import CharacterCard from '../../ui/Menu/CharacterCard.vue'
 import CharacterList from '../../ui/Menu/CharacterList.vue'
-import { characterGetAll, characterSelect } from '../../../api/services/character'
+import { characterGetAll, characterSelect  } from '../../../api/services/character'
 import type { Character as ApiCharacter, Clothes } from '../../../types'
 import { useGameStore } from '../../../stores/modules/game'
 import { useUserStore } from '../../../stores/modules/user/user'
@@ -205,7 +167,7 @@ const uiStore = useUIStore()
 const fetchCharacters = async (): Promise<CharacterCard[]> => {
   try {
     const list = await characterGetAll()
-    console.log('list:', list)
+    console.log("list:", list)
     return list.map((char: ApiCharacter) => ({
       id: parseInt(char.character_id),
       title: char.title,
@@ -395,6 +357,7 @@ watch(
 .selected {
   background-color: #10b981 !important;
 }
+
 
 /* Clothes Grid */
 
