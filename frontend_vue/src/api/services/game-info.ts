@@ -11,6 +11,8 @@ export interface GameInfo {
   offset: number
   bubble_top: number
   bubble_left: number
+  clothes: object
+  clothes_name: string
 }
 
 export const getGameInfo = async (client_id: string, userId: string): Promise<GameInfo> => {

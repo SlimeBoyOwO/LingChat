@@ -42,6 +42,8 @@ export const actions = {
       this.avatar.offset_y = gameInfo.offset
       this.avatar.bubble_left = gameInfo.bubble_left
       this.avatar.bubble_top = gameInfo.bubble_top
+      this.avatar.clothes = gameInfo.clothes
+      this.avatar.clothes_name = gameInfo.clothes_name
 
       // 也可以在这里直接更新其他 store 的状态
       const uiStore = useUIStore()
@@ -78,6 +80,8 @@ export const actions = {
           offset_x: characterData.offset_x,
           bubble_top: characterData.bubble_top,
           bubble_left: characterData.bubble_left,
+          clothes: characterData.clothes,
+          clothes_name: characterData.clothes_name,
         }
 
         // 使用 character_id 作为 key（转换为字符串确保一致性）

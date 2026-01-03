@@ -90,6 +90,8 @@ class AIService:
 
             self.character_path = settings.get("resource_path")
             self.character_id = settings.get("character_id")
+            self.clothes_name = settings.get("clothes_name")
+            self.clothes = settings.get("clothes")
             self.settings = settings
 
             if self.use_rag and self.rag_manager:

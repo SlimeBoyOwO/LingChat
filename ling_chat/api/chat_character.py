@@ -32,15 +32,32 @@ async def open_creative_web():
         logger.error(f"无法使用浏览器启动创意工坊: {str(e)}")
         raise HTTPException(status_code=500, detail="无法使用浏览器启动网页")
 
-
 @router.get("/get_avatar/{avatar_file}")
 async def get_specific_avatar(avatar_file: str):
     ai_service = service_manager.ai_service
 
     if not ai_service or not ai_service.character_path:
         raise HTTPException(status_code=404, detail="AIService or character_path not found")
-
+    
     file_path = Path(ai_service.character_path) / "avatar" / avatar_file
+    
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Avatar not found")
+
+    return FileResponse(file_path)
+
+@router.get("/get_avatar/{avatar_file}/{clothes_name}")
+async def get_specific_avatar(avatar_file: str, clothes_name: str):
+    ai_service = service_manager.ai_service
+
+    if not ai_service or not ai_service.character_path:
+        raise HTTPException(status_code=404, detail="AIService or character_path not found")
+    
+    if clothes_name == 'default':
+        file_path = Path(ai_service.character_path) / "avatar" / avatar_file
+    else:
+        file_path = Path(ai_service.character_path) / "avatar" / clothes_name / avatar_file
+    
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Avatar not found")
 
@@ -52,6 +69,24 @@ async def get_script_specific_avatar(character: str, emotion: str):
 
     if ai_service:
         file_path = ai_service.scripts_manager.get_avatar_dir(character) / (emotion + ".png")
+
+    else:
+        raise HTTPException(status_code=404, detail="AIService not found")
+    
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Avatar not found")
+
+    return FileResponse(file_path)
+
+@router.get("/get_script_avatar/{character}/{clothes_name}/{emotion}")
+async def get_script_specific_avatar(character: str, clothes_name: str, emotion: str):
+    ai_service = service_manager.ai_service
+
+    if ai_service:
+        if clothes_name == 'default':
+            file_path = Path(ai_service.character_path) / "avatar" / (emotion + ".png")
+        else:
+            file_path = Path(ai_service.character_path) / "avatar" / clothes_name /(emotion + ".png")
     else:
         raise HTTPException(status_code=404, detail="AIService not found")
     
@@ -110,7 +145,7 @@ async def get_all_characters():
 
         if not db_chars:
             return {"data": [], "message": "未找到任何角色"}
-
+        
         characters = []
         for char in db_chars:
             settings_path = os.path.join(char['resource_path'], 'settings.txt')
@@ -123,11 +158,25 @@ async def get_all_characters():
                 '头像.png'
             )
 
+            clothes_absolute_path = os.path.join(
+                char['resource_path'],
+                'avatar',
+            )
+
+            clothes_list = []
+            for item in Path(clothes_absolute_path).iterdir():
+                if item.is_dir():
+                    clothes_list.append({
+                        "title": item.name,
+                        "avatar": str(item)
+                    })
+
             characters.append({
                 "character_id": char['id'],
                 "title": char['title'],
                 "info": settings.get('info', '这是一个人工智能对话助手'),
-                "avatar_path": avatar_relative_path  # 修改为相对路径
+                "avatar_path": avatar_relative_path,  # 修改为相对路径
+                "clothes": clothes_list
             })
 
         return {"data": characters}
@@ -149,3 +198,11 @@ async def get_character_file(file_path: str):
         raise HTTPException(status_code=404, detail="文件不存在")
 
     return FileResponse(full_path)
+
+@router.get("/clothes_file/{file_path:path}")
+async def get_clothes_file(file_path: str):
+    """获取服装相关文件"""
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="文件不存在")
+
+    return FileResponse(file_path)
