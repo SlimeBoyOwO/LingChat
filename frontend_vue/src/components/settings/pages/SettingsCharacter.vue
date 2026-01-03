@@ -64,7 +64,6 @@ const gameStore = useGameStore()
 const userStore = useUserStore()
 const uiStore = useUIStore()
 
-console.log("characters:", characters);
 const fetchCharacters = async (): Promise<CharacterCard[]> => {
   try {
     const list = await characterGetAll()
@@ -76,12 +75,14 @@ const fetchCharacters = async (): Promise<CharacterCard[]> => {
       avatar: char.avatar_path
         ? `/api/v1/chat/character/character_file/${encodeURIComponent(char.avatar_path)}`
         : '../pictures/characters/default.png',
-      clothes: isSelected(parseInt(char.character_id)) ? clothes.map((clothes: Clothes) => ({
-        title: clothes.title,
-        avatar: clothes.avatar
-          ? `/api/v1/chat/clothes/clothes_file/${encodeURIComponent(`${clothes.avatar}\\icon.png`)}`
-          : '../pictures/characters/default.png',
-      })) : []
+      clothes: isSelected(parseInt(char.character_id))
+        ? clothes.map((clothes: Clothes) => ({
+            title: clothes.title,
+            avatar: clothes.avatar
+              ? `/api/v1/chat/clothes/clothes_file/${encodeURIComponent(`${clothes.avatar}\\icon.png`)}`
+              : '../pictures/characters/default.png',
+          }))
+        : [],
     }))
   } catch (error) {
     console.error('获取角色列表失败:', error)
@@ -189,9 +190,8 @@ function isSelected(id: number): boolean {
 }
 
 function isClothesSelected(clothes_name: string): boolean {
-  return gameStore.avatar.clothes_name === clothes_name;
+  return gameStore.avatar.clothes_name === clothes_name
 }
-
 
 // 初始化加载角色列表
 onMounted(() => {
