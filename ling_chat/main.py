@@ -5,19 +5,7 @@ import shutil
 from typing import Collection
 
 from ling_chat.utils.runtime_path import user_data_path, third_party_path, static_path
-from ling_chat.utils.load_env import load_env
 from ling_chat.utils.easter_egg import get_random_loading_message
-
-# 加载环境变量
-if os.path.exists(".env"):
-    load_env()
-else:
-    try:
-        load_env(".env.example")
-        load_env(user_data_path / ".env")  # 加载用户数据目录下的环境变量
-    except Exception as e:
-        print(f"警告：加载环境变量失败，将使用默认: {e}")
-
 from ling_chat.core.logger import logger
 from ling_chat.utils.cli_parser import get_parser
 from ling_chat.third_party import install_third_party, run_third_party

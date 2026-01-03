@@ -39,11 +39,17 @@ export interface BackgroundImageInfo {
   time: string
 }
 
+export interface Clothes {
+  title: string
+  avatar: string
+}
+
 export interface Character {
   character_id: string
   title: string
   info: string
   avatar_path: string
+  clothes: Array<Clothes>
 }
 
 export interface CharacterSelectParams {
