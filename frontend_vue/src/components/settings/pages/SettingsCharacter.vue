@@ -14,18 +14,20 @@
             :isClothesSelected="isClothesSelected"
           >
             <template #actions>
-              <Button
-                type="nav"
-                :class="['character-select-btn', { selected: isSelected(character.id) }]"
-                @click="() => showClothesPopup(character)"
-                >{{ '选择服装' }}</Button
-              >
-              <Button
-                type="select"
-                :class="['character-select-btn', { selected: isSelected(character.id) }]"
-                @click="selectCharacter(character.id)"
-                >{{ isSelected(character.id) ? '√ 选中' : '选择' }}</Button
-              >
+
+                <Button
+                  type="nav"
+                  :class="['clothes-select-btn', { dim: !isSelected(character.id) }]"
+                  @click="() => showClothesPopup(character)"
+                  >{{ '选择服装' }}</Button
+                >
+                <Button
+                  type="select"
+                  :class="['character-select-btn', { selected: isSelected(character.id) }]"
+                  @click="selectCharacter(character.id)"
+                  >{{ isSelected(character.id) ? '√ 选中' : '选择' }}</Button
+                >
+
             </template>
           </CharacterCard>
         </div>
@@ -167,7 +169,7 @@ const uiStore = useUIStore()
 const fetchCharacters = async (): Promise<CharacterCard[]> => {
   try {
     const list = await characterGetAll()
-    const clothes = await clothesGetAll()
+    console.log('list:', list)
     return list.map((char: ApiCharacter) => ({
       id: parseInt(char.character_id),
       title: char.title,
@@ -175,11 +177,11 @@ const fetchCharacters = async (): Promise<CharacterCard[]> => {
       avatar: char.avatar_path
         ? `/api/v1/chat/character/character_file/${encodeURIComponent(char.avatar_path)}`
         : '../pictures/characters/default.png',
-      clothes: isSelected(parseInt(char.character_id))
-        ? clothes.map((clothes: Clothes) => ({
+      clothes: char.clothes
+        ? char.clothes.map((clothes: Clothes) => ({
             title: clothes.title,
             avatar: clothes.avatar
-              ? `/api/v1/chat/clothes/clothes_file/${encodeURIComponent(`${clothes.avatar}\\icon.png`)}`
+              ? `/api/v1/chat/clothes/clothes_file/${encodeURIComponent(`${clothes.avatar}\\正常.png`)}`
               : '../pictures/characters/default.png',
           }))
         : [],
@@ -322,10 +324,30 @@ watch(
 /* 角色选择网格布局 */
 .character-grid {
   display: grid;
-  /* grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); */
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 20px;
   padding: 15px;
   width: 100%;
+}
+
+.clothes-select-btn {
+  position: absolute;
+  bottom: 15px;
+  right: 80px;
+  background-color: #5e72e4;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.dim {
+  opacity: 0.3;
+  pointer-events: none;
 }
 
 .character-select-btn {
@@ -534,7 +556,7 @@ watch(
 .clothes-image {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   transition: transform 0.3s ease;
 }
 

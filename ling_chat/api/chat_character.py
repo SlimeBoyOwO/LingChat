@@ -145,7 +145,7 @@ async def get_all_characters():
 
         if not db_chars:
             return {"data": [], "message": "未找到任何角色"}
-
+        
         characters = []
         for char in db_chars:
             settings_path = os.path.join(char['resource_path'], 'settings.txt')
@@ -158,11 +158,25 @@ async def get_all_characters():
                 '头像.png'
             )
 
+            clothes_absolute_path = os.path.join(
+                char['resource_path'],
+                'avatar',
+            )
+
+            clothes_list = []
+            for item in Path(clothes_absolute_path).iterdir():
+                if item.is_dir():
+                    clothes_list.append({
+                        "title": item.name,
+                        "avatar": str(item)
+                    })
+
             characters.append({
                 "character_id": char['id'],
                 "title": char['title'],
                 "info": settings.get('info', '这是一个人工智能对话助手'),
-                "avatar_path": avatar_relative_path  # 修改为相对路径
+                "avatar_path": avatar_relative_path,  # 修改为相对路径
+                "clothes": clothes_list
             })
 
         return {"data": characters}
@@ -184,3 +198,11 @@ async def get_character_file(file_path: str):
         raise HTTPException(status_code=404, detail="文件不存在")
 
     return FileResponse(full_path)
+
+@router.get("/clothes_file/{file_path:path}")
+async def get_clothes_file(file_path: str):
+    """获取服装相关文件"""
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="文件不存在")
+
+    return FileResponse(file_path)

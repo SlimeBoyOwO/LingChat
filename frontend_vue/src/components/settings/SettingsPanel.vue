@@ -38,7 +38,6 @@ import {
 import SettingsNav from './SettingsNav.vue'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { ref, watch } from 'vue'
-import SettingsClothes from './pages/SettingsClothes.vue'
 
 const uiStore = useUIStore()
 
