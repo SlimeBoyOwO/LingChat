@@ -6,23 +6,6 @@
     <div class="character-content">
       <h5 class="character-title">{{ name }}</h5>
       <p class="character-description">{{ info }}</p>
-
-      <div v-if="clothes && clothes.length > 0" class="character-clothes">
-        <div class="clothes-list">
-          <div v-for="cloth in clothes" class="clothes-content" @click="selectClothes && selectClothes(cloth.title)">
-            <img
-              v-bind:class="{ selected : isClothesSelected && isClothesSelected(cloth.title) }"
-              :key="cloth.title"
-              :src="cloth.avatar"
-              class="cloth-thumbnail"
-              :alt="cloth.title"
-            />
-            <p class="clothes-title">{{ cloth.title }}</p>
-          </div>
-        </div>
-        
-      </div>
-
       <div class="character-actions">
         <slot name="actions"></slot>
       </div>
@@ -137,8 +120,8 @@ const props = withDefaults(defineProps<CharacterProps>(), {})
 }
 
 .clothes-content:hover {
-    box-shadow: inset 0px 100px rgba(0, 0, 0, 0.1);
-    transition: box-shadow 0.3s ease-in-out;
+  box-shadow: inset 0px 100px rgba(0, 0, 0, 0.1);
+  transition: box-shadow 0.3s ease-in-out;
 }
 
 .clothes-title {
@@ -162,7 +145,7 @@ const props = withDefaults(defineProps<CharacterProps>(), {})
 }
 
 .cloth-thumbnail.selected {
-  border: 3px solid #79d9ff
+  border: 3px solid #79d9ff;
 }
 
 .cloth-thumbnail {
