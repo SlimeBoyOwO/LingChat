@@ -1,5 +1,5 @@
 import http from '../http'
-import type { Character, CharacterSelectParams, Clothes } from '../../types'
+import type { Character, CharacterSelectParams } from '../../types'
 
 // 角色选择API返回类型
 interface CharacterSelectResponse {
