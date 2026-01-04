@@ -24,7 +24,7 @@ class LLMManager:
             self.llm_provider_type = os.environ.get("TRANSLATE_LLM_PROVIDER", "qwen-translate")
             self.model_type = os.environ.get("TRANSLATE_MODEL", "")
             self.api_key = os.environ.get("TRANSLATE_API_KEY", "")
-            self.api_url = os.environ.get("TRANSLATE_API_URL", "")
+            self.api_url = os.environ.get("TRANSLATE_BASE_URL", "")
             # 确保provider_type存在
             provider_type = self.llm_provider_type.lower()
             logger.info(f"初始化翻译模型 {provider_type} 提供商中...")
