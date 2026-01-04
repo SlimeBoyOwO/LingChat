@@ -7,9 +7,7 @@
   >
     <!-- 小圆形状态 -->
     <div v-if="!isExpanded" class="command-wheel-mini" @dblclick="expandWheel">
-      <svg class="hand-icon-mini" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M18 9.5V7a2 2 0 0 0-4 0v2.5l-2 0V7a4 4 0 0 0-8 0v6.5a6.5 6.5 0 0 0 6.5 6.5h.5a6.5 6.5 0 0 0 6.5-6.5V7a2 2 0 0 0-4 0v2.5l-2 0z"/>
-      </svg>
+      <svg class="hand-icon" focusable="false" aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M13 24c-3.26 0-6.19-1.99-7.4-5.02l-3.03-7.61c-.31-.79.43-1.58 1.24-1.32l.79.26c.56.18 1.02.61 1.24 1.16L7.25 15H8V3.25C8 2.56 8.56 2 9.25 2s1.25.56 1.25 1.25V12h1V1.25c0-.69.56-1.25 1.25-1.25S14 .56 14 1.25V12h1V2.75c0-.69.56-1.25 1.25-1.25s1.25.56 1.25 1.25V12h1V5.75c0-.69.56-1.25 1.25-1.25S21 5.06 21 5.75V16c0 4.42-3.58 8-8 8"></path></svg>
     </div>
 
     <!-- 展开状态 -->
@@ -21,16 +19,22 @@
 
         <!-- 触摸选项 (左上角) -->
         <div class="option-region touch-region" @click="selectCommand('touch')">
-          <svg class="hand-icon" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M18 9.5V7a2 2 0 0 0-4 0v2.5l-2 0V7a4 4 0 0 0-8 0v6.5a6.5 6.5 0 0 0 6.5 6.5h.5a6.5 6.5 0 0 0 6.5-6.5V7a2 2 0 0 0-4 0v2.5l-2 0z"/>
-          </svg>
+          <svg class="hand-icon" focusable="false" aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M13 24c-3.26 0-6.19-1.99-7.4-5.02l-3.03-7.61c-.31-.79.43-1.58 1.24-1.32l.79.26c.56.18 1.02.61 1.24 1.16L7.25 15H8V3.25C8 2.56 8.56 2 9.25 2s1.25.56 1.25 1.25V12h1V1.25c0-.69.56-1.25 1.25-1.25S14 .56 14 1.25V12h1V2.75c0-.69.56-1.25 1.25-1.25s1.25.56 1.25 1.25V12h1V5.75c0-.69.56-1.25 1.25-1.25S21 5.06 21 5.75V16c0 4.42-3.58 8-8 8"></path></svg>
+
           <span class="option-label">触摸</span>
         </div>
 
         <!-- 其他选项区域 (占位符) -->
         <div class="option-region"></div>
         <div class="option-region"></div>
-        <div class="option-region"></div>
+
+        <!-- 取消选项 (右下角) -->
+        <div class="option-region cancel-region" @click="selectCommand('cancel')">
+          <svg class="cancel-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+          </svg>
+          <span class="option-label">取消</span>
+        </div>
       </div>
 
       <!-- 点击外部关闭 -->
@@ -41,6 +45,10 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import '/pictures/icons/hand.svg'
+
+const blob = new Blob([`<svg focusable="false" aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M13 24c-3.26 0-6.19-1.99-7.4-5.02l-3.03-7.61c-.31-.79.43-1.58 1.24-1.32l.79.26c.56.18 1.02.61 1.24 1.16L7.25 15H8V3.25C8 2.56 8.56 2 9.25 2s1.25.56 1.25 1.25V12h1V1.25c0-.69.56-1.25 1.25-1.25S14 .56 14 1.25V12h1V2.75c0-.69.56-1.25 1.25-1.25s1.25.56 1.25 1.25V12h1V5.75c0-.69.56-1.25 1.25-1.25S21 5.06 21 5.75V16c0 4.42-3.58 8-8 8"></path></svg>`],{type: 'image/svg+xml'});
+const URL = window.URL.createObjectURL(blob);
 
 interface Props {
   isVisible?: boolean
@@ -104,7 +112,10 @@ const collapseWheel = () => {
 const selectCommand = (command: string) => {
   if (command === 'touch') {
     // 更改光标为手掌形状
-    document.body.style.cursor = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23000'%3E%3Cpath d='M18 9.5V7a2 2 0 0 0-4 0v2.5l-2 0V7a4 4 0 0 0-8 0v6.5a6.5 6.5 0 0 0 6.5 6.5h.5a6.5 6.5 0 0 0 6.5-6.5V7a2 2 0 0 0-4 0v2.5l-2 0z'/%3E%3C/svg%3E"), auto`
+document.body.style.cursor = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='32' height='32' fill='black'%3E%3Cpath d='M13 24c-3.26 0-6.19-1.99-7.4-5.02l-3.03-7.61c-.31-.79.43-1.58 1.24-1.32l.79.26c.56.18 1.02.61 1.24 1.16L7.25 15H8V3.25C8 2.56 8.56 2 9.25 2s1.25.56 1.25 1.25V12h1V1.25c0-.69.56-1.25 1.25-1.25S14 .56 14 1.25V12h1V2.75c0-.69.56-1.25 1.25-1.25s1.25.56 1.25 1.25V12h1V5.75c0-.69.56-1.25 1.25-1.25S21 5.06 21 5.75V16c0 4.42-3.58 8-8 8'/%3E%3C/svg%3E") 0 0, auto`;
+  } else if (command === 'cancel') {
+    // 恢复光标为默认样式
+    document.body.style.cursor = 'default'
   }
 
   emit('command-selected', command)
@@ -161,8 +172,8 @@ onUnmounted(() => {
 
 .command-wheel-expanded {
   position: relative;
-  width: 300px;
-  height: 300px;
+  width: 200px;
+  height: 200px;
   animation: wheelExpand 0.5s ease-out;
 }
 
@@ -179,6 +190,7 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr 1fr;
+  overflow: hidden;
 }
 
 .divider {
@@ -220,6 +232,18 @@ onUnmounted(() => {
 .touch-region {
   grid-column: 1;
   grid-row: 1;
+}
+
+.cancel-region {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.cancel-icon {
+  width: 32px;
+  height: 32px;
+  color: #ff6b6b;
+  margin-bottom: 4px;
 }
 
 .hand-icon {
