@@ -112,7 +112,7 @@ class AIService:
         try:
             llm_keys = {
                 "LLM_PROVIDER", "MODEL_TYPE", "CHAT_API_KEY", "CHAT_BASE_URL",
-                "TRANSLATE_LLM_PROVIDER", "TRANSLATE_MODEL", "TRANSLATE_API_KEY", "TRANSLATE_API_URL"
+                "TRANSLATE_LLM_PROVIDER", "TRANSLATE_MODEL", "TRANSLATE_API_KEY", "TRANSLATE_BASE_URL"
             }
             if any(k in updates for k in llm_keys):
                 self.llm_model = LLMManager()

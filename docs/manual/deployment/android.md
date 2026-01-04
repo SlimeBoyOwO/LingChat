@@ -337,7 +337,7 @@ VD_MODEL="Pro/Qwen/Qwen2.5-VL-7B-Instruct" # 视觉模型的模型类型
 ## 翻译设置 BEGIN # 配置 翻译相关的密钥和地址
 TRANSLATE_LLM_PROVIDER="webllm" # 翻译模型提供者（同对话，推荐webllm）
 TRANSLATE_API_KEY="$BAILIAN_API_KEY" # 翻译模型的 API Key，推荐使用百炼平台的api_key
-TRANSLATE_API_URL="https://dashscope.aliyuncs.com/compatible-mode/v1" # 翻译模型的api链接，推荐不要修改
+TRANSLATE_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1" # 翻译模型的api链接，推荐不要修改
 TRANSLATE_MODEL="qwen3-30b-a3b-instruct-2507" # 翻译模型，推荐不要修改
 ## 翻译设置 END
 

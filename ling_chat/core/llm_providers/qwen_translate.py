@@ -14,7 +14,7 @@ class QwenTranslateProvider(BaseLLMProvider):
     def initialize_client(self):
         """初始化Qwen客户端"""
         api_key = os.environ.get("TRANSLATE_API_KEY")
-        base_url = os.environ.get("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+        base_url = os.environ.get("TRANSLATE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
         
         if not api_key:
             error_message = "没有配置TRANSLATE_API_KEY，请检查配置"
@@ -23,7 +23,7 @@ class QwenTranslateProvider(BaseLLMProvider):
             return
         
         self.client = OpenAI(api_key=api_key, base_url=base_url)
-        self.model_type = os.environ.get("QWEN_MODEL_TYPE", "qwen-mt-plus")
+        self.model_type = os.environ.get("TRANSLATE_MODEL", "qwen-mt-plus")
 
         logger.info("Qwen翻译模型初始化完毕！")
     
