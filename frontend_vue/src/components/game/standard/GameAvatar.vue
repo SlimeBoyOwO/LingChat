@@ -7,6 +7,9 @@
     <div :style="avatarStyles" class="avatar-img" id="qinling"></div>
     <div :class="bubbleClasses" :style="bubbleStyles" class="bubble"></div>
 
+    <!-- 指令盘组件 -->
+    <GameCommandWheel @command-selected="handleCommandSelected" />
+
     <!-- 主音频播放器 -->
     <audio ref="avatarAudio" @ended="onAudioEnded"></audio>
     <!-- 气泡效果音播放器 -->
@@ -20,6 +23,7 @@ import { API_CONFIG } from '@/controllers/core/config'
 import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { EMOTION_CONFIG, EMOTION_CONFIG_EMO } from '@/controllers/emotion/config'
+import GameCommandWheel from './GameCommandWheel.vue'
 import './avatar-animation.css'
 
 const gameStore = useGameStore()
@@ -188,6 +192,12 @@ watch(
 )
 
 // --- 6. 事件处理方法 ---
+
+const handleCommandSelected = (command: string) => {
+  console.log(`Command selected: ${command}`)
+  // 这里可以根据指令执行相应操作
+  // 比如发送触摸指令到游戏逻辑
+}
 
 const onAudioEnded = () => {
   emit('audio-ended')
