@@ -3,6 +3,12 @@ import { defineStore } from 'pinia'
 
 // 通知类型
 export type NotificationType = 'error' | 'success' | 'info' | 'warning'
+export type ScheduleViewType =
+  | 'schedule_groups'
+  | 'schedule_details'
+  | 'todo_groups'
+  | 'todo_detail'
+  | 'calendar'
 
 // 通知状态接口
 interface NotificationState {
@@ -34,6 +40,9 @@ interface UIState {
   backgroundVolume: number
   bubbleVolume: number
   autoMode: boolean
+
+  // Schedule 相关状态
+  scheduleView: string
 
   // Notification 相关状态
   notification: NotificationState
@@ -75,6 +84,9 @@ export const useUIStore = defineStore('ui', {
     backgroundVolume: 80,
     bubbleVolume: 80,
     autoMode: false,
+
+    // Schedule 相关状态
+    scheduleView: 'schedule_groups',
 
     // Notification 初始状态
     notification: {

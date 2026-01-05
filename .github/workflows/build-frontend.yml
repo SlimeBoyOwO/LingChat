@@ -1,7 +1,12 @@
-name: 自动构建新前端
+name: 自动检查+构建新前端
 
 on:
   push:
+    branches: [develop]
+    paths:
+      - 'frontend_vue/**'
+      - '.github/workflows/build-frontend.yml'
+  pull_request:
     branches: [develop]
     paths:
       - 'frontend_vue/**'
@@ -55,7 +60,7 @@ jobs:
       run: pnpm build
 
     - name: 删除并重新创建构建分支
-      if: steps.changes.outputs.frontend == 'true'
+      if: github.event_name == 'push' && steps.changes.outputs.frontend == 'true'
       run: |
         git push origin --delete build/devfrontend || true
         git checkout -B build/devfrontend
@@ -67,7 +72,7 @@ jobs:
         cp -r frontend_vue/dist/* ling_chat/static/frontend/
 
     - name: 提交构建结果
-      if: steps.changes.outputs.frontend == 'true'
+      if: github.event_name == 'push' && steps.changes.outputs.frontend == 'true'
       run: |
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
         git config --local user.name "github-actions[bot]"
@@ -81,7 +86,7 @@ jobs:
         fi
 
     - name: 无文件变化时 Rebase develop 分支
-      if: steps.changes.outputs.frontend == 'false'
+      if: github.event_name == 'push' && steps.changes.outputs.frontend == 'false'
       run: |
         git checkout build/devfrontend
         git fetch origin develop
