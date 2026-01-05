@@ -7,25 +7,6 @@
     <div :style="avatarStyles" class="avatar-img" id="qinling"></div>
     <div :class="bubbleClasses" :style="bubbleStyles" class="bubble"></div>
 
-    <!-- 触摸区域 -->
-    <svg
-      class="touch-area"
-      width="300"
-      height="300"
-      viewBox="0 0 100 100"
-      @click="handleTouchAreaClick"
-    >
-      <circle
-        cx="50"
-        cy="50"
-        r="45"
-        fill="none"
-        stroke="orange"
-        stroke-width="2"
-        stroke-dasharray="5,5"
-      />
-    </svg>
-
     <!-- 指令盘组件 -->
     <GameCommandWheel @command-selected="handleCommandSelected"/>
 
@@ -283,15 +264,5 @@ defineExpose({
   z-index: 1;
   transition: background-image 0.2s ease-in-out;
   transform-origin: center 0%;
-}
-
-/* 触摸区域样式 */
-.touch-area {
-  position: absolute;
-  top: 40%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 3;
-  cursor: inherit;
 }
 </style>
