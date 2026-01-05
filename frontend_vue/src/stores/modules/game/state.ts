@@ -31,6 +31,7 @@ export interface ScriptCharacter {
   show: boolean
   clothes: object
   clothes_name: string
+  body_part: object
 }
 
 export interface GameState {
@@ -71,6 +72,7 @@ export const state: GameState = {
     show: true,
     clothes: {},
     clothes_name: 'default',
+    body_part: {},
   },
   currentLine: '',
   currentStatus: 'input',

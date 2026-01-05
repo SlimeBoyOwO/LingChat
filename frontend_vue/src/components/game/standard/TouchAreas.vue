@@ -22,6 +22,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useGameStore } from '@/stores/modules/game'
 import { scriptHandler } from '@/api/websocket/handlers/script-handler'
+import { eventQueue } from '@/core/events/event-queue'
 
 interface Props {
   isVisible?: boolean
@@ -32,7 +33,10 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const gameStore = useGameStore()
-const emit = defineEmits(['area-clicked'])
+const emit = defineEmits(['area-clicked', 'player-continued', 'dialog-proceed'])
+
+console.log("bodypart:", gameStore.avatar.body_part)
+const sent = ref(false)
 
 // 归一化坐标点
 const normalizedX = [0.373, 0.636, 0.653, 0.364]
@@ -68,12 +72,21 @@ const polygonPoints = computed(() => {
 const isPointInPolygon = (x: number, y: number, polygon: readonly [number, number][]): boolean => {
   let inside = false
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    if (((polygon[i][1] > y) !== (polygon[j][1] > y)) &&
-        (x < (polygon[j][0] - polygon[i][0]) * (y - polygon[i][1]) / (polygon[j][1] - polygon[i][1]) + polygon[i][0])) {
+    if (
+      polygon[i][1] > y !== polygon[j][1] > y &&
+      x <
+        ((polygon[j][0] - polygon[i][0]) * (y - polygon[i][1])) / (polygon[j][1] - polygon[i][1]) +
+          polygon[i][0]
+    ) {
       inside = !inside
     }
   }
   return inside
+}
+
+function continueDialog(isPlayerTrigger: boolean): boolean {
+  const needWait = eventQueue.continue()
+  return needWait
 }
 
 // 处理多边形点击
@@ -103,8 +116,18 @@ const handlePolygonClick = (event: MouseEvent) => {
     })
 
     if (isPointInPolygon(event.clientX, event.clientY, polygon)) {
-      alert(`X = [${event.clientX}]\nY = [${event.clientY}]`)
-      scriptHandler.sendMessage("莱姆摸了你的头")
+      console.log('sent:', sent.value)
+      if (!sent.value) {
+        alert(`X = [${normalizedX.join(', ')}]\nY = [${normalizedY.join(', ')}]`)
+        scriptHandler.sendMessage('莱姆摸了你的头')
+        sent.value = true
+      } else {
+        const needWait = continueDialog(true)
+        if (!needWait) {
+          emit('player-continued')
+          emit('dialog-proceed')
+        }
+      }
     }
   }
 }
@@ -145,7 +168,7 @@ onUnmounted(() => {
   fill: rgba(255, 255, 255, 0.1);
   stroke: white;
   stroke-width: 3;
-  stroke-dasharray: 8,4;
+  stroke-dasharray: 8, 4;
   transition: fill 0.3s ease;
 }
 
