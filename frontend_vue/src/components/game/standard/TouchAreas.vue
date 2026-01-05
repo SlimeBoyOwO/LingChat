@@ -21,6 +21,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useGameStore } from '@/stores/modules/game'
+import { scriptHandler } from '@/api/websocket/handlers/script-handler'
 
 interface Props {
   isVisible?: boolean
@@ -101,8 +102,9 @@ const handlePolygonClick = (event: MouseEvent) => {
       return [x, y]
     })
 
-    if (isPointInPolygon(x, y, polygon)) {
-      alert(`X = [${normalizedX.join(', ')}]\nY = [${normalizedY.join(', ')}]`)
+    if (isPointInPolygon(event.clientX, event.clientY, polygon)) {
+      alert(`X = [${event.clientX}]\nY = [${event.clientY}]`)
+      scriptHandler.sendMessage("莱姆摸了你的头")
     }
   }
 }
