@@ -11,7 +11,13 @@
     <GameCommandWheel @command-selected="handleCommandSelected" />
 
     <!-- 触摸区域组件 -->
-    <TouchAreas @area-clicked="handleTouchAreaClicked" />
+    <TouchAreas
+      v-for="(part, key) in gameStore.avatar.body_part"
+      :key="key"
+      :part="part"
+      :part-key="key"
+      @area-clicked="handleTouchAreaClicked"
+    />
 
     <!-- 主音频播放器 -->
     <audio ref="avatarAudio" @ended="onAudioEnded"></audio>
@@ -207,13 +213,6 @@ const handleCommandSelected = (command: string) => {
   console.log(`Command selected: ${command}`)
   // 这里可以根据指令执行相应操作
   // 比如发送触摸指令到游戏逻辑
-}
-
-const handleTouchAreaClick = () => {
-  // 检查当前光标是否是手掌形状（表示正在触摸模式）
-  if (gameStore.command === 'touch') {
-    alert(`qingling's head touched`)
-  }
 }
 
 const handleTouchAreaClicked = (area: string) => {
