@@ -16,7 +16,7 @@
       />
       <SettingsHistory v-show="uiStore.currentSettingsTab === 'history'" />
       <SettingsSchedule v-show="uiStore.currentSettingsTab === 'schedule'" />
-      <SettingsCharacter v-if="uiStore.currentSettingsTab === 'character'" />
+      <SettingsCharacter v-show="uiStore.currentSettingsTab === 'character'" />
       <SettingsBackground v-show="uiStore.currentSettingsTab === 'background'" />
       <SettingsUpdate v-show="uiStore.currentSettingsTab === 'update'" />
     </div>
