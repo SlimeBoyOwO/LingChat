@@ -1,67 +1,116 @@
 <template>
-  <div class="pomodoro-entry">
+  <div class="fixed top-5 left-5 z-[2000] flex flex-col gap-3 font-sans">
     <Button
       type="nav"
-      :class="['entry-btn', { active: enabled }]"
+      :class="[
+        'flex items-center gap-2 px-4 py-2 transition-colors',
+        enabled ? 'text-[#4facfe]' : 'text-white',
+      ]"
       @click="toggleEnabled"
       v-show="!uiStore.showSettings"
     >
-      <span class="entry-icon">🍅</span>
-      <h3>番茄钟</h3>
+      <span class="text-xl">🍅</span>
+      <h3 class="text-lg font-bold m-0">番茄钟</h3>
     </Button>
 
-    <Transition name="fade-slide">
-      <div v-if="enabled" class="pomodoro-panel glass-effect">
-        <!-- 上部：圆环与信息 -->
-        <div class="ring-section">
-          <div class="ring-wrap">
-            <svg class="ring" viewBox="0 0 100 100">
+    <Transition
+      enter-active-class="transition-all duration-300 cubic-bezier(0.2, 0.8, 0.2, 1)"
+      leave-active-class="transition-all duration-300 cubic-bezier(0.2, 0.8, 0.2, 1)"
+      enter-from-class="opacity-0 -translate-y-2"
+      leave-to-class="opacity-0 -translate-y-2"
+    >
+      <div
+        v-if="enabled"
+        class="w-[260px] bg-[#12121c]/75 backdrop-blur-[20px] border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)] rounded-3xl p-6 text-white flex flex-col items-center box-border"
+      >
+        <div class="relative mb-6 outline-none">
+          <div class="w-[180px] h-[180px] relative outline-none border-none">
+            <svg
+              class="w-full h-full -rotate-90 outline-none overflow-visible block"
+              viewBox="0 0 100 100"
+            >
               <defs>
                 <linearGradient id="gradient-ring" x1="0%" y1="0%" x2="100%" y2="100%">
                   <stop offset="0%" stop-color="#4facfe" />
                   <stop offset="100%" stop-color="#00f2fe" />
                 </linearGradient>
               </defs>
-              <circle class="track" cx="50" cy="50" r="45" />
-              <circle class="progress" cx="50" cy="50" r="45" :style="progressStyle" />
+              <circle class="fill-none stroke-white/10 stroke-[4]" cx="50" cy="50" r="45" />
+              <circle
+                class="fill-none stroke-[url(#gradient-ring)] stroke-[4] stroke-round transition-[stroke-dashoffset] duration-1000 ease-linear drop-shadow-[0_0_4px_rgba(79,172,254,0.5)]"
+                cx="50"
+                cy="50"
+                r="45"
+                :style="progressStyle"
+              />
             </svg>
 
-            <div class="ring-center">
-              <div class="label-area" @click="startEditLabel" title="点击修改名称">
-                <span v-if="!editingLabel" class="label-text">{{ workLabel }}</span>
+            <div class="absolute inset-0 flex flex-col items-center justify-center z-10">
+              <div
+                class="h-6 flex items-center justify-center mb-1 cursor-pointer group"
+                @click="startEditLabel"
+                title="点击修改名称"
+              >
+                <span
+                  v-if="!editingLabel"
+                  class="text-base font-medium tracking-wide opacity-90 group-hover:text-[#4facfe] transition-colors"
+                >
+                  {{ workLabel }}
+                </span>
                 <input
                   v-else
                   v-model="workLabelDraft"
-                  class="label-input"
+                  class="w-[120px] bg-transparent border-0 border-b border-[#4facfe] text-white text-center text-base outline-none p-0 focus:ring-0"
                   @blur="commitEditLabel"
                   @keyup.enter="commitEditLabel"
                   autofocus
                 />
               </div>
 
-              <div class="time-display">{{ minutes }}:{{ seconds }}</div>
+              <div
+                class="text-5xl font-bold leading-none tabular-nums my-1 drop-shadow-[0_4px_12px_rgba(0,0,0,0.3)]"
+              >
+                {{ minutes }}:{{ seconds }}
+              </div>
 
-              <div class="status-text">{{ statusText }}</div>
-              <div class="cycle-text">第 {{ cycleIndex }} / {{ cyclesTotal }} 轮</div>
+              <div class="text-[13px] text-[#4facfe] font-semibold mb-0.5">
+                {{ statusText }}
+              </div>
+              <div class="text-[11px] text-white/50">
+                第 {{ cycleIndex }} / {{ cyclesTotal }} 轮
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- 中部：纯图标控制栏 -->
-        <div class="controls-bar">
-          <div class="icon-btn play" :class="{ disabled: isRunning }" @click="start" title="开始">
+        <div class="flex items-center justify-between w-40 mb-6">
+          <div
+            class="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center cursor-pointer transition-all duration-200 text-white hover:bg-white/20 hover:scale-105 active:scale-95"
+            :class="{ 'opacity-30 pointer-events-none bg-transparent shadow-none': isRunning }"
+            @click="start"
+            title="开始"
+          >
             <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
               <path d="M8 5v14l11-7z" />
             </svg>
           </div>
 
-          <div class="icon-btn pause" :class="{ disabled: !isRunning }" @click="pause" title="暂停">
+          <div
+            class="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center cursor-pointer transition-all duration-200 text-white hover:bg-white/20 hover:scale-105 active:scale-95"
+            :class="{ 'opacity-30 pointer-events-none bg-transparent shadow-none': !isRunning }"
+            @click="pause"
+            title="暂停"
+          >
             <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
               <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
             </svg>
           </div>
 
-          <div class="icon-btn reset" @click="reset" title="重置">
+          <div
+            class="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center cursor-pointer transition-all duration-200 text-white hover:bg-white/20 hover:scale-105 active:scale-95"
+            @click="reset"
+            title="重置"
+          >
             <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
               <path
                 d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"
@@ -70,25 +119,30 @@
           </div>
         </div>
 
-        <!-- 底部：设置栏 (自定义箭头) -->
-        <div class="settings-bar">
-          <div class="setting-col">
-            <span class="s-label">专注</span>
-            <div class="s-input-wrap">
+        <div class="flex justify-between w-full pt-4 border-t border-white/10">
+          <div class="flex flex-col items-center flex-1">
+            <span class="text-[11px] text-white/50 mb-1.5">专注</span>
+            <div class="flex items-center justify-center relative h-6">
               <input
                 type="number"
-                class="no-spin"
+                class="no-spin w-8 bg-transparent border-none text-white text-right font-medium text-[15px] outline-none p-0 appearance-none"
                 v-model.number="workMinutesInput"
                 @change="applyWorkMinutes"
               />
-              <span class="s-unit">m</span>
-              <div class="custom-spinners">
-                <div class="spin-btn up" @click="adjustWork(1)">
+              <span class="text-[11px] text-white/50 pointer-events-none ml-0.5 mr-1">m</span>
+              <div class="flex flex-col justify-center h-full gap-[2px]">
+                <div
+                  class="flex items-center justify-center cursor-pointer opacity-60 hover:opacity-100 h-2.5 active:scale-90 transition-transform"
+                  @click="adjustWork(1)"
+                >
                   <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor">
                     <path d="M7 14l5-5 5 5z" />
                   </svg>
                 </div>
-                <div class="spin-btn down" @click="adjustWork(-1)">
+                <div
+                  class="flex items-center justify-center cursor-pointer opacity-60 hover:opacity-100 h-2.5 active:scale-90 transition-transform"
+                  @click="adjustWork(-1)"
+                >
                   <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor">
                     <path d="M7 10l5 5 5-5z" />
                   </svg>
@@ -97,23 +151,29 @@
             </div>
           </div>
 
-          <div class="setting-col">
-            <span class="s-label">休息</span>
-            <div class="s-input-wrap">
+          <div class="flex flex-col items-center flex-1">
+            <span class="text-[11px] text-white/50 mb-1.5">休息</span>
+            <div class="flex items-center justify-center relative h-6">
               <input
                 type="number"
-                class="no-spin"
+                class="no-spin w-8 bg-transparent border-none text-white text-right font-medium text-[15px] outline-none p-0 appearance-none"
                 v-model.number="breakMinutesInput"
                 @change="applyBreakMinutes"
               />
-              <span class="s-unit">m</span>
-              <div class="custom-spinners">
-                <div class="spin-btn up" @click="adjustBreak(1)">
+              <span class="text-[11px] text-white/50 pointer-events-none ml-0.5 mr-1">m</span>
+              <div class="flex flex-col justify-center h-full gap-[2px]">
+                <div
+                  class="flex items-center justify-center cursor-pointer opacity-60 hover:opacity-100 h-2.5 active:scale-90 transition-transform"
+                  @click="adjustBreak(1)"
+                >
                   <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor">
                     <path d="M7 14l5-5 5 5z" />
                   </svg>
                 </div>
-                <div class="spin-btn down" @click="adjustBreak(-1)">
+                <div
+                  class="flex items-center justify-center cursor-pointer opacity-60 hover:opacity-100 h-2.5 active:scale-90 transition-transform"
+                  @click="adjustBreak(-1)"
+                >
                   <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor">
                     <path d="M7 10l5 5 5-5z" />
                   </svg>
@@ -122,23 +182,29 @@
             </div>
           </div>
 
-          <div class="setting-col">
-            <span class="s-label">循环</span>
-            <div class="s-input-wrap">
+          <div class="flex flex-col items-center flex-1">
+            <span class="text-[11px] text-white/50 mb-1.5">循环</span>
+            <div class="flex items-center justify-center relative h-6">
               <input
                 type="number"
-                class="no-spin"
+                class="no-spin w-8 bg-transparent border-none text-white text-right font-medium text-[15px] outline-none p-0 appearance-none"
                 v-model.number="cyclesInput"
                 @change="applyCycles"
               />
-              <span class="s-unit">次</span>
-              <div class="custom-spinners">
-                <div class="spin-btn up" @click="adjustCycles(1)">
+              <span class="text-[11px] text-white/50 pointer-events-none ml-0.5 mr-1">次</span>
+              <div class="flex flex-col justify-center h-full gap-[2px]">
+                <div
+                  class="flex items-center justify-center cursor-pointer opacity-60 hover:opacity-100 h-2.5 active:scale-90 transition-transform"
+                  @click="adjustCycles(1)"
+                >
                   <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor">
                     <path d="M7 14l5-5 5 5z" />
                   </svg>
                 </div>
-                <div class="spin-btn down" @click="adjustCycles(-1)">
+                <div
+                  class="flex items-center justify-center cursor-pointer opacity-60 hover:opacity-100 h-2.5 active:scale-90 transition-transform"
+                  @click="adjustCycles(-1)"
+                >
                   <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor">
                     <path d="M7 10l5 5 5-5z" />
                   </svg>
@@ -219,7 +285,6 @@ const progress = computed(() => {
 const progressStyle = computed(() => ({
   strokeDasharray: `${circumference}`,
   strokeDashoffset: `${(1 - progress.value) * circumference}`,
-  transform: 'rotate(-90deg)',
   transformOrigin: '50% 50%',
 }))
 
@@ -244,13 +309,6 @@ function formatMinutes(ms: number) {
   return Math.max(1, Math.round(ms / 60000))
 }
 
-/**
- * 以“正常聊天”的方式发送一条用户消息：
- * - 写入 dialogHistory（历史对话）
- * - 走 websocket 的 MESSAGE 通道发给后端（LLM）
- *
- * 为避免打断用户正在对话的流程：当不在 input 状态时先排队，等回到 input 再发。
- */
 function sendUserPrompt(text: string) {
   const content = (text || '').trim()
   if (!content) return
@@ -311,8 +369,6 @@ function tick() {
     if (mode.value === 'work') {
       mode.value = 'break'
       remainingMs.value = breakDurationMs.value
-
-      // 休息开始：主动触发一次对话
       sendUserPrompt(
         `{番茄钟提醒：第${prevCycle}/${cyclesTotal.value}轮专注结束，开始休息 ${formatMinutes(breakDurationMs.value)} 分钟。}`,
       )
@@ -321,16 +377,12 @@ function tick() {
         cycleIndex.value += 1
         mode.value = 'work'
         remainingMs.value = workDurationMs.value
-
-        // 下一轮专注开始：主动触发一次对话
         sendUserPrompt(
           `{番茄钟提醒：休息结束，开始第${cycleIndex.value}/${cyclesTotal.value}轮专注（${workLabel.value}），时长 ${formatMinutes(workDurationMs.value)} 分钟}`,
         )
       } else {
         clearTimer()
         isRunning.value = false
-
-        // 可选：循环全部完成时也触发一次（不强制）
         sendUserPrompt(
           `{番茄钟提醒：本次番茄钟已完成（专注 ${formatMinutes(workDurationMs.value)} 分钟 + 休息 ${formatMinutes(breakDurationMs.value)} 分钟 × ${cyclesTotal.value} 轮）。}`,
         )
@@ -348,7 +400,6 @@ function start() {
   timerId = window.setInterval(tick, 1000)
   persistState()
 
-  // 点击开始：主动触发一次对话（写入历史 + 发给后端）
   const phaseText = mode.value === 'work' ? `开始专注（${workLabel.value}）` : '开始休息'
   sendUserPrompt(
     `{我启动了番茄钟：专注 ${formatMinutes(workDurationMs.value)} 分钟，休息 ${formatMinutes(breakDurationMs.value)} 分钟，共 ${cyclesTotal.value} 轮。现在${phaseText}，这是第${cycleIndex.value}/${cyclesTotal.value}轮。}`,
@@ -386,7 +437,6 @@ function commitEditLabel() {
   persistState()
 }
 
-// 核心逻辑：应用时间更改
 function applyWorkMinutes() {
   let n = workMinutesInput.value
   if (!n || n < 1) n = 1
@@ -412,7 +462,6 @@ function applyCycles() {
   persistState()
 }
 
-// 辅助方法：点击自定义箭头时调用
 function adjustWork(delta: number) {
   workMinutesInput.value += delta
   applyWorkMinutes()
@@ -481,294 +530,15 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* 全局变量 */
-.pomodoro-panel {
-  --color-text: #ffffff;
-  --color-text-dim: rgba(255, 255, 255, 0.5);
-  --color-accent: #4facfe;
-  --bg-glass: rgba(18, 18, 28, 0.75);
-}
-
-.pomodoro-entry {
-  position: fixed;
-  top: 20px;
-  left: 20px;
-  z-index: 2000;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-}
-
-.entry-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-}
-.entry-icon {
-  font-size: 1.2rem;
-}
-
-/* 主面板容器 */
-.pomodoro-panel {
-  width: 260px;
-  background: var(--bg-glass);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  border-radius: 24px;
-  padding: 24px 20px;
-  color: var(--color-text);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  box-sizing: border-box;
-}
-
-/* 1. 圆环区域 */
-.ring-section {
-  position: relative;
-  margin-bottom: 24px;
-}
-
-.ring-wrap {
-  width: 180px;
-  height: 180px;
-  position: relative;
-  border: none !important;
-  outline: none !important;
-  box-shadow: none !important;
-  background: transparent !important;
-}
-
-.ring {
-  width: 100%;
-  height: 100%;
-  transform: rotate(-90deg);
-  overflow: visible;
-  border: none !important;
-  outline: none !important;
-  box-shadow: none !important;
-  background: transparent !important;
-}
-
-/* 去掉部分浏览器/系统环境可能给 SVG 或可聚焦元素绘制的“直角白框” */
-.ring-section,
-.ring-section :deep(svg),
-.ring-section :deep(svg:focus),
-.ring-section :deep(svg:focus-visible),
-.ring-section :deep(*:focus),
-.ring-section :deep(*:focus-visible) {
-  outline: none !important;
-  box-shadow: none !important;
-}
-
-.track {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.1);
-  stroke-width: 4;
-}
-
-.progress {
-  fill: none;
-  stroke: url(#gradient-ring);
-  stroke-width: 4;
-  stroke-linecap: round;
-  transition: stroke-dashoffset 1s linear;
-  filter: drop-shadow(0 0 4px rgba(79, 172, 254, 0.5));
-}
-
-.ring-center {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  z-index: 2;
-}
-
-/* 标签 */
-.label-area {
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 4px;
-  cursor: pointer;
-}
-.label-text {
-  font-size: 16px;
-  font-weight: 500;
-  letter-spacing: 1px;
-  text-align: center;
-  opacity: 0.9;
-}
-.label-input {
-  width: 120px;
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid var(--color-accent);
-  color: #fff;
-  text-align: center;
-  font-size: 16px;
-  outline: none;
-}
-
-/* 时间 */
-.time-display {
-  font-size: 48px;
-  font-weight: 700;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-  margin: 4px 0;
-  text-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-/* 状态 */
-.status-text {
-  font-size: 13px;
-  color: var(--color-accent);
-  font-weight: 600;
-  margin-bottom: 2px;
-}
-.cycle-text {
-  font-size: 11px;
-  color: var(--color-text-dim);
-}
-
-/* 2. 控制栏 */
-.controls-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 160px;
-  margin-bottom: 24px;
-}
-
-.icon-btn {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  color: #fff;
-}
-.icon-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
-  transform: scale(1.05);
-}
-.icon-btn:active {
-  transform: scale(0.95);
-}
-.icon-btn.disabled {
-  opacity: 0.3;
-  pointer-events: none;
-  background: transparent;
-  box-shadow: none;
-}
-
-/* 3. 底部设置栏 (改进版) */
-.settings-bar {
-  display: flex;
-  justify-content: space-between;
-  width: 100%;
-  padding-top: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.setting-col {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex: 1;
-}
-
-.s-label {
-  font-size: 11px;
-  color: var(--color-text-dim);
-  margin-bottom: 6px;
-}
-
-.s-input-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  height: 24px;
-}
-
+/* Tailwind 默认不包含针对 input[type=number] 移除 spinners 的工具类。
+  这里使用标准 CSS 确保在 Firefox 和 Webkit 内核浏览器中效果一致。
+*/
 .no-spin::-webkit-inner-spin-button,
 .no-spin::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
 .no-spin {
-  appearance: textfield;
   -moz-appearance: textfield;
-  width: 32px;
-  background: transparent;
-  border: none;
-  color: #fff;
-  font-size: 15px;
-  text-align: right;
-  font-weight: 500;
-  outline: none;
-  padding: 0;
-}
-
-.s-unit {
-  font-size: 11px;
-  color: var(--color-text-dim);
-  pointer-events: none;
-  margin-left: 2px;
-  margin-right: 4px;
-}
-
-/* 自定义微调箭头容器 */
-.custom-spinners {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  height: 100%;
-  gap: 2px;
-}
-
-.spin-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  opacity: 0.6;
-  transition: opacity 0.2s;
-  height: 10px;
-}
-
-.spin-btn:hover {
-  opacity: 1;
-}
-
-.spin-btn:active {
-  transform: scale(0.9);
-}
-
-/* 动画 */
-.fade-slide-enter-active,
-.fade-slide-leave-active {
-  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-.fade-slide-enter-from,
-.fade-slide-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
 }
 </style>
