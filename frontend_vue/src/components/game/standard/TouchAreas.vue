@@ -43,11 +43,21 @@ const windowHeight = ref(window.innerHeight)
 
 // 计算实际坐标点
 const polygonPoints = computed(() => {
-  const shiftX = (990 - windowWidth.value) / 2
+  const scale = windowHeight.value / 596
+  const centerX = windowWidth.value / 2
+  const centerY = windowHeight.value / 2
+  const originalCenterX = 990 / 2
+  const originalCenterY = 596 / 2
   const points = []
   for (let i = 0; i < normalizedX.length; i++) {
-    const x = normalizedX[i]! * 990 - shiftX
-    const y = normalizedY[i]! * 596
+    const originalX = normalizedX[i]! * 990
+    const originalY = normalizedY[i]! * 596
+    const dx = originalX - originalCenterX
+    const dy = originalY - originalCenterY
+    const scaledDx = dx * scale
+    const scaledDy = dy * scale
+    const x = centerX + scaledDx
+    const y = centerY + scaledDy
     points.push(`${x},${y}`)
   }
   return points.join(' ')
@@ -74,11 +84,22 @@ const handlePolygonClick = (event: MouseEvent) => {
     const y = event.clientY - rect.top
 
     // 构建多边形坐标数组
-    const shiftX = (990 - windowWidth.value) / 2
-    const polygon: [number, number][] = normalizedX.map((nx, i) => [
-      nx * 990 - shiftX,
-      normalizedY[i]! * 596
-    ])
+    const scale = windowHeight.value / 596
+    const centerX = windowWidth.value / 2
+    const centerY = windowHeight.value / 2
+    const originalCenterX = 990 / 2
+    const originalCenterY = 596 / 2
+    const polygon: [number, number][] = normalizedX.map((nx, i) => {
+      const originalX = nx * 990
+      const originalY = normalizedY[i]! * 596
+      const dx = originalX - originalCenterX
+      const dy = originalY - originalCenterY
+      const scaledDx = dx * scale
+      const scaledDy = dy * scale
+      const x = centerX + scaledDx
+      const y = centerY + scaledDy
+      return [x, y]
+    })
 
     if (isPointInPolygon(x, y, polygon)) {
       alert(`X = [${normalizedX.join(', ')}]\nY = [${normalizedY.join(', ')}]`)
