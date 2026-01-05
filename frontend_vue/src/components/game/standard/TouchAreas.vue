@@ -1,7 +1,7 @@
 <template>
-  <div v-if="isVisible" class="touch-areas-container">
+  <div v-if="isVisible" class="touch-areas-container" >
     <!-- 凸多边形区域 -->
-    <!-- <svg
+    <svg
       class="polygon-area"
       :viewBox="`0 0 ${windowWidth} ${windowHeight}`"
       @click="handlePolygonClick"
@@ -14,7 +14,7 @@
         stroke-dasharray="8,4"
         class="polygon-shape"
       />
-    </svg> -->
+    </svg>
   </div>
 </template>
 
@@ -157,7 +157,7 @@ onUnmounted(() => {
 })
 </script>
 
-<!-- <style scoped>
+<style scoped>
 .touch-areas-container {
   position: fixed;
   top: 0;
@@ -166,6 +166,7 @@ onUnmounted(() => {
   height: 100%;
   pointer-events: none;
   z-index: 100;
+  opacity: 0.001;
 }
 
 .polygon-area {
@@ -185,4 +186,4 @@ onUnmounted(() => {
 .polygon-shape:hover {
   fill: rgba(255, 255, 255, 0.2);
 }
-</style> -->
+</style>
