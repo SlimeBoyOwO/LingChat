@@ -7,8 +7,32 @@
     <div :style="avatarStyles" class="avatar-img" id="qinling"></div>
     <div :class="bubbleClasses" :style="bubbleStyles" class="bubble"></div>
 
+    <!-- 触摸区域 -->
+    <svg
+      class="touch-area"
+      width="300"
+      height="300"
+      viewBox="0 0 100 100"
+      @click="handleTouchAreaClick"
+    >
+      <circle
+        cx="50"
+        cy="50"
+        r="45"
+        fill="none"
+        stroke="orange"
+        stroke-width="2"
+        stroke-dasharray="5,5"
+      />
+    </svg>
+
     <!-- 指令盘组件 -->
-    <GameCommandWheel @command-selected="handleCommandSelected" />
+    <GameCommandWheel @command-selected="handleCommandSelected"/>
+
+    <!-- 触摸区域组件 -->
+    <TouchAreas @area-clicked="handleTouchAreaClicked" />
+
+    
 
     <!-- 主音频播放器 -->
     <audio ref="avatarAudio" @ended="onAudioEnded"></audio>
@@ -24,6 +48,7 @@ import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { EMOTION_CONFIG, EMOTION_CONFIG_EMO } from '@/controllers/emotion/config'
 import GameCommandWheel from './GameCommandWheel.vue'
+import TouchAreas from './TouchAreas.vue'
 import './avatar-animation.css'
 
 const gameStore = useGameStore()
@@ -60,6 +85,13 @@ const containerClasses = computed(() => ({
   'avatar-visible': gameStore.avatar.show,
   'avatar-hidden': !gameStore.avatar.show,
 }))
+
+
+document.addEventListener('click', (event) => {
+    const normX = event.clientX / window.innerWidth;
+    const normY = event.clientY / window.innerHeight;
+    console.log(`相对于窗口: X=${normX.toFixed(3)}, Y=${normY.toFixed(3)}`);
+});
 
 // 计算头像图片的 style
 const avatarStyles = computed(() => ({
@@ -199,6 +231,20 @@ const handleCommandSelected = (command: string) => {
   // 比如发送触摸指令到游戏逻辑
 }
 
+const handleTouchAreaClick = () => {
+  // 检查当前光标是否是手掌形状（表示正在触摸模式）
+  if (gameStore.command === 'touch') {
+    alert(`qingling's head touched`)
+  }
+}
+
+const handleTouchAreaClicked = (area: string) => {
+  // 检查当前是否处于触摸模式
+  if (gameStore.command === 'touch') {
+    alert(`touched ${area} area`)
+  }
+}
+
 const onAudioEnded = () => {
   emit('audio-ended')
 }
@@ -237,5 +283,15 @@ defineExpose({
   z-index: 1;
   transition: background-image 0.2s ease-in-out;
   transform-origin: center 0%;
+}
+
+/* 触摸区域样式 */
+.touch-area {
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  cursor: inherit;
 }
 </style>
