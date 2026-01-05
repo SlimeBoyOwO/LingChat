@@ -8,12 +8,10 @@
     <div :class="bubbleClasses" :style="bubbleStyles" class="bubble"></div>
 
     <!-- 指令盘组件 -->
-    <GameCommandWheel @command-selected="handleCommandSelected"/>
+    <GameCommandWheel @command-selected="handleCommandSelected" />
 
     <!-- 触摸区域组件 -->
     <TouchAreas @area-clicked="handleTouchAreaClicked" />
-
-    
 
     <!-- 主音频播放器 -->
     <audio ref="avatarAudio" @ended="onAudioEnded"></audio>
@@ -67,12 +65,11 @@ const containerClasses = computed(() => ({
   'avatar-hidden': !gameStore.avatar.show,
 }))
 
-
 document.addEventListener('click', (event) => {
-    const normX = event.clientX / window.innerWidth;
-    const normY = event.clientY / window.innerHeight;
-    console.log(`相对于窗口: X=${normX.toFixed(3)}, Y=${normY.toFixed(3)}`);
-});
+  const normX = event.clientX / window.innerWidth
+  const normY = event.clientY / window.innerHeight
+  console.log(`相对于窗口: X=${normX.toFixed(3)}, Y=${normY.toFixed(3)}`)
+})
 
 // 计算头像图片的 style
 const avatarStyles = computed(() => ({

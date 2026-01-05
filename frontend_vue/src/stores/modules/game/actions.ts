@@ -44,7 +44,7 @@ export const actions = {
       this.avatar.bubble_top = gameInfo.bubble_top
       this.avatar.clothes = gameInfo.clothes
       this.avatar.clothes_name = gameInfo.clothes_name
-
+      this.avatar.body_part = gameInfo.body_part
       // 也可以在这里直接更新其他 store 的状态
       const uiStore = useUIStore()
       uiStore.showCharacterTitle = gameInfo.user_name
@@ -82,6 +82,7 @@ export const actions = {
           bubble_left: characterData.bubble_left,
           clothes: characterData.clothes,
           clothes_name: characterData.clothes_name,
+          body_part: characterData.body_part,
         }
 
         // 使用 character_id 作为 key（转换为字符串确保一致性）

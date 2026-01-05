@@ -11,6 +11,7 @@ export interface CharacterSettings {
   bubble_left: number
   clothes: object
   clothes_name: string
+  body_part: object
 }
 
 export interface ScriptInfo {
