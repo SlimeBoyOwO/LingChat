@@ -71,11 +71,7 @@ const containerClasses = computed(() => ({
   'avatar-hidden': !gameStore.avatar.show,
 }))
 
-document.addEventListener('click', (event) => {
-  const normX = event.clientX / window.innerWidth
-  const normY = event.clientY / window.innerHeight
-  console.log(`相对于窗口: X=${normX.toFixed(3)}, Y=${normY.toFixed(3)}`)
-})
+
 
 // 计算头像图片的 style
 const avatarStyles = computed(() => ({
