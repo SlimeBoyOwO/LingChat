@@ -53,7 +53,6 @@ const props = withDefaults(defineProps<Props>(), {
 const gameStore = useGameStore()
 const emit = defineEmits(['area-clicked', 'player-continued', 'dialog-proceed'])
 
-console.log("bodypart:", gameStore.avatar.body_part)
 const sent = ref(false)
 
 // 窗口尺寸
@@ -87,21 +86,15 @@ const isPointInPolygon = (x: number, y: number, polygon: readonly [number, numbe
   let inside = false
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
     if (
-      polygon && polygon[i] && polygon[j] &&
-      polygon[i][1] > y !== polygon[j][1] > y &&
+      (polygon[i]?.[1] ?? 0 > y) !== (polygon[j]?.[1] ?? 0 > y) &&
       x <
-        ((polygon[j][0] - polygon[i][0]) * (y - polygon[i][1])) / (polygon[j][1] - polygon[i][1]) +
-          polygon[i][0]
+        (((polygon[j]?.[0] ?? 0) - (polygon[i]?.[0] ?? 0)) * (y - (polygon[i]?.[1] ?? 0))) / ((polygon[j]?.[1] ?? 0) - (polygon[i]?.[1] ?? 0)) +
+          (polygon[i]?.[0] ?? 0)
     ) {
       inside = !inside
     }
   }
   return inside
-}
-
-function continueDialog(isPlayerTrigger: boolean): boolean {
-  const needWait = eventQueue.continue()
-  return needWait
 }
 
 // 处理多边形点击
@@ -130,17 +123,19 @@ const handlePolygonClick = (event: MouseEvent) => {
       return [x, y]
     })
 
+
     if (isPointInPolygon(event.clientX, event.clientY, polygon)) {
       if (!sent.value) {
         // alert(`X = [${props.part.X.join(', ')}]\nY = [${props.part.Y.join(', ')}]`)
         scriptHandler.sendMessage(props.part.message)
         sent.value = true
       } else {
-        const needWait = continueDialog(true)
+        const needWait = eventQueue.continue()
         if (!needWait) {
           emit('player-continued')
           emit('dialog-proceed')
         }
+        sent.value = false
       }
       emit('area-clicked', props.partKey)
     }
