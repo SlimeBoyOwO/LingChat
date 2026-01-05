@@ -1,10 +1,10 @@
 <template>
-  <div v-if="isVisible" class="touch-areas-container" @click="handlePolygonClick">
+  <div v-if="isVisible" class="touch-areas-container">
     <!-- 凸多边形区域 -->
     <svg
       class="polygon-area"
       :viewBox="`0 0 ${windowWidth} ${windowHeight}`"
-      
+      @click="handlePolygonClick"
     >
       <polygon
         :points="polygonPoints"
@@ -43,10 +43,11 @@ const windowHeight = ref(window.innerHeight)
 
 // 计算实际坐标点
 const polygonPoints = computed(() => {
+  const shiftX = (990 - windowWidth.value) / 2
   const points = []
   for (let i = 0; i < normalizedX.length; i++) {
-    const x = normalizedX[i] * windowWidth.value
-    const y = normalizedY[i] * windowHeight.value
+    const x = normalizedX[i]! * 990 - shiftX
+    const y = normalizedY[i]! * 596
     points.push(`${x},${y}`)
   }
   return points.join(' ')
@@ -68,16 +69,17 @@ const isPointInPolygon = (x: number, y: number, polygon: readonly [number, numbe
 const handlePolygonClick = (event: MouseEvent) => {
   // 检查当前是否处于触摸模式
   if (gameStore.command === 'touch' && event.target) {
-
-    const x = event.clientX
-    const y = event.clientY
+    const rect = (event.target as SVGElement).getBoundingClientRect()
+    const x = event.clientX - rect.left
+    const y = event.clientY - rect.top
 
     // 构建多边形坐标数组
+    const shiftX = (990 - windowWidth.value) / 2
     const polygon: [number, number][] = normalizedX.map((nx, i) => [
-      nx * windowWidth.value,
-      normalizedY[i]! * windowHeight.value
+      nx * 990 - shiftX,
+      normalizedY[i]! * 596
     ])
-    
+
     if (isPointInPolygon(x, y, polygon)) {
       alert(`X = [${normalizedX.join(', ')}]\nY = [${normalizedY.join(', ')}]`)
     }
