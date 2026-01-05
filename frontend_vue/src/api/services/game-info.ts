@@ -22,7 +22,7 @@ export const getGameInfo = async (client_id: string, userId: string): Promise<Ga
     const data = await http.get('/v1/chat/info/init', {
       params: { client_id: client_id, user_id: userId },
     })
-    console.log('GameInfo:', data) // 直接输出 GameInfo 数据
+    console.log(data) // 直接输出 GameInfo 数据
     return data
   } catch (error: any) {
     console.error('获取游戏信息错误:', error.message)
