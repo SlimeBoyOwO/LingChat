@@ -72,7 +72,6 @@ const containerClasses = computed(() => ({
 }))
 
 
-
 // 计算头像图片的 style
 const avatarStyles = computed(() => ({
   // 使用预加载完成的图片 URL
@@ -203,18 +202,13 @@ watch(
   },
 )
 
-// --- 6. 事件处理方法 ---
-
 const handleCommandSelected = (command: string) => {
   console.log(`Command selected: ${command}`)
-  // 这里可以根据指令执行相应操作
-  // 比如发送触摸指令到游戏逻辑
 }
 
 const handleTouchAreaClicked = (area: string) => {
-  // 检查当前是否处于触摸模式
   if (gameStore.command === 'touch') {
-    alert(`touched ${area} area`)
+    console.log(`touched ${area} area`)
   }
 }
 
