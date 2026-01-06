@@ -87,7 +87,7 @@ const containerOpacity = computed(() => {
   } else if (props.gameStore.command === 'unshow') {
     return 0.001
   }
-  return 1 // 默认可见
+  return 0.001// 默认不可见
 })
 
 // 射线法判断点是否在多边形内

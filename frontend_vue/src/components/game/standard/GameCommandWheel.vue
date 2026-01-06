@@ -167,6 +167,17 @@ onUnmounted(() => {
   document.removeEventListener('mousemove', drag)
   document.removeEventListener('mouseup', stopDrag)
 })
+
+const resetPosition = () => {
+  position.value = {
+    x: window.innerWidth - 200,
+    y: window.innerHeight / 2,
+  }
+}
+
+defineExpose({
+  resetPosition,
+})
 </script>
 
 <style scoped>
