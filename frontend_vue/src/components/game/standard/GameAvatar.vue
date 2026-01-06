@@ -14,6 +14,7 @@
     <TouchAreas
       v-for="(part, key) in gameStore.avatar.body_part"
       :key="key"
+      :game-store="gameStore"
       :part="part"
       :part-key="key"
     />
