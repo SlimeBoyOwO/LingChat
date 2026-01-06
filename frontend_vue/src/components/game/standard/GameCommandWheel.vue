@@ -45,9 +45,29 @@
         </div>
 
         <div class="option-region show-region" @click="selectCommand('show')">
-          <svg :class="['show-icon', {hide: gameStore.command == 'show'}]" focusable="false" aria-hidden="true" viewBox="0 0 24 24" stroke="white"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5M12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5m0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3"></path></svg>
-          <svg :class="['show-icon', {hide: gameStore.command != 'show'}]" focusable="false" aria-hidden="true" viewBox="0 0 24 24" stroke="white"><path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7M2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2m4.31-.78 3.15 3.15.02-.16c0-1.66-1.34-3-3-3z"></path></svg>
-          <span class="option-label">{{gameStore.command != 'show' ? "显示" : "隐藏"}}</span>
+          <svg
+            :class="['show-icon', { hide: gameStore.command == 'show' }]"
+            focusable="false"
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            stroke="white"
+          >
+            <path
+              d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5M12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5m0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3"
+            ></path>
+          </svg>
+          <svg
+            :class="['show-icon', { hide: gameStore.command != 'show' }]"
+            focusable="false"
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            stroke="white"
+          >
+            <path
+              d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7M2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2m4.31-.78 3.15 3.15.02-.16c0-1.66-1.34-3-3-3z"
+            ></path>
+          </svg>
+          <span class="option-label">{{ gameStore.command != 'show' ? '显示' : '隐藏' }}</span>
         </div>
 
         <!-- TODO: 带角色出门，切换场景 -->
@@ -140,17 +160,15 @@ const selectCommand = (command: string) => {
   if (command === 'touch') {
     // 更改光标为手掌形状
     document.body.style.cursor = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='32' height='32' fill='black'%3E%3Cpath d='M13 24c-3.26 0-6.19-1.99-7.4-5.02l-3.03-7.61c-.31-.79.43-1.58 1.24-1.32l.79.26c.56.18 1.02.61 1.24 1.16L7.25 15H8V3.25C8 2.56 8.56 2 9.25 2s1.25.56 1.25 1.25V12h1V1.25c0-.69.56-1.25 1.25-1.25S14 .56 14 1.25V12h1V2.75c0-.69.56-1.25 1.25-1.25s1.25.56 1.25 1.25V12h1V5.75c0-.69.56-1.25 1.25-1.25S21 5.06 21 5.75V16c0 4.42-3.58 8-8 8'/%3E%3C/svg%3E") 0 0, auto`
-    gameStore.command = command;
-  }
-  else if(command == 'show'){
+    gameStore.command = command
+  } else if (command == 'show') {
     document.body.style.cursor = 'default'
     // 显示或隐藏可交互区域
-    gameStore.command = gameStore.command == 'show' ? 'unshow' : 'show';
-  }
-  else if (command === 'cancel') {
+    gameStore.command = gameStore.command == 'show' ? 'unshow' : 'show'
+  } else if (command === 'cancel') {
     // 恢复光标为默认样式
     document.body.style.cursor = 'default'
-    gameStore.command = null;
+    gameStore.command = null
   }
 
   collapseWheel()
