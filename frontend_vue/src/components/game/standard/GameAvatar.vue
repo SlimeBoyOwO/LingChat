@@ -8,7 +8,7 @@
     <div :class="bubbleClasses" :style="bubbleStyles" class="bubble"></div>
 
     <!-- 指令盘组件 -->
-    <GameCommandWheel />
+    <GameCommandWheel ref="commandWheelRef" :is-visible="uiStore.showCommandWheel" />
 
     <!-- 触摸区域组件 -->
     <TouchAreas
@@ -42,6 +42,7 @@ const emit = defineEmits(['audio-ended'])
 
 const avatarAudio = ref<HTMLAudioElement | null>(null)
 const bubbleAudio = ref<HTMLAudioElement | null>(null)
+const commandWheelRef = ref<InstanceType<typeof GameCommandWheel> | null>(null)
 
 const activeAnimationClass = ref('normalx')
 const loadedAvatarUrl = ref('')
@@ -197,6 +198,16 @@ watch(
   (newVolume) => {
     if (bubbleAudio.value) {
       bubbleAudio.value.volume = newVolume / 100
+    }
+  },
+)
+
+watch(
+  () => uiStore.showCommandWheel,
+  (newValue) => {
+    if (newValue && commandWheelRef.value) {
+      // 当启用指令盘时，重置位置
+      commandWheelRef.value.resetPosition()
     }
   },
 )
