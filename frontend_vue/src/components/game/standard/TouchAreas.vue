@@ -1,5 +1,5 @@
 <template>
-  <div v-if="isVisible" class="touch-areas-container">
+  <div :style="{ opacity: containerOpacity }" class="touch-areas-container">
     <!-- 凸多边形区域 -->
     <svg
       class="polygon-area"
@@ -33,13 +33,12 @@ interface BodyPart {
 }
 
 interface Props {
-  isVisible?: boolean
+  gameStore: any
   part?: BodyPart
   partKey?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  isVisible: true,
   part: () => ({
     X: [],
     Y: [],
@@ -79,6 +78,16 @@ const polygonPoints = computed(() => {
     points.push(`${x},${y}`)
   }
   return points.join(' ')
+})
+
+// 计算容器透明度
+const containerOpacity = computed(() => {
+  if (props.gameStore.command === 'show') {
+    return 1
+  } else if (props.gameStore.command === 'unshow') {
+    return 0.001
+  }
+  return 1 // 默认可见
 })
 
 // 射线法判断点是否在多边形内
@@ -165,7 +174,6 @@ onUnmounted(() => {
   height: 100%;
   pointer-events: none;
   z-index: 100;
-  opacity: 1;
 }
 
 .polygon-area {
