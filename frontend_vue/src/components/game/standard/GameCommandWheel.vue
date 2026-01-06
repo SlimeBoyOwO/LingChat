@@ -143,6 +143,7 @@ const selectCommand = (command: string) => {
     gameStore.command = command;
   }
   else if(command == 'show'){
+    document.body.style.cursor = 'default'
     // 显示或隐藏可交互区域
     gameStore.command = gameStore.command == 'show' ? 'unshow' : 'show';
   }
