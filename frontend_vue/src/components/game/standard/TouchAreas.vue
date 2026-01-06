@@ -1,5 +1,5 @@
 <template>
-  <div v-if="isVisible" class="touch-areas-container" >
+  <div v-if="isVisible" class="touch-areas-container">
     <!-- 凸多边形区域 -->
     <svg
       class="polygon-area"
@@ -45,13 +45,13 @@ const props = withDefaults(defineProps<Props>(), {
     Y: [],
     windowWidth: 1920,
     windowHeight: 1200,
-    message: ""
+    message: '',
   }),
-  partKey: ""
+  partKey: '',
 })
 
 const gameStore = useGameStore()
-const emit = defineEmits(['area-clicked', 'player-continued', 'dialog-proceed'])
+const emit = defineEmits(['player-continued', 'dialog-proceed'])
 
 const sent = ref(false)
 
@@ -88,7 +88,8 @@ const isPointInPolygon = (x: number, y: number, polygon: readonly [number, numbe
     if (
       (polygon[i]?.[1] ?? 0 > y) !== (polygon[j]?.[1] ?? 0 > y) &&
       x <
-        (((polygon[j]?.[0] ?? 0) - (polygon[i]?.[0] ?? 0)) * (y - (polygon[i]?.[1] ?? 0))) / ((polygon[j]?.[1] ?? 0) - (polygon[i]?.[1] ?? 0)) +
+        (((polygon[j]?.[0] ?? 0) - (polygon[i]?.[0] ?? 0)) * (y - (polygon[i]?.[1] ?? 0))) /
+          ((polygon[j]?.[1] ?? 0) - (polygon[i]?.[1] ?? 0)) +
           (polygon[i]?.[0] ?? 0)
     ) {
       inside = !inside
@@ -123,7 +124,6 @@ const handlePolygonClick = (event: MouseEvent) => {
       return [x, y]
     })
 
-
     if (isPointInPolygon(event.clientX, event.clientY, polygon)) {
       if (!sent.value) {
         // alert(`X = [${props.part.X.join(', ')}]\nY = [${props.part.Y.join(', ')}]`)
@@ -137,7 +137,6 @@ const handlePolygonClick = (event: MouseEvent) => {
         }
         sent.value = false
       }
-      emit('area-clicked', props.partKey)
     }
   }
 }
@@ -166,7 +165,7 @@ onUnmounted(() => {
   height: 100%;
   pointer-events: none;
   z-index: 100;
-  opacity: 0.001;
+  opacity: 1;
 }
 
 .polygon-area {

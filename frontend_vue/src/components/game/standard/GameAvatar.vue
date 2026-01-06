@@ -8,7 +8,7 @@
     <div :class="bubbleClasses" :style="bubbleStyles" class="bubble"></div>
 
     <!-- 指令盘组件 -->
-    <GameCommandWheel @command-selected="handleCommandSelected" />
+    <GameCommandWheel />
 
     <!-- 触摸区域组件 -->
     <TouchAreas
@@ -16,7 +16,6 @@
       :key="key"
       :part="part"
       :part-key="key"
-      @area-clicked="handleTouchAreaClicked"
     />
 
     <!-- 主音频播放器 -->
@@ -70,7 +69,6 @@ const containerClasses = computed(() => ({
   'avatar-visible': gameStore.avatar.show,
   'avatar-hidden': !gameStore.avatar.show,
 }))
-
 
 // 计算头像图片的 style
 const avatarStyles = computed(() => ({
@@ -202,15 +200,7 @@ watch(
   },
 )
 
-const handleCommandSelected = (command: string) => {
-  console.log(`Command selected: ${command}`)
-}
-
-const handleTouchAreaClicked = (area: string) => {
-  if (gameStore.command === 'touch') {
-    console.log(`touched ${area} area`)
-  }
-}
+// --- 6. 事件处理方法 ---
 
 const onAudioEnded = () => {
   emit('audio-ended')
