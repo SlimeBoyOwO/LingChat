@@ -50,7 +50,7 @@
           <span class="option-label">显示</span>
         </div>
 
-        <!-- TODO: 其他选项区域 -->
+        <!-- TODO: 带角色出门，切换场景 -->
         <div class="option-region"></div>
 
         <!-- 取消选项 (右上角) -->

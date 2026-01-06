@@ -145,7 +145,6 @@ const handlePolygonClick = (event: MouseEvent) => {
     if (isPointInPolygon(event.clientX, event.clientY, polygon)) {
       if (!sent.value && gameStore.currentStatus == 'input') {
         // 只在input发送消息，如果继续点击，则可以看到后面的对话，但不发送触摸事件
-        // alert(`X = [${props.part.X.join(', ')}]\nY = [${props.part.Y.join(', ')}]`)
         scriptHandler.sendMessage(props.part.message)
         sent.value = true
       } else {
