@@ -77,7 +77,7 @@ const props = withDefaults(defineProps<Props>(), {
   isVisible: true,
 })
 
-const emit = defineEmits(['command-selected', 'position-changed'])
+const emit = defineEmits(['position-changed'])
 
 const position = ref({ x: 0, y: 0 })
 const isExpanded = ref(false)
@@ -142,11 +142,8 @@ const selectCommand = (command: string) => {
     gameStore.command = 'unset'
   }
 
-  emit('command-selected', command)
   collapseWheel()
 }
-
-console.log('gameStore:', gameStore)
 
 // 初始化位置到右下角
 onMounted(() => {
