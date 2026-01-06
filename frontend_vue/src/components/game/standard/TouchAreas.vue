@@ -55,6 +55,7 @@ const emit = defineEmits(['player-continued', 'dialog-proceed'])
 const sent = ref(false)
 const lastClickTime = ref(0)
 const debounceDelay = 300
+const touchCount = ref(0)
 
 // 窗口尺寸
 const windowWidth = ref(window.innerWidth)
@@ -145,7 +146,9 @@ const handlePolygonClick = (event: MouseEvent) => {
     if (isPointInPolygon(event.clientX, event.clientY, polygon)) {
       if (!sent.value && gameStore.currentStatus == 'input') {
         // 只在input发送消息，如果继续点击，则可以看到后面的对话，但不发送触摸事件
-        scriptHandler.sendMessage(props.part.message)
+        touchCount.value++
+        const messageWithCount = touchCount.value === 1 ? props.part.message : `${props.part.message},这是第${touchCount.value}次`
+        scriptHandler.sendMessage(messageWithCount)
         sent.value = true
       } else {
         const needWait = eventQueue.continue()
