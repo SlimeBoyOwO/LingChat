@@ -53,6 +53,8 @@ const gameStore = useGameStore()
 const emit = defineEmits(['player-continued', 'dialog-proceed'])
 
 const sent = ref(false)
+const lastClickTime = ref(0)
+const debounceDelay = 300
 
 // 窗口尺寸
 const windowWidth = ref(window.innerWidth)
@@ -109,8 +111,15 @@ const isPointInPolygon = (x: number, y: number, polygon: readonly [number, numbe
 
 // 处理多边形点击
 const handlePolygonClick = (event: MouseEvent) => {
+  // 防抖检查：如果距离上次点击时间不足 debounceDelay 毫秒，则忽略此次点击
+  const currentTime = Date.now()
+  if (currentTime - lastClickTime.value < debounceDelay) {
+    return
+  }
+  lastClickTime.value = currentTime
+
   // 检查当前是否处于触摸模式
-  if (gameStore.command === 'touch' && event.target) {
+  if (gameStore.command === 'touch' && event.target && (gameStore.currentStatus == 'input' || gameStore.currentStatus == 'responding')) {
     const rect = (event.target as SVGElement).getBoundingClientRect()
     const x = event.clientX - rect.left
     const y = event.clientY - rect.top
@@ -134,7 +143,8 @@ const handlePolygonClick = (event: MouseEvent) => {
     })
 
     if (isPointInPolygon(event.clientX, event.clientY, polygon)) {
-      if (!sent.value) {
+      if (!sent.value && gameStore.currentStatus == 'input') {
+        // 只在input发送消息，如果继续点击，则可以看到后面的对话，但不发送触摸事件
         // alert(`X = [${props.part.X.join(', ')}]\nY = [${props.part.Y.join(', ')}]`)
         scriptHandler.sendMessage(props.part.message)
         sent.value = true
