@@ -27,7 +27,6 @@ import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { scriptHandler } from '@/api/websocket/handlers/script-handler'
 import { eventQueue } from '@/core/events/event-queue'
-import { EMOTION_CONFIG } from '@/controllers/emotion/config'
 
 interface BodyPart {
   X: number[]
@@ -58,7 +57,6 @@ const gameStore = useGameStore()
 const uiStore = useUIStore()
 const emit = defineEmits(['player-continued', 'dialog-proceed'])
 
-const touchAudio = ref<HTMLAudioElement | null>(null)
 const sent = ref(false)
 const lastClickTime = ref(0)
 const debounceDelay = 300
@@ -119,14 +117,6 @@ const isPointInPolygon = (x: number, y: number, polygon: readonly [number, numbe
 
 // 播放触摸音效和表情效果
 const playTouchEffect = () => {
-  // 播放触摸音效
-  if (touchAudio.value) {
-    touchAudio.value.src = '/audio_effects/touch.mp3' // 使用触摸音效
-    touchAudio.value.volume = uiStore.bubbleVolume / 100
-    touchAudio.value.load()
-    touchAudio.value.play().catch((err) => console.log('触摸音效播放失败:', err))
-  }
-
   // 临时改变表情为"惊讶"然后恢复
   const originalEmotion = gameStore.avatar.emotion
   gameStore.avatar.emotion = '惊讶'
@@ -136,7 +126,7 @@ const playTouchEffect = () => {
     if (gameStore.avatar.emotion === '惊讶') {
       gameStore.avatar.emotion = originalEmotion
     }
-  }, 500)
+  }, 1000)
 }
 
 // 处理多边形点击
@@ -152,7 +142,7 @@ const handlePolygonClick = (event: MouseEvent) => {
   if (
     gameStore.command === 'touch' &&
     event.target &&
-    (gameStore.currentStatus == 'input' || gameStore.currentStatus == 'responding')
+    (gameStore.currentStatus == 'input')
   ) {
     const rect = (event.target as SVGElement).getBoundingClientRect()
     const x = event.clientX - rect.left
@@ -180,7 +170,7 @@ const handlePolygonClick = (event: MouseEvent) => {
       // 播放触摸效果（音效和表情）
       playTouchEffect()
 
-      if (!sent.value && gameStore.currentStatus == 'input') {
+      if (!sent.value) {
         // 只在input发送消息，如果继续点击，则可以看到后面的对话，但不发送触摸事件
         touchCount.value++
         const messageWithCount =
