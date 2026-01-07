@@ -7,7 +7,7 @@
       viewBox="0 0 24 24"
       fill="currentColor"
     >
-      <path d="M7 14l5-5 5 5z"/>
+      <path d="M7 14l5-5 5 5z" />
     </svg>
   </div>
 
@@ -27,19 +27,11 @@
       </div>
       <div class="chatbox-line"></div>
       <div class="chatbox-inputbox">
-        <!-- <textarea
-          id="inputMessage"
-          ref="textareaRef"
-          :placeholder="placeholderText"
-          v-model="inputMessage"
-          @keydown.enter.exact.prevent="sendOrContinue"
-          :readonly="!isInputEnabled"
-        ></textarea> -->
         <textarea
           id="inputMessage"
           ref="textareaRef"
           :placeholder="placeholderText"
-          :value.prop="inputMessage" 
+          v-model="inputMessage"
           @keydown.enter.exact.prevent="sendOrContinue"
           :readonly="!isInputEnabled"
         ></textarea>
@@ -94,7 +86,6 @@ const placeholderText = computed(() => {
 // 使用计算属性控制输入框是否可编辑
 const isInputEnabled = computed(() => gameStore.currentStatus === 'input')
 
-console.log("gameStore.currentStatus:", gameStore.currentStatus)
 
 // 监听状态变化
 watch(
@@ -369,5 +360,4 @@ defineExpose({
   opacity: 0;
   transition: all 0.5s ease;
 }
-
 </style>
