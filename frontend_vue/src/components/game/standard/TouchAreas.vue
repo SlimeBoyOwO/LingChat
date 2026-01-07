@@ -139,11 +139,7 @@ const handlePolygonClick = (event: MouseEvent) => {
   lastClickTime.value = currentTime
 
   // 检查当前是否处于触摸模式
-  if (
-    gameStore.command === 'touch' &&
-    event.target &&
-    (gameStore.currentStatus == 'input')
-  ) {
+  if (gameStore.command === 'touch' && event.target && gameStore.currentStatus == 'input') {
     const rect = (event.target as SVGElement).getBoundingClientRect()
     const x = event.clientX - rect.left
     const y = event.clientY - rect.top
