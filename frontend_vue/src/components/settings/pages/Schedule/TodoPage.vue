@@ -88,11 +88,10 @@
           <CheckCircle class="text-cyan-500 w-5 h-5" />
           <div class="flex-1">
             <div class="flex items-center space-x-2">
-              <span
-                class="text-[9px] border border-slate-200 text-slate-400 px-1.5 py-0.5 rounded"
-                >{{ todo.groupTitle }}</span
-              >
-              <p class="text-slate-500 line-through text-sm">
+              <span class="text-[9px] border border-slate-200 text-brand px-1.5 py-0.5 rounded">{{
+                todo.groupTitle
+              }}</span>
+              <p class="text-gray-200 line-through text-sm">
                 {{ todo.text }}
               </p>
             </div>
@@ -117,7 +116,7 @@
     <div
       v-for="(todo, idx) in activeTodoGroup.todos"
       :key="'detail-todo-' + todo.id"
-      class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center space-x-4 transition-all"
+      class="glass-effect p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center space-x-4 transition-all"
       :class="todo.completed ? 'opacity-50' : ''"
     >
       <button
@@ -130,12 +129,7 @@
         <Check v-if="todo.completed" class="text-white w-4 h-4" />
       </button>
       <div class="flex-1">
-        <p
-          :class="[
-            'font-medium',
-            todo.completed ? 'line-through text-slate-400' : 'text-slate-700',
-          ]"
-        >
+        <p :class="['font-medium text-white', todo.completed ? 'line-through ' : '']">
           {{ todo.text }}
         </p>
         <div class="flex items-center mt-1">
@@ -197,29 +191,95 @@ interface TodoItemWithGroup extends TodoItem {
 
 const todoGroups = ref<Record<string, TodoGroup>>({
   t1: {
-    title: '学校任务',
+    title: '绘图任务',
     todos: [
       {
         id: 101,
-        text: '完成计算机视觉报告',
+        text: '完成灵灵多立绘绘图',
         priority: 5,
         completed: false,
       },
       {
         id: 102,
-        text: '数据结构大作业',
+        text: '记得找 LingChat 动画',
         priority: 4,
         completed: false,
       },
     ],
   },
   t2: {
-    title: 'LingChat 项目',
+    title: 'LingChat 0.4.0',
     todos: [
       {
         id: 201,
-        text: '多角色服装设计',
-        priority: 3,
+        text: '使用localStorage修复信息无法保存bug',
+        priority: 5,
+        completed: false,
+      },
+      {
+        id: 202,
+        text: '完成日程管理前端功能',
+        priority: 5,
+        completed: true,
+      },
+      {
+        id: 203,
+        text: '完成日程管理后端逻辑',
+        priority: 5,
+        completed: false,
+      },
+      {
+        id: 204,
+        text: '修复番茄钟显示 bug 问题',
+        priority: 2,
+        completed: false,
+      },
+      {
+        id: 205,
+        text: '切换角色服装有prompt提示功能',
+        priority: 4,
+        completed: false,
+      },
+      {
+        id: 206,
+        text: '测试新的永久记忆方案',
+        priority: 1,
+        completed: false,
+      },
+      {
+        id: 207,
+        text: '主动聊天功能实装',
+        priority: 5,
+        completed: false,
+      },
+      {
+        id: 207,
+        text: '重构数据库使其支持载入对话和多信息记录',
+        priority: 5,
+        completed: false,
+      },
+      {
+        id: 207,
+        text: '点击人物也可以进入下一段话',
+        priority: 1,
+        completed: false,
+      },
+      {
+        id: 207,
+        text: '剧本模式演示和基础功能实现',
+        priority: 4,
+        completed: false,
+      },
+      {
+        id: 207,
+        text: '开始启动界面实装',
+        priority: 2,
+        completed: false,
+      },
+      {
+        id: 207,
+        text: 'Credits页面实装？（可选）',
+        priority: 1,
         completed: false,
       },
     ],
