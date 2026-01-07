@@ -17,7 +17,11 @@
     </MenuItem>
 
     <MenuItem title="🎛️ 指令盘开关" size="small">
-      <Toggle @change="commandWheelToggle">显示指令盘</Toggle>
+      <Toggle @change="commandWheelToggle" :checked="true">显示指令盘</Toggle>
+    </MenuItem>
+
+    <MenuItem title="💬 对话框开关" size="small">
+      <Toggle @change="dialogToggle" :checked="true">显示对话框</Toggle>
     </MenuItem>
 
     <MenuItem title="✨ WebSocket通信状态" size="small">
@@ -55,6 +59,9 @@ const voiceSound = (data: boolean) => {
 }
 const commandWheelToggle = (data: boolean) => {
   uiStore.toggleCommandWheel(data)
+}
+const dialogToggle = (data: boolean) => {
+  uiStore.toggleDialog(data)
 }
 </script>
 

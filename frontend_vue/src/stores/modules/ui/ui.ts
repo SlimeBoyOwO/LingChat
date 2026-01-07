@@ -41,6 +41,7 @@ interface UIState {
   bubbleVolume: number
   autoMode: boolean
   showCommandWheel: boolean
+  showDialog: boolean
 
   // Schedule 相关状态
   scheduleView: string
@@ -86,6 +87,7 @@ export const useUIStore = defineStore('ui', {
     bubbleVolume: 80,
     autoMode: false,
     showCommandWheel: true,
+    showDialog: true,
 
     // Schedule 相关状态
     scheduleView: 'schedule_groups',
@@ -114,6 +116,9 @@ export const useUIStore = defineStore('ui', {
     },
     toggleCommandWheel(show: boolean) {
       this.showCommandWheel = show
+    },
+    toggleDialog(show: boolean) {
+      this.showDialog = show
     },
 
     // ========== Notification Actions ==========

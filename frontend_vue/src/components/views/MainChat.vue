@@ -3,6 +3,7 @@
     <GameBackground></GameBackground>
     <GameAvatar ref="gameAvatarRef" @audio-ended="handleAudioFinished" />
     <GameDialog
+      v-if="uiStore.showDialog"
       ref="gameDialogRef"
       @player-continued="manualTriggerContinue"
       @dialog-proceed="resetInteraction"
