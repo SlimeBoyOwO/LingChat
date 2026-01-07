@@ -27,11 +27,19 @@
       </div>
       <div class="chatbox-line"></div>
       <div class="chatbox-inputbox">
-        <textarea
+        <!-- <textarea
           id="inputMessage"
           ref="textareaRef"
           :placeholder="placeholderText"
           v-model="inputMessage"
+          @keydown.enter.exact.prevent="sendOrContinue"
+          :readonly="!isInputEnabled"
+        ></textarea> -->
+        <textarea
+          id="inputMessage"
+          ref="textareaRef"
+          :placeholder="placeholderText"
+          :value.prop="inputMessage" 
           @keydown.enter.exact.prevent="sendOrContinue"
           :readonly="!isInputEnabled"
         ></textarea>
@@ -85,6 +93,8 @@ const placeholderText = computed(() => {
 
 // 使用计算属性控制输入框是否可编辑
 const isInputEnabled = computed(() => gameStore.currentStatus === 'input')
+
+console.log("gameStore.currentStatus:", gameStore.currentStatus)
 
 // 监听状态变化
 watch(
