@@ -1,6 +1,18 @@
 <template>
-  <div class="chatbox-box">
-    <div class="chatbox-main">
+  <!-- 对话框开关按钮 -->
+  <div class="chatbox-toggle" @click="toggleDialog">
+    <svg
+      :class="{ 'rotate-180': isHidden }"
+      class="toggle-icon"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+    >
+      <path d="M7 14l5-5 5 5z"/>
+    </svg>
+  </div>
+
+  <div class="chatbox-box" :class="{ 'chatbox-hidden': isHidden }">
+    <div class="chatbox-main" :class="{ 'chatbox-hidden': isHidden }">
       <div class="chatbox-title-part">
         <div class="chatbox-title">
           <div id="character">{{ uiStore.showCharacterTitle }}</div>
@@ -42,6 +54,7 @@ const inputMessage = ref('')
 const textareaRef = ref<HTMLTextAreaElement | null>(null) // 新增这行
 const gameStore = useGameStore()
 const uiStore = useUIStore()
+const isHidden = ref(false)
 
 const { startTyping, stopTyping, isTyping } = useTypeWriter(textareaRef)
 
@@ -146,6 +159,11 @@ function continueDialog(isPlayerTrigger: boolean): boolean {
   return needWait
 }
 
+function toggleDialog(e: Event) {
+  e.stopPropagation()
+  isHidden.value = !isHidden.value
+}
+
 defineExpose({
   continueDialog,
 })
@@ -163,6 +181,7 @@ defineExpose({
   backdrop-filter: blur(1px);
   scrollbar-width: thin;
   scrollbar-color: var(--accent-color) transparent;
+  transition: all 0.5s ease;
 }
 
 .chatbox-box::before {
@@ -289,4 +308,56 @@ defineExpose({
   cursor: not-allowed;
   opacity: 0.7;
 }
+
+/* 对话框开关按钮样式 */
+.chatbox-toggle {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 40px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  z-index: 114514;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.chatbox-toggle:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateX(-50%) scale(1.1);
+}
+
+.toggle-icon {
+  width: 20px;
+  height: 20px;
+  color: white;
+  transition: transform 0.3s ease;
+  transform: rotate(180deg);
+}
+
+.rotate-180 {
+  transform: rotate(180deg);
+}
+
+/* 隐藏状态的对话框样式 */
+.chatbox-hidden {
+  height: 0;
+  padding: 0;
+  overflow: hidden;
+  transition: all 0.5s ease;
+}
+
+.chatbox-hidden .chatbox-main {
+  transform: translateY(100%);
+  opacity: 0;
+  transition: all 0.5s ease;
+}
+
 </style>
