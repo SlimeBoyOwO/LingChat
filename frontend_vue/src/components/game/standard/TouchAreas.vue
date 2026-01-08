@@ -1,8 +1,8 @@
 <template>
-  <div :style="{ opacity: containerOpacity }" class="touch-areas-container">
+  <div :style="{ opacity: containerOpacity }" class="fixed inset-0 pointer-events-none z-[100]">
     <!-- 凸多边形区域 -->
     <svg
-      class="polygon-area"
+      class="w-full h-full pointer-events-auto"
       :viewBox="`0 0 ${windowWidth} ${windowHeight}`"
       @click="handlePolygonClick"
     >
@@ -12,7 +12,7 @@
         stroke="white"
         stroke-width="3"
         stroke-dasharray="8,4"
-        class="polygon-shape"
+        class="pfill-white/10 stroke-white stroke-[3] [stroke-dasharray:8,4] transition-colors duration-300 ease-in-out hover:fill-white/20"
       />
     </svg>
 
@@ -201,33 +201,3 @@ onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
 })
 </script>
-
-<style scoped>
-.touch-areas-container {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 100;
-}
-
-.polygon-area {
-  width: 100%;
-  height: 100%;
-  pointer-events: auto;
-}
-
-.polygon-shape {
-  fill: rgba(255, 255, 255, 0.1);
-  stroke: white;
-  stroke-width: 3;
-  stroke-dasharray: 8, 4;
-  transition: fill 0.3s ease;
-}
-
-.polygon-shape:hover {
-  fill: rgba(255, 255, 255, 0.2);
-}
-</style>
