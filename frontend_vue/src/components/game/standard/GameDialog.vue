@@ -86,6 +86,7 @@ const placeholderText = computed(() => {
 // 使用计算属性控制输入框是否可编辑
 const isInputEnabled = computed(() => gameStore.currentStatus === 'input')
 
+
 // 监听状态变化
 watch(
   () => gameStore.currentStatus,
