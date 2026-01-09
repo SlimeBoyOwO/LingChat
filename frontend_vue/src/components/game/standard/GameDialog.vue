@@ -181,7 +181,7 @@ defineExpose({
   backdrop-filter: blur(1px);
   scrollbar-width: thin;
   scrollbar-color: var(--accent-color) transparent;
-  transition: all 0.5s ease;
+  transition: all 2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .chatbox-box::before {
@@ -351,12 +351,12 @@ defineExpose({
   height: 0;
   padding: 0;
   overflow: hidden;
-  transition: all 0.5s ease;
+  transition: all 2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .chatbox-hidden .chatbox-main {
   transform: translateY(100%);
   opacity: 0;
-  transition: all 0.5s ease;
+  transition: all 2s cubic-bezier(0.4, 0, 0.2, 1) ease;
 }
 </style>
