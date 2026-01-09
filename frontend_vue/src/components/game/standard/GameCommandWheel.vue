@@ -50,7 +50,7 @@
             focusable="false"
             aria-hidden="true"
             viewBox="0 0 24 24"
-            stroke="white"
+            fill="white"
           >
             <path
               d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5M12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5m0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3"
@@ -61,7 +61,7 @@
             focusable="false"
             aria-hidden="true"
             viewBox="0 0 24 24"
-            stroke="white"
+            fill="white"
           >
             <path
               d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7M2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2m4.31-.78 3.15 3.15.02-.16c0-1.66-1.34-3-3-3z"
@@ -112,7 +112,6 @@ const dragOffset = ref({ x: 0, y: 0 })
 const containerStyle = computed(() => ({
   left: `${position.value.x}px`,
   top: `${position.value.y}px`,
-  cursor: isDragging.value ? 'grabbing' : 'grab',
 }))
 
 const startDrag = (e: MouseEvent) => {
@@ -200,31 +199,21 @@ defineExpose({
 </script>
 
 <style scoped>
+@reference "tailwindcss";
 .hide {
-  display: none;
+  @apply hidden;
 }
 
 .command-wheel-container {
-  position: fixed;
-  z-index: 114514;
+  @apply fixed z-114514;
   transition: none;
 }
 
 .command-wheel-mini {
-  width: 50px;
-  height: 50px;
-  background: rgba(255, 255, 255, 0.2);
+  @apply w-12 h-12 backdrop-blur-[20px] rounded-full flex items-center justify-center cursor-grab z-114514;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.125);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-  z-index: 114514;
 }
 
 .command-wheel-mini:hover {
@@ -233,118 +222,72 @@ defineExpose({
 }
 
 .hand-icon-mini {
-  width: 24px;
-  height: 24px;
-  color: var(--accent-color);
+  @apply w-6 h-6 text-(--accent-color);
 }
 
 .command-wheel-expanded {
-  position: relative;
-  width: 200px;
-  height: 200px;
+  @apply relative w-48 h-48;
   animation: wheelExpand 0.5s ease-out;
 }
 
 .command-wheel-inner {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  background: rgba(255, 255, 255, 0.1);
+  @apply relative w-full h-full backdrop-blur-[20px] rounded-full grid grid-cols-[1fr_1fr] grid-rows-[1fr_1fr] overflow-hidden;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.125);
-  border-radius: 50%;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
-  overflow: hidden;
 }
 
 .divider {
-  position: absolute;
-  background: rgba(255, 255, 255, 0.3);
+  @apply absolute bg-white/30;
 }
 
 .divider.vertical {
-  left: 50%;
-  top: 15%;
-  bottom: 15%;
-  width: 1px;
-  transform: translateX(-50%);
+  @apply absolute left-1/2 top-[15%] bottom-[15%] w-px bg-white/30 -translate-x-1/2;
 }
 
 .divider.horizontal {
-  top: 50%;
-  left: 15%;
-  right: 15%;
-  height: 1px;
-  transform: translateY(-50%);
+  @apply absolute top-1/2 left-[15%] right-[15%] h-px bg-white/30 -translate-y-1/2
 }
 
 .option-region {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
+  @apply flex flex-col items-center justify-center cursor-pointer rounded-full m-2.5;
   transition: background 0.3s ease;
-  border-radius: 50%;
-  margin: 10px;
 }
 
 .option-region:hover {
-  background: rgba(255, 255, 255, 0.1);
+  @apply bg-white/10;
 }
 
 .touch-region {
-  grid-column: 1;
-  grid-row: 1;
+  @apply col-start-1 row-start-1;
 }
 
 .show-region {
-  grid-column: 1;
-  grid-row: 2;
+  @apply col-start-1 row-start-2;
 }
 
 .cancel-region {
-  grid-column: 2;
-  grid-row: 1;
+  @apply col-start-2 row-start-1;
 }
 
 .cancel-icon {
-  width: 32px;
-  height: 32px;
-  color: #ff6b6b;
-  margin-bottom: 4px;
+  @apply w-8 h-8 text-[#ff6b6b] mb-1;
 }
 
 .hand-icon {
-  width: 32px;
-  height: 32px;
-  color: var(--accent-color);
-  margin-bottom: 4px;
+  @apply w-8 h-8 text-(--accent-color) mb-1;
 }
 
 .show-icon {
-  width: 32px;
-  height: 32px;
-  color: #ff6b6b;
+  @apply w-8 h-8 text-[#ff6b6b];
 }
 
 .option-label {
-  font-size: 12px;
-  color: white;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  @apply text-[12px] text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.5)];
 }
 
 .command-wheel-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: -1;
+  @apply fixed inset-0 -z-10 cursor-default;
 }
 
 @keyframes wheelExpand {

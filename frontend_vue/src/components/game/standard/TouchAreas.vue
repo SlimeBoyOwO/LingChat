@@ -186,31 +186,17 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+@reference "tailwindcss";
+
 .touch-areas-container {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 100;
+  @apply fixed inset-0 pointer-events-none z-100;
 }
 
 .polygon-area {
-  width: 100%;
-  height: 100%;
-  pointer-events: auto;
+  @apply w-full h-full pointer-events-auto;
 }
 
 .polygon-shape {
-  fill: rgba(255, 255, 255, 0.1);
-  stroke: white;
-  stroke-width: 3;
-  stroke-dasharray: 8, 4;
-  transition: fill 0.3s ease;
-}
-
-.polygon-shape:hover {
-  fill: rgba(255, 255, 255, 0.2);
+  @apply fill-white/10 stroke-white stroke-[3] [stroke-dasharray:8,4] transition-colors duration-300 ease-in-out hover:fill-white/20;
 }
 </style>

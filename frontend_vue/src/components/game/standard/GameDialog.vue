@@ -171,6 +171,8 @@ defineExpose({
 </script>
 
 <style>
+@reference "tailwindcss";
+
 .chatbox-box {
   position: relative;
   display: flex;
@@ -312,35 +314,14 @@ defineExpose({
 
 /* 对话框开关按钮样式 */
 .chatbox-toggle {
-  position: absolute;
-  bottom: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 40px;
-  height: 40px;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  z-index: 114514;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.chatbox-toggle:hover {
-  background: rgba(255, 255, 255, 0.2);
-  transform: translateX(-50%) scale(1.1);
+  @apply absolute bottom-2.5 left-1/2 -translate-x-1/2 w-10 h-10 flex items-center justify-center cursor-pointer rounded-full 
+   bg-white/10 border border-white/20 transition-all duration-300 ease-in-out z-114514
+   hover:bg-white/20 hover:scale-110 hover:-translate-x-1/2;
+   backdrop-filter: blur(10px);
 }
 
 .toggle-icon {
-  width: 20px;
-  height: 20px;
-  color: white;
-  transition: transform 0.3s ease;
-  transform: rotate(180deg);
+  @apply w-5 h-5 text-white transition-transform duration-300 ease-in-out rotate-180;
 }
 
 .rotate-180 {
@@ -349,15 +330,10 @@ defineExpose({
 
 /* 隐藏状态的对话框样式 */
 .chatbox-hidden {
-  height: 0;
-  padding: 0;
-  overflow: hidden;
-  transition: all 2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  @apply h-0 p-0 overflow-hidden transition-all duration-2000 ease-[cubic-bezier(0.25,0.46,0.45,0.94)];
 }
 
 .chatbox-hidden .chatbox-main {
-  transform: translateY(100%);
-  opacity: 0;
-  transition: all 2s cubic-bezier(0.4, 0, 0.2, 1) ease;
+  @apply translate-y-full opacity-0 transition-all duration-2000 ease-[cubic-bezier(0.25,0.46,0.45,0.94)];
 }
 </style>
