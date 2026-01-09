@@ -115,20 +115,6 @@ const isPointInPolygon = (x: number, y: number, polygon: readonly [number, numbe
   return inside
 }
 
-// 播放触摸音效和表情效果
-const playTouchEffect = () => {
-  // 临时改变表情为"惊讶"然后恢复
-  const originalEmotion = gameStore.avatar.emotion
-  gameStore.avatar.emotion = '惊讶'
-
-  // 500ms后恢复原始表情
-  setTimeout(() => {
-    if (gameStore.avatar.emotion === '惊讶') {
-      gameStore.avatar.emotion = originalEmotion
-    }
-  }, 1000)
-}
-
 // 处理多边形点击
 const handlePolygonClick = (event: MouseEvent) => {
   // 防抖检查：如果距离上次点击时间不足 debounceDelay 毫秒，则忽略此次点击
@@ -163,11 +149,8 @@ const handlePolygonClick = (event: MouseEvent) => {
     })
 
     if (isPointInPolygon(event.clientX, event.clientY, polygon)) {
-      // 播放触摸效果（音效和表情）
-      playTouchEffect()
-
       if (!sent.value) {
-        // 只在input发送消息，如果继续点击，则可以看到后面的对话，但不发送触摸事件
+        gameStore.currentStatus = 'thinking'
         touchCount.value++
         const messageWithCount =
           touchCount.value === 1
