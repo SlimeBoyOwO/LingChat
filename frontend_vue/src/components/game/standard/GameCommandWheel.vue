@@ -246,7 +246,7 @@ defineExpose({
 }
 
 .divider.horizontal {
-  @apply absolute top-1/2 left-[15%] right-[15%] h-px bg-white/30 -translate-y-1/2
+  @apply absolute top-1/2 left-[15%] right-[15%] h-px bg-white/30 -translate-y-1/2;
 }
 
 .option-region {

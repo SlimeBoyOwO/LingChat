@@ -86,7 +86,6 @@ const placeholderText = computed(() => {
 // 使用计算属性控制输入框是否可编辑
 const isInputEnabled = computed(() => gameStore.currentStatus === 'input')
 
-
 // 监听状态变化
 watch(
   () => gameStore.currentStatus,
@@ -317,7 +316,7 @@ defineExpose({
   @apply absolute bottom-2.5 left-1/2 -translate-x-1/2 w-10 h-10 flex items-center justify-center cursor-pointer rounded-full 
    bg-white/10 border border-white/20 transition-all duration-300 ease-in-out z-114514
    hover:bg-white/20 hover:scale-110 hover:-translate-x-1/2;
-   backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
 }
 
 .toggle-icon {
