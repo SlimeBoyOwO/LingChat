@@ -27,7 +27,8 @@ async def init_web_infos(client_id:str ,user_id: int):
             "scale": ai_service.settings.get("scale", 1.0),
             "offset": ai_service.settings.get("offset", 0),
             "bubble_top": ai_service.settings.get("bubble_top", 5),
-            "bubble_left": ai_service.settings.get("bubble_left", 20)
+            "bubble_left": ai_service.settings.get("bubble_left", 20),
+            "body_part": ai_service.body_part,
         }
         return {
             "code": 200,

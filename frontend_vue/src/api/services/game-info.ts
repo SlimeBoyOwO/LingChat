@@ -13,6 +13,7 @@ export interface GameInfo {
   bubble_left: number
   clothes: object
   clothes_name: string
+  body_part: object
 }
 
 export const getGameInfo = async (client_id: string, userId: string): Promise<GameInfo> => {
