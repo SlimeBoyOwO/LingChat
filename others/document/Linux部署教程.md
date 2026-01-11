@@ -12,5 +12,5 @@
 - 2.1 进入项目文件夹，运行``python -m venv venv``，等待完成后使用``source ./venv/bin/activate``激活环境
 - 2.2 使用``pip install .``安装依赖
 
-## 3 运行项目根目录的main.py即可
-## 4 前端部分请自行阅读frontend_vue/start.bat，在linux下复现即可部署
+### 3 运行项目根目录的main.py即可
+### 4 前端部分请自行阅读frontend_vue/start.bat，在linux下复现即可部署
