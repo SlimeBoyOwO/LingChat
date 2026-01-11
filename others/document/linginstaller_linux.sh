@@ -135,7 +135,7 @@ check_latency() {
     
     # 测试 GitHub 延迟
     log_info "测试 GitHub 连接..."
-    github_result=$(timeout 5 ping -c 1 github.com 2>/dev/null || echo "timeout")
+    github_result=$(timeout 150 ping -c 1 github.com 2>/dev/null || echo "timeout")
     
     if [ "$github_result" = "timeout" ]; then
         log_warn "GitHub 连接超时"
@@ -153,7 +153,7 @@ check_latency() {
     
     # 测试 Gitee 延迟
     log_info "测试 Gitee 连接..."
-    gitee_result=$(timeout 5 ping -c 1 gitee.com 2>/dev/null || echo "timeout")
+    gitee_result=$(timeout 150 ping -c 1 gitee.com 2>/dev/null || echo "timeout")
     
     if [ "$gitee_result" = "timeout" ]; then
         log_warn "Gitee 连接超时"
