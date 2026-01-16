@@ -341,6 +341,13 @@ watch(
   },
 )
 
+watch(
+  () => uiStore.showSettings,
+  (show) => {
+    if (show) enabled.value = false
+  },
+)
+
 function persistState() {
   localStorage.setItem(STORAGE_KEY_ENABLED, JSON.stringify(enabled.value))
   localStorage.setItem(STORAGE_KEY_REMAINING, JSON.stringify(remainingMs.value))
