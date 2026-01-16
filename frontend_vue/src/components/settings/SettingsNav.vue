@@ -187,10 +187,8 @@ const setupResizeObserver = () => {
     return
   }
   const resizeObserver = new ResizeObserver((entries) => {
-    // 宽度变化时，从 oldRefName 提取 refName 并执行逻辑
-    if (oldRefName.value) {
-      handleIndicatorMove(oldRefName.value)
-    }
+    // 尺寸变化时，重新初始化指示条位置（使用 currentSettingsTab 作为真实来源）
+    initIndicator()
   })
 
   // 监听nav的大小变化
