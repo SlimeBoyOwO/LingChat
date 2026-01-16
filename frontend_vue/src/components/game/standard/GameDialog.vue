@@ -145,7 +145,9 @@ function send() {
     })
   }
 
+  // scriptHandler.sendMessage(text, '记住你喜欢飞机大战超级英雄')
   scriptHandler.sendMessage(text)
+
   inputMessage.value = ''
 }
 
