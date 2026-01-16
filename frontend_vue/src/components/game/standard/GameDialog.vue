@@ -1,6 +1,18 @@
 <template>
-  <div class="chatbox-box">
-    <div class="chatbox-main">
+  <!-- 对话框开关按钮 -->
+  <div class="chatbox-toggle" @click="toggleDialog">
+    <svg
+      :class="{ 'rotate-180': isHidden }"
+      class="toggle-icon"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+    >
+      <path d="M7 14l5-5 5 5z" />
+    </svg>
+  </div>
+
+  <div class="chatbox-box" :class="{ 'chatbox-hidden': isHidden }">
+    <div class="chatbox-main" :class="{ 'chatbox-hidden': isHidden }">
       <div class="chatbox-title-part">
         <div class="chatbox-title">
           <div id="character">{{ uiStore.showCharacterTitle }}</div>
@@ -42,6 +54,7 @@ const inputMessage = ref('')
 const textareaRef = ref<HTMLTextAreaElement | null>(null) // 新增这行
 const gameStore = useGameStore()
 const uiStore = useUIStore()
+const isHidden = ref(false)
 
 const { startTyping, stopTyping, isTyping } = useTypeWriter(textareaRef)
 
@@ -146,12 +159,19 @@ function continueDialog(isPlayerTrigger: boolean): boolean {
   return needWait
 }
 
+function toggleDialog(e: Event) {
+  e.stopPropagation()
+  isHidden.value = !isHidden.value
+}
+
 defineExpose({
   continueDialog,
 })
 </script>
 
 <style>
+@reference "tailwindcss";
+
 .chatbox-box {
   position: relative;
   display: flex;
@@ -163,6 +183,7 @@ defineExpose({
   backdrop-filter: blur(1px);
   scrollbar-width: thin;
   scrollbar-color: var(--accent-color) transparent;
+  transition: all 2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .chatbox-box::before {
@@ -288,5 +309,30 @@ defineExpose({
   background: #333;
   cursor: not-allowed;
   opacity: 0.7;
+}
+
+/* 对话框开关按钮样式 */
+.chatbox-toggle {
+  @apply absolute bottom-2.5 left-1/2 -translate-x-1/2 w-10 h-10 flex items-center justify-center cursor-pointer rounded-full 
+   bg-white/10 border border-white/20 transition-all duration-300 ease-in-out z-114514
+   hover:bg-white/20 hover:scale-110 hover:-translate-x-1/2;
+  backdrop-filter: blur(10px);
+}
+
+.toggle-icon {
+  @apply w-5 h-5 text-white transition-transform duration-300 ease-in-out rotate-180;
+}
+
+.rotate-180 {
+  transform: rotate(180deg);
+}
+
+/* 隐藏状态的对话框样式 */
+.chatbox-hidden {
+  @apply h-0 p-0 overflow-hidden transition-all duration-2000 ease-[cubic-bezier(0.25,0.46,0.45,0.94)];
+}
+
+.chatbox-hidden .chatbox-main {
+  @apply translate-y-full opacity-0 transition-all duration-2000 ease-[cubic-bezier(0.25,0.46,0.45,0.94)];
 }
 </style>

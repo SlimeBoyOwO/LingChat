@@ -10,6 +10,8 @@ ai_subtitle = Slime Studio
 user_name = 莱姆
 user_subtitle = Bilibili
 
+body_part = {"head":{"X": [0.373, 0.636, 0.653, 0.364],"Y": [0.179, 0.192, 0.539, 0.571],"windowWidth": 990,"windowHeight": 596,"message": "莱姆摸了一下你的头"}}
+
 voice_models = {
     "sva_speaker_id": "0",
     "sbv2_name": "Ling-v2",
