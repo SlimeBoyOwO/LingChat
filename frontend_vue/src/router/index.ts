@@ -10,19 +10,19 @@ const MainMenu = () => import('../components/views/MainMenu.vue')
 // 1. 定义路由表
 const routes = [
   {
-    path: '/', // 这是你想要的URL路径
+    path: '/',
+    name: 'MainMenu',
+    component: MainMenu,
+  },
+  {
+    path: '/chat',
     name: 'LingChat',
-    component: ComapionMode, // 当访问 /credit 时，显示 Credits.vue 组件
+    component: ComapionMode,
   },
   {
-    path: '/menu', // 这是你想要的URL路径
-    name: 'Menu',
-    component: MainMenu, // 当访问 /credit 时，显示 Credits.vue 组件
-  },
-  {
-    path: '/credit', // 这是你想要的URL路径
+    path: '/credit',
     name: 'Credits',
-    component: Credits, // 当访问 /credit 时，显示 Credits.vue 组件
+    component: Credits,
   },
 ]
 
