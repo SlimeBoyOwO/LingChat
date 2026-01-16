@@ -77,9 +77,10 @@ export class ScriptHandler {
     })
   }
 
-  public sendMessage(text: string) {
+  public sendMessage(text: string, instruction?: string) {
     if (!text.trim()) return
-    sendWebSocketChatMessage(WebSocketMessageTypes.MESSAGE, text)
+    const message = instruction ? `${text}[!Temp!]${instruction}[/!Temp!]` : text
+    sendWebSocketChatMessage(WebSocketMessageTypes.MESSAGE, message)
   }
 }
 

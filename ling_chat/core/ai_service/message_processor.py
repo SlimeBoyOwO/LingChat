@@ -90,7 +90,7 @@ class MessageProcessor:
 
         return results
     
-    def append_user_message(self, user_message: str) -> str:
+    def append_user_message(self, user_message: str) -> dict:
         """处理用户消息，添加系统信息，如时间、是否需要分析桌面，以及提取大括号内的用户指令"""
 
         # TODO: 当 AI 的回复句子总是固定的时候，增加提示让 AI 的回复句子适度调整
@@ -101,16 +101,27 @@ class MessageProcessor:
         sys_time_part = ""
         sys_desktop_part = ""
         user_instruction_part = ""
+        temp_instruction_part = ""
         
         # 提取大括号内的用户指令
         import re
         bracket_pattern = r"\{([^}]+)\}"
         bracket_matches = re.findall(bracket_pattern, user_message)
-        
+
+        # --- 1. 处理大括号 {} ---
         if bracket_matches:
-            # 从原始消息中移除大括号内容
-            processed_message = re.sub(bracket_pattern, "", user_message).strip()
+            processed_message = re.sub(bracket_pattern, "", processed_message).strip()
             user_instruction_part = "旁白: " + "; ".join(bracket_matches)
+        
+        # --- 2. 处理 [!Temp!] ---
+        temp_pattern = r"\[!Temp!\](.*?)\[/!Temp!\]"
+        
+        # re.S (re.DOTALL) 让 . 可以匹配换行符
+        temp_matches = re.findall(temp_pattern, user_message, flags=re.S)
+        
+        if temp_matches:
+            processed_message = re.sub(temp_pattern, "", processed_message, flags=re.S).strip()
+            temp_instruction_part = "%".join([f"${match}$" for match in temp_matches])
         
         # 时间感知逻辑
         if self.time_sense_enabled and ((self.last_time and 
@@ -131,15 +142,20 @@ class MessageProcessor:
         
         # 构建系统提醒部分
         system_parts = []
+        sys_flag = False
         if sys_time_part:
             system_parts.append(sys_time_part)
+            sys_flag = True
         if sys_desktop_part:
             system_parts.append(sys_desktop_part)
+            sys_flag = True
         if user_instruction_part:
             system_parts.append(user_instruction_part)
+        if temp_instruction_part:
+            system_parts.append(temp_instruction_part)
         
         if system_parts:
-            processed_message += "\n{系统提醒: " + " ".join(system_parts) + "}"
+            processed_message += "\n{" + ("系统提醒: " if sys_flag else "") + " ".join(system_parts) + "}"
 
         self.last_time = current_time
         self.sys_time_counter += 1
@@ -148,7 +164,7 @@ class MessageProcessor:
             self.sys_time_counter = 0
         
         logger.info("处理后的用户信息是:" + processed_message)
-        return processed_message
+        return {'main': processed_message, 'temp': temp_instruction_part if temp_instruction_part else None}
 
     def sys_prompt_builder(self,user_name:str,
                            character_name:str,

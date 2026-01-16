@@ -101,6 +101,8 @@ class WebSocketManager:
         if user_message == "/开始剧本":
             asyncio.create_task(ai_service.start_script())
             logger.info("开始进行剧本模式")
+        elif user_message == "/查看记忆":
+            ai_service.show_memory()
         else:
             if ai_service.scripts_manager.is_running:
                 asyncio.create_task(
@@ -110,7 +112,7 @@ class WebSocketManager:
                 asyncio.create_task(
                     message_broker.enqueue_ai_message(client_id, user_message)
                 )
-                
+
 
     async def _send_messages(self, websocket: WebSocket, client_id: str):
         """从消息队列中获取并发送消息"""

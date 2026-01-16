@@ -164,6 +164,9 @@ class AIService:
                 "content": self.ai_prompt
             }
         ]
+
+    def show_memory(self):
+        logger.info(f"当前记忆内容：{self.memory}")
     
     async def start_script(self):
         await self.scripts_manager.start_script()

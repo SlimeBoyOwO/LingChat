@@ -73,11 +73,16 @@ class MessageGenerator:
         协调流处理管道并生成响应，避免死锁。
         """
         rag_messages = []
+        processed_user_message = ""
+        temp_message = None
         # 1. 设置和预处理
         current_context = self.memory.copy() if not memory else memory.copy()
 
         if not memory:
-            processed_user_message = self.message_processor.append_user_message(user_message)
+            processed_user_message_dict = self.message_processor.append_user_message(user_message)
+            processed_user_message = processed_user_message_dict.get("main","")
+            temp_message = processed_user_message_dict.get("temp",None)
+
             self.memory.append({"role": "user", "content": processed_user_message})
             current_context = self.memory.copy()
             if self.use_rag and self.rag_manager:
@@ -144,8 +149,9 @@ class MessageGenerator:
                         pass
                     
                     # 检查 producer 是否有异常
-                    if producer_task.exception():
-                        raise producer_task.exception()
+                    producer_exception = producer_task.exception()
+                    if producer_exception is not None:
+                        raise producer_exception
                     
                     # 如果 producer 正常完成但队列还没有数据，继续等待队列
                     if queue_get_task not in done:
@@ -179,6 +185,13 @@ class MessageGenerator:
             # 6. 后续处理
             if accumulated_response:
                 if not memory:
+
+                    # 让 processed_user_message 删除 temp_message 字段
+                    if temp_message is not None:
+                        self.memory.pop()
+                        processed_user_message = processed_user_message.replace(temp_message, "")
+                        self.memory.append({"role": "user", "content": processed_user_message})
+
                     self.memory.append({"role": "assistant", "content": accumulated_response})
                     if self.use_rag and self.rag_manager:
                         self.rag_manager.save_messages_to_rag(self.memory)
