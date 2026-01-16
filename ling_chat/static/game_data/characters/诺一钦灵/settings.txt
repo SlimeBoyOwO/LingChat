@@ -29,9 +29,8 @@ tts_type = "sbv2api"
 
 thinking_message = 灵灵正在思考中...
 
-scale = 1.0
-offset = 0
-
+scale = 1.45
+offset = 20
 bubble_top = 5
 bubble_left = 20
 
