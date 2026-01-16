@@ -91,6 +91,7 @@ class AIService:
             self.character_path = settings.get("resource_path")
             self.character_id = settings.get("character_id")
             self.clothes_name = settings.get("clothes_name")
+            self.body_part = settings.get("body_part")
             self.clothes = settings.get("clothes")
             self.settings = settings
 
