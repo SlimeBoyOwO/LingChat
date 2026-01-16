@@ -19,6 +19,7 @@
     "@tanstack/vue-query": "^5.92.1",
     "@vueuse/core": "^14.1.0",
     "axios": "^1.13.2",
+    "element-plus": "^2.13.1",
     "lucide-vue-next": "^0.562.0",
     "pinia": "^3.0.4",
     "tailwindcss": "^4.1.18",

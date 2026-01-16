@@ -1,15 +1,15 @@
 <template>
   <MenuPage>
     <MenuItem title="👩 角色音量" size="small">
-      <Slider v-model="uiStore.characterVolume" @change="updateCharacterVolume"> 弱/强 </Slider>
+      <Slider v-model="characterVolume" @change="updateCharacterVolume"> 弱/强 </Slider>
     </MenuItem>
 
     <MenuItem title="💬 气泡音量" size="small">
-      <Slider @change="updateBubbleVolume" v-model="uiStore.bubbleVolume"> 弱/强 </Slider>
+      <Slider @change="updateBubbleVolume" v-model="bubbleVolume"> 弱/强 </Slider>
     </MenuItem>
 
     <MenuItem title="🎶 背景音量" size="small">
-      <Slider @change="updateBackgroundVolume" v-model="uiStore.backgroundVolume"> 弱/强 </Slider>
+      <Slider @change="updateBackgroundVolume" v-model="backgroundVolume"> 弱/强 </Slider>
     </MenuItem>
 
     <MenuItem title="🔊 声音测试" size="small">
@@ -67,6 +67,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
+import { useStorage } from '@vueuse/core'
 import { MenuPage, MenuItem } from '../../ui'
 import { Slider, Button } from '../../base'
 import { useUIStore } from '../../../stores/modules/ui/ui'
@@ -75,6 +76,18 @@ import { musicGetAll, musicUpload, musicDelete } from '../../../api/services/mus
 // --- 响应式状态和引用 ---
 
 const uiStore = useUIStore()
+
+// 使用 VueUse 的 useStorage 持久化存储音量设置
+const characterVolume = useStorage('lingchat-character-volume', 50)
+const bubbleVolume = useStorage('lingchat-bubble-volume', 50)
+const backgroundVolume = useStorage('lingchat-background-volume', 50)
+
+// 同步 localStorage 中的音量到 Pinia store
+watch([characterVolume, bubbleVolume, backgroundVolume], ([charVol, bubVol, bgVol]) => {
+  uiStore.characterVolume = charVol
+  uiStore.bubbleVolume = bubVol
+  uiStore.backgroundVolume = bgVol
+}, { immediate: true })
 
 // 音频播放器的模板引用
 const characterTestPlayer = ref<HTMLAudioElement | null>(null)
@@ -97,18 +110,21 @@ const fileInput = ref<HTMLInputElement | null>(null)
 // --- Pinia Store 音量控制 ---
 
 const updateCharacterVolume = (value: number) => {
+  characterVolume.value = value
   if (characterTestPlayer.value) {
     characterTestPlayer.value.volume = value / 100
   }
 }
 
 const updateBubbleVolume = (value: number) => {
+  bubbleVolume.value = value
   if (bubbleTestPlayer.value) {
     bubbleTestPlayer.value.volume = value / 100
   }
 }
 
 const updateBackgroundVolume = (value: number) => {
+  backgroundVolume.value = value
   if (backgroundAudioPlayer.value) {
     backgroundAudioPlayer.value.volume = value / 100
   }
@@ -118,6 +134,7 @@ const updateBackgroundVolume = (value: number) => {
 watch(
   () => uiStore.backgroundVolume,
   (newVolume) => {
+    backgroundVolume.value = newVolume
     if (backgroundAudioPlayer.value) {
       backgroundAudioPlayer.value.volume = newVolume / 100
     }
@@ -266,10 +283,10 @@ onMounted(() => {
   loadMusicList()
 
   // 初始化音量
-  if (characterTestPlayer.value) characterTestPlayer.value.volume = uiStore.characterVolume / 100
-  if (bubbleTestPlayer.value) bubbleTestPlayer.value.volume = uiStore.bubbleVolume / 100
+  if (characterTestPlayer.value) characterTestPlayer.value.volume = characterVolume.value / 100
+  if (bubbleTestPlayer.value) bubbleTestPlayer.value.volume = bubbleVolume.value / 100
   if (backgroundAudioPlayer.value)
-    backgroundAudioPlayer.value.volume = uiStore.backgroundVolume / 100
+    backgroundAudioPlayer.value.volume = backgroundVolume.value / 100
 })
 </script>
 
