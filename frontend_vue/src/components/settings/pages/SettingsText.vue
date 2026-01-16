@@ -51,6 +51,7 @@ watch(
   [textSpeed],
   ([textSpeed]) => {
     uiStore.typeWriterSpeed = textSpeed
+    textSpeedSample.value = textSpeed
   },
   { immediate: true },
 )
