@@ -1,89 +1,86 @@
 <template>
-  <div :class="['body', { 'panel-active': currentPage !== 'mainMenu' }]">
-    <Loader :loading="loading" :progress="progress" />
+  <div class="main-menu-page" :class="{ 'main-menu-page--panel-active': currentPage !== 'mainMenu' }">
+
     <MainChat v-if="currentPage === 'gameMainView'" />
     <Settings v-else-if="currentPage === 'settings'" />
     <Save v-else-if="currentPage === 'save'" />
-    <Transition name="main-menu-animation" :duration="300">
-      <div class="menu-container" v-if="currentPage === 'mainMenu'">
-        <div class="main-menu">
-          <template v-for="item in menuItems">
-            <button
-              class="menu-item"
-              v-if="item.visibility.value"
-              :key="item.order"
-              @click="item.action"
-            >
-              {{ item.label }}
-            </button>
-          </template>
+
+    <!-- 菜单容器 -->
+    <div class="main-menu-page__container" v-if="currentPage === 'mainMenu'">
+      <!-- 主菜单 -->
+      <Transition name="slide-left">
+        <div class="main-menu-page__menu" v-if="menuState === 'main'">
+          <MainMenuOptions
+            @start-game="showGameModeMenu"
+            @open-settings="handleOpenSettings"
+          />
         </div>
-        <img src="../../assets/images/LingChatLogo.png" alt="LingChatLogo" class="logo" />
-      </div>
-    </Transition>
+      </Transition>
+
+      <!-- 游戏模式菜单 -->
+      <Transition name="slide-right">
+        <div class="main-menu-page__menu" v-if="menuState === 'gameMode'">
+          <GameModeOptions @back="backToMainMenu" />
+        </div>
+      </Transition>
+
+      <img src="../../assets/images/LingChatLogo.png" alt="LingChatLogo" class="main-menu-page__logo" />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { Loader, MainChat } from './'
+import { ref, watch } from 'vue'
+import { MainChat } from './'
 import { SettingsPanel as Settings } from '../settings/'
-import { useRouter } from 'vue-router'
-const currentPage = ref('mainMenu')
-const loading = ref(true)
-const progress = ref(0)
-const menuItems = [
-  { order: 0, label: '继续游戏', action: continueGame, visibility: ref(false) }, //TODO:只在有存档的时候显示
-  { order: 1, label: '开始游戏', action: newGame, visibility: ref(true) },
-  { order: 2, label: '存档', action: openSave, visibility: ref(true) },
-  { order: 3, label: '设置', action: openSettings, visibility: ref(true) },
-  {
-    order: 4,
-    label: '致谢名单',
-    action: goToCreditsPage,
-    visibility: ref(true),
-  },
-  { order: 5, label: '退出游戏', action: quitGame, visibility: ref(true) },
-]
-const router = useRouter()
+import { MainMenuOptions, GameModeOptions } from './menu'
+import { useUIStore } from '../../stores/modules/ui/ui'
 
-onMounted(() =>
-  setInterval(() => {
-    loading.value = false
-    progress.value = 100
-  }, 2500),
+// 页面状态
+const currentPage = ref('mainMenu')
+
+// 菜单状态：main（主菜单）或 gameMode（游戏模式选择）
+const menuState = ref<'main' | 'gameMode'>('main')
+
+const uiStore = useUIStore()
+
+// 显示游戏模式菜单
+function showGameModeMenu() {
+  menuState.value = 'gameMode'
+}
+
+// 返回主菜单
+function backToMainMenu() {
+  menuState.value = 'main'
+}
+
+// 处理设置面板打开
+function handleOpenSettings(tab?: string) {
+  uiStore.toggleSettings(true)
+  if (tab === 'save') {
+    currentPage.value = 'save'
+    uiStore.setSettingsTab('save')
+  } else {
+    currentPage.value = 'settings'
+  }
+}
+
+// 监听设置面板关闭，返回主菜单
+watch(
+  () => uiStore.showSettings,
+  (newVal) => {
+    if (!newVal && (currentPage.value === 'settings' || currentPage.value === 'save')) {
+      currentPage.value = 'mainMenu'
+      menuState.value = 'main'
+    }
+  }
 )
-function continueGame() {}
-function newGame() {
-  goToMainPage()
-}
-function openSave() {
-  currentPage.value = 'save'
-}
-function openSettings() {
-  currentPage.value = 'settings'
-}
-function quitGame() {
-  window.close()
-}
-function goToMainPage() {
-  console.log('准备跳转到主页面...')
-  router.push('/')
-}
-function goToCreditsPage() {
-  console.log('准备跳转到致谢页面...')
-  router.push('/credit')
-}
+
+// Save 组件占位（如果不存在则需要创建或使用 Settings）
+const Save = Settings
 </script>
 
-<style>
-.body {
-  width: 100%;
-  height: 100%;
-  position: relative;
-  /* 必须保留，为 ::before 提供定位锚点 */
-}
-
+<style scoped>
 /* 定义自定义字体 */
 @font-face {
   font-family: 'Maoken Assorted Sans';
@@ -93,169 +90,86 @@ function goToCreditsPage() {
   font-display: swap;
 }
 
-.body::before {
+/* 主页面容器 - 使用具体类名避免冲突 */
+.main-menu-page {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.main-menu-page::before {
   content: '';
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-
-  /* 1. 背景图片现在只在这里定义 (使用修正后的路径) */
   background-image: url('../../assets/images/background.png');
   background-size: cover;
   background-position: center;
-
-  /* 2. 修复：使用 z-index: 0 而不是 -1，确保背景可见 */
   z-index: 0;
-
-  /* 3. 定义我们要过渡的属性：filter */
-  /* 我们使用 filter: brightness() 来模拟蒙版，因为它可以平滑过渡 */
   filter: blur(0px) brightness(1);
-
-  /* 使用 0.6s 的过渡时间 */
   transition: filter 0.6s cubic-bezier(0.7, 0, 0.2, 1);
-
-  /* 确保不阻挡交互 */
   pointer-events: none;
 }
 
-.body.panel-active::before {
+.main-menu-page--panel-active::before {
   filter: blur(12px) brightness(0.9);
-  /* 通用背景模糊和变暗 */
 }
 
-/* 主容器，用于设置背景和布局 */
-.menu-container {
+/* 菜单容器 */
+.main-menu-page__container {
   width: 100%;
   height: 100%;
   display: flex;
   justify-content: flex-start;
-  /* 将主菜单推到左边 */
   align-items: center;
   position: relative;
-  /* 必须保留，为 ::before 提供定位锚点 */
 }
 
-/* 为动画元素添加过渡效果 */
-.logo,
-.main-menu,
-.settings-panel {
-  transition:
-    transform 0.6s cubic-bezier(0.7, 0, 0.2, 1),
-    opacity 0.6s cubic-bezier(0.7, 0, 0.2, 1);
-}
-
-/* 主菜单 */
-.main-menu {
+/* 菜单位置 */
+.main-menu-page__menu {
   display: flex;
   flex-direction: column;
-  /* align-items: center; */
   padding: 20px;
   margin-left: 10vw;
-  /* 距离左侧边缘10%视口宽度 */
-  position: relative;
-  /* 确保菜单显示在背景之上 */
+  position: absolute;
   z-index: 1;
 }
 
-.logo {
+/* Logo */
+.main-menu-page__logo {
   position: absolute;
   top: 5vh;
-  /* 距离顶部5%视口高度 */
-  left: auto;
   right: 5vw;
-  /* 距离右侧5%视口宽度 */
   height: 40vh;
-  /* 高度为视口高度的40% */
   width: auto;
-  /* 宽度自动，保持比例 */
   max-width: 40vw;
-  /* 最大宽度不超过视口宽度的40%，防止过宽 */
   filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
-  /* 添加一点阴影使其更突出 */
   z-index: 1;
-  /* 确保logo显示在背景之上 */
 }
 
-.menu-item {
-  background: transparent;
-  /* 去除背景 */
-  color: white;
-  border: none;
-  /* 去除边框 */
-  padding: 15px;
-  margin: 10px 0;
-  border-radius: 12px;
-  /* 使用clamp()实现响应式字体大小 */
-  /* 最小32px, 根据视口宽度的4%缩放, 最大72px */
-  font-size: clamp(32px, 4vw, 72px);
-  font-weight: normal;
-  /* 字体加粗 */
-  font-family:
-    'Maoken Assorted Sans',
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    Roboto,
-    'Helvetica Neue',
-    Arial,
-    sans-serif;
-  /* 应用自定义字体，并提供备用字体 */
-  cursor: pointer;
-  transition:
-    color 0.3s,
-    text-shadow 0.3s;
-  /* 平滑过渡 */
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-  /* 加一点文字阴影以保证清晰度 */
-  text-align: justify;
-  text-align-last: justify;
-  /* 文字两端对齐 */
+/* 向左滑出动画 */
+.slide-left-enter-active,
+.slide-left-leave-active {
+  transition: all 0.4s cubic-bezier(0.7, 0, 0.2, 1);
 }
 
-.menu-item:hover {
-  color: #f0f0f0;
-  text-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
-  /* 悬停时发光效果 */
-  transform: none;
-  /* 移除之前的缩放效果 */
-}
-
-.main-menu-animation-enter-active .main-menu,
-.main-menu-animation-leave-active .main-menu,
-.main-menu-animation-enter-active .logo,
-.main-menu-animation-leave-active .logo {
-  transition: all 0.3s ease-in-out;
-}
-
-.main-menu-animation-enter-from .main-menu,
-.main-menu-animation-leave-to .main-menu {
+.slide-left-enter-from,
+.slide-left-leave-to {
   transform: translateX(-120%);
   opacity: 0;
 }
 
-.main-menu-animation-enter-from .logo,
-.main-menu-animation-leave-active .logo {
+/* 从右滑入动画 */
+.slide-right-enter-active,
+.slide-right-leave-active {
+  transition: all 0.4s cubic-bezier(0.7, 0, 0.2, 1);
+}
+
+.slide-right-enter-from,
+.slide-right-leave-to {
   transform: translateX(120%);
   opacity: 0;
-}
-
-/* 特定面板的显示规则 */
-body.panel-active.show-settings .settings-panel {
-  transform: translateX(0);
-  opacity: 1;
-}
-
-body.panel-active.show-game-screen .game-screen-panel {
-  transform: translateX(0);
-  opacity: 1;
-  pointer-events: auto;
-}
-
-body.panel-active.show-load-save .load-save-panel {
-  transform: translateX(0);
-  opacity: 1;
-  pointer-events: auto;
 }
 </style>

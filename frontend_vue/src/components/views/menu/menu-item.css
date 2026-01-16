@@ -1,0 +1,52 @@
+/* 共享菜单项样式 - 用于 MainMenuOptions 和 GameModeOptions */
+
+/* 定义自定义字体 */
+@font-face {
+  font-family: 'Maoken Assorted Sans';
+  src: url('@/assets/fonts/MaokenAssortedSans.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+.menu-item {
+  background: transparent;
+  color: white;
+  border: none;
+  padding: 15px;
+  margin: 10px 0;
+  border-radius: 12px;
+  font-size: clamp(32px, 4vw, 72px);
+  font-weight: normal;
+  font-family:
+    'Maoken Assorted Sans',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    sans-serif;
+  cursor: pointer;
+  transition:
+    color 0.3s,
+    text-shadow 0.3s;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  text-align: justify;
+  text-align-last: justify;
+}
+
+.menu-item:hover {
+  color: #f0f0f0;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
+}
+
+.menu-item--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.menu-item:hover.menu-item--disabled {
+  color: white;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
