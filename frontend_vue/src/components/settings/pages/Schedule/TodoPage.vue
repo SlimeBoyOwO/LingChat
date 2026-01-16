@@ -197,7 +197,7 @@ const todoGroups = ref<Record<string, TodoGroup>>({
         id: 101,
         text: '完成灵灵多立绘绘图',
         priority: 5,
-        completed: false,
+        completed: true,
       },
       {
         id: 102,
@@ -214,7 +214,7 @@ const todoGroups = ref<Record<string, TodoGroup>>({
         id: 201,
         text: '使用localStorage修复信息无法保存bug',
         priority: 5,
-        completed: false,
+        completed: true,
       },
       {
         id: 202,
