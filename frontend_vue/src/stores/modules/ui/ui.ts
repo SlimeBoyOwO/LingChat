@@ -347,6 +347,19 @@ export const useUIStore = defineStore('ui', {
         }
       )
     },
+
+    /**
+     * 获取角色刷新提示
+     */
+    getRefreshTip(type: 'success' | 'fail') {
+      const key = type === 'success' ? 'refresh_success' : 'refresh_fail'
+      return (
+        this.tipsMap[key] || {
+          title: type === 'success' ? '刷新成功' : '刷新失败',
+          message: type === 'success' ? '角色列表已成功刷新！' : '刷新时出了问题',
+        }
+      )
+    },
   },
 })
 
