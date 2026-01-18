@@ -251,7 +251,7 @@ export default {
     // 刷新更新状态 - 提供给用户手动刷新
     async refreshUpdateStatus() {
       if (!this.backendConnected) return
-      
+
       await this.getUpdateStatus()
     },
 
@@ -304,7 +304,6 @@ export default {
         this.handleApiError(error, '更新配置')
       }
     },
-
 
     // 获取更新状态
     async getUpdateStatus() {
