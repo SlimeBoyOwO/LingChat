@@ -1,7 +1,8 @@
-from pathlib import Path
-from platformdirs import user_data_dir
 import sys
 import tempfile
+from pathlib import Path
+
+from platformdirs import user_data_dir
 
 
 def get_package_root() -> Path:

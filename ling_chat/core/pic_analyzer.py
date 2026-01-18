@@ -1,10 +1,12 @@
+import base64
 import os
 import time
-import base64
 from io import BytesIO
-from PIL import ImageGrab
-from ling_chat.core.logger import logger
+
 import requests
+from PIL import ImageGrab
+
+from ling_chat.core.logger import logger
 
 # TODO: 这个玩意是他妈的同步的，导致这个东西执行的时候，整个程序都会卡死，务必改成异步函数
 
@@ -25,19 +27,19 @@ class DesktopAnalyzer:
         self.last_response_time = None
         self.last_input_tokens = None
         self.last_output_tokens = None
-        
+
     def capture_desktop(self):
         """截取整个桌面并返回Base64编码"""
         # 截取屏幕
         screenshot = ImageGrab.grab()
-        
+
         # 将截图转为Base64编码
         buffered = BytesIO()
         screenshot.save(buffered, format="PNG")
         base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
-        
+
         return base64_image
-    
+
     @staticmethod
     def calculate_cost(input_tokens, output_tokens):
         """
@@ -54,7 +56,7 @@ class DesktopAnalyzer:
         input_cost = (input_tokens / 1000) * 0.00035
         output_cost = (output_tokens / 1000) * 0.00035
         return round(input_cost + output_cost, 4)
-    
+
     def analyze_desktop(self, prompt="这是用户的桌面内容，请你用100字左右描绘主要内容，边角内容如任务栏不需要分析"):
         """
         执行桌面分析
@@ -68,7 +70,7 @@ class DesktopAnalyzer:
         # 截取桌面并获取Base64编码
         desktop_base64 = self.capture_desktop()
         image_data = f"data:image/png;base64,{desktop_base64}"
-        
+
         # 构建请求头和数据
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -93,20 +95,20 @@ class DesktopAnalyzer:
         start_time = time.time()
         response = requests.post(self.base_url, headers=headers, json=payload)
         response_data = response.json()
-        
+
         if "choices" not in response_data:
             raise Exception(f"请求失败: {response_data}")
-        
+
         logger.info("图片分析结果如下")
         logger.info(response_data["choices"][0]["message"]["content"])
-        
+
         # 记录性能数据
         self.last_response_time = time.time() - start_time
         self.last_input_tokens = response_data.get("usage", {}).get("prompt_tokens", 0)
         self.last_output_tokens = response_data.get("usage", {}).get("completion_tokens", 0)
-        
+
         return response_data["choices"][0]["message"]["content"]
-    
+
     def get_analysis_report(self):
         """
         获取最后一次分析的报告
@@ -116,7 +118,7 @@ class DesktopAnalyzer:
         """
         if not self.last_response_time:
             return {"error": "No analysis performed yet"}
-        
+
         return {
             "response_time": round(self.last_response_time, 2),
             "input_tokens": self.last_input_tokens,
@@ -128,15 +130,15 @@ class DesktopAnalyzer:
 if __name__ == "__main__":
     # 单元测试
     analyzer = DesktopAnalyzer()
-    
+
     print("桌面内容分析器已启动...")
     input("按Enter键截取当前桌面并发送给AI分析...")
-    
+
     # 执行分析
     try:
         description = analyzer.analyze_desktop()
         report = analyzer.get_analysis_report()
-        
+
         # 显示结果
         print("\n" + "=" * 50)
         print("AI生成的桌面描述:")

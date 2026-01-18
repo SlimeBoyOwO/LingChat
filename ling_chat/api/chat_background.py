@@ -1,11 +1,13 @@
 import os
+import shutil
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
-from pathlib import Path
+
 from ling_chat.core.logger import logger
-import shutil
-from ling_chat.utils.runtime_path import user_data_path
 from ling_chat.core.service_manager import service_manager
+from ling_chat.utils.runtime_path import user_data_path
 
 router = APIRouter(prefix="/api/v1/chat/background", tags=["Chat Character"])
 

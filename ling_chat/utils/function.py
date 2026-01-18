@@ -1,13 +1,16 @@
-import re
 import os
-import yaml
-from datetime import datetime, timedelta
-from typing import List, Dict
-from pathlib import Path
-import py7zr
+import re
 import zipfile
-from ling_chat.utils.runtime_path import temp_path
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Dict, List
+
+import py7zr
+import yaml
+
 from ling_chat.core.logger import logger
+from ling_chat.utils.runtime_path import temp_path
+
 
 class Function:
     # 该列表内被管理的字段,在值为空字符串时,会被解析为None
@@ -287,7 +290,7 @@ class Function:
         """
         # 避免logger那边的环境变量没拿到，延迟一下import
         from ling_chat.core.logger import logger
-        
+
         logger.info(f"正在解压 {archive_path} 到 {extract_to}...")
 
         try:
@@ -307,28 +310,28 @@ class Function:
                 logger.info(f"成功解压 {archive_path} 到 {extract_to}")
             else:
                 logger.warning(f"不支持的压缩格式: {suffix}. 仅支持 .7z 和 .zip")
-            
+
         except Exception as e:
             logger.warning(f"解压失败: {e}")
 
-    
+
     @staticmethod
     def find_next_time(schedule_times: list[str]) -> str:
         """计算到下一个提醒时间的秒数"""
         now = datetime.now()
         current_time = now.time()
         current_time_str = current_time.strftime("%H:%M")
-        
+
         # 将时间字符串转换为时间对象
         process_schedule_times = [datetime.strptime(time_str, "%H:%M").time() for time_str in schedule_times]
-        
+
         # 找到下一个提醒时间
         next_time = None
         for time_obj in sorted(process_schedule_times):
             if time_obj > current_time:
                 next_time = time_obj
                 break
-        
+
         # 如果没有找到今天的时间，就用明天第一个时间
         if next_time is None and schedule_times:
             next_time = schedule_times[0]
@@ -350,7 +353,7 @@ class Function:
         now = datetime.now()
         current_time = now.time()
         current_time_str = current_time.strftime("%H:%M")
-        
+
         next_time = None
         try:
             # 将时间字符串转换为时间对象
@@ -362,7 +365,7 @@ class Function:
                     break
         except Exception as e:
             print(e)
-        
+
         # 如果没有找到今天的时间，就用明天第一个时间
         if next_time is None and schedule_times:
             next_time = schedule_times[0]
@@ -374,21 +377,21 @@ class Function:
 
         time_difference = next_datetime - now
         return max(0, time_difference.total_seconds())
-    
+
     @staticmethod
     def format_seconds(seconds: float) -> str:
         """将秒数格式化为易读的时间字符串"""
         hours = int(seconds // 3600)
         minutes = int((seconds % 3600) // 60)
         seconds = int(seconds % 60)
-        
+
         if hours > 0:
             return f"{hours}小时{minutes}分{seconds}秒"
         elif minutes > 0:
             return f"{minutes}分{seconds}秒"
         else:
             return f"{seconds}秒"
-    
+
     # 方法1：直接读取 YAML 文件
     @staticmethod
     def read_yaml_file(file_path):
@@ -413,7 +416,7 @@ class Function:
         """
         temp_dir = Path(os.environ.get("TEMP_VOICE_DIR", temp_path / "data/voice"))
         self.format = os.environ.get("VOICE_FORMAT", "wav")
-        
+
         for file in temp_dir.glob(f"*.{self.format}"):
             try:
                 file.unlink()

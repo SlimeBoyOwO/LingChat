@@ -1,18 +1,19 @@
 import os
 from pathlib import Path
-from ling_chat.core.TTS.index_adpater import IndexTTSAdapter
-from ling_chat.core.TTS.vits_adapter import VitsAdapter
-from ling_chat.core.TTS.sbv2_adapter import SBV2Adapter
-from ling_chat.core.TTS.gsv_adapter import GPTSoVITSAdapter
-from ling_chat.core.TTS.sbv2api_adapter import SBV2APIAdapter
-from ling_chat.core.TTS.bv2_adapter import BV2Adapter
-from ling_chat.core.TTS.aivis_adapter import AIVISAdapter
+
 from ling_chat.core.logger import logger
+from ling_chat.core.TTS.aivis_adapter import AIVISAdapter
+from ling_chat.core.TTS.bv2_adapter import BV2Adapter
+from ling_chat.core.TTS.gsv_adapter import GPTSoVITSAdapter
+from ling_chat.core.TTS.index_adpater import IndexTTSAdapter
+from ling_chat.core.TTS.sbv2_adapter import SBV2Adapter
+from ling_chat.core.TTS.sbv2api_adapter import SBV2APIAdapter
+from ling_chat.core.TTS.vits_adapter import VitsAdapter
 from ling_chat.utils.runtime_path import temp_path
 
 
 class TTS:
-    def __init__(self, 
+    def __init__(self,
                  default_speaker_id: int=4,
                  default_model_name: str="",
                  default_tts_type: str = "sbv2",
@@ -37,7 +38,7 @@ class TTS:
         self.temp_dir = Path(os.environ.get("TEMP_VOICE_DIR", temp_path / "data/voice"))
         self.temp_dir.mkdir(parents=True, exist_ok=True)
         self.enable = True  # 初始化时启用
-        
+
         # 提前初始化适配器属性为None，之后就可用判断了（pylance如是说）
         self.sva_adapter = None
         self.sbv2_adapter = None
@@ -58,7 +59,7 @@ class TTS:
             audio_format = self.format,
             lang = "ja"
         )
-    
+
     def init_sbv2_adapter(self, speaker_id: int, model_name: str, language: str="ja"):
         """
         初始化SBV2适配器
@@ -86,7 +87,7 @@ class TTS:
             speaker_id= speaker_id,
             audio_format = self.format
         )
-        
+
     def init_bv2_adapter(self, speaker_id: int, language: str="zh"):
         """
         初始化BV2适配器
@@ -186,7 +187,7 @@ class TTS:
         else:
             raise ValueError("没有可用的API适配器")
 
-    async def generate_voice(self, text: str, file_name: str, 
+    async def generate_voice(self, text: str, file_name: str,
                              tts_type: str = "", lang: str ="ja", emo: str = "") -> str | None:
         """
         生成语音文件
@@ -227,8 +228,8 @@ class TTS:
             logger.error("TTS服务不可达，已禁用语音，重新启动程序以刷新启动服务")
             self.enable = False
             return None
-    
-    async def generate_voice_stream(self, text: str, file_name: str, 
+
+    async def generate_voice_stream(self, text: str, file_name: str,
                              tts_type: str = "", lang: str ="ja") -> str | None:
         """
         生成语音文件流式

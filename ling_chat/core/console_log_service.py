@@ -1,16 +1,19 @@
 """
 前端控制台日志服务 - 接收前端控制台输出并分类为不同日志级别
 """
+import json
 import os
 import re
-import json
-from typing import Dict, Any, Optional
 from datetime import datetime
+from typing import Any, Dict, Optional
 
-from ling_chat.core.logger import logger, TermColors
+from ling_chat.core.logger import TermColors, logger
 from ling_chat.core.schemas.console_logs import (
-    ConsoleLogEntry, ConsoleLogLevel, ConsoleLogSource,
-    LogLevelMapping, LogFilterConfig
+    ConsoleLogEntry,
+    ConsoleLogLevel,
+    ConsoleLogSource,
+    LogFilterConfig,
+    LogLevelMapping,
 )
 
 

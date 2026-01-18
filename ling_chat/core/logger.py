@@ -1,13 +1,13 @@
 # logger.py
 import logging
-import sys
-import time
-import threading
-from datetime import datetime
 import os
-import re
 import random
-from typing import Optional, List
+import re
+import sys
+import threading
+import time
+from datetime import datetime
+from typing import List, Optional
 
 from ling_chat.utils.runtime_path import user_data_path
 
@@ -216,10 +216,10 @@ class Logger:
                 return
 
             self._stop_animation_event.clear()
-            
+
             if animation_style == "auto":
                 animation_style = random.choice(list(self.ANIMATION_STYLES.keys()))
-            
+
             animation_chars = self.ANIMATION_STYLES.get(
                 animation_style,
                 self.ANIMATION_STYLES[self.DEFAULT_ANIMATION_STYLE]

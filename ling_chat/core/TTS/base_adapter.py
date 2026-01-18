@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 
 class TTSBaseAdapter(ABC):
