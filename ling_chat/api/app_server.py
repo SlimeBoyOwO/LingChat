@@ -53,25 +53,41 @@ def run_app():
         logger.info("正在启动HTTP服务器...")
         log_level = os.getenv("LOG_LEVEL", "info").lower()
         
-        # 更彻底地禁用 uvicorn 的默认日志配置
-        logging.getLogger("uvicorn").handlers.clear()
-        logging.getLogger("uvicorn.access").handlers.clear()
-        logging.getLogger("uvicorn.error").handlers.clear()
-        logging.getLogger("uvicorn.asgi").handlers.clear()
+        # 获取项目日志系统的底层logging.Logger实例
+        project_logger_instance = logger._logger  # 获取内部的logger实例
         
-        # 禁用 uvicorn 的 propagate，防止日志传播到根日志记录器
-        logging.getLogger("uvicorn").propagate = False
-        logging.getLogger("uvicorn.access").propagate = False
-        logging.getLogger("uvicorn.error").propagate = False
-        logging.getLogger("uvicorn.asgi").propagate = False
+        # 配置uvicorn日志，使用项目自定义的日志处理器
+        uvicorn_logger = logging.getLogger("uvicorn")
+        uvicorn_access_logger = logging.getLogger("uvicorn.access")
+        uvicorn_error_logger = logging.getLogger("uvicorn.error")
+        uvicorn_asgi_logger = logging.getLogger("uvicorn.asgi")
+        
+        # 添加项目日志处理器到uvicorn日志系统
+        for handler in project_logger_instance.handlers:
+            uvicorn_logger.addHandler(handler)
+            uvicorn_access_logger.addHandler(handler)
+            uvicorn_error_logger.addHandler(handler)
+            uvicorn_asgi_logger.addHandler(handler)
+        
+        # 设置日志级别
+        uvicorn_log_level = getattr(logging, log_level.upper(), logging.INFO)
+        uvicorn_logger.setLevel(uvicorn_log_level)
+        uvicorn_access_logger.setLevel(uvicorn_log_level)
+        uvicorn_error_logger.setLevel(uvicorn_log_level)
+        uvicorn_asgi_logger.setLevel(uvicorn_log_level)
+        
+        # 确保uvicorn日志不会传播到上级记录器，避免重复日志
+        uvicorn_logger.propagate = False
+        uvicorn_access_logger.propagate = False
+        uvicorn_error_logger.propagate = False
+        uvicorn_asgi_logger.propagate = False
         
         config = uvicorn.Config(
             app, 
             host=os.getenv('BACKEND_BIND_ADDR', '0.0.0.0'),
             port=int(os.getenv('BACKEND_PORT', '8765')),
             log_level=log_level,
-            log_config=None,  # 不使用 uvicorn 默认的日志配置
-            access_log=False  # 禁用访问日志
+            access_log=True  # 启用访问日志
         )
         global app_server
         app_server = uvicorn.Server(config)
