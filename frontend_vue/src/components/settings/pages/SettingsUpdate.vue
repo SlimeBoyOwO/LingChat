@@ -9,6 +9,7 @@
       </div>
       <div v-else class="connection-status success">
         <p>✅ 已连接到更新服务</p>
+        <Button type="big" @click="refreshUpdateStatus">刷新更新状态</Button>
       </div>
     </MenuItem>
 
@@ -181,8 +182,7 @@ export default {
       showRollbackDialog: false,
       showBackupDialog: false,
 
-      // 轮询状态更新的定时器
-      statusPolling: null,
+      // 轮询状态更新的定时器 - 已移除自动轮询功能
     }
   },
 
@@ -191,7 +191,7 @@ export default {
   },
 
   beforeUnmount() {
-    this.stopStatusPolling()
+    // 移除定时器清理逻辑，因为不再使用自动轮询
   },
 
   computed: {
@@ -230,7 +230,8 @@ export default {
           this.errorMessage = ''
           this.loadAppInfo()
           this.loadConfig()
-          this.startStatusPolling()
+          // 移除自动轮询，改为只在连接成功后获取一次状态
+          await this.getUpdateStatus()
           console.log('成功连接到更新服务')
         }
       } catch (error) {
@@ -243,9 +244,15 @@ export default {
           setTimeout(() => this.checkBackendConnection(), 2000)
         } else {
           this.errorMessage = `无法连接到更新服务。请确保主应用服务正在运行。错误: ${error.message}`
-          this.stopStatusPolling()
         }
       }
+    },
+
+    // 刷新更新状态 - 提供给用户手动刷新
+    async refreshUpdateStatus() {
+      if (!this.backendConnected) return
+      
+      await this.getUpdateStatus()
     },
 
     // 加载应用信息
@@ -298,21 +305,6 @@ export default {
       }
     },
 
-    // 开始轮询状态
-    startStatusPolling() {
-      this.stopStatusPolling() // 先停止现有的轮询
-      this.statusPolling = setInterval(async () => {
-        await this.getUpdateStatus()
-      }, 1000) // 每秒更新一次状态
-    },
-
-    // 停止轮询状态
-    stopStatusPolling() {
-      if (this.statusPolling) {
-        clearInterval(this.statusPolling)
-        this.statusPolling = null
-      }
-    },
 
     // 获取更新状态
     async getUpdateStatus() {
@@ -403,6 +395,8 @@ export default {
         const response = await axios.post(`${this.apiBaseUrl}/check`, {}, { timeout: 10000 })
         if (response.data && response.data.success) {
           this.progressMessage = '正在检查更新...'
+          // 检查更新后立即获取最新状态
+          await this.getUpdateStatus()
         } else {
           this.errorMessage = response.data.error || '检查更新失败'
         }
@@ -436,6 +430,8 @@ export default {
 
         if (response.data && response.data.success) {
           this.progressMessage = '开始下载更新...'
+          // 开始更新后立即获取最新状态
+          await this.getUpdateStatus()
         } else {
           this.errorMessage = response.data.error || '开始更新失败'
         }
@@ -471,6 +467,8 @@ export default {
 
         if (response.data && response.data.success) {
           this.progressMessage = '正在回滚...'
+          // 开始回滚后立即获取最新状态
+          await this.getUpdateStatus()
         } else {
           this.errorMessage = response.data.error || '开始回滚失败'
         }
