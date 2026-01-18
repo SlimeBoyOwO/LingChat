@@ -361,3 +361,49 @@
         *   开始剧本: `{"type": "message", "content": "/开始剧本"}`
     *   **接收 (Server -> Client)**:
         *   消息格式通常包含 `type` (reply/player/background等), `message`, `emotion`, `audioFile` 等字段（参考 `core/schemas/responses.py`）。
+
+### 7.1 成就系统消息
+
+成就系统使用 WebSocket 进行实时通信，支持前端请求解锁和后端推送解锁通知。
+
+#### 7.1.1 请求解锁 (Client -> Server)
+
+前端判断达成成就条件后，发送此消息请求解锁成就。
+
+*   **Type**: `achievement.unlock_request`
+*   **Data**:
+
+```json
+{
+    "type": "achievement.unlock_request",
+    "data": {
+        "id": "achievement_id",  // 可选，不填则由系统生成或校验
+        "title": "首次对话",
+        "message": "与钦灵完成了第一次对话",
+        "type": "common",      // common | rare
+        "imgUrl": "path/to/icon.png", // 可选
+        "audioUrl": "path/to/sound.mp3", // 可选
+        "duration": 3500       // 可选
+    }
+}
+```
+
+#### 7.1.2 解锁通知 (Server -> Client)
+
+后端确认解锁成就后（或主动推送成就时），广播此消息。
+
+*   **Type**: `achievement.unlocked`
+*   **Data**:
+
+```json
+{
+    "type": "achievement.unlocked",
+    "data": {
+        "id": "achievement_id",
+        "title": "首次对话",
+        "message": "与钦灵完成了第一次对话",
+        "type": "common"
+        // ... 其他字段同请求
+    }
+}
+```
