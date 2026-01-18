@@ -1,7 +1,7 @@
 <template>
   <MenuPage>
     <div
-      class="w-full max-w-6xl h-[87vh] glass-panel bg-white/10 rounded-2xl overflow-hidden flex flex-col md:flex-row"
+      class="w-full max-w-6xl flex-1 glass-panel bg-white/10 rounded-2xl overflow-hidden flex flex-col md:flex-row"
     >
       <!-- 导航菜单 (左侧) -->
       <aside class="w-full md:w-64 p-6 flex flex-col border-r border-cyan-300">
