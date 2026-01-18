@@ -39,6 +39,7 @@ interface UIState {
   characterVolume: number
   backgroundVolume: number
   bubbleVolume: number
+  achievementVolume: number
   autoMode: boolean
   showCommandWheel: boolean
 
@@ -84,6 +85,7 @@ export const useUIStore = defineStore('ui', {
     characterVolume: 80,
     backgroundVolume: 80,
     bubbleVolume: 80,
+    achievementVolume: 80,
     autoMode: false,
     showCommandWheel: true,
 
