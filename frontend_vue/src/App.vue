@@ -4,13 +4,16 @@
 
   <!-- 全局通知组件（直接从 uiStore 读取状态） -->
   <Notification />
+  <AchievementToast />
 </template>
 
 <script setup>
 import { onMounted, onUnmounted } from 'vue'
 import CursorEffects from './components/effects/CursorEffects.vue'
 import Notification from './components/ui/Notification.vue'
+import AchievementToast from './components/ui/AchievementToast.vue'
 import { initUIStore } from './stores/modules/ui/ui'
+import { useAchievementStore } from './stores/modules/ui/achievement'
 
 // 在使用 <router-view> 的情况下，通常不需要在这里再导入具体的页面组件了
 
@@ -33,6 +36,11 @@ const handleKeyDown = (event) => {
 onMounted(() => {
   // 初始化 UI Store（加载角色 tips）
   initUIStore()
+
+  // 供控制台测试用
+  const achievementStore = useAchievementStore()
+  // @ts-ignore
+  window.showAchievement = (data) => achievementStore.addAchievement(data)
 
   // 等待 pywebview API 准备就绪
   window.addEventListener('pywebviewready', () => {
