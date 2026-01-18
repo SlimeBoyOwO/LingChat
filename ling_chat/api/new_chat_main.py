@@ -82,6 +82,14 @@ class WebSocketManager:
             await websocket.send_json({"type": "pong"})
         elif message_type == 'message':
             await self._handle_user_message(client_id, message)
+        elif message_type == 'achievement.unlock_request':
+            # 处理前端发来的成就解锁请求
+            achievement_data = message.get('data', {})
+            logger.info(f"收到成就解锁请求: {achievement_data}")
+            
+            # 这里可以添加校验逻辑，验证是否真的达成成就，以及做记录，更新game_data/achievement.json
+            # TODO: 目前直接回传解锁消息
+            await self.broadcast_achievement_unlock(achievement_data, client_id)
         else:
             logger.warning(f"未知消息类型: {message_type}")
 
@@ -140,6 +148,24 @@ class WebSocketManager:
                 await self.active_connections[client_id].send_json(message)
             except Exception as e:
                 logger.error(f"直接发送消息失败: {e}")
+
+    async def broadcast_achievement_unlock(self, achievement_data: dict, target_client_id: str = None):
+        """
+        向客户端广播成就解锁消息
+        :param achievement_data: 成就数据，应包含 id, title, message, type (common/rare) 等
+        :param target_client_id: 如果指定，只发送给该客户端；否则广播给所有（虽然后端架构目前是一对一，但保留广播能力）
+        """
+        message = {
+            "type": "achievement.unlocked",
+            "data": achievement_data
+        }
+        
+        if target_client_id:
+            await self.send_to_client(target_client_id, message)
+        else:
+            # 广播给所有连接
+            for client_id in self.active_connections:
+                await self.send_to_client(client_id, message)
 
 # 改进的端点函数
 async def websocket_endpoint(websocket: WebSocket):

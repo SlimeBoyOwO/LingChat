@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { registerHandler, sendWebSocketMessage } from '@/api/websocket'
 
 export type AchievementType = 'common' | 'rare'
 
@@ -60,5 +61,46 @@ export const useAchievementStore = defineStore('achievement', {
         this.processQueue()
       }, 500)
     },
+
+    /**
+     * 通知后端请求解锁成就
+     */
+    notifyBackendUnlock(achievementData: Omit<Achievement, 'id'>) {
+      sendWebSocketMessage('achievement.unlock_request', achievementData)
+    },
+
+    /**
+     * 监听后端推送的成就解锁消息
+     */
+    listenForUnlocks() {
+      registerHandler('achievement.unlocked', (message) => {
+        if (message.data) {
+          const { id, title, message: msg, type, imgUrl, audioUrl, duration } = message.data
+          // 如果后端没传id，我们自己生成一个，但理想情况下应该用后端的
+          if (!id) {
+             this.addAchievement({
+                title,
+                message: msg,
+                type,
+                imgUrl,
+                audioUrl,
+                duration: duration || DEFAULT_DURATION
+             })
+          } else {
+             // 如果后端传了完整数据
+             this.queue.push({
+                id,
+                title,
+                message: msg,
+                type,
+                imgUrl,
+                audioUrl,
+                duration: duration || DEFAULT_DURATION
+             })
+             this.processQueue()
+          }
+        }
+      })
+    }
   },
 })

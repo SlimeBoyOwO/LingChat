@@ -37,10 +37,12 @@ onMounted(() => {
   // 初始化 UI Store（加载角色 tips）
   initUIStore()
 
-  // 供控制台测试用
+  // 供成就系统控制台测试用，在 window 对象中注册一些方法
   const achievementStore = useAchievementStore()
-  // @ts-ignore
+  window.requestAchievementUnlock = (data) => achievementStore.notifyBackendUnlock(data)
   window.showAchievement = (data) => achievementStore.addAchievement(data)
+  // 成就系统启动WebSocket监听
+  achievementStore.listenForUnlocks()
 
   // 等待 pywebview API 准备就绪
   window.addEventListener('pywebviewready', () => {
