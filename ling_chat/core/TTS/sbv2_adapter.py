@@ -1,16 +1,18 @@
-import aiohttp
 import os
-from ling_chat.core.TTS.base_adapter import TTSBaseAdapter
+
+import aiohttp
+
 from ling_chat.core.logger import logger
+from ling_chat.core.TTS.base_adapter import TTSBaseAdapter
 
 
 class SBV2Adapter(TTSBaseAdapter):
-    def __init__(self, speaker_id: int=0, model_name: str="", 
+    def __init__(self, speaker_id: int=0, model_name: str="",
                  audio_format: str="wav", lang: str="JP"):
         # 将 lang 参数转换为 "JP"以适配sbv2的需求
         if lang == "ja":
             lang = "JP"
-        
+
         api_url = os.environ.get("STYLE_BERT_VITS2_URL", "http://127.0.0.1:5000")
         # 处理URL末尾斜杠，避免重复
         self.api_url = api_url.rstrip('/')
@@ -39,7 +41,7 @@ class SBV2Adapter(TTSBaseAdapter):
         # 设置正确的Accept头
         content_types = {
             "wav": "audio/wav",
-            "flac": "audio/flac", 
+            "flac": "audio/flac",
             "mp3": "audio/mpeg",
             "aac": "audio/aac",
             "ogg": "audio/ogg"

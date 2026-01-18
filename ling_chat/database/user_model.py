@@ -1,5 +1,6 @@
+from typing import Dict, Optional
+
 from ling_chat.database.database import get_db_connection
-from typing import Optional, Dict
 
 
 class UserModel:

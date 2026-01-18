@@ -1,6 +1,8 @@
-from typing import Dict, Any
+from typing import Any, Dict
+
 from ling_chat.core.logger import logger
 from ling_chat.core.messaging.broker import message_broker
+
 
 class ScriptFunction:
     @staticmethod
@@ -11,13 +13,13 @@ class ScriptFunction:
         try:
             # 订阅特定的输入频道
             subscription = message_broker.subscribe("ai_script_input_" + client_id)
-            
+
             # 使用异步for循环来消费消息
             async for message in subscription:
                 user_input = ScriptFunction.extract_user_input(message)
                 if user_input:
                     return user_input
-                    
+
         except Exception as e:
             logger.error(f"等待用户输入时发生错误: {e}")
             return ""
@@ -73,7 +75,7 @@ class ScriptFunction:
                         send_message_main += f"{player_parts[-1]}"
                     else:
                         send_message_helper += f"{user_name}: \n" + "\n".join(player_parts) + "\n"
-                    
+
                     player_parts.clear()
                 if ai_parts:
                     # send_message_main += "".join(ai_parts)
@@ -111,7 +113,7 @@ class ScriptFunction:
                     memory.append({"role": "assistant", "content": ai_message})
                     ai_parts.clear()
                     ai_message = ""
-            
+
             # 假如所有的对话都完成了
             if next_character == "none":
 
@@ -125,12 +127,12 @@ class ScriptFunction:
                         send_message_main += f"{player_parts[-1]}"
                     else:
                         send_message_helper += f"{user_name}: \n" + "\n".join(player_parts) + "\n"
-                    
+
                     player_parts.clear()
                 if ai_parts:
                     # send_message_main += "".join(ai_parts)
                     ai_parts.clear()
-                
+
                 # 把剩余的对话都打包好
                 final_message = ""
                 if send_message_helper:
@@ -138,5 +140,5 @@ class ScriptFunction:
                 final_message += send_message_main + send_message_tail
 
                 memory.append({"role": "user", "content": final_message})
-            
+
             last_character = current_character

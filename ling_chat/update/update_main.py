@@ -1,7 +1,8 @@
 import json
 from pathlib import Path
 from typing import Optional
-from ling_chat.update.update_core import UpdateManager, MyUpdateStrategy
+
+from ling_chat.update.update_core import MyUpdateStrategy, UpdateManager
 
 
 def load_version_from_file(version_path: Optional[str] = None) -> str:
@@ -107,7 +108,7 @@ class MyApplication:
         if not self.update_manager.download_update():
             return False
         return self.update_manager.apply_update(backup=backup)
-    
+
     def apply_pending_update(self, backup: bool = False) -> bool:
         return self.start_update(backup=backup)
 
@@ -123,14 +124,14 @@ class MyApplication:
                 self.update_manager._update_info = self._pending_update
             else:
                 raise RuntimeError("没有可用的更新信息，请先 manual_check_update()")
-        
+
         # 使用新的连续更新方法
         if hasattr(self.update_manager, 'perform_continuous_update'):
             return self.update_manager.perform_continuous_update(backup=backup)
         else:
             # 回退到原有逻辑
             return self.start_update(backup=backup)
-    
+
     def get_update_chain_info(self):
         """获取更新链信息"""
         update_info = self.update_manager.get_update_info()

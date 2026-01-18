@@ -1,7 +1,9 @@
 # response_factory.py
-from .responses import *
-from typing import Dict
 import os
+from typing import Dict
+
+from .responses import *
+
 
 class ResponseFactory:
     @staticmethod
@@ -16,7 +18,7 @@ class ResponseFactory:
             originalMessage=user_message,
             isFinal=is_final
         )
-    
+
     @staticmethod
     def create_error_reply(error_message: str) -> ReplyResponse:
         return ReplyResponse(
@@ -29,15 +31,15 @@ class ResponseFactory:
             originalMessage="",
             isFinal=True
         )
-    
+
     @staticmethod
     def create_input(hint: str, **kwargs) -> ScriptInputResponse:
         return ScriptInputResponse(hint=hint, isFinal=True, **kwargs)
-    
+
     @staticmethod
     def create_background(image: str, **kwargs) -> ScriptBackgroundResponse:
         return ScriptBackgroundResponse(imagePath=image, **kwargs)
-    
+
     @staticmethod
     def create_background_effect(effect: str, **kwargs) -> ScriptBackgroundEffectResponse:
         return ScriptBackgroundEffectResponse(effect=effect, **kwargs)
@@ -45,11 +47,11 @@ class ResponseFactory:
     @staticmethod
     def create_sound(sound: str, **kwargs) -> ScriptSoundResponse:
         return ScriptSoundResponse(soundPath=sound, **kwargs)
-    
+
     @staticmethod
     def create_music(music: str, **kwargs) -> ScriptMusicResponse:
         return ScriptMusicResponse(musicPath=music, **kwargs)
-    
+
     @staticmethod
     def create_narration(text: str) -> ScriptNarrationResponse:
         return ScriptNarrationResponse(text=text)

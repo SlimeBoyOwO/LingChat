@@ -1,7 +1,9 @@
-from fastapi import APIRouter
-from ling_chat.utils.runtime_path import static_path
-from ling_chat.api.frontend_routes import get_file_response
 import os
+
+from fastapi import APIRouter
+
+from ling_chat.api.frontend_routes import get_file_response
+from ling_chat.utils.runtime_path import static_path
 
 router = APIRouter(prefix="/api/v1/chat/background", tags=["Chat Character"])
 

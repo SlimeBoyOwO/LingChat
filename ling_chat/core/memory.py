@@ -1,12 +1,13 @@
-import os
-import json
 import asyncio
+import json
+import os
 import time
-from typing import List, Dict
+from typing import Dict, List
 
-from ling_chat.core.logger import logger, TermColors
-from ling_chat.utils.runtime_path import user_data_path
 from ling_chat.core.llm_providers.manager import LLMManager
+from ling_chat.core.logger import TermColors, logger
+from ling_chat.utils.runtime_path import user_data_path
+
 
 class MemorySystem:
     '''
@@ -21,15 +22,15 @@ class MemorySystem:
     def __init__(self, config, character_id: int):
         self.character_id = character_id if character_id is not None else 0
         self.config = config
-        
+
         # 多少条新消息触发一次总结 (例如 50)
         self.update_interval = self._safe_read_int("MEMORY_UPDATE_INTERVAL", 50)
         # 总结后保留多少条作为上下文重叠 (例如 15)
         self.recent_window = self._safe_read_int("MEMORY_RECENT_WINDOW", 15)
-        
+
         self.is_updating = False
         self.last_processed_idx = 0
-        
+
         # 记忆数据结构，可以改
         self.memory_data = {
             "short_term": "暂无近期对话摘要。",
@@ -37,14 +38,14 @@ class MemorySystem:
             "user_info": "暂无用户特征记录。",
             "promises": "暂无未完成的约定。"
         }
-        
+
         self.memory_dir = user_data_path / "game_data" / "memory"
         self.memory_file = self.memory_dir / f"char_{self.character_id}_structured.json"
-        
+
         self.llm = LLMManager()
-        
+
         self._init_prompts()
-        
+
         self._load_memory()
 
     def initialize(self) -> bool:
@@ -161,11 +162,11 @@ class MemorySystem:
     def trigger_update(self, history_messages: List[Dict]):
         """启动后台更新任务"""
         self.is_updating = True
-        
+
         new_msgs = history_messages[self.last_processed_idx:]
-        
+
         target_idx = len(history_messages)
-        
+
         chat_text = ""
         for msg in new_msgs:
             role = "User" if msg['role'] == 'user' else "AI"
@@ -192,20 +193,20 @@ class MemorySystem:
             async def update_section(section_key: str):
                 old_content = self.memory_data.get(section_key, "")
                 prompt_req = self.section_prompts[section_key]
-                
+
                 full_prompt = (
                     f"{prompt_req}\n\n"
                     f"【旧内容】：\n{old_content}\n\n"
                     f"【新增对话】：\n{chat_text}\n\n"
                     f"【新内容】(直接输出结果，不要废话)："
                 )
-                
+
                 messages = [{"role": "user", "content": full_prompt}]
                 response = await loop.run_in_executor(None, self.llm.process_message, messages)
-                
+
                 cleaned = response.strip()
-                if not cleaned: 
-                    return section_key, old_content 
+                if not cleaned:
+                    return section_key, old_content
                 return section_key, cleaned
 
             tasks = [
@@ -214,15 +215,15 @@ class MemorySystem:
                 update_section("user_info"),
                 update_section("promises")
             ]
-            
+
             results = await asyncio.gather(*tasks)
-            
+
             for key, new_val in results:
                 self.memory_data[key] = new_val
 
             self.last_processed_idx = new_total_idx
             self.save_memory()
-            
+
             logger.info_color(f"Memory: 记忆库更新完成! 指针已移动至 {self.last_processed_idx}，耗时 {time.time() - start_time:.2f}s", TermColors.GREEN)
 
         except Exception as e:

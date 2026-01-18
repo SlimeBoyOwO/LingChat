@@ -1,8 +1,12 @@
-from openai import OpenAI
-from .base import BaseLLMProvider
-from typing import Dict, List, AsyncGenerator
-from ling_chat.core.logger import logger
 import os
+from typing import AsyncGenerator, Dict, List
+
+from openai import OpenAI
+
+from ling_chat.core.logger import logger
+
+from .base import BaseLLMProvider
+
 
 class LMStudioProvider(BaseLLMProvider):
     def __init__(self):
@@ -42,7 +46,7 @@ class LMStudioProvider(BaseLLMProvider):
                 **self._create_api_request(messages, stream=False)
             )
             return response.choices[0].message.content
-            
+
         except Exception as e:
             logger.error(f"LM Studio API request failed: {str(e)}")
             raise

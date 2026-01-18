@@ -77,7 +77,7 @@ src = ["ling_chat", "tests"]
 # 启用pycodestyle errors (E), warnings (W), pyflakes (F), isort (I), flake8-comprehensions (C), flake8-bugbear (B)
 select = ["E", "W", "F", "I", "C", "B"]
 # 忽略行长度过长的错误，由格式化工具处理
-ignore = ["E501"]
+ignore = ["E501", "C901"]
 
 # 为__init__.py文件忽略未使用的导入（F401）
 [tool.ruff.lint.per-file-ignores]

@@ -5,9 +5,9 @@ from typing import List, Optional
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+
 from ling_chat.core.emotion.classifier import EmotionClassifier
 from ling_chat.utils.function import Function
-
 
 classifier = None  # 初始化分类器
 

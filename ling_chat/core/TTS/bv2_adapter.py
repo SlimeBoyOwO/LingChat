@@ -1,10 +1,13 @@
-import aiohttp
 import os
-from ling_chat.core.TTS.base_adapter import TTSBaseAdapter
+
+import aiohttp
+
 from ling_chat.core.logger import logger
+from ling_chat.core.TTS.base_adapter import TTSBaseAdapter
+
 
 class BV2Adapter(TTSBaseAdapter):
-    def __init__(self, speaker_id: int=0, 
+    def __init__(self, speaker_id: int=0,
                  audio_format: str="wav", lang: str="zh"):
         api_url = os.environ.get("SIMPLE_VITS_API_URL", "http://127.0.0.1:6006")
         # 处理URL末尾斜杠，避免重复
@@ -28,12 +31,12 @@ class BV2Adapter(TTSBaseAdapter):
 
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                self.api_url + "/voice/bert-vits2", 
+                self.api_url + "/voice/bert-vits2",
                 json=params
             ) as response:
                 if response.status != 200:
                     raise RuntimeError(f"TTS请求失败: {await response.text()}")
                 return await response.read()
-    
+
     def get_params(self):
         return self.params

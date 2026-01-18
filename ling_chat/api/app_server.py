@@ -1,7 +1,7 @@
-import os
-import threading
 import asyncio
 import logging
+import os
+import threading
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -52,38 +52,38 @@ def run_app():
     try:
         logger.info("正在启动HTTP服务器...")
         log_level = os.getenv("LOG_LEVEL", "info").lower()
-        
+
         # 获取项目日志系统的底层logging.Logger实例
         project_logger_instance = logger._logger  # 获取内部的logger实例
-        
+
         # 配置uvicorn日志，使用项目自定义的日志处理器
         uvicorn_logger = logging.getLogger("uvicorn")
         uvicorn_access_logger = logging.getLogger("uvicorn.access")
         uvicorn_error_logger = logging.getLogger("uvicorn.error")
         uvicorn_asgi_logger = logging.getLogger("uvicorn.asgi")
-        
+
         # 添加项目日志处理器到uvicorn日志系统
         for handler in project_logger_instance.handlers:
             uvicorn_logger.addHandler(handler)
             uvicorn_access_logger.addHandler(handler)
             uvicorn_error_logger.addHandler(handler)
             uvicorn_asgi_logger.addHandler(handler)
-        
+
         # 设置日志级别
         uvicorn_log_level = getattr(logging, log_level.upper(), logging.INFO)
         uvicorn_logger.setLevel(uvicorn_log_level)
         uvicorn_access_logger.setLevel(uvicorn_log_level)
         uvicorn_error_logger.setLevel(uvicorn_log_level)
         uvicorn_asgi_logger.setLevel(uvicorn_log_level)
-        
+
         # 确保uvicorn日志不会传播到上级记录器，避免重复日志
         uvicorn_logger.propagate = False
         uvicorn_access_logger.propagate = False
         uvicorn_error_logger.propagate = False
         uvicorn_asgi_logger.propagate = False
-        
+
         config = uvicorn.Config(
-            app, 
+            app,
             host=os.getenv('BACKEND_BIND_ADDR', '0.0.0.0'),
             port=int(os.getenv('BACKEND_PORT', '8765')),
             log_level=log_level,

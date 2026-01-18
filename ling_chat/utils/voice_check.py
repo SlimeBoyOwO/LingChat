@@ -1,10 +1,11 @@
-import threading
 import subprocess
+import threading
 from pathlib import Path
 
-from ling_chat.utils.function import Function
 from ling_chat.core.logger import logger
+from ling_chat.utils.function import Function
 from ling_chat.utils.runtime_path import third_party_path
+
 
 class VoiceCheck:
     @staticmethod

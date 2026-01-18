@@ -1,14 +1,15 @@
 import os
+import shutil
 import signal
 import time
-import shutil
 from typing import Collection
 
-from ling_chat.utils.runtime_path import user_data_path, third_party_path, static_path
-from ling_chat.utils.easter_egg import get_random_loading_message
 from ling_chat.core.logger import logger
-from ling_chat.utils.cli_parser import get_parser
 from ling_chat.third_party import install_third_party, run_third_party
+from ling_chat.utils.cli_parser import get_parser
+from ling_chat.utils.easter_egg import get_random_loading_message
+from ling_chat.utils.runtime_path import static_path, third_party_path, user_data_path
+
 
 def check_static_copy():
     """检查静态文件是否已经复制"""
@@ -23,7 +24,7 @@ def check_static_copy():
             if not os.path.exists(user_data_path / "game_data" / sub_dir):
                 shutil.copytree(static_path / "game_data" / sub_dir, user_data_path / "game_data" / sub_dir)
                 logger.info(f"检测到缺少文件，静态文件已复制到用户目录: {sub_dir}")
-    
+
 
 def handle_install(install_modules_list: Collection[str], use_mirror=False):
     """处理安装模块"""
@@ -73,8 +74,8 @@ def run_main_program(args):
     from ling_chat.api.app_server import run_app_in_thread
     from ling_chat.core.webview import start_webview
     from ling_chat.utils.cli import print_logo
-    from ling_chat.utils.voice_check import VoiceCheck
     from ling_chat.utils.function import Function
+    from ling_chat.utils.voice_check import VoiceCheck
 
     # 控制程序退出
     should_exit = False
@@ -98,7 +99,7 @@ def run_main_program(args):
     gui_enabled = (not args.nogui) and (os.getenv('OPEN_FRONTEND_APP', 'false').lower() == "true")
     if args.nogui:
         logger.info("启用无界面模式，前端界面已禁用")
-    
+
     # handle_install(install_modules) TODO: 未来版本可能会启用自动安装功能
 
     # 启动加载动画
@@ -118,7 +119,7 @@ def run_main_program(args):
         VoiceCheck.main()
     else:
         logger.info("已根据环境变量禁用语音检查")
-        
+
     # 检查环境变量决定是否启动前端界面
     if os.getenv("OPEN_FRONTEND_APP", "false").lower() == "true" or gui_enabled:  # fixme: 请使用 --run webview 启动前端界面
         logger.stop_loading_animation(success=True, final_message="应用加载成功")

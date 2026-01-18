@@ -1,7 +1,10 @@
 # responses.py
-from pydantic import BaseModel
-from .response_types import ResponseType
 from typing import Optional, Union
+
+from pydantic import BaseModel
+
+from .response_types import ResponseType
+
 
 class BaseResponse(BaseModel):
     type: str

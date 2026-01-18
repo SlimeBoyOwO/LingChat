@@ -1,25 +1,25 @@
 import asyncio
 import os
 import time
-from typing import List, Dict, Optional, AsyncGenerator
+from typing import AsyncGenerator, Dict, List, Optional
 
-from ling_chat.core.ai_service.ai_logger import logger
+from ling_chat.core.ai_service.ai_logger import AILogger, logger
 from ling_chat.core.ai_service.config import AIServiceConfig
 from ling_chat.core.ai_service.message_processor import MessageProcessor
-from ling_chat.core.ai_service.voice_maker import VoiceMaker
-from ling_chat.core.llm_providers.manager import LLMManager
-from ling_chat.core.ai_service.translator import Translator
-from ling_chat.core.ai_service.rag_manager import RAGManager
-from ling_chat.utils.function import Function
-from ling_chat.core.logger import logger
-from ling_chat.core.ai_service.ai_logger import AILogger
-
-from ling_chat.core.schemas.responses import ReplyResponse
-from ling_chat.core.schemas.response_models import ResponseFactory
-
-from ling_chat.core.ai_service.message_system.response_publisher import ResponsePublisher
+from ling_chat.core.ai_service.message_system.response_publisher import (
+    ResponsePublisher,
+)
 from ling_chat.core.ai_service.message_system.sentence_comsumer import SentenceConsumer
 from ling_chat.core.ai_service.message_system.stream_producer import StreamProducer
+from ling_chat.core.ai_service.rag_manager import RAGManager
+from ling_chat.core.ai_service.translator import Translator
+from ling_chat.core.ai_service.voice_maker import VoiceMaker
+from ling_chat.core.llm_providers.manager import LLMManager
+from ling_chat.core.logger import logger
+from ling_chat.core.schemas.response_models import ResponseFactory
+from ling_chat.core.schemas.responses import ReplyResponse
+from ling_chat.utils.function import Function
+
 
 class MessageGenerator:
     def __init__(self,
@@ -48,7 +48,7 @@ class MessageGenerator:
         """处理单个句子的情绪分析、翻译和语音合成"""
         if not sentence:
             return
-        
+
          # 使用analyze_emotions处理句子 返回情绪-中文-日文等信息
         sentence_segments:List[Dict] = self.message_processor.analyze_emotions(sentence)
         if not sentence_segments:
@@ -89,14 +89,14 @@ class MessageGenerator:
                 self.rag_manager.rag_append_sys_message(current_context, rag_messages, processed_user_message)
 
             if logger.should_print_context():
-                self.ai_logger.print_debug_message(current_context, rag_messages, self.memory) 
+                self.ai_logger.print_debug_message(current_context, rag_messages, self.memory)
 
         # 2. 管道组件的共享状态
         sentence_queue = asyncio.Queue(maxsize=self.concurrency * 2)
         results_store: Dict[int, ReplyResponse] = {}
         publish_events: Dict[int, asyncio.Event] = {}
         output_queue = asyncio.Queue()
-        
+
         # 用于优雅管理所有后台任务的列表
         background_tasks = []
         accumulated_response = ""
@@ -132,13 +132,13 @@ class MessageGenerator:
             while True:
                 # 创建一个获取队列的任务
                 queue_get_task = asyncio.create_task(output_queue.get())
-                
+
                 # 同时等待队列和producer任务，看哪个先完成
                 done, pending = await asyncio.wait(
                     [queue_get_task, producer_task],
                     return_when=asyncio.FIRST_COMPLETED
                 )
-                
+
                 # 检查 producer_task 是否出错
                 if producer_task in done:
                     # 取消队列获取任务
@@ -147,12 +147,12 @@ class MessageGenerator:
                         await queue_get_task
                     except asyncio.CancelledError:
                         pass
-                    
+
                     # 检查 producer 是否有异常
                     producer_exception = producer_task.exception()
                     if producer_exception is not None:
                         raise producer_exception
-                    
+
                     # 如果 producer 正常完成但队列还没有数据，继续等待队列
                     if queue_get_task not in done:
                         response = await output_queue.get()
@@ -160,21 +160,21 @@ class MessageGenerator:
                         response = queue_get_task.result()
                 else:
                     response = queue_get_task.result()
-                
+
                 yield response
                 # 当收到最终消息时循环自然结束
                 if response.isFinal:
                     break
-            
+
             # 5. 优雅关闭和后续处理
-            
+
             # 现在可以安全地等待producer_task以获取完整响应
             # 当上面的while循环完成时，生产者任务也必须完成
             accumulated_response = await producer_task
 
             # 等待消费者完成队列中的任何剩余项目
             await sentence_queue.join()
-            
+
             # 向消费者发送停止信号
             for _ in range(self.concurrency):
                 await sentence_queue.put(None)
@@ -202,12 +202,12 @@ class MessageGenerator:
 
         except Exception as e:
             logger.error(f"消息流管道中发生错误: {e}", exc_info=True)
-            
+
             # 准备错误代码（前端负责翻译）
             from ling_chat.core.messaging.broker import message_broker
             error_message = str(e)
             error_code = "default_error"  # 默认错误代码
-            
+
             # 检查错误类型，确定错误代码
             if "401" in error_message or "Api key is invalid" in error_message or "AuthenticationError" in str(type(e)):
                 error_code = "401"
@@ -215,17 +215,17 @@ class MessageGenerator:
                 error_code = "404"
             elif "网络" in error_message or "connection" in error_message.lower():
                 error_code = "network_error"
-            
+
             # 1. 发送错误代码到前端（由前端翻译显示弹窗）
             error_data = {
                 "type": "error",
                 "error_code": error_code,
                 "detail": str(e)  # 原始错误信息，用于调试
             }
-            
+
             for client_id in self.config.clients:
                 await message_broker.publish(client_id, error_data)
-            
+
             # 2. 发送状态重置消息，让前端回到输入状态
             reset_data = {
                 "type": "status_reset",
@@ -233,7 +233,7 @@ class MessageGenerator:
             }
             for client_id in self.config.clients:
                 await message_broker.publish(client_id, reset_data)
-            
+
             # 3. 同时生成错误响应对象（供后端调用方使用）
             error_response = ResponseFactory.create_error_reply(str(e))
             yield error_response
@@ -244,4 +244,3 @@ class MessageGenerator:
                     task.cancel()
             await asyncio.gather(*background_tasks, return_exceptions=True)
             logger.info("消息流处理完成，所有任务已清理完毕。")
-            

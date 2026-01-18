@@ -1,10 +1,11 @@
-from ling_chat.core.llm_providers.web_llm import WebLLMProvider
-from ling_chat.core.llm_providers.ollama import OllamaProvider
-from ling_chat.core.llm_providers.lmstudio import LMStudioProvider
-from ling_chat.core.llm_providers.gemini import GeminiProvider
 from ling_chat.core.llm_providers.base import BaseLLMProvider
+from ling_chat.core.llm_providers.gemini import GeminiProvider
+from ling_chat.core.llm_providers.lmstudio import LMStudioProvider
+from ling_chat.core.llm_providers.ollama import OllamaProvider
 from ling_chat.core.llm_providers.qwen_translate import QwenTranslateProvider
+from ling_chat.core.llm_providers.web_llm import WebLLMProvider
 from ling_chat.core.logger import logger
+
 
 class LLMProviderFactory:
     @staticmethod
@@ -18,7 +19,7 @@ class LLMProviderFactory:
         :return: 大模型提供者实例
         """
         provider_type = provider_type.lower()
-        
+
         try:
             if provider_type == "webllm":
                 logger.info("创建通用联网大模型服务提供商")

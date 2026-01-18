@@ -1,12 +1,12 @@
 from ling_chat.core.ai_service.script_engine.events.base_event import BaseEvent
 from ling_chat.core.ai_service.script_engine.utils.script_function import ScriptFunction
 from ling_chat.core.logger import logger
-
 from ling_chat.core.service_manager import service_manager
+
 
 class AIDialogueEvent(BaseEvent):
     """处理AI对话事件"""
-    
+
     async def execute(self):
         character = self.event_data.get('character', '')
         prompt = self.event_data.get('prompt', '')
@@ -16,7 +16,7 @@ class AIDialogueEvent(BaseEvent):
         if not character_obj:
             logger.error(f"Character memory not found for character: {character}")
             return
-        
+
         memory = character_obj.memory.copy()
 
         ScriptFunction.memory_builder(self.game_context, memory, character, prompt)
@@ -26,7 +26,7 @@ class AIDialogueEvent(BaseEvent):
         if not ai_service:
             logger.error("AI service not found")
             return
-        
+
         logger.info(f"AI Dialogue Event for character: {character} with memory: {memory}")
 
         responses = []
@@ -39,8 +39,8 @@ class AIDialogueEvent(BaseEvent):
                 'character': character,
                 'text': text,
             })
-        
-    
+
+
     @classmethod
     def can_handle(cls, event_type: str) -> bool:
         return event_type == 'ai_dialogue'
