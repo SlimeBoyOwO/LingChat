@@ -33,21 +33,39 @@ class AchievementTriggerHandler:
                     unlocked_achievements.append(res)
         else:
             # 聊天相关的成就可能一次触发多个
-            for func in [self._check_first_chat, self._check_night_owl]:
+            # 我们这里直接更新聊天进度，触发所有相关成就
+            chat_unlocks = self._update_chat_progress()
+            if chat_unlocks:
+                unlocked_achievements.extend(chat_unlocks)
+
+            # 其他条件触发
+            for func in [self._check_night_owl]:
                 res = func(message)
                 if res:
                     unlocked_achievements.append(res)
 
         return unlocked_achievements
 
-    def _check_first_chat(self, message: str) -> Optional[dict]:
-        """检查是否初次聊天"""
-        return self._try_unlock("first_chat")
+    def _update_chat_progress(self) -> List[dict]:
+        """更新聊天相关进度触发"""
+        unlocked = []
+
+        # 尝试增加 first_chat 进度 (target: 1)
+        res_first = achievement_manager.increment_progress("first_chat")
+        if res_first:
+            unlocked.append(res_first)
+
+        # 尝试增加 chat_master 进度 (target: 10)
+        res_master = achievement_manager.increment_progress("chat_master")
+        if res_master:
+            unlocked.append(res_master)
+
+        return unlocked
 
     def _check_first_pomodoro(self, message: str) -> Optional[dict]:
         """检查首次启动番茄钟成就"""
         if "我启动了番茄钟" in message:
-            return self._try_unlock("first_pomodoro")
+            return achievement_manager.increment_progress("first_pomodoro")
         return None
 
     def _check_night_owl(self, message: str) -> Optional[dict]:
@@ -55,17 +73,7 @@ class AchievementTriggerHandler:
         now = datetime.now()
         # 判断时间是否在 23:00 - 04:00 之间
         if now.hour >= 23 or now.hour < 4:
-            return self._try_unlock("night_owl")
+            return achievement_manager.increment_progress("night_owl")
         return None
-
-
-    def _try_unlock(self, achievement_id: str) -> Optional[dict]:
-        """辅助方法：尝试解锁"""
-        try:
-            return achievement_manager.unlock(achievement_id, {})
-        except Exception as e:
-            logger.error(f"处理成就 {achievement_id} 触发逻辑时出错: {e}")
-            return None
-
 
 achievement_trigger_handler = AchievementTriggerHandler.get_instance()
