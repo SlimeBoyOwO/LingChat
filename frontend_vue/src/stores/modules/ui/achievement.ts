@@ -45,11 +45,18 @@ export const useAchievementStore = defineStore('achievement', {
       const next = this.queue.shift()
       if (next) {
         this.current = next
+
+        this.current.duration = this.current.duration || DEFAULT_DURATION
+        this.current.audioUrl =
+          this.current.audioUrl ||
+          (this.current.type === 'common'
+            ? '/audio_effects/achievement_common.wav'
+            : '/audio_effects/achievement_rare.wav')
         this.isVisible = true
 
         setTimeout(() => {
           this.hideAchievement()
-        }, next.duration || DEFAULT_DURATION)
+        }, this.current.duration)
       }
     },
 
@@ -78,29 +85,29 @@ export const useAchievementStore = defineStore('achievement', {
           const { id, title, message: msg, type, imgUrl, audioUrl, duration } = message.data
           // 如果后端没传id，我们自己生成一个，但理想情况下应该用后端的
           if (!id) {
-             this.addAchievement({
-                title,
-                message: msg,
-                type,
-                imgUrl,
-                audioUrl,
-                duration: duration || DEFAULT_DURATION
-             })
+            this.addAchievement({
+              title,
+              message: msg,
+              type,
+              imgUrl,
+              audioUrl,
+              duration: duration || DEFAULT_DURATION,
+            })
           } else {
-             // 如果后端传了完整数据
-             this.queue.push({
-                id,
-                title,
-                message: msg,
-                type,
-                imgUrl,
-                audioUrl,
-                duration: duration || DEFAULT_DURATION
-             })
-             this.processQueue()
+            // 如果后端传了完整数据
+            this.queue.push({
+              id,
+              title,
+              message: msg,
+              type,
+              imgUrl,
+              audioUrl,
+              duration: duration || DEFAULT_DURATION,
+            })
+            this.processQueue()
           }
         }
       })
-    }
+    },
   },
 })
