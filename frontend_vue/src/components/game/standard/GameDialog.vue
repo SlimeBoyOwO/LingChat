@@ -78,13 +78,13 @@ const handleRightClick = (e: MouseEvent) => {
 
 const toggleTouchMode = () => {
   if (gameStore.command === 'touch') {
-    // Exit touch mode
+    // 离开触摸模式
     exitTouchMode()
   } else {
-    // Enter touch mode
+    // 进入触摸模式
     document.body.style.cursor = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' class='lucide lucide-hand-icon lucide-hand'%3E%3Cpath d='M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2'/%3E%3Cpath d='M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2'/%3E%3Cpath d='M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8'/%3E%3Cpath d='M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15'/%3E%3C/svg%3E") 0 0, auto`
     gameStore.command = 'touch'
-    // Add global right-click listener
+    // 右键退出触摸，只在触摸模式下生效
     document.addEventListener('contextmenu', handleRightClick)
   }
 }
@@ -92,7 +92,7 @@ const toggleTouchMode = () => {
 const exitTouchMode = () => {
   document.body.style.cursor = 'default'
   gameStore.command = null
-  // Remove global right-click listener
+  // 清除触摸模式下的右键监听
   document.removeEventListener('contextmenu', handleRightClick)
 }
 
