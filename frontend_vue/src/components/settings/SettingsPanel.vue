@@ -15,6 +15,7 @@
         @remove-more-menu-from-b="onAddFromB"
       />
       <SettingsHistory v-show="uiStore.currentSettingsTab === 'history'" />
+      <SettingsAchievement v-show="uiStore.currentSettingsTab === 'achievement'" />
       <SettingsSchedule v-show="uiStore.currentSettingsTab === 'schedule'" />
       <SettingsCharacter v-show="uiStore.currentSettingsTab === 'character'" />
       <SettingsBackground v-show="uiStore.currentSettingsTab === 'background'" />
@@ -34,6 +35,7 @@ import {
   SettingsCharacter,
   SettingsBackground,
   SettingsUpdate,
+  SettingsAchievement,
 } from './pages'
 import SettingsNav from './SettingsNav.vue'
 import { useUIStore } from '../../stores/modules/ui/ui'
