@@ -7,9 +7,6 @@
     <div :style="avatarStyles" class="avatar-img" id="qinling"></div>
     <div :class="bubbleClasses" :style="bubbleStyles" class="bubble"></div>
 
-    <!-- 指令盘组件 -->
-    <GameCommandWheel ref="commandWheelRef" :is-visible="uiStore.showCommandWheel" />
-
     <!-- 触摸区域组件 -->
     <TouchAreas
       v-for="(part, key) in gameStore.avatar.body_part"
