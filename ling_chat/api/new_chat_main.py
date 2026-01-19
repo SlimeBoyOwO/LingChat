@@ -101,6 +101,13 @@ class WebSocketManager:
                     logger.info(f"成就 {achievement_id} 解锁失败或已解锁，不发送通知")
             else:
                 logger.warning("收到没有ID的成就解锁请求")
+        elif message_type == 'achievement.get_list':
+            # 处理获取成就列表请求
+            all_achievements = achievement_manager.get_all_achievements()
+            await self.send_to_client(client_id, {
+                "type": "achievement.list",
+                "data": all_achievements
+            })
         else:
             logger.warning(f"未知消息类型: {message_type}")
 

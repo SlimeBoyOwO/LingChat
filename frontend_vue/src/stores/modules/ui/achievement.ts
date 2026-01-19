@@ -17,6 +17,7 @@ interface AchievementState {
   queue: Achievement[]
   current: Achievement | null
   isVisible: boolean
+  allAchievements: Record<string, any>
 }
 
 const DEFAULT_DURATION = 3500
@@ -26,6 +27,7 @@ export const useAchievementStore = defineStore('achievement', {
     queue: [],
     current: null,
     isVisible: false,
+    allAchievements: {},
   }),
 
   actions: {
@@ -77,35 +79,45 @@ export const useAchievementStore = defineStore('achievement', {
     },
 
     /**
+     * 获取所有成就列表
+     */
+    fetchAchievements() {
+      sendWebSocketMessage('achievement.get_list', {})
+    },
+
+    /**
      * 监听后端推送的成就解锁消息
      */
     listenForUnlocks() {
+      // 监听成就列表返回
+      registerHandler('achievement.list', (message) => {
+        if (message.data) {
+          this.allAchievements = message.data
+        }
+      })
+
+      // 监听解锁通知
       registerHandler('achievement.unlocked', (message) => {
         if (message.data) {
           const { id, title, message: msg, type, imgUrl, audioUrl, duration } = message.data
-          // 如果后端没传id，我们自己生成一个，但理想情况下应该用后端的
-          if (!id) {
-            this.addAchievement({
-              title,
-              message: msg,
-              type,
-              imgUrl,
-              audioUrl,
-              duration: duration || DEFAULT_DURATION,
-            })
-          } else {
-            // 如果后端传了完整数据
-            this.queue.push({
-              id,
-              title,
-              message: msg,
-              type,
-              imgUrl,
-              audioUrl,
-              duration: duration || DEFAULT_DURATION,
-            })
-            this.processQueue()
+
+          // 更新列表中的状态
+          if (id && this.allAchievements[id]) {
+            this.allAchievements[id].unlocked = true
+            this.allAchievements[id].unlocked_at = new Date().toISOString()
+            this.allAchievements[id].current_progress = this.allAchievements[id].target_progress
           }
+
+          this.queue.push({
+            id,
+            title,
+            message: msg,
+            type,
+            imgUrl,
+            audioUrl,
+            duration: duration || DEFAULT_DURATION,
+          })
+          this.processQueue()
         }
       })
     },

@@ -27,7 +27,7 @@ class AchievementManager:
         },
         "first_pomodoro": {
             "title": "专注时刻",
-            "description": "第一次完整使用番茄钟",
+            "description": "第一次使用番茄钟",
             "type": "common",
             "target_progress": 1,
         },
@@ -144,13 +144,13 @@ class AchievementManager:
         # 执行解锁
         now_str = datetime.now().isoformat()
         target = achievement_def.get("target_progress", 1)
-        
+
         self.achievements_data[achievement_id] = {
             "unlocked": True,
             "unlocked_at": now_str,
             "current_progress": target,
         }
-        
+
         # 解锁是重要事件，立即保存
         self.save()
 

@@ -23,6 +23,7 @@ export type IconType =
   | 'update'
   | 'volume'
   | 'clothes'
+  | 'achievement'
 
 // 定义组件属性
 const props = defineProps({
@@ -63,6 +64,7 @@ const html: Record<IconType, string> = {
   update: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rss-icon lucide-rss"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>`,
   volume: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-volume2-icon lucide-volume-2"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.364 18.364a9 9 0 0 0 0-12.728"/></svg>`,
   clothes: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2"><title>clothes</title><g id="Layer_2" data-name="Layer 2"><g id="invisible_box" data-name="invisible box"></g><g id="icons_Q2" data-name="icons Q2"><path d="M45.2,12.9,37.1,4H10.9L2.8,12.9a3,3,0,0,0,.1,4.2l7.5,7.5V44H37.7V24.6l7.5-7.5A3,3,0,0,0,45.2,12.9Zm-8.4,6.8-3.1-2.9V40H14.3V16.8l-3.1,2.9L6.4,14.9,12.7,8h7.4a4,4,0,0,0,7.8,0h7.4l6.3,6.9Z"/></g></g></svg>`,
+  achievement: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trophy"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>`,
 }
 </script>
 
