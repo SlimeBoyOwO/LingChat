@@ -7,9 +7,6 @@
     <div :style="avatarStyles" class="avatar-img" id="qinling"></div>
     <div :class="bubbleClasses" :style="bubbleStyles" class="bubble"></div>
 
-    <!-- 指令盘组件 -->
-    <GameCommandWheel ref="commandWheelRef" :is-visible="uiStore.showCommandWheel" />
-
     <!-- 触摸区域组件 -->
     <TouchAreas
       v-for="(part, key) in gameStore.avatar.body_part"
@@ -32,7 +29,6 @@ import { API_CONFIG } from '@/controllers/core/config'
 import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { EMOTION_CONFIG, EMOTION_CONFIG_EMO } from '@/controllers/emotion/config'
-import GameCommandWheel from './GameCommandWheel.vue'
 import TouchAreas from './TouchAreas.vue'
 import './avatar-animation.css'
 
@@ -42,8 +38,6 @@ const emit = defineEmits(['audio-ended'])
 
 const avatarAudio = ref<HTMLAudioElement | null>(null)
 const bubbleAudio = ref<HTMLAudioElement | null>(null)
-const commandWheelRef = ref<InstanceType<typeof GameCommandWheel> | null>(null)
-
 const activeAnimationClass = ref('normalx')
 const loadedAvatarUrl = ref('')
 const isBubbleVisible = ref(false)
@@ -198,16 +192,6 @@ watch(
   (newVolume) => {
     if (bubbleAudio.value) {
       bubbleAudio.value.volume = newVolume / 100
-    }
-  },
-)
-
-watch(
-  () => uiStore.showCommandWheel,
-  (newValue) => {
-    if (newValue && commandWheelRef.value) {
-      // 当启用指令盘时，重置位置
-      commandWheelRef.value.resetPosition()
     }
   },
 )
