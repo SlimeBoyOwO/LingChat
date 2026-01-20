@@ -28,6 +28,8 @@ dependencies = [
     "onnxruntime>=1.17.0",
     "numpy>=1.24.0",
     "pillow>=10.0.0",
+    "sqlmodel>=0.0.31",
+    "pyyaml>=6.0.2",
 ]
 
 # 保留给其他工具（如 poetry/pdm）的兼容配置
