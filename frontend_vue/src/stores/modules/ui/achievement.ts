@@ -6,7 +6,7 @@ export type AchievementType = 'common' | 'rare'
 export interface Achievement {
   id: string
   title: string
-  message: string
+  description: string
   type: AchievementType
   imgUrl?: string
   audioUrl?: string
@@ -99,7 +99,7 @@ export const useAchievementStore = defineStore('achievement', {
       // 监听解锁通知
       registerHandler('achievement.unlocked', (message) => {
         if (message.data) {
-          const { id, title, message: msg, type, imgUrl, audioUrl, duration } = message.data
+          const { id, title, description, type, imgUrl, audioUrl, duration } = message.data
 
           // 更新列表中的状态
           if (id && this.allAchievements[id]) {
@@ -111,7 +111,7 @@ export const useAchievementStore = defineStore('achievement', {
           this.queue.push({
             id,
             title,
-            message: msg,
+            description,
             type,
             imgUrl,
             audioUrl,

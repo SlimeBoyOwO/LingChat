@@ -36,7 +36,7 @@
           <span class="achievement-label">{{ typeLabel }}</span>
         </div>
         <div class="achievement-title">{{ store.current.title }}</div>
-        <div class="achievement-message">{{ store.current.message }}</div>
+        <div class="achievement-description">{{ store.current.description }}</div>
       </div>
 
       <div class="progress-bar-container">
@@ -202,7 +202,7 @@ watch(
   @apply text-white font-bold text-sm leading-tight;
 }
 
-.achievement-message {
+.achievement-description {
   @apply text-gray-300 text-xs leading-tight;
 }
 
