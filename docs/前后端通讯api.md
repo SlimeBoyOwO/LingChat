@@ -377,9 +377,9 @@
 {
     "type": "achievement.unlock_request",
     "data": {
-        "id": "achievement_id",  // 可选，不填则由系统生成或校验
+        "id": "first_chat",
         "title": "首次对话",
-        "message": "与钦灵完成了第一次对话",
+        "description": "与钦灵完成了第一次对话",
         "type": "common",      // common | rare
         "imgUrl": "path/to/icon.png", // 可选
         "audioUrl": "path/to/sound.mp3", // 可选
@@ -399,9 +399,9 @@
 {
     "type": "achievement.unlocked",
     "data": {
-        "id": "achievement_id",
+        "id": "first_chat",
         "title": "首次对话",
-        "message": "与钦灵完成了第一次对话",
+        "description": "与钦灵完成了第一次对话",
         "type": "common"
         // ... 其他字段同请求
     }
