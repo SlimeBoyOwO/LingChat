@@ -1,5 +1,6 @@
 import argparse
 
+
 def get_parser():
     parser = argparse.ArgumentParser(description="LingChat CLI")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -25,7 +26,7 @@ def get_parser():
         choices=["vits", "sbv2", "18emo", "webview"],
         help="Modules to run"
     )
-    
+
     parser.add_argument(
         "--nogui",
         action="store_true",

@@ -31,7 +31,10 @@ const chatContainer = ref<HTMLElement | null>(null)
 
 <style scoped>
 .history-container {
-  height: 500px; /* 如果内容过多，可以设置最大高度和滚动条 */
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
 }
 
 .chat-history-container {
@@ -40,7 +43,8 @@ const chatContainer = ref<HTMLElement | null>(null)
   flex-direction: column; /* 让消息垂直排列 */
   gap: 12px; /* 消息之间的间距 */
   font-size: 18px;
-  max-height: 500px; /* 如果内容过多，可以设置最大高度和滚动条 */
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   scroll-behavior: smooth;
 }

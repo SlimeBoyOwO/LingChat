@@ -1,11 +1,14 @@
 import asyncio
 import json
-import uuid
-from fastapi import WebSocket, WebSocketDisconnect
-from ling_chat.core.logger import logger
-from ling_chat.core.service_manager import service_manager
-from ling_chat.core.messaging.broker import message_broker
 import traceback
+import uuid
+
+from fastapi import WebSocket, WebSocketDisconnect
+
+from ling_chat.core.logger import logger
+from ling_chat.core.messaging.broker import message_broker
+from ling_chat.core.service_manager import service_manager
+
 
 class WebSocketManager:
     def __init__(self):
@@ -15,17 +18,17 @@ class WebSocketManager:
         """处理WebSocket连接的主方法"""
         # 这里不再调用 websocket.accept()，因为已经在端点中调用
         self.active_connections[client_id] = websocket
-        
+
         # 创建发送任务
         send_task = asyncio.create_task(
             self._send_messages(websocket, client_id)
         )
-        
+
         try:
             # 处理接收的消息
             async for message in self._receive_messages(websocket):
                 await self._handle_client_message(websocket, client_id, message)
-                
+
         except WebSocketDisconnect:
             logger.info(f"客户端 {client_id} 正常断开连接")
         except Exception as e:
@@ -48,12 +51,12 @@ class WebSocketManager:
         while True:
             try:
                 data = await websocket.receive()
-                
+
                 # 处理断开连接
                 if data.get("type") == "websocket.disconnect":
                     logger.info("收到断开连接消息")
                     break
-                    
+
                 # 处理文本消息
                 if "text" in data:
                     yield json.loads(data["text"])
@@ -61,20 +64,20 @@ class WebSocketManager:
                 elif "bytes" in data:
                     # 可以处理二进制消息
                     pass
-                    
+
             except (WebSocketDisconnect, ConnectionResetError, RuntimeError):
                 break
             except json.JSONDecodeError:
                 logger.error("消息JSON格式错误")
                 await websocket.send_json({
-                    "type": "error", 
+                    "type": "error",
                     "message": "消息格式错误"
                 })
 
     async def _handle_client_message(self, websocket: WebSocket, client_id: str, message: dict):
         """处理客户端消息"""
         message_type = message.get('type')
-        
+
         if message_type == 'ping':
             await websocket.send_json({"type": "pong"})
         elif message_type == 'message':
@@ -85,7 +88,7 @@ class WebSocketManager:
     async def _handle_user_message(self, client_id: str, message: dict):
         """处理用户发送的消息"""
         logger.info(f"来自客户端 {client_id} 的消息: {message}")
-        
+
         ai_service = service_manager.ai_service
         if ai_service is None:
             logger.error("AI服务未初始化")
@@ -97,7 +100,7 @@ class WebSocketManager:
             return
 
         user_message = message.get('content', '')
-        
+
         if user_message == "/开始剧本":
             asyncio.create_task(ai_service.start_script())
             logger.info("开始进行剧本模式")
@@ -143,16 +146,16 @@ async def websocket_endpoint(websocket: WebSocket):
     """WebSocket端点 - 改进版本"""
     # 首先接受连接
     await websocket.accept()
-    
+
     # 后端分配client_id
     client_id = f"client_{uuid.uuid4().hex}"
-    
+
     # 立即通知客户端分配的ID
     await websocket.send_json({
-        "type": "connection_established", 
+        "type": "connection_established",
         "client_id": client_id
     })
-    
+
     try:
         await ws_manager.handle_websocket(websocket, client_id)
     except Exception as e:

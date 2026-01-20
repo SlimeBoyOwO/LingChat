@@ -1,6 +1,7 @@
-from typing import List, Dict, Optional
 import json
-from ling_chat.database.database import get_db_connection, Role
+from typing import Dict, List, Optional
+
+from ling_chat.database.database import Role, get_db_connection
 
 
 class ConversationModel:
@@ -26,9 +27,9 @@ class ConversationModel:
         conn.execute("PRAGMA synchronous = OFF")
         conn.execute("PRAGMA journal_mode = MEMORY")
         conn.execute("PRAGMA cache_size = 100000")
-        
+
         cursor = conn.cursor()
-        
+
         try:
             # 1. 插入对话
             cursor.execute(
@@ -36,48 +37,48 @@ class ConversationModel:
                 (title, user_id, character_id)
             )
             conversation_id = cursor.lastrowid
-            
+
             # 2. 批量插入消息（分批次防止SQL过长）
             BATCH_SIZE = 500  # 每次插入500条
             msg_ids = []
-            
+
             for i in range(0, len(messages), BATCH_SIZE):
                 batch = messages[i:i+BATCH_SIZE]
                 placeholders = ",".join(["(?,?,?)"]*len(batch))
                 params = []
                 for msg in batch:
                     params.extend([msg["role"], msg["content"], conversation_id])
-                
+
                 cursor.execute(
                     f"INSERT INTO messages (role, content, owned_conversation) VALUES {placeholders}",
                     params
                 )
-                
+
                 # 获取这批消息的ID（假设是连续分配的）
                 first_id = cursor.lastrowid - len(batch) + 1
                 msg_ids.extend(range(first_id, first_id + len(batch)))
-            
+
             # 3. 批量插入关系（同样分批次）
             relations = [(msg_ids[i], msg_ids[i+1]) for i in range(len(msg_ids)-1)]
             for i in range(0, len(relations), BATCH_SIZE):
                 batch = relations[i:i+BATCH_SIZE]
                 placeholders = ",".join(["(?,?)"]*len(batch))
                 params = [item for pair in batch for item in pair]
-                
+
                 cursor.execute(
                     f"INSERT INTO message_relations (parent_id, child_id) VALUES {placeholders}",
                     params
                 )
-            
+
             # 4. 更新最后消息
             cursor.execute(
                 "UPDATE conversations SET last_message_id=?, updated_at=datetime('now') WHERE id=?",
                 (msg_ids[-1], conversation_id)
             )
-            
+
             conn.commit()
             return conversation_id
-        
+
         except Exception as e:
             conn.rollback()
             raise e
@@ -144,7 +145,7 @@ class ConversationModel:
 
         finally:
             conn.close()
-    
+
     @staticmethod
     def change_conversation_messages(conversation_id: int, messages: List[Dict[str, str]]) -> None:
         """
@@ -160,9 +161,9 @@ class ConversationModel:
         conn.execute("PRAGMA synchronous = OFF")
         conn.execute("PRAGMA journal_mode = MEMORY")
         conn.execute("PRAGMA cache_size = 100000")
-        
+
         cursor = conn.cursor()
-        
+
         try:
             # 1. 验证对话存在性
             cursor.execute("SELECT id FROM conversations WHERE id = ?", (conversation_id,))
@@ -171,45 +172,45 @@ class ConversationModel:
 
             # 2. 删除原有消息和关系（外键约束应该会自动删除关系）
             cursor.execute("DELETE FROM messages WHERE owned_conversation = ?", (conversation_id,))
-            
+
             # 3. 批量插入新消息（分批次防止SQL过长）
             BATCH_SIZE = 500  # 每次插入500条
             msg_ids = []
-            
+
             for i in range(0, len(messages), BATCH_SIZE):
                 batch = messages[i:i+BATCH_SIZE]
                 placeholders = ",".join(["(?,?,?)"]*len(batch))
                 params = []
                 for msg in batch:
                     params.extend([msg["role"], msg["content"], conversation_id])
-                
+
                 cursor.execute(
                     f"INSERT INTO messages (role, content, owned_conversation) VALUES {placeholders}",
                     params
                 )
-                
+
                 # 获取这批消息的ID（假设是连续分配的）
                 first_id = cursor.lastrowid - len(batch) + 1
                 msg_ids.extend(range(first_id, first_id + len(batch)))
-            
+
             # 4. 批量插入新关系
             relations = [(msg_ids[i], msg_ids[i+1]) for i in range(len(msg_ids)-1)]
             for i in range(0, len(relations), BATCH_SIZE):
                 batch = relations[i:i+BATCH_SIZE]
                 placeholders = ",".join(["(?,?)"]*len(batch))
                 params = [item for pair in batch for item in pair]
-                
+
                 cursor.execute(
                     f"INSERT INTO message_relations (parent_id, child_id) VALUES {placeholders}",
                     params
                 )
-            
+
             # 5. 更新最后消息和修改时间
             cursor.execute(
                 "UPDATE conversations SET last_message_id = ?, updated_at = datetime('now') WHERE id = ?",
                 (msg_ids[-1], conversation_id)
             )
-            
+
             conn.commit()
             print(f"成功替换对话 {conversation_id} 的消息，共 {len(messages)} 条")
 
@@ -222,7 +223,7 @@ class ConversationModel:
             conn.execute("PRAGMA journal_mode = DELETE")
             conn.close()
 
-    
+
     @staticmethod
     def get_conversation_messages(conversation_id: int) -> str:
         """
@@ -242,7 +243,7 @@ class ConversationModel:
             conn.close()
             print("该对话没有消息。")
             return "[]"
-        
+
         last_msg_id = result["last_message_id"]
 
         # 获取当前对话中所有消息
@@ -318,20 +319,20 @@ class ConversationModel:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("PRAGMA foreign_keys = ON")  # 必须对每个连接都开启
-        
+
         try:
             # 由于外键约束，删除对话会自动删除关联的消息和关系
             cursor.execute(
                 "DELETE FROM conversations WHERE id = ?",
                 (conversation_id,)
             )
-            
+
             # 检查是否真的删除了记录
             deleted = cursor.rowcount > 0
-            
+
             conn.commit()
             return deleted
-            
+
         except Exception as e:
             conn.rollback()
             raise e

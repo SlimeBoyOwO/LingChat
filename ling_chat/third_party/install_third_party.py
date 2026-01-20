@@ -1,9 +1,10 @@
-import zipfile
-import py7zr
-import requests
 import subprocess
 import tempfile
+import zipfile
 from pathlib import Path
+
+import py7zr
+import requests
 from tqdm import tqdm
 
 

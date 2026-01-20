@@ -1,6 +1,8 @@
 import os
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
+
 from ling_chat.core.service_manager import service_manager
 
 router = APIRouter(prefix="/api/v1/chat/script", tags=["Chat Script"])
@@ -18,7 +20,7 @@ async def init_script(script_name: str):
         "user_subtitle": scripts_manager.game_context.player.user_subtitle,
         "characters": {}
     }
-    
+
     for settings in scripts_manager.get_script_characters(script_name):
         character_id = settings.get("character_id", "none")
         result["characters"][character_id] = {
@@ -43,7 +45,7 @@ async def get_script_specific_avatar(character: str, emotion: str):
         file_path = ai_service.scripts_manager.get_avatar_dir(character) / (emotion + ".png")
     else:
         raise HTTPException(status_code=404, detail="AIService not found")
-    
+
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Avatar not found")
 

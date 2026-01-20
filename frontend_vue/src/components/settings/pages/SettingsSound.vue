@@ -83,11 +83,15 @@ const bubbleVolume = useStorage('lingchat-bubble-volume', 50)
 const backgroundVolume = useStorage('lingchat-background-volume', 50)
 
 // 同步 localStorage 中的音量到 Pinia store
-watch([characterVolume, bubbleVolume, backgroundVolume], ([charVol, bubVol, bgVol]) => {
-  uiStore.characterVolume = charVol
-  uiStore.bubbleVolume = bubVol
-  uiStore.backgroundVolume = bgVol
-}, { immediate: true })
+watch(
+  [characterVolume, bubbleVolume, backgroundVolume],
+  ([charVol, bubVol, bgVol]) => {
+    uiStore.characterVolume = charVol
+    uiStore.bubbleVolume = bubVol
+    uiStore.backgroundVolume = bgVol
+  },
+  { immediate: true },
+)
 
 // 音频播放器的模板引用
 const characterTestPlayer = ref<HTMLAudioElement | null>(null)
@@ -285,8 +289,7 @@ onMounted(() => {
   // 初始化音量
   if (characterTestPlayer.value) characterTestPlayer.value.volume = characterVolume.value / 100
   if (bubbleTestPlayer.value) bubbleTestPlayer.value.volume = bubbleVolume.value / 100
-  if (backgroundAudioPlayer.value)
-    backgroundAudioPlayer.value.volume = backgroundVolume.value / 100
+  if (backgroundAudioPlayer.value) backgroundAudioPlayer.value.volume = backgroundVolume.value / 100
 })
 </script>
 

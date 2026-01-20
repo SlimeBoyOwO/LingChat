@@ -1,7 +1,10 @@
+from typing import AsyncGenerator, Dict, List
+
 from openai import OpenAI
+
 from ling_chat.core.llm_providers.base import BaseLLMProvider
-from typing import Dict, List, AsyncGenerator
 from ling_chat.core.logger import logger
+
 
 class WebLLMProvider(BaseLLMProvider):
     def __init__(self, model_type: str, api_key: str, base_url: str):
@@ -17,10 +20,10 @@ class WebLLMProvider(BaseLLMProvider):
         self.client = OpenAI(api_key=api_key, base_url=base_url)
         self.model_type = model_type
         logger.info("通用网络大模型初始化完毕！" )
-    
+
     def initialize_client(self):
         return super().initialize_client()
-    
+
     def generate_response(self, messages: List[Dict]) -> str:
         """生成模型响应"""
         if self.client is None:
@@ -36,7 +39,7 @@ class WebLLMProvider(BaseLLMProvider):
                 stream=False
             )
             return response.choices[0].message.content
-            
+
         except Exception as e:
             logger.error(f"通用网络大模型请求失败: {str(e)}")
             raise

@@ -1,7 +1,10 @@
 import os
+
 import webview
+
 from ling_chat.core.logger import logger
 from ling_chat.utils.runtime_path import static_path, user_data_path
+
 
 # 创建一个类以向JavaScript暴露函数
 class Api:
@@ -30,7 +33,7 @@ def start_webview():
         api.set_window(window)  # 让Api实例能够访问window对象
 
         icon_path = static_path / "game_data/resources/lingchat.ico"
-        
+
         # print(f"图标路径: {icon_path}")
         # print(f"图标文件是否存在: {icon_path.exists()}")
 

@@ -1,9 +1,11 @@
 import os
 import re
-from fastapi import APIRouter, HTTPException, Body
-from typing import Dict, Any
-from ling_chat.utils.runtime_path import package_root
+from typing import Any, Dict
+
+from fastapi import APIRouter, Body, HTTPException
+
 from ling_chat.utils.runtime_config import apply_runtime_config_changes
+from ling_chat.utils.runtime_path import package_root
 
 router = APIRouter()
 env_file_path = package_root.parent / '.env'
@@ -16,7 +18,7 @@ def parse_env_file():
     """
     if not os.path.exists(env_file_path):
         return {}
-        
+
     structured_config = {}
     current_category = None
     current_subcategory = None
@@ -36,7 +38,7 @@ def parse_env_file():
     def process_setting(key, value_block):
         # 辅助函数，用于处理一个完整的（单行或多行）键值对
         value_block = value_block.strip()
-        
+
         # 从块的末尾提取注释
         comment_match = re.search(r'\s*#\s*(.*)$', value_block)
         if comment_match:
@@ -54,7 +56,7 @@ def parse_env_file():
             description = type_re.sub('', full_description).strip()
         else:
             description = full_description
-        
+
         # 清理引号
         if value_str.startswith('"') and value_str.endswith('"'):
             value = value_str[1:-1]
@@ -92,7 +94,7 @@ def parse_env_file():
         cat_match = category_begin_re.match(line_strip)
         sub_match = subcategory_begin_re.match(line_strip)
         env_match = env_var_re.match(line)
-        
+
         if cat_match:
             current_category = cat_match.group(1).strip()
             if current_category not in structured_config:
@@ -108,11 +110,11 @@ def parse_env_file():
         elif env_match and current_category and current_subcategory:
             key = env_match.group(1)
             value_part = line[len(key)+1:].strip()
-            
+
             # 判断是单行还是多行的开始
             # 计算值部分中未被转义的引号数量
             unescaped_quotes = len(re.findall(r'(?<!\\)"', value_part.split('#')[0]))
-            
+
             if value_part.startswith('"') and unescaped_quotes % 2 != 0:
                 # 值的开头是引号，且引号数量为奇数，说明是多行块的开始
                 in_multiline_block = True
@@ -127,7 +129,7 @@ def parse_env_file():
             current_category = None
         elif subcategory_end_re.match(line_strip):
             current_subcategory = None
-            
+
     return structured_config
 
 
@@ -136,10 +138,10 @@ def save_env_file(new_values: Dict[str, str]):
     一个基于状态机的、健壮的.env文件保存函数。
     此版本根据要求，为多行字符串在引号内增加了前后的换行符。
     """
-    
+
     with open(env_file_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
-        
+
     updated_lines = []
     i = 0
     while i < len(lines):
@@ -150,9 +152,9 @@ def save_env_file(new_values: Dict[str, str]):
             updated_lines.append(line)
             i += 1
             continue
-        
+
         key = match.group(1)
-        
+
         block_lines = [line]
         value_part_raw = line[len(key)+1:]
         unescaped_quotes = len(re.findall(r'(?<!\\)"', value_part_raw.split('#')[0]))
@@ -165,16 +167,16 @@ def save_env_file(new_values: Dict[str, str]):
                     break
                 j += 1
             i = j
-        
+
         if key in new_values:
             new_val = new_values[key]
-            
+
             original_comment = ""
             last_line_of_block = block_lines[-1]
             if '#' in last_line_of_block:
                 comment_part = last_line_of_block.split('#', 1)[1]
                 original_comment = " #" + comment_part.rstrip()
-            
+
             # --- 这是本次唯一的、核心的逻辑修改 ---
             if str(new_val).lower() in ['true', 'false'] or new_val.isdigit():
                 # 对于布尔值或数字，直接写入
@@ -189,7 +191,7 @@ def save_env_file(new_values: Dict[str, str]):
                     updated_lines.append(f'{key}="{new_val}"{original_comment}\n')
         else:
             updated_lines.extend(block_lines)
-        
+
         i += 1
 
     with open(env_file_path, 'w', encoding='utf-8') as f:

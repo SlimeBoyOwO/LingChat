@@ -1,22 +1,22 @@
-import json
-import copy
-from typing import Dict
 import asyncio
-
-from ling_chat.core.ai_service.rag_manager import RAGManager
-from ling_chat.core.ai_service.message_processor import MessageProcessor
-from ling_chat.core.ai_service.voice_maker import VoiceMaker
-from ling_chat.core.ai_service.ai_logger import AILogger
-from ling_chat.core.ai_service.translator import Translator
-from ling_chat.core.ai_service.events_scheduler import EventsScheduler
-from ling_chat.core.llm_providers.manager import LLMManager
-from ling_chat.core.messaging.broker import message_broker
-from ling_chat.core.ai_service.config import AIServiceConfig
-from ling_chat.core.logger import logger
-from ling_chat.core.ai_service.message_system.message_generator import MessageGenerator
-from ling_chat.core.ai_service.script_engine.script_manager import ScriptManager
-
+import copy
+import json
 import os
+from typing import Dict
+
+from ling_chat.core.ai_service.ai_logger import AILogger
+from ling_chat.core.ai_service.config import AIServiceConfig
+from ling_chat.core.ai_service.events_scheduler import EventsScheduler
+from ling_chat.core.ai_service.message_processor import MessageProcessor
+from ling_chat.core.ai_service.message_system.message_generator import MessageGenerator
+from ling_chat.core.ai_service.rag_manager import RAGManager
+from ling_chat.core.ai_service.script_engine.script_manager import ScriptManager
+from ling_chat.core.ai_service.translator import Translator
+from ling_chat.core.ai_service.voice_maker import VoiceMaker
+from ling_chat.core.llm_providers.manager import LLMManager
+from ling_chat.core.logger import logger
+from ling_chat.core.messaging.broker import message_broker
+
 
 class AIService:
     def __init__(self, settings: dict[str, str]):
@@ -31,7 +31,7 @@ class AIService:
         self.user_id = "1"   # TODO: 多用户的时候这里可以改成按照初始化获取，或者直接从client_id中获取
 
         self.config = AIServiceConfig(clients=set(), user_id=self.user_id)
-        
+
         self.use_rag = os.environ.get("USE_RAG", "False").lower() == "true"
         self.rag_manager = RAGManager() if self.use_rag else None
         self.llm_model = LLMManager()
@@ -49,7 +49,7 @@ class AIService:
                                                   self.ai_logger)
 
         # self.events_scheduler.start_nodification_schedules()        # 之后会通过API设置和处理
-        self.input_messages: list[str] = [] 
+        self.input_messages: list[str] = []
 
         # self.output_queue_name = self.client_id             # WebSocket输出队列
         self.client_tasks: Dict[str, asyncio.Task] = {}
@@ -64,8 +64,8 @@ class AIService:
 
         self.reset_memory()
 
-        
-    
+
+
     def import_settings(self, settings: dict[str, str]) -> None:
         if(settings):
             self.ai_name = settings.get("ai_name","ai_name未设定")
@@ -80,12 +80,12 @@ class AIService:
                                                                        self.ai_prompt,
                                                                        self.ai_prompt_example,
                                                                        self.ai_prompt_example_old)
-                
+
             self.voice_maker.set_lang(settings.get("language", "ja"))
             # 设置角色路径，以便在TTS设置中使用
             self.voice_maker.set_character_path(settings.get("resource_path", ""))
-            self.voice_maker.set_tts(settings.get("tts_type", "sbv"), 
-                                     settings.get("voice_models", {}), 
+            self.voice_maker.set_tts(settings.get("tts_type", "sbv"),
+                                     settings.get("voice_models", {}),
                                      self.ai_name)
 
             self.character_path = settings.get("resource_path")
@@ -101,7 +101,7 @@ class AIService:
 
         else:
             logger.error("角色信息settings没有被正常导入，请检查问题！")
-        
+
         self.events_scheduler.ai_name = self.ai_name
         self.events_scheduler.user_name = self.user_name
 
@@ -144,33 +144,33 @@ class AIService:
 
         except Exception as e:
             logger.error(f"应用运行时配置失败: {e}", exc_info=True)
-    
-    def load_memory(self, memory):     
+
+    def load_memory(self, memory):
         if isinstance(memory, str):
             memory = json.loads(memory)
         self.memory = copy.deepcopy(memory)
-        
+
         logger.info("记忆存档已经加载")
         logger.info(f"内容是：{memory}")
         logger.info(f"新的messages是：{self.memory}")
-    
+
     def get_memory(self):
         return self.memory
-    
+
     def reset_memory(self):
         self.memory = [
             {
-                "role": "system", 
+                "role": "system",
                 "content": self.ai_prompt
             }
         ]
 
     def show_memory(self):
         logger.info(f"当前记忆内容：{self.memory}")
-    
+
     async def start_script(self):
         await self.scripts_manager.start_script()
-    
+
     async def _process_client_messages(self, client_id: str):
         """处理单个客户端的消息"""
         input_queue_name = f"ai_input_{client_id}"
@@ -178,25 +178,25 @@ class AIService:
             async for message in self.message_broker.subscribe(input_queue_name):
                 try:
                     self.is_processing = True
-                    
+
                     user_message = message.get("content", "")
                     if user_message:
                         self.message_generator.memory_init(self.memory)
-                        
+
                         responses = []
                         async for response in self.message_generator.process_message_stream(user_message):
                             await message_broker.publish(client_id, response.model_dump())
                             responses.append(response)
-                        
+
                         logger.debug(f"消息处理完成，共生成 {len(responses)} 个响应片段")
-                    
+
                     self.is_processing = False
-                    
+
                 except Exception as e:
                     logger.error(f"处理消息时发生错误: {e}")
                     self.is_processing = False
                     # 错误通知由 message_generator 处理
-                    
+
         except asyncio.CancelledError:
             logger.info(f"客户端 {client_id} 的消息处理任务已被取消")
         except Exception as e:
@@ -251,22 +251,22 @@ class AIService:
             async for message in self.message_broker.subscribe(global_queue_name):
                 try:
                     self.is_processing = True
-                    
+
                     user_message = message.get("content", "")
                     if user_message:
                         self.message_generator.memory_init(self.memory)
-                        
+
                         responses = []
                         async for response in self.message_generator.process_message_stream(user_message):
                             # 发送给所有客户端
                             for client_id in self.config.clients:
                                 await message_broker.publish(client_id, response.model_dump())
                             responses.append(response)
-                        
+
                         logger.debug(f"全局消息处理完成，共生成 {len(responses)} 个响应片段")
-                    
+
                     self.is_processing = False
-                    
+
                 except Exception as e:
                     logger.error(f"处理全局消息时发生错误: {e}")
                     self.is_processing = False
@@ -280,7 +280,7 @@ class AIService:
     async def shutdown(self):
         """优雅关闭服务"""
         logger.info("正在关闭AI服务...")
-        
+
         # 取消所有客户端任务
         for client_id, task in self.client_tasks.items():
             task.cancel()
@@ -288,19 +288,19 @@ class AIService:
                 await task
             except asyncio.CancelledError:
                 pass
-        
+
         # 取消全局消息处理任务
         self.global_task.cancel()
         try:
             await self.global_task
         except asyncio.CancelledError:
             pass
-        
+
         # 取消主处理任务
         self.processing_task.cancel()
         try:
             await self.processing_task
         except asyncio.CancelledError:
             pass
-        
+
         logger.info("AI服务已关闭")

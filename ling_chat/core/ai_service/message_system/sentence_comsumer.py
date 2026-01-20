@@ -1,16 +1,16 @@
 import asyncio
-from typing import List, Dict, Optional
 import time
 import traceback
+from typing import Dict, List, Optional
 
 from ling_chat.core.ai_service.ai_logger import logger
 from ling_chat.core.ai_service.message_processor import MessageProcessor
-from ling_chat.core.ai_service.voice_maker import VoiceMaker
 from ling_chat.core.ai_service.translator import Translator
+from ling_chat.core.ai_service.voice_maker import VoiceMaker
 from ling_chat.core.logger import logger
-
-from ling_chat.core.schemas.responses import ReplyResponse
 from ling_chat.core.schemas.response_models import ResponseFactory
+from ling_chat.core.schemas.responses import ReplyResponse
+
 
 class SentenceConsumer:
     """
@@ -46,7 +46,7 @@ class SentenceConsumer:
 
                 sentence, index, is_final = task
                 response = await self._process_sentence_and_prepare_response(sentence, self.user_message, is_final)
-                
+
                 # If processing produced no response, skip storing but still mark task done and notify if needed.
                 if response is None:
                     logger.warning(f"Consumer {self.consumer_id} returned no response for index {index}.")
@@ -55,9 +55,9 @@ class SentenceConsumer:
                     self.results_store[index] = response
                     if index in self.publish_events:
                         self.publish_events[index].set()
-                
+
                 # TODO: 还需要返回这个response才对
-                
+
                 self.sentence_queue.task_done()
             except asyncio.CancelledError:
                 logger.info(f"Consumer {self.consumer_id} was cancelled.")
@@ -74,13 +74,13 @@ class SentenceConsumer:
         # This logic is identical to your original helper method
         if not sentence:
             return None
-        
+
         logger.info(f"Consumer {self.consumer_id} processing sentence: {sentence[:30]}...")
         sentence_segments:List[Dict] = self.message_processor.analyze_emotions(sentence)
         if not sentence_segments:
             logger.warning("AI response format error: No emotion or text found.")
             return None
-        
+
         start_time = time.perf_counter()
         if sentence_segments[0].get("japanese_text") == "":
             await self.translator.translate_ai_response(sentence_segments)
@@ -89,7 +89,7 @@ class SentenceConsumer:
         end_time = time.perf_counter()
 
         sentence_segments[0]['character'] = self.character
-        
+
         # Assuming create_response is a method in the orchestrator or a utility class
         response = ResponseFactory.create_reply(sentence_segments[0], user_message, is_final)
         logger.debug(f"Sentence processed in {end_time - start_time:.2f} seconds.")

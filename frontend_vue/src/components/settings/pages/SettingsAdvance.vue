@@ -1,7 +1,7 @@
 <template>
   <MenuPage>
-    <div class="h-[87vh] w-full bg-white/10 p-0 md:p-4 rounded-lg overflow-auto">
-      <div class="block md:grid grid-cols-[280px_1fr] h-full">
+    <div class="flex-1 w-full bg-white/10 p-0 md:p-4 rounded-lg overflow-hidden">
+      <div class="block md:grid grid-cols-[280px_1fr] h-full min-h-0">
         <!-- 加载动画 -->
         <div
           v-if="isLoading"

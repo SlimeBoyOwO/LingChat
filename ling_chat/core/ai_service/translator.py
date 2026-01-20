@@ -1,8 +1,8 @@
 import os
+from typing import Dict, List
 
-from typing import List, Dict
-from ling_chat.core.logger import logger
 from ling_chat.core.llm_providers.manager import LLMManager
+from ling_chat.core.logger import logger
 
 
 class Translator:
@@ -42,7 +42,7 @@ class Translator:
         if not full_chinese_response:
             logger.warning("AI回复没有中文，跳过日语翻译")
             return
-        
+
         send_messages = self.messages.copy()
         send_messages.append({"role":"user","content":full_chinese_response})
 

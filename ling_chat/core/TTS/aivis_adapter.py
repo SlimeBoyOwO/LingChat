@@ -1,12 +1,14 @@
-import aiohttp
 import os
-from ling_chat.core.TTS.base_adapter import TTSBaseAdapter
+
+import aiohttp
+
 from ling_chat.core.logger import logger
+from ling_chat.core.TTS.base_adapter import TTSBaseAdapter
 
 
 class AIVISAdapter(TTSBaseAdapter):
     def __init__(self, model_uuid: str, speaker_uuid: str|None = None,
-                 style_id: int|None = None, style_name: str|None = None, 
+                 style_id: int|None = None, style_name: str|None = None,
                  audio_format: str = "mp3", lang: str = "ja"
                 ):
         """
@@ -24,7 +26,7 @@ class AIVISAdapter(TTSBaseAdapter):
         # 处理URL末尾斜杠，避免重复
         self.api_url = api_url.rstrip('/')
         self.api_key = os.environ.get("AIVIS_API_KRY", "")
-        
+
         self.params: dict[str, str|int|float|bool|None] = {
             "model_uuid": model_uuid,
             "speaker_uuid": speaker_uuid,
@@ -48,7 +50,7 @@ class AIVISAdapter(TTSBaseAdapter):
 
         # 移除值为None的参数
         self.params = {k: v for k, v in self.params.items() if v is not None}
-        
+
         # 验证style_id和style_name是否同时指定
         if style_id is not None and style_name is not None:
             raise ValueError("style_id和style_name不能同时指定，只能选择其一")
@@ -68,7 +70,7 @@ class AIVISAdapter(TTSBaseAdapter):
         output_format = params.get("output_format", "mp3")
         content_types = {
             "wav": "audio/wav",
-            "flac": "audio/flac", 
+            "flac": "audio/flac",
             "mp3": "audio/mpeg",
             "aac": "audio/aac",
             "opus": "audio/ogg; codecs=opus"
@@ -77,7 +79,7 @@ class AIVISAdapter(TTSBaseAdapter):
 
         # 构建请求头
         headers = {
-            "Accept": accept_header, 
+            "Accept": accept_header,
             "Content-Type": "application/json"
         }
         headers["Authorization"] = f"Bearer {self.api_key}"
@@ -91,7 +93,7 @@ class AIVISAdapter(TTSBaseAdapter):
                 if response.status >= 400:
                     error_text = await response.text()
                     logger.error(f"AIVIS API错误({response.status}): {error_text}")
-                
+
                 response.raise_for_status()
                 return await response.read()
 
@@ -101,5 +103,5 @@ class AIVISAdapter(TTSBaseAdapter):
         
         :return: 参数字典
         """
-        return {k: v for k, v in self.params.items() 
+        return {k: v for k, v in self.params.items()
                 if isinstance(v, (str, int, float, bool))}

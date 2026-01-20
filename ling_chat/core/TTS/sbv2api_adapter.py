@@ -1,15 +1,17 @@
-import aiohttp
 import os
-from ling_chat.core.TTS.base_adapter import TTSBaseAdapter
+
+import aiohttp
+
 from ling_chat.core.logger import logger
+from ling_chat.core.TTS.base_adapter import TTSBaseAdapter
 
 
 class SBV2APIAdapter(TTSBaseAdapter):
     def __init__(self, model_name: str="",
-                 length_scale: float=1, sdp_ratio: float=0, 
+                 length_scale: float=1, sdp_ratio: float=0,
                  speaker_id: int=0, style_id: int=0,
                  audio_format: str="wav"):
-        
+
         api_url = os.environ.get("SBV2API_API_URL", "http://localhost:3000")
         # 处理URL末尾斜杠，避免重复
         self.api_url = api_url.rstrip('/')

@@ -1,9 +1,10 @@
 """
 前端控制台日志数据模型
 """
-from enum import Enum
-from typing import Optional, Dict, Any, List
 from datetime import datetime
+from enum import Enum
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field, validator
 
 
