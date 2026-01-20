@@ -148,25 +148,36 @@ const handlePolygonClick = (event: MouseEvent) => {
       return [x, y]
     })
 
-    if (isPointInPolygon(event.clientX, event.clientY, polygon)) {
-      if (!sent.value) {
-        gameStore.currentStatus = 'thinking'
-        touchCount.value++
-        const messageWithCount =
-          touchCount.value === 1
-            ? props.part.message
-            : `${props.part.message},这是第${touchCount.value}次`
-        scriptHandler.sendMessage(messageWithCount)
-        sent.value = true
-      } else {
-        const needWait = eventQueue.continue()
-        if (!needWait) {
-          emit('player-continued')
-          emit('dialog-proceed')
-        }
-        sent.value = false
+
+    if (!sent.value) {
+      gameStore.currentStatus = 'thinking'
+      touchCount.value++
+      
+      let message = ""
+      const messageWithCount =
+        touchCount.value === 1
+          ? props.part.message
+          : `${props.part.message},这是第${touchCount.value}次`
+      const defaultMessage = `${gameStore.avatar.user_name}摸了一下你的头`
+
+      if (isPointInPolygon(event.clientX, event.clientY, polygon)) {
+        message = messageWithCount
       }
+      else{
+        message = defaultMessage
+      }
+      
+      scriptHandler.sendMessage(messageWithCount)
+      sent.value = true
+    } else {
+      const needWait = eventQueue.continue()
+      if (!needWait) {
+        emit('player-continued')
+        emit('dialog-proceed')
+      }
+      sent.value = false
     }
+    
   }
 }
 
