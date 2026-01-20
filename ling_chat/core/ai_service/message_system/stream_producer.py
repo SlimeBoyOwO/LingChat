@@ -1,8 +1,9 @@
 import asyncio
-from typing import Dict
 import time
+from typing import Dict
 
 from ling_chat.utils.function import Function
+
 
 class StreamProducer:
     """
@@ -31,7 +32,7 @@ class StreamProducer:
         sentence = ""
 
         print("\n=== AI回复流式输出 ===")
-        
+
         async for chunk in self.llm_stream:
             buffer += chunk
             accumulated_response += chunk
@@ -42,11 +43,11 @@ class StreamProducer:
             if (len(realtime_display_buffer) >= 3 or
                 current_time - last_display_time > 0.1 or
                 '\n' in realtime_display_buffer):
-                
+
                 display_text = realtime_display_buffer
                 if display_text.strip():
                     print(display_text, end='', flush=True)
-                
+
                 realtime_display_buffer = ""
                 last_display_time = current_time
 
@@ -79,7 +80,7 @@ class StreamProducer:
                     if start_index < buffer.find("】"):
                         sentence_part = buffer[start_index:]
                         buffer = buffer[:start_index] # 保留【之前的内容
-                        
+
                         end_index = sentence_part.find("】")
                         sentence = sentence_part[:end_index + 1]
                         sentence_part = sentence_part[end_index + 1:]
@@ -127,7 +128,7 @@ class StreamProducer:
 
         print("\n=== 流式输出结束 ===")
         return accumulated_response
-    
+
     async def run(self) -> str:
 
         accumulated_response = ""
@@ -145,7 +146,7 @@ class StreamProducer:
 
         # 打印开始提示
         print("\n=== AI回复流式输出 ===")
-        
+
         try:
             async for chunk in ai_response_stream:
                 buffer += chunk
@@ -157,12 +158,12 @@ class StreamProducer:
                 if (len(realtime_display_buffer) >= 3 or  # 每3个字符显示一次
                     current_time - last_display_time > 0.1 or  # 或者每100毫秒
                     '\n' in realtime_display_buffer):  # 或者有换行符
-                    
+
                     # 清理情绪标签以便更好地显示
                     display_text = realtime_display_buffer
                     if display_text.strip():
                         print(display_text, end='', flush=True)
-                    
+
                     realtime_display_buffer = ""
                     last_display_time = current_time
 
@@ -227,7 +228,7 @@ class StreamProducer:
                         else:
                             # 不完整的句子部分，继续等待
                             break
-        except Exception as e:
+        except Exception:
             # 重新抛出异常，让message_generator捕获并发送错误通知到前端
             raise
 

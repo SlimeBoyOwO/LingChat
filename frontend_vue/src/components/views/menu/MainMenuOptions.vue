@@ -1,11 +1,6 @@
 <template>
   <nav class="flex flex-col items-stretch w-[350px]">
-    <button
-      v-for="item in menuItems"
-      :key="item.label"
-      class="menu-item"
-      @click="item.action"
-    >
+    <button v-for="item in menuItems" :key="item.label" class="menu-item" @click="item.action">
       {{ item.label }}
     </button>
   </nav>

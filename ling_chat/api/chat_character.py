@@ -1,12 +1,14 @@
 import os
 from pathlib import Path
+
 from fastapi import APIRouter, Body, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
+
+from ling_chat.core.logger import logger
 from ling_chat.core.service_manager import service_manager
 from ling_chat.database.character_model import CharacterModel
 from ling_chat.database.user_model import UserModel
 from ling_chat.utils.function import Function
-from ling_chat.core.logger import logger
 from ling_chat.utils.runtime_path import user_data_path
 
 router = APIRouter(prefix="/api/v1/chat/character", tags=["Chat Character"])
@@ -38,9 +40,9 @@ async def get_specific_avatar(avatar_file: str):
 
     if not ai_service or not ai_service.character_path:
         raise HTTPException(status_code=404, detail="AIService or character_path not found")
-    
+
     file_path = Path(ai_service.character_path) / "avatar" / avatar_file
-    
+
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Avatar not found")
 
@@ -52,12 +54,12 @@ async def get_specific_avatar(avatar_file: str, clothes_name: str):
 
     if not ai_service or not ai_service.character_path:
         raise HTTPException(status_code=404, detail="AIService or character_path not found")
-    
+
     if clothes_name == 'default':
         file_path = Path(ai_service.character_path) / "avatar" / avatar_file
     else:
         file_path = Path(ai_service.character_path) / "avatar" / clothes_name / avatar_file
-    
+
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Avatar not found")
 
@@ -72,7 +74,7 @@ async def get_script_specific_avatar(character: str, emotion: str):
 
     else:
         raise HTTPException(status_code=404, detail="AIService not found")
-    
+
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Avatar not found")
 
@@ -89,7 +91,7 @@ async def get_script_specific_avatar(character: str, clothes_name: str, emotion:
             file_path = Path(ai_service.character_path) / "avatar" / clothes_name /(emotion + ".png")
     else:
         raise HTTPException(status_code=404, detail="AIService not found")
-    
+
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Avatar not found")
 
@@ -145,7 +147,7 @@ async def get_all_characters():
 
         if not db_chars:
             return {"data": [], "message": "未找到任何角色"}
-        
+
         characters = []
         for char in db_chars:
             settings_path = os.path.join(char['resource_path'], 'settings.txt')

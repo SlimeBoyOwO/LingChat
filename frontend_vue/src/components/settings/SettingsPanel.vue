@@ -1,11 +1,11 @@
 <template>
   <div class="blur-overlay" v-if="shouldShowOverlay" :style="{ opacity: overlayOpacity }"></div>
-  <div class="settings-panel" v-show="uiStore.showSettings">
-    <div class="h-[7vh] w-full">
+  <div class="settings-panel flex flex-col h-full" v-show="uiStore.showSettings">
+    <div class="flex-shrink-0 w-full">
       <SettingsNav ref="settingsNavRef" @remove-more-menu-from-a="onAddFromA" />
     </div>
 
-    <div class="w-full h-[93vh] overflow-auto">
+    <div class="w-full flex-1 overflow-auto">
       <SettingsSave v-show="uiStore.currentSettingsTab === 'save'" />
       <SettingsText v-show="uiStore.currentSettingsTab === 'text'" />
       <SettingsSound v-show="uiStore.currentSettingsTab === 'sound'" />

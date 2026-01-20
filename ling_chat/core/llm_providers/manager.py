@@ -1,9 +1,11 @@
-from typing import Dict, List
-from ling_chat.core.llm_providers.provider_factory import LLMProviderFactory
-from ling_chat.core.llm_providers.base import BaseLLMProvider
-from ling_chat.core.logger import logger
 import asyncio
 import os
+from typing import Dict, List
+
+from ling_chat.core.llm_providers.base import BaseLLMProvider
+from ling_chat.core.llm_providers.provider_factory import LLMProviderFactory
+from ling_chat.core.logger import logger
+
 
 class LLMManager:
     def __init__(self, llm_job = None):
@@ -28,9 +30,9 @@ class LLMManager:
             # 确保provider_type存在
             provider_type = self.llm_provider_type.lower()
             logger.info(f"初始化翻译模型 {provider_type} 提供商中...")
-        
+
         self.provider = self._initialize_provider()
-    
+
     def _initialize_provider(self) -> 'BaseLLMProvider':
         """
         初始化大模型提供者
@@ -41,11 +43,11 @@ class LLMManager:
         # 确保provider_type存在
         provider_type = self.llm_provider_type.lower()
         if provider_type == "webllm":
-            return LLMProviderFactory.create_provider(provider_type, 
+            return LLMProviderFactory.create_provider(provider_type,
                                                       self.model_type, self.api_key, self.api_url)
         else:
             return LLMProviderFactory.create_provider(provider_type)
-    
+
     def process_message(self, messages: List[Dict]):
         return self.provider.generate_response(messages)
 

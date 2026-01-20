@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any
 
+
 @dataclass
 class Script:
     name: str
@@ -44,10 +45,10 @@ class GameContext:
 
     # 背景信息
     background: str = field(default_factory=str)
-    
+
     # 故事变量 - 玩家可以通过事件来修改和查询
     variables: dict[str, Any] = field(default_factory=dict)
-    
+
     def get_character(self, character_id: str) -> Character | None:
         """提供一个便捷的方法来安全地获取角色。"""
         return self.characters.get(character_id)

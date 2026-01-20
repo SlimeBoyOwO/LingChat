@@ -1,14 +1,14 @@
 from ling_chat.core.ai_service.script_engine.events.base_event import BaseEvent
 from ling_chat.core.ai_service.script_engine.utils.script_function import ScriptFunction
-from ling_chat.core.messaging.broker import message_broker
 from ling_chat.core.logger import logger
+from ling_chat.core.messaging.broker import message_broker
 from ling_chat.core.schemas.response_models import ResponseFactory
-
 from ling_chat.core.service_manager import service_manager
+
 
 class FreeDialogueEvent(BaseEvent):
     """自由对话事件"""
-    
+
     async def execute(self):
         rounds: int = 0
 
@@ -26,7 +26,7 @@ class FreeDialogueEvent(BaseEvent):
             rounds += 1
             if max_rounds > 0 and rounds >= max_rounds:
                 is_last_round = True
-            
+
             # 推送前端需要输入的事件
             event_response = ResponseFactory.create_input(hint,duration=duration)
             await message_broker.publish("1", event_response.model_dump())
@@ -49,7 +49,7 @@ class FreeDialogueEvent(BaseEvent):
             if not character_obj:
                 logger.error(f"Character memory not found for character: {character}")
                 return
-            
+
             memory = character_obj.memory.copy()
             prompt = end_prompt if is_last_round else dialog_prompt
 
@@ -60,7 +60,7 @@ class FreeDialogueEvent(BaseEvent):
             if not ai_service:
                 logger.error("AI service not found")
                 return
-            
+
             logger.info(f"AI Dialogue Event for character: {character} with memory: {memory}")
 
             responses = []
@@ -73,7 +73,7 @@ class FreeDialogueEvent(BaseEvent):
                     'character': character,
                     'text': text,
                 })
-            
+
             responses.clear()
 
             if is_last_round:

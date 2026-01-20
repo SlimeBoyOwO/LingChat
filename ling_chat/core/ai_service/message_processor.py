@@ -1,13 +1,13 @@
 import os
 import re
 import uuid
-from typing import List, Dict
 from datetime import datetime, timedelta
+from typing import Dict, List
 
 from ling_chat.core.ai_service.voice_maker import VoiceMaker
-from ling_chat.core.pic_analyzer import DesktopAnalyzer
-from ling_chat.core.logger import logger
 from ling_chat.core.emotion.classifier import emotion_classifier
+from ling_chat.core.logger import logger
+from ling_chat.core.pic_analyzer import DesktopAnalyzer
 from ling_chat.utils.function import Function
 
 
@@ -27,7 +27,7 @@ class MessageProcessor:
     def analyze_emotions(self, text: str) -> List[Dict]:
         """分析文本中每个【】标记的情绪，并提取日语和中文部分"""
         emotion_segments = re.findall(r'(【(.*?)】)([^【】]*)', text)
-        
+
         if not emotion_segments:
             logger.warning("未在文本中找到【】格式的情绪标签，将尝试添加默认标签")
             return []
@@ -74,7 +74,7 @@ class MessageProcessor:
                     "label": "normal",
                     "confidence": 0.5
                 }
-            
+
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
             results.append({
@@ -89,12 +89,12 @@ class MessageProcessor:
             })
 
         return results
-    
+
     def append_user_message(self, user_message: str) -> dict:
         """处理用户消息，添加系统信息，如时间、是否需要分析桌面，以及提取大括号内的用户指令"""
 
         # TODO: 当 AI 的回复句子总是固定的时候，增加提示让 AI 的回复句子适度调整
-        
+
         current_time = datetime.now()
         processed_message = user_message
 
@@ -102,7 +102,7 @@ class MessageProcessor:
         sys_desktop_part = ""
         user_instruction_part = ""
         temp_instruction_part = ""
-        
+
         # 提取大括号内的用户指令
         import re
         bracket_pattern = r"\{([^}]+)\}"
@@ -112,34 +112,34 @@ class MessageProcessor:
         if bracket_matches:
             processed_message = re.sub(bracket_pattern, "", processed_message).strip()
             user_instruction_part = "旁白: " + "; ".join(bracket_matches)
-        
+
         # --- 2. 处理 [!Temp!] ---
         temp_pattern = r"\[!Temp!\](.*?)\[/!Temp!\]"
-        
+
         # re.S (re.DOTALL) 让 . 可以匹配换行符
         temp_matches = re.findall(temp_pattern, user_message, flags=re.S)
-        
+
         if temp_matches:
             processed_message = re.sub(temp_pattern, "", processed_message, flags=re.S).strip()
             temp_instruction_part = "%".join([f"${match}$" for match in temp_matches])
-        
+
         # 时间感知逻辑
-        if self.time_sense_enabled and ((self.last_time and 
+        if self.time_sense_enabled and ((self.last_time and
             (current_time - self.last_time > timedelta(hours=1))) or \
             self.sys_time_counter < 1):
-            
+
             formatted_time = current_time.strftime("%Y/%m/%d %H:%M")
             sys_time_part = f"{formatted_time} "
-        
+
         # 桌面分析逻辑
-        desktop_keywords = ["看桌面", "看看我的桌面", "看看桌面", "看我桌面", 
+        desktop_keywords = ["看桌面", "看看我的桌面", "看看桌面", "看我桌面",
                         "看看我桌面", "看我的桌面", "看下我桌面", "看下桌面", "看下我的桌面"]
-        
+
         if any(keyword in user_message for keyword in desktop_keywords):
             analyze_prompt = "你是一个图像信息转述者，你将需要把你看到的画面描述给另一个AI让他理解用户的图片内容。"+"\"" + user_message + "\"" + "以上是用户发的消息，请切合用户实际获取信息的需要，获取桌面画面中的重点内容，用200字描述主体部分即可。"
             analyze_info = self.desktop_analyzer.analyze_desktop(analyze_prompt)
             sys_desktop_part = f"桌面信息: {analyze_info}"
-        
+
         # 构建系统提醒部分
         system_parts = []
         sys_flag = False
@@ -153,7 +153,7 @@ class MessageProcessor:
             system_parts.append(user_instruction_part)
         if temp_instruction_part:
             system_parts.append(temp_instruction_part)
-        
+
         if system_parts:
             processed_message += "\n{" + ("系统提醒: " if sys_flag else "") + " ".join(system_parts) + "}"
 
@@ -162,7 +162,7 @@ class MessageProcessor:
 
         if self.sys_time_counter >= 2:
             self.sys_time_counter = 0
-        
+
         logger.info("处理后的用户信息是:" + processed_message)
         return {'main': processed_message, 'temp': temp_instruction_part if temp_instruction_part else None}
 

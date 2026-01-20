@@ -1,6 +1,8 @@
 <template>
-  <div class="main-menu-page" :class="{ 'main-menu-page--panel-active': currentPage !== 'mainMenu' }">
-
+  <div
+    class="main-menu-page"
+    :class="{ 'main-menu-page--panel-active': currentPage !== 'mainMenu' }"
+  >
     <MainChat v-if="currentPage === 'gameMainView'" />
     <Settings v-else-if="currentPage === 'settings'" />
     <Save v-else-if="currentPage === 'save'" />
@@ -10,10 +12,7 @@
       <!-- 主菜单 -->
       <Transition name="slide-left">
         <div class="main-menu-page__menu" v-if="menuState === 'main'">
-          <MainMenuOptions
-            @start-game="showGameModeMenu"
-            @open-settings="handleOpenSettings"
-          />
+          <MainMenuOptions @start-game="showGameModeMenu" @open-settings="handleOpenSettings" />
         </div>
       </Transition>
 
@@ -24,7 +23,11 @@
         </div>
       </Transition>
 
-      <img src="../../assets/images/LingChatLogo.png" alt="LingChatLogo" class="main-menu-page__logo" />
+      <img
+        src="../../assets/images/LingChatLogo.png"
+        alt="LingChatLogo"
+        class="main-menu-page__logo"
+      />
     </div>
   </div>
 </template>
@@ -73,7 +76,7 @@ watch(
       currentPage.value = 'mainMenu'
       menuState.value = 'main'
     }
-  }
+  },
 )
 
 // Save 组件占位（如果不存在则需要创建或使用 Settings）

@@ -1,10 +1,13 @@
-import aiohttp
 import os
-from ling_chat.core.TTS.base_adapter import TTSBaseAdapter
+
+import aiohttp
+
 from ling_chat.core.logger import logger
+from ling_chat.core.TTS.base_adapter import TTSBaseAdapter
+
 
 class GPTSoVITSAdapter(TTSBaseAdapter):
-    def __init__(self, ref_audio_path: str, 
+    def __init__(self, ref_audio_path: str,
                  prompt_text: str="", prompt_lang: str="zh",
                  audio_format: str="wav", text_lang: str="auto",
                  parallel_infer: bool=True
@@ -12,7 +15,7 @@ class GPTSoVITSAdapter(TTSBaseAdapter):
         api_url = os.environ.get("GPT_SOVITS_API_URL", "http://127.0.0.1:9880")
         # 处理URL末尾斜杠，避免重复
         self.api_url = api_url.rstrip('/')
-        
+
         # 支持的语言（v2及以上）：
         # auto 多语种自动识别切分
         # en	英语
@@ -29,7 +32,7 @@ class GPTSoVITSAdapter(TTSBaseAdapter):
             "ref_audio_path": ref_audio_path,
             "prompt_text": prompt_text,
             "prompt_lang": prompt_lang,
-            "text_lang": text_lang, 
+            "text_lang": text_lang,
             "media_type": audio_format, # 支持wav,raw,ogg,aac
             "speed_factor": 1.0,
             "text_split_method": "cut0",
@@ -67,20 +70,20 @@ class GPTSoVITSAdapter(TTSBaseAdapter):
             if not os.path.exists(gpt_model_path):
                 logger.error(f"GPT模型文件不存在: {gpt_model_path}")
                 raise FileNotFoundError(f"GPT模型文件不存在: {gpt_model_path}")
-            
+
             if not os.path.exists(sovits_model_path):
                 logger.error(f"SoVITS模型文件不存在: {sovits_model_path}")
                 raise FileNotFoundError(f"SoVITS模型文件不存在: {sovits_model_path}")
-            
+
             # 检查模型文件扩展名
             if not gpt_model_path.endswith(".ckpt"):
                 logger.error(f"GPT模型文件扩展名必须为.ckpt: {gpt_model_path}")
                 raise ValueError(f"GPT模型文件扩展名必须为.ckpt: {gpt_model_path}")
-            
+
             if not sovits_model_path.endswith(".pth"):
                 logger.error(f"SoVITS模型文件扩展名必须为.pth: {sovits_model_path}")
                 raise ValueError(f"SoVITS模型文件扩展名必须为.pth: {sovits_model_path}")
-            
+
             async with aiohttp.ClientSession() as session:
                 # 设置GPT模型
                 if gpt_model_path:
@@ -99,7 +102,7 @@ class GPTSoVITSAdapter(TTSBaseAdapter):
                             logger.error(f"SoVITS模型设置失败: {await resp.text()}")
                             return False
                         logger.debug(f"SoVITS模型设置成功: {sovits_model_path}")
-                
+
                 return True
         except Exception as e:
             logger.error(f"模型设置过程中出现异常: {str(e)}")

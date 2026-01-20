@@ -3,14 +3,19 @@
 接收前端转发的控制台输出，并按照不同控制台输出等级分类为不同日志等级
 """
 import traceback
-from fastapi import APIRouter, HTTPException, Request, Body
+
+from fastapi import APIRouter, Body, HTTPException, Request
 
 from ling_chat.core.console_log_service import console_log_service
-from ling_chat.core.schemas.console_logs import (
-    ConsoleLogEntry, ConsoleLogBatch, ConsoleLogLevel,
-    ConsoleLogSource, LogLevelMapping, LogFilterConfig
-)
 from ling_chat.core.logger import logger
+from ling_chat.core.schemas.console_logs import (
+    ConsoleLogBatch,
+    ConsoleLogEntry,
+    ConsoleLogLevel,
+    ConsoleLogSource,
+    LogFilterConfig,
+    LogLevelMapping,
+)
 
 router = APIRouter(prefix="/api/v1/logs", tags=["Console Logs"])
 

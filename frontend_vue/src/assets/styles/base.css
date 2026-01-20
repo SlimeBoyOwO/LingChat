@@ -1,11 +1,9 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 @theme {
   /* 字体配置 */
-  --font-sans: , -apple-system, BlinkMacSystemFont, "Microsoft YaHei",
-    sans-serif;
-  --font-mono: , -apple-system, BlinkMacSystemFont, "Microsoft YaHei",
-    sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Microsoft YaHei', sans-serif;
+  --font-mono: -apple-system, BlinkMacSystemFont, 'Microsoft YaHei', sans-serif;
 
   /* 颜色配置 */
   --color-brand: var(--accent-color);
@@ -51,11 +49,11 @@
 
 /* 毛玻璃效果 */
 .glass-effect {
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.125);
-    box-shadow:
-      0 8px 32px rgba(0, 0, 0, 0.1),
-      inset 0 1px 1px rgba(255, 255, 255, 0.1);
-  }
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.125);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.1),
+    inset 0 1px 1px rgba(255, 255, 255, 0.1);
+}

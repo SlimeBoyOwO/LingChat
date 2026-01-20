@@ -23,6 +23,7 @@
         <div class="chatbox-emotion">
           <div id="character-emotion">{{ uiStore.showCharacterEmotion }}</div>
         </div>
+        <Button type="nav" icon="hand" title="" @click="toggleTouchMode" @contextmenu.prevent="exitTouchMode"></Button>
         <Button type="nav" icon="history" title="" @click="openHistory"></Button>
       </div>
       <div class="chatbox-line"></div>
@@ -66,6 +67,33 @@ const emit = defineEmits(['player-continued', 'dialog-proceed'])
 const openHistory = () => {
   uiStore.toggleSettings(true)
   uiStore.setSettingsTab('history')
+}
+
+const handleRightClick = (e: MouseEvent) => {
+  if (gameStore.command === 'touch') {
+    e.preventDefault()
+    exitTouchMode()
+  }
+}
+
+const toggleTouchMode = () => {
+  if (gameStore.command === 'touch') {
+    // 离开触摸模式
+    exitTouchMode()
+  } else {
+    // 进入触摸模式
+    document.body.style.cursor = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' class='lucide lucide-hand-icon lucide-hand'%3E%3Cpath d='M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2'/%3E%3Cpath d='M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2'/%3E%3Cpath d='M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8'/%3E%3Cpath d='M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15'/%3E%3C/svg%3E") 0 0, auto`
+    gameStore.command = 'touch'
+    // 右键退出触摸，只在触摸模式下生效
+    document.addEventListener('contextmenu', handleRightClick)
+  }
+}
+
+const exitTouchMode = () => {
+  document.body.style.cursor = 'default'
+  gameStore.command = null
+  // 清除触摸模式下的右键监听
+  document.removeEventListener('contextmenu', handleRightClick)
 }
 
 // 使用计算属性处理占位符文本

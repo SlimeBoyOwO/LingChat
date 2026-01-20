@@ -1,6 +1,8 @@
-from fastapi import APIRouter
-from ling_chat.core.service_manager import service_manager
 import traceback
+
+from fastapi import APIRouter
+
+from ling_chat.core.service_manager import service_manager
 
 router = APIRouter(prefix="/api/v1/chat/info", tags=["Chat Info"])
 
@@ -12,7 +14,7 @@ async def init_web_infos(client_id:str ,user_id: int):
         # 假如说ai_service没有被初始化，那么就为它初始化
         if not ai_service:
             ai_service = service_manager.init_ai_service()
-        
+
         await service_manager.add_client(client_id)
 
         result = {
