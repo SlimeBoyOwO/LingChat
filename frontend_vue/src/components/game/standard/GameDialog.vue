@@ -347,6 +347,10 @@ defineExpose({
 
 /* 隐藏状态的对话框样式 */
 .chatbox-hidden {
+  @apply opacity-0 z-[-1] overflow-hidden transition-all duration-500 ease-linear;
+}
+
+.chatbox-hidden::before {
   @apply opacity-0 z-[-1] overflow-hidden transition-all duration-1000 ease-linear;
 }
 </style>
