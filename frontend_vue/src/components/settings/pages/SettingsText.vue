@@ -29,13 +29,6 @@
         <Toggle @change="voiceSound">启用无vits时的对话音效</Toggle>
       </MenuItem>
 
-      <MenuItem title="指令盘开关" size="small">
-        <template #header>
-          <SquareTerminal :size="20" />
-        </template>
-        <Toggle @change="commandWheelToggle" :checked="true">显示指令盘</Toggle>
-      </MenuItem>
-
       <MenuItem title="WebSocket通信状态" size="small">
         <template #header>
           <Rss :size="20" />
@@ -108,9 +101,6 @@ const animateSwitch = (data: boolean) => {
 }
 const voiceSound = (data: boolean) => {
   uiStore.enableChatEffectSound = data
-}
-const commandWheelToggle = (data: boolean) => {
-  uiStore.toggleCommandWheel(data)
 }
 </script>
 
