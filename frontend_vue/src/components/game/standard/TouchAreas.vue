@@ -148,12 +148,11 @@ const handlePolygonClick = (event: MouseEvent) => {
       return [x, y]
     })
 
-
     if (!sent.value) {
       gameStore.currentStatus = 'thinking'
       touchCount.value++
-      
-      let message = ""
+
+      let message = ''
       const messageWithCount =
         touchCount.value === 1
           ? props.part.message
@@ -162,11 +161,10 @@ const handlePolygonClick = (event: MouseEvent) => {
 
       if (isPointInPolygon(event.clientX, event.clientY, polygon)) {
         message = messageWithCount
-      }
-      else{
+      } else {
         message = defaultMessage
       }
-      
+
       scriptHandler.sendMessage(messageWithCount)
       sent.value = true
     } else {
@@ -177,7 +175,6 @@ const handlePolygonClick = (event: MouseEvent) => {
       }
       sent.value = false
     }
-    
   }
 }
 
