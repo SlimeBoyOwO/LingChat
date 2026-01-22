@@ -1,18 +1,6 @@
 <template>
-  <!-- 对话框开关按钮 -->
-  <div class="chatbox-toggle" @click="toggleDialog">
-    <svg
-      :class="{ 'rotate-180': isHidden }"
-      class="toggle-icon"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-    >
-      <path d="M7 14l5-5 5 5z" />
-    </svg>
-  </div>
-
   <div class="chatbox-box" :class="{ 'chatbox-hidden': isHidden }">
-    <div class="chatbox-main" :class="{ 'chatbox-hidden': isHidden }">
+    <div class="chatbox-main">
       <div class="chatbox-title-part">
         <div class="chatbox-title">
           <div id="character">{{ uiStore.showCharacterTitle }}</div>
@@ -31,6 +19,7 @@
           @contextmenu.prevent="exitTouchMode"
         ></Button>
         <Button type="nav" icon="history" title="" @click="openHistory"></Button>
+        <Button type="nav" icon="close" title="" @click="removeDialog"></Button>
       </div>
       <div class="chatbox-line"></div>
       <div class="chatbox-inputbox">
@@ -49,7 +38,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { Button } from '../../base'
 import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
@@ -79,6 +68,13 @@ const handleRightClick = (e: MouseEvent) => {
   if (gameStore.command === 'touch') {
     e.preventDefault()
     exitTouchMode()
+  }
+}
+
+const handleDialogShow = (e: MouseEvent) => {
+  if (isHidden.value) {
+    e.preventDefault()
+    isHidden.value = false
   }
 }
 
@@ -154,6 +150,15 @@ watch([() => uiStore.showCharacterLine, () => gameStore.currentStatus], ([newLin
   }
 })
 
+// 对话框隐藏后添加右键点击事件的监听以重新显示，在点击后移除
+onMounted(() => {
+  document.addEventListener('contextmenu', handleDialogShow)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('contextmenu', handleDialogShow)
+})
+
 function sendOrContinue() {
   if (gameStore.currentStatus === 'input') {
     send()
@@ -195,9 +200,8 @@ function continueDialog(isPlayerTrigger: boolean): boolean {
   return needWait
 }
 
-function toggleDialog(e: Event) {
-  e.stopPropagation()
-  isHidden.value = !isHidden.value
+function removeDialog(e: Event) {
+  isHidden.value = true
 }
 
 defineExpose({
@@ -347,28 +351,12 @@ defineExpose({
   opacity: 0.7;
 }
 
-/* 对话框开关按钮样式 */
-.chatbox-toggle {
-  @apply absolute bottom-2.5 left-1/2 -translate-x-1/2 w-10 h-10 flex items-center justify-center cursor-pointer rounded-full 
-   bg-white/10 border border-white/20 transition-all duration-300 ease-in-out z-114514
-   hover:bg-white/20 hover:scale-110 hover:-translate-x-1/2;
-  backdrop-filter: blur(10px);
-}
-
-.toggle-icon {
-  @apply w-5 h-5 text-white transition-transform duration-300 ease-in-out rotate-180;
-}
-
-.rotate-180 {
-  transform: rotate(180deg);
-}
-
 /* 隐藏状态的对话框样式 */
 .chatbox-hidden {
-  @apply h-0 p-0 overflow-hidden transition-all duration-2000 ease-[cubic-bezier(0.25,0.46,0.45,0.94)];
+  @apply opacity-0 z-[-1] overflow-hidden transition-all duration-500 ease-linear;
 }
 
-.chatbox-hidden .chatbox-main {
-  @apply translate-y-full opacity-0 transition-all duration-2000 ease-[cubic-bezier(0.25,0.46,0.45,0.94)];
+.chatbox-hidden::before {
+  @apply opacity-0 z-[-1] overflow-hidden transition-all duration-1000 ease-linear;
 }
 </style>
