@@ -1,7 +1,6 @@
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from sqlmodel import Session, select
-from ling_chat.database.database import Role
 from ling_chat.game_database.database import engine
 from ling_chat.game_database.models import LineBase, Save, Line, RunningScript
 
