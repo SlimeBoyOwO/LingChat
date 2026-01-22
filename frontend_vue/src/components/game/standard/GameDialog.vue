@@ -23,7 +23,13 @@
         <div class="chatbox-emotion">
           <div id="character-emotion">{{ uiStore.showCharacterEmotion }}</div>
         </div>
-        <Button type="nav" icon="hand" title="" @click="toggleTouchMode" @contextmenu.prevent="exitTouchMode"></Button>
+        <Button
+          type="nav"
+          icon="hand"
+          title=""
+          @click="toggleTouchMode"
+          @contextmenu.prevent="exitTouchMode"
+        ></Button>
         <Button type="nav" icon="history" title="" @click="openHistory"></Button>
       </div>
       <div class="chatbox-line"></div>
