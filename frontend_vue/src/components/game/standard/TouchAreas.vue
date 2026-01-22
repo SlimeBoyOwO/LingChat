@@ -15,9 +15,6 @@
         class="polygon-shape"
       />
     </svg>
-
-    <!-- 触摸音效播放器 -->
-    <audio ref="touchAudio" preload="auto"></audio>
   </div>
 </template>
 
@@ -117,6 +114,10 @@ const isPointInPolygon = (x: number, y: number, polygon: readonly [number, numbe
 
 // 处理多边形点击
 const handlePolygonClick = (event: MouseEvent) => {
+  if (gameStore.command !== 'touch') {
+    return
+  }
+
   // 防抖检查：如果距离上次点击时间不足 debounceDelay 毫秒，则忽略此次点击
   const currentTime = Date.now()
   if (currentTime - lastClickTime.value < debounceDelay) {
@@ -197,7 +198,7 @@ onUnmounted(() => {
 @reference "tailwindcss";
 
 .touch-areas-container {
-  @apply fixed inset-0 pointer-events-none z-100;
+  @apply fixed inset-0 z-2 pointer-events-none;
 }
 
 .polygon-area {
