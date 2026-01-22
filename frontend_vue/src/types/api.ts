@@ -60,7 +60,8 @@ export interface CharacterSelectParams {
 export interface SaveInfo {
   id: string
   title: string
-  updated_at: string
+  update_date: string
+  create_date: string
 }
 
 export interface SaveListParams {

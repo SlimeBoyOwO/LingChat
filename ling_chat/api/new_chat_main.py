@@ -105,7 +105,9 @@ class WebSocketManager:
             asyncio.create_task(ai_service.start_script())
             logger.info("开始进行剧本模式")
         elif user_message == "/查看记忆":
-            ai_service.show_memory()
+            ai_service.show_current_role_memory()
+        elif user_message == "/查看台词":
+            ai_service.show_lines()
         else:
             if ai_service.scripts_manager.is_running:
                 asyncio.create_task(

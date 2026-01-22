@@ -10,9 +10,12 @@ class ResponseFactory:
     def create_reply(seg: Dict, user_message: str, is_final: bool) -> ReplyResponse:
         return ReplyResponse(
             character=seg.get("character", "default"),
+            roleId=seg.get("role_id", None),
+            scriptRoleId=seg.get("script_role_id", None),
             emotion=seg['predicted'] or seg["original_tag"],
             originalTag=seg['original_tag'],
             message=seg['following_text'],
+            ttsText=seg.get('japanese_text', None),
             motionText=seg['motion_text'],
             audioFile=os.path.basename(seg['voice_file']) if os.path.exists(seg['voice_file']) else None,
             originalMessage=user_message,
