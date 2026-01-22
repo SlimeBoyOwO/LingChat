@@ -30,7 +30,7 @@ class AIDialogueEvent(BaseEvent):
         logger.info(f"AI Dialogue Event for character: {character} with memory: {memory}")
 
         responses = []
-        async for response in ai_service.message_generator.process_message_stream("",character=character,memory=memory):
+        async for response in ai_service.message_generator.process_message_stream("",memory=memory):
             responses.append(response)
 
         for response in responses:

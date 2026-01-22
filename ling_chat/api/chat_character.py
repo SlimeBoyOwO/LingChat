@@ -6,10 +6,11 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from ling_chat.core.logger import logger
 from ling_chat.core.service_manager import service_manager
-from ling_chat.database.character_model import CharacterModel
-from ling_chat.database.user_model import UserModel
 from ling_chat.utils.function import Function
 from ling_chat.utils.runtime_path import user_data_path
+
+from ling_chat.game_database.managers.user_manager import UserManager
+from ling_chat.game_database.managers.role_manager import RoleManager
 
 router = APIRouter(prefix="/api/v1/chat/character", tags=["Chat Character"])
 
@@ -17,7 +18,7 @@ router = APIRouter(prefix="/api/v1/chat/character", tags=["Chat Character"])
 @router.post("/refresh_characters")
 async def refresh_characters():
     try:
-        CharacterModel.sync_characters_from_game_data(user_data_path / "game_data")
+        RoleManager.sync_roles_from_folder(user_data_path / "game_data")
         return {"success": True}
     except Exception as e:
         logger.error(f"刷新人物列表请求失败: {str(e)}")
@@ -105,34 +106,29 @@ async def select_character(
 ):
     try:
         # 1. 验证角色是否存在
-        character = CharacterModel.get_character_by_id(character_id=character_id)
+        character = RoleManager.get_role_by_id(character_id)
         if not character:
             raise HTTPException(status_code=404, detail="角色不存在")
 
         # 2. 切换AI服务角色
-        character_settings = CharacterModel.get_character_settings_by_id(character_id=character_id)
+        character_settings = RoleManager.get_role_settings_by_id(character_id)
         if character_settings is None: return HTTPException(status_code=500, detail="角色不存在")
 
         character_settings["character_id"] = character_id
-        service_manager.ai_service.import_settings(settings=character_settings)
-        service_manager.ai_service.reset_memory()
+        if service_manager.ai_service is not None:
+            service_manager.ai_service.import_settings(settings=character_settings)
+            service_manager.ai_service.reset_lines()
 
         # 2.5 更新用户的最后一次对话角色
-        UserModel.update_user_character(
-            user_id=user_id,
-            character_id=character_id
-        )
+        UserManager.update_last_character(user_id=user_id, role_id=character_id)
 
-        # 3. 从 resource_path 提取文件夹名
-        folder_name = os.path.basename(character.get("resource_path", ""))
-
-        # 4. 返回切换后的角色信息
+        # 3. 返回切换后的角色信息
         return {
             "success": True,
             "character": {
-                "id": character.get("id"),
-                "title": character.get("title"),
-                "folder_name": folder_name  # 用于前端加载角色专属提示
+                "id": character.id,
+                "title": character.name,
+                "folder_name": character.resource_folder  # 用于前端加载角色专属提示
             }
         }
     except Exception as e:
@@ -143,25 +139,27 @@ async def select_character(
 @router.get("/get_all_characters")
 async def get_all_characters():
     try:
-        db_chars = CharacterModel.get_all_characters()
+        db_chars = RoleManager.get_all_roles()
 
         if not db_chars:
             return {"data": [], "message": "未找到任何角色"}
 
         characters = []
         for char in db_chars:
-            settings_path = os.path.join(char['resource_path'], 'settings.txt')
+            char_path = user_data_path / "game_data" / "characters" / char.resource_folder
+
+            settings_path = char_path / 'settings.txt'
             settings = Function.parse_enhanced_txt(settings_path)
 
             # 返回相对路径而不是完整路径
             avatar_relative_path = os.path.join(
-                os.path.basename(char['resource_path']),
+                char.resource_folder,
                 'avatar',
                 '头像.png'
             )
 
             clothes_absolute_path = os.path.join(
-                char['resource_path'],
+                char_path,
                 'avatar',
             )
 
@@ -174,8 +172,8 @@ async def get_all_characters():
                     })
 
             characters.append({
-                "character_id": char['id'],
-                "title": char['title'],
+                "character_id": char.id,
+                "title": char.name,
                 "info": settings.get('info', '这是一个人工智能对话助手'),
                 "avatar_path": avatar_relative_path,  # 修改为相对路径
                 "clothes": clothes_list

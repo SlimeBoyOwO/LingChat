@@ -9,19 +9,20 @@ from fastapi import FastAPI, Request, Response
 
 from ling_chat.api.routes_manager import RoutesManager
 from ling_chat.core.logger import logger
-from ling_chat.database import init_db
-from ling_chat.database.character_model import CharacterModel
+
+from ling_chat.game_database.database import init_db
+from ling_chat.game_database.managers.role_manager import RoleManager
 from ling_chat.utils.runtime_path import user_data_path
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
-        logger.info("正在初始化数据库...")
+        logger.info("正在初始化数据库...") # 骗你的其实不是在这里初始化的，在包被导入的时候自动初始化了
         init_db()
 
         logger.info("正在同步游戏角色数据...")
-        CharacterModel.sync_characters_from_game_data(user_data_path / "game_data")
+        RoleManager.sync_roles_from_folder(user_data_path / "game_data")
 
         yield
 

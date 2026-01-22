@@ -24,7 +24,7 @@
             <div v-for="save in saves" :key="save.id" class="save-card glass-effect">
               <div class="save-info">
                 <span class="save-title">{{ save.title || '未命名存档' }}</span>
-                <span class="save-date">{{ formatDate(save.updated_at) }}</span>
+                <span class="save-date">{{ formatDate(save.update_date) }}</span>
               </div>
               <div class="save-actions">
                 <button @click="handleLoadSave(save.id)" class="glass-effect action-btn-load">
@@ -97,7 +97,8 @@ const fetchSaves = async () => {
       page: 1,
       page_size: 10,
     })
-    saves.value = saveListData.conversations
+    console.log('获取存档列表成功:', saveListData)
+    saves.value = saveListData.saves
   } catch (e: any) {
     console.error('获取存档列表失败:', e)
     error.value = e.message || '未知错误'

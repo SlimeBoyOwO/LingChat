@@ -14,9 +14,12 @@ class BaseResponse(BaseModel):
 class ReplyResponse(BaseResponse):
     type: str = ResponseType.AI_REPLY
     character: Optional[str] = None
+    roleId: Optional[int] = None
+    scriptRoleId: Optional[str] = None
     emotion: str
     originalTag: str
     message: str
+    ttsText: Optional[str] = None
     motionText: Optional[str] = None
     audioFile: Optional[str] = None
     originalMessage: str
