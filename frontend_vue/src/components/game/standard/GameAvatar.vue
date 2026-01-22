@@ -16,6 +16,15 @@
     ></div>
     <!-- 修改结束 -->
 
+    <!-- 触摸区域组件 -->
+    <TouchAreas
+      v-for="(part, key) in gameStore.avatar.body_part"
+      :key="key"
+      :game-store="gameStore"
+      :part="part"
+      :part-key="key"
+    />
+
     <div :class="bubbleClasses" :style="bubbleStyles" class="bubble"></div>
 
     <!-- 主音频播放器 -->
@@ -32,6 +41,7 @@ import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { EMOTION_CONFIG, EMOTION_CONFIG_EMO } from '@/controllers/emotion/config'
 import './avatar-animation.css'
+import TouchAreas from './TouchAreas.vue'
 
 const gameStore = useGameStore()
 const uiStore = useUIStore()
