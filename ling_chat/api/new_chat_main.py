@@ -8,6 +8,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from ling_chat.core.logger import logger
 from ling_chat.core.messaging.broker import message_broker
 from ling_chat.core.service_manager import service_manager
+from ling_chat.core.achievement_manager import achievement_manager
 
 
 class WebSocketManager:
@@ -82,6 +83,31 @@ class WebSocketManager:
             await websocket.send_json({"type": "pong"})
         elif message_type == 'message':
             await self._handle_user_message(client_id, message)
+        elif message_type == 'achievement.unlock_request':
+            # 处理前端发来的成就解锁请求
+            achievement_data = message.get('data', {})
+            achievement_id = achievement_data.get('id', None)
+
+            if achievement_id:
+                logger.info(f"收到成就解锁请求: {achievement_id}")
+                # 尝试解锁成就
+                unlocked_info = achievement_manager.unlock(achievement_id, achievement_data)
+
+                if unlocked_info:
+                    # 如果成就解锁成功，则广播通知
+                    # 这里以后端修正后的弹窗参数数据为主
+                    await self.broadcast_achievement_unlock(unlocked_info, client_id)
+                else:
+                    logger.info(f"成就 {achievement_id} 解锁失败或已解锁，不发送通知")
+            else:
+                logger.warning("收到没有ID的成就解锁请求")
+        elif message_type == 'achievement.get_list':
+            # 处理获取成就列表请求
+            all_achievements = achievement_manager.get_all_achievements()
+            await self.send_to_client(client_id, {
+                "type": "achievement.list",
+                "data": all_achievements
+            })
         else:
             logger.warning(f"未知消息类型: {message_type}")
 
@@ -100,6 +126,16 @@ class WebSocketManager:
             return
 
         user_message = message.get('content', '')
+
+        # --- 成就触发检查 ---
+        try:
+            from ling_chat.core.achievement_triggers import achievement_trigger_handler
+            new_unlocks = achievement_trigger_handler.handle_user_message(user_message)
+            for achievement in new_unlocks:
+                await self.broadcast_achievement_unlock(achievement, client_id)
+        except Exception as e:
+            logger.error(f"成就触发检查失败: {e}")
+        # ------------------
 
         if user_message == "/开始剧本":
             asyncio.create_task(ai_service.start_script())
@@ -142,6 +178,24 @@ class WebSocketManager:
                 await self.active_connections[client_id].send_json(message)
             except Exception as e:
                 logger.error(f"直接发送消息失败: {e}")
+
+    async def broadcast_achievement_unlock(self, achievement_data: dict, target_client_id: str = None):
+        """
+        向客户端广播成就解锁消息
+        :param achievement_data: 成就数据，应包含 id, title, message, type (common/rare) 等
+        :param target_client_id: 如果指定，只发送给该客户端；否则广播给所有（虽然后端架构目前是一对一，但保留广播能力）
+        """
+        message = {
+            "type": "achievement.unlocked",
+            "data": achievement_data
+        }
+
+        if target_client_id:
+            await self.send_to_client(target_client_id, message)
+        else:
+            # 广播给所有连接
+            for client_id in self.active_connections:
+                await self.send_to_client(client_id, message)
 
 # 改进的端点函数
 async def websocket_endpoint(websocket: WebSocket):
