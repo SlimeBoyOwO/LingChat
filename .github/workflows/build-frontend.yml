@@ -20,12 +20,12 @@ jobs:
       contents: write
 
     steps:
-    - name: 检出代码
+    - name: 检出基础代码
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
         token: ${{ secrets.GITHUB_TOKEN }}
-        lfs: true
+        lfs: false
 
     - name: 检查路径变化
       uses: dorny/paths-filter@v3
@@ -34,6 +34,12 @@ jobs:
         filters: |
           frontend:
             - 'frontend_vue/**'
+
+    - name: 条件签出LFS文件
+      if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && steps.changes.outputs.frontend == 'true'
+      run: |
+        git lfs install
+        git lfs pull --include="frontend_vue/**" --exclude=""
 
     - name: 安装 pnpm
       if: steps.changes.outputs.frontend == 'true'
