@@ -50,6 +50,14 @@
         ><p class="hidden xl:block">对话历史</p></Button
       >
       <Button
+        ref="achievementBtn"
+        type="nav"
+        icon="achievement"
+        @click="() => switchTab('achievement', 'achievementBtn')"
+        :class="{ active: uiStore.currentSettingsTab === 'achievement' }"
+        ><p class="hidden xl:block">成就</p></Button
+      >
+      <Button
         ref="saveBtn"
         type="nav"
         icon="save"
@@ -121,6 +129,7 @@ const textBtn = ref<ButtonRef | null>(null)
 const backgroundBtn = ref<ButtonRef | null>(null)
 const soundBtn = ref<ButtonRef | null>(null)
 const historyBtn = ref<ButtonRef | null>(null)
+const achievementBtn = ref<ButtonRef | null>(null)
 const saveBtn = ref<ButtonRef | null>(null)
 const advanceBtn = ref<ButtonRef | null>(null)
 const scheduleBtn = ref<ButtonRef | null>(null)
@@ -137,6 +146,7 @@ const handleIndicatorMove = (currentRefName: string) => {
     backgroundBtn,
     soundBtn,
     historyBtn,
+    achievementBtn,
     saveBtn,
     advanceBtn,
     scheduleBtn,
@@ -215,6 +225,9 @@ const initIndicator = () => {
       break
     case 'history':
       activeButton = historyBtn.value
+      break
+    case 'achievement':
+      activeButton = achievementBtn.value
       break
     case 'save':
       activeButton = saveBtn.value

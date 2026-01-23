@@ -92,6 +92,12 @@ def run_main_program(args):
         else:
             logger.info("已根据环境变量禁用临时文件清理")
 
+        try:
+            from ling_chat.core.achievement_manager import AchievementManager
+            AchievementManager.get_instance().save_if_dirty()
+        except Exception as e:
+            logger.error(f"保存成就数据时出错: {e}")
+
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
