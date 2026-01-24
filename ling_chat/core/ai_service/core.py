@@ -5,7 +5,7 @@ import os
 from typing import Dict
 
 from ling_chat.core.ai_service.game_status import GameStatus
-from ling_chat.game_database.models import LineBase
+from ling_chat.game_database.models import GameLine, LineBase
 from ling_chat.core.ai_service.ai_logger import AILogger
 from ling_chat.core.ai_service.config import AIServiceConfig
 from ling_chat.core.ai_service.events_scheduler import EventsScheduler
@@ -153,7 +153,7 @@ class AIService:
     def get_lines(self):
         return self.game_status.line_list
     
-    def load_lines(self, lines:list[LineBase], main_role_id: int):
+    def load_lines(self, lines:list[GameLine], main_role_id: int):
         self.game_status.line_list = lines
         self.game_status.role_manager.refresh_memories_from_lines(self.game_status.line_list)
         main_role = self.game_status.role_manager.get_role(role_id=main_role_id)
@@ -169,10 +169,14 @@ class AIService:
     
     def init_lines(self):
         self.game_status.line_list = []
-        system_line = LineBase(content=self.ai_prompt, attribute="system", role_id=self.character_id, display_name=self.ai_name)
+        system_line = LineBase(content=self.ai_prompt, attribute="system", sender_role_id=self.character_id, display_name=self.ai_name)
         self.game_status.add_line(system_line)
-        self.game_status.current_character = self.game_status.role_manager.get_role(self.character_id)
-        logger.info(f"初始化游戏主角：{self.game_status.current_character} 已初始化。")
+        if self.character_id:
+            self.game_status.current_character = self.game_status.role_manager.get_role(self.character_id)
+            self.game_status.present_roles.add(self.game_status.current_character)
+            logger.info(f"初始化游戏主角：{self.game_status.current_character} 已初始化。")
+        else:
+            logger.error("初始化游戏主角失败，未指定角色ID。")
 
     def show_lines(self):
         logger.info("当前台词列表如下：")
