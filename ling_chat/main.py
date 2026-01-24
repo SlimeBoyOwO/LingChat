@@ -146,7 +146,7 @@ def run_main_program(args,is_wv=False):
     if os.getenv("OPEN_FRONTEND_APP", "false").lower() == "true" or gui_enabled:  # fixme: 请使用 --run webview 启动前端界面
         logger.stop_loading_animation(success=True, final_message="应用加载成功")
         print_logo()
-        logger.warning("[Deprecation]: 请使用 --run webview 启动前端界面，如果依然无法解决问题，请使用 --nogui 启用无前端窗口模式")
+        logger.warning("[Deprecation]:请使用 --gui 强制启用前端窗口 或使用 --nogui 启用无前端窗口模式")
         try:
             start_webview()
         except KeyboardInterrupt:
@@ -173,14 +173,13 @@ def main():
         signal.signal(signal.SIGTERM, _module_signal_handler)
     except Exception:
         logger.debug("无法在当前环境注册全局信号处理器")
-    gui_enabled = (not args.nogui) and (os.getenv('OPEN_FRONTEND_APP', 'false').lower() == "true")
+    gui_enabled = (not args.nogui) and (os.getenv('OPEN_FRONTEND_APP', 'false').lower() == "true") or args.gui
     print(f"GUI Enabled: {gui_enabled}")
-    if not gui_enabled:
+    if  gui_enabled:
         logger.info("启用前端界面模式")
         
         wbt = threading.Thread(target=run_main_program, args=(args, True))
         wbt.start()
-        print("1")
         start_webview()
     else:
         if args.command:
