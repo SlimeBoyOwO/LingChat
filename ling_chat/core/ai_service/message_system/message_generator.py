@@ -18,6 +18,8 @@ from ling_chat.core.llm_providers.manager import LLMManager
 from ling_chat.core.logger import logger
 from ling_chat.core.schemas.response_models import ResponseFactory
 from ling_chat.core.schemas.responses import ReplyResponse
+from ling_chat.core.ai_service.game_status import GameStatus
+from ling_chat.game_database.models import LineBase
 from ling_chat.utils.function import Function
 
 
@@ -29,7 +31,8 @@ class MessageGenerator:
                 translator: Translator,
                 llm_model: LLMManager,
                 rag_manager: Optional[RAGManager],
-                ai_logger: AILogger):
+                ai_logger: AILogger,
+                game_status: GameStatus):
         self.config = config
         self.use_rag = os.environ.get("USE_RAG", "False").lower() == "true"
         self.rag_manager = rag_manager if rag_manager else RAGManager() if self.use_rag else None
@@ -39,10 +42,8 @@ class MessageGenerator:
         self.llm_model = llm_model if llm_model else LLMManager()
         self.ai_logger = ai_logger if ai_logger else AILogger()
         self.function = Function()
+        self.game_status = game_status
         self.concurrency = int(os.environ.get("COMSUMERS", 3))
-
-    def memory_init(self, memory: List[Dict]) -> None:
-        self.memory = memory
 
     async def process_sentence(self, sentence: str, emotion_segments: List[Dict]):
         """处理单个句子的情绪分析、翻译和语音合成"""
@@ -68,7 +69,9 @@ class MessageGenerator:
             logger.debug(f"句子处理时间: {end_time - start_time} 秒")
 
     # 主方法现在充当协调器角色
-    async def process_message_stream(self, user_message: str, character: str = "default", memory: Optional[List[Dict]] = None) -> AsyncGenerator[ReplyResponse, None]:
+    async def process_message_stream(self, 
+                                     user_message: str, 
+                                     memory: Optional[List[Dict]] = None,) -> AsyncGenerator[ReplyResponse, None]:
         """
         协调流处理管道并生成响应，避免死锁。
         """
@@ -76,20 +79,34 @@ class MessageGenerator:
         processed_user_message = ""
         temp_message = None
         # 1. 设置和预处理
-        current_context = self.memory.copy() if not memory else memory.copy()
+        current_context = []
 
-        if not memory:
-            processed_user_message_dict = self.message_processor.append_user_message(user_message)
-            processed_user_message = processed_user_message_dict.get("main","")
-            temp_message = processed_user_message_dict.get("temp",None)
+        # 1. 处理用户消息，提取临时指令，构建台词
+        processed_user_message_dict = self.message_processor.append_user_message(user_message)
+        processed_user_message = processed_user_message_dict.get("main","")
+        temp_message = processed_user_message_dict.get("temp",None)
+        line = LineBase(content=processed_user_message, attribute="user", display_name=self.game_status.player.user_name)
 
-            self.memory.append({"role": "user", "content": processed_user_message})
-            current_context = self.memory.copy()
-            if self.use_rag and self.rag_manager:
-                self.rag_manager.rag_append_sys_message(current_context, rag_messages, processed_user_message)
+        # 2. 添加用户消息到游戏状态台词表中，更新游戏角色记忆
+        # append_line_index = len(self.game_status.line_list)
+        self.game_status.add_line(line)
 
-            if logger.should_print_context():
-                self.ai_logger.print_debug_message(current_context, rag_messages, self.memory)
+        # 3. 获取记忆
+        role = self.game_status.current_character
+        if role:
+            current_context = role.memory.copy()
+        elif memory:
+            current_context = memory.copy()
+        else:
+            logger.error("生成消息的时候没有当前角色或者记忆，取消生成消息")
+            return
+
+        # TODO: 永久记忆相关内容等待结合数据库进行重构
+        # if self.use_rag and self.rag_manager:
+        #     self.rag_manager.rag_append_sys_message(current_context, rag_messages, processed_user_message)
+
+        if logger.should_print_context():
+            self.ai_logger.print_debug_message(current_context, rag_messages, current_context)
 
         # 2. 管道组件的共享状态
         sentence_queue = asyncio.Queue(maxsize=self.concurrency * 2)
@@ -116,7 +133,7 @@ class MessageGenerator:
                     results_store=results_store, publish_events=publish_events,
                     message_processor=self.message_processor, translator=self.translator,
                     voice_maker=self.voice_maker, user_message=user_message,
-                    character=character
+                    game_status=self.game_status,
                 )
                 consumer_task = asyncio.create_task(consumer.run(), name=f"Consumer-{i}")
                 background_tasks.append(consumer_task)
@@ -183,21 +200,22 @@ class MessageGenerator:
             # 我们在finally块中等待所有任务以进行清理
 
             # 6. 后续处理
+            ai_name = self.game_status.current_character.display_name
+            if not ai_name: ai_name = "Nameless"
             if accumulated_response:
-                if not memory:
 
-                    # 让 processed_user_message 删除 temp_message 字段
-                    if temp_message is not None:
-                        self.memory.pop()
-                        processed_user_message = processed_user_message.replace(temp_message, "")
-                        self.memory.append({"role": "user", "content": processed_user_message})
+                # 让 processed_user_message 删除 temp_message 字段
+                if temp_message is not None:
+                    line.content = processed_user_message.replace(temp_message, "")
+                    # self.game_status.line_list[append_line_index] = line 这行应该没必要
+                    self.game_status.refresh_memories()
 
-                    self.memory.append({"role": "assistant", "content": accumulated_response})
-                    if self.use_rag and self.rag_manager:
-                        self.rag_manager.save_messages_to_rag(self.memory)
-                self.ai_logger.log_conversation("钦灵", accumulated_response)
+                # if self.use_rag and self.rag_manager:
+                #     self.rag_manager.save_messages_to_rag(current_context)
+
+                self.ai_logger.log_conversation(ai_name, accumulated_response)
             else:
-                self.ai_logger.log_conversation("钦灵", "未生成响应。")
+                self.ai_logger.log_conversation(ai_name, "未生成响应。")
 
 
         except Exception as e:

@@ -5,11 +5,13 @@ from typing import Dict, List, Optional
 
 from ling_chat.core.ai_service.ai_logger import logger
 from ling_chat.core.ai_service.message_processor import MessageProcessor
+from ling_chat.core.ai_service.game_status import GameStatus
 from ling_chat.core.ai_service.translator import Translator
 from ling_chat.core.ai_service.voice_maker import VoiceMaker
 from ling_chat.core.logger import logger
 from ling_chat.core.schemas.response_models import ResponseFactory
 from ling_chat.core.schemas.responses import ReplyResponse
+from ling_chat.game_database.models import LineBase
 
 
 class SentenceConsumer:
@@ -25,7 +27,8 @@ class SentenceConsumer:
                  translator: Translator,
                  voice_maker: VoiceMaker,
                  user_message: str,
-                 character: str = "default"):
+                 game_status: GameStatus,
+                 ):
         self.consumer_id = consumer_id
         self.sentence_queue = sentence_queue
         self.results_store = results_store
@@ -34,7 +37,7 @@ class SentenceConsumer:
         self.translator = translator
         self.voice_maker = voice_maker
         self.user_message = user_message
-        self.character = character
+        self.game_status = game_status
 
     async def run(self):
         """Starts the consumer loop."""
@@ -71,7 +74,6 @@ class SentenceConsumer:
 
     async def _process_sentence_and_prepare_response(self, sentence: str, user_message: str, is_final: bool) -> Optional[ReplyResponse]:
         """(Helper) Processes a single sentence and prepares the response dictionary."""
-        # This logic is identical to your original helper method
         if not sentence:
             return None
 
@@ -88,9 +90,28 @@ class SentenceConsumer:
             await self.voice_maker.generate_voice_files(sentence_segments)
         end_time = time.perf_counter()
 
-        sentence_segments[0]['character'] = self.character
+        role = self.game_status.current_character
+        
+        if role:
+            sentence_segments[0]['character'] = role.display_name
+            if role.role_id: 
+                sentence_segments[0]['role_id'] = role.role_id
+            if role.script_role_id: 
+                sentence_segments[0]['script_role_id'] = role.script_role_id
 
-        # Assuming create_response is a method in the orchestrator or a utility class
         response = ResponseFactory.create_reply(sentence_segments[0], user_message, is_final)
+        ai_line = LineBase(content=response.message,
+                           role_id=response.roleId,
+                           script_role_id=response.scriptRoleId,
+                           original_emotion=response.originalTag,
+                           predicted_emotion=response.emotion,
+                           tts_content=response.ttsText,
+                           action_content=response.motionText,
+                           audio_file=response.audioFile,
+                           display_name=response.character,
+                           attribute="assistant",
+                           )
+        self.game_status.add_line(ai_line)
+        
         logger.debug(f"Sentence processed in {end_time - start_time:.2f} seconds.")
         return response

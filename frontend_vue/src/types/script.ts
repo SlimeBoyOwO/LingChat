@@ -19,11 +19,14 @@ export interface ScriptPlayerEvent extends ScriptEvent {
 export interface ScriptDialogueEvent extends ScriptEvent {
   type: 'reply'
   character?: string
+  roleId?: number
+  scriptRoleId?: string
   emotion: string
   originalTag: string
   message: string
   motionText: string
-  audioFile: string
+  ttsText?: string
+  audioFile?: string
   originalMessage: string
 }
 

@@ -17,11 +17,16 @@ class GeminiProvider(BaseLLMProvider):
     def initialize_client(self):
         """初始化Gemini客户端"""
         api_key = os.environ.get("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        proxy_url = os.environ.get("GEMINI_PROXY_URL") or os.getenv("GOOGLE_PROXY_URL")
 
         if not api_key:
             raise ValueError("Gemini API key is required! Please set GEMINI_API_KEY environment variable.")
 
         genai.configure(api_key=api_key)
+
+        if proxy_url:
+            genai.configure(proxy_url=proxy_url)
+
         self.model_type = os.environ.get("GEMINI_MODEL_TYPE", "gemini-pro")
         self.client = genai.GenerativeModel(self.model_type)
 

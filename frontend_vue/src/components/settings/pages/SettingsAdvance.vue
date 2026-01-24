@@ -1,6 +1,6 @@
 <template>
   <MenuPage>
-    <div class="flex-1 w-full bg-white/10 p-0 md:p-4 rounded-lg overflow-hidden">
+    <div class="flex-1 h-[85vh] w-full bg-white/10 p-0 md:p-4 rounded-lg overflow-hidden">
       <div class="block md:grid grid-cols-[280px_1fr] h-full min-h-0">
         <!-- 加载动画 -->
         <div
