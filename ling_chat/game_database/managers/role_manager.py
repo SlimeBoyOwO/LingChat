@@ -3,7 +3,7 @@ from pathlib import Path
 from sqlmodel import Session, select
 from ling_chat.utils.function import Function
 from ling_chat.game_database.database import engine
-from ling_chat.game_database.models import Role
+from ling_chat.game_database.models import Role, RoleType
 from ling_chat.utils.runtime_path import user_data_path
 
 class RoleManager:
@@ -14,23 +14,19 @@ class RoleManager:
         1. 扫描 game_data_path/characters 下的文件夹
         2. 读取 settings.txt
         3. 更新或创建 Role 记录
-        4. 删除数据库中有但文件系统中不存在的角色
         """
-        # 确保目录存在
         characters_dir = game_data_path / 'characters'
         if not characters_dir.exists():
             return []
 
         created_role_ids = []
         
-        # 获取数据库中现有角色
         with Session(engine, expire_on_commit=False) as session:
+            # 获取现有角色，以 resource_folder 为 Key
+            # 注意：这里假设 resource_folder 是唯一的，对于本地资源文件夹来说通常如此
             statement = select(Role)
             results = session.exec(statement).all()
-            db_roles_map = {role.resource_folder: role for role in results}
-            db_resource_paths = set(db_roles_map.keys())
-            
-            existing_resource_paths = set()
+            db_roles_map = {role.resource_folder: role for role in results if role.resource_folder}
             
             # 遍历文件夹
             if characters_dir.exists():
@@ -43,45 +39,48 @@ class RoleManager:
                         continue
                     
                     try:
-                        # 存储相对路径（相对于 game_data_path）
-                        # 方法1：使用相对路径
-                        # relative_path = entry.relative_to(game_data_path)
-                        # resource_path_str = str(relative_path)  # 如 "characters/hero1"
-                        
-                        # 方法2：只存储角色文件夹名（如果角色文件夹名是唯一的）
-                        resource_path_str = entry.name  # 如 "hero1"
+                        resource_path_str = entry.name  # "hero1"
                         
                         settings = Function.parse_enhanced_txt(str(settings_path))
                         title = settings.get('title', entry.name)
                         
-                        existing_resource_paths.add(resource_path_str)
+                        # 尝试从 settings 获取 script_key，或者默认 None
+                        # 如果是主要角色，通常 script_key 可能为空，或者在 settings 里定义
+                        script_key_val = settings.get('script_key', None) 
                         
                         existing_role = db_roles_map.get(resource_path_str)
                         
                         if not existing_role:
-                            # 创建新角色
-                            new_role = Role(name=title, resource_folder=resource_path_str)
+                            # 创建新角色: 默认为 MAIN 类型，因为是从 characters 文件夹加载的
+                            new_role = Role(
+                                name=title, 
+                                resource_folder=resource_path_str,
+                                role_type=RoleType.MAIN, # characters 文件夹下的通常是主角
+                                script_key=script_key_val
+                            )
                             session.add(new_role)
                             session.commit()
                             session.refresh(new_role)
                             created_role_ids.append(new_role.id)
                         else:
-                            # 更新标题
+                            # Update existing
+                            changed = False
                             if existing_role.name != title:
                                 existing_role.name = title
+                                changed = True
+                            
+                            # 如果 settings 里有 script_key，也更新一下
+                            if script_key_val and existing_role.script_key != script_key_val:
+                                existing_role.script_key = script_key_val
+                                changed = True
+                            
+                            if changed:
                                 session.add(existing_role)
                                 session.commit()
                                 
                     except Exception as e:
                         print(f"Error processing role {entry.name}: {e}")
                         continue
-            
-            # 删除多余角色 TODO：这里应该不删除，但提醒用户角色文件缺失，然后让用户选择补充资源或者删除角色
-            # paths_to_delete = db_resource_paths - existing_resource_paths
-            # for path in paths_to_delete:
-            #     role_to_delete = db_roles_map[path]
-            #     session.delete(role_to_delete)
-            #     print(f"Deleted role: {role_to_delete.name}")
             
             session.commit()
             
@@ -96,12 +95,23 @@ class RoleManager:
     def get_role_by_id(role_id: int) -> Optional[Role]:
         with Session(engine) as session:
             return session.get(Role, role_id)
+    
+    @staticmethod
+    def get_role_by_script_key(script_key: str) -> Optional[Role]:
+        """通过 script_key 查找角色 (可能返回多个中的第一个)"""
+        with Session(engine) as session:
+            stmt = select(Role).where(Role.script_key == script_key)
+            return session.exec(stmt).first()
         
     @staticmethod
     def get_role_settings_by_id(role_id: int) -> Optional[Dict]:
         role = RoleManager.get_role_by_id(role_id)
-        if role is None:
+        if role is None or not role.resource_folder:
             return None
         
-        settings = Function.parse_enhanced_txt(user_data_path / "game_data" / "characters" / role.resource_folder / "settings.txt")
+        path = user_data_path / "game_data" / "characters" / role.resource_folder / "settings.txt"
+        if not path.exists():
+            return None
+
+        settings = Function.parse_enhanced_txt(path)
         return settings
