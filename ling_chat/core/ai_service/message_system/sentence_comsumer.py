@@ -94,15 +94,11 @@ class SentenceConsumer:
         
         if role:
             sentence_segments[0]['character'] = role.display_name
-            if role.role_id: 
-                sentence_segments[0]['role_id'] = role.role_id
-            if role.script_role_id: 
-                sentence_segments[0]['script_role_id'] = role.script_role_id
+            sentence_segments[0]['role_id'] = role.role_id
 
         response = ResponseFactory.create_reply(sentence_segments[0], user_message, is_final)
         ai_line = LineBase(content=response.message,
-                           role_id=response.roleId,
-                           script_role_id=response.scriptRoleId,
+                           sender_role_id=response.roleId,
                            original_emotion=response.originalTag,
                            predicted_emotion=response.emotion,
                            tts_content=response.ttsText,

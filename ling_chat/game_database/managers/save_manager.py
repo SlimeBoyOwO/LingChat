@@ -1,8 +1,10 @@
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-from sqlmodel import Session, select
+from sqlalchemy.orm import selectinload
+from sqlmodel import Session, select, desc, func
 from ling_chat.game_database.database import engine
-from ling_chat.game_database.models import LineBase, Save, Line, RunningScript
+from ling_chat.game_database.models import GameLine, LineBase, Save, Line, RunningScript, LinePerception
+from ling_chat.game_database.converts import lines_to_game_lines
 
 class SaveManager:
     @staticmethod
@@ -25,13 +27,18 @@ class SaveManager:
         with Session(engine, expire_on_commit=False) as session:
             offset = (page - 1) * page_size
             
-            # Total count
-            count_stmt = select(Save).where(Save.user_id == user_id)
-            # using len(all()) is easiest for now
-            total = len(session.exec(count_stmt).all())
+            # Total count - 更高效的写法
+            count_stmt = select(func.count()).select_from(Save).where(Save.user_id == user_id)
+            total = session.exec(count_stmt).one()
             
-            # Paged results
-            stmt = select(Save).where(Save.user_id == user_id).order_by(Save.update_date.desc()).offset(offset).limit(page_size)
+            # Paged results - 使用 desc() 函数
+            stmt = (
+                select(Save)
+                .where(Save.user_id == user_id)
+                .order_by(desc(Save.update_date))  # 使用 desc() 函数
+                .offset(offset)
+                .limit(page_size)
+            )
             saves = session.exec(stmt).all()
             
             return {
@@ -157,6 +164,17 @@ class SaveManager:
                 
                 created_lines.append(new_line)
                 current_parent_id = new_line.id
+                
+                # [新增] 处理感知列表
+                # 先尝试从 msg_data 获取 (如果调用方传了)
+                # 注意：LineBase 也有 cache field 'perceived_role_ids'
+                # 如果 msg_data 是字典，直接取
+                p_ids = msg_data.get("perceived_role_ids")
+                if p_ids:
+                    for pid in p_ids:
+                        session.add(LinePerception(line_id=new_line.id, role_id=pid))
+                        session.commit() # 逐个commit或者批量都可以，这里为安全起见
+
             
             # 更新存档指针
             if created_lines:
@@ -177,8 +195,13 @@ class SaveManager:
             if not save or not save.last_message_id:
                 return []
             
-            # 获取该存档所有台词
-            statement = select(Line).where(Line.save_id == save_id)
+            # 使用 .options(selectinload(Line.perceived_by)) 进行预加载
+            statement = (
+                select(Line)
+                .where(Line.save_id == save_id)
+                .options(selectinload(Line.perceived_by)) # type: ignore
+            )
+            
             lines = session.exec(statement).all()
             lines_map = {line.id: line for line in lines}
             
@@ -195,34 +218,15 @@ class SaveManager:
             return list(reversed(history))
     
     @staticmethod
-    def get_linebase_list(save_id: int) -> List[LineBase]:
+    def get_gameline_list(save_id: int) -> List[GameLine]:
         """
-        获取完整对话历史，从根节点到 last_message_id，但这里返回的是 LineBase
+        获取完整对话历史，从根节点到 last_message_id，但这里返回的是 GameLine
         """
-        with Session(engine, expire_on_commit=False) as session:
-            save = session.get(Save, save_id)
-            if not save or not save.last_message_id:
-                return []
-            
-            # 获取该存档所有台词
-            statement = select(Line).where(Line.save_id == save_id)
-            lines = session.exec(statement).all()
-            lines_map = {line.id: line for line in lines}
-            
-            history = []
-            current_id = save.last_message_id
-            
-            while current_id:
-                line = lines_map.get(current_id)
-                if not line:
-                    break
-                history.append(line)
-                current_id = line.parent_line_id
-            
-            return list(reversed(history))
+        line_list:List[Line] = SaveManager.get_line_list(save_id)
+        return lines_to_game_lines(line_list)
     
     @staticmethod
-    def sync_lines(save_id: int, input_lines: List[LineBase]) -> bool:
+    def sync_lines(save_id: int, input_lines: List[GameLine]) -> bool:
         """
         智能同步台词列表 (v2.0 ID增强版)：
         1. 优先尝试 ID 匹配：如果 ID 相同但内容不同，直接 Update DB。
@@ -257,7 +261,7 @@ class SaveManager:
             
             # 需要检查更新的字段
             update_fields = [
-                "content", "attribute", "role_id", "script_role_id", "display_name",
+                "content", "attribute", "sender_role_id", "display_name",
                 "original_emotion", "predicted_emotion", "tts_content", 
                 "action_content", "audio_file"
             ]
@@ -296,7 +300,7 @@ class SaveManager:
                     # 这里简化判定：只比较 content 和 attribute
                     if (db_line.content == in_line.content and 
                         db_line.attribute == in_line.attribute and
-                        db_line.role_id == in_line.role_id):
+                        db_line.sender_role_id == in_line.sender_role_id):
                         is_match = True
                         # 可以在这里做一些非核心字段的 update，略
                     else:
@@ -347,6 +351,14 @@ class SaveManager:
                     
                     current_parent_id = new_line.id
                     created_lines.append(new_line)
+                    
+                    # [新增] 同步 LinePerception
+                    # input_lines 是 LineBase 对象列表
+                    if hasattr(line_base, "perceived_role_ids") and line_base.perceived_role_ids:
+                         for pid in line_base.perceived_role_ids:
+                             session.add(LinePerception(line_id=new_line.id, role_id=pid))
+                         session.commit()
+
             
             # 5. 最终更新 Save 指针
             # 最后的 ID 可能是新追加的最后一个，或者是没被删掉的旧历史的最后一个
@@ -368,7 +380,7 @@ class SaveManager:
         """
         获取主角
         """
-        return SaveManager.get_line_list(save_id)[0].role_id
+        return SaveManager.get_line_list(save_id)[0].sender_role_id
 
     @staticmethod
     def update_running_script(save_id: int, script_data: Dict[str, Any]):

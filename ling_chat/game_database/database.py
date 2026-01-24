@@ -5,7 +5,7 @@ from ling_chat.utils.runtime_path import user_data_path
 
 # 修改数据库路径到data目录
 DATA_DIR = user_data_path
-DB_NAME = os.path.join(DATA_DIR, "game_system.db")  # 使用os.path.join确保跨平台兼容性
+DB_NAME = os.path.join(DATA_DIR, "game_database.db")  # 使用os.path.join确保跨平台兼容性
 
 sqlite_url = f"sqlite:///{DB_NAME}"
 
