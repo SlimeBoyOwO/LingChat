@@ -2,7 +2,7 @@ import http from '../http'
 import type { SaveInfo, SaveListParams, SaveModifyParams, SaveCreateParams } from '../../types'
 
 export interface SaveListData {
-  conversations: SaveInfo[]
+  saves: SaveInfo[]
   total: number
 }
 

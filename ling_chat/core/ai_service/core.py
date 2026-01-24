@@ -4,6 +4,8 @@ import json
 import os
 from typing import Dict
 
+from ling_chat.core.ai_service.game_status import GameStatus
+from ling_chat.game_database.models import LineBase
 from ling_chat.core.ai_service.ai_logger import AILogger
 from ling_chat.core.ai_service.config import AIServiceConfig
 from ling_chat.core.ai_service.events_scheduler import EventsScheduler
@@ -17,7 +19,6 @@ from ling_chat.core.llm_providers.manager import LLMManager
 from ling_chat.core.logger import logger
 from ling_chat.core.messaging.broker import message_broker
 
-
 class AIService:
     def __init__(self, settings: dict[str, str]):
 
@@ -27,7 +28,8 @@ class AIService:
         参数:
             settings: 配置字典，包含各种设置项
         """
-        self.memory = []  # 存储对话历史记录的列表
+        self.game_status = GameStatus()
+
         self.user_id = "1"   # TODO: 多用户的时候这里可以改成按照初始化获取，或者直接从client_id中获取
 
         self.config = AIServiceConfig(clients=set(), user_id=self.user_id)
@@ -46,7 +48,8 @@ class AIService:
                                                   self.translator,
                                                   self.llm_model,
                                                   self.rag_manager,
-                                                  self.ai_logger)
+                                                  self.ai_logger,
+                                                  self.game_status)
 
         # self.events_scheduler.start_nodification_schedules()        # 之后会通过API设置和处理
         self.input_messages: list[str] = []
@@ -62,17 +65,21 @@ class AIService:
 
         self.scripts_manager = ScriptManager(self.config)
 
-        self.reset_memory()
+        # 特别的，设定当游戏角色被导入的时候，设定它为游戏主角，其他情况下则以变量为准，并初始化system prompt
+        self.init_lines()
 
-
-
-    def import_settings(self, settings: dict[str, str]) -> None:
+    def import_settings(self, settings: Dict) -> None:
         if(settings):
+            self.character_path = settings.get("resource_path")
+            self.character_id = settings.get("character_id")
             self.ai_name = settings.get("ai_name","ai_name未设定")
             self.ai_subtitle = settings.get("ai_subtitle","ai_subtitle未设定")
             self.user_name = settings.get("user_name", "user_name未设定")
             self.user_subtitle = settings.get("user_subtitle", "user_subtitle未设定")
             self.ai_prompt = settings.get("system_prompt", "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息")
+            self.game_status.player.user_name = self.user_name
+            self.game_status.player.user_subtitle = self.user_subtitle
+
             self.ai_prompt_example = settings.get("system_prompt_example","")
             self.ai_prompt_example_old = settings.get("system_prompt_example_old", "")
             self.ai_prompt = self.message_processor.sys_prompt_builder(self.user_name,
@@ -88,8 +95,6 @@ class AIService:
                                      settings.get("voice_models", {}),
                                      self.ai_name)
 
-            self.character_path = settings.get("resource_path")
-            self.character_id = settings.get("character_id")
             self.clothes_name = settings.get("clothes_name")
             self.body_part = settings.get("body_part")
             self.clothes = settings.get("clothes")
@@ -145,28 +150,38 @@ class AIService:
         except Exception as e:
             logger.error(f"应用运行时配置失败: {e}", exc_info=True)
 
-    def load_memory(self, memory):
-        if isinstance(memory, str):
-            memory = json.loads(memory)
-        self.memory = copy.deepcopy(memory)
+    def get_lines(self):
+        return self.game_status.line_list
+    
+    def load_lines(self, lines:list[LineBase], main_role_id: int):
+        self.game_status.line_list = lines
+        self.game_status.role_manager.refresh_memories_from_lines(self.game_status.line_list)
+        main_role = self.game_status.role_manager.get_role(role_id=main_role_id)
 
-        logger.info("记忆存档已经加载")
-        logger.info(f"内容是：{memory}")
-        logger.info(f"新的messages是：{self.memory}")
+        # TODO: 以后加载台词的时候，current_character应该由存档中的变量数据来决定，而不是直接使用存档主角。
+        if main_role:
+            self.game_status.current_character = main_role
+        else:
+            logger.error(f"存档的主角色ID {main_role_id} 未找到。")
 
-    def get_memory(self):
-        return self.memory
+    def reset_lines(self):
+        self.init_lines()
+    
+    def init_lines(self):
+        self.game_status.line_list = []
+        system_line = LineBase(content=self.ai_prompt, attribute="system", role_id=self.character_id, display_name=self.ai_name)
+        self.game_status.add_line(system_line)
+        self.game_status.current_character = self.game_status.role_manager.get_role(self.character_id)
+        logger.info(f"初始化游戏主角：{self.game_status.current_character} 已初始化。")
 
-    def reset_memory(self):
-        self.memory = [
-            {
-                "role": "system",
-                "content": self.ai_prompt
-            }
-        ]
-
-    def show_memory(self):
-        logger.info(f"当前记忆内容：{self.memory}")
+    def show_lines(self):
+        logger.info("当前台词列表如下：")
+        for line in self.game_status.line_list:
+            logger.info(f"{line.display_name} : 【{line.original_emotion}】{line.content}<{line.tts_content}>（{line.action_content}）")
+    
+    def show_current_role_memory(self):
+        logger.info(f"当前角色的记忆列表如下：")
+        logger.info(f"{self.game_status.current_character.memory}")
 
     async def start_script(self):
         await self.scripts_manager.start_script()
@@ -181,10 +196,9 @@ class AIService:
 
                     user_message = message.get("content", "")
                     if user_message:
-                        self.message_generator.memory_init(self.memory)
 
                         responses = []
-                        async for response in self.message_generator.process_message_stream(user_message):
+                        async for response in self.message_generator.process_message_stream(user_message=user_message):
                             await message_broker.publish(client_id, response.model_dump())
                             responses.append(response)
 
@@ -254,7 +268,7 @@ class AIService:
 
                     user_message = message.get("content", "")
                     if user_message:
-                        self.message_generator.memory_init(self.memory)
+                        # self.message_generator.memory_init(self.memory)
 
                         responses = []
                         async for response in self.message_generator.process_message_stream(user_message):

@@ -1,6 +1,6 @@
 <template>
   <div
-    class="flex flex-1 px-3 py-6 text-white text-shadow-2xs mx-auto items-start w-[70%] min-h-0 overflow-hidden flex-wrap gap-5"
+    class="flex flex-1 px-3 py-6 text-white text-shadow-2xs mx-auto items-start w-[70%] min-h-0 max-h-full overflow-y-auto flex-wrap gap-5"
   >
     <slot></slot>
   </div>

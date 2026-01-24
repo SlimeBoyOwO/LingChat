@@ -39,8 +39,8 @@ interface UIState {
   characterVolume: number
   backgroundVolume: number
   bubbleVolume: number
+  achievementVolume: number
   autoMode: boolean
-  showCommandWheel: boolean
 
   // Schedule 相关状态
   scheduleView: string
@@ -84,8 +84,8 @@ export const useUIStore = defineStore('ui', {
     characterVolume: 80,
     backgroundVolume: 80,
     bubbleVolume: 80,
+    achievementVolume: 80,
     autoMode: false,
-    showCommandWheel: true,
 
     // Schedule 相关状态
     scheduleView: 'schedule_groups',
@@ -111,9 +111,6 @@ export const useUIStore = defineStore('ui', {
     },
     setSettingsTab(tab: string) {
       this.currentSettingsTab = tab
-    },
-    toggleCommandWheel(show: boolean) {
-      this.showCommandWheel = show
     },
 
     // ========== Notification Actions ==========
@@ -344,6 +341,19 @@ export const useUIStore = defineStore('ui', {
         this.tipsMap[key] || {
           title: type === 'success' ? '切换成功' : '切换失败',
           message: type === 'success' ? '角色已切换' : '切换时出了问题',
+        }
+      )
+    },
+
+    /**
+     * 获取角色刷新提示
+     */
+    getRefreshTip(type: 'success' | 'fail') {
+      const key = type === 'success' ? 'refresh_success' : 'refresh_fail'
+      return (
+        this.tipsMap[key] || {
+          title: type === 'success' ? '刷新成功' : '刷新失败',
+          message: type === 'success' ? '角色列表已成功刷新！' : '刷新时出了问题',
         }
       )
     },

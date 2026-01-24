@@ -8,7 +8,7 @@ from ling_chat.core.schemas.responses import ReplyResponse
 
 class ResponsePublisher:
     """
-    Waits for processed results in sequence and publishes them.
+    等待队列中的已处理结果并发布它们
     """
     def __init__(self,
                  results_store: Dict[int, ReplyResponse],
@@ -19,7 +19,7 @@ class ResponsePublisher:
         self.output_queue = output_queue
 
     async def run(self):
-        """Starts the sequential publishing loop."""
+        """启动顺序发布循环"""
         next_index_to_publish = 0
         while True:
             try:
@@ -27,7 +27,7 @@ class ResponsePublisher:
                     await asyncio.sleep(0.01)
                     continue
 
-                # Wait until the consumer signals that this result is ready
+                # 等待消费者信号，表示此结果已准备好
                 await self.publish_events[next_index_to_publish].wait()
 
                 response = self.results_store.pop(next_index_to_publish, None)

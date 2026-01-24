@@ -306,11 +306,23 @@ const refreshCharacters = async (): Promise<void> => {
     }
 
     await response.json()
-    alert('刷新成功')
     await loadCharacters() // 重新加载角色列表
+
+    const tip = uiStore.getRefreshTip('success')
+    uiStore.showSuccess({
+      title: tip.title,
+      message: tip.message,
+      duration: 3000,
+    })
   } catch (error) {
-    alert('刷新失败')
     console.error('刷新失败:', error)
+
+    const tip = uiStore.getRefreshTip('fail')
+    uiStore.showError({
+      title: tip.title,
+      message: (error as Error)?.message || tip.message,
+      duration: 3000,
+    })
   }
 }
 
@@ -438,9 +450,11 @@ watch(
   0% {
     transform: scale(0);
   }
+
   50% {
     transform: scale(1.2);
   }
+
   100% {
     transform: scale(1);
   }

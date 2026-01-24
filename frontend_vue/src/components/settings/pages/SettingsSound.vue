@@ -12,10 +12,15 @@
       <Slider @change="updateBackgroundVolume" v-model="backgroundVolume"> 弱/强 </Slider>
     </MenuItem>
 
+    <MenuItem title="🏆 成就音量" size="small">
+      <Slider @change="updateAchievementVolume" v-model="achievementVolume"> 弱/强 </Slider>
+    </MenuItem>
+
     <MenuItem title="🔊 声音测试" size="small">
       <div class="sound-test">
         <Button type="big" @click="playCharacterTestSound">测试角色音量</Button>
         <Button type="big" @click="playBubbleTestSound">测试气泡音量</Button>
+        <Button type="big" @click="playAchievementTestSound">测试成就音量</Button>
       </div>
     </MenuItem>
 
@@ -56,6 +61,7 @@
 
     <audio ref="characterTestPlayer"></audio>
     <audio ref="bubbleTestPlayer"></audio>
+    <audio ref="achievementTestPlayer"></audio>
     <audio
       ref="backgroundAudioPlayer"
       loop
@@ -81,14 +87,16 @@ const uiStore = useUIStore()
 const characterVolume = useStorage('lingchat-character-volume', 50)
 const bubbleVolume = useStorage('lingchat-bubble-volume', 50)
 const backgroundVolume = useStorage('lingchat-background-volume', 50)
+const achievementVolume = useStorage('lingchat-achievement-volume', 50)
 
 // 同步 localStorage 中的音量到 Pinia store
 watch(
-  [characterVolume, bubbleVolume, backgroundVolume],
-  ([charVol, bubVol, bgVol]) => {
+  [characterVolume, bubbleVolume, backgroundVolume, achievementVolume],
+  ([charVol, bubVol, bgVol, achVol]) => {
     uiStore.characterVolume = charVol
     uiStore.bubbleVolume = bubVol
     uiStore.backgroundVolume = bgVol
+    uiStore.achievementVolume = achVol
   },
   { immediate: true },
 )
@@ -96,6 +104,7 @@ watch(
 // 音频播放器的模板引用
 const characterTestPlayer = ref<HTMLAudioElement | null>(null)
 const bubbleTestPlayer = ref<HTMLAudioElement | null>(null)
+const achievementTestPlayer = ref<HTMLAudioElement | null>(null)
 const backgroundAudioPlayer = ref<HTMLAudioElement | null>(null)
 
 // 背景音乐列表和状态
@@ -134,6 +143,13 @@ const updateBackgroundVolume = (value: number) => {
   }
 }
 
+const updateAchievementVolume = (value: number) => {
+  achievementVolume.value = value
+  if (achievementTestPlayer.value) {
+    achievementTestPlayer.value.volume = value / 100
+  }
+}
+
 // 监听 Pinia store 变化，确保音量同步
 watch(
   () => uiStore.backgroundVolume,
@@ -158,6 +174,13 @@ const playBubbleTestSound = () => {
   if (!bubbleTestPlayer.value) return
   bubbleTestPlayer.value.src = '/audio_effects/疑问.wav'
   bubbleTestPlayer.value.play().catch((e) => console.error('测试气泡音量播放失败:', e))
+}
+
+const playAchievementTestSound = () => {
+  if (!achievementTestPlayer.value) return
+  // TODO: 添加一些成就音效
+  achievementTestPlayer.value.src = '/audio_effects/achievement_common.wav'
+  achievementTestPlayer.value.play().catch((e) => console.error('测试成就音量播放失败:', e))
 }
 
 // --- 背景音乐 API 交互 ---
@@ -289,6 +312,8 @@ onMounted(() => {
   // 初始化音量
   if (characterTestPlayer.value) characterTestPlayer.value.volume = characterVolume.value / 100
   if (bubbleTestPlayer.value) bubbleTestPlayer.value.volume = bubbleVolume.value / 100
+  if (achievementTestPlayer.value)
+    achievementTestPlayer.value.volume = achievementVolume.value / 100
   if (backgroundAudioPlayer.value) backgroundAudioPlayer.value.volume = backgroundVolume.value / 100
 })
 </script>

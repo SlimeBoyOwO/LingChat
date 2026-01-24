@@ -107,10 +107,14 @@ def run_main_program(args,is_wv=False):
                 else:
                     logger.info("已根据环境变量禁用临时文件清理")
 
-            signal.signal(signal.SIGINT, _local_signal_handler)
-            signal.signal(signal.SIGTERM, _local_signal_handler)
-    except Exception:
-        logger.debug("运行环境不支持在当前线程注册信号处理器，使用模块级处理")
+        try:
+            from ling_chat.core.achievement_manager import AchievementManager
+            AchievementManager.get_instance().save_if_dirty()
+        except Exception as e:
+            logger.error(f"保存成就数据时出错: {e}")
+
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
 
     # 根据命令行参数和环境变量决定是否启用前端界面
     gui_enabled = (not args.nogui) and (os.getenv('OPEN_FRONTEND_APP', 'false').lower() == "true")
