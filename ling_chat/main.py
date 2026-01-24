@@ -20,16 +20,6 @@ def _module_signal_handler(signum, frame):
     """模块级信号处理：记录日志并设置退出事件，必要时清理临时文件。"""
     logger.info("接收到中断信号，正在关闭程序...")
     exit_event.set()
-    if os.environ.get("CLEAN_TEMP_FILES", "false").lower() == "true":
-        try:
-            from ling_chat.utils.function import Function
-
-            Function().clean_temp_files()
-            logger.info("已删除临时文件")
-        except Exception:
-            logger.exception("清理临时文件时发生错误")
-    else:
-        logger.info("已根据环境变量禁用临时文件清理")
 
 def check_static_copy():
     """检查静态文件是否已经复制"""
@@ -101,11 +91,6 @@ def run_main_program(args,is_wv=False):
             def _local_signal_handler(signum, frame):
                 logger.info("接收到中断信号，正在关闭程序...")
                 exit_event.set()
-                if os.environ.get("CLEAN_TEMP_FILES", "false").lower() == "true":
-                    Function().clean_temp_files()
-                    logger.info("已删除临时文件")
-                else:
-                    logger.info("已根据环境变量禁用临时文件清理")
 
         try:
             from ling_chat.core.achievement_manager import AchievementManager
