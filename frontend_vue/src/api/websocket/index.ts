@@ -9,8 +9,33 @@ const reconnectAttempts = ref(0)
 const maxReconnectAttempts = 5
 const reconnectDelay = 3000
 
+// 连接状态追踪
+const connectionReady = ref(false) // WebSocket 是否已经成功连接过
+const initializationTime = Date.now() // 页面初始化时间
+const gracePeriodMs = 3000 // 初始化宽限期（毫秒）
+
+// 判断是否应该显示连接错误
+const shouldShowConnectionError = (): boolean => {
+  // 如果已经成功连接过，则应该显示错误
+  if (connectionReady.value) {
+    return true
+  }
+  // 如果还在初始化宽限期内，不显示错误
+  if (Date.now() - initializationTime < gracePeriodMs) {
+    console.log('WebSocket 仍在初始化宽限期内，暂不显示连接错误')
+    return false
+  }
+  // 宽限期已过但从未连接成功，应该显示错误
+  return true
+}
+
 // 显示连接错误并重置状态的辅助函数
 const handleConnectionError = (errorMessage: string = '无法连接到服务器') => {
+  // 检查是否应该显示错误
+  if (!shouldShowConnectionError()) {
+    return
+  }
+
   const uiStore = useUIStore()
   const gameStore = useGameStore()
 
@@ -32,6 +57,7 @@ export const connectWebSocket = (url: string) => {
   socket.value.onopen = () => {
     console.log('WebSocket connected')
     reconnectAttempts.value = 0
+    connectionReady.value = true // 标记连接已就绪
   }
 
   socket.value.onmessage = (event) => {
