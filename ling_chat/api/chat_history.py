@@ -34,7 +34,7 @@ async def load_user_conversations(user_id: int, conversation_id: int):
         # character_id = ConversationModel.get_conversation_character(conversation_id=conversation_id)
         # TODO： 后面升级的加载存档，应该如果有运行剧本则加载剧本变量，实现场景重现，当然save的status也是要加载的
         
-        line_list = SaveManager.get_linebase_list(save_id=conversation_id)
+        line_list = SaveManager.get_gameline_list(save_id=conversation_id)
         role_id = SaveManager.get_chat_main_character_id(save_id=conversation_id)
         
         if(line_list != None):
@@ -56,7 +56,7 @@ async def load_user_conversations(user_id: int, conversation_id: int):
             character_settings["character_id"] = role_id
             if service_manager.ai_service is not None:
                 service_manager.ai_service.import_settings(settings=character_settings)
-                service_manager.ai_service.load_lines(line_list)
+                service_manager.ai_service.load_lines(line_list, role_id)
 
             print("成功调用记忆存储")
             return {
