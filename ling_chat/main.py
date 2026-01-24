@@ -113,9 +113,10 @@ def run_main_program(args,is_wv=False):
         except Exception as e:
             logger.error(f"保存成就数据时出错: {e}")
 
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-
+        signal.signal(signal.SIGINT,_local_signal_handler)
+        signal.signal(signal.SIGTERM, _local_signal_handler)
+    except Exception:
+        logger.debug("无法在当前环境注册局部信号处理器")
     # 根据命令行参数和环境变量决定是否启用前端界面
     gui_enabled = (not args.nogui) and (os.getenv('OPEN_FRONTEND_APP', 'false').lower() == "true")
     if args.nogui:
