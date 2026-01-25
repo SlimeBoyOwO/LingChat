@@ -350,7 +350,36 @@
 
 ---
 
-## 7. 实时通讯 (WebSocket)
+## 7. 成就系统 (Chat Achievement)
+**路由前缀**: `/chat/achievement`
+
+用于前端获取成就列表（请注意：成就系统的解锁成就通过 WebSocket 进行双端通信）。
+
+### 7.1 获取成就详情列表
+*   **接口地址**: `/list`
+*   **请求方式**: `GET`
+*   **响应示例**:
+
+```json
+{
+    "data": {
+        "first_chat": {
+            "title": "初次见面",
+            "description": "与钦灵完成了第一次对话",
+            "type": "common",
+            "current_progress": 0,
+            "target_progress": 1,
+            "unlocked": false
+        },
+        "night_owl": {...},
+        ...
+    }
+}
+```
+
+---
+
+## 8. 实时通讯 (WebSocket)
 
 虽然不是 HTTP API，但为了开发完整性，需注意主要的对话流通过 WebSocket 进行。
 
@@ -362,11 +391,11 @@
     *   **接收 (Server -> Client)**:
         *   消息格式通常包含 `type` (reply/player/background等), `message`, `emotion`, `audioFile` 等字段（参考 `core/schemas/responses.py`）。
 
-### 7.1 成就系统消息
+### 8.1 成就系统
 
 成就系统使用 WebSocket 进行实时通信，支持前端请求解锁和后端推送解锁通知。
 
-#### 7.1.1 请求解锁 (Client -> Server)
+#### 8.1.1 请求解锁 (Client -> Server)
 
 前端判断达成成就条件后，发送此消息请求解锁成就。
 
@@ -388,7 +417,7 @@
 }
 ```
 
-#### 7.1.2 解锁通知 (Server -> Client)
+#### 8.1.2 解锁通知 (Server -> Client)
 
 后端确认解锁成就后（或主动推送成就时），广播此消息。
 
