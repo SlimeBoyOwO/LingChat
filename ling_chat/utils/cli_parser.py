@@ -32,5 +32,10 @@ def get_parser():
         action="store_true",
         help="启用无界面模式（禁用前端界面）"
     )
+    parser.add_argument(
+        "--gui",
+        action="store_true",
+        help="强制启用前端界面"
+    )
 
     return parser

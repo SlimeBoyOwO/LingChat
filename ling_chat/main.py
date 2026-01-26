@@ -2,6 +2,7 @@ import os
 import shutil
 import signal
 import time
+import threading
 from typing import Collection
 
 from ling_chat.core.logger import logger
@@ -9,7 +10,16 @@ from ling_chat.third_party import install_third_party, run_third_party
 from ling_chat.utils.cli_parser import get_parser
 from ling_chat.utils.easter_egg import get_random_loading_message
 from ling_chat.utils.runtime_path import static_path, third_party_path, user_data_path
+from ling_chat.core.webview import start_webview
 
+# 全局退出事件，供主线程的信号处理和子线程检查使用
+exit_event = threading.Event()
+
+
+def _module_signal_handler(signum, frame):
+    """模块级信号处理：记录日志并设置退出事件，必要时清理临时文件。"""
+    logger.info("接收到中断信号，正在关闭程序...")
+    exit_event.set()
 
 def check_static_copy():
     """检查静态文件是否已经复制"""
@@ -44,7 +54,7 @@ def handle_install(install_modules_list: Collection[str], use_mirror=False):
             logger.error(f"未知的安装模块: {module}")
 
 
-def handle_run(run_modules_list: Collection[str]):
+def handle_run(run_modules_list: Collection[str],is_wv=False):
     """处理运行模块"""
     for module in run_modules_list:
         logger.info(f"正在运行模块: {module}")
@@ -54,7 +64,7 @@ def handle_run(run_modules_list: Collection[str]):
             raise NotImplementedError("sbv2 模块的运行函数未实现")
         elif module == "18emo":
             raise NotImplementedError("18emo 模块的运行函数未实现")
-        elif module == "webview":
+        elif module == "webview" and not is_wv:
             run_third_party.run_webview()
         else:
             logger.error(f"未知的运行模块: {module}")
@@ -69,28 +79,18 @@ def run_cli_command(args):
         logger.error(f"未知的CLI命令: {args.command}")
 
 
-def run_main_program(args):
+def run_main_program(args,is_wv=False):
     """运行主程序"""
     from ling_chat.api.app_server import run_app_in_thread
-    from ling_chat.core.webview import start_webview
+
     from ling_chat.utils.cli import print_logo
     from ling_chat.utils.function import Function
     from ling_chat.utils.voice_check import VoiceCheck
-
-    # 控制程序退出
-    should_exit = False
-
-    def signal_handler(signum, frame):
-        """处理中断信号"""
-        nonlocal should_exit
-        logger.info("接收到中断信号，正在关闭程序...")
-        should_exit = True
-        # 根据环境变量删除临时文件
-        if os.environ.get("CLEAN_TEMP_FILES", "false").lower() == "true":
-            Function().clean_temp_files()
-            logger.info("已删除临时文件")
-        else:
-            logger.info("已根据环境变量禁用临时文件清理")
+    try:
+        if threading.current_thread() is threading.main_thread():
+            def _local_signal_handler(signum, frame):
+                logger.info("接收到中断信号，正在关闭程序...")
+                exit_event.set()
 
         try:
             from ling_chat.core.achievement_manager import AchievementManager
@@ -98,9 +98,10 @@ def run_main_program(args):
         except Exception as e:
             logger.error(f"保存成就数据时出错: {e}")
 
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-
+        signal.signal(signal.SIGINT,_local_signal_handler)
+        signal.signal(signal.SIGTERM, _local_signal_handler)
+    except Exception:
+        logger.debug("无法在当前环境注册局部信号处理器")
     # 根据命令行参数和环境变量决定是否启用前端界面
     gui_enabled = (not args.nogui) and (os.getenv('OPEN_FRONTEND_APP', 'false').lower() == "true")
     if args.nogui:
@@ -116,7 +117,7 @@ def run_main_program(args):
     check_static_copy()
 
     # 处理运行模块
-    handle_run(args.run or [])
+    handle_run(args.run or [],is_wv)
 
     app_thread = run_app_in_thread()
 
@@ -130,7 +131,7 @@ def run_main_program(args):
     if os.getenv("OPEN_FRONTEND_APP", "false").lower() == "true" or gui_enabled:  # fixme: 请使用 --run webview 启动前端界面
         logger.stop_loading_animation(success=True, final_message="应用加载成功")
         print_logo()
-        logger.warning("[Deprecation]: 请使用 --run webview 启动前端界面，如果依然无法解决问题，请使用 --nogui 启用无前端窗口模式")
+        logger.warning("[Deprecation]:请使用 --gui 强制启用前端窗口 或使用 --nogui 启用无前端窗口模式")
         try:
             start_webview()
         except KeyboardInterrupt:
@@ -140,8 +141,8 @@ def run_main_program(args):
         logger.stop_loading_animation(success=True, final_message="应用加载成功")
         print_logo()
         try:
-            # 循环等待
-            while not should_exit and app_thread.is_alive():
+            # 循环等待，使用模块级退出事件替代局部变量
+            while (not exit_event.is_set()) and app_thread.is_alive():
                 time.sleep(0.1)
         except KeyboardInterrupt:
             logger.info("用户关闭程序")
@@ -152,14 +153,25 @@ def run_main_program(args):
 def main():
     """主入口函数"""
     args = get_parser().parse_args()
-
-    # 如果有CLI命令，只运行CLI命令
-    if args.command:
-        run_cli_command(args)
+    try:
+        signal.signal(signal.SIGINT, _module_signal_handler)
+        signal.signal(signal.SIGTERM, _module_signal_handler)
+    except Exception:
+        logger.debug("无法在当前环境注册全局信号处理器")
+    gui_enabled = (not args.nogui) and (os.getenv('OPEN_FRONTEND_APP', 'false').lower() == "true") or args.gui
+    print(f"GUI Enabled: {gui_enabled}")
+    if  gui_enabled:
+        logger.info("启用前端界面模式")
+        
+        wbt = threading.Thread(target=run_main_program, args=(args, True))
+        wbt.start()
+        start_webview()
     else:
-        # 否则运行主程序
-        run_main_program(args)
-
+        if args.command:
+            run_cli_command(args)
+        else:
+            # 否则运行主程序
+            run_main_program(args)
 
 if __name__ == "__main__":
     main()
