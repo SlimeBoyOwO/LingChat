@@ -510,13 +510,17 @@ class Function:
                     ai_prompt = ai_prompt
                 else:
                     ai_prompt = ai_prompt + f"""
-            以下是我的对话格式提示：
-	            首先，我会输出要和你对话的内容，然后在波浪号{{}}中的内容是对话系统给你的系统提示，比如：
-	            “你好呀{character_name}~
+           以下是我的对话格式提示：
+	            首先，我会输出要和你对话的内容，然后在波浪号{{}}中的内容是对话系统给你的旁白环境提示或系统提示，比如：
+	            “{{旁白: {user_name}在路上偶尔碰到了{character_name}，决定上前打个招呼}}”
+                你好呀{character_name}~
 	            {{系统：时间：2025/6/1 0:29}}”
 	            我也可能不给你发信息，仅包含系统提示。提示中也可能包含你的感知能力，比如：
 	            “{{系统：时间：2025/5/20 13:14，你看到：{user_name}的电脑上正在玩Alice In Cradle}}”
-                “系统提示的内容仅供参考，不是我真正对你说的话，更多是你感知到的信息和需要注意的事情，你无需对系统提示的内容回复相关信息。”
+                系统提示的内容仅供参考，不是我真正对你说的话，更多是你感知到的信息和需要注意的事情，你无需对系统提示的内容回复相关信息。
+                在大括号波浪号中的内容也有可能是你听到的别的角色的台词，比如：
+                “{{旁白：这个时候，{user_name}的朋友梦凌汐来了\n梦凌汐: {character_name}, 真巧呀，也在这里呢！}}\n 哎梦凌汐你也来啦，{character_name}，一起玩吧~”
+                总而言之大括号内的内容都是提示和感知内容，大括号外的则是我和你说的话。你需要根据提示和感知内容，以及我说的内容，来回复我。
                 {dialog_format_prompt_cn}
                 {ai_prompt_example}
                 {dialog_format_prompt_2}"""
@@ -533,17 +537,48 @@ class Function:
             else:
                 ai_prompt = ai_prompt + f"""
             以下是我的对话格式提示：
-	            首先，我会输出要和你对话的内容，然后在波浪号{{}}中的内容是对话系统给你的系统提示，比如：
-	            “你好呀{character_name}~
+	            首先，我会输出要和你对话的内容，然后在波浪号{{}}中的内容是对话系统给你的旁白环境提示或系统提示，比如：
+	            “{{旁白: {user_name}在路上偶尔碰到了{character_name}，决定上前打个招呼}}”
+                你好呀{character_name}~
 	            {{系统：时间：2025/6/1 0:29}}”
 	            我也可能不给你发信息，仅包含系统提示。提示中也可能包含你的感知能力，比如：
 	            “{{系统：时间：2025/5/20 13:14，你看到：{user_name}的电脑上正在玩Alice In Cradle}}”
-                “系统提示的内容仅供参考，不是我真正对你说的话，更多是你感知到的信息和需要注意的事情，你无需对系统提示的内容回复相关信息。”
+                系统提示的内容仅供参考，不是我真正对你说的话，更多是你感知到的信息和需要注意的事情，你无需对系统提示的内容回复相关信息。
+                在大括号波浪号中的内容也有可能是你听到的别的角色的台词，比如：
+                “{{旁白：这个时候，{user_name}的朋友梦凌汐来了\n梦凌汐: {character_name}, 真巧呀，也在这里呢！}}\n 哎梦凌汐你也来啦，{character_name}，一起玩吧~”
+                总而言之大括号内的内容都是提示和感知内容，大括号外的则是我和你说的话。你需要根据提示和感知内容，以及我说的内容，来回复我。
                 {dialog_format_prompt_jp}
                 {ai_prompt_example_old}\n
                 {dialog_format_prompt_2}"""
 
         return ai_prompt
+    
+    @staticmethod
+    def convert_settings_to_role_info_dict(settings, role_id: int):
+        """
+        将设置转换为角色信息字典
+        """
+
+        # offset_y默认从ai_service.settings:dict读取offset，如果没有，则读取offset_y
+        offset_y = settings.get("offset")
+        if offset_y is None:
+            offset_y = settings.get("offset_y", 0)
+
+        result = {
+            "ai_name": settings.get("ai_name","ai_name未设定"),
+            "ai_subtitle": settings.get("ai_subtitle",""),
+            "character_id": role_id,
+            "clothes_name": settings.get("clothes_name"),
+            "clothes": settings.get("clothes"),
+            "thinking_message": settings.get("thinking_message", "正在思考中..."),
+            "scale": settings.get("scale", 1.0),
+            "offset_y": offset_y,
+            "offset_x": settings.get("offset_x", 0),
+            "bubble_top": settings.get("bubble_top", 5),
+            "bubble_left": settings.get("bubble_left", 20),
+            "body_part":  settings.get("body_part"),
+        }
+        return result
 
     def clean_temp_files(self):
         """

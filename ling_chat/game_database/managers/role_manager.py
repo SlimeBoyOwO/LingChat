@@ -5,6 +5,7 @@ from ling_chat.utils.function import Function
 from ling_chat.game_database.database import engine
 from ling_chat.game_database.models import Role, RoleType
 from ling_chat.utils.runtime_path import user_data_path
+from ling_chat.core.logger import logger
 
 class RoleManager:
     @staticmethod
@@ -102,6 +103,11 @@ class RoleManager:
     def get_all_roles() -> List[Role]:
         with Session(engine) as session:
             return session.exec(select(Role)).all() # type: ignore
+    
+    @staticmethod
+    def get_all_main_roles() -> List[Role]:
+        with Session(engine) as session:
+            return session.exec(select(Role).where(Role.role_type == RoleType.MAIN)).all() # type: ignore
 
     @staticmethod
     def get_role_by_id(role_id: int) -> Optional[Role]:
@@ -131,8 +137,16 @@ class RoleManager:
         if role is None or not role.resource_folder:
             return None
         
-        path = user_data_path / "game_data" / "characters" / role.resource_folder / "settings.txt"
+        path = Path()
+        if role.role_type == RoleType.MAIN:
+            path = user_data_path / "game_data" / "characters" / role.resource_folder / "settings.txt"
+        elif role.role_type == RoleType.NPC:
+            assert role.script_key is not None
+            assert role.script_role_key is not None
+            path  = user_data_path / "game_data" / "scripts" / role.script_key / "characters" / role.resource_folder / "settings.txt"
+
         if not path.exists():
+            logger.warning(f"角色设置文件不存在: {path}")
             return None
 
         settings = Function.parse_enhanced_txt(path)

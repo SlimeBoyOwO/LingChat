@@ -66,14 +66,29 @@ const currentBubbleClass = ref('')
 
 // --- 样式计算 ---
 
-// 容器定位样式 (将原来写在CSS里的v-bind移到这里，由 props 控制)
-const containerStyle = computed(() => ({
-  top: `${role.value.offsetY}px`,
-  left: `${role.value.offsetX}px`,
-  transform: `scale(${role.value.scale})`,
-  display: role.value.show ? 'block' : 'none',
-  zIndex: 1,
-}))
+const layoutPosition = computed(() => {
+  const allIds = gameStore.presentRoleIds
+  const myIndex = allIds.indexOf(role.value.roleId)
+  const totalCount = allIds.length
+
+  // 如果找不到自己（异常情况），默认居中
+  if (myIndex === -1) return 50
+
+  return ((myIndex + 1) / (totalCount + 1)) * 100
+})
+
+const containerStyle = computed(() => {
+  const autoLeft = layoutPosition.value
+  const manualOffset = role.value.offsetX || 0
+
+  return {
+    left: `calc(${autoLeft}% + ${manualOffset}px)`,
+    top: `${role.value.offsetY}px`,
+    transform: `translateX(-50%) scale(${role.value.scale})`,
+    display: role.value.show ? 'block' : 'none',
+    zIndex: 1,
+  }
+})
 
 const containerClasses = computed(() => ({
   [activeAnimationClass.value]: true,
@@ -195,6 +210,9 @@ const handleAnimationEnd = () => {
   width: 100%;
   height: 100%;
   pointer-events: none; /* 让点击穿透，除非点到 TouchArea */
+  transition:
+    left 0.5s cubic-bezier(0.25, 0.8, 0.5, 1),
+    top 0.3s ease;
 }
 
 /* 让 TouchArea 恢复点击 */

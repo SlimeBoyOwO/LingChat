@@ -63,6 +63,6 @@ class ResponseFactory:
         return ScriptPlayerResponse(text=text)
 
     @staticmethod
-    def create_modify_character(character: str, **kwargs) -> ScriptModifyCharacterResponse:
-        return ScriptModifyCharacterResponse(character = character, **kwargs)
+    def create_modify_character(**kwargs) -> ScriptModifyCharacterResponse:
+        return ScriptModifyCharacterResponse(**kwargs)
 
