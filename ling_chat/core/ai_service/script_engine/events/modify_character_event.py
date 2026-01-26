@@ -1,4 +1,5 @@
 from ling_chat.core.ai_service.script_engine.events.base_event import BaseEvent
+from ling_chat.core.ai_service.script_engine.utils.script_function import ScriptFunction
 from ling_chat.core.emotion.classifier import emotion_classifier
 from ling_chat.core.messaging.broker import message_broker
 from ling_chat.core.schemas.response_models import ResponseFactory
@@ -8,7 +9,7 @@ class ModifyCharacterEvent(BaseEvent):
     """处理角色修改事件"""
 
     async def execute(self):
-        character = self.event_data.get('character', '')
+        character:str = self.event_data.get('character', '')
         emotion = self.event_data.get('emotion', '')
         duration = self.event_data.get('duration', 1.0)
         action = self.event_data.get('action','')
@@ -18,6 +19,9 @@ class ModifyCharacterEvent(BaseEvent):
         #     'character': character,
         #     'text': text,
         # })
+
+        role = ScriptFunction.get_role(self.game_status, self.script_status, character)
+        character_id = role.role_id
 
         predictedEmotion = ""
 
@@ -34,7 +38,7 @@ class ModifyCharacterEvent(BaseEvent):
 
         # 构建参数字典，只包含非空的参数
         params = {
-            'character': character,
+            'character_id': character_id,
             'duration': duration
         }
 
@@ -42,10 +46,15 @@ class ModifyCharacterEvent(BaseEvent):
             params['emotion'] = predictedEmotion
 
         if action:
+            if action == "show_character":
+                self.game_status.present_roles.add(role)
+            elif action == "hide_character":
+                self.game_status.present_roles.remove(role)
+
             params['action'] = action
 
         event_response = ResponseFactory.create_modify_character(**params)
-        await message_broker.publish("1", event_response.model_dump())
+        await message_broker.publish(self.client_id, event_response.model_dump())
 
     @classmethod
     def can_handle(cls, event_type: str) -> bool:

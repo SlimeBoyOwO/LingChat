@@ -1,15 +1,16 @@
 from typing import Any, Dict
 
+from ling_chat.core.ai_service.exceptions import RoleNotFoundError
+from ling_chat.core.ai_service.game_system.game_status import GameStatus
+from ling_chat.core.ai_service.type import GameRole, ScriptStatus
 from ling_chat.core.logger import logger
 from ling_chat.core.messaging.broker import message_broker
 
 
 class ScriptFunction:
     @staticmethod
-    async def wait_for_user_input() -> str | None:
+    async def wait_for_user_input(client_id: str) -> str | None:
         """等待来自前端的用户输入"""
-        # TODO: 获取客户端id
-        client_id = "1"
         try:
             # 订阅特定的输入频道
             subscription = message_broker.subscribe("ai_script_input_" + client_id)
@@ -37,6 +38,29 @@ class ScriptFunction:
         except Exception as e:
             logger.error(f"提取用户输入时发生错误: {e}")
             return ""
+        
+    @staticmethod
+    def get_role(game_status: GameStatus, script_status: ScriptStatus, character: str) -> GameRole:
+        role:GameRole|None = None
+        if character == "MAIN":
+            role = game_status.main_role
+        else:
+            role = game_status.role_manager.get_role_by_script_keys(script_status.folder_key, character)
+        if role is None:
+            logger.error(f"角色 {character} 未找到")
+            raise RoleNotFoundError(f"角色 {character} 未找到")
+        return role
+    
+    @staticmethod
+    def user_message_builder(user_message, prompt) -> str:
+        extra_user_message = ("\n{剧情提示: " + prompt + "}") if prompt else ""
+
+        # 将用户输入（加上剧情提示）存储到游戏上下文
+        if user_message is not None:
+            if extra_user_message != "": user_message += extra_user_message
+        
+        return user_message
+
 
     @staticmethod
     def memory_builder(game_context, memory, character: str, prompt: str = ""):

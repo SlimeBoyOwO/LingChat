@@ -16,23 +16,19 @@ export default class DialogueProcessor implements IEventProcessor {
     gameStore.currentStatus = 'responding'
 
     // 针对剧本模式，获取角色
-    gameStore.character = gameStore.script.isRunning
-      ? event.character
-        ? event.character
-        : 'ERROR'
-      : gameStore.avatar.character_name
+    const role = gameStore.getGameRole(event.roleId)
+    if (!role) {
+      console.warn('角色修改的角色似乎并没有被初始化')
+      return
+    }
 
     gameStore.currentLine = event.motionText
       ? `${event.message} (${event.motionText})`
       : event.message || ''
 
-    gameStore.addToDialogHistory({
+    gameStore.appendGameMessage({
       type: 'reply',
-      character: gameStore.script.isRunning
-        ? event.character
-          ? event.character
-          : 'ERROR'
-        : gameStore.avatar.character_name,
+      displayName: role.roleName,
       content: event.message,
       emotion: event.emotion,
       audioFile: event.audioFile,
@@ -42,13 +38,13 @@ export default class DialogueProcessor implements IEventProcessor {
     })
 
     uiStore.showCharacterLine = gameStore.currentLine // TODO: 这部分逻辑之后整合
-    gameStore.avatar.emotion = event.emotion || '正常'
-    gameStore.avatar.originEmotion = event.originalTag || '正常'
+    role.emotion = event.emotion || '正常'
+    role.originalEmotion = event.originalTag || '正常'
     uiStore.currentAvatarAudio = event.audioFile || 'None'
-    uiStore.showCharacterEmotion = gameStore.avatar.originEmotion
+    uiStore.showCharacterEmotion = role.originalEmotion
 
-    uiStore.showCharacterTitle = gameStore.avatar.character_name
-    uiStore.showCharacterSubtitle = gameStore.avatar.character_subtitle
+    uiStore.showCharacterTitle = role.roleName
+    uiStore.showCharacterSubtitle = role.roleSubTitle
     // gameStore.currentCharacter = event.character;
 
     // 对话总是等待用户继续，所以这里不需要做任何等待

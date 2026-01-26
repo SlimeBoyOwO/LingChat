@@ -15,7 +15,7 @@ body,
 }
 
 body {
-  font-family: "TanukiMagic", "方正喵呜", "Segoe UI", sans-serif;
+  font-family: 'TanukiMagic', '方正喵呜', 'Segoe UI', sans-serif;
   color: white;
   /* height: 100vh; */ /* 此元素与第10行的第12行冲突 */
   overflow: hidden;
@@ -82,18 +82,14 @@ canvas {
   width: 100%;
   z-index: 2;
   /* 修改后的渐变 - 从底部向上渐变 */
-  background: linear-gradient(
-    to top,
-    rgba(0, 14, 39, 0.7) 0%,
-    rgba(0, 14, 39, 0.6) 100%
-  );
+  background: linear-gradient(to top, rgba(0, 14, 39, 0.7) 0%, rgba(0, 14, 39, 0.6) 100%);
   padding: 15px;
   backdrop-filter: blur(1px);
 }
 
 /* 顶部渐变透明效果 */
 .chatbox-box::before {
-  content: "";
+  content: '';
   position: absolute;
   top: -40px;
   left: 0;
@@ -217,7 +213,7 @@ input,
 textarea,
 button,
 select {
-  font-family: "TanukiMagic", "方正喵呜", "Segoe UI", sans-serif;
+  font-family: 'TanukiMagic', '方正喵呜', 'Segoe UI', sans-serif;
   color: white;
 }
 
@@ -432,8 +428,8 @@ select {
   position: absolute;
   background-size: contain;
   background-repeat: no-repeat;
-  width: 50%;
-  height: 50%;
+  width: 25%;
+  height: 25%;
   pointer-events: none;
   z-index: 2;
 

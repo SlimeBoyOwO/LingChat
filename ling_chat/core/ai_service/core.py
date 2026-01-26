@@ -4,18 +4,19 @@ import json
 import os
 from typing import Dict
 
-from ling_chat.core.ai_service.game_status import GameStatus
-from ling_chat.game_database.models import GameLine, LineBase
+from ling_chat.core.ai_service.game_system.game_status import GameStatus
+from ling_chat.game_database.models import GameLine, LineAttribute, LineBase
 from ling_chat.core.ai_service.ai_logger import AILogger
 from ling_chat.core.ai_service.config import AIServiceConfig
 from ling_chat.core.ai_service.events_scheduler import EventsScheduler
-from ling_chat.core.ai_service.message_processor import MessageProcessor
+from ling_chat.core.ai_service.message_system.message_processor import MessageProcessor
 from ling_chat.core.ai_service.message_system.message_generator import MessageGenerator
 from ling_chat.core.ai_service.rag_manager import RAGManager
 from ling_chat.core.ai_service.script_engine.script_manager import ScriptManager
 from ling_chat.core.ai_service.translator import Translator
 from ling_chat.core.ai_service.voice_maker import VoiceMaker
 from ling_chat.core.llm_providers.manager import LLMManager
+from ling_chat.utils.function import Function
 from ling_chat.core.logger import logger
 from ling_chat.core.messaging.broker import message_broker
 
@@ -63,15 +64,15 @@ class AIService:
         self.import_settings(settings)
         self.events_scheduler.start_nodification_schedules()        # TODO: 这个由前端开关控制
 
-        self.scripts_manager = ScriptManager(self.config)
+        self.scripts_manager = ScriptManager(self.config, self.game_status)
 
         # 特别的，设定当游戏角色被导入的时候，设定它为游戏主角，其他情况下则以变量为准，并初始化system prompt
-        self.init_lines()
+        self._init_game_status()
 
     def import_settings(self, settings: Dict) -> None:
         if(settings):
             self.character_path = settings.get("resource_path")
-            self.character_id = settings.get("character_id")
+            self.character_id = settings.get("character_id")  # TODO: character_id就是查找的role_id，这里写的不太优雅，可以之后优化
             self.ai_name = settings.get("ai_name","ai_name未设定")
             self.ai_subtitle = settings.get("ai_subtitle","ai_subtitle未设定")
             self.user_name = settings.get("user_name", "user_name未设定")
@@ -82,11 +83,12 @@ class AIService:
 
             self.ai_prompt_example = settings.get("system_prompt_example","")
             self.ai_prompt_example_old = settings.get("system_prompt_example_old", "")
-            self.ai_prompt = self.message_processor.sys_prompt_builder(self.user_name,
-                                                                       self.ai_name,
-                                                                       self.ai_prompt,
-                                                                       self.ai_prompt_example,
-                                                                       self.ai_prompt_example_old)
+            self.ai_prompt = Function.sys_prompt_builder(self.user_name,
+                                                         self.ai_name,
+                                                         self.ai_prompt,
+                                                         self.ai_prompt_example,
+                                                         self.ai_prompt_example_old
+                                                         )
 
             self.voice_maker.set_lang(settings.get("language", "ja"))
             # 设置角色路径，以便在TTS设置中使用
@@ -100,9 +102,9 @@ class AIService:
             self.clothes = settings.get("clothes")
             self.settings = settings
 
-            if self.use_rag and self.rag_manager:
-                logger.info(f"检测到角色切换，正在为角色 (ID: {self.character_id}) 准备长期记忆...")
-                self.rag_manager.switch_rag_system_character(int(self.character_id) if self.character_id else 0)
+            # if self.use_rag and self.rag_manager:
+            #     logger.info(f"检测到角色切换，正在为角色 (ID: {self.character_id}) 准备长期记忆...")
+            #     self.rag_manager.switch_rag_system_character(int(self.character_id) if self.character_id else 0)
 
         else:
             logger.error("角色信息settings没有被正常导入，请检查问题！")
@@ -155,25 +157,27 @@ class AIService:
     
     def load_lines(self, lines:list[GameLine], main_role_id: int):
         self.game_status.line_list = lines
-        self.game_status.role_manager.refresh_memories_from_lines(self.game_status.line_list)
+        self.game_status.role_manager.sync_memories(self.game_status.line_list)
         main_role = self.game_status.role_manager.get_role(role_id=main_role_id)
 
-        # TODO: 以后加载台词的时候，current_character应该由存档中的变量数据来决定，而不是直接使用存档主角。
         if main_role:
+            # TODO: 以后加载台词的时候，current_character应该由存档中的变量数据来决定，而不是直接使用存档主角。
             self.game_status.current_character = main_role
+            self.game_status.main_role = main_role
         else:
             logger.error(f"存档的主角色ID {main_role_id} 未找到。")
 
     def reset_lines(self):
-        self.init_lines()
+        self._init_game_status()
     
-    def init_lines(self):
+    def _init_game_status(self):
         self.game_status.line_list = []
-        system_line = LineBase(content=self.ai_prompt, attribute="system", sender_role_id=self.character_id, display_name=self.ai_name)
+        system_line = LineBase(content=self.ai_prompt, attribute=LineAttribute.SYSTEM, sender_role_id=self.character_id, display_name=self.ai_name)
         self.game_status.add_line(system_line)
         if self.character_id:
             self.game_status.current_character = self.game_status.role_manager.get_role(self.character_id)
             self.game_status.present_roles.add(self.game_status.current_character)
+            self.game_status.main_role = self.game_status.current_character
             logger.info(f"初始化游戏主角：{self.game_status.current_character} 已初始化。")
         else:
             logger.error("初始化游戏主角失败，未指定角色ID。")
@@ -188,7 +192,9 @@ class AIService:
         logger.info(f"{self.game_status.current_character.memory}")
 
     async def start_script(self):
-        await self.scripts_manager.start_script()
+        # TODO: 这里目前先只导入第一个剧本，之后可以通过传入str变量选择剧本
+        choosen_script = self.scripts_manager.get_script_list()[0]
+        await self.scripts_manager.start_script(choosen_script)
 
     async def _process_client_messages(self, client_id: str):
         """处理单个客户端的消息"""

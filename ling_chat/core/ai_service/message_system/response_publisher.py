@@ -32,20 +32,19 @@ class ResponsePublisher:
 
                 response = self.results_store.pop(next_index_to_publish, None)
                 if response:
-                    logger.info(f"Publishing message index {next_index_to_publish}")
+                    logger.info(f"正在发布第 {next_index_to_publish} 条消息")
                     await self.output_queue.put(response)
-                    # await message_broker.publish(self.client_id, response.model_dump())
 
                 del self.publish_events[next_index_to_publish]
 
                 if response and response.isFinal:
-                    logger.info("Final message published. Publisher is shutting down.")
+                    logger.info("最后一个消息发送完毕，退出发布循环")
                     break
 
                 next_index_to_publish += 1
             except asyncio.CancelledError:
-                logger.info("Publisher was cancelled.")
+                logger.info("发布循环被取消")
                 break
             except Exception as e:
-                logger.error(f"Error in publisher: {e}", exc_info=True)
+                logger.error(f"在发布循环中发生错误: {e}", exc_info=True)
                 break

@@ -17,6 +17,9 @@ async def init_web_infos(client_id:str ,user_id: int):
 
         await service_manager.add_client(client_id)
 
+        # offset_y默认从ai_service.settings:dict读取offset，如果没有，则读取offset_y
+        offset_y = ai_service.settings.get("offset", 0) if hasattr(ai_service.settings, "offset") else ai_service.settings.get("offset_y", 0)
+
         result = {
             "ai_name": ai_service.ai_name,
             "ai_subtitle": ai_service.ai_subtitle,
@@ -27,7 +30,8 @@ async def init_web_infos(client_id:str ,user_id: int):
             "clothes": ai_service.clothes,
             "thinking_message": ai_service.settings.get("thinking_message", "灵灵正在思考中..."),
             "scale": ai_service.settings.get("scale", 1.0),
-            "offset": ai_service.settings.get("offset", 0),
+            "offset_y": offset_y,
+            "offset_x": ai_service.settings.get("offset_x", 0),
             "bubble_top": ai_service.settings.get("bubble_top", 5),
             "bubble_left": ai_service.settings.get("bubble_left", 20),
             "body_part": ai_service.body_part,

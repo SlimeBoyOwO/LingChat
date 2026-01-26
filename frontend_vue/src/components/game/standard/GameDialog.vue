@@ -104,7 +104,12 @@ const placeholderText = computed(() => {
     case 'input':
       return uiStore.showPlayerHintLine || '在这里输入消息...'
     case 'thinking':
-      return gameStore.avatar.think_message
+      const currentInteractRole = gameStore.currentInteractRole
+      if (currentInteractRole) {
+        return currentInteractRole.thinkMessage
+      } else {
+        return '等待回应中...'
+      }
     case 'responding':
     case 'presenting':
       return ''
@@ -122,12 +127,16 @@ watch(
   (newStatus) => {
     console.log('游戏状态变为 :', newStatus)
     if (newStatus === 'thinking') {
-      gameStore.avatar.emotion = 'AI思考'
-      uiStore.showCharacterTitle = gameStore.avatar.character_name
-      uiStore.showCharacterSubtitle = gameStore.avatar.character_subtitle
+      const currentInteractRole = gameStore.currentInteractRole
+      if (currentInteractRole) {
+        currentInteractRole.emotion = 'AI思考'
+        uiStore.showCharacterTitle = currentInteractRole.roleName
+        uiStore.showCharacterSubtitle = currentInteractRole.roleSubTitle
+      } else {
+      }
     } else if (newStatus === 'input') {
-      uiStore.showCharacterTitle = gameStore.avatar.user_name
-      uiStore.showCharacterSubtitle = gameStore.avatar.user_subtitle
+      uiStore.showCharacterTitle = gameStore.userName
+      uiStore.showCharacterSubtitle = gameStore.userSubtitle
       uiStore.showCharacterEmotion = ''
     } else if (newStatus === 'presenting') {
       uiStore.showCharacterTitle = ''
@@ -171,15 +180,15 @@ function send() {
   const text = inputMessage.value
   if (!text.trim()) return
   if (text === '/开始剧本') {
-    gameStore.initializeScript('TODO: 从剧本面板选择剧本')
+    // gameStore.initializeScript('TODO: 从剧本面板选择剧本')
     // TODO: 清空背景，清空人物
-    gameStore.avatar.show = false
-    gameStore.script.isRunning = true
+    // gameStore.avatar.show = false
+    // gameStore.script.isRunning = true
   } else {
     gameStore.currentStatus = 'thinking'
-    gameStore.addToDialogHistory({
+    gameStore.appendGameMessage({
       type: 'message',
-      character: gameStore.avatar.user_name,
+      displayName: gameStore.userName,
       content: text,
     })
   }

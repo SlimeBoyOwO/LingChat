@@ -1,8 +1,9 @@
+from ling_chat.core.ai_service.game_system.game_status import GameStatus
 from ling_chat.core.ai_service.script_engine.type import GameContext
 
 
 class EndsHandler:
-    def __init__(self, end_action:dict, game_context: GameContext):
+    def __init__(self, end_action:dict, game_context: GameStatus):
         self.game_context = game_context
         self.end_action:dict = end_action
 

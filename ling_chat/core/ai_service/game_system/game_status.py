@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
-from ling_chat.core.ai_service.type import Player, GameRole
-from ling_chat.core.ai_service.role_manager import RoleManager
+from ling_chat.core.ai_service.type import Player, GameRole, ScriptStatus
+from ling_chat.core.ai_service.game_system.role_manager import GameRoleManager
 
 from ling_chat.game_database.models import GameLine, LineBase
 
@@ -16,13 +16,13 @@ class GameStatus:
     line_list: list[GameLine] = field(default_factory=list[GameLine])
 
     # 使用 RoleManager 管理所有角色
-    role_manager: RoleManager = field(default_factory=RoleManager)
+    role_manager: GameRoleManager = field(default_factory=GameRoleManager)
     # 记录当前对话角色，此角色将作为LLM传输入的对象，使用本角色的记忆
     current_character: GameRole = field(default_factory=GameRole)
-    
-    # [新增] 在场角色列表：只有在场的角色才能感知到台词
-    # 使用 Set 避免重复
+    # 在场角色列表：只有在场的角色才能感知到台词
     present_roles: set[GameRole] = field(default_factory=set)
+    # 游戏主角，也就是导入的游戏角色，剧本模式冒险的主角
+    main_role: GameRole = field(default_factory=GameRole)
 
     # 背景信息
     background: str = field(default_factory=str)
@@ -30,6 +30,9 @@ class GameStatus:
     background_music: str = field(default_factory=str)
     # 背景特效
     background_effect: str = field(default_factory=str)
+
+    # 剧本模式中记录的额外信息
+    script_status: Optional[ScriptStatus] = None
 
     def add_line(self, line: LineBase):
         # 转换为GameLine
@@ -43,4 +46,4 @@ class GameStatus:
         self.refresh_memories()
     
     def refresh_memories(self):
-        self.role_manager.refresh_memories_from_lines(self.line_list)
+        self.role_manager.sync_memories(self.line_list)

@@ -16,6 +16,10 @@ class MessageBroker:
             self.queues[client_id] = asyncio.Queue()
         while True:
             yield await self.queues[client_id].get()
+    
+    async def publish_clients(self, clients: set[str], message: dict):
+        for client_id in clients:
+            await self.publish(client_id, message)
 
     async def enqueue_ai_message(self, client_id: str, message: str):
         """专门用于将消息加入到AI处理队列"""

@@ -19,8 +19,7 @@ export interface ScriptPlayerEvent extends ScriptEvent {
 export interface ScriptDialogueEvent extends ScriptEvent {
   type: 'reply'
   character?: string
-  roleId?: number
-  scriptRoleId?: string
+  roleId: number
   emotion: string
   originalTag: string
   message: string
@@ -53,7 +52,7 @@ export interface ScriptMusicEvent extends ScriptEvent {
 
 export interface ScriptModifyCharacterEvent extends ScriptEvent {
   type: 'modify_character'
-  character: string
+  characterId: number
   emotion?: string
   action?: string
 }

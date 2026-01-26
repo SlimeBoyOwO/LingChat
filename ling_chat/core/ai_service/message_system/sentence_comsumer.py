@@ -4,14 +4,14 @@ import traceback
 from typing import Dict, List, Optional
 
 from ling_chat.core.ai_service.ai_logger import logger
-from ling_chat.core.ai_service.message_processor import MessageProcessor
-from ling_chat.core.ai_service.game_status import GameStatus
+from ling_chat.core.ai_service.message_system.message_processor import MessageProcessor
+from ling_chat.core.ai_service.game_system.game_status import GameStatus
 from ling_chat.core.ai_service.translator import Translator
 from ling_chat.core.ai_service.voice_maker import VoiceMaker
 from ling_chat.core.logger import logger
 from ling_chat.core.schemas.response_models import ResponseFactory
 from ling_chat.core.schemas.responses import ReplyResponse
-from ling_chat.game_database.models import LineBase
+from ling_chat.game_database.models import LineAttribute, LineBase
 
 
 class SentenceConsumer:
@@ -105,7 +105,7 @@ class SentenceConsumer:
                            action_content=response.motionText,
                            audio_file=response.audioFile,
                            display_name=response.character,
-                           attribute="assistant",
+                           attribute=LineAttribute.ASSISTANT,
                            )
         self.game_status.add_line(ai_line)
         

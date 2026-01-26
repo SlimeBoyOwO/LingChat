@@ -18,12 +18,12 @@
 import { computed, ref, watch } from 'vue'
 import { MenuPage, MenuItem } from '../../ui'
 import { useGameStore } from '../../../stores/modules/game'
-import type { DialogMessage } from '../../../stores/modules/game/state'
+import type { GameMessage } from '../../../stores/modules/game/state'
 import DialogSession from '../history/DialogSession.vue'
 
 const gameStore = useGameStore()
 
-const dialogHistory = computed<DialogMessage[]>(() => gameStore.dialogHistory)
+const dialogHistory = computed<GameMessage[]>(() => gameStore.dialogHistory)
 
 // 1. 创建一个 ref 来关联模板中的聊天容器元素
 const chatContainer = ref<HTMLElement | null>(null)

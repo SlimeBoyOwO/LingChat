@@ -32,3 +32,23 @@ class GameRole:
 class Player:
     user_name: str = ""
     user_subtitle: str = ""
+    user_prompt: str = "" # 用于设定玩家的信息，如性格、喜好等
+
+@dataclass
+class ScriptStatus:
+    folder_key: str
+
+    name: str
+    description: str
+    intro_charpter: str
+    settings: dict
+
+    # 正在进行剧本模式的 client
+    running_client_id: Optional[str] = None
+
+    # 记录剧本进度
+    current_charpter_key: str = field(default_factory=str)
+    current_event_process: int = field(default_factory=int)
+
+    # 剧本包含的变量
+    vars: dict = field(default_factory=dict)

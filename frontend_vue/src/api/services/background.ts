@@ -6,7 +6,7 @@ export const getBackgroundImages = async (): Promise<BackgroundImageInfo[]> => {
     const data = await http.get('/v1/chat/background/list', {})
     return data
   } catch (error: any) {
-    console.error('获取游戏信息错误:', error.message)
+    console.error('获取游戏背景列表信息错误:', error.message)
     throw error // 直接抛出拦截器处理过的错误
   }
 }

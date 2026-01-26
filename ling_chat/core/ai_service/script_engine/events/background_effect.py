@@ -12,6 +12,7 @@ class MusicEvent(BaseEvent):
         duration:float = self.event_data.get('duration', '')
 
         logger.info(f"背景特效: {background_effect}")
+        self.game_status.background_effect = background_effect
 
         event_response = ResponseFactory.create_background_effect(background_effect, duration = duration)
         await message_broker.publish("1",

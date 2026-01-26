@@ -34,6 +34,7 @@
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
   text-align: justify;
   text-align-last: justify;
+  white-space: nowrap;
 }
 
 .menu-item:hover {

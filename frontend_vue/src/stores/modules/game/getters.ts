@@ -1,24 +1,32 @@
-import type { GameState, DialogMessage, ScriptCharacter } from './state'
+// getters.ts
+import type { GameState, GameMessage, GameRole } from './state'
 
 export const getters = {
+  // 普通 Getter
   getCurrentLine(state: GameState): string {
     return state.currentLine
   },
 
-  getDialogHistory(state: GameState): DialogMessage[] {
+  getDialogHistory(state: GameState): GameMessage[] {
     return state.dialogHistory
   },
 
-  getGameStatus(state: GameState): string {
-    return state.currentStatus
+  presentRolesList(state: GameState): GameRole[] {
+    return state.presentRoleIds.map((id) => state.gameRoles[id]).filter((role) => !!role) // 过滤掉可能已被删除的角色
   },
 
-  getCurrentScene(state: GameState): string {
-    return state.currentScene
+  currentInteractRole(state: GameState): GameRole | undefined {
+    return state.gameRoles[state.currentInteractRoleId]
   },
 
-  // 辅助函数
-  getCharacterByName(state: GameState, name: string): ScriptCharacter | undefined {
-    return state.script.script_characters.get(name)
+  // 获取主角对象
+  mainRole(state: GameState): GameRole | undefined {
+    return state.gameRoles[state.mainRoleId]
+  },
+
+  getGameRole: (state: GameState) => {
+    return (roleId: number): GameRole | undefined => {
+      return state.gameRoles[roleId]
+    }
   },
 }

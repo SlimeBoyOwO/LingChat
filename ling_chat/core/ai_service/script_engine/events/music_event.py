@@ -12,11 +12,12 @@ class MusicEvent(BaseEvent):
         duration:float = self.event_data.get('duration', '')
 
         logger.info(f"播放音乐: {music}")
+        self.game_status.background_music = music
 
         event_response = ResponseFactory.create_music(music, duration = duration)
-        await message_broker.publish("1",
-            event_response.model_dump()
-        )
+        await message_broker.publish(self.client_id,
+                event_response.model_dump()
+            )
 
     @classmethod
     def can_handle(cls, event_type: str) -> bool:

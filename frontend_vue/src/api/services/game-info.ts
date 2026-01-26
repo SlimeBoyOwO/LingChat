@@ -8,7 +8,8 @@ export interface GameInfo {
   character_id: number
   thinking_message: string
   scale: number
-  offset: number
+  offset_x: number
+  offset_y: number
   bubble_top: number
   bubble_left: number
   clothes: object

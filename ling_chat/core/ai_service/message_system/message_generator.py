@@ -5,7 +5,7 @@ from typing import AsyncGenerator, Dict, List, Optional
 
 from ling_chat.core.ai_service.ai_logger import AILogger, logger
 from ling_chat.core.ai_service.config import AIServiceConfig
-from ling_chat.core.ai_service.message_processor import MessageProcessor
+from ling_chat.core.ai_service.message_system.message_processor import MessageProcessor
 from ling_chat.core.ai_service.message_system.response_publisher import (
     ResponsePublisher,
 )
@@ -18,8 +18,8 @@ from ling_chat.core.llm_providers.manager import LLMManager
 from ling_chat.core.logger import logger
 from ling_chat.core.schemas.response_models import ResponseFactory
 from ling_chat.core.schemas.responses import ReplyResponse
-from ling_chat.core.ai_service.game_status import GameStatus
-from ling_chat.game_database.models import LineBase
+from ling_chat.core.ai_service.game_system.game_status import GameStatus
+from ling_chat.game_database.models import LineAttribute, LineBase
 from ling_chat.utils.function import Function
 
 
@@ -70,7 +70,7 @@ class MessageGenerator:
 
     # 主方法现在充当协调器角色
     async def process_message_stream(self, 
-                                     user_message: str, 
+                                     user_message: Optional[str] = None, 
                                      memory: Optional[List[Dict]] = None,) -> AsyncGenerator[ReplyResponse, None]:
         """
         协调流处理管道并生成响应，避免死锁。
@@ -81,15 +81,14 @@ class MessageGenerator:
         # 1. 设置和预处理
         current_context = []
 
+        line = None
         # 1. 处理用户消息，提取临时指令，构建台词
-        processed_user_message_dict = self.message_processor.append_user_message(user_message)
-        processed_user_message = processed_user_message_dict.get("main","")
-        temp_message = processed_user_message_dict.get("temp",None)
-        line = LineBase(content=processed_user_message, attribute="user", display_name=self.game_status.player.user_name)
-
-        # 2. 添加用户消息到游戏状态台词表中，更新游戏角色记忆
-        # append_line_index = len(self.game_status.line_list)
-        self.game_status.add_line(line)
+        if user_message is not None:
+            processed_user_message_dict = self.message_processor.append_user_message(user_message)
+            processed_user_message = processed_user_message_dict.get("main","")
+            temp_message = processed_user_message_dict.get("temp",None)
+            line = LineBase(content=processed_user_message, attribute=LineAttribute.USER, display_name=self.game_status.player.user_name)
+            self.game_status.add_line(line)
 
         # 3. 获取记忆
         role = self.game_status.current_character
@@ -132,7 +131,7 @@ class MessageGenerator:
                     consumer_id=i, sentence_queue=sentence_queue,
                     results_store=results_store, publish_events=publish_events,
                     message_processor=self.message_processor, translator=self.translator,
-                    voice_maker=self.voice_maker, user_message=user_message,
+                    voice_maker=self.voice_maker, user_message=user_message if user_message else "",
                     game_status=self.game_status,
                 )
                 consumer_task = asyncio.create_task(consumer.run(), name=f"Consumer-{i}")
@@ -205,7 +204,7 @@ class MessageGenerator:
             if accumulated_response:
 
                 # 让 processed_user_message 删除 temp_message 字段
-                if temp_message is not None:
+                if temp_message is not None and line is not None:
                     line.content = processed_user_message.replace(temp_message, "")
                     # self.game_status.line_list[append_line_index] = line 这行应该没必要
                     self.game_status.refresh_memories()

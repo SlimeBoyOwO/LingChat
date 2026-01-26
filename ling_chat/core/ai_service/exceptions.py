@@ -9,3 +9,7 @@ class ScriptLoadError(ScriptEngineError):
 class ChapterLoadError(ScriptEngineError):
     """章节加载或解析失败时抛出"""
     pass
+
+class RoleNotFoundError(Exception):
+    """角色未找到时抛出"""
+    pass

@@ -14,7 +14,7 @@ class SoundEvent(BaseEvent):
         logger.info(f"播放声音: {sound}")
 
         event_response = ResponseFactory.create_sound(sound, duration = duration)
-        await message_broker.publish("1",
+        await message_broker.publish(self.client_id,
             event_response.model_dump()
         )
 
