@@ -3,6 +3,7 @@ import threading
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from ling_chat.core.logger import logger
 
 from ..update.update_main import create_application
 
@@ -45,8 +46,8 @@ def init_update_application():
     else:
         update_url = f"{update_base.rstrip('/')}/updates"
 
-    print(f"初始化更新应用，项目根目录: {project_root}")
-    print(f"更新URL: {update_url}")
+    logger.info(f"初始化更新应用，项目根目录: {project_root}")
+    logger.info(f"更新URL: {update_url}")
 
     return create_application(
         version_file=os.path.join(project_root, "version"),

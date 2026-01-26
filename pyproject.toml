@@ -9,7 +9,7 @@ description = ""
 authors = [
     { name = "0x00-pl", email = "0x00.pl@gmail.com" },
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 
 dependencies = [
     "fastapi>=0.116.1",
