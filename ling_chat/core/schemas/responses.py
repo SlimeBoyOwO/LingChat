@@ -53,7 +53,7 @@ class ScriptDialogResponse(BaseResponse):
 
 class ScriptModifyCharacterResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_MODIFY_CHARACTER
-    character: str
+    characterId: int
     emotion: Optional[str] = None
     action: Optional[str] = None
 

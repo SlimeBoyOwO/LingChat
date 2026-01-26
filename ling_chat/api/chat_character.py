@@ -36,6 +36,21 @@ async def open_creative_web():
     except Exception as e:
         logger.error(f"无法使用浏览器启动创意工坊: {str(e)}")
         raise HTTPException(status_code=500, detail="无法使用浏览器启动网页")
+
+@router.get("/get_role_info/{role_id}")
+async def get_role_info(role_id: int):
+    # 1. 获取角色信息
+    role = RoleManager.get_role_by_id(role_id)
+    if not role:
+        raise HTTPException(status_code=404, detail=f"角色{role_id}不存在")
+    if not role.resource_folder:
+        raise HTTPException(status_code=404, detail=f"角色{role_id}资源不存在")
+    
+    settings = RoleManager.get_role_settings_by_id(role_id)
+
+    if settings is None:
+        raise HTTPException(status_code=404, detail=f"角色{role_id}设置不存在")
+    return Function.convert_settings_to_role_info_dict(settings, role_id)
     
 
 @router.get("/get_avatar/{role_id}/{emotion}/{clothes_name}")
@@ -133,13 +148,17 @@ async def select_character(
 @router.get("/get_all_characters")
 async def get_all_characters():
     try:
-        db_chars = RoleManager.get_all_roles()
+        db_chars = RoleManager.get_all_main_roles()
 
         if not db_chars:
             return {"data": [], "message": "未找到任何角色"}
 
         characters = []
         for char in db_chars:
+            if not char.resource_folder:
+                logger.warning(f"角色 {char.name} 缺少资源文件夹")
+                continue
+
             char_path = user_data_path / "game_data" / "characters" / char.resource_folder
 
             settings_path = char_path / 'settings.txt'

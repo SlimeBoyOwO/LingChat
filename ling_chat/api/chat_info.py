@@ -17,8 +17,9 @@ async def init_web_infos(client_id:str ,user_id: int):
 
         await service_manager.add_client(client_id)
 
-        # offset_y默认从ai_service.settings:dict读取offset，如果没有，则读取offset_y
-        offset_y = ai_service.settings.get("offset", 0) if hasattr(ai_service.settings, "offset") else ai_service.settings.get("offset_y", 0)
+        offset_y = ai_service.settings.get("offset")
+        if offset_y is None:
+            offset_y = ai_service.settings.get("offset_y", 0)
 
         result = {
             "ai_name": ai_service.ai_name,

@@ -1,6 +1,7 @@
 // actions.ts
-import type { GameState, GameMessage } from './state'
+import type { GameState, GameMessage, GameRole } from './state'
 import { getGameInfo } from '../../../api/services/game-info'
+import { getRoleInfo } from '../../../api/services/character'
 import { useUIStore } from '../ui/ui'
 
 export const actions = {
@@ -42,6 +43,7 @@ export const actions = {
         originalEmotion: '正常',
         show: true,
       }
+      this.presentRoleIds = []
       this.presentRoleIds.push(gameInfo.character_id)
       this.mainRoleId = gameInfo.character_id
       this.currentInteractRoleId = gameInfo.character_id
@@ -56,6 +58,36 @@ export const actions = {
       return gameInfo
     } catch (error) {
       console.error('初始化游戏信息失败:', error)
+      throw error
+    }
+  },
+
+  async getOrCreateGameRole(this: GameState, role_id: number): Promise<GameRole> {
+    if (this.gameRoles[role_id]) {
+      return this.gameRoles[role_id]
+    }
+    try {
+      const roleInfo = await getRoleInfo(role_id)
+      this.gameRoles[role_id] = {
+        roleId: roleInfo.character_id,
+        roleName: roleInfo.ai_name,
+        roleSubTitle: roleInfo.ai_subtitle,
+        thinkMessage: roleInfo.thinking_message,
+        scale: roleInfo.scale,
+        offsetX: roleInfo.offset_x,
+        offsetY: roleInfo.offset_y,
+        bubbleLeft: roleInfo.bubble_left,
+        bubbleTop: roleInfo.bubble_top,
+        clothes: roleInfo.clothes,
+        clothesName: roleInfo.clothes_name,
+        bodyPart: roleInfo.body_part,
+        emotion: '正常',
+        originalEmotion: '正常',
+        show: true,
+      }
+      return this.gameRoles[role_id]
+    } catch (error) {
+      console.error('游戏角色信息获取失败:', error)
       throw error
     }
   },

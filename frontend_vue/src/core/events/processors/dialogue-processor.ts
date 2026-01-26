@@ -16,7 +16,7 @@ export default class DialogueProcessor implements IEventProcessor {
     gameStore.currentStatus = 'responding'
 
     // 针对剧本模式，获取角色
-    const role = gameStore.getGameRole(event.roleId)
+    const role = await gameStore.getOrCreateGameRole(event.roleId)
     if (!role) {
       console.warn('角色修改的角色似乎并没有被初始化')
       return

@@ -13,6 +13,7 @@ class ModifyCharacterEvent(BaseEvent):
         emotion = self.event_data.get('emotion', '')
         duration = self.event_data.get('duration', 1.0)
         action = self.event_data.get('action','')
+        perceive = self.event_data.get('perceive', '')
 
         # 我觉得这个事件没必要加到历史事件.jpg
         # self.game_context.dialogue.append({
@@ -38,7 +39,7 @@ class ModifyCharacterEvent(BaseEvent):
 
         # 构建参数字典，只包含非空的参数
         params = {
-            'character_id': character_id,
+            'characterId': character_id,
             'duration': duration
         }
 
@@ -52,6 +53,14 @@ class ModifyCharacterEvent(BaseEvent):
                 self.game_status.present_roles.remove(role)
 
             params['action'] = action
+        
+        if perceive != '':
+            if perceive:
+                self.game_status.present_roles.add(role)
+            else:
+                self.game_status.present_roles.remove(role)
+
+            # params['perceive'] = perceive
 
         event_response = ResponseFactory.create_modify_character(**params)
         await message_broker.publish(self.client_id, event_response.model_dump())

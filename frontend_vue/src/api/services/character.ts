@@ -30,3 +30,29 @@ export const characterSelect = async (
     throw new Error(error.response?.data?.detail || '角色选择失败')
   }
 }
+
+export interface RoleInfo {
+  character_id: number
+  ai_name: string
+  ai_subtitle: string
+  thinking_message: string
+  scale: number
+  offset_x: number
+  offset_y: number
+  bubble_top: number
+  bubble_left: number
+  clothes: object
+  clothes_name: string
+  body_part: object
+}
+
+export const getRoleInfo = async (roleId: number): Promise<RoleInfo> => {
+  try {
+    const data = await http.get(`/v1/chat/character/get_role_info/${roleId}`)
+    console.log('获取角色信息成功', data)
+    return data
+  } catch (error: any) {
+    console.error('获取游戏角色信息错误:', error.message)
+    throw error
+  }
+}

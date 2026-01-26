@@ -79,18 +79,22 @@ class ScriptManager:
             script = self._read_script_config(script_path)
             self.all_scripts[script.name] = script
     
-    def _init_script(self, script):
+    def _init_script(self, script: ScriptStatus):
         # 1. 在数据库中，注册所有出场的剧本角色，为游戏状态注册角色，初始化角色设定，台词
+        self.game_status.script_status = script
         self._register_script_roles(script)
         # 2. 导入玩家信息
-        player = Player(script.settings.get("user_name", None),
-                        script.settings.get("user_subtitle", None),
-                        script.settings.get("user_settings", None))
-        # 3. 检查玩家信息是否完整，决定是否导入到GameStatus中
-        if player.user_name is None and player.user_subtitle is None:
-            logger.info("本剧本未设定玩家身份，将使用默认玩家身份")
-        else:
-            self.game_status.player = player
+        if script.settings:
+            player = Player(script.settings.get("user_name", ""),
+                            script.settings.get("user_subtitle", ""),
+                            script.settings.get("user_settings", ""))           
+            # 3. 检查玩家信息是否完整，决定是否导入到GameStatus中
+            if player.user_name is "" and player.user_subtitle is "":
+                logger.info("本剧本未设定玩家身份，将使用默认玩家身份")
+            else:
+                self.game_status.player = player
+
+        # 4. 重置游戏状态
 
     async def _run_script(self, script:ScriptStatus):
         """
@@ -158,6 +162,7 @@ class ScriptManager:
                                             script_key=script_key,
                                             script_role_key=script_role_key
                                             )
+                    
                 self.game_status.add_line(
                     LineBase(content=ai_prompt,attribute=LineAttribute.SYSTEM,sender_role_id=role.id, display_name=role.name)
                 )

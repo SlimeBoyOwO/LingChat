@@ -15,18 +15,19 @@ export default class ModifyCharacterProcessor implements IEventProcessor {
     gameStore.currentStatus = 'presenting'
 
     if (event.characterId) {
-      const role = gameStore.getGameRole(event.characterId)
-      if (!role) {
-        console.warn('角色修改的角色似乎并没有被初始化')
-        return
-      }
+      // 确保游戏初始化包含角色
+      const role = await gameStore.getOrCreateGameRole(event.characterId)
 
       if (event.action) {
         switch (event.action) {
           case 'show_character':
+            gameStore.presentRoleIds.push(event.characterId)
             role.show = true
             break
           case 'hide_character':
+            gameStore.presentRoleIds = gameStore.presentRoleIds.filter(
+              (id) => id !== event.characterId,
+            )
             role.show = false
             break
           default:
