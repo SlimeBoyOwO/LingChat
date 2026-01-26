@@ -1,4 +1,5 @@
 from ling_chat.api.chat_background import router as chat_background_router
+from ling_chat.api.chat_achievement import router as chat_achievement_router
 from ling_chat.api.chat_character import router as chat_character_router
 from ling_chat.api.chat_history import router as chat_history_router
 from ling_chat.api.chat_info import router as chat_info_router
@@ -23,6 +24,7 @@ class RoutesManager:
         app.include_router(frontend_router)
         app.include_router(chat_music_router)
         app.include_router(env_config_router)
+        app.include_router(chat_achievement_router)
         app.include_router(chat_character_router)
         app.include_router(chat_background_router)
         app.include_router(chat_sound_router)

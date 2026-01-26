@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { getAchievementList } from '@/api/services/achievement'
 import { registerHandler, sendWebSocketMessage } from '@/api/websocket'
 
 export type AchievementType = 'common' | 'rare'
@@ -11,13 +12,17 @@ export interface Achievement {
   imgUrl?: string
   audioUrl?: string
   duration?: number
+  unlocked?: boolean
+  unlocked_at?: string
+  current_progress?: number
+  target_progress?: number
 }
 
 interface AchievementState {
   queue: Achievement[]
   current: Achievement | null
   isVisible: boolean
-  allAchievements: Record<string, any>
+  allAchievements: Record<string, Achievement>
 }
 
 const DEFAULT_DURATION = 3500
@@ -37,7 +42,7 @@ export const useAchievementStore = defineStore('achievement', {
         id,
         duration: DEFAULT_DURATION,
         ...achievement,
-      })
+      } as Achievement)
       this.processQueue()
     },
 
@@ -81,21 +86,21 @@ export const useAchievementStore = defineStore('achievement', {
     /**
      * 获取所有成就列表
      */
-    fetchAchievements() {
-      sendWebSocketMessage('achievement.get_list', {})
+    async fetchAchievements() {
+      try {
+        const data = await getAchievementList()
+        if (data) {
+          this.allAchievements = data
+        }
+      } catch (error) {
+        console.error('获取成就列表失败:', error)
+      }
     },
 
     /**
      * 监听后端推送的成就解锁消息
      */
     listenForUnlocks() {
-      // 监听成就列表返回
-      registerHandler('achievement.list', (message) => {
-        if (message.data) {
-          this.allAchievements = message.data
-        }
-      })
-
       // 监听解锁通知
       registerHandler('achievement.unlocked', (message) => {
         if (message.data) {
