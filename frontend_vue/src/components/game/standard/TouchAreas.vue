@@ -158,7 +158,7 @@ const handlePolygonClick = (event: MouseEvent) => {
         touchCount.value === 1
           ? props.part.message
           : `${props.part.message},这是第${touchCount.value}次`
-      const defaultMessage = `${gameStore.avatar.user_name}摸了一下你的头`
+      const defaultMessage = `${gameStore.userName}摸了一下你的头`
 
       if (isPointInPolygon(event.clientX, event.clientY, polygon)) {
         message = messageWithCount

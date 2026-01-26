@@ -39,14 +39,14 @@ class RoleManager:
                         continue
                     
                     try:
-                        resource_path_str = entry.name  # "hero1"
+                        resource_path_str = entry.name
                         
                         settings = Function.parse_enhanced_txt(str(settings_path))
                         title = settings.get('title', entry.name)
                         
                         # 尝试从 settings 获取 script_key，或者默认 None
                         # 如果是主要角色，通常 script_key 可能为空，或者在 settings 里定义
-                        script_key_val = settings.get('script_key', None) 
+                        # script_key_val = settings.get('script_key', None) 
                         
                         existing_role = db_roles_map.get(resource_path_str)
                         
@@ -56,7 +56,6 @@ class RoleManager:
                                 name=title, 
                                 resource_folder=resource_path_str,
                                 role_type=RoleType.MAIN, # characters 文件夹下的通常是主角
-                                script_key=script_key_val
                             )
                             session.add(new_role)
                             session.commit()
@@ -70,9 +69,9 @@ class RoleManager:
                                 changed = True
                             
                             # 如果 settings 里有 script_key，也更新一下
-                            if script_key_val and existing_role.script_key != script_key_val:
-                                existing_role.script_key = script_key_val
-                                changed = True
+                            # if script_key_val and existing_role.script_key != script_key_val:
+                            #     existing_role.script_key = script_key_val
+                            #     changed = True
                             
                             if changed:
                                 session.add(existing_role)
@@ -85,11 +84,24 @@ class RoleManager:
             session.commit()
             
         return created_role_ids
+    
+    @staticmethod
+    def create_role(title: str, type: RoleType, resource_folder: str, script_key: Optional[str] = None, script_role_key: Optional[str] = None) -> Role:
+        with Session(engine) as session:
+            new_role = Role(name=title,
+                            script_key=script_key,
+                            script_role_key=script_role_key,
+                            role_type=type,
+                            resource_folder=resource_folder
+                            )
+            session.add(new_role)
+            session.commit()
+            return new_role
 
     @staticmethod
     def get_all_roles() -> List[Role]:
         with Session(engine) as session:
-            return session.exec(select(Role)).all()
+            return session.exec(select(Role)).all() # type: ignore
 
     @staticmethod
     def get_role_by_id(role_id: int) -> Optional[Role]:
@@ -97,11 +109,21 @@ class RoleManager:
             return session.get(Role, role_id)
     
     @staticmethod
-    def get_role_by_script_key(script_key: str) -> Optional[Role]:
+    def get_role_by_script_keys(script_key: str, script_role_key: str) -> Optional[Role]:
         """通过 script_key 查找角色 (可能返回多个中的第一个)"""
         with Session(engine) as session:
-            stmt = select(Role).where(Role.script_key == script_key)
+            stmt = select(Role).where(
+                Role.script_key == script_key,
+                Role.script_role_key == script_role_key
+            )
             return session.exec(stmt).first()
+    
+    @staticmethod
+    def get_script_roles(script_key: str) -> List[Role]:
+        """获取剧本下的所有角色"""
+        with Session(engine) as session:
+            stmt = select(Role).where(Role.script_key == script_key)
+            return list(session.exec(stmt).all())
         
     @staticmethod
     def get_role_settings_by_id(role_id: int) -> Optional[Dict]:

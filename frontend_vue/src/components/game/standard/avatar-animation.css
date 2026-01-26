@@ -187,8 +187,8 @@
   position: absolute;
   background-size: contain;
   background-repeat: no-repeat;
-  width: 50%;
-  height: 50%;
+  width: 40%;
+  height: 40%;
   pointer-events: none;
   z-index: 2;
 

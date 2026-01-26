@@ -1,11 +1,13 @@
 import os
 from pathlib import Path
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, Body, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
+from typing import Optional
 
 from ling_chat.core.logger import logger
 from ling_chat.core.service_manager import service_manager
+from ling_chat.game_database.models import RoleType
 from ling_chat.utils.function import Function
 from ling_chat.utils.runtime_path import user_data_path
 
@@ -34,69 +36,61 @@ async def open_creative_web():
     except Exception as e:
         logger.error(f"无法使用浏览器启动创意工坊: {str(e)}")
         raise HTTPException(status_code=500, detail="无法使用浏览器启动网页")
+    
 
-@router.get("/get_avatar/{avatar_file}")
-async def get_specific_avatar(avatar_file: str):
-    ai_service = service_manager.ai_service
-
-    if not ai_service or not ai_service.character_path:
-        raise HTTPException(status_code=404, detail="AIService or character_path not found")
-
-    file_path = Path(ai_service.character_path) / "avatar" / avatar_file
-
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Avatar not found")
-
-    return FileResponse(file_path)
-
-@router.get("/get_avatar/{avatar_file}/{clothes_name}")
-async def get_specific_avatar(avatar_file: str, clothes_name: str):
-    ai_service = service_manager.ai_service
-
-    if not ai_service or not ai_service.character_path:
-        raise HTTPException(status_code=404, detail="AIService or character_path not found")
-
-    if clothes_name == 'default':
-        file_path = Path(ai_service.character_path) / "avatar" / avatar_file
+@router.get("/get_avatar/{role_id}/{emotion}/{clothes_name}")
+async def get_role_avatar(
+    role_id: int, 
+    emotion: str, 
+    clothes_name: str
+):
+    # 1. 获取角色信息
+    role = RoleManager.get_role_by_id(role_id)
+    if not role:
+        raise HTTPException(status_code=404, detail=f"角色{role_id}不存在")
+    if not role.resource_folder:
+        raise HTTPException(status_code=404, detail=f"角色{role_id}资源不存在")
+    
+    # 2. 根据角色类型获取形象基础路径
+    base_path = Path()
+    if role.role_type == RoleType.MAIN:
+        base_path = user_data_path / "game_data" / "characters" / Path(role.resource_folder) / "avatar"
+    elif role.role_type == RoleType.NPC:
+        # 确保 script_key 存在
+        if not role.script_key:
+             raise HTTPException(status_code=404, detail=f"角色{role_id}缺少剧本关联")
+        base_path = user_data_path / "game_data" / "scripts" / Path(role.script_key) / "characters" / Path(role.resource_folder) / "avatar"
     else:
-        file_path = Path(ai_service.character_path) / "avatar" / clothes_name / avatar_file
+        # 处理可能的其他类型或默认情况
+        raise HTTPException(status_code=404, detail=f"未知的角色类型")
 
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Avatar not found")
+    # 3. 处理服装路径
+    # 如果 clothes_name 不是 default，则进入子文件夹
+    avatar_path = base_path
+    if clothes_name and clothes_name != 'default':
+        avatar_path = base_path / clothes_name
+    
+    # 检查路径是否存在，防止 iterdir 报错
+    if not avatar_path.exists():
+        raise HTTPException(status_code=404, detail=f"角色头像目录不存在: {avatar_path}")
 
-    return FileResponse(file_path)
+    # 4. 查找图片文件
+    try:
+        emotion_files = [
+            f for f in avatar_path.iterdir() 
+            if f.is_file() 
+            and f.stem == emotion  # 关键修复：对比文件名(无后缀)是否等于传入的情绪名
+            and f.suffix.lower() in [".png", ".jpg", ".jpeg"]
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"读取目录失败: {str(e)}")
 
-@router.get("/get_script_avatar/{character}/{emotion}")
-async def get_script_specific_avatar(character: str, emotion: str):
-    ai_service = service_manager.ai_service
-
-    if ai_service:
-        file_path = ai_service.scripts_manager.get_avatar_dir(character) / (emotion + ".png")
-
-    else:
-        raise HTTPException(status_code=404, detail="AIService not found")
-
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Avatar not found")
-
-    return FileResponse(file_path)
-
-@router.get("/get_script_avatar/{character}/{clothes_name}/{emotion}")
-async def get_script_specific_avatar(character: str, clothes_name: str, emotion: str):
-    ai_service = service_manager.ai_service
-
-    if ai_service:
-        if clothes_name == 'default':
-            file_path = Path(ai_service.character_path) / "avatar" / (emotion + ".png")
-        else:
-            file_path = Path(ai_service.character_path) / "avatar" / clothes_name /(emotion + ".png")
-    else:
-        raise HTTPException(status_code=404, detail="AIService not found")
-
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Avatar not found")
-
-    return FileResponse(file_path)
+    if not emotion_files:
+        print(f"查找失败: Path={avatar_path}, Emotion={emotion}")
+        raise HTTPException(status_code=404, detail=f"在路径 {avatar_path} 下未找到情绪 {emotion} 的图片")
+    
+    # 返回找到的第一个文件
+    return FileResponse(emotion_files[0])
 
 
 @router.post("/select_character")

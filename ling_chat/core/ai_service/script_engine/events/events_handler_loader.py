@@ -3,6 +3,8 @@ import inspect
 from pathlib import Path
 from typing import Dict, Optional, Type
 
+from ling_chat.core.ai_service.config import AIServiceConfig
+from ling_chat.core.ai_service.game_system.game_status import GameStatus
 from ling_chat.core.ai_service.script_engine.events.base_event import BaseEvent
 from ling_chat.core.logger import logger
 
@@ -64,9 +66,9 @@ class EventHandlerLoader:
         return None
 
     @classmethod
-    def create_event_instance(cls, event_data: dict, game_context) -> Optional[BaseEvent]:
+    def create_event_instance(cls, config: AIServiceConfig, event_data: dict, game_status: GameStatus) -> Optional[BaseEvent]:
         """创建事件实例"""
         handler_class = cls.get_handler_for_event(event_data)
         if handler_class:
-            return handler_class(event_data, game_context)
+            return handler_class(config, event_data, game_status)
         return None

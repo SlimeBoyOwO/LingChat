@@ -1,99 +1,61 @@
-import type { GameState } from './state'
-import type { DialogMessage, ScriptCharacter } from './state'
+// actions.ts
+import type { GameState, GameMessage } from './state'
 import { getGameInfo } from '../../../api/services/game-info'
-import { getScriptInfo } from '../../../api/services/script-info'
 import { useUIStore } from '../ui/ui'
 
 export const actions = {
-  updateLine(this: GameState, text: string): void {
-    this.currentLine = text
-  },
+  // 注意：这里 this 指定为 GameState 是安全的，
+  // 但如果你想调用 this.initializeGame()，TS 会报错。
+  // 如果遇到这种情况，可以将 this 类型改为 any 或者手动定义完整 Store 接口。
+  // TODO: 之后有扩展需求的时候，使用现代的 Pinia 的 Setup Store 模式
 
-  setGameStatus(this: GameState, state: 'input' | 'thinking' | 'responding'): void {
-    this.currentStatus = state
-  },
-
-  addToDialogHistory(this: GameState, message: DialogMessage) {
+  appendGameMessage(this: GameState, message: GameMessage) {
     this.dialogHistory.push({
       ...message,
       timestamp: Date.now(),
     })
   },
+
   clearDialogHistory(this: GameState) {
     this.dialogHistory = []
-  },
-  setCurrentStatus(this: GameState, status: GameState['currentStatus']) {
-    this.currentStatus = status
   },
 
   async initializeGame(this: GameState, client_id: string, userId: string) {
     try {
       const gameInfo = await getGameInfo(client_id, userId)
 
-      // 更新 gameStore 自己的状态
-      this.character = 'default'
-      this.avatar.character_name = gameInfo.ai_name
-      this.avatar.character_subtitle = gameInfo.ai_subtitle
-      this.avatar.user_name = gameInfo.user_name
-      this.avatar.user_subtitle = gameInfo.user_subtitle
-      this.avatar.character_id = gameInfo.character_id
-      this.avatar.think_message = gameInfo.thinking_message
-      this.avatar.scale = gameInfo.scale
-      this.avatar.offset_y = gameInfo.offset
-      this.avatar.bubble_left = gameInfo.bubble_left
-      this.avatar.bubble_top = gameInfo.bubble_top
-      this.avatar.clothes = gameInfo.clothes
-      this.avatar.clothes_name = gameInfo.clothes_name
-      this.avatar.body_part = gameInfo.body_part
-      // 也可以在这里直接更新其他 store 的状态
+      this.gameRoles = {}
+      this.gameRoles[gameInfo.character_id] = {
+        roleId: gameInfo.character_id,
+        roleName: gameInfo.ai_name,
+        roleSubTitle: gameInfo.ai_subtitle,
+        thinkMessage: gameInfo.thinking_message,
+        scale: gameInfo.scale,
+        offsetX: gameInfo.offset_x,
+        offsetY: gameInfo.offset_y,
+        bubbleLeft: gameInfo.bubble_left,
+        bubbleTop: gameInfo.bubble_top,
+        clothes: gameInfo.clothes,
+        clothesName: gameInfo.clothes_name,
+        bodyPart: gameInfo.body_part,
+        emotion: '正常',
+        originalEmotion: '正常',
+        show: true,
+      }
+      this.presentRoleIds.push(gameInfo.character_id)
+      this.mainRoleId = gameInfo.character_id
+      this.currentInteractRoleId = gameInfo.character_id
+
       const uiStore = useUIStore()
+      this.userName = gameInfo.user_name
+      this.userSubtitle = gameInfo.user_subtitle
+
       uiStore.showCharacterTitle = gameInfo.user_name
       uiStore.showCharacterSubtitle = gameInfo.user_subtitle
 
-      // 返回获取到的信息，方便组件进行UI操作
       return gameInfo
     } catch (error) {
       console.error('初始化游戏信息失败:', error)
-      // 抛出错误或返回 null，让调用方知道失败了
-      throw error
-    }
-  },
-
-  async initializeScript(this: GameState, scriptName: string) {
-    try {
-      const scriptInfo = await getScriptInfo(scriptName)
-
-      this.script.script_name = scriptInfo.script_name
-      this.script.script_characters.clear()
-
-      Object.entries(scriptInfo.characters).forEach(([characterId, characterData]) => {
-        const scriptCharacter: ScriptCharacter = {
-          character_id: characterId || 0,
-          character_name: characterData.ai_name,
-          character_subtitle: characterData.ai_subtitle,
-          think_message: characterData.thinking_message,
-          emotion: '正常',
-          originEmotion: '',
-          show: false,
-          scale: characterData.scale,
-          offset_y: characterData.offset_y,
-          offset_x: characterData.offset_x,
-          bubble_top: characterData.bubble_top,
-          bubble_left: characterData.bubble_left,
-          clothes: characterData.clothes,
-          clothes_name: characterData.clothes_name,
-          body_part: characterData.body_part,
-        }
-
-        // 使用 character_id 作为 key（转换为字符串确保一致性）
-        this.script.script_characters.set(characterId, scriptCharacter)
-      })
-
-      console.log(
-        `脚本 "${this.script.script_name}" 初始化完成，共加载 ${this.script.script_characters.size} 个角色`,
-      )
-    } catch (error) {
-      console.error('初始化脚本失败:', error)
       throw error
     }
   },

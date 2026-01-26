@@ -14,7 +14,7 @@ class BackgroundEvent(BaseEvent):
         logger.info(f"切换背景: {image}")
 
         # 更新游戏状态
-        self.game_context.background = image
+        self.game_status.background = image
 
         event_response = ResponseFactory.create_background(image, duration = duration)
         await message_broker.publish("1",

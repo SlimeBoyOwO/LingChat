@@ -1,6 +1,6 @@
 import type { IEventProcessor } from '../event-processor'
 import type { ScriptPlayerEvent } from '../../../types'
-import { useGameStore } from '../../../stores/modules/game'
+import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 
 export default class PlayerProcessor implements IEventProcessor {
@@ -15,14 +15,14 @@ export default class PlayerProcessor implements IEventProcessor {
     // 更新游戏状态显示对话
     gameStore.currentStatus = 'responding'
 
-    gameStore.addToDialogHistory({
+    gameStore.appendGameMessage({
       type: 'message',
-      character: gameStore.avatar.user_name,
+      displayName: gameStore.userName,
       content: event.text,
     })
 
-    uiStore.showCharacterTitle = gameStore.avatar.user_name
-    uiStore.showCharacterSubtitle = gameStore.avatar.user_subtitle
+    uiStore.showCharacterTitle = gameStore.userName
+    uiStore.showCharacterSubtitle = gameStore.userSubtitle
     uiStore.showCharacterLine = event.text
     uiStore.showCharacterEmotion = event.emotion ? event.emotion : ''
   }

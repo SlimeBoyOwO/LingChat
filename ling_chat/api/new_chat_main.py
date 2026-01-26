@@ -125,6 +125,7 @@ class WebSocketManager:
             })
             return
 
+        ai_service.config.last_active_client= client_id     # 更新最后一次活跃的客户端ID
         user_message = message.get('content', '')
 
         # --- 成就触发检查 ---

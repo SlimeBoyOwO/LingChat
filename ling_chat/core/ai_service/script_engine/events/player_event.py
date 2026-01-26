@@ -2,6 +2,7 @@ from ling_chat.core.ai_service.script_engine.events.base_event import BaseEvent
 from ling_chat.core.logger import logger
 from ling_chat.core.messaging.broker import message_broker
 from ling_chat.core.schemas.response_models import ResponseFactory
+from ling_chat.game_database.models import LineAttribute, LineBase
 
 
 class PlayerEvent(BaseEvent):
@@ -15,13 +16,12 @@ class PlayerEvent(BaseEvent):
             logger.info(f"显示对话: 玩家 - {text}")
 
             # 在实际实现中，这里会更新游戏状态和UI
-            self.game_context.dialogue.append({
-                'character': 'player',
-                'text': text,
-            })
+            self.game_status.add_line(
+                LineBase(content=text,attribute=LineAttribute.USER,display_name=self.game_status.player.user_name)
+            )
 
             event_response = ResponseFactory.create_player_dialogue(text)
-            await message_broker.publish("1",
+            await message_broker.publish(self.client_id,
                 event_response.model_dump()
             )
 

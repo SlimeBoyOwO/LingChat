@@ -2,6 +2,7 @@ from ling_chat.core.ai_service.script_engine.events.base_event import BaseEvent
 from ling_chat.core.ai_service.script_engine.utils.script_function import ScriptFunction
 from ling_chat.core.logger import logger
 from ling_chat.core.service_manager import service_manager
+from ling_chat.game_database.models import LineAttribute, LineBase
 
 
 class AIDialogueEvent(BaseEvent):
@@ -11,34 +12,22 @@ class AIDialogueEvent(BaseEvent):
         character = self.event_data.get('character', '')
         prompt = self.event_data.get('prompt', '')
 
-        # 首先，获取角色的 memory 信息
-        character_obj = self.game_context.characters.get(character)
-        if not character_obj:
-            logger.error(f"Character memory not found for character: {character}")
-            return
+        role = ScriptFunction.get_role(self.game_status, self.script_status, character)
+        self.game_status.current_character = role
 
-        memory = character_obj.memory.copy()
+        # TODO： 把  prompt 加入到 game_status 的 Line 中，作为提示词
+        # 1. 获取最后一个 user 类型的 Line， 把 prompt 添加到里面的 content 中？
+        # 2. 其实不对，我建议是，手动调用刷新记忆功能，把 prompt 添加到 memory 中
+        if prompt and prompt != '':
+            system_input = LineBase(content=ScriptFunction.user_message_builder("", prompt),attribute=LineAttribute.USER,display_name=self.game_status.player.user_name)
+            self.game_status.add_line(system_input)
 
-        ScriptFunction.memory_builder(self.game_context, memory, character, prompt)
-
-        # 然后，使用 memory 信息生成对话
         ai_service = service_manager.ai_service
         if not ai_service:
             logger.error("AI service not found")
             return
 
-        logger.info(f"AI Dialogue Event for character: {character} with memory: {memory}")
-
-        responses = []
-        async for response in ai_service.message_generator.process_message_stream("",memory=memory):
-            responses.append(response)
-
-        for response in responses:
-            text = "【" + response.originalTag + "】" + response.message + ("(" + response.motionText + ")" if response.motionText else "")
-            self.game_context.dialogue.append({
-                'character': character,
-                'text': text,
-            })
+        ai_service.message_generator.process_message_stream()
 
 
     @classmethod

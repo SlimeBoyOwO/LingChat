@@ -319,9 +319,9 @@ function sendUserPrompt(text: string) {
   }
 
   gameStore.currentStatus = 'thinking'
-  gameStore.addToDialogHistory({
+  gameStore.appendGameMessage({
     type: 'message',
-    character: gameStore.avatar.user_name,
+    displayName: gameStore.userName,
     content,
   })
   scriptHandler.sendMessage(content)

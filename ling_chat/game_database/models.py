@@ -3,7 +3,7 @@ from datetime import datetime
 from enum import Enum
 from sqlmodel import Field, SQLModel, Relationship
 from sqlalchemy import JSON, Column
-from sqlalchemy import or_, select
+from sqlalchemy import UniqueConstraint, Index
 
 # ==========================================
 # 枚举定义
@@ -13,6 +13,11 @@ class RoleType(str, Enum):
     MAIN = "main"       # 主要角色 (AI驱动，有完整记忆)
     NPC = "npc"         # 剧本角色 (通常也是AI驱动，或者是固定的，视需求而定)
     SYSTEM = "system"   # 旁白、系统提示等
+
+class LineAttribute(str, Enum):
+    USER = "user"
+    SYSTEM = "system"
+    ASSISTANT = "assistant"
 
 # ==========================================
 # 关联表 (Join Tables)
@@ -33,10 +38,14 @@ class Role(SQLModel, table=True):
     __tablename__ = "role" # type: ignore
     
     id: Optional[int] = Field(default=None, primary_key=True)
+
+    __table_args__ = (
+        UniqueConstraint('script_key', 'script_role_key', name='uq_script_role'),
+    )
     
-    # 剧本中的标识符 (例如 "narrator", "hero_01")
-    # 不强制唯一，因为不同剧本可能复用Key，需结合上下文处理
-    script_key: Optional[str] = Field(default=None, index=True) 
+    # 剧本中的标识符
+    script_key: Optional[str] = Field(default=None) 
+    script_role_key: Optional[str] = Field(default=None) # 角色在剧本中的唯一标识符
     
     name: str = Field(index=True)
     role_type: RoleType = Field(default=RoleType.NPC) # 默认为NPC
@@ -85,7 +94,7 @@ class LineBase(SQLModel):
     tts_content: Optional[str] = None
     action_content: Optional[str] = None
     audio_file: Optional[str] = None
-    attribute: str
+    attribute: LineAttribute
     
     # 缓存用的感知列表 (JSON存储)，用于 GameStatus 缓存和 SaveManager 持久化参考
     # perceived_role_ids: List[int] = Field(default_factory=list, sa_column=Column(JSON))

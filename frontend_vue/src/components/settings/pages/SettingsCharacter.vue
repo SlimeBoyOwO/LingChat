@@ -327,8 +327,8 @@ const refreshCharacters = async (): Promise<void> => {
 }
 
 const selectClothes = async (clothes_name: string): Promise<void> => {
-  gameStore.avatar.clothes_name = clothes_name
-  // TODO: send message to AI
+  // TODO: 更换衣服的时候，给 AI 发送感知消息或者屏幕识别之类的
+  if (gameStore.mainRole) gameStore.mainRole.clothesName = clothes_name
 }
 
 const openCreativeWeb = async (): Promise<void> => {
@@ -346,11 +346,12 @@ const openCreativeWeb = async (): Promise<void> => {
 }
 
 function isSelected(id: number): boolean {
-  return gameStore.avatar.character_id === id
+  return gameStore.mainRoleId === id
 }
 
 function isClothesSelected(clothes_name: string): boolean {
-  return gameStore.avatar.clothes_name === clothes_name
+  if (gameStore.mainRole) return gameStore.mainRole.clothesName == clothes_name
+  return false
 }
 
 // 初始化加载角色列表
@@ -360,7 +361,7 @@ onMounted(() => {
 
 // 角色切换时重新加载服装
 watch(
-  () => gameStore.avatar.character_id,
+  () => gameStore.mainRoleId,
   () => {
     loadCharacters()
   },

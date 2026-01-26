@@ -8,8 +8,6 @@ from ling_chat.game_database.managers.save_manager import SaveManager
 from ling_chat.game_database.managers.user_manager import UserManager
 from ling_chat.game_database.managers.role_manager import RoleManager
 
-from ling_chat.utils.function import Function
-
 router = APIRouter(prefix="/api/v1/chat/history", tags=["Chat History"])
 
 @router.get("/list")
@@ -99,23 +97,9 @@ async def create_user_conversations(request: Request):
         save_id = SaveManager.create_save(user_id=user_id, title=title).id
         if save_id:
             SaveManager.sync_lines(save_id,line_list)
-            SaveManager.update_save_main_role(save_id, service_manager.ai_service.character_id)
+            SaveManager.update_save_main_role(save_id, service_manager.ai_service.game_status.main_role.role_id)
 
-        # 获取消息记忆
-        # messages = service_manager.ai_service.get_memory()
-        # if not messages:  # 处理空消息情况
-        #     print("消息记录是空的，请检查错误！！！！！！！！")
-
-        # 获取这个对话的角色
-        # character_id = service_manager.ai_service.character_id
-
-        # 创建对话
-        # conversation_id = ConversationModel.create_conversation(
-        #     user_id=user_id,
-        #     messages=messages,
-        #     character_id=character_id,
-        #     title=title
-        # )
+        # TODO: 根据 GameStatus 中的其他状态，更新 save 中的其他字段
 
         return {
             "code": 200,
@@ -164,20 +148,12 @@ async def save_user_conversation(request: Request):
         line_list = service_manager.ai_service.get_lines()
         SaveManager.sync_lines(save_id=conversation_id, input_lines=line_list)
 
-        # messages = service_manager.ai_service.get_memory()
-        # if not messages:
-        #     print("警告: 消息记录是空的，将清空对话内容")
-
-        # 更新对话
-        # ConversationModel.change_conversation_messages(
-        #     conversation_id=conversation_id,
-        #     messages=messages
-        # )
 
         # 如果需要更新标题
         if title:
             SaveManager.update_save_title(save_id=conversation_id, title=title)
-            # ConversationModel.update_conversation_title(conversation_id, title)
+        
+        # TODO: 根据 GameStatus 中的其他状态，更新 save 中的其他字段
 
         return {
             "code": 200,

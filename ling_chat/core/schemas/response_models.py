@@ -11,7 +11,6 @@ class ResponseFactory:
         return ReplyResponse(
             character=seg.get("character", "default"),
             roleId=seg.get("role_id", None),
-            scriptRoleId=seg.get("script_role_id", None),
             emotion=seg['predicted'] or seg["original_tag"],
             originalTag=seg['original_tag'],
             message=seg['following_text'],

@@ -3,7 +3,8 @@
     <!-- 左上角番茄钟开关与面板 -->
     <PomodoroPanel />
     <GameBackground></GameBackground>
-    <GameAvatar ref="gameAvatarRef" @audio-ended="handleAudioFinished" />
+    <!-- <GameAvatar ref="gameAvatarRef" @audio-ended="handleAudioFinished" />  -->
+    <GameRolesStage ref="gameAvatarRef" @audio-ended="handleAudioFinished" />
     <GameDialog
       ref="gameDialogRef"
       @player-continued="manualTriggerContinue"
@@ -32,8 +33,7 @@ import PomodoroPanel from '@/components/pomodoro/PomodoroPanel.vue'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { useGameStore } from '../../stores/modules/game'
 import { useUserStore } from '../../stores/modules/user/user'
-import { GameBackground } from '../game/standard'
-import { GameAvatar } from '../game/standard'
+import { GameBackground, GameRolesStage } from '../game/standard'
 import { GameDialog } from '../game/standard'
 import { Button } from '../base'
 
@@ -41,7 +41,6 @@ const uiStore = useUIStore()
 const gameStore = useGameStore()
 const userStore = useUserStore()
 
-const gameAvatarRef = ref<InstanceType<typeof GameAvatar> | null>(null)
 const gameDialogRef = ref<InstanceType<typeof GameDialog> | null>(null)
 
 const openSettings = () => {
@@ -58,13 +57,6 @@ const runInitialization = async () => {
 
   try {
     await gameStore.initializeGame(userStore.client_id, userId)
-
-    // Action 成功后，处理仅与本组件相关的 UI 逻辑
-    if (gameAvatarRef.value) {
-      gameAvatarRef.value.setEmotion('正常')
-    } else {
-      console.log('这个组件不存在')
-    }
   } catch (error) {
     console.log(error)
   }
@@ -76,17 +68,6 @@ onMounted(() => {
     runInitialization()
   }
 })
-
-// 当选中的角色ID改变时，重新执行初始化。
-watch(
-  () => gameStore.avatar.character_id,
-  (newId, oldId) => {
-    if (newId && newId !== oldId) {
-      console.log(`Character ID changed to ${newId}, re-initializing...`)
-      runInitialization()
-    }
-  },
-)
 
 // 监听 client_id 的变化
 watch(

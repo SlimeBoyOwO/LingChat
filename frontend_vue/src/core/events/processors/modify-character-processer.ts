@@ -10,26 +10,33 @@ export default class ModifyCharacterProcessor implements IEventProcessor {
   async processEvent(event: ScriptModifyCharacterEvent): Promise<void> {
     const gameStore = useGameStore()
 
-    console.log('执行修改角色' + event.character + event.emotion + event.action)
+    console.log('执行修改角色' + event.characterId + event.emotion + event.action)
 
     gameStore.currentStatus = 'presenting'
 
-    if (event.character) gameStore.character = event.character
-    else console.warn('角色修改没有角色')
-
-    if (event.action) {
-      switch (event.action) {
-        case 'show_character':
-          gameStore.avatar.show = true
-          break
-        case 'hide_character':
-          gameStore.avatar.show = false
-          break
-        default:
-          console.warn('尼玛，没这个action啊: ' + event.action)
+    if (event.characterId) {
+      const role = gameStore.getGameRole(event.characterId)
+      if (!role) {
+        console.warn('角色修改的角色似乎并没有被初始化')
+        return
       }
-    }
 
-    if (event.emotion) gameStore.avatar.emotion = event.emotion
+      if (event.action) {
+        switch (event.action) {
+          case 'show_character':
+            role.show = true
+            break
+          case 'hide_character':
+            role.show = false
+            break
+          default:
+            break
+        }
+      }
+
+      if (event.emotion) role.emotion = event.emotion
+    } else console.warn('角色修改没有角色')
+
+    // TODO: 根据查找的角色id，修改角色状态
   }
 }
