@@ -40,8 +40,7 @@ const startFreeDialogue = () => {
   router.push('/chat')
 }
 
-
-//前端进入剧情模式（开发中） 
+//前端进入剧情模式（开发中）
 
 const startStoryMode = async () => {
   await router.push('/chat')

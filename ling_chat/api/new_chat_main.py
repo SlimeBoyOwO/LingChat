@@ -208,6 +208,16 @@ async def websocket_endpoint(websocket: WebSocket):
         "client_id": client_id
     })
 
+    # 后端服务仅联动自由模式启动的补丁启动的暂时补丁，即确保 AIService 已初始化，并注册 client（避免必须调用 /chat/info/init 才能工作），后续应注意
+    try:
+        if service_manager.ai_service is None:
+            service_manager.init_ai_service()
+        await service_manager.add_client(client_id)
+        if service_manager.ai_service is not None:
+            service_manager.ai_service.config.last_active_client = client_id
+    except Exception as e:
+        logger.error(f"WebSocket建连初始化AIService失败: {e}", exc_info=True)
+
     try:
         await ws_manager.handle_websocket(websocket, client_id)
     except Exception as e:
