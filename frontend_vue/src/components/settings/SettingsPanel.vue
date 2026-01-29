@@ -16,7 +16,6 @@
       />
       <SettingsHistory v-show="uiStore.currentSettingsTab === 'history'" />
       <SettingsAchievement v-show="uiStore.currentSettingsTab === 'achievement'" />
-      <SettingsSchedule v-show="uiStore.currentSettingsTab === 'schedule'" />
       <SettingsCharacter v-show="uiStore.currentSettingsTab === 'character'" />
       <SettingsBackground v-show="uiStore.currentSettingsTab === 'background'" />
       <SettingsUpdate v-show="uiStore.currentSettingsTab === 'update'" />
@@ -31,7 +30,6 @@ import {
   SettingsSound,
   SettingsHistory,
   SettingsAdvance,
-  SettingsSchedule,
   SettingsCharacter,
   SettingsBackground,
   SettingsUpdate,

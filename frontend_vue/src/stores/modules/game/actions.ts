@@ -91,4 +91,18 @@ export const actions = {
       throw error
     }
   },
+
+  /** 标记进入剧情模式（用于控制UI显示：隐藏番茄钟/日程等） */
+  enterStoryMode(this: GameState, scriptName: string = 'unknown') {
+    this.runningScript = {
+      scriptName,
+      currentCharpterName: '',
+      isRunning: true,
+    }
+  },
+
+  /** 标记退出剧情模式，回到自由对话模式 */
+  exitStoryMode(this: GameState) {
+    this.runningScript = null
+  },
 }

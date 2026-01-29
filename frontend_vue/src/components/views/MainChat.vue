@@ -1,7 +1,7 @@
 <template>
   <div class="main-box">
     <!-- 左上角番茄钟开关与面板 -->
-    <PomodoroPanel />
+    <FreeModeTools />
     <GameBackground></GameBackground>
     <!-- <GameAvatar ref="gameAvatarRef" @audio-ended="handleAudioFinished" />  -->
     <GameRolesStage ref="gameAvatarRef" @audio-ended="handleAudioFinished" />
@@ -29,7 +29,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
-import PomodoroPanel from '@/components/pomodoro/PomodoroPanel.vue'
+import FreeModeTools from '@/components/tools/FreeModeTools.vue'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { useGameStore } from '../../stores/modules/game'
 import { useUserStore } from '../../stores/modules/user/user'

@@ -1,5 +1,5 @@
 <template>
-  <div class="fixed top-5 left-5 z-[2000] flex flex-col gap-3">
+  <div class="flex flex-col gap-3">
     <Button
       type="nav"
       :class="[

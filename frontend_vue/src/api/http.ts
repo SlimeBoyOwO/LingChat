@@ -99,11 +99,16 @@ http.interceptors.response.use(
     // 提取错误消息
     const errorMessage = responseData.message || responseData.detail || error.message || '网络错误'
 
-    // 显示错误通知
-    uiStore.showError({
-      statusCode,
-      message: errorMessage,
-    })
+    // 静默请求：不弹出错误通知（用于日志上报等非关键链路）
+    const silent = (error.config as AxiosRequestConfig | undefined)?.silent
+
+    if (!silent) {
+      // 显示错误通知
+      uiStore.showError({
+        statusCode,
+        message: errorMessage,
+      })
+    }
 
     // 安全访问响应数据
     const responseDataTyped = (error.response?.data as ApiResponse) || {}
