@@ -34,6 +34,9 @@ class GameStatus:
     # 剧本模式中记录的额外信息
     script_status: Optional[ScriptStatus] = None
 
+    # 当前激活的存档ID（用于 MemoryBank 持久化/载入/自动压缩）
+    active_save_id: Optional[int] = None
+
     def add_line(self, line: LineBase):
         # 转换为GameLine
         game_line = GameLine(
@@ -46,4 +49,4 @@ class GameStatus:
         self.refresh_memories()
     
     def refresh_memories(self):
-        self.role_manager.sync_memories(self.line_list)
+        self.role_manager.sync_memories(self.line_list, save_id=self.active_save_id)

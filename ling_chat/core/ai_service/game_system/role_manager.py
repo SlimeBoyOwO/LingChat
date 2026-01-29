@@ -2,6 +2,7 @@ from typing import Optional, List, Dict, Set
 
 from ling_chat.game_database.models import GameLine
 from ling_chat.core.ai_service.game_system.memory_builder import MemoryBuilder
+from ling_chat.core.ai_service.game_system.persistent_memory_system import PersistentMemorySystem
 from ling_chat.game_database.managers.role_manager import RoleManager
 from ling_chat.core.ai_service.type import GameRole
 from ling_chat.core.ai_service.exceptions import RoleNotFoundError
@@ -14,6 +15,8 @@ class GameRoleManager:
     def __init__(self):
         # 简单直接：这就是一个存活角色的缓存
         self.loaded_roles: Dict[int, GameRole] = {}
+        # (save_id, role_id) -> PersistentMemorySystem
+        self._memory_bank_systems: Dict[tuple[int, int], PersistentMemorySystem] = {}
 
     def get_role(self, role_id: int) -> GameRole:
         """获取角色，如果不存在则在内存中初始化一个空的"""
@@ -33,7 +36,7 @@ class GameRoleManager:
             
         return self.get_role(role.id)
 
-    def sync_memories(self, lines: List[GameLine], recent_n: Optional[int] = None):
+    def sync_memories(self, lines: List[GameLine], recent_n: Optional[int] = None, save_id: Optional[int] = None):
         """
         根据台词同步角色的状态和记忆。
         """
@@ -54,14 +57,53 @@ class GameRoleManager:
             
             # 同步名字 (复用逻辑，提取为独立动作)
             self._sync_display_name(role, source_lines)
-            
-            # 构建记忆
+            memory_prompt = ""
+            slice_start_idx = 0
+            if save_id is not None and rid is not None:
+                try:
+                    mb = self._get_memory_bank_system(save_id=save_id, role_id=rid)
+                    # 触发后台自动压缩（达到阈值才会调 LLM）
+                    mb.check_and_trigger_auto_update(source_lines)
+                    memory_prompt = mb.get_memory_prompt()
+                    slice_start_idx = mb.get_slice_start_index()
+                    # 便于外部（调试/命令）直接查看该角色 memory_bank 数据
+                    role.memory_bank = {
+                        "meta": {
+                            "last_processed_global_idx": mb.meta.last_processed_global_idx,
+                            "updated_at": mb.meta.updated_at,
+                        },
+                        "data": dict(mb.memory_data),
+                    }
+                except Exception as e:
+                    logger.error(f"MemoryBank: role_id={rid} 初始化/更新失败: {e}", exc_info=True)
+
+            # 构建记忆（裁剪历史窗口，避免上下文无限膨胀）
+            sliced_lines = source_lines[slice_start_idx:] if slice_start_idx > 0 else source_lines
             builder = MemoryBuilder(target_role_id=rid)
-            role.memory = builder.build(source_lines)
+            built = builder.build(sliced_lines)
+            role.memory = self._inject_memory_bank_prompt(built, memory_prompt)
 
         # 【重要改动】去掉了自动删除 "stale" 角色的逻辑。
         # 角色加载后通常应该保留直到场景结束，频繁删除重建会浪费算力。
         # 如果真的需要清理内存，应该提供一个显式的 .clear_cache() 方法。
+
+    def _get_memory_bank_system(self, save_id: int, role_id: int) -> PersistentMemorySystem:
+        key = (save_id, role_id)
+        if key not in self._memory_bank_systems:
+            self._memory_bank_systems[key] = PersistentMemorySystem(save_id=save_id, role_id=role_id)
+        return self._memory_bank_systems[key]
+
+    def _inject_memory_bank_prompt(self, memory: List[Dict], memory_prompt: str) -> List[Dict]:
+        """
+        将 MemoryBank 作为 system 注入到构建后的 memory 中。
+        约定：若 memory 以 system 开头（角色人设 prompt），则插入到第 2 条，避免覆盖人设。
+        """
+        if not memory_prompt.strip():
+            return memory
+        msg = {"role": "system", "content": memory_prompt}
+        if memory and memory[0].get("role") == "system":
+            return [memory[0], msg, *memory[1:]]
+        return [msg, *memory]
 
     def _sync_display_name(self, role: GameRole, lines: List[GameLine]):
         """辅助方法：从最近的台词中更新显示名称"""

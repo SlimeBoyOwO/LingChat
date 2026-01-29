@@ -1,5 +1,5 @@
 from typing import List, Optional, Dict, Any
-from sqlmodel import Session, select
+from sqlmodel import Session, select, desc
 from ling_chat.game_database.database import engine
 from ling_chat.game_database.models import MemoryBank
 
@@ -50,6 +50,62 @@ class MemoryManager:
                 stmt = stmt.where(MemoryBank.role_id == role_id)
             
             return session.exec(stmt).all()
+
+    @staticmethod
+    def get_latest_memory(save_id: int, role_id: int) -> Optional[MemoryBank]:
+        """
+        获取某个存档下某个角色最新的一条 MemoryBank 记录。
+        约定：同 (save_id, role_id) 通常只会维护一条记录；若历史上出现多条，则取 id 最大者。
+        """
+        with Session(engine, expire_on_commit=False) as session:
+            stmt = (
+                select(MemoryBank)
+                .where(MemoryBank.save_id == save_id)
+                .where(MemoryBank.role_id == role_id)
+                .order_by(desc(MemoryBank.id))
+                .limit(1)
+            )
+            return session.exec(stmt).first()
+
+    @staticmethod
+    def upsert_memory(
+        save_id: int,
+        role_id: int,
+        info: Dict[str, Any],
+        memory_id: Optional[int] = None,
+    ) -> MemoryBank:
+        """
+        Upsert：优先按 memory_id 更新；否则按 (save_id, role_id) 查找最新记录更新；仍不存在则创建。
+        """
+        with Session(engine, expire_on_commit=False) as session:
+            memory: Optional[MemoryBank] = None
+
+            if memory_id is not None:
+                memory = session.get(MemoryBank, memory_id)
+
+            if memory is None:
+                stmt = (
+                    select(MemoryBank)
+                    .where(MemoryBank.save_id == save_id)
+                    .where(MemoryBank.role_id == role_id)
+                    .order_by(desc(MemoryBank.id))
+                    .limit(1)
+                )
+                memory = session.exec(stmt).first()
+
+            if memory is None:
+                memory = MemoryBank(save_id=save_id, role_id=role_id, info=info)
+                session.add(memory)
+                session.commit()
+                session.refresh(memory)
+                return memory
+
+            memory.info = info
+            memory.role_id = role_id
+            session.add(memory)
+            session.commit()
+            session.refresh(memory)
+            return memory
 
     @staticmethod
     def update_memory(
