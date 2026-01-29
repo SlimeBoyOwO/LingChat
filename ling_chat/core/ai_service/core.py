@@ -155,9 +155,17 @@ class AIService:
     def get_lines(self):
         return self.game_status.line_list
     
-    def load_lines(self, lines:list[GameLine], main_role_id: int):
+    def set_active_save_id(self, save_id: int | None):
+        """
+        设置当前激活存档，用于 MemoryBank 持久化/自动压缩等逻辑。
+        """
+        self.game_status.active_save_id = save_id
+
+    def load_lines(self, lines:list[GameLine], main_role_id: int, save_id: int | None = None):
         self.game_status.line_list = lines
-        self.game_status.role_manager.sync_memories(self.game_status.line_list)
+        if save_id is not None:
+            self.set_active_save_id(save_id)
+        self.game_status.role_manager.sync_memories(self.game_status.line_list, save_id=self.game_status.active_save_id)
         main_role = self.game_status.role_manager.get_role(role_id=main_role_id)
 
         if main_role:

@@ -54,7 +54,7 @@ async def load_user_conversations(user_id: int, conversation_id: int):
             character_settings["character_id"] = role_id
             if service_manager.ai_service is not None:
                 service_manager.ai_service.import_settings(settings=character_settings)
-                service_manager.ai_service.load_lines(line_list, role_id)
+                service_manager.ai_service.load_lines(line_list, role_id, save_id=conversation_id)
 
             print("成功调用记忆存储")
             return {
@@ -98,6 +98,9 @@ async def create_user_conversations(request: Request):
         if save_id:
             SaveManager.sync_lines(save_id,line_list)
             SaveManager.update_save_main_role(save_id, service_manager.ai_service.game_status.main_role.role_id)
+            # 让后端运行时与用户最近存档保持一致，便于 MemoryBank 持久化
+            UserManager.update_last_save(user_id=user_id, save_id=save_id)
+            service_manager.ai_service.set_active_save_id(save_id)
 
         # TODO: 根据 GameStatus 中的其他状态，更新 save 中的其他字段
 
@@ -147,6 +150,8 @@ async def save_user_conversation(request: Request):
         # 获取当前消息记忆
         line_list = service_manager.ai_service.get_lines()
         SaveManager.sync_lines(save_id=conversation_id, input_lines=line_list)
+        # 维持当前激活存档（用于 MemoryBank 自动压缩）
+        service_manager.ai_service.set_active_save_id(conversation_id)
 
 
         # 如果需要更新标题
