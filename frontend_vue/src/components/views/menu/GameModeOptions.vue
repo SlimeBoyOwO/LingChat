@@ -19,6 +19,7 @@ import { useRouter } from 'vue-router'
 import { getScriptList, type ScriptSummary } from '@/api/services/script-info'
 import { scriptHandler } from '@/api/websocket/handlers/script-handler'
 import { useUIStore } from '@/stores/modules/ui/ui'
+import { useGameStore } from '@/stores/modules/game'
 
 const emit = defineEmits<{
   (e: 'back'): void
@@ -26,6 +27,7 @@ const emit = defineEmits<{
 
 const router = useRouter()
 const uiStore = useUIStore()
+const gameStore = useGameStore()
 
 const scripts = ref<ScriptSummary[]>([])
 const loadingScripts = ref(false)
@@ -37,6 +39,7 @@ interface MenuItem {
 }
 
 const startFreeDialogue = () => {
+  gameStore.exitStoryMode()
   router.push('/chat')
 }
 
@@ -48,6 +51,8 @@ const startStoryMode = async () => {
   // 默认选择第一个剧本；如果有多个，可在这里做更完善的选择UI
   const chosen = scripts.value[0]?.script_name
   const command = chosen ? `/开始剧本 ${chosen}` : '/开始剧本'
+
+  gameStore.enterStoryMode(chosen || 'default')
 
   const ok = scriptHandler.sendMessage(command)
   if (!ok) {

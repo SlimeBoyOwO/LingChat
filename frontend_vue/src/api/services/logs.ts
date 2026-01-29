@@ -82,6 +82,20 @@ class ConsoleLogForwarder {
   private sessionId: string
   private userId: number | null = null
   private pendingFlush: number | null = null // 防抖定时器ID
+  private originalConsole: {
+    log: (...args: any[]) => void
+    info: (...args: any[]) => void
+    warn: (...args: any[]) => void
+    error: (...args: any[]) => void
+    debug: (...args: any[]) => void
+    trace: (...args: any[]) => void
+  } | null = null
+
+  // 后端不可用时避免刷屏
+  private disabledUntilMs = 0
+  private consecutiveSendFailures = 0
+  private lastInternalNoticeAtMs = 0
+  private readonly maxQueueSize = 200
 
   constructor(config?: Partial<LogForwardConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config }
@@ -96,6 +110,16 @@ class ConsoleLogForwarder {
     if (!this.config.enabled) {
       console.log('[LogForwarder] 日志转发已禁用')
       return
+    }
+
+    // 保存原始 console（必须在重写前保存）
+    this.originalConsole = {
+      log: console.log,
+      info: console.info,
+      warn: console.warn,
+      error: console.error,
+      debug: console.debug,
+      trace: console.trace,
     }
 
     // 记录配置信息
@@ -123,14 +147,16 @@ class ConsoleLogForwarder {
    * 重写控制台方法
    */
   private overrideConsoleMethods(): void {
-    const originalConsole = {
-      log: console.log,
-      info: console.info,
-      warn: console.warn,
-      error: console.error,
-      debug: console.debug,
-      trace: console.trace,
-    }
+    const originalConsole =
+      this.originalConsole ||
+      ({
+        log: console.log,
+        info: console.info,
+        warn: console.warn,
+        error: console.error,
+        debug: console.debug,
+        trace: console.trace,
+      } as any)
 
     // 重写console.log
     console.log = (...args: any[]) => {
@@ -174,6 +200,8 @@ class ConsoleLogForwarder {
    */
   private captureLog(level: ConsoleLogLevel, args: any[]): void {
     if (!this.config.enabled) return
+    // 处于退避窗口内时直接丢弃（避免错误风暴）
+    if (Date.now() < this.disabledUntilMs) return
 
     // 检查日志级别
     if (this.shouldSkipLevel(level)) return
@@ -210,7 +238,7 @@ class ConsoleLogForwarder {
       this.addToQueue(logEntry)
     } catch (error) {
       // 避免日志捕获本身产生无限循环
-      console.error('[LogForwarder] 捕获日志失败:', error)
+      this.originalConsole?.error?.('[LogForwarder] 捕获日志失败:', error)
     }
   }
 
@@ -306,6 +334,10 @@ class ConsoleLogForwarder {
    */
   private addToQueue(logEntry: ConsoleLogEntry): void {
     this.logQueue.push(logEntry)
+    // 防止无限增长（例如后端未启动时）
+    if (this.logQueue.length > this.maxQueueSize) {
+      this.logQueue = this.logQueue.slice(-this.maxQueueSize)
+    }
 
     // 取消之前的防抖定时器
     if (this.pendingFlush) {
@@ -340,6 +372,8 @@ class ConsoleLogForwarder {
    */
   private async flush(): Promise<void> {
     if (this.isFlushing || this.logQueue.length === 0) return
+    // 退避窗口内不发送
+    if (Date.now() < this.disabledUntilMs) return
 
     this.isFlushing = true
     let logsToSend: ConsoleLogEntry[] = []
@@ -360,8 +394,21 @@ class ConsoleLogForwarder {
 
       // 调试日志（已注释，过于频繁）
       // console.debug(`[LogForwarder] 已发送 ${logsToSend.length} 条日志`);
+      this.consecutiveSendFailures = 0
     } catch (error) {
-      console.error('[LogForwarder] 发送日志失败:', error)
+      this.consecutiveSendFailures += 1
+      const backoffMs = Math.min(60000, 1000 * 2 ** Math.min(6, this.consecutiveSendFailures))
+      this.disabledUntilMs = Date.now() + backoffMs
+
+      // 仅偶尔输出一次内部提示，避免刷屏
+      if (Date.now() - this.lastInternalNoticeAtMs > 5000) {
+        this.lastInternalNoticeAtMs = Date.now()
+        this.originalConsole?.warn?.(
+          `[LogForwarder] 发送日志失败，已进入退避 ${Math.round(backoffMs / 1000)}s（不会再刷屏）`,
+          error,
+        )
+      }
+
       // 发送失败，将日志重新放回队列（保留最近的部分）
       this.logQueue = [...this.logQueue, ...logsToSend].slice(-this.config.batchSize * 2)
     } finally {
@@ -375,7 +422,7 @@ class ConsoleLogForwarder {
   public async flushImmediately(): Promise<void> {
     if (this.logQueue.length === 0) return
 
-    console.log(`[LogForwarder] 立即发送 ${this.logQueue.length} 条日志`)
+    this.originalConsole?.log?.(`[LogForwarder] 立即发送 ${this.logQueue.length} 条日志`)
     await this.flush()
   }
 
@@ -385,11 +432,11 @@ class ConsoleLogForwarder {
   private async sendLogs(logBatch: ConsoleLogBatch): Promise<void> {
     try {
       // 后端API期望 { "log_batch": ... } 格式
-      await http.post('/v1/logs/console/batch', { log_batch: logBatch })
+      await http.post('/v1/logs/console/batch', { log_batch: logBatch }, { silent: true })
     } catch (error: any) {
       // 如果后端不支持日志API，静默失败
       if (error.status === 404) {
-        console.warn('[LogForwarder] 后端日志API未启用，禁用日志转发')
+        this.originalConsole?.warn?.('[LogForwarder] 后端日志API未启用，禁用日志转发')
         this.config.enabled = false
       } else {
         throw error

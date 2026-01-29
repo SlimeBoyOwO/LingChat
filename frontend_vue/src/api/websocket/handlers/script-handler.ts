@@ -2,6 +2,7 @@ import { registerHandler, sendWebSocketChatMessage } from '..'
 import { WebSocketMessageTypes } from '../../../types'
 import { eventQueue } from '../../../core/events/event-queue'
 import { useUserStore } from '../../../stores/modules/user/user'
+import { useGameStore } from '../../../stores/modules/game'
 import type * as ScriptTypes from '../../../types/script'
 
 export class ScriptHandler {
@@ -80,6 +81,14 @@ export class ScriptHandler {
   public sendMessage(text: string, instruction?: string) {
     if (!text.trim()) return
     const message = instruction ? `${text}[!Temp!]${instruction}[/!Temp!]` : text
+
+    // 用户在任意位置输入 /开始剧本 时，也标记为剧情模式（用于隐藏番茄钟/日程等自由模式工具）
+    if (text.trim().startsWith('/开始剧本')) {
+      const parts = text.trim().split(/\s+/, 2)
+      const scriptName = parts[1] || 'default'
+      useGameStore().enterStoryMode(scriptName)
+    }
+
     sendWebSocketChatMessage(WebSocketMessageTypes.MESSAGE, message)
   }
 }
