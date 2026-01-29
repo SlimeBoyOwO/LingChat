@@ -14,10 +14,27 @@ export interface CharacterSettings {
   body_part: object
 }
 
+export interface ScriptSummary {
+  script_name: string
+  description?: string
+  folder_key?: string
+  intro_charpter?: string
+}
+
 export interface ScriptInfo {
   script_name: string
   characters: {
     [character_id: string]: CharacterSettings
+  }
+}
+
+export const getScriptList = async (): Promise<ScriptSummary[]> => {
+  try {
+    const data = await http.get('/v1/chat/script/list')
+    return data
+  } catch (error: any) {
+    console.error('获取剧本列表错误:', error.message)
+    throw error
   }
 }
 

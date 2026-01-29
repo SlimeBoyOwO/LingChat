@@ -191,10 +191,29 @@ class AIService:
         logger.info(f"当前角色的记忆列表如下：")
         logger.info(f"{self.game_status.current_character.memory}")
 
-    async def start_script(self):
-        # TODO: 这里目前先只导入第一个剧本，之后可以通过传入str变量选择剧本
-        choosen_script = self.scripts_manager.get_script_list()[0]
-        await self.scripts_manager.start_script(choosen_script)
+    async def start_script(self, script_name: str | None = None):
+        """
+        开始剧本模式。
+        - script_name=None: 使用剧本列表第一个
+        - script_name=指定: 使用指定剧本名（story_config.yaml 的 script_name）
+        """
+        script_list = self.scripts_manager.get_script_list()
+        if not script_list:
+            from ling_chat.core.messaging.broker import message_broker
+            await message_broker.publish(self.config.last_active_client, {
+                "type": "error",
+                "message": "没有可用的剧本：请把剧本放到 user_data/game_data/scripts 下，并包含 story_config.yaml",
+            })
+            return
+
+        chosen = script_name or script_list[0]
+        ok = await self.scripts_manager.start_script(chosen)
+        if not ok:
+            from ling_chat.core.messaging.broker import message_broker
+            await message_broker.publish(self.config.last_active_client, {
+                "type": "error",
+                "message": f"开始剧本失败：找不到剧本 '{chosen}'（可用：{', '.join(script_list)}）",
+            })
 
     async def _process_client_messages(self, client_id: str):
         """处理单个客户端的消息"""
