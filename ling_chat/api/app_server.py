@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request, Response
 
 from ling_chat.api.routes_manager import RoutesManager
 from ling_chat.core.logger import logger
+from ling_chat.core.service_manager import service_manager
 
 from ling_chat.game_database.database import init_db
 from ling_chat.game_database.managers.role_manager import RoleManager
@@ -23,6 +24,11 @@ async def lifespan(app: FastAPI):
 
         logger.info("正在同步游戏角色数据...")
         RoleManager.sync_roles_from_folder(user_data_path / "game_data")
+
+        # 启动即初始化 AI 服务（避免必须进入“自由模式”才触发 /chat/info/init）
+        if service_manager.ai_service is None:
+            logger.info("正在初始化 AIService（启动即加载）...")
+            service_manager.init_ai_service()
 
         yield
 
