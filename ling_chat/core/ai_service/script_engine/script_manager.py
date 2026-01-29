@@ -89,7 +89,7 @@ class ScriptManager:
                             script.settings.get("user_subtitle", ""),
                             script.settings.get("user_settings", ""))           
             # 3. 检查玩家信息是否完整，决定是否导入到GameStatus中
-            if player.user_name is "" and player.user_subtitle is "":
+            if player.user_name == "" and player.user_subtitle == "":
                 logger.info("本剧本未设定玩家身份，将使用默认玩家身份")
             else:
                 self.game_status.player = player
@@ -189,3 +189,96 @@ class ScriptManager:
             return Charpter(str(charpter_path), self.config, self.game_status, config.get('events',[]), config.get('end',{}))
         else:
             raise ChapterLoadError(f"导入 {charpter_path} 剧本的时候出现问题")
+    
+    def get_assets_dir(self, script_name: str | None = None) -> Path:
+        """
+        获取剧本 Assets 目录。
+        - 若 script_name=None，则使用当前正在运行的剧本；若尚未开始剧本，则尝试使用列表第一个剧本。
+        """
+        script: ScriptStatus | None = None
+        if script_name:
+            script = self.get_script(script_name)
+        else:
+            script = self.current_script
+            if script is None:
+                names = self.get_script_list()
+                if names:
+                    script = self.get_script(names[0])
+
+        if script is None:
+            raise ScriptLoadError("没有可用的剧本，无法定位资源目录")
+
+        return SCRIPT_DIR / script.folder_key / "Assets"
+
+    # 兼容旧拼写（assests）
+    def get_assests_dir(self) -> Path:
+        return self.get_assets_dir()
+
+    def get_avatar_dir(self, character: str, script_name: str | None = None) -> Path:
+        """
+        获取指定角色的 avatar 目录。
+        character 通常为剧本里的 script_role_key（也可能就是角色文件夹名）。
+        """
+        script: ScriptStatus | None = None
+        if script_name:
+            script = self.get_script(script_name)
+        else:
+            script = self.current_script
+            if script is None:
+                names = self.get_script_list()
+                if names:
+                    script = self.get_script(names[0])
+
+        if script is None:
+            raise ScriptLoadError("没有可用的剧本，无法定位角色资源目录")
+
+        char_dir = SCRIPT_DIR / script.folder_key / "characters" / character
+        # 兼容大小写/不同命名
+        for candidate in ("avatar", "Avatar", "avatars", "Avatars"):
+            p = char_dir / candidate
+            if p.exists() and p.is_dir():
+                return p
+
+        return char_dir
+
+    def get_script_characters(self, script_name: str) -> list[dict]:
+        """
+        读取剧本的角色设置，返回给前端用于初始化 UI。
+        返回的 dict 尽量包含：character_id(角色ID/roleId), ai_name/ai_subtitle, scale/offset/bubble 等。
+        """
+        script = self.get_script(script_name)
+        if script is None:
+            raise ScriptLoadError("剧本文件不存在")
+
+        characters_dir = SCRIPT_DIR / script.folder_key / "characters"
+        if not characters_dir.exists() or not characters_dir.is_dir():
+            raise ScriptLoadError(f"剧本 '{script.folder_key}' 中缺少 'characters' 文件夹")
+
+        results: list[dict] = []
+
+        from ling_chat.game_database.managers.role_manager import RoleManager
+
+        for character_path in characters_dir.iterdir():
+            if not character_path.is_dir():
+                continue
+
+            if character_path.name.lower() == "avatar":
+                continue
+
+            settings_path = character_path / "settings.txt"
+            if not settings_path.exists():
+                logger.warning(f"角色目录 '{character_path.name}' 中缺少 settings.txt，已跳过。")
+                continue
+
+            settings = Function.parse_enhanced_txt(str(settings_path)) or {}
+            script_role_key = settings.get("script_role_key") or character_path.name
+            role = RoleManager.get_role_by_script_keys(script.folder_key, script_role_key)
+
+            settings_out = dict(settings)
+            settings_out["character_id"] = getattr(role, "id", -1) if role else -1
+            settings_out.setdefault("ai_name", settings.get("ai_name", character_path.name))
+            settings_out.setdefault("ai_subtitle", settings.get("ai_subtitle", ""))
+
+            results.append(settings_out)
+
+        return results

@@ -1,3 +1,4 @@
+git clean -fd
 title = 可爱的小风雪
 info = """
 这是一只残忍的小猫娘。

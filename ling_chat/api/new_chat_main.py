@@ -131,9 +131,11 @@ class WebSocketManager:
             logger.error(f"成就触发检查失败: {e}")
         # ------------------
 
-        if user_message == "/开始剧本":
-            asyncio.create_task(ai_service.start_script())
-            logger.info("开始进行剧本模式")
+        if user_message.startswith("/开始剧本"):
+            parts = user_message.split(maxsplit=1)
+            script_name = parts[1].strip() if len(parts) > 1 else None
+            asyncio.create_task(ai_service.start_script(script_name))
+            logger.info(f"开始进行剧本模式: {script_name or '(default)'}")
         elif user_message == "/查看记忆":
             ai_service.show_current_role_memory()
         elif user_message == "/查看台词":

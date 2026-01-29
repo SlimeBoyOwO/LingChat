@@ -7,6 +7,27 @@ from ling_chat.core.service_manager import service_manager
 
 router = APIRouter(prefix="/api/v1/chat/script", tags=["Chat Script"])
 
+@router.get("/list")
+async def list_scripts():
+    ai_service = service_manager.ai_service
+    if not ai_service:
+        raise HTTPException(status_code=404, detail="AIService not found")
+
+    scripts_manager = ai_service.scripts_manager
+    scripts = []
+    for script_name in scripts_manager.get_script_list():
+        script = scripts_manager.get_script(script_name)
+        if script is None:
+            continue
+        scripts.append({
+            "script_name": script.name,
+            "description": script.description,
+            "folder_key": script.folder_key,
+            "intro_charpter": script.intro_charpter,
+        })
+
+    return scripts
+
 @router.get("/init_script/{script_name}")
 async def init_script(script_name: str):
     ai_service = service_manager.ai_service
@@ -16,8 +37,8 @@ async def init_script(script_name: str):
 
     result = {
         "script_name": script_name,
-        "user_name": scripts_manager.game_context.player.user_name,
-        "user_subtitle": scripts_manager.game_context.player.user_subtitle,
+        "user_name": scripts_manager.game_status.player.user_name,
+        "user_subtitle": scripts_manager.game_status.player.user_subtitle,
         "characters": {}
     }
 
@@ -31,7 +52,11 @@ async def init_script(script_name: str):
             "offset_x": settings.get("offset_x", 0),
             "offset_y": settings.get("offset_y", 0),
             "bubble_top": settings.get("bubble_top", 5),
-            "bubble_left": settings.get("bubble_left", 20)
+            "bubble_left": settings.get("bubble_left", 20),
+            # 兼容扩展字段（若 settings.txt 未提供则前端可忽略）
+            "clothes": settings.get("clothes", {}),
+            "clothes_name": settings.get("clothes_name", ""),
+            "body_part": settings.get("body_part", {}),
         }
 
     return result
@@ -58,7 +83,13 @@ async def get_script_sound(soundPath: str):
         if ai_service is None:
             raise HTTPException(status_code=404, detail="AISERVICE not found")
         else:
-            file_path =  ai_service.scripts_manager.get_assests_dir() / "Sounds" / soundPath
+            assets_dir = ai_service.scripts_manager.get_assests_dir()
+            # 兼容旧/新目录命名
+            candidates = [
+                assets_dir / "Sounds" / soundPath,
+                assets_dir / "SoundEffects" / soundPath,
+            ]
+            file_path = next((p for p in candidates if os.path.exists(p)), candidates[0])
 
         if not os.path.exists(file_path):
             raise HTTPException(status_code=404, detail="Sound not found")
@@ -75,7 +106,12 @@ async def get_script_music(musicPath: str):
         if ai_service is None:
             raise HTTPException(status_code=404, detail="AISERVICE not found")
         else:
-            file_path =  ai_service.scripts_manager.get_assests_dir() / "Musics" / musicPath
+            assets_dir = ai_service.scripts_manager.get_assests_dir()
+            candidates = [
+                assets_dir / "Musics" / musicPath,
+                assets_dir / "BGMs" / musicPath,
+            ]
+            file_path = next((p for p in candidates if os.path.exists(p)), candidates[0])
 
         if not os.path.exists(file_path):
             raise HTTPException(status_code=404, detail="Music not found")
@@ -92,7 +128,12 @@ async def get_script_background_file(background_file: str):
         if ai_service is None:
             raise HTTPException(status_code=404, detail="AISERVICE not found")
         else:
-            file_path =  ai_service.scripts_manager.get_assests_dir() / "Backgrounds" / background_file
+            assets_dir = ai_service.scripts_manager.get_assests_dir()
+            candidates = [
+                assets_dir / "Backgrounds" / background_file,
+                assets_dir / "Background" / background_file,
+            ]
+            file_path = next((p for p in candidates if os.path.exists(p)), candidates[0])
 
         if not os.path.exists(file_path):
             raise HTTPException(status_code=404, detail="Background not found")
