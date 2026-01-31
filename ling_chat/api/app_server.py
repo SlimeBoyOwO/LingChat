@@ -19,7 +19,7 @@ from ling_chat.utils.runtime_path import user_data_path
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
-        logger.info("正在初始化数据库...") # 骗你的其实不是在这里初始化的，在包被导入的时候自动初始化了
+        logger.info("正在初始化数据库...")
         init_db()
 
         logger.info("正在同步游戏角色数据...")
