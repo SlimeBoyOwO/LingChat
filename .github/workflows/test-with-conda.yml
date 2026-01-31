@@ -50,7 +50,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           echo "Running on Linux"
-          conda run -n LingChat uv run pytest tests/ --cov=src -v
+          conda run -n LingChat uv run pytest tests/ --cov=ling_chat -v
 
       - name: Run tests on macOS
         if: runner.os == 'macOS'
