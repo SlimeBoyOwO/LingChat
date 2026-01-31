@@ -48,7 +48,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           echo "Running on Linux"
-          uv run pytest tests/ --cov=src -v
+          uv run pytest tests/ --cov=ling_chat -v
 
       - name: Run tests on macOS
         if: runner.os == 'macOS'
