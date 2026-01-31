@@ -7,6 +7,7 @@ from ling_chat.core.llm_providers.manager import LLMManager
 from ling_chat.core.logger import TermColors, logger
 from ling_chat.core.ai_service.type import GameRole
 from ling_chat.game_database.models import GameLine
+from ling_chat.core.ai_service.game_system.memory_builder import MemoryBuilder
 
 
 def _safe_read_int(key: str, default: int) -> int:
@@ -30,14 +31,22 @@ class PersistentMemorySystem:
         self.role = role
         self.role_id = role.role_id
 
-        # 多少条“全局新增台词”触发一次总结
-        self.update_interval = _safe_read_int("MEMORY_UPDATE_INTERVAL", 50)
+        # 多少条“新增可见台词”触发一次总结
+        self.update_interval = _safe_read_int("MEMORY_UPDATE_INTERVAL", 250)
         # 总结后保留多少条“全局台词”作为上下文重叠窗口（默认 15，避免过大上下文）
         self.recent_window = _safe_read_int("MEMORY_RECENT_WINDOW", 15)
 
         self.is_updating = False
         self._llm = LLMManager()
         self._init_prompts()
+
+    @staticmethod
+    def is_enabled() -> bool:
+        """
+        永久记忆开关：只有用户显式开启时才启用。
+        通过 /api/settings/config 修改 .env 后会同步到 os.environ（运行时热更新）。
+        """
+        return os.environ.get("USE_PERSISTENT_MEMORY", "False").lower() == "true"
 
     def _init_prompts(self) -> None:
         base_role = (
@@ -116,6 +125,8 @@ class PersistentMemorySystem:
         return f"【近期回顾】{short_term}\n\n"
 
     def check_and_trigger_auto_update(self, all_lines: List[GameLine]) -> None:
+        if not self.is_enabled():
+            return
         if self.is_updating:
             return
 
@@ -157,33 +168,48 @@ class PersistentMemorySystem:
 
     def _build_chat_text_and_count(self, lines: List[GameLine]) -> Tuple[str, int]:
         """
-        将 GameLine 列表转换为“User/AI: ...”日志。
-        规则：
-        - 忽略 system 台词（system 主要用于 persona/prompt，不参与摘要）
-        - 对该角色来说：自己说的 => AI；别人说的（且可见）=> User
-        - 只纳入“可见台词”：sender == role_id 或 role_id in perceived_role_ids
+        复用MemoryBuilder来构建对话摘要输入，避免角色混乱与信息遗漏。
+        - visible_count：只统计“该角色可见”的非 system 台词数量，用于触发阈值判断
+        - chat_text：用 MemoryBuilder.build(lines) 的结果生成单次 prompt 文本，保留 display_name/情绪/动作/TTS 等信息
         """
-        chunks: List[str] = []
+        def _attr_value(line: GameLine) -> str:
+            a = line.attribute
+            try:
+                return a.value
+            except Exception:
+                return str(a)
+
+        # 统计可见台词数
         visible_count = 0
         for line in lines:
-            attr = line.attribute.value if hasattr(line.attribute, "value") else line.attribute
-            if attr == "system":
+            if _attr_value(line) == "system":
                 continue
+            if line.sender_role_id == self.role_id or (self.role_id in (line.perceived_role_ids or [])):
+                if (line.content or "").strip():
+                    visible_count += 1
 
-            sender_role_id = line.sender_role_id
-            perceived_ids = line.perceived_role_ids or []
+        if visible_count == 0:
+            return "", 0
 
-            is_visible = (sender_role_id == self.role_id) or (self.role_id in perceived_ids)
-            if not is_visible:
+        # 用 MemoryBuilder 构建该角色的“可见上下文”并转为摘要输入文本
+        builder = MemoryBuilder(target_role_id=self.role_id)
+        built = builder.build(lines)
+
+        ai_name = self.role.display_name or f"AI({self.role_id})"
+        chunks: List[str] = []
+        for msg in built:
+            r = msg.get("role")
+            c = (msg.get("content") or "").strip()
+            if not c:
                 continue
-
-            content = (line.content or "").strip()
-            if not content:
+            if r == "system":
                 continue
-
-            role = "AI" if sender_role_id == self.role_id else "User"
-            chunks.append(f"{role}: {content}")
-            visible_count += 1
+            if r == "assistant":
+                chunks.append(f"{ai_name}: {c}")
+            elif r == "user":
+                chunks.append(f"User: {c}")
+            else:
+                chunks.append(f"{r}: {c}")
 
         return ("\n".join(chunks) + ("\n" if chunks else "")), visible_count
 
@@ -196,7 +222,13 @@ class PersistentMemorySystem:
 
             async def update_section(section_key: str) -> Tuple[str, str]:
                 # 从 dataclass 取旧内容
-                old_content = getattr(self.role.memory_bank.data, section_key, "")
+                data = self.role.memory_bank.data
+                old_content = {
+                    "short_term": data.short_term,
+                    "long_term": data.long_term,
+                    "user_info": data.user_info,
+                    "promises": data.promises,
+                }.get(section_key, "")
                 prompt_req = self.section_prompts[section_key]
 
                 full_prompt = (
