@@ -7,6 +7,7 @@ from ling_chat.core.service_manager import service_manager
 from ling_chat.game_database.managers.save_manager import SaveManager
 from ling_chat.game_database.managers.user_manager import UserManager
 from ling_chat.game_database.managers.role_manager import RoleManager
+from ling_chat.game_database.managers.memory_manager import MemoryManager
 
 router = APIRouter(prefix="/api/v1/chat/history", tags=["Chat History"])
 
@@ -101,6 +102,8 @@ async def create_user_conversations(request: Request):
             # 让后端运行时与用户最近存档保持一致，便于 MemoryBank 持久化
             UserManager.update_last_save(user_id=user_id, save_id=save_id)
             service_manager.ai_service.set_active_save_id(save_id)
+            # 仅在“创建存档”时写入 MemoryBank
+            service_manager.ai_service.persist_memory_banks(save_id)
 
         # TODO: 根据 GameStatus 中的其他状态，更新 save 中的其他字段
 
@@ -152,6 +155,8 @@ async def save_user_conversation(request: Request):
         SaveManager.sync_lines(save_id=conversation_id, input_lines=line_list)
         # 维持当前激活存档（用于 MemoryBank 自动压缩）
         service_manager.ai_service.set_active_save_id(conversation_id)
+        # 仅在“保存存档”时写入 MemoryBank
+        service_manager.ai_service.persist_memory_banks(conversation_id)
 
 
         # 如果需要更新标题
@@ -205,6 +210,12 @@ async def delete_user_conversation(request: Request):
 
         if not deleted:
             raise HTTPException(status_code=404, detail="对话不存在或已被删除")
+
+        # 同步删除 MemoryBank
+        try:
+            MemoryManager.delete_memories_by_save(conversation_id)
+        except Exception:
+            pass
 
         return {
             "code": 200,

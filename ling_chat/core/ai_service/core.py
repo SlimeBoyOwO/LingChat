@@ -165,7 +165,15 @@ class AIService:
         self.game_status.line_list = lines
         if save_id is not None:
             self.set_active_save_id(save_id)
-        self.game_status.role_manager.sync_memories(self.game_status.line_list, save_id=self.game_status.active_save_id)
+            # 仅在“载入存档”时从 DB 载入 MemoryBank 到运行时缓存
+            involved_role_ids = set()
+            for line in self.game_status.line_list:
+                if line.sender_role_id:
+                    involved_role_ids.add(line.sender_role_id)
+                involved_role_ids.update(line.perceived_role_ids or [])
+            self.game_status.role_manager.load_memory_banks_from_db(save_id, list(involved_role_ids))
+
+        self.game_status.role_manager.sync_memories(self.game_status.line_list)
         main_role = self.game_status.role_manager.get_role(role_id=main_role_id)
 
         if main_role:
@@ -177,6 +185,12 @@ class AIService:
 
     def reset_lines(self):
         self._init_game_status()
+
+    def persist_memory_banks(self, save_id: int):
+        """
+        将运行时的 memory_bank 缓存写入 DB（仅在创建/保存存档时调用）。
+        """
+        self.game_status.role_manager.persist_memory_banks_to_db(save_id)
     
     def _init_game_status(self):
         self.game_status.line_list = []

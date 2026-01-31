@@ -172,3 +172,18 @@ class MemoryManager:
             
             session.commit()
             return count
+
+    @staticmethod
+    def delete_memories_by_save(save_id: int) -> int:
+        """
+        删除某个存档下的所有 MemoryBank 记录。
+        仅建议在“删除存档”时调用，避免误删。
+        """
+        with Session(engine, expire_on_commit=False) as session:
+            stmt = select(MemoryBank).where(MemoryBank.save_id == save_id)
+            memories = session.exec(stmt).all()
+            count = len(memories)
+            for memory in memories:
+                session.delete(memory)
+            session.commit()
+            return count
