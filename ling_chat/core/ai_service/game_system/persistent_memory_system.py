@@ -1,12 +1,12 @@
 import asyncio
-import time
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
 import os
+import time
+from typing import Dict, List, Tuple
 
 from ling_chat.core.llm_providers.manager import LLMManager
 from ling_chat.core.logger import TermColors, logger
-from ling_chat.game_database.managers.memory_manager import MemoryManager
+from ling_chat.core.ai_service.type import GameRole
+from ling_chat.game_database.models import GameLine
 
 
 def _safe_read_int(key: str, default: int) -> int:
@@ -16,46 +16,28 @@ def _safe_read_int(key: str, default: int) -> int:
         return default
 
 
-@dataclass
-class PersistentMemoryMeta:
-    """
-    使用全局 line_list 的索引作为“已归档指针”，避免依赖 DB line_id（运行时可能为 None）。
-    """
-    last_processed_global_idx: int = 0
-    updated_at: str = ""
-
-
 class PersistentMemorySystem:
     """
-    面向 0.4.0 新架构的“永久记忆（MemoryBank）+ 自动压缩”实现：
-    - key = (save_id, role_id)，保证多人物独立
-    - 当累计新台词达到阈值（默认 50）时，触发后台 LLM 总结并写回 DB MemoryBank
-    - 对 LLM 上下文：在角色 system prompt 之后插入 memory_bank 文本，并裁剪历史台词窗口
+    面向 0.4.0 新架构的“永久记忆（MemoryBank）+ 自动压缩”实现（运行时缓存版）：
+    - **不在此处做任何 DB 读写**：仅更新 `GameRole.memory_bank`（内存缓存）
+    - 当累计“该角色可见台词”达到阈值（默认 50）时，触发后台 LLM 总结并更新 memory_bank
+    - 对 LLM 上下文：通过 `get_slice_start_index()` 控制裁剪窗口，避免上下文无限膨胀
     """
 
-    def __init__(self, save_id: int, role_id: int):
-        self.save_id = save_id
-        self.role_id = role_id
+    def __init__(self, role: GameRole):
+        if role.role_id is None:
+            raise ValueError("PersistentMemorySystem 需要 role.role_id 不为空")
+        self.role = role
+        self.role_id = role.role_id
 
         # 多少条“全局新增台词”触发一次总结
         self.update_interval = _safe_read_int("MEMORY_UPDATE_INTERVAL", 50)
-        # 总结后保留多少条“全局台词”作为上下文重叠窗口
+        # 总结后保留多少条“全局台词”作为上下文重叠窗口（默认 15，避免过大上下文）
         self.recent_window = _safe_read_int("MEMORY_RECENT_WINDOW", 15)
 
         self.is_updating = False
-        self.meta = PersistentMemoryMeta()
-
-        self.memory_data: Dict[str, str] = {
-            "short_term": "暂无近期对话摘要。",
-            "long_term": "暂无长期关键经历。",
-            "user_info": "暂无用户特征记录。",
-            "promises": "暂无未完成的约定。",
-        }
-
-        self._memory_row_id: Optional[int] = None
         self._llm = LLMManager()
         self._init_prompts()
-        self._load_from_db()
 
     def _init_prompts(self) -> None:
         base_role = (
@@ -102,66 +84,50 @@ class PersistentMemorySystem:
             ),
         }
 
-    def _load_from_db(self) -> None:
-        try:
-            memory = MemoryManager.get_latest_memory(save_id=self.save_id, role_id=self.role_id)
-            if not memory:
-                return
-            self._memory_row_id = memory.id
-            info = memory.info or {}
-            data = info.get("data") or {}
-            meta = info.get("meta") or {}
-
-            # 容错：不同版本字段名
-            self.memory_data.update({k: str(v) for k, v in data.items() if k in self.memory_data})
-            self.meta.last_processed_global_idx = int(meta.get("last_processed_global_idx", 0) or 0)
-            self.meta.updated_at = str(meta.get("updated_at", "") or "")
-        except Exception as e:
-            logger.error(f"PersistentMemorySystem: 加载 MemoryBank 失败: {e}", exc_info=True)
-
-    def _persist_to_db(self) -> None:
-        info = {
-            "schema_version": 1,
-            "meta": {
-                "last_processed_global_idx": self.meta.last_processed_global_idx,
-                "updated_at": self.meta.updated_at,
-            },
-            "data": dict(self.memory_data),
-        }
-        try:
-            self._memory_row_id = MemoryManager.upsert_memory(
-                save_id=self.save_id,
-                role_id=self.role_id,
-                info=info,
-                memory_id=self._memory_row_id,
-            ).id
-        except Exception as e:
-            logger.error(f"PersistentMemorySystem: 保存 MemoryBank 失败: {e}", exc_info=True)
-
-    def get_memory_prompt(self) -> str:
-        return (
-            "\n====== 核心记忆库 (Memory Bank) ======\n"
-            f"【用户信息】：{self.memory_data.get('user_info', '')}\n"
-            f"【重要约定】：{self.memory_data.get('promises', '')}\n"
-            f"【长期经历】：{self.memory_data.get('long_term', '')}\n"
-            f"【近期回顾】：{self.memory_data.get('short_term', '')}\n"
-            "====================================\n"
-        )
-
     def get_slice_start_index(self) -> int:
         """
         返回给 GameRoleManager 用于裁剪 line_list 的起点。
-        注意：这里用的是全局 line_list 索引窗口（而不是“可见台词数”窗口），简化实现并保持稳定。
+        注意：使用全局 line_list 索引窗口，简单稳定（memory_builder 会自行过滤不可见台词）。
         """
-        return max(0, self.meta.last_processed_global_idx - self.recent_window)
+        meta = self.role.memory_bank.meta
+        return max(0, meta.last_processed_global_idx - self.recent_window)
 
-    def check_and_trigger_auto_update(self, all_lines: List[Any]) -> None:
+    def get_system_memory_text(self) -> str:
+        """
+        建议合并进“唯一的 system prompt”中的长期记忆部分（避免新增 system 消息）。
+        这里不包含 short_term，short_term 更适合插到 user 上下文里。
+        """
+        mb = self.role.memory_bank
+        return (
+            "\n\n====== 记忆库 (Memory Bank) ======\n"
+            f"【用户信息】：{mb.data.user_info}\n"
+            f"【重要约定】：{mb.data.promises}\n"
+            f"【长期经历】：{mb.data.long_term}\n"
+            "=================================\n"
+        )
+
+    def get_short_term_user_text(self) -> str:
+        """
+        建议作为 user 消息内容的前缀插入（或合并进第一条 user 消息），用于短期承接。
+        """
+        short_term = (self.role.memory_bank.data.short_term or "").strip()
+        if not short_term:
+            return ""
+        return f"【近期回顾】{short_term}\n\n"
+
+    def check_and_trigger_auto_update(self, all_lines: List[GameLine]) -> None:
         if self.is_updating:
             return
 
         current_total = len(all_lines)
+        meta = self.role.memory_bank.meta
+
+        # 指针异常时回滚
+        if meta.last_processed_global_idx < 0 or meta.last_processed_global_idx > current_total:
+            meta.last_processed_global_idx = 0
+
         # 取出这段区间的可见台词文本（只总结“该角色说过/听到过”的内容）
-        new_lines = all_lines[self.meta.last_processed_global_idx:current_total]
+        new_lines = all_lines[meta.last_processed_global_idx:current_total]
         chat_text, visible_count = self._build_chat_text_and_count(new_lines)
         target_idx = current_total
 
@@ -171,9 +137,8 @@ class PersistentMemorySystem:
 
         if not chat_text.strip():
             # 这段区间对该角色完全不可见，直接移动指针，避免无限触发
-            self.meta.last_processed_global_idx = target_idx
-            self.meta.updated_at = time.strftime("%Y-%m-%d %H:%M:%S")
-            self._persist_to_db()
+            meta.last_processed_global_idx = target_idx
+            meta.updated_at = time.strftime("%Y-%m-%d %H:%M:%S")
             return
 
         try:
@@ -190,7 +155,7 @@ class PersistentMemorySystem:
         self.is_updating = True
         asyncio.create_task(self._run_update_pipeline(loop, chat_text, target_idx))
 
-    def _build_chat_text_and_count(self, lines: List[Any]) -> Tuple[str, int]:
+    def _build_chat_text_and_count(self, lines: List[GameLine]) -> Tuple[str, int]:
         """
         将 GameLine 列表转换为“User/AI: ...”日志。
         规则：
@@ -201,38 +166,37 @@ class PersistentMemorySystem:
         chunks: List[str] = []
         visible_count = 0
         for line in lines:
-            try:
-                if getattr(line, "attribute", None) == "system":
-                    continue
-
-                sender_role_id = getattr(line, "sender_role_id", None)
-                perceived_ids = getattr(line, "perceived_role_ids", []) or []
-
-                is_visible = (sender_role_id == self.role_id) or (self.role_id in perceived_ids)
-                if not is_visible:
-                    continue
-
-                content = (getattr(line, "content", "") or "").strip()
-                if not content:
-                    continue
-
-                role = "AI" if sender_role_id == self.role_id else "User"
-                chunks.append(f"{role}: {content}")
-                visible_count += 1
-            except Exception:
+            attr = line.attribute.value if hasattr(line.attribute, "value") else line.attribute
+            if attr == "system":
                 continue
+
+            sender_role_id = line.sender_role_id
+            perceived_ids = line.perceived_role_ids or []
+
+            is_visible = (sender_role_id == self.role_id) or (self.role_id in perceived_ids)
+            if not is_visible:
+                continue
+
+            content = (line.content or "").strip()
+            if not content:
+                continue
+
+            role = "AI" if sender_role_id == self.role_id else "User"
+            chunks.append(f"{role}: {content}")
+            visible_count += 1
 
         return ("\n".join(chunks) + ("\n" if chunks else "")), visible_count
 
     async def _run_update_pipeline(self, loop: asyncio.AbstractEventLoop, chat_text: str, new_total_idx: int) -> None:
         try:
             logger.info(
-                f"MemoryBank: 开始处理记忆压缩 role_id={self.role_id} (范围: {self.meta.last_processed_global_idx} -> {new_total_idx})..."
+                f"MemoryBank: 开始处理记忆压缩 role_id={self.role_id} (范围: {self.role.memory_bank.meta.last_processed_global_idx} -> {new_total_idx})..."
             )
             start_time = time.time()
 
             async def update_section(section_key: str) -> Tuple[str, str]:
-                old_content = self.memory_data.get(section_key, "")
+                # 从 dataclass 取旧内容
+                old_content = getattr(self.role.memory_bank.data, section_key, "")
                 prompt_req = self.section_prompts[section_key]
 
                 full_prompt = (
@@ -256,14 +220,14 @@ class PersistentMemorySystem:
 
             results = await asyncio.gather(*tasks)
             for key, new_val in results:
-                self.memory_data[key] = new_val
+                if hasattr(self.role.memory_bank.data, key):
+                    setattr(self.role.memory_bank.data, key, new_val)
 
-            self.meta.last_processed_global_idx = new_total_idx
-            self.meta.updated_at = time.strftime("%Y-%m-%d %H:%M:%S")
-            self._persist_to_db()
+            self.role.memory_bank.meta.last_processed_global_idx = new_total_idx
+            self.role.memory_bank.meta.updated_at = time.strftime("%Y-%m-%d %H:%M:%S")
 
             logger.info_color(
-                f"MemoryBank: role_id={self.role_id} 记忆库更新完成! 指针已移动至 {self.meta.last_processed_global_idx}，耗时 {time.time() - start_time:.2f}s",
+                f"MemoryBank: role_id={self.role_id} 记忆库更新完成! 指针已移动至 {self.role.memory_bank.meta.last_processed_global_idx}，耗时 {time.time() - start_time:.2f}s",
                 TermColors.GREEN,
             )
         except Exception as e:

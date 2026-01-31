@@ -49,4 +49,5 @@ class GameStatus:
         self.refresh_memories()
     
     def refresh_memories(self):
-        self.role_manager.sync_memories(self.line_list, save_id=self.active_save_id)
+        # 自动压缩只写入运行时缓存，不触发 DB
+        self.role_manager.sync_memories(self.line_list)
