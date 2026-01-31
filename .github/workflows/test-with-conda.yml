@@ -36,6 +36,10 @@ jobs:
       - name: Install uv
         run: |
           conda run -n LingChat pip install uv
+      - name: Install project (with deps)
+        run: |
+          # 安装当前项目及其依赖，避免 tests/import 阶段缺包（例如 sqlmodel/pyyaml 等）
+          conda run -n LingChat pip install -e .
       - name: Install test dependencies
         run: |
           conda run -n LingChat uv pip install pytest pytest-asyncio pytest-cov

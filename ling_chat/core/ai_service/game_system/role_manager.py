@@ -63,11 +63,12 @@ class GameRoleManager:
             short_term_prefix = ""
             try:
                 mb = self._get_memory_bank_system(role)
-                # 触发后台自动压缩
-                mb.check_and_trigger_auto_update(source_lines)
-                slice_start_idx = mb.get_slice_start_index()
-                system_addendum = mb.get_system_memory_text()
-                short_term_prefix = mb.get_short_term_user_text()
+                # 只有用户显式开启永久记忆时才触发自动压缩
+                if mb.is_enabled():
+                    mb.check_and_trigger_auto_update(source_lines)
+                    slice_start_idx = mb.get_slice_start_index()
+                    system_addendum = mb.get_system_memory_text()
+                    short_term_prefix = mb.get_short_term_user_text()
             except Exception as e:
                 logger.error(f"MemoryBank: role_id={rid} 初始化/更新失败: {e}", exc_info=True)
 
