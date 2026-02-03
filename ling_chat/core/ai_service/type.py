@@ -1,5 +1,95 @@
-from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any
+from dataclasses import dataclass, field, asdict
+from typing import Optional, List, Dict, Any, Self
+
+
+@dataclass
+class GameMemoryBankMeta:
+    """
+    MemoryBank 元信息（运行时缓存与 DB JSON 共用）
+    - last_processed_global_idx: 用全局 line_list 的索引作为“已归档指针”
+    """
+    last_processed_global_idx: int = 0
+    updated_at: str = ""
+
+    def model_dump(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def model_validate(cls, obj: Dict[str, Any] | None) -> "GameMemoryBankMeta":
+        obj = obj or {}
+        return cls(
+            last_processed_global_idx=int(obj.get("last_processed_global_idx", 0) or 0),
+            updated_at=str(obj.get("updated_at", "") or ""),
+        )
+
+
+@dataclass
+class GameMemoryBankData:
+    """
+    MemoryBank 的结构化正文。
+    """
+    short_term: str = "暂无近期对话摘要。"
+    long_term: str = "暂无长期关键经历。"
+    user_info: str = "暂无用户特征记录。"
+    promises: str = "暂无未完成的约定。"
+
+    def model_dump(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def model_validate(cls, obj: Dict[str, Any] | None) -> "GameMemoryBankData":
+        obj = obj or {}
+        return cls(
+            short_term=str(obj.get("short_term", cls().short_term) or cls().short_term),
+            long_term=str(obj.get("long_term", cls().long_term) or cls().long_term),
+            user_info=str(obj.get("user_info", cls().user_info) or cls().user_info),
+            promises=str(obj.get("promises", cls().promises) or cls().promises),
+        )
+
+
+@dataclass
+class GameMemoryBank:
+    """
+    运行时缓存用的 MemoryBank 结构。
+    约定：与 DB MemoryBank.info 的 JSON 结构保持一致：
+    {
+      "schema_version": 1,
+      "meta": {...},
+      "data": {...}
+    }
+    """
+    schema_version: int = 1
+    meta: GameMemoryBankMeta = field(default_factory=GameMemoryBankMeta)
+    data: GameMemoryBankData = field(default_factory=GameMemoryBankData)
+
+    def model_dump(self) -> Dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "meta": self.meta.model_dump(),
+            "data": self.data.model_dump(),
+        }
+
+    @classmethod
+    def model_validate(cls, obj: Dict[str, Any] | None) -> "GameMemoryBank":
+        obj = obj or {}
+        schema_version = int(obj.get("schema_version", 1) or 1)
+        meta = GameMemoryBankMeta.model_validate(obj.get("meta"))
+        data = GameMemoryBankData.model_validate(obj.get("data"))
+        return cls(schema_version=schema_version, meta=meta, data=data)
+
+    def to_prompt_text(self) -> str:
+        """
+        将结构化记忆渲染为注入到 system prompt 的文本。
+        注意：为了保持 LLM 消息结构标准，推荐“合并进同一条 system”，而不是新增 system 消息。
+        """
+        return (
+            "\n\n====== 核心记忆库 (Memory Bank) ======\n"
+            f"【用户信息】：{self.data.user_info}\n"
+            f"【重要约定】：{self.data.promises}\n"
+            f"【长期经历】：{self.data.long_term}\n"
+            f"【近期回顾】：{self.data.short_term}\n"
+            "====================================\n"
+        )
 
 @dataclass
 class GameRole:
@@ -15,7 +105,7 @@ class GameRole:
     settings: dict = field(default_factory=dict)
     resource_path: Optional[str] = None
     prompt: Optional[str] = None
-    memory_bank: dict = field(default_factory=dict)
+    memory_bank: GameMemoryBank = field(default_factory=GameMemoryBank)
     
     def __hash__(self):
         # Hash based on role_id if present, otherwise id of object
