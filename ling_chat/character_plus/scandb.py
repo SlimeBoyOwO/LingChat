@@ -67,6 +67,5 @@ def search_pages(keyword: str, pages: list = None):
     
     return results
 
-list = list_pages()
 
 

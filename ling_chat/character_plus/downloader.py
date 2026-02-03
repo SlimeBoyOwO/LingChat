@@ -1,14 +1,14 @@
 import requests
-from pathlib import Path
 from ling_chat.core.logger import logger
+from ling_chat.utils.runtime_path import get_user_data_path
 
 def download_file(file_url: str):
     try:
         logger.info(f"正在下载: {file_url}")
         resp = requests.get(file_url, stream=True, timeout=30)
         resp.raise_for_status()
-        dest_path = "../data/game_data/character"
-        dest_path = Path(dest_path)
+        userpath = get_user_data_path()
+        dest_path = userpath / "game_data/character"
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         
         total_size = int(resp.headers.get('content-length', 0))
