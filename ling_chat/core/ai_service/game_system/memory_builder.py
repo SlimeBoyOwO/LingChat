@@ -86,10 +86,15 @@ class MemoryBuilder:
                 # 处理 User + Context 混合块
                 split_index = len(current_buffer)
                 for i in range(len(current_buffer) - 1, -1, -1):
-                    if current_buffer[i].attribute != 'user':
+                    a = current_buffer[i].attribute
+                    try:
+                        a_val = a.value
+                    except Exception:
+                        a_val = str(a)
+                    if a_val != 'user':
                         split_index = i + 1
                         break
-                    if i == 0 and current_buffer[i].attribute == 'user':
+                    if i == 0 and a_val == 'user':
                         split_index = 0
 
                 context_lines = current_buffer[:split_index]
@@ -119,11 +124,18 @@ class MemoryBuilder:
             current_buffer = []
             buffer_type = None
 
+        def _attr_value(line: GameLine) -> str:
+            a = line.attribute
+            try:
+                return a.value
+            except Exception:
+                return str(a)
+
         for line in lines:
-            line_obj = line # Type hinting alias
+            line_obj = line
             
             # System 处理
-            if line.attribute == 'system':
+            if _attr_value(line) == 'system':
                 # 系统消息只有感知到了才添加
                 if self._is_target(line_obj):
                     flush_buffer()
