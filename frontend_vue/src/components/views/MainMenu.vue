@@ -19,7 +19,14 @@
       <!-- 游戏模式菜单 -->
       <Transition name="slide-right">
         <div class="main-menu-page__menu" v-if="menuState === 'gameMode'">
-          <GameModeOptions @back="backToMainMenu" />
+          <GameModeOptions @back="backToMainMenu" @open-scripts="showScriptModeMenu" :loadingScripts="loadingScripts" :scripts="scripts"/>
+        </div>
+      </Transition>
+
+      <!-- 剧本模式菜单 -->
+      <Transition name="slide-right">
+        <div class="main-menu-page__menu" v-if="menuState === 'scriptMode'">
+          <ScriptModeOptions @back="showGameModeMenu" :scripts="scripts"/>
         </div>
       </Transition>
 
@@ -33,17 +40,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { MainChat } from './'
 import { SettingsPanel as Settings } from '../settings/'
 import { MainMenuOptions, GameModeOptions } from './menu'
 import { useUIStore } from '../../stores/modules/ui/ui'
+import ScriptModeOptions from './menu/ScriptModeOptions.vue'
+import { getScriptList, type ScriptSummary } from '@/api/services/script-info'
 
 // 页面状态
 const currentPage = ref('mainMenu')
 
 // 菜单状态：main（主菜单）或 gameMode（游戏模式选择）
-const menuState = ref<'main' | 'gameMode'>('main')
+const menuState = ref<'main' | 'gameMode' | 'scriptMode'>('main')
+
+const scripts = ref<ScriptSummary[]>([])
+const loadingScripts = ref(false)
 
 const uiStore = useUIStore()
 
@@ -55,6 +67,11 @@ function showGameModeMenu() {
 // 返回主菜单
 function backToMainMenu() {
   menuState.value = 'main'
+}
+
+// 显示剧本模式菜单
+function showScriptModeMenu() {
+  menuState.value = 'scriptMode'
 }
 
 // 处理设置面板打开
@@ -78,6 +95,21 @@ watch(
     }
   },
 )
+
+onMounted(async () => {
+  loadingScripts.value = true
+  try {
+    scripts.value = await getScriptList()
+  } catch (e) {
+    uiStore.showError({
+      errorCode: 'script_list_failed',
+      message: '获取剧本列表失败：请确认后端已启动',
+    })
+    scripts.value = []
+  } finally {
+    loadingScripts.value = false
+  }
+})
 
 // Save 组件占位（如果不存在则需要创建或使用 Settings）
 const Save = Settings
