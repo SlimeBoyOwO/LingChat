@@ -9,6 +9,16 @@
             {{ script.script_name }}
         </button>
 
+        <!-- 占位 -->
+        <button
+            v-for="n in pageSize - currentPageScripts.length"
+            :key="'placeholder-' + n"
+            class="menu-item menu-item--disabled"
+            disabled
+        >
+        {{"\u00A0"}}
+        </button>
+
         <!-- 分页控制 -->
         <div v-if="totalPages > 1" class="pagination-controls">
             <button class="menu-item" :disabled="currentPage === 1" @click="currentPage--">
