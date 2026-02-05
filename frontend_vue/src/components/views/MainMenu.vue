@@ -19,14 +19,19 @@
       <!-- 游戏模式菜单 -->
       <Transition name="slide-right">
         <div class="main-menu-page__menu" v-if="menuState === 'gameMode'">
-          <GameModeOptions @back="backToMainMenu" @open-scripts="showScriptModeMenu" :loadingScripts="loadingScripts" :scripts="scripts"/>
+          <GameModeOptions
+            @back="backToMainMenu"
+            @open-scripts="showScriptModeMenu"
+            :loadingScripts="loadingScripts"
+            :scripts="scripts"
+          />
         </div>
       </Transition>
 
       <!-- 剧本模式菜单 -->
       <Transition name="slide-right">
         <div class="main-menu-page__menu" v-if="menuState === 'scriptMode'">
-          <ScriptModeOptions @back="showGameModeMenu" :scripts="scripts"/>
+          <ScriptModeOptions @back="showGameModeMenu" :scripts="scripts" />
         </div>
       </Transition>
 
