@@ -14,7 +14,7 @@
             <button class="menu-item" :disabled="currentPage === 1" @click="currentPage--">
             <
             </button>
-            <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
+            <span class="menu-item" style="font-size: 28px;">{{ currentPage }} / {{ totalPages }}</span>
             <button class="menu-item" :disabled="currentPage === totalPages" @click="currentPage++">
             >
             </button>
@@ -83,12 +83,4 @@ const currentPageScripts = computed(() => {
 
 <style scoped>
 @import './menu-item.css';
-@reference "tailwindcss";
-.pagination-controls {
-    @apply flex items-center gap-3.75 mb-5
-}
-
-.page-info {
-  @apply text-[white] text-base font-[bold] min-w-15 text-center;
-}
 </style>
