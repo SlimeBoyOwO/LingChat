@@ -35,7 +35,7 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
-});
+})
 
 const router = useRouter()
 const gameStore = useGameStore()
