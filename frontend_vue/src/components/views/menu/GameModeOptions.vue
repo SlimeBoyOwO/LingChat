@@ -23,14 +23,22 @@ import { useGameStore } from '@/stores/modules/game'
 
 const emit = defineEmits<{
   (e: 'back'): void
+  (e: 'open-scripts'): void
 }>()
 
-const router = useRouter()
-const uiStore = useUIStore()
-const gameStore = useGameStore()
+const props = defineProps({
+  scripts: {
+    type: Array as () => ScriptSummary[],
+    default: [],
+  },
+  loadingScripts: {
+    type: Boolean,
+    default: false,
+  },
+})
 
-const scripts = ref<ScriptSummary[]>([])
-const loadingScripts = ref(false)
+const router = useRouter()
+const gameStore = useGameStore()
 
 interface MenuItem {
   label: string
@@ -46,41 +54,15 @@ const startFreeDialogue = () => {
 //前端进入剧情模式（开发中）
 
 const startStoryMode = async () => {
-  await router.push('/chat')
-
-  // 默认选择第一个剧本；如果有多个，可在这里做更完善的选择UI
-  const chosen = scripts.value[0]?.script_name
-  const command = chosen ? `/开始剧本 ${chosen}` : '/开始剧本'
-
-  gameStore.enterStoryMode(chosen || 'default')
-
-  const ok = scriptHandler.sendMessage(command)
-  if (!ok) {
-    console.warn('发送开始剧本指令失败，可能后端未启动或 WebSocket 未连接')
-  }
+  emit('open-scripts')
 }
-
-onMounted(async () => {
-  loadingScripts.value = true
-  try {
-    scripts.value = await getScriptList()
-  } catch (e) {
-    uiStore.showError({
-      errorCode: 'script_list_failed',
-      message: '获取剧本列表失败：请确认后端已启动',
-    })
-    scripts.value = []
-  } finally {
-    loadingScripts.value = false
-  }
-})
 
 const menuItems = computed<MenuItem[]>(() => [
   { label: '自由对话模式', action: startFreeDialogue },
   {
     label: '剧情模式',
     action: startStoryMode,
-    disabled: loadingScripts.value || scripts.value.length === 0,
+    disabled: props.loadingScripts || props.scripts.length === 0,
   },
   { label: '小游戏', action: () => {}, disabled: true },
   { label: '返回', action: () => emit('back') },
