@@ -1,0 +1,28 @@
+name: LingChat
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - pyyaml
+  - fastapi
+  - uvicorn
+  - httpx
+  - openai
+  - platformdirs
+  - python-multipart
+  - websockets
+  - mss
+  - google-generativeai
+  - py7zr
+  - pillow
+  - sqlmodel
+  - onnxruntime
+  - pytest
+  - pytest-asyncio
+  - pytest-cov
+  - ruff
+  - uv
+  - typing-extensions>=4.14.1
+  - pip:
+      - pywebview[qt]

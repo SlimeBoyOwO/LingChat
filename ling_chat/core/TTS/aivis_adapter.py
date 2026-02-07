@@ -1,6 +1,6 @@
 import os
 
-import aiohttp
+import httpx
 
 from ling_chat.core.logger import logger
 from ling_chat.core.TTS.base_adapter import TTSBaseAdapter
@@ -58,7 +58,7 @@ class AIVISAdapter(TTSBaseAdapter):
     async def generate_voice(self, text: str) -> bytes:
         """
         生成语音
-        
+
         :param text: 要转换为语音的文本
         :return: 音频数据的字节流
         """
@@ -84,18 +84,19 @@ class AIVISAdapter(TTSBaseAdapter):
         }
         headers["Authorization"] = f"Bearer {self.api_key}"
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                    self.api_url + "/tts/synthesize",
-                    json=params,
-                    headers=headers
-            ) as response:
-                if response.status >= 400:
-                    error_text = await response.text()
-                    logger.error(f"AIVIS API错误({response.status}): {error_text}")
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                self.api_url + "/tts/synthesize",
+                json=params,
+                headers=headers,
+                timeout=30.0
+            )
+            if response.status_code >= 400:
+                error_text = response.text
+                logger.error(f"AIVIS API错误({response.status_code}): {error_text}")
 
-                response.raise_for_status()
-                return await response.read()
+            response.raise_for_status()
+            return response.content
 
     def get_params(self):
         """

@@ -14,8 +14,7 @@ requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.116.1",
     "uvicorn>=0.35.0",
-    "requests>=2.32.4",
-    "aiohttp==3.12.11",
+    "httpx>=0.28.0",
     "pywebview>=5.4",
     "openai>=1.85.0",
     "platformdirs>=4.3.8",
@@ -24,7 +23,6 @@ dependencies = [
     "mss>=10.0.0",
     "google-generativeai>=0.8.5",
     "py7zr>=1.0.0",
-#    "chromadb>=1.0.0",
     "onnxruntime>=1.17.0",
     "numpy>=1.24.0",
     "pillow>=10.0.0",
