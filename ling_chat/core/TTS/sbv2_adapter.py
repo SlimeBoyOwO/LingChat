@@ -1,6 +1,6 @@
 import os
 
-import aiohttp
+import httpx
 
 from ling_chat.core.logger import logger
 from ling_chat.core.TTS.base_adapter import TTSBaseAdapter
@@ -48,14 +48,15 @@ class SBV2Adapter(TTSBaseAdapter):
         }
         accept_header = content_types.get(self.audio_format, "audio/wav")
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                    self.api_url + "/voice",
-                    params=params,
-                    headers={"Accept": accept_header}
-            ) as response:
-                response.raise_for_status()
-                return await response.read()
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                self.api_url + "/voice",
+                params=params,
+                headers={"Accept": accept_header},
+                timeout=30.0
+            )
+            response.raise_for_status()
+            return response.content
 
     def get_params(self):
         return self.params.copy()

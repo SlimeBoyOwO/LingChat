@@ -1,6 +1,6 @@
 import os
 
-import aiohttp
+import httpx
 
 from ling_chat.core.logger import logger
 from ling_chat.core.TTS.base_adapter import TTSBaseAdapter
@@ -30,13 +30,14 @@ class VitsAdapter(TTSBaseAdapter):
         params["text"] = text
         logger.debug("发送到SVA-Vits的请求:"+ str(params))
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
                 self.api_url + "/voice/vits",
-                params=params
-            ) as response:
-                response.raise_for_status()
-                return await response.read()
+                params=params,
+                timeout=30.0
+            )
+            response.raise_for_status()
+            return response.content
 
     def get_params(self):
         return self.params.copy()

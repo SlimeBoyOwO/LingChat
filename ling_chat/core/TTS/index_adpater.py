@@ -1,6 +1,6 @@
 from typing import AsyncGenerator, Optional
 
-import aiohttp
+import httpx
 
 from ling_chat.core.logger import logger
 from ling_chat.core.TTS.base_adapter import TTSBaseAdapter
@@ -40,11 +40,14 @@ class IndexTTSAdapter(TTSBaseAdapter):
         params["stream"] = "False"  # 非流式
         logger.debug("开始调用IndexTTS生成语音...")
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(self.base_url, params=params, ssl=False) as response:
-                response.raise_for_status()
-                audio_data = await response.read()
-                return audio_data
+        async with httpx.AsyncClient(verify=False) as client:
+            response = await client.get(
+                self.base_url,
+                params=params,
+                timeout=30.0
+            )
+            response.raise_for_status()
+            return response.content
 
     async def generate_voice_stream(self, text: str) -> Optional[AsyncGenerator[bytes, None]]:
         """流式生成音频"""
@@ -57,11 +60,16 @@ class IndexTTSAdapter(TTSBaseAdapter):
         header_consumed = False
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(self.base_url, params=params, ssl=False) as response:
+            async with httpx.AsyncClient(verify=False) as client:
+                async with client.stream(
+                    'GET',
+                    self.base_url,
+                    params=params,
+                    timeout=30.0
+                ) as response:
                     response.raise_for_status()
 
-                    async for chunk in response.content.iter_chunked(8192):
+                    async for chunk in response.aiter_bytes(chunk_size=8192):
                         if not chunk:
                             continue
 

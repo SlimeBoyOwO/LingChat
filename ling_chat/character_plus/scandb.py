@@ -1,4 +1,4 @@
-import requests
+import httpx
 from pathlib import Path
 import json
 from datetime import datetime
@@ -8,15 +8,19 @@ import os
 BASE_URL =os.getenv("COMMUNITY_URL", "https://192.168.0.116:8000").rstrip('/')
 def list_pages():
     try:
-        response = requests.get(
-            f"{BASE_URL}/api/v1/pages",
-            timeout=10
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data
-    except requests.exceptions.RequestException as e:
+        with httpx.Client() as client:
+            response = client.get(
+                f"{BASE_URL}/api/v1/pages",
+                timeout=10.0
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data
+    except httpx.RequestError as e:
         logger.error(f"获取页面列表失败: {e}")
+        return []
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP错误: {e}")
         return []
     except json.JSONDecodeError as e:
         logger.error(f"JSON解析失败: {e}")
@@ -26,14 +30,18 @@ def list_pages():
         return []
 def get_page(uid: str):
     try:
-        response = requests.get(f"{BASE_URL}/api/v1/pages/{uid}")
-        if response.status_code == 404:
-            logger.warning(f"页面 {uid} 不存在")
-            return None
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException as e:
+        with httpx.Client() as client:
+            response = client.get(f"{BASE_URL}/api/v1/pages/{uid}")
+            if response.status_code == 404:
+                logger.warning(f"页面 {uid} 不存在")
+                return None
+            response.raise_for_status()
+            return response.json()
+    except httpx.RequestError as e:
         logger.error(f"获取页面失败: {e}")
+        return None
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP错误: {e}")
         return None
     except json.JSONDecodeError as e:
         logger.error(f"JSON解析失败: {e}")
