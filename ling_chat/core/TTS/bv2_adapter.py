@@ -1,6 +1,6 @@
 import os
 
-import aiohttp
+import httpx
 
 from ling_chat.core.logger import logger
 from ling_chat.core.TTS.base_adapter import TTSBaseAdapter
@@ -29,14 +29,15 @@ class BV2Adapter(TTSBaseAdapter):
         params["text"] = text
         logger.debug(f"发送到SVA-BV2的json: {params}")
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
                 self.api_url + "/voice/bert-vits2",
-                json=params
-            ) as response:
-                if response.status != 200:
-                    raise RuntimeError(f"TTS请求失败: {await response.text()}")
-                return await response.read()
+                json=params,
+                timeout=30.0
+            )
+            if response.status_code != 200:
+                raise RuntimeError(f"TTS请求失败: {response.text}")
+            return response.content
 
     def get_params(self):
         return self.params
