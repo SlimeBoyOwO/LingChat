@@ -3,6 +3,7 @@ import shutil
 import signal
 import time
 import threading
+import sys
 from typing import Collection
 
 from ling_chat.core.logger import logger
@@ -71,7 +72,6 @@ def handle_run(run_modules_list: Collection[str],is_wv=False):
 
 
 def run_cli_command(args):
-    """运行CLI命令，不启动主程序"""
     if args.command == "install":
         handle_install(args.modules, use_mirror=args.mirror)
         logger.info("安装完成")
@@ -80,7 +80,6 @@ def run_cli_command(args):
 
 
 def run_main_program(args,is_wv=False):
-    """运行主程序"""
     from ling_chat.api.app_server import run_app_in_thread
 
     from ling_chat.utils.cli import print_logo
@@ -151,27 +150,43 @@ def run_main_program(args,is_wv=False):
 
 
 def main():
-    """主入口函数"""
+    osys = sys.platform
     args = get_parser().parse_args()
-    try:
-        signal.signal(signal.SIGINT, _module_signal_handler)
-        signal.signal(signal.SIGTERM, _module_signal_handler)
-    except Exception:
-        logger.debug("无法在当前环境注册全局信号处理器")
-    gui_enabled = (not args.nogui) and (os.getenv('OPEN_FRONTEND_APP', 'false').lower() == "true") or args.gui
-    print(f"GUI Enabled: {gui_enabled}")
-    if  gui_enabled:
-        logger.info("启用前端界面模式")
-        
-        wbt = threading.Thread(target=run_main_program, args=(args, True))
-        wbt.start()
-        start_webview()
-    else:
+
+    if osys == "linux" :
+        logger.info("Linux")
+        try:
+            signal.signal(signal.SIGINT, _module_signal_handler)
+            signal.signal(signal.SIGTERM, _module_signal_handler)
+        except Exception:
+            logger.debug("无法在当前环境注册全局信号处理器")
+        gui_enabled = (not args.nogui) and (os.getenv('OPEN_FRONTEND_APP', 'false').lower() == "true") or args.gui
+        print(f"GUI Enabled: {gui_enabled}")
+        if  gui_enabled:
+            logger.info("启用前端界面模式")
+            
+            wbt = threading.Thread(target=run_main_program, args=(args, True))
+            wbt.start()
+            start_webview()
+        else:
+            if args.command:
+                run_cli_command(args)
+            else:
+                # 否则运行主程序
+                run_main_program(args)
+    elif osys == "win32":
+        logger.info("Windows")
         if args.command:
             run_cli_command(args)
         else:
             # 否则运行主程序
-            run_main_program(args)
-
+            run_main_program(args,False)
+    else:
+        logger.info("unknown")
+        if args.command:
+            run_cli_command(args)
+        else:
+            # 否则运行主程序
+            run_main_program(args,False)
 if __name__ == "__main__":
     main()
