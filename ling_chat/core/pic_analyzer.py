@@ -3,7 +3,7 @@ import os
 import time
 from io import BytesIO
 
-import requests
+import httpx
 from PIL import ImageGrab
 
 from ling_chat.core.logger import logger
@@ -93,8 +93,9 @@ class DesktopAnalyzer:
 
         # 记录开始时间并发送请求
         start_time = time.time()
-        response = requests.post(self.base_url, headers=headers, json=payload)
-        response_data = response.json()
+        with httpx.Client() as client:
+            response = client.post(self.base_url, headers=headers, json=payload)
+            response_data = response.json()
 
         if "choices" not in response_data:
             raise Exception(f"请求失败: {response_data}")

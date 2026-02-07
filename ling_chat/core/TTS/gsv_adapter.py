@@ -1,6 +1,6 @@
 import os
 
-import aiohttp
+import httpx
 
 from ling_chat.core.logger import logger
 from ling_chat.core.TTS.base_adapter import TTSBaseAdapter
@@ -48,14 +48,15 @@ class GPTSoVITSAdapter(TTSBaseAdapter):
         params["text"] = text
         logger.debug(f"发送到GPT-SoVITS的json: {params}")
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
                 self.api_url + "/tts",
-                json=params
-            ) as resp:
-                if resp.status != 200:
-                    raise RuntimeError(f"TTS请求失败: {await resp.text()}")
-                return await resp.read()
+                json=params,
+                timeout=30.0
+            )
+            if response.status_code != 200:
+                raise RuntimeError(f"TTS请求失败: {response.text}")
+            return response.content
 
     async def set_model(self, gpt_model_path: str, sovits_model_path: str) -> bool:
         """
@@ -84,24 +85,24 @@ class GPTSoVITSAdapter(TTSBaseAdapter):
                 logger.error(f"SoVITS模型文件扩展名必须为.pth: {sovits_model_path}")
                 raise ValueError(f"SoVITS模型文件扩展名必须为.pth: {sovits_model_path}")
 
-            async with aiohttp.ClientSession() as session:
+            async with httpx.AsyncClient() as client:
                 # 设置GPT模型
                 if gpt_model_path:
                     gpt_url = self.api_url + "/set_gpt_weights"
-                    async with session.get(gpt_url, params={"weights_path": gpt_model_path}) as resp:
-                        if resp.status != 200:
-                            logger.error(f"GPT模型设置失败: {await resp.text()}")
-                            return False
-                        logger.debug(f"GPT模型设置成功: {gpt_model_path}")
+                    response = await client.get(gpt_url, params={"weights_path": gpt_model_path}, timeout=30.0)
+                    if response.status_code != 200:
+                        logger.error(f"GPT模型设置失败: {response.text}")
+                        return False
+                    logger.debug(f"GPT模型设置成功: {gpt_model_path}")
 
                 # 设置SoVITS模型
                 if sovits_model_path:
                     sovits_url = self.api_url + "/set_sovits_weights"
-                    async with session.get(sovits_url, params={"weights_path": sovits_model_path}) as resp:
-                        if resp.status != 200:
-                            logger.error(f"SoVITS模型设置失败: {await resp.text()}")
-                            return False
-                        logger.debug(f"SoVITS模型设置成功: {sovits_model_path}")
+                    response = await client.get(sovits_url, params={"weights_path": sovits_model_path}, timeout=30.0)
+                    if response.status_code != 200:
+                        logger.error(f"SoVITS模型设置失败: {response.text}")
+                        return False
+                    logger.debug(f"SoVITS模型设置成功: {sovits_model_path}")
 
                 return True
         except Exception as e:

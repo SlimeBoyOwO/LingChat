@@ -2,7 +2,7 @@ import json
 import os
 from typing import AsyncGenerator, Dict, List
 
-import requests
+import httpx
 
 from ling_chat.core.llm_providers.base import BaseLLMProvider
 from ling_chat.core.logger import logger
@@ -28,18 +28,19 @@ class OllamaProvider(BaseLLMProvider):
                 "stream": False
             }
 
-            response = requests.post(
-                f"{self.base_url}/api/chat",
-                json=payload
-            )
+            with httpx.Client() as client:
+                response = client.post(
+                    f"{self.base_url}/api/chat",
+                    json=payload
+                )
 
-            if response.status_code != 200:
-                error_msg = f"Ollama API returned error: {response.status_code} - {response.text}"
-                logger.error(error_msg)
-                raise Exception(error_msg)
+                if response.status_code != 200:
+                    error_msg = f"Ollama API returned error: {response.status_code} - {response.text}"
+                    logger.error(error_msg)
+                    raise Exception(error_msg)
 
-            response_json = response.json()
-            return response_json.get("message", {}).get("content", "")
+                response_json = response.json()
+                return response_json.get("message", {}).get("content", "")
 
         except Exception as e:
             logger.error(f"Ollama API call failed: {str(e)}")
@@ -59,27 +60,26 @@ class OllamaProvider(BaseLLMProvider):
                 "stream": True
             }
 
-            with requests.post(
+            with httpx.Client() as client:
+                with client.stream(
+                    'POST',
                     f"{self.base_url}/api/chat",
-                    json=payload,
-                    stream=True
-            ) as response:
-                if response.status_code != 200:
-                    error_msg = f"Ollama 流式返回了错误: {response.status_code} - {response.text}"
-                    logger.error(error_msg)
-                    raise Exception(error_msg)
+                    json=payload
+                ) as response:
+                    if response.status_code != 200:
+                        error_msg = f"Ollama 流式返回了错误: {response.status_code} - {response.text}"
+                        logger.error(error_msg)
+                        raise Exception(error_msg)
 
-                for chunk in response.iter_lines():
-                    if chunk:
-                        decoded_chunk = chunk.decode('utf-8')
-                        if decoded_chunk.strip():  # 确保不是空行
+                    for line in response.iter_lines():
+                        if line.strip():  # 确保不是空行
                             try:
-                                chunk_json = json.loads(decoded_chunk)
+                                chunk_json = json.loads(line)
                                 content = chunk_json.get("message", {}).get("content", "")
                                 if content:
                                     yield content
                             except json.JSONDecodeError:
-                                logger.warning(f"无法解析的响应块: {decoded_chunk}")
+                                logger.warning(f"无法解析的响应块: {line}")
                                 continue
 
         except Exception as e:
