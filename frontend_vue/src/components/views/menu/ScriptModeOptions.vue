@@ -68,10 +68,7 @@ const selectScript = async (script: ScriptSummary) => {
   const command = `/开始剧本 ${script.script_name}`
   gameStore.enterStoryMode(script.script_name)
 
-  const ok = scriptHandler.sendMessage(command)
-  if (!ok) {
-    console.warn('发送开始剧本指令失败，可能后端未启动或 WebSocket 未连接')
-  }
+  scriptHandler.sendMessage(command)
 }
 
 const backToGameModeMenu = () => {
