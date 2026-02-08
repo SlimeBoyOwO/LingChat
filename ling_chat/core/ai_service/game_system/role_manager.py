@@ -61,8 +61,10 @@ class GameRoleManager:
             slice_start_idx = 0
             system_addendum = ""
             short_term_prefix = ""
+
+            mb = self._get_memory_bank_system(role)
+
             try:
-                mb = self._get_memory_bank_system(role)
                 # 只有用户显式开启永久记忆时才触发自动压缩
                 if mb.is_enabled():
                     mb.check_and_trigger_auto_update(source_lines)
@@ -76,7 +78,12 @@ class GameRoleManager:
             sliced_lines = source_lines[slice_start_idx:] if slice_start_idx > 0 else source_lines
             builder = MemoryBuilder(target_role_id=rid)
             built = builder.build(sliced_lines)
-            role.memory = self._merge_memory_bank_into_context(built, system_addendum, short_term_prefix)
+
+            # 启动永久记忆的时候，才合并上下文逻辑
+            if mb.is_enabled():
+                role.memory = self._merge_memory_bank_into_context(built, system_addendum, short_term_prefix)
+            else:
+                role.memory = built
 
         # 【重要改动】去掉了自动删除 "stale" 角色的逻辑。
         # 角色加载后通常应该保留直到场景结束，频繁删除重建会浪费算力。

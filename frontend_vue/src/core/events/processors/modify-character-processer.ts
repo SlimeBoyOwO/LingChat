@@ -11,6 +11,7 @@ export default class ModifyCharacterProcessor implements IEventProcessor {
     const gameStore = useGameStore()
 
     console.log('执行修改角色' + event.characterId + event.emotion + event.action)
+    const delay = event.duration
 
     gameStore.currentStatus = 'presenting'
 
@@ -21,14 +22,23 @@ export default class ModifyCharacterProcessor implements IEventProcessor {
       if (event.action) {
         switch (event.action) {
           case 'show_character':
+            role.show = false // 确保之前是不显示的 TODO 不知道这个有没有必要加
             gameStore.presentRoleIds.push(event.characterId)
             role.show = true
             break
           case 'hide_character':
-            gameStore.presentRoleIds = gameStore.presentRoleIds.filter(
-              (id) => id !== event.characterId,
-            )
             role.show = false
+            if (delay > 0) {
+              setTimeout(() => {
+                gameStore.presentRoleIds = gameStore.presentRoleIds.filter(
+                  (id) => id !== event.characterId,
+                )
+              }, delay * 1000)
+            } else {
+              gameStore.presentRoleIds = gameStore.presentRoleIds.filter(
+                (id) => id !== event.characterId,
+              )
+            }
             break
           default:
             break
