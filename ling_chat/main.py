@@ -13,24 +13,17 @@ from ling_chat.utils.easter_egg import get_random_loading_message
 from ling_chat.utils.runtime_path import static_path, third_party_path, user_data_path
 from ling_chat.core.webview import start_webview
 
-# 全局退出事件，供主线程的信号处理和子线程检查使用
 exit_event = threading.Event()
 
 
 def _module_signal_handler(signum, frame):
-    """模块级信号处理：记录日志并设置退出事件，必要时清理临时文件。"""
-    logger.info("接收到中断信号，正在关闭程序...")
     exit_event.set()
 
 def check_static_copy():
-    """检查静态文件是否已经复制"""
-    # 场景一，假如没有用户game_data目录，则复制
     if not os.path.exists(user_data_path / "game_data"):
         shutil.copytree(static_path / "game_data", user_data_path / "game_data")
         logger.info("静态文件已复制到用户目录")
     else:
-        # 场景二，假如用户目录下有game_data目录，则检查子目录文件夹是否全部存在
-        # 检查所有static_path/game_data下的子目录
         for sub_dir in os.listdir(static_path / "game_data"):
             if not os.path.exists(user_data_path / "game_data" / sub_dir):
                 shutil.copytree(static_path / "game_data" / sub_dir, user_data_path / "game_data" / sub_dir)
@@ -38,7 +31,6 @@ def check_static_copy():
 
 
 def handle_install(install_modules_list: Collection[str], use_mirror=False):
-    """处理安装模块"""
     for module in install_modules_list:
         logger.info(f"正在安装模块: {module}")
         if module == "vits":
@@ -55,7 +47,7 @@ def handle_install(install_modules_list: Collection[str], use_mirror=False):
             logger.error(f"未知的安装模块: {module}")
 
 
-def handle_run(run_modules_list: Collection[str],is_wv=False):
+def handle_run(run_modules_list: Collection[str]):
     """处理运行模块"""
     for module in run_modules_list:
         logger.info(f"正在运行模块: {module}")
@@ -65,7 +57,7 @@ def handle_run(run_modules_list: Collection[str],is_wv=False):
             raise NotImplementedError("sbv2 模块的运行函数未实现")
         elif module == "18emo":
             raise NotImplementedError("18emo 模块的运行函数未实现")
-        elif module == "webview" and not is_wv:
+        elif module == "webview":
             run_third_party.run_webview()
         else:
             logger.error(f"未知的运行模块: {module}")
@@ -101,46 +93,34 @@ def run_main_program(args,is_wv=False):
         signal.signal(signal.SIGTERM, _local_signal_handler)
     except Exception:
         logger.debug("无法在当前环境注册局部信号处理器")
-    # 根据命令行参数和环境变量决定是否启用前端界面
-    gui_enabled = (not args.nogui) and (os.getenv('OPEN_FRONTEND_APP', 'false').lower() == "true")
     if args.nogui:
         logger.info("启用无界面模式，前端界面已禁用")
 
     # handle_install(install_modules) TODO: 未来版本可能会启用自动安装功能
-
-    # 启动加载动画
     selected_loading_message = get_random_loading_message()
     logger.start_loading_animation(message=selected_loading_message, animation_style="auto")
-
-    # 检查文件完整性
     check_static_copy()
-
-    # 处理运行模块
-    handle_run(args.run or [],is_wv)
-
+    handle_run(args.run or [])
     app_thread = run_app_in_thread()
-
     if os.getenv("VOICE_CHECK", "false").lower() == "true":
-
         VoiceCheck.main()
     else:
         logger.info("已根据环境变量禁用语音检查")
 
     # 检查环境变量决定是否启动前端界面
-    if os.getenv("OPEN_FRONTEND_APP", "false").lower() == "true" or gui_enabled:  # fixme: 请使用 --run webview 启动前端界面
+    if (os.getenv("OPEN_FRONTEND_APP", "false").lower() == "true" and not args.nogui) or args.gui:
         logger.stop_loading_animation(success=True, final_message="应用加载成功")
         print_logo()
-        logger.warning("[Deprecation]:请使用 --gui 强制启用前端窗口 或使用 --nogui 启用无前端窗口模式")
+        logger.warning("[前端界面已启用，可使用 --nogui 启用无前端窗口模式")
         try:
             start_webview()
         except KeyboardInterrupt:
             logger.info("用户关闭程序")
     else:
-        logger.info("前端界面已禁用")
+        logger.info("前端界面已禁用，可使用请使用 --gui 强制启用前端窗口")
         logger.stop_loading_animation(success=True, final_message="应用加载成功")
         print_logo()
         try:
-            # 循环等待，使用模块级退出事件替代局部变量
             while (not exit_event.is_set()) and app_thread.is_alive():
                 time.sleep(0.1)
         except KeyboardInterrupt:
@@ -150,43 +130,11 @@ def run_main_program(args,is_wv=False):
 
 
 def main():
-    osys = sys.platform
     args = get_parser().parse_args()
-
-    if osys == "linux" :
-        logger.info("Linux")
-        try:
-            signal.signal(signal.SIGINT, _module_signal_handler)
-            signal.signal(signal.SIGTERM, _module_signal_handler)
-        except Exception:
-            logger.debug("无法在当前环境注册全局信号处理器")
-        gui_enabled = (not args.nogui) and (os.getenv('OPEN_FRONTEND_APP', 'false').lower() == "true") or args.gui
-        print(f"GUI Enabled: {gui_enabled}")
-        if  gui_enabled:
-            logger.info("启用前端界面模式")
-            
-            wbt = threading.Thread(target=run_main_program, args=(args, True))
-            wbt.start()
-            start_webview()
-        else:
-            if args.command:
-                run_cli_command(args)
-            else:
-                # 否则运行主程序
-                run_main_program(args)
-    elif osys == "win32":
-        logger.info("Windows")
-        if args.command:
-            run_cli_command(args)
-        else:
-            # 否则运行主程序
-            run_main_program(args,False)
+    if args.command:
+         run_cli_command(args)
     else:
-        logger.info("unknown")
-        if args.command:
-            run_cli_command(args)
-        else:
-            # 否则运行主程序
-            run_main_program(args,False)
+         run_main_program(args,False)
+
 if __name__ == "__main__":
     main()
