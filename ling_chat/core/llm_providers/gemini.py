@@ -1,7 +1,8 @@
+import json
 import os
 from typing import AsyncGenerator, Dict, List
 
-import google.generativeai as genai
+import httpx
 
 from ling_chat.core.llm_providers.base import BaseLLMProvider
 from ling_chat.core.logger import logger
@@ -10,80 +11,142 @@ from ling_chat.core.logger import logger
 class GeminiProvider(BaseLLMProvider):
     def __init__(self):
         super().__init__()
-        self.client = None
+        self.api_key = None
+        self.base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
         self.model_type = None
+        self.proxy_url = None
         self.initialize_client()
 
     def initialize_client(self):
         """初始化Gemini客户端"""
-        api_key = os.environ.get("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-        proxy_url = os.environ.get("GEMINI_PROXY_URL") or os.getenv("GOOGLE_PROXY_URL")
+        self.api_key = os.environ.get("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        self.proxy_url = os.environ.get("GEMINI_PROXY_URL") or os.getenv("GOOGLE_PROXY_URL")
+        self.model_type = os.environ.get("GEMINI_MODEL_TYPE", "gemini-2.5-flash")
 
-        if not api_key:
-            raise ValueError("Gemini API key is required! Please set GEMINI_API_KEY environment variable.")
+        if not self.api_key:
+            raise ValueError("需要Gemini API key！")
 
-        genai.configure(api_key=api_key)
+        logger.info(f"Gemini provider initialized successfully! Model: {self.model_type}")
 
-        if proxy_url:
-            genai.configure(proxy_url=proxy_url)
+    def _get_headers(self):
+        """获取请求头"""
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}"
+        }
+        return headers
 
-        self.model_type = os.environ.get("GEMINI_MODEL_TYPE", "gemini-pro")
-        self.client = genai.GenerativeModel(self.model_type)
+    def _get_http_client(self):
+        """获取HTTP客户端，支持代理"""
+        if self.proxy_url:
+            return httpx.Client(proxy=self.proxy_url)
+        return httpx.Client()
 
-        logger.info("Gemini provider initialized successfully!")
+    def _format_messages(self, messages: List[Dict]) -> List[Dict]:
+        """格式化消息为Gemini API兼容格式
+
+        Gemini API支持OpenAI兼容的消息格式，但需要确保role是有效的：
+        - system, user, assistant
+        """
+        formatted_messages = []
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+
+            # 确保角色是Gemini API接受的
+            if role == "human":
+                role = "user"
+            elif role == "model":
+                role = "assistant"
+
+            formatted_messages.append({
+                "role": role,
+                "content": str(content)
+            })
+        return formatted_messages
 
     def generate_response(self, messages: List[Dict]) -> str:
-        """处理完整对话历史的版本"""
+        """生成Gemini模型响应（非流式）"""
         try:
-            logger.debug(f"Sending request with history to Gemini model: {self.model_type}")
+            logger.debug(f"向Gemini API发送请求: {self.model_type}")
 
-            # 转换消息格式
-            formatted_history = []
-            for msg in messages:
-                role = "user" if msg["role"] in ["user", "human"] else "model"
-                formatted_history.append({
-                    "role": role,
-                    "parts": [msg["content"]]
-                })
+            formatted_messages = self._format_messages(messages)
 
-            chat = self.client.start_chat(history=formatted_history[:-1])
-            response = chat.send_message(messages[-1]["content"])
-            return response.text
+            payload = {
+                "model": self.model_type,
+                "messages": formatted_messages,
+                "stream": False
+            }
+
+            with self._get_http_client() as client:
+                response = client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=self._get_headers(),
+                    json=payload,
+                    timeout=30.0
+                )
+
+                if response.status_code != 200:
+                    error_msg = f"Gemini API请求错误: {response.status_code} - {response.text}"
+                    logger.error(error_msg)
+                    raise Exception(error_msg)
+
+                response_json = response.json()
+                return response_json.get("choices", [{}])[0].get("message", {}).get("content", "")
 
         except Exception as e:
-            logger.error(f"Gemini request with history failed: {str(e)}")
+            logger.error(f"Gemini API请求错误: {str(e)}")
             raise
 
     async def generate_stream_response(self, messages: List[Dict]) -> AsyncGenerator[str, None]:
         """生成Gemini流式响应
+
         :param messages: 消息列表
         :return: 生成器，逐个返回响应内容块
         """
         try:
             logger.debug(f"向Gemini模型发送流式请求: {self.model_type}")
 
-            # 转换消息格式
-            formatted_history = []
-            for msg in messages:
-                role = "user" if msg["role"] in ["user", "human"] else "model"
-                formatted_history.append({
-                    "role": role,
-                    "parts": [msg["content"]]
-                })
+            formatted_messages = self._format_messages(messages)
 
-            # 初始化聊天会话
-            chat = self.client.start_chat(history=formatted_history[:-1])
+            payload = {
+                "model": self.model_type,
+                "messages": formatted_messages,
+                "stream": True
+            }
 
-            # 发送流式请求
-            response = chat.send_message(
-                messages[-1]["content"],
-                stream=True
-            )
+            async with httpx.AsyncClient(proxy=self.proxy_url) as client:
+                async with client.stream(
+                    'POST',
+                    f"{self.base_url}/chat/completions",
+                    headers=self._get_headers(),
+                    json=payload,
+                    timeout=60.0
+                ) as response:
+                    if response.status_code != 200:
+                        error_msg = f"Gemini流式API请求错误: {response.status_code} - {response.text}"
+                        logger.error(error_msg)
+                        raise Exception(error_msg)
 
-            # 逐个返回响应块
-            for chunk in response:
-                yield chunk.text
+                    async for line in response.aiter_lines():
+                        if line.strip() and line.startswith("data: "):
+                            chunk_data = line[6:]  # 移除 "data: " 前缀
+                            if chunk_data == "[DONE]":
+                                break
 
-        except Exception as genai_error:
-            logger.error(f"Gemini流式请求失败: {str(genai_error)}")
+                            try:
+                                chunk_json = json.loads(chunk_data)
+                                if chunk_json.get("object") == "chat.completion.chunk":
+                                    choices = chunk_json.get("choices", [])
+                                    if choices:
+                                        delta = choices[0].get("delta", {})
+                                        content = delta.get("content", "")
+                                        if content:
+                                            yield content
+                            except json.JSONDecodeError:
+                                logger.warning(f"未能解析返回: {line}")
+                                continue
+
+        except Exception as e:
+            logger.error(f"Gemini Api流式请求失败: {str(e)}")
             raise
