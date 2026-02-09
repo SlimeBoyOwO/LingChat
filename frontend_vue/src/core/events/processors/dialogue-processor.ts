@@ -40,6 +40,7 @@ export default class DialogueProcessor implements IEventProcessor {
     uiStore.showCharacterLine = gameStore.currentLine // TODO: 这部分逻辑之后整合
     role.emotion = event.emotion || '正常'
     role.originalEmotion = event.originalTag || '正常'
+    gameStore.currentInteractRoleId = role.roleId
     uiStore.currentAvatarAudio = event.audioFile || 'None'
     uiStore.showCharacterEmotion = role.originalEmotion
 

@@ -25,7 +25,6 @@ class SentenceConsumer:
                  publish_events: Dict[int, asyncio.Event],
                  message_processor: MessageProcessor,
                  translator: Translator,
-                 voice_maker: VoiceMaker,
                  user_message: str,
                  game_status: GameStatus,
                  ):
@@ -35,7 +34,6 @@ class SentenceConsumer:
         self.publish_events = publish_events
         self.message_processor = message_processor
         self.translator = translator
-        self.voice_maker = voice_maker
         self.user_message = user_message
         self.game_status = game_status
 
@@ -87,7 +85,7 @@ class SentenceConsumer:
         if sentence_segments[0].get("japanese_text") == "":
             await self.translator.translate_ai_response(sentence_segments)
         else:
-            await self.voice_maker.generate_voice_files(sentence_segments)
+            await self.game_status.current_character.voice_maker.generate_voice_files(sentence_segments)
         end_time = time.perf_counter()
 
         role = self.game_status.current_character

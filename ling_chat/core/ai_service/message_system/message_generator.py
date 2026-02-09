@@ -11,7 +11,6 @@ from ling_chat.core.ai_service.message_system.response_publisher import (
 )
 from ling_chat.core.ai_service.message_system.sentence_comsumer import SentenceConsumer
 from ling_chat.core.ai_service.message_system.stream_producer import StreamProducer
-from ling_chat.core.ai_service.rag_manager import RAGManager
 from ling_chat.core.ai_service.translator import Translator
 from ling_chat.core.ai_service.voice_maker import VoiceMaker
 from ling_chat.core.llm_providers.manager import LLMManager
@@ -26,21 +25,16 @@ from ling_chat.utils.function import Function
 class MessageGenerator:
     def __init__(self,
                 config: AIServiceConfig,
-                voice_maker: VoiceMaker,
                 message_processor: MessageProcessor,
                 translator: Translator,
                 llm_model: LLMManager,
-                rag_manager: Optional[RAGManager],
                 ai_logger: AILogger,
                 game_status: GameStatus):
         self.config = config
-        self.use_rag = os.environ.get("USE_RAG", "False").lower() == "true"
-        self.rag_manager = rag_manager if rag_manager else RAGManager() if self.use_rag else None
-        self.voice_maker = voice_maker if voice_maker else VoiceMaker()
-        self.message_processor = message_processor if message_processor else MessageProcessor(self.voice_maker)
-        self.translator = translator if translator else Translator(self.voice_maker)
-        self.llm_model = llm_model if llm_model else LLMManager()
-        self.ai_logger = ai_logger if ai_logger else AILogger()
+        self.message_processor = message_processor
+        self.translator = translator
+        self.llm_model = llm_model
+        self.ai_logger = ai_logger
         self.function = Function()
         self.game_status = game_status
         self.concurrency = int(os.environ.get("COMSUMERS", 3))
@@ -61,7 +55,7 @@ class MessageGenerator:
             if sentence_segments[0].get("japanese_text") == "":
                 await self.translator.translate_ai_response(sentence_segments)
             else:
-                await self.voice_maker.generate_voice_files(sentence_segments)
+                await self.game_status.current_character.voice_maker.generate_voice_files(sentence_segments)
             end_time = time.perf_counter()
             # 更新情绪片段列表
             emotion_segments.extend(sentence_segments)
@@ -131,7 +125,7 @@ class MessageGenerator:
                     consumer_id=i, sentence_queue=sentence_queue,
                     results_store=results_store, publish_events=publish_events,
                     message_processor=self.message_processor, translator=self.translator,
-                    voice_maker=self.voice_maker, user_message=user_message if user_message else "",
+                    user_message=user_message if user_message else "",
                     game_status=self.game_status,
                 )
                 consumer_task = asyncio.create_task(consumer.run(), name=f"Consumer-{i}")
