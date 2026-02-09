@@ -2,6 +2,7 @@ from ling_chat.core.ai_service.script_engine.events.base_event import BaseEvent
 from ling_chat.core.ai_service.script_engine.utils.script_function import ScriptFunction
 from ling_chat.core.logger import logger
 from ling_chat.core.service_manager import service_manager
+from ling_chat.core.messaging.broker import message_broker
 from ling_chat.game_database.models import LineAttribute, LineBase
 
 
@@ -27,7 +28,8 @@ class AIDialogueEvent(BaseEvent):
             logger.error("AI service not found")
             return
 
-        ai_service.message_generator.process_message_stream()
+        async for response in ai_service.message_generator.process_message_stream():
+            await message_broker.publish(self.client_id, response.model_dump())
 
 
     @classmethod
