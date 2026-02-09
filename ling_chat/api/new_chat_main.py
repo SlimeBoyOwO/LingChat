@@ -175,7 +175,7 @@ class WebSocketManager:
             except Exception as e:
                 logger.error(f"直接发送消息失败: {e}")
 
-    async def broadcast_achievement_unlock(self, achievement_data: dict, target_client_id: str = None):
+    async def broadcast_achievement_unlock(self, achievement_data: dict, target_client_id: str|None = None):
         """
         向客户端广播成就解锁消息
         :param achievement_data: 成就数据，应包含 id, title, message, type (common/rare) 等

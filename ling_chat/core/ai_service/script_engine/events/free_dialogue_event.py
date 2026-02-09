@@ -59,7 +59,8 @@ class FreeDialogueEvent(BaseEvent):
                 logger.error("AI 服务未初始化")
                 return
             
-            ai_service.message_generator.process_message_stream()
+            async for response in ai_service.message_generator.process_message_stream():
+              await message_broker.publish(self.client_id, response.model_dump())
 
             if is_last_round:
                 break
