@@ -21,7 +21,6 @@ dependencies = [
     "python-multipart>=0.0.20",
     "websockets>=15.0.1",
     "mss>=10.0.0",
-    "google-generativeai>=0.8.5",
     "py7zr>=1.0.0",
     "onnxruntime>=1.17.0",
     "numpy>=1.24.0",
