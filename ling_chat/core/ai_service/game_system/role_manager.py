@@ -22,8 +22,24 @@ class GameRoleManager:
     def get_role(self, role_id: int) -> GameRole:
         """获取角色，如果不存在则在内存中初始化一个空的"""
         if role_id not in self.loaded_roles:
-            self.loaded_roles[role_id] = GameRole(role_id=role_id)
+            self._register_role_by_id(role_id)
         return self.loaded_roles[role_id]
+    
+    def _register_role_by_id(self, role_id: int):
+        role = RoleManager.get_role_by_id(role_id)
+        if not role or not role.id:
+            error_msg = f"角色 ID {role_id} 未在数据库中找到"
+            logger.error(error_msg)
+            raise RoleNotFoundError(error_msg)
+        
+        role_settings = RoleManager.get_role_settings_by_id(role.id)
+        if not role_settings:
+            error_msg = f"角色 ID {role_id} 的设置相关文件缺失"
+            logger.error(error_msg)
+            raise RoleNotFoundError(error_msg)
+        
+        new_role = GameRole(role_id=role.id, resource_path=role.resource_folder, settings=role_settings, display_name=role.name)
+        self.loaded_roles[role_id] = new_role
 
     def get_role_by_script_keys(self, script_key: str, script_role_key: str) -> GameRole:
         """

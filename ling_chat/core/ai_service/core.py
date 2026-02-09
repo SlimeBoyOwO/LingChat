@@ -4,6 +4,7 @@ import json
 import os
 from typing import Dict
 
+from ling_chat.core.ai_service.exceptions import ScriptEngineError
 from ling_chat.core.ai_service.game_system.game_status import GameStatus
 from ling_chat.game_database.models import GameLine, LineAttribute, LineBase
 from ling_chat.core.ai_service.ai_logger import AILogger
@@ -11,10 +12,8 @@ from ling_chat.core.ai_service.config import AIServiceConfig
 from ling_chat.core.ai_service.events_scheduler import EventsScheduler
 from ling_chat.core.ai_service.message_system.message_processor import MessageProcessor
 from ling_chat.core.ai_service.message_system.message_generator import MessageGenerator
-from ling_chat.core.ai_service.rag_manager import RAGManager
 from ling_chat.core.ai_service.script_engine.script_manager import ScriptManager
 from ling_chat.core.ai_service.translator import Translator
-from ling_chat.core.ai_service.voice_maker import VoiceMaker
 from ling_chat.core.llm_providers.manager import LLMManager
 from ling_chat.utils.function import Function
 from ling_chat.core.logger import logger
@@ -36,24 +35,19 @@ class AIService:
         self.config = AIServiceConfig(clients=set(), user_id=self.user_id)
 
         self.use_rag = os.environ.get("USE_RAG", "False").lower() == "true"
-        self.rag_manager = RAGManager() if self.use_rag else None
         self.llm_model = LLMManager()
         self.ai_logger = AILogger()
-        self.voice_maker = VoiceMaker()
-        self.translator = Translator(self.voice_maker)
+        self.translator = Translator(self.game_status)
         self.message_broker = message_broker
-        self.message_processor = MessageProcessor(self.voice_maker)
+        self.message_processor = MessageProcessor(self.game_status)
         self.message_generator = MessageGenerator(self.config,
-                                                  self.voice_maker,
                                                   self.message_processor,
                                                   self.translator,
                                                   self.llm_model,
-                                                  self.rag_manager,
                                                   self.ai_logger,
                                                   self.game_status)
 
         # self.events_scheduler.start_nodification_schedules()        # 之后会通过API设置和处理
-        self.input_messages: list[str] = []
 
         # self.output_queue_name = self.client_id             # WebSocket输出队列
         self.client_tasks: Dict[str, asyncio.Task] = {}
@@ -70,6 +64,7 @@ class AIService:
         self._init_game_status()
 
     def import_settings(self, settings: Dict) -> None:
+        # TODO: 这些以后全都可以删除，改为通过修改game_status的GameRole来实现
         if(settings):
             self.character_path = settings.get("resource_path")
             self.character_id = settings.get("character_id")  # TODO: character_id就是查找的role_id，这里写的不太优雅，可以之后优化
@@ -90,21 +85,10 @@ class AIService:
                                                          self.ai_prompt_example_old
                                                          )
 
-            self.voice_maker.set_lang(settings.get("language", "ja"))
-            # 设置角色路径，以便在TTS设置中使用
-            self.voice_maker.set_character_path(settings.get("resource_path", ""))
-            self.voice_maker.set_tts(settings.get("tts_type", "sbv"),
-                                     settings.get("voice_models", {}),
-                                     self.ai_name)
-
             self.clothes_name = settings.get("clothes_name")
             self.body_part = settings.get("body_part")
             self.clothes = settings.get("clothes")
             self.settings = settings
-
-            # if self.use_rag and self.rag_manager:
-            #     logger.info(f"检测到角色切换，正在为角色 (ID: {self.character_id}) 准备长期记忆...")
-            #     self.rag_manager.switch_rag_system_character(int(self.character_id) if self.character_id else 0)
 
         else:
             logger.error("角色信息settings没有被正常导入，请检查问题！")
@@ -126,19 +110,6 @@ class AIService:
                 self.llm_model = LLMManager()
                 self.message_generator.llm_model = self.llm_model
                 logger.info("运行时配置更新：LLMManager 已重建并替换。")
-
-            if any(k in updates for k in {"USE_RAG", "USE_MEMORY_SYSTEM"}):
-                new_use_rag = os.environ.get("USE_RAG", "False").lower() == "true" or \
-                              os.environ.get("USE_MEMORY_SYSTEM", "True").lower() == "true"
-                self.message_generator.use_rag = new_use_rag
-                if new_use_rag and self.rag_manager is None:
-                    self.rag_manager = RAGManager()
-                    self.message_generator.rag_manager = self.rag_manager
-                    logger.info("运行时配置更新：RAG 已启用并初始化。")
-                if not new_use_rag and self.rag_manager is not None:
-                    self.rag_manager = None
-                    self.message_generator.rag_manager = None
-                    logger.info("运行时配置更新：RAG 已关闭。")
 
             if "COMSUMERS" in updates:
                 try:
@@ -221,21 +192,12 @@ class AIService:
         """
         script_list = self.scripts_manager.get_script_list()
         if not script_list:
-            from ling_chat.core.messaging.broker import message_broker
-            await message_broker.publish(self.config.last_active_client, {
-                "type": "error",
-                "message": "没有可用的剧本：请把剧本放到 user_data/game_data/scripts 下，并包含 story_config.yaml",
-            })
-            return
+            raise ScriptEngineError("没有可用的剧本。")
 
         chosen = script_name or script_list[0]
         ok = await self.scripts_manager.start_script(chosen)
         if not ok:
-            from ling_chat.core.messaging.broker import message_broker
-            await message_broker.publish(self.config.last_active_client, {
-                "type": "error",
-                "message": f"开始剧本失败：找不到剧本 '{chosen}'（可用：{', '.join(script_list)}）",
-            })
+            raise ScriptEngineError(f"剧本 {chosen} 加载失败。")
 
     async def _process_client_messages(self, client_id: str):
         """处理单个客户端的消息"""

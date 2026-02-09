@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field, asdict
 from typing import Optional, List, Dict, Any, Self
 
+from ling_chat.core.ai_service.voice_maker import VoiceMaker
+
 
 @dataclass
 class GameMemoryBankMeta:
@@ -97,8 +99,6 @@ class GameRole:
     游戏角色数据模型
     """
     role_id: Optional[int] = None
-    # script_role_id removed in favor of unified Role mapping
-    # script_role_id: Optional[str] = None
     memory: List[Dict[str, Any]] = field(default_factory=list)
     
     display_name: Optional[str] = None
@@ -106,9 +106,27 @@ class GameRole:
     resource_path: Optional[str] = None
     prompt: Optional[str] = None
     memory_bank: GameMemoryBank = field(default_factory=GameMemoryBank)
+
+    voice_maker: VoiceMaker = field(default_factory=VoiceMaker)
+
+    def __post_init__(self):
+        """
+        在 dataclass 自动生成的 __init__ 执行完毕后，自动调用此方法。
+        用于初始化 VoiceMaker 的配置。
+        """
+        if self.resource_path:
+            self.voice_maker.set_character_path(self.resource_path)
+            
+        current_tts_type = self.settings.get("tts_type", "sbv")
+        role_name = self.display_name if self.display_name else f"Role_{self.role_id}"
+
+        self.voice_maker.set_tts(
+            tts_type=current_tts_type,
+            tts_settings=self.settings.get("voice_models",{}),
+            name=role_name
+        )
     
     def __hash__(self):
-        # Hash based on role_id if present, otherwise id of object
         return hash(self.role_id) if self.role_id is not None else id(self)
     
     def __eq__(self, other):
