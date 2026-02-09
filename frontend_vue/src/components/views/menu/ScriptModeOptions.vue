@@ -1,5 +1,5 @@
 <template>
-  <nav class="flex flex-col items-stretch w-[350px]">
+  <nav class="flex flex-col items-stretch w-87.5">
     <button
       v-for="(script, index) in currentPageScripts"
       :key="script.script_name"
