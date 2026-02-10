@@ -13,6 +13,30 @@
             :selectClothes="selectClothes"
             :isClothesSelected="isClothesSelected"
           >
+            <template #settings>
+              <button
+                class="settings-icon-btn"
+                @click.stop="openSettingsModal(character.id, character.title)"
+                title="角色设置"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path
+                    d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+                  ></path>
+                </svg>
+              </button>
+            </template>
             <template #actions>
               <Button
                 type="nav"
@@ -169,6 +193,15 @@
         </div>
       </div>
     </Transition>
+
+    <!-- Character Settings Modal -->
+    <CharacterSettingsModal
+      :visible="isSettingsModalVisible"
+      :role-id="settingsRoleId"
+      :title="settingsRoleTitle"
+      @close="closeSettingsModal"
+      @saved="handleSettingsSaved"
+    />
   </MenuPage>
 </template>
 
@@ -179,6 +212,7 @@ import { MenuItem } from '../../ui'
 import { Button } from '../../base'
 import CharacterCard from '../../ui/Menu/CharacterCard.vue'
 import CharacterList from '../../ui/Menu/CharacterList.vue'
+import CharacterSettingsModal from '../modals/CharacterSettingsModal.vue'
 import { characterGetAll, characterSelect } from '../../../api/services/character'
 import type { Character as ApiCharacter, Clothes } from '../../../types'
 import { useGameStore } from '../../../stores/modules/game'
@@ -197,6 +231,11 @@ const characters = ref<CharacterCard[]>([])
 const userId = ref<number>(1)
 const isClothesPopupVisible = ref<boolean>(false)
 const selectedCharacter = ref<CharacterCard | null>(null)
+
+// Settings Modal State
+const isSettingsModalVisible = ref(false)
+const settingsRoleId = ref<number | null>(null)
+const settingsRoleTitle = ref('')
 
 const gameStore = useGameStore()
 const userStore = useUserStore()
@@ -345,6 +384,25 @@ const openCreativeWeb = async (): Promise<void> => {
   }
 }
 
+const openSettingsModal = (roleId: number, title: string) => {
+  settingsRoleId.value = roleId
+  settingsRoleTitle.value = title
+  isSettingsModalVisible.value = true
+}
+
+const closeSettingsModal = () => {
+  isSettingsModalVisible.value = false
+  settingsRoleId.value = null
+}
+
+const handleSettingsSaved = () => {
+  loadCharacters() // Reload to show updated info
+  uiStore.showSuccess({
+    title: '保存成功',
+    message: '角色设置已更新',
+  })
+}
+
 function isSelected(id: number): boolean {
   return gameStore.mainRoleId === id
 }
@@ -407,6 +465,27 @@ watch(
 
 .selected {
   background-color: #10b981 !important;
+}
+
+.settings-icon-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.05);
+  color: #666;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.settings-icon-btn:hover {
+  background: white;
+  color: #5e72e4;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transform: rotate(90deg);
 }
 
 /* Clothes Grid */
