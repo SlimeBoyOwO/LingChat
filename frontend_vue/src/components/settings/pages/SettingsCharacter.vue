@@ -382,11 +382,7 @@ const closeSettingsModal = () => {
 }
 
 const handleSettingsSaved = () => {
-  loadCharacters() // Reload to show updated info
-  uiStore.showSuccess({
-    title: '保存成功',
-    message: '角色设置已更新',
-  })
+  refreshCharacters()
 }
 
 function isSelected(id: number): boolean {
