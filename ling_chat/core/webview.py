@@ -50,4 +50,5 @@ def func_webview():
 def start_webview():
     webview_process = multiprocessing.Process(target=func_webview)
     webview_process.start()
+    webview_process.join()
     return webview_process
