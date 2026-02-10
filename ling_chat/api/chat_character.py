@@ -76,6 +76,13 @@ async def update_settings(
         logger.error(f"保存角色设置失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"保存失败: {str(e)}")
 
+@router.get("/get_full_role_settings/{role_id}")
+async def get_full_role_settings(role_id: int):
+    settings = RoleManager.get_role_settings_by_id(role_id)
+    if not settings:
+        raise HTTPException(status_code=404, detail="角色配置不存在")
+    return settings.model_dump()
+
 @router.get("/get_role_info/{role_id}")
 async def get_role_info(role_id: int):
     # 1. 获取角色信息
