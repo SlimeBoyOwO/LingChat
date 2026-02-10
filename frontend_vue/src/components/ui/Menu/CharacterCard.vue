@@ -17,9 +17,7 @@
         <slot name="settings"></slot>
       </div>
 
-      <h5
-        class="font-semibold text-white mb-2 text-[18px] md:text-[20px] pr-8 text-shadow"
-      >
+      <h5 class="font-semibold text-white mb-2 text-[18px] md:text-[20px] pr-8 text-shadow">
         {{ name }}
       </h5>
       <p
