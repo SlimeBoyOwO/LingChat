@@ -17,7 +17,7 @@ class BackgroundEvent(BaseEvent):
         self.game_status.background = image
 
         event_response = ResponseFactory.create_background(image, duration = duration)
-        await message_broker.publish("1",
+        await message_broker.publish(self.client_id,
             event_response.model_dump()
         )
 

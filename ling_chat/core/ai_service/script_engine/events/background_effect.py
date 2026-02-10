@@ -4,7 +4,7 @@ from ling_chat.core.messaging.broker import message_broker
 from ling_chat.core.schemas.response_models import ResponseFactory
 
 
-class MusicEvent(BaseEvent):
+class BackgroundEffectEvent(BaseEvent):
     """处理音效事件"""
 
     async def execute(self):
@@ -15,7 +15,7 @@ class MusicEvent(BaseEvent):
         self.game_status.background_effect = background_effect
 
         event_response = ResponseFactory.create_background_effect(background_effect, duration = duration)
-        await message_broker.publish("1",
+        await message_broker.publish(self.client_id,
             event_response.model_dump()
         )
 

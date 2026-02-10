@@ -13,7 +13,6 @@ dependencies:
   - python-multipart
   - websockets
   - mss
-  - google-generativeai
   - py7zr
   - pillow
   - sqlmodel

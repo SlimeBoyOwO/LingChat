@@ -46,4 +46,6 @@ class EventsHandler:
 
         except Exception as e:
             logger.error(f"处理事件时出错: {event} - {e}")
-            # 可以根据需要决定是否继续执行下一个事件
+
+            import traceback
+            traceback.print_exc()

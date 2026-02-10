@@ -1,12 +1,13 @@
 import os
 from typing import Dict, List
 
+from ling_chat.core.ai_service.game_system.game_status import GameStatus
 from ling_chat.core.llm_providers.manager import LLMManager
 from ling_chat.core.logger import logger
 
 
 class Translator:
-    def __init__(self, voice_maker):
+    def __init__(self, game_status: GameStatus):
         self.enable:bool = True
         self.translator_llm: 'LLMManager' = LLMManager(llm_job="translator")
         self.messages = [{
@@ -21,7 +22,7 @@ class Translator:
             <はいはい、レムちゃん、今日はどうだった？><えっ？なんだかご機嫌ななめ？大丈夫だよ～>
             """
             }]
-        self.voice_maker = voice_maker
+        self.game_status = game_status
 
         self.enable_translate:bool = os.environ.get("ENABLE_TRANSLATE", "True").lower() == "true"
 
@@ -73,7 +74,8 @@ class Translator:
                             results[current_segment_index]["japanese_text"] = clean_sentence
 
                             # 实时生成语音
-                            await self.voice_maker.generate_voice_files(
+                            voice_maker = self.game_status.current_character.voice_maker
+                            await voice_maker.generate_voice_files(
                                 [results[current_segment_index]]
                             )
                             logger.info("开始生成下一条语音...")
@@ -103,7 +105,8 @@ class Translator:
                     results[current_segment_index]["japanese_text"] = clean_sentence
 
                     # 生成语音
-                    await self.voice_maker.generate_voice_files(
+                    voice_maker = self.game_status.current_character.voice_maker
+                    await voice_maker.generate_voice_files(
                         [results[current_segment_index]]
                     )
                     logger.info(f"生成语音完成: {clean_sentence}")
