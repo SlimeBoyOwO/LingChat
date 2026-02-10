@@ -195,7 +195,6 @@
                 <div class="p-4 bg-white/5 rounded-xl border border-white/10 space-y-4">
                   <h3 class="text-sm font-bold text-white/70 uppercase">声音模型配置</h3>
 
-
                   <div class="grid grid-cols-2 gap-4">
                     <!-- sva -->
                     <div v-if="localSettings.tts_type === 'sva'" class="form-group">
