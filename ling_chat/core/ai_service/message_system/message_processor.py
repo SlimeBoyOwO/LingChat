@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Dict, List
 
+from ling_chat.core.ai_service.game_system.game_status import GameStatus
 from ling_chat.core.ai_service.voice_maker import VoiceMaker
 from ling_chat.core.emotion.classifier import emotion_classifier
 from ling_chat.core.logger import logger
@@ -12,7 +13,7 @@ from ling_chat.utils.function import Function
 
 
 class MessageProcessor:
-    def __init__(self, voice_maker: VoiceMaker) -> None:
+    def __init__(self, game_status: GameStatus) -> None:
         # 记录消息发送间隔和次数提示
         self.last_time = datetime.now()
         self.sys_time_counter = 0
@@ -22,7 +23,7 @@ class MessageProcessor:
         self.time_sense_enabled = os.environ.get("USE_TIME_SENSE",True)
 
         # 用于存储语音目录位置，其实在voice_maker已经有了
-        self.voice_maker = voice_maker
+        self.game_status = game_status
 
     def analyze_emotions(self, text: str) -> List[Dict]:
         """分析文本中每个【】标记的情绪，并提取日语和中文部分"""
@@ -76,6 +77,7 @@ class MessageProcessor:
                 }
 
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            voice_maker = self.game_status.current_character.voice_maker
 
             results.append({
                 "index": i,
@@ -85,7 +87,7 @@ class MessageProcessor:
                 "japanese_text": japanese_text,
                 "predicted": prediction_result["label"],
                 "confidence": prediction_result["confidence"],
-                "voice_file": str(self.voice_maker.tts_provider.temp_dir / f"{uuid.uuid4()}_part_{i}.{self.voice_maker.tts_provider.format}")
+                "voice_file": str(voice_maker.tts_provider.temp_dir / f"{uuid.uuid4()}_part_{i}.{voice_maker.tts_provider.format}")
             })
 
         return results

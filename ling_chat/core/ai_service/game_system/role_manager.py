@@ -22,8 +22,24 @@ class GameRoleManager:
     def get_role(self, role_id: int) -> GameRole:
         """获取角色，如果不存在则在内存中初始化一个空的"""
         if role_id not in self.loaded_roles:
-            self.loaded_roles[role_id] = GameRole(role_id=role_id)
+            self._register_role_by_id(role_id)
         return self.loaded_roles[role_id]
+    
+    def _register_role_by_id(self, role_id: int):
+        role = RoleManager.get_role_by_id(role_id)
+        if not role or not role.id:
+            error_msg = f"角色 ID {role_id} 未在数据库中找到"
+            logger.error(error_msg)
+            raise RoleNotFoundError(error_msg)
+        
+        role_settings = RoleManager.get_role_settings_by_id(role.id)
+        if not role_settings:
+            error_msg = f"角色 ID {role_id} 的设置相关文件缺失"
+            logger.error(error_msg)
+            raise RoleNotFoundError(error_msg)
+        
+        new_role = GameRole(role_id=role.id, resource_path=role.resource_folder, settings=role_settings, display_name=role.name)
+        self.loaded_roles[role_id] = new_role
 
     def get_role_by_script_keys(self, script_key: str, script_role_key: str) -> GameRole:
         """
@@ -61,8 +77,10 @@ class GameRoleManager:
             slice_start_idx = 0
             system_addendum = ""
             short_term_prefix = ""
+
+            mb = self._get_memory_bank_system(role)
+
             try:
-                mb = self._get_memory_bank_system(role)
                 # 只有用户显式开启永久记忆时才触发自动压缩
                 if mb.is_enabled():
                     mb.check_and_trigger_auto_update(source_lines)
@@ -76,7 +94,12 @@ class GameRoleManager:
             sliced_lines = source_lines[slice_start_idx:] if slice_start_idx > 0 else source_lines
             builder = MemoryBuilder(target_role_id=rid)
             built = builder.build(sliced_lines)
-            role.memory = self._merge_memory_bank_into_context(built, system_addendum, short_term_prefix)
+
+            # 启动永久记忆的时候，才合并上下文逻辑
+            if mb.is_enabled():
+                role.memory = self._merge_memory_bank_into_context(built, system_addendum, short_term_prefix)
+            else:
+                role.memory = built
 
         # 【重要改动】去掉了自动删除 "stale" 角色的逻辑。
         # 角色加载后通常应该保留直到场景结束，频繁删除重建会浪费算力。
