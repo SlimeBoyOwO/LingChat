@@ -17,9 +17,8 @@ async def init_web_infos(client_id:str ,user_id: int):
 
         await service_manager.add_client(client_id)
 
-        offset_y = ai_service.settings.get("offset")
-        if offset_y is None:
-            offset_y = ai_service.settings.get("offset_y", 0)
+        offset_y = ai_service.settings.offset
+        offset_x = 0
 
         result = {
             "ai_name": ai_service.ai_name,
@@ -29,12 +28,12 @@ async def init_web_infos(client_id:str ,user_id: int):
             "character_id": ai_service.character_id,
             "clothes_name": ai_service.clothes_name,
             "clothes": ai_service.clothes,
-            "thinking_message": ai_service.settings.get("thinking_message", "灵灵正在思考中..."),
-            "scale": ai_service.settings.get("scale", 1.0),
+            "thinking_message": ai_service.settings.thinking_message or "灵灵正在思考中...",
+            "scale": ai_service.settings.scale or 1.0,
             "offset_y": offset_y,
-            "offset_x": ai_service.settings.get("offset_x", 0),
-            "bubble_top": ai_service.settings.get("bubble_top", 5),
-            "bubble_left": ai_service.settings.get("bubble_left", 20),
+            "offset_x": offset_x,
+            "bubble_top": ai_service.settings.bubble_top or 5,
+            "bubble_left": ai_service.settings.bubble_left or 20,
             "body_part": ai_service.body_part,
         }
         return {
