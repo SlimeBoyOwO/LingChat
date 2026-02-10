@@ -43,20 +43,20 @@ async def init_script(script_name: str):
     }
 
     for settings in scripts_manager.get_script_characters(script_name):
-        character_id = settings.get("character_id", "none")
+        character_id = settings.character_id
         result["characters"][character_id] = {
-            "ai_name": settings.get("ai_name", "无"),
-            "ai_subtitle": settings.get("ai_subtitle", "无"),
-            "thinking_message": ai_service.settings.get("thinking_message", "灵灵正在思考中..."),
-            "scale": settings.get("scale", 1.0),
-            "offset_x": settings.get("offset_x", 0),
-            "offset_y": settings.get("offset_y", 0),
-            "bubble_top": settings.get("bubble_top", 5),
-            "bubble_left": settings.get("bubble_left", 20),
+            "ai_name": settings.ai_name,
+            "ai_subtitle": settings.ai_subtitle,
+            "thinking_message": ai_service.settings.thinking_message or "灵灵正在思考中...",
+            "scale": settings.scale,
+            "offset_x": settings.offset_x,
+            "offset_y": settings.offset_y,
+            "bubble_top": settings.bubble_top,
+            "bubble_left": settings.bubble_left,
             # 兼容扩展字段（若 settings.txt 未提供则前端可忽略）
-            "clothes": settings.get("clothes", {}),
-            "clothes_name": settings.get("clothes_name", ""),
-            "body_part": settings.get("body_part", {}),
+            "clothes": settings.clothes,
+            "clothes_name": settings.clothes_name,
+            "body_part": settings.body_part,
         }
 
     return result

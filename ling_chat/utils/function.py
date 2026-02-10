@@ -1,4 +1,5 @@
 import os
+import ast
 import re
 import zipfile
 from datetime import datetime, timedelta
@@ -12,6 +13,7 @@ from ling_chat.core.logger import logger
 from ling_chat.core.schemas.responses import ReplyResponse
 from ling_chat.game_database.models import LineAttribute, LineBase
 from ling_chat.utils.runtime_path import temp_path
+from ling_chat.schemas.character_settings import CharacterSettings
 
 
 class Function:
@@ -159,8 +161,8 @@ class Function:
             value = match.group(2).strip()
             if key not in settings:  # 避免被多行字符串覆盖
                 try:
-                    # 使用eval将字符串转换为字典
-                    settings[key] = eval(value)
+                    # 使用ast.literal_eval将字符串转换为字典
+                    settings[key] = ast.literal_eval(value)
                 except:
                     # 如果解析失败，保留原始字符串
                     settings[key] = value
@@ -408,31 +410,103 @@ class Function:
         else:
             return f"{seconds}秒"
 
-    # 方法1：直接读取 YAML 文件
     @staticmethod
     def read_yaml_file(file_path):
         try:
             with open(file_path, 'r', encoding='utf-8') as file:
-                data = yaml.safe_load(file)
-            return data
+                return yaml.safe_load(file)
         except Exception as e:
             print(f"读取文件时发生错误: {e}")
             return None
 
-
-    # 方法2：如果你已经有 YAML 字符串内容
     @staticmethod
     def read_yaml_string(yaml_content):
-        data = yaml.safe_load(yaml_content)
-        return data
-    
+        return yaml.safe_load(yaml_content)
+
     @staticmethod
-    def sys_prompt_builder_by_setting(settings:dict) -> str:
-        ai_name = settings.get("ai_name","ai_name未设定")
-        user_name = settings.get("user_name", "user_name未设定")
-        ai_prompt = settings.get("system_prompt", "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息")
-        ai_prompt_example = settings.get("system_prompt_example","")
-        ai_prompt_example_old = settings.get("system_prompt_example_old", "")
+    def load_character_settings(dir_path: Path) -> CharacterSettings:
+        """
+        加载角色设置，优先读取 settings.yml，如果不存在则读取 settings.txt
+        Returns:
+            CharacterSettings: 角色设置模型
+        """
+        yaml_path = dir_path / "settings.yml"
+        txt_path = dir_path / "settings.txt"
+
+        settings_data = {}
+
+        if yaml_path.exists():
+            try:
+                settings_data = Function.read_yaml_file(yaml_path) or {}
+                # 验证并补充默认值
+                model = CharacterSettings(**settings_data)
+                # 注入 resource_path
+                model.resource_path = str(dir_path)
+                return model
+            except Exception as e:
+                logger.error(f"Failed to load settings.yml from {dir_path}: {e}")
+                # 如果yaml加载失败，尝试回退到txt
+                pass
+
+        if txt_path.exists():
+            settings_data = Function.parse_enhanced_txt(str(txt_path))
+            try:
+                 # 过滤掉 None 值以避免 Pydantic 校验错误（如果有非 Optional 字段）
+                clean_data = {k: v for k, v in settings_data.items() if v is not None}
+                model = CharacterSettings(**clean_data)
+                 # 重新赋值 resource_path，尽管 parse_enhanced_txt() 可能已经设置了
+                model.resource_path = str(dir_path)
+                return model
+            except Exception as e:
+                logger.warning(f"TXT settings validation failed for {dir_path}, returning raw dict: {e}")
+                return settings_data
+
+        return {}
+
+    @staticmethod
+    def save_character_settings(dir_path: Path, settings: CharacterSettings | dict, backup_txt: bool = True):
+        """
+        保存角色设置到 settings.yml
+        """
+        yaml_path = dir_path / "settings.yml"
+        txt_path = dir_path / "settings.txt"
+
+        try:
+            # 验证数据
+            if isinstance(settings, dict):
+                model = CharacterSettings(**settings)
+            else:
+                model = settings
+
+            # 准备数据进行保存（忽略resource_path）
+            save_data = model.model_dump(exclude={"resource_path"}) 
+
+            # 为了美观，使用 pyyaml dump
+            # allow_unicode=True 保证中文正常显示
+            with open(yaml_path, 'w', encoding='utf-8') as f:
+                yaml.dump(save_data, f, allow_unicode=True, sort_keys=False)
+
+            if backup_txt and txt_path.exists():
+                bak_path = txt_path.with_suffix('.txt.bak')
+                if not bak_path.exists(): # 避免覆盖已有的备份（如果是多次保存）
+                    txt_path.rename(bak_path)
+
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save settings to {dir_path}: {e}")
+            raise e
+
+
+    @staticmethod
+    def sys_prompt_builder_by_setting(settings: CharacterSettings | dict) -> str:
+        if isinstance(settings, dict):
+            settings = CharacterSettings(**settings)
+
+        ai_name = settings.ai_name
+        user_name = settings.user_name
+        ai_prompt = settings.system_prompt
+        ai_prompt_example = settings.system_prompt_example
+        ai_prompt_example_old = settings.system_prompt_example_old
         return Function.sys_prompt_builder(user_name, 
                                            ai_name, 
                                            ai_prompt, 
@@ -554,29 +628,29 @@ class Function:
         return ai_prompt
     
     @staticmethod
-    def convert_settings_to_role_info_dict(settings, role_id: int):
+    def convert_settings_to_role_info_dict(settings: CharacterSettings | dict, role_id: int):
         """
         将设置转换为角色信息字典
         """
+        if isinstance(settings, dict):
+            settings = CharacterSettings(**settings)
 
-        # offset_y默认从ai_service.settings:dict读取offset，如果没有，则读取offset_y
-        offset_y = settings.get("offset")
-        if offset_y is None:
-            offset_y = settings.get("offset_y", 0)
+        offset_y = settings.offset
+        offset_x = 0
 
         result = {
-            "ai_name": settings.get("ai_name","ai_name未设定"),
-            "ai_subtitle": settings.get("ai_subtitle",""),
+            "ai_name": settings.ai_name,
+            "ai_subtitle": settings.ai_subtitle,
             "character_id": role_id,
-            "clothes_name": settings.get("clothes_name"),
-            "clothes": settings.get("clothes"),
-            "thinking_message": settings.get("thinking_message", "正在思考中..."),
-            "scale": settings.get("scale", 1.0),
+            "clothes_name": settings.clothes_name,
+            "clothes": settings.clothes,
+            "thinking_message": settings.thinking_message,
+            "scale": settings.scale,
             "offset_y": offset_y,
-            "offset_x": settings.get("offset_x", 0),
-            "bubble_top": settings.get("bubble_top", 5),
-            "bubble_left": settings.get("bubble_left", 20),
-            "body_part":  settings.get("body_part"),
+            "offset_x": offset_x,
+            "bubble_top": settings.bubble_top,
+            "bubble_left": settings.bubble_left,
+            "body_part":  settings.body_part,
         }
         return result
 
