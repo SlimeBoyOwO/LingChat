@@ -39,6 +39,7 @@
         <Button type="big" @click="updateParticle(`Rain`)">雨水</Button>
         <Button type="big" @click="updateParticle(`Sakura`)">樱花</Button>
         <Button type="big" @click="updateParticle(`Snow`)">雪景</Button>
+        <Button type="big" @click="updateParticle(`Fireworks`)">烟花</Button>
       </div>
     </MenuItem>
   </MenuPage>
