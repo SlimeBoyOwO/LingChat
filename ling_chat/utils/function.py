@@ -478,8 +478,14 @@ class Function:
             else:
                 model = settings
 
-            # 准备数据进行保存（忽略resource_path）
-            save_data = model.model_dump(exclude={"resource_path"}) 
+            # 准备数据进行保存（忽略部分字段）
+            EXCLUDES = [
+                "character_id",
+                "resource_path",
+                "script_key",
+                "script_role_key",
+            ]
+            save_data = model.model_dump(exclude=EXCLUDES)
 
             # 为了美观，使用 pyyaml dump
             # allow_unicode=True 保证中文正常显示
