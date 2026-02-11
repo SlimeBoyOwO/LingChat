@@ -67,6 +67,7 @@ class OllamaProvider(BaseLLMProvider):
                     json=payload
                 ) as response:
                     if response.status_code != 200:
+                        response.read()
                         error_msg = f"Ollama 流式返回了错误: {response.status_code} - {response.text}"
                         logger.error(error_msg)
                         raise Exception(error_msg)
