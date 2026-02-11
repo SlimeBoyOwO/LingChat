@@ -198,7 +198,7 @@ import { Button, Icon } from '../../base'
 
 import CharacterCard from '../../ui/Menu/CharacterCard.vue'
 import CharacterList from '../../ui/Menu/CharacterList.vue'
-import CharacterSettingsModal from '../modals/CharacterSettingsModal.vue'
+import CharacterSettingsModal from './SettingsCharacterInfo.vue'
 import { characterGetAll, characterSelect } from '../../../api/services/character'
 import type { Character as ApiCharacter, Clothes } from '../../../types'
 import { useGameStore } from '../../../stores/modules/game'
