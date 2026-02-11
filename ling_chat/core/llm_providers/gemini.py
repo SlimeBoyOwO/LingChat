@@ -124,6 +124,7 @@ class GeminiProvider(BaseLLMProvider):
                     timeout=60.0
                 ) as response:
                     if response.status_code != 200:
+                        await response.aread()
                         error_msg = f"Gemini流式API请求错误: {response.status_code} - {response.text}"
                         logger.error(error_msg)
                         raise Exception(error_msg)
