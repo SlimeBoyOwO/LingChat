@@ -1,5 +1,5 @@
 import os
-
+import multiprocessing
 import webview
 
 from ling_chat.core.logger import logger
@@ -18,7 +18,7 @@ class Api:
         if self._window:
             self._window.toggle_fullscreen()
 
-def start_webview():
+def func_webview():
     try:
         api:Api = Api()
         window = webview.create_window(
@@ -45,3 +45,10 @@ def start_webview():
 
     except KeyboardInterrupt:
         logger.info("WebView被中断")
+
+
+def start_webview():
+    webview_process = multiprocessing.Process(target=func_webview)
+    webview_process.start()
+    webview_process.join()
+    return webview_process
