@@ -107,6 +107,14 @@ def run_main_program(args,is_wv=False):
     else:
         logger.info("已根据环境变量禁用语音检查")
 
+    # 检查是否自动启动语音合成软件
+    if os.getenv("AUTO_START_TTS_SOFTWARE", "false").lower() == "true":
+        from ling_chat.utils.tts_auto_start import start_tts_software
+        start_tts_software()
+    else:
+        logger.info("已禁用语音合成软件自动启动")
+
+
     # 检查环境变量决定是否启动前端界面
     if (os.getenv("OPEN_FRONTEND_APP", "false").lower() == "true" and not args.nogui) or args.gui:
         logger.stop_loading_animation(success=True, final_message="应用加载成功")
