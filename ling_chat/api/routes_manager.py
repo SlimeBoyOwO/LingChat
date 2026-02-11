@@ -8,6 +8,7 @@ from ling_chat.api.chat_script import router as chat_script_router
 from ling_chat.api.chat_sound import router as chat_sound_router
 from ling_chat.api.console_logs import router as console_logs_router
 from ling_chat.api.env_config import router as env_config_router
+from ling_chat.api.file_selector import router as file_selector_router
 from ling_chat.api.frontend_routes import get_audio_files, get_static_files
 from ling_chat.api.frontend_routes import router as frontend_router
 from ling_chat.api.new_chat_main import websocket_endpoint
@@ -24,6 +25,7 @@ class RoutesManager:
         app.include_router(frontend_router)
         app.include_router(chat_music_router)
         app.include_router(env_config_router)
+        app.include_router(file_selector_router)
         app.include_router(chat_achievement_router)
         app.include_router(chat_character_router)
         app.include_router(chat_background_router)

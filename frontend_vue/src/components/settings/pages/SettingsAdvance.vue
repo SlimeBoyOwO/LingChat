@@ -121,7 +121,24 @@
                     <p class="text-sm mt-1 mb-2 text-gray-300">
                       {{ setting.description || '' }}
                     </p>
+                    <!-- 如果是 TTS_SOFTWARE_PATH，添加文件选择按钮 -->
+                    <div v-if="setting.key === 'TTS_SOFTWARE_PATH'" class="flex gap-2">
+                      <input
+                        type="text"
+                        :id="setting.key"
+                        v-model="setting.value"
+                        class="flex-1 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+                      />
+                      <button
+                        @click="selectFile(setting)"
+                        type="button"
+                        class="px-4 py-2.5 bg-brand text-white rounded-lg hover:bg-[#0056b3] transition-colors duration-200 whitespace-nowrap"
+                      >
+                        浏览
+                      </button>
+                    </div>
                     <input
+                      v-else
                       type="text"
                       :id="setting.key"
                       v-model="setting.value"
@@ -203,6 +220,24 @@ const selectSubcategory = (category: string, subcategory: string) => {
 
 const updateSetting = (setting: { key: string; value: string }, isChecked: boolean) => {
   setting.value = isChecked ? 'true' : 'false'
+}
+
+const selectFile = async (setting: { key: string; value: string }) => {
+  try {
+    const response = await fetch('/api/settings/select-file')
+    const result = await response.json()
+    
+    if (result.path) {
+      setting.value = result.path
+    }
+  } catch (error: any) {
+    console.error('文件选择失败:', error)
+    saveStatus.message = `文件选择失败: ${error.message}`
+    saveStatus.color = 'red'
+    setTimeout(() => {
+      saveStatus.message = ''
+    }, 3000)
+  }
 }
 
 const saveSettings = async () => {
