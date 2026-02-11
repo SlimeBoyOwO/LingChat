@@ -13,11 +13,13 @@
               <Icon icon="setting" />
             </div>
             <div>
-              <h2 class="text-xl font-bold m-0 text-shadow">{{ title }} - 配置编辑</h2>
+              <h2 class="text-xl font-bold m-0 drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]">{{ title }} - 配置编辑</h2>
               <p class="text-sm text-white/50 m-0">修改角色的详细设置</p>
             </div>
           </div>
-          <button class="close-btn" @click="handleClose">
+          <button
+            class="w-9 h-9 rounded-full border-none bg-white/10 text-white flex items-center justify-center cursor-pointer transition-all duration-200 hover:bg-white/20 hover:rotate-90"
+            @click="handleClose">
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -30,7 +32,9 @@
         <div class="flex-1 overflow-hidden flex flex-row">
           <!-- Sidebar -->
           <div class="w-48 bg-black/10 flex flex-col gap-2 p-4 border-r border-white/10">
-            <button v-for="tab in tabs" :key="tab.id" class="tab-btn" :class="{ active: activeTab === tab.id }"
+            <button v-for="tab in tabs" :key="tab.id"
+              class="w-full text-left px-4 py-2.5 rounded-xl border-none bg-transparent text-white/60 cursor-pointer transition-all duration-200 font-medium hover:bg-white/5 hover:text-white"
+              :class="{ 'bg-[rgba(94,114,228,0.2)] !text-[#79d9ff] !font-semibold': activeTab === tab.id }"
               @click="activeTab = tab.id">
               {{ tab.label }}
             </button>
@@ -39,29 +43,32 @@
           <!-- Tab Panels -->
           <div class="flex-1 overflow-y-auto p-6 relative">
             <div v-if="loading" class="flex items-center justify-center h-full">
-              <div class="spinner"></div>
+              <div class="w-10 h-10 border-3 border-white/10 border-t-[#5e72e4] rounded-full animate-spin"></div>
             </div>
 
             <div v-else class="max-w-3xl mx-auto space-y-6">
-              <div v-if="currentTabConfig" class="space-y-4 animate-fade-in">
+              <div v-if="currentTabConfig" class="space-y-4">
                 <!-- Data-Driven Form Rendering -->
-                <div v-for="(field, index) in currentTabFields" :key="index" class="form-group">
+                <div v-for="(field, index) in currentTabFields" :key="index" class="flex flex-col gap-2">
                   <!-- Conditional Rendering wrapper -->
                   <template v-if="!field.visibleIf || field.visibleIf(localSettings)">
-                    <label :for="field.key">{{ field.label }} ({{ field.key }})</label>
+                    <label :for="field.key" class="text-[13px] text-white/60 font-medium">{{ field.label }} ({{ field.key }})</label>
 
                     <!-- Text Input -->
                     <input v-if="field.type === 'text' || field.type === 'number'" :id="field.key"
-                      v-model="fieldModel(field).value" :type="field.type" :step="field.step" class="form-input" />
+                      v-model="fieldModel(field).value" :type="field.type" :step="field.step"
+                      class="form-control bg-black/20 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-sm outline-none transition-all duration-200" />
 
                     <!-- Textarea -->
                     <textarea v-else-if="field.type === 'textarea'" :id="field.key" v-model="fieldModel(field).value"
-                      :rows="field.rows || 4" class="form-textarea font-mono text-sm leading-relaxed"></textarea>
+                      :rows="field.rows || 4"
+                      class="form-control bg-black/20 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-sm outline-none transition-all duration-200 font-mono leading-relaxed"></textarea>
 
                     <!-- Select -->
                     <select v-else-if="field.type === 'select'" :id="field.key" v-model="fieldModel(field).value"
-                      class="form-select">
-                      <option v-for="opt in field.options" :key="opt.value" :value="opt.value">
+                      class="form-control bg-black/20 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-sm outline-none transition-all duration-200">
+                      <option v-for="opt in field.options" :key="opt.value" :value="opt.value"
+                        class="bg-[#333] text-white">
                         {{ opt.label }}
                       </option>
                     </select>
@@ -72,10 +79,10 @@
                   class="p-4 bg-white/5 rounded-xl border border-white/10 space-y-4 mt-4">
                   <h3 class="text-sm font-bold text-white/70 uppercase">声音模型配置</h3>
                   <div class="grid grid-cols-2 gap-4">
-                    <div v-for="(field, index) in voiceModelFields" :key="'vm-' + index" class="form-group">
-                      <label :for="field.key">{{ field.key }}</label>
+                    <div v-for="(field, index) in voiceModelFields" :key="'vm-' + index" class="flex flex-col gap-2">
+                      <label :for="field.key" class="text-[13px] text-white/60 font-medium">{{ field.key }}</label>
                       <input :id="field.key" v-model="localSettings.voice_models[field.key]" type="text"
-                        class="form-input" />
+                        class="form-control bg-black/20 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-sm outline-none transition-all duration-200" />
                     </div>
                   </div>
                 </div>
@@ -87,9 +94,14 @@
         <!-- Footer -->
         <div
           class="p-4 border-t border-white/10 flex justify-end gap-3 bg-[linear-gradient(180deg,rgba(255,255,255,0.05)_0%,rgba(255,255,255,0.1)_100%)]">
-          <button class="footer-btn secondary" @click="handleClose">取消</button>
-          <button class="footer-btn primary" :disabled="saving" @click="saveSettings">
-            <span v-if="saving" class="spinner-sm mr-2"></span>
+          <button
+            class="px-5 py-2 rounded-[20px] text-sm font-medium cursor-pointer transition-all duration-200 border-none bg-white/10 text-white hover:bg-white/20"
+            @click="handleClose">取消</button>
+          <button
+            class="px-5 py-2 rounded-[20px] text-sm font-medium cursor-pointer transition-all duration-200 border-none bg-[#5e72e4] text-white disabled:opacity-60 disabled:cursor-not-allowed hover:enabled:bg-[#4a5acf] hover:enabled:-translate-y-px hover:enabled:shadow-[0_4px_12px_rgba(94,114,228,0.3)]"
+            :disabled="saving" @click="saveSettings">
+            <span v-if="saving"
+              class="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"></span>
             {{ saving ? '保存中...' : '保存更改' }}
           </button>
         </div>
@@ -299,176 +311,10 @@ const saveSettings = async () => {
 </script>
 
 <style scoped>
-/* Modal Transition */
-.modal-enter-active,
-.modal-leave-active {
-  transition: opacity 0.3s ease;
-}
-
-.modal-enter-from,
-.modal-leave-to {
-  opacity: 0;
-}
-
-/* Custom Styles */
-.text-shadow {
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-.close-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.close-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
-  transform: rotate(90deg);
-}
-
-.tab-btn {
-  width: 100%;
-  text-align: left;
-  padding: 10px 16px;
-  border-radius: 12px;
-  border: none;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.6);
-  cursor: pointer;
-  transition: all 0.2s;
-  font-weight: 500;
-}
-
-.tab-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: white;
-}
-
-.tab-btn.active {
-  background: rgba(94, 114, 228, 0.2);
-  color: #79d9ff;
-  font-weight: 600;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.form-group label {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.6);
-  font-weight: 500;
-}
-
-.form-input,
-.form-select,
-.form-textarea {
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 10px 14px;
-  color: white;
-  font-size: 14px;
-  outline: none;
-  transition: all 0.2s;
-}
-
-.form-input:focus,
-.form-select:focus,
-.form-textarea:focus {
-  border-color: #5e72e4;
+/* 表单控件 :focus 选中状态 */
+.form-control:focus {
+  border-color: #79d9ff;
   background: rgba(0, 0, 0, 0.3);
-  box-shadow: 0 0 0 3px rgba(94, 114, 228, 0.2);
-}
-
-.form-select option {
-  background-color: #333;
-  color: white;
-}
-
-.footer-btn {
-  padding: 8px 20px;
-  border-radius: 20px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  border: none;
-}
-
-.footer-btn.secondary {
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
-}
-
-.footer-btn.secondary:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-.footer-btn.primary {
-  background: #5e72e4;
-  color: white;
-}
-
-.footer-btn.primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.footer-btn.primary:not(:disabled):hover {
-  background: #4a5acf;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(94, 114, 228, 0.3);
-}
-
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid rgba(255, 255, 255, 0.1);
-  border-top-color: #5e72e4;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-.spinner-sm {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.animate-fade-in {
-  animation: fadeIn 0.3s ease;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  box-shadow: 0 0 0 3px rgba(121, 217, 255, 0.2);
 }
 </style>
