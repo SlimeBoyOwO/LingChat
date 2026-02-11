@@ -85,9 +85,9 @@ class ScriptManager:
         self._register_script_roles(script)
         # 2. 导入玩家信息
         if script.settings:
-            player = Player(script.settings.user_name,
-                            script.settings.user_subtitle,
-                            script.settings.user_settings)           
+            player = Player(script.settings.get("user_name", ""),
+                            script.settings.get("user_subtitle", ""),
+                            script.settings.get("user_settings", ""))
             # 3. 检查玩家信息是否完整，决定是否导入到GameStatus中
             if player.user_name == "" and player.user_subtitle == "":
                 logger.info("本剧本未设定玩家身份，将使用默认玩家身份")
