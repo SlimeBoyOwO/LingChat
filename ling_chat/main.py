@@ -72,7 +72,7 @@ def run_cli_command(args):
 
 
 def run_main_program(args,is_wv=False):
-    from ling_chat.api.app_server import run_app_in_thread
+    from ling_chat.api.app_server import run_app_in_thread, stop_app_server
 
     from ling_chat.utils.cli import print_logo
     from ling_chat.utils.function import Function
@@ -99,34 +99,45 @@ def run_main_program(args,is_wv=False):
     # handle_install(install_modules) TODO: 未来版本可能会启用自动安装功能
     selected_loading_message = get_random_loading_message()
     logger.start_loading_animation(message=selected_loading_message, animation_style="auto")
-    check_static_copy()
-    handle_run(args.run or [])
-    app_thread = run_app_in_thread()
-    if os.getenv("VOICE_CHECK", "false").lower() == "true":
-        VoiceCheck.main()
-    else:
-        logger.info("已根据环境变量禁用语音检查")
+    app_thread: threading.Thread | None = None
+    try:
+        check_static_copy()
+        handle_run(args.run or [])
+        app_thread = run_app_in_thread()
+        if os.getenv("VOICE_CHECK", "false").lower() == "true":
+            VoiceCheck.main()
+        else:
+            logger.info("已根据环境变量禁用语音检查")
 
-    # 检查环境变量决定是否启动前端界面
-    if (os.getenv("OPEN_FRONTEND_APP", "false").lower() == "true" and not args.nogui) or args.gui:
-        logger.stop_loading_animation(success=True, final_message="应用加载成功")
-        print_logo()
-        logger.warning("[前端界面已启用，可使用 --nogui 启用无前端窗口模式")
+        # 检查环境变量决定是否启动前端界面
+        if (os.getenv("OPEN_FRONTEND_APP", "false").lower() == "true" and not args.nogui) or args.gui:
+            logger.stop_loading_animation(success=True, final_message="应用加载成功")
+            print_logo()
+            logger.warning("[前端界面已启用，可使用 --nogui 启用无前端窗口模式")
+            try:
+                start_webview()
+            except KeyboardInterrupt:
+                logger.info("用户关闭程序")
+        else:
+            logger.info("前端界面已禁用，可使用请使用 --gui 强制启用前端窗口")
+            logger.stop_loading_animation(success=True, final_message="应用加载成功")
+            print_logo()
+            try:
+                while (not exit_event.is_set()) and (app_thread is not None) and app_thread.is_alive():
+                    time.sleep(0.1)
+            except KeyboardInterrupt:
+                logger.info("用户关闭程序")
+    finally:
+        # 主动停止后端，避免 anyio/线程池空转导致退出延迟
         try:
-            start_webview()
-        except KeyboardInterrupt:
-            logger.info("用户关闭程序")
-    else:
-        logger.info("前端界面已禁用，可使用请使用 --gui 强制启用前端窗口")
-        logger.stop_loading_animation(success=True, final_message="应用加载成功")
-        print_logo()
+            stop_app_server()
+        except Exception as e:
+            logger.error(f"停止后端服务失败: {e}", exc_info=True)
+        logger.info("程序已退出")
         try:
-            while (not exit_event.is_set()) and app_thread.is_alive():
-                time.sleep(0.1)
-        except KeyboardInterrupt:
-            logger.info("用户关闭程序")
-
-    logger.info("程序已退出")
+            logger.shutdown()
+        except Exception:
+            pass
 
 
 def main():

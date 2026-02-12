@@ -8,11 +8,27 @@ from ling_chat.core.llm_providers.base import BaseLLMProvider
 from ling_chat.core.logger import logger
 
 
+def _normalize_base_url(raw: str) -> str:
+    raw = (raw or "").strip()
+    if not raw:
+        return "http://localhost:11434"
+    if raw.startswith("http://") or raw.startswith("https://"):
+        return raw.rstrip("/")
+    return f"http://{raw}".rstrip("/")
+
+
 class OllamaProvider(BaseLLMProvider):
     def __init__(self):
         super().__init__()
-        self.base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-        self.model_type = os.environ.get("OLLAMA_MODEL", "llama3")
+        self.base_url = _normalize_base_url(
+            os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+        )
+        self.model_type = (
+            os.environ.get("OLLAMA_MODEL")
+            or os.environ.get("MODEL_TYPE")
+            or "llama3"
+        )
+        self._timeout = httpx.Timeout(timeout=30.0, connect=5.0)
 
     def initialize_client(self):
         pass
@@ -20,7 +36,7 @@ class OllamaProvider(BaseLLMProvider):
     def generate_response(self, messages: List[Dict]) -> str:
         """生成Ollama模型响应"""
         try:
-            logger.debug(f"Sending request to Ollama API: {self.base_url}/api/chat")
+            logger.info(f"Sending request to Ollama API: {self.base_url}/api/chat")
 
             payload = {
                 "model": self.model_type,
@@ -28,7 +44,7 @@ class OllamaProvider(BaseLLMProvider):
                 "stream": False
             }
 
-            with httpx.Client() as client:
+            with httpx.Client(timeout=self._timeout) as client:
                 response = client.post(
                     f"{self.base_url}/api/chat",
                     json=payload
@@ -52,7 +68,7 @@ class OllamaProvider(BaseLLMProvider):
         :return: 返回一个生成器，每次迭代返回一个内容块
         """
         try:
-            logger.debug(f"正在给 Ollama 发送流式请求: {self.base_url}/api/chat")
+            logger.info(f"正在给 Ollama 发送流式请求: {self.base_url}/api/chat")
 
             payload = {
                 "model": self.model_type,
@@ -60,19 +76,24 @@ class OllamaProvider(BaseLLMProvider):
                 "stream": True
             }
 
-            with httpx.Client() as client:
-                with client.stream(
-                    'POST',
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                async with client.stream(
+                    "POST",
                     f"{self.base_url}/api/chat",
-                    json=payload
+                    json=payload,
                 ) as response:
                     if response.status_code != 200:
-                        response.read()
-                        error_msg = f"Ollama 流式返回了错误: {response.status_code} - {response.text}"
+                        body = await response.aread()
+                        text = ""
+                        try:
+                            text = body.decode("utf-8", errors="replace")
+                        except Exception:
+                            text = str(body)
+                        error_msg = f"Ollama 流式返回了错误: {response.status_code} - {text}"
                         logger.error(error_msg)
                         raise Exception(error_msg)
 
-                    for line in response.iter_lines():
+                    async for line in response.aiter_lines():
                         if line.strip():  # 确保不是空行
                             try:
                                 chunk_json = json.loads(line)

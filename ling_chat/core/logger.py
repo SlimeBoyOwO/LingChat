@@ -98,6 +98,7 @@ class Logger:
         self._is_animating = False
         self._current_animation_line_width = 0
         self._animation_lock = threading.Lock()
+        self._is_shutting_down = False
 
         self._initialize_logger()
 
@@ -202,6 +203,40 @@ class Logger:
     def critical(self, message: str, exc_info: bool = False):
         """记录严重错误级别日志"""
         self._logger.critical(message, exc_info=exc_info)
+
+    def shutdown(self) -> None:
+        """
+        主动结束日志系统。
+        - 停止动画线程，避免退出阶段写 stdout
+        - 关闭并移除 handler，减少解释器退出阶段的锁竞争
+        """
+        self._is_shutting_down = True
+        try:
+            self.stop_loading_animation(success=True)
+        except Exception:
+            pass
+
+        try:
+            for handler in list(self._logger.handlers):
+                try:
+                    handler.flush()
+                except Exception:
+                    pass
+                try:
+                    handler.close()
+                except Exception:
+                    pass
+                try:
+                    self._logger.removeHandler(handler)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        try:
+            logging.shutdown()
+        except Exception:
+            pass
 
     def info_color(self, message: str, color: str = TermColors.GREEN, exc_info: bool = False):
         """使用自定义颜色输出信息"""
@@ -320,6 +355,14 @@ class AnimationAwareStreamHandler(logging.StreamHandler):
 
     def emit(self, record):
         logger = Logger()
+
+        if getattr(logger, "_is_shutting_down", False):
+            # 退出阶段避免额外的清屏/flush 行为引发阻塞
+            try:
+                super().emit(record)
+            except Exception:
+                pass
+            return
 
         if hasattr(record, 'is_animation_control') and getattr(record, 'is_animation_control', False):
             super().emit(record)
