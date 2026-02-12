@@ -14,6 +14,8 @@ const MAX_HEIGHT = 4320
 const GRAVITY = 0.9
 const PI_2 = Math.PI * 2
 const PI_HALF = Math.PI * 0.5
+const TARGET_FPS = 60
+const FRAME_DURATION = 1000 / TARGET_FPS
 
 // Colors
 const COLOR = {
@@ -44,6 +46,9 @@ let isUpdatingSpeed = false
 let speedBarOpacity = 0
 let isPaused = false
 let isRunning = false
+
+// Performance control
+let lastFrameTime = 0
 
 // Animation frame
 let animationId: number
@@ -766,11 +771,19 @@ onMounted(async () => {
   }, 3000)
   
   // Start animation loop
-  function loop() {
-    update()
+  function loop(timestamp: number) {
+    // Frame rate control
+    const deltaTime = timestamp - lastFrameTime
+    
+    if (deltaTime >= FRAME_DURATION) {
+      update()
+      lastFrameTime = timestamp - (deltaTime % FRAME_DURATION)
+    }
+    
     animationId = requestAnimationFrame(loop)
   }
-  loop()
+  lastFrameTime = performance.now()
+  animationId = requestAnimationFrame(loop)
 })
 
 onUnmounted(() => {
