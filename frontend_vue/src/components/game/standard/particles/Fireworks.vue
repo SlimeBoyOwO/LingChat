@@ -1,7 +1,7 @@
 <template>
   <div class="fireworks-container">
     <canvas ref="trailsCanvas" class="trails-canvas"></canvas>
-    <canvas ref="mainCanvas" class="main-canvas" ></canvas>
+    <canvas ref="mainCanvas" class="main-canvas"></canvas>
   </div>
 </template>
 
@@ -24,17 +24,16 @@ const COLOR = {
   Blue: '#1e7fff',
   Purple: '#e60aff',
   Gold: '#ffbf36',
-  White: '#ffffff'
+  White: '#ffffff',
 } as const
 const INVISIBLE = '_INVISIBLE_'
 const COLOR_NAMES = Object.keys(COLOR)
-const COLOR_CODES = COLOR_NAMES.map(colorName => COLOR[colorName as keyof typeof COLOR])
+const COLOR_CODES = COLOR_NAMES.map((colorName) => COLOR[colorName as keyof typeof COLOR])
 const COLOR_CODES_W_INVIS = [...COLOR_CODES, INVISIBLE]
 
 // Canvas refs
 const trailsCanvas = ref<HTMLCanvasElement>()
 const mainCanvas = ref<HTMLCanvasElement>()
-
 
 // State
 let stageW = 0
@@ -46,6 +45,7 @@ let isUpdatingSpeed = false
 let speedBarOpacity = 0
 let isPaused = false
 let isRunning = false
+let isVisible = true
 
 // Performance control
 let lastFrameTime = 0
@@ -133,10 +133,19 @@ const Star = {
       updateFrame: 0,
       secondColor: undefined,
       transitionTime: 0,
-      colorChanged: false
+      colorChanged: false,
     }
   },
-  add(x: number, y: number, color: string, angle: number, speed: number, life: number, speedOffX?: number, speedOffY?: number): StarInstance {
+  add(
+    x: number,
+    y: number,
+    color: string,
+    angle: number,
+    speed: number,
+    life: number,
+    speedOffX?: number,
+    speedOffY?: number,
+  ): StarInstance {
     const instance = this._pool.pop() || this._new()
     instance.visible = true
     instance.heavy = false
@@ -173,7 +182,7 @@ const Star = {
     instance.transitionTime = 0
     instance.colorChanged = false
     this._pool.push(instance)
-  }
+  },
 }
 
 const Spark = {
@@ -190,10 +199,17 @@ const Spark = {
       color: '',
       speedX: 0,
       speedY: 0,
-      life: 0
+      life: 0,
     }
   },
-  add(x: number, y: number, color: string, angle: number, speed: number, life: number): SparkInstance {
+  add(
+    x: number,
+    y: number,
+    color: string,
+    angle: number,
+    speed: number,
+    life: number,
+  ): SparkInstance {
     const instance = this._pool.pop() || this._new()
     instance.x = x
     instance.y = y
@@ -208,7 +224,7 @@ const Spark = {
   },
   returnInstance(instance: SparkInstance) {
     this._pool.push(instance)
-  }
+  },
 }
 
 const BurstFlash = {
@@ -218,7 +234,7 @@ const BurstFlash = {
     return {
       x: 0,
       y: 0,
-      radius: 0
+      radius: 0,
     }
   },
   add(x: number, y: number, radius: number): BurstFlashInstance {
@@ -231,26 +247,32 @@ const BurstFlash = {
   },
   returnInstance(instance: BurstFlashInstance) {
     this._pool.push(instance)
-  }
+  },
 }
 
 // Helper functions
 function createParticleCollection() {
   const collection: Record<string, any[]> = {}
-  COLOR_CODES_W_INVIS.forEach(color => {
+  COLOR_CODES_W_INVIS.forEach((color) => {
     collection[color] = []
   })
   return collection
 }
 
 function randomColor() {
-  return COLOR_CODES[Math.random() * COLOR_CODES.length | 0]
+  return COLOR_CODES[(Math.random() * COLOR_CODES.length) | 0]
 }
 
-function createParticleArc(start: number, arcLength: number, count: number, randomness: number, particleFactory: (angle: number) => void) {
+function createParticleArc(
+  start: number,
+  arcLength: number,
+  count: number,
+  randomness: number,
+  particleFactory: (angle: number) => void,
+) {
   const angleDelta = arcLength / count
-  const end = start + arcLength - (angleDelta * 0.5)
-  
+  const end = start + arcLength - angleDelta * 0.5
+
   if (end > start) {
     for (let angle = start; angle < end; angle = angle + angleDelta) {
       particleFactory(angle + Math.random() * angleDelta * randomness)
@@ -262,13 +284,18 @@ function createParticleArc(start: number, arcLength: number, count: number, rand
   }
 }
 
-function createBurst(count: number, particleFactory: (angle: number, ringSize: number) => void, startAngle = 0, arcLength = PI_2) {
+function createBurst(
+  count: number,
+  particleFactory: (angle: number, ringSize: number) => void,
+  startAngle = 0,
+  arcLength = PI_2,
+) {
   const R = 0.5 * Math.sqrt(count / Math.PI)
   const C = 2 * R * Math.PI
   const C_HALF = C / 2
 
   for (let i = 0; i <= C_HALF; i++) {
-    const ringAngle = i / C_HALF * PI_HALF
+    const ringAngle = (i / C_HALF) * PI_HALF
     const ringSize = Math.cos(ringAngle)
     const partsPerFullRing = C * ringSize
     const partsPerArc = partsPerFullRing * (arcLength / PI_2)
@@ -291,10 +318,13 @@ function crysanthemumShell(size: number) {
   const color = singleColor ? randomColor() : [randomColor(), randomColor()]
   const pistil = singleColor && Math.random() < 0.42
   const pistilColor = pistil && makePistilColor(color as string)
-  const secondColor = singleColor && (Math.random() < 0.2 || color === COLOR.White) ? pistilColor || randomColor() : null
+  const secondColor =
+    singleColor && (Math.random() < 0.2 || color === COLOR.White)
+      ? pistilColor || randomColor()
+      : null
   const streamers = !pistil && color !== COLOR.White && Math.random() < 0.42
   const starDensity = glitter ? 1.1 : 1.25
-  
+
   return {
     shellSize: size,
     spreadSize: 300 + size * 100,
@@ -306,12 +336,16 @@ function crysanthemumShell(size: number) {
     glitterColor: Math.random() < 0.5 ? COLOR.Gold : COLOR.White,
     pistil,
     pistilColor,
-    streamers
+    streamers,
   }
 }
 
 function makePistilColor(shellColor: string | string[]) {
-  return (shellColor === COLOR.White || shellColor === COLOR.Gold) ? randomColor() : (Math.random() < 0.5 ? COLOR.Gold : COLOR.White)
+  return shellColor === COLOR.White || shellColor === COLOR.Gold
+    ? randomColor()
+    : Math.random() < 0.5
+      ? COLOR.Gold
+      : COLOR.White
 }
 
 // Shell class
@@ -350,8 +384,9 @@ class Shell {
     Object.assign(this, options)
     this.starLifeVariation = options.starLifeVariation || 0.125
     this.color = options.color || randomColor()
-    this.glitterColor = options.glitterColor || (typeof this.color === 'string' ? this.color : randomColor())
-    
+    this.glitterColor =
+      options.glitterColor || (typeof this.color === 'string' ? this.color : randomColor())
+
     if (!this!.starCount) {
       const density = options.starDensity || 1
       const scaledSize = (this.spreadSize || 300) / 54
@@ -369,7 +404,7 @@ class Shell {
 
     const launchX = position * (width - hpad * 2) + hpad
     const launchY = height
-    const burstY = minHeight - (launchHeight * (minHeight - vpad))
+    const burstY = minHeight - launchHeight * (minHeight - vpad)
     const launchDistance = launchY - burstY
     const launchVelocity = Math.pow(launchDistance * 0.04, 0.64)
 
@@ -379,7 +414,7 @@ class Shell {
       typeof this.color === 'string' && this.color !== 'random' ? this.color : COLOR.White,
       Math.PI,
       launchVelocity * (this.horsetail ? 1.2 : 1),
-      launchVelocity * (this.horsetail ? 100 : 400)
+      launchVelocity * (this.horsetail ? 100 : 400),
     )
 
     comet.heavy = true
@@ -423,12 +458,13 @@ class Shell {
       const star = Star.add(
         x,
         y,
-        color as string || randomColor() as string,
+        (color as string) || (randomColor() as string),
         angle,
         speedMult * speed,
-        this.starLife as number + Math.random() * (this.starLife as number) * this.starLifeVariation,
+        (this.starLife as number) +
+          Math.random() * (this.starLife as number) * this.starLifeVariation,
         this.horsetail ? 0 : 0,
-        this.horsetail ? 0 : -standardInitialSpeed
+        this.horsetail ? 0 : -standardInitialSpeed,
       )
 
       if (this.secondColor) {
@@ -457,7 +493,7 @@ class Shell {
     if (typeof this.color === 'string') {
       if (this.color === 'random') {
         color = randomColor()
-      } else {
+      } else {                    
         color = this.color
       }
 
@@ -465,7 +501,7 @@ class Shell {
         const ringStartAngle = Math.random() * Math.PI
         const ringSquash = Math.pow(Math.random(), 2) * 0.85 + 0.15
 
-        createParticleArc(0, PI_2, this.starCount, 0, angle => {
+        createParticleArc(0, PI_2, this.starCount, 0, (angle) => {
           const initSpeedX = Math.sin(angle) * speed * ringSquash
           const initSpeedY = Math.cos(angle) * speed
           const newSpeed = Math.sqrt(initSpeedX * initSpeedX + initSpeedY * initSpeedY)
@@ -476,7 +512,8 @@ class Shell {
             color as string,
             newAngle,
             newSpeed,
-            this.starLife as number + Math.random() * (this.starLife as number) * this.starLifeVariation
+            (this.starLife as number) +
+              Math.random() * (this.starLife as number) * this.starLifeVariation,
           )
 
           if (this.glitter) {
@@ -508,7 +545,7 @@ class Shell {
       }
     }
 
-    BurstFlash.add(x, y, this.spreadSize as number / 4)
+    BurstFlash.add(x, y, (this.spreadSize as number) / 4)
   }
 }
 
@@ -518,10 +555,10 @@ function handleResize() {
   const h = window.innerHeight
   const containerW = Math.min(w, MAX_WIDTH)
   const containerH = w <= 420 ? h : Math.min(h, MAX_HEIGHT)
-  
+
   stageW = containerW
   stageH = containerH
-  
+
   if (trailsCanvas.value && mainCanvas.value) {
     trailsCanvas.value.width = containerW
     trailsCanvas.value.height = containerH
@@ -532,7 +569,7 @@ function handleResize() {
 
 function handlePointerStart(event: PointerEvent) {
   activePointerCount++
-  
+
   if (!isRunning) return
 
   if (updateSpeedFromEvent(event)) {
@@ -568,7 +605,7 @@ function updateSpeedFromEvent(event: PointerEvent) {
 function launchRandomShell(x: number, y: number) {
   const audio = new Audio('/audio/fireworks.mp3')
   audio.volume = 0.5
-  audio.play().catch(error => {
+  audio.play().catch((error) => {
     console.log('Audio playback failed:', error)
   })
 
@@ -580,9 +617,48 @@ function launchRandomShell(x: number, y: number) {
   shell.launch(position, launchHeight)
 }
 
+function handleVisibilityChange() {
+  isVisible = !document.hidden
+  if (!isVisible) {
+    // When tab becomes hidden, pause the simulation and clean up particles
+    isPaused = true
+    // Clear all active particles to prevent accumulation
+    clearAllParticles()
+  } else {
+    // When tab becomes visible again, resume
+    isPaused = false
+  }
+}
+
+function clearAllParticles() {
+  // Clear all stars
+  COLOR_CODES_W_INVIS.forEach((color) => {
+    const stars = Star.active[color]
+    while (stars!.length > 0) {
+      const star = stars!.pop()!
+      Star.returnInstance(star)
+    }
+  })
+
+  // Clear all sparks
+  COLOR_CODES_W_INVIS.forEach((color) => {
+    const sparks = Spark.active[color]
+    while (sparks!.length > 0) {
+      const spark = sparks!.pop()!
+      Spark.returnInstance(spark)
+    }
+  })
+
+  // Clear all burst flashes
+  while (BurstFlash.active.length > 0) {
+    const flash = BurstFlash.active.pop()!
+    BurstFlash.returnInstance(flash)
+  }
+}
+
 function updateGlobals() {
   currentFrame++
-  
+
   if (!isUpdatingSpeed) {
     speedBarOpacity -= 1 / 30
     if (speedBarOpacity < 0) speedBarOpacity = 0
@@ -599,11 +675,11 @@ function update() {
   const starDrag = 1 - (1 - Star.airDrag) * speed
   const starDragHeavy = 1 - (1 - Star.airDragHeavy) * speed
   const sparkDrag = 1 - (1 - Spark.airDrag) * speed
-  const gAcc = timeStep / 1000 * GRAVITY
+  const gAcc = (timeStep / 1000) * GRAVITY
 
   updateGlobals()
 
-  COLOR_CODES_W_INVIS.forEach(color => {
+  COLOR_CODES_W_INVIS.forEach((color) => {
     const stars = Star.active[color]
     for (let i = stars!.length - 1; i >= 0; i--) {
       const star = stars![i]
@@ -622,7 +698,7 @@ function update() {
         star.prevY = star.y
         star.x += star.speedX * speed
         star.y += star.speedY * speed
-        
+
         if (!star.heavy) {
           star.speedX *= starDrag
           star.speedY *= starDrag
@@ -630,7 +706,7 @@ function update() {
           star.speedX *= starDragHeavy
           star.speedY *= starDragHeavy
         }
-        
+
         star.speedY += gAcc
 
         if (star.sparkFreq) {
@@ -643,7 +719,7 @@ function update() {
               star.sparkColor,
               Math.random() * PI_2,
               Math.random() * star.sparkSpeed * burnRate,
-              star.sparkLife * 0.8 + Math.random() * star.sparkLifeVariation * star.sparkLife
+              star.sparkLife * 0.8 + Math.random() * star.sparkLifeVariation * star.sparkLife,
             )
           }
         }
@@ -691,7 +767,7 @@ function update() {
 function render() {
   const trailsCtx = trailsCanvas.value?.getContext('2d')
   const mainCtx = mainCanvas.value?.getContext('2d')
-  
+
   if (!trailsCtx || !mainCtx) return
 
   const width = stageW
@@ -708,12 +784,12 @@ function render() {
   mainCtx.strokeStyle = '#fff'
   mainCtx.lineWidth = 1
   mainCtx.beginPath()
-  
-  COLOR_CODES.forEach(color => {
+
+  COLOR_CODES.forEach((color) => {
     const stars = Star.active[color]
     trailsCtx.strokeStyle = color
     trailsCtx.beginPath()
-    stars!.forEach(star => {
+    stars!.forEach((star) => {
       if (star.visible) {
         trailsCtx.moveTo(star.x, star.y)
         trailsCtx.lineTo(star.prevX, star.prevY)
@@ -727,11 +803,11 @@ function render() {
 
   trailsCtx.lineWidth = Spark.drawWidth
   trailsCtx.lineCap = 'butt'
-  COLOR_CODES.forEach(color => {
+  COLOR_CODES.forEach((color) => {
     const sparks = Spark.active[color]
     trailsCtx.strokeStyle = color
     trailsCtx.beginPath()
-    sparks!.forEach(spark => {
+    sparks!.forEach((spark) => {
       trailsCtx.moveTo(spark.x, spark.y)
       trailsCtx.lineTo(spark.prevX, spark.prevY)
     })
@@ -751,35 +827,37 @@ function render() {
 onMounted(async () => {
   await nextTick()
   handleResize()
-  
+
   window.addEventListener('resize', handleResize)
   window.addEventListener('pointerdown', handlePointerStart)
   window.addEventListener('pointerup', handlePointerEnd)
   window.addEventListener('pointermove', handlePointerMove)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 
   isRunning = true
   isPaused = false
-  
+  isVisible = !document.hidden
+
   // Start with some random fireworks
   autoLaunchInterval = setInterval(() => {
-    if (isRunning && !isPaused) {
+    if (isRunning && !isPaused && isVisible) {
       const fireworkCount = Math.random() < 0.7 ? 1 : Math.floor(Math.random() * 5) + 1
       for (let i = 0; i < fireworkCount; i++) {
         launchRandomShell(Math.random() * stageW, Math.random() * stageH * 0.5)
       }
     }
   }, 3000)
-  
+
   // Start animation loop
   function loop(timestamp: number) {
     // Frame rate control
     const deltaTime = timestamp - lastFrameTime
-    
-    if (deltaTime >= FRAME_DURATION) {
+
+    if (deltaTime >= FRAME_DURATION && isVisible) {
       update()
       lastFrameTime = timestamp - (deltaTime % FRAME_DURATION)
     }
-    
+
     animationId = requestAnimationFrame(loop)
   }
   lastFrameTime = performance.now()
@@ -791,6 +869,7 @@ onUnmounted(() => {
   window.removeEventListener('pointerdown', handlePointerStart)
   window.removeEventListener('pointerup', handlePointerEnd)
   window.removeEventListener('pointermove', handlePointerMove)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
   cancelAnimationFrame(animationId)
   clearInterval(autoLaunchInterval)
 })
@@ -807,7 +886,8 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
-.trails-canvas, .main-canvas {
+.trails-canvas,
+.main-canvas {
   position: absolute;
   top: 0;
   left: 0;
