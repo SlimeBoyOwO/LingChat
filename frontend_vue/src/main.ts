@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import { connectWebSocket } from './api/websocket'
 import { initializeEventProcessors } from './core/events'
+import { getWebSocketUrl } from './config/backend'
 
 import App from './App.vue'
 import './assets/styles/base.css'
@@ -16,7 +17,7 @@ import logForwarderPlugin from './plugins/logForwarder'
 
 const app = createApp(App)
 
-connectWebSocket('ws://localhost:8765/ws')
+connectWebSocket(getWebSocketUrl())
 
 initializeEventProcessors()
 
