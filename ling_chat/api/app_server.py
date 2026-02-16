@@ -49,36 +49,24 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 # CORS配置
+# 默认配置
+allow_origins = []
+allow_origin_regex = None # 初始化正则变量
 # 从环境变量读取允许的源，如果未设置则使用常见开发源
 allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "")
 if allowed_origins_str:
     # 按逗号分割多个源
     allow_origins = [origin.strip() for origin in allowed_origins_str.split(",")]
 else:
-    # 如果未设置，使用常见开发源
-    frontend_host = os.getenv("FRONTEND_BIND_ADDR", "localhost")
-    frontend_port = os.getenv("FRONTEND_PORT", "5173")
-    # 构建常见的开发源（HTTP和HTTPS）
-    allow_origins = []
-    protocols = ["http", "https"]
-    for protocol in protocols:
-        allow_origins.extend([
-            f"{protocol}://{frontend_host}:{frontend_port}",
-            f"{protocol}://{frontend_host}:3000",
-            f"{protocol}://localhost:5173",
-            f"{protocol}://localhost:3000",
-            f"{protocol}://127.0.0.1:{frontend_port}",
-            f"{protocol}://127.0.0.1:3000",
-        ])
-    # 去重
-    allow_origins = list(dict.fromkeys(allow_origins))
+    allow_origin_regex = r"https?://.*"
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allow_origins,
+    allow_origins=allow_origins,         # 如果有白名单则用这个
+    allow_origin_regex=allow_origin_regex, # 如果是开发环境则用正则
     allow_credentials=True,
-    allow_methods=["*"],  # 允许所有HTTP方法
-    allow_headers=["*"],  # 允许所有HTTP头
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 RoutesManager(app)
