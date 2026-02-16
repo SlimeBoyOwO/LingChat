@@ -13,6 +13,15 @@
             :selectClothes="selectClothes"
             :isClothesSelected="isClothesSelected"
           >
+            <template #settings>
+              <button
+                class="settings-icon-btn"
+                @click.stop="openSettingsModal(character.id, character.title)"
+                title="角色设置"
+              >
+                <Icon icon="setting" />
+              </button>
+            </template>
             <template #actions>
               <Button
                 type="nav"
@@ -169,6 +178,15 @@
         </div>
       </div>
     </Transition>
+
+    <!-- Character Settings Modal -->
+    <CharacterSettingsModal
+      :visible="isSettingsModalVisible"
+      :role-id="settingsRoleId"
+      :title="settingsRoleTitle"
+      @close="closeSettingsModal"
+      @saved="handleSettingsSaved"
+    />
   </MenuPage>
 </template>
 
@@ -176,9 +194,11 @@
 import { ref, onMounted, watch } from 'vue'
 import { MenuPage } from '../../ui'
 import { MenuItem } from '../../ui'
-import { Button } from '../../base'
+import { Button, Icon } from '../../base'
+
 import CharacterCard from '../../ui/Menu/CharacterCard.vue'
 import CharacterList from '../../ui/Menu/CharacterList.vue'
+import CharacterSettingsModal from './SettingsCharacterInfo.vue'
 import { characterGetAll, characterSelect } from '../../../api/services/character'
 import type { Character as ApiCharacter, Clothes } from '../../../types'
 import { useGameStore } from '../../../stores/modules/game'
@@ -197,6 +217,11 @@ const characters = ref<CharacterCard[]>([])
 const userId = ref<number>(1)
 const isClothesPopupVisible = ref<boolean>(false)
 const selectedCharacter = ref<CharacterCard | null>(null)
+
+// Settings Modal State
+const isSettingsModalVisible = ref(false)
+const settingsRoleId = ref<number | null>(null)
+const settingsRoleTitle = ref('')
 
 const gameStore = useGameStore()
 const userStore = useUserStore()
@@ -345,6 +370,21 @@ const openCreativeWeb = async (): Promise<void> => {
   }
 }
 
+const openSettingsModal = (roleId: number, title: string) => {
+  settingsRoleId.value = roleId
+  settingsRoleTitle.value = title
+  isSettingsModalVisible.value = true
+}
+
+const closeSettingsModal = () => {
+  isSettingsModalVisible.value = false
+  settingsRoleId.value = null
+}
+
+const handleSettingsSaved = () => {
+  refreshCharacters()
+}
+
 function isSelected(id: number): boolean {
   return gameStore.mainRoleId === id
 }
@@ -407,6 +447,27 @@ watch(
 
 .selected {
   background-color: #10b981 !important;
+}
+
+.settings-icon-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.05);
+  color: #666;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.settings-icon-btn:hover {
+  background: white;
+  color: #5e72e4;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transform: rotate(90deg);
 }
 
 /* Clothes Grid */
