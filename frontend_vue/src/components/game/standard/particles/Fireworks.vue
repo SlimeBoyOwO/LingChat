@@ -16,6 +16,7 @@ const PI_2 = Math.PI * 2
 const PI_HALF = Math.PI * 0.5
 const TARGET_FPS = 60
 const FRAME_DURATION = 1000 / TARGET_FPS
+const FIREWORK_RANGE = 3
 
 // Colors
 const COLOR = {
@@ -46,6 +47,14 @@ let speedBarOpacity = 0
 let isPaused = false
 let isRunning = false
 let isVisible = true
+
+// Audio state
+let audioQueue: AudioBuffer[] = []
+let audioContext: AudioContext | null = null
+let audioBuffer: AudioBuffer | null = null
+let lastLaunchTime = 0
+const DEBOUNCE_DELAY = 1000 // 1000ms debounce
+const AUDIO_DELAY_RANGE = [50, 200] // 50-200ms random audio delay
 
 // Performance control
 let lastFrameTime = 0
@@ -348,7 +357,7 @@ function makePistilColor(shellColor: string | string[]) {
       : COLOR.White
 }
 
-// Shell class
+// ShellOptions interface
 interface ShellOptions {
   starLifeVariation?: number
   color?: string | string[]
@@ -493,7 +502,7 @@ class Shell {
     if (typeof this.color === 'string') {
       if (this.color === 'random') {
         color = randomColor()
-      } else {                    
+      } else {
         color = this.color
       }
 
@@ -575,7 +584,7 @@ function handlePointerStart(event: PointerEvent) {
   if (updateSpeedFromEvent(event)) {
     isUpdatingSpeed = true
   } else {
-    launchRandomShell(event.clientX, event.clientY)
+    launchRandomShell(event.clientX, event.clientY, true)
   }
 }
 
@@ -594,7 +603,8 @@ function handlePointerMove(event: PointerEvent) {
 function updateSpeedFromEvent(event: PointerEvent) {
   if (isUpdatingSpeed || event.clientY >= (mainCanvas.value?.height || 0) - 44) {
     const edge = 16
-    const newSpeed = (event.clientX - edge) / ((mainCanvas.value?.width || 0) - edge * 2)
+    const canvasWidth = mainCanvas.value?.width || 0
+    const newSpeed = (event.clientX - edge) / (canvasWidth - edge * 2)
     simSpeed = Math.min(Math.max(newSpeed, 0), 1)
     speedBarOpacity = 1
     return true
@@ -602,19 +612,57 @@ function updateSpeedFromEvent(event: PointerEvent) {
   return false
 }
 
-function launchRandomShell(x: number, y: number) {
-  const audio = new Audio('/audio/fireworks.mp3')
-  audio.volume = 0.5
-  audio.play().catch((error) => {
-    console.log('Audio playback failed:', error)
-  })
+function launchRandomShell(x: number, y: number, fromMouse: boolean) {
+  const currentTime = Date.now()
+  
+  // Debounce check
+  if (currentTime - lastLaunchTime < DEBOUNCE_DELAY && fromMouse) {
+    return
+  }
+  lastLaunchTime = currentTime
 
-  const shell = new Shell(crysanthemumShell(3) as ShellOptions)
+  // Play audio with random delay to prevent overlapping
+  playFireworksAudio()
+
+  const shell = new Shell(crysanthemumShell(FIREWORK_RANGE * (1 + (Math.random() - 0.5)/2)) as ShellOptions)
   const w = stageW
   const h = stageH
   const position = x / w
   const launchHeight = 1 - y / h
   shell.launch(position, launchHeight)
+}
+
+async function playFireworksAudio() {
+  try {
+    if (!audioContext) {
+      audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+    }
+
+    if (!audioBuffer) {
+      const response = await fetch('/audio/fireworks.mp3')
+      const arrayBuffer = await response.arrayBuffer()
+      audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
+    }
+
+    // Fireworks should not play audio together  
+    const delay = Math.random() * (AUDIO_DELAY_RANGE[1]! - AUDIO_DELAY_RANGE[0]!) + AUDIO_DELAY_RANGE[0]!
+    const source = audioContext.createBufferSource()
+    source.buffer = audioBuffer
+    source.connect(audioContext.destination)
+    
+    // Start with delay
+    const startTime = audioContext.currentTime + (delay / 1000)
+    source.start(startTime)
+    
+  } catch (error) {
+    console.log('Audio playback failed:', error)
+    // Fallback to HTML5 audio if Web Audio API fails
+    const audio = new Audio('/audio/fireworks.mp3')
+    audio.volume = 0.5
+    audio.play().catch((error) => {
+      console.log('HTML5 audio playback also failed:', error)
+    })
+  }
 }
 
 function handleVisibilityChange() {
@@ -765,8 +813,13 @@ function update() {
 }
 
 function render() {
-  const trailsCtx = trailsCanvas.value?.getContext('2d')
-  const mainCtx = mainCanvas.value?.getContext('2d')
+  const trailsCanvasEl = trailsCanvas.value
+  const mainCanvasEl = mainCanvas.value
+  
+  if (!trailsCanvasEl || !mainCanvasEl) return
+
+  const trailsCtx = trailsCanvasEl.getContext('2d')
+  const mainCtx = mainCanvasEl.getContext('2d')
 
   if (!trailsCtx || !mainCtx) return
 
@@ -843,7 +896,7 @@ onMounted(async () => {
     if (isRunning && !isPaused && isVisible) {
       const fireworkCount = Math.random() < 0.7 ? 1 : Math.floor(Math.random() * 5) + 1
       for (let i = 0; i < fireworkCount; i++) {
-        launchRandomShell(Math.random() * stageW, Math.random() * stageH * 0.5)
+        launchRandomShell(Math.random() * stageW, Math.random() * stageH * 0.5, false)
       }
     }
   }, 3000)
@@ -876,22 +929,14 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+@reference "tailwindcss";
+
 .fireworks-container {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  z-index: -3;
-  pointer-events: none;
+  @apply absolute top-0 left-0 w-full h-full pointer-events-none;
 }
 
 .trails-canvas,
 .main-canvas {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  @apply absolute top-0 left-0 w-full h-full;
 }
 </style>
