@@ -149,7 +149,7 @@ class ScriptManager:
                 settings = Function.load_character_settings(character_path)
                 ai_prompt = Function.sys_prompt_builder_by_setting(settings)
 
-                script_role_key = settings.get('script_role_key', None)
+                script_role_key = settings.script_role_key
                 if script_role_key is None:
                     logger.warning(f"角色目录 '{character_path.name}' 中缺少 script_role_key，已跳过。")
                     continue
@@ -273,7 +273,11 @@ class ScriptManager:
                 continue
 
             settings = Function.load_character_settings(character_path) or {}
-            script_role_key = settings.get("script_role_key") or character_path.name
+            script_role_key = settings.script_role_key
+            if not script_role_key:
+                logger.warning(f"角色目录 '{character_path.name}' 中缺少 script_role_key，已跳过。")
+                continue
+            
             role = RoleManager.get_role_by_script_keys(script.folder_key, script_role_key)
 
             settings_out = dict(settings)
