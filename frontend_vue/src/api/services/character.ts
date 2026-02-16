@@ -56,3 +56,24 @@ export const getRoleInfo = async (roleId: number): Promise<RoleInfo> => {
     throw error
   }
 }
+
+export const getRoleSettings = async (roleId: number): Promise<any> => {
+  try {
+    const data = await http.get(`/v1/chat/character/get_full_role_settings/${roleId}`)
+    return data
+  } catch (error: any) {
+    throw new Error(error.response?.data?.detail || '获取角色配置失败')
+  }
+}
+
+export const updateRoleSettings = async (roleId: number, settings: any): Promise<any> => {
+  try {
+    const response = await http.post('/v1/chat/character/update_settings', {
+      role_id: roleId,
+      settings: settings,
+    })
+    return response
+  } catch (error: any) {
+    throw new Error(error.response?.data?.detail || '更新角色配置失败')
+  }
+}

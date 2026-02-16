@@ -6,6 +6,7 @@ import type {
   AxiosRequestConfig,
 } from 'axios'
 import { useUIStore } from '../stores/modules/ui/ui'
+import { getApiBaseUrl } from '../config/backend'
 
 // 定义响应数据的通用结构
 interface ApiResponse<T = any> {
@@ -39,7 +40,7 @@ declare module 'axios' {
 }
 
 const http = axios.create({
-  baseURL: '/api',
+  baseURL: getApiBaseUrl(),
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',

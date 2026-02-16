@@ -6,6 +6,7 @@ from ling_chat.game_database.database import engine
 from ling_chat.game_database.models import Role, RoleType
 from ling_chat.utils.runtime_path import user_data_path
 from ling_chat.core.logger import logger
+from ling_chat.schemas.character_settings import CharacterSettings
 
 class RoleManager:
     @staticmethod
@@ -35,15 +36,16 @@ class RoleManager:
                     if not entry.is_dir() or entry.name == 'avatar':
                         continue
                     
-                    settings_path = entry / 'settings.txt'
-                    if not settings_path.exists():
+                    settings_path_legacy = entry / 'settings.txt'
+                    settings_path = entry / 'settings.yml'
+                    if not settings_path.exists() and not settings_path_legacy.exists():
                         continue
                     
                     try:
                         resource_path_str = entry.name
                         
-                        settings = Function.parse_enhanced_txt(str(settings_path))
-                        title = settings.get('title', entry.name)
+                        settings = Function.load_character_settings(entry)
+                        title = settings.title or entry.name
                         
                         # 尝试从 settings 获取 script_key，或者默认 None
                         # 如果是主要角色，通常 script_key 可能为空，或者在 settings 里定义
@@ -132,22 +134,22 @@ class RoleManager:
             return list(session.exec(stmt).all())
         
     @staticmethod
-    def get_role_settings_by_id(role_id: int) -> Optional[Dict]:
+    def get_role_settings_by_id(role_id: int) -> Optional[CharacterSettings]:
         role = RoleManager.get_role_by_id(role_id)
         if role is None or not role.resource_folder:
             return None
         
         path = Path()
         if role.role_type == RoleType.MAIN:
-            path = user_data_path / "game_data" / "characters" / role.resource_folder / "settings.txt"
+            path = user_data_path / "game_data" / "characters" / role.resource_folder
         elif role.role_type == RoleType.NPC:
             assert role.script_key is not None
             assert role.script_role_key is not None
-            path  = user_data_path / "game_data" / "scripts" / role.script_key / "characters" / role.resource_folder / "settings.txt"
+            path  = user_data_path / "game_data" / "scripts" / role.script_key / "characters" / role.resource_folder
 
-        if not path.exists():
+        if not (path / "settings.yml").exists() and not (path / "settings.txt").exists():
             logger.warning(f"角色设置文件不存在: {path}")
             return None
 
-        settings = Function.parse_enhanced_txt(path)
+        settings = Function.load_character_settings(path)
         return settings

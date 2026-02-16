@@ -52,7 +52,7 @@ async def load_user_conversations(user_id: int, conversation_id: int):
             character_settings = RoleManager.get_role_settings_by_id(role_id)
             if character_settings is None: return HTTPException(status_code=500, detail="角色不存在")
 
-            character_settings["character_id"] = role_id
+            character_settings.character_id = role_id
             if service_manager.ai_service is not None:
                 service_manager.ai_service.import_settings(settings=character_settings)
                 service_manager.ai_service.load_lines(line_list, role_id, save_id=conversation_id)

@@ -87,7 +87,7 @@ class ScriptManager:
         if script.settings:
             player = Player(script.settings.get("user_name", ""),
                             script.settings.get("user_subtitle", ""),
-                            script.settings.get("user_settings", ""))           
+                            script.settings.get("user_settings", ""))
             # 3. 检查玩家信息是否完整，决定是否导入到GameStatus中
             if player.user_name == "" and player.user_subtitle == "":
                 logger.info("本剧本未设定玩家身份，将使用默认玩家身份")
@@ -127,7 +127,7 @@ class ScriptManager:
 
     def _register_script_roles(self, script: ScriptStatus):
         """从剧本目录读取角色并在数据库中注册"""
-        
+
         script_key = script.folder_key
         characters_dir = SCRIPT_DIR / script_key / 'characters'
 
@@ -139,16 +139,17 @@ class ScriptManager:
             if not character_path.is_dir() or character_path.name == 'avatar':
                 continue
 
-            settings_path = character_path / 'settings.txt'
-            if not settings_path.exists():
-                logger.warning(f"角色目录 '{character_path.name}' 中缺少 settings.txt，已跳过。")
+            settings_path_legacy = character_path / 'settings.txt'
+            settings_path = character_path / 'settings.yml'
+            if not settings_path.exists() and not settings_path_legacy.exists():
+                logger.warning(f"角色目录 '{character_path.name}' 中缺少 settings.txt 或 settings.yml，已跳过。")
                 continue
 
             try:
-                settings = Function.parse_enhanced_txt(str(settings_path))
+                settings = Function.load_character_settings(character_path)
                 ai_prompt = Function.sys_prompt_builder_by_setting(settings)
 
-                script_role_key = settings.get('script_role_key', None)
+                script_role_key = settings.script_role_key
                 if script_role_key is None:
                     logger.warning(f"角色目录 '{character_path.name}' 中缺少 script_role_key，已跳过。")
                     continue
@@ -265,19 +266,24 @@ class ScriptManager:
             if character_path.name.lower() == "avatar":
                 continue
 
-            settings_path = character_path / "settings.txt"
-            if not settings_path.exists():
-                logger.warning(f"角色目录 '{character_path.name}' 中缺少 settings.txt，已跳过。")
+            settings_path_legacy = character_path / "settings.txt"
+            settings_path = character_path / "settings.yml"
+            if not settings_path.exists() and not settings_path_legacy.exists():
+                logger.warning(f"角色目录 '{character_path.name}' 中缺少 settings.txt 或 settings.yml，已跳过。")
                 continue
 
-            settings = Function.parse_enhanced_txt(str(settings_path)) or {}
-            script_role_key = settings.get("script_role_key") or character_path.name
+            settings = Function.load_character_settings(character_path) or {}
+            script_role_key = settings.script_role_key
+            if not script_role_key:
+                logger.warning(f"角色目录 '{character_path.name}' 中缺少 script_role_key，已跳过。")
+                continue
+            
             role = RoleManager.get_role_by_script_keys(script.folder_key, script_role_key)
 
             settings_out = dict(settings)
             settings_out["character_id"] = getattr(role, "id", -1) if role else -1
-            settings_out.setdefault("ai_name", settings.get("ai_name", character_path.name))
-            settings_out.setdefault("ai_subtitle", settings.get("ai_subtitle", ""))
+            settings_out.setdefault("ai_name", settings.ai_name or character_path.name)
+            settings_out.setdefault("ai_subtitle", settings.ai_subtitle or "")
 
             results.append(settings_out)
 

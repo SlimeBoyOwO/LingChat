@@ -66,18 +66,18 @@ class AIService:
     def import_settings(self, settings: Dict) -> None:
         # TODO: 这些以后全都可以删除，改为通过修改game_status的GameRole来实现
         if(settings):
-            self.character_path = settings.get("resource_path")
-            self.character_id = settings.get("character_id")  # TODO: character_id就是查找的role_id，这里写的不太优雅，可以之后优化
-            self.ai_name = settings.get("ai_name","ai_name未设定")
-            self.ai_subtitle = settings.get("ai_subtitle","ai_subtitle未设定")
-            self.user_name = settings.get("user_name", "user_name未设定")
-            self.user_subtitle = settings.get("user_subtitle", "user_subtitle未设定")
-            self.ai_prompt = settings.get("system_prompt", "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息")
+            self.character_path = settings.resource_path
+            self.character_id = settings.character_id  # TODO: character_id就是查找的role_id，这里写的不太优雅，可以之后优化
+            self.ai_name = settings.ai_name
+            self.ai_subtitle = settings.ai_subtitle
+            self.user_name = settings.user_name
+            self.user_subtitle = settings.user_subtitle
+            self.ai_prompt = settings.system_prompt or "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息"
             self.game_status.player.user_name = self.user_name
             self.game_status.player.user_subtitle = self.user_subtitle
 
-            self.ai_prompt_example = settings.get("system_prompt_example","")
-            self.ai_prompt_example_old = settings.get("system_prompt_example_old", "")
+            self.ai_prompt_example = settings.system_prompt_example
+            self.ai_prompt_example_old = settings.system_prompt_example_old
             self.ai_prompt = Function.sys_prompt_builder(self.user_name,
                                                          self.ai_name,
                                                          self.ai_prompt,
@@ -85,9 +85,9 @@ class AIService:
                                                          self.ai_prompt_example_old
                                                          )
 
-            self.clothes_name = settings.get("clothes_name")
-            self.body_part = settings.get("body_part")
-            self.clothes = settings.get("clothes")
+            self.clothes_name = settings.clothes_name
+            self.body_part = settings.body_part
+            self.clothes = settings.clothes
             self.settings = settings
 
         else:

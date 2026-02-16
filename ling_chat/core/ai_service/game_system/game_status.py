@@ -18,11 +18,11 @@ class GameStatus:
     # 使用 RoleManager 管理所有角色
     role_manager: GameRoleManager = field(default_factory=GameRoleManager)
     # 记录当前对话角色，此角色将作为LLM传输入的对象，使用本角色的记忆
-    current_character: GameRole = field(default_factory=GameRole)
+    current_character: Optional[GameRole] = None
     # 在场角色列表：只有在场的角色才能感知到台词
     present_roles: set[GameRole] = field(default_factory=set)
     # 游戏主角，也就是导入的游戏角色，剧本模式冒险的主角
-    main_role: GameRole = field(default_factory=GameRole)
+    main_role: Optional[GameRole] = None
 
     # 背景信息
     background: str = field(default_factory=str)
