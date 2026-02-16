@@ -52,15 +52,15 @@ class ServiceManager:
         else:
             resource_path = character_dir / "诺一钦灵"
 
-        settings = Function.parse_enhanced_txt(str(resource_path / "settings.txt"))
-        settings["character_id"] = last_character_id
+        settings = Function.load_character_settings(resource_path)
+        settings.character_id = last_character_id
         return settings
     
     def get_default_character(self):
         character_dir = user_data_path / "game_data" / "characters"
         resource_path = character_dir / "诺一钦灵"
-        settings = Function.parse_enhanced_txt(str(resource_path / "settings.txt"))
-        settings["character_id"] = 0
+        settings = Function.load_character_settings(resource_path)
+        settings.character_id = 0
         return settings
 
     async def add_client(self, client_id):

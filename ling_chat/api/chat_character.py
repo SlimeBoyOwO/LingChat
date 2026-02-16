@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Body, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
-from typing import Optional
+from typing import Dict, Any
 
 from ling_chat.core.logger import logger
 from ling_chat.core.service_manager import service_manager
@@ -36,6 +36,52 @@ async def open_creative_web():
     except Exception as e:
         logger.error(f"无法使用浏览器启动创意工坊: {str(e)}")
         raise HTTPException(status_code=500, detail="无法使用浏览器启动网页")
+
+@router.post("/update_settings")
+async def update_settings(
+    role_id: int = Body(..., embed=True),
+    settings: Dict[str, Any] = Body(..., embed=True)
+):
+    # 1. 获取角色信息以定位文件夹
+    role = RoleManager.get_role_by_id(role_id)
+    if not role:
+        raise HTTPException(status_code=404, detail=f"角色{role_id}不存在")
+    if not role.resource_folder:
+        raise HTTPException(status_code=404, detail=f"角色{role_id}资源不存在")
+
+    # 2. 定位路径
+    base_path = Path()
+    if role.role_type == RoleType.MAIN:
+        base_path = user_data_path / "game_data" / "characters" / role.resource_folder
+    elif role.role_type == RoleType.NPC:
+        if not role.script_key:
+            raise HTTPException(status_code=404, detail=f"角色{role_id}缺少剧本关联")
+        base_path = user_data_path / "game_data" / "scripts" / role.script_key / "characters" / role.resource_folder
+    else:
+        raise HTTPException(status_code=404, detail=f"未知的角色类型")
+
+    if not base_path.exists():
+        raise HTTPException(status_code=404, detail="角色目录不存在")
+
+    # 3. 保存设置
+    try:
+        # 确保传入的 settings 是完整的或者是合法的更新
+        # 这里假设传入的是完整的 settings 字典
+        success = Function.save_character_settings(base_path, settings)
+        if success:
+            return {"success": True, "message": "设置已保存"}
+        else:
+            raise HTTPException(status_code=500, detail="保存失败")
+    except Exception as e:
+        logger.error(f"保存角色设置失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"保存失败: {str(e)}")
+
+@router.get("/get_full_role_settings/{role_id}")
+async def get_full_role_settings(role_id: int):
+    settings = RoleManager.get_role_settings_by_id(role_id)
+    if not settings:
+        raise HTTPException(status_code=404, detail="角色配置不存在")
+    return settings.model_dump()
 
 @router.get("/get_role_info/{role_id}")
 async def get_role_info(role_id: int):
@@ -121,9 +167,10 @@ async def select_character(
 
         # 2. 切换AI服务角色
         character_settings = RoleManager.get_role_settings_by_id(character_id)
-        if character_settings is None: return HTTPException(status_code=500, detail="角色不存在")
+        if character_settings is None:
+            return HTTPException(status_code=500, detail="角色不存在")
 
-        character_settings["character_id"] = character_id
+        character_settings.character_id = character_id
         if service_manager.ai_service is not None:
             service_manager.ai_service.import_settings(settings=character_settings)
             service_manager.ai_service.reset_lines()
@@ -161,8 +208,7 @@ async def get_all_characters():
 
             char_path = user_data_path / "game_data" / "characters" / char.resource_folder
 
-            settings_path = char_path / 'settings.txt'
-            settings = Function.parse_enhanced_txt(settings_path)
+            settings = Function.load_character_settings(char_path)
 
             # 返回相对路径而不是完整路径
             avatar_relative_path = os.path.join(
@@ -187,8 +233,8 @@ async def get_all_characters():
             characters.append({
                 "character_id": char.id,
                 "title": char.name,
-                "info": settings.get('info', '这是一个人工智能对话助手'),
-                "avatar_path": avatar_relative_path,  # 修改为相对路径
+                "info": settings.info or '这是一个人工智能对话助手',
+                "avatar_path": avatar_relative_path,
                 "clothes": clothes_list
             })
 
