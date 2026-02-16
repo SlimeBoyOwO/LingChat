@@ -17,7 +17,8 @@ import logForwarderPlugin from './plugins/logForwarder'
 
 const app = createApp(App)
 
-connectWebSocket(getWebSocketUrl())
+// TODO: 根据环境变量配置 WebSocket URL
+connectWebSocket('ws://localhost:8765/ws')
 
 initializeEventProcessors()
 
