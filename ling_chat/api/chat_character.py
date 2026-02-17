@@ -146,8 +146,17 @@ async def get_role_avatar(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"读取目录失败: {str(e)}")
 
+    # 如果没找到对应情绪的图片，且当前情绪是"平静"，则尝试查找"正常"的图片
+    if not emotion_files and emotion == "平静":
+        emotion_files = [
+            f for f in avatar_path.iterdir() 
+            if f.is_file() 
+            and f.stem == "正常"
+            and f.suffix.lower() in [".png", ".jpg", ".jpeg"]
+        ]
+
     if not emotion_files:
-        print(f"查找失败: Path={avatar_path}, Emotion={emotion}")
+        logger.error(f"查找失败: Path={avatar_path}, Emotion={emotion}")
         raise HTTPException(status_code=404, detail=f"在路径 {avatar_path} 下未找到情绪 {emotion} 的图片")
     
     # 返回找到的第一个文件
