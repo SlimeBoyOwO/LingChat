@@ -23,12 +23,12 @@ class EmotionClassifier:
             return
 
         try:
-            model_path = model_path or os.environ.get("EMOTION_MODEL_PATH", third_party_path / "emotion_model_18emo")
+            model_path = model_path or os.environ.get("EMOTION_MODEL_PATH", third_party_path / "emotion_model")
             model_path = Path(model_path).resolve()
 
             # 定义 ONNX 模型和其他必要文件的路径
-            onnx_model_file = model_path / "model.onnx"
-            config_path = model_path / "label_mapping.json"
+            onnx_model_file = model_path / "emotion_model.onnx"
+            config_path = model_path / "emotion_model_labels.json"
             vocab_path = model_path / "vocab.txt"
 
             if not onnx_model_file.exists():
@@ -110,13 +110,10 @@ class EmotionClassifier:
         input_ids += [self.vocab["[PAD]"]] * padding_length
         attention_mask += [0] * padding_length
 
-        # 创建 token_type_ids
-        token_type_ids = [0] * max_length
 
         return {
             "input_ids": np.array([input_ids], dtype=np.int64),
             "attention_mask": np.array([attention_mask], dtype=np.int64),
-            "token_type_ids": np.array([token_type_ids], dtype=np.int64)
         }
 
     def _softmax(self, x):
@@ -152,7 +149,6 @@ class EmotionClassifier:
             ort_inputs = {
                 'input_ids': inputs['input_ids'],
                 'attention_mask': inputs['attention_mask'],
-                'token_type_ids': inputs['token_type_ids']
             }
 
             # 执行ONNX推理

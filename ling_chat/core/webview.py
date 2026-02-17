@@ -20,6 +20,12 @@ class Api:
 
 def func_webview():
     try:
+                    # 设置环境变量强制使用Qt后端并完全禁用OpenGL
+        os.environ['PYWEBVIEW_GUI'] = 'qt'
+        os.environ['QT_DEBUG_PLUGINS'] = '0'  # 关闭插件调试
+        os.environ['QT_WEBENGINE_CHROMIUM_FLAGS'] = '--disable-gpu '#--disable-webgl --disable-accelerated-2d-canvas --disable-accelerated-video-decode'
+        os.environ['QT_QUICK_BACKEND'] = 'software'
+        os.environ['QT_XCB_GL_INTEGRATION'] = 'none'  # 禁用XCB OpenGL集成
         api:Api = Api()
         window = webview.create_window(
             "Ling Chat",
