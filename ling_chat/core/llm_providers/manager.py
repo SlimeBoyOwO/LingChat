@@ -23,13 +23,26 @@ class LLMManager:
             provider_type = self.llm_provider_type.lower()
             logger.info(f"初始化LLM {provider_type} 提供商中...")
         elif llm_job == "translator":
-            self.llm_provider_type = os.environ.get("TRANSLATE_LLM_PROVIDER", "qwen-translate")
-            self.model_type = os.environ.get("TRANSLATE_MODEL", "")
-            self.api_key = os.environ.get("TRANSLATE_API_KEY", "")
-            self.api_url = os.environ.get("TRANSLATE_BASE_URL", "")
-            # 确保provider_type存在
-            provider_type = self.llm_provider_type.lower()
-            logger.info(f"初始化翻译模型 {provider_type} 提供商中...")
+            translate_provider = os.environ.get("TRANSLATE_LLM_PROVIDER", "none")
+            
+            # 检查是否需要使用主LLM配置
+            if translate_provider.lower() in ["none", ""]:
+                logger.info("检测到TRANSLATE_LLM_PROVIDER为none或空值，将使用主LLM配置进行翻译")
+
+                self.llm_provider_type = os.environ.get("LLM_PROVIDER", "webllm")
+                self.model_type = os.environ.get("MODEL_TYPE", "deepseek-chat")
+                self.api_key = os.environ.get("CHAT_API_KEY", "")
+                self.api_url = os.environ.get("CHAT_BASE_URL", "https://api.deepseek.com/v1")
+                provider_type = self.llm_provider_type.lower()
+                logger.info(f"翻译模型将使用主LLM配置: {provider_type}")
+            else:
+                # 使用独立的翻译配置
+                self.llm_provider_type = translate_provider
+                self.model_type = os.environ.get("TRANSLATE_MODEL", "")
+                self.api_key = os.environ.get("TRANSLATE_API_KEY", "")
+                self.api_url = os.environ.get("TRANSLATE_BASE_URL", "")
+                provider_type = self.llm_provider_type.lower()
+                logger.info(f"初始化翻译模型 {provider_type} 提供商中...")
 
         self.provider = self._initialize_provider()
 
