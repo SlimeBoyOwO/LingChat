@@ -11,14 +11,14 @@ from ling_chat.utils.runtime_path import third_party_path
 
 class EmotionClassifier:
     def __init__(self, model_path=None):
-        """加载情绪分类模型 (ONNX版本)"""
+        """加载情绪分类模型 (ONNX版本) - 增强兼容性修复版"""
 
         # 检查是否启用了情感分类器
         if os.environ.get("ENABLE_EMOTION_CLASSIFIER", "True").lower() == "false":
-            self._log_emotion_model_status(False, "情绪分类器已通过 ENABLE_EMOTION_CLASSIFIER 环境变量禁用，将直接传递情感标签")
+            self._log_emotion_model_status(False, "情绪分类器已禁用")
             self.id2label = {}
             self.label2id = {}
-            self.session = None # 使用 self.session 替代 self.model
+            self.session = None 
             self.vocab = {}
             return
 
@@ -26,36 +26,53 @@ class EmotionClassifier:
             model_path = model_path or os.environ.get("EMOTION_MODEL_PATH", third_party_path / "emotion_model")
             model_path = Path(model_path).resolve()
 
-            # 定义 ONNX 模型和其他必要文件的路径
-            onnx_model_file = model_path / "emotion_model.onnx"
-            config_path = model_path / "emotion_model_labels.json"
+            # 定义文件路径
+            onnx_model_file = model_path / "model.onnx"
+            config_path = model_path / "label_mapping.json"
             vocab_path = model_path / "vocab.txt"
 
+            # 1. 基础文件检查
             if not onnx_model_file.exists():
                 raise FileNotFoundError(f"ONNX模型文件不存在: {onnx_model_file}")
             if not config_path.exists():
                 raise FileNotFoundError(f"标签映射文件不存在: {config_path}")
-            if not vocab_path.exists():
-                raise FileNotFoundError(f"词汇表文件不存在: {vocab_path}")
+            
+            # 加载ONNX模型
+            onnx_path = onnx_model_file
+
+            self.session = ort.InferenceSession(onnx_path)
 
             # 加载标签映射
-            with open(config_path, "r", encoding='utf-8') as f:
-                label_config = json.load(f)
-            self.id2label = label_config["id2label"]
-            self.label2id = label_config["label2id"]
+            label_mapping_path = config_path
+            if not os.path.exists(label_mapping_path):
+                raise FileNotFoundError(f"标签映射文件不存在: {label_mapping_path}")
 
-            # 加载词汇表以进行手动分词
+            with open(label_mapping_path, "r", encoding="utf-8") as f:
+                label_mapping = json.load(f)
+                self.id2label = label_mapping["id2label"]
+                self.label2id = label_mapping["label2id"]
+            
             self.vocab = self._load_vocab(vocab_path)
 
-            # 创建ONNX Runtime会话，并指定使用CPU
-            providers = ['CPUExecutionProvider']
-            self.session = ort.InferenceSession(str(onnx_model_file), providers=providers)
+            # 获取输入输出名称
+            self.input_name = self.session.get_inputs()[0].name
+            self.attention_mask_name = self.session.get_inputs()[1].name
+            self.output_name = self.session.get_outputs()[0].name
 
             self._log_label_mapping()
             self._log_emotion_model_status(True, f"已成功加载情绪分类ONNX模型: {model_path.name}")
 
         except Exception as e:
-            self._log_emotion_model_status(False, f"加载情绪分类ONNX模型失败: {e}")
+            import traceback
+            # 如果是 Unicode 错误，通常意味着底层有其他报错被掩盖了
+            if "UnicodeDecodeError" in str(e) or "'utf-8' codec" in str(e):
+                logger.error("检测到编码冲突错误。这通常是因为Windows系统区域设置导致的。")
+                logger.error("尝试设置环境变量 PYTHONUTF8=1 可能有帮助。")
+            
+            # 打印完整堆栈
+            logger.error(f"加载模型详细错误堆栈:\n{traceback.format_exc()}")
+            
+            self._log_emotion_model_status(False, f"加载失败: {e}")
             self.id2label = {}
             self.label2id = {}
             self.session = None
@@ -110,10 +127,9 @@ class EmotionClassifier:
         input_ids += [self.vocab["[PAD]"]] * padding_length
         attention_mask += [0] * padding_length
 
-
         return {
             "input_ids": np.array([input_ids], dtype=np.int64),
-            "attention_mask": np.array([attention_mask], dtype=np.int64),
+            "attention_mask": np.array([attention_mask], dtype=np.float32),  # 修复: 使用float32类型
         }
 
     def _softmax(self, x):
@@ -147,12 +163,12 @@ class EmotionClassifier:
 
             # 准备ONNX模型的输入
             ort_inputs = {
-                'input_ids': inputs['input_ids'],
-                'attention_mask': inputs['attention_mask'],
+                self.input_name: inputs['input_ids'],
+                self.attention_mask_name: inputs['attention_mask'],
             }
 
             # 执行ONNX推理
-            ort_outputs = self.session.run(None, ort_inputs)
+            ort_outputs = self.session.run([self.output_name], ort_inputs)
             logits = ort_outputs[0]
 
             # 计算概率
