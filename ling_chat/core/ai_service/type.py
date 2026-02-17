@@ -2,7 +2,7 @@ from dataclasses import dataclass, field, asdict
 from typing import Optional, List, Dict, Any, Self
 
 from ling_chat.core.ai_service.voice_maker import VoiceMaker
-from ling_chat.schemas.character_settings import CharacterSettings
+from ling_chat.schemas.character_settings import CharacterSettings, VoiceModel
 
 @dataclass
 class GameMemoryBankMeta:
@@ -122,7 +122,7 @@ class GameRole:
 
         self.voice_maker.set_tts(
             tts_type=current_tts_type,
-            tts_settings=self.settings.voice_models,
+            tts_settings=self.settings.voice_models if self.settings.voice_models else VoiceModel(),
             name=role_name
         )
     

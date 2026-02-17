@@ -26,7 +26,7 @@ class VoiceMaker:
     def check_tts_availability(self, tts_settings: VoiceModel) -> None:
         """检查TTS配置可用性，设置各语音合成器状态"""
 
-        def _is_valid(value: str) -> bool:
+        def _is_valid(value: str | None) -> bool:
             """检查字符串是否有效（非空且非空格）"""
             return value is not None and value.strip() != ""
 
@@ -38,7 +38,7 @@ class VoiceMaker:
         sbv2_speaker_id = tts_settings.sbv2_speaker_id
         sbv2_name = tts_settings.sbv2_name
         self.sbv2_available = _is_valid(sbv2_speaker_id) and _is_valid(sbv2_name)
-
+ 
         # 检查BV2配置
         bv2_speaker_id = tts_settings.bv2_speaker_id
         self.bv2_available = _is_valid(bv2_speaker_id)
