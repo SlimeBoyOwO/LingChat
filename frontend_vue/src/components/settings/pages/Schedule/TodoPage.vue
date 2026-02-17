@@ -34,7 +34,7 @@
       </h3>
       <div
         v-if="globalPendingTodos.length === 0"
-        class="text-center py-10 bg-slate-50/50 rounded-3xl border border-dashed border-slate-200 text-slate-400 text-sm"
+        class="text-center py-10 rounded-3xl border border-dashed border-slate-200 text-brand text-xl font-blod"
       >
         暂时没有进行中的任务
       </div>
@@ -47,6 +47,7 @@
           @click.stop="completeTodo(todo)"
           class="w-6 h-6 border-2 border-cyan-100 rounded-lg hover:border-cyan-500 transition-all"
         ></button>
+
         <div class="flex-1">
           <div class="flex items-center space-x-2">
             <span class="text-[11px] bg-white/80 text-cyan-500 px-1.5 py-0.5 rounded font-bold">{{
@@ -148,10 +149,49 @@
       </button>
     </div>
   </div>
+
+  <BaseModal
+    :show="showModal"
+    :title="modalTitle"
+    @close="showModal = false"
+    @confirm="confirmCreate"
+  >
+    <!-- 场景1：新建待办分组 -->
+    <template v-if="uiStore.scheduleView === 'todo_groups'">
+      <input
+        v-model="formData.groupTitle"
+        placeholder="项目名称 (例如: 学校任务)"
+        class="w-full px-5 py-4 rounded-2xl border-none bg-slate-100 outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all"
+      />
+    </template>
+
+    <!-- 场景2：新建具体任务 -->
+    <template v-else>
+      <input
+        v-model="formData.todoText"
+        placeholder="任务内容"
+        class="w-full px-5 py-4 rounded-2xl border-none bg-slate-100 outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all"
+      />
+      <div class="flex items-center space-x-3 p-2 bg-slate-50 rounded-2xl">
+        <span class="text-xs font-bold text-slate-400 uppercase pl-2">优先级:</span>
+        <button
+          v-for="s in 5"
+          :key="'prio-' + s"
+          @click="formData.priority = s"
+          class="focus:outline-none transform active:scale-125 transition-transform"
+        >
+          <Star
+            :size="24"
+            :class="[s <= formData.priority ? 'text-amber-400 fill-amber-400' : 'text-slate-200']"
+          />
+        </button>
+      </div>
+    </template>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, reactive, watch, onMounted } from 'vue'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import {
   Trash2,
@@ -164,6 +204,9 @@ import {
   Inbox,
   Check,
 } from 'lucide-vue-next'
+import { getSchedules, saveSchedules } from '@/api/services/schedule'
+
+import BaseModal from '@/components/ui/BaseModal.vue'
 
 const uiStore = useUIStore()
 
@@ -189,101 +232,33 @@ interface TodoItemWithGroup extends TodoItem {
   gid: string
 }
 
-const todoGroups = ref<Record<string, TodoGroup>>({
-  t1: {
-    title: '绘图任务',
-    todos: [
-      {
-        id: 101,
-        text: '完成灵灵多立绘绘图',
-        priority: 5,
-        completed: true,
-      },
-      {
-        id: 102,
-        text: '记得找 LingChat 动画',
-        priority: 4,
-        completed: false,
-      },
-    ],
+const todoGroups = ref<Record<string, TodoGroup>>({})
+
+const loadData = async () => {
+  try {
+    const data = await getSchedules()
+    if (data && data.todoGroups) {
+      todoGroups.value = data.todoGroups
+    }
+  } catch (e) {
+    console.error('Failed to load todos', e)
+  }
+}
+
+watch(
+  todoGroups,
+  async (newVal) => {
+    try {
+      await saveSchedules({ todoGroups: newVal })
+    } catch (e) {
+      console.error('Failed to save todos', e)
+    }
   },
-  t2: {
-    title: 'LingChat 0.4.0',
-    todos: [
-      {
-        id: 201,
-        text: '使用localStorage修复信息无法保存bug',
-        priority: 5,
-        completed: true,
-      },
-      {
-        id: 202,
-        text: '完成日程管理前端功能',
-        priority: 5,
-        completed: true,
-      },
-      {
-        id: 203,
-        text: '完成日程管理后端逻辑',
-        priority: 5,
-        completed: false,
-      },
-      {
-        id: 204,
-        text: '修复番茄钟显示 bug 问题',
-        priority: 2,
-        completed: false,
-      },
-      {
-        id: 205,
-        text: '切换角色服装有prompt提示功能',
-        priority: 4,
-        completed: false,
-      },
-      {
-        id: 206,
-        text: '测试新的永久记忆方案',
-        priority: 1,
-        completed: false,
-      },
-      {
-        id: 207,
-        text: '主动聊天功能实装',
-        priority: 5,
-        completed: false,
-      },
-      {
-        id: 207,
-        text: '重构数据库使其支持载入对话和多信息记录',
-        priority: 5,
-        completed: false,
-      },
-      {
-        id: 207,
-        text: '点击人物也可以进入下一段话',
-        priority: 1,
-        completed: false,
-      },
-      {
-        id: 207,
-        text: '剧本模式演示和基础功能实现',
-        priority: 4,
-        completed: false,
-      },
-      {
-        id: 207,
-        text: '开始启动界面实装',
-        priority: 2,
-        completed: false,
-      },
-      {
-        id: 207,
-        text: 'Credits页面实装？（可选）',
-        priority: 1,
-        completed: false,
-      },
-    ],
-  },
+  { deep: true },
+)
+
+onMounted(() => {
+  loadData()
 })
 
 const activeTodoGroup = computed(() => {
@@ -344,4 +319,48 @@ const selectTodoGroup = (id: string) => {
   selectedTodoGroupId.value = id
   uiStore.scheduleView = 'todo_detail'
 }
+const showModal = ref(false)
+const formData = reactive({
+  groupTitle: '',
+  todoText: '',
+  priority: 1,
+})
+
+const modalTitle = computed(() => {
+  return uiStore.scheduleView === 'todo_groups' ? '新建任务组' : '新建待办任务'
+})
+
+const handleCreate = () => {
+  formData.groupTitle = ''
+  formData.todoText = ''
+  formData.priority = 1
+  showModal.value = true
+}
+
+const confirmCreate = () => {
+  if (uiStore.scheduleView === 'todo_groups') {
+    // 新建组
+    const newId = 't' + Date.now()
+    todoGroups.value[newId] = {
+      title: formData.groupTitle,
+      todos: [],
+    }
+  } else {
+    // 新建任务
+    if (selectedTodoGroupId.value) {
+      const group = todoGroups.value[selectedTodoGroupId.value]
+      if (group) {
+        group.todos.push({
+          id: Date.now(),
+          text: formData.todoText,
+          priority: formData.priority,
+          completed: false,
+        })
+      }
+    }
+  }
+  showModal.value = false
+}
+
+defineExpose({ handleCreate })
 </script>

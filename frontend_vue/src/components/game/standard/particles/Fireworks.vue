@@ -614,7 +614,7 @@ function updateSpeedFromEvent(event: PointerEvent) {
 
 function launchRandomShell(x: number, y: number, fromMouse: boolean) {
   const currentTime = Date.now()
-  
+
   // Debounce check
   if (currentTime - lastLaunchTime < DEBOUNCE_DELAY && fromMouse) {
     return
@@ -624,7 +624,9 @@ function launchRandomShell(x: number, y: number, fromMouse: boolean) {
   // Play audio with random delay to prevent overlapping
   playFireworksAudio()
 
-  const shell = new Shell(crysanthemumShell(FIREWORK_RANGE * (1 + (Math.random() - 0.5)/2)) as ShellOptions)
+  const shell = new Shell(
+    crysanthemumShell(FIREWORK_RANGE * (1 + (Math.random() - 0.5) / 2)) as ShellOptions,
+  )
   const w = stageW
   const h = stageH
   const position = x / w
@@ -644,16 +646,16 @@ async function playFireworksAudio() {
       audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
     }
 
-    // Fireworks should not play audio together  
-    const delay = Math.random() * (AUDIO_DELAY_RANGE[1]! - AUDIO_DELAY_RANGE[0]!) + AUDIO_DELAY_RANGE[0]!
+    // Fireworks should not play audio together
+    const delay =
+      Math.random() * (AUDIO_DELAY_RANGE[1]! - AUDIO_DELAY_RANGE[0]!) + AUDIO_DELAY_RANGE[0]!
     const source = audioContext.createBufferSource()
     source.buffer = audioBuffer
     source.connect(audioContext.destination)
-    
+
     // Start with delay
-    const startTime = audioContext.currentTime + (delay / 1000)
+    const startTime = audioContext.currentTime + delay / 1000
     source.start(startTime)
-    
   } catch (error) {
     console.log('Audio playback failed:', error)
     // Fallback to HTML5 audio if Web Audio API fails
@@ -815,7 +817,7 @@ function update() {
 function render() {
   const trailsCanvasEl = trailsCanvas.value
   const mainCanvasEl = mainCanvas.value
-  
+
   if (!trailsCanvasEl || !mainCanvasEl) return
 
   const trailsCtx = trailsCanvasEl.getContext('2d')
