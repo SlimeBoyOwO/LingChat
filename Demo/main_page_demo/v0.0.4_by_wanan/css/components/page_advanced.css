@@ -1,0 +1,215 @@
+/* --- 高级设置页面样式 --- */
+.advanced-settings-container header {
+    padding-bottom: 15px;
+    margin-bottom: 25px;
+}
+
+.advanced-settings-container .adv-title {
+    margin: 0;
+    font-size: 24px;
+    color: var(--accent-color);
+    font-weight: 600;
+    position: relative; /* 为指示器提供定位上下文 */
+}
+
+.advanced-settings-container .adv-description {
+    margin: 8px 0 0;
+    color: #555;
+    font-size: 16px;
+}
+
+.settings-form {
+    max-width: 800px; /* 限制最大宽度，在宽屏上更美观 */
+}
+
+.form-group {
+    margin-bottom: 24px;
+}
+
+.form-group label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 6px;
+    color: #333;
+}
+
+.form-group .description {
+    font-size: 13px;
+    color: #777;
+    margin-bottom: 8px;
+    display: block;
+}
+
+.form-group .form-control {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    background-color: #fff;
+    border-radius: 8px;
+    color: #333;
+    font-size: 15px;
+    font-family: inherit;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-group .form-control:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px rgba(121, 217, 255, 0.3); /* 使用主题色光晕作为 a11y focus */
+}
+
+.form-group input[type="password"] {
+    font-family: 'Courier New', Courier, monospace; /* 让密码更易读 */
+}
+
+/* --- 高级设置页面基础布局 --- */
+.advanced-settings-grid {
+    display: grid;
+    grid-template-columns: 280px 1fr; /* 侧边栏固定宽度，内容区自适应 */
+    height: 100%;
+}
+
+/* --- 高级设置侧边导航栏 --- */
+.advanced-nav {
+    background-color: #f0f4f8; /* 一个非常浅的蓝色，与背景区分 */
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+    overflow-y: auto; /* 当导航项过多时，使其可以独立滚动 */
+    position: relative; /* 为指示器提供定位上下文 */
+}
+
+/* 新增：二级导航滑动指示器 */
+.adv-nav-indicator {
+    position: absolute;
+    top: 0; /* JS会更新 */
+    left: 20px; /* 左右留出一些边距 */
+    width: calc(100% - 40px); /* 左右留出一些边距 */
+    height: 0; /* JS会更新 */
+    background-color: var(--accent-color);
+    border-radius: 6px;
+    z-index: 0; /* 确保在链接文字下方 */
+    transition: top 0.3s ease-in-out, height 0.3s ease-in-out;
+}
+
+/* 新增：临时禁用过渡动画的类 */
+.adv-nav-indicator.no-transition {
+    transition: none;
+}
+
+.advanced-nav .adv-nav-title {
+    font-size: 22px;
+    color: #333;
+    margin: 10px 0;
+    text-align: center;
+    font-weight: 600;
+    border-radius: 6px;
+    transition: background-color 0.2s, color 0.2s;
+    border-left: 4px solid transparent;
+    position: relative; /* 确保文字在指示器上方 */
+    z-index: 1; /* 确保文字在指示器上方 */
+}
+
+.advanced-nav .adv-nav-category {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.advanced-nav .category-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #fff;
+    padding: 10px 15px;
+    display: block;
+    background-color: #a0b1c9; /* 一个柔和的蓝色作为分类标题背景 */
+    border-radius: 8px;
+    margin-bottom: 5px;
+}
+
+.advanced-nav .adv-nav-link {
+    display: block;
+    padding: 12px 20px;
+    color: #374151;
+    text-decoration: none;
+    border-radius: 6px;
+    transition: background-color 0.2s, color 0.2s;
+    border-left: 4px solid transparent;
+    position: relative; /* 确保文字在指示器上方 */
+    z-index: 1; /* 确保文字在指示器上方 */
+}
+
+.advanced-nav .adv-nav-link:hover:not(.active) {
+    background-color: #e5e7eb;
+}
+
+.advanced-nav .adv-nav-link.active {
+    color: white;
+    font-weight: bold;
+}
+
+/* --- 高级设置内容区 --- */
+.advanced-content {
+    padding: 0 40px;
+    overflow-y: auto;
+    display: flex; /* 使用 Flexbox 布局 */
+    justify-content: center; /* 水平居中内容 */
+}
+
+.adv-content-page {
+    display: none;
+    width: 100%; /* 确保页面容器占满可用宽度 */
+    max-width: 900px; /* 设定一个最大宽度，避免在超宽屏上过分拉伸 */
+}
+
+.adv-content-page.active {
+    display: block;
+}
+
+/* 原有的表单样式保持不变，但为了确保它们在内容区内正确显示，检查一下 */
+.advanced-settings-container {
+    padding-top: 20px;
+}
+
+.adv-content-page .settings-form .form-group .description {
+    font-size: 0.8rem;
+    color: #666;
+    margin-top: 4px;
+    margin-bottom: 8px;
+}
+
+/* Textarea Style */
+.adv-content-page .settings-form .form-group textarea.form-control {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    background-color: #fff;
+    color: #333;
+    transition: border-color 0.3s;
+    min-height: 120px;
+    resize: vertical;
+}
+
+.adv-content-page .settings-form .form-group textarea.form-control:focus {
+    outline: none;
+    border-color: var(--accent-color);
+}
+
+
+/* Checkbox Style */
+.adv-content-page .settings-form .form-group .checkbox-label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.adv-content-page .settings-form .form-group .checkbox-label input[type="checkbox"] {
+    margin-right: 10px;
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent-color);
+} 
