@@ -1,0 +1,142 @@
+/* =============================================
+   LingChat 全局样式
+   - 自定义字体定义
+   - 全局基础样式
+   - 面板系统动画
+   ============================================= */
+
+/* 定义自定义字体 */
+@font-face {
+    font-family: 'Maoken Assorted Sans';
+    src: url('../../resource/fonts/MaokenAssortedSans.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+}
+
+/* CSS 变量 */
+:root {
+    --accent-color: #79D9FF; /* 主题色 */
+}
+
+/* 全局重置 */
+body, html {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    overflow: hidden;
+    background: transparent; /* 透明背景，由各层提供 */
+}
+
+/* ========== 面板系统动画 ========== */
+.logo, .main-menu, .settings-panel {
+    transition: transform 0.6s cubic-bezier(0.7, 0, 0.2, 1),
+                opacity 0.6s cubic-bezier(0.7, 0, 0.2, 1);
+}
+
+#start-page {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transition: filter 0.6s cubic-bezier(0.7, 0, 0.2, 1),
+                transform 0.6s cubic-bezier(0.7, 0, 0.2, 1);
+}
+
+/* 背景模糊层（用于面板打开时的效果） */
+.main-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0); /* 默认透明 */
+    backdrop-filter: blur(0px);          /* 默认无模糊 */
+    transition: backdrop-filter 0.6s cubic-bezier(0.7, 0, 0.2, 1),
+                background-color 0.6s ease;
+    z-index: 10;                         /* 高于所有背景层（人物5、流星4、星星1），低于菜单（30） */
+    pointer-events: none;                 /* 允许点击穿透 */
+}
+
+/* 面板打开时的通用效果 */
+body.panel-active .main-container::before {
+    background-color: rgba(0, 0, 0, 0.3); /* 半透明黑色，实现变暗 */
+    backdrop-filter: blur(12px);          /* 模糊背景 */
+}
+
+body.panel-active #start-page {
+    transform: scale(0.98);
+}
+
+body.panel-active .main-menu {
+    transform: translateX(-120%);
+    opacity: 0;
+    pointer-events: none;
+}
+
+body.panel-active .logo {
+    transform: translateX(120%);
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* 特定面板的显示规则 */
+body.panel-active.show-settings .settings-panel {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+body.panel-active.show-game-screen .game-screen-panel {
+    transform: translateX(0);
+    opacity: 1;
+    pointer-events: auto;
+}
+
+body.panel-active.show-load-save .load-save-panel {
+    transform: translateX(0);
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* 新面板基础样式 */
+.game-screen-panel,
+.load-save-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 100%;
+    height: 100%;
+    transform: translateX(100%);
+    transition: transform 0.6s cubic-bezier(0.8, 0, 0.2, 1), opacity 0.6s cubic-bezier(0.8, 0, 0.2, 1);
+    opacity: 0;
+    padding: 0;
+    box-sizing: border-box;
+    z-index: 1000;
+    color: white;
+    background-color: transparent;
+    pointer-events: none;
+}
+
+/* 面板内部元素入场动画 */
+.panel-active .panel-header,
+.panel-active .panel-body {
+    opacity: 0;
+    transform: translateY(30px);
+    animation: fadeInUp 0.5s cubic-bezier(0.7, 0, 0.2, 1) forwards;
+}
+
+/* 各面板动画延迟（按需调整） */
+body.panel-active.show-settings .settings-header { animation-delay: 0.3s; }
+body.panel-active.show-settings .settings-body { animation-delay: 0.4s; }
+body.panel-active.show-game-screen .panel-header { animation-delay: 0.3s; }
+body.panel-active.show-game-screen .panel-body { animation-delay: 0.4s; }
+body.panel-active.show-load-save .panel-header { animation-delay: 0.3s; }
+body.panel-active.show-load-save .panel-body { animation-delay: 0.4s; }
+
+@keyframes fadeInUp {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
