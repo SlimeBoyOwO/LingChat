@@ -148,14 +148,14 @@ class ScriptStatus:
 
     name: str
     description: str
-    intro_charpter: str
+    intro_chapter: str
     settings: dict
 
     # 正在进行剧本模式的 client
     running_client_id: Optional[str] = None
 
     # 记录剧本进度
-    current_charpter_key: str = field(default_factory=str)
+    current_chapter_key: str = field(default_factory=str)
     current_event_process: int = field(default_factory=int)
 
     # 剧本包含的变量
