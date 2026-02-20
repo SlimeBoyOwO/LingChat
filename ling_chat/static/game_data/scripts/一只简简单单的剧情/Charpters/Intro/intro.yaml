@@ -44,4 +44,4 @@ events:
 # 章节结束处理
 end:
   type: linear
-  next: "Charpter_1/intro"
+  next: "Chapter_1/intro"

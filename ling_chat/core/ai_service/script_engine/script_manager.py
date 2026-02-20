@@ -1,7 +1,7 @@
 import shutil
 from ling_chat.core.ai_service.config import AIServiceConfig
 from ling_chat.core.ai_service.game_system.game_status import GameStatus
-from ling_chat.core.ai_service.script_engine.charpter import Charpter
+from ling_chat.core.ai_service.script_engine.chapter import Chapter
 from ling_chat.core.ai_service.type import Player, ScriptStatus
 
 from ling_chat.core.logger import logger
@@ -30,7 +30,7 @@ class ScriptManager:
         self._init_all_scripts()
 
         self.current_script:ScriptStatus|None = None
-        self.current_chartper:Charpter|None = None
+        self.current_chartper:Chapter|None = None
         self.is_running = False
                  
         if not self.all_scripts:
@@ -107,19 +107,19 @@ class ScriptManager:
         self.is_running = True
         script.running_client_id = self.config.last_active_client
 
-        next_charpter_name = self.current_script.intro_charpter
+        next_chapter_name = self.current_script.intro_chapter
 
-        while next_charpter_name != "end":
+        while next_chapter_name != "end":
             try:
                 # 1. 加载章节，返回一个“可运行”的章节对象
-                charpter_path = SCRIPT_DIR / script.folder_key / "Charpters" / (next_charpter_name + ".yaml")
-                current_charpter_obj:Charpter = self._get_charpter(charpter_path) # 一个新的辅助方法
+                chapter_path = SCRIPT_DIR / script.folder_key / "Chapters" / (next_chapter_name + ".yaml")
+                current_chapter_obj:Chapter = self._get_chapter(chapter_path) # 一个新的辅助方法
 
                 # 2. 命令章节运行，然后等待结果
-                next_charpter_name = await current_charpter_obj.run()
+                next_chapter_name = await current_chapter_obj.run()
 
             except Exception as e:
-                logger.error(f"运行章节 '{next_charpter_name}' 时发生严重错误: {e}", exc_info=True)
+                logger.error(f"运行章节 '{next_chapter_name}' 时发生严重错误: {e}", exc_info=True)
                 raise ScriptEngineError("运行章节的时候发生错误")
 
         self.is_running = False
@@ -178,18 +178,18 @@ class ScriptManager:
             return ScriptStatus(folder_key=script_path.name,
                                 name=config.get('script_name', 'ERROR'),
                                 description=config.get('description', 'ERROR'),
-                                intro_charpter=config.get('intro_charpter', 'ERROR'), 
+                                intro_chapter=config.get('intro_chapter', 'ERROR'), 
                                 settings=config.get('script_settings', {})
                                 )
         else:
             raise ScriptLoadError("剧本读取出现错误,缺少 story_config.yml 配置文件")
     
-    def _get_charpter(self, charpter_path: Path) -> Charpter:
-        config = Function.read_yaml_file(charpter_path)
+    def _get_chapter(self, chapter_path: Path) -> Chapter:
+        config = Function.read_yaml_file(chapter_path)
         if config is not None:
-            return Charpter(str(charpter_path), self.config, self.game_status, config.get('events',[]), config.get('end',{}))
+            return Chapter(str(chapter_path), self.config, self.game_status, config.get('events',[]), config.get('end',{}))
         else:
-            raise ChapterLoadError(f"导入 {charpter_path} 剧本的时候出现问题")
+            raise ChapterLoadError(f"导入 {chapter_path} 剧本的时候出现问题")
     
     def get_assets_dir(self, script_name: str | None = None) -> Path:
         """

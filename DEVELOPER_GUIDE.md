@@ -336,11 +336,11 @@ perceived_role_ids = [role.role_id for role in present_roles if role.role_id is 
   - 写入 `game_status.script_status`
   - 注册/创建剧本角色到 DB（`RoleManager.get_role_by_script_keys()` / `create_role()`）
   - 为每个剧本角色追加一条 `system` 台词（角色设定 prompt）
-  - 进入章节循环：`Charpter.run()` → 返回下一章名，直到 `"end"`
+  - 进入章节循环：`Chapter.run()` → 返回下一章名，直到 `"end"`
 
-### 8.2 章节执行：`Charpter`
+### 8.2 章节执行：`Chapter`
 
-源码：`ling_chat/core/ai_service/script_engine/charpter.py`
+源码：`ling_chat/core/ai_service/script_engine/chapter.py`
 
 - 一个章节包含：
   - `events_data: list[dict]`：事件列表（按顺序）
@@ -449,5 +449,5 @@ perceived_role_ids = [role.role_id for role in present_roles if role.role_id is 
 - DB：`ling_chat/game_database/database.py`、`models.py`
 - 存档：`ling_chat/game_database/managers/save_manager.py`、`ling_chat/api/chat_history.py`
 - 永久记忆：`ling_chat/game_database/managers/memory_manager.py`
-- 剧本：`ling_chat/core/ai_service/script_engine/script_manager.py`、`charpter.py`、`events_handler.py`、`events/*`
+- 剧本：`ling_chat/core/ai_service/script_engine/script_manager.py`、`chapter.py`、`events_handler.py`、`events/*`
 
