@@ -84,6 +84,8 @@ Pytorch/RAG/embedding_models/
 # 发布产物
 release/
 
+emotion_labels.csv
+
 
 # ============================================================
 #         游戏开发资源 (Game Development Assets)
