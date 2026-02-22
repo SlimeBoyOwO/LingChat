@@ -11,22 +11,18 @@ from ling_chat.core.logger import logger
 class GeminiProvider(BaseLLMProvider):
     def __init__(self):
         super().__init__()
-        self.api_key = None
+        self.api_key = os.environ.get("GEMINI_API_KEY")
         self.base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
-        self.model_type = None
-        self.proxy_url = None
-        self.initialize_client()
-
-    def initialize_client(self):
-        """初始化Gemini客户端"""
-        self.api_key = os.environ.get("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-        self.proxy_url = os.environ.get("GEMINI_PROXY_URL") or os.getenv("GOOGLE_PROXY_URL")
         self.model_type = os.environ.get("GEMINI_MODEL_TYPE", "gemini-2.5-flash")
+        self.proxy_url = os.environ.get("GEMINI_PROXY_URL")
+        self.temperature = float(os.environ.get("TEMPERATURE", 1.0))
+        self.top_p = float(os.environ.get("TOP_P", 1.0))
 
         if not self.api_key:
-            raise ValueError("需要Gemini API key！")
-
-        logger.info(f"Gemini provider initialized successfully! Model: {self.model_type}")
+            raise ValueError("需要Gemini API密钥！")
+        
+    def initialize_client(self):
+        pass
 
     def _get_headers(self):
         """获取请求头"""
@@ -75,7 +71,9 @@ class GeminiProvider(BaseLLMProvider):
             payload = {
                 "model": self.model_type,
                 "messages": formatted_messages,
-                "stream": False
+                "stream": False,
+                "temperature": self.temperature,
+                "top_p": self.top_p
             }
 
             with self._get_http_client() as client:
@@ -112,7 +110,9 @@ class GeminiProvider(BaseLLMProvider):
             payload = {
                 "model": self.model_type,
                 "messages": formatted_messages,
-                "stream": True
+                "stream": True,
+                "temperature": self.temperature,
+                "top_p": self.top_p
             }
 
             async with httpx.AsyncClient(proxy=self.proxy_url) as client:
@@ -145,9 +145,9 @@ class GeminiProvider(BaseLLMProvider):
                                         if content:
                                             yield content
                             except json.JSONDecodeError:
-                                logger.warning(f"未能解析返回: {line}")
+                                logger.warning(f"未能解析返回数据: {line}")
                                 continue
 
         except Exception as e:
-            logger.error(f"Gemini Api流式请求失败: {str(e)}")
+            logger.error(f"Gemini API流式请求失败: {str(e)}")
             raise
