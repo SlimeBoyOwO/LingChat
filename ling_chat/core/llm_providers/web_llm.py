@@ -1,6 +1,7 @@
 from typing import AsyncGenerator, Dict, List
 
 from openai import OpenAI
+import os
 
 from ling_chat.core.llm_providers.base import BaseLLMProvider
 from ling_chat.core.logger import logger
@@ -12,6 +13,8 @@ class WebLLMProvider(BaseLLMProvider):
         self.api_key = api_key
         self.base_url = base_url
         self.model_type = model_type
+        self.temperature = float(os.environ.get("TEMPERATURE", 1.3))
+        self.top_p = float(os.environ.get("TOP_P", 0.9))
 
         if (not api_key) or api_key == "sk-114514":
             logger.warning("通用网络大模型未初始化：CHAT_API_KEY 为空或为占位值。")
@@ -41,6 +44,8 @@ class WebLLMProvider(BaseLLMProvider):
             response = self.client.chat.completions.create(
                 model=self.model_type,
                 messages=messages,
+                temperature=self.temperature,
+                top_p=self.top_p,
                 stream=False
             )
             return response.choices[0].message.content
@@ -66,6 +71,8 @@ class WebLLMProvider(BaseLLMProvider):
             stream = self.client.chat.completions.create(
                 model=self.model_type,
                 messages=messages,
+                temperature=self.temperature,
+                top_p=self.top_p,
                 stream=True
             )
 
