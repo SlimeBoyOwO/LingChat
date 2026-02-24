@@ -141,7 +141,7 @@ async def get_role_avatar(
             f for f in avatar_path.iterdir() 
             if f.is_file() 
             and f.stem == emotion  # 关键修复：对比文件名(无后缀)是否等于传入的情绪名
-            and f.suffix.lower() in [".png", ".jpg", ".jpeg"]
+            and f.suffix.lower() in [".png", ".jpg", ".jpeg", ".gif"]
         ]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"读取目录失败: {str(e)}")
@@ -152,7 +152,7 @@ async def get_role_avatar(
             f for f in avatar_path.iterdir() 
             if f.is_file() 
             and f.stem == "正常"
-            and f.suffix.lower() in [".png", ".jpg", ".jpeg"]
+            and f.suffix.lower() in [".png", ".jpg", ".jpeg", ".gif"]
         ]
 
     if not emotion_files:
