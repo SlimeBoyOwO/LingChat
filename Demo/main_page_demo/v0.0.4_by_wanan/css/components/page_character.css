@@ -1,0 +1,146 @@
+#character-settings.active {
+    display: flex;
+    flex-direction: column;
+    align-items: center; /* 水平居中所有子元素 */
+}
+
+#character-settings {
+    color: #333;
+    padding: 0 20px; /* 增加一些左右内边距 */
+}
+
+#character-settings > .section-header,
+#character-settings > .character-grid,
+#character-settings > .actions-footer {
+    width: 100%;
+    max-width: 900px; /* 与高级设置保持一致的最大宽度 */
+}
+
+/* --- 角色选择页面新样式 --- */
+
+.section-header {
+    display: flex;
+    align-items: center;
+    border-bottom: 2px solid var(--accent-color);
+    padding-bottom: 8px;
+    margin-bottom: 15px;
+}
+
+.section-header h4, .section-header h5 {
+    margin: 0;
+    font-size: 18px;
+    color: #333;
+    font-weight: 600;
+}
+
+.character-grid {
+    display: grid;
+    grid-template-columns: 1fr; /* 从多列网格改为单列 */
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.character-card {
+    display: flex;
+    background-color: #fff;
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.character-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+}
+
+.character-avatar-container {
+    width: 150px;
+    height: 100%;
+    flex-shrink: 0;
+    padding: 15px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf3 100%);
+}
+
+.character-avatar {
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+    border-radius: 8px;
+}
+
+.character-content-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 15px;
+    position: relative;
+}
+
+.character-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #333;
+    margin-top: 0;
+    margin-bottom: 8px;
+}
+
+.character-description {
+    font-size: 13px;
+    color: #666;
+    line-height: 1.5;
+    flex-grow: 1;
+    margin-bottom: 15px;
+}
+
+.character-select-btn {
+    align-self: flex-end; /* 按钮靠右 */
+    background-color: #ccc;
+    color: #666;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 13px;
+    font-weight: 500;
+}
+.character-select-btn.selected {
+    background-color: var(--accent-color);
+    color: white;
+}
+.character-select-btn:not(.selected):hover {
+    background-color: #555;
+    color: white;
+}
+
+.actions-footer {
+    display: grid;
+    grid-template-columns: 1fr 1fr; /* 恢复为双列布局，让两个按钮并排显示 */
+    gap: 20px;
+    width: 100%;
+}
+
+.action-button {
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+    font-weight: bold;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    background-color: #e9ecef;
+    color: #495057;
+    transition: all 0.2s ease;
+}
+
+.action-button:hover {
+    background-color: var(--accent-color);
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(121, 217, 255, 0.4);
+} 
