@@ -8,6 +8,7 @@ from ling_chat.game_database.managers.save_manager import SaveManager
 from ling_chat.game_database.managers.user_manager import UserManager
 from ling_chat.game_database.managers.role_manager import RoleManager
 from ling_chat.game_database.managers.memory_manager import MemoryManager
+from ling_chat.game_database.models import LineAttribute
 
 router = APIRouter(prefix="/api/v1/chat/history", tags=["Chat History"])
 
@@ -25,6 +26,24 @@ async def list_user_conversations(user_id: int, page: int = 1, page_size: int = 
             "msg": "Failed to fetch user conversations",
             "error": str(e)
         }
+
+@router.get("/get_chat_lines")
+async def get_chat_lines(user_id: int):
+    try:
+        ai_service = service_manager.ai_service
+        if not ai_service:
+            return HTTPException(status_code=500, detail="AI 服务未初始化")
+        
+        lines = [line for line in ai_service.get_lines() if line.attribute != LineAttribute.SYSTEM]
+        dict_lines = [line.model_dump() for line in lines]
+        return {
+            "code": 200,
+            "data": dict_lines
+        }
+    
+    except Exception as e:
+        return HTTPException(status_code=500, detail="Failed to fetch chat lines" + str(e))
+
 
 @router.get("/load")
 async def load_user_conversations(user_id: int, conversation_id: int):
