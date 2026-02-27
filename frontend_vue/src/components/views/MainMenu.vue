@@ -12,7 +12,11 @@
       <!-- 主菜单 -->
       <Transition name="slide-left">
         <div class="main-menu-page__menu" v-if="menuState === 'main'">
-          <MainMenuOptions @start-game="showGameModeMenu" @open-settings="handleOpenSettings" />
+          <MainMenuOptions
+            @start-game="showGameModeMenu"
+            @open-settings="handleOpenSettings"
+            @open-credits="handleOpenCredits"
+          />
         </div>
       </Transition>
 
@@ -46,12 +50,15 @@
 
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { MainChat } from './'
 import { SettingsPanel as Settings } from '../settings/'
 import { MainMenuOptions, GameModeOptions } from './menu'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import ScriptModeOptions from './menu/ScriptModeOptions.vue'
 import { getScriptList, type ScriptSummary } from '@/api/services/script-info'
+
+const router = useRouter()
 
 // 页面状态
 const currentPage = ref('mainMenu')
@@ -67,6 +74,10 @@ const uiStore = useUIStore()
 // 显示游戏模式菜单
 function showGameModeMenu() {
   menuState.value = 'gameMode'
+}
+
+function handleOpenCredits() {
+  router.push('/credit')
 }
 
 // 返回主菜单
