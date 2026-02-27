@@ -32,11 +32,19 @@ def export_emotion_labels(output_path: str | Path | None = None) -> tuple[str, i
             writer.writerow(['text', 'label'])
 
             count = 0
+            # 用于跟踪已导出的数据对，避免重复
+            exported_pairs = set()
+            
             for line in lines:
                 # 只导出两个情绪字段都不为空且不相同的记录
                 if (line.original_emotion and line.predicted_emotion and 
                     line.original_emotion != line.predicted_emotion):
-                    writer.writerow([line.original_emotion, line.predicted_emotion])
-                    count += 1
+                    # 创建数据对元组
+                    data_pair = (line.original_emotion, line.predicted_emotion)
+                    # 检查是否已经导出过这个数据对
+                    if data_pair not in exported_pairs:
+                        writer.writerow([line.original_emotion, line.predicted_emotion])
+                        exported_pairs.add(data_pair)
+                        count += 1
 
     return str(output_path), count
