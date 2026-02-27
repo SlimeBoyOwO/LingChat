@@ -3,6 +3,8 @@ import type { GameState, GameMessage, GameRole } from './state'
 import { getGameInfo } from '../../../api/services/game-info'
 import { getRoleInfo } from '../../../api/services/character'
 import { useUIStore } from '../ui/ui'
+import { getDialogueHistory } from '@/api/services/history'
+import { convertToGameMessages } from '@/utils/function'
 
 export const actions = {
   // 注意：这里 this 指定为 GameState 是安全的，
@@ -19,6 +21,10 @@ export const actions = {
 
   clearDialogHistory(this: GameState) {
     this.dialogHistory = []
+  },
+
+  setGameMessages(this: GameState, messages: GameMessage[]) {
+    this.dialogHistory = messages
   },
 
   async initializeGame(this: GameState, client_id: string, userId: string) {
@@ -54,6 +60,14 @@ export const actions = {
 
       uiStore.showCharacterTitle = gameInfo.user_name
       uiStore.showCharacterSubtitle = gameInfo.user_subtitle
+
+      const lines = await getDialogueHistory(userId)
+      if (lines && lines.length > 0) {
+        const messages = convertToGameMessages(lines)
+        this.dialogHistory = messages
+      } else {
+        this.dialogHistory = []
+      }
 
       return gameInfo
     } catch (error) {
