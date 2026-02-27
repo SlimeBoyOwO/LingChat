@@ -67,6 +67,13 @@ def run_cli_command(args):
     if args.command == "install":
         handle_install(args.modules, use_mirror=args.mirror)
         logger.info("安装完成")
+    elif args.command == "export-emotions":
+        from ling_chat.utils.export_emotions import export_emotion_labels
+        output_file, count = export_emotion_labels(args.output)
+        if count == 0:
+            logger.warning("没有获取任何有效的情感标签数据，暂时不需要发送哦")
+        else:
+            logger.info(f"成功导出 {count} 条情感标签数据到：{output_file}")
     else:
         logger.error(f"未知的CLI命令: {args.command}")
 

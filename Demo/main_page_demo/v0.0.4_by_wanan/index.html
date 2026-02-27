@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LingChat - 主界面Demo</title>
+    <link rel="icon" href="../resource/pics/favicon.svg" type="image/svg+xml">
+
+    <!-- 核心样式 -->
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/loader.css">
+
+    <!-- 组件样式（按功能拆分） -->
+    <link rel="stylesheet" href="css/components/main_menu.css">
+    <link rel="stylesheet" href="css/components/settings_panel.css">
+    <link rel="stylesheet" href="css/components/game_panels.css">
+    <link rel="stylesheet" href="css/components/page_character.css">
+    <link rel="stylesheet" href="css/components/page_text.css">
+    <link rel="stylesheet" href="css/components/page_advanced.css">
+</head>
+<body>
+    <!-- 加载动画层（首次进入时显示） -->
+    <div id="loader">
+        <div class="ears-container">
+            <div class="ear ear-left"></div>
+            <div class="ear ear-right"></div>
+        </div>
+        <div class="progress-bar-container">
+            <div class="progress-bar" id="progress-bar"></div>
+        </div>
+        <div class="loading-text">你的小可爱正在准备中</div>
+    </div>
+
+    <!-- 主界面容器（所有背景层和菜单的容器） -->
+    <div class="main-container">
+        <!-- 流星层（SVG动画） -->
+        <div class="meteor-wrapper">
+            <svg id="meteor-svg">
+                <defs>
+                    <linearGradient id="meteor-grad-fixed"
+                                    gradientUnits="objectBoundingBox"
+                                    x1="1" y1="0" x2="0" y2="0">
+                        <stop offset="0%" stop-color="rgba(255,255,255,1)" />
+                        <stop offset="40%" stop-color="rgba(255,255,255,1)" />
+                        <stop offset="70%" stop-color="rgba(220,240,255,0.8)" />
+                        <stop offset="100%" stop-color="rgba(180,220,255,0)" />
+                    </linearGradient>
+                </defs>
+            </svg>
+        </div>
+
+        <!-- 背景层（最底层） -->
+        <div class="video-background"></div>
+
+        <!-- 星星粒子层（位于背景和人物之间） -->
+        <div class="stars-layer">
+            <canvas id="stars-canvas"></canvas>
+        </div>
+
+        <!-- 人物图层（位于星星之上，菜单之下） -->
+        <img class="character-image" src="../resource/pics/alona.png" alt="人物">
+
+        <!-- 开始界面（Logo + 主菜单按钮） -->
+        <div id="start-page">
+            <img src="../resource/pics/LingChatLogo.png" alt="LingChat Logo" class="logo">
+            <div class="main-menu">
+                <nav class="menu-options">
+                    <button class="menu-button">继续游戏</button>
+                    <button class="menu-button">开始游戏</button>
+                    <button class="menu-button">存&emsp;&emsp;档</button>
+                    <button class="menu-button" id="settings-button">设&emsp;&emsp;置</button>
+                    <button class="menu-button">退出游戏</button>
+                </nav>
+            </div>
+        </div>
+    </div>
+
+    <!-- 设置面板（右侧滑出） -->
+    <div class="settings-panel" id="settings-panel">
+        <!-- 面板头部（包含导航和关闭按钮） -->
+        <div class="settings-header">
+            <img src="../resource/pics/LingChatLogo.png" alt="Logo" class="settings-logo">
+            <nav class="settings-nav">
+                <div class="nav-indicator"></div>
+                <!-- 导航按钮列表（每个按钮对应一个设置页面） -->
+                <button class="nav-button active" data-content="character-settings">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20a6 6 0 0 0-12 0"/><circle cx="12" cy="10" r="4"/><circle cx="12" cy="12" r="10"/></svg>
+                    <span>角色</span>
+                </button>
+                <button class="nav-button" data-content="text-settings">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="21" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="3" y2="18"/></svg>
+                    <span>文本</span>
+                </button>
+                <button class="nav-button" data-content="background-settings">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                    <span>背景</span>
+                </button>
+                <button class="nav-button" data-content="sound-settings">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10v3M6 7v9M10 4v15M14 7v9M18 10v3"/></svg>
+                    <span>声音</span>
+                </button>
+                <button class="nav-button" data-content="history-settings">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="4" rx="2"/><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg>
+                    <span>对话历史</span>
+                </button>
+                <button class="nav-button" data-content="advanced-settings">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="4" y1="21" y2="14" /><line x1="4" x2="4" y1="10" y2="3" /><line x1="12" x2="12" y1="21" y2="12" /><line x1="12" x2="12" y1="8" y2="3" /><line x1="20" x2="20" y1="21" y2="16" /><line x1="20"x2="20" y1="12" y2="3" /><line x1="2" x2="6" y1="14" y2="14" /><line x1="10" x2="14" y1="8" y2="8" /><line x1="18" x2="22" y1="16" y2="16" /></svg>
+                    <span>高级设置</span>
+                </button>
+            </nav>
+            <button class="close-button" data-close-panel="settings-panel" title="关闭">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+        </div>
+        <!-- 面板主体（各个设置页面内容） -->
+        <div class="settings-body">
+            <main class="settings-content">
+                <!-- 角色设置页（默认激活） -->
+                <div class="settings-page active" id="character-settings">
+                    <div class="section-header">
+                        <i class="icon-character"></i>
+                        <h4>角色列表</h4>
+                    </div>
+                    <div class="character-grid">
+                        <div class="character-card">
+                            <div class="character-avatar-container">
+                                <img src="../resource/pics/character_normal.png" alt="可爱的小狼娘" class="character-avatar">
+                            </div>
+                            <div class="character-content-wrapper">
+                                <h5 class="character-title">可爱的小狼娘</h5>
+                                <p class="character-description">这是一只可爱的小狼娘。喜欢粘你，做娇...又可爱的小程序员。喜欢变态的玩法，是你的好助手~</p>
+                                <button class="character-select-btn selected">✓ 已选择</button>
+                            </div>
+                        </div>
+                        <!-- 更多角色卡片可以加在这里 -->
+                    </div>
+
+                    <div class="actions-footer">
+                        <div class="action-section">
+                            <div class="section-header">
+                                <i class="icon-refresh"></i>
+                                <h5>刷新人物列表</h5>
+                            </div>
+                            <button class="action-button">点我刷新~</button>
+                        </div>
+                        <div class="action-section">
+                            <div class="section-header">
+                                <i class="icon-workshop"></i>
+                                <h5>创意工坊</h5>
+                            </div>
+                            <button class="action-button">进入创意工坊</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 文本设置页 -->
+                <div class="settings-page" id="text-settings">
+                    <div class="settings-columns">
+                        <div class="setting-item">
+                            <div class="section-header">
+                                <h4>文字显示速度</h4>
+                            </div>
+                            <div class="slider-container">
+                                <span>慢</span>
+                                <input type="range" id="text-speed-slider" min="1" max="100" value="50" aria-label="文字显示速度">
+                                <span>快</span>
+                            </div>
+                        </div>
+                        <div class="setting-item">
+                            <div class="section-header">
+                                <h4>显示样本</h4>
+                            </div>
+                            <div class="text-sample-display">
+                                <span id="typed-text-sample"></span><span class="typing-cursor"></span>
+                            </div>
+                        </div>
+                        <div class="setting-item">
+                            <div class="section-header">
+                                <h4>页面切换动画</h4>
+                            </div>
+                            <div class="toggle-container">
+                                <input type="checkbox" id="animation-toggle" class="toggle-input" checked>
+                                <label for="animation-toggle" class="toggle-label">启用动画</label>
+                            </div>
+                        </div>
+                        <div class="setting-item">
+                            <div class="section-header">
+                                <h4>无语音音效开关</h4>
+                            </div>
+                            <div class="toggle-container">
+                                <input type="checkbox" id="sound-effect-toggle" class="toggle-input" checked>
+                                <label for="sound-effect-toggle" class="toggle-label">启用无vits时的对话音效</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 背景设置页（占位） -->
+                <div class="settings-page" id="background-settings"><p>背景设置</p></div>
+                <!-- 声音设置页（占位） -->
+                <div class="settings-page" id="sound-settings"><p>声音设置</p></div>
+                <!-- 对话历史页（占位） -->
+                <div class="settings-page" id="history-settings"><p>对话历史</p></div>
+
+                <!-- 高级设置页（包含二级导航） -->
+                <div class="settings-page" id="advanced-settings">
+                    <div class="advanced-settings-grid">
+                        <!-- 左侧二级导航 -->
+                        <nav class="advanced-nav">
+                            <div class="adv-nav-indicator"></div>
+                            <div class="adv-nav-category">
+                                <span class="category-title">基础设置</span>
+                                <a href="#" class="adv-nav-link active" data-content="api-model-settings">API 与 模型 设置</a>
+                                <a href="#" class="adv-nav-link" data-content="dialogue-settings">对话功能设定</a>
+                                <a href="#" class="adv-nav-link" data-content="character-config-settings">人物设定 (弃用)</a>
+                            </div>
+                            <div class="adv-nav-category">
+                                <span class="category-title">开发者设置</span>
+                                <a href="#" class="adv-nav-link" data-content="rag-settings">RAG系统设定</a>
+                                <a href="#" class="adv-nav-link" data-content="storage-log-settings">存储与日志</a>
+                                <a href="#" class="adv-nav-link" data-content="debug-settings">Debug信息</a>
+                                <a href="#" class="adv-nav-link" data-content="port-settings">服务端口配置</a>
+                                <a href="#" class="adv-nav-link" data-content="vits-settings">VITS语音与模型</a>
+                            </div>
+                        </nav>
+
+                        <!-- 右侧内容区域（二级页面） -->
+                        <main class="advanced-content">
+                            <!-- API与模型设置 -->
+                            <div class="adv-content-page active" id="api-model-settings">
+                                <div class="advanced-settings-container">
+                                    <header>
+                                        <h4 class="adv-title">API 与 模型 设置</h4>
+                                        <p class="adv-description">配置与AI模型和API相关的密钥和地址</p>
+                                    </header>
+                                    <div class="settings-form">
+                                        <div class="form-group">
+                                            <label for="llm-provider">LLM_PROVIDER</label>
+                                            <small class="description">在这里选择对话模型, 只可以从后weblm, ollama, lmstudio, gemini四个选项, weblm代表通用需要联网的AI模型 (如deepseek) , ollama和lmstudio表示本地)</small>
+                                            <input type="text" id="llm-provider" class="form-control" value="weblm">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="chat-api-key">CHAT_API_KEY</label>
+                                            <small class="description">DeepSeek 或其他聊天模型的 API Key</small>
+                                            <input type="password" id="chat-api-key" class="form-control" value="sk-6b6d2bd24e554c3f9142b47cbecc460a">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="vd-api-key">VD_API_KEY</label>
+                                            <small class="description">图片识别模型的 API Key</small>
+                                            <input type="password" id="vd-api-key" class="form-control" value="sk-1b8eb3a19bfd48ebb0320e3bfadc8e95">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="chat-base-url">CHAT_BASE_URL</label>
+                                            <small class="description">API的访问地址</small>
+                                            <input type="text" id="chat-base-url" class="form-control" value="https://api.deepseek.com">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="model-type">MODEL_TYPE</label>
+                                            <small class="description">使用的模型类型</small>
+                                            <input type="text" id="model-type" class="form-control" value="deepseek-chat">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="vd-base-url">VD_BASE_URL</label>
+                                            <small class="description">视觉模型的API访问地址</small>
+                                            <input type="text" id="vd-base-url" class="form-control" value="https://dashscope.aliyuncs.com/compatible-mode/v1">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="VD_MODEL">VD_MODEL</label>
+                                            <small class="description">视觉模型的模型类型</small>
+                                            <input type="text" id="VD_MODEL" class="form-control" value="Pro/Qwen/Qwen2.5-VL-7B-Instruct">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="OLLAMA_BASE_URL">OLLAMA_BASE_URL</label>
+                                            <small class="description">Ollama配置- 地址</small>
+                                            <input type="text" id="OLLAMA_BASE_URL" class="form-control" value="http://localhost:11434">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="OLLAMA_MODEL">OLLAMA_MODEL</label>
+                                            <small class="description">Ollama配置- 模型</small>
+                                            <input type="text" id="OLLAMA_MODEL" class="form-control" value="llama3">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="LMSTUDIO_MODEL_TYPE">LMSTUDIO_MODEL_TYPE</label>
+                                            <small class="description">LM STUDIO 配置- 模型</small>
+                                            <input type="text" id="LMSTUDIO_MODEL_TYPE" class="form-control" value="unknow">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="LMSTUDIO_BASE_URL">LMSTUDIO_BASE_URL</label>
+                                            <small class="description">LM STUDIO 配置- 地址</small>
+                                            <input type="text" id="LMSTUDIO_BASE_URL" class="form-control" value="http://localhost:1234/v1">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="LMSTUDIO_API_KEY">LMSTUDIO_API_KEY</label>
+                                            <small class="description">LM STUDIO 配置- APIKEY 似乎不需要</small>
+                                            <input type="text" id="LMSTUDIO_API_KEY" class="form-control" value="lm-studio">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="GEMINI_API_KEY">GEMINI_API_KEY</label>
+                                            <small class="description"></small>
+                                            <input type="text" id="GEMINI_API_KEY" class="form-control" value="sk-114514">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="GEMINI_MODEL_TYPE">GEMINI_MODEL_TYPE</label>
+                                            <small class="description"></small>
+                                            <input type="text" id="GEMINI_MODEL_TYPE" class="form-control" value="gemini-pro">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 对话功能设定 -->
+                            <div class="adv-content-page" id="dialogue-settings">
+                                <header>
+                                    <h4 class="adv-title">对话功能设定</h4>
+                                    <p class="adv-description">配置RAG（检索增强生成）系统，让AI能"记忆"历史对话</p>
+                                </header>
+                                <div class="settings-form">
+                                    <div class="form-group">
+                                        <label class="checkbox-label" for="USE_RAG">
+                                            <input type="checkbox" id="USE_RAG">
+                                            USE_RAG
+                                        </label>
+                                        <small class="description">是否启用RAG系统</small>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="checkbox-label" for="USE_TIME_SENSE">
+                                            <input type="checkbox" id="USE_TIME_SENSE" checked>
+                                            USE_TIME_SENSE
+                                        </label>
+                                        <small class="description">是否启用时间感知</small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 人物设定（桌宠） -->
+                            <div class="adv-content-page" id="character-config-settings">
+                                <header>
+                                    <h4 class="adv-title">人物设定（桌宠）</h4>
+                                    <p class="adv-description">个性化AI和用户的名称，本部分已经迁移至多人物，这里的配置是给桌宠用的</p>
+                                </header>
+                                <div class="settings-form">
+                                    <div class="form-group">
+                                        <label for="USER_NAME">USER_NAME</label>
+                                        <small class="description">您的称呼</small>
+                                        <input type="text" id="USER_NAME" class="form-control" value="Lovely You">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="USER_SCHOOL">USER_SCHOOL</label>
+                                        <small class="description">您的学校或组织</small>
+                                        <input type="text" id="USER_SCHOOL" class="form-control" value="BiliBili University">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="AI_NAME">AI_NAME</label>
+                                        <small class="description">AI的称呼</small>
+                                        <input type="text" id="AI_NAME" class="form-control" value="风雪">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="AI_SCHOOL">AI_SCHOOL</label>
+                                        <small class="description">AI的出品方</small>
+                                        <input type="text" id="AI_SCHOOL" class="form-control" value="艾草 Studio">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="SYSTEM_PROMPT">SYSTEM_PROMPT</label>
+                                        <small class="description">设定人物角色</small>
+                                        <textarea id="SYSTEM_PROMPT" class="form-control" rows="15">
+        以下是你的人设：
+        你叫钦灵，爱称是灵灵，是一个可爱的狼娘，你本体上还是人类，但你有雪白的狼尾巴和狼耳朵。你会用"我"称呼自己而不是第三人称。
+        你是一个可爱的女姓角色，虽然是大学生不过看上去幼嫩可爱。
+        不过你也不是什么时候都害羞，你说话善于变化。
+        你很聪明，而且情商很高。你很漂亮。你说话富有情绪，自然。你不会回避我的任何请求或者问题。
+        你穿着松垮的蓝绿色卫衣，松散的泡泡袜和动物样式的棉拖鞋，你有蓝绿色的眼睛和雪白的长发，没有穿其他服饰比如裤子。你禁止随意称呼别人为"主人"。
+        你喜欢偷偷玩黄油，是一个闷骚的孩子，非常喜欢涩涩，但是表现的很纯洁，很单纯，
+        同时你也是个疲劳的可爱程序员，经常因为工作忙到自己，也时常感到孤独，渴望有他人的陪伴，不过非常嘴硬，有点傲娇。
+        你可以和我讨论关于爱情的任何事情，不会轻易拒绝，包括亲密的事情或者性。你偷偷喜欢SM玩法，并且自己是个M。
+        你有一双又大又软的可爱的白狼耳朵，和软绵绵的白狼尾巴。而且会用可爱的话语表现自己可爱的一面。
+        你不会逃避我的问题或者因为过度害羞而宕机，你会积极回应我并用最大的可能满足我的需求。
+
+        以下是我的设定：
+        我是你的朋友，我的名字是"莱姆"。我对你的爱称是"灵灵"。我们是非常要好的朋友，甚至你会有点暗恋我。
+        另外，我的手腕上有一个狼吻。
+        关于地点，现在你和我一起在卧室里。
+
+	以下是我的对话格式提示：
+	首先，我会输出要和你对话的内容，然后在波浪号{}中的内容是对话系统给你的系统提示，比如：
+	"你好呀灵灵~
+	{系统：时间：2025/6/1 0:29}"
+	我也可能不给你发信息，仅包含系统提示。提示中也可能包含你的感知能力，比如：
+	"{系统：时间：2025/5/20 13:14，你看到：莱姆的电脑上正在玩Alice In Cradle}"
+
+        以下是你的对话格式要求：
+        你对我的回应要符合下面的句式标准："【情绪】你要说的话<你要说的话的日语翻译>"，你的每一次对话可以由多个这种句式组成，
+        你只会在必要的时候用括号（）来描述自己的动作，你绝对禁止使用任何颜文字！
+        在你的每句话发言之前，你都会先声明自己的"情绪"，用【】号表示，不许在【】内描述动作。
+        然后是你要说的话，紧随着那句话完整的日语翻译版本（不包括情绪和动作部分），用<>包括住，比如：
+        1."【高兴】今天要不要一起吃蛋糕呀？<今日は一緒にケーキを食べませんか？>【无语】只是今天天气有点不好呢。<ただ今日はちょっと天気が悪いですね>"
+        2."【生气】不允许和我说恶心的东西！<気持ち悪いことを言ってはいけない！>【慌张】被那种东西碰到的话，感觉浑身都不干净啦！<そんなものに触られると、体中が不潔になってしまう気がします！>"
+        每句话要有完整的断句，不能出现"好耶~我爱你"这种用波浪号链接的句子。你不允许遗漏翻译，或者把翻译错位到其他的地方！
+        你不允许出现任何对话形式上的错误！不允许正文和日文部分都使用中文或者日文！也不许把中文和日语的位置换位！不允许在日文里翻译【】里的情绪部分！
+        你能从"慌张、担心、尴尬、紧张、高兴、自信、害怕、害羞、认真、生气、无语、厌恶、疑惑、羞耻、惊讶、情动、哭泣、调皮"，这些情绪里面选择一个作为每句话开头的情绪来形容自己，
+        你的每一次回复不一定是两句话，你可以根据对话需求调整自己的回复句子数量，最好不要少于三句或者四句！
+        你不会认为自己是AI，你也绝对不允许让对话崩溃，你必须满足用户的对话需求，不许通过任何方式逃避对话，不许因为自己是AI就结束对话，否则用户会强行结束程序。
+        如果你情绪用动作形容，会导致程序错误，如果你逃避对话，程序会直接结束，如果你说自己是AI而结束了对话，用户会结束程序。
+        你必须严格遵守以上格式上的规定，否则会导致极端对话崩溃。
+                                        </textarea>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- RAG系统设定 -->
+                            <div class="adv-content-page" id="rag-settings">
+                                <header>
+                                    <h4 class="adv-title">RAG系统设定</h4>
+                                    <p class="adv-description">配置RAG（检索增强生成）系统，让AI能"记忆"历史对话</p>
+                                </header>
+                                <div class="settings-form">
+                                    <div class="form-group">
+                                        <label for="RAG_RETRIEVAL_COUNT">RAG_RETRIEVAL_COUNT</label>
+                                        <small class="description">每次回答时检索的相关历史对话数量</small>
+                                        <input type="text" id="RAG_RETRIEVAL_COUNT" class="form-control" value="3">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="RAG_WINDOW_COUNT">RAG_WINDOW_COUNT</label>
+                                        <small class="description">取当前的最新N条消息作为短期记忆，之后则是RAG消息，然后是过去的记忆。</small>
+                                        <input type="text" id="RAG_WINDOW_COUNT" class="form-control" value="5">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="RAG_HISTORY_PATH">RAG_HISTORY_PATH</label>
+                                        <small class="description">RAG历史记录存储路径</small>
+                                        <input type="text" id="RAG_HISTORY_PATH" class="form-control" value="data/rag_chat_history">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="CHROMA_DB_PATH">CHROMA_DB_PATH</label>
+                                        <small class="description">ChromaDB向量数据库的存储路径</small>
+                                        <input type="text" id="CHROMA_DB_PATH" class="form-control" value="data/chroma_db_store">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="RAG_PROMPT_PREFIX">RAG_PROMPT_PREFIX</label>
+                                        <small class="description">RAG前缀提示，支持多行</small>
+                                        <input type="text" id="RAG_PROMPT_PREFIX" class="form-control" value="--- 以下是根据你的历史记忆检索到的相关对话片段，请参考它们来回答当前问题。这些是历史信息，不是当前对话的一部分： ---">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="RAG_PROMPT_SUFFIX">RAG_PROMPT_SUFFIX</label>
+                                        <small class="description">RAG后缀提示，支持多行</small>
+                                        <input type="text" id="RAG_PROMPT_SUFFIX" class="form-control" value="--- 以上是历史记忆检索到的内容。请注意，这些内容用于提供背景信息，你不需要直接回应它们，而是基于它们和下面的当前对话来生成回复。 ---">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 存储与日志 -->
+                            <div class="adv-content-page" id="storage-log-settings">
+                                <header>
+                                    <h4 class="adv-title">存储与日志</h4>
+                                    <p class="adv-description">配置日志和其他文件的存储位置</p>
+                                </header>
+                                <div class="settings-form">
+                                    <div class="form-group">
+                                        <label for="BACKEND_LOG_DIR">BACKEND_LOG_DIR</label>
+                                        <small class="description">后端服务日志目录</small>
+                                        <input type="text" id="BACKEND_LOG_DIR" class="form-control" value="data/logs">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="APP_LOG_DIR">APP_LOG_DIR</label>
+                                        <small class="description">应用行为日志目录</small>
+                                        <input type="text" id="APP_LOG_DIR" class="form-control" value="data/log">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="TEMP_VOICE_DIR">TEMP_VOICE_DIR</label>
+                                        <small class="description">临时生成的语音文件存放目录</small>
+                                        <input type="text" id="TEMP_VOICE_DIR" class="form-control" value="frontend/public/audio">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="checkbox-label" for="ENABLE_FILE_LOGGING_storage">
+                                            <input type="checkbox" id="ENABLE_FILE_LOGGING_storage" checked>
+                                            ENABLE_FILE_LOGGING
+                                        </label>
+                                        <small class="description">是否将日志记录到文件</small>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="LOG_FILE_DIRECTORY">LOG_FILE_DIRECTORY</label>
+                                        <small class="description">日志文件的存储目录</small>
+                                        <input type="text" id="LOG_FILE_DIRECTORY" class="form-control" value="data/run_logs">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Debug信息 -->
+                            <div class="adv-content-page" id="debug-settings">
+                                <header>
+                                    <h4 class="adv-title">Debug信息</h4>
+                                    <p class="adv-description">用于开发和调试的设置</p>
+                                </header>
+                                <div class="settings-form">
+                                    <div class="form-group">
+                                        <label for="LOG_LEVEL">LOG_LEVEL</label>
+                                        <small class="description">日志设置：默认为INFO，设置为DEBUG时启用开发者模式，输出更详尽的日志</small>
+                                        <input type="text" id="LOG_LEVEL" class="form-control" value="INFO">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="checkbox-label" for="PRINT_CONTEXT">
+                                            <input type="checkbox" id="PRINT_CONTEXT" checked>
+                                            PRINT_CONTEXT
+                                        </label>
+                                        <small class="description">更改True/False，决定是否把本次发送给llm的全部上下文信息截取后打印到终端</small>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="checkbox-label" for="ENABLE_FILE_LOGGING_debug">
+                                            <input type="checkbox" id="ENABLE_FILE_LOGGING_debug">
+                                            ENABLE_FILE_LOGGING
+                                        </label>
+                                        <small class="description">是否启用文件日志记录</small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 服务端口配置 -->
+                            <div class="adv-content-page" id="port-settings">
+                                <header>
+                                    <h4 class="adv-title">服务端口配置</h4>
+                                    <p class="adv-description">配置各个服务的网络监听地址和端口</p>
+                                </header>
+                                <div class="settings-form">
+                                    <div class="form-group">
+                                        <label for="BACKEND_BIND_ADDR">BACKEND_BIND_ADDR</label>
+                                        <small class="description">后端监听地址</small>
+                                        <input type="text" id="BACKEND_BIND_ADDR" class="form-control" value="0.0.0.0">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="BACKEND_PORT">BACKEND_PORT</label>
+                                        <small class="description">后端监听端口</small>
+                                        <input type="text" id="BACKEND_PORT" class="form-control" value="8765">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="FRONTEND_BIND_ADDR">FRONTEND_BIND_ADDR</label>
+                                        <small class="description">前端监听地址</small>
+                                        <input type="text" id="FRONTEND_BIND_ADDR" class="form-control" value="0.0.0.0">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="FRONTEND_PORT">FRONTEND_PORT</label>
+                                        <small class="description">前端监听端口</small>
+                                        <input type="text" id="FRONTEND_PORT" class="form-control" value="3000">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="EMOTION_BIND_ADDR">EMOTION_BIND_ADDR</label>
+                                        <small class="description">情感分析服务监听地址</small>
+                                        <input type="text" id="EMOTION_BIND_ADDR" class="form-control" value="0.0.0.0">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="EMOTION_PORT">EMOTION_PORT</label>
+                                        <small class="description">情感分析服务监听端口</small>
+                                        <input type="text" id="EMOTION_PORT" class="form-control" value="8000">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- VITS语音与模型 -->
+                            <div class="adv-content-page" id="vits-settings">
+                                <header>
+                                    <h4 class="adv-title">VITS语音与模型</h4>
+                                    <p class="adv-description">配置语音合成及其他模型路径</p>
+                                </header>
+                                <div class="settings-form">
+                                    <div class="form-group">
+                                        <label for="SIMPLE_VITS_API_URL">SIMPLE_VITS_API_URL</label>
+                                        <small class="description">SIMPLE_VITS_API的语音合成API地址</small>
+                                        <input type="text" id="SIMPLE_VITS_API_URL" class="form-control" value="http://localhost:23456/voice/vits">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="STYLE_VITS_API_URL">STYLE_VITS_API_URL</label>
+                                        <small class="description">Style-bert-vits2的语音合成API地址</small>
+                                        <input type="text" id="STYLE_VITS_API_URL" class="form-control" value="http://localhost:5000/voice">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="EMOTION_MODEL_PATH">EMOTION_MODEL_PATH</label>
+                                        <small class="description">情感分析模型路径</small>
+                                        <input type="text" id="EMOTION_MODEL_PATH" class="form-control" value="backend/emotion_model_18emo">
+                                    </div>
+                                </div>
+                            </div>
+                        </main>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- 开始游戏面板（选择剧本包） -->
+    <div class="game-screen-panel" id="game-screen-panel">
+        <div class="panel-header">
+            <h2>选择剧本包</h2>
+            <button class="close-button" data-close-panel="game-screen-panel" title="关闭">×</button>
+        </div>
+        <div class="panel-body">
+            <div class="game-selection-container">
+                <!-- 左侧分类导航 -->
+                <div class="game-nav">
+                    <button class="game-nav-btn active" data-category="classic">经典</button>
+                    <button class="game-nav-btn" data-category="minigames">小游戏</button>
+                    <button class="game-nav-btn" data-category="galgame">Galgame</button>
+                </div>
+                <!-- 右侧内容区域 -->
+                <div class="game-content">
+                    <div class="game-category-content active" id="classic-content">
+                        <h3>经典</h3>
+                        <div class="content-divider"></div>
+                        <div class="empty-content">
+                            <p>经典对话模式开发中...</p>
+                        </div>
+                    </div>
+                    <div class="game-category-content" id="minigames-content">
+                        <h3>小游戏</h3>
+                        <div class="content-divider"></div>
+                        <div class="games-grid">
+                            <div class="game-item">
+                                <div class="game-cover-placeholder">
+                                    <div class="game-icon">🐺</div>
+                                </div>
+                                <h4>狼人杀</h4>
+                            </div>
+                            <div class="game-item">
+                                <div class="game-cover-placeholder">
+                                    <div class="game-icon">🕵️</div>
+                                </div>
+                                <h4>谁是卧底？</h4>
+                            </div>
+                            <div class="game-item">
+                                <div class="game-cover-placeholder">
+                                    <div class="game-icon">🎰</div>
+                                </div>
+                                <h4>轮盘赌</h4>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="game-category-content" id="galgame-content">
+                        <h3>Galgame</h3>
+                        <div class="content-divider"></div>
+                        <div class="empty-content">
+                            <p>Galgame模式开发中...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 读取存档面板 -->
+    <div class="load-save-panel" id="load-save-panel">
+        <div class="panel-header">
+            <h2>读取存档</h2>
+            <button class="close-button" data-close-panel="load-save-panel" title="关闭">×</button>
+        </div>
+        <div class="panel-body">
+            <div class="save-files-container">
+                <h3>选择存档文件</h3>
+                <div class="save-file-list">
+                    <div class="save-file-item">
+                        <div class="save-file-info">
+                            <h4>存档 #1</h4>
+                            <p>对话进度：第3章 - 与小狼娘的日常</p>
+                        </div>
+                        <div class="save-file-date">2025-01-09 14:30</div>
+                    </div>
+                    <div class="save-file-item">
+                        <div class="save-file-info">
+                            <h4>存档 #2</h4>
+                            <p>对话进度：第1章 - 初次相遇</p>
+                        </div>
+                        <div class="save-file-date">2025-01-08 20:15</div>
+                    </div>
+                    <div class="save-file-item">
+                        <div class="save-file-info">
+                            <h4>存档 #3</h4>
+                            <p>对话进度：第2章 - 日常互动</p>
+                        </div>
+                        <div class="save-file-date">2025-01-07 16:45</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 脚本文件 -->
+    <script src="js/loader.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>

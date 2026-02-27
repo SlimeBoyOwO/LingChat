@@ -38,4 +38,12 @@ def get_parser():
         help="强制启用前端界面"
     )
 
+    export_parser = subparsers.add_parser("export-emotions", help="导出情感标签数据为 CSV 格式")
+    export_parser.add_argument(
+        "--output", "-o",
+        type=str,
+        default=None,
+        help="输出 CSV 文件路径（默认为当前工作目录下的 ./emotion_labels.csv）"
+    )
+
     return parser
