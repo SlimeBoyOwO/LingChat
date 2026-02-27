@@ -31,6 +31,11 @@ class ImportantDay(BaseModel):
     desc: Optional[str] = ""
     cycle: Optional[str] = ""
 
+class UserScheduleSettings(BaseModel):
+    scheduleGroups: Optional[Dict[str, ScheduleGroup]] = None
+    todoGroups: Optional[Dict[str, TodoGroup]] = None
+    importantDays: Optional[List[ImportantDay]] = None
+
 class ScheduleDataPayload(BaseModel):
     scheduleGroups: Optional[Dict[str, Any]] = None # 使用 Any 避免严格校验导致转换麻烦，或者定义严格的 Dict[str, ScheduleGroup]
     todoGroups: Optional[Dict[str, Any]] = None
