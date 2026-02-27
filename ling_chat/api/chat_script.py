@@ -23,7 +23,7 @@ async def list_scripts():
             "script_name": script.name,
             "description": script.description,
             "folder_key": script.folder_key,
-            "intro_charpter": script.intro_charpter,
+            "intro_charpter": script.intro_chapter,
         })
 
     return scripts

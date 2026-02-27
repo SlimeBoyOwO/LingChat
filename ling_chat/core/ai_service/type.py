@@ -148,7 +148,7 @@ class ScriptStatus:
 
     name: str
     description: str
-    intro_charpter: str
+    intro_chapter: str
     settings: dict
 
     # 正在进行剧本模式的 client
