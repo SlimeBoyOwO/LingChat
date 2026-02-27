@@ -96,7 +96,7 @@ export const actions = {
   enterStoryMode(this: GameState, scriptName: string = 'unknown') {
     this.runningScript = {
       scriptName,
-      currentCharpterName: '',
+      currentChapterName: '',
       isRunning: true,
     }
   },

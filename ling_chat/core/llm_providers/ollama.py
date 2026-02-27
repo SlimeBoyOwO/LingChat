@@ -29,6 +29,8 @@ class OllamaProvider(BaseLLMProvider):
             or "llama3"
         )
         self._timeout = httpx.Timeout(timeout=30.0, connect=5.0)
+        self.temperature = float(os.environ.get("TEMPERATURE", 1.3))
+        self.top_p = float(os.environ.get("TOP_P", 0.9))
 
     def initialize_client(self):
         pass
@@ -41,6 +43,10 @@ class OllamaProvider(BaseLLMProvider):
             payload = {
                 "model": self.model_type,
                 "messages": messages,
+                "options": {
+                    "temperature": self.temperature,
+                    "top_p": self.top_p,
+                },
                 "stream": False
             }
 
@@ -73,6 +79,10 @@ class OllamaProvider(BaseLLMProvider):
             payload = {
                 "model": self.model_type,
                 "messages": messages,
+                "options": {
+                    "temperature": self.temperature,
+                    "top_p": self.top_p,
+                },
                 "stream": True
             }
 
