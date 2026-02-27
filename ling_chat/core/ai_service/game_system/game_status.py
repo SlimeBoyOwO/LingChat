@@ -30,6 +30,8 @@ class GameStatus:
     background_music: str = field(default_factory=str)
     # 背景特效
     background_effect: str = field(default_factory=str)
+    # 全局变量信息
+    global_variables: Dict[str, Any] = field(default_factory=dict)
 
     # 剧本模式中记录的额外信息
     script_status: Optional[ScriptStatus] = None
