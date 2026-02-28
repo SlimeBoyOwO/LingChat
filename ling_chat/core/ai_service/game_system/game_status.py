@@ -11,7 +11,8 @@ class GameStatus:
     存储所有运行时共享的游戏状态。
     """
     player: Player = field(default_factory=Player)
-
+    # 新增：当前加载的场景描述（若为 None 则处于普通自由对话模式）
+    scene_description: Optional[str] = None
     # 记录台词列表，用于记忆构建和历史记忆
     line_list: list[GameLine] = field(default_factory=list[GameLine])
 
@@ -30,8 +31,6 @@ class GameStatus:
     background_music: str = field(default_factory=str)
     # 背景特效
     background_effect: str = field(default_factory=str)
-    # 全局变量信息
-    global_variables: Dict[str, Any] = field(default_factory=dict)
 
     # 剧本模式中记录的额外信息
     script_status: Optional[ScriptStatus] = None
