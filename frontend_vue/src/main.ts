@@ -3,6 +3,8 @@ import { createPinia } from 'pinia'
 import { connectWebSocket } from './api/websocket'
 import { initializeEventProcessors } from './core/events'
 import { getWebSocketUrl } from './config/backend'
+import 'element-plus/dist/index.css'
+import ElementPlus from 'element-plus'
 
 import App from './App.vue'
 import './assets/styles/base.css'
@@ -24,6 +26,7 @@ initializeEventProcessors()
 
 app.use(createPinia())
 app.use(router)
+app.use(ElementPlus)
 app.use(logForwarderPlugin, {
   // 插件配置
   appName: 'LingChat',
