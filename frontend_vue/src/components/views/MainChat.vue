@@ -3,13 +3,27 @@
     <!-- 左上角番茄钟开关与面板 -->
     <FreeModeTools />
     <GameBackground></GameBackground>
-    <!-- <GameAvatar ref="gameAvatarRef" @audio-ended="handleAudioFinished" />  -->
     <GameRolesStage ref="gameAvatarRef" @audio-ended="handleAudioFinished" />
     <GameDialog
       ref="gameDialogRef"
       @player-continued="manualTriggerContinue"
       @dialog-proceed="resetInteraction"
     />
+
+    <!-- 场景控制区域 - 添加在现有按钮附近 -->
+    <div id="scene-panel" class="scene-controls">
+      <el-button size="small" @click="openSceneDialog">
+        {{ currentScene ? '切换场景' : '加载场景' }}
+      </el-button>
+      <el-button v-if="currentScene" size="small" type="danger" @click="handleClearScene">
+        清除场景
+      </el-button>
+      <span v-if="currentScene" class="scene-indicator">
+        当前场景：{{ getSceneDisplayName(currentScene) }}
+      </span>
+    </div>
+
+    <!-- 原有的菜单按钮 -->
     <div id="menu-panel">
       <Button
         type="nav"
@@ -24,6 +38,29 @@
         <h3>菜单</h3>
       </Button>
     </div>
+
+    <!-- 场景选择对话框 -->
+    <el-dialog v-model="sceneDialogVisible" title="选择场景" width="400px">
+      <el-select
+        v-model="selectedScene"
+        placeholder="请选择场景"
+        style="width: 100%"
+        :loading="isLoadingScenes"
+      >
+        <el-option
+          v-for="scene in scenes"
+          :key="scene.filename"
+          :label="scene.description"
+          :value="scene.filename"
+        />
+      </el-select>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="sceneDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="confirmLoadScene">确定</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -36,10 +73,69 @@ import { useUserStore } from '../../stores/modules/user/user'
 import { GameBackground, GameRolesStage } from '../game/standard'
 import { GameDialog } from '../game/standard'
 import { Button } from '../base'
-
+import { ElMessage, ElDialog, ElSelect, ElOption } from 'element-plus'
+import { listScenes, loadScene, clearScene, type SceneInfo } from '@/api/scene' // 需要创建这个 API 文件
 const uiStore = useUIStore()
 const gameStore = useGameStore()
 const userStore = useUserStore()
+
+// 场景相关状态
+const sceneDialogVisible = ref(false)
+const scenes = ref<SceneInfo[]>([])
+const selectedScene = ref<string>('')
+const isLoadingScenes = ref(false)
+const currentScene = ref<SceneInfo | null>(null) // 当前加载的场景
+
+// 加载场景列表
+const fetchScenes = async () => {
+  isLoadingScenes.value = true
+  try {
+    scenes.value = await listScenes()
+  } catch (error) {
+    ElMessage.error('获取场景列表失败')
+  } finally {
+    isLoadingScenes.value = false
+  }
+}
+const getSceneDisplayName = (scene: SceneInfo | null) => {
+  if (!scene) return ''
+  // 去掉扩展名，例如 "海边.png" -> "海边"
+  return scene.filename.replace(/\.[^/.]+$/, '')
+}
+// 打开场景选择对话框
+const openSceneDialog = () => {
+  fetchScenes()
+  sceneDialogVisible.value = true
+}
+
+// 确认加载场景
+const confirmLoadScene = async () => {
+  if (!selectedScene.value) {
+    ElMessage.warning('请选择一个场景')
+    return
+  }
+  try {
+    await loadScene(selectedScene.value)
+    const scene = scenes.value.find((s) => s.filename === selectedScene.value)
+    currentScene.value = scene || null
+    ElMessage.success(`场景“${scene?.description}”已加载`)
+    sceneDialogVisible.value = false
+  } catch (error) {
+    ElMessage.error('加载场景失败')
+  }
+}
+
+// 清除场景
+const handleClearScene = async () => {
+  try {
+    await clearScene()
+    currentScene.value = null
+    selectedScene.value = ''
+    ElMessage.success('已清除场景，返回自由对话模式')
+  } catch (error) {
+    ElMessage.error('清除场景失败')
+  }
+}
 
 const gameDialogRef = ref<InstanceType<typeof GameDialog> | null>(null)
 
@@ -154,5 +250,24 @@ const manualTriggerContinue = () => {
   top: 15px;
   right: 20px;
   z-index: 1000;
+}
+.scene-controls {
+  position: fixed;
+  bottom: 80px; /* 根据聊天输入框高度调整 */
+  left: 20px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 8px 12px;
+  border-radius: 20px;
+  backdrop-filter: blur(5px);
+  z-index: 100;
+}
+
+.scene-indicator {
+  color: #fff;
+  font-size: 14px;
+  margin-left: 8px;
 }
 </style>
