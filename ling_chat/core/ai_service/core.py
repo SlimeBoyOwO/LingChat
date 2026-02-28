@@ -18,7 +18,8 @@ from ling_chat.core.llm_providers.manager import LLMManager
 from ling_chat.utils.function import Function
 from ling_chat.core.logger import logger
 from ling_chat.core.messaging.broker import message_broker
-
+from pathlib import Path
+from ling_chat.utils.runtime_path import user_data_path
 class AIService:
     def __init__(self, settings: dict[str, str]):
 
@@ -198,6 +199,40 @@ class AIService:
         ok = await self.scripts_manager.start_script(chosen)
         if not ok:
             raise ScriptEngineError(f"剧本 {chosen} 加载失败。")
+        
+        
+    async def set_scene(self, scene_filename: str) -> bool:
+        """
+        加载指定场景文件，将场景描述写入 game_status。
+        场景文件位于 data/game_data/backgrounds/ 下。
+        如果存在同名的 .txt 文件，则读取其内容作为详细描述；
+        否则使用文件名（不含扩展名）作为简单描述。
+        """
+        scenes_dir = user_data_path / "game_data" / "backgrounds"
+        scene_path = scenes_dir / scene_filename
+        if not scene_path.exists():
+            logger.error(f"场景文件不存在: {scene_path}")
+            return False
+
+        # 尝试读取同名的 .txt 文件
+        desc_path = scene_path.with_suffix('.txt')
+        if desc_path.exists():
+            try:
+                description = desc_path.read_text(encoding='utf-8').strip()
+            except Exception as e:
+                logger.error(f"读取场景描述文件失败: {desc_path}, 错误: {e}")
+                description = scene_path.stem  # 回退到文件名
+        else:
+            description = scene_path.stem  # 使用文件名（如 forest）
+
+        self.game_status.scene_description = description
+        logger.info(f"场景已加载: {scene_filename} -> {description}")
+        return True
+
+    async def clear_scene(self):
+        """清除当前场景，恢复普通自由对话模式"""
+        self.game_status.scene_description = None
+        logger.info("场景已清除，恢复自由对话模式")
 
     async def _process_client_messages(self, client_id: str):
         """处理单个客户端的消息"""
