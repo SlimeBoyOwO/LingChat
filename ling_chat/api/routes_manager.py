@@ -14,7 +14,7 @@ from ling_chat.api.new_chat_main import websocket_endpoint
 from ling_chat.api.update_api import router as update_router
 from ling_chat.api.chat_schedule import router as chat_schedule_router
 from ling_chat.core.logger import logger
-
+from ling_chat.api.chat_scene import router as chat_scene_router   # 新增
 
 class RoutesManager:
     def __init__(self, app):
@@ -33,7 +33,7 @@ class RoutesManager:
         app.include_router(console_logs_router)
         app.include_router(update_router)
         app.include_router(chat_schedule_router)
-
+        app.include_router(chat_scene_router)   # 放在合适位置
         app.websocket("/ws")(websocket_endpoint)
 
         # 静态文件服务
