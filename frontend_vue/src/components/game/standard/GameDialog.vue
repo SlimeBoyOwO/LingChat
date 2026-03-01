@@ -11,6 +11,7 @@
         <div class="chatbox-emotion">
           <div id="character-emotion">{{ uiStore.showCharacterEmotion }}</div>
         </div>
+        <Button type="nav" icon="background" title="" @click="openSceneSettings"></Button>
         <Button
           type="nav"
           icon="hand"
@@ -51,7 +52,10 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null) // 新增这行
 const gameStore = useGameStore()
 const uiStore = useUIStore()
 const isHidden = ref(false)
-
+const openSceneSettings = () => {
+  uiStore.toggleSettings(true)
+  uiStore.setSettingsTab('background')
+}
 const { startTyping, stopTyping, isTyping } = useTypeWriter(textareaRef)
 
 // 使用计算属性处理发送状态
