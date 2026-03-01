@@ -38,7 +38,7 @@ import { GameBackground, GameRolesStage } from '../game/standard'
 import { GameDialog } from '../game/standard'
 import { Button } from '../base'
 import { ElMessage, ElDialog, ElSelect, ElOption } from 'element-plus'
-import { listScenes, loadScene, clearScene, type SceneInfo } from '@/api/services/scene' // 需要创建这个 API 文件
+import { listScenes, loadScene, clearScene, type SceneInfo } from '@/api/services/scene' 
 const uiStore = useUIStore()
 const gameStore = useGameStore()
 const userStore = useUserStore()
