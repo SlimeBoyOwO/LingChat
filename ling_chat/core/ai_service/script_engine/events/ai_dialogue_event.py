@@ -16,9 +16,6 @@ class AIDialogueEvent(BaseEvent):
         role = ScriptFunction.get_role(self.game_status, self.script_status, character)
         self.game_status.current_character = role
 
-        # TODO： 把  prompt 加入到 game_status 的 Line 中，作为提示词
-        # 1. 获取最后一个 user 类型的 Line， 把 prompt 添加到里面的 content 中？
-        # 2. 其实不对，我建议是，手动调用刷新记忆功能，把 prompt 添加到 memory 中
         if prompt and prompt != '':
             system_input = LineBase(content=ScriptFunction.user_message_builder("", prompt),attribute=LineAttribute.USER,display_name=self.game_status.player.user_name)
             self.game_status.add_line(system_input)

@@ -22,7 +22,11 @@
       :enabled="true"
     >
     </Snow>
-    <
+    <Fireworks
+      v-if="uiStore.currentBackgroundEffect === `Fireworks`"
+      :enabled="true"
+      :intensity="1.5"
+    />
   </div>
   <audio ref="soundEffectPlayer"></audio>
   <audio ref="backgroundMusicPlayer" loop></audio>
@@ -35,6 +39,7 @@ import StarField from './particles/StarField.vue'
 import Rain from './particles/Rain.vue'
 import Sakura from './particles/Sakura.vue'
 import Snow from './particles/Snow.vue'
+import Fireworks from './particles/Fireworks.vue'
 
 const uiStore = useUIStore()
 

@@ -49,12 +49,58 @@
       </button>
     </div>
   </div>
+
+  <!-- 引入通用模态框 -->
+  <BaseModal
+    :show="showModal"
+    :title="modalTitle"
+    @close="showModal = false"
+    @confirm="confirmCreate"
+  >
+    <!-- 场景1：新建日程组 -->
+    <template v-if="uiStore.scheduleView === 'schedule_groups'">
+      <input
+        v-model="formData.groupTitle"
+        placeholder="主题名称"
+        class="w-full px-5 py-4 rounded-2xl border-none bg-slate-100 outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all"
+      />
+      <textarea
+        v-model="formData.groupDesc"
+        placeholder="描述..."
+        rows="3"
+        class="w-full px-5 py-4 rounded-2xl border-none bg-slate-100 outline-none resize-none focus:ring-2 focus:ring-cyan-500/50 transition-all"
+      ></textarea>
+    </template>
+
+    <!-- 场景2：新建日程项 -->
+    <template v-else>
+      <input
+        v-model="formData.itemName"
+        placeholder="活动名称"
+        class="w-full px-5 py-4 rounded-2xl border-none bg-slate-100 outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all"
+      />
+      <input
+        v-model="formData.itemTime"
+        type="time"
+        class="w-full px-5 py-4 rounded-2xl border-none bg-slate-100 outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all"
+      />
+      <textarea
+        v-model="formData.itemContent"
+        placeholder="指令详情..."
+        rows="2"
+        class="w-full px-5 py-4 rounded-2xl border-none bg-slate-100 outline-none resize-none focus:ring-2 focus:ring-cyan-500/50 transition-all"
+      ></textarea>
+    </template>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, reactive, watch, onMounted } from 'vue'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { ArrowRight, Trash2, FolderKanban } from 'lucide-vue-next'
+import { getSchedules, saveSchedules } from '@/api/services/schedule'
+
+import BaseModal from '@/components/ui/BaseModal.vue'
 
 const uiStore = useUIStore()
 
@@ -71,20 +117,34 @@ interface ScheduleGroup {
   items: ScheduleItem[]
 }
 
-const scheduleGroups = ref<Record<string, ScheduleGroup>>({
-  g1: {
-    title: '莱姆的日常生活',
-    description: '涵盖了每日的起床、工作、休息提醒。',
-    items: [
-      { name: '早起问候', time: '12:00', content: '问候莱姆起床' },
-      { name: '午休结束', time: '14:00', content: '提醒写代码' },
-    ],
+const scheduleGroups = ref<Record<string, ScheduleGroup>>({})
+
+const loadData = async () => {
+  try {
+    const data = await getSchedules()
+    if (data && data.scheduleGroups) {
+      scheduleGroups.value = data.scheduleGroups
+    }
+  } catch (e) {
+    console.error('Failed to load schedules', e)
+  }
+}
+
+watch(
+  scheduleGroups,
+  async (newVal) => {
+    try {
+      // 只发送 scheduleGroups 字段，后端只会更新这一部分
+      await saveSchedules({ scheduleGroups: newVal })
+    } catch (e) {
+      console.error('Failed to save schedules', e)
+    }
   },
-  g2: {
-    title: '期末复习周',
-    description: '12月考试冲刺期间的特殊时间分配。',
-    items: [],
-  },
+  { deep: true },
+)
+
+onMounted(() => {
+  loadData()
 })
 
 const activeGroup = computed(() => {
@@ -94,7 +154,6 @@ const activeGroup = computed(() => {
   return scheduleGroups.value[selectedGroupId.value] || { items: [] }
 })
 
-const openModal = () => {}
 const removeScheduleItem = (idx: number) => {
   activeGroup.value.items.splice(idx, 1)
 }
@@ -106,7 +165,56 @@ const selectGroup = (id: string) => {
   uiStore.scheduleView = 'schedule_detail'
 }
 
-const changeView = (view: string) => {
-  uiStore.scheduleView = view
+// 模态框状态
+const showModal = ref(false)
+const formData = reactive({
+  groupTitle: '',
+  groupDesc: '',
+  itemName: '',
+  itemTime: '',
+  itemContent: '',
+})
+
+// 动态标题
+const modalTitle = computed(() => {
+  return uiStore.scheduleView === 'schedule_groups' ? '新建日程主题' : '新建具体日程'
+})
+
+// 父组件调用的方法
+const handleCreate = () => {
+  // 重置表单
+  formData.groupTitle = ''
+  formData.groupDesc = ''
+  formData.itemName = ''
+  formData.itemTime = ''
+  formData.itemContent = ''
+
+  showModal.value = true
 }
+
+// 确认创建逻辑
+const confirmCreate = () => {
+  if (uiStore.scheduleView === 'schedule_groups') {
+    // 创建主题逻辑
+    const newId = 'g' + Date.now()
+    scheduleGroups.value[newId] = {
+      title: formData.groupTitle,
+      description: formData.groupDesc,
+      items: [],
+    }
+  } else if (selectedGroupId.value) {
+    // 创建日程项逻辑
+    const group = scheduleGroups.value[selectedGroupId.value]
+    if (group) {
+      group.items.push({
+        name: formData.itemName,
+        time: formData.itemTime,
+        content: formData.itemContent,
+      })
+    }
+  }
+  showModal.value = false
+}
+
+defineExpose({ handleCreate })
 </script>

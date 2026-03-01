@@ -1,6 +1,7 @@
 from typing import AsyncGenerator, Dict, List
 
 from openai import OpenAI
+import os
 
 from ling_chat.core.llm_providers.base import BaseLLMProvider
 from ling_chat.core.logger import logger
@@ -9,16 +10,23 @@ from ling_chat.core.logger import logger
 class WebLLMProvider(BaseLLMProvider):
     def __init__(self, model_type: str, api_key: str, base_url: str):
         super().__init__()
-        if api_key == ("" or "sk-114514"):
-            error_message = "没有API_Key怎么跑啊喂！快去设置填写！"
-            logger.warning(error_message)
-            # 不再抛出异常，而是设置client为None表示不可用
-            self.client = None
-            return
         self.api_key = api_key
         self.base_url = base_url
-        self.client = OpenAI(api_key=api_key, base_url=base_url)
         self.model_type = model_type
+        self.temperature = float(os.environ.get("TEMPERATURE", 1.3))
+        self.top_p = float(os.environ.get("TOP_P", 0.9))
+
+        if (not api_key) or api_key == "sk-114514":
+            logger.warning("通用网络大模型未初始化：CHAT_API_KEY 为空或为占位值。")
+            self.client = None
+            return
+
+        if not (isinstance(base_url, str) and (base_url.startswith("http://") or base_url.startswith("https://"))):
+            logger.warning("通用网络大模型未初始化：CHAT_BASE_URL 缺少 http:// 或 https:// 协议头。")
+            self.client = None
+            return
+
+        self.client = OpenAI(api_key=api_key, base_url=base_url)
         logger.info("通用网络大模型初始化完毕！" )
 
     def initialize_client(self):
@@ -36,6 +44,8 @@ class WebLLMProvider(BaseLLMProvider):
             response = self.client.chat.completions.create(
                 model=self.model_type,
                 messages=messages,
+                temperature=self.temperature,
+                top_p=self.top_p,
                 stream=False
             )
             return response.choices[0].message.content
@@ -61,6 +71,8 @@ class WebLLMProvider(BaseLLMProvider):
             stream = self.client.chat.completions.create(
                 model=self.model_type,
                 messages=messages,
+                temperature=self.temperature,
+                top_p=self.top_p,
                 stream=True
             )
 

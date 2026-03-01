@@ -231,9 +231,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { ChevronRight, ChevronLeft } from 'lucide-vue-next'
+import { getSchedules, saveSchedules } from '@/api/services/schedule'
 
 const uiStore = useUIStore()
 
@@ -252,7 +253,34 @@ interface Day {
   currentMonth: boolean
 }
 
-const importantDays = ref<ImportantDay[]>([{ id: 'e1', date: '2025-11-09', title: '莱姆生日' }])
+const importantDays = ref<ImportantDay[]>([])
+
+const loadData = async () => {
+  try {
+    const data = await getSchedules()
+    // 注意：这里要确保 data.importantDays 存在，否则给空数组
+    importantDays.value = data.importantDays || []
+  } catch (e) {
+    console.error('Failed to load calendar events', e)
+  }
+}
+
+// 3. 监听并保存
+watch(
+  importantDays,
+  async (newVal) => {
+    try {
+      await saveSchedules({ importantDays: newVal })
+    } catch (e) {
+      console.error('Failed to save calendar events', e)
+    }
+  },
+  { deep: true },
+)
+
+onMounted(() => {
+  loadData()
+})
 
 // Calendar Logic
 const calendarDate = ref(new Date())
@@ -379,6 +407,16 @@ const deleteEvent = (id: string) => {
 const selectEvent = (event: ImportantDay) => {
   selectedEvent.value = event
 }
+
+const handleCreate = () => {
+  // 直接复用你现有的逻辑：打开模态框
+  showAddEventModal.value = true
+}
+
+// 2. 关键：使用 defineExpose 将该方法暴露给父组件
+defineExpose({
+  handleCreate,
+})
 </script>
 
 <style scoped>
