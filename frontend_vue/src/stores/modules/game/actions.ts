@@ -5,7 +5,7 @@ import { getRoleInfo } from '../../../api/services/character'
 import { useUIStore } from '../ui/ui'
 import { getDialogueHistory } from '@/api/services/history'
 import { convertToGameMessages } from '@/utils/function'
-
+import type { SceneInfo } from '@/api/services/scene'
 export const actions = {
   // 注意：这里 this 指定为 GameState 是安全的，
   // 但如果你想调用 this.initializeGame()，TS 会报错。
@@ -118,5 +118,35 @@ export const actions = {
   /** 标记退出剧情模式，回到自由对话模式 */
   exitStoryMode(this: GameState) {
     this.runningScript = null
+  },
+}
+
+  /** 标记进入剧情模式（用于控制UI显示：隐藏番茄钟/日程等） */
+  enterStoryMode(this: GameState, scriptName: string = 'unknown') {
+    this.runningScript = {
+      scriptName,
+      currentChapterName: '',
+      isRunning: true,
+    }
+  },
+
+  /** 标记退出剧情模式，回到自由对话模式 */
+  exitStoryMode(this: GameState) {
+    this.runningScript = null
+  },
+
+  // 设置当前场景（仅更新 store，不调用 API）
+  setCurrentScene(this: GameState, scene: SceneInfo | null) {
+    this.currentScene = scene
+  },
+
+  // 切换场景感知
+  toggleSceneAware(this: GameState, aware: boolean) {
+    this.sceneAware = aware
+  },
+
+  // 清除场景（更新 store，API 调用由组件负责）
+  clearCurrentScene(this: GameState) {
+    this.currentScene = null
   },
 }
