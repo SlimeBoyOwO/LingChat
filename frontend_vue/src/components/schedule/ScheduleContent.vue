@@ -57,7 +57,7 @@
       </div>
     </aside>
 
-    <main class="flex-1 flex flex-col overflow-hidden">
+    <main class="flex-1 flex flex-col overflow-hidden w-2xl">
       <header class="mt-2 p-6 flex justify-between items-center border-b border-cyan-300">
         <div class="flex items-center space-x-4 pl-4">
           <button
@@ -74,7 +74,7 @@
         </div>
 
         <button
-          @click="openModal"
+          @click="triggerCreate"
           class="bg-cyan-500 hover:bg-cyan-600 text-white px-5 py-2.5 rounded-xl shadow-lg transition-all flex items-center space-x-2"
         >
           <Plus></Plus>
@@ -85,20 +85,20 @@
       <!-- 内容滚动容器 -->
       <div class="flex-1 overflow-y-auto p-6 custom-scrollbar">
         <!--日程界面-->
-        <SchedulePage />
+        <SchedulePage ref="scheduleRef" />
 
         <!--待办事项界面-->
-        <TodoPage />
+        <TodoPage ref="todoRef" />
 
         <!--日历页面-->
-        <CalendarPage />
+        <CalendarPage ref="calendarRef" />
       </div>
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import TodoPage from '@/components/settings/pages/Schedule/TodoPage.vue'
 import SchedulePage from '@/components/settings/pages/Schedule/SchedulePage.vue'
@@ -122,9 +122,27 @@ const props = withDefaults(
   { variant: 'settings' },
 )
 
+const scheduleRef = ref()
+const todoRef = ref()
+const calendarRef = ref()
+
 const uiStore = useUIStore()
 
-const openModal = () => {}
+const triggerCreate = () => {
+  const currentView = uiStore.scheduleView
+
+  // 这里的逻辑是：判断当前在哪个视图，就调用哪个组件内部的 handleCreate 方法
+  if (currentView.startsWith('schedule')) {
+    // 日程相关视图
+    scheduleRef.value?.handleCreate()
+  } else if (currentView.startsWith('todo')) {
+    // 待办相关视图
+    todoRef.value?.handleCreate()
+  } else if (currentView === 'calendar') {
+    // 日历视图
+    calendarRef.value?.handleCreate()
+  }
+}
 
 const changeView = (view: string) => {
   uiStore.scheduleView = view

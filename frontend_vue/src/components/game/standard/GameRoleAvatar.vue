@@ -64,6 +64,11 @@ const isBubbleVisible = ref(false)
 const currentBubbleImageUrl = ref('')
 const currentBubbleClass = ref('')
 
+let bubbleTimeoutId: number | null = null
+
+let currentImageLoadPromise: Promise<void> | null = null
+let latestEmotionId = 0
+
 // --- 样式计算 ---
 
 const layoutPosition = computed(() => {
@@ -115,11 +120,24 @@ const targetAvatarUrl = computed(() => {
 
 const updateAvatarImage = async (newUrl: string) => {
   if (!newUrl || newUrl === 'none') return
+
+  let resolveLoad!: () => void
+  const loadPromise = new Promise<void>((resolve) => {
+    resolveLoad = resolve
+  })
+  currentImageLoadPromise = loadPromise // 更新当前的加载任务
+
   const finalUrl = `${newUrl}`
   const img = new Image()
   img.src = finalUrl
   try {
     await img.decode()
+  } catch (err) {
+    console.error(`角色[${role.value.roleName}]加载头像失败: ${newUrl}`, err)
+  }
+
+  // 如果当前加载任务仍然是最新任务，才执行图片替换
+  if (currentImageLoadPromise === loadPromise) {
     if (isFadingIn.value) {
       currentAvatarUrl.value = nextAvatarUrl.value
       isFadingIn.value = false
@@ -129,9 +147,10 @@ const updateAvatarImage = async (newUrl: string) => {
     requestAnimationFrame(() => {
       isFadingIn.value = true
     })
-  } catch (err) {
-    console.error(`角色[${role.value.roleName}]加载头像失败: ${newUrl}`, err)
   }
+
+  // 图片已处理完毕（成功或失败），解析 Promise，允许播放气泡等特效
+  resolveLoad()
 }
 
 const onTransitionEnd = () => {
@@ -145,7 +164,20 @@ watch(targetAvatarUrl, (newUrl) => updateAvatarImage(newUrl), { immediate: true 
 
 watch(
   () => role.value.emotion,
-  (newEmotion) => {
+  async (newEmotion) => {
+    const currentId = ++latestEmotionId
+
+    // 等待 Vue 将 computed(targetAvatarUrl) 更新完毕，让 URL 监听器先执行
+    await nextTick()
+
+    // 如果此时正在加载新图片，则等待该图片加载完成
+    if (currentImageLoadPromise) {
+      await currentImageLoadPromise
+    }
+
+    // 校验：如果等待图片加载期间，用户又切换了新表情，则中止旧表情的特效播放
+    // if (currentId !== latestEmotionId) return
+
     const config = EMOTION_CONFIG[newEmotion]
     if (!config) return
     if (config.animation && config.animation !== 'none') {
@@ -158,10 +190,15 @@ watch(
       isBubbleVisible.value = false
       nextTick(() => {
         isBubbleVisible.value = true
+
+        if (bubbleTimeoutId !== null) {
+          window.clearTimeout(bubbleTimeoutId)
+        }
+        bubbleTimeoutId = window.setTimeout(() => {
+          isBubbleVisible.value = false
+          bubbleTimeoutId = null // 重置记录
+        }, 2000)
       })
-      setTimeout(() => {
-        isBubbleVisible.value = false
-      }, 2000)
     }
     if (config.audio && config.audio !== 'none' && bubbleAudio.value) {
       bubbleAudio.value.src = config.audio

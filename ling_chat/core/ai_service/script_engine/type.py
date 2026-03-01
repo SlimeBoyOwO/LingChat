@@ -6,7 +6,7 @@ from typing import Any
 class Script:
     name: str
     description: str
-    intro_charpter: str
+    intro_chapter: str
     settings: dict
 
 @dataclass
@@ -18,8 +18,8 @@ class Character:
     memory: list[dict]
 
 @dataclass
-class Charpter:
-    charpter_id: str
+class Chapter:
+    chapter_id: str
     events: list[dict]
     ends: dict
 

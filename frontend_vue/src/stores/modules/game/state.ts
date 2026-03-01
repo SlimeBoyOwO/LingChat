@@ -12,7 +12,7 @@ export interface GameMessage {
 
 export interface ScriptInfo {
   scriptName: string
-  currentCharpterName: string
+  currentChapterName: string
   isRunning: boolean
 }
 

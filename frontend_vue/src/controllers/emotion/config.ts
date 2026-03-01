@@ -36,6 +36,7 @@ export const EMOTION_CONFIG_EMO: EmotionMap = {
   自信: '自信',
   惊讶: '惊讶',
   正常: '正常',
+  平静: '平静',
   AI思考: 'none',
 }
 
@@ -165,6 +166,13 @@ export const EMOTION_CONFIG: EmotionConfigMap = {
     bubbleClass: 'none',
     audio: '../audio_effects/察觉.wav',
     avatar: `${API_CONFIG.AVATAR.BASE}/惊讶.png`,
+  },
+  平静: {
+    animation: 'none',
+    bubbleImage: 'none',
+    bubbleClass: 'none',
+    audio: 'none',
+    avatar: `${API_CONFIG.AVATAR.BASE}/平静.png`,
   },
   正常: {
     animation: 'none',

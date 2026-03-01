@@ -1,6 +1,9 @@
 <template>
   <!-- 仅自由对话模式显示：番茄钟 + 日程（并列、挨在一起） -->
-  <div v-if="shouldShow" class="fixed top-5 left-5 z-[2000] flex items-start gap-3">
+  <div
+    v-if="shouldShow"
+    class="fixed top-5 left-5 z-2000 flex items-start gap-3 transition-all ease-in-out duration-300"
+  >
     <PomodoroPanel />
     <SchedulePanel />
   </div>
