@@ -121,7 +121,24 @@
                     <p class="text-sm mt-1 mb-2 text-gray-300">
                       {{ setting.description || '' }}
                     </p>
+                    <!-- 如果是 path 类型，添加文件选择按钮 -->
+                    <div v-if="setting.type === 'path'" class="flex gap-2">
+                      <input
+                        type="text"
+                        :id="setting.key"
+                        v-model="setting.value"
+                        class="flex-1 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+                      />
+                      <button
+                        @click="selectFile(setting)"
+                        type="button"
+                        class="px-4 py-2.5 bg-brand text-white rounded-lg hover:bg-[#0056b3] transition-colors duration-200 whitespace-nowrap"
+                      >
+                        浏览
+                      </button>
+                    </div>
                     <input
+                      v-else
                       type="text"
                       :id="setting.key"
                       v-model="setting.value"
@@ -136,7 +153,7 @@
                 class="w-18 px-5 py-2.5 bg-brand text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-colors duration-200 hover:bg-[#0056b3]"
               >
                 <button @click="saveSettings">保存</button>
-                <p :style="{ color: saveStatus.color }">
+                <p :class="saveStatus.colorClass">
                   {{ saveStatus.message }}
                 </p>
               </div>
@@ -170,7 +187,7 @@ const activeSelection = reactive({
 })
 const saveStatus = reactive({
   message: '',
-  color: 'var(--success-color)',
+  colorClass: 'text-green-500',  // Tailwind 类名
 })
 const instance = getCurrentInstance()
 
@@ -205,6 +222,43 @@ const updateSetting = (setting: { key: string; value: string }, isChecked: boole
   setting.value = isChecked ? 'true' : 'false'
 }
 
+// 辅助函数：显示状态消息并自动清除
+const showStatusMessage = (message: string, type: 'success' | 'error' | 'warning' = 'success', duration = 3000) => {
+  saveStatus.message = message
+  // 使用 Tailwind 类名
+  saveStatus.colorClass = {
+    success: 'text-green-500',
+    error: 'text-red-500',
+    warning: 'text-orange-500'
+  }[type]
+  setTimeout(() => {
+    saveStatus.message = ''
+  }, duration)
+}
+
+const selectFile = async (setting: { key: string; value: string }) => {
+  try {
+    const response = await fetch('/api/settings/select-file')
+    
+    const result = await response.json()
+    
+    if (result.error) {
+      // 显示后端返回的错误信息
+      console.error('后端错误:', result.error)
+      showStatusMessage(`错误: ${result.error}`, 'error')
+    } else if (result.path) {
+      setting.value = result.path
+      showStatusMessage('文件路径已更新', 'success')
+    } else {
+      // 用户取消选择
+      showStatusMessage('未选择文件', 'warning')
+    }
+  } catch (error: any) {
+    console.error('文件选择失败:', error)
+    showStatusMessage(`文件选择失败: ${error.message}`, 'error')
+  }
+}
+
 const saveSettings = async () => {
   if (!selectedSubcategory.value) return
 
@@ -227,12 +281,12 @@ const saveSettings = async () => {
     if (!response.ok) throw new Error(result.detail || '保存失败')
 
     saveStatus.message = result.message
-    saveStatus.color = 'var(--success-color)'
+    saveStatus.colorClass = 'text-green-500'
 
     await loadConfig(false)
   } catch (error: any) {
     saveStatus.message = `错误: ${error.message}`
-    saveStatus.color = 'red'
+    saveStatus.colorClass = 'text-red-500'
   } finally {
     isLoading.value = false
     setTimeout(() => {
@@ -264,7 +318,7 @@ const loadConfig = async (selectFirst = true) => {
   } catch (error: any) {
     console.error(error)
     saveStatus.message = `加载配置失败: ${error.message}`
-    saveStatus.color = 'red'
+    saveStatus.colorClass = 'text-red-500'
   } finally {
     isLoading.value = false
   }
