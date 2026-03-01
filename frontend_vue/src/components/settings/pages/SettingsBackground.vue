@@ -1,5 +1,45 @@
 <template>
   <MenuPage>
+    <!-- 新增场景设置区域 -->
+    <MenuItem title="场景感知">
+      <div class="scene-setting">
+        <div class="scene-aware-toggle">
+          <Toggle :checked="sceneAwareLocal" @change="onSceneAwareChange">
+            开启后 AI 会感知当前场景
+          </Toggle>
+        </div>
+
+        <div v-if="sceneAwareLocal" class="scene-selector">
+          <el-select
+            v-model="selectedSceneFilename"
+            placeholder="请选择场景"
+            :loading="isLoadingScenes"
+            @change="onSceneSelect"
+            clearable
+            style="width: 100%; margin-bottom: 8px"
+          >
+            <el-option
+              v-for="scene in scenes"
+              :key="scene.filename"
+              :label="scene.description"
+              :value="scene.filename"
+            />
+          </el-select>
+          <Button
+            v-if="gameStore.currentScene"
+            type="delete"
+            size="small"
+            @click="handleClearScene"
+          >
+            清除场景
+          </Button>
+          <span v-if="gameStore.currentScene" class="scene-indicator">
+            当前：{{ getSceneDisplayName(gameStore.currentScene) }}
+          </span>
+        </div>
+      </div>
+    </MenuItem>
+
     <MenuItem title="背景选择">
       <div class="background-container">
         <div class="background-list character-grid">
@@ -46,14 +86,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue'
-import { MenuPage } from '../../ui'
-import { MenuItem } from '../../ui'
-import { Button } from '../../base'
-import { Slider } from '../../base'
-import { getBackgroundImages } from '../../../api/services/background'
-import type { BackgroundImageInfo } from '../../../types'
+import { ref, onMounted, watch } from 'vue'
+import { MenuPage, MenuItem } from '../../ui'
+import { Button, Toggle } from '../../base' // 确保导入了 Toggle
+import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
+import { getBackgroundImages } from '../../../api/services/background'
+import { listScenes, loadScene, clearScene, type SceneInfo } from '../../../api/services/scene'
+import { ElMessage } from 'element-plus' // 可替换为自定义消息组件
+import type { BackgroundImageInfo } from '../../../types'
 
 // 响应式数据
 const backgroundList = ref<BackgroundImageInfo[]>([])
@@ -61,6 +102,86 @@ const selectedBackground = ref<string>('')
 const uploadInput = ref<HTMLInputElement | null>(null)
 
 const uiStore = useUIStore()
+const gameStore = useGameStore()
+
+// 场景相关状态
+const scenes = ref<SceneInfo[]>([])
+const isLoadingScenes = ref(false)
+const selectedSceneFilename = ref<string>('')
+const sceneAwareLocal = ref(gameStore.sceneAware)
+// 监听 gameStore.sceneAware 变化
+watch(
+  () => gameStore.sceneAware,
+  (val) => {
+    sceneAwareLocal.value = val
+  },
+)
+// 切换场景感知
+const onSceneAwareChange = (val: boolean) => {
+  gameStore.toggleSceneAware(val)
+  if (!val && gameStore.currentScene) {
+    handleClearScene() // 关闭感知时自动清除场景
+  }
+}
+// 加载场景列表
+const fetchScenes = async () => {
+  isLoadingScenes.value = true
+  try {
+    scenes.value = await listScenes()
+  } catch (error) {
+    ElMessage.error('获取场景列表失败')
+  } finally {
+    isLoadingScenes.value = false
+  }
+}
+// 选择场景
+const onSceneSelect = async (filename: string) => {
+  if (!filename) return
+  try {
+    await loadScene(filename)
+    const scene = scenes.value.find((s) => s.filename === filename)
+    if (scene) {
+      gameStore.setCurrentScene(scene)
+      // 同时更新背景图片（如果场景图片存在）
+      const sceneImageUrl = `/api/v1/chat/background/background_file/${scene.filename}`
+      uiStore.currentBackground = sceneImageUrl
+      // 可选：保存用户手动选择的背景，以便清除时恢复
+      localStorage.setItem('selectedBackground', sceneImageUrl)
+      ElMessage.success(`场景“${scene.description}”已加载`)
+    }
+  } catch (error) {
+    ElMessage.error('加载场景失败')
+  }
+}
+// 清除场景
+const handleClearScene = async () => {
+  try {
+    await clearScene()
+    gameStore.clearCurrentScene()
+    selectedSceneFilename.value = ''
+    // 恢复为之前手动选择的背景（从 localStorage 或默认）
+    const savedBg = localStorage.getItem('selectedBackground')
+    if (savedBg && savedBg !== '') {
+      uiStore.currentBackground = savedBg
+    } else if (backgroundList.value.length > 0) {
+      // 随机选一个背景
+      const randomIndex = Math.floor(Math.random() * backgroundList.value.length)
+      const randomBg = backgroundList.value[randomIndex]?.url || ''
+      uiStore.currentBackground = randomBg
+      localStorage.setItem('selectedBackground', randomBg)
+    } else {
+      uiStore.currentBackground = ''
+    }
+    ElMessage.success('已清除场景，恢复自由对话模式')
+  } catch (error) {
+    ElMessage.error('清除场景失败')
+  }
+}
+
+// 辅助显示
+const getSceneDisplayName = (scene: SceneInfo) => {
+  return scene.filename.replace(/\.[^/.]+$/, '')
+}
 
 // 初始化
 onMounted(async () => {
@@ -169,6 +290,29 @@ function updateKousan(value: number): void {}
 function updateParticle(value: string): void {
   uiStore.currentBackgroundEffect = value
 }
+
+onMounted(async () => {
+  await refreshBackground()
+  await fetchScenes()
+
+  // 恢复之前选择的背景
+  const savedBg = localStorage.getItem('selectedBackground')
+  if (savedBg) {
+    uiStore.currentBackground = savedBg
+  } else if (backgroundList.value.length > 0) {
+    const randomIndex = Math.floor(Math.random() * backgroundList.value.length)
+    uiStore.currentBackground = backgroundList.value[randomIndex]?.url || ''
+    localStorage.setItem('selectedBackground', uiStore.currentBackground)
+  }
+
+  // 如果 gameStore 中已有当前场景，同步选中项
+  if (gameStore.currentScene) {
+    selectedSceneFilename.value = gameStore.currentScene.filename
+    // 确保背景也是该场景图片
+    const sceneImageUrl = `/api/v1/chat/background/background_file/${gameStore.currentScene.filename}`
+    uiStore.currentBackground = sceneImageUrl
+  }
+})
 </script>
 
 <style scoped>
@@ -342,5 +486,22 @@ function updateParticle(value: string): void {
 /* 已选中按钮样式 */
 .background-select-btn.selected {
   background-color: #10b981 !important;
+}
+
+/* 新增以下样式 */
+.scene-setting {
+  padding: 8px 0;
+}
+.scene-aware-toggle {
+  margin-bottom: 12px;
+}
+.scene-selector {
+  margin-top: 8px;
+}
+.scene-indicator {
+  display: block;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--accent-color);
 }
 </style>
