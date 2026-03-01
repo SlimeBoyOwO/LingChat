@@ -6,12 +6,18 @@ import threading
 import sys
 from typing import Collection
 
+from ling_chat.api.app_server import run_app_in_thread, stop_app_server
+from ling_chat.core.achievement_manager import AchievementManager
 from ling_chat.core.logger import logger
+from ling_chat.core.webview import start_webview
 from ling_chat.third_party import install_third_party, run_third_party
+from ling_chat.utils.cli import print_logo
 from ling_chat.utils.cli_parser import get_parser
 from ling_chat.utils.easter_egg import get_random_loading_message
+from ling_chat.utils.function import Function
 from ling_chat.utils.runtime_path import static_path, third_party_path, user_data_path
-from ling_chat.core.webview import start_webview
+from ling_chat.utils.tts_auto_start import start_tts_software
+from ling_chat.utils.voice_check import VoiceCheck
 
 exit_event = threading.Event()
 
@@ -79,11 +85,6 @@ def run_cli_command(args):
 
 
 def run_main_program(args,is_wv=False):
-    from ling_chat.api.app_server import run_app_in_thread, stop_app_server
-
-    from ling_chat.utils.cli import print_logo
-    from ling_chat.utils.function import Function
-    from ling_chat.utils.voice_check import VoiceCheck
     try:
         if threading.current_thread() is threading.main_thread():
             def _local_signal_handler(signum, frame):
@@ -91,7 +92,6 @@ def run_main_program(args,is_wv=False):
                 exit_event.set()
 
         try:
-            from ling_chat.core.achievement_manager import AchievementManager
             AchievementManager.get_instance().save_if_dirty()
         except Exception as e:
             logger.error(f"保存成就数据时出错: {e}")
@@ -115,6 +115,12 @@ def run_main_program(args,is_wv=False):
             VoiceCheck.main()
         else:
             logger.info("已根据环境变量禁用语音检查")
+        
+        # 检查是否自动启动语音合成软件
+        if os.getenv("AUTO_START_TTS_SOFTWARE", "false").lower() == "true":
+            start_tts_software()
+        else:
+            logger.info("已禁用语音合成软件自动启动")
 
         # 检查环境变量决定是否启动前端界面
         if (os.getenv("OPEN_FRONTEND_APP", "false").lower() == "true" and not args.nogui) or args.gui:
