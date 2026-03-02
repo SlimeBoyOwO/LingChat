@@ -33,10 +33,11 @@
           >
             清除场景
           </Button>
-          <span v-if="gameStore.currentScene" class="scene-indicator">
-            当前：{{ getSceneDisplayName(gameStore.currentScene) }}
-          </span>
+          <Button type="add" size="small" @click="openCreateDialog"> 添加场景 </Button>
         </div>
+        <span v-if="gameStore.currentScene" class="scene-indicator">
+          当前：{{ getSceneDisplayName(gameStore.currentScene) }}
+        </span>
       </div>
     </MenuItem>
 
@@ -82,6 +83,29 @@
         <Button type="big" @click="updateParticle(`Fireworks`)">烟花</Button>
       </div>
     </MenuItem>
+    <el-dialog v-model="createDialogVisible" title="添加场景" width="400px">
+      <el-form label-width="80px">
+        <el-form-item label="场景名">
+          <el-input v-model="newSceneName" placeholder="例如：海边" />
+        </el-form-item>
+        <el-form-item label="场景描述">
+          <el-input
+            v-model="newSceneDescription"
+            type="textarea"
+            :rows="4"
+            placeholder="描述该场景的环境、氛围等"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="createDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="handleCreateScene" :loading="isCreating">
+            确定
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
   </MenuPage>
 </template>
 
@@ -95,7 +119,8 @@ import { getBackgroundImages } from '../../../api/services/background'
 import { listScenes, loadScene, clearScene, type SceneInfo } from '../../../api/services/scene'
 import { ElMessage } from 'element-plus' // 可替换为自定义消息组件
 import type { BackgroundImageInfo } from '../../../types'
-
+import http from '@/api/http'
+import { createScene } from '@/api/services/scene'
 // 响应式数据
 const backgroundList = ref<BackgroundImageInfo[]>([])
 const selectedBackground = ref<string>('')
@@ -109,6 +134,39 @@ const scenes = ref<SceneInfo[]>([])
 const isLoadingScenes = ref(false)
 const selectedSceneFilename = ref<string>('')
 const sceneAwareLocal = ref(gameStore.sceneAware)
+// 新增场景对话框
+const createDialogVisible = ref(false)
+const newSceneName = ref('')
+const newSceneDescription = ref('')
+const isCreating = ref(false)
+// 打开创建对话框
+const openCreateDialog = () => {
+  newSceneName.value = ''
+  newSceneDescription.value = ''
+  createDialogVisible.value = true
+}
+// 提交创建场景
+const handleCreateScene = async () => {
+  if (!newSceneName.value.trim() || !newSceneDescription.value.trim()) {
+    ElMessage.warning('请填写完整')
+    return
+  }
+  isCreating.value = true
+  try {
+    await createScene({
+      name: newSceneName.value.trim(),
+      description: newSceneDescription.value.trim(),
+    })
+    ElMessage.success('场景创建成功')
+    createDialogVisible.value = false
+    await fetchScenes() // 刷新列表
+  } catch (error: any) {
+    ElMessage.error(error.message || '创建失败')
+  } finally {
+    isCreating.value = false
+  }
+}
+
 // 监听 gameStore.sceneAware 变化
 watch(
   () => gameStore.sceneAware,
@@ -503,5 +561,11 @@ onMounted(async () => {
   margin-top: 8px;
   font-size: 13px;
   color: var(--accent-color);
+}
+.scene-buttons {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
 }
 </style>
