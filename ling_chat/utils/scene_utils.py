@@ -7,7 +7,7 @@ IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'}
 def find_image_for_scene(base_name: str) -> str | None:
     """查找与 base_name 同名的图片文件（不区分扩展名大小写）"""
     for ext in IMAGE_EXTENSIONS:
-        # 同时匹配小写和大写扩展名
+        # 同时匹配小写和大写扩展名，尽管如此，目前测试后仅支持同目录png图片自动加载
         for actual_ext in [ext, ext.upper()]:
             img_path = SCENES_DIR / f"{base_name}{actual_ext}"
             if img_path.exists():
@@ -73,3 +73,4 @@ def list_available_scenes():
         })
 
     return scenes
+
