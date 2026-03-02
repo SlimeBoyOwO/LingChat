@@ -36,12 +36,9 @@ async def create_scene(request: SceneCreateRequest):
 
 @router.get("/list")
 async def list_scenes():
-    """获取所有可用场景（背景图片）及其描述"""
+    """获取所有可用场景及其描述和图片URL"""
     scenes = list_available_scenes()
-    # 为每个场景添加预览 URL（该路径为 API 特有，因此在 API 层补充）
-    for scene in scenes:
-        scene["preview"] = f"/api/v1/chat/background/background_file/{scene['filename']}"
-    return {"scenes": scenes}
+    return {"scenes": scenes}   # 注意：此时 scenes 已经包含 imageUrl 字段
 
 @router.post("/load")
 async def load_scene(
