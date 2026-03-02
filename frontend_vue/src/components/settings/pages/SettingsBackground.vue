@@ -16,7 +16,7 @@
             :loading="isLoadingScenes"
             @change="onSceneSelect"
             clearable
-            style="width: 100%; margin-bottom: 8px"
+            style="flex: 1"
           >
             <el-option
               v-for="scene in scenes"
@@ -25,6 +25,11 @@
               :value="scene.filename"
             />
           </el-select>
+          <el-button size="small" @click="handleRefreshScenes" :loading="isLoadingScenes">
+            刷新
+          </el-button>
+        </div>
+        <div class="scene-buttons">
           <Button
             v-if="gameStore.currentScene"
             type="delete"
@@ -200,11 +205,16 @@ const onSceneSelect = async (filename: string) => {
     const scene = scenes.value.find((s) => s.filename === filename)
     if (scene) {
       gameStore.setCurrentScene(scene)
-      // 同时更新背景图片（如果场景图片存在）
-      const sceneImageUrl = `/api/v1/chat/background/background_file/${scene.filename}`
-      uiStore.currentBackground = sceneImageUrl
-      // 可选：保存用户手动选择的背景，以便清除时恢复
-      localStorage.setItem('selectedBackground', sceneImageUrl)
+
+      // 如果存在图片 URL，则更新背景
+      if (scene.imageUrl) {
+        uiStore.currentBackground = scene.imageUrl
+        localStorage.setItem('selectedBackground', scene.imageUrl)
+      } else {
+        // 纯文本场景且无对应图片，保持当前背景不变
+        ElMessage.info('已加载纯文本场景，背景图片保持不变')
+      }
+
       ElMessage.success(`场景“${scene.description}”已加载`)
     }
   } catch (error) {
@@ -235,7 +245,18 @@ const handleClearScene = async () => {
     ElMessage.error('清除场景失败')
   }
 }
-
+// 刷新场景列表
+const handleRefreshScenes = async () => {
+  await fetchScenes()
+  // 刷新后检查之前选中的场景是否还存在
+  if (
+    selectedSceneFilename.value &&
+    !scenes.value.some((s) => s.filename === selectedSceneFilename.value)
+  ) {
+    selectedSceneFilename.value = ''
+  }
+  ElMessage.success('场景列表已刷新')
+}
 // 辅助显示
 const getSceneDisplayName = (scene: SceneInfo) => {
   return scene.filename.replace(/\.[^/.]+$/, '')
@@ -567,5 +588,11 @@ onMounted(async () => {
   gap: 8px;
   margin-bottom: 8px;
   flex-wrap: wrap;
+}
+.scene-selector-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 8px;
 }
 </style>
