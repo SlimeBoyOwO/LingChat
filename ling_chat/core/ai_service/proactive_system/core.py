@@ -60,6 +60,8 @@ class ProactiveSystem:
 
     async def reload_system(self):
         await self.cleanup()
+        self.reload_schedule()
+        self.interest_manager.reload_max_proactive_count()
         self.start()
     
     def reload_schedule(self):

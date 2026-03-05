@@ -1,4 +1,5 @@
 import random
+import os
 
 from ling_chat.core.ai_service.proactive_system.type import PerceptionResult
 from ling_chat.core.logger import logger
@@ -14,6 +15,10 @@ class InterestManager: # Reviewed
         # 随主动对话次数衰减
         self.max_proactive_count = max_proactive_count
         self.decay_step = 50.0 / max_proactive_count if max_proactive_count > 0 else 0
+
+    def reload_max_proactive_count(self):
+        self.max_proactive_count = os.getenv("MAX_PROACTIVE_TIMES", 1)
+        self.decay_step = 50.0 / self.max_proactive_count if self.max_proactive_count > 0 else 0
         
     def update(self, perception: PerceptionResult):
         """周期性更新兴趣值"""
