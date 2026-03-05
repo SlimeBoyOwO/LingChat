@@ -85,7 +85,7 @@
                 class="w-18 px-5 py-2.5 bg-brand text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-colors duration-200 hover:bg-[#0056b3]"
               >
                 <button @click="saveSettings">保存</button>
-                <p :style="{ color: saveStatus.color }">
+                <p :class="saveStatus.colorClass">
                   {{ saveStatus.message }}
                 </p>
               </div>
@@ -121,7 +121,7 @@ const activeSelection = reactive({
 })
 const saveStatus = reactive({
   message: '',
-  color: 'var(--success-color)',
+  colorClass: 'text-green-500', // Tailwind 类名
 })
 const instance = getCurrentInstance()
 
@@ -152,10 +152,6 @@ const selectSubcategory = (category: string, subcategory: string) => {
   activeSelection.subcategory = subcategory
 }
 
-const updateSetting = (setting: { key: string; value: string }, isChecked: boolean) => {
-  setting.value = isChecked ? 'true' : 'false'
-}
-
 const saveSettings = async () => {
   if (!selectedSubcategory.value) return
 
@@ -169,12 +165,12 @@ const saveSettings = async () => {
 
   try {
     saveStatus.message = (await saveEnvConfigSettings(formData)).message
-    saveStatus.color = 'var(--success-color)'
+    saveStatus.colorClass = 'text-green-500'
 
     await loadConfig(false)
   } catch (error: any) {
     saveStatus.message = `错误: ${error.message}`
-    saveStatus.color = 'red'
+    saveStatus.colorClass = 'text-red-500'
   } finally {
     isLoading.value = false
     setTimeout(() => {
@@ -203,7 +199,7 @@ const loadConfig = async (selectFirst = true) => {
   } catch (error: any) {
     console.error(error)
     saveStatus.message = `加载配置失败: ${error.message}`
-    saveStatus.color = 'red'
+    saveStatus.colorClass = 'text-red-500'
   } finally {
     isLoading.value = false
   }
