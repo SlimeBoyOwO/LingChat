@@ -33,6 +33,10 @@ class ResponseFactory:
             originalMessage="",
             isFinal=True
         )
+    
+    @staticmethod
+    def create_thinking(is_thinking: bool) -> ThinkingResponse:
+        return ThinkingResponse(isThinking=is_thinking)
 
     @staticmethod
     def create_input(hint: str, **kwargs) -> ScriptInputResponse:

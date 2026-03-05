@@ -26,6 +26,11 @@ export class ScriptHandler {
       eventQueue.addEvent(data as ScriptTypes.ScriptDialogueEvent)
     })
 
+    registerHandler(WebSocketMessageTypes.SCRIPT_THINKING, (data: any) => {
+      console.log('收到剧本思考事件:', data)
+      eventQueue.addEvent(data as ScriptTypes.ScriptThinkingEvent)
+    })
+
     registerHandler(WebSocketMessageTypes.SCRIPT_BACKGROUND, (data: any) => {
       console.log('收到背景切换事件:', data)
       eventQueue.addEvent(data as ScriptTypes.ScriptBackgroundEvent)

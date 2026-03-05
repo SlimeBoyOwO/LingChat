@@ -23,6 +23,11 @@ class ReplyResponse(BaseResponse):
     audioFile: Optional[str] = None
     originalMessage: str
 
+class ThinkingResponse(BaseResponse):
+    type: str = ResponseType.AI_THINKING
+    duration: float = 0
+    isThinking: bool
+
 class ScriptBackgroundResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_BACKGROUND
     imagePath: str

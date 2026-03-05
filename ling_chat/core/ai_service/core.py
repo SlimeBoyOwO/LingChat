@@ -6,10 +6,11 @@ from typing import Dict
 
 from ling_chat.core.ai_service.exceptions import ScriptEngineError
 from ling_chat.core.ai_service.game_system.game_status import GameStatus
+from ling_chat.core.ai_service.proactive_system.core import ProactiveSystem
+from ling_chat.core.schemas.response_models import ResponseFactory
 from ling_chat.game_database.models import GameLine, LineAttribute, LineBase
 from ling_chat.core.ai_service.ai_logger import AILogger
 from ling_chat.core.ai_service.config import AIServiceConfig
-from ling_chat.core.ai_service.events_scheduler import EventsScheduler
 from ling_chat.core.ai_service.message_system.message_processor import MessageProcessor
 from ling_chat.core.ai_service.message_system.message_generator import MessageGenerator
 from ling_chat.core.ai_service.script_engine.script_manager import ScriptManager
@@ -54,9 +55,11 @@ class AIService:
         self.processing_task = asyncio.create_task(self._process_message_loop())
         self.global_task = asyncio.create_task(self._process_global_messages())
 
-        self.events_scheduler = EventsScheduler(self.config)
+        # self.events_scheduler = EventsScheduler(self.config)
+        self.proactive_system = ProactiveSystem(self.config, self.game_status, self.message_generator)
         self.import_settings(settings)
-        self.events_scheduler.start_nodification_schedules()        # TODO: 这个由前端开关控制
+        # self.events_scheduler.start_nodification_schedules()        # TODO: 这个由前端开关控制
+        self.proactive_system.start()
 
         self.scripts_manager = ScriptManager(self.config, self.game_status)
 
@@ -93,8 +96,8 @@ class AIService:
         else:
             logger.error("角色信息settings没有被正常导入，请检查问题！")
 
-        self.events_scheduler.ai_name = self.ai_name
-        self.events_scheduler.user_name = self.user_name
+        # self.events_scheduler.ai_name = self.ai_name
+        # self.events_scheduler.user_name = self.user_name
 
     def apply_runtime_config(self, updates: dict[str, str]) -> None:
         """
@@ -125,6 +128,7 @@ class AIService:
 
     def get_lines(self):
         return self.game_status.line_list
+    
     
     def set_active_save_id(self, save_id: int | None):
         """
@@ -194,10 +198,14 @@ class AIService:
         if not script_list:
             raise ScriptEngineError("没有可用的剧本。")
 
+        # 剧本模式启动的时候，先清理 proactive_system，防止主动对话
         chosen = script_name or script_list[0]
+        await self.proactive_system.cleanup()
         ok = await self.scripts_manager.start_script(chosen)
         if not ok:
             raise ScriptEngineError(f"剧本 {chosen} 加载失败。")
+        
+        self.proactive_system.start()
 
     async def _process_client_messages(self, client_id: str):
         """处理单个客户端的消息"""
@@ -210,12 +218,14 @@ class AIService:
                     user_message = message.get("content", "")
                     if user_message:
 
+                        await message_broker.publish(client_id, (ResponseFactory.create_thinking(True).model_dump()))
                         responses = []
                         async for response in self.message_generator.process_message_stream(user_message=user_message):
                             await message_broker.publish(client_id, response.model_dump())
                             responses.append(response)
 
                         logger.debug(f"消息处理完成，共生成 {len(responses)} 个响应片段")
+                        self.proactive_system.on_user_message_received()
 
                     self.is_processing = False
 

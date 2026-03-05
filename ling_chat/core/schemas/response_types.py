@@ -3,6 +3,7 @@ class ResponseType:
     """响应类型常量"""
     # 普通对话响应
     AI_REPLY = "reply"
+    AI_THINKING = "thinking"
 
     # 剧本对话系统
     SCRIPT_DIALOG = "reply"           # 剧本对话回复

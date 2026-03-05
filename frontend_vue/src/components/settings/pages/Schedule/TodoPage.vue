@@ -5,9 +5,15 @@
         v-for="(group, id) in todoGroups"
         :key="'group-' + id"
         @click="selectTodoGroup(id)"
-        class="glass-effect p-5 rounded-2xl border border-slate-100 shadow-sm hover:border-cyan-200 cursor-pointer flex items-center justify-between group transition-all"
+        class="glass-effect p-5 rounded-2xl border border-slate-100 shadow-sm hover:border-cyan-200 cursor-pointer flex items-center justify-between group transition-all relative"
       >
-        <div class="flex items-center space-x-4">
+        <button
+          @click.stop="removeTodoGroup(id)"
+          class="absolute top-1 left-1 text-slate-200 hover:text-red-400 p-1 z-10"
+        >
+          <Trash2 :size="18" />
+        </button>
+        <div class="flex items-center space-x-4 ml-2">
           <div
             class="w-10 h-10 bg-cyan-500 rounded-xl flex items-center justify-center text-cyan-50 group-hover:bg-cyan-50 group-hover:text-cyan-500 transition-all"
           >
@@ -313,6 +319,10 @@ const undoComplete = (todo: TodoItem) => {
 
 const removeItem = (idx: number) => {
   activeTodoGroup.value.todos.splice(idx, 1)
+}
+
+const removeTodoGroup = (id: string) => {
+  delete todoGroups.value[id]
 }
 
 const selectTodoGroup = (id: string) => {

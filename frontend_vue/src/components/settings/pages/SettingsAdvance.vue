@@ -72,62 +72,11 @@
                   :key="setting.key"
                   class="mb-6"
                 >
-                  <!-- 根据 setting.type 渲染不同类型的输入控件 -->
-
-                  <!-- Case: 布尔值 (Checkbox) -->
-                  <template v-if="setting.type === 'bool'">
-                    <label class="inline-flex items-center cursor-pointer font-medium text-brand">
-                      <input
-                        class="mr-2.5 w-4 h-4"
-                        type="checkbox"
-                        :id="setting.key"
-                        :checked="setting.value.toLowerCase() === 'true'"
-                        @change="
-                          updateSetting(setting, ($event.target as HTMLInputElement).checked)
-                        "
-                      />
-                      {{ setting.key }}
-                    </label>
-                    <p class="text-sm mt-1 mb-2 text-gray-300">
-                      {{ setting.description || '' }}
-                    </p>
-                  </template>
-
-                  <!-- Case: 文本域 (Textarea) -->
-                  <template v-else-if="setting.type === 'textarea'">
-                    <label
-                      class="inline-flex items-center cursor-pointer font-medium text-brand"
-                      :for="setting.key"
-                      >{{ setting.key }}</label
-                    >
-                    <p class="text-sm mt-1 mb-2 text-gray-300">
-                      {{ setting.description || '支持多行输入' }}
-                    </p>
-                    <textarea
-                      :id="setting.key"
-                      v-model="setting.value"
-                      class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
-                      rows="8"
-                    ></textarea>
-                  </template>
-
-                  <!-- Case: 默认文本 (Text Input) -->
-                  <template v-else>
-                    <label
-                      class="inline-flex items-center cursor-pointer font-medium text-brand"
-                      :for="setting.key"
-                      >{{ setting.key }}</label
-                    >
-                    <p class="text-sm mt-1 mb-2 text-gray-300">
-                      {{ setting.description || '' }}
-                    </p>
-                    <input
-                      type="text"
-                      :id="setting.key"
-                      v-model="setting.value"
-                      class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
-                    />
-                  </template>
+                  <!-- 使用 SettingItem 组件渲染不同类型的输入控件 -->
+                  <SettingItem
+                    :setting="setting"
+                    @update:value="(value) => (setting.value = value)"
+                  />
                 </div>
               </form>
 
@@ -159,7 +108,9 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, reactive, watch, nextTick, getCurrentInstance } from 'vue'
 import { MenuPage } from '../../ui'
-import { MenuItem } from '../../ui'
+import SettingItem from '@/components/base/items/SettingItem.vue'
+import { getEnvConfigSettings } from '@/api/services/config'
+import { saveEnvConfigSettings } from '@/api/services/config'
 
 // --- 响应式状态定义 ---
 const isLoading = ref(false)
@@ -217,16 +168,7 @@ const saveSettings = async () => {
   saveStatus.message = ''
 
   try {
-    const response = await fetch('/api/settings/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(formData),
-    })
-
-    const result = await response.json()
-    if (!response.ok) throw new Error(result.detail || '保存失败')
-
-    saveStatus.message = result.message
+    saveStatus.message = (await saveEnvConfigSettings(formData)).message
     saveStatus.color = 'var(--success-color)'
 
     await loadConfig(false)
@@ -244,10 +186,7 @@ const saveSettings = async () => {
 const loadConfig = async (selectFirst = true) => {
   isLoading.value = true
   try {
-    const response = await fetch('/api/settings/config')
-    if (!response.ok) throw new Error('无法加载配置')
-
-    configData.value = await response.json()
+    configData.value = await getEnvConfigSettings()
 
     if (selectFirst && Object.keys(configData.value).length > 0) {
       const firstCategory = Object.keys(configData.value)[0]

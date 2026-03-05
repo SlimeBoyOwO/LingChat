@@ -36,7 +36,7 @@
         <p>√ 连接正常</p>
       </MenuItem>
 
-      <MenuItem title="当前使用的AI大模型" size="small">
+      <MenuItem title="当前使用的AI大模型（这里是假的嘻嘻）" size="small">
         <template #header>
           <Settings :size="20" />
         </template>
