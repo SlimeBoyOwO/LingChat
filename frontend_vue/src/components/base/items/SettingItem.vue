@@ -43,6 +43,22 @@
     <p class="text-sm mt-1 mb-2 text-gray-300">
       {{ setting.description || '' }}
     </p>
+    <!-- 如果是 path 类型，添加文件选择按钮 -->
+    <div v-if="setting.type === 'path'" class="flex gap-2">
+      <input
+        type="text"
+        :id="setting.key"
+        v-model="setting.value"
+        class="flex-1 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+      />
+      <button
+        @click="selectFile(setting)"
+        type="button"
+        class="px-4 py-2.5 bg-brand text-white rounded-lg hover:bg-[#0056b3] transition-colors duration-200 whitespace-nowrap"
+      >
+        浏览
+      </button>
+    </div>
     <input
       type="text"
       :id="setting.key"
@@ -59,7 +75,7 @@ import Toggle from '../widget/Toggle.vue'
 interface Setting {
   key: string
   value: string
-  type: 'bool' | 'textarea' | 'text'
+  type: 'bool' | 'textarea' | 'text' | 'path'
   description?: string
 }
 
@@ -94,5 +110,24 @@ const handleCheckboxChange = (event: Event) => {
   const newValue = target.checked ? 'true' : 'false'
   localValue.value = newValue
   emit('update:value', newValue)
+}
+
+const selectFile = async (setting: { key: string; value: string }) => {
+  try {
+    const response = await fetch('/api/settings/select-file')
+
+    const result = await response.json()
+
+    if (result.error) {
+      // 显示后端返回的错误信息
+      console.error('后端错误:', result.error)
+    } else if (result.path) {
+      setting.value = result.path
+    } else {
+      // 用户取消选择
+    }
+  } catch (error: any) {
+    console.error('文件选择失败:', error)
+  }
 }
 </script>
