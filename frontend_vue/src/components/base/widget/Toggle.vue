@@ -1,13 +1,24 @@
 <template>
-  <div>
+  <div class="flex items-center">
     <input
       type="checkbox"
       :id="id"
       :checked="checked"
       @change="$emit('change', value)"
       v-model="value"
+      class="hidden peer"
     />
-    <label :for="id">
+    <label
+      :for="id"
+      class="relative pl-[60px] cursor-pointer text-white text-[14px] select-none"
+      style="text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3)"
+    >
+      <span
+        class="absolute left-0 top-1/2 -translate-y-1/2 w-[50px] h-[26px] rounded-[13px] transition-all duration-300 ease-in-out backdrop-blur-[5px] border border-white/30 bg-white/20 before:content-[''] after:content-[''] peer-checked:border-[var(--accent-color)] peer-checked:bg-[rgba(121,217,255,0.3)] peer-checked:shadow-[0_0_10px_rgba(121,217,255,0.3)]"
+      ></span>
+      <span
+        class="absolute top-1/2 left-[4px] -translate-y-1/2 w-[20px] h-[20px] rounded-full transition-all duration-300 ease-in-out bg-gradient-to-br from-white to-[#f0f0f0] shadow-[0_2px_6px_rgba(0,0,0,0.3),0_1px_2px_rgba(0,0,0,0.1)] peer-checked:left-[26px] peer-checked:bg-gradient-to-br peer-checked:from-[var(--accent-color)] peer-checked:to-[#64b5f6] peer-checked:shadow-[0_3px_8px_rgba(121,217,255,0.4),0_1px_3px_rgba(0,0,0,0.2)]"
+      ></span>
       <slot></slot>
     </label>
   </div>
@@ -41,66 +52,8 @@ onMounted(() => {
 </script>
 
 <style scoped>
-div {
-  display: flex;
-  align-items: center;
-}
-
-input {
-  display: none;
-}
-
-label {
-  color: white;
-  font-size: 14px;
-  cursor: pointer;
-  position: relative;
-  padding-left: 60px;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-label::before {
-  left: 0;
-  top: 50%;
-  content: '';
-  width: 50px;
-  height: 26px;
-  position: absolute;
-  border-radius: 13px;
-  transition: all 0.3s ease;
-  backdrop-filter: blur(5px);
-  transform: translateY(-50%);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  background-color: rgba(255, 255, 255, 0.2);
-}
-
-label::after {
-  top: 50%;
-  left: 4px;
-  content: '';
-  width: 20px;
-  height: 20px;
-  position: absolute;
-  border-radius: 50%;
-  transition: all 0.3s ease;
-  transform: translateY(-50%);
-  background: linear-gradient(135deg, #ffffff, #f0f0f0);
-  box-shadow:
-    0 2px 6px rgba(0, 0, 0, 0.3),
-    0 1px 2px rgba(0, 0, 0, 0.1);
-}
-
-input:checked + label::before {
-  border-color: var(--accent-color);
-  background-color: rgba(121, 217, 255, 0.3);
-  box-shadow: 0 0 10px rgba(121, 217, 255, 0.3);
-}
-
-input:checked + label::after {
-  left: 26px;
-  background: linear-gradient(135deg, var(--accent-color), #64b5f6);
-  box-shadow:
-    0 3px 8px rgba(121, 217, 255, 0.4),
-    0 1px 3px rgba(0, 0, 0, 0.2);
+/* 保留CSS变量引用 */
+:deep(*) {
+  --accent-color: var(--accent-color);
 }
 </style>

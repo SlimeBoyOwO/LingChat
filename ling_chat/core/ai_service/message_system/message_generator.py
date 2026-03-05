@@ -78,7 +78,7 @@ class MessageGenerator:
         line = None
         # 1. 处理用户消息，提取临时指令，构建台词
         if user_message is not None:
-            processed_user_message_dict = self.message_processor.append_user_message(user_message)
+            processed_user_message_dict = await self.message_processor.append_user_message(user_message)
             processed_user_message = processed_user_message_dict.get("main","")
             temp_message = processed_user_message_dict.get("temp",None)
             line = LineBase(content=processed_user_message, attribute=LineAttribute.USER, display_name=self.game_status.player.user_name)

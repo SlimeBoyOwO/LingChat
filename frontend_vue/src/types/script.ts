@@ -29,6 +29,11 @@ export interface ScriptDialogueEvent extends ScriptEvent {
   originalMessage: string
 }
 
+export interface ScriptThinkingEvent extends ScriptEvent {
+  type: 'thinking'
+  isThinking: boolean
+}
+
 export interface ScriptBackgroundEvent extends ScriptEvent {
   type: 'background'
   imagePath: string
@@ -85,3 +90,4 @@ export type ScriptEventType =
   | ScriptInputEvent
   | ScriptErrorEvent
   | ScriptStatusResetEvent
+  | ScriptThinkingEvent

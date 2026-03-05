@@ -185,7 +185,7 @@ function send() {
     // gameStore.avatar.show = false
     // gameStore.script.isRunning = true
   } else {
-    gameStore.currentStatus = 'thinking'
+    // gameStore.currentStatus = 'thinking'
     gameStore.appendGameMessage({
       type: 'message',
       displayName: gameStore.userName,

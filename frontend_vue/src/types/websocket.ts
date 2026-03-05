@@ -27,6 +27,7 @@ export enum WebSocketMessageTypes {
   SCRIPT_NARRATION = 'narration', // 旁白
   SCRIPT_PLAYER = 'player', // 玩家
   SCRIPT_DIALOGUE = 'reply', // 角色对话
+  SCRIPT_THINKING = 'thinking', // 角色思考
 
   SCRIPT_BACKGROUND = 'background', // 旁白
   SCRIPT_MODIFY_CHARACTER = 'modify_character', // 旁白

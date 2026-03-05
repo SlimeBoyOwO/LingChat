@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Optional, List, Dict, Any
 from ling_chat.core.ai_service.type import Player, GameRole, ScriptStatus
 from ling_chat.core.ai_service.game_system.role_manager import GameRoleManager
@@ -32,6 +33,8 @@ class GameStatus:
     background_effect: str = field(default_factory=str)
     # 全局变量信息
     global_variables: Dict[str, Any] = field(default_factory=dict)
+    # 最后一次对话时间记录
+    last_dialog_time: Optional[datetime] = None
 
     # 剧本模式中记录的额外信息
     script_status: Optional[ScriptStatus] = None

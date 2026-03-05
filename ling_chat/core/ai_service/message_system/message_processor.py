@@ -92,7 +92,7 @@ class MessageProcessor:
 
         return results
 
-    def append_user_message(self, user_message: str) -> dict:
+    async def append_user_message(self, user_message: str) -> dict:
         """处理用户消息，添加系统信息，如时间、是否需要分析桌面，以及提取大括号内的用户指令"""
 
         # TODO: 当 AI 的回复句子总是固定的时候，增加提示让 AI 的回复句子适度调整
@@ -139,7 +139,7 @@ class MessageProcessor:
 
         if any(keyword in user_message for keyword in desktop_keywords):
             analyze_prompt = "你是一个图像信息转述者，你将需要把你看到的画面描述给另一个AI让他理解用户的图片内容。"+"\"" + user_message + "\"" + "以上是用户发的消息，请切合用户实际获取信息的需要，获取桌面画面中的重点内容，用200字描述主体部分即可。"
-            analyze_info = self.desktop_analyzer.analyze_desktop(analyze_prompt)
+            analyze_info = await self.desktop_analyzer.analyze_desktop(analyze_prompt)
             sys_desktop_part = f"桌面信息: {analyze_info}"
 
         # 构建系统提醒部分
