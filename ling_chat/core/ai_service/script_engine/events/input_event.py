@@ -21,6 +21,9 @@ class InputEvent(BaseEvent):
         # 等待来自前端的输入
         user_input = await ScriptFunction.wait_for_user_input(self.client_id)
 
+        # TODO: 等待更优雅的发言思考者判断重构
+        await message_broker.publish(self.client_id, (ResponseFactory.create_thinking(True).model_dump()))
+
         # 将用户输入存储到游戏上下文
         if user_input is not None:
             self.game_status.add_line(
