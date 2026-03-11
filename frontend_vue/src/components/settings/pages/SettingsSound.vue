@@ -137,10 +137,7 @@ const updateBubbleVolume = (value: number) => {
 }
 
 const updateBackgroundVolume = (value: number) => {
-  backgroundVolume.value = value
-  if (backgroundAudioPlayer.value) {
-    backgroundAudioPlayer.value.volume = value / 100
-  }
+  uiStore.backgroundVolume = value
 }
 
 const updateAchievementVolume = (value: number) => {
