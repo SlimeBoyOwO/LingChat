@@ -150,7 +150,7 @@
                     v-if="isClothesSelected(cloth.title)"
                     class="absolute top-1 right-1 bg-indigo-500 rounded-full p-1"
                   >
-                    <Icon icon="check" class="w-3 h-3 text-white" />
+                    <Check class="w-4 h-4"></Check>
                   </div>
                 </div>
                 <p class="text-xs text-center text-white/80 truncate">{{ cloth.title }}</p>
@@ -206,7 +206,7 @@ import { characterSelect } from '@/api/services/character'
 import { useGameStore } from '@/stores/modules/game'
 import { useUserStore } from '@/stores/modules/user/user'
 import { Settings } from 'lucide-vue-next'
-import { Cat } from 'lucide-vue-next'
+import { Cat, Check } from 'lucide-vue-next'
 import type { Clothes } from '@/types'
 
 interface CharacterProps {
