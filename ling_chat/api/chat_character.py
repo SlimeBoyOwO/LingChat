@@ -242,7 +242,9 @@ async def get_all_characters():
             characters.append({
                 "character_id": char.id,
                 "title": char.name,
-                "info": settings.info or '这是一个人工智能对话助手',
+                "name": settings.ai_name,
+                "sub_name": settings.ai_subtitle,
+                "info": settings.info or '该角色没有介绍呢~',
                 "avatar_path": avatar_relative_path,
                 "clothes": clothes_list
             })
