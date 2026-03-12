@@ -23,6 +23,11 @@ class ReplyResponse(BaseResponse):
     audioFile: Optional[str] = None
     originalMessage: str
 
+class ChapterChangeResponse(BaseResponse):
+    type: str = ResponseType.SCRIPT_CHAPTER_CHANGE
+    chapterName: str
+    duration: float = 0
+
 class ThinkingResponse(BaseResponse):
     type: str = ResponseType.AI_THINKING
     duration: float = 0

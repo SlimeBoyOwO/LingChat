@@ -24,6 +24,7 @@
         <h3>菜单</h3>
       </Button>
     </div>
+    <GameExtraUI />
   </div>
 </template>
 
@@ -36,6 +37,7 @@ import { useUserStore } from '../../stores/modules/user/user'
 import { GameBackground, GameRolesStage } from '../game/standard'
 import { GameDialog } from '../game/standard'
 import { Button } from '../base'
+import GameExtraUI from '../game/standard/GameExtraUI.vue'
 
 const uiStore = useUIStore()
 const gameStore = useGameStore()

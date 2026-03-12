@@ -37,6 +37,10 @@ class ResponseFactory:
     @staticmethod
     def create_thinking(is_thinking: bool) -> ThinkingResponse:
         return ThinkingResponse(isThinking=is_thinking)
+    
+    @staticmethod
+    def create_chapter_change(chapter_info: str) -> ChapterChangeResponse:
+        return ChapterChangeResponse(chapterName=chapter_info)
 
     @staticmethod
     def create_input(hint: str, **kwargs) -> ScriptInputResponse:

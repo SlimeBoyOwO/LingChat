@@ -31,6 +31,11 @@ export class ScriptHandler {
       eventQueue.addEvent(data as ScriptTypes.ScriptThinkingEvent)
     })
 
+    registerHandler(WebSocketMessageTypes.SCRIPT_CHAPTER_CHANGE, (data: any) => {
+      console.log('收到章节切换事件:', data)
+      eventQueue.addEvent(data as ScriptTypes.ScriptChapterChangeEvent)
+    })
+
     registerHandler(WebSocketMessageTypes.SCRIPT_BACKGROUND, (data: any) => {
       console.log('收到背景切换事件:', data)
       eventQueue.addEvent(data as ScriptTypes.ScriptBackgroundEvent)

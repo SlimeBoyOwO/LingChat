@@ -4,6 +4,11 @@ export interface ScriptEvent {
   isFinal?: boolean
 }
 
+export interface ScriptChapterChangeEvent extends ScriptEvent {
+  type: 'chapter_change'
+  chapterName: string
+}
+
 export interface ScriptNarrationEvent extends ScriptEvent {
   type: 'narration'
   text: string
@@ -91,3 +96,4 @@ export type ScriptEventType =
   | ScriptErrorEvent
   | ScriptStatusResetEvent
   | ScriptThinkingEvent
+  | ScriptChapterChangeEvent
