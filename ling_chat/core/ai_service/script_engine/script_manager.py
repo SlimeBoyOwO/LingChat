@@ -113,7 +113,7 @@ class ScriptManager:
             try:
                 # 1. 加载章节，返回一个“可运行”的章节对象
                 chapter_path = SCRIPT_DIR / script.folder_key / "Chapters" / (next_chapter_name + ".yaml")
-                current_chapter_obj:Chapter = self._get_chapter(chapter_path) # 一个新的辅助方法
+                current_chapter_obj:Chapter = self._get_chapter(chapter_path, script) # 一个新的辅助方法
 
                 # 2. 命令章节运行，然后等待结果
                 next_chapter_name = await current_chapter_obj.run()
@@ -184,10 +184,10 @@ class ScriptManager:
         else:
             raise ScriptLoadError("剧本读取出现错误,缺少 story_config.yml 配置文件")
     
-    def _get_chapter(self, chapter_path: Path) -> Chapter:
+    def _get_chapter(self, chapter_path: Path, script_status: ScriptStatus) -> Chapter:
         config = Function.read_yaml_file(chapter_path)
         if config is not None:
-            return Chapter(str(chapter_path), self.config, self.game_status, config.get('events',[]), config.get('end',{}))
+            return Chapter(str(chapter_path), self.config, self.game_status, config, script_status)
         else:
             raise ChapterLoadError(f"导入 {chapter_path} 剧本的时候出现问题")
     

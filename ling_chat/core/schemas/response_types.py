@@ -11,6 +11,9 @@ class ResponseType:
     SCRIPT_NARRATION = "narration"   # 剧本旁白
     SCRIPT_CHOICE = "choice"         # 玩家选择分支
 
+    # 章节控制系统
+    SCRIPT_CHAPTER_CHANGE = "chapter_change" # 章节切换
+
     # 场景管理系统
     SCRIPT_BACKGROUND = "background" # 背景切换
     SCRIPT_BACKGROUND_EFFECT = "background_effect" # 背景特效切换
