@@ -27,22 +27,22 @@
         />
       </div>
       <span class="w-6 h-1 bg-brand rounded-full mt-1"></span>
-      <h5 class="font-bold text-white text-md tracking-wide drop-shadow-md text-center">
+      <h4 class="font-bold text-white text-md tracking-wide drop-shadow-md text-center">
         {{ title }}
-      </h5>
+      </h4>
     </div>
 
     <div class="flex-1 pl-4 flex flex-col h-full justify-between min-h-36">
       <div class="pr-8">
         <div class="flex gap-2 items-center">
-          <div class="text-lg text-brand font-bold uppercase tracking-widest mb-3 opacity-80">
+          <div class="text-xl text-brand font-bold uppercase tracking-widest mb-3 opacity-80">
             {{ name }}
           </div>
           <div class="text-sm font-medium text-brand uppercase tracking-widest mb-3 opacity-80">
             {{ subName }}
           </div>
         </div>
-        <p class="text-sm text-gray-200/90 leading-relaxed line-clamp-3 opacity-80">
+        <p class="text-base text-gray-200/90 leading-relaxed line-clamp-3 opacity-80">
           {{ info || '暂无角色介绍' }}
         </p>
       </div>
