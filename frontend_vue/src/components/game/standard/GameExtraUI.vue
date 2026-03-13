@@ -49,6 +49,11 @@ const shouldShowChapterName = computed(() => {
   return uiStore.showSettings ? false : showChapterName.value
 })
 
+watch(
+  () => gameStore.runningScript?.choices,
+  async (new_choices) => {},
+)
+
 // 监听章节名称变化
 watch(
   () => gameStore.runningScript?.currentChapterName,

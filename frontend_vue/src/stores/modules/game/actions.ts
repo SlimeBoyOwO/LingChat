@@ -111,6 +111,7 @@ export const actions = {
     this.runningScript = {
       scriptName,
       currentChapterName: '',
+      choices: [],
       isRunning: true,
     }
   },
