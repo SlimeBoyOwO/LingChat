@@ -5,6 +5,8 @@ from ling_chat.core.ai_service.script_engine.chapter import Chapter
 from ling_chat.core.ai_service.type import Player, ScriptStatus
 
 from ling_chat.core.logger import logger
+from ling_chat.core.messaging.broker import message_broker
+from ling_chat.core.schemas.response_models import ResponseFactory
 from ling_chat.game_database.models import LineAttribute, LineBase, RoleType
 from ling_chat.utils.function import Function
 from ling_chat.utils.runtime_path import user_data_path
@@ -123,6 +125,13 @@ class ScriptManager:
                 raise ScriptEngineError("运行章节的时候发生错误")
 
         self.is_running = False
+
+        event_response = ResponseFactory.create_script_end()
+        if script.running_client_id:
+            await message_broker.publish(script.running_client_id,
+                event_response.model_dump()
+            )
+
         logger.info("剧本已经结束。")
 
     def _register_script_roles(self, script: ScriptStatus):

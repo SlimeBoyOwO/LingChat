@@ -71,6 +71,9 @@ export interface ScriptInputEvent extends ScriptEvent {
   type: 'input'
   hint: string
 }
+export interface ScriptEndEvent extends ScriptEvent {
+  type: 'script_end'
+}
 
 export interface ScriptErrorEvent extends ScriptEvent {
   type: 'error'
@@ -97,3 +100,4 @@ export type ScriptEventType =
   | ScriptStatusResetEvent
   | ScriptThinkingEvent
   | ScriptChapterChangeEvent
+  | ScriptEndEvent

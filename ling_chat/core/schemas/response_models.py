@@ -73,4 +73,8 @@ class ResponseFactory:
     @staticmethod
     def create_modify_character(**kwargs) -> ScriptModifyCharacterResponse:
         return ScriptModifyCharacterResponse(**kwargs)
+    
+    @staticmethod
+    def create_script_end() -> ScriptEndResponse:
+        return ScriptEndResponse()
 

@@ -25,3 +25,6 @@ class ResponseType:
 
     # 人物控制系统
     SCRIPT_MODIFY_CHARACTER = "modify_character" # 修改人物
+
+    # 结束响应
+    SCRIPT_END = "script_end" # 结束响应
