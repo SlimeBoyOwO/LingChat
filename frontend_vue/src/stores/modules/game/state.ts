@@ -13,6 +13,7 @@ export interface GameMessage {
 export interface ScriptInfo {
   scriptName: string
   currentChapterName: string
+  choices: string[]
   isRunning: boolean
 }
 
