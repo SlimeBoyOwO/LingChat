@@ -71,6 +71,11 @@ export class ScriptHandler {
       eventQueue.addEvent(data as ScriptTypes.ScriptInputEvent)
     })
 
+    registerHandler(WebSocketMessageTypes.SCRIPT_CHOICE, (data: any) => {
+      console.log('收到选择事件:', data)
+      eventQueue.addEvent(data as ScriptTypes.ScriptChoiceEvent)
+    })
+
     registerHandler(WebSocketMessageTypes.SCRIPT_END, (data: any) => {
       console.log('收到脚本结束事件:', data)
       eventQueue.addEvent(data as ScriptTypes.ScriptEndEvent)

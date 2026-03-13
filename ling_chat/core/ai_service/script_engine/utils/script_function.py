@@ -5,6 +5,7 @@ from ling_chat.core.ai_service.game_system.game_status import GameStatus
 from ling_chat.core.ai_service.type import GameRole, ScriptStatus
 from ling_chat.core.logger import logger
 from ling_chat.core.messaging.broker import message_broker
+from ling_chat.game_database.models import LineAttribute, LineBase
 
 
 class ScriptFunction:
@@ -24,6 +25,35 @@ class ScriptFunction:
         except Exception as e:
             logger.error(f"等待用户输入时发生错误: {e}")
             return ""
+    
+    @staticmethod
+    async def wait_for_user_choice(client_id: str) -> str | None:
+        """等待来自前端的用户输入"""
+        try:
+            # 订阅特定的输入频道
+            subscription = message_broker.subscribe("ai_script_choice_" + client_id)
+
+            # 使用异步for循环来消费消息
+            async for message in subscription:
+                user_input = ScriptFunction.extract_user_input(message)
+                if user_input:
+                    return user_input
+
+        except Exception as e:
+            logger.error(f"等待选择事件时发生错误: {e}")
+            return ""
+        
+    @staticmethod
+    async def handle_actions(game_status:GameStatus, script_status:ScriptStatus, actions: list[dict]) -> None:
+        """处理脚本中的动作"""
+        # 根据action类型执行相应的操作
+        for action in actions:
+            if action.get("type","") == "add_line":
+                user_input = action.get("content","")
+                game_status.add_line(
+                    LineBase(content=user_input,attribute=LineAttribute.USER,display_name=game_status.player.user_name)
+                )
+
 
     @staticmethod
     def extract_user_input(message: Dict[str, Any]) -> str:
