@@ -75,5 +75,10 @@ class ScriptInputResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_INPUT
     hint: str
 
+class ScriptEndResponse(BaseResponse):
+    type: str = ResponseType.SCRIPT_END
+    duration: float = 0
+    isFinal: bool = True
+
 # 所有响应类型
 Response = Union[ReplyResponse, ScriptBackgroundResponse, ScriptNarrationResponse]

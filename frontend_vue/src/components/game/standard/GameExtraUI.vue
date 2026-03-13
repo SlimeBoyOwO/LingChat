@@ -1,5 +1,5 @@
 <template>
-  <div class="fixed top-0 left-0 w-full pt-8 pointer-events-none z-[999]">
+  <div class="fixed top-0 left-0 w-full pt-8 pointer-events-none z-999">
     <transition
       @before-enter="beforeEnter"
       @enter="enter"

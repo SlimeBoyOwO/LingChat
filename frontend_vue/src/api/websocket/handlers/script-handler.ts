@@ -71,6 +71,11 @@ export class ScriptHandler {
       eventQueue.addEvent(data as ScriptTypes.ScriptInputEvent)
     })
 
+    registerHandler(WebSocketMessageTypes.SCRIPT_END, (data: any) => {
+      console.log('收到脚本结束事件:', data)
+      eventQueue.addEvent(data as ScriptTypes.ScriptEndEvent)
+    })
+
     // 错误事件 - 通过 eventQueue 统一处理
     registerHandler(WebSocketMessageTypes.ERROR, (data: any) => {
       console.log('收到错误消息:', data)
