@@ -195,6 +195,10 @@ function send() {
 
   // scriptHandler.sendMessage(text, '记住你喜欢飞机大战超级英雄')
   scriptHandler.sendMessage(text)
+  // 如果发送了自定义消息，则清空选择栏
+  if (gameStore.runningScript) {
+    gameStore.runningScript.choices = []
+  }
 
   inputMessage.value = ''
 }

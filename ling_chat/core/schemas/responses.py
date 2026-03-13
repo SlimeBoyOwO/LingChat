@@ -28,6 +28,12 @@ class ChapterChangeResponse(BaseResponse):
     chapterName: str
     duration: float = 0
 
+class ChoiceResponse(BaseResponse):
+    type: str = ResponseType.SCRIPT_CHOICE
+    choices: list[str]
+    allowFree: bool = False
+    duration: float = 0
+
 class ThinkingResponse(BaseResponse):
     type: str = ResponseType.AI_THINKING
     duration: float = 0

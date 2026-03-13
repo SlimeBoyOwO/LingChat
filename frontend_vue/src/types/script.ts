@@ -71,6 +71,11 @@ export interface ScriptInputEvent extends ScriptEvent {
   type: 'input'
   hint: string
 }
+export interface ScriptChoiceEvent extends ScriptEvent {
+  type: 'input'
+  choices: string[]
+  allowFree: boolean
+}
 export interface ScriptEndEvent extends ScriptEvent {
   type: 'script_end'
 }
@@ -101,3 +106,4 @@ export type ScriptEventType =
   | ScriptThinkingEvent
   | ScriptChapterChangeEvent
   | ScriptEndEvent
+  | ScriptChoiceEvent

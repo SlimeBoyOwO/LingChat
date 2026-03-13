@@ -41,6 +41,10 @@ class ResponseFactory:
     @staticmethod
     def create_chapter_change(chapter_info: str) -> ChapterChangeResponse:
         return ChapterChangeResponse(chapterName=chapter_info)
+    
+    @staticmethod
+    def create_choice(choices: list[str],allow_free: bool = False) -> ChoiceResponse:
+        return ChoiceResponse(choices=choices, allowFree=allow_free)
 
     @staticmethod
     def create_input(hint: str, **kwargs) -> ScriptInputResponse:
