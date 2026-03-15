@@ -32,7 +32,6 @@ def convert_to_webp(input_path, output_path=None, quality=80, lossless=False):
             # 如果是PNG格式，需要检查是否有透明度
             has_transparency = False
             if img_format == 'PNG':
-                # 检查是否具有透明度
                 if img.mode in ('RGBA', 'LA') or 'transparency' in img.info:
                     has_transparency = True
                 print(f"检测到PNG图片，透明度: {'是' if has_transparency else '否'}")
@@ -55,7 +54,6 @@ def convert_to_webp(input_path, output_path=None, quality=80, lossless=False):
             
             # 如果原图有透明度，确保保存时保留透明度
             if has_transparency:
-                # 确保图像模式为RGBA以保留透明度
                 if img.mode != 'RGBA':
                     img = img.convert('RGBA')
                 print(f"保留透明度信息...")
@@ -132,7 +130,7 @@ def batch_convert(input_folder, output_folder=None, quality=80, lossless=False, 
 
 def main():
     parser = argparse.ArgumentParser(
-        description='将图片转换为WebP格式，保持PNG透明度',
+        description='将图片转换为WebP格式',
         formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument('input', help='输入图片路径或文件夹路径')
