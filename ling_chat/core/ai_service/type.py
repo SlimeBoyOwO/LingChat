@@ -143,6 +143,31 @@ class Player:
     user_prompt: str = "" # 用于设定玩家的信息，如性格、喜好等
 
 @dataclass
+class AdventureConfig:
+    """羁绊冒险配置 — 从 story_config.yaml 的 adventure 字段解析"""
+    is_adventure: bool = False
+    bound_character_folder: str = ""
+    order: int = 0
+    unlock_conditions: List[Dict[str, Any]] = field(default_factory=list)
+    trigger: Dict[str, Any] = field(default_factory=dict)
+    completion_achievements: List[Dict[str, Any]] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: Optional[Dict[str, Any]]) -> "AdventureConfig":
+        """从 story_config.yaml 的 adventure 字典构造"""
+        if not data:
+            return cls()
+        return cls(
+            is_adventure=bool(data.get("is_adventure", False)),
+            bound_character_folder=str(data.get("bound_character_folder", "")),
+            order=int(data.get("order", 0)),
+            unlock_conditions=data.get("unlock_conditions", []),
+            trigger=data.get("trigger", {}),
+            completion_achievements=data.get("completion_achievements", []),
+        )
+
+
+@dataclass
 class ScriptStatus:
     folder_key: str
 
@@ -150,6 +175,9 @@ class ScriptStatus:
     description: str
     intro_chapter: str
     settings: dict
+
+    # 新增：羁绊冒险配置
+    adventure: AdventureConfig = field(default_factory=AdventureConfig)
 
     # 正在进行剧本模式的 client
     running_client_id: Optional[str] = None

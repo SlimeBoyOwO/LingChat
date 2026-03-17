@@ -1,0 +1,38 @@
+script_name: 深夜小聊天
+intro_chapter: main
+description: 钦灵今晚很emo，忍不住找莱姆倾诉...
+
+# ===== 羁绊冒险专属配置 =====
+adventure:
+  # 标记为羁绊冒险剧本
+  is_adventure: true
+
+  # 绑定的主角色文件夹名（对应 characters/ 下的目录名）
+  bound_character_folder: "诺一钦灵"
+
+  # 冒险排序（决定在角色卡中的显示顺序和解锁链关系）
+  order: 1
+
+  # 解锁条件（支持多条件 AND 逻辑）
+  unlock_conditions:
+    # 聊天消息数达到阈值
+    - type: chat_count
+      threshold: 5
+    # 时间段条件（可选）
+    - type: time_range
+      start_hour: 20
+      end_hour: 6
+
+  # 触发方式
+  trigger:
+    mode: "manual" # manual | auto_random | auto_immediate
+
+  # 完成后解锁的成就（可选）
+  completion_achievements:
+    - id: "adventure_emo_night"
+      title: "深夜倾诉者"
+      description: "在深夜陪钦灵度过了一个emo的夜晚"
+      type: "adventure"
+
+script_settings:
+  user_name: ""

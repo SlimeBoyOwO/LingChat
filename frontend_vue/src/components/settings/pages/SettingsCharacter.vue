@@ -12,6 +12,7 @@
           :subName="character.subName"
           :info="character.info"
           :clothes="character.clothes || []"
+          :resource-folder="character.resourceFolder"
           @saved="handleSettingsSaved"
         />
       </div>
@@ -48,6 +49,7 @@ interface CharacterCard {
   name: string
   subName: string
   clothes?: Clothes[]
+  resourceFolder?: string
 }
 
 const characters = ref<CharacterCard[]>([])
@@ -78,6 +80,7 @@ const fetchCharacters = async (): Promise<CharacterCard[]> => {
               : '../pictures/characters/default.png',
           }))
         : [],
+      resourceFolder: char.resource_folder,
     }))
   } catch (error) {
     console.error('获取角色列表失败:', error)

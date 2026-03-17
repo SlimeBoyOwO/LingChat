@@ -9,6 +9,7 @@ import './assets/styles/base.css'
 import './assets/styles/variables.css'
 
 import './api/websocket/handlers/script-handler'
+import './api/websocket/handlers/adventure-handler'
 
 import router from './router' // './router/index.js' 的简写
 

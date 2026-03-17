@@ -5,6 +5,7 @@
   <!-- 全局通知组件（直接从 uiStore 读取状态） -->
   <Notification />
   <AchievementToast />
+  <AdventureUnlockNotify />
 </template>
 
 <script setup>
@@ -12,6 +13,7 @@ import { onMounted, onUnmounted } from 'vue'
 import CursorEffects from './components/effects/CursorEffects.vue'
 import Notification from './components/ui/Notification.vue'
 import AchievementToast from './components/ui/AchievementToast.vue'
+import AdventureUnlockNotify from './components/ui/AdventureUnlockNotify.vue'
 import { initUIStore } from './stores/modules/ui/ui'
 import { useAchievementStore } from './stores/modules/ui/achievement'
 
