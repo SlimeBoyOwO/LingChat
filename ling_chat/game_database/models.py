@@ -19,6 +19,13 @@ class LineAttribute(str, Enum):
     SYSTEM = "system"
     ASSISTANT = "assistant"
 
+class AdventureStatus(str, Enum):
+    """羁绊冒险进度状态"""
+    LOCKED = "locked"           # 未解锁
+    UNLOCKED = "unlocked"       # 已解锁，可游玩
+    IN_PROGRESS = "in_progress" # 游玩中
+    COMPLETED = "completed"     # 已完成
+
 # ==========================================
 # 关联表 (Join Tables)
 # ==========================================
@@ -159,3 +166,20 @@ class MemoryBank(SQLModel, table=True):
     
     # 统一使用 role_id
     role_id: Optional[int] = Field(default=None, foreign_key="role.id", nullable=True)
+
+class AdventureUnlock(SQLModel, table=True):
+    """羁绊冒险解锁表：记录用户全局解锁的冒险（所有存档共享）"""
+    __tablename__ = "adventure_unlock" # type: ignore
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+
+    # 唯一标识：用户 + 冒险剧本
+    user_id: int = Field(foreign_key="user_info.id")
+    adventure_folder: str = Field(index=True)     # 冒险剧本的文件夹名（即 script folder_key）
+    character_folder: str = Field(index=True)     # 绑定角色的文件夹名
+
+    unlocked_at: Optional[datetime] = None
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'adventure_folder', name='uq_user_adventure_unlock'),
+    )

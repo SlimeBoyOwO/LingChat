@@ -239,6 +239,23 @@ async def get_all_characters():
                         "avatar": str(item)
                     })
 
+            # 获取角色的冒险数量
+            adventure_count = 0
+            total_adventures = 0
+            try:
+                ai_svc = service_manager.ai_service
+                if ai_svc:
+                    char_adventures = ai_svc.scripts_manager.get_character_adventures(char.resource_folder)
+                    total_adventures = len(char_adventures)
+                    from ling_chat.game_database.managers.adventure_manager import AdventureManager
+                    from ling_chat.game_database.models import AdventureStatus
+                    for adv in char_adventures:
+                        progress = AdventureManager.get_progress(1, adv.folder_key)  # TODO: 多用户时传入真实 user_id
+                        if progress and progress.status != AdventureStatus.LOCKED:
+                            adventure_count += 1
+            except Exception:
+                pass  # 冒险功能异常不影响角色列表
+
             characters.append({
                 "character_id": char.id,
                 "title": char.name,
@@ -246,7 +263,10 @@ async def get_all_characters():
                 "sub_name": settings.ai_subtitle,
                 "info": settings.info or '该角色没有介绍呢~',
                 "avatar_path": avatar_relative_path,
-                "clothes": clothes_list
+                "clothes": clothes_list,
+                "adventure_count": adventure_count,
+                "total_adventures": total_adventures,
+                "resource_folder": char.resource_folder,  # 添加resource_folder用于冒险面板
             })
 
         return {"data": characters}

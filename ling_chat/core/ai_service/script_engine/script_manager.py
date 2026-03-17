@@ -2,7 +2,7 @@ import shutil
 from ling_chat.core.ai_service.config import AIServiceConfig
 from ling_chat.core.ai_service.game_system.game_status import GameStatus
 from ling_chat.core.ai_service.script_engine.chapter import Chapter
-from ling_chat.core.ai_service.type import Player, ScriptStatus
+from ling_chat.core.ai_service.type import AdventureConfig, Player, ScriptStatus
 
 from ling_chat.core.logger import logger
 from ling_chat.core.messaging.broker import message_broker
@@ -74,12 +74,28 @@ class ScriptManager:
             logger.warning("剧本文件不存在")
             return
 
-        for script_path in SCRIPT_DIR.iterdir():
-            if not script_path.is_dir():  # 排除非目录
+        # 支持分类子目录：character/ 和 standalone/，同时向后兼容平铺结构
+        subdirs_to_scan = []
+        for category_dir in (SCRIPT_DIR / "character", SCRIPT_DIR / "standalone"):
+            if category_dir.exists() and category_dir.is_dir():
+                subdirs_to_scan.extend(
+                    p for p in category_dir.iterdir() if p.is_dir()
+                )
+        # 向后兼容：直接放在 scripts/ 根目录下的剧本
+        for p in SCRIPT_DIR.iterdir():
+            if p.is_dir() and p.name not in ("character", "standalone"):
+                subdirs_to_scan.append(p)
+
+        for script_path in subdirs_to_scan:
+            config_file = script_path / "story_config.yaml"
+            if not config_file.exists():
                 continue
             logger.info("找到剧本文件" + script_path.name)
-            script = self._read_script_config(script_path)
-            self.all_scripts[script.name] = script
+            try:
+                script = self._read_script_config(script_path)
+                self.all_scripts[script.name] = script
+            except Exception as e:
+                logger.error(f"读取剧本 {script_path.name} 配置失败: {e}")
     
     def _init_script(self, script: ScriptStatus):
         # 1. 在数据库中，注册所有出场的剧本角色，为游戏状态注册角色，初始化角色设定，台词
@@ -114,7 +130,10 @@ class ScriptManager:
         while next_chapter_name != "end":
             try:
                 # 1. 加载章节，返回一个“可运行”的章节对象
-                chapter_path = SCRIPT_DIR / script.folder_key / "Chapters" / (next_chapter_name + ".yaml")
+                if self._is_adventure_script(script):
+                    chapter_path  = SCRIPT_DIR / "character" / script.folder_key / "Chapters" / (next_chapter_name + ".yaml")
+                else:
+                    chapter_path = SCRIPT_DIR / script.folder_key / "Chapters" / (next_chapter_name + ".yaml")
                 current_chapter_obj:Chapter = self._get_chapter(chapter_path, script) # 一个新的辅助方法
 
                 # 2. 命令章节运行，然后等待结果
@@ -133,6 +152,17 @@ class ScriptManager:
             )
 
         logger.info("剧本已经结束。")
+        self.game_status.script_status = None
+
+        # 如果是羁绊冒险，标记为已完成
+        if self._is_adventure_script(script):
+            # from ling_chat.game_database.managers.adventure_manager import AdventureManager
+            # AdventureManager.mark_completed(save_id, script.folder_key)
+            self.game_status.completed_scripts.add(script.folder_key)
+            logger.info(f"羁绊冒险 {script.name} 已标记为完成。")
+    
+    def _is_adventure_script(self, script: ScriptStatus) -> bool:
+        return script.adventure and script.adventure.is_adventure
 
     def _register_script_roles(self, script: ScriptStatus):
         """从剧本目录读取角色并在数据库中注册"""
@@ -141,7 +171,8 @@ class ScriptManager:
         characters_dir = SCRIPT_DIR / script_key / 'characters'
 
         if not characters_dir.exists() or not characters_dir.is_dir():
-            raise ScriptLoadError(f"剧本 '{script_key}' 中缺少 'characters' 文件夹")
+            return
+            # raise ScriptLoadError(f"剧本 '{script_key}' 中缺少 'characters' 文件夹")
 
         for character_path in characters_dir.iterdir():
             # 检查是否是目录，并排除特定名称
@@ -184,14 +215,32 @@ class ScriptManager:
     def _read_script_config(self, script_path):
         config = Function.read_yaml_file( script_path / "story_config.yaml" )
         if config is not None:
+            adventure = AdventureConfig.from_dict(config.get('adventure'))
             return ScriptStatus(folder_key=script_path.name,
                                 name=config.get('script_name', 'ERROR'),
                                 description=config.get('description', 'ERROR'),
                                 intro_chapter=config.get('intro_chapter', 'ERROR'), 
-                                settings=config.get('script_settings', {})
+                                settings=config.get('script_settings', {}),
+                                adventure=adventure,
                                 )
         else:
             raise ScriptLoadError("剧本读取出现错误,缺少 story_config.yml 配置文件")
+
+    def get_character_adventures(self, character_folder: str) -> list[ScriptStatus]:
+        """获取指定角色绑定的所有羁绊冒险，按 order 排序"""
+        adventures = [
+            s for s in self.all_scripts.values()
+            if s.adventure.is_adventure and s.adventure.bound_character_folder == character_folder
+        ]
+        adventures.sort(key=lambda s: s.adventure.order)
+        return adventures
+
+    def get_all_adventures(self) -> list[ScriptStatus]:
+        """获取所有已注册的羁绊冒险"""
+        return [
+            s for s in self.all_scripts.values()
+            if s.adventure.is_adventure
+        ]
     
     def _get_chapter(self, chapter_path: Path, script_status: ScriptStatus) -> Chapter:
         config = Function.read_yaml_file(chapter_path)

@@ -165,23 +165,11 @@
             <h3 class="text-white font-bold mb-4 flex items-center gap-2">
               <span class="w-1 h-4 bg-emerald-500 rounded-full"></span> 羁绊档案
             </h3>
-            <div class="flex flex-col gap-3">
-              <div
-                v-for="i in 3"
-                :key="i"
-                class="p-4 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors"
-              >
-                <div class="flex justify-between items-center mb-1">
-                  <span class="text-sm font-bold text-white">阶段 {{ i }} · 往昔的回响</span>
-                  <span
-                    class="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/20"
-                    >已解锁</span
-                  >
-                </div>
-                <p class="text-xs text-white/60 line-clamp-1">
-                  点击查看这段被尘封在星间的记忆详细内容...
-                </p>
-              </div>
+            <div v-if="resourceFolder" class="h-96">
+              <AdventurePanel :character-folder="resourceFolder" />
+            </div>
+            <div v-else class="text-white/40 text-sm italic p-4 bg-white/5 rounded-xl text-center">
+              暂无羁绊冒险数据
             </div>
           </section>
         </div>
@@ -202,6 +190,7 @@
 import { ref } from 'vue'
 import { Icon } from '../../base'
 import SettingsCharacterInfo from '@/components/settings/pages/SettingsCharacterInfo.vue'
+import AdventurePanel from '@/components/game/standard/AdventurePanel.vue'
 import { characterSelect } from '@/api/services/character'
 import { useGameStore } from '@/stores/modules/game'
 import { useUserStore } from '@/stores/modules/user/user'
@@ -217,6 +206,7 @@ interface CharacterProps {
   subName?: string
   info?: string
   clothes?: Clothes[]
+  resourceFolder?: string
 }
 
 const props = withDefaults(defineProps<CharacterProps>(), {
@@ -224,6 +214,7 @@ const props = withDefaults(defineProps<CharacterProps>(), {
   name: 'Unknown',
   info: '',
   clothes: () => [],
+  resourceFolder: '',
 })
 
 const emit = defineEmits(['saved'])

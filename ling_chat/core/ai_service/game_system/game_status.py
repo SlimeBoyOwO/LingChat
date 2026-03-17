@@ -33,6 +33,8 @@ class GameStatus:
     background_effect: str = field(default_factory=str)
     # 全局变量信息
     global_variables: Dict[str, Any] = field(default_factory=dict)
+    # 记录已经玩过的剧本
+    completed_scripts: set[str] = field(default_factory=set)
     # 最后一次对话时间记录
     last_dialog_time: Optional[datetime] = None
 
@@ -56,3 +58,18 @@ class GameStatus:
     def refresh_memories(self):
         # 自动压缩只写入运行时缓存，不触发 DB
         self.role_manager.sync_memories(self.line_list)
+
+    # ============ 全局变量便捷方法 ============
+
+    def set_variable(self, key: str, value: Any):
+        """设置全局变量（用于冒险剧情中的条件判断、分支记录等）"""
+        self.global_variables[key] = value
+
+    def get_variable(self, key: str, default: Any = None) -> Any:
+        """获取全局变量"""
+        return self.global_variables.get(key, default)
+
+    def get_chat_message_count(self) -> int:
+        """获取当前对话中非系统消息的数量（用于羁绊冒险解锁条件检测）"""
+        from ling_chat.game_database.models import LineAttribute
+        return len([l for l in self.line_list if l.attribute != LineAttribute.SYSTEM])

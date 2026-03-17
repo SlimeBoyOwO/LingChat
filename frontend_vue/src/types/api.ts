@@ -52,6 +52,9 @@ export interface Character {
   info: string
   avatar_path: string
   clothes: Array<Clothes>
+  resource_folder?: string
+  adventure_count?: number
+  total_adventures?: number
 }
 
 export interface CharacterSelectParams {
