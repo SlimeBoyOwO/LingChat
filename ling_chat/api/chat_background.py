@@ -12,7 +12,7 @@ from ling_chat.utils.runtime_path import user_data_path
 router = APIRouter(prefix="/api/v1/chat/background", tags=["Chat Character"])
 
 BACKGROUND_DIR = user_data_path / "game_data/backgrounds"
-ALLOWED_EXTENSIONS = {'.jpg', '.png', '.webp', '.bmp', '.svg', '.tif', '.gif'}
+ALLOWED_EXTENSIONS = ('.jpg', '.png', '.webp', '.bmp', '.svg', '.tif', '.gif')
 
 @router.get("/background_script_file/{background_file}")
 async def get_script_background_file(background_file: str):
@@ -50,7 +50,7 @@ async def list_all_backgrounds():
         background_files = []
         for f in BACKGROUND_DIR.iterdir():
             filename = f.name
-            if f.suffix.lower() in ('.png', '.jpg', '.jpeg', '.gif', '.bmp'):
+            if f.suffix.lower() in ALLOWED_EXTENSIONS:
                 file_path = BACKGROUND_DIR / filename
                 stat = f.stat()
 

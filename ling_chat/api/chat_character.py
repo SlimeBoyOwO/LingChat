@@ -14,6 +14,8 @@ from ling_chat.utils.runtime_path import user_data_path
 from ling_chat.game_database.managers.user_manager import UserManager
 from ling_chat.game_database.managers.role_manager import RoleManager
 
+SUPPORTED_IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".webp", ".avif", ".svg")
+
 router = APIRouter(prefix="/api/v1/chat/character", tags=["Chat Character"])
 
 
@@ -140,24 +142,26 @@ async def get_role_avatar(
         emotion_files = [
             f for f in avatar_path.iterdir() 
             if f.is_file() 
-            and f.stem == emotion  # 关键修复：对比文件名(无后缀)是否等于传入的情绪名
-            and f.suffix.lower() in [".png", ".jpg", ".jpeg", ".gif"]
+            and f.stem == emotion  # 对比文件名(无后缀)是否等于传入的情绪名
+            and f.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS
         ]
     except Exception as e:
+        logger.error(f"读取目录失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"读取目录失败: {str(e)}")
 
     # 如果没找到对应情绪的图片，且当前情绪是"平静"，则尝试查找"正常"的图片
     if not emotion_files and emotion == "平静":
+        logger.info(f"未找到平静表情图片，尝试使用正常表情图片: Path={avatar_path}")
         emotion_files = [
             f for f in avatar_path.iterdir() 
             if f.is_file() 
             and f.stem == "正常"
-            and f.suffix.lower() in [".png", ".jpg", ".jpeg", ".gif"]
+            and f.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS
         ]
 
     if not emotion_files:
-        logger.error(f"查找失败: Path={avatar_path}, Emotion={emotion}")
-        raise HTTPException(status_code=404, detail=f"在路径 {avatar_path} 下未找到情绪 {emotion} 的图片")
+        logger.error(f"查找失败: Path={avatar_path}, Emotion={emotion}, Supported extensions: {SUPPORTED_IMAGE_EXTENSIONS}")
+        raise HTTPException(status_code=404, detail=f"在路径 {avatar_path} 下未找到情绪 {emotion} 的图片，支持的格式: {', '.join(SUPPORTED_IMAGE_EXTENSIONS)}")
     
     # 返回找到的第一个文件
     return FileResponse(emotion_files[0])
@@ -282,17 +286,78 @@ async def get_all_characters():
 @router.get("/character_file/{file_path:path}")
 async def get_character_file(file_path: str):
     """获取角色相关文件(头像等)"""
-    full_path = user_data_path / f"game_data/characters/{file_path}"
-
-    if not os.path.exists(full_path):
-        raise HTTPException(status_code=404, detail="文件不存在")
-
-    return FileResponse(full_path)
+    # 移除可能的扩展名，以便进行无扩展名匹配
+    file_path_without_ext = os.path.splitext(file_path)[0]
+    base_dir = user_data_path / "game_data/characters"
+    full_base_path = base_dir / file_path_without_ext
+    
+    # 如果原始路径包含扩展名，先尝试直接访问
+    original_full_path = user_data_path / f"game_data/characters/{file_path}"
+    if os.path.exists(original_full_path):
+        logger.debug(f"直接找到角色文件: {original_full_path}")
+        file_extension = original_full_path.suffix.lower()
+        if file_extension in SUPPORTED_IMAGE_EXTENSIONS:
+            logger.debug(f"返回角色图片文件: {original_full_path}")
+        else:
+            logger.warning(f"请求的文件可能不是图片格式: {original_full_path} (扩展名: {file_extension})")
+        return FileResponse(original_full_path)
+    
+    # 如果没有直接找到，或者原始路径没有扩展名，则尝试匹配支持的图片格式
+    found_files = []
+    for ext in SUPPORTED_IMAGE_EXTENSIONS:
+        candidate_path = full_base_path.with_suffix(ext)
+        if os.path.exists(candidate_path):
+            found_files.append(candidate_path)
+    
+    if found_files:
+        # 返回找到的第一个文件
+        selected_file = found_files[0]
+        logger.info(f"通过扩展名匹配找到角色图片文件: {selected_file}")
+        return FileResponse(selected_file)
+    
+    # 文件不存在，记录详细的路径检查信息
+    logger.error(f"角色文件不存在: {full_base_path} (尝试了所有支持的扩展名: {SUPPORTED_IMAGE_EXTENSIONS})")
+    logger.debug(f"检查路径的各部分是否存在:")
+    parts = ["game_data", "characters"] + file_path_without_ext.split("/")
+    current_path = user_data_path
+    for part in parts:
+        current_path /= part
+        logger.debug(f"  {current_path} 存在: {current_path.exists()}")
+    
+    raise HTTPException(status_code=404, detail=f"文件不存在: {file_path}")
 
 @router.get("/clothes_file/{file_path:path}")
 async def get_clothes_file(file_path: str):
     """获取服装相关文件"""
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="文件不存在")
-
-    return FileResponse(file_path)
+    # 移除可能的扩展名，以便进行无扩展名匹配
+    file_path_without_ext = os.path.splitext(file_path)[0]
+    base_dir = user_data_path / "game_data/characters"
+    full_base_path = base_dir / file_path_without_ext
+    
+    # 如果原始路径包含扩展名，先尝试直接访问
+    original_full_path = user_data_path / f"game_data/characters/{file_path}"
+    if os.path.exists(original_full_path):
+        logger.debug(f"直接找到服装文件: {original_full_path}")
+        file_extension = original_full_path.suffix.lower()
+        if file_extension in SUPPORTED_IMAGE_EXTENSIONS:
+            logger.debug(f"返回服装图片文件: {original_full_path}")
+        else:
+            logger.warning(f"请求的文件可能不是图片格式: {original_full_path} (扩展名: {file_extension})")
+        return FileResponse(original_full_path)
+    
+    # 如果没有直接找到，或者原始路径没有扩展名，则尝试匹配支持的图片格式
+    found_files = []
+    for ext in SUPPORTED_IMAGE_EXTENSIONS:
+        candidate_path = full_base_path.with_suffix(ext)
+        if os.path.exists(candidate_path):
+            found_files.append(candidate_path)
+    
+    if found_files:
+        # 返回找到的第一个文件
+        selected_file = found_files[0]
+        logger.debug(f"通过扩展名匹配找到服装图片文件: {selected_file}")
+        return FileResponse(selected_file)
+    
+    # 文件不存在，记录错误信息
+    logger.error(f"服装文件不存在: {full_base_path} (尝试了所有支持的扩展名: {SUPPORTED_IMAGE_EXTENSIONS})")
+    raise HTTPException(status_code=404, detail=f"文件不存在: {file_path}")
