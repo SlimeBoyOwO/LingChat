@@ -36,13 +36,15 @@ async def list_character_adventures(character_folder: str, user_id: int = 1):
                 current_script_status=current_script_status,
             )
 
-            # 获取解锁时间（如果已解锁）
+            # 获取解锁时间和完成时间
             unlocked_at = None
+            completed_at = None
             if AdventureManager.is_unlocked(user_id, adv_script.folder_key):
                 unlocks = AdventureManager.get_all_unlocked(user_id)
                 for unlock in unlocks:
                     if unlock.adventure_folder == adv_script.folder_key:
                         unlocked_at = unlock.unlocked_at.isoformat() if unlock.unlocked_at else None
+                        completed_at = unlock.completed_at.isoformat() if unlock.completed_at else None
                         break
 
             result.append({
@@ -52,6 +54,7 @@ async def list_character_adventures(character_folder: str, user_id: int = 1):
                 "order": adv_script.adventure.order,
                 "status": status,
                 "unlocked_at": unlocked_at,
+                "completed_at": completed_at,
                 "unlock_conditions": adv_script.adventure.unlock_conditions,
                 "trigger": adv_script.adventure.trigger,
             })
@@ -198,10 +201,14 @@ async def complete_adventure(
         if not save_id:
             raise HTTPException(status_code=400, detail="当前没有激活的存档")
 
-        # 标记为已完成
+        # 标记为已完成（存档级别）
         success = AdventureManager.mark_completed(save_id, adventure_folder)
         if not success:
             raise HTTPException(status_code=400, detail="标记完成失败")
+
+        # 标记全局完成（用于解锁后续冒险）
+        user_id = 1  # TODO: 从session或其他地方获取真实的user_id
+        AdventureManager.mark_global_completed(user_id, adventure_folder)
 
         # 检查并触发完成成就
         scripts_manager = ai_service.scripts_manager

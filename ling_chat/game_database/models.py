@@ -168,7 +168,7 @@ class MemoryBank(SQLModel, table=True):
     role_id: Optional[int] = Field(default=None, foreign_key="role.id", nullable=True)
 
 class AdventureUnlock(SQLModel, table=True):
-    """羁绊冒险解锁表：记录用户全局解锁的冒险（所有存档共享）"""
+    """羁绊冒险解锁表：记录用户全局解锁和完成状态（所有存档共享）"""
     __tablename__ = "adventure_unlock" # type: ignore
 
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -179,6 +179,7 @@ class AdventureUnlock(SQLModel, table=True):
     character_folder: str = Field(index=True)     # 绑定角色的文件夹名
 
     unlocked_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None       # 首次完成时间（全局）
 
     __table_args__ = (
         UniqueConstraint('user_id', 'adventure_folder', name='uq_user_adventure_unlock'),

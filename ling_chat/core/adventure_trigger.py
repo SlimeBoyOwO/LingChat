@@ -104,7 +104,7 @@ class AdventureTriggerSystem:
 
             elif cond_type == "adventure_completed":
                 prereq = cond.get("adventure_folder", "")
-                if not self._check_adventure_unlocked(user_id, prereq):
+                if not self._check_adventure_completed(user_id, prereq):
                     return False
 
             elif cond_type == "achievement_unlocked":
@@ -136,11 +136,11 @@ class AdventureTriggerSystem:
             return now_hour >= start_hour or now_hour < end_hour
 
     @staticmethod
-    def _check_adventure_unlocked(user_id: int, adventure_folder: str) -> bool:
-        """检查前置冒险是否已解锁（注意：这里改为检查解锁而不是完成）"""
+    def _check_adventure_completed(user_id: int, adventure_folder: str) -> bool:
+        """检查前置冒险是否已全局完成"""
         if not adventure_folder:
             return True
-        return AdventureManager.is_unlocked(user_id, adventure_folder)
+        return AdventureManager.is_global_completed(user_id, adventure_folder)
 
     @staticmethod
     def _check_achievement(achievement_id: str) -> bool:

@@ -7,9 +7,11 @@ from ling_chat.core.ai_service.type import AdventureConfig, Player, ScriptStatus
 from ling_chat.core.logger import logger
 from ling_chat.core.messaging.broker import message_broker
 from ling_chat.core.schemas.response_models import ResponseFactory
+from ling_chat.game_database.managers.adventure_manager import AdventureManager
 from ling_chat.game_database.models import LineAttribute, LineBase, RoleType
 from ling_chat.utils.function import Function
 from ling_chat.utils.runtime_path import user_data_path
+from ling_chat.core.adventure_trigger import adventure_trigger_system
 
 from pathlib import Path
 
@@ -40,6 +42,7 @@ class ScriptManager:
             return
 
         # self.init_script()
+        self.check_adventure_completion()
     
     def get_script_list(self) -> list[str]:
         return list(self.all_scripts.keys())
@@ -156,10 +159,22 @@ class ScriptManager:
 
         # 如果是羁绊冒险，标记为已完成
         if self._is_adventure_script(script):
-            # from ling_chat.game_database.managers.adventure_manager import AdventureManager
-            # AdventureManager.mark_completed(save_id, script.folder_key)
+            # 1. 标记运行时完成状态
             self.game_status.completed_scripts.add(script.folder_key)
-            logger.info(f"羁绊冒险 {script.name} 已标记为完成。")
+
+            # 2. 标记全局完成状态（用于解锁后续冒险）
+            from ling_chat.game_database.managers.adventure_manager import AdventureManager
+            AdventureManager.mark_global_completed(user_id=1, adventure_folder=script.folder_key)
+
+            # 3. 标记当前存档完成状态
+            save_id = self.game_status.active_save_id
+            if save_id:
+                AdventureManager.mark_completed(save_id, script.folder_key)
+            
+            # 4. 检查是否有需要解锁的成就和后续剧情
+            await self.complete_script(script.folder_key)
+
+            logger.info(f"羁绊冒险 {script.name} 已标记为完成（全局+存档）。")
     
     def _is_adventure_script(self, script: ScriptStatus) -> bool:
         return script.adventure and script.adventure.is_adventure
@@ -248,6 +263,37 @@ class ScriptManager:
             return Chapter(str(chapter_path), self.config, self.game_status, config, script_status)
         else:
             raise ChapterLoadError(f"导入 {chapter_path} 剧本的时候出现问题")
+    
+    async def complete_script(self, script_folder: str) -> None:
+        user_id = 1
+        AdventureManager.mark_global_completed(user_id, script_folder)
+
+        unlocked_achievements = []
+        for name, s in self.all_scripts.items():
+            if s.folder_key == script_folder and s.adventure.completion_achievements:
+                from ling_chat.core.achievement_manager import achievement_manager
+                for ach_def in s.adventure.completion_achievements:
+                    ach_id = ach_def.get("id")
+                    if ach_id:
+                        result = achievement_manager.unlock(ach_id, ach_def)
+                        if result:
+                            unlocked_achievements.append(result)
+                break
+
+        # 检查是否有后续冒险被解锁
+        # 注意：这里需要user_id，但我们没有从请求中获取
+        # 暂时使用默认值1，后续可以改进
+        self.check_adventure_completion()
+
+    def check_adventure_completion(self) -> None:
+        user_id = 1  # TODO: 从session或其他地方获取真实的user_id
+        all_adventures = self.get_all_adventures()
+        chat_count = self.game_status.get_chat_message_count()
+        adventure_trigger_system.check_all_adventures(
+            user_id=user_id,
+            adventures=all_adventures,
+            chat_count=chat_count,
+        )
     
     def get_assets_dir(self, script_name: str | None = None) -> Path:
         """

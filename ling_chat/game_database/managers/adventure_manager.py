@@ -58,6 +58,43 @@ class AdventureManager:
             logger.info(f"冒险 {adventure_folder} 已解锁。")
             return unlock
 
+    @staticmethod
+    def is_global_completed(user_id: int, adventure_folder: str) -> bool:
+        """检查冒险是否已全局完成（从 AdventureUnlock.completed_at 查询）"""
+        if not adventure_folder:
+            return True
+        with Session(engine, expire_on_commit=False) as session:
+            stmt = select(AdventureUnlock).where(
+                AdventureUnlock.user_id == user_id,
+                AdventureUnlock.adventure_folder == adventure_folder,
+            )
+            unlock = session.exec(stmt).first()
+            return unlock is not None and unlock.completed_at is not None
+
+    @staticmethod
+    def mark_global_completed(user_id: int, adventure_folder: str) -> bool:
+        """标记冒险为全局已完成（更新 AdventureUnlock.completed_at）"""
+        with Session(engine, expire_on_commit=False) as session:
+            stmt = select(AdventureUnlock).where(
+                AdventureUnlock.user_id == user_id,
+                AdventureUnlock.adventure_folder == adventure_folder,
+            )
+            unlock = session.exec(stmt).first()
+
+            if not unlock:
+                logger.error(f"冒险未解锁，无法标记完成: {adventure_folder}")
+                return False
+
+            if unlock.completed_at:
+                logger.info(f"冒险 {adventure_folder} 已经全局完成，跳过。")
+                return True
+
+            unlock.completed_at = datetime.now()
+            session.add(unlock)
+            session.commit()
+            logger.info(f"冒险 {adventure_folder} 已标记为全局完成。")
+            return True
+
     # ============ 完成状态管理（存档级别，通过Save.status）============
 
     @staticmethod
