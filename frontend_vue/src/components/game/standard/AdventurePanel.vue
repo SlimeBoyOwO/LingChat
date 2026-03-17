@@ -1,116 +1,213 @@
 <template>
-  <div class="adventure-panel">
-    <div class="panel-header">
-      <h3 class="panel-title">羁绊冒险</h3>
-      <div class="progress-info">
-        <span class="progress-text">{{ completedCount }} / {{ totalCount }}</span>
-      </div>
+  <div class="w-full h-full flex flex-col bg-gray-900/50 rounded-lg p-4">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-4 pb-3 border-b border-gray-700">
+      <h3 class="text-lg font-bold text-white">羁绊冒险</h3>
+      <span class="text-sm text-gray-400">{{ completedCount }} / {{ totalCount }}</span>
     </div>
 
-    <div v-if="loading" class="loading-state">
-      <div class="spinner"></div>
+    <!-- Loading State -->
+    <div v-if="loading" class="flex flex-col items-center justify-center py-12 text-gray-400">
+      <div
+        class="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mb-2"
+      ></div>
       <p>加载中...</p>
     </div>
 
-    <div v-else-if="adventures.length === 0" class="empty-state">
+    <!-- Empty State -->
+    <div
+      v-else-if="adventures.length === 0"
+      class="flex flex-col items-center justify-center py-12 text-gray-400"
+    >
       <p>暂无羁绊冒险</p>
     </div>
 
-    <div v-else class="adventure-container">
-      <!-- SVG连线层 -->
-      <svg class="connection-layer" :viewBox="`0 0 ${containerWidth} ${containerHeight}`">
-        <defs>
-          <!-- 定义箭头标记 -->
-          <marker
-            id="arrow-unlocked"
-            markerWidth="10"
-            markerHeight="10"
-            refX="9"
-            refY="3"
-            orient="auto"
-            markerUnits="strokeWidth"
-          >
-            <path d="M0,0 L0,6 L9,3 z" fill="#a78bfa" />
-          </marker>
-          <marker
-            id="arrow-locked"
-            markerWidth="10"
-            markerHeight="10"
-            refX="9"
-            refY="3"
-            orient="auto"
-            markerUnits="strokeWidth"
-          >
-            <path d="M0,0 L0,6 L9,3 z" fill="#6b7280" />
-          </marker>
-        </defs>
-
-        <!-- 绘制连线 -->
-        <path
-          v-for="connection in connections"
-          :key="`${connection.from}-${connection.to}`"
-          :d="connection.path"
-          :class="connection.isUnlocked ? 'connection-unlocked' : 'connection-locked'"
-          :marker-end="connection.isUnlocked ? 'url(#arrow-unlocked)' : 'url(#arrow-locked)'"
-        />
-      </svg>
-
-      <!-- 冒险节点列表 -->
-      <div class="adventure-list">
-        <div
-          v-for="(adventure, index) in adventures"
-          :key="adventure.adventure_folder"
-          :ref="(el) => setNodeRef(el, index)"
-          class="adventure-node"
-          :class="getNodeClass(adventure)"
-          @click="handleNodeClick(adventure)"
+    <!-- Adventure Graph -->
+    <div v-else class="relative flex-1 flex flex-col overflow-hidden">
+      <!-- Zoom Controls -->
+      <div
+        class="absolute top-2 right-2 z-20 flex items-center gap-2 bg-gray-800/80 rounded-lg p-2"
+      >
+        <button
+          @click="zoomIn"
+          class="w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 text-white transition-colors"
+          title="放大"
         >
-          <div class="node-icon">
-            <svg
-              v-if="adventure.status === 'completed'"
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-            >
-              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-            </svg>
-            <svg
-              v-else-if="adventure.status === 'locked'"
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-            >
-              <path
-                d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"
-              />
-            </svg>
-            <svg v-else xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2L2 7l10 5 10-5-10-5z" />
-              <path d="M2 17l10 5 10-5" />
-              <path d="M2 12l10 5 10-5" />
-            </svg>
-          </div>
+          <svg
+            class="w-5 h-5"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+          >
+            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+          </svg>
+        </button>
+        <span class="text-sm text-white font-mono w-12 text-center"
+          >{{ Math.round(zoomLevel * 100) }}%</span
+        >
+        <button
+          @click="zoomOut"
+          class="w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 text-white transition-colors"
+          title="缩小"
+        >
+          <svg
+            class="w-5 h-5"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+          >
+            <path d="M19 13H5v-2h14v2z" />
+          </svg>
+        </button>
+        <button
+          @click="resetZoom"
+          class="w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 text-white transition-colors"
+          title="重置"
+        >
+          <svg
+            class="w-5 h-5"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+          >
+            <path
+              d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"
+            />
+          </svg>
+        </button>
+      </div>
 
-          <div class="node-content">
-            <div class="node-title">{{ adventure.name }}</div>
-            <div class="node-description">{{ adventure.description }}</div>
-            <div v-if="adventure.status === 'locked'" class="unlock-hint">
-              <span class="hint-icon">🔒</span>
-              <span class="hint-text">{{ getUnlockHint(adventure) }}</span>
+      <!-- Graph Container -->
+      <div ref="graphWrapper" class="flex-1 overflow-auto relative">
+        <div
+          class="relative origin-top-left transition-transform duration-200 ease-out"
+          :style="graphContainerStyle"
+        >
+          <!-- SVG Connection Layer -->
+          <svg
+            class="absolute top-0 left-0 pointer-events-none z-0"
+            :width="graphWidth"
+            :height="graphHeight"
+          >
+            <defs>
+              <marker
+                id="arrow-completed"
+                markerWidth="12"
+                markerHeight="12"
+                refX="10"
+                refY="4"
+                orient="auto"
+                markerUnits="strokeWidth"
+              >
+                <path d="M0,0 L0,8 L12,4 z" fill="#4ade80" />
+              </marker>
+              <marker
+                id="arrow-unlocked"
+                markerWidth="12"
+                markerHeight="12"
+                refX="10"
+                refY="4"
+                orient="auto"
+                markerUnits="strokeWidth"
+              >
+                <path d="M0,0 L0,8 L12,4 z" fill="#c084fc" />
+              </marker>
+              <marker
+                id="arrow-locked"
+                markerWidth="12"
+                markerHeight="12"
+                refX="10"
+                refY="4"
+                orient="auto"
+                markerUnits="strokeWidth"
+              >
+                <path d="M0,0 L0,8 L12,4 z" fill="#6b7280" />
+              </marker>
+            </defs>
+
+            <path
+              v-for="connection in connections"
+              :key="`${connection.from}-${connection.to}`"
+              :d="connection.path"
+              :class="connection.lineClass"
+              :marker-end="connection.markerEnd"
+            />
+          </svg>
+
+          <!-- Nodes Layer (扁平化遍历，纯数学绝对定位) -->
+          <div
+            class="relative z-10"
+            :style="{ width: `${graphWidth}px`, height: `${graphHeight}px` }"
+          >
+            <div
+              v-for="adventure in adventures"
+              :key="adventure.adventure_folder"
+              class="absolute flex items-center gap-4 p-4 rounded-xl cursor-pointer transition-all duration-200 border-2"
+              :class="getNodeClass(adventure)"
+              :style="getNodeStyle(adventure.adventure_folder)"
+              @click="handleNodeClick(adventure)"
+            >
+              <!-- Icon -->
+              <div
+                class="w-14 h-14 flex items-center justify-center rounded-full shrink-0"
+                :class="getIconClass(adventure.status)"
+              >
+                <svg
+                  v-if="adventure.status === 'completed'"
+                  class="w-7 h-7"
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                </svg>
+                <svg
+                  v-else-if="adventure.status === 'locked'"
+                  class="w-7 h-7"
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path
+                    d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"
+                  />
+                </svg>
+                <svg
+                  v-else
+                  class="w-7 h-7"
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                  <path d="M2 17l10 5 10-5" />
+                  <path d="M2 12l10 5 10-5" />
+                </svg>
+              </div>
+
+              <!-- Content -->
+              <div class="flex-1 min-w-0">
+                <div class="text-base font-semibold text-white mb-1">{{ adventure.name }}</div>
+                <div class="text-sm text-gray-400 line-clamp-2">{{ adventure.description }}</div>
+                <div
+                  v-if="adventure.status === 'locked'"
+                  class="flex items-center gap-1 mt-2 text-xs text-gray-500"
+                >
+                  <span>🔒</span>
+                  <span>{{ getUnlockHint(adventure) }}</span>
+                </div>
+              </div>
+
+              <!-- Status Badge -->
+              <div class="shrink-0">
+                <span
+                  class="px-3 py-1.5 rounded-full text-xs font-medium"
+                  :class="getBadgeClass(adventure.status)"
+                >
+                  {{ getStatusText(adventure.status) }}
+                </span>
+              </div>
             </div>
-          </div>
-
-          <div class="node-status">
-            <span v-if="adventure.status === 'completed'" class="status-badge completed"
-              >已完成</span
-            >
-            <span v-else-if="adventure.status === 'in_progress'" class="status-badge in-progress"
-              >进行中</span
-            >
-            <span v-else-if="adventure.status === 'unlocked'" class="status-badge unlocked"
-              >可游玩</span
-            >
-            <span v-else class="status-badge locked">未解锁</span>
           </div>
         </div>
       </div>
@@ -119,7 +216,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, nextTick } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useAdventureStore } from '@/stores/modules/adventure'
 import type { AdventureInfo } from '@/api/services/adventure'
 import { useGameStore } from '@/stores/modules/game'
@@ -133,7 +230,8 @@ interface Connection {
   from: string
   to: string
   path: string
-  isUnlocked: boolean
+  lineClass: string
+  markerEnd: string
 }
 
 const gameStore = useGameStore()
@@ -147,64 +245,151 @@ const adventures = computed(() => adventureStore.sortedAdventures)
 const completedCount = computed(() => adventureStore.completedCount)
 const totalCount = computed(() => adventures.value.length)
 
-// 节点引用和容器尺寸
-const nodeRefs = ref<(HTMLElement | null)[]>([])
-const containerWidth = ref(600)
-const containerHeight = ref(400)
+// 缩放相关
+const zoomLevel = ref(1)
+const minZoom = 0.5
+const maxZoom = 2
+const zoomStep = 0.1
 
-// 设置节点引用
-const setNodeRef = (el: any, index: number) => {
-  if (el) {
-    nodeRefs.value[index] = el as HTMLElement
+const zoomIn = () => (zoomLevel.value = Math.min(maxZoom, zoomLevel.value + zoomStep))
+const zoomOut = () => (zoomLevel.value = Math.max(minZoom, zoomLevel.value - zoomStep))
+const resetZoom = () => (zoomLevel.value = 1)
+
+const graphContainerStyle = computed(() => ({
+  transform: `scale(${zoomLevel.value})`,
+  width: `${graphWidth.value}px`,
+  height: `${graphHeight.value}px`,
+}))
+
+// 布局常量
+const COLUMN_WIDTH = 400
+const NODE_WIDTH = 320
+const NODE_HEIGHT = 120
+const NODE_GAP = 24
+const PADDING_X = 40
+const PADDING_Y = 40
+
+// 列分配算法
+const adventureColumns = computed(() => {
+  const columns: AdventureInfo[][] = []
+  const assigned = new Map<string, number>()
+  const sorted = [...adventures.value].sort((a, b) => a.order - b.order)
+
+  for (const adv of sorted) {
+    const prereq = adv.unlock_conditions?.find((c) => c.type === 'adventure_completed')
+
+    let columnIndex = 0
+    if (prereq?.adventure_folder) {
+      const prereqColumn = assigned.get(prereq.adventure_folder)
+      if (prereqColumn !== undefined) {
+        columnIndex = prereqColumn + 1
+      }
+    }
+
+    while (columns.length <= columnIndex) {
+      columns.push([])
+    }
+
+    columns[columnIndex]!.push(adv)
+    assigned.set(adv.adventure_folder, columnIndex)
+  }
+  return columns
+})
+
+// 计算图总尺寸
+const graphWidth = computed(() => {
+  const columnCount = adventureColumns.value.length
+  return Math.max(800, PADDING_X * 2 + columnCount * COLUMN_WIDTH + NODE_WIDTH - COLUMN_WIDTH)
+})
+
+const graphHeight = computed(() => {
+  let maxNodesInColumn = 1
+  for (const column of adventureColumns.value) {
+    maxNodesInColumn = Math.max(maxNodesInColumn, column.length)
+  }
+  const maxColumnHeight = maxNodesInColumn * NODE_HEIGHT + (maxNodesInColumn - 1) * NODE_GAP
+  return Math.max(500, PADDING_Y * 2 + maxColumnHeight)
+})
+
+// 【核心修复】纯数学算法构建节点的 X / Y 坐标布局字典
+const nodeLayouts = computed(() => {
+  const layouts = new Map<string, { x: number; y: number; width: number; height: number }>()
+
+  adventureColumns.value.forEach((column, colIndex) => {
+    const nodeCount = column.length
+    const totalColumnHeight = nodeCount * NODE_HEIGHT + (nodeCount - 1) * NODE_GAP
+    const startY = (graphHeight.value - totalColumnHeight) / 2
+
+    column.forEach((adv, rowIndex) => {
+      layouts.set(adv.adventure_folder, {
+        x: PADDING_X + colIndex * COLUMN_WIDTH,
+        y: startY + rowIndex * (NODE_HEIGHT + NODE_GAP),
+        width: NODE_WIDTH,
+        height: NODE_HEIGHT,
+      })
+    })
+  })
+
+  return layouts
+})
+
+// 提供给模板的独立节点样式
+const getNodeStyle = (folder: string) => {
+  const layout = nodeLayouts.value.get(folder)
+  if (!layout) return { display: 'none' }
+  return {
+    left: `${layout.x}px`,
+    top: `${layout.y}px`,
+    width: `${layout.width}px`,
+    height: `${layout.height}px`,
   }
 }
 
-// 计算连线
+// 【核心修复】计算连线：直接从纯数学字典中取值，无需触碰DOM
 const connections = computed<Connection[]>(() => {
   const result: Connection[] = []
 
-  adventures.value.forEach((adventure, toIndex) => {
-    // 检查是否有前置冒险条件
-    const prereqCondition = adventure.unlock_conditions?.find(
-      (cond) => cond.type === 'adventure_completed',
-    )
+  adventures.value.forEach((toAdv) => {
+    const prereq = toAdv.unlock_conditions?.find((c) => c.type === 'adventure_completed')
 
-    if (prereqCondition && prereqCondition.adventure_folder) {
-      // 找到前置冒险的索引
-      const fromIndex = adventures.value.findIndex(
-        (adv) => adv.adventure_folder === prereqCondition.adventure_folder,
-      )
+    if (prereq?.adventure_folder) {
+      const fromAdv = adventures.value.find((a) => a.adventure_folder === prereq.adventure_folder)
+      if (!fromAdv) return
 
-      if (fromIndex !== -1 && nodeRefs.value[fromIndex] && nodeRefs.value[toIndex]) {
-        const fromNode = nodeRefs.value[fromIndex]!
-        const toNode = nodeRefs.value[toIndex]!
+      // 直接从字典中取位置，精准无误
+      const fromPos = nodeLayouts.value.get(fromAdv.adventure_folder)
+      const toPos = nodeLayouts.value.get(toAdv.adventure_folder)
 
-        // 计算节点中心位置
-        const fromRect = fromNode.getBoundingClientRect()
-        const toRect = toNode.getBoundingClientRect()
-        const containerRect = fromNode.parentElement?.getBoundingClientRect()
+      if (!fromPos || !toPos) return
 
-        if (containerRect) {
-          const fromX = fromRect.left - containerRect.left + fromRect.width / 2
-          const fromY = fromRect.top - containerRect.top + fromRect.height / 2
-          const toX = toRect.left - containerRect.left + toRect.width / 2
-          const toY = toRect.top - containerRect.top + toRect.height / 2
+      // 计算连接点
+      const fromX = fromPos.x + fromPos.width
+      const fromY = fromPos.y + fromPos.height / 2
+      const toX = toPos.x
+      const toY = toPos.y + toPos.height / 2
 
-          // 创建贝塞尔曲线路径
-          const controlPointOffset = Math.abs(toY - fromY) * 0.5
-          const path = `M ${fromX} ${fromY} C ${fromX} ${fromY + controlPointOffset}, ${toX} ${toY - controlPointOffset}, ${toX} ${toY}`
+      // 贝塞尔曲线控制点（稍微增大 offset 让曲线更平滑）
+      const controlOffset = Math.max(40, Math.abs(toX - fromX) * 0.4)
+      const path = `M ${fromX} ${fromY} C ${fromX + controlOffset} ${fromY}, ${toX - controlOffset} ${toY}, ${toX - 4} ${toY}`
 
-          // 判断连线是否应该显示为已解锁（目标冒险已解锁）
-          const isUnlocked = adventure.status !== 'locked'
+      let lineClass = 'stroke-gray-600 stroke-2 fill-none stroke-dasharray-5'
+      let markerEnd = 'url(#arrow-locked)'
 
-          result.push({
-            from: adventures.value[fromIndex]!.adventure_folder,
-            to: adventure.adventure_folder,
-            path,
-            isUnlocked,
-          })
-        }
+      if (toAdv.status === 'completed') {
+        lineClass = 'stroke-green-400 stroke-[2.5] fill-none'
+        markerEnd = 'url(#arrow-completed)'
+      } else if (toAdv.status !== 'locked') {
+        lineClass = 'stroke-purple-400 stroke-[2.5] fill-none'
+        markerEnd = 'url(#arrow-unlocked)'
       }
+
+      result.push({
+        from: fromAdv.adventure_folder,
+        to: toAdv.adventure_folder,
+        path,
+        lineClass,
+        markerEnd,
+      })
     }
   })
 
@@ -212,71 +397,85 @@ const connections = computed<Connection[]>(() => {
 })
 
 onMounted(async () => {
-  console.log('[AdventurePanel] Mounting with characterFolder:', props.characterFolder)
   try {
     await adventureStore.fetchCharacterAdventures(props.characterFolder)
-    console.log('[AdventurePanel] Fetched adventures:', adventureStore.currentCharacterAdventures)
-
-    // 等待DOM更新后计算连线
-    await nextTick()
-    updateContainerSize()
   } catch (error) {
     console.error('[AdventurePanel] Failed to fetch adventures:', error)
   }
 })
 
-// 更新容器尺寸
-const updateContainerSize = () => {
-  if (nodeRefs.value.length > 0 && nodeRefs.value[0]) {
-    const container = nodeRefs.value[0].parentElement
-    if (container) {
-      containerWidth.value = container.clientWidth
-      containerHeight.value = container.clientHeight
-    }
+// CSS 和逻辑处理保持你的原始逻辑
+const getNodeClass = (adventure: AdventureInfo) => {
+  const baseClass = 'bg-gray-800/50 border-gray-700 hover:bg-gray-800/80'
+  switch (adventure.status) {
+    case 'completed':
+      return `${baseClass} border-green-500/50 bg-green-900/20 hover:bg-green-900/30 hover:shadow-lg hover:shadow-green-500/20`
+    case 'unlocked':
+    case 'in_progress':
+      return `${baseClass} border-purple-500/50 bg-purple-900/20 hover:bg-purple-900/30 hover:shadow-lg hover:shadow-purple-500/20`
+    case 'locked':
+      return 'bg-gray-800/30 border-gray-700/50 opacity-60 cursor-not-allowed'
+    default:
+      return baseClass
   }
 }
 
-const getNodeClass = (adventure: AdventureInfo) => {
-  return {
-    'node-completed': adventure.status === 'completed',
-    'node-unlocked': adventure.status === 'unlocked' || adventure.status === 'in_progress',
-    'node-locked': adventure.status === 'locked',
+const getIconClass = (status: string) => {
+  switch (status) {
+    case 'completed':
+      return 'bg-green-500/20 text-green-400'
+    case 'locked':
+      return 'bg-gray-700/50 text-gray-500'
+    default:
+      return 'bg-purple-500/20 text-purple-400'
+  }
+}
+
+const getBadgeClass = (status: string) => {
+  switch (status) {
+    case 'completed':
+      return 'bg-green-500/20 text-green-400'
+    case 'in_progress':
+      return 'bg-blue-500/20 text-blue-400'
+    case 'unlocked':
+      return 'bg-purple-500/20 text-purple-400'
+    default:
+      return 'bg-gray-700/50 text-gray-500'
+  }
+}
+
+const getStatusText = (status: string) => {
+  switch (status) {
+    case 'completed':
+      return '已完成'
+    case 'in_progress':
+      return '进行中'
+    case 'unlocked':
+      return '可游玩'
+    default:
+      return '未解锁'
   }
 }
 
 const getUnlockHint = (adventure: AdventureInfo): string => {
-  if (!adventure.unlock_conditions || adventure.unlock_conditions.length === 0) {
-    return '自动解锁'
-  }
-
+  if (!adventure.unlock_conditions || adventure.unlock_conditions.length === 0) return '自动解锁'
   const hints: string[] = []
   for (const cond of adventure.unlock_conditions) {
-    if (cond.type === 'chat_count') {
-      hints.push(`对话${cond.threshold}次`)
-    } else if (cond.type === 'time_range') {
-      hints.push(`${cond.start_hour}:00-${cond.end_hour}:00`)
-    } else if (cond.type === 'adventure_completed') {
-      hints.push('完成前置冒险')
-    } else if (cond.type === 'achievement_unlocked') {
-      hints.push('解锁特定成就')
-    }
+    if (cond.type === 'chat_count') hints.push(`对话${cond.threshold}次`)
+    else if (cond.type === 'time_range') hints.push(`${cond.start_hour}:00-${cond.end_hour}:00`)
+    else if (cond.type === 'adventure_completed') hints.push('完成前置冒险')
+    else if (cond.type === 'achievement_unlocked') hints.push('解锁特定成就')
   }
-
   return hints.join(' · ')
 }
 
 const handleNodeClick = async (adventure: AdventureInfo) => {
-  if (adventure.status === 'locked') {
-    // 显示解锁条件提示
-    return
-  }
-
+  if (adventure.status === 'locked') return
   if (adventure.status === 'unlocked' || adventure.status === 'completed') {
     try {
       uiStore.showSettings = false
       gameStore.enterStoryMode(adventure.adventure_folder)
       await adventureStore.startAdventure(adventure.adventure_folder)
-      // 启动成功后，可以触发其他UI变化或导航
     } catch (error) {
       console.error('启动冒险失败:', error)
     }
@@ -285,149 +484,7 @@ const handleNodeClick = async (adventure: AdventureInfo) => {
 </script>
 
 <style scoped>
-@reference "tailwindcss";
-
-.adventure-panel {
-  @apply w-full h-full flex flex-col bg-gray-900/50 rounded-lg p-4;
-}
-
-.panel-header {
-  @apply flex items-center justify-between mb-4 pb-3 border-b border-gray-700;
-}
-
-.panel-title {
-  @apply text-lg font-bold text-white;
-}
-
-.progress-info {
-  @apply text-sm text-gray-400;
-}
-
-.loading-state,
-.empty-state {
-  @apply flex flex-col items-center justify-center py-12 text-gray-400;
-}
-
-.spinner {
-  @apply w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mb-2;
-}
-
-.adventure-container {
-  @apply relative flex-1 overflow-hidden;
-}
-
-.connection-layer {
-  @apply absolute inset-0 pointer-events-none z-0;
-}
-
-.connection-unlocked {
-  @apply stroke-purple-400;
-  stroke-width: 2;
-  fill: none;
-  stroke-dasharray: none;
-}
-
-.connection-locked {
-  @apply stroke-gray-600;
-  stroke-width: 2;
-  fill: none;
+.stroke-dasharray-5 {
   stroke-dasharray: 5, 5;
-}
-
-.adventure-list {
-  @apply relative flex flex-col gap-3 overflow-y-auto z-10;
-}
-
-.adventure-node {
-  @apply flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all;
-  @apply bg-gray-800/50 border border-gray-700;
-}
-
-.adventure-node:hover {
-  @apply bg-gray-800/80;
-}
-
-.node-completed {
-  @apply border-green-500/30 bg-green-900/10;
-}
-
-.node-completed:hover {
-  @apply bg-green-900/20 shadow-lg shadow-green-500/20;
-}
-
-.node-unlocked {
-  @apply border-purple-500/30 bg-purple-900/10;
-}
-
-.node-unlocked:hover {
-  @apply bg-purple-900/20 shadow-lg shadow-purple-500/20;
-}
-
-.node-locked {
-  @apply opacity-60 cursor-not-allowed;
-}
-
-.node-locked:hover {
-  @apply bg-gray-800/50;
-}
-
-.node-icon {
-  @apply w-10 h-10 flex items-center justify-center rounded-full shrink-0;
-}
-
-.node-completed .node-icon {
-  @apply bg-green-500/20 text-green-400;
-}
-
-.node-unlocked .node-icon {
-  @apply bg-purple-500/20 text-purple-400;
-}
-
-.node-locked .node-icon {
-  @apply bg-gray-700/50 text-gray-500;
-}
-
-.node-icon svg {
-  @apply w-6 h-6;
-}
-
-.node-content {
-  @apply flex-1 min-w-0;
-}
-
-.node-title {
-  @apply text-sm font-semibold text-white mb-1;
-}
-
-.node-description {
-  @apply text-xs text-gray-400 line-clamp-2;
-}
-
-.unlock-hint {
-  @apply flex items-center gap-1 mt-1 text-xs text-gray-500;
-}
-
-.node-status {
-  @apply shrink-0;
-}
-
-.status-badge {
-  @apply px-2 py-1 rounded text-xs font-medium;
-}
-
-.status-badge.completed {
-  @apply bg-green-500/20 text-green-400;
-}
-
-.status-badge.in-progress {
-  @apply bg-blue-500/20 text-blue-400;
-}
-
-.status-badge.unlocked {
-  @apply bg-purple-500/20 text-purple-400;
-}
-
-.status-badge.locked {
-  @apply bg-gray-700/50 text-gray-500;
 }
 </style>
