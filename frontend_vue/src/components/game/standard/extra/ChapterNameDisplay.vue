@@ -15,13 +15,7 @@
         <div
           class="relative flex items-center pl-8 pr-14 py-3 bg-slate-900/40 backdrop-blur-md overflow-hidden"
           style="
-            clip-path: polygon(
-              0 0,
-              calc(100% - 24px) 0,
-              100% 50%,
-              calc(100% - 24px) 100%,
-              0 100%
-            );
+            clip-path: polygon(0 0, calc(100% - 24px) 0, 100% 50%, calc(100% - 24px) 100%, 0 100%);
           "
         >
           <div class="absolute left-0 top-0 bottom-0 w-1.5 bg-brand rounded-2xl"></div>

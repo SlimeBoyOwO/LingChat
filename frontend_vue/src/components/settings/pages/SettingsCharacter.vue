@@ -16,6 +16,25 @@
           @saved="handleSettingsSaved"
         />
       </div>
+      <div v-if="totalPages > 1" class="flex items-center justify-between px-3 py-2 w-full">
+        <button
+          class="px-4 py-1.5 text-sm font-medium border-none rounded-lg cursor-pointer bg-[#e9ecef] text-[#495057] transition-all duration-200 hover:bg-[var(--accent-color)] hover:text-white hover:-translate-y-0.5 hover:shadow-[0_4px_10px_rgba(121,217,255,0.4)] disabled:opacity-40 disabled:cursor-not-allowed"
+          :disabled="currentPage <= 1"
+          @click="changePage(currentPage - 1)"
+        >
+          上一页
+        </button>
+        <span class="text-sm font-medium text-white/80"
+          >第 {{ currentPage }} / {{ totalPages }} 页</span
+        >
+        <button
+          class="px-4 py-1.5 text-sm font-medium border-none rounded-lg cursor-pointer bg-[#e9ecef] text-[#495057] transition-all duration-200 hover:bg-[var(--accent-color)] hover:text-white hover:-translate-y-0.5 hover:shadow-[0_4px_10px_rgba(121,217,255,0.4)] disabled:opacity-40 disabled:cursor-not-allowed"
+          :disabled="currentPage >= totalPages"
+          @click="changePage(currentPage + 1)"
+        >
+          下一页
+        </button>
+      </div>
     </MenuItem>
 
     <MenuItem title="刷新人物列表" size="small">
@@ -38,7 +57,6 @@ import CharacterCard from '../../ui/Menu/CharacterCard.vue'
 import { characterGetAll } from '../../../api/services/character'
 import type { Character as ApiCharacter, Clothes } from '../../../types'
 import { useGameStore } from '../../../stores/modules/game'
-import { useUserStore } from '../../../stores/modules/user/user'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 
 interface CharacterCard {
@@ -53,17 +71,17 @@ interface CharacterCard {
 }
 
 const characters = ref<CharacterCard[]>([])
-const userId = ref<number>(1)
+const currentPage = ref(1)
+const totalPages = ref(1)
 
 const gameStore = useGameStore()
-const userStore = useUserStore()
 const uiStore = useUIStore()
 
-const fetchCharacters = async (): Promise<CharacterCard[]> => {
+const fetchCharacters = async (page: number): Promise<void> => {
   try {
-    const list = await characterGetAll()
-    console.log('list:', list)
-    return list.map((char: ApiCharacter) => ({
+    const result = await characterGetAll(page)
+    totalPages.value = result.total_pages
+    characters.value = result.items.map((char: ApiCharacter) => ({
       id: parseInt(char.character_id),
       title: char.title,
       name: char.name,
@@ -84,44 +102,36 @@ const fetchCharacters = async (): Promise<CharacterCard[]> => {
     }))
   } catch (error) {
     console.error('获取角色列表失败:', error)
-    return []
+    characters.value = []
   }
 }
 
 const loadCharacters = async (): Promise<void> => {
-  try {
-    const characterData = await fetchCharacters()
-    characters.value = characterData
-  } catch (error) {
-    console.error('加载角色失败:', error)
-  }
+  await fetchCharacters(currentPage.value)
+}
+
+const changePage = async (page: number): Promise<void> => {
+  currentPage.value = page
+  await fetchCharacters(page)
 }
 
 const refreshCharacters = async (): Promise<void> => {
   try {
     const response = await fetch('/api/v1/chat/character/refresh_characters', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
     })
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
 
     await response.json()
-    await loadCharacters() // 重新加载角色列表
+    currentPage.value = 1
+    await loadCharacters()
 
     const tip = uiStore.getRefreshTip('success')
-    uiStore.showSuccess({
-      title: tip.title,
-      message: tip.message,
-      duration: 3000,
-    })
+    uiStore.showSuccess({ title: tip.title, message: tip.message, duration: 3000 })
   } catch (error) {
     console.error('刷新失败:', error)
-
     const tip = uiStore.getRefreshTip('fail')
     uiStore.showError({
       title: tip.title,
@@ -134,10 +144,7 @@ const refreshCharacters = async (): Promise<void> => {
 const openCreativeWeb = async (): Promise<void> => {
   try {
     const response = await fetch('/api/v1/chat/character/open_web')
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
     await response.json()
   } catch (error) {
     alert('启动失败，请手动去lingchat的discussion网页')
@@ -149,15 +156,14 @@ const handleSettingsSaved = () => {
   refreshCharacters()
 }
 
-// 初始化加载角色列表
 onMounted(() => {
   loadCharacters()
 })
 
-// 角色切换时重新加载服装
 watch(
   () => gameStore.mainRoleId,
   () => {
+    currentPage.value = 1
     loadCharacters()
   },
 )

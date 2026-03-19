@@ -205,8 +205,11 @@ async def select_character(
         raise HTTPException(status_code=500, detail="切换角色失败")
 
 
-@router.get("/get_all_characters")
-async def get_all_characters():
+@router.get("/characters")
+async def get_all_characters(
+    page: int = Query(1, ge=1, description="页码，从1开始"),
+    page_size: int = Query(6, ge=1, le=6, description="每页数量，最多6个"),
+):
     try:
         db_chars = RoleManager.get_all_main_roles()
 
@@ -273,7 +276,20 @@ async def get_all_characters():
                 "resource_folder": char.resource_folder,  # 添加resource_folder用于冒险面板
             })
 
-        return {"data": characters}
+        total = len(characters)
+        total_pages = max(1, (total + page_size - 1) // page_size)
+        start = (page - 1) * page_size
+        paged_characters = characters[start:start + page_size]
+
+        return {
+            "data": {
+                "items": paged_characters,
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": total_pages,
+            }
+        }
 
     except FileNotFoundError as e:
         logger.error(f"角色配置文件缺失: {str(e)}")
