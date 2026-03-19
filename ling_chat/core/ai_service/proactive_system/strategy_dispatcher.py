@@ -1,4 +1,5 @@
 from datetime import datetime, date
+import os
 import random
 from typing import Optional
 from ling_chat.core.ai_service.game_system.game_status import GameStatus
@@ -22,34 +23,55 @@ class StrategyDispatcher:
         """
 
         today_str = datetime.now().strftime("%m-%d")
-        
+
         # 1. 检查 ImportantDay (如果是今天且未触发过)
-        # 注意：这里需要持久化记录今天是否提醒过，这里简化处理，假设 memory 会记录
-        if self.settings.importantDays:
+        enable_important_day = os.getenv("ENABLE_IMPORTANT_DAY_REMINDER", "false").lower() == "true"
+        if enable_important_day and self.settings.importantDays:
             last_talk_date = self.game_status.last_dialog_time.strftime("%m-%d") if self.game_status.last_dialog_time else ""
             if last_talk_date != today_str:
                 for day in self.settings.importantDays:
-                    if day.date.endswith(today_str): # 简单匹配月日
+                    if day.date.endswith(today_str):
                         return f"{{今天是特殊的一天：{day.title}，{day.desc}。可以和{self.game_status.player.user_name}聊聊哦}}"
 
-        # 2. 随机模式选择
-        # 权重: Todo(30%), Topic(30%), Screen(20%), Script(0% - Not Implemented)
-        mode = random.choices(["TODO", "TOPIC", "SCREEN"], weights=[10, 60, 30])[0]
+        # 2. 随机模式选择，根据启用状态动态构建候选列表
+        # 基础权重: TODO(10), TOPIC(60), SCREEN(30)
+        # 禁用某个模式后，random.choices 会自动对剩余权重做归一化
+        modes = []
+        weights = []
+
+        if os.getenv("ENABLE_TODO_PRECEPTION", "false").lower() == "true":
+            modes.append("TODO")
+            weights.append(10)
+
+        if os.getenv("ENABLE_TOPIC_CREATER", "false").lower() == "true":
+            modes.append("TOPIC")
+            weights.append(60)
+
+        if os.getenv("ENABLE_VISUAL_PRECEPTION", "true").lower() == "true":
+            modes.append("SCREEN")
+            weights.append(30)
+
+        if not modes:
+            return None
+
+        mode = random.choices(modes, weights=weights)[0]
 
         if mode == "TODO":
             prompt = self._get_todo_prompt()
-            if prompt: return prompt
-            # 如果没有 Todo，降级到 TOPIC
-        
+            if prompt:
+                return prompt
+            # 没有 Todo 时降级到 TOPIC（如果启用）
+            if os.getenv("ENABLE_TOPIC_CREATER", "false").lower() == "true":
+                return await self._get_topic_prompt()
+            return None
+
         if mode == "SCREEN":
-            # 调用辅助LLM总结屏幕内容，或者直接把OCR扔给AI
             analyze_prompt = "你是一个图像信息转述者，你将需要把你看到的画面描述给另一个AI让他理解用户的图片内容。用户开放了那个AI的自主窥屏功能，请获取桌面画面中的重点内容，用200字描述主体部分即可。"
             analyze_info = await self.desktop_analyzer.analyze_desktop(analyze_prompt)
             ai_name = self.game_status.current_character.display_name if self.game_status.current_character else "你"
-            sys_desktop_part = f"{{ {ai_name} 偷看了一眼 {self.game_status.player.user_name} 的电脑桌面信息: {analyze_info} }}"
-            return sys_desktop_part
+            return f"{{ {ai_name} 偷看了一眼 {self.game_status.player.user_name} 的电脑桌面信息: {analyze_info} }}"
 
-        # Default: TOPIC
+        # TOPIC
         return await self._get_topic_prompt()
 
     def _get_todo_prompt(self) -> Optional[str]:
