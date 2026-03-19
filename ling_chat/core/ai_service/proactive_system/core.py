@@ -42,6 +42,14 @@ class ProactiveSystem:
 
     def start(self):
         self.enabled = os.getenv("ENABLE_PROACTIVE_SYSTEM", "false").lower() == "true"
+        enable_schedule = os.getenv("ENABLE_SCHEDULE_REMINDER", "true").lower() == "true"
+        enable_visual = os.getenv("ENABLE_VISUAL_PRECEPTION", "true").lower() == "true"
+
+        # 日程提醒独立于主动对话系统，单独控制
+        if enable_schedule:
+            self.schedule_manager.start()
+        else:
+            logger.info("日程提醒已禁用")
 
         if not self.enabled:
             logger.info("主动对话系统已禁用")
@@ -50,12 +58,12 @@ class ProactiveSystem:
         logger.info("启动主动对话系统...")
         # 1. 启动感知线程
         self.activity_monitor.start()
-        self.visual_monitor.start()
-        
-        # 2. 启动日程循环
-        self.schedule_manager.start()
-        
-        # 3. 启动兴趣/随机对话主循环
+        if enable_visual:
+            self.visual_monitor.start()
+        else:
+            logger.info("视觉感知已禁用")
+
+        # 2. 启动兴趣/随机对话主循环
         self.proactive_loop_task = asyncio.create_task(self._main_loop())
 
     async def reload_system(self):
@@ -67,7 +75,8 @@ class ProactiveSystem:
     def reload_schedule(self):
         self.settings = self._load_settings()
         self.schedule_manager.stop()
-        self.schedule_manager.start()
+        if os.getenv("ENABLE_SCHEDULE_REMINDER", "true").lower() == "true":
+            self.schedule_manager.start()
 
     async def _main_loop(self):
         """
