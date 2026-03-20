@@ -41,7 +41,7 @@ export interface GameState {
   gameRoles: Record<number, GameRole>
   presentRoleIds: number[]
   mainRoleId: number
-  currentInteractRoleId: number
+  currentInteractRoleId: number | null
 
   userName: string
   userSubtitle: string

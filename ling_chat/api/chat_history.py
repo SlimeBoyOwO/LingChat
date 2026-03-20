@@ -1,7 +1,11 @@
+import asyncio
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Request
 
+from ling_chat.core.ai_service.type import ScriptStatus
+from ling_chat.core.logger import logger
+from ling_chat.core.ai_service.game_system import game_status
 from ling_chat.core.service_manager import service_manager
 
 from ling_chat.game_database.managers.save_manager import SaveManager
@@ -51,9 +55,19 @@ async def load_user_conversations(user_id: int, conversation_id: int):
         # result = ConversationModel.get_conversation_messages(conversation_id=conversation_id)
         # character_id = ConversationModel.get_conversation_character(conversation_id=conversation_id)
         # TODO： 后面升级的加载存档，应该如果有运行剧本则加载剧本变量，实现场景重现，当然save的status也是要加载的
+        if service_manager.ai_service is None:
+            return HTTPException(status_code=500, detail="AI 服务未初始化")
+        
+        ai_service = service_manager.ai_service
+        
+        save = SaveManager.get_save_by_id(save_id=conversation_id)
+
+        if save is None:
+            return HTTPException(status_code=404, detail="Save not found")
         
         line_list = SaveManager.get_gameline_list(save_id=conversation_id)
         role_id = SaveManager.get_chat_main_character_id(save_id=conversation_id)
+        game_status = service_manager.ai_service.game_status
         
         if(line_list != None):
             if not role_id: return HTTPException(status_code=500, detail="本存档主角色不存在")
@@ -72,11 +86,47 @@ async def load_user_conversations(user_id: int, conversation_id: int):
             if character_settings is None: return HTTPException(status_code=500, detail="角色不存在")
 
             character_settings.character_id = role_id
-            if service_manager.ai_service is not None:
-                service_manager.ai_service.import_settings(settings=character_settings)
-                service_manager.ai_service.load_lines(line_list, role_id, save_id=conversation_id)
+            ai_service.import_settings(settings=character_settings)
+            ai_service.load_lines(line_list, role_id, save_id=conversation_id)
+            
+            # 3. 更新游戏状态信息等 TODO：这里的代码在日后确定游戏状态之后可以变的更优雅一点
+            game_status.background = save.status.get("background", "default")
+            game_status.background_effect = save.status.get("background_effect", "none")
+            game_status.background_music = save.status.get("background_music", "none")
+            game_status.current_character = game_status.get_role(save.status.get("current_character_id", -1))
+            game_status.global_variables = save.status.get("global_variables", {})
+            game_status.completed_scripts = save.status.get("completed_scripts", set())
+            game_status.present_roles = {role for role_id in save.status.get("present_role_ids", set()) 
+                                         if (role := game_status.get_role(role_id)) is not None}
+            game_status.last_dialog_time = save.status.get("last_dialog_time", datetime.now())
 
-            print("成功调用记忆存储")
+            # 4. 如果当时有正在运行的剧本，还原游戏状态
+            if save.running_script_id is not None:
+                script_data = SaveManager.get_running_script_by_id(save.running_script_id)
+                if script_data is None: 
+                    logger.error(f"无法找到正在运行的剧本 {save.running_script_id}")
+                    return {
+                        "code": 500,
+                        "msg": "Failed to load user co"
+                    }
+                
+                # 解析并还原数据
+                script_status = ai_service.scripts_manager.get_script(script_data.script_folder)
+                if script_status is None:
+                    logger.error(f"无法找到剧本 {script_data.script_folder} 可能已经被删除了")
+                    return {
+                        "code": 500,
+                        "msg": "Failed to load user scripts"
+                    }
+                script_status.current_chapter_key = script_data.current_chapter
+                script_status.current_event_process = script_data.event_sequence
+                script_status.vars = script_data.variable_info
+
+                # 运行剧本
+                asyncio.create_task(ai_service.start_script(script_data.script_folder))
+                
+
+            logger.info(f"加载存档 {save.id} 成功")
             return {
                 "code": 200,
                 "data": "success"
@@ -112,17 +162,26 @@ async def create_user_conversations(request: Request):
         if not service_manager.ai_service:
             raise HTTPException(status_code=500, detail="AI服务未初始化")
 
+        game_status = service_manager.ai_service.game_status
+        assert game_status.main_role
+
         # 获取台词列表
         line_list = service_manager.ai_service.get_lines()
         save_id = SaveManager.create_save(user_id=user_id, title=title).id
         if save_id:
             SaveManager.sync_lines(save_id,line_list)
-            SaveManager.update_save_main_role(save_id, service_manager.ai_service.game_status.main_role.role_id)
+            
+            SaveManager.update_save_main_role(save_id, game_status.main_role.role_id)
+            SaveManager.update_save_status(save_id, game_status)
             # 让后端运行时与用户最近存档保持一致，便于 MemoryBank 持久化
             UserManager.update_last_save(user_id=user_id, save_id=save_id)
             service_manager.ai_service.set_active_save_id(save_id)
             # 仅在“创建存档”时写入 MemoryBank
             service_manager.ai_service.persist_memory_banks(save_id)
+
+            # 如果有正在进行的剧本，写入剧本信息
+            if game_status.script_status is not None:
+                SaveManager.update_running_script(save_id, game_status.script_status)
 
         # TODO: 根据 GameStatus 中的其他状态，更新 save 中的其他字段
 
@@ -169,14 +228,20 @@ async def save_user_conversation(request: Request):
         if not service_manager.ai_service:
             raise HTTPException(status_code=500, detail="AI服务未初始化")
         
+        game_status = service_manager.ai_service.game_status
+        
         # 获取当前消息记忆
         line_list = service_manager.ai_service.get_lines()
         SaveManager.sync_lines(save_id=conversation_id, input_lines=line_list)
         # 维持当前激活存档（用于 MemoryBank 自动压缩）
         service_manager.ai_service.set_active_save_id(conversation_id)
+        SaveManager.update_save_status(conversation_id, service_manager.ai_service.game_status)
         # 仅在“保存存档”时写入 MemoryBank
         service_manager.ai_service.persist_memory_banks(conversation_id)
 
+        # 如果有正在进行的剧本，写入剧本信息
+        if game_status.script_status is not None:
+            SaveManager.update_running_script(conversation_id, game_status.script_status)
 
         # 如果需要更新标题
         if title:
