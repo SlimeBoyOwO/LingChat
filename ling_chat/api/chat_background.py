@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, Field
 
 from ling_chat.core.logger import logger
 from ling_chat.core.service_manager import service_manager
@@ -13,6 +14,35 @@ router = APIRouter(prefix="/api/v1/chat/background", tags=["Chat Character"])
 
 BACKGROUND_DIR = user_data_path / "game_data/backgrounds"
 ALLOWED_EXTENSIONS = ('.jpg', '.png', '.webp', '.bmp', '.svg', '.tif', '.gif')
+
+
+class BackgroundSelectionRequest(BaseModel):
+    background: str = Field(default="", description="当前背景URL")
+
+
+class BackgroundEffectRequest(BaseModel):
+    effect: str = Field(default="", description="当前背景特效")
+
+
+def _get_game_status():
+    ai_service = service_manager.ai_service or service_manager.init_ai_service()
+    if ai_service is None:
+        raise HTTPException(status_code=500, detail="AI service not initialized")
+    return ai_service.game_status
+
+
+@router.post("/select")
+async def set_background(payload: BackgroundSelectionRequest):
+    game_status = _get_game_status()
+    game_status.background = payload.background
+    return {"code": 200, "data": {"background": game_status.background}}
+
+
+@router.post("/effect")
+async def set_background_effect(payload: BackgroundEffectRequest):
+    game_status = _get_game_status()
+    game_status.background_effect = payload.effect
+    return {"code": 200, "data": {"background_effect": game_status.background_effect}}
 
 @router.get("/background_script_file/{background_file}")
 async def get_script_background_file(background_file: str):

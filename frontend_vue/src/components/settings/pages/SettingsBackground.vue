@@ -46,23 +46,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue'
-import { MenuPage } from '../../ui'
-import { MenuItem } from '../../ui'
+import { onMounted, ref } from 'vue'
 import { Button } from '../../base'
-import { Slider } from '../../base'
-import { getBackgroundImages } from '../../../api/services/background'
-import type { BackgroundImageInfo } from '../../../types'
+import { MenuItem } from '../../ui'
+import { MenuPage } from '../../ui'
+import {
+  getBackgroundImages,
+  setCurrentBackground,
+  setCurrentBackgroundEffect,
+} from '../../../api/services/background'
 import { useUIStore } from '../../../stores/modules/ui/ui'
+import type { BackgroundImageInfo } from '../../../types'
 
-// 响应式数据
 const backgroundList = ref<BackgroundImageInfo[]>([])
 const selectedBackground = ref<string>('')
 const uploadInput = ref<HTMLInputElement | null>(null)
-
 const uiStore = useUIStore()
 
-// 初始化
 onMounted(async () => {
   try {
     await refreshBackground()
@@ -82,50 +82,50 @@ onMounted(async () => {
   }
 })
 
-// 获取背景列表
 async function fetchBackgrounds(): Promise<BackgroundImageInfo[]> {
   try {
     const data = await getBackgroundImages()
     return data.map((background: BackgroundImageInfo) => ({
-      title: background.title ? background.title : '草泥马',
+      title: background.title || 'Untitled',
       url: background.url
         ? `/api/v1/chat/background/background_file/${encodeURIComponent(background.url)}`
         : '../pictures/background/default.png',
       time: background.time,
     }))
   } catch (error) {
-    console.error('获取背景列表失败:', error)
+    console.error('Failed to fetch background list:', error)
     return []
   }
 }
 
-// 刷新背景列表
 async function refreshBackground(): Promise<void> {
   backgroundList.value = await fetchBackgrounds()
 }
 
-// 检查是否已选中
 function isSelected(url: string): boolean {
   return selectedBackground.value === url
 }
 
-// 选择背景
-function selectBackground(url: string): void {
-  selectedBackground.value = url
-  // 更新DOM背景
-  uiStore.currentBackground = url
-  // 保存到本地存储
-  localStorage.setItem('selectedBackground', url)
-}
+async function selectBackground(url: string): Promise<void> {
+  const prevSelectedBackground = selectedBackground.value
+  const prevBackground = uiStore.currentBackground
 
-// 触发文件上传
-function triggerUpload(): void {
-  if (uploadInput.value) {
-    uploadInput.value.click()
+  selectedBackground.value = url
+  uiStore.currentBackground = url
+
+  try {
+    await setCurrentBackground(url)
+  } catch (error) {
+    selectedBackground.value = prevSelectedBackground
+    uiStore.currentBackground = prevBackground
+    console.error('Failed to save selected background:', error)
   }
 }
 
-// 处理文件上传
+function triggerUpload(): void {
+  uploadInput.value?.click()
+}
+
 async function handleFileUpload(event: Event): Promise<void> {
   const target = event.target as HTMLInputElement
   const file = target.files?.[0]
@@ -155,7 +155,6 @@ async function handleFileUpload(event: Event): Promise<void> {
 
     await refreshBackground()
 
-    // 清空input值，允许重复上传同一文件
     if (target) target.value = ''
   } catch (error) {
     console.error('上传失败', error)
@@ -163,11 +162,16 @@ async function handleFileUpload(event: Event): Promise<void> {
   }
 }
 
-// 更新圣光效果
-function updateKousan(value: number): void {}
-
-function updateParticle(value: string): void {
+async function updateParticle(value: string): Promise<void> {
+  const prevEffect = uiStore.currentBackgroundEffect
   uiStore.currentBackgroundEffect = value
+
+  try {
+    await setCurrentBackgroundEffect(value)
+  } catch (error) {
+    uiStore.currentBackgroundEffect = prevEffect
+    console.error('Failed to save selected background effect:', error)
+  }
 }
 </script>
 

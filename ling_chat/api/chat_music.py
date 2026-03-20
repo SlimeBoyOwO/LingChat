@@ -5,8 +5,10 @@ from typing import Dict, List
 
 from fastapi import APIRouter, FastAPI, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, Field
 
 from ling_chat.core.logger import logger
+from ling_chat.core.service_manager import service_manager
 from ling_chat.utils.runtime_path import static_path, user_data_path
 
 TEMPLATE_MUSIC_DIR = static_path / "game_data/musics"
@@ -25,6 +27,24 @@ async def lifespan(app: FastAPI):
 
 
 router = APIRouter(prefix="/api/v1/chat/back-music", tags=["Background Music"], lifespan=lifespan)
+
+
+class BackgroundMusicSelectionRequest(BaseModel):
+    music: str = Field(default="", description="当前背景音乐URL")
+
+
+def _get_game_status():
+    ai_service = service_manager.ai_service or service_manager.init_ai_service()
+    if ai_service is None:
+        raise HTTPException(status_code=500, detail="AI service not initialized")
+    return ai_service.game_status
+
+
+@router.post("/select")
+async def set_background_music(payload: BackgroundMusicSelectionRequest):
+    game_status = _get_game_status()
+    game_status.background_music = payload.music
+    return {"code": 200, "data": {"background_music": game_status.background_music}}
 
 
 @router.get("/music_file/{music_file}")
