@@ -15,7 +15,7 @@ export class TypeWriter {
 
   constructor(
     element: HTMLInputElement | HTMLTextAreaElement,
-    onTextUpdateCallback?: (text: string) => void
+    onTextUpdateCallback?: (text: string) => void,
   ) {
     this.element = element
     this.timer = null

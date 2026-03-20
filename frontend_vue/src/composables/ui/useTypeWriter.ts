@@ -4,7 +4,7 @@ import { TypeWriter } from '../../utils/typewriter/TypeWriter'
 
 export function useTypeWriter(
   elementRef: Ref<HTMLInputElement | HTMLTextAreaElement | null>,
-  onTextUpdate?: (text: string) => void
+  onTextUpdate?: (text: string) => void,
 ) {
   const typeWriter = ref<TypeWriter | null>(null)
   const isTyping = ref(false)
