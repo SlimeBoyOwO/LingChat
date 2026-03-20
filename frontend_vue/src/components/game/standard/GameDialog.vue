@@ -59,16 +59,10 @@ const { startTyping, stopTyping } = useTypeWriter(textareaRef, (text) => {
 
 // 使用计算属性处理发送状态
 const isSending = computed(() => gameStore.currentStatus === 'thinking')
-const isTyping = computed(() => {
-  const result =
-    uiStore.showCharacterLine !== '' && currentDisplayedText.value !== uiStore.showCharacterLine
-  console.log('isTyping check:', {
-    showCharacterLine: uiStore.showCharacterLine,
-    currentDisplayedText: currentDisplayedText.value,
-    result,
-  })
-  return result
-})
+const isTyping = computed(
+  () =>
+    uiStore.showCharacterLine !== '' && currentDisplayedText.value !== uiStore.showCharacterLine,
+)
 
 const emit = defineEmits(['player-continued', 'dialog-proceed'])
 
