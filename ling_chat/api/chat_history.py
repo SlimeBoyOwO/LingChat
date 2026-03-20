@@ -139,7 +139,9 @@ async def load_user_conversations(user_id: int, conversation_id: int):
             }
 
     except Exception as e:
-        print("创建conversation的时候出错")
+        import traceback
+        traceback.print_exc()
+        print("加载存档的时候出错")
         print(str(e))
         return {
             "code": 500,

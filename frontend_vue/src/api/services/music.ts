@@ -6,7 +6,7 @@ export const musicGetAll = async (): Promise<MusicTrack[]> => {
     const data = await http.get('/v1/chat/back-music/list')
     return data
   } catch (error: any) {
-    throw new Error(error.response?.data?.message || '获取音乐列表失败')
+    throw new Error(error.response?.data?.message || 'Failed to load music list')
   }
 }
 
@@ -14,7 +14,7 @@ export const musicUpload = async (formData: FormData): Promise<void> => {
   try {
     await http.post('/v1/chat/back-music/upload', formData)
   } catch (error: any) {
-    throw new Error(error.response?.data?.detail || '存档上传失败')
+    throw new Error(error.response?.data?.detail || 'Music upload failed')
   }
 }
 
@@ -24,6 +24,10 @@ export const musicDelete = async (url: string): Promise<void> => {
       params: { url: url },
     })
   } catch (error: any) {
-    throw new Error(error.response?.data?.detail || '存档上传失败')
+    throw new Error(error.response?.data?.detail || 'Music delete failed')
   }
+}
+
+export const setCurrentBackgroundMusic = async (music: string): Promise<void> => {
+  await http.post('/v1/chat/back-music/select', { music })
 }
