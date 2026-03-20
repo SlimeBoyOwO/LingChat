@@ -51,11 +51,24 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null) // 新增这行
 const gameStore = useGameStore()
 const uiStore = useUIStore()
 const isHidden = ref(false)
+const currentDisplayedText = ref('') // 用于存储当前打字机效果显示的文本
 
-const { startTyping, stopTyping, isTyping } = useTypeWriter(textareaRef)
+const { startTyping, stopTyping } = useTypeWriter(textareaRef, (text) => {
+  currentDisplayedText.value = text
+})
 
 // 使用计算属性处理发送状态
 const isSending = computed(() => gameStore.currentStatus === 'thinking')
+const isTyping = computed(() => {
+  const result =
+    uiStore.showCharacterLine !== '' && currentDisplayedText.value !== uiStore.showCharacterLine
+  console.log('isTyping check:', {
+    showCharacterLine: uiStore.showCharacterLine,
+    currentDisplayedText: currentDisplayedText.value,
+    result,
+  })
+  return result
+})
 
 const emit = defineEmits(['player-continued', 'dialog-proceed'])
 
@@ -151,11 +164,13 @@ watch(
 watch([() => uiStore.showCharacterLine, () => gameStore.currentStatus], ([newLine, newStatus]) => {
   if (newLine && newLine !== '' && newStatus === 'responding') {
     inputMessage.value = ''
+    currentDisplayedText.value = '' // 重置显示的文本
     startTyping(newLine, uiStore.typeWriterSpeed)
   } else if (newStatus === 'input') {
     // 只要进入 input 状态就清空，不管 newLine 是什么
     stopTyping()
     inputMessage.value = ''
+    currentDisplayedText.value = '' // 重置显示的文本
   }
 })
 
@@ -219,6 +234,7 @@ function removeDialog(e: Event) {
 
 defineExpose({
   continueDialog,
+  isTyping,
 })
 </script>
 

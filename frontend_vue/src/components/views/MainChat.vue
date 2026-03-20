@@ -4,7 +4,11 @@
     <FreeModeTools />
     <GameBackground></GameBackground>
     <!-- <GameAvatar ref="gameAvatarRef" @audio-ended="handleAudioFinished" />  -->
-    <GameRolesStage ref="gameAvatarRef" @audio-ended="handleAudioFinished" />
+    <GameRolesStage
+      ref="gameAvatarRef"
+      @audio-ended="handleAudioFinished"
+      @audio-started="handleAudioStarted"
+    />
     <GameDialog
       ref="gameDialogRef"
       @player-continued="manualTriggerContinue"
@@ -29,7 +33,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, ref, watch, nextTick } from 'vue'
 import FreeModeTools from '@/components/tools/FreeModeTools.vue'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { useGameStore } from '../../stores/modules/game'
@@ -86,42 +90,63 @@ watch(
 let timerId: any = null
 // 2. 状态标志，记录 continue() 是否已被调用
 const isContinueTriggered = ref(false)
+// 3. 追踪音频和打字状态
+const audioFinished = ref(true) // 默认 true（无音频时视为已完成）
 
 // 在新交互开始前调用的重置函数
 const resetInteraction = () => {
   isContinueTriggered.value = false
+  audioFinished.value = true
   if (timerId) {
     clearTimeout(timerId)
     timerId = null
   }
 }
 
-// 自动播放功能
-const handleAudioFinished = () => {
+// 尝试触发自动继续（打字和音频都结束后才执行）
+const tryAutoAdvance = () => {
   if (!uiStore.autoMode) return
-  if (isContinueTriggered.value) {
-    console.log('父组件：音频结束了，但用户已手动继续，不做任何事。')
-    return
-  }
+  if (isContinueTriggered.value) return
   if (gameStore.currentStatus !== 'responding') return
 
-  if (timerId) clearTimeout(timerId)
+  const typing = gameDialogRef.value?.isTyping ?? false
+  if (typing || !audioFinished.value) return
 
+  if (timerId) clearTimeout(timerId)
   timerId = setTimeout(() => {
     if (gameDialogRef.value) {
       const needWait = gameDialogRef.value.continueDialog(false)
       if (needWait) {
-        handleAudioFinished()
+        tryAutoAdvance()
       }
-    } else {
-      console.error('无法找到 GameDialog 的实例。')
     }
   }, 1000)
 }
 
+// 音频开始播放
+const handleAudioStarted = () => {
+  audioFinished.value = false
+}
+
+// 音频播放结束
+const handleAudioFinished = () => {
+  audioFinished.value = true
+  tryAutoAdvance()
+}
+
+// 监听打字结束
+watch(
+  () => gameDialogRef.value?.isTyping,
+  (typing) => {
+    console.log('父组件：打字状态变化', typing)
+    if (typing === false) {
+      tryAutoAdvance()
+    }
+  },
+)
+
 // 用户手动触发的函数
 const manualTriggerContinue = () => {
-  // 5. 立即清除定时器，阻止其后续执行
   console.log('用户主动点击了')
   if (timerId) {
     clearTimeout(timerId)
@@ -129,9 +154,8 @@ const manualTriggerContinue = () => {
     console.log('父组件：已取消自动继续的定时器。')
   }
 
-  // 6. 检查状态，防止重复执行
   if (!isContinueTriggered.value) {
-    isContinueTriggered.value = true // 设置标志
+    isContinueTriggered.value = true
   } else {
     console.log('父组件：用户重复点击，但方法已执行过，不再调用。')
   }
