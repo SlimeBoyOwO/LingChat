@@ -163,7 +163,7 @@
 
           <section>
             <h3 class="text-white font-bold mb-4 flex items-center gap-2">
-              <span class="w-1 h-4 bg-emerald-500 rounded-full"></span> 羁绊档案
+              <span class="w-1 h-4 bg-emerald-500 rounded-full"></span> 羁绊档案（实验）
             </h3>
             <div v-if="resourceFolder" class="h-96">
               <AdventurePanel :character-folder="resourceFolder" />

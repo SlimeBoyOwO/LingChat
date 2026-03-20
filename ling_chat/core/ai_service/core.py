@@ -16,12 +16,13 @@ from ling_chat.core.ai_service.message_system.message_generator import MessageGe
 from ling_chat.core.ai_service.script_engine.script_manager import ScriptManager
 from ling_chat.core.ai_service.translator import Translator
 from ling_chat.core.llm_providers.manager import LLMManager
+from ling_chat.schemas.character_settings import CharacterSettings
 from ling_chat.utils.function import Function
 from ling_chat.core.logger import logger
 from ling_chat.core.messaging.broker import message_broker
 
 class AIService:
-    def __init__(self, settings: dict[str, str]):
+    def __init__(self, settings: CharacterSettings):
 
         """
         初始化AI助手实例
@@ -66,7 +67,7 @@ class AIService:
         # 特别的，设定当游戏角色被导入的时候，设定它为游戏主角，其他情况下则以变量为准，并初始化system prompt
         self._init_game_status()
 
-    def import_settings(self, settings: Dict) -> None:
+    def import_settings(self, settings: CharacterSettings) -> None:
         # TODO: 这些以后全都可以删除，改为通过修改game_status的GameRole来实现
         if(settings):
             self.character_path = settings.resource_path
@@ -77,7 +78,7 @@ class AIService:
             self.user_subtitle = settings.user_subtitle
             self.ai_prompt = settings.system_prompt or "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息"
             self.game_status.player.user_name = self.user_name
-            self.game_status.player.user_subtitle = self.user_subtitle
+            self.game_status.player.user_subtitle = self.user_subtitle if self.user_subtitle else ""
 
             self.ai_prompt_example = settings.system_prompt_example
             self.ai_prompt_example_old = settings.system_prompt_example_old
@@ -173,7 +174,7 @@ class AIService:
         self.game_status.add_line(system_line)
         if self.character_id:
             self.game_status.current_character = self.game_status.role_manager.get_role(self.character_id)
-            self.game_status.present_roles.add(self.game_status.current_character)
+            self.game_status.onstage_role(self.game_status.current_character)
             self.game_status.main_role = self.game_status.current_character
             logger.info(f"初始化游戏主角：{self.game_status.current_character} 已初始化。")
         else:
@@ -185,8 +186,11 @@ class AIService:
             logger.info(f"{line.display_name} : 【{line.original_emotion}】{line.content}<{line.tts_content}>（{line.action_content}）")
     
     def show_current_role_memory(self):
-        logger.info(f"当前角色的记忆列表如下：")
-        logger.info(f"{self.game_status.current_character.memory}")
+        if self.game_status.current_character:
+            logger.info(f"当前角色的记忆列表如下：")
+            logger.info(f"{self.game_status.current_character.memory}")
+        else:
+            logger.error("没有当前绑定的角色。")
 
     async def start_script(self, script_name: str | None = None):
         """

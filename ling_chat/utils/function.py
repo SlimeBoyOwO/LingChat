@@ -524,8 +524,8 @@ class Function:
     def sys_prompt_builder(user_name:str,
                            character_name:str,
                            ai_prompt:str,
-                           ai_prompt_example:str,
-                           ai_prompt_example_old:str) -> str:
+                           ai_prompt_example:str|None,
+                           ai_prompt_example_old:str|None) -> str:
         """
         构建系统提示词，根据是否启用翻译功能来决定使用哪种对话格式
         

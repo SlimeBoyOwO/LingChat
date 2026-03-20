@@ -24,3 +24,5 @@ export const uploadBackgroundImage = async (file: File): Promise<BackgroundImage
     },
   })
 }
+
+// TODO: 新增设置背景图片方法

@@ -59,6 +59,9 @@ class ScriptManager:
         if script is None:
             logger.error("剧本文件不存在")
             return False
+        
+        # TODO：检测是否有额外信息，如current_chapter和event_squenece已经有信息了，则从特定的章节特定的位置开始
+
         self.current_script = script
         self.is_running = True
 
