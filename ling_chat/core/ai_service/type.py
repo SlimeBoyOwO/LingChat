@@ -188,3 +188,12 @@ class ScriptStatus:
 
     # 剧本包含的变量
     vars: dict = field(default_factory=dict)
+
+    # 剧本变量操作
+    def set_variable(self, key: str, value: Any):
+        """设置剧本变量"""
+        self.vars[key] = value
+
+    def get_variable(self, key: str, default: Any = None) -> Any:
+        """获取剧本变量"""
+        return self.vars.get(key, default)
