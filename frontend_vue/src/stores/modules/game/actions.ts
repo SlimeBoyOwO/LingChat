@@ -64,7 +64,7 @@ export const actions = {
 
       if (gameInfo.background !== '') uiStore.currentBackground = gameInfo.background
       if (gameInfo.background_effect !== '')
-        uiStore.currentBackgroundEffect = gameInfo.background_effect
+        uiStore.setBackgroundEffect(gameInfo.background_effect)
       if (gameInfo.background_music !== '')
         uiStore.currentBackgroundMusic = gameInfo.background_music
 

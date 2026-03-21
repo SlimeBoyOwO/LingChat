@@ -75,7 +75,6 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useStorage } from '@vueuse/core'
 import { Button, Slider } from '../../base'
 import { MenuItem, MenuPage } from '../../ui'
 import {
@@ -85,24 +84,28 @@ import {
   setCurrentBackgroundMusic,
 } from '../../../api/services/music'
 import { useUIStore } from '../../../stores/modules/ui/ui'
+import { useSettingsStore } from '../../../stores/modules/settings'
 
 const uiStore = useUIStore()
+const settingsStore = useSettingsStore()
 
-const characterVolume = useStorage('lingchat-character-volume', 50)
-const bubbleVolume = useStorage('lingchat-bubble-volume', 50)
-const backgroundVolume = useStorage('lingchat-background-volume', 50)
-const achievementVolume = useStorage('lingchat-achievement-volume', 50)
-
-watch(
-  [characterVolume, bubbleVolume, backgroundVolume, achievementVolume],
-  ([charVol, bubVol, bgVol, achVol]) => {
-    uiStore.characterVolume = charVol
-    uiStore.bubbleVolume = bubVol
-    uiStore.backgroundVolume = bgVol
-    uiStore.achievementVolume = achVol
-  },
-  { immediate: true },
-)
+// 使用 computed 绑定 settings store 的音量值
+const characterVolume = computed({
+  get: () => settingsStore.characterVolume,
+  set: (val: number) => settingsStore.update('audio.characterVolume', val),
+})
+const bubbleVolume = computed({
+  get: () => settingsStore.bubbleVolume,
+  set: (val: number) => settingsStore.update('audio.bubbleVolume', val),
+})
+const backgroundVolume = computed({
+  get: () => settingsStore.backgroundVolume,
+  set: (val: number) => settingsStore.update('audio.backgroundVolume', val),
+})
+const achievementVolume = computed({
+  get: () => settingsStore.achievementVolume,
+  set: (val: number) => settingsStore.update('audio.achievementVolume', val),
+})
 
 const characterTestPlayer = ref<HTMLAudioElement | null>(null)
 const bubbleTestPlayer = ref<HTMLAudioElement | null>(null)
@@ -146,34 +149,36 @@ const syncCurrentMusicName = () => {
 }
 
 const updateCharacterVolume = (value: number) => {
-  characterVolume.value = value
+  settingsStore.update('audio.characterVolume', value)
   if (characterTestPlayer.value) {
     characterTestPlayer.value.volume = value / 100
   }
 }
 
 const updateBubbleVolume = (value: number) => {
-  bubbleVolume.value = value
+  settingsStore.update('audio.bubbleVolume', value)
   if (bubbleTestPlayer.value) {
     bubbleTestPlayer.value.volume = value / 100
   }
 }
 
 const updateBackgroundVolume = (value: number) => {
-  uiStore.backgroundVolume = value
+  settingsStore.update('audio.backgroundVolume', value)
+  if (backgroundAudioPlayer.value) {
+    backgroundAudioPlayer.value.volume = value / 100
+  }
 }
 
 const updateAchievementVolume = (value: number) => {
-  achievementVolume.value = value
+  settingsStore.update('audio.achievementVolume', value)
   if (achievementTestPlayer.value) {
     achievementTestPlayer.value.volume = value / 100
   }
 }
 
 watch(
-  () => uiStore.backgroundVolume,
+  () => settingsStore.backgroundVolume,
   (newVolume) => {
-    backgroundVolume.value = newVolume
     if (backgroundAudioPlayer.value) {
       backgroundAudioPlayer.value.volume = newVolume / 100
     }
