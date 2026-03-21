@@ -1,6 +1,6 @@
 from typing import Optional, List, Dict, Set
 
-from ling_chat.game_database.models import GameLine
+from ling_chat.game_database.models import GameLine, LineAttribute
 from ling_chat.core.ai_service.game_system.memory_builder import MemoryBuilder
 from ling_chat.core.ai_service.game_system.persistent_memory_system import PersistentMemorySystem
 from ling_chat.game_database.managers.role_manager import RoleManager
@@ -92,6 +92,14 @@ class GameRoleManager:
 
             # 构建记忆（裁剪历史窗口，避免上下文无限膨胀）
             sliced_lines = source_lines[slice_start_idx:] if slice_start_idx > 0 else source_lines
+            # 额外寻找本角色的第一个 SYSTEM 属性的台词，防止人设丢失
+            system_prompt = self._find_first_system_prompt(source_lines, rid)
+            # 把 system_prompt 移动到 sliced_lines 的开头
+            if system_prompt:
+                sliced_lines = [system_prompt] + sliced_lines
+            else:
+                logger.warning(f"MemoryBank: role_id={rid} 没有找到 SYSTEM 属性的台词，可能人设丢失")
+
             builder = MemoryBuilder(target_role_id=rid)
             built = builder.build(sliced_lines)
 
@@ -104,6 +112,12 @@ class GameRoleManager:
         # 【重要改动】去掉了自动删除 "stale" 角色的逻辑。
         # 角色加载后通常应该保留直到场景结束，频繁删除重建会浪费算力。
         # 如果真的需要清理内存，应该提供一个显式的 .clear_cache() 方法。
+    
+    def _find_first_system_prompt(self, source_lines: List[GameLine], role_id: int) -> Optional[GameLine]:
+        for line in source_lines:
+            if line.attribute == LineAttribute.SYSTEM and line.sender_role_id == role_id:
+                return line
+        return None
 
     def _get_memory_bank_system(self, role: GameRole) -> PersistentMemorySystem:
         if role.role_id is None:
