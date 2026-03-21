@@ -84,7 +84,7 @@
         icon="update"
         @click="() => switchTab('update', 'updateBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'update' }"
-        ><p class="hidden xl:block">检查更新</p></Button
+        ><p class="hidden xl:block">更新（实验）</p></Button
       >
     </nav>
     <Icon

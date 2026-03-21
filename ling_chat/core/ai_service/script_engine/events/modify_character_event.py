@@ -48,9 +48,9 @@ class ModifyCharacterEvent(BaseEvent):
 
         if action:
             if action == "show_character":
-                self.game_status.present_roles.add(role)
+                self.game_status.onstage_role(role)
             elif action == "hide_character":
-                self.game_status.present_roles.remove(role)
+                self.game_status.offstage_role(role)
 
             params['action'] = action
         

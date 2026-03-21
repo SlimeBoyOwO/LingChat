@@ -2,6 +2,8 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select, desc, func
+from ling_chat.core.ai_service.game_system.game_status import GameStatus
+from ling_chat.core.ai_service.type import ScriptStatus
 from ling_chat.game_database.database import engine
 from ling_chat.game_database.models import GameLine, LineBase, Save, Line, RunningScript, LinePerception
 from ling_chat.game_database.converts import lines_to_game_lines
@@ -12,6 +14,12 @@ class SaveManager:
         """通过ID获取存档（简单版）"""
         with Session(engine, expire_on_commit=False) as session:
             return session.get(Save, save_id)
+    
+    @staticmethod
+    def get_running_script_by_id(running_script_id: int) -> Optional[RunningScript]:
+        """通过ID获取运行中的剧本"""
+        with Session(engine, expire_on_commit=False) as session:
+            return session.get(RunningScript, running_script_id)
         
     @staticmethod
     def create_save(user_id: int, title: str) -> Save:
@@ -74,6 +82,52 @@ class SaveManager:
             session.refresh(save)
             
             return save
+    
+    @staticmethod
+    def update_save_status(save_id: int, game_status: GameStatus):
+        """
+        更新存档状态
+
+        Args:
+            game_status: 游戏状态
+
+        Returns:
+            更新后的Save对象
+
+        Raises:
+            ValueError: 存档不存在
+        """
+        with Session(engine, expire_on_commit=False) as session:
+            save = session.get(Save, save_id)
+            if not save:
+                raise ValueError("Save not found")
+
+            # 优雅地将GameStatus中的指定字段序列化为JSON
+            save.status = {
+                # 在场角色列表：只保存角色ID
+                "present_role_ids": [role.role_id for role in game_status.present_roles if role.role_id is not None],
+                # 当前对话角色：只保存角色ID
+                "current_character_id": game_status.current_character.role_id if game_status.current_character else None,
+                # 背景信息
+                "background": game_status.background,
+                # BGM信息
+                "background_music": game_status.background_music,
+                # 背景特效
+                "background_effect": game_status.background_effect,
+                # 全局变量信息
+                "global_variables": game_status.global_variables,
+                # 记录已经玩过的剧本
+                "completed_scripts": list(game_status.completed_scripts),
+                # 最后一次对话时间记录
+                "last_dialog_time": game_status.last_dialog_time.isoformat() if game_status.last_dialog_time else None
+            }
+
+            session.add(save)
+            session.commit()
+            session.refresh(save)
+
+            return save
+
         
     @staticmethod
     def update_save_title(save_id: int, title: str) -> Save:
@@ -383,7 +437,7 @@ class SaveManager:
         return SaveManager.get_line_list(save_id)[0].sender_role_id
 
     @staticmethod
-    def update_running_script(save_id: int, script_data: Dict[str, Any]):
+    def update_running_script(save_id: int, script_data: ScriptStatus):
         """
         更新或创建运行剧本状态
         script_data 包含: script_folder, variable_info, current_chapter, event_sequence
@@ -397,13 +451,19 @@ class SaveManager:
                 # Update existing
                 script = session.get(RunningScript, save.running_script_id)
                 if script:
-                    for key, value in script_data.items():
-                        if hasattr(script, key):
-                            setattr(script, key, value)
+                    script.script_folder = script_data.folder_key
+                    script.variable_info = script_data.vars
+                    script.current_chapter = script_data.current_chapter_key
+                    script.event_sequence = script_data.current_event_process
+
                     session.add(script)
             else:
                 # Create new
-                script = RunningScript(save_id=save_id, **script_data)
+                script = RunningScript(save_id=save_id, 
+                                       script_folder=script_data.folder_key,
+                                       current_chapter=script_data.current_chapter_key, 
+                                       event_sequence=script_data.current_event_process, 
+                                       variable_info=script_data.vars)
                 session.add(script)
                 session.commit()
                 session.refresh(script)

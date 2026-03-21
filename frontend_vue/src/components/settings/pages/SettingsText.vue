@@ -15,11 +15,19 @@
         <Text :speed="textSpeedSample">Ling Chat: 测试文本显示速度</Text>
       </MenuItem>
 
-      <MenuItem title="页面切换动画" size="small">
+      <MenuItem title="启用永久记忆" size="small">
+        <div v-for="setting in settings" :key="setting.key" class="">
+          <!-- 使用 SettingItem 组件渲染不同类型的输入控件 -->
+          <Toggle
+            :checked="setting.value.toLowerCase() === 'true'"
+            @change="handleMemorySettingChange($event, setting)"
+          >
+            开启后记忆将会自动压缩
+          </Toggle>
+        </div>
         <template #header>
           <Star :size="20" />
         </template>
-        <Toggle @change="animateSwitch">启用动画效果</Toggle>
       </MenuItem>
 
       <MenuItem title="语音音效开关" size="small">
@@ -42,6 +50,7 @@
         </template>
         <p>DeepSeek V3</p>
       </MenuItem>
+
       <MenuItem title="返回主菜单" size="small">
         <template #header>
           <ArrowBigLeft :size="20" />
@@ -53,12 +62,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { MenuPage, MenuItem } from '../../ui'
 import { useStorage } from '@vueuse/core'
 import { Slider, Text, Toggle, Button } from '../../base'
 import { useUIStore } from '../../../stores/modules/ui/ui'
+import type { ConfigItem } from '@/api/services/config'
+import SettingItem from '@/components/base/items/SettingItem.vue'
+import { getEnvConfigByKey, saveEnvConfigSettings } from '@/api/services/config'
 import {
   Zap,
   ClipboardList,
@@ -73,13 +85,25 @@ import {
 const router = useRouter()
 const textSpeedSample = ref()
 const uiStore = useUIStore()
+const settings = ref<Record<string, ConfigItem>>({})
 
 const returnToMain = () => {
   uiStore.toggleSettings(false)
   router.push('/')
 }
 
-// 使用 VueUse 的 useStorage 持久化存储音量设置
+onMounted(() => {
+  loadConfig()
+})
+
+const loadConfig = async () => {
+  const configKeys = ['USE_PERSISTENT_MEMORY']
+
+  for (const key of configKeys) {
+    settings.value[key] = await getEnvConfigByKey(key)
+  }
+}
+
 const textSpeed = useStorage('lingchat-text-speed', 50)
 // 同步 localStorage 中的音量到 Pinia store
 watch(
@@ -101,6 +125,19 @@ const animateSwitch = (data: boolean) => {
 }
 const voiceSound = (data: boolean) => {
   uiStore.enableChatEffectSound = data
+}
+
+const handleMemorySettingChange = (checked: boolean, setting: ConfigItem) => {
+  const newValue = checked ? 'true' : 'false'
+  setting.value = newValue
+
+  console.log('changed')
+
+  const formData: Record<string, string> = {}
+  Object.entries(settings.value).forEach(([key, config]) => {
+    formData[key] = config.value
+  })
+  saveEnvConfigSettings(formData)
 }
 </script>
 
