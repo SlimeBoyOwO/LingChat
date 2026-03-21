@@ -38,7 +38,7 @@ export class TypeWriter {
     } catch (e) {
       console.warn('音频初始化失败:', e)
       const uiStore = useUIStore()
-      uiStore.enableChatEffectSound = false
+      uiStore.setEnableChatEffectSound(false)
     }
   }
 
@@ -87,7 +87,7 @@ export class TypeWriter {
   // 设置是否启用音效
   public setSoundEnabled(enabled: boolean): void {
     const uiStore = useUIStore()
-    uiStore.enableChatEffectSound = enabled
+    uiStore.setEnableChatEffectSound(enabled)
     if (enabled && !this.audioContext) {
       this.initAudio()
     }
