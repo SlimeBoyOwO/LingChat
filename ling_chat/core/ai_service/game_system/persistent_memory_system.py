@@ -34,7 +34,7 @@ class PersistentMemorySystem:
         # 多少条“新增可见台词”触发一次总结
         self.update_interval = _safe_read_int("MEMORY_UPDATE_INTERVAL", 250)
         # 总结后保留多少条“全局台词”作为上下文重叠窗口（默认 15，避免过大上下文）
-        self.recent_window = _safe_read_int("MEMORY_RECENT_WINDOW", 15)
+        self.recent_window = _safe_read_int("MEMORY_RECENT_WINDOW", 30)
 
         self.is_updating = False
         self._llm = LLMManager()

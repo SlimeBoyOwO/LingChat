@@ -59,6 +59,7 @@ htmlcov/
 node_modules/
 build/
 dist/
+ling_chat/static/frontend/
 
 
 
