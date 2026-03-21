@@ -109,7 +109,7 @@
     transform: scale(1); /* 正常大小 */
   }
   50% {
-    transform: scale(1.005); /* 轻微放大 */
+    transform: scale(1.0035); /* 轻微放大 */
   }
 }
 
