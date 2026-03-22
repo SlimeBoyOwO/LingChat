@@ -7,7 +7,7 @@ from ling_chat.core.schemas.response_models import ResponseFactory
 class BackgroundEffectEvent(BaseEvent):
     """处理音效事件"""
 
-    async def execute(self):
+    async def _execute(self):
         background_effect:str = self.event_data.get('effect', '')
         duration:float = self.event_data.get('duration', '')
 

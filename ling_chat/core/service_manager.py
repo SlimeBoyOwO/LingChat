@@ -18,6 +18,11 @@ class ServiceManager:
 
         self.user_services:dict[str, AIService] = {}  # user_id -> AIService
         self.client_mapping:dict[str, str] = {}  # client_id -> user_id
+    
+    def get_ai_service(self) -> AIService:
+        if self.ai_service is None:
+            self.ai_service = self.init_ai_service()
+        return self.ai_service
 
     def init_ai_service(self) -> AIService:
         self.ai_service = AIService(self.get_user_settings(1))

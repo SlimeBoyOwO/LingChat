@@ -9,7 +9,7 @@ from ling_chat.game_database.models import LineAttribute, LineBase
 class ChoiceEvent(BaseEvent):
     """弹出选项事件"""
 
-    async def execute(self):
+    async def _execute(self):
         options = self.event_data.get('options', [])
         allow_free = self.event_data.get('allow_free', False)
         choices = []
@@ -27,17 +27,15 @@ class ChoiceEvent(BaseEvent):
         # TODO: 等待更优雅的发言思考者判断重构
         await message_broker.publish(self.client_id, (ResponseFactory.create_thinking(True).model_dump()))
 
-        for option in options: 
-            if option.get('text', '') == choice_input:
-                await ScriptFunction.handle_actions(self.game_status, self.script_status, option.get('actions', []))
-                return
+        match = await ScriptFunction.process_options(self.game_status,self.script_status,options,choice_input)
         
-        # TODO: 处理用户输入不在选项内的情况，如用 default 兜底
-        user_input = choice_input
-        if user_input:
-            self.game_status.add_line(
-                LineBase(content=user_input,attribute=LineAttribute.USER,display_name=self.game_status.player.user_name)
-            )
+        # 如果没有匹配的选项，则直接把用户输入的本台词加入到对话中
+        if not match:
+            user_input = choice_input
+            if user_input:
+                self.game_status.add_line(
+                    LineBase(content=user_input,attribute=LineAttribute.USER,display_name=self.game_status.player.user_name)
+                )
         
 
     @classmethod

@@ -10,7 +10,7 @@ from ling_chat.game_database.models import LineAttribute, LineBase
 class AIDialogueEvent(BaseEvent):
     """处理AI对话事件"""
 
-    async def execute(self):
+    async def _execute(self):
         character = self.event_data.get('character', '')
         prompt = self.event_data.get('prompt', '')
 

@@ -8,7 +8,7 @@ from ling_chat.core.schemas.response_models import ResponseFactory
 class ModifyCharacterEvent(BaseEvent):
     """处理角色修改事件"""
 
-    async def execute(self):
+    async def _execute(self):
         character:str = self.event_data.get('character', '')
         emotion = self.event_data.get('emotion', '')
         duration = self.event_data.get('duration', 1.0)
