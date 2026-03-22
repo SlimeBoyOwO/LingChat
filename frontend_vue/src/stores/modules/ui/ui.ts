@@ -34,6 +34,7 @@ interface UIState {
   enableChatEffectSound: boolean
 
   currentBackground: string
+  currentBackgroundEffect: string
   currentBackgroundMusic: string
   bgMusicPaused: boolean
   bgMusicStoped: boolean
@@ -81,6 +82,9 @@ export const useUIStore = defineStore('ui', {
     currentSoundEffect: 'None',
     currentAvatarAudio: 'None',
     autoMode: false,
+
+    typeWriterSpeed: 50,
+    enableChatEffectSound: false,
 
     // Schedule 相关状态
     scheduleView: 'schedule_groups',
