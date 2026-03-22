@@ -3,7 +3,6 @@ import time
 import numpy as np
 from collections import deque
 from PIL import Image
-from pynput import keyboard, mouse
 import imagehash
 import difflib
 from mss import mss
@@ -12,6 +11,16 @@ from rapidocr_onnxruntime import RapidOCR
 from ling_chat.core.ai_service.proactive_system.interest_manager import InterestManager
 from ling_chat.core.logger import logger
 from ling_chat.core.ai_service.proactive_system.type import UserState
+
+# 尝试导入 pynput，无图形界面时优雅降级
+try:
+    from pynput import keyboard, mouse
+    PYNPUT_AVAILABLE = True
+except Exception as e:
+    logger.warning(f"pynput 不可用（无图形界面）: {e}，键鼠监控功能已禁用")
+    keyboard = None
+    mouse = None
+    PYNPUT_AVAILABLE = False
 
 class UserActivityMonitor(threading.Thread):
     """负责监听键鼠操作，分析用户当前的活动状态 (APM/Work/Game)"""
@@ -23,27 +32,34 @@ class UserActivityMonitor(threading.Thread):
         self.mouse_distance = 0.0
         self.last_mouse_pos = None
         self.lock = threading.Lock()
-        
+
         # 游戏常用键
         self.game_keys = {'w', 'a', 's', 'd', 'up', 'down', 'left', 'right', 'space'}
-        
+
         # 状态缓存
         self.latest_result = {
-            "state": UserState.IDLE, 
-            "mod": 0, 
-            "desc": "初始化中"
+            "state": UserState.IDLE,
+            "mod": 0,
+            "desc": "初始化中" if PYNPUT_AVAILABLE else "无图形界面，键鼠监控已禁用"
         }
 
     def run(self):
-        self.running = True
-        self.listener_k = keyboard.Listener(on_press=self._on_key)
-        self.listener_m = mouse.Listener(on_click=self._on_click, on_move=self._on_move)
-        self.listener_k.start()
-        self.listener_m.start()
+        if not PYNPUT_AVAILABLE:
+            logger.info("键鼠监控已跳过：无图形界面支持")
+            return
 
-        while self.running:
-            time.sleep(self.window_seconds)
-            self._analyze()
+        self.running = True
+        try:
+            self.listener_k = keyboard.Listener(on_press=self._on_key)
+            self.listener_m = mouse.Listener(on_click=self._on_click, on_move=self._on_move)
+            self.listener_k.start()
+            self.listener_m.start()
+
+            while self.running:
+                time.sleep(self.window_seconds)
+                self._analyze()
+        except Exception as e:
+            logger.error(f"键鼠监控启动失败：{e}")
 
     def stop(self):
         self.running = False
@@ -65,6 +81,8 @@ class UserActivityMonitor(threading.Thread):
                 self.event_queue.append((time.time(), 'click', None))
 
     def _on_move(self, x, y):
+        if not PYNPUT_AVAILABLE:
+            return
         with self.lock:
             if self.last_mouse_pos:
                 self.mouse_distance += abs(x - self.last_mouse_pos[0]) + abs(y - self.last_mouse_pos[1])
