@@ -181,6 +181,8 @@ watch(
 
     if (backgroundMusicPlayer.value) {
       // 如果没有新音乐或为None，也执行平滑淡出停止
+      uiStore.bgMusicPaused = false
+      uiStore.bgMusicStoped = false
       switchBackgroundMusic(backgroundMusicPlayer.value, newAudioUrl)
     }
   },
@@ -191,6 +193,29 @@ watch(
   (newVolume) => {
     if (backgroundMusicPlayer.value) {
       backgroundMusicPlayer.value.volume = newVolume / 100
+    }
+  },
+)
+
+watch(
+  () => uiStore.bgMusicPaused,
+  (newVolume) => {
+    if (backgroundMusicPlayer.value && newVolume) {
+      backgroundMusicPlayer.value.pause()
+    } else {
+      if (backgroundMusicPlayer.value.paused) {
+        backgroundMusicPlayer.value.play()
+      }
+    }
+  },
+)
+
+watch(
+  () => uiStore.bgMusicStoped,
+  (newVar) => {
+    if (backgroundMusicPlayer.value && newVar) {
+      backgroundMusicPlayer.value.pause()
+      backgroundMusicPlayer.value.currentTime = 0
     }
   },
 )

@@ -30,8 +30,14 @@ interface UIState {
   showCharacterThinkLine: string
   showSettings: boolean
   currentSettingsTab: string
+  typeWriterSpeed: number
+  enableChatEffectSound: boolean
+
   currentBackground: string
   currentBackgroundMusic: string
+  bgMusicPaused: boolean
+  bgMusicStoped: boolean
+
   currentSoundEffect: string
   currentAvatarAudio: string
   autoMode: boolean
@@ -66,7 +72,12 @@ export const useUIStore = defineStore('ui', {
     showSettings: false,
     currentSettingsTab: 'text',
     currentBackground: '@/assets/images/default_bg.jpg',
+    currentBackgroundEffect: 'StarField',
+
     currentBackgroundMusic: 'None',
+    bgMusicPaused: false,
+    bgMusicStoped: false,
+
     currentSoundEffect: 'None',
     currentAvatarAudio: 'None',
     autoMode: false,

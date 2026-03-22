@@ -45,5 +45,15 @@ def get_parser():
         default=None,
         help="输出 CSV 文件路径（默认为当前工作目录下的 ./emotion_labels.csv）"
     )
+    export_parser.add_argument(
+        "--full",
+        action="store_true",
+        help="全部导出模式：导出sentence、text和label三列，不进行情感排除，去重基于sentence字段"
+    )
+    export_parser.add_argument(
+        "--less",
+        action="store_true",
+        help="精简导出模式：只导出text和label两列，排除指定情感，去重基于text字段"
+    )
 
     return parser
