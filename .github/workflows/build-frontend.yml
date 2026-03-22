@@ -74,7 +74,8 @@ jobs:
     - name: 替换前端文件
       if: steps.changes.outputs.frontend == 'true'
       run: |
-        rm -rf ling_chat/static/frontend/*
+        # rm -rf ling_chat/static/frontend/*
+        mkdir ling_chat/static/frontend
         cp -r frontend_vue/dist/* ling_chat/static/frontend/
 
     - name: 提交构建结果
@@ -82,7 +83,7 @@ jobs:
       run: |
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
         git config --local user.name "github-actions[bot]"
-        git add ling_chat/static/frontend/
+        git add -f ling_chat/static/frontend/
 
         if git diff --staged --quiet; then
           echo "没有文件需要提交"

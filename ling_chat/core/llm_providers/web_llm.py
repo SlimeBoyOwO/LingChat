@@ -1,6 +1,6 @@
 from typing import AsyncGenerator, Dict, List
 
-from openai import OpenAI
+from openai import AsyncOpenAI, OpenAI
 import os
 
 from ling_chat.core.llm_providers.base import BaseLLMProvider
@@ -26,7 +26,8 @@ class WebLLMProvider(BaseLLMProvider):
             self.client = None
             return
 
-        self.client = OpenAI(api_key=api_key, base_url=base_url)
+        self.client = OpenAI(api_key=api_key, base_url=base_url) 
+        self.async_client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         logger.info("通用网络大模型初始化完毕！" )
 
     def initialize_client(self):
@@ -57,10 +58,8 @@ class WebLLMProvider(BaseLLMProvider):
     async def generate_stream_response(self, messages: List[Dict]) -> AsyncGenerator[str, None]:
         """
         生成流式响应
-        :param messages: 消息列表
-        :return: 返回一个生成器，每次迭代返回一个chunk
         """
-        if self.client is None:
+        if self.async_client is None:
             error_message = "通用网络大模型未初始化，请检查配置"
             logger.error(error_message)
             yield error_message
@@ -68,7 +67,8 @@ class WebLLMProvider(BaseLLMProvider):
 
         try:
             logger.debug(f"正在对通用网络大模型发送流式请求: {self.model_type}")
-            stream = self.client.chat.completions.create(
+            
+            stream = await self.async_client.chat.completions.create(
                 model=self.model_type,
                 messages=messages,
                 temperature=self.temperature,
@@ -76,7 +76,7 @@ class WebLLMProvider(BaseLLMProvider):
                 stream=True
             )
 
-            for chunk in stream:
+            async for chunk in stream:
                 if chunk.choices[0].delta.content is not None:
                     yield chunk.choices[0].delta.content
 

@@ -1,7 +1,8 @@
 import asyncio
 import time
-from typing import Dict
+from typing import AsyncGenerator, Dict, Any
 
+from ling_chat.core.logger import logger
 from ling_chat.utils.function import Function
 
 
@@ -11,7 +12,7 @@ class StreamProducer:
     消费 LLM 数据流，使用您提供的精确逻辑将其解析为句子，并放入队列中。
     """
     def __init__(self,
-                 llm_stream,
+                 llm_stream: AsyncGenerator[str, Any],
                  sentence_queue: asyncio.Queue,
                  publish_events: Dict[int, asyncio.Event]):
         self.llm_stream = llm_stream
@@ -34,7 +35,7 @@ class StreamProducer:
         sentence = ""
 
         # 打印开始提示
-        print("\n=== AI回复流式输出 ===")
+        logger.info("\n=== AI回复流式输出 ===")
 
         try:
             async for chunk in ai_response_stream:

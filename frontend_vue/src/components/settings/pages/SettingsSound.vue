@@ -64,12 +64,7 @@
     <audio ref="characterTestPlayer"></audio>
     <audio ref="bubbleTestPlayer"></audio>
     <audio ref="achievementTestPlayer"></audio>
-    <audio
-      ref="backgroundAudioPlayer"
-      loop
-      @timeupdate="updateMusicState"
-      @ended="onMusicEnd"
-    ></audio>
+    <audio ref="backgroundAudioPlayer" loop></audio>
   </MenuPage>
 </template>
 
@@ -119,7 +114,6 @@ interface Music {
 
 const musicList = ref<Music[]>([])
 const currentMusicName = ref('未选择音乐')
-const isMusicPlaying = ref(false)
 
 const selectedFile = ref<File | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -233,7 +227,7 @@ const deleteMusic = async (music: Music) => {
         backgroundAudioPlayer.value.currentTime = 0
         backgroundAudioPlayer.value.src = ''
       }
-      isMusicPlaying.value = false
+      uiStore.bgMusicPaused = true
     }
 
     await loadMusicList()
@@ -273,17 +267,18 @@ const uploadMusic = async () => {
   }
 }
 
-const playPauseButtonText = computed(() => (isMusicPlaying.value ? '⏸ 暂停' : '▶ 播放'))
+const playPauseButtonText = computed(() => (!uiStore.bgMusicPaused ? '⏸ 暂停' : '▶ 播放'))
 
 const playMusic = async (music: Music) => {
-  if (!backgroundAudioPlayer.value) return
-
   const musicUrl = toMusicUrl(music.url)
-  backgroundAudioPlayer.value.src = musicUrl
-  backgroundAudioPlayer.value.play().catch((e) => console.error('播放音乐失败:', e))
 
   currentMusicName.value = music.name
-  isMusicPlaying.value = true
+  if (uiStore.currentBackgroundMusic === musicUrl) {
+    // 检测是否暂停，暂停的话就重新播放，否则就暂停
+    if (uiStore.bgMusicPaused) {
+      uiStore.bgMusicPaused = false
+    }
+  }
   uiStore.currentBackgroundMusic = musicUrl
 
   try {
@@ -294,24 +289,15 @@ const playMusic = async (music: Music) => {
 }
 
 const handlePlayPause = () => {
-  if (!backgroundAudioPlayer.value) return
-
-  if (isMusicPlaying.value) {
-    backgroundAudioPlayer.value.pause()
-  } else if (!backgroundAudioPlayer.value.src && musicList.value.length > 0) {
-    void playMusic(musicList.value[0] || { name: '', url: '' })
+  if (!uiStore.bgMusicPaused) {
+    uiStore.bgMusicPaused = true
   } else {
-    backgroundAudioPlayer.value.play().catch((e) => console.error('恢复播放失败:', e))
+    uiStore.bgMusicPaused = false
   }
-
-  isMusicPlaying.value = !backgroundAudioPlayer.value.paused
 }
 
 const handleStop = () => {
-  if (!backgroundAudioPlayer.value) return
-  backgroundAudioPlayer.value.pause()
-  backgroundAudioPlayer.value.currentTime = 0
-  isMusicPlaying.value = false
+  uiStore.bgMusicStoped = true
 }
 
 const triggerFileUpload = () => {
@@ -325,15 +311,6 @@ const handleFileSelect = (event: Event) => {
   } else {
     selectedFile.value = null
   }
-}
-
-const updateMusicState = () => {
-  if (!backgroundAudioPlayer.value) return
-  isMusicPlaying.value = !backgroundAudioPlayer.value.paused
-}
-
-const onMusicEnd = () => {
-  isMusicPlaying.value = false
 }
 
 onMounted(async () => {

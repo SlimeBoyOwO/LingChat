@@ -30,7 +30,15 @@ class NoCacheStaticFiles(StaticFiles):
 
 # ✅ 托管所有静态资源（保持原有路径结构）
 # 注意：这里改为返回 StaticFiles 实例，由上层 app.mount() 调用
+# 如果目录不存在则返回 None，表示仅 API 模式
+def is_frontend_available() -> bool:
+    """检查前端目录是否存在"""
+    return frontend_path.exists()
+
+
 def get_static_files():
+    if not is_frontend_available():
+        return None
     return NoCacheStaticFiles(directory=frontend_path)
 
 
