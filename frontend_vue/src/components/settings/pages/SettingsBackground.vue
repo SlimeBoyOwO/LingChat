@@ -67,10 +67,9 @@ onMounted(async () => {
   try {
     await refreshBackground()
 
-    // 检查本地存储中是否有已选背景
-    const savedBg = localStorage.getItem('selectedBackground')
-    if (savedBg) {
-      selectBackground(savedBg)
+    // 检查 uiStore 中是否有已选背景
+    if (uiStore.currentBackground && uiStore.currentBackground !== '@/assets/images/default_bg.jpg') {
+      selectBackground(uiStore.currentBackground)
     } else if (backgroundList.value.length > 0) {
       // 随机选择一个背景
       const randomIndex = Math.floor(Math.random() * backgroundList.value.length)
@@ -164,12 +163,12 @@ async function handleFileUpload(event: Event): Promise<void> {
 
 async function updateParticle(value: string): Promise<void> {
   const prevEffect = uiStore.currentBackgroundEffect
-  uiStore.currentBackgroundEffect = value
+  uiStore.setBackgroundEffect(value)
 
   try {
     await setCurrentBackgroundEffect(value)
   } catch (error) {
-    uiStore.currentBackgroundEffect = prevEffect
+    uiStore.setBackgroundEffect(prevEffect)
     console.error('Failed to save selected background effect:', error)
   }
 }
