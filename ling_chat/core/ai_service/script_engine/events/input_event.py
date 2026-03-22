@@ -9,7 +9,7 @@ from ling_chat.game_database.models import LineAttribute, LineBase
 class InputEvent(BaseEvent):
     """处理输入对话信息事件"""
 
-    async def execute(self):
+    async def _execute(self):
         hint: str = self.event_data.get('hint', '')
         duration: float = self.event_data.get('duration', 0.0)
         logger.info(f"InputEvent: {hint}")

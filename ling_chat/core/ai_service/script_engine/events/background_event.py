@@ -7,7 +7,7 @@ from ling_chat.core.schemas.response_models import ResponseFactory
 class BackgroundEvent(BaseEvent):
     """处理背景切换事件"""
 
-    async def execute(self):
+    async def _execute(self):
         image = self.event_data.get('imagePath', '')
         duration = self.event_data.get('duration', 1.0)
 

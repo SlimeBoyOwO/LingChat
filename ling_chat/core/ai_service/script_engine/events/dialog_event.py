@@ -11,7 +11,7 @@ from ling_chat.utils.function import Function
 class DialogueEvent(BaseEvent):
     """处理对话事件"""
 
-    async def execute(self):
+    async def _execute(self):
         character = self.event_data.get('character', '')
         text = self.event_data.get('text', '')
 

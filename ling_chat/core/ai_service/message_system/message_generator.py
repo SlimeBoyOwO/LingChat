@@ -55,7 +55,8 @@ class MessageGenerator:
             if sentence_segments[0].get("japanese_text") == "":
                 await self.translator.translate_ai_response(sentence_segments)
             else:
-                await self.game_status.current_character.voice_maker.generate_voice_files(sentence_segments)
+                if self.game_status.current_character:
+                    await self.game_status.current_character.voice_maker.generate_voice_files(sentence_segments)
             end_time = time.perf_counter()
             # 更新情绪片段列表
             emotion_segments.extend(sentence_segments)
@@ -193,7 +194,9 @@ class MessageGenerator:
             # 我们在finally块中等待所有任务以进行清理
 
             # 6. 后续处理
-            ai_name = self.game_status.current_character.display_name
+            ai_name = ""
+            if self.game_status.current_character:
+                ai_name = self.game_status.current_character.display_name
             if not ai_name: ai_name = "Nameless"
             if accumulated_response:
 

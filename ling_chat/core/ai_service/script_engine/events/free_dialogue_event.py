@@ -10,7 +10,7 @@ from ling_chat.game_database.models import LineAttribute, LineBase
 class FreeDialogueEvent(BaseEvent):
     """自由对话事件"""
 
-    async def execute(self):
+    async def _execute(self):
         rounds: int = 0
 
         character: str = self.event_data.get('character', 'default')

@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional, Tuple
 
 from ling_chat.core.ai_service.exceptions import RoleNotFoundError
 from ling_chat.core.ai_service.game_system.game_status import GameStatus
@@ -44,6 +44,29 @@ class ScriptFunction:
             return ""
         
     @staticmethod
+    async def process_options(game_status:GameStatus, script_status:ScriptStatus, options: list[dict], input: Optional[str] = None) -> bool:
+        """匹配选项并执行actions，如果有匹配的则返回 True，否则返回 False"""
+        for option in options: 
+            actions = option.get('actions', [])
+            if actions.empty():
+                continue
+
+            # 基础匹配，输入与选项文本相同
+            if input and option.get('text', '') == input:
+                await ScriptFunction.handle_actions(game_status, script_status, actions)
+                return True
+            
+            # 正则表达式匹配
+            if option.get('condition',""):
+                condition = option.get('condition',"")
+                condition_met = ScriptFunction.evaluate(condition, script_status.vars)
+
+                if condition_met:
+                    await ScriptFunction.handle_actions(game_status, script_status, actions)
+                    return True
+        return False
+        
+    @staticmethod
     async def handle_actions(game_status:GameStatus, script_status:ScriptStatus, actions: list[dict]) -> None:
         """处理脚本中的动作"""
         # 根据action类型执行相应的操作
@@ -53,7 +76,26 @@ class ScriptFunction:
                 game_status.add_line(
                     LineBase(content=user_input,attribute=LineAttribute.USER,display_name=game_status.player.user_name)
                 )
+            elif action.get({"type"}) == "set_var":
+                content = action.get("content","")
+                op, var_name, value = ScriptFunction.parse_variable_action(content)
+                if op is None:
+                    logger.error(f"无法解析设置变量运算符: {content}")
+                    return
+                
+                if var_name is None:
+                    logger.error(f"操作没有指定变量: {content}")
+                    return
 
+                current_val = script_status.get_variable(var_name)
+
+                try:
+                    new_val = ScriptFunction.apply_variable_action(op, current_val, value)
+                except Exception as e:
+                    logger.error(f"执行设置变量操作 '{content}' 时出错: {e}")
+                    return
+
+                script_status.set_variable(var_name, new_val)
 
     @staticmethod
     def extract_user_input(message: Dict[str, Any]) -> str:
@@ -90,6 +132,37 @@ class ScriptFunction:
             if extra_user_message != "": user_message += extra_user_message
         
         return user_message
+    
+    @staticmethod
+    def evaluate(expr: str, variables: dict) -> bool:
+        """
+        对表达式 expr 求值，返回布尔值。
+        使用安全的 eval 包装，只允许访问 variables 中的变量。
+        """
+        if not expr:
+            return True
+
+        # 构建安全的全局和局部命名空间
+        safe_globals = {
+            "__builtins__": {},  # 禁用所有内置函数
+            "True": True,
+            "False": False,
+            "None": None,
+        }
+        safe_locals = variables.copy()
+
+        try:
+            result = eval(expr, safe_globals, safe_locals)
+            return bool(result)
+        except NameError as e:
+            logger.warning(f"表达式 '{expr}' 中的变量未定义: {e}")
+            return False
+        except SyntaxError as e:
+            logger.error(f"表达式 '{expr}' 语法错误: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"表达式求值出错: {expr} - {e}")
+            return False
 
 
     @staticmethod
@@ -196,3 +269,80 @@ class ScriptFunction:
                 memory.append({"role": "user", "content": final_message})
 
             last_character = current_character
+    
+    @staticmethod
+    def match_ai_response_options(ai_response: str, options: List[Dict]) -> Optional[str]:
+        """
+        匹配 AI 回复与选项名称，返回对应的 next 或 None。
+        """
+        ai_response_lower = ai_response.strip().lower()
+        for opt in options:
+            name = opt.get("name", "").strip().lower()
+            if name and name == ai_response_lower:
+                return opt.get("next")
+        return None
+
+    @staticmethod
+    def parse_variable_action(action: str) -> Tuple[Optional[str], Optional[str], Any]:
+        """
+        解析变量操作字符串，返回 (操作符, 变量名, 值)
+        操作符: 'assign', 'add', 'sub'
+        如果解析失败，返回 (None, None, None)
+        """
+        import re
+
+        action = action.strip()
+        match = re.match(r"^([a-zA-Z_][a-zA-Z0-9_]*)\s*([+\-]?=)\s*(.+)$", action)
+        if not match:
+            return None, None, None
+
+        var_name = match.group(1)
+        operator = match.group(2)
+        value_str = match.group(3).strip()
+        value = ScriptFunction.parse_value(value_str)
+
+        if operator == "=":
+            return "assign", var_name, value
+        elif operator == "+=":
+            return "add", var_name, value
+        elif operator == "-=":
+            return "sub", var_name, value
+        else:
+            return None, None, None
+
+    @staticmethod
+    def parse_value(s: str) -> Any:
+        """将字符串转换为 Python 对象（bool、数字、字符串）。"""
+        s_lower = s.lower()
+        if s_lower == "true":
+            return True
+        if s_lower == "false":
+            return False
+
+        try:
+            if "." in s:
+                return float(s)
+            else:
+                return int(s)
+        except ValueError:
+            pass
+
+        if (s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'")):
+            return s[1:-1]
+
+        return s
+
+    @staticmethod
+    def apply_variable_action(op: str, current_val: Any, value: Any) -> Any:
+        """
+        根据操作符应用变量操作，返回新值。
+        op: 'assign', 'add', 'sub'
+        """
+        if op == "assign":
+            return value
+        elif op == "add":
+            return (current_val + value) if current_val is not None else value
+        elif op == "sub":
+            return (current_val - value) if current_val is not None else -value
+        else:
+            raise ValueError(f"未知的操作符: {op}")
