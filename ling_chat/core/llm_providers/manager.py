@@ -67,4 +67,3 @@ class LLMManager:
     async def process_message_stream(self, messages: List[Dict]):
         async for chunk in self.provider.generate_stream_response(messages):
             yield chunk
-            await asyncio.sleep(0.05)  # 关键：在每个chunk后让出控制权
