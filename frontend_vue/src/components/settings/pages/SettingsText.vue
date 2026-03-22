@@ -16,7 +16,7 @@
       </MenuItem>
 
       <MenuItem title="启用永久记忆" size="small">
-        <div v-for="setting in settings" :key="setting.key" class="">
+        <div v-for="setting in envSettings" :key="setting.key" class="">
           <!-- 使用 SettingItem 组件渲染不同类型的输入控件 -->
           <Toggle
             :checked="setting.value.toLowerCase() === 'true'"
@@ -62,30 +62,28 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { MenuPage, MenuItem } from '../../ui'
-import { useStorage } from '@vueuse/core'
 import { Slider, Text, Toggle, Button } from '../../base'
 import { useUIStore } from '../../../stores/modules/ui/ui'
+import { useSettingsStore } from '../../../stores/modules/settings'
 import type { ConfigItem } from '@/api/services/config'
-import SettingItem from '@/components/base/items/SettingItem.vue'
 import { getEnvConfigByKey, saveEnvConfigSettings } from '@/api/services/config'
 import {
   Zap,
   ClipboardList,
   Star,
   Earth,
-  SquareTerminal,
   Settings,
   ArrowBigLeft,
   Rss,
 } from 'lucide-vue-next'
 
 const router = useRouter()
-const textSpeedSample = ref()
 const uiStore = useUIStore()
-const settings = ref<Record<string, ConfigItem>>({})
+const settingsStore = useSettingsStore()
+const envSettings = ref<Record<string, ConfigItem>>({})
 
 const returnToMain = () => {
   uiStore.toggleSettings(false)
@@ -98,43 +96,35 @@ onMounted(() => {
 
 const loadConfig = async () => {
   const configKeys = ['USE_PERSISTENT_MEMORY']
-
   for (const key of configKeys) {
-    settings.value[key] = await getEnvConfigByKey(key)
+    envSettings.value[key] = await getEnvConfigByKey(key)
   }
 }
 
-const textSpeed = useStorage('lingchat-text-speed', 50)
-// 同步 localStorage 中的音量到 Pinia store
-watch(
-  [textSpeed],
-  ([textSpeed]) => {
-    uiStore.typeWriterSpeed = textSpeed
-    textSpeedSample.value = textSpeed
-  },
-  { immediate: true },
-)
+// 使用 settings store 的文字速度
+const textSpeed = computed({
+  get: () => settingsStore.textSpeed,
+  set: (val: number) => settingsStore.update('text.speed', val),
+})
+
+// 文字样本速度（响应式）
+const textSpeedSample = ref<number>(settingsStore.textSpeed)
 
 const textSpeedChange = (data: number) => {
-  textSpeed.value = data
+  settingsStore.update('text.speed', data)
   textSpeedSample.value = data
-  uiStore.typeWriterSpeed = data
 }
-const animateSwitch = (data: boolean) => {
-  console.log(data)
-}
+
 const voiceSound = (data: boolean) => {
-  uiStore.enableChatEffectSound = data
+  settingsStore.update('audio.chatEffectSound', data)
 }
 
 const handleMemorySettingChange = (checked: boolean, setting: ConfigItem) => {
   const newValue = checked ? 'true' : 'false'
   setting.value = newValue
 
-  console.log('changed')
-
   const formData: Record<string, string> = {}
-  Object.entries(settings.value).forEach(([key, config]) => {
+  Object.entries(envSettings.value).forEach(([key, config]) => {
     formData[key] = config.value
   })
   saveEnvConfigSettings(formData)

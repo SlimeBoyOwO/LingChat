@@ -1,5 +1,6 @@
 // stores/ui.ts
 import { defineStore } from 'pinia'
+import { useSettingsStore } from '../settings'
 
 // 通知类型
 export type NotificationType = 'error' | 'success' | 'info' | 'warning'
@@ -33,17 +34,12 @@ interface UIState {
   enableChatEffectSound: boolean
 
   currentBackground: string
-  currentBackgroundEffect: string
   currentBackgroundMusic: string
   bgMusicPaused: boolean
   bgMusicStoped: boolean
 
   currentSoundEffect: string
   currentAvatarAudio: string
-  characterVolume: number
-  backgroundVolume: number
-  bubbleVolume: number
-  achievementVolume: number
   autoMode: boolean
 
   // Schedule 相关状态
@@ -53,12 +49,9 @@ interface UIState {
   notification: NotificationState
   tipsMap: Record<string, { title: string; message: string }>
   tipsAvailable: boolean
-  currentCharacterFolder: string
 }
 
-// localStorage key
-const STORAGE_KEY_CHARACTER_FOLDER = 'lingchat_character_folder'
-const DEFAULT_CHARACTER_FOLDER = '诺一钦灵'
+// 默认 avatar
 const DEFAULT_AVATAR = '/characters/诺一钦灵/头像.png'
 
 // 防抖相关
@@ -78,8 +71,6 @@ export const useUIStore = defineStore('ui', {
     showCharacterThinkLine: 'Ling Ling Thinking...',
     showSettings: false,
     currentSettingsTab: 'text',
-    typeWriterSpeed: 50,
-    enableChatEffectSound: true,
     currentBackground: '@/assets/images/default_bg.jpg',
     currentBackgroundEffect: 'StarField',
 
@@ -89,10 +80,6 @@ export const useUIStore = defineStore('ui', {
 
     currentSoundEffect: 'None',
     currentAvatarAudio: 'None',
-    characterVolume: 80,
-    backgroundVolume: 80,
-    bubbleVolume: 80,
-    achievementVolume: 80,
     autoMode: false,
 
     // Schedule 相关状态
@@ -109,11 +96,47 @@ export const useUIStore = defineStore('ui', {
     },
     tipsMap: {},
     tipsAvailable: false,
-    currentCharacterFolder:
-      localStorage.getItem(STORAGE_KEY_CHARACTER_FOLDER) || DEFAULT_CHARACTER_FOLDER,
   }),
 
+  getters: {
+    // 从 settings store 获取设置值（向后兼容）
+    typeWriterSpeed(): number {
+      return useSettingsStore().textSpeed
+    },
+    enableChatEffectSound(): boolean {
+      return useSettingsStore().chatEffectSound
+    },
+    currentBackgroundEffect(): string {
+      return useSettingsStore().backgroundEffect
+    },
+    characterVolume(): number {
+      return useSettingsStore().characterVolume
+    },
+    backgroundVolume(): number {
+      return useSettingsStore().backgroundVolume
+    },
+    bubbleVolume(): number {
+      return useSettingsStore().bubbleVolume
+    },
+    achievementVolume(): number {
+      return useSettingsStore().achievementVolume
+    },
+    // 角色文件夹（从 settings store 获取）
+    currentCharacterFolder(): string {
+      return useSettingsStore().characterFolder
+    },
+  },
+
   actions: {
+    // 设置背景效果（写入 settings store）
+    setBackgroundEffect(effect: string) {
+      useSettingsStore().setBackgroundEffect(effect)
+    },
+    // 设置对话音效开关（写入 settings store）
+    setEnableChatEffectSound(enabled: boolean) {
+      useSettingsStore().setChatEffectSound(enabled)
+    },
+
     toggleSettings(show: boolean) {
       this.showSettings = show
     },
@@ -130,10 +153,9 @@ export const useUIStore = defineStore('ui', {
       // 清空之前的提示
       this.tipsMap = {}
       this.tipsAvailable = false
-      this.currentCharacterFolder = folderName
 
-      // 保存到 localStorage
-      localStorage.setItem(STORAGE_KEY_CHARACTER_FOLDER, folderName)
+      // 保存到 settings store（自动持久化）
+      useSettingsStore().setCharacterFolder(folderName)
 
       // 尝试加载指定角色的 tips
       await this._loadTipsFromFolder(folderName)
@@ -377,5 +399,7 @@ export function initUIStore() {
   initialized = true
 
   const store = useUIStore()
+  const settingsStore = useSettingsStore()
+  // 使用 getter 获取角色文件夹
   store.loadCharacterTips(store.currentCharacterFolder)
 }
