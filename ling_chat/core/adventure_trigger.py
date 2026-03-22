@@ -48,6 +48,12 @@ class AdventureTriggerSystem:
             if not adv.is_adventure:
                 continue
 
+            # 注册冒险完成后的成就（预注册，完成时触发）
+            for ach_def in adv.completion_achievements:
+                ach_id = ach_def.get("id")
+                if ach_id:
+                    achievement_manager.register_achievement(ach_id, ach_def)
+
             # 查看当前解锁状态（全局）
             if AdventureManager.is_unlocked(user_id, script.folder_key):
                 continue  # 已经解锁，跳过
@@ -60,12 +66,6 @@ class AdventureTriggerSystem:
                     adventure_folder=script.folder_key,
                     character_folder=adv.bound_character_folder,
                 )
-
-                # 注册冒险完成后的成就（预注册，完成时触发）
-                for ach_def in adv.completion_achievements:
-                    ach_id = ach_def.get("id")
-                    if ach_id:
-                        achievement_manager.register_achievement(ach_id, ach_def)
 
                 newly_unlocked.append({
                     "adventure_folder": script.folder_key,

@@ -144,6 +144,7 @@ class GameRoleManager:
             else:
                 out = [{"role": "system", "content": system_addendum}] + out
 
+        """
         if short_term_prefix.strip():
             # 尽量合并进第一条 user
             for i in range(len(out)):
@@ -155,6 +156,7 @@ class GameRoleManager:
             else:
                 # 没有 user 消息时，插入一条 user
                 out.append({"role": "user", "content": short_term_prefix.strip()})
+        """
 
         # 移除连续重复的 system
         cleaned: List[Dict] = []

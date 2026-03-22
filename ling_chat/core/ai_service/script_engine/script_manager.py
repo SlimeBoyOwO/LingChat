@@ -136,10 +136,7 @@ class ScriptManager:
         while next_chapter_name != "end":
             try:
                 # 1. 加载章节，返回一个“可运行”的章节对象
-                if self._is_adventure_script(script):
-                    chapter_path  = SCRIPT_DIR / "character" / script.folder_key / "Chapters" / (next_chapter_name + ".yaml")
-                else:
-                    chapter_path = SCRIPT_DIR / script.folder_key / "Chapters" / (next_chapter_name + ".yaml")
+                chapter_path = script.script_path / "Chapters" / (next_chapter_name + ".yaml")
                 current_chapter_obj:Chapter = self._get_chapter(chapter_path, script) # 一个新的辅助方法
 
                 # 2. 命令章节运行，然后等待结果
@@ -186,7 +183,7 @@ class ScriptManager:
         """从剧本目录读取角色并在数据库中注册"""
 
         script_key = script.folder_key
-        characters_dir = SCRIPT_DIR / script_key / 'characters'
+        characters_dir = script.script_path / 'characters'
 
         if not characters_dir.exists() or not characters_dir.is_dir():
             return
@@ -235,6 +232,7 @@ class ScriptManager:
         if config is not None:
             adventure = AdventureConfig.from_dict(config.get('adventure'))
             return ScriptStatus(folder_key=script_path.name,
+                                script_path=script_path,
                                 name=config.get('script_name', 'ERROR'),
                                 description=config.get('description', 'ERROR'),
                                 intro_chapter=config.get('intro_chapter', 'ERROR'), 
@@ -316,7 +314,7 @@ class ScriptManager:
         if script is None:
             raise ScriptLoadError("没有可用的剧本，无法定位资源目录")
 
-        return SCRIPT_DIR / script.folder_key / "Assets"
+        return script.script_path / "Assets"
 
     # 兼容旧拼写（assests）
     def get_assests_dir(self) -> Path:
@@ -340,7 +338,7 @@ class ScriptManager:
         if script is None:
             raise ScriptLoadError("没有可用的剧本，无法定位角色资源目录")
 
-        char_dir = SCRIPT_DIR / script.folder_key / "characters" / character
+        char_dir = script.script_path / "characters" / character
         # 兼容大小写/不同命名
         for candidate in ("avatar", "Avatar", "avatars", "Avatars"):
             p = char_dir / candidate
@@ -358,7 +356,7 @@ class ScriptManager:
         if script is None:
             raise ScriptLoadError("剧本文件不存在")
 
-        characters_dir = SCRIPT_DIR / script.folder_key / "characters"
+        characters_dir = script.script_path / "characters"
         if not characters_dir.exists() or not characters_dir.is_dir():
             return []
             # raise ScriptLoadError(f"剧本 '{script.folder_key}' 中缺少 'characters' 文件夹")

@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field, asdict
+from pathlib import Path
 from typing import Optional, List, Dict, Any, Self
 
 from ling_chat.core.ai_service.voice_maker import VoiceMaker
@@ -175,6 +176,8 @@ class ScriptStatus:
     description: str
     intro_chapter: str
     settings: dict
+
+    script_path: Path
 
     # 新增：羁绊冒险配置
     adventure: AdventureConfig = field(default_factory=AdventureConfig)
