@@ -142,14 +142,15 @@ jobs:
           NUMERIC_VERSION=$(echo ${{ needs.prepare.outputs.tag_name }} | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
           
           if [[ "${{ matrix.platform }}" == linux* ]]; then
-            echo "yes" | uv run nuitka --clang --standalone --enable-plugins=upx --upx-binary=$UPX_BIN --jobs=2 --lto=yes --low-memory --assume-yes-for-downloads --linux-icon=ling_chat/static/game_data/resources/lingchat.png --output-filename=LingChat --product-name=${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }} --file-version="$NUMERIC_VERSION" --product-version="$NUMERIC_VERSION" --company-name="LingChat Studio" --verbose --show-scons --report=debug_report.xml --show-memory --show-modules main.py
+            echo "yes" | uv run nuitka --clang --standalone --enable-plugins=upx --upx-binary=$UPX_BIN --jobs=4 --lto=yes --low-memory --assume-yes-for-downloads --linux-icon=ling_chat/static/game_data/resources/lingchat.png --output-filename=LingChat --product-name=${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }} --file-version="$NUMERIC_VERSION" --product-version="$NUMERIC_VERSION" --company-name="LingChat Studio" --show-memory main.py
           else
-            echo "yes" | uv run nuitka --clang --standalone --enable-plugins=upx --upx-binary=$UPX_BIN --jobs=2 --lto=yes --low-memory --assume-yes-for-downloads --windows-icon-from-ico=ling_chat/static/game_data/resources/lingchat.ico --output-filename=LingChat --product-name=${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }} --file-version="$NUMERIC_VERSION" --product-version="$NUMERIC_VERSION" --company-name="LingChat Studio" --verbose --show-scons --report=debug_report.xml --show-memory --show-modules main.py
+            echo "yes" | uv run nuitka --clang --standalone --enable-plugins=upx --upx-binary=$UPX_BIN --jobs=4 --lto=yes --low-memory --assume-yes-for-downloads --windows-icon-from-ico=ling_chat/static/game_data/resources/lingchat.ico --output-filename=LingChat --product-name=${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }} --file-version="$NUMERIC_VERSION" --product-version="$NUMERIC_VERSION" --company-name="LingChat Studio"  --show-memory main.py
           fi
     
       - name: 整理文件（准备打包）
         shell: bash
         run: |
+          ls -la main.dist
           rm -rf ling_chat/static/frontend
           mkdir -p ling_chat/static/frontend
           cp -r frontend_vue/dist/* ling_chat/static/frontend/
