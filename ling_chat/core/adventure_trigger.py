@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
+from ling_chat.core.service_manager import service_manager
 from ling_chat.core.achievement_manager import achievement_manager
 from ling_chat.core.ai_service.type import AdventureConfig
 from ling_chat.core.logger import logger
@@ -95,8 +96,10 @@ class AdventureTriggerSystem:
             cond_type = cond.get("type", "")
 
             if cond_type == "chat_count":
-                if not self._check_chat_count(chat_count, cond.get("threshold", 0)):
-                    return False
+                main_role = service_manager.get_ai_service().game_status.main_role
+                if main_role and main_role.resource_path == adv.bound_character_folder:
+                    if not self._check_chat_count(chat_count, cond.get("threshold", 0)):
+                        return False
 
             elif cond_type == "time_range":
                 if not self._check_time_range(cond.get("start_hour", 0), cond.get("end_hour", 0)):
