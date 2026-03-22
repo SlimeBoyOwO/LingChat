@@ -60,9 +60,9 @@ const startStoryMode = async () => {
 const menuItems = computed<MenuItem[]>(() => [
   { label: '自由对话模式', action: startFreeDialogue },
   {
-    label: '剧情模式（实验）',
+    label: '剧情模式（即将登场）',
     action: startStoryMode,
-    disabled: props.loadingScripts || props.scripts.length === 0,
+    disabled: true,
   },
   { label: '小游戏（开发中）', action: () => {}, disabled: true },
   { label: '返回', action: () => emit('back') },
