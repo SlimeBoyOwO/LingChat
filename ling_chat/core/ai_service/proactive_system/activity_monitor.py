@@ -168,7 +168,7 @@ class VisualMonitor(threading.Thread):
                         
                         # 只有视觉差异足够大，才进行昂贵的 OCR 操作
                         if diff >= self.hash_threshold:
-                            logger.info(f"检测到屏幕关键内容变更")
+                            # logger.info(f"检测到屏幕关键内容变更")
                             self.change_detected_flag = True
                             self.interest_manager.add_interest(1)
 
