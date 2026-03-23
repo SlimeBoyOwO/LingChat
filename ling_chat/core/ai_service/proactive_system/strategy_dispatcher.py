@@ -66,7 +66,7 @@ class StrategyDispatcher:
             return None
 
         if mode == "SCREEN":
-            analyze_prompt = "你是一个图像信息转述者，你将需要把你看到的画面描述给另一个AI让他理解用户的图片内容。用户开放了那个AI的自主窥屏功能，请获取桌面画面中的重点内容，用200字描述主体部分即可。"
+            analyze_prompt = "你是一个图像信息转述者，你将需要把你看到的画面描述给另一个AI让他理解用户的图片内容。用户开放了那个AI的自主窥屏功能，请获取桌面画面中的重点内容，用200字描述主体部分即可。如果你看到一个聊天窗口，有角色的立绘和对话框，不要描述这部分，只描述桌面上的其他内容。因为那部分是玩家与AI的聊天窗口。"
             analyze_info = await self.desktop_analyzer.analyze_desktop(analyze_prompt)
             ai_name = self.game_status.current_character.display_name if self.game_status.current_character else "你"
             return f"{{ {ai_name} 偷看了一眼 {self.game_status.player.user_name} 的电脑桌面信息: {analyze_info} }}"
