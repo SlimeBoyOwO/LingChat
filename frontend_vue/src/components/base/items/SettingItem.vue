@@ -105,9 +105,8 @@ watch(
 )
 
 // 处理复选框的变化
-const handleCheckboxChange = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  const newValue = target.checked ? 'true' : 'false'
+const handleCheckboxChange = (checked: boolean) => {
+  const newValue = checked ? 'true' : 'false'
   localValue.value = newValue
   emit('update:value', newValue)
 }

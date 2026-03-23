@@ -12,6 +12,10 @@
       class="absolute inset-0 bg-[#0a0a0c] flex justify-center items-center cursor-pointer z-10"
       @click="startCredits"
     >
+      <!-- 右上角ESC退出提示 -->
+      <div class="absolute top-6 right-6 text-white opacity-50 text-sm tracking-wider">
+        ESC 退出
+      </div>
       <div class="text-center text-white animate-[pulse_3s_infinite]">
         <p class="text-[2.2em] font-light tracking-[2px] mb-2">来自灵灵感谢の书❤</p>
         <span class="text-[1.1em] opacity-70 tracking-[4px] uppercase"
@@ -48,10 +52,10 @@
         <StarField ref="starfieldRef" />
 
         <!-- Logo 与 标题 -->
-        <div class="mb-[80px] w-full flex flex-col items-center">
+        <div class="mb-20 w-full flex flex-col items-center">
           <img
             src="@/assets/images/LingChatLogo.png"
-            class="w-1/2 max-w-[400px] object-contain mx-auto mb-6"
+            class="w-1/2 max-w-100 object-contain mx-auto mb-6"
             alt="Logo"
           />
           <h1 class="text-[3.5em] text-[#00e5ff] font-normal tracking-[5px]">致谢</h1>
@@ -70,30 +74,35 @@
           <div v-if="section.layout === 'spacer'" :class="section.height"></div>
 
           <!-- 标准双语名单 (两列对齐) -->
-          <div v-else-if="section.layout === 'normal'" class="flex flex-col items-center mb-[60px]">
+          <div v-else-if="section.layout === 'normal'" class="flex flex-col items-center mb-15">
             <h2 class="text-[2.2em] text-[#00e5ff] font-light mb-2">{{ section.title }}</h2>
-            <p class="text-[1em] text-white opacity-60 mb-[25px]">{{ section.enTitle }}</p>
+            <p class="text-[1em] text-white opacity-60 mb-6.25">{{ section.enTitle }}</p>
             <div
               v-for="(item, i) in section.items"
               :key="i"
               class="grid grid-cols-2 justify-items-center items-center w-[27%] min-w-[280px] mb-2"
             >
               <p class="text-[1.5em] leading-[1.8] font-light whitespace-nowrap">{{ item.name }}</p>
+              <p
+                class="text-[1em] opacity-80 leading-[1.8] font-light text-left pl-4 whitespace-nowrap"
+              >
+                {{ item.enName }}
+              </p>
             </div>
           </div>
 
           <!-- 双排双语名单 (适用于特别鸣谢) -->
           <div
             v-else-if="section.layout === 'grid-2'"
-            class="flex flex-col items-center mb-[60px] w-full"
+            class="flex flex-col items-center mb-15 w-full"
           >
             <h2 class="text-[2.2em] text-[#00e5ff] font-light mb-2">{{ section.title }}</h2>
-            <p class="text-[1em] text-white opacity-60 mb-[25px]">{{ section.enTitle }}</p>
+            <p class="text-[1em] text-white opacity-60 mb-6.25">{{ section.enTitle }}</p>
             <div class="grid grid-cols-2 gap-y-4 gap-x-12 w-[60%] justify-items-center">
               <div
                 v-for="(item, i) in section.items"
                 :key="i"
-                class="grid grid-cols-2 w-[220px] items-center"
+                class="grid grid-cols-2 w-55 items-center"
               >
                 <p class="text-[1.5em] leading-[1.8] font-light text-right pr-4 whitespace-nowrap">
                   {{ item.name }}
@@ -154,7 +163,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import StarField from '../game/standard/particles/StarField.vue'
 
@@ -164,7 +173,6 @@ const isStarted = ref(false)
 const bgm = ref<HTMLAudioElement | null>(null)
 let timer: ReturnType<typeof setTimeout> | null = null
 
-// --- 【修改点】结构化数据层 ---
 const creditsData = [
   {
     title: '策划 & 设计',
@@ -193,6 +201,12 @@ const creditsData = [
       { name: '小苹果', enName: 'AppleChan' },
       { name: '总督', enName: 'Great Commander' },
     ],
+  },
+  {
+    title: '语音模型训练',
+    enTitle: 'Vits Model Training',
+    layout: 'normal',
+    items: [{ name: '123', enName: 'one two three' }],
   },
   {
     title: '视觉艺术',
@@ -365,10 +379,22 @@ const startCredits = () => {
   bgm.value.play().catch((error) => console.error('音频播放失败:', error))
 }
 
+// 监听ESC键按下事件
+const handleKeyDown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape') {
+    router.push('/')
+  }
+}
+
 // --- 【修改点】音乐播放完毕后的回调跳转 ---
 const onAudioEnded = () => {
   router.push('/chat')
 }
+
+onMounted(() => {
+  // 添加键盘事件监听
+  window.addEventListener('keydown', handleKeyDown)
+})
 
 onBeforeUnmount(() => {
   if (timer) clearTimeout(timer)
@@ -376,13 +402,14 @@ onBeforeUnmount(() => {
   if (bgm.value) {
     bgm.value.pause()
   }
+  // 移除键盘事件监听
+  window.removeEventListener('keydown', handleKeyDown)
 })
 </script>
 
 <style scoped>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400&display=swap');
 
-/* 核心滚动逻辑：利用 100vh 和 -100% 自动适配任意长度的数据，而不会发生超距或不到底 */
 .credits-scroll {
   animation: scrollAnimation 120s linear forwards;
 }
