@@ -4,6 +4,7 @@ export interface AdventureInfo {
   adventure_folder: string
   name: string
   description: string
+  recommand_start: string
   order: number
   status: 'locked' | 'unlocked' | 'in_progress' | 'completed'
   unlocked_at?: string

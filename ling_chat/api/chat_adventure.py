@@ -15,9 +15,7 @@ router = APIRouter(prefix="/api/v1/chat/adventure", tags=["Chat Adventure"])
 async def list_character_adventures(character_folder: str, user_id: int = 1):
     """获取指定角色的所有羁绊冒险列表（含解锁状态）"""
     try:
-        ai_service = service_manager.ai_service
-        if not ai_service:
-            raise HTTPException(status_code=404, detail="AIService not found")
+        ai_service = service_manager.get_ai_service()
 
         scripts_manager = ai_service.scripts_manager
         adventures = scripts_manager.get_character_adventures(character_folder)
@@ -51,6 +49,7 @@ async def list_character_adventures(character_folder: str, user_id: int = 1):
                 "adventure_folder": adv_script.folder_key,
                 "name": adv_script.name,
                 "description": adv_script.description,
+                "recommand_start": adv_script.recommand_start,
                 "order": adv_script.adventure.order,
                 "status": status,
                 "unlocked_at": unlocked_at,

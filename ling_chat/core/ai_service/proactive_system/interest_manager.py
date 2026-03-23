@@ -17,7 +17,7 @@ class InterestManager: # Reviewed
         self.decay_step = 50.0 / max_proactive_count if max_proactive_count > 0 else 0
 
     def reload_max_proactive_count(self):
-        self.max_proactive_count = os.getenv("MAX_PROACTIVE_TIMES", 1)
+        self.max_proactive_count = int(os.getenv("MAX_PROACTIVE_TIMES", 1))
         self.decay_step = 50.0 / self.max_proactive_count if self.max_proactive_count > 0 else 0
         
     def update(self, perception: PerceptionResult):
