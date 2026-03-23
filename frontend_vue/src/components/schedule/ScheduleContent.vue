@@ -154,7 +154,7 @@ const titleInfo = computed(() => {
   } else if (currentView.startsWith('proactive')) {
     return {
       title: '主动对话设置',
-      subtitle: '需要专心和隐私的时候可以关闭哦',
+      subtitle: '需要专心和隐私的时候可以关闭哦（需要点击底部的保存才生效）',
     }
   } else if (currentView.startsWith('calendar')) {
     return {
