@@ -18,10 +18,19 @@ interface MenuItem {
   action: () => void
 }
 
+declare global {
+  interface Window {
+    pywebview?: {
+      api?: {
+        exit_app?: () => void
+      }
+    }
+  }
+}
+
 // 退出游戏：优先调用 WebView API，如果不可用则回退到 window.close()
 function exitGame() {
-  // @ts-ignore - pywebview js_api
-  if (window.pywebview && window.pywebview.api && typeof window.pywebview.api.exit_app === 'function') {
+  if (window.pywebview?.api?.exit_app) {
     window.pywebview.api.exit_app()
   } else {
     window.close()
