@@ -69,17 +69,17 @@ jobs:
             os: windows-latest
             upx_url: https://github.com/upx/upx/releases/download/v5.1.1/upx-5.1.1-win64.zip
             archive_ext: 7z
-            archive_cmd: 7z a -t7z -mx9 -md=128m -mmt=4 ../${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }}-windows.zip .
+            archive_cmd: 7z a -t7z -mx9 -md=128m -mmt=4 ../${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }}-windows.7z .
           - platform: linux-amd64
             os: ubuntu-latest
             upx_url: https://github.com/upx/upx/releases/download/v5.1.1/upx-5.1.1-amd64_linux.tar.xz
             archive_ext: tar.xz
-            archive_cmd: tar -cJf ../${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }}-linux-amd64.tar.xz --xz-options='-9' .
+            archive_cmd: XZ_OPT="-9 -T0" tar -cJf ../${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }}-linux-amd64.tar.xz  .
           - platform: linux-aarch64
             os: ubuntu-24.04-arm
             upx_url: https://github.com/upx/upx/releases/download/v5.1.1/upx-5.1.1-arm64_linux.tar.xz
             archive_ext: tar.xz
-            archive_cmd: tar -cJf ../${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }}-linux-aarch64.tar.xz --xz-options='-9' .
+            archive_cmd: XZ_OPT="-9 -T0" tar -cJf ../${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }}-linux-aarch64.tar.xz .
 
     steps:
       - name: 检出代码
@@ -161,7 +161,7 @@ jobs:
           mv ling_chat/static main.dist/ling_chat
           mv ling_chat/third_party main.dist/ling_chat
 
-      - name: 打包（Windows 用 zip，Linux 用 tar.gz）
+      - name: 打包
         working-directory: main.dist
         run: ${{ matrix.archive_cmd }}
 
