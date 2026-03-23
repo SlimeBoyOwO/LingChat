@@ -177,6 +177,7 @@ async def check_unlocks(user_id: int = Body(..., embed=True)):
             user_id=user_id,
             adventures=all_adventures,
             chat_count=chat_count,
+            game_status=ai_service.game_status
         )
 
         return {"data": newly_unlocked, "count": len(newly_unlocked)}
@@ -233,6 +234,7 @@ async def complete_adventure(
             user_id=user_id,
             adventures=all_adventures,
             chat_count=chat_count,
+            game_status=ai_service.game_status,
         )
 
         return {

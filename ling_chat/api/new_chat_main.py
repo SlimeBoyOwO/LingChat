@@ -140,6 +140,7 @@ class WebSocketManager:
                 user_id=1,  # TODO: 多用户支持时使用真实user_id
                 adventures=all_adventures,
                 chat_count=chat_count,
+                game_status=ai_service.game_status
             )
             for adventure in newly_unlocked:
                 await self.send_to_client(client_id, {

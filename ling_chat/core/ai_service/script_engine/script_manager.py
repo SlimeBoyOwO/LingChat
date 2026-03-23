@@ -295,6 +295,7 @@ class ScriptManager:
             user_id=user_id,
             adventures=all_adventures,
             chat_count=chat_count,
+            game_status=self.game_status,
         )
     
     def get_assets_dir(self, script_name: str | None = None) -> Path:

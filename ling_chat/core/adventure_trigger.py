@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Optional
 
 from ling_chat.core.achievement_manager import achievement_manager
+from ling_chat.core.ai_service.game_system.game_status import GameStatus
 from ling_chat.core.ai_service.type import AdventureConfig, ScriptStatus
 from ling_chat.core.logger import logger
 from ling_chat.game_database.managers.adventure_manager import AdventureManager
@@ -27,6 +28,7 @@ class AdventureTriggerSystem:
     def check_all_adventures(
         self,
         user_id: int,
+        game_status: GameStatus,
         adventures: list[ScriptStatus],
         chat_count: int = 0,
     ) -> list[dict]:
@@ -59,7 +61,7 @@ class AdventureTriggerSystem:
                 continue  # 已经解锁，跳过
 
             # 检查所有解锁条件
-            if self._check_conditions(user_id, adv, chat_count):
+            if self._check_conditions(user_id, adv, chat_count, game_status):
                 # 解锁！
                 AdventureManager.unlock_adventure(
                     user_id=user_id,
@@ -84,6 +86,7 @@ class AdventureTriggerSystem:
         user_id: int,
         adv: AdventureConfig,
         chat_count: int,
+        game_status: GameStatus
     ) -> bool:
         """检查单个冒险的所有解锁条件（AND 逻辑，全部满足才解锁）"""
         conditions = adv.unlock_conditions
