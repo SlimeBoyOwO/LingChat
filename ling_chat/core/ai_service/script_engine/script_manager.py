@@ -96,7 +96,7 @@ class ScriptManager:
             config_file = script_path / "story_config.yaml"
             if not config_file.exists():
                 continue
-            logger.info("找到剧本文件" + script_path.name)
+            # logger.info("找到剧本文件" + script_path.name)
             try:
                 script = self._read_script_config(script_path)
                 self.all_scripts[script.name] = script
@@ -237,6 +237,7 @@ class ScriptManager:
                                 description=config.get('description', 'ERROR'),
                                 intro_chapter=config.get('intro_chapter', 'ERROR'), 
                                 settings=config.get('script_settings', {}),
+                                recommand_start=config.get('recommand_start', ''),
                                 adventure=adventure,
                                 )
         else:

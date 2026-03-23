@@ -32,9 +32,7 @@ export function persist({ store, options }: PiniaPluginContext) {
       const parsed = JSON.parse(saved)
       // 过滤掉排除的字段
       const filtered = excludeFields.length
-        ? Object.fromEntries(
-            Object.entries(parsed).filter(([key]) => !excludeFields.includes(key)),
-          )
+        ? Object.fromEntries(Object.entries(parsed).filter(([key]) => !excludeFields.includes(key)))
         : parsed
       store.$patch(filtered)
     } catch (e) {
@@ -47,9 +45,7 @@ export function persist({ store, options }: PiniaPluginContext) {
     try {
       // 过滤掉排除的字段
       const toSave = excludeFields.length
-        ? Object.fromEntries(
-            Object.entries(state).filter(([key]) => !excludeFields.includes(key)),
-          )
+        ? Object.fromEntries(Object.entries(state).filter(([key]) => !excludeFields.includes(key)))
         : state
       localStorage.setItem(storageKey, JSON.stringify(toSave))
     } catch (e) {

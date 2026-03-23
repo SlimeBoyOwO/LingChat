@@ -176,7 +176,7 @@ class AIService:
             self.game_status.current_character = self.game_status.role_manager.get_role(self.character_id)
             self.game_status.onstage_role(self.game_status.current_character)
             self.game_status.main_role = self.game_status.current_character
-            logger.info(f"初始化游戏主角：{self.game_status.current_character} 已初始化。")
+            # logger.info(f"初始化游戏主角：{self.game_status.current_character} 已初始化。")
         else:
             logger.error("初始化游戏主角失败，未指定角色ID。")
 

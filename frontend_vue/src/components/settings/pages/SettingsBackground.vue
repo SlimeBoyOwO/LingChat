@@ -68,7 +68,10 @@ onMounted(async () => {
     await refreshBackground()
 
     // 检查 uiStore 中是否有已选背景
-    if (uiStore.currentBackground && uiStore.currentBackground !== '@/assets/images/default_bg.jpg') {
+    if (
+      uiStore.currentBackground &&
+      uiStore.currentBackground !== '@/assets/images/default_bg.jpg'
+    ) {
       selectBackground(uiStore.currentBackground)
     } else if (backgroundList.value.length > 0) {
       // 随机选择一个背景

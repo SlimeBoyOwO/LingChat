@@ -30,11 +30,8 @@ interface UIState {
   showCharacterThinkLine: string
   showSettings: boolean
   currentSettingsTab: string
-  typeWriterSpeed: number
-  enableChatEffectSound: boolean
 
   currentBackground: string
-  currentBackgroundEffect: string
   currentBackgroundMusic: string
   bgMusicPaused: boolean
   bgMusicStoped: boolean
@@ -73,7 +70,6 @@ export const useUIStore = defineStore('ui', {
     showSettings: false,
     currentSettingsTab: 'text',
     currentBackground: '@/assets/images/default_bg.jpg',
-    currentBackgroundEffect: 'StarField',
 
     currentBackgroundMusic: 'None',
     bgMusicPaused: false,
@@ -82,9 +78,6 @@ export const useUIStore = defineStore('ui', {
     currentSoundEffect: 'None',
     currentAvatarAudio: 'None',
     autoMode: false,
-
-    typeWriterSpeed: 50,
-    enableChatEffectSound: false,
 
     // Schedule 相关状态
     scheduleView: 'schedule_groups',

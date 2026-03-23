@@ -7,6 +7,7 @@
       <DialogCharacter
         :name="message.displayName"
         :content="message.content"
+        :action_content="message.motionText"
         :emotionTag="message.originalTag"
         :emotionText="message.motionText"
         @click="rephrase(message.audioFile)"

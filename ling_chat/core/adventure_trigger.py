@@ -1,9 +1,8 @@
 from datetime import datetime
 from typing import Optional
 
-from ling_chat.core.service_manager import service_manager
 from ling_chat.core.achievement_manager import achievement_manager
-from ling_chat.core.ai_service.type import AdventureConfig
+from ling_chat.core.ai_service.type import AdventureConfig, ScriptStatus
 from ling_chat.core.logger import logger
 from ling_chat.game_database.managers.adventure_manager import AdventureManager
 
@@ -28,7 +27,7 @@ class AdventureTriggerSystem:
     def check_all_adventures(
         self,
         user_id: int,
-        adventures: list,
+        adventures: list[ScriptStatus],
         chat_count: int = 0,
     ) -> list[dict]:
         """
@@ -96,6 +95,7 @@ class AdventureTriggerSystem:
             cond_type = cond.get("type", "")
 
             if cond_type == "chat_count":
+                from ling_chat.core.service_manager import service_manager
                 main_role = service_manager.get_ai_service().game_status.main_role
                 if main_role and main_role.resource_path == adv.bound_character_folder:
                     if not self._check_chat_count(chat_count, cond.get("threshold", 0)):

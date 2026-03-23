@@ -70,15 +70,7 @@ import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useSettingsStore } from '../../../stores/modules/settings'
 import type { ConfigItem } from '@/api/services/config'
 import { getEnvConfigByKey, saveEnvConfigSettings } from '@/api/services/config'
-import {
-  Zap,
-  ClipboardList,
-  Star,
-  Earth,
-  Settings,
-  ArrowBigLeft,
-  Rss,
-} from 'lucide-vue-next'
+import { Zap, ClipboardList, Star, Earth, Settings, ArrowBigLeft, Rss } from 'lucide-vue-next'
 
 const router = useRouter()
 const uiStore = useUIStore()

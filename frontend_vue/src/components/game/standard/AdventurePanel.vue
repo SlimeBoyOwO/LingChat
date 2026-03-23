@@ -142,7 +142,7 @@
             <div
               v-for="adventure in adventures"
               :key="adventure.adventure_folder"
-              class="absolute flex items-center gap-4 p-4 rounded-xl cursor-pointer transition-all duration-200 border-2"
+              class="absolute flex items-center gap-2 p-2 rounded-xl cursor-pointer transition-all duration-200 border-2"
               :class="getNodeClass(adventure)"
               :style="getNodeStyle(adventure.adventure_folder)"
               @click="handleNodeClick(adventure)"
@@ -152,37 +152,7 @@
                 class="w-14 h-14 flex items-center justify-center rounded-full shrink-0"
                 :class="getIconClass(adventure.status)"
               >
-                <svg
-                  v-if="adventure.status === 'completed'"
-                  class="w-7 h-7"
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                >
-                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                </svg>
-                <svg
-                  v-else-if="adventure.status === 'locked'"
-                  class="w-7 h-7"
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                >
-                  <path
-                    d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"
-                  />
-                </svg>
-                <svg
-                  v-else
-                  class="w-7 h-7"
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                >
-                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                  <path d="M2 17l10 5 10-5" />
-                  <path d="M2 12l10 5 10-5" />
-                </svg>
+                <Book></Book>
               </div>
 
               <!-- Content -->
@@ -195,6 +165,12 @@
                 >
                   <span>🔒</span>
                   <span>{{ getUnlockHint(adventure) }}</span>
+                </div>
+                <div v-else class="flex items-center gap-1 mt-2 text-xs text-gray-500">
+                  <div v-if="adventure.recommand_start">
+                    <span>💡推荐开始：</span>
+                    <span>{{ adventure.recommand_start }}</span>
+                  </div>
                 </div>
               </div>
 
@@ -221,6 +197,7 @@ import { useAdventureStore } from '@/stores/modules/adventure'
 import type { AdventureInfo } from '@/api/services/adventure'
 import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
+import { Book } from 'lucide-vue-next'
 
 interface Props {
   characterFolder: string
@@ -262,9 +239,9 @@ const graphContainerStyle = computed(() => ({
 }))
 
 // 布局常量
-const COLUMN_WIDTH = 400
-const NODE_WIDTH = 320
-const NODE_HEIGHT = 120
+const COLUMN_WIDTH = 480
+const NODE_WIDTH = 380
+const NODE_HEIGHT = 180
 const NODE_GAP = 24
 const PADDING_X = 40
 const PADDING_Y = 40
@@ -296,7 +273,6 @@ const adventureColumns = computed(() => {
   return columns
 })
 
-// 计算图总尺寸
 const graphWidth = computed(() => {
   const columnCount = adventureColumns.value.length
   return Math.max(800, PADDING_X * 2 + columnCount * COLUMN_WIDTH + NODE_WIDTH - COLUMN_WIDTH)
@@ -311,7 +287,6 @@ const graphHeight = computed(() => {
   return Math.max(500, PADDING_Y * 2 + maxColumnHeight)
 })
 
-// 【核心修复】纯数学算法构建节点的 X / Y 坐标布局字典
 const nodeLayouts = computed(() => {
   const layouts = new Map<string, { x: number; y: number; width: number; height: number }>()
 
@@ -345,7 +320,6 @@ const getNodeStyle = (folder: string) => {
   }
 }
 
-// 【核心修复】计算连线：直接从纯数学字典中取值，无需触碰DOM
 const connections = computed<Connection[]>(() => {
   const result: Connection[] = []
 
@@ -470,8 +444,8 @@ const getUnlockHint = (adventure: AdventureInfo): string => {
 }
 
 const handleNodeClick = async (adventure: AdventureInfo) => {
-  if (adventure.status === 'locked') return
-  if (adventure.status === 'unlocked' || adventure.status === 'completed') {
+  if (adventure.status === 'locked' || adventure.status === 'completed') return
+  if (adventure.status === 'unlocked') {
     try {
       uiStore.showSettings = false
       gameStore.enterStoryMode(adventure.adventure_folder)

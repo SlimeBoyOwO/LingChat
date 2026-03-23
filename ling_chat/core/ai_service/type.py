@@ -179,6 +179,9 @@ class ScriptStatus:
 
     script_path: Path
 
+    # 推荐开始条件，用于提示玩家什么情况下开启这个剧本最佳
+    recommand_start: str = field(default_factory=str) 
+
     # 新增：羁绊冒险配置
     adventure: AdventureConfig = field(default_factory=AdventureConfig)
 
