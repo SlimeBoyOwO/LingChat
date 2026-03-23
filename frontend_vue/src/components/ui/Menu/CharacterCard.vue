@@ -234,6 +234,9 @@ const showDetailModal = () => (isDetailVisible.value = true)
 const closeDetailModal = () => (isDetailVisible.value = false)
 
 const selectCharacter = async () => {
+  const confirmed = window.confirm('切换角色会导致当前角色记忆清空，有需要的话不要忘记存档哦')
+  if (!confirmed) return
+
   try {
     await characterSelect({
       user_id: userStore.user_id.toString(),
