@@ -310,11 +310,34 @@ const globalCompletedTodos = computed(() => {
   return list
 })
 
-const completeTodo = (todo: TodoItem) => {
-  todo.completed = true
+// 修改 completeTodo
+const completeTodo = (todo: TodoItem | TodoItemWithGroup) => {
+  console.log('完成代办')
+  // 兼容两种情况：全局视图传来带有 gid 的 copy 对象，详情视图传来没有 gid 的原始对象
+  const todoWithGid = todo as TodoItemWithGroup
+  const gid = todoWithGid.gid || selectedTodoGroupId.value
+
+  // 在原始数据源中找到真正的那个 todo 对象并修改它
+  if (gid && todoGroups.value[gid]) {
+    const targetTodo = todoGroups.value[gid].todos.find((t) => t.id === todo.id)
+    if (targetTodo) {
+      targetTodo.completed = true
+    }
+  }
 }
-const undoComplete = (todo: TodoItem) => {
-  todo.completed = false
+
+// 修改 undoComplete
+const undoComplete = (todo: TodoItem | TodoItemWithGroup) => {
+  const todoWithGid = todo as TodoItemWithGroup
+  const gid = todoWithGid.gid || selectedTodoGroupId.value
+
+  // 在原始数据源中找到真正的那个 todo 对象并修改它
+  if (gid && todoGroups.value[gid]) {
+    const targetTodo = todoGroups.value[gid].todos.find((t) => t.id === todo.id)
+    if (targetTodo) {
+      targetTodo.completed = false
+    }
+  }
 }
 
 const removeItem = (idx: number) => {
