@@ -245,6 +245,11 @@ async def get_all_characters(
                         "title": item.name,
                         "avatar": str(item)
                     })
+                elif item.name.startswith("头像"):
+                    clothes_list.append({
+                        "title": "默认",
+                        "avatar": str(clothes_absolute_path)
+                    })
 
             # 获取角色的冒险数量
             adventure_count = 0

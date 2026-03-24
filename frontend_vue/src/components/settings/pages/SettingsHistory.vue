@@ -28,6 +28,8 @@ import { History } from 'lucide-vue-next'
 const gameStore = useGameStore()
 
 const dialogHistory = computed<GameMessage[]>(() => gameStore.dialogHistory)
+
+// 对话初始化逻辑在 gameStore 的初始化中处理
 </script>
 
 <style scoped>

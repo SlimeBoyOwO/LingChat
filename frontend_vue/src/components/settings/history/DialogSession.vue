@@ -1,9 +1,15 @@
 <template>
   <div class="message-item" v-for="message in dialog">
-    <div class="player-message" v-if="message.type === 'message'">
+    <div
+      v-if="message.type === 'message' && message.content && message.content.trim() !== ''"
+      class="player-message"
+    >
       <DialogUser :name="message.displayName" :content="message.content" />
     </div>
-    <div class="chararter-reply" v-else-if="message.type === 'reply'">
+    <div
+      class="chararter-reply"
+      v-else-if="message.type === 'reply' && message.content && message.content.trim() !== ''"
+    >
       <DialogCharacter
         :name="message.displayName"
         :content="message.content"
