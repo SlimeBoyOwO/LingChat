@@ -6,7 +6,9 @@ export const convertToGameMessages = (lines: GameLine[]): GameMessage[] => {
   const filteredLines = lines.filter((line) => line.attribute !== 'SYSTEM')
 
   return filteredLines.map((line, index, array) => {
-    const filteredContent = line.content.replace(/\{.*?\}/g, '').trim()
+    const filteredContent = line.content
+      .replace(/\{[\s\S]*?\}/g, '') // 删除所有 {...} 内容（包括换行）
+      .trim()
 
     const isLastMessage = index === array.length - 1
     const nextLine = isLastMessage ? null : array[index + 1]
