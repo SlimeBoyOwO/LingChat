@@ -1,27 +1,39 @@
 <template>
   <div :style="{ opacity: containerOpacity }" class="touch-areas-container">
-    <!-- 凸多边形区域 -->
+    <!-- 单个 SVG 包含所有多边形 -->
     <svg
       class="polygon-area"
       :viewBox="`0 0 ${windowWidth} ${windowHeight}`"
       @click="handlePolygonClick"
     >
-      <polygon
-        :points="polygonPoints"
-        fill="none"
-        stroke="white"
-        stroke-width="3"
-        stroke-dasharray="8,4"
-        class="polygon-shape"
-      />
+      <!-- 遍历过滤后的 bodyPart，每个渲染两个 polygon（发光层 + 主层） -->
+      <template v-for="(part, key) in filteredBodyParts" :key="key">
+        <!-- 发光层 - 仅在 isGlowing 时显示 -->
+        <polygon
+          v-if="isGlowing"
+          :points="getPolygonPoints(part)"
+          fill="none"
+          stroke="white"
+          stroke-width="2"
+          class="polygon-glow-effect"
+        />
+        <!-- 主 polygon - stroke-width 始终为 0 -->
+        <polygon
+          :points="getPolygonPoints(part)"
+          fill="none"
+          stroke="white"
+          stroke-width="0"
+          stroke-dasharray="8,4"
+          class="polygon-shape"
+        />
+      </template>
     </svg>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useGameStore } from '@/stores/modules/game'
-import { useUIStore } from '@/stores/modules/ui/ui'
 import { scriptHandler } from '@/api/websocket/handlers/script-handler'
 import { eventQueue } from '@/core/events/event-queue'
 
@@ -31,49 +43,105 @@ interface BodyPart {
   windowWidth: number
   windowHeight: number
   message: string
+  clothesName?: string
+}
+
+interface BodyParts {
+  [key: string]: BodyPart
 }
 
 interface Props {
   gameStore: any
-  part?: BodyPart
-  partKey?: string
+  bodyParts?: BodyParts | Record<string, BodyPart> | object
+  roleId?: string | number
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  part: () => ({
-    X: [],
-    Y: [],
-    windowWidth: 1920,
-    windowHeight: 1200,
-    message: '',
-  }),
-  partKey: '',
+  bodyParts: () => ({}),
+  roleId: '',
 })
 
 const gameStore = useGameStore()
-const uiStore = useUIStore()
 const emit = defineEmits(['player-continued', 'dialog-proceed'])
+
+// 过滤后的 bodyParts，使用 ref + watch 确保响应式更新
+const filteredBodyParts = ref<Record<string, BodyPart>>({})
+
+// 根据 clothesName 过滤 bodyParts
+// key 格式为 "head_{clothesName}"，只显示匹配当前衣服的 bodyPart
+const updateFilteredBodyParts = () => {
+  const clothesName = gameStore.mainRole?.clothesName ?? ''
+  const parts = props.bodyParts as Record<string, BodyPart>
+  const filtered: Record<string, BodyPart> = {}
+
+  for (const key in parts) {
+    const clothes = parts[key]?.clothesName
+    if (clothesName === '' || clothes === clothesName) {
+      filtered[key] = parts[key]!
+    }
+  }
+
+  filteredBodyParts.value = filtered
+
+  console.log('filteredBodyParts.value:', filteredBodyParts.value)
+}
+
+// 监听 clothesName 变化
+watch(
+  () => gameStore.mainRole?.clothesName,
+  () => {
+    updateFilteredBodyParts()
+  },
+  { immediate: true },
+)
 
 const sent = ref(false)
 const lastClickTime = ref(0)
 const debounceDelay = 300
-const touchCount = ref(0)
 
-// 窗口尺寸
+// 发光效果状态
+const isGlowing = ref(false)
+let glowTimeout: ReturnType<typeof setTimeout> | null = null
+
+// 监听 command 变化，触发发光效果
+watch(
+  () => props.gameStore.command,
+  (newCommand) => {
+    if (newCommand === 'touch') {
+      isGlowing.value = true
+      if (glowTimeout) {
+        clearTimeout(glowTimeout)
+      }
+
+      // 3秒后关闭发光效果
+      glowTimeout = setTimeout(() => {
+        isGlowing.value = false
+      }, 3000)
+    } else {
+      isGlowing.value = false
+      if (glowTimeout) {
+        clearTimeout(glowTimeout)
+        glowTimeout = null
+      }
+    }
+  },
+  { immediate: true },
+)
+
 const windowWidth = ref(window.innerWidth)
 const windowHeight = ref(window.innerHeight)
 
-// 计算实际坐标点
-const polygonPoints = computed(() => {
-  const scale = windowHeight.value / props.part.windowHeight
+// 计算单个 bodyPart 的多边形坐标点
+const getPolygonPoints = (part: BodyPart): string => {
+  const scale = windowHeight.value / part.windowHeight
   const centerX = windowWidth.value / 2
   const centerY = windowHeight.value / 2
-  const originalCenterX = props.part.windowWidth / 2
-  const originalCenterY = props.part.windowHeight / 2
+  const originalCenterX = part.windowWidth / 2
+  const originalCenterY = part.windowHeight / 2
   const points = []
-  for (let i = 0; i < props.part.X.length; i++) {
-    const originalX = props.part.X[i]! * props.part.windowWidth
-    const originalY = props.part.Y[i]! * props.part.windowHeight
+  for (let i = 0; i < part.X.length; i++) {
+    const originalX = part.X[i]! * part.windowWidth
+    const originalY = part.Y[i]! * part.windowHeight
     const dx = originalX - originalCenterX
     const dy = originalY - originalCenterY
     const scaledDx = dx * scale
@@ -83,33 +151,68 @@ const polygonPoints = computed(() => {
     points.push(`${x},${y}`)
   }
   return points.join(' ')
-})
+}
 
 // 计算容器透明度
 const containerOpacity = computed(() => {
-  if (props.gameStore.command === 'show') {
+  if (props.gameStore.command === 'touch') {
     return 1
-  } else if (props.gameStore.command === 'unshow') {
-    return 0.001
+  } else {
+    return 0
   }
-  return 0.001 // 默认不可见
 })
 
 // 射线法判断点是否在多边形内
-const isPointInPolygon = (x: number, y: number, polygon: readonly [number, number][]): boolean => {
+const isPointInPolygon = (x: number, y: number, polygon: [number, number][]): boolean => {
   let inside = false
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    if (
-      (polygon[i]?.[1] ?? 0 > y) !== (polygon[j]?.[1] ?? 0 > y) &&
-      x <
-        (((polygon[j]?.[0] ?? 0) - (polygon[i]?.[0] ?? 0)) * (y - (polygon[i]?.[1] ?? 0))) /
-          ((polygon[j]?.[1] ?? 0) - (polygon[i]?.[1] ?? 0)) +
-          (polygon[i]?.[0] ?? 0)
-    ) {
-      inside = !inside
+
+  for (let i = 0, l = polygon.length, j = l - 1; i < l; j = i, i++) {
+    let sx = polygon[i]![0] as number
+    let sy = polygon[i]![1] as number
+    let tx = polygon[j]![0] as number
+    let ty = polygon[j]![1] as number
+
+    if ((sy < y && ty >= y) || (sy >= y && ty < y)) {
+      let xx = sx + ((y - sy) * (tx - sx)) / (ty - sy)
+
+      if (xx > x) {
+        inside = !inside
+      }
     }
   }
   return inside
+}
+
+// 查找点击位置对应的多边形
+const findClickedPart = (clientX: number, clientY: number): BodyPart | null => {
+  const parts = filteredBodyParts.value
+  for (const key in parts) {
+    const part = parts[key]
+    if (!part || !part.X || part.X.length === 0) continue
+
+    const scale = windowHeight.value / part.windowHeight
+    const centerX = windowWidth.value / 2
+    const centerY = windowHeight.value / 2
+    const originalCenterX = part.windowWidth / 2
+    const originalCenterY = part.windowHeight / 2
+
+    const polygon: [number, number][] = part.X.map((nx, i) => {
+      const originalX = nx * part.windowWidth
+      const originalY = part.Y[i]! * part.windowHeight
+      const dx = originalX - originalCenterX
+      const dy = originalY - originalCenterY
+      const scaledDx = dx * scale
+      const scaledDy = dy * scale
+      const x = centerX + scaledDx
+      const y = centerY + scaledDy
+      return [x, y]
+    })
+
+    if (isPointInPolygon(clientX, clientY, polygon)) {
+      return part
+    }
+  }
+  return null
 }
 
 // 处理多边形点击
@@ -127,54 +230,34 @@ const handlePolygonClick = (event: MouseEvent) => {
 
   // 检查当前是否处于触摸模式
   if (gameStore.command === 'touch' && event.target && gameStore.currentStatus == 'input') {
-    const rect = (event.target as SVGElement).getBoundingClientRect()
-    const x = event.clientX - rect.left
-    const y = event.clientY - rect.top
+    // 查找点击的多边形
+    const clickedPart = findClickedPart(event.clientX, event.clientY)
 
-    // 构建多边形坐标数组
-    const scale = windowHeight.value / props.part.windowHeight
-    const centerX = windowWidth.value / 2
-    const centerY = windowHeight.value / 2
-    const originalCenterX = props.part.windowWidth / 2
-    const originalCenterY = props.part.windowHeight / 2
-    const polygon: [number, number][] = props.part.X.map((nx, i) => {
-      const originalX = nx * props.part.windowWidth
-      const originalY = props.part.Y[i]! * props.part.windowHeight
-      const dx = originalX - originalCenterX
-      const dy = originalY - originalCenterY
-      const scaledDx = dx * scale
-      const scaledDy = dy * scale
-      const x = centerX + scaledDx
-      const y = centerY + scaledDy
-      return [x, y]
-    })
+    console.log('clickedPart:', clickedPart)
 
-    if (!sent.value) {
-      gameStore.currentStatus = 'thinking'
-      touchCount.value++
+    if (clickedPart) {
+      if (!sent.value) {
+        gameStore.currentStatus = 'thinking'
 
-      let message = ''
-      const messageWithCount =
-        touchCount.value === 1
-          ? props.part.message
-          : `${props.part.message},这是第${touchCount.value}次`
-      const defaultMessage = `${gameStore.userName}摸了一下你的头`
+        let message = ''
+        const defaultMessage = `${gameStore.userName}戳了一下你`
 
-      if (isPointInPolygon(event.clientX, event.clientY, polygon)) {
-        message = messageWithCount
+        if (clickedPart.message) {
+          message = clickedPart.message
+        } else {
+          message = defaultMessage
+        }
+
+        scriptHandler.sendMessage(message)
+        sent.value = true
       } else {
-        message = defaultMessage
+        const needWait = eventQueue.continue()
+        if (!needWait) {
+          emit('player-continued')
+          emit('dialog-proceed')
+        }
+        sent.value = false
       }
-
-      scriptHandler.sendMessage(messageWithCount)
-      sent.value = true
-    } else {
-      const needWait = eventQueue.continue()
-      if (!needWait) {
-        emit('player-continued')
-        emit('dialog-proceed')
-      }
-      sent.value = false
     }
   }
 }
@@ -191,6 +274,11 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
+  // 清理发光效果定时器
+  if (glowTimeout) {
+    clearTimeout(glowTimeout)
+    glowTimeout = null
+  }
 })
 </script>
 
@@ -206,6 +294,69 @@ onUnmounted(() => {
 }
 
 .polygon-shape {
-  @apply fill-white/10 stroke-white stroke-[3] [stroke-dasharray:8,4] transition-colors duration-300 ease-in-out hover:fill-white/20;
+  @apply stroke-white transition-all duration-300 ease-in-out;
+  stroke-width: 0;
+  fill: none;
+}
+
+/* 发光效果层 */
+.polygon-glow-effect {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.9);
+  stroke-width: 2;
+  animation: border-glow-pulse 3s ease-in-out forwards;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.9))
+    drop-shadow(0 0 12px rgba(255, 255, 255, 0.7)) drop-shadow(0 0 20px rgba(255, 255, 255, 0.5))
+    drop-shadow(0 0 30px rgba(100, 200, 255, 0.4));
+}
+
+@keyframes border-glow-pulse {
+  0% {
+    stroke: rgba(255, 255, 255, 0);
+    stroke-width: 0;
+    filter: drop-shadow(0 0 0 rgba(255, 255, 255, 0)) drop-shadow(0 0 0 rgba(255, 255, 255, 0))
+      drop-shadow(0 0 0 rgba(255, 255, 255, 0)) drop-shadow(0 0 0 rgba(100, 200, 255, 0));
+  }
+  15% {
+    stroke: rgba(255, 255, 255, 1);
+    stroke-width: 2;
+    filter: drop-shadow(0 0 8px rgba(255, 255, 255, 1))
+      drop-shadow(0 0 16px rgba(255, 255, 255, 0.8)) drop-shadow(0 0 28px rgba(255, 255, 255, 0.6))
+      drop-shadow(0 0 40px rgba(100, 200, 255, 0.5));
+  }
+  30% {
+    stroke: rgba(255, 255, 255, 0.8);
+    stroke-width: 1.5;
+    filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.7))
+      drop-shadow(0 0 10px rgba(255, 255, 255, 0.5)) drop-shadow(0 0 18px rgba(255, 255, 255, 0.4))
+      drop-shadow(0 0 25px rgba(100, 200, 255, 0.3));
+  }
+  50% {
+    stroke: rgba(255, 255, 255, 1);
+    stroke-width: 2.5;
+    filter: drop-shadow(0 0 10px rgba(255, 255, 255, 1))
+      drop-shadow(0 0 20px rgba(255, 255, 255, 0.8)) drop-shadow(0 0 35px rgba(255, 255, 255, 0.6))
+      drop-shadow(0 0 50px rgba(100, 200, 255, 0.5));
+  }
+  70% {
+    stroke: rgba(255, 255, 255, 0.6);
+    stroke-width: 1.5;
+    filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.6))
+      drop-shadow(0 0 12px rgba(255, 255, 255, 0.4)) drop-shadow(0 0 20px rgba(255, 255, 255, 0.3))
+      drop-shadow(0 0 30px rgba(100, 200, 255, 0.25));
+  }
+  85% {
+    stroke: rgba(255, 255, 255, 0.3);
+    stroke-width: 1;
+    filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.4))
+      drop-shadow(0 0 6px rgba(255, 255, 255, 0.2)) drop-shadow(0 0 10px rgba(255, 255, 255, 0.15))
+      drop-shadow(0 0 15px rgba(100, 200, 255, 0.1));
+  }
+  100% {
+    stroke: rgba(255, 255, 255, 0);
+    stroke-width: 0;
+    filter: drop-shadow(0 0 0 rgba(255, 255, 255, 0)) drop-shadow(0 0 0 rgba(255, 255, 255, 0))
+      drop-shadow(0 0 0 rgba(255, 255, 255, 0)) drop-shadow(0 0 0 rgba(100, 200, 255, 0));
+  }
 }
 </style>
