@@ -1,22 +1,37 @@
 <template>
   <MenuPage>
-    <MenuItem title="👩 角色音量" size="small">
+    <MenuItem title="角色音量" size="small">
+      <template #header>
+        <MicVocal :size="20" />
+      </template>
       <Slider v-model="characterVolume" @change="updateCharacterVolume"> 弱/强 </Slider>
     </MenuItem>
 
-    <MenuItem title="💬 气泡音量" size="small">
+    <MenuItem title="气泡音量" size="small">
+      <template #header>
+        <MessageCircle :size="20" />
+      </template>
       <Slider @change="updateBubbleVolume" v-model="bubbleVolume"> 弱/强 </Slider>
     </MenuItem>
 
-    <MenuItem title="🎶 背景音量" size="small">
+    <MenuItem title="背景音量" size="small">
+      <template #header>
+        <AudioLines :size="20" />
+      </template>
       <Slider @change="updateBackgroundVolume" v-model="backgroundVolume"> 弱/强 </Slider>
     </MenuItem>
 
-    <MenuItem title="🏆 成就音量" size="small">
+    <MenuItem title="成就音量" size="small">
+      <template #header>
+        <Trophy :size="20" />
+      </template>
       <Slider @change="updateAchievementVolume" v-model="achievementVolume"> 弱/强 </Slider>
     </MenuItem>
 
-    <MenuItem title="🔊 声音测试" size="small">
+    <MenuItem title="声音测试" size="small">
+      <template #header>
+        <FlaskConical :size="20" />
+      </template>
       <div class="sound-test">
         <Button type="big" @click="playCharacterTestSound">测试角色音量</Button>
         <Button type="big" @click="playBubbleTestSound">测试气泡音量</Button>
@@ -24,7 +39,10 @@
       </div>
     </MenuItem>
 
-    <MenuItem title="⚙ 背景音乐设置">
+    <MenuItem title="背景音乐设置">
+      <template #header>
+        <Headphones :size="20" />
+      </template>
       <div class="music-controls">
         <Button type="big" @click="handlePlayPause" class="left-button">{{
           playPauseButtonText
@@ -80,6 +98,14 @@ import {
 } from '../../../api/services/music'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useSettingsStore } from '../../../stores/modules/settings'
+import {
+  AudioLines,
+  FlaskConical,
+  MessageCircle,
+  MicVocal,
+  Trophy,
+  Headphones,
+} from 'lucide-vue-next'
 
 const uiStore = useUIStore()
 const settingsStore = useSettingsStore()

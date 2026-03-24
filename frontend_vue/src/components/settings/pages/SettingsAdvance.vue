@@ -24,6 +24,10 @@
             class="absolute left-5 w-[calc(100%-40px)] bg-brand rounded-lg z-0 transition-all duration-300 ease-[cubic-bezier(0.18,0.89,0.32,1.00)]"
           ></div>
 
+          <div class="flex items-center gap-1 mt-2 text-sm text-gray-500">
+            💡 这里的设置重启软件生效哦！
+          </div>
+
           <div
             v-for="(categoryData, categoryName) in configData"
             :key="categoryName"

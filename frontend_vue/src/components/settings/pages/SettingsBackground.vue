@@ -1,6 +1,9 @@
 <template>
   <MenuPage>
     <MenuItem title="背景选择">
+      <template #header>
+        <Image :size="20" />
+      </template>
       <div class="background-container">
         <div class="background-list character-grid">
           <div
@@ -34,6 +37,9 @@
     </MenuItem>
 
     <MenuItem title="粒子选择" size="large">
+      <template #header>
+        <Sparkles :size="20" />
+      </template>
       <div class="effect-list">
         <Button type="big" @click="updateParticle(`StarField`)">星空</Button>
         <Button type="big" @click="updateParticle(`Rain`)">雨水</Button>
@@ -57,6 +63,7 @@ import {
 } from '../../../api/services/background'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import type { BackgroundImageInfo } from '../../../types'
+import { Image, Sparkle, Sparkles } from 'lucide-vue-next'
 
 const backgroundList = ref<BackgroundImageInfo[]>([])
 const selectedBackground = ref<string>('')

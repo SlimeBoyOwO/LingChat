@@ -1,6 +1,9 @@
 <template>
   <MenuPage>
-    <MenuItem title="◈ 历史对话">
+    <MenuItem title="历史对话">
+      <template #header>
+        <History :size="20" />
+      </template>
       <div class="history-container">
         <div v-if="dialogHistory.length === 0" class="status-message">
           暂无历史记录，去和ta聊聊天叭(*^▽^*)
@@ -20,6 +23,7 @@ import { MenuPage, MenuItem } from '../../ui'
 import { useGameStore } from '../../../stores/modules/game'
 import type { GameMessage } from '../../../stores/modules/game/state'
 import DialogSession from '../history/DialogSession.vue'
+import { History } from 'lucide-vue-next'
 
 const gameStore = useGameStore()
 

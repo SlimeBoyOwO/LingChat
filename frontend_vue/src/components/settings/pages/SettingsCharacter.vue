@@ -1,6 +1,9 @@
 <template>
   <MenuPage>
     <MenuItem title="角色列表">
+      <template #header>
+        <Rabbit :size="20" />
+      </template>
       <div class="grid gap-5 p-3.75 w-full grid-cols-1 md:grid-cols-2">
         <CharacterCard
           v-for="character in characters"
@@ -18,7 +21,7 @@
       </div>
       <div v-if="totalPages > 1" class="flex items-center justify-between px-3 py-2 w-full">
         <button
-          class="px-4 py-1.5 text-sm font-medium border-none rounded-lg cursor-pointer bg-[#e9ecef] text-[#495057] transition-all duration-200 hover:bg-[var(--accent-color)] hover:text-white hover:-translate-y-0.5 hover:shadow-[0_4px_10px_rgba(121,217,255,0.4)] disabled:opacity-40 disabled:cursor-not-allowed"
+          class="px-4 py-1.5 text-sm font-medium border-none rounded-lg cursor-pointer bg-[#e9ecef] text-[#495057] transition-all duration-200 hover:bg-(--accent-color) hover:text-white hover:-translate-y-0.5 hover:shadow-[0_4px_10px_rgba(121,217,255,0.4)] disabled:opacity-40 disabled:cursor-not-allowed"
           :disabled="currentPage <= 1"
           @click="changePage(currentPage - 1)"
         >
@@ -28,7 +31,7 @@
           >第 {{ currentPage }} / {{ totalPages }} 页</span
         >
         <button
-          class="px-4 py-1.5 text-sm font-medium border-none rounded-lg cursor-pointer bg-[#e9ecef] text-[#495057] transition-all duration-200 hover:bg-[var(--accent-color)] hover:text-white hover:-translate-y-0.5 hover:shadow-[0_4px_10px_rgba(121,217,255,0.4)] disabled:opacity-40 disabled:cursor-not-allowed"
+          class="px-4 py-1.5 text-sm font-medium border-none rounded-lg cursor-pointer bg-[#e9ecef] text-[#495057] transition-all duration-200 hover:bg-(--accent-color) hover:text-white hover:-translate-y-0.5 hover:shadow-[0_4px_10px_rgba(121,217,255,0.4)] disabled:opacity-40 disabled:cursor-not-allowed"
           :disabled="currentPage >= totalPages"
           @click="changePage(currentPage + 1)"
         >
@@ -38,10 +41,15 @@
     </MenuItem>
 
     <MenuItem title="刷新人物列表" size="small">
+      <template #header><RefreshCcw :size="20" /></template>
+
       <Button type="big" @click="refreshCharacters">点我刷新~</Button>
     </MenuItem>
 
     <MenuItem title="创意工坊" size="small">
+      <template #header>
+        <Birdhouse :size="20" />
+      </template>
       <Button type="big" @click="openCreativeWeb">进入创意工坊</Button>
     </MenuItem>
   </MenuPage>
@@ -58,6 +66,7 @@ import { characterGetAll } from '../../../api/services/character'
 import type { Character as ApiCharacter, Clothes } from '../../../types'
 import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
+import { Birdhouse, Rabbit, RefreshCcw } from 'lucide-vue-next'
 
 interface CharacterCard {
   id: number
