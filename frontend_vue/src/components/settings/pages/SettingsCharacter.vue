@@ -1,6 +1,6 @@
 <template>
   <MenuPage>
-    <MenuItem title="角色列表">
+    <MenuItem title="角色列表（切换角色就可以进入到新对话哦！）">
       <template #header>
         <Rabbit :size="20" />
       </template>

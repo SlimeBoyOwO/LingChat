@@ -1,6 +1,6 @@
 <template>
   <MenuPage>
-    <MenuItem title="创建新存档">
+    <MenuItem title="创建新存档（会记录当前对话）">
       <template #header>
         <PencilLine :size="20" />
       </template>
