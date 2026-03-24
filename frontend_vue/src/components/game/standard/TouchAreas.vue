@@ -6,8 +6,8 @@
       :viewBox="`0 0 ${windowWidth} ${windowHeight}`"
       @click="handlePolygonClick"
     >
-      <!-- 遍历所有 bodyPart，每个渲染两个 polygon（发光层 + 主层） -->
-      <template v-for="(part, key) in bodyParts" :key="key">
+      <!-- 遍历过滤后的 bodyPart，每个渲染两个 polygon（发光层 + 主层） -->
+      <template v-for="(part, key) in filteredBodyParts" :key="key">
         <!-- 发光层 - 仅在 isGlowing 时显示 -->
         <polygon
           v-if="isGlowing"
@@ -43,6 +43,7 @@ interface BodyPart {
   windowWidth: number
   windowHeight: number
   message: string
+  clothesName?: string
 }
 
 interface BodyParts {
@@ -63,6 +64,37 @@ const props = withDefaults(defineProps<Props>(), {
 const gameStore = useGameStore()
 const emit = defineEmits(['player-continued', 'dialog-proceed'])
 
+// 过滤后的 bodyParts，使用 ref + watch 确保响应式更新
+const filteredBodyParts = ref<Record<string, BodyPart>>({})
+
+// 根据 clothesName 过滤 bodyParts
+// key 格式为 "head_{clothesName}"，只显示匹配当前衣服的 bodyPart
+const updateFilteredBodyParts = () => {
+  const clothesName = gameStore.mainRole?.clothesName ?? ''
+  const parts = props.bodyParts as Record<string, BodyPart>
+  const filtered: Record<string, BodyPart> = {}
+
+  for (const key in parts) {
+    const clothes = parts[key]?.clothesName
+    if (clothesName === '' || clothes === clothesName) {
+      filtered[key] = parts[key]!
+    }
+  }
+
+  filteredBodyParts.value = filtered
+
+  console.log('filteredBodyParts.value:', filteredBodyParts.value)
+}
+
+// 监听 clothesName 变化
+watch(
+  () => gameStore.mainRole?.clothesName,
+  () => {
+    updateFilteredBodyParts()
+  },
+  { immediate: true },
+)
+
 const sent = ref(false)
 const lastClickTime = ref(0)
 const debounceDelay = 300
@@ -76,10 +108,7 @@ watch(
   () => props.gameStore.command,
   (newCommand) => {
     if (newCommand === 'touch') {
-      // 触发发光效果
       isGlowing.value = true
-
-      // 清除之前的定时器
       if (glowTimeout) {
         clearTimeout(glowTimeout)
       }
@@ -89,7 +118,6 @@ watch(
         isGlowing.value = false
       }, 3000)
     } else {
-      // 如果不是 touch 命令，关闭发光效果
       isGlowing.value = false
       if (glowTimeout) {
         clearTimeout(glowTimeout)
@@ -100,7 +128,6 @@ watch(
   { immediate: true },
 )
 
-// 窗口尺寸
 const windowWidth = ref(window.innerWidth)
 const windowHeight = ref(window.innerHeight)
 
@@ -158,7 +185,7 @@ const isPointInPolygon = (x: number, y: number, polygon: [number, number][]): bo
 
 // 查找点击位置对应的多边形
 const findClickedPart = (clientX: number, clientY: number): BodyPart | null => {
-  const parts = props.bodyParts as Record<string, BodyPart>
+  const parts = filteredBodyParts.value
   for (const key in parts) {
     const part = parts[key]
     if (!part || !part.X || part.X.length === 0) continue
