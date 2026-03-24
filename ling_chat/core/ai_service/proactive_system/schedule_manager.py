@@ -14,6 +14,10 @@ class ScheduleManager: # Reviewed
         self.current_task: Optional[asyncio.Task] = None
         
     def start(self):
+        # 检查是否已有运行中的任务
+        if self.current_task is not None and not self.current_task.done():
+            logger.info("ScheduleManager: 日程循环已经在运行中，跳过创建")
+            return
         self.current_task = asyncio.create_task(self._schedule_loop())
         
     def stop(self):
