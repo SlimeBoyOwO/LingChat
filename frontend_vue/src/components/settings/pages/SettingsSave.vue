@@ -152,6 +152,8 @@ const handleCreateSave = async () => {
  * @param saveId 存档ID
  */
 const handleLoadSave = async (saveId: string) => {
+  const confirmed = window.confirm('加载存档会导致丢失当前对话进度，确定要加载吗？')
+  if (!confirmed) return
   try {
     const saveData = await saveLoad({
       user_id: userId,
@@ -171,6 +173,10 @@ const handleLoadSave = async (saveId: string) => {
  * @param saveId 存档ID
  */
 const handleSaveGame = async (saveId: string) => {
+  const confirmed = window.confirm(
+    '覆盖存档会导致之前存档的对话进度，不要覆盖错存档了哦，确定要覆盖吗？',
+  )
+  if (!confirmed) return
   try {
     await saveGameSave({
       user_id: userId,

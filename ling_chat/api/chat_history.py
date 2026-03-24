@@ -49,6 +49,20 @@ async def get_chat_lines(user_id: int):
         return HTTPException(status_code=500, detail="Failed to fetch chat lines" + str(e))
 
 
+@router.get("/continue")
+async def continue_chat(user_id: int):
+    try:
+        user = UserManager.get_user_by_id(user_id)
+        if not user:
+            return HTTPException(status_code=404, detail="User not found")
+        save = user.last_save_id
+        if not save:
+            return HTTPException(status_code=404, detail="Save not found")
+        result = await load_user_conversations(user_id, save)
+        return result
+    except Exception as e:
+        return HTTPException(status_code=500, detail="Failed to continue chat" + str(e))
+
 @router.get("/load")
 async def load_user_conversations(user_id: int, conversation_id: int):
     try:
