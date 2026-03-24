@@ -51,6 +51,41 @@
         <p>DeepSeek V3</p>
       </MenuItem>
 
+      <MenuItem title="推理引擎下载（SBV2）" size="small">
+        <template #header>
+          <Download :size="20" />
+        </template>
+        <div class="flex gap-3">
+          <Button
+            type="big"
+            @click="
+              openWebsite(
+                'https://www.modelscope.cn/models/lingchat-research-studio/Style-Bert-VITS2-micro-CPU-infer/files',
+              )
+            "
+            >CPU推理</Button
+          >
+          <Button
+            type="big"
+            @click="
+              openWebsite(
+                'https://www.modelscope.cn/models/lingchat-research-studio/Style-Bert-VITS2-micro-NVIDIA-infer/files',
+              )
+            "
+            >N卡推理</Button
+          >
+          <Button
+            type="big"
+            @click="
+              openWebsite(
+                'https://www.modelscope.cn/models/lingchat-research-studio/Style-Bert-VITS2-micro-Directml-infer/files',
+              )
+            "
+            >A卡推理</Button
+          >
+        </div>
+      </MenuItem>
+
       <MenuItem title="返回主菜单" size="small">
         <template #header>
           <ArrowBigLeft :size="20" />
@@ -120,6 +155,10 @@ const handleMemorySettingChange = (checked: boolean, setting: ConfigItem) => {
     formData[key] = config.value
   })
   saveEnvConfigSettings(formData)
+}
+
+const openWebsite = (url: string) => {
+  window.open(url, '_blank') // '_blank' 表示在新窗口中打开
 }
 </script>
 

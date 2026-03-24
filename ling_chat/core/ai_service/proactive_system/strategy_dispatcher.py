@@ -3,7 +3,7 @@ import os
 import random
 from typing import Optional
 from ling_chat.core.ai_service.game_system.game_status import GameStatus
-from ling_chat.core.ai_service.proactive_system.type import PerceptionResult
+from ling_chat.core.ai_service.proactive_system.type import PerceptionResult, UserState
 from ling_chat.core.pic_analyzer import DesktopAnalyzer
 from ling_chat.schemas.schedule_settings import TodoItem, UserScheduleSettings
 from ling_chat.core.llm_providers.manager import LLMManager
@@ -41,15 +41,24 @@ class StrategyDispatcher:
 
         if os.getenv("ENABLE_TODO_PRECEPTION", "false").lower() == "true":
             modes.append("TODO")
-            weights.append(10)
+            if perception.state == UserState.WORK:  # 工作状态时，TODO 的权重更高
+                weights.append(60)
+            else:
+                weights.append(10)
 
         if os.getenv("ENABLE_TOPIC_CREATER", "false").lower() == "true":
             modes.append("TOPIC")
-            weights.append(60)
+            if perception.state == UserState.IDLE:  # 挂机状态时，单纯 主动对话 的权重更高
+                weights.append(80)
+            else:
+                weights.append(60)
 
         if os.getenv("ENABLE_VISUAL_PRECEPTION", "true").lower() == "true":
             modes.append("SCREEN")
-            weights.append(30)
+            if perception.state == UserState.GAME:  # 游戏状态时，视奸的权重更高
+                weights.append(60)
+            else:
+                weights.append(30)
 
         if not modes:
             return None
