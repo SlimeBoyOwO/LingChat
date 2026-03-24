@@ -66,7 +66,7 @@ export class TypeWriter {
       return
     }
 
-    if (uiStore.currentAvatarAudio || uiStore.currentAvatarAudio !== 'None') return
+    if (uiStore.currentAvatarAudio !== 'None') return
 
     const buffer = this.soundBuffers[Math.floor(Math.random() * this.soundBuffers.length)]
     const source = this.audioContext.createBufferSource()
