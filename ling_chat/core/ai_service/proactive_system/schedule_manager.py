@@ -58,7 +58,8 @@ class ScheduleManager: # Reviewed
                 await asyncio.sleep(min_diff)
                 
                 # 触发提醒
-                prompt = f"{{时间到了，提醒用户：{next_item.content}。}}"
+                ai_name = self.game_status.main_role.display_name if self.game_status.main_role else "你"
+                prompt = f"{{时间到了，{ai_name} 想起来{self.game_status.player.user_name}在日程里写到：{next_item.content}。提醒一下吧？}}"
                 await message_broker.enqueue_ai_message("global", prompt)
                 
                 # 等待一小会儿避免重复触发

@@ -1,6 +1,9 @@
 <template>
   <MenuPage>
-    <MenuItem title="🏆 成就列表（实验）">
+    <MenuItem title="成就列表（实验）">
+      <template #header>
+        <Award :size="20" />
+      </template>
       <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
         <div
           v-for="achievement in achievementsList"
@@ -15,7 +18,7 @@
           ></div>
 
           <!-- Icon -->
-          <div class="relative flex-shrink-0 mr-4 z-10">
+          <div class="relative shrink-0 mr-4 z-10">
             <div
               class="w-16 h-16 rounded-full flex items-center justify-center border-2 transition-all duration-300 shadow-md"
               :class="getIconClass(achievement)"
@@ -87,6 +90,7 @@ import { computed, onMounted } from 'vue'
 import { MenuPage, MenuItem } from '../../ui'
 import { useAchievementStore } from '@/stores/modules/ui/achievement'
 import Icon from '@/components/base/widget/Icon.vue'
+import { Award } from 'lucide-vue-next'
 
 const achievementStore = useAchievementStore()
 
