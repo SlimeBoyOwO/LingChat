@@ -85,6 +85,10 @@ export interface SaveCreateParams {
   title: string
 }
 
+export interface SaveContinueParams {
+  user_id: string
+}
+
 export interface MusicTrack {
   name: string
   url: string

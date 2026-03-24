@@ -60,7 +60,7 @@
         <div class="main-menu-page__menu" v-if="menuState === 'main'">
           <MainMenuOptions
             @start-game="showGameModeMenu"
-            @open-settings="handleOpenSettings"
+            @open-settings="handleContinueGame"
             @open-credits="handleOpenCredits"
           />
         </div>
@@ -104,6 +104,7 @@ import { MainMenuOptions, GameModeOptions } from './menu'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import ScriptModeOptions from './menu/ScriptModeOptions.vue'
 import { getScriptList, type ScriptSummary } from '@/api/services/script-info'
+import { saveContinue } from '@/api/services/save'
 
 const router = useRouter()
 const uiStore = useUIStore()
@@ -138,6 +139,15 @@ function showScriptModeMenu() {
 }
 function goToGithub() {
   window.open('https://github.com/SlimeBoyOwO/LingChat', '_blank')
+}
+
+const handleContinueGame = async () => {
+  try {
+    await saveContinue({ user_id: '1' })
+    router.push('/chat')
+  } catch (error) {
+    alert('继续游戏失败，未创建存档或系统问题')
+  }
 }
 
 function handleOpenSettings(tab?: string) {
