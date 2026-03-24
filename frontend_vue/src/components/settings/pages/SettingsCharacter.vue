@@ -103,7 +103,7 @@ const fetchCharacters = async (page: number): Promise<void> => {
         ? char.clothes.map((clothes: Clothes) => ({
             title: clothes.title,
             avatar: clothes.avatar
-              ? `/api/v1/chat/character/clothes_file/${encodeURIComponent(`${clothes.avatar}\\正常.png`)}`
+              ? `/api/v1/chat/character/clothes_file/${encodeURIComponent(`${clothes.avatar}\\头像.png`)}`
               : '../pictures/characters/default.png',
           }))
         : [],

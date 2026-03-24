@@ -109,7 +109,7 @@ const bubbleStyles = computed(() => ({
 
 const targetAvatarUrl = computed(() => {
   const r = role.value
-  const clothesName = r.clothesName ?? 'default'
+  const clothesName = r.clothesName === '默认' || !r.clothesName ? 'default' : r.clothesName
   const emotion = r.emotion
 
   const mappedEmotion = EMOTION_CONFIG_EMO[emotion] || '正常'

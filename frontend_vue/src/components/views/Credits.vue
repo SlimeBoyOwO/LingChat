@@ -1,7 +1,7 @@
 <template>
   <!-- 根节点：填充满屏、锁定溢出、背景黑、支持文字字体 -->
   <div
-    class="relative w-full h-full overflow-hidden bg-[#0a0a0c] text-white font-['Noto_Sans_SC',_sans-serif] flex justify-center items-center"
+    class="relative w-full h-full overflow-hidden bg-[#0a0a0c] text-white font-['Noto_Sans_SC',sans-serif] flex justify-center items-center"
   >
     <!-- 音频播放器，监听 ended 事件进行路由跳转 -->
     <audio ref="bgm" @ended="onAudioEnded"></audio>
@@ -80,7 +80,7 @@
             <div
               v-for="(item, i) in section.items"
               :key="i"
-              class="grid grid-cols-2 justify-items-center items-center w-[27%] min-w-[280px] mb-2"
+              class="grid grid-cols-2 justify-items-center items-center w-[27%] min-w-70 mb-2"
             >
               <p class="text-[1.5em] leading-[1.8] font-light whitespace-nowrap">{{ item.name }}</p>
               <p
@@ -119,13 +119,11 @@
           <!-- 1排4人纯名字 (适用于新增的 反馈提供者) -->
           <div
             v-else-if="section.layout === 'grid-4'"
-            class="flex flex-col items-center mb-[60px] w-full"
+            class="flex flex-col items-center mb-15 w-full"
           >
             <h2 class="text-[2.2em] text-[#00e5ff] font-light mb-2">{{ section.title }}</h2>
-            <p class="text-[1em] text-white opacity-60 mb-[25px]">{{ section.enTitle }}</p>
-            <div
-              class="grid grid-cols-4 gap-y-6 gap-x-8 w-[80%] max-w-[800px] justify-items-center"
-            >
+            <p class="text-[1em] text-white opacity-60 mb-6.25">{{ section.enTitle }}</p>
+            <div class="grid grid-cols-4 gap-y-6 gap-x-8 w-[80%] max-w-200 justify-items-center">
               <div v-for="(item, i) in section.items" :key="i">
                 <p class="text-[1.5em] leading-[1.8] font-light whitespace-nowrap overflow-visible">
                   {{ item.name }}
@@ -141,13 +139,10 @@
           </div>
 
           <!-- 特殊结尾 (还有...你) -->
-          <div
-            v-else-if="section.layout === 'special'"
-            class="flex flex-col items-center mb-[60px]"
-          >
+          <div v-else-if="section.layout === 'special'" class="flex flex-col items-center mb-15">
             <div class="h-[60vh]"></div>
             <h2 class="text-[2.2em] text-[#00e5ff] font-light mb-2">{{ section.title }}</h2>
-            <p class="text-[1em] text-white opacity-60 mb-[80px]">{{ section.enTitle }}</p>
+            <p class="text-[1em] text-white opacity-60 mb-20">{{ section.enTitle }}</p>
             <div class="h-[60vh]"></div>
             <p class="text-[1.5em] leading-[1.8] font-light">{{ section.items?.[0]?.name }}</p>
             <p class="text-[1em] opacity-80 leading-[1.8] font-light">
