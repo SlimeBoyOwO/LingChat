@@ -1,5 +1,6 @@
 from typing import AsyncGenerator, Dict, List
 
+import httpx
 from openai import AsyncOpenAI, OpenAI
 import os
 
@@ -27,8 +28,9 @@ class WebLLMProvider(BaseLLMProvider):
             self.client = None
             return
 
-        self.client = OpenAI(api_key=api_key, base_url=base_url)
-        self.async_client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        self._timeout = httpx.Timeout(connect=30.0)
+        self.client = OpenAI(api_key=api_key, base_url=base_url, timeout=self._timeout)
+        self.async_client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=self._timeout)
         logger.info("通用网络大模型初始化完毕！" )
 
     def _add_thinking_extra_body(self, create_kwargs: dict) -> None:

@@ -34,7 +34,7 @@ class LMStudioProvider(BaseLLMProvider):
         return httpx.Client(
             base_url=self.base_url,
             headers=self._get_headers(),
-            timeout=httpx.Timeout(120.0, connect=10.0)
+            timeout=httpx.Timeout(120.0, connect=30.0)
         )
 
     def _get_async_client(self):
@@ -42,7 +42,7 @@ class LMStudioProvider(BaseLLMProvider):
         return httpx.AsyncClient(
             base_url=self.base_url,
             headers=self._get_headers(),
-            timeout=httpx.Timeout(120.0, connect=10.0)
+            timeout=httpx.Timeout(120.0, connect=30.0)
         )
 
     def _build_input_messages(self, messages: List[Dict]) -> List[Dict]:
