@@ -4,6 +4,7 @@ import time
 import asyncio
 from io import BytesIO
 
+import httpx
 from openai import OpenAI
 from PIL import ImageGrab
 
@@ -24,9 +25,11 @@ class DesktopAnalyzer:
         self.last_output_tokens = None
         
         # 初始化 OpenAI 客户端
+        self._timeout = httpx.Timeout(connect=30.0)
         self.client = OpenAI(
             api_key=self.api_key,
-            base_url=self.base_url
+            base_url=self.base_url,
+            timeout=self._timeout
         )
 
     def _capture_desktop_sync(self):

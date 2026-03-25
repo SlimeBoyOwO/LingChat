@@ -2,6 +2,7 @@ import os
 from types import NoneType
 from typing import AsyncGenerator, Dict, List
 
+import httpx
 from openai import OpenAI, AsyncOpenAI
 
 from ling_chat.core.logger import logger
@@ -28,8 +29,9 @@ class QwenTranslateProvider(BaseLLMProvider):
             self.async_client = None
             return
 
-        self.client = OpenAI(api_key=api_key, base_url=base_url)
-        self.async_client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        self._timeout = httpx.Timeout(connect=30.0)
+        self.client = OpenAI(api_key=api_key, base_url=base_url, timeout=self._timeout)
+        self.async_client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=self._timeout)
         self.model_type = os.environ.get("TRANSLATE_MODEL", "qwen-mt-plus")
 
         logger.info("Qwen翻译模型初始化完毕！")
