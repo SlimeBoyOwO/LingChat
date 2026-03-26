@@ -165,6 +165,7 @@ def run_app():
             log_level=log_level,
             access_log=access_log_enabled,  # 是否启用访问日志（默认 true）
         )
+        logger.info("HTTP服务器启动成功，可以访问 localhost:8765 从浏览器进入")
         global app_server
         app_server = uvicorn.Server(config)
 
