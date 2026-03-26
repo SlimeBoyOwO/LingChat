@@ -67,12 +67,32 @@ async def get_script_specific_avatar(character: str, emotion: str):
     ai_service = service_manager.ai_service
 
     if ai_service:
-        file_path = ai_service.scripts_manager.get_avatar_dir(character) / (emotion + ".png")
+        # 定义支持的图片格式扩展名
+        supported_extensions = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".webp", ".avif", ".svg")
+        
+        # 尝试不同扩展名的文件
+        avatar_dir = ai_service.scripts_manager.get_avatar_dir(character)
+        file_path = None
+        
+        for ext in supported_extensions:
+            potential_path = avatar_dir / (emotion + ext)
+            if os.path.exists(potential_path):
+                file_path = potential_path
+                break
+                
+        if file_path is None:
+            # 如果没找到对应情绪的图片，尝试查找"正常"的图片
+            if emotion != "正常":
+                for ext in supported_extensions:
+                    potential_path = avatar_dir / ("正常" + ext)
+                    if os.path.exists(potential_path):
+                        file_path = potential_path
+                        break
+            
+            if file_path is None:
+                raise HTTPException(status_code=404, detail="Avatar not found")
     else:
         raise HTTPException(status_code=404, detail="AIService not found")
-
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Avatar not found")
 
     return FileResponse(file_path)
 

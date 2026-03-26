@@ -6,15 +6,17 @@ from typing import Dict
 
 from ling_chat.core.ai_service.exceptions import ScriptEngineError
 from ling_chat.core.ai_service.game_system.game_status import GameStatus
+from ling_chat.core.ai_service.proactive_system.core import ProactiveSystem
+from ling_chat.core.schemas.response_models import ResponseFactory
 from ling_chat.game_database.models import GameLine, LineAttribute, LineBase
 from ling_chat.core.ai_service.ai_logger import AILogger
 from ling_chat.core.ai_service.config import AIServiceConfig
-from ling_chat.core.ai_service.events_scheduler import EventsScheduler
 from ling_chat.core.ai_service.message_system.message_processor import MessageProcessor
 from ling_chat.core.ai_service.message_system.message_generator import MessageGenerator
 from ling_chat.core.ai_service.script_engine.script_manager import ScriptManager
 from ling_chat.core.ai_service.translator import Translator
 from ling_chat.core.llm_providers.manager import LLMManager
+from ling_chat.schemas.character_settings import CharacterSettings
 from ling_chat.utils.function import Function
 from ling_chat.core.logger import logger
 from ling_chat.core.messaging.broker import message_broker
@@ -24,7 +26,7 @@ from datetime import datetime
 from ling_chat.utils.scene_utils import get_scene_description
 from ling_chat.game_database.models import LineBase, LineAttribute
 class AIService:
-    def __init__(self, settings: dict[str, str]):
+    def __init__(self, settings: CharacterSettings):
 
         """
         初始化AI助手实例
@@ -58,16 +60,18 @@ class AIService:
         self.processing_task = asyncio.create_task(self._process_message_loop())
         self.global_task = asyncio.create_task(self._process_global_messages())
 
-        self.events_scheduler = EventsScheduler(self.config)
+        # self.events_scheduler = EventsScheduler(self.config)
+        self.proactive_system = ProactiveSystem(self.config, self.game_status, self.message_generator)
         self.import_settings(settings)
-        self.events_scheduler.start_nodification_schedules()        # TODO: 这个由前端开关控制
+        # self.events_scheduler.start_nodification_schedules()        # TODO: 这个由前端开关控制
+        self.proactive_system.start()
 
         self.scripts_manager = ScriptManager(self.config, self.game_status)
 
         # 特别的，设定当游戏角色被导入的时候，设定它为游戏主角，其他情况下则以变量为准，并初始化system prompt
         self._init_game_status()
 
-    def import_settings(self, settings: Dict) -> None:
+    def import_settings(self, settings: CharacterSettings) -> None:
         # TODO: 这些以后全都可以删除，改为通过修改game_status的GameRole来实现
         if(settings):
             self.character_path = settings.resource_path
@@ -78,7 +82,7 @@ class AIService:
             self.user_subtitle = settings.user_subtitle
             self.ai_prompt = settings.system_prompt or "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息"
             self.game_status.player.user_name = self.user_name
-            self.game_status.player.user_subtitle = self.user_subtitle
+            self.game_status.player.user_subtitle = self.user_subtitle if self.user_subtitle else ""
 
             self.ai_prompt_example = settings.system_prompt_example
             self.ai_prompt_example_old = settings.system_prompt_example_old
@@ -97,8 +101,8 @@ class AIService:
         else:
             logger.error("角色信息settings没有被正常导入，请检查问题！")
 
-        self.events_scheduler.ai_name = self.ai_name
-        self.events_scheduler.user_name = self.user_name
+        # self.events_scheduler.ai_name = self.ai_name
+        # self.events_scheduler.user_name = self.user_name
 
     def apply_runtime_config(self, updates: dict[str, str]) -> None:
         """
@@ -129,6 +133,7 @@ class AIService:
 
     def get_lines(self):
         return self.game_status.line_list
+    
     
     def set_active_save_id(self, save_id: int | None):
         """
@@ -173,9 +178,9 @@ class AIService:
         self.game_status.add_line(system_line)
         if self.character_id:
             self.game_status.current_character = self.game_status.role_manager.get_role(self.character_id)
-            self.game_status.present_roles.add(self.game_status.current_character)
+            self.game_status.onstage_role(self.game_status.current_character)
             self.game_status.main_role = self.game_status.current_character
-            logger.info(f"初始化游戏主角：{self.game_status.current_character} 已初始化。")
+            # logger.info(f"初始化游戏主角：{self.game_status.current_character} 已初始化。")
         else:
             logger.error("初始化游戏主角失败，未指定角色ID。")
 
@@ -185,8 +190,11 @@ class AIService:
             logger.info(f"{line.display_name} : 【{line.original_emotion}】{line.content}<{line.tts_content}>（{line.action_content}）")
     
     def show_current_role_memory(self):
-        logger.info(f"当前角色的记忆列表如下：")
-        logger.info(f"{self.game_status.current_character.memory}")
+        if self.game_status.current_character:
+            logger.info(f"当前角色的记忆列表如下：")
+            logger.info(f"{self.game_status.current_character.memory}")
+        else:
+            logger.error("没有当前绑定的角色。")
 
     async def start_script(self, script_name: str | None = None):
         """
@@ -198,11 +206,14 @@ class AIService:
         if not script_list:
             raise ScriptEngineError("没有可用的剧本。")
 
+        # 剧本模式启动的时候，先清理 proactive_system，防止主动对话
         chosen = script_name or script_list[0]
+        await self.proactive_system.cleanup()
         ok = await self.scripts_manager.start_script(chosen)
         if not ok:
             raise ScriptEngineError(f"剧本 {chosen} 加载失败。")
-        
+        self.proactive_system.start()
+    
         
     async def set_scene(self, scene_filename: str) -> bool:
         description = get_scene_description(scene_filename)
@@ -247,12 +258,14 @@ class AIService:
                     user_message = message.get("content", "")
                     if user_message:
 
+                        await message_broker.publish(client_id, (ResponseFactory.create_thinking(True).model_dump()))
                         responses = []
                         async for response in self.message_generator.process_message_stream(user_message=user_message):
                             await message_broker.publish(client_id, response.model_dump())
                             responses.append(response)
 
                         logger.debug(f"消息处理完成，共生成 {len(responses)} 个响应片段")
+                        self.proactive_system.on_user_message_received()
 
                     self.is_processing = False
 

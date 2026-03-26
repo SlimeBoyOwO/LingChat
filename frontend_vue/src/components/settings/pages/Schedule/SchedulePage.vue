@@ -8,8 +8,14 @@
       v-for="(group, id) in scheduleGroups"
       :key="id"
       @click="selectGroup(id)"
-      class="group glass-effect p-6 rounded-3xl border border-brand shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer"
+      class="group glass-effect p-6 rounded-3xl border border-brand shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer relative"
     >
+      <button
+        @click.stop="removeScheduleGroup(id)"
+        class="absolute top-4 right-4 text-slate-300 hover:text-red-400 p-1 z-10"
+      >
+        <Trash2 :size="18" />
+      </button>
       <div
         class="w-12 h-12 bg-cyan-500 rounded-2xl flex items-center justify-center text-cyan-50 mb-4 group-hover:bg-cyan-50 group-hover:text-cyan-500 transition-colors"
       >
@@ -156,6 +162,10 @@ const activeGroup = computed(() => {
 
 const removeScheduleItem = (idx: number) => {
   activeGroup.value.items.splice(idx, 1)
+}
+
+const removeScheduleGroup = (id: string) => {
+  delete scheduleGroups.value[id]
 }
 
 const selectedGroupId = ref<string | null>(null)

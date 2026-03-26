@@ -1,6 +1,9 @@
 <template>
   <MenuPage>
-    <MenuItem title="创建新存档">
+    <MenuItem title="创建新存档（会记录当前对话）">
+      <template #header>
+        <PencilLine :size="20" />
+      </template>
       <div class="new-save-form">
         <Input
           type="text"
@@ -12,6 +15,9 @@
       </div>
     </MenuItem>
     <MenuItem title="存档列表">
+      <template #header>
+        <LayoutList :size="20" />
+      </template>
       <div class="save-section">
         <div class="save-list-container">
           <div v-if="loading" class="status-message">加载中...</div>
@@ -21,11 +27,25 @@
           <div v-else-if="saves.length === 0" class="status-message">暂无存档记录</div>
 
           <div v-else class="save-list">
-            <div v-for="save in saves" :key="save.id" class="save-card glass-effect">
-              <div class="save-info">
-                <span class="save-title">{{ save.title || '未命名存档' }}</span>
-                <span class="save-date">{{ formatDate(save.update_date) }}</span>
+            <div
+              v-for="save in saves"
+              :key="save.id"
+              class="relative flex rounded-xl p-8 border justify-between transition-all duration-300 group bg-black/30 border-white/20 hover:bg-black/25 hover:border-black/5 shadow-lg hover:shadow-emerald-500/10 hover:-translate-y-0.5"
+            >
+              <div
+                class="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-0 bg-brand transition-all duration-300 group-hover:h-1/2 rounded-r-md"
+              ></div>
+              <div class="flex rounded-xl items-center justify-center text-brand gap-8">
+                <Save></Save>
+                <div class="flex flex-col gap-1">
+                  <div class="text-base font-bold text-white">{{ save.title || '未命名存档' }}</div>
+                  <div class="flex items-baseline gap-2">
+                    <span><Clock :size="14" /></span>
+                    <span class="save-date">{{ formatDate(save.update_date) }}</span>
+                  </div>
+                </div>
               </div>
+
               <div class="save-actions">
                 <button @click="handleLoadSave(save.id)" class="glass-effect action-btn-load">
                   读取
@@ -59,6 +79,7 @@ import {
 } from '../../../api/services/save'
 import type { SaveInfo } from '../../../types'
 import { useUserStore } from '../../../stores/modules/user/user'
+import { Save, PencilLine, LayoutList, Clock } from 'lucide-vue-next'
 
 // 定义存档对象类型
 
@@ -131,6 +152,8 @@ const handleCreateSave = async () => {
  * @param saveId 存档ID
  */
 const handleLoadSave = async (saveId: string) => {
+  const confirmed = window.confirm('加载存档会导致丢失当前对话进度，确定要加载吗？')
+  if (!confirmed) return
   try {
     const saveData = await saveLoad({
       user_id: userId,
@@ -150,6 +173,10 @@ const handleLoadSave = async (saveId: string) => {
  * @param saveId 存档ID
  */
 const handleSaveGame = async (saveId: string) => {
+  const confirmed = window.confirm(
+    '覆盖存档会导致之前存档的对话进度，不要覆盖错存档了哦，确定要覆盖吗？',
+  )
+  if (!confirmed) return
   try {
     await saveGameSave({
       user_id: userId,

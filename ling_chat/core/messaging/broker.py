@@ -35,5 +35,12 @@ class MessageBroker:
             "content": message
         })
 
+    async def enqueue_script_choice_message(self, client_id: str, choice: str):
+        """专门用于将消息加入到AI剧本处理队列"""
+        await self.publish(f"ai_script_choice_{client_id}", {
+            "type": "script_choice",
+            "content": choice
+        })
+
 # 单例模式
 message_broker = MessageBroker()

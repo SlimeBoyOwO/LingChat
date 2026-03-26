@@ -11,9 +11,20 @@ interface CharacterSelectResponse {
   }
 }
 
-export const characterGetAll = async (): Promise<Character[]> => {
+export interface CharacterPageResult {
+  items: Character[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+}
+
+export const characterGetAll = async (
+  page: number = 1,
+  pageSize: number = 6,
+): Promise<CharacterPageResult> => {
   try {
-    const data = await http.get('/v1/chat/character/get_all_characters')
+    const data = await http.get(`/v1/chat/character/characters?page=${page}&page_size=${pageSize}`)
     return data
   } catch (error: any) {
     throw new Error(error.response?.data?.message || '获取角色列表失败')

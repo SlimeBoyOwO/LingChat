@@ -2,12 +2,16 @@ import shutil
 from ling_chat.core.ai_service.config import AIServiceConfig
 from ling_chat.core.ai_service.game_system.game_status import GameStatus
 from ling_chat.core.ai_service.script_engine.chapter import Chapter
-from ling_chat.core.ai_service.type import Player, ScriptStatus
+from ling_chat.core.ai_service.type import AdventureConfig, Player, ScriptStatus
 
 from ling_chat.core.logger import logger
+from ling_chat.core.messaging.broker import message_broker
+from ling_chat.core.schemas.response_models import ResponseFactory
+from ling_chat.game_database.managers.adventure_manager import AdventureManager
 from ling_chat.game_database.models import LineAttribute, LineBase, RoleType
 from ling_chat.utils.function import Function
 from ling_chat.utils.runtime_path import user_data_path
+from ling_chat.core.adventure_trigger import adventure_trigger_system
 
 from pathlib import Path
 
@@ -38,6 +42,7 @@ class ScriptManager:
             return
 
         # self.init_script()
+        self.check_adventure_completion()
     
     def get_script_list(self) -> list[str]:
         return list(self.all_scripts.keys())
@@ -54,6 +59,9 @@ class ScriptManager:
         if script is None:
             logger.error("剧本文件不存在")
             return False
+        
+        # TODO：检测是否有额外信息，如current_chapter和event_squenece已经有信息了，则从特定的章节特定的位置开始
+
         self.current_script = script
         self.is_running = True
 
@@ -72,12 +80,28 @@ class ScriptManager:
             logger.warning("剧本文件不存在")
             return
 
-        for script_path in SCRIPT_DIR.iterdir():
-            if not script_path.is_dir():  # 排除非目录
+        # 支持分类子目录：character/ 和 standalone/，同时向后兼容平铺结构
+        subdirs_to_scan = []
+        for category_dir in (SCRIPT_DIR / "character", SCRIPT_DIR / "standalone"):
+            if category_dir.exists() and category_dir.is_dir():
+                subdirs_to_scan.extend(
+                    p for p in category_dir.iterdir() if p.is_dir()
+                )
+        # 向后兼容：直接放在 scripts/ 根目录下的剧本
+        for p in SCRIPT_DIR.iterdir():
+            if p.is_dir() and p.name not in ("character", "standalone"):
+                subdirs_to_scan.append(p)
+
+        for script_path in subdirs_to_scan:
+            config_file = script_path / "story_config.yaml"
+            if not config_file.exists():
                 continue
-            logger.info("找到剧本文件" + script_path.name)
-            script = self._read_script_config(script_path)
-            self.all_scripts[script.name] = script
+            # logger.info("找到剧本文件" + script_path.name)
+            try:
+                script = self._read_script_config(script_path)
+                self.all_scripts[script.name] = script
+            except Exception as e:
+                logger.error(f"读取剧本 {script_path.name} 配置失败: {e}")
     
     def _init_script(self, script: ScriptStatus):
         # 1. 在数据库中，注册所有出场的剧本角色，为游戏状态注册角色，初始化角色设定，台词
@@ -112,8 +136,8 @@ class ScriptManager:
         while next_chapter_name != "end":
             try:
                 # 1. 加载章节，返回一个“可运行”的章节对象
-                chapter_path = SCRIPT_DIR / script.folder_key / "Chapters" / (next_chapter_name + ".yaml")
-                current_chapter_obj:Chapter = self._get_chapter(chapter_path) # 一个新的辅助方法
+                chapter_path = script.script_path / "Chapters" / (next_chapter_name + ".yaml")
+                current_chapter_obj:Chapter = self._get_chapter(chapter_path, script) # 一个新的辅助方法
 
                 # 2. 命令章节运行，然后等待结果
                 next_chapter_name = await current_chapter_obj.run()
@@ -123,16 +147,47 @@ class ScriptManager:
                 raise ScriptEngineError("运行章节的时候发生错误")
 
         self.is_running = False
+
+        event_response = ResponseFactory.create_script_end()
+        if script.running_client_id:
+            await message_broker.publish(script.running_client_id,
+                event_response.model_dump()
+            )
+
         logger.info("剧本已经结束。")
+        self.game_status.script_status = None
+
+        # 如果是羁绊冒险，标记为已完成
+        if self._is_adventure_script(script):
+            # 1. 标记运行时完成状态
+            self.game_status.completed_scripts.add(script.folder_key)
+
+            # 2. 标记全局完成状态（用于解锁后续冒险）
+            from ling_chat.game_database.managers.adventure_manager import AdventureManager
+            AdventureManager.mark_global_completed(user_id=1, adventure_folder=script.folder_key)
+
+            # 3. 标记当前存档完成状态
+            save_id = self.game_status.active_save_id
+            if save_id:
+                AdventureManager.mark_completed(save_id, script.folder_key)
+            
+            # 4. 检查是否有需要解锁的成就和后续剧情
+            await self.complete_script(script.folder_key)
+
+            logger.info(f"羁绊冒险 {script.name} 已标记为完成（全局+存档）。")
+    
+    def _is_adventure_script(self, script: ScriptStatus) -> bool:
+        return script.adventure and script.adventure.is_adventure
 
     def _register_script_roles(self, script: ScriptStatus):
         """从剧本目录读取角色并在数据库中注册"""
 
         script_key = script.folder_key
-        characters_dir = SCRIPT_DIR / script_key / 'characters'
+        characters_dir = script.script_path / 'characters'
 
         if not characters_dir.exists() or not characters_dir.is_dir():
-            raise ScriptLoadError(f"剧本 '{script_key}' 中缺少 'characters' 文件夹")
+            return
+            # raise ScriptLoadError(f"剧本 '{script_key}' 中缺少 'characters' 文件夹")
 
         for character_path in characters_dir.iterdir():
             # 检查是否是目录，并排除特定名称
@@ -175,21 +230,73 @@ class ScriptManager:
     def _read_script_config(self, script_path):
         config = Function.read_yaml_file( script_path / "story_config.yaml" )
         if config is not None:
+            adventure = AdventureConfig.from_dict(config.get('adventure'))
             return ScriptStatus(folder_key=script_path.name,
+                                script_path=script_path,
                                 name=config.get('script_name', 'ERROR'),
                                 description=config.get('description', 'ERROR'),
                                 intro_chapter=config.get('intro_chapter', 'ERROR'), 
-                                settings=config.get('script_settings', {})
+                                settings=config.get('script_settings', {}),
+                                recommand_start=config.get('recommand_start', ''),
+                                adventure=adventure,
                                 )
         else:
             raise ScriptLoadError("剧本读取出现错误,缺少 story_config.yml 配置文件")
+
+    def get_character_adventures(self, character_folder: str) -> list[ScriptStatus]:
+        """获取指定角色绑定的所有羁绊冒险，按 order 排序"""
+        adventures = [
+            s for s in self.all_scripts.values()
+            if s.adventure.is_adventure and s.adventure.bound_character_folder == character_folder
+        ]
+        adventures.sort(key=lambda s: s.adventure.order)
+        return adventures
+
+    def get_all_adventures(self) -> list[ScriptStatus]:
+        """获取所有已注册的羁绊冒险"""
+        return [
+            s for s in self.all_scripts.values()
+            if s.adventure.is_adventure
+        ]
     
-    def _get_chapter(self, chapter_path: Path) -> Chapter:
+    def _get_chapter(self, chapter_path: Path, script_status: ScriptStatus) -> Chapter:
         config = Function.read_yaml_file(chapter_path)
         if config is not None:
-            return Chapter(str(chapter_path), self.config, self.game_status, config.get('events',[]), config.get('end',{}))
+            return Chapter(str(chapter_path), self.config, self.game_status, config, script_status)
         else:
             raise ChapterLoadError(f"导入 {chapter_path} 剧本的时候出现问题")
+    
+    async def complete_script(self, script_folder: str) -> None:
+        user_id = 1
+        AdventureManager.mark_global_completed(user_id, script_folder)
+
+        unlocked_achievements = []
+        for name, s in self.all_scripts.items():
+            if s.folder_key == script_folder and s.adventure.completion_achievements:
+                from ling_chat.core.achievement_manager import achievement_manager
+                for ach_def in s.adventure.completion_achievements:
+                    ach_id = ach_def.get("id")
+                    if ach_id:
+                        result = achievement_manager.unlock(ach_id, ach_def)
+                        if result:
+                            unlocked_achievements.append(result)
+                break
+
+        # 检查是否有后续冒险被解锁
+        # 注意：这里需要user_id，但我们没有从请求中获取
+        # 暂时使用默认值1，后续可以改进
+        self.check_adventure_completion()
+
+    def check_adventure_completion(self) -> None:
+        user_id = 1  # TODO: 从session或其他地方获取真实的user_id
+        all_adventures = self.get_all_adventures()
+        chat_count = self.game_status.get_chat_message_count()
+        adventure_trigger_system.check_all_adventures(
+            user_id=user_id,
+            adventures=all_adventures,
+            chat_count=chat_count,
+            game_status=self.game_status,
+        )
     
     def get_assets_dir(self, script_name: str | None = None) -> Path:
         """
@@ -209,7 +316,7 @@ class ScriptManager:
         if script is None:
             raise ScriptLoadError("没有可用的剧本，无法定位资源目录")
 
-        return SCRIPT_DIR / script.folder_key / "Assets"
+        return script.script_path / "Assets"
 
     # 兼容旧拼写（assests）
     def get_assests_dir(self) -> Path:
@@ -233,7 +340,7 @@ class ScriptManager:
         if script is None:
             raise ScriptLoadError("没有可用的剧本，无法定位角色资源目录")
 
-        char_dir = SCRIPT_DIR / script.folder_key / "characters" / character
+        char_dir = script.script_path / "characters" / character
         # 兼容大小写/不同命名
         for candidate in ("avatar", "Avatar", "avatars", "Avatars"):
             p = char_dir / candidate
@@ -251,7 +358,7 @@ class ScriptManager:
         if script is None:
             raise ScriptLoadError("剧本文件不存在")
 
-        characters_dir = SCRIPT_DIR / script.folder_key / "characters"
+        characters_dir = script.script_path / "characters"
         if not characters_dir.exists() or not characters_dir.is_dir():
             return []
             # raise ScriptLoadError(f"剧本 '{script.folder_key}' 中缺少 'characters' 文件夹")

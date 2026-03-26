@@ -1,6 +1,7 @@
 from ling_chat.core.ai_service.script_engine.events.base_event import BaseEvent
 from ling_chat.core.ai_service.script_engine.utils.script_function import ScriptFunction
 from ling_chat.core.logger import logger
+from ling_chat.core.schemas.response_models import ResponseFactory
 from ling_chat.core.service_manager import service_manager
 from ling_chat.core.messaging.broker import message_broker
 from ling_chat.game_database.models import LineAttribute, LineBase
@@ -9,7 +10,7 @@ from ling_chat.game_database.models import LineAttribute, LineBase
 class AIDialogueEvent(BaseEvent):
     """处理AI对话事件"""
 
-    async def execute(self):
+    async def _execute(self):
         character = self.event_data.get('character', '')
         prompt = self.event_data.get('prompt', '')
 
@@ -25,6 +26,8 @@ class AIDialogueEvent(BaseEvent):
             logger.error("AI service not found")
             return
 
+        # TODO：获取上一个事件是否为玩家输入再执行这个，会比较优雅
+        # await message_broker.publish(self.client_id, (ResponseFactory.create_thinking(True).model_dump()))
         async for response in ai_service.message_generator.process_message_stream():
             await message_broker.publish(self.client_id, response.model_dump())
 

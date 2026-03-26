@@ -13,11 +13,9 @@
   background: transparent;
   color: white;
   border: none;
-  padding: 15px;
-  margin: 10px 0;
-  border-radius: 12px;
+  margin-top: 15px;
+  padding: 5px;
   font-size: clamp(32px, 4vw, 72px);
-  font-weight: normal;
   font-family:
     'Maoken Assorted Sans',
     -apple-system,
@@ -28,18 +26,20 @@
     Arial,
     sans-serif;
   cursor: pointer;
-  transition:
-    color 0.3s,
-    text-shadow 0.3s;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
   text-align: justify;
   text-align-last: justify;
   white-space: nowrap;
+  transition:
+    transform 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28),
+    color 0.3s ease,
+    text-shadow 0.3s ease;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .menu-item:hover {
   color: #f0f0f0;
-  text-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
+  text-shadow: 0 0 6px rgba(255, 255, 255, 0.4);
+  transform: translateY(-8px) scale(1.05);
 }
 
 .menu-item--disabled {

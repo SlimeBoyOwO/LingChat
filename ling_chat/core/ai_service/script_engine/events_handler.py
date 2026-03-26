@@ -54,7 +54,7 @@ class EventsHandler:
                 handler = handler_class(self.config, event, self.game_status)
                 
                 # 执行处理器，并获取可能的结果
-                result = await handler.execute()
+                result = await handler.process()
                 
                 # 如果是章节结束事件，返回结果
                 if event_type == 'chapter_end':

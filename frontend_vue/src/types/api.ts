@@ -47,9 +47,14 @@ export interface Clothes {
 export interface Character {
   character_id: string
   title: string
+  name: string
+  sub_name: string
   info: string
   avatar_path: string
   clothes: Array<Clothes>
+  resource_folder?: string
+  adventure_count?: number
+  total_adventures?: number
 }
 
 export interface CharacterSelectParams {
@@ -78,6 +83,10 @@ export interface SaveModifyParams {
 export interface SaveCreateParams {
   user_id: string
   title: string
+}
+
+export interface SaveContinueParams {
+  user_id: string
 }
 
 export interface MusicTrack {

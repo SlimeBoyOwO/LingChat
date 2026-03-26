@@ -35,8 +35,8 @@ class GeminiProvider(BaseLLMProvider):
     def _get_http_client(self):
         """获取HTTP客户端，支持代理"""
         if self.proxy_url:
-            return httpx.Client(proxy=self.proxy_url)
-        return httpx.Client()
+            return httpx.Client(proxy=self.proxy_url, timeout=httpx.Timeout(connect=30.0))
+        return httpx.Client(timeout=httpx.Timeout(connect=30.0))
 
     def _format_messages(self, messages: List[Dict]) -> List[Dict]:
         """格式化消息为Gemini API兼容格式
@@ -115,7 +115,7 @@ class GeminiProvider(BaseLLMProvider):
                 "top_p": self.top_p
             }
 
-            async with httpx.AsyncClient(proxy=self.proxy_url) as client:
+            async with httpx.AsyncClient(proxy=self.proxy_url, timeout=httpx.Timeout(connect=30.0)) as client:
                 async with client.stream(
                     'POST',
                     f"{self.base_url}/chat/completions",

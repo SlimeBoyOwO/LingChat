@@ -56,7 +56,7 @@
               :key="tab.id"
               class="w-full text-left px-4 py-2.5 rounded-xl border-none bg-transparent text-white/60 cursor-pointer transition-all duration-200 font-medium hover:bg-white/5 hover:text-white"
               :class="{
-                'bg-[rgba(94,114,228,0.2)] !text-[#79d9ff] !font-semibold': activeTab === tab.id,
+                'bg-[rgba(94,114,228,0.2)] text-[#79d9ff]! font-semibold!': activeTab === tab.id,
               }"
               @click="activeTab = tab.id"
             >

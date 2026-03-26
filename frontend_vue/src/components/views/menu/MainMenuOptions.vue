@@ -18,12 +18,31 @@ interface MenuItem {
   action: () => void
 }
 
+declare global {
+  interface Window {
+    pywebview?: {
+      api?: {
+        exit_app?: () => void
+      }
+    }
+  }
+}
+
+// 退出游戏：优先调用 WebView API，如果不可用则回退到 window.close()
+function exitGame() {
+  if (window.pywebview?.api?.exit_app) {
+    window.pywebview.api.exit_app()
+  } else {
+    window.close()
+  }
+}
+
 const menuItems: MenuItem[] = [
   { label: '开始游戏', action: () => emit('start-game') },
   { label: '继续游戏', action: () => emit('open-settings', 'save') },
   { label: '设置', action: () => emit('open-settings') },
   { label: '致谢', action: () => emit('open-credits') },
-  { label: '退出游戏', action: () => window.close() },
+  { label: '退出游戏', action: exitGame },
 ]
 </script>
 

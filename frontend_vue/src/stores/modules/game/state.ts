@@ -15,6 +15,7 @@ export interface GameMessage {
 export interface ScriptInfo {
   scriptName: string
   currentChapterName: string
+  choices: string[]
   isRunning: boolean
 }
 
@@ -42,7 +43,7 @@ export interface GameState {
   gameRoles: Record<number, GameRole>
   presentRoleIds: number[]
   mainRoleId: number
-  currentInteractRoleId: number
+  currentInteractRoleId: number | null
 
   userName: string
   userSubtitle: string

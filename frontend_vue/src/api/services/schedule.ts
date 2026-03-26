@@ -24,3 +24,12 @@ export const saveSchedules = async (data: ScheduleData): Promise<void> => {
     throw error
   }
 }
+
+export const reloadProactiveSystem = async (): Promise<void> => {
+  try {
+    await http.post('/v1/chat/schedule/reload_proactive')
+  } catch (error: any) {
+    console.error('重载主动系统错误:', error.message)
+    throw error
+  }
+}

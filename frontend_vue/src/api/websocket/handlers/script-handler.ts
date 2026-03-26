@@ -26,6 +26,16 @@ export class ScriptHandler {
       eventQueue.addEvent(data as ScriptTypes.ScriptDialogueEvent)
     })
 
+    registerHandler(WebSocketMessageTypes.SCRIPT_THINKING, (data: any) => {
+      console.log('收到剧本思考事件:', data)
+      eventQueue.addEvent(data as ScriptTypes.ScriptThinkingEvent)
+    })
+
+    registerHandler(WebSocketMessageTypes.SCRIPT_CHAPTER_CHANGE, (data: any) => {
+      console.log('收到章节切换事件:', data)
+      eventQueue.addEvent(data as ScriptTypes.ScriptChapterChangeEvent)
+    })
+
     registerHandler(WebSocketMessageTypes.SCRIPT_BACKGROUND, (data: any) => {
       console.log('收到背景切换事件:', data)
       eventQueue.addEvent(data as ScriptTypes.ScriptBackgroundEvent)
@@ -59,6 +69,16 @@ export class ScriptHandler {
     registerHandler(WebSocketMessageTypes.SCRIPT_INPUT, (data: any) => {
       console.log('收到输入事件:', data)
       eventQueue.addEvent(data as ScriptTypes.ScriptInputEvent)
+    })
+
+    registerHandler(WebSocketMessageTypes.SCRIPT_CHOICE, (data: any) => {
+      console.log('收到选择事件:', data)
+      eventQueue.addEvent(data as ScriptTypes.ScriptChoiceEvent)
+    })
+
+    registerHandler(WebSocketMessageTypes.SCRIPT_END, (data: any) => {
+      console.log('收到脚本结束事件:', data)
+      eventQueue.addEvent(data as ScriptTypes.ScriptEndEvent)
     })
 
     // 错误事件 - 通过 eventQueue 统一处理

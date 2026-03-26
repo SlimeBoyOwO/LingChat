@@ -152,7 +152,7 @@ class VoiceMaker:
                 self.tts_type = os.environ.get("TTS_TYPE", "")
                 self.set_tts_settings(tts_settings, name)
             else:
-                logger.warning("你的环境变量中未设置TTS类型（或是设置错误），将使用角色卡的默认语音合成器！")
+                # logger.warning("你的环境变量中未设置TTS类型（或是设置错误），将使用角色卡的默认语音合成器！")
                 if tts_type in available_tts_types:
                     self.tts_type = tts_type
                     self.set_tts_settings(tts_settings, name)

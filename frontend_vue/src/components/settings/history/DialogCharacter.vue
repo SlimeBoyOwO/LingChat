@@ -2,7 +2,7 @@
   <div class="message" :title="`情感: ${emotionTag}`">
     <span class="name">{{ name }}</span>
     <span class="symbol">:&nbsp</span>
-    <span class="content">{{ content }}</span>
+    <span class="content">{{ content }}{{ action_content ? ` (${action_content})` : '' }}</span>
     <span class="symbol">&nbsp</span>
     <span class="icon"><Icon icon="volume" @click="$emit('click')" /></span>
   </div>
@@ -19,6 +19,10 @@ const props = defineProps({
   content: {
     type: String,
     require: true,
+  },
+  action_content: {
+    type: String,
+    require: false,
   },
   emotionTag: {
     type: String,

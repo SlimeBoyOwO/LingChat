@@ -42,6 +42,7 @@ class AchievementManager:
     def __init__(self):
         self.achievements_file = user_data_path / "game_data" / "achievement.json"
         self.achievements_data: Dict[str, dict] = {}
+        self._dynamic_achievements: Dict[str, dict] = {}  # 动态注册的成就（如羁绊冒险定义的）
         self._dirty = False
         self._load_achievements()
 
@@ -84,6 +85,16 @@ class AchievementManager:
             logger.info("检测到未保存的成就进度，正在保存...")
             self.save()
 
+    def register_achievement(self, achievement_id: str, definition: dict):
+        """外部注册成就（如羁绊冒险的 completion_achievements）"""
+        self._dynamic_achievements[achievement_id] = definition
+        logger.info(f"动态注册成就: {achievement_id}")
+
+    def _get_achievement_def(self, achievement_id: str) -> Optional[dict]:
+        """统一查找成就定义（先查默认，再查动态）"""
+        return (self.DEFAULT_ACHIEVEMENTS.get(achievement_id)
+                or self._dynamic_achievements.get(achievement_id))
+
     def increment_progress(self, achievement_id: str, amount: int = 1) -> Optional[dict]:
         """
         增加成就进度
@@ -91,7 +102,7 @@ class AchievementManager:
         :param amount: 增加的数量
         :return: 如果触发解锁，返回解锁的成就详情；否则返回None
         """
-        achievement_def = self.DEFAULT_ACHIEVEMENTS.get(achievement_id)
+        achievement_def = self._get_achievement_def(achievement_id)
         if not achievement_def:
             return None
 
@@ -130,7 +141,7 @@ class AchievementManager:
         :return: 如果解锁成功，返回成就详情；如果已解锁或ID无效，返回None
         """
         # 检查该成就id是否存在定义
-        achievement_def = self.DEFAULT_ACHIEVEMENTS.get(achievement_id)
+        achievement_def = self._get_achievement_def(achievement_id)
         if not achievement_def:
             logger.warning(f"尝试解锁未知成就: {achievement_id}")
             return None
@@ -164,12 +175,18 @@ class AchievementManager:
     def get_all_achievements(self):
         """获取所有成就状态"""
         result = {}
-        for ach_id, ach_def in self.DEFAULT_ACHIEVEMENTS.items():
+        all_defs = {**self.DEFAULT_ACHIEVEMENTS, **self._dynamic_achievements}
+        for ach_id, ach_def in all_defs.items():
             state = self.achievements_data.get(
                 ach_id, {"unlocked": False, "current_progress": 0}
             )
             result[ach_id] = {**ach_def, **state}
         return result
+
+    def get_achievements_by_type(self, ach_type: str) -> Dict[str, dict]:
+        """按类型过滤成就（如 'adventure', 'common', 'rare'）"""
+        all_achs = self.get_all_achievements()
+        return {k: v for k, v in all_achs.items() if v.get("type") == ach_type}
 
     @classmethod
     def get_instance(cls):

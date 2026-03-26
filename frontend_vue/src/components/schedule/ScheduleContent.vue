@@ -1,5 +1,10 @@
 <template>
   <div
+    class="absolute -top-1 -left-2 w-10 h-10 rounded-full flex items-center justify-center text-brand shadow-md transform -rotate-18"
+  >
+    <PawPrint :size="58" />
+  </div>
+  <div
     class="w-full flex-1 glass-panel bg-white/10 rounded-2xl overflow-hidden flex flex-col md:flex-row"
     :class="containerClass"
   >
@@ -8,10 +13,12 @@
       <div
         class="flex items-center space-x-3 text-base font-bold px-3.75 py-2.5 rounded-lg mb-8 text-brand inset_0_1px_1px_rgba(255,255,255,0.1)]"
       >
-        <div
-          class="w-10 h-10 bg-cyan-500 rounded-xl flex items-center justify-center text-white shadow-lg"
-        >
-          <Sparkles :size="20" />
+        <div class="relative">
+          <div
+            class="w-10 h-10 bg-cyan-500 rounded-xl flex items-center justify-center text-white shadow-lg"
+          >
+            <Sparkles :size="20" />
+          </div>
         </div>
         <h1 class="font-bold text-xl text-white tracking-tight">LingChat AI</h1>
       </div>
@@ -40,6 +47,7 @@
         </button>
         <button
           class="w-full flex items-center space-x-6 px-5 py-3 no-underline rounded-lg text-white transition-colors duration-200 relative z-10 adv-nav-link hover:bg-gray-200 hover:text-black active:text-white active:font-bold"
+          @click="changeView('proactive_settings')"
         >
           <Cat :size="18" />
           <span>主动对话</span>
@@ -68,8 +76,8 @@
             <ChevronLeft />
           </button>
           <div>
-            <h2 class="text-2xl font-bold text-brand mb-2">小灵闹钟</h2>
-            <p class="text-xs text-white mt-0.5 tracking-wide">留下需要她提醒你的事情吧</p>
+            <h2 class="text-2xl font-bold text-brand mb-2">{{ titleInfo.title }}</h2>
+            <p class="text-xs text-white mt-0.5 tracking-wide">{{ titleInfo.subtitle }}</p>
           </div>
         </div>
 
@@ -92,17 +100,20 @@
 
         <!--日历页面-->
         <CalendarPage ref="calendarRef" />
+
+        <ProactivePage ref="proactiveRef" />
       </div>
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, reactive } from 'vue'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import TodoPage from '@/components/settings/pages/Schedule/TodoPage.vue'
 import SchedulePage from '@/components/settings/pages/Schedule/SchedulePage.vue'
 import CalendarPage from '@/components/settings/pages/Schedule/CalendarPage.vue'
+import ProactivePage from '../settings/pages/Schedule/ProactivePage.vue'
 import {
   Layers,
   CheckCircle2,
@@ -111,6 +122,7 @@ import {
   Cat,
   ChevronLeft,
   Sparkles,
+  PawPrint,
 } from 'lucide-vue-next'
 
 type Variant = 'settings' | 'popup'
@@ -125,6 +137,38 @@ const props = withDefaults(
 const scheduleRef = ref()
 const todoRef = ref()
 const calendarRef = ref()
+const proactiveRef = ref()
+const titleInfo = computed(() => {
+  const currentView = uiStore.scheduleView
+
+  if (currentView.startsWith('schedule')) {
+    return {
+      title: '铃铃提醒闹钟',
+      subtitle: '到点的时候ta会提醒你的哦',
+    }
+  } else if (currentView.startsWith('todo')) {
+    return {
+      title: 'TODO 代办笔记',
+      subtitle: '在这里记录重要的事情吧，ta会随机提醒你哒',
+    }
+  } else if (currentView.startsWith('proactive')) {
+    return {
+      title: '主动对话设置',
+      subtitle: '需要专心和隐私的时候可以关闭哦（需要点击底部的保存才生效）',
+    }
+  } else if (currentView.startsWith('calendar')) {
+    return {
+      title: '君の重要な日',
+      subtitle: '可以记下你朋友的生日自动提醒哦',
+    }
+  } else {
+    // 默认情况
+    return {
+      title: '小灵闹钟',
+      subtitle: '留下需要她提醒你的事情吧',
+    }
+  }
+})
 
 const uiStore = useUIStore()
 

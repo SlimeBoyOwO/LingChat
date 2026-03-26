@@ -15,6 +15,6 @@ export default class BackgroundEffectProcessor implements IEventProcessor {
     // 处理对话逻辑
     gameStore.currentStatus = 'presenting'
 
-    uiStore.currentBackgroundEffect = event.effect
+    uiStore.setBackgroundEffect(event.effect)
   }
 }

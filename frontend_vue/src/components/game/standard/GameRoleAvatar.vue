@@ -21,15 +21,8 @@
         ></div>
       </div>
 
-      <!-- 触摸区域  -->
-      <TouchAreas
-        v-for="(part, key) in role.bodyPart"
-        :key="key"
-        :game-store="gameStore"
-        :part="part"
-        :part-key="String(key)"
-        :role-id="role.roleId"
-      />
+      <!-- 触摸区域 -->
+      <TouchAreas :game-store="gameStore" :body-parts="role.bodyPart" :role-id="role.roleId" />
 
       <!-- 气泡  -->
       <div :class="bubbleClasses" :style="bubbleStyles" class="bubble"></div>
@@ -109,7 +102,7 @@ const bubbleStyles = computed(() => ({
 
 const targetAvatarUrl = computed(() => {
   const r = role.value
-  const clothesName = r.clothesName ?? 'default'
+  const clothesName = r.clothesName === '默认' || !r.clothesName ? 'default' : r.clothesName
   const emotion = r.emotion
 
   const mappedEmotion = EMOTION_CONFIG_EMO[emotion] || '正常'

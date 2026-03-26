@@ -6,20 +6,13 @@ import threading
 import sys
 from typing import Collection
 
-from ling_chat.core.logger import logger
-from ling_chat.third_party import install_third_party, run_third_party
 from ling_chat.utils.cli_parser import get_parser
-from ling_chat.utils.easter_egg import get_random_loading_message
-from ling_chat.utils.runtime_path import static_path, third_party_path, user_data_path
-from ling_chat.core.webview import start_webview
 
-exit_event = threading.Event()
-
-
-def _module_signal_handler(signum, frame):
-    exit_event.set()
 
 def check_static_copy():
+    from ling_chat.utils.runtime_path import static_path, user_data_path
+    from ling_chat.core.logger import logger
+    
     if not os.path.exists(user_data_path / "game_data"):
         shutil.copytree(static_path / "game_data", user_data_path / "game_data")
         logger.info("静态文件已复制到用户目录")
@@ -31,6 +24,10 @@ def check_static_copy():
 
 
 def handle_install(install_modules_list: Collection[str], use_mirror=False):
+    from ling_chat.utils.runtime_path import third_party_path
+    from ling_chat.third_party import install_third_party
+    from ling_chat.core.logger import logger
+    
     for module in install_modules_list:
         logger.info(f"正在安装模块: {module}")
         if module == "vits":
@@ -49,6 +46,9 @@ def handle_install(install_modules_list: Collection[str], use_mirror=False):
 
 def handle_run(run_modules_list: Collection[str]):
     """处理运行模块"""
+    from ling_chat.third_party import run_third_party
+    from ling_chat.core.logger import logger
+    
     for module in run_modules_list:
         logger.info(f"正在运行模块: {module}")
         if module == "vits":
@@ -64,42 +64,50 @@ def handle_run(run_modules_list: Collection[str]):
 
 
 def run_cli_command(args):
+    from ling_chat.utils.cli import handle_install_cli, handle_export_emotions_cli
+    from ling_chat.core.logger import logger
+    
     if args.command == "install":
-        handle_install(args.modules, use_mirror=args.mirror)
-        logger.info("安装完成")
+        handle_install_cli(args)
     elif args.command == "export-emotions":
-        from ling_chat.utils.export_emotions import export_emotion_labels
-        output_file, count = export_emotion_labels(args.output)
-        if count == 0:
-            logger.warning("没有获取任何有效的情感标签数据，暂时不需要发送哦")
-        else:
-            logger.info(f"成功导出 {count} 条情感标签数据到：{output_file}")
+        handle_export_emotions_cli(args)
     else:
         logger.error(f"未知的CLI命令: {args.command}")
 
 
-def run_main_program(args,is_wv=False):
+def run_main_program(args, is_wv=False):
     from ling_chat.api.app_server import run_app_in_thread, stop_app_server
-
+    from ling_chat.core.achievement_manager import AchievementManager
+    from ling_chat.core.logger import logger
+    from ling_chat.core.webview import start_webview
+    from ling_chat.third_party import run_third_party
     from ling_chat.utils.cli import print_logo
+    from ling_chat.utils.easter_egg import get_random_loading_message
     from ling_chat.utils.function import Function
+    from ling_chat.utils.runtime_path import static_path, third_party_path, user_data_path
+    from ling_chat.utils.tts_auto_start import start_tts_software
     from ling_chat.utils.voice_check import VoiceCheck
+    
+    # 创建退出事件用于控制程序关闭
+    exit_event = threading.Event()
+
+    # 定义信号处理器
+    def _signal_handler(signum, frame):
+        logger.info("接收到中断信号，正在关闭程序...")
+        exit_event.set()
+
     try:
         if threading.current_thread() is threading.main_thread():
-            def _local_signal_handler(signum, frame):
-                logger.info("接收到中断信号，正在关闭程序...")
-                exit_event.set()
-
-        try:
-            from ling_chat.core.achievement_manager import AchievementManager
-            AchievementManager.get_instance().save_if_dirty()
-        except Exception as e:
-            logger.error(f"保存成就数据时出错: {e}")
-
-        signal.signal(signal.SIGINT,_local_signal_handler)
-        signal.signal(signal.SIGTERM, _local_signal_handler)
+            signal.signal(signal.SIGINT, _signal_handler)
+            signal.signal(signal.SIGTERM, _signal_handler)
     except Exception:
-        logger.debug("无法在当前环境注册局部信号处理器")
+        logger.debug("无法在当前环境注册信号处理器")
+
+    try:
+        AchievementManager.get_instance().save_if_dirty()
+    except Exception as e:
+        logger.error(f"保存成就数据时出错: {e}")
+
     if args.nogui:
         logger.info("启用无界面模式，前端界面已禁用")
 
@@ -107,14 +115,22 @@ def run_main_program(args,is_wv=False):
     selected_loading_message = get_random_loading_message()
     logger.start_loading_animation(message=selected_loading_message, animation_style="auto")
     app_thread: threading.Thread | None = None
+    
     try:
         check_static_copy()
         handle_run(args.run or [])
         app_thread = run_app_in_thread()
+        
         if os.getenv("VOICE_CHECK", "false").lower() == "true":
             VoiceCheck.main()
         else:
             logger.info("已根据环境变量禁用语音检查")
+        
+        # 检查是否自动启动语音合成软件
+        if os.getenv("AUTO_START_TTS_SOFTWARE", "false").lower() == "true":
+            start_tts_software()
+        else:
+            logger.info("已禁用语音合成软件自动启动")
 
         # 检查环境变量决定是否启动前端界面
         if (os.getenv("OPEN_FRONTEND_APP", "false").lower() == "true" and not args.nogui) or args.gui:
@@ -150,9 +166,11 @@ def run_main_program(args,is_wv=False):
 def main():
     args = get_parser().parse_args()
     if args.command:
-         run_cli_command(args)
+        run_cli_command(args)
+        return
     else:
          run_main_program(args,False)
+
 
 if __name__ == "__main__":
     main()

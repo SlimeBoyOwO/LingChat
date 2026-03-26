@@ -1,22 +1,37 @@
 <template>
   <MenuPage>
-    <MenuItem title="👩 角色音量" size="small">
+    <MenuItem title="角色音量" size="small">
+      <template #header>
+        <MicVocal :size="20" />
+      </template>
       <Slider v-model="characterVolume" @change="updateCharacterVolume"> 弱/强 </Slider>
     </MenuItem>
 
-    <MenuItem title="💬 气泡音量" size="small">
+    <MenuItem title="气泡音量" size="small">
+      <template #header>
+        <MessageCircle :size="20" />
+      </template>
       <Slider @change="updateBubbleVolume" v-model="bubbleVolume"> 弱/强 </Slider>
     </MenuItem>
 
-    <MenuItem title="🎶 背景音量" size="small">
+    <MenuItem title="背景音量" size="small">
+      <template #header>
+        <AudioLines :size="20" />
+      </template>
       <Slider @change="updateBackgroundVolume" v-model="backgroundVolume"> 弱/强 </Slider>
     </MenuItem>
 
-    <MenuItem title="🏆 成就音量" size="small">
+    <MenuItem title="成就音量" size="small">
+      <template #header>
+        <Trophy :size="20" />
+      </template>
       <Slider @change="updateAchievementVolume" v-model="achievementVolume"> 弱/强 </Slider>
     </MenuItem>
 
-    <MenuItem title="🔊 声音测试" size="small">
+    <MenuItem title="声音测试" size="small">
+      <template #header>
+        <FlaskConical :size="20" />
+      </template>
       <div class="sound-test">
         <Button type="big" @click="playCharacterTestSound">测试角色音量</Button>
         <Button type="big" @click="playBubbleTestSound">测试气泡音量</Button>
@@ -24,7 +39,10 @@
       </div>
     </MenuItem>
 
-    <MenuItem title="⚙ 背景音乐设置">
+    <MenuItem title="背景音乐设置">
+      <template #header>
+        <Headphones :size="20" />
+      </template>
       <div class="music-controls">
         <Button type="big" @click="handlePlayPause" class="left-button">{{
           playPauseButtonText
@@ -42,7 +60,9 @@
           @click="playMusic(music)"
         >
           <div class="music-item-name">{{ music.name }}</div>
-          <Button @click="deleteMusic(music)" class="action-btn-delete glass-effect">删除</Button>
+          <Button @click.stop="deleteMusic(music)" class="action-btn-delete glass-effect">
+            删除
+          </Button>
         </div>
       </div>
 
@@ -62,110 +82,138 @@
     <audio ref="characterTestPlayer"></audio>
     <audio ref="bubbleTestPlayer"></audio>
     <audio ref="achievementTestPlayer"></audio>
-    <audio
-      ref="backgroundAudioPlayer"
-      loop
-      @timeupdate="updateMusicState"
-      @ended="onMusicEnd"
-    ></audio>
+    <audio ref="backgroundAudioPlayer" loop></audio>
   </MenuPage>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue'
-import { useStorage } from '@vueuse/core'
-import { MenuPage, MenuItem } from '../../ui'
-import { Slider, Button } from '../../base'
+import { computed, onMounted, ref, watch } from 'vue'
+import { Button, Slider } from '../../base'
+import { MenuItem, MenuPage } from '../../ui'
+import {
+  musicDelete,
+  musicGetAll,
+  musicUpload,
+  setCurrentBackgroundMusic,
+} from '../../../api/services/music'
 import { useUIStore } from '../../../stores/modules/ui/ui'
-import { musicGetAll, musicUpload, musicDelete } from '../../../api/services/music'
-
-// --- 响应式状态和引用 ---
+import { useSettingsStore } from '../../../stores/modules/settings'
+import {
+  AudioLines,
+  FlaskConical,
+  MessageCircle,
+  MicVocal,
+  Trophy,
+  Headphones,
+} from 'lucide-vue-next'
 
 const uiStore = useUIStore()
+const settingsStore = useSettingsStore()
 
-// 使用 VueUse 的 useStorage 持久化存储音量设置
-const characterVolume = useStorage('lingchat-character-volume', 50)
-const bubbleVolume = useStorage('lingchat-bubble-volume', 50)
-const backgroundVolume = useStorage('lingchat-background-volume', 50)
-const achievementVolume = useStorage('lingchat-achievement-volume', 50)
+// 使用 computed 绑定 settings store 的音量值
+const characterVolume = computed({
+  get: () => settingsStore.characterVolume,
+  set: (val: number) => settingsStore.update('audio.characterVolume', val),
+})
+const bubbleVolume = computed({
+  get: () => settingsStore.bubbleVolume,
+  set: (val: number) => settingsStore.update('audio.bubbleVolume', val),
+})
+const backgroundVolume = computed({
+  get: () => settingsStore.backgroundVolume,
+  set: (val: number) => settingsStore.update('audio.backgroundVolume', val),
+})
+const achievementVolume = computed({
+  get: () => settingsStore.achievementVolume,
+  set: (val: number) => settingsStore.update('audio.achievementVolume', val),
+})
 
-// 同步 localStorage 中的音量到 Pinia store
-watch(
-  [characterVolume, bubbleVolume, backgroundVolume, achievementVolume],
-  ([charVol, bubVol, bgVol, achVol]) => {
-    uiStore.characterVolume = charVol
-    uiStore.bubbleVolume = bubVol
-    uiStore.backgroundVolume = bgVol
-    uiStore.achievementVolume = achVol
-  },
-  { immediate: true },
-)
-
-// 音频播放器的模板引用
 const characterTestPlayer = ref<HTMLAudioElement | null>(null)
 const bubbleTestPlayer = ref<HTMLAudioElement | null>(null)
 const achievementTestPlayer = ref<HTMLAudioElement | null>(null)
 const backgroundAudioPlayer = ref<HTMLAudioElement | null>(null)
 
-// 背景音乐列表和状态
 interface Music {
   name: string
-  url: string // 注意：这里的 url 应该是唯一的标识符，比如文件名
+  url: string
 }
+
 const musicList = ref<Music[]>([])
 const currentMusicName = ref('未选择音乐')
-const isMusicPlaying = ref(false)
 
-// 文件上传状态
 const selectedFile = ref<File | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 
-// --- Pinia Store 音量控制 ---
+const toMusicUrl = (musicFileName: string): string =>
+  `/api/v1/chat/back-music/music_file/${encodeURIComponent(musicFileName)}`
+
+const inferMusicNameFromUrl = (musicUrl: string): string => {
+  if (!musicUrl || musicUrl === 'None') return '未选择音乐'
+
+  const fileName = decodeURIComponent(musicUrl.split('/').pop() || '')
+  if (!fileName) return '未选择音乐'
+
+  return fileName.replace(/\.[^/.]+$/, '') || fileName
+}
+
+const syncCurrentMusicName = () => {
+  const currentUrl = uiStore.currentBackgroundMusic
+
+  if (!currentUrl || currentUrl === 'None') {
+    currentMusicName.value = '未选择音乐'
+    return
+  }
+
+  const matched = musicList.value.find((item) => toMusicUrl(item.url) === currentUrl)
+  currentMusicName.value = matched?.name || inferMusicNameFromUrl(currentUrl)
+}
 
 const updateCharacterVolume = (value: number) => {
-  characterVolume.value = value
+  settingsStore.update('audio.characterVolume', value)
   if (characterTestPlayer.value) {
     characterTestPlayer.value.volume = value / 100
   }
 }
 
 const updateBubbleVolume = (value: number) => {
-  bubbleVolume.value = value
+  settingsStore.update('audio.bubbleVolume', value)
   if (bubbleTestPlayer.value) {
     bubbleTestPlayer.value.volume = value / 100
   }
 }
 
 const updateBackgroundVolume = (value: number) => {
-  backgroundVolume.value = value
+  settingsStore.update('audio.backgroundVolume', value)
   if (backgroundAudioPlayer.value) {
     backgroundAudioPlayer.value.volume = value / 100
   }
 }
 
 const updateAchievementVolume = (value: number) => {
-  achievementVolume.value = value
+  settingsStore.update('audio.achievementVolume', value)
   if (achievementTestPlayer.value) {
     achievementTestPlayer.value.volume = value / 100
   }
 }
 
-// 监听 Pinia store 变化，确保音量同步
 watch(
-  () => uiStore.backgroundVolume,
+  () => settingsStore.backgroundVolume,
   (newVolume) => {
-    backgroundVolume.value = newVolume
     if (backgroundAudioPlayer.value) {
       backgroundAudioPlayer.value.volume = newVolume / 100
     }
   },
 )
 
-// --- 声音测试 ---
+watch(
+  () => uiStore.currentBackgroundMusic,
+  () => {
+    syncCurrentMusicName()
+  },
+)
 
 const playCharacterTestSound = () => {
   if (!characterTestPlayer.value) return
-  // 确保使用正确的资源路径
   characterTestPlayer.value.src = '/audio_effects/角色音量测试.wav'
   characterTestPlayer.value.play().catch((e) => console.error('测试角色音量播放失败:', e))
 }
@@ -178,30 +226,37 @@ const playBubbleTestSound = () => {
 
 const playAchievementTestSound = () => {
   if (!achievementTestPlayer.value) return
-  // TODO: 添加一些成就音效
   achievementTestPlayer.value.src = '/audio_effects/achievement_common.wav'
   achievementTestPlayer.value.play().catch((e) => console.error('测试成就音量播放失败:', e))
 }
 
-// --- 背景音乐 API 交互 ---
-
 const loadMusicList = async () => {
   musicList.value = await musicGetAll()
+  syncCurrentMusicName()
 }
 
 const deleteMusic = async (music: Music) => {
-  if (!music) {
-    console.log('music对象不存在')
-    return
-  }
+  if (!music) return
   if (!confirm(`确定要删除《${music.name}》吗？`)) return
 
   try {
     await musicDelete(music.url)
 
-    console.log(`正在删除音乐: ${music.url}`)
-    alert(`《${music.name}》删除成功`)
-    await loadMusicList() // 重新加载列表
+    const deletedMusicUrl = toMusicUrl(music.url)
+    if (uiStore.currentBackgroundMusic === deletedMusicUrl) {
+      uiStore.currentBackgroundMusic = 'None'
+      currentMusicName.value = '未选择音乐'
+      await setCurrentBackgroundMusic('None')
+
+      if (backgroundAudioPlayer.value) {
+        backgroundAudioPlayer.value.pause()
+        backgroundAudioPlayer.value.currentTime = 0
+        backgroundAudioPlayer.value.src = ''
+      }
+      uiStore.bgMusicPaused = true
+    }
+
+    await loadMusicList()
   } catch (error) {
     console.error('删除音乐失败:', error)
     alert('删除音乐失败')
@@ -228,57 +283,48 @@ const uploadMusic = async () => {
 
   try {
     await musicUpload(formData)
-    console.log(`正在上传文件: ${file.name}`)
-    alert('音乐上传成功')
-
-    // 清理并刷新
     selectedFile.value = null
     if (fileInput.value) fileInput.value.value = ''
     await loadMusicList()
+    alert('音乐上传成功')
   } catch (error) {
     console.error('上传音乐失败:', error)
     alert('音乐上传失败')
   }
 }
 
-// --- 背景音乐播放控制 ---
+const playPauseButtonText = computed(() => (!uiStore.bgMusicPaused ? '⏸ 暂停' : '▶ 播放'))
 
-const playPauseButtonText = computed(() => (isMusicPlaying.value ? '⏸ 暂停' : '▶ 播放'))
+const playMusic = async (music: Music) => {
+  const musicUrl = toMusicUrl(music.url)
 
-const playMusic = (music: Music) => {
-  if (!backgroundAudioPlayer.value) return
-  const musicUrl = `/api/v1/chat/back-music/music_file/${encodeURIComponent(music.url)}`
-
-  backgroundAudioPlayer.value.src = musicUrl
-  backgroundAudioPlayer.value.play().catch((e) => console.error('播放音乐失败:', e))
   currentMusicName.value = music.name
-  isMusicPlaying.value = true
+  if (uiStore.currentBackgroundMusic === musicUrl) {
+    // 检测是否暂停，暂停的话就重新播放，否则就暂停
+    if (uiStore.bgMusicPaused) {
+      uiStore.bgMusicPaused = false
+    }
+  }
+  uiStore.currentBackgroundMusic = musicUrl
+
+  try {
+    await setCurrentBackgroundMusic(musicUrl)
+  } catch (error) {
+    console.error('保存背景音乐失败:', error)
+  }
 }
 
 const handlePlayPause = () => {
-  if (!backgroundAudioPlayer.value) return
-
-  if (isMusicPlaying.value) {
-    backgroundAudioPlayer.value.pause()
+  if (!uiStore.bgMusicPaused) {
+    uiStore.bgMusicPaused = true
   } else {
-    // 如果没有 src，播放列表第一首
-    if (!backgroundAudioPlayer.value.src && musicList.value.length > 0) {
-      playMusic(musicList.value[0] || { name: '', url: '' })
-    } else {
-      backgroundAudioPlayer.value.play().catch((e) => console.error('恢复播放失败:', e))
-    }
+    uiStore.bgMusicPaused = false
   }
-  isMusicPlaying.value = !backgroundAudioPlayer.value.paused
 }
 
 const handleStop = () => {
-  if (!backgroundAudioPlayer.value) return
-  backgroundAudioPlayer.value.pause()
-  backgroundAudioPlayer.value.currentTime = 0
-  isMusicPlaying.value = false
+  uiStore.bgMusicStoped = true
 }
-
-// --- 文件上传处理 ---
 
 const triggerFileUpload = () => {
   fileInput.value?.click()
@@ -287,34 +333,29 @@ const triggerFileUpload = () => {
 const handleFileSelect = (event: Event) => {
   const target = event.target as HTMLInputElement
   if (target.files && target.files.length > 0) {
-    selectedFile.value = target.files?.[0] || null
+    selectedFile.value = target.files[0] || null
   } else {
     selectedFile.value = null
   }
 }
 
-// --- Audio 元素事件监听 ---
-const updateMusicState = () => {
-  if (!backgroundAudioPlayer.value) return
-  isMusicPlaying.value = !backgroundAudioPlayer.value.paused
-}
+onMounted(async () => {
+  await loadMusicList()
 
-const onMusicEnd = () => {
-  isMusicPlaying.value = false
-}
-
-// --- 生命周期钩子 ---
-
-onMounted(() => {
-  // 初始化时加载音乐列表
-  loadMusicList()
-
-  // 初始化音量
   if (characterTestPlayer.value) characterTestPlayer.value.volume = characterVolume.value / 100
   if (bubbleTestPlayer.value) bubbleTestPlayer.value.volume = bubbleVolume.value / 100
-  if (achievementTestPlayer.value)
+  if (achievementTestPlayer.value) {
     achievementTestPlayer.value.volume = achievementVolume.value / 100
-  if (backgroundAudioPlayer.value) backgroundAudioPlayer.value.volume = backgroundVolume.value / 100
+  }
+  if (backgroundAudioPlayer.value) {
+    backgroundAudioPlayer.value.volume = backgroundVolume.value / 100
+
+    if (uiStore.currentBackgroundMusic && uiStore.currentBackgroundMusic !== 'None') {
+      backgroundAudioPlayer.value.src = uiStore.currentBackgroundMusic
+    }
+  }
+
+  syncCurrentMusicName()
 })
 </script>
 

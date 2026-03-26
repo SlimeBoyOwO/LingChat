@@ -11,8 +11,12 @@ export class TypeWriter {
   private soundBuffers: AudioBuffer[]
   private textBuffers: string
   private readonly soundUrls: string[]
+  private onTextUpdateCallback: ((text: string) => void) | null
 
-  constructor(element: HTMLInputElement | HTMLTextAreaElement) {
+  constructor(
+    element: HTMLInputElement | HTMLTextAreaElement,
+    onTextUpdateCallback?: (text: string) => void,
+  ) {
     this.element = element
     this.timer = null
     this.abortController = null
@@ -23,6 +27,7 @@ export class TypeWriter {
     this.soundBuffers = []
     this.textBuffers = ''
     this.soundUrls = ['../audio_effects/对话.wav']
+    this.onTextUpdateCallback = onTextUpdateCallback || null
   }
 
   // 初始化音频系统
@@ -33,7 +38,7 @@ export class TypeWriter {
     } catch (e) {
       console.warn('音频初始化失败:', e)
       const uiStore = useUIStore()
-      uiStore.enableChatEffectSound = false
+      uiStore.setEnableChatEffectSound(false)
     }
   }
 
@@ -61,6 +66,8 @@ export class TypeWriter {
       return
     }
 
+    if (uiStore.currentAvatarAudio !== 'None') return
+
     const buffer = this.soundBuffers[Math.floor(Math.random() * this.soundBuffers.length)]
     const source = this.audioContext.createBufferSource()
     if (buffer) {
@@ -82,7 +89,7 @@ export class TypeWriter {
   // 设置是否启用音效
   public setSoundEnabled(enabled: boolean): void {
     const uiStore = useUIStore()
-    uiStore.enableChatEffectSound = enabled
+    uiStore.setEnableChatEffectSound(enabled)
     if (enabled && !this.audioContext) {
       this.initAudio()
     }
@@ -125,6 +132,10 @@ export class TypeWriter {
         this.element.value = this.textBuffers
         this.element.textContent = this.textBuffers
         this.playRandomSound()
+        // 调用文本更新回调
+        if (this.onTextUpdateCallback) {
+          this.onTextUpdateCallback(this.textBuffers)
+        }
         i++
         this.element.scrollTop = this.element.scrollHeight
 

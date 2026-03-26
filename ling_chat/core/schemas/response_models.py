@@ -33,6 +33,18 @@ class ResponseFactory:
             originalMessage="",
             isFinal=True
         )
+    
+    @staticmethod
+    def create_thinking(is_thinking: bool) -> ThinkingResponse:
+        return ThinkingResponse(isThinking=is_thinking)
+    
+    @staticmethod
+    def create_chapter_change(chapter_info: str) -> ChapterChangeResponse:
+        return ChapterChangeResponse(chapterName=chapter_info)
+    
+    @staticmethod
+    def create_choice(choices: list[str],allow_free: bool = False) -> ChoiceResponse:
+        return ChoiceResponse(choices=choices, allowFree=allow_free)
 
     @staticmethod
     def create_input(hint: str, **kwargs) -> ScriptInputResponse:
@@ -65,4 +77,8 @@ class ResponseFactory:
     @staticmethod
     def create_modify_character(**kwargs) -> ScriptModifyCharacterResponse:
         return ScriptModifyCharacterResponse(**kwargs)
+    
+    @staticmethod
+    def create_script_end() -> ScriptEndResponse:
+        return ScriptEndResponse()
 

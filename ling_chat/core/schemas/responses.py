@@ -23,6 +23,22 @@ class ReplyResponse(BaseResponse):
     audioFile: Optional[str] = None
     originalMessage: str
 
+class ChapterChangeResponse(BaseResponse):
+    type: str = ResponseType.SCRIPT_CHAPTER_CHANGE
+    chapterName: str
+    duration: float = 0
+
+class ChoiceResponse(BaseResponse):
+    type: str = ResponseType.SCRIPT_CHOICE
+    choices: list[str]
+    allowFree: bool = False
+    duration: float = 0
+
+class ThinkingResponse(BaseResponse):
+    type: str = ResponseType.AI_THINKING
+    duration: float = 0
+    isThinking: bool
+
 class ScriptBackgroundResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_BACKGROUND
     imagePath: str
@@ -64,6 +80,11 @@ class ScriptPlayerResponse(BaseResponse):
 class ScriptInputResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_INPUT
     hint: str
+
+class ScriptEndResponse(BaseResponse):
+    type: str = ResponseType.SCRIPT_END
+    duration: float = 0
+    isFinal: bool = True
 
 # 所有响应类型
 Response = Union[ReplyResponse, ScriptBackgroundResponse, ScriptNarrationResponse]

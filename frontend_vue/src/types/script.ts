@@ -4,6 +4,11 @@ export interface ScriptEvent {
   isFinal?: boolean
 }
 
+export interface ScriptChapterChangeEvent extends ScriptEvent {
+  type: 'chapter_change'
+  chapterName: string
+}
+
 export interface ScriptNarrationEvent extends ScriptEvent {
   type: 'narration'
   text: string
@@ -27,6 +32,11 @@ export interface ScriptDialogueEvent extends ScriptEvent {
   ttsText?: string
   audioFile?: string
   originalMessage: string
+}
+
+export interface ScriptThinkingEvent extends ScriptEvent {
+  type: 'thinking'
+  isThinking: boolean
 }
 
 export interface ScriptBackgroundEvent extends ScriptEvent {
@@ -61,6 +71,14 @@ export interface ScriptInputEvent extends ScriptEvent {
   type: 'input'
   hint: string
 }
+export interface ScriptChoiceEvent extends ScriptEvent {
+  type: 'input'
+  choices: string[]
+  allowFree: boolean
+}
+export interface ScriptEndEvent extends ScriptEvent {
+  type: 'script_end'
+}
 
 export interface ScriptErrorEvent extends ScriptEvent {
   type: 'error'
@@ -85,3 +103,7 @@ export type ScriptEventType =
   | ScriptInputEvent
   | ScriptErrorEvent
   | ScriptStatusResetEvent
+  | ScriptThinkingEvent
+  | ScriptChapterChangeEvent
+  | ScriptEndEvent
+  | ScriptChoiceEvent

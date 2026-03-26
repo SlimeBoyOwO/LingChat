@@ -48,7 +48,6 @@ const backgroundMusicPlayer = ref()
 
 const FADE_DURATION = 800 // 淡入/淡出各持续时间 (毫秒)
 const FADE_INTERVAL = 50 // 每次音量变化的间隔 (毫秒)
-const TARGET_VOLUME = 0.4 // 目标最大音量
 let fadeTimer = null // 用于存储定时器ID，防止多次切换冲突
 
 // 星空效果控制
@@ -94,7 +93,7 @@ const switchBackgroundMusic = (player, newUrl) => {
   // 计算每一步音量变化的幅度
   // 步数 = 总时间 / 间隔
   // 每步变化量 = 目标音量 / 步数
-  const step = TARGET_VOLUME / (FADE_DURATION / FADE_INTERVAL)
+  const step = uiStore.backgroundVolume / 100 / (FADE_DURATION / FADE_INTERVAL)
 
   // --- 阶段1: 淡出 (Fade Out) ---
   const fadeOut = () => {
@@ -136,9 +135,9 @@ const switchBackgroundMusic = (player, newUrl) => {
         .then(() => {
           // 播放成功，开始淡入
           fadeTimer = setInterval(() => {
-            if (player.volume < TARGET_VOLUME) {
+            if (player.volume < uiStore.backgroundVolume / 100) {
               // 确保音量不会超过目标值
-              player.volume = Math.min(TARGET_VOLUME, player.volume + step)
+              player.volume = Math.min(uiStore.backgroundVolume / 100, player.volume + step)
             } else {
               // 淡入完成
               clearInterval(fadeTimer)
@@ -182,7 +181,41 @@ watch(
 
     if (backgroundMusicPlayer.value) {
       // 如果没有新音乐或为None，也执行平滑淡出停止
+      uiStore.bgMusicPaused = false
+      uiStore.bgMusicStoped = false
       switchBackgroundMusic(backgroundMusicPlayer.value, newAudioUrl)
+    }
+  },
+)
+
+watch(
+  () => uiStore.backgroundVolume,
+  (newVolume) => {
+    if (backgroundMusicPlayer.value) {
+      backgroundMusicPlayer.value.volume = newVolume / 100
+    }
+  },
+)
+
+watch(
+  () => uiStore.bgMusicPaused,
+  (newVolume) => {
+    if (backgroundMusicPlayer.value && newVolume) {
+      backgroundMusicPlayer.value.pause()
+    } else {
+      if (backgroundMusicPlayer.value.paused) {
+        backgroundMusicPlayer.value.play()
+      }
+    }
+  },
+)
+
+watch(
+  () => uiStore.bgMusicStoped,
+  (newVar) => {
+    if (backgroundMusicPlayer.value && newVar) {
+      backgroundMusicPlayer.value.pause()
+      backgroundMusicPlayer.value.currentTime = 0
     }
   },
 )

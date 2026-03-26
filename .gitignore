@@ -59,6 +59,7 @@ htmlcov/
 node_modules/
 build/
 dist/
+ling_chat/static/frontend/
 
 
 
@@ -118,7 +119,7 @@ game_data/musics/
 .openmcp/
 .claude
 CLAUDE.md
-
+AGENTS.md
 
 
 # ============================================================

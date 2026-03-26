@@ -4,9 +4,11 @@ import os
 from pathlib import Path
 
 from fastapi import APIRouter
+import traceback
 
 from ling_chat.utils.runtime_path import user_data_path
 from ling_chat.schemas.schedule_settings import ScheduleDataPayload
+from ling_chat.core.service_manager import service_manager
 
 # --- 工具函数 ---
 
@@ -88,8 +90,27 @@ async def save_schedules(
         # 3. 写入文件
         _save_data(current_data)
 
-        return {"code": 200, "msg": "saved successfully"}
+        # 4. reload schedule
+        ai_service = service_manager.ai_service
+        if ai_service:
+            ai_service.proactive_system.reload_schedule()
+            return {"code": 200, "msg": "saved successfully"}
+        else:
+            return {"code": 500, "msg": "ai_service not found"}
+        
     except Exception as e:
-        import traceback
+        traceback.print_exc()
+        return {"code": 500, "msg": str(e)}
+    
+@router.post("/reload_proactive")
+async def reload_proactive():
+    try:
+        ai_service = service_manager.ai_service
+        if ai_service:
+            await ai_service.proactive_system.reload_system()
+            return {"code": 200, "msg": "saved successfully"}
+        else:
+            return {"code": 500, "msg": "ai_service not found"}
+    except Exception as e:
         traceback.print_exc()
         return {"code": 500, "msg": str(e)}
