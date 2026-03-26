@@ -14,6 +14,8 @@
       @player-continued="manualTriggerContinue"
       @dialog-proceed="resetInteraction"
     />
+
+    <!-- 原有的菜单按钮 -->
     <div id="menu-panel">
       <Button
         type="nav"
@@ -41,6 +43,9 @@ import { useUserStore } from '../../stores/modules/user/user'
 import { GameBackground, GameRolesStage } from '../game/standard'
 import { GameDialog } from '../game/standard'
 import { Button } from '../base'
+import { ElMessage, ElDialog, ElSelect, ElOption } from 'element-plus'
+import { listScenes, loadScene, clearScene, type SceneInfo } from '@/api/services/scene' 
+  
 import GameExtraUI from '../game/standard/GameExtraUI.vue'
 
 const uiStore = useUIStore()
@@ -180,5 +185,24 @@ const manualTriggerContinue = () => {
   top: 15px;
   right: 20px;
   z-index: 1000;
+}
+.scene-controls {
+  position: fixed;
+  bottom: 80px; /* 根据聊天输入框高度调整 */
+  left: 20px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 8px 12px;
+  border-radius: 20px;
+  backdrop-filter: blur(5px);
+  z-index: 100;
+}
+
+.scene-indicator {
+  color: #fff;
+  font-size: 14px;
+  margin-left: 8px;
 }
 </style>
