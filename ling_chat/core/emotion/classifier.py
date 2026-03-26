@@ -156,6 +156,13 @@ class EmotionClassifier:
                 "confidence": 1.0,
                 "top3": [{"label": text, "probability": 1.0}]
             }
+        
+        if "撒娇" in text:
+            return {
+                "label": "调皮",
+                "confidence": 1.0,
+                "top3": [{"label": "调皮", "probability": 1.0}]
+            }
 
         try:
             # 手动分词和编码

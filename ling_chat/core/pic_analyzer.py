@@ -25,7 +25,7 @@ class DesktopAnalyzer:
         self.last_output_tokens = None
         
         # 初始化 OpenAI 客户端
-        self._timeout = httpx.Timeout(connect=30.0)
+        self._timeout = httpx.Timeout(15.0)
         self.client = OpenAI(
             api_key=self.api_key,
             base_url=self.base_url,

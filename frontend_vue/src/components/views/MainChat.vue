@@ -43,9 +43,7 @@ import { useUserStore } from '../../stores/modules/user/user'
 import { GameBackground, GameRolesStage } from '../game/standard'
 import { GameDialog } from '../game/standard'
 import { Button } from '../base'
-import { ElMessage, ElDialog, ElSelect, ElOption } from 'element-plus'
-import { listScenes, loadScene, clearScene, type SceneInfo } from '@/api/services/scene' 
-  
+
 import GameExtraUI from '../game/standard/GameExtraUI.vue'
 
 const uiStore = useUIStore()

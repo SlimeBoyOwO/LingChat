@@ -1,51 +1,6 @@
 <template>
   <MenuPage>
     <!-- 新增场景设置区域 -->
-    <MenuItem title="场景感知">
-      <div class="scene-setting">
-        <div class="scene-aware-toggle">
-          <Toggle :checked="sceneAwareLocal" @change="onSceneAwareChange">
-            开启后 AI 会感知当前场景
-          </Toggle>
-        </div>
-
-        <div v-if="sceneAwareLocal" class="scene-selector">
-          <el-select
-            v-model="selectedSceneFilename"
-            placeholder="请选择场景"
-            :loading="isLoadingScenes"
-            @change="onSceneSelect"
-            clearable
-            style="flex: 1"
-          >
-            <el-option
-              v-for="scene in scenes"
-              :key="scene.filename"
-              :label="scene.description"
-              :value="scene.filename"
-            />
-          </el-select>
-          <el-button size="small" @click="handleRefreshScenes" :loading="isLoadingScenes">
-            刷新
-          </el-button>
-        </div>
-        <div class="scene-buttons">
-          <Button
-            v-if="gameStore.currentScene"
-            type="delete"
-            size="small"
-            @click="handleClearScene"
-          >
-            清除场景
-          </Button>
-          <Button type="add" size="small" @click="openCreateDialog"> 添加场景 </Button>
-        </div>
-        <span v-if="gameStore.currentScene" class="scene-indicator">
-          当前：{{ getSceneDisplayName(gameStore.currentScene) }}
-        </span>
-      </div>
-    </MenuItem>
-
     <MenuItem title="背景选择">
       <template #header>
         <Image :size="20" />
@@ -79,6 +34,42 @@
           accept=".jpg,.png,.webp,.bmp,.svg,.tif,.gif"
           style="display: none"
         />
+      </div>
+    </MenuItem>
+
+    <MenuItem title="场景感知">
+      <template #header>
+        <PictureInPicture :size="20" />
+      </template>
+      <div class="p-2 flex flex-col gap-2 justify-center">
+        <div class="flex gap-3 mb-2">
+          <Bubbles />
+          <div class="text-brand font-bold">当前场景：无感知</div>
+
+          <div class="ml-auto flex gap-6">
+            <button
+              class="px-5 py-1.5 rounded-full text-sm font-bold transition-all border shadow-lg bg-brand/80 border-brand text-white hover:bg-brand shadow-indigo-500/20"
+              @click="updateParticle(`StarField`)"
+            >
+              选择场景
+            </button>
+            <Toggle :checked="sceneAwareLocal" @change="onSceneAwareChange">
+              切换场景后是否立马回复
+            </Toggle>
+          </div>
+        </div>
+
+        <textarea
+          placeholder="输入对当前场景的描述，或者让 AI 视觉识别"
+          class="mb-6 w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+          rows="8"
+        ></textarea>
+
+        <div class="flex w-full gap-6 justify-around items-center">
+          <Button type="big" @click="updateParticle(`StarField`)">添加场景</Button>
+          <Button type="big" @click="updateParticle(`StarField`)">更新场景</Button>
+          <Button type="big" @click="updateParticle(`StarField`)">删除场景</Button>
+        </div>
       </div>
     </MenuItem>
 
@@ -129,15 +120,14 @@ import { useUIStore } from '../../../stores/modules/ui/ui'
 import { listScenes, loadScene, clearScene, type SceneInfo } from '../../../api/services/scene'
 import { ElMessage } from 'element-plus' // 可替换为自定义消息组件
 import type { BackgroundImageInfo } from '../../../types'
-import http from '@/api/http'
-import { createScene } from '@/api/services/scene'
+import { addScene } from '@/api/services/scene'
 // 响应式数据
 import {
   getBackgroundImages,
   setCurrentBackground,
   setCurrentBackgroundEffect,
 } from '../../../api/services/background'
-import { Image, Sparkle, Sparkles } from 'lucide-vue-next'
+import { Bubbles, Image, PictureInPicture, Sparkle, Sparkles } from 'lucide-vue-next'
 
 const backgroundList = ref<BackgroundImageInfo[]>([])
 const selectedBackground = ref<string>('')
@@ -169,10 +159,7 @@ const handleCreateScene = async () => {
   }
   isCreating.value = true
   try {
-    await createScene({
-      name: newSceneName.value.trim(),
-      description: newSceneDescription.value.trim(),
-    })
+    await addScene(newSceneName.value.trim(), newSceneDescription.value.trim())
     ElMessage.success('场景创建成功')
     createDialogVisible.value = false
     await fetchScenes() // 刷新列表
@@ -581,34 +568,5 @@ onMounted(async () => {
 /* 已选中按钮样式 */
 .background-select-btn.selected {
   background-color: #10b981 !important;
-}
-
-/* 新增以下样式 */
-.scene-setting {
-  padding: 8px 0;
-}
-.scene-aware-toggle {
-  margin-bottom: 12px;
-}
-.scene-selector {
-  margin-top: 8px;
-}
-.scene-indicator {
-  display: block;
-  margin-top: 8px;
-  font-size: 13px;
-  color: var(--accent-color);
-}
-.scene-buttons {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 8px;
-  flex-wrap: wrap;
-}
-.scene-selector-row {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  margin-bottom: 8px;
 }
 </style>
