@@ -1,9 +1,9 @@
 import http from '../http'
 
 export interface SceneInfo {
-  filename: string
-  description: string
-  preview?: string
+  sceneName: string
+  sceneImage: string
+  sceneDescription: string
 }
 
 export async function listScenes(): Promise<SceneInfo[]> {
@@ -11,13 +11,18 @@ export async function listScenes(): Promise<SceneInfo[]> {
   return response.scenes
 }
 
-export async function loadScene(filename: string): Promise<void> {
-  await http.post('/v1/chat/scene/load', { scene_filename: filename })
+export async function saveScene(scene: SceneInfo): Promise<void> {
+  await http.post('/v1/chat/scene/save', scene)
+}
+
+export async function deleteScene(sceneName: string): Promise<void> {
+  await http.post('/v1/chat/scene/delete', { sceneName })
+}
+
+export async function loadScene(sceneName: string, immediate: boolean = false): Promise<void> {
+  await http.post('/v1/chat/scene/load', { sceneName, immediate })
 }
 
 export async function clearScene(): Promise<void> {
   await http.post('/v1/chat/scene/clear')
-}
-export async function addScene(scene_filename: string, description: string): Promise<void> {
-  await http.post('/v1/chat/scene/add', { scene_filename, description })
 }
