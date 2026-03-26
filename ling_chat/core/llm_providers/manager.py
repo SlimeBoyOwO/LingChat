@@ -13,6 +13,7 @@ class LLMManager:
         :param provider_config: 可选，提供者配置字典。如果为None，则从环境变量加载
         """
         if not llm_job or llm_job == "main":
+            self.memnetai_api_key = os.environ.get("MEMNETAI_API_KEY", "")
             self.llm_provider_type = os.environ.get("LLM_PROVIDER", "webllm")
             self.model_type = os.environ.get("MODEL_TYPE", "deepseek-chat")
             self.api_key = os.environ.get("CHAT_API_KEY", "")
@@ -43,6 +44,9 @@ class LLMManager:
         if provider_type == "webllm":
             return LLMProviderFactory.create_provider(provider_type, 
                                                       self.model_type, self.api_key, self.api_url)
+        elif provider_type == "memnetai":
+            return LLMProviderFactory.create_provider(provider_type,
+                                               self.model_type, self.api_key, self.api_url, self.memnetai_api_key)
         else:
             return LLMProviderFactory.create_provider(provider_type)
     
