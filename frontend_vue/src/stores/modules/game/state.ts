@@ -1,3 +1,5 @@
+import type { SceneInfo } from '@/api/services/scene' // 导入场景类型
+
 export interface GameMessage {
   type: 'message' | 'reply'
   displayName: string
@@ -49,7 +51,8 @@ export interface GameState {
   currentLine: string
   currentStatus: 'input' | 'thinking' | 'responding' | 'presenting'
   dialogHistory: GameMessage[]
-
+  currentScene: SceneInfo | null // 当前加载的场景
+  sceneAware: boolean // 场景感知开关
   command: string | null
 }
 
@@ -67,6 +70,7 @@ export const state: GameState = {
   currentLine: '',
   currentStatus: 'input',
   dialogHistory: [],
-
+  currentScene: null,
+  sceneAware: true, // 默认开启
   command: null,
 }

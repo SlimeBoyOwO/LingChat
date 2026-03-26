@@ -20,7 +20,11 @@ from ling_chat.schemas.character_settings import CharacterSettings
 from ling_chat.utils.function import Function
 from ling_chat.core.logger import logger
 from ling_chat.core.messaging.broker import message_broker
-
+from pathlib import Path
+from ling_chat.utils.runtime_path import user_data_path
+from datetime import datetime
+from ling_chat.utils.scene_utils import get_scene_description
+from ling_chat.game_database.models import LineBase, LineAttribute
 class AIService:
     def __init__(self, settings: CharacterSettings):
 
@@ -208,8 +212,40 @@ class AIService:
         ok = await self.scripts_manager.start_script(chosen)
         if not ok:
             raise ScriptEngineError(f"剧本 {chosen} 加载失败。")
-        
         self.proactive_system.start()
+    
+        
+    async def set_scene(self, scene_filename: str) -> bool:
+        description = get_scene_description(scene_filename)
+        if description is None:
+            logger.error(f"场景文件不存在: {scene_filename}")
+            return False
+
+        # 记录场景切换的台词（包含切换时间）
+        current_time = datetime.now().strftime("%Y/%m/%d %H:%M")
+        scene_line_content = f"{{ 系统提醒：现在时间 {current_time}，你们的场景现在切换到了：{description} }}"
+        line = LineBase(
+            content=scene_line_content,
+            attribute=LineAttribute.USER,
+            display_name="系统"
+        )
+        self.game_status.add_line(line)
+
+        # 可选：保存到 game_status.current_scene 供前端显示
+        self.game_status.current_scene = description
+        logger.info(f"场景已加载: {scene_filename} -> {description}")
+        return True
+
+    async def clear_scene(self):
+        self.game_status.current_scene = None
+        clear_line_content = "{ 系统提醒：场景已清除，恢复自由对话模式 }"
+        line = LineBase(
+            content=clear_line_content,
+            attribute=LineAttribute.USER,
+            display_name="系统"
+        )
+        self.game_status.add_line(line)
+        logger.info("场景已清除，恢复自由对话模式")
 
     async def _process_client_messages(self, client_id: str):
         """处理单个客户端的消息"""
