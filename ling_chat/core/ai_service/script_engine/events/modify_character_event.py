@@ -8,7 +8,7 @@ from ling_chat.core.schemas.response_models import ResponseFactory
 class ModifyCharacterEvent(BaseEvent):
     """处理角色修改事件"""
 
-    async def execute(self):
+    async def _execute(self):
         character:str = self.event_data.get('character', '')
         emotion = self.event_data.get('emotion', '')
         duration = self.event_data.get('duration', 1.0)
@@ -48,9 +48,9 @@ class ModifyCharacterEvent(BaseEvent):
 
         if action:
             if action == "show_character":
-                self.game_status.present_roles.add(role)
+                self.game_status.onstage_role(role)
             elif action == "hide_character":
-                self.game_status.present_roles.remove(role)
+                self.game_status.offstage_role(role)
 
             params['action'] = action
         

@@ -15,11 +15,19 @@
         <Text :speed="textSpeedSample">Ling Chat: 测试文本显示速度</Text>
       </MenuItem>
 
-      <MenuItem title="页面切换动画" size="small">
+      <MenuItem title="启用永久记忆" size="small">
+        <div v-for="setting in envSettings" :key="setting.key" class="">
+          <!-- 使用 SettingItem 组件渲染不同类型的输入控件 -->
+          <Toggle
+            :checked="setting.value.toLowerCase() === 'true'"
+            @change="handleMemorySettingChange($event, setting)"
+          >
+            开启后记忆将会自动压缩
+          </Toggle>
+        </div>
         <template #header>
           <Star :size="20" />
         </template>
-        <Toggle @change="animateSwitch">启用动画效果</Toggle>
       </MenuItem>
 
       <MenuItem title="语音音效开关" size="small">
@@ -36,12 +44,48 @@
         <p>√ 连接正常</p>
       </MenuItem>
 
-      <MenuItem title="当前使用的AI大模型" size="small">
+      <MenuItem title="当前使用的AI大模型（这里是假的嘻嘻）" size="small">
         <template #header>
           <Settings :size="20" />
         </template>
         <p>DeepSeek V3</p>
       </MenuItem>
+
+      <MenuItem title="语音推理引擎下载（SBV2）" size="small">
+        <template #header>
+          <Download :size="20" />
+        </template>
+        <div class="flex gap-3">
+          <Button
+            type="big"
+            @click="
+              openWebsite(
+                'https://www.modelscope.cn/models/lingchat-research-studio/Style-Bert-VITS2-micro-CPU-infer/files',
+              )
+            "
+            >CPU推理</Button
+          >
+          <Button
+            type="big"
+            @click="
+              openWebsite(
+                'https://www.modelscope.cn/models/lingchat-research-studio/Style-Bert-VITS2-micro-NVIDIA-infer/files',
+              )
+            "
+            >N卡推理</Button
+          >
+          <Button
+            type="big"
+            @click="
+              openWebsite(
+                'https://www.modelscope.cn/models/lingchat-research-studio/Style-Bert-VITS2-micro-Directml-infer/files',
+              )
+            "
+            >A卡推理</Button
+          >
+        </div>
+      </MenuItem>
+
       <MenuItem title="返回主菜单" size="small">
         <template #header>
           <ArrowBigLeft :size="20" />
@@ -53,54 +97,77 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { MenuPage, MenuItem } from '../../ui'
-import { useStorage } from '@vueuse/core'
 import { Slider, Text, Toggle, Button } from '../../base'
 import { useUIStore } from '../../../stores/modules/ui/ui'
+import { useSettingsStore } from '../../../stores/modules/settings'
+import type { ConfigItem } from '@/api/services/config'
+import { getEnvConfigByKey, saveEnvConfigSettings } from '@/api/services/config'
 import {
   Zap,
   ClipboardList,
   Star,
   Earth,
-  SquareTerminal,
   Settings,
   ArrowBigLeft,
   Rss,
+  Download,
 } from 'lucide-vue-next'
 
 const router = useRouter()
-const textSpeedSample = ref()
 const uiStore = useUIStore()
+const settingsStore = useSettingsStore()
+const envSettings = ref<Record<string, ConfigItem>>({})
 
 const returnToMain = () => {
   uiStore.toggleSettings(false)
   router.push('/')
 }
 
-// 使用 VueUse 的 useStorage 持久化存储音量设置
-const textSpeed = useStorage('lingchat-text-speed', 50)
-// 同步 localStorage 中的音量到 Pinia store
-watch(
-  [textSpeed],
-  ([textSpeed]) => {
-    uiStore.typeWriterSpeed = textSpeed
-    textSpeedSample.value = textSpeed
-  },
-  { immediate: true },
-)
+onMounted(() => {
+  loadConfig()
+})
+
+const loadConfig = async () => {
+  const configKeys = ['USE_PERSISTENT_MEMORY']
+  for (const key of configKeys) {
+    envSettings.value[key] = await getEnvConfigByKey(key)
+  }
+}
+
+// 使用 settings store 的文字速度
+const textSpeed = computed({
+  get: () => settingsStore.textSpeed,
+  set: (val: number) => settingsStore.update('text.speed', val),
+})
+
+// 文字样本速度（响应式）
+const textSpeedSample = ref<number>(settingsStore.textSpeed)
 
 const textSpeedChange = (data: number) => {
-  textSpeed.value = data
+  settingsStore.update('text.speed', data)
   textSpeedSample.value = data
-  uiStore.typeWriterSpeed = data
 }
-const animateSwitch = (data: boolean) => {
-  console.log(data)
-}
+
 const voiceSound = (data: boolean) => {
-  uiStore.enableChatEffectSound = data
+  settingsStore.update('audio.chatEffectSound', data)
+}
+
+const handleMemorySettingChange = (checked: boolean, setting: ConfigItem) => {
+  const newValue = checked ? 'true' : 'false'
+  setting.value = newValue
+
+  const formData: Record<string, string> = {}
+  Object.entries(envSettings.value).forEach(([key, config]) => {
+    formData[key] = config.value
+  })
+  saveEnvConfigSettings(formData)
+}
+
+const openWebsite = (url: string) => {
+  window.open(url, '_blank') // '_blank' 表示在新窗口中打开
 }
 </script>
 

@@ -131,6 +131,26 @@ class WebSocketManager:
             logger.error(f"成就触发检查失败: {e}")
         # ------------------
 
+        # --- 冒险触发检查 ---
+        try:
+            from ling_chat.core.adventure_trigger import adventure_trigger_system
+            all_adventures = ai_service.scripts_manager.get_all_adventures()
+            chat_count = ai_service.game_status.get_chat_message_count()
+            newly_unlocked = adventure_trigger_system.check_all_adventures(
+                user_id=1,  # TODO: 多用户支持时使用真实user_id
+                adventures=all_adventures,
+                chat_count=chat_count,
+                game_status=ai_service.game_status
+            )
+            for adventure in newly_unlocked:
+                await self.send_to_client(client_id, {
+                    "type": "adventure_unlock",
+                    "data": adventure
+                })
+        except Exception as e:
+            logger.error(f"冒险触发检查失败: {e}")
+        # ------------------
+
         if user_message.startswith("/开始剧本"):
             parts = user_message.split(maxsplit=1)
             script_name = parts[1].strip() if len(parts) > 1 else None

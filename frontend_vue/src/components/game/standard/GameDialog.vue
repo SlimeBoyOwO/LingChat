@@ -52,14 +52,23 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null) // 新增这行
 const gameStore = useGameStore()
 const uiStore = useUIStore()
 const isHidden = ref(false)
+
 const openSceneSettings = () => {
   uiStore.toggleSettings(true)
   uiStore.setSettingsTab('background')
 }
-const { startTyping, stopTyping, isTyping } = useTypeWriter(textareaRef)
+const currentDisplayedText = ref('') // 用于存储当前打字机效果显示的文本
+
+const { startTyping, stopTyping } = useTypeWriter(textareaRef, (text) => {
+  currentDisplayedText.value = text
+})
 
 // 使用计算属性处理发送状态
 const isSending = computed(() => gameStore.currentStatus === 'thinking')
+const isTyping = computed(
+  () =>
+    uiStore.showCharacterLine !== '' && currentDisplayedText.value !== uiStore.showCharacterLine,
+)
 
 const emit = defineEmits(['player-continued', 'dialog-proceed'])
 
@@ -155,11 +164,13 @@ watch(
 watch([() => uiStore.showCharacterLine, () => gameStore.currentStatus], ([newLine, newStatus]) => {
   if (newLine && newLine !== '' && newStatus === 'responding') {
     inputMessage.value = ''
+    currentDisplayedText.value = '' // 重置显示的文本
     startTyping(newLine, uiStore.typeWriterSpeed)
   } else if (newStatus === 'input') {
     // 只要进入 input 状态就清空，不管 newLine 是什么
     stopTyping()
     inputMessage.value = ''
+    currentDisplayedText.value = '' // 重置显示的文本
   }
 })
 
@@ -189,7 +200,7 @@ function send() {
     // gameStore.avatar.show = false
     // gameStore.script.isRunning = true
   } else {
-    gameStore.currentStatus = 'thinking'
+    // gameStore.currentStatus = 'thinking'
     gameStore.appendGameMessage({
       type: 'message',
       displayName: gameStore.userName,
@@ -199,6 +210,10 @@ function send() {
 
   // scriptHandler.sendMessage(text, '记住你喜欢飞机大战超级英雄')
   scriptHandler.sendMessage(text)
+  // 如果发送了自定义消息，则清空选择栏
+  if (gameStore.runningScript) {
+    gameStore.runningScript.choices = []
+  }
 
   inputMessage.value = ''
 }
@@ -219,6 +234,7 @@ function removeDialog(e: Event) {
 
 defineExpose({
   continueDialog,
+  isTyping,
 })
 </script>
 

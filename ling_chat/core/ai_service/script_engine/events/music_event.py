@@ -7,7 +7,7 @@ from ling_chat.core.schemas.response_models import ResponseFactory
 class MusicEvent(BaseEvent):
     """处理音效事件"""
 
-    async def execute(self):
+    async def _execute(self):
         music:str = self.event_data.get('musicPath', '')
         duration:float = self.event_data.get('duration', '')
 

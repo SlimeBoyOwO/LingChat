@@ -10,7 +10,7 @@
       v-show="!uiStore.showSettings"
     >
       <span class="text-xl">🍅</span>
-      <h3 class="text-lg font-bold m-0">番茄钟</h3>
+      <h3 class="text-lg font-bold m-0">番茄钟(实验)</h3>
     </Button>
 
     <Transition

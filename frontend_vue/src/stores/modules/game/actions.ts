@@ -30,36 +30,42 @@ export const actions = {
   async initializeGame(this: GameState, client_id: string, userId: string) {
     try {
       const gameInfo = await getGameInfo(client_id, userId)
+      const characterInfo = gameInfo.character_settings
 
       this.gameRoles = {}
-      this.gameRoles[gameInfo.character_id] = {
-        roleId: gameInfo.character_id,
-        roleName: gameInfo.ai_name,
-        roleSubTitle: gameInfo.ai_subtitle,
-        thinkMessage: gameInfo.thinking_message,
-        scale: gameInfo.scale,
-        offsetX: gameInfo.offset_x,
-        offsetY: gameInfo.offset_y,
-        bubbleLeft: gameInfo.bubble_left,
-        bubbleTop: gameInfo.bubble_top,
-        clothes: gameInfo.clothes,
-        clothesName: gameInfo.clothes_name,
-        bodyPart: gameInfo.body_part,
+      this.gameRoles[characterInfo.character_id] = {
+        roleId: characterInfo.character_id,
+        roleName: characterInfo.ai_name,
+        roleSubTitle: characterInfo.ai_subtitle,
+        thinkMessage: characterInfo.thinking_message,
+        scale: characterInfo.scale,
+        offsetX: characterInfo.offset_x,
+        offsetY: characterInfo.offset_y,
+        bubbleLeft: characterInfo.bubble_left,
+        bubbleTop: characterInfo.bubble_top,
+        clothes: characterInfo.clothes,
+        clothesName: characterInfo.clothes_name,
+        bodyPart: characterInfo.body_part,
         emotion: '正常',
         originalEmotion: '正常',
         show: true,
       }
       this.presentRoleIds = []
-      this.presentRoleIds.push(gameInfo.character_id)
-      this.mainRoleId = gameInfo.character_id
-      this.currentInteractRoleId = gameInfo.character_id
+      this.presentRoleIds.push(characterInfo.character_id)
+      this.mainRoleId = characterInfo.character_id
+      this.currentInteractRoleId = gameInfo.current_interact_role_id
 
       const uiStore = useUIStore()
-      this.userName = gameInfo.user_name
-      this.userSubtitle = gameInfo.user_subtitle
+      this.userName = characterInfo.user_name
+      this.userSubtitle = characterInfo.user_subtitle
 
-      uiStore.showCharacterTitle = gameInfo.user_name
-      uiStore.showCharacterSubtitle = gameInfo.user_subtitle
+      uiStore.showCharacterTitle = characterInfo.user_name
+      uiStore.showCharacterSubtitle = characterInfo.user_subtitle
+
+      if (gameInfo.background !== '') uiStore.currentBackground = gameInfo.background
+      if (gameInfo.background_effect !== '') uiStore.setBackgroundEffect(gameInfo.background_effect)
+      if (gameInfo.background_music !== '')
+        uiStore.currentBackgroundMusic = gameInfo.background_music
 
       const lines = await getDialogueHistory(userId)
       if (lines && lines.length > 0) {
@@ -111,6 +117,7 @@ export const actions = {
     this.runningScript = {
       scriptName,
       currentChapterName: '',
+      choices: [],
       isRunning: true,
     }
   },

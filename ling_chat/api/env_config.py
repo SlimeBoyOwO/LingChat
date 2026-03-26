@@ -7,7 +7,6 @@ from fastapi import APIRouter, Body, HTTPException
 from ling_chat.utils.runtime_config import apply_runtime_config_changes
 from ling_chat.utils.runtime_path import package_root
 
-router = APIRouter()
 env_file_path = package_root.parent / '.env'
 tmp_env_file_path = package_root.parent / '.env.example'
 
@@ -177,7 +176,6 @@ def save_env_file(new_values: Dict[str, str]):
                 comment_part = last_line_of_block.split('#', 1)[1]
                 original_comment = " #" + comment_part.rstrip()
 
-            # --- 这是本次唯一的、核心的逻辑修改 ---
             if str(new_val).lower() in ['true', 'false'] or new_val.isdigit():
                 # 对于布尔值或数字，直接写入
                 updated_lines.append(f"{key}={new_val}{original_comment}\n")
@@ -197,15 +195,35 @@ def save_env_file(new_values: Dict[str, str]):
     with open(env_file_path, 'w', encoding='utf-8') as f:
         f.writelines(updated_lines)
 
-@router.get("/api/settings/config", response_model=Dict[str, Any])
-async def get_config():
+router = APIRouter(prefix="/api/v1/chat/config", tags=["Chat Env Config"])
+
+@router.get("/key/{key}")
+async def get_single_config(key: str):
+    """
+    根据环境变量名（key）获取其当前值及描述信息。
+    若找不到则返回 404。
+    """
+    try:
+        full_config = parse_env_file()
+        # 遍历整个配置树查找 key
+        for category in full_config.values():
+            for sub in category["subcategories"].values():
+                for setting in sub["settings"]:
+                    if setting["key"] == key:
+                        return setting  # 返回该配置项的完整信息
+        raise HTTPException(status_code=404, detail=f"Key '{key}' not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read config: {str(e)}")
+
+@router.get("/settings")
+async def get_settings():
     try:
         config = parse_env_file()
         return config
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred while parsing .env file: {str(e)}")
-
-@router.post("/api/settings/config")
+    
+@router.patch("/settings")
 async def save_config(new_values: Dict[str, str] = Body(...)):
     try:
         save_env_file(new_values)

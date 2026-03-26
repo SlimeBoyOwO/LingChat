@@ -23,7 +23,7 @@ import RoleAvatar from './GameRoleAvatar.vue'
 
 const gameStore = useGameStore()
 const uiStore = useUIStore()
-const emit = defineEmits(['audio-ended'])
+const emit = defineEmits(['audio-ended', 'audio-started'])
 
 const mainAudio = ref<HTMLAudioElement | null>(null)
 
@@ -40,6 +40,7 @@ watch(
       // const speakerId = gameStore.currentInteractRoleId
 
       mainAudio.value.play().catch((e) => console.error('播放失败', e))
+      emit('audio-started')
     }
   },
 )

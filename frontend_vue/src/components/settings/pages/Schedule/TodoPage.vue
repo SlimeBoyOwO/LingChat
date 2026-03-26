@@ -5,9 +5,15 @@
         v-for="(group, id) in todoGroups"
         :key="'group-' + id"
         @click="selectTodoGroup(id)"
-        class="glass-effect p-5 rounded-2xl border border-slate-100 shadow-sm hover:border-cyan-200 cursor-pointer flex items-center justify-between group transition-all"
+        class="glass-effect p-5 rounded-2xl border border-slate-100 shadow-sm hover:border-cyan-200 cursor-pointer flex items-center justify-between group transition-all relative"
       >
-        <div class="flex items-center space-x-4">
+        <button
+          @click.stop="removeTodoGroup(id)"
+          class="absolute top-1 left-1 text-slate-200 hover:text-red-400 p-1 z-10"
+        >
+          <Trash2 :size="18" />
+        </button>
+        <div class="flex items-center space-x-4 ml-2">
           <div
             class="w-10 h-10 bg-cyan-500 rounded-xl flex items-center justify-center text-cyan-50 group-hover:bg-cyan-50 group-hover:text-cyan-500 transition-all"
           >
@@ -304,15 +310,42 @@ const globalCompletedTodos = computed(() => {
   return list
 })
 
-const completeTodo = (todo: TodoItem) => {
-  todo.completed = true
+// 修改 completeTodo
+const completeTodo = (todo: TodoItem | TodoItemWithGroup) => {
+  console.log('完成代办')
+  // 兼容两种情况：全局视图传来带有 gid 的 copy 对象，详情视图传来没有 gid 的原始对象
+  const todoWithGid = todo as TodoItemWithGroup
+  const gid = todoWithGid.gid || selectedTodoGroupId.value
+
+  // 在原始数据源中找到真正的那个 todo 对象并修改它
+  if (gid && todoGroups.value[gid]) {
+    const targetTodo = todoGroups.value[gid].todos.find((t) => t.id === todo.id)
+    if (targetTodo) {
+      targetTodo.completed = true
+    }
+  }
 }
-const undoComplete = (todo: TodoItem) => {
-  todo.completed = false
+
+// 修改 undoComplete
+const undoComplete = (todo: TodoItem | TodoItemWithGroup) => {
+  const todoWithGid = todo as TodoItemWithGroup
+  const gid = todoWithGid.gid || selectedTodoGroupId.value
+
+  // 在原始数据源中找到真正的那个 todo 对象并修改它
+  if (gid && todoGroups.value[gid]) {
+    const targetTodo = todoGroups.value[gid].todos.find((t) => t.id === todo.id)
+    if (targetTodo) {
+      targetTodo.completed = false
+    }
+  }
 }
 
 const removeItem = (idx: number) => {
   activeTodoGroup.value.todos.splice(idx, 1)
+}
+
+const removeTodoGroup = (id: string) => {
+  delete todoGroups.value[id]
 }
 
 const selectTodoGroup = (id: string) => {

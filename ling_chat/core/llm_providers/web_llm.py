@@ -1,6 +1,7 @@
 from typing import AsyncGenerator, Dict, List
 
-from openai import OpenAI
+import httpx
+from openai import AsyncOpenAI, OpenAI
 import os
 
 from ling_chat.core.llm_providers.base import BaseLLMProvider
@@ -15,6 +16,7 @@ class WebLLMProvider(BaseLLMProvider):
         self.model_type = model_type
         self.temperature = float(os.environ.get("TEMPERATURE", 1.3))
         self.top_p = float(os.environ.get("TOP_P", 0.9))
+        self.thinking = os.environ.get("ENABLE_THINKING", "None").lower()
 
         if (not api_key) or api_key == "sk-114514":
             logger.warning("通用网络大模型未初始化：CHAT_API_KEY 为空或为占位值。")
@@ -26,8 +28,19 @@ class WebLLMProvider(BaseLLMProvider):
             self.client = None
             return
 
-        self.client = OpenAI(api_key=api_key, base_url=base_url)
+        self._timeout = httpx.Timeout(connect=30.0)
+        self.client = OpenAI(api_key=api_key, base_url=base_url, timeout=self._timeout)
+        self.async_client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=self._timeout)
         logger.info("通用网络大模型初始化完毕！" )
+
+    def _add_thinking_extra_body(self, create_kwargs: dict) -> None:
+        """根据 thinking 配置添加 extra_body 参数"""
+        if self.thinking in ("true", "false"):
+            thinking_enabled = self.thinking == "true"
+            create_kwargs["extra_body"] = {
+                "thinking": {"type": "enabled" if thinking_enabled else "disabled"},
+                "enable_thinking": thinking_enabled
+            }
 
     def initialize_client(self):
         return super().initialize_client()
@@ -41,13 +54,17 @@ class WebLLMProvider(BaseLLMProvider):
 
         try:
             logger.debug(f"正在对通用网络大模型发送请求: {self.model_type}")
-            response = self.client.chat.completions.create(
-                model=self.model_type,
-                messages=messages,
-                temperature=self.temperature,
-                top_p=self.top_p,
-                stream=False
-            )
+            # 构建基础参数
+            create_kwargs = {
+                "model": self.model_type,
+                "messages": messages,
+                "temperature": self.temperature,
+                "top_p": self.top_p,
+                "stream": False
+            }
+            self._add_thinking_extra_body(create_kwargs)
+
+            response = self.client.chat.completions.create(**create_kwargs)
             return response.choices[0].message.content
 
         except Exception as e:
@@ -57,10 +74,8 @@ class WebLLMProvider(BaseLLMProvider):
     async def generate_stream_response(self, messages: List[Dict]) -> AsyncGenerator[str, None]:
         """
         生成流式响应
-        :param messages: 消息列表
-        :return: 返回一个生成器，每次迭代返回一个chunk
         """
-        if self.client is None:
+        if self.async_client is None:
             error_message = "通用网络大模型未初始化，请检查配置"
             logger.error(error_message)
             yield error_message
@@ -68,15 +83,20 @@ class WebLLMProvider(BaseLLMProvider):
 
         try:
             logger.debug(f"正在对通用网络大模型发送流式请求: {self.model_type}")
-            stream = self.client.chat.completions.create(
-                model=self.model_type,
-                messages=messages,
-                temperature=self.temperature,
-                top_p=self.top_p,
-                stream=True
-            )
 
-            for chunk in stream:
+            # 构建基础参数
+            create_kwargs = {
+                "model": self.model_type,
+                "messages": messages,
+                "temperature": self.temperature,
+                "top_p": self.top_p,
+                "stream": True
+            }
+            self._add_thinking_extra_body(create_kwargs)
+
+            stream = await self.async_client.chat.completions.create(**create_kwargs)
+
+            async for chunk in stream:
                 if chunk.choices[0].delta.content is not None:
                     yield chunk.choices[0].delta.content
 
