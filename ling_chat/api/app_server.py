@@ -152,20 +152,24 @@ def run_app():
         log_level = os.getenv("LOG_LEVEL", "info").lower()
         access_log_enabled = os.getenv("BACKEND_ACCESS_LOG", "true").lower() == "true"
 
-        # 获取项目日志系统的底层logging.Logger实例
-        project_logger_instance = logger._logger  # 获取内部的logger实例
-
+        project_logger_instance = logger._logger
         uvicorn_log_level = getattr(logging, log_level.upper(), logging.INFO)
-        _attach_project_handlers_to_uvicorn(project_logger_instance, uvicorn_log_level)
+
+        backend_host = os.getenv('BACKEND_BIND_ADDR', '0.0.0.0')
+        backend_port = int(os.getenv('BACKEND_PORT', '8765'))
 
         config = uvicorn.Config(
             app,
-            host=os.getenv('BACKEND_BIND_ADDR', '0.0.0.0'),
-            port=int(os.getenv('BACKEND_PORT', '8765')),
+            host=backend_host,
+            port=backend_port,
             log_level=log_level,
-            access_log=access_log_enabled,  # 是否启用访问日志（默认 true）
+            log_config=None,
+            access_log=access_log_enabled,
         )
-        logger.info("HTTP服务器启动成功，可以访问 localhost:8765 从浏览器进入")
+
+        _attach_project_handlers_to_uvicorn(project_logger_instance, uvicorn_log_level)
+
+        logger.info(f"HTTP服务器启动成功，可以访问 {backend_host}:{backend_port} 从浏览器进入")
         global app_server
         app_server = uvicorn.Server(config)
 
