@@ -204,10 +204,10 @@ const onSceneSelect = async (filename: string) => {
     if (scene) {
       gameStore.setCurrentScene(scene)
 
-      // 如果存在图片 URL，则更新背景
-      if (scene.imageUrl) {
-        uiStore.currentBackground = scene.imageUrl
-        localStorage.setItem('selectedBackground', scene.imageUrl)
+      // 如果存在 preview，则更新背景
+      if (scene.preview) {
+        uiStore.currentBackground = scene.preview
+        localStorage.setItem('selectedBackground', scene.preview)
       } else {
         // 纯文本场景且无对应图片，保持当前背景不变
         ElMessage.info('已加载纯文本场景，背景图片保持不变')
