@@ -1,10 +1,6 @@
 <template>
   <!-- 触摸区域 -->
-  <TouchAreas
-    v-if="gameStore.command === 'touch'"
-    :body-parts="role.bodyPart"
-    :avatar-scale="role.scale"
-  />
+  <TouchAreas v-if="gameStore.command === 'touch'" :body-parts="role.bodyPart" />
   <!-- 1. 添加 Transition 组件，name 指定为 character-fade -->
   <Transition name="character-fade">
     <div
