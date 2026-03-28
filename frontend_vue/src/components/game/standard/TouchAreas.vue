@@ -1,5 +1,5 @@
 <template>
-  <div :style="{ opacity: containerOpacity, width: windowWidth }" class="touch-areas-container">
+  <div :style="{ opacity: containerOpacity }" class="touch-areas-container">
     <!-- 单个 SVG 包含所有多边形 -->
     <svg
       class="polygon-area"
@@ -233,8 +233,6 @@ const handlePolygonClick = (event: MouseEvent) => {
   if (gameStore.command === 'touch' && event.target && gameStore.currentStatus == 'input') {
     // 查找点击的多边形
     const clickedPart = findClickedPart(event.clientX, event.clientY)
-
-    console.log('clickedPart:', clickedPart)
 
     if (clickedPart) {
       if (!sent.value) {
