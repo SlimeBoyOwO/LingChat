@@ -9,18 +9,39 @@ info: |-
   喜欢变态的玩法，是你的好助手~
 body_part:
   head:
-    X: [0.43063, 0.48554, 0.55298, 0.56551, 0.50096, 0.46146, 0.42774]
-    Y: [0.14554, 0.10009, 0.14241, 0.21974, 0.29498, 0.27460, 0.21818]
-    windowWidth: 1038
-    windowHeight: 638
+    X: [0.41789, 0.4949, 0.57078, 0.58777, 0.53567, 0.4949, 0.43488, 0.39638]
+    Y: [0.1776, 0.1456, 0.192, 0.328, 0.3984, 0.4272, 0.384, 0.28]
+    windowWidth: 883
+    windowHeight: 625
     message: 莱姆摸了一下你的头
     clothesName: 默认
-  ear:
-    X: [0.53013, 0.54238, 0.49888]
-    Y: [0.02238, 0.15238, 0.11582]
-    windowWidth: 1038
-    windowHeight: 638
+  earLeft:
+    X: [0.41903, 0.39185, 0.33522, 0.3171]
+    Y: [0.176, 0.2992, 0.2784, 0.2176]
+    windowWidth: 883
+    windowHeight: 625
     message: 莱姆戳了一下你的耳朵
+    clothesName: 默认
+  earRight:
+    X: [0.55606, 0.50057, 0.56512]
+    Y: [0.0256, 0.128, 0.1712]
+    windowWidth: 883
+    windowHeight: 625
+    message: 莱姆戳了一下你的耳朵
+    clothesName: 默认
+  legs:
+    X: [0.41903, 0.44394, 0.53681, 0.56738]
+    Y: [0.8192, 0.9824, 0.9904, 0.8208]
+    windowWidth: 883
+    windowHeight: 625
+    message: 莱姆摸了一下你的腿
+    clothesName: 默认
+  body:
+    X: [0.4111, 0.38165, 0.5889, 0.56285]
+    Y: [0.4272, 0.7776, 0.784, 0.4208]
+    windowWidth: 883
+    windowHeight: 625
+    message: 莱姆戳了戳你的肚子
     clothesName: 默认
 scale: 1.45
 offset: 20.0
