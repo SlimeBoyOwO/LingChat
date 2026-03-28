@@ -111,6 +111,61 @@ class DesktopAnalyzer:
         except Exception as e:
             raise Exception(f"请求失败: {e}")
 
+    async def analyze_image_file(self, image_path, prompt="请用100字左右描述这个场景的环境、氛围、光线等特征"):
+        """
+        分析指定图片文件并返回描述
+
+        Args:
+            image_path: 图片文件路径（Path 对象或字符串）
+            prompt: 发送给AI的提示文本
+
+        Returns:
+            str: AI生成的描述文本
+        """
+        from pathlib import Path
+
+        # 确保是 Path 对象
+        if not isinstance(image_path, Path):
+            image_path = Path(image_path)
+
+        # 读取图片文件
+        with open(image_path, 'rb') as f:
+            image_data = base64.b64encode(f.read()).decode('utf-8')
+
+        image_url = f"data:image/png;base64,{image_data}"
+
+        # 记录开始时间
+        start_time = time.time()
+
+        try:
+            # 使用 asyncio.to_thread 将同步调用转为异步
+            completion = await asyncio.to_thread(
+                self.client.chat.completions.create,
+                model=self.model,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {"type": "image_url", "image_url": {"url": image_url}}
+                        ]
+                    }
+                ],
+                max_tokens=512
+            )
+
+            # 获取响应数据
+            content = completion.choices[0].message.content
+
+            # 记录性能数据
+            self.last_response_time = time.time() - start_time
+            self.last_input_tokens = completion.usage.prompt_tokens if completion.usage else -1
+            self.last_output_tokens = completion.usage.completion_tokens if completion.usage else -1
+
+            return content
+        except Exception as e:
+            raise Exception(f"图片分析失败: {e}")
+
     def get_analysis_report(self):
         """
         获取最后一次分析的报告

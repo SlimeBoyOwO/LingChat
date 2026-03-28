@@ -3,6 +3,7 @@ import { WebSocketMessageTypes } from '../../../types'
 import { eventQueue } from '../../../core/events/event-queue'
 import { useUserStore } from '../../../stores/modules/user/user'
 import { useGameStore } from '../../../stores/modules/game'
+import { useUIStore } from '../../../stores/modules/ui/ui'
 import type * as ScriptTypes from '../../../types/script'
 
 export class ScriptHandler {
@@ -95,6 +96,22 @@ export class ScriptHandler {
         type: 'status_reset',
         duration: 0,
       } as ScriptTypes.ScriptStatusResetEvent)
+    })
+
+    // 场景切换事件
+    registerHandler(WebSocketMessageTypes.SCENE_CHANGE, (data: any) => {
+      console.log('收到场景切换事件:', data)
+      const gameStore = useGameStore()
+
+      if (data.scene) {
+        gameStore.setCurrentScene(data.scene)
+
+        // 更新背景图片
+        if (data.scene.imageUrl) {
+          const uiStore = useUIStore()
+          uiStore.currentBackground = data.scene.imageUrl
+        }
+      }
     })
   }
 

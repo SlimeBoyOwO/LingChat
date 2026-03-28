@@ -213,39 +213,56 @@ class AIService:
         if not ok:
             raise ScriptEngineError(f"剧本 {chosen} 加载失败。")
         self.proactive_system.start()
-    
-        
-    async def set_scene(self, scene_filename: str) -> bool:
-        description = get_scene_description(scene_filename)
-        if description is None:
-            logger.error(f"场景文件不存在: {scene_filename}")
+
+    async def set_scene_enhanced(self, scene_id: str, trigger_response: bool = False) -> bool:
+        """
+        设置场景（增强版）
+
+        Args:
+            scene_id: 场景 ID
+            trigger_response: 是否立即触发 AI 响应
+        """
+        from ling_chat.utils.scene_manager import SceneManager
+
+        scene_manager = SceneManager()
+        scene = scene_manager.get_scene(scene_id)
+
+        if not scene:
+            logger.error(f"场景不存在: {scene_id}")
             return False
+        
+        # 确定是否之前存在场景感知台词，如果有的话，替换掉之前的感知台词
 
-        # 记录场景切换的台词（包含切换时间）
-        current_time = datetime.now().strftime("%Y/%m/%d %H:%M")
-        scene_line_content = f"{{ 系统提醒：现在时间 {current_time}，你们的场景现在切换到了：{description} }}"
-        line = LineBase(
-            content=scene_line_content,
-            attribute=LineAttribute.USER,
-            display_name="系统"
-        )
-        self.game_status.add_line(line)
+        # 1. 取出 game_status 中的栈顶台词
+        top_line = self.game_status.line_list[-1]
 
-        # 可选：保存到 game_status.current_scene 供前端显示
-        self.game_status.current_scene = description
-        logger.info(f"场景已加载: {scene_filename} -> {description}")
+        # 2. 判断是否是场景感知台词
+        if top_line.attribute == LineAttribute.USER and top_line.content.startswith("{ 旁白：现在场景切换到了"):
+            # 3. 替换场景感知台词
+            scene_line_content = f"{{ 旁白：现在场景切换到了{scene['sceneName'], {scene['sceneDescription']}}。"
+            top_line.content = scene_line_content
+
+        # 4. 如果没有场景感知台词，则新增一条场景感知台词
+        else:
+            scene_line_content = f"{{ 旁白：现在场景切换到了{scene['sceneName'], {scene['sceneDescription']}}。"
+            line = LineBase(
+                content=scene_line_content,
+                attribute=LineAttribute.USER
+            )
+            self.game_status.add_line(line)
+
+        # 更新当前场景
+        self.game_status.current_scene = scene['sceneDescription']
+
+        # 通过 WebSocket 通知前端
+        for client_id in self.config.clients:
+            await message_broker.publish(client_id, {
+                "type": "scene_change",
+                "scene": scene
+            })
+
+        logger.info(f"场景已加载: {scene['sceneName']}")
         return True
-
-    async def clear_scene(self):
-        self.game_status.current_scene = None
-        clear_line_content = "{ 系统提醒：场景已清除，恢复自由对话模式 }"
-        line = LineBase(
-            content=clear_line_content,
-            attribute=LineAttribute.USER,
-            display_name="系统"
-        )
-        self.game_status.add_line(line)
-        logger.info("场景已清除，恢复自由对话模式")
 
     async def _process_client_messages(self, client_id: str):
         """处理单个客户端的消息"""
@@ -272,7 +289,10 @@ class AIService:
                 except Exception as e:
                     logger.error(f"处理消息时发生错误: {e}")
                     self.is_processing = False
-                    # 错误通知由 message_generator 处理
+
+                    # 发生错误的时候，关闭思考状态
+                    await message_broker.publish(client_id, (ResponseFactory.create_thinking(False).model_dump()))
+                    
 
         except asyncio.CancelledError:
             logger.info(f"客户端 {client_id} 的消息处理任务已被取消")
