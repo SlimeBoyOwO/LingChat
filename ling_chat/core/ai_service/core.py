@@ -239,12 +239,12 @@ class AIService:
         # 2. 判断是否是场景感知台词
         if top_line.attribute == LineAttribute.USER and top_line.content.startswith("{ 旁白：现在场景切换到了"):
             # 3. 替换场景感知台词
-            scene_line_content = f"{{ 旁白：现在场景切换到了{scene['sceneName'], {scene['sceneDescription']}}。"
+            scene_line_content = f"{{ 旁白：现在场景切换到了{scene['sceneName']}, {scene['sceneDescription']}。"
             top_line.content = scene_line_content
 
         # 4. 如果没有场景感知台词，则新增一条场景感知台词
         else:
-            scene_line_content = f"{{ 旁白：现在场景切换到了{scene['sceneName'], {scene['sceneDescription']}}。"
+            scene_line_content = f"{{ 旁白：现在场景切换到了{scene['sceneName']}, {scene['sceneDescription']}。"
             line = LineBase(
                 content=scene_line_content,
                 attribute=LineAttribute.USER
