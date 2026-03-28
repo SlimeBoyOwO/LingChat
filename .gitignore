@@ -86,6 +86,7 @@ Pytorch/RAG/embedding_models/
 release/
 
 emotion_labels.csv
+ling_chat/third_party/emotion_model/*
 
 
 # ============================================================
