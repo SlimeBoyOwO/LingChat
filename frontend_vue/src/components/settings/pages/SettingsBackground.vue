@@ -1,6 +1,5 @@
 <template>
   <MenuPage>
-    <!-- 新增场景设置区域 -->
     <MenuItem title="背景选择">
       <template #header>
         <Image :size="20" />
@@ -42,33 +41,24 @@
         <PictureInPicture :size="20" />
       </template>
       <div class="p-2 flex flex-col gap-2 justify-center">
-        <div class="flex gap-3 mb-2">
+        <div class="flex gap-3 mb-2 items-center">
           <Bubbles />
-          <div class="text-brand font-bold">当前场景：无感知</div>
+          <div class="text-brand font-bold">当前场景：{{ currentSceneDisplay }}</div>
 
           <div class="ml-auto flex gap-6">
             <button
               class="px-5 py-1.5 rounded-full text-sm font-bold transition-all border shadow-lg bg-brand/80 border-brand text-white hover:bg-brand shadow-indigo-500/20"
-              @click="updateParticle(`StarField`)"
+              @click="showSceneSelect = true"
             >
               选择场景
             </button>
-            <Toggle :checked="sceneAwareLocal" @change="onSceneAwareChange">
-              切换场景后是否立马回复
-            </Toggle>
           </div>
         </div>
 
-        <textarea
-          placeholder="输入对当前场景的描述，或者让 AI 视觉识别"
-          class="mb-6 w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
-          rows="8"
-        ></textarea>
-
         <div class="flex w-full gap-6 justify-around items-center">
-          <Button type="big" @click="updateParticle(`StarField`)">添加场景</Button>
-          <Button type="big" @click="updateParticle(`StarField`)">更新场景</Button>
-          <Button type="big" @click="updateParticle(`StarField`)">删除场景</Button>
+          <Button type="big" @click="handleCreateScene">添加场景</Button>
+          <Button type="big" @click="handleUpdateScene" :disabled="!currentScene">更新场景</Button>
+          <Button type="big" @click="handleDeleteScene" :disabled="!currentScene">删除场景</Button>
         </div>
       </div>
     </MenuItem>
@@ -85,199 +75,181 @@
         <Button type="big" @click="updateParticle(`Fireworks`)">烟花</Button>
       </div>
     </MenuItem>
-    <el-dialog v-model="createDialogVisible" title="添加场景" width="400px">
-      <el-form label-width="80px">
-        <el-form-item label="场景名">
-          <el-input v-model="newSceneName" placeholder="例如：海边" />
-        </el-form-item>
-        <el-form-item label="场景描述">
-          <el-input
-            v-model="newSceneDescription"
-            type="textarea"
-            :rows="4"
-            placeholder="描述该场景的环境、氛围等"
-          />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="createDialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="handleCreateScene" :loading="isCreating">
-            确定
-          </el-button>
-        </span>
-      </template>
-    </el-dialog>
+
+    <SceneSelectModal
+      :show="showSceneSelect"
+      :scenes="scenes"
+      @close="showSceneSelect = false"
+      @confirm="handleSceneSelect"
+    />
+
+    <SceneEditModal
+      :show="showSceneEdit"
+      :mode="editMode"
+      :backgrounds="backgroundList"
+      :initial-data="editInitialData"
+      @close="showSceneEdit = false"
+      @submit="handleSceneSubmit"
+      @upload="triggerUpload"
+    />
   </MenuPage>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { MenuPage, MenuItem } from '../../ui'
-import { Button, Toggle } from '../../base' // 确保导入了 Toggle
+import { Button, Toggle } from '../../base'
 import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
-import { listScenes, loadScene, clearScene, type SceneInfo } from '../../../api/services/scene'
-import { ElMessage } from 'element-plus' // 可替换为自定义消息组件
+import {
+  listScenes,
+  loadScene,
+  createScene,
+  updateScene,
+  deleteScene,
+  type SceneInfo,
+} from '../../../api/services/scene'
 import type { BackgroundImageInfo } from '../../../types'
-import { addScene } from '@/api/services/scene'
-// 响应式数据
 import {
   getBackgroundImages,
   setCurrentBackground,
   setCurrentBackgroundEffect,
 } from '../../../api/services/background'
-import { Bubbles, Image, PictureInPicture, Sparkle, Sparkles } from 'lucide-vue-next'
+import { Bubbles, Image, PictureInPicture, Sparkles } from 'lucide-vue-next'
+import SceneSelectModal from '../scene/SceneSelectModal.vue'
+import SceneEditModal from '../scene/SceneEditModal.vue'
+
+const gameStore = useGameStore()
+const uiStore = useUIStore()
 
 const backgroundList = ref<BackgroundImageInfo[]>([])
 const selectedBackground = ref<string>('')
 const uploadInput = ref<HTMLInputElement | null>(null)
-const uiStore = useUIStore()
-const gameStore = useGameStore()
 
-// 场景相关状态
 const scenes = ref<SceneInfo[]>([])
-const isLoadingScenes = ref(false)
-const selectedSceneFilename = ref<string>('')
 const sceneAwareLocal = ref(gameStore.sceneAware)
-// 新增场景对话框
-const createDialogVisible = ref(false)
-const newSceneName = ref('')
-const newSceneDescription = ref('')
-const isCreating = ref(false)
-// 打开创建对话框
-const openCreateDialog = () => {
-  newSceneName.value = ''
-  newSceneDescription.value = ''
-  createDialogVisible.value = true
-}
-// 提交创建场景
-const handleCreateScene = async () => {
-  if (!newSceneName.value.trim() || !newSceneDescription.value.trim()) {
-    ElMessage.warning('请填写完整')
-    return
-  }
-  isCreating.value = true
-  try {
-    await addScene(newSceneName.value.trim(), newSceneDescription.value.trim())
-    ElMessage.success('场景创建成功')
-    createDialogVisible.value = false
-    await fetchScenes() // 刷新列表
-  } catch (error: any) {
-    ElMessage.error(error.message || '创建失败')
-  } finally {
-    isCreating.value = false
-  }
-}
 
-// 监听 gameStore.sceneAware 变化
+const showSceneSelect = ref(false)
+const showSceneEdit = ref(false)
+const editMode = ref<'create' | 'update'>('create')
+const editInitialData = ref<
+  { sceneName: string; sceneImage: string | null; sceneDescription: string } | undefined
+>()
+
+const currentSceneDisplay = computed(() => gameStore.currentScene?.sceneName || '无感知')
+const currentScene = computed(() => gameStore.currentScene)
+
 watch(
   () => gameStore.sceneAware,
   (val) => {
     sceneAwareLocal.value = val
   },
 )
-// 切换场景感知
-const onSceneAwareChange = (val: boolean) => {
-  gameStore.toggleSceneAware(val)
-  if (!val && gameStore.currentScene) {
-    handleClearScene() // 关闭感知时自动清除场景
-  }
-}
-// 加载场景列表
+
 const fetchScenes = async () => {
-  isLoadingScenes.value = true
   try {
     scenes.value = await listScenes()
   } catch (error) {
-    ElMessage.error('获取场景列表失败')
-  } finally {
-    isLoadingScenes.value = false
+    console.error('获取场景列表失败', error)
   }
 }
-// 选择场景
-const onSceneSelect = async (filename: string) => {
-  if (!filename) return
+
+const handleSceneSelect = async (sceneId: string) => {
   try {
-    await loadScene(filename)
-    const scene = scenes.value.find((s) => s.filename === filename)
-    if (scene) {
-      gameStore.setCurrentScene(scene)
+    const scene = scenes.value.find((s) => s.id === sceneId)
+    if (!scene) return
 
-      // 如果存在图片 URL，则更新背景
-      if (scene.imageUrl) {
-        uiStore.currentBackground = scene.imageUrl
-        localStorage.setItem('selectedBackground', scene.imageUrl)
-      } else {
-        // 纯文本场景且无对应图片，保持当前背景不变
-        ElMessage.info('已加载纯文本场景，背景图片保持不变')
-      }
+    await loadScene(sceneId, sceneAwareLocal.value)
+    gameStore.setCurrentScene(scene)
 
-      ElMessage.success(`场景“${scene.description}”已加载`)
+    if (scene.imageUrl) {
+      uiStore.currentBackground = scene.imageUrl
     }
+
+    showSceneSelect.value = false
   } catch (error) {
-    ElMessage.error('加载场景失败')
+    console.error('加载场景失败', error)
   }
 }
-// 清除场景
-const handleClearScene = async () => {
+
+const handleCreateScene = () => {
+  editMode.value = 'create'
+  editInitialData.value = undefined
+  showSceneEdit.value = true
+}
+
+const handleUpdateScene = () => {
+  if (!currentScene.value) return
+
+  editMode.value = 'update'
+  editInitialData.value = {
+    sceneName: currentScene.value.sceneName,
+    sceneImage: currentScene.value.sceneImage || null,
+    sceneDescription: currentScene.value.sceneDescription,
+  }
+  showSceneEdit.value = true
+}
+
+const handleDeleteScene = async () => {
+  if (!currentScene.value) return
+  if (!confirm(`确定要删除场景"${currentScene.value.sceneName}"吗？`)) return
+
   try {
-    await clearScene()
+    await deleteScene(currentScene.value.id)
     gameStore.clearCurrentScene()
-    selectedSceneFilename.value = ''
-    // 恢复为之前手动选择的背景（从 localStorage 或默认）
-    const savedBg = localStorage.getItem('selectedBackground')
-    if (savedBg && savedBg !== '') {
-      uiStore.currentBackground = savedBg
-    } else if (backgroundList.value.length > 0) {
-      // 随机选一个背景
-      const randomIndex = Math.floor(Math.random() * backgroundList.value.length)
-      const randomBg = backgroundList.value[randomIndex]?.url || ''
-      uiStore.currentBackground = randomBg
-      localStorage.setItem('selectedBackground', randomBg)
-    } else {
-      uiStore.currentBackground = ''
-    }
-    ElMessage.success('已清除场景，恢复自由对话模式')
+    await fetchScenes()
   } catch (error) {
-    ElMessage.error('清除场景失败')
+    console.error('删除场景失败', error)
   }
 }
-// 刷新场景列表
-const handleRefreshScenes = async () => {
-  await fetchScenes()
-  // 刷新后检查之前选中的场景是否还存在
-  if (
-    selectedSceneFilename.value &&
-    !scenes.value.some((s) => s.filename === selectedSceneFilename.value)
-  ) {
-    selectedSceneFilename.value = ''
+
+const handleSceneSubmit = async (data: {
+  sceneName: string
+  sceneImage: string | null
+  sceneDescription: string
+  autoAnalyze: boolean
+}) => {
+  try {
+    if (editMode.value === 'create') {
+      await createScene(data)
+      await fetchScenes()
+    } else {
+      if (!currentScene.value) return
+      const updated = await updateScene(currentScene.value.id, data)
+      gameStore.setCurrentScene(updated)
+      await fetchScenes()
+    }
+    showSceneEdit.value = false
+  } catch (error) {
+    console.error('操作失败', error)
   }
-  ElMessage.success('场景列表已刷新')
 }
-// 辅助显示
-const getSceneDisplayName = (scene: SceneInfo) => {
-  return scene.filename.replace(/\.[^/.]+$/, '')
+
+const onSceneAwareChange = (val: boolean) => {
+  gameStore.toggleSceneAware(val)
 }
 
 onMounted(async () => {
   try {
     await refreshBackground()
 
-    // 检查 uiStore 中是否有已选背景
     if (
       uiStore.currentBackground &&
       uiStore.currentBackground !== '@/assets/images/default_bg.jpg'
     ) {
       selectBackground(uiStore.currentBackground)
     } else if (backgroundList.value.length > 0) {
-      // 随机选择一个背景
       const randomIndex = Math.floor(Math.random() * backgroundList.value.length)
       selectBackground(backgroundList.value[randomIndex]?.url || '')
-      console.log('已选随机背景')
     }
   } catch (error) {
     console.error('加载背景图片失败', error)
+  }
+
+  await fetchScenes()
+
+  if (gameStore.currentScene && gameStore.currentScene.imageUrl) {
+    uiStore.currentBackground = gameStore.currentScene.imageUrl
   }
 })
 
@@ -372,33 +344,9 @@ async function updateParticle(value: string): Promise<void> {
     console.error('Failed to save selected background effect:', error)
   }
 }
-
-onMounted(async () => {
-  await refreshBackground()
-  await fetchScenes()
-
-  // 恢复之前选择的背景
-  const savedBg = localStorage.getItem('selectedBackground')
-  if (savedBg) {
-    uiStore.currentBackground = savedBg
-  } else if (backgroundList.value.length > 0) {
-    const randomIndex = Math.floor(Math.random() * backgroundList.value.length)
-    uiStore.currentBackground = backgroundList.value[randomIndex]?.url || ''
-    localStorage.setItem('selectedBackground', uiStore.currentBackground)
-  }
-
-  // 如果 gameStore 中已有当前场景，同步选中项
-  if (gameStore.currentScene) {
-    selectedSceneFilename.value = gameStore.currentScene.filename
-    // 确保背景也是该场景图片
-    const sceneImageUrl = `/api/v1/chat/background/background_file/${gameStore.currentScene.filename}`
-    uiStore.currentBackground = sceneImageUrl
-  }
-})
 </script>
 
 <style scoped>
-/* 确保网格容器正确 */
 .backgrounds-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -408,7 +356,6 @@ onMounted(async () => {
   margin: 0 auto;
 }
 
-/*什么？你问我为什么这里是character-grid? 灵式编程懂不懂！ */
 .character-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -417,8 +364,6 @@ onMounted(async () => {
   width: 100%;
 }
 
-/* 卡片容器 */
-/* 为整个卡片添加渐变背景，增强毛玻璃效果 */
 .background-card {
   position: relative;
   display: flex;
@@ -436,8 +381,6 @@ onMounted(async () => {
     inset 0 1px 1px rgba(255, 255, 255, 0.1);
 }
 
-/* 图片容器 */
-/* 图片容器添加伪元素增强效果 */
 .background-image-container::before {
   content: '';
   position: absolute;
@@ -451,41 +394,37 @@ onMounted(async () => {
 }
 
 .background-image-container {
-  flex: 1; /* 占据剩余空间 */
+  flex: 1;
   position: relative;
   overflow: hidden;
 }
 
-/* 图片样式 */
 .background-image {
   position: relative;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  aspect-ratio: 16/9; /* 保持图片比例 */
+  aspect-ratio: 16/9;
   transition: transform 0.3s ease;
 }
 
-/* 底部信息区域 */
-/* 修改卡片底部背景为毛玻璃效果 */
 .background-title {
   padding: 12px 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: rgba(255, 255, 255, 0.15); /* 更透明的背景 */
-  backdrop-filter: blur(10px); /* 毛玻璃效果 */
-  -webkit-backdrop-filter: blur(10px); /* Safari 支持 */
-  border-top: 1px solid rgba(255, 255, 255, 0.2); /* 更柔和的边框 */
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
   position: relative;
   z-index: 2;
 }
-/* 标题文本样式 */
-/* 标题文字颜色调整以适应毛玻璃背景 */
+
 .background-title::before {
   content: attr(data-title);
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.9); /* 更亮的文字颜色 */
+  color: rgba(255, 255, 255, 0.9);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -493,7 +432,6 @@ onMounted(async () => {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
-/* 选择按钮 */
 .background-select-btn {
   padding: 6px 12px;
   background: #4f46e5;
@@ -507,7 +445,6 @@ onMounted(async () => {
   flex-shrink: 0;
 }
 
-/* 交互效果 */
 .background-card:hover {
   background: rgba(255, 255, 255, 0.15);
   backdrop-filter: blur(25px) saturate(200%);
@@ -537,35 +474,17 @@ onMounted(async () => {
   align-items: center;
 }
 
-/* 响应式调整 */
 @media (max-width: 768px) {
-  #backgrounds-list {
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 16px;
-    padding: 12px;
-  }
-}
-
-@media (max-width: 480px) {
-  #backgrounds-list {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 768px) {
-  /*什么？你问我为什么这里是character-grid? 灵式编程懂不懂！ */
   .character-grid {
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   }
 }
 
-/* 选中状态的卡片样式 */
 .background-card.selected {
   border: 2px solid #3bc7f6d8;
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.3);
 }
 
-/* 已选中按钮样式 */
 .background-select-btn.selected {
   background-color: #10b981 !important;
 }

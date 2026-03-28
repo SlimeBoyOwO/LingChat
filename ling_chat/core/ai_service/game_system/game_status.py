@@ -28,6 +28,8 @@ class GameStatus:
     # 游戏主角，也就是导入的游戏角色，剧本模式冒险的主角
     main_role: Optional[GameRole] = None
 
+    current_scene: str = field(default_factory=str)
+
     # 背景信息
     background: str = field(default_factory=str)
     # BGM信息
