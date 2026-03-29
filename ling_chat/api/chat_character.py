@@ -1,22 +1,207 @@
+import json
 import os
+import re
+import shutil
 from pathlib import Path
+from typing import Any, Dict
 
-from fastapi import APIRouter, Body, HTTPException, Query
+from fastapi import APIRouter, Body, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
-from typing import Dict, Any
 
 from ling_chat.core.logger import logger
 from ling_chat.core.service_manager import service_manager
+from ling_chat.game_database.managers.role_manager import RoleManager
+from ling_chat.game_database.managers.user_manager import UserManager
 from ling_chat.game_database.models import RoleType
+from ling_chat.schemas.character_settings import CharacterSettings
 from ling_chat.utils.function import Function
 from ling_chat.utils.runtime_path import user_data_path
 
-from ling_chat.game_database.managers.user_manager import UserManager
-from ling_chat.game_database.managers.role_manager import RoleManager
+SUPPORTED_IMAGE_EXTENSIONS = (
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".bmp",
+    ".tiff",
+    ".tif",
+    ".webp",
+    ".avif",
+    ".svg",
+)
 
-SUPPORTED_IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".webp", ".avif", ".svg")
+# 19 个可预测情绪 + 正常 = 20（头像单独上传）
+REQUIRED_EMOTION_SLOTS = [
+    "兴奋",
+    "厌恶",
+    "哭泣",
+    "害怕",
+    "害羞",
+    "平静",
+    "心动",
+    "惊讶",
+    "慌张",
+    "担心",
+    "无奈",
+    "生气",
+    "疑惑",
+    "紧张",
+    "自信",
+    "认真",
+    "调皮",
+    "难为情",
+    "高兴",
+    "正常",
+]
+
+# 上传槽位名 -> 落盘文件名（兼容当前运行时）
+EMOTION_STORAGE_NAME_MAP = {
+    "哭泣": "伤心",
+    "难为情": "羞耻",
+}
+
+INVALID_FOLDER_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 router = APIRouter(prefix="/api/v1/chat/character", tags=["Chat Character"])
+
+
+def _validate_resource_folder(resource_folder: str) -> str:
+    folder = (resource_folder or "").strip()
+    if not folder:
+        raise HTTPException(status_code=400, detail="resource_folder is required")
+
+    if folder in {".", ".."}:
+        raise HTTPException(status_code=400, detail="resource_folder is invalid")
+
+    if Path(folder).name != folder or "/" in folder or "\\" in folder:
+        raise HTTPException(status_code=400, detail="resource_folder cannot contain path separators")
+
+    if INVALID_FOLDER_CHARS_RE.search(folder):
+        raise HTTPException(status_code=400, detail="resource_folder contains invalid characters")
+
+    return folder
+
+
+def _validate_image_file(filename: str | None, field_name: str) -> str:
+    if not filename:
+        raise HTTPException(status_code=400, detail=f"{field_name} filename is empty")
+
+    suffix = Path(filename).suffix.lower()
+    if suffix not in SUPPORTED_IMAGE_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{field_name} format not supported: {suffix}. "
+            f"Supported: {', '.join(SUPPORTED_IMAGE_EXTENSIONS)}",
+        )
+    return suffix
+
+
+def _validate_and_pair_emotion_files(
+    emotion_names: list[str],
+    emotion_files: list[UploadFile],
+) -> dict[str, UploadFile]:
+    if len(emotion_names) != len(emotion_files):
+        raise HTTPException(status_code=400, detail="emotion_names and emotion_files length mismatch")
+
+    required_set = set(REQUIRED_EMOTION_SLOTS)
+    input_set = set(emotion_names)
+
+    if len(input_set) != len(emotion_names):
+        raise HTTPException(status_code=400, detail="emotion_names contains duplicate values")
+
+    missing = sorted(required_set - input_set)
+    extra = sorted(input_set - required_set)
+    if missing or extra:
+        detail_parts: list[str] = []
+        if missing:
+            detail_parts.append(f"missing emotions: {', '.join(missing)}")
+        if extra:
+            detail_parts.append(f"unexpected emotions: {', '.join(extra)}")
+        raise HTTPException(status_code=400, detail="; ".join(detail_parts))
+
+    paired: dict[str, UploadFile] = {}
+    for emotion_name, upload_file in zip(emotion_names, emotion_files):
+        _validate_image_file(upload_file.filename, f"{emotion_name} file")
+        paired[emotion_name] = upload_file
+
+    return paired
+
+
+def _cleanup_character_dir(character_dir: Path) -> None:
+    if character_dir.exists():
+        shutil.rmtree(character_dir, ignore_errors=True)
+
+
+@router.post("/create")
+async def create_character(
+    resource_folder: str = Form(...),
+    settings_json: str = Form(...),
+    avatar_file: UploadFile = File(...),
+    emotion_names: list[str] = Form(...),
+    emotion_files: list[UploadFile] = File(...),
+):
+    folder = _validate_resource_folder(resource_folder)
+    character_dir = user_data_path / "game_data" / "characters" / folder
+    avatar_dir = character_dir / "avatar"
+
+    if character_dir.exists():
+        raise HTTPException(status_code=409, detail=f"character '{folder}' already exists")
+
+    avatar_suffix = _validate_image_file(avatar_file.filename, "avatar_file")
+    emotion_file_map = _validate_and_pair_emotion_files(emotion_names, emotion_files)
+
+    try:
+        settings_data = json.loads(settings_json)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"settings_json is not valid JSON: {exc}") from exc
+
+    if not isinstance(settings_data, dict):
+        raise HTTPException(status_code=400, detail="settings_json must be a JSON object")
+
+    try:
+        validated_settings = CharacterSettings(**settings_data)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"settings_json validation failed: {exc}") from exc
+
+    try:
+        avatar_dir.mkdir(parents=True, exist_ok=False)
+
+        avatar_bytes = await avatar_file.read()
+        (avatar_dir / f"头像{avatar_suffix}").write_bytes(avatar_bytes)
+
+        for emotion_name in REQUIRED_EMOTION_SLOTS:
+            upload_file = emotion_file_map.get(emotion_name)
+            if upload_file is None:
+                raise HTTPException(status_code=400, detail=f"missing file for emotion: {emotion_name}")
+
+            emotion_suffix = Path(upload_file.filename or "").suffix.lower()
+            emotion_storage_name = EMOTION_STORAGE_NAME_MAP.get(emotion_name, emotion_name)
+            emotion_bytes = await upload_file.read()
+            (avatar_dir / f"{emotion_storage_name}{emotion_suffix}").write_bytes(emotion_bytes)
+
+        Function.save_character_settings(character_dir, validated_settings)
+
+        RoleManager.sync_roles_from_folder(user_data_path / "game_data")
+        created_role = RoleManager.get_main_role_by_resource_folder(folder)
+        if created_role is None or created_role.id is None:
+            raise RuntimeError(f"character role not found after sync: {folder}")
+
+        title = created_role.name or validated_settings.title or folder
+        return {
+            "success": True,
+            "data": {
+                "character_id": created_role.id,
+                "title": title,
+                "resource_folder": folder,
+            },
+        }
+    except HTTPException:
+        _cleanup_character_dir(character_dir)
+        raise
+    except Exception as exc:
+        _cleanup_character_dir(character_dir)
+        logger.error(f"create character failed: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"create character failed: {exc}") from exc
 
 
 @router.post("/refresh_characters")
