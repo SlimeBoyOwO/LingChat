@@ -3,14 +3,16 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from ling_chat.core.ai_service.game_system.game_status import GameStatus
+from ling_chat.core.ai_service.proactive_system.interest_manager import InterestManager
 from ling_chat.schemas.schedule_settings import ScheduleItem, UserScheduleSettings
 from ling_chat.core.logger import logger
 from ling_chat.core.messaging.broker import message_broker
 
 class ScheduleManager: # Reviewed
-    def __init__(self, settings: UserScheduleSettings, game_status: GameStatus):
+    def __init__(self, settings: UserScheduleSettings, game_status: GameStatus, interest_manager: InterestManager):
         self.settings = settings
         self.game_status = game_status
+        self.interest_manager = interest_manager
         self.current_task: Optional[asyncio.Task] = None
         
     def start(self):
@@ -60,11 +62,14 @@ class ScheduleManager: # Reviewed
             if next_item and min_diff != float('inf'):
                 logger.info(f"下一次日程提醒: {next_item.name} 于 {min_diff:.0f}秒后")
                 await asyncio.sleep(min_diff)
-                
-                # 触发提醒
-                ai_name = self.game_status.main_role.display_name if self.game_status.main_role else "你"
-                prompt = f"{{时间到了，{ai_name} 想起来{self.game_status.player.user_name}在日程里写到：{next_item.content}。提醒一下吧？}}"
-                await message_broker.enqueue_ai_message("global", prompt)
+
+                # 检测是否超过兴趣阈值和对话上限
+                if self.interest_manager.max_interest_cap > 50:
+                    # 触发提醒
+                    ai_name = self.game_status.main_role.display_name if self.game_status.main_role else "你"
+                    prompt = f"{{时间到了，{ai_name} 想起来{self.game_status.player.user_name}在日程里写到：{next_item.content}。提醒一下吧？}}"
+                    await message_broker.enqueue_ai_message("global", prompt)
+                    self.interest_manager.on_ai_reply()
                 
                 # 等待一小会儿避免重复触发
                 await asyncio.sleep(60)
