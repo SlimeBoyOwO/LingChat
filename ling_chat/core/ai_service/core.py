@@ -214,7 +214,7 @@ class AIService:
             raise ScriptEngineError(f"剧本 {chosen} 加载失败。")
         self.proactive_system.start()
 
-    async def set_scene_enhanced(self, scene_id: str, trigger_response: bool = False) -> bool:
+    async def set_scene(self, scene_id: str, trigger_response: bool = False) -> bool:
         """
         设置场景（增强版）
 

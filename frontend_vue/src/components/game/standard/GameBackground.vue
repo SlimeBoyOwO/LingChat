@@ -29,11 +29,11 @@
     />
   </div>
   <audio ref="soundEffectPlayer"></audio>
-  <audio ref="backgroundMusicPlayer" loop></audio>
+  <audio ref="backgroundMusicPlayer" @ended="handleTrackEnd"></audio>
 </template>
 
-<script setup>
-import { ref, computed, watch } from 'vue'
+<script setup lang="ts">
+import { ref, computed, watch, type CSSProperties } from 'vue'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import StarField from './particles/StarField.vue'
 import Rain from './particles/Rain.vue'
@@ -43,18 +43,21 @@ import Fireworks from './particles/Fireworks.vue'
 
 const uiStore = useUIStore()
 
-const soundEffectPlayer = ref()
-const backgroundMusicPlayer = ref()
+// 明确指定 DOM ref 为 HTMLAudioElement 类型，初始值为 null
+const soundEffectPlayer = ref<HTMLAudioElement | null>(null)
+const backgroundMusicPlayer = ref<HTMLAudioElement | null>(null)
 
-const FADE_DURATION = 800 // 淡入/淡出各持续时间 (毫秒)
-const FADE_INTERVAL = 50 // 每次音量变化的间隔 (毫秒)
-let fadeTimer = null // 用于存储定时器ID，防止多次切换冲突
+const FADE_DURATION: number = 800 // 淡入/淡出各持续时间 (毫秒)
+const FADE_INTERVAL: number = 50 // 每次音量变化的间隔 (毫秒)
+
+// 兼容浏览器(number)和Node/Vite环境(NodeJS.Timeout)的定时器类型
+let fadeTimer: ReturnType<typeof setInterval> | null = null
 
 // 星空效果控制
-const starfieldEnabled = ref(true)
-const starCount = ref(200)
-const scrollSpeed = ref(0.4)
-const starColors = ref([
+const starfieldEnabled = ref<boolean>(true)
+const starCount = ref<number>(200)
+const scrollSpeed = ref<number>(0.4)
+const starColors = ref<string[]>([
   'rgb(173, 216, 230)',
   'rgb(176, 224, 230)',
   'rgb(241, 141, 252)',
@@ -63,13 +66,13 @@ const starColors = ref([
 ])
 
 // 雨滴效果控制
-const rainEnabled = ref(true)
-const rainIntensity = ref(1)
+const rainEnabled = ref<boolean>(true)
+const rainIntensity = ref<number>(1)
 
-const snowIntensity = ref(1.5)
+const snowIntensity = ref<number>(1.5)
 
-// 计算背景样式
-const backgroundStyle = computed(() => {
+// 计算背景样式，使用 Vue 内置的 CSSProperties 类型
+const backgroundStyle = computed<CSSProperties>(() => {
   return {
     backgroundImage: uiStore.currentBackground
       ? `url(${uiStore.currentBackground})`
@@ -77,26 +80,32 @@ const backgroundStyle = computed(() => {
   }
 })
 
-// 星空就绪回调
-const onStarfieldReady = (instance) => {
+const handleTrackEnd = (): void => {
+  // 调用store的action处理背景音乐结束事件
+  uiStore.handleBackgroundMusicEnd()
+}
+
+// 星空就绪回调 (如果知道 Starfield 组件的实例类型，可替换 any)
+const onStarfieldReady = (instance: any): void => {
   console.debug('Starfield ready', instance)
 }
 
 // 核心：带有淡入淡出效果的音乐切换函数
-const switchBackgroundMusic = (player, newUrl) => {
+const switchBackgroundMusic = (
+  player: HTMLAudioElement,
+  newUrl: string | null | undefined,
+): void => {
   // 清除之前可能正在进行的淡入淡出操作
-  if (fadeTimer) {
+  if (fadeTimer !== null) {
     clearInterval(fadeTimer)
     fadeTimer = null
   }
 
   // 计算每一步音量变化的幅度
-  // 步数 = 总时间 / 间隔
-  // 每步变化量 = 目标音量 / 步数
-  const step = uiStore.backgroundVolume / 100 / (FADE_DURATION / FADE_INTERVAL)
+  const step: number = uiStore.backgroundVolume / 100 / (FADE_DURATION / FADE_INTERVAL)
 
   // --- 阶段1: 淡出 (Fade Out) ---
-  const fadeOut = () => {
+  const fadeOut = (): Promise<void> => {
     return new Promise((resolve) => {
       // 如果当前没有在播放，或者音量已经是0，直接完成
       if (player.paused || player.volume <= 0) {
@@ -111,8 +120,10 @@ const switchBackgroundMusic = (player, newUrl) => {
           player.volume = Math.max(0, player.volume - step)
         } else {
           // 淡出完成
-          clearInterval(fadeTimer)
-          fadeTimer = null
+          if (fadeTimer !== null) {
+            clearInterval(fadeTimer)
+            fadeTimer = null
+          }
           player.pause() // 暂停旧音乐
           resolve()
         }
@@ -121,7 +132,9 @@ const switchBackgroundMusic = (player, newUrl) => {
   }
 
   // --- 阶段2: 切换并淡入 (Switch & Fade In) ---
-  const loadAndFadeIn = () => {
+  const loadAndFadeIn = (): void => {
+    if (!newUrl) return // TS安全校验
+
     // 设置新源
     player.src = newUrl
     player.load()
@@ -135,17 +148,20 @@ const switchBackgroundMusic = (player, newUrl) => {
         .then(() => {
           // 播放成功，开始淡入
           fadeTimer = setInterval(() => {
-            if (player.volume < uiStore.backgroundVolume / 100) {
+            const targetVolume = uiStore.backgroundVolume / 100
+            if (player.volume < targetVolume) {
               // 确保音量不会超过目标值
-              player.volume = Math.min(uiStore.backgroundVolume / 100, player.volume + step)
+              player.volume = Math.min(targetVolume, player.volume + step)
             } else {
               // 淡入完成
-              clearInterval(fadeTimer)
-              fadeTimer = null
+              if (fadeTimer !== null) {
+                clearInterval(fadeTimer)
+                fadeTimer = null
+              }
             }
           }, FADE_INTERVAL)
         })
-        .catch((error) => {
+        .catch((error: Error | unknown) => {
           console.error('背景音乐自动播放失败:', error)
         })
     }
@@ -165,7 +181,7 @@ const switchBackgroundMusic = (player, newUrl) => {
 // 监听音效
 watch(
   () => uiStore.currentSoundEffect,
-  (newAudioUrl) => {
+  (newAudioUrl: string | null | undefined) => {
     if (soundEffectPlayer.value && newAudioUrl && newAudioUrl !== 'None') {
       soundEffectPlayer.value.src = newAudioUrl
       soundEffectPlayer.value.load()
@@ -174,9 +190,10 @@ watch(
   },
 )
 
+// 监听背景音乐
 watch(
   () => uiStore.currentBackgroundMusic,
-  (newAudioUrl) => {
+  (newAudioUrl: string | null | undefined) => {
     console.log('触发了新的背景音乐：newAudioUrl: ', newAudioUrl)
 
     if (backgroundMusicPlayer.value) {
@@ -188,32 +205,35 @@ watch(
   },
 )
 
+// 监听音量
 watch(
   () => uiStore.backgroundVolume,
-  (newVolume) => {
+  (newVolume: number) => {
     if (backgroundMusicPlayer.value) {
       backgroundMusicPlayer.value.volume = newVolume / 100
     }
   },
 )
 
+// 监听音乐暂停状态
 watch(
   () => uiStore.bgMusicPaused,
-  (newVolume) => {
-    if (backgroundMusicPlayer.value && newVolume) {
-      backgroundMusicPlayer.value.pause()
-    } else {
-      if (backgroundMusicPlayer.value.paused) {
+  (isPaused: boolean) => {
+    if (backgroundMusicPlayer.value) {
+      if (isPaused) {
+        backgroundMusicPlayer.value.pause()
+      } else if (backgroundMusicPlayer.value.paused) {
         backgroundMusicPlayer.value.play()
       }
     }
   },
 )
 
+// 监听音乐停止状态
 watch(
   () => uiStore.bgMusicStoped,
-  (newVar) => {
-    if (backgroundMusicPlayer.value && newVar) {
+  (isStopped: boolean) => {
+    if (backgroundMusicPlayer.value && isStopped) {
       backgroundMusicPlayer.value.pause()
       backgroundMusicPlayer.value.currentTime = 0
     }
