@@ -1,18 +1,18 @@
 import json
 import os
-from typing import AsyncGenerator, Dict, List
+from typing import AsyncGenerator, Dict, List, Optional
 
 import httpx
 
 from ling_chat.core.llm_providers.base import BaseLLMProvider
 from ling_chat.core.logger import logger
 
-
+# 文档：https://ai.google.dev/api
 class GeminiProvider(BaseLLMProvider):
     def __init__(self):
         super().__init__()
         self.api_key = os.environ.get("GEMINI_API_KEY")
-        self.base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
+        self.base_url = os.environ.get("GEMINI_API_URL", "https://generativelanguage.googleapis.com/v1beta")
         self.model_type = os.environ.get("GEMINI_MODEL_TYPE", "gemini-2.5-flash")
         self.proxy_url = os.environ.get("GEMINI_PROXY_URL")
         self.temperature = float(os.environ.get("TEMPERATURE", 1.0))
@@ -20,17 +20,9 @@ class GeminiProvider(BaseLLMProvider):
 
         if not self.api_key:
             raise ValueError("需要Gemini API密钥！")
-        
+
     def initialize_client(self):
         pass
-
-    def _get_headers(self):
-        """获取请求头"""
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}"
-        }
-        return headers
 
     def _get_http_client(self):
         """获取HTTP客户端，支持代理"""
@@ -39,50 +31,83 @@ class GeminiProvider(BaseLLMProvider):
             return httpx.Client(proxy=self.proxy_url, timeout=timeout_config)
         return httpx.Client(timeout=timeout_config)
 
-    def _format_messages(self, messages: List[Dict]) -> List[Dict]:
-        """格式化消息为Gemini API兼容格式
+    def _get_async_http_client(self):
+        """获取异步HTTP客户端，支持代理"""
+        timeout_config = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
+        if self.proxy_url and self.proxy_url.strip():
+            return httpx.AsyncClient(proxy=self.proxy_url, timeout=timeout_config)
+        return httpx.AsyncClient(timeout=timeout_config)
 
-        Gemini API支持OpenAI兼容的消息格式，但需要确保role是有效的：
-        - system, user, assistant
+    def _convert_messages_to_contents(
+        self, messages: List[Dict]
+    ) -> tuple[Optional[str], List[Dict]]:
         """
-        formatted_messages = []
+        将OpenAI格式的消息转换为Gemini原生API格式
+
+        :param messages: OpenAI格式的消息列表
+        :return: (system_instruction, contents) 元组
+        """
+        system_instruction = None
+        contents = []
+
         for msg in messages:
             role = msg.get("role", "user")
             content = msg.get("content", "")
 
-            # 确保角色是Gemini API接受的
+            # 处理system消息 - Gemini使用systemInstruction字段
+            if role == "system":
+                system_instruction = str(content)
+                continue
+
+            # 转换角色名称: user -> user, assistant/model -> model
             if role == "human":
                 role = "user"
-            elif role == "model":
-                role = "assistant"
+            elif role in ("assistant", "model"):
+                role = "model"
 
-            formatted_messages.append({
+            # 构建Gemini格式的content
+            contents.append({
                 "role": role,
-                "content": str(content)
+                "parts": [{"text": str(content)}]
             })
-        return formatted_messages
+
+        return system_instruction, contents
+
+    def _build_request_body(
+        self, messages: List[Dict], stream: bool = False
+    ) -> Dict:
+        """构建Gemini API请求体"""
+        system_instruction, contents = self._convert_messages_to_contents(messages)
+
+        body = {
+            "contents": contents,
+            "generationConfig": {
+                "temperature": self.temperature,
+                "topP": self.top_p,
+            }
+        }
+
+        # 添加system instruction（如果有）
+        if system_instruction:
+            body["systemInstruction"] = {
+                "parts": [{"text": system_instruction}]
+            }
+
+        return body
 
     def generate_response(self, messages: List[Dict]) -> str:
         """生成Gemini模型响应（非流式）"""
         try:
             logger.debug(f"向Gemini API发送请求: {self.model_type}")
 
-            formatted_messages = self._format_messages(messages)
-
-            payload = {
-                "model": self.model_type,
-                "messages": formatted_messages,
-                "stream": False,
-                "temperature": self.temperature,
-                "top_p": self.top_p
-            }
+            body = self._build_request_body(messages, stream=False)
+            url = f"{self.base_url}/models/{self.model_type}:generateContent?key={self.api_key}"
 
             with self._get_http_client() as client:
                 response = client.post(
-                    f"{self.base_url}/chat/completions",
-                    headers=self._get_headers(),
-                    json=payload,
-                    timeout=30.0
+                    url,
+                    json=body,
+                    timeout=60.0
                 )
 
                 if response.status_code != 200:
@@ -91,13 +116,31 @@ class GeminiProvider(BaseLLMProvider):
                     raise Exception(error_msg)
 
                 response_json = response.json()
-                return response_json.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+                # 解析Gemini原生响应格式
+                candidates = response_json.get("candidates", [])
+                if not candidates:
+                    logger.warning("Gemini API返回空candidates")
+                    return ""
+
+                content = candidates[0].get("content", {})
+                parts = content.get("parts", [])
+
+                # 拼接所有文本部分
+                result_text = ""
+                for part in parts:
+                    if "text" in part:
+                        result_text += part["text"]
+
+                return result_text
 
         except Exception as e:
             logger.error(f"Gemini API请求错误: {str(e)}")
             raise
 
-    async def generate_stream_response(self, messages: List[Dict]) -> AsyncGenerator[str, None]:
+    async def generate_stream_response(
+        self, messages: List[Dict]
+    ) -> AsyncGenerator[str, None]:
         """生成Gemini流式响应
 
         :param messages: 消息列表
@@ -106,26 +149,14 @@ class GeminiProvider(BaseLLMProvider):
         try:
             logger.debug(f"向Gemini模型发送流式请求: {self.model_type}")
 
-            formatted_messages = self._format_messages(messages)
+            body = self._build_request_body(messages, stream=True)
+            url = f"{self.base_url}/models/{self.model_type}:streamGenerateContent?key={self.api_key}&alt=sse"
 
-            payload = {
-                "model": self.model_type,
-                "messages": formatted_messages,
-                "stream": True,
-                "temperature": self.temperature,
-                "top_p": self.top_p
-            }
-
-            # 设置完整的超时配置：connect=20秒, read=60秒, write=20秒, pool=20秒
-            timeout_config = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
-            # 只有当代理URL既不为None也不为空字符串时才使用代理
-            proxy_config = self.proxy_url if self.proxy_url and self.proxy_url.strip() else None
-            async with httpx.AsyncClient(proxy=proxy_config, timeout=timeout_config) as client:
+            async with self._get_async_http_client() as client:
                 async with client.stream(
                     'POST',
-                    f"{self.base_url}/chat/completions",
-                    headers=self._get_headers(),
-                    json=payload,
+                    url,
+                    json=body,
                     timeout=60.0
                 ) as response:
                     if response.status_code != 200:
@@ -135,20 +166,30 @@ class GeminiProvider(BaseLLMProvider):
                         raise Exception(error_msg)
 
                     async for line in response.aiter_lines():
-                        if line.strip() and line.startswith("data: "):
+                        if not line.strip():
+                            continue
+
+                        # SSE格式: data: {...}
+                        if line.startswith("data: "):
                             chunk_data = line[6:]  # 移除 "data: " 前缀
                             if chunk_data == "[DONE]":
                                 break
 
                             try:
                                 chunk_json = json.loads(chunk_data)
-                                if chunk_json.get("object") == "chat.completion.chunk":
-                                    choices = chunk_json.get("choices", [])
-                                    if choices:
-                                        delta = choices[0].get("delta", {})
-                                        content = delta.get("content", "")
-                                        if content:
-                                            yield content
+
+                                # 解析Gemini流式响应格式
+                                candidates = chunk_json.get("candidates", [])
+                                if not candidates:
+                                    continue
+
+                                content = candidates[0].get("content", {})
+                                parts = content.get("parts", [])
+
+                                for part in parts:
+                                    if "text" in part:
+                                        yield part["text"]
+
                             except json.JSONDecodeError:
                                 logger.warning(f"未能解析返回数据: {line}")
                                 continue
