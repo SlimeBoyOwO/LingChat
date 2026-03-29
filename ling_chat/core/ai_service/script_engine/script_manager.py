@@ -42,7 +42,6 @@ class ScriptManager:
             return
 
         # self.init_script()
-        print(f"DEBUG: all_scripts = {self.all_scripts}")
         self.check_adventure_completion()
     
     def get_script_list(self) -> list[str]:
