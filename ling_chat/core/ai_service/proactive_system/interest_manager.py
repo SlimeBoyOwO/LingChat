@@ -52,14 +52,14 @@ class InterestManager: # Reviewed
             
         probability = (self.interest + self.status_mod - 50) / 50.0
         is_triggered = probability > random.random()
-        
-        if is_triggered:
-            # 触发后重置当前兴趣，并降低上限
-            self.interest = 0
-            self.max_interest_cap = max(0, self.max_interest_cap - self.decay_step)
-            logger.info(f"主动对话触发！Interest重置。新上限: {self.max_interest_cap}")
             
         return is_triggered
+    
+    def on_ai_reply(self):
+        """AI主动回复了，兴趣上限降低"""
+        self.interest = 0
+        self.max_interest_cap = max(0, self.max_interest_cap - self.decay_step)
+        logger.info(f"主动对话触发！Interest重置。新上限: {self.max_interest_cap}")
 
     def on_user_reply(self):
         """用户主动回复了，兴趣上限回满"""

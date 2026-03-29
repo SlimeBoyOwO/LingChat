@@ -34,7 +34,7 @@ class ProactiveSystem:
         self.interest_manager = InterestManager()
         self.activity_monitor = UserActivityMonitor()
         self.visual_monitor = VisualMonitor(self.interest_manager)
-        self.schedule_manager = ScheduleManager(self.settings, game_status)
+        self.schedule_manager = ScheduleManager(self.settings, game_status, self.interest_manager)
         self.strategy_dispatcher = StrategyDispatcher(game_status, self.settings)
         
         # 主动对话循环任务
@@ -115,6 +115,8 @@ class ProactiveSystem:
                     
                     async for response in self.message_generator.process_message_stream():
                         await message_broker.publish_clients(self.config.clients, response.model_dump())
+
+                self.interest_manager.on_ai_reply()
 
     async def cleanup(self):
         """清理资源"""

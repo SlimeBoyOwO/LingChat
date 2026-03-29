@@ -162,7 +162,7 @@ async def load_scene(request: SceneLoadRequest):
         raise HTTPException(status_code=404, detail="场景不存在")
 
     # 调用 AI 服务设置场景
-    success = await ai_service.set_scene_enhanced(
+    success = await ai_service.set_scene(
         scene_id=request.sceneId,
         trigger_response=request.triggerAIResponse
     )

@@ -33,6 +33,7 @@ interface UIState {
 
   currentBackground: string
   currentBackgroundMusic: string
+  bgMusicMode: 'loop-list' | 'loop-single' | 'random'
   bgMusicPaused: boolean
   bgMusicStoped: boolean
 
@@ -47,6 +48,9 @@ interface UIState {
   notification: NotificationState
   tipsMap: Record<string, { title: string; message: string }>
   tipsAvailable: boolean
+
+  // 背景音乐结束时间戳，用于触发音乐切换
+  _musicEndTime: number
 }
 
 // 默认 avatar
@@ -72,6 +76,7 @@ export const useUIStore = defineStore('ui', {
     currentBackground: '@/assets/images/default_bg.jpg',
 
     currentBackgroundMusic: 'None',
+    bgMusicMode: 'loop-single',
     bgMusicPaused: false,
     bgMusicStoped: false,
 
@@ -93,6 +98,9 @@ export const useUIStore = defineStore('ui', {
     },
     tipsMap: {},
     tipsAvailable: false,
+
+    // 背景音乐结束时间戳
+    _musicEndTime: 0,
   }),
 
   getters: {
@@ -383,6 +391,16 @@ export const useUIStore = defineStore('ui', {
           message: type === 'success' ? '角色列表已成功刷新！' : '刷新时出了问题',
         }
       )
+    },
+
+    /**
+     * 处理背景音乐结束事件
+     * 当背景音乐播放结束时调用此方法，通知相关组件处理音乐切换
+     */
+    handleBackgroundMusicEnd() {
+      // 触发一个内部状态变化，让SettingsSound组件能够监听到
+      // 使用时间戳确保每次都能触发watch
+      this._musicEndTime = Date.now()
     },
   },
 })

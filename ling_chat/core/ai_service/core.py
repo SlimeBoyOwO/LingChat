@@ -173,9 +173,12 @@ class AIService:
         self.game_status.role_manager.persist_memory_banks_to_db(save_id)
     
     def _init_game_status(self):
+        self.game_status.role_manager.reset_roles()
+        
         self.game_status.line_list = []
         system_line = LineBase(content=self.ai_prompt, attribute=LineAttribute.SYSTEM, sender_role_id=self.character_id, display_name=self.ai_name)
         self.game_status.add_line(system_line)
+        
         if self.character_id:
             self.game_status.current_character = self.game_status.role_manager.get_role(self.character_id)
             self.game_status.onstage_role(self.game_status.current_character)
@@ -214,7 +217,7 @@ class AIService:
             raise ScriptEngineError(f"剧本 {chosen} 加载失败。")
         self.proactive_system.start()
 
-    async def set_scene_enhanced(self, scene_id: str, trigger_response: bool = False) -> bool:
+    async def set_scene(self, scene_id: str, trigger_response: bool = False) -> bool:
         """
         设置场景（增强版）
 
