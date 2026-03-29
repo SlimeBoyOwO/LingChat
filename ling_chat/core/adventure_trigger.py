@@ -98,8 +98,7 @@ class AdventureTriggerSystem:
             cond_type = cond.get("type", "")
 
             if cond_type == "chat_count":
-                from ling_chat.core.service_manager import service_manager
-                main_role = service_manager.get_ai_service().game_status.main_role
+                main_role = game_status.main_role
                 if main_role and main_role.resource_path == adv.bound_character_folder:
                     if not self._check_chat_count(chat_count, cond.get("threshold", 0)):
                         return False
