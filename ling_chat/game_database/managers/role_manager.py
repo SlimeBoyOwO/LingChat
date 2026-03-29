@@ -109,7 +109,17 @@ class RoleManager:
     @staticmethod
     def get_all_main_roles() -> List[Role]:
         with Session(engine) as session:
-            return session.exec(select(Role).where(Role.role_type == RoleType.MAIN)).all() # type: ignore
+            stmt = select(Role).where(Role.role_type == RoleType.MAIN)
+            return session.exec(stmt).all() # type: ignore
+
+    @staticmethod
+    def get_main_role_by_resource_folder(resource_folder: str) -> Optional[Role]:
+        with Session(engine) as session:
+            stmt = select(Role).where(
+                Role.role_type == RoleType.MAIN,
+                Role.resource_folder == resource_folder,
+            )
+            return session.exec(stmt).first()
 
     @staticmethod
     def get_role_by_id(role_id: int) -> Optional[Role]:
