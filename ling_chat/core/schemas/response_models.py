@@ -31,7 +31,8 @@ class ResponseFactory:
             motionText="",
             audioFile=None,
             originalMessage="",
-            isFinal=True
+            isFinal=True,
+            duration=0
         )
     
     @staticmethod
