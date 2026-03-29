@@ -4,6 +4,8 @@
     <svg
       class="polygon-area"
       :viewBox="`0 0 ${windowWidth} ${windowHeight}`"
+      :width="windowWidth"
+      :height="windowHeight"
       @click="handlePolygonClick"
     >
       <!-- 遍历过滤后的 bodyPart，每个渲染两个 polygon（发光层 + 主层） -->
@@ -51,21 +53,32 @@ interface BodyParts {
 }
 
 interface Props {
-  gameStore: any
   bodyParts?: BodyParts | Record<string, BodyPart> | object
-  roleId?: string | number
 }
 
 const props = withDefaults(defineProps<Props>(), {
   bodyParts: () => ({}),
-  roleId: '',
 })
 
 const gameStore = useGameStore()
 const emit = defineEmits(['player-continued', 'dialog-proceed'])
 
+const windowWidth = ref(window.innerWidth)
+const windowHeight = ref(window.innerHeight)
+
 // 过滤后的 bodyParts，使用 ref + watch 确保响应式更新
 const filteredBodyParts = ref<Record<string, BodyPart>>({})
+
+// 标记是否发过消息
+const sent = ref(false)
+
+// 防抖
+const lastClickTime = ref(0)
+const debounceDelay = 300
+
+// 发光效果状态
+const isGlowing = ref(false)
+let glowTimeout: ReturnType<typeof setTimeout> | null = null
 
 // 根据 clothesName 过滤 bodyParts
 // key 格式为 "head_{clothesName}"，只显示匹配当前衣服的 bodyPart
@@ -82,8 +95,6 @@ const updateFilteredBodyParts = () => {
   }
 
   filteredBodyParts.value = filtered
-
-  console.log('filteredBodyParts.value:', filteredBodyParts.value)
 }
 
 // 监听 clothesName 变化
@@ -95,17 +106,9 @@ watch(
   { immediate: true },
 )
 
-const sent = ref(false)
-const lastClickTime = ref(0)
-const debounceDelay = 300
-
-// 发光效果状态
-const isGlowing = ref(false)
-let glowTimeout: ReturnType<typeof setTimeout> | null = null
-
 // 监听 command 变化，触发发光效果
 watch(
-  () => props.gameStore.command,
+  () => gameStore.command,
   (newCommand) => {
     if (newCommand === 'touch') {
       isGlowing.value = true
@@ -128,11 +131,9 @@ watch(
   { immediate: true },
 )
 
-const windowWidth = ref(window.innerWidth)
-const windowHeight = ref(window.innerHeight)
-
 // 计算单个 bodyPart 的多边形坐标点
 const getPolygonPoints = (part: BodyPart): string => {
+  // bodyPart 需跟随人物移动，PC端横向分辨率变化不会使人物缩放
   const scale = windowHeight.value / part.windowHeight
   const centerX = windowWidth.value / 2
   const centerY = windowHeight.value / 2
@@ -155,7 +156,7 @@ const getPolygonPoints = (part: BodyPart): string => {
 
 // 计算容器透明度
 const containerOpacity = computed(() => {
-  if (props.gameStore.command === 'touch') {
+  if (gameStore.command === 'touch') {
     return 1
   } else {
     return 0
@@ -233,8 +234,6 @@ const handlePolygonClick = (event: MouseEvent) => {
     // 查找点击的多边形
     const clickedPart = findClickedPart(event.clientX, event.clientY)
 
-    console.log('clickedPart:', clickedPart)
-
     if (clickedPart) {
       if (!sent.value) {
         gameStore.currentStatus = 'thinking'
@@ -290,7 +289,7 @@ onUnmounted(() => {
 }
 
 .polygon-area {
-  @apply w-full h-full pointer-events-auto;
+  @apply pointer-events-auto;
 }
 
 .polygon-shape {
