@@ -34,9 +34,10 @@ class GeminiProvider(BaseLLMProvider):
 
     def _get_http_client(self):
         """获取HTTP客户端，支持代理"""
-        if self.proxy_url:
-            return httpx.Client(proxy=self.proxy_url, timeout=httpx.Timeout(connect=30.0))
-        return httpx.Client(timeout=httpx.Timeout(connect=30.0))
+        timeout_config = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
+        if self.proxy_url and self.proxy_url.strip():
+            return httpx.Client(proxy=self.proxy_url, timeout=timeout_config)
+        return httpx.Client(timeout=timeout_config)
 
     def _format_messages(self, messages: List[Dict]) -> List[Dict]:
         """格式化消息为Gemini API兼容格式
@@ -115,7 +116,11 @@ class GeminiProvider(BaseLLMProvider):
                 "top_p": self.top_p
             }
 
-            async with httpx.AsyncClient(proxy=self.proxy_url, timeout=httpx.Timeout(connect=30.0)) as client:
+            # 设置完整的超时配置：connect=20秒, read=60秒, write=20秒, pool=20秒
+            timeout_config = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
+            # 只有当代理URL既不为None也不为空字符串时才使用代理
+            proxy_config = self.proxy_url if self.proxy_url and self.proxy_url.strip() else None
+            async with httpx.AsyncClient(proxy=proxy_config, timeout=timeout_config) as client:
                 async with client.stream(
                     'POST',
                     f"{self.base_url}/chat/completions",

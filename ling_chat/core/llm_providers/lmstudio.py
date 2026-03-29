@@ -31,18 +31,20 @@ class LMStudioProvider(BaseLLMProvider):
 
     def _get_http_client(self):
         """获取同步 HTTP 客户端"""
+        timeout_config = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
         return httpx.Client(
             base_url=self.base_url,
             headers=self._get_headers(),
-            timeout=httpx.Timeout(120.0, connect=30.0)
+            timeout=timeout_config
         )
 
     def _get_async_client(self):
         """获取异步 HTTP 客户端"""
+        timeout_config = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
         return httpx.AsyncClient(
             base_url=self.base_url,
             headers=self._get_headers(),
-            timeout=httpx.Timeout(120.0, connect=30.0)
+            timeout=timeout_config
         )
 
     def _build_input_messages(self, messages: List[Dict]) -> List[Dict]:
@@ -149,7 +151,12 @@ class LMStudioProvider(BaseLLMProvider):
 
         temperature = os.environ.get("TEMPERATURE", "1.3")
         if temperature:
-            body["temperature"] = float(temperature)
+            temp_value = float(temperature)
+            # LM Studio只支持temperature范围[0,1]，强制将大于1的值限制为1
+            if temp_value > 1.0:
+                temp_value = 1.0
+                logger.debug(f"LM Studio temperature 超出范围({temperature})，已重置为1.0")
+            body["temperature"] = temp_value
 
         top_p = os.environ.get("TOP_P", "0.9")
         if top_p:
