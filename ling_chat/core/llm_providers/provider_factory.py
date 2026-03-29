@@ -1,3 +1,4 @@
+from ling_chat.core.llm_providers.memnetai import MemNetAIProvider
 from ling_chat.core.llm_providers.web_llm import WebLLMProvider
 from ling_chat.core.llm_providers.ollama import OllamaProvider
 from ling_chat.core.llm_providers.lmstudio import LMStudioProvider
@@ -9,7 +10,7 @@ from ling_chat.core.logger import logger
 class LLMProviderFactory:
     @staticmethod
     def create_provider(provider_type: str,
-                        model_type: str="", api_key: str="", base_url: str="") -> BaseLLMProvider:
+                        model_type: str="", api_key: str="", base_url: str="", memnet_key: str="") -> BaseLLMProvider:
         """
         创建指定类型的大模型提供者
         
@@ -23,6 +24,9 @@ class LLMProviderFactory:
             if provider_type == "webllm":
                 logger.info("创建通用联网大模型服务提供商")
                 return WebLLMProvider(model_type, api_key, base_url)
+            elif provider_type == "memnetai":
+                logger.info("创建 MemNetAI 长期记忆服务提供商")
+                return MemNetAIProvider(model_type, api_key, base_url,memnet_key)
             elif provider_type == "ollama":
                 logger.info("创建OLLAMA服务提供商")
                 return OllamaProvider()
