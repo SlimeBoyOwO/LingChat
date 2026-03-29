@@ -244,7 +244,9 @@ const modeText = {
 const togglePlaybackMode = () => {
   const modes: PlaybackMode[] = ['loop-list', 'loop-single', 'random']
   const currentIndex = modes.indexOf(playbackMode.value)
-  playbackMode.value = modes[(currentIndex + 1) % modes.length]
+  const choice = modes[(currentIndex + 1) % modes.length]
+  if (choice) playbackMode.value = choice
+  else playbackMode.value = 'loop-list'
 }
 
 // 自动切歌处理 (响应播放结束事件)
