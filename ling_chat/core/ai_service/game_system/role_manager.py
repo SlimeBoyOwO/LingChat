@@ -25,6 +25,10 @@ class GameRoleManager:
             self._register_role_by_id(role_id)
         return self.loaded_roles[role_id]
     
+    def reset_roles(self):
+        self.loaded_roles.clear()
+        self._memory_bank_systems.clear()
+    
     def _register_role_by_id(self, role_id: int):
         role = RoleManager.get_role_by_id(role_id)
         if not role or not role.id:
@@ -93,12 +97,15 @@ class GameRoleManager:
             # 构建记忆（裁剪历史窗口，避免上下文无限膨胀）
             sliced_lines = source_lines[slice_start_idx:] if slice_start_idx > 0 else source_lines
             # 额外寻找本角色的第一个 SYSTEM 属性的台词，防止人设丢失
-            system_prompt = self._find_first_system_prompt(source_lines, rid)
-            # 把 system_prompt 移动到 sliced_lines 的开头
-            if system_prompt:
-                sliced_lines = [system_prompt] + sliced_lines
-            else:
-                logger.warning(f"MemoryBank: role_id={rid} 没有找到 SYSTEM 属性的台词，可能人设丢失")
+            # 如果sliced_lines里已经有 SYSTEM 属性的台词，则不需要额外添加
+            has_prompt = self._find_first_system_prompt(sliced_lines, rid) != None
+            if not has_prompt:
+                system_prompt = self._find_first_system_prompt(source_lines, rid)
+                # 把 system_prompt 移动到 sliced_lines 的开头
+                if system_prompt:
+                    sliced_lines = [system_prompt] + sliced_lines
+                else:
+                    logger.warning(f"MemoryBank: role_id={rid} 没有找到 SYSTEM 属性的台词，可能人设丢失")
 
             builder = MemoryBuilder(target_role_id=rid)
             built = builder.build(sliced_lines)
@@ -108,10 +115,6 @@ class GameRoleManager:
                 role.memory = self._merge_memory_bank_into_context(built, system_addendum, short_term_prefix)
             else:
                 role.memory = built
-
-        # 【重要改动】去掉了自动删除 "stale" 角色的逻辑。
-        # 角色加载后通常应该保留直到场景结束，频繁删除重建会浪费算力。
-        # 如果真的需要清理内存，应该提供一个显式的 .clear_cache() 方法。
     
     def _find_first_system_prompt(self, source_lines: List[GameLine], role_id: int) -> Optional[GameLine]:
         for line in source_lines:

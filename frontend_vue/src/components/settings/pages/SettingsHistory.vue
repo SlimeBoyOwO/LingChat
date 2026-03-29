@@ -19,7 +19,7 @@
           >
             <DialogSession :dialog="currentPageHistory" />
           </div>
-          <div class="flex items-center justify-between px-3 py-2 w-full">
+          <div class="flex items-center justify-between px-3 py-2 w-full" v-if="totalPages > 1">
             <button
               class="px-4 py-1.5 text-sm font-medium border-none rounded-lg cursor-pointer bg-[#e9ecef] text-[#495057] transition-all duration-200 hover:bg-(--accent-color) hover:text-white hover:-translate-y-0.5 hover:shadow-[0_4px_10px_rgba(121,217,255,0.4)] disabled:opacity-40 disabled:cursor-not-allowed"
               :disabled="currentPage === 1"
