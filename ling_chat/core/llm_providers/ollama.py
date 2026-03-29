@@ -28,7 +28,7 @@ class OllamaProvider(BaseLLMProvider):
             or os.environ.get("MODEL_TYPE")
             or "llama3"
         )
-        self._timeout = httpx.Timeout(timeout=300.0, connect=30.0)
+        self._timeout = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
         self.temperature = float(os.environ.get("TEMPERATURE", 1.3))
         self.top_p = float(os.environ.get("TOP_P", 0.9))
 
