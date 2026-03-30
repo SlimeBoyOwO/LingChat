@@ -924,7 +924,7 @@ class MyUpdateStrategy(UpdateStrategy):
                 raise UpdateError("更新信息缺少 download_url")
 
             with httpx.Client() as client:
-                with client.stream('GET', download_url, timeout=30.0) as resp:
+                with client.stream('GET', download_url, timeout=30.0, follow_redirects=True) as resp:
                     resp.raise_for_status()
                     total_size = int(resp.headers.get('content-length', 0))
                     temp_dir = tempfile.gettempdir()
@@ -982,7 +982,7 @@ class MyUpdateStrategy(UpdateStrategy):
                 logger.info(f"下载更新 {i+1}/{total_files}: {update_info.get('version')}")
 
                 with httpx.Client() as client:
-                    with client.stream('GET', download_url, timeout=30.0) as resp:
+                    with client.stream('GET', download_url, timeout=30.0, follow_redirects=True) as resp:
                         resp.raise_for_status()
 
                         total_size = int(resp.headers.get('content-length', 0))
