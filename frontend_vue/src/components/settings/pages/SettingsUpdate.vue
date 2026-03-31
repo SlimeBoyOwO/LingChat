@@ -260,7 +260,7 @@ export default {
     },
 
     // 启动定时轮询以自动获取更新状态
-    startStatusPolling(interval = 5000) {
+    startStatusPolling(interval = 2000) {
       // 避免重复创建定时器
       this.stopStatusPolling()
       this.statusPollingTimer = setInterval(async () => {
@@ -311,7 +311,11 @@ export default {
           timeout: 5000,
         })
         if (response.data) {
-          this.config.auto_backup = response.data.auto_backup || true
+          if (typeof response.data.auto_backup !== 'undefined') {
+            this.config.auto_backup = response.data.auto_backup
+          } else {
+            this.config.auto_backup = false
+          }
         }
       } catch (error) {
         console.error('获取配置失败:', error)
