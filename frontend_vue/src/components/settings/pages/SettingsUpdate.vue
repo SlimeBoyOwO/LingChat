@@ -170,7 +170,7 @@ export default {
 
       // 配置
       config: {
-        auto_backup: true,
+        auto_backup: false,
       },
 
       // 连接状态
@@ -183,6 +183,8 @@ export default {
       showBackupDialog: false,
 
       // 轮询状态更新的定时器 - 已移除自动轮询功能
+      statusPollingTimer: null,
+      pollingInProgress: false,
     }
   },
 
@@ -191,7 +193,8 @@ export default {
   },
 
   beforeUnmount() {
-    // 移除定时器清理逻辑，因为不再使用自动轮询
+    // 组件卸载时清理轮询定时器
+    this.stopStatusPolling()
   },
 
   computed: {
@@ -230,8 +233,9 @@ export default {
           this.errorMessage = ''
           this.loadAppInfo()
           this.loadConfig()
-          // 移除自动轮询，改为只在连接成功后获取一次状态
+          // 连接成功后启动状态轮询以自动刷新更新状态
           await this.getUpdateStatus()
+          this.startStatusPolling()
           console.log('成功连接到更新服务')
         }
       } catch (error) {
@@ -253,6 +257,30 @@ export default {
       if (!this.backendConnected) return
 
       await this.getUpdateStatus()
+    },
+
+    // 启动定时轮询以自动获取更新状态
+    startStatusPolling(interval = 5000) {
+      // 避免重复创建定时器
+      this.stopStatusPolling()
+      this.statusPollingTimer = setInterval(async () => {
+        if (this.pollingInProgress) return
+        try {
+          this.pollingInProgress = true
+          await this.getUpdateStatus()
+        } finally {
+          this.pollingInProgress = false
+        }
+      }, interval)
+    },
+
+    // 停止自动轮询
+    stopStatusPolling() {
+      if (this.statusPollingTimer) {
+        clearInterval(this.statusPollingTimer)
+        this.statusPollingTimer = null
+      }
+      this.pollingInProgress = false
     },
 
     // 加载应用信息
