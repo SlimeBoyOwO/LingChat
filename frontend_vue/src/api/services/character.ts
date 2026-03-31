@@ -1,13 +1,12 @@
 import http from '../http'
 import type { Character, CharacterSelectParams } from '../../types'
 
-// 角色选择API返回类型
 interface CharacterSelectResponse {
   success: boolean
   character: {
     id: number
     title: string
-    folder_name: string // 角色文件夹名，用于加载专属提示
+    folder_name: string
   }
 }
 
@@ -86,5 +85,23 @@ export const updateRoleSettings = async (roleId: number, settings: any): Promise
     return response
   } catch (error: any) {
     throw new Error(error.response?.data?.detail || '更新角色配置失败')
+  }
+}
+
+export interface CreateCharacterResponse {
+  success: boolean
+  data: {
+    character_id: number
+    title: string
+    resource_folder: string
+  }
+}
+
+export const createCharacter = async (formData: FormData): Promise<CreateCharacterResponse> => {
+  try {
+    const response = await http.post('/v1/chat/character/create', formData)
+    return response
+  } catch (error: any) {
+    throw new Error(error.response?.data?.detail || '创建角色失败')
   }
 }
