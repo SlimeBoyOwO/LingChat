@@ -45,6 +45,11 @@ class MessageProcessor:
 
             cleaned_text = re.sub(r'<.*?>|（.*?）', '', following_text).strip()
 
+            enable_translate = os.environ.get("ENABLE_TRANSLATE", "False").lower() == "true"
+            if not enable_translate:
+                # 直接使用 cleaned_text 作为日语文本
+                japanese_text = cleaned_text
+
             if japanese_text:
                 japanese_text = re.sub(r'（.*?）', '', japanese_text).strip()
 
