@@ -43,6 +43,12 @@ class ScriptBackgroundResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_BACKGROUND
     imagePath: str
 
+class ScriptPresentPicResponse(BaseResponse):
+    type: str = ResponseType.SCRIPT_PRESENT_PIC
+    imagePath: str
+    scale: float = 1
+    duration: float = 0
+
 class ScriptBackgroundEffectResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_BACKGROUND_EFFECT
     effect: str
@@ -57,6 +63,7 @@ class ScriptMusicResponse(BaseResponse):
 
 class ScriptNarrationResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_NARRATION
+    displayName: Optional[str] = None
     text: str
 
 class ScriptDialogResponse(BaseResponse):

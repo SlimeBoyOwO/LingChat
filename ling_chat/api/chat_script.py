@@ -162,3 +162,23 @@ async def get_script_background_file(background_file: str):
     except Exception as e:
         # 日志记录异常
         print(f"An error occurred: {e}")
+
+@router.get("/pic_file/{pic_file}")
+async def get_script_pic_file(pic_file: str):
+    try:
+        ai_service = service_manager.get_ai_service()
+
+        assets_dir = ai_service.scripts_manager.get_assests_dir()
+        candidates = [
+            assets_dir / "Pics" / pic_file,
+            assets_dir / "Pictures" / pic_file,
+        ]
+        file_path = next((p for p in candidates if os.path.exists(p)), candidates[0])
+
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="Pic not found")
+
+        return FileResponse(file_path)
+    except Exception as e:
+        # 日志记录异常
+        print(f"An error occurred: {e}")
