@@ -195,6 +195,21 @@ class ScriptStatus:
     # 剧本包含的变量
     vars: dict = field(default_factory=dict)
 
+    @property
+    def path_key(self) -> str:
+        """获取从 'scripts' 之后的路径部分"""
+        parts = self.script_path.parts
+        try:
+            scripts_index = parts.index('scripts')
+            # 返回 scripts 之后的部分，用路径分隔符连接
+            return str(Path(*parts[scripts_index + 1:]))
+        except ValueError:
+            # 如果没有找到 'scripts'，返回整个路径
+            return str(self.script_path)
+        except IndexError:
+            # 如果 scripts 是最后一个部分，返回空字符串
+            return ""
+
     # 剧本变量操作
     def set_variable(self, key: str, value: Any):
         """设置剧本变量"""

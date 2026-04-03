@@ -148,14 +148,9 @@ class VoiceMaker:
         """设置默认的TTS类型"""
         available_tts_types = ("sva-bv2", "gsv", "sbv2", "sva-vits", "sbv2api","aivis", "indextts2")
         try:
-            if os.environ.get("TTS_TYPE", "") in available_tts_types:
-                self.tts_type = os.environ.get("TTS_TYPE", "")
+            if tts_type in available_tts_types:
+                self.tts_type = tts_type
                 self.set_tts_settings(tts_settings, name)
-            else:
-                # logger.warning("你的环境变量中未设置TTS类型（或是设置错误），将使用角色卡的默认语音合成器！")
-                if tts_type in available_tts_types:
-                    self.tts_type = tts_type
-                    self.set_tts_settings(tts_settings, name)
         except ValueError:
             if tts_type in available_tts_types:
                 self.tts_type = tts_type

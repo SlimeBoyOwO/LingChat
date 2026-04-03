@@ -12,6 +12,7 @@ export interface ScriptChapterChangeEvent extends ScriptEvent {
 export interface ScriptNarrationEvent extends ScriptEvent {
   type: 'narration'
   text: string
+  displayName?: string
   sceneId?: string
 }
 
@@ -43,6 +44,12 @@ export interface ScriptBackgroundEvent extends ScriptEvent {
   type: 'background'
   imagePath: string
   transition?: string
+}
+
+export interface ScriptPresentPicEvent extends ScriptEvent {
+  type: 'present_pic'
+  imagePath: string
+  scale: number
 }
 
 export interface ScriptBackgroundEffectEvent extends ScriptEvent {
@@ -107,3 +114,4 @@ export type ScriptEventType =
   | ScriptChapterChangeEvent
   | ScriptEndEvent
   | ScriptChoiceEvent
+  | ScriptPresentPicEvent
