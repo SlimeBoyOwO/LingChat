@@ -120,6 +120,8 @@ export const actions = {
       choices: [],
       isRunning: true,
     }
+    const uiStore = useUIStore()
+    uiStore.bgMusicMode = 'loop-single'
   },
 
   /** 标记退出剧情模式，回到自由对话模式 */

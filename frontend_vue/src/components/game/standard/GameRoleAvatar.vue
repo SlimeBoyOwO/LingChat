@@ -1,32 +1,27 @@
 <template>
   <!-- 触摸区域 -->
   <TouchAreas v-if="gameStore.command === 'touch'" :body-parts="role.bodyPart" />
-  <!-- 1. 添加 Transition 组件，name 指定为 character-fade -->
+
   <Transition name="character-fade">
     <div
-      class="role-avatar-container absolute"
+      class="absolute w-full h-full pointer-events-none origin-[center_0%] role-container-transition"
       :style="containerStyle"
       @animationend="handleAnimationEnd"
     >
-      <!-- 双层图片结构  -->
-      <div class="w-full h-full absolute" :class="containerClasses">
-        <div
-          class="avatar-layer base-layer"
-          :style="{ backgroundImage: `url(${currentAvatarUrl})` }"
-        ></div>
+      <!-- 使用单独提取出来的图片淡入淡出组件 -->
+      <ImageCrossFade
+        ref="imageFadeRef"
+        class="absolute w-full h-[102%]"
+        :class="containerClasses"
+        :src="targetAvatarUrl"
+        position="center bottom"
+        object-fit="contain"
+      />
 
-        <div
-          class="avatar-layer overlay-layer"
-          :class="{ 'is-fading-in': isFadingIn }"
-          :style="{ backgroundImage: `url(${nextAvatarUrl})` }"
-          @transitionend="onTransitionEnd"
-        ></div>
-      </div>
-
-      <!-- 气泡  -->
+      <!-- 气泡 -->
       <div :class="bubbleClasses" :style="bubbleStyles" class="bubble"></div>
 
-      <!-- 情绪音效  -->
+      <!-- 情绪音效 -->
       <audio ref="bubbleAudio"></audio>
     </div>
   </Transition>
@@ -38,6 +33,7 @@ import { useGameStore } from '@/stores/modules/game'
 import { EMOTION_CONFIG, EMOTION_CONFIG_EMO } from '@/controllers/emotion/config'
 import type { GameRole } from '@/stores/modules/game/state'
 import TouchAreas from './TouchAreas.vue'
+import ImageCrossFade from '@/components/ui/ImageAcrossFade.vue'
 import './avatar-animation.css'
 
 const props = defineProps<{
@@ -48,21 +44,17 @@ const gameStore = useGameStore()
 const { role } = toRefs(props)
 
 const bubbleAudio = ref<HTMLAudioElement | null>(null)
+const imageFadeRef = ref<InstanceType<typeof ImageCrossFade> | null>(null)
+
 const activeAnimationClass = ref('normal')
-const currentAvatarUrl = ref('')
-const nextAvatarUrl = ref('')
-const isFadingIn = ref(false)
 const isBubbleVisible = ref(false)
 const currentBubbleImageUrl = ref('')
 const currentBubbleClass = ref('')
 
 let bubbleTimeoutId: number | null = null
-
-let currentImageLoadPromise: Promise<void> | null = null
 let latestEmotionId = 0
 
 // --- 样式计算 ---
-
 const layoutPosition = computed(() => {
   const allIds = gameStore.presentRoleIds
   const myIndex = allIds.indexOf(role.value.roleId)
@@ -110,71 +102,27 @@ const targetAvatarUrl = computed(() => {
   return `/api/v1/chat/character/get_avatar/${r.roleId}/${mappedEmotion}/${clothesName}`
 })
 
-const updateAvatarImage = async (newUrl: string) => {
-  if (!newUrl || newUrl === 'none') return
-
-  let resolveLoad!: () => void
-  const loadPromise = new Promise<void>((resolve) => {
-    resolveLoad = resolve
-  })
-  currentImageLoadPromise = loadPromise // 更新当前的加载任务
-
-  const finalUrl = `${newUrl}`
-  const img = new Image()
-  img.src = finalUrl
-  try {
-    await img.decode()
-  } catch (err) {
-    console.error(`角色[${role.value.roleName}]加载头像失败: ${newUrl}`, err)
-  }
-
-  // 如果当前加载任务仍然是最新任务，才执行图片替换
-  if (currentImageLoadPromise === loadPromise) {
-    if (isFadingIn.value) {
-      currentAvatarUrl.value = nextAvatarUrl.value
-      isFadingIn.value = false
-      await nextTick()
-    }
-    nextAvatarUrl.value = finalUrl
-    requestAnimationFrame(() => {
-      isFadingIn.value = true
-    })
-  }
-
-  // 图片已处理完毕（成功或失败），解析 Promise，允许播放气泡等特效
-  resolveLoad()
-}
-
-const onTransitionEnd = () => {
-  if (isFadingIn.value) {
-    currentAvatarUrl.value = nextAvatarUrl.value
-    isFadingIn.value = false
-  }
-}
-
-watch(targetAvatarUrl, (newUrl) => updateAvatarImage(newUrl), { immediate: true })
-
+// 监听表情，配合子组件的加载状态播放特效
 watch(
   () => role.value.emotion,
   async (newEmotion) => {
     const currentId = ++latestEmotionId
 
-    // 等待 Vue 将 computed(targetAvatarUrl) 更新完毕，让 URL 监听器先执行
+    // 1. 等待 Vue computed(targetAvatarUrl) 更新并传递给子组件
     await nextTick()
 
-    // 如果此时正在加载新图片，则等待该图片加载完成
-    if (currentImageLoadPromise) {
-      await currentImageLoadPromise
+    // 2. 等待子组件的图片加载 Promise 结束
+    if (imageFadeRef.value) {
+      await imageFadeRef.value.waitForLoad()
     }
-
-    // 校验：如果等待图片加载期间，用户又切换了新表情，则中止旧表情的特效播放
-    // if (currentId !== latestEmotionId) return
 
     const config = EMOTION_CONFIG[newEmotion]
     if (!config) return
+
     if (config.animation && config.animation !== 'none') {
       activeAnimationClass.value = config.animation
     }
+
     if (config.bubbleImage && config.bubbleImage !== 'none') {
       const version = Date.now()
       currentBubbleImageUrl.value = `${config.bubbleImage}?t=${version}#t=0.1`
@@ -188,10 +136,11 @@ watch(
         }
         bubbleTimeoutId = window.setTimeout(() => {
           isBubbleVisible.value = false
-          bubbleTimeoutId = null // 重置记录
+          bubbleTimeoutId = null
         }, 2000)
       })
     }
+
     if (config.audio && config.audio !== 'none' && bubbleAudio.value) {
       bubbleAudio.value.src = config.audio
       bubbleAudio.value.load()
@@ -209,19 +158,14 @@ const handleAnimationEnd = () => {
 </script>
 
 <style scoped>
-.role-avatar-container {
-  transform-origin: center 0%;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-
+.role-container-transition {
   transition:
     left 0.5s cubic-bezier(0.25, 0.8, 0.5, 1),
     top 0.3s ease,
     opacity 0.3s ease-in-out;
 }
 
-/* --- 角色进场/退场动画 --- */
+/* --- 角色进场/退场动画 (Vue Transition 组件必需的样式) --- */
 .character-fade-enter-active,
 .character-fade-leave-active {
   transition:
@@ -229,7 +173,6 @@ const handleAnimationEnd = () => {
     transform 0.5s ease-out;
 }
 
-/* 进入前 和 离开后 的状态 (透明) */
 .character-fade-enter-from,
 .character-fade-leave-to {
   opacity: 0;
@@ -237,30 +180,5 @@ const handleAnimationEnd = () => {
 
 :deep(.touch-area) {
   pointer-events: auto;
-}
-
-.avatar-layer {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 102%;
-  background-size: contain;
-  background-position: center bottom;
-  background-repeat: no-repeat;
-  backface-visibility: hidden;
-  will-change: opacity, background-image;
-}
-
-.base-layer {
-  z-index: 1;
-}
-.overlay-layer {
-  z-index: 2;
-  opacity: 0;
-  transition: opacity 0.3s ease-in-out;
-}
-.overlay-layer.is-fading-in {
-  opacity: 1;
 }
 </style>
