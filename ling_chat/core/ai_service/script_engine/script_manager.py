@@ -96,7 +96,7 @@ class ScriptManager:
             config_file = script_path / "story_config.yaml"
             if not config_file.exists():
                 continue
-            # logger.info("找到剧本文件" + script_path.name)
+            logger.info("找到剧本文件" + script_path.name)
             try:
                 script = self._read_script_config(script_path)
                 self.all_scripts[script.name] = script
@@ -183,6 +183,17 @@ class ScriptManager:
         """从剧本目录读取角色并在数据库中注册"""
 
         script_key = script.folder_key
+
+        # 找到 'scripts' 的索引位置
+        parts = script.script_path.parts
+        try:
+            b_index = parts.index('scripts')
+            # 截取 scripts 之后的部分（不包括 b 本身）
+            result = Path(*parts[b_index + 1:])
+            script_key = str(result)
+        except ValueError:
+            logger.error(f"剧本路径 {script.script_path} 中没有 'scripts' 目录")
+
         characters_dir = script.script_path / 'characters'
 
         if not characters_dir.exists() or not characters_dir.is_dir():
@@ -224,6 +235,8 @@ class ScriptManager:
                 )
 
             except Exception as e:
+                import traceback
+                traceback.print_exc()
                 logger.error(f"处理角色 '{character_path.name}' 时出错: {e}", exc_info=True)
                 continue
 

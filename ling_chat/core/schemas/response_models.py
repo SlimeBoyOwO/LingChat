@@ -53,6 +53,10 @@ class ResponseFactory:
     @staticmethod
     def create_background(image: str, **kwargs) -> ScriptBackgroundResponse:
         return ScriptBackgroundResponse(imagePath=image, **kwargs)
+    
+    @staticmethod
+    def create_present_pic(image: str, scale: int, **kwargs) -> ScriptPresentPicResponse:
+        return ScriptPresentPicResponse(imagePath=image, scale=scale, **kwargs)
 
     @staticmethod
     def create_background_effect(effect: str, **kwargs) -> ScriptBackgroundEffectResponse:
@@ -67,8 +71,8 @@ class ResponseFactory:
         return ScriptMusicResponse(musicPath=music, **kwargs)
 
     @staticmethod
-    def create_narration(text: str) -> ScriptNarrationResponse:
-        return ScriptNarrationResponse(text=text)
+    def create_narration(text: str, display_name: Optional[str] = None, duration: float = -1) -> ScriptNarrationResponse:
+        return ScriptNarrationResponse(text=text, displayName=display_name, duration=duration)
 
     @staticmethod
     def create_player_dialogue(text: str) -> ScriptPlayerResponse:

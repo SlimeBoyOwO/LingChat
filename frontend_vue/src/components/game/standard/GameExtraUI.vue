@@ -9,6 +9,9 @@
 
     <!-- 3. 剧本完成提示动画 -->
     <ScriptCompleteDisplay />
+
+    <!-- 4. Script 图片显示区域 -->
+    <ScriptPicDisplay />
   </div>
 </template>
 
@@ -16,4 +19,5 @@
 import ChapterNameDisplay from './extra/ChapterNameDisplay.vue'
 import GameChoices from './extra/GameChoices.vue'
 import ScriptCompleteDisplay from './extra/ScriptCompleteDisplay.vue'
+import ScriptPicDisplay from './extra/ScriptPicDisplay.vue'
 </script>

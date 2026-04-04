@@ -1,5 +1,5 @@
 <template>
-  <div class="w-full pt-8">
+  <div class="w-full pt-8 fixed">
     <transition
       @before-enter="beforeEnter"
       @enter="enter"

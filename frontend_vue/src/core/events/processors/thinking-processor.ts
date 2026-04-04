@@ -1,7 +1,6 @@
 import type { IEventProcessor } from '../event-processor'
 import type { ScriptThinkingEvent } from '../../../types'
 import { useGameStore } from '@/stores/modules/game'
-import { useUIStore } from '../../../stores/modules/ui/ui'
 
 export default class ThinkingProcessor implements IEventProcessor {
   canHandle(eventType: string): boolean {
@@ -10,9 +9,14 @@ export default class ThinkingProcessor implements IEventProcessor {
 
   async processEvent(event: ScriptThinkingEvent): Promise<void> {
     const gameStore = useGameStore()
-    const uiStore = useUIStore()
 
-    // 更新游戏状态显示对话
-    gameStore.currentStatus = 'thinking'
+    if (event.isThinking) {
+      // AI 开始思考，锁定输入
+      gameStore.currentStatus = 'thinking'
+    } else {
+      // AI 停止思考（通常是错误恢复），重置到可输入状态
+      gameStore.currentStatus = 'input'
+      gameStore.currentLine = ''
+    }
   }
 }

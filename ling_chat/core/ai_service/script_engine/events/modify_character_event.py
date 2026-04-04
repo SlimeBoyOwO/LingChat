@@ -55,10 +55,11 @@ class ModifyCharacterEvent(BaseEvent):
             params['action'] = action
         
         if perceive != '':
-            if perceive:
+            if perceive and role not in self.game_status.present_roles:
                 self.game_status.present_roles.add(role)
             else:
-                self.game_status.present_roles.remove(role)
+                if role in self.game_status.present_roles:
+                    self.game_status.present_roles.remove(role)
 
             # params['perceive'] = perceive
 

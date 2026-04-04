@@ -57,11 +57,16 @@ class AIService:
 
         # self.output_queue_name = self.client_id             # WebSocket输出队列
         self.client_tasks: Dict[str, asyncio.Task] = {}
+
+        # 全局生成锁：确保同一时刻只有一路 process_message_stream 在运行，
+        # 防止主动对话与用户消息并发导致流式输出交叉混乱
+        self._generation_lock = asyncio.Lock()
+
         self.processing_task = asyncio.create_task(self._process_message_loop())
         self.global_task = asyncio.create_task(self._process_global_messages())
 
         # self.events_scheduler = EventsScheduler(self.config)
-        self.proactive_system = ProactiveSystem(self.config, self.game_status, self.message_generator)
+        self.proactive_system = ProactiveSystem(self.config, self.game_status, self.message_generator, self._generation_lock)
         self.import_settings(settings)
         # self.events_scheduler.start_nodification_schedules()        # TODO: 这个由前端开关控制
         self.proactive_system.start()
@@ -273,29 +278,26 @@ class AIService:
         try:
             async for message in self.message_broker.subscribe(input_queue_name):
                 try:
-                    self.is_processing = True
-
                     user_message = message.get("content", "")
                     if user_message:
-
-                        await message_broker.publish(client_id, (ResponseFactory.create_thinking(True).model_dump()))
-                        responses = []
-                        async for response in self.message_generator.process_message_stream(user_message=user_message):
-                            await message_broker.publish(client_id, response.model_dump())
-                            responses.append(response)
-
-                        logger.debug(f"消息处理完成，共生成 {len(responses)} 个响应片段")
+                        # 用全局生成锁串行化所有流式生成，防止主动对话与用户消息并发交叉
+                        async with self._generation_lock:
+                            self.is_processing = True
+                            try:
+                                await message_broker.publish(client_id, (ResponseFactory.create_thinking(True).model_dump()))
+                                responses = []
+                                async for response in self.message_generator.process_message_stream(user_message=user_message):
+                                    await message_broker.publish(client_id, response.model_dump())
+                                    responses.append(response)
+                                logger.debug(f"消息处理完成，共生成 {len(responses)} 个响应片段")
+                            finally:
+                                self.is_processing = False
                         self.proactive_system.on_user_message_received()
-
-                    self.is_processing = False
 
                 except Exception as e:
                     logger.error(f"处理消息时发生错误: {e}")
                     self.is_processing = False
-
-                    # 发生错误的时候，关闭思考状态
                     await message_broker.publish(client_id, (ResponseFactory.create_thinking(False).model_dump()))
-                    
 
         except asyncio.CancelledError:
             logger.info(f"客户端 {client_id} 的消息处理任务已被取消")
@@ -350,27 +352,24 @@ class AIService:
         try:
             async for message in self.message_broker.subscribe(global_queue_name):
                 try:
-                    self.is_processing = True
-
                     user_message = message.get("content", "")
                     if user_message:
-                        # self.message_generator.memory_init(self.memory)
-
-                        responses = []
-                        async for response in self.message_generator.process_message_stream(user_message):
-                            # 发送给所有客户端
-                            for client_id in self.config.clients:
-                                await message_broker.publish(client_id, response.model_dump())
-                            responses.append(response)
-
-                        logger.debug(f"全局消息处理完成，共生成 {len(responses)} 个响应片段")
-
-                    self.is_processing = False
+                        # 用全局生成锁串行化所有流式生成，防止主动对话与全局消息并发交叉
+                        async with self._generation_lock:
+                            self.is_processing = True
+                            try:
+                                responses = []
+                                async for response in self.message_generator.process_message_stream(user_message):
+                                    for client_id in self.config.clients:
+                                        await message_broker.publish(client_id, response.model_dump())
+                                    responses.append(response)
+                                logger.debug(f"全局消息处理完成，共生成 {len(responses)} 个响应片段")
+                            finally:
+                                self.is_processing = False
 
                 except Exception as e:
                     logger.error(f"处理全局消息时发生错误: {e}")
                     self.is_processing = False
-                    # 错误通知由 message_generator 处理
         except asyncio.CancelledError:
             logger.info("全局消息处理任务已被取消")
         except Exception as e:

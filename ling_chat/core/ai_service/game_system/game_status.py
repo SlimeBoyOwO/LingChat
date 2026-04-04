@@ -32,6 +32,8 @@ class GameStatus:
 
     # 背景信息
     background: str = field(default_factory=str)
+    # 正在展示的图片信息
+    present_pic: str = field(default_factory=str)
     # BGM信息
     background_music: str = field(default_factory=str)
     # 背景特效
@@ -85,10 +87,14 @@ class GameStatus:
     # ============ 特殊函数 ============
     def onstage_role(self, role: GameRole):
         """角色上舞台（默认加入感知角色列表）"""
-        self.onstage_roles.append(role)
-        self.present_roles.add(role)
+        if role not in self.onstage_roles:
+            self.onstage_roles.append(role)
+        if role not in self.present_roles:
+            self.present_roles.add(role)
 
     def offstage_role(self, role: GameRole):
         """角色下舞台（默认移除感知角色列表）"""
-        self.onstage_roles.remove(role)
-        self.present_roles.remove(role)
+        if role in self.onstage_roles:
+            self.onstage_roles.remove(role)
+        if role in self.present_roles:
+            self.present_roles.remove(role)

@@ -48,7 +48,7 @@ class ScriptFunction:
         """匹配选项并执行actions，如果有匹配的则返回 True，否则返回 False"""
         for option in options: 
             actions = option.get('actions', [])
-            if actions.empty():
+            if not actions:
                 continue
 
             # 基础匹配，输入与选项文本相同
@@ -117,7 +117,7 @@ class ScriptFunction:
         if character == "MAIN":
             role = game_status.main_role
         else:
-            role = game_status.role_manager.get_role_by_script_keys(script_status.folder_key, character)
+            role = game_status.role_manager.get_role_by_script_keys(script_status.path_key, character)
         if role is None:
             logger.error(f"角色 {character} 未找到")
             raise RoleNotFoundError(f"角色 {character} 未找到")

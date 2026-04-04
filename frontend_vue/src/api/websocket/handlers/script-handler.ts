@@ -57,6 +57,11 @@ export class ScriptHandler {
       eventQueue.addEvent(data as ScriptTypes.ScriptBackgroundEffectEvent)
     })
 
+    registerHandler(WebSocketMessageTypes.SCRIPT_PRESENT_PIC, (data: any) => {
+      console.log('收到图片展示事件:', data)
+      eventQueue.addEvent(data as ScriptTypes.ScriptPlayerEvent)
+    })
+
     registerHandler(WebSocketMessageTypes.SCRIPT_SOUND, (data: any) => {
       console.log('收到音效切换事件:', data)
       eventQueue.addEvent(data as ScriptTypes.ScriptSoundEvent)
