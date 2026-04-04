@@ -11,7 +11,7 @@
     <div class="video-background" ref="bgRef"></div>
 
     <!-- 流星层（SVG动画） -->
-    <div class="meteor-wrapper">
+    <div v-if="meteorsEnabled" class="meteor-wrapper">
       <svg id="meteor-svg" ref="svgRef">
         <defs>
           <linearGradient
@@ -40,7 +40,7 @@
     </div>
 
     <!-- 星星粒子层（位于背景和人物之间） -->
-    <div class="stars-layer" ref="starsLayerRef">
+    <div v-if="starsEnabled" class="stars-layer" ref="starsLayerRef">
       <canvas id="stars-canvas" ref="canvasRef"></canvas>
     </div>
 
@@ -105,6 +105,7 @@ import { useUIStore } from '../../stores/modules/ui/ui'
 import ScriptModeOptions from './menu/ScriptModeOptions.vue'
 import { getScriptList, type ScriptSummary } from '@/api/services/script-info'
 import { saveContinue } from '@/api/services/save'
+import { getEnvConfigByKey } from '@/api/services/config'
 
 const router = useRouter()
 const uiStore = useUIStore()
@@ -114,6 +115,8 @@ const currentPage = ref('mainMenu')
 const menuState = ref<'main' | 'gameMode' | 'scriptMode'>('main')
 const scripts = ref<ScriptSummary[]>([])
 const loadingScripts = ref(false)
+const starsEnabled = ref(true)
+const meteorsEnabled = ref(true)
 
 // DOM Refs
 const containerRef = ref<HTMLElement | null>(null)
@@ -439,21 +442,50 @@ async function fetchScripts() {
   }
 }
 
-onMounted(() => {
-  // 关键修复：立即启动视觉动画特效，不再使用 await 阻塞。
-  // 如果之前在这里 await 接口，接口没响应完星星就不会生成。
-  parallaxLoop()
-  generateStars()
-  flickerAnimation()
-  startMeteorShower()
-  window.addEventListener('resize', handleResize)
+function parseBooleanConfig(value?: string) {
+  return value?.toLowerCase() !== 'false'
+}
 
-  // 异步获取数据
-  fetchScripts()
+async function loadMenuEffectSettings() {
+  try {
+    const [starsConfig, meteorsConfig] = await Promise.all([
+      getEnvConfigByKey('MAIN_MENU_STARS_ENABLED'),
+      getEnvConfigByKey('MAIN_MENU_METEORS_ENABLED'),
+    ])
+    starsEnabled.value = parseBooleanConfig(starsConfig?.value)
+    meteorsEnabled.value = parseBooleanConfig(meteorsConfig?.value)
+  } catch (error) {
+    starsEnabled.value = true
+    meteorsEnabled.value = true
+    console.warn('Failed to load main menu performance settings, using defaults.', error)
+  }
+}
+
+onMounted(() => {
+  const initializeMenu = async () => {
+    await loadMenuEffectSettings()
+    parallaxLoop()
+
+    if (starsEnabled.value) {
+      generateStars()
+      flickerAnimation()
+      window.addEventListener('resize', handleResize)
+    }
+
+    if (meteorsEnabled.value) {
+      startMeteorShower()
+    }
+
+    fetchScripts()
+  }
+
+  initializeMenu()
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
+  if (starsEnabled.value) {
+    window.removeEventListener('resize', handleResize)
+  }
   if (parallaxRafId) cancelAnimationFrame(parallaxRafId)
   if (starsFrameId) cancelAnimationFrame(starsFrameId)
   if (meteorIntervalId) clearInterval(meteorIntervalId)
