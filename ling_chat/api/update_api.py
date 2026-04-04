@@ -1,7 +1,11 @@
 import os
 import threading
+import asyncio
+from typing import AsyncGenerator
+import json
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from ling_chat.core.logger import logger
 
@@ -22,6 +26,10 @@ update_config = {
     "auto_backup": True,
     "auto_apply": False
 }
+
+# SSE 状态管理
+sse_queues = set()  # 存储所有活跃的SSE队列
+sse_lock = threading.Lock()  # 保护SSE队列的锁
 
 # 请求模型
 class UpdateConfig(BaseModel):
@@ -63,24 +71,45 @@ def update_status_callback(status, old_status=None):
     update_status["status"] = status.value
     if status.value == "error":
         update_status["message"] = "更新过程中出现错误"
+    notify_sse_clients()
 
 def update_progress_callback(progress):
     update_status["progress"] = progress
     if progress == 100:
         update_status["message"] = "操作完成"
+    notify_sse_clients()
 
 def update_available_callback(update_info):
     update_status["update_info"] = update_info
     update_status["message"] = f"发现新版本: {update_info.get('version', '未知')}"
+    notify_sse_clients()
 
 def update_completed_callback(update_info):
     update_status["message"] = "更新完成，请重启应用"
     update_status["status"] = "completed"
+    notify_sse_clients()
 
 def error_callback(error):
     update_status["error"] = error
     update_status["status"] = "error"
     update_status["message"] = f"错误: {error}"
+    notify_sse_clients()
+
+def notify_sse_clients():
+    """通知所有SSE客户端状态更新"""
+    with sse_lock:
+        for queue in sse_queues.copy():
+            try:
+                queue.put_nowait(update_status.copy())
+            except asyncio.QueueFull:
+                # 队列已满，跳过
+                pass
+            except Exception:
+                # 客户端可能已断开，从集合中移除
+                try:
+                    sse_queues.remove(queue)
+                except KeyError:
+                    pass
 
 # 注册回调
 update_application.update_manager.register_callback("status_changed", update_status_callback)
@@ -290,3 +319,44 @@ async def update_config_route(config: UpdateConfig):
 async def health_check():
     """健康检查"""
     return {"status": "ok", "message": "更新服务正常运行"}
+
+@router.get("/status/stream")
+async def stream_update_status():
+    """SSE端点：流式推送更新状态"""
+    async def event_generator() -> AsyncGenerator[str, None]:
+        # 创建一个新的队列用于此连接
+        queue = asyncio.Queue(maxsize=10)
+        with sse_lock:
+            sse_queues.add(queue)
+
+        try:
+            # 首先发送当前状态
+            yield f"data: {json.dumps(update_status)}\n\n"
+
+            # 持续监听状态更新
+            while True:
+                try:
+                    # 等待状态更新，超时时间设为30秒
+                    status_update = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    yield f"data: {json.dumps(status_update)}\n\n"
+                except asyncio.TimeoutError:
+                    # 发送心跳包保持连接
+                    yield ": heartbeat\n\n"
+                except Exception as e:
+                    logger.error(f"SSE stream error: {e}")
+                    break
+        finally:
+            # 清理队列
+            with sse_lock:
+                sse_queues.discard(queue)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Cache-Control",
+        }
+    )
