@@ -32,6 +32,7 @@ export enum WebSocketMessageTypes {
   SCRIPT_CHAPTER_CHANGE = 'chapter_change', // 章节切换
 
   SCRIPT_BACKGROUND = 'background', // 旁白
+  SCRIPT_PRESENT_PIC = 'present_pic', // 显示图片
   SCRIPT_MODIFY_CHARACTER = 'modify_character', // 旁白
 
   SCRIPT_INPUT = 'input', // 玩家输入

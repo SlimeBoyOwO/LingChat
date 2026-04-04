@@ -32,6 +32,8 @@ interface UIState {
   currentSettingsTab: string
 
   currentBackground: string
+  currentPresentPic: string
+  currentPresentPicScale: number
   currentBackgroundMusic: string
   bgMusicMode: 'loop-list' | 'loop-single' | 'random'
   bgMusicPaused: boolean
@@ -74,6 +76,8 @@ export const useUIStore = defineStore('ui', {
     showSettings: false,
     currentSettingsTab: 'text',
     currentBackground: '@/assets/images/default_bg.jpg',
+    currentPresentPic: '',
+    currentPresentPicScale: 1,
 
     currentBackgroundMusic: 'None',
     bgMusicMode: 'loop-single',

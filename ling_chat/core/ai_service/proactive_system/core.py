@@ -21,7 +21,7 @@ from ling_chat.utils.runtime_path import user_data_path
 
 
 class ProactiveSystem:
-    def __init__(self, config: AIServiceConfig, game_status: GameStatus, message_generator: MessageGenerator):
+    def __init__(self, config: AIServiceConfig, game_status: GameStatus, message_generator: MessageGenerator, generation_lock: asyncio.Lock):
         self.config = config
         self.game_status = game_status
         self.enabled = os.getenv("ENABLE_PROACTIVE_SYSTEM", "false").lower() == "true"
@@ -29,6 +29,9 @@ class ProactiveSystem:
         # 加载数据
         self.settings = self._load_settings()
         self.message_generator = message_generator
+
+        # 全局生成锁，与 AIService 共享，用于防止主动对话与用户消息并发生成
+        self._generation_lock = generation_lock
         
         # 初始化各子模块
         self.interest_manager = InterestManager()
@@ -105,14 +108,29 @@ class ProactiveSystem:
             
             # 3. 判断是否触发
             if self.interest_manager.should_trigger_talk():
-                logger.info("满足主动对话条件，正在生成内容...")
-                await message_broker.publish_clients(self.config.clients, (ResponseFactory.create_thinking(True)).model_dump())
-                
+                # 若生成器正忙（用户消息或其他主动对话正在生成），本次跳过，避免并发交叉
+                if self._generation_lock.locked():
+                    logger.info("生成器正忙，跳过本次主动对话触发")
+                    continue
+
+                # 先获取 Prompt，再决定是否真正触发（避免先发 thinking=True 后 prompt 为空导致前端卡死）
                 prompt = await self.strategy_dispatcher.get_proactive_prompt(perception)
-                
-                if prompt:
+
+                if not prompt:
+                    logger.info("未能获取主动对话 Prompt，跳过本次触发")
+                    self.interest_manager.on_ai_reply()
+                    continue
+
+                if self._generation_lock.locked():
+                    logger.info("获取 Prompt 期间生成器变为忙碌状态，跳过本次主动对话")
+                    continue
+
+                async with self._generation_lock:
+                    logger.info("满足主动对话条件，正在生成内容...")
+                    await message_broker.publish_clients(self.config.clients, (ResponseFactory.create_thinking(True)).model_dump())
+
                     self.game_status.add_line(LineBase(attribute=LineAttribute.USER, content=prompt))
-                    
+
                     async for response in self.message_generator.process_message_stream():
                         await message_broker.publish_clients(self.config.clients, response.model_dump())
 
