@@ -464,6 +464,15 @@ async function loadMenuEffectSettings() {
 onMounted(() => {
   const initializeMenu = async () => {
     await loadMenuEffectSettings()
+
+    if (starsEnabled.value || meteorsEnabled.value) {
+      uiStore.showInfo({
+        title: 'Tip',
+        message: '如果你觉得在这个页面很卡，请前往 高级设置 - 实验性功能 中禁用相应功能。',
+        duration: 5000,
+      })
+    }
+
     parallaxLoop()
 
     if (starsEnabled.value) {
