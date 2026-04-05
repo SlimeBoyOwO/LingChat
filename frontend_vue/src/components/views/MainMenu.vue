@@ -96,27 +96,28 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { MainChat } from './'
 import { SettingsPanel as Settings } from '../settings/'
 import { MainMenuOptions, GameModeOptions } from './menu'
 import { useUIStore } from '../../stores/modules/ui/ui'
+import { useSettingsStore } from '../../stores/modules/settings'
 import ScriptModeOptions from './menu/ScriptModeOptions.vue'
 import { getScriptList, type ScriptSummary } from '@/api/services/script-info'
 import { saveContinue } from '@/api/services/save'
-import { getEnvConfigByKey } from '@/api/services/config'
 
 const router = useRouter()
 const uiStore = useUIStore()
+const settingsStore = useSettingsStore()
 
 // 页面与菜单状态
 const currentPage = ref('mainMenu')
 const menuState = ref<'main' | 'gameMode' | 'scriptMode'>('main')
 const scripts = ref<ScriptSummary[]>([])
 const loadingScripts = ref(false)
-const starsEnabled = ref(true)
-const meteorsEnabled = ref(true)
+const starsEnabled = computed(() => settingsStore.mainMenuStarsEnabled)
+const meteorsEnabled = computed(() => settingsStore.mainMenuMeteorsEnabled)
 
 // DOM Refs
 const containerRef = ref<HTMLElement | null>(null)
@@ -335,9 +336,8 @@ function flickerAnimation() {
 }
 
 function handleResize() {
-  if (starsFrameId) cancelAnimationFrame(starsFrameId)
-  generateStars()
-  flickerAnimation()
+  stopStars()
+  startStars()
 }
 
 /* ================== 流星雨系统 ================== */
@@ -424,6 +424,32 @@ function startMeteorShower() {
   meteorIntervalId = setInterval(updateMeteorShower, METEOR_CONFIG.GENERATE_INTERVAL)
 }
 
+function startStars() {
+  if (!canvasRef.value) return
+  generateStars()
+  flickerAnimation()
+  window.addEventListener('resize', handleResize)
+}
+
+function stopStars() {
+  window.removeEventListener('resize', handleResize)
+  if (starsFrameId) {
+    cancelAnimationFrame(starsFrameId)
+    starsFrameId = null
+  }
+  if (starsCtx && canvasRef.value) {
+    starsCtx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
+  }
+}
+
+function stopMeteorShower() {
+  if (meteorIntervalId) {
+    clearInterval(meteorIntervalId)
+    meteorIntervalId = null
+  }
+  activeMeteors.value = []
+}
+
 /* ================== 生命周期Hooks ================== */
 
 // 抽取接口请求逻辑，不阻塞动画初始化
@@ -442,62 +468,52 @@ async function fetchScripts() {
   }
 }
 
-function parseBooleanConfig(value?: string) {
-  return value?.toLowerCase() !== 'false'
-}
-
-async function loadMenuEffectSettings() {
-  try {
-    const [starsConfig, meteorsConfig] = await Promise.all([
-      getEnvConfigByKey('MAIN_MENU_STARS_ENABLED'),
-      getEnvConfigByKey('MAIN_MENU_METEORS_ENABLED'),
-    ])
-    starsEnabled.value = parseBooleanConfig(starsConfig?.value)
-    meteorsEnabled.value = parseBooleanConfig(meteorsConfig?.value)
-  } catch (error) {
-    starsEnabled.value = true
-    meteorsEnabled.value = true
-    console.warn('Failed to load main menu performance settings, using defaults.', error)
-  }
-}
-
 onMounted(() => {
   const initializeMenu = async () => {
-    await loadMenuEffectSettings()
-
     if (starsEnabled.value || meteorsEnabled.value) {
       uiStore.showInfo({
         title: 'Tip',
-        message: '如果你觉得在这个页面很卡，请前往 高级设置 - 实验性功能 中禁用相应功能。',
+        message: '如果你觉得在这个页面很卡，可以前往 通用设置 中关闭星星粒子或流星动画。',
         duration: 5000,
       })
     }
 
     parallaxLoop()
-
-    if (starsEnabled.value) {
-      generateStars()
-      flickerAnimation()
-      window.addEventListener('resize', handleResize)
-    }
-
-    if (meteorsEnabled.value) {
-      startMeteorShower()
-    }
-
     fetchScripts()
   }
 
   initializeMenu()
+
+  watch(
+    starsEnabled,
+    async (enabled) => {
+      if (enabled) {
+        await nextTick()
+        startStars()
+      } else {
+        stopStars()
+      }
+    },
+    { immediate: true },
+  )
+
+  watch(
+    meteorsEnabled,
+    (enabled) => {
+      if (enabled) {
+        startMeteorShower()
+      } else {
+        stopMeteorShower()
+      }
+    },
+    { immediate: true },
+  )
 })
 
 onUnmounted(() => {
-  if (starsEnabled.value) {
-    window.removeEventListener('resize', handleResize)
-  }
+  stopStars()
+  stopMeteorShower()
   if (parallaxRafId) cancelAnimationFrame(parallaxRafId)
-  if (starsFrameId) cancelAnimationFrame(starsFrameId)
-  if (meteorIntervalId) clearInterval(meteorIntervalId)
 })
 </script>
 

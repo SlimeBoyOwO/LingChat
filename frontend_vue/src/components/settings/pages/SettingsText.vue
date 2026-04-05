@@ -15,6 +15,26 @@
         <Text :speed="textSpeedSample">Ling Chat: 测试文本显示速度</Text>
       </MenuItem>
 
+      <MenuItem title="主菜单" size="small">
+        <template #header>
+          <Settings :size="20" />
+        </template>
+        <div class="flex flex-col gap-3">
+          <Toggle
+            :checked="mainMenuStarsEnabled"
+            @change="settingsStore.setMainMenuStarsEnabled($event)"
+          >
+            启用主菜单星星粒子
+          </Toggle>
+          <Toggle
+            :checked="mainMenuMeteorsEnabled"
+            @change="settingsStore.setMainMenuMeteorsEnabled($event)"
+          >
+            启用主菜单流星动画
+          </Toggle>
+        </div>
+      </MenuItem>
+
       <MenuItem title="启用永久记忆" size="small">
         <div v-for="setting in envSettings" :key="setting.key" class="">
           <!-- 使用 SettingItem 组件渲染不同类型的输入控件 -->
@@ -142,6 +162,10 @@ const textSpeed = computed({
   get: () => settingsStore.textSpeed,
   set: (val: number) => settingsStore.update('text.speed', val),
 })
+
+const mainMenuStarsEnabled = computed(() => settingsStore.mainMenuStarsEnabled)
+
+const mainMenuMeteorsEnabled = computed(() => settingsStore.mainMenuMeteorsEnabled)
 
 // 文字样本速度（响应式）
 const textSpeedSample = ref<number>(settingsStore.textSpeed)
