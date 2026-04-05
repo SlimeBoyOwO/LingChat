@@ -275,7 +275,7 @@ function handleMouseLeave() {
   startParallaxIfNeeded()
 }
 
-/* ================== 星星粒子系统 ================== */
+/* ================== 星星粒子系统 (优化版) ================== */
 interface Star {
   x: number
   y: number
@@ -291,50 +291,120 @@ const starsPositions = shallowRef<Star[]>([])
 let starsFrameId: number | null = null
 let starsCtx: CanvasRenderingContext2D | null = null
 
-function drawStarShape(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  size: number,
-  rotation: number,
-) {
-  ctx.save()
-  ctx.translate(x, y)
-  ctx.rotate(rotation)
-  const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 1.5)
+// 缓存预渲染的星星图像
+let starImageCache: Map<number, HTMLCanvasElement> | null = null
+let circleImageCache: Map<number, HTMLCanvasElement> | null = null
+
+/**
+ * 创建带发光效果的星星形状到离屏 canvas
+ * 预渲染一次，后续使用 drawImage 快速绘制
+ */
+function createStarImage(size: number): HTMLCanvasElement {
+  const padding = size * 2 // 为发光效果预留空间
+  const canvas = document.createElement('canvas')
+  const actualSize = size * 1.5 + padding * 2
+  canvas.width = actualSize
+  canvas.height = actualSize
+  const ctx = canvas.getContext('2d')!
+  const centerX = actualSize / 2
+  const centerY = actualSize / 2
+
+  // 发光效果
+  ctx.shadowColor = 'rgba(255, 255, 200, 0.8)'
+  ctx.shadowBlur = 20
+
+  // 渐变填充
+  const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, size * 1.5)
   gradient.addColorStop(0, '#ffffff')
   gradient.addColorStop(0.6, 'rgba(255, 240, 200, 0.9)')
   gradient.addColorStop(1, 'rgba(255, 200, 100, 0)')
-  ctx.shadowColor = 'rgba(255, 255, 200, 0.8)'
-  ctx.shadowBlur = 20
   ctx.fillStyle = gradient
+
+  // 绘制星形路径
   ctx.beginPath()
   for (let i = 0; i < 8; i++) {
     const angle = (i * Math.PI) / 4
     const radius = i % 2 === 0 ? size : size * 0.4
-    const dx = Math.cos(angle) * radius
-    const dy = Math.sin(angle) * radius
+    const dx = centerX + Math.cos(angle) * radius
+    const dy = centerY + Math.sin(angle) * radius
     if (i === 0) ctx.moveTo(dx, dy)
     else ctx.lineTo(dx, dy)
   }
   ctx.closePath()
   ctx.fill()
-  ctx.restore()
+
+  return canvas
 }
 
-function drawCircleShape(ctx: CanvasRenderingContext2D, x: number, y: number, size: number) {
-  ctx.save()
-  const gradient = ctx.createRadialGradient(x, y, 0, x, y, size * 1.5)
+/**
+ * 创建带发光效果的圆形到离屏 canvas
+ */
+function createCircleImage(size: number): HTMLCanvasElement {
+  const padding = size * 2
+  const canvas = document.createElement('canvas')
+  const actualSize = size * 1.5 + padding * 2
+  canvas.width = actualSize
+  canvas.height = actualSize
+  const ctx = canvas.getContext('2d')!
+  const centerX = actualSize / 2
+  const centerY = actualSize / 2
+
+  // 发光效果
+  ctx.shadowColor = 'rgba(255, 255, 200, 0.8)'
+  ctx.shadowBlur = 20
+
+  // 渐变填充
+  const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, size * 1.5)
   gradient.addColorStop(0, '#ffffff')
   gradient.addColorStop(0.6, 'rgba(255, 240, 200, 0.9)')
   gradient.addColorStop(1, 'rgba(255, 200, 100, 0)')
-  ctx.shadowColor = 'rgba(255, 255, 200, 0.8)'
-  ctx.shadowBlur = 20
   ctx.fillStyle = gradient
+
   ctx.beginPath()
-  ctx.arc(x, y, size, 0, Math.PI * 2)
+  ctx.arc(centerX, centerY, size, 0, Math.PI * 2)
   ctx.fill()
-  ctx.restore()
+
+  return canvas
+}
+
+/**
+ * 获取或创建缓存的星星图像
+ * 使用 Map 缓存不同尺寸的预渲染图像
+ */
+function getStarImage(size: number): HTMLCanvasElement {
+  if (!starImageCache) {
+    starImageCache = new Map()
+  }
+  const roundedSize = Math.round(size)
+  let image = starImageCache.get(roundedSize)
+  if (!image) {
+    image = createStarImage(roundedSize)
+    starImageCache.set(roundedSize, image)
+  }
+  return image
+}
+
+function getCircleImage(size: number): HTMLCanvasElement {
+  if (!circleImageCache) {
+    circleImageCache = new Map()
+  }
+  const roundedSize = Math.round(size)
+  let image = circleImageCache.get(roundedSize)
+  if (!image) {
+    image = createCircleImage(roundedSize)
+    circleImageCache.set(roundedSize, image)
+  }
+  return image
+}
+
+/**
+ * 清理图像缓存
+ */
+function clearImageCaches() {
+  starImageCache?.clear()
+  circleImageCache?.clear()
+  starImageCache = null
+  circleImageCache = null
 }
 
 function generateStars() {
@@ -345,6 +415,14 @@ function generateStars() {
   canvasRef.value.height = h
   starsCtx = canvasRef.value.getContext('2d')
   if (!starsCtx) return
+
+  // 预生成所有可能用到的尺寸的图像缓存
+  // 星星尺寸范围是 2-7 (Math.random() * 5 + 2)
+  // 预生成常用尺寸以减少运行时开销
+  for (let size = 2; size <= 7; size++) {
+    getStarImage(size)
+    getCircleImage(size)
+  }
 
   const tempStars: Star[] = []
   for (let i = 0; i < STARS_COUNT; i++) {
@@ -360,6 +438,12 @@ function generateStars() {
   starsPositions.value = tempStars
 }
 
+/**
+ * 优化版渲染函数
+ * - 使用预缓存的离屏 canvas 图像
+ * - 避免每帧创建渐变和设置阴影
+ * - 缓存 stars 数组避免响应式开销
+ */
 function renderStars() {
   if (!starsCtx || !canvasRef.value) return
   const w = canvasRef.value.width
@@ -370,17 +454,35 @@ function renderStars() {
   starsCtx.clearRect(0, 0, w, h)
 
   const now = Date.now()
-  starsPositions.value.forEach((pos) => {
+
+  const stars = starsPositions.value
+
+  for (let i = 0; i < stars.length; i++) {
+    const pos = stars[i]
+    if (!pos) continue
+
     const flicker = 0.6 + 0.4 * Math.sin(now * FLICKER_SPEED + pos.x)
     const opacity = Math.min(pos.baseOpacity * flicker, 1.0)
     starsCtx!.globalAlpha = opacity
 
+    // 获取预缓存的图像
+    const image = pos.type === 'star' ? getStarImage(pos.size) : getCircleImage(pos.size)
+    const imgSize = image.width
+    const halfSize = imgSize / 2
+
+    // 使用 drawImage 快速绘制，避免每帧创建渐变和路径
     if (pos.type === 'star') {
-      drawStarShape(starsCtx!, pos.x, pos.y, pos.size, pos.rotation)
+      // 星星需要旋转
+      starsCtx.save()
+      starsCtx.translate(pos.x, pos.y)
+      starsCtx.rotate(pos.rotation)
+      starsCtx.drawImage(image, -halfSize, -halfSize)
+      starsCtx.restore()
     } else {
-      drawCircleShape(starsCtx!, pos.x, pos.y, pos.size)
+      // 圆形无需旋转，直接绘制
+      starsCtx.drawImage(image, pos.x - halfSize, pos.y - halfSize)
     }
-  })
+  }
 }
 
 function flickerAnimation() {
@@ -494,6 +596,8 @@ function stopStars() {
   if (starsCtx && canvasRef.value) {
     starsCtx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
   }
+  // 清理图像缓存
+  clearImageCaches()
 }
 
 function stopMeteorShower() {
