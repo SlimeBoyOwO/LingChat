@@ -22,6 +22,8 @@ export const DEFAULT_SETTINGS = {
   // 显示设置
   display: {
     backgroundEffect: 'StarField', // 背景效果名称
+    mainMenuStarsEnabled: true, // 主菜单星星粒子开关
+    mainMenuMeteorsEnabled: true, // 主菜单流星开关
   },
   // 角色设置
   character: {
@@ -43,6 +45,8 @@ export interface AudioSettings {
 }
 export interface DisplaySettings {
   backgroundEffect: string
+  mainMenuStarsEnabled: boolean
+  mainMenuMeteorsEnabled: boolean
 }
 
 export interface CharacterSettings {
@@ -83,6 +87,8 @@ export const useSettingsStore = defineStore('settings', {
     chatEffectSound: (state) => state.audio.chatEffectSound,
     // 背景效果
     backgroundEffect: (state) => state.display.backgroundEffect,
+    mainMenuStarsEnabled: (state) => state.display.mainMenuStarsEnabled,
+    mainMenuMeteorsEnabled: (state) => state.display.mainMenuMeteorsEnabled,
     // 各音量
     characterVolume: (state) => state.audio.characterVolume,
     bubbleVolume: (state) => state.audio.bubbleVolume,
@@ -199,6 +205,14 @@ export const useSettingsStore = defineStore('settings', {
     // 设置背景效果
     setBackgroundEffect(effect: string) {
       this.display.backgroundEffect = effect
+    },
+    // 设置主菜单星星粒子开关
+    setMainMenuStarsEnabled(enabled: boolean) {
+      this.display.mainMenuStarsEnabled = enabled
+    },
+    // 设置主菜单流星开关
+    setMainMenuMeteorsEnabled(enabled: boolean) {
+      this.display.mainMenuMeteorsEnabled = enabled
     },
 
     // 设置角色文件夹
