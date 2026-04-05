@@ -185,6 +185,7 @@ export default {
       // 轮询状态更新的定时器 - 已移除自动轮询功能
       statusPollingTimer: null,
       pollingInProgress: false,
+      eventSource: null, // SSE连接
     }
   },
 
@@ -193,7 +194,7 @@ export default {
   },
 
   beforeUnmount() {
-    // 组件卸载时清理轮询定时器
+    // 组件卸载时清理SSE连接
     this.stopStatusPolling()
   },
 
@@ -233,9 +234,9 @@ export default {
           this.errorMessage = ''
           this.loadAppInfo()
           this.loadConfig()
-          // 连接成功后启动状态轮询以自动刷新更新状态
+          // 连接成功后启动SSE状态监听以自动刷新更新状态
           await this.getUpdateStatus()
-          this.startStatusPolling()
+          this.startSSEConnection()
           console.log('成功连接到更新服务')
         }
       } catch (error) {
@@ -259,28 +260,110 @@ export default {
       await this.getUpdateStatus()
     },
 
-    // 启动定时轮询以自动获取更新状态
-    startStatusPolling(interval = 2000) {
-      // 避免重复创建定时器
+    // 启动SSE连接以自动获取更新状态
+    startSSEConnection() {
+      // 避免重复创建连接
       this.stopStatusPolling()
-      this.statusPollingTimer = setInterval(async () => {
-        if (this.pollingInProgress) return
-        try {
-          this.pollingInProgress = true
-          await this.getUpdateStatus()
-        } finally {
-          this.pollingInProgress = false
+
+      try {
+        this.eventSource = new EventSource(`${this.apiBaseUrl}/status/stream`)
+
+        this.eventSource.onmessage = (event) => {
+          try {
+            const statusUpdate = JSON.parse(event.data)
+            this.handleStatusUpdate(statusUpdate)
+          } catch (error) {
+            console.error('解析SSE数据失败:', error)
+          }
         }
-      }, interval)
+
+        this.eventSource.onerror = (error) => {
+          console.error('SSE连接错误:', error)
+          // 连接出错时，尝试重连
+          this.stopStatusPolling()
+          setTimeout(() => {
+            if (this.backendConnected) {
+              this.startSSEConnection()
+            }
+          }, 5000)
+        }
+
+        this.eventSource.onopen = () => {
+          console.log('SSE连接已建立')
+        }
+
+        console.log('SSE连接已启动')
+      } catch (error) {
+        console.error('创建SSE连接失败:', error)
+        // 如果SSE不可用，回退到轮询
+        this.startStatusPolling()
+      }
     },
 
-    // 停止自动轮询
+    // 停止SSE连接或轮询
     stopStatusPolling() {
+      if (this.eventSource) {
+        this.eventSource.close()
+        this.eventSource = null
+        console.log('SSE连接已关闭')
+      }
       if (this.statusPollingTimer) {
         clearInterval(this.statusPollingTimer)
         this.statusPollingTimer = null
       }
       this.pollingInProgress = false
+    },
+
+    // 处理SSE状态更新
+    handleStatusUpdate(statusUpdate) {
+      // 更新本地状态
+      this.updateStatus = statusUpdate.status || 'idle'
+      this.progress = statusUpdate.progress || 0
+      this.progressMessage = statusUpdate.message || ''
+
+      // 更新操作状态
+      this.isChecking = this.updateStatus === 'checking'
+      this.isDownloading = ['downloading', 'applying'].includes(this.updateStatus)
+      this.isRollingBack = this.updateStatus === 'rolling_back'
+
+      // 如果有错误信息
+      if (statusUpdate.error) {
+        this.errorMessage = statusUpdate.error
+      } else if (this.updateStatus !== 'error') {
+        // 如果不是错误状态，清除错误消息
+        this.errorMessage = ''
+      }
+
+      // 如果有更新信息
+      if (statusUpdate.update_info) {
+        this.updateInfo = statusUpdate.update_info
+        this.updateAvailable = true
+
+        // 处理更新链信息
+        if (
+          statusUpdate.update_info.update_chain &&
+          statusUpdate.update_info.update_chain.length > 0
+        ) {
+          this.updateChain = statusUpdate.update_info.update_chain
+        } else {
+          this.updateChain = []
+        }
+      }
+
+      // 根据状态显示进度条
+      this.showProgress = ['checking', 'downloading', 'applying', 'rolling_back'].includes(
+        this.updateStatus,
+      )
+
+      // 如果操作完成，重置状态并重新加载应用信息
+      if (this.updateStatus === 'completed') {
+        setTimeout(() => {
+          this.loadAppInfo()
+          this.updateAvailable = false
+          this.updateInfo = null
+          this.updateChain = []
+        }, 1000)
+      }
     },
 
     // 加载应用信息
