@@ -295,8 +295,7 @@ export default {
         console.log('SSE连接已启动')
       } catch (error) {
         console.error('创建SSE连接失败:', error)
-        // 如果SSE不可用，回退到轮询
-        this.startStatusPolling()
+        this.errorMessage = '无法建立更新状态连接，请刷新页面重试'
       }
     },
 
