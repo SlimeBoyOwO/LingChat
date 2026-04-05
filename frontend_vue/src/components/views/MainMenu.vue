@@ -292,6 +292,7 @@ function generateStars() {
   canvasRef.value.width = w
   canvasRef.value.height = h
   starsCtx = canvasRef.value.getContext('2d')
+  if (!starsCtx) return
 
   const tempStars: Star[] = []
   for (let i = 0; i < STARS_COUNT; i++) {
@@ -428,6 +429,7 @@ function startStars() {
   if (!canvasRef.value) return
   generateStars()
   flickerAnimation()
+  window.removeEventListener('resize', handleResize)
   window.addEventListener('resize', handleResize)
 }
 
@@ -470,7 +472,13 @@ async function fetchScripts() {
 
 onMounted(() => {
   const initializeMenu = async () => {
-    if (starsEnabled.value || meteorsEnabled.value) {
+    // 性能提示只显示一次
+    const PERFORMANCE_TIP_KEY = 'mainMenuPerformanceTipShown'
+    if (
+      (starsEnabled.value || meteorsEnabled.value) &&
+      !localStorage.getItem(PERFORMANCE_TIP_KEY)
+    ) {
+      localStorage.setItem(PERFORMANCE_TIP_KEY, 'true')
       uiStore.showInfo({
         title: 'Tip',
         message: '如果你觉得在这个页面很卡，可以前往 通用设置 中关闭星星粒子或流星动画。',

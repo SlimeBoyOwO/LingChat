@@ -15,7 +15,7 @@
         <Text :speed="textSpeedSample">Ling Chat: 测试文本显示速度</Text>
       </MenuItem>
 
-      <MenuItem title="主菜单" size="small">
+      <MenuItem title="主菜单动画" size="small">
         <template #header>
           <Settings :size="20" />
         </template>
@@ -24,13 +24,13 @@
             :checked="mainMenuStarsEnabled"
             @change="settingsStore.setMainMenuStarsEnabled($event)"
           >
-            启用主菜单星星粒子
+            启用星星粒子
           </Toggle>
           <Toggle
             :checked="mainMenuMeteorsEnabled"
             @change="settingsStore.setMainMenuMeteorsEnabled($event)"
           >
-            启用主菜单流星动画
+            启用流星动画
           </Toggle>
         </div>
       </MenuItem>
