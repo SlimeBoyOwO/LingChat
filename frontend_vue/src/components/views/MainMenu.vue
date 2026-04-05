@@ -174,13 +174,15 @@ watch(
   },
 )
 
-/* ================== 视差倾斜 & 平移效果 (柔和版) ================== */
+/* ================== 视差倾斜 & 平移效果 (优化版) ================== */
 const PARALLAX_CONFIG = {
   MAX_ANGLE: 2.5, // [已调低] 最大倾斜角度，原为7，现改为2.5，更加轻微优雅
   VERTICAL_SCALE: 0.6, // 上下倾斜比例
   CHAR_MAX_SHIFT: 10, // [已调低] 人物平移减弱
   BG_MAX_SHIFT: 6, // [已调低] 背景平移减弱
   STARS_MAX_SHIFT: 20, // [已调低] 星星平移减弱
+  DAMPING: 0.08, // 阻尼系数
+  IDLE_THRESHOLD: 0.01, // 空闲阈值，低于此值停止动画
 }
 
 let targetOffsetX = 0
@@ -188,39 +190,89 @@ let targetOffsetY = 0
 let currentOffsetX = 0
 let currentOffsetY = 0
 let parallaxRafId: number | null = null
+let isParallaxRunning = false
 
+/**
+ * 优化的视差动画循环
+ * - 只在有实际移动时启动
+ * - 当值收敛到目标时自动停止
+ * - 避免空闲时的不必要计算
+ */
 function parallaxLoop() {
-  currentOffsetX += (targetOffsetX - currentOffsetX) * 0.08 // 0.08更显顺滑阻尼
-  currentOffsetY += (targetOffsetY - currentOffsetY) * 0.08
+  const deltaX = targetOffsetX - currentOffsetX
+  const deltaY = targetOffsetY - currentOffsetY
 
-  if (charRef.value) {
-    charRef.value.style.transform = `translate(-50%, -50%) translateX(${-currentOffsetX * PARALLAX_CONFIG.CHAR_MAX_SHIFT}px)`
+  // 检查是否已经收敛到目标值
+  const hasConverged =
+    Math.abs(deltaX) < PARALLAX_CONFIG.IDLE_THRESHOLD &&
+    Math.abs(deltaY) < PARALLAX_CONFIG.IDLE_THRESHOLD
+
+  if (hasConverged && targetOffsetX === 0 && targetOffsetY === 0) {
+    // 动画已完成且目标为0，停止循环
+    currentOffsetX = 0
+    currentOffsetY = 0
+    applyParallaxTransforms(0, 0)
+    isParallaxRunning = false
+    parallaxRafId = null
+    return
   }
-  if (bgRef.value) {
-    bgRef.value.style.transform = `translateX(${-currentOffsetX * PARALLAX_CONFIG.BG_MAX_SHIFT}px)`
-  }
-  if (starsLayerRef.value) {
-    starsLayerRef.value.style.transform = `translateX(${-currentOffsetX * PARALLAX_CONFIG.STARS_MAX_SHIFT}px)`
-  }
+
+  // 应用阻尼插值
+  currentOffsetX += deltaX * PARALLAX_CONFIG.DAMPING
+  currentOffsetY += deltaY * PARALLAX_CONFIG.DAMPING
+
+  applyParallaxTransforms(currentOffsetX, currentOffsetY)
 
   parallaxRafId = requestAnimationFrame(parallaxLoop)
+}
+
+/**
+ * 应用视差变换到各层元素
+ */
+function applyParallaxTransforms(offsetX: number, offsetY: number) {
+  const charShift = -offsetX * PARALLAX_CONFIG.CHAR_MAX_SHIFT
+  const bgShift = -offsetX * PARALLAX_CONFIG.BG_MAX_SHIFT
+  const starsShift = -offsetX * PARALLAX_CONFIG.STARS_MAX_SHIFT
+
+  if (charRef.value) {
+    charRef.value.style.transform = `translate(-50%, -50%) translateX(${charShift}px)`
+  }
+  if (bgRef.value) {
+    bgRef.value.style.transform = `translateX(${bgShift}px)`
+  }
+  if (starsLayerRef.value) {
+    starsLayerRef.value.style.transform = `translateX(${starsShift}px)`
+  }
+}
+
+/**
+ * 启动视差动画（如果尚未运行）
+ */
+function startParallaxIfNeeded() {
+  if (!isParallaxRunning) {
+    isParallaxRunning = true
+    parallaxLoop()
+  }
 }
 
 function handleMouseMove(e: MouseEvent) {
   if (currentPage.value !== 'mainMenu') {
     targetOffsetX = 0
     targetOffsetY = 0
+    startParallaxIfNeeded()
     return
   }
   const centerX = window.innerWidth / 2
   const centerY = window.innerHeight / 2
   targetOffsetX = (e.clientX - centerX) / centerX
   targetOffsetY = (e.clientY - centerY) / centerY
+  startParallaxIfNeeded()
 }
 
 function handleMouseLeave() {
   targetOffsetX = 0
   targetOffsetY = 0
+  startParallaxIfNeeded()
 }
 
 /* ================== 星星粒子系统 ================== */
@@ -486,7 +538,6 @@ onMounted(() => {
       })
     }
 
-    parallaxLoop()
     fetchScripts()
   }
 
