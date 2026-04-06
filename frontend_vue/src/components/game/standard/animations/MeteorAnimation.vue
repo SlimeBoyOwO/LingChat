@@ -267,11 +267,17 @@ onUnmounted(() => {
   z-index: 2;
   pointer-events: none;
   overflow: hidden;
+  /* GPU 加速 */
+  transform: translateZ(0);
+  will-change: contents;
 }
 
 #meteor-svg {
   width: 100%;
   height: 100%;
+  /* GPU 加速 */
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 .meteor-path {
@@ -286,6 +292,10 @@ onUnmounted(() => {
   animation-name: meteor-move;
   animation-timing-function: linear;
   animation-fill-mode: forwards;
+  /* GPU 加速 */
+  will-change: stroke-dashoffset;
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 @keyframes meteor-move {
