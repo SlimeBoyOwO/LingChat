@@ -207,11 +207,11 @@ function parallaxLoop() {
     Math.abs(deltaX) < PARALLAX_CONFIG.IDLE_THRESHOLD &&
     Math.abs(deltaY) < PARALLAX_CONFIG.IDLE_THRESHOLD
 
-  if (hasConverged && targetOffsetX === 0 && targetOffsetY === 0) {
-    // 动画已完成且目标为0，停止循环
-    currentOffsetX = 0
-    currentOffsetY = 0
-    applyParallaxTransforms(0, 0)
+  if (hasConverged) {
+    // 动画已收敛到目标值，直接对齐并停止循环
+    currentOffsetX = targetOffsetX
+    currentOffsetY = targetOffsetY
+    applyParallaxTransforms(currentOffsetX, currentOffsetY)
     isParallaxRunning = false
     parallaxRafId = null
     return
