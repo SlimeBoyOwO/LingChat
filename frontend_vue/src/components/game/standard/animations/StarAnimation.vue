@@ -1,5 +1,4 @@
 <template>
-  <!-- 星星粒子层（位于背景和人物之间） -->
   <div v-if="starsEnabled" class="stars-layer" ref="starsLayerRef">
     <canvas id="stars-canvas" ref="canvasRef"></canvas>
   </div>
