@@ -1,5 +1,4 @@
 <template>
-  <!-- 流星层（SVG动画） -->
   <div v-if="meteorsEnabled" class="meteor-wrapper">
     <svg id="meteor-svg" ref="svgRef">
       <defs>
@@ -32,6 +31,12 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
+interface MeteorTemplate {
+  d: string
+  duration: number
+  startYRatio: number // 相对于屏幕高度的比例
+}
+
 interface MeteorData {
   id: number
   d: string
@@ -46,6 +51,12 @@ const props = defineProps<{
 const activeMeteors = ref<MeteorData[]>([])
 let meteorIdCounter = 0
 let meteorIntervalId: ReturnType<typeof setInterval> | null = null
+
+// 预缓存的流星模板（10个）
+const METEOR_CACHE_SIZE = 10
+let meteorTemplates: MeteorTemplate[] = []
+let lastUsedTemplateIndex = -1
+
 const METEOR_CONFIG = {
   MAX_COUNT: 3,
   GENERATE_INTERVAL: 1000,
@@ -63,47 +74,118 @@ const METEOR_CONFIG = {
   CONTROL_Y_OFFSET: -0.1,
 }
 
-function getValidStartY() {
+/**
+ * 预生成流星模板缓存
+ * 使用当前窗口尺寸生成固定的流星路径模板
+ */
+function initMeteorTemplateCache() {
+  meteorTemplates = []
+
+  const w = window.innerWidth
   const h = window.innerHeight
-  const maxAttempts = 120
-  let attempts = 0
-  while (attempts < maxAttempts) {
+
+  for (let i = 0; i < METEOR_CACHE_SIZE; i++) {
     const startY = -Math.random() * (h * METEOR_CONFIG.START_Y_RANGE)
-    const tooClose = activeMeteors.value.some(
-      (m) => Math.abs(startY - m.startY) < METEOR_CONFIG.MIN_DISTANCE,
-    )
-    if (!tooClose) return startY
-    attempts++
+    const startX =
+      w +
+      METEOR_CONFIG.START_X_MIN +
+      Math.random() * (METEOR_CONFIG.START_X_MAX - METEOR_CONFIG.START_X_MIN)
+    const endX =
+      METEOR_CONFIG.END_X_MIN + Math.random() * (METEOR_CONFIG.END_X_MAX - METEOR_CONFIG.END_X_MIN)
+    const endY = startY + h * METEOR_CONFIG.END_Y_OFFSET
+    const controlX =
+      w *
+      (METEOR_CONFIG.CONTROL_X_RATIO_MIN +
+        Math.random() * (METEOR_CONFIG.CONTROL_X_RATIO_MAX - METEOR_CONFIG.CONTROL_X_RATIO_MIN))
+    const controlY = startY + h * METEOR_CONFIG.CONTROL_Y_OFFSET
+    const duration =
+      METEOR_CONFIG.DURATION_MIN +
+      Math.random() * (METEOR_CONFIG.DURATION_MAX - METEOR_CONFIG.DURATION_MIN)
+
+    const d = `M ${startX} ${startY} Q ${controlX} ${controlY} ${endX} ${endY}`
+
+    meteorTemplates.push({
+      d,
+      duration,
+      startYRatio: -startY / h, // 存储为正数比例
+    })
   }
-  return -Math.random() * (h * METEOR_CONFIG.START_Y_RANGE)
+}
+
+/**
+ * 从缓存中获取一个流星模板
+ * 使用简单的轮询方式避免连续使用同一个模板
+ */
+function getMeteorTemplate(): MeteorTemplate {
+  let index = Math.floor(Math.random() * METEOR_CACHE_SIZE)
+  // 避免连续使用同一个模板
+  while (index === lastUsedTemplateIndex && METEOR_CACHE_SIZE > 1) {
+    index = Math.floor(Math.random() * METEOR_CACHE_SIZE)
+  }
+  lastUsedTemplateIndex = index
+  return meteorTemplates[index]!
+}
+
+/**
+ * 获取多个不重复的流星模板
+ * 确保返回的模板数量不超过缓存大小
+ */
+function getMultipleTemplates(count: number): MeteorTemplate[] {
+  const result: MeteorTemplate[] = []
+  const usedIndices = new Set<number>()
+
+  // 按startYRatio排序，选择分散的模板
+  const sortedTemplates = meteorTemplates
+    .map((t, i) => ({ template: t, index: i }))
+    .sort((a, b) => a.template.startYRatio - b.template.startYRatio)
+
+  // 从排序后的模板中等间隔选择
+  const step = Math.floor(sortedTemplates.length / count)
+  for (let i = 0; i < count && i < sortedTemplates.length; i++) {
+    const idx = (i * step) % sortedTemplates.length
+    const sortedItem = sortedTemplates[idx]
+    if (sortedItem) {
+      result.push(sortedItem.template)
+      usedIndices.add(sortedItem.index)
+    }
+  }
+
+  return result
 }
 
 function createMeteor() {
-  const w = window.innerWidth
   const h = window.innerHeight
-  const startY = getValidStartY()
-  const startX =
-    w +
-    METEOR_CONFIG.START_X_MIN +
-    Math.random() * (METEOR_CONFIG.START_X_MAX - METEOR_CONFIG.START_X_MIN)
-  const endX =
-    METEOR_CONFIG.END_X_MIN + Math.random() * (METEOR_CONFIG.END_X_MAX - METEOR_CONFIG.END_X_MIN)
-  const endY = startY + h * METEOR_CONFIG.END_Y_OFFSET
-  const controlX =
-    w *
-    (METEOR_CONFIG.CONTROL_X_RATIO_MIN +
-      Math.random() * (METEOR_CONFIG.CONTROL_X_RATIO_MAX - METEOR_CONFIG.CONTROL_X_RATIO_MIN))
-  const controlY = startY + h * METEOR_CONFIG.CONTROL_Y_OFFSET
-  const duration =
-    METEOR_CONFIG.DURATION_MIN +
-    Math.random() * (METEOR_CONFIG.DURATION_MAX - METEOR_CONFIG.DURATION_MIN)
-  const d = `M ${startX} ${startY} Q ${controlX} ${controlY} ${endX} ${endY}`
+
+  // 从缓存获取模板
+  const template = getMeteorTemplate()
+  createMeteorFromTemplate(template)
+}
+
+/**
+ * 批量创建流星，确保它们分散显示
+ */
+function createMeteorsBatch(count: number) {
+  const templates = getMultipleTemplates(count)
+  for (const template of templates) {
+    createMeteorFromTemplate(template)
+  }
+}
+
+function createMeteorFromTemplate(template: MeteorTemplate) {
+  const h = window.innerHeight
+  const startY = -template.startYRatio * h
   const id = meteorIdCounter++
 
-  activeMeteors.value.push({ id, d, duration, startY })
+  activeMeteors.value.push({
+    id,
+    d: template.d,
+    duration: template.duration,
+    startY,
+  })
+
   setTimeout(() => {
     activeMeteors.value = activeMeteors.value.filter((m) => m.id !== id)
-  }, duration * 1000)
+  }, template.duration * 1000)
 }
 
 function updateMeteorShower() {
@@ -112,12 +194,20 @@ function updateMeteorShower() {
 
 function startMeteorShower() {
   if (meteorIntervalId) clearInterval(meteorIntervalId)
-  for (let i = 0; i < 3; i++) {
-    setTimeout(() => {
-      if (activeMeteors.value.length < METEOR_CONFIG.MAX_COUNT) createMeteor()
-    }, i * 300)
+
+  // 初始化模板缓存
+  if (meteorTemplates.length === 0) {
+    initMeteorTemplateCache()
   }
+
+  // 立即加载 MAX_COUNT 颗流星（使用分散的模板确保多颗流星同时显示）
+  createMeteorsBatch(METEOR_CONFIG.MAX_COUNT)
   meteorIntervalId = setInterval(updateMeteorShower, METEOR_CONFIG.GENERATE_INTERVAL)
+}
+
+function handleResize() {
+  // 窗口大小变化时重新生成模板缓存
+  initMeteorTemplateCache()
 }
 
 function stopMeteorShower() {
@@ -128,7 +218,24 @@ function stopMeteorShower() {
   activeMeteors.value = []
 }
 
+// 页面可见性优化：当页面不可见时暂停动画
+function handleVisibilityChange() {
+  if (document.hidden) {
+    if (meteorIntervalId) {
+      clearInterval(meteorIntervalId)
+      meteorIntervalId = null
+    }
+  } else if (props.meteorsEnabled) {
+    if (!meteorIntervalId) {
+      meteorIntervalId = setInterval(updateMeteorShower, METEOR_CONFIG.GENERATE_INTERVAL)
+    }
+  }
+}
+
 onMounted(() => {
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  window.addEventListener('resize', handleResize)
+
   watch(
     () => props.meteorsEnabled,
     (enabled) => {
@@ -143,6 +250,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  window.removeEventListener('resize', handleResize)
   stopMeteorShower()
 })
 </script>
