@@ -15,14 +15,17 @@ export default class PlayerProcessor implements IEventProcessor {
     // 更新游戏状态显示对话
     gameStore.currentStatus = 'responding'
 
+    const displayName = event.displayName ? event.displayName : gameStore.userName
+    const displaySubtitle = event.displaySubtitle ? event.displaySubtitle : gameStore.userSubtitle
+
     gameStore.appendGameMessage({
       type: 'message',
-      displayName: gameStore.userName,
+      displayName: displayName,
       content: event.text,
     })
 
-    uiStore.showCharacterTitle = gameStore.userName
-    uiStore.showCharacterSubtitle = gameStore.userSubtitle
+    uiStore.showCharacterTitle = displayName
+    uiStore.showCharacterSubtitle = displaySubtitle
     uiStore.showCharacterLine = event.text
     uiStore.showCharacterEmotion = event.emotion ? event.emotion : ''
   }

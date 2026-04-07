@@ -22,6 +22,8 @@ class ReplyResponse(BaseResponse):
     motionText: Optional[str] = None
     audioFile: Optional[str] = None
     originalMessage: str
+    displayName: Optional[str] = None
+    displaySubtitle: Optional[str] = None
 
 class ChapterChangeResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_CHAPTER_CHANGE
@@ -42,6 +44,7 @@ class ThinkingResponse(BaseResponse):
 class ScriptBackgroundResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_BACKGROUND
     imagePath: str
+    transition: float = 1
 
 class ScriptPresentPicResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_PRESENT_PIC
@@ -83,6 +86,8 @@ class ScriptModifyCharacterResponse(BaseResponse):
 class ScriptPlayerResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_PLAYER
     text: str
+    displayName: Optional[str] = None
+    displaySubtitle: Optional[str] = None
 
 class ScriptInputResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_INPUT
