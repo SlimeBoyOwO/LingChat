@@ -241,7 +241,7 @@ class MessageProcessor:
         else:
             dialog_format_prompt_2 = dialog_format_prompt_2_limit
 
-        if os.environ.get("ENABLE_TRANSLATE", "False").lower() == "true":
+        if os.environ.get("LLM_OUTPUT_SEC_LANG", "False").lower() == "true":
             if ai_prompt_example == ("",None):
                 logger.warning("角色配置文件缺少示例，将使用默认示例")
                 ai_prompt_example = """
