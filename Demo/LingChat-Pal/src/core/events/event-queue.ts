@@ -1,4 +1,4 @@
-import { ScriptEventType } from "../../types";
+import type { ScriptEventType } from "../../types";
 import { eventProcessorManager } from "./event-processor";
 import { useGameStore } from "../../stores/modules/game";
 
@@ -9,6 +9,14 @@ export class EventQueue {
   private currentResolve: (() => void) | null = null;
 
   addEvent(event: ScriptEventType) {
+    if (
+      (event.type === "error" || event.type === "status_reset") &&
+      this.currentResolve
+    ) {
+      this.currentResolve();
+      this.currentResolve = null;
+      this.queue = [];
+    }
     this.queue.push(event);
     if (!this.isProcessing) {
       this.processQueue();
@@ -17,18 +25,24 @@ export class EventQueue {
 
   private async processQueue() {
     this.isProcessing = true;
-
-    while (this.queue.length > 0) {
-      const event = this.queue.shift();
-      if (event) {
-        this.currentEvent = event;
-        await this.processSingleEvent(event);
+    try {
+      while (this.queue.length > 0) {
+        const event = this.queue.shift();
+        if (event) {
+          this.currentEvent = event;
+          try {
+            await this.processSingleEvent(event);
+          } catch (error) {
+            console.error("处理事件失败:", error, event);
+            this.resetToInputState();
+          }
+        }
       }
-    }
-
-    this.isProcessing = false;
-    if (this.currentEvent?.isFinal) {
-      this.resetToInputState();
+    } finally {
+      this.isProcessing = false;
+      if (this.currentEvent?.isFinal) {
+        this.resetToInputState();
+      }
     }
   }
 

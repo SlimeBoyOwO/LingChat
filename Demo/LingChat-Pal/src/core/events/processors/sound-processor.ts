@@ -1,5 +1,5 @@
-import { IEventProcessor } from "../event-processor";
-import { ScriptSoundEvent } from "../../../types";
+import type { IEventProcessor } from "../event-processor";
+import type { ScriptSoundEvent } from "../../../types";
 import { useGameStore } from "../../../stores/modules/game";
 import { useUIStore } from "../../../stores/modules/ui/ui";
 

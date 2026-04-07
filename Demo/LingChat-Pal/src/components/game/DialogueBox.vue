@@ -1,5 +1,5 @@
 <template>
-  <div class="dialogue-box" ref="dialogueBox">
+  <div class="dialogue-box" @click="handleDialogueClick" ref="dialogueBox">
     <div class="dialogue-content">
       <div class="character-emotion">{{ characterEmotion }}</div>
       <div class="dialogue-text">{{ dialogueText }}</div>
@@ -8,12 +8,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from "vue";
+import { ref, computed, watch } from "vue";
 import { useGameStore } from "../../stores/modules/game";
 import { eventQueue } from "../../core/events/event-queue";
+import { useUIStore } from "../../stores/modules/ui/ui";
 
 // 获取游戏状态
 const gameStore = useGameStore();
+const uiStore = useUIStore();
 const dialogueBox = ref<HTMLElement | null>(null);
 
 // 计算属性：判断对话框是否可见
@@ -25,13 +27,13 @@ const isVisible = computed(() => {
 });
 
 // 计算属性：获取角色名称
-const characterName = computed(() => {
-  return gameStore.character || gameStore.avatar.character_name;
-});
+// const characterName = computed(() => {
+//   return uiStore.showCharacterTitle;
+// });
 
 // 计算属性：获取角色情绪
 const characterEmotion = computed(() => {
-  return gameStore.avatar.emotion || "正常";
+  return uiStore.showCharacterEmotion ? uiStore.showCharacterEmotion : "";
 });
 
 // 计算属性：获取对话文本
@@ -78,7 +80,8 @@ const handleDialogueClick = () => {
   -webkit-backdrop-filter: blur(10px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 20px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1),
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.1),
     inset 0 1px 1px rgba(255, 255, 255, 0.1);
   padding: 12px;
   color: white;

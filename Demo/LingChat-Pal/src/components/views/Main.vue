@@ -4,10 +4,13 @@
     <DialogueBox />
 
     <!-- 头像容器组件 -->
-    <AvatarContainer @avatar-click="handleAvatarClick" />
+    <GameRolesStage @avatar-click="handleAvatarClick" />
 
     <!-- 主按钮组件 -->
-    <MainButton @click="handleMainButtonClick" />
+    <MainButton
+      @click="handleMainButtonClick"
+      :button-text="useUIStore().showCharacterTitle"
+    />
 
     <!-- 对话输入框组件 -->
     <ChatInput :visible="showChatInput" @message-sent="handleMessageSent" />
@@ -21,11 +24,12 @@ import { useGameStore } from "../../stores/modules/game";
 import { useUserStore } from "../../stores/modules/user/user";
 
 // 导入组件
-import AvatarContainer from "../game/AvatarContainer.vue";
 import MainButton from "../game/MainButton.vue";
 import ChatInput from "../game/ChatInput.vue";
 import DialogueBox from "../game/DialogueBox.vue";
 import { eventQueue } from "../../core/events/event-queue";
+import GameRolesStage from "../game/GameRolesStage.vue";
+import { useUIStore } from "../../stores/modules/ui/ui";
 
 // 使用ref存储窗口实例
 const mainWindow = ref<Window | null>(null);
@@ -62,7 +66,7 @@ watch(
     if (newId) {
       runInitialization();
     }
-  }
+  },
 );
 
 // 对话输入框控制
@@ -102,7 +106,7 @@ const handleMainButtonClick = () => {
 
 // 处理消息发送事件
 const handleMessageSent = (message: string) => {
-  // scriptHandler.sendMessage(message);
+  console.log("Main: 消息已发送:", message);
 };
 
 // 处理鼠标进入事件
