@@ -2,7 +2,7 @@
   <Transition name="modal">
     <div
       v-if="visible"
-      class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4"
+      class="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4"
       @click="handleClose"
     >
       <div

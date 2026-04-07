@@ -58,7 +58,9 @@
             <Music :size="16" class="text-purple-400 shrink-0" />
             <span class="truncate">{{ currentMusicName }}</span>
           </span>
-          <span class="text-xs text-gray-400 shrink-0 ml-2">{{ modeText[playbackMode] }}</span>
+          <span class="text-xs text-gray-400 shrink-0 ml-2">{{
+            modeText[uiStore.bgMusicMode]
+          }}</span>
         </div>
 
         <div class="flex w-[40%] items-center gap-2">
@@ -78,10 +80,10 @@
             type="big"
             @click="togglePlaybackMode"
             class="flex justify-center items-center"
-            :title="modeText[playbackMode]"
+            :title="modeText[uiStore.bgMusicMode]"
           >
-            <Repeat1 v-if="playbackMode === 'loop-single'" :size="18" />
-            <Repeat v-else-if="playbackMode === 'loop-list'" :size="18" />
+            <Repeat1 v-if="uiStore.bgMusicMode === 'loop-single'" :size="18" />
+            <Repeat v-else-if="uiStore.bgMusicMode === 'loop-list'" :size="18" />
             <Shuffle v-else :size="18" />
           </Button>
         </div>
@@ -233,7 +235,6 @@ const fileInput = ref<HTMLInputElement | null>(null)
 
 // 播放模式设定 (loop-list: 列表循环, loop-single: 单曲循环, random: 随机)
 type PlaybackMode = 'loop-list' | 'loop-single' | 'random'
-const playbackMode = ref<PlaybackMode>('loop-list')
 const modeText = {
   'loop-list': '列表循环',
   'loop-single': '单曲循环',
@@ -243,10 +244,10 @@ const modeText = {
 // 播放模式切换逻辑
 const togglePlaybackMode = () => {
   const modes: PlaybackMode[] = ['loop-list', 'loop-single', 'random']
-  const currentIndex = modes.indexOf(playbackMode.value)
+  const currentIndex = modes.indexOf(uiStore.bgMusicMode)
   const choice = modes[(currentIndex + 1) % modes.length]
-  if (choice) playbackMode.value = choice
-  else playbackMode.value = 'loop-list'
+  if (choice) uiStore.bgMusicMode = choice
+  else uiStore.bgMusicMode = 'loop-list'
 }
 
 // 自动切歌处理 (响应播放结束事件)
@@ -258,10 +259,10 @@ const handleTrackEnd = () => {
 
   let nextMusic: MusicItem | undefined = undefined
 
-  if (playbackMode.value === 'loop-single') {
+  if (uiStore.bgMusicMode === 'loop-single') {
     // 单曲循环
     nextMusic = currentIndex !== -1 ? musicList.value[currentIndex] : musicList.value[0]
-  } else if (playbackMode.value === 'random') {
+  } else if (uiStore.bgMusicMode === 'random') {
     // 随机播放
     const randomIndex = Math.floor(Math.random() * musicList.value.length)
     nextMusic = musicList.value[randomIndex]
@@ -440,14 +441,21 @@ const uploadMusic = async () => {
 const playPauseButtonText = computed(() => (!uiStore.bgMusicPaused ? '暂停' : '播放'))
 
 const playMusic = async (music: MusicItem) => {
-  const musicUrl = toMusicUrl(music.url)
+  let musicUrl = toMusicUrl(music.url)
   currentMusicName.value = music.name
+
+  // 单曲循环的逻辑要更特殊一点
+  // if (uiStore.bgMusicMode === 'loop-single') {
+  //   musicUrl = uiStore.currentBackgroundMusic
+  // }
 
   if (uiStore.currentBackgroundMusic === musicUrl) {
     uiStore.bgMusicPaused = false
   }
 
   uiStore.currentBackgroundMusic = musicUrl
+  uiStore.bgMusicPaused = false
+  uiStore.bgMusicStoped = false
 
   try {
     await setCurrentBackgroundMusic(musicUrl)
