@@ -11,6 +11,8 @@ class PlayerEvent(BaseEvent):
     async def _execute(self):
         text:str = self.event_data.get('text', '')
         lines: list[str] = [line for line in text.splitlines() if line.strip()]
+        display_name:str|None = self.event_data.get('displayName', None)
+        display_subtitle:str|None = self.event_data.get('displaySubtitle', None)
 
         for text in lines:
             logger.info(f"显示对话: 玩家 - {text}")
@@ -20,7 +22,7 @@ class PlayerEvent(BaseEvent):
                 LineBase(content=text,attribute=LineAttribute.USER,display_name=self.game_status.player.user_name)
             )
 
-            event_response = ResponseFactory.create_player_dialogue(text)
+            event_response = ResponseFactory.create_player_dialogue(text, display_name, display_subtitle)
             await message_broker.publish(self.client_id,
                 event_response.model_dump()
             )

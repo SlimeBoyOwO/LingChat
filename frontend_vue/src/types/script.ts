@@ -19,6 +19,8 @@ export interface ScriptNarrationEvent extends ScriptEvent {
 export interface ScriptPlayerEvent extends ScriptEvent {
   type: 'player'
   text: string
+  displayName?: string
+  displaySubtitle?: string
   emotion?: string
 }
 
@@ -33,6 +35,8 @@ export interface ScriptDialogueEvent extends ScriptEvent {
   ttsText?: string
   audioFile?: string
   originalMessage: string
+  displayName?: string
+  displaySubtitle?: string
 }
 
 export interface ScriptThinkingEvent extends ScriptEvent {
@@ -43,7 +47,7 @@ export interface ScriptThinkingEvent extends ScriptEvent {
 export interface ScriptBackgroundEvent extends ScriptEvent {
   type: 'background'
   imagePath: string
-  transition?: string
+  transition: number
 }
 
 export interface ScriptPresentPicEvent extends ScriptEvent {

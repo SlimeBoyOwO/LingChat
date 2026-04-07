@@ -14,6 +14,8 @@ class DialogueEvent(BaseEvent):
     async def _execute(self):
         character = self.event_data.get('character', '')
         text = self.event_data.get('text', '')
+        display_name:str|None = self.event_data.get('displayName', None)
+        display_subtitle:str|None = self.event_data.get('displaySubtitle', None)
 
         role = ScriptFunction.get_role(self.game_status, self.script_status, character)
         self.game_status.current_character = role
@@ -30,7 +32,7 @@ class DialogueEvent(BaseEvent):
             seg[0]['character'] = character
             seg[0]['role_id'] = role.role_id
 
-            event_response = ResponseFactory.create_reply(seg[0], "", False)
+            event_response = ResponseFactory.create_reply(seg[0], "", False, display_name, display_subtitle)
 
             self.game_status.add_line(
                 Function.convert_reply_to_line(event_response)
