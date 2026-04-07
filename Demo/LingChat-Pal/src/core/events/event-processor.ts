@@ -1,4 +1,4 @@
-import { ScriptEventType } from "../../types";
+import type { ScriptEventType } from "../../types";
 
 export interface IEventProcessor {
   processEvent(event: ScriptEventType): Promise<void>;

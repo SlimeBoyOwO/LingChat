@@ -38,19 +38,23 @@ import { useUIStore } from "../../stores/modules/ui/ui";
 const gameStore = useGameStore();
 const uiStore = useUIStore();
 
-// 使用计算属性处理占位符文本
 const placeholderText = computed(() => {
   switch (gameStore.currentStatus) {
     case "input":
       return uiStore.showPlayerHintLine || "输入消息...";
     case "thinking":
-      return gameStore.avatar.think_message;
+      const currentInteractRole = gameStore.currentInteractRole;
+      if (currentInteractRole) {
+        return currentInteractRole.thinkMessage;
+      } else {
+        return "等待回应中...";
+      }
     case "responding":
       return "聊天ing~";
     case "presenting":
       return "";
     default:
-      return "输入消息...";
+      return "在这里输入消息...";
   }
 });
 
@@ -60,11 +64,16 @@ watch(
   (newStatus) => {
     console.log("游戏状态变为 :", newStatus);
     if (newStatus === "thinking") {
-      gameStore.avatar.emotion = "AI思考";
+      const currentInteractRole = gameStore.currentInteractRole;
+      if (currentInteractRole) {
+        currentInteractRole.emotion = "AI思考";
+        uiStore.showCharacterTitle = currentInteractRole.roleName;
+        uiStore.showCharacterSubtitle = currentInteractRole.roleSubTitle;
+      }
     } else if (newStatus === "input") {
       uiStore.showCharacterEmotion = "";
     }
-  }
+  },
 );
 
 // 使用计算属性控制输入框是否可编辑
@@ -92,10 +101,10 @@ const sendMessage = () => {
     emit("message-sent", messageText.value);
     messageText.value = "";
     gameStore.currentStatus = "thinking";
-    gameStore.addToDialogHistory({
+    gameStore.appendGameMessage({
       type: "message",
-      character: gameStore.avatar.user_name,
-      content: messageText,
+      displayName: gameStore.userName,
+      content: messageText.value,
     });
   }
 };
@@ -128,7 +137,8 @@ const sendMessage = () => {
   -webkit-backdrop-filter: blur(10px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 20px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1),
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.1),
     inset 0 1px 1px rgba(255, 255, 255, 0.1);
   padding: 0px 4px;
   display: flex;
@@ -164,7 +174,8 @@ const sendMessage = () => {
   margin-left: 5px;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 20px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1),
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.1),
     inset 0 1px 1px rgba(255, 255, 255, 0.1);
 }
 
