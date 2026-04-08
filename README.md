@@ -31,7 +31,7 @@
 ### Step -1: 选择适合的版本
 
 - 如果是Windows10 64位或者更高请使用最新版本`0.4.0 Pre`！
-- 如果是32位机器请前往 [issues](https://github.com/SlimeBoyOwO/LingChat/issues/379) 请使用兼容版喵~
+- 如果是32位机器请用兼容版喵~
 
 ### Step 0: 开始之前的准备
 
@@ -42,6 +42,7 @@
 - 在[release](https://github.com/SlimeBoyOwO/LingChat/releases)中，找到最新的版本，下载如 `LingChat_setup.exe` 的文件，下载完成后运行并安装 LingChat。
 - 点击桌面快捷方式或安装目录下的 `LingChat.exe`或者`启动器.bat`启动程序
 - 您也可以使用如 LingChat.x.x.x.7z 的文件解压后使用
+- 补充：老机器在[issues](https://github.com/SlimeBoyOwO/LingChat/issues/379)里面寻找适合自己的版本，下载如`LingChat v0.4.0-pre Python3.8 win32.7z`的文件，运行方式如上
 
 #### 温馨提示：
 
