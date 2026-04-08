@@ -24,6 +24,8 @@ export const DEFAULT_SETTINGS = {
     backgroundEffect: 'StarField', // 背景效果名称
     mainMenuStarsEnabled: true, // 主菜单星星粒子开关
     mainMenuMeteorsEnabled: true, // 主菜单流星开关
+    globalMouseTrailEnabled: true, // 全局鼠标滑动动画开关
+    clickAnimationEnabled: true, // 点击动画开关
   },
   // 角色设置
   character: {
@@ -47,6 +49,8 @@ export interface DisplaySettings {
   backgroundEffect: string
   mainMenuStarsEnabled: boolean
   mainMenuMeteorsEnabled: boolean
+  globalMouseTrailEnabled: boolean
+  clickAnimationEnabled: boolean
 }
 
 export interface CharacterSettings {
@@ -89,6 +93,8 @@ export const useSettingsStore = defineStore('settings', {
     backgroundEffect: (state) => state.display.backgroundEffect,
     mainMenuStarsEnabled: (state) => state.display.mainMenuStarsEnabled,
     mainMenuMeteorsEnabled: (state) => state.display.mainMenuMeteorsEnabled,
+    globalMouseTrailEnabled: (state) => state.display.globalMouseTrailEnabled,
+    clickAnimationEnabled: (state) => state.display.clickAnimationEnabled,
     // 各音量
     characterVolume: (state) => state.audio.characterVolume,
     bubbleVolume: (state) => state.audio.bubbleVolume,
@@ -213,6 +219,14 @@ export const useSettingsStore = defineStore('settings', {
     // 设置主菜单流星开关
     setMainMenuMeteorsEnabled(enabled: boolean) {
       this.display.mainMenuMeteorsEnabled = enabled
+    },
+    // 设置全局鼠标滑动动画开关
+    setGlobalMouseTrailEnabled(enabled: boolean) {
+      this.display.globalMouseTrailEnabled = enabled
+    },
+    // 设置点击动画开关
+    setClickAnimationEnabled(enabled: boolean) {
+      this.display.clickAnimationEnabled = enabled
     },
 
     // 设置角色文件夹

@@ -67,12 +67,45 @@
       <template #header>
         <Sparkles :size="20" />
       </template>
-      <div class="effect-list">
+      <div class="effect-list flex gap-4 overflow-x-auto pb-2">
+        <Button type="big" @click="updateParticle(`None`)">无</Button>
         <Button type="big" @click="updateParticle(`StarField`)">星空</Button>
         <Button type="big" @click="updateParticle(`Rain`)">雨水</Button>
         <Button type="big" @click="updateParticle(`Sakura`)">樱花</Button>
         <Button type="big" @click="updateParticle(`Snow`)">雪景</Button>
         <Button type="big" @click="updateParticle(`Fireworks`)">烟花</Button>
+      </div>
+    </MenuItem>
+
+    <MenuItem title="动画开关" size="large">
+      <template #header>
+        <Settings :size="20" />
+      </template>
+      <div class="flex flex-col gap-3">
+        <Toggle
+          :checked="mainMenuStarsEnabled"
+          @change="settingsStore.setMainMenuStarsEnabled($event)"
+        >
+          启用主界面星星粒子
+        </Toggle>
+        <Toggle
+          :checked="mainMenuMeteorsEnabled"
+          @change="settingsStore.setMainMenuMeteorsEnabled($event)"
+        >
+          启用主界面流星动画
+        </Toggle>
+        <Toggle
+          :checked="globalMouseTrailEnabled"
+          @change="settingsStore.setGlobalMouseTrailEnabled($event)"
+        >
+          启用全局鼠标滑动动画
+        </Toggle>
+        <Toggle
+          :checked="clickAnimationEnabled"
+          @change="settingsStore.setClickAnimationEnabled($event)"
+        >
+          启用点击动画
+        </Toggle>
       </div>
     </MenuItem>
 
@@ -101,6 +134,7 @@ import { MenuPage, MenuItem } from '../../ui'
 import { Button, Toggle } from '../../base'
 import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
+import { useSettingsStore } from '../../../stores/modules/settings'
 import {
   listScenes,
   loadScene,
@@ -115,12 +149,18 @@ import {
   setCurrentBackground,
   setCurrentBackgroundEffect,
 } from '../../../api/services/background'
-import { Bubbles, Image, PictureInPicture, Sparkles } from 'lucide-vue-next'
+import { Bubbles, Image, PictureInPicture, Sparkles, Settings } from 'lucide-vue-next'
 import SceneSelectModal from '../scene/SceneSelectModal.vue'
 import SceneEditModal from '../scene/SceneEditModal.vue'
 
 const gameStore = useGameStore()
 const uiStore = useUIStore()
+const settingsStore = useSettingsStore()
+
+const mainMenuStarsEnabled = computed(() => settingsStore.mainMenuStarsEnabled)
+const mainMenuMeteorsEnabled = computed(() => settingsStore.mainMenuMeteorsEnabled)
+const globalMouseTrailEnabled = computed(() => settingsStore.globalMouseTrailEnabled)
+const clickAnimationEnabled = computed(() => settingsStore.clickAnimationEnabled)
 
 const backgroundList = ref<BackgroundImageInfo[]>([])
 const selectedBackground = ref<string>('')
@@ -468,10 +508,7 @@ async function updateParticle(value: string): Promise<void> {
 }
 
 .effect-list {
-  display: flex;
-  justify-content: space-around;
-  gap: 20px;
-  align-items: center;
+  /* 使用 Tailwind 类处理水平滚动 */
 }
 
 @media (max-width: 768px) {
