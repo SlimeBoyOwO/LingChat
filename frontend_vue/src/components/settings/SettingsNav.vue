@@ -3,7 +3,7 @@
     <img src="@/assets/images/LingChatLogo.png" alt="Logo" class="w-20 ml-5 hidden xl:block" />
     <nav
       ref="navContainer"
-      class="relative w-full flex felx-row items-center justify-around h-full ease-in-out duration-100 xl:justify-center overflow-x-auto overflow-y-hidden"
+      class="relative w-full flex flex-nowrap items-center justify-start gap-1 h-full ease-in-out duration-100 xl:justify-center overflow-x-auto overflow-y-hidden px-2"
     >
       <div
         ref="indicator"

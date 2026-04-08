@@ -6,7 +6,10 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { useSettingsStore } from '../../stores/modules/settings'
+
+const settingsStore = useSettingsStore()
 
 interface TrailPoint {
   x: number
@@ -265,6 +268,11 @@ const stopAnimation = () => {
 
 // --- 节流的鼠标移动处理 ---
 const handleMouseMove = (e: MouseEvent) => {
+  // 检查是否启用鼠标拖尾动画
+  if (!settingsStore.globalMouseTrailEnabled) {
+    return
+  }
+
   const now = Date.now()
   if (now - lastMouseTime < MOUSE_THROTTLE) {
     return
@@ -292,6 +300,11 @@ const handleMouseMove = (e: MouseEvent) => {
 
 // --- 优化的点击效果（使用Canvas替代DOM）---
 const handleClick = (e: MouseEvent) => {
+  // 检查是否启用点击动画
+  if (!settingsStore.clickAnimationEnabled) {
+    return
+  }
+
   const particleCount = 12
   const colors = ['#FFC0CB', '#87CEFA']
 
@@ -327,6 +340,27 @@ const handleResize = () => {
   initCanvas()
 }
 
+// --- 监听设置变化，关闭时清除效果 ---
+watch(
+  () => settingsStore.globalMouseTrailEnabled,
+  (enabled) => {
+    if (!enabled) {
+      // 关闭时清除所有拖尾点
+      points.length = 0
+    }
+  },
+)
+
+watch(
+  () => settingsStore.clickAnimationEnabled,
+  (enabled) => {
+    if (!enabled) {
+      // 关闭时清除所有粒子
+      particles.length = 0
+    }
+  },
+)
+
 // --- 生命周期钩子 ---
 onMounted(() => {
   initCanvas()
@@ -355,32 +389,5 @@ onBeforeUnmount(() => {
   height: 100%;
   pointer-events: none;
   z-index: 9999;
-}
-</style>
-
-<style>
-/* 点击三角粒子样式（全局样式，因为是动态创建的元素） */
-.click-triangle-particle {
-  position: fixed;
-  pointer-events: none;
-  z-index: 10000;
-  width: 0;
-  height: 0;
-  border-left: var(--triangle-size) solid transparent;
-  border-right: var(--triangle-size) solid transparent;
-  border-bottom: calc(var(--triangle-size) * 1.5) solid var(--triangle-color);
-  animation: click-burst-animation 1s forwards;
-}
-
-@keyframes click-burst-animation {
-  from {
-    transform: translate(-50%, -50%) rotate(var(--initial-rotation)) scale(1);
-    opacity: inherit;
-  }
-  to {
-    transform: translate(calc(-50% + var(--translate-x)), calc(-50% + var(--translate-y)))
-      rotate(var(--final-rotation)) scale(0);
-    opacity: 0;
-  }
 }
 </style>
