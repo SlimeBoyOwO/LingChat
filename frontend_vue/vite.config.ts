@@ -6,6 +6,9 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 import tailwindcss from '@tailwindcss/vite'
 import fs from 'fs'
 import path from 'path'
+import AutoImport from 'unplugin-auto-import/vite'
+import Components from 'unplugin-vue-components/vite'
+import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 
 // 读取项目根目录的.env文件，参考后端load_env.py实现
 function loadRootEnv() {
@@ -47,7 +50,7 @@ function loadRootEnv() {
 
         for (let i = 0; i < value.length; i++) {
           const char = value[i]
-          if ((char === '"' || char === "'") && (i === 0 || value[i-1] !== '\\')) {
+          if ((char === '"' || char === "'") && (i === 0 || value[i - 1] !== '\\')) {
             if (!inQuotes) {
               inQuotes = true
               quoteChar = char
@@ -66,8 +69,10 @@ function loadRootEnv() {
         }
 
         // 去除值两端的引号（单引号或双引号）
-        if ((value.startsWith('"') && value.endsWith('"')) ||
-            (value.startsWith("'") && value.endsWith("'"))) {
+        if (
+          (value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))
+        ) {
           value = value.substring(1, value.length - 1)
         }
 
@@ -75,7 +80,12 @@ function loadRootEnv() {
         value = value.trim()
 
         // 只记录重要的环境变量以减少日志噪音
-        const importantKeys = ['BACKEND_BIND_ADDR', 'BACKEND_PORT', 'FRONTEND_BIND_ADDR', 'FRONTEND_PORT']
+        const importantKeys = [
+          'BACKEND_BIND_ADDR',
+          'BACKEND_PORT',
+          'FRONTEND_BIND_ADDR',
+          'FRONTEND_PORT',
+        ]
         env[key] = value
       }
     })
@@ -107,7 +117,20 @@ export default defineConfig(({ mode }) => {
   const wsTarget = `ws://${backendHost}:${backendPort}`
 
   return {
-    plugins: [vue(), vueJsx(), vueDevTools(), tailwindcss()],
+    plugins: [
+      vue(),
+      vueJsx(),
+      vueDevTools(),
+      tailwindcss(),
+      AutoImport({
+        resolvers: [ElementPlusResolver()],
+        dts: 'src/auto-imports.d.ts',
+      }),
+      Components({
+        resolvers: [ElementPlusResolver()],
+        dts: 'src/components.d.ts',
+      }),
+    ],
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
