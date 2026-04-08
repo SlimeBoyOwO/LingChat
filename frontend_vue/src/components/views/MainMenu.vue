@@ -197,7 +197,7 @@ onMounted(() => {
 <style scoped>
 @font-face {
   font-family: 'Maoken Assorted Sans';
-  src: url('./assets/fonts/MaokenAssortedSans.ttf') format('truetype');
+  src: url('/fonts/MaokenAssortedSans.woff2') format('woff2');
   font-weight: normal;
   font-style: normal;
   font-display: swap;
