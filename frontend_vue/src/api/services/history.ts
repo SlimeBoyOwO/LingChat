@@ -25,3 +25,11 @@ export const getDialogueHistory = async (userId: string): Promise<GameLine[]> =>
     throw error // 直接抛出拦截器处理过的错误
   }
 }
+
+export const clearChatHistory = async (userId: string): Promise<void> => {
+  try {
+    await http.post('/v1/chat/history/clear', { user_id: userId })
+  } catch (error: any) {
+    throw new Error(error.response?.data?.detail || '清除对话历史失败')
+  }
+}

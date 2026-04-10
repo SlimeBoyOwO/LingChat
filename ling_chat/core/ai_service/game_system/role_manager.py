@@ -28,6 +28,31 @@ class GameRoleManager:
     def reset_roles(self):
         self.loaded_roles.clear()
         self._memory_bank_systems.clear()
+
+    def clear_main_role_memories(self):
+        """
+        仅清除主角的短期记忆
+        TODO:目前没有实现，有需要时候再做
+        """
+        pass
+
+    def clear_role_memory(self, role_id: int):
+        """
+        清除指定角色的短期记忆
+        """
+        if role_id in self.loaded_roles:
+            self.loaded_roles[role_id].memory = []
+            logger.info(f"角色 {role_id} 的短期记忆已清除")
+        else:
+            logger.warning(f"角色 {role_id} 未在运行时加载，无法清除记忆")
+
+    def clear_all_memories(self):
+        """
+        清除所有已加载角色的短期记忆
+        """
+        for role in self.loaded_roles.values():
+            role.memory = []
+        logger.info("所有角色的短期记忆已清除")
     
     def _register_role_by_id(self, role_id: int):
         role = RoleManager.get_role_by_id(role_id)
