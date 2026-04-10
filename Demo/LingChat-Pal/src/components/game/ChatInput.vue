@@ -1,16 +1,21 @@
 <template>
-  <div class="chat-input-container" :class="{ visible: props.visible }">
-    <div class="chat-input-glass">
+  <div
+    class="relative w-full z-10 flex justify-center transition-all duration-300 ease-out"
+    :class="props.visible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'"
+  >
+    <div
+      class="flex items-center p-[calc(4px*var(--pet-ui-scale,1))] rounded-[calc(20px*var(--pet-ui-scale,1))] bg-white/20 backdrop-blur-[10px] saturate-180 border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.1),inset_0_1px_1px_rgba(255,255,255,0.1)]"
+    >
       <input
         v-model="messageText"
         type="text"
         :placeholder="placeholderText"
         :readonly="!isInputEnabled"
-        class="chat-input"
+        class="flex-1 bg-transparent border-none outline-none text-white text-[calc(13px*var(--pet-ui-scale,1))] p-[calc(5px*var(--pet-ui-scale,1))] placeholder-white/60"
         @keyup.enter="sendMessage"
       />
       <button
-        class="h-6 px-2 bg-gradient-to-tr from-cyan-500 to-blue-400 hover:from-cyan-400 hover:to-blue-300 text-white font-bold text-sm rounded-full shadow-[0_4px_15px_rgba(6,182,212,0.4)] hover:shadow-[0_6px_20px_rgba(6,182,212,0.6)] transition-all duration-300 active:scale-95 flex items-center gap-1 overflow-hidden relative"
+        class="h-6 px-2 bg-linear-to-tr from-cyan-500 to-blue-400 hover:from-cyan-400 hover:to-blue-300 text-white font-bold text-sm rounded-full shadow-[0_4px_15px_rgba(6,182,212,0.4)] hover:shadow-[0_6px_20px_rgba(6,182,212,0.6)] transition-all duration-300 active:scale-95 flex items-center gap-1 overflow-hidden relative"
         @click="sendMessage"
       >
         <div
@@ -112,51 +117,8 @@ const sendMessage = () => {
 </script>
 
 <style scoped>
-/* 对话输入框样式 */
+/* 保留无法用Tailwind实现的特殊效果 */
 .chat-input-container {
-  position: relative;
-  width: 100%;
-  opacity: 0;
-  visibility: hidden;
   transform: scale(var(--pet-ui-scale, 1));
-  transition:
-    opacity 0.3s ease,
-    visibility 0.3s ease;
-  z-index: 10;
-  display: flex;
-}
-
-.chat-input-container.visible {
-  opacity: 1;
-  visibility: visible;
-}
-
-.chat-input-glass {
-  /* 液态玻璃效果 */
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(10px) saturate(180%);
-  -webkit-backdrop-filter: blur(10px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: calc(20px * var(--pet-ui-scale, 1));
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.1),
-    inset 0 1px 1px rgba(255, 255, 255, 0.1);
-  padding: 0 calc(4px * var(--pet-ui-scale, 1));
-  display: flex;
-  align-items: center;
-}
-
-.chat-input {
-  background: transparent;
-  border: none;
-  outline: none;
-  color: white;
-  flex: 1;
-  font-size: calc(13px * var(--pet-ui-scale, 1));
-  padding: calc(5px * var(--pet-ui-scale, 1));
-}
-
-.chat-input::placeholder {
-  color: rgba(255, 255, 255, 0.6);
 }
 </style>

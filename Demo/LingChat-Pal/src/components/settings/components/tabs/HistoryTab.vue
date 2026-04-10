@@ -154,13 +154,6 @@ const currentPageHistory = computed(() => {
 });
 
 // 监听对话历史变化，重置到第一页，并滚动到顶部
-watch(
-  dialogHistory,
-  () => {
-    currentPage.value = 1;
-  },
-  { deep: true },
-);
 
 // 切换页码时，容器自动滚动回顶部
 watch(currentPage, () => {
