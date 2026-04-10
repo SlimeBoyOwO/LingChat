@@ -332,3 +332,61 @@ async def delete_user_conversation(request: Request):
             status_code=500,
             detail=f"删除对话失败: {str(e)}"
         )
+
+@router.post("/clear")
+async def clear_chat_history(request: Request):
+    """
+    清除当前对话历史（不删除存档，只清除运行时状态）
+    请求体格式:
+    {
+        "user_id": int
+    }
+    """
+    try:
+        payload = await request.json()
+        user_id = payload.get("user_id")
+
+        if not user_id:
+            raise HTTPException(status_code=400, detail="缺少必要参数 (user_id)")
+
+        if not service_manager.ai_service:
+            raise HTTPException(status_code=500, detail="AI 服务未初始化")
+
+        ai_service = service_manager.ai_service
+        game_status = ai_service.game_status
+
+        # 1. 清除台词列表和主角记忆（由 clear_lines 内部处理）
+        ai_service.clear_lines()
+
+        # 2. 重置游戏状态
+        game_status.background = "default"
+        game_status.background_effect = "none"
+        game_status.background_music = "none"
+        game_status.global_variables = {}
+        game_status.last_dialog_time = datetime.now()
+
+        # 4. 重置在场角色为主角
+        if game_status.main_role:
+            game_status.present_roles = {game_status.main_role}
+            game_status.current_character = game_status.main_role
+
+        # 5. 清除运行中的剧本状态
+        game_status.script_status = None
+        game_status.completed_scripts = set()
+
+        logger.info(f"用户 {user_id} 已清除对话历史")
+
+        return {
+            "code": 200,
+            "data": {
+                "message": "对话历史已清除"
+            }
+        }
+
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"清除对话历史失败: {str(e)}"
+        )
