@@ -21,7 +21,7 @@
                 : 'bg-slate-100 border-slate-200'
             "
           >
-            <User class="w-6 h-6" />
+            <Heart class="w-6 h-6" />
           </div>
           <div
             class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-400 border-2 rounded-full z-20 transition-colors"
@@ -32,7 +32,7 @@
           <span
             class="block text-[11px] font-bold mb-0.5 uppercase tracking-wider transition-colors"
             :class="isDarkMode ? 'text-slate-500' : 'text-slate-400'"
-            >Sensei</span
+            >Ling Ling</span
           >
           <strong
             class="block text-[13px] font-black transition-colors"
@@ -112,7 +112,7 @@
 </template>
 
 <script setup lang="ts">
-import { User } from "lucide-vue-next";
+import { Heart, User } from "lucide-vue-next";
 
 type TabItem = {
   key: "pet" | "interaction" | "window" | "todo";
