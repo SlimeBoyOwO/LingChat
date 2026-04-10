@@ -4,22 +4,19 @@
     :style="appStyleVars"
     @mouseenter="handleMouseEnter"
     @mouseleave="handleMouseLeave"
-    class="relative w-full h-full flex flex-col justify-start items-center overflow-hidden transition-none"
+    class="relative w-[var(--app-width)] h-[var(--app-height)] flex flex-col justify-start items-center overflow-hidden transition-none"
   >
     <!-- DialogueBox 区域 -->
     <div
-      class="w-[90%] shrink-0 flex items-end justify-center transition-none pb-2"
-      :style="{
-        height: 'var(--dialog-h)',
-        display: domLayout.dialogVisible ? 'flex' : 'none',
-      }"
+      class="w-full shrink-0 flex items-end justify-center transition-none"
+      :style="{ height: 'var(--dialog-h)' }"
     >
       <DialogueBox />
     </div>
 
     <!-- Avatar 区域 -->
     <div
-      class="shrink-0 flex items-center justify-center transition-none"
+      class="shrink-0 flex items-center justify-center transition-all duration-100"
       :style="{ width: 'var(--avatar-size)', height: 'var(--avatar-size)' }"
     >
       <GameRolesStage
@@ -30,26 +27,19 @@
 
     <!-- ChatInput 区域 -->
     <div
-      class="w-[90%] shrink-0 flex items-start justify-center transition-none pt-2"
-      :style="{
-        height: 'var(--chat-h)',
-        display: domLayout.chatVisible ? 'flex' : 'none',
-      }"
+      class="w-full shrink-0 flex items-start justify-center transition-none"
+      :style="{ height: 'var(--chat-h)' }"
     >
-      <ChatInput
-        :visible="domLayout.chatVisible"
-        @message-sent="handleMessageSent"
-      />
+      <ChatInput :visible="showChatInput" @message-sent="handleMessageSent" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch, nextTick } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import {
   getCurrentWindow,
   LogicalSize,
-  LogicalPosition,
   Window,
 } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -65,90 +55,35 @@ import GameRolesStage from "../game/GameRolesStage.vue";
 const PET_SCALE_EVENT = "pet-scale-changed";
 const DIALOG_HISTORY_EVENT = "dialog-history-changed";
 
-const BASE_AVATAR_SIZE = 280;
-const CHAT_BASE_H = 60;
-const DIALOG_BASE_H = 80;
+const BASE_AVATAR_SIZE = 240;
+const CHAT_BASE_H = 45;
+const DIALOG_BASE_H = 75;
 
-type ExpectedLayout = {
-  width: number;
-  height: number;
-  offsetX: number;
-  offsetY: number;
-  avatarX: number;
-  avatarY: number;
-  chatVisible: boolean;
-  dialogVisible: boolean;
-};
-
-const mainWindow = ref<Window | null>(null);
 const gameStore = useGameStore();
 const settingsStore = useSettingsStore();
 const userStore = useUserStore();
+
+const mainWindow = ref<Window | null>(null);
 const showChatInput = ref(false);
-
-let unlistenScaleEvent: (() => void) | null = null;
-let unlistenDialogHistoryEvent: (() => void) | null = null;
-let isApplyingWindowLayout = false;
-let hasPendingWindowLayout = false;
-let lastAppliedLayout: ExpectedLayout | null = null;
-
-const domLayout = ref<ExpectedLayout>({
-  width: BASE_AVATAR_SIZE,
-  height: BASE_AVATAR_SIZE,
-  offsetX: 0,
-  offsetY: 0,
-  avatarX: 0,
-  avatarY: 0,
-  chatVisible: false,
-  dialogVisible: false,
-});
-
-const dialogueVisible = computed(() => {
-  return (
-    gameStore.currentStatus === "responding" &&
-    gameStore.currentLine.trim().length > 0
-  );
-});
 
 const appStyleVars = computed(() => {
   const scale = settingsStore.pet.scale || 1;
+  const layout = calcWindowLayout(scale);
   return {
     "--pet-ui-scale": scale.toString(),
-    "--app-width": `${domLayout.value.width}px`,
-    "--app-height": `${domLayout.value.height}px`,
-    "--avatar-x": `${domLayout.value.avatarX}px`,
-    "--avatar-y": `${domLayout.value.avatarY}px`,
+    "--app-width": `${layout.width}px`,
+    "--app-height": `${layout.height}px`,
     "--avatar-size": `${Math.round(BASE_AVATAR_SIZE * scale)}px`,
     "--chat-h": `${Math.round(CHAT_BASE_H * scale)}px`,
     "--dialog-h": `${Math.round(DIALOG_BASE_H * scale)}px`,
   };
 });
 
-const calcWindowLayout = (
-  scale: number,
-  showChat: boolean,
-  showDialog: boolean,
-): ExpectedLayout => {
+const calcWindowLayout = (scale: number): { width: number; height: number } => {
   const S = Math.round(BASE_AVATAR_SIZE * scale);
   const chatH = Math.round(CHAT_BASE_H * scale);
   const dialogH = Math.round(DIALOG_BASE_H * scale);
-
-  const W = S; // 保持宽度始终等于正方形大小，避免水平发生变化引起 IPC 时差带来的抽搐
-  const H = S + (showChat ? chatH : 0) + (showDialog ? dialogH : 0);
-
-  const offsetX = 0;
-  const offsetY = showDialog ? -dialogH : 0;
-
-  return {
-    width: W,
-    height: H,
-    offsetX,
-    offsetY,
-    avatarX: 0,
-    avatarY: showDialog ? dialogH : 0,
-    chatVisible: showChat,
-    dialogVisible: showDialog,
-  };
+  return { width: S, height: S + dialogH + chatH }; // 固定总大小包裹三个元素的最大范围
 };
 
 const runInitialization = async () => {
@@ -161,84 +96,17 @@ const runInitialization = async () => {
 };
 
 const applyWindowLayout = async () => {
-  if (!mainWindow.value) {
-    return;
-  }
-
-  if (isApplyingWindowLayout) {
-    hasPendingWindowLayout = true;
-    return;
-  }
-
-  isApplyingWindowLayout = true;
+  if (!mainWindow.value) return;
   try {
     const scale = settingsStore.pet.scale || 1;
-    const layout = calcWindowLayout(
-      scale,
-      showChatInput.value,
-      dialogueVisible.value,
+    const layout = calcWindowLayout(scale);
+    
+    // 只在尺度改变时更新大小时，且无需调整偏置(坐标不再偏移)
+    await mainWindow.value.setSize(
+      new LogicalSize(layout.width, layout.height),
     );
-
-    if (lastAppliedLayout) {
-      if (
-        lastAppliedLayout.width === layout.width &&
-        lastAppliedLayout.height === layout.height &&
-        lastAppliedLayout.offsetX === layout.offsetX &&
-        lastAppliedLayout.offsetY === layout.offsetY
-      ) {
-        domLayout.value = layout;
-        return;
-      }
-
-      const deltaX = layout.offsetX - lastAppliedLayout.offsetX;
-      const deltaY = layout.offsetY - lastAppliedLayout.offsetY;
-
-      // 如果窗口变小（例如对话框关闭，deltaY 会从 -H 变成 0，即 deltaY > 0），
-      // 我们必须“先缩减 DOM 高度”，这样底层原生窗口缩下去时元素的相对上边缘就不会超过界限导致闪屏。
-      const isShrinking =
-        deltaY > 0 || layout.height < lastAppliedLayout.height;
-
-      if (isShrinking) {
-        domLayout.value = layout;
-        await nextTick(); // 给 Vue 渲染时间，让 DOM 先抽离
-      }
-
-      if (deltaX !== 0 || deltaY !== 0) {
-        const factor = await mainWindow.value.scaleFactor();
-        const pos = await mainWindow.value.outerPosition();
-        const logicalPos = pos.toLogical(factor);
-        await mainWindow.value.setPosition(
-          new LogicalPosition(
-            Math.round(logicalPos.x + deltaX),
-            Math.round(logicalPos.y + deltaY),
-          ),
-        );
-      }
-
-      await mainWindow.value.setSize(
-        new LogicalSize(layout.width, layout.height),
-      );
-
-      // 如果是放大窗口（例如展开对话框），则原生窗口先放大、往上拉，然后 DOM 瞬间出现，避免被推下
-      if (!isShrinking) {
-        domLayout.value = layout;
-      }
-    } else {
-      await mainWindow.value.setSize(
-        new LogicalSize(layout.width, layout.height),
-      );
-      domLayout.value = layout;
-    }
-
-    lastAppliedLayout = layout;
   } catch (error) {
     console.error("调整窗口布局失败:", error);
-  } finally {
-    isApplyingWindowLayout = false;
-    if (hasPendingWindowLayout) {
-      hasPendingWindowLayout = false;
-      void applyWindowLayout();
-    }
   }
 };
 
@@ -279,21 +147,14 @@ const openSettingsWindow = async () => {
   });
 };
 
+let unlistenScaleEvent: (() => void) | null = null;
+let unlistenDialogHistoryEvent: (() => void) | null = null;
+
 onMounted(async () => {
   mainWindow.value = getCurrentWindow();
 
-  // Set initial applied layout without moving the physical window position
-  const scale = settingsStore.pet.scale || 1;
-  const initialLayout = calcWindowLayout(
-    scale,
-    showChatInput.value,
-    dialogueVisible.value,
-  );
-  await mainWindow.value.setSize(
-    new LogicalSize(initialLayout.width, initialLayout.height),
-  );
-  lastAppliedLayout = initialLayout;
-  domLayout.value = initialLayout;
+  // Set initial sizes statically for the pet bounding box
+  await applyWindowLayout();
 
   unlistenScaleEvent = await mainWindow.value.listen<{ scale: number }>(
     PET_SCALE_EVENT,
@@ -305,6 +166,16 @@ onMounted(async () => {
       }
     },
   );
+
+  // 监听SettingsPage窗口的dialogHistory变化
+  unlistenDialogHistoryEvent = await mainWindow.value.listen<{
+    dialogHistory: any[];
+  }>(DIALOG_HISTORY_EVENT, (event) => {
+    const { dialogHistory } = event.payload;
+    if (dialogHistory) {
+      gameStore.dialogHistory = dialogHistory;
+    }
+  });
 });
 
 watch(
@@ -315,10 +186,6 @@ watch(
     }
   },
 );
-
-watch([showChatInput, dialogueVisible], () => {
-  void applyWindowLayout();
-});
 
 watch(
   () => settingsStore.pet.scale,
