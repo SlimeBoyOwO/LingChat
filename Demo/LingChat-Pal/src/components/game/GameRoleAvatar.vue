@@ -97,7 +97,7 @@
       <!-- 6. 气泡表情 -->
       <div
         :class="[
-          'absolute w-[80%] h-[80%] -top-[2%] -left-[2%] z-20 bg-contain bg-no-repeat pointer-events-none transition-all duration-300 origin-bottom-left',
+          'absolute w-[100%] h-[100%] -top-[2%] -left-[2%] z-73 bg-contain bg-no-repeat pointer-events-none transition-all duration-300 origin-bottom-left',
           bubbleClasses,
         ]"
         :style="bubbleStyles"
@@ -166,8 +166,8 @@ const imageStyles = computed(() => ({
 }));
 
 const bubbleClasses = computed(() => ({
-  "opacity-100 scale-100": isBubbleVisible.value,
-  "opacity-0 scale-50": !isBubbleVisible.value,
+  "opacity-100": isBubbleVisible.value,
+  "opacity-0": !isBubbleVisible.value,
   [currentBubbleClass.value]: isBubbleVisible.value && currentBubbleClass.value,
 }));
 

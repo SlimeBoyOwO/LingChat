@@ -4,7 +4,7 @@
     :style="appStyleVars"
     @mouseenter="handleMouseEnter"
     @mouseleave="handleMouseLeave"
-    class="relative w-[var(--app-width)] h-[var(--app-height)] flex flex-col justify-start items-center overflow-hidden transition-none"
+    class="relative w-(--app-width) h-(--app-height) flex flex-col justify-start items-center overflow-hidden transition-none"
   >
     <!-- DialogueBox 区域 -->
     <div
@@ -37,11 +37,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import {
-  getCurrentWindow,
-  LogicalSize,
-  Window,
-} from "@tauri-apps/api/window";
+import { getCurrentWindow, LogicalSize, Window } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useGameStore } from "../../stores/modules/game";
 import { useSettingsStore } from "../../stores/modules/settings";
@@ -100,7 +96,7 @@ const applyWindowLayout = async () => {
   try {
     const scale = settingsStore.pet.scale || 1;
     const layout = calcWindowLayout(scale);
-    
+
     // 只在尺度改变时更新大小时，且无需调整偏置(坐标不再偏移)
     await mainWindow.value.setSize(
       new LogicalSize(layout.width, layout.height),
@@ -166,16 +162,6 @@ onMounted(async () => {
       }
     },
   );
-
-  // 监听SettingsPage窗口的dialogHistory变化
-  unlistenDialogHistoryEvent = await mainWindow.value.listen<{
-    dialogHistory: any[];
-  }>(DIALOG_HISTORY_EVENT, (event) => {
-    const { dialogHistory } = event.payload;
-    if (dialogHistory) {
-      gameStore.dialogHistory = dialogHistory;
-    }
-  });
 });
 
 watch(
