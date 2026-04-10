@@ -15,6 +15,7 @@
     "@tauri-apps/plugin-opener": "^2",
     "axios": "^1.13.2",
     "lingchat-pal": "link:",
+    "lucide-vue-next": "^1.0.0",
     "pinia": "^3.0.3",
     "pinia-plugin-persistedstate": "^4.5.0",
     "tailwindcss": "^4.2.2",

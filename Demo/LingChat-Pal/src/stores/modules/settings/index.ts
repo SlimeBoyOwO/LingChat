@@ -4,6 +4,36 @@
  */
 import { defineStore } from "pinia";
 
+const PET_SCALE_STORAGE_KEY = "lingchat.petScale";
+export const PET_SCALE_MIN = 0.7;
+export const PET_SCALE_MAX = 1.3;
+export const PET_SCALE_DEFAULT = 1;
+
+function clampPetScale(scale: number): number {
+  if (Number.isNaN(scale)) {
+    return PET_SCALE_DEFAULT;
+  }
+  return Math.min(PET_SCALE_MAX, Math.max(PET_SCALE_MIN, scale));
+}
+
+function readPetScaleFromStorage(): number {
+  if (typeof window === "undefined") {
+    return PET_SCALE_DEFAULT;
+  }
+
+  const raw = window.localStorage.getItem(PET_SCALE_STORAGE_KEY);
+  if (!raw) {
+    return PET_SCALE_DEFAULT;
+  }
+
+  const parsed = Number(raw);
+  if (Number.isNaN(parsed)) {
+    return PET_SCALE_DEFAULT;
+  }
+
+  return clampPetScale(parsed);
+}
+
 // 默认设置值
 export const DEFAULT_SETTINGS = {
   // 文本设置
@@ -27,6 +57,9 @@ export const DEFAULT_SETTINGS = {
   character: {
     folder: "诺一钦灵", // 当前角色文件夹
   },
+  pet: {
+    scale: PET_SCALE_DEFAULT, // 桌宠缩放
+  },
 };
 
 // 设置状态类型
@@ -49,11 +82,16 @@ export interface CharacterSettings {
   folder: string;
 }
 
+export interface PetSettings {
+  scale: number;
+}
+
 export interface SettingsState {
   text: TextSettings;
   audio: AudioSettings;
   display: DisplaySettings;
   character: CharacterSettings;
+  pet: PetSettings;
 }
 
 export const useSettingsStore = defineStore("settings", {
@@ -62,6 +100,9 @@ export const useSettingsStore = defineStore("settings", {
     audio: { ...DEFAULT_SETTINGS.audio },
     display: { ...DEFAULT_SETTINGS.display },
     character: { ...DEFAULT_SETTINGS.character },
+    pet: {
+      scale: readPetScaleFromStorage(),
+    },
   }),
 
   getters: {
@@ -90,6 +131,8 @@ export const useSettingsStore = defineStore("settings", {
     achievementVolume: (state) => state.audio.achievementVolume,
     // 角色文件夹
     characterFolder: (state) => state.character.folder,
+    // 桌宠缩放
+    petScale: (state) => state.pet.scale,
   },
 
   actions: {
@@ -118,6 +161,12 @@ export const useSettingsStore = defineStore("settings", {
 
       const lastKey = keys[keys.length - 1];
       if (lastKey && lastKey in target) {
+        if (path === "pet.scale") {
+          const nextScale = clampPetScale(Number(value));
+          target[lastKey] = nextScale;
+          this.persistPetScale(nextScale);
+          return;
+        }
         target[lastKey] = value;
       }
     },
@@ -129,6 +178,9 @@ export const useSettingsStore = defineStore("settings", {
         this.text = { ...DEFAULT_SETTINGS.text };
         this.audio = { ...DEFAULT_SETTINGS.audio };
         this.display = { ...DEFAULT_SETTINGS.display };
+        this.character = { ...DEFAULT_SETTINGS.character };
+        this.pet = { ...DEFAULT_SETTINGS.pet };
+        this.persistPetScale(this.pet.scale);
       } else {
         const keys = path.split(".");
         if (keys.length === 1) {
@@ -136,6 +188,9 @@ export const useSettingsStore = defineStore("settings", {
           const category = keys[0] as keyof SettingsState;
           if (category in DEFAULT_SETTINGS) {
             this[category] = { ...DEFAULT_SETTINGS[category] } as never;
+            if (category === "pet") {
+              this.persistPetScale(this.pet.scale);
+            }
           }
         } else {
           // 重置单个值
@@ -170,6 +225,14 @@ export const useSettingsStore = defineStore("settings", {
           this.display = { ...DEFAULT_SETTINGS.display, ...data.display };
         if (data.character)
           this.character = { ...DEFAULT_SETTINGS.character, ...data.character };
+        if (data.pet) {
+          this.pet = {
+            ...DEFAULT_SETTINGS.pet,
+            ...data.pet,
+            scale: clampPetScale(Number(data.pet.scale)),
+          };
+          this.persistPetScale(this.pet.scale);
+        }
         return true;
       } catch (e) {
         console.error("导入设置失败:", e);
@@ -210,6 +273,23 @@ export const useSettingsStore = defineStore("settings", {
     // 设置角色文件夹
     setCharacterFolder(folder: string) {
       this.character.folder = folder;
+    },
+
+    setPetScale(scale: number) {
+      const nextScale = clampPetScale(scale);
+      this.pet.scale = nextScale;
+      this.persistPetScale(nextScale);
+    },
+
+    resetPetScale() {
+      this.setPetScale(PET_SCALE_DEFAULT);
+    },
+
+    persistPetScale(scale: number) {
+      if (typeof window === "undefined") {
+        return;
+      }
+      window.localStorage.setItem(PET_SCALE_STORAGE_KEY, String(scale));
     },
   },
 

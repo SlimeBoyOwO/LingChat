@@ -84,7 +84,3 @@ watch(
 
 // 对话初始化逻辑在 gameStore 的初始化中处理
 </script>
-
-<style scoped>
-/* 所有样式已转换为 Tailwind CSS */
-</style>

@@ -109,7 +109,7 @@ class PersistentMemorySystem:
         mb = self.role.memory_bank
         return (
             "\n\n====== 记忆库 (Memory Bank) ======\n"
-            f"【用户信息】：{mb.data.user_info}\n"
+            f"【taの信息】：{mb.data.user_info}\n"
             f"【重要约定】：{mb.data.promises}\n"
             f"【长期经历】：{mb.data.long_term}\n"
             "=================================\n"

@@ -643,8 +643,8 @@ class Function:
         if isinstance(settings, dict):
             settings = CharacterSettings(**settings)
 
-        offset_y = settings.offset
-        offset_x = 0
+        offset_y = settings.offset_y
+        offset_x = settings.offset_x
 
         result = {
             "ai_name": settings.ai_name,

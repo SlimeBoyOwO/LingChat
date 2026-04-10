@@ -11,6 +11,9 @@ export interface CharacterSettings {
   scale: number;
   offset_x: number;
   offset_y: number;
+  scale_p?: number;
+  offset_x_p?: number;
+  offset_y_p?: number;
   bubble_top: number;
   bubble_left: number;
   clothes: Record<string, any>;
