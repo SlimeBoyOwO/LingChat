@@ -8,6 +8,7 @@
   >
     <!-- DialogueBox 区域 -->
     <div
+      ref="dialogContainer"
       class="w-full shrink-0 flex items-end justify-center transition-none"
       :style="{ height: 'var(--dialog-h)' }"
     >
@@ -16,6 +17,7 @@
 
     <!-- Avatar 区域 -->
     <div
+      ref="avatarContainer"
       class="shrink-0 flex items-center justify-center transition-all duration-100"
       :style="{ width: 'var(--avatar-size)', height: 'var(--avatar-size)' }"
     >
@@ -27,6 +29,7 @@
 
     <!-- ChatInput 区域 -->
     <div
+      ref="chatContainer"
       class="w-full shrink-0 flex items-start justify-center transition-none"
       :style="{ height: 'var(--chat-h)' }"
     >
@@ -39,6 +42,8 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { getCurrentWindow, LogicalSize, Window } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useGameStore } from "../../stores/modules/game";
 import { useSettingsStore } from "../../stores/modules/settings";
 import { useUserStore } from "../../stores/modules/user/user";
@@ -61,6 +66,10 @@ const userStore = useUserStore();
 
 const mainWindow = ref<Window | null>(null);
 const showChatInput = ref(false);
+
+const dialogContainer = ref<HTMLElement | null>(null);
+const avatarContainer = ref<HTMLElement | null>(null);
+const chatContainer = ref<HTMLElement | null>(null);
 
 const appStyleVars = computed(() => {
   const scale = settingsStore.pet.scale || 1;
@@ -145,6 +154,8 @@ const openSettingsWindow = async () => {
 
 let unlistenScaleEvent: (() => void) | null = null;
 let unlistenDialogHistoryEvent: (() => void) | null = null;
+let unlistenSettingsEvent: UnlistenFn | null = null;
+let hitTestInterval: number | undefined;
 
 onMounted(async () => {
   mainWindow.value = getCurrentWindow();
@@ -162,6 +173,32 @@ onMounted(async () => {
       }
     },
   );
+
+  unlistenSettingsEvent = await listen("open-settings", () => {
+    handleOpenSettings();
+  });
+
+  hitTestInterval = window.setInterval(() => {
+    const rects = [];
+    if (
+      dialogContainer.value && 
+      gameStore.currentStatus === "responding" && 
+      gameStore.currentLine.trim() !== ""
+    ) {
+      const r = dialogContainer.value.getBoundingClientRect();
+      rects.push({ x: r.x, y: r.y, width: r.width, height: r.height });
+    }
+    if (avatarContainer.value) {
+      const r = avatarContainer.value.getBoundingClientRect();
+      rects.push({ x: r.x, y: r.y, width: r.width, height: r.height });
+    }
+    if (chatContainer.value && showChatInput.value) {
+      const r = chatContainer.value.getBoundingClientRect();
+      // Expand chat input slightly to prevent gaps dropping interactions
+      rects.push({ x: r.x - 20, y: r.y - 20, width: r.width + 40, height: r.height + 40 });
+    }
+    invoke("update_solid_regions", { rects }).catch(console.error);
+  }, 100);
 });
 
 watch(
@@ -201,6 +238,13 @@ onUnmounted(() => {
   if (unlistenDialogHistoryEvent) {
     unlistenDialogHistoryEvent();
     unlistenDialogHistoryEvent = null;
+  }
+  if (unlistenSettingsEvent) {
+    unlistenSettingsEvent();
+    unlistenSettingsEvent = null;
+  }
+  if (hitTestInterval !== undefined) {
+    window.clearInterval(hitTestInterval);
   }
 });
 
