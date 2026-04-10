@@ -5,6 +5,7 @@ import { connectWebSocket } from "./api/websocket";
 import { initializeEventProcessors } from "./core/events";
 import App from "./App.vue";
 import router from "./router";
+import { setupDialogHistorySync } from "./stores/modules/game/dialog-history-sync";
 
 import "./assets/styles/base.css";
 
@@ -19,4 +20,5 @@ initializeEventProcessors();
 
 app.use(pinia);
 app.use(router);
+void setupDialogHistorySync();
 app.mount("#app");

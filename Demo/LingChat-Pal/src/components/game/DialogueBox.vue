@@ -62,35 +62,61 @@ const handleDialogueClick = () => {
 <style scoped>
 .dialogue-box {
   position: relative;
-  top: 10px; /* 距离窗口顶部10px */
-  left: 50%;
-  transform: translateX(-50%);
-  width: 100%; /* 限制宽度不超过窗口 */
-  height: 70px;
-  z-index: 30; /* 确保在最顶层 */
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 30;
   cursor: pointer;
   animation: fadeIn 0.3s ease-in-out;
   opacity: 0;
 }
 
 .dialogue-content {
-  /* 液态玻璃效果 */
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px) saturate(180%);
-  -webkit-backdrop-filter: blur(10px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 20px;
+  /* 高级液态玻璃与渐变辉光效果 */
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.05) 100%);
+  backdrop-filter: blur(12px) saturate(200%);
+  -webkit-backdrop-filter: blur(12px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: calc(20px * var(--pet-ui-scale, 1));
   box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.1),
-    inset 0 1px 1px rgba(255, 255, 255, 0.1);
-  padding: 12px;
+    0 10px 40px -10px rgba(0, 176, 255, 0.3),
+    inset 0 1px 2px rgba(255, 255, 255, 0.4);
+  padding: calc(14px * var(--pet-ui-scale, 1)) calc(18px * var(--pet-ui-scale, 1));
+  width: 85%;
   color: white;
-  transition: all 0.2s ease;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+/* 内部高亮扫光效果 */
+.dialogue-content::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  animation: shine 4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes shine {
+  0% { left: -100%; }
+  20% { left: 100%; }
+  100% { left: 100%; }
 }
 
 .dialogue-content:hover {
-  background: rgba(255, 255, 255, 0.15);
-  transform: translateY(-2px);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.1) 100%);
+  transform: scale(1.02) translateY(-2px);
+  box-shadow:
+    0 15px 50px -10px rgba(0, 176, 255, 0.5),
+    inset 0 1px 2px rgba(255, 255, 255, 0.5);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 .character-name {
@@ -99,32 +125,36 @@ const handleDialogueClick = () => {
 }
 
 .character-emotion {
-  font-size: 12px;
-  opacity: 0.8;
+  font-size: calc(12px * var(--pet-ui-scale, 1));
+  color: rgba(165, 243, 252, 0.9);
+  font-weight: 600;
   font-style: italic;
-  right: 0;
+  letter-spacing: 1px;
+  margin-bottom: 2px;
+  text-shadow: 0 1px 4px rgba(0, 176, 255, 0.5);
 }
 
 .dialogue-text {
-  font-size: 15px;
-  line-height: 1.5;
+  font-size: calc(15px * var(--pet-ui-scale, 1));
+  line-height: 1.5; /* Slightly tighter leading */
+  font-weight: 500;
   white-space: pre-wrap;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--accent-color) transparent;
   -ms-overflow-style: -ms-autohiding-scrollbar;
-  min-height: 25px;
-  max-height: 45px;
+  min-height: calc(25px * var(--pet-ui-scale, 1));
+  max-height: calc(45px * var(--pet-ui-scale, 1));
 }
 
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(-10px);
+    transform: translateY(-10px);
   }
   to {
     opacity: 1;
-    transform: translateX(-50%) translateY(0);
+    transform: translateY(0);
   }
 }
 </style>

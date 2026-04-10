@@ -38,9 +38,15 @@ export const actions = {
         roleName: characterInfo.ai_name,
         roleSubTitle: characterInfo.ai_subtitle,
         thinkMessage: characterInfo.thinking_message,
-        scale: characterInfo.scale,
-        offsetX: characterInfo.offset_x,
-        offsetY: characterInfo.offset_y,
+        scale: characterInfo.scale_p
+          ? characterInfo.scale_p
+          : characterInfo.scale,
+        offsetX: characterInfo.offset_x_p
+          ? characterInfo.offset_x_p
+          : characterInfo.offset_x,
+        offsetY: characterInfo.offset_y_p
+          ? characterInfo.offset_y_p
+          : characterInfo.offset_y,
         bubbleLeft: characterInfo.bubble_left,
         bubbleTop: characterInfo.bubble_top,
         clothes: characterInfo.clothes,

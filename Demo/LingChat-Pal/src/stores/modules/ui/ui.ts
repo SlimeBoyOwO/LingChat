@@ -22,6 +22,8 @@ interface NotificationState {
 }
 
 interface UIState {
+  isDarkMode: boolean;
+
   showCharacterTitle: string;
   showCharacterSubtitle: string;
   showCharacterEmotion: string;
@@ -68,6 +70,8 @@ let hideTimer: number | null = null;
 
 export const useUIStore = defineStore("ui", {
   state: (): UIState => ({
+    isDarkMode: true,
+
     showCharacterTitle: "Lovely You",
     showCharacterSubtitle: "Bilibili",
     showCharacterEmotion: "",

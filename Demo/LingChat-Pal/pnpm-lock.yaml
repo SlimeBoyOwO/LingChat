@@ -23,6 +23,9 @@ importers:
       lingchat-pal:
         specifier: 'link:'
         version: 'link:'
+      lucide-vue-next:
+        specifier: ^1.0.0
+        version: 1.0.0(vue@3.5.22(typescript@5.6.3))
       pinia:
         specifier: ^3.0.3
         version: 3.0.3(typescript@5.6.3)(vue@3.5.22(typescript@5.6.3))
@@ -869,6 +872,11 @@ packages:
     resolution: {integrity: sha512-NXYBzinNrblfraPGyrbPoD19C1h9lfI/1mzgWYvXUTe414Gz/X1FD2XBZSZM7rRTrMA8JL3OtAaGifrIKhQ5yQ==}
     engines: {node: '>= 12.0.0'}
 
+  lucide-vue-next@1.0.0:
+    resolution: {integrity: sha512-V6SPvx1IHTj/UY+FrIYWV5faISsPSb8BnWSFDxAtezWKvWc9ZZ40PDrdu1/Qb5vg4lHWr1hs1BAMGVGm6V1Xdg==}
+    peerDependencies:
+      vue: '>=3.0.1'
+
   magic-string@0.30.19:
     resolution: {integrity: sha512-2N21sPY9Ws53PZvsEpVtNuSW+ScYbQdp4b9qUaL+9QkHUrGFKo56Lg9Emg5s9V/qrtNBmiR01sYhUOwu3H+VOw==}
 
@@ -1678,6 +1686,10 @@ snapshots:
       lightningcss-linux-x64-musl: 1.32.0
       lightningcss-win32-arm64-msvc: 1.32.0
       lightningcss-win32-x64-msvc: 1.32.0
+
+  lucide-vue-next@1.0.0(vue@3.5.22(typescript@5.6.3)):
+    dependencies:
+      vue: 3.5.22(typescript@5.6.3)
 
   magic-string@0.30.19:
     dependencies:

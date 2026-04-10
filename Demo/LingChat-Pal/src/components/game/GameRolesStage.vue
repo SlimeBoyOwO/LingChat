@@ -6,6 +6,7 @@
     :key="role.roleId"
     :role="role"
     @avatar-click="handleAvatarClick"
+    @open-settings="handleOpenSettings"
   />
 
   <!-- 2. 全局主语音播放器 -->
@@ -22,7 +23,12 @@ import RoleAvatar from "./GameRoleAvatar.vue";
 
 const gameStore = useGameStore();
 const uiStore = useUIStore();
-const emit = defineEmits(["audio-ended", "audio-started", "avatar-click"]);
+const emit = defineEmits([
+  "audio-ended",
+  "audio-started",
+  "avatar-click",
+  "open-settings",
+]);
 
 const mainAudio = ref<HTMLAudioElement | null>(null);
 
@@ -57,6 +63,10 @@ const onAudioEnded = () => {
 
 const handleAvatarClick = () => {
   emit("avatar-click");
+};
+
+const handleOpenSettings = () => {
+  emit("open-settings");
 };
 </script>
 
