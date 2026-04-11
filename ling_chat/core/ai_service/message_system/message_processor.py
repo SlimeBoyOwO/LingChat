@@ -81,8 +81,11 @@ class MessageProcessor:
                     "confidence": 0.5
                 }
 
+            file_str = ""
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            voice_maker = self.game_status.current_character.voice_maker
+            if self.game_status.current_character:
+                voice_maker = self.game_status.current_character.voice_maker
+                file_str = str(voice_maker.tts_provider.temp_dir / f"{uuid.uuid4()}_part_{i}.{voice_maker.tts_provider.format}")
 
             results.append({
                 "index": i,
@@ -92,7 +95,7 @@ class MessageProcessor:
                 "japanese_text": japanese_text,
                 "predicted": prediction_result["label"],
                 "confidence": prediction_result["confidence"],
-                "voice_file": str(voice_maker.tts_provider.temp_dir / f"{uuid.uuid4()}_part_{i}.{voice_maker.tts_provider.format}")
+                "voice_file": file_str,
             })
 
         return results
@@ -241,7 +244,7 @@ class MessageProcessor:
         else:
             dialog_format_prompt_2 = dialog_format_prompt_2_limit
 
-        if os.environ.get("ENABLE_TRANSLATE", "False").lower() == "true":
+        if os.environ.get("LLM_OUTPUT_SEC_LANG", "False").lower() == "true":
             if ai_prompt_example == ("",None):
                 logger.warning("角色配置文件缺少示例，将使用默认示例")
                 ai_prompt_example = """

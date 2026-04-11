@@ -1,5 +1,5 @@
-import { IEventProcessor } from "../event-processor";
-import { ScriptMusicEvent } from "../../../types";
+import type { IEventProcessor } from "../event-processor";
+import type { ScriptMusicEvent } from "../../../types";
 import { useUIStore } from "../../../stores/modules/ui/ui";
 
 export default class MusicProcessor implements IEventProcessor {

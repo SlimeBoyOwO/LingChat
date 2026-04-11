@@ -1,5 +1,5 @@
-import { IEventProcessor } from "../event-processor";
-import { ScriptDialogueEvent } from "../../../types";
+import type { IEventProcessor } from "../event-processor";
+import type { ScriptDialogueEvent } from "../../../types";
 import { useGameStore } from "../../../stores/modules/game";
 import { useUIStore } from "../../../stores/modules/ui/ui";
 
@@ -16,23 +16,24 @@ export default class DialogueProcessor implements IEventProcessor {
     gameStore.currentStatus = "responding";
 
     // 针对剧本模式，获取角色
-    gameStore.character = gameStore.script.isRunning
-      ? event.character
-        ? event.character
-        : "ERROR"
-      : gameStore.avatar.character_name;
+    const role = await gameStore.getOrCreateGameRole(event.roleId);
+    if (!role) {
+      console.warn("角色修改的角色似乎并没有被初始化");
+      return;
+    }
+
+    const displayName = event.displayName ? event.displayName : role.roleName;
+    const displaySubtitle = event.displaySubtitle
+      ? event.displaySubtitle
+      : role.roleSubTitle;
 
     gameStore.currentLine = event.motionText
       ? `${event.message} (${event.motionText})`
       : event.message || "";
 
-    gameStore.addToDialogHistory({
+    gameStore.appendGameMessage({
       type: "reply",
-      character: gameStore.script.isRunning
-        ? event.character
-          ? event.character
-          : "ERROR"
-        : gameStore.avatar.character_name,
+      displayName: displayName,
       content: event.message,
       emotion: event.emotion,
       audioFile: event.audioFile,
@@ -41,14 +42,17 @@ export default class DialogueProcessor implements IEventProcessor {
       originalTag: event.originalTag,
     });
 
-    uiStore.showCharacterLine = gameStore.currentLine; // TODO: 这部分逻辑之后整合
-    gameStore.avatar.emotion = event.emotion || "正常";
-    gameStore.avatar.originEmotion = event.originalTag || "正常";
-    uiStore.currentAvatarAudio = event.audioFile || "None";
-    uiStore.showCharacterEmotion = gameStore.avatar.originEmotion;
+    console.log(gameStore.dialogHistory);
 
-    uiStore.showCharacterTitle = gameStore.avatar.character_name;
-    uiStore.showCharacterSubtitle = gameStore.avatar.character_subtitle;
+    uiStore.showCharacterLine = gameStore.currentLine; // TODO: 这部分逻辑之后整合
+    role.emotion = event.emotion || "正常";
+    role.originalEmotion = event.originalTag || "正常";
+    gameStore.currentInteractRoleId = role.roleId;
+    uiStore.currentAvatarAudio = event.audioFile || "None";
+    uiStore.showCharacterEmotion = role.originalEmotion;
+
+    uiStore.showCharacterTitle = displayName;
+    uiStore.showCharacterSubtitle = displaySubtitle;
     // gameStore.currentCharacter = event.character;
 
     // 对话总是等待用户继续，所以这里不需要做任何等待

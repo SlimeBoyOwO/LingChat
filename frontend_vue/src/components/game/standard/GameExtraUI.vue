@@ -1,6 +1,6 @@
 <template>
   <!-- 整个 UI 层的根容器 -->
-  <div class="fixed top-0 left-0 w-full h-full pointer-events-none z-[999]">
+  <div class="fixed top-0 left-0 w-full h-full pointer-events-none z-999">
     <!-- 1. 章节名称显示区域 -->
     <ChapterNameDisplay />
 

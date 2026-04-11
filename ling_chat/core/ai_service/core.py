@@ -171,6 +171,28 @@ class AIService:
     def reset_lines(self):
         self._init_game_status()
 
+    def clear_lines(self):
+        """
+        清除对话历史，保留角色和基本配置，只清除台词和主角记忆。
+        比 reset_lines() 更轻量，不重新初始化角色，不误伤 NPC 记忆。
+        """
+        # 清空台词列表
+        self.game_status.line_list = []
+        # 添加系统提示作为第一条消息
+        system_line = LineBase(
+            content=self.ai_prompt,
+            attribute=LineAttribute.SYSTEM,
+            sender_role_id=self.character_id,
+            display_name=self.ai_name
+        )
+        self.game_status.add_line(system_line)
+
+        # 只清除主角的短期记忆，保留 NPC 记忆
+        if self.game_status.main_role and self.game_status.main_role.role_id:
+            self.game_status.role_manager.clear_role_memory(self.game_status.main_role.role_id)
+
+        logger.info("对话历史已清除（仅主角记忆）")
+
     def persist_memory_banks(self, save_id: int):
         """
         将运行时的 memory_bank 缓存写入 DB（仅在创建/保存存档时调用）。

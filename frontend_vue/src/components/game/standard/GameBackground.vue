@@ -6,7 +6,7 @@
     :src="uiStore.currentBackground || '@/assets/images/default_bg.jpg'"
     position="center center"
     object-fit="cover"
-    :duration="1000"
+    :duration="uiStore.currentBackgroundTransition"
   >
     <StarField
       ref="starfieldRef"
@@ -45,6 +45,7 @@
     :paused="uiStore.bgMusicPaused"
     :stopped="uiStore.bgMusicStoped"
     :duration="800"
+    :loop="uiStore.bgMusicMode === 'loop-single'"
     @ended="handleTrackEnd"
   />
 </template>
