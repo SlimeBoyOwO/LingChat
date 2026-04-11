@@ -1,5 +1,6 @@
 <template>
   <div class="relative w-full h-full">
+    <slot></slot>
     <!-- 底层图片（当前显示的图片） -->
     <div
       class="absolute inset-0 w-full h-full bg-no-repeat z-10 backface-hidden will-change-[opacity,background-image]"
