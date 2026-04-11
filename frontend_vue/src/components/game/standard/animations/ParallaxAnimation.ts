@@ -13,7 +13,6 @@ export interface ParallaxConfig {
   THROTTLE_DELAY: number
   USE_WILL_CHANGE: boolean
   USE_TRANSFORM_3D: boolean
-  REDUCE_MOTION: boolean
 }
 
 export interface ParallaxElements {
@@ -37,23 +36,12 @@ const DEFAULT_PARALLAX_CONFIG: ParallaxConfig = {
   THROTTLE_DELAY: 16, // ~60fps 节流延迟
   USE_WILL_CHANGE: true, // 启用 will-change 优化
   USE_TRANSFORM_3D: true, // 使用 3D transform 触发硬件加速
-  REDUCE_MOTION: false, // 尊重用户减少动画的偏好设置
 }
 
 /**
- * 高性能视差动画 Hook
+ * 视差动画 Hook
  *
  * 用于创建鼠标移动时的视差效果，包括人物、背景、星星层的平移动画
- * 优化特性：
- * - 节流处理减少计算频率
- * - will-change 优化 GPU 加速
- * - 3D transform 触发硬件加速
- * - 尊重用户减少动画偏好
- * - 页面可见性检测
- *
- * @param elements - 需要应用视差效果的元素引用
- * @param config - 可选的自定义配置
- * @returns 返回鼠标移动和鼠标离开的事件处理函数
  *
  */
 export function useParallaxAnimation(
@@ -212,11 +200,6 @@ export function useParallaxAnimation(
    * 节流的鼠标移动处理
    */
   function handleMouseMove(e: MouseEvent) {
-    // 检查用户是否偏好减少动画
-    if (PARALLAX_CONFIG.REDUCE_MOTION) {
-      return
-    }
-
     // 节流处理
     const now = performance.now()
     if (now - lastMouseMoveTime < PARALLAX_CONFIG.THROTTLE_DELAY) {
