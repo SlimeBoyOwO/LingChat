@@ -15,6 +15,7 @@
       :star-count="starCount"
       :scroll-speed="scrollSpeed"
       :colors="starColors"
+      style="z-index: 114514"
       @ready="onStarfieldReady"
     />
     <Rain
@@ -22,6 +23,8 @@
       :enabled="rainEnabled"
       :intensity="rainIntensity"
       style="z-index: 114514"
+    />
+    <Sakura
       v-if="uiStore.currentBackgroundEffect === 'Sakura'"
       :enabled="true"
       :intensity="1.5"
@@ -86,6 +89,8 @@ const starColors = ref<string[]>([
 
 // 其他特效参数控制
 const rainEnabled = ref<boolean>(true)
+
+console.log('rainEnabled', rainEnabled)
 const rainIntensity = ref<number>(1)
 const snowIntensity = ref<number>(1.5)
 
