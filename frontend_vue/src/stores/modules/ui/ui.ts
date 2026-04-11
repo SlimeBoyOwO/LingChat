@@ -32,6 +32,7 @@ interface UIState {
   currentSettingsTab: string
 
   currentBackground: string
+  currentBackgroundTransition: number
   currentPresentPic: string
   currentPresentPicScale: number
   currentBackgroundMusic: string
@@ -76,6 +77,7 @@ export const useUIStore = defineStore('ui', {
     showSettings: false,
     currentSettingsTab: 'text',
     currentBackground: '@/assets/images/default_bg.jpg',
+    currentBackgroundTransition: 1,
     currentPresentPic: '',
     currentPresentPicScale: 1,
 

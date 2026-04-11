@@ -36,9 +36,15 @@ class CharacterSettings(BaseModel):
     # 身体与外观
     body_part: Optional[Dict[str, Any]] = None
     scale: float = 1.0
-    offset: float = 0.0
+    offset_x: float = 0.0
+    offset_y: float = 0.0
     clothes_name: Optional[str] = None
     clothes: Optional[List[Dict[str, str]]] = None
+
+    # 桌宠设定
+    scale_p: float = 1.0
+    offset_x_p: float = 0.0
+    offset_y_p: float = 0.0
 
     # 语音与TTS
     voice_models: Optional[VoiceModel] = None

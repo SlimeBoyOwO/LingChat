@@ -32,7 +32,16 @@ const mainAudio = ref<HTMLAudioElement | null>(null)
 watch(
   () => uiStore.currentAvatarAudio,
   (newAudio) => {
-    if (mainAudio.value && newAudio && newAudio !== 'None') {
+    if (!mainAudio.value) return
+
+    // 如果设置为 'None'，停止当前播放
+    if (newAudio === 'None' || !newAudio) {
+      mainAudio.value.pause()
+      mainAudio.value.currentTime = 0
+      return
+    }
+
+    if (newAudio && newAudio !== 'None') {
       mainAudio.value.src = `${API_CONFIG.VOICE.BASE}/${newAudio}`
       mainAudio.value.load()
 
@@ -55,6 +64,18 @@ watch(
 const onAudioEnded = () => {
   emit('audio-ended')
 }
+
+// 暴露停止音频的方法给父组件
+const stopAudio = () => {
+  if (mainAudio.value) {
+    mainAudio.value.pause()
+    mainAudio.value.currentTime = 0
+  }
+}
+
+defineExpose({
+  stopAudio,
+})
 </script>
 
 <style scoped></style>

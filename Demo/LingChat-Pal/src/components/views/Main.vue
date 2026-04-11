@@ -1,129 +1,275 @@
 <template>
-  <div id="app" @mouseenter="handleMouseEnter" @mouseleave="handleMouseLeave">
-    <!-- 对话框组件 -->
-    <DialogueBox />
+  <div
+    id="app"
+    :style="appStyleVars"
+    @mouseenter="handleMouseEnter"
+    @mouseleave="handleMouseLeave"
+    class="relative w-(--app-width) h-(--app-height) flex flex-col justify-start items-center overflow-hidden transition-none"
+  >
+    <!-- DialogueBox 区域 -->
+    <div
+      ref="dialogContainer"
+      class="w-full shrink-0 flex items-end justify-center transition-none"
+      :style="{ height: 'var(--dialog-h)' }"
+    >
+      <DialogueBox />
+    </div>
 
-    <!-- 头像容器组件 -->
-    <AvatarContainer @avatar-click="handleAvatarClick" />
+    <!-- Avatar 区域 -->
+    <div
+      ref="avatarContainer"
+      class="shrink-0 flex items-center justify-center transition-all duration-100"
+      :style="{ width: 'var(--avatar-size)', height: 'var(--avatar-size)' }"
+    >
+      <GameRolesStage
+        @avatar-click="handleAvatarClick"
+        @open-settings="handleOpenSettings"
+      />
+    </div>
 
-    <!-- 主按钮组件 -->
-    <MainButton @click="handleMainButtonClick" />
-
-    <!-- 对话输入框组件 -->
-    <ChatInput :visible="showChatInput" @message-sent="handleMessageSent" />
+    <!-- ChatInput 区域 -->
+    <div
+      ref="chatContainer"
+      class="w-full shrink-0 flex items-start justify-center transition-none"
+      :style="{ height: 'var(--chat-h)' }"
+    >
+      <ChatInput :visible="showChatInput" @message-sent="handleMessageSent" />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from "vue";
-import { getCurrentWindow, Window, LogicalSize } from "@tauri-apps/api/window";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { getCurrentWindow, LogicalSize, Window } from "@tauri-apps/api/window";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useGameStore } from "../../stores/modules/game";
+import { useSettingsStore } from "../../stores/modules/settings";
 import { useUserStore } from "../../stores/modules/user/user";
 
-// 导入组件
-import AvatarContainer from "../game/AvatarContainer.vue";
-import MainButton from "../game/MainButton.vue";
 import ChatInput from "../game/ChatInput.vue";
 import DialogueBox from "../game/DialogueBox.vue";
 import { eventQueue } from "../../core/events/event-queue";
+import GameRolesStage from "../game/GameRolesStage.vue";
 
-// 使用ref存储窗口实例
-const mainWindow = ref<Window | null>(null);
+const PET_SCALE_EVENT = "pet-scale-changed";
+const DIALOG_HISTORY_EVENT = "dialog-history-changed";
+
+const BASE_AVATAR_SIZE = 240;
+const CHAT_BASE_H = 45;
+const DIALOG_BASE_H = 75;
+
 const gameStore = useGameStore();
+const settingsStore = useSettingsStore();
 const userStore = useUserStore();
 
-const runInitialization = async () => {
-  // 初始化窗口实例
+const mainWindow = ref<Window | null>(null);
+const showChatInput = ref(false);
 
+const dialogContainer = ref<HTMLElement | null>(null);
+const avatarContainer = ref<HTMLElement | null>(null);
+const chatContainer = ref<HTMLElement | null>(null);
+
+const appStyleVars = computed(() => {
+  const scale = settingsStore.pet.scale || 1;
+  const layout = calcWindowLayout(scale);
+  return {
+    "--pet-ui-scale": scale.toString(),
+    "--app-width": `${layout.width}px`,
+    "--app-height": `${layout.height}px`,
+    "--avatar-size": `${Math.round(BASE_AVATAR_SIZE * scale)}px`,
+    "--chat-h": `${Math.round(CHAT_BASE_H * scale)}px`,
+    "--dialog-h": `${Math.round(DIALOG_BASE_H * scale)}px`,
+  };
+});
+
+const calcWindowLayout = (scale: number): { width: number; height: number } => {
+  const S = Math.round(BASE_AVATAR_SIZE * scale);
+  const chatH = Math.round(CHAT_BASE_H * scale);
+  const dialogH = Math.round(DIALOG_BASE_H * scale);
+  return { width: S, height: S + dialogH + chatH }; // 固定总大小包裹三个元素的最大范围
+};
+
+const runInitialization = async () => {
   const userId = "1"; // TODO: 获取真实 userId
   try {
     await gameStore.initializeGame(userStore.client_id, userId);
-
-    // Action 成功后，处理仅与本组件相关的 UI 逻辑
-    // if (gameAvatarRef.value) {
-    //   gameAvatarRef.value.setEmotion("正常");
-    // } else {
-    //   console.log("这个组件不存在");
-    // }
   } catch (error) {
     console.log(error);
   }
 };
 
-// 初始化游戏信息
+const applyWindowLayout = async () => {
+  if (!mainWindow.value) return;
+  try {
+    const scale = settingsStore.pet.scale || 1;
+    const layout = calcWindowLayout(scale);
+
+    // 只在尺度改变时更新大小时，且无需调整偏置(坐标不再偏移)
+    await mainWindow.value.setSize(
+      new LogicalSize(layout.width, layout.height),
+    );
+  } catch (error) {
+    console.error("调整窗口布局失败:", error);
+  }
+};
+
+const openSettingsWindow = async () => {
+  const existingWindow = await WebviewWindow.getByLabel("settings");
+  if (existingWindow) {
+    try {
+      await existingWindow.unminimize();
+      await existingWindow.setFocus();
+    } catch (error) {
+      console.error("激活设置窗口失败:", error);
+    }
+    return;
+  }
+
+  const isDev = Boolean((import.meta as any).env?.DEV);
+  const targetUrl = isDev
+    ? `${window.location.origin}#/second`
+    : "index.html#/second";
+
+  const webview = new WebviewWindow("settings", {
+    url: targetUrl,
+    title: "设置",
+    width: 1100,
+    height: 760,
+    minWidth: 860,
+    minHeight: 620,
+    resizable: true,
+    shadow: false,
+    decorations: false,
+    transparent: true,
+    alwaysOnTop: false,
+    visible: true,
+  });
+
+  webview.once("tauri://error", (e) => {
+    console.error("创建设置窗口失败:", e);
+  });
+};
+
+let unlistenScaleEvent: (() => void) | null = null;
+let unlistenDialogHistoryEvent: (() => void) | null = null;
+let unlistenSettingsEvent: UnlistenFn | null = null;
+let hitTestInterval: number | undefined;
+
 onMounted(async () => {
   mainWindow.value = getCurrentWindow();
+
+  // Set initial sizes statically for the pet bounding box
+  await applyWindowLayout();
+
+  unlistenScaleEvent = await mainWindow.value.listen<{ scale: number }>(
+    PET_SCALE_EVENT,
+    async (event) => {
+      const scale = Number(event.payload?.scale);
+      if (!Number.isNaN(scale)) {
+        settingsStore.pet.scale = scale;
+        await applyWindowLayout();
+      }
+    },
+  );
+
+  unlistenSettingsEvent = await listen("open-settings", () => {
+    handleOpenSettings();
+  });
+
+  hitTestInterval = window.setInterval(() => {
+    const rects = [];
+    if (
+      dialogContainer.value && 
+      gameStore.currentStatus === "responding" && 
+      gameStore.currentLine.trim() !== ""
+    ) {
+      const r = dialogContainer.value.getBoundingClientRect();
+      rects.push({ x: r.x, y: r.y, width: r.width, height: r.height });
+    }
+    if (avatarContainer.value) {
+      const r = avatarContainer.value.getBoundingClientRect();
+      rects.push({ x: r.x, y: r.y, width: r.width, height: r.height });
+    }
+    if (chatContainer.value && showChatInput.value) {
+      const r = chatContainer.value.getBoundingClientRect();
+      // Expand chat input slightly to prevent gaps dropping interactions
+      rects.push({ x: r.x - 20, y: r.y - 20, width: r.width + 40, height: r.height + 40 });
+    }
+    invoke("update_solid_regions", { rects }).catch(console.error);
+  }, 100);
 });
 
-// 监听 client_id 的变化
 watch(
   () => userStore.client_id,
   (newId) => {
     if (newId) {
       runInitialization();
     }
-  }
+  },
 );
 
-// 对话输入框控制
-const showChatInput = ref(false);
+watch(
+  () => settingsStore.pet.scale,
+  () => {
+    void applyWindowLayout();
+  },
+);
 
-// 监听输入框显示状态变化，动态调整窗口大小
-const adjustWindowSize = async (visible: boolean) => {
-  try {
-    if (!mainWindow.value) {
-      console.warn("主窗口未初始化");
-      return;
+// 监听dialogHistory变化，通知SettingsPage窗口
+watch(
+  () => gameStore.dialogHistory,
+  (newHistory) => {
+    if (mainWindow.value) {
+      void mainWindow.value.emit(DIALOG_HISTORY_EVENT, {
+        dialogHistory: newHistory,
+      });
     }
+  },
+  { deep: true },
+);
 
-    if (visible) {
-      // 显示输入框时，扩展窗口高度40px
-      await mainWindow.value.setSize(new LogicalSize(260, 380));
-    } else {
-      // 隐藏输入框时，恢复原始窗口大小
-      await mainWindow.value.setSize(new LogicalSize(260, 380));
-    }
-  } catch (error) {
-    console.error("调整窗口大小失败:", error);
+onUnmounted(() => {
+  if (unlistenScaleEvent) {
+    unlistenScaleEvent();
+    unlistenScaleEvent = null;
   }
-};
-
-// 监听showChatInput变化
-watch(showChatInput, (newValue) => {
-  adjustWindowSize(newValue);
+  if (unlistenDialogHistoryEvent) {
+    unlistenDialogHistoryEvent();
+    unlistenDialogHistoryEvent = null;
+  }
+  if (unlistenSettingsEvent) {
+    unlistenSettingsEvent();
+    unlistenSettingsEvent = null;
+  }
+  if (hitTestInterval !== undefined) {
+    window.clearInterval(hitTestInterval);
+  }
 });
 
-// 处理主按钮点击事件
-const handleMainButtonClick = () => {
-  // 主按钮点击处理逻辑已移至MainButton组件内部
-  // 这里可以添加额外的处理逻辑
-  console.log("主按钮被点击");
-};
-
-// 处理消息发送事件
 const handleMessageSent = (message: string) => {
-  // scriptHandler.sendMessage(message);
+  console.log("Main: 消息已发送:", message);
 };
 
-// 处理鼠标进入事件
 const handleMouseEnter = () => {
   showChatInput.value = true;
 };
 
-// 处理鼠标离开事件
 const handleMouseLeave = () => {
   showChatInput.value = false;
 };
 
-// 处理头像点击事件
 const handleAvatarClick = () => {
-  console.log("Main: 头像被点击，继续对话");
   eventQueue.continue();
+};
+
+const handleOpenSettings = () => {
+  void openSettingsWindow();
 };
 </script>
 
 <style scoped>
-/* 主应用样式 */
 #app {
   position: relative;
   width: 100%;

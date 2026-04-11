@@ -7,7 +7,7 @@ from .responses import *
 
 class ResponseFactory:
     @staticmethod
-    def create_reply(seg: Dict, user_message: str, is_final: bool) -> ReplyResponse:
+    def create_reply(seg: Dict, user_message: str, is_final: bool, display_name: Optional[str] = None, display_subtitle: Optional[str] = None) -> ReplyResponse:
         return ReplyResponse(
             character=seg.get("character", "default"),
             roleId=seg.get("role_id", None),
@@ -18,7 +18,9 @@ class ResponseFactory:
             motionText=seg['motion_text'],
             audioFile=os.path.basename(seg['voice_file']) if os.path.exists(seg['voice_file']) else None,
             originalMessage=user_message,
-            isFinal=is_final
+            isFinal=is_final,
+            displayName=display_name,
+            displaySubtitle=display_subtitle
         )
 
     @staticmethod
@@ -51,8 +53,8 @@ class ResponseFactory:
         return ScriptInputResponse(hint=hint, isFinal=True, **kwargs)
 
     @staticmethod
-    def create_background(image: str, **kwargs) -> ScriptBackgroundResponse:
-        return ScriptBackgroundResponse(imagePath=image, **kwargs)
+    def create_background(image: str, transition: float, **kwargs) -> ScriptBackgroundResponse:
+        return ScriptBackgroundResponse(imagePath=image, transition=transition, **kwargs)
     
     @staticmethod
     def create_present_pic(image: str, scale: int, **kwargs) -> ScriptPresentPicResponse:
@@ -75,8 +77,8 @@ class ResponseFactory:
         return ScriptNarrationResponse(text=text, displayName=display_name, duration=duration)
 
     @staticmethod
-    def create_player_dialogue(text: str) -> ScriptPlayerResponse:
-        return ScriptPlayerResponse(text=text)
+    def create_player_dialogue(text: str, display_name: Optional[str] = None, display_subtitle: Optional[str] = None) -> ScriptPlayerResponse:
+        return ScriptPlayerResponse(text=text, displayName=display_name, displaySubtitle=display_subtitle)
 
     @staticmethod
     def create_modify_character(**kwargs) -> ScriptModifyCharacterResponse:

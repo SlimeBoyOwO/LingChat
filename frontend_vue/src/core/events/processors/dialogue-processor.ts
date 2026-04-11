@@ -22,13 +22,16 @@ export default class DialogueProcessor implements IEventProcessor {
       return
     }
 
+    const displayName = event.displayName ? event.displayName : role.roleName
+    const displaySubtitle = event.displaySubtitle ? event.displaySubtitle : role.roleSubTitle
+
     gameStore.currentLine = event.motionText
       ? `${event.message} (${event.motionText})`
       : event.message || ''
 
     gameStore.appendGameMessage({
       type: 'reply',
-      displayName: role.roleName,
+      displayName: displayName,
       content: event.message,
       emotion: event.emotion,
       audioFile: event.audioFile,
@@ -44,8 +47,8 @@ export default class DialogueProcessor implements IEventProcessor {
     uiStore.currentAvatarAudio = event.audioFile || 'None'
     uiStore.showCharacterEmotion = role.originalEmotion
 
-    uiStore.showCharacterTitle = role.roleName
-    uiStore.showCharacterSubtitle = role.roleSubTitle
+    uiStore.showCharacterTitle = displayName
+    uiStore.showCharacterSubtitle = displaySubtitle
     // gameStore.currentCharacter = event.character;
 
     // 对话总是等待用户继续，所以这里不需要做任何等待

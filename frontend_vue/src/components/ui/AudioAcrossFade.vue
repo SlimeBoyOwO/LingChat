@@ -13,6 +13,7 @@ const props = withDefaults(
     paused?: boolean
     stopped?: boolean
     duration?: number // 淡入淡出时长 (毫秒)
+    loop?: boolean // 是否循环播放
   }>(),
   {
     src: '',
@@ -20,6 +21,7 @@ const props = withDefaults(
     paused: false,
     stopped: false,
     duration: 800,
+    loop: false,
   },
 )
 
@@ -48,7 +50,18 @@ onBeforeUnmount(() => {
 // 只派发当前主音频轨道的结束事件，忽略备用轨道的事件
 const handleEnded = (index: number) => {
   if (index === activeIndex) {
-    emit('ended')
+    if (props.loop) {
+      // 循环播放：重置当前音频并重新播放
+      const activeAudio = activeIndex === 1 ? audio1.value : audio2.value
+      if (activeAudio) {
+        activeAudio.currentTime = 0
+        if (!props.paused && !props.stopped) {
+          activeAudio.play().catch((e) => console.warn('循环播放失败:', e))
+        }
+      }
+    } else {
+      emit('ended')
+    }
   }
 }
 

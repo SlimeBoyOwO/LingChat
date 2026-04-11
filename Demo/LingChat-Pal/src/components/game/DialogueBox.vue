@@ -1,20 +1,49 @@
 <template>
-  <div class="dialogue-box" ref="dialogueBox">
-    <div class="dialogue-content">
-      <div class="character-emotion">{{ characterEmotion }}</div>
-      <div class="dialogue-text">{{ dialogueText }}</div>
+  <!-- 外层容器：使用动态 class 控制显示隐藏和淡入淡出动画 -->
+  <div @click="handleDialogueClick"
+    class="relative flex items-center justify-center w-full h-full z-30 cursor-pointer transition-all duration-300 ease-out"
+    :class="isVisible
+      ? 'opacity-100 translate-y-0'
+      : 'opacity-0 translate-y-2 pointer-events-none'
+      ">
+    <!-- 气泡主体内容 (玻璃拟态效果) -->
+    <div
+      class="relative w-[85%] rounded-[calc(20px*var(--pet-ui-scale,1))] px-[calc(18px*var(--pet-ui-scale,1))] py-[calc(14px*var(--pet-ui-scale,1))] text-white backdrop-blur-md backdrop-saturate-200 border border-white/30 transition-all duration-300 hover:bg-linear-to-br hover:scale-[1.02] hover:-translate-y-0.5 hover:border-white/50">
+      <!-- 气泡尾巴 (指向桌宠的三角形)，默认居中偏下 -->
+      <div
+        class="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-0 h-0 border-l-10 border-l-transparent border-r-[10px] border-r-transparent border-t-white/30 drop-shadow-md">
+      </div>
+      <!-- 气泡尾巴的内部叠加，保持玻璃通透感 -->
+      <div
+        class="absolute -bottom-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-8 border-l-transparent border-r-[8px] border-r-transparent border-t-[8px] border-t-white/10">
+      </div>
+
+      <!-- 角色情绪 -->
+      <div v-if="characterEmotion"
+        class="text-[calc(12px*var(--pet-ui-scale,1))] text-cyan-200/90 font-semibold italic tracking-wider mb-0.5 drop-shadow-[0_1px_4px_rgba(0,176,255,0.5)] truncate">
+        {{ characterEmotion }}
+      </div>
+
+      <!-- 对话文本：强制单行不换行，超长显示省略号 -->
+      <div ref="textareaRef" class="text-[calc(15px*var(--pet-ui-scale,1))] leading-snug font-medium">
+
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from "vue";
+import { computed, ref, watch } from "vue";
 import { useGameStore } from "../../stores/modules/game";
 import { eventQueue } from "../../core/events/event-queue";
+import { useUIStore } from "../../stores/modules/ui/ui";
+import { useTypeWriter } from "../../composables/useTypeWriter";
 
 // 获取游戏状态
 const gameStore = useGameStore();
-const dialogueBox = ref<HTMLElement | null>(null);
+const uiStore = useUIStore();
+
+const currentDisplayedText = ref('')
 
 // 计算属性：判断对话框是否可见
 const isVisible = computed(() => {
@@ -24,28 +53,14 @@ const isVisible = computed(() => {
   );
 });
 
-// 计算属性：获取角色名称
-const characterName = computed(() => {
-  return gameStore.character || gameStore.avatar.character_name;
-});
-
 // 计算属性：获取角色情绪
 const characterEmotion = computed(() => {
-  return gameStore.avatar.emotion || "正常";
+  return uiStore.showCharacterEmotion ? uiStore.showCharacterEmotion : "";
 });
 
 // 计算属性：获取对话文本
 const dialogueText = computed(() => {
   return gameStore.currentLine || "";
-});
-
-// 监听对话框可见性变化
-watch(isVisible, (newValue) => {
-  if (dialogueBox.value) {
-    // 修改opcaity
-    dialogueBox.value.style.opacity = newValue ? "1" : "0";
-  }
-  console.log("对话框可见性变化:", newValue);
 });
 
 // 处理对话框点击事件
@@ -55,73 +70,24 @@ const handleDialogueClick = () => {
     eventQueue.continue();
   }
 };
+
+const textareaRef = ref<HTMLTextAreaElement | null>(null)
+
+const { startTyping, stopTyping } = useTypeWriter(textareaRef, (text) => {
+  currentDisplayedText.value = text
+})
+
+watch([() => uiStore.showCharacterLine, () => gameStore.currentStatus], ([newLine, newStatus]) => {
+  if (newLine && newLine !== '' && newStatus === 'responding') {
+    currentDisplayedText.value = ''
+    startTyping(newLine, uiStore.typeWriterSpeed)
+  } else if (newStatus === 'input') {
+    stopTyping()
+    currentDisplayedText.value = ''
+  }
+})
 </script>
 
 <style scoped>
-.dialogue-box {
-  position: relative;
-  top: 10px; /* 距离窗口顶部10px */
-  left: 50%;
-  transform: translateX(-50%);
-  width: 100%; /* 限制宽度不超过窗口 */
-  height: 70px;
-  z-index: 30; /* 确保在最顶层 */
-  cursor: pointer;
-  animation: fadeIn 0.3s ease-in-out;
-  opacity: 0;
-}
-
-.dialogue-content {
-  /* 液态玻璃效果 */
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px) saturate(180%);
-  -webkit-backdrop-filter: blur(10px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 20px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1),
-    inset 0 1px 1px rgba(255, 255, 255, 0.1);
-  padding: 12px;
-  color: white;
-  transition: all 0.2s ease;
-}
-
-.dialogue-content:hover {
-  background: rgba(255, 255, 255, 0.15);
-  transform: translateY(-2px);
-}
-
-.character-name {
-  font-weight: bold;
-  font-size: 16px;
-}
-
-.character-emotion {
-  font-size: 12px;
-  opacity: 0.8;
-  font-style: italic;
-  right: 0;
-}
-
-.dialogue-text {
-  font-size: 15px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--accent-color) transparent;
-  -ms-overflow-style: -ms-autohiding-scrollbar;
-  min-height: 25px;
-  max-height: 45px;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-}
+/* 所有样式都已成功迁移至 Tailwind CSS 类中，不再需要额外的 css */
 </style>

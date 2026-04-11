@@ -9,6 +9,7 @@ class BackgroundEvent(BaseEvent):
 
     async def _execute(self):
         image = self.event_data.get('imagePath', '')
+        transition = self.event_data.get('transition', 1.0)
         duration = self.event_data.get('duration', 1.0)
 
         logger.info(f"切换背景: {image}")
@@ -16,7 +17,7 @@ class BackgroundEvent(BaseEvent):
         # 更新游戏状态
         self.game_status.background = image
 
-        event_response = ResponseFactory.create_background(image, duration = duration)
+        event_response = ResponseFactory.create_background(image, transition, duration = duration)
         await message_broker.publish(self.client_id,
             event_response.model_dump()
         )
