@@ -56,6 +56,74 @@ const TARGET_FPS = 60 // 目标帧率
 const FRAME_INTERVAL = 1000 / TARGET_FPS // 帧间隔时间（毫秒）
 let lastFrameTime = 0 // 上一帧的时间
 
+// --- 性能优化：页面可见性检测 ---
+let isPageVisible = true
+
+// --- 性能优化：预渲染粒子缓存 ---
+let particleImageCache: Map<string, HTMLCanvasElement> | null = null
+
+// --- 性能优化：循环缓冲区 ---
+const MAX_POINTS_BUFFER = 100
+let pointsBufferIndex = 0
+let pointsBuffer: TrailPoint[] = new Array(MAX_POINTS_BUFFER)
+
+/**
+ * 创建预渲染的三角形粒子图像
+ * 避免每帧重复绘制路径
+ */
+function createTriangleParticle(size: number, color: string): HTMLCanvasElement {
+  const canvas = document.createElement('canvas')
+  const padding = size * 2
+  canvas.width = size * 2 + padding * 2
+  canvas.height = size * 2 + padding * 2
+  const ctx = canvas.getContext('2d')!
+
+  const centerX = canvas.width / 2
+  const centerY = canvas.height / 2
+
+  ctx.beginPath()
+  ctx.moveTo(centerX, centerY - size)
+  ctx.lineTo(centerX - size * 0.7, centerY + size * 0.7)
+  ctx.lineTo(centerX + size * 0.7, centerY + size * 0.7)
+  ctx.closePath()
+  ctx.fillStyle = color
+  ctx.fill()
+
+  return canvas
+}
+
+/**
+ * 获取或创建缓存的粒子图像
+ */
+function getParticleImage(size: number, color: string): HTMLCanvasElement {
+  if (!particleImageCache) {
+    particleImageCache = new Map()
+  }
+
+  const cacheKey = `${Math.round(size)}_${color}`
+  let image = particleImageCache.get(cacheKey)
+  if (!image) {
+    image = createTriangleParticle(size, color)
+    particleImageCache.set(cacheKey, image)
+  }
+  return image
+}
+
+/**
+ * 清理粒子图像缓存
+ */
+function clearParticleCache() {
+  particleImageCache?.clear()
+  particleImageCache = null
+}
+
+/**
+ * 处理页面可见性变化
+ */
+function handleVisibilityChange() {
+  isPageVisible = !document.hidden
+}
+
 // --- 初始化 Canvas ---
 const initCanvas = () => {
   const canvas = canvasRef.value
@@ -167,21 +235,17 @@ const drawParticles = () => {
     p.life = p.life - 1 / (60 * p.maxLife) < 0 ? 0 : p.life - 1 / (60 * p.maxLife) // 60fps衰减
     p.rotation += p.rotationSpeed
 
-    // 绘制粒子
+    // 绘制粒子 - 使用预渲染图像
     const alpha = p.life
     ctx.save()
     ctx.translate(p.x, p.y)
     ctx.rotate((p.rotation * Math.PI) / 180)
     ctx.globalAlpha = alpha
 
-    // 绘制三角形
-    ctx.beginPath()
-    ctx.moveTo(0, -p.size)
-    ctx.lineTo(-p.size * 0.7, p.size * 0.7)
-    ctx.lineTo(p.size * 0.7, p.size * 0.7)
-    ctx.closePath()
-    ctx.fillStyle = p.color
-    ctx.fill()
+    // 获取预渲染的粒子图像，避免每帧绘制路径
+    const particleImage = getParticleImage(p.size, p.color)
+    const halfSize = particleImage.width / 2
+    ctx.drawImage(particleImage, -halfSize, -halfSize)
 
     ctx.restore()
 
@@ -212,6 +276,12 @@ const updatePoints = () => {
 
 // --- 主绘制循环 ---
 const draw = (timestamp: number) => {
+  // 页面可见性检查：如果页面不可见，暂停动画
+  if (!isPageVisible) {
+    stopAnimation()
+    return
+  }
+
   // 帧率限制：只有当距离上一帧的时间超过设定的帧间隔时才执行绘制
   if (timestamp - lastFrameTime < FRAME_INTERVAL) {
     animationId = requestAnimationFrame(draw)
@@ -273,7 +343,7 @@ const handleMouseMove = (e: MouseEvent) => {
     return
   }
 
-  const now = Date.now()
+  const now = performance.now()
   if (now - lastMouseTime < MOUSE_THROTTLE) {
     return
   }
@@ -367,12 +437,21 @@ onMounted(() => {
   window.addEventListener('mousemove', handleMouseMove)
   window.addEventListener('click', handleClick)
   window.addEventListener('resize', handleResize)
+
+  // 添加页面可见性检测
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  isPageVisible = !document.hidden
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('mousemove', handleMouseMove)
   window.removeEventListener('click', handleClick)
   window.removeEventListener('resize', handleResize)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+
+  // 清理缓存
+  clearParticleCache()
+
   stopAnimation()
   points.length = 0
   particles.length = 0
