@@ -21,6 +21,8 @@ interface Star {
   baseOpacity: number
   rotation: number
   type: 'star' | 'circle'
+  cacheKey: number
+  flickerPhase: number
 }
 
 const STARS_COUNT = 80
@@ -32,6 +34,13 @@ let starsCtx: CanvasRenderingContext2D | null = null
 // 缓存预渲染的星星图像
 let starImageCache: Map<number, HTMLCanvasElement> | null = null
 let circleImageCache: Map<number, HTMLCanvasElement> | null = null
+
+let isPageVisible = true
+
+// 帧率限制
+let lastFrameTime = 0
+const TARGET_FPS = 30
+const FRAME_INTERVAL = 1000 / TARGET_FPS
 
 /**
  * 创建带发光效果的星星形状到离屏 canvas
@@ -109,28 +118,26 @@ function createCircleImage(size: number): HTMLCanvasElement {
  * 获取或创建缓存的星星图像
  * 使用 Map 缓存不同尺寸的预渲染图像
  */
-function getStarImage(size: number): HTMLCanvasElement {
+function getStarImage(cacheKey: number): HTMLCanvasElement {
   if (!starImageCache) {
     starImageCache = new Map()
   }
-  const roundedSize = Math.round(size)
-  let image = starImageCache.get(roundedSize)
+  let image = starImageCache.get(cacheKey)
   if (!image) {
-    image = createStarImage(roundedSize)
-    starImageCache.set(roundedSize, image)
+    image = createStarImage(cacheKey)
+    starImageCache.set(cacheKey, image)
   }
   return image
 }
 
-function getCircleImage(size: number): HTMLCanvasElement {
+function getCircleImage(cacheKey: number): HTMLCanvasElement {
   if (!circleImageCache) {
     circleImageCache = new Map()
   }
-  const roundedSize = Math.round(size)
-  let image = circleImageCache.get(roundedSize)
+  let image = circleImageCache.get(cacheKey)
   if (!image) {
-    image = createCircleImage(roundedSize)
-    circleImageCache.set(roundedSize, image)
+    image = createCircleImage(cacheKey)
+    circleImageCache.set(cacheKey, image)
   }
   return image
 }
@@ -164,13 +171,19 @@ function generateStars() {
 
   const tempStars: Star[] = []
   for (let i = 0; i < STARS_COUNT; i++) {
+    const size = Math.random() * 5 + 2
+    const type = Math.random() > 0.2 ? 'star' : 'circle'
     tempStars.push({
       x: Math.random() * w,
       y: Math.random() * (h * 0.33),
-      size: Math.random() * 5 + 2,
+      size,
       baseOpacity: Math.random() * 0.5 + 0.5,
       rotation: Math.random() * Math.PI * 2,
-      type: Math.random() > 0.2 ? 'star' : 'circle',
+      type,
+      // 优化：预计算缓存键，避免运行时 Math.round
+      cacheKey: Math.round(size),
+      // 优化：预计算闪烁相位，避免运行时计算
+      flickerPhase: Math.random() * Math.PI * 2,
     })
   }
   starsPositions.value = tempStars
@@ -191,7 +204,7 @@ function renderStars() {
   starsCtx.globalAlpha = 1.0
   starsCtx.clearRect(0, 0, w, h)
 
-  const now = Date.now()
+  const now = performance.now()
 
   const stars = starsPositions.value
 
@@ -199,12 +212,12 @@ function renderStars() {
     const pos = stars[i]
     if (!pos) continue
 
-    const flicker = 0.6 + 0.4 * Math.sin(now * FLICKER_SPEED + pos.x)
+    const flicker = 0.6 + 0.4 * Math.sin(now * FLICKER_SPEED + pos.flickerPhase)
     const opacity = Math.min(pos.baseOpacity * flicker, 1.0)
     starsCtx!.globalAlpha = opacity
 
-    // 获取预缓存的图像
-    const image = pos.type === 'star' ? getStarImage(pos.size) : getCircleImage(pos.size)
+    // 获取预缓存的图像，使用预计算的 cacheKey
+    const image = pos.type === 'star' ? getStarImage(pos.cacheKey) : getCircleImage(pos.cacheKey)
     const imgSize = image.width
     const halfSize = imgSize / 2
 
@@ -223,7 +236,20 @@ function renderStars() {
   }
 }
 
-function flickerAnimation() {
+function flickerAnimation(currentTime: number) {
+  // 性能优化：帧率限制
+  if (currentTime - lastFrameTime < FRAME_INTERVAL) {
+    starsFrameId = requestAnimationFrame(flickerAnimation)
+    return
+  }
+  lastFrameTime = currentTime
+
+  // 性能优化：页面不可见时暂停渲染
+  if (!isPageVisible) {
+    starsFrameId = requestAnimationFrame(flickerAnimation)
+    return
+  }
+
   renderStars()
   starsFrameId = requestAnimationFrame(flickerAnimation)
 }
@@ -233,16 +259,25 @@ function handleResize() {
   startStars()
 }
 
+// 处理页面可见性变化
+function handleVisibilityChange() {
+  isPageVisible = !document.hidden
+}
+
 function startStars() {
   if (!canvasRef.value) return
   generateStars()
-  flickerAnimation()
+  flickerAnimation(performance.now()) // 使用高精度时间戳
   window.removeEventListener('resize', handleResize)
   window.addEventListener('resize', handleResize)
+
+  // 添加页面可见性监听
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 }
 
 function stopStars() {
   window.removeEventListener('resize', handleResize)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
   if (starsFrameId) {
     cancelAnimationFrame(starsFrameId)
     starsFrameId = null
@@ -284,7 +319,6 @@ onUnmounted(() => {
   z-index: 1;
   pointer-events: none;
   overflow: hidden;
-  /* 移除 transition */
   will-change: transform;
 }
 
