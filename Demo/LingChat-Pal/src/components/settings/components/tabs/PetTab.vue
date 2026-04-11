@@ -25,8 +25,94 @@
       >
     </header>
 
+    <div class="grid grid-cols-2 gap-4 mt-4">
+      <div
+        @click="selectMode('normal')"
+        class="rounded-xl border p-5 shadow-sm relative overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-1"
+        :class="[
+          isDarkMode
+            ? 'border-slate-700 hover:border-sky-500 hover:bg-slate-800'
+            : 'border-slate-200 hover:border-sky-400 hover:bg-slate-50',
+          currentMode === 'normal'
+            ? isDarkMode
+              ? 'bg-slate-800 ring-2 ring-sky-500'
+              : 'bg-sky-50 ring-2 ring-sky-400'
+            : isDarkMode
+              ? 'bg-slate-800/50'
+              : 'bg-white',
+        ]"
+      >
+        <div class="flex items-center gap-3 mb-2">
+          <div
+            :class="[
+              'p-2 rounded-lg transition-colors',
+              currentMode === 'normal' || !isDarkMode
+                ? 'bg-sky-100/10 text-sky-500'
+                : 'bg-slate-800 text-slate-400',
+            ]"
+          >
+            <MessageSquare class="w-5 h-5" />
+          </div>
+          <h3
+            class="font-bold text-lg"
+            :class="isDarkMode ? 'text-slate-200' : 'text-slate-800'"
+          >
+            陪伴模式
+          </h3>
+        </div>
+        <p
+          class="text-xs"
+          :class="isDarkMode ? 'text-slate-400' : 'text-slate-500'"
+        >
+          正常的桌宠陪伴模式捏
+        </p>
+      </div>
+
+      <div
+        @click="selectMode('game')"
+        class="rounded-xl border p-5 shadow-sm relative overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-1"
+        :class="[
+          isDarkMode
+            ? 'border-slate-700 hover:border-violet-500 hover:bg-slate-800'
+            : 'border-slate-200 hover:border-violet-400 hover:bg-slate-50',
+          currentMode === 'game'
+            ? isDarkMode
+              ? 'bg-slate-800 ring-2 ring-violet-500'
+              : 'bg-violet-50 ring-2 ring-violet-400'
+            : isDarkMode
+              ? 'bg-slate-800/50'
+              : 'bg-white',
+        ]"
+      >
+        <div class="flex items-center gap-3 mb-2">
+          <div
+            :class="[
+              'p-2 rounded-lg transition-colors',
+              currentMode === 'game' || !isDarkMode
+                ? 'bg-violet-100/10 text-violet-500'
+                : 'bg-slate-800 text-slate-400',
+            ]"
+          >
+            <Gamepad2 class="w-5 h-5" />
+          </div>
+          <h3
+            class="font-bold text-lg"
+            :class="isDarkMode ? 'text-slate-200' : 'text-slate-800'"
+          >
+            游戏模式
+          </h3>
+        </div>
+        <p
+          class="text-xs"
+          :class="isDarkMode ? 'text-slate-400' : 'text-slate-500'"
+        >
+          可以让ta更多的感知你的屏幕
+        </p>
+      </div>
+    </div>
+
     <div
-      class="rounded-xl border p-6 shadow-sm relative overflow-hidden group transition-colors duration-300"
+      class="rounded-xl border mt-4 p-6 shadow-sm relative overflow-hidden group transition-colors duration-300"
       :class="
         isDarkMode
           ? 'bg-slate-800/50 border-slate-700'
@@ -40,9 +126,7 @@
 
       <div class="relative z-10">
         <div class="flex items-end gap-3 mb-6">
-          <div
-            class="text-4xl font-bold text-sky-500 tracking-tighter"
-          >
+          <div class="text-4xl font-bold text-sky-500 tracking-tighter">
             {{ percentLabel }}
           </div>
           <div
@@ -82,9 +166,7 @@
 
         <div
           class="flex justify-end pt-4 border-t mt-6 transition-colors"
-          :class="
-            isDarkMode ? 'border-slate-700' : 'border-slate-100/80'
-          "
+          :class="isDarkMode ? 'border-slate-700' : 'border-slate-100/80'"
         >
           <button
             type="button"
@@ -97,12 +179,68 @@
         </div>
       </div>
     </div>
+
+    <div
+      class="rounded-xl border p-6 shadow-sm relative overflow-hidden group transition-colors duration-300 mt-4"
+      :class="
+        isDarkMode
+          ? 'bg-slate-800/50 border-slate-700'
+          : 'bg-white border-slate-200'
+      "
+    >
+      <Sparkles
+        class="absolute -bottom-4 -right-4 w-32 h-32 opacity-10 -rotate-12 transition-all duration-300 group-hover:scale-110"
+        :class="isDarkMode ? 'text-slate-700' : 'text-slate-300'"
+      />
+
+      <div class="relative z-10">
+        <h3
+          class="font-bold text-lg mb-4 flex items-center gap-2"
+          :class="isDarkMode ? 'text-slate-200' : 'text-slate-800'"
+        >
+          <Sparkles class="w-5 h-5 text-sky-500" />
+          背景粒子效果
+        </h3>
+
+        <div class="flex gap-3">
+          <button
+            v-for="opt in particleOptions"
+            :key="opt.value"
+            @click="selectParticle(opt.value)"
+            class="flex-1 py-2 px-4 rounded-lg border font-medium text-sm transition-all duration-200 flex items-center justify-center gap-2"
+            :class="[
+              currentParticle === opt.value
+                ? isDarkMode
+                  ? 'bg-sky-500/20 border-sky-500 text-sky-400'
+                  : 'bg-sky-500 text-white border-sky-500 shadow-md'
+                : isDarkMode
+                  ? 'bg-transparent border-slate-600 text-slate-400 hover:border-slate-500 hover:text-slate-300'
+                  : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-100',
+            ]"
+          >
+            <component :is="opt.icon" class="w-4 h-4" v-if="opt.icon" />
+            {{ opt.label }}
+          </button>
+        </div>
+      </div>
+    </div>
   </article>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { Ruler, RotateCcw } from "lucide-vue-next";
+import { ref, computed } from "vue";
+import {
+  Ruler,
+  RotateCcw,
+  MessageSquare,
+  Gamepad2,
+  Sparkles,
+  Ban,
+  Stars,
+  Sun,
+} from "lucide-vue-next";
+import { useUIStore } from "../../../../stores/modules/ui/ui";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 const props = defineProps<{
   isDarkMode: boolean;
@@ -115,6 +253,28 @@ const emit = defineEmits<{
   updateScale: [value: number];
   resetScale: [];
 }>();
+
+const uiStore = useUIStore();
+
+const currentMode = ref("normal");
+const selectMode = (mode: string) => {
+  currentMode.value = mode;
+  // 空函数，留作后续逻辑实现
+};
+
+const currentParticle = computed(() => uiStore.currentBackgroundEffect);
+
+const particleOptions = [
+  { label: "无", value: "None", icon: Ban },
+  { label: "星空", value: "StarField", icon: Stars },
+  { label: "星辉", value: "BA", icon: Sun },
+];
+
+const selectParticle = async (value: string) => {
+  uiStore.setBackgroundEffect(value);
+  const appWindow = getCurrentWindow();
+  await appWindow.emit("background-effect-changed", { effect: value });
+};
 
 const percentLabel = computed(() => {
   return `${Math.round(props.petScale * 100)}%`;

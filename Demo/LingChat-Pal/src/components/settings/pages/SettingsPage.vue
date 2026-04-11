@@ -1,67 +1,33 @@
 <template>
-  <div
-    :class="[
-      'relative w-full h-full rounded-xl border flex flex-col overflow-hidden font-sans transition-colors duration-300',
-      isDarkMode
-        ? 'dark bg-slate-900 border-slate-700 text-slate-200 selection:bg-sky-800'
-        : 'bg-[#FAFCFF] border-slate-200 text-slate-800 selection:bg-sky-200',
-    ]"
-  >
-    <div
-      class="absolute inset-0 pointer-events-none z-0 opacity-40 bg-grid-pattern transition-colors duration-300"
-      style="background-size: 24px 24px"
-    ></div>
+  <div :class="[
+    'relative w-full h-full rounded-xl border flex flex-col overflow-hidden font-sans transition-colors duration-300',
+    isDarkMode
+      ? 'dark bg-slate-900 border-slate-700 text-slate-200 selection:bg-sky-800'
+      : 'bg-[#FAFCFF] border-slate-200 text-slate-800 selection:bg-sky-200',
+  ]">
+    <div class="absolute inset-0 pointer-events-none z-0 opacity-40 bg-grid-pattern transition-colors duration-300"
+      style="background-size: 24px 24px"></div>
 
     <section
       class="relative z-10 flex flex-col w-full h-full rounded-xl border m-1 md:m-2 shadow-2xl overflow-hidden backdrop-blur-md transition-colors duration-300"
-      :class="
-        isDarkMode
-          ? 'bg-slate-800/70 border-slate-700'
-          : 'bg-white/60 border-slate-200'
-      "
-      style="height: calc(100% - 1rem); width: calc(100% - 1rem)"
-    >
-      <SettingsHeader
-        :isDarkMode="isDarkMode"
-        :isMaximized="isMaximized"
-        @toggleTheme="toggleTheme"
-        @minimizeWindow="minimizeWindow"
-        @toggleMaximizeWindow="toggleMaximizeWindow"
-        @closeWindow="closeWindow"
-      />
+      :class="isDarkMode
+        ? 'bg-slate-800/70 border-slate-700'
+        : 'bg-white/60 border-slate-200'
+        " style="height: calc(100% - 1rem); width: calc(100% - 1rem)">
+      <SettingsHeader :isDarkMode="isDarkMode" :isMaximized="isMaximized" @toggleTheme="toggleTheme"
+        @minimizeWindow="minimizeWindow" @toggleMaximizeWindow="toggleMaximizeWindow" @closeWindow="closeWindow" />
 
       <main class="flex flex-1 overflow-hidden relative">
-        <SettingsSidebar
-          :isDarkMode="isDarkMode"
-          :activeTab="activeTab"
-          :tabs="tabs"
-          @update:activeTab="activeTab = $event"
-        />
+        <SettingsSidebar :isDarkMode="isDarkMode" :activeTab="activeTab" :tabs="tabs"
+          @update:activeTab="activeTab = $event" />
 
-        <section
-          class="flex-1 p-6 md:p-8 overflow-y-auto relative z-10 scroll-smooth"
-        >
+        <section class="flex-1 p-6 md:p-8 overflow-y-auto relative z-10 scroll-smooth">
           <transition name="fade-slide" mode="out-in">
-            <PetTab
-              v-if="activeTab === 'pet'"
-              key="pet"
-              :isDarkMode="isDarkMode"
-              :petScale="petScale"
-              :PET_SCALE_MIN="PET_SCALE_MIN"
-              :PET_SCALE_MAX="PET_SCALE_MAX"
-              @updateScale="updateScale"
-              @resetScale="resetScale"
-            />
-            <HistoryTab
-              v-else-if="activeTab === 'interaction'"
-              key="interaction"
-              :isDarkMode="isDarkMode"
-            />
-            <WindowTab
-              v-else-if="activeTab == 'window'"
-              key="window"
-              :isDarkMode="isDarkMode"
-            />
+            <PetTab v-if="activeTab === 'pet'" key="pet" :isDarkMode="isDarkMode" :petScale="petScale"
+              :PET_SCALE_MIN="PET_SCALE_MIN" :PET_SCALE_MAX="PET_SCALE_MAX" @updateScale="updateScale"
+              @resetScale="resetScale" />
+            <HistoryTab v-else-if="activeTab === 'interaction'" key="interaction" :isDarkMode="isDarkMode" />
+            <WindowTab v-else-if="activeTab == 'window'" key="window" :isDarkMode="isDarkMode" />
             <TodoTab v-else key="todo" :isDarkMode="isDarkMode" />
           </transition>
         </section>
@@ -83,14 +49,7 @@ import {
 import { useGameStore } from "../../../stores/modules/game";
 
 // 引入 Lucide 图标
-import {
-  Ruler,
-  Pointer,
-  LayoutTemplate,
-  Book,
-  Cat,
-  CheckCircle2,
-} from "lucide-vue-next";
+import { Ruler, Book, Cat, CheckCircle2 } from "lucide-vue-next";
 
 // 引入自定义组件
 import SettingsHeader from "../components/SettingsHeader.vue";
@@ -101,6 +60,7 @@ import { useUIStore } from "../../../stores/modules/ui/ui";
 
 const PET_SCALE_EVENT = "pet-scale-changed";
 const DIALOG_HISTORY_EVENT = "dialog-history-changed";
+const DARK_MODE_KEY = "lingchat-dark-mode";
 const appWindow = getCurrentWindow();
 const settingsStore = useSettingsStore();
 const gameStore = useGameStore();
@@ -109,10 +69,25 @@ const uiStore = useUIStore();
 const isMaximized = ref(false);
 const activeTab = ref<"pet" | "interaction" | "window" | "todo">("pet");
 
-// 深色模式状态与切换方法 (如需持久化可绑定到 settingsStore)
+// 深色模式状态与切换方法
 const isDarkMode = computed(() => uiStore.isDarkMode);
+
+// 从 localStorage 加载深色模式设置
+const loadDarkModeFromStorage = () => {
+  const savedDarkMode = localStorage.getItem(DARK_MODE_KEY);
+  if (savedDarkMode !== null) {
+    uiStore.isDarkMode = savedDarkMode === "true";
+  }
+};
+
+// 将深色模式设置保存到 localStorage
+const saveDarkModeToStorage = () => {
+  localStorage.setItem(DARK_MODE_KEY, String(uiStore.isDarkMode));
+};
+
 const toggleTheme = () => {
   uiStore.isDarkMode = !uiStore.isDarkMode;
+  saveDarkModeToStorage();
 };
 
 type TabItem = {
@@ -123,7 +98,7 @@ type TabItem = {
 };
 
 const tabs = [
-  { key: "pet", label: "桌宠体型", icon: Ruler, en: "SCALE CONFIG" } as TabItem,
+  { key: "pet", label: "桌宠设置", icon: Ruler, en: "PET CONFIG" } as TabItem,
   {
     key: "interaction",
     label: "历史对话",
@@ -179,6 +154,9 @@ const closeWindow = async () => {
 onMounted(async () => {
   await syncMaximizedState();
 
+  // 从 localStorage 加载深色模式设置
+  loadDarkModeFromStorage();
+
   // 监听Main窗口的dialogHistory变化
   const unlisten = await appWindow.listen<{ dialogHistory: any[] }>(
     DIALOG_HISTORY_EVENT,
@@ -202,6 +180,7 @@ onMounted(async () => {
 .bg-grid-pattern {
   background-image: radial-gradient(circle, #cbd5e1 1px, transparent 1px);
 }
+
 /* 深色模式网格 */
 .dark .bg-grid-pattern {
   background-image: radial-gradient(circle, #334155 1px, transparent 1px);
