@@ -1,6 +1,6 @@
 import { onUnmounted, ref, type Ref } from 'vue'
 
-/* ================== 视差倾斜 & 平移效果 (优化版) ================== */
+/* ================== 视差倾斜 & 平移效果 ================== */
 export interface ParallaxConfig {
   MAX_ANGLE: number
   VERTICAL_SCALE: number
@@ -9,6 +9,11 @@ export interface ParallaxConfig {
   STARS_MAX_SHIFT: number
   DAMPING: number
   IDLE_THRESHOLD: number
+  // 新增性能配置
+  THROTTLE_DELAY: number
+  USE_WILL_CHANGE: boolean
+  USE_TRANSFORM_3D: boolean
+  REDUCE_MOTION: boolean
 }
 
 export interface ParallaxElements {
@@ -28,12 +33,23 @@ const DEFAULT_PARALLAX_CONFIG: ParallaxConfig = {
   STARS_MAX_SHIFT: 20,
   DAMPING: 0.08,
   IDLE_THRESHOLD: 0.01,
+  // 新增性能配置默认值
+  THROTTLE_DELAY: 16, // ~60fps 节流延迟
+  USE_WILL_CHANGE: true, // 启用 will-change 优化
+  USE_TRANSFORM_3D: true, // 使用 3D transform 触发硬件加速
+  REDUCE_MOTION: false, // 尊重用户减少动画的偏好设置
 }
 
 /**
- * 视差动画 Hook
+ * 高性能视差动画 Hook
  *
  * 用于创建鼠标移动时的视差效果，包括人物、背景、星星层的平移动画
+ * 优化特性：
+ * - 节流处理减少计算频率
+ * - will-change 优化 GPU 加速
+ * - 3D transform 触发硬件加速
+ * - 尊重用户减少动画偏好
+ * - 页面可见性检测
  *
  * @param elements - 需要应用视差效果的元素引用
  * @param config - 可选的自定义配置
@@ -57,33 +73,92 @@ export function useParallaxAnimation(
   let currentOffsetY = 0
   let parallaxRafId: number | null = null
   let isParallaxRunning = false
+  let lastMouseMoveTime = 0
+  let isPageVisible = true
 
   /**
-   * 应用视差变换到各层元素
+   * 设置元素性能优化属性
+   */
+  function setupPerformanceOptimizations() {
+    const elementsToOptimize = [
+      elements.charRef.value,
+      elements.bgRef.value,
+      elements.starsLayerRef.value,
+    ]
+
+    elementsToOptimize.forEach((element) => {
+      if (!element) return
+
+      // 启用 will-change 优化
+      if (PARALLAX_CONFIG.USE_WILL_CHANGE) {
+        element.style.willChange = 'transform'
+      }
+
+      // 设置 3D transform 触发硬件加速
+      if (PARALLAX_CONFIG.USE_TRANSFORM_3D) {
+        element.style.transformStyle = 'preserve-3d'
+        element.style.backfaceVisibility = 'hidden'
+      }
+    })
+  }
+
+  /**
+   * 清理元素性能优化属性
+   */
+  function cleanupPerformanceOptimizations() {
+    const elementsToOptimize = [
+      elements.charRef.value,
+      elements.bgRef.value,
+      elements.starsLayerRef.value,
+    ]
+
+    elementsToOptimize.forEach((element) => {
+      if (!element) return
+
+      // 清理 will-change
+      if (PARALLAX_CONFIG.USE_WILL_CHANGE) {
+        element.style.willChange = 'auto'
+      }
+    })
+  }
+
+  /**
+   * 高性能视差变换应用
    */
   function applyParallaxTransforms(offsetX: number, offsetY: number) {
     const charShift = -offsetX * PARALLAX_CONFIG.CHAR_MAX_SHIFT
     const bgShift = -offsetX * PARALLAX_CONFIG.BG_MAX_SHIFT
     const starsShift = -offsetX * PARALLAX_CONFIG.STARS_MAX_SHIFT
 
+    // 使用 3D transform 触发硬件加速
+    const transform3D = PARALLAX_CONFIG.USE_TRANSFORM_3D ? ' translateZ(0)' : ''
+
     if (elements.charRef.value) {
-      elements.charRef.value.style.transform = `translate(-50%, -50%) translateX(${charShift}px)`
+      elements.charRef.value.style.transform = `translate(-50%, -50%) translateX(${charShift}px)${transform3D}`
     }
     if (elements.bgRef.value) {
-      elements.bgRef.value.style.transform = `translateX(${bgShift}px)`
+      elements.bgRef.value.style.transform = `translateX(${bgShift}px)${transform3D}`
     }
     if (elements.starsLayerRef.value) {
-      elements.starsLayerRef.value.style.transform = `translateX(${starsShift}px)`
+      elements.starsLayerRef.value.style.transform = `translateX(${starsShift}px)${transform3D}`
     }
   }
 
   /**
-   * 优化的视差动画循环
+   * 高性能视差动画循环
    * - 只在有实际移动时启动
    * - 当值收敛到目标时自动停止
    * - 避免空闲时的不必要计算
+   * - 页面不可见时暂停
    */
   function parallaxLoop() {
+    // 页面可见性检查
+    if (!isPageVisible) {
+      isParallaxRunning = false
+      parallaxRafId = null
+      return
+    }
+
     const deltaX = targetOffsetX - currentOffsetX
     const deltaY = targetOffsetY - currentOffsetY
 
@@ -115,13 +190,40 @@ export function useParallaxAnimation(
    * 启动视差动画（如果尚未运行）
    */
   function startParallaxIfNeeded() {
-    if (!isParallaxRunning) {
+    if (!isParallaxRunning && isPageVisible) {
       isParallaxRunning = true
       parallaxLoop()
     }
   }
 
+  /**
+   * 处理页面可见性变化
+   */
+  function handleVisibilityChange() {
+    isPageVisible = !document.hidden
+    if (!isPageVisible && parallaxRafId) {
+      cancelAnimationFrame(parallaxRafId)
+      parallaxRafId = null
+      isParallaxRunning = false
+    }
+  }
+
+  /**
+   * 节流的鼠标移动处理
+   */
   function handleMouseMove(e: MouseEvent) {
+    // 检查用户是否偏好减少动画
+    if (PARALLAX_CONFIG.REDUCE_MOTION) {
+      return
+    }
+
+    // 节流处理
+    const now = performance.now()
+    if (now - lastMouseMoveTime < PARALLAX_CONFIG.THROTTLE_DELAY) {
+      return
+    }
+    lastMouseMoveTime = now
+
     const centerX = window.innerWidth / 2
     const centerY = window.innerHeight / 2
     targetOffsetX = (e.clientX - centerX) / centerX
@@ -135,6 +237,12 @@ export function useParallaxAnimation(
     startParallaxIfNeeded()
   }
 
+  // 初始化性能优化
+  setupPerformanceOptimizations()
+
+  // 监听页面可见性变化
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+
   // 组件卸载时清理
   onUnmounted(() => {
     if (parallaxRafId) {
@@ -142,6 +250,12 @@ export function useParallaxAnimation(
       parallaxRafId = null
     }
     isParallaxRunning = false
+
+    // 清理性能优化
+    cleanupPerformanceOptimizations()
+
+    // 移除事件监听
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
   })
 
   return {
