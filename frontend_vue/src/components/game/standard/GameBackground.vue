@@ -21,17 +21,23 @@
       v-if="uiStore.currentBackgroundEffect === 'Rain'"
       :enabled="rainEnabled"
       :intensity="rainIntensity"
+      style="z-index: 114514"
+      v-if="uiStore.currentBackgroundEffect === 'Sakura'"
+      :enabled="true"
+      :intensity="1.5"
+      style="z-index: 114514"
     />
-    <Sakura v-if="uiStore.currentBackgroundEffect === 'Sakura'" :enabled="true" :intensity="1.5" />
     <Snow
       v-if="uiStore.currentBackgroundEffect === 'Snow'"
       :intensity="snowIntensity"
       :enabled="true"
+      style="z-index: 114514"
     />
     <Fireworks
       v-if="uiStore.currentBackgroundEffect === 'Fireworks'"
       :enabled="true"
       :intensity="1.5"
+      style="z-index: 114514"
     />
   </ImageAcrossFade>
 
