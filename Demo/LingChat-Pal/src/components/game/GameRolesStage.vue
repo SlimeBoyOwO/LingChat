@@ -1,13 +1,7 @@
 <template>
-  <!-- 1. 遍历渲染所有在场角色 -->
-  <!-- z-index 可以根据 index 动态设置，保证后面渲染的在上面，或者根据 y轴 排序 -->
-  <RoleAvatar
-    v-for="role in gameStore.presentRolesList"
-    :key="role.roleId"
-    :role="role"
-    @avatar-click="handleAvatarClick"
-    @open-settings="handleOpenSettings"
-  />
+  <!-- 1. 最多显示一个角色 -->
+  <RoleAvatar v-if="singleRole" :key="singleRole.roleId" :role="singleRole" @avatar-click="handleAvatarClick"
+    @open-settings="handleOpenSettings" @switch-auto-mode="handleSwitchAutoMode" />
 
   <!-- 2. 全局主语音播放器 -->
   <!-- 将语音逻辑放在父级，因为通常同一时间只有一段对话语音 -->
@@ -15,7 +9,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { ref, watch, computed } from "vue";
 import { API_CONFIG } from "../../core/api/config";
 import { useGameStore } from "../../stores/modules/game";
 import { useUIStore } from "../../stores/modules/ui/ui";
@@ -28,9 +22,15 @@ const emit = defineEmits([
   "audio-started",
   "avatar-click",
   "open-settings",
+  "switch-auto-mode",
 ]);
 
 const mainAudio = ref<HTMLAudioElement | null>(null);
+
+// 计算属性：获取第一个角色（最多显示一个角色）
+const singleRole = computed(() => {
+  return gameStore.presentRolesList.length > 0 ? gameStore.presentRolesList[0] : null;
+});
 
 // --- 音频逻辑 (全局) ---
 // 监听 UI Store 的音频播放指令
@@ -68,6 +68,10 @@ const handleAvatarClick = () => {
 const handleOpenSettings = () => {
   emit("open-settings");
 };
+
+const handleSwitchAutoMode = () => {
+  emit("switch-auto-mode");
+}
 </script>
 
 <style scoped></style>

@@ -1,38 +1,23 @@
 <template>
-  <div
-    id="app"
-    :style="appStyleVars"
-    @mouseenter="handleMouseEnter"
-    @mouseleave="handleMouseLeave"
-    class="relative w-(--app-width) h-(--app-height) flex flex-col justify-start items-center overflow-hidden transition-none"
-  >
+  <div id="app" :style="appStyleVars" @mouseenter="handleMouseEnter" @mouseleave="handleMouseLeave"
+    class="relative w-(--app-width) h-(--app-height) flex flex-col justify-start items-center overflow-hidden transition-none">
     <!-- DialogueBox 区域 -->
-    <div
-      ref="dialogContainer"
-      class="w-full shrink-0 flex items-end justify-center transition-none"
-      :style="{ height: 'var(--dialog-h)' }"
-    >
-      <DialogueBox />
+    <div ref="dialogContainer" class="w-full shrink-0 flex items-end justify-center transition-none"
+      :style="{ height: 'var(--dialog-h)' }">
+      <DialogueBox ref="gameDialogRef" @player-continued="manualTriggerContinue" @dialog-proceed="resetInteraction" />
     </div>
 
     <!-- Avatar 区域 -->
-    <div
-      ref="avatarContainer"
-      class="shrink-0 flex items-center justify-center transition-all duration-100"
-      :style="{ width: 'var(--avatar-size)', height: 'var(--avatar-size)' }"
-    >
-      <GameRolesStage
-        @avatar-click="handleAvatarClick"
-        @open-settings="handleOpenSettings"
-      />
+    <div ref="avatarContainer" class="shrink-0 flex items-center justify-center transition-all duration-100"
+      :style="{ width: 'var(--avatar-size)', height: 'var(--avatar-size)' }">
+      <GameRolesStage @avatar-click="handleAvatarClick" @open-settings="handleOpenSettings"
+        @switch-auto-mode="handleSwitchAutoMode" @audio-ended="handleAudioFinished"
+        @audio-started="handleAudioStarted" />
     </div>
 
     <!-- ChatInput 区域 -->
-    <div
-      ref="chatContainer"
-      class="w-full shrink-0 flex items-start justify-center transition-none"
-      :style="{ height: 'var(--chat-h)' }"
-    >
+    <div ref="chatContainer" class="w-full shrink-0 flex items-start justify-center transition-none"
+      :style="{ height: 'var(--chat-h)' }">
       <ChatInput :visible="showChatInput" @message-sent="handleMessageSent" />
     </div>
   </div>
@@ -52,6 +37,9 @@ import ChatInput from "../game/ChatInput.vue";
 import DialogueBox from "../game/DialogueBox.vue";
 import { eventQueue } from "../../core/events/event-queue";
 import GameRolesStage from "../game/GameRolesStage.vue";
+import { useUIStore } from "../../stores/modules/ui/ui";
+import StarField from "../particles/StarField.vue";
+import BAParticles from "../particles/BAParticles.vue";
 
 const PET_SCALE_EVENT = "pet-scale-changed";
 const DIALOG_HISTORY_EVENT = "dialog-history-changed";
@@ -63,6 +51,7 @@ const DIALOG_BASE_H = 75;
 const gameStore = useGameStore();
 const settingsStore = useSettingsStore();
 const userStore = useUserStore();
+const uiStore = useUIStore();
 
 const mainWindow = ref<Window | null>(null);
 const showChatInput = ref(false);
@@ -70,6 +59,7 @@ const showChatInput = ref(false);
 const dialogContainer = ref<HTMLElement | null>(null);
 const avatarContainer = ref<HTMLElement | null>(null);
 const chatContainer = ref<HTMLElement | null>(null);
+const gameDialogRef = ref<InstanceType<typeof DialogueBox> | null>(null);
 
 const appStyleVars = computed(() => {
   const scale = settingsStore.pet.scale || 1;
@@ -155,6 +145,7 @@ const openSettingsWindow = async () => {
 let unlistenScaleEvent: (() => void) | null = null;
 let unlistenDialogHistoryEvent: (() => void) | null = null;
 let unlistenSettingsEvent: UnlistenFn | null = null;
+let unlistenBackgroundEffectEvent: (() => void) | null = null;
 let hitTestInterval: number | undefined;
 
 onMounted(async () => {
@@ -174,6 +165,15 @@ onMounted(async () => {
     },
   );
 
+  unlistenBackgroundEffectEvent = await mainWindow.value.listen<{
+    effect: string;
+  }>("background-effect-changed", (event) => {
+    const effect = event.payload?.effect;
+    if (effect) {
+      uiStore.setBackgroundEffect(effect);
+    }
+  });
+
   unlistenSettingsEvent = await listen("open-settings", () => {
     handleOpenSettings();
   });
@@ -181,8 +181,8 @@ onMounted(async () => {
   hitTestInterval = window.setInterval(() => {
     const rects = [];
     if (
-      dialogContainer.value && 
-      gameStore.currentStatus === "responding" && 
+      dialogContainer.value &&
+      gameStore.currentStatus === "responding" &&
       gameStore.currentLine.trim() !== ""
     ) {
       const r = dialogContainer.value.getBoundingClientRect();
@@ -195,7 +195,12 @@ onMounted(async () => {
     if (chatContainer.value && showChatInput.value) {
       const r = chatContainer.value.getBoundingClientRect();
       // Expand chat input slightly to prevent gaps dropping interactions
-      rects.push({ x: r.x - 20, y: r.y - 20, width: r.width + 40, height: r.height + 40 });
+      rects.push({
+        x: r.x - 20,
+        y: r.y - 20,
+        width: r.width + 40,
+        height: r.height + 40,
+      });
     }
     invoke("update_solid_regions", { rects }).catch(console.error);
   }, 100);
@@ -243,6 +248,10 @@ onUnmounted(() => {
     unlistenSettingsEvent();
     unlistenSettingsEvent = null;
   }
+  if (unlistenBackgroundEffectEvent) {
+    unlistenBackgroundEffectEvent();
+    unlistenBackgroundEffectEvent = null;
+  }
   if (hitTestInterval !== undefined) {
     window.clearInterval(hitTestInterval);
   }
@@ -266,6 +275,82 @@ const handleAvatarClick = () => {
 
 const handleOpenSettings = () => {
   void openSettingsWindow();
+};
+
+let timerId: any = null;
+// 2. 状态标志，记录 continue() 是否已被调用
+const isContinueTriggered = ref(false);
+// 3. 追踪音频和打字状态
+const audioFinished = ref(true); // 默认 true（无音频时视为已完成）
+
+// 在新交互开始前调用的重置函数
+const resetInteraction = () => {
+  isContinueTriggered.value = false;
+  audioFinished.value = true;
+  if (timerId) {
+    clearTimeout(timerId);
+    timerId = null;
+  }
+};
+
+// 尝试触发自动继续（打字和音频都结束后才执行）
+const tryAutoAdvance = () => {
+  if (!uiStore.autoMode) return;
+  if (isContinueTriggered.value) return;
+  if (gameStore.currentStatus !== "responding") return;
+
+  const typing = gameDialogRef.value?.isTyping ?? false;
+  if (typing || !audioFinished.value) return;
+
+  if (timerId) clearTimeout(timerId);
+  timerId = setTimeout(() => {
+    if (gameDialogRef.value) {
+      const needWait = gameDialogRef.value.continueDialog(false);
+      if (needWait) {
+        tryAutoAdvance();
+      }
+    }
+  }, 1000);
+};
+
+// 音频开始播放
+const handleAudioStarted = () => {
+  audioFinished.value = false;
+};
+
+// 音频播放结束
+const handleAudioFinished = () => {
+  audioFinished.value = true;
+  tryAutoAdvance();
+};
+
+// 监听打字结束
+watch(
+  () => gameDialogRef.value?.isTyping,
+  (typing) => {
+    console.log("父组件：打字状态变化", typing);
+    if (typing === false) {
+      tryAutoAdvance();
+    }
+  },
+);
+
+// 用户手动触发的函数
+const manualTriggerContinue = () => {
+  console.log("用户主动点击了");
+  if (timerId) {
+    clearTimeout(timerId);
+    timerId = null;
+  }
+
+  if (!isContinueTriggered.value) {
+    isContinueTriggered.value = true;
+  } else {
+  }
+};
+
+const handleSwitchAutoMode = () => {
+  uiStore.autoMode = !uiStore.autoMode;
 };
 </script>
 

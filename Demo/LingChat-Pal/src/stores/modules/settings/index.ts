@@ -51,7 +51,7 @@ export const DEFAULT_SETTINGS = {
   },
   // 显示设置
   display: {
-    backgroundEffect: "StarField", // 背景效果名称
+    backgroundEffect: "BA", // 背景效果名称
   },
   // 角色设置
   character: {
