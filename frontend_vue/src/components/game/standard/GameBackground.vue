@@ -15,23 +15,32 @@
       :star-count="starCount"
       :scroll-speed="scrollSpeed"
       :colors="starColors"
+      style="z-index: 114514"
       @ready="onStarfieldReady"
     />
     <Rain
       v-if="uiStore.currentBackgroundEffect === 'Rain'"
       :enabled="rainEnabled"
       :intensity="rainIntensity"
+      style="z-index: 114514"
     />
-    <Sakura v-if="uiStore.currentBackgroundEffect === 'Sakura'" :enabled="true" :intensity="1.5" />
+    <Sakura
+      v-if="uiStore.currentBackgroundEffect === 'Sakura'"
+      :enabled="true"
+      :intensity="1.5"
+      style="z-index: 114514"
+    />
     <Snow
       v-if="uiStore.currentBackgroundEffect === 'Snow'"
       :intensity="snowIntensity"
       :enabled="true"
+      style="z-index: 114514"
     />
     <Fireworks
       v-if="uiStore.currentBackgroundEffect === 'Fireworks'"
       :enabled="true"
       :intensity="1.5"
+      style="z-index: 114514"
     />
   </ImageAcrossFade>
 
@@ -80,6 +89,7 @@ const starColors = ref<string[]>([
 
 // 其他特效参数控制
 const rainEnabled = ref<boolean>(true)
+
 const rainIntensity = ref<number>(1)
 const snowIntensity = ref<number>(1.5)
 
