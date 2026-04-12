@@ -8,7 +8,7 @@
       ">
     <!-- 气泡主体内容 (玻璃拟态效果) -->
     <div
-      class="relative w-[85%] rounded-[calc(20px*var(--pet-ui-scale,1))] px-[calc(18px*var(--pet-ui-scale,1))] py-[calc(14px*var(--pet-ui-scale,1))] text-white backdrop-blur-md backdrop-saturate-200 border bg-white/20 border-white/30 transition-all duration-300 hover:bg-linear-to-br hover:scale-[1.02] hover:-translate-y-0.5 hover:border-white/50">
+      class="relative w-[85%] rounded-[calc(20px*var(--pet-ui-scale,1))] px-[calc(18px*var(--pet-ui-scale,1))] py-[calc(12px*var(--pet-ui-scale,1))] text-white backdrop-blur-md backdrop-saturate-200 border bg-white/20 border-white/30 transition-all duration-300 hover:bg-linear-to-br hover:scale-[1.02] hover:-translate-y-0.5 hover:border-white/50">
       <!-- 气泡尾巴 (指向桌宠的三角形)，默认居中偏下 -->
       <div
         class="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-0 h-0 border-l-10 border-l-transparent border-r-10 border-r-transparent border-t-white/30 drop-shadow-md">

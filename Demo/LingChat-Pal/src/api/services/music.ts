@@ -1,5 +1,5 @@
 import http from "../http";
-import { MusicTrack } from "../../types";
+import type { MusicTrack } from "../../types";
 
 export const musicGetAll = async (): Promise<MusicTrack[]> => {
   try {

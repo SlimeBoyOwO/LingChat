@@ -26,7 +26,8 @@
       <button type="button" aria-label="打开自动对话" title="自动"
         class="absolute top-10 -left-3.5 z-40 w-8 h-8 rounded-full bg-white/20 backdrop-blur-md border border-white/40 text-cyan-700 dark:text-white flex items-center justify-center opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 hover:bg-cyan-500/80 hover:text-white hover:scale-110 shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-all duration-300"
         :class="[{ active: uiStore.autoMode }]" @click.stop="handleSwitchAutoMode">
-        <Play :size="16"></Play>
+        <Play v-if="!uiStore.autoMode" :size="16"></Play>
+        <Pause v-else :size="16"></Pause>
       </button>
 
       <!-- 3. 常驻特效：现代科技感流光圆环 (替换了丑陋的虚线) -->
@@ -83,7 +84,7 @@ import { EMOTION_CONFIG, EMOTION_CONFIG_EMO } from "../../core/emotions/config";
 import { useSettingsStore } from "../../stores/modules/settings";
 import { useUIStore } from "../../stores/modules/ui/ui";
 import "./avatar-animation.css";
-import { Play, Settings } from "lucide-vue-next";
+import { Play, Pause, Settings } from "lucide-vue-next";
 
 const props = defineProps<{ role: GameRole }>();
 const { role } = toRefs(props);
@@ -175,16 +176,23 @@ watch(
       const version = Date.now();
       currentBubbleImageUrl.value = `${config.bubbleImage}?t=${version}#t=0.1`;
       currentBubbleClass.value = config.bubbleClass;
-      isBubbleVisible.value = false;
 
-      nextTick(() => {
+      // 先清除之前的定时器
+      if (bubbleTimeoutId !== null) {
+        window.clearTimeout(bubbleTimeoutId);
+        bubbleTimeoutId = null;
+      }
+
+      // 如果气泡已经显示，直接更新图片，不重新触发显示动画
+      if (!isBubbleVisible.value) {
         isBubbleVisible.value = true;
-        if (bubbleTimeoutId !== null) window.clearTimeout(bubbleTimeoutId);
-        bubbleTimeoutId = window.setTimeout(() => {
-          isBubbleVisible.value = false;
-          bubbleTimeoutId = null;
-        }, 2000);
-      });
+      }
+
+      // 设置新的定时器
+      bubbleTimeoutId = window.setTimeout(() => {
+        isBubbleVisible.value = false;
+        bubbleTimeoutId = null;
+      }, 2000);
     }
 
     if (config.audio && config.audio !== "none" && bubbleAudio.value) {
@@ -249,3 +257,6 @@ watch(
   -webkit-app-region: drag;
 }
 </style>
+
+
+这里的气泡显示的时候有时候会疯狂的闪烁，什么原因？告诉我关键修复代码
