@@ -8,10 +8,10 @@
         class="absolute top-1 -right-4 z-50 flex flex-col items-start pointer-events-none opacity-0 translate-x-4 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-400 ease-out">
         <div
           class="bg-cyan-500 text-white text-[10px] font-black px-2 py-0.5 rounded-tl-md rounded-br-md italic shadow-sm tracking-wider">
-          诺一钦灵
+          {{ role.roleName }}
         </div>
         <div class="text-cyan-700 dark:text-cyan-300 text-xs font-bold tracking-widest pl-1 drop-shadow-sm uppercase">
-          Slime Studio
+          {{ role.roleSubTitle }}
         </div>
       </div>
 
@@ -85,6 +85,7 @@ import { useSettingsStore } from "../../stores/modules/settings";
 import { useUIStore } from "../../stores/modules/ui/ui";
 import "./avatar-animation.css";
 import { Play, Pause, Settings } from "lucide-vue-next";
+import { getAvatarUrl } from "../../api/services/character";
 
 const props = defineProps<{ role: GameRole }>();
 const { role } = toRefs(props);
@@ -121,7 +122,7 @@ const targetAvatarUrl = computed(() => {
   const emotion = r.emotion;
   const mappedEmotion = EMOTION_CONFIG_EMO[emotion] || "正常";
   if (emotion === "AI思考") return "none";
-  return `/api/v1/chat/character/get_avatar/${r.roleId}/${mappedEmotion}/${clothesName}`;
+  return getAvatarUrl(r.roleId, mappedEmotion, clothesName);
 });
 
 const containerClasses = computed(() => ({

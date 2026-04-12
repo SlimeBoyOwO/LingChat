@@ -15,8 +15,6 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
-import Button from "../../base/widget/Button.vue";
 
 interface CharacterProps {
   avatar?: string;
@@ -37,7 +35,8 @@ const props = withDefaults(defineProps<CharacterProps>(), {});
   overflow: hidden;
   transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
   border: 1px solid rgba(0, 0, 0, 0.05);
-  height: 180px; /* 固定高度保持统一 */
+  height: 180px;
+  /* 固定高度保持统一 */
 }
 
 .character-card:hover {
@@ -60,7 +59,8 @@ const props = withDefaults(defineProps<CharacterProps>(), {});
 .character-avatar {
   width: 180px;
   height: 180px;
-  object-fit: contain; /* 保持原始比例，完整显示 */
+  object-fit: contain;
+  /* 保持原始比例，完整显示 */
   border-radius: 8px;
   padding: 5px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);

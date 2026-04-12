@@ -30,7 +30,7 @@
     "@vitejs/plugin-vue": "^5.2.1",
     "@vue/tsconfig": "^0.9.1",
     "prettier": "^3.8.2",
-    "typescript": "~5.6.2",
+    "typescript": "~6.0.2",
     "vite": "^6.0.3",
     "vue-tsc": "^2.1.10"
   }
