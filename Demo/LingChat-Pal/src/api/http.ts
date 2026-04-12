@@ -49,8 +49,10 @@ declare module "axios" {
   }
 }
 
+const baseURL = import.meta.env.DEV ? "/api" : "http://localhost:8765/api";
+
 const http: AxiosInstance = axios.create({
-  baseURL: "/api",
+  baseURL,
   timeout: 30000,
   headers: {
     "Content-Type": "application/json",

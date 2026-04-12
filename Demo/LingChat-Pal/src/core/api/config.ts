@@ -1,6 +1,6 @@
 import type { ApiConfig } from "../../types";
 
-const API_BASE = "/api/v1";
+const API_BASE = import.meta.env.DEV ? "/api/v1" : "http://localhost:8765/api/v1";
 
 export const API_CONFIG: ApiConfig = {
   // 头像相关

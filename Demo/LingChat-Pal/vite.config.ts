@@ -1,17 +1,16 @@
-import { defineConfig } from "vite";
-import { fileURLToPath, URL } from "node:url";
-import vue from "@vitejs/plugin-vue";
-import vueDevTools from 'vite-plugin-vue-devtools'
-import tailwindcss from "@tailwindcss/vite";
+import { defineConfig } from 'vite'
+import { fileURLToPath, URL } from 'node:url'
+import vue from '@vitejs/plugin-vue'
+import tailwindcss from '@tailwindcss/vite'
 
-const host = process.env.TAURI_DEV_HOST;
+const host = process.env.TAURI_DEV_HOST
 
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
-  plugins: [vue(), tailwindcss(), vueDevTools()],
+  plugins: [vue(), tailwindcss()],
   resolve: {
     alias: {
-      "@": fileURLToPath(new URL("./src", import.meta.url)),
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
 
@@ -26,27 +25,27 @@ export default defineConfig(async () => ({
     host: host || false,
     hmr: host
       ? {
-          protocol: "ws",
+          protocol: 'ws',
           host,
           port: 1421,
         }
       : undefined,
     watch: {
       // 3. tell vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      ignored: ['**/src-tauri/**'],
     },
     proxy: {
       // 代理普通 HTTP API 请求
-      "/api": {
-        target: "http://localhost:8765",
+      '/api': {
+        target: 'http://localhost:8765',
         changeOrigin: true,
       },
       // 代理 WebSocket 连接
-      "/ws": {
-        target: "ws://localhost:8765", // WebSocket 地址
+      '/ws': {
+        target: 'ws://localhost:8765', // WebSocket 地址
         changeOrigin: true,
         ws: true, // 启用 WebSocket 代理
       },
     },
   },
-}));
+}))

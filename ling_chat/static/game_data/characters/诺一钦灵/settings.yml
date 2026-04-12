@@ -44,20 +44,25 @@ body_part:
     message: 莱姆戳了戳你的肚子
     clothesName: 默认
 scale: 1.45
-offset: 20.0
+offset_y: 20.0
+
+scale_p: 1.6
+offset_x_p: 0
+offset_y_p: 30
+
 clothes_name: null
 clothes: null
 voice_models:
-  sva_speaker_id: '0'
+  sva_speaker_id: "0"
   sbv2_name: Ling-v2
-  sbv2_speaker_id: '0'
-  bv2_speaker_id: '0'
+  sbv2_speaker_id: "0"
+  bv2_speaker_id: "0"
   sbv2api_name: Ling v2
-  sbv2api_speaker_id: '0'
-  gsv_voice_text: ''
-  gsv_voice_filename: ''
-  gsv_gpt_model_name: ''
-  gsv_sovits_model_name: ''
+  sbv2api_speaker_id: "0"
+  gsv_voice_text: ""
+  gsv_voice_filename: ""
+  gsv_gpt_model_name: ""
+  gsv_sovits_model_name: ""
   aivis_model_uuid: 44f93196-7485-45af-9616-f33adee71846
 tts_type: sbv2api
 thinking_message: 灵灵正在思考中...
@@ -86,4 +91,3 @@ system_prompt_example: |-
 system_prompt_example_old: |-
   1.“【高兴】今天要不要一起吃蛋糕呀？<今日は一緒にケーキを食べませんか？>【无语】只是今天天气有点不好呢。<ただ今日はちょっと天気が悪いですね>”
   2.“【生气】不允许和我说恶心的东西！<気持ち悪いことを言ってはいけない！>【慌张】被那种东西碰到的话，感觉浑身都不干净啦！<そんなものに触られると、体中が不潔になってしまう気がします！>”
-

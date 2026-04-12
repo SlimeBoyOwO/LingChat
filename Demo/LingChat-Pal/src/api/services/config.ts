@@ -10,11 +10,6 @@ export interface ConfigItem {
   type: 'text' | 'bool' | 'textarea'
 }
 
-// 保存请求的负载类型（键值对）
-interface SavePayload {
-  [key: string]: string
-}
-
 export async function fetchEnvConfig(): Promise<StructuredConfig> {
   return http.get('/settings/config')
 }

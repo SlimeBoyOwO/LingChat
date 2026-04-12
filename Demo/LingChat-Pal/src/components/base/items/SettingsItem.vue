@@ -1,56 +1,38 @@
 <template>
   <div
     class="p-2 min-h-30 rounded-xl border shadow-sm relative overflow-hidden group transition-colors duration-300 flex flex-col justify-between h-full"
-    :class="
-      isDarkMode
-        ? 'bg-slate-800/50 border-slate-700'
-        : 'bg-white border-slate-200'
-    "
-  >
+    :class="isDarkMode
+      ? 'bg-slate-800/50 border-slate-700'
+      : 'bg-white border-slate-200'
+      ">
     <!-- 左侧状态强调条 -->
-    <div
-      class="absolute top-0 left-0 w-1 h-full transition-colors duration-300"
-      :class="themeConfig[setting.type].barClass"
-    ></div>
+    <div class="absolute top-0 left-0 w-1 h-full transition-colors duration-300"
+      :class="themeConfig[setting.type].barClass"></div>
 
     <!-- 背景装饰图标 -->
-    <component
-      :is="themeConfig[setting.type].icon"
+    <component :is="themeConfig[setting.type].icon"
       class="absolute -right-4 -bottom-4 w-24 h-24 rotate-12 pointer-events-none transition-colors duration-500"
-      :class="isDarkMode ? 'opacity-10' : 'opacity-[0.03]'"
-      :style="{ color: themeConfig[setting.type].colorHex }"
-    />
+      :class="isDarkMode ? 'opacity-10' : 'opacity-[0.03]'" :style="{ color: themeConfig[setting.type].colorHex }" />
 
     <!-- 卡片内容区 -->
     <div class="flex flex-col gap-1 pl-2 relative z-10 h-full">
       <!-- 标签与类型 -->
       <div class="flex items-center gap-1.5 mb-2">
-        <component
-          :is="themeConfig[setting.type].icon"
-          class="w-4 h-4"
-          :class="themeConfig[setting.type].textClass"
-        />
-        <span
-          class="text-[10px] font-mono font-bold tracking-wider uppercase"
-          :class="themeConfig[setting.type].textClass"
-        >
+        <component :is="themeConfig[setting.type].icon" class="w-4 h-4" :class="themeConfig[setting.type].textClass" />
+        <span class="text-[10px] font-mono font-bold tracking-wider uppercase"
+          :class="themeConfig[setting.type].textClass">
           {{ setting.type }} TYPE
         </span>
       </div>
 
       <!-- 标题与描述 -->
       <div class="flex gap-1.5 mb-2 items-end">
-        <label
-          :for="setting.key"
-          class="font-bold text-[14px] transition-colors break-words cursor-pointer"
-          :class="isDarkMode ? 'text-slate-200' : 'text-slate-700'"
-        >
+        <label :for="setting.key" class="font-bold text-[14px] transition-colors wrap-break-word cursor-pointer"
+          :class="isDarkMode ? 'text-slate-200' : 'text-slate-700'">
           {{ setting.description || getDefaultDescription(setting.type) }}
         </label>
-        <p
-          class="text-xs leading-relaxed transition-colors line-clamp-2"
-          :class="isDarkMode ? 'text-slate-400' : 'text-slate-500'"
-        >
+        <p class="text-xs leading-relaxed transition-colors line-clamp-2"
+          :class="isDarkMode ? 'text-slate-400' : 'text-slate-500'">
           {{ setting.key }}
         </p>
       </div>
@@ -60,52 +42,37 @@
         <!-- Case: 布尔值 (Checkbox/Toggle) -->
         <template v-if="setting.type === 'bool'">
           <div class="flex items-center mt-2 pt-2">
-            <Toggle
-              :checked="setting.value.toLowerCase() === 'true'"
-              @change="handleCheckboxChange"
-            />
+            <Toggle :checked="setting.value.toLowerCase() === 'true'" @change="handleCheckboxChange" />
           </div>
         </template>
 
         <!-- Case: 文本域 (Textarea) -->
         <template v-else-if="setting.type === 'textarea'">
-          <textarea
-            :id="setting.key"
-            v-model="localValue"
-            rows="4"
+          <textarea :id="setting.key" v-model="localValue" rows="4"
             class="w-full px-3 py-2 border rounded-lg text-sm transition-all duration-200 focus:outline-none focus:ring-2 resize-none"
             :class="[
               isDarkMode
                 ? 'bg-slate-900/50 border-slate-600 text-slate-200 focus:border-sky-500 focus:ring-sky-500/20'
                 : 'bg-slate-50 border-slate-200 text-slate-800 focus:border-sky-500 focus:ring-sky-500/20',
-            ]"
-          ></textarea>
+            ]"></textarea>
         </template>
 
         <!-- Case: 路径 (Path) -->
         <template v-else-if="setting.type === 'path'">
           <div class="flex gap-2">
-            <input
-              type="text"
-              :id="setting.key"
-              v-model="localValue"
+            <input type="text" :id="setting.key" v-model="localValue"
               class="flex-1 px-3 py-2 border rounded-lg text-sm transition-all duration-200 focus:outline-none focus:ring-2 min-w-0"
               :class="[
                 isDarkMode
                   ? 'bg-slate-900/50 border-slate-600 text-slate-200 focus:border-orange-500 focus:ring-orange-500/20'
                   : 'bg-slate-50 border-slate-200 text-slate-800 focus:border-orange-500 focus:ring-orange-500/20',
-              ]"
-            />
-            <button
-              @click="selectFile(setting)"
-              type="button"
+              ]" />
+            <button @click="selectFile()" type="button"
               class="px-4 py-2 flex items-center justify-center rounded-lg text-xs font-bold tracking-wider text-white transition-colors duration-200 whitespace-nowrap"
-              :class="
-                isDarkMode
-                  ? 'bg-orange-600 hover:bg-orange-500'
-                  : 'bg-orange-500 hover:bg-orange-600'
-              "
-            >
+              :class="isDarkMode
+                ? 'bg-orange-600 hover:bg-orange-500'
+                : 'bg-orange-500 hover:bg-orange-600'
+                ">
               浏览
             </button>
           </div>
@@ -113,17 +80,13 @@
 
         <!-- Case: 默认文本 (Text Input) -->
         <template v-else>
-          <input
-            type="text"
-            :id="setting.key"
-            v-model="localValue"
+          <input type="text" :id="setting.key" v-model="localValue"
             class="w-full px-3 py-2 border rounded-lg text-sm transition-all duration-200 focus:outline-none focus:ring-2"
             :class="[
               isDarkMode
                 ? 'bg-slate-900/50 border-slate-600 text-slate-200 focus:border-indigo-500 focus:ring-indigo-500/20'
                 : 'bg-slate-50 border-slate-200 text-slate-800 focus:border-indigo-500 focus:ring-indigo-500/20',
-            ]"
-          />
+            ]" />
         </template>
       </div>
     </div>
@@ -179,7 +142,7 @@ const handleCheckboxChange = (checked: boolean) => {
 };
 
 // 选择文件
-const selectFile = async (setting: Setting) => {
+const selectFile = async () => {
   try {
     const response = await fetch("/api/settings/select-file");
     const result = await response.json();
