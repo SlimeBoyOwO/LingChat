@@ -1,5 +1,5 @@
 import http from "../http";
-import { BackgroundImageInfo } from "../../types";
+import type { BackgroundImageInfo } from "../../types";
 
 export const getBackgroundImages = async (): Promise<BackgroundImageInfo[]> => {
   try {
@@ -12,13 +12,13 @@ export const getBackgroundImages = async (): Promise<BackgroundImageInfo[]> => {
 };
 
 export const getBackgroundImageById = async (
-  id: string
+  id: string,
 ): Promise<BackgroundImageInfo> => {
   return http.get(`/backgrounds/${id}`);
 };
 
 export const uploadBackgroundImage = async (
-  file: File
+  file: File,
 ): Promise<BackgroundImageInfo> => {
   const formData = new FormData();
   formData.append("file", file);

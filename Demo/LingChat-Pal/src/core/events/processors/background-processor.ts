@@ -1,5 +1,5 @@
-import { IEventProcessor } from "../event-processor";
-import { ScriptBackgroundEvent } from "../../../types";
+import type { IEventProcessor } from "../event-processor";
+import type { ScriptBackgroundEvent } from "../../../types";
 import { useGameStore } from "../../../stores/modules/game";
 import { useUIStore } from "../../../stores/modules/ui/ui";
 
@@ -17,7 +17,7 @@ export default class BackgroundProcessor implements IEventProcessor {
 
     let url = event.imagePath
       ? `/api/v1/chat/script/background_file/${encodeURIComponent(
-          event.imagePath
+          event.imagePath,
         )}`
       : "../pictures/background/default.png";
 

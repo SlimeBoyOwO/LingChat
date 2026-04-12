@@ -5,6 +5,7 @@
 import { defineStore } from "pinia";
 
 const PET_SCALE_STORAGE_KEY = "lingchat.petScale";
+const SETTINGS_STORAGE_KEY = "lingchat.settings";
 export const PET_SCALE_MIN = 0.7;
 export const PET_SCALE_MAX = 1.3;
 export const PET_SCALE_DEFAULT = 1;
@@ -34,6 +35,37 @@ function readPetScaleFromStorage(): number {
   return clampPetScale(parsed);
 }
 
+function readSettingsFromStorage(): Partial<SettingsState> {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+  if (!raw) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed;
+  } catch (e) {
+    console.error("读取设置失败:", e);
+    return {};
+  }
+}
+
+function saveSettingsToStorage(settings: SettingsState): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  } catch (e) {
+    console.error("保存设置失败:", e);
+  }
+}
+
 // 默认设置值
 export const DEFAULT_SETTINGS = {
   // 文本设置
@@ -60,6 +92,9 @@ export const DEFAULT_SETTINGS = {
   pet: {
     scale: PET_SCALE_DEFAULT, // 桌宠缩放
   },
+  isDarkMode: {
+    mode: true,
+  }, // 是否为暗黑模式
 };
 
 // 设置状态类型
@@ -86,24 +121,39 @@ export interface PetSettings {
   scale: number;
 }
 
+export interface IsDarkModeSettings {
+  mode: boolean;
+}
+
 export interface SettingsState {
   text: TextSettings;
   audio: AudioSettings;
   display: DisplaySettings;
   character: CharacterSettings;
   pet: PetSettings;
+  isDarkMode: IsDarkModeSettings;
 }
 
 export const useSettingsStore = defineStore("settings", {
-  state: (): SettingsState => ({
-    text: { ...DEFAULT_SETTINGS.text },
-    audio: { ...DEFAULT_SETTINGS.audio },
-    display: { ...DEFAULT_SETTINGS.display },
-    character: { ...DEFAULT_SETTINGS.character },
-    pet: {
-      scale: readPetScaleFromStorage(),
-    },
-  }),
+  state: (): SettingsState => {
+    const savedSettings = readSettingsFromStorage();
+    return {
+      text: { ...DEFAULT_SETTINGS.text, ...savedSettings.text },
+      audio: { ...DEFAULT_SETTINGS.audio, ...savedSettings.audio },
+      display: { ...DEFAULT_SETTINGS.display, ...savedSettings.display },
+      character: { ...DEFAULT_SETTINGS.character, ...savedSettings.character },
+      pet: {
+        scale:
+          savedSettings.pet?.scale !== undefined
+            ? clampPetScale(savedSettings.pet.scale)
+            : readPetScaleFromStorage(),
+      },
+      isDarkMode: {
+        ...DEFAULT_SETTINGS.isDarkMode,
+        ...savedSettings.isDarkMode,
+      },
+    };
+  },
 
   getters: {
     // 获取设置值（支持路径）
@@ -165,9 +215,11 @@ export const useSettingsStore = defineStore("settings", {
           const nextScale = clampPetScale(Number(value));
           target[lastKey] = nextScale;
           this.persistPetScale(nextScale);
-          return;
+        } else {
+          target[lastKey] = value;
         }
-        target[lastKey] = value;
+        // 保存所有设置到localStorage
+        saveSettingsToStorage(this.$state);
       }
     },
 
@@ -181,6 +233,7 @@ export const useSettingsStore = defineStore("settings", {
         this.character = { ...DEFAULT_SETTINGS.character };
         this.pet = { ...DEFAULT_SETTINGS.pet };
         this.persistPetScale(this.pet.scale);
+        saveSettingsToStorage(this.$state);
       } else {
         const keys = path.split(".");
         if (keys.length === 1) {
@@ -191,6 +244,7 @@ export const useSettingsStore = defineStore("settings", {
             if (category === "pet") {
               this.persistPetScale(this.pet.scale);
             }
+            saveSettingsToStorage(this.$state);
           }
         } else {
           // 重置单个值
@@ -233,6 +287,7 @@ export const useSettingsStore = defineStore("settings", {
           };
           this.persistPetScale(this.pet.scale);
         }
+        saveSettingsToStorage(this.$state);
         return true;
       } catch (e) {
         console.error("导入设置失败:", e);
@@ -243,46 +298,59 @@ export const useSettingsStore = defineStore("settings", {
     // 批量更新音频设置
     updateAudio(updates: Partial<AudioSettings>) {
       this.audio = { ...this.audio, ...updates };
+      saveSettingsToStorage(this.$state);
     },
 
     // 批量更新文本设置
     updateText(updates: Partial<TextSettings>) {
       this.text = { ...this.text, ...updates };
+      saveSettingsToStorage(this.$state);
     },
 
     // 批量更新显示设置
     updateDisplay(updates: Partial<DisplaySettings>) {
       this.display = { ...this.display, ...updates };
+      saveSettingsToStorage(this.$state);
     },
 
     // 设置文字速度
     setTextSpeed(speed: number) {
       this.text.speed = speed;
+      saveSettingsToStorage(this.$state);
     },
 
     // 设置对话音效开关
     setChatEffectSound(enabled: boolean) {
       this.audio.chatEffectSound = enabled;
+      saveSettingsToStorage(this.$state);
     },
 
     // 设置背景效果
     setBackgroundEffect(effect: string) {
       this.display.backgroundEffect = effect;
+      saveSettingsToStorage(this.$state);
     },
 
     // 设置角色文件夹
     setCharacterFolder(folder: string) {
       this.character.folder = folder;
+      saveSettingsToStorage(this.$state);
     },
 
     setPetScale(scale: number) {
       const nextScale = clampPetScale(scale);
       this.pet.scale = nextScale;
       this.persistPetScale(nextScale);
+      saveSettingsToStorage(this.$state);
     },
 
     resetPetScale() {
       this.setPetScale(PET_SCALE_DEFAULT);
+    },
+
+    setDarkMode(enabled: boolean) {
+      this.isDarkMode = { mode: enabled };
+      saveSettingsToStorage(this.$state);
     },
 
     persistPetScale(scale: number) {
@@ -292,7 +360,4 @@ export const useSettingsStore = defineStore("settings", {
       window.localStorage.setItem(PET_SCALE_STORAGE_KEY, String(scale));
     },
   },
-
-  // 启用持久化
-  persist: true,
 });

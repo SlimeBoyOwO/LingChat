@@ -90,11 +90,7 @@ const sendMessage = () => {
     // 触发事件通知父组件
     emit("message-sent", messageText.value);
     messageText.value = "";
-    gameStore.appendGameMessage({
-      type: "message",
-      displayName: gameStore.userName,
-      content: messageText.value,
-    });
+
   }
 };
 </script>

@@ -76,7 +76,7 @@ const isDarkMode = computed(() => uiStore.isDarkMode);
 const loadDarkModeFromStorage = () => {
   const savedDarkMode = localStorage.getItem(DARK_MODE_KEY);
   if (savedDarkMode !== null) {
-    uiStore.isDarkMode = savedDarkMode === "true";
+    uiStore.setDarkMode(savedDarkMode === "true")
   }
 };
 
@@ -86,7 +86,7 @@ const saveDarkModeToStorage = () => {
 };
 
 const toggleTheme = () => {
-  uiStore.isDarkMode = !uiStore.isDarkMode;
+  uiStore.setDarkMode(!uiStore.isDarkMode)
   saveDarkModeToStorage();
 };
 

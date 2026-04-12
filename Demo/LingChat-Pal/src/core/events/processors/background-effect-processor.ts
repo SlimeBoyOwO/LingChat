@@ -1,5 +1,5 @@
-import { IEventProcessor } from "../event-processor";
-import { ScriptBackgroundEffectEvent } from "../../../types";
+import type { IEventProcessor } from "../event-processor";
+import type { ScriptBackgroundEffectEvent } from "../../../types";
 import { useGameStore } from "../../../stores/modules/game";
 import { useUIStore } from "../../../stores/modules/ui/ui";
 
@@ -15,6 +15,6 @@ export default class BackgroundEffectProcessor implements IEventProcessor {
     // 处理对话逻辑
     gameStore.currentStatus = "presenting";
 
-    uiStore.currentBackgroundEffect = event.effect;
+    uiStore.setBackgroundEffect(event.effect);
   }
 }

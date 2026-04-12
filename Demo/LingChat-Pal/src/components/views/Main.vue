@@ -11,8 +11,8 @@
     <div ref="avatarContainer" class="shrink-0 flex items-center justify-center transition-all duration-100"
       :style="{ width: 'var(--avatar-size)', height: 'var(--avatar-size)' }">
       <GameRolesStage @avatar-click="handleAvatarClick" @open-settings="handleOpenSettings"
-        @switch-auto-mode="handleSwitchAutoMode" @audio-ended="handleAudioFinished"
-        @audio-started="handleAudioStarted" />
+        @switch-auto-mode="handleSwitchAutoMode" @audio-ended="handleAudioFinished" @audio-started="handleAudioStarted"
+        @player-continued="manualTriggerContinue" />
     </div>
 
     <!-- ChatInput 区域 -->
@@ -38,8 +38,6 @@ import DialogueBox from "../game/DialogueBox.vue";
 import { eventQueue } from "../../core/events/event-queue";
 import GameRolesStage from "../game/GameRolesStage.vue";
 import { useUIStore } from "../../stores/modules/ui/ui";
-import StarField from "../particles/StarField.vue";
-import BAParticles from "../particles/BAParticles.vue";
 
 const PET_SCALE_EVENT = "pet-scale-changed";
 const DIALOG_HISTORY_EVENT = "dialog-history-changed";
@@ -258,7 +256,11 @@ onUnmounted(() => {
 });
 
 const handleMessageSent = (message: string) => {
-  console.log("Main: 消息已发送:", message);
+  gameStore.appendGameMessage({
+    type: "message",
+    displayName: gameStore.userName,
+    content: message,
+  });
 };
 
 const handleMouseEnter = () => {
