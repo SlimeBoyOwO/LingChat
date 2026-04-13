@@ -2,156 +2,83 @@
   <div class="w-full h-full flex flex-col bg-gray-900/50 rounded-lg p-4">
     <!-- Header -->
     <div class="flex items-center justify-between mb-4 pb-3 border-b border-gray-700">
-      <h3 class="text-lg font-bold text-white">羁绊冒险</h3>
+      <h3 class="text-lg font-bold text-white">冒险总览</h3>
       <span class="text-sm text-gray-400">{{ completedCount }} / {{ totalCount }}</span>
     </div>
 
     <!-- Loading State -->
     <div v-if="loading" class="flex flex-col items-center justify-center py-12 text-gray-400">
-      <div
-        class="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mb-2"
-      ></div>
+      <div class="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mb-2"></div>
       <p>加载中...</p>
     </div>
 
     <!-- Empty State -->
-    <div
-      v-else-if="adventures.length === 0"
-      class="flex flex-col items-center justify-center py-12 text-gray-400"
-    >
+    <div v-else-if="adventures.length === 0" class="flex flex-col items-center justify-center py-12 text-gray-400">
       <p>暂无羁绊冒险</p>
     </div>
 
     <!-- Adventure Graph -->
     <div v-else class="relative flex-1 flex flex-col overflow-hidden">
       <!-- Zoom Controls -->
-      <div
-        class="absolute top-2 right-2 z-20 flex items-center gap-2 bg-gray-800/80 rounded-lg p-2"
-      >
-        <button
-          @click="zoomIn"
+      <div class="absolute top-2 right-2 z-20 flex items-center gap-2 bg-gray-800/80 rounded-lg p-2">
+        <button @click="zoomIn"
           class="w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 text-white transition-colors"
-          title="放大"
-        >
-          <svg
-            class="w-5 h-5"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="currentColor"
-          >
+          title="放大">
+          <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
             <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
           </svg>
         </button>
-        <span class="text-sm text-white font-mono w-12 text-center"
-          >{{ Math.round(zoomLevel * 100) }}%</span
-        >
-        <button
-          @click="zoomOut"
+        <span class="text-sm text-white font-mono w-12 text-center">{{ Math.round(zoomLevel * 100) }}%</span>
+        <button @click="zoomOut"
           class="w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 text-white transition-colors"
-          title="缩小"
-        >
-          <svg
-            class="w-5 h-5"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="currentColor"
-          >
+          title="缩小">
+          <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
             <path d="M19 13H5v-2h14v2z" />
           </svg>
         </button>
-        <button
-          @click="resetZoom"
+        <button @click="resetZoom"
           class="w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 text-white transition-colors"
-          title="重置"
-        >
-          <svg
-            class="w-5 h-5"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="currentColor"
-          >
+          title="重置">
+          <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
             <path
-              d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"
-            />
+              d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" />
           </svg>
         </button>
       </div>
 
       <!-- Graph Container -->
       <div ref="graphWrapper" class="flex-1 overflow-auto relative">
-        <div
-          class="relative origin-top-left transition-transform duration-200 ease-out"
-          :style="graphContainerStyle"
-        >
+        <div class="relative origin-top-left transition-transform duration-200 ease-out" :style="graphContainerStyle">
           <!-- SVG Connection Layer -->
-          <svg
-            class="absolute top-0 left-0 pointer-events-none z-0"
-            :width="graphWidth"
-            :height="graphHeight"
-          >
+          <svg class="absolute top-0 left-0 pointer-events-none z-0" :width="graphWidth" :height="graphHeight">
             <defs>
-              <marker
-                id="arrow-completed"
-                markerWidth="12"
-                markerHeight="12"
-                refX="10"
-                refY="4"
-                orient="auto"
-                markerUnits="strokeWidth"
-              >
+              <marker id="arrow-completed" markerWidth="12" markerHeight="12" refX="10" refY="4" orient="auto"
+                markerUnits="strokeWidth">
                 <path d="M0,0 L0,8 L12,4 z" fill="#4ade80" />
               </marker>
-              <marker
-                id="arrow-unlocked"
-                markerWidth="12"
-                markerHeight="12"
-                refX="10"
-                refY="4"
-                orient="auto"
-                markerUnits="strokeWidth"
-              >
+              <marker id="arrow-unlocked" markerWidth="12" markerHeight="12" refX="10" refY="4" orient="auto"
+                markerUnits="strokeWidth">
                 <path d="M0,0 L0,8 L12,4 z" fill="#c084fc" />
               </marker>
-              <marker
-                id="arrow-locked"
-                markerWidth="12"
-                markerHeight="12"
-                refX="10"
-                refY="4"
-                orient="auto"
-                markerUnits="strokeWidth"
-              >
+              <marker id="arrow-locked" markerWidth="12" markerHeight="12" refX="10" refY="4" orient="auto"
+                markerUnits="strokeWidth">
                 <path d="M0,0 L0,8 L12,4 z" fill="#6b7280" />
               </marker>
             </defs>
 
-            <path
-              v-for="connection in connections"
-              :key="`${connection.from}-${connection.to}`"
-              :d="connection.path"
-              :class="connection.lineClass"
-              :marker-end="connection.markerEnd"
-            />
+            <path v-for="connection in connections" :key="`${connection.from}-${connection.to}`" :d="connection.path"
+              :class="connection.lineClass" :marker-end="connection.markerEnd" />
           </svg>
 
           <!-- Nodes Layer (扁平化遍历，纯数学绝对定位) -->
-          <div
-            class="relative z-10"
-            :style="{ width: `${graphWidth}px`, height: `${graphHeight}px` }"
-          >
-            <div
-              v-for="adventure in adventures"
-              :key="adventure.adventure_folder"
+          <div class="relative z-10" :style="{ width: `${graphWidth}px`, height: `${graphHeight}px` }">
+            <div v-for="adventure in adventures" :key="adventure.adventure_folder"
               class="absolute flex items-center gap-2 p-2 rounded-xl cursor-pointer transition-all duration-200 border-2"
-              :class="getNodeClass(adventure)"
-              :style="getNodeStyle(adventure.adventure_folder)"
-              @click="handleNodeClick(adventure)"
-            >
+              :class="getNodeClass(adventure)" :style="getNodeStyle(adventure.adventure_folder)"
+              @click="handleNodeClick(adventure)">
               <!-- Icon -->
-              <div
-                class="w-14 h-14 flex items-center justify-center rounded-full shrink-0"
-                :class="getIconClass(adventure.status)"
-              >
+              <div class="w-14 h-14 flex items-center justify-center rounded-full shrink-0"
+                :class="getIconClass(adventure.status)">
                 <Book></Book>
               </div>
 
@@ -159,10 +86,7 @@
               <div class="flex-1 min-w-0">
                 <div class="text-base font-semibold text-white mb-1">{{ adventure.name }}</div>
                 <div class="text-sm text-gray-400 line-clamp-2">{{ adventure.description }}</div>
-                <div
-                  v-if="adventure.status === 'locked'"
-                  class="flex items-center gap-1 mt-2 text-xs text-gray-500"
-                >
+                <div v-if="adventure.status === 'locked'" class="flex items-center gap-1 mt-2 text-xs text-gray-500">
                   <span>🔒</span>
                   <span>{{ getUnlockHint(adventure) }}</span>
                 </div>
@@ -176,10 +100,7 @@
 
               <!-- Status Badge -->
               <div class="shrink-0">
-                <span
-                  class="px-3 py-1.5 rounded-full text-xs font-medium"
-                  :class="getBadgeClass(adventure.status)"
-                >
+                <span class="px-3 py-1.5 rounded-full text-xs font-medium" :class="getBadgeClass(adventure.status)">
                   {{ getStatusText(adventure.status) }}
                 </span>
               </div>

@@ -161,17 +161,6 @@
             </div>
           </section>
 
-          <section>
-            <h3 class="text-white font-bold mb-4 flex items-center gap-2">
-              <span class="w-1 h-4 bg-emerald-500 rounded-full"></span> 羁绊档案（实验）
-            </h3>
-            <div v-if="resourceFolder" class="h-96">
-              <AdventurePanel :character-folder="resourceFolder" />
-            </div>
-            <div v-else class="text-white/40 text-sm italic p-4 bg-white/5 rounded-xl text-center">
-              暂无羁绊冒险数据
-            </div>
-          </section>
         </div>
       </div>
     </div>
@@ -190,7 +179,6 @@
 import { ref } from 'vue'
 import { Icon } from '../../base'
 import SettingsCharacterInfo from '@/components/settings/pages/SettingsCharacterInfo.vue'
-import AdventurePanel from '@/components/game/standard/AdventurePanel.vue'
 import { characterSelect } from '@/api/services/character'
 import { useGameStore } from '@/stores/modules/game'
 import { useUserStore } from '@/stores/modules/user/user'

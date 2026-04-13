@@ -1,7 +1,7 @@
 <template>
   <div class="blur-overlay" v-if="shouldShowOverlay" :style="{ opacity: overlayOpacity }"></div>
   <div class="settings-panel flex flex-col h-full" v-show="uiStore.showSettings">
-    <div class="flex-shrink-0 w-full">
+    <div class="shrink-0 w-full">
       <SettingsNav ref="settingsNavRef" @remove-more-menu-from-a="onAddFromA" />
     </div>
 
@@ -9,16 +9,15 @@
       <SettingsSave v-show="uiStore.currentSettingsTab === 'save'" />
       <SettingsText v-show="uiStore.currentSettingsTab === 'text'" />
       <SettingsSound v-show="uiStore.currentSettingsTab === 'sound'" />
-      <SettingsAdvance
-        ref="settingsAdvanceRef"
-        v-show="uiStore.currentSettingsTab === 'advance'"
-        @remove-more-menu-from-b="onAddFromB"
-      />
+      <SettingsAdvance ref="settingsAdvanceRef" v-show="uiStore.currentSettingsTab === 'advance'"
+        @remove-more-menu-from-b="onAddFromB" />
+      <SettingsAdventure v-show="uiStore.currentSettingsTab === 'adventure'" />
       <SettingsHistory v-show="uiStore.currentSettingsTab === 'history'" />
       <SettingsAchievement v-show="uiStore.currentSettingsTab === 'achievement'" />
       <SettingsCharacter v-show="uiStore.currentSettingsTab === 'character'" />
       <SettingsBackground v-show="uiStore.currentSettingsTab === 'background'" />
       <SettingsUpdate v-show="uiStore.currentSettingsTab === 'update'" />
+
     </div>
   </div>
 </template>
@@ -34,6 +33,7 @@ import {
   SettingsBackground,
   SettingsUpdate,
   SettingsAchievement,
+  SettingsAdventure,
 } from './pages'
 import SettingsNav from './SettingsNav.vue'
 import { useUIStore } from '../../stores/modules/ui/ui'
