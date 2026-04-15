@@ -28,6 +28,24 @@ async def list_scripts():
 
     return scripts
 
+@router.get("/list/standalone")
+async def list_standalone_scripts():
+    ai_service = service_manager.get_ai_service()
+    scripts_manager = ai_service.scripts_manager
+    scripts = []
+    for script_name in scripts_manager.get_standalone_script_list():
+        script = scripts_manager.get_script(script_name)
+        if script is None:
+            continue
+        scripts.append({
+            "script_name": script.name,
+            "description": script.description,
+            "folder_key": script.folder_key,
+            "intro_chapter": script.intro_chapter,
+        })
+
+    return scripts
+
 @router.get("/init_script/{script_name}")
 async def init_script(script_name: str):
     ai_service = service_manager.ai_service

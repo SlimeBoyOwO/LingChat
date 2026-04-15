@@ -8,7 +8,7 @@
 
     <!-- Loading State -->
     <div v-if="loading" class="flex flex-col items-center justify-center py-12 text-gray-400">
-      <div class="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mb-2"></div>
+      <div class="w-8 h-8 border-4 border-brand border-t-transparent rounded-full animate-spin mb-2"></div>
       <p>加载中...</p>
     </div>
 
@@ -58,7 +58,7 @@
               </marker>
               <marker id="arrow-unlocked" markerWidth="12" markerHeight="12" refX="10" refY="4" orient="auto"
                 markerUnits="strokeWidth">
-                <path d="M0,0 L0,8 L12,4 z" fill="#c084fc" />
+                <path d="M0,0 L0,8 L12,4 z" style="fill: var(--accent-color)" />
               </marker>
               <marker id="arrow-locked" markerWidth="12" markerHeight="12" refX="10" refY="4" orient="auto"
                 markerUnits="strokeWidth">
@@ -274,7 +274,7 @@ const connections = computed<Connection[]>(() => {
         lineClass = 'stroke-green-400 stroke-[2.5] fill-none'
         markerEnd = 'url(#arrow-completed)'
       } else if (toAdv.status !== 'locked') {
-        lineClass = 'stroke-purple-400 stroke-[2.5] fill-none'
+        lineClass = 'stroke-brand stroke-[2.5] fill-none'
         markerEnd = 'url(#arrow-unlocked)'
       }
 
@@ -307,7 +307,7 @@ const getNodeClass = (adventure: AdventureInfo) => {
       return `${baseClass} border-green-500/50 bg-green-900/20 hover:bg-green-900/30 hover:shadow-lg hover:shadow-green-500/20`
     case 'unlocked':
     case 'in_progress':
-      return `${baseClass} border-purple-500/50 bg-purple-900/20 hover:bg-purple-900/30 hover:shadow-lg hover:shadow-purple-500/20`
+      return `${baseClass} border-brand/50 bg-brand/20 hover:bg-brand/30 hover:shadow-lg hover:shadow-brand/20`
     case 'locked':
       return 'bg-gray-800/30 border-gray-700/50 opacity-60 cursor-not-allowed'
     default:
@@ -322,7 +322,7 @@ const getIconClass = (status: string) => {
     case 'locked':
       return 'bg-gray-700/50 text-gray-500'
     default:
-      return 'bg-purple-500/20 text-purple-400'
+      return 'bg-brand/20 text-brand'
   }
 }
 
@@ -333,7 +333,7 @@ const getBadgeClass = (status: string) => {
     case 'in_progress':
       return 'bg-blue-500/20 text-blue-400'
     case 'unlocked':
-      return 'bg-purple-500/20 text-purple-400'
+      return 'bg-brand/20 text-brand'
     default:
       return 'bg-gray-700/50 text-gray-500'
   }

@@ -38,6 +38,16 @@ export const getScriptList = async (): Promise<ScriptSummary[]> => {
   }
 }
 
+export const getStandaloneScriptList = async (): Promise<ScriptSummary[]> => {
+  try {
+    const data = await http.get('/v1/chat/script/list/standalone')
+    return data
+  } catch (error: any) {
+    console.error('获取独立剧本列表错误:', error.message)
+    throw error
+  }
+}
+
 export const getScriptInfo = async (scriptName: string): Promise<ScriptInfo> => {
   try {
     // 拦截器已解构数据，response.data 直接就是 ScriptInfo
@@ -47,5 +57,17 @@ export const getScriptInfo = async (scriptName: string): Promise<ScriptInfo> => 
   } catch (error: any) {
     console.error('获取脚本信息错误:', error.message)
     throw error // 直接抛出拦截器处理过的错误
+  }
+}
+
+export const startStandaloneScript = async (scriptName: string): Promise<void> => {
+  try {
+    // 独立剧本通过WebSocket命令启动
+    const { scriptHandler } = await import('@/api/websocket/handlers/script-handler')
+    const command = `/开始剧本 ${scriptName}`
+    scriptHandler.sendMessage(command)
+  } catch (error: any) {
+    console.error('启动独立剧本错误:', error.message)
+    throw error
   }
 }
