@@ -4,12 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ling-chat"
-version = "0.3.1-beta1"
-description = ""
+version = "0.4.0pre"
+description = "Ai驱动的聊天，陪伴软件与gal引擎"
+readme = "README.md"
 authors = [
     { name = "0x00-pl", email = "0x00.pl@gmail.com" },
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 
 dependencies = [
     "fastapi>=0.116.1",
@@ -30,15 +31,8 @@ dependencies = [
     "pynput>=1.8.1",
     "imagehash>=4.3.2",
     "rapidocr-onnxruntime>=1.4.4",
-]
-
-# 保留给其他工具（如 poetry/pdm）的兼容配置
-[project.optional-dependencies]
-dev = [
-    "ruff>=0.14.10",
-    "pytest>=7.0",
-    "pytest-asyncio>=0.21.0",
-    "pytest-cov>=6.2.1",
+    "packaging>=21.0",
+    "tqdm>=4.65.0",
 ]
 
 [tool.setuptools]
@@ -46,6 +40,7 @@ packages = ["ling_chat"]
 
 [tool.uv]
 index-strategy = "unsafe-best-match"
+default-groups = ["dev"]
 
 [dependency-groups]
 dev = [
@@ -58,14 +53,10 @@ dev = [
 [[tool.uv.index]]
 name = "tuna"
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"
-priority = 1
-
-[tool.uv.sources]
-default = { index = "tuna" }
+default = true
 
 [tool.uv.pip]
 resolution = "highest"
-generate-hashes = true
 
 [tool.ruff]
 # 设置最大行长度

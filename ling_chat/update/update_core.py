@@ -11,8 +11,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-import httpx
 from ling_chat.core.logger import logger
+from ling_chat.utils.http_utils import download_file, fetch_json
 from packaging import version
 
 
@@ -857,10 +857,7 @@ class MyUpdateStrategy(UpdateStrategy):
     def get_version_history(self):
         """获取版本历史"""
         try:
-            with httpx.Client() as client:
-                resp = client.get(f"{self.update_url}/history.json", timeout=10.0)
-                resp.raise_for_status()
-                history_data = resp.json()
+            history_data = fetch_json(f"{self.update_url}/history.json", timeout=10.0)
 
             # 处理不同的响应格式
             if isinstance(history_data, dict):
@@ -875,11 +872,8 @@ class MyUpdateStrategy(UpdateStrategy):
                 logger.warning(f"未知的历史数据格式: {type(history_data)}")
                 return []
 
-        except httpx.RequestError as e:
+        except RuntimeError as e:
             logger.warning(f"获取版本历史失败: {e}")
-            return []
-        except httpx.HTTPStatusError as e:
-            logger.warning(f"HTTP错误: {e}")
             return []
         except Exception as e:
             logger.warning(f"获取版本历史失败: {e}")
@@ -888,10 +882,7 @@ class MyUpdateStrategy(UpdateStrategy):
     def _check_single_update(self):
         """原有的单版本检查逻辑"""
         try:
-            with httpx.Client() as client:
-                resp = client.get(f"{self.update_url}/version.json", timeout=10.0)
-                resp.raise_for_status()
-                update_info = resp.json()
+            update_info = fetch_json(f"{self.update_url}/version.json", timeout=10.0)
 
             if 'version' not in update_info:
                 raise UpdateError("version.json 缺少 version 字段")
@@ -907,10 +898,8 @@ class MyUpdateStrategy(UpdateStrategy):
                 self._update_info = update_chain
                 return update_chain
             return None
-        except httpx.RequestError as e:
+        except RuntimeError as e:
             raise UpdateError(f"网络请求失败: {e}")
-        except httpx.HTTPStatusError as e:
-            raise UpdateError(f"HTTP错误: {e}")
         except UpdateError:
             raise
         except Exception as e:
@@ -923,23 +912,16 @@ class MyUpdateStrategy(UpdateStrategy):
             if not download_url:
                 raise UpdateError("更新信息缺少 download_url")
 
-            with httpx.Client() as client:
-                with client.stream('GET', download_url, timeout=30.0, follow_redirects=True) as resp:
-                    resp.raise_for_status()
-                    total_size = int(resp.headers.get('content-length', 0))
-                    temp_dir = tempfile.gettempdir()
-                    fname = f"update_{update_info.get('version')}.zip"
-                    self.downloaded_file = os.path.join(temp_dir, fname)
-                    downloaded = 0
+            temp_dir = tempfile.gettempdir()
+            fname = f"update_{update_info.get('version')}.zip"
+            self.downloaded_file = os.path.join(temp_dir, fname)
 
-                    with open(self.downloaded_file, 'wb') as f:
-                        for chunk in resp.iter_bytes(chunk_size=8192):
-                            if chunk:
-                                f.write(chunk)
-                                downloaded += len(chunk)
-                                if progress_callback and total_size > 0:
-                                    progress = int((downloaded / total_size) * 100)
-                                    progress_callback(progress)
+            download_file(
+                url=download_url,
+                save_path=Path(self.downloaded_file),
+                timeout=30.0,
+                progress_callback=progress_callback,
+            )
 
             sha = update_info.get('sha256')
             if sha:
@@ -950,10 +932,8 @@ class MyUpdateStrategy(UpdateStrategy):
                         pass
                     raise UpdateError("文件哈希验证失败")
             return self.downloaded_file
-        except httpx.RequestError as e:
-            raise UpdateError(f"网络请求失败: {e}")
-        except httpx.HTTPStatusError as e:
-            raise UpdateError(f"HTTP错误: {e}")
+        except RuntimeError as e:
+            raise UpdateError(f"下载失败: {e}")
         except UpdateError:
             raise
         except Exception as e:
@@ -981,26 +961,23 @@ class MyUpdateStrategy(UpdateStrategy):
 
                 logger.info(f"下载更新 {i+1}/{total_files}: {update_info.get('version')}")
 
-                with httpx.Client() as client:
-                    with client.stream('GET', download_url, timeout=30.0, follow_redirects=True) as resp:
-                        resp.raise_for_status()
+                temp_dir = tempfile.gettempdir()
+                fname = f"update_{update_info.get('version')}.zip"
+                file_path = os.path.join(temp_dir, fname)
 
-                        total_size = int(resp.headers.get('content-length', 0))
-                        temp_dir = tempfile.gettempdir()
-                        fname = f"update_{update_info.get('version')}.zip"
-                        file_path = os.path.join(temp_dir, fname)
+                def _wrapped_progress(progress: int) -> None:
+                    """包装进度回调，将单个文件进度映射到总体进度"""
+                    if progress_callback and total_files > 0:
+                        file_progress = int(progress / total_files)
+                        current_progress = int((i / total_files) * 100) + file_progress
+                        progress_callback(min(current_progress, 100))
 
-                        downloaded = 0
-                        with open(file_path, 'wb') as f:
-                            for chunk in resp.iter_bytes(chunk_size=8192):
-                                if chunk:
-                                    f.write(chunk)
-                                    downloaded += len(chunk)
-                                    if progress_callback and total_size > 0:
-                                        # 文件内进度 + 总体进度
-                                        file_progress = int((downloaded / total_size) * (100 / total_files))
-                                        current_progress = int((i / total_files) * 100) + file_progress
-                                        progress_callback(min(current_progress, 100))
+                download_file(
+                    url=download_url,
+                    save_path=Path(file_path),
+                    timeout=30.0,
+                    progress_callback=_wrapped_progress,
+                )
 
                 # 验证文件哈希
                 sha = update_info.get('sha256')
