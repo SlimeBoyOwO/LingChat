@@ -46,6 +46,9 @@ class ScriptManager:
     
     def get_script_list(self) -> list[str]:
         return list(self.all_scripts.keys())
+    
+    def get_standalone_script_list(self) -> list[str]:
+        return [script_name for script_name, script in self.all_scripts.items() if not self._is_adventure_script(script)]
 
     def get_script(self, script_name:str) -> ScriptStatus|None:
         # 添加键值检查

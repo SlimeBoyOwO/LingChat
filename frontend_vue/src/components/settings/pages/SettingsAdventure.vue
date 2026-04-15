@@ -1,55 +1,115 @@
 <template>
   <MenuPage>
+    <!-- 独立剧本部分 -->
+    <MenuItem title="独立剧本">
+      <template #header>
+        <FileText :size="20" />
+      </template>
+
+      <!-- 独立剧本列表 -->
+      <div v-if="standaloneScriptsLoading" class="flex flex-col items-center justify-center py-8 text-gray-400">
+        <div class="w-12 h-12 border-4 border-brand border-t-transparent rounded-full animate-spin mb-2"></div>
+        <p>加载中...</p>
+      </div>
+
+      <div v-else-if="standaloneScripts.length === 0" class="flex flex-col items-center justify-center py-12 text-gray-400">
+        <div class="w-20 h-20 flex items-center justify-center rounded-full bg-gray-800/50 mb-4">
+          <FileText :size="40" class="text-gray-500" />
+        </div>
+        <p class="text-lg mb-2">暂无独立剧本</p>
+        <p class="text-sm text-gray-500 mb-6">独立剧本是无需选择角色即可游玩的剧本</p>
+      </div>
+
+      <div v-else class="space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div
+            v-for="script in standaloneScripts"
+            :key="script.script_name"
+            class="relative flex flex-col p-4 rounded-xl border transition-all duration-300 group bg-gray-800/50 border-gray-700 hover:bg-gray-800/80 hover:border-brand/50 cursor-pointer"
+            @click="startStandaloneScript(script)"
+          >
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-lg font-bold text-white truncate">{{ script.script_name }}</h3>
+              <span class="px-3 py-1 rounded-full text-xs font-medium bg-brand/20 text-brand border border-brand/30">
+                独立剧本
+              </span>
+            </div>
+
+            <p v-if="script.description" class="text-sm text-gray-300 mb-4 line-clamp-3 flex-1">
+              {{ script.description }}
+            </p>
+            <p v-else class="text-sm text-gray-500 mb-4 italic">暂无描述</p>
+
+            <div class="flex items-center justify-between mt-auto">
+              <span v-if="script.intro_chapter" class="text-xs text-gray-400">
+                起始章节: {{ script.intro_chapter }}
+              </span>
+              <Button type="big" size="sm" @click.stop="startStandaloneScript(script)">
+                开始游玩
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </MenuItem>
+
+    <!-- 羁绊冒险部分 -->
     <MenuItem title="羁绊冒险">
-    <template #header>
-      <Book :size="20" />
-    </template>
+      <template #header>
+        <Book :size="20" />
+      </template>
 
-    <!-- 如果没有选中角色 -->
-    <div v-if="!currentCharacter" class="flex flex-col items-center justify-center py-12 text-gray-400">
-      <div class="w-20 h-20 flex items-center justify-center rounded-full bg-gray-800/50 mb-4">
-        <Book :size="40" class="text-gray-500" />
-      </div>
-      <p class="text-lg mb-2">请先在角色页面选择一个角色</p>
-      <p class="text-sm text-gray-500 mb-6">选择角色后即可查看其羁绊冒险</p>
-      <Button type="big" @click="goToCharacterTab">
-        前往角色页面
-      </Button>
-    </div>
-
-    <!-- 如果已选中角色 -->
-    <div v-else class="space-y-4">
-      <div class="flex items-center gap-4 p-4 bg-gray-900/50 rounded-xl border border-white/10">
-        <img :src="currentCharacterAvatar" class="w-16 h-16 rounded-full object-cover border-2 border-indigo-500/50"
-          alt="角色头像" />
-        <div class="flex-1 min-w-0">
-          <h3 class="text-xl font-bold text-white truncate">{{ currentCharacter.roleName }}</h3>
-          <p class="text-gray-400 text-sm truncate">{{ currentCharacter.roleSubTitle || '暂无副标题' }}</p>
+      <!-- 如果没有选中角色 -->
+      <div v-if="!currentCharacter" class="flex flex-col items-center justify-center py-12 text-gray-400">
+        <div class="w-20 h-20 flex items-center justify-center rounded-full bg-gray-800/50 mb-4">
+          <Book :size="40" class="text-gray-500" />
         </div>
-        <div class="shrink-0">
-          <Button type="big" @click="goToCharacterTab">
-            切换角色
-          </Button>
-        </div>
+        <p class="text-lg mb-2">请先在角色页面选择一个角色</p>
+        <p class="text-sm text-gray-500 mb-6">选择角色后即可查看其羁绊冒险</p>
+        <Button type="big" @click="goToCharacterTab">
+          前往角色页面
+        </Button>
       </div>
 
-      <AdventurePanel :character-folder="characterFolder" />
-    </div>
+      <!-- 如果已选中角色 -->
+      <div v-else class="space-y-4">
+        <div class="flex items-center gap-4 p-4 bg-gray-900/50 rounded-xl border border-white/10">
+          <img :src="currentCharacterAvatar" class="w-16 h-16 rounded-full object-cover border-2 border-indigo-500/50"
+            alt="角色头像" />
+          <div class="flex-1 min-w-0">
+            <h3 class="text-xl font-bold text-white truncate">{{ currentCharacter.roleName }}</h3>
+            <p class="text-gray-400 text-sm truncate">{{ currentCharacter.roleSubTitle || '暂无副标题' }}</p>
+          </div>
+          <div class="shrink-0">
+            <Button type="big" @click="goToCharacterTab">
+              切换角色
+            </Button>
+          </div>
+        </div>
+
+        <AdventurePanel :character-folder="characterFolder" />
+      </div>
     </MenuItem>
   </MenuPage>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { MenuPage, MenuItem } from '../../ui'
 import { Button } from '@/components/base'
 import AdventurePanel from '@/components/game/standard/AdventurePanel.vue'
 import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
-import { Book } from 'lucide-vue-next'
+import { Book, FileText } from 'lucide-vue-next'
+import { getStandaloneScriptList, startStandaloneScript as startStandaloneScriptApi } from '@/api/services/script-info'
+import type { ScriptSummary } from '@/api/services/script-info'
 
 const gameStore = useGameStore()
 const uiStore = useUIStore()
+
+// 独立剧本相关状态
+const standaloneScripts = ref<ScriptSummary[]>([])
+const standaloneScriptsLoading = ref(true)
 
 // 获取当前主角
 const currentCharacter = computed(() => gameStore.mainRole)
@@ -70,6 +130,36 @@ const characterFolder = computed(() => {
 const goToCharacterTab = () => {
   uiStore.setSettingsTab('character')
 }
+
+// 开始游玩独立剧本
+const startStandaloneScript = async (script: ScriptSummary) => {
+  try {
+    await startStandaloneScriptApi(script.script_name)
+    // 可选：关闭设置面板，开始剧本
+    uiStore.showSettings = false
+  } catch (error) {
+    console.error('启动独立剧本失败:', error)
+  }
+}
+
+// 获取独立剧本列表
+const fetchStandaloneScripts = async () => {
+  try {
+    standaloneScriptsLoading.value = true
+    const scripts = await getStandaloneScriptList()
+    standaloneScripts.value = scripts
+  } catch (error) {
+    console.error('获取独立剧本列表失败:', error)
+    standaloneScripts.value = []
+  } finally {
+    standaloneScriptsLoading.value = false
+  }
+}
+
+// 组件挂载时获取独立剧本列表
+onMounted(() => {
+  fetchStandaloneScripts()
+})
 </script>
 
 <style scoped>
