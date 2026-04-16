@@ -6,6 +6,7 @@ import { useUIStore } from '../ui/ui'
 import { getDialogueHistory } from '@/api/services/history'
 import { convertToGameMessages } from '@/utils/function'
 import type { SceneInfo } from '@/api/services/scene'
+import { useAdventureStore } from '../adventure'
 export const actions = {
   // 注意：这里 this 指定为 GameState 是安全的，
   // 但如果你想调用 this.initializeGame()，TS 会报错。
@@ -57,6 +58,7 @@ export const actions = {
       this.currentInteractRoleId = gameInfo.current_interact_role_id
 
       const uiStore = useUIStore()
+      const adventureStore = useAdventureStore()
       this.userName = characterInfo.user_name
       this.userSubtitle = characterInfo.user_subtitle
 
@@ -67,6 +69,8 @@ export const actions = {
       if (gameInfo.background_effect !== '') uiStore.setBackgroundEffect(gameInfo.background_effect)
       if (gameInfo.background_music !== '')
         uiStore.currentBackgroundMusic = gameInfo.background_music
+
+      await adventureStore.fetchCharacterAdventures(characterInfo.character_folder)
 
       const lines = await getDialogueHistory(userId)
       if (lines && lines.length > 0) {
