@@ -20,6 +20,6 @@ export default class BackgroundProcessor implements IEventProcessor {
       : '../pictures/background/default.png'
 
     uiStore.currentBackgroundTransition = event.transition * 1000
-    uiStore.currentBackground = url
+    uiStore.setCurrentBackground(url)
   }
 }
