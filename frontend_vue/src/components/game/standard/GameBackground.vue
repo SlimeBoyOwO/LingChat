@@ -1,28 +1,62 @@
 <template>
   <!-- 背景图，已使用 Tailwind 类替代原本的 css -->
-  <ImageAcrossFade ref="imageFadeRef" class="game-background"
-    :src="uiStore.currentBackground || '@/assets/images/default_bg.jpg'" position="center center" object-fit="cover"
-    :duration="uiStore.currentBackgroundTransition">
-    <StarField ref="starfieldRef" v-if="uiStore.currentBackgroundEffect === 'StarField'" :enabled="starfieldEnabled"
-      :star-count="starCount" :scroll-speed="scrollSpeed" :colors="starColors" style="z-index: 114514"
-      @ready="onStarfieldReady" />
-    <Rain v-if="uiStore.currentBackgroundEffect === 'Rain'" :enabled="rainEnabled" :intensity="rainIntensity"
-      style="z-index: 114514" />
-    <Sakura v-if="uiStore.currentBackgroundEffect === 'Sakura'" :enabled="true" :intensity="1.5"
-      style="z-index: 114514" />
-    <Snow v-if="uiStore.currentBackgroundEffect === 'Snow'" :intensity="snowIntensity" :enabled="true"
-      style="z-index: 114514" />
-    <Fireworks v-if="uiStore.currentBackgroundEffect === 'Fireworks'" :enabled="true" :intensity="1.5"
-      style="z-index: 114514" />
+  <ImageAcrossFade
+    ref="imageFadeRef"
+    class="game-background"
+    :src="uiStore.currentBackground || '@/assets/images/default_bg.jpg'"
+    position="center center"
+    object-fit="cover"
+    :duration="uiStore.currentBackgroundTransition"
+  >
+    <StarField
+      ref="starfieldRef"
+      v-if="uiStore.currentBackgroundEffect === 'StarField'"
+      :enabled="starfieldEnabled"
+      :star-count="starCount"
+      :scroll-speed="scrollSpeed"
+      :colors="starColors"
+      style="z-index: 114514"
+      @ready="onStarfieldReady"
+    />
+    <Rain
+      v-if="uiStore.currentBackgroundEffect === 'Rain'"
+      :enabled="rainEnabled"
+      :intensity="rainIntensity"
+      style="z-index: 114514"
+    />
+    <Sakura
+      v-if="uiStore.currentBackgroundEffect === 'Sakura'"
+      :enabled="true"
+      :intensity="1.5"
+      style="z-index: 114514"
+    />
+    <Snow
+      v-if="uiStore.currentBackgroundEffect === 'Snow'"
+      :intensity="snowIntensity"
+      :enabled="true"
+      style="z-index: 114514"
+    />
+    <Fireworks
+      v-if="uiStore.currentBackgroundEffect === 'Fireworks'"
+      :enabled="true"
+      :intensity="1.5"
+      style="z-index: 114514"
+    />
   </ImageAcrossFade>
 
   <!-- 短效音效保留默认实现即可，不需要淡入淡出 -->
   <audio ref="soundEffectPlayer"></audio>
 
   <!-- 全新解耦出来的双轨交叉音乐淡入淡出组件 -->
-  <AudioAcrossFade :src="uiStore.currentBackgroundMusic" :volume="uiStore.backgroundVolume"
-    :paused="uiStore.bgMusicPaused" :stopped="uiStore.bgMusicStoped" :duration="800"
-    :loop="uiStore.bgMusicMode === 'loop-single'" @ended="handleTrackEnd" />
+  <AudioAcrossFade
+    :src="uiStore.currentBackgroundMusic"
+    :volume="uiStore.backgroundVolume"
+    :paused="uiStore.bgMusicPaused"
+    :stopped="uiStore.bgMusicStoped"
+    :duration="800"
+    :loop="uiStore.bgMusicMode === 'loop-single'"
+    @ended="handleTrackEnd"
+  />
 </template>
 
 <script setup lang="ts">
