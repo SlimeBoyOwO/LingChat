@@ -100,7 +100,9 @@
           </div>
         </div>
 
-        <AdventurePanel :character-folder="characterFolder" />
+        <div v-if="gameStore.mainRole">
+          <AdventurePanel :character-folder="gameStore.mainRole.character_folder" />
+        </div>
       </div>
     </MenuItem>
 
@@ -126,7 +128,7 @@
 import { computed, ref, onMounted } from 'vue'
 import { MenuPage, MenuItem } from '../../ui'
 import { Button } from '@/components/base'
-import AdventurePanel from '@/components/game/standard/AdventurePanel.vue'
+import AdventurePanel from './Adeventure/AdventurePanel.vue'
 import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { Birdhouse, Book, FileText, UserPlus } from 'lucide-vue-next'
@@ -148,14 +150,14 @@ const currentCharacter = computed(() => gameStore.mainRole)
 
 // 获取角色头像
 const currentCharacterAvatar = computed(() => {
-  const folder = characterFolder.value
-  if (!folder) return ''
-  return `/characters/${folder}/头像.png`
+  return gameStore.mainRole
+    ? `/api/v1/chat/character/character_file/${encodeURIComponent(gameStore.mainRole.character_folder)}/avatar/头像`
+    : '../pictures/characters/default.png'
 })
 
 // 获取角色文件夹
 const characterFolder = computed(() => {
-  return uiStore.currentCharacterFolder
+  return gameStore.mainRole?.character_folder
 })
 
 // 跳转到角色标签页

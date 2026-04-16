@@ -16,6 +16,7 @@ export interface CharacterSettings {
   clothes: Record<string, any>
   clothes_name: string
   body_part: Record<string, any>
+  character_folder: string
 }
 
 // 2. 定义完整的初始化数据接口 (对应后端的 WebInitData)
