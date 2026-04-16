@@ -9,15 +9,17 @@
       <SettingsSave v-show="uiStore.currentSettingsTab === 'save'" />
       <SettingsText v-show="uiStore.currentSettingsTab === 'text'" />
       <SettingsSound v-show="uiStore.currentSettingsTab === 'sound'" />
-      <SettingsAdvance ref="settingsAdvanceRef" v-show="uiStore.currentSettingsTab === 'advance'"
-        @remove-more-menu-from-b="onAddFromB" />
+      <SettingsAdvance
+        ref="settingsAdvanceRef"
+        v-show="uiStore.currentSettingsTab === 'advance'"
+        @remove-more-menu-from-b="onAddFromB"
+      />
       <SettingsAdventure v-show="uiStore.currentSettingsTab === 'adventure'" />
       <SettingsHistory v-show="uiStore.currentSettingsTab === 'history'" />
       <SettingsAchievement v-show="uiStore.currentSettingsTab === 'achievement'" />
       <SettingsCharacter v-show="uiStore.currentSettingsTab === 'character'" />
       <SettingsBackground v-show="uiStore.currentSettingsTab === 'background'" />
       <SettingsUpdate v-show="uiStore.currentSettingsTab === 'update'" />
-
     </div>
   </div>
 </template>

@@ -1,30 +1,24 @@
 <template>
   <div class="relative w-full h-full">
-    <slot></slot>
     <!-- 底层图片（当前显示的图片） -->
-    <div
-      class="absolute inset-0 w-full h-full bg-no-repeat z-10 backface-hidden will-change-[opacity,background-image]"
+    <slot></slot>
+    <div class="absolute inset-0 w-full h-full bg-no-repeat z-10 backface-hidden will-change-[opacity,background-image]"
       :style="{
         backgroundImage: `url(${currentImageUrl})`,
         backgroundSize: objectFit,
         backgroundPosition: position,
-      }"
-    ></div>
+      }"></div>
 
     <!-- 顶层图片（准备淡入的新图片） -->
     <!-- 新增 ref="topDivRef" 用于强制重排 -->
-    <div
-      ref="topDivRef"
+    <div ref="topDivRef"
       class="absolute inset-0 w-full h-full bg-no-repeat z-20 backface-hidden will-change-[opacity,background-image] transition-opacity ease-in-out"
-      :class="isFadingIn ? 'opacity-100' : 'opacity-0'"
-      :style="{
+      :class="isFadingIn ? 'opacity-100' : 'opacity-0'" :style="{
         backgroundImage: `url(${nextImageUrl})`,
         backgroundSize: objectFit,
         backgroundPosition: position,
         transitionDuration: `${duration}ms`,
-      }"
-      @transitionend="onTransitionEnd"
-    ></div>
+      }" @transitionend="onTransitionEnd"></div>
   </div>
 </template>
 
@@ -73,7 +67,7 @@ const updateImage = async (newUrl: string) => {
     // 必须先等网络请求完全结束
     await imgReadyPromise
     // 然后再等 CPU 解码完成 (忽略 decode 本身不支持时的报错)
-    await img.decode().catch(() => {})
+    await img.decode().catch(() => { })
   } catch (err) {
     console.error(`加载图片失败: ${newUrl}`, err)
   }

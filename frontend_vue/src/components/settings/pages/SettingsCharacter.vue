@@ -1,72 +1,56 @@
 <template>
   <MenuPage>
     <MenuItem title="角色列表（切换角色会开始全新对话）">
-      <template #header>
-        <Rabbit :size="20" />
-      </template>
+    <template #header>
+      <Rabbit :size="20" />
+    </template>
 
-      <div class="grid gap-5 p-3.75 w-full grid-cols-1 md:grid-cols-2">
-        <CharacterCard
-          v-for="character in characters"
-          :key="character.id"
-          :id="character.id"
-          :avatar="character.avatar"
-          :name="character.name"
-          :title="character.title"
-          :subName="character.subName"
-          :info="character.info"
-          :clothes="character.clothes || []"
-          :resource-folder="character.resourceFolder"
-          @saved="handleSettingsSaved"
-        />
-      </div>
+    <div class="grid gap-5 p-3.75 w-full grid-cols-1 md:grid-cols-2">
+      <CharacterCard v-for="character in characters" :key="character.id" :id="character.id" :avatar="character.avatar"
+        :name="character.name" :title="character.title" :subName="character.subName" :info="character.info"
+        :clothes="character.clothes || []" :resource-folder="character.resourceFolder" @saved="handleSettingsSaved" />
+    </div>
 
-      <div v-if="totalPages > 1" class="flex items-center justify-between px-3 py-2 w-full">
-        <button
-          class="px-4 py-1.5 text-sm font-medium border-none rounded-lg cursor-pointer bg-[#e9ecef] text-[#495057] transition-all duration-200 hover:bg-(--accent-color) hover:text-white hover:-translate-y-0.5 hover:shadow-[0_4px_10px_rgba(121,217,255,0.4)] disabled:opacity-40 disabled:cursor-not-allowed"
-          :disabled="currentPage <= 1"
-          @click="changePage(currentPage - 1)"
-        >
-          上一页
-        </button>
-        <span class="text-sm font-medium text-white/80"
-          >第 {{ currentPage }} / {{ totalPages }} 页</span
-        >
-        <button
-          class="px-4 py-1.5 text-sm font-medium border-none rounded-lg cursor-pointer bg-[#e9ecef] text-[#495057] transition-all duration-200 hover:bg-(--accent-color) hover:text-white hover:-translate-y-0.5 hover:shadow-[0_4px_10px_rgba(121,217,255,0.4)] disabled:opacity-40 disabled:cursor-not-allowed"
-          :disabled="currentPage >= totalPages"
-          @click="changePage(currentPage + 1)"
-        >
-          下一页
-        </button>
-      </div>
+    <div v-if="totalPages > 1" class="flex items-center justify-between px-3 py-2 w-full">
+      <button
+        class="px-4 py-1.5 text-sm font-medium border-none rounded-lg cursor-pointer bg-[#e9ecef] text-[#495057] transition-all duration-200 hover:bg-(--accent-color) hover:text-white hover:-translate-y-0.5 hover:shadow-[0_4px_10px_rgba(121,217,255,0.4)] disabled:opacity-40 disabled:cursor-not-allowed"
+        :disabled="currentPage <= 1" @click="changePage(currentPage - 1)">
+        上一页
+      </button>
+      <span class="text-sm font-medium text-white/80">第 {{ currentPage }} / {{ totalPages }} 页</span>
+      <button
+        class="px-4 py-1.5 text-sm font-medium border-none rounded-lg cursor-pointer bg-[#e9ecef] text-[#495057] transition-all duration-200 hover:bg-(--accent-color) hover:text-white hover:-translate-y-0.5 hover:shadow-[0_4px_10px_rgba(121,217,255,0.4)] disabled:opacity-40 disabled:cursor-not-allowed"
+        :disabled="currentPage >= totalPages" @click="changePage(currentPage + 1)">
+        下一页
+      </button>
+    </div>
     </MenuItem>
 
     <MenuItem title="创建人物" size="small">
-      <template #header><UserPlus :size="20" /></template>
-      <div class="space-y-2">
-        <p class="text-sm text-white/75 leading-relaxed">
-          上传头像与 20 个情绪立绘，填写角色设置后即可直接在本地生成新人物。
-        </p>
-        <Button type="big" @click="openCreateModal">打开创建向导</Button>
-      </div>
+    <template #header>
+      <UserPlus :size="20" />
+    </template>
+    <div class="space-y-2">
+      <Button type="big" @click="openCreateModal">打开创建向导</Button>
+    </div>
     </MenuItem>
 
     <MenuItem title="刷新人物列表" size="small">
-      <template #header><RefreshCcw :size="20" /></template>
-      <Button type="big" @click="refreshCharacters">点我刷新</Button>
+    <template #header>
+      <RefreshCcw :size="20" />
+    </template>
+    <Button type="big" @click="refreshCharacters">点我刷新</Button>
     </MenuItem>
 
     <MenuItem title="创意工坊" size="small">
-      <template #header><Birdhouse :size="20" /></template>
-      <Button type="big" @click="openCreativeWeb">进入创意工坊</Button>
+    <template #header>
+      <Birdhouse :size="20" />
+    </template>
+    <Button type="big" @click="openCreativeWeb">进入创意工坊</Button>
     </MenuItem>
 
-    <SettingsCharacterCreate
-      :visible="isCreateModalVisible"
-      @close="closeCreateModal"
-      @created="handleCharacterCreated"
-    />
+    <SettingsCharacterCreate :visible="isCreateModalVisible" @close="closeCreateModal"
+      @created="handleCharacterCreated" />
   </MenuPage>
 </template>
 
@@ -114,11 +98,11 @@ const mapCharacter = (char: ApiCharacter): CharacterCardData => {
       : '../pictures/characters/default.png',
     clothes: char.clothes
       ? char.clothes.map((clothes: Clothes) => ({
-          title: clothes.title,
-          avatar: clothes.avatar
-            ? `/api/v1/chat/character/clothes_file/${encodeURIComponent(`${clothes.avatar}\\头像.png`)}`
-            : '../pictures/characters/default.png',
-        }))
+        title: clothes.title,
+        avatar: clothes.avatar
+          ? `/api/v1/chat/character/clothes_file/${encodeURIComponent(`${clothes.avatar}\\头像.png`)}`
+          : '../pictures/characters/default.png',
+      }))
       : [],
     resourceFolder: char.resource_folder,
   }

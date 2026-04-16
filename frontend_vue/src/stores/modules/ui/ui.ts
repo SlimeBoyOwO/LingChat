@@ -31,7 +31,6 @@ interface UIState {
   showSettings: boolean
   currentSettingsTab: string
 
-  currentBackground: string
   currentBackgroundTransition: number
   currentPresentPic: string
   currentPresentPicScale: number
@@ -76,8 +75,7 @@ export const useUIStore = defineStore('ui', {
     showCharacterThinkLine: 'Ling Ling Thinking...',
     showSettings: false,
     currentSettingsTab: 'text',
-    currentBackground: '@/assets/images/default_bg.jpg',
-    currentBackgroundTransition: 1,
+    currentBackgroundTransition: 300,
     currentPresentPic: '',
     currentPresentPicScale: 1,
 
@@ -110,6 +108,9 @@ export const useUIStore = defineStore('ui', {
   }),
 
   getters: {
+    currentBackground(): string {
+      return useSettingsStore().currentBackground
+    },
     // 从 settings store 获取设置值（向后兼容）
     typeWriterSpeed(): number {
       return useSettingsStore().textSpeed
@@ -139,6 +140,9 @@ export const useUIStore = defineStore('ui', {
   },
 
   actions: {
+    setCurrentBackground(background: string) {
+      useSettingsStore().setCurrentBackground(background)
+    },
     // 设置背景效果（写入 settings store）
     setBackgroundEffect(effect: string) {
       useSettingsStore().setBackgroundEffect(effect)

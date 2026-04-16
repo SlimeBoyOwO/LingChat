@@ -1,59 +1,116 @@
 <template>
   <div class="w-full h-full flex items-center justify-between relative px-5 py-2">
     <img src="@/assets/images/LingChatLogo.png" alt="Logo" class="w-20 ml-5 hidden xl:block" />
-    <nav ref="navContainer"
-      class="relative w-full flex flex-nowrap items-center justify-start gap-1 h-full ease-in-out duration-100 xl:justify-center overflow-x-auto overflow-y-hidden px-2">
-      <div ref="indicator"
-        class="absolute bottom-0 left-0 w-0 h-1 bg-brand rounded z-10 shadow-[0_0_10px_rgba(121,217,255,0.4)]"></div>
-      <Button ref="characterBtn" type="nav" icon="character" @click="() => switchTab('character', 'characterBtn')"
-        :class="{ active: uiStore.currentSettingsTab === 'character' }">
+    <nav
+      ref="navContainer"
+      class="relative w-full flex flex-nowrap items-center justify-start gap-1 h-full ease-in-out duration-100 xl:justify-center overflow-x-auto overflow-y-hidden px-2"
+    >
+      <div
+        ref="indicator"
+        class="absolute bottom-0 left-0 w-0 h-1 bg-brand rounded z-10 shadow-[0_0_10px_rgba(121,217,255,0.4)]"
+      ></div>
+      <Button
+        ref="characterBtn"
+        type="nav"
+        icon="character"
+        @click="() => switchTab('character', 'characterBtn')"
+        :class="{ active: uiStore.currentSettingsTab === 'character' }"
+      >
         <p class="hidden xl:block">角色</p>
       </Button>
-      <Button ref="adventureBtn" type="nav" icon="adventure" @click="() => switchTab('adventure', 'adventureBtn')"
-        :class="{ active: uiStore.currentSettingsTab === 'adventure' }">
+      <Button
+        ref="adventureBtn"
+        type="nav"
+        icon="adventure"
+        @click="() => switchTab('adventure', 'adventureBtn')"
+        :class="{ active: uiStore.currentSettingsTab === 'adventure' }"
+      >
         <p class="hidden xl:block">羁绊</p>
       </Button>
-      <Button ref="textBtn" type="nav" icon="text" @click="() => switchTab('text', 'textBtn')"
-        :class="{ active: uiStore.currentSettingsTab === 'text' }">
+      <Button
+        ref="textBtn"
+        type="nav"
+        icon="text"
+        @click="() => switchTab('text', 'textBtn')"
+        :class="{ active: uiStore.currentSettingsTab === 'text' }"
+      >
         <p class="hidden xl:block">通用</p>
       </Button>
-      <Button ref="backgroundBtn" type="nav" icon="background" @click="() => switchTab('background', 'backgroundBtn')"
-        :class="{ active: uiStore.currentSettingsTab === 'background' }">
+      <Button
+        ref="backgroundBtn"
+        type="nav"
+        icon="background"
+        @click="() => switchTab('background', 'backgroundBtn')"
+        :class="{ active: uiStore.currentSettingsTab === 'background' }"
+      >
         <p class="hidden xl:block">背景</p>
       </Button>
-      <Button ref="soundBtn" type="nav" icon="sound" @click="() => switchTab('sound', 'soundBtn')"
-        :class="{ active: uiStore.currentSettingsTab === 'sound' }">
+      <Button
+        ref="soundBtn"
+        type="nav"
+        icon="sound"
+        @click="() => switchTab('sound', 'soundBtn')"
+        :class="{ active: uiStore.currentSettingsTab === 'sound' }"
+      >
         <p class="hidden xl:block">声音</p>
       </Button>
-      <Button ref="historyBtn" type="nav" icon="history" @click="() => switchTab('history', 'historyBtn')"
-        :class="{ active: uiStore.currentSettingsTab === 'history' }">
+      <Button
+        ref="historyBtn"
+        type="nav"
+        icon="history"
+        @click="() => switchTab('history', 'historyBtn')"
+        :class="{ active: uiStore.currentSettingsTab === 'history' }"
+      >
         <p class="hidden xl:block">对话历史</p>
       </Button>
-      <Button ref="achievementBtn" type="nav" icon="achievement"
+      <Button
+        ref="achievementBtn"
+        type="nav"
+        icon="achievement"
         @click="() => switchTab('achievement', 'achievementBtn')"
-        :class="{ active: uiStore.currentSettingsTab === 'achievement' }">
+        :class="{ active: uiStore.currentSettingsTab === 'achievement' }"
+      >
         <p class="hidden xl:block">成就</p>
       </Button>
-      <Button ref="saveBtn" type="nav" icon="save" @click="() => switchTab('save', 'saveBtn')"
-        :class="{ active: uiStore.currentSettingsTab === 'save' }">
+      <Button
+        ref="saveBtn"
+        type="nav"
+        icon="save"
+        @click="() => switchTab('save', 'saveBtn')"
+        :class="{ active: uiStore.currentSettingsTab === 'save' }"
+      >
         <p class="hidden xl:block">存档</p>
       </Button>
-      <Button ref="advanceBtn" type="nav" icon="advance" @click="
-        () => {
-          switchTab('advance', 'advanceBtn')
-          removeMoreMenu()
-        }
-      " :class="{ active: uiStore.currentSettingsTab === 'advance' }">
+      <Button
+        ref="advanceBtn"
+        type="nav"
+        icon="advance"
+        @click="
+          () => {
+            switchTab('advance', 'advanceBtn')
+            removeMoreMenu()
+          }
+        "
+        :class="{ active: uiStore.currentSettingsTab === 'advance' }"
+      >
         <p class="hidden xl:block">高级设置</p>
       </Button>
-      <Button ref="updateBtn" type="nav" icon="update" @click="() => switchTab('update', 'updateBtn')"
-        :class="{ active: uiStore.currentSettingsTab === 'update' }">
+      <Button
+        ref="updateBtn"
+        type="nav"
+        icon="update"
+        @click="() => switchTab('update', 'updateBtn')"
+        :class="{ active: uiStore.currentSettingsTab === 'update' }"
+      >
         <p class="hidden xl:block">更新（实验）</p>
       </Button>
     </nav>
-    <Icon icon="close"
+    <Icon
+      icon="close"
       class="bg-transparent border-none p-1.5 rounded-full cursor-pointer flex items-center justify-center text-white transition-all duration-300 ease-in-out hover:text-accent hover:bg-white/10 hover:rotate-90"
-      :size="40" @click="closeSettings"></Icon>
+      :size="40"
+      @click="closeSettings"
+    ></Icon>
   </div>
 </template>
 
@@ -251,7 +308,7 @@ watch(
   () => {
     /* 可通过 props 传递状态，或直接监听 emit 事件 */
   },
-  () => { },
+  () => {},
   { immediate: true },
 )
 </script>

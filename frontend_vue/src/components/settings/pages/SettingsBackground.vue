@@ -1,130 +1,96 @@
 <template>
   <MenuPage>
     <MenuItem title="背景选择">
-      <template #header>
-        <Image :size="20" />
-      </template>
-      <div class="background-container">
-        <div class="background-list character-grid">
-          <div
-            v-for="(background, index) in backgroundList"
-            :key="index"
-            :class="['background-card', { selected: isSelected(background.url) }]"
-          >
-            <div class="background-image-container">
-              <img :src="background.url" :alt="background.title" class="background-image" />
-            </div>
-            <div class="background-title" :data-title="background.title">
-              <Button
-                :class="['background-select-btn', { selected: isSelected(background.url) }]"
-                @click="selectBackground(background.url)"
-              >
-                {{ isSelected(background.url) ? '已选中' : '选择' }}
-              </Button>
-            </div>
+    <template #header>
+      <Image :size="20" />
+    </template>
+    <div class="background-container">
+      <div class="background-list character-grid">
+        <div v-for="(background, index) in backgroundList" :key="index"
+          :class="['background-card', { selected: isSelected(background.url) }]">
+          <div class="background-image-container">
+            <img :src="background.url" :alt="background.title" class="background-image" />
+          </div>
+          <div class="background-title" :data-title="background.title">
+            <Button :class="['background-select-btn', { selected: isSelected(background.url) }]"
+              @click="selectBackground(background.url)">
+              {{ isSelected(background.url) ? '已选中' : '选择' }}
+            </Button>
           </div>
         </div>
-
-        <Button type="big" @click="triggerUpload">上传自定义背景</Button>
-        <input
-          type="file"
-          ref="uploadInput"
-          @change="handleFileUpload"
-          accept=".jpg,.png,.webp,.bmp,.svg,.tif,.gif"
-          style="display: none"
-        />
       </div>
+
+      <Button type="big" @click="triggerUpload">上传自定义背景</Button>
+      <input type="file" ref="uploadInput" @change="handleFileUpload" accept=".jpg,.png,.webp,.bmp,.svg,.tif,.gif"
+        style="display: none" />
+    </div>
     </MenuItem>
 
     <MenuItem title="场景感知">
-      <template #header>
-        <PictureInPicture :size="20" />
-      </template>
-      <div class="p-2 flex flex-col gap-2 justify-center">
-        <div class="flex gap-3 mb-2 items-center">
-          <Bubbles />
-          <div class="text-brand font-bold">当前场景：{{ currentSceneDisplay }}</div>
+    <template #header>
+      <PictureInPicture :size="20" />
+    </template>
+    <div class="p-2 flex flex-col gap-2 justify-center">
+      <div class="flex gap-3 mb-2 items-center">
+        <Bubbles />
+        <div class="text-brand font-bold">当前场景：{{ currentSceneDisplay }}</div>
 
-          <div class="ml-auto flex gap-6">
-            <button
-              class="px-5 py-1.5 rounded-full text-sm font-bold transition-all border shadow-lg bg-brand/80 border-brand text-white hover:bg-brand shadow-indigo-500/20"
-              @click="showSceneSelect = true"
-            >
-              选择场景
-            </button>
-          </div>
-        </div>
-
-        <div class="flex w-full gap-6 justify-around items-center">
-          <Button type="big" @click="handleCreateScene">添加场景</Button>
-          <Button type="big" @click="handleUpdateScene" :disabled="!currentScene">更新场景</Button>
-          <Button type="big" @click="handleDeleteScene" :disabled="!currentScene">删除场景</Button>
+        <div class="ml-auto flex gap-6">
+          <button
+            class="px-5 py-1.5 rounded-full text-sm font-bold transition-all border shadow-lg bg-brand/80 border-brand text-white hover:bg-brand shadow-indigo-500/20"
+            @click="showSceneSelect = true">
+            选择场景
+          </button>
         </div>
       </div>
+
+      <div class="flex w-full gap-6 justify-around items-center">
+        <Button type="big" @click="handleCreateScene">添加场景</Button>
+        <Button type="big" @click="handleUpdateScene" :disabled="!currentScene">更新场景</Button>
+        <Button type="big" @click="handleDeleteScene" :disabled="!currentScene">删除场景</Button>
+      </div>
+    </div>
     </MenuItem>
 
     <MenuItem title="粒子选择" size="large">
-      <template #header>
-        <Sparkles :size="20" />
-      </template>
-      <div class="effect-list flex gap-4 overflow-x-auto pb-2">
-        <Button type="big" @click="updateParticle(`None`)">无</Button>
-        <Button type="big" @click="updateParticle(`StarField`)">星空</Button>
-        <Button type="big" @click="updateParticle(`Rain`)">雨水</Button>
-        <Button type="big" @click="updateParticle(`Sakura`)">樱花</Button>
-        <Button type="big" @click="updateParticle(`Snow`)">雪景</Button>
-        <Button type="big" @click="updateParticle(`Fireworks`)">烟花</Button>
-      </div>
+    <template #header>
+      <Sparkles :size="20" />
+    </template>
+    <div class="effect-list flex gap-4 overflow-x-auto pb-2">
+      <Button type="big" @click="updateParticle(`None`)">无</Button>
+      <Button type="big" @click="updateParticle(`StarField`)">星空</Button>
+      <Button type="big" @click="updateParticle(`Rain`)">雨水</Button>
+      <Button type="big" @click="updateParticle(`Sakura`)">樱花</Button>
+      <Button type="big" @click="updateParticle(`Snow`)">雪景</Button>
+      <Button type="big" @click="updateParticle(`Fireworks`)">烟花</Button>
+    </div>
     </MenuItem>
 
     <MenuItem title="动画开关" size="large">
-      <template #header>
-        <Settings :size="20" />
-      </template>
-      <div class="flex flex-col gap-3">
-        <Toggle
-          :checked="mainMenuStarsEnabled"
-          @change="settingsStore.setMainMenuStarsEnabled($event)"
-        >
-          启用主界面星星粒子
-        </Toggle>
-        <Toggle
-          :checked="mainMenuMeteorsEnabled"
-          @change="settingsStore.setMainMenuMeteorsEnabled($event)"
-        >
-          启用主界面流星动画
-        </Toggle>
-        <Toggle
-          :checked="globalMouseTrailEnabled"
-          @change="settingsStore.setGlobalMouseTrailEnabled($event)"
-        >
-          启用全局鼠标滑动动画
-        </Toggle>
-        <Toggle
-          :checked="clickAnimationEnabled"
-          @change="settingsStore.setClickAnimationEnabled($event)"
-        >
-          启用点击动画
-        </Toggle>
-      </div>
+    <template #header>
+      <Settings :size="20" />
+    </template>
+    <div class="flex flex-col gap-3">
+      <Toggle :checked="mainMenuStarsEnabled" @change="settingsStore.setMainMenuStarsEnabled($event)">
+        启用主界面星星粒子
+      </Toggle>
+      <Toggle :checked="mainMenuMeteorsEnabled" @change="settingsStore.setMainMenuMeteorsEnabled($event)">
+        启用主界面流星动画
+      </Toggle>
+      <Toggle :checked="globalMouseTrailEnabled" @change="settingsStore.setGlobalMouseTrailEnabled($event)">
+        启用全局鼠标滑动动画
+      </Toggle>
+      <Toggle :checked="clickAnimationEnabled" @change="settingsStore.setClickAnimationEnabled($event)">
+        启用点击动画
+      </Toggle>
+    </div>
     </MenuItem>
 
-    <SceneSelectModal
-      :show="showSceneSelect"
-      :scenes="scenes"
-      @close="showSceneSelect = false"
-      @confirm="handleSceneSelect"
-    />
+    <SceneSelectModal :show="showSceneSelect" :scenes="scenes" @close="showSceneSelect = false"
+      @confirm="handleSceneSelect" />
 
-    <SceneEditModal
-      :show="showSceneEdit"
-      :mode="editMode"
-      :backgrounds="backgroundList"
-      :initial-data="editInitialData"
-      @close="showSceneEdit = false"
-      @submit="handleSceneSubmit"
-      @upload="triggerUpload"
-    />
+    <SceneEditModal :show="showSceneEdit" :mode="editMode" :backgrounds="backgroundList" :initial-data="editInitialData"
+      @close="showSceneEdit = false" @submit="handleSceneSubmit" @upload="triggerUpload" />
   </MenuPage>
 </template>
 
@@ -203,7 +169,7 @@ const handleSceneSelect = async (sceneId: string) => {
     gameStore.setCurrentScene(scene)
 
     if (scene.imageUrl) {
-      uiStore.currentBackground = scene.imageUrl
+      uiStore.setCurrentBackground(scene.imageUrl)
     }
 
     showSceneSelect.value = false
@@ -289,7 +255,7 @@ onMounted(async () => {
   await fetchScenes()
 
   if (gameStore.currentScene && gameStore.currentScene.imageUrl) {
-    uiStore.currentBackground = gameStore.currentScene.imageUrl
+    uiStore.setCurrentBackground(gameStore.currentScene.imageUrl)
   }
 })
 
@@ -322,13 +288,13 @@ async function selectBackground(url: string): Promise<void> {
   const prevBackground = uiStore.currentBackground
 
   selectedBackground.value = url
-  uiStore.currentBackground = url
+  uiStore.setCurrentBackground(url)
 
   try {
     await setCurrentBackground(url)
   } catch (error) {
     selectedBackground.value = prevSelectedBackground
-    uiStore.currentBackground = prevBackground
+    uiStore.setCurrentBackground(prevBackground)
     console.error('Failed to save selected background:', error)
   }
 }
@@ -505,10 +471,6 @@ async function updateParticle(value: string): Promise<void> {
 
 .background-select-btn:active {
   transform: translateY(0);
-}
-
-.effect-list {
-  /* 使用 Tailwind 类处理水平滚动 */
 }
 
 @media (max-width: 768px) {
