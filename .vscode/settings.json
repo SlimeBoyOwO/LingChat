@@ -1,0 +1,26 @@
+{
+  "python.analysis.autoImportCompletions": true,
+  "Codegeex.RepoIndex": true,
+  "python-envs.defaultEnvManager": "ms-python.python:venv",
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "[vue]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "prettier.requireConfig": true,
+  "prettier.useEditorConfig": false,
+  "prettier.configPath": "./frontend_vue/.prettierrc.json",
+
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit",
+      "source.fixAll.ruff": "explicit"
+    }
+  },
+
+  // 保存时自动修复 lint 问题
+
+  // 类型检查
+  "python.analysis.typeCheckingMode": "standard"
+}
