@@ -9,13 +9,20 @@ from .events_handler import EventsHandler
 
 
 class Chapter:
-    def __init__(self, charpter_id: str, config: AIServiceConfig, game_status: GameStatus, chapter_config: dict, script_status:ScriptStatus):
+    def __init__(
+        self,
+        charpter_id: str,
+        config: AIServiceConfig,
+        game_status: GameStatus,
+        chapter_config: dict,
+        script_status: ScriptStatus,
+    ):
         self.chapter_id = charpter_id
         self.chapter_name = chapter_config.get("name", "")
 
         # 章节内部持有自己的处理器，状态被封装在内部
         self.game_status = game_status
-        events_data:list[dict] = chapter_config.get('events',[])
+        events_data: list[dict] = chapter_config.get("events", [])
         self._events_handler = EventsHandler(config, events_data, game_status)
 
         self.client_id = script_status.running_client_id
@@ -28,9 +35,7 @@ class Chapter:
         # 发送章节信息发送事件
         event_response = ResponseFactory.create_chapter_change(self.chapter_name)
         if self.client_id:
-            await message_broker.publish(self.client_id,
-                event_response.model_dump()
-            )
+            await message_broker.publish(self.client_id, event_response.model_dump())
         else:
             logger.warning("没有找到客户端ID，无法发送章节信息。")
 
@@ -40,6 +45,6 @@ class Chapter:
 
         # 从处理器获取章节结果
         next_chapter = self._events_handler.get_chapter_result()
-        
+
         logger.info(f"章节 '{self.chapter_id}' 结束，下一章: {next_chapter}")
         return next_chapter

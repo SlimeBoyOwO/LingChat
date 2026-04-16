@@ -1,18 +1,16 @@
-import httpx
-from pathlib import Path
 import json
-from datetime import datetime
-from ling_chat.core.logger import logger
 import os
 
-BASE_URL =os.getenv("COMMUNITY_URL", "https://192.168.0.116:8000").rstrip('/')
+import httpx
+from ling_chat.core.logger import logger
+
+BASE_URL = os.getenv("COMMUNITY_URL", "https://192.168.0.116:8000").rstrip("/")
+
+
 def list_pages():
     try:
         with httpx.Client() as client:
-            response = client.get(
-                f"{BASE_URL}/api/v1/pages",
-                timeout=10.0
-            )
+            response = client.get(f"{BASE_URL}/api/v1/pages", timeout=10.0)
             response.raise_for_status()
             data = response.json()
             return data
@@ -28,6 +26,8 @@ def list_pages():
     except Exception as e:
         logger.error(f"未知错误: {e}")
         return []
+
+
 def get_page(uid: str):
     try:
         with httpx.Client() as client:
@@ -47,16 +47,17 @@ def get_page(uid: str):
         logger.error(f"JSON解析失败: {e}")
         return None
 
+
 def search_pages(keyword: str, pages: list = None):
     if pages is None:
         pages = list_pages()
-    
+
     if not pages:
         return []
-    
+
     keyword_lower = keyword.lower()
     results = []
-    
+
     for page in pages:
         if not isinstance(page, dict):
             continue
@@ -72,8 +73,5 @@ def search_pages(keyword: str, pages: list = None):
         if isinstance(uid, str) and keyword_lower == uid.lower():
             results.append(page)
             continue
-    
+
     return results
-
-
-

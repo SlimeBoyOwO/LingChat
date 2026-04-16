@@ -13,7 +13,7 @@ from ling_chat.utils.runtime_path import static_path, user_data_path
 
 TEMPLATE_MUSIC_DIR = static_path / "game_data/musics"
 MUSIC_DIR = user_data_path / "game_data/musics"
-ALLOWED_EXTENSIONS = {'.mp3', '.wav', '.flac', '.webm', '.weba', '.ogg', '.m4a', '.oga'}
+ALLOWED_EXTENSIONS = {".mp3", ".wav", ".flac", ".webm", ".weba", ".ogg", ".m4a", ".oga"}
 
 
 @asynccontextmanager
@@ -26,7 +26,9 @@ async def lifespan(app: FastAPI):
     yield
 
 
-router = APIRouter(prefix="/api/v1/chat/back-music", tags=["Background Music"], lifespan=lifespan)
+router = APIRouter(
+    prefix="/api/v1/chat/back-music", tags=["Background Music"], lifespan=lifespan
+)
 
 
 class BackgroundMusicSelectionRequest(BaseModel):
@@ -71,10 +73,12 @@ async def get_music_list():
         music_files = []
         for file in MUSIC_DIR.iterdir():
             if file.is_file() and file.suffix.lower() in ALLOWED_EXTENSIONS:
-                music_files.append({
-                    "name": file.stem,
-                    "url": file.name,
-                })
+                music_files.append(
+                    {
+                        "name": file.stem,
+                        "url": file.name,
+                    }
+                )
 
         return music_files
     except Exception as e:
@@ -99,10 +103,7 @@ async def upload_music(file: UploadFile, name: str = None):
         with save_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        return JSONResponse(
-            status_code=200,
-            content={"message": "音乐上传成功"}
-        )
+        return JSONResponse(status_code=200, content={"message": "音乐上传成功"})
     except HTTPException:
         raise
     except Exception as e:
@@ -125,11 +126,10 @@ async def delete_music(url: str):
 
         file_path.unlink()
 
-        return JSONResponse(
-            status_code=200,
-            content={"message": "音乐成功删除了"}
-        )
+        return JSONResponse(status_code=200, content={"message": "音乐成功删除了"})
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"删除音乐的时候出现了问题: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"删除音乐的时候出现了问题: {str(e)}"
+        )

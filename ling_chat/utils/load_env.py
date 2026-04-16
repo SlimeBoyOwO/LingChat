@@ -4,27 +4,27 @@ from pathlib import Path
 from typing import Dict
 
 
-def load_env(env_path: Path|str = ".env") -> Dict[str, str]:
+def load_env(env_path: Path | str = ".env") -> Dict[str, str]:
     """
     读取 .env 文件中的所有环境变量并导出到当前环境中
-    
+
     Args:
         env_path (str): .env 文件路径，默认为 ".env"
-    
+
     Returns:
         Dict[str, str]: 解析出的环境变量字典
     """
     env_vars: Dict[str, str] = {}
     try:
-        if (not os.path.exists(env_path)):
+        if not os.path.exists(env_path):
             example_path = ".env.example"
             print(f"\033[91m[WARN]\033[0m找不到环境变量文件: {env_path}")
             shutil.copy2(example_path, env_path)
             print(f"\033[92m[INFO]\033[0m从 {example_path} 复制文件到 {env_path}")
-        if  os.path.exists(env_path):
+        if os.path.exists(env_path):
             print(f"\033[92m[INFO]\033[0m正在加载环境变量文件: {env_path}")
 
-        with open(env_path, 'r', encoding='utf-8') as file:
+        with open(env_path, "r", encoding="utf-8") as file:
             lines = file.readlines()
 
         # 用于跟踪多行值解析的状态
@@ -60,19 +60,19 @@ def load_env(env_path: Path|str = ".env") -> Dict[str, str]:
                 continue
 
             # 跳过空行和注释行
-            if not line or line.startswith('#'):
+            if not line or line.startswith("#"):
                 i += 1
                 continue
 
             # 跳过标记行（如 BEGIN/END）
-            if 'BEGIN' in line or 'END' in line:
-                if line.startswith('#'):
+            if "BEGIN" in line or "END" in line:
+                if line.startswith("#"):
                     i += 1
                     continue
 
             # 分割键值对
-            if '=' in line:
-                key, value = line.split('=', 1)
+            if "=" in line:
+                key, value = line.split("=", 1)
                 key = key.strip()
                 value = value.strip()
 
@@ -90,7 +90,9 @@ def load_env(env_path: Path|str = ".env") -> Dict[str, str]:
                         # 多行开始
                         in_multiline = True
                         multiline_key = key
-                        multiline_value = value[start_pos:] + ("\n" if not value[start_pos:].endswith("\n") else "")
+                        multiline_value = value[start_pos:] + (
+                            "\n" if not value[start_pos:].endswith("\n") else ""
+                        )
                 else:
                     # 单行值处理
                     # 去除值两端的引号
@@ -100,8 +102,8 @@ def load_env(env_path: Path|str = ".env") -> Dict[str, str]:
                         value = value[1:-1]
 
                     # 去除值后面可能存在的注释
-                    if '#' in value:
-                        value = value.split('#', 1)[0].rstrip()
+                    if "#" in value:
+                        value = value.split("#", 1)[0].rstrip()
 
                     # 再次去除可能存在的引号（处理注释后的情况）
                     value = value.strip()

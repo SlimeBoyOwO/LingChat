@@ -10,14 +10,14 @@ from ling_chat.utils.runtime_path import user_data_path
 
 
 class MemorySystem:
-    '''
+    """
     多维结构化记忆库系统 (Structured Memory Bank) - 修正版
-    
+
     逻辑核心：
     1. 维护 last_processed_idx 指针，指向已经成功"总结"进记忆库的消息索引。
     2. 只有当后台任务成功更新记忆后，指针才会移动。
     3. 提供给 RAGManager 准确的切片位置，保证未总结的消息永远保留在 Context 中。
-    '''
+    """
 
     def __init__(self, config, character_id: int):
         self.character_id = character_id if character_id is not None else 0
@@ -36,7 +36,7 @@ class MemorySystem:
             "short_term": "暂无近期对话摘要。",
             "long_term": "暂无长期关键经历。",
             "user_info": "暂无用户特征记录。",
-            "promises": "暂无未完成的约定。"
+            "promises": "暂无未完成的约定。",
         }
 
         self.memory_dir = user_data_path / "game_data" / "memory"
@@ -51,7 +51,9 @@ class MemorySystem:
     def initialize(self) -> bool:
         if not self.memory_dir.exists():
             self.memory_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"MemorySystem (Structured) 就绪 | ID: {self.character_id} | 阈值: {self.update_interval}")
+        logger.info(
+            f"MemorySystem (Structured) 就绪 | ID: {self.character_id} | 阈值: {self.update_interval}"
+        )
         return True
 
     def _safe_read_int(self, key, default):
@@ -103,7 +105,7 @@ class MemorySystem:
                 "【处理逻辑】：\n"
                 "1. 新增约定：提取对话中明确达成的承诺。\n"
                 "2. 状态核销：如果能够在【新增对话】中找到已完成的证据，从清单中【删除】该条目。\n"
-            )
+            ),
         }
 
     def _load_memory(self):
@@ -113,8 +115,12 @@ class MemorySystem:
                 with open(self.memory_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     self.memory_data.update(data.get("data", {}))
-                    self.last_processed_idx = data.get("meta", {}).get("last_processed_idx", 0)
-                    logger.info(f"记忆库已加载，历史归档指针位置: {self.last_processed_idx}")
+                    self.last_processed_idx = data.get("meta", {}).get(
+                        "last_processed_idx", 0
+                    )
+                    logger.info(
+                        f"记忆库已加载，历史归档指针位置: {self.last_processed_idx}"
+                    )
             except Exception as e:
                 logger.error(f"记忆库加载失败: {e}")
 
@@ -124,9 +130,9 @@ class MemorySystem:
             save_content = {
                 "meta": {
                     "last_processed_idx": self.last_processed_idx,
-                    "updated_at": time.strftime("%Y-%m-%d %H:%M:%S")
+                    "updated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
                 },
-                "data": self.memory_data
+                "data": self.memory_data,
             }
             with open(self.memory_file, "w", encoding="utf-8") as f:
                 json.dump(save_content, f, ensure_ascii=False, indent=2)
@@ -156,21 +162,24 @@ class MemorySystem:
         delta = current_count - self.last_processed_idx
 
         if delta >= self.update_interval:
-            logger.info_color(f"Memory: 累积未归档消息 {delta} 条 (阈值 {self.update_interval})，触发自动更新...", TermColors.YELLOW)
+            logger.info_color(
+                f"Memory: 累积未归档消息 {delta} 条 (阈值 {self.update_interval})，触发自动更新...",
+                TermColors.YELLOW,
+            )
             self.trigger_update(history_messages)
 
     def trigger_update(self, history_messages: List[Dict]):
         """启动后台更新任务"""
         self.is_updating = True
 
-        new_msgs = history_messages[self.last_processed_idx:]
+        new_msgs = history_messages[self.last_processed_idx :]
 
         target_idx = len(history_messages)
 
         chat_text = ""
         for msg in new_msgs:
-            role = "User" if msg['role'] == 'user' else "AI"
-            content = msg.get('content', '')
+            role = "User" if msg["role"] == "user" else "AI"
+            content = msg.get("content", "")
             if not content.startswith("{系统"):
                 chat_text += f"{role}: {content}\n"
 
@@ -186,7 +195,9 @@ class MemorySystem:
         注意：new_total_idx 是这一批消息处理完后，last_processed_idx 应该变成的值
         """
         try:
-            logger.info(f"Memory: 开始处理记忆压缩 (范围: {self.last_processed_idx} -> {new_total_idx})...")
+            logger.info(
+                f"Memory: 开始处理记忆压缩 (范围: {self.last_processed_idx} -> {new_total_idx})..."
+            )
             start_time = time.time()
             loop = asyncio.get_running_loop()
 
@@ -202,7 +213,9 @@ class MemorySystem:
                 )
 
                 messages = [{"role": "user", "content": full_prompt}]
-                response = await loop.run_in_executor(None, self.llm.process_message, messages)
+                response = await loop.run_in_executor(
+                    None, self.llm.process_message, messages
+                )
 
                 cleaned = response.strip()
                 if not cleaned:
@@ -213,7 +226,7 @@ class MemorySystem:
                 update_section("short_term"),
                 update_section("long_term"),
                 update_section("user_info"),
-                update_section("promises")
+                update_section("promises"),
             ]
 
             results = await asyncio.gather(*tasks)
@@ -224,7 +237,10 @@ class MemorySystem:
             self.last_processed_idx = new_total_idx
             self.save_memory()
 
-            logger.info_color(f"Memory: 记忆库更新完成! 指针已移动至 {self.last_processed_idx}，耗时 {time.time() - start_time:.2f}s", TermColors.GREEN)
+            logger.info_color(
+                f"Memory: 记忆库更新完成! 指针已移动至 {self.last_processed_idx}，耗时 {time.time() - start_time:.2f}s",
+                TermColors.GREEN,
+            )
 
         except Exception as e:
             logger.error(f"Memory 更新流水线严重错误: {e}", exc_info=True)

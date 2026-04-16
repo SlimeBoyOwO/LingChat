@@ -42,7 +42,9 @@ class AchievementManager:
     def __init__(self):
         self.achievements_file = user_data_path / "game_data" / "achievement.json"
         self.achievements_data: Dict[str, dict] = {}
-        self._dynamic_achievements: Dict[str, dict] = {}  # 动态注册的成就（如羁绊冒险定义的）
+        self._dynamic_achievements: Dict[
+            str, dict
+        ] = {}  # 动态注册的成就（如羁绊冒险定义的）
         self._dirty = False
         self._load_achievements()
 
@@ -92,10 +94,13 @@ class AchievementManager:
 
     def _get_achievement_def(self, achievement_id: str) -> Optional[dict]:
         """统一查找成就定义（先查默认，再查动态）"""
-        return (self.DEFAULT_ACHIEVEMENTS.get(achievement_id)
-                or self._dynamic_achievements.get(achievement_id))
+        return self.DEFAULT_ACHIEVEMENTS.get(
+            achievement_id
+        ) or self._dynamic_achievements.get(achievement_id)
 
-    def increment_progress(self, achievement_id: str, amount: int = 1) -> Optional[dict]:
+    def increment_progress(
+        self, achievement_id: str, amount: int = 1
+    ) -> Optional[dict]:
         """
         增加成就进度
         :param achievement_id: 成就ID
@@ -111,7 +116,7 @@ class AchievementManager:
             self.achievements_data[achievement_id] = {
                 "unlocked": False,
                 "unlocked_at": None,
-                "current_progress": 0
+                "current_progress": 0,
             }
 
         # 如果已经解锁，不进行任何操作
@@ -126,7 +131,7 @@ class AchievementManager:
 
         # 检查是否达成目标
         if state["current_progress"] >= target:
-            state["current_progress"] = target # 修正为目标值
+            state["current_progress"] = target  # 修正为目标值
             return self.unlock(achievement_id, {})
         else:
             # 未达成目标，只标记脏数据，不实际写入文件系统

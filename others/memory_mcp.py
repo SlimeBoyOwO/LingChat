@@ -1,11 +1,13 @@
-from mcp.server.fastmcp import FastMCP
-from ling_chat.utils.function import Function
-from memory_client import get_memory_client
 import logging
+
+from ling_chat.utils.function import Function
+from mcp.server.fastmcp import FastMCP
+from memory_client import get_memory_client
 
 Function.load_env()
 
-mcp = FastMCP("graph-rag-memory",version="0.1.0")
+mcp = FastMCP("graph-rag-memory", version="0.1.0")
+
 
 def get_memory_client_safe():
     """Get memory client with error handling. Returns None if client cannot be initialized."""
@@ -15,7 +17,10 @@ def get_memory_client_safe():
         logging.warning(f"Failed to get memory client: {e}")
         return None
 
-@mcp.tool(description="Add a new memory. This method is called everytime the user informs anything about themselves, their preferences, or anything that has any relevant information which can be useful in the future conversation. This can also be called when the user asks you to remember something.")
+
+@mcp.tool(
+    description="Add a new memory. This method is called everytime the user informs anything about themselves, their preferences, or anything that has any relevant information which can be useful in the future conversation. This can also be called when the user asks you to remember something."
+)
 async def add_memories(text: str) -> str:
     memory_client = get_memory_client_safe()
 
@@ -36,13 +41,16 @@ async def add_memories(text: str) -> str:
         logging.exception("Error adding to memory")
         return f"Error adding to memory: {e}"
 
+
 @mcp.tool()
 def search_memory():
     return "search_memory"
 
+
 @mcp.tool()
 def list_memories():
     return "list_memories"
+
 
 if __name__ == "__main__":
     mcp.run("sse")

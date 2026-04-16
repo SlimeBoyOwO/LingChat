@@ -1,6 +1,7 @@
-from fastapi import APIRouter
 import subprocess
 import sys
+
+from fastapi import APIRouter
 
 router = APIRouter()
 
@@ -21,7 +22,7 @@ async def select_file():
     返回选中的文件路径（绝对路径）
     """
     try:
-        if sys.platform == 'win32':
+        if sys.platform == "win32":
             # ===== Windows: PowerShell =====
             script = """
 Add-Type -AssemblyName System.Windows.Forms
@@ -33,50 +34,57 @@ $null = $FileBrowser.ShowDialog()
 Write-Output $FileBrowser.FileName
 """
             result = subprocess.run(
-                ['powershell', '-Command', script],
+                ["powershell", "-Command", script],
                 capture_output=True,
                 text=True,
-                timeout=60
+                timeout=60,
             )
             return _process_command_result(result)
-                
-        elif sys.platform == 'darwin':
+
+        elif sys.platform == "darwin":
             # ===== macOS: AppleScript =====
-            script = '''
+            script = """
 tell application "Finder"
     set theFile to choose file with prompt "选择语音合成软件" of type {"public.executable", "public.shell-script"}
     return POSIX path of theFile
 end tell
-'''
+"""
             result = subprocess.run(
-                ['osascript', '-e', script],
-                capture_output=True,
-                text=True,
-                timeout=60
+                ["osascript", "-e", script], capture_output=True, text=True, timeout=60
             )
             return _process_command_result(result)
-                
+
         else:
             # ===== Linux: 依次尝试常见工具 =====
             commands = [
-                (['zenity', '--file-selection', '--title=选择语音合成软件'], 'zenity'),
-                (['kdialog', '--getopenfilename', '.', 'Executable files (*.sh *.bin)|All files (*)'], 'kdialog')
+                (["zenity", "--file-selection", "--title=选择语音合成软件"], "zenity"),
+                (
+                    [
+                        "kdialog",
+                        "--getopenfilename",
+                        ".",
+                        "Executable files (*.sh *.bin)|All files (*)",
+                    ],
+                    "kdialog",
+                ),
             ]
-            
+
             for cmd, name in commands:
                 try:
-                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+                    result = subprocess.run(
+                        cmd, capture_output=True, text=True, timeout=60
+                    )
                     if result.returncode == 0:
                         return _process_command_result(result)
                 except FileNotFoundError:
                     continue  # 工具未安装，尝试下一个
-            
+
             # 所有工具都不可用，优雅降级
             return {
                 "path": "",
-                "error": "未找到文件选择工具（需要 zenity 或 kdialog），请手动输入路径"
+                "error": "未找到文件选择工具（需要 zenity 或 kdialog），请手动输入路径",
             }
-            
+
     except subprocess.TimeoutExpired:
         return {"path": "", "error": "操作超时（60秒）"}
     except Exception as e:

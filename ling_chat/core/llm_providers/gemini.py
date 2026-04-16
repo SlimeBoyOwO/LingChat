@@ -7,12 +7,15 @@ import httpx
 from ling_chat.core.llm_providers.base import BaseLLMProvider
 from ling_chat.core.logger import logger
 
+
 # 文档：https://ai.google.dev/api
 class GeminiProvider(BaseLLMProvider):
     def __init__(self):
         super().__init__()
         self.api_key = os.environ.get("GEMINI_API_KEY")
-        self.base_url = os.environ.get("GEMINI_API_URL", "https://generativelanguage.googleapis.com/v1beta")
+        self.base_url = os.environ.get(
+            "GEMINI_API_URL", "https://generativelanguage.googleapis.com/v1beta"
+        )
         self.model_type = os.environ.get("GEMINI_MODEL_TYPE", "gemini-2.5-flash")
         self.proxy_url = os.environ.get("GEMINI_PROXY_URL")
         self.temperature = float(os.environ.get("TEMPERATURE", 1.0))
@@ -66,16 +69,11 @@ class GeminiProvider(BaseLLMProvider):
                 role = "model"
 
             # 构建Gemini格式的content
-            contents.append({
-                "role": role,
-                "parts": [{"text": str(content)}]
-            })
+            contents.append({"role": role, "parts": [{"text": str(content)}]})
 
         return system_instruction, contents
 
-    def _build_request_body(
-        self, messages: List[Dict], stream: bool = False
-    ) -> Dict:
+    def _build_request_body(self, messages: List[Dict], stream: bool = False) -> Dict:
         """构建Gemini API请求体"""
         system_instruction, contents = self._convert_messages_to_contents(messages)
 
@@ -84,14 +82,12 @@ class GeminiProvider(BaseLLMProvider):
             "generationConfig": {
                 "temperature": self.temperature,
                 "topP": self.top_p,
-            }
+            },
         }
 
         # 添加system instruction（如果有）
         if system_instruction:
-            body["systemInstruction"] = {
-                "parts": [{"text": system_instruction}]
-            }
+            body["systemInstruction"] = {"parts": [{"text": system_instruction}]}
 
         return body
 
@@ -104,14 +100,12 @@ class GeminiProvider(BaseLLMProvider):
             url = f"{self.base_url}/models/{self.model_type}:generateContent?key={self.api_key}"
 
             with self._get_http_client() as client:
-                response = client.post(
-                    url,
-                    json=body,
-                    timeout=60.0
-                )
+                response = client.post(url, json=body, timeout=60.0)
 
                 if response.status_code != 200:
-                    error_msg = f"Gemini API请求错误: {response.status_code} - {response.text}"
+                    error_msg = (
+                        f"Gemini API请求错误: {response.status_code} - {response.text}"
+                    )
                     logger.error(error_msg)
                     raise Exception(error_msg)
 
@@ -154,10 +148,7 @@ class GeminiProvider(BaseLLMProvider):
 
             async with self._get_async_http_client() as client:
                 async with client.stream(
-                    'POST',
-                    url,
-                    json=body,
-                    timeout=60.0
+                    "POST", url, json=body, timeout=60.0
                 ) as response:
                     if response.status_code != 200:
                         await response.aread()

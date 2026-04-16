@@ -32,16 +32,19 @@ class EventHandlerLoader:
             if file_path.name == "__init__.py":
                 continue
 
-            module_name = f"ling_chat.core.ai_service.script_engine.events.{file_path.stem}"
+            module_name = (
+                f"ling_chat.core.ai_service.script_engine.events.{file_path.stem}"
+            )
             try:
                 module = importlib.import_module(module_name)
 
                 # 查找模块中的所有类
                 for name, obj in inspect.getmembers(module, inspect.isclass):
-                    if (issubclass(obj, BaseEvent) and
-                        obj != BaseEvent and
-                        hasattr(obj, 'can_handle')):
-
+                    if (
+                        issubclass(obj, BaseEvent)
+                        and obj != BaseEvent
+                        and hasattr(obj, "can_handle")
+                    ):
                         # 注册事件处理器
                         cls._event_handlers[obj.__name__] = obj
                         logger.debug(f"加载事件处理器: {obj.__name__}")
@@ -56,7 +59,7 @@ class EventHandlerLoader:
         """获取适合处理指定事件的处理程序类"""
         cls._ensure_loaded()
 
-        event_type = event_data.get('type', '')
+        event_type = event_data.get("type", "")
 
         for handler_class in cls._event_handlers.values():
             if handler_class.can_handle(event_type):
@@ -66,7 +69,9 @@ class EventHandlerLoader:
         return None
 
     @classmethod
-    def create_event_instance(cls, config: AIServiceConfig, event_data: dict, game_status: GameStatus) -> Optional[BaseEvent]:
+    def create_event_instance(
+        cls, config: AIServiceConfig, event_data: dict, game_status: GameStatus
+    ) -> Optional[BaseEvent]:
         """创建事件实例"""
         handler_class = cls.get_handler_for_event(event_data)
         if handler_class:

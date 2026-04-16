@@ -2,12 +2,11 @@ import json
 import os
 from typing import Dict, List, Optional
 
+from core.memory_rag.config.base import BaseLlmConfig
 from openai import OpenAI
 
-from core.memory_rag.config.base import BaseLlmConfig
 
-
-class DeepSeekLLM():
+class DeepSeekLLM:
     def __init__(self, config: Optional[BaseLlmConfig] = None):
         if config is None:
             self.config = BaseLlmConfig()

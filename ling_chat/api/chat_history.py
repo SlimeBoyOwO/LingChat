@@ -3,33 +3,29 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Request
 
-from ling_chat.core.ai_service.type import ScriptStatus
 from ling_chat.core.logger import logger
-from ling_chat.core.ai_service.game_system import game_status
 from ling_chat.core.service_manager import service_manager
-
+from ling_chat.game_database.managers.memory_manager import MemoryManager
+from ling_chat.game_database.managers.role_manager import RoleManager
 from ling_chat.game_database.managers.save_manager import SaveManager
 from ling_chat.game_database.managers.user_manager import UserManager
-from ling_chat.game_database.managers.role_manager import RoleManager
-from ling_chat.game_database.managers.memory_manager import MemoryManager
 from ling_chat.game_database.models import LineAttribute
 
 router = APIRouter(prefix="/api/v1/chat/history", tags=["Chat History"])
+
 
 @router.get("/list")
 async def list_user_conversations(user_id: int, page: int = 1, page_size: int = 10):
     try:
         result = SaveManager.get_user_saves(user_id, page, page_size)
-        return {
-            "code": 200,
-            "data": result
-        }
+        return {"code": 200, "data": result}
     except Exception as e:
         return {
             "code": 500,
             "msg": "Failed to fetch user conversations",
-            "error": str(e)
+            "error": str(e),
         }
+
 
 @router.get("/get_chat_lines")
 async def get_chat_lines(user_id: int):
@@ -37,16 +33,19 @@ async def get_chat_lines(user_id: int):
         ai_service = service_manager.ai_service
         if not ai_service:
             return HTTPException(status_code=500, detail="AI 服务未初始化")
-        
-        lines = [line for line in ai_service.get_lines() if line.attribute != LineAttribute.SYSTEM]
+
+        lines = [
+            line
+            for line in ai_service.get_lines()
+            if line.attribute != LineAttribute.SYSTEM
+        ]
         dict_lines = [line.model_dump() for line in lines]
-        return {
-            "code": 200,
-            "data": dict_lines
-        }
-    
+        return {"code": 200, "data": dict_lines}
+
     except Exception as e:
-        return HTTPException(status_code=500, detail="Failed to fetch chat lines" + str(e))
+        return HTTPException(
+            status_code=500, detail="Failed to fetch chat lines" + str(e)
+        )
 
 
 @router.get("/continue")
@@ -63,6 +62,7 @@ async def continue_chat(user_id: int):
     except Exception as e:
         return HTTPException(status_code=500, detail="Failed to continue chat" + str(e))
 
+
 @router.get("/load")
 async def load_user_conversations(user_id: int, conversation_id: int):
     try:
@@ -71,20 +71,21 @@ async def load_user_conversations(user_id: int, conversation_id: int):
         # TODO： 后面升级的加载存档，应该如果有运行剧本则加载剧本变量，实现场景重现，当然save的status也是要加载的
         if service_manager.ai_service is None:
             return HTTPException(status_code=500, detail="AI 服务未初始化")
-        
+
         ai_service = service_manager.ai_service
-        
+
         save = SaveManager.get_save_by_id(save_id=conversation_id)
 
         if save is None:
             return HTTPException(status_code=404, detail="Save not found")
-        
+
         line_list = SaveManager.get_gameline_list(save_id=conversation_id)
         role_id = SaveManager.get_chat_main_character_id(save_id=conversation_id)
         game_status = service_manager.ai_service.game_status
-        
-        if(line_list != None):
-            if not role_id: return HTTPException(status_code=500, detail="本存档主角色不存在")
+
+        if line_list != None:
+            if not role_id:
+                return HTTPException(status_code=500, detail="本存档主角色不存在")
 
             # UserModel.update_user_character(user_id=user_id, character_id=character_id)
             UserManager.update_last_character(user_id=user_id, role_id=role_id)
@@ -97,71 +98,77 @@ async def load_user_conversations(user_id: int, conversation_id: int):
 
             # 2. 切换AI服务角色
             character_settings = RoleManager.get_role_settings_by_id(role_id)
-            if character_settings is None: return HTTPException(status_code=500, detail="角色不存在")
+            if character_settings is None:
+                return HTTPException(status_code=500, detail="角色不存在")
 
             character_settings.character_id = role_id
             ai_service.import_settings(settings=character_settings)
             ai_service.load_lines(line_list, role_id, save_id=conversation_id)
-            
+
             # 3. 更新游戏状态信息等 TODO：这里的代码在日后确定游戏状态之后可以变的更优雅一点
             game_status.background = save.status.get("background", "default")
             game_status.background_effect = save.status.get("background_effect", "none")
             game_status.background_music = save.status.get("background_music", "none")
-            game_status.current_character = game_status.get_role(save.status.get("current_character_id", -1))
+            game_status.current_character = game_status.get_role(
+                save.status.get("current_character_id", -1)
+            )
             game_status.global_variables = save.status.get("global_variables", {})
             game_status.completed_scripts = save.status.get("completed_scripts", set())
-            game_status.present_roles = {role for role_id in save.status.get("present_role_ids", set()) 
-                                         if (role := game_status.get_role(role_id)) is not None}
-            game_status.last_dialog_time = save.status.get("last_dialog_time", datetime.now())
+            game_status.present_roles = {
+                role
+                for role_id in save.status.get("present_role_ids", set())
+                if (role := game_status.get_role(role_id)) is not None
+            }
+            game_status.last_dialog_time = save.status.get(
+                "last_dialog_time", datetime.now()
+            )
 
             # 4. 如果当时有正在运行的剧本，还原游戏状态
             if save.running_script_id is not None:
-                script_data = SaveManager.get_running_script_by_id(save.running_script_id)
-                if script_data is None: 
+                script_data = SaveManager.get_running_script_by_id(
+                    save.running_script_id
+                )
+                if script_data is None:
                     logger.error(f"无法找到正在运行的剧本 {save.running_script_id}")
-                    return {
-                        "code": 500,
-                        "msg": "Failed to load user co"
-                    }
-                
+                    return {"code": 500, "msg": "Failed to load user co"}
+
                 # 解析并还原数据
-                script_status = ai_service.scripts_manager.get_script(script_data.script_folder)
+                script_status = ai_service.scripts_manager.get_script(
+                    script_data.script_folder
+                )
                 if script_status is None:
-                    logger.error(f"无法找到剧本 {script_data.script_folder} 可能已经被删除了")
-                    return {
-                        "code": 500,
-                        "msg": "Failed to load user scripts"
-                    }
+                    logger.error(
+                        f"无法找到剧本 {script_data.script_folder} 可能已经被删除了"
+                    )
+                    return {"code": 500, "msg": "Failed to load user scripts"}
                 script_status.current_chapter_key = script_data.current_chapter
                 script_status.current_event_process = script_data.event_sequence
                 script_status.vars = script_data.variable_info
 
                 # 运行剧本
                 asyncio.create_task(ai_service.start_script(script_data.script_folder))
-                
 
             logger.info(f"加载存档 {save.id} 成功")
-            return {
-                "code": 200,
-                "data": "success"
-            }
+            return {"code": 200, "data": "success"}
         else:
             return {
                 "code": 500,
                 "msg": "Failed to load user conversations",
-                "error": "加载的数据是空的"
+                "error": "加载的数据是空的",
             }
 
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         print("加载存档的时候出错")
         print(str(e))
         return {
             "code": 500,
             "msg": "Failed to load user conversations",
-            "error": str(e)
+            "error": str(e),
         }
+
 
 @router.post("/create")  # 改为POST方法
 async def create_user_conversations(request: Request):
@@ -174,7 +181,7 @@ async def create_user_conversations(request: Request):
         # 参数验证
         if not user_id or not title:
             raise HTTPException(status_code=400, detail="缺少必要参数")
-        
+
         if not service_manager.ai_service:
             raise HTTPException(status_code=500, detail="AI服务未初始化")
 
@@ -185,8 +192,8 @@ async def create_user_conversations(request: Request):
         line_list = service_manager.ai_service.get_lines()
         save_id = SaveManager.create_save(user_id=user_id, title=title).id
         if save_id:
-            SaveManager.sync_lines(save_id,line_list)
-            
+            SaveManager.sync_lines(save_id, line_list)
+
             SaveManager.update_save_main_role(save_id, game_status.main_role.role_id)
             SaveManager.update_save_status(save_id, game_status)
             # 让后端运行时与用户最近存档保持一致，便于 MemoryBank 持久化
@@ -203,10 +210,7 @@ async def create_user_conversations(request: Request):
 
         return {
             "code": 200,
-            "data": {
-                "conversation_id": save_id,
-                "message": "存档创建成功"
-            }
+            "data": {"conversation_id": save_id, "message": "存档创建成功"},
         }
 
     except HTTPException as he:
@@ -214,10 +218,8 @@ async def create_user_conversations(request: Request):
     except Exception as e:
         print("创建save的时候出错")
         print(str(e))
-        raise HTTPException(
-            status_code=500,
-            detail=f"创建存档失败: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"创建存档失败: {str(e)}")
+
 
 @router.post("/save")
 async def save_user_conversation(request: Request):
@@ -239,30 +241,36 @@ async def save_user_conversation(request: Request):
 
         # 参数验证
         if not user_id or not conversation_id:
-            raise HTTPException(status_code=400, detail="缺少必要参数(user_id或conversation_id)")
-        
+            raise HTTPException(
+                status_code=400, detail="缺少必要参数(user_id或conversation_id)"
+            )
+
         if not service_manager.ai_service:
             raise HTTPException(status_code=500, detail="AI服务未初始化")
-        
+
         game_status = service_manager.ai_service.game_status
-        
+
         # 获取当前消息记忆
         line_list = service_manager.ai_service.get_lines()
         SaveManager.sync_lines(save_id=conversation_id, input_lines=line_list)
         # 维持当前激活存档（用于 MemoryBank 自动压缩）
         service_manager.ai_service.set_active_save_id(conversation_id)
-        SaveManager.update_save_status(conversation_id, service_manager.ai_service.game_status)
+        SaveManager.update_save_status(
+            conversation_id, service_manager.ai_service.game_status
+        )
         # 仅在“保存存档”时写入 MemoryBank
         service_manager.ai_service.persist_memory_banks(conversation_id)
 
         # 如果有正在进行的剧本，写入剧本信息
         if game_status.script_status is not None:
-            SaveManager.update_running_script(conversation_id, game_status.script_status)
+            SaveManager.update_running_script(
+                conversation_id, game_status.script_status
+            )
 
         # 如果需要更新标题
         if title:
             SaveManager.update_save_title(save_id=conversation_id, title=title)
-        
+
         # TODO: 根据 GameStatus 中的其他状态，更新 save 中的其他字段
 
         return {
@@ -270,8 +278,8 @@ async def save_user_conversation(request: Request):
             "data": {
                 "conversation_id": conversation_id,
                 "message": "对话保存成功",
-                "message_count": len(line_list)
-            }
+                "message_count": len(line_list),
+            },
         }
 
     except HTTPException as he:
@@ -279,10 +287,8 @@ async def save_user_conversation(request: Request):
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"保存对话失败: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"保存对话失败: {str(e)}")
+
 
 @router.post("/delete")
 async def delete_user_conversation(request: Request):
@@ -302,7 +308,9 @@ async def delete_user_conversation(request: Request):
 
         # 参数验证
         if not user_id or not conversation_id:
-            raise HTTPException(status_code=400, detail="缺少必要参数(user_id或conversation_id)")
+            raise HTTPException(
+                status_code=400, detail="缺少必要参数(user_id或conversation_id)"
+            )
 
         # 执行删除
         # deleted = ConversationModel.delete_conversation(conversation_id)
@@ -319,19 +327,14 @@ async def delete_user_conversation(request: Request):
 
         return {
             "code": 200,
-            "data": {
-                "conversation_id": conversation_id,
-                "message": "对话删除成功"
-            }
+            "data": {"conversation_id": conversation_id, "message": "对话删除成功"},
         }
 
     except HTTPException as he:
         raise he
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"删除对话失败: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"删除对话失败: {str(e)}")
+
 
 @router.post("/clear")
 async def clear_chat_history(request: Request):
@@ -376,17 +379,9 @@ async def clear_chat_history(request: Request):
 
         logger.info(f"用户 {user_id} 已清除对话历史")
 
-        return {
-            "code": 200,
-            "data": {
-                "message": "对话历史已清除"
-            }
-        }
+        return {"code": 200, "data": {"message": "对话历史已清除"}}
 
     except HTTPException as he:
         raise he
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"清除对话历史失败: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"清除对话历史失败: {str(e)}")

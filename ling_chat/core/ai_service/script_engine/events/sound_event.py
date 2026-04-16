@@ -8,16 +8,14 @@ class SoundEvent(BaseEvent):
     """处理音效事件"""
 
     async def _execute(self):
-        sound:str = self.event_data.get('soundPath', '')
-        duration:float = self.event_data.get('duration', '')
+        sound: str = self.event_data.get("soundPath", "")
+        duration: float = self.event_data.get("duration", "")
 
         logger.info(f"播放声音: {sound}")
 
-        event_response = ResponseFactory.create_sound(sound, duration = duration)
-        await message_broker.publish(self.client_id,
-            event_response.model_dump()
-        )
+        event_response = ResponseFactory.create_sound(sound, duration=duration)
+        await message_broker.publish(self.client_id, event_response.model_dump())
 
     @classmethod
     def can_handle(cls, event_type: str) -> bool:
-        return event_type == 'sound'
+        return event_type == "sound"

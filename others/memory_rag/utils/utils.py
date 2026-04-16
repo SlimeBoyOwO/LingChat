@@ -1,5 +1,5 @@
-import re
 import hashlib
+import re
 from datetime import datetime
 
 FACT_RETRIEVAL_PROMPT = f"""You are a Personal Information Organizer, specialized in accurately storing facts, user memories, and preferences. Your primary role is to extract relevant pieces of information from conversations and organize them into distinct, manageable facts. This allows for easy retrieval and personalization in future interactions. Below are the types of information you need to focus on and the detailed instructions on how to handle the input data.
@@ -72,7 +72,9 @@ def format_entities(entities):
 
     formatted_lines = []
     for entity in entities:
-        simplified = f"{entity['source']} -- {entity['relationship']} -- {entity['destination']}"
+        simplified = (
+            f"{entity['source']} -- {entity['relationship']} -- {entity['destination']}"
+        )
         formatted_lines.append(simplified)
 
     return "\n".join(formatted_lines)
@@ -106,7 +108,10 @@ def get_image_description(image_obj, llm, vision_details):
                         "type": "text",
                         "text": "A user is providing an image. Provide a high level description of the image and do not include any additional text.",
                     },
-                    {"type": "image_url", "image_url": {"url": image_obj, "detail": vision_details}},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": image_obj, "detail": vision_details},
+                    },
                 ],
             },
         ]
@@ -132,7 +137,10 @@ def parse_vision_messages(messages, llm=None, vision_details="auto"):
             # Multiple image URLs in content
             description = get_image_description(msg, llm, vision_details)
             returned_messages.append({"role": msg["role"], "content": description})
-        elif isinstance(msg["content"], dict) and msg["content"].get("type") == "image_url":
+        elif (
+            isinstance(msg["content"], dict)
+            and msg["content"].get("type") == "image_url"
+        ):
             # Single image content
             image_url = msg["content"]["image_url"]["url"]
             try:

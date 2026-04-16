@@ -1,8 +1,8 @@
+import os
 from typing import AsyncGenerator, Dict, List
 
 import httpx
 from openai import AsyncOpenAI, OpenAI
-import os
 
 from ling_chat.core.llm_providers.base import BaseLLMProvider
 from ling_chat.core.logger import logger
@@ -23,15 +23,22 @@ class WebLLMProvider(BaseLLMProvider):
             self.client = None
             return
 
-        if not (isinstance(base_url, str) and (base_url.startswith("http://") or base_url.startswith("https://"))):
-            logger.warning("通用网络大模型未初始化：CHAT_BASE_URL 缺少 http:// 或 https:// 协议头。")
+        if not (
+            isinstance(base_url, str)
+            and (base_url.startswith("http://") or base_url.startswith("https://"))
+        ):
+            logger.warning(
+                "通用网络大模型未初始化：CHAT_BASE_URL 缺少 http:// 或 https:// 协议头。"
+            )
             self.client = None
             return
 
         self._timeout = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
         self.client = OpenAI(api_key=api_key, base_url=base_url, timeout=self._timeout)
-        self.async_client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=self._timeout)
-        logger.info("通用网络大模型初始化完毕！" )
+        self.async_client = AsyncOpenAI(
+            api_key=api_key, base_url=base_url, timeout=self._timeout
+        )
+        logger.info("通用网络大模型初始化完毕！")
 
     def _add_thinking_extra_body(self, create_kwargs: dict) -> None:
         """根据 thinking 配置添加 extra_body 参数"""
@@ -39,7 +46,7 @@ class WebLLMProvider(BaseLLMProvider):
             thinking_enabled = self.thinking == "true"
             create_kwargs["extra_body"] = {
                 "thinking": {"type": "enabled" if thinking_enabled else "disabled"},
-                "enable_thinking": thinking_enabled
+                "enable_thinking": thinking_enabled,
             }
 
     def initialize_client(self):
@@ -60,7 +67,7 @@ class WebLLMProvider(BaseLLMProvider):
                 "messages": messages,
                 "temperature": self.temperature,
                 "top_p": self.top_p,
-                "stream": False
+                "stream": False,
             }
             self._add_thinking_extra_body(create_kwargs)
 
@@ -71,7 +78,9 @@ class WebLLMProvider(BaseLLMProvider):
             logger.error(f"通用网络大模型请求失败: {str(e)}")
             raise
 
-    async def generate_stream_response(self, messages: List[Dict]) -> AsyncGenerator[str, None]:
+    async def generate_stream_response(
+        self, messages: List[Dict]
+    ) -> AsyncGenerator[str, None]:
         """
         生成流式响应
         """
@@ -90,7 +99,7 @@ class WebLLMProvider(BaseLLMProvider):
                 "messages": messages,
                 "temperature": self.temperature,
                 "top_p": self.top_p,
-                "stream": True
+                "stream": True,
             }
             self._add_thinking_extra_body(create_kwargs)
 
@@ -103,5 +112,6 @@ class WebLLMProvider(BaseLLMProvider):
         except Exception as e:
             logger.error(f"通用网络大模型{self.model_type}流式请求失败: {str(e)}")
             import traceback
+
             traceback.print_exc()
             raise

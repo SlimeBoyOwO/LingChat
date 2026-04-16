@@ -24,9 +24,7 @@ class OllamaProvider(BaseLLMProvider):
             os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
         )
         self.model_type = (
-            os.environ.get("OLLAMA_MODEL")
-            or os.environ.get("MODEL_TYPE")
-            or "llama3"
+            os.environ.get("OLLAMA_MODEL") or os.environ.get("MODEL_TYPE") or "llama3"
         )
         self._timeout = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
         self.temperature = float(os.environ.get("TEMPERATURE", 1.3))
@@ -47,14 +45,11 @@ class OllamaProvider(BaseLLMProvider):
                     "temperature": self.temperature,
                     "top_p": self.top_p,
                 },
-                "stream": False
+                "stream": False,
             }
 
             with httpx.Client(timeout=self._timeout) as client:
-                response = client.post(
-                    f"{self.base_url}/api/chat",
-                    json=payload
-                )
+                response = client.post(f"{self.base_url}/api/chat", json=payload)
 
                 if response.status_code != 200:
                     error_msg = f"Ollama API returned error: {response.status_code} - {response.text}"
@@ -68,7 +63,9 @@ class OllamaProvider(BaseLLMProvider):
             logger.error(f"Ollama API call failed: {str(e)}")
             raise
 
-    async def generate_stream_response(self, messages: List[Dict]) -> AsyncGenerator[str, None]:
+    async def generate_stream_response(
+        self, messages: List[Dict]
+    ) -> AsyncGenerator[str, None]:
         """生成Ollama流式响应
         :param messages: 消息列表
         :return: 返回一个生成器，每次迭代返回一个内容块
@@ -83,7 +80,7 @@ class OllamaProvider(BaseLLMProvider):
                     "temperature": self.temperature,
                     "top_p": self.top_p,
                 },
-                "stream": True
+                "stream": True,
             }
 
             async with httpx.AsyncClient(timeout=self._timeout) as client:
@@ -99,7 +96,9 @@ class OllamaProvider(BaseLLMProvider):
                             text = body.decode("utf-8", errors="replace")
                         except Exception:
                             text = str(body)
-                        error_msg = f"Ollama 流式返回了错误: {response.status_code} - {text}"
+                        error_msg = (
+                            f"Ollama 流式返回了错误: {response.status_code} - {text}"
+                        )
                         logger.error(error_msg)
                         raise Exception(error_msg)
 
@@ -107,7 +106,9 @@ class OllamaProvider(BaseLLMProvider):
                         if line.strip():  # 确保不是空行
                             try:
                                 chunk_json = json.loads(line)
-                                content = chunk_json.get("message", {}).get("content", "")
+                                content = chunk_json.get("message", {}).get(
+                                    "content", ""
+                                )
                                 if content:
                                     yield content
                             except json.JSONDecodeError:

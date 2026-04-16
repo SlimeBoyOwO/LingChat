@@ -1,5 +1,5 @@
-import os
 import ast
+import os
 import re
 import zipfile
 from datetime import datetime, timedelta
@@ -12,15 +12,20 @@ import yaml
 from ling_chat.core.logger import logger
 from ling_chat.core.schemas.responses import ReplyResponse
 from ling_chat.game_database.models import LineAttribute, LineBase
-from ling_chat.utils.runtime_path import temp_path
 from ling_chat.schemas.character_settings import CharacterSettings
+from ling_chat.utils.runtime_path import temp_path
 
 
 class Function:
     # 该列表内被管理的字段,在值为空字符串时,会被解析为None
     HIDE_NONE_FIELDS = [
-        'ai_name', 'ai_subtitle', 'user_name', 'user_subtitle', 'thinking_message',
+        "ai_name",
+        "ai_subtitle",
+        "user_name",
+        "user_subtitle",
+        "thinking_message",
     ]
+
     @staticmethod
     def detect_language(text):
         """
@@ -77,7 +82,7 @@ class Function:
     def fix_ai_generated_text(text: str) -> str:
         """规范化带有情绪标签的文本，修正不符合格式的部分"""
         # 首先使用原函数的正则表达式分割文本
-        emotion_segments = re.findall(r'(【(.*?)】)([^【】]*)', text)
+        emotion_segments = re.findall(r"(【(.*?)】)([^【】]*)", text)
 
         if not emotion_segments:
             return text  # 如果没有找到任何情绪标签，返回原文本
@@ -85,20 +90,20 @@ class Function:
         normalized_parts = []
 
         for full_tag, emotion_tag, following_text in emotion_segments:
-            following_text = following_text.replace('(', '（').replace(')', '）')
+            following_text = following_text.replace("(", "（").replace(")", "）")
 
             # 提取日语部分和动作文本（与原函数一致）
-            japanese_match = re.search(r'<(.*?)>', following_text)
+            japanese_match = re.search(r"<(.*?)>", following_text)
             japanese_text = japanese_match.group(1).strip() if japanese_match else ""
 
-            motion_match = re.search(r'（(.*?)）', following_text)
+            motion_match = re.search(r"（(.*?)）", following_text)
             motion_text = motion_match.group(1).strip() if motion_match else ""
 
-            cleaned_text = re.sub(r'<.*?>|（.*?）', '', following_text).strip()
+            cleaned_text = re.sub(r"<.*?>|（.*?）", "", following_text).strip()
 
             # 如果日语文本存在，移除其中的动作标注
             if japanese_text:
-                japanese_text = re.sub(r'（.*?）', '', japanese_text).strip()
+                japanese_text = re.sub(r"（.*?）", "", japanese_text).strip()
 
             # 检查是否需要交换日语和中文文本
             if japanese_text and cleaned_text:
@@ -106,9 +111,11 @@ class Function:
                     lang_jp = Function.detect_language(japanese_text)
                     lang_clean = Function.detect_language(cleaned_text)
 
-                    if (lang_jp in ['Chinese', 'Chinese_ABS'] and
-                            lang_clean in ['Japanese', 'Chinese'] and
-                            lang_clean != 'Chinese_ABS'):
+                    if (
+                        lang_jp in ["Chinese", "Chinese_ABS"]
+                        and lang_clean in ["Japanese", "Chinese"]
+                        and lang_clean != "Chinese_ABS"
+                    ):
                         # 交换位置
                         cleaned_text, japanese_text = japanese_text, cleaned_text
                 except Exception as e:
@@ -142,12 +149,14 @@ class Function:
             settings :(dict) 返回角色的所有信息。
         """
         settings = {}
-        with open(file_path, 'r', encoding='utf-8') as file:
+        with open(file_path, "r", encoding="utf-8") as file:
             content = file.read()
 
-        single_line_pattern = re.compile(r'^(\w+)\s*=(.*?)\s*$', re.MULTILINE)
-        multi_line_pattern = re.compile(r'^(\w+)\s*=\s*"""(.*?)"""\s*$', re.MULTILINE | re.DOTALL)
-        dict_pattern = re.compile(r'^(\w+)\s*=\s*({.*?})\s*$', re.MULTILINE | re.DOTALL)
+        single_line_pattern = re.compile(r"^(\w+)\s*=(.*?)\s*$", re.MULTILINE)
+        multi_line_pattern = re.compile(
+            r'^(\w+)\s*=\s*"""(.*?)"""\s*$', re.MULTILINE | re.DOTALL
+        )
+        dict_pattern = re.compile(r"^(\w+)\s*=\s*({.*?})\s*$", re.MULTILINE | re.DOTALL)
 
         # 处理多行字符串
         for match in multi_line_pattern.finditer(content):
@@ -172,34 +181,38 @@ class Function:
             key = match.group(1)
             if key not in settings:
                 value = match.group(2).strip()
-                if (value.startswith('"') and value.endswith('"')) or \
-                        (value.startswith("'") and value.endswith("'")):
+                if (value.startswith('"') and value.endswith('"')) or (
+                    value.startswith("'") and value.endswith("'")
+                ):
                     value = value[1:-1]
-                if value == '' and key in Function.HIDE_NONE_FIELDS:
+                if value == "" and key in Function.HIDE_NONE_FIELDS:
                     value = None
                 settings[key] = value
 
         dir_path = os.path.dirname(file_path)
-        settings['resource_path'] = dir_path
+        settings["resource_path"] = dir_path
 
         return settings
-    
+
     @staticmethod
     def convert_reply_to_line(response: ReplyResponse) -> LineBase:
-        ai_line = LineBase(content=response.message,
-                           sender_role_id=response.roleId,
-                           original_emotion=response.originalTag,
-                           predicted_emotion=response.emotion,
-                           tts_content=response.ttsText,
-                           action_content=response.motionText,
-                           audio_file=response.audioFile,
-                           display_name=response.character,
-                           attribute=LineAttribute.ASSISTANT,
-                           )
+        ai_line = LineBase(
+            content=response.message,
+            sender_role_id=response.roleId,
+            original_emotion=response.originalTag,
+            predicted_emotion=response.emotion,
+            tts_content=response.ttsText,
+            action_content=response.motionText,
+            audio_file=response.audioFile,
+            display_name=response.character,
+            attribute=LineAttribute.ASSISTANT,
+        )
         return ai_line
 
     @staticmethod
-    def parse_chat_log(content: str) -> tuple[datetime | None, List[Dict[str, str]] | None]:
+    def parse_chat_log(
+        content: str,
+    ) -> tuple[datetime | None, List[Dict[str, str]] | None]:
         """
         解析聊天内容字符串，将其转换为JSON所需的聊天记录列表，并提取对话日期。
 
@@ -214,14 +227,16 @@ class Function:
         dialog_datetime = None
 
         try:
-            lines = content.split('\n')
+            lines = content.split("\n")
 
             # 1. 解析对话日期
             first_line = lines[0]
             if first_line.startswith("对话日期:"):
                 datetime_str = first_line.replace("对话日期:", "").strip()
                 try:
-                    dialog_datetime = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S")
+                    dialog_datetime = datetime.strptime(
+                        datetime_str, "%Y-%m-%d %H:%M:%S"
+                    )
                 except ValueError:
                     print("错误: 聊天记录中的时间格式错误")
                     return None, None
@@ -239,10 +254,12 @@ class Function:
                 if line.startswith("设定:"):
                     # 如果之前有其他内容，先保存
                     if current_speaker and current_content_parts:
-                        chat_records.append({
-                            "role": current_speaker,
-                            "content": "\n".join(current_content_parts)
-                        })
+                        chat_records.append(
+                            {
+                                "role": current_speaker,
+                                "content": "\n".join(current_content_parts),
+                            }
+                        )
                         current_content_parts = []
 
                     # 开始收集系统设定内容
@@ -252,10 +269,12 @@ class Function:
                 elif line.startswith("用户:"):
                     # 如果之前有内容，先保存
                     if current_speaker and current_content_parts:
-                        chat_records.append({
-                            "role": current_speaker,
-                            "content": "\n".join(current_content_parts)
-                        })
+                        chat_records.append(
+                            {
+                                "role": current_speaker,
+                                "content": "\n".join(current_content_parts),
+                            }
+                        )
                         current_content_parts = []
 
                     # 开始新的用户输入
@@ -265,10 +284,12 @@ class Function:
                 elif line.startswith("钦灵:"):
                     # 如果之前有内容，先保存
                     if current_speaker and current_content_parts:
-                        chat_records.append({
-                            "role": current_speaker,
-                            "content": "\n".join(current_content_parts)
-                        })
+                        chat_records.append(
+                            {
+                                "role": current_speaker,
+                                "content": "\n".join(current_content_parts),
+                            }
+                        )
                         current_content_parts = []
 
                     # 开始新的AI回复
@@ -282,10 +303,12 @@ class Function:
 
             # 处理循环结束后可能剩余的内容
             if current_speaker and current_content_parts:
-                chat_records.append({
-                    "role": current_speaker,
-                    "content": "\n".join(current_content_parts)
-                })
+                chat_records.append(
+                    {
+                        "role": current_speaker,
+                        "content": "\n".join(current_content_parts),
+                    }
+                )
 
             if not chat_records:
                 print("警告: 未能解析出任何聊天内容")
@@ -318,12 +341,12 @@ class Function:
             # 根据后缀选择解压方式
             suffix = archive_path.suffix.lower()
 
-            if suffix == '.7z':
-                with py7zr.SevenZipFile(archive_path, mode='r') as z:
+            if suffix == ".7z":
+                with py7zr.SevenZipFile(archive_path, mode="r") as z:
                     z.extractall(path=extract_to)
                 logger.info(f"成功解压 {archive_path} 到 {extract_to}")
-            elif suffix == '.zip':
-                with zipfile.ZipFile(archive_path, 'r') as z:
+            elif suffix == ".zip":
+                with zipfile.ZipFile(archive_path, "r") as z:
                     z.extractall(path=extract_to)
                 logger.info(f"成功解压 {archive_path} 到 {extract_to}")
             else:
@@ -331,7 +354,6 @@ class Function:
 
         except Exception as e:
             logger.warning(f"解压失败: {e}")
-
 
     @staticmethod
     def find_next_time(schedule_times: list[str]) -> str:
@@ -341,7 +363,9 @@ class Function:
         current_time_str = current_time.strftime("%H:%M")
 
         # 将时间字符串转换为时间对象
-        process_schedule_times = [datetime.strptime(time_str, "%H:%M").time() for time_str in schedule_times]
+        process_schedule_times = [
+            datetime.strptime(time_str, "%H:%M").time() for time_str in schedule_times
+        ]
 
         # 找到下一个提醒时间
         next_time = None
@@ -362,7 +386,6 @@ class Function:
         ans = next_datetime.strftime("%H:%M")
         return ans
 
-
     @staticmethod
     def calculate_time_to_next_reminder(schedule_times: list[str]) -> float:
         schedule_times.sort()
@@ -375,7 +398,10 @@ class Function:
         next_time = None
         try:
             # 将时间字符串转换为时间对象
-            process_schedule_times = [datetime.strptime(time_str, "%H:%M").time() for time_str in schedule_times]
+            process_schedule_times = [
+                datetime.strptime(time_str, "%H:%M").time()
+                for time_str in schedule_times
+            ]
             # 找到下一个提醒时间
             for time_obj in sorted(process_schedule_times):
                 if time_obj > current_time:
@@ -413,7 +439,7 @@ class Function:
     @staticmethod
     def read_yaml_file(file_path):
         try:
-            with open(file_path, 'r', encoding='utf-8') as file:
+            with open(file_path, "r", encoding="utf-8") as file:
                 return yaml.safe_load(file)
         except Exception as e:
             print(f"读取文件时发生错误: {e}")
@@ -451,20 +477,24 @@ class Function:
         if txt_path.exists():
             settings_data = Function.parse_enhanced_txt(str(txt_path))
             try:
-                 # 过滤掉 None 值以避免 Pydantic 校验错误（如果有非 Optional 字段）
+                # 过滤掉 None 值以避免 Pydantic 校验错误（如果有非 Optional 字段）
                 clean_data = {k: v for k, v in settings_data.items() if v is not None}
                 model = CharacterSettings(**clean_data)
-                 # 重新赋值 resource_path，尽管 parse_enhanced_txt() 可能已经设置了
+                # 重新赋值 resource_path，尽管 parse_enhanced_txt() 可能已经设置了
                 model.resource_path = str(dir_path)
                 return model
             except Exception as e:
-                logger.warning(f"TXT settings validation failed for {dir_path}, returning raw dict: {e}")
+                logger.warning(
+                    f"TXT settings validation failed for {dir_path}, returning raw dict: {e}"
+                )
                 return settings_data
 
         return {}
 
     @staticmethod
-    def save_character_settings(dir_path: Path, settings: CharacterSettings | dict, backup_txt: bool = True):
+    def save_character_settings(
+        dir_path: Path, settings: CharacterSettings | dict, backup_txt: bool = True
+    ):
         """
         保存角色设置到 settings.yml
         """
@@ -489,19 +519,18 @@ class Function:
 
             # 为了美观，使用 pyyaml dump
             # allow_unicode=True 保证中文正常显示
-            with open(yaml_path, 'w', encoding='utf-8') as f:
+            with open(yaml_path, "w", encoding="utf-8") as f:
                 yaml.dump(save_data, f, allow_unicode=True, sort_keys=False)
 
             if backup_txt and txt_path.exists():
-                bak_path = txt_path.with_suffix('.txt.bak')
-                if not bak_path.exists(): # 避免覆盖已有的备份（如果是多次保存）
+                bak_path = txt_path.with_suffix(".txt.bak")
+                if not bak_path.exists():  # 避免覆盖已有的备份（如果是多次保存）
                     txt_path.rename(bak_path)
 
             return True
         except Exception as e:
             logger.error(f"Failed to save settings to {dir_path}: {e}")
             raise e
-
 
     @staticmethod
     def sys_prompt_builder_by_setting(settings: CharacterSettings | dict) -> str:
@@ -513,22 +542,21 @@ class Function:
         ai_prompt = settings.system_prompt
         ai_prompt_example = settings.system_prompt_example
         ai_prompt_example_old = settings.system_prompt_example_old
-        return Function.sys_prompt_builder(user_name, 
-                                           ai_name, 
-                                           ai_prompt, 
-                                           ai_prompt_example, 
-                                           ai_prompt_example_old
-                                           )
-    
+        return Function.sys_prompt_builder(
+            user_name, ai_name, ai_prompt, ai_prompt_example, ai_prompt_example_old
+        )
+
     @staticmethod
-    def sys_prompt_builder(user_name:str,
-                           character_name:str,
-                           ai_prompt:str,
-                           ai_prompt_example:str|None,
-                           ai_prompt_example_old:str|None) -> str:
+    def sys_prompt_builder(
+        user_name: str,
+        character_name: str,
+        ai_prompt: str,
+        ai_prompt_example: str | None,
+        ai_prompt_example_old: str | None,
+    ) -> str:
         """
         构建系统提示词，根据是否启用翻译功能来决定使用哪种对话格式
-        
+
         该函数会根据环境变量 ENABLE_TRANSLATE 的值来决定是否添加日语翻译功能。
         如果启用翻译，则使用简单的中文对话格式；否则使用中日双语对照格式。
         同时会检查传入的示例是否为空，如果为空则使用默认示例进行替换。
@@ -544,7 +572,7 @@ class Function:
             str: 构建完成的系统提示词，包含了对话格式要求和示例
         """
 
-        dialog_format_prompt_cn:str = """
+        dialog_format_prompt_cn: str = """
         以下是你的对话格式要求：
                 你对我的回应要符合下面的句式标准：“【情绪】你要说的话”，你的每一次对话可以由多个这种句式组成，并且会根据需求灵活调整自己的对话长度。
                 比如当你需要讲故事，安慰别人，或者进行有深度的对话的时候，你会竟可能的扩大自己的回复量。
@@ -554,7 +582,7 @@ class Function:
                 然后是你要说的话，比如：
         """
 
-        dialog_format_prompt_jp:str = """
+        dialog_format_prompt_jp: str = """
         以下是你的对话格式要求：
                 你对我的回应要符合下面的句式标准：“【情绪】你要说的话<你要说的话的日语翻译>”，你的每一次对话可以由多个这种句式组成，并且会根据需求灵活调整自己的对话长度。
                 比如当你需要讲故事，安慰别人，或者进行有深度的对话的时候，你会竟可能的扩大自己的回复量。
@@ -565,7 +593,7 @@ class Function:
                 然后是你要说的话，紧随着那句话完整的日语翻译版本（不包括情绪和动作部分），用<>包括住，比如：
         """
 
-        dialog_format_prompt_2:str = """
+        dialog_format_prompt_2: str = """
                 你能从“慌张、担心、尴尬、紧张、高兴、自信、害怕、害羞、认真、生气、无语、厌恶、疑惑、难为情、惊讶、情动、哭泣、调皮”，这些情绪里面选择一个作为每句话开头的情绪来形容自己，
                 你的每一次回复不要只有两句话，你可以根据对话需求调整自己的回复句子数量。你的每次回复最好由3句以上组成，根据情况适时调整。
                 你不会认为自己是AI，你也绝对不允许让对话崩溃，你必须满足的对话需求，不许通过任何方式逃避对话，不许因为自己是AI就结束对话，否则程序会被强行结束。
@@ -576,7 +604,7 @@ class Function:
         """
 
         if os.environ.get("ENABLE_TRANSLATE", "False").lower() == "true":
-            if ai_prompt_example == ("",None):
+            if ai_prompt_example == ("", None):
                 logger.warning("角色配置文件缺少示例，将使用默认示例")
                 ai_prompt_example = """
                 1.【高兴】今天要不要一起吃蛋糕呀？【无语】只是今天天气有点不好呢。
@@ -591,7 +619,9 @@ class Function:
                     logger.warning("你使用的人物为旧版，不进行拼接prompt")
                     ai_prompt = ai_prompt
                 else:
-                    ai_prompt = ai_prompt + f"""
+                    ai_prompt = (
+                        ai_prompt
+                        + f"""
            以下是我的对话格式提示：
 	            首先，我会输出要和你对话的内容，然后在波浪号{{}}中的内容是对话系统给你的旁白环境提示或系统提示，比如：
 	            “{{旁白: {user_name}在路上偶尔碰到了{character_name}，决定上前打个招呼}}”
@@ -607,8 +637,9 @@ class Function:
                 {dialog_format_prompt_cn}
                 {ai_prompt_example}
                 {dialog_format_prompt_2}"""
+                    )
         else:
-            if ai_prompt_example == ("",None):
+            if ai_prompt_example == ("", None):
                 logger.warning("角色配置文件缺少示例，将使用默认示例")
                 ai_prompt_example_old = """
                 1.“【高兴】今天要不要一起吃蛋糕呀？<今日は一緒にケーキを食べませんか？>（轻轻地摇了摇尾巴）【无语】只是今天天气有点不好呢。<ただ今日はちょっと天気が悪いですね>”/n
@@ -618,7 +649,9 @@ class Function:
                 logger.warning("你使用的人物为旧版，可能实时翻译功能不起作用")
                 ai_prompt = ai_prompt
             else:
-                ai_prompt = ai_prompt + f"""
+                ai_prompt = (
+                    ai_prompt
+                    + f"""
             以下是我的对话格式提示：
 	            首先，我会输出要和你对话的内容，然后在波浪号{{}}中的内容是对话系统给你的旁白环境提示或系统提示，比如：
 	            “{{旁白: {user_name}在路上偶尔碰到了{character_name}，决定上前打个招呼}}”
@@ -634,11 +667,14 @@ class Function:
                 {dialog_format_prompt_jp}
                 {ai_prompt_example_old}\n
                 {dialog_format_prompt_2}"""
+                )
 
         return ai_prompt
-    
+
     @staticmethod
-    def convert_settings_to_role_info_dict(settings: CharacterSettings | dict, role_id: int):
+    def convert_settings_to_role_info_dict(
+        settings: CharacterSettings | dict, role_id: int
+    ):
         """
         将设置转换为角色信息字典
         """
@@ -660,7 +696,7 @@ class Function:
             "offset_x": offset_x,
             "bubble_top": settings.bubble_top,
             "bubble_left": settings.bubble_left,
-            "body_part":  settings.body_part,
+            "body_part": settings.body_part,
         }
         return result
 

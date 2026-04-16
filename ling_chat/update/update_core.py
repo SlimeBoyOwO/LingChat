@@ -28,6 +28,7 @@ class UpdateStatus(Enum):
     COMPLETED = "completed"
     ERROR = "error"
 
+
 # 在 UpdateStrategy 类中添加 current_version 属性
 class UpdateStrategy(ABC):
     def __init__(self):
@@ -49,35 +50,45 @@ class UpdateStrategy(ABC):
         pass
 
     # 新增可选方法，用于连续更新
-    def download_update_chain(self, progress_callback: Optional[Callable] = None) -> List[Dict[str, Any]]:
+    def download_update_chain(
+        self, progress_callback: Optional[Callable] = None
+    ) -> List[Dict[str, Any]]:
         """下载整个更新链 - 可选实现，默认使用单版本下载"""
         # 默认实现：只下载最新版本
-        if hasattr(self, '_update_info') and self._update_info and "update_chain" in self._update_info:
+        if (
+            hasattr(self, "_update_info")
+            and self._update_info
+            and "update_chain" in self._update_info
+        ):
             update_chain = self._update_info["update_chain"]
             if update_chain:
                 latest_update = update_chain[-1]
                 # 临时设置为单版本信息
-                original_info = getattr(self, '_update_info', None)
+                original_info = getattr(self, "_update_info", None)
                 self._update_info = latest_update
                 try:
                     file_path = self.download_update(progress_callback)
                     # 恢复原始信息
                     self._update_info = original_info
-                    return [{
-                        "version": latest_update.get('version'),
-                        "file_path": file_path,
-                        "type": latest_update.get('type', 'delta')
-                    }]
+                    return [
+                        {
+                            "version": latest_update.get("version"),
+                            "file_path": file_path,
+                            "type": latest_update.get("type", "delta"),
+                        }
+                    ]
                 except Exception:
                     self._update_info = original_info
                     raise
         # 回退到单版本下载
         file_path = self.download_update(progress_callback)
-        return [{
-            "version": getattr(self, '_update_info', {}).get('version', 'unknown'),
-            "file_path": file_path,
-            "type": getattr(self, '_update_info', {}).get('type', 'delta')
-        }]
+        return [
+            {
+                "version": getattr(self, "_update_info", {}).get("version", "unknown"),
+                "file_path": file_path,
+                "type": getattr(self, "_update_info", {}).get("type", "delta"),
+            }
+        ]
 
     def apply_update_chain(self, downloaded_files: List[Dict[str, Any]]) -> bool:
         """应用整个更新链 - 可选实现，默认使用单版本应用"""
@@ -87,17 +98,21 @@ class UpdateStrategy(ABC):
             self.downloaded_file = latest_file["file_path"]
             return self.apply_update()
         return False
+
+
 class UpdateError(Exception):
     pass
 
-class UpdateManager:
-    def __init__(self,
-                 strategy: UpdateStrategy,
-                 config_file: str = "update_config.json",
-                 backup_dir: str = "backup",
-                 auto_check: bool = True,
-                 check_interval: int = 3600):
 
+class UpdateManager:
+    def __init__(
+        self,
+        strategy: UpdateStrategy,
+        config_file: str = "update_config.json",
+        backup_dir: str = "backup",
+        auto_check: bool = True,
+        check_interval: int = 3600,
+    ):
         self.strategy = strategy
         self.config_file = config_file
         self.backup_dir = Path(backup_dir)
@@ -111,26 +126,26 @@ class UpdateManager:
         self._is_running = False
         self._downloaded_files = []  # 新增：存储下载的文件列表
         self._callbacks = {
-            'status_changed': [],
-            'progress_changed': [],
-            'error_occurred': [],
-            'update_available': [],
-            'update_completed': []
+            "status_changed": [],
+            "progress_changed": [],
+            "error_occurred": [],
+            "update_available": [],
+            "update_completed": [],
         }
 
         self.load_config()
 
     def load_config(self):
         self.config = {
-            'last_check': 0,
-            'skipped_versions': [],
-            'auto_download': False,
-            'backup_enabled': True
+            "last_check": 0,
+            "skipped_versions": [],
+            "auto_download": False,
+            "backup_enabled": True,
         }
 
         if os.path.exists(self.config_file):
             try:
-                with open(self.config_file, 'r', encoding='utf-8') as f:
+                with open(self.config_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     if isinstance(data, dict):
                         self.config.update(data)
@@ -139,7 +154,7 @@ class UpdateManager:
 
     def save_config(self):
         try:
-            with open(self.config_file, 'w', encoding='utf-8') as f:
+            with open(self.config_file, "w", encoding="utf-8") as f:
                 json.dump(self.config, f, indent=2, ensure_ascii=False)
         except Exception as e:
             logger.error(f"保存配置文件失败: {e}")
@@ -159,17 +174,17 @@ class UpdateManager:
         old_status = self._status
         self._status = status
         if old_status != status:
-            self._emit_event('status_changed', status, old_status)
+            self._emit_event("status_changed", status, old_status)
             logger.info(f"状态变更: {old_status.value} -> {status.value}")
 
     def set_progress(self, progress: int):
         self._progress = progress
-        self._emit_event('progress_changed', progress)
+        self._emit_event("progress_changed", progress)
 
     def set_error(self, error: str):
         self._error = error
         self.set_status(UpdateStatus.ERROR)
-        self._emit_event('error_occurred', error)
+        self._emit_event("error_occurred", error)
         logger.error(f"更新错误: {error}")
 
     def start(self):
@@ -191,7 +206,7 @@ class UpdateManager:
             while self._is_running:
                 try:
                     now = time.time()
-                    if now - self.config.get('last_check', 0) >= self.check_interval:
+                    if now - self.config.get("last_check", 0) >= self.check_interval:
                         logger.debug("自动检查触发")
                         try:
                             self.check_for_updates()
@@ -214,7 +229,7 @@ class UpdateManager:
 
         try:
             update_info = self.strategy.check_update()
-            self.config['last_check'] = time.time()
+            self.config["last_check"] = time.time()
             self.save_config()
 
             if update_info:
@@ -222,10 +237,10 @@ class UpdateManager:
                 if "update_chain" in update_info:
                     update_chain = update_info["update_chain"]
                     # 检查是否有被跳过的版本
-                    skipped_versions = self.config.get('skipped_versions', [])
+                    skipped_versions = self.config.get("skipped_versions", [])
                     filtered_chain = []
                     for version_info in update_chain:
-                        ver = version_info.get('version')
+                        ver = version_info.get("version")
                         if ver and ver not in skipped_versions:
                             filtered_chain.append(version_info)
 
@@ -233,10 +248,12 @@ class UpdateManager:
                         update_info["update_chain"] = filtered_chain
                         update_info["update_count"] = len(filtered_chain)
                         if filtered_chain:
-                            update_info["target_version"] = filtered_chain[-1]["version"]
+                            update_info["target_version"] = filtered_chain[-1][
+                                "version"
+                            ]
                         self._update_info = update_info
                         self.set_status(UpdateStatus.UPDATE_AVAILABLE)
-                        self._emit_event('update_available', update_info)
+                        self._emit_event("update_available", update_info)
                         logger.info(f"发现 {len(filtered_chain)} 个待更新版本")
                         return True
                     else:
@@ -245,14 +262,14 @@ class UpdateManager:
                         return False
                 else:
                     # 单版本更新逻辑
-                    ver = update_info.get('version')
-                    if ver and ver in self.config.get('skipped_versions', []):
+                    ver = update_info.get("version")
+                    if ver and ver in self.config.get("skipped_versions", []):
                         logger.info(f"版本 {ver} 被跳过")
                         self.set_status(UpdateStatus.IDLE)
                         return False
                     self._update_info = update_info
                     self.set_status(UpdateStatus.UPDATE_AVAILABLE)
-                    self._emit_event('update_available', update_info)
+                    self._emit_event("update_available", update_info)
                     return True
             else:
                 self._update_info = None
@@ -280,11 +297,13 @@ class UpdateManager:
 
         try:
             download_path = self.strategy.download_update(progress_callback)
-            self._downloaded_files = [{
-                "version": self._update_info.get('version'),
-                "file_path": download_path,
-                "type": self._update_info.get('type', 'delta')
-            }]
+            self._downloaded_files = [
+                {
+                    "version": self._update_info.get("version"),
+                    "file_path": download_path,
+                    "type": self._update_info.get("type", "delta"),
+                }
+            ]
             self.set_progress(100)
             logger.info("下载完成: %s", download_path)
             return True
@@ -311,7 +330,9 @@ class UpdateManager:
 
         try:
             # 直接调用策略的 download_update_chain 方法
-            self._downloaded_files = self.strategy.download_update_chain(progress_callback)
+            self._downloaded_files = self.strategy.download_update_chain(
+                progress_callback
+            )
 
             self.set_progress(100)
             logger.info(f"下载完成: 共 {len(self._downloaded_files)} 个版本")
@@ -331,7 +352,7 @@ class UpdateManager:
         if "update_chain" in self._update_info:
             return self.apply_update_chain(backup=backup)
 
-        if not hasattr(self, '_downloaded_files') or not self._downloaded_files:
+        if not hasattr(self, "_downloaded_files") or not self._downloaded_files:
             self.set_error("没有可用的下载文件")
             return False
 
@@ -351,7 +372,7 @@ class UpdateManager:
             if success:
                 self.set_status(UpdateStatus.COMPLETED)
                 self.set_progress(100)
-                self._emit_event('update_completed', self._update_info)
+                self._emit_event("update_completed", self._update_info)
                 logger.info("更新应用成功")
                 return True
             else:
@@ -364,7 +385,7 @@ class UpdateManager:
 
     def apply_update_chain(self, backup: bool = False) -> bool:
         """应用整个更新链"""
-        if not hasattr(self, '_downloaded_files') or not self._downloaded_files:
+        if not hasattr(self, "_downloaded_files") or not self._downloaded_files:
             self.set_error("没有可用的下载文件")
             return False
 
@@ -382,7 +403,7 @@ class UpdateManager:
             if success:
                 self.set_status(UpdateStatus.COMPLETED)
                 self.set_progress(100)
-                self._emit_event('update_completed', self._update_info)
+                self._emit_event("update_completed", self._update_info)
                 logger.info("连续更新应用成功")
                 # 更新当前版本 - 通过策略内部更新，这里不需要再设置
                 return True
@@ -443,18 +464,24 @@ class UpdateManager:
                 except Exception:
                     root_resolved = root_path
 
-                if backup_root_resolved == root_resolved or backup_root_resolved in root_resolved.parents:
+                if (
+                    backup_root_resolved == root_resolved
+                    or backup_root_resolved in root_resolved.parents
+                ):
                     dirs[:] = []
                     continue
 
                 new_dirs = []
                 for d in dirs:
-                    candidate = (root_path / d)
+                    candidate = root_path / d
                     try:
                         cand_resolved = candidate.resolve()
                     except Exception:
                         cand_resolved = candidate
-                    if backup_root_resolved == cand_resolved or backup_root_resolved in cand_resolved.parents:
+                    if (
+                        backup_root_resolved == cand_resolved
+                        or backup_root_resolved in cand_resolved.parents
+                    ):
                         continue
                     new_dirs.append(d)
                 dirs[:] = new_dirs
@@ -465,7 +492,10 @@ class UpdateManager:
                 for fname in files:
                     sfile = Path(root) / fname
                     try:
-                        if backup_root_resolved == sfile.resolve() or backup_root_resolved in sfile.resolve().parents:
+                        if (
+                            backup_root_resolved == sfile.resolve()
+                            or backup_root_resolved in sfile.resolve().parents
+                        ):
                             continue
                     except Exception:
                         pass
@@ -473,9 +503,11 @@ class UpdateManager:
                     try:
                         shutil.copy2(sfile, dfile)
                     except Exception as e:
-                        logger.warning("备份时复制文件失败 %s -> %s: %s", sfile, dfile, e)
+                        logger.warning(
+                            "备份时复制文件失败 %s -> %s: %s", sfile, dfile, e
+                        )
 
-            self.config['_last_backup'] = str(target)
+            self.config["_last_backup"] = str(target)
             try:
                 self.save_config()
             except Exception:
@@ -489,16 +521,20 @@ class UpdateManager:
     def rollback_update(self):
         self.set_status(UpdateStatus.ROLLING_BACK)
         try:
-            last_backup = self.config.get('_last_backup')
+            last_backup = self.config.get("_last_backup")
             app_dir = getattr(self.strategy, "app_directory", None)
             backup_root = Path(self.backup_dir) if hasattr(self, "backup_dir") else None
 
             if not last_backup and backup_root and backup_root.exists():
-                candidates = [p for p in backup_root.iterdir() if p.is_dir() and p.name.startswith("backup_")]
+                candidates = [
+                    p
+                    for p in backup_root.iterdir()
+                    if p.is_dir() and p.name.startswith("backup_")
+                ]
                 if candidates:
                     candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
                     last_backup = str(candidates[0])
-                    self.config['_last_backup'] = last_backup
+                    self.config["_last_backup"] = last_backup
                     try:
                         self.save_config()
                     except Exception:
@@ -587,7 +623,7 @@ class UpdateManager:
 
     def skip_version(self, version: Optional[str] = None):
         if not version and self._update_info:
-            version = self._update_info.get('version')
+            version = self._update_info.get("version")
 
         if version is None:
             return
@@ -595,8 +631,8 @@ class UpdateManager:
         # ensure we store a string version value
         version = str(version)
 
-        if version and version not in self.config.get('skipped_versions', []):
-            self.config.setdefault('skipped_versions', []).append(version)
+        if version and version not in self.config.get("skipped_versions", []):
+            self.config.setdefault("skipped_versions", []).append(version)
             self.save_config()
             logger.info("已跳过版本: %s", version)
 
@@ -609,9 +645,9 @@ class UpdateManager:
         skipped_count = 0
 
         for version_info in update_chain:
-            ver = version_info.get('version')
-            if ver and ver not in self.config.get('skipped_versions', []):
-                self.config.setdefault('skipped_versions', []).append(str(ver))
+            ver = version_info.get("version")
+            if ver and ver not in self.config.get("skipped_versions", []):
+                self.config.setdefault("skipped_versions", []).append(str(ver))
                 skipped_count += 1
 
         if skipped_count > 0:
@@ -640,13 +676,19 @@ class UpdateManager:
                 "current_version": self._update_info.get("current_version"),
                 "target_version": self._update_info.get("target_version"),
                 "update_count": self._update_info.get("update_count", 0),
-                "versions": [info.get("version") for info in self._update_info.get("update_chain", [])],
-                "update_chain": self._update_info.get("update_chain", [])
+                "versions": [
+                    info.get("version")
+                    for info in self._update_info.get("update_chain", [])
+                ],
+                "update_chain": self._update_info.get("update_chain", []),
             }
         return None
 
+
 class MyUpdateStrategy(UpdateStrategy):
-    def __init__(self, current_version: str, update_url: str, app_directory: str = "./"):
+    def __init__(
+        self, current_version: str, update_url: str, app_directory: str = "./"
+    ):
         super().__init__()  # 调用父类初始化
         self.current_version = current_version  # 覆盖默认值
         self.update_url = update_url.rstrip("/")
@@ -673,7 +715,7 @@ class MyUpdateStrategy(UpdateStrategy):
                 if not version_info:  # 跳过 None 值
                     continue
 
-                ver_str = version_info.get('version')
+                ver_str = version_info.get("version")
                 if not ver_str:
                     continue
 
@@ -686,15 +728,19 @@ class MyUpdateStrategy(UpdateStrategy):
                     continue
 
             # 按版本号排序（从低到高）
-            pending_updates.sort(key=lambda x: version.parse(str(x.get('version', '0.0.0'))))
+            pending_updates.sort(
+                key=lambda x: version.parse(str(x.get("version", "0.0.0")))
+            )
 
             if pending_updates:
                 # 返回需要更新的所有版本信息
                 update_chain = {
                     "current_version": self.current_version,
-                    "target_version": pending_updates[-1].get("version") if pending_updates else self.current_version,
+                    "target_version": pending_updates[-1].get("version")
+                    if pending_updates
+                    else self.current_version,
                     "update_chain": pending_updates,
-                    "update_count": len(pending_updates)
+                    "update_count": len(pending_updates),
                 }
                 self._update_info = update_chain
                 return update_chain
@@ -719,7 +765,9 @@ class MyUpdateStrategy(UpdateStrategy):
                 original_info = self._update_info
                 self._update_info = latest_update
                 try:
-                    result = self._download_single_update(latest_update, progress_callback)
+                    result = self._download_single_update(
+                        latest_update, progress_callback
+                    )
                     # 恢复原始信息
                     self._update_info = original_info
                     return result
@@ -739,14 +787,14 @@ class MyUpdateStrategy(UpdateStrategy):
         tmpdir = None
         try:
             tmpdir = Path(tempfile.mkdtemp(prefix="apply_"))
-            with zipfile.ZipFile(self.downloaded_file, 'r') as zf:
+            with zipfile.ZipFile(self.downloaded_file, "r") as zf:
                 for member in zf.namelist():
                     member_path = Path(member)
                     if member_path.is_absolute() or ".." in member_path.parts:
                         logger.warning("跳过不安全的 zip 条目: %s", member)
                         continue
                     target_path = tmpdir / member_path
-                    if member.endswith('/'):
+                    if member.endswith("/"):
                         target_path.mkdir(parents=True, exist_ok=True)
                     else:
                         target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -770,7 +818,10 @@ class MyUpdateStrategy(UpdateStrategy):
                 try:
                     target = (dst / Path(rel)).resolve()
                     try:
-                        if dst.resolve() not in target.parents and dst.resolve() != target:
+                        if (
+                            dst.resolve() not in target.parents
+                            and dst.resolve() != target
+                        ):
                             logger.warning("删除目标不在应用目录内，跳过: %s", target)
                             continue
                     except Exception:
@@ -808,9 +859,15 @@ class MyUpdateStrategy(UpdateStrategy):
                                 (root_path / f).unlink()
                                 logger.info("同步删除文件: %s", (root_path / f))
                             except Exception as e:
-                                logger.warning("删除文件失败 %s: %s", (root_path / f), e)
+                                logger.warning(
+                                    "删除文件失败 %s: %s", (root_path / f), e
+                                )
                     try:
-                        rel_dir = root_path.relative_to(dst).as_posix() if root_path != dst else ""
+                        rel_dir = (
+                            root_path.relative_to(dst).as_posix()
+                            if root_path != dst
+                            else ""
+                        )
                         if "backup" in Path(rel_dir).parts:
                             continue
                         if not any(root_path.iterdir()):
@@ -884,16 +941,18 @@ class MyUpdateStrategy(UpdateStrategy):
         try:
             update_info = fetch_json(f"{self.update_url}/version.json", timeout=10.0)
 
-            if 'version' not in update_info:
+            if "version" not in update_info:
                 raise UpdateError("version.json 缺少 version 字段")
 
-            if version.parse(str(update_info['version'])) > version.parse(str(self.current_version)):
+            if version.parse(str(update_info["version"])) > version.parse(
+                str(self.current_version)
+            ):
                 # 包装成更新链格式以保持接口一致
                 update_chain = {
                     "current_version": self.current_version,
-                    "target_version": update_info['version'],
+                    "target_version": update_info["version"],
                     "update_chain": [update_info],
-                    "update_count": 1
+                    "update_count": 1,
                 }
                 self._update_info = update_chain
                 return update_chain
@@ -908,7 +967,7 @@ class MyUpdateStrategy(UpdateStrategy):
     def _download_single_update(self, update_info, progress_callback=None):
         """下载单个更新包"""
         try:
-            download_url = update_info.get('download_url')
+            download_url = update_info.get("download_url")
             if not download_url:
                 raise UpdateError("更新信息缺少 download_url")
 
@@ -923,7 +982,7 @@ class MyUpdateStrategy(UpdateStrategy):
                 progress_callback=progress_callback,
             )
 
-            sha = update_info.get('sha256')
+            sha = update_info.get("sha256")
             if sha:
                 if not self._verify_file_hash(self.downloaded_file, sha):
                     try:
@@ -955,11 +1014,15 @@ class MyUpdateStrategy(UpdateStrategy):
                 progress_callback(overall_progress)
 
             try:
-                download_url = update_info.get('download_url')
+                download_url = update_info.get("download_url")
                 if not download_url:
-                    raise UpdateError(f"版本 {update_info.get('version')} 缺少 download_url")
+                    raise UpdateError(
+                        f"版本 {update_info.get('version')} 缺少 download_url"
+                    )
 
-                logger.info(f"下载更新 {i+1}/{total_files}: {update_info.get('version')}")
+                logger.info(
+                    f"下载更新 {i + 1}/{total_files}: {update_info.get('version')}"
+                )
 
                 temp_dir = tempfile.gettempdir()
                 fname = f"update_{update_info.get('version')}.zip"
@@ -980,20 +1043,24 @@ class MyUpdateStrategy(UpdateStrategy):
                 )
 
                 # 验证文件哈希
-                sha = update_info.get('sha256')
+                sha = update_info.get("sha256")
                 if sha:
                     if not self._verify_file_hash(file_path, sha):
                         try:
                             os.remove(file_path)
                         except Exception:
                             pass
-                        raise UpdateError(f"版本 {update_info.get('version')} 文件哈希验证失败")
+                        raise UpdateError(
+                            f"版本 {update_info.get('version')} 文件哈希验证失败"
+                        )
 
-                downloaded_files.append({
-                    "version": update_info.get('version'),
-                    "file_path": file_path,
-                    "type": update_info.get('type', 'delta')
-                })
+                downloaded_files.append(
+                    {
+                        "version": update_info.get("version"),
+                        "file_path": file_path,
+                        "type": update_info.get("type", "delta"),
+                    }
+                )
 
             except Exception as e:
                 # 清理已下载的文件
@@ -1023,7 +1090,9 @@ class MyUpdateStrategy(UpdateStrategy):
                 file_path = dl_info["file_path"]
                 update_type = dl_info["type"]
 
-                logger.info(f"应用更新 {i+1}/{len(downloaded_files)}: {current_version} -> {version_str}")
+                logger.info(
+                    f"应用更新 {i + 1}/{len(downloaded_files)}: {current_version} -> {version_str}"
+                )
 
                 tmpdir = None
                 try:
@@ -1031,18 +1100,21 @@ class MyUpdateStrategy(UpdateStrategy):
                     tmpdirs.append(tmpdir)
 
                     # 解压更新包
-                    with zipfile.ZipFile(file_path, 'r') as zf:
+                    with zipfile.ZipFile(file_path, "r") as zf:
                         for member in zf.namelist():
                             member_path = Path(member)
                             if member_path.is_absolute() or ".." in member_path.parts:
                                 logger.warning(f"跳过不安全的 zip 条目: {member}")
                                 continue
                             target_path = tmpdir / member_path
-                            if member.endswith('/'):
+                            if member.endswith("/"):
                                 target_path.mkdir(parents=True, exist_ok=True)
                             else:
                                 target_path.parent.mkdir(parents=True, exist_ok=True)
-                                with zf.open(member) as srcf, open(target_path, "wb") as dstf:
+                                with (
+                                    zf.open(member) as srcf,
+                                    open(target_path, "wb") as dstf,
+                                ):
                                     shutil.copyfileobj(srcf, dstf)
 
                     # 读取 manifest
@@ -1064,8 +1136,13 @@ class MyUpdateStrategy(UpdateStrategy):
                         try:
                             target = (dst / Path(rel)).resolve()
                             try:
-                                if dst.resolve() not in target.parents and dst.resolve() != target:
-                                    logger.warning(f"删除目标不在应用目录内，跳过: {target}")
+                                if (
+                                    dst.resolve() not in target.parents
+                                    and dst.resolve() != target
+                                ):
+                                    logger.warning(
+                                        f"删除目标不在应用目录内，跳过: {target}"
+                                    )
                                     continue
                             except Exception:
                                 pass
@@ -1103,9 +1180,15 @@ class MyUpdateStrategy(UpdateStrategy):
                                         (root_path / f).unlink()
                                         logger.info(f"同步删除文件: {(root_path / f)}")
                                     except Exception as e:
-                                        logger.warning(f"删除文件失败 {(root_path / f)}: {e}")
+                                        logger.warning(
+                                            f"删除文件失败 {(root_path / f)}: {e}"
+                                        )
                             try:
-                                rel_dir = root_path.relative_to(dst).as_posix() if root_path != dst else ""
+                                rel_dir = (
+                                    root_path.relative_to(dst).as_posix()
+                                    if root_path != dst
+                                    else ""
+                                )
                                 if "backup" in Path(rel_dir).parts:
                                     continue
                                 if not any(root_path.iterdir()):
@@ -1128,7 +1211,9 @@ class MyUpdateStrategy(UpdateStrategy):
                             try:
                                 shutil.copy2(sfile, tfile)
                             except Exception as e:
-                                raise UpdateError(f"应用文件复制失败: {sfile} -> {tfile}: {e}")
+                                raise UpdateError(
+                                    f"应用文件复制失败: {sfile} -> {tfile}: {e}"
+                                )
 
                     # 更新当前版本
                     current_version = version_str

@@ -1,95 +1,118 @@
-from typing import Optional, Dict, List, Any
 from datetime import datetime
 from enum import Enum
-from sqlmodel import Field, SQLModel, Relationship
-from sqlalchemy import JSON, Column
-from sqlalchemy import UniqueConstraint, Index
+from typing import Any, Dict, List, Optional
+
+from sqlalchemy import JSON, Column, UniqueConstraint
+from sqlmodel import Field, Relationship, SQLModel
 
 # ==========================================
 # 枚举定义
 # ==========================================
 
+
 class RoleType(str, Enum):
-    MAIN = "main"       # 主要角色 (AI驱动，有完整记忆)
-    NPC = "npc"         # 剧本角色 (通常也是AI驱动，或者是固定的，视需求而定)
-    SYSTEM = "system"   # 旁白、系统提示等
+    MAIN = "main"  # 主要角色 (AI驱动，有完整记忆)
+    NPC = "npc"  # 剧本角色 (通常也是AI驱动，或者是固定的，视需求而定)
+    SYSTEM = "system"  # 旁白、系统提示等
+
 
 class LineAttribute(str, Enum):
     USER = "user"
     SYSTEM = "system"
     ASSISTANT = "assistant"
 
+
 class AdventureStatus(str, Enum):
     """羁绊冒险进度状态"""
-    LOCKED = "locked"           # 未解锁
-    UNLOCKED = "unlocked"       # 已解锁，可游玩
-    IN_PROGRESS = "in_progress" # 游玩中
-    COMPLETED = "completed"     # 已完成
+
+    LOCKED = "locked"  # 未解锁
+    UNLOCKED = "unlocked"  # 已解锁，可游玩
+    IN_PROGRESS = "in_progress"  # 游玩中
+    COMPLETED = "completed"  # 已完成
+
 
 # ==========================================
 # 关联表 (Join Tables)
 # ==========================================
 
+
 class LinePerception(SQLModel, table=True):
     """感知表：记录某句台词被哪些角色感知到了"""
-    __tablename__ = "line_perception" # type: ignore
-    line_id: Optional[int] = Field(default=None, foreign_key="line.id", primary_key=True)
-    role_id: Optional[int] = Field(default=None, foreign_key="role.id", primary_key=True)
+
+    __tablename__ = "line_perception"  # type: ignore
+    line_id: Optional[int] = Field(
+        default=None, foreign_key="line.id", primary_key=True
+    )
+    role_id: Optional[int] = Field(
+        default=None, foreign_key="role.id", primary_key=True
+    )
+
 
 # ==========================================
 # 模型定义 (Entities)
 # ==========================================
 
+
 class Role(SQLModel, table=True):
     """角色表：统一存储所有出现的实体（主角、NPC、旁白）"""
-    __tablename__ = "role" # type: ignore
-    
+
+    __tablename__ = "role"  # type: ignore
+
     id: Optional[int] = Field(default=None, primary_key=True)
 
     __table_args__ = (
-        UniqueConstraint('script_key', 'script_role_key', name='uq_script_role'),
+        UniqueConstraint("script_key", "script_role_key", name="uq_script_role"),
     )
-    
+
     # 剧本中的标识符
-    script_key: Optional[str] = Field(default=None) 
-    script_role_key: Optional[str] = Field(default=None) # 角色在剧本中的唯一标识符
-    
+    script_key: Optional[str] = Field(default=None)
+    script_role_key: Optional[str] = Field(default=None)  # 角色在剧本中的唯一标识符
+
     name: str = Field(index=True)
-    role_type: RoleType = Field(default=RoleType.NPC) # 默认为NPC
-    
-    resource_folder: Optional[str] = None # 资源路径 (NPC也可以有头像)
-    
+    role_type: RoleType = Field(default=RoleType.NPC)  # 默认为NPC
+
+    resource_folder: Optional[str] = None  # 资源路径 (NPC也可以有头像)
+
     # 一个角色可以感知多句台词，这个字段一般是不会用到的，用了会导致几千个台词被查找
     # perceived_lines: List["Line"] = Relationship(back_populates="perceived_by", link_model=LinePerception)
 
+
 class UserInfo(SQLModel, table=True):
     """用户表"""
-    __tablename__ = "user_info" # type: ignore
-    
+
+    __tablename__ = "user_info"  # type: ignore
+
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str = Field(unique=True, index=True)
     password: str
-    
+
     # 外键：最后使用的角色
-    last_character_id: Optional[int] = Field(default=None, foreign_key="role.id", nullable=True)
+    last_character_id: Optional[int] = Field(
+        default=None, foreign_key="role.id", nullable=True
+    )
     # 外键：最后使用的存档
-    last_save_id: Optional[int] = Field(default=None, foreign_key="save.id", nullable=True)
+    last_save_id: Optional[int] = Field(
+        default=None, foreign_key="save.id", nullable=True
+    )
+
 
 class RunningScript(SQLModel, table=True):
     """运行剧本表：记录某个存档下的剧本运行状态"""
-    __tablename__ = "running_script" # type: ignore
-    
+
+    __tablename__ = "running_script"  # type: ignore
+
     id: Optional[int] = Field(default=None, primary_key=True)
-    script_folder: str = Field(index=True) # 剧本Key/文件夹名
-    
+    script_folder: str = Field(index=True)  # 剧本Key/文件夹名
+
     # 变量信息：使用 JSON 存储动态数据
     variable_info: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
-    
+
     current_chapter: str
     event_sequence: int
-    
+
     # 外键：归属的存档
     save_id: int = Field(foreign_key="save.id")
+
 
 # 1. 定义基础字段 (Base)
 class LineBase(SQLModel):
@@ -102,85 +125,108 @@ class LineBase(SQLModel):
     action_content: Optional[str] = None
     audio_file: Optional[str] = None
     attribute: LineAttribute
-    
+
     # 缓存用的感知列表 (JSON存储)，用于 GameStatus 缓存和 SaveManager 持久化参考
     # perceived_role_ids: List[int] = Field(default_factory=list, sa_column=Column(JSON))
-    
+
     # 【变更】统一说话人字段
     # 不再区分 role_id 和 script_role_id
-    sender_role_id: Optional[int] = Field(default=None, foreign_key="role.id", nullable=True)
-    
+    sender_role_id: Optional[int] = Field(
+        default=None, foreign_key="role.id", nullable=True
+    )
+
     # 仍然保留 display_name，因为剧本里同一个角色可能显示不同的名字（例如 "神秘人" -> "王大锤"）
     display_name: Optional[str] = None
+
 
 class GameLine(LineBase):
     """
     运行时对象：在内存中流转的剧本行。
     """
+
     # 显式定义 ID 列表，类型清晰
     perceived_role_ids: List[int] = []
 
+
 # 2. 定义数据库模型 (Table)
 class Line(LineBase, table=True):
-    __tablename__ = "line" # type: ignore
+    __tablename__ = "line"  # type: ignore
     id: Optional[int] = Field(default=None, primary_key=True)
-    
+
     # 在 DB 模型中，save_id 是必须的，且也是外键
-    save_id: int = Field(foreign_key="save.id") 
+    save_id: int = Field(foreign_key="save.id")
     parent_line_id: Optional[int] = Field(default=None, foreign_key="line.id")
-    
+
     # 定义关系：这句台词被谁感知了
     perceived_by: List["Role"] = Relationship(link_model=LinePerception)
 
+
 class Save(SQLModel, table=True):
     """存档表"""
-    __tablename__ = "save" # type: ignore
-    
+
+    __tablename__ = "save"  # type: ignore
+
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str
-    status: Dict[str, Any] = Field(default={}, sa_column=Column(JSON)) # 存档状态，记录背景图片，音频等信息
-    
+    status: Dict[str, Any] = Field(
+        default={}, sa_column=Column(JSON)
+    )  # 存档状态，记录背景图片，音频等信息
+
     create_date: datetime = Field(default_factory=datetime.now)
     update_date: datetime = Field(default_factory=datetime.now)
-    
+
     user_id: int = Field(foreign_key="user_info.id")
-    
+
     # 指针：指向当前激活的剧本状态
-    running_script_id: Optional[int] = Field(default=None, foreign_key="running_script.id", nullable=True)
-    
+    running_script_id: Optional[int] = Field(
+        default=None, foreign_key="running_script.id", nullable=True
+    )
+
     # 指针：指向最后一条对话 (用于快速恢复上下文)
     # 注意：这里引用了 line 表的 id
-    last_message_id: Optional[int] = Field(default=None, foreign_key="line.id", nullable=True)
-    main_role_id: Optional[int] = Field(default=None, foreign_key="role.id", nullable=True)
+    last_message_id: Optional[int] = Field(
+        default=None, foreign_key="line.id", nullable=True
+    )
+    main_role_id: Optional[int] = Field(
+        default=None, foreign_key="role.id", nullable=True
+    )
+
 
 class MemoryBank(SQLModel, table=True):
     """记忆仓库表"""
-    __tablename__ = "memory_bank" # type: ignore
-    
+
+    __tablename__ = "memory_bank"  # type: ignore
+
     id: Optional[int] = Field(default=None, primary_key=True)
-    
+
     # 记忆信息：JSON 存储
     info: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
-    
+
     save_id: int = Field(foreign_key="save.id")
-    
+
     # 统一使用 role_id
     role_id: Optional[int] = Field(default=None, foreign_key="role.id", nullable=True)
 
+
 class AdventureUnlock(SQLModel, table=True):
     """羁绊冒险解锁表：记录用户全局解锁和完成状态（所有存档共享）"""
-    __tablename__ = "adventure_unlock" # type: ignore
+
+    __tablename__ = "adventure_unlock"  # type: ignore
 
     id: Optional[int] = Field(default=None, primary_key=True)
 
     # 唯一标识：用户 + 冒险剧本
     user_id: int = Field(foreign_key="user_info.id")
-    adventure_folder: str = Field(index=True)     # 冒险剧本的文件夹名（即 script folder_key）
-    character_folder: str = Field(index=True)     # 绑定角色的文件夹名
+    adventure_folder: str = Field(
+        index=True
+    )  # 冒险剧本的文件夹名（即 script folder_key）
+    character_folder: str = Field(index=True)  # 绑定角色的文件夹名
 
     unlocked_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None       # 首次完成时间（全局）
+    completed_at: Optional[datetime] = None  # 首次完成时间（全局）
 
     __table_args__ = (
-        UniqueConstraint('user_id', 'adventure_folder', name='uq_user_adventure_unlock'),
+        UniqueConstraint(
+            "user_id", "adventure_folder", name="uq_user_adventure_unlock"
+        ),
     )

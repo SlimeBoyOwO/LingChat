@@ -12,7 +12,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from ling_chat.api.routes_manager import RoutesManager
 from ling_chat.core.logger import logger
 from ling_chat.core.service_manager import service_manager
-
 from ling_chat.game_database.database import init_db
 from ling_chat.game_database.managers.role_manager import RoleManager
 from ling_chat.utils.runtime_path import user_data_path
@@ -42,7 +41,9 @@ async def lifespan(app: FastAPI):
 
     except (ImportError, Exception) as e:
         logger.error(f"应用启动时发生严重错误: {e}", exc_info=True)
-        logger.stop_loading_animation(success=False, final_message="应用加载失败，程序将退出")
+        logger.stop_loading_animation(
+            success=False, final_message="应用加载失败，程序将退出"
+        )
         raise e
 
 
@@ -51,7 +52,7 @@ app = FastAPI(lifespan=lifespan)
 # CORS配置
 # 默认配置
 allow_origins = []
-allow_origin_regex = None # 初始化正则变量
+allow_origin_regex = None  # 初始化正则变量
 # 从环境变量读取允许的源，如果未设置则使用常见开发源
 allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "")
 if allowed_origins_str:
@@ -62,8 +63,8 @@ else:
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allow_origins,         # 如果有白名单则用这个
-    allow_origin_regex=allow_origin_regex, # 如果是开发环境则用正则
+    allow_origins=allow_origins,  # 如果有白名单则用这个
+    allow_origin_regex=allow_origin_regex,  # 如果是开发环境则用正则
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -77,7 +78,12 @@ async def add_no_cache_headers(request: Request, call_next) -> Response:
     response = await call_next(request)
     if not request.url.path.startswith("/api"):  # 排除API路由
         response.headers.update(
-            {"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"})
+            {
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            }
+        )
     return response
 
 
@@ -86,7 +92,9 @@ _app_thread: Optional[threading.Thread] = None
 _app_loop: Optional[asyncio.AbstractEventLoop] = None
 
 
-def _attach_project_handlers_to_uvicorn(project_logger_instance: logging.Logger, log_level: int) -> None:
+def _attach_project_handlers_to_uvicorn(
+    project_logger_instance: logging.Logger, log_level: int
+) -> None:
     """
     将项目日志处理器挂接到 uvicorn 的几个常用 logger 上。
     避免重复挂接导致重复输出。
@@ -155,8 +163,8 @@ def run_app():
         project_logger_instance = logger._logger
         uvicorn_log_level = getattr(logging, log_level.upper(), logging.INFO)
 
-        backend_host = os.getenv('BACKEND_BIND_ADDR', '0.0.0.0')
-        backend_port = int(os.getenv('BACKEND_PORT', '8765'))
+        backend_host = os.getenv("BACKEND_BIND_ADDR", "0.0.0.0")
+        backend_port = int(os.getenv("BACKEND_PORT", "8765"))
 
         config = uvicorn.Config(
             app,
@@ -169,7 +177,9 @@ def run_app():
 
         _attach_project_handlers_to_uvicorn(project_logger_instance, uvicorn_log_level)
 
-        logger.info(f"HTTP服务器启动成功，可以访问 {backend_host}:{backend_port} 从浏览器进入")
+        logger.info(
+            f"HTTP服务器启动成功，可以访问 {backend_host}:{backend_port} 从浏览器进入"
+        )
         global app_server
         app_server = uvicorn.Server(config)
 
@@ -202,6 +212,7 @@ def run_app_in_thread():
     _app_thread = app_thread
     return app_thread
 
+
 def stop_app_server(join_timeout_seconds: float = 8.0) -> None:
     """
     从主线程请求停止 uvicorn，并等待其线程退出。
@@ -210,7 +221,7 @@ def stop_app_server(join_timeout_seconds: float = 8.0) -> None:
     """
     global app_server, _app_thread, _app_loop
     try:
-        if 'app_server' in globals() and app_server:
+        if "app_server" in globals() and app_server:
             app_server.should_exit = True
     except Exception:
         pass
@@ -230,8 +241,8 @@ def stop_app_server(join_timeout_seconds: float = 8.0) -> None:
     th = _app_thread
     if th is not None and th.is_alive():
         try:
-            if 'app_server' in globals() and app_server:
-                setattr(app_server, "force_exit", True)
+            if "app_server" in globals() and app_server:
+                app_server.force_exit = True
         except Exception:
             pass
 

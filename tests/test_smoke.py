@@ -1,5 +1,5 @@
-from ling_chat.core.ai_service.type import GameMemoryBank, GameRole
 from ling_chat.core.ai_service.game_system.role_manager import GameRoleManager
+from ling_chat.core.ai_service.type import GameMemoryBank, GameRole
 
 
 def test_memory_bank_roundtrip():
@@ -39,4 +39,3 @@ def test_merge_memory_bank_keeps_single_system():
 def test_game_role_has_typed_memory_bank():
     role = GameRole(role_id=1)
     assert isinstance(role.memory_bank, GameMemoryBank)
-

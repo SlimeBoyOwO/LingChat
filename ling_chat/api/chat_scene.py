@@ -1,15 +1,16 @@
-from fastapi import APIRouter, HTTPException, Body
-from pydantic import BaseModel
-from pathlib import Path
 from typing import Optional
-from ling_chat.core.service_manager import service_manager
-from ling_chat.utils.runtime_path import user_data_path
-from ling_chat.utils.scene_utils import list_available_scenes, SCENES_DIR
-from ling_chat.utils.scene_manager import SceneManager
-from ling_chat.core.pic_analyzer import DesktopAnalyzer
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+
 from ling_chat.core.logger import logger
+from ling_chat.core.pic_analyzer import DesktopAnalyzer
+from ling_chat.core.service_manager import service_manager
+from ling_chat.utils.scene_manager import SceneManager
+from ling_chat.utils.scene_utils import SCENES_DIR, list_available_scenes
 
 router = APIRouter(prefix="/api/v1/chat/scene", tags=["Chat Scene"])
+
 
 class SceneCreateRequest(BaseModel):
     sceneName: str
@@ -17,21 +18,26 @@ class SceneCreateRequest(BaseModel):
     sceneDescription: str = ""
     autoAnalyze: bool = False
 
+
 class SceneUpdateRequest(BaseModel):
     id: str
     sceneName: Optional[str] = None
     sceneImage: Optional[str] = None
     sceneDescription: Optional[str] = None
 
+
 class SceneDeleteRequest(BaseModel):
     id: str
+
 
 class SceneLoadRequest(BaseModel):
     sceneId: str
     triggerAIResponse: bool = False
 
+
 class SceneIdRequest(BaseModel):
     id: str
+
 
 @router.post("/create")
 async def create_scene(request: SceneCreateRequest):
@@ -46,7 +52,9 @@ async def create_scene(request: SceneCreateRequest):
     if request.sceneImage:
         image_path = SCENES_DIR / request.sceneImage
         if not image_path.exists():
-            raise HTTPException(status_code=404, detail=f"图片文件不存在: {request.sceneImage}")
+            raise HTTPException(
+                status_code=404, detail=f"图片文件不存在: {request.sceneImage}"
+            )
 
     # 处理场景描述
     scene_description = request.sceneDescription.strip()
@@ -57,8 +65,7 @@ async def create_scene(request: SceneCreateRequest):
             image_path = SCENES_DIR / request.sceneImage
             analyzer = DesktopAnalyzer()
             scene_description = await analyzer.analyze_image_file(
-                image_path,
-                prompt="请用100字左右描述这个场景的环境、氛围等特征"
+                image_path, prompt="请用100字左右描述这个场景的环境、氛围等特征"
             )
             logger.info(f"自动分析图片生成描述: {scene_description}")
         except Exception as e:
@@ -67,17 +74,18 @@ async def create_scene(request: SceneCreateRequest):
 
     # 创建场景
     if not scene_description:
-        raise HTTPException(status_code=500, detail=f"图片描述创建失败")
+        raise HTTPException(status_code=500, detail="图片描述创建失败")
     try:
         scene = scene_manager.create_scene(
             scene_name=request.sceneName.strip(),
             scene_image=request.sceneImage,
-            scene_description=scene_description
+            scene_description=scene_description,
         )
         return {"status": "ok", "scene": scene}
     except Exception as e:
         logger.error(f"创建场景失败: {e}")
         raise HTTPException(status_code=500, detail=f"创建场景失败: {str(e)}")
+
 
 @router.put("/update")
 async def update_scene(request: SceneUpdateRequest):
@@ -100,6 +108,7 @@ async def update_scene(request: SceneUpdateRequest):
 
     return {"status": "ok", "scene": scene}
 
+
 @router.delete("/delete")
 async def delete_scene(request: SceneDeleteRequest):
     """删除场景"""
@@ -110,6 +119,7 @@ async def delete_scene(request: SceneDeleteRequest):
         raise HTTPException(status_code=404, detail="场景不存在")
 
     return {"status": "ok", "message": "场景已删除"}
+
 
 @router.get("/list")
 async def list_scenes():
@@ -122,7 +132,9 @@ async def list_scenes():
     # 为每个场景生成 imageUrl
     for scene in json_scenes:
         if scene.get("sceneImage"):
-            scene["imageUrl"] = f"/api/v1/chat/background/background_file/{scene['sceneImage']}"
+            scene["imageUrl"] = (
+                f"/api/v1/chat/background/background_file/{scene['sceneImage']}"
+            )
         else:
             scene["imageUrl"] = None
         scene["source"] = "json"
@@ -135,18 +147,21 @@ async def list_scenes():
     for txt_scene in txt_scenes:
         if txt_scene.get("filename") not in json_filenames:
             # 转换为新格式
-            json_scenes.append({
-                "id": f"txt_{txt_scene['filename']}",
-                "sceneName": txt_scene.get("filename", "").replace(".txt", ""),
-                "sceneImage": txt_scene.get("filename"),
-                "sceneDescription": txt_scene.get("description", ""),
-                "imageUrl": txt_scene.get("imageUrl"),
-                "source": "txt",
-                "createdAt": "",
-                "updatedAt": ""
-            })
+            json_scenes.append(
+                {
+                    "id": f"txt_{txt_scene['filename']}",
+                    "sceneName": txt_scene.get("filename", "").replace(".txt", ""),
+                    "sceneImage": txt_scene.get("filename"),
+                    "sceneDescription": txt_scene.get("description", ""),
+                    "imageUrl": txt_scene.get("imageUrl"),
+                    "source": "txt",
+                    "createdAt": "",
+                    "updatedAt": "",
+                }
+            )
 
     return {"scenes": json_scenes}
+
 
 @router.post("/load")
 async def load_scene(request: SceneLoadRequest):
@@ -163,8 +178,7 @@ async def load_scene(request: SceneLoadRequest):
 
     # 调用 AI 服务设置场景
     success = await ai_service.set_scene(
-        scene_id=request.sceneId,
-        trigger_response=request.triggerAIResponse
+        scene_id=request.sceneId, trigger_response=request.triggerAIResponse
     )
 
     if not success:

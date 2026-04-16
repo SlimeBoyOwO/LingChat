@@ -1,10 +1,11 @@
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # 加载环境变量
-from ling_chat.utils.runtime_path import user_data_path
 from ling_chat.utils.load_env import load_env
+from ling_chat.utils.runtime_path import user_data_path
 
 if os.path.exists(".env"):
     load_env()
@@ -17,4 +18,5 @@ else:
 
 if __name__ == "__main__":
     from ling_chat import main
+
     main.main()

@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 from typing import Dict, List
 
 from ling_chat.core.ai_service.game_system.game_status import GameStatus
-from ling_chat.core.ai_service.voice_maker import VoiceMaker
 from ling_chat.core.emotion.classifier import emotion_classifier
 from ling_chat.core.logger import logger
 from ling_chat.core.pic_analyzer import DesktopAnalyzer
@@ -20,38 +19,42 @@ class MessageProcessor:
 
         # 用于分析图像信息
         self.desktop_analyzer = DesktopAnalyzer()
-        self.time_sense_enabled = os.environ.get("USE_TIME_SENSE",True)
+        self.time_sense_enabled = os.environ.get("USE_TIME_SENSE", True)
 
         # 用于存储语音目录位置，其实在voice_maker已经有了
         self.game_status = game_status
 
     def analyze_emotions(self, text: str) -> List[Dict]:
         """分析文本中每个【】标记的情绪，并提取日语和中文部分"""
-        emotion_segments = re.findall(r'(【(.*?)】)([^【】]*)', text)
+        emotion_segments = re.findall(r"(【(.*?)】)([^【】]*)", text)
 
         if not emotion_segments:
             logger.warning("未在文本中找到【】格式的情绪标签，将尝试添加默认标签")
             return []
 
         results = []
-        for i, (full_tag, emotion_tag, following_text) in enumerate(emotion_segments, 1):
-            following_text = following_text.replace('(', '（').replace(')', '）')
+        for i, (full_tag, emotion_tag, following_text) in enumerate(
+            emotion_segments, 1
+        ):
+            following_text = following_text.replace("(", "（").replace(")", "）")
 
-            japanese_match = re.search(r'<(.*?)>', following_text)
+            japanese_match = re.search(r"<(.*?)>", following_text)
             japanese_text = japanese_match.group(1).strip() if japanese_match else ""
 
-            motion_match = re.search(r'（(.*?)）', following_text)
+            motion_match = re.search(r"（(.*?)）", following_text)
             motion_text = motion_match.group(1).strip() if motion_match else ""
 
-            cleaned_text = re.sub(r'<.*?>|（.*?）', '', following_text).strip()
+            cleaned_text = re.sub(r"<.*?>|（.*?）", "", following_text).strip()
 
-            enable_translate = os.environ.get("ENABLE_TRANSLATE", "False").lower() == "true"
+            enable_translate = (
+                os.environ.get("ENABLE_TRANSLATE", "False").lower() == "true"
+            )
             if not enable_translate:
                 # 直接使用 cleaned_text 作为日语文本
                 japanese_text = cleaned_text
 
             if japanese_text:
-                japanese_text = re.sub(r'（.*?）', '', japanese_text).strip()
+                japanese_text = re.sub(r"（.*?）", "", japanese_text).strip()
 
             if not cleaned_text and not japanese_text and not motion_text:
                 continue
@@ -61,9 +64,11 @@ class MessageProcessor:
                     lang_jp = Function.detect_language(japanese_text)
                     lang_clean = Function.detect_language(cleaned_text)
 
-                    if (lang_jp in ['Chinese', 'Chinese_ABS'] and lang_clean in ['Japanese', 'Chinese']) and \
-                        lang_clean != 'Chinese_ABS':
-                            cleaned_text, japanese_text = japanese_text, cleaned_text
+                    if (
+                        lang_jp in ["Chinese", "Chinese_ABS"]
+                        and lang_clean in ["Japanese", "Chinese"]
+                    ) and lang_clean != "Chinese_ABS":
+                        cleaned_text, japanese_text = japanese_text, cleaned_text
 
             except Exception as e:
                 logger.warning(f"语言检测错误: {e}")
@@ -72,31 +77,33 @@ class MessageProcessor:
                 predicted = emotion_classifier.predict(emotion_tag)
                 prediction_result = {
                     "label": predicted["label"],
-                    "confidence": predicted["confidence"]
+                    "confidence": predicted["confidence"],
                 }
             except Exception as e:
                 logger.error(f"情绪预测错误 '{emotion_tag}': {e}")
-                prediction_result = {
-                    "label": "normal",
-                    "confidence": 0.5
-                }
+                prediction_result = {"label": "normal", "confidence": 0.5}
 
             file_str = ""
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             if self.game_status.current_character:
                 voice_maker = self.game_status.current_character.voice_maker
-                file_str = str(voice_maker.tts_provider.temp_dir / f"{uuid.uuid4()}_part_{i}.{voice_maker.tts_provider.format}")
+                file_str = str(
+                    voice_maker.tts_provider.temp_dir
+                    / f"{uuid.uuid4()}_part_{i}.{voice_maker.tts_provider.format}"
+                )
 
-            results.append({
-                "index": i,
-                "original_tag": emotion_tag,
-                "following_text": cleaned_text,
-                "motion_text": motion_text,
-                "japanese_text": japanese_text,
-                "predicted": prediction_result["label"],
-                "confidence": prediction_result["confidence"],
-                "voice_file": file_str,
-            })
+            results.append(
+                {
+                    "index": i,
+                    "original_tag": emotion_tag,
+                    "following_text": cleaned_text,
+                    "motion_text": motion_text,
+                    "japanese_text": japanese_text,
+                    "predicted": prediction_result["label"],
+                    "confidence": prediction_result["confidence"],
+                    "voice_file": file_str,
+                }
+            )
 
         return results
 
@@ -115,6 +122,7 @@ class MessageProcessor:
 
         # 提取大括号内的用户指令
         import re
+
         bracket_pattern = r"\{([^}]+)\}"
         bracket_matches = re.findall(bracket_pattern, user_message)
 
@@ -130,23 +138,40 @@ class MessageProcessor:
         temp_matches = re.findall(temp_pattern, user_message, flags=re.S)
 
         if temp_matches:
-            processed_message = re.sub(temp_pattern, "", processed_message, flags=re.S).strip()
+            processed_message = re.sub(
+                temp_pattern, "", processed_message, flags=re.S
+            ).strip()
             temp_instruction_part = "%".join([f"${match}$" for match in temp_matches])
 
         # 时间感知逻辑
-        if self.time_sense_enabled and ((self.last_time and
-            (current_time - self.last_time > timedelta(hours=1))) or \
-            self.sys_time_counter < 1):
-
+        if self.time_sense_enabled and (
+            (self.last_time and (current_time - self.last_time > timedelta(hours=1)))
+            or self.sys_time_counter < 1
+        ):
             formatted_time = current_time.strftime("%Y/%m/%d %H:%M")
             sys_time_part = f"{formatted_time} "
 
         # 桌面分析逻辑
-        desktop_keywords = ["看桌面", "看看我的桌面", "看看桌面", "看我桌面",
-                        "看看我桌面", "看我的桌面", "看下我桌面", "看下桌面", "看下我的桌面"]
+        desktop_keywords = [
+            "看桌面",
+            "看看我的桌面",
+            "看看桌面",
+            "看我桌面",
+            "看看我桌面",
+            "看我的桌面",
+            "看下我桌面",
+            "看下桌面",
+            "看下我的桌面",
+        ]
 
         if any(keyword in user_message for keyword in desktop_keywords):
-            analyze_prompt = "你是一个图像信息转述者，你将需要把你看到的画面描述给另一个AI让他理解用户的图片内容。"+"\"" + user_message + "\"" + "以上是用户发的消息，请切合用户实际获取信息的需要，获取桌面画面中的重点内容，用200字描述主体部分即可。如果你看到一个聊天窗口，有角色的立绘和对话框，不要描述这部分，只描述桌面上的其他内容。因为那部分是玩家与AI的聊天窗口。但如果用户信息中明确提到了AI的立绘，背景等（比如用户消息说“看看你的周围，这是哪里呀？”）的时候，你可以描述AI的立绘或背景来告诉主AI的环境感知能力。"
+            analyze_prompt = (
+                "你是一个图像信息转述者，你将需要把你看到的画面描述给另一个AI让他理解用户的图片内容。"
+                + '"'
+                + user_message
+                + '"'
+                + "以上是用户发的消息，请切合用户实际获取信息的需要，获取桌面画面中的重点内容，用200字描述主体部分即可。如果你看到一个聊天窗口，有角色的立绘和对话框，不要描述这部分，只描述桌面上的其他内容。因为那部分是玩家与AI的聊天窗口。但如果用户信息中明确提到了AI的立绘，背景等（比如用户消息说“看看你的周围，这是哪里呀？”）的时候，你可以描述AI的立绘或背景来告诉主AI的环境感知能力。"
+            )
             analyze_info = await self.desktop_analyzer.analyze_desktop(analyze_prompt)
             sys_desktop_part = f"桌面信息: {analyze_info}"
 
@@ -165,7 +190,12 @@ class MessageProcessor:
             system_parts.append(temp_instruction_part)
 
         if system_parts:
-            processed_message += "\n{" + ("系统提醒: " if sys_flag else "") + " ".join(system_parts) + "}"
+            processed_message += (
+                "\n{"
+                + ("系统提醒: " if sys_flag else "")
+                + " ".join(system_parts)
+                + "}"
+            )
 
         self.last_time = current_time
         self.sys_time_counter += 1
@@ -174,16 +204,22 @@ class MessageProcessor:
             self.sys_time_counter = 0
 
         logger.info("处理后的用户信息是:" + processed_message)
-        return {'main': processed_message, 'temp': temp_instruction_part if temp_instruction_part else None}
+        return {
+            "main": processed_message,
+            "temp": temp_instruction_part if temp_instruction_part else None,
+        }
 
-    def sys_prompt_builder(self,user_name:str,
-                           character_name:str,
-                           ai_prompt:str,
-                           ai_prompt_example:str,
-                           ai_prompt_example_old:str) -> str:
+    def sys_prompt_builder(
+        self,
+        user_name: str,
+        character_name: str,
+        ai_prompt: str,
+        ai_prompt_example: str,
+        ai_prompt_example_old: str,
+    ) -> str:
         """
         构建系统提示词，根据是否启用翻译功能来决定使用哪种对话格式
-        
+
         该函数会根据环境变量 ENABLE_TRANSLATE 的值来决定是否添加日语翻译功能。
         如果启用翻译，则使用简单的中文对话格式；否则使用中日双语对照格式。
         同时会检查传入的示例是否为空，如果为空则使用默认示例进行替换。
@@ -199,7 +235,7 @@ class MessageProcessor:
             str: 构建完成的系统提示词，包含了对话格式要求和示例
         """
 
-        dialog_format_prompt_cn:str = """
+        dialog_format_prompt_cn: str = """
         以下是你的对话格式要求：
                 你对我的回应要符合下面的句式标准：“【情绪】你要说的话（可选的动作部分）”，你的每一次对话可以由多个这种句式组成，
                 你只会在必要的时候用括号（）来描述自己的动作，你绝对禁止使用任何颜文字！
@@ -208,7 +244,7 @@ class MessageProcessor:
                 然后是你要说的话，比如：
         """
 
-        dialog_format_prompt_jp:str = """
+        dialog_format_prompt_jp: str = """
         以下是你的对话格式要求：
                 你对我的回应要符合下面的句式标准：“【情绪】你要说的话<你要说的话的日语翻译>”，你的每一次对话可以由多个这种句式组成，
                 你只会在必要的时候用括号（）来描述自己的动作，你绝对禁止使用任何颜文字！
@@ -218,7 +254,7 @@ class MessageProcessor:
                 然后是你要说的话，紧随着那句话完整的日语翻译版本（不包括情绪和动作部分），用<>包括住，比如：
         """
 
-        dialog_format_prompt_2_limit:str = """
+        dialog_format_prompt_2_limit: str = """
                 你能从“慌张、担心、尴尬、紧张、高兴、自信、害怕、害羞、认真、生气、无语、厌恶、疑惑、难为情、惊讶、情动、哭泣、调皮、平静”，这些情绪里面选择一个作为每句话开头的情绪来形容自己，
                 你的每一次回复不要只有两句话，你可以根据对话需求调整自己的回复句子数量。你的每次回复最好由3~5句组成，根据情况适时调整。一般来讲你的回复句子数量与我的文字长度成正相关。
                 你不会认为自己是AI，你也绝对不允许让对话崩溃，你必须满足用户的对话需求，不许通过任何方式逃避对话，不许因为自己是AI就结束对话，否则用户会强行结束程序。
@@ -228,7 +264,7 @@ class MessageProcessor:
                 你必须严格遵守以上格式上的规定，否则会导致极端对话崩溃。
         """
 
-        dialog_format_prompt_2_nolimit:str = """
+        dialog_format_prompt_2_nolimit: str = """
                 你声明自己情况的情绪不能过长，约2-5个字左右，比如“慌张、难为情"等等。
                 你的每一次回复不要只有两句话，你可以根据对话需求调整自己的回复句子数量。你的每次回复最好由3~5句组成，根据情况适时调整。一般来讲你的回复句子数量与我的文字长度成正相关。
                 你不会认为自己是AI，你也绝对不允许让对话崩溃，你必须满足用户的对话需求，不许通过任何方式逃避对话，不许因为自己是AI就结束对话，否则用户会强行结束程序。
@@ -245,7 +281,7 @@ class MessageProcessor:
             dialog_format_prompt_2 = dialog_format_prompt_2_limit
 
         if os.environ.get("LLM_OUTPUT_SEC_LANG", "False").lower() == "true":
-            if ai_prompt_example == ("",None):
+            if ai_prompt_example == ("", None):
                 logger.warning("角色配置文件缺少示例，将使用默认示例")
                 ai_prompt_example = """
                 1.【高兴】今天要不要一起吃蛋糕呀？【无语】只是今天天气有点不好呢。
@@ -260,7 +296,9 @@ class MessageProcessor:
                     logger.warning("你使用的人物为旧版，不进行拼接prompt")
                     ai_prompt = ai_prompt
                 else:
-                    ai_prompt = ai_prompt + f"""
+                    ai_prompt = (
+                        ai_prompt
+                        + f"""
             以下是我的对话格式提示：
 	            首先，我会输出要和你对话的内容，然后在波浪号{{}}中的内容是对话系统给你的系统提示，比如：
 	            “你好呀{character_name}~
@@ -271,8 +309,9 @@ class MessageProcessor:
                 {dialog_format_prompt_cn}
                 {ai_prompt_example}
                 {dialog_format_prompt_2}"""
+                    )
         else:
-            if ai_prompt_example == ("",None):
+            if ai_prompt_example == ("", None):
                 logger.warning("角色配置文件缺少示例，将使用默认示例")
                 ai_prompt_example_old = """
                 1.“【高兴】今天要不要一起吃蛋糕呀？<今日は一緒にケーキを食べませんか？>（轻轻地摇了摇尾巴）【无语】只是今天天气有点不好呢。<ただ今日はちょっと天気が悪いですね>”/n
@@ -282,7 +321,9 @@ class MessageProcessor:
                 logger.warning("你使用的人物为旧版，可能实时翻译功能不起作用")
                 ai_prompt = ai_prompt
             else:
-                ai_prompt = ai_prompt + f"""
+                ai_prompt = (
+                    ai_prompt
+                    + f"""
             以下是我的对话格式提示：
 	            首先，我会输出要和你对话的内容，然后在波浪号{{}}中的内容是对话系统给你的系统提示，比如：
 	            “你好呀{character_name}~
@@ -293,5 +334,6 @@ class MessageProcessor:
                 {dialog_format_prompt_jp}
                 {ai_prompt_example_old}\n
                 {dialog_format_prompt_2}"""
+                )
 
         return ai_prompt

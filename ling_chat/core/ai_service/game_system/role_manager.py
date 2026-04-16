@@ -1,18 +1,22 @@
-from typing import Optional, List, Dict, Set
+from typing import Dict, List, Optional, Set
 
-from ling_chat.game_database.models import GameLine, LineAttribute
-from ling_chat.core.ai_service.game_system.memory_builder import MemoryBuilder
-from ling_chat.core.ai_service.game_system.persistent_memory_system import PersistentMemorySystem
-from ling_chat.game_database.managers.role_manager import RoleManager
-from ling_chat.core.ai_service.type import GameRole, GameMemoryBank
 from ling_chat.core.ai_service.exceptions import RoleNotFoundError
+from ling_chat.core.ai_service.game_system.memory_builder import MemoryBuilder
+from ling_chat.core.ai_service.game_system.persistent_memory_system import (
+    PersistentMemorySystem,
+)
+from ling_chat.core.ai_service.type import GameMemoryBank, GameRole
 from ling_chat.core.logger import logger
 from ling_chat.game_database.managers.memory_manager import MemoryManager
+from ling_chat.game_database.managers.role_manager import RoleManager
+from ling_chat.game_database.models import GameLine, LineAttribute
+
 
 class GameRoleManager:
     """
     角色运行时管理器：维护当前活跃角色的内存状态。
     """
+
     def __init__(self):
         # 简单直接：这就是一个存活角色的缓存
         self.loaded_roles: Dict[int, GameRole] = {}
@@ -24,7 +28,7 @@ class GameRoleManager:
         if role_id not in self.loaded_roles:
             self._register_role_by_id(role_id)
         return self.loaded_roles[role_id]
-    
+
     def reset_roles(self):
         self.loaded_roles.clear()
         self._memory_bank_systems.clear()
@@ -53,24 +57,31 @@ class GameRoleManager:
         for role in self.loaded_roles.values():
             role.memory = []
         logger.info("所有角色的短期记忆已清除")
-    
+
     def _register_role_by_id(self, role_id: int):
         role = RoleManager.get_role_by_id(role_id)
         if not role or not role.id:
             error_msg = f"角色 ID {role_id} 未在数据库中找到"
             logger.error(error_msg)
             raise RoleNotFoundError(error_msg)
-        
+
         role_settings = RoleManager.get_role_settings_by_id(role.id)
         if not role_settings:
             error_msg = f"角色 ID {role_id} 的设置相关文件缺失"
             logger.error(error_msg)
             raise RoleNotFoundError(error_msg)
-        
-        new_role = GameRole(role_id=role.id, resource_path=role.resource_folder, settings=role_settings, display_name=role.name)
+
+        new_role = GameRole(
+            role_id=role.id,
+            resource_path=role.resource_folder,
+            settings=role_settings,
+            display_name=role.name,
+        )
         self.loaded_roles[role_id] = new_role
 
-    def get_role_by_script_keys(self, script_key: str, script_role_key: str) -> GameRole:
+    def get_role_by_script_keys(
+        self, script_key: str, script_role_key: str
+    ) -> GameRole:
         """
         通过 script_key 获取运行时角色。
         """
@@ -79,7 +90,7 @@ class GameRoleManager:
             error_msg = f"数据库中未找到角色：script_key={script_key}, script_role_key={script_role_key}，说明本角色所属剧本未初始化"
             logger.error(error_msg)
             raise RoleNotFoundError(error_msg)
-            
+
         return self.get_role(role.id)
 
     def sync_memories(self, lines: List[GameLine], recent_n: Optional[int] = None):
@@ -100,7 +111,7 @@ class GameRoleManager:
         # 3. 仅更新活跃角色的记忆
         for rid in involved_role_ids:
             role = self.get_role(rid)
-            
+
             # 同步名字 (复用逻辑，提取为独立动作)
             self._sync_display_name(role, source_lines)
             slice_start_idx = 0
@@ -117,10 +128,14 @@ class GameRoleManager:
                     system_addendum = mb.get_system_memory_text()
                     short_term_prefix = mb.get_short_term_user_text()
             except Exception as e:
-                logger.error(f"MemoryBank: role_id={rid} 初始化/更新失败: {e}", exc_info=True)
+                logger.error(
+                    f"MemoryBank: role_id={rid} 初始化/更新失败: {e}", exc_info=True
+                )
 
             # 构建记忆（裁剪历史窗口，避免上下文无限膨胀）
-            sliced_lines = source_lines[slice_start_idx:] if slice_start_idx > 0 else source_lines
+            sliced_lines = (
+                source_lines[slice_start_idx:] if slice_start_idx > 0 else source_lines
+            )
             # 额外寻找本角色的第一个 SYSTEM 属性的台词，防止人设丢失
             # 如果sliced_lines里已经有 SYSTEM 属性的台词，则不需要额外添加
             has_prompt = self._find_first_system_prompt(sliced_lines, rid) != None
@@ -130,20 +145,29 @@ class GameRoleManager:
                 if system_prompt:
                     sliced_lines = [system_prompt] + sliced_lines
                 else:
-                    logger.warning(f"MemoryBank: role_id={rid} 没有找到 SYSTEM 属性的台词，可能人设丢失")
+                    logger.warning(
+                        f"MemoryBank: role_id={rid} 没有找到 SYSTEM 属性的台词，可能人设丢失"
+                    )
 
             builder = MemoryBuilder(target_role_id=rid)
             built = builder.build(sliced_lines)
 
             # 启动永久记忆的时候，才合并上下文逻辑
             if mb.is_enabled():
-                role.memory = self._merge_memory_bank_into_context(built, system_addendum, short_term_prefix)
+                role.memory = self._merge_memory_bank_into_context(
+                    built, system_addendum, short_term_prefix
+                )
             else:
                 role.memory = built
-    
-    def _find_first_system_prompt(self, source_lines: List[GameLine], role_id: int) -> Optional[GameLine]:
+
+    def _find_first_system_prompt(
+        self, source_lines: List[GameLine], role_id: int
+    ) -> Optional[GameLine]:
         for line in source_lines:
-            if line.attribute == LineAttribute.SYSTEM and line.sender_role_id == role_id:
+            if (
+                line.attribute == LineAttribute.SYSTEM
+                and line.sender_role_id == role_id
+            ):
                 return line
         return None
 
@@ -155,7 +179,9 @@ class GameRoleManager:
             self._memory_bank_systems[rid] = PersistentMemorySystem(role)
         return self._memory_bank_systems[rid]
 
-    def _merge_memory_bank_into_context(self, memory: List[Dict], system_addendum: str, short_term_prefix: str) -> List[Dict]:
+    def _merge_memory_bank_into_context(
+        self, memory: List[Dict], system_addendum: str, short_term_prefix: str
+    ) -> List[Dict]:
         """
         将 MemoryBank 合并进“唯一的 system 消息”，避免出现多条 system。
         - system_addendum：长期记忆/用户画像/约定（合并到 system.content 末尾）
@@ -189,15 +215,25 @@ class GameRoleManager:
         # 移除连续重复的 system
         cleaned: List[Dict] = []
         for msg in out:
-            if cleaned and cleaned[-1].get("role") == "system" and msg.get("role") == "system":
-                cleaned[-1]["content"] = (cleaned[-1].get("content", "") or "") + "\n" + (msg.get("content", "") or "")
+            if (
+                cleaned
+                and cleaned[-1].get("role") == "system"
+                and msg.get("role") == "system"
+            ):
+                cleaned[-1]["content"] = (
+                    (cleaned[-1].get("content", "") or "")
+                    + "\n"
+                    + (msg.get("content", "") or "")
+                )
             else:
                 cleaned.append(msg)
 
         return cleaned
 
     # DB 交互
-    def load_memory_banks_from_db(self, save_id: int, role_ids: Optional[List[int]] = None) -> None:
+    def load_memory_banks_from_db(
+        self, save_id: int, role_ids: Optional[List[int]] = None
+    ) -> None:
         """
         载入某个存档下的 MemoryBank 到运行时缓存（GameRole.memory_bank）。
         仅应在“载入存档”时调用。
@@ -209,7 +245,9 @@ class GameRoleManager:
                 if m.role_id is None:
                     continue
                 # 取最新
-                if m.role_id not in by_role or (m.id or 0) > (by_role[m.role_id].get("_id", 0)):
+                if m.role_id not in by_role or (m.id or 0) > (
+                    by_role[m.role_id].get("_id", 0)
+                ):
                     by_role[m.role_id] = {"_id": m.id or 0, "info": m.info or {}}
 
             target_ids = set(role_ids) if role_ids else set(by_role.keys())
@@ -223,7 +261,9 @@ class GameRoleManager:
         except Exception as e:
             logger.error(f"load_memory_banks_from_db 失败: {e}", exc_info=True)
 
-    def persist_memory_banks_to_db(self, save_id: int, role_ids: Optional[List[int]] = None) -> None:
+    def persist_memory_banks_to_db(
+        self, save_id: int, role_ids: Optional[List[int]] = None
+    ) -> None:
         """
         将运行时缓存（GameRole.memory_bank）写入 DB。
         仅应在“创建/保存存档”时调用，避免玩家不存档时污染数据库。

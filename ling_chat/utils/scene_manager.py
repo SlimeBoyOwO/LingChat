@@ -1,10 +1,13 @@
-from pathlib import Path
-from typing import List, Optional, Dict, Any
 import json
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+
 from ling_chat.utils.runtime_path import user_data_path
 
-SCENES_JSON_PATH = user_data_path / "game_data" / "backgrounds" / "backgrounds_scenes.json"
+SCENES_JSON_PATH = (
+    user_data_path / "game_data" / "backgrounds" / "backgrounds_scenes.json"
+)
+
 
 class SceneManager:
     """场景管理器：负责 JSON 场景的 CRUD 操作"""
@@ -22,21 +25,18 @@ class SceneManager:
     def _load_data(self) -> Dict[str, Any]:
         """加载 JSON 数据"""
         try:
-            with open(self.scenes_file, 'r', encoding='utf-8') as f:
+            with open(self.scenes_file, "r", encoding="utf-8") as f:
                 return json.load(f)
         except (json.JSONDecodeError, FileNotFoundError):
             return {"scenes": []}
 
     def _save_data(self, data: Dict[str, Any]):
         """保存 JSON 数据"""
-        with open(self.scenes_file, 'w', encoding='utf-8') as f:
+        with open(self.scenes_file, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
     def create_scene(
-        self,
-        scene_name: str,
-        scene_image: Optional[str],
-        scene_description: str
+        self, scene_name: str, scene_image: Optional[str], scene_description: str
     ) -> Dict[str, Any]:
         """创建新场景"""
         data = self._load_data()
@@ -49,7 +49,7 @@ class SceneManager:
             "sceneImage": scene_image,
             "sceneDescription": scene_description,
             "createdAt": now,
-            "updatedAt": now
+            "updatedAt": now,
         }
 
         data["scenes"].append(scene)

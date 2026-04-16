@@ -38,21 +38,21 @@ def download_file(
             follow_redirects=follow_redirects,
             max_redirects=max_redirects,
         ) as client:
-            with client.stream('GET', url, timeout=timeout) as response:
+            with client.stream("GET", url, timeout=timeout) as response:
                 response.raise_for_status()
 
-                total_size = int(response.headers.get('content-length', 0))
+                total_size = int(response.headers.get("content-length", 0))
                 downloaded = 0
 
-                with save_path.open('wb') as f:
+                with save_path.open("wb") as f:
                     if total_size > 0 and progress_callback is None:
                         # 有文件大小信息，使用 tqdm 显示进度条
                         with tqdm(
                             total=total_size,
-                            unit='B',
+                            unit="B",
                             unit_scale=True,
                             desc=f"下载 {save_path.name}",
-                            ncols=80
+                            ncols=80,
                         ) as pbar:
                             for chunk in response.iter_bytes(chunk_size=chunk_size):
                                 if chunk:

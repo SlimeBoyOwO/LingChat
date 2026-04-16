@@ -9,11 +9,12 @@ from ling_chat.core.logger import logger
 
 class LLMProviderFactory:
     @staticmethod
-    def create_provider(provider_type: str,
-                        model_type: str="", api_key: str="", base_url: str="") -> BaseLLMProvider:
+    def create_provider(
+        provider_type: str, model_type: str = "", api_key: str = "", base_url: str = ""
+    ) -> BaseLLMProvider:
         """
         创建指定类型的大模型提供者
-        
+
         :param provider_type: 提供者类型 (webllm, ollama, lmstudio, gemini, qwen)
         :param config: 配置字典
         :return: 大模型提供者实例
