@@ -21,7 +21,9 @@ logs/
 # ============================================================
 
 .idea/
-.vscode/
+.vscode/*.code-workspace
+.vscode/*.private.*
+.vscode/settings.local.json
 .vs/
 
 

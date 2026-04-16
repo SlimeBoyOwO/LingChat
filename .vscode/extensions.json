@@ -1,0 +1,22 @@
+{
+  "recommendations": [
+    // 前端
+    "esbenp.prettier-vscode", // 代码格式化
+    "vue.volar", // Vue 3 支持
+    "vue.vscode-typescript-vue-plugin", // Vue TypeScript 支持
+
+    // Python
+    "ms-python.python", // Python 基础支持
+    "charliermarsh.ruff", // Python 格式化 + Lint（推荐）
+    "ms-python.black-formatter", // 备选：Black 格式化器
+    "ms-python.mypy-type-checker", // Python 类型检查
+
+    // 通用
+    "editorconfig.editorconfig" // EditorConfig 支持
+  ],
+  "unwantedRecommendations": [
+    "octref.vetur", // Vue 2 工具，与 Volar 冲突
+    "hookyqr.beautify", // 与 Prettier 功能重叠
+    "ms-python.flake8" // 已被 Ruff 替代
+  ]
+}
