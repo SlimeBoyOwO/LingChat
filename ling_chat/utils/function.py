@@ -467,6 +467,7 @@ class Function:
                 # 验证并补充默认值
                 model = CharacterSettings(**settings_data)
                 # 注入 resource_path
+                model.character_folder = dir_path.name
                 model.resource_path = str(dir_path)
                 return model
             except Exception as e:
@@ -481,6 +482,7 @@ class Function:
                 clean_data = {k: v for k, v in settings_data.items() if v is not None}
                 model = CharacterSettings(**clean_data)
                 # 重新赋值 resource_path，尽管 parse_enhanced_txt() 可能已经设置了
+                model.character_folder = dir_path.name
                 model.resource_path = str(dir_path)
                 return model
             except Exception as e:
@@ -697,6 +699,7 @@ class Function:
             "bubble_top": settings.bubble_top,
             "bubble_left": settings.bubble_left,
             "body_part": settings.body_part,
+            "character_folder": settings.character_folder,
         }
         return result
 

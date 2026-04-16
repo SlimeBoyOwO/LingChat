@@ -13,7 +13,7 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AchievementToast: typeof import('./components/ui/AchievementToast.vue')['default']
-    AdventurePanel: typeof import('./components/game/standard/AdventurePanel.vue')['default']
+    AdventurePanel: typeof import('./components/settings/pages/Adeventure/AdventurePanel.vue')['default']
     AdventureUnlockNotify: typeof import('./components/ui/AdventureUnlockNotify.vue')['default']
     AudioAcrossFade: typeof import('./components/ui/AudioAcrossFade.vue')['default']
     BaseModal: typeof import('./components/ui/BaseModal.vue')['default']
@@ -91,7 +91,7 @@ declare module 'vue' {
 // For TSX support
 declare global {
   const AchievementToast: typeof import('./components/ui/AchievementToast.vue')['default']
-  const AdventurePanel: typeof import('./components/game/standard/AdventurePanel.vue')['default']
+  const AdventurePanel: typeof import('./components/settings/pages/Adeventure/AdventurePanel.vue')['default']
   const AdventureUnlockNotify: typeof import('./components/ui/AdventureUnlockNotify.vue')['default']
   const AudioAcrossFade: typeof import('./components/ui/AudioAcrossFade.vue')['default']
   const BaseModal: typeof import('./components/ui/BaseModal.vue')['default']

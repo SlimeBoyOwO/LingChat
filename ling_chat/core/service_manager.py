@@ -1,8 +1,8 @@
-
 from ling_chat.core.ai_service.core import AIService
 from ling_chat.core.logger import logger
 from ling_chat.game_database.managers.role_manager import RoleManager
 from ling_chat.game_database.managers.user_manager import UserManager
+from ling_chat.schemas.character_settings import CharacterSettings
 from ling_chat.utils.function import Function
 from ling_chat.utils.runtime_path import user_data_path
 
@@ -56,7 +56,7 @@ class ServiceManager:
         else:
             resource_path = character_dir / "诺一钦灵"
 
-        settings = Function.load_character_settings(resource_path)
+        settings: CharacterSettings = Function.load_character_settings(resource_path)
         settings.character_id = last_character_id
         return settings
 

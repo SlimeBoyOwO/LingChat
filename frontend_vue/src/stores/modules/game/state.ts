@@ -35,6 +35,7 @@ export interface GameRole {
   clothes: object
   clothesName: string
   bodyPart: object
+  character_folder: string
 }
 
 export interface GameState {

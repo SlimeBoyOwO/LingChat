@@ -54,6 +54,7 @@ export interface RoleInfo {
   clothes: object
   clothes_name: string
   body_part: object
+  character_folder: string
 }
 
 export const getRoleInfo = async (roleId: number): Promise<RoleInfo> => {

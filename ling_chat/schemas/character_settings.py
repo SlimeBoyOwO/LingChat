@@ -64,6 +64,7 @@ class CharacterSettings(BaseModel):
     system_prompt_example_old: Optional[str] = None
 
     # 内部数据
+    character_folder: str = ""
     resource_path: Optional[str] = None
     script_role_key: Optional[str] = None
     script_key: Optional[str] = None
