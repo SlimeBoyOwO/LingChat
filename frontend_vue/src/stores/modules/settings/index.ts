@@ -2,6 +2,7 @@
  * 统一设置管理 Store
  * 集中管理所有用户偏好设置，自动持久化到 localStorage
  */
+import { setCurrentBackground } from '@/api/services/background'
 import { defineStore } from 'pinia'
 
 // 默认设置值
@@ -21,6 +22,7 @@ export const DEFAULT_SETTINGS = {
   },
   // 显示设置
   display: {
+    currentBackground: '@/assets/images/default_bg.jpg', // 当前背景图片
     backgroundEffect: 'StarField', // 背景效果名称
     mainMenuStarsEnabled: true, // 主菜单星星粒子开关
     mainMenuMeteorsEnabled: true, // 主菜单流星开关
@@ -46,6 +48,7 @@ export interface AudioSettings {
   chatEffectSound: boolean
 }
 export interface DisplaySettings {
+  currentBackground: string
   backgroundEffect: string
   mainMenuStarsEnabled: boolean
   mainMenuMeteorsEnabled: boolean
@@ -90,6 +93,7 @@ export const useSettingsStore = defineStore('settings', {
     // 对话音效开关
     chatEffectSound: (state) => state.audio.chatEffectSound,
     // 背景效果
+    currentBackground: (state) => state.display.currentBackground,
     backgroundEffect: (state) => state.display.backgroundEffect,
     mainMenuStarsEnabled: (state) => state.display.mainMenuStarsEnabled,
     mainMenuMeteorsEnabled: (state) => state.display.mainMenuMeteorsEnabled,
@@ -201,6 +205,10 @@ export const useSettingsStore = defineStore('settings', {
     // 设置文字速度
     setTextSpeed(speed: number) {
       this.text.speed = speed
+    },
+
+    setCurrentBackground(background: string) {
+      this.display.currentBackground = background
     },
 
     // 设置对话音效开关

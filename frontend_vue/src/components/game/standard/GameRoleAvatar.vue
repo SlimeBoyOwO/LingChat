@@ -3,20 +3,11 @@
   <TouchAreas v-if="gameStore.command === 'touch'" :body-parts="role.bodyPart" />
 
   <Transition name="character-fade">
-    <div
-      class="absolute w-full h-full pointer-events-none origin-[center_0%] role-container-transition"
-      :style="containerStyle"
-      @animationend="handleAnimationEnd"
-    >
+    <div class="absolute w-full h-full pointer-events-none origin-[center_0%] role-container-transition"
+      :style="containerStyle" @animationend="handleAnimationEnd">
       <!-- 使用单独提取出来的图片淡入淡出组件 -->
-      <ImageCrossFade
-        ref="imageFadeRef"
-        class="absolute w-full h-[102%]"
-        :class="containerClasses"
-        :src="targetAvatarUrl"
-        position="center bottom"
-        object-fit="contain"
-      />
+      <ImageAcrossFade ref="imageFadeRef" class="absolute w-full h-[102%]" :class="containerClasses"
+        :src="targetAvatarUrl" :duration="300" position="center bottom" object-fit="contain" />
 
       <!-- 气泡 -->
       <div :class="bubbleClasses" :style="bubbleStyles" class="bubble"></div>
@@ -33,7 +24,7 @@ import { useGameStore } from '@/stores/modules/game'
 import { EMOTION_CONFIG, EMOTION_CONFIG_EMO } from '@/controllers/emotion/config'
 import type { GameRole } from '@/stores/modules/game/state'
 import TouchAreas from './TouchAreas.vue'
-import ImageCrossFade from '@/components/ui/ImageAcrossFade.vue'
+import ImageAcrossFade from '@/components/ui/ImageAcrossFade.vue'
 import './avatar-animation.css'
 
 const props = defineProps<{
@@ -44,7 +35,7 @@ const gameStore = useGameStore()
 const { role } = toRefs(props)
 
 const bubbleAudio = ref<HTMLAudioElement | null>(null)
-const imageFadeRef = ref<InstanceType<typeof ImageCrossFade> | null>(null)
+const imageFadeRef = ref<InstanceType<typeof ImageAcrossFade> | null>(null)
 
 const activeAnimationClass = ref('normal')
 const isBubbleVisible = ref(false)
@@ -115,6 +106,9 @@ watch(
     if (imageFadeRef.value) {
       await imageFadeRef.value.waitForLoad()
     }
+
+    // 检查是否仍然是最新的表情更新
+    if (currentId !== latestEmotionId) return
 
     const config = EMOTION_CONFIG[newEmotion]
     if (!config) return
