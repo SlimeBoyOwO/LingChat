@@ -14,11 +14,13 @@ class DialogueEvent(BaseEvent):
     async def _execute(self):
         character = self.event_data.get('character', '')
         text = self.event_data.get('text', '')
-        display_name:str|None = self.event_data.get('displayName', None)
-        display_subtitle:str|None = self.event_data.get('displaySubtitle', None)
+        
 
         role = ScriptFunction.get_role(self.game_status, self.script_status, character)
         self.game_status.current_character = role
+
+        display_name:str= self.event_data.get('displayName', role.display_name)
+        display_subtitle:str|None = self.event_data.get('displaySubtitle', None)
 
         lines: list[str] = [line for line in text.splitlines() if line.strip()]
         for text in lines:

@@ -1,12 +1,27 @@
 <template>
-  <div class="fixed inset-0 flex flex-col items-center justify-center -mt-[15vh] pointer-events-none">
-    <transition-group appear :css="false" tag="div"
-      class="flex flex-col gap-10 w-full max-w-2xl px-4 pointer-events-auto" @before-enter="choiceBeforeEnter"
-      @enter="choiceEnter" @leave="choiceLeave">
-      <button v-for="(choice, index) in displayChoices" :key="choice" :data-index="index" @click="selectChoice(choice)"
-        class="group relative w-full py-4 px-8 border rounded-full text-sm text-white bg-slate-900/40 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass hover:outline-none hover:border-brand hover:ring-2 hover:ring-brand/20 shadow-[0_4px_12px_rgba(0,0,0,0.3)] hover:shadow-[0_0_15px_rgba(0,0,0,0.5)] transform hover:-translate-y-1 transition-all duration-200">
+  <div
+    class="fixed inset-0 flex flex-col items-center justify-center -mt-[15vh] pointer-events-none"
+  >
+    <transition-group
+      appear
+      :css="false"
+      tag="div"
+      class="flex flex-col gap-10 w-full max-w-2xl px-4 pointer-events-auto"
+      @before-enter="choiceBeforeEnter"
+      @enter="choiceEnter"
+      @leave="choiceLeave"
+    >
+      <button
+        v-for="(choice, index) in displayChoices"
+        :key="choice"
+        :data-index="index"
+        @click="selectChoice(choice)"
+        class="group relative w-full py-4 px-8 border rounded-full text-sm text-white bg-slate-900/40 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass hover:outline-none hover:border-brand hover:ring-2 hover:ring-brand/20 shadow-[0_4px_12px_rgba(0,0,0,0.3)] hover:shadow-[0_0_15px_rgba(0,0,0,0.5)] transform hover:-translate-y-1 transition-all duration-200"
+      >
         <!-- 粒子效果 - 静态粒子 (小圆点) -->
-        <div class="absolute inset-0 opacity-30 group-hover:opacity-50 transition-opacity duration-700">
+        <div
+          class="absolute inset-0 opacity-30 group-hover:opacity-50 transition-opacity duration-700"
+        >
           <!-- 左上区域粒子 -->
           <div class="absolute top-2 left-4 w-1 h-1 rounded-full bg-white/60"></div>
           <div class="absolute top-6 left-8 w-0.5 h-0.5 rounded-full bg-blue-300/50"></div>
@@ -24,33 +39,48 @@
           <!-- 底部区域粒子 -->
           <div class="absolute bottom-4 left-8 w-1 h-1 rounded-full bg-brand/30"></div>
           <div class="absolute bottom-8 right-10 w-0.5 h-0.5 rounded-full bg-blue-300/40"></div>
-          <div class="absolute bottom-3 right-16 w-1.5 h-1.5 rounded-full bg-white/20 blur-[1px]"></div>
+          <div
+            class="absolute bottom-3 right-16 w-1.5 h-1.5 rounded-full bg-white/20 blur-[1px]"
+          ></div>
         </div>
 
         <!-- 动态漂浮粒子 (悬停时动画) -->
-        <div class="absolute inset-0 opacity-0 group-hover:opacity-40 transition-opacity duration-500">
+        <div
+          class="absolute inset-0 opacity-0 group-hover:opacity-40 transition-opacity duration-500"
+        >
           <!-- 漂浮粒子1 -->
-          <div class="absolute top-2 left-4 w-1 h-1 rounded-full bg-white/60 animate-float-slow"></div>
+          <div
+            class="absolute top-2 left-4 w-1 h-1 rounded-full bg-white/60 animate-float-slow"
+          ></div>
           <!-- 漂浮粒子2 -->
-          <div class="absolute bottom-6 right-8 w-0.5 h-0.5 rounded-full bg-brand/60 animate-float"></div>
+          <div
+            class="absolute bottom-6 right-8 w-0.5 h-0.5 rounded-full bg-brand/60 animate-float"
+          ></div>
           <!-- 漂浮粒子3 -->
-          <div class="absolute top-8 right-12 w-1 h-1 rounded-full bg-purple-400/50 animate-float-reverse"></div>
+          <div
+            class="absolute top-8 right-12 w-1 h-1 rounded-full bg-purple-400/50 animate-float-reverse"
+          ></div>
           <!-- 漂浮粒子4 -->
-          <div class="absolute bottom-10 left-12 w-1.5 h-1.5 rounded-full bg-cyan-300/40 blur-[1px] animate-float-slow">
-          </div>
+          <div
+            class="absolute bottom-10 left-12 w-1.5 h-1.5 rounded-full bg-cyan-300/40 blur-[1px] animate-float-slow"
+          ></div>
           <!-- 漂浮粒子5 -->
-          <div class="absolute top-1/3 right-20 w-1 h-1 rounded-full bg-white/40 animate-float"></div>
+          <div
+            class="absolute top-1/3 right-20 w-1 h-1 rounded-full bg-white/40 animate-float"
+          ></div>
         </div>
 
         <!-- 微光扫射效果 (悬停时) -->
         <div
-          class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 overflow-hidden rounded-full">
+          class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 overflow-hidden rounded-full"
+        >
           <div
-            class="absolute -inset-full top-0 h-full w-1/2 z-5 block transform -skew-x-12 bg-linear-to-r from-transparent via-white/10 to-transparent animate-shine">
-          </div>
+            class="absolute -inset-full top-0 h-full w-1/2 z-5 block transform -skew-x-12 bg-linear-to-r from-transparent via-white/10 to-transparent animate-shine"
+          ></div>
         </div>
         <span
-          class="text-lg font-medium text-white group-hover:text-white tracking-widest text-center block drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+          class="text-lg font-medium text-white group-hover:text-white tracking-widest text-center block drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]"
+        >
           {{ choice }}
         </span>
       </button>
@@ -123,7 +153,6 @@ function choiceLeave(el: Element, done: () => void) {
 
 <style scoped>
 @keyframes float {
-
   0%,
   100% {
     transform: translateY(0) translateX(0);
@@ -143,7 +172,6 @@ function choiceLeave(el: Element, done: () => void) {
 }
 
 @keyframes float-slow {
-
   0%,
   100% {
     transform: translateY(0) translateX(0);
@@ -159,7 +187,6 @@ function choiceLeave(el: Element, done: () => void) {
 }
 
 @keyframes float-reverse {
-
   0%,
   100% {
     transform: translateY(0) translateX(0);

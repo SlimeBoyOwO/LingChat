@@ -22,8 +22,8 @@ class NarrationEvent(BaseEvent):
                 LineBase(content=text, attribute=LineAttribute.ASSISTANT, display_name=display_name)
             )
 
-            display_name = display_name if display_name != '旁白' else None
-            event_response = ResponseFactory.create_narration(text, display_name)
+            display_name_temp = display_name if display_name != '旁白' else None
+            event_response = ResponseFactory.create_narration(text,  display_name_temp)
             await message_broker.publish(self.client_id,
                 event_response.model_dump()
             )

@@ -3,11 +3,21 @@
   <TouchAreas v-if="gameStore.command === 'touch'" :body-parts="role.bodyPart" />
 
   <Transition name="character-fade">
-    <div class="absolute w-full h-full pointer-events-none origin-[center_0%] role-container-transition"
-      :style="containerStyle" @animationend="handleAnimationEnd">
+    <div
+      class="absolute w-full h-full pointer-events-none origin-[center_0%] role-container-transition"
+      :style="containerStyle"
+      @animationend="handleAnimationEnd"
+    >
       <!-- 使用单独提取出来的图片淡入淡出组件 -->
-      <ImageAcrossFade ref="imageFadeRef" class="absolute w-full h-[102%]" :class="containerClasses"
-        :src="targetAvatarUrl" :duration="300" position="center bottom" object-fit="contain" />
+      <ImageAcrossFade
+        ref="imageFadeRef"
+        class="absolute w-full h-[102%]"
+        :class="containerClasses"
+        :src="targetAvatarUrl"
+        :duration="300"
+        position="center bottom"
+        object-fit="contain"
+      />
 
       <!-- 气泡 -->
       <div :class="bubbleClasses" :style="bubbleStyles" class="bubble"></div>
