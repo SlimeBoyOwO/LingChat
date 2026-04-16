@@ -14,17 +14,18 @@ from ling_chat.utils.runtime_path import user_data_path
 
 class TermColors:
     """ANSI 终端颜色代码"""
-    GREY = '\033[90m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    RED = '\033[91m'
-    BLUE = '\033[94m'
-    RESET = '\033[0m'
-    WHITE = '\033[97m'
-    CYAN = '\033[96m'
-    MAGENTA = '\033[95m'
-    ORANGE = '\033[38;5;208m'
-    BOLD = '\033[1m'
+
+    GREY = "\033[90m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    RED = "\033[91m"
+    BLUE = "\033[94m"
+    RESET = "\033[0m"
+    WHITE = "\033[97m"
+    CYAN = "\033[96m"
+    MAGENTA = "\033[95m"
+    ORANGE = "\033[38;5;208m"
+    BOLD = "\033[1m"
 
 
 class Logger:
@@ -33,22 +34,35 @@ class Logger:
     _instance = None
     _initialized = False
 
-    DEFAULT_ANIMATION_STYLE = 'braille'
+    DEFAULT_ANIMATION_STYLE = "braille"
     DEFAULT_ANIMATION_COLOR = TermColors.WHITE
     DATE_FORMAT = "%Y-%m-%d-%H:%M:%S"
 
     ANIMATION_STYLES = {
-        'braille': ['⢿', '⣻', '⣽', '⣾', '⣷', '⣯', '⣟', '⡿'],
-        'spinner': ['-', '\\', '|', '/'],
-        'dots': ['.  ', '.. ', '...', ' ..', '  .', '   '],
-        'arrows': ['←', '↖', '↑', '↗', '→', '↘', '↓', '↙'],
-        'moon': ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'],
-        'clock': ['🕛', '🕐', '🕑', '🕒', '🕓', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙', '🕚'],
-        'directional_arrows_unicode': ['⬆️', '↗️', '➡️', '↘️', '⬇️', '↙️', '⬅️', '↖️'],
-        'traffic_lights': ['🔴', '🟡', '🟢'],
-        'growth_emoji': ['🌱', '🌿', '🌳'],
-        'weather_icons': ['☀️', '☁️', '🌧️', '⚡️'],
-        'heartbeat': ['♡', '♥'],
+        "braille": ["⢿", "⣻", "⣽", "⣾", "⣷", "⣯", "⣟", "⡿"],
+        "spinner": ["-", "\\", "|", "/"],
+        "dots": [".  ", ".. ", "...", " ..", "  .", "   "],
+        "arrows": ["←", "↖", "↑", "↗", "→", "↘", "↓", "↙"],
+        "moon": ["🌑", "🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘"],
+        "clock": [
+            "🕛",
+            "🕐",
+            "🕑",
+            "🕒",
+            "🕓",
+            "🕔",
+            "🕕",
+            "🕖",
+            "🕗",
+            "🕘",
+            "🕙",
+            "🕚",
+        ],
+        "directional_arrows_unicode": ["⬆️", "↗️", "➡️", "↘️", "⬇️", "↙️", "⬅️", "↖️"],
+        "traffic_lights": ["🔴", "🟡", "🟢"],
+        "growth_emoji": ["🌱", "🌿", "🌳"],
+        "weather_icons": ["☀️", "☁️", "🌧️", "⚡️"],
+        "heartbeat": ["♡", "♥"],
     }
 
     def __new__(cls, *args, **kwargs):
@@ -57,13 +71,13 @@ class Logger:
         return cls._instance
 
     def __init__(
-            self,
-            app_name: str = "LingChat-main",
-            log_level: Optional[str] = None,
-            show_timestamp: Optional[bool] = None,
-            enable_file_logging: Optional[bool] = None,
-            log_file_directory: str = str(user_data_path / "run_logs"),
-            log_file_level: int = logging.DEBUG
+        self,
+        app_name: str = "LingChat-main",
+        log_level: Optional[str] = None,
+        show_timestamp: Optional[bool] = None,
+        enable_file_logging: Optional[bool] = None,
+        log_file_directory: str = str(user_data_path / "run_logs"),
+        log_file_level: int = logging.DEBUG,
     ):
         """初始化日志记录器
 
@@ -80,13 +94,19 @@ class Logger:
 
         self.app_name = app_name
         self.log_level = self._get_log_level(log_level)
-        self.print_context = self._get_bool_env('PRINT_CONTEXT', None)
-        self.show_timestamp = self._get_bool_env('CONSOLE_SHOW_TIMESTAMP', show_timestamp)
-        self.enable_file_logging = self._get_bool_env('ENABLE_FILE_LOGGING', enable_file_logging)
+        self.print_context = self._get_bool_env("PRINT_CONTEXT", None)
+        self.show_timestamp = self._get_bool_env(
+            "CONSOLE_SHOW_TIMESTAMP", show_timestamp
+        )
+        self.enable_file_logging = self._get_bool_env(
+            "ENABLE_FILE_LOGGING", enable_file_logging
+        )
 
-        log_dir = log_file_directory or os.environ.get('LOG_FILE_DIRECTORY')
+        log_dir = log_file_directory or os.environ.get("LOG_FILE_DIRECTORY")
         if self.enable_file_logging and (not log_dir or log_dir == ""):
-            print(f"{TermColors.RED}环境变量 'LOG_FILE_DIRECTORY' 未设置，使用默认路径“data/run_logs”。{TermColors.RESET}")
+            print(
+                f"{TermColors.RED}环境变量 'LOG_FILE_DIRECTORY' 未设置，使用默认路径“data/run_logs”。{TermColors.RESET}"
+            )
             self.log_file_directory = str(user_data_path / "run_logs")
         else:
             self.log_file_directory = str(log_dir)
@@ -109,14 +129,14 @@ class Logger:
         if explicit_level is not None:
             level_str = explicit_level
         else:
-            level_str = os.environ.get('LOG_LEVEL', 'INFO')
+            level_str = os.environ.get("LOG_LEVEL", "INFO")
 
         level_map = {
-            'DEBUG': logging.DEBUG,
-            'INFO': logging.INFO,
-            'WARNING': logging.WARNING,
-            'ERROR': logging.ERROR,
-            'CRITICAL': logging.CRITICAL
+            "DEBUG": logging.DEBUG,
+            "INFO": logging.INFO,
+            "WARNING": logging.WARNING,
+            "ERROR": logging.ERROR,
+            "CRITICAL": logging.CRITICAL,
         }
 
         return level_map.get(level_str.upper(), logging.INFO)
@@ -160,14 +180,18 @@ class Logger:
 
         try:
             os.makedirs(self.log_file_directory, exist_ok=True)
-            log_filename = datetime.now().strftime(f"{self.app_name}_%Y-%m-%d_%H-%M-%S.log")
+            log_filename = datetime.now().strftime(
+                f"{self.app_name}_%Y-%m-%d_%H-%M-%S.log"
+            )
             log_filepath = os.path.join(self.log_file_directory, log_filename)
 
-            handler = logging.FileHandler(log_filepath, encoding='utf-8')
-            handler.setFormatter(logging.Formatter(
-                '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                datefmt=self.DATE_FORMAT
-            ))
+            handler = logging.FileHandler(log_filepath, encoding="utf-8")
+            handler.setFormatter(
+                logging.Formatter(
+                    "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+                    datefmt=self.DATE_FORMAT,
+                )
+            )
             handler.setLevel(self.log_file_level)
             return handler
         except Exception as e:
@@ -238,12 +262,18 @@ class Logger:
         except Exception:
             pass
 
-    def info_color(self, message: str, color: str = TermColors.GREEN, exc_info: bool = False):
+    def info_color(
+        self, message: str, color: str = TermColors.GREEN, exc_info: bool = False
+    ):
         """使用自定义颜色输出信息"""
         print(f"{color}[INFO]: {message}{TermColors.RESET}")
 
-    def start_loading_animation(self, message: str = "Processing", animation_style: str = DEFAULT_ANIMATION_STYLE,
-                                color: str = DEFAULT_ANIMATION_COLOR):
+    def start_loading_animation(
+        self,
+        message: str = "Processing",
+        animation_style: str = DEFAULT_ANIMATION_STYLE,
+        color: str = DEFAULT_ANIMATION_COLOR,
+    ):
         """动画控制方法"""
         with self._animation_lock:
             if self._is_animating:
@@ -256,8 +286,7 @@ class Logger:
                 animation_style = random.choice(list(self.ANIMATION_STYLES.keys()))
 
             animation_chars = self.ANIMATION_STYLES.get(
-                animation_style,
-                self.ANIMATION_STYLES[self.DEFAULT_ANIMATION_STYLE]
+                animation_style, self.ANIMATION_STYLES[self.DEFAULT_ANIMATION_STYLE]
             )
 
             initial_char = animation_chars[0]
@@ -271,11 +300,13 @@ class Logger:
             self._animation_thread = threading.Thread(
                 target=self._animate,
                 args=(message, animation_chars, color),
-                daemon=True
+                daemon=True,
             )
             self._animation_thread.start()
 
-    def stop_loading_animation(self, success: bool = True, final_message: Optional[str] = None):
+    def stop_loading_animation(
+        self, success: bool = True, final_message: Optional[str] = None
+    ):
         """停止加载动画"""
         was_animating = False
 
@@ -339,8 +370,8 @@ class Logger:
     @staticmethod
     def _strip_ansi_codes(text: str) -> str:
         """移除ANSI转义码"""
-        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-        return ansi_escape.sub('', text)
+        ansi_escape = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+        return ansi_escape.sub("", text)
 
     @staticmethod
     def _wcswidth(s: str) -> int:
@@ -364,12 +395,16 @@ class AnimationAwareStreamHandler(logging.StreamHandler):
                 pass
             return
 
-        if hasattr(record, 'is_animation_control') and getattr(record, 'is_animation_control', False):
+        if hasattr(record, "is_animation_control") and getattr(
+            record, "is_animation_control", False
+        ):
             super().emit(record)
             return
 
         with logger._animation_lock:
-            should_clear = logger._is_animating and logger._current_animation_line_width > 0
+            should_clear = (
+                logger._is_animating and logger._current_animation_line_width > 0
+            )
             width = logger._current_animation_line_width
 
         if should_clear:
@@ -392,10 +427,16 @@ class ColoredFormatter(logging.Formatter):
         self.show_timestamp = show_timestamp
 
     def format(self, record):
-        if hasattr(record, 'is_animation_control') and getattr(record, 'is_animation_control', False):
+        if hasattr(record, "is_animation_control") and getattr(
+            record, "is_animation_control", False
+        ):
             return record.getMessage()
 
-        timestamp = f"{self.formatTime(record, Logger.DATE_FORMAT)} " if self.show_timestamp else ""
+        timestamp = (
+            f"{self.formatTime(record, Logger.DATE_FORMAT)} "
+            if self.show_timestamp
+            else ""
+        )
 
         message = record.getMessage()
         level = f"[{record.levelname}]: "

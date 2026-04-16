@@ -7,7 +7,9 @@ from ling_chat.core.logger import logger
 
 
 class EventsHandler:
-    def __init__(self, config: AIServiceConfig, event_list: list[dict], game_status: GameStatus):
+    def __init__(
+        self, config: AIServiceConfig, event_list: list[dict], game_status: GameStatus
+    ):
         self.progress = 0
         self.config = config
         self.game_status = game_status
@@ -20,7 +22,7 @@ class EventsHandler:
         if self._chapter_result is not None:
             return True
         return self.progress >= len(self.event_list)
-    
+
     def get_chapter_result(self) -> str:
         """获取章节处理结果（下一章节名）"""
         return self._chapter_result if self._chapter_result is not None else "end"
@@ -35,14 +37,14 @@ class EventsHandler:
 
         # process_event现在可能返回结果
         result = await self.process_event(self.current_event)
-        
+
         # 如果事件返回了结果（章节结束事件），保存它
         if result is not None:
             self._chapter_result = result
 
     async def process_event(self, event: dict):
         """处理单个事件，可能返回章节结束结果"""
-        event_type = event.get('type', 'unknown')
+        event_type = event.get("type", "unknown")
         logger.info(f"处理事件 {self.progress}/{len(self.event_list)}: {event_type}")
 
         try:
@@ -52,12 +54,12 @@ class EventsHandler:
             # 创建处理器实例并执行
             if handler_class is not None:
                 handler = handler_class(self.config, event, self.game_status)
-                
+
                 # 执行处理器，并获取可能的结果
                 result = await handler.process()
-                
+
                 # 如果是章节结束事件，返回结果
-                if event_type == 'chapter_end':
+                if event_type == "chapter_end":
                     return result
                 return None
             else:
@@ -67,5 +69,6 @@ class EventsHandler:
         except Exception as e:
             logger.error(f"处理事件时出错: {event} - {e}")
             import traceback
+
             traceback.print_exc()
             return None

@@ -5,6 +5,7 @@ from typing import AsyncGenerator, Dict, List, Optional
 
 from ling_chat.core.ai_service.ai_logger import AILogger, logger
 from ling_chat.core.ai_service.config import AIServiceConfig
+from ling_chat.core.ai_service.game_system.game_status import GameStatus
 from ling_chat.core.ai_service.message_system.message_processor import MessageProcessor
 from ling_chat.core.ai_service.message_system.response_publisher import (
     ResponsePublisher,
@@ -12,24 +13,24 @@ from ling_chat.core.ai_service.message_system.response_publisher import (
 from ling_chat.core.ai_service.message_system.sentence_comsumer import SentenceConsumer
 from ling_chat.core.ai_service.message_system.stream_producer import StreamProducer
 from ling_chat.core.ai_service.translator import Translator
-from ling_chat.core.ai_service.voice_maker import VoiceMaker
 from ling_chat.core.llm_providers.manager import LLMManager
 from ling_chat.core.logger import logger
 from ling_chat.core.schemas.response_models import ResponseFactory
 from ling_chat.core.schemas.responses import ReplyResponse
-from ling_chat.core.ai_service.game_system.game_status import GameStatus
 from ling_chat.game_database.models import LineAttribute, LineBase
 from ling_chat.utils.function import Function
 
 
 class MessageGenerator:
-    def __init__(self,
-                config: AIServiceConfig,
-                message_processor: MessageProcessor,
-                translator: Translator,
-                llm_model: LLMManager,
-                ai_logger: AILogger,
-                game_status: GameStatus):
+    def __init__(
+        self,
+        config: AIServiceConfig,
+        message_processor: MessageProcessor,
+        translator: Translator,
+        llm_model: LLMManager,
+        ai_logger: AILogger,
+        game_status: GameStatus,
+    ):
         self.config = config
         self.message_processor = message_processor
         self.translator = translator
@@ -44,8 +45,10 @@ class MessageGenerator:
         if not sentence:
             return
 
-         # 使用analyze_emotions处理句子 返回情绪-中文-日文等信息
-        sentence_segments:List[Dict] = self.message_processor.analyze_emotions(sentence)
+        # 使用analyze_emotions处理句子 返回情绪-中文-日文等信息
+        sentence_segments: List[Dict] = self.message_processor.analyze_emotions(
+            sentence
+        )
         if not sentence_segments:
             logger.warning("句子中没有出现中日或情感，AI回复格式错误")
             return
@@ -56,7 +59,9 @@ class MessageGenerator:
                 await self.translator.translate_ai_response(sentence_segments)
             else:
                 if self.game_status.current_character:
-                    await self.game_status.current_character.voice_maker.generate_voice_files(sentence_segments)
+                    await self.game_status.current_character.voice_maker.generate_voice_files(
+                        sentence_segments
+                    )
             end_time = time.perf_counter()
             # 更新情绪片段列表
             emotion_segments.extend(sentence_segments)
@@ -64,9 +69,11 @@ class MessageGenerator:
             logger.debug(f"句子处理时间: {end_time - start_time} 秒")
 
     # 主方法现在充当协调器角色
-    async def process_message_stream(self, 
-                                     user_message: Optional[str] = None, 
-                                     memory: Optional[List[Dict]] = None,) -> AsyncGenerator[ReplyResponse, None]:
+    async def process_message_stream(
+        self,
+        user_message: Optional[str] = None,
+        memory: Optional[List[Dict]] = None,
+    ) -> AsyncGenerator[ReplyResponse, None]:
         """
         协调流处理管道并生成响应，避免死锁。
         """
@@ -79,10 +86,16 @@ class MessageGenerator:
         line = None
         # 1. 处理用户消息，提取临时指令，构建台词
         if user_message is not None:
-            processed_user_message_dict = await self.message_processor.append_user_message(user_message)
-            processed_user_message = processed_user_message_dict.get("main","")
-            temp_message = processed_user_message_dict.get("temp",None)
-            line = LineBase(content=processed_user_message, attribute=LineAttribute.USER, display_name=self.game_status.player.user_name)
+            processed_user_message_dict = (
+                await self.message_processor.append_user_message(user_message)
+            )
+            processed_user_message = processed_user_message_dict.get("main", "")
+            temp_message = processed_user_message_dict.get("temp", None)
+            line = LineBase(
+                content=processed_user_message,
+                attribute=LineAttribute.USER,
+                display_name=self.game_status.player.user_name,
+            )
             self.game_status.add_line(line)
 
         # 3. 获取记忆
@@ -103,7 +116,7 @@ class MessageGenerator:
                     f"当前场景：{self.game_status.scene_description}\n"
                     "请根据此场景进行对话，可以适当加入环境描写、角色心理活动和动作细节。"
                     "仍须遵守原有格式：每句话以【情绪】开头，动作放在（）内，日语翻译放在<>内（如果启用翻译）。"
-                )
+                ),
             }
             # 插入到最前面（system 之前），或放在现有 system 之后，通常第一条是 system
             # 为了不破坏原有 system 顺序，我们放在现有 system 后面、其他消息之前
@@ -118,7 +131,9 @@ class MessageGenerator:
         #     self.rag_manager.rag_append_sys_message(current_context, rag_messages, processed_user_message)
 
         if logger.should_print_context():
-            self.ai_logger.print_debug_message(current_context, rag_messages, current_context)
+            self.ai_logger.print_debug_message(
+                current_context, rag_messages, current_context
+            )
 
         # 2. 管道组件的共享状态
         sentence_queue = asyncio.Queue(maxsize=self.concurrency * 2)
@@ -141,18 +156,25 @@ class MessageGenerator:
             # 消费者任务
             for i in range(self.concurrency):
                 consumer = SentenceConsumer(
-                    consumer_id=i, sentence_queue=sentence_queue,
-                    results_store=results_store, publish_events=publish_events,
-                    message_processor=self.message_processor, translator=self.translator,
+                    consumer_id=i,
+                    sentence_queue=sentence_queue,
+                    results_store=results_store,
+                    publish_events=publish_events,
+                    message_processor=self.message_processor,
+                    translator=self.translator,
                     user_message=user_message if user_message else "",
                     game_status=self.game_status,
                 )
-                consumer_task = asyncio.create_task(consumer.run(), name=f"Consumer-{i}")
+                consumer_task = asyncio.create_task(
+                    consumer.run(), name=f"Consumer-{i}"
+                )
                 background_tasks.append(consumer_task)
 
             # 生产者任务：立即将生产者作为后台任务启动
             ai_response_stream = self.llm_model.process_message_stream(current_context)
-            producer = StreamProducer(ai_response_stream, sentence_queue, publish_events)
+            producer = StreamProducer(
+                ai_response_stream, sentence_queue, publish_events
+            )
             producer_task = asyncio.create_task(producer.run(), name="Producer")
             background_tasks.append(producer_task)
 
@@ -164,8 +186,7 @@ class MessageGenerator:
 
                 # 同时等待队列和producer任务，看哪个先完成
                 done, pending = await asyncio.wait(
-                    [queue_get_task, producer_task],
-                    return_when=asyncio.FIRST_COMPLETED
+                    [queue_get_task, producer_task], return_when=asyncio.FIRST_COMPLETED
                 )
 
                 # 检查 producer_task 是否出错
@@ -215,9 +236,9 @@ class MessageGenerator:
             ai_name = ""
             if self.game_status.current_character:
                 ai_name = self.game_status.current_character.display_name
-            if not ai_name: ai_name = "Nameless"
+            if not ai_name:
+                ai_name = "Nameless"
             if accumulated_response:
-
                 # 让 processed_user_message 删除 temp_message 字段
                 if temp_message is not None and line is not None:
                     line.content = processed_user_message.replace(temp_message, "")
@@ -231,17 +252,21 @@ class MessageGenerator:
             else:
                 self.ai_logger.log_conversation(ai_name, "未生成响应。")
 
-
         except Exception as e:
             logger.error(f"消息流管道中发生错误: {e}", exc_info=True)
 
             # 准备错误代码（前端负责翻译）
             from ling_chat.core.messaging.broker import message_broker
+
             error_message = str(e)
             error_code = "default_error"  # 默认错误代码
 
             # 检查错误类型，确定错误代码
-            if "401" in error_message or "Api key is invalid" in error_message or "AuthenticationError" in str(type(e)):
+            if (
+                "401" in error_message
+                or "Api key is invalid" in error_message
+                or "AuthenticationError" in str(type(e))
+            ):
                 error_code = "401"
             elif "404" in error_message:
                 error_code = "404"
@@ -252,17 +277,14 @@ class MessageGenerator:
             error_data = {
                 "type": "error",
                 "error_code": error_code,
-                "detail": str(e)  # 原始错误信息，用于调试
+                "detail": str(e),  # 原始错误信息，用于调试
             }
 
             for client_id in self.config.clients:
                 await message_broker.publish(client_id, error_data)
 
             # 2. 发送状态重置消息，让前端回到输入状态
-            reset_data = {
-                "type": "status_reset",
-                "status": "input"
-            }
+            reset_data = {"type": "status_reset", "status": "input"}
             for client_id in self.config.clients:
                 await message_broker.publish(client_id, reset_data)
 

@@ -1,7 +1,6 @@
 import asyncio
 
 from fastapi import APIRouter, Body, HTTPException
-from typing import Optional
 
 from ling_chat.core.adventure_trigger import adventure_trigger_system
 from ling_chat.core.logger import logger
@@ -41,22 +40,32 @@ async def list_character_adventures(character_folder: str, user_id: int = 1):
                 unlocks = AdventureManager.get_all_unlocked(user_id)
                 for unlock in unlocks:
                     if unlock.adventure_folder == adv_script.folder_key:
-                        unlocked_at = unlock.unlocked_at.isoformat() if unlock.unlocked_at else None
-                        completed_at = unlock.completed_at.isoformat() if unlock.completed_at else None
+                        unlocked_at = (
+                            unlock.unlocked_at.isoformat()
+                            if unlock.unlocked_at
+                            else None
+                        )
+                        completed_at = (
+                            unlock.completed_at.isoformat()
+                            if unlock.completed_at
+                            else None
+                        )
                         break
 
-            result.append({
-                "adventure_folder": adv_script.folder_key,
-                "name": adv_script.name,
-                "description": adv_script.description,
-                "recommand_start": adv_script.recommand_start,
-                "order": adv_script.adventure.order,
-                "status": status,
-                "unlocked_at": unlocked_at,
-                "completed_at": completed_at,
-                "unlock_conditions": adv_script.adventure.unlock_conditions,
-                "trigger": adv_script.adventure.trigger,
-            })
+            result.append(
+                {
+                    "adventure_folder": adv_script.folder_key,
+                    "name": adv_script.name,
+                    "description": adv_script.description,
+                    "recommand_start": adv_script.recommand_start,
+                    "order": adv_script.adventure.order,
+                    "status": status,
+                    "unlocked_at": unlocked_at,
+                    "completed_at": completed_at,
+                    "unlock_conditions": adv_script.adventure.unlock_conditions,
+                    "trigger": adv_script.adventure.trigger,
+                }
+            )
 
         return {"data": result}
     except Exception as e:
@@ -89,14 +98,16 @@ async def list_all_adventures(user_id: int = 1):
                 current_script_status=current_script_status,
             )
 
-            result.append({
-                "adventure_folder": adv_script.folder_key,
-                "name": adv_script.name,
-                "description": adv_script.description,
-                "character_folder": adv_script.adventure.bound_character_folder,
-                "order": adv_script.adventure.order,
-                "status": status,
-            })
+            result.append(
+                {
+                    "adventure_folder": adv_script.folder_key,
+                    "name": adv_script.name,
+                    "description": adv_script.description,
+                    "character_folder": adv_script.adventure.bound_character_folder,
+                    "order": adv_script.adventure.order,
+                    "status": status,
+                }
+            )
 
         return {"data": result}
     except Exception as e:
@@ -148,7 +159,9 @@ async def start_adventure(
                 break
 
         if not target_name:
-            raise HTTPException(status_code=404, detail=f"找不到冒险剧本: {adventure_folder}")
+            raise HTTPException(
+                status_code=404, detail=f"找不到冒险剧本: {adventure_folder}"
+            )
 
         # 启动剧本
         asyncio.create_task(ai_service.start_script(target_name))
@@ -177,7 +190,7 @@ async def check_unlocks(user_id: int = Body(..., embed=True)):
             user_id=user_id,
             adventures=all_adventures,
             chat_count=chat_count,
-            game_status=ai_service.game_status
+            game_status=ai_service.game_status,
         )
 
         return {"data": newly_unlocked, "count": len(newly_unlocked)}
@@ -216,6 +229,7 @@ async def complete_adventure(
         for name, s in scripts_manager.all_scripts.items():
             if s.folder_key == adventure_folder and s.adventure.completion_achievements:
                 from ling_chat.core.achievement_manager import achievement_manager
+
                 for ach_def in s.adventure.completion_achievements:
                     ach_id = ach_def.get("id")
                     if ach_id:
@@ -265,9 +279,10 @@ async def reset_adventure(
             raise HTTPException(status_code=400, detail="当前没有激活的存档")
 
         # 从completed_scripts中移除
+        from sqlmodel import Session
+
         from ling_chat.game_database.database import engine
         from ling_chat.game_database.models import Save
-        from sqlmodel import Session
 
         with Session(engine) as session:
             save = session.get(Save, save_id)

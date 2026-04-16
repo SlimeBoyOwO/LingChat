@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Optional
+
 from ling_chat.core.achievement_manager import achievement_manager
-from ling_chat.core.logger import logger
 
 
 class AchievementTriggerHandler:
@@ -75,5 +75,6 @@ class AchievementTriggerHandler:
         if now.hour >= 23 or now.hour < 4:
             return achievement_manager.increment_progress("night_owl")
         return None
+
 
 achievement_trigger_handler = AchievementTriggerHandler.get_instance()

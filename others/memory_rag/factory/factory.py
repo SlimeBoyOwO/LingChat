@@ -5,24 +5,29 @@ from typing import Optional
 try:
     from langchain_neo4j import Neo4jGraph
 except ImportError:
-    raise ImportError("langchain_neo4j is not installed. Please install it using pip install langchain-neo4j")
+    raise ImportError(
+        "langchain_neo4j is not installed. Please install it using pip install langchain-neo4j"
+    )
 
 try:
     from rank_bm25 import BM25Okapi
 except ImportError:
-    raise ImportError("rank_bm25 is not installed. Please install it using pip install rank-bm25")
-
-from core.memory_rag.utils import format_entities
-from core.memory_rag.graph.tools import *
+    raise ImportError(
+        "rank_bm25 is not installed. Please install it using pip install rank-bm25"
+    )
 
 from core.memory_rag.config.base import BaseLlmConfig
+from core.memory_rag.graph.tools import *
+from core.memory_rag.utils import format_entities
 
 logger = logging.getLogger(__name__)
+
 
 def load_class(class_type):
     module_path, class_name = class_type.rsplit(".", 1)
     module = importlib.import_module(module_path)
     return getattr(module, class_name)
+
 
 class LlmFactory:
     provider_to_class = {
@@ -54,6 +59,7 @@ class LlmFactory:
         else:
             raise ValueError(f"Unsupported Llm provider: {provider_name}")
 
+
 class EmbedderFactory:
     provider_to_class = {
         "qwen": "core.memory_rag.embeddings.qwen.QwenEmbedding",
@@ -68,7 +74,7 @@ class EmbedderFactory:
         # "langchain": "mem0.embeddings.langchain.LangchainEmbedding",
         # "aws_bedrock": "mem0.embeddings.aws_bedrock.AWSBedrockEmbedding",
     }
-    
+
     @classmethod
     def create(cls, provider_name, config, vector_config: Optional[dict]):
         # 如果是千问模型
@@ -85,8 +91,11 @@ class EmbedderFactory:
                 embedding_class = load_class(class_type)
                 return embedding_class(config)
             else:
-                raise ValueError(f"Unsupported Embedder provider: {provider_name}，当前支持 'qwen' 和 'sentence_transformers'。")
-        
+                raise ValueError(
+                    f"Unsupported Embedder provider: {provider_name}，当前支持 'qwen' 和 'sentence_transformers'。"
+                )
+
+
 class VectorStoreFactory:
     provider_to_class = {
         "chroma": "core.memory_rag.config.vector_config.ChromaDB",
@@ -106,13 +115,14 @@ class VectorStoreFactory:
         # "faiss": "mem0.vector_stores.faiss.FAISS",
         # "langchain": "mem0.vector_stores.langchain.Langchain",
     }
+
     @classmethod
     def create(cls, provider_name, config):
         class_type = cls.provider_to_class.get(provider_name)
         if class_type:
             if not isinstance(config, dict):
                 # 检查是否有model_dump方法（Pydantic模型）
-                if hasattr(config, 'model_dump'):
+                if hasattr(config, "model_dump"):
                     config = config.model_dump()
                 else:
                     # 对于非Pydantic模型（如ChromaDB），直接返回实例
@@ -126,7 +136,8 @@ class VectorStoreFactory:
     def reset(cls, instance):
         instance.reset()
         return instance
-    
+
+
 class GraphStoreFactory:
     def __init__(self, config):
         self.config = config
@@ -138,14 +149,20 @@ class GraphStoreFactory:
             refresh_schema=False,
         )
         self.embedding_model = EmbedderFactory.create(
-            self.config.embedder.provider, self.config.embedder.config, self.config.vector_store.config
+            self.config.embedder.provider,
+            self.config.embedder.config,
+            self.config.vector_store.config,
         )
-        self.node_label = ":`__Entity__`" if self.config.graph_store.config.base_label else ""
+        self.node_label = (
+            ":`__Entity__`" if self.config.graph_store.config.base_label else ""
+        )
 
         if self.config.graph_store.config.base_label:
             # Safely add user_id index
             try:
-                self.graph.query(f"CREATE INDEX entity_single IF NOT EXISTS FOR (n {self.node_label}) ON (n.user_id)")
+                self.graph.query(
+                    f"CREATE INDEX entity_single IF NOT EXISTS FOR (n {self.node_label}) ON (n.user_id)"
+                )
             except Exception:
                 pass
             try:  # Safely try to add composite index (Enterprise only)
@@ -174,9 +191,15 @@ class GraphStoreFactory:
             filters (dict): A dictionary containing filters to be applied during the addition.
         """
         entity_type_map = self._retrieve_nodes_from_data(data, filters)
-        to_be_added = self._establish_nodes_relations_from_data(data, filters, entity_type_map)
-        search_output = self._search_graph_db(node_list=list(entity_type_map.keys()), filters=filters)
-        to_be_deleted = self._get_delete_entities_from_search_output(search_output, data, filters)
+        to_be_added = self._establish_nodes_relations_from_data(
+            data, filters, entity_type_map
+        )
+        search_output = self._search_graph_db(
+            node_list=list(entity_type_map.keys()), filters=filters
+        )
+        to_be_deleted = self._get_delete_entities_from_search_output(
+            search_output, data, filters
+        )
 
         # TODO: Batch queries with APOC plugin
         # TODO: Add more filter support
@@ -200,13 +223,16 @@ class GraphStoreFactory:
                 - "entities": List of related graph data based on the query.
         """
         entity_type_map = self._retrieve_nodes_from_data(query, filters)
-        search_output = self._search_graph_db(node_list=list(entity_type_map.keys()), filters=filters)
+        search_output = self._search_graph_db(
+            node_list=list(entity_type_map.keys()), filters=filters
+        )
 
         if not search_output:
             return []
 
         search_outputs_sequence = [
-            [item["source"], item["relationship"], item["destination"]] for item in search_output
+            [item["source"], item["relationship"], item["destination"]]
+            for item in search_output
         ]
         bm25 = BM25Okapi(search_outputs_sequence)
 
@@ -215,7 +241,9 @@ class GraphStoreFactory:
 
         search_results = []
         for item in reranked_results:
-            search_results.append({"source": item[0], "relationship": item[1], "destination": item[2]})
+            search_results.append(
+                {"source": item[0], "relationship": item[1], "destination": item[2]}
+            )
 
         logger.info(f"Returned {len(search_results)} search results")
 
@@ -235,7 +263,6 @@ class GraphStoreFactory:
             """
             params = {"user_id": filters["user_id"]}
         self.graph.query(cypher, params=params)
-
 
     def get_all(self, filters, limit=100):
         """
@@ -276,7 +303,6 @@ class GraphStoreFactory:
 
         return final_results
 
-
     def _retrieve_nodes_from_data(self, data, filters):
         """Extracts all the entities mentioned in the query."""
         _tools = [EXTRACT_ENTITIES_TOOL]
@@ -306,14 +332,19 @@ class GraphStoreFactory:
                 f"Error in search tool: {e}, llm_provider={self.llm_provider}, search_results={search_results}"
             )
 
-        entity_type_map = {k.lower().replace(" ", "_"): v.lower().replace(" ", "_") for k, v in entity_type_map.items()}
-        logger.debug(f"Entity type map: {entity_type_map}\n search_results={search_results}")
+        entity_type_map = {
+            k.lower().replace(" ", "_"): v.lower().replace(" ", "_")
+            for k, v in entity_type_map.items()
+        }
+        logger.debug(
+            f"Entity type map: {entity_type_map}\n search_results={search_results}"
+        )
         return entity_type_map
 
     def _establish_nodes_relations_from_data(self, data, filters, entity_type_map):
         """Establish relations among the extracted nodes."""
 
-    # Compose user identification string for prompt
+        # Compose user identification string for prompt
         user_identity = f"user_id: {filters['user_id']}"
         if filters.get("agent_id"):
             user_identity += f", agent_id: {filters['agent_id']}"
@@ -332,7 +363,10 @@ class GraphStoreFactory:
             system_content = EXTRACT_RELATIONS_PROMPT.replace("USER_ID", user_identity)
             messages = [
                 {"role": "system", "content": system_content},
-                {"role": "user", "content": f"List of entities: {list(entity_type_map.keys())}. \n\nText: {data}"},
+                {
+                    "role": "user",
+                    "content": f"List of entities: {list(entity_type_map.keys())}. \n\nText: {data}",
+                },
             ]
 
         _tools = [RELATIONS_TOOL]
@@ -346,7 +380,11 @@ class GraphStoreFactory:
 
         entities = []
         if extracted_entities.get("tool_calls"):
-            entities = extracted_entities["tool_calls"][0].get("arguments", {}).get("entities", [])
+            entities = (
+                extracted_entities["tool_calls"][0]
+                .get("arguments", {})
+                .get("entities", [])
+            )
 
         entities = self._remove_spaces_from_entities(entities)
         logger.debug(f"Extracted entities: {entities}")
@@ -406,7 +444,9 @@ class GraphStoreFactory:
         if filters.get("agent_id"):
             user_identity += f", agent_id: {filters['agent_id']}"
 
-        system_prompt, user_prompt = get_delete_messages(search_output_string, data, user_identity)
+        system_prompt, user_prompt = get_delete_messages(
+            search_output_string, data, user_identity
+        )
 
         _tools = [DELETE_MEMORY_TOOL_GRAPH]
         if self.llm_provider in ["azure_openai_structured", "openai_structured"]:
@@ -436,7 +476,7 @@ class GraphStoreFactory:
         user_id = filters["user_id"]
         agent_id = filters.get("agent_id", None)
         results = []
-        
+
         for item in to_be_deleted:
             source = item["source"]
             destination = item["destination"]
@@ -449,7 +489,7 @@ class GraphStoreFactory:
                 "dest_name": destination,
                 "user_id": user_id,
             }
-            
+
             if agent_id:
                 agent_filter = "AND n.agent_id = $agent_id AND m.agent_id = $agent_id"
                 params["agent_id"] = agent_id
@@ -466,10 +506,10 @@ class GraphStoreFactory:
                 m.name AS target,
                 type(r) AS relationship
             """
-            
+
             result = self.graph.query(cypher, params=params)
             results.append(result)
-        
+
         return results
 
     def _add_entities(self, to_be_added, filters, entity_type_map):
@@ -488,16 +528,24 @@ class GraphStoreFactory:
             source_label = self.node_label if self.node_label else f":`{source_type}`"
             source_extra_set = f", source:`{source_type}`" if self.node_label else ""
             destination_type = entity_type_map.get(destination, "__User__")
-            destination_label = self.node_label if self.node_label else f":`{destination_type}`"
-            destination_extra_set = f", destination:`{destination_type}`" if self.node_label else ""
+            destination_label = (
+                self.node_label if self.node_label else f":`{destination_type}`"
+            )
+            destination_extra_set = (
+                f", destination:`{destination_type}`" if self.node_label else ""
+            )
 
             # embeddings
             source_embedding = self.embedding_model.embed(source)
             dest_embedding = self.embedding_model.embed(destination)
 
             # search for the nodes with the closest embeddings
-            source_node_search_result = self._search_source_node(source_embedding, filters, threshold=0.9)
-            destination_node_search_result = self._search_destination_node(dest_embedding, filters, threshold=0.9)
+            source_node_search_result = self._search_source_node(
+                source_embedding, filters, threshold=0.9
+            )
+            destination_node_search_result = self._search_destination_node(
+                dest_embedding, filters, threshold=0.9
+            )
 
             # TODO: Create a cypher query and common params for all the cases
             if not destination_node_search_result and source_node_search_result:
@@ -530,9 +578,11 @@ class GraphStoreFactory:
                     r.mentions = coalesce(r.mentions, 0) + 1
                 RETURN source.name AS source, type(r) AS relationship, destination.name AS target
                 """
-                
+
                 params = {
-                    "source_id": source_node_search_result[0]["elementId(source_candidate)"],
+                    "source_id": source_node_search_result[0][
+                        "elementId(source_candidate)"
+                    ],
                     "destination_name": destination,
                     "destination_embedding": dest_embedding,
                     "user_id": user_id,
@@ -572,7 +622,9 @@ class GraphStoreFactory:
                 """
 
                 params = {
-                    "destination_id": destination_node_search_result[0]["elementId(destination_candidate)"],
+                    "destination_id": destination_node_search_result[0][
+                        "elementId(destination_candidate)"
+                    ],
                     "source_name": source,
                     "source_embedding": source_embedding,
                     "user_id": user_id,
@@ -599,8 +651,12 @@ class GraphStoreFactory:
                 """
 
                 params = {
-                    "source_id": source_node_search_result[0]["elementId(source_candidate)"],
-                    "destination_id": destination_node_search_result[0]["elementId(destination_candidate)"],
+                    "source_id": source_node_search_result[0][
+                        "elementId(source_candidate)"
+                    ],
+                    "destination_id": destination_node_search_result[0][
+                        "elementId(destination_candidate)"
+                    ],
                     "user_id": user_id,
                 }
                 if agent_id:
@@ -691,7 +747,6 @@ class GraphStoreFactory:
 
         result = self.graph.query(cypher, params=params)
         return result
-
 
     def _search_destination_node(self, destination_embedding, filters, threshold=0.9):
         agent_filter = ""

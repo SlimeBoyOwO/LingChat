@@ -1,12 +1,13 @@
-import os
 import json
-from typing import AsyncGenerator, Dict, List, Any, Optional
+import os
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 
 from ling_chat.core.logger import logger
 
 from .base import BaseLLMProvider
+
 
 # LM Studio API 文档：https://lmstudio.ai/docs/developer/rest/chat
 # POST /api/v1/chat
@@ -33,18 +34,14 @@ class LMStudioProvider(BaseLLMProvider):
         """获取同步 HTTP 客户端"""
         timeout_config = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
         return httpx.Client(
-            base_url=self.base_url,
-            headers=self._get_headers(),
-            timeout=timeout_config
+            base_url=self.base_url, headers=self._get_headers(), timeout=timeout_config
         )
 
     def _get_async_client(self):
         """获取异步 HTTP 客户端"""
         timeout_config = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
         return httpx.AsyncClient(
-            base_url=self.base_url,
-            headers=self._get_headers(),
-            timeout=timeout_config
+            base_url=self.base_url, headers=self._get_headers(), timeout=timeout_config
         )
 
     def _build_input_messages(self, messages: List[Dict]) -> List[Dict]:
@@ -75,10 +72,7 @@ class LMStudioProvider(BaseLLMProvider):
                 input_messages.extend(self._convert_multimodal_content(content))
             else:
                 # 纯文本
-                input_messages.append({
-                    "type": "text",
-                    "content": content
-                })
+                input_messages.append({"type": "text", "content": content})
 
         return input_messages
 
@@ -93,24 +87,19 @@ class LMStudioProvider(BaseLLMProvider):
         result = []
         for item in content:
             if item.get("type") == "text":
-                result.append({
-                    "type": "text",
-                    "content": item.get("text", "")
-                })
+                result.append({"type": "text", "content": item.get("text", "")})
             elif item.get("type") == "image_url":
                 image_url = item.get("image_url", {})
-                url = image_url.get("url", "") if isinstance(image_url, dict) else image_url
-                result.append({
-                    "type": "image",
-                    "data_url": url
-                })
+                url = (
+                    image_url.get("url", "")
+                    if isinstance(image_url, dict)
+                    else image_url
+                )
+                result.append({"type": "image", "data_url": url})
         return result
 
     def _create_request_body(
-        self,
-        messages: List[Dict],
-        stream: bool = False,
-        **kwargs
+        self, messages: List[Dict], stream: bool = False, **kwargs
     ) -> Dict[str, Any]:
         """
         构建 LM Studio /api/v1/chat 请求体
@@ -133,13 +122,13 @@ class LMStudioProvider(BaseLLMProvider):
         # 自动提取system消息并过滤messages
         system_prompt = None
         filtered_messages = []
-        
+
         for msg in messages:
             if msg.get("role") == "system":
                 system_prompt = msg.get("content", "")
             else:
                 filtered_messages.append(msg)
-        
+
         body = {
             "model": self.model_type,
             "input": self._build_input_messages(filtered_messages),
@@ -155,7 +144,9 @@ class LMStudioProvider(BaseLLMProvider):
             # LM Studio只支持temperature范围[0,1]，强制将大于1的值限制为1
             if temp_value > 1.0:
                 temp_value = 1.0
-                logger.debug(f"LM Studio temperature 超出范围({temperature})，已重置为1.0")
+                logger.debug(
+                    f"LM Studio temperature 超出范围({temperature})，已重置为1.0"
+                )
             body["temperature"] = temp_value
 
         top_p = os.environ.get("TOP_P", "0.9")
@@ -189,7 +180,9 @@ class LMStudioProvider(BaseLLMProvider):
 
         return body
 
-    async def _handle_stream_response(self, response: httpx.Response) -> AsyncGenerator[str, None]:
+    async def _handle_stream_response(
+        self, response: httpx.Response
+    ) -> AsyncGenerator[str, None]:
         """
         处理 SSE 流式响应
 
@@ -211,7 +204,9 @@ class LMStudioProvider(BaseLLMProvider):
             if not line:
                 # 空行表示事件块结束，处理已解析的事件
                 if current_event is not None and current_data is not None:
-                    async for chunk in self._process_sse_event(current_event, current_data):
+                    async for chunk in self._process_sse_event(
+                        current_event, current_data
+                    ):
                         yield chunk
                     current_event = None
                     current_data = None
@@ -234,7 +229,9 @@ class LMStudioProvider(BaseLLMProvider):
             async for chunk in self._process_sse_event(current_event, current_data):
                 yield chunk
 
-    async def _process_sse_event(self, event_type: str, data: Dict[str, Any]) -> AsyncGenerator[str, None]:
+    async def _process_sse_event(
+        self, event_type: str, data: Dict[str, Any]
+    ) -> AsyncGenerator[str, None]:
         """
         处理单个 SSE 事件
 
@@ -279,10 +276,7 @@ class LMStudioProvider(BaseLLMProvider):
             request_body = self._create_request_body(messages, stream=False)
 
             with self._get_http_client() as client:
-                response = client.post(
-                    "/api/v1/chat",
-                    json=request_body
-                )
+                response = client.post("/api/v1/chat", json=request_body)
 
                 # 检查响应状态
                 response.raise_for_status()
@@ -303,12 +297,16 @@ class LMStudioProvider(BaseLLMProvider):
                         # 工具调用结果
                         tool_output = item.get("output", "")
                         if tool_output:
-                            content_parts.append(f"[工具：{item.get('tool')}] {tool_output}")
+                            content_parts.append(
+                                f"[工具：{item.get('tool')}] {tool_output}"
+                            )
 
                 return "".join(content_parts)
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"LM Studio HTTP 错误：{e.response.status_code} - {e.response.text}")
+            logger.error(
+                f"LM Studio HTTP 错误：{e.response.status_code} - {e.response.text}"
+            )
             raise
         except httpx.RequestError as e:
             logger.error(f"LM Studio 请求错误：{str(e)}")
@@ -317,7 +315,9 @@ class LMStudioProvider(BaseLLMProvider):
             logger.error(f"LM Studio API 请求失败：{str(e)}")
             raise
 
-    async def generate_stream_response(self, messages: List[Dict]) -> AsyncGenerator[str, None]:
+    async def generate_stream_response(
+        self, messages: List[Dict]
+    ) -> AsyncGenerator[str, None]:
         """生成 LM Studio 流式响应"""
         try:
             logger.debug("正在向 LM Studio /api/v1/chat 发送流式请求")
@@ -326,16 +326,16 @@ class LMStudioProvider(BaseLLMProvider):
 
             async with self._get_async_client() as client:
                 async with client.stream(
-                    "POST",
-                    "/api/v1/chat",
-                    json=request_body
+                    "POST", "/api/v1/chat", json=request_body
                 ) as response:
                     response.raise_for_status()
                     async for chunk in self._handle_stream_response(response):
                         yield chunk
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"LM Studio HTTP 错误：{e.response.status_code} - {e.response.text}")
+            logger.error(
+                f"LM Studio HTTP 错误：{e.response.status_code} - {e.response.text}"
+            )
             raise
         except httpx.RequestError as e:
             logger.error(f"LM Studio 流式请求错误：{str(e)}")

@@ -1,11 +1,17 @@
-from typing import List, Optional
 from datetime import datetime
+from typing import List, Optional
+
 from sqlmodel import Session, select
+
 from ling_chat.core.ai_service.game_system.game_status import GameStatus
-from ling_chat.game_database.database import engine
-from ling_chat.game_database.models import AdventureUnlock, Save, RunningScript, AdventureStatus
 from ling_chat.core.ai_service.type import ScriptStatus
 from ling_chat.core.logger import logger
+from ling_chat.game_database.database import engine
+from ling_chat.game_database.models import (
+    AdventureStatus,
+    AdventureUnlock,
+    Save,
+)
 
 
 class AdventureManager:
@@ -33,7 +39,9 @@ class AdventureManager:
             return list(session.exec(stmt).all())
 
     @staticmethod
-    def unlock_adventure(user_id: int, adventure_folder: str, character_folder: str) -> AdventureUnlock:
+    def unlock_adventure(
+        user_id: int, adventure_folder: str, character_folder: str
+    ) -> AdventureUnlock:
         """解锁冒险（全局）"""
         with Session(engine, expire_on_commit=False) as session:
             stmt = select(AdventureUnlock).where(
@@ -167,7 +175,10 @@ class AdventureManager:
             return AdventureStatus.LOCKED
 
         # 2. 检查是否正在进行
-        if current_script_status and current_script_status.folder_key == adventure_folder:
+        if (
+            current_script_status
+            and current_script_status.folder_key == adventure_folder
+        ):
             return AdventureStatus.IN_PROGRESS
 
         # 3. 检查是否已完成
@@ -176,4 +187,3 @@ class AdventureManager:
 
         # 4. 已解锁但未开始
         return AdventureStatus.UNLOCKED
-

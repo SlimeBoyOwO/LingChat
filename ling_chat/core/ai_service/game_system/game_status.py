@@ -1,16 +1,18 @@
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional, List, Dict, Any
-from ling_chat.core.ai_service.type import Player, GameRole, ScriptStatus
-from ling_chat.core.ai_service.game_system.role_manager import GameRoleManager
+from typing import Any, Dict, List, Optional
 
+from ling_chat.core.ai_service.game_system.role_manager import GameRoleManager
+from ling_chat.core.ai_service.type import GameRole, Player, ScriptStatus
 from ling_chat.game_database.models import GameLine, LineBase
+
 
 @dataclass
 class GameStatus:
     """
     存储所有运行时共享的游戏状态。
     """
+
     player: Player = field(default_factory=Player)
     # 新增：当前加载的场景描述（若为 None 则处于普通自由对话模式）
     scene_description: Optional[str] = None
@@ -51,20 +53,22 @@ class GameStatus:
     # 当前激活的存档ID（用于 MemoryBank 持久化/载入/自动压缩）
     active_save_id: Optional[int] = None
 
-    def get_role(self, role_id:int) -> Optional[GameRole]:
+    def get_role(self, role_id: int) -> Optional[GameRole]:
         return self.role_manager.get_role(role_id)
 
     def add_line(self, line: LineBase):
         # 转换为GameLine
         game_line = GameLine(
             **line.model_dump(),
-            perceived_role_ids=[role.role_id for role in self.present_roles if role.role_id is not None]  # 添加GameLine特有的属性
+            perceived_role_ids=[
+                role.role_id for role in self.present_roles if role.role_id is not None
+            ],  # 添加GameLine特有的属性
         )
 
         # TODO: 根据性能优化台词的更新频率，目前每条台词都更新
         self.line_list.append(game_line)
         self.refresh_memories()
-    
+
     def refresh_memories(self):
         # 自动压缩只写入运行时缓存，不触发 DB
         self.role_manager.sync_memories(self.line_list)
@@ -82,8 +86,9 @@ class GameStatus:
     def get_chat_message_count(self) -> int:
         """获取当前对话中非系统消息的数量（用于羁绊冒险解锁条件检测）"""
         from ling_chat.game_database.models import LineAttribute
+
         return len([l for l in self.line_list if l.attribute != LineAttribute.SYSTEM])
-    
+
     # ============ 特殊函数 ============
     def onstage_role(self, role: GameRole):
         """角色上舞台（默认加入感知角色列表）"""

@@ -13,12 +13,13 @@ from ling_chat.utils.runtime_path import temp_path
 
 
 class TTS:
-    def __init__(self,
-                 default_speaker_id: int=4,
-                 default_model_name: str="",
-                 default_tts_type: str = "sbv2",
-                 default_language: str = "ja"
-                 ):
+    def __init__(
+        self,
+        default_speaker_id: int = 4,
+        default_model_name: str = "",
+        default_tts_type: str = "sbv2",
+        default_language: str = "ja",
+    ):
         """
         初始化TTS语音合成器
 
@@ -48,19 +49,17 @@ class TTS:
         self.aivis_adapter = None
         self.index_adapter = None
 
-    def init_sva_adapter(self,speaker_id: int):
+    def init_sva_adapter(self, speaker_id: int):
         """
         初始化SVA适配器
 
         :param speaker_id: 说话人ID
         """
         self.sva_adapter = VitsAdapter(
-            speaker_id = speaker_id,
-            audio_format = self.format,
-            lang = "ja"
+            speaker_id=speaker_id, audio_format=self.format, lang="ja"
         )
 
-    def init_sbv2_adapter(self, speaker_id: int, model_name: str, language: str="ja"):
+    def init_sbv2_adapter(self, speaker_id: int, model_name: str, language: str = "ja"):
         """
         初始化SBV2适配器
 
@@ -69,10 +68,10 @@ class TTS:
         :param language: 语言选择
         """
         self.sbv2_adapter = SBV2Adapter(
-            speaker_id = speaker_id,
-            model_name = model_name,
-            audio_format = self.format,
-            lang = language
+            speaker_id=speaker_id,
+            model_name=model_name,
+            audio_format=self.format,
+            lang=language,
         )
 
     def init_sbv2api_adapter(self, model_name: str, speaker_id: int):
@@ -83,12 +82,10 @@ class TTS:
         :param speaker_id: 说话人ID
         """
         self.sbv2api_adapter = SBV2APIAdapter(
-            model_name = model_name,
-            speaker_id= speaker_id,
-            audio_format = self.format
+            model_name=model_name, speaker_id=speaker_id, audio_format=self.format
         )
 
-    def init_bv2_adapter(self, speaker_id: int, language: str="zh"):
+    def init_bv2_adapter(self, speaker_id: int, language: str = "zh"):
         """
         初始化BV2适配器
 
@@ -96,12 +93,12 @@ class TTS:
         :param language: 语言选择
         """
         self.bv2_adapter = BV2Adapter(
-            speaker_id = speaker_id,
-            audio_format = self.format,
-            lang = language
+            speaker_id=speaker_id, audio_format=self.format, lang=language
         )
 
-    def init_aivis_adapter(self, model_uuid: str, speaker_uuid: str|None = None, language: str="ja"):
+    def init_aivis_adapter(
+        self, model_uuid: str, speaker_uuid: str | None = None, language: str = "ja"
+    ):
         """
         初始化AIVIS适配器
 
@@ -117,10 +114,12 @@ class TTS:
             model_uuid=model_uuid,
             speaker_uuid=speaker_uuid,
             audio_format=self.format,
-            lang=language
+            lang=language,
         )
 
-    def init_gsv_adapter(self, ref_audio_path: str, prompt_text: str, prompt_lang: str = "auto"):
+    def init_gsv_adapter(
+        self, ref_audio_path: str, prompt_text: str, prompt_lang: str = "auto"
+    ):
         """
         初始化GSV适配器
 
@@ -129,9 +128,9 @@ class TTS:
         :param prompt_lang: 提示语言，默认为"auto"
         """
         self.gsv_adapter = GPTSoVITSAdapter(
-            ref_audio_path = ref_audio_path,
-            prompt_text = prompt_text,
-            prompt_lang = prompt_lang
+            ref_audio_path=ref_audio_path,
+            prompt_text=prompt_text,
+            prompt_lang=prompt_lang,
         )
 
     def init_index_adapter(self):
@@ -151,31 +150,31 @@ class TTS:
         if tts_type != "":
             logger.debug(f"根据参数选择TTS适配器: {tts_type}")
 
-            if tts_type == 'sva-vits':
+            if tts_type == "sva-vits":
                 if self.sva_adapter is None:
                     raise ValueError("Vits适配器未初始化")
                 return self.sva_adapter
-            elif tts_type == 'sbv2':
+            elif tts_type == "sbv2":
                 if self.sbv2_adapter is None:
                     raise ValueError("Style-Bert-Vits2适配器未初始化")
                 return self.sbv2_adapter
-            elif tts_type == 'gsv':
+            elif tts_type == "gsv":
                 if self.gsv_adapter is None:
                     raise ValueError("GPT-SoVITS适配器未初始化")
                 return self.gsv_adapter
-            elif tts_type == 'sva-bv2':
+            elif tts_type == "sva-bv2":
                 if self.bv2_adapter is None:
                     raise ValueError("Bert-Vits2适配器未初始化")
                 return self.bv2_adapter
-            elif tts_type == 'sbv2api':
+            elif tts_type == "sbv2api":
                 if self.sbv2api_adapter is None:
                     raise ValueError("sbv2-api适配器未初始化")
                 return self.sbv2api_adapter
-            elif tts_type == 'aivis':
+            elif tts_type == "aivis":
                 if self.aivis_adapter is None:
                     raise ValueError("AIVIS适配器未初始化")
                 return self.aivis_adapter
-            elif tts_type == 'indextts2':
+            elif tts_type == "indextts2":
                 if self.index_adapter is None:
                     raise ValueError("IndexTTS2适配器未初始化")
                 return self.index_adapter
@@ -187,8 +186,14 @@ class TTS:
         else:
             raise ValueError("没有可用的API适配器")
 
-    async def generate_voice(self, text: str, file_name: str,
-                             tts_type: str = "", lang: str ="ja", emo: str = "") -> str | None:
+    async def generate_voice(
+        self,
+        text: str,
+        file_name: str,
+        tts_type: str = "",
+        lang: str = "ja",
+        emo: str = "",
+    ) -> str | None:
         """
         生成语音文件
 
@@ -224,13 +229,14 @@ class TTS:
             return output_file
 
         except Exception as e:
-            logger.error(f"语音生成失败: {str(e)} 文本: \"{text}\"")
+            logger.error(f'语音生成失败: {str(e)} 文本: "{text}"')
             logger.error("TTS服务不可达，已禁用语音，重新启动程序以刷新启动服务")
             self.enable = False
             return None
 
-    async def generate_voice_stream(self, text: str, file_name: str,
-                             tts_type: str = "", lang: str ="ja") -> str | None:
+    async def generate_voice_stream(
+        self, text: str, file_name: str, tts_type: str = "", lang: str = "ja"
+    ) -> str | None:
         """
         生成语音文件流式
 

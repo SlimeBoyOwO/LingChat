@@ -58,9 +58,15 @@ class MyApplication:
         )
         self._pending_update: Optional[dict] = None
         self.update_manager.register_callback("status_changed", self.on_status_changed)
-        self.update_manager.register_callback("progress_changed", self.on_progress_changed)
-        self.update_manager.register_callback("update_available", self.on_update_available)
-        self.update_manager.register_callback("update_completed", self.on_update_completed)
+        self.update_manager.register_callback(
+            "progress_changed", self.on_progress_changed
+        )
+        self.update_manager.register_callback(
+            "update_available", self.on_update_available
+        )
+        self.update_manager.register_callback(
+            "update_completed", self.on_update_completed
+        )
         self.update_manager.register_callback("error_occurred", self.on_error)
 
     def on_status_changed(self, new_status, old_status):
@@ -81,6 +87,7 @@ class MyApplication:
 
     def on_error(self, error):
         self._last_error = str(error)
+
     def manual_check_update(self) -> bool:
         found = self.update_manager.check_for_updates()
         if found:
@@ -117,6 +124,7 @@ class MyApplication:
 
     def run(self):
         raise RuntimeError("[Error]无效调用")
+
     def start_continuous_update(self, backup: bool = False) -> bool:
         """执行连续更新（如果有多版本）"""
         if not self.update_manager.get_update_info():
@@ -126,7 +134,7 @@ class MyApplication:
                 raise RuntimeError("没有可用的更新信息，请先 manual_check_update()")
 
         # 使用新的连续更新方法
-        if hasattr(self.update_manager, 'perform_continuous_update'):
+        if hasattr(self.update_manager, "perform_continuous_update"):
             return self.update_manager.perform_continuous_update(backup=backup)
         else:
             # 回退到原有逻辑
@@ -140,9 +148,12 @@ class MyApplication:
                 "current_version": update_info.get("current_version"),
                 "target_version": update_info.get("target_version"),
                 "update_count": update_info.get("update_count", 0),
-                "versions": [info.get("version") for info in update_info.get("update_chain", [])]
+                "versions": [
+                    info.get("version") for info in update_info.get("update_chain", [])
+                ],
             }
         return None
+
 
 def create_application(
     version_file: Optional[str] = None,

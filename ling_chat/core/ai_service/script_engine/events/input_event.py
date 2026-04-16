@@ -10,8 +10,8 @@ class InputEvent(BaseEvent):
     """处理输入对话信息事件"""
 
     async def _execute(self):
-        hint: str = self.event_data.get('hint', '')
-        duration: float = self.event_data.get('duration', 0.0)
+        hint: str = self.event_data.get("hint", "")
+        duration: float = self.event_data.get("duration", 0.0)
         logger.info(f"InputEvent: {hint}")
 
         # 推送前端需要输入的事件
@@ -22,12 +22,18 @@ class InputEvent(BaseEvent):
         user_input = await ScriptFunction.wait_for_user_input(self.client_id)
 
         # TODO: 等待更优雅的发言思考者判断重构
-        await message_broker.publish(self.client_id, (ResponseFactory.create_thinking(True).model_dump()))
+        await message_broker.publish(
+            self.client_id, (ResponseFactory.create_thinking(True).model_dump())
+        )
 
         # 将用户输入存储到游戏上下文
         if user_input is not None:
             self.game_status.add_line(
-                LineBase(content=user_input,attribute=LineAttribute.USER,display_name=self.game_status.player.user_name)
+                LineBase(
+                    content=user_input,
+                    attribute=LineAttribute.USER,
+                    display_name=self.game_status.player.user_name,
+                )
             )
         else:
             logger.warning("剧本输入事件中用户未输入任何内容")
@@ -36,4 +42,4 @@ class InputEvent(BaseEvent):
 
     @classmethod
     def can_handle(cls, event_type: str) -> bool:
-        return event_type == 'input'
+        return event_type == "input"

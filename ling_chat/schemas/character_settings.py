@@ -1,10 +1,13 @@
 from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, ConfigDict, Field
+
 
 class VoiceModel(BaseModel):
     """
     语音模型
     """
+
     sva_speaker_id: Optional[str] = None
     sbv2_name: Optional[str] = None
     sbv2_speaker_id: Optional[str] = None

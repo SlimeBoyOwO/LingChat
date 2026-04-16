@@ -7,20 +7,28 @@ from .responses import *
 
 class ResponseFactory:
     @staticmethod
-    def create_reply(seg: Dict, user_message: str, is_final: bool, display_name: Optional[str] = None, display_subtitle: Optional[str] = None) -> ReplyResponse:
+    def create_reply(
+        seg: Dict,
+        user_message: str,
+        is_final: bool,
+        display_name: Optional[str] = None,
+        display_subtitle: Optional[str] = None,
+    ) -> ReplyResponse:
         return ReplyResponse(
             character=seg.get("character", "default"),
             roleId=seg.get("role_id", None),
-            emotion=seg['predicted'] or seg["original_tag"],
-            originalTag=seg['original_tag'],
-            message=seg['following_text'],
-            ttsText=seg.get('japanese_text', None),
-            motionText=seg['motion_text'],
-            audioFile=os.path.basename(seg['voice_file']) if os.path.exists(seg['voice_file']) else None,
+            emotion=seg["predicted"] or seg["original_tag"],
+            originalTag=seg["original_tag"],
+            message=seg["following_text"],
+            ttsText=seg.get("japanese_text", None),
+            motionText=seg["motion_text"],
+            audioFile=os.path.basename(seg["voice_file"])
+            if os.path.exists(seg["voice_file"])
+            else None,
             originalMessage=user_message,
             isFinal=is_final,
             displayName=display_name,
-            displaySubtitle=display_subtitle
+            displaySubtitle=display_subtitle,
         )
 
     @staticmethod
@@ -33,19 +41,19 @@ class ResponseFactory:
             motionText="",
             audioFile=None,
             originalMessage="",
-            isFinal=True
+            isFinal=True,
         )
-    
+
     @staticmethod
     def create_thinking(is_thinking: bool) -> ThinkingResponse:
         return ThinkingResponse(isThinking=is_thinking)
-    
+
     @staticmethod
     def create_chapter_change(chapter_info: str) -> ChapterChangeResponse:
         return ChapterChangeResponse(chapterName=chapter_info)
-    
+
     @staticmethod
-    def create_choice(choices: list[str],allow_free: bool = False) -> ChoiceResponse:
+    def create_choice(choices: list[str], allow_free: bool = False) -> ChoiceResponse:
         return ChoiceResponse(choices=choices, allowFree=allow_free)
 
     @staticmethod
@@ -53,15 +61,23 @@ class ResponseFactory:
         return ScriptInputResponse(hint=hint, isFinal=True, **kwargs)
 
     @staticmethod
-    def create_background(image: str, transition: float, **kwargs) -> ScriptBackgroundResponse:
-        return ScriptBackgroundResponse(imagePath=image, transition=transition, **kwargs)
-    
+    def create_background(
+        image: str, transition: float, **kwargs
+    ) -> ScriptBackgroundResponse:
+        return ScriptBackgroundResponse(
+            imagePath=image, transition=transition, **kwargs
+        )
+
     @staticmethod
-    def create_present_pic(image: str, scale: int, **kwargs) -> ScriptPresentPicResponse:
+    def create_present_pic(
+        image: str, scale: int, **kwargs
+    ) -> ScriptPresentPicResponse:
         return ScriptPresentPicResponse(imagePath=image, scale=scale, **kwargs)
 
     @staticmethod
-    def create_background_effect(effect: str, **kwargs) -> ScriptBackgroundEffectResponse:
+    def create_background_effect(
+        effect: str, **kwargs
+    ) -> ScriptBackgroundEffectResponse:
         return ScriptBackgroundEffectResponse(effect=effect, **kwargs)
 
     @staticmethod
@@ -73,18 +89,27 @@ class ResponseFactory:
         return ScriptMusicResponse(musicPath=music, **kwargs)
 
     @staticmethod
-    def create_narration(text: str, display_name: Optional[str] = None, duration: float = -1) -> ScriptNarrationResponse:
-        return ScriptNarrationResponse(text=text, displayName=display_name, duration=duration)
+    def create_narration(
+        text: str, display_name: Optional[str] = None, duration: float = -1
+    ) -> ScriptNarrationResponse:
+        return ScriptNarrationResponse(
+            text=text, displayName=display_name, duration=duration
+        )
 
     @staticmethod
-    def create_player_dialogue(text: str, display_name: Optional[str] = None, display_subtitle: Optional[str] = None) -> ScriptPlayerResponse:
-        return ScriptPlayerResponse(text=text, displayName=display_name, displaySubtitle=display_subtitle)
+    def create_player_dialogue(
+        text: str,
+        display_name: Optional[str] = None,
+        display_subtitle: Optional[str] = None,
+    ) -> ScriptPlayerResponse:
+        return ScriptPlayerResponse(
+            text=text, displayName=display_name, displaySubtitle=display_subtitle
+        )
 
     @staticmethod
     def create_modify_character(**kwargs) -> ScriptModifyCharacterResponse:
         return ScriptModifyCharacterResponse(**kwargs)
-    
+
     @staticmethod
     def create_script_end() -> ScriptEndResponse:
         return ScriptEndResponse()
-

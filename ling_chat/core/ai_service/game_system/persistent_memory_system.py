@@ -3,11 +3,11 @@ import os
 import time
 from typing import Dict, List, Tuple
 
+from ling_chat.core.ai_service.game_system.memory_builder import MemoryBuilder
+from ling_chat.core.ai_service.type import GameRole
 from ling_chat.core.llm_providers.manager import LLMManager
 from ling_chat.core.logger import TermColors, logger
-from ling_chat.core.ai_service.type import GameRole
 from ling_chat.game_database.models import GameLine
-from ling_chat.core.ai_service.game_system.memory_builder import MemoryBuilder
 
 
 def _safe_read_int(key: str, default: int) -> int:
@@ -134,11 +134,14 @@ class PersistentMemorySystem:
         meta = self.role.memory_bank.meta
 
         # 指针异常时回滚
-        if meta.last_processed_global_idx < 0 or meta.last_processed_global_idx > current_total:
+        if (
+            meta.last_processed_global_idx < 0
+            or meta.last_processed_global_idx > current_total
+        ):
             meta.last_processed_global_idx = 0
 
         # 取出这段区间的可见台词文本（只总结“该角色说过/听到过”的内容）
-        new_lines = all_lines[meta.last_processed_global_idx:current_total]
+        new_lines = all_lines[meta.last_processed_global_idx : current_total]
         chat_text, visible_count = self._build_chat_text_and_count(new_lines)
         target_idx = current_total
 
@@ -172,6 +175,7 @@ class PersistentMemorySystem:
         - visible_count：只统计“该角色可见”的非 system 台词数量，用于触发阈值判断
         - chat_text：用 MemoryBuilder.build(lines) 的结果生成单次 prompt 文本，保留 display_name/情绪/动作/TTS 等信息
         """
+
         def _attr_value(line: GameLine) -> str:
             a = line.attribute
             try:
@@ -184,7 +188,9 @@ class PersistentMemorySystem:
         for line in lines:
             if _attr_value(line) == "system":
                 continue
-            if line.sender_role_id == self.role_id or (self.role_id in (line.perceived_role_ids or [])):
+            if line.sender_role_id == self.role_id or (
+                self.role_id in (line.perceived_role_ids or [])
+            ):
                 if (line.content or "").strip():
                     visible_count += 1
 
@@ -213,7 +219,9 @@ class PersistentMemorySystem:
 
         return ("\n".join(chunks) + ("\n" if chunks else "")), visible_count
 
-    async def _run_update_pipeline(self, loop: asyncio.AbstractEventLoop, chat_text: str, new_total_idx: int) -> None:
+    async def _run_update_pipeline(
+        self, loop: asyncio.AbstractEventLoop, chat_text: str, new_total_idx: int
+    ) -> None:
         try:
             logger.info(
                 f"MemoryBank: 开始处理记忆压缩 role_id={self.role_id} (范围: {self.role.memory_bank.meta.last_processed_global_idx} -> {new_total_idx})..."
@@ -239,7 +247,9 @@ class PersistentMemorySystem:
                 )
 
                 messages = [{"role": "user", "content": full_prompt}]
-                response = await loop.run_in_executor(None, self._llm.process_message, messages)
+                response = await loop.run_in_executor(
+                    None, self._llm.process_message, messages
+                )
                 cleaned = (response or "").strip()
                 return section_key, (cleaned if cleaned else old_content)
 
@@ -266,4 +276,3 @@ class PersistentMemorySystem:
             logger.error(f"MemoryBank 更新流水线严重错误: {e}", exc_info=True)
         finally:
             self.is_updating = False
-

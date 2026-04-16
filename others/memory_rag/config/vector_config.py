@@ -3,20 +3,24 @@ from typing import Any, ClassVar, Dict, List, Optional
 
 import chromadb
 from chromadb.config import Settings
-
 from pydantic import BaseModel, Field, model_validator
 
 logger = logging.getLogger(__name__)
+
 
 class ChromaDbConfig(BaseModel):
     try:
         from chromadb.api.client import Client
     except ImportError:
-        raise ImportError("The 'chromadb' library is required. Please install it using 'pip install chromadb'.")
+        raise ImportError(
+            "The 'chromadb' library is required. Please install it using 'pip install chromadb'."
+        )
     Client: ClassVar[type] = Client
 
     collection_name: str = Field("mem0", description="Default name for the collection")
-    client: Optional[Client] = Field(None, description="Existing ChromaDB client instance")
+    client: Optional[Client] = Field(
+        None, description="Existing ChromaDB client instance"
+    )
     path: Optional[str] = Field(None, description="Path to the database directory")
     host: Optional[str] = Field(None, description="Database connection remote host")
     port: Optional[int] = Field(None, description="Database connection remote port")
@@ -44,12 +48,14 @@ class ChromaDbConfig(BaseModel):
         "arbitrary_types_allowed": True,
     }
 
+
 class OutputData(BaseModel):
     id: Optional[str]  # memory id
     score: Optional[float]  # distance
     payload: Optional[Dict]  # metadata
 
-class ChromaDB():
+
+class ChromaDB:
     def __init__(
         self,
         collection_name: str,
@@ -105,14 +111,24 @@ class ChromaDB():
             values.append(value)
 
         ids, distances, metadatas = values
-        max_length = max(len(v) for v in values if isinstance(v, list) and v is not None)
+        max_length = max(
+            len(v) for v in values if isinstance(v, list) and v is not None
+        )
 
         result = []
         for i in range(max_length):
             entry = OutputData(
                 id=ids[i] if isinstance(ids, list) and ids and i < len(ids) else None,
-                score=(distances[i] if isinstance(distances, list) and distances and i < len(distances) else None),
-                payload=(metadatas[i] if isinstance(metadatas, list) and metadatas and i < len(metadatas) else None),
+                score=(
+                    distances[i]
+                    if isinstance(distances, list) and distances and i < len(distances)
+                    else None
+                ),
+                payload=(
+                    metadatas[i]
+                    if isinstance(metadatas, list) and metadatas and i < len(metadatas)
+                    else None
+                ),
             )
             result.append(entry)
 
@@ -132,7 +148,7 @@ class ChromaDB():
         collection = self.client.get_or_create_collection(
             name=name,
             embedding_function=embedding_fn,
-            metadata={"hnsw:space": "cosine"}
+            metadata={"hnsw:space": "cosine"},
         )
         return collection
 
@@ -150,11 +166,17 @@ class ChromaDB():
             payloads (Optional[List[Dict]], optional): List of payloads corresponding to vectors. Defaults to None.
             ids (Optional[List[str]], optional): List of IDs corresponding to vectors. Defaults to None.
         """
-        logger.info(f"Inserting {len(vectors)} vectors into collection {self.collection_name}")
+        logger.info(
+            f"Inserting {len(vectors)} vectors into collection {self.collection_name}"
+        )
         self.collection.add(ids=ids, embeddings=vectors, metadatas=payloads)
 
     def search(
-        self, query: str, vectors: List[list], limit: int = 5, filters: Optional[Dict] = None
+        self,
+        query: str,
+        vectors: List[list],
+        limit: int = 5,
+        filters: Optional[Dict] = None,
     ) -> List[OutputData]:
         """
         Search for similar vectors.
@@ -168,7 +190,9 @@ class ChromaDB():
         Returns:
             List[OutputData]: Search results.
         """
-        results = self.collection.query(query_embeddings=vectors, where=filters, n_results=limit)
+        results = self.collection.query(
+            query_embeddings=vectors, where=filters, n_results=limit
+        )
         final_results = self._parse_output(results)
         return final_results
 
@@ -234,7 +258,9 @@ class ChromaDB():
         """
         return self.client.get_collection(name=self.collection_name)
 
-    def list(self, filters: Optional[Dict] = None, limit: int = 100) -> List[OutputData]:
+    def list(
+        self, filters: Optional[Dict] = None, limit: int = 100
+    ) -> List[OutputData]:
         """
         List all vectors in a collection.
 
@@ -261,8 +287,8 @@ class VectorStoreConfig(BaseModel):
         default="chroma",
     )
     config: Optional[Dict] = Field(
-        description="Configuration for the specific vector store", 
-        default_factory=lambda: {"collection_name": "openmemory"}
+        description="Configuration for the specific vector store",
+        default_factory=lambda: {"collection_name": "openmemory"},
     )
 
     _provider_configs: Dict[str, str] = {
@@ -310,10 +336,10 @@ class VectorStoreConfig(BaseModel):
             if not isinstance(config, config_class):
                 raise ValueError(f"Invalid config type for provider {provider}")
             return self
-        
+
         # also check if path in allowed keys for pydantic model, and whether config extra fields are allowed
         if "path" not in config and "path" in config_class.__annotations__:
             config["path"] = "data/chroma_db_store"
-        
+
         self.config = config_class(**config)
         return self

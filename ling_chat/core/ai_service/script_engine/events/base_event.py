@@ -9,7 +9,12 @@ from ling_chat.core.ai_service.script_engine.utils.script_function import Script
 class BaseEvent(ABC):
     """事件基类"""
 
-    def __init__(self, config: AIServiceConfig, event_data: dict[str, Any], game_status: GameStatus):
+    def __init__(
+        self,
+        config: AIServiceConfig,
+        event_data: dict[str, Any],
+        game_status: GameStatus,
+    ):
         self.config = config
         self.event_data = event_data
         self.game_status = game_status
@@ -19,11 +24,11 @@ class BaseEvent(ABC):
         if self.game_status.script_status.running_client_id is None:
             raise ValueError("没有记录正在运行剧本的客户端！")
         self.client_id = self.game_status.script_status.running_client_id
-    
+
     async def process(self) -> Any:
         if not self.is_executable():
             return None
-        
+
         return await self._execute()
 
     @abstractmethod
@@ -33,7 +38,7 @@ class BaseEvent(ABC):
 
     def is_executable(self) -> bool:
         """判断事件是否可执行"""
-        condition = self.event_data.get("condition",None)
+        condition = self.event_data.get("condition", None)
         if condition:
             # 获取剧本变量字典（只使用剧本变量，不包含全局变量）
             vars_dict = (

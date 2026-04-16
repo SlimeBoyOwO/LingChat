@@ -1,12 +1,13 @@
+import asyncio
+import json
 import os
 import threading
-import asyncio
 from typing import AsyncGenerator
-import json
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+
 from ling_chat.core.logger import logger
 
 from ..update.update_main import create_application
@@ -19,25 +20,25 @@ update_status = {
     "progress": 0,
     "message": "",
     "update_info": None,
-    "error": None
+    "error": None,
 }
 
-update_config = {
-    "auto_backup": True,
-    "auto_apply": False
-}
+update_config = {"auto_backup": True, "auto_apply": False}
 
 # SSE 状态管理
 sse_queues = set()  # 存储所有活跃的SSE队列
 sse_lock = threading.Lock()  # 保护SSE队列的锁
+
 
 # 请求模型
 class UpdateConfig(BaseModel):
     auto_backup: bool = True
     auto_apply: bool = False
 
+
 class ApplyUpdateRequest(BaseModel):
     backup: bool = True
+
 
 # 初始化更新应用
 def init_update_application():
@@ -60,11 +61,13 @@ def init_update_application():
     return create_application(
         version_file=os.path.join(project_root, "version"),
         update_url=update_url,
-        app_dir=project_root  # 传递项目根目录
+        app_dir=project_root,  # 传递项目根目录
     )
+
 
 # 初始化更新应用
 update_application = init_update_application()
+
 
 # 回调函数
 def update_status_callback(status, old_status=None):
@@ -73,27 +76,32 @@ def update_status_callback(status, old_status=None):
         update_status["message"] = "更新过程中出现错误"
     notify_sse_clients()
 
+
 def update_progress_callback(progress):
     update_status["progress"] = progress
     if progress == 100:
         update_status["message"] = "操作完成"
     notify_sse_clients()
 
+
 def update_available_callback(update_info):
     update_status["update_info"] = update_info
     update_status["message"] = f"发现新版本: {update_info.get('version', '未知')}"
     notify_sse_clients()
+
 
 def update_completed_callback(update_info):
     update_status["message"] = "更新完成，请重启应用"
     update_status["status"] = "completed"
     notify_sse_clients()
 
+
 def error_callback(error):
     update_status["error"] = error
     update_status["status"] = "error"
     update_status["message"] = f"错误: {error}"
     notify_sse_clients()
+
 
 def notify_sse_clients():
     """通知所有SSE客户端状态更新"""
@@ -111,15 +119,25 @@ def notify_sse_clients():
                 except KeyError:
                     pass
 
+
 # 注册回调
-update_application.update_manager.register_callback("status_changed", update_status_callback)
-update_application.update_manager.register_callback("progress_changed", update_progress_callback)
-update_application.update_manager.register_callback("update_available", update_available_callback)
-update_application.update_manager.register_callback("update_completed", update_completed_callback)
+update_application.update_manager.register_callback(
+    "status_changed", update_status_callback
+)
+update_application.update_manager.register_callback(
+    "progress_changed", update_progress_callback
+)
+update_application.update_manager.register_callback(
+    "update_available", update_available_callback
+)
+update_application.update_manager.register_callback(
+    "update_completed", update_completed_callback
+)
 update_application.update_manager.register_callback("error_occurred", error_callback)
 
 # 线程锁，防止并发更新
 update_lock = threading.Lock()
+
 
 def execute_update_operation(operation_type, backup=True):
     """执行更新操作"""
@@ -132,36 +150,48 @@ def execute_update_operation(operation_type, backup=True):
                 update_status["message"] = "发现新版本"
 
                 # 处理更新链信息
-                if update_info and update_info.get('update_chain'):
-                    update_chain = update_info.get('update_chain', [])
+                if update_info and update_info.get("update_chain"):
+                    update_chain = update_info.get("update_chain", [])
                     if update_chain:
-                        update_status["message"] = f"发现 {len(update_chain)} 个待更新版本"
+                        update_status["message"] = (
+                            f"发现 {len(update_chain)} 个待更新版本"
+                        )
                 else:
                     # 单版本兼容
-                    target_version = update_info.get('target_version') if update_info else None
-                    version_str = update_info.get('version') if update_info else None
-                    display_version = target_version or version_str or '未知'
+                    target_version = (
+                        update_info.get("target_version") if update_info else None
+                    )
+                    version_str = update_info.get("version") if update_info else None
+                    display_version = target_version or version_str or "未知"
                     update_status["message"] = f"发现更新: {display_version}"
             else:
-                update_status.update({
-                    "status": "idle",
-                    "message": "当前已是最新版本",
-                    "update_info": None
-                })
+                update_status.update(
+                    {
+                        "status": "idle",
+                        "message": "当前已是最新版本",
+                        "update_info": None,
+                    }
+                )
             return {"success": True, "update_found": found}
 
         elif operation_type == "apply":
             success = update_application.start_continuous_update(backup=backup)
             if success:
-                update_status.update({
-                    "status": "completed",
-                    "progress": 100,
-                    "message": "更新完成，请重启应用"
-                })
+                update_status.update(
+                    {
+                        "status": "completed",
+                        "progress": 100,
+                        "message": "更新完成，请重启应用",
+                    }
+                )
                 # 更新本地版本显示
                 update_info = update_application.update_manager.get_update_info()
                 if update_info:
-                    new_version = update_info.get('target_version') or update_info.get('version') or update_application.version
+                    new_version = (
+                        update_info.get("target_version")
+                        or update_info.get("version")
+                        or update_application.version
+                    )
                     update_application.version = new_version
             else:
                 error_callback("更新失败")
@@ -170,11 +200,13 @@ def execute_update_operation(operation_type, backup=True):
         elif operation_type == "rollback":
             success = update_application.rollback()
             if success:
-                update_status.update({
-                    "status": "completed",
-                    "progress": 100,
-                    "message": "回滚完成，请重启应用"
-                })
+                update_status.update(
+                    {
+                        "status": "completed",
+                        "progress": 100,
+                        "message": "回滚完成，请重启应用",
+                    }
+                )
             else:
                 error_callback("回滚失败")
             return {"success": success}
@@ -186,6 +218,7 @@ def execute_update_operation(operation_type, backup=True):
         error_callback(str(e))
         return {"success": False, "error": str(e)}
 
+
 @router.post("/check")
 async def check_update():
     """检查更新"""
@@ -193,12 +226,14 @@ async def check_update():
         raise HTTPException(status_code=409, detail="已有更新操作在进行中")
 
     try:
-        update_status.update({
-            "status": "checking",
-            "progress": 0,
-            "message": "正在检查更新...",
-            "error": None
-        })
+        update_status.update(
+            {
+                "status": "checking",
+                "progress": 0,
+                "message": "正在检查更新...",
+                "error": None,
+            }
+        )
 
         def check():
             try:
@@ -215,6 +250,7 @@ async def check_update():
         update_lock.release()
         raise HTTPException(status_code=500, detail=f"启动检查更新失败: {str(e)}")
 
+
 @router.post("/apply")
 async def apply_update(request_data: ApplyUpdateRequest):
     """应用更新"""
@@ -224,12 +260,14 @@ async def apply_update(request_data: ApplyUpdateRequest):
     backup = request_data.backup
 
     try:
-        update_status.update({
-            "status": "downloading",
-            "progress": 0,
-            "message": "开始下载更新...",
-            "error": None
-        })
+        update_status.update(
+            {
+                "status": "downloading",
+                "progress": 0,
+                "message": "开始下载更新...",
+                "error": None,
+            }
+        )
 
         def apply():
             try:
@@ -246,6 +284,7 @@ async def apply_update(request_data: ApplyUpdateRequest):
         update_lock.release()
         raise HTTPException(status_code=500, detail=f"启动更新失败: {str(e)}")
 
+
 @router.post("/rollback")
 async def rollback_update():
     """回滚更新"""
@@ -253,12 +292,14 @@ async def rollback_update():
         raise HTTPException(status_code=409, detail="已有更新操作在进行中")
 
     try:
-        update_status.update({
-            "status": "rolling_back",
-            "progress": 0,
-            "message": "正在回滚...",
-            "error": None
-        })
+        update_status.update(
+            {
+                "status": "rolling_back",
+                "progress": 0,
+                "message": "正在回滚...",
+                "error": None,
+            }
+        )
 
         def rollback():
             try:
@@ -275,10 +316,12 @@ async def rollback_update():
         update_lock.release()
         raise HTTPException(status_code=500, detail=f"启动回滚失败: {str(e)}")
 
+
 @router.get("/status")
 async def get_update_status():
     """获取更新状态"""
     return update_status
+
 
 @router.get("/info")
 async def get_app_info():
@@ -289,7 +332,7 @@ async def get_app_info():
     if update_available:
         try:
             chain_info = update_application.get_update_chain_info()
-            if chain_info and chain_info.get('update_count', 0) > 1:
+            if chain_info and chain_info.get("update_count", 0) > 1:
                 update_chain_info = chain_info
         except Exception as e:
             print(f"获取更新链信息失败: {e}")
@@ -297,13 +340,15 @@ async def get_app_info():
     return {
         "current_version": update_application.version,
         "update_available": update_available,
-        "update_chain_info": update_chain_info
+        "update_chain_info": update_chain_info,
     }
+
 
 @router.get("/config")
 async def get_config():
     """获取更新配置"""
     return update_config
+
 
 @router.post("/config")
 async def update_config_route(config: UpdateConfig):
@@ -315,14 +360,17 @@ async def update_config_route(config: UpdateConfig):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.get("/health")
 async def health_check():
     """健康检查"""
     return {"status": "ok", "message": "更新服务正常运行"}
 
+
 @router.get("/status/stream")
 async def stream_update_status():
     """SSE端点：流式推送更新状态"""
+
     async def event_generator() -> AsyncGenerator[str, None]:
         # 创建一个新的队列用于此连接
         queue = asyncio.Queue(maxsize=10)
@@ -358,5 +406,5 @@ async def stream_update_status():
             "Connection": "keep-alive",
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Headers": "Cache-Control",
-        }
+        },
     )

@@ -7,4 +7,13 @@ from .sbv2api_adapter import SBV2APIAdapter
 from .tts_provider import TTS
 from .vits_adapter import VitsAdapter
 
-__all__ = ['TTS', 'VitsAdapter', 'SBV2Adapter', 'GPTSoVITSAdapter', 'BV2Adapter', 'SBV2APIAdapter', 'AIVISAdapter', 'IndexTTSAdapter']
+__all__ = [
+    "TTS",
+    "VitsAdapter",
+    "SBV2Adapter",
+    "GPTSoVITSAdapter",
+    "BV2Adapter",
+    "SBV2APIAdapter",
+    "AIVISAdapter",
+    "IndexTTSAdapter",
+]

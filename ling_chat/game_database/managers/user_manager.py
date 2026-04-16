@@ -1,7 +1,10 @@
 from typing import Optional
+
 from sqlmodel import Session, select
+
 from ling_chat.game_database.database import engine
-from ling_chat.game_database.models import UserInfo, Role, Save
+from ling_chat.game_database.models import Role, Save, UserInfo
+
 
 class UserManager:
     @staticmethod
@@ -11,8 +14,10 @@ class UserManager:
             statement = select(UserInfo).where(UserInfo.username == username)
             if session.exec(statement).first():
                 raise ValueError(f"Username {username} already exists")
-            
-            user = UserInfo(username=username, password=password) # In real app, hash password
+
+            user = UserInfo(
+                username=username, password=password
+            )  # In real app, hash password
             session.add(user)
             session.commit()
             session.refresh(user)
@@ -22,7 +27,7 @@ class UserManager:
     def get_user_by_id(user_id: int) -> Optional[UserInfo]:
         with Session(engine, expire_on_commit=False) as session:
             return session.get(UserInfo, user_id)
-            
+
     @staticmethod
     def get_user_by_username(username: str) -> Optional[UserInfo]:
         with Session(engine, expire_on_commit=False) as session:
@@ -48,7 +53,7 @@ class UserManager:
                 session.commit()
                 return True
             return False
-        
+
     @staticmethod
     def update_last_save(user_id: int, save_id: int) -> bool:
         with Session(engine, expire_on_commit=False) as session:

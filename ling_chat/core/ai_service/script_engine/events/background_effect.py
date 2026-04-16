@@ -8,17 +8,17 @@ class BackgroundEffectEvent(BaseEvent):
     """处理音效事件"""
 
     async def _execute(self):
-        background_effect:str = self.event_data.get('effect', '')
-        duration:float = self.event_data.get('duration', '')
+        background_effect: str = self.event_data.get("effect", "")
+        duration: float = self.event_data.get("duration", "")
 
         logger.info(f"背景特效: {background_effect}")
         self.game_status.background_effect = background_effect
 
-        event_response = ResponseFactory.create_background_effect(background_effect, duration = duration)
-        await message_broker.publish(self.client_id,
-            event_response.model_dump()
+        event_response = ResponseFactory.create_background_effect(
+            background_effect, duration=duration
         )
+        await message_broker.publish(self.client_id, event_response.model_dump())
 
     @classmethod
     def can_handle(cls, event_type: str) -> bool:
-        return event_type == 'background_effect'
+        return event_type == "background_effect"

@@ -1,16 +1,18 @@
-from enum import Enum
 from dataclasses import dataclass
-from typing import Optional
+from enum import Enum
+
 
 class UserState(Enum):
-    IDLE = "IDLE"           # 挂机
-    BROWSING = "BROWSING"   # 浏览/轻度使用
-    WORK = "WORK"           # 工作
-    GAME = "GAME"           # 游戏
+    IDLE = "IDLE"  # 挂机
+    BROWSING = "BROWSING"  # 浏览/轻度使用
+    WORK = "WORK"  # 工作
+    GAME = "GAME"  # 游戏
+
 
 @dataclass
 class PerceptionResult:
     """感知层返回的一段时间内的汇总数据"""
+
     state: UserState
     description: str
     interest_modifier: int  # 对AI兴趣值的修正（如工作-25，游戏+10）

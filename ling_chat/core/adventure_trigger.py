@@ -17,6 +17,7 @@ class AdventureTriggerSystem:
     2. 程序启动时 / 角色切换时
     3. 冒险完成后（检查后续冒险是否解锁）
     """
+
     _instance: Optional["AdventureTriggerSystem"] = None
 
     @classmethod
@@ -69,15 +70,19 @@ class AdventureTriggerSystem:
                     character_folder=adv.bound_character_folder,
                 )
 
-                newly_unlocked.append({
-                    "adventure_folder": script.folder_key,
-                    "name": script.name,
-                    "description": script.description,
-                    "character_folder": adv.bound_character_folder,
-                    "order": adv.order,
-                })
+                newly_unlocked.append(
+                    {
+                        "adventure_folder": script.folder_key,
+                        "name": script.name,
+                        "description": script.description,
+                        "character_folder": adv.bound_character_folder,
+                        "order": adv.order,
+                    }
+                )
 
-                logger.info(f"羁绊冒险已解锁: {script.name} (folder={script.folder_key})")
+                logger.info(
+                    f"羁绊冒险已解锁: {script.name} (folder={script.folder_key})"
+                )
 
         return newly_unlocked
 
@@ -86,7 +91,7 @@ class AdventureTriggerSystem:
         user_id: int,
         adv: AdventureConfig,
         chat_count: int,
-        game_status: GameStatus
+        game_status: GameStatus,
     ) -> bool:
         """检查单个冒险的所有解锁条件（AND 逻辑，全部满足才解锁）"""
         conditions = adv.unlock_conditions
@@ -104,7 +109,9 @@ class AdventureTriggerSystem:
                         return False
 
             elif cond_type == "time_range":
-                if not self._check_time_range(cond.get("start_hour", 0), cond.get("end_hour", 0)):
+                if not self._check_time_range(
+                    cond.get("start_hour", 0), cond.get("end_hour", 0)
+                ):
                     return False
 
             elif cond_type == "adventure_completed":

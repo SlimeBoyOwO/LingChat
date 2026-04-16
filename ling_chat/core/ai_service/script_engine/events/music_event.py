@@ -8,17 +8,15 @@ class MusicEvent(BaseEvent):
     """处理音效事件"""
 
     async def _execute(self):
-        music:str = self.event_data.get('musicPath', '')
-        duration:float = self.event_data.get('duration', '')
+        music: str = self.event_data.get("musicPath", "")
+        duration: float = self.event_data.get("duration", "")
 
         logger.info(f"播放音乐: {music}")
         self.game_status.background_music = music
 
-        event_response = ResponseFactory.create_music(music, duration = duration)
-        await message_broker.publish(self.client_id,
-                event_response.model_dump()
-            )
+        event_response = ResponseFactory.create_music(music, duration=duration)
+        await message_broker.publish(self.client_id, event_response.model_dump())
 
     @classmethod
     def can_handle(cls, event_type: str) -> bool:
-        return event_type == 'music'
+        return event_type == "music"

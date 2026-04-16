@@ -1,42 +1,36 @@
 import asyncio
-import copy
-import json
 import os
 from typing import Dict
 
-from ling_chat.core.ai_service.exceptions import ScriptEngineError
-from ling_chat.core.ai_service.game_system.game_status import GameStatus
-from ling_chat.core.ai_service.proactive_system.core import ProactiveSystem
-from ling_chat.core.schemas.response_models import ResponseFactory
-from ling_chat.game_database.models import GameLine, LineAttribute, LineBase
 from ling_chat.core.ai_service.ai_logger import AILogger
 from ling_chat.core.ai_service.config import AIServiceConfig
-from ling_chat.core.ai_service.message_system.message_processor import MessageProcessor
+from ling_chat.core.ai_service.exceptions import ScriptEngineError
+from ling_chat.core.ai_service.game_system.game_status import GameStatus
 from ling_chat.core.ai_service.message_system.message_generator import MessageGenerator
+from ling_chat.core.ai_service.message_system.message_processor import MessageProcessor
+from ling_chat.core.ai_service.proactive_system.core import ProactiveSystem
 from ling_chat.core.ai_service.script_engine.script_manager import ScriptManager
 from ling_chat.core.ai_service.translator import Translator
 from ling_chat.core.llm_providers.manager import LLMManager
-from ling_chat.schemas.character_settings import CharacterSettings
-from ling_chat.utils.function import Function
 from ling_chat.core.logger import logger
 from ling_chat.core.messaging.broker import message_broker
-from pathlib import Path
-from ling_chat.utils.runtime_path import user_data_path
-from datetime import datetime
-from ling_chat.utils.scene_utils import get_scene_description
-from ling_chat.game_database.models import LineBase, LineAttribute
+from ling_chat.core.schemas.response_models import ResponseFactory
+from ling_chat.game_database.models import GameLine, LineAttribute, LineBase
+from ling_chat.schemas.character_settings import CharacterSettings
+from ling_chat.utils.function import Function
+
+
 class AIService:
     def __init__(self, settings: CharacterSettings):
-
         """
         初始化AI助手实例
-        
+
         参数:
             settings: 配置字典，包含各种设置项
         """
         self.game_status = GameStatus()
 
-        self.user_id = "1"   # TODO: 多用户的时候这里可以改成按照初始化获取，或者直接从client_id中获取
+        self.user_id = "1"  # TODO: 多用户的时候这里可以改成按照初始化获取，或者直接从client_id中获取
 
         self.config = AIServiceConfig(clients=set(), user_id=self.user_id)
 
@@ -46,12 +40,14 @@ class AIService:
         self.translator = Translator(self.game_status)
         self.message_broker = message_broker
         self.message_processor = MessageProcessor(self.game_status)
-        self.message_generator = MessageGenerator(self.config,
-                                                  self.message_processor,
-                                                  self.translator,
-                                                  self.llm_model,
-                                                  self.ai_logger,
-                                                  self.game_status)
+        self.message_generator = MessageGenerator(
+            self.config,
+            self.message_processor,
+            self.translator,
+            self.llm_model,
+            self.ai_logger,
+            self.game_status,
+        )
 
         # self.events_scheduler.start_nodification_schedules()        # 之后会通过API设置和处理
 
@@ -66,7 +62,9 @@ class AIService:
         self.global_task = asyncio.create_task(self._process_global_messages())
 
         # self.events_scheduler = EventsScheduler(self.config)
-        self.proactive_system = ProactiveSystem(self.config, self.game_status, self.message_generator, self._generation_lock)
+        self.proactive_system = ProactiveSystem(
+            self.config, self.game_status, self.message_generator, self._generation_lock
+        )
         self.import_settings(settings)
         # self.events_scheduler.start_nodification_schedules()        # TODO: 这个由前端开关控制
         self.proactive_system.start()
@@ -78,25 +76,33 @@ class AIService:
 
     def import_settings(self, settings: CharacterSettings) -> None:
         # TODO: 这些以后全都可以删除，改为通过修改game_status的GameRole来实现
-        if(settings):
+        if settings:
             self.character_path = settings.resource_path
-            self.character_id = settings.character_id  # TODO: character_id就是查找的role_id，这里写的不太优雅，可以之后优化
+            self.character_id = (
+                settings.character_id
+            )  # TODO: character_id就是查找的role_id，这里写的不太优雅，可以之后优化
             self.ai_name = settings.ai_name
             self.ai_subtitle = settings.ai_subtitle
             self.user_name = settings.user_name
             self.user_subtitle = settings.user_subtitle
-            self.ai_prompt = settings.system_prompt or "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息"
+            self.ai_prompt = (
+                settings.system_prompt
+                or "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息"
+            )
             self.game_status.player.user_name = self.user_name
-            self.game_status.player.user_subtitle = self.user_subtitle if self.user_subtitle else ""
+            self.game_status.player.user_subtitle = (
+                self.user_subtitle if self.user_subtitle else ""
+            )
 
             self.ai_prompt_example = settings.system_prompt_example
             self.ai_prompt_example_old = settings.system_prompt_example_old
-            self.ai_prompt = Function.sys_prompt_builder(self.user_name,
-                                                         self.ai_name,
-                                                         self.ai_prompt,
-                                                         self.ai_prompt_example,
-                                                         self.ai_prompt_example_old
-                                                         )
+            self.ai_prompt = Function.sys_prompt_builder(
+                self.user_name,
+                self.ai_name,
+                self.ai_prompt,
+                self.ai_prompt_example,
+                self.ai_prompt_example_old,
+            )
 
             self.clothes_name = settings.clothes_name
             self.body_part = settings.body_part
@@ -116,8 +122,14 @@ class AIService:
         """
         try:
             llm_keys = {
-                "LLM_PROVIDER", "MODEL_TYPE", "CHAT_API_KEY", "CHAT_BASE_URL",
-                "TRANSLATE_LLM_PROVIDER", "TRANSLATE_MODEL", "TRANSLATE_API_KEY", "TRANSLATE_BASE_URL"
+                "LLM_PROVIDER",
+                "MODEL_TYPE",
+                "CHAT_API_KEY",
+                "CHAT_BASE_URL",
+                "TRANSLATE_LLM_PROVIDER",
+                "TRANSLATE_MODEL",
+                "TRANSLATE_API_KEY",
+                "TRANSLATE_BASE_URL",
             }
             if any(k in updates for k in llm_keys):
                 self.llm_model = LLMManager()
@@ -126,10 +138,14 @@ class AIService:
 
             if "COMSUMERS" in updates:
                 try:
-                    new_concurrency = int(os.environ.get("COMSUMERS", self.message_generator.concurrency))
+                    new_concurrency = int(
+                        os.environ.get("COMSUMERS", self.message_generator.concurrency)
+                    )
                     if new_concurrency > 0:
                         self.message_generator.concurrency = new_concurrency
-                        logger.info(f"运行时配置更新：并发消费者数量设置为 {new_concurrency}")
+                        logger.info(
+                            f"运行时配置更新：并发消费者数量设置为 {new_concurrency}"
+                        )
                 except Exception:
                     logger.warning("COMSUMERS 配置无效，忽略。")
 
@@ -138,15 +154,16 @@ class AIService:
 
     def get_lines(self):
         return self.game_status.line_list
-    
-    
+
     def set_active_save_id(self, save_id: int | None):
         """
         设置当前激活存档，用于 MemoryBank 持久化/自动压缩等逻辑。
         """
         self.game_status.active_save_id = save_id
 
-    def load_lines(self, lines:list[GameLine], main_role_id: int, save_id: int | None = None):
+    def load_lines(
+        self, lines: list[GameLine], main_role_id: int, save_id: int | None = None
+    ):
         self.game_status.line_list = lines
         if save_id is not None:
             self.set_active_save_id(save_id)
@@ -156,7 +173,9 @@ class AIService:
                 if line.sender_role_id:
                     involved_role_ids.add(line.sender_role_id)
                 involved_role_ids.update(line.perceived_role_ids or [])
-            self.game_status.role_manager.load_memory_banks_from_db(save_id, list(involved_role_ids))
+            self.game_status.role_manager.load_memory_banks_from_db(
+                save_id, list(involved_role_ids)
+            )
 
         self.game_status.role_manager.sync_memories(self.game_status.line_list)
         main_role = self.game_status.role_manager.get_role(role_id=main_role_id)
@@ -183,13 +202,15 @@ class AIService:
             content=self.ai_prompt,
             attribute=LineAttribute.SYSTEM,
             sender_role_id=self.character_id,
-            display_name=self.ai_name
+            display_name=self.ai_name,
         )
         self.game_status.add_line(system_line)
 
         # 只清除主角的短期记忆，保留 NPC 记忆
         if self.game_status.main_role and self.game_status.main_role.role_id:
-            self.game_status.role_manager.clear_role_memory(self.game_status.main_role.role_id)
+            self.game_status.role_manager.clear_role_memory(
+                self.game_status.main_role.role_id
+            )
 
         logger.info("对话历史已清除（仅主角记忆）")
 
@@ -198,16 +219,23 @@ class AIService:
         将运行时的 memory_bank 缓存写入 DB（仅在创建/保存存档时调用）。
         """
         self.game_status.role_manager.persist_memory_banks_to_db(save_id)
-    
+
     def _init_game_status(self):
         self.game_status.role_manager.reset_roles()
-        
+
         self.game_status.line_list = []
-        system_line = LineBase(content=self.ai_prompt, attribute=LineAttribute.SYSTEM, sender_role_id=self.character_id, display_name=self.ai_name)
+        system_line = LineBase(
+            content=self.ai_prompt,
+            attribute=LineAttribute.SYSTEM,
+            sender_role_id=self.character_id,
+            display_name=self.ai_name,
+        )
         self.game_status.add_line(system_line)
-        
+
         if self.character_id:
-            self.game_status.current_character = self.game_status.role_manager.get_role(self.character_id)
+            self.game_status.current_character = self.game_status.role_manager.get_role(
+                self.character_id
+            )
             self.game_status.onstage_role(self.game_status.current_character)
             self.game_status.main_role = self.game_status.current_character
             # logger.info(f"初始化游戏主角：{self.game_status.current_character} 已初始化。")
@@ -217,11 +245,13 @@ class AIService:
     def show_lines(self):
         logger.info("当前台词列表如下：")
         for line in self.game_status.line_list:
-            logger.info(f"{line.display_name} : 【{line.original_emotion}】{line.content}<{line.tts_content}>（{line.action_content}）")
-    
+            logger.info(
+                f"{line.display_name} : 【{line.original_emotion}】{line.content}<{line.tts_content}>（{line.action_content}）"
+            )
+
     def show_current_role_memory(self):
         if self.game_status.current_character:
-            logger.info(f"当前角色的记忆列表如下：")
+            logger.info("当前角色的记忆列表如下：")
             logger.info(f"{self.game_status.current_character.memory}")
         else:
             logger.error("没有当前绑定的角色。")
@@ -260,14 +290,16 @@ class AIService:
         if not scene:
             logger.error(f"场景不存在: {scene_id}")
             return False
-        
+
         # 确定是否之前存在场景感知台词，如果有的话，替换掉之前的感知台词
 
         # 1. 取出 game_status 中的栈顶台词
         top_line = self.game_status.line_list[-1]
 
         # 2. 判断是否是场景感知台词
-        if top_line.attribute == LineAttribute.USER and top_line.content.startswith("{ 旁白：现在场景切换到了"):
+        if top_line.attribute == LineAttribute.USER and top_line.content.startswith(
+            "{ 旁白：现在场景切换到了"
+        ):
             # 3. 替换场景感知台词
             scene_line_content = f"{{ 旁白：现在场景切换到了{scene['sceneName']}, {scene['sceneDescription']}。"
             top_line.content = scene_line_content
@@ -275,21 +307,17 @@ class AIService:
         # 4. 如果没有场景感知台词，则新增一条场景感知台词
         else:
             scene_line_content = f"{{ 旁白：现在场景切换到了{scene['sceneName']}, {scene['sceneDescription']}。"
-            line = LineBase(
-                content=scene_line_content,
-                attribute=LineAttribute.USER
-            )
+            line = LineBase(content=scene_line_content, attribute=LineAttribute.USER)
             self.game_status.add_line(line)
 
         # 更新当前场景
-        self.game_status.current_scene = scene['sceneDescription']
+        self.game_status.current_scene = scene["sceneDescription"]
 
         # 通过 WebSocket 通知前端
         for client_id in self.config.clients:
-            await message_broker.publish(client_id, {
-                "type": "scene_change",
-                "scene": scene
-            })
+            await message_broker.publish(
+                client_id, {"type": "scene_change", "scene": scene}
+            )
 
         logger.info(f"场景已加载: {scene['sceneName']}")
         return True
@@ -306,12 +334,27 @@ class AIService:
                         async with self._generation_lock:
                             self.is_processing = True
                             try:
-                                await message_broker.publish(client_id, (ResponseFactory.create_thinking(True).model_dump()))
+                                await message_broker.publish(
+                                    client_id,
+                                    (
+                                        ResponseFactory.create_thinking(
+                                            True
+                                        ).model_dump()
+                                    ),
+                                )
                                 responses = []
-                                async for response in self.message_generator.process_message_stream(user_message=user_message):
-                                    await message_broker.publish(client_id, response.model_dump())
+                                async for (
+                                    response
+                                ) in self.message_generator.process_message_stream(
+                                    user_message=user_message
+                                ):
+                                    await message_broker.publish(
+                                        client_id, response.model_dump()
+                                    )
                                     responses.append(response)
-                                logger.debug(f"消息处理完成，共生成 {len(responses)} 个响应片段")
+                                logger.debug(
+                                    f"消息处理完成，共生成 {len(responses)} 个响应片段"
+                                )
                             finally:
                                 self.is_processing = False
                         self.proactive_system.on_user_message_received()
@@ -319,7 +362,9 @@ class AIService:
                 except Exception as e:
                     logger.error(f"处理消息时发生错误: {e}")
                     self.is_processing = False
-                    await message_broker.publish(client_id, (ResponseFactory.create_thinking(False).model_dump()))
+                    await message_broker.publish(
+                        client_id, (ResponseFactory.create_thinking(False).model_dump())
+                    )
 
         except asyncio.CancelledError:
             logger.info(f"客户端 {client_id} 的消息处理任务已被取消")
@@ -334,7 +379,9 @@ class AIService:
                 # 检查是否有新的客户端需要添加
                 for client_id in self.config.clients:
                     if client_id not in self.client_tasks:
-                        task = asyncio.create_task(self._process_client_messages(client_id))
+                        task = asyncio.create_task(
+                            self._process_client_messages(client_id)
+                        )
                         self.client_tasks[client_id] = task
                         logger.info(f"已为客户端 {client_id} 创建消息处理任务")
 
@@ -381,11 +428,19 @@ class AIService:
                             self.is_processing = True
                             try:
                                 responses = []
-                                async for response in self.message_generator.process_message_stream(user_message):
+                                async for (
+                                    response
+                                ) in self.message_generator.process_message_stream(
+                                    user_message
+                                ):
                                     for client_id in self.config.clients:
-                                        await message_broker.publish(client_id, response.model_dump())
+                                        await message_broker.publish(
+                                            client_id, response.model_dump()
+                                        )
                                     responses.append(response)
-                                logger.debug(f"全局消息处理完成，共生成 {len(responses)} 个响应片段")
+                                logger.debug(
+                                    f"全局消息处理完成，共生成 {len(responses)} 个响应片段"
+                                )
                             finally:
                                 self.is_processing = False
 

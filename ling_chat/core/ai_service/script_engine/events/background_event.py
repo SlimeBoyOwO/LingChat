@@ -8,20 +8,20 @@ class BackgroundEvent(BaseEvent):
     """处理背景切换事件"""
 
     async def _execute(self):
-        image = self.event_data.get('imagePath', '')
-        transition = self.event_data.get('transition', 1.0)
-        duration = self.event_data.get('duration', 1.0)
+        image = self.event_data.get("imagePath", "")
+        transition = self.event_data.get("transition", 1.0)
+        duration = self.event_data.get("duration", 1.0)
 
         logger.info(f"切换背景: {image}")
 
         # 更新游戏状态
         self.game_status.background = image
 
-        event_response = ResponseFactory.create_background(image, transition, duration = duration)
-        await message_broker.publish(self.client_id,
-            event_response.model_dump()
+        event_response = ResponseFactory.create_background(
+            image, transition, duration=duration
         )
+        await message_broker.publish(self.client_id, event_response.model_dump())
 
     @classmethod
     def can_handle(cls, event_type: str) -> bool:
-        return event_type == 'background'
+        return event_type == "background"

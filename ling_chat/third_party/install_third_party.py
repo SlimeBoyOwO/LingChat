@@ -4,7 +4,6 @@ import zipfile
 from pathlib import Path
 
 import py7zr
-
 from ling_chat.utils.http_utils import download_file
 
 
@@ -24,11 +23,11 @@ def extract_archive(archive_path: Path, extract_to: Path):
     # 根据后缀选择解压方式
     suffix = archive_path.suffix.lower()
 
-    if suffix == '.7z':
-        with py7zr.SevenZipFile(archive_path, mode='r') as z:
+    if suffix == ".7z":
+        with py7zr.SevenZipFile(archive_path, mode="r") as z:
             z.extractall(path=extract_to)
-    elif suffix == '.zip':
-        with zipfile.ZipFile(archive_path, 'r') as z:
+    elif suffix == ".zip":
+        with zipfile.ZipFile(archive_path, "r") as z:
             z.extractall(path=extract_to)
     else:
         raise ValueError(f"不支持的压缩格式: {suffix}. 仅支持 .7z 和 .zip")
@@ -37,7 +36,9 @@ def extract_archive(archive_path: Path, extract_to: Path):
     print(f"成功解压 {archive_path} 到 {extract_to}")
 
 
-def install_from_archive_or_url(dst_path: Path, archive_path: Path | None = None, url: str = ""):
+def install_from_archive_or_url(
+    dst_path: Path, archive_path: Path | None = None, url: str = ""
+):
     if dst_path.exists():
         pass
     elif archive_path and archive_path.exists():
@@ -56,16 +57,23 @@ def install_vits(vits_path: Path, archive_path: Path | None = None, url: str = "
     安装VITS语音合成器
     """
     if archive_path is None:
-        default_archive_path = vits_path.parent / "vits-simple-api-windows-cpu-v0.6.16.7z"
+        default_archive_path = (
+            vits_path.parent / "vits-simple-api-windows-cpu-v0.6.16.7z"
+        )
         if default_archive_path.exists():
             archive_path = default_archive_path
 
-    url = url or "https://github.com/Artrajz/vits-simple-api/releases/download/v0.6.16/vits-simple-api-windows-cpu-v0.6.16.7z"
+    url = (
+        url
+        or "https://github.com/Artrajz/vits-simple-api/releases/download/v0.6.16/vits-simple-api-windows-cpu-v0.6.16.7z"
+    )
 
     install_from_archive_or_url(vits_path, archive_path, url)
 
 
-def install_vits_model(vits_path: Path, archive_path: Path | None = None, url: str = ""):
+def install_vits_model(
+    vits_path: Path, archive_path: Path | None = None, url: str = ""
+):
     vits_model_path = vits_path / "data/models/YuzuSoft_Vits"
 
     if archive_path is None:
@@ -73,7 +81,10 @@ def install_vits_model(vits_path: Path, archive_path: Path | None = None, url: s
         if default_archive_path.exists():
             archive_path = default_archive_path
 
-    url = url or "https://github.com/Zao-chen/zao-chen.github.io/releases/download/%E8%B5%84%E6%BA%90%E4%B8%8B%E8%BD%BD/YuzuSoft_Vits.zip"
+    url = (
+        url
+        or "https://github.com/Zao-chen/zao-chen.github.io/releases/download/%E8%B5%84%E6%BA%90%E4%B8%8B%E8%BD%BD/YuzuSoft_Vits.zip"
+    )
 
     install_from_archive_or_url(vits_model_path, archive_path, url)
 
@@ -87,7 +98,10 @@ def install_sbv2(sbv2_path: Path, archive_path: Path | None = None, url: str = "
         if default_archive_path.exists():
             archive_path = default_archive_path
 
-    url = url or "https://github.com/litagin02/Style-Bert-VITS2/releases/download/2.6.0/sbv2.zip"
+    url = (
+        url
+        or "https://github.com/litagin02/Style-Bert-VITS2/releases/download/2.6.0/sbv2.zip"
+    )
     install_from_archive_or_url(sbv2_path, archive_path, url)
 
     install_bat_path = sbv2_path / "Install-Style-Bert-VITS2-CPU.bat"
@@ -99,8 +113,12 @@ def install_18emo(emo_path: Path, url: str = ""):
     安装18emo语音合成器
     """
 
-    url = url or "https://www.modelscope.cn/models/lingchat-research-studio/LingChat-emotion-model-18emo/resolve/master/model.safetensors"
+    url = (
+        url
+        or "https://www.modelscope.cn/models/lingchat-research-studio/LingChat-emotion-model-18emo/resolve/master/model.safetensors"
+    )
     download_file(url, emo_path / "model.safetensors")
+
 
 def install_rag_model(use_mirror=False):
     """

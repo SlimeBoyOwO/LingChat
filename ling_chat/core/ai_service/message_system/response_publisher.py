@@ -10,10 +10,13 @@ class ResponsePublisher:
     """
     等待队列中的已处理结果并发布它们
     """
-    def __init__(self,
-                 results_store: Dict[int, ReplyResponse],
-                 publish_events: Dict[int, asyncio.Event],
-                 output_queue: asyncio.Queue):
+
+    def __init__(
+        self,
+        results_store: Dict[int, ReplyResponse],
+        publish_events: Dict[int, asyncio.Event],
+        output_queue: asyncio.Queue,
+    ):
         self.results_store = results_store
         self.publish_events = publish_events
         self.output_queue = output_queue

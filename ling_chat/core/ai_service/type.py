@@ -1,9 +1,10 @@
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Self
+from typing import Any, Dict, List, Optional
 
 from ling_chat.core.ai_service.voice_maker import VoiceMaker
 from ling_chat.schemas.character_settings import CharacterSettings, VoiceModel
+
 
 @dataclass
 class GameMemoryBankMeta:
@@ -11,6 +12,7 @@ class GameMemoryBankMeta:
     MemoryBank 元信息（运行时缓存与 DB JSON 共用）
     - last_processed_global_idx: 用全局 line_list 的索引作为“已归档指针”
     """
+
     last_processed_global_idx: int = 0
     updated_at: str = ""
 
@@ -31,6 +33,7 @@ class GameMemoryBankData:
     """
     MemoryBank 的结构化正文。
     """
+
     short_term: str = "暂无近期对话摘要。"
     long_term: str = "暂无长期关键经历。"
     user_info: str = "暂无用户特征记录。"
@@ -61,6 +64,7 @@ class GameMemoryBank:
       "data": {...}
     }
     """
+
     schema_version: int = 1
     meta: GameMemoryBankMeta = field(default_factory=GameMemoryBankMeta)
     data: GameMemoryBankData = field(default_factory=GameMemoryBankData)
@@ -94,14 +98,16 @@ class GameMemoryBank:
             "====================================\n"
         )
 
+
 @dataclass
 class GameRole:
     """
     游戏角色数据模型
     """
+
     role_id: Optional[int] = None
     memory: List[Dict[str, Any]] = field(default_factory=list)
-    
+
     display_name: Optional[str] = None
     settings: CharacterSettings = field(default_factory=CharacterSettings)
     resource_path: Optional[str] = None
@@ -117,19 +123,21 @@ class GameRole:
         """
         if self.resource_path:
             self.voice_maker.set_character_path(self.resource_path)
-            
+
         current_tts_type = self.settings.tts_type or "sbv"
         role_name = self.display_name if self.display_name else f"Role_{self.role_id}"
 
         self.voice_maker.set_tts(
             tts_type=current_tts_type,
-            tts_settings=self.settings.voice_models if self.settings.voice_models else VoiceModel(),
-            name=role_name
+            tts_settings=self.settings.voice_models
+            if self.settings.voice_models
+            else VoiceModel(),
+            name=role_name,
         )
-    
+
     def __hash__(self):
         return hash(self.role_id) if self.role_id is not None else id(self)
-    
+
     def __eq__(self, other):
         if not isinstance(other, GameRole):
             return False
@@ -137,15 +145,18 @@ class GameRole:
             return self is other
         return self.role_id == other.role_id
 
+
 @dataclass
 class Player:
     user_name: str = ""
     user_subtitle: str = ""
-    user_prompt: str = "" # 用于设定玩家的信息，如性格、喜好等
+    user_prompt: str = ""  # 用于设定玩家的信息，如性格、喜好等
+
 
 @dataclass
 class AdventureConfig:
     """羁绊冒险配置 — 从 story_config.yaml 的 adventure 字段解析"""
+
     is_adventure: bool = False
     bound_character_folder: str = ""
     order: int = 0
@@ -180,7 +191,7 @@ class ScriptStatus:
     script_path: Path
 
     # 推荐开始条件，用于提示玩家什么情况下开启这个剧本最佳
-    recommand_start: str = field(default_factory=str) 
+    recommand_start: str = field(default_factory=str)
 
     # 新增：羁绊冒险配置
     adventure: AdventureConfig = field(default_factory=AdventureConfig)
@@ -200,9 +211,9 @@ class ScriptStatus:
         """获取从 'scripts' 之后的路径部分"""
         parts = self.script_path.parts
         try:
-            scripts_index = parts.index('scripts')
+            scripts_index = parts.index("scripts")
             # 返回 scripts 之后的部分，用路径分隔符连接
-            return str(Path(*parts[scripts_index + 1:]))
+            return str(Path(*parts[scripts_index + 1 :]))
         except ValueError:
             # 如果没有找到 'scripts'，返回整个路径
             return str(self.script_path)

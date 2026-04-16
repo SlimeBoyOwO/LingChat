@@ -1,12 +1,21 @@
-from typing import List, Optional, Dict, Any
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+
 from sqlalchemy.orm import selectinload
-from sqlmodel import Session, select, desc, func
+from sqlmodel import Session, desc, func, select
+
 from ling_chat.core.ai_service.game_system.game_status import GameStatus
 from ling_chat.core.ai_service.type import ScriptStatus
-from ling_chat.game_database.database import engine
-from ling_chat.game_database.models import GameLine, LineBase, Save, Line, RunningScript, LinePerception
 from ling_chat.game_database.converts import lines_to_game_lines
+from ling_chat.game_database.database import engine
+from ling_chat.game_database.models import (
+    GameLine,
+    Line,
+    LinePerception,
+    RunningScript,
+    Save,
+)
+
 
 class SaveManager:
     @staticmethod
@@ -14,13 +23,13 @@ class SaveManager:
         """通过ID获取存档（简单版）"""
         with Session(engine, expire_on_commit=False) as session:
             return session.get(Save, save_id)
-    
+
     @staticmethod
     def get_running_script_by_id(running_script_id: int) -> Optional[RunningScript]:
         """通过ID获取运行中的剧本"""
         with Session(engine, expire_on_commit=False) as session:
             return session.get(RunningScript, running_script_id)
-        
+
     @staticmethod
     def create_save(user_id: int, title: str) -> Save:
         with Session(engine, expire_on_commit=False) as session:
@@ -31,14 +40,18 @@ class SaveManager:
             return save
 
     @staticmethod
-    def get_user_saves(user_id: int, page: int = 1, page_size: int = 10) -> Dict[str, Any]:
+    def get_user_saves(
+        user_id: int, page: int = 1, page_size: int = 10
+    ) -> Dict[str, Any]:
         with Session(engine, expire_on_commit=False) as session:
             offset = (page - 1) * page_size
-            
+
             # Total count - 更高效的写法
-            count_stmt = select(func.count()).select_from(Save).where(Save.user_id == user_id)
+            count_stmt = (
+                select(func.count()).select_from(Save).where(Save.user_id == user_id)
+            )
             total = session.exec(count_stmt).one()
-            
+
             # Paged results - 使用 desc() 函数
             stmt = (
                 select(Save)
@@ -48,24 +61,21 @@ class SaveManager:
                 .limit(page_size)
             )
             saves = session.exec(stmt).all()
-            
-            return {
-                "saves": saves,
-                "total": total
-            }
-        
+
+            return {"saves": saves, "total": total}
+
     @staticmethod
     def update_save_main_role(save_id: int, role_id: Optional[int] = None) -> Save:
         """
         更新存档的主要角色ID
-        
+
         Args:
             save_id: 存档ID
             role_id: 角色ID，为None时表示清除主要角色
-            
+
         Returns:
             更新后的Save对象
-            
+
         Raises:
             ValueError: 存档不存在
         """
@@ -73,16 +83,16 @@ class SaveManager:
             save = session.get(Save, save_id)
             if not save:
                 raise ValueError("Save not found")
-            
+
             save.main_role_id = role_id
             save.update_date = datetime.now()
-            
+
             session.add(save)
             session.commit()
             session.refresh(save)
-            
+
             return save
-    
+
     @staticmethod
     def update_save_status(save_id: int, game_status: GameStatus):
         """
@@ -105,9 +115,15 @@ class SaveManager:
             # 优雅地将GameStatus中的指定字段序列化为JSON
             save.status = {
                 # 在场角色列表：只保存角色ID
-                "present_role_ids": [role.role_id for role in game_status.present_roles if role.role_id is not None],
+                "present_role_ids": [
+                    role.role_id
+                    for role in game_status.present_roles
+                    if role.role_id is not None
+                ],
                 # 当前对话角色：只保存角色ID
-                "current_character_id": game_status.current_character.role_id if game_status.current_character else None,
+                "current_character_id": game_status.current_character.role_id
+                if game_status.current_character
+                else None,
                 # 背景信息
                 "background": game_status.background,
                 # BGM信息
@@ -119,7 +135,9 @@ class SaveManager:
                 # 记录已经玩过的剧本
                 "completed_scripts": list(game_status.completed_scripts),
                 # 最后一次对话时间记录
-                "last_dialog_time": game_status.last_dialog_time.isoformat() if game_status.last_dialog_time else None
+                "last_dialog_time": game_status.last_dialog_time.isoformat()
+                if game_status.last_dialog_time
+                else None,
             }
 
             session.add(save)
@@ -128,19 +146,18 @@ class SaveManager:
 
             return save
 
-        
     @staticmethod
     def update_save_title(save_id: int, title: str) -> Save:
         """
         更新存档的主要角色ID
-        
+
         Args:
             save_id: 存档ID
             title: 存档标题
-            
+
         Returns:
             更新后的Save对象
-            
+
         Raises:
             ValueError: 存档不存在
         """
@@ -148,32 +165,39 @@ class SaveManager:
             save = session.get(Save, save_id)
             if not save:
                 raise ValueError("Save not found")
-            
+
             save.title = title
-            
+
             session.add(save)
             session.commit()
             session.refresh(save)
-            
-            return save 
+
+            return save
 
     @staticmethod
-    def append_message(save_id: int, 
-                       content: str, 
-                       attribute: str, 
-                       role_id: Optional[int] = None,
-                       display_name: Optional[str] = None,
-                       audio_file: Optional[str] = None) -> Line:
+    def append_message(
+        save_id: int,
+        content: str,
+        attribute: str,
+        role_id: Optional[int] = None,
+        display_name: Optional[str] = None,
+        audio_file: Optional[str] = None,
+    ) -> Line:
         """
         向存档追加一条消息。自动处理 parent_line_id 和更新 Save.last_message_id
         """
-        return SaveManager.append_messages(save_id, [{
-            "content": content,
-            "attribute": attribute,
-            "role_id": role_id,
-            "display_name": display_name,
-            "audio_file": audio_file
-        }])[0]
+        return SaveManager.append_messages(
+            save_id,
+            [
+                {
+                    "content": content,
+                    "attribute": attribute,
+                    "role_id": role_id,
+                    "display_name": display_name,
+                    "audio_file": audio_file,
+                }
+            ],
+        )[0]
 
     @staticmethod
     def append_messages(save_id: int, messages: List[Dict[str, Any]]) -> List[Line]:
@@ -183,42 +207,47 @@ class SaveManager:
         """
         if not messages:
             return []
-            
+
         created_lines = []
-        
+
         with Session(engine, expire_on_commit=False) as session:
             save = session.get(Save, save_id)
             if not save:
                 raise ValueError(f"Save {save_id} not found")
-            
+
             current_parent_id = save.last_message_id
-            
+
             for msg_data in messages:
                 # 过滤出 Line 模型支持的字段
-                line_data = {
-                    "save_id": save_id,
-                    "parent_line_id": current_parent_id
-                }
-                
+                line_data = {"save_id": save_id, "parent_line_id": current_parent_id}
+
                 # 显式复制字段以确保安全和类型，或者直接 try key mapping
                 valid_fields = [
-                    "content", "attribute", "role_id", "script_role_id", "display_name",
-                    "original_emotion", "predicted_emotion", "tts_content", "action_content", "audio_file"
+                    "content",
+                    "attribute",
+                    "role_id",
+                    "script_role_id",
+                    "display_name",
+                    "original_emotion",
+                    "predicted_emotion",
+                    "tts_content",
+                    "action_content",
+                    "audio_file",
                 ]
-                
+
                 for field in valid_fields:
                     if field in msg_data:
                         line_data[field] = msg_data[field]
-                
+
                 # 创建 Line 对象
                 new_line = Line.model_validate(line_data)
                 session.add(new_line)
                 session.commit()
                 session.refresh(new_line)
-                
+
                 created_lines.append(new_line)
                 current_parent_id = new_line.id
-                
+
                 # [新增] 处理感知列表
                 # 先尝试从 msg_data 获取 (如果调用方传了)
                 # 注意：LineBase 也有 cache field 'perceived_role_ids'
@@ -227,16 +256,15 @@ class SaveManager:
                 if p_ids:
                     for pid in p_ids:
                         session.add(LinePerception(line_id=new_line.id, role_id=pid))
-                        session.commit() # 逐个commit或者批量都可以，这里为安全起见
+                        session.commit()  # 逐个commit或者批量都可以，这里为安全起见
 
-            
             # 更新存档指针
             if created_lines:
                 save.last_message_id = created_lines[-1].id
                 save.update_date = datetime.now()
                 session.add(save)
                 session.commit()
-        
+
         return created_lines
 
     @staticmethod
@@ -248,37 +276,37 @@ class SaveManager:
             save = session.get(Save, save_id)
             if not save or not save.last_message_id:
                 return []
-            
+
             # 使用 .options(selectinload(Line.perceived_by)) 进行预加载
             statement = (
                 select(Line)
                 .where(Line.save_id == save_id)
-                .options(selectinload(Line.perceived_by)) # type: ignore
+                .options(selectinload(Line.perceived_by))  # type: ignore
             )
-            
+
             lines = session.exec(statement).all()
             lines_map = {line.id: line for line in lines}
-            
+
             history = []
             current_id = save.last_message_id
-            
+
             while current_id:
                 line = lines_map.get(current_id)
                 if not line:
                     break
                 history.append(line)
                 current_id = line.parent_line_id
-            
+
             return list(reversed(history))
-    
+
     @staticmethod
     def get_gameline_list(save_id: int) -> List[GameLine]:
         """
         获取完整对话历史，从根节点到 last_message_id，但这里返回的是 GameLine
         """
-        line_list:List[Line] = SaveManager.get_line_list(save_id)
+        line_list: List[Line] = SaveManager.get_line_list(save_id)
         return lines_to_game_lines(line_list)
-    
+
     @staticmethod
     def sync_lines(save_id: int, input_lines: List[GameLine]) -> bool:
         """
@@ -287,7 +315,7 @@ class SaveManager:
         2. ID 不符或内容不符时，视为分叉点 (Divergence)。
         3. 删除分叉点之后的所有旧台词。
         4. 追加分叉点之后的所有新台词。
-        
+
         保留了历史数据的 ID 稳定性。
         """
         with Session(engine, expire_on_commit=False) as session:
@@ -299,33 +327,40 @@ class SaveManager:
             stmt_all = select(Line).where(Line.save_id == save_id)
             db_lines_raw = session.exec(stmt_all).all()
             lines_map = {line.id: line for line in db_lines_raw}
-            
+
             db_history: List[Line] = []
             curr_id = save.last_message_id
             while curr_id:
                 l = lines_map.get(curr_id)
-                if not l: break
+                if not l:
+                    break
                 db_history.append(l)
                 curr_id = l.parent_line_id
-            db_history.reverse() # [Line1, Line2, Line3...]
+            db_history.reverse()  # [Line1, Line2, Line3...]
 
             # 2. 寻找分叉点 & 执行更新
             divergence_index = 0
             limit = min(len(db_history), len(input_lines))
-            
+
             # 需要检查更新的字段
             update_fields = [
-                "content", "attribute", "sender_role_id", "display_name",
-                "original_emotion", "predicted_emotion", "tts_content", 
-                "action_content", "audio_file"
+                "content",
+                "attribute",
+                "sender_role_id",
+                "display_name",
+                "original_emotion",
+                "predicted_emotion",
+                "tts_content",
+                "action_content",
+                "audio_file",
             ]
-            
+
             while divergence_index < limit:
                 db_line = db_history[divergence_index]
                 in_line = input_lines[divergence_index]
-                
+
                 is_match = False
-                
+
                 # [情况 A] 输入行有 ID -> 强校验
                 if in_line.id is not None:
                     if in_line.id == db_line.id:
@@ -337,32 +372,34 @@ class SaveManager:
                             new_val = getattr(in_line, field)
                             # 获取旧值
                             old_val = getattr(db_line, field)
-                            
+
                             if new_val != old_val:
                                 setattr(db_line, field, new_val)
                                 need_update = True
-                        
+
                         if need_update:
-                            session.add(db_line) # 标记为更新
+                            session.add(db_line)  # 标记为更新
                     else:
                         # ID 不同，说明链条断裂或发生了插入/删除
                         is_match = False
-                
+
                 # [情况 B] 输入行无 ID -> 弱校验 (内容比对)
                 else:
                     # 如果内容等核心字段一致，我们认为是同一行，只是输入对象丢失了ID
                     # 这里简化判定：只比较 content 和 attribute
-                    if (db_line.content == in_line.content and 
-                        db_line.attribute == in_line.attribute and
-                        db_line.sender_role_id == in_line.sender_role_id):
+                    if (
+                        db_line.content == in_line.content
+                        and db_line.attribute == in_line.attribute
+                        and db_line.sender_role_id == in_line.sender_role_id
+                    ):
                         is_match = True
                         # 可以在这里做一些非核心字段的 update，略
                     else:
                         is_match = False
 
                 if not is_match:
-                    break # 发现分叉，停止比对
-                
+                    break  # 发现分叉，停止比对
+
                 divergence_index += 1
 
             # 3. 处理删除 (Prune)
@@ -371,12 +408,12 @@ class SaveManager:
                 lines_to_delete = db_history[divergence_index:]
                 for l in lines_to_delete:
                     session.delete(l)
-                
+
                 # 修正指针：回退到分叉点的前一个
                 if divergence_index > 0:
                     current_parent_id = db_history[divergence_index - 1].id
                 else:
-                    current_parent_id = None # 删光了
+                    current_parent_id = None  # 删光了
             else:
                 # 没发生删除，父节点就是 DB 的最后一个
                 if db_history:
@@ -393,27 +430,31 @@ class SaveManager:
                     # 转换 LineBase -> Line
                     # 关键：一定要 exclude={'id'}，防止如果 input_line 自带了一个错误的 ID 导致主键冲突
                     # 追加的新行，必须由 DB 生成新 ID
-                    line_data = line_base.model_dump(exclude={"id"}) 
-                    
+                    line_data = line_base.model_dump(exclude={"id"})
+
                     line_data["save_id"] = save_id
                     line_data["parent_line_id"] = current_parent_id
-                    
+
                     new_line = Line.model_validate(line_data)
                     session.add(new_line)
                     session.commit()
                     session.refresh(new_line)
-                    
+
                     current_parent_id = new_line.id
                     created_lines.append(new_line)
-                    
+
                     # [新增] 同步 LinePerception
                     # input_lines 是 LineBase 对象列表
-                    if hasattr(line_base, "perceived_role_ids") and line_base.perceived_role_ids:
-                         for pid in line_base.perceived_role_ids:
-                             session.add(LinePerception(line_id=new_line.id, role_id=pid))
-                         session.commit()
+                    if (
+                        hasattr(line_base, "perceived_role_ids")
+                        and line_base.perceived_role_ids
+                    ):
+                        for pid in line_base.perceived_role_ids:
+                            session.add(
+                                LinePerception(line_id=new_line.id, role_id=pid)
+                            )
+                        session.commit()
 
-            
             # 5. 最终更新 Save 指针
             # 最后的 ID 可能是新追加的最后一个，或者是没被删掉的旧历史的最后一个
             final_last_id = None
@@ -421,14 +462,14 @@ class SaveManager:
                 final_last_id = created_lines[-1].id
             elif divergence_index > 0:
                 final_last_id = db_history[divergence_index - 1].id
-            
+
             save.last_message_id = final_last_id
             save.update_date = datetime.now()
             session.add(save)
-            
+
             session.commit()
             return True
-    
+
     @staticmethod
     def get_chat_main_character_id(save_id: int) -> int | None:
         """
@@ -446,7 +487,7 @@ class SaveManager:
             save = session.get(Save, save_id)
             if not save:
                 raise ValueError("Save not found")
-            
+
             if save.running_script_id:
                 # Update existing
                 script = session.get(RunningScript, save.running_script_id)
@@ -459,18 +500,20 @@ class SaveManager:
                     session.add(script)
             else:
                 # Create new
-                script = RunningScript(save_id=save_id, 
-                                       script_folder=script_data.folder_key,
-                                       current_chapter=script_data.current_chapter_key, 
-                                       event_sequence=script_data.current_event_process, 
-                                       variable_info=script_data.vars)
+                script = RunningScript(
+                    save_id=save_id,
+                    script_folder=script_data.folder_key,
+                    current_chapter=script_data.current_chapter_key,
+                    event_sequence=script_data.current_event_process,
+                    variable_info=script_data.vars,
+                )
                 session.add(script)
                 session.commit()
                 session.refresh(script)
-                
+
                 save.running_script_id = script.id
                 session.add(save)
-            
+
             session.commit()
 
     @staticmethod

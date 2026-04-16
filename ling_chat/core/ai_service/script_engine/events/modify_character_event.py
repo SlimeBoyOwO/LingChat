@@ -9,11 +9,11 @@ class ModifyCharacterEvent(BaseEvent):
     """处理角色修改事件"""
 
     async def _execute(self):
-        character:str = self.event_data.get('character', '')
-        emotion = self.event_data.get('emotion', '')
-        duration = self.event_data.get('duration', 1.0)
-        action = self.event_data.get('action','')
-        perceive = self.event_data.get('perceive', '')
+        character: str = self.event_data.get("character", "")
+        emotion = self.event_data.get("emotion", "")
+        duration = self.event_data.get("duration", 1.0)
+        action = self.event_data.get("action", "")
+        perceive = self.event_data.get("perceive", "")
 
         # 我觉得这个事件没必要加到历史事件.jpg
         # self.game_context.dialogue.append({
@@ -31,20 +31,17 @@ class ModifyCharacterEvent(BaseEvent):
                 predicted = emotion_classifier.predict(emotion)
                 prediction_result = {
                     "label": predicted["label"],
-                    "confidence": predicted["confidence"]
+                    "confidence": predicted["confidence"],
                 }
-                predictedEmotion = prediction_result['label']
+                predictedEmotion = prediction_result["label"]
             else:
                 predictedEmotion = emotion
 
         # 构建参数字典，只包含非空的参数
-        params = {
-            'characterId': character_id,
-            'duration': duration
-        }
+        params = {"characterId": character_id, "duration": duration}
 
         if predictedEmotion:
-            params['emotion'] = predictedEmotion
+            params["emotion"] = predictedEmotion
 
         if action:
             if action == "show_character":
@@ -52,9 +49,9 @@ class ModifyCharacterEvent(BaseEvent):
             elif action == "hide_character":
                 self.game_status.offstage_role(role)
 
-            params['action'] = action
-        
-        if perceive != '':
+            params["action"] = action
+
+        if perceive != "":
             if perceive and role not in self.game_status.present_roles:
                 self.game_status.present_roles.add(role)
             else:
@@ -68,4 +65,4 @@ class ModifyCharacterEvent(BaseEvent):
 
     @classmethod
     def can_handle(cls, event_type: str) -> bool:
-        return event_type == 'modify_character'
+        return event_type == "modify_character"

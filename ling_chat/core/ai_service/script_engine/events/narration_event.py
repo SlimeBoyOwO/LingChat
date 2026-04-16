@@ -9,9 +9,9 @@ class NarrationEvent(BaseEvent):
     """处理对话事件"""
 
     async def _execute(self):
-        text:str = self.event_data.get('text', '')
-        display_name:str|None = self.event_data.get('displayName', '旁白')
-        duration:float = self.event_data.get('duration', -1)
+        text: str = self.event_data.get("text", "")
+        display_name: str | None = self.event_data.get("displayName", "旁白")
+        duration: float = self.event_data.get("duration", -1)
         lines: list[str] = [line for line in text.splitlines() if line.strip()]
 
         for text in lines:
@@ -19,15 +19,17 @@ class NarrationEvent(BaseEvent):
 
             # 在实际实现中，这里会更新游戏状态和UI
             self.game_status.add_line(
-                LineBase(content=text, attribute=LineAttribute.ASSISTANT, display_name=display_name)
+                LineBase(
+                    content=text,
+                    attribute=LineAttribute.ASSISTANT,
+                    display_name=display_name,
+                )
             )
 
-            display_name_temp = display_name if display_name != '旁白' else None
-            event_response = ResponseFactory.create_narration(text,  display_name_temp)
-            await message_broker.publish(self.client_id,
-                event_response.model_dump()
-            )
+            display_name_temp = display_name if display_name != "旁白" else None
+            event_response = ResponseFactory.create_narration(text, display_name_temp)
+            await message_broker.publish(self.client_id, event_response.model_dump())
 
     @classmethod
     def can_handle(cls, event_type: str) -> bool:
-        return event_type == 'narration'
+        return event_type == "narration"

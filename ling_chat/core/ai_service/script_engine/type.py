@@ -9,6 +9,7 @@ class Script:
     intro_chapter: str
     settings: dict
 
+
 @dataclass
 class Character:
     character_id: str
@@ -17,25 +18,30 @@ class Character:
     prompt: dict
     memory: list[dict]
 
+
 @dataclass
 class Chapter:
     chapter_id: str
     events: list[dict]
     ends: dict
 
+
 @dataclass
 class Player:
     user_name: str = ""
     user_subtitle: str = ""
 
+
 def create_default_player():
     return Player()
+
 
 @dataclass
 class GameContext:
     """
     存储所有运行时共享的游戏状态。
     """
+
     player: Player = field(default_factory=create_default_player)
     dialogue: list[dict] = field(default_factory=list[dict])
 

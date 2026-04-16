@@ -1,5 +1,6 @@
-import os
 import multiprocessing
+import os
+
 import webview
 
 from ling_chat.core.logger import logger
@@ -24,9 +25,10 @@ class Api:
         if self._window:
             self._window.destroy()
 
+
 def func_webview():
     try:
-        api:Api = Api()
+        api: Api = Api()
         window = webview.create_window(
             "Ling Chat",
             url=f"http://127.0.0.1:{os.getenv('BACKEND_PORT', '8765')}/",
@@ -46,7 +48,7 @@ def func_webview():
         webview.start(
             http_server=True,
             icon=str(icon_path),  # 在这里设置图标
-            storage_path=str(user_data_path / "webview_storage_path")
+            storage_path=str(user_data_path / "webview_storage_path"),
         )
 
     except KeyboardInterrupt:

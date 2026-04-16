@@ -1,37 +1,41 @@
 import os
 import shutil
 import signal
-import time
 import threading
-import sys
+import time
 from typing import Collection
 
 from ling_chat.utils.cli_parser import get_parser
 
 
 def check_static_copy():
-    from ling_chat.utils.runtime_path import static_path, user_data_path
     from ling_chat.core.logger import logger
-    
+    from ling_chat.utils.runtime_path import static_path, user_data_path
+
     if not os.path.exists(user_data_path / "game_data"):
         shutil.copytree(static_path / "game_data", user_data_path / "game_data")
         logger.info("静态文件已复制到用户目录")
     else:
         for sub_dir in os.listdir(static_path / "game_data"):
             if not os.path.exists(user_data_path / "game_data" / sub_dir):
-                shutil.copytree(static_path / "game_data" / sub_dir, user_data_path / "game_data" / sub_dir)
+                shutil.copytree(
+                    static_path / "game_data" / sub_dir,
+                    user_data_path / "game_data" / sub_dir,
+                )
                 logger.info(f"检测到缺少文件，静态文件已复制到用户目录: {sub_dir}")
 
 
 def handle_install(install_modules_list: Collection[str], use_mirror=False):
-    from ling_chat.utils.runtime_path import third_party_path
-    from ling_chat.third_party import install_third_party
     from ling_chat.core.logger import logger
-    
+    from ling_chat.third_party import install_third_party
+    from ling_chat.utils.runtime_path import third_party_path
+
     for module in install_modules_list:
         logger.info(f"正在安装模块: {module}")
         if module == "vits":
-            vits_path = third_party_path / "vits-simple-api/vits-simple-api-windows-cpu-v0.6.16"
+            vits_path = (
+                third_party_path / "vits-simple-api/vits-simple-api-windows-cpu-v0.6.16"
+            )
             install_third_party.install_vits(vits_path)
             install_third_party.install_vits_model(vits_path)
         elif module == "sbv2":
@@ -46,9 +50,9 @@ def handle_install(install_modules_list: Collection[str], use_mirror=False):
 
 def handle_run(run_modules_list: Collection[str]):
     """处理运行模块"""
-    from ling_chat.third_party import run_third_party
     from ling_chat.core.logger import logger
-    
+    from ling_chat.third_party import run_third_party
+
     for module in run_modules_list:
         logger.info(f"正在运行模块: {module}")
         if module == "vits":
@@ -64,9 +68,9 @@ def handle_run(run_modules_list: Collection[str]):
 
 
 def run_cli_command(args):
-    from ling_chat.utils.cli import handle_install_cli, handle_export_emotions_cli
     from ling_chat.core.logger import logger
-    
+    from ling_chat.utils.cli import handle_export_emotions_cli, handle_install_cli
+
     if args.command == "install":
         handle_install_cli(args)
     elif args.command == "export-emotions":
@@ -80,14 +84,11 @@ def run_main_program(args, is_wv=False):
     from ling_chat.core.achievement_manager import AchievementManager
     from ling_chat.core.logger import logger
     from ling_chat.core.webview import start_webview
-    from ling_chat.third_party import run_third_party
     from ling_chat.utils.cli import print_logo
     from ling_chat.utils.easter_egg import get_random_loading_message
-    from ling_chat.utils.function import Function
-    from ling_chat.utils.runtime_path import static_path, third_party_path, user_data_path
     from ling_chat.utils.tts_auto_start import start_tts_software
     from ling_chat.utils.voice_check import VoiceCheck
-    
+
     # 创建退出事件用于控制程序关闭
     exit_event = threading.Event()
 
@@ -113,19 +114,21 @@ def run_main_program(args, is_wv=False):
 
     # handle_install(install_modules) TODO: 未来版本可能会启用自动安装功能
     selected_loading_message = get_random_loading_message()
-    logger.start_loading_animation(message=selected_loading_message, animation_style="auto")
+    logger.start_loading_animation(
+        message=selected_loading_message, animation_style="auto"
+    )
     app_thread: threading.Thread | None = None
-    
+
     try:
         check_static_copy()
         handle_run(args.run or [])
         app_thread = run_app_in_thread()
-        
+
         if os.getenv("VOICE_CHECK", "false").lower() == "true":
             VoiceCheck.main()
         else:
             logger.info("已根据环境变量禁用语音检查")
-        
+
         # 检查是否自动启动语音合成软件
         if os.getenv("AUTO_START_TTS_SOFTWARE", "false").lower() == "true":
             start_tts_software()
@@ -133,7 +136,9 @@ def run_main_program(args, is_wv=False):
             logger.info("已禁用语音合成软件自动启动")
 
         # 检查环境变量决定是否启动前端界面
-        if (os.getenv("OPEN_FRONTEND_APP", "false").lower() == "true" and not args.nogui) or args.gui:
+        if (
+            os.getenv("OPEN_FRONTEND_APP", "false").lower() == "true" and not args.nogui
+        ) or args.gui:
             logger.stop_loading_animation(success=True, final_message="应用加载成功")
             print_logo()
             logger.warning("[前端界面已启用，可使用 --nogui 启用无前端窗口模式")
@@ -146,7 +151,11 @@ def run_main_program(args, is_wv=False):
             logger.stop_loading_animation(success=True, final_message="应用加载成功")
             print_logo()
             try:
-                while (not exit_event.is_set()) and (app_thread is not None) and app_thread.is_alive():
+                while (
+                    (not exit_event.is_set())
+                    and (app_thread is not None)
+                    and app_thread.is_alive()
+                ):
                     time.sleep(0.1)
             except KeyboardInterrupt:
                 logger.info("用户关闭程序")
@@ -169,7 +178,7 @@ def main():
         run_cli_command(args)
         return
     else:
-         run_main_program(args,False)
+        run_main_program(args, False)
 
 
 if __name__ == "__main__":

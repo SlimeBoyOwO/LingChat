@@ -18,12 +18,14 @@ class EmotionClassifier:
             self._log_emotion_model_status(False, "情绪分类器已禁用")
             self.id2label = {}
             self.label2id = {}
-            self.session = None 
+            self.session = None
             self.vocab = {}
             return
 
         try:
-            model_path = model_path or os.environ.get("EMOTION_MODEL_PATH", third_party_path / "emotion_model")
+            model_path = model_path or os.environ.get(
+                "EMOTION_MODEL_PATH", third_party_path / "emotion_model"
+            )
             model_path = Path(model_path).resolve()
 
             # 定义文件路径
@@ -36,7 +38,7 @@ class EmotionClassifier:
                 raise FileNotFoundError(f"ONNX模型文件不存在: {onnx_model_file}")
             if not config_path.exists():
                 raise FileNotFoundError(f"标签映射文件不存在: {config_path}")
-            
+
             # 加载ONNX模型
             onnx_path = onnx_model_file
 
@@ -51,7 +53,7 @@ class EmotionClassifier:
                 label_mapping = json.load(f)
                 self.id2label = label_mapping["id2label"]
                 self.label2id = label_mapping["label2id"]
-            
+
             self.vocab = self._load_vocab(vocab_path)
 
             # 获取输入输出名称
@@ -60,18 +62,23 @@ class EmotionClassifier:
             self.output_name = self.session.get_outputs()[0].name
 
             self._log_label_mapping()
-            self._log_emotion_model_status(True, f"已成功加载情绪分类ONNX模型: {model_path.name}")
+            self._log_emotion_model_status(
+                True, f"已成功加载情绪分类ONNX模型: {model_path.name}"
+            )
 
         except Exception as e:
             import traceback
+
             # 如果是 Unicode 错误，通常意味着底层有其他报错被掩盖了
             if "UnicodeDecodeError" in str(e) or "'utf-8' codec" in str(e):
-                logger.error("检测到编码冲突错误。这通常是因为Windows系统区域设置导致的。")
+                logger.error(
+                    "检测到编码冲突错误。这通常是因为Windows系统区域设置导致的。"
+                )
                 logger.error("尝试设置环境变量 PYTHONUTF8=1 可能有帮助。")
-            
+
             # 打印完整堆栈
             logger.error(f"加载模型详细错误堆栈:\n{traceback.format_exc()}")
-            
+
             self._log_emotion_model_status(False, f"加载失败: {e}")
             self.id2label = {}
             self.label2id = {}
@@ -98,25 +105,31 @@ class EmotionClassifier:
 
         if details:
             if is_success:
-                logger.info(f"{status_color}{status_symbol}{TermColors.RESET} {status} - {details}")
+                logger.info(
+                    f"{status_color}{status_symbol}{TermColors.RESET} {status} - {details}"
+                )
             else:
-                logger.error(f"{status_color}{status_symbol}{TermColors.RESET} {status} - {details}")
+                logger.error(
+                    f"{status_color}{status_symbol}{TermColors.RESET} {status} - {details}"
+                )
         else:
             if is_success:
                 logger.info(f"{status_color}{status_symbol}{TermColors.RESET} {status}")
             else:
-                logger.error(f"{status_color}{status_symbol}{TermColors.RESET} {status}")
+                logger.error(
+                    f"{status_color}{status_symbol}{TermColors.RESET} {status}"
+                )
 
     def _tokenize(self, text, max_length=128):
         """手动实现分词、ID转换和填充"""
-        tokens = list(text) # 基础的按字分词
+        tokens = list(text)  # 基础的按字分词
 
         # 转换为ID
         token_ids = [self.vocab.get(token, self.vocab.get("[UNK]")) for token in tokens]
 
         # 截断
         if len(token_ids) > max_length - 2:
-            token_ids = token_ids[:max_length - 2]
+            token_ids = token_ids[: max_length - 2]
 
         # 添加特殊标记 [CLS] 和 [SEP]
         input_ids = [self.vocab["[CLS]"]] + token_ids + [self.vocab["[SEP]"]]
@@ -129,7 +142,9 @@ class EmotionClassifier:
 
         return {
             "input_ids": np.array([input_ids], dtype=np.int64),
-            "attention_mask": np.array([attention_mask], dtype=np.float32),  # 修复: 使用float32类型
+            "attention_mask": np.array(
+                [attention_mask], dtype=np.float32
+            ),  # 修复: 使用float32类型
         }
 
     def _softmax(self, x):
@@ -140,28 +155,32 @@ class EmotionClassifier:
     def predict(self, text, confidence_threshold=0.08):
         """预测文本情绪（带置信度阈值过滤）- ONNX版本"""
         # 如果模型未加载（可能被环境变量禁用），直接返回传入的文本作为情感标签
-        if not hasattr(self, 'session') or self.session is None:
+        if not hasattr(self, "session") or self.session is None:
             return {
                 "label": text,
                 "confidence": 1.0,
                 "top3": [{"label": text, "probability": 1.0}],
-                "disabled": True
+                "disabled": True,
             }
 
         # 如果传入的文本已经是有效的情感标签，直接返回而不进行预测
-        if text in self.label2id and os.environ.get("ENABLE_DIRECT_EMOTION_CLASSIFIER", "false").lower() == "true":
+        if (
+            text in self.label2id
+            and os.environ.get("ENABLE_DIRECT_EMOTION_CLASSIFIER", "false").lower()
+            == "true"
+        ):
             logger.debug(f"输入文本 '{text}' 已是有效情感标签，直接返回")
             return {
                 "label": text,
                 "confidence": 1.0,
-                "top3": [{"label": text, "probability": 1.0}]
+                "top3": [{"label": text, "probability": 1.0}],
             }
-        
+
         if "撒娇" in text:
             return {
                 "label": "调皮",
                 "confidence": 1.0,
-                "top3": [{"label": "调皮", "probability": 1.0}]
+                "top3": [{"label": "调皮", "probability": 1.0}],
             }
 
         try:
@@ -170,8 +189,8 @@ class EmotionClassifier:
 
             # 准备ONNX模型的输入
             ort_inputs = {
-                self.input_name: inputs['input_ids'],
-                self.attention_mask_name: inputs['attention_mask'],
+                self.input_name: inputs["input_ids"],
+                self.attention_mask_name: inputs["attention_mask"],
             }
 
             # 执行ONNX推理
@@ -179,7 +198,7 @@ class EmotionClassifier:
             logits = ort_outputs[0]
 
             # 计算概率
-            probs = self._softmax(logits)[0] # 获取第一个（也是唯一一个）结果的概率分布
+            probs = self._softmax(logits)[0]  # 获取第一个（也是唯一一个）结果的概率分布
 
             pred_id = np.argmax(probs)
             pred_prob = probs[pred_id]
@@ -192,35 +211,29 @@ class EmotionClassifier:
                     "label": "不确定",
                     "confidence": float(pred_prob),
                     "top3": top3,
-                    "warning": f"置信度低于阈值({confidence_threshold:.0%})"
+                    "warning": f"置信度低于阈值({confidence_threshold:.0%})",
                 }
 
             label = self.id2label.get(str(pred_id), "")
             logger.debug(f"情绪识别: {text} -> {label} ({pred_prob:.2%})")
-            return {
-                "label": label,
-                "confidence": float(pred_prob),
-                "top3": top3
-            }
+            return {"label": label, "confidence": float(pred_prob), "top3": top3}
         except Exception as e:
             logger.error(f"情绪预测错误: {e}")
             return {
                 "label": text,
                 "confidence": 1.0,
                 "top3": [{"label": text, "probability": 1.0}],
-                "error": str(e)
+                "error": str(e),
             }
 
     def _get_top3(self, probs):
         """获取概率最高的3个结果 - Numpy版本"""
-        top3_ids = np.argsort(probs)[-3:][::-1] # 获取概率最高的3个索引
+        top3_ids = np.argsort(probs)[-3:][::-1]  # 获取概率最高的3个索引
         return [
-            {
-                "label": self.id2label.get(str(idx), ""),
-                "probability": float(probs[idx])
-            }
+            {"label": self.id2label.get(str(idx), ""), "probability": float(probs[idx])}
             for idx in top3_ids
         ]
+
 
 # 实例化部分保持不变，可以直接使用新的 EmotionClassifier 类
 emotion_classifier = EmotionClassifier()
