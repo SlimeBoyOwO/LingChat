@@ -8,22 +8,19 @@ from ling_chat.core.logger import logger
 class InterestManager:  # Reviewed
     """管理 AI 的主动对话兴趣值 (0-100)"""
 
-    def __init__(self, max_proactive_count: int = 5):
-        self.max_proactive_count = int(os.getenv("MAX_PROACTIVE_TIMES", 1))
-
+    def __init__(self):
         self.interest = 0.0
         self.max_interest_cap = 100.0
         self.initial_max_cap = 100.0
         self.status_mod = 0
 
         # 随主动对话次数衰减
-        self.max_proactive_count = max_proactive_count
-        self.decay_step = 50.0 / max_proactive_count if max_proactive_count > 0 else 0
+        self.reload_max_proactive_count()
 
     def reload_max_proactive_count(self):
         self.max_proactive_count = int(os.getenv("MAX_PROACTIVE_TIMES", 1))
         self.decay_step = (
-            50.0 / self.max_proactive_count if self.max_proactive_count > 0 else 0
+            50.0 / self.max_proactive_count if self.max_proactive_count > 0 else 50
         )
 
     def update(self, perception: PerceptionResult):
