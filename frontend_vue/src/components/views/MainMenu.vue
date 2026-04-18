@@ -11,10 +11,10 @@
     <div class="video-background" ref="bgRef"></div>
 
     <!-- 流星层（SVG动画） -->
-    <MeteorAnimation :meteors-enabled="meteorsEnabled" />
+    <MeteorAnimation :meteors-enabled="meteorsEnabled" :meteor-fps="meteorFps" />
 
     <!-- 星星粒子层（位于背景和人物之间） -->
-    <StarAnimation :stars-enabled="starsEnabled" :stars-layer-ref="starsLayerRef" />
+    <StarAnimation :stars-enabled="starsEnabled" :stars-layer-ref="starsLayerRef" :stars-fps="starsFps" />
 
     <!-- 人物图层（位于星星之上，菜单之下） -->
     <img class="character-image" ref="charRef" src="../../assets/images/alona.png" alt="人物" />
@@ -93,6 +93,8 @@ const scripts = ref<ScriptSummary[]>([])
 const loadingScripts = ref(false)
 const starsEnabled = computed(() => settingsStore.mainMenuStarsEnabled)
 const meteorsEnabled = computed(() => settingsStore.mainMenuMeteorsEnabled)
+const meteorFps = computed(() => settingsStore.meteorFps)
+const starsFps = computed(() => settingsStore.starsFps)
 
 // DOM Refs
 const containerRef = ref<HTMLElement | null>(null)
