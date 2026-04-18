@@ -5,11 +5,12 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref, shallowRef, watch, computed } from 'vue'
 
 const props = defineProps<{
   starsEnabled: boolean
   starsLayerRef: HTMLElement | null
+  starsFps?: number
 }>()
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
@@ -38,9 +39,11 @@ let circleImageCache: Map<number, HTMLCanvasElement> | null = null
 let isPageVisible = true
 
 // 帧率限制
+const TARGET_FPS = ref(30)
+const FRAME_INTERVAL = computed(() => 1000 / TARGET_FPS.value)
+
+// 上一帧时间戳 - 用于帧率控制
 let lastFrameTime = 0
-const TARGET_FPS = 30
-const FRAME_INTERVAL = 1000 / TARGET_FPS
 
 /**
  * 创建带发光效果的星星形状到离屏 canvas
@@ -238,7 +241,7 @@ function renderStars() {
 
 function flickerAnimation(currentTime: number) {
   // 性能优化：帧率限制
-  if (currentTime - lastFrameTime < FRAME_INTERVAL) {
+  if (currentTime - lastFrameTime < FRAME_INTERVAL.value) {
     starsFrameId = requestAnimationFrame(flickerAnimation)
     return
   }
@@ -290,6 +293,17 @@ function stopStars() {
 }
 
 onMounted(() => {
+  // 监听starsFps prop变化
+  watch(
+    () => props.starsFps,
+    (newFps) => {
+      if (newFps && newFps >= 10 && newFps <= 300) {
+        TARGET_FPS.value = newFps
+      }
+    },
+    { immediate: true },
+  )
+
   watch(
     () => props.starsEnabled,
     async (enabled) => {

@@ -5,7 +5,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch, computed } from 'vue'
 
 interface MeteorTemplate {
   startX: number
@@ -26,6 +26,7 @@ interface ActiveMeteor {
 
 const props = defineProps<{
   meteorsEnabled: boolean
+  meteorFps?: number
 }>()
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
@@ -61,9 +62,11 @@ const METEOR_CONFIG = {
 }
 
 // 帧率限制
+const TARGET_FPS = ref(30)
+const FRAME_INTERVAL = computed(() => 1000 / TARGET_FPS.value)
+
+// 上一帧时间戳 - 用于帧率控制
 let lastFrameTime = 0
-const TARGET_FPS = 30
-const FRAME_INTERVAL = 1000 / TARGET_FPS
 
 /**
  * 计算二次贝塞尔曲线上的点
@@ -254,7 +257,8 @@ function animate(currentTime: number) {
     return
   }
 
-  if (currentTime - lastFrameTime < FRAME_INTERVAL) {
+  // 帧率限制检查
+  if (currentTime - lastFrameTime < FRAME_INTERVAL.value) {
     animationFrameId = requestAnimationFrame(animate)
     return
   }
@@ -301,12 +305,15 @@ function startMeteorShower() {
     initMeteorTemplateCache()
   }
 
+  // 立即创建初始流星
+  for (let i = 0; i < METEOR_CONFIG.MAX_COUNT; i++) {
+    createMeteor()
+  }
+
   // 启动动画循环
   if (!animationFrameId) {
     animationFrameId = requestAnimationFrame(animate)
   }
-
-  // 创建初始流星
 
   meteorIntervalId = setInterval(updateMeteorShower, METEOR_CONFIG.GENERATE_INTERVAL)
 }
@@ -345,12 +352,28 @@ function handleVisibilityChange() {
 
 onMounted(() => {
   if (canvasRef.value) {
-    ctx = canvasRef.value.getContext('2d')
+    const context = canvasRef.value.getContext('2d')
+    if (!context) {
+      console.error('Failed to get 2D context from canvas')
+      return
+    }
+    ctx = context
     resizeCanvas()
   }
 
   document.addEventListener('visibilitychange', handleVisibilityChange)
   window.addEventListener('resize', resizeCanvas)
+
+  // 监听meteorFps prop变化，动态更新帧率
+  watch(
+    () => props.meteorFps,
+    (newFps) => {
+      if (newFps && newFps >= 10 && newFps <= 60) {
+        TARGET_FPS.value = newFps
+      }
+    },
+    { immediate: true },
+  )
 
   watch(
     () => props.meteorsEnabled,
