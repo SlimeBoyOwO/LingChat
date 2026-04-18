@@ -12,11 +12,7 @@
   "prettier.configPath": "./frontend_vue/.prettierrc.json",
 
   "[python]": {
-    "editor.defaultFormatter": "charliermarsh.ruff",
-    "editor.codeActionsOnSave": {
-      "source.organizeImports": "explicit",
-      "source.fixAll.ruff": "explicit"
-    }
+    "editor.defaultFormatter": "charliermarsh.ruff"
   },
 
   // 保存时自动修复 lint 问题
