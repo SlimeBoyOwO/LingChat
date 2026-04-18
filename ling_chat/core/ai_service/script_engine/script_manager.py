@@ -86,10 +86,31 @@ class ScriptManager:
             return
 
         # 支持分类子目录：character/ 和 standalone/，同时向后兼容平铺结构
+        # character目录支持两层目录结构（子目录的子目录）
         subdirs_to_scan = []
-        for category_dir in (SCRIPT_DIR / "character", SCRIPT_DIR / "standalone"):
-            if category_dir.exists() and category_dir.is_dir():
-                subdirs_to_scan.extend(p for p in category_dir.iterdir() if p.is_dir())
+
+        # 处理character目录：支持两层目录结构
+        character_dir = SCRIPT_DIR / "character"
+        if character_dir.exists() and character_dir.is_dir():
+            # 第一层子目录
+            for first_level_dir in character_dir.iterdir():
+                if first_level_dir.is_dir():
+                    # 检查第一层子目录是否包含story_config.yaml
+                    config_file = first_level_dir / "story_config.yaml"
+                    if config_file.exists():
+                        # 如果第一层子目录包含story_config.yaml，直接使用第一层子目录
+                        subdirs_to_scan.append(first_level_dir)
+                    else:
+                        # 否则检查是否有第二层子目录
+                        second_level_dirs = [p for p in first_level_dir.iterdir() if p.is_dir()]
+                        if second_level_dirs:
+                            # 如果有第二层子目录，扫描这些子目录
+                            subdirs_to_scan.extend(second_level_dirs)
+
+        # 处理standalone目录：只扫描一层子目录
+        standalone_dir = SCRIPT_DIR / "standalone"
+        if standalone_dir.exists() and standalone_dir.is_dir():
+            subdirs_to_scan.extend(p for p in standalone_dir.iterdir() if p.is_dir())
         # 向后兼容：直接放在 scripts/ 根目录下的剧本
         for p in SCRIPT_DIR.iterdir():
             if p.is_dir() and p.name not in ("character", "standalone"):
