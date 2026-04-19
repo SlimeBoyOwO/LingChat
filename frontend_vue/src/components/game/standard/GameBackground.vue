@@ -15,32 +15,32 @@
       :star-count="starCount"
       :scroll-speed="scrollSpeed"
       :colors="starColors"
-      style="z-index: 114514"
+      :style="`z-index:${BACKGROUND_ZINDEX}`"
       @ready="onStarfieldReady"
     />
     <Rain
       v-if="uiStore.currentBackgroundEffect === 'Rain'"
       :enabled="rainEnabled"
       :intensity="rainIntensity"
-      style="z-index: 114514"
+      :style="`z-index:${BACKGROUND_ZINDEX}`"
     />
     <Sakura
       v-if="uiStore.currentBackgroundEffect === 'Sakura'"
       :enabled="true"
       :intensity="1.5"
-      style="z-index: 114514"
+      :style="`z-index:${BACKGROUND_ZINDEX}`"
     />
     <Snow
       v-if="uiStore.currentBackgroundEffect === 'Snow'"
       :intensity="snowIntensity"
       :enabled="true"
-      style="z-index: 114514"
+      :style="`z-index:${BACKGROUND_ZINDEX}`"
     />
     <Fireworks
       v-if="uiStore.currentBackgroundEffect === 'Fireworks'"
       :enabled="true"
       :intensity="1.5"
-      style="z-index: 114514"
+      :style="`z-index:${BACKGROUND_ZINDEX}`"
     />
   </ImageAcrossFade>
 
@@ -71,6 +71,9 @@ import Snow from './particles/Snow.vue'
 import Fireworks from './particles/Fireworks.vue'
 
 const uiStore = useUIStore()
+
+// 背景效果 z-index 应该比其他组件高，否则会被覆盖
+const BACKGROUND_ZINDEX = 114514
 
 // 仅保留不需要淡入淡出的短效音效
 const soundEffectPlayer = ref<HTMLAudioElement | null>(null)
