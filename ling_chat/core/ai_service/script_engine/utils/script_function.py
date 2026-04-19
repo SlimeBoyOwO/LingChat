@@ -97,7 +97,8 @@ class ScriptFunction:
                         display_name=game_status.player.user_name,
                     )
                 )
-            elif action.get({"type"}) == "set_var":
+            # 修复了原代码中的 typo: action.get({"type"})
+            elif action.get("type", "") == "set_var":
                 content = action.get("content", "")
                 op, var_name, value = ScriptFunction.parse_variable_action(content)
                 if op is None:
@@ -331,8 +332,10 @@ class ScriptFunction:
         解析变量操作字符串，返回 (操作符, 变量名, 值)
         操作符: 'assign', 'add', 'sub'
         如果解析失败，返回 (None, None, None)
+        支持随机数赋值，例如: var_name = random(1, 100)
         """
         import re
+        import random  
 
         action = action.strip()
         match = re.match(r"^([a-zA-Z_][a-zA-Z0-9_]*)\s*([+\-]?=)\s*(.+)$", action)
@@ -342,7 +345,18 @@ class ScriptFunction:
         var_name = match.group(1)
         operator = match.group(2)
         value_str = match.group(3).strip()
-        value = ScriptFunction.parse_value(value_str)
+
+        # 新增：匹配 random(min, max) 语法
+        random_match = re.match(r"^random\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)$", value_str)
+        if random_match:
+            min_val = int(random_match.group(1))
+            max_val = int(random_match.group(2))
+            # 容错处理：确保 min <= max
+            if min_val > max_val:
+                min_val, max_val = max_val, min_val
+            value = random.randint(min_val, max_val)
+        else:
+            value = ScriptFunction.parse_value(value_str)
 
         if operator == "=":
             return "assign", var_name, value
