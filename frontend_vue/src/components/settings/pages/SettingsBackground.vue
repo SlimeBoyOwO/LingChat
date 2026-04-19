@@ -109,6 +109,63 @@
       </div>
     </MenuItem>
 
+    <MenuItem title="动画设置" size="large">
+      <template #header>
+        <Sparkles :size="20" />
+      </template>
+      <div class="flex flex-col gap-4 p-2">
+        <!-- 流星帧率 -->
+        <div class="flex items-center gap-4">
+          <span class="text-sm font-medium text-white/90 min-w-[120px]">流星帧率 (FPS)</span>
+          <Slider
+            v-model="meteorFps"
+            :min="10"
+            :max="60"
+            :step="5"
+            accent-color="#8b5cf6"
+            @change="handleMeteorFpsChange"
+            class="flex-1"
+          >
+            <template #left>{{ meteorFps }} FPS</template>
+          </Slider>
+          <input
+            type="number"
+            v-model.number="meteorFpsInput"
+            @blur="handleInputBlur"
+            @keyup.enter="handleInputEnter"
+            min="10"
+            max="300"
+            class="w-20 px-3 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+          />
+        </div>
+
+        <!-- 星星帧率 -->
+        <div class="flex items-center gap-4">
+          <span class="text-sm font-medium text-white/90 min-w-[120px]">星星帧率 (FPS)</span>
+          <Slider
+            v-model="starsFps"
+            :min="10"
+            :max="60"
+            :step="5"
+            accent-color="#fbbf24"
+            @change="handleStarsFpsChange"
+            class="flex-1"
+          >
+            <template #left>{{ starsFps }} FPS</template>
+          </Slider>
+          <input
+            type="number"
+            v-model.number="starsFpsInput"
+            @blur="handleStarsInputBlur"
+            @keyup.enter="handleStarsInputEnter"
+            min="10"
+            max="300"
+            class="w-20 px-3 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all"
+          />
+        </div>
+      </div>
+    </MenuItem>
+
     <SceneSelectModal
       :show="showSceneSelect"
       :scenes="scenes"
@@ -131,7 +188,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue'
 import { MenuPage, MenuItem } from '../../ui'
-import { Button, Toggle } from '../../base'
+import { Button, Toggle, Slider } from '../../base'
 import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useSettingsStore } from '../../../stores/modules/settings'
@@ -161,6 +218,23 @@ const mainMenuStarsEnabled = computed(() => settingsStore.mainMenuStarsEnabled)
 const mainMenuMeteorsEnabled = computed(() => settingsStore.mainMenuMeteorsEnabled)
 const globalMouseTrailEnabled = computed(() => settingsStore.globalMouseTrailEnabled)
 const clickAnimationEnabled = computed(() => settingsStore.clickAnimationEnabled)
+const meteorFps = computed({
+  get: () => settingsStore.meteorFps,
+  set: (value: number) => {
+    const clampedValue = Math.max(10, Math.min(60, value))
+    settingsStore.setMeteorFps(clampedValue)
+  },
+})
+const meteorFpsInput = ref(settingsStore.meteorFps)
+
+const starsFps = computed({
+  get: () => settingsStore.starsFps,
+  set: (value: number) => {
+    const clampedValue = Math.max(10, Math.min(60, value))
+    settingsStore.setStarsFps(clampedValue)
+  },
+})
+const starsFpsInput = ref(settingsStore.starsFps)
 
 const backgroundList = ref<BackgroundImageInfo[]>([])
 const selectedBackground = ref<string>('')
@@ -384,6 +458,64 @@ async function updateParticle(value: string): Promise<void> {
     console.error('Failed to save selected background effect:', error)
   }
 }
+
+// 处理滑块变化
+function handleMeteorFpsChange(value: number) {
+  const clampedValue = Math.max(10, Math.min(60, value))
+  meteorFpsInput.value = clampedValue
+  settingsStore.setMeteorFps(clampedValue)
+}
+
+// 处理输入框失去焦点
+function handleInputBlur() {
+  let value = Number(meteorFpsInput.value)
+  if (isNaN(value) || value < 10) {
+    value = 10
+  } else if (value > 300) {
+    value = 300
+  }
+  meteorFpsInput.value = value
+  settingsStore.setMeteorFps(value)
+}
+
+// 处理输入框回车
+function handleInputEnter() {
+  handleInputBlur()
+}
+
+// 监听meteorFps变化，同步更新输入框
+watch(meteorFps, (newValue) => {
+  meteorFpsInput.value = newValue
+})
+
+// 处理星星滑块变化
+function handleStarsFpsChange(value: number) {
+  const clampedValue = Math.max(10, Math.min(60, value))
+  starsFpsInput.value = clampedValue
+  settingsStore.setStarsFps(clampedValue)
+}
+
+// 处理星星输入框失去焦点
+function handleStarsInputBlur() {
+  let value = Number(starsFpsInput.value)
+  if (isNaN(value) || value < 10) {
+    value = 10
+  } else if (value > 300) {
+    value = 300
+  }
+  starsFpsInput.value = value
+  settingsStore.setStarsFps(value)
+}
+
+// 处理星星输入框回车
+function handleStarsInputEnter() {
+  handleStarsInputBlur()
+}
+
+// 监听starsFps变化，同步更新输入框
+watch(starsFps, (newValue) => {
+  starsFpsInput.value = newValue
+})
 </script>
 
 <style scoped>

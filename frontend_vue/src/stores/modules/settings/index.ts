@@ -28,6 +28,8 @@ export const DEFAULT_SETTINGS = {
     mainMenuMeteorsEnabled: true, // 主菜单流星开关
     globalMouseTrailEnabled: true, // 全局鼠标滑动动画开关
     clickAnimationEnabled: true, // 点击动画开关
+    meteorFps: 30, // 流星动画帧率
+    starsFps: 30, // 星星动画帧率
   },
   // 角色设置
   character: {
@@ -54,6 +56,8 @@ export interface DisplaySettings {
   mainMenuMeteorsEnabled: boolean
   globalMouseTrailEnabled: boolean
   clickAnimationEnabled: boolean
+  meteorFps: number
+  starsFps: number
 }
 
 export interface CharacterSettings {
@@ -99,6 +103,8 @@ export const useSettingsStore = defineStore('settings', {
     mainMenuMeteorsEnabled: (state) => state.display.mainMenuMeteorsEnabled,
     globalMouseTrailEnabled: (state) => state.display.globalMouseTrailEnabled,
     clickAnimationEnabled: (state) => state.display.clickAnimationEnabled,
+    meteorFps: (state) => state.display.meteorFps,
+    starsFps: (state) => state.display.starsFps,
     // 各音量
     characterVolume: (state) => state.audio.characterVolume,
     bubbleVolume: (state) => state.audio.bubbleVolume,
@@ -235,6 +241,16 @@ export const useSettingsStore = defineStore('settings', {
     // 设置点击动画开关
     setClickAnimationEnabled(enabled: boolean) {
       this.display.clickAnimationEnabled = enabled
+    },
+
+    // 设置流星动画帧率
+    setMeteorFps(fps: number) {
+      this.display.meteorFps = fps
+    },
+
+    // 设置星星动画帧率
+    setStarsFps(fps: number) {
+      this.display.starsFps = fps
     },
 
     // 设置角色文件夹
