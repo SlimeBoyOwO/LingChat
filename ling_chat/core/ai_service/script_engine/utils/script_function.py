@@ -74,6 +74,14 @@ class ScriptFunction:
         return False
 
     @staticmethod
+    def replace_placeholder(
+        text: str, game_status: GameStatus, script_status: ScriptStatus
+    ) -> str:
+        """替换文本中的占位符"""
+        # 规则：占位符有%player%，用game_status.player.user_name替换
+        return text.replace("%player%", game_status.player.user_name)
+
+    @staticmethod
     async def handle_actions(
         game_status: GameStatus, script_status: ScriptStatus, actions: list[dict]
     ) -> None:

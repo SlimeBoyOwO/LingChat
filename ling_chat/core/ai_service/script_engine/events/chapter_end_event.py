@@ -131,8 +131,6 @@ class ChapterEndEvent(BaseEvent):
             logger.error(f"LLM 调用失败: {e}")
             return ""
 
-        return next_chapter
-
     @classmethod
     def can_handle(cls, event_type: str) -> bool:
         return event_type == "chapter_end"
