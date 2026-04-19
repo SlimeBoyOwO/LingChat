@@ -1,4 +1,5 @@
 from ling_chat.core.ai_service.script_engine.events.base_event import BaseEvent
+from ling_chat.core.ai_service.script_engine.utils.script_function import ScriptFunction
 from ling_chat.core.logger import logger
 from ling_chat.core.messaging.broker import message_broker
 from ling_chat.core.schemas.response_models import ResponseFactory
@@ -15,6 +16,9 @@ class PlayerEvent(BaseEvent):
         display_subtitle: str | None = self.event_data.get("displaySubtitle", None)
 
         for text in lines:
+            text = ScriptFunction.replace_placeholder(
+                text, self.game_status, self.script_status
+            )
             logger.info(f"显示对话: 玩家 - {text}")
 
             # 在实际实现中，这里会更新游戏状态和UI

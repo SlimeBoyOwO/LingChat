@@ -1,4 +1,5 @@
 from ling_chat.core.ai_service.script_engine.events.base_event import BaseEvent
+from ling_chat.core.ai_service.script_engine.utils.script_function import ScriptFunction
 from ling_chat.core.logger import logger
 from ling_chat.core.messaging.broker import message_broker
 from ling_chat.core.schemas.response_models import ResponseFactory
@@ -15,6 +16,9 @@ class NarrationEvent(BaseEvent):
         lines: list[str] = [line for line in text.splitlines() if line.strip()]
 
         for text in lines:
+            text = ScriptFunction.replace_placeholder(
+                text, self.game_status, self.script_status
+            )
             logger.info(f"显示对话: 旁白Narration - {text}")
 
             # 在实际实现中，这里会更新游戏状态和UI

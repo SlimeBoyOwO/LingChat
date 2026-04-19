@@ -14,6 +14,9 @@ class ChoiceEvent(BaseEvent):
         choices = []
         for option in options:
             option_text = option.get("text", "")
+            option_text = ScriptFunction.replace_placeholder(
+                option_text, self.game_status, self.script_status
+            )
             choices.append(option_text)
 
         # 推送前端需要输入的事件

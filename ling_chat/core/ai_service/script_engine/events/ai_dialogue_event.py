@@ -12,6 +12,9 @@ class AIDialogueEvent(BaseEvent):
     async def _execute(self):
         character = self.event_data.get("character", "")
         prompt = self.event_data.get("prompt", "")
+        prompt = ScriptFunction.replace_placeholder(
+            prompt, self.game_status, self.script_status
+        )
 
         role = ScriptFunction.get_role(self.game_status, self.script_status, character)
         self.game_status.current_character = role

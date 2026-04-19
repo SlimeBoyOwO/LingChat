@@ -13,6 +13,9 @@ class DialogueEvent(BaseEvent):
     async def _execute(self):
         character = self.event_data.get("character", "")
         text = self.event_data.get("text", "")
+        text = ScriptFunction.replace_placeholder(
+            text, self.game_status, self.script_status
+        )
 
         role = ScriptFunction.get_role(self.game_status, self.script_status, character)
         self.game_status.current_character = role

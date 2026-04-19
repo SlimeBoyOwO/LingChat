@@ -19,6 +19,12 @@ class FreeDialogueEvent(BaseEvent):
         end_line: str = self.event_data.get("end_line", "")
         dialog_prompt: str = self.event_data.get("prompt", "")
         end_prompt: str = self.event_data.get("end_prompt", "")
+        dialog_prompt = ScriptFunction.replace_placeholder(
+            dialog_prompt, self.game_status, self.script_status
+        )
+        end_prompt = ScriptFunction.replace_placeholder(
+            end_prompt, self.game_status, self.script_status
+        )
         duration: float = self.event_data.get(
             "duration", 0.0
         )  # 默认这类事件不给予等待时间
