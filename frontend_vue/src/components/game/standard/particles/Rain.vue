@@ -4,7 +4,7 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import type { Drop } from './types/rain'
+import type { Drop } from './config/rain'
 import { useRain } from './hooks/useRain'
 
 const props = defineProps({
