@@ -5,8 +5,7 @@
       v-for="(snowflake, index) in snowflakes"
       :key="index"
       :style="{
-        width: `${snowflake.size}px`,
-        height: `${snowflake.size}px`,
+        fontSize: `${snowflake.size}px`,
         left: `${snowflake.left}px`,
         top: `${snowflake.top}px`,
         opacity: snowflake.opacity,

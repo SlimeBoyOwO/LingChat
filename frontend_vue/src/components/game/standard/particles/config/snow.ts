@@ -1,8 +1,8 @@
 import type { FallingParticleConfig, KeyframeConfig } from '../types/falling'
 
 const snowConfig: FallingParticleConfig = {
-  minSize: 8,
-  maxSize: 18,
+  minSize: 12,
+  maxSize: 28,
   minDuration: 20,
   maxDuration: 35,
   maxDelay: 10,
