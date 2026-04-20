@@ -1,4 +1,4 @@
-import type { Drop } from '../types/rain'
+import type { Drop } from '../config/rain'
 
 export function useRain() {
   function createDrop(W: number, H: number, intensity: number = 1): Drop {
