@@ -14,7 +14,11 @@
     <MeteorAnimation :meteors-enabled="meteorsEnabled" :meteor-fps="meteorFps" />
 
     <!-- 星星粒子层（位于背景和人物之间） -->
-    <StarAnimation :stars-enabled="starsEnabled" :stars-layer-ref="starsLayerRef" :stars-fps="starsFps" />
+    <StarAnimation
+      :stars-enabled="starsEnabled"
+      :stars-layer-ref="starsLayerRef"
+      :stars-fps="starsFps"
+    />
 
     <!-- 人物图层（位于星星之上，菜单之下） -->
     <img class="character-image" ref="charRef" src="../../assets/images/alona.png" alt="人物" />

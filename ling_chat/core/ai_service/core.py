@@ -433,11 +433,17 @@ class AIService:
                                 ) in self.message_generator.process_message_stream(
                                     user_message
                                 ):
-                                    for client_id in self.config.clients:
+                                    if self.config.last_active_client:
                                         await message_broker.publish(
-                                            client_id, response.model_dump()
+                                            self.config.last_active_client,
+                                            response.model_dump(),
                                         )
-                                    responses.append(response)
+                                    else:
+                                        for client_id in self.config.clients:
+                                            await message_broker.publish(
+                                                client_id, response.model_dump()
+                                            )
+                                        responses.append(response)
                                 logger.debug(
                                     f"全局消息处理完成，共生成 {len(responses)} 个响应片段"
                                 )
