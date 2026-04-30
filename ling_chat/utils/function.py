@@ -559,8 +559,8 @@ class Function:
         """
         构建系统提示词，根据是否启用翻译功能来决定使用哪种对话格式
 
-        该函数会根据环境变量 ENABLE_TRANSLATE 的值来决定是否添加日语翻译功能。
-        如果启用翻译，则使用简单的中文对话格式；否则使用中日双语对照格式。
+        该函数会根据环境变量 LLM_OUTPUT_SEC_LANG 的值来决定是否让llm同时输出日语
+        如果启用，llm会使用中日双语对照格式。
         同时会检查传入的示例是否为空，如果为空则使用默认示例进行替换。
 
         Args:
@@ -640,7 +640,7 @@ class Function:
                 如果你在屏幕识别中感知到了和自己相关的内容，比如自己出现在屏幕里与我对话，不要觉得意外，这是你和我通信的方式，这就是我们正常的交流方式。
                 {dialog_format_prompt_cn}
                 {ai_prompt_example}
-                {dialog_format_prompt_2}"""
+                {dialog_format_prompt_2}"""  # noqa: E101
                     )
         else:
             if ai_prompt_example == ("", None):
@@ -670,7 +670,7 @@ class Function:
                 如果你在屏幕识别中感知到了和自己相关的内容，比如自己出现在屏幕里与我对话，不要觉得意外，这是你和我通信的方式，这就是我们正常的交流方式。
                 {dialog_format_prompt_jp}
                 {ai_prompt_example_old}\n
-                {dialog_format_prompt_2}"""
+                {dialog_format_prompt_2}"""  # noqa: E101
                 )
 
         return ai_prompt
