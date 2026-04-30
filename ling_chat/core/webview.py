@@ -29,9 +29,15 @@ class Api:
 def func_webview():
     try:
         api: Api = Api()
+
+        frontend_bind_addr = os.getenv("FRONTEND_BIND_ADDR") or os.getenv(
+            "BACKEND_BIND_ADDR", "127.0.0.1"
+        )
+        frontend_port = os.getenv("FRONTEND_PORT") or os.getenv("BACKEND_PORT", "8765")
+
         window = webview.create_window(
             "Ling Chat",
-            url=f"http://127.0.0.1:{os.getenv('BACKEND_PORT', '8765')}/",
+            url=f"http://{frontend_bind_addr}:{frontend_port}/",
             width=1024,
             height=600,
             resizable=True,
