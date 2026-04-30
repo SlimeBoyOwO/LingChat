@@ -27,6 +27,11 @@ export class ScriptHandler {
       eventQueue.addEvent(data as ScriptTypes.ScriptDialogueEvent)
     })
 
+    registerHandler(WebSocketMessageTypes.SCRIPT_FREE_DIALOGUE, (data: any) => {
+      console.log('收到自由剧本对话事件:', data)
+      eventQueue.addEvent(data as ScriptTypes.ScriptFreeDialogueEvent)
+    })
+
     registerHandler(WebSocketMessageTypes.SCRIPT_THINKING, (data: any) => {
       console.log('收到剧本思考事件:', data)
       eventQueue.addEvent(data as ScriptTypes.ScriptThinkingEvent)
