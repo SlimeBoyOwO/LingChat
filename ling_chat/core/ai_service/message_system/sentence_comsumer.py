@@ -7,7 +7,6 @@ from ling_chat.core.ai_service.ai_logger import logger
 from ling_chat.core.ai_service.game_system.game_status import GameStatus
 from ling_chat.core.ai_service.message_system.message_processor import MessageProcessor
 from ling_chat.core.ai_service.translator import Translator
-from ling_chat.core.logger import logger
 from ling_chat.core.schemas.response_models import ResponseFactory
 from ling_chat.core.schemas.responses import ReplyResponse
 from ling_chat.game_database.models import LineAttribute, LineBase
@@ -86,8 +85,8 @@ class SentenceConsumer:
         logger.info(
             f"Consumer {self.consumer_id} processing sentence: {sentence[:30]}..."
         )
-        sentence_segments: List[Dict] = self.message_processor.analyze_emotions(
-            sentence
+        sentence_segments: List[Dict] = (
+            self.message_processor.parse_and_classify_emotional_segments(sentence)
         )
         if not sentence_segments:
             logger.warning("AI response format error: No emotion or text found.")
@@ -97,9 +96,12 @@ class SentenceConsumer:
         if sentence_segments[0].get("japanese_text") == "":
             await self.translator.translate_ai_response(sentence_segments)
         else:
-            await self.game_status.current_character.voice_maker.generate_voice_files(
-                sentence_segments
-            )
+            if self.game_status.current_character:
+                await (
+                    self.game_status.current_character.voice_maker.generate_voice_files(
+                        sentence_segments
+                    )
+                )
         end_time = time.perf_counter()
 
         role = self.game_status.current_character
