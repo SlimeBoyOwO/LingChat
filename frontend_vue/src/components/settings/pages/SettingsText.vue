@@ -92,6 +92,7 @@
         </template>
         <div class="flex gap-3">
           <Button type="big" @click="returnToMain">返回主菜单</Button>
+          <Button type="big" @click="refreshTTS">刷新TTS服务</Button>
           <Button v-if="isFreeDialogMode" type="big" variant="danger" @click="handleClearHistory"
             >清除历史对话</Button
           >
@@ -123,6 +124,7 @@ import {
   Rss,
   Download,
 } from 'lucide-vue-next'
+import { reactivateTTS } from '@/api/services/game-info'
 
 const router = useRouter()
 const uiStore = useUIStore()
@@ -230,6 +232,15 @@ const handleMemorySettingChange = (checked: boolean, setting: ConfigItem) => {
 
 const openWebsite = (url: string) => {
   window.open(url, '_blank') // '_blank' 表示在新窗口中打开
+}
+
+const refreshTTS = async () => {
+  try {
+    await reactivateTTS()
+    alert('刷新TTS成功，将会在TTS可用的时候自动调用')
+  } catch (error) {
+    alert('刷新TTS失败')
+  }
 }
 </script>
 
