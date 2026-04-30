@@ -10,6 +10,15 @@ from ling_chat.utils.runtime_path import third_party_path
 
 
 class EmotionClassifier:
+    _instance = None
+
+    @classmethod
+    # 给上游 predict_server.py 获取单例，现在其实不怎么用的到
+    def get_instance(cls):
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
     def __init__(self, model_path=None):
         """加载情绪分类模型 (ONNX版本) - 增强兼容性修复版"""
 
