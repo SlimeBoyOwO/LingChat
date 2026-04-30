@@ -32,6 +32,15 @@ class FreeDialogueEvent(BaseEvent):
         role = ScriptFunction.get_role(self.game_status, self.script_status, character)
         self.game_status.current_character = role
 
+        await message_broker.publish(
+            self.client_id,
+            (
+                ResponseFactory.create_free_dialogue(
+                    True, max_rounds, end_line
+                ).model_dump()
+            ),
+        )
+
         while True:
             is_last_round: bool = False
 
@@ -60,11 +69,11 @@ class FreeDialogueEvent(BaseEvent):
                         display_name=self.game_status.player.user_name,
                     )
                 )
+
+                if end_line and end_line in user_input:
+                    is_last_round = True
             else:
                 logger.warning("剧本输入事件中用户未输入任何内容")
-
-            if end_line and user_input == end_line:
-                is_last_round = True
 
             # TODO: 这样可以是可以就是不太优雅，之后可以考虑优化一下
             ai_service = service_manager.ai_service
@@ -80,6 +89,15 @@ class FreeDialogueEvent(BaseEvent):
 
             if is_last_round:
                 break
+
+        await message_broker.publish(
+            self.client_id,
+            (
+                ResponseFactory.create_free_dialogue(
+                    False, max_rounds, end_line
+                ).model_dump()
+            ),
+        )
 
     @classmethod
     def can_handle(cls, event_type: str) -> bool:

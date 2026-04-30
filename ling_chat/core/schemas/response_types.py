@@ -13,6 +13,7 @@ class ResponseType:
     SCRIPT_PLAYER = "player"  # 剧本对话回复
     SCRIPT_NARRATION = "narration"  # 剧本旁白
     SCRIPT_CHOICE = "choice"  # 玩家选择分支
+    SCRIPT_FREE_DIALGOUE = "free_dialogue"  # 自由对话
 
     # 章节控制系统
     SCRIPT_CHAPTER_CHANGE = "chapter_change"  # 章节切换
