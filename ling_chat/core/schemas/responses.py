@@ -46,6 +46,14 @@ class ThinkingResponse(BaseResponse):
     isThinking: bool
 
 
+class FreeDialogueResponse(BaseResponse):
+    type: str = ResponseType.SCRIPT_FREE_DIALGOUE
+    switch: bool
+    maxRounds: int
+    endLine: str
+    duration: float = 0
+
+
 class ScriptBackgroundResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_BACKGROUND
     imagePath: str

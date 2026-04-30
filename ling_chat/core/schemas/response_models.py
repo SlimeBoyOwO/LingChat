@@ -1,18 +1,38 @@
 # response_factory.py
 import os
-from typing import Dict
+from typing import Dict, Optional
 
-from .responses import *
+from ling_chat.core.schemas.responses import (
+    ChapterChangeResponse,
+    ChoiceResponse,
+    FreeDialogueResponse,
+    ReplyResponse,
+    ScriptBackgroundEffectResponse,
+    ScriptBackgroundResponse,
+    ScriptEndResponse,
+    ScriptInputResponse,
+    ScriptModifyCharacterResponse,
+    ScriptMusicResponse,
+    ScriptNarrationResponse,
+    ScriptPlayerResponse,
+    ScriptPresentPicResponse,
+    ScriptSoundResponse,
+    ThinkingResponse,
+)
+
+"""
+响应工厂类，用于创建各种类型的响应对象
+"""
 
 
 class ResponseFactory:
     @staticmethod
     def create_reply(
-        seg: Dict,
-        user_message: str,
-        is_final: bool,
-        display_name: Optional[str] = None,
-        display_subtitle: Optional[str] = None,
+        seg: Dict,  # 段落字典，包含角色相关信息
+        user_message: str,  # 用户消息内容
+        is_final: bool,  # 是否为最终回复
+        display_name: Optional[str] = None,  # 可选的显示名称
+        display_subtitle: Optional[str] = None,  # 可选的显示副标题
     ) -> ReplyResponse:
         return ReplyResponse(
             character=seg.get("character", "default"),
@@ -42,6 +62,16 @@ class ResponseFactory:
             audioFile=None,
             originalMessage="",
             isFinal=True,
+        )
+
+    @staticmethod
+    def create_free_dialogue(
+        switch: bool, max_rounds: int, end_line: str
+    ) -> FreeDialogueResponse:
+        return FreeDialogueResponse(
+            switch=switch,
+            maxRounds=max_rounds,
+            endLine=end_line,
         )
 
     @staticmethod

@@ -317,6 +317,9 @@ function send() {
 
   if (gameStore.runningScript) {
     gameStore.runningScript.choices = []
+    if (gameStore.runningScript.freeDialogueInfo.isFreeDialogue) {
+      gameStore.runningScript.freeDialogueInfo.currentRound++
+    }
   }
 
   inputMessage.value = ''

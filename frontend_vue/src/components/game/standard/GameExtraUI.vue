@@ -12,6 +12,9 @@
 
     <!-- 4. Script 图片显示区域 -->
     <ScriptPicDisplay />
+
+    <!-- 5. 自由对话动画与提示区域 -->
+    <ScriptFreeDialogueDisplay />
   </div>
 </template>
 
@@ -20,4 +23,5 @@ import ChapterNameDisplay from './extra/ChapterNameDisplay.vue'
 import GameChoices from './extra/GameChoices.vue'
 import ScriptCompleteDisplay from './extra/ScriptCompleteDisplay.vue'
 import ScriptPicDisplay from './extra/ScriptPicDisplay.vue'
+import ScriptFreeDialogueDisplay from './extra/ScriptFreeDialogueDisplay.vue'
 </script>
