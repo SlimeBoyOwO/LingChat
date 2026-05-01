@@ -54,8 +54,10 @@ class FreeDialogueEvent(BaseEvent):
             await message_broker.publish(self.client_id, event_response.model_dump())
 
             # 等待来自前端的输入
-            prompt = end_prompt if is_last_round else dialog_prompt
             user_input = await ScriptFunction.wait_for_user_input(self.client_id)
+            if end_line and user_input and end_line in user_input:
+                is_last_round = True
+            prompt = end_prompt if is_last_round else dialog_prompt
             extra_user_message = ("\n{剧情提示: " + prompt + "}") if prompt else ""
 
             # 将用户输入（加上剧情提示）存储到游戏上下文
@@ -70,8 +72,6 @@ class FreeDialogueEvent(BaseEvent):
                     )
                 )
 
-                if end_line and end_line in user_input:
-                    is_last_round = True
             else:
                 logger.warning("剧本输入事件中用户未输入任何内容")
 
