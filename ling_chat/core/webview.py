@@ -1,7 +1,11 @@
+import multiprocessing
 import os
+
 import webview
+
 from ling_chat.core.logger import logger
 from ling_chat.utils.runtime_path import static_path, user_data_path
+
 
 # 创建一个类以向JavaScript暴露函数
 class Api:
@@ -15,12 +19,25 @@ class Api:
         if self._window:
             self._window.toggle_fullscreen()
 
-def start_webview():
+    def exit_app(self):
+        """优雅地退出应用，关闭窗口"""
+        logger.info("收到退出请求，正在关闭应用...")
+        if self._window:
+            self._window.destroy()
+
+
+def func_webview():
     try:
-        api:Api = Api()
+        api: Api = Api()
+
+        frontend_bind_addr = os.getenv("FRONTEND_BIND_ADDR") or os.getenv(
+            "BACKEND_BIND_ADDR", "127.0.0.1"
+        )
+        frontend_port = os.getenv("FRONTEND_PORT") or os.getenv("BACKEND_PORT", "8765")
+
         window = webview.create_window(
             "Ling Chat",
-            url=f"http://127.0.0.1:{os.getenv('BACKEND_PORT', '8765')}/",
+            url=f"http://{frontend_bind_addr}:{frontend_port}/",
             width=1024,
             height=600,
             resizable=True,
@@ -30,15 +47,22 @@ def start_webview():
         api.set_window(window)  # 让Api实例能够访问window对象
 
         icon_path = static_path / "game_data/resources/lingchat.ico"
-        
+
         # print(f"图标路径: {icon_path}")
         # print(f"图标文件是否存在: {icon_path.exists()}")
 
         webview.start(
             http_server=True,
             icon=str(icon_path),  # 在这里设置图标
-            storage_path=str(user_data_path / "webview_storage_path")
+            storage_path=str(user_data_path / "webview_storage_path"),
         )
 
     except KeyboardInterrupt:
         logger.info("WebView被中断")
+
+
+def start_webview():
+    webview_process = multiprocessing.Process(target=func_webview)
+    webview_process.start()
+    webview_process.join()
+    return webview_process

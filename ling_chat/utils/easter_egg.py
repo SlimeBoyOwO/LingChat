@@ -14,8 +14,8 @@ CATEGORIZED_MESSAGES = [
         "name": "其他彩蛋",
         "weight": 0.3,
         "messages": [
-         "给LingChat点点star喵，给LingChat点点star谢谢喵",
-         "LingChat不能失去彩蛋，就像西方不能失去耶路撒冷！"
+            "给LingChat点点star喵，给LingChat点点star谢谢喵",
+            "LingChat不能失去彩蛋，就像西方不能失去耶路撒冷！",
         ],
     },
     {
@@ -35,6 +35,7 @@ CATEGORIZED_MESSAGES = [
 
 DEFAULT_MESSAGE = "正在努力加载中..."
 
+
 def get_random_loading_message() -> str:
     """
     根据预设的类别和权重，随机选择一条加载文案。
@@ -49,7 +50,6 @@ def get_random_loading_message() -> str:
     weights = [cat["weight"] for cat in valid_categories]
 
     try:
-
         chosen_category = random.choices(valid_categories, weights=weights, k=1)[0]
 
         return random.choice(chosen_category["messages"])
@@ -58,7 +58,8 @@ def get_random_loading_message() -> str:
         print(f"获取随机文案时出错: {e}", file=sys.stderr)
         return DEFAULT_MESSAGE
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     print("--- 测试随机文案生成 ---")
     results = {}
     for _ in range(1000):

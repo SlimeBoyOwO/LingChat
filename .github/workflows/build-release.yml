@@ -61,6 +61,8 @@ jobs:
     needs: prepare
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
+    env:
+      PYTHONUTF8: 1
     strategy:
       matrix:
         platform: ${{ fromJSON(needs.prepare.outputs.platforms_json) }}
@@ -68,18 +70,18 @@ jobs:
           - platform: windows
             os: windows-latest
             upx_url: https://github.com/upx/upx/releases/download/v5.1.1/upx-5.1.1-win64.zip
-            archive_ext: zip
-            archive_cmd: 7z a -tzip ../${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }}-windows.zip .
+            archive_ext: 7z
+            archive_cmd: 7z a -t7z -mx9 -md=128m -mmt=4 ../${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }}-windows.7z .
           - platform: linux-amd64
             os: ubuntu-latest
             upx_url: https://github.com/upx/upx/releases/download/v5.1.1/upx-5.1.1-amd64_linux.tar.xz
-            archive_ext: tar.gz
-            archive_cmd: tar -czf ../${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }}-linux-amd64.tar.gz .
+            archive_ext: tar.xz
+            archive_cmd: XZ_OPT="-9 -T0" tar -cJf ../${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }}-linux-amd64.tar.xz  .
           - platform: linux-aarch64
             os: ubuntu-24.04-arm
             upx_url: https://github.com/upx/upx/releases/download/v5.1.1/upx-5.1.1-arm64_linux.tar.xz
-            archive_ext: tar.gz
-            archive_cmd: tar -czf ../${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }}-linux-aarch64.tar.gz .
+            archive_ext: tar.xz
+            archive_cmd: XZ_OPT="-9 -T0" tar -cJf ../${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }}-linux-aarch64.tar.xz .
 
     steps:
       - name: 检出代码
@@ -94,7 +96,9 @@ jobs:
           version: 'latest'
 
       - name: 安装项目依赖
-        run: uv sync 
+        run: |
+          uv sync
+          uv run main.py install emo
 
       - name: 安装 Nuitka 编译器
         run: uv pip install nuitka
@@ -135,18 +139,22 @@ jobs:
 
       - name: 使用 Nuitka 编译
         shell: bash
+        env:
+          CFLAGS: '-flto=thin -O2'
+          CXXFLAGS: '-flto=thin -O2'
         run: |
           NUMERIC_VERSION=$(echo ${{ needs.prepare.outputs.tag_name }} | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
-          
+
           if [[ "${{ matrix.platform }}" == linux* ]]; then
-            echo "yes" | uv run nuitka --clang --standalone --enable-plugins=upx --upx-binary=$UPX_BIN --jobs=2 --lto=yes --assume-yes-for-downloads --linux-icon=ling_chat/static/game_data/resources/lingchat.png --output-filename=LingChat --product-name=${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }} --file-version="$NUMERIC_VERSION" --product-version="$NUMERIC_VERSION" --company-name="LingChat Studio" --verbose --show-scons --report=debug_report.xml --show-memory --show-modules main.py
+            echo "yes" | uv run nuitka --clang --standalone --enable-plugins=upx --upx-binary=$UPX_BIN --jobs=4 --lto=yes --low-memory --assume-yes-for-downloads --linux-icon=ling_chat/static/game_data/resources/lingchat.png --output-filename=LingChat --product-name=${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }} --file-version="$NUMERIC_VERSION" --product-version="$NUMERIC_VERSION" --company-name="LingChat Studio" --show-memory main.py
           else
-            echo "yes" | uv run nuitka --standalone --enable-plugins=upx --upx-binary=$UPX_BIN --jobs=2 --lto=yes --assume-yes-for-downloads --windows-icon-from-ico=ling_chat/static/game_data/resources/lingchat.ico --output-filename=LingChat --product-name=${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }} --file-version="$NUMERIC_VERSION" --product-version="$NUMERIC_VERSION" --company-name="LingChat Studio" --verbose --show-scons --report=debug_report.xml --show-memory --show-modules main.py
+            echo "yes" | uv run nuitka --clang --standalone --enable-plugins=upx --upx-binary=$UPX_BIN --jobs=4 --lto=yes --low-memory --assume-yes-for-downloads --windows-icon-from-ico=ling_chat/static/game_data/resources/lingchat.ico --output-filename=LingChat --product-name=${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }} --file-version="$NUMERIC_VERSION" --product-version="$NUMERIC_VERSION" --company-name="LingChat Studio"  --show-memory main.py
           fi
-    
+
       - name: 整理文件（准备打包）
         shell: bash
         run: |
+          ls -la main.dist
           rm -rf ling_chat/static/frontend
           mkdir -p ling_chat/static/frontend
           cp -r frontend_vue/dist/* ling_chat/static/frontend/
@@ -157,7 +165,7 @@ jobs:
           mv ling_chat/static main.dist/ling_chat
           mv ling_chat/third_party main.dist/ling_chat
 
-      - name: 打包（Windows 用 zip，Linux 用 tar.gz）
+      - name: 打包
         working-directory: main.dist
         run: ${{ matrix.archive_cmd }}
 
@@ -186,9 +194,18 @@ jobs:
           merge-multiple: true
           skip-decompress: true
 
+      - name: 设置 Python 环境
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: 'latest'
+
+      - name: 安装modelscope
+        run: uv tool install modelscope
+
       - name: 创建或更新 Release 并上传所有资产
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODELSCOPE_ACCESS_TOKEN: ${{ secrets.MODELSCOPE_ACCESS_TOKEN }}
         run: |
           set -e
           TAG="${{ needs.prepare.outputs.tag_name }}"
@@ -219,6 +236,12 @@ jobs:
           for file in "${files[@]}"; do
             echo "正在上传 $file ..."
             gh release upload "$TAG" "$file" --clobber
+            echo "✓ 上传完成：$file"
+          done
+
+          for file in "${files[@]}"; do
+            echo "正在上传modelcope: $file ..."
+            ms upload lingchat-research-studio/LingChat-release-mirror "$file" ./$TAG/$file --token $MODELSCOPE_ACCESS_TOKEN
             echo "✓ 上传完成：$file"
           done
 

@@ -1,12 +1,19 @@
 <template>
   <div class="message-item" v-for="message in dialog">
-    <div class="player-message" v-if="message.type === 'message'">
-      <DialogUser :name="message.character" :content="message.content" />
+    <div
+      v-if="message.type === 'message' && message.content && message.content.trim() !== ''"
+      class="player-message"
+    >
+      <DialogUser :name="message.displayName" :content="message.content" />
     </div>
-    <div class="chararter-reply" v-else-if="message.type === 'reply'">
+    <div
+      class="chararter-reply"
+      v-else-if="message.type === 'reply' && message.content && message.content.trim() !== ''"
+    >
       <DialogCharacter
-        :name="message.character"
+        :name="message.displayName"
         :content="message.content"
+        :action_content="message.motionText"
         :emotionTag="message.originalTag"
         :emotionText="message.motionText"
         @click="rephrase(message.audioFile)"
@@ -20,13 +27,13 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { API_CONFIG } from '../../../controllers/core/config'
-import type { DialogMessage } from '../../../stores/modules/game/state'
+import type { GameMessage } from '../../../stores/modules/game/state'
 import DialogUser from './DialogUser.vue'
 import DialogCharacter from './DialogCharacter.vue'
 
 const props = defineProps({
   dialog: {
-    type: Array as () => DialogMessage[],
+    type: Array as () => GameMessage[],
     require: true,
   },
 })

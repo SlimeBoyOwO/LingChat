@@ -1,42 +1,92 @@
 # responses.py
-from pydantic import BaseModel
-from .response_types import ResponseType
 from typing import Optional, Union
+
+from pydantic import BaseModel
+
+from .response_types import ResponseType
+
 
 class BaseResponse(BaseModel):
     type: str
     duration: float = -1
     isFinal: bool = False
 
+
 class ReplyResponse(BaseResponse):
     type: str = ResponseType.AI_REPLY
     character: Optional[str] = None
+    roleId: Optional[int] = None
     emotion: str
     originalTag: str
     message: str
+    ttsText: Optional[str] = None
     motionText: Optional[str] = None
     audioFile: Optional[str] = None
     originalMessage: str
+    displayName: Optional[str] = None
+    displaySubtitle: Optional[str] = None
+
+
+class ChapterChangeResponse(BaseResponse):
+    type: str = ResponseType.SCRIPT_CHAPTER_CHANGE
+    chapterName: str
+    duration: float = 0
+
+
+class ChoiceResponse(BaseResponse):
+    type: str = ResponseType.SCRIPT_CHOICE
+    choices: list[str]
+    allowFree: bool = False
+    duration: float = 0
+
+
+class ThinkingResponse(BaseResponse):
+    type: str = ResponseType.AI_THINKING
+    duration: float = 0
+    isThinking: bool
+
+
+class FreeDialogueResponse(BaseResponse):
+    type: str = ResponseType.SCRIPT_FREE_DIALGOUE
+    switch: bool
+    maxRounds: int
+    endLine: str
+    duration: float = 0
+
 
 class ScriptBackgroundResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_BACKGROUND
     imagePath: str
+    transition: float = 1
+
+
+class ScriptPresentPicResponse(BaseResponse):
+    type: str = ResponseType.SCRIPT_PRESENT_PIC
+    imagePath: str
+    scale: float = 1
+    duration: float = 0
+
 
 class ScriptBackgroundEffectResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_BACKGROUND_EFFECT
     effect: str
 
+
 class ScriptSoundResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_SOUND
     soundPath: str
+
 
 class ScriptMusicResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_MUSIC
     musicPath: str
 
+
 class ScriptNarrationResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_NARRATION
+    displayName: Optional[str] = None
     text: str
+
 
 class ScriptDialogResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_DIALOG
@@ -46,19 +96,31 @@ class ScriptDialogResponse(BaseResponse):
     motionText: Optional[str] = None
     audioFile: Optional[str] = None
 
+
 class ScriptModifyCharacterResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_MODIFY_CHARACTER
-    character: str
+    characterId: int
     emotion: Optional[str] = None
     action: Optional[str] = None
+
 
 class ScriptPlayerResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_PLAYER
     text: str
+    displayName: Optional[str] = None
+    displaySubtitle: Optional[str] = None
+
 
 class ScriptInputResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_INPUT
     hint: str
+
+
+class ScriptEndResponse(BaseResponse):
+    type: str = ResponseType.SCRIPT_END
+    duration: float = 0
+    isFinal: bool = True
+
 
 # 所有响应类型
 Response = Union[ReplyResponse, ScriptBackgroundResponse, ScriptNarrationResponse]

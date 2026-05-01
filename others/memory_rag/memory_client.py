@@ -1,6 +1,6 @@
 # 原本是ling_chat/core/memory_client.py
-import sys
 import os
+import sys
 
 # 添加项目根目录到 Python 路径
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -10,6 +10,7 @@ from ling_chat.core.memory_rag.graph import MemoryGraph, get_default_graph_confi
 from ling_chat.core.memory_rag.vector import MemoryVector, get_default_vector_config
 
 _memory_client = None
+
 
 def _parse_environment_variables(config_dict):
     """
@@ -26,7 +27,9 @@ def _parse_environment_variables(config_dict):
                     parsed_config[key] = env_value
                     print(f"Loaded {env_var} from environment for {key}")
                 else:
-                    print(f"Warning: Environment variable {env_var} not found, keeping original value")
+                    print(
+                        f"Warning: Environment variable {env_var} not found, keeping original value"
+                    )
                     parsed_config[key] = value
             elif isinstance(value, dict):
                 parsed_config[key] = _parse_environment_variables(value)
@@ -34,6 +37,7 @@ def _parse_environment_variables(config_dict):
                 parsed_config[key] = value
         return parsed_config
     return config_dict
+
 
 def get_memory_client(client_type: str = "vector"):
     global _memory_client
@@ -59,6 +63,7 @@ def get_memory_client(client_type: str = "vector"):
     except Exception as e:
         print(f"Error initializing memory client: {e}")
         import traceback
+
         traceback.print_exc()
         _memory_client = None
         return None

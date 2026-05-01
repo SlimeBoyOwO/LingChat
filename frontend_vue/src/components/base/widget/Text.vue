@@ -7,7 +7,7 @@
 
 <script setup>
 // 导入外部模块
-import { useSlots, ref, watch } from 'vue'
+import { useSlots, ref, watch, onMounted } from 'vue'
 
 // 定义组件属性
 const props = defineProps({
@@ -24,6 +24,11 @@ const text = ref()
 const sampleText = useSlots().default()[0].children
 
 // 处理组件行为
+
+// 初始化时触发打字机效果
+onMounted(() => {
+  typewriter(props.speed)
+})
 
 // 侦测speed的变化重置打字机
 watch(
@@ -45,6 +50,10 @@ const typewriter = (speed) => {
       i++
     } else {
       clearInterval(typingInterval)
+      // 打字结束后1秒自动重新显示打字效果
+      setTimeout(() => {
+        typewriter(props.speed)
+      }, 1000)
     }
   }, delay)
 }

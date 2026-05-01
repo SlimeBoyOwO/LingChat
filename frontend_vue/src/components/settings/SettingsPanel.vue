@@ -1,11 +1,11 @@
 <template>
   <div class="blur-overlay" v-if="shouldShowOverlay" :style="{ opacity: overlayOpacity }"></div>
-  <div class="settings-panel" v-show="uiStore.showSettings">
-    <div class="h-[7vh] w-full">
+  <div class="settings-panel flex flex-col h-full" v-show="uiStore.showSettings">
+    <div class="shrink-0 w-full">
       <SettingsNav ref="settingsNavRef" @remove-more-menu-from-a="onAddFromA" />
     </div>
 
-    <div class="w-full h-[93vh] overflow-auto">
+    <div class="w-full flex-1 overflow-auto">
       <SettingsSave v-show="uiStore.currentSettingsTab === 'save'" />
       <SettingsText v-show="uiStore.currentSettingsTab === 'text'" />
       <SettingsSound v-show="uiStore.currentSettingsTab === 'sound'" />
@@ -14,8 +14,9 @@
         v-show="uiStore.currentSettingsTab === 'advance'"
         @remove-more-menu-from-b="onAddFromB"
       />
+      <SettingsAdventure v-show="uiStore.currentSettingsTab === 'adventure'" />
       <SettingsHistory v-show="uiStore.currentSettingsTab === 'history'" />
-      <SettingsSchedule v-show="uiStore.currentSettingsTab === 'schedule'" />
+      <SettingsAchievement v-show="uiStore.currentSettingsTab === 'achievement'" />
       <SettingsCharacter v-show="uiStore.currentSettingsTab === 'character'" />
       <SettingsBackground v-show="uiStore.currentSettingsTab === 'background'" />
       <SettingsUpdate v-show="uiStore.currentSettingsTab === 'update'" />
@@ -30,10 +31,11 @@ import {
   SettingsSound,
   SettingsHistory,
   SettingsAdvance,
-  SettingsSchedule,
   SettingsCharacter,
   SettingsBackground,
   SettingsUpdate,
+  SettingsAchievement,
+  SettingsAdventure,
 } from './pages'
 import SettingsNav from './SettingsNav.vue'
 import { useUIStore } from '../../stores/modules/ui/ui'

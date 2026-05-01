@@ -1,0 +1,185 @@
+/* =============================================
+   main_menu.css - 主菜单及相关图层样式
+   - 主容器布局
+   - 开始界面、Logo、菜单按钮
+   - 背景层、人物层、星星层、流星层
+   ============================================= */
+
+/* 主容器：用于背景层和菜单的定位，并设置透视 */
+.main-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: flex-start;  /* 主菜单靠左 */
+    align-items: center;
+    perspective: 1000px;           /* 为菜单倾斜提供透视效果 */
+    position: relative;
+}
+
+/* 开始页面容器（菜单和Logo的容器） */
+#start-page {
+    width: 100%;
+    height: 100%;
+    z-index: 200; 
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    position: relative;
+    transition: transform 0.2s ease-out;
+    transform-origin: center center;
+    will-change: transform;
+}
+
+/* 主菜单区域（包含按钮） */
+.main-menu {
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+    margin-left: 10vw;            /* 距离左侧10%视口宽度 */
+    position: relative;
+    z-index: 5;
+}
+
+/* Logo 样式 */
+.logo {
+    position: absolute;
+    top: 5vh;
+    right: 5vw;
+    height: 35vh;                 /* 相对高度，保持比例 */
+    width: auto;
+    max-width: 35vw;
+    object-fit: contain;
+    aspect-ratio: auto;
+    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3));
+    z-index: 100;                  /* 位于最上层 */
+    transition: transform 0.5s cubic-bezier(0.68, -0.6, 0.32, 1.6);
+    cursor: pointer;
+}
+
+.logo:hover {
+    transform: translateY(-20px) scale(1.1);
+    filter: drop-shadow(0 15px 15px rgba(0,0,0,0.4));
+}
+
+/* 菜单按钮列表容器 */
+.menu-options {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    width: 350px;
+}
+
+/* 菜单按钮样式 */
+.menu-button {
+    background: transparent;
+    color: white;
+    border: none;
+    padding: 15px;
+    margin: 10px 0;
+    border-radius: 12px;
+    font-size: clamp(32px, 4vw, 72px);
+    font-family: 'Maoken Assorted Sans', -apple-system, sans-serif;
+    cursor: pointer;
+    text-align: left;
+    z-index: 100;                  /* 位于最上层 */
+    position: relative;
+    transition: transform 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28),
+                color 0.3s ease,
+                text-shadow 0.3s ease;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.menu-button:hover {
+    color: #f0f0f0;
+    text-shadow: 0 0 6px rgba(255, 255, 255, 0.4);
+    transform: translateY(-8px) scale(1.05);
+}
+
+.menu-button:active {
+    transform: translateY(-2px) scale(0.98);
+    transition: transform 0.1s ease;
+}
+
+/* ========== 背景层 ========== */
+.video-background {
+    position: absolute;
+    top: 0;
+    left: -10%;                    /* 向左偏移10%，使背景居中且两侧有富余 */
+    width: 120%;                   /* 宽度比视口大20%，确保平移时不会露出空白 */
+    height: 100%;
+    background-image: url('../../../resource/pics/background2.png');
+    background-size: cover;
+    background-position: center;
+    z-index: -2;                   /* 最底层 */
+    transition: transform 0.2s ease-out;
+    will-change: transform;
+}
+
+/* ========== 人物图层 ========== */
+.character-image {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    z-index: 3;                   /* 位于流星之上，菜单之下 */
+    pointer-events: none;          /* 穿透鼠标事件 */
+    transition: transform 0.2s ease-out;
+    will-change: transform;
+}
+
+/* ========== 星星粒子层 ========== */
+.stars-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;                   /* 位于背景和人物之间 */
+    pointer-events: none;
+    overflow: hidden;
+}
+
+#stars-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+/* ========== 流星层 ========== */
+.meteor-wrapper {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 2;                   /* 位于背景和星星之上，菜单之下 */
+    pointer-events: none;          /* 穿透鼠标事件 */
+    overflow: hidden;
+}
+
+#meteor-svg {
+    width: 100%;
+    height: 100%;
+}
+
+/* 流星轨迹样式 */
+.meteor-path {
+    fill: none;
+    stroke: url(#meteor-grad-fixed);
+    stroke-width: 5;
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.95))
+            drop-shadow(0 0 12px rgba(180, 220, 255, 0.9));
+    stroke-dasharray: 600, 3000;
+    stroke-dashoffset: 3000;
+    animation: meteor-move 6s linear forwards;
+}
+
+@keyframes meteor-move {
+    0% { stroke-dashoffset: 3000; }
+    100% { stroke-dashoffset: -3000; }
+}

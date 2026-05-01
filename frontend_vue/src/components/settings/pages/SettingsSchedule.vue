@@ -1,22 +1,10 @@
 <template>
   <MenuPage>
-    <MenuItem title="主动提醒（请去高级设置-实验功能设置）" size="small">
-      <Toggle>是否开启日程主动提醒功能</Toggle>
-    </MenuItem>
-
-    <MenuItem title="随机聊天（敬请期待）" size="small">
-      <Toggle>是否开启随机间隔主动聊天功能</Toggle>
-    </MenuItem>
-
-    <MenuItem title="窥屏权限（敬请期待）" size="small">
-      <Toggle>是否开启主动窥屏聊天功能</Toggle>
-    </MenuItem>
-
-    <MenuItem title="日程列表（敬请期待）" size="large"> 日程组件 </MenuItem>
+    <ScheduleContent variant="settings" />
   </MenuPage>
 </template>
 
 <script setup lang="ts">
-import { MenuPage, MenuItem } from '../../ui'
-import { Toggle } from '../../base'
+import { MenuPage } from '../../ui'
+import ScheduleContent from '@/components/schedule/ScheduleContent.vue'
 </script>

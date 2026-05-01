@@ -9,6 +9,7 @@
       </div>
       <div v-else class="connection-status success">
         <p>✅ 已连接到更新服务</p>
+        <Button type="big" @click="refreshUpdateStatus">刷新更新状态</Button>
       </div>
     </MenuItem>
 
@@ -169,7 +170,7 @@ export default {
 
       // 配置
       config: {
-        auto_backup: true,
+        auto_backup: false,
       },
 
       // 连接状态
@@ -181,8 +182,10 @@ export default {
       showRollbackDialog: false,
       showBackupDialog: false,
 
-      // 轮询状态更新的定时器
-      statusPolling: null,
+      // 轮询状态更新的定时器 - 已移除自动轮询功能
+      statusPollingTimer: null,
+      pollingInProgress: false,
+      eventSource: null, // SSE连接
     }
   },
 
@@ -191,6 +194,7 @@ export default {
   },
 
   beforeUnmount() {
+    // 组件卸载时清理SSE连接
     this.stopStatusPolling()
   },
 
@@ -230,7 +234,9 @@ export default {
           this.errorMessage = ''
           this.loadAppInfo()
           this.loadConfig()
-          this.startStatusPolling()
+          // 连接成功后启动SSE状态监听以自动刷新更新状态
+          await this.getUpdateStatus()
+          this.startSSEConnection()
           console.log('成功连接到更新服务')
         }
       } catch (error) {
@@ -243,8 +249,119 @@ export default {
           setTimeout(() => this.checkBackendConnection(), 2000)
         } else {
           this.errorMessage = `无法连接到更新服务。请确保主应用服务正在运行。错误: ${error.message}`
-          this.stopStatusPolling()
         }
+      }
+    },
+
+    // 刷新更新状态 - 提供给用户手动刷新
+    async refreshUpdateStatus() {
+      if (!this.backendConnected) return
+
+      await this.getUpdateStatus()
+    },
+
+    // 启动SSE连接以自动获取更新状态
+    startSSEConnection() {
+      // 避免重复创建连接
+      this.stopStatusPolling()
+
+      try {
+        this.eventSource = new EventSource(`${this.apiBaseUrl}/status/stream`)
+
+        this.eventSource.onmessage = (event) => {
+          try {
+            const statusUpdate = JSON.parse(event.data)
+            this.handleStatusUpdate(statusUpdate)
+          } catch (error) {
+            console.error('解析SSE数据失败:', error)
+          }
+        }
+
+        this.eventSource.onerror = (error) => {
+          console.error('SSE连接错误:', error)
+          // 连接出错时，尝试重连
+          this.stopStatusPolling()
+          setTimeout(() => {
+            if (this.backendConnected) {
+              this.startSSEConnection()
+            }
+          }, 5000)
+        }
+
+        this.eventSource.onopen = () => {
+          console.log('SSE连接已建立')
+        }
+
+        console.log('SSE连接已启动')
+      } catch (error) {
+        console.error('创建SSE连接失败:', error)
+        this.errorMessage = '无法建立更新状态连接，请刷新页面重试'
+      }
+    },
+
+    // 停止SSE连接或轮询
+    stopStatusPolling() {
+      if (this.eventSource) {
+        this.eventSource.close()
+        this.eventSource = null
+        console.log('SSE连接已关闭')
+      }
+      if (this.statusPollingTimer) {
+        clearInterval(this.statusPollingTimer)
+        this.statusPollingTimer = null
+      }
+      this.pollingInProgress = false
+    },
+
+    // 处理SSE状态更新
+    handleStatusUpdate(statusUpdate) {
+      // 更新本地状态
+      this.updateStatus = statusUpdate.status || 'idle'
+      this.progress = statusUpdate.progress || 0
+      this.progressMessage = statusUpdate.message || ''
+
+      // 更新操作状态
+      this.isChecking = this.updateStatus === 'checking'
+      this.isDownloading = ['downloading', 'applying'].includes(this.updateStatus)
+      this.isRollingBack = this.updateStatus === 'rolling_back'
+
+      // 如果有错误信息
+      if (statusUpdate.error) {
+        this.errorMessage = statusUpdate.error
+      } else if (this.updateStatus !== 'error') {
+        // 如果不是错误状态，清除错误消息
+        this.errorMessage = ''
+      }
+
+      // 如果有更新信息
+      if (statusUpdate.update_info) {
+        this.updateInfo = statusUpdate.update_info
+        this.updateAvailable = true
+
+        // 处理更新链信息
+        if (
+          statusUpdate.update_info.update_chain &&
+          statusUpdate.update_info.update_chain.length > 0
+        ) {
+          this.updateChain = statusUpdate.update_info.update_chain
+        } else {
+          this.updateChain = []
+        }
+      }
+
+      // 根据状态显示进度条
+      this.showProgress = ['checking', 'downloading', 'applying', 'rolling_back'].includes(
+        this.updateStatus,
+      )
+
+      // 如果操作完成，重置状态并重新加载应用信息
+      if (this.updateStatus === 'completed') {
+        setTimeout(() => {
+          this.loadAppInfo()
+          this.updateAvailable = false
+          this.updateInfo = null
+          this.updateChain = []
+        }, 1000)
       }
     },
 
@@ -276,7 +393,11 @@ export default {
           timeout: 5000,
         })
         if (response.data) {
-          this.config.auto_backup = response.data.auto_backup || true
+          if (typeof response.data.auto_backup !== 'undefined') {
+            this.config.auto_backup = response.data.auto_backup
+          } else {
+            this.config.auto_backup = false
+          }
         }
       } catch (error) {
         console.error('获取配置失败:', error)
@@ -295,22 +416,6 @@ export default {
       } catch (error) {
         console.error('更新配置失败:', error)
         this.handleApiError(error, '更新配置')
-      }
-    },
-
-    // 开始轮询状态
-    startStatusPolling() {
-      this.stopStatusPolling() // 先停止现有的轮询
-      this.statusPolling = setInterval(async () => {
-        await this.getUpdateStatus()
-      }, 1000) // 每秒更新一次状态
-    },
-
-    // 停止轮询状态
-    stopStatusPolling() {
-      if (this.statusPolling) {
-        clearInterval(this.statusPolling)
-        this.statusPolling = null
       }
     },
 
@@ -403,6 +508,8 @@ export default {
         const response = await axios.post(`${this.apiBaseUrl}/check`, {}, { timeout: 10000 })
         if (response.data && response.data.success) {
           this.progressMessage = '正在检查更新...'
+          // 检查更新后立即获取最新状态
+          await this.getUpdateStatus()
         } else {
           this.errorMessage = response.data.error || '检查更新失败'
         }
@@ -436,6 +543,8 @@ export default {
 
         if (response.data && response.data.success) {
           this.progressMessage = '开始下载更新...'
+          // 开始更新后立即获取最新状态
+          await this.getUpdateStatus()
         } else {
           this.errorMessage = response.data.error || '开始更新失败'
         }
@@ -471,6 +580,8 @@ export default {
 
         if (response.data && response.data.success) {
           this.progressMessage = '正在回滚...'
+          // 开始回滚后立即获取最新状态
+          await this.getUpdateStatus()
         } else {
           this.errorMessage = response.data.error || '开始回滚失败'
         }

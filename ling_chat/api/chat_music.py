@@ -1,16 +1,19 @@
-from contextlib import asynccontextmanager
-
-from fastapi import APIRouter, UploadFile, HTTPException, FastAPI
-from fastapi.responses import JSONResponse, FileResponse
-from pathlib import Path
-from typing import List, Dict
 import shutil
-from ling_chat.utils.runtime_path import static_path, user_data_path
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Dict, List
+
+from fastapi import APIRouter, FastAPI, HTTPException, UploadFile
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, Field
+
 from ling_chat.core.logger import logger
+from ling_chat.core.service_manager import service_manager
+from ling_chat.utils.runtime_path import static_path, user_data_path
 
 TEMPLATE_MUSIC_DIR = static_path / "game_data/musics"
 MUSIC_DIR = user_data_path / "game_data/musics"
-ALLOWED_EXTENSIONS = {'.mp3', '.wav', '.flac', '.webm', '.weba', '.ogg', '.m4a', '.oga'}
+ALLOWED_EXTENSIONS = {".mp3", ".wav", ".flac", ".webm", ".weba", ".ogg", ".m4a", ".oga"}
 
 
 @asynccontextmanager
@@ -23,7 +26,27 @@ async def lifespan(app: FastAPI):
     yield
 
 
-router = APIRouter(prefix="/api/v1/chat/back-music", tags=["Background Music"], lifespan=lifespan)
+router = APIRouter(
+    prefix="/api/v1/chat/back-music", tags=["Background Music"], lifespan=lifespan
+)
+
+
+class BackgroundMusicSelectionRequest(BaseModel):
+    music: str = Field(default="", description="当前背景音乐URL")
+
+
+def _get_game_status():
+    ai_service = service_manager.ai_service or service_manager.init_ai_service()
+    if ai_service is None:
+        raise HTTPException(status_code=500, detail="AI service not initialized")
+    return ai_service.game_status
+
+
+@router.post("/select")
+async def set_background_music(payload: BackgroundMusicSelectionRequest):
+    game_status = _get_game_status()
+    game_status.background_music = payload.music
+    return {"code": 200, "data": {"background_music": game_status.background_music}}
 
 
 @router.get("/music_file/{music_file}")
@@ -50,10 +73,12 @@ async def get_music_list():
         music_files = []
         for file in MUSIC_DIR.iterdir():
             if file.is_file() and file.suffix.lower() in ALLOWED_EXTENSIONS:
-                music_files.append({
-                    "name": file.stem,
-                    "url": file.name,
-                })
+                music_files.append(
+                    {
+                        "name": file.stem,
+                        "url": file.name,
+                    }
+                )
 
         return music_files
     except Exception as e:
@@ -78,10 +103,7 @@ async def upload_music(file: UploadFile, name: str = None):
         with save_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        return JSONResponse(
-            status_code=200,
-            content={"message": "音乐上传成功"}
-        )
+        return JSONResponse(status_code=200, content={"message": "音乐上传成功"})
     except HTTPException:
         raise
     except Exception as e:
@@ -104,11 +126,10 @@ async def delete_music(url: str):
 
         file_path.unlink()
 
-        return JSONResponse(
-            status_code=200,
-            content={"message": "音乐成功删除了"}
-        )
+        return JSONResponse(status_code=200, content={"message": "音乐成功删除了"})
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"删除音乐的时候出现了问题: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"删除音乐的时候出现了问题: {str(e)}"
+        )

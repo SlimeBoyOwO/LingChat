@@ -16,13 +16,17 @@ export default class NarrationProcessor implements IEventProcessor {
     gameStore.currentStatus = 'responding'
     uiStore.showCharacterLine = event.text
 
-    uiStore.showCharacterTitle = ''
+    if (event.displayName) {
+      uiStore.showCharacterTitle = event.displayName
+    } else {
+      uiStore.showCharacterTitle = ''
+    }
     uiStore.showCharacterSubtitle = ''
     uiStore.showCharacterEmotion = ''
 
-    gameStore.addToDialogHistory({
+    gameStore.appendGameMessage({
       type: 'message',
-      character: '旁白',
+      displayName: '旁白',
       content: event.text,
     })
 

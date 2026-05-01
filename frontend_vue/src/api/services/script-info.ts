@@ -9,12 +9,42 @@ export interface CharacterSettings {
   offset_y: number
   bubble_top: number
   bubble_left: number
+  clothes: object
+  clothes_name: string
+  body_part: object
+}
+
+export interface ScriptSummary {
+  script_name: string
+  description?: string
+  folder_key?: string
+  intro_chapter?: string
 }
 
 export interface ScriptInfo {
   script_name: string
   characters: {
     [character_id: string]: CharacterSettings
+  }
+}
+
+export const getScriptList = async (): Promise<ScriptSummary[]> => {
+  try {
+    const data = await http.get('/v1/chat/script/list')
+    return data
+  } catch (error: any) {
+    console.error('获取剧本列表错误:', error.message)
+    throw error
+  }
+}
+
+export const getStandaloneScriptList = async (): Promise<ScriptSummary[]> => {
+  try {
+    const data = await http.get('/v1/chat/script/list/standalone')
+    return data
+  } catch (error: any) {
+    console.error('获取独立剧本列表错误:', error.message)
+    throw error
   }
 }
 
@@ -27,5 +57,17 @@ export const getScriptInfo = async (scriptName: string): Promise<ScriptInfo> => 
   } catch (error: any) {
     console.error('获取脚本信息错误:', error.message)
     throw error // 直接抛出拦截器处理过的错误
+  }
+}
+
+export const startStandaloneScript = async (scriptName: string): Promise<void> => {
+  try {
+    // 独立剧本通过WebSocket命令启动
+    const { scriptHandler } = await import('@/api/websocket/handlers/script-handler')
+    const command = `/开始剧本 ${scriptName}`
+    scriptHandler.sendMessage(command)
+  } catch (error: any) {
+    console.error('启动独立剧本错误:', error.message)
+    throw error
   }
 }

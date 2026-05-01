@@ -4,49 +4,44 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ling-chat"
-version = "0.3.1-beta1"
-description = ""
+version = "0.4.0pre"
+description = "Ai驱动的聊天，陪伴软件与gal引擎"
+readme = "README.md"
 authors = [
     { name = "0x00-pl", email = "0x00.pl@gmail.com" },
 ]
-requires-python = ">=3.13"  # ⭐ 添加这行，解决警告
+requires-python = ">=3.11"
 
 dependencies = [
     "fastapi>=0.116.1",
     "uvicorn>=0.35.0",
-    "requests>=2.32.4",
-    "aiohttp==3.12.11",
+    "httpx>=0.28.0",
     "pywebview>=5.4",
     "openai>=1.85.0",
     "platformdirs>=4.3.8",
     "python-multipart>=0.0.20",
     "websockets>=15.0.1",
     "mss>=10.0.0",
-    "google-generativeai>=0.8.5",
     "py7zr>=1.0.0",
-    "chromadb>=1.0.0",
     "onnxruntime>=1.17.0",
     "numpy>=1.24.0",
     "pillow>=10.0.0",
-]
-
-# 保留给其他工具（如 poetry/pdm）的兼容配置
-[project.optional-dependencies]
-dev = [
-    "ruff>=0.14.10",
-    "pytest>=7.0",
-    "pytest-asyncio>=0.21.0",
-    "pytest-cov>=6.2.1",
+    "sqlmodel>=0.0.31",
+    "pyyaml>=6.0.2",
+    "pynput>=1.8.1",
+    "imagehash>=4.3.2",
+    "rapidocr-onnxruntime>=1.4.4",
+    "packaging>=21.0",
+    "tqdm>=4.65.0",
 ]
 
 [tool.setuptools]
 packages = ["ling_chat"]
 
-# ⭐⭐ 修改这里的 uv 配置 ⭐⭐
 [tool.uv]
 index-strategy = "unsafe-best-match"
+default-groups = ["dev"]
 
-# ⭐ 关键修复：使用正确的 uv 语法
 [dependency-groups]
 dev = [
     "ruff>=0.14.10",
@@ -58,11 +53,25 @@ dev = [
 [[tool.uv.index]]
 name = "tuna"
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"
-priority = 1
-
-[tool.uv.sources]
-default = { index = "tuna" }
+default = true
 
 [tool.uv.pip]
 resolution = "highest"
-generate-hashes = true
+
+[tool.ruff]
+# 设置最大行长度
+line-length = 88
+# 目标Python版本与项目保持一致
+target-version = "py313"
+# 指定要检查的源代码目录
+src = ["ling_chat", "tests"]
+
+[tool.ruff.lint]
+# 启用pycodestyle errors (E), warnings (W), pyflakes (F), isort (I), flake8-comprehensions (C), flake8-bugbear (B)
+select = ["E", "W", "F", "I", "C", "B"]
+# 忽略行长度过长的错误，由格式化工具处理
+ignore = ["E501", "C901"]
+
+# 为__init__.py文件忽略未使用的导入（F401）
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]

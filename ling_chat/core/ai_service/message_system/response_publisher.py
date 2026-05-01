@@ -3,25 +3,26 @@ from typing import Dict
 
 from ling_chat.core.ai_service.ai_logger import logger
 from ling_chat.core.logger import logger
-
-
 from ling_chat.core.schemas.responses import ReplyResponse
 
 
 class ResponsePublisher:
     """
-    Waits for processed results in sequence and publishes them.
+    等待队列中的已处理结果并发布它们
     """
-    def __init__(self, 
-                 results_store: Dict[int, ReplyResponse], 
-                 publish_events: Dict[int, asyncio.Event],
-                 output_queue: asyncio.Queue):
+
+    def __init__(
+        self,
+        results_store: Dict[int, ReplyResponse],
+        publish_events: Dict[int, asyncio.Event],
+        output_queue: asyncio.Queue,
+    ):
         self.results_store = results_store
         self.publish_events = publish_events
         self.output_queue = output_queue
 
     async def run(self):
-        """Starts the sequential publishing loop."""
+        """启动顺序发布循环"""
         next_index_to_publish = 0
         while True:
             try:
@@ -29,25 +30,24 @@ class ResponsePublisher:
                     await asyncio.sleep(0.01)
                     continue
 
-                # Wait until the consumer signals that this result is ready
+                # 等待消费者信号，表示此结果已准备好
                 await self.publish_events[next_index_to_publish].wait()
-                
+
                 response = self.results_store.pop(next_index_to_publish, None)
                 if response:
-                    logger.info(f"Publishing message index {next_index_to_publish}")
+                    logger.info(f"正在发布第 {next_index_to_publish} 条消息")
                     await self.output_queue.put(response)
-                    # await message_broker.publish(self.client_id, response.model_dump())
-                
-                del self.publish_events[next_index_to_publish] 
-                
+
+                del self.publish_events[next_index_to_publish]
+
                 if response and response.isFinal:
-                    logger.info("Final message published. Publisher is shutting down.")
+                    logger.info("最后一个消息发送完毕，退出发布循环")
                     break
-                
+
                 next_index_to_publish += 1
             except asyncio.CancelledError:
-                logger.info("Publisher was cancelled.")
+                logger.info("发布循环被取消")
                 break
             except Exception as e:
-                logger.error(f"Error in publisher: {e}", exc_info=True)
+                logger.error(f"在发布循环中发生错误: {e}", exc_info=True)
                 break

@@ -3,7 +3,7 @@
     <img src="@/assets/images/LingChatLogo.png" alt="Logo" class="w-20 ml-5 hidden xl:block" />
     <nav
       ref="navContainer"
-      class="relative w-full flex felx-row items-center justify-around h-full ease-in-out duration-100 xl:justify-center overflow-x-auto overflow-y-hidden"
+      class="relative w-full flex flex-nowrap items-center justify-start gap-1 h-full ease-in-out duration-100 xl:justify-center overflow-x-auto overflow-y-hidden px-2"
     >
       <div
         ref="indicator"
@@ -15,56 +15,72 @@
         icon="character"
         @click="() => switchTab('character', 'characterBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'character' }"
-        ><p class="hidden xl:block">角色</p></Button
       >
+        <p class="hidden xl:block">角色</p>
+      </Button>
+      <Button
+        ref="adventureBtn"
+        type="nav"
+        icon="adventure"
+        @click="() => switchTab('adventure', 'adventureBtn')"
+        :class="{ active: uiStore.currentSettingsTab === 'adventure' }"
+      >
+        <p class="hidden xl:block">羁绊</p>
+      </Button>
       <Button
         ref="textBtn"
         type="nav"
         icon="text"
         @click="() => switchTab('text', 'textBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'text' }"
-        ><p class="hidden xl:block">通用</p></Button
       >
+        <p class="hidden xl:block">通用</p>
+      </Button>
       <Button
         ref="backgroundBtn"
         type="nav"
         icon="background"
         @click="() => switchTab('background', 'backgroundBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'background' }"
-        ><p class="hidden xl:block">背景</p></Button
       >
+        <p class="hidden xl:block">背景</p>
+      </Button>
       <Button
         ref="soundBtn"
         type="nav"
         icon="sound"
         @click="() => switchTab('sound', 'soundBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'sound' }"
-        ><p class="hidden xl:block">声音</p></Button
       >
+        <p class="hidden xl:block">声音</p>
+      </Button>
       <Button
         ref="historyBtn"
         type="nav"
         icon="history"
         @click="() => switchTab('history', 'historyBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'history' }"
-        ><p class="hidden xl:block">对话历史</p></Button
       >
+        <p class="hidden xl:block">对话历史</p>
+      </Button>
+      <Button
+        ref="achievementBtn"
+        type="nav"
+        icon="achievement"
+        @click="() => switchTab('achievement', 'achievementBtn')"
+        :class="{ active: uiStore.currentSettingsTab === 'achievement' }"
+      >
+        <p class="hidden xl:block">成就</p>
+      </Button>
       <Button
         ref="saveBtn"
         type="nav"
         icon="save"
         @click="() => switchTab('save', 'saveBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'save' }"
-        ><p class="hidden xl:block">存档</p></Button
       >
-      <Button
-        ref="scheduleBtn"
-        type="nav"
-        icon="schedule"
-        @click="() => switchTab('schedule', 'scheduleBtn')"
-        :class="{ active: uiStore.currentSettingsTab === 'schedule' }"
-        ><p class="hidden xl:block">日程</p></Button
-      >
+        <p class="hidden xl:block">存档</p>
+      </Button>
       <Button
         ref="advanceBtn"
         type="nav"
@@ -76,16 +92,18 @@
           }
         "
         :class="{ active: uiStore.currentSettingsTab === 'advance' }"
-        ><p class="hidden xl:block">高级设置</p></Button
       >
+        <p class="hidden xl:block">高级设置</p>
+      </Button>
       <Button
         ref="updateBtn"
         type="nav"
         icon="update"
         @click="() => switchTab('update', 'updateBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'update' }"
-        ><p class="hidden xl:block">检查更新</p></Button
       >
+        <p class="hidden xl:block">更新（实验）</p>
+      </Button>
     </nav>
     <Icon
       icon="close"
@@ -121,10 +139,11 @@ const textBtn = ref<ButtonRef | null>(null)
 const backgroundBtn = ref<ButtonRef | null>(null)
 const soundBtn = ref<ButtonRef | null>(null)
 const historyBtn = ref<ButtonRef | null>(null)
+const achievementBtn = ref<ButtonRef | null>(null)
 const saveBtn = ref<ButtonRef | null>(null)
 const advanceBtn = ref<ButtonRef | null>(null)
-const scheduleBtn = ref<ButtonRef | null>(null)
 const updateBtn = ref<ButtonRef | null>(null)
+const adventureBtn = ref<ButtonRef | null>(null)
 
 // 设置可重设的值（使用 ref 存储，确保响应式或跨函数访问）
 const oldRefName = ref('textBtn')
@@ -137,10 +156,11 @@ const handleIndicatorMove = (currentRefName: string) => {
     backgroundBtn,
     soundBtn,
     historyBtn,
+    achievementBtn,
     saveBtn,
     advanceBtn,
-    scheduleBtn,
     updateBtn,
+    adventureBtn,
   }[currentRefName]
 
   if (buttonRef?.value?.$el) {
@@ -187,10 +207,8 @@ const setupResizeObserver = () => {
     return
   }
   const resizeObserver = new ResizeObserver((entries) => {
-    // 宽度变化时，从 oldRefName 提取 refName 并执行逻辑
-    if (oldRefName.value) {
-      handleIndicatorMove(oldRefName.value)
-    }
+    // 尺寸变化时，重新初始化指示条位置（使用 currentSettingsTab 作为真实来源）
+    initIndicator()
   })
 
   // 监听nav的大小变化
@@ -218,17 +236,20 @@ const initIndicator = () => {
     case 'history':
       activeButton = historyBtn.value
       break
+    case 'achievement':
+      activeButton = achievementBtn.value
+      break
     case 'save':
       activeButton = saveBtn.value
       break
     case 'advance':
       activeButton = advanceBtn.value
       break
-    case 'schedule':
-      activeButton = scheduleBtn.value
-      break
     case 'update':
       activeButton = updateBtn.value
+      break
+    case 'adventure':
+      activeButton = adventureBtn.value
       break
   }
 
