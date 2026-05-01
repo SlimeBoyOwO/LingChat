@@ -160,6 +160,8 @@ jobs:
           cp -r frontend_vue/dist/* ling_chat/static/frontend/
 
           cp .env.example main.dist/.env
+          cp LICENSE main.dist/LICENSE
+          cp version main.dist/version
 
           mkdir main.dist/ling_chat
           mv ling_chat/static main.dist/ling_chat
