@@ -61,6 +61,8 @@ jobs:
     needs: prepare
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
+    env:
+      PYTHONUTF8: 1
     strategy:
       matrix:
         platform: ${{ fromJSON(needs.prepare.outputs.platforms_json) }}
@@ -239,7 +241,7 @@ jobs:
 
           for file in "${files[@]}"; do
             echo "正在上传modelcope: $file ..."
-            ms upload lingchat-research-studio/LingChat-release-mirror "$file" ./$TAG/ --token $MODELSCOPE_ACCESS_TOKEN
+            ms upload lingchat-research-studio/LingChat-release-mirror "$file" ./$TAG/$file --token $MODELSCOPE_ACCESS_TOKEN
             echo "✓ 上传完成：$file"
           done
 
