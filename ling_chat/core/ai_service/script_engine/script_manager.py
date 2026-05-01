@@ -1,237 +1,471 @@
-import shutil
 from pathlib import Path
-from typing import Any, List
 
-
+from ling_chat.core.adventure_trigger import adventure_trigger_system
 from ling_chat.core.ai_service.config import AIServiceConfig
-from ling_chat.utils.function import Function
-from ling_chat.core.ai_service.script_engine.type import Character, Player, Script, GameContext
-from ling_chat.core.ai_service.script_engine.charpter import Charpter
+from ling_chat.core.ai_service.exceptions import (
+    ChapterLoadError,
+    ScriptEngineError,
+    ScriptLoadError,
+)
+from ling_chat.core.ai_service.game_system.game_status import GameStatus
+from ling_chat.core.ai_service.script_engine.chapter import Chapter
+from ling_chat.core.ai_service.type import AdventureConfig, Player, ScriptStatus
 from ling_chat.core.logger import logger
-from ling_chat.utils.runtime_path import user_data_path, package_root
-from ling_chat.core.ai_service.script_engine.exceptions import ScriptLoadError, ChapterLoadError, ScriptEngineError
+from ling_chat.core.messaging.broker import message_broker
+from ling_chat.core.schemas.response_models import ResponseFactory
+from ling_chat.game_database.managers.adventure_manager import AdventureManager
+from ling_chat.game_database.models import LineAttribute, LineBase, RoleType
+from ling_chat.utils.function import Function
+from ling_chat.utils.runtime_path import user_data_path
+
+SCRIPT_DIR = user_data_path / "game_data" / "scripts"
+
 
 class ScriptManager:
-    def __init__(self, config:AIServiceConfig):
+    def __init__(self, config: AIServiceConfig, game_status: GameStatus):
         # 全局设定，确定剧本状态
         self.config = config
-        self.scripts_dir = user_data_path / "game_data" / "scripts"
+        self.game_status = game_status
 
         # 全部剧本管理
-        self.all_scripts:list[str] = []
-        self.get_all_scripts()
+        self.all_scripts: dict[str, ScriptStatus] = {}
+        self._init_all_scripts()
 
-        self.current_script = None
-        self.game_context: GameContext = GameContext()          # 创建一个空的上下文
-        self.current_chartper:Charpter|None = None
+        self.current_script: ScriptStatus | None = None
+        self.current_chartper: Chapter | None = None
         self.is_running = False
 
-        # 记忆，状态管理
-        if not self.all_scripts:
-            logger.warning("剧本文件不存在，正在从static目录复制默认剧本...")
-            self._copy_default_scripts()
-            self.get_all_scripts()
-            
         if not self.all_scripts:
             logger.error("没有可用的剧本文件")
             return
-        
-        self.current_script_name = self.all_scripts[0]          # 默认导入第一个剧本
-        
-        self.init_script()
-    def _copy_default_scripts(self):
-        """从static目录复制默认剧本到用户数据目录"""
-        static_scripts_dir = package_root / "static" / "game_data" / "scripts"
-        user_scripts_dir = user_data_path / "game_data" / "scripts"
-        
-        if static_scripts_dir.exists() and static_scripts_dir.is_dir():
-            user_scripts_dir.mkdir(parents=True, exist_ok=True)
-            for script_path in static_scripts_dir.iterdir():
-                dest_path = user_scripts_dir / script_path.name
-                if not dest_path.exists():
-                    if script_path.is_dir():
-                        shutil.copytree(script_path, dest_path)
-                        logger.info(f"已复制剧本: {script_path.name}")
-                    else:
-                        shutil.copy2(script_path, dest_path)
-                        logger.info(f"已复制文件: {script_path.name}")
-        else:
-            logger.error("static目录中没有找到默认剧本文件")
-            
-        # 复制默认角色文件夹
-        static_characters_dir = package_root / "static" / "game_data" / "characters"
-        user_characters_dir = user_data_path / "game_data" / "scripts" / "一只简简单单的剧情" / "characters"
-        
-        if static_characters_dir.exists() and static_characters_dir.is_dir():
-            user_characters_dir.mkdir(parents=True, exist_ok=True)
-            for character_path in static_characters_dir.iterdir():
-                dest_path = user_characters_dir / character_path.name
-                if not dest_path.exists():
-                    if character_path.is_dir():
-                        shutil.copytree(character_path, dest_path)
-                        logger.info(f"已复制默认角色: {character_path.name}")
-                    else:
-                        shutil.copy2(character_path, dest_path)
-                        logger.info(f"已复制角色文件: {character_path.name}")
-        else:
-            logger.error("static目录中没有找到默认角色文件")
 
-    def init_script(self):
-        if not hasattr(self, 'current_script_name') or not self.current_script_name:
-            logger.error("没有可用的剧本文件，无法初始化剧本")
+        # self.init_script()
+        self.check_adventure_completion()
+
+    def get_script_list(self) -> list[str]:
+        return list(self.all_scripts.keys())
+
+    def get_standalone_script_list(self) -> list[str]:
+        return [
+            script_name
+            for script_name, script in self.all_scripts.items()
+            if not self._is_adventure_script(script)
+        ]
+
+    def get_script(self, script_name: str) -> ScriptStatus | None:
+        # 添加键值检查
+        if script_name not in self.all_scripts:
+            logger.error("剧本文件不存在")
+            return None
+        return self.all_scripts[script_name]
+
+    async def start_script(self, script_name: str) -> bool:
+        script = self.get_script(script_name)
+        if script is None:
+            logger.error("剧本文件不存在")
+            return False
+
+        # TODO：检测是否有额外信息，如current_chapter和event_squenece已经有信息了，则从特定的章节特定的位置开始
+
+        self.current_script = script
+        self.is_running = True
+
+        # 初始化剧本
+        self._init_script(self.current_script)
+
+        # 导入初始章节，并开始剧本演绎
+        await self._run_script(script)
+
+        return True
+
+    def _init_all_scripts(self):
+        logger.info("正在" + str(SCRIPT_DIR) + "中寻找剧本")
+
+        if not SCRIPT_DIR.exists() or not SCRIPT_DIR.is_dir():
+            logger.warning("剧本文件不存在")
             return
-            
-        script_path = self.scripts_dir / self.current_script_name
-        self.current_script = self.get_script(self.current_script_name)
-        characters_list:list[Character] = self._read_characters_from_script(script_path)
-        if not characters_list:
-            logger.error("你的剧本不存在任何角色人物")
-            return
-        self.game_context.characters = {
-            char.character_id: char for char in characters_list
-        }
-        self.game_context.player = Player(self.current_script.settings.get("user_name","无"), self.current_script.settings.get("user_subtitle","无"))
-    
-    async def start_script(self):
+
+        # 支持分类子目录：character/ 和 standalone/，同时向后兼容平铺结构
+        # character目录支持两层目录结构（子目录的子目录）
+        subdirs_to_scan = []
+
+        # 处理character目录：支持两层目录结构
+        character_dir = SCRIPT_DIR / "character"
+        if character_dir.exists() and character_dir.is_dir():
+            # 第一层子目录
+            for first_level_dir in character_dir.iterdir():
+                if first_level_dir.is_dir():
+                    # 检查第一层子目录是否包含story_config.yaml
+                    config_file = first_level_dir / "story_config.yaml"
+                    if config_file.exists():
+                        # 如果第一层子目录包含story_config.yaml，直接使用第一层子目录
+                        subdirs_to_scan.append(first_level_dir)
+                    else:
+                        # 否则检查是否有第二层子目录
+                        second_level_dirs = [p for p in first_level_dir.iterdir() if p.is_dir()]
+                        if second_level_dirs:
+                            # 如果有第二层子目录，扫描这些子目录
+                            subdirs_to_scan.extend(second_level_dirs)
+
+        # 处理standalone目录：只扫描一层子目录
+        standalone_dir = SCRIPT_DIR / "standalone"
+        if standalone_dir.exists() and standalone_dir.is_dir():
+            subdirs_to_scan.extend(p for p in standalone_dir.iterdir() if p.is_dir())
+        # 向后兼容：直接放在 scripts/ 根目录下的剧本
+        for p in SCRIPT_DIR.iterdir():
+            if p.is_dir() and p.name not in ("character", "standalone"):
+                subdirs_to_scan.append(p)
+
+        for script_path in subdirs_to_scan:
+            config_file = script_path / "story_config.yaml"
+            if not config_file.exists():
+                continue
+            logger.info("找到剧本文件" + script_path.name)
+            try:
+                script = self._read_script_config(script_path)
+                self.all_scripts[script.name] = script
+            except Exception as e:
+                logger.error(f"读取剧本 {script_path.name} 配置失败: {e}")
+
+    def _init_script(self, script: ScriptStatus):
+        # 1. 在数据库中，注册所有出场的剧本角色，为游戏状态注册角色，初始化角色设定，台词
+        self.game_status.script_status = script
+        self._register_script_roles(script)
+        # 2. 导入玩家信息
+        if script.settings:
+            player = Player(
+                script.settings.get("user_name", ""),
+                script.settings.get("user_subtitle", ""),
+                script.settings.get("user_settings", ""),
+            )
+            # 3. 检查玩家信息是否完整，决定是否导入到GameStatus中
+            if player.user_name == "" and player.user_subtitle == "":
+                logger.info("本剧本未设定玩家身份，将使用默认玩家身份")
+            else:
+                self.game_status.player = player
+
+        # 4. 重置游戏状态
+
+    async def _run_script(self, script: ScriptStatus):
         """
         剧本的主执行循环
         """
         if self.current_script is None:
             logger.error("剧本不存在，请先导入剧本")
             return
-        
+
         self.is_running = True
-        next_charpter_name = self.current_script.intro_charpter
-        
-        while next_charpter_name != "end":
+        script.running_client_id = self.config.last_active_client
+
+        next_chapter_name = self.current_script.intro_chapter
+
+        while next_chapter_name != "end":
             try:
                 # 1. 加载章节，返回一个“可运行”的章节对象
-                charpter_path = self.scripts_dir / self.current_script_name / "Charpters" / (next_charpter_name + ".yaml")
-                current_charpter_obj:Charpter = self._get_charpter(charpter_path) # 一个新的辅助方法
-                
+                chapter_path = (
+                    script.script_path / "Chapters" / (next_chapter_name + ".yaml")
+                )
+                current_chapter_obj: Chapter = self._get_chapter(
+                    chapter_path, script
+                )  # 一个新的辅助方法
+
                 # 2. 命令章节运行，然后等待结果
-                next_charpter_name = await current_charpter_obj.run()
-                
+                next_chapter_name = await current_chapter_obj.run()
+
             except Exception as e:
-                logger.error(f"运行章节 '{next_charpter_name}' 时发生严重错误: {e}", exc_info=True)
+                logger.error(
+                    f"运行章节 '{next_chapter_name}' 时发生严重错误: {e}", exc_info=True
+                )
                 raise ScriptEngineError("运行章节的时候发生错误")
-        
+
         self.is_running = False
+
+        event_response = ResponseFactory.create_script_end()
+        if script.running_client_id:
+            await message_broker.publish(
+                script.running_client_id, event_response.model_dump()
+            )
+
         logger.info("剧本已经结束。")
+        self.game_status.script_status = None
 
-    def get_all_scripts(self):
-        self._read_all_scripts()
-    
-    def get_script(self, script_name:str) -> Script:
-        script_path = self.scripts_dir / script_name
-        return self._read_script_config(script_path)
+        # 如果是羁绊冒险，标记为已完成
+        if self._is_adventure_script(script):
+            # 1. 标记运行时完成状态
+            self.game_status.completed_scripts.add(script.folder_key)
 
-    def get_script_characters(self, script_name) -> list[dict[str, Any]]:
-        # 暂时的，仅允许读取当前导入剧本的角色
-        characters = self.game_context.characters
-        settings = []
-        for character in characters.values():
-            settings.append(character.settings)
-        
-        return settings
+            # 2. 标记全局完成状态（用于解锁后续冒险）
+            from ling_chat.game_database.managers.adventure_manager import (
+                AdventureManager,
+            )
 
-    def get_script_player(self) -> dict:
-        return {
-            'user_name': self.game_context.player.user_name,
-            'user_subtitle': self.game_context.player.user_subtitle,
-        }
+            AdventureManager.mark_global_completed(
+                user_id=1, adventure_folder=script.folder_key
+            )
 
-    def _read_script_config(self, script_path):
-        config = Function.read_yaml_file( script_path / "story_config.yaml" )
-        if config is not None:
-            return Script(config.get('script_name', 'ERROR'),config.get('description', 'ERROR'),config.get('intro_charpter', 'ERROR'), config.get('script_settings', {}))
-        else:
-            raise ScriptLoadError("剧本读取出现错误,缺少 story_config.yml 配置文件")
-        
-    def _read_all_scripts(self):
-        
-        scripts_dir = user_data_path / "game_data" / "scripts"
-        logger.info("正在" + str(scripts_dir) + "中寻找剧本")
+            # 3. 标记当前存档完成状态
+            save_id = self.game_status.active_save_id
+            if save_id:
+                AdventureManager.mark_completed(save_id, script.folder_key)
 
-        if not scripts_dir.exists() or not scripts_dir.is_dir():
-            logger.warning("剧本文件不存在")
-            return
-        
-        for script_path in scripts_dir.iterdir():
-            logger.info("找到剧本文件" + script_path.name)
-            self.all_scripts.append(script_path.name)
+            # 4. 检查是否有需要解锁的成就和后续剧情
+            await self.complete_script(script.folder_key)
 
+            logger.info(f"羁绊冒险 {script.name} 已标记为完成（全局+存档）。")
 
-    def _read_characters_from_script(self, script_path: Path) -> List[Character]:
-        """从剧本目录读取角色 (纯 pathlib 实现)"""
-        new_characters = []
-        characters_dir = script_path / 'characters'
+    def _is_adventure_script(self, script: ScriptStatus) -> bool:
+        return script.adventure and script.adventure.is_adventure
+
+    def _register_script_roles(self, script: ScriptStatus):
+        """从剧本目录读取角色并在数据库中注册"""
+
+        script_key = script.folder_key
+
+        # 找到 'scripts' 的索引位置
+        parts = script.script_path.parts
+        try:
+            b_index = parts.index("scripts")
+            # 截取 scripts 之后的部分（不包括 b 本身）
+            result = Path(*parts[b_index + 1 :])
+            script_key = str(result)
+        except ValueError:
+            logger.error(f"剧本路径 {script.script_path} 中没有 'scripts' 目录")
+
+        characters_dir = script.script_path / "characters"
 
         if not characters_dir.exists() or not characters_dir.is_dir():
-            # 如果剧本缺少characters文件夹，尝试从静态资源复制默认角色
-            static_characters_dir = package_root / "static" / "game_data" / "characters"
-            if static_characters_dir.exists() and static_characters_dir.is_dir():
-                characters_dir.mkdir(parents=True, exist_ok=True)
-                for character_path in static_characters_dir.iterdir():
-                    dest_path = characters_dir / character_path.name
-                    if not dest_path.exists():
-                        if character_path.is_dir():
-                            shutil.copytree(character_path, dest_path)
-                            logger.info(f"已为剧本 '{script_path.name}' 复制默认角色: {character_path.name}")
-                        else:
-                            shutil.copy2(character_path, dest_path)
-                            logger.info(f"已为剧本 '{script_path.name}' 复制角色文件: {character_path.name}")
-                logger.info(f"已为剧本 '{script_path.name}' 创建默认角色文件夹")
-            else:
-                raise ScriptLoadError(f"剧本 '{script_path.name}' 中缺少 'characters' 文件夹，且无法从静态资源复制默认角色。")
+            return
+            # raise ScriptLoadError(f"剧本 '{script_key}' 中缺少 'characters' 文件夹")
 
         for character_path in characters_dir.iterdir():
             # 检查是否是目录，并排除特定名称
-            if not character_path.is_dir() or character_path.name == 'avatar':
+            if not character_path.is_dir() or character_path.name == "avatar":
                 continue
 
-            settings_path = character_path / 'settings.txt'
-            if not settings_path.exists():
-                logger.warning(f"角色目录 '{character_path.name}' 中缺少 settings.txt，已跳过。")
+            settings_path_legacy = character_path / "settings.txt"
+            settings_path = character_path / "settings.yml"
+            if not settings_path.exists() and not settings_path_legacy.exists():
+                logger.warning(
+                    f"角色目录 '{character_path.name}' 中缺少 settings.txt 或 settings.yml，已跳过。"
+                )
                 continue
 
             try:
-                settings = Function.parse_enhanced_txt(str(settings_path))
-                
-                character_id = settings.get('character_id', character_path.name)
-                character = Character(
-                    character_id=character_id, 
-                    settings=settings, 
-                    resource_path=str(character_path), 
-                    prompt={
-                        "role": "system", 
-                        "content": settings.get("system_prompt", "系统设定错误")
-                    },
-                    memory=[{
-                        "role": "system", 
-                        "content": settings.get("system_prompt", "系统设定错误")
-                    }]
+                settings = Function.load_character_settings(character_path)
+                ai_prompt = Function.sys_prompt_builder_by_setting(settings)
+
+                script_role_key = settings.script_role_key
+                if script_role_key is None:
+                    logger.warning(
+                        f"角色目录 '{character_path.name}' 中缺少 script_role_key，已跳过。"
+                    )
+                    continue
+
+                from ling_chat.game_database.managers.role_manager import RoleManager
+
+                role = RoleManager.get_role_by_script_keys(script_key, script_role_key)
+                if role is None:
+                    role = RoleManager.create_role(
+                        title=character_path.name,
+                        type=RoleType.NPC,
+                        resource_folder=character_path.name,
+                        script_key=script_key,
+                        script_role_key=script_role_key,
+                    )
+
+                self.game_status.add_line(
+                    LineBase(
+                        content=ai_prompt,
+                        attribute=LineAttribute.SYSTEM,
+                        sender_role_id=role.id,
+                        display_name=role.name,
+                    )
                 )
-                new_characters.append(character)
 
             except Exception as e:
-                logger.error(f"处理角色 '{character_path.name}' 时出错: {e}", exc_info=True)
+                import traceback
+
+                traceback.print_exc()
+                logger.error(
+                    f"处理角色 '{character_path.name}' 时出错: {e}", exc_info=True
+                )
                 continue
 
-        return new_characters
-
-    def _get_charpter(self, charpter_path: Path) -> Charpter:
-        config = Function.read_yaml_file(charpter_path)
+    def _read_script_config(self, script_path):
+        config = Function.read_yaml_file(script_path / "story_config.yaml")
         if config is not None:
-            return Charpter(str(charpter_path), self.config, self.game_context, config.get('events',[]), config.get('end',{}))
+            adventure = AdventureConfig.from_dict(config.get("adventure"))
+            return ScriptStatus(
+                folder_key=script_path.name,
+                script_path=script_path,
+                name=config.get("script_name", "ERROR"),
+                description=config.get("description", "ERROR"),
+                intro_chapter=config.get("intro_chapter", "ERROR"),
+                settings=config.get("script_settings", {}),
+                recommand_start=config.get("recommand_start", ""),
+                adventure=adventure,
+            )
         else:
-            raise ChapterLoadError(f"导入 {charpter_path} 剧本的时候出现问题")
-    
+            raise ScriptLoadError("剧本读取出现错误,缺少 story_config.yml 配置文件")
 
+    def get_character_adventures(self, character_folder: str) -> list[ScriptStatus]:
+        """获取指定角色绑定的所有羁绊冒险，按 order 排序"""
+        adventures = [
+            s
+            for s in self.all_scripts.values()
+            if s.adventure.is_adventure
+            and s.adventure.bound_character_folder == character_folder
+        ]
+        adventures.sort(key=lambda s: s.adventure.order)
+        return adventures
+
+    def get_all_adventures(self) -> list[ScriptStatus]:
+        """获取所有已注册的羁绊冒险"""
+        return [s for s in self.all_scripts.values() if s.adventure.is_adventure]
+
+    def _get_chapter(self, chapter_path: Path, script_status: ScriptStatus) -> Chapter:
+        config = Function.read_yaml_file(chapter_path)
+        if config is not None:
+            return Chapter(
+                str(chapter_path), self.config, self.game_status, config, script_status
+            )
+        else:
+            raise ChapterLoadError(f"导入 {chapter_path} 剧本的时候出现问题")
+
+    async def complete_script(self, script_folder: str) -> None:
+        user_id = 1
+        AdventureManager.mark_global_completed(user_id, script_folder)
+
+        unlocked_achievements = []
+        for name, s in self.all_scripts.items():
+            if s.folder_key == script_folder and s.adventure.completion_achievements:
+                from ling_chat.core.achievement_manager import achievement_manager
+
+                for ach_def in s.adventure.completion_achievements:
+                    ach_id = ach_def.get("id")
+                    if ach_id:
+                        result = achievement_manager.unlock(ach_id, ach_def)
+                        if result:
+                            unlocked_achievements.append(result)
+                break
+
+        # 检查是否有后续冒险被解锁
+        # 注意：这里需要user_id，但我们没有从请求中获取
+        # 暂时使用默认值1，后续可以改进
+        self.check_adventure_completion()
+
+    def check_adventure_completion(self) -> None:
+        user_id = 1  # TODO: 从session或其他地方获取真实的user_id
+        all_adventures = self.get_all_adventures()
+        chat_count = self.game_status.get_chat_message_count()
+        adventure_trigger_system.check_all_adventures(
+            user_id=user_id,
+            adventures=all_adventures,
+            chat_count=chat_count,
+            game_status=self.game_status,
+        )
+
+    def get_assets_dir(self, script_name: str | None = None) -> Path:
+        """
+        获取剧本 Assets 目录。
+        - 若 script_name=None，则使用当前正在运行的剧本；若尚未开始剧本，则尝试使用列表第一个剧本。
+        """
+        script: ScriptStatus | None = None
+        if script_name:
+            script = self.get_script(script_name)
+        else:
+            script = self.current_script
+            if script is None:
+                names = self.get_script_list()
+                if names:
+                    script = self.get_script(names[0])
+
+        if script is None:
+            raise ScriptLoadError("没有可用的剧本，无法定位资源目录")
+
+        return script.script_path / "Assets"
+
+    # 兼容旧拼写（assests）
     def get_assests_dir(self) -> Path:
-        return self.scripts_dir / self.current_script_name / "Assests"
-    def get_avatar_dir(self, character:str) -> Path:
-        return self.scripts_dir / self.current_script_name / "Characters" / character / "avatar"
-    
-    def is_script_running(self) -> bool:
-        return self.is_running
+        return self.get_assets_dir()
+
+    def get_avatar_dir(self, character: str, script_name: str | None = None) -> Path:
+        """
+        获取指定角色的 avatar 目录。
+        character 通常为剧本里的 script_role_key（也可能就是角色文件夹名）。
+        """
+        script: ScriptStatus | None = None
+        if script_name:
+            script = self.get_script(script_name)
+        else:
+            script = self.current_script
+            if script is None:
+                names = self.get_script_list()
+                if names:
+                    script = self.get_script(names[0])
+
+        if script is None:
+            raise ScriptLoadError("没有可用的剧本，无法定位角色资源目录")
+
+        char_dir = script.script_path / "characters" / character
+        # 兼容大小写/不同命名
+        for candidate in ("avatar", "Avatar", "avatars", "Avatars"):
+            p = char_dir / candidate
+            if p.exists() and p.is_dir():
+                return p
+
+        return char_dir
+
+    def get_script_characters(self, script_name: str) -> list[dict]:
+        """
+        读取剧本的角色设置，返回给前端用于初始化 UI。
+        返回的 dict 尽量包含：character_id(角色ID/roleId), ai_name/ai_subtitle, scale/offset/bubble 等。
+        """
+        script = self.get_script(script_name)
+        if script is None:
+            raise ScriptLoadError("剧本文件不存在")
+
+        characters_dir = script.script_path / "characters"
+        if not characters_dir.exists() or not characters_dir.is_dir():
+            return []
+            # raise ScriptLoadError(f"剧本 '{script.folder_key}' 中缺少 'characters' 文件夹")
+
+        results: list[dict] = []
+
+        from ling_chat.game_database.managers.role_manager import RoleManager
+
+        for character_path in characters_dir.iterdir():
+            if not character_path.is_dir():
+                continue
+
+            if character_path.name.lower() == "avatar":
+                continue
+
+            settings_path_legacy = character_path / "settings.txt"
+            settings_path = character_path / "settings.yml"
+            if not settings_path.exists() and not settings_path_legacy.exists():
+                logger.warning(
+                    f"角色目录 '{character_path.name}' 中缺少 settings.txt 或 settings.yml，已跳过。"
+                )
+                continue
+
+            settings = Function.load_character_settings(character_path) or {}
+            script_role_key = settings.script_role_key
+            if not script_role_key:
+                logger.warning(
+                    f"角色目录 '{character_path.name}' 中缺少 script_role_key，已跳过。"
+                )
+                continue
+
+            role = RoleManager.get_role_by_script_keys(
+                script.folder_key, script_role_key
+            )
+
+            settings_out = dict(settings)
+            settings_out["character_id"] = getattr(role, "id", -1) if role else -1
+            settings_out.setdefault("ai_name", settings.ai_name or character_path.name)
+            settings_out.setdefault("ai_subtitle", settings.ai_subtitle or "")
+
+            results.append(settings_out)
+
+        return results

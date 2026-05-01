@@ -8,10 +8,8 @@
       :min="min"
       :max="max"
       :step="step"
-      :value="value"
-      @input="$emit('input', Number(value))"
-      @change="$emit('change', Number(value))"
       v-model="value"
+      @change="$emit('change', Number(value))"
     />
     <span
       ><slot name="right">{{ rightLabel }}</slot></span
@@ -21,42 +19,51 @@
 
 <script setup lang="ts">
 // 导入外部模块
-import { useSlots, computed, ref } from 'vue'
+import { useSlots, computed, ref, watch } from 'vue'
 import type { Slots } from 'vue'
 
 // 定义组件属性
 const props = defineProps({
-  value: {
-    type: Number,
-    require: false,
-  },
-  min: {
-    type: Number,
+  // 双向绑定值
+  modelValue: {
+    type: [Number, String],
     default: 0,
   },
+  // 最小值
+  min: {
+    type: [Number, String],
+    default: 0,
+  },
+  // 最大值
   max: {
-    type: Number,
+    type: [Number, String],
     default: 100,
   },
+  // 步长
   step: {
-    type: Number,
+    type: [Number, String],
     default: 1,
+  },
+  // 是否禁用
+  disabled: {
+    type: Boolean,
+    default: false,
+  },
+  // 自定义CSS变量（用于滑块颜色）
+  accentColor: {
+    type: String,
+    default: '#4fc3f7',
   },
 })
 
 // 定义组件事件
 const emit = defineEmits(['change', 'input'])
 
-// 定义动态变量
-const value = ref()
-
 // 获取插槽内容
 const slots: Slots = useSlots()
 
-// 处理组件行为
-
-// 设置滑块默认值为中值
-value.value = (props.min + props.max) / 2
+// 使用计算属性处理v-model绑定
+const value = ref(Number(props.modelValue))
 
 // 分别设置滑块两端内容
 const leftLabel = computed(() => {

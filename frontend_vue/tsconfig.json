@@ -10,7 +10,7 @@
   ],
   "compilerOptions": {
     "types": ["vite/client", "node"],
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "allowJs": true
   }
 }

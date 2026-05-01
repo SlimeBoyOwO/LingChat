@@ -1,6 +1,8 @@
-export interface DialogMessage {
+import type { SceneInfo } from '@/api/services/scene' // 导入场景类型
+
+export interface GameMessage {
   type: 'message' | 'reply'
-  character: string
+  displayName: string
   content: string
   emotion?: string
   audioFile?: string
@@ -10,65 +12,74 @@ export interface DialogMessage {
   timestamp?: number
 }
 
-export interface ScriptInfo {
-  script_name: string
-  script_characters: Map<string, ScriptCharacter> // 用角色名作为key
-  isRunning: boolean
+export interface FreeDialogueInfo {
+  isFreeDialogue: boolean
+  maxRounds: number
+  endLine: string
+  currentRound: number
 }
 
-export interface ScriptCharacter {
-  character_id?: string | number
-  character_name: string
-  character_subtitle: string
-  think_message: string
+export interface ScriptInfo {
+  scriptName: string
+  currentChapterName: string
+  choices: string[]
+  isRunning: boolean
+  freeDialogueInfo: FreeDialogueInfo
+}
+
+export interface GameRole {
+  roleId: number
+  roleName: string
+  roleSubTitle: string
+  thinkMessage: string
   emotion: string
-  originEmotion: string
+  originalEmotion: string
   scale: number
-  offset_y: number
-  offset_x: number
-  bubble_top: number
-  bubble_left: number
+  offsetY: number
+  offsetX: number
+  bubbleTop: number
+  bubbleLeft: number
   show: boolean
+  clothes: object
+  clothesName: string
+  bodyPart: object
+  character_folder: string
 }
 
 export interface GameState {
-  currentScene: string
-  script: ScriptInfo
-  character: string
-  avatar: ScriptCharacter & {
-    user_name: string
-    user_subtitle: string
-  }
+  runningScript: ScriptInfo | null
+
+  gameRoles: Record<number, GameRole>
+  presentRoleIds: number[]
+  mainRoleId: number
+  currentInteractRoleId: number | null
+
+  userName: string
+  userSubtitle: string
+
   currentLine: string
   currentStatus: 'input' | 'thinking' | 'responding' | 'presenting'
-  dialogHistory: DialogMessage[]
+  dialogHistory: GameMessage[]
+  currentScene: SceneInfo | null // 当前加载的场景
+  sceneAware: boolean // 场景感知开关
+  command: string | null
 }
 
 export const state: GameState = {
-  currentScene: 'none',
-  script: {
-    script_name: 'none',
-    script_characters: new Map(),
-    isRunning: false,
-  },
-  character: 'default',
-  avatar: {
-    character_id: 0,
-    emotion: '正常',
-    character_name: '钦灵',
-    character_subtitle: 'Slime Studio',
-    user_name: 'Lovely You',
-    user_subtitle: 'Bibilibi',
-    think_message: '灵灵正在思考中',
-    originEmotion: '',
-    scale: 1,
-    offset_y: 0,
-    offset_x: 0,
-    bubble_top: 5,
-    bubble_left: 20,
-    show: true,
-  },
+  runningScript: null,
+
+  gameRoles: {},
+  presentRoleIds: [],
+  mainRoleId: -1,
+  currentInteractRoleId: -1,
+
+  userName: '',
+  userSubtitle: '',
+
   currentLine: '',
   currentStatus: 'input',
   dialogHistory: [],
+  currentScene: null,
+  sceneAware: true, // 默认开启
+  command: null,
 }

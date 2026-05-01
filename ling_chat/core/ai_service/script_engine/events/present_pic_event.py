@@ -1,0 +1,27 @@
+from ling_chat.core.ai_service.script_engine.events.base_event import BaseEvent
+from ling_chat.core.logger import logger
+from ling_chat.core.messaging.broker import message_broker
+from ling_chat.core.schemas.response_models import ResponseFactory
+
+
+class PresentPicEvent(BaseEvent):
+    """处理背景切换事件"""
+
+    async def _execute(self):
+        image = self.event_data.get("imagePath", "")
+        duration = self.event_data.get("duration", 1.0)
+        scale = self.event_data.get("scale", 1.0)
+
+        logger.info(f"显示图片: {image}")
+
+        # 更新游戏状态
+        self.game_status.present_pic = image
+
+        event_response = ResponseFactory.create_present_pic(
+            image, scale, duration=duration
+        )
+        await message_broker.publish(self.client_id, event_response.model_dump())
+
+    @classmethod
+    def can_handle(cls, event_type: str) -> bool:
+        return event_type == "present_pic"

@@ -1,0 +1,15 @@
+name: "小狼 の 夜晚"
+events:
+  - type: narration
+    text: "夜深了...莱姆一如既往的来到钦灵的房间..."
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: "钦灵今天晚上忙了很久，做了关于人工智能的的很多更新。但是Bug层出不穷，尤其是关于角色对话，前端的总是会出现闪屏bug和很多对话人物错误和丢失的问题。很难受的她决定找莱姆倾诉..."
+
+  - type: free_dialogue
+    character: MAIN
+    max_rounds: 3
+
+  - type: chapter_end
+    next: end

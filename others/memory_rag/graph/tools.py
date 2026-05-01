@@ -95,7 +95,10 @@ RELATIONS_TOOL = {
                     "items": {
                         "type": "object",
                         "properties": {
-                            "source": {"type": "string", "description": "The source entity of the relationship."},
+                            "source": {
+                                "type": "string",
+                                "description": "The source entity of the relationship.",
+                            },
                             "relationship": {
                                 "type": "string",
                                 "description": "The relationship between the source and destination entities.",
@@ -134,8 +137,14 @@ EXTRACT_ENTITIES_TOOL = {
                     "items": {
                         "type": "object",
                         "properties": {
-                            "entity": {"type": "string", "description": "The name or identifier of the entity."},
-                            "entity_type": {"type": "string", "description": "The type or category of the entity."},
+                            "entity": {
+                                "type": "string",
+                                "description": "The name or identifier of the entity.",
+                            },
+                            "entity_type": {
+                                "type": "string",
+                                "description": "The type or category of the entity.",
+                            },
                         },
                         "required": ["entity", "entity_type"],
                         "additionalProperties": False,
@@ -292,8 +301,14 @@ EXTRACT_ENTITIES_STRUCT_TOOL = {
                     "items": {
                         "type": "object",
                         "properties": {
-                            "entity": {"type": "string", "description": "The name or identifier of the entity."},
-                            "entity_type": {"type": "string", "description": "The type or category of the entity."},
+                            "entity": {
+                                "type": "string",
+                                "description": "The name or identifier of the entity.",
+                            },
+                            "entity_type": {
+                                "type": "string",
+                                "description": "The type or category of the entity.",
+                            },
                         },
                         "required": ["entity", "entity_type"],
                         "additionalProperties": False,
@@ -428,7 +443,9 @@ source -- relationship -- destination
 Provide a list of deletion instructions, each specifying the relationship to be deleted.
 """
 
+
 def get_delete_messages(existing_memories_string, data, user_id):
-    return DELETE_RELATIONS_SYSTEM_PROMPT.replace(
-        "USER_ID", user_id
-    ), f"Here are the existing memories: {existing_memories_string} \n\n New Information: {data}"
+    return (
+        DELETE_RELATIONS_SYSTEM_PROMPT.replace("USER_ID", user_id),
+        f"Here are the existing memories: {existing_memories_string} \n\n New Information: {data}",
+    )

@@ -21,7 +21,9 @@ logs/
 # ============================================================
 
 .idea/
-.vscode/
+.vscode/*.code-workspace
+.vscode/*.private.*
+.vscode/settings.local.json
 .vs/
 
 
@@ -59,6 +61,7 @@ htmlcov/
 node_modules/
 build/
 dist/
+ling_chat/static/frontend/
 
 
 
@@ -83,6 +86,10 @@ Pytorch/RAG/embedding_models/
 *.data
 # 发布产物
 release/
+
+emotion_labels.csv
+ling_chat/third_party/emotion_model/*
+ling_chat/third_party/emotion_model_19emo/*
 
 
 # ============================================================
@@ -114,8 +121,9 @@ game_data/musics/
 .trash/
 # 其他工具目录
 .openmcp/
-
-
+.claude
+CLAUDE.md
+AGENTS.md
 
 
 # ============================================================

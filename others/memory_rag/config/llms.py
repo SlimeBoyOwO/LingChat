@@ -1,8 +1,8 @@
 from abc import ABC
 from typing import Dict, Optional, Union
-from pydantic import BaseModel, Field, field_validator, model_validator
 
-import httpx
+from pydantic import BaseModel, Field, field_validator
+
 
 class BaseLlmConfig(ABC):
     def __init__(
@@ -35,9 +35,14 @@ class BaseLlmConfig(ABC):
         # DeepSeek specific
         self.deepseek_base_url = deepseek_base_url
 
+
 class LlmConfig(BaseModel):
-    provider: str = Field(description="Provider of the LLM (e.g., 'ollama', 'openai')", default="openai")
-    config: Optional[dict] = Field(description="Configuration for the specific LLM", default={})
+    provider: str = Field(
+        description="Provider of the LLM (e.g., 'ollama', 'openai')", default="openai"
+    )
+    config: Optional[dict] = Field(
+        description="Configuration for the specific LLM", default={}
+    )
 
     @field_validator("config")
     def validate_config(cls, v, values):
@@ -63,6 +68,7 @@ class LlmConfig(BaseModel):
             return v
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
+
 
 # class BaseLlmConfig(ABC):
 #     """

@@ -1,3 +1,0 @@
-pyyaml
-python-dotenv
-requests

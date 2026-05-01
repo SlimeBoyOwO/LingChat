@@ -1,8 +1,0 @@
-id: campus_love_comedy
-name: 心跳加速的校园喜剧
-description: 被迫与傲娇学霸组队做课题，一段充满意外的恋爱喜剧即将上演！
-version: 1.0.0
-author: NeoChat AI (SystemAction Demo)
-start_unit_id: 00_Forced_Partners
-character_roles:
-- Yuki

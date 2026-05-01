@@ -27,13 +27,23 @@ export enum WebSocketMessageTypes {
   SCRIPT_NARRATION = 'narration', // 旁白
   SCRIPT_PLAYER = 'player', // 玩家
   SCRIPT_DIALOGUE = 'reply', // 角色对话
+  SCRIPT_THINKING = 'thinking', // 角色思考
+  SCRIPT_FREE_DIALOGUE = 'free_dialogue', // 自由对话
+
+  SCRIPT_CHAPTER_CHANGE = 'chapter_change', // 章节切换
 
   SCRIPT_BACKGROUND = 'background', // 旁白
+  SCRIPT_PRESENT_PIC = 'present_pic', // 显示图片
   SCRIPT_MODIFY_CHARACTER = 'modify_character', // 旁白
 
   SCRIPT_INPUT = 'input', // 玩家输入
+  SCRIPT_CHOICE = 'choice', // 玩家选择分支
+  SCRIPT_END = 'script_end', // 剧本结束
 
   SCRIPT_BACKGROUND_EFFECT = 'background_effect',
   SCRIPT_MUSIC = 'music',
   SCRIPT_SOUND = 'sound',
+
+  // 场景切换
+  SCENE_CHANGE = 'scene_change',
 }

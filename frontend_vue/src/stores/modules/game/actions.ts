@@ -1,95 +1,158 @@
-import type { GameState } from './state'
-import type { DialogMessage, ScriptCharacter } from './state'
+// actions.ts
+import type { GameState, GameMessage, GameRole } from './state'
 import { getGameInfo } from '../../../api/services/game-info'
-import { getScriptInfo } from '../../../api/services/script-info'
+import { getRoleInfo } from '../../../api/services/character'
 import { useUIStore } from '../ui/ui'
-
+import { getDialogueHistory } from '@/api/services/history'
+import { convertToGameMessages } from '@/utils/function'
+import type { SceneInfo } from '@/api/services/scene'
+import { useAdventureStore } from '../adventure'
 export const actions = {
-  updateLine(this: GameState, text: string): void {
-    this.currentLine = text
-  },
+  // 注意：这里 this 指定为 GameState 是安全的，
+  // 但如果你想调用 this.initializeGame()，TS 会报错。
+  // 如果遇到这种情况，可以将 this 类型改为 any 或者手动定义完整 Store 接口。
+  // TODO: 之后有扩展需求的时候，使用现代的 Pinia 的 Setup Store 模式
 
-  setGameStatus(this: GameState, state: 'input' | 'thinking' | 'responding'): void {
-    this.currentStatus = state
-  },
-
-  addToDialogHistory(this: GameState, message: DialogMessage) {
+  appendGameMessage(this: GameState, message: GameMessage) {
     this.dialogHistory.push({
       ...message,
       timestamp: Date.now(),
     })
   },
+
   clearDialogHistory(this: GameState) {
     this.dialogHistory = []
   },
-  setCurrentStatus(this: GameState, status: GameState['currentStatus']) {
-    this.currentStatus = status
+
+  setGameMessages(this: GameState, messages: GameMessage[]) {
+    this.dialogHistory = messages
   },
 
   async initializeGame(this: GameState, client_id: string, userId: string) {
     try {
       const gameInfo = await getGameInfo(client_id, userId)
+      const characterInfo = gameInfo.character_settings
 
-      // 更新 gameStore 自己的状态
-      this.character = 'default'
-      this.avatar.character_name = gameInfo.ai_name
-      this.avatar.character_subtitle = gameInfo.ai_subtitle
-      this.avatar.user_name = gameInfo.user_name
-      this.avatar.user_subtitle = gameInfo.user_subtitle
-      this.avatar.character_id = gameInfo.character_id
-      this.avatar.think_message = gameInfo.thinking_message
-      this.avatar.scale = gameInfo.scale
-      this.avatar.offset_y = gameInfo.offset
-      this.avatar.bubble_left = gameInfo.bubble_left
-      this.avatar.bubble_top = gameInfo.bubble_top
+      this.gameRoles = {}
+      this.gameRoles[characterInfo.character_id] = {
+        roleId: characterInfo.character_id,
+        roleName: characterInfo.ai_name,
+        roleSubTitle: characterInfo.ai_subtitle,
+        thinkMessage: characterInfo.thinking_message,
+        scale: characterInfo.scale,
+        offsetX: characterInfo.offset_x,
+        offsetY: characterInfo.offset_y,
+        bubbleLeft: characterInfo.bubble_left,
+        bubbleTop: characterInfo.bubble_top,
+        clothes: characterInfo.clothes,
+        clothesName: characterInfo.clothes_name,
+        bodyPart: characterInfo.body_part,
+        character_folder: characterInfo.character_folder,
+        emotion: '正常',
+        originalEmotion: '正常',
+        show: true,
+      }
+      this.presentRoleIds = []
+      this.presentRoleIds.push(characterInfo.character_id)
+      this.mainRoleId = characterInfo.character_id
+      this.currentInteractRoleId = gameInfo.current_interact_role_id
 
-      // 也可以在这里直接更新其他 store 的状态
       const uiStore = useUIStore()
-      uiStore.showCharacterTitle = gameInfo.user_name
-      uiStore.showCharacterSubtitle = gameInfo.user_subtitle
+      const adventureStore = useAdventureStore()
+      this.userName = characterInfo.user_name
+      this.userSubtitle = characterInfo.user_subtitle
 
-      // 返回获取到的信息，方便组件进行UI操作
+      uiStore.showCharacterTitle = characterInfo.user_name
+      uiStore.showCharacterSubtitle = characterInfo.user_subtitle
+
+      if (gameInfo.background !== '') uiStore.setCurrentBackground(gameInfo.background)
+      if (gameInfo.background_effect !== '') uiStore.setBackgroundEffect(gameInfo.background_effect)
+      if (gameInfo.background_music !== '')
+        uiStore.currentBackgroundMusic = gameInfo.background_music
+
+      await adventureStore.fetchCharacterAdventures(characterInfo.character_folder)
+
+      const lines = await getDialogueHistory(userId)
+      if (lines && lines.length > 0) {
+        const messages = convertToGameMessages(lines)
+        this.dialogHistory = messages
+      } else {
+        this.dialogHistory = []
+      }
+
       return gameInfo
     } catch (error) {
       console.error('初始化游戏信息失败:', error)
-      // 抛出错误或返回 null，让调用方知道失败了
       throw error
     }
   },
 
-  async initializeScript(this: GameState, scriptName: string) {
+  async getOrCreateGameRole(this: GameState, role_id: number): Promise<GameRole> {
+    if (this.gameRoles[role_id]) {
+      return this.gameRoles[role_id]
+    }
     try {
-      const scriptInfo = await getScriptInfo(scriptName)
-
-      this.script.script_name = scriptInfo.script_name
-      this.script.script_characters.clear()
-
-      Object.entries(scriptInfo.characters).forEach(([characterId, characterData]) => {
-        const scriptCharacter: ScriptCharacter = {
-          character_id: characterId || 0,
-          character_name: characterData.ai_name,
-          character_subtitle: characterData.ai_subtitle,
-          think_message: characterData.thinking_message,
-          emotion: '正常',
-          originEmotion: '',
-          show: false,
-          scale: characterData.scale,
-          offset_y: characterData.offset_y,
-          offset_x: characterData.offset_x,
-          bubble_top: characterData.bubble_top,
-          bubble_left: characterData.bubble_left,
-        }
-
-        // 使用 character_id 作为 key（转换为字符串确保一致性）
-        this.script.script_characters.set(characterId, scriptCharacter)
-      })
-
-      console.log(
-        `脚本 "${this.script.script_name}" 初始化完成，共加载 ${this.script.script_characters.size} 个角色`,
-      )
+      const roleInfo = await getRoleInfo(role_id)
+      this.gameRoles[role_id] = {
+        roleId: roleInfo.character_id,
+        roleName: roleInfo.ai_name,
+        roleSubTitle: roleInfo.ai_subtitle,
+        thinkMessage: roleInfo.thinking_message,
+        scale: roleInfo.scale,
+        offsetX: roleInfo.offset_x,
+        offsetY: roleInfo.offset_y,
+        bubbleLeft: roleInfo.bubble_left,
+        bubbleTop: roleInfo.bubble_top,
+        clothes: roleInfo.clothes,
+        clothesName: roleInfo.clothes_name,
+        bodyPart: roleInfo.body_part,
+        character_folder: roleInfo.character_folder,
+        emotion: '正常',
+        originalEmotion: '正常',
+        show: true,
+      }
+      return this.gameRoles[role_id]
     } catch (error) {
-      console.error('初始化脚本失败:', error)
+      console.error('游戏角色信息获取失败:', error)
       throw error
     }
+  },
+
+  /** 标记进入剧情模式（用于控制UI显示：隐藏番茄钟/日程等） */
+  enterStoryMode(this: GameState, scriptName: string = 'unknown') {
+    this.runningScript = {
+      scriptName,
+      currentChapterName: '',
+      choices: [],
+      isRunning: true,
+      freeDialogueInfo: {
+        isFreeDialogue: false,
+        maxRounds: -1,
+        currentRound: 0,
+        endLine: '',
+      },
+    }
+    const uiStore = useUIStore()
+    uiStore.bgMusicMode = 'loop-single'
+  },
+
+  /** 标记退出剧情模式，回到自由对话模式 */
+  exitStoryMode(this: GameState) {
+    this.runningScript = null
+  },
+
+  // 设置当前场景（仅更新 store，不调用 API）
+  setCurrentScene(this: GameState, scene: SceneInfo | null) {
+    this.currentScene = scene
+  },
+
+  // 切换场景感知
+  toggleSceneAware(this: GameState, aware: boolean) {
+    this.sceneAware = aware
+  },
+
+  // 清除场景（更新 store，API 调用由组件负责）
+  clearCurrentScene(this: GameState) {
+    this.currentScene = null
   },
 }

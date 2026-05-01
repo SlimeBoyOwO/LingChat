@@ -1,8 +1,14 @@
 import http from '../http'
-import type { SaveInfo, SaveListParams, SaveModifyParams, SaveCreateParams } from '../../types'
+import type {
+  SaveInfo,
+  SaveListParams,
+  SaveModifyParams,
+  SaveCreateParams,
+  SaveContinueParams,
+} from '../../types'
 
 export interface SaveListData {
-  conversations: SaveInfo[]
+  saves: SaveInfo[]
   total: number
 }
 
@@ -28,6 +34,17 @@ export const saveCreate = async (params: SaveCreateParams): Promise<void> => {
 export const saveLoad = async (params: SaveModifyParams): Promise<void> => {
   try {
     const data = await http.get('/v1/chat/history/load', {
+      params: params,
+    })
+    return data
+  } catch (error: any) {
+    throw new Error(error.response?.data?.detail || '存档加载失败')
+  }
+}
+
+export const saveContinue = async (params: SaveContinueParams): Promise<void> => {
+  try {
+    const data = await http.get('/v1/chat/history/continue', {
       params: params,
     })
     return data

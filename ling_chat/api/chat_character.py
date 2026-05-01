@@ -1,21 +1,237 @@
+import json
 import os
+import re
+import shutil
 from pathlib import Path
-from fastapi import APIRouter, Body, HTTPException
+from typing import Any, Dict
+
+from fastapi import APIRouter, Body, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
-from ling_chat.core.service_manager import service_manager
-from ling_chat.database.character_model import CharacterModel
-from ling_chat.database.user_model import UserModel
-from ling_chat.utils.function import Function
+
 from ling_chat.core.logger import logger
+from ling_chat.core.service_manager import service_manager
+from ling_chat.game_database.managers.role_manager import RoleManager
+from ling_chat.game_database.managers.user_manager import UserManager
+from ling_chat.game_database.models import RoleType
+from ling_chat.schemas.character_settings import CharacterSettings
+from ling_chat.utils.function import Function
 from ling_chat.utils.runtime_path import user_data_path
 
+SUPPORTED_IMAGE_EXTENSIONS = (
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".bmp",
+    ".tiff",
+    ".tif",
+    ".webp",
+    ".avif",
+    ".svg",
+)
+
+# 19 个可预测情绪 + 正常 = 20（头像单独上传）
+REQUIRED_EMOTION_SLOTS = [
+    "兴奋",
+    "厌恶",
+    "哭泣",
+    "害怕",
+    "害羞",
+    "平静",
+    "心动",
+    "惊讶",
+    "慌张",
+    "担心",
+    "无奈",
+    "生气",
+    "疑惑",
+    "紧张",
+    "自信",
+    "认真",
+    "调皮",
+    "难为情",
+    "高兴",
+    "正常",
+]
+
+# 上传槽位名 -> 落盘文件名（兼容当前运行时）
+EMOTION_STORAGE_NAME_MAP = {
+    "哭泣": "伤心",
+    "难为情": "羞耻",
+}
+
+INVALID_FOLDER_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
 router = APIRouter(prefix="/api/v1/chat/character", tags=["Chat Character"])
+
+
+def _validate_resource_folder(resource_folder: str) -> str:
+    folder = (resource_folder or "").strip()
+    if not folder:
+        raise HTTPException(status_code=400, detail="resource_folder is required")
+
+    if folder in {".", ".."}:
+        raise HTTPException(status_code=400, detail="resource_folder is invalid")
+
+    if Path(folder).name != folder or "/" in folder or "\\" in folder:
+        raise HTTPException(
+            status_code=400, detail="resource_folder cannot contain path separators"
+        )
+
+    if INVALID_FOLDER_CHARS_RE.search(folder):
+        raise HTTPException(
+            status_code=400, detail="resource_folder contains invalid characters"
+        )
+
+    return folder
+
+
+def _validate_image_file(filename: str | None, field_name: str) -> str:
+    if not filename:
+        raise HTTPException(status_code=400, detail=f"{field_name} filename is empty")
+
+    suffix = Path(filename).suffix.lower()
+    if suffix not in SUPPORTED_IMAGE_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{field_name} format not supported: {suffix}. "
+            f"Supported: {', '.join(SUPPORTED_IMAGE_EXTENSIONS)}",
+        )
+    return suffix
+
+
+def _validate_and_pair_emotion_files(
+    emotion_names: list[str],
+    emotion_files: list[UploadFile],
+) -> dict[str, UploadFile]:
+    if len(emotion_names) != len(emotion_files):
+        raise HTTPException(
+            status_code=400, detail="emotion_names and emotion_files length mismatch"
+        )
+
+    required_set = set(REQUIRED_EMOTION_SLOTS)
+    input_set = set(emotion_names)
+
+    if len(input_set) != len(emotion_names):
+        raise HTTPException(
+            status_code=400, detail="emotion_names contains duplicate values"
+        )
+
+    missing = sorted(required_set - input_set)
+    extra = sorted(input_set - required_set)
+    if missing or extra:
+        detail_parts: list[str] = []
+        if missing:
+            detail_parts.append(f"missing emotions: {', '.join(missing)}")
+        if extra:
+            detail_parts.append(f"unexpected emotions: {', '.join(extra)}")
+        raise HTTPException(status_code=400, detail="; ".join(detail_parts))
+
+    paired: dict[str, UploadFile] = {}
+    for emotion_name, upload_file in zip(emotion_names, emotion_files):
+        _validate_image_file(upload_file.filename, f"{emotion_name} file")
+        paired[emotion_name] = upload_file
+
+    return paired
+
+
+def _cleanup_character_dir(character_dir: Path) -> None:
+    if character_dir.exists():
+        shutil.rmtree(character_dir, ignore_errors=True)
+
+
+@router.post("/create")
+async def create_character(
+    resource_folder: str = Form(...),
+    settings_json: str = Form(...),
+    avatar_file: UploadFile = File(...),
+    emotion_names: list[str] = Form(...),
+    emotion_files: list[UploadFile] = File(...),
+):
+    folder = _validate_resource_folder(resource_folder)
+    character_dir = user_data_path / "game_data" / "characters" / folder
+    avatar_dir = character_dir / "avatar"
+
+    if character_dir.exists():
+        raise HTTPException(
+            status_code=409, detail=f"character '{folder}' already exists"
+        )
+
+    avatar_suffix = _validate_image_file(avatar_file.filename, "avatar_file")
+    emotion_file_map = _validate_and_pair_emotion_files(emotion_names, emotion_files)
+
+    try:
+        settings_data = json.loads(settings_json)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=400, detail=f"settings_json is not valid JSON: {exc}"
+        ) from exc
+
+    if not isinstance(settings_data, dict):
+        raise HTTPException(
+            status_code=400, detail="settings_json must be a JSON object"
+        )
+
+    try:
+        validated_settings = CharacterSettings(**settings_data)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400, detail=f"settings_json validation failed: {exc}"
+        ) from exc
+
+    try:
+        avatar_dir.mkdir(parents=True, exist_ok=False)
+
+        avatar_bytes = await avatar_file.read()
+        (avatar_dir / f"头像{avatar_suffix}").write_bytes(avatar_bytes)
+
+        for emotion_name in REQUIRED_EMOTION_SLOTS:
+            upload_file = emotion_file_map.get(emotion_name)
+            if upload_file is None:
+                raise HTTPException(
+                    status_code=400, detail=f"missing file for emotion: {emotion_name}"
+                )
+
+            emotion_suffix = Path(upload_file.filename or "").suffix.lower()
+            emotion_storage_name = EMOTION_STORAGE_NAME_MAP.get(
+                emotion_name, emotion_name
+            )
+            emotion_bytes = await upload_file.read()
+            (avatar_dir / f"{emotion_storage_name}{emotion_suffix}").write_bytes(
+                emotion_bytes
+            )
+
+        Function.save_character_settings(character_dir, validated_settings)
+
+        RoleManager.sync_roles_from_folder(user_data_path / "game_data")
+        created_role = RoleManager.get_main_role_by_resource_folder(folder)
+        if created_role is None or created_role.id is None:
+            raise RuntimeError(f"character role not found after sync: {folder}")
+
+        title = created_role.name or validated_settings.title or folder
+        return {
+            "success": True,
+            "data": {
+                "character_id": created_role.id,
+                "title": title,
+                "resource_folder": folder,
+            },
+        }
+    except HTTPException:
+        _cleanup_character_dir(character_dir)
+        raise
+    except Exception as exc:
+        _cleanup_character_dir(character_dir)
+        logger.error(f"create character failed: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"create character failed: {exc}"
+        ) from exc
 
 
 @router.post("/refresh_characters")
 async def refresh_characters():
     try:
-        CharacterModel.sync_characters_from_game_data(user_data_path / "game_data")
+        RoleManager.sync_roles_from_folder(user_data_path / "game_data")
         return {"success": True}
     except Exception as e:
         logger.error(f"刷新人物列表请求失败: {str(e)}")
@@ -26,6 +242,7 @@ async def refresh_characters():
 async def open_creative_web():
     try:
         import webbrowser
+
         url = "https://github.com/SlimeBoyOwO/LingChat/discussions"
         webbrowser.open(url)
     except Exception as e:
@@ -33,100 +250,274 @@ async def open_creative_web():
         raise HTTPException(status_code=500, detail="无法使用浏览器启动网页")
 
 
-@router.get("/get_avatar/{avatar_file}")
-async def get_specific_avatar(avatar_file: str):
-    ai_service = service_manager.ai_service
+@router.post("/update_settings")
+async def update_settings(
+    role_id: int = Body(..., embed=True),
+    settings: Dict[str, Any] = Body(..., embed=True),
+):
+    # 1. 获取角色信息以定位文件夹
+    role = RoleManager.get_role_by_id(role_id)
+    if not role:
+        raise HTTPException(status_code=404, detail=f"角色{role_id}不存在")
+    if not role.resource_folder:
+        raise HTTPException(status_code=404, detail=f"角色{role_id}资源不存在")
 
-    if not ai_service or not ai_service.character_path:
-        raise HTTPException(status_code=404, detail="AIService or character_path not found")
-
-    file_path = Path(ai_service.character_path) / "avatar" / avatar_file
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Avatar not found")
-
-    return FileResponse(file_path)
-
-@router.get("/get_script_avatar/{character}/{emotion}")
-async def get_script_specific_avatar(character: str, emotion: str):
-    ai_service = service_manager.ai_service
-
-    if ai_service:
-        file_path = ai_service.scripts_manager.get_avatar_dir(character) / (emotion + ".png")
+    # 2. 定位路径
+    base_path = Path()
+    if role.role_type == RoleType.MAIN:
+        base_path = user_data_path / "game_data" / "characters" / role.resource_folder
+    elif role.role_type == RoleType.NPC:
+        if not role.script_key:
+            raise HTTPException(status_code=404, detail=f"角色{role_id}缺少剧本关联")
+        base_path = (
+            user_data_path
+            / "game_data"
+            / "scripts"
+            / role.script_key
+            / "characters"
+            / role.resource_folder
+        )
     else:
-        raise HTTPException(status_code=404, detail="AIService not found")
-    
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Avatar not found")
+        raise HTTPException(status_code=404, detail="未知的角色类型")
 
-    return FileResponse(file_path)
+    if not base_path.exists():
+        raise HTTPException(status_code=404, detail="角色目录不存在")
+
+    # 3. 保存设置
+    try:
+        # 确保传入的 settings 是完整的或者是合法的更新
+        # 这里假设传入的是完整的 settings 字典
+        success = Function.save_character_settings(base_path, settings)
+        if success:
+            return {"success": True, "message": "设置已保存"}
+        else:
+            raise HTTPException(status_code=500, detail="保存失败")
+    except Exception as e:
+        logger.error(f"保存角色设置失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"保存失败: {str(e)}")
+
+
+@router.get("/get_full_role_settings/{role_id}")
+async def get_full_role_settings(role_id: int):
+    settings = RoleManager.get_role_settings_by_id(role_id)
+    if not settings:
+        raise HTTPException(status_code=404, detail="角色配置不存在")
+    return settings.model_dump()
+
+
+@router.get("/get_role_info/{role_id}")
+async def get_role_info(role_id: int):
+    # 1. 获取角色信息
+    role = RoleManager.get_role_by_id(role_id)
+    if not role:
+        raise HTTPException(status_code=404, detail=f"角色{role_id}不存在")
+    if not role.resource_folder:
+        raise HTTPException(status_code=404, detail=f"角色{role_id}资源不存在")
+
+    settings = RoleManager.get_role_settings_by_id(role_id)
+
+    if settings is None:
+        raise HTTPException(status_code=404, detail=f"角色{role_id}设置不存在")
+    return Function.convert_settings_to_role_info_dict(settings, role_id)
+
+
+@router.get("/get_avatar/{role_id}/{emotion}/{clothes_name}")
+async def get_role_avatar(role_id: int, emotion: str, clothes_name: str):
+    # 1. 获取角色信息
+    role = RoleManager.get_role_by_id(role_id)
+    if not role:
+        raise HTTPException(status_code=404, detail=f"角色{role_id}不存在")
+    if not role.resource_folder:
+        raise HTTPException(status_code=404, detail=f"角色{role_id}资源不存在")
+
+    # 2. 根据角色类型获取形象基础路径
+    base_path = Path()
+    if role.role_type == RoleType.MAIN:
+        base_path = (
+            user_data_path
+            / "game_data"
+            / "characters"
+            / Path(role.resource_folder)
+            / "avatar"
+        )
+    elif role.role_type == RoleType.NPC:
+        # 确保 script_key 存在
+        if not role.script_key:
+            raise HTTPException(status_code=404, detail=f"角色{role_id}缺少剧本关联")
+        base_path = (
+            user_data_path
+            / "game_data"
+            / "scripts"
+            / Path(role.script_key)
+            / "characters"
+            / Path(role.resource_folder)
+            / "avatar"
+        )
+    else:
+        # 处理可能的其他类型或默认情况
+        raise HTTPException(status_code=404, detail="未知的角色类型")
+
+    # 3. 处理服装路径
+    # 如果 clothes_name 不是 default，则进入子文件夹
+    avatar_path = base_path
+    if clothes_name and clothes_name != "default":
+        avatar_path = base_path / clothes_name
+
+    # 检查路径是否存在，防止 iterdir 报错
+    if not avatar_path.exists():
+        raise HTTPException(
+            status_code=404, detail=f"角色头像目录不存在: {avatar_path}"
+        )
+
+    # 4. 查找图片文件
+    try:
+        emotion_files = [
+            f
+            for f in avatar_path.iterdir()
+            if f.is_file()
+            and f.stem == emotion  # 对比文件名(无后缀)是否等于传入的情绪名
+            and f.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS
+        ]
+    except Exception as e:
+        logger.error(f"读取目录失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"读取目录失败: {str(e)}")
+
+    # 如果没找到对应情绪的图片，且当前情绪是"平静"，则尝试查找"正常"的图片
+    if not emotion_files and emotion == "平静":
+        logger.info(f"未找到平静表情图片，尝试使用正常表情图片: Path={avatar_path}")
+        emotion_files = [
+            f
+            for f in avatar_path.iterdir()
+            if f.is_file()
+            and f.stem == "正常"
+            and f.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS
+        ]
+
+    if not emotion_files:
+        logger.error(
+            f"查找失败: Path={avatar_path}, Emotion={emotion}, Supported extensions: {SUPPORTED_IMAGE_EXTENSIONS}"
+        )
+        raise HTTPException(
+            status_code=404,
+            detail=f"在路径 {avatar_path} 下未找到情绪 {emotion} 的图片，支持的格式: {', '.join(SUPPORTED_IMAGE_EXTENSIONS)}",
+        )
+
+    # 返回找到的第一个文件
+    return FileResponse(emotion_files[0])
 
 
 @router.post("/select_character")
 async def select_character(
-        user_id: int = Body(..., embed=True),
-        character_id: int = Body(..., embed=True)
+    user_id: int = Body(..., embed=True), character_id: int = Body(..., embed=True)
 ):
     try:
         # 1. 验证角色是否存在
-        character = CharacterModel.get_character_by_id(character_id=character_id)
+        character = RoleManager.get_role_by_id(character_id)
         if not character:
             raise HTTPException(status_code=404, detail="角色不存在")
 
         # 2. 切换AI服务角色
-        character_settings = CharacterModel.get_character_settings_by_id(character_id=character_id)
-        if character_settings is None: return HTTPException(status_code=500, detail="角色不存在")
+        character_settings = RoleManager.get_role_settings_by_id(character_id)
+        if character_settings is None:
+            return HTTPException(status_code=500, detail="角色不存在")
 
-        character_settings["character_id"] = character_id
-        service_manager.ai_service.import_settings(settings=character_settings)
-        service_manager.ai_service.reset_memory()
+        character_settings.character_id = character_id
+        if service_manager.ai_service is not None:
+            service_manager.ai_service.import_settings(settings=character_settings)
+            service_manager.ai_service.reset_lines()
 
         # 2.5 更新用户的最后一次对话角色
-        UserModel.update_user_character(
-            user_id=user_id,
-            character_id=character_id
-        )
+        UserManager.update_last_character(user_id=user_id, role_id=character_id)
 
-        # 3. 可以返回切换后的角色信息
+        # 3. 返回切换后的角色信息
         return {
             "success": True,
             "character": {
-                "id": character.get("id"),
-                "title": character.get("title")
-            }
+                "id": character.id,
+                "title": character.name,
+                "folder_name": character.resource_folder,  # 用于前端加载角色专属提示
+            },
         }
     except Exception as e:
         logger.error(f"切换角色失败: {str(e)}")
         raise HTTPException(status_code=500, detail="切换角色失败")
 
 
-@router.get("/get_all_characters")
-async def get_all_characters():
+@router.get("/characters")
+async def get_all_characters(
+    page: int = Query(1, ge=1, description="页码，从1开始"),
+    page_size: int = Query(6, ge=1, le=6, description="每页数量，最多6个"),
+):
     try:
-        db_chars = CharacterModel.get_all_characters()
+        db_chars = RoleManager.get_all_main_roles()
 
         if not db_chars:
             return {"data": [], "message": "未找到任何角色"}
 
         characters = []
         for char in db_chars:
-            settings_path = os.path.join(char['resource_path'], 'settings.txt')
-            settings = Function.parse_enhanced_txt(settings_path)
+            if not char.resource_folder:
+                logger.warning(f"角色 {char.name} 缺少资源文件夹")
+                continue
+
+            char_path = (
+                user_data_path / "game_data" / "characters" / char.resource_folder
+            )
+
+            settings = Function.load_character_settings(char_path)
 
             # 返回相对路径而不是完整路径
             avatar_relative_path = os.path.join(
-                os.path.basename(char['resource_path']),
-                'avatar',
-                '头像.png'
+                char.resource_folder, "avatar", "头像.png"
             )
 
-            characters.append({
-                "character_id": char['id'],
-                "title": char['title'],
-                "info": settings.get('info', '这是一个人工智能对话助手'),
-                "avatar_path": avatar_relative_path  # 修改为相对路径
-            })
+            clothes_absolute_path = os.path.join(
+                char_path,
+                "avatar",
+            )
 
-        return {"data": characters}
+            clothes_list = []
+            for item in Path(clothes_absolute_path).iterdir():
+                if item.is_dir():
+                    clothes_list.append({"title": item.name, "avatar": str(item)})
+                elif item.name.startswith("头像"):
+                    clothes_list.append(
+                        {"title": "默认", "avatar": str(clothes_absolute_path)}
+                    )
+
+            # 获取角色的冒险数量
+            adventure_count = 0
+            total_adventures = 0
+
+            characters.append(
+                {
+                    "character_id": char.id,
+                    "title": char.name,
+                    "name": settings.ai_name,
+                    "sub_name": settings.ai_subtitle,
+                    "info": settings.info or "该角色没有介绍呢~",
+                    "avatar_path": avatar_relative_path,
+                    "clothes": clothes_list,
+                    "adventure_count": adventure_count,
+                    "total_adventures": total_adventures,
+                    "resource_folder": char.resource_folder,  # 添加resource_folder用于冒险面板
+                }
+            )
+
+        total = len(characters)
+        total_pages = max(1, (total + page_size - 1) // page_size)
+        start = (page - 1) * page_size
+        paged_characters = characters[start : start + page_size]
+
+        return {
+            "data": {
+                "items": paged_characters,
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": total_pages,
+            }
+        }
 
     except FileNotFoundError as e:
         logger.error(f"角色配置文件缺失: {str(e)}")
@@ -139,9 +530,87 @@ async def get_all_characters():
 @router.get("/character_file/{file_path:path}")
 async def get_character_file(file_path: str):
     """获取角色相关文件(头像等)"""
-    full_path = user_data_path / f"game_data/characters/{file_path}"
+    # 移除可能的扩展名，以便进行无扩展名匹配
+    file_path_without_ext = os.path.splitext(file_path)[0]
+    base_dir = user_data_path / "game_data/characters"
+    full_base_path = base_dir / file_path_without_ext
 
-    if not os.path.exists(full_path):
-        raise HTTPException(status_code=404, detail="文件不存在")
+    # 如果原始路径包含扩展名，先尝试直接访问
+    original_full_path = user_data_path / f"game_data/characters/{file_path}"
+    if os.path.exists(original_full_path):
+        logger.debug(f"直接找到角色文件: {original_full_path}")
+        file_extension = original_full_path.suffix.lower()
+        if file_extension in SUPPORTED_IMAGE_EXTENSIONS:
+            logger.debug(f"返回角色图片文件: {original_full_path}")
+        else:
+            logger.warning(
+                f"请求的文件可能不是图片格式: {original_full_path} (扩展名: {file_extension})"
+            )
+        return FileResponse(original_full_path)
 
-    return FileResponse(full_path)
+    # 如果没有直接找到，或者原始路径没有扩展名，则尝试匹配支持的图片格式
+    found_files = []
+    for ext in SUPPORTED_IMAGE_EXTENSIONS:
+        candidate_path = full_base_path.with_suffix(ext)
+        if os.path.exists(candidate_path):
+            found_files.append(candidate_path)
+
+    if found_files:
+        # 返回找到的第一个文件
+        selected_file = found_files[0]
+        logger.info(f"通过扩展名匹配找到角色图片文件: {selected_file}")
+        return FileResponse(selected_file)
+
+    # 文件不存在，记录详细的路径检查信息
+    logger.error(
+        f"角色文件不存在: {full_base_path} (尝试了所有支持的扩展名: {SUPPORTED_IMAGE_EXTENSIONS})"
+    )
+    logger.debug("检查路径的各部分是否存在:")
+    parts = ["game_data", "characters"] + file_path_without_ext.split("/")
+    current_path = user_data_path
+    for part in parts:
+        current_path /= part
+        logger.debug(f"  {current_path} 存在: {current_path.exists()}")
+
+    raise HTTPException(status_code=404, detail=f"文件不存在: {file_path}")
+
+
+@router.get("/clothes_file/{file_path:path}")
+async def get_clothes_file(file_path: str):
+    """获取服装相关文件"""
+    # 移除可能的扩展名，以便进行无扩展名匹配
+    file_path_without_ext = os.path.splitext(file_path)[0]
+    base_dir = user_data_path / "game_data/characters"
+    full_base_path = base_dir / file_path_without_ext
+
+    # 如果原始路径包含扩展名，先尝试直接访问
+    original_full_path = user_data_path / f"game_data/characters/{file_path}"
+    if os.path.exists(original_full_path):
+        logger.debug(f"直接找到服装文件: {original_full_path}")
+        file_extension = original_full_path.suffix.lower()
+        if file_extension in SUPPORTED_IMAGE_EXTENSIONS:
+            logger.debug(f"返回服装图片文件: {original_full_path}")
+        else:
+            logger.warning(
+                f"请求的文件可能不是图片格式: {original_full_path} (扩展名: {file_extension})"
+            )
+        return FileResponse(original_full_path)
+
+    # 如果没有直接找到，或者原始路径没有扩展名，则尝试匹配支持的图片格式
+    found_files = []
+    for ext in SUPPORTED_IMAGE_EXTENSIONS:
+        candidate_path = full_base_path.with_suffix(ext)
+        if os.path.exists(candidate_path):
+            found_files.append(candidate_path)
+
+    if found_files:
+        # 返回找到的第一个文件
+        selected_file = found_files[0]
+        logger.debug(f"通过扩展名匹配找到服装图片文件: {selected_file}")
+        return FileResponse(selected_file)
+
+    # 文件不存在，记录错误信息
+    logger.error(
+        f"服装文件不存在: {full_base_path} (尝试了所有支持的扩展名: {SUPPORTED_IMAGE_EXTENSIONS})"
+    )
+    raise HTTPException(status_code=404, detail=f"文件不存在: {file_path}")

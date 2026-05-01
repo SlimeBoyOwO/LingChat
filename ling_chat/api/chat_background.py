@@ -1,26 +1,62 @@
 import os
+import shutil
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
-from pathlib import Path
+from pydantic import BaseModel, Field
+
 from ling_chat.core.logger import logger
-import shutil
-from ling_chat.utils.runtime_path import user_data_path
 from ling_chat.core.service_manager import service_manager
+from ling_chat.utils.runtime_path import user_data_path
 
 router = APIRouter(prefix="/api/v1/chat/background", tags=["Chat Character"])
 
 BACKGROUND_DIR = user_data_path / "game_data/backgrounds"
-ALLOWED_EXTENSIONS = {'.jpg', '.png', '.webp', '.bmp', '.svg', '.tif', '.gif'}
+ALLOWED_EXTENSIONS = (".jpg", ".png", ".webp", ".bmp", ".svg", ".tif", ".gif")
+
+
+class BackgroundSelectionRequest(BaseModel):
+    background: str = Field(default="", description="当前背景URL")
+
+
+class BackgroundEffectRequest(BaseModel):
+    effect: str = Field(default="", description="当前背景特效")
+
+
+def _get_game_status():
+    ai_service = service_manager.ai_service or service_manager.init_ai_service()
+    if ai_service is None:
+        raise HTTPException(status_code=500, detail="AI service not initialized")
+    return ai_service.game_status
+
+
+@router.post("/select")
+async def set_background(payload: BackgroundSelectionRequest):
+    game_status = _get_game_status()
+    game_status.background = payload.background
+    return {"code": 200, "data": {"background": game_status.background}}
+
+
+@router.post("/effect")
+async def set_background_effect(payload: BackgroundEffectRequest):
+    game_status = _get_game_status()
+    game_status.background_effect = payload.effect
+    return {"code": 200, "data": {"background_effect": game_status.background_effect}}
+
 
 @router.get("/background_script_file/{background_file}")
 async def get_script_background_file(background_file: str):
     try:
-
         ai_service = service_manager.ai_service
         if ai_service is None:
             raise HTTPException(status_code=404, detail="AISERVICE not found")
         else:
-            file_path =  ai_service.scripts_manager.get_assests_dir() / "Backgrounds" / background_file
+            file_path = (
+                ai_service.scripts_manager.get_assests_dir()
+                / "Backgrounds"
+                / background_file
+            )
 
         if not os.path.exists(file_path):
             raise HTTPException(status_code=404, detail="Background not found")
@@ -29,6 +65,7 @@ async def get_script_background_file(background_file: str):
     except Exception as e:
         # 日志记录异常
         print(f"An error occurred: {e}")
+
 
 @router.get("/background_file/{background_file}")
 async def get_specific_avatar(background_file: str):
@@ -48,17 +85,15 @@ async def list_all_backgrounds():
         background_files = []
         for f in BACKGROUND_DIR.iterdir():
             filename = f.name
-            if f.suffix.lower() in ('.png', '.jpg', '.jpeg', '.gif', '.bmp'):
+            if f.suffix.lower() in ALLOWED_EXTENSIONS:
                 file_path = BACKGROUND_DIR / filename
                 stat = f.stat()
 
                 title = f.stem  # 使用文件名作为标题
 
-                background_files.append({
-                    "title": title,
-                    "url": filename,
-                    "time": str(stat.st_mtime)
-                })
+                background_files.append(
+                    {"title": title, "url": filename, "time": str(stat.st_mtime)}
+                )
 
         background_files.sort(key=lambda x: x["time"], reverse=True)
 
@@ -90,10 +125,7 @@ async def upload_music(file: UploadFile, name: str | None = None):
         with save_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        return JSONResponse(
-            status_code=200,
-            content={"message": "背景图片上传成功"}
-        )
+        return JSONResponse(status_code=200, content={"message": "背景图片上传成功"})
     except HTTPException:
         raise
     except Exception as e:

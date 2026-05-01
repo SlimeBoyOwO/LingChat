@@ -1,11 +1,22 @@
 <template>
   <router-view />
   <CursorEffects />
+
+  <!-- 全局通知组件（直接从 uiStore 读取状态） -->
+  <Notification />
+  <AchievementToast />
+  <AdventureUnlockNotify />
 </template>
 
 <script setup>
 import { onMounted, onUnmounted } from 'vue'
-import CursorEffects from '@/components/effects/CursorEffects.vue'
+import CursorEffects from './components/effects/CursorEffects.vue'
+import Notification from './components/ui/Notification.vue'
+import AchievementToast from './components/ui/AchievementToast.vue'
+import AdventureUnlockNotify from './components/ui/AdventureUnlockNotify.vue'
+import { initUIStore } from './stores/modules/ui/ui'
+import { useAchievementStore } from './stores/modules/ui/achievement'
+
 // 在使用 <router-view> 的情况下，通常不需要在这里再导入具体的页面组件了
 
 const handleKeyDown = (event) => {
@@ -25,6 +36,16 @@ const handleKeyDown = (event) => {
 }
 
 onMounted(() => {
+  // 初始化 UI Store（加载角色 tips）
+  initUIStore()
+
+  // 供成就系统控制台测试用，在 window 对象中注册一些方法
+  const achievementStore = useAchievementStore()
+  window.requestAchievementUnlock = (data) => achievementStore.notifyBackendUnlock(data)
+  window.showAchievement = (data) => achievementStore.addAchievement(data)
+  // 成就系统启动WebSocket监听
+  achievementStore.listenForUnlocks()
+
   // 等待 pywebview API 准备就绪
   window.addEventListener('pywebviewready', () => {
     window.addEventListener('keydown', handleKeyDown)
@@ -43,19 +64,6 @@ onUnmounted(() => {
   --menu-max-width: 1100px;
   --menu-max-width-half: 550px;
   /* 一个生动的天蓝色，可以根据你的品牌调整 */
-
-  .glass-effect {
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.125);
-    box-shadow:
-      0 8px 32px rgba(0, 0, 0, 0.1),
-      inset 0 1px 1px rgba(255, 255, 255, 0.1);
-    transition:
-      border-color 0.2s,
-      box-shadow 0.2s;
-  }
 }
 
 /* 全局样式和字体 */

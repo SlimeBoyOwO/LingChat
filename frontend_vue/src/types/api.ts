@@ -39,11 +39,22 @@ export interface BackgroundImageInfo {
   time: string
 }
 
+export interface Clothes {
+  title: string
+  avatar: string
+}
+
 export interface Character {
   character_id: string
   title: string
+  name: string
+  sub_name: string
   info: string
   avatar_path: string
+  clothes: Array<Clothes>
+  resource_folder?: string
+  adventure_count?: number
+  total_adventures?: number
 }
 
 export interface CharacterSelectParams {
@@ -54,7 +65,8 @@ export interface CharacterSelectParams {
 export interface SaveInfo {
   id: string
   title: string
-  updated_at: string
+  update_date: string
+  create_date: string
 }
 
 export interface SaveListParams {
@@ -71,6 +83,10 @@ export interface SaveModifyParams {
 export interface SaveCreateParams {
   user_id: string
   title: string
+}
+
+export interface SaveContinueParams {
+  user_id: string
 }
 
 export interface MusicTrack {

@@ -1,157 +1,197 @@
+import asyncio
+import base64
 import os
 import time
-import base64
 from io import BytesIO
-from PIL import ImageGrab
-from ling_chat.core.logger import logger
-import requests
 
-# TODO: 这个玩意是他妈的同步的，导致这个东西执行的时候，整个程序都会卡死，务必改成异步函数
+import httpx
+from openai import OpenAI
+from PIL import ImageGrab
+
 
 class DesktopAnalyzer:
-    def __init__(self, model="Pro/Qwen/Qwen2.5-VL-7B-Instruct"):
+    def __init__(self):
         """
         初始化桌面分析器
-        
-        Args:
-            model (str): 使用的AI模型，默认为'Pro/Qwen/Qwen2.5-VL-7B-Instruct'
         """
-        self.model = model
-        self.api_key = os.environ.get("VD_API_KEY") or ""
+        self.api_key = os.environ.get("VD_API_KEY", "")
+        if not self.api_key:
+            raise ValueError("VD_API_KEY 环境变量未设置。请设置您的API密钥。")
 
-        if(self.api_key == "sk-114514" or self.api_key == ""):
-            logger.info("【视觉识别】你没有改过VD_API_KEY，无法进行图像识别哦！")
-        else:
-            logger.info("【视觉识别】你填写了VD_API_KEY，现在你可以输入“看看我的桌面”加任意提示词实现让灵灵看桌面的功能哦~")
+        self.base_url = os.environ.get(
+            "VD_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        )
+        self.model = os.environ.get("VD_MODEL", "qwen3.5-plus")
 
-        self.base_url = "https://api.siliconflow.cn/v1/chat/completions"
         self.last_response_time = None
         self.last_input_tokens = None
         self.last_output_tokens = None
-        
-    def capture_desktop(self):
-        """截取整个桌面并返回Base64编码"""
+
+        # 初始化 OpenAI 客户端
+        self._timeout = httpx.Timeout(15.0)
+        self.client = OpenAI(
+            api_key=self.api_key, base_url=self.base_url, timeout=self._timeout
+        )
+
+    def _capture_desktop_sync(self):
+        """
+        同步的截图逻辑（专门用于在线程中运行）
+        """
         # 截取屏幕
         screenshot = ImageGrab.grab()
-        
-        # 将截图转为Base64编码
+
+        # 将截图转为Base64编码 (这个过程涉及图片压缩，是同步阻塞的)
         buffered = BytesIO()
         screenshot.save(buffered, format="PNG")
-        base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
-        
+        base64_image = base64.b64encode(buffered.getvalue()).decode("utf-8")
         return base64_image
-    
+
+    async def capture_desktop(self):
+        """
+        异步截取整个桌面并返回Base64编码
+        使用 asyncio.to_thread 防止图片处理阻塞主事件循环
+        """
+        return await asyncio.to_thread(self._capture_desktop_sync)
+
     @staticmethod
     def calculate_cost(input_tokens, output_tokens):
         """
         计算分析费用
-        
-        Args:
-            input_tokens (int): 输入token数量
-            output_tokens (int): 输出token数量
-            
-        Returns:
-            float: 计算费用（元）
         """
         # 注意：这里需要根据趋动云的实际计费标准调整
         input_cost = (input_tokens / 1000) * 0.00035
         output_cost = (output_tokens / 1000) * 0.00035
         return round(input_cost + output_cost, 4)
-    
-    def analyze_desktop(self, prompt="这是用户的桌面内容，请你用100字左右描绘主要内容，边角内容如任务栏不需要分析"):
+
+    async def analyze_desktop(
+        self,
+        prompt="这是用户的桌面内容，请你用100字左右描绘主要内容是什么，边角内容如任务栏不需要分析",
+    ):
         """
-        执行桌面分析
-        
+        执行桌面分析 (异步)
+
         Args:
             prompt (str): 发送给AI的提示文本
-            
+
         Returns:
             str: AI生成的描述文本
         """
-        # 截取桌面并获取Base64编码
-        desktop_base64 = self.capture_desktop()
+        # 异步获取截图（不卡死主线程）
+        desktop_base64 = await self.capture_desktop()
         image_data = f"data:image/png;base64,{desktop_base64}"
-        
-        # 构建请求头和数据
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
 
-        payload = {
-            "model": self.model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": image_data}}
-                    ]
-                }
-            ],
-            "max_tokens": 1024
-        }
-
-        # 记录开始时间并发送请求
+        # 记录开始时间
         start_time = time.time()
-        response = requests.post(self.base_url, headers=headers, json=payload)
-        response_data = response.json()
-        
-        if "choices" not in response_data:
-            raise Exception(f"请求失败: {response_data}")
-        
-        logger.info("图片分析结果如下")
-        logger.info(response_data["choices"][0]["message"]["content"])
-        
-        # 记录性能数据
-        self.last_response_time = time.time() - start_time
-        self.last_input_tokens = response_data.get("usage", {}).get("prompt_tokens", 0)
-        self.last_output_tokens = response_data.get("usage", {}).get("completion_tokens", 0)
-        
-        return response_data["choices"][0]["message"]["content"]
-    
+
+        # 使用 OpenAI 客户端发送请求
+        try:
+            # 使用 asyncio.to_thread 将同步调用转为异步
+            completion = await asyncio.to_thread(
+                self.client.chat.completions.create,
+                model=self.model,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {"type": "image_url", "image_url": {"url": image_data}},
+                        ],
+                    }
+                ],
+                max_tokens=1024,
+            )
+
+            # 获取响应数据
+            content = completion.choices[0].message.content
+            print("图片分析结果如下")
+            print(content)
+
+            # 记录性能数据
+            self.last_response_time = time.time() - start_time
+            self.last_input_tokens = (
+                completion.usage.prompt_tokens if completion.usage else -1
+            )
+            self.last_output_tokens = (
+                completion.usage.completion_tokens if completion.usage else -1
+            )
+
+            return content
+        except Exception as e:
+            raise Exception(f"请求失败: {e}")
+
+    async def analyze_image_file(
+        self, image_path, prompt="请用100字左右描述这个场景的环境、氛围、光线等特征"
+    ):
+        """
+        分析指定图片文件并返回描述
+
+        Args:
+            image_path: 图片文件路径（Path 对象或字符串）
+            prompt: 发送给AI的提示文本
+
+        Returns:
+            str: AI生成的描述文本
+        """
+        from pathlib import Path
+
+        # 确保是 Path 对象
+        if not isinstance(image_path, Path):
+            image_path = Path(image_path)
+
+        # 读取图片文件
+        with open(image_path, "rb") as f:
+            image_data = base64.b64encode(f.read()).decode("utf-8")
+
+        image_url = f"data:image/png;base64,{image_data}"
+
+        # 记录开始时间
+        start_time = time.time()
+
+        try:
+            # 使用 asyncio.to_thread 将同步调用转为异步
+            completion = await asyncio.to_thread(
+                self.client.chat.completions.create,
+                model=self.model,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {"type": "image_url", "image_url": {"url": image_url}},
+                        ],
+                    }
+                ],
+                max_tokens=512,
+            )
+
+            # 获取响应数据
+            content = completion.choices[0].message.content
+
+            # 记录性能数据
+            self.last_response_time = time.time() - start_time
+            self.last_input_tokens = (
+                completion.usage.prompt_tokens if completion.usage else -1
+            )
+            self.last_output_tokens = (
+                completion.usage.completion_tokens if completion.usage else -1
+            )
+
+            return content
+        except Exception as e:
+            raise Exception(f"图片分析失败: {e}")
+
     def get_analysis_report(self):
         """
         获取最后一次分析的报告
-        
-        Returns:
-            dict: 包含分析结果和性能数据的字典
         """
         if not self.last_response_time:
             return {"error": "No analysis performed yet"}
-        
+
         return {
             "response_time": round(self.last_response_time, 2),
             "input_tokens": self.last_input_tokens,
             "output_tokens": self.last_output_tokens,
-            "cost": self.calculate_cost(self.last_input_tokens, self.last_output_tokens)
+            "cost": self.calculate_cost(
+                self.last_input_tokens, self.last_output_tokens
+            ),
         }
-
-
-if __name__ == "__main__":
-    # 单元测试
-    analyzer = DesktopAnalyzer()
-    
-    print("桌面内容分析器已启动...")
-    input("按Enter键截取当前桌面并发送给AI分析...")
-    
-    # 执行分析
-    try:
-        description = analyzer.analyze_desktop()
-        report = analyzer.get_analysis_report()
-        
-        # 显示结果
-        print("\n" + "=" * 50)
-        print("AI生成的桌面描述:")
-        print("-" * 50)
-        print(description)
-        print("\n" + "=" * 50)
-        print("性能报告:")
-        print("-" * 50)
-        print(f"响应时间: {report['response_time']}秒")
-        print(f"输入Token: {report['input_tokens']}")
-        print(f"输出Token: {report['output_tokens']}")
-        print(f"计算费用: ¥{report['cost']} (输入¥0.00035/1KT, 输出¥0.00035/1KT)")
-        print("=" * 50)
-    except Exception as e:
-        print(f"发生错误: {str(e)}")

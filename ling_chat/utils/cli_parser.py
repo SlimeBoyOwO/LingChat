@@ -1,5 +1,6 @@
 import argparse
 
+
 def get_parser():
     parser = argparse.ArgumentParser(description="LingChat CLI")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -9,27 +10,48 @@ def get_parser():
     install_parser.add_argument(
         "modules",
         nargs="+",
-        choices=["vits", "sbv2", "18emo", "rag"],
-        help="Modules to install"
+        choices=["vits", "sbv2", "emo", "rag"],
+        help="Modules to install",
     )
     install_parser.add_argument(
-        "--mirror", "-m",
+        "--mirror",
+        "-m",
         action="store_true",
-        help="Use mirror site for downloading models (especially for RAG model)"
+        help="Use mirror site for downloading models (especially for RAG model)",
     )
 
     # run 主程序启动选项
     parser.add_argument(
         "--run",
         nargs="+",
-        choices=["vits", "sbv2", "18emo", "webview"],
-        help="Modules to run"
+        choices=["vits", "sbv2", "emo", "webview"],
+        help="Modules to run",
     )
-    
+
     parser.add_argument(
-        "--nogui",
+        "--nogui", action="store_true", help="启用无界面模式（禁用前端界面）"
+    )
+    parser.add_argument("--gui", action="store_true", help="强制启用前端界面")
+
+    export_parser = subparsers.add_parser(
+        "export-emotions", help="导出情感标签数据为 CSV 格式"
+    )
+    export_parser.add_argument(
+        "--output",
+        "-o",
+        type=str,
+        default=None,
+        help="输出 CSV 文件路径（默认为当前工作目录下的 ./emotion_labels.csv）",
+    )
+    export_parser.add_argument(
+        "--full",
         action="store_true",
-        help="启用无界面模式（禁用前端界面）"
+        help="全部导出模式：导出sentence、text和label三列，不进行情感排除，去重基于sentence字段",
+    )
+    export_parser.add_argument(
+        "--less",
+        action="store_true",
+        help="精简导出模式：只导出text和label两列，排除指定情感，去重基于text字段",
     )
 
     return parser

@@ -4,7 +4,7 @@
 
 ## 🖥️ 支持操作系统：
 
-- Windows、Linux/Macos 均可运行。Linux/Macos 用户请查看额外的使用说明。 
+- Windows、Linux/Macos 均可运行。Linux/Macos 用户请查看额外的使用说明。
 - 社区安装 QQ 互助群：1055935861【纯安装问题请加入此群，不要去开发者群.jpg，目前好像只能二维码进入了】
 - 安装问题解答文档[用户帮助文档-代码报错](https://github.com/SlimeBoyOwO/LingChat/blob/main/README-help.md), [用户帮助文档-截图报错](https://github.com/SlimeBoyOwO/LingChat/blob/develop/others/document/Q&A.md)
 
@@ -67,7 +67,7 @@
 
 #### 温馨提示：
 
-> 要是想自定义角色使用这个功能，需要在 `game_data/characters/<角色名>/settings.txt` 中设定 `model_name` 的参数为导入的模型的名字  
+> 要是想自定义角色使用这个功能，需要在 `game_data/characters/<角色名>/settings.txt` 中设定 `model_name` 的参数为导入的模型的名字
 
 ### Step 4：视觉模型功能使用
 
@@ -79,7 +79,7 @@
 #### 温馨提示：
 
 > 设定完毕后，可以通过在与 AI 对话的对话中，包含 `“看桌面”` 或者 `“看看我的桌面”` 来触发视觉感知，允许 AI 观察你的屏幕并做出回应
-> 主动对话中，配置视觉模块后，AI 将拥有主动看你在干什么的能力，小心不要玩黄油？(*^▽^*)
+> 主动对话中，配置视觉模块后，AI 将拥有主动看你在干什么的能力，小心不要玩黄油？(_^▽^_)
 
 ### Step 6: 加入最新版的测试
 

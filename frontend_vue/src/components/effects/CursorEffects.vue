@@ -6,7 +6,10 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { useSettingsStore } from '../../stores/modules/settings'
+
+const settingsStore = useSettingsStore()
 
 interface TrailPoint {
   x: number
@@ -52,6 +55,74 @@ let currentFps = 60
 const TARGET_FPS = 60 // 目标帧率
 const FRAME_INTERVAL = 1000 / TARGET_FPS // 帧间隔时间（毫秒）
 let lastFrameTime = 0 // 上一帧的时间
+
+// --- 性能优化：页面可见性检测 ---
+let isPageVisible = true
+
+// --- 性能优化：预渲染粒子缓存 ---
+let particleImageCache: Map<string, HTMLCanvasElement> | null = null
+
+// --- 性能优化：循环缓冲区 ---
+const MAX_POINTS_BUFFER = 100
+let pointsBufferIndex = 0
+let pointsBuffer: TrailPoint[] = new Array(MAX_POINTS_BUFFER)
+
+/**
+ * 创建预渲染的三角形粒子图像
+ * 避免每帧重复绘制路径
+ */
+function createTriangleParticle(size: number, color: string): HTMLCanvasElement {
+  const canvas = document.createElement('canvas')
+  const padding = size * 2
+  canvas.width = size * 2 + padding * 2
+  canvas.height = size * 2 + padding * 2
+  const ctx = canvas.getContext('2d')!
+
+  const centerX = canvas.width / 2
+  const centerY = canvas.height / 2
+
+  ctx.beginPath()
+  ctx.moveTo(centerX, centerY - size)
+  ctx.lineTo(centerX - size * 0.7, centerY + size * 0.7)
+  ctx.lineTo(centerX + size * 0.7, centerY + size * 0.7)
+  ctx.closePath()
+  ctx.fillStyle = color
+  ctx.fill()
+
+  return canvas
+}
+
+/**
+ * 获取或创建缓存的粒子图像
+ */
+function getParticleImage(size: number, color: string): HTMLCanvasElement {
+  if (!particleImageCache) {
+    particleImageCache = new Map()
+  }
+
+  const cacheKey = `${Math.round(size)}_${color}`
+  let image = particleImageCache.get(cacheKey)
+  if (!image) {
+    image = createTriangleParticle(size, color)
+    particleImageCache.set(cacheKey, image)
+  }
+  return image
+}
+
+/**
+ * 清理粒子图像缓存
+ */
+function clearParticleCache() {
+  particleImageCache?.clear()
+  particleImageCache = null
+}
+
+/**
+ * 处理页面可见性变化
+ */
+function handleVisibilityChange() {
+  isPageVisible = !document.hidden
+}
 
 // --- 初始化 Canvas ---
 const initCanvas = () => {
@@ -164,21 +235,17 @@ const drawParticles = () => {
     p.life = p.life - 1 / (60 * p.maxLife) < 0 ? 0 : p.life - 1 / (60 * p.maxLife) // 60fps衰减
     p.rotation += p.rotationSpeed
 
-    // 绘制粒子
+    // 绘制粒子 - 使用预渲染图像
     const alpha = p.life
     ctx.save()
     ctx.translate(p.x, p.y)
     ctx.rotate((p.rotation * Math.PI) / 180)
     ctx.globalAlpha = alpha
 
-    // 绘制三角形
-    ctx.beginPath()
-    ctx.moveTo(0, -p.size)
-    ctx.lineTo(-p.size * 0.7, p.size * 0.7)
-    ctx.lineTo(p.size * 0.7, p.size * 0.7)
-    ctx.closePath()
-    ctx.fillStyle = p.color
-    ctx.fill()
+    // 获取预渲染的粒子图像，避免每帧绘制路径
+    const particleImage = getParticleImage(p.size, p.color)
+    const halfSize = particleImage.width / 2
+    ctx.drawImage(particleImage, -halfSize, -halfSize)
 
     ctx.restore()
 
@@ -209,6 +276,12 @@ const updatePoints = () => {
 
 // --- 主绘制循环 ---
 const draw = (timestamp: number) => {
+  // 页面可见性检查：如果页面不可见，暂停动画
+  if (!isPageVisible) {
+    stopAnimation()
+    return
+  }
+
   // 帧率限制：只有当距离上一帧的时间超过设定的帧间隔时才执行绘制
   if (timestamp - lastFrameTime < FRAME_INTERVAL) {
     animationId = requestAnimationFrame(draw)
@@ -265,7 +338,12 @@ const stopAnimation = () => {
 
 // --- 节流的鼠标移动处理 ---
 const handleMouseMove = (e: MouseEvent) => {
-  const now = Date.now()
+  // 检查是否启用鼠标拖尾动画
+  if (!settingsStore.globalMouseTrailEnabled) {
+    return
+  }
+
+  const now = performance.now()
   if (now - lastMouseTime < MOUSE_THROTTLE) {
     return
   }
@@ -292,6 +370,11 @@ const handleMouseMove = (e: MouseEvent) => {
 
 // --- 优化的点击效果（使用Canvas替代DOM）---
 const handleClick = (e: MouseEvent) => {
+  // 检查是否启用点击动画
+  if (!settingsStore.clickAnimationEnabled) {
+    return
+  }
+
   const particleCount = 12
   const colors = ['#FFC0CB', '#87CEFA']
 
@@ -327,18 +410,48 @@ const handleResize = () => {
   initCanvas()
 }
 
+// --- 监听设置变化，关闭时清除效果 ---
+watch(
+  () => settingsStore.globalMouseTrailEnabled,
+  (enabled) => {
+    if (!enabled) {
+      // 关闭时清除所有拖尾点
+      points.length = 0
+    }
+  },
+)
+
+watch(
+  () => settingsStore.clickAnimationEnabled,
+  (enabled) => {
+    if (!enabled) {
+      // 关闭时清除所有粒子
+      particles.length = 0
+    }
+  },
+)
+
 // --- 生命周期钩子 ---
 onMounted(() => {
   initCanvas()
   window.addEventListener('mousemove', handleMouseMove)
   window.addEventListener('click', handleClick)
   window.addEventListener('resize', handleResize)
+
+  // 添加页面可见性检测
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  isPageVisible = !document.hidden
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('mousemove', handleMouseMove)
   window.removeEventListener('click', handleClick)
   window.removeEventListener('resize', handleResize)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+
+  // 清理缓存
+  clearParticleCache()
+
   stopAnimation()
   points.length = 0
   particles.length = 0
@@ -355,32 +468,5 @@ onBeforeUnmount(() => {
   height: 100%;
   pointer-events: none;
   z-index: 9999;
-}
-</style>
-
-<style>
-/* 点击三角粒子样式（全局样式，因为是动态创建的元素） */
-.click-triangle-particle {
-  position: fixed;
-  pointer-events: none;
-  z-index: 10000;
-  width: 0;
-  height: 0;
-  border-left: var(--triangle-size) solid transparent;
-  border-right: var(--triangle-size) solid transparent;
-  border-bottom: calc(var(--triangle-size) * 1.5) solid var(--triangle-color);
-  animation: click-burst-animation 1s forwards;
-}
-
-@keyframes click-burst-animation {
-  from {
-    transform: translate(-50%, -50%) rotate(var(--initial-rotation)) scale(1);
-    opacity: inherit;
-  }
-  to {
-    transform: translate(calc(-50% + var(--translate-x)), calc(-50% + var(--translate-y)))
-      rotate(var(--final-rotation)) scale(0);
-    opacity: 0;
-  }
 }
 </style>

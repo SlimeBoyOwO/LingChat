@@ -19,6 +19,7 @@ export default class BackgroundProcessor implements IEventProcessor {
       ? `/api/v1/chat/script/background_file/${encodeURIComponent(event.imagePath)}`
       : '../pictures/background/default.png'
 
-    uiStore.currentBackground = url
+    uiStore.currentBackgroundTransition = event.transition * 1000
+    uiStore.setCurrentBackground(url)
   }
 }
