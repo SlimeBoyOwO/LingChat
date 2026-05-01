@@ -192,9 +192,18 @@ jobs:
           merge-multiple: true
           skip-decompress: true
 
+      - name: 设置 Python 环境
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: 'latest'
+
+      - name: 安装modelscope
+        run: uv tool install modelscope
+
       - name: 创建或更新 Release 并上传所有资产
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODELSCOPE_ACCESS_TOKEN: ${{ secrets.MODELSCOPE_ACCESS_TOKEN }}
         run: |
           set -e
           TAG="${{ needs.prepare.outputs.tag_name }}"
@@ -225,6 +234,12 @@ jobs:
           for file in "${files[@]}"; do
             echo "正在上传 $file ..."
             gh release upload "$TAG" "$file" --clobber
+            echo "✓ 上传完成：$file"
+          done
+
+          for file in "${files[@]}"; do
+            echo "正在上传modelcope: $file ..."
+            ms upload lingchat-research-studio/LingChat-release-mirror "$file" ./$TAG/ --token $MODELSCOPE_ACCESS_TOKEN
             echo "✓ 上传完成：$file"
           done
 
