@@ -40,8 +40,8 @@ def handle_install(install_modules_list: Collection[str], use_mirror=False):
             install_third_party.install_vits_model(vits_path)
         elif module == "sbv2":
             install_third_party.install_sbv2(third_party_path / "sbv2/sbv2")
-        elif module == "18emo":
-            install_third_party.install_18emo(third_party_path / "emotion_model_18emo")
+        elif module == "emo":
+            install_third_party.install_emo_model(third_party_path / "emotion_model")
         elif module == "rag":
             install_third_party.install_rag_model(use_mirror=use_mirror)
         else:
@@ -59,8 +59,8 @@ def handle_run(run_modules_list: Collection[str]):
             run_third_party.run_in_thread(run_third_party.run_vits)
         elif module == "sbv2":
             raise NotImplementedError("sbv2 模块的运行函数未实现")
-        elif module == "18emo":
-            raise NotImplementedError("18emo 模块的运行函数未实现")
+        elif module == "emo":
+            raise NotImplementedError("emo 模块的运行函数未实现")
         elif module == "webview":
             run_third_party.run_webview()
         else:

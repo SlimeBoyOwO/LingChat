@@ -94,7 +94,9 @@ jobs:
           version: 'latest'
 
       - name: 安装项目依赖
-        run: uv sync 
+        run: |
+          uv sync
+          uv run main.py install emo
 
       - name: 安装 Nuitka 编译器
         run: uv pip install nuitka
@@ -136,17 +138,17 @@ jobs:
       - name: 使用 Nuitka 编译
         shell: bash
         env:
-          CFLAGS: "-flto=thin -O2"
-          CXXFLAGS: "-flto=thin -O2"
+          CFLAGS: '-flto=thin -O2'
+          CXXFLAGS: '-flto=thin -O2'
         run: |
           NUMERIC_VERSION=$(echo ${{ needs.prepare.outputs.tag_name }} | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
-          
+
           if [[ "${{ matrix.platform }}" == linux* ]]; then
             echo "yes" | uv run nuitka --clang --standalone --enable-plugins=upx --upx-binary=$UPX_BIN --jobs=4 --lto=yes --low-memory --assume-yes-for-downloads --linux-icon=ling_chat/static/game_data/resources/lingchat.png --output-filename=LingChat --product-name=${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }} --file-version="$NUMERIC_VERSION" --product-version="$NUMERIC_VERSION" --company-name="LingChat Studio" --show-memory main.py
           else
             echo "yes" | uv run nuitka --clang --standalone --enable-plugins=upx --upx-binary=$UPX_BIN --jobs=4 --lto=yes --low-memory --assume-yes-for-downloads --windows-icon-from-ico=ling_chat/static/game_data/resources/lingchat.ico --output-filename=LingChat --product-name=${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }} --file-version="$NUMERIC_VERSION" --product-version="$NUMERIC_VERSION" --company-name="LingChat Studio"  --show-memory main.py
           fi
-    
+
       - name: 整理文件（准备打包）
         shell: bash
         run: |
