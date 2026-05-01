@@ -63,9 +63,9 @@ def handle_install_cli(args):
                 install_third_party.install_vits_model(vits_path)
             elif module == "sbv2":
                 install_third_party.install_sbv2(third_party_path / "sbv2/sbv2")
-            elif module == "18emo":
-                install_third_party.install_18emo(
-                    third_party_path / "emotion_model_18emo"
+            elif module == "emo":
+                install_third_party.install_emo_model(
+                    third_party_path / "emotion_model"
                 )
             elif module == "rag":
                 install_third_party.install_rag_model(use_mirror=use_mirror)

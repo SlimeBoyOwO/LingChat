@@ -10,7 +10,7 @@ def get_parser():
     install_parser.add_argument(
         "modules",
         nargs="+",
-        choices=["vits", "sbv2", "18emo", "rag"],
+        choices=["vits", "sbv2", "emo", "rag"],
         help="Modules to install",
     )
     install_parser.add_argument(
@@ -24,7 +24,7 @@ def get_parser():
     parser.add_argument(
         "--run",
         nargs="+",
-        choices=["vits", "sbv2", "18emo", "webview"],
+        choices=["vits", "sbv2", "emo", "webview"],
         help="Modules to run",
     )
 
