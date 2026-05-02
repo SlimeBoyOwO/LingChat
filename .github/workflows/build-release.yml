@@ -61,6 +61,8 @@ jobs:
     needs: prepare
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
+    env:
+      PYTHONUTF8: 1
     strategy:
       matrix:
         platform: ${{ fromJSON(needs.prepare.outputs.platforms_json) }}
@@ -158,6 +160,8 @@ jobs:
           cp -r frontend_vue/dist/* ling_chat/static/frontend/
 
           cp .env.example main.dist/.env
+          cp LICENSE main.dist/LICENSE
+          cp version main.dist/version
 
           mkdir main.dist/ling_chat
           mv ling_chat/static main.dist/ling_chat
@@ -192,9 +196,18 @@ jobs:
           merge-multiple: true
           skip-decompress: true
 
+      - name: 设置 Python 环境
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: 'latest'
+
+      - name: 安装modelscope
+        run: uv tool install modelscope
+
       - name: 创建或更新 Release 并上传所有资产
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODELSCOPE_ACCESS_TOKEN: ${{ secrets.MODELSCOPE_ACCESS_TOKEN }}
         run: |
           set -e
           TAG="${{ needs.prepare.outputs.tag_name }}"
@@ -225,6 +238,12 @@ jobs:
           for file in "${files[@]}"; do
             echo "正在上传 $file ..."
             gh release upload "$TAG" "$file" --clobber
+            echo "✓ 上传完成：$file"
+          done
+
+          for file in "${files[@]}"; do
+            echo "正在上传modelcope: $file ..."
+            ms upload lingchat-research-studio/LingChat-release-mirror "$file" ./$TAG/$file --token ms-928ef9e5-6136-4248-acb8-1abd928d3e21 #别想偷了，临时的，构建完就删除
             echo "✓ 上传完成：$file"
           done
 
