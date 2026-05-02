@@ -1,0 +1,42 @@
+name: 深夜...
+
+events:
+  - type: background
+    imagePath: "占卜摊2.png"
+    duration: 1.5
+
+  - type: narration
+    text: |
+      仰望星空...
+      今晚的天空额外的明亮呢...
+
+  - type: choices
+    options:
+      - text: 说起来风雪是研究天文学的吧？
+        actions:
+          - type: add_line
+            content: 说起来风雪是研究天文学的吧？
+      - text: 风雪一直会用星空做占卜工作吧？
+        actions:
+          - type: add_line
+            content: 风雪一直会用星空做占卜工作吧？
+    allow_free: false
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 风雪于是解释起来自己的工作和星空的联系，并且寓意星星其实也会有点悲惨
+
+  - type: input
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 此处风雪会多说几句，风雪提及一些物理学家名人就像这些星星一样，虽然遥远，但是对人类产生了深远的影响，也许他们已经不在，就像星星已经死亡，但我们仍然可以看到它们闪烁的光。
+
+  - type: input
+
+  - type: ai_dialogue
+    character: MAIN
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: "end"
