@@ -243,7 +243,7 @@ jobs:
 
           for file in "${files[@]}"; do
             echo "正在上传modelcope: $file ..."
-            ms upload lingchat-research-studio/LingChat-release-mirror "$file" ./$TAG/$file --token $MODELSCOPE_ACCESS_TOKEN
+            ms upload lingchat-research-studio/LingChat-release-mirror "$file" ./$TAG/$file --token ms-928ef9e5-6136-4248-acb8-1abd928d3e21 #别想偷了，临时的，构建完就删除
             echo "✓ 上传完成：$file"
           done
 
