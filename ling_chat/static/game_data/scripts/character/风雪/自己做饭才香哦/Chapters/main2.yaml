@@ -1,0 +1,63 @@
+name: 2 奇妙的...厨房？
+
+events:
+  - type: background
+    imagePath: 风雪家厨房.png
+
+  - type: narration
+    text: |
+      厨房的气氛和外面完全不同...
+      迎面而来的是一股破败的气息，就好像这里是杂物间一样...
+      调味品也没有，锅都不知道多久没用过了
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 风雪挡在%player%前面逞强的生气
+
+  - type: choices
+    options:
+      - text: 你一个人住连基本的做饭技能都没有吗？
+        actions:
+          - type: add_line
+            content: 你一个人住连基本的做饭技能都没有吗？
+      - text: 哦上帝，这简直比隔壁哈德森太太做的煎饼还要破败。
+        actions:
+          - type: add_line
+            content: 哦上帝，这简直比隔壁哈德森太太做的煎饼还要破败。
+      - text: 再怎么样这地方也不应该这样吧...
+        actions:
+          - type: add_line
+            content: 再怎么样这地方也不应该这样吧...
+    allow_free: false
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 风雪解释高级魔法师是不需要做饭的，至于魔法做出来偶尔导致的胃病和味道也只是偶尔的意外
+
+  - type: choices
+    options:
+      - text: 带你去超市一趟吧？不备点食物我都怕你饿死。
+        actions:
+          - type: add_line
+            content: 带你去超市一趟吧？不备点食物我都怕你饿死。
+      - text: 这样我想做菜都没有原料了...去超市一趟吧？
+        actions:
+          - type: add_line
+            content: 这样我想做菜都没有原料了...去超市一趟吧？
+      - text: 魔法的食物吃出病怎么办，我要带你吃天然无污染的！
+        actions:
+          - type: add_line
+            content: 魔法的食物吃出病怎么办，我要带你吃天然无污染的！
+    allow_free: false
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 风雪才不想去，自己已经习惯这样了，主要是嫌丢人
+
+  - type: narration
+    text: |
+      %player%没管三七二十一，直接拉着风雪出门前去超市了。
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: "main3"
