@@ -12,20 +12,20 @@ scale: 1.35
 offset_y: 15.0
 
 scale_p: 1.75
-offset_x_p: 0
+offset_x_p: 20
 offset_y_p: 40
 
 clothes_name: null
 clothes: null
 voice_models:
-  sva_speaker_id: ""
+  sva_speaker_id: ''
   sbv2_name: Fusetsu_v1.5
-  sbv2_speaker_id: "0"
-  bv2_speaker_id: ""
+  sbv2_speaker_id: '0'
+  bv2_speaker_id: ''
   sbv2api_name: Ling v2
-  sbv2api_speaker_id: "0"
-  gsv_voice_text: ""
-  gsv_voice_filename: ""
+  sbv2api_speaker_id: '0'
+  gsv_voice_text: ''
+  gsv_voice_filename: ''
   aivis_model_uuid: 44f93196-7485-45af-9616-f33adee71846
 tts_type: sbv2
 thinking_message: 风雪施展魔法中...
