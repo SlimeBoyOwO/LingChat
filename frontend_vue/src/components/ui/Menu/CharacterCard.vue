@@ -178,7 +178,7 @@
 import { ref } from 'vue'
 import { Icon } from '../../base'
 import SettingsCharacterInfo from '@/components/settings/pages/SettingsCharacterInfo.vue'
-import { characterSelect } from '@/api/services/character'
+import { characterSelect, selectClothes as selectClothesApi } from '@/api/services/character'
 import { useGameStore } from '@/stores/modules/game'
 import { useUserStore } from '@/stores/modules/user/user'
 import { Settings } from 'lucide-vue-next'
@@ -236,7 +236,24 @@ const selectCharacter = async () => {
 }
 
 const selectClothes = async (clothes_name: string) => {
-  if (gameStore.mainRole) gameStore.mainRole.clothesName = clothes_name
+  try {
+    // 调用后端API选择衣服
+    console.log(`选择衣服: ${clothes_name}`)
+    const response = await selectClothesApi(clothes_name)
+
+    if (response.success) {
+      // 更新本地状态
+      if (gameStore.mainRole) {
+        gameStore.mainRole.clothesName = clothes_name
+      }
+
+      // 可选：显示成功消息
+      console.log(response.message)
+    }
+  } catch (error) {
+    console.error('选择衣服失败:', error)
+    // 可选：显示错误提示
+  }
 }
 
 const openSettingsModal = () => (isSettingsModalVisible.value = true)
