@@ -12,6 +12,10 @@ on:
         required: false
         default: false
         type: boolean
+      pal_release_tag:
+        description: 'LingChat-Pal Release 的 Tag（留空则不打包 Pal）'
+        required: false
+        type: string
 
 # 设置权限，允许创建 Release 和上传资产
 permissions:
@@ -25,6 +29,8 @@ jobs:
       is_prerelease: ${{ github.event.inputs.prerelease }}
       release_title: ${{ steps.set_title.outputs.release_title }}
       platforms_json: ${{ steps.set_platforms.outputs.platforms_json }}
+      pal_release_tag: ${{ github.event.inputs.pal_release_tag }}
+
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -150,6 +156,40 @@ jobs:
           else
             echo "yes" | uv run nuitka --clang --standalone --enable-plugins=upx --upx-binary=$UPX_BIN --jobs=4 --lto=yes --low-memory --assume-yes-for-downloads --windows-icon-from-ico=ling_chat/static/game_data/resources/lingchat.ico --output-filename=LingChat --product-name=${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }} --file-version="$NUMERIC_VERSION" --product-version="$NUMERIC_VERSION" --company-name="LingChat Studio"  --show-memory main.py
           fi
+
+      - name: 下载 LingChat-Pal 以加入打包
+        if: ${{ needs.prepare.outputs.pal_release_tag != '' }}
+        shell: bash
+        run: |
+          # 设置变量
+          PAL_REPO="${{ github.repository_owner }}/LingChat-Pal"
+          PAL_TAG="${{ needs.prepare.outputs.pal_release_tag }}"
+          
+          echo "正在从 GitHub 下载 LingChat-Pal ${PAL_TAG}..."
+          
+          # 根据平台确定文件名模式（自动匹配版本号）
+          if [[ "${{ matrix.platform }}" == windows* ]]; then
+            PAL_PATTERN="lingchat-pal-*.exe"
+          elif [[ "${{ matrix.platform }}" == "linux-amd64" ]]; then
+            PAL_PATTERN="lingchat-pal-*.AppImage"
+          elif [[ "${{ matrix.platform }}" == "linux-aarch64" ]]; then
+            PAL_PATTERN="lingchat-pal-*.AppImage"
+          fi
+          
+          # 使用 gh 下载指定文件到 main.dist 目录
+          echo "正在下载匹配模式: ${PAL_PATTERN}"
+          gh release download "${PAL_TAG}" \
+            --repo "${PAL_REPO}" \
+            --pattern "${PAL_PATTERN}" \
+            --dir "main.dist"
+          
+          if [ $? -ne 0 ]; then
+            echo "错误: 下载 LingChat-Pal 失败"
+            exit 1
+          fi
+          
+          echo "✓ LingChat-Pal 已下载到 main.dist/"
+          ls -la main.dist/
 
       - name: 整理文件（准备打包）
         shell: bash
