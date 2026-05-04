@@ -39,9 +39,9 @@ declare module 'axios' {
   }
 }
 
-// TODO: 根据环境变量配置不同的baseURL
+// 使用动态 API 基础 URL
 const http = axios.create({
-  baseURL: '/api',
+  baseURL: getApiBaseUrl(),
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
