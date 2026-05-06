@@ -33,9 +33,13 @@ export function createDefaultParticle(
   const size = randomInRange(config.minSize, config.maxSize)
   const left = Math.random() * window.innerWidth
   const duration = randomInRange(config.minDuration, config.maxDuration)
-  const delay = Math.random() * config.maxDelay
   const opacity = randomInRange(config.minOpacity, config.maxOpacity)
   const horizontalMovement = randomInRange(-config.horizontalRange, config.horizontalRange)
+
+  // When randomStartY is enabled, use negative delay so particles appear
+  // distributed across the screen at different Y positions instead of
+  // all starting from the top
+  const delay = config.randomStartY ? -Math.random() * duration : Math.random() * config.maxDelay
 
   return {
     id,

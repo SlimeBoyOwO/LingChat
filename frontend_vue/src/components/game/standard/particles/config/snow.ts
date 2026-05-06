@@ -10,6 +10,7 @@ const snowConfig: FallingParticleConfig = {
   maxOpacity: 1.0,
   horizontalRange: 50,
   initialTopOffset: -30,
+  randomStartY: true,
 }
 
 const snowSettings = {
