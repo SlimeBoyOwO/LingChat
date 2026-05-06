@@ -159,6 +159,8 @@ jobs:
 
       - name: 下载 LingChat-Pal 以加入打包
         if: ${{ needs.prepare.outputs.pal_release_tag != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           # 设置变量
@@ -169,11 +171,11 @@ jobs:
           
           # 根据平台确定文件名模式（自动匹配版本号）
           if [[ "${{ matrix.platform }}" == windows* ]]; then
-            PAL_PATTERN="lingchat-pal-*.exe"
+            PAL_PATTERN="lingchat-pal*.exe"
           elif [[ "${{ matrix.platform }}" == "linux-amd64" ]]; then
-            PAL_PATTERN="lingchat-pal-*.AppImage"
+            PAL_PATTERN="lingchat-pal_*_amd64.AppImage"
           elif [[ "${{ matrix.platform }}" == "linux-aarch64" ]]; then
-            PAL_PATTERN="lingchat-pal-*.AppImage"
+            PAL_PATTERN="lingchat-pal_*_aarch64.AppImage"
           fi
           
           # 使用 gh 下载指定文件到 main.dist 目录
@@ -283,7 +285,7 @@ jobs:
 
           for file in "${files[@]}"; do
             echo "正在上传modelcope: $file ..."
-            ms upload lingchat-research-studio/LingChat-release-mirror "$file" ./$TAG/$file --token ms-928ef9e5-6136-4248-acb8-1abd928d3e21 #别想偷了，临时的，构建完就删除
+            ms upload lingchat-research-studio/LingChat-release-mirror "$file" ./$TAG/$file --token ${{ secrets.MODELSCOPE_ACCESS_TOKEN }}
             echo "✓ 上传完成：$file"
           done
 
