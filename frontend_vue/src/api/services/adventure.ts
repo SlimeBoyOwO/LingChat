@@ -75,9 +75,14 @@ export const getUserProgress = async (userId: number): Promise<AdventureProgress
 /**
  * 启动指定羁绊冒险
  */
-export const startAdventure = async (userId: number, adventureFolder: string): Promise<any> => {
+export const startAdventure = async (
+  userId: number,
+  clientId: string,
+  adventureFolder: string,
+): Promise<any> => {
   return http.post('/v1/chat/adventure/start', {
     user_id: userId,
+    client_id: clientId,
     adventure_folder: adventureFolder,
   })
 }

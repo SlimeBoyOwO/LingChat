@@ -36,8 +36,10 @@ LEGACY_KEYS.forEach((key) => {
 
 const app = createApp(App)
 
-// TODO: 根据环境变量配置 WebSocket URL
-connectWebSocket('ws://localhost:8765/ws')
+// 使用动态 WebSocket URL
+const wsUrl = getWebSocketUrl()
+console.log('WebSocket 连接地址:', wsUrl)
+connectWebSocket(wsUrl)
 
 initializeEventProcessors()
 

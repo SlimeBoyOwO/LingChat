@@ -1,0 +1,37 @@
+name: 5 家
+
+events:
+  - type: modify_character
+    action: hide_character
+    character: MAIN
+    duration: 1.5
+
+  - type: narration
+    text: |
+      很快，钦灵和%player%一起淋着小雨回到了家里...
+
+  - type: background
+    imagePath: 夜晚.jpg
+    duration: 2
+
+  - type: background_effect
+    effect: Starfield
+    duration: 0
+
+  - type: modify_character
+    action: show_character
+    character: MAIN
+    duration: 1.5
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 总结一下这次的旅行吧！要说的比平常更多一些！
+
+  - type: input
+
+  - type: ai_dialogue
+    character: MAIN
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: 'end'

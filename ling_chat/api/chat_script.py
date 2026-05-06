@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from ling_chat.core.service_manager import service_manager
+from ling_chat.utils.runtime_path import user_data_path
 
 router = APIRouter(prefix="/api/v1/chat/script", tags=["Chat Script"])
 
@@ -188,18 +189,14 @@ async def get_script_music(musicPath: str):
 @router.get("/background_file/{background_file}")
 async def get_script_background_file(background_file: str):
     try:
-        ai_service = service_manager.ai_service
-        if ai_service is None:
-            raise HTTPException(status_code=404, detail="AISERVICE not found")
-        else:
-            assets_dir = ai_service.scripts_manager.get_assests_dir()
-            candidates = [
-                assets_dir / "Backgrounds" / background_file,
-                assets_dir / "Background" / background_file,
-            ]
-            file_path = next(
-                (p for p in candidates if os.path.exists(p)), candidates[0]
-            )
+        ai_service = service_manager.get_ai_service()
+        assets_dir = ai_service.scripts_manager.get_assests_dir()
+        candidates = [
+            assets_dir / "Backgrounds" / background_file,
+            assets_dir / "Background" / background_file,
+            user_data_path / "game_data/backgrounds" / background_file,
+        ]
+        file_path = next((p for p in candidates if os.path.exists(p)), candidates[0])
 
         if not os.path.exists(file_path):
             raise HTTPException(status_code=404, detail="Background not found")

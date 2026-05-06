@@ -44,6 +44,13 @@ export interface ScriptThinkingEvent extends ScriptEvent {
   isThinking: boolean
 }
 
+export interface ScriptFreeDialogueEvent extends ScriptEvent {
+  type: 'free_dialogue'
+  switch: boolean
+  maxRounds: number
+  endLine: string
+}
+
 export interface ScriptBackgroundEvent extends ScriptEvent {
   type: 'background'
   imagePath: string
@@ -119,3 +126,4 @@ export type ScriptEventType =
   | ScriptEndEvent
   | ScriptChoiceEvent
   | ScriptPresentPicEvent
+  | ScriptFreeDialogueEvent

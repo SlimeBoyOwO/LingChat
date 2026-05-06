@@ -107,14 +107,7 @@ class WebSocketManager:
         """处理用户发送的消息"""
         logger.info(f"来自客户端 {client_id} 的消息: {message}")
 
-        ai_service = service_manager.ai_service
-        if ai_service is None:
-            logger.error("AI服务未初始化")
-            # 可以发送错误消息给前端
-            await self.send_to_client(
-                client_id, {"type": "error", "message": "服务未就绪，请刷新页面"}
-            )
-            return
+        ai_service = service_manager.get_ai_service()
 
         ai_service.config.last_active_client = client_id  # 更新最后一次活跃的客户端ID
         user_message = message.get("content", "")
@@ -225,15 +218,8 @@ async def websocket_endpoint(websocket: WebSocket):
         {"type": "connection_established", "client_id": client_id}
     )
 
-    # 后端服务仅联动自由模式启动的补丁启动的暂时补丁，即确保 AIService 已初始化，并注册 client（避免必须调用 /chat/info/init 才能工作），后续应注意
-    try:
-        if service_manager.ai_service is None:
-            service_manager.init_ai_service()
-        await service_manager.add_client(client_id)
-        if service_manager.ai_service is not None:
-            service_manager.ai_service.config.last_active_client = client_id
-    except Exception as e:
-        logger.error(f"WebSocket建连初始化AIService失败: {e}", exc_info=True)
+    service_manager.get_ai_service()  # 确保初始化AI服务
+    await service_manager.add_client(client_id)
 
     try:
         await ws_manager.handle_websocket(websocket, client_id)
@@ -241,7 +227,7 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.error(f"WebSocket端点异常: {e}")
         try:
             await websocket.close(code=1011, reason="服务器错误")
-        except:
+        except Exception:
             pass
 
 

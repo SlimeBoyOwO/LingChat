@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from ling_chat.core.emotion.classifier import EmotionClassifier
-from ling_chat.utils.function import Function
+from ling_chat.utils.load_env import load_env
 
 classifier = None  # 初始化分类器
 
@@ -18,7 +18,7 @@ async def lifespan(app: FastAPI):
     try:
         classifier = EmotionClassifier.get_instance()
     except Exception as e:
-        raise Exception(f"Failed to initialize classifier: {str(e)}")
+        raise Exception(f"Failed to initialize classifier: {str(e)}") from e
     yield
 
 
@@ -57,16 +57,17 @@ async def predict_emotion(request: PredictionRequest):
     if classifier is None:
         raise HTTPException(status_code=500, detail="Classifier not initialized")
     try:
-        result = classifier.predict(request.text, request.confidence_threshold)
+        confidence_threshold = request.confidence_threshold if request.confidence_threshold is not None else 0.08
+        result = classifier.predict(request.text, confidence_threshold)
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 if __name__ == "__main__":
-    Function.load_env()
+    load_env()
     host = os.environ.get("EMOTION_BIND_ADDR", "0.0.0.0")
-    port = os.environ.get("EMOTION_PORT", 8000)
+    port = int(os.environ.get("EMOTION_PORT", 8000))
 
     uvicorn.run(
         "predictor_server:app", host=host, port=port, workers=1, log_level="info"

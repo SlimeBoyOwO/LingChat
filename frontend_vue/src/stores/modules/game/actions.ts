@@ -125,6 +125,12 @@ export const actions = {
       currentChapterName: '',
       choices: [],
       isRunning: true,
+      freeDialogueInfo: {
+        isFreeDialogue: false,
+        maxRounds: -1,
+        currentRound: 0,
+        endLine: '',
+      },
     }
     const uiStore = useUIStore()
     uiStore.bgMusicMode = 'loop-single'

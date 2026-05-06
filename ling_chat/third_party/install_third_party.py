@@ -108,16 +108,33 @@ def install_sbv2(sbv2_path: Path, archive_path: Path | None = None, url: str = "
     subprocess.run([install_bat_path], shell=True, check=True)
 
 
-def install_18emo(emo_path: Path, url: str = ""):
+def install_emo_model(emo_path: Path):
     """
     安装18emo语音合成器
     """
+    # 确保目标目录存在
+    emo_path.mkdir(parents=True, exist_ok=True)
 
-    url = (
-        url
-        or "https://www.modelscope.cn/models/lingchat-research-studio/LingChat-emotion-model-18emo/resolve/master/model.safetensors"
+    download_file(
+        "https://www.modelscope.cn/models/lingchat-research-studio/Emotion_model_19emo_small_onnx/resolve/master/model_int8_o2/model.onnx",
+        emo_path / "model.onnx",
     )
-    download_file(url, emo_path / "model.safetensors")
+    download_file(
+        "https://www.modelscope.cn/models/lingchat-research-studio/Emotion_model_19emo_small_onnx/resolve/master/model_int8_o2/vocab.txt",
+        emo_path / "vocab.txt",
+    )
+    download_file(
+        "https://www.modelscope.cn/models/lingchat-research-studio/Emotion_model_19emo_small_onnx/resolve/master/model_int8_o2/config.json",
+        emo_path / "config.json",
+    )
+    download_file(
+        "https://www.modelscope.cn/models/lingchat-research-studio/Emotion_model_19emo_small_onnx/resolve/master/model_int8_o2/label_mapping.json",
+        emo_path / "label_mapping.json",
+    )
+    download_file(
+        "https://www.modelscope.cn/models/lingchat-research-studio/Emotion_model_19emo_small_onnx/resolve/master/model_int8_o2/tokenizer.json",
+        emo_path / "tokenizer.json",
+    )
 
 
 def install_rag_model(use_mirror=False):
@@ -141,8 +158,8 @@ def main():
     install_sbv2(sbv2_path)
 
     # 示例：安装18emo语音合成器
-    emo_path = Path("third_party/emotion_model_18emo/")
-    install_18emo(emo_path)
+    emo_path = Path("third_party/emotion_model/")
+    install_emo_model(emo_path)
 
     # 安装RAG模型
     install_rag_model()

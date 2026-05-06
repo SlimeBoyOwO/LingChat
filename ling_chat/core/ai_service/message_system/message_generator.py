@@ -46,8 +46,8 @@ class MessageGenerator:
             return
 
         # 使用analyze_emotions处理句子 返回情绪-中文-日文等信息
-        sentence_segments: List[Dict] = self.message_processor.analyze_emotions(
-            sentence
+        sentence_segments: List[Dict] = (
+            self.message_processor.parse_and_classify_emotional_segments(sentence)
         )
         if not sentence_segments:
             logger.warning("句子中没有出现中日或情感，AI回复格式错误")
@@ -107,28 +107,6 @@ class MessageGenerator:
         else:
             logger.error("生成消息的时候没有当前角色或者记忆，取消生成消息")
             return
-
-        # ========== 新增：注入场景描述 ==========
-        if self.game_status.scene_description:
-            scene_msg = {
-                "role": "system",
-                "content": (
-                    f"当前场景：{self.game_status.scene_description}\n"
-                    "请根据此场景进行对话，可以适当加入环境描写、角色心理活动和动作细节。"
-                    "仍须遵守原有格式：每句话以【情绪】开头，动作放在（）内，日语翻译放在<>内（如果启用翻译）。"
-                ),
-            }
-            # 插入到最前面（system 之前），或放在现有 system 之后，通常第一条是 system
-            # 为了不破坏原有 system 顺序，我们放在现有 system 后面、其他消息之前
-            if current_context and current_context[0].get("role") == "system":
-                current_context.insert(1, scene_msg)
-            else:
-                current_context.insert(0, scene_msg)
-        # =======================================
-
-        # TODO: 永久记忆相关内容等待结合数据库进行重构
-        # if self.use_rag and self.rag_manager:
-        #     self.rag_manager.rag_append_sys_message(current_context, rag_messages, processed_user_message)
 
         if logger.should_print_context():
             self.ai_logger.print_debug_message(

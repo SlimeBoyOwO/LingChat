@@ -12,7 +12,7 @@ from ling_chat.core.logger import logger
 from ling_chat.core.service_manager import service_manager
 from ling_chat.game_database.managers.role_manager import RoleManager
 from ling_chat.game_database.managers.user_manager import UserManager
-from ling_chat.game_database.models import RoleType
+from ling_chat.game_database.models import LineAttribute, LineBase, RoleType
 from ling_chat.schemas.character_settings import CharacterSettings
 from ling_chat.utils.function import Function
 from ling_chat.utils.runtime_path import user_data_path
@@ -525,6 +525,45 @@ async def get_all_characters(
     except Exception as e:
         logger.error(f"获取角色列表失败: {str(e)}")
         return JSONResponse(status_code=500, content={"message": "获取角色列表失败"})
+
+
+@router.post("/clothes/select")
+async def select_clothes(
+    clothes_name: str = Body(..., description="衣服名称"),
+):
+    ai_service = service_manager.get_ai_service()
+
+    if not ai_service.game_status.main_role:
+        raise HTTPException(status_code=500, detail="角色不存在")
+
+    # 检查是否需要更换
+    if ai_service.game_status.main_role.current_clothes == clothes_name:
+        return {"success": True, "message": "当前衣服已经是选中状态"}
+
+    # 更换衣服
+    ai_service.game_status.main_role.current_clothes = clothes_name
+    settings = ai_service.game_status.main_role.settings
+
+    # 查找衣服配置并生成提示语
+    prompt = next(
+        (
+            clothes.get("prompt")
+            for clothes in (settings.clothes or [])
+            if clothes.get("name") == clothes_name
+        ),
+        f"{settings.ai_name}换上了新服装：{clothes_name}",
+    )
+
+    # 添加系统提示
+    ai_service.game_status.add_line(
+        LineBase(
+            content=f"{{系统提示: {prompt}}}",
+            attribute=LineAttribute.USER,
+            display_name="旁白",
+        )
+    )
+
+    return {"success": True, "message": "衣服更换成功"}
 
 
 @router.get("/character_file/{file_path:path}")

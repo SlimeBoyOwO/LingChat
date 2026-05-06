@@ -13,7 +13,7 @@ from ling_chat.utils.runtime_path import user_data_path
 router = APIRouter(prefix="/api/v1/chat/background", tags=["Chat Character"])
 
 BACKGROUND_DIR = user_data_path / "game_data/backgrounds"
-ALLOWED_EXTENSIONS = (".jpg", ".png", ".webp", ".bmp", ".svg", ".tif", ".gif")
+ALLOWED_EXTENSIONS = (".jpg", ".png", ".webp", ".jpeg", ".bmp", ".svg", ".tif", ".gif")
 
 
 class BackgroundSelectionRequest(BaseModel):

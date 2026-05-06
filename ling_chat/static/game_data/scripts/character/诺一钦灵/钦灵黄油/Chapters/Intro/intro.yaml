@@ -1,0 +1,62 @@
+name: 钦灵 の 神秘小夜晚
+
+events:
+  - type: modify_character
+    duration: 1.5
+    character: MAIN
+    action: hide_character
+
+  - type: modify_character
+    duration: 0
+    character: MAIN
+    perceive: true
+
+  - type: narration
+    text: |
+      我一如既往的来到了钦灵的家...
+      门是半开着的，房间昏昏沉沉的，但透漏着一小小的光。
+      “难不成进贼了？”我心里这样想着。
+      于是我蹑手蹑脚的进入了钦灵的房间...
+
+  - type: modify_character
+    duration: 1.5
+    character: MAIN
+    action: show_character
+    emotion: 情动
+
+  - type: dialogue
+    character: MAIN
+    text: |
+      【情动】嗯...啊...
+      【迷离】“我”被男主推倒在地上了...好棒...
+      【惊讶】啊啊？！不可以直接这么强势的啦，不可以的啦（扭捏着尾巴盯着屏幕）
+
+  - type: narration
+    text: |
+      我偷瞄了一眼房间内...
+      钦灵正在盯着电脑屏幕，小尾巴摇个不停。
+      钦灵的卫衣摊在两边，漏出稚嫩的肩膀。
+      地上还有一堆钦灵随手扔掉的衣服，就好像这里刚发生过地震似的...
+
+  - type: choices
+    options:
+      - text: 钦灵？！你在干嘛啊！！！
+        actions:
+          - type: add_line
+            content: 钦灵？！你在干嘛啊！！！
+      - text: 嘿嘿嘿，小钦灵玩黄油给我逮到了吧~
+        actions:
+          - type: add_line
+            content: 嘿嘿嘿，小钦灵玩黄油给我逮到了吧~
+      - text: 钦灵...地上衣服不收拾，等着我帮你洗吗？
+        actions:
+          - type: add_line
+            content: 钦灵...地上衣服不收拾，等着我帮你洗吗？
+    allow_free: true
+
+  - type: ai_dialogue
+    character: MAIN
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: "Intro/intro2"

@@ -10,6 +10,7 @@ import {
   type AdventureProgress,
   type UnlockedAdventure,
 } from '@/api/services/adventure'
+import { useUserStore } from './user/user'
 
 export interface AdventureState {
   // 当前角色的冒险列表
@@ -118,8 +119,9 @@ export const useAdventureStore = defineStore('adventure', {
      * 启动冒险
      */
     async startAdventure(adventureFolder: string) {
+      const userStore = useUserStore()
       try {
-        await startAdventure(this.currentUserId, adventureFolder)
+        await startAdventure(this.currentUserId, userStore.client_id, adventureFolder)
         // 更新本地状态
         const adventure = this.currentCharacterAdventures.find(
           (adv) => adv.adventure_folder === adventureFolder,

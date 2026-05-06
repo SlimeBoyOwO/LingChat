@@ -24,7 +24,7 @@ class MessageProcessor:
         # 用于存储语音目录位置，其实在voice_maker已经有了
         self.game_status = game_status
 
-    def analyze_emotions(self, text: str) -> List[Dict]:
+    def parse_and_classify_emotional_segments(self, text: str) -> List[Dict]:
         """分析文本中每个【】标记的情绪，并提取日语和中文部分"""
         emotion_segments = re.findall(r"(【(.*?)】)([^【】]*)", text)
 
@@ -53,8 +53,11 @@ class MessageProcessor:
                 # 直接使用 cleaned_text 作为日语文本
                 japanese_text = cleaned_text
 
+            # 清洗日语文本，保证没有额外或者错误的输出
             if japanese_text:
                 japanese_text = re.sub(r"（.*?）", "", japanese_text).strip()
+                japanese_text = re.sub(r"【.*?】", "", japanese_text).strip()
+                japanese_text = japanese_text.replace("~", "。")
 
             if not cleaned_text and not japanese_text and not motion_text:
                 continue

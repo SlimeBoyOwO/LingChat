@@ -138,13 +138,13 @@ async def get_user_progress(user_id: int):
 @router.post("/start")
 async def start_adventure(
     user_id: int = Body(..., embed=True),
+    client_id: str = Body(..., embed=True),
     adventure_folder: str = Body(..., embed=True),
 ):
     """启动指定羁绊冒险（触发剧本引擎）"""
     try:
-        ai_service = service_manager.ai_service
-        if not ai_service:
-            raise HTTPException(status_code=404, detail="AIService not found")
+        ai_service = service_manager.get_ai_service()
+        ai_service.config.last_active_client = client_id
 
         # 检查是否已解锁
         if not AdventureManager.is_unlocked(user_id, adventure_folder):

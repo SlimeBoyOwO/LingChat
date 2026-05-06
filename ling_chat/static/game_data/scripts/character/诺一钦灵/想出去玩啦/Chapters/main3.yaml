@@ -1,0 +1,51 @@
+name: 3 小卖部的棉花糖
+
+events:
+  - type: modify_character
+    action: hide_character
+    character: MAIN
+    duration: 1.5
+
+  - type: narration
+    text: |
+      钦灵和%player%一起来到了小卖部前...
+
+  - type: background
+    imagePath: 公园小卖部_夕阳.jpg
+    duration: 2
+
+  - type: background_effect
+    effect: None
+    duration: 0
+
+  - type: modify_character
+    action: show_character
+    character: MAIN
+    duration: 1.5
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 钦灵之前玩的游戏里，有一起拷棉花糖的情节，虽然这里不能起火，不过可以买点小零食棉花糖吃哦！
+
+  - type: input
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 钦灵准备去买棉花糖了
+
+  - type: narration
+    text: |
+      钦灵很快就买到了棉花糖，和%player%一起坐在了公园的草地上
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 虽然遗憾不能真的坐在篝火旁烤棉花糖，不过钦灵还是不虚此行呢
+
+  - type: free_dialogue
+    character: MAIN
+    hint: 坐在一起的时候有什么想说的吗？
+    end_line: 要去散散步吗？
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: 'main4'

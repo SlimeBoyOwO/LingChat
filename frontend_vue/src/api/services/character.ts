@@ -106,3 +106,22 @@ export const createCharacter = async (formData: FormData): Promise<CreateCharact
     throw new Error(error.response?.data?.detail || '创建角色失败')
   }
 }
+
+export interface SelectClothesResponse {
+  success: boolean
+  message: string
+}
+
+export const selectClothes = async (clothesName: string): Promise<SelectClothesResponse> => {
+  try {
+    // 直接发送字符串，不包装成对象
+    const response = await http.post('/v1/chat/character/clothes/select', clothesName, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+    return response
+  } catch (error: any) {
+    throw new Error(error.response?.data?.detail || '选择衣服失败')
+  }
+}

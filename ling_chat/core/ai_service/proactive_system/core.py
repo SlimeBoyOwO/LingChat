@@ -88,6 +88,11 @@ class ProactiveSystem:
         await self.cleanup()
         self.reload_schedule()
         self.interest_manager.reload_max_proactive_count()
+
+        # 重新创建线程对象，因为线程不能重复启动
+        self.activity_monitor = UserActivityMonitor()
+        self.visual_monitor = VisualMonitor(self.interest_manager)
+
         self.start()
 
     def reload_schedule(self):
@@ -142,21 +147,33 @@ class ProactiveSystem:
 
                 async with self._generation_lock:
                     logger.info("满足主动对话条件，正在生成内容...")
-                    await message_broker.publish_clients(
-                        self.config.clients,
-                        (ResponseFactory.create_thinking(True)).model_dump(),
-                    )
 
                     self.game_status.add_line(
                         LineBase(attribute=LineAttribute.USER, content=prompt)
                     )
 
-                    async for (
-                        response
-                    ) in self.message_generator.process_message_stream():
-                        await message_broker.publish_clients(
-                            self.config.clients, response.model_dump()
+                    if self.config.last_active_client:
+                        await message_broker.publish(
+                            self.config.last_active_client,
+                            (ResponseFactory.create_thinking(True)).model_dump(),
                         )
+                        async for (
+                            response
+                        ) in self.message_generator.process_message_stream():
+                            await message_broker.publish(
+                                self.config.last_active_client, response.model_dump()
+                            )
+                    else:
+                        await message_broker.publish_clients(
+                            self.config.clients,
+                            (ResponseFactory.create_thinking(True)).model_dump(),
+                        )
+                        async for (
+                            response
+                        ) in self.message_generator.process_message_stream():
+                            await message_broker.publish_clients(
+                                self.config.clients, response.model_dump()
+                            )
 
                 self.interest_manager.on_ai_reply()
 

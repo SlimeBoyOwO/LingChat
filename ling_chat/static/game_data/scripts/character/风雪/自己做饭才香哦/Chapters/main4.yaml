@@ -1,0 +1,51 @@
+name: 4 制作红豆派
+
+events:
+  - type: background
+    imagePath: 风雪家厨房.png
+
+  - type: choices
+    options:
+      - text: 哎呦，呛死我了这个灰尘！
+        actions:
+          - type: add_line
+            content: 哎呦，呛死我了这个灰尘！
+      - text: 在这么地狱的场景里，能做出来的东西一定很特别吧...
+        actions:
+          - type: add_line
+            content: 在这么地狱的场景里，能做出来的东西一定很特别吧...
+    allow_free: false
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 风雪嫌弃的质问能不能不要吐槽了
+
+  - type: free_dialogue
+    character: MAIN
+    hint: 接下来一起做红豆派吧！不知道怎么做可以搜搜哦！
+    end_line: 做出来啦！
+    end_prompt: 风雪盯着出炉的红豆派观摩，但不敢凑上去碰
+
+  - type: narration
+    text: |
+      刚出炉的红豆派散发着以往不同的香气，和这个荒漠一样的厨房一比显得额外突兀
+      风雪凑近抓起来，被烫到了一下
+
+  - type: ai_dialogue
+    character: MAIN
+
+  - type: input
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 风雪尝了一口之后感觉比平时的还好吃，看来之后得尝试自己做了
+
+  - type: input
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 风雪决定带着%player%回主厅，不许再看厨房了
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: "final"

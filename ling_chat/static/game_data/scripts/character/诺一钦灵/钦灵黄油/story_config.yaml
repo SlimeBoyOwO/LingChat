@@ -1,0 +1,32 @@
+script_name: 钦灵黄油
+intro_chapter: Intro/intro
+description: 有一天晚上你的偷偷走进了钦灵的房间....
+recommand_start: 离开钦灵家后的晚上
+
+# ===== 羁绊冒险专属配置 =====
+adventure:
+  # 标记为羁绊冒险剧本
+  is_adventure: true
+
+  # 绑定的主角色文件夹名（对应 characters/ 下的目录名）
+  bound_character_folder: "诺一钦灵"
+
+  # 冒险排序（决定在角色卡中的显示顺序和解锁链关系）
+  order: 1
+
+  # 触发方式
+  trigger:
+    mode: "manual" # manual | auto_random | auto_immediate
+
+  unlock_conditions:
+    - type: adventure_completed
+      adventure_folder: "小狼的爱好"
+
+  completion_achievements:
+    - id: "adventure_butter_night"
+      title: "钦灵喜欢の游戏"
+      description: "黄油是创造力的表现懂不懂！"
+      type: "adventure"
+
+script_settings:
+  user_name: ""

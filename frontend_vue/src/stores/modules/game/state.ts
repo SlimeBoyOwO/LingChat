@@ -12,11 +12,19 @@ export interface GameMessage {
   timestamp?: number
 }
 
+export interface FreeDialogueInfo {
+  isFreeDialogue: boolean
+  maxRounds: number
+  endLine: string
+  currentRound: number
+}
+
 export interface ScriptInfo {
   scriptName: string
   currentChapterName: string
   choices: string[]
   isRunning: boolean
+  freeDialogueInfo: FreeDialogueInfo
 }
 
 export interface GameRole {

@@ -47,28 +47,41 @@ class StrategyDispatcher:
         modes = []
         weights = []
 
+        # 初始化权重
+        todo_weight = None
+        topic_weight = None
+        screen_weight = None
+
+        # 优先从环境变量读取权重
+        try:
+            todo_weight = int(os.getenv("TODO_WEIGHT", "-1"))
+            topic_weight = int(os.getenv("TOPIC_WEIGHT", "-1"))
+            screen_weight = int(os.getenv("SCREEN_WEIGHT", "-1"))
+        except ValueError:
+            pass
+
+        # 根据用户状态动态设置权重（仅在环境变量未设置时）
+        if todo_weight is None or todo_weight < 0:
+            todo_weight = 60 if perception.state == UserState.WORK else 10
+
+        if topic_weight is None or topic_weight < 0:
+            topic_weight = 80 if perception.state == UserState.IDLE else 60
+
+        if screen_weight is None or screen_weight < 0:
+            screen_weight = 60 if perception.state == UserState.GAME else 30
+
+        # 添加模式和对应的权重
         if os.getenv("ENABLE_TODO_PRECEPTION", "false").lower() == "true":
             modes.append("TODO")
-            if perception.state == UserState.WORK:  # 工作状态时，TODO 的权重更高
-                weights.append(60)
-            else:
-                weights.append(10)
+            weights.append(todo_weight)
 
         if os.getenv("ENABLE_TOPIC_CREATER", "false").lower() == "true":
             modes.append("TOPIC")
-            if (
-                perception.state == UserState.IDLE
-            ):  # 挂机状态时，单纯 主动对话 的权重更高
-                weights.append(80)
-            else:
-                weights.append(60)
+            weights.append(topic_weight)
 
         if os.getenv("ENABLE_VISUAL_PRECEPTION", "true").lower() == "true":
             modes.append("SCREEN")
-            if perception.state == UserState.GAME:  # 游戏状态时，视奸的权重更高
-                weights.append(60)
-            else:
-                weights.append(30)
+            weights.append(screen_weight)
 
         if not modes:
             return None

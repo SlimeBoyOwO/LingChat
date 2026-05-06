@@ -1,0 +1,44 @@
+name: 3 超市里扫货！
+
+events:
+  - type: background
+    imagePath: 超市.jpg
+
+  - type: narration
+    text: |
+      大晚上的超市也没什么人了。
+      钦灵很快就把风雪一路“抱”到了这里。
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 风雪羞愤的对着钦灵吐槽了三四句
+
+  - type: choices
+    options:
+      - text: 来都来了，就顺便买点必需品吧！
+        actions:
+          - type: add_line
+            content: 来都来了，就顺便买点必需品吧！
+      - text: 为了防止什么世界末日，多多少少屯点东西吧！
+        actions:
+          - type: add_line
+            content: 为了防止什么世界末日，多多少少屯点东西吧！
+    allow_free: false
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 风雪只好无奈的答应了，不过她对厨艺的东西一无所知
+
+  - type: free_dialogue
+    character: MAIN
+    hint: 在超市里逛逛吧！
+    end_line: 去结账吧。
+    end_prompt: 你和%player%一起去结账了。
+
+  - type: narration
+    text: |
+      %player%把红豆派留下来的钱用来结账之后，和风雪一起回到了小摊子里。
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: "main4"

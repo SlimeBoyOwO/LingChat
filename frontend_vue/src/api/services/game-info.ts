@@ -47,3 +47,15 @@ export const getGameInfo = async (client_id: string, userId: string): Promise<We
     throw error
   }
 }
+
+export const reactivateTTS = async (): Promise<void> => {
+  try {
+    const data = await http.get('/v1/chat/info/reactivate', {})
+
+    console.log('成功重启TTS服务')
+    return data
+  } catch (error: any) {
+    console.error('TTS服务重启错误:', error.message)
+    throw error
+  }
+}

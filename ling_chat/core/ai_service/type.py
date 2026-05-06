@@ -112,6 +112,7 @@ class GameRole:
     settings: CharacterSettings = field(default_factory=CharacterSettings)
     resource_path: Optional[str] = None
     prompt: Optional[str] = None
+    current_clothes: str = "default"
     memory_bank: GameMemoryBank = field(default_factory=GameMemoryBank)
 
     voice_maker: VoiceMaker = field(default_factory=VoiceMaker)

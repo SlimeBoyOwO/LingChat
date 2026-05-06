@@ -1,0 +1,60 @@
+name: 1 没带红豆派呢...
+
+events:
+  - type: background
+    imagePath: "占卜摊2.png"
+    duration: 1.5
+
+  - type: narration
+    text: |
+      今天来的时候，红豆派已经卖光了...
+      说起来风雪一直都是占卜的时候收食物的费用...
+      为什么呢...
+
+  - type: choices
+    options:
+      - text: 风雪平常自己不做饭吗？
+        actions:
+          - type: add_line
+            content: 风雪平常自己不做饭吗？
+      - text: 怎么一直以来都要我带吃的，自己不能做一点吗？
+        actions:
+          - type: add_line
+            content: 怎么一直以来都要我带吃的，自己不能做一点吗？
+      - text: 风雪能不能去给我炒两个菜吃
+        actions:
+          - type: add_line
+            content: 风雪能不能去给我炒两个菜吃
+    allow_free: false
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 风雪会解释自己没空自己学做饭
+
+  - type: choices
+    options:
+      - text: 既然这样，那我们直接在厨房做吧？
+        actions:
+          - type: add_line
+            content: 既然这样，那我们直接在厨房做吧？
+      - text: 风雪家里有原料的话，我们直接在这里做吧？
+        actions:
+          - type: add_line
+            content: 风雪家里有原料的话，我们直接在这里做吧？
+      - text: 我要去你的厨房看看！
+        actions:
+          - type: add_line
+            content: 我要去你的厨房看看！
+    allow_free: false
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 风雪慌忙的想拦着%player%，因为厨房那边几乎从来就没收拾过
+
+  - type: narration
+    text: |
+      %player%趁着风雪还在说的时候，直接一股脑钻进了厨房里...
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: "main2"

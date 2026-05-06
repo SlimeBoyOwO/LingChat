@@ -8,7 +8,6 @@
     // Python
     "ms-python.python", // Python 基础支持
     "charliermarsh.ruff", // Python 格式化 + Lint（推荐）
-    "ms-python.black-formatter", // 备选：Black 格式化器
 
     // 通用
     "editorconfig.editorconfig" // EditorConfig 支持

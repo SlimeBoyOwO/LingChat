@@ -30,7 +30,7 @@
           type="file"
           ref="uploadInput"
           @change="handleFileUpload"
-          accept=".jpg,.png,.webp,.bmp,.svg,.tif,.gif"
+          accept=".jpg,.jpeg,.png,.webp,.bmp,.svg,.tif,.gif"
           style="display: none"
         />
       </div>
@@ -419,7 +419,7 @@ async function handleFileUpload(event: Event): Promise<void> {
   const fileName = file.name
   const fileExt = fileName.slice(fileName.lastIndexOf('.')).toLowerCase()
 
-  const allowedExts = ['.jpg', '.png', '.webp', '.bmp', '.svg', '.tif', '.gif']
+  const allowedExts = ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.svg', '.tif', '.gif']
 
   if (!allowedExts.includes(fileExt)) {
     alert('请上传支持的图片格式: ' + allowedExts.join(', '))
