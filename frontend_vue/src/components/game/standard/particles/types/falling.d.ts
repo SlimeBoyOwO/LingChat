@@ -50,6 +50,8 @@ export interface FallingParticleConfig {
   horizontalRange: number
   /** Initial top position offset */
   initialTopOffset: number
+  /** Whether particles should start at random Y positions across the screen */
+  randomStartY?: boolean
 }
 
 /**

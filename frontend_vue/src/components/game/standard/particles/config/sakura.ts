@@ -10,6 +10,7 @@ const sakuraConfig: FallingParticleConfig = {
   maxOpacity: 0.9,
   horizontalRange: 50,
   initialTopOffset: -30,
+  randomStartY: true,
 }
 
 const sakuraSettings = {
