@@ -38,7 +38,6 @@ class MyApplication:
         update_url: str = "http://localhost:5000/updates",
         app_dir: Optional[str] = None,
         config_file: str = "update_config.json",
-        backup_dir: str = "backup",
         auto_check: bool = False,
         check_interval: int = 10,
     ):
@@ -52,7 +51,6 @@ class MyApplication:
         self.update_manager = UpdateManager(
             strategy=strategy,
             config_file=config_file,
-            backup_dir=backup_dir,
             auto_check=auto_check,
             check_interval=check_interval,
         )
@@ -100,13 +98,8 @@ class MyApplication:
                 self.update_manager._update_info = self._pending_update
         return self.update_manager.download_update()
 
-    def start_update(self, backup: bool = False) -> bool:
-        """下载并应用更新（不会交互或打印）；若下载已完成可直接调用 apply_update。
-        参数:
-            backup: 是否在应用前创建备份
-        返回:
-            应用是否成功（True/False）
-        """
+    def start_update(self) -> bool:
+        """下载并应用更新（不会交互或打印）；若下载已完成可直接调用 apply_update。"""
         if not self.update_manager.get_update_info():
             if self._pending_update:
                 self.update_manager._update_info = self._pending_update
@@ -114,18 +107,15 @@ class MyApplication:
                 raise RuntimeError("没有可用的更新信息，请先 manual_check_update()")
         if not self.update_manager.download_update():
             return False
-        return self.update_manager.apply_update(backup=backup)
+        return self.update_manager.apply_update()
 
-    def apply_pending_update(self, backup: bool = False) -> bool:
-        return self.start_update(backup=backup)
-
-    def rollback(self) -> bool:
-        return self.update_manager.rollback_update()
+    def apply_pending_update(self) -> bool:
+        return self.start_update()
 
     def run(self):
         raise RuntimeError("[Error]无效调用")
 
-    def start_continuous_update(self, backup: bool = False) -> bool:
+    def start_continuous_update(self) -> bool:
         """执行连续更新（如果有多版本）"""
         if not self.update_manager.get_update_info():
             if self._pending_update:
@@ -135,10 +125,10 @@ class MyApplication:
 
         # 使用新的连续更新方法
         if hasattr(self.update_manager, "perform_continuous_update"):
-            return self.update_manager.perform_continuous_update(backup=backup)
+            return self.update_manager.perform_continuous_update()
         else:
             # 回退到原有逻辑
-            return self.start_update(backup=backup)
+            return self.start_update()
 
     def get_update_chain_info(self):
         """获取更新链信息"""

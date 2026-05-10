@@ -22,9 +22,7 @@ class UpdateStatus(Enum):
     UPDATE_AVAILABLE = "update_available"
     DOWNLOADING = "downloading"
     EXTRACTING = "extracting"
-    BACKING_UP = "backing_up"
     APPLYING = "applying"
-    ROLLING_BACK = "rolling_back"
     COMPLETED = "completed"
     ERROR = "error"
 
@@ -109,13 +107,11 @@ class UpdateManager:
         self,
         strategy: UpdateStrategy,
         config_file: str = "update_config.json",
-        backup_dir: str = "backup",
         auto_check: bool = True,
         check_interval: int = 3600,
     ):
         self.strategy = strategy
         self.config_file = config_file
-        self.backup_dir = Path(backup_dir)
         self.auto_check = auto_check
         self.check_interval = check_interval
 
@@ -140,7 +136,6 @@ class UpdateManager:
             "last_check": 0,
             "skipped_versions": [],
             "auto_download": False,
-            "backup_enabled": True,
         }
 
         if os.path.exists(self.config_file):
@@ -342,7 +337,7 @@ class UpdateManager:
             self.set_error(f"下载失败: {e}")
             return False
 
-    def apply_update(self, backup: bool = False) -> bool:
+    def apply_update(self) -> bool:
         """应用单个更新（兼容原有接口）"""
         if not self._update_info:
             self.set_error("没有可用的更新信息")
@@ -350,17 +345,13 @@ class UpdateManager:
 
         # 如果是连续更新，使用新的应用方法
         if "update_chain" in self._update_info:
-            return self.apply_update_chain(backup=backup)
+            return self.apply_update_chain()
 
         if not hasattr(self, "_downloaded_files") or not self._downloaded_files:
             self.set_error("没有可用的下载文件")
             return False
 
         try:
-            if backup:
-                self.set_status(UpdateStatus.BACKING_UP)
-                self._create_backup()
-
             self.set_status(UpdateStatus.APPLYING)
             self.set_progress(0)
 
@@ -383,17 +374,13 @@ class UpdateManager:
             self.set_error(f"应用更新失败: {e}")
             return False
 
-    def apply_update_chain(self, backup: bool = False) -> bool:
+    def apply_update_chain(self) -> bool:
         """应用整个更新链"""
         if not hasattr(self, "_downloaded_files") or not self._downloaded_files:
             self.set_error("没有可用的下载文件")
             return False
 
         try:
-            if backup:
-                self.set_status(UpdateStatus.BACKING_UP)
-                self._create_backup()
-
             self.set_status(UpdateStatus.APPLYING)
             self.set_progress(0)
 
@@ -415,7 +402,7 @@ class UpdateManager:
             self.set_error(f"应用更新失败: {e}")
             return False
 
-    def perform_continuous_update(self, backup: bool = False) -> bool:
+    def perform_continuous_update(self) -> bool:
         """执行连续更新（下载并应用整个更新链）"""
         if not self._update_info:
             self.set_error("没有可用的更新信息")
@@ -431,195 +418,7 @@ class UpdateManager:
             return False
 
         # 应用整个更新链
-        return self.apply_update_chain(backup=backup)
-
-    def _create_backup(self):
-        try:
-            app_dir = getattr(self.strategy, "app_directory", None)
-            if not app_dir:
-                logger.warning("未指定 app_directory，跳过备份")
-                return None
-            src = Path(app_dir)
-            if not src.exists():
-                logger.warning("应用目录不存在，跳过备份: %s", src)
-                return None
-
-            backup_root = Path(self.backup_dir)
-            backup_root.mkdir(parents=True, exist_ok=True)
-
-            ts = int(time.time())
-            target = backup_root / f"backup_{ts}"
-            i = 0
-            while target.exists():
-                i += 1
-                target = backup_root / f"backup_{ts}_{i}"
-
-            backup_root_resolved = backup_root.resolve()
-            src_resolved = src.resolve()
-
-            for root, dirs, files in os.walk(src):
-                root_path = Path(root)
-                try:
-                    root_resolved = root_path.resolve()
-                except Exception:
-                    root_resolved = root_path
-
-                if (
-                    backup_root_resolved == root_resolved
-                    or backup_root_resolved in root_resolved.parents
-                ):
-                    dirs[:] = []
-                    continue
-
-                new_dirs = []
-                for d in dirs:
-                    candidate = root_path / d
-                    try:
-                        cand_resolved = candidate.resolve()
-                    except Exception:
-                        cand_resolved = candidate
-                    if (
-                        backup_root_resolved == cand_resolved
-                        or backup_root_resolved in cand_resolved.parents
-                    ):
-                        continue
-                    new_dirs.append(d)
-                dirs[:] = new_dirs
-
-                rel_root = Path(root).relative_to(src)
-                dest_root = target / rel_root
-                dest_root.mkdir(parents=True, exist_ok=True)
-                for fname in files:
-                    sfile = Path(root) / fname
-                    try:
-                        if (
-                            backup_root_resolved == sfile.resolve()
-                            or backup_root_resolved in sfile.resolve().parents
-                        ):
-                            continue
-                    except Exception:
-                        pass
-                    dfile = dest_root / fname
-                    try:
-                        shutil.copy2(sfile, dfile)
-                    except Exception as e:
-                        logger.warning(
-                            "备份时复制文件失败 %s -> %s: %s", sfile, dfile, e
-                        )
-
-            self.config["_last_backup"] = str(target)
-            try:
-                self.save_config()
-            except Exception:
-                logger.debug("保存配置时出错（忽略）")
-            logger.info("备份创建到: %s", target)
-            return str(target)
-        except Exception as e:
-            logger.warning(f"创建备份失败: {e}")
-            return None
-
-    def rollback_update(self):
-        self.set_status(UpdateStatus.ROLLING_BACK)
-        try:
-            last_backup = self.config.get("_last_backup")
-            app_dir = getattr(self.strategy, "app_directory", None)
-            backup_root = Path(self.backup_dir) if hasattr(self, "backup_dir") else None
-
-            if not last_backup and backup_root and backup_root.exists():
-                candidates = [
-                    p
-                    for p in backup_root.iterdir()
-                    if p.is_dir() and p.name.startswith("backup_")
-                ]
-                if candidates:
-                    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-                    last_backup = str(candidates[0])
-                    self.config["_last_backup"] = last_backup
-                    try:
-                        self.save_config()
-                    except Exception:
-                        logger.debug("保存配置时出错（忽略）")
-
-            if not last_backup or not app_dir:
-                logger.warning("没有可用的备份信息，无法回滚")
-                return False
-
-            src = Path(last_backup)
-            dst = Path(app_dir)
-
-            if not src.exists():
-                logger.warning("备份路径不存在，无法回滚: %s", src)
-                return False
-
-            try:
-                if src.resolve() == dst.resolve():
-                    logger.warning("备份路径与应用目录相同，取消回滚")
-                    return False
-            except Exception:
-                pass
-
-            backup_files = set()
-            backup_dirs = set()
-            for root, dirs, files in os.walk(src):
-                root_path = Path(root)
-                for f in files:
-                    rel = (root_path / f).relative_to(src).as_posix()
-                    backup_files.add(rel)
-                for d in dirs:
-                    reld = (root_path / d).relative_to(src).as_posix()
-                    backup_dirs.add(reld)
-
-            for root, dirs, files in os.walk(dst, topdown=False):
-                root_path = Path(root)
-                for f in files:
-                    try:
-                        rel = (root_path / f).relative_to(dst).as_posix()
-                    except Exception:
-                        continue
-                    if "backup" in Path(rel).parts:
-                        continue
-                    if rel not in backup_files:
-                        try:
-                            (root_path / f).unlink()
-                            logger.info("回滚时删除新增文件: %s", (root_path / f))
-                        except Exception as e:
-                            logger.warning("删除文件失败 %s: %s", (root_path / f), e)
-                for d in dirs:
-                    dpath = root_path / d
-                    try:
-                        reld = dpath.relative_to(dst).as_posix()
-                    except Exception:
-                        continue
-                    if "backup" in Path(reld).parts:
-                        continue
-                    if reld in backup_dirs:
-                        continue
-                    try:
-                        if not any(dpath.iterdir()):
-                            dpath.rmdir()
-                            logger.info("回滚时删除空目录: %s", dpath)
-                    except Exception:
-                        pass
-
-            for root, dirs, files in os.walk(src):
-                rel_root = Path(root).relative_to(src)
-                target_root = dst / rel_root
-                target_root.mkdir(parents=True, exist_ok=True)
-                for fname in files:
-                    sfile = Path(root) / fname
-                    tfile = target_root / fname
-                    try:
-                        shutil.copy2(sfile, tfile)
-                    except Exception as e:
-                        logger.warning("复制备份文件失败 %s -> %s: %s", sfile, tfile, e)
-
-            logger.info("回滚完成，从 %s 恢复到 %s", src, dst)
-            return True
-        except Exception as e:
-            logger.error(f"回滚失败: {e}")
-            return False
-        finally:
-            self.set_status(UpdateStatus.IDLE)
+        return self.apply_update_chain()
 
     def skip_version(self, version: Optional[str] = None):
         if not version and self._update_info:

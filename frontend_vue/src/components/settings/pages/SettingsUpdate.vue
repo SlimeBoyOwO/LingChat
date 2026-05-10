@@ -33,7 +33,7 @@
         <Button
           type="big"
           @click="checkForUpdates"
-          :disabled="!backendConnected || isChecking || isDownloading || isRollingBack"
+          :disabled="!backendConnected || isChecking || isDownloading"
           class="left-button"
         >
           {{ isChecking ? '⏳ 检查中...' : '🔍 检查更新' }}
@@ -42,21 +42,10 @@
         <Button
           type="big"
           @click="downloadAndApplyUpdate"
-          :disabled="
-            !backendConnected || !updateAvailable || isChecking || isDownloading || isRollingBack
-          "
+          :disabled="!backendConnected || !updateAvailable || isChecking || isDownloading"
           class="left-button"
         >
           {{ isDownloading ? '⏳ 下载中...' : '📥 下载并应用更新' }}
-        </Button>
-
-        <Button
-          type="big"
-          @click="rollbackUpdate"
-          :disabled="!backendConnected || isChecking || isDownloading || isRollingBack"
-          class="left-button danger"
-        >
-          {{ isRollingBack ? '⏳ 回滚中...' : '↩️ 回滚到上次备份' }}
         </Button>
       </div>
     </MenuItem>
@@ -91,42 +80,6 @@
         <p class="progress-text">{{ progressMessage }}</p>
       </div>
     </MenuItem>
-
-    <!-- 配置设置 -->
-    <MenuItem title="⚙ 更新配置">
-      <div class="config-item">
-        <label>
-          <input type="checkbox" v-model="config.auto_backup" @change="updateConfig" />
-          自动创建备份
-        </label>
-        <span class="config-help">应用更新前自动创建完整备份</span>
-      </div>
-    </MenuItem>
-
-    <!-- 确认对话框 -->
-    <div v-if="showRollbackDialog" class="dialog-overlay">
-      <div class="dialog">
-        <h3>确认回滚</h3>
-        <p>确认回滚到上次备份吗？</p>
-        <div class="dialog-actions">
-          <Button type="big" @click="confirmRollback" class="danger">确认回滚</Button>
-          <Button type="big" @click="cancelRollback" class="left-button">取消</Button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 备份确认对话框 -->
-    <div v-if="showBackupDialog" class="dialog-overlay">
-      <div class="dialog">
-        <h3>创建备份</h3>
-        <p>是否在应用前创建全量备份？</p>
-        <div class="dialog-actions">
-          <Button type="big" @click="confirmUpdateWithBackup(true)" class="left-button">是</Button>
-          <Button type="big" @click="confirmUpdateWithBackup(false)" class="left-button">否</Button>
-          <Button type="big" @click="cancelUpdate" class="left-button">取消</Button>
-        </div>
-      </div>
-    </div>
   </MenuPage>
 </template>
 
@@ -161,26 +114,16 @@ export default {
       // 操作状态
       isChecking: false,
       isDownloading: false,
-      isRollingBack: false,
 
       // 进度信息
       progress: 0,
       progressMessage: '',
       showProgress: false,
 
-      // 配置
-      config: {
-        auto_backup: false,
-      },
-
       // 连接状态
       backendConnected: false,
       connectionRetries: 0,
       maxRetries: 5,
-
-      // 对话框状态
-      showRollbackDialog: false,
-      showBackupDialog: false,
 
       // 轮询状态更新的定时器 - 已移除自动轮询功能
       statusPollingTimer: null,
@@ -211,10 +154,6 @@ export default {
       return this.updateStatus === 'applying'
     },
 
-    isRollingBackUpdates() {
-      return this.updateStatus === 'rolling_back'
-    },
-
     displayVersion() {
       if (!this.updateInfo) return '未知'
       return this.updateInfo.target_version || this.updateInfo.version || '未知'
@@ -233,7 +172,6 @@ export default {
           this.connectionRetries = 0
           this.errorMessage = ''
           this.loadAppInfo()
-          this.loadConfig()
           // 连接成功后启动SSE状态监听以自动刷新更新状态
           await this.getUpdateStatus()
           this.startSSEConnection()
@@ -323,7 +261,6 @@ export default {
       // 更新操作状态
       this.isChecking = this.updateStatus === 'checking'
       this.isDownloading = ['downloading', 'applying'].includes(this.updateStatus)
-      this.isRollingBack = this.updateStatus === 'rolling_back'
 
       // 如果有错误信息
       if (statusUpdate.error) {
@@ -350,9 +287,7 @@ export default {
       }
 
       // 根据状态显示进度条
-      this.showProgress = ['checking', 'downloading', 'applying', 'rolling_back'].includes(
-        this.updateStatus,
-      )
+      this.showProgress = ['checking', 'downloading', 'applying'].includes(this.updateStatus)
 
       // 如果操作完成，重置状态并重新加载应用信息
       if (this.updateStatus === 'completed') {
@@ -384,41 +319,6 @@ export default {
       }
     },
 
-    // 加载配置
-    async loadConfig() {
-      if (!this.backendConnected) return
-
-      try {
-        const response = await axios.get(`${this.apiBaseUrl}/config`, {
-          timeout: 5000,
-        })
-        if (response.data) {
-          if (typeof response.data.auto_backup !== 'undefined') {
-            this.config.auto_backup = response.data.auto_backup
-          } else {
-            this.config.auto_backup = false
-          }
-        }
-      } catch (error) {
-        console.error('获取配置失败:', error)
-        this.handleApiError(error, '获取配置')
-      }
-    },
-
-    // 更新配置
-    async updateConfig() {
-      if (!this.backendConnected) return
-
-      try {
-        await axios.post(`${this.apiBaseUrl}/config`, this.config, {
-          timeout: 5000,
-        })
-      } catch (error) {
-        console.error('更新配置失败:', error)
-        this.handleApiError(error, '更新配置')
-      }
-    },
-
     // 获取更新状态
     async getUpdateStatus() {
       if (!this.backendConnected) return
@@ -436,7 +336,6 @@ export default {
           // 更新操作状态
           this.isChecking = this.updateStatus === 'checking'
           this.isDownloading = ['downloading', 'applying'].includes(this.updateStatus)
-          this.isRollingBack = this.updateStatus === 'rolling_back'
 
           // 如果有错误信息
           if (status.error) {
@@ -460,9 +359,7 @@ export default {
           }
 
           // 根据状态显示进度条
-          this.showProgress = ['checking', 'downloading', 'applying', 'rolling_back'].includes(
-            this.updateStatus,
-          )
+          this.showProgress = ['checking', 'downloading', 'applying'].includes(this.updateStatus)
 
           // 如果操作完成，重置状态并重新加载应用信息
           if (this.updateStatus === 'completed') {
@@ -522,24 +419,13 @@ export default {
     // 下载并应用更新
     async downloadAndApplyUpdate() {
       this.errorMessage = ''
-
-      // 如果有多个更新版本，显示备份确认对话框
-      if (this.updateChain && this.updateChain.length > 1) {
-        this.showBackupDialog = true
-      } else {
-        // 单个版本更新，使用配置的自动备份设置
-        await this.startUpdate(this.config.auto_backup)
-      }
+      await this.startUpdate()
     },
 
     // 开始更新
-    async startUpdate(doBackup) {
+    async startUpdate() {
       try {
-        const response = await axios.post(
-          `${this.apiBaseUrl}/apply`,
-          { backup: doBackup },
-          { timeout: 30000 },
-        )
+        const response = await axios.post(`${this.apiBaseUrl}/apply`, {}, { timeout: 30000 })
 
         if (response.data && response.data.success) {
           this.progressMessage = '开始下载更新...'
@@ -552,48 +438,6 @@ export default {
         console.error('开始更新失败:', error)
         this.handleApiError(error, '开始更新')
       }
-    },
-
-    // 确认更新（带备份选项）
-    confirmUpdateWithBackup(doBackup) {
-      this.showBackupDialog = false
-      this.startUpdate(doBackup)
-    },
-
-    // 取消更新
-    cancelUpdate() {
-      this.showBackupDialog = false
-    },
-
-    // 回滚更新
-    rollbackUpdate() {
-      this.showRollbackDialog = true
-    },
-
-    // 确认回滚
-    async confirmRollback() {
-      this.showRollbackDialog = false
-      this.errorMessage = ''
-
-      try {
-        const response = await axios.post(`${this.apiBaseUrl}/rollback`, {}, { timeout: 30000 })
-
-        if (response.data && response.data.success) {
-          this.progressMessage = '正在回滚...'
-          // 开始回滚后立即获取最新状态
-          await this.getUpdateStatus()
-        } else {
-          this.errorMessage = response.data.error || '开始回滚失败'
-        }
-      } catch (error) {
-        console.error('开始回滚失败:', error)
-        this.handleApiError(error, '开始回滚')
-      }
-    },
-
-    // 取消回滚
-    cancelRollback() {
-      this.showRollbackDialog = false
     },
   },
 }
@@ -651,17 +495,6 @@ export default {
   margin-bottom: 10px;
 }
 
-.left-button.danger {
-  color: rgba(255, 255, 255, 0.9);
-  background: rgba(255, 0, 0, 0.3);
-  transition: all 0.2s ease;
-}
-
-.left-button.danger:hover:not(:disabled) {
-  background: rgba(207, 0, 0, 0.3);
-  transform: translateY(-1px);
-}
-
 .update-info {
   background-color: rgba(76, 175, 80, 0.2);
   padding: 15px;
@@ -706,67 +539,6 @@ export default {
   color: #eee;
 }
 
-.config-item {
-  margin-bottom: 15px;
-}
-
-.config-item label {
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-  color: #eee;
-}
-
-.config-item input {
-  margin-right: 10px;
-}
-
-.config-help {
-  display: block;
-  font-size: 12px;
-  color: #aaa;
-  margin-top: 5px;
-}
-
-.dialog-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.7);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-}
-
-.dialog {
-  background-color: rgba(50, 50, 50, 0.9);
-  padding: 20px;
-  border-radius: 8px;
-  max-width: 400px;
-  width: 90%;
-  border: 1px solid #555;
-  backdrop-filter: blur(10px);
-}
-
-.dialog h3 {
-  margin-top: 0;
-  color: #eee;
-}
-
-.dialog p {
-  color: #ddd;
-}
-
-.dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 20px;
-}
-
 @media (max-width: 600px) {
   .action-buttons {
     flex-direction: column;
@@ -774,10 +546,6 @@ export default {
 
   .left-button {
     width: 100%;
-  }
-
-  .dialog-actions {
-    flex-direction: column;
   }
 }
 </style>

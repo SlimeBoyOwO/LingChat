@@ -23,7 +23,7 @@ update_status = {
     "error": None,
 }
 
-update_config = {"auto_backup": True, "auto_apply": False}
+update_config = {"auto_apply": False}
 
 # SSE 状态管理
 sse_queues = set()  # 存储所有活跃的SSE队列
@@ -32,12 +32,7 @@ sse_lock = threading.Lock()  # 保护SSE队列的锁
 
 # 请求模型
 class UpdateConfig(BaseModel):
-    auto_backup: bool = True
     auto_apply: bool = False
-
-
-class ApplyUpdateRequest(BaseModel):
-    backup: bool = True
 
 
 # 初始化更新应用
@@ -139,7 +134,7 @@ update_application.update_manager.register_callback("error_occurred", error_call
 update_lock = threading.Lock()
 
 
-def execute_update_operation(operation_type, backup=True):
+def execute_update_operation(operation_type):
     """执行更新操作"""
     try:
         if operation_type == "check":
@@ -175,7 +170,7 @@ def execute_update_operation(operation_type, backup=True):
             return {"success": True, "update_found": found}
 
         elif operation_type == "apply":
-            success = update_application.start_continuous_update(backup=backup)
+            success = update_application.start_continuous_update()
             if success:
                 update_status.update(
                     {
@@ -195,20 +190,6 @@ def execute_update_operation(operation_type, backup=True):
                     update_application.version = new_version
             else:
                 error_callback("更新失败")
-            return {"success": success}
-
-        elif operation_type == "rollback":
-            success = update_application.rollback()
-            if success:
-                update_status.update(
-                    {
-                        "status": "completed",
-                        "progress": 100,
-                        "message": "回滚完成，请重启应用",
-                    }
-                )
-            else:
-                error_callback("回滚失败")
             return {"success": success}
 
         else:
@@ -252,12 +233,10 @@ async def check_update():
 
 
 @router.post("/apply")
-async def apply_update(request_data: ApplyUpdateRequest):
+async def apply_update():
     """应用更新"""
     if not update_lock.acquire(blocking=False):
         raise HTTPException(status_code=409, detail="已有更新操作在进行中")
-
-    backup = request_data.backup
 
     try:
         update_status.update(
@@ -271,7 +250,7 @@ async def apply_update(request_data: ApplyUpdateRequest):
 
         def apply():
             try:
-                execute_update_operation("apply", backup=backup)
+                execute_update_operation("apply")
             finally:
                 update_lock.release()
 
@@ -283,38 +262,6 @@ async def apply_update(request_data: ApplyUpdateRequest):
     except Exception as e:
         update_lock.release()
         raise HTTPException(status_code=500, detail=f"启动更新失败: {str(e)}")
-
-
-@router.post("/rollback")
-async def rollback_update():
-    """回滚更新"""
-    if not update_lock.acquire(blocking=False):
-        raise HTTPException(status_code=409, detail="已有更新操作在进行中")
-
-    try:
-        update_status.update(
-            {
-                "status": "rolling_back",
-                "progress": 0,
-                "message": "正在回滚...",
-                "error": None,
-            }
-        )
-
-        def rollback():
-            try:
-                execute_update_operation("rollback")
-            finally:
-                update_lock.release()
-
-        thread = threading.Thread(target=rollback)
-        thread.daemon = True
-        thread.start()
-
-        return {"success": True, "message": "开始回滚"}
-    except Exception as e:
-        update_lock.release()
-        raise HTTPException(status_code=500, detail=f"启动回滚失败: {str(e)}")
 
 
 @router.get("/status")
@@ -354,7 +301,6 @@ async def get_config():
 async def update_config_route(config: UpdateConfig):
     """更新配置"""
     try:
-        update_config["auto_backup"] = config.auto_backup
         update_config["auto_apply"] = config.auto_apply
         return {"success": True, "message": "配置已更新", "config": update_config}
     except Exception as e:
