@@ -28,9 +28,11 @@
 
 ## ⭐ 快速上手
 
+官方教程视频：[B站-手把手教你安装LingChat~](https://www.bilibili.com/video/BV1PoRRBNEuG)
+
 ### Step -1: 选择适合的版本
 
-- 如果是Windows10 64位或者更高请使用最新版本`0.4.0 Pre`！
+- 如果是Windows10 64位或者更高请使用最新版本`0.4.1`！
 - 如果是32位机器请用兼容版喵~
 
 ### Step 0: 开始之前的准备
