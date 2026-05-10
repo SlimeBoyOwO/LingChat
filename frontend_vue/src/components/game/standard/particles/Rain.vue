@@ -3,7 +3,7 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Drop } from './config/rain'
 import { useRain } from './hooks/useRain'
 
@@ -21,7 +21,9 @@ const props = defineProps({
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 
-const DROP_COUNT = 50 * props.intensity
+// 响应式雨滴数量
+const dropCount = ref(Math.floor(50 * props.intensity))
+
 let W = 0,
   H = 0
 
@@ -32,22 +34,42 @@ let animId = 0
 
 const { createDrop } = useRain()
 
+/**
+ * 处理窗口 resize，更新 Canvas 尺寸并重新初始化雨滴
+ */
+function handleResize() {
+  if (!canvasRef.value) return
+
+  canvasRef.value.width = window.innerWidth
+  canvasRef.value.height = window.innerHeight
+  W = canvasRef.value.width
+  H = canvasRef.value.height
+
+  // 重新初始化雨滴以适应新尺寸
+  drops = []
+  for (let i = 0; i < dropCount.value; i++) {
+    drops.push(createDrop(W, H, props.intensity))
+  }
+}
+
 function init() {
   if (!props.enabled) return
 
   const canvas = canvasRef.value
-  if (canvas) {
-    canvas.width = window.innerWidth
-    canvas.height = window.innerHeight
-    W = canvasRef.value?.width as number
-    H = canvasRef.value?.height as number
-    ctx = canvas.getContext('2d')
+  if (!canvas) return
 
-    for (let i = 0; i < DROP_COUNT; i++) {
-      drops.push(createDrop(W, H, props.intensity))
-    }
-    loop()
+  canvas.width = window.innerWidth
+  canvas.height = window.innerHeight
+  W = canvas.width
+  H = canvas.height
+  ctx = canvas.getContext('2d')
+
+  drops = []
+  for (let i = 0; i < dropCount.value; i++) {
+    drops.push(createDrop(W, H, props.intensity))
   }
+
+  loop()
 }
 
 function loop() {
@@ -69,20 +91,46 @@ function loop() {
     ctx.stroke()
     drop.y += drop.speed
 
+    // 雨滴超出屏幕时，重置位置并重新随机化 x 坐标
     if (drop.y > H) {
       drop.y = -drop.length
+      drop.x = Math.random() * W
     }
   }
 
   animId = requestAnimationFrame(loop)
 }
 
+// 监听 intensity 变化，动态调整雨滴数量
+watch(
+  () => props.intensity,
+  (newIntensity) => {
+    dropCount.value = Math.floor(50 * newIntensity)
+    handleResize()
+  },
+)
+
+// 监听 enabled 状态变化
+watch(
+  () => props.enabled,
+  (newVal) => {
+    if (newVal) {
+      init()
+    } else {
+      cancelAnimationFrame(animId)
+      drops = []
+    }
+  },
+)
+
 onMounted(() => {
   init()
+  window.addEventListener('resize', handleResize)
 })
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(animId)
+  window.removeEventListener('resize', handleResize)
 })
 </script>
 

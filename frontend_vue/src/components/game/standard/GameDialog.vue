@@ -6,7 +6,7 @@
         isHidden,
     }"
   >
-    <div class="w-[60%]">
+    <div :style="{ width: containerWidth + '%' }">
       <div class="flex items-baseline mb-2.5">
         <div class="text-[24px] font-bold text-white mr-3.75 font-[inherit] text-shadow-[inherit]">
           <div id="character">{{ uiStore.showCharacterTitle }}</div>
@@ -89,6 +89,15 @@ const isHidden = ref(false)
 const isRecording = ref(false)
 const interimText = ref('') // 新增：用于实时存储临时识别出来的文本
 let speechRecognition: any = null
+
+// 响应式容器宽度
+const containerWidth = ref(60)
+
+// 计算窗口宽高比并调整容器宽度
+const updateContainerWidth = () => {
+  const aspectRatio = window.innerWidth / window.innerHeight
+  containerWidth.value = Math.max(60, aspectRatio > 1 ? 70 : 90)
+}
 
 const openSceneSettings = () => {
   uiStore.toggleSettings(true)
@@ -286,10 +295,15 @@ onMounted(() => {
   document.addEventListener('contextmenu', handleDialogShow)
   // 初始化语音识别对象
   speechRecognition = initSpeechRecognition()
+  // 初始化容器宽度
+  updateContainerWidth()
+  // 监听窗口大小变化
+  window.addEventListener('resize', updateContainerWidth)
 })
 
 onUnmounted(() => {
   document.removeEventListener('contextmenu', handleDialogShow)
+  window.removeEventListener('resize', updateContainerWidth)
 })
 
 function sendOrContinue() {
