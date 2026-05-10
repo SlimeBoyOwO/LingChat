@@ -2,12 +2,14 @@ import os
 from pathlib import Path
 
 from fastapi import APIRouter
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from ling_chat.utils.runtime_path import static_path, temp_path
 
 frontend_path = static_path / "frontend"
+frontend_audio_path = frontend_path / "audio"
+
 
 router = APIRouter()
 
@@ -45,9 +47,26 @@ def get_static_files():
 
 
 def get_audio_files():
+    """获取临时音频目录的 StaticFiles（用于 TTS 等动态生成的音频）"""
     audio_path = Path(os.environ.get("TEMP_VOICE_DIR", temp_path / "audio"))
     audio_path.mkdir(exist_ok=True)
     return NoCacheStaticFiles(directory=audio_path, html=False)
+
+
+def get_frontend_audio_file(filename: str) -> Response:
+    """
+    获取前端静态音频文件
+    优先从前端静态目录读取，如果不存在则返回 404
+    """
+    audio_file = frontend_audio_path / filename
+    if audio_file.exists():
+        response = FileResponse(
+            audio_file,
+            media_type="audio/mpeg" if filename.endswith(".mp3") else "audio/wav",
+        )
+        response.headers["Cache-Control"] = "public, max-age=86400"
+        return response
+    return Response(status_code=404, content="Audio file not found")
 
 
 # ✅ 保持原有HTML路由

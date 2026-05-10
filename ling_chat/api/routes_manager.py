@@ -1,3 +1,5 @@
+from fastapi import APIRouter
+
 from ling_chat.api.chat_achievement import router as chat_achievement_router
 from ling_chat.api.chat_adventure import router as chat_adventure_router
 from ling_chat.api.chat_background import router as chat_background_router
@@ -13,8 +15,10 @@ from ling_chat.api.console_logs import router as console_logs_router
 from ling_chat.api.env_config import router as env_config_router
 from ling_chat.api.file_selector import router as file_selector_router
 from ling_chat.api.frontend_routes import (
+    frontend_audio_path,
     frontend_path,
     get_audio_files,
+    get_frontend_audio_file,
     get_static_files,
     is_frontend_available,
 )
@@ -51,7 +55,20 @@ class RoutesManager:
 
         # 静态文件服务
         logger.info("挂载静态文件服务...")
-        app.mount("/audio", get_audio_files(), name="audio")  # 托管audio文件
+        # 前端静态音频路由（优先匹配）
+        if frontend_audio_path.exists():
+            # 创建一个专用路由器处理前端静态音频
+            audio_router = APIRouter()
+
+            @audio_router.get("/audio/{filename}")
+            async def serve_frontend_audio(filename: str):
+                return get_frontend_audio_file(filename)
+
+            app.include_router(audio_router)
+            logger.info(f"已挂载前端静态音频路由：{frontend_audio_path}")
+        app.mount(
+            "/audio", get_audio_files(), name="audio"
+        )  # 托管临时audio文件（TTS等）
         # 挂载前端静态文件（如果目录不存在则以纯 API 模式运行）
         static_files = get_static_files()
         if static_files is not None:
