@@ -13,6 +13,7 @@ class ModifyCharacterEvent(BaseEvent):
         emotion = self.event_data.get("emotion", "")
         duration = self.event_data.get("duration", 1.0)
         action = self.event_data.get("action", "")
+        clothes = self.event_data.get("clothes", "")
         perceive = self.event_data.get("perceive", "")
 
         # 我觉得这个事件没必要加到历史事件.jpg
@@ -39,6 +40,9 @@ class ModifyCharacterEvent(BaseEvent):
 
         # 构建参数字典，只包含非空的参数
         params = {"characterId": character_id, "duration": duration}
+
+        if clothes:
+            params["clothes"] = clothes
 
         if predictedEmotion:
             params["emotion"] = predictedEmotion

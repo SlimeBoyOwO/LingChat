@@ -45,6 +45,8 @@ export default class ModifyCharacterProcessor implements IEventProcessor {
         }
       }
 
+      if (event.clothes) role.clothesName = event.clothes
+
       if (event.emotion) role.emotion = event.emotion
     } else console.warn('角色修改没有角色')
 

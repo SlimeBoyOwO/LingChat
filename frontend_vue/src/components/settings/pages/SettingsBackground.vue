@@ -33,6 +33,41 @@
           accept=".jpg,.jpeg,.png,.webp,.bmp,.svg,.tif,.gif"
           style="display: none"
         />
+
+        <div class="flex gap-2">
+          <Button type="big" @click="handleOpenFolder">打开背景文件夹</Button>
+        </div>
+      </div>
+    </MenuItem>
+
+    <MenuItem title="AI 生成背景">
+      <template #header>
+        <Wand2 :size="20" />
+      </template>
+      <div class="flex flex-col gap-3 p-2">
+        <div class="text-xs text-white/60">
+          输入描述文字，AI 将为你自动生成一张背景图片并添加到图库中
+        </div>
+        <div class="flex flex-col gap-2 items-center">
+          <input
+            v-model="generatePrompt"
+            type="text"
+            placeholder="描述你想要的背景，例如：夜晚的樱花小路，二次元风格..."
+            class="w-full flex-1 px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+            :disabled="isGenerating"
+            @keyup.enter="handleGenerate"
+          />
+          <Button
+            type="big"
+            :disabled="isGenerating || !generatePrompt.trim()"
+            @click="handleGenerate"
+          >
+            {{ isGenerating ? '生成中...' : '生成' }}
+          </Button>
+        </div>
+        <p v-if="isGenerating" class="text-xs text-white/50">
+          正在后台生成中，完成后会自动通知你...
+        </p>
       </div>
     </MenuItem>
 
@@ -186,7 +221,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
 import { MenuPage, MenuItem } from '../../ui'
 import { Button, Toggle, Slider } from '../../base'
 import { useGameStore } from '../../../stores/modules/game'
@@ -205,14 +240,18 @@ import {
   getBackgroundImages,
   setCurrentBackground,
   setCurrentBackgroundEffect,
+  generateBackgroundImage,
+  openBackgroundsFolder,
 } from '../../../api/services/background'
-import { Bubbles, Image, PictureInPicture, Sparkles, Settings } from 'lucide-vue-next'
+import { Bubbles, Image, PictureInPicture, Sparkles, Settings, Wand2 } from 'lucide-vue-next'
 import SceneSelectModal from '../scene/SceneSelectModal.vue'
 import SceneEditModal from '../scene/SceneEditModal.vue'
+import { useUserStore } from '../../../stores/modules/user/user'
 
 const gameStore = useGameStore()
 const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
+const userStore = useUserStore()
 
 const mainMenuStarsEnabled = computed(() => settingsStore.mainMenuStarsEnabled)
 const mainMenuMeteorsEnabled = computed(() => settingsStore.mainMenuMeteorsEnabled)
@@ -239,6 +278,8 @@ const starsFpsInput = ref(settingsStore.starsFps)
 const backgroundList = ref<BackgroundImageInfo[]>([])
 const selectedBackground = ref<string>('')
 const uploadInput = ref<HTMLInputElement | null>(null)
+const generatePrompt = ref('')
+const isGenerating = ref(false)
 
 const scenes = ref<SceneInfo[]>([])
 const sceneAwareLocal = ref(gameStore.sceneAware)
@@ -344,6 +385,9 @@ const onSceneAwareChange = (val: boolean) => {
 }
 
 onMounted(async () => {
+  // 监听 WebSocket 触发的背景生成完成事件
+  window.addEventListener('background-generated', onBackgroundGenerated)
+
   try {
     await refreshBackground()
 
@@ -365,6 +409,10 @@ onMounted(async () => {
   if (gameStore.currentScene && gameStore.currentScene.imageUrl) {
     uiStore.setCurrentBackground(gameStore.currentScene.imageUrl)
   }
+})
+
+onUnmounted(() => {
+  window.removeEventListener('background-generated', onBackgroundGenerated)
 })
 
 async function fetchBackgrounds(): Promise<BackgroundImageInfo[]> {
@@ -457,6 +505,49 @@ async function updateParticle(value: string): Promise<void> {
     uiStore.setBackgroundEffect(prevEffect)
     console.error('Failed to save selected background effect:', error)
   }
+}
+
+// AI 背景图生成
+async function handleGenerate(): Promise<void> {
+  const prompt = generatePrompt.value.trim()
+  if (!prompt || isGenerating.value) return
+
+  isGenerating.value = true
+  try {
+    await generateBackgroundImage(prompt, userStore.client_id)
+    uiStore.showInfo({
+      title: '生成已开始',
+      message: '背景图正在生成中，请稍候...',
+    })
+  } catch (e: any) {
+    uiStore.showError({
+      title: '请求失败',
+      message: e.message || '无法开始生成',
+    })
+    isGenerating.value = false
+  }
+}
+
+// 打开背景文件夹
+async function handleOpenFolder(): Promise<void> {
+  try {
+    await openBackgroundsFolder()
+  } catch (e: any) {
+    uiStore.showError({
+      title: '错误',
+      message: '无法打开文件夹',
+    })
+  }
+}
+
+// 监听 WebSocket 通知的背景生成完成事件
+function onBackgroundGenerated(event: Event) {
+  const detail = (event as CustomEvent).detail
+  isGenerating.value = false
+  if (detail?.success) {
+    generatePrompt.value = ''
+  }
+  refreshBackground()
 }
 
 // 处理滑块变化

@@ -1,5 +1,8 @@
+import asyncio
 import os
+import platform
 import shutil
+import subprocess
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, UploadFile
@@ -7,6 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from ling_chat.core.logger import logger
+from ling_chat.core.messaging.broker import message_broker
 from ling_chat.core.service_manager import service_manager
 from ling_chat.utils.runtime_path import user_data_path
 
@@ -22,6 +26,11 @@ class BackgroundSelectionRequest(BaseModel):
 
 class BackgroundEffectRequest(BaseModel):
     effect: str = Field(default="", description="当前背景特效")
+
+
+class GenerateBackgroundRequest(BaseModel):
+    prompt: str = Field(description="生成提示词")
+    client_id: str = Field(description="客户端ID，用于WebSocket通知")
 
 
 def _get_game_status():
@@ -130,3 +139,87 @@ async def upload_music(file: UploadFile, name: str | None = None):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"未能上传背景图片: {str(e)}")
+
+
+@router.post("/generate")
+async def generate_background(payload: GenerateBackgroundRequest):
+    """
+    异步生成 AI 背景图片。立即返回，生成完成后通过 WebSocket 通知前端。
+    """
+    api_key = os.environ.get("IMAGE_API_KEY", "")
+    if not api_key:
+        raise HTTPException(
+            status_code=400,
+            detail="IMAGE_API_KEY 环境变量未设置，无法使用图片生成功能。请在 .env 中配置。",
+        )
+
+    asyncio.create_task(_do_generate_background(payload.prompt, payload.client_id))
+    return {"code": 200, "data": {"message": "背景生成已开始"}}
+
+
+async def _do_generate_background(prompt: str, client_id: str):
+    """后台任务：生成 AI 背景图片，保存到 backgrounds 目录，并通过 WebSocket 通知前端"""
+    try:
+        from ling_chat.core.image_generator import ImageGenerator
+
+        generator = ImageGenerator()
+        loop = asyncio.get_event_loop()
+
+        # 在线程池中执行同步的 OpenAI API 调用，避免阻塞事件循环
+        image_bytes = await loop.run_in_executor(None, generator.generate, prompt)
+        filename = await loop.run_in_executor(
+            None, generator.save_image, image_bytes, BACKGROUND_DIR
+        )
+
+        # 通过 WebSocket 通知前端生成成功
+        await message_broker.publish(
+            client_id,
+            {
+                "type": "background_generated",
+                "data": {
+                    "success": True,
+                    "filename": filename,
+                    "prompt": prompt,
+                },
+            },
+        )
+        logger.info(f"AI 背景图生成并通知成功: {filename}")
+
+    except Exception as e:
+        logger.error(f"AI 背景图生成失败: {e}")
+        # 通过 WebSocket 通知前端生成失败
+        await message_broker.publish(
+            client_id,
+            {
+                "type": "background_generated",
+                "data": {
+                    "success": False,
+                    "error": str(e),
+                    "prompt": prompt,
+                },
+            },
+        )
+
+
+@router.post("/open_folder")
+async def open_backgrounds_folder():
+    """
+    在操作系统文件管理器中打开背景图片目录
+    """
+    try:
+        BACKGROUND_DIR.mkdir(parents=True, exist_ok=True)
+        path = str(BACKGROUND_DIR)
+        system = platform.system()
+
+        if system == "Windows":
+            os.startfile(path)
+        elif system == "Darwin":
+            subprocess.Popen(["open", path])
+        else:
+            subprocess.Popen(["xdg-open", path])
+
+        return {"code": 200, "data": {"message": "文件夹已打开"}}
+    except Exception as e:
+        logger.error(f"打开背景文件夹失败: {e}")
+        raise HTTPException(status_code=500, detail=f"打开文件夹失败: {str(e)}")
+

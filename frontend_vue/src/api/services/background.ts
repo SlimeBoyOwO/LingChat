@@ -32,3 +32,14 @@ export const setCurrentBackground = async (background: string): Promise<void> =>
 export const setCurrentBackgroundEffect = async (effect: string): Promise<void> => {
   await http.post('/v1/chat/background/effect', { effect })
 }
+
+export const generateBackgroundImage = async (prompt: string, clientId: string): Promise<void> => {
+  await http.post('/v1/chat/background/generate', {
+    prompt,
+    client_id: clientId,
+  })
+}
+
+export const openBackgroundsFolder = async (): Promise<void> => {
+  await http.post('/v1/chat/background/open_folder')
+}

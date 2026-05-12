@@ -83,6 +83,7 @@ export interface ScriptModifyCharacterEvent extends ScriptEvent {
   characterId: number
   emotion?: string
   action?: string
+  clothes?: string
 }
 
 export interface ScriptInputEvent extends ScriptEvent {

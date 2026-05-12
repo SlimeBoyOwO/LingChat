@@ -102,6 +102,7 @@ class ScriptModifyCharacterResponse(BaseResponse):
     characterId: int
     emotion: Optional[str] = None
     action: Optional[str] = None
+    clothes: Optional[str] = None
 
 
 class ScriptPlayerResponse(BaseResponse):

@@ -75,7 +75,7 @@ class GameRoleManager:
             role_id=role.id,
             resource_path=role.resource_folder,
             settings=role_settings,
-            display_name=role.name,
+            display_name=role_settings.ai_name,
         )
         self.loaded_roles[role_id] = new_role
 
@@ -113,7 +113,7 @@ class GameRoleManager:
             role = self.get_role(rid)
 
             # 同步名字 (复用逻辑，提取为独立动作)
-            self._sync_display_name(role, source_lines)
+            # self._sync_display_name(role, source_lines)
             slice_start_idx = 0
             system_addendum = ""
             short_term_prefix = ""
@@ -282,14 +282,6 @@ class GameRoleManager:
                 )
         except Exception as e:
             logger.error(f"persist_memory_banks_to_db 失败: {e}", exc_info=True)
-
-    def _sync_display_name(self, role: GameRole, lines: List[GameLine]):
-        """辅助方法：从最近的台词中更新显示名称"""
-        # 倒序查找该角色说的最后一句话
-        for line in reversed(lines):
-            if line.sender_role_id == role.role_id and line.display_name:
-                role.display_name = line.display_name
-                break
 
     def _db_ensure_role_exists(self, script_key: str, script_role_key: str) -> int:
         """

@@ -303,7 +303,7 @@ function sendOrContinue() {
 function send() {
   const text = inputMessage.value
   if (!text.trim()) return
-  if (text === '/开始剧本') {
+  if (text.startsWith('/开始剧本')) {
     // gameStore.initializeScript('TODO: 从剧本面板选择剧本')
   } else {
     gameStore.appendGameMessage({
