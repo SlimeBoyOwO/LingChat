@@ -1,23 +1,12 @@
 <template>
-  <div class="rain-container" ref="containerRef">
-    <span
-      class="rain-item"
-      v-for="(item, idx) in rains"
-      :key="idx"
-      :style="{
-        top: `${item.top}px`,
-        left: item.left,
-        height: `${item.size}px`,
-        opacity: item.opacity,
-      }"
-    ></span>
-  </div>
+  <canvas id="glcanvas" class="rain-container" ref="canvasRef" />
 </template>
 
-<script setup>
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+<script setup lang="ts">
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import type { Drop } from './config/rain'
+import { useRain } from './hooks/useRain'
 
-// 配置参数
 const props = defineProps({
   enabled: {
     type: Boolean,
@@ -26,116 +15,123 @@ const props = defineProps({
   intensity: {
     type: Number,
     default: 1,
-    validator: (value) => value >= 0 && value <= 2,
+    validator: (value: number) => value >= 0 && value <= 2,
   },
 })
 
-// 生成雨滴速度 (根据强度调整)
-const createRainInterval = ref(50)
-// 雨滴下落速度
-const rainRaceInterval = ref(20)
+const canvasRef = ref<HTMLCanvasElement | null>(null)
 
-const rains = ref([])
-const rainTimer = ref(null)
-const raceTimer = ref(null)
-const maxHeight = ref(0)
-// 直接引用模板中的根元素
-const containerRef = ref(null)
+// 响应式雨滴数量
+const dropCount = ref(Math.floor(50 * props.intensity))
 
-// 根据强度调整参数
-watch(
-  () => props.intensity,
-  (newIntensity) => {
-    // 确保强度不会导致间隔小于或等于0
-    createRainInterval.value = Math.max(10, 100 - newIntensity * 45)
-  },
-  { immediate: true }, // 立即执行一次以初始化
-)
+let W = 0,
+  H = 0
 
-// 初始化雨滴
-const initialRains = () => {
-  if (!props.enabled) return
+let drops: Drop[] = []
 
-  clearInterval(rainTimer.value)
-  rainTimer.value = setInterval(() => {
-    const rainItem = {
-      top: -100, // 从屏幕外更高一点的位置开始，效果更自然
-      left: `${~~(Math.random() * 100)}%`,
-      // 速度也应该和强度关联，让雨滴下落更快
-      speed: 10 + Math.random() * 10 * props.intensity,
-      size: 30 + Math.random() * 40 * props.intensity,
-      opacity: 0.2 + Math.random() * 0.5, // 透明度与强度关联性可以减弱，避免太亮
-    }
-    rains.value.push(rainItem) // 使用 push 比解构赋值性能稍好
-  }, createRainInterval.value)
-}
+let ctx: CanvasRenderingContext2D | null = null
+let animId = 0
 
-// 雨滴运动
-const initialRace = () => {
-  if (!props.enabled) return
+const { createDrop } = useRain()
 
-  clearInterval(raceTimer.value)
-  raceTimer.value = setInterval(() => {
-    // 【修复】使用 filter 方法替代 reduce，代码更清晰，意图更明确
-    // 过滤掉所有已经超出屏幕高度的雨滴
-    const activeRains = rains.value.filter((rain) => rain.top < maxHeight.value)
+/**
+ * 处理窗口 resize，更新 Canvas 尺寸并重新初始化雨滴
+ */
+function handleResize() {
+  if (!canvasRef.value) return
 
-    // 只更新仍在屏幕内的雨滴的位置
-    activeRains.forEach((rain) => {
-      rain.top += rain.speed
-    })
+  canvasRef.value.width = window.innerWidth
+  canvasRef.value.height = window.innerHeight
+  W = canvasRef.value.width
+  H = canvasRef.value.height
 
-    rains.value = activeRains
-  }, rainRaceInterval.value)
-}
-
-// 【修复】设置最大高度的逻辑
-const setMaxHeight = () => {
-  // 优先使用父元素的高度，如果获取不到（比如父元素是body），则回退到窗口高度
-  // 确保 containerRef.value 存在
-  if (containerRef.value && containerRef.value.parentElement) {
-    maxHeight.value = containerRef.value.parentElement.clientHeight
-  } else {
-    maxHeight.value = window.innerHeight
+  // 重新初始化雨滴以适应新尺寸
+  drops = []
+  for (let i = 0; i < dropCount.value; i++) {
+    drops.push(createDrop(W, H, props.intensity))
   }
 }
 
-onMounted(() => {
-  // 使用 nextTick 确保DOM已经完全渲染完毕
-  nextTick(() => {
-    setMaxHeight()
-    if (props.enabled) {
-      initialRains()
-      initialRace()
+function init() {
+  if (!props.enabled) return
+
+  const canvas = canvasRef.value
+  if (!canvas) return
+
+  canvas.width = window.innerWidth
+  canvas.height = window.innerHeight
+  W = canvas.width
+  H = canvas.height
+  ctx = canvas.getContext('2d')
+
+  drops = []
+  for (let i = 0; i < dropCount.value; i++) {
+    drops.push(createDrop(W, H, props.intensity))
+  }
+
+  loop()
+}
+
+function loop() {
+  if (!ctx) return
+
+  ctx.clearRect(0, 0, W, H)
+
+  for (const drop of drops) {
+    ctx.beginPath()
+    ctx.moveTo(drop.x, drop.y)
+    ctx.lineTo(drop.x, drop.y + drop.length)
+
+    const gradient = ctx.createLinearGradient(drop.x, drop.y, drop.x, drop.y + drop.length)
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.3)')
+    gradient.addColorStop(1, 'rgba(255, 255, 255, 0.7)')
+
+    ctx.strokeStyle = gradient
+    ctx.lineWidth = 1.25
+    ctx.stroke()
+    drop.y += drop.speed
+
+    // 雨滴超出屏幕时，重置位置并重新随机化 x 坐标
+    if (drop.y > H) {
+      drop.y = -drop.length
+      drop.x = Math.random() * W
     }
-  })
+  }
 
-  // 监听窗口大小变化
-  window.addEventListener('resize', setMaxHeight)
-})
+  animId = requestAnimationFrame(loop)
+}
 
-onUnmounted(() => {
-  clearInterval(rainTimer.value)
-  clearInterval(raceTimer.value)
-  window.removeEventListener('resize', setMaxHeight)
-})
+// 监听 intensity 变化，动态调整雨滴数量
+watch(
+  () => props.intensity,
+  (newIntensity) => {
+    dropCount.value = Math.floor(50 * newIntensity)
+    handleResize()
+  },
+)
 
-// 监听启用状态变化
+// 监听 enabled 状态变化
 watch(
   () => props.enabled,
   (newVal) => {
     if (newVal) {
-      // 重新启动时也需要确保高度是正确的
-      setMaxHeight()
-      initialRains()
-      initialRace()
+      init()
     } else {
-      clearInterval(rainTimer.value)
-      clearInterval(raceTimer.value)
-      rains.value = []
+      cancelAnimationFrame(animId)
+      drops = []
     }
   },
 )
+
+onMounted(() => {
+  init()
+  window.addEventListener('resize', handleResize)
+})
+
+onBeforeUnmount(() => {
+  cancelAnimationFrame(animId)
+  window.removeEventListener('resize', handleResize)
+})
 </script>
 
 <style scoped>

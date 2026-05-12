@@ -148,7 +148,7 @@ const titleInfo = computed(() => {
     }
   } else if (currentView.startsWith('todo')) {
     return {
-      title: 'TODO 代办笔记',
+      title: 'TODO 待办笔记',
       subtitle: '在这里记录重要的事情吧，ta会随机提醒你哒',
     }
   } else if (currentView.startsWith('proactive')) {

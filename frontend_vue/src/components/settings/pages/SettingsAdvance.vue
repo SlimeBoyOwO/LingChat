@@ -1,22 +1,27 @@
 <template>
   <MenuPage>
     <div class="flex-1 h-[85vh] w-full bg-white/10 p-0 md:p-4 rounded-lg overflow-hidden">
-      <div class="block md:grid grid-cols-[280px_1fr] h-full min-h-0">
-        <!-- 加载动画 -->
+      <!-- 加载动画 -->
+      <div v-if="isLoading" class="fixed inset-0 bg-white/80 flex justify-center items-center z-50">
         <div
-          v-if="isLoading"
-          class="fixed inset-0 bg-white/80 flex justify-center items-center z-50"
-        >
-          <div
-            class="border-5 border-gray-200 border-t-brand rounded-full w-12 h-12 animate-spin"
-          ></div>
-        </div>
+          class="border-5 border-gray-200 border-t-brand rounded-full w-12 h-12 animate-spin"
+        ></div>
+      </div>
 
-        <!-- 导航菜单 (左侧) -->
+      <!-- 响应式布局容器 -->
+      <div class="flex flex-col md:grid md:grid-cols-[min(30%,280px)_1fr] h-full min-h-0">
+        <!-- 导航菜单 -->
         <nav
           ref="navContainerRef"
           @click="() => removeMoreMenu()"
-          class="-left-full md:left-0 blur transition-all duration-300 ease-[cubic-bezier(0.18,0.89,0.32,1.00)] md:blur-none h-full p-5 flex flex-col justify-start gap-6.25 overflow-y-auto relative border-r border-brand md:moreMenu:left-0"
+          class="transition-all duration-300 ease-[cubic-bezier(0.18,0.89,0.32,1.00)] flex flex-col justify-start gap-6.25 overflow-y-auto relative border-b md:border-b-0 md:border-r border-brand md:moreMenu:left-0"
+          :class="[
+            'md:left-0',
+            // 竖屏时始终显示在顶部
+            'translate-y-0',
+            // 当有 moreMenu 类时保持显示
+            'moreMenu:translate-y-0',
+          ]"
         >
           <!-- 滑动指示器 -->
           <div
@@ -24,7 +29,10 @@
             class="absolute left-5 w-[calc(100%-40px)] bg-brand rounded-lg z-0 transition-all duration-300 ease-[cubic-bezier(0.18,0.89,0.32,1.00)]"
           ></div>
 
-          <div class="flex items-center gap-1 mt-2 text-sm text-gray-500">
+          <div
+            class="flex items-center gap-1 mt-2 text-sm px-5"
+            style="color: white; -webkit-text-stroke: 1px black; paint-order: stroke fill"
+          >
             💡 这里的设置重启软件生效哦！
           </div>
 
@@ -52,9 +60,15 @@
           </div>
         </nav>
 
-        <!-- 设置内容区域 (右侧) -->
+        <!-- 设置内容区域 -->
         <main
-          class="flex justify-center h-full overflow-auto relative -top-full md:top-0 px-10 py-10 md:px-10 md:py-0"
+          class="flex justify-center h-full overflow-auto relative px-10 py-10 md:px-10 md:py-0"
+          :class="[
+            // 竖屏时始终显示
+            'translate-y-0',
+            // 当有 moreMenu 类时保持显示
+            'moreMenu:translate-y-0',
+          ]"
         >
           <div v-if="selectedSubcategory" class="w-full active">
             <div class="pt-2.5 overflow-auto">
@@ -86,10 +100,18 @@
 
               <!-- 保存操作区域 -->
               <div
-                class="w-18 px-5 py-2.5 bg-brand text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-colors duration-200 hover:bg-[#0056b3]"
+                class="inline-flex flex-col gap-2 px-5 py-2.5 bg-brand text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-colors duration-200 hover:bg-[#0056b3] min-w-[120px]"
+                @click="saveSettings"
               >
-                <button @click="saveSettings">保存</button>
-                <p :class="saveStatus.colorClass">
+                <button
+                  class="bg-transparent border-none text-white cursor-pointer p-0 m-0 w-full h-full"
+                >
+                  保存
+                </button>
+                <p
+                  :class="saveStatus.colorClass"
+                  class="text-xs whitespace-normal break-words max-w-[300px]"
+                >
                   {{ saveStatus.message }}
                 </p>
               </div>
