@@ -36,14 +36,13 @@ class Translator:
             result += "<" + i["following_text"] + ">"
         return result
 
-    async def translate_ai_response(self, results: List[Dict], script: bool = True):
+    async def translate_ai_response(self, results: List[Dict]):
         """将中文翻译成日文并合成语音"""
-        if not self.enable_translate and not script:
+        if not self.enable_translate:
             return
 
         full_chinese_response: str = self.get_all_chinese_part(results)
 
-        # 第二步：用中文回答作为输入，流式翻译成日语
         if not full_chinese_response:
             logger.warning("AI回复没有中文，跳过日语翻译")
             return
@@ -51,17 +50,15 @@ class Translator:
         send_messages = self.messages.copy()
         send_messages.append({"role": "user", "content": full_chinese_response})
 
-        if os.environ.get("TRANSLATE_STREAM", "true") == "true" and not script:
-            # 流式处理
+        japanese_stream = self.translator_llm.process_message_stream(send_messages)
+
+        if os.environ.get("TRANSLATE_STREAM", "true") == "true":
             buffer = ""
             current_segment_index = 0
-
-            japanese_stream = self.translator_llm.process_message_stream(send_messages)
 
             async for chunk in japanese_stream:
                 print(chunk, end="", flush=True)
                 buffer += chunk
-                # 检测完整句子
                 while "<" in buffer and ">" in buffer:
                     start = buffer.index("<")
                     end = buffer.index(">") + 1
@@ -69,16 +66,13 @@ class Translator:
                         sentence = buffer[start:end]
                         buffer = buffer[end:]
 
-                        # 去除标记符号
                         clean_sentence = sentence[1:-1]
 
-                        # 找到对应的segment并更新
                         if current_segment_index < len(results):
                             results[current_segment_index]["japanese_text"] = (
                                 clean_sentence
                             )
 
-                            # 实时生成语音
                             voice_maker = self.game_status.current_character.voice_maker
                             await voice_maker.generate_voice_files(
                                 [results[current_segment_index]]
@@ -87,15 +81,14 @@ class Translator:
 
                             current_segment_index += 1
         else:
-            # 非流式处理 - 等待完整响应
-            japanese_response = self.translator_llm.process_message(send_messages)
-            logger.info(f"完整日语翻译结果: {japanese_response}")
+            full_response = ""
+            async for chunk in japanese_stream:
+                full_response += chunk
+            logger.info(f"完整日语翻译结果: {full_response}")
 
-            # 解析完整响应并提取句子
-            buffer = japanese_response
+            buffer = full_response
             current_segment_index = 0
 
-            # 处理完整响应中的所有句子
             while (
                 "<" in buffer and ">" in buffer and current_segment_index < len(results)
             ):
@@ -105,13 +98,10 @@ class Translator:
                     sentence = buffer[start:end]
                     buffer = buffer[end:]
 
-                    # 去除标记符号
                     clean_sentence = sentence[1:-1]
 
-                    # 找到对应的segment并更新
                     results[current_segment_index]["japanese_text"] = clean_sentence
 
-                    # 生成语音
                     voice_maker = self.game_status.current_character.voice_maker
                     await voice_maker.generate_voice_files(
                         [results[current_segment_index]]
