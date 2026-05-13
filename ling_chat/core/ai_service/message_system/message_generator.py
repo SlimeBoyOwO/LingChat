@@ -68,7 +68,6 @@ class MessageGenerator:
 
             logger.debug(f"句子处理时间: {end_time - start_time} 秒")
 
-    # 主方法现在充当协调器角色
     async def process_message_stream(
         self,
         user_message: Optional[str] = None,
@@ -84,7 +83,7 @@ class MessageGenerator:
         current_context = []
 
         line = None
-        # 1. 处理用户消息，提取临时指令，构建台词
+        # 2. 处理用户消息，提取临时指令，构建台词
         if user_message is not None:
             processed_user_message_dict = (
                 await self.message_processor.append_user_message(user_message)
@@ -200,15 +199,32 @@ class MessageGenerator:
             # 当上面的while循环完成时，生产者任务也必须完成
             accumulated_response = await producer_task
 
-            # 等待消费者完成队列中的任何剩余项目
-            await sentence_queue.join()
+            try:
+                cleanup_timeout = max(1, int(os.environ.get("PIPELINE_CLEANUP_TIMEOUT", "10")))
+            except (ValueError, TypeError):
+                cleanup_timeout = 10
+            try:
+                await asyncio.wait_for(sentence_queue.join(), timeout=cleanup_timeout)
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"消费者处理超时（>{cleanup_timeout}s），跳过剩余队列，强制进入清理"
+                )
+                from ling_chat.core.messaging.broker import message_broker
+
+                timeout_msg = {
+                    "type": "error",
+                    "error_code": "voice_timeout",
+                    "detail": f"语音合成超时（>{cleanup_timeout}s），已跳过剩余语音生成",
+                }
+                for client_id in self.config.clients:
+                    await message_broker.publish(client_id, timeout_msg)
+
+            # 发布者任务在发送最终消息后应该已经完成
+            # 我们在finally块中等待所有任务以进行清理
 
             # 向消费者发送停止信号
             for _ in range(self.concurrency):
                 await sentence_queue.put(None)
-
-            # 发布者任务在发送最终消息后应该已经完成
-            # 我们在finally块中等待所有任务以进行清理
 
             # 6. 后续处理
             ai_name = ""
@@ -223,9 +239,6 @@ class MessageGenerator:
                     # self.game_status.line_list[append_line_index] = line 这行应该没必要
                     self.game_status.refresh_memories()
 
-                # if self.use_rag and self.rag_manager:
-                #     self.rag_manager.save_messages_to_rag(current_context)
-
                 self.ai_logger.log_conversation(ai_name, accumulated_response)
             else:
                 self.ai_logger.log_conversation(ai_name, "未生成响应。")
@@ -233,9 +246,9 @@ class MessageGenerator:
         except Exception as e:
             logger.error(f"消息流管道中发生错误: {e}", exc_info=True)
 
-            # 准备错误代码（前端负责翻译）
             from ling_chat.core.messaging.broker import message_broker
 
+            # 准备错误代码（前端负责翻译）
             error_message = str(e)
             error_code = "default_error"  # 默认错误代码
 

@@ -36,9 +36,9 @@ class Translator:
             result += "<" + i["following_text"] + ">"
         return result
 
-    async def translate_ai_response(self, results: List[Dict], script: bool = True):
+    async def translate_ai_response(self, results: List[Dict]):
         """将中文翻译成日文并合成语音"""
-        if not self.enable_translate and not script:
+        if not self.enable_translate:
             return
 
         full_chinese_response: str = self.get_all_chinese_part(results)
@@ -51,12 +51,12 @@ class Translator:
         send_messages = self.messages.copy()
         send_messages.append({"role": "user", "content": full_chinese_response})
 
-        if os.environ.get("TRANSLATE_STREAM", "true") == "true" and not script:
-            # 流式处理
+        japanese_stream = self.translator_llm.process_message_stream(send_messages)
+
+        if os.environ.get("TRANSLATE_STREAM", "true") == "true":
+            # 流式处理 - 逐块翻译并实时生成语音
             buffer = ""
             current_segment_index = 0
-
-            japanese_stream = self.translator_llm.process_message_stream(send_messages)
 
             async for chunk in japanese_stream:
                 print(chunk, end="", flush=True)
@@ -87,12 +87,14 @@ class Translator:
 
                             current_segment_index += 1
         else:
-            # 非流式处理 - 等待完整响应
-            japanese_response = self.translator_llm.process_message(send_messages)
-            logger.info(f"完整日语翻译结果: {japanese_response}")
+            # 非流式处理 - 使用异步流式API收集完整响应，避免阻塞事件循环
+            full_response = ""
+            async for chunk in japanese_stream:
+                full_response += chunk
+            logger.info(f"完整日语翻译结果: {full_response}")
 
             # 解析完整响应并提取句子
-            buffer = japanese_response
+            buffer = full_response
             current_segment_index = 0
 
             # 处理完整响应中的所有句子
