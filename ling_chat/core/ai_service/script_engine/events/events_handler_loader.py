@@ -1,4 +1,4 @@
-import importlib
+import importlib.util
 import inspect
 from pathlib import Path
 from typing import Dict, Optional, Type
@@ -32,11 +32,19 @@ class EventHandlerLoader:
             if file_path.name == "__init__.py":
                 continue
 
-            module_name = (
-                f"ling_chat.core.ai_service.script_engine.events.{file_path.stem}"
-            )
+            module_name = file_path.stem
             try:
-                module = importlib.import_module(module_name)
+                # 直接从文件路径加模块
+                spec = importlib.util.spec_from_file_location(
+                    module_name,
+                    str(file_path.resolve())
+                )
+                if spec is None or spec.loader is None:
+                    logger.error(f"无法为 {module_name} 创建模块规格")
+                    continue
+
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
 
                 # 查找模块中的所有类
                 for name, obj in inspect.getmembers(module, inspect.isclass):
@@ -49,7 +57,7 @@ class EventHandlerLoader:
                         cls._event_handlers[obj.__name__] = obj
                         logger.debug(f"加载事件处理器: {obj.__name__}")
 
-            except ImportError as e:
+            except Exception as e:
                 logger.error(f"加载模块 {module_name} 失败: {e}")
 
         cls._loaded = True
