@@ -50,6 +50,8 @@ site/
 .coverage
 coverage.*
 htmlcov/
+ling_chat/
+ling_chat/*
 
 
 

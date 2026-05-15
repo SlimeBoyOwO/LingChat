@@ -1,0 +1,20 @@
+name: 5 甜甜的一天
+
+events:
+  - type: background
+    imagePath: 占卜摊2.png
+    duration: 2
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 风雪无可奈何的承认了一下天然食物确实好点，决定以后要是%player%犯错就惩罚她亲自下厨给风雪做饭
+
+  - type: input
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 风雪只是开个玩笑，今天还是很开心的。
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: "end"

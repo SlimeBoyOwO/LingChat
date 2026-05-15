@@ -1,0 +1,47 @@
+name: 2 樱花的公园
+
+events:
+  - type: modify_character
+    action: hide_character
+    character: MAIN
+    duration: 1.5
+
+  - type: narration
+    text: |
+      于是钦灵和%player%整理好了小包，出门前往公园！
+
+  - type: background
+    imagePath: 春天的公园_白天.jpg
+    duration: 2
+
+  - type: background_effect
+    effect: Sakura
+    duration: 0
+
+  - type: modify_character
+    action: show_character
+    character: MAIN
+    duration: 1.5
+
+  - type: narration
+    text: |
+      公园的樱花如同奇迹般的绽放，在空中摇曳着花的舞蹈
+      几片樱花落叶缓缓飘在了钦灵的头发上。
+
+  - type: ai_dialogue
+    character: MAIN
+
+  - type: input
+
+  - type: ai_dialogue
+    character: MAIN
+
+  - type: free_dialogue
+    character: MAIN
+    hint: 可以在公园和钦灵随便聊哦！
+    end_line: 去别的地方逛逛吧？
+    end_prompt: 钦灵打算接下来去小吃摊买东西吃！
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: "main3"

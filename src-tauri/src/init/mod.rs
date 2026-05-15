@@ -1,0 +1,153 @@
+pub mod role_sync;
+pub mod static_copy;
+
+use std::sync::Arc;
+
+use anyhow::Result;
+use sea_orm::DatabaseConnection;
+use tauri::App;
+use tauri_plugin_store::StoreExt;
+use tokio::sync::Mutex;
+
+use crate::ai_service::llm::{create_llm_client, LlmClient, LlmConfig};
+use crate::ai_service::message_system::processor::{MessageProcessor, ProcessorOptions};
+use crate::ai_service::prompt::PromptOptions;
+use crate::ai_service::service::{AIService, SharedAIService};
+use crate::ai_service::translator::Translator;
+use crate::ai_service::types::CharacterSettings;
+use crate::config::{self, AppConfig};
+use crate::db;
+use crate::db::managers::role_repo::RoleRepo;
+use crate::ChatComponents;
+
+pub async fn initialize(app: &App) -> Result<(DatabaseConnection, SharedAIService, ChatComponents)> {
+    static_copy::copy_game_data(app)?;
+
+    let data_dir = static_copy::resolve_data_dir();
+    let db = db::init_db(&data_dir).await?;
+
+    role_sync::sync_roles_from_folder(&db, &data_dir).await?;
+
+    let mut ai_service = AIService::new(db.clone(), data_dir.clone()).await;
+
+    // 加载默认角色：上次游玩的角色 → DB 中第一个主角色 → 默认空设定
+    let settings = load_default_character(app, &db, &data_dir).await?;
+    let app_config = AppConfig::load(&app.handle()).unwrap_or_default();
+    let prompt_options = PromptOptions {
+        output_sec_lang: app_config.llm_output_sec_lang,
+        no_emotion_limit: app_config.no_emotion_limit_prompt,
+    };
+    ai_service.import_settings(settings, prompt_options);
+    ai_service.init_game_status().await?;
+
+    log::info!(
+        "AIService 初始化完成: character_id={:?}, ai_name={}",
+        ai_service.character_id,
+        ai_service.ai_name,
+    );
+
+    let ai_service: SharedAIService = Arc::new(Mutex::new(ai_service));
+
+    // —— 构建聊天组件 ——
+    let llm = build_llm_client(
+        app_config.llm_provider.as_deref().unwrap_or(""),
+        app_config.llm_model.as_deref().unwrap_or(""),
+        app_config.llm_api_key.as_deref().unwrap_or(""),
+        app_config.llm_base_url.as_deref().unwrap_or(""),
+        app_config.temperature,
+        app_config.top_p,
+    )
+    .map(Arc::new);
+
+    let translate_llm = build_llm_client(
+        app_config.translate_provider.as_deref().unwrap_or(""),
+        app_config.translate_model.as_deref().unwrap_or(""),
+        app_config.translate_api_key.as_deref().unwrap_or(""),
+        app_config.translate_base_url.as_deref().unwrap_or(""),
+        // 翻译不需要 temperature/top_p 参数
+        None,
+        None,
+    );
+
+    let processor = Arc::new(MessageProcessor::new(ProcessorOptions {
+        time_sense_enabled: app_config.enable_time_sense,
+        enable_translate: app_config.enable_translate,
+    }));
+
+    let translator = Arc::new(Translator::new(
+        translate_llm,
+        !app_config.llm_output_sec_lang,
+    ));
+
+    let chat = ChatComponents {
+        llm,
+        processor,
+        translator,
+    };
+
+    Ok((db, ai_service, chat))
+}
+
+fn build_llm_client(
+    provider: &str,
+    model: &str,
+    api_key: &str,
+    base_url: &str,
+    temperature: Option<f64>,
+    top_p: Option<f64>,
+) -> Option<LlmClient> {
+    if api_key.is_empty() || model.is_empty() {
+        log::warn!("LLM 未配置 (provider={}, model={})，将无法生成对话", provider, model);
+        return None;
+    }
+    let cfg = LlmConfig {
+        provider: provider.to_string(),
+        model: model.to_string(),
+        api_key: api_key.to_string(),
+        base_url: base_url.to_string(),
+        timeout_secs: 120,
+        temperature,
+        top_p,
+    };
+    create_llm_client(cfg).ok()
+}
+
+/// 加载默认角色设定：上次游玩的角色 → 第一个主角色 → 默认空设定
+async fn load_default_character(
+    app: &App,
+    db: &DatabaseConnection,
+    data_dir: &std::path::Path,
+) -> Result<CharacterSettings> {
+    // 1. 尝试从 settings store 读取上次游玩的角色 ID
+    let store = app
+        .store(config::STORE_FILE)
+        .unwrap_or_else(|_| app.handle().store(config::STORE_FILE).unwrap());
+    if let Some(last_id) = store
+        .get(config::keys::LAST_CHARACTER_ID)
+        .and_then(|v| v.as_i64())
+    {
+        if let Ok(Some(settings)) =
+            RoleRepo::get_role_settings_by_id(db, data_dir, last_id as i32).await
+        {
+            log::info!("加载上次游玩的角色: id={}", last_id);
+            return Ok(settings);
+        }
+    }
+
+    // 2. 回退：取第一个主角色
+    if let Ok(main_roles) = RoleRepo::get_all_main_roles(db).await {
+        if let Some(role) = main_roles.first() {
+            let folder = role.resource_folder.clone().unwrap_or_default();
+            if let Ok(Some(settings)) =
+                RoleRepo::get_role_settings_by_id(db, data_dir, role.id).await
+            {
+                log::info!("加载默认主角色: id={}, folder={}", role.id, folder);
+                return Ok(settings);
+            }
+        }
+    }
+
+    // 3. 无角色可用时返回默认空设定
+    log::warn!("无可用角色，使用默认空设定");
+    Ok(CharacterSettings::default())
+}
