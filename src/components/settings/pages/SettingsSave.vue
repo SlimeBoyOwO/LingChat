@@ -11,7 +11,13 @@
           placeholder="输入存档名称"
           @keyup.enter="handleCreateSave"
         />
-        <button class="glass-effect action-btn-create" @click="handleCreateSave">创建</button>
+        <button
+          class="glass-effect action-btn-create"
+          @click="handleCreateSave"
+          :disabled="actionLoading !== null"
+        >
+          {{ actionLoading === -1 ? '创建中...' : '创建' }}
+        </button>
       </div>
     </MenuItem>
     <MenuItem title="存档列表">
@@ -47,14 +53,26 @@
               </div>
 
               <div class="save-actions">
-                <button @click="handleLoadSave(save.id)" class="glass-effect action-btn-load">
-                  读取
+                <button
+                  @click="handleLoadSave(save.id)"
+                  class="glass-effect action-btn-load"
+                  :disabled="actionLoading !== null"
+                >
+                  {{ actionLoading === save.id ? '加载中...' : '读取' }}
                 </button>
-                <button @click="handleSaveGame(save.id)" class="action-btn-save glass-effect">
-                  保存
+                <button
+                  @click="handleSaveGame(save.id)"
+                  class="action-btn-save glass-effect"
+                  :disabled="actionLoading !== null"
+                >
+                  {{ actionLoading === save.id ? '保存中...' : '保存' }}
                 </button>
-                <button @click="handleDeleteSave(save.id)" class="action-btn-delete glass-effect">
-                  删除
+                <button
+                  @click="handleDeleteSave(save.id)"
+                  class="action-btn-delete glass-effect"
+                  :disabled="actionLoading !== null"
+                >
+                  {{ actionLoading === save.id ? '删除中...' : '删除' }}
                 </button>
               </div>
             </div>
@@ -67,149 +85,139 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { MenuPage, MenuItem } from '../../ui' // 假设的UI组件路径
-import { Input, Button } from '../../base'
+import { MenuPage, MenuItem } from '../../ui'
+import { Input } from '../../base'
 import { useGameStore } from '../../../stores/modules/game'
-import {
-  saveGetAll,
-  saveCreate,
-  saveLoad,
-  saveGameSave,
-  saveDelete,
-} from '../../../api/services/save'
+import { applyWebInitData } from '../../../stores/modules/game/actions'
+import { useUIStore } from '../../../stores/modules/ui/ui'
+import { invoke } from '@tauri-apps/api/core'
 import type { SaveInfo } from '../../../types'
-import { useUserStore } from '../../../stores/modules/user/user'
+import type { WebInitData } from '../../../api/services/game-info'
 import { Save, PencilLine, LayoutList, Clock } from 'lucide-vue-next'
 
-// 定义存档对象类型
+interface SaveListResponse {
+  saves: SaveInfo[]
+  total: number
+}
 
-// 使用 Pinia Store
+interface CreateSaveResponse {
+  save_id: number
+  message: string
+}
+
 const gameStore = useGameStore()
-const userStore = useUserStore()
+const uiStore = useUIStore()
 
-// 组件响应式状态
 const saves = ref<SaveInfo[]>([])
 const newSaveTitle = ref('')
 const loading = ref(false)
 const error = ref<string | null>(null)
+const actionLoading = ref<number | null>(null)
 
-// 模拟用户ID，实际应用中应从认证状态中获取
-const userId = '1'
-
-/**
- * 格式化日期
- * @param dateString ISO格式的日期字符串
- */
 const formatDate = (dateString: string): string => {
   const date = new Date(dateString)
   return `${date.getFullYear()}.${date.getMonth() + 1}.${date.getDate()}`
 }
 
-/**
- * 1. 从后端获取存档列表
- */
 const fetchSaves = async () => {
   loading.value = true
   error.value = null
   try {
-    // 假设 request.historyList 返回存档数组
-    const saveListData = await saveGetAll({
-      user_id: userId,
+    const result = await invoke<SaveListResponse>('list_saves', {
       page: 1,
-      page_size: 10,
+      pageSize: 50,
     })
-    console.log('获取存档列表成功:', saveListData)
-    saves.value = saveListData.saves
+    saves.value = result.saves
   } catch (e: any) {
     console.error('获取存档列表失败:', e)
-    error.value = e.message || '未知错误'
+    error.value = typeof e === 'string' ? e : e.message || '未知错误'
   } finally {
     loading.value = false
   }
 }
 
-/**
- * 2. 创建一个新的存档
- */
 const handleCreateSave = async () => {
   if (!newSaveTitle.value.trim()) {
-    alert('请输入存档名称！')
+    uiStore.showWarning({ title: '提示', message: '请输入存档名称' })
     return
   }
+  actionLoading.value = -1
   try {
-    // 调用创建接口
-    await saveCreate({ user_id: userId, title: newSaveTitle.value.trim() })
-    newSaveTitle.value = '' // 清空输入框
-    await fetchSaves() // 重新加载列表
+    await invoke<CreateSaveResponse>('create_save', {
+      title: newSaveTitle.value.trim(),
+    })
+    newSaveTitle.value = ''
+    uiStore.showSuccess({ title: '创建成功', message: '存档已创建' })
+    await fetchSaves()
   } catch (e: any) {
     console.error('创建存档失败:', e)
-    alert(`创建失败: ${e.message}`)
+    uiStore.showError({
+      title: '创建失败',
+      message: typeof e === 'string' ? e : e.message || '未知错误',
+    })
+  } finally {
+    actionLoading.value = null
   }
 }
 
-/**
- * 3. 读取存档
- * @param saveId 存档ID
- */
-const handleLoadSave = async (saveId: string) => {
+const handleLoadSave = async (saveId: number) => {
   const confirmed = window.confirm('加载存档会导致丢失当前对话进度，确定要加载吗？')
   if (!confirmed) return
+  actionLoading.value = saveId
   try {
-    const saveData = await saveLoad({
-      user_id: userId,
-      conversation_id: saveId,
-    })
-    // gameStore.loadDialogHistory(saveData);  TODO: 读取的时候，把历史记录也加载进去
-    alert(`存档 [${saveId}] 读取成功!`)
-    gameStore.initializeGame()
+    const gameInfo = await invoke<WebInitData>('load_save', { saveId })
+    applyWebInitData(gameStore.$state, gameInfo)
+    uiStore.showSuccess({ title: '加载成功', message: '存档已加载' })
   } catch (e: any) {
     console.error('读取存档失败:', e)
-    alert(`读取失败: ${e.message}`)
+    uiStore.showError({
+      title: '加载失败',
+      message: typeof e === 'string' ? e : e.message || '未知错误',
+    })
+  } finally {
+    actionLoading.value = null
   }
 }
 
-/**
- * 4. 保存游戏到指定存档位
- * @param saveId 存档ID
- */
-const handleSaveGame = async (saveId: string) => {
+const handleSaveGame = async (saveId: number) => {
   const confirmed = window.confirm(
-    '覆盖存档会导致之前存档的对话进度，不要覆盖错存档了哦，确定要覆盖吗？',
+    '覆盖存档会导致丢失之前的存档进度，确定要覆盖吗？',
   )
   if (!confirmed) return
+  actionLoading.value = saveId
   try {
-    await saveGameSave({
-      user_id: userId,
-      conversation_id: saveId,
-    })
-    alert(`成功覆盖存档 [${saveId}]!`)
-    await fetchSaves() // 刷新列表以更新时间戳
+    await invoke('update_save', { saveId })
+    uiStore.showSuccess({ title: '保存成功', message: '存档已覆盖' })
+    await fetchSaves()
   } catch (e: any) {
     console.error('保存游戏失败:', e)
-    alert(`保存失败: ${e.message}`)
+    uiStore.showError({
+      title: '保存失败',
+      message: typeof e === 'string' ? e : e.message || '未知错误',
+    })
+  } finally {
+    actionLoading.value = null
   }
 }
 
-/**
- * 5. 删除存档
- * @param saveId 存档ID
- */
-const handleDeleteSave = async (saveId: string) => {
-  if (confirm('确定要删除这个存档吗？此操作不可撤销。')) {
-    try {
-      await saveDelete({
-        user_id: userId,
-        conversation_id: saveId,
-      })
-      await fetchSaves() // 刷新列表
-    } catch (e: any) {
-      console.error('删除存档失败:', e)
-      alert(`删除失败: ${e.message}`)
-    }
+const handleDeleteSave = async (saveId: number) => {
+  if (!window.confirm('确定要删除这个存档吗？此操作不可撤销。')) return
+  actionLoading.value = saveId
+  try {
+    await invoke('delete_save', { saveId })
+    uiStore.showSuccess({ title: '删除成功', message: '存档已删除' })
+    await fetchSaves()
+  } catch (e: any) {
+    console.error('删除存档失败:', e)
+    uiStore.showError({
+      title: '删除失败',
+      message: typeof e === 'string' ? e : e.message || '未知错误',
+    })
+  } finally {
+    actionLoading.value = null
   }
 }
 
-// 组件挂载后，自动加载存档列表
 onMounted(() => {
   fetchSaves()
 })

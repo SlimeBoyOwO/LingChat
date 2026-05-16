@@ -9,8 +9,11 @@ use crate::ai_service::config::AIServiceConfig;
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::role_manager::GameRoleManager;
 use crate::ai_service::prompt::{sys_prompt_builder, PromptOptions};
-use crate::ai_service::types::{CharacterSettings, GameLine, LineBase, LineAttributeExt};
+use crate::ai_service::types::{
+    CharacterSettings, GameLine, GameMemoryBank, LineBase, LineAttributeExt,
+};
 use crate::db::entities::line::LineAttribute;
+use crate::db::managers::save_repo::SaveRepo;
 
 /// AI 服务：承载 `GameStatus` 与会话级配置。
 ///
@@ -138,7 +141,7 @@ impl AIService {
         self.game_status.active_save_id = save_id;
     }
 
-    /// 载入存档台词。Python 版还会载入 MemoryBank，本轮暂不落地。
+    /// 载入存档台词并恢复 MemoryBank。
     pub async fn load_lines(
         &mut self,
         lines: Vec<GameLine>,
@@ -155,6 +158,30 @@ impl AIService {
         let _ = self.game_status.get_role(&self.db, main_role_id).await?;
         self.game_status.current_role_id = Some(main_role_id);
         self.game_status.main_role_id = Some(main_role_id);
+        Ok(())
+    }
+
+    /// 将当前所有已加载角色的 `GameMemoryBank` 持久化到 DB。
+    pub async fn persist_memory_banks(&self, save_id: i32) -> Result<()> {
+        for (role_id, role) in &self.game_status.role_manager.loaded_roles {
+            let json = serde_json::to_string(&role.memory_bank)?;
+            SaveRepo::upsert_memory_bank(&self.db, save_id, Some(*role_id), &json).await?;
+        }
+        Ok(())
+    }
+
+    /// 从 DB 恢复所有 MemoryBank 到对应已加载角色。
+    pub async fn restore_memory_banks(&mut self, save_id: i32) -> Result<()> {
+        let banks = SaveRepo::get_memory_banks(&self.db, save_id).await?;
+        for bank in banks {
+            if let Some(rid) = bank.role_id {
+                if let Ok(mb) = serde_json::from_str::<GameMemoryBank>(&bank.info) {
+                    if let Some(role) = self.game_status.role_manager.get_loaded_mut(rid) {
+                        role.memory_bank = mb;
+                    }
+                }
+            }
+        }
         Ok(())
     }
 

@@ -52,6 +52,7 @@ coverage.*
 htmlcov/
 ling_chat/
 ling_chat/*
+ling_chat_python/
 
 
 

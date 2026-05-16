@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "ling-chat",
-        "width": 800,
-        "height": 600
+        "width": 1500,
+        "height": 800
       }
     ],
     "security": {

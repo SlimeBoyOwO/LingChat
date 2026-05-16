@@ -67,6 +67,11 @@ pub fn run() {
             api::game::select_character,
             api::game::reactivate_tts,
             api::chat::send_chat_message,
+            api::save::list_saves,
+            api::save::create_save,
+            api::save::load_save,
+            api::save::update_save,
+            api::save::delete_save,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

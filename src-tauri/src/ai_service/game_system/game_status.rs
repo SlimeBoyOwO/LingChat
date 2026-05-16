@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use anyhow::Result;
 use chrono::{DateTime, Local};
 use sea_orm::DatabaseConnection;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::ai_service::game_system::role_manager::GameRoleManager;
@@ -126,4 +127,66 @@ impl GameStatus {
     pub fn reactivate_all_voice_makers(&self) {
         self.role_manager.reactivate_all_voice_makers();
     }
+
+    // ============ 存档状态快照 ============
+
+    /// 将当前 GameStatus 中需要持久化的字段导出为可序列化的快照
+    pub fn to_snapshot(&self) -> GameStatusSnapshot {
+        GameStatusSnapshot {
+            present_role_ids: self.present_role_ids.iter().copied().collect(),
+            current_role_id: self.current_role_id,
+            background: self.background.clone(),
+            background_music: self.background_music.clone(),
+            background_effect: self.background_effect.clone(),
+            global_variables: self.global_variables.clone(),
+            completed_scripts: self.completed_scripts.iter().cloned().collect(),
+            last_dialog_time: self.last_dialog_time.map(|dt| dt.to_rfc3339()),
+        }
+    }
+
+    /// 从快照恢复场景状态
+    pub fn apply_snapshot(&mut self, snapshot: &GameStatusSnapshot) {
+        self.background = snapshot.background.clone();
+        self.background_music = snapshot.background_music.clone();
+        self.background_effect = snapshot.background_effect.clone();
+        self.global_variables = snapshot.global_variables.clone();
+        self.completed_scripts = snapshot.completed_scripts.iter().cloned().collect();
+        self.last_dialog_time = snapshot
+            .last_dialog_time
+            .as_ref()
+            .and_then(|s| {
+                chrono::DateTime::parse_from_rfc3339(s)
+                    .ok()
+                    .map(|dt| dt.with_timezone(&Local))
+            });
+        self.current_role_id = snapshot.current_role_id;
+        self.present_role_ids = snapshot.present_role_ids.iter().copied().collect();
+        self.onstage_role_ids = snapshot.present_role_ids.clone();
+    }
+}
+
+/// `GameStatus` 中需要持久化到 `save.status` JSON 的字段。
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct GameStatusSnapshot {
+    pub present_role_ids: Vec<i32>,
+    pub current_role_id: Option<i32>,
+    #[serde(default)]
+    pub background: String,
+    #[serde(default = "default_background_music")]
+    pub background_music: String,
+    #[serde(default = "default_background_effect")]
+    pub background_effect: String,
+    #[serde(default)]
+    pub global_variables: HashMap<String, Value>,
+    #[serde(default)]
+    pub completed_scripts: Vec<String>,
+    pub last_dialog_time: Option<String>,
+}
+
+fn default_background_music() -> String {
+    "none".into()
+}
+fn default_background_effect() -> String {
+    "none".into()
 }

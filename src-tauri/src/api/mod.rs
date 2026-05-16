@@ -4,6 +4,7 @@ pub mod character;
 pub mod chat;
 pub mod game;
 pub mod media;
+pub mod save;
 
 use std::path::PathBuf;
 

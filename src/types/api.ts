@@ -59,30 +59,10 @@ export interface CharacterSelectParams {
 }
 
 export interface SaveInfo {
-  id: string
+  id: number
   title: string
   update_date: string
   create_date: string
-}
-
-export interface SaveListParams {
-  user_id: string
-  page: number
-  page_size: number
-}
-
-export interface SaveModifyParams {
-  user_id: string
-  conversation_id: string
-}
-
-export interface SaveCreateParams {
-  user_id: string
-  title: string
-}
-
-export interface SaveContinueParams {
-  user_id: string
 }
 
 export interface MusicTrack {

@@ -166,7 +166,7 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
 }
 
 /// 从 AIService 快照构建 WebInitData（不持锁的函数）
-fn build_web_init_data(service: &crate::ai_service::service::AIService) -> Result<WebInitData, String> {
+pub(crate) fn build_web_init_data(service: &crate::ai_service::service::AIService) -> Result<WebInitData, String> {
     let settings = service
         .settings
         .as_ref()

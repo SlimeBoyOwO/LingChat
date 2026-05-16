@@ -81,7 +81,10 @@ import { useUIStore } from '../../stores/modules/ui/ui'
 import { useSettingsStore } from '../../stores/modules/settings'
 import ScriptModeOptions from './menu/ScriptModeOptions.vue'
 import { getScriptList, type ScriptSummary } from '@/api/services/script-info'
-import { saveContinue } from '@/api/services/save'
+import { invoke } from '@tauri-apps/api/core'
+import { useGameStore } from '../../stores/modules/game'
+import { applyWebInitData } from '../../stores/modules/game/actions'
+import type { WebInitData } from '@/api/services/game-info'
 import MeteorAnimation from '../game/standard/animations/MeteorAnimation.vue'
 import StarAnimation from '../game/standard/animations/StarAnimation.vue'
 import { useParallaxAnimation } from '../game/standard/animations/ParallaxAnimation'
@@ -127,10 +130,21 @@ function goToGithub() {
 
 const handleContinueGame = async () => {
   try {
-    await saveContinue({ user_id: '1' })
+    const { saves } = await invoke<{ saves: Array<{ id: number }>; total: number }>(
+      'list_saves',
+      { page: 1, pageSize: 1 },
+    )
+    if (!saves || saves.length === 0) {
+      uiStore.showWarning({ title: '提示', message: '没有存档记录，请先创建存档' })
+      return
+    }
+    const gameInfo = await invoke<WebInitData>('load_save', { saveId: saves[0].id })
+    const gameStore = useGameStore()
+    applyWebInitData(gameStore.$state, gameInfo)
     router.push('/chat')
   } catch (error) {
-    alert('继续游戏失败，未创建存档或系统问题')
+    console.error('继续游戏失败:', error)
+    uiStore.showError({ title: '继续失败', message: '未创建存档或系统问题' })
   }
 }
 
