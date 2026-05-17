@@ -126,6 +126,7 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { MenuPage, MenuItem } from '../../ui'
 import { Button } from '@/components/base'
 import AdventurePanel from './Adeventure/AdventurePanel.vue'
@@ -140,6 +141,7 @@ import type { ScriptSummary } from '@/api/services/script-info'
 
 const gameStore = useGameStore()
 const uiStore = useUIStore()
+const router = useRouter()
 
 // 独立剧本相关状态
 const standaloneScripts = ref<ScriptSummary[]>([])
@@ -169,8 +171,8 @@ const goToCharacterTab = () => {
 const startStandaloneScript = async (script: ScriptSummary) => {
   try {
     await startStandaloneScriptApi(script.script_name)
-    // 可选：关闭设置面板，开始剧本
     uiStore.showSettings = false
+    await router.push('/chat')
   } catch (error) {
     console.error('启动独立剧本失败:', error)
   }
