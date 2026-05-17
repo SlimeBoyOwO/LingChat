@@ -206,18 +206,27 @@ class MessageGenerator:
             try:
                 await asyncio.wait_for(sentence_queue.join(), timeout=cleanup_timeout)
             except asyncio.TimeoutError:
+                remaining = sentence_queue.qsize()
                 logger.warning(
-                    f"消费者处理超时（>{cleanup_timeout}s），跳过剩余队列，强制进入清理"
+                    f"消费者处理超时（>{cleanup_timeout}s），跳过 {remaining} 个未处理句子，强制进入清理"
                 )
                 from ling_chat.core.messaging.broker import message_broker
 
                 timeout_msg = {
                     "type": "error",
                     "error_code": "voice_timeout",
-                    "detail": f"语音合成超时（>{cleanup_timeout}s），已跳过剩余语音生成",
+                    "detail": f"语音合成超时（>{cleanup_timeout}s），已跳过 {remaining} 个语音生成",
                 }
                 for client_id in self.config.clients:
                     await message_broker.publish(client_id, timeout_msg)
+
+                # 清空队列并补偿 task_done 计数，确保后续 put(None) 不阻塞
+                while not sentence_queue.empty():
+                    try:
+                        sentence_queue.get_nowait()
+                        sentence_queue.task_done()
+                    except asyncio.QueueEmpty:
+                        break
 
             # 发布者任务在发送最终消息后应该已经完成
             # 我们在finally块中等待所有任务以进行清理
