@@ -171,6 +171,7 @@ const goToCharacterTab = () => {
 const startStandaloneScript = async (script: ScriptSummary) => {
   try {
     await startStandaloneScriptApi(script.script_name)
+    // 可选：关闭设置面板，开始剧本
     uiStore.showSettings = false
     await router.push('/chat')
   } catch (error) {
