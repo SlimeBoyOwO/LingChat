@@ -53,7 +53,7 @@
               <span v-if="script.intro_chapter" class="text-xs text-gray-400">
                 章节选择（待做）: {{ script.intro_chapter }}
               </span>
-              <Button type="select" size="sm" @click.stop="startStandaloneScript(script)">
+              <Button type="select" size="sm" @click="startStandaloneScript(script)">
                 开始游玩
               </Button>
             </div>
