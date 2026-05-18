@@ -25,6 +25,7 @@ pub struct AppState {
     pub db: DatabaseConnection,
     pub ai_service: SharedAIService,
     pub chat: ChatComponents,
+    pub script_channels: ai_service::game_system::script_engine::SharedScriptChannels,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -44,7 +45,10 @@ pub fn run() {
         .setup(|app| {
             let rt = tokio::runtime::Runtime::new()?;
             let (db, ai_service, chat) = rt.block_on(init::initialize(app))?;
-            app.manage(AppState { db, ai_service, chat });
+            let script_channels = std::sync::Arc::new(tokio::sync::Mutex::new(
+                ai_service::game_system::script_engine::ScriptChannels::new(),
+            ));
+            app.manage(AppState { db, ai_service, chat, script_channels });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -72,6 +76,10 @@ pub fn run() {
             api::save::load_save,
             api::save::update_save,
             api::save::delete_save,
+            api::script::list_scripts,
+            api::script::start_script,
+            api::script::script_submit_input,
+            api::script::script_submit_choice,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -317,26 +317,28 @@ function sendOrContinue() {
 function send() {
   const text = inputMessage.value
   if (!text.trim()) return
-  if (text.startsWith('/开始剧本')) {
-    // gameStore.initializeScript('TODO: 从剧本面板选择剧本')
-  } else {
-    gameStore.appendGameMessage({
-      type: 'message',
-      displayName: gameStore.userName,
-      content: text,
-    })
-  }
 
-  invoke('send_chat_message', { text }).catch((error) => {
-    console.error('发送消息失败:', error)
-    gameStore.currentStatus = 'input'
+  gameStore.appendGameMessage({
+    type: 'message',
+    displayName: gameStore.userName,
+    content: text,
   })
 
+  // In script mode, submit input to the script engine; otherwise use chat
   if (gameStore.runningScript) {
+    invoke('script_submit_input', { input: text }).catch((error) => {
+      console.error('发送脚本输入失败:', error)
+      gameStore.currentStatus = 'input'
+    })
     gameStore.runningScript.choices = []
     if (gameStore.runningScript.freeDialogueInfo.isFreeDialogue) {
       gameStore.runningScript.freeDialogueInfo.currentRound++
     }
+  } else {
+    invoke('send_chat_message', { text }).catch((error) => {
+      console.error('发送消息失败:', error)
+      gameStore.currentStatus = 'input'
+    })
   }
 
   inputMessage.value = ''

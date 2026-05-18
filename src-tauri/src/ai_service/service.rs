@@ -8,6 +8,7 @@ use tokio::sync::Mutex;
 use crate::ai_service::config::AIServiceConfig;
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::role_manager::GameRoleManager;
+use crate::ai_service::game_system::script_engine::ScriptManager;
 use crate::ai_service::prompt::{sys_prompt_builder, PromptOptions};
 use crate::ai_service::types::{
     CharacterSettings, GameLine, GameMemoryBank, LineBase, LineAttributeExt,
@@ -40,12 +41,19 @@ pub struct AIService {
     pub ai_prompt_example_old: Option<String>,
     pub clothes_name: Option<String>,
     pub settings: Option<CharacterSettings>,
+
+    /// Script/story mode engine: discovers and runs scripts.
+    pub script_manager: ScriptManager,
 }
 
 impl AIService {
     pub async fn new(db: DatabaseConnection, data_dir: PathBuf) -> Self {
+        // Initialize the event handler registry before any script is run
+        crate::ai_service::game_system::script_engine::init_event_registry();
+
         let role_manager = GameRoleManager::new(data_dir.clone());
         let game_status = GameStatus::new(role_manager);
+        let script_manager = ScriptManager::new(&data_dir);
         Self {
             db,
             data_dir,
@@ -62,6 +70,7 @@ impl AIService {
             ai_prompt_example_old: None,
             clothes_name: None,
             settings: None,
+            script_manager,
         }
     }
 

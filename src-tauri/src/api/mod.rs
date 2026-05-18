@@ -5,6 +5,7 @@ pub mod chat;
 pub mod game;
 pub mod media;
 pub mod save;
+pub mod script;
 
 use std::path::PathBuf;
 

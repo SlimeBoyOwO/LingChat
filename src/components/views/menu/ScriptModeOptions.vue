@@ -35,8 +35,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { type ScriptSummary } from '@/api/services/script-info'
-import { scriptHandler } from '@/api/websocket/handlers/script-handler'
+import { type ScriptSummary, startScript } from '@/api/services/script-info'
 import { useGameStore } from '@/stores/modules/game'
 
 const emit = defineEmits<{
@@ -65,10 +64,9 @@ interface MenuItem {
 const selectScript = async (script: ScriptSummary) => {
   await router.push('/chat')
 
-  const command = `/开始剧本 ${script.script_name}`
   gameStore.enterStoryMode(script.script_name)
 
-  scriptHandler.sendMessage(command)
+  await startScript(script.script_name)
 }
 
 const backToGameModeMenu = () => {

@@ -69,7 +69,7 @@ export interface ScriptBackgroundEffectEvent extends ScriptEvent {
 }
 
 export interface ScriptSoundEvent extends ScriptEvent {
-  type: 'background'
+  type: 'sound'
   soundPath: string
 }
 
@@ -91,7 +91,7 @@ export interface ScriptInputEvent extends ScriptEvent {
   hint: string
 }
 export interface ScriptChoiceEvent extends ScriptEvent {
-  type: 'input'
+  type: 'choice'
   choices: string[]
   allowFree: boolean
 }

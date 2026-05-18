@@ -136,7 +136,7 @@ import { getCharacterFilePath } from '@/api/services/character'
 import { Birdhouse, Book, FileText, UserPlus } from 'lucide-vue-next'
 import {
   getStandaloneScriptList,
-  startStandaloneScript as startStandaloneScriptApi,
+  startScript as startScriptApi,
 } from '@/api/services/script-info'
 import type { ScriptSummary } from '@/api/services/script-info'
 
@@ -181,7 +181,7 @@ const goToCharacterTab = () => {
 // 开始游玩独立剧本
 const startStandaloneScript = async (script: ScriptSummary) => {
   try {
-    await startStandaloneScriptApi(script.script_name)
+    await startScriptApi(script.script_name)
     // 可选：关闭设置面板，开始剧本
     uiStore.showSettings = false
   } catch (error) {

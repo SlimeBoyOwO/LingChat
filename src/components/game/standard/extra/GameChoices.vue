@@ -92,7 +92,7 @@
 import { computed } from 'vue'
 import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
-import { scriptHandler } from '@/api/websocket/handlers/script-handler'
+import { invoke } from '@tauri-apps/api/core'
 
 const gameStore = useGameStore()
 const uiStore = useUIStore()
@@ -111,7 +111,7 @@ function selectChoice(choice: string) {
     displayName: gameStore.userName,
     content: choice,
   })
-  scriptHandler.sendMessage(choice)
+  invoke('script_submit_choice', { choice })
 
   // 2. 清空选项，displayChoices 响应式更新为空，完美触发交错渐隐动画
   if (gameStore.runningScript) {

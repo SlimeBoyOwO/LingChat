@@ -2,10 +2,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 
 use crate::ai_service::types::CharacterSettings;
-use crate::db::entities::role::{self, Model as RoleModel, RoleType};
+use crate::db::entities::role::{self, ActiveModel as RoleActiveModel, Model as RoleModel, RoleType};
 
 pub struct RoleRepo;
 
@@ -34,6 +34,33 @@ impl RoleRepo {
             .filter(role::Column::ScriptKey.eq(script_key))
             .all(db)
             .await?)
+    }
+
+    /// Find an existing role by script keys, or create a new one.
+    pub async fn find_or_create_role(
+        db: &DatabaseConnection,
+        name: &str,
+        role_type: RoleType,
+        script_key: Option<&str>,
+        script_role_key: Option<&str>,
+    ) -> Result<i32> {
+        // Try to find existing
+        if let (Some(sk), Some(srk)) = (script_key, script_role_key) {
+            if let Some(existing) = Self::get_role_by_script_keys(db, sk, srk).await? {
+                return Ok(existing.id);
+            }
+        }
+
+        // Create new
+        let active = RoleActiveModel {
+            name: Set(name.to_string()),
+            role_type: Set(role_type),
+            script_key: Set(script_key.map(|s| s.to_string())),
+            script_role_key: Set(script_role_key.map(|s| s.to_string())),
+            ..Default::default()
+        };
+        let inserted = active.insert(db).await?;
+        Ok(inserted.id)
     }
 
     pub async fn get_all_main_roles(db: &DatabaseConnection) -> Result<Vec<RoleModel>> {
