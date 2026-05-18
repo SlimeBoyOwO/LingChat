@@ -86,6 +86,7 @@ declare module 'vue' {
     TodoPage: typeof import('./components/settings/pages/Schedule/TodoPage.vue')['default']
     Toggle: typeof import('./components/base/widget/Toggle.vue')['default']
     TouchAreas: typeof import('./components/game/standard/TouchAreas.vue')['default']
+    WheelHistory: typeof import('./components/game/standard/extra/WheelHistory.vue')['default']
   }
 }
 
@@ -165,4 +166,5 @@ declare global {
   const TodoPage: typeof import('./components/settings/pages/Schedule/TodoPage.vue')['default']
   const Toggle: typeof import('./components/base/widget/Toggle.vue')['default']
   const TouchAreas: typeof import('./components/game/standard/TouchAreas.vue')['default']
+  const WheelHistory: typeof import('./components/game/standard/extra/WheelHistory.vue')['default']
 }
