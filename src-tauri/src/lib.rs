@@ -26,6 +26,8 @@ pub struct AppState {
     pub ai_service: SharedAIService,
     pub chat: ChatComponents,
     pub script_channels: ai_service::game_system::script_engine::SharedScriptChannels,
+    pub generation_lock: Arc<tokio::sync::Mutex<()>>,
+    pub proactive_system: Option<Arc<tokio::sync::Mutex<ai_service::proactive_system::ProactiveSystem>>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -50,7 +52,38 @@ pub fn run() {
             let script_channels = std::sync::Arc::new(tokio::sync::Mutex::new(
                 ai_service::game_system::script_engine::ScriptChannels::new(),
             ));
-            app.manage(AppState { db, ai_service, chat, script_channels });
+
+            let generation_lock = std::sync::Arc::new(tokio::sync::Mutex::new(()));
+            
+            // Create proactive system
+            let proactive = std::sync::Arc::new(tokio::sync::Mutex::new(
+                ai_service::proactive_system::ProactiveSystem::new(
+                    app.handle().clone(),
+                    db.clone(),
+                    ai_service.clone(),
+                    ChatComponents {
+                        llm: chat.llm.clone(),
+                        processor: chat.processor.clone(),
+                        translator: chat.translator.clone(),
+                    },
+                    generation_lock.clone(),
+                )
+            ));
+
+            // Start proactive system loop
+            let proactive_clone = proactive.clone();
+            rt.spawn(async move {
+                ai_service::proactive_system::ProactiveSystem::start(proactive_clone).await;
+            });
+
+            app.manage(AppState {
+                db,
+                ai_service,
+                chat,
+                script_channels,
+                generation_lock,
+                proactive_system: Some(proactive),
+            });
 
             // Spawn Windows mouse polling click-through loop
             let window = app.get_webview_window("main").ok_or_else(|| {
@@ -162,6 +195,9 @@ pub fn run() {
             api::script::script_submit_choice,
             api::pet::update_solid_regions,
             api::pet::set_pet_mode,
+            api::schedule::get_schedules,
+            api::schedule::save_schedules,
+            api::schedule::reload_proactive_system,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

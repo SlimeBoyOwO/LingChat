@@ -34,9 +34,20 @@ pub async fn send_chat_message(app: AppHandle, text: String) -> Result<(), Strin
         concurrency,
     };
 
+    // Notify proactive system of user input
+    if let Some(proactive) = &state.proactive_system {
+        let proactive_clone = proactive.clone();
+        tokio::spawn(async move {
+            let mut sys = proactive_clone.lock().await;
+            sys.on_user_message_received().await;
+        });
+    }
+
     let generator = MessageGenerator::new(deps);
+    let gen_lock = state.generation_lock.clone();
 
     tokio::spawn(async move {
+        let _lock = gen_lock.lock().await;
         match generator.process_message(Some(text)).await {
             Ok(acc) => log::info!("消息生成完成，长度: {}", acc.len()),
             Err(e) => log::error!("消息生成失败: {:#}", e),

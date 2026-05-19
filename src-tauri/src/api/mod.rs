@@ -7,6 +7,7 @@ pub mod media;
 pub mod save;
 pub mod script;
 pub mod pet;
+pub mod schedule;
 
 use std::path::PathBuf;
 

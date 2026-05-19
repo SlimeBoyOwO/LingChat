@@ -8,3 +8,4 @@ pub mod service;
 pub mod translator;
 pub mod tts;
 pub mod types;
+pub mod proactive_system;

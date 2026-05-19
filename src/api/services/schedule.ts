@@ -1,4 +1,4 @@
-import http from '../http'
+import { invoke } from '@tauri-apps/api/core'
 
 export interface ScheduleData {
   scheduleGroups?: Record<string, any>
@@ -8,7 +8,7 @@ export interface ScheduleData {
 
 export const getSchedules = async (): Promise<ScheduleData> => {
   try {
-    const data = await http.get('/v1/chat/schedule/get_schedules')
+    const data = await invoke<ScheduleData>('get_schedules')
     return data
   } catch (error: any) {
     console.error('获取日程信息错误:', error.message)
@@ -18,7 +18,7 @@ export const getSchedules = async (): Promise<ScheduleData> => {
 
 export const saveSchedules = async (data: ScheduleData): Promise<void> => {
   try {
-    await http.post('/v1/chat/schedule/save_schedules', data)
+    await invoke('save_schedules', { data })
   } catch (error: any) {
     console.error('保存日程信息错误:', error.message)
     throw error
@@ -27,7 +27,7 @@ export const saveSchedules = async (data: ScheduleData): Promise<void> => {
 
 export const reloadProactiveSystem = async (): Promise<void> => {
   try {
-    await http.post('/v1/chat/schedule/reload_proactive')
+    await invoke('reload_proactive_system')
   } catch (error: any) {
     console.error('重载主动系统错误:', error.message)
     throw error

@@ -9,6 +9,8 @@ use tauri_plugin_store::{Store, StoreExt};
 
 pub const STORE_FILE: &str = "settings.json";
 
+pub mod proactive;
+
 // ========== 字段键（对标 Python .env） ==========
 pub mod keys {
     // LLM 连接（对应 LLM_PROVIDER / MODEL_TYPE / CHAT_API_KEY / CHAT_BASE_URL）
@@ -517,6 +519,121 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
         );
 
         tree.insert("TTS 配置".to_string(), Category { subcategories: tts_subs });
+    }
+
+    // ===== 主动对话配置 =====
+    {
+        let mut proactive_subs = BTreeMap::new();
+
+        // 核心开关
+        proactive_subs.insert(
+            "基础开关".to_string(),
+            Subcategory {
+                description: "主动对话功能的核心开关与触发频率设置".to_string(),
+                settings: vec![
+                    ConfigSetting {
+                        key: proactive::keys::ENABLE_PROACTIVE_SYSTEM.to_string(),
+                        value: read_setting(app, proactive::keys::ENABLE_PROACTIVE_SYSTEM, "false"),
+                        description: "ENABLE_PROACTIVE_SYSTEM — 是否启用主动对话系统".to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
+                        key: proactive::keys::MAX_PROACTIVE_TIMES.to_string(),
+                        value: read_setting(app, proactive::keys::MAX_PROACTIVE_TIMES, "3"),
+                        description: "MAX_PROACTIVE_TIMES — 每日主动出击上限次数".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                ],
+            },
+        );
+
+        // 视觉与模型配置
+        proactive_subs.insert(
+            "视觉与模型配置".to_string(),
+            Subcategory {
+                description: "主动对话时调用的 Vision LLM 视觉分析模型以及截图分析设置".to_string(),
+                settings: vec![
+                    ConfigSetting {
+                        key: proactive::keys::VD_API_KEY.to_string(),
+                        value: read_setting(app, proactive::keys::VD_API_KEY, ""),
+                        description: "VD_API_KEY — 视觉模型 API Key".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: proactive::keys::VD_BASE_URL.to_string(),
+                        value: read_setting(app, proactive::keys::VD_BASE_URL, "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+                        description: "VD_BASE_URL — 视觉模型 API Base URL".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: proactive::keys::VD_MODEL.to_string(),
+                        value: read_setting(app, proactive::keys::VD_MODEL, "qwen3.5-plus"),
+                        description: "VD_MODEL — 视觉模型型号".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: proactive::keys::ENABLE_VISUAL_PRECEPTION.to_string(),
+                        value: read_setting(app, proactive::keys::ENABLE_VISUAL_PRECEPTION, "true"),
+                        description: "ENABLE_VISUAL_PRECEPTION — 是否允许主动视觉感知桌面画面（偷看屏幕）".to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
+                        key: proactive::keys::SCREEN_WEIGHT.to_string(),
+                        value: read_setting(app, proactive::keys::SCREEN_WEIGHT, "30.0"),
+                        description: "SCREEN_WEIGHT — 视觉模式触发权重（越大越容易偷看屏幕聊天，默认 30）".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                ],
+            },
+        );
+
+        // 感知与话题配置
+        proactive_subs.insert(
+            "感知与话题配置".to_string(),
+            Subcategory {
+                description: "日程、TODO与随机对话的权重及开关配置".to_string(),
+                settings: vec![
+                    ConfigSetting {
+                        key: proactive::keys::ENABLE_TOPIC_CREATER.to_string(),
+                        value: read_setting(app, proactive::keys::ENABLE_TOPIC_CREATER, "true"),
+                        description: "ENABLE_TOPIC_CREATER — 允许自主寻找并开启新话题".to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
+                        key: proactive::keys::TOPIC_WEIGHT.to_string(),
+                        value: read_setting(app, proactive::keys::TOPIC_WEIGHT, "30.0"),
+                        description: "TOPIC_WEIGHT — 随机话题触发权重（默认 30）".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: proactive::keys::ENABLE_TODO_PRECEPTION.to_string(),
+                        value: read_setting(app, proactive::keys::ENABLE_TODO_PRECEPTION, "true"),
+                        description: "ENABLE_TODO_PRECEPTION — 允许在闲暇时自动读取未完成 TODO 并温和提醒".to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
+                        key: proactive::keys::TODO_WEIGHT.to_string(),
+                        value: read_setting(app, proactive::keys::TODO_WEIGHT, "40.0"),
+                        description: "TODO_WEIGHT — TODO 提醒触发权重（默认 40）".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: proactive::keys::ENABLE_SCHEDULE_REMINDER.to_string(),
+                        value: read_setting(app, proactive::keys::ENABLE_SCHEDULE_REMINDER, "true"),
+                        description: "ENABLE_SCHEDULE_REMINDER — 启用强日程日程报时弹窗提醒".to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
+                        key: proactive::keys::ENABLE_IMPORTANT_DAY_REMINDER.to_string(),
+                        value: read_setting(app, proactive::keys::ENABLE_IMPORTANT_DAY_REMINDER, "true"),
+                        description: "ENABLE_IMPORTANT_DAY_REMINDER — 启用重要节日与特殊日子暖心提醒".to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                ],
+            },
+        );
+
+        tree.insert("主动对话配置".to_string(), Category { subcategories: proactive_subs });
     }
 
     // ===== 其他设置 =====
