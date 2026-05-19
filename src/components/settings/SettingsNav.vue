@@ -21,6 +21,10 @@
         :class="{ active: uiStore.currentSettingsTab === 'background' }">
         <p class="hidden xl:block">背景</p>
       </Button>
+      <Button ref="petBtn" type="nav" icon="character" @click="() => switchTab('pet', 'petBtn')"
+        :class="{ active: uiStore.currentSettingsTab === 'pet' }">
+        <p class="hidden xl:block">桌宠</p>
+      </Button>
       <Button ref="soundBtn" type="nav" icon="sound" @click="() => switchTab('sound', 'soundBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'sound' }">
         <p class="hidden xl:block">声音</p>
@@ -76,6 +80,7 @@ type ButtonRef = InstanceType<typeof Button>
 const characterBtn = ref<ButtonRef | null>(null)
 const textBtn = ref<ButtonRef | null>(null)
 const backgroundBtn = ref<ButtonRef | null>(null)
+const petBtn = ref<ButtonRef | null>(null)
 const soundBtn = ref<ButtonRef | null>(null)
 const historyBtn = ref<ButtonRef | null>(null)
 const achievementBtn = ref<ButtonRef | null>(null)
@@ -93,6 +98,7 @@ const handleIndicatorMove = (currentRefName: string) => {
     characterBtn,
     textBtn,
     backgroundBtn,
+    petBtn,
     soundBtn,
     historyBtn,
     achievementBtn,
@@ -168,6 +174,9 @@ const initIndicator = () => {
       break
     case 'background':
       activeButton = backgroundBtn.value
+      break
+    case 'pet':
+      activeButton = petBtn.value
       break
     case 'sound':
       activeButton = soundBtn.value

@@ -14,7 +14,9 @@
       {
         "title": "ling-chat",
         "width": 1500,
-        "height": 800
+        "height": 800,
+        "transparent": true,
+        "shadow": false
       }
     ],
     "security": {

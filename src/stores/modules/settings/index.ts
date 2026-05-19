@@ -35,6 +35,10 @@ export const DEFAULT_SETTINGS = {
   character: {
     folder: '诺一钦灵', // 当前角色文件夹
   },
+  // 桌宠设置
+  pet: {
+    scale: 1, // 桌宠缩放比例
+  },
 }
 
 // 设置状态类型
@@ -64,11 +68,16 @@ export interface CharacterSettings {
   folder: string
 }
 
+export interface PetSettings {
+  scale: number
+}
+
 export interface SettingsState {
   text: TextSettings
   audio: AudioSettings
   display: DisplaySettings
   character: CharacterSettings
+  pet: PetSettings
 }
 
 export const useSettingsStore = defineStore('settings', {
@@ -77,6 +86,7 @@ export const useSettingsStore = defineStore('settings', {
     audio: { ...DEFAULT_SETTINGS.audio },
     display: { ...DEFAULT_SETTINGS.display },
     character: { ...DEFAULT_SETTINGS.character },
+    pet: { ...DEFAULT_SETTINGS.pet },
   }),
 
   getters: {
@@ -186,6 +196,7 @@ export const useSettingsStore = defineStore('settings', {
         if (data.audio) this.audio = { ...DEFAULT_SETTINGS.audio, ...data.audio }
         if (data.display) this.display = { ...DEFAULT_SETTINGS.display, ...data.display }
         if (data.character) this.character = { ...DEFAULT_SETTINGS.character, ...data.character }
+        if (data.pet) this.pet = { ...DEFAULT_SETTINGS.pet, ...data.pet }
         return true
       } catch (e) {
         console.error('导入设置失败:', e)
@@ -256,6 +267,14 @@ export const useSettingsStore = defineStore('settings', {
     // 设置角色文件夹
     setCharacterFolder(folder: string) {
       this.character.folder = folder
+    },
+
+    // 设置桌宠缩放比例
+    setPetScale(scale: number) {
+      if (!this.pet) {
+        this.pet = { scale: 1.0 }
+      }
+      this.pet.scale = scale
     },
   },
 

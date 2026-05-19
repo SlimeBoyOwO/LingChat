@@ -6,6 +6,7 @@ pub mod game;
 pub mod media;
 pub mod save;
 pub mod script;
+pub mod pet;
 
 use std::path::PathBuf;
 

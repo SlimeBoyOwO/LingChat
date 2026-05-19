@@ -16,6 +16,7 @@
       <SettingsAchievement v-show="uiStore.currentSettingsTab === 'achievement'" />
       <SettingsCharacter v-show="uiStore.currentSettingsTab === 'character'" />
       <SettingsBackground v-show="uiStore.currentSettingsTab === 'background'" />
+      <SettingsPet v-show="uiStore.currentSettingsTab === 'pet'" />
     </div>
   </div>
 </template>
@@ -31,6 +32,7 @@ import {
   SettingsBackground,
   SettingsAchievement,
   SettingsAdventure,
+  SettingsPet,
 } from './pages'
 import SettingsNav from './SettingsNav.vue'
 import { useUIStore } from '../../stores/modules/ui/ui'

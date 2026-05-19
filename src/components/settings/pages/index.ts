@@ -8,3 +8,5 @@ export { default as SettingsCharacter } from "./SettingsCharacter.vue";
 export { default as SettingsBackground } from "./SettingsBackground.vue";
 export { default as SettingsAchievement } from "./SettingsAchievement.vue";
 export { default as SettingsAdventure } from "./SettingsAdventure.vue";
+export { default as SettingsPet } from "./SettingsPet.vue";
+

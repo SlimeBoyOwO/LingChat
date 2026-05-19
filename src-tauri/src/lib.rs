@@ -43,12 +43,92 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            app.manage(api::pet::HitTestState::default());
+
             let rt = tokio::runtime::Runtime::new()?;
             let (db, ai_service, chat) = rt.block_on(init::initialize(app))?;
             let script_channels = std::sync::Arc::new(tokio::sync::Mutex::new(
                 ai_service::game_system::script_engine::ScriptChannels::new(),
             ));
             app.manage(AppState { db, ai_service, chat, script_channels });
+
+            // Spawn Windows mouse polling click-through loop
+            let window = app.get_webview_window("main").ok_or_else(|| {
+                tauri::Error::AssetNotFound("main window not found".to_string())
+            })?;
+            
+            let hit_test_state = app.state::<api::pet::HitTestState>();
+            let rects_arc = hit_test_state.solid_rects.clone();
+            let enabled_arc = hit_test_state.enabled.clone();
+
+            #[cfg(target_os = "windows")]
+            {
+                tauri::async_runtime::spawn(async move {
+                    let mut was_ignored = false;
+                    loop {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+
+                        let enabled = if let Ok(locked) = enabled_arc.lock() {
+                            *locked
+                        } else {
+                            false
+                        };
+
+                        if !enabled {
+                            if was_ignored {
+                                let _ = window.set_ignore_cursor_events(false);
+                                was_ignored = false;
+                            }
+                            continue;
+                        }
+
+                        use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+                        use windows::Win32::Foundation::POINT;
+
+                        let mut pt = POINT { x: 0, y: 0 };
+                        unsafe {
+                            let _ = GetCursorPos(&mut pt);
+                        }
+
+                        if let Ok(window_pos) = window.outer_position() {
+                            if let Ok(scale_factor) = window.scale_factor() {
+                                let mouse_x = f64::from(pt.x) - f64::from(window_pos.x);
+                                let mouse_y = f64::from(pt.y) - f64::from(window_pos.y);
+
+                                let logical_x = mouse_x / scale_factor;
+                                let logical_y = mouse_y / scale_factor;
+
+                                let mut is_over_solid = false;
+                                if let Ok(rects) = rects_arc.lock() {
+                                    for r in rects.iter() {
+                                        if logical_x >= r.x
+                                            && logical_y >= r.y
+                                            && logical_x <= (r.x + r.width)
+                                            && logical_y <= (r.y + r.height)
+                                        {
+                                            is_over_solid = true;
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                if is_over_solid {
+                                    if was_ignored {
+                                        let _ = window.set_ignore_cursor_events(false);
+                                        was_ignored = false;
+                                    }
+                                } else {
+                                    if !was_ignored {
+                                        let _ = window.set_ignore_cursor_events(true);
+                                        was_ignored = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -80,6 +160,8 @@ pub fn run() {
             api::script::start_script,
             api::script::script_submit_input,
             api::script::script_submit_choice,
+            api::pet::update_solid_regions,
+            api::pet::set_pet_mode,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -26,6 +26,14 @@
       >
         <h3>自动</h3>
       </Button>
+      <Button
+        type="nav"
+        icon="character"
+        @click="goToPetMode"
+        v-show="uiStore.showSettings !== true"
+      >
+        <h3>桌宠</h3>
+      </Button>
       <Button type="nav" icon="text" @click="openSettings" v-show="uiStore.showSettings !== true">
         <h3>菜单</h3>
       </Button>
@@ -36,6 +44,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref, watch, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import FreeModeTools from '@/components/tools/FreeModeTools.vue'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { useGameStore } from '../../stores/modules/game'
@@ -45,8 +54,13 @@ import { Button } from '../base'
 
 import GameExtraUI from '../game/standard/GameExtraUI.vue'
 
+const router = useRouter()
 const uiStore = useUIStore()
 const gameStore = useGameStore()
+
+const goToPetMode = () => {
+  router.push('/pet')
+}
 
 const gameDialogRef = ref<InstanceType<typeof GameDialog> | null>(null)
 

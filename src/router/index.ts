@@ -6,6 +6,8 @@ import { createRouter, createWebHistory } from 'vue-router'
 const Credits = () => import('../components/views/Credits.vue')
 const ComapionMode = () => import('../components/views/CompanionMode.vue')
 const MainMenu = () => import('../components/views/MainMenu.vue')
+const PetMode = () => import('../components/views/PetMode.vue')
+const Second = () => import('../components/views/Second.vue')
 
 // 1. 定义路由表
 const routes = [
@@ -23,6 +25,16 @@ const routes = [
     path: '/credit',
     name: 'Credits',
     component: Credits,
+  },
+  {
+    path: '/pet',
+    name: 'PetMode',
+    component: PetMode,
+  },
+  {
+    path: '/second',
+    name: 'Second',
+    component: Second,
   },
 ]
 
