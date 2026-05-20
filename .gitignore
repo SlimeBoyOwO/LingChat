@@ -8,6 +8,8 @@ Thumbs.db
 # 忽略日志文件
 *.log
 logs/
+# 本地启动脚本（开发者自用）
+run_backend.py
 # 忽略配置文件和敏感信息
 .env
 .env.*

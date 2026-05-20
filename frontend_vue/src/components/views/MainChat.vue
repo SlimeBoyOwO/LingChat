@@ -31,6 +31,7 @@
       </Button>
     </div>
     <GameExtraUI />
+    <WheelHistory ref="wheelHistoryRef" />
   </div>
 </template>
 
@@ -45,12 +46,14 @@ import { GameDialog } from '../game/standard'
 import { Button } from '../base'
 
 import GameExtraUI from '../game/standard/GameExtraUI.vue'
+import WheelHistory from '../game/standard/extra/WheelHistory.vue'
 
 const uiStore = useUIStore()
 const gameStore = useGameStore()
 const userStore = useUserStore()
 
 const gameDialogRef = ref<InstanceType<typeof GameDialog> | null>(null)
+const wheelHistoryRef = ref<InstanceType<typeof WheelHistory> | null>(null)
 
 const openSettings = () => {
   uiStore.toggleSettings(true)
