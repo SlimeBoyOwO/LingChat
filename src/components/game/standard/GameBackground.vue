@@ -49,7 +49,7 @@
 
   <!-- 全新解耦出来的双轨交叉音乐淡入淡出组件 -->
   <AudioAcrossFade
-    :src="uiStore.currentBackgroundMusic"
+    :src="backgroundMusicSrc"
     :volume="uiStore.backgroundVolume"
     :paused="uiStore.bgMusicPaused"
     :stopped="uiStore.bgMusicStoped"
@@ -75,10 +75,20 @@ const uiStore = useUIStore()
 
 const backgroundSrc = computed(() => {
   const bg = uiStore.currentBackground
-  if (!bg || bg.startsWith('http://') || bg.startsWith('https://') || bg.startsWith('@/') || bg.startsWith('data:')) {
+  if (
+    !bg ||
+    bg.startsWith('http://') ||
+    bg.startsWith('https://') ||
+    bg.startsWith('@/') ||
+    bg.startsWith('data:')
+  ) {
     return bg || '@/assets/images/default_bg.jpg'
   }
   return convertFileSrc(bg)
+})
+
+const backgroundMusicSrc = computed(() => {
+  return convertFileSrc(uiStore.currentBackgroundMusic)
 })
 
 // 背景效果 z-index 应该比其他组件高，否则会被覆盖

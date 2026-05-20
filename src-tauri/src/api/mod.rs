@@ -4,10 +4,11 @@ pub mod character;
 pub mod chat;
 pub mod game;
 pub mod media;
-pub mod save;
-pub mod script;
+pub mod music;
 pub mod pet;
+pub mod save;
 pub mod schedule;
+pub mod script;
 
 use std::path::PathBuf;
 
@@ -29,6 +30,10 @@ pub(crate) fn characters_dir() -> PathBuf {
 
 pub(crate) fn backgrounds_dir() -> PathBuf {
     game_data_dir().join("backgrounds")
+}
+
+pub(crate) fn music_dir() -> PathBuf {
+    game_data_dir().join("musics")
 }
 
 pub(crate) fn voice_dir() -> PathBuf {

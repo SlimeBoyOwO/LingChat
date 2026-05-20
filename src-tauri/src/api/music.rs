@@ -2,14 +2,14 @@ use std::fs;
 
 use serde::{Deserialize, Serialize};
 
-use super::{backgrounds_dir, validate_path_in_base};
+use super::{music_dir, validate_path_in_base};
 
 // ========== 响应类型 ==========
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub struct BackgroundItemInfo {
-    pub title: String,
+pub struct MusicItemInfo {
+    pub name: String,
     pub url: String,
     pub time: String,
 }
@@ -17,18 +17,18 @@ pub struct BackgroundItemInfo {
 // ========== Tauri 命令 ==========
 
 #[tauri::command]
-pub fn get_background_list() -> Result<Vec<BackgroundItemInfo>, String> {
-    let bg_dir = backgrounds_dir();
+pub fn get_music_list() -> Result<Vec<MusicItemInfo>, String> {
+    let music_dir = music_dir();
 
-    if !bg_dir.exists() {
+    if !music_dir.exists() {
         return Ok(Vec::new());
     }
 
-    let allowed_extensions = ["png", "jpg", "jpeg", "webp", "bmp", "svg", "tif", "gif"];
+    let allowed_extensions = ["mp3", "wav", "flac", "webm", "weba", "ogg", "m4a", "oga"];
 
-    let mut items: Vec<BackgroundItemInfo> = Vec::new();
+    let mut items: Vec<MusicItemInfo> = Vec::new();
 
-    let entries = fs::read_dir(&bg_dir).map_err(|e| format!("读取背景目录失败: {}", e))?;
+    let entries = fs::read_dir(&music_dir).map_err(|e| format!("读取音乐目录失败: {}", e))?;
 
     for entry in entries.flatten() {
         let path = entry.path();
@@ -43,7 +43,7 @@ pub fn get_background_list() -> Result<Vec<BackgroundItemInfo>, String> {
             continue;
         }
 
-        let title = path
+        let name = path
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_default();
@@ -61,7 +61,7 @@ pub fn get_background_list() -> Result<Vec<BackgroundItemInfo>, String> {
 
         let url = path.to_string_lossy().into_owned();
 
-        items.push(BackgroundItemInfo { title, url, time });
+        items.push(MusicItemInfo { name, url, time });
     }
 
     items.sort_by(|a, b| {
@@ -76,14 +76,14 @@ pub fn get_background_list() -> Result<Vec<BackgroundItemInfo>, String> {
 }
 
 #[tauri::command]
-pub fn get_background_file(filename: String) -> Result<String, String> {
-    let base = backgrounds_dir();
+pub fn get_music_file(filename: String) -> Result<String, String> {
+    let base = music_dir();
     let resolved = base.join(&filename);
 
     validate_path_in_base(&resolved, &base)?;
 
     if !resolved.exists() {
-        return Err(format!("背景文件不存在: {}", filename));
+        return Err(format!("音乐文件不存在: {}", filename));
     }
 
     let canon = resolved

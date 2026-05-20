@@ -27,7 +27,8 @@ pub struct AppState {
     pub chat: ChatComponents,
     pub script_channels: ai_service::game_system::script_engine::SharedScriptChannels,
     pub generation_lock: Arc<tokio::sync::Mutex<()>>,
-    pub proactive_system: Option<Arc<tokio::sync::Mutex<ai_service::proactive_system::ProactiveSystem>>>,
+    pub proactive_system:
+        Option<Arc<tokio::sync::Mutex<ai_service::proactive_system::ProactiveSystem>>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -54,7 +55,7 @@ pub fn run() {
             ));
 
             let generation_lock = std::sync::Arc::new(tokio::sync::Mutex::new(()));
-            
+
             // Create proactive system
             let proactive = std::sync::Arc::new(tokio::sync::Mutex::new(
                 ai_service::proactive_system::ProactiveSystem::new(
@@ -67,7 +68,7 @@ pub fn run() {
                         translator: chat.translator.clone(),
                     },
                     generation_lock.clone(),
-                )
+                ),
             ));
 
             // Start proactive system loop
@@ -86,10 +87,10 @@ pub fn run() {
             });
 
             // Spawn Windows mouse polling click-through loop
-            let window = app.get_webview_window("main").ok_or_else(|| {
-                tauri::Error::AssetNotFound("main window not found".to_string())
-            })?;
-            
+            let window = app
+                .get_webview_window("main")
+                .ok_or_else(|| tauri::Error::AssetNotFound("main window not found".to_string()))?;
+
             let hit_test_state = app.state::<api::pet::HitTestState>();
             let rects_arc = hit_test_state.solid_rects.clone();
             let enabled_arc = hit_test_state.enabled.clone();
@@ -115,8 +116,8 @@ pub fn run() {
                             continue;
                         }
 
-                        use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
                         use windows::Win32::Foundation::POINT;
+                        use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
                         let mut pt = POINT { x: 0, y: 0 };
                         unsafe {
@@ -176,7 +177,8 @@ pub fn run() {
             api::character::get_avatar_file,
             api::background::get_background_list,
             api::background::get_background_file,
-            api::background::get_script_background_file,
+            api::music::get_music_list,
+            api::music::get_music_file,
             api::media::get_script_media_file,
             api::asset::get_asset_base64,
             api::asset::get_voice_audio,

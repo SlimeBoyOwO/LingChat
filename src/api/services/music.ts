@@ -1,12 +1,14 @@
+import { invoke } from '@tauri-apps/api/core'
 import http from '../http'
 import type { MusicTrack } from '../../types'
 
 export const musicGetAll = async (): Promise<MusicTrack[]> => {
   try {
-    const data = await http.get('/v1/chat/back-music/list')
-    return data
+    const data = await invoke('get_music_list')
+    return data as MusicTrack[]
   } catch (error: any) {
-    throw new Error(error.response?.data?.message || 'Failed to load music list')
+    console.error('Failed to get music list:', typeof error === 'string' ? error : error.message)
+    throw error
   }
 }
 

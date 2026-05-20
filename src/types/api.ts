@@ -68,4 +68,5 @@ export interface SaveInfo {
 export interface MusicTrack {
   name: string
   url: string
+  time: string
 }

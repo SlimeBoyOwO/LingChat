@@ -255,7 +255,7 @@ const handleTrackEnd = () => {
   if (musicList.value.length === 0) return
 
   const currentUrl = uiStore.currentBackgroundMusic
-  const currentIndex = musicList.value.findIndex((m) => toMusicUrl(m.url) === currentUrl)
+  const currentIndex = musicList.value.findIndex((m) => m.url === currentUrl)
 
   let nextMusic: MusicItem | undefined = undefined
 
@@ -277,9 +277,6 @@ const handleTrackEnd = () => {
   }
 }
 
-const toMusicUrl = (musicFileName: string): string =>
-  `/api/v1/chat/back-music/music_file/${encodeURIComponent(musicFileName)}`
-
 const inferMusicNameFromUrl = (musicUrl: string): string => {
   if (!musicUrl || musicUrl === 'None') return '未选择音乐'
   const fileName = decodeURIComponent(musicUrl.split('/').pop() || '')
@@ -293,7 +290,7 @@ const syncCurrentMusicName = () => {
     currentMusicName.value = '未选择音乐'
     return
   }
-  const matched = musicList.value.find((item) => toMusicUrl(item.url) === currentUrl)
+  const matched = musicList.value.find((item) => item.url === currentUrl)
   currentMusicName.value = matched?.name || inferMusicNameFromUrl(currentUrl)
 }
 
@@ -384,7 +381,7 @@ const deleteMusic = async (music: MusicItem) => {
 
   try {
     await musicDelete(music.url)
-    const deletedMusicUrl = toMusicUrl(music.url)
+    const deletedMusicUrl = music.url
 
     if (uiStore.currentBackgroundMusic === deletedMusicUrl) {
       uiStore.currentBackgroundMusic = 'None'
@@ -441,7 +438,7 @@ const uploadMusic = async () => {
 const playPauseButtonText = computed(() => (!uiStore.bgMusicPaused ? '暂停' : '播放'))
 
 const playMusic = async (music: MusicItem) => {
-  let musicUrl = toMusicUrl(music.url)
+  let musicUrl = music.url
   currentMusicName.value = music.name
 
   // 单曲循环的逻辑要更特殊一点
@@ -458,8 +455,7 @@ const playMusic = async (music: MusicItem) => {
   uiStore.bgMusicStoped = false
 
   try {
-    await setCurrentBackgroundMusic(musicUrl)
-    uiStore.bgMusicPaused = false
+    // await setCurrentBackgroundMusic(musicUrl)
   } catch (error) {
     console.error('保存背景音乐失败:', error)
   }

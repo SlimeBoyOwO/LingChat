@@ -7,7 +7,10 @@ export const getBackgroundImages = async (): Promise<BackgroundImageInfo[]> => {
     const data = await invoke('get_background_list')
     return data as BackgroundImageInfo[]
   } catch (error: any) {
-    console.error('Failed to get background list:', typeof error === 'string' ? error : error.message)
+    console.error(
+      'Failed to get background list:',
+      typeof error === 'string' ? error : error.message,
+    )
     throw error
   }
 }
@@ -43,9 +46,4 @@ export const generateBackgroundImage = async (prompt: string, clientId: string):
 
 export const openBackgroundsFolder = async (): Promise<void> => {
   await http.post('/v1/chat/background/open_folder')
-}
-
-/** 获取背景文件的绝对路径（供 convertFileSrc 使用） */
-export const getBackgroundFilePath = async (filename: string): Promise<string> => {
-  return invoke('get_background_file', { filename })
 }
