@@ -4,27 +4,48 @@
       <template #header>
         <Image :size="20" />
       </template>
-      <div class="background-container">
-        <div class="background-list character-grid">
+      <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 pb-5 w-full">
+        <div
+          v-for="(background, index) in backgroundList"
+          :key="index"
+          :class="[
+            'relative flex flex-col rounded-xl overflow-hidden bg-white/10 backdrop-blur-[20px] backdrop-saturate-180 border border-white/12.5 shadow-[0_8px_32px_rgba(0,0,0,0.1),inset_0_1px_1px_rgba(255,255,255,0.1)] transition-all duration-300 hover:bg-white/15 hover:backdrop-blur-[25px] hover:backdrop-saturate-200 hover:-translate-y-1 hover:scale-[1.01] hover:shadow-[0_12px_40px_rgba(0,0,0,0.15),inset_0_2px_2px_rgba(255,255,255,0.15)]',
+            isSelected(background.url)
+              ? 'border-2 border-[#3bc7f6d8] shadow-[0_0_0_2px_rgba(255,255,255,0.3)]'
+              : '',
+          ]"
+        >
+          <!-- 图片容器 -->
           <div
-            v-for="(background, index) in backgroundList"
-            :key="index"
-            :class="['background-card', { selected: isSelected(background.url) }]"
+            class="flex-1 relative overflow-hidden after:absolute after:inset-0 after:bg-linear-to-b after:from-transparent after:to-black/30 after:pointer-events-none"
           >
-            <div class="background-image-container">
-              <img :src="getBackgroundDisplayUrl(background.url)" :alt="background.title" class="background-image" />
-            </div>
-            <div class="background-title" :data-title="background.title">
-              <Button
-                :class="['background-select-btn', { selected: isSelected(background.url) }]"
-                @click="selectBackground(background.url)"
-              >
-                {{ isSelected(background.url) ? '已选中' : '选择' }}
-              </Button>
-            </div>
+            <img
+              :src="getBackgroundDisplayUrl(background.url)"
+              :alt="background.title"
+              class="w-full h-full object-cover aspect-video transition-transform duration-300 group-hover:scale-[1.03]"
+            />
+          </div>
+
+          <!-- 标题栏 -->
+          <div
+            class="px-4 py-3 flex justify-between items-center bg-white/15 backdrop-blur-[10px] border-t border-white/20 relative z-2"
+          >
+            <span class="font-medium text-white/90 truncate max-w-[70%] drop-shadow-md">
+              {{ background.title }}
+            </span>
+            <Button
+              :class="[
+                'px-3 py-1.5 rounded-md text-[13px] font-medium transition-all duration-200 shrink-0 hover:-translate-y-px active:translate-y-0',
+                isSelected(background.url) ? 'bg-[#10b981]' : 'bg-[#4f46e5] hover:bg-[#4338ca]',
+              ]"
+              @click="selectBackground(background.url)"
+            >
+              {{ isSelected(background.url) ? '已选中' : '选择' }}
+            </Button>
           </div>
         </div>
-
+      </div>
+      <div class="flex gap-2 justify-center items-center">
         <Button type="big" @click="triggerUpload">上传自定义背景</Button>
         <input
           type="file"
@@ -34,9 +55,7 @@
           style="display: none"
         />
 
-        <div class="flex gap-2">
-          <Button type="big" @click="handleOpenFolder">打开背景文件夹</Button>
-        </div>
+        <Button type="big" @click="handleOpenFolder">打开背景文件夹</Button>
       </div>
     </MenuItem>
 
@@ -151,7 +170,7 @@
       <div class="flex flex-col gap-4 p-2">
         <!-- 流星帧率 -->
         <div class="flex items-center gap-4">
-          <span class="text-sm font-medium text-white/90 min-w-[120px]">流星帧率 (FPS)</span>
+          <span class="text-sm font-medium text-white/90 min-w-30">流星帧率 (FPS)</span>
           <Slider
             v-model="meteorFps"
             :min="10"
@@ -176,7 +195,7 @@
 
         <!-- 星星帧率 -->
         <div class="flex items-center gap-4">
-          <span class="text-sm font-medium text-white/90 min-w-[120px]">星星帧率 (FPS)</span>
+          <span class="text-sm font-medium text-white/90 min-w-30">星星帧率 (FPS)</span>
           <Slider
             v-model="starsFps"
             :min="10"
@@ -592,140 +611,3 @@ watch(starsFps, (newValue) => {
   starsFpsInput.value = newValue
 })
 </script>
-
-<style scoped>
-.backgrounds-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 20px;
-  padding-bottom: 20px;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.character-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 20px;
-  padding-bottom: 20px;
-  width: 100%;
-}
-
-.background-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  transition: all 0.3s ease;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.125);
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.1),
-    inset 0 1px 1px rgba(255, 255, 255, 0.1);
-}
-
-.background-image-container::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(to bottom, transparent 60%, rgba(0, 0, 0, 0.3) 100%);
-  z-index: 1;
-  pointer-events: none;
-}
-
-.background-image-container {
-  flex: 1;
-  position: relative;
-  overflow: hidden;
-}
-
-.background-image {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  aspect-ratio: 16/9;
-  transition: transform 0.3s ease;
-}
-
-.background-title {
-  padding: 12px 16px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border-top: 1px solid rgba(255, 255, 255, 0.2);
-  position: relative;
-  z-index: 2;
-}
-
-.background-title::before {
-  content: attr(data-title);
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.9);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 70%;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-}
-
-.background-select-btn {
-  padding: 6px 12px;
-  background: #4f46e5;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-}
-
-.background-card:hover {
-  background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(25px) saturate(200%);
-  transform: translateY(-4px) scale(1.01);
-  box-shadow:
-    0 12px 40px rgba(0, 0, 0, 0.15),
-    inset 0 2px 2px rgba(255, 255, 255, 0.15);
-}
-
-.background-card:hover .background-image {
-  transform: scale(1.03);
-}
-
-.background-select-btn:hover {
-  background: #4338ca;
-  transform: translateY(-1px);
-}
-
-.background-select-btn:active {
-  transform: translateY(0);
-}
-
-@media (max-width: 768px) {
-  .character-grid {
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  }
-}
-
-.background-card.selected {
-  border: 2px solid #3bc7f6d8;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.3);
-}
-
-.background-select-btn.selected {
-  background-color: #10b981 !important;
-}
-</style>
