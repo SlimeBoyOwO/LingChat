@@ -12,7 +12,7 @@
     "preview": "vite preview",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
-    "format": "prettier --write --experimental-cli src/"
+    "format": "prettier --write --cache --experimental-cli src/"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.18",
