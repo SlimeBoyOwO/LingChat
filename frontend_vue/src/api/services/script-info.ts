@@ -1,4 +1,5 @@
 import http from '../http'
+import { scriptHandler } from '@/api/websocket/handlers/script-handler'
 
 export interface CharacterSettings {
   ai_name: string
@@ -62,8 +63,6 @@ export const getScriptInfo = async (scriptName: string): Promise<ScriptInfo> => 
 
 export const startStandaloneScript = async (scriptName: string): Promise<void> => {
   try {
-    // 独立剧本通过WebSocket命令启动
-    const { scriptHandler } = await import('@/api/websocket/handlers/script-handler')
     const command = `/开始剧本 ${scriptName}`
     scriptHandler.sendMessage(command)
   } catch (error: any) {
