@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::ai_service::message_system::generator::{GeneratorDeps, MessageGenerator};
 use crate::config::AppConfig;
@@ -42,6 +42,24 @@ pub async fn send_chat_message(app: AppHandle, text: String) -> Result<(), Strin
             sys.on_user_message_received().await;
         });
     }
+
+    // 成就触发检查
+    let achievement_manager = state.achievement_manager.clone();
+    let app_handle = app.clone();
+    let trigger_text = text.clone();
+    tokio::spawn(async move {
+        let mut mgr = achievement_manager.lock().await;
+        let unlocks =
+            crate::achievements::triggers::AchievementTriggerHandler::handle_user_message(
+                &trigger_text,
+                &mut mgr,
+            );
+        for achievement in unlocks {
+            if let Err(e) = app_handle.emit("achievement:unlocked", &achievement) {
+                log::error!("发送成就事件失败: {}", e);
+            }
+        }
+    });
 
     let generator = MessageGenerator::new(deps);
     let gen_lock = state.generation_lock.clone();

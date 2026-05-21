@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
+import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { getAchievementList } from '@/api/services/achievement'
-import { registerHandler, sendWebSocketMessage } from '@/api/websocket'
 
 export type AchievementType = 'common' | 'rare'
 
@@ -79,8 +80,10 @@ export const useAchievementStore = defineStore('achievement', {
     /**
      * 通知后端请求解锁成就
      */
-    notifyBackendUnlock(achievementData: Omit<Achievement, 'id'>) {
-      sendWebSocketMessage('achievement.unlock_request', achievementData)
+    notifyBackendUnlock(achievementData: Omit<Achievement, 'id'> & { id?: string }) {
+      if (achievementData.id) {
+        invoke('unlock_achievement', { achievementId: achievementData.id })
+      }
     },
 
     /**
@@ -98,32 +101,32 @@ export const useAchievementStore = defineStore('achievement', {
     },
 
     /**
-     * 监听后端推送的成就解锁消息
+     * 监听后端推送的成就解锁消息（Tauri 事件）
      */
     listenForUnlocks() {
-      // 监听解锁通知
-      registerHandler('achievement.unlocked', (message) => {
-        if (message.data) {
-          const { id, title, description, type, imgUrl, audioUrl, duration } = message.data
+      listen<Achievement>('achievement:unlocked', (event) => {
+        const data = event.payload
+        if (!data) return
 
-          // 更新列表中的状态
-          if (id && this.allAchievements[id]) {
-            this.allAchievements[id].unlocked = true
-            this.allAchievements[id].unlocked_at = new Date().toISOString()
-            this.allAchievements[id].current_progress = this.allAchievements[id].target_progress
-          }
+        const { id, title, description, type, imgUrl, audioUrl, duration } = data
 
-          this.queue.push({
-            id,
-            title,
-            description,
-            type,
-            imgUrl,
-            audioUrl,
-            duration: duration || DEFAULT_DURATION,
-          })
-          this.processQueue()
+        // 更新列表中的状态
+        if (id && this.allAchievements[id]) {
+          this.allAchievements[id].unlocked = true
+          this.allAchievements[id].unlocked_at = new Date().toISOString()
+          this.allAchievements[id].current_progress = this.allAchievements[id].target_progress
         }
+
+        this.queue.push({
+          id,
+          title,
+          description,
+          type,
+          imgUrl,
+          audioUrl,
+          duration: duration || DEFAULT_DURATION,
+        })
+        this.processQueue()
       })
     },
   },

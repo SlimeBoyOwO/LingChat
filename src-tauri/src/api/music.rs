@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::Write;
 
 use serde::{Deserialize, Serialize};
 
@@ -90,4 +91,27 @@ pub fn get_music_file(filename: String) -> Result<String, String> {
         .canonicalize()
         .map_err(|e| format!("路径解析失败: {}", e))?;
     Ok(canon.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub fn upload_music(file_name: String, file_data: Vec<u8>) -> Result<Vec<MusicItemInfo>, String> {
+    let music_dir = music_dir();
+    if !music_dir.exists() {
+        fs::create_dir_all(&music_dir).map_err(|e| format!("创建音乐目录失败: {}", e))?;
+    }
+
+    // 安全检查：只保留文件名，防止路径遍历
+    let safe_name = std::path::Path::new(&file_name)
+        .file_name()
+        .ok_or_else(|| format!("无效的文件名: {}", file_name))?
+        .to_string_lossy()
+        .into_owned();
+
+    let file_path = music_dir.join(&safe_name);
+    let mut f = fs::File::create(&file_path).map_err(|e| format!("创建文件失败: {}", e))?;
+    f.write_all(&file_data)
+        .map_err(|e| format!("写入文件失败: {}", e))?;
+    f.flush().map_err(|e| format!("刷新文件失败: {}", e))?;
+
+    get_music_list()
 }

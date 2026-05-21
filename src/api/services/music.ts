@@ -12,11 +12,11 @@ export const musicGetAll = async (): Promise<MusicTrack[]> => {
   }
 }
 
-export const musicUpload = async (formData: FormData): Promise<void> => {
+export const musicUpload = async (fileName: string, fileData: Uint8Array): Promise<void> => {
   try {
-    await http.post('/v1/chat/back-music/upload', formData)
+    await invoke('upload_music', { fileName, fileData })
   } catch (error: any) {
-    throw new Error(error.response?.data?.detail || 'Music upload failed')
+    throw new Error(typeof error === 'string' ? error : error.message || 'Music upload failed')
   }
 }
 

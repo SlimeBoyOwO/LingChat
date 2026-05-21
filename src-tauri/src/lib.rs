@@ -1,3 +1,4 @@
+mod achievements;
 mod ai_service;
 mod api;
 mod config;
@@ -29,6 +30,8 @@ pub struct AppState {
     pub generation_lock: Arc<tokio::sync::Mutex<()>>,
     pub proactive_system:
         Option<Arc<tokio::sync::Mutex<ai_service::proactive_system::ProactiveSystem>>>,
+    pub achievement_manager:
+        Arc<tokio::sync::Mutex<achievements::manager::AchievementManager>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -77,6 +80,10 @@ pub fn run() {
                 ai_service::proactive_system::ProactiveSystem::start(proactive_clone).await;
             });
 
+            let achievement_manager = std::sync::Arc::new(tokio::sync::Mutex::new(
+                achievements::manager::AchievementManager::new(&api::data_dir()),
+            ));
+
             app.manage(AppState {
                 db,
                 ai_service,
@@ -84,6 +91,7 @@ pub fn run() {
                 script_channels,
                 generation_lock,
                 proactive_system: Some(proactive),
+                achievement_manager,
             });
 
             // Spawn Windows mouse polling click-through loop
@@ -177,8 +185,11 @@ pub fn run() {
             api::character::get_avatar_file,
             api::background::get_background_list,
             api::background::get_background_file,
+            api::background::upload_background_image,
+            api::background::open_backgrounds_folder,
             api::music::get_music_list,
             api::music::get_music_file,
+            api::music::upload_music,
             api::media::get_script_media_file,
             api::asset::get_asset_base64,
             api::asset::get_voice_audio,
@@ -200,6 +211,8 @@ pub fn run() {
             api::schedule::get_schedules,
             api::schedule::save_schedules,
             api::schedule::reload_proactive_system,
+            api::achievement::get_achievement_list,
+            api::achievement::unlock_achievement,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

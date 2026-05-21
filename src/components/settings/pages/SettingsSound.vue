@@ -419,9 +419,8 @@ const uploadMusic = async () => {
         if (!allowedExts.includes(fileExt)) {
           throw new Error(`格式不支持: ${file.name}`)
         }
-        const formData = new FormData()
-        formData.append('file', file)
-        await musicUpload(formData)
+        const buf = await file.arrayBuffer()
+        await musicUpload(file.name, new Uint8Array(buf))
       }),
     )
 

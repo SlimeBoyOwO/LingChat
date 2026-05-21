@@ -19,14 +19,11 @@ export const getBackgroundImageById = async (id: string): Promise<BackgroundImag
   return http.get(`/backgrounds/${id}`)
 }
 
-export const uploadBackgroundImage = async (file: File): Promise<BackgroundImageInfo> => {
-  const formData = new FormData()
-  formData.append('file', file)
-  return http.post('/backgrounds/upload', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  })
+export const uploadBackgroundImage = async (
+  fileName: string,
+  fileData: Uint8Array,
+): Promise<BackgroundImageInfo[]> => {
+  return invoke('upload_background_image', { fileName, fileData })
 }
 
 export const setCurrentBackground = async (background: string): Promise<void> => {
@@ -45,5 +42,5 @@ export const generateBackgroundImage = async (prompt: string, clientId: string):
 }
 
 export const openBackgroundsFolder = async (): Promise<void> => {
-  await http.post('/v1/chat/background/open_folder')
+  await invoke('open_backgrounds_folder')
 }

@@ -258,6 +258,7 @@ import {
 import type { BackgroundImageInfo } from '../../../types'
 import {
   getBackgroundImages,
+  uploadBackgroundImage,
   generateBackgroundImage,
   openBackgroundsFolder,
 } from '../../../api/services/background'
@@ -485,18 +486,9 @@ async function handleFileUpload(event: Event): Promise<void> {
     return
   }
 
-  const formData = new FormData()
-  formData.append('file', file)
-  formData.append('name', fileName)
-
   try {
-    const response = await fetch('/api/v1/chat/background/upload', {
-      method: 'POST',
-      body: formData,
-    })
-
-    if (!response.ok) throw new Error('上传失败')
-
+    const buf = await file.arrayBuffer()
+    await uploadBackgroundImage(fileName, new Uint8Array(buf))
     await refreshBackground()
 
     if (target) target.value = ''
