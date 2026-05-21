@@ -1,14 +1,14 @@
 {
-  "name": "frontend_vue_new",
-  "version": "0.0.0",
-  "private": true,
+  "name": "LingChat-frontend",
+  "version": "0.4.1",
+  "private": false,
   "type": "module",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
   "scripts": {
     "dev": "vite",
-    "build": "run-p type-check \"build-only {@}\" --",
+    "build": "vue-tsc --build && vite build",
     "preview": "vite preview",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",

@@ -198,6 +198,21 @@
             class="w-20 px-3 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all"
           />
         </div>
+
+        <!-- 重新检测设备性能 -->
+        <div class="mt-4 border-t border-white/10 pt-4">
+          <div class="flex items-center justify-between">
+            <div class="flex flex-col gap-1">
+              <span class="text-sm font-medium text-white/80">重新检测设备性能</span>
+              <span class="text-xs text-white/50">
+                清除旧的检测结果并重新执行性能测试，自动调整图形设置
+              </span>
+            </div>
+            <Button type="big" @click="handleReDetect" :disabled="isRedetecting">
+              {{ isRedetecting ? '检测中...' : '重新检测' }}
+            </Button>
+          </div>
+        </div>
       </div>
     </MenuItem>
 
@@ -247,11 +262,23 @@ import { Bubbles, Image, PictureInPicture, Sparkles, Settings, Wand2 } from 'luc
 import SceneSelectModal from '../scene/SceneSelectModal.vue'
 import SceneEditModal from '../scene/SceneEditModal.vue'
 import { useUserStore } from '../../../stores/modules/user/user'
+import {
+  clearSavedProfile,
+  detectDevicePerformance,
+  saveProfile,
+  getRecommendedSettings,
+  getSavedProfile,
+  getTierDescription,
+  type DeviceProfile,
+} from '../../../utils/devicePerformance'
 
 const gameStore = useGameStore()
 const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
 const userStore = useUserStore()
+
+// 重新检测相关状态
+const isRedetecting = ref(false)
 
 const mainMenuStarsEnabled = computed(() => settingsStore.mainMenuStarsEnabled)
 const mainMenuMeteorsEnabled = computed(() => settingsStore.mainMenuMeteorsEnabled)
@@ -601,6 +628,45 @@ function handleStarsInputBlur() {
 // 处理星星输入框回车
 function handleStarsInputEnter() {
   handleStarsInputBlur()
+}
+
+// 重新检测设备性能
+async function handleReDetect() {
+  if (isRedetecting.value) return
+  isRedetecting.value = true
+
+  try {
+    // 1. 清除旧的检测结果
+    clearSavedProfile()
+    console.log('[性能检测] 已清除旧结果，开始重新检测...')
+
+    // 2. 执行新的检测
+    const profile = await detectDevicePerformance()
+
+    // 3. 保存新结果
+    saveProfile(profile)
+
+    // 4. 应用推荐设置
+    const recommendedSettings = getRecommendedSettings(profile)
+    settingsStore.updateDisplay(recommendedSettings)
+    console.log('[性能检测] 已完成重新检测并应用设置')
+
+    // 5. 提示用户
+    const tierDesc = getTierDescription(profile.tier, profile.isMobile)
+    uiStore.showInfo({
+      title: '重新检测完成',
+      message: `检测为${tierDesc}，已自动调整视觉效果设置。`,
+      duration: 4000,
+    })
+  } catch (error) {
+    console.error('[性能检测] 重新检测失败:', error)
+    uiStore.showError({
+      title: '检测失败',
+      message: '性能检测过程中出现错误，请稍后再试。',
+    })
+  } finally {
+    isRedetecting.value = false
+  }
 }
 
 // 监听starsFps变化，同步更新输入框

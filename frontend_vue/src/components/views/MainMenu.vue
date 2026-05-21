@@ -85,6 +85,7 @@ import { saveContinue } from '@/api/services/save'
 import MeteorAnimation from '../game/standard/animations/MeteorAnimation.vue'
 import StarAnimation from '../game/standard/animations/StarAnimation.vue'
 import { useParallaxAnimation } from '../game/standard/animations/ParallaxAnimation'
+import { getSavedProfile, getTierDescription } from '@/utils/devicePerformance'
 
 const router = useRouter()
 const uiStore = useUIStore()
@@ -179,18 +180,42 @@ async function fetchScripts() {
 
 onMounted(() => {
   const initializeMenu = async () => {
-    // 性能提示只显示一次
-    const PERFORMANCE_TIP_KEY = 'mainMenuPerformanceTipShown'
-    if (
-      (starsEnabled.value || meteorsEnabled.value) &&
-      !localStorage.getItem(PERFORMANCE_TIP_KEY)
-    ) {
-      localStorage.setItem(PERFORMANCE_TIP_KEY, 'true')
-      uiStore.showInfo({
-        title: 'Tip',
-        message: '如果你觉得在这个页面很卡，可以前往 通用设置 中关闭星星粒子或流星动画。',
-        duration: 5000,
-      })
+    // 首次访问提示：与性能检测联动
+    const WELCOME_TIP_KEY = 'mainMenuWelcomeTipShown'
+    if (!localStorage.getItem(WELCOME_TIP_KEY)) {
+      localStorage.setItem(WELCOME_TIP_KEY, 'true')
+
+      const profile = getSavedProfile()
+      if (profile) {
+        const tierDesc = getTierDescription(profile.tier, profile.isMobile)
+
+        // 根据设备类型和性能等级生成提示
+        let message = ''
+        if (profile.tier === 'high') {
+          message = `检测到${tierDesc}，已为你开启全部视觉效果，享受完整体验吧！`
+        } else if (profile.tier === 'medium') {
+          message = `检测到${tierDesc}，已关闭流星动画以平衡性能，不过你仍可以在通用设置中调整哦。`
+        } else {
+          message = `检测到${tierDesc}，视觉效果基本上全给你关了，因为设备看上去不咋滴。`
+        }
+
+        // 移动设备特调提示
+        if (profile.isMobile) {
+          message += ' 另外，已自动关闭鼠标拖尾动画（手机一般没鼠标对吧）。'
+        }
+
+        uiStore.showInfo({
+          title: '设备性能检测',
+          message,
+          duration: 5000,
+        })
+      } else {
+        uiStore.showInfo({
+          title: '设备性能检测',
+          message: '正在检测设备性能，稍后将自动调整视觉效果。',
+          duration: 3000,
+        })
+      }
     }
 
     fetchScripts()

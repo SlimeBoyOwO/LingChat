@@ -18,6 +18,13 @@ import router from './router' // './router/index.js' 的简写
 // 导入日志转发插件
 import logForwarderPlugin from './plugins/logForwarder'
 
+// 导入性能检测
+import {
+  initializePerformanceDetection,
+  getRecommendedSettings,
+} from './utils/devicePerformance'
+import { useSettingsStore } from './stores/modules/settings'
+
 // TODO: 清理旧版本 localStorage 残留数据（v2.x 之前的独立存储格式，以后此逻辑可以删除）
 const LEGACY_KEYS = [
   'lingchat-bubble-volume',
@@ -44,6 +51,26 @@ connectWebSocket(wsUrl)
 initializeEventProcessors()
 
 app.use(pinia)
+
+// 性能检测并应用设置（必须在 pinia 初始化后执行）
+async function initPerformanceSettings() {
+  const { profile, isFirstDetection } = await initializePerformanceDetection()
+
+  // 只有首次检测才应用设置
+  if (isFirstDetection) {
+    const settingsStore = useSettingsStore()
+    const recommendedSettings = getRecommendedSettings(profile)
+
+    // 应用推荐的显示设置
+    settingsStore.updateDisplay(recommendedSettings)
+
+    console.log('[性能检测] 已应用推荐设置:', recommendedSettings)
+  }
+}
+
+// 执行性能检测（异步，不阻塞应用启动）
+initPerformanceSettings()
+
 app.use(router)
 app.use(ElementPlus)
 app.use(logForwarderPlugin, {
