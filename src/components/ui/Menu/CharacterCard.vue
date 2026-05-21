@@ -132,11 +132,11 @@
                 v-for="cloth in clothes"
                 :key="cloth.title"
                 @click="selectClothes(cloth.title)"
-                class="group shrink-0 w-32 snap-start cursor-pointer"
+                class="group shrink-0 w-48 snap-start cursor-pointer"
               >
                 <div
                   :class="[
-                    'relative aspect-3/4 rounded-xl overflow-hidden border-2 transition-all mb-2',
+                    'relative aspect-1/2 rounded-xl overflow-hidden border-2 transition-all mb-2',
                     isClothesSelected(cloth.title)
                       ? 'border-indigo-400 shadow-[0_0_15px_rgba(129,140,248,0.5)]'
                       : 'border-white/10',
@@ -144,7 +144,7 @@
                 >
                   <img
                     :src="cloth.avatar"
-                    class="w-full h-full object-cover group-hover:scale-110 transition-duration-500"
+                    class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />
                   <div
                     v-if="isClothesSelected(cloth.title)"

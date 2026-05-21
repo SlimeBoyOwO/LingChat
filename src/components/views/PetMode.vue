@@ -4,7 +4,7 @@
     :style="appStyleVars"
     @mouseenter="handleMouseEnter"
     @mouseleave="handleMouseLeave"
-    class="relative w-[var(--app-width)] h-[var(--app-height)] flex flex-col justify-start items-center overflow-hidden transition-none select-none bg-transparent"
+    class="relative w-(--app-width) h-(--app-height) flex flex-col justify-start items-center overflow-hidden transition-none select-none bg-transparent"
   >
     <!-- DialogueBox 区域 -->
     <div
@@ -114,16 +114,13 @@ let volumeUnlisten: (() => void) | null = null
 onMounted(async () => {
   const appWindow = getCurrentWindow()
 
-  scaleUnlisten = await appWindow.listen<{ scale: number }>(
-    'pet-scale-changed',
-    (event) => {
-      const scale = Number(event.payload?.scale)
-      if (!Number.isNaN(scale)) {
-        settingsStore.pet.scale = scale
-        void applyWindowLayout()
-      }
+  scaleUnlisten = await appWindow.listen<{ scale: number }>('pet-scale-changed', (event) => {
+    const scale = Number(event.payload?.scale)
+    if (!Number.isNaN(scale)) {
+      settingsStore.pet.scale = scale
+      void applyWindowLayout()
     }
-  )
+  })
 
   effectUnlisten = await appWindow.listen<{ effect: string }>(
     'background-effect-changed',
@@ -132,18 +129,15 @@ onMounted(async () => {
       if (effect) {
         uiStore.setBackgroundEffect(effect)
       }
-    }
+    },
   )
 
-  volumeUnlisten = await appWindow.listen<{ volume: number }>(
-    'pet-volume-changed',
-    (event) => {
-      const volume = Number(event.payload?.volume)
-      if (!Number.isNaN(volume)) {
-        settingsStore.updateAudio({ characterVolume: volume })
-      }
+  volumeUnlisten = await appWindow.listen<{ volume: number }>('pet-volume-changed', (event) => {
+    const volume = Number(event.payload?.volume)
+    if (!Number.isNaN(volume)) {
+      settingsStore.updateAudio({ characterVolume: volume })
     }
-  )
+  })
   // 设置透明背景的 body 属性样式（额外防护）
   document.body.style.backgroundColor = 'transparent'
   document.documentElement.style.backgroundColor = 'transparent'
@@ -154,7 +148,7 @@ onMounted(async () => {
   // 2. 启动 100ms 一次的 solid bounds 测试
   hitTestInterval = window.setInterval(() => {
     const rects = []
-    
+
     // 如果对话气泡正在显示，则加入 solid region 触发交互
     if (
       dialogContainer.value &&
@@ -164,13 +158,13 @@ onMounted(async () => {
       const r = dialogContainer.value.getBoundingClientRect()
       rects.push({ x: r.x, y: r.y, width: r.width, height: r.height })
     }
-    
+
     // 头像圆环常驻 solid region 触发拖拽和交互
     if (avatarContainer.value) {
       const r = avatarContainer.value.getBoundingClientRect()
       rects.push({ x: r.x, y: r.y, width: r.width, height: r.height })
     }
-    
+
     // 输入框显示时，加入 solid region
     if (chatContainer.value && showChatInput.value) {
       const r = chatContainer.value.getBoundingClientRect()
@@ -182,7 +176,7 @@ onMounted(async () => {
         height: r.height + 40,
       })
     }
-    
+
     invoke('update_solid_regions', { rects }).catch(console.error)
   }, 100)
 })
