@@ -125,18 +125,21 @@ export interface SelectClothesResponse {
 
 export const selectClothes = async (clothesName: string): Promise<SelectClothesResponse> => {
   try {
-    const response = await http.post('/v1/chat/character/clothes/select', clothesName, {
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    })
-    return response
+    const data = await invoke('select_clothes', { clothesName })
+    return data as SelectClothesResponse
   } catch (error: any) {
-    throw new Error(error.response?.data?.detail || '选择衣服失败')
+    throw new Error(typeof error === 'string' ? error : '选择衣服失败')
   }
 }
 
 /** 获取角色资源文件的绝对路径（供 convertFileSrc 使用） */
 export const getCharacterFilePath = async (filePath: string): Promise<string> => {
   return invoke('get_character_file', { filePath })
+}
+
+export const getAvatarFile = async (
+  characterFolder: string,
+  clothesName: string,
+): Promise<string> => {
+  return invoke('get_avatar_file', { characterFolder, emotion: '头像', clothesName })
 }

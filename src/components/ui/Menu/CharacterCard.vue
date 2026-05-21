@@ -178,7 +178,10 @@
 import { ref } from 'vue'
 import { Icon } from '../../base'
 import SettingsCharacterInfo from '@/components/settings/pages/SettingsCharacterInfo.vue'
-import { selectCharacter as selectCharacterApi, selectClothes as selectClothesApi } from '@/api/services/character'
+import {
+  selectCharacter as selectCharacterApi,
+  selectClothes as selectClothesApi,
+} from '@/api/services/character'
 import { useGameStore } from '@/stores/modules/game'
 import { applyWebInitData } from '@/stores/modules/game/actions'
 import { Settings } from 'lucide-vue-next'
@@ -242,9 +245,6 @@ const selectClothes = async (clothes_name: string) => {
       if (gameStore.mainRole) {
         gameStore.mainRole.clothesName = clothes_name
       }
-
-      // 可选：显示成功消息
-      console.log(response.message)
     }
   } catch (error) {
     console.error('选择衣服失败:', error)

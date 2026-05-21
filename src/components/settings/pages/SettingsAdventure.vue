@@ -132,12 +132,9 @@ import { Button } from '@/components/base'
 import AdventurePanel from './Adeventure/AdventurePanel.vue'
 import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
-import { getCharacterFilePath } from '@/api/services/character'
+import { getAvatarFile } from '@/api/services/character'
 import { Birdhouse, Book, FileText, UserPlus } from 'lucide-vue-next'
-import {
-  getStandaloneScriptList,
-  startScript as startScriptApi,
-} from '@/api/services/script-info'
+import { getStandaloneScriptList, startScript as startScriptApi } from '@/api/services/script-info'
 import type { ScriptSummary } from '@/api/services/script-info'
 
 const gameStore = useGameStore()
@@ -156,7 +153,10 @@ const currentCharacterAvatar = ref('../pictures/characters/default.png')
 async function updateCharacterAvatar() {
   if (gameStore.mainRole?.character_folder) {
     try {
-      const path = await getCharacterFilePath(`${gameStore.mainRole.character_folder}/avatar/头像.png`)
+      const path = await getAvatarFile(
+        gameStore.mainRole.character_folder,
+        gameStore.mainRole.clothesName,
+      )
       currentCharacterAvatar.value = convertFileSrc(path)
     } catch {
       currentCharacterAvatar.value = '../pictures/characters/default.png'

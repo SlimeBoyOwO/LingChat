@@ -6,11 +6,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use tauri::{AppHandle, Manager};
 
-use crate::ai_service::types::CharacterSettings;
+use crate::ai_service::types::{CharacterSettings, LineAttributeExt, LineBase};
+use crate::db::entities::line::LineAttribute;
 use crate::db::managers::role_repo::RoleRepo;
 use crate::AppState;
 
-use super::{characters_dir, game_data_dir, data_dir};
+use super::{characters_dir, data_dir, game_data_dir};
 
 // ========== 响应类型 ==========
 
@@ -69,9 +70,7 @@ pub struct RoleInfoResponse {
 
 /// 读取某个角色的 settings.yml，失败时返回默认值
 pub(crate) fn read_character_settings(resource_folder: &str) -> CharacterSettings {
-    let yaml_path = characters_dir()
-        .join(resource_folder)
-        .join("settings.yml");
+    let yaml_path = characters_dir().join(resource_folder).join("settings.yml");
     if !yaml_path.exists() {
         log::warn!("角色设置文件不存在: {:?}", yaml_path);
         let mut s = CharacterSettings::default();
@@ -114,7 +113,8 @@ fn find_avatar_in_dir(dir: &PathBuf) -> Option<PathBuf> {
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();
-            if name.starts_with("头像") && !entry.file_type().map(|t| t.is_dir()).unwrap_or(true) {
+            if name.starts_with("头像") && !entry.file_type().map(|t| t.is_dir()).unwrap_or(true)
+            {
                 return Some(entry.path());
             }
         }
@@ -124,6 +124,8 @@ fn find_avatar_in_dir(dir: &PathBuf) -> Option<PathBuf> {
 
 /// 扫描角色头像目录，返回衣服列表（每项包含头像文件的绝对路径）
 fn scan_clothes(resource_folder: &str) -> Vec<ClothesItem> {
+    let allowed_extensions = ["png", "jpg", "jpeg", "webp", "bmp", "gif"];
+
     let avatar_dir = characters_dir().join(resource_folder).join("avatar");
     if !avatar_dir.exists() {
         return vec![ClothesItem {
@@ -133,12 +135,22 @@ fn scan_clothes(resource_folder: &str) -> Vec<ClothesItem> {
     }
 
     let mut clothes: Vec<ClothesItem> = Vec::new();
+
+    let root_avatar = find_emotion_file(&avatar_dir, "正常", &allowed_extensions)
+        .map(|p| p.to_string_lossy().into_owned());
+    if let Some(avatar_path) = root_avatar {
+        clothes.push(ClothesItem {
+            title: "默认".to_string(),
+            avatar: avatar_path,
+        });
+    }
+
     if let Ok(entries) = fs::read_dir(&avatar_dir) {
         for entry in entries.flatten() {
             if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                 let name = entry.file_name().to_string_lossy().into_owned();
                 let subdir = entry.path();
-                let avatar_path = find_avatar_in_dir(&subdir)
+                let avatar_path = find_emotion_file(&subdir, "正常", &allowed_extensions)
                     .map(|p| p.to_string_lossy().into_owned())
                     .unwrap_or_default();
                 clothes.push(ClothesItem {
@@ -175,7 +187,8 @@ fn default_avatar_path(resource_folder: &str) -> String {
         for entry in entries.flatten() {
             let fname = entry.file_name();
             let name = fname.to_string_lossy();
-            if name.starts_with("头像") && !entry.file_type().map(|t| t.is_dir()).unwrap_or(true) {
+            if name.starts_with("头像") && !entry.file_type().map(|t| t.is_dir()).unwrap_or(true)
+            {
                 return entry.path().to_string_lossy().into_owned();
             }
         }
@@ -283,10 +296,7 @@ pub async fn get_role_info(app: AppHandle, role_id: i32) -> Result<RoleInfoRespo
 }
 
 #[tauri::command]
-pub async fn get_role_settings(
-    app: AppHandle,
-    role_id: i32,
-) -> Result<CharacterSettings, String> {
+pub async fn get_role_settings(app: AppHandle, role_id: i32) -> Result<CharacterSettings, String> {
     let state = app.state::<AppState>();
     let db = &state.db;
 
@@ -307,7 +317,9 @@ pub fn get_character_file(file_path: String) -> Result<String, String> {
         return Err(format!("角色文件不存在: {}", file_path));
     }
 
-    let canon = resolved.canonicalize().map_err(|e| format!("路径解析失败: {}", e))?;
+    let canon = resolved
+        .canonicalize()
+        .map_err(|e| format!("路径解析失败: {}", e))?;
     Ok(canon.to_string_lossy().into_owned())
 }
 
@@ -384,4 +396,68 @@ pub fn get_avatar_file(
         "未找到角色头像: folder={}, emotion={}, clothes={}",
         character_folder, emotion, clothes_name
     ))
+}
+
+#[tauri::command]
+pub async fn select_clothes(
+    app: AppHandle,
+    clothes_name: String,
+) -> Result<serde_json::Value, String> {
+    let state = app.state::<AppState>();
+    let mut service = state.ai_service.lock().await;
+    let db = &state.db;
+
+    let main_role_id = service
+        .game_status
+        .main_role_id
+        .ok_or_else(|| "角色不存在".to_string())?;
+
+    // 收集角色数据后释放借用，再调用 add_line
+    let (_, prompt) = {
+        let role = service
+            .game_status
+            .get_role(db, main_role_id)
+            .await
+            .map_err(|e| format!("获取角色失败: {}", e))?;
+
+        if role.current_clothes == clothes_name {
+            return Ok(serde_json::json!({"success": true, "message": "当前衣服已经是选中状态"}));
+        }
+
+        role.current_clothes = clothes_name.clone();
+
+        let ai_name = role.settings.ai_name.clone();
+        let prompt = role
+            .settings
+            .clothes
+            .as_ref()
+            .and_then(|clothes_list| {
+                clothes_list.iter().find_map(|item| {
+                    if item.get("name").map(|s| s.as_str()) == Some(clothes_name.as_str()) {
+                        item.get("prompt").cloned()
+                    } else {
+                        None
+                    }
+                })
+            })
+            .unwrap_or_else(|| format!("{}换上了新服装：{}", ai_name, clothes_name));
+
+        (ai_name, prompt)
+    };
+
+    service
+        .game_status
+        .add_line(
+            db,
+            LineBase {
+                content: format!("{{系统提示: {}}}", prompt),
+                attribute: LineAttributeExt(LineAttribute::User),
+                display_name: Some("旁白".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(|e| format!("添加台词失败: {}", e))?;
+
+    Ok(serde_json::json!({"success": true, "message": "衣服更换成功"}))
 }
