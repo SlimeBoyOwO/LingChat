@@ -48,6 +48,18 @@ pub async fn list_character_adventures(
         .into_iter()
         .collect();
 
+    // Auto-unlock adventures with no conditions (empty conditions = default unlocked)
+    for adv in &adventures {
+        if adv.adventure.unlock_conditions.is_empty() {
+            let _ = AdventureManager::unlock_adventure(
+                db,
+                &adv.folder_key,
+                &adv.adventure.bound_character_folder,
+            )
+            .await;
+        }
+    }
+
     let is_running = service.script_manager.is_running;
     let current_script_folder = service
         .game_status
@@ -105,6 +117,18 @@ pub async fn list_all_adventures(app: AppHandle) -> Result<Vec<AdventureInfo>, S
         .get_all_adventures()
         .into_iter()
         .collect();
+
+    // Auto-unlock adventures with no conditions (empty conditions = default unlocked)
+    for adv in &adventures {
+        if adv.adventure.unlock_conditions.is_empty() {
+            let _ = AdventureManager::unlock_adventure(
+                db,
+                &adv.folder_key,
+                &adv.adventure.bound_character_folder,
+            )
+            .await;
+        }
+    }
 
     let is_running = service.script_manager.is_running;
     let current_script_folder = service
