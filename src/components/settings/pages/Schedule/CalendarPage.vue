@@ -409,11 +409,9 @@ const selectEvent = (event: ImportantDay) => {
 }
 
 const handleCreate = () => {
-  // 直接复用你现有的逻辑：打开模态框
   showAddEventModal.value = true
 }
 
-// 2. 关键：使用 defineExpose 将该方法暴露给父组件
 defineExpose({
   handleCreate,
 })

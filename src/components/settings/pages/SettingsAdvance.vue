@@ -26,7 +26,7 @@
           <!-- 滑动指示器 -->
           <div
             ref="indicatorRef"
-            class="absolute left-5 w-[calc(100%-40px)] bg-brand rounded-lg z-0 transition-all duration-300 ease-[cubic-bezier(0.18,0.89,0.32,1.00)]"
+            class="absolute left-2 w-[calc(100%-40px)] bg-brand rounded-lg z-0 transition-all duration-300 ease-[cubic-bezier(0.18,0.89,0.32,1.00)]"
           ></div>
 
           <div

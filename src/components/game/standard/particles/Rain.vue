@@ -32,6 +32,11 @@ let drops: Drop[] = []
 let ctx: CanvasRenderingContext2D | null = null
 let animId = 0
 
+// 帧率限制相关变量
+const TARGET_FPS = 60
+const FRAME_INTERVAL = 1000 / TARGET_FPS // 约 16.67ms
+let lastFrameTime = 0
+
 const { createDrop } = useRain()
 
 /**
@@ -69,10 +74,34 @@ function init() {
     drops.push(createDrop(W, H, props.intensity))
   }
 
-  loop()
+  // 重置上一帧时间戳
+  lastFrameTime = 0
+  loop(0)
 }
 
-function loop() {
+/**
+ * 更新雨滴位置（基于固定时间步长）
+ * @param elapsedMs 距离上一帧经过的时间（毫秒）
+ */
+function updateDrops(elapsedMs: number) {
+  // 将时间转换为速度因子，保持雨滴移动速度与帧率解耦
+  // 原始速度基于每帧移动 speed 像素（假设 60fps）
+  // 现根据实际经过时间调整移动距离
+  const speedFactor = elapsedMs / FRAME_INTERVAL
+
+  for (const drop of drops) {
+    // 根据时间差移动雨滴
+    drop.y += drop.speed * speedFactor
+
+    // 雨滴超出屏幕时，重置位置并重新随机化 x 坐标
+    if (drop.y > H) {
+      drop.y = -drop.length
+      drop.x = Math.random() * W
+    }
+  }
+}
+
+function render() {
   if (!ctx) return
 
   ctx.clearRect(0, 0, W, H)
@@ -89,13 +118,40 @@ function loop() {
     ctx.strokeStyle = gradient
     ctx.lineWidth = 1.25
     ctx.stroke()
-    drop.y += drop.speed
+  }
+}
 
-    // 雨滴超出屏幕时，重置位置并重新随机化 x 坐标
-    if (drop.y > H) {
-      drop.y = -drop.length
-      drop.x = Math.random() * W
-    }
+function loop(currentTime: number) {
+  if (!ctx) return
+
+  // 初始化上一帧时间
+  if (lastFrameTime === 0) {
+    lastFrameTime = currentTime
+    animId = requestAnimationFrame(loop)
+    return
+  }
+
+  // 计算距离上一帧的时间差（毫秒）
+  let elapsed = currentTime - lastFrameTime
+
+  // 限制最大时间差，避免跳跃过大（例如切换标签页后恢复）
+  const MAX_DELTA = 100 // 最大100ms
+  if (elapsed > MAX_DELTA) {
+    elapsed = MAX_DELTA
+  }
+
+  // 只有达到帧间隔时间才更新逻辑和渲染
+  if (elapsed >= FRAME_INTERVAL) {
+    // 更新时间戳，但保留超出部分用于下一帧（可选，保持平滑）
+    lastFrameTime = currentTime - (elapsed % FRAME_INTERVAL)
+
+    // 使用固定时间步长更新雨滴位置（保持速度稳定）
+    // 这里使用 FRAME_INTERVAL 作为标准步长，因为 elapsed 可能大于 FRAME_INTERVAL
+    // 为了更精确，可以使用 elapsed 但会受帧率波动影响，这里采用标准步长保证每帧移动距离一致
+    // 但如果帧率掉帧严重，使用固定步长会导致移动变慢，因此采用实际经过时间
+    // 改进：直接使用 elapsed 作为时间差，但速度因子基于实际时间与基准帧间隔的比例
+    updateDrops(elapsed)
+    render()
   }
 
   animId = requestAnimationFrame(loop)

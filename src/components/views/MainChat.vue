@@ -139,7 +139,6 @@ const handleAudioFinished = () => {
 watch(
   () => gameDialogRef.value?.isTyping,
   (typing) => {
-    console.log('父组件：打字状态变化', typing)
     if (typing === false) {
       tryAutoAdvance()
     }
@@ -152,13 +151,10 @@ const manualTriggerContinue = () => {
   if (timerId) {
     clearTimeout(timerId)
     timerId = null
-    console.log('父组件：已取消自动继续的定时器。')
   }
 
   if (!isContinueTriggered.value) {
     isContinueTriggered.value = true
-  } else {
-    console.log('父组件：用户重复点击，但方法已执行过，不再调用。')
   }
 }
 </script>
