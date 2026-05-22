@@ -178,6 +178,14 @@ impl AchievementManager {
         }
     }
 
+    /// 检查成就是否已解锁
+    pub fn is_unlocked(&self, id: &str) -> bool {
+        self.state
+            .get(id)
+            .map(|s| s.unlocked)
+            .unwrap_or(false)
+    }
+
     /// 直接解锁成就
     pub fn unlock(&mut self, id: &str) -> Option<Achievement> {
         let def = self.get_def(id)?;

@@ -1,4 +1,5 @@
 mod achievements;
+mod adventures;
 mod ai_service;
 mod api;
 mod config;
@@ -204,6 +205,7 @@ pub fn run() {
             api::save::update_save,
             api::save::delete_save,
             api::script::list_scripts,
+            api::script::list_standalone_scripts,
             api::script::start_script,
             api::script::script_submit_input,
             api::script::script_submit_choice,
@@ -214,6 +216,11 @@ pub fn run() {
             api::schedule::reload_proactive_system,
             api::achievement::get_achievement_list,
             api::achievement::unlock_achievement,
+            api::adventure::list_character_adventures,
+            api::adventure::list_all_adventures,
+            api::adventure::start_adventure,
+            api::adventure::check_adventure_unlocks,
+            api::adventure::reset_adventure,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

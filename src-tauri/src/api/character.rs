@@ -237,10 +237,30 @@ pub async fn get_character_list(
 
     let page_roles = &all_roles[start..end];
 
+    // Pre-compute adventure counts for all characters on this page
     let mut items = Vec::new();
     for role in page_roles {
         let folder = role.resource_folder.clone().unwrap_or_default();
         let settings = read_character_settings(&folder);
+
+        let (total_adventures, adventure_count) = {
+            let service = state.ai_service.lock().await;
+            let adventures = service.script_manager.get_character_adventures(&folder);
+            let total = adventures.len() as i32;
+            let unlocked = {
+                let mut count = 0i32;
+                for adv in &adventures {
+                    if crate::adventures::manager::AdventureManager::is_unlocked(db, &adv.folder_key)
+                        .await
+                        .unwrap_or(false)
+                    {
+                        count += 1;
+                    }
+                }
+                count
+            };
+            (total, unlocked)
+        };
 
         items.push(CharacterListItem {
             character_id: role.id,
@@ -250,8 +270,8 @@ pub async fn get_character_list(
             info: settings.info.unwrap_or_default(),
             avatar_path: default_avatar_path(&folder),
             clothes: scan_clothes(&folder),
-            adventure_count: 0,
-            total_adventures: 0,
+            adventure_count,
+            total_adventures,
             resource_folder: folder,
         });
     }

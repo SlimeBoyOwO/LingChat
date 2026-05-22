@@ -61,6 +61,33 @@ pub async fn send_chat_message(app: AppHandle, text: String) -> Result<(), Strin
         }
     });
 
+    // 冒险解锁检查
+    let adventure_db = state.db.clone();
+    let adventure_ai_service = state.ai_service.clone();
+    let adventure_ach_mgr = state.achievement_manager.clone();
+    let adventure_app = app.clone();
+    tokio::spawn(async move {
+        let newly_unlocked = {
+            let service = adventure_ai_service.lock().await;
+            let adventures: Vec<&crate::ai_service::types::ScriptStatus> = service
+                .script_manager
+                .get_all_adventures()
+                .into_iter()
+                .collect();
+            let ach_mgr = adventure_ach_mgr.lock().await;
+            crate::adventures::trigger::check_all_adventures(
+                &adventure_db,
+                &ach_mgr,
+                &service.game_status,
+                &adventures,
+            )
+            .unwrap_or_default()
+        };
+        for info in &newly_unlocked {
+            let _ = adventure_app.emit("adventure:unlocked", info);
+        }
+    });
+
     let generator = MessageGenerator::new(deps);
     let gen_lock = state.generation_lock.clone();
 

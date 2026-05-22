@@ -1,4 +1,5 @@
 pub mod achievement;
+pub mod adventure;
 pub mod asset;
 pub mod background;
 pub mod character;

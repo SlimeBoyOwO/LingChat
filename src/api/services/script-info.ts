@@ -39,10 +39,9 @@ export const getScriptList = async (): Promise<ScriptSummary[]> => {
 }
 
 export const getStandaloneScriptList = async (): Promise<ScriptSummary[]> => {
-  // Standalone scripts are included in the full list; filter client-side
   try {
-    const scripts = await getScriptList()
-    return scripts // Backend returns all scripts; standalone filter is done by caller if needed
+    const data = await invoke<{ scripts: ScriptSummary[] }>('list_standalone_scripts')
+    return data.scripts
   } catch (error: any) {
     console.error('获取独立剧本列表错误:', error)
     throw error

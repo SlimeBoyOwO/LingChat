@@ -56,6 +56,26 @@ pub async fn list_scripts(app: AppHandle) -> Result<ScriptListResponse, String> 
 }
 
 #[tauri::command]
+pub async fn list_standalone_scripts(app: AppHandle) -> Result<ScriptListResponse, String> {
+    let state = app.state::<AppState>();
+    let service = state.ai_service.lock().await;
+    let scripts: Vec<ScriptSummary> = service
+        .script_manager
+        .all_scripts
+        .values()
+        .filter(|s| !s.adventure.is_adventure)
+        .map(|s| ScriptSummary {
+            script_name: s.name.clone(),
+            description: s.description.clone(),
+            folder_key: s.folder_key.clone(),
+            intro_chapter: s.intro_chapter.clone(),
+        })
+        .collect();
+
+    Ok(ScriptListResponse { scripts })
+}
+
+#[tauri::command]
 pub async fn start_script(
     app: AppHandle,
     script_name: String,
@@ -68,6 +88,7 @@ pub async fn start_script(
     let db = state.db.clone();
     let data_dir = state.ai_service.lock().await.data_dir.clone();
     let llm = state.chat.llm.clone();
+    let achievement_manager = state.achievement_manager.clone();
 
     // Check script exists
     {
@@ -87,6 +108,7 @@ pub async fn start_script(
             app,
             llm,
             script_name,
+            achievement_manager,
         )
         .await
         {
@@ -135,7 +157,7 @@ pub async fn script_submit_choice(
 /// Run a script in a background task.
 /// Acquires and releases the AIService lock around each event,
 /// so input/choice commands don't deadlock.
-async fn run_script_background(
+pub(crate) async fn run_script_background(
     ai_service: crate::ai_service::service::SharedAIService,
     channels: SharedScriptChannels,
     db: sea_orm::DatabaseConnection,
@@ -143,6 +165,7 @@ async fn run_script_background(
     app: AppHandle,
     llm: Option<Arc<crate::ai_service::llm::LlmClient>>,
     script_name: String,
+    achievement_manager: std::sync::Arc<tokio::sync::Mutex<crate::achievements::manager::AchievementManager>>,
 ) -> anyhow::Result<()> {
     // Acquire lock briefly to get script data and initialize
     let mut service = ai_service.lock().await;
@@ -379,8 +402,26 @@ async fn run_script_background(
         if let Some(key) = completed_key {
             service.game_status.completed_scripts.insert(key);
         }
+        let is_adventure = service
+            .game_status
+            .script_status
+            .as_ref()
+            .map(|ss| ss.adventure.is_adventure)
+            .unwrap_or(false);
         service.game_status.script_status = None;
         service.script_manager.is_running = false;
+        drop(service);
+
+        // Handle adventure completion (achievements, chained unlocks)
+        if is_adventure {
+            super::adventure::handle_adventure_completion(
+                &db,
+                &achievement_manager,
+                &app,
+                &ai_service,
+            )
+            .await;
+        }
     }
 
     log::info!("[ScriptAPI] 剧本 '{}' 执行完成", script_name);

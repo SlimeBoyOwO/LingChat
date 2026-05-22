@@ -192,7 +192,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useAdventureStore } from '@/stores/modules/adventure'
 import type { AdventureInfo } from '@/api/services/adventure'
 import { useGameStore } from '@/stores/modules/game'
@@ -371,12 +371,25 @@ const connections = computed<Connection[]>(() => {
 })
 
 onMounted(async () => {
+  await fetchAdventures()
+})
+
+watch(
+  () => props.characterFolder,
+  async (newFolder) => {
+    if (newFolder) {
+      await fetchAdventures()
+    }
+  },
+)
+
+async function fetchAdventures() {
   try {
     await adventureStore.fetchCharacterAdventures(props.characterFolder)
   } catch (error) {
     console.error('[AdventurePanel] Failed to fetch adventures:', error)
   }
-})
+}
 
 // CSS 和逻辑处理保持你的原始逻辑
 const getNodeClass = (adventure: AdventureInfo) => {
