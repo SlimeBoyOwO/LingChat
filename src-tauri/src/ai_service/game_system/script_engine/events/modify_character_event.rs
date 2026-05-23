@@ -52,13 +52,15 @@ impl ScriptEvent for ModifyCharacterEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
         let script_status = ctx
             .game_status
+            .lock().await
             .script_status
             .clone()
             .ok_or_else(|| anyhow!("ScriptStatus 未设置"))?;
 
         let role_id = {
+            let mut gs = ctx.game_status.lock().await;
             let role = script_function::get_role(
-                ctx.game_status,
+                &mut *gs,
                 ctx.db,
                 &script_status,
                 &self.character,
@@ -77,10 +79,10 @@ impl ScriptEvent for ModifyCharacterEvent {
         if let Some(ref action) = self.action {
             match action.as_str() {
                 "show_character" => {
-                    ctx.game_status.onstage_role(role_id);
+                    ctx.game_status.lock().await.onstage_role(role_id);
                 }
                 "hide_character" => {
-                    ctx.game_status.offstage_role(role_id);
+                    ctx.game_status.lock().await.offstage_role(role_id);
                 }
                 _ => {}
             }
@@ -89,9 +91,9 @@ impl ScriptEvent for ModifyCharacterEvent {
         // Apply perceive
         if let Some(perceive) = self.perceive {
             if perceive {
-                ctx.game_status.present_role_ids.insert(role_id);
+                ctx.game_status.lock().await.present_role_ids.insert(role_id);
             } else {
-                ctx.game_status.present_role_ids.remove(&role_id);
+                ctx.game_status.lock().await.present_role_ids.remove(&role_id);
             }
         }
 

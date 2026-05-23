@@ -69,32 +69,37 @@ impl ScriptEvent for ChoiceEvent {
         // Clone out script_status to avoid double borrow
         let mut script_status = ctx
             .game_status
+            .lock().await
             .script_status
             .clone()
             .ok_or_else(|| anyhow!("ScriptStatus 未设置"))?;
 
-        let matched = script_function::process_options(
-            ctx.game_status,
-            ctx.db,
-            &mut script_status,
-            &self.options,
-            Some(&user_choice),
-        )
-        .await?;
+        let matched = {
+            let mut gs = ctx.game_status.lock().await;
+            script_function::process_options(
+                &mut *gs,
+                ctx.db,
+                &mut script_status,
+                &self.options,
+                Some(&user_choice),
+            )
+            .await?
+        };
 
         // Write back potentially modified script_status
-        ctx.game_status.script_status = Some(script_status);
+        ctx.game_status.lock().await.script_status = Some(script_status);
 
         if !matched {
             // Add raw input as USER line if no option matched
+            let mut gs = ctx.game_status.lock().await;
             let line = LineBase {
                 content: user_choice,
                 attribute: LineAttributeExt(LineAttribute::User),
-                display_name: Some(ctx.game_status.player.user_name.clone()),
-                sender_role_id: ctx.game_status.main_role_id,
+                display_name: Some(gs.player.user_name.clone()),
+                sender_role_id: gs.main_role_id,
                 ..Default::default()
             };
-            ctx.game_status.add_line(ctx.db, line).await?;
+            gs.add_line(ctx.db, line).await?;
         }
 
         Ok(None)

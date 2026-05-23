@@ -34,7 +34,7 @@ impl PresentPicEvent {
 #[async_trait]
 impl ScriptEvent for PresentPicEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
-        ctx.game_status.present_pic = self.image_path.clone();
+        ctx.game_status.lock().await.present_pic = self.image_path.clone();
 
         let payload = PresentPicPayload {
             image_path: self.image_path.clone(),

@@ -34,7 +34,7 @@ impl BackgroundEvent {
 #[async_trait]
 impl ScriptEvent for BackgroundEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
-        ctx.game_status.background = self.image_path.clone();
+        ctx.game_status.lock().await.background = self.image_path.clone();
 
         let payload = BackgroundPayload {
             image_path: self.image_path.clone(),

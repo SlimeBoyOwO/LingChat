@@ -50,7 +50,7 @@ impl ScriptEvent for NarrationEvent {
             display_name: self.display_name.clone().or_else(|| Some("旁白".into())),
             ..Default::default()
         };
-        ctx.game_status.add_line(ctx.db, line).await?;
+        ctx.game_status.lock().await.add_line(ctx.db, line).await?;
 
         Ok(None)
     }

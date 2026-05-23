@@ -59,10 +59,10 @@ impl EventsHandler {
             .to_string();
 
         // Resolve placeholders in event data before dispatching
-        let event_data = resolve_placeholders(event_data, ctx.game_status);
+        let event_data = resolve_placeholders(event_data, &*ctx.game_status.lock().await);
 
         // Check condition
-        if !check_condition(&event_data, ctx.game_status) {
+        if !check_condition(&event_data, &*ctx.game_status.lock().await) {
             log::info!(
                 "[ScriptEngine] 跳过事件 type='{}'（条件不满足），索引: {}",
                 event_type,

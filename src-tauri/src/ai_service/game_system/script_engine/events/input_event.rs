@@ -54,11 +54,11 @@ impl ScriptEvent for InputEvent {
         let line = LineBase {
             content: user_input,
             attribute: LineAttributeExt(LineAttribute::User),
-            display_name: Some(ctx.game_status.player.user_name.clone()),
-            sender_role_id: ctx.game_status.main_role_id,
+            display_name: Some(ctx.game_status.lock().await.player.user_name.clone()),
+            sender_role_id: ctx.game_status.lock().await.main_role_id,
             ..Default::default()
         };
-        ctx.game_status.add_line(ctx.db, line).await?;
+        ctx.game_status.lock().await.add_line(ctx.db, line).await?;
 
         Ok(None)
     }

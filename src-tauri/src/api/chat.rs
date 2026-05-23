@@ -24,10 +24,14 @@ pub async fn send_chat_message(app: AppHandle, text: String) -> Result<(), Strin
         .unwrap_or(1)
         .max(1);
 
+    let game_status = {
+        let svc = state.ai_service.lock().await;
+        svc.game_status.clone()
+    };
     let deps = GeneratorDeps {
         app: app.clone(),
         db: state.db.clone(),
-        ai_service: state.ai_service.clone(),
+        game_status,
         processor: state.chat.processor.clone(),
         translator: state.chat.translator.clone(),
         llm,
@@ -74,11 +78,12 @@ pub async fn send_chat_message(app: AppHandle, text: String) -> Result<(), Strin
                 .get_all_adventures()
                 .into_iter()
                 .collect();
+            let gs = service.game_status.lock().await;
             let ach_mgr = adventure_ach_mgr.lock().await;
             crate::adventures::trigger::check_all_adventures(
                 &adventure_db,
                 &ach_mgr,
-                &service.game_status,
+                &gs,
                 &adventures,
             )
             .unwrap_or_default()

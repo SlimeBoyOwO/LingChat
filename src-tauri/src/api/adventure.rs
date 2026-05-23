@@ -61,12 +61,12 @@ pub async fn list_character_adventures(
     }
 
     let is_running = service.script_manager.is_running;
-    let current_script_folder = service
-        .game_status
+    let gs = service.game_status.lock().await;
+    let current_script_folder = gs
         .script_status
         .as_ref()
         .map(|ss| ss.folder_key.clone());
-    let completed = &service.game_status.completed_scripts;
+    let completed = &gs.completed_scripts;
 
     let mut result = Vec::new();
     for adv in adventures {
@@ -131,12 +131,12 @@ pub async fn list_all_adventures(app: AppHandle) -> Result<Vec<AdventureInfo>, S
     }
 
     let is_running = service.script_manager.is_running;
-    let current_script_folder = service
-        .game_status
+    let gs = service.game_status.lock().await;
+    let current_script_folder = gs
         .script_status
         .as_ref()
         .map(|ss| ss.folder_key.clone());
-    let completed = &service.game_status.completed_scripts;
+    let completed = &gs.completed_scripts;
 
     let mut result = Vec::new();
     for adv in adventures {
@@ -247,7 +247,7 @@ pub async fn check_adventure_unlocks(
             .get_all_adventures()
             .into_iter()
             .collect();
-        let game_status = &service.game_status;
+        let game_status = service.game_status.lock().await;
 
         let mut ach_mgr = state.achievement_manager.lock().await;
 
@@ -276,7 +276,7 @@ pub async fn check_adventure_unlocks(
             }
         }
 
-        let result = trigger::check_all_adventures(db, &ach_mgr, game_status, &adventures)
+        let result = trigger::check_all_adventures(db, &ach_mgr, &game_status, &adventures)
             .map_err(|e| format!("检测冒险解锁失败: {}", e))?;
         result
     };
@@ -307,7 +307,7 @@ pub async fn reset_adventure(
             .find(|s| s.folder_key == adventure_folder)
             .map(|s| s.path_key());
         if let Some(key) = path_key {
-            service.game_status.completed_scripts.remove(&key);
+            service.game_status.lock().await.completed_scripts.remove(&key);
         }
     }
 
@@ -334,7 +334,8 @@ pub(crate) async fn handle_adventure_completion(
 ) {
     let (folder_key, completion_achievements, name) = {
         let service = ai_service.lock().await;
-        match service.game_status.script_status.as_ref() {
+        let gs = service.game_status.lock().await;
+        match gs.script_status.as_ref() {
             Some(ss) if ss.adventure.is_adventure => (
                 ss.folder_key.clone(),
                 ss.adventure.completion_achievements.clone(),
@@ -399,8 +400,9 @@ pub(crate) async fn handle_adventure_completion(
             .get_all_adventures()
             .into_iter()
             .collect();
+        let gs = service.game_status.lock().await;
         let ach_mgr = achievement_manager.lock().await;
-        trigger::check_all_adventures(db, &ach_mgr, &service.game_status, &adventures)
+        trigger::check_all_adventures(db, &ach_mgr, &gs, &adventures)
             .unwrap_or_default()
     };
 

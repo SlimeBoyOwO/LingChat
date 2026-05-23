@@ -68,7 +68,9 @@ pub struct ScriptContext<'a> {
     pub db: &'a DatabaseConnection,
     pub data_dir: &'a Path,
     pub app: &'a AppHandle,
-    pub game_status: &'a mut GameStatus,
+    /// Owned Arc — events lock as needed. Decoupled from AIService lock
+    /// so events can safely call MessageGenerator without deadlock.
+    pub game_status: Arc<Mutex<GameStatus>>,
     pub config: &'a AIServiceConfig,
 
     /// Optional LLM client for `ai_dialogue`, `free_dialogue`, `chapter_end` (ai_judged).

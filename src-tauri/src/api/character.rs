@@ -429,13 +429,14 @@ pub async fn select_clothes(
 
     let main_role_id = service
         .game_status
+        .lock().await
         .main_role_id
         .ok_or_else(|| "角色不存在".to_string())?;
 
     // 收集角色数据后释放借用，再调用 add_line
     let (_, prompt) = {
-        let role = service
-            .game_status
+        let mut gs = service.game_status.lock().await;
+        let role = gs
             .get_role(db, main_role_id)
             .await
             .map_err(|e| format!("获取角色失败: {}", e))?;
@@ -467,6 +468,7 @@ pub async fn select_clothes(
 
     service
         .game_status
+        .lock().await
         .add_line(
             db,
             LineBase {

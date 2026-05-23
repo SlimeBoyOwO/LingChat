@@ -36,10 +36,11 @@ impl PlayerEvent {
 #[async_trait]
 impl ScriptEvent for PlayerEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
+        let player_name = ctx.game_status.lock().await.player.user_name.clone();
         let display_name = self
             .display_name
             .clone()
-            .unwrap_or_else(|| ctx.game_status.player.user_name.clone());
+            .unwrap_or(player_name);
 
         let payload = PlayerPayload {
             text: self.text.clone(),
@@ -51,10 +52,10 @@ impl ScriptEvent for PlayerEvent {
             content: self.text.clone(),
             attribute: LineAttributeExt(LineAttribute::User),
             display_name: Some(display_name),
-            sender_role_id: ctx.game_status.main_role_id,
+            sender_role_id: ctx.game_status.lock().await.main_role_id,
             ..Default::default()
         };
-        ctx.game_status.add_line(ctx.db, line).await?;
+        ctx.game_status.lock().await.add_line(ctx.db, line).await?;
 
         Ok(None)
     }

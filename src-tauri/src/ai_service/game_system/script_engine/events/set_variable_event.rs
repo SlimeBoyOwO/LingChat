@@ -33,8 +33,8 @@ impl SetVariableEvent {
 #[async_trait]
 impl ScriptEvent for SetVariableEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
-        let script_status = ctx
-            .game_status
+        let mut gs = ctx.game_status.lock().await;
+        let script_status = gs
             .script_status
             .as_mut()
             .ok_or_else(|| anyhow!("ScriptStatus 未设置，无法设置变量"))?;

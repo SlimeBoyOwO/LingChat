@@ -29,7 +29,7 @@ impl MusicEvent {
 #[async_trait]
 impl ScriptEvent for MusicEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
-        ctx.game_status.background_music = self.music_path.clone();
+        ctx.game_status.lock().await.background_music = self.music_path.clone();
 
         let payload = MusicPayload {
             music_path: self.music_path.clone(),

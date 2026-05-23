@@ -29,7 +29,7 @@ impl BackgroundEffectEvent {
 #[async_trait]
 impl ScriptEvent for BackgroundEffectEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
-        ctx.game_status.background_effect = self.effect.clone();
+        ctx.game_status.lock().await.background_effect = self.effect.clone();
 
         let payload = BackgroundEffectPayload {
             effect: self.effect.clone(),

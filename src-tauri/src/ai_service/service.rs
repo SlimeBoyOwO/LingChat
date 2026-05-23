@@ -9,12 +9,10 @@ use crate::ai_service::config::AIServiceConfig;
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::role_manager::GameRoleManager;
 use crate::ai_service::game_system::script_engine::ScriptManager;
+use crate::ai_service::llm::LlmClient;
 use crate::ai_service::prompt::{sys_prompt_builder, PromptOptions};
-use crate::ai_service::types::{
-    CharacterSettings, GameLine, GameMemoryBank, LineBase, LineAttributeExt,
-};
+use crate::ai_service::types::{CharacterSettings, GameLine, LineBase, LineAttributeExt};
 use crate::db::entities::line::LineAttribute;
-use crate::db::managers::save_repo::SaveRepo;
 
 /// AI 服务：承载 `GameStatus` 与会话级配置。
 ///
@@ -26,7 +24,7 @@ use crate::db::managers::save_repo::SaveRepo;
 pub struct AIService {
     pub db: DatabaseConnection,
     pub data_dir: PathBuf,
-    pub game_status: GameStatus,
+    pub game_status: Arc<Mutex<GameStatus>>,
     pub config: AIServiceConfig,
 
     // —— 从 CharacterSettings 导入的快照字段（Python 版的 self.ai_prompt 等） ——
@@ -47,12 +45,16 @@ pub struct AIService {
 }
 
 impl AIService {
-    pub async fn new(db: DatabaseConnection, data_dir: PathBuf) -> Self {
+    pub async fn new(
+        db: DatabaseConnection,
+        data_dir: PathBuf,
+        llm: Option<Arc<LlmClient>>,
+    ) -> Self {
         // Initialize the event handler registry before any script is run
         crate::ai_service::game_system::script_engine::init_event_registry();
 
-        let role_manager = GameRoleManager::new(data_dir.clone());
-        let game_status = GameStatus::new(role_manager);
+        let role_manager = GameRoleManager::new(data_dir.clone(), llm);
+        let game_status = Arc::new(Mutex::new(GameStatus::new(role_manager)));
         let script_manager = ScriptManager::new(&data_dir);
         Self {
             db,
@@ -78,7 +80,7 @@ impl AIService {
     ///
     /// `prompt_options` 控制对话格式提示（日语开关、情绪放开）。
     /// 调用方（通常是 Tauri command）从 AppConfig 读取后传入。
-    pub fn import_settings(
+    pub async fn import_settings(
         &mut self,
         settings: CharacterSettings,
         prompt_options: PromptOptions,
@@ -97,7 +99,6 @@ impl AIService {
         self.ai_prompt_example_old = settings.system_prompt_example_old.clone();
         self.clothes_name = settings.clothes_name.clone();
 
-        // 对 base_prompt 拼接对话格式提示（移植 sys_prompt_builder）
         self.ai_prompt = sys_prompt_builder(
             &self.user_name,
             &self.ai_name,
@@ -107,9 +108,11 @@ impl AIService {
             prompt_options,
         );
 
-        self.game_status.player.user_name = self.user_name.clone();
-        self.game_status.player.user_subtitle =
-            self.user_subtitle.clone().unwrap_or_default();
+        {
+            let mut gs = self.game_status.lock().await;
+            gs.player.user_name = self.user_name.clone();
+            gs.player.user_subtitle = self.user_subtitle.clone().unwrap_or_default();
+        }
 
         self.settings = Some(settings);
     }
@@ -117,10 +120,11 @@ impl AIService {
     /// 初始化 `GameStatus`：清空台词列表，写入首条 system 人设，
     /// 并把导入的角色设为主角 + 上台。
     pub async fn init_game_status(&mut self) -> Result<()> {
-        self.game_status.role_manager.reset_roles();
-        self.game_status.line_list.clear();
-        self.game_status.onstage_role_ids.clear();
-        self.game_status.present_role_ids.clear();
+        let mut gs = self.game_status.lock().await;
+        gs.role_manager.reset_roles();
+        gs.line_list.clear();
+        gs.onstage_role_ids.clear();
+        gs.present_role_ids.clear();
 
         let system_line = LineBase {
             content: self.ai_prompt.clone(),
@@ -129,25 +133,21 @@ impl AIService {
             display_name: Some(self.ai_name.clone()),
             ..Default::default()
         };
-        self.game_status.add_line(&self.db, system_line).await?;
+        gs.add_line(&self.db, system_line).await?;
 
         if let Some(cid) = self.character_id {
-            let _ = self.game_status.get_role(&self.db, cid).await?;
-            self.game_status.current_role_id = Some(cid);
-            self.game_status.onstage_role(cid);
-            self.game_status.main_role_id = Some(cid);
+            let _ = gs.get_role(&self.db, cid).await?;
+            gs.current_role_id = Some(cid);
+            gs.onstage_role(cid);
+            gs.main_role_id = Some(cid);
         } else {
             log::error!("初始化游戏主角失败，未指定角色ID。");
         }
         Ok(())
     }
 
-    pub fn get_lines(&self) -> &[GameLine] {
-        &self.game_status.line_list
-    }
-
-    pub fn set_active_save_id(&mut self, save_id: Option<i32>) {
-        self.game_status.active_save_id = save_id;
+    pub async fn set_active_save_id(&mut self, save_id: Option<i32>) {
+        self.game_status.lock().await.active_save_id = save_id;
     }
 
     /// 载入存档台词并恢复 MemoryBank。
@@ -157,46 +157,45 @@ impl AIService {
         main_role_id: i32,
         save_id: Option<i32>,
     ) -> Result<()> {
-        self.game_status.line_list = lines;
-        if let Some(sid) = save_id {
-            self.set_active_save_id(Some(sid));
+        {
+            let mut gs = self.game_status.lock().await;
+            gs.line_list = lines;
+            if let Some(sid) = save_id {
+                gs.active_save_id = Some(sid);
+            }
+            gs.refresh_memories(&self.db).await?;
+            let _ = gs.get_role(&self.db, main_role_id).await?;
+            gs.current_role_id = Some(main_role_id);
+            gs.main_role_id = Some(main_role_id);
         }
-
-        self.game_status.refresh_memories(&self.db).await?;
-
-        let _ = self.game_status.get_role(&self.db, main_role_id).await?;
-        self.game_status.current_role_id = Some(main_role_id);
-        self.game_status.main_role_id = Some(main_role_id);
         Ok(())
     }
 
     /// 将当前所有已加载角色的 `GameMemoryBank` 持久化到 DB。
-    pub async fn persist_memory_banks(&self, save_id: i32) -> Result<()> {
-        for (role_id, role) in &self.game_status.role_manager.loaded_roles {
-            let json = serde_json::to_string(&role.memory_bank)?;
-            SaveRepo::upsert_memory_bank(&self.db, save_id, Some(*role_id), &json).await?;
-        }
-        Ok(())
+    /// 委托给 `GameRoleManager` 以确保后台压缩结果先同步再写入。
+    pub async fn persist_memory_banks(&mut self, save_id: i32) -> Result<()> {
+        self.game_status
+            .lock()
+            .await
+            .role_manager
+            .persist_memory_banks_to_db(&self.db, save_id, None)
+            .await
     }
 
-    /// 从 DB 恢复所有 MemoryBank 到对应已加载角色。
+    /// 从 DB 恢复所有 MemoryBank 到对应已加载角色，并惰性创建压缩系统。
     pub async fn restore_memory_banks(&mut self, save_id: i32) -> Result<()> {
-        let banks = SaveRepo::get_memory_banks(&self.db, save_id).await?;
-        for bank in banks {
-            if let Some(rid) = bank.role_id {
-                if let Ok(mb) = serde_json::from_str::<GameMemoryBank>(&bank.info) {
-                    if let Some(role) = self.game_status.role_manager.get_loaded_mut(rid) {
-                        role.memory_bank = mb;
-                    }
-                }
-            }
-        }
-        Ok(())
+        self.game_status
+            .lock()
+            .await
+            .role_manager
+            .load_memory_banks_from_db(&self.db, save_id, None)
+            .await
     }
 
     /// 轻量清理：只清空台词 + 主角短期记忆，NPC 记忆保留。
     pub async fn clear_lines(&mut self) -> Result<()> {
-        self.game_status.line_list.clear();
+        let mut gs = self.game_status.lock().await;
+        gs.line_list.clear();
 
         let system_line = LineBase {
             content: self.ai_prompt.clone(),
@@ -205,10 +204,10 @@ impl AIService {
             display_name: Some(self.ai_name.clone()),
             ..Default::default()
         };
-        self.game_status.add_line(&self.db, system_line).await?;
+        gs.add_line(&self.db, system_line).await?;
 
-        if let Some(mid) = self.game_status.main_role_id {
-            self.game_status.role_manager.clear_role_memory(mid);
+        if let Some(mid) = gs.main_role_id {
+            gs.role_manager.clear_role_memory(mid);
         }
         log::info!("对话历史已清除（仅主角记忆）");
         Ok(())

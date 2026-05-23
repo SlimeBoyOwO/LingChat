@@ -229,7 +229,7 @@ impl ScriptManager {
         ctx: &mut ScriptContext<'_>,
     ) -> Result<()> {
         // Set script_status on GameStatus
-        ctx.game_status.script_status = Some(script.clone());
+        ctx.game_status.lock().await.script_status = Some(script.clone());
 
         // Register script roles from characters/ subdirectory (if exists)
         self.register_script_roles(script, ctx).await?;
@@ -237,11 +237,11 @@ impl ScriptManager {
         // Load player info from script settings
         if let Some(user_name) = script.settings.get("user_name").and_then(|v| v.as_str()) {
             if !user_name.is_empty() {
-                ctx.game_status.player.user_name = user_name.to_string();
+                ctx.game_status.lock().await.player.user_name = user_name.to_string();
             }
         }
         if let Some(user_subtitle) = script.settings.get("user_subtitle").and_then(|v| v.as_str()) {
-            ctx.game_status.player.user_subtitle = user_subtitle.to_string();
+            ctx.game_status.lock().await.player.user_subtitle = user_subtitle.to_string();
         }
 
         log::info!("[ScriptManager] 剧本 '{}' 初始化完成", script.name);
@@ -325,7 +325,7 @@ impl ScriptManager {
             );
 
             // Load the role into RoleManager
-            let _ = ctx.game_status.get_role(ctx.db, role_id).await?;
+            let _ = ctx.game_status.lock().await.get_role(ctx.db, role_id).await?;
 
             // Add system prompt line for this role
             let prompt = settings.system_prompt.clone().unwrap_or_default();
@@ -337,7 +337,7 @@ impl ScriptManager {
                     display_name: Some(settings.ai_name.clone()),
                     ..Default::default()
                 };
-                ctx.game_status.add_line(ctx.db, sys_line).await?;
+                ctx.game_status.lock().await.add_line(ctx.db, sys_line).await?;
             }
         }
 
@@ -348,9 +348,11 @@ impl ScriptManager {
     async fn run_script(&mut self, ctx: &mut ScriptContext<'_>) -> Result<()> {
         let script = ctx
             .game_status
+            .lock().await
             .script_status
             .as_ref()
-            .ok_or_else(|| anyhow!("ScriptStatus 未设置"))?;
+            .ok_or_else(|| anyhow!("ScriptStatus 未设置"))?
+            .clone();
 
         let mut next_chapter = script.intro_chapter.clone();
 
@@ -372,18 +374,20 @@ impl ScriptManager {
 
             let script_ref = ctx
                 .game_status
+                .lock().await
                 .script_status
                 .as_ref()
-                .ok_or_else(|| anyhow!("ScriptStatus 丢失"))?;
+                .ok_or_else(|| anyhow!("ScriptStatus 丢失"))?
+                .clone();
 
             let mut chapter = Chapter::new(
                 next_chapter.clone(),
                 chapter_config,
-                script_ref,
+                &script_ref,
             );
 
             // Update tracking fields
-            if let Some(ref mut ss) = ctx.game_status.script_status {
+            if let Some(ref mut ss) = ctx.game_status.lock().await.script_status {
                 ss.current_chapter_key = next_chapter.clone();
                 ss.current_event_process = 0;
             }
@@ -406,9 +410,9 @@ impl ScriptManager {
         let _ = emit(ctx.app, SCRIPT_END, &ScriptEndPayload {});
 
         // Mark adventures as completed
-        if let Some(ref ss) = ctx.game_status.script_status {
+        if let Some(ref ss) = ctx.game_status.lock().await.script_status {
             let folder = ss.path_key();
-            ctx.game_status.completed_scripts.insert(folder.clone());
+            ctx.game_status.lock().await.completed_scripts.insert(folder.clone());
 
             if ss.adventure.is_adventure {
                 log::info!("[ScriptManager] 羁绊冒险完成: {}", folder);
@@ -417,7 +421,7 @@ impl ScriptManager {
         }
 
         // Clear script status
-        ctx.game_status.script_status = None;
+        ctx.game_status.lock().await.script_status = None;
         self.is_running = false;
 
         Ok(())

@@ -21,7 +21,7 @@ use crate::ai_service::message_system::producer::{SentenceItem, StreamProducer};
 use crate::ai_service::message_system::responses::{
     event_names, ErrorResponse, ReplyResponse, StatusResetResponse, ThinkingResponse,
 };
-use crate::ai_service::service::SharedAIService;
+use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::translator::Translator;
 use crate::ai_service::types::{LineAttributeExt, LineBase, LlmMessage};
 use crate::db::entities::line::LineAttribute;
@@ -31,8 +31,7 @@ use crate::db::entities::line::LineAttribute;
 pub struct GeneratorDeps {
     pub app: AppHandle,
     pub db: DatabaseConnection,
-    /// 共享的 AIService（持有 GameStatus）
-    pub ai_service: SharedAIService,
+    pub game_status: Arc<Mutex<GameStatus>>,
     pub processor: Arc<MessageProcessor>,
     pub translator: Arc<Translator>,
     pub llm: Arc<LlmClient>,
@@ -64,26 +63,26 @@ impl MessageGenerator {
             processed_user_message = main.clone();
             temp_message = temp;
 
-            let mut svc = self.deps.ai_service.lock().await;
-            let user_name = svc.game_status.player.user_name.clone();
+            let mut gs = self.deps.game_status.lock().await;
+            let user_name = gs.player.user_name.clone();
             let line = LineBase {
                 content: main,
                 attribute: LineAttributeExt(LineAttribute::User),
                 display_name: Some(user_name),
                 ..Default::default()
             };
-            svc.game_status.add_line(&self.deps.db, line).await?;
-            inserted_user_line_index = Some(svc.game_status.line_list.len().saturating_sub(1));
+            gs.add_line(&self.deps.db, line).await?;
+            inserted_user_line_index = Some(gs.line_list.len().saturating_sub(1));
         }
 
         // === 2. 取当前角色记忆 ===
         let current_context: Vec<LlmMessage> = {
-            let mut svc = self.deps.ai_service.lock().await;
-            let Some(rid) = svc.game_status.current_role_id else {
+            let mut gs = self.deps.game_status.lock().await;
+            let Some(rid) = gs.current_role_id else {
                 log::error!("生成消息的时候没有当前角色，取消生成");
                 return Ok(String::new());
             };
-            let role = svc.game_status.get_role(&self.deps.db, rid).await?;
+            let role = gs.get_role(&self.deps.db, rid).await?;
             role.memory.clone()
         };
 
@@ -106,11 +105,11 @@ impl MessageGenerator {
 
         // === 4. 后处理：若 temp_message 存在，需要把 user 行里的 temp 段清理掉后重建记忆 ===
         if let (Some(temp), Some(idx)) = (temp_message.as_deref(), inserted_user_line_index) {
-            let mut svc = self.deps.ai_service.lock().await;
-            if let Some(line) = svc.game_status.line_list.get_mut(idx) {
+            let mut gs = self.deps.game_status.lock().await;
+            if let Some(line) = gs.line_list.get_mut(idx) {
                 line.base.content = processed_user_message.replace(temp, "");
             }
-            svc.game_status.refresh_memories(&self.deps.db).await?;
+            gs.refresh_memories(&self.deps.db).await?;
         }
 
         Ok(accumulated)
@@ -255,10 +254,9 @@ async fn consume_sentence(
 
     // VoiceMaker：取当前角色的 voice_maker（若配置）并生成语音文件
     let voice_maker = {
-        let svc = deps.ai_service.lock().await;
-        svc.game_status.current_role_id.and_then(|rid| {
-            svc.game_status
-                .role_manager
+        let gs = deps.game_status.lock().await;
+        gs.current_role_id.and_then(|rid| {
+            gs.role_manager
                 .get_loaded(rid)
                 .and_then(|r| r.voice_maker.clone())
         })
@@ -269,10 +267,9 @@ async fn consume_sentence(
 
     // 从 GameStatus 取当前角色信息，填入第一个段
     let role_info: Option<(Option<String>, Option<i32>)> = {
-        let svc = deps.ai_service.lock().await;
-        svc.game_status.current_role_id.and_then(|rid| {
-            svc.game_status
-                .role_manager
+        let gs = deps.game_status.lock().await;
+        gs.current_role_id.and_then(|rid| {
+            gs.role_manager
                 .get_loaded(rid)
                 .map(|role| (role.display_name.clone(), role.role_id))
         })
@@ -331,8 +328,8 @@ async fn consume_sentence(
         ..Default::default()
     };
     {
-        let mut svc = deps.ai_service.lock().await;
-        svc.game_status.add_line(&deps.db, line).await?;
+        let mut gs = deps.game_status.lock().await;
+        gs.add_line(&deps.db, line).await?;
     }
 
     Ok(Some(response))

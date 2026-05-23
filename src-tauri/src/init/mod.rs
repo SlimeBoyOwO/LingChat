@@ -28,16 +28,28 @@ pub async fn initialize(app: &App) -> Result<(DatabaseConnection, SharedAIServic
 
     role_sync::sync_roles_from_folder(&db, &data_dir).await?;
 
-    let mut ai_service = AIService::new(db.clone(), data_dir.clone()).await;
+    // 提前加载配置 + 构建 LlmClient（AIService 的子成员 GameRoleManager 需要它）
+    let app_config = AppConfig::load(&app.handle()).unwrap_or_default();
+
+    let llm = build_llm_client(
+        app_config.llm_provider.as_deref().unwrap_or(""),
+        app_config.llm_model.as_deref().unwrap_or(""),
+        app_config.llm_api_key.as_deref().unwrap_or(""),
+        app_config.llm_base_url.as_deref().unwrap_or(""),
+        app_config.temperature,
+        app_config.top_p,
+    )
+    .map(Arc::new);
+
+    let mut ai_service = AIService::new(db.clone(), data_dir.clone(), llm.clone()).await;
 
     // 加载默认角色：上次游玩的角色 → DB 中第一个主角色 → 默认空设定
     let settings = load_default_character(app, &db, &data_dir).await?;
-    let app_config = AppConfig::load(&app.handle()).unwrap_or_default();
     let prompt_options = PromptOptions {
         output_sec_lang: app_config.llm_output_sec_lang,
         no_emotion_limit: app_config.no_emotion_limit_prompt,
     };
-    ai_service.import_settings(settings, prompt_options);
+    ai_service.import_settings(settings, prompt_options).await;
     ai_service.init_game_status().await?;
 
     log::info!(
@@ -49,22 +61,11 @@ pub async fn initialize(app: &App) -> Result<(DatabaseConnection, SharedAIServic
     let ai_service: SharedAIService = Arc::new(Mutex::new(ai_service));
 
     // —— 构建聊天组件 ——
-    let llm = build_llm_client(
-        app_config.llm_provider.as_deref().unwrap_or(""),
-        app_config.llm_model.as_deref().unwrap_or(""),
-        app_config.llm_api_key.as_deref().unwrap_or(""),
-        app_config.llm_base_url.as_deref().unwrap_or(""),
-        app_config.temperature,
-        app_config.top_p,
-    )
-    .map(Arc::new);
-
     let translate_llm = build_llm_client(
         app_config.translate_provider.as_deref().unwrap_or(""),
         app_config.translate_model.as_deref().unwrap_or(""),
         app_config.translate_api_key.as_deref().unwrap_or(""),
         app_config.translate_base_url.as_deref().unwrap_or(""),
-        // 翻译不需要 temperature/top_p 参数
         None,
         None,
     );

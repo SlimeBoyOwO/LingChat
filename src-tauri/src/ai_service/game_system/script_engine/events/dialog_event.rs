@@ -53,13 +53,15 @@ impl ScriptEvent for DialogueEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
         let script_status = ctx
             .game_status
+            .lock().await
             .script_status
             .clone()
             .ok_or_else(|| anyhow!("ScriptStatus 未设置"))?;
 
         let (role_id, role_display_name) = {
+            let mut gs = ctx.game_status.lock().await;
             let role = script_function::get_role(
-                ctx.game_status,
+                &mut *gs,
                 ctx.db,
                 &script_status,
                 &self.character,
@@ -71,7 +73,7 @@ impl ScriptEvent for DialogueEvent {
         };
 
         // Now safe to mutate game_status
-        ctx.game_status.current_role_id = Some(role_id);
+        ctx.game_status.lock().await.current_role_id = Some(role_id);
 
         // Get display info
         let display_name = self
@@ -110,7 +112,7 @@ impl ScriptEvent for DialogueEvent {
             original_emotion: Some(emotion),
             ..Default::default()
         };
-        ctx.game_status.add_line(ctx.db, line).await?;
+        ctx.game_status.lock().await.add_line(ctx.db, line).await?;
 
         Ok(None)
     }

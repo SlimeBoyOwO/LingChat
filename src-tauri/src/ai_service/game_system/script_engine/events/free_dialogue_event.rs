@@ -1,11 +1,12 @@
 //! Free dialogue event — multi-round free conversation within a script.
 //!
 //! Emits free_dialogue start/stop boundaries, waits for input each round,
-//! and generates AI responses. LLM integration is stubbed.
+//! and delegates AI generation to MessageGenerator.
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use serde_json::Value;
+use tauri::Manager;
 
 use crate::ai_service::game_system::script_engine::events::{register_event, ScriptContext, ScriptEvent};
 use crate::ai_service::game_system::script_engine::responses::{
@@ -13,9 +14,8 @@ use crate::ai_service::game_system::script_engine::responses::{
     FreeDialoguePayload, InputPayload,
 };
 use crate::ai_service::message_system::events::emit;
-use crate::ai_service::message_system::responses::{ReplyResponse, ThinkingResponse};
-use crate::ai_service::types::{LineBase, LineAttributeExt};
-use crate::db::entities::line::LineAttribute;
+use crate::ai_service::message_system::generator::{GeneratorDeps, MessageGenerator};
+use crate::AppState;
 
 pub struct FreeDialogueEvent {
     hint: String,
@@ -65,6 +65,23 @@ impl ScriptEvent for FreeDialogueEvent {
         };
         let _ = emit(ctx.app, SCRIPT_FREE_DIALOGUE, &start_payload);
 
+        // Build MessageGenerator once (reused across rounds)
+        let generator = {
+            let state = ctx.app.state::<AppState>();
+            state.chat.llm.clone().map(|llm| {
+                let deps = GeneratorDeps {
+                    app: ctx.app.clone(),
+                    db: ctx.db.clone(),
+                    game_status: ctx.game_status.clone(),
+                    processor: state.chat.processor.clone(),
+                    translator: state.chat.translator.clone(),
+                    llm,
+                    concurrency: 1,
+                };
+                MessageGenerator::new(deps)
+            })
+        };
+
         for round in 1..=self.max_rounds {
             log::info!(
                 "[FreeDialogueEvent] 第 {} 轮 / {} 自由对话",
@@ -72,7 +89,7 @@ impl ScriptEvent for FreeDialogueEvent {
                 self.max_rounds
             );
 
-            // Set up oneshot and emit input event (brief lock for channel setup)
+            // Set up oneshot and emit input event
             let rx = {
                 let (tx, rx) = tokio::sync::oneshot::channel();
                 let mut ch = ctx.channels.lock().await;
@@ -98,55 +115,12 @@ impl ScriptEvent for FreeDialogueEvent {
                 break;
             }
 
-            // Add USER line
-            let user_line = LineBase {
-                content: user_input,
-                attribute: LineAttributeExt(LineAttribute::User),
-                display_name: Some(ctx.game_status.player.user_name.clone()),
-                sender_role_id: ctx.game_status.main_role_id,
-                ..Default::default()
-            };
-            ctx.game_status.add_line(ctx.db, user_line).await?;
-
-            // TODO: Full LLM integration — call AI and stream response
-            // For now, emit placeholder
-            let think = ThinkingResponse::new(true);
-            let _ = emit(ctx.app, "ai:thinking", &think);
-
-            let placeholder = format!(
-                "[自由对话 第{}轮] AI 回复中...（LLM 集成尚未完成）",
-                round
-            );
-
-            let reply = ReplyResponse {
-                type_: "reply".to_string(),
-                duration: -1.0,
-                is_final: true,
-                character: None,
-                role_id: ctx.game_status.current_role_id,
-                emotion: String::new(),
-                original_tag: String::new(),
-                message: placeholder.clone(),
-                tts_text: None,
-                motion_text: None,
-                audio_file: None,
-                original_message: placeholder.clone(),
-                display_name: None,
-                display_subtitle: None,
-            };
-            let _ = emit(ctx.app, "ai:reply", &reply);
-
-            let think_off = ThinkingResponse::new(false);
-            let _ = emit(ctx.app, "ai:thinking", &think_off);
-
-            // Add ASSISTANT line
-            let ai_line = LineBase {
-                content: placeholder,
-                attribute: LineAttributeExt(LineAttribute::Assistant),
-                sender_role_id: ctx.game_status.current_role_id,
-                ..Default::default()
-            };
-            ctx.game_status.add_line(ctx.db, ai_line).await?;
+            // Delegate to MessageGenerator (handles USER line, LLM streaming, ASSISTANT line)
+            if let Some(ref generator) = generator {
+                generator.process_message(Some(user_input)).await?;
+            } else {
+                log::warn!("[FreeDialogueEvent] LLM 未配置，跳过 AI 回复");
+            }
         }
 
         // Emit free_dialogue end

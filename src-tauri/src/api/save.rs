@@ -84,7 +84,7 @@ pub async fn create_save(app: AppHandle, title: String) -> Result<CreateSaveResp
     let db = &state.db;
 
     let mut service = state.ai_service.lock().await;
-    let lines = service.game_status.line_list.clone();
+    let lines = service.game_status.lock().await.line_list.clone();
 
     // 1. 创建 save 行
     let save_model = SaveRepo::create_save(db, &title)
@@ -100,14 +100,14 @@ pub async fn create_save(app: AppHandle, title: String) -> Result<CreateSaveResp
     }
 
     // 3. 设置主角
-    if let Some(main_id) = service.game_status.main_role_id {
+    if let Some(main_id) = service.game_status.lock().await.main_role_id {
         SaveRepo::update_save_main_role(db, save_id, Some(main_id))
             .await
             .map_err(|e| format!("设置主角失败: {}", e))?;
     }
 
     // 4. 写入 GameStatus 快照
-    let snapshot = service.game_status.to_snapshot();
+    let snapshot = service.game_status.lock().await.to_snapshot();
     let snapshot_json =
         serde_json::to_string(&snapshot).map_err(|e| format!("序列化状态失败: {}", e))?;
     SaveRepo::update_save_status(db, save_id, &snapshot_json)
@@ -115,7 +115,7 @@ pub async fn create_save(app: AppHandle, title: String) -> Result<CreateSaveResp
         .map_err(|e| format!("保存状态失败: {}", e))?;
 
     // 5. 标记当前活跃存档
-    service.set_active_save_id(Some(save_id));
+    service.game_status.lock().await.active_save_id = Some(save_id);
 
     // 6. 持久化 MemoryBank
     service
@@ -124,7 +124,7 @@ pub async fn create_save(app: AppHandle, title: String) -> Result<CreateSaveResp
         .map_err(|e| format!("保存记忆库失败: {}", e))?;
 
     // 7. 持久化剧本状态（若有）
-    if let Some(ref script_status) = service.game_status.script_status {
+    if let Some(ref script_status) = service.game_status.lock().await.script_status {
         let vars_json = serde_json::to_string(&script_status.vars).unwrap_or_default();
         let _ = SaveRepo::upsert_running_script(
             db,
@@ -186,7 +186,7 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
     };
 
     // 6. 导入设定并载入台词
-    service.import_settings(settings.clone(), prompt_options);
+    service.import_settings(settings.clone(), prompt_options).await;
     service
         .load_lines(line_list, main_role_id, Some(save_id))
         .await
@@ -194,7 +194,7 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
 
     // 7. 恢复 GameStatus 快照
     let snapshot: GameStatusSnapshot = serde_json::from_str(&save_model.status).unwrap_or_default();
-    service.game_status.apply_snapshot(&snapshot);
+    service.game_status.lock().await.apply_snapshot(&snapshot);
 
     // 8. 恢复 MemoryBank
     let _ = service
@@ -208,7 +208,7 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
     }
 
     // 10. 返回前端初始化数据
-    build_web_init_data(&service)
+    build_web_init_data(&service).await
 }
 
 #[tauri::command]
@@ -224,7 +224,7 @@ pub async fn update_save(app: AppHandle, save_id: i32) -> Result<(), String> {
         .map_err(|e| format!("查询存档失败: {}", e))?
         .ok_or_else(|| format!("存档 {} 不存在", save_id))?;
 
-    let lines = service.game_status.line_list.clone();
+    let lines = service.game_status.lock().await.line_list.clone();
 
     // 2. 同步台词（智能 diff）
     SaveRepo::sync_lines(db, save_id, &lines)
@@ -232,10 +232,10 @@ pub async fn update_save(app: AppHandle, save_id: i32) -> Result<(), String> {
         .map_err(|e| format!("同步台词失败: {}", e))?;
 
     // 3. 标记活跃存档
-    service.set_active_save_id(Some(save_id));
+    service.game_status.lock().await.active_save_id = Some(save_id);
 
     // 4. 更新 GameStatus 快照
-    let snapshot = service.game_status.to_snapshot();
+    let snapshot = service.game_status.lock().await.to_snapshot();
     let snapshot_json =
         serde_json::to_string(&snapshot).map_err(|e| format!("序列化状态失败: {}", e))?;
     SaveRepo::update_save_status(db, save_id, &snapshot_json)
@@ -249,7 +249,7 @@ pub async fn update_save(app: AppHandle, save_id: i32) -> Result<(), String> {
         .map_err(|e| format!("保存记忆库失败: {}", e))?;
 
     // 6. 持久化剧本状态
-    if let Some(ref script_status) = service.game_status.script_status {
+    if let Some(ref script_status) = service.game_status.lock().await.script_status {
         let vars_json = serde_json::to_string(&script_status.vars).unwrap_or_default();
         let _ = SaveRepo::upsert_running_script(
             db,
@@ -295,8 +295,8 @@ pub async fn delete_save(app: AppHandle, save_id: i32) -> Result<(), String> {
     }
 
     // 4. 若当前活跃存档是被删除的，清除标记
-    if service.game_status.active_save_id == Some(save_id) {
-        service.set_active_save_id(None);
+    if service.game_status.lock().await.active_save_id == Some(save_id) {
+        service.game_status.lock().await.active_save_id = None;
     }
 
     Ok(())

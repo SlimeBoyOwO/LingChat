@@ -109,7 +109,7 @@ impl ProactiveSystem {
                     }
                     
                     let svc = sys.ai_service.lock().await;
-                    let is_script_active = svc.game_status.script_status.is_some();
+                    let is_script_active = svc.game_status.lock().await.script_status.is_some();
                     (sys.config.enable_proactive_system, is_script_active)
                 };
 
@@ -201,7 +201,8 @@ impl ProactiveSystem {
             let reminder_prompt = {
                 let user_name = {
                     let svc = sys.ai_service.lock().await;
-                    svc.game_status.player.user_name.clone()
+                    let gs = svc.game_status.lock().await;
+                    gs.player.user_name.clone()
                 };
                 sys.schedule_manager.check_schedule_reminder(&user_name, &settings_snap)
             };
@@ -249,7 +250,8 @@ impl ProactiveSystem {
 
             let prompt_opt = {
                 let svc = sys.ai_service.lock().await;
-                sys.strategy_dispatcher.get_proactive_prompt(&svc.game_status, &settings_snap, &perception, &sys.config).await
+                let gs = svc.game_status.lock().await;
+                sys.strategy_dispatcher.get_proactive_prompt(&gs, &settings_snap, &perception, &sys.config).await
             };
 
             if let Some(prompt) = prompt_opt {
@@ -257,10 +259,14 @@ impl ProactiveSystem {
                 
                 // 必须在持有 generation_lock 期间进行消息处理，防止与用户回复混淆
                 let generator = {
+                    let game_status = {
+                        let svc = sys.ai_service.lock().await;
+                        svc.game_status.clone()
+                    };
                     let deps = GeneratorDeps {
                         app: sys.app.clone(),
                         db: sys.db.clone(),
-                        ai_service: sys.ai_service.clone(),
+                        game_status,
                         processor: sys.chat.processor.clone(),
                         translator: sys.chat.translator.clone(),
                         llm: sys.chat.llm.clone().ok_or_else(|| anyhow::anyhow!("LLM is not configured"))?,
@@ -270,11 +276,12 @@ impl ProactiveSystem {
                 };
 
                 log::info!("[ProactiveSystem] Dispatching proactive message generator: {}", prompt);
-                
+
                 // 往 game_status 追加系统级的主动 prompt 作为隐形触发台词
                 {
-                    let mut svc = sys.ai_service.lock().await;
-                    svc.game_status.add_line(&sys.db, LineBase {
+                    let svc = sys.ai_service.lock().await;
+                    let mut gs = svc.game_status.lock().await;
+                    gs.add_line(&sys.db, LineBase {
                         attribute: LineAttributeExt(LineAttribute::System),
                         content: prompt.clone(),
                         sender_role_id: None,
@@ -296,10 +303,14 @@ impl ProactiveSystem {
         let _lock = self.generation_lock.lock().await;
 
         let generator = {
+            let game_status = {
+                let svc = self.ai_service.lock().await;
+                svc.game_status.clone()
+            };
             let deps = GeneratorDeps {
                 app: self.app.clone(),
                 db: self.db.clone(),
-                ai_service: self.ai_service.clone(),
+                game_status,
                 processor: self.chat.processor.clone(),
                 translator: self.chat.translator.clone(),
                 llm: self.chat.llm.clone().ok_or_else(|| anyhow::anyhow!("LLM is not configured"))?,
@@ -311,8 +322,9 @@ impl ProactiveSystem {
         log::info!("[ProactiveSystem] Forcing proactive schedule alarm dialogue: {}", prompt);
 
         {
-            let mut svc = self.ai_service.lock().await;
-            svc.game_status.add_line(&self.db, LineBase {
+            let svc = self.ai_service.lock().await;
+            let mut gs = svc.game_status.lock().await;
+            gs.add_line(&self.db, LineBase {
                 attribute: LineAttributeExt(LineAttribute::System),
                 content: prompt.clone(),
                 sender_role_id: None,

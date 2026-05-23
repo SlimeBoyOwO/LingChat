@@ -178,13 +178,13 @@ pub(crate) async fn run_script_background(
         .ok_or_else(|| anyhow::anyhow!("剧本不存在: '{}'", script_name))?
         .clone();
 
-    service.game_status.script_status = Some(script.clone());
+    service.game_status.lock().await.script_status = Some(script.clone());
     service.script_manager.is_running = true;
 
     // Load player info
     if let Some(user_name) = script.settings.get("user_name").and_then(|v| v.as_str()) {
         if !user_name.is_empty() {
-            service.game_status.player.user_name = user_name.to_string();
+            service.game_status.lock().await.player.user_name = user_name.to_string();
         }
     }
 
@@ -225,7 +225,7 @@ pub(crate) async fn run_script_background(
                                 )
                                 .await?;
 
-                                let _ = service.game_status.get_role(&db, role_id).await?;
+                                let _ = service.game_status.lock().await.get_role(&db, role_id).await?;
 
                                 if let Some(prompt) = settings.system_prompt {
                                     if !prompt.is_empty() {
@@ -238,7 +238,7 @@ pub(crate) async fn run_script_background(
                                             display_name: Some(settings.ai_name),
                                             ..Default::default()
                                         };
-                                        service.game_status.add_line(&db, sys_line).await?;
+                                        service.game_status.lock().await.add_line(&db, sys_line).await?;
                                     }
                                 }
                             }
@@ -313,7 +313,8 @@ pub(crate) async fn run_script_background(
             // Check condition
             let condition_met = {
                 let service = ai_service.lock().await;
-                check_event_condition(&event_data, &service.game_status)
+                let gs = service.game_status.lock().await;
+                check_event_condition(&event_data, &gs)
             };
 
             if !condition_met {
@@ -324,7 +325,8 @@ pub(crate) async fn run_script_background(
             // Resolve placeholders
             let event_data = {
                 let service = ai_service.lock().await;
-                resolve_event_placeholders(event_data, &service.game_status)
+                let gs = service.game_status.lock().await;
+                resolve_event_placeholders(event_data, &gs)
             };
 
             // Execute the event
@@ -366,8 +368,9 @@ pub(crate) async fn run_script_background(
 
             // Update current_event_process
             {
-                let mut service = ai_service.lock().await;
-                if let Some(ref mut ss) = service.game_status.script_status {
+                let service = ai_service.lock().await;
+                let mut gs = service.game_status.lock().await;
+                if let Some(ref mut ss) = gs.script_status {
                     ss.current_event_process = progress as i32;
                 }
             }
@@ -377,8 +380,9 @@ pub(crate) async fn run_script_background(
 
         // Update current_chapter_key
         {
-            let mut service = ai_service.lock().await;
-            if let Some(ref mut ss) = service.game_status.script_status {
+            let service = ai_service.lock().await;
+            let mut gs = service.game_status.lock().await;
+            if let Some(ref mut ss) = gs.script_status {
                 ss.current_chapter_key = next_chapter.clone();
             }
         }
@@ -396,19 +400,21 @@ pub(crate) async fn run_script_background(
 
         let completed_key = service
             .game_status
+            .lock().await
             .script_status
             .as_ref()
             .map(|ss| ss.path_key());
         if let Some(key) = completed_key {
-            service.game_status.completed_scripts.insert(key);
+            service.game_status.lock().await.completed_scripts.insert(key);
         }
         let is_adventure = service
             .game_status
+            .lock().await
             .script_status
             .as_ref()
             .map(|ss| ss.adventure.is_adventure)
             .unwrap_or(false);
-        service.game_status.script_status = None;
+        service.game_status.lock().await.script_status = None;
         service.script_manager.is_running = false;
         drop(service);
 
@@ -429,6 +435,8 @@ pub(crate) async fn run_script_background(
 }
 
 /// Execute a single script event with proper lock management.
+/// Clones the GameStatus Arc briefly while holding AIService lock,
+/// then drops AIService lock so events can safely call MessageGenerator.
 async fn execute_script_event(
     ai_service: &crate::ai_service::service::SharedAIService,
     channels: &SharedScriptChannels,
@@ -444,19 +452,23 @@ async fn execute_script_event(
         anyhow::anyhow!("未注册的事件类型: '{}'", event_type)
     })?;
 
-    // Lock AIService and run handler. Handlers that await user input
-    // (input, choices, free_dialogue) manage channels themselves via
-    // ctx.channels, locking/unlocking around await points to avoid deadlock.
-    let mut service = ai_service.lock().await;
+    // Clone game_status Arc while holding AIService lock, then release.
+    // Events hold their own Arc<Mutex<GameStatus>> and can call
+    // MessageGenerator without re-locking AIService → no deadlock.
+    let game_status = {
+        let service = ai_service.lock().await;
+        service.game_status.clone()
+    };
+
     let mut ctx = make_script_context(
-        &mut service, db, data_dir, app, config, llm,
+        game_status, db, data_dir, app, config, llm,
         channels.clone(),
     );
     handler.execute(&mut ctx).await
 }
 
 fn make_script_context<'a>(
-    service: &'a mut crate::ai_service::service::AIService,
+    game_status: Arc<tokio::sync::Mutex<crate::ai_service::game_system::game_status::GameStatus>>,
     db: &'a sea_orm::DatabaseConnection,
     data_dir: &'a std::path::Path,
     app: &'a AppHandle,
@@ -468,7 +480,7 @@ fn make_script_context<'a>(
         db,
         data_dir,
         app,
-        game_status: &mut service.game_status,
+        game_status,
         config,
         llm,
         channels,

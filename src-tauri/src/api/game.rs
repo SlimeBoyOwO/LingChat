@@ -92,7 +92,7 @@ pub struct GameLineInit {
 pub async fn reactivate_tts(app: AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
     let service = state.ai_service.lock().await;
-    service.game_status.reactivate_all_voice_makers();
+    service.game_status.lock().await.reactivate_all_voice_makers();
     log::info!("TTS 服务已通过 reactivate_tts 命令重新启用");
     Ok(())
 }
@@ -101,7 +101,7 @@ pub async fn reactivate_tts(app: AppHandle) -> Result<(), String> {
 pub async fn init_game(app: AppHandle) -> Result<WebInitData, String> {
     let state = app.state::<AppState>();
     let service = state.ai_service.lock().await;
-    build_web_init_data(&service)
+    build_web_init_data(&service).await
 }
 
 // ========== 角色切换 ==========
@@ -134,7 +134,7 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
     // 3. 更新 AIService 状态
     {
         let mut service = state.ai_service.lock().await;
-        service.import_settings(settings.clone(), prompt_options);
+        service.import_settings(settings.clone(), prompt_options).await;
         service
             .init_game_status()
             .await
@@ -160,13 +160,13 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
     //    drop 后再拿锁，避免同一个锁两次借用
     let init = {
         let service = state.ai_service.lock().await;
-        build_web_init_data(&service)?
+        build_web_init_data(&service).await?
     };
     Ok(init)
 }
 
 /// 从 AIService 快照构建 WebInitData（不持锁的函数）
-pub(crate) fn build_web_init_data(service: &crate::ai_service::service::AIService) -> Result<WebInitData, String> {
+pub(crate) async fn build_web_init_data(service: &crate::ai_service::service::AIService) -> Result<WebInitData, String> {
     let settings = service
         .settings
         .as_ref()
@@ -174,8 +174,8 @@ pub(crate) fn build_web_init_data(service: &crate::ai_service::service::AIServic
 
     let character_settings = CharacterSettingsInit::from(settings);
 
-    let lines: Vec<GameLineInit> = service
-        .game_status
+    let gs = service.game_status.lock().await;
+    let lines: Vec<GameLineInit> = gs
         .line_list
         .iter()
         .map(|gl| GameLineInit {
@@ -191,13 +191,14 @@ pub(crate) fn build_web_init_data(service: &crate::ai_service::service::AIServic
         })
         .collect();
 
-    Ok(WebInitData {
+    let result = WebInitData {
         character_settings,
-        current_interact_role_id: service.game_status.current_role_id,
-        onstage_roles_ids: service.game_status.onstage_role_ids.clone(),
-        background: service.game_status.background.clone(),
-        background_effect: service.game_status.background_effect.clone(),
-        background_music: service.game_status.background_music.clone(),
+        current_interact_role_id: gs.current_role_id,
+        onstage_roles_ids: gs.onstage_role_ids.clone(),
+        background: gs.background.clone(),
+        background_effect: gs.background_effect.clone(),
+        background_music: gs.background_music.clone(),
         lines,
-    })
+    };
+    Ok(result)
 }
