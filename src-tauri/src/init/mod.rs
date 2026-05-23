@@ -9,6 +9,7 @@ use tauri::App;
 use tauri_plugin_store::StoreExt;
 use tokio::sync::Mutex;
 
+use crate::ai_service::emotion::EmotionClassifier;
 use crate::ai_service::llm::{create_llm_client, LlmClient, LlmConfig};
 use crate::ai_service::message_system::processor::{MessageProcessor, ProcessorOptions};
 use crate::ai_service::prompt::PromptOptions;
@@ -20,7 +21,9 @@ use crate::db;
 use crate::db::managers::role_repo::RoleRepo;
 use crate::ChatComponents;
 
-pub async fn initialize(app: &App) -> Result<(DatabaseConnection, SharedAIService, ChatComponents)> {
+pub async fn initialize(
+    app: &App,
+) -> Result<(DatabaseConnection, SharedAIService, ChatComponents)> {
     static_copy::copy_game_data(app)?;
 
     let data_dir = static_copy::resolve_data_dir();
@@ -41,7 +44,13 @@ pub async fn initialize(app: &App) -> Result<(DatabaseConnection, SharedAIServic
     )
     .map(Arc::new);
 
-    let mut ai_service = AIService::new(db.clone(), data_dir.clone(), llm.clone(), app_config.tts.clone()).await;
+    let mut ai_service = AIService::new(
+        db.clone(),
+        data_dir.clone(),
+        llm.clone(),
+        app_config.tts.clone(),
+    )
+    .await;
 
     // 加载默认角色：上次游玩的角色 → DB 中第一个主角色 → 默认空设定
     let settings = load_default_character(app, &db, &data_dir).await?;
@@ -70,10 +79,14 @@ pub async fn initialize(app: &App) -> Result<(DatabaseConnection, SharedAIServic
         None,
     );
 
-    let processor = Arc::new(MessageProcessor::new(ProcessorOptions {
-        time_sense_enabled: app_config.enable_time_sense,
-        enable_translate: app_config.enable_translate,
-    }));
+    let classifier = load_emotion_classifier(app_config.enable_emotion_classifier, &data_dir);
+    let processor = Arc::new(MessageProcessor::new(
+        ProcessorOptions {
+            time_sense_enabled: app_config.enable_time_sense,
+            enable_translate: app_config.enable_translate,
+        },
+        classifier,
+    ));
 
     let translator = Arc::new(Translator::new(
         translate_llm,
@@ -98,7 +111,11 @@ fn build_llm_client(
     top_p: Option<f64>,
 ) -> Option<LlmClient> {
     if api_key.is_empty() || model.is_empty() {
-        tracing::warn!("LLM 未配置 (provider={}, model={})，将无法生成对话", provider, model);
+        tracing::warn!(
+            "LLM 未配置 (provider={}, model={})，将无法生成对话",
+            provider,
+            model
+        );
         return None;
     }
     let cfg = LlmConfig {
@@ -111,6 +128,47 @@ fn build_llm_client(
         top_p,
     };
     create_llm_client(cfg).ok()
+}
+
+fn load_emotion_classifier(
+    enabled: bool,
+    data_dir: &std::path::Path,
+) -> Option<Arc<EmotionClassifier>> {
+    if !enabled {
+        tracing::info!("情绪分类器已在配置中禁用");
+        return None;
+    }
+
+    let model_dir = resolve_emotion_model_dir(data_dir);
+    match model_dir {
+        Some(dir) if dir.join("model.onnx").exists() => match EmotionClassifier::load(&dir) {
+            Ok(clf) => {
+                tracing::info!("情绪分类器加载成功: {}", dir.display());
+                return Some(Arc::new(clf));
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "情绪分类器加载失败 ({}), 回退为禁用状态: {e}",
+                    dir.display()
+                );
+            }
+        },
+        _ => {
+            tracing::warn!("未找到情绪模型目录, 情绪分类器将禁用");
+        }
+    }
+
+    None
+}
+
+fn resolve_emotion_model_dir(data_dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    // 发布模式：data/emotion_model_19emo/
+    let data_path = data_dir.join("third_party").join("emotion_model_19emo");
+    if data_path.exists() {
+        return Some(data_path);
+    }
+
+    None
 }
 
 /// 加载默认角色设定：上次游玩的角色 → 第一个主角色 → 默认空设定

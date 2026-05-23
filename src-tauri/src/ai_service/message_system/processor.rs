@@ -100,21 +100,15 @@ struct ProcessorInner {
 }
 
 impl MessageProcessor {
-    pub fn new(options: ProcessorOptions) -> Self {
+    pub fn new(options: ProcessorOptions, classifier: Option<Arc<EmotionClassifier>>) -> Self {
         Self {
             options,
             inner: Mutex::new(ProcessorInner {
                 last_time: Instant::now(),
                 sys_time_counter: 0,
             }),
-            classifier: None,
+            classifier,
         }
-    }
-
-    /// 注入情绪分类器（可选）。未注入时 `predicted` 取原始 tag 文本。
-    pub fn with_classifier(mut self, classifier: Arc<EmotionClassifier>) -> Self {
-        self.classifier = Some(classifier);
-        self
     }
 
     /// 解析并分类情绪片段。语义对应 Python `parse_and_classify_emotional_segments`。

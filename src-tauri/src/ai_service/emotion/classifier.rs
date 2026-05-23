@@ -1,17 +1,16 @@
 //! 情绪分类器（ONNX 版）。移植自 Python `core/emotion/classifier.py`。
 //!
 //! - 模型：BERT 字符级分词 + 线性分类头，最大 seq_len=128
-//! - 词表：`vocab.txt`（每行一 token，1 基本 id 按行号计）
+//! - 词表：`vocab.txt`（每行一 token，id 按行号计）
 //! - 标签映射：`label_mapping.json` -> `id2label` / `label2id`
-//! - 推理后端：`tract-onnx`（纯 Rust，无需 onnxruntime 动态库）
+//! - 推理后端：`ort`（ONNX Runtime，与 Python 侧一致）
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::Mutex;
 
 use anyhow::{anyhow, Context, Result};
-use smallvec::smallvec;
-use tract_onnx::prelude::*;
+use ort::{session::Session, value::Tensor};
 
 const MAX_SEQ_LEN: usize = 128;
 const DEFAULT_CONFIDENCE_THRESHOLD: f32 = 0.08;
@@ -46,15 +45,8 @@ struct LabelMappingFile {
     label2id: HashMap<String, i64>,
 }
 
-// 修复：移除过时的类型别名，直接使用 tract 预导出的 RunnableModel
-type OnnxModel = RunnableModel<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>;
-
 pub struct EmotionClassifier {
-    model: Option<Arc<OnnxModel>>,
-    /// 运行时模型的输入数量（2 或 3）
-    input_count: usize,
-    /// 第二个输入（attention_mask）是否为 f32
-    mask_is_f32: bool,
+    session: Option<Mutex<Session>>,
     vocab: HashMap<String, i64>,
     id2label: HashMap<i64, String>,
     label2id: HashMap<String, i64>,
@@ -70,9 +62,7 @@ impl EmotionClassifier {
     /// 禁用状态的空实例（`predict` 全部透传）。
     pub fn disabled() -> Self {
         Self {
-            model: None,
-            input_count: 0,
-            mask_is_f32: false,
+            session: None,
             vocab: HashMap::new(),
             id2label: HashMap::new(),
             label2id: HashMap::new(),
@@ -101,89 +91,20 @@ impl EmotionClassifier {
             return Err(anyhow!("标签映射文件不存在: {}", mapping_path.display()));
         }
 
-        // 载入 ONNX：最多 3 个 i64 输入（input_ids / attention_mask / token_type_ids），
-        // 形状都是 [1, MAX_SEQ_LEN]。如果 mask 被导出为 f32，则回退成第二个输入为 f32。
-        let mut mask_is_f32 = false;
-        let mut input_count_out = 0usize;
-        let model = {
-            // 修复：使用新版 tract API 直接加载路径
-            let loaded = tract_onnx::onnx()
-                .model_for_path(&onnx_path)
-                .with_context(|| format!("解析 ONNX 失败: {}", onnx_path.display()))?;
-
-            let input_count = loaded.inputs.len();
-            input_count_out = input_count;
-            tracing::info!(
-                "ONNX 模型输入数: {} ({:?})",
-                input_count,
-                loaded
-                    .inputs
-                    .iter()
-                    .map(|o| loaded.node(o.node).name.clone())
-                    .collect::<Vec<_>>()
-            );
-
-            let pin_all_i64 = |m: InferenceModel| -> TractResult<_> {
-                let mut m = m;
-                for i in 0..input_count {
-                    // 修复：使用 InferenceFact::dt_shape 替换 i64::fact
-                    m = m.with_input_fact(
-                        i,
-                        InferenceFact::dt_shape(i64::datum_type(), [1, MAX_SEQ_LEN]),
-                    )?;
-                }
-                Ok(m)
-            };
-
-            let build = |loaded: InferenceModel, mask_f32: bool| -> TractResult<OnnxModel> {
-                let mut m = loaded;
-                m = m.with_input_fact(
-                    0,
-                    InferenceFact::dt_shape(i64::datum_type(), [1, MAX_SEQ_LEN]),
-                )?;
-                if input_count > 1 {
-                    let mask_fact = if mask_f32 {
-                        InferenceFact::dt_shape(f32::datum_type(), [1, MAX_SEQ_LEN])
-                    } else {
-                        InferenceFact::dt_shape(i64::datum_type(), [1, MAX_SEQ_LEN])
-                    };
-                    m = m.with_input_fact(1, mask_fact)?;
-                }
-                if input_count > 2 {
-                    m = m.with_input_fact(
-                        2,
-                        InferenceFact::dt_shape(i64::datum_type(), [1, MAX_SEQ_LEN]),
-                    )?;
-                }
-                let typed = m.into_typed()?;
-                let decluttered = typed.into_decluttered()?;
-                decluttered.into_runnable()
-            };
-
-            // 某些导出的 BERT ONNX 会带上 tract 无法静态还原的符号维度（如 `s72`），
-            // 此时 `into_optimized()` 会失败。我们依次尝试：
-            //   1. 固化 + optimize（最优推理）
-            //   2. 固化 + decluttered（保留典型类型推断）
-            //   3. 回退到 f32 mask 后重复上述两步
-            match pin_all_i64(loaded.clone())
-                .and_then(|m| m.into_optimized())
-                .and_then(|m| m.into_runnable())
-                .or_else(|_| build(loaded.clone(), false))
-                .or_else(|_| {
-                    mask_is_f32 = true;
-                    build(loaded.clone(), true)
-                }) {
-                Ok(m) => m,
-                Err(e) => return Err(anyhow!("ONNX 模型优化/固化失败: {e}")),
-            }
-        };
+        let session = Session::builder()
+            .map_err(|e| anyhow!("创建 SessionBuilder 失败: {e}"))?
+            .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)
+            .map_err(|e| anyhow!("设置优化级别失败: {e}"))?
+            .with_intra_threads(1)
+            .map_err(|e| anyhow!("设置线程数失败: {e}"))?
+            .commit_from_file(&onnx_path)
+            .map_err(|e| anyhow!("加载 ONNX 模型失败 ({}): {e}", onnx_path.display()))?;
 
         // 词表：每行一个 token，行号即 id
         let vocab_text = std::fs::read_to_string(&vocab_path)
             .with_context(|| format!("读取 vocab 失败: {}", vocab_path.display()))?;
         let mut vocab: HashMap<String, i64> = HashMap::with_capacity(32_000);
         for (idx, line) in vocab_text.lines().enumerate() {
-            // 与 transformers BertTokenizer 对齐：保留原 token（含 [PAD] 等特殊 token），不 strip
             vocab.insert(line.to_string(), idx as i64);
         }
 
@@ -214,9 +135,7 @@ impl EmotionClassifier {
         );
 
         Ok(Self {
-            model: Some(Arc::new(model)),
-            input_count: input_count_out,
-            mask_is_f32,
+            session: Some(Mutex::new(session)),
             vocab,
             id2label,
             label2id: mapping.label2id,
@@ -231,13 +150,13 @@ impl EmotionClassifier {
     }
 
     pub fn is_enabled(&self) -> bool {
-        self.model.is_some()
+        self.session.is_some()
     }
 
     /// 预测文本情绪。`confidence_threshold` 小于此值会返回 "不确定"。
     pub fn predict(&self, text: &str, confidence_threshold: Option<f32>) -> EmotionPrediction {
         let threshold = confidence_threshold.unwrap_or(DEFAULT_CONFIDENCE_THRESHOLD);
-        let Some(model) = self.model.as_ref() else {
+        let Some(session) = self.session.as_ref() else {
             return EmotionPrediction::passthrough(text, true);
         };
 
@@ -257,7 +176,15 @@ impl EmotionClassifier {
             };
         }
 
-        match self.run_inference(model, text, threshold) {
+        let mut session = match session.lock() {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!("无法获取 session 锁: {e}");
+                return EmotionPrediction::passthrough(text, false);
+            }
+        };
+
+        match self.run_inference(&mut session, text, threshold) {
             Ok(p) => p,
             Err(e) => {
                 tracing::error!("情绪预测错误: {e}");
@@ -268,43 +195,37 @@ impl EmotionClassifier {
 
     fn run_inference(
         &self,
-        model: &OnnxModel,
+        session: &mut Session,
         text: &str,
         threshold: f32,
     ) -> Result<EmotionPrediction> {
         let (input_ids, attention_mask) = self.tokenize(text);
 
-        // 修复：使用 tract_ndarray 替代 ndarray
-        let ids_tensor = tract_ndarray::Array2::from_shape_vec((1, MAX_SEQ_LEN), input_ids)?;
-        let mask_i64 = tract_ndarray::Array2::from_shape_vec((1, MAX_SEQ_LEN), attention_mask)?;
+        let mask_f32: Vec<f32> = attention_mask.iter().map(|&v| v as f32).collect();
 
-        // 修复：显式指定类型并使用 tract::prelude 中的 Tensor
-        let ids_tv: TValue = Tensor::from(ids_tensor).into();
-        let mask_tv: TValue = if self.mask_is_f32 {
-            Tensor::from(mask_i64.mapv(|v| v as f32)).into()
-        } else {
-            Tensor::from(mask_i64).into()
-        };
+        let ids_tensor =
+            Tensor::from_array(([1i64, MAX_SEQ_LEN as i64], input_ids.into_boxed_slice()))
+                .context("创建 input_ids tensor 失败")?;
+        let mask_tensor =
+            Tensor::from_array(([1i64, MAX_SEQ_LEN as i64], mask_f32.into_boxed_slice()))
+                .context("创建 attention_mask tensor 失败")?;
 
-        // 修复：将 tvec! 替换为标准的 vec![]
-        let outputs = match self.input_count {
-            1 => model.run(smallvec![ids_tv]),
-            2 => model.run(smallvec![ids_tv, mask_tv]),
-            _ => {
-                // 3 个输入：token_type_ids 全 0
-                let tti = tract_ndarray::Array2::<i64>::zeros((1, MAX_SEQ_LEN));
-                model.run(smallvec![ids_tv, mask_tv, Tensor::from(tti).into()])
-            }
-        }
-        .context("ONNX 推理失败")?;
+        let input_names: Vec<String> = session.inputs().iter().map(|o| o.name().to_string()).collect();
+
+        let outputs = session
+            .run(ort::inputs![
+                input_names[0].as_str() => ids_tensor,
+                input_names[1].as_str() => mask_tensor,
+            ])
+            .context("ONNX 推理失败")?;
 
         let logits = outputs[0]
-            .to_array_view::<f32>()
+            .try_extract_array::<f32>()
             .context("输出张量类型不是 f32")?;
-        let logits_row = logits
+        let logits_slice = logits
             .as_slice()
             .ok_or_else(|| anyhow!("logits 非连续布局"))?;
-        let probs = softmax(logits_row);
+        let probs = softmax(logits_slice);
 
         let (pred_id, pred_prob) = probs
             .iter()
@@ -349,7 +270,6 @@ impl EmotionClassifier {
         let mut ids: Vec<i64> = Vec::with_capacity(MAX_SEQ_LEN);
         ids.push(self.cls_id);
 
-        // Python 版 `list(text)` 是按 Unicode 字符切
         let chars: Vec<&str> = text.graphemes_iter();
         let max_body = MAX_SEQ_LEN - 2;
         for g in chars.into_iter().take(max_body) {
@@ -423,11 +343,10 @@ mod tests {
     use std::path::PathBuf;
 
     fn model_dir() -> Option<PathBuf> {
-        // 向上回到 repo 根，拼 ling_chat/third_party/emotion_model_19emo
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let candidate = manifest_dir
             .parent()?
-            .join("ling_chat")
+            .join("ling_chat_python")
             .join("third_party")
             .join("emotion_model_19emo");
         candidate.join("model.onnx").exists().then_some(candidate)
@@ -444,7 +363,7 @@ mod tests {
     #[test]
     fn load_and_predict_real_model() {
         let Some(dir) = model_dir() else {
-            eprintln!("skip: emotion_model_19emo 未在 ling_chat/third_party 下");
+            eprintln!("skip: emotion_model_19emo 未在 ling_chat_python/third_party 下");
             return;
         };
         let clf = EmotionClassifier::load(&dir).expect("load");
