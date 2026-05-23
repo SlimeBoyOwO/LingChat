@@ -168,11 +168,6 @@ async function updateCharacterAvatar() {
 
 watch(() => gameStore.mainRole?.character_folder, updateCharacterAvatar, { immediate: true })
 
-// 获取角色文件夹
-const characterFolder = computed(() => {
-  return gameStore.mainRole?.character_folder
-})
-
 // 跳转到角色标签页
 const goToCharacterTab = () => {
   uiStore.setSettingsTab('character')

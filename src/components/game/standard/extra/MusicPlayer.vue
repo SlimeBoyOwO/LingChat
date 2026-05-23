@@ -22,7 +22,7 @@
             :class="{ 'animate-pulse': !isPaused }"
           />
           <span
-            class="text-sm font-medium text-gray-200 truncate max-w-[160px]"
+            class="text-sm font-medium text-gray-200 truncate max-w-40"
             :title="currentMusicName"
           >
             {{ currentMusicName }}

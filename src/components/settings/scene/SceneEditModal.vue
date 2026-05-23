@@ -3,7 +3,7 @@
     <Transition name="modal">
       <div
         v-if="show"
-        class="fixed inset-0 z-[9999] flex items-center justify-center p-4 backdrop-blur-md bg-black/40"
+        class="fixed inset-0 z-9999 flex items-center justify-center p-4 backdrop-blur-md bg-black/40"
         @click="$emit('close')"
       >
         <div
@@ -70,7 +70,7 @@
                 </select>
                 <Button
                   @click="$emit('upload')"
-                  class="!bg-white/10 hover:!bg-white/20 !text-white border border-white/20 whitespace-nowrap px-6 rounded-xl"
+                  class="bg-white/10! hover:bg-white/20! text-white! border border-white/20 whitespace-nowrap px-6 rounded-xl"
                 >
                   上传
                 </Button>
@@ -107,14 +107,14 @@
           <div class="p-6 bg-white/5 border-t border-white/10 flex gap-3 justify-end items-center">
             <Button
               @click="$emit('close')"
-              class="!bg-transparent !text-white/70 hover:!text-white hover:!bg-white/10 border border-white/20"
+              class="bg-transparent! text-white/70! hover:text-white! hover:bg-white/10! border border-white/20"
             >
               取消
             </Button>
             <Button
               @click="handleSubmit"
               :disabled="!formData.sceneName.trim()"
-              class="!bg-indigo-500 hover:!bg-indigo-400 border-none shadow-[0_0_10px_rgba(99,102,241,0.5)] disabled:opacity-50 disabled:shadow-none min-w-[100px] text-white"
+              class="bg-indigo-500! hover:bg-indigo-400! border-none shadow-[0_0_10px_rgba(99,102,241,0.5)] disabled:opacity-50 disabled:shadow-none min-w-[100px] text-white"
             >
               {{ mode === 'create' ? '创建' : '更新' }}
             </Button>

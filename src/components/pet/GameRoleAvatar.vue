@@ -73,7 +73,7 @@
 
       <!-- 6. 气泡表情 -->
       <div :class="[
-        'absolute w-full h-full -top-[2%] -left-[2%] z-73 bg-contain bg-no-repeat pointer-events-none transition-all duration-300 origin-bottom-left',
+        'absolute w-full h-full top-[-2%] left-[-2%] z-73 bg-contain bg-no-repeat pointer-events-none transition-all duration-300 origin-bottom-left',
         bubbleClasses,
       ]" :style="bubbleStyles"></div>
     </div>

@@ -115,7 +115,7 @@ const getCardClass = (ach: any) => {
   }
   if (ach.type === 'rare') {
     // 稀有：增强金色光晕和呼吸感
-    return 'bg-gradient-to-br from-yellow-700/30 to-black/60 border-yellow-400 shadow-[0_0_30px_rgba(234,179,8,0.25)] hover:shadow-[0_0_40px_rgba(234,179,8,0.4)] hover:-translate-y-1'
+    return 'bg-linear-to-br from-yellow-700/30 to-black/60 border-yellow-400 shadow-[0_0_30px_rgba(234,179,8,0.25)] hover:shadow-[0_0_40px_rgba(234,179,8,0.4)] hover:-translate-y-1'
   }
   // 普通：标准玻璃态
   return 'bg-black/30 border-white/20 hover:bg-white/5 hover:border-black/5 shadow-lg hover:shadow-emerald-500/10 hover:-translate-y-0.5'
@@ -143,8 +143,8 @@ const getBadgeClass = (ach: any) => {
 
 const getProgressClass = (ach: any) => {
   if (ach.unlocked) {
-    if (ach.type === 'rare') return 'bg-gradient-to-r from-yellow-600 to-yellow-300'
-    return 'bg-gradient-to-r from-emerald-600 to-emerald-300'
+    if (ach.type === 'rare') return 'bg-linear-to-r from-yellow-600 to-yellow-300'
+    return 'bg-linear-to-r from-emerald-600 to-emerald-300'
   }
   return 'bg-white/40'
 }

@@ -1,9 +1,9 @@
 <template>
   <transition appear :css="false" @before-enter="beforeEnter" @enter="enter" @leave="leave">
-    <!-- 使用 -mt-[20vh] 让整体位置中间偏上 -->
+    <!-- 使用 mt-[-20vh] 让整体位置中间偏上 -->
     <div
       v-if="isVisible"
-      class="fixed inset-0 flex flex-col items-center justify-center -mt-[20vh] pointer-events-none z-1000"
+      class="fixed inset-0 flex flex-col items-center justify-center mt-[-20vh] pointer-events-none z-1000"
     >
       <!-- 柔和的雾化背景层 -->
       <div

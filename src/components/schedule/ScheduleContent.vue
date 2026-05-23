@@ -69,8 +69,10 @@
       <header class="mt-2 p-6 flex justify-between items-center border-b border-cyan-300">
         <div class="flex items-center space-x-4 pl-4">
           <button
-            v-show="uiStore.scheduleView === 'schedule_detail'"
-            @click="uiStore.scheduleView = 'schedule_groups'"
+            v-show="
+              uiStore.scheduleView === 'schedule_detail' || uiStore.scheduleView === 'todo_detail'
+            "
+            @click="goBackToParentView"
             class="p-2 hover:bg-cyan-50 rounded-full text-cyan-600 transition-all"
           >
             <ChevronLeft />
@@ -108,12 +110,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, reactive } from 'vue'
+import { computed, ref } from 'vue'
 import { useUIStore } from '@/stores/modules/ui/ui'
-import TodoPage from '@/components/settings/pages/Schedule/TodoPage.vue'
-import SchedulePage from '@/components/settings/pages/Schedule/SchedulePage.vue'
-import CalendarPage from '@/components/settings/pages/Schedule/CalendarPage.vue'
-import ProactivePage from '../settings/pages/Schedule/ProactivePage.vue'
+import TodoPage from '@/components/schedule/pages/TodoPage.vue'
+import SchedulePage from '@/components/schedule/pages/SchedulePage.vue'
+import CalendarPage from '@/components/schedule/pages/CalendarPage.vue'
+import ProactivePage from '@/components/schedule/pages/ProactivePage.vue'
 import {
   Layers,
   CheckCircle2,
@@ -137,7 +139,6 @@ const props = withDefaults(
 const scheduleRef = ref()
 const todoRef = ref()
 const calendarRef = ref()
-const proactiveRef = ref()
 const titleInfo = computed(() => {
   const currentView = uiStore.scheduleView
 
@@ -190,6 +191,14 @@ const triggerCreate = () => {
 
 const changeView = (view: string) => {
   uiStore.scheduleView = view
+}
+
+const goBackToParentView = () => {
+  if (uiStore.scheduleView === 'schedule_detail') {
+    uiStore.scheduleView = 'schedule_groups'
+  } else if (uiStore.scheduleView === 'todo_detail') {
+    uiStore.scheduleView = 'todo_groups'
+  }
 }
 
 const containerClass = computed(() => {

@@ -324,7 +324,7 @@ watch(
 
 watch(
   () => uiStore.currentBackgroundMusic,
-  (newUrl) => {
+  () => {
     syncCurrentMusicName()
     // 确保本地播放器的 URL 实时跟随 Store
   },

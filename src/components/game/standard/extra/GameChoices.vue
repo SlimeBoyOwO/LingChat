@@ -1,6 +1,6 @@
 <template>
   <div
-    class="fixed inset-0 flex flex-col items-center justify-center -mt-[15vh] pointer-events-none"
+    class="fixed inset-0 flex flex-col items-center justify-center mt-[-15vh] pointer-events-none"
   >
     <transition-group
       appear

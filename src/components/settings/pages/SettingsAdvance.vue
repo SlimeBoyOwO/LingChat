@@ -100,7 +100,7 @@
 
               <!-- 保存操作区域 -->
               <div
-                class="inline-flex flex-col gap-2 px-5 py-2.5 bg-brand text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-colors duration-200 hover:bg-[#0056b3] min-w-[120px]"
+                class="inline-flex flex-col gap-2 px-5 py-2.5 bg-brand text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-colors duration-200 hover:bg-[#0056b3] min-w-30"
                 @click="saveSettings"
               >
                 <button
@@ -110,7 +110,7 @@
                 </button>
                 <p
                   :class="saveStatus.colorClass"
-                  class="text-xs whitespace-normal break-words max-w-[300px]"
+                  class="text-xs whitespace-normal wrap-break-word max-w-75"
                 >
                   {{ saveStatus.message }}
                 </p>
