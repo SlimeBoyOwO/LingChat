@@ -42,13 +42,13 @@ impl Translator {
             return Ok(());
         }
         let Some(client) = self.client.as_ref() else {
-            log::warn!("Translator: 未配置翻译 LLM，跳过翻译");
+            tracing::warn!("Translator: 未配置翻译 LLM，跳过翻译");
             return Ok(());
         };
 
         let full_chinese = collect_chinese_part(segments);
         if full_chinese.is_empty() {
-            log::warn!("AI回复没有中文，跳过日语翻译");
+            tracing::warn!("AI回复没有中文，跳过日语翻译");
             return Ok(());
         }
 
@@ -58,7 +58,7 @@ impl Translator {
         ];
 
         let japanese_response = client.complete(&messages).await?;
-        log::info!("完整日语翻译结果: {japanese_response}");
+        tracing::info!("完整日语翻译结果: {japanese_response}");
 
         apply_translation_result(&japanese_response, segments);
         Ok(())

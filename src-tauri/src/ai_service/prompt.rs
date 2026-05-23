@@ -43,7 +43,7 @@ pub fn sys_prompt_builder(
     options: PromptOptions,
 ) -> String {
     let dialog_format_prompt_2 = if options.no_emotion_limit {
-        log::warn!("提示词将不再限制模型输出的情绪");
+        tracing::warn!("提示词将不再限制模型输出的情绪");
         DIALOG_FORMAT_PROMPT_2_NOLIMIT
     } else {
         DIALOG_FORMAT_PROMPT_2_LIMIT
@@ -58,17 +58,17 @@ pub fn sys_prompt_builder(
         let example = match example_cn {
             Some(s) => s,
             None => {
-                log::warn!("角色配置文件缺少示例，将使用默认示例");
+                tracing::warn!("角色配置文件缺少示例，将使用默认示例");
                 DEFAULT_EXAMPLE_CN
             }
         };
 
         if ai_prompt.contains("日语翻译") {
-            log::warn!("你使用的人物为旧版，不能使用实时翻译功能");
+            tracing::warn!("你使用的人物为旧版，不能使用实时翻译功能");
             return ai_prompt.to_string();
         }
         if ai_prompt.contains("以下是我的对话格式提示") {
-            log::warn!("你使用的人物为旧版，不进行拼接prompt");
+            tracing::warn!("你使用的人物为旧版，不进行拼接prompt");
             return ai_prompt.to_string();
         }
 
@@ -84,13 +84,13 @@ pub fn sys_prompt_builder(
         let example = match example_jp {
             Some(s) => s,
             None => {
-                log::warn!("角色配置文件缺少示例，将使用默认示例");
+                tracing::warn!("角色配置文件缺少示例，将使用默认示例");
                 DEFAULT_EXAMPLE_JP
             }
         };
 
         if ai_prompt.contains("以下是我的对话格式提示") {
-            log::warn!("你使用的人物为旧版，可能实时翻译功能不起作用");
+            tracing::warn!("你使用的人物为旧版，可能实时翻译功能不起作用");
             return ai_prompt.to_string();
         }
 

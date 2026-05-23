@@ -60,7 +60,7 @@ pub async fn send_chat_message(app: AppHandle, text: String) -> Result<(), Strin
             );
         for achievement in unlocks {
             if let Err(e) = app_handle.emit("achievement:unlocked", &achievement) {
-                log::error!("发送成就事件失败: {}", e);
+                tracing::error!("发送成就事件失败: {}", e);
             }
         }
     });
@@ -99,8 +99,8 @@ pub async fn send_chat_message(app: AppHandle, text: String) -> Result<(), Strin
     tokio::spawn(async move {
         let _lock = gen_lock.lock().await;
         match generator.process_message(Some(text)).await {
-            Ok(acc) => log::info!("消息生成完成，长度: {}", acc.len()),
-            Err(e) => log::error!("消息生成失败: {:#}", e),
+            Ok(acc) => tracing::info!("消息生成完成，长度: {}", acc.len()),
+            Err(e) => tracing::error!("消息生成失败: {:#}", e),
         }
     });
 

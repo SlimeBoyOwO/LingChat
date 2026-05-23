@@ -72,7 +72,7 @@ pub struct RoleInfoResponse {
 pub(crate) fn read_character_settings(resource_folder: &str) -> CharacterSettings {
     let yaml_path = characters_dir().join(resource_folder).join("settings.yml");
     if !yaml_path.exists() {
-        log::warn!("角色设置文件不存在: {:?}", yaml_path);
+        tracing::warn!("角色设置文件不存在: {:?}", yaml_path);
         let mut s = CharacterSettings::default();
         s.character_folder = resource_folder.to_string();
         return s;
@@ -84,14 +84,14 @@ pub(crate) fn read_character_settings(resource_folder: &str) -> CharacterSetting
                 settings
             }
             Err(e) => {
-                log::error!("解析 {:?} 失败: {}", yaml_path, e);
+                tracing::error!("解析 {:?} 失败: {}", yaml_path, e);
                 let mut s = CharacterSettings::default();
                 s.character_folder = resource_folder.to_string();
                 s
             }
         },
         Err(e) => {
-            log::error!("读取 {:?} 失败: {}", yaml_path, e);
+            tracing::error!("读取 {:?} 失败: {}", yaml_path, e);
             let mut s = CharacterSettings::default();
             s.character_folder = resource_folder.to_string();
             s

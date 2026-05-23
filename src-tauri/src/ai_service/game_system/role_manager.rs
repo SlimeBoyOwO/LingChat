@@ -70,9 +70,9 @@ impl GameRoleManager {
     pub fn clear_role_memory(&mut self, role_id: i32) {
         if let Some(role) = self.loaded_roles.get_mut(&role_id) {
             role.memory.clear();
-            log::info!("角色 {} 的短期记忆已清除", role_id);
+            tracing::info!("角色 {} 的短期记忆已清除", role_id);
         } else {
-            log::warn!("角色 {} 未在运行时加载，无法清除记忆", role_id);
+            tracing::warn!("角色 {} 未在运行时加载，无法清除记忆", role_id);
         }
     }
 
@@ -82,14 +82,14 @@ impl GameRoleManager {
                 vm.reactivate();
             }
         }
-        log::info!("所有角色 TTS 已重新启用");
+        tracing::info!("所有角色 TTS 已重新启用");
     }
 
     pub fn clear_all_memories(&mut self) {
         for r in self.loaded_roles.values_mut() {
             r.memory.clear();
         }
-        log::info!("所有角色的短期记忆已清除");
+        tracing::info!("所有角色的短期记忆已清除");
     }
 
     async fn register_role_by_id(
@@ -235,7 +235,7 @@ impl GameRoleManager {
                 if let Some(sp) = Self::find_first_system_prompt(source_lines, rid) {
                     final_sliced.insert(0, sp.clone());
                 } else {
-                    log::warn!(
+                    tracing::warn!(
                         "role_id={} 没有找到 SYSTEM 属性的台词，可能人设丢失",
                         rid
                     );
@@ -283,7 +283,7 @@ impl GameRoleManager {
         let Some(ref llm) = self.llm else {
             // 仅在 enabled 但 LLM 缺失时告警（正常启动流程不应到达）
             if enabled {
-                log::warn!("MemoryBank: role_id={} 永久记忆已开启但 LLM 未就绪", role_id);
+                tracing::warn!("MemoryBank: role_id={} 永久记忆已开启但 LLM 未就绪", role_id);
             }
             return;
         };
@@ -490,7 +490,7 @@ fn build_voice_maker(
     match vm.set_tts_settings(voice_cfg, tts_type, &settings.ai_name) {
         Ok(()) => Some(vm),
         Err(e) => {
-            log::warn!("VoiceMaker 初始化失败: {e}");
+            tracing::warn!("VoiceMaker 初始化失败: {e}");
             None
         }
     }

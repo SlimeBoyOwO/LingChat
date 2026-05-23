@@ -143,7 +143,7 @@ impl AIService {
             gs.onstage_role(cid);
             gs.main_role_id = Some(cid);
         } else {
-            log::error!("初始化游戏主角失败，未指定角色ID。");
+            tracing::error!("初始化游戏主角失败，未指定角色ID。");
         }
         Ok(())
     }
@@ -211,7 +211,7 @@ impl AIService {
         if let Some(mid) = gs.main_role_id {
             gs.role_manager.clear_role_memory(mid);
         }
-        log::info!("对话历史已清除（仅主角记忆）");
+        tracing::info!("对话历史已清除（仅主角记忆）");
         Ok(())
     }
 

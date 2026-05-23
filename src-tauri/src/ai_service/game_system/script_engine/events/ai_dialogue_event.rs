@@ -77,7 +77,7 @@ impl ScriptEvent for AIDialogueEvent {
         let llm = match state.chat.llm.clone() {
             Some(llm) => llm,
             None => {
-                log::warn!("[AIDialogueEvent] LLM 未配置，跳过 AI 对话");
+                tracing::warn!("[AIDialogueEvent] LLM 未配置，跳过 AI 对话");
                 return Ok(None);
             }
         };

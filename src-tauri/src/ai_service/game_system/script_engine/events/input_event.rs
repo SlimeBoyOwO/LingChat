@@ -48,7 +48,7 @@ impl ScriptEvent for InputEvent {
         // Await user input — no locks held
         let user_input = rx.await.map_err(|_| anyhow!("用户输入通道已关闭"))?;
 
-        log::info!("[InputEvent] 收到用户输入: {}", user_input);
+        tracing::info!("[InputEvent] 收到用户输入: {}", user_input);
 
         // Add USER line
         let line = LineBase {

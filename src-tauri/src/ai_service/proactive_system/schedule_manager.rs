@@ -29,7 +29,7 @@ impl ScheduleManager {
                     if trigger_key != self.last_triggered_key {
                         self.last_triggered_key = trigger_key;
                         
-                        log::info!("[ScheduleManager] Triggered alarm for schedule: {}", item.name);
+                        tracing::info!("[ScheduleManager] Triggered alarm for schedule: {}", item.name);
                         return Some(format!(
                             "{{你突然想起来 {} 设定的日程时间到了：{} ({})，提醒他一下吧？}}",
                             user_name, item.name, item.content

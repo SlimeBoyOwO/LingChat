@@ -63,7 +63,7 @@ impl EventsHandler {
 
         // Check condition
         if !check_condition(&event_data, &*ctx.game_status.lock().await) {
-            log::info!(
+            tracing::info!(
                 "[ScriptEngine] 跳过事件 type='{}'（条件不满足），索引: {}",
                 event_type,
                 self.progress - 1

@@ -209,7 +209,7 @@ impl VoiceMaker {
                 ) {
                     Ok(a) => self.provider.aivis = Some(Arc::new(a)),
                     Err(e) => {
-                        log::warn!("AIVIS 初始化失败: {e}");
+                        tracing::warn!("AIVIS 初始化失败: {e}");
                         self.provider.disable();
                     }
                 }
@@ -220,7 +220,7 @@ impl VoiceMaker {
                 )));
             }
             _ => {
-                log::warn!("TTS 类型不可用或未初始化: {tts_type}");
+                tracing::warn!("TTS 类型不可用或未初始化: {tts_type}");
             }
         }
 
@@ -240,7 +240,7 @@ impl VoiceMaker {
                 "ja" => {
                     if seg.japanese_text.trim().is_empty() {
                         if !seg.following_text.trim().is_empty() {
-                            log::warn!("片段 {} 没有日语文本，跳过语音生成", seg.index);
+                            tracing::warn!("片段 {} 没有日语文本，跳过语音生成", seg.index);
                         }
                         continue;
                     }
@@ -248,7 +248,7 @@ impl VoiceMaker {
                 }
                 "zh" => {
                     if seg.following_text.trim().is_empty() {
-                        log::warn!(
+                        tracing::warn!(
                             "片段 {} 没有中文文本，跳过语音生成 (检查 LLM 输出)",
                             seg.index
                         );
@@ -275,7 +275,7 @@ impl VoiceMaker {
                     .generate_voice(&text, &file_path, &tts_type, &emo)
                     .await
                 {
-                    log::error!("片段 {index} 语音生成失败: {e}");
+                    tracing::error!("片段 {index} 语音生成失败: {e}");
                 }
             });
         }

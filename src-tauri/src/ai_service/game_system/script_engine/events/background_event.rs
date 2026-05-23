@@ -42,7 +42,7 @@ impl ScriptEvent for BackgroundEvent {
         };
         let _ = emit(ctx.app, SCRIPT_BACKGROUND, &payload);
 
-        log::info!("[BackgroundEvent] 背景切换: {}", self.image_path);
+        tracing::info!("[BackgroundEvent] 背景切换: {}", self.image_path);
         Ok(None)
     }
 

@@ -187,7 +187,7 @@ impl MessageProcessor {
         }
 
         if results.is_empty() {
-            log::warn!("未在文本中找到【】格式的情绪标签");
+            tracing::warn!("未在文本中找到【】格式的情绪标签");
         }
 
         results
@@ -270,7 +270,7 @@ impl MessageProcessor {
             }
         }
 
-        log::info!("处理后的用户信息是: {processed_message}");
+        tracing::info!("处理后的用户信息是: {processed_message}");
         UserMessageOutcome {
             main: processed_message,
             temp: if temp_instruction_part.is_empty() {

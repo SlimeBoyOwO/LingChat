@@ -93,7 +93,7 @@ pub async fn reactivate_tts(app: AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
     let service = state.ai_service.lock().await;
     service.game_status.lock().await.reactivate_all_voice_makers();
-    log::info!("TTS 服务已通过 reactivate_tts 命令重新启用");
+    tracing::info!("TTS 服务已通过 reactivate_tts 命令重新启用");
     Ok(())
 }
 
@@ -118,7 +118,7 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
         .await
         .map_err(|e| format!("查询角色配置失败: {}", e))?
         .unwrap_or_else(|| {
-            log::warn!("角色 {} 无配置文件，使用默认设定", character_id);
+            tracing::warn!("角色 {} 无配置文件，使用默认设定", character_id);
             let mut s = CharacterSettings::default();
             s.character_id = Some(character_id);
             s
@@ -150,7 +150,7 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
         let _ = store.save();
     }
 
-    log::info!(
+    tracing::info!(
         "切换角色成功: id={}, name={}",
         character_id,
         settings.ai_name

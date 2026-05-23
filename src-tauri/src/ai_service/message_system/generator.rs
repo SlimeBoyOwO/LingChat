@@ -79,7 +79,7 @@ impl MessageGenerator {
         let current_context: Vec<LlmMessage> = {
             let mut gs = self.deps.game_status.lock().await;
             let Some(rid) = gs.current_role_id else {
-                log::error!("生成消息的时候没有当前角色，取消生成");
+                tracing::error!("生成消息的时候没有当前角色，取消生成");
                 return Ok(String::new());
             };
             let role = gs.get_role(&self.deps.db, rid).await?;
@@ -137,7 +137,7 @@ impl MessageGenerator {
                     if let Some(resp) = item {
                         let is_final = resp.is_final;
                         if let Err(e) = app.emit(event_names::AI_REPLY, &resp) {
-                            log::warn!("emit ai:reply 失败: {e}");
+                            tracing::warn!("emit ai:reply 失败: {e}");
                         }
                         if is_final {
                             return;
@@ -170,7 +170,7 @@ impl MessageGenerator {
                     {
                         Ok(r) => r,
                         Err(e) => {
-                            log::error!("consumer {cid} 处理句子失败: {e}");
+                            tracing::error!("consumer {cid} 处理句子失败: {e}");
                             None
                         }
                     };
@@ -199,7 +199,7 @@ impl MessageGenerator {
     fn emit_thinking(&self, is_thinking: bool) {
         let payload = ThinkingResponse::new(is_thinking);
         if let Err(e) = self.deps.app.emit(event_names::AI_THINKING, &payload) {
-            log::warn!("emit thinking 失败: {e}");
+            tracing::warn!("emit thinking 失败: {e}");
         }
     }
 
@@ -236,14 +236,14 @@ async fn consume_sentence(
     if sentence.is_empty() {
         return Ok(None);
     }
-    log::info!(
+    tracing::info!(
         "Consumer {consumer_id} 处理句子: {}...",
         sentence.chars().take(30).collect::<String>()
     );
 
     let mut segments = deps.processor.parse_and_classify_emotional_segments(&sentence);
     if segments.is_empty() {
-        log::warn!("AI 回复格式错误（未找到情绪 tag）");
+        tracing::warn!("AI 回复格式错误（未找到情绪 tag）");
         return Ok(None);
     }
 

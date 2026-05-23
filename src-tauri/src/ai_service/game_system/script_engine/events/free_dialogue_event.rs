@@ -83,7 +83,7 @@ impl ScriptEvent for FreeDialogueEvent {
         };
 
         for round in 1..=self.max_rounds {
-            log::info!(
+            tracing::info!(
                 "[FreeDialogueEvent] 第 {} 轮 / {} 自由对话",
                 round,
                 self.max_rounds
@@ -111,7 +111,7 @@ impl ScriptEvent for FreeDialogueEvent {
             if !self.end_line.is_empty()
                 && user_input.trim() == self.end_line.trim()
             {
-                log::info!("[FreeDialogueEvent] 用户触发结束词，退出自由对话");
+                tracing::info!("[FreeDialogueEvent] 用户触发结束词，退出自由对话");
                 break;
             }
 
@@ -119,7 +119,7 @@ impl ScriptEvent for FreeDialogueEvent {
             if let Some(ref generator) = generator {
                 generator.process_message(Some(user_input)).await?;
             } else {
-                log::warn!("[FreeDialogueEvent] LLM 未配置，跳过 AI 回复");
+                tracing::warn!("[FreeDialogueEvent] LLM 未配置，跳过 AI 回复");
             }
         }
 

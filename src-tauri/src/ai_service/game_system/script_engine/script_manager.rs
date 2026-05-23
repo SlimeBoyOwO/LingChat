@@ -64,7 +64,7 @@ impl ScriptManager {
     fn init_all_scripts(&mut self, data_dir: &Path) {
         let scripts_dir = data_dir.join("game_data").join("scripts");
         if !scripts_dir.exists() {
-            log::warn!("[ScriptManager] 剧本目录不存在: {:?}", scripts_dir);
+            tracing::warn!("[ScriptManager] 剧本目录不存在: {:?}", scripts_dir);
             return;
         }
 
@@ -116,7 +116,7 @@ impl ScriptManager {
             }
         }
 
-        log::info!(
+        tracing::info!(
             "[ScriptManager] 发现 {} 个剧本",
             self.all_scripts.len()
         );
@@ -129,7 +129,7 @@ impl ScriptManager {
                 self.all_scripts.insert(name, script_status);
             }
             Err(e) => {
-                log::warn!(
+                tracing::warn!(
                     "[ScriptManager] 跳过无效剧本目录 {:?}: {}",
                     script_path,
                     e
@@ -244,7 +244,7 @@ impl ScriptManager {
             ctx.game_status.lock().await.player.user_subtitle = user_subtitle.to_string();
         }
 
-        log::info!("[ScriptManager] 剧本 '{}' 初始化完成", script.name);
+        tracing::info!("[ScriptManager] 剧本 '{}' 初始化完成", script.name);
         Ok(())
     }
 
@@ -281,7 +281,7 @@ impl ScriptManager {
                 .await?;
 
             if existing.is_some() {
-                log::info!(
+                tracing::info!(
                     "[ScriptManager] 角色已存在: script={}, role={}",
                     path_key,
                     role_folder
@@ -292,7 +292,7 @@ impl ScriptManager {
             // Read settings.yml for this character
             let settings_path = path.join("settings.yml");
             if !settings_path.exists() {
-                log::warn!(
+                tracing::warn!(
                     "[ScriptManager] 角色缺少 settings.yml: {:?}",
                     settings_path
                 );
@@ -316,7 +316,7 @@ impl ScriptManager {
             )
             .await?;
 
-            log::info!(
+            tracing::info!(
                 "[ScriptManager] 注册剧本角色: {} (id={}, script={}, role_key={})",
                 settings.ai_name,
                 role_id,
@@ -404,7 +404,7 @@ impl ScriptManager {
     /// Cleanup after script ends: emit script_end event, clear script_status,
     /// mark adventures complete.
     async fn on_script_end(&mut self, ctx: &mut ScriptContext<'_>) -> Result<()> {
-        log::info!("[ScriptManager] 剧本结束");
+        tracing::info!("[ScriptManager] 剧本结束");
 
         // Emit script_end event
         let _ = emit(ctx.app, SCRIPT_END, &ScriptEndPayload {});
@@ -415,7 +415,7 @@ impl ScriptManager {
             ctx.game_status.lock().await.completed_scripts.insert(folder.clone());
 
             if ss.adventure.is_adventure {
-                log::info!("[ScriptManager] 羁绊冒险完成: {}", folder);
+                tracing::info!("[ScriptManager] 羁绊冒险完成: {}", folder);
                 // TODO: persist adventure completion to DB
             }
         }

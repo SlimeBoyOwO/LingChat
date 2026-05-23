@@ -311,7 +311,7 @@ pub async fn handle_actions(
                 }
             }
             other => {
-                log::warn!("未知的选项动作类型: {}", other);
+                tracing::warn!("未知的选项动作类型: {}", other);
             }
         }
     }

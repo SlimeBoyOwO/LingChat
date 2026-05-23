@@ -53,12 +53,12 @@ pub fn copy_game_data(app: &App) -> Result<()> {
     let target = data_dir.join("game_data");
 
     if !source.exists() {
-        log::warn!("Resource game_data not found at {:?}, skipping copy", source);
+        tracing::warn!("Resource game_data not found at {:?}, skipping copy", source);
         return Ok(());
     }
 
     if !target.exists() {
-        log::info!("First run: copying game_data to {:?}", target);
+        tracing::info!("First run: copying game_data to {:?}", target);
         copy_dir_recursive(&source, &target)
             .context("Failed to copy game_data directory")?;
     } else {
@@ -67,7 +67,7 @@ pub fn copy_game_data(app: &App) -> Result<()> {
             if entry.file_type()?.is_dir() {
                 let sub_target = target.join(entry.file_name());
                 if !sub_target.exists() {
-                    log::info!("Backfilling missing subdirectory: {:?}", entry.file_name());
+                    tracing::info!("Backfilling missing subdirectory: {:?}", entry.file_name());
                     copy_dir_recursive(&entry.path(), &sub_target)?;
                 }
             }

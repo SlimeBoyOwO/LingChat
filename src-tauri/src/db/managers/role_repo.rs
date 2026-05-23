@@ -102,7 +102,7 @@ impl RoleRepo {
 
         let yaml = path.join("settings.yml");
         if !yaml.exists() {
-            log::warn!("角色设置文件不存在: {:?}", path);
+            tracing::warn!("角色设置文件不存在: {:?}", path);
             return Ok(None);
         }
 

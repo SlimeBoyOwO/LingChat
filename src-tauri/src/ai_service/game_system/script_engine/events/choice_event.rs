@@ -64,7 +64,7 @@ impl ScriptEvent for ChoiceEvent {
         // Await user choice — no locks held
         let user_choice = rx.await.map_err(|_| anyhow!("用户选择通道已关闭"))?;
 
-        log::info!("[ChoiceEvent] 用户选择: {}", user_choice);
+        tracing::info!("[ChoiceEvent] 用户选择: {}", user_choice);
 
         // Clone out script_status to avoid double borrow
         let mut script_status = ctx

@@ -23,6 +23,6 @@ pub async fn init_db(data_dir: &Path) -> Result<DatabaseConnection> {
         .await
         .context("Failed to run database migrations")?;
 
-    log::info!("Database initialized at {:?}", db_path);
+    tracing::info!("Database initialized at {:?}", db_path);
     Ok(db)
 }

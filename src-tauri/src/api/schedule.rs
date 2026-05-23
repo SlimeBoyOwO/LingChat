@@ -37,7 +37,7 @@ pub async fn save_schedules(
     std::fs::write(&schedules_path, content)
         .map_err(|e| format!("Failed to write schedules.json: {}", e))?;
 
-    log::info!("[ScheduleAPI] Schedules saved successfully at {:?}", schedules_path);
+    tracing::info!("[ScheduleAPI] Schedules saved successfully at {:?}", schedules_path);
 
     // Reload settings in the proactive system
     if let Some(proactive) = &state.proactive_system {

@@ -224,8 +224,8 @@ pub async fn start_adventure(
         )
         .await
         {
-            Ok(()) => log::info!("[AdventureAPI] 冒险执行完成"),
-            Err(e) => log::error!("[AdventureAPI] 冒险执行错误: {}", e),
+            Ok(()) => tracing::info!("[AdventureAPI] 冒险执行完成"),
+            Err(e) => tracing::error!("[AdventureAPI] 冒险执行错误: {}", e),
         }
     });
 
@@ -316,7 +316,7 @@ pub async fn reset_adventure(
         .await
         .map_err(|e| format!("重置冒险失败: {}", e))?;
 
-    log::info!("[AdventureAPI] 冒险已重置: {}", adventure_folder);
+    tracing::info!("[AdventureAPI] 冒险已重置: {}", adventure_folder);
     Ok(())
 }
 
@@ -347,7 +347,7 @@ pub(crate) async fn handle_adventure_completion(
 
     // Mark global completion in DB
     if let Err(e) = AdventureManager::mark_global_completed(db, &folder_key).await {
-        log::error!("[AdventureAPI] 持久化冒险完成状态失败: {}", e);
+        tracing::error!("[AdventureAPI] 持久化冒险完成状态失败: {}", e);
         return;
     }
 

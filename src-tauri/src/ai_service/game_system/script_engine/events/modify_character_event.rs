@@ -106,7 +106,7 @@ impl ScriptEvent for ModifyCharacterEvent {
         };
         let _ = emit(ctx.app, SCRIPT_MODIFY_CHARACTER, &payload);
 
-        log::info!(
+        tracing::info!(
             "[ModifyCharacterEvent] role={} action={:?} emotion={:?}",
             role_id,
             self.action,

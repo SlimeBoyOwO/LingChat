@@ -36,7 +36,7 @@ impl ScriptEvent for MusicEvent {
         };
         let _ = emit(ctx.app, SCRIPT_MUSIC, &payload);
 
-        log::info!("[MusicEvent] BGM: {}", self.music_path);
+        tracing::info!("[MusicEvent] BGM: {}", self.music_path);
         Ok(None)
     }
 

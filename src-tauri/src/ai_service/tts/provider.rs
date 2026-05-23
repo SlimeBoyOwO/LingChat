@@ -94,12 +94,12 @@ impl TtsProvider {
 
     pub fn disable(&self) {
         self.enable.store(false, Ordering::Relaxed);
-        log::warn!("TTS 服务已被禁用（请使用 reactivate_tts 重新启用）");
+        tracing::warn!("TTS 服务已被禁用（请使用 reactivate_tts 重新启用）");
     }
 
     pub fn reactivate(&self) {
         self.enable.store(true, Ordering::Relaxed);
-        log::info!("TTS 服务已重新启用");
+        tracing::info!("TTS 服务已重新启用");
     }
 
     fn select(&self, tts_type: &str) -> Result<Arc<dyn TtsAdapter>> {
@@ -135,7 +135,7 @@ impl TtsProvider {
             "" => {
                 // 旧版：未指定时优先 sbv2
                 if let Some(a) = self.sbv2.clone() {
-                    log::warn!("未指定 tts_type，默认使用 sbv2");
+                    tracing::warn!("未指定 tts_type，默认使用 sbv2");
                     a
                 } else {
                     return Err(anyhow!("没有可用的 TTS 适配器"));
@@ -158,14 +158,14 @@ impl TtsProvider {
             return Err(anyhow!("TTS 服务未启用"));
         }
         if text.trim().is_empty() {
-            log::debug!("TTS 输入文本为空，跳过");
+            tracing::debug!("TTS 输入文本为空，跳过");
             return Ok(());
         }
         let adapter = self.select(tts_type)?;
         match adapter.generate_voice(text, emo).await {
             Ok(bytes) => {
                 tokio::fs::write(file_path, &bytes).await?;
-                log::debug!("TTS 生成成功: {}", file_path.display());
+                tracing::debug!("TTS 生成成功: {}", file_path.display());
                 Ok(())
             }
             Err(e) => {

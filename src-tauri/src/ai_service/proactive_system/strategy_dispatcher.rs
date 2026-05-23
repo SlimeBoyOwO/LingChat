@@ -45,7 +45,7 @@ impl StrategyDispatcher {
                                 .and_then(|role| role.display_name.clone())
                                 .unwrap_or_else(|| "小灵".to_string());
                             
-                            log::info!("[StrategyDispatcher] Triggered important day reminder: {}", day.title);
+                            tracing::info!("[StrategyDispatcher] Triggered important day reminder: {}", day.title);
                             return Some(format!(
                                 "{{今天是特殊的一天：{}，{}。可以和{}聊聊哦}}",
                                 day.title, desc, char_name
@@ -108,7 +108,7 @@ impl StrategyDispatcher {
             selected
         };
 
-        log::info!(
+        tracing::info!(
             "[StrategyDispatcher] Selected proactive mode: {} (weights: TODO={:.1}, TOPIC={:.1}, SCREEN={:.1})",
             selected_mode, todo_w, topic_w, screen_w
         );
@@ -175,7 +175,7 @@ impl StrategyDispatcher {
         config: &ProactiveConfig,
     ) -> Option<String> {
         if config.vd_api_key.is_empty() {
-            log::warn!("[StrategyDispatcher] VD_API_KEY is empty, skipping screenshot analysis.");
+            tracing::warn!("[StrategyDispatcher] VD_API_KEY is empty, skipping screenshot analysis.");
             return None;
         }
 
@@ -183,7 +183,7 @@ impl StrategyDispatcher {
         let jpeg_bytes = match capture_screen_as_jpeg() {
             Some(bytes) => bytes,
             None => {
-                log::error!("[StrategyDispatcher] Failed to capture desktop screenshot.");
+                tracing::error!("[StrategyDispatcher] Failed to capture desktop screenshot.");
                 return None;
             }
         };
@@ -193,7 +193,7 @@ impl StrategyDispatcher {
 
         let analyze_prompt = "你是一个图像信息转述者，你将需要把你看到的画面描述给另一个AI让他理解用户的图片内容。用户开放了那个AI的自主窥屏功能，请获取桌面画面中的重点内容，用200字描述主体部分即可。如果你看到一个聊天窗口，有角色的立绘和对话框，不要描述这部分，只描述桌面上的其他内容。因为那部分是玩家与AI的聊天窗口。";
 
-        log::info!("[StrategyDispatcher] Sending screenshot to Vision LLM ({}) for analysis...", config.vd_model);
+        tracing::info!("[StrategyDispatcher] Sending screenshot to Vision LLM ({}) for analysis...", config.vd_model);
 
         let client = Client::new();
         let payload = serde_json::json!({
@@ -228,7 +228,7 @@ impl StrategyDispatcher {
                                 .and_then(|role| role.display_name.clone())
                                 .unwrap_or_else(|| "你".to_string());
                             
-                            log::info!("[StrategyDispatcher] Screenshot analysis success: {}", content);
+                            tracing::info!("[StrategyDispatcher] Screenshot analysis success: {}", content);
                             return Some(format!(
                                 "{{ {} 偷看了一眼 {} 的电脑桌面信息: {} }}",
                                 ai_name, user_name, content
@@ -237,11 +237,11 @@ impl StrategyDispatcher {
                     }
                 } else {
                     let err_text = response.text().await.unwrap_or_default();
-                    log::error!("[StrategyDispatcher] VLM API returned error status: {}", err_text);
+                    tracing::error!("[StrategyDispatcher] VLM API returned error status: {}", err_text);
                 }
             }
             Err(e) => {
-                log::error!("[StrategyDispatcher] Failed to send request to VLM: {:?}", e);
+                tracing::error!("[StrategyDispatcher] Failed to send request to VLM: {:?}", e);
             }
         }
 

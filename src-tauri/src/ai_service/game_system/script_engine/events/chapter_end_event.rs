@@ -111,12 +111,12 @@ impl ScriptEvent for ChapterEndEvent {
                 if let Some(llm) = llm {
                     self.call_llm_for_judgment(&llm, ctx).await?
                 } else {
-                    log::warn!("[ChapterEndEvent] ai_judged 需要 LLM 但未配置，默认 end");
+                    tracing::warn!("[ChapterEndEvent] ai_judged 需要 LLM 但未配置，默认 end");
                     "end".to_string()
                 }
             }
             _ => {
-                log::warn!(
+                tracing::warn!(
                     "[ChapterEndEvent] 未知的 end_type: '{}'，默认 end",
                     self.end_type
                 );
@@ -124,7 +124,7 @@ impl ScriptEvent for ChapterEndEvent {
             }
         };
 
-        log::info!(
+        tracing::info!(
             "[ChapterEndEvent] end_type={} → next: '{}'",
             self.end_type,
             next
@@ -194,11 +194,11 @@ impl ChapterEndEvent {
                 .join("\n"),
         );
 
-        log::info!("[ChapterEndEvent] 请求 LLM 判断下一章节...");
+        tracing::info!("[ChapterEndEvent] 请求 LLM 判断下一章节...");
         let messages = vec![LlmMessage::user(full_prompt)];
         let response = llm.complete(&messages).await?;
         let response = response.trim().to_string();
-        log::info!("[ChapterEndEvent] LLM 判断结果: '{}'", response);
+        tracing::info!("[ChapterEndEvent] LLM 判断结果: '{}'", response);
 
         // Match response against option names (substring match)
         if let Some(next) = match_ai_response_options(&response, &self.options) {

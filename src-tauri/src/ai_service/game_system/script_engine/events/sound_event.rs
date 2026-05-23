@@ -34,7 +34,7 @@ impl ScriptEvent for SoundEvent {
         };
         let _ = emit(ctx.app, SCRIPT_SOUND, &payload);
 
-        log::info!("[SoundEvent] SFX: {}", self.sound_path);
+        tracing::info!("[SoundEvent] SFX: {}", self.sound_path);
         Ok(None)
     }
 

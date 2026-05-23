@@ -157,7 +157,7 @@ fn evaluate_condition(
         }
 
         _ => {
-            log::warn!("未知的冒险解锁条件类型: {}", cond_type);
+            tracing::warn!("未知的冒险解锁条件类型: {}", cond_type);
             false
         }
     }

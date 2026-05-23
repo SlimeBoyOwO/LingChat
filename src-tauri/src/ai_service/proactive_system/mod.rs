@@ -94,7 +94,7 @@ impl ProactiveSystem {
 
         let sys_clone = system_arc.clone();
         let handle = tokio::spawn(async move {
-            log::info!("[ProactiveSystem] Loop task started.");
+            tracing::info!("[ProactiveSystem] Loop task started.");
             
             // Loop runs every 30 seconds
             let mut interval = tokio::time::interval(Duration::from_secs(30));
@@ -114,21 +114,21 @@ impl ProactiveSystem {
                 };
 
                 if !enabled {
-                    log::debug!("[ProactiveSystem] Disabled via settings, skipping...");
+                    tracing::debug!("[ProactiveSystem] Disabled via settings, skipping...");
                     continue;
                 }
 
                 if is_script_active {
-                    log::debug!("[ProactiveSystem] Script is currently running, bypassing proactive talk to avoid collision.");
+                    tracing::debug!("[ProactiveSystem] Script is currently running, bypassing proactive talk to avoid collision.");
                     continue;
                 }
 
                 // Run main proactive check cycle
                 if let Err(e) = Self::run_cycle(sys_clone.clone()).await {
-                    log::error!("[ProactiveSystem] Error running cycle: {:?}", e);
+                    tracing::error!("[ProactiveSystem] Error running cycle: {:?}", e);
                 }
             }
-            log::info!("[ProactiveSystem] Loop task stopped.");
+            tracing::info!("[ProactiveSystem] Loop task stopped.");
         });
 
         sys.loop_handle = Some(handle);
@@ -136,7 +136,7 @@ impl ProactiveSystem {
 
     /// 停止主动对话系统。
     pub async fn stop(&mut self) {
-        log::info!("[ProactiveSystem] Stopping...");
+        tracing::info!("[ProactiveSystem] Stopping...");
         self.is_running = false;
         if let Some(handle) = self.loop_handle.take() {
             handle.abort();
@@ -145,7 +145,7 @@ impl ProactiveSystem {
 
     /// 重新载入环境配置和日程设置。
     pub async fn reload(&mut self) {
-        log::info!("[ProactiveSystem] Reloading configuration and schedule settings...");
+        tracing::info!("[ProactiveSystem] Reloading configuration and schedule settings...");
         self.config = ProactiveConfig::load(&self.app);
         self.interest_manager.update_from_config(self.config.max_proactive_times);
         self.load_schedule_settings().await;
@@ -164,25 +164,25 @@ impl ProactiveSystem {
                         Ok(parsed) => {
                             let mut settings_lock = self.settings.write().await;
                             *settings_lock = parsed;
-                            log::info!("[ProactiveSystem] Successfully parsed schedules.json!");
+                            tracing::info!("[ProactiveSystem] Successfully parsed schedules.json!");
                         }
                         Err(e) => {
-                            log::error!("[ProactiveSystem] Failed to parse schedules.json: {:?}", e);
+                            tracing::error!("[ProactiveSystem] Failed to parse schedules.json: {:?}", e);
                         }
                     }
                 }
                 Err(e) => {
-                    log::error!("[ProactiveSystem] Failed to read schedules.json: {:?}", e);
+                    tracing::error!("[ProactiveSystem] Failed to read schedules.json: {:?}", e);
                 }
             }
         } else {
-            log::warn!("[ProactiveSystem] schedules.json not found at {:?}", schedules_path);
+            tracing::warn!("[ProactiveSystem] schedules.json not found at {:?}", schedules_path);
         }
     }
 
     /// 当用户主动发送消息时触发的回调，用于恢复好感度/兴趣阈值。
     pub async fn on_user_message_received(&mut self) {
-        log::info!("[ProactiveSystem] User message received! Restoring engagement cap.");
+        tracing::info!("[ProactiveSystem] User message received! Restoring engagement cap.");
         self.interest_manager.restore_max_interest_cap();
     }
 
@@ -233,7 +233,7 @@ impl ProactiveSystem {
         if perception.interest_modifier != 0 {
             sys.interest_manager.interest = (sys.interest_manager.interest + perception.interest_modifier as f64)
                 .clamp(0.0, sys.interest_manager.max_interest_cap);
-            log::info!("[Engagement] Interest modified by {}. Current: {:.2}", perception.interest_modifier, sys.interest_manager.interest);
+            tracing::info!("[Engagement] Interest modified by {}. Current: {:.2}", perception.interest_modifier, sys.interest_manager.interest);
         }
 
         // 5. 检查是否满足主动出击触发阈值
@@ -241,7 +241,7 @@ impl ProactiveSystem {
             // 确保没有正在进行的 LLM 对话
             let lock_clone = sys.generation_lock.clone();
             if lock_clone.try_lock().is_err() {
-                log::debug!("[ProactiveSystem] Chat generation is locked. Postponing proactive talk...");
+                tracing::debug!("[ProactiveSystem] Chat generation is locked. Postponing proactive talk...");
                 return Ok(());
             }
 
@@ -275,7 +275,7 @@ impl ProactiveSystem {
                     MessageGenerator::new(deps)
                 };
 
-                log::info!("[ProactiveSystem] Dispatching proactive message generator: {}", prompt);
+                tracing::info!("[ProactiveSystem] Dispatching proactive message generator: {}", prompt);
 
                 // 往 game_status 追加系统级的主动 prompt 作为隐形触发台词
                 {
@@ -319,7 +319,7 @@ impl ProactiveSystem {
             MessageGenerator::new(deps)
         };
 
-        log::info!("[ProactiveSystem] Forcing proactive schedule alarm dialogue: {}", prompt);
+        tracing::info!("[ProactiveSystem] Forcing proactive schedule alarm dialogue: {}", prompt);
 
         {
             let svc = self.ai_service.lock().await;

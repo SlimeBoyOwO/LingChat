@@ -40,7 +40,7 @@ pub async fn sync_roles_from_folder(db: &DatabaseConnection, data_dir: &Path) ->
         let title = match load_title(&settings_path) {
             Ok(t) => t.unwrap_or_else(|| folder_name.clone()),
             Err(e) => {
-                log::warn!("Failed to load {:?}: {}", settings_path, e);
+                tracing::warn!("Failed to load {:?}: {}", settings_path, e);
                 continue;
             }
         };
@@ -60,7 +60,7 @@ pub async fn sync_roles_from_folder(db: &DatabaseConnection, data_dir: &Path) ->
                     ..Default::default()
                 };
                 let inserted = new_role.insert(db).await?;
-                log::info!("Created role: {} ({})", inserted.name, folder_name);
+                tracing::info!("Created role: {} ({})", inserted.name, folder_name);
                 created_ids.push(inserted.id);
             }
             Some(model) => {
@@ -69,7 +69,7 @@ pub async fn sync_roles_from_folder(db: &DatabaseConnection, data_dir: &Path) ->
                     let mut active: role::ActiveModel = model.into();
                     active.name = Set(title);
                     active.update(db).await?;
-                    log::info!("Updated role #{} name for {}", id, folder_name);
+                    tracing::info!("Updated role #{} name for {}", id, folder_name);
                 }
             }
         }

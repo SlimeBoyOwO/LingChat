@@ -31,7 +31,7 @@ impl InterestManager {
         let mut rng = rand::thread_rng();
         let growth = rng.gen_range(5.0..10.0);
         self.interest = (self.interest + growth).min(self.max_interest_cap);
-        log::info!(
+        tracing::info!(
             "[Engagement] Interest grown by {:.2}. Current: {:.2}/{:.2}",
             growth,
             self.interest,
@@ -41,7 +41,7 @@ impl InterestManager {
 
     pub fn should_trigger_talk(&self) -> bool {
         if self.proactive_times_today >= self.max_proactive_count {
-            log::info!("[Engagement] Proactive daily limit reached: {}/{}", self.proactive_times_today, self.max_proactive_count);
+            tracing::info!("[Engagement] Proactive daily limit reached: {}/{}", self.proactive_times_today, self.max_proactive_count);
             return false;
         }
 
@@ -54,7 +54,7 @@ impl InterestManager {
         let roll = rng.gen_range(0.0..1.0);
         let triggered = roll < prob;
 
-        log::info!(
+        tracing::info!(
             "[Engagement] Trigger check: prob={:.2}, roll={:.2}, triggered={}",
             prob,
             roll,
@@ -68,17 +68,17 @@ impl InterestManager {
         self.interest = 0.0;
         self.proactive_times_today += 1;
         self.decay_max_interest_cap();
-        log::info!("[Engagement] Interest reset. Today count: {}", self.proactive_times_today);
+        tracing::info!("[Engagement] Interest reset. Today count: {}", self.proactive_times_today);
     }
 
     pub fn decay_max_interest_cap(&mut self) {
         self.max_interest_cap = (self.max_interest_cap - self.decay_step).max(0.0);
-        log::info!("[Engagement] Cap decayed to {:.2}", self.max_interest_cap);
+        tracing::info!("[Engagement] Cap decayed to {:.2}", self.max_interest_cap);
     }
 
     pub fn restore_max_interest_cap(&mut self) {
         self.max_interest_cap = self.initial_max_cap;
-        log::info!("[Engagement] Cap fully restored to {:.2}", self.max_interest_cap);
+        tracing::info!("[Engagement] Cap fully restored to {:.2}", self.max_interest_cap);
     }
 
     pub fn set_status_mod(&mut self, val: i32) {
@@ -87,6 +87,6 @@ impl InterestManager {
 
     pub fn reset_daily_count(&mut self) {
         self.proactive_times_today = 0;
-        log::info!("[Engagement] Daily count reset.");
+        tracing::info!("[Engagement] Daily count reset.");
     }
 }

@@ -112,8 +112,8 @@ pub async fn start_script(
         )
         .await
         {
-            Ok(()) => log::info!("[ScriptAPI] 剧本执行完成"),
-            Err(e) => log::error!("[ScriptAPI] 剧本执行错误: {}", e),
+            Ok(()) => tracing::info!("[ScriptAPI] 剧本执行完成"),
+            Err(e) => tracing::error!("[ScriptAPI] 剧本执行错误: {}", e),
         }
     });
 
@@ -318,7 +318,7 @@ pub(crate) async fn run_script_background(
             };
 
             if !condition_met {
-                log::info!("[ScriptAPI] 跳过事件 type='{}'（条件不满足）", event_type);
+                tracing::info!("[ScriptAPI] 跳过事件 type='{}'（条件不满足）", event_type);
                 continue;
             }
 
@@ -350,7 +350,7 @@ pub(crate) async fn run_script_background(
                     }
                 }
                 Err(e) => {
-                    log::error!(
+                    tracing::error!(
                         "[ScriptAPI] 事件执行错误 type='{}': {}",
                         event_type,
                         e
@@ -430,7 +430,7 @@ pub(crate) async fn run_script_background(
         }
     }
 
-    log::info!("[ScriptAPI] 剧本 '{}' 执行完成", script_name);
+    tracing::info!("[ScriptAPI] 剧本 '{}' 执行完成", script_name);
     Ok(())
 }
 

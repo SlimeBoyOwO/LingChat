@@ -71,7 +71,7 @@ impl ScriptEvent for SetVariableEvent {
                             let result =
                                 apply_variable_action(op, current.as_ref(), value);
                             script_status.set_variable(var_name, result);
-                            log::info!(
+                            tracing::info!(
                                 "[SetVariableEvent] {} = {:?}",
                                 content,
                                 script_status.get_variable(
@@ -82,7 +82,7 @@ impl ScriptEvent for SetVariableEvent {
                                 )
                             );
                         } else {
-                            log::warn!("[SetVariableEvent] 无法解析操作: '{}'", content);
+                            tracing::warn!("[SetVariableEvent] 无法解析操作: '{}'", content);
                         }
                     }
                 }

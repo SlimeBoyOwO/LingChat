@@ -54,7 +54,7 @@ impl Chapter {
         };
         let _ = emit(ctx.app, SCRIPT_CHAPTER_CHANGE, &payload);
 
-        log::info!(
+        tracing::info!(
             "[ScriptEngine] 开始章节: '{}' ({} events)",
             self.chapter_name,
             self.events_handler.event_list.len()
@@ -66,7 +66,7 @@ impl Chapter {
         }
 
         let result = self.events_handler.get_chapter_result();
-        log::info!(
+        tracing::info!(
             "[ScriptEngine] 章节 '{}' 结束 → 下一章节: '{}'",
             self.chapter_name,
             result

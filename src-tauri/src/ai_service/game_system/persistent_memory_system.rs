@@ -223,7 +223,7 @@ impl PersistentMemorySystem {
             return;
         }
 
-        log::info!(
+        tracing::info!(
             "MemoryBank: role_id={} 累积未归档可见台词 {} 条 (阈值 {})，触发自动压缩...",
             self.role_id,
             visible_count,
@@ -270,7 +270,7 @@ impl PersistentMemorySystem {
 
             is_updating.store(false, Ordering::Release);
             has_pending.store(true, Ordering::Release);
-            log::info!(
+            tracing::info!(
                 "MemoryBank: role_id={} 记忆库更新完成! 指针已移动至 {}",
                 role_id,
                 target_idx,
@@ -308,7 +308,7 @@ impl PersistentMemorySystem {
                 }
             }
             Err(e) => {
-                log::warn!("MemoryBank 分段压缩失败 (key={}): {}", key, e);
+                tracing::warn!("MemoryBank 分段压缩失败 (key={}): {}", key, e);
                 old_content.to_string()
             }
         }

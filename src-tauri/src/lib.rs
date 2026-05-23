@@ -9,13 +9,23 @@ mod migration;
 
 use std::sync::Arc;
 
+use chrono::Local;
 use sea_orm::DatabaseConnection;
 use tauri::Manager;
+use tracing_subscriber::fmt::time::FormatTime;
 
 use ai_service::llm::LlmClient;
 use ai_service::message_system::processor::MessageProcessor;
 use ai_service::service::SharedAIService;
 use ai_service::translator::Translator;
+
+struct LocalTimer;
+
+impl FormatTime for LocalTimer {
+    fn format_time(&self, w: &mut tracing_subscriber::fmt::format::Writer<'_>) -> std::fmt::Result {
+        write!(w, "{}", Local::now().format("%H:%M:%S"))
+    }
+}
 
 pub struct ChatComponents {
     pub llm: Option<Arc<LlmClient>>,
@@ -37,6 +47,15 @@ pub struct AppState {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,ling_chat_lib=info"))
+        .add_directive("sqlx=warn".parse().unwrap());
+
+    tracing_subscriber::fmt()
+        .with_timer(LocalTimer)
+        .with_env_filter(filter)
+        .init();
+
     #[allow(deprecated)]
     unsafe {
         std::env::set_var(

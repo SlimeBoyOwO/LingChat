@@ -1,6 +1,6 @@
 <template>
   <div class="blur-overlay" v-if="shouldShowOverlay" :style="{ opacity: overlayOpacity }"></div>
-  <div class="settings-panel flex flex-col h-full" v-show="uiStore.showSettings">
+  <div class="settings-panel flex flex-col h-full" v-if="uiStore.showSettings">
     <div class="shrink-0 w-full">
       <SettingsNav ref="settingsNavRef" @remove-more-menu-from-a="onAddFromA" />
     </div>

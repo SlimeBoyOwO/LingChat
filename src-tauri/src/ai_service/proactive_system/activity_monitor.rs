@@ -1,15 +1,15 @@
+use crate::ai_service::proactive_system::types::{PerceptionResult, UserState};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
-use crate::ai_service::proactive_system::types::{UserState, PerceptionResult};
 
 #[cfg(target_os = "windows")]
-use windows::Win32::UI::WindowsAndMessaging::{
-    SetWindowsHookExW, UnhookWindowsHookEx, CallNextHookEx, WH_KEYBOARD_LL, WH_MOUSE_LL,
-    MSLLHOOKSTRUCT, KBDLLHOOKSTRUCT, WM_KEYDOWN, WM_SYSKEYDOWN, WM_LBUTTONDOWN, WM_RBUTTONDOWN,
-    WM_MBUTTONDOWN, WM_MOUSEMOVE, HHOOK, GetMessageW, MSG,
-};
+use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
 #[cfg(target_os = "windows")]
-use windows::Win32::Foundation::{WPARAM, LPARAM, LRESULT};
+use windows::Win32::UI::WindowsAndMessaging::{
+    CallNextHookEx, GetMessageW, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK, KBDLLHOOKSTRUCT,
+    MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_LBUTTONDOWN, WM_MBUTTONDOWN,
+    WM_MOUSEMOVE, WM_RBUTTONDOWN, WM_SYSKEYDOWN,
+};
 
 #[cfg(target_os = "windows")]
 #[derive(Clone, Copy, Debug)]
@@ -77,30 +77,26 @@ impl UserActivityMonitor {
 
     #[cfg(target_os = "windows")]
     fn start_monitoring(&mut self) {
-        log::info!("[ActivityMonitor] Starting Win32 low-level keyboard/mouse hooks...");
-        
         let kbd_hook = unsafe {
-            SetWindowsHookExW(
-                WH_KEYBOARD_LL,
-                Some(keyboard_hook_callback),
-                None,
-                0,
-            ).ok().map(SendHhook)
+            SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook_callback), None, 0)
+                .ok()
+                .map(SendHhook)
         };
 
         let ms_hook = unsafe {
-            SetWindowsHookExW(
-                WH_MOUSE_LL,
-                Some(mouse_hook_callback),
-                None,
-                0,
-            ).ok().map(SendHhook)
+            SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_hook_callback), None, 0)
+                .ok()
+                .map(SendHhook)
         };
 
         if kbd_hook.is_some() && ms_hook.is_some() {
-            log::info!("[ActivityMonitor] Win32 hooks installed successfully!");
+            tracing::info!("[ActivityMonitor] Win32 hooks installed successfully!");
         } else {
-            log::error!("[ActivityMonitor] Failed to install Win32 hooks: kbd={:?}, ms={:?}", kbd_hook, ms_hook);
+            tracing::error!(
+                "[ActivityMonitor] Failed to install Win32 hooks: kbd={:?}, ms={:?}",
+                kbd_hook,
+                ms_hook
+            );
         }
 
         self._kbd_hook = kbd_hook;
@@ -161,7 +157,7 @@ impl UserActivityMonitor {
             0.0
         };
 
-        log::debug!(
+        tracing::debug!(
             "[ActivityMonitor] Stats last 20s: Keys={}, GameKeys={}, Clicks={}, Distance={:.1}, GameRatio={:.2}",
             keystrokes, game_keys, clicks, mouse_distance, game_ratio
         );
@@ -180,7 +176,8 @@ impl UserActivityMonitor {
             description = "在网上冲浪".to_string();
             interest_modifier = -5;
         } else {
-            let is_gaming = (game_ratio >= 0.6 && keystrokes > 20) || (clicks > 30 && game_ratio >= 0.4);
+            let is_gaming =
+                (game_ratio >= 0.6 && keystrokes > 20) || (clicks > 30 && game_ratio >= 0.4);
             if is_gaming {
                 state = UserState::GAME;
                 description = "在打游戏".to_string();
@@ -203,15 +200,22 @@ impl UserActivityMonitor {
 }
 
 #[cfg(target_os = "windows")]
-unsafe extern "system" fn keyboard_hook_callback(code: i32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
+unsafe extern "system" fn keyboard_hook_callback(
+    code: i32,
+    w_param: WPARAM,
+    l_param: LPARAM,
+) -> LRESULT {
     if code >= 0 {
         let msg = w_param.0 as u32;
         if msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN {
             let kbd_struct = *(l_param.0 as *const KBDLLHOOKSTRUCT);
             let vk = kbd_struct.vkCode;
-            
+
             // Game Keys: W(0x57), A(0x41), S(0x53), D(0x44), Space(0x20), Left(0x25), Up(0x26), Right(0x27), Down(0x28)
-            let is_game = matches!(vk, 0x57 | 0x41 | 0x53 | 0x44 | 0x20 | 0x25 | 0x26 | 0x27 | 0x28);
+            let is_game = matches!(
+                vk,
+                0x57 | 0x41 | 0x53 | 0x44 | 0x20 | 0x25 | 0x26 | 0x27 | 0x28
+            );
 
             if let Some(inner_arc) = GLOBAL_MONITOR_INNER.get() {
                 if let Ok(mut inner) = inner_arc.lock() {
@@ -227,7 +231,11 @@ unsafe extern "system" fn keyboard_hook_callback(code: i32, w_param: WPARAM, l_p
 }
 
 #[cfg(target_os = "windows")]
-unsafe extern "system" fn mouse_hook_callback(code: i32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
+unsafe extern "system" fn mouse_hook_callback(
+    code: i32,
+    w_param: WPARAM,
+    l_param: LPARAM,
+) -> LRESULT {
     if code >= 0 {
         let msg = w_param.0 as u32;
         let ms_struct = *(l_param.0 as *const MSLLHOOKSTRUCT);
@@ -255,7 +263,7 @@ unsafe extern "system" fn mouse_hook_callback(code: i32, w_param: WPARAM, l_para
 #[cfg(target_os = "windows")]
 impl Drop for UserActivityMonitor {
     fn drop(&mut self) {
-        log::info!("[ActivityMonitor] Cleaning up Win32 hooks...");
+        tracing::info!("[ActivityMonitor] Cleaning up Win32 hooks...");
         unsafe {
             if let Some(hook) = self._kbd_hook {
                 let _ = UnhookWindowsHookEx(hook.0);

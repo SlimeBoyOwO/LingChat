@@ -72,7 +72,7 @@ impl VisualMonitor {
                     // Hamming distance >= 6 means change detected (threshold matching Python dhash difference)
                     let change_detected = diff >= 6;
                     if change_detected {
-                        log::info!("[VisualMonitor] Screen change detected! Hamming distance: {}", diff);
+                        tracing::info!("[VisualMonitor] Screen change detected! Hamming distance: {}", diff);
                     }
                     change_detected
                 } else {

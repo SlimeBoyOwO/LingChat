@@ -40,5 +40,5 @@ pub fn init_event_registry() {
     events::modify_character_event::register();
     events::set_variable_event::register();
 
-    log::info!("[ScriptEngine] 所有事件处理器已注册");
+    tracing::info!("[ScriptEngine] 所有事件处理器已注册");
 }

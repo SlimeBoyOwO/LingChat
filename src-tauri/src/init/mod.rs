@@ -52,7 +52,7 @@ pub async fn initialize(app: &App) -> Result<(DatabaseConnection, SharedAIServic
     ai_service.import_settings(settings, prompt_options).await;
     ai_service.init_game_status().await?;
 
-    log::info!(
+    tracing::info!(
         "AIService 初始化完成: character_id={:?}, ai_name={}",
         ai_service.character_id,
         ai_service.ai_name,
@@ -98,7 +98,7 @@ fn build_llm_client(
     top_p: Option<f64>,
 ) -> Option<LlmClient> {
     if api_key.is_empty() || model.is_empty() {
-        log::warn!("LLM 未配置 (provider={}, model={})，将无法生成对话", provider, model);
+        tracing::warn!("LLM 未配置 (provider={}, model={})，将无法生成对话", provider, model);
         return None;
     }
     let cfg = LlmConfig {
@@ -130,7 +130,7 @@ async fn load_default_character(
         if let Ok(Some(settings)) =
             RoleRepo::get_role_settings_by_id(db, data_dir, last_id as i32).await
         {
-            log::info!("加载上次游玩的角色: id={}", last_id);
+            tracing::info!("加载上次游玩的角色: id={}", last_id);
             return Ok(settings);
         }
     }
@@ -142,13 +142,13 @@ async fn load_default_character(
             if let Ok(Some(settings)) =
                 RoleRepo::get_role_settings_by_id(db, data_dir, role.id).await
             {
-                log::info!("加载默认主角色: id={}, folder={}", role.id, folder);
+                tracing::info!("加载默认主角色: id={}, folder={}", role.id, folder);
                 return Ok(settings);
             }
         }
     }
 
     // 3. 无角色可用时返回默认空设定
-    log::warn!("无可用角色，使用默认空设定");
+    tracing::warn!("无可用角色，使用默认空设定");
     Ok(CharacterSettings::default())
 }

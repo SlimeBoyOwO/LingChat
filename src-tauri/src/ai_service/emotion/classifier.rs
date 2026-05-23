@@ -113,7 +113,7 @@ impl EmotionClassifier {
 
             let input_count = loaded.inputs.len();
             input_count_out = input_count;
-            log::info!(
+            tracing::info!(
                 "ONNX 模型输入数: {} ({:?})",
                 input_count,
                 loaded
@@ -207,7 +207,7 @@ impl EmotionClassifier {
             })
             .collect::<Result<_>>()?;
 
-        log::info!(
+        tracing::info!(
             "已加载情绪分类模型: {} (标签数={})",
             onnx_path.display(),
             id2label.len()
@@ -242,7 +242,7 @@ impl EmotionClassifier {
         };
 
         if self.direct_return_if_label && self.label2id.contains_key(text) {
-            log::debug!("输入文本 '{text}' 已是合法情感标签，直接返回");
+            tracing::debug!("输入文本 '{text}' 已是合法情感标签，直接返回");
             return EmotionPrediction::passthrough(text, false);
         }
 
@@ -260,7 +260,7 @@ impl EmotionClassifier {
         match self.run_inference(model, text, threshold) {
             Ok(p) => p,
             Err(e) => {
-                log::error!("情绪预测错误: {e}");
+                tracing::error!("情绪预测错误: {e}");
                 EmotionPrediction::passthrough(text, false)
             }
         }
@@ -316,7 +316,7 @@ impl EmotionClassifier {
         let top3 = top_k(&probs, 3, &self.id2label);
 
         if pred_prob < threshold {
-            log::debug!(
+            tracing::debug!(
                 "情绪识别置信度低: {text} -> 不确定 ({:.2}%)",
                 pred_prob * 100.0
             );
@@ -334,7 +334,7 @@ impl EmotionClassifier {
             .get(&pred_id)
             .cloned()
             .unwrap_or_else(|| String::new());
-        log::debug!("情绪识别: {text} -> {label} ({:.2}%)", pred_prob * 100.0);
+        tracing::debug!("情绪识别: {text} -> {label} ({:.2}%)", pred_prob * 100.0);
         Ok(EmotionPrediction {
             label,
             confidence: pred_prob,
