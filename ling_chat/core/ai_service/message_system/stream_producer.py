@@ -166,10 +166,19 @@ class StreamProducer:
             )  # 为这个索引创建一个事件
             await self.sentence_queue.put(
                 (final_content, current_index, True)
-            )  # is_final=False
+            )  # is_final=True
             sentence_index += 1
             # asyncio.create_task(self.process_sentence_and_send(final_content, user_message, True))
             # await self.process_sentence(final_content, emotion_segments)
+        else:
+            # 流以完整 【情绪】句子 结尾，没有剩余 buffer。
+            # 仍然必须发送一条 is_final=True 的标记消息，否则
+            # publisher 永远不会收到 isFinal 信号，主协程的 while 循环
+            # 会在 output_queue.get() 上永久阻塞。
+            current_index = sentence_index
+            self.publish_events[current_index] = asyncio.Event()
+            await self.sentence_queue.put(("", current_index, True))
+            sentence_index += 1
 
         # 打印结束换行
         print("\n=== 流式输出结束 ===")

@@ -2,6 +2,7 @@ import asyncio
 from typing import Dict
 
 from ling_chat.core.ai_service.ai_logger import logger
+from ling_chat.core.ai_service.message_system.pipeline_sentinels import SkippedSentence
 from ling_chat.core.schemas.responses import ReplyResponse
 
 
@@ -33,13 +34,25 @@ class ResponsePublisher:
                 await self.publish_events[next_index_to_publish].wait()
 
                 response = self.results_store.pop(next_index_to_publish, None)
-                if response:
+                # 该索引解析失败，consumer 写入了 SkippedSentence 占位
+                if isinstance(response, SkippedSentence):
+                    logger.warning(
+                        f"跳过第 {next_index_to_publish} 条消息（解析失败，is_final={response.isFinal}）"
+                    )
+                    del self.publish_events[next_index_to_publish]
+                    if response.isFinal:
+                        logger.info("最后一个消息（占位）已处理，退出发布循环")
+                        break
+                    next_index_to_publish += 1
+                    continue
+
+                if response is not None:
                     logger.info(f"正在发布第 {next_index_to_publish} 条消息")
                     await self.output_queue.put(response)
 
                 del self.publish_events[next_index_to_publish]
 
-                if response and response.isFinal:
+                if response is not None and response.isFinal:
                     logger.info("最后一个消息发送完毕，退出发布循环")
                     break
 
