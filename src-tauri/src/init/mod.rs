@@ -41,7 +41,7 @@ pub async fn initialize(app: &App) -> Result<(DatabaseConnection, SharedAIServic
     )
     .map(Arc::new);
 
-    let mut ai_service = AIService::new(db.clone(), data_dir.clone(), llm.clone()).await;
+    let mut ai_service = AIService::new(db.clone(), data_dir.clone(), llm.clone(), app_config.tts.clone()).await;
 
     // 加载默认角色：上次游玩的角色 → DB 中第一个主角色 → 默认空设定
     let settings = load_default_character(app, &db, &data_dir).await?;

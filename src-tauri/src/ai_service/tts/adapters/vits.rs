@@ -18,11 +18,8 @@ pub struct VitsAdapter {
 }
 
 impl VitsAdapter {
-    pub fn new(speaker_id: i32, audio_format: String, lang: String) -> Self {
-        let api_url = std::env::var("SIMPLE_VITS_API_URL")
-            .unwrap_or_else(|_| "http://127.0.0.1:23456".to_string())
-            .trim_end_matches('/')
-            .to_string();
+    pub fn new(api_url: String, speaker_id: i32, audio_format: String, lang: String) -> Self {
+        let api_url = api_url.trim_end_matches('/').to_string();
         Self {
             api_url,
             speaker_id,

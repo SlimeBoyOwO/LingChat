@@ -21,6 +21,7 @@ use crate::ai_service::tts::adapters::sbv2api::Sbv2ApiAdapter;
 use crate::ai_service::tts::adapters::vits::VitsAdapter;
 use crate::ai_service::tts::provider::TtsProvider;
 use crate::ai_service::types::VoiceModel;
+use crate::config::tts::TtsConfig;
 
 /// 各 TTS 后端的可用性标志。
 #[derive(Debug, Default, Clone, Copy)]
@@ -42,6 +43,7 @@ pub struct VoiceMaker {
     temp_dir: PathBuf,
     audio_format: String,
     availability: TtsAvailability,
+    tts_config: TtsConfig,
 }
 
 fn non_empty(s: &Option<String>) -> bool {
@@ -49,7 +51,7 @@ fn non_empty(s: &Option<String>) -> bool {
 }
 
 impl VoiceMaker {
-    pub fn new(temp_dir: PathBuf, audio_format: impl Into<String>) -> Self {
+    pub fn new(temp_dir: PathBuf, audio_format: impl Into<String>, tts_config: TtsConfig) -> Self {
         let audio_format = audio_format.into();
         let provider = TtsProvider::new(&audio_format);
         Self {
@@ -60,6 +62,7 @@ impl VoiceMaker {
             temp_dir,
             audio_format,
             availability: TtsAvailability::default(),
+            tts_config,
         }
     }
 
@@ -126,6 +129,7 @@ impl VoiceMaker {
             "sva-vits" if self.availability.sva => {
                 if let Some(id) = cfg.sva_speaker_id.as_deref().and_then(|s| s.parse::<i32>().ok()) {
                     self.provider.sva = Some(Arc::new(VitsAdapter::new(
+                        self.tts_config.simple_vits_api_url.clone(),
                         id,
                         self.audio_format.clone(),
                         "ja".into(),
@@ -140,6 +144,7 @@ impl VoiceMaker {
                     .unwrap_or(0);
                 let model_name = cfg.sbv2_name.clone().unwrap_or_default();
                 self.provider.sbv2 = Some(Arc::new(Sbv2Adapter::new(
+                    self.tts_config.sbv2_api_url.clone(),
                     id,
                     model_name,
                     self.audio_format.clone(),
@@ -153,7 +158,11 @@ impl VoiceMaker {
                     .and_then(|s| s.parse::<i32>().ok())
                     .unwrap_or(0);
                 let model_name = cfg.sbv2api_name.clone().unwrap_or_default();
-                self.provider.sbv2api = Some(Arc::new(Sbv2ApiAdapter::new(model_name, id)));
+                self.provider.sbv2api = Some(Arc::new(Sbv2ApiAdapter::new(
+                    self.tts_config.sbv2api_api_url.clone(),
+                    model_name,
+                    id,
+                )));
             }
             "sva-bv2" if self.availability.bv2 => {
                 let id = cfg
@@ -162,6 +171,7 @@ impl VoiceMaker {
                     .and_then(|s| s.parse::<i32>().ok())
                     .unwrap_or(0);
                 self.provider.bv2 = Some(Arc::new(Bv2Adapter::new(
+                    self.tts_config.bv2_api_url.clone(),
                     id,
                     self.audio_format.clone(),
                     self.lang.clone(),
@@ -178,13 +188,20 @@ impl VoiceMaker {
                     _ => String::new(),
                 };
                 let prompt_text = cfg.gsv_voice_text.clone().unwrap_or_default();
-                let adapter = GsvAdapter::new(ref_audio_path, prompt_text, "auto".into());
+                let adapter = GsvAdapter::new(
+                    self.tts_config.gsv_api_url.clone(),
+                    ref_audio_path,
+                    prompt_text,
+                    "auto".into(),
+                );
                 self.provider.gsv = Some(Arc::new(adapter));
                 let _ = name; // 预留：Python 版还有按 name 查找 gpt/sovits 权重的逻辑
             }
             "aivis" if self.availability.aivis => {
                 let model_uuid = cfg.aivis_model_uuid.clone().unwrap_or_default();
                 match AivisAdapter::new(
+                    self.tts_config.aivis_api_url.clone(),
+                    self.tts_config.aivis_api_key.clone(),
                     model_uuid,
                     None,
                     self.audio_format.clone(),
@@ -198,7 +215,9 @@ impl VoiceMaker {
                 }
             }
             "indextts2" => {
-                self.provider.indextts = Some(Arc::new(IndexTtsAdapter::new()));
+                self.provider.indextts = Some(Arc::new(IndexTtsAdapter::new(
+                    self.tts_config.indextts_api_url.clone(),
+                )));
             }
             _ => {
                 log::warn!("TTS 类型不可用或未初始化: {tts_type}");

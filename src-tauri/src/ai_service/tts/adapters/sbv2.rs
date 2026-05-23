@@ -19,12 +19,9 @@ pub struct Sbv2Adapter {
 }
 
 impl Sbv2Adapter {
-    pub fn new(speaker_id: i32, model_name: String, audio_format: String, lang: &str) -> Self {
+    pub fn new(api_url: String, speaker_id: i32, model_name: String, audio_format: String, lang: &str) -> Self {
         let language = if lang == "ja" { "JP".to_string() } else { lang.to_string() };
-        let api_url = std::env::var("STYLE_BERT_VITS2_URL")
-            .unwrap_or_else(|_| "http://127.0.0.1:5000".to_string())
-            .trim_end_matches('/')
-            .to_string();
+        let api_url = api_url.trim_end_matches('/').to_string();
         Self {
             api_url,
             audio_format,

@@ -23,19 +23,17 @@ pub struct AivisAdapter {
 
 impl AivisAdapter {
     pub fn new(
+        api_url: String,
+        api_key: Option<String>,
         model_uuid: String,
         speaker_uuid: Option<String>,
         audio_format: String,
         lang: String,
     ) -> Result<Self> {
-        let api_url = std::env::var("AIVIS_API_URL")
-            .unwrap_or_else(|_| "https://api.aivis-project.com/v1".to_string())
-            .trim_end_matches('/')
-            .to_string();
-        // 与 Python 一致的 typo：AIVIS_API_KRY（保持兼容）
-        let api_key = std::env::var("AIVIS_API_KRY")
-            .or_else(|_| std::env::var("AIVIS_API_KEY"))
-            .map_err(|_| anyhow!("未设置 AIVIS_API_KRY/AIVIS_API_KEY 环境变量"))?;
+        let api_url = api_url.trim_end_matches('/').to_string();
+        let api_key = api_key
+            .filter(|k| !k.is_empty())
+            .ok_or_else(|| anyhow!("未设置 AIVIS API 密钥（请在设置中配置 tts.aivis_api_key）"))?;
         Ok(Self {
             api_url,
             api_key,

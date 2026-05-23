@@ -59,12 +59,14 @@
         浏览
       </button>
     </div>
-    <input
-      type="text"
-      :id="setting.key"
-      v-model="localValue"
-      class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
-    />
+    <div v-else>
+      <input
+        type="text"
+        :id="setting.key"
+        v-model="localValue"
+        class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+      />
+    </div>
   </template>
 </template>
 

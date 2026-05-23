@@ -10,6 +10,7 @@ use crate::ai_service::game_system::persistent_memory_system::PersistentMemorySy
 use crate::ai_service::llm::LlmClient;
 use crate::ai_service::tts::VoiceMaker;
 use crate::ai_service::types::{CharacterSettings, GameLine, GameMemoryBank, GameRole, LlmMessage};
+use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
 use crate::db::managers::memory_repo::MemoryRepo;
 use crate::db::managers::role_repo::RoleRepo;
@@ -23,15 +24,18 @@ pub struct GameRoleManager {
     llm: Option<Arc<LlmClient>>,
     /// 每个角色的 MemoryBank 后台压缩引擎（惰性构造）。
     memory_bank_systems: HashMap<i32, PersistentMemorySystem>,
+    /// TTS 引擎配置（适配器 URL、音频格式等）。
+    tts_config: TtsConfig,
 }
 
 impl GameRoleManager {
-    pub fn new(data_dir: PathBuf, llm: Option<Arc<LlmClient>>) -> Self {
+    pub fn new(data_dir: PathBuf, llm: Option<Arc<LlmClient>>, tts_config: TtsConfig) -> Self {
         Self {
             loaded_roles: HashMap::new(),
             data_dir,
             llm,
             memory_bank_systems: HashMap::new(),
+            tts_config,
         }
     }
 
@@ -104,7 +108,7 @@ impl GameRoleManager {
         let display_name = settings.ai_name.clone();
         let resource_path = role.resource_folder.clone();
 
-        let voice_maker = build_voice_maker(&self.data_dir, &settings, resource_path.as_deref());
+        let voice_maker = build_voice_maker(&self.data_dir, &settings, resource_path.as_deref(), &self.tts_config);
 
         let new_role = GameRole {
             role_id: Some(role.id),
@@ -466,6 +470,7 @@ fn build_voice_maker(
     data_dir: &Path,
     settings: &CharacterSettings,
     resource_path: Option<&str>,
+    tts_config: &TtsConfig,
 ) -> Option<VoiceMaker> {
     let tts_type = settings.tts_type.as_deref().unwrap_or("").trim();
     if tts_type.is_empty() {
@@ -473,11 +478,11 @@ fn build_voice_maker(
     }
     let voice_cfg = settings.voice_models.as_ref()?;
 
-    let audio_format = std::env::var("TTS_AUDIO_FORMAT").unwrap_or_else(|_| "wav".to_string());
-    let lang = std::env::var("VOICE_LANG").unwrap_or_else(|_| "ja".to_string());
+    let audio_format = tts_config.audio_format.clone();
+    let lang = tts_config.voice_lang.clone();
 
     let temp_dir = data_dir.join("voice");
-    let mut vm = VoiceMaker::new(temp_dir, audio_format);
+    let mut vm = VoiceMaker::new(temp_dir, audio_format, tts_config.clone());
     vm.set_lang(&lang);
     if let Some(p) = resource_path {
         vm.set_character_path(Some(PathBuf::from(p)));

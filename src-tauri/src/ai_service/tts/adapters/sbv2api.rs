@@ -20,11 +20,8 @@ pub struct Sbv2ApiAdapter {
 }
 
 impl Sbv2ApiAdapter {
-    pub fn new(model_name: String, speaker_id: i32) -> Self {
-        let api_url = std::env::var("SBV2API_API_URL")
-            .unwrap_or_else(|_| "http://localhost:3000".to_string())
-            .trim_end_matches('/')
-            .to_string();
+    pub fn new(api_url: String, model_name: String, speaker_id: i32) -> Self {
+        let api_url = api_url.trim_end_matches('/').to_string();
         Self {
             api_url,
             model_name,

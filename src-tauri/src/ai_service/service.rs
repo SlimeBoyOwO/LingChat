@@ -12,6 +12,7 @@ use crate::ai_service::game_system::script_engine::ScriptManager;
 use crate::ai_service::llm::LlmClient;
 use crate::ai_service::prompt::{sys_prompt_builder, PromptOptions};
 use crate::ai_service::types::{CharacterSettings, GameLine, LineBase, LineAttributeExt};
+use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
 
 /// AI 服务：承载 `GameStatus` 与会话级配置。
@@ -49,11 +50,12 @@ impl AIService {
         db: DatabaseConnection,
         data_dir: PathBuf,
         llm: Option<Arc<LlmClient>>,
+        tts_config: TtsConfig,
     ) -> Self {
         // Initialize the event handler registry before any script is run
         crate::ai_service::game_system::script_engine::init_event_registry();
 
-        let role_manager = GameRoleManager::new(data_dir.clone(), llm);
+        let role_manager = GameRoleManager::new(data_dir.clone(), llm, tts_config);
         let game_status = Arc::new(Mutex::new(GameStatus::new(role_manager)));
         let script_manager = ScriptManager::new(&data_dir);
         Self {

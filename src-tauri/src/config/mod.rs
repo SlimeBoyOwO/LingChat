@@ -10,6 +10,9 @@ use tauri_plugin_store::{Store, StoreExt};
 pub const STORE_FILE: &str = "settings.json";
 
 pub mod proactive;
+pub mod tts;
+
+use crate::config::tts::TtsConfig;
 
 // ========== 字段键（对标 Python .env） ==========
 pub mod keys {
@@ -126,6 +129,10 @@ pub struct AppConfig {
     // 其他
     #[serde(default)]
     pub community_url: Option<String>,
+
+    /// TTS 引擎配置（适配器 URL、音频格式等）
+    #[serde(default)]
+    pub tts: TtsConfig,
 }
 
 fn default_output_sec_lang() -> bool { true }
@@ -164,6 +171,7 @@ impl Default for AppConfig {
             tts_software_path: None,
             voice_check: false,
             community_url: None,
+            tts: TtsConfig::default(),
         }
     }
 }
@@ -223,6 +231,7 @@ impl AppConfig {
             tts_software_path: get_string(&store, keys::TTS_SOFTWARE_PATH),
             voice_check: get_bool(&store, keys::VOICE_CHECK, false),
             community_url: get_string(&store, keys::COMMUNITY_URL),
+            tts: TtsConfig::from_store(Some(&store)),
         })
     }
 }
@@ -513,6 +522,84 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         value: read_setting(app, keys::VOICE_CHECK, "false"),
                         description: "启动时检查语音模型是否就绪".to_string(),
                         setting_type: "bool".to_string(),
+                    },
+                ],
+            },
+        );
+
+        tts_subs.insert(
+            "适配器 URL".to_string(),
+            Subcategory {
+                description: "各个 TTS 后端的 API 地址，对应原环境变量 SIMPLE_VITS_API_URL / STYLE_BERT_VITS2_URL 等".to_string(),
+                settings: vec![
+                    ConfigSetting {
+                        key: tts::keys::SIMPLE_VITS_API_URL.to_string(),
+                        value: read_setting(app, tts::keys::SIMPLE_VITS_API_URL, "http://127.0.0.1:23456"),
+                        description: "Simple-Vits-API 地址（VITS 适配器）".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: tts::keys::BV2_API_URL.to_string(),
+                        value: read_setting(app, tts::keys::BV2_API_URL, "http://127.0.0.1:6006"),
+                        description: "Simple-Vits-API 地址（Bert-Vits2 适配器）".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: tts::keys::GSV_API_URL.to_string(),
+                        value: read_setting(app, tts::keys::GSV_API_URL, "http://127.0.0.1:9880"),
+                        description: "GPT-SoVITS API 地址".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: tts::keys::SBV2_API_URL.to_string(),
+                        value: read_setting(app, tts::keys::SBV2_API_URL, "http://127.0.0.1:5000"),
+                        description: "Style-Bert-Vits2 本地服务地址".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: tts::keys::SBV2API_API_URL.to_string(),
+                        value: read_setting(app, tts::keys::SBV2API_API_URL, "http://localhost:3000"),
+                        description: "SBV2 API 服务地址".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: tts::keys::AIVIS_API_URL.to_string(),
+                        value: read_setting(app, tts::keys::AIVIS_API_URL, "https://api.aivis-project.com/v1"),
+                        description: "AIVIS 云 API 地址".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: tts::keys::AIVIS_API_KEY.to_string(),
+                        value: read_setting(app, tts::keys::AIVIS_API_KEY, ""),
+                        description: "AIVIS API 密钥（原环境变量 AIVIS_API_KRY）".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: tts::keys::INDEXTTS_API_URL.to_string(),
+                        value: read_setting(app, tts::keys::INDEXTTS_API_URL, "http://127.0.0.1:23467/voice/indextts/presets"),
+                        description: "IndexTTS2 API 地址".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                ],
+            },
+        );
+
+        tts_subs.insert(
+            "音频参数".to_string(),
+            Subcategory {
+                description: "TTS 音频输出格式与语言设置，对应原环境变量 TTS_AUDIO_FORMAT / VOICE_LANG".to_string(),
+                settings: vec![
+                    ConfigSetting {
+                        key: tts::keys::TTS_AUDIO_FORMAT.to_string(),
+                        value: read_setting(app, tts::keys::TTS_AUDIO_FORMAT, "wav"),
+                        description: "音频文件格式（wav / mp3 / flac / ogg 等）".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: tts::keys::VOICE_LANG.to_string(),
+                        value: read_setting(app, tts::keys::VOICE_LANG, "ja"),
+                        description: "语音合成语言（ja / zh / auto）".to_string(),
+                        setting_type: "text".to_string(),
                     },
                 ],
             },

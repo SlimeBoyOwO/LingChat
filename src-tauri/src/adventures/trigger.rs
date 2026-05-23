@@ -28,9 +28,6 @@ pub fn check_all_adventures(
     game_status: &GameStatus,
     adventures: &[&ScriptStatus],
 ) -> Result<Vec<UnlockedAdventureInfo>> {
-    // Need to use block_on since this is called from async context
-    // but the inner checks are async (DB queries). We use tokio::task::block_in_place
-    // to avoid blocking the runtime.
     let rt = tokio::runtime::Handle::current();
 
     let mut newly_unlocked = Vec::new();
@@ -39,9 +36,10 @@ pub fn check_all_adventures(
         let folder = &adv.folder_key;
 
         // Skip if already unlocked
-        let already_unlocked = rt
-            .block_on(AdventureManager::is_unlocked(db, folder))
-            .unwrap_or(false);
+        let already_unlocked = tokio::task::block_in_place(|| {
+            rt.block_on(AdventureManager::is_unlocked(db, folder))
+        })
+        .unwrap_or(false);
         if already_unlocked {
             continue;
         }
@@ -50,11 +48,13 @@ pub fn check_all_adventures(
         let conditions = &adv.adventure.unlock_conditions;
         if conditions.is_empty() {
             // No conditions: default-unlock
-            rt.block_on(AdventureManager::unlock_adventure(
-                db,
-                folder,
-                &adv.adventure.bound_character_folder,
-            ))?;
+            tokio::task::block_in_place(|| {
+                rt.block_on(AdventureManager::unlock_adventure(
+                    db,
+                    folder,
+                    &adv.adventure.bound_character_folder,
+                ))
+            })?;
             newly_unlocked.push(UnlockedAdventureInfo {
                 adventure_folder: folder.clone(),
                 name: adv.name.clone(),
@@ -70,11 +70,13 @@ pub fn check_all_adventures(
         });
 
         if all_passed {
-            rt.block_on(AdventureManager::unlock_adventure(
-                db,
-                folder,
-                &adv.adventure.bound_character_folder,
-            ))?;
+            tokio::task::block_in_place(|| {
+                rt.block_on(AdventureManager::unlock_adventure(
+                    db,
+                    folder,
+                    &adv.adventure.bound_character_folder,
+                ))
+            })?;
             newly_unlocked.push(UnlockedAdventureInfo {
                 adventure_folder: folder.clone(),
                 name: adv.name.clone(),
@@ -137,8 +139,10 @@ fn evaluate_condition(
                 return false;
             }
             let rt = tokio::runtime::Handle::current();
-            rt.block_on(AdventureManager::is_globally_completed(db, prereq))
-                .unwrap_or(false)
+            tokio::task::block_in_place(|| {
+                rt.block_on(AdventureManager::is_globally_completed(db, prereq))
+            })
+            .unwrap_or(false)
         }
 
         "achievement_unlocked" => {

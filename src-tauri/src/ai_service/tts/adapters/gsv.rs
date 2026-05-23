@@ -22,11 +22,8 @@ pub struct GsvAdapter {
 }
 
 impl GsvAdapter {
-    pub fn new(ref_audio_path: String, prompt_text: String, prompt_lang: String) -> Self {
-        let api_url = std::env::var("GPT_SOVITS_API_URL")
-            .unwrap_or_else(|_| "http://127.0.0.1:9880".to_string())
-            .trim_end_matches('/')
-            .to_string();
+    pub fn new(api_url: String, ref_audio_path: String, prompt_text: String, prompt_lang: String) -> Self {
+        let api_url = api_url.trim_end_matches('/').to_string();
         Self {
             api_url,
             ref_audio_path,

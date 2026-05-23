@@ -18,9 +18,9 @@ pub struct IndexTtsAdapter {
 }
 
 impl IndexTtsAdapter {
-    pub fn new() -> Self {
+    pub fn new(base_url: String) -> Self {
         Self {
-            base_url: "http://127.0.0.1:23467/voice/indextts/presets".into(),
+            base_url,
             speaker_id: 0,
             audio_format: "wav".into(),
             lang: "zh".into(),
@@ -30,7 +30,7 @@ impl IndexTtsAdapter {
 
 impl Default for IndexTtsAdapter {
     fn default() -> Self {
-        Self::new()
+        Self::new("http://127.0.0.1:23467/voice/indextts/presets".into())
     }
 }
 

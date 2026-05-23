@@ -46,7 +46,7 @@
               >{{ categoryName }}</span
             >
             <a
-              v-for="(subcategoryData, subcategoryName) in categoryData.subcategories"
+              v-for="(, subcategoryName) in categoryData.subcategories"
               :key="subcategoryName"
               href="#"
               class="block px-5 py-3 no-underline rounded-lg text-white transition-colors duration-200 relative z-10 adv-nav-link hover:bg-gray-200 hover:text-black active:text-white active:font-bold"
@@ -132,7 +132,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, reactive, watch, nextTick, getCurrentInstance } from 'vue'
+import { ref, onMounted, computed, reactive, watch, nextTick } from 'vue'
 import { MenuPage } from '../../ui'
 import SettingItem from '@/components/base/items/SettingItem.vue'
 import { getEnvConfigSettings } from '@/api/services/config'
@@ -149,7 +149,6 @@ const saveStatus = reactive({
   message: '',
   colorClass: 'text-green-500', // Tailwind 类名
 })
-const instance = getCurrentInstance()
 
 const emit = defineEmits([
   'remove-more-menu-from-b', // B 组件触发 remove 时通知父组件
@@ -259,7 +258,7 @@ const setupNavResizeObserver = () => {
     return
   }
 
-  const resizeObserver = new ResizeObserver((entries) => {
+  const resizeObserver = new ResizeObserver(() => {
     updateIndicatorPosition()
   })
 
