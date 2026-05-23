@@ -8,6 +8,8 @@ import httpx
 from openai import OpenAI
 from PIL import ImageGrab
 
+from ling_chat.utils.proxy_helper import create_proxied_httpx_client, get_proxy_url
+
 
 class DesktopAnalyzer:
     def __init__(self):
@@ -29,9 +31,19 @@ class DesktopAnalyzer:
 
         # 初始化 OpenAI 客户端
         self._timeout = httpx.Timeout(15.0)
-        self.client = OpenAI(
-            api_key=self.api_key, base_url=self.base_url, timeout=self._timeout
-        )
+
+        proxy_url = get_proxy_url("VD_PROXY_URL")
+        http_client = create_proxied_httpx_client(proxy_url, timeout=self._timeout)
+
+        client_kwargs = {
+            "api_key": self.api_key,
+            "base_url": self.base_url,
+            "timeout": self._timeout,
+        }
+        if http_client is not None:
+            self.client = OpenAI(**client_kwargs, http_client=http_client)
+        else:
+            self.client = OpenAI(**client_kwargs)
 
     def _capture_desktop_sync(self):
         """

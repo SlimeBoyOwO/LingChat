@@ -6,6 +6,7 @@ import httpx
 
 from ling_chat.core.llm_providers.base import BaseLLMProvider
 from ling_chat.core.logger import logger
+from ling_chat.utils.proxy_helper import get_proxy_url
 
 
 def _normalize_base_url(raw: str) -> str:
@@ -29,9 +30,18 @@ class OllamaProvider(BaseLLMProvider):
         self._timeout = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
         self.temperature = float(os.environ.get("TEMPERATURE", 1.3))
         self.top_p = float(os.environ.get("TOP_P", 0.9))
+        self.proxy_url = get_proxy_url("OLLAMA_PROXY_URL")
 
     def initialize_client(self):
         pass
+
+    def _client_kwargs(self) -> dict:
+        """构建 httpx Client/AsyncClient 的初始化参数（含代理与 trust_env 设置）"""
+        kwargs: dict = {"timeout": self._timeout}
+        if self.proxy_url:
+            kwargs["proxy"] = self.proxy_url
+            kwargs["trust_env"] = False
+        return kwargs
 
     def generate_response(self, messages: List[Dict]) -> str:
         """生成Ollama模型响应"""
@@ -48,7 +58,7 @@ class OllamaProvider(BaseLLMProvider):
                 "stream": False,
             }
 
-            with httpx.Client(timeout=self._timeout) as client:
+            with httpx.Client(**self._client_kwargs()) as client:
                 response = client.post(f"{self.base_url}/api/chat", json=payload)
 
                 if response.status_code != 200:
@@ -83,7 +93,7 @@ class OllamaProvider(BaseLLMProvider):
                 "stream": True,
             }
 
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
+            async with httpx.AsyncClient(**self._client_kwargs()) as client:
                 async with client.stream(
                     "POST",
                     f"{self.base_url}/api/chat",

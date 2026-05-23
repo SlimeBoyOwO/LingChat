@@ -56,6 +56,7 @@ LingChat还有很多附加的强力功能！你可以查看额外功能了解与
 - [RAG 功能](/manual/expand/rag)：这是 LingChat 能够实现无限记忆的秘诀
 - [语音生成](/manual/expand/voice)：这可以给人物生成逼真的语音
 - [视觉功能](/manual/expand/vision)：这可以让人物看到你的桌面
+- [反代和网络代理](/manual/expand/proxy)：在你无法直连 API 的网络环境下让 LingChat 走代理
 
 ## 附属项目
 

@@ -5,6 +5,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 import httpx
 
 from ling_chat.core.logger import logger
+from ling_chat.utils.proxy_helper import get_proxy_url
 
 from .base import BaseLLMProvider
 
@@ -18,6 +19,7 @@ class LMStudioProvider(BaseLLMProvider):
         base_url = os.environ.get("LMSTUDIO_BASE_URL", "http://localhost:1234")
         self.base_url = base_url.replace("/v1", "")
         self.api_token = os.environ.get("LMSTUDIO_API_TOKEN", "")
+        self.proxy_url = get_proxy_url("LMSTUDIO_PROXY_URL")
 
     def initialize_client(self):
         """LM Studio 客户端在每次请求时创建，无需初始化"""
@@ -30,19 +32,26 @@ class LMStudioProvider(BaseLLMProvider):
             headers["Authorization"] = f"Bearer {self.api_token}"
         return headers
 
+    def _common_client_kwargs(self) -> dict:
+        """构建 httpx 客户端的公共参数（含代理设置）"""
+        timeout_config = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
+        kwargs: dict = {
+            "base_url": self.base_url,
+            "headers": self._get_headers(),
+            "timeout": timeout_config,
+        }
+        if self.proxy_url:
+            kwargs["proxy"] = self.proxy_url
+            kwargs["trust_env"] = False
+        return kwargs
+
     def _get_http_client(self):
         """获取同步 HTTP 客户端"""
-        timeout_config = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
-        return httpx.Client(
-            base_url=self.base_url, headers=self._get_headers(), timeout=timeout_config
-        )
+        return httpx.Client(**self._common_client_kwargs())
 
     def _get_async_client(self):
         """获取异步 HTTP 客户端"""
-        timeout_config = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
-        return httpx.AsyncClient(
-            base_url=self.base_url, headers=self._get_headers(), timeout=timeout_config
-        )
+        return httpx.AsyncClient(**self._common_client_kwargs())
 
     def _build_input_messages(self, messages: List[Dict]) -> List[Dict]:
         """

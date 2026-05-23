@@ -121,6 +121,17 @@ class AIService:
         仅在有相关键变动时做最小开销的重建。
         """
         try:
+            # 代理相关 key —— 任意一个变动都意味着相关 Provider 的网络配置需要重建
+            proxy_keys = {
+                "GLOBAL_PROXY_URL",
+                "LLM_PROXY_URL",
+                "TRANSLATE_PROXY_URL",
+                "VD_PROXY_URL",
+                "OLLAMA_PROXY_URL",
+                "LMSTUDIO_PROXY_URL",
+                "GEMINI_PROXY_URL",
+            }
+
             llm_keys = {
                 "LLM_PROVIDER",
                 "MODEL_TYPE",
@@ -130,11 +141,79 @@ class AIService:
                 "TRANSLATE_MODEL",
                 "TRANSLATE_API_KEY",
                 "TRANSLATE_BASE_URL",
+                "GLOBAL_PROXY_URL",
+                "LLM_PROXY_URL",
+                "TRANSLATE_PROXY_URL",
+                "VD_PROXY_URL",
+                "OLLAMA_PROXY_URL",
+                "LMSTUDIO_PROXY_URL",
+                "GEMINI_PROXY_URL",
             }
             if any(k in updates for k in llm_keys):
                 self.llm_model = LLMManager()
                 self.message_generator.llm_model = self.llm_model
                 logger.info("运行时配置更新：LLMManager 已重建并替换。")
+
+            # Translator 内部持有独立的 LLMManager(llm_job="translator")，
+            # 翻译相关字段或代理变更后需要重建以让新配置生效。
+            translator_keys = {
+                "TRANSLATE_LLM_PROVIDER",
+                "TRANSLATE_MODEL",
+                "TRANSLATE_API_KEY",
+                "TRANSLATE_BASE_URL",
+                "ENABLE_TRANSLATE",
+                "GLOBAL_PROXY_URL",
+                "TRANSLATE_PROXY_URL",
+                # 翻译复用主 LLM 配置时，主 LLM 变动也要影响翻译
+                "LLM_PROVIDER",
+                "MODEL_TYPE",
+                "CHAT_API_KEY",
+                "CHAT_BASE_URL",
+                "LLM_PROXY_URL",
+            }
+            if any(k in updates for k in translator_keys):
+                try:
+                    self.translator = Translator(self.game_status)
+                    self.message_generator.translator = self.translator
+                    logger.info("运行时配置更新：Translator 已重建并替换。")
+                except Exception as e:
+                    logger.warning(f"运行时配置更新：Translator 重建失败：{e}")
+
+            # DesktopAnalyzer 持有 OpenAI client，视觉模型相关字段或代理变更需要重建。
+            vision_keys = {
+                "VD_API_KEY",
+                "VD_BASE_URL",
+                "VD_MODEL",
+                "GLOBAL_PROXY_URL",
+                "VD_PROXY_URL",
+            }
+            if any(k in updates for k in vision_keys):
+                try:
+                    from ling_chat.core.pic_analyzer import DesktopAnalyzer
+
+                    new_analyzer = DesktopAnalyzer()
+                    # MessageProcessor 持有的实例
+                    if hasattr(self.message_processor, "desktop_analyzer"):
+                        self.message_processor.desktop_analyzer = new_analyzer
+                    # ProactiveSystem 内 StrategyDispatcher 也各自持有
+                    proactive = getattr(self, "proactive_system", None)
+                    if proactive is not None:
+                        dispatcher = getattr(proactive, "strategy_dispatcher", None)
+                        if dispatcher is not None and hasattr(
+                            dispatcher, "desktop_analyzer"
+                        ):
+                            dispatcher.desktop_analyzer = new_analyzer
+                    logger.info("运行时配置更新：DesktopAnalyzer 已重建并替换。")
+                except Exception as e:
+                    logger.warning(
+                        f"运行时配置更新：DesktopAnalyzer 重建失败（可能是 VD_API_KEY 未配置）：{e}"
+                    )
+
+            # 仅代理键变动时（且未触发上面的重建路径），给个友好日志
+            if any(k in updates for k in proxy_keys):
+                logger.info(
+                    "运行时配置更新：网络代理设置已变更，相关 Provider 将在下次请求时按新配置生效。"
+                )
 
             if "COMSUMERS" in updates:
                 try:

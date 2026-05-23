@@ -6,6 +6,11 @@ from openai import AsyncOpenAI, OpenAI
 
 from ling_chat.core.llm_providers.base import BaseLLMProvider
 from ling_chat.core.logger import logger
+from ling_chat.utils.proxy_helper import (
+    create_proxied_async_httpx_client,
+    create_proxied_httpx_client,
+    get_proxy_url,
+)
 
 
 class WebLLMProvider(BaseLLMProvider):
@@ -34,10 +39,30 @@ class WebLLMProvider(BaseLLMProvider):
             return
 
         self._timeout = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
-        self.client = OpenAI(api_key=api_key, base_url=base_url, timeout=self._timeout)
-        self.async_client = AsyncOpenAI(
-            api_key=api_key, base_url=base_url, timeout=self._timeout
+
+        proxy_url = get_proxy_url("LLM_PROXY_URL")
+        http_client = create_proxied_httpx_client(proxy_url, timeout=self._timeout)
+        async_http_client = create_proxied_async_httpx_client(
+            proxy_url, timeout=self._timeout
         )
+
+        client_kwargs = {
+            "api_key": api_key,
+            "base_url": base_url,
+            "timeout": self._timeout,
+        }
+        if http_client is not None:
+            self.client = OpenAI(**client_kwargs, http_client=http_client)
+            logger.info(f"通用网络大模型已启用代理: {proxy_url}")
+        else:
+            self.client = OpenAI(**client_kwargs)
+
+        if async_http_client is not None:
+            self.async_client = AsyncOpenAI(
+                **client_kwargs, http_client=async_http_client
+            )
+        else:
+            self.async_client = AsyncOpenAI(**client_kwargs)
         logger.info("通用网络大模型初始化完毕！")
 
     def _add_thinking_extra_body(self, create_kwargs: dict) -> None:

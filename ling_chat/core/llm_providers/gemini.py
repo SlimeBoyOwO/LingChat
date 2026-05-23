@@ -6,6 +6,7 @@ import httpx
 
 from ling_chat.core.llm_providers.base import BaseLLMProvider
 from ling_chat.core.logger import logger
+from ling_chat.utils.proxy_helper import get_proxy_url
 
 
 # 文档：https://ai.google.dev/api
@@ -17,7 +18,8 @@ class GeminiProvider(BaseLLMProvider):
             "GEMINI_API_URL", "https://generativelanguage.googleapis.com/v1beta"
         )
         self.model_type = os.environ.get("GEMINI_MODEL_TYPE", "gemini-2.5-flash")
-        self.proxy_url = os.environ.get("GEMINI_PROXY_URL")
+        # GEMINI_PROXY_URL 优先，其次回落到 GLOBAL_PROXY_URL
+        self.proxy_url = get_proxy_url("GEMINI_PROXY_URL")
         self.temperature = float(os.environ.get("TEMPERATURE", 1.0))
         self.top_p = float(os.environ.get("TOP_P", 1.0))
 
@@ -31,14 +33,18 @@ class GeminiProvider(BaseLLMProvider):
         """获取HTTP客户端，支持代理"""
         timeout_config = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
         if self.proxy_url and self.proxy_url.strip():
-            return httpx.Client(proxy=self.proxy_url, timeout=timeout_config)
+            return httpx.Client(
+                proxy=self.proxy_url, trust_env=False, timeout=timeout_config
+            )
         return httpx.Client(timeout=timeout_config)
 
     def _get_async_http_client(self):
         """获取异步HTTP客户端，支持代理"""
         timeout_config = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
         if self.proxy_url and self.proxy_url.strip():
-            return httpx.AsyncClient(proxy=self.proxy_url, timeout=timeout_config)
+            return httpx.AsyncClient(
+                proxy=self.proxy_url, trust_env=False, timeout=timeout_config
+            )
         return httpx.AsyncClient(timeout=timeout_config)
 
     def _convert_messages_to_contents(
