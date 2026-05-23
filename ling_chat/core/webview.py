@@ -1,5 +1,6 @@
 import multiprocessing
 import os
+import platform
 
 import webview
 
@@ -24,6 +25,23 @@ class Api:
         logger.info("收到退出请求，正在关闭应用...")
         if self._window:
             self._window.destroy()
+
+
+def _get_gui_backends():
+    """返回按优先级排列的 pywebview GUI 后端列表
+
+    Windows 上优先使用 edgechromium（WebView2，Win10 19041+ / Win11 自带），
+    然后依次降级到 edgehtml、cef，最后回退到 winforms（旧行为）。
+    某些后端（如 winforms）依赖 pythonnet 加载 Python.Runtime.dll，
+    与嵌入式 Python 3.13 不兼容，所以放在最后兜底。
+    """
+    system = platform.system()
+    if system == "Windows":
+        return ["edgechromium", "edgehtml", "cef", "winforms"]
+    elif system == "Darwin":
+        return ["cocoa"]
+    else:
+        return ["gtk", "qt"]
 
 
 def func_webview():
@@ -51,11 +69,33 @@ def func_webview():
         # print(f"图标路径: {icon_path}")
         # print(f"图标文件是否存在: {icon_path.exists()}")
 
-        webview.start(
-            http_server=True,
-            icon=str(icon_path),  # 在这里设置图标
-            storage_path=str(user_data_path / "webview_storage_path"),
-        )
+        backends = _get_gui_backends()
+        started = False
+
+        for gui in backends:
+            try:
+                logger.info(f"尝试使用 pywebview 后端: {gui}")
+                webview.start(
+                    gui=gui,
+                    http_server=True,
+                    icon=str(icon_path),  # 在这里设置图标
+                    storage_path=str(user_data_path / "webview_storage_path"),
+                )
+                started = True
+                break
+            except Exception as e:
+                logger.warning(
+                    f"pywebview 后端 '{gui}' 启动失败: {e}，尝试下一个后端..."
+                )
+                continue
+
+        if not started:
+            logger.error(
+                "所有 pywebview 后端均启动失败。"
+                f"请打开浏览器访问 http://{frontend_bind_addr}:{frontend_port}/"
+            )
+            # 用非零退出码通知主进程，便于主进程提示用户
+            raise SystemExit(1)
 
     except KeyboardInterrupt:
         logger.info("WebView被中断")
