@@ -158,14 +158,43 @@ class MessageGenerator:
 
             # 4. 现在，主协程的工作是从管道生成结果
             # 需要同时监听 producer_task 以便捕获 LLM 异常
+            # 同时设置一个超时兜底，避免 publisher/consumer 出现意外死锁时
+            # 主协程永远阻塞在 output_queue.get() 上 —— 那会让外层的
+            # _generation_lock 永不释放，前端持续转圈无法恢复。
+            pipeline_idle_timeout = float(
+                os.environ.get("PIPELINE_IDLE_TIMEOUT", 90)
+            )
+            timed_out = False
             while True:
                 # 创建一个获取队列的任务
                 queue_get_task = asyncio.create_task(output_queue.get())
 
                 # 同时等待队列和producer任务，看哪个先完成
                 done, pending = await asyncio.wait(
-                    [queue_get_task, producer_task], return_when=asyncio.FIRST_COMPLETED
+                    [queue_get_task, producer_task],
+                    return_when=asyncio.FIRST_COMPLETED,
+                    timeout=pipeline_idle_timeout,
                 )
+
+                # 整体超时：done 为空说明这一轮里 producer 和 queue 都没产出任何东西
+                # 这通常意味着 publisher/consumer 出现死锁。立刻取消 queue 等待，
+                # yield 一个错误响应让外层退出循环并释放生成锁。
+                if not done:
+                    queue_get_task.cancel()
+                    try:
+                        await queue_get_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+                    logger.error(
+                        f"流式管道在 {pipeline_idle_timeout}s 内无任何输出，疑似死锁，"
+                        "强制结束本轮生成以释放生成锁。"
+                    )
+                    timed_out = True
+                    error_response = ResponseFactory.create_error_reply(
+                        "AI 回复超时，请重试。"
+                    )
+                    yield error_response
+                    break
 
                 # 检查 producer_task 是否出错
                 if producer_task in done:
@@ -182,8 +211,23 @@ class MessageGenerator:
                         raise producer_exception
 
                     # 如果 producer 正常完成但队列还没有数据，继续等待队列
+                    # 同样要带超时，避免 publisher 死锁导致永远拿不到数据。
                     if queue_get_task not in done:
-                        response = await output_queue.get()
+                        try:
+                            response = await asyncio.wait_for(
+                                output_queue.get(), timeout=pipeline_idle_timeout
+                            )
+                        except asyncio.TimeoutError:
+                            logger.error(
+                                f"producer 已完成但 publisher 在 {pipeline_idle_timeout}s 内"
+                                "未产出任何剩余消息，强制结束本轮生成。"
+                            )
+                            timed_out = True
+                            error_response = ResponseFactory.create_error_reply(
+                                "AI 回复超时，请重试。"
+                            )
+                            yield error_response
+                            break
                     else:
                         response = queue_get_task.result()
                 else:
@@ -195,6 +239,11 @@ class MessageGenerator:
                     break
 
             # 5. 优雅关闭和后续处理
+
+            # 如果是被超时强制中断，跳过后续依赖 producer/consumer 的清理逻辑，
+            # 让 finally 块统一取消所有后台任务即可。
+            if timed_out:
+                return
 
             # 现在可以安全地等待producer_task以获取完整响应
             # 当上面的while循环完成时，生产者任务也必须完成

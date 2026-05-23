@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 from ling_chat.core.ai_service.ai_logger import logger
 from ling_chat.core.ai_service.game_system.game_status import GameStatus
 from ling_chat.core.ai_service.message_system.message_processor import MessageProcessor
+from ling_chat.core.ai_service.message_system.pipeline_sentinels import SkippedSentence
 from ling_chat.core.ai_service.translator import Translator
 from ling_chat.core.schemas.response_models import ResponseFactory
 from ling_chat.core.schemas.responses import ReplyResponse
@@ -50,16 +51,20 @@ class SentenceConsumer:
                     sentence, self.user_message, is_final
                 )
 
-                # If processing produced no response, skip storing but still mark task done and notify if needed.
+                # 无论 consumer 是否产出有效 response，都必须写入 results_store
+                # 并 set 对应的 publish_event，否则 publisher 会在该 index 上
+                # 永久阻塞 (await event.wait())，导致整条流式管道死锁。
                 if response is None:
                     logger.warning(
-                        f"Consumer {self.consumer_id} returned no response for index {index}."
+                        f"Consumer {self.consumer_id} returned no response for index {index} (is_final={is_final})."
                     )
+                    # 写入 sentinel 占位，携带 is_final 标记，让 publisher 能识别流结束
+                    self.results_store[index] = SkippedSentence(is_final=is_final)
                 else:
-                    # Store the result and notify the publisher
                     self.results_store[index] = response
-                    if index in self.publish_events:
-                        self.publish_events[index].set()
+
+                if index in self.publish_events:
+                    self.publish_events[index].set()
 
                 # TODO: 还需要返回这个response才对
 
