@@ -1,4 +1,4 @@
-use serde::Serialize;
+﻿use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
 use crate::ai_service::game_system::game_status::GameStatusSnapshot;
@@ -186,7 +186,9 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
     };
 
     // 6. 导入设定并载入台词
-    service.import_settings(settings.clone(), prompt_options).await;
+    service
+        .import_settings(settings.clone(), prompt_options)
+        .await;
     service
         .load_lines(line_list, main_role_id, Some(save_id))
         .await
@@ -271,7 +273,7 @@ pub async fn delete_save(app: AppHandle, save_id: i32) -> Result<(), String> {
     let state = app.state::<AppState>();
     let db = &state.db;
 
-    let mut service = state.ai_service.lock().await;
+    let service = state.ai_service.lock().await;
 
     // 1. 删除 MemoryBank
     SaveRepo::delete_memory_banks_by_save(db, save_id)

@@ -62,24 +62,18 @@ pub async fn list_character_adventures(
 
     let is_running = service.script_manager.is_running;
     let gs = service.game_status.lock().await;
-    let current_script_folder = gs
-        .script_status
-        .as_ref()
-        .map(|ss| ss.folder_key.clone());
+    let current_script_folder = gs.script_status.as_ref().map(|ss| ss.folder_key.clone());
     let completed = &gs.completed_scripts;
 
     let mut result = Vec::new();
     for adv in adventures {
-        let is_unlocked =
-            AdventureManager::is_unlocked(db, &adv.folder_key)
-                .await
-                .unwrap_or(false);
+        let is_unlocked = AdventureManager::is_unlocked(db, &adv.folder_key)
+            .await
+            .unwrap_or(false);
 
         let status = if completed.contains(&adv.path_key()) {
             "completed"
-        } else if is_running
-            && current_script_folder.as_deref() == Some(&adv.folder_key)
-        {
+        } else if is_running && current_script_folder.as_deref() == Some(&adv.folder_key) {
             "in_progress"
         } else if is_unlocked {
             "unlocked"
@@ -132,24 +126,18 @@ pub async fn list_all_adventures(app: AppHandle) -> Result<Vec<AdventureInfo>, S
 
     let is_running = service.script_manager.is_running;
     let gs = service.game_status.lock().await;
-    let current_script_folder = gs
-        .script_status
-        .as_ref()
-        .map(|ss| ss.folder_key.clone());
+    let current_script_folder = gs.script_status.as_ref().map(|ss| ss.folder_key.clone());
     let completed = &gs.completed_scripts;
 
     let mut result = Vec::new();
     for adv in adventures {
-        let is_unlocked =
-            AdventureManager::is_unlocked(db, &adv.folder_key)
-                .await
-                .unwrap_or(false);
+        let is_unlocked = AdventureManager::is_unlocked(db, &adv.folder_key)
+            .await
+            .unwrap_or(false);
 
         let status = if completed.contains(&adv.path_key()) {
             "completed"
-        } else if is_running
-            && current_script_folder.as_deref() == Some(&adv.folder_key)
-        {
+        } else if is_running && current_script_folder.as_deref() == Some(&adv.folder_key) {
             "in_progress"
         } else if is_unlocked {
             "unlocked"
@@ -175,17 +163,13 @@ pub async fn list_all_adventures(app: AppHandle) -> Result<Vec<AdventureInfo>, S
 
 /// 启动指定羁绊冒险
 #[tauri::command]
-pub async fn start_adventure(
-    app: AppHandle,
-    adventure_folder: String,
-) -> Result<(), String> {
+pub async fn start_adventure(app: AppHandle, adventure_folder: String) -> Result<(), String> {
     let state = app.state::<AppState>();
 
     // Validate: adventure must be unlocked
-    let is_unlocked =
-        AdventureManager::is_unlocked(&state.db, &adventure_folder)
-            .await
-            .map_err(|e| format!("查询冒险状态失败: {}", e))?;
+    let is_unlocked = AdventureManager::is_unlocked(&state.db, &adventure_folder)
+        .await
+        .map_err(|e| format!("查询冒险状态失败: {}", e))?;
 
     if !is_unlocked {
         return Err("冒险尚未解锁，无法启动".to_string());
@@ -234,9 +218,7 @@ pub async fn start_adventure(
 
 /// 手动检测是否有新冒险可解锁，返回新解锁列表并推送事件
 #[tauri::command]
-pub async fn check_adventure_unlocks(
-    app: AppHandle,
-) -> Result<Vec<UnlockedAdventureInfo>, String> {
+pub async fn check_adventure_unlocks(app: AppHandle) -> Result<Vec<UnlockedAdventureInfo>, String> {
     let state = app.state::<AppState>();
     let db = &state.db;
 
@@ -291,15 +273,12 @@ pub async fn check_adventure_unlocks(
 
 /// 重置冒险进度以供重玩
 #[tauri::command]
-pub async fn reset_adventure(
-    app: AppHandle,
-    adventure_folder: String,
-) -> Result<(), String> {
+pub async fn reset_adventure(app: AppHandle, adventure_folder: String) -> Result<(), String> {
     let state = app.state::<AppState>();
 
     // Remove from in-memory completed set
     {
-        let mut service = state.ai_service.lock().await;
+        let service = state.ai_service.lock().await;
         let path_key = service
             .script_manager
             .all_scripts
@@ -307,7 +286,12 @@ pub async fn reset_adventure(
             .find(|s| s.folder_key == adventure_folder)
             .map(|s| s.path_key());
         if let Some(key) = path_key {
-            service.game_status.lock().await.completed_scripts.remove(&key);
+            service
+                .game_status
+                .lock()
+                .await
+                .completed_scripts
+                .remove(&key);
         }
     }
 
@@ -328,7 +312,9 @@ pub async fn reset_adventure(
 /// Called from `run_script_background` when a script finishes.
 pub(crate) async fn handle_adventure_completion(
     db: &sea_orm::DatabaseConnection,
-    achievement_manager: &std::sync::Arc<tokio::sync::Mutex<crate::achievements::manager::AchievementManager>>,
+    achievement_manager: &std::sync::Arc<
+        tokio::sync::Mutex<crate::achievements::manager::AchievementManager>,
+    >,
     app: &AppHandle,
     ai_service: &crate::ai_service::service::SharedAIService,
 ) {
@@ -402,8 +388,7 @@ pub(crate) async fn handle_adventure_completion(
             .collect();
         let gs = service.game_status.lock().await;
         let ach_mgr = achievement_manager.lock().await;
-        trigger::check_all_adventures(db, &ach_mgr, &gs, &adventures)
-            .unwrap_or_default()
+        trigger::check_all_adventures(db, &ach_mgr, &gs, &adventures).unwrap_or_default()
     };
 
     for info in &newly_unlocked {

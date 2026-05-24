@@ -11,6 +11,11 @@ pub async fn send_chat_message(app: AppHandle, text: String) -> Result<(), Strin
         return Err("消息内容不能为空".to_string());
     }
 
+    // --- 调试指令处理 ---
+    if text.starts_with('/') {
+        return handle_debug_command(&app, &text).await;
+    }
+
     let state = app.state::<AppState>();
 
     let llm = state
@@ -104,5 +109,79 @@ pub async fn send_chat_message(app: AppHandle, text: String) -> Result<(), Strin
         }
     });
 
+    Ok(())
+}
+
+/// 处理以 "/" 开头的调试指令（仅在后端日志输出，不发往前端）。
+async fn handle_debug_command(app: &AppHandle, text: &str) -> Result<(), String> {
+    match text {
+        "/查看记忆" => {
+            let state = app.state::<AppState>();
+            let svc = state.ai_service.lock().await;
+            let gs = svc.game_status.lock().await;
+
+            let current_id = match gs.current_role_id {
+                Some(id) => id,
+                None => {
+                    tracing::warn!("没有当前绑定的角色。");
+                    return Ok(());
+                }
+            };
+
+            let role = match gs.role_manager.get_loaded(current_id) {
+                Some(r) => r,
+                None => {
+                    tracing::warn!("角色 ID {} 未加载。", current_id);
+                    return Ok(());
+                }
+            };
+
+            tracing::info!("=== 角色记忆 [{}] (role_id={}) ===",
+                role.display_name.as_deref().unwrap_or("未知"), current_id);
+
+            for msg in &role.memory {
+                tracing::info!("[{}] {}", msg.role, msg.content);
+            }
+        }
+        "/查看台词" => {
+            let state = app.state::<AppState>();
+            let svc = state.ai_service.lock().await;
+            let gs = svc.game_status.lock().await;
+
+            tracing::info!("=== 台词列表（共 {} 条）===", gs.line_list.len());
+
+            for (i, line) in gs.line_list.iter().enumerate() {
+                let name = line.base.display_name.as_deref().unwrap_or("未知");
+                let emotion = line
+                    .base
+                    .original_emotion
+                    .as_deref()
+                    .filter(|v| !v.is_empty())
+                    .map(|v| format!("【{}】", v))
+                    .unwrap_or_default();
+                let content = &line.base.content;
+                let tts = line
+                    .base
+                    .tts_content
+                    .as_deref()
+                    .filter(|v| !v.is_empty())
+                    .map(|v| format!("<{}>", v))
+                    .unwrap_or_default();
+                let action = line
+                    .base
+                    .action_content
+                    .as_deref()
+                    .filter(|v| !v.is_empty())
+                    .map(|v| format!("（{}）", v))
+                    .unwrap_or_default();
+
+                tracing::info!("[{}] {} : {}{}{}{}", i, name, emotion, content, tts, action);
+            }
+        }
+        other if other.starts_with('/') => {
+            tracing::warn!("未知调试指令: {}。可用指令: /查看记忆, /查看台词", other);
+        }
+        _ => unreachable!(),
+    }
     Ok(())
 }

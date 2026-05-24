@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+﻿use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -250,9 +250,12 @@ pub async fn get_character_list(
             let unlocked = {
                 let mut count = 0i32;
                 for adv in &adventures {
-                    if crate::adventures::manager::AdventureManager::is_unlocked(db, &adv.folder_key)
-                        .await
-                        .unwrap_or(false)
+                    if crate::adventures::manager::AdventureManager::is_unlocked(
+                        db,
+                        &adv.folder_key,
+                    )
+                    .await
+                    .unwrap_or(false)
                     {
                         count += 1;
                     }
@@ -424,12 +427,13 @@ pub async fn select_clothes(
     clothes_name: String,
 ) -> Result<serde_json::Value, String> {
     let state = app.state::<AppState>();
-    let mut service = state.ai_service.lock().await;
+    let service = state.ai_service.lock().await;
     let db = &state.db;
 
     let main_role_id = service
         .game_status
-        .lock().await
+        .lock()
+        .await
         .main_role_id
         .ok_or_else(|| "角色不存在".to_string())?;
 
@@ -468,7 +472,8 @@ pub async fn select_clothes(
 
     service
         .game_status
-        .lock().await
+        .lock()
+        .await
         .add_line(
             db,
             LineBase {
