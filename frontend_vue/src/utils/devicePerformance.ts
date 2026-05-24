@@ -20,9 +20,7 @@ const STORAGE_KEY = 'lingchat-device-profile'
  * 检测是否为移动设备
  */
 export function isMobileDevice(): boolean {
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-    navigator.userAgent
-  )
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
 }
 
 /**
@@ -54,7 +52,8 @@ export function cpuBenchmark(): number {
   testDiv.style.visibility = 'hidden'
   document.body.appendChild(testDiv)
 
-  for (let i = 0; i < 500; i++) { // 减少重排次数
+  for (let i = 0; i < 500; i++) {
+    // 减少重排次数
     testDiv.style.transform = `translateX(${i}px) translateY(${i}px) scale(${1 + i * 0.001})`
     testDiv.style.opacity = `${0.5 + (i % 50) / 100}`
     // 强制重排
@@ -106,7 +105,7 @@ export function gpuBenchmark(): number {
         Math.random() * 800,
         Math.random() * 600,
         10 + Math.random() * 20,
-        10 + Math.random() * 20
+        10 + Math.random() * 20,
       )
     }
 
@@ -136,7 +135,7 @@ function determineTier(
   gpuScore: number,
   cpuCores: number,
   memory: number,
-  isMobile: boolean
+  isMobile: boolean,
 ): DeviceProfile['tier'] {
   // === 硬约束快速判定 ===
 
@@ -170,9 +169,9 @@ function determineTier(
   // 桌面：>8000高，3000-8000中，<3000低
   // 移动：>10000可能虚高，需要更严格
   let gpuRating = 0
-  if (gpuScore > 8000) gpuRating = 100
-  else if (gpuScore > 4000) gpuRating = 70
-  else if (gpuScore > 2000) gpuRating = 40
+  if (gpuScore > 30000) gpuRating = 100
+  else if (gpuScore > 20000) gpuRating = 70
+  else if (gpuScore > 10000) gpuRating = 40
   else gpuRating = 20
 
   // === 综合评分 ===
@@ -280,7 +279,7 @@ export function getTierDescription(tier: DeviceProfile['tier'], isMobile: boolea
   const descriptions = {
     high: '高性能设备',
     medium: '中等性能设备',
-    low: '低性能设备'
+    low: '低性能设备',
   }
 
   let desc = descriptions[tier]
@@ -315,7 +314,7 @@ export async function detectDevicePerformance(): Promise<DeviceProfile> {
     cpuCores,
     memory,
     isMobile,
-    detectedAt: new Date().toISOString()
+    detectedAt: new Date().toISOString(),
   }
 
   console.log('[性能检测] 完成:', {
@@ -325,7 +324,7 @@ export async function detectDevicePerformance(): Promise<DeviceProfile> {
     CPU核心: cpuCores,
     内存: `${memory}GB`,
     移动设备: isMobile,
-    备注: tier === 'high' ? '全开特效' : tier === 'medium' ? '中等特效' : '最低特效'
+    备注: tier === 'high' ? '全开特效' : tier === 'medium' ? '中等特效' : '最低特效',
   })
 
   return profile
@@ -348,7 +347,7 @@ export async function initializePerformanceDetection(): Promise<{
     console.log('[性能检测] 使用已保存的结果:', savedProfile.tier)
     return {
       profile: savedProfile,
-      isFirstDetection: false
+      isFirstDetection: false,
     }
   }
 
@@ -361,6 +360,6 @@ export async function initializePerformanceDetection(): Promise<{
 
   return {
     profile,
-    isFirstDetection: true
+    isFirstDetection: true,
   }
 }
