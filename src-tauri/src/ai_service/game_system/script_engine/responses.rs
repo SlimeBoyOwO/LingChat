@@ -86,6 +86,7 @@ pub struct PresentPicPayload {
     pub scale: f64,
 }
 
+#[allow(dead_code)]
 fn default_scale() -> f64 {
     1.0
 }

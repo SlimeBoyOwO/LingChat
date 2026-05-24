@@ -106,16 +106,15 @@ pub fn sys_prompt_builder(
 }
 
 /// 便捷包装：直接从 `CharacterSettings` 构建。
+/// TODO: 这个似乎是给老角色用的，暂时用 allow_dead_code 标记
+#[allow(dead_code)]
 pub fn sys_prompt_builder_by_settings(
     settings: &CharacterSettings,
     options: PromptOptions,
 ) -> String {
     let default_prompt =
         "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息".to_string();
-    let ai_prompt = settings
-        .system_prompt
-        .clone()
-        .unwrap_or(default_prompt);
+    let ai_prompt = settings.system_prompt.clone().unwrap_or(default_prompt);
     sys_prompt_builder(
         &settings.user_name,
         &settings.ai_name,

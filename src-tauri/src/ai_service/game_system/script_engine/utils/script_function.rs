@@ -8,7 +8,7 @@ use sea_orm::DatabaseConnection;
 use serde_json::Value;
 
 use crate::ai_service::game_system::game_status::GameStatus;
-use crate::ai_service::types::{GameRole, LineBase, LineAttributeExt, ScriptStatus};
+use crate::ai_service::types::{GameRole, LineAttributeExt, LineBase, ScriptStatus};
 use crate::db::entities::line::LineAttribute;
 
 // ============================================================
@@ -64,9 +64,8 @@ pub enum VarOp {
 /// Parse a variable action string like `"flag = true"`, `"count += 1"`, `"hp -= 5"`.
 /// Returns `(op, var_name, value)`.
 pub fn parse_variable_action(action: &str) -> Result<(VarOp, String, Value)> {
-    let re = Regex::new(
-        r"^\s*(\w+)\s*(=|\+=|-=)\s*(.+?)\s*$"
-    ).map_err(|e| anyhow!("正则编译失败: {}", e))?;
+    let re = Regex::new(r"^\s*(\w+)\s*(=|\+=|-=)\s*(.+?)\s*$")
+        .map_err(|e| anyhow!("正则编译失败: {}", e))?;
 
     let caps = re
         .captures(action)
@@ -145,7 +144,10 @@ pub fn parse_value(s: &str) -> Result<Value> {
     let inner = s
         .strip_prefix('"')
         .and_then(|rest| rest.strip_suffix('"'))
-        .or_else(|| s.strip_prefix('\'').and_then(|rest| rest.strip_suffix('\'')))
+        .or_else(|| {
+            s.strip_prefix('\'')
+                .and_then(|rest| rest.strip_suffix('\''))
+        })
         .unwrap_or(s);
 
     Ok(Value::String(inner.to_string()))
@@ -190,17 +192,11 @@ pub fn apply_variable_action(op: VarOp, current: Option<&Value>, value: Value) -
 
 /// Case-insensitive match of LLM response against option names.
 /// Returns the `next` value of the first matching option.
-pub fn match_ai_response_options(
-    ai_response: &str,
-    options: &[Value],
-) -> Option<String> {
+pub fn match_ai_response_options(ai_response: &str, options: &[Value]) -> Option<String> {
     let response_lower = ai_response.trim().to_lowercase();
 
     for opt in options {
-        let name = opt
-            .get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let name = opt.get("name").and_then(|v| v.as_str()).unwrap_or("");
         if !name.is_empty() && response_lower.contains(&name.to_lowercase()) {
             return opt
                 .get("next")
@@ -211,7 +207,11 @@ pub fn match_ai_response_options(
 
     // Fallback: check default option
     for opt in options {
-        if opt.get("default").and_then(|v| v.as_bool()).unwrap_or(false) {
+        if opt
+            .get("default")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
             return opt
                 .get("next")
                 .and_then(|v| v.as_str())
@@ -239,20 +239,14 @@ pub async fn process_options(
 ) -> Result<bool> {
     for opt in options {
         // Check condition
-        let condition = opt
-            .get("condition")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let condition = opt.get("condition").and_then(|v| v.as_str()).unwrap_or("");
         if !condition.is_empty() && !evaluate_condition(condition, &script_status.vars) {
             continue;
         }
 
         // Match input text
         if let Some(input) = input {
-            let text = opt
-                .get("text")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let text = opt.get("text").and_then(|v| v.as_str()).unwrap_or("");
             if !text.is_empty() && text != input {
                 // Not a text match; if condition passed, still check further
                 // For backward compat, if input is given, require text match
@@ -278,10 +272,7 @@ pub async fn handle_actions(
     actions: &[Value],
 ) -> Result<()> {
     for action in actions {
-        let action_type = action
-            .get("type")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let action_type = action.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
         match action_type {
             "add_line" => {
@@ -300,10 +291,7 @@ pub async fn handle_actions(
                 game_status.add_line(db, line).await?;
             }
             "set_var" => {
-                let content = action
-                    .get("content")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let content = action.get("content").and_then(|v| v.as_str()).unwrap_or("");
                 if let Ok((op, var_name, value)) = parse_variable_action(content) {
                     let current = script_status.get_variable(&var_name).cloned();
                     let result = apply_variable_action(op, current.as_ref(), value);
@@ -316,17 +304,4 @@ pub async fn handle_actions(
         }
     }
     Ok(())
-}
-
-// ============================================================
-// User message builder
-// ============================================================
-
-/// If prompt exists, append it to the user message with formatting.
-pub fn user_message_builder(user_message: &str, prompt: &str) -> String {
-    if prompt.is_empty() {
-        user_message.to_string()
-    } else {
-        format!("{}\n{{剧情提示: {}}}", user_message, prompt)
-    }
 }

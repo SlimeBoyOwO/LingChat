@@ -16,7 +16,7 @@ use crate::ai_service::types::ScriptStatus;
 /// A chapter loaded from a chapter YAML file.
 pub struct Chapter {
     /// Chapter identifier (the YAML file path relative to the script).
-    pub chapter_id: String,
+    pub _chapter_id: String,
     /// Display name from the chapter config.
     pub chapter_name: String,
     /// Sequential event processor for this chapter.
@@ -39,7 +39,7 @@ impl Chapter {
             .unwrap_or_default();
 
         Self {
-            chapter_id,
+            _chapter_id: chapter_id,
             chapter_name,
             events_handler: EventsHandler::new(event_list),
         }
