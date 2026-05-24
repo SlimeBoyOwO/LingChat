@@ -1,9 +1,9 @@
 import json
-import os
 from typing import AsyncGenerator, Dict, List
 
 import httpx
 
+from ling_chat.configs.llm_config import llm_config
 from ling_chat.core.llm_providers.base import BaseLLMProvider
 from ling_chat.core.logger import logger
 
@@ -20,15 +20,15 @@ def _normalize_base_url(raw: str) -> str:
 class OllamaProvider(BaseLLMProvider):
     def __init__(self):
         super().__init__()
-        self.base_url = _normalize_base_url(
-            os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-        )
-        self.model_type = (
-            os.environ.get("OLLAMA_MODEL") or os.environ.get("MODEL_TYPE") or "llama3"
-        )
+        # 从LLMConfig读取Ollama配置
+        cfg = llm_config.get_provider_config("ollama")
+        main_cfg = llm_config.get_main_config()
+
+        self.base_url = _normalize_base_url(cfg.get("base_url", "http://localhost:11434"))
+        self.model_type = cfg.get("model", main_cfg.get("model", "llama3"))
         self._timeout = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
-        self.temperature = float(os.environ.get("TEMPERATURE", 1.3))
-        self.top_p = float(os.environ.get("TOP_P", 0.9))
+        self.temperature = main_cfg.get("temperature", 1.3)
+        self.top_p = main_cfg.get("top_p", 0.9)
 
     def initialize_client(self):
         pass

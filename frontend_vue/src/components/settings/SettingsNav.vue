@@ -82,18 +82,18 @@
         <p class="hidden xl:block">存档</p>
       </Button>
       <Button
-        ref="advanceBtn"
+        ref="otherBtn"
         type="nav"
-        icon="advance"
+        icon="other"
         @click="
           () => {
-            switchTab('advance', 'advanceBtn')
+            switchTab('other', 'otherBtn')
             removeMoreMenu()
           }
         "
-        :class="{ active: uiStore.currentSettingsTab === 'advance' }"
+        :class="{ active: uiStore.currentSettingsTab === 'other' }"
       >
-        <p class="hidden xl:block">高级设置</p>
+        <p class="hidden xl:block">其它</p>
       </Button>
       <Button
         ref="updateBtn"
@@ -141,7 +141,7 @@ const soundBtn = ref<ButtonRef | null>(null)
 const historyBtn = ref<ButtonRef | null>(null)
 const achievementBtn = ref<ButtonRef | null>(null)
 const saveBtn = ref<ButtonRef | null>(null)
-const advanceBtn = ref<ButtonRef | null>(null)
+const otherBtn = ref<ButtonRef | null>(null)
 const updateBtn = ref<ButtonRef | null>(null)
 const adventureBtn = ref<ButtonRef | null>(null)
 
@@ -158,7 +158,7 @@ const handleIndicatorMove = (currentRefName: string) => {
     historyBtn,
     achievementBtn,
     saveBtn,
-    advanceBtn,
+    otherBtn,
     updateBtn,
     adventureBtn,
   }[currentRefName]
@@ -242,8 +242,8 @@ const initIndicator = () => {
     case 'save':
       activeButton = saveBtn.value
       break
-    case 'advance':
-      activeButton = advanceBtn.value
+    case 'other':
+      activeButton = otherBtn.value
       break
     case 'update':
       activeButton = updateBtn.value
@@ -279,7 +279,7 @@ const closeSettings = () => {
 }
 
 const addMoreMenu = () => {
-  const btnEl = advanceBtn.value?.$el as HTMLElement | null
+  const btnEl = otherBtn.value?.$el as HTMLElement | null
   if (btnEl) {
     // console.log('A 组件内部执行 addMoreMenu');
     btnEl.classList.add('moreMenu')
@@ -288,7 +288,7 @@ const addMoreMenu = () => {
 
 // 2. 定义 removeMoreMenu 方法
 const removeMoreMenu = () => {
-  const btnEl = advanceBtn.value?.$el as HTMLElement | null
+  const btnEl = otherBtn.value?.$el as HTMLElement | null
   if (btnEl) {
     btnEl.classList.remove('moreMenu')
   }

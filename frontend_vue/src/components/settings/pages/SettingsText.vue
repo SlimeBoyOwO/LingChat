@@ -197,7 +197,17 @@ onMounted(() => {
 const loadConfig = async () => {
   const configKeys = ['USE_PERSISTENT_MEMORY']
   for (const key of configKeys) {
-    envSettings.value[key] = await getEnvConfigByKey(key)
+    try {
+      envSettings.value[key] = await getEnvConfigByKey(key)
+    } catch {
+      // 配置项不存在时使用默认值
+      envSettings.value[key] = {
+        key,
+        value: 'False',
+        description: '是否启用持久记忆系统',
+        type: 'bool' as const,
+      }
+    }
   }
 }
 

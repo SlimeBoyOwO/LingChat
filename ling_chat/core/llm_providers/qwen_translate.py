@@ -1,10 +1,10 @@
-import os
 from types import NoneType
 from typing import AsyncGenerator, Dict, List
 
 import httpx
 from openai import AsyncOpenAI, OpenAI
 
+from ling_chat.configs.llm_config import llm_config
 from ling_chat.core.logger import logger
 
 from .base import BaseLLMProvider
@@ -20,13 +20,13 @@ class QwenTranslateProvider(BaseLLMProvider):
 
     def initialize_client(self):
         """初始化Qwen客户端"""
-        api_key = os.environ.get("TRANSLATE_API_KEY")
-        base_url = os.environ.get(
-            "TRANSLATE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
-        )
+        # 从LLMConfig读取翻译配置
+        cfg = llm_config.get_translator_config()
+        api_key = cfg.get("api_key", "")
+        base_url = cfg.get("base_url", "https://dashscope.aliyuncs.com/compatible-mode/v1")
 
         if not api_key:
-            error_message = "没有配置TRANSLATE_API_KEY，请检查配置"
+            error_message = "没有配置翻译模型的API Key，请检查配置"
             logger.warning(error_message)
             self.client = None
             self.async_client = None
@@ -37,7 +37,7 @@ class QwenTranslateProvider(BaseLLMProvider):
         self.async_client = AsyncOpenAI(
             api_key=api_key, base_url=base_url, timeout=self._timeout
         )
-        self.model_type = os.environ.get("TRANSLATE_MODEL", "qwen-mt-plus")
+        self.model_type = cfg.get("model", "qwen-mt-plus")
 
         logger.info("Qwen翻译模型初始化完毕！")
 

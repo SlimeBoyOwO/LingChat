@@ -41,7 +41,7 @@ class SBV2APIAdapter(TTSBaseAdapter):
             if response.status_code != 200:
                 try:
                     error_detail = response.json()
-                except:
+                except Exception:
                     error_detail = response.text
                 raise Exception(f"HTTP {response.status_code}: {error_detail}")
             return response.content

@@ -82,7 +82,7 @@ class UserActivityMonitor(threading.Thread):
                 if hasattr(key, "char")
                 else str(key).replace("Key.", "")
             )
-        except:
+        except Exception:
             k_val = "unknown"
         with self.lock:
             self.event_queue.append((time.time(), "key", k_val))

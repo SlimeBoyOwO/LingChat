@@ -1,5 +1,9 @@
 @import 'tailwindcss';
 
+@custom-variant moreMenu (&.moreMenu);
+@custom-variant portrait (@media (orientation: portrait));
+@custom-variant landscape (@media (orientation: landscape));
+
 @theme {
   /* 字体配置 */
   --font-sans: -apple-system, BlinkMacSystemFont, 'Microsoft YaHei', sans-serif;

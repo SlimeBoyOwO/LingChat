@@ -1,6 +1,6 @@
 <template>
   <MenuPage>
-    <div class="flex-1 h-[85vh] w-full bg-white/10 p-0 md:p-4 rounded-lg overflow-hidden">
+    <div class="adv-outer flex-1 h-[85vh] w-full bg-white/10 p-0 rounded-lg overflow-hidden">
       <!-- 加载动画 -->
       <div v-if="isLoading" class="fixed inset-0 bg-white/80 flex justify-center items-center z-50">
         <div
@@ -8,19 +8,15 @@
         ></div>
       </div>
 
-      <!-- 响应式布局容器 -->
-      <div class="flex flex-col md:grid md:grid-cols-[min(30%,280px)_1fr] h-full min-h-0">
+      <!-- 响应式布局容器：始终使用 grid，移动端单列，桌面端双列 -->
+      <div class="adv-grid grid grid-cols-1 grid-rows-[minmax(0,25%)_1fr] h-full min-h-0">
         <!-- 导航菜单 -->
         <nav
           ref="navContainerRef"
           @click="() => removeMoreMenu()"
-          class="transition-all duration-300 ease-[cubic-bezier(0.18,0.89,0.32,1.00)] flex flex-col justify-start gap-6.25 overflow-y-auto relative border-b md:border-b-0 md:border-r border-brand md:moreMenu:left-0"
+          class="adv-nav transition-all duration-300 ease-[cubic-bezier(0.18,0.89,0.32,1.00)] flex flex-col justify-start gap-6.25 overflow-y-auto relative border-b border-brand"
           :class="[
-            'md:left-0',
-            // 竖屏时始终显示在顶部
             'translate-y-0',
-            // 当有 moreMenu 类时保持显示
-            'moreMenu:translate-y-0',
           ]"
         >
           <!-- 滑动指示器 -->
@@ -31,7 +27,7 @@
 
           <div
             class="flex items-center gap-1 mt-2 text-sm px-5"
-            style="color: white; -webkit-text-stroke: 1px black; paint-order: stroke fill"
+            style="color: white; text-shadow: 0 0 3px rgba(0,0,0,0.6);"
           >
             💡 这里的设置重启软件生效哦！
           </div>
@@ -62,12 +58,9 @@
 
         <!-- 设置内容区域 -->
         <main
-          class="flex justify-center h-full overflow-auto relative px-10 py-10 md:px-10 md:py-0"
+          class="adv-main flex justify-center h-full overflow-auto relative px-10 py-10"
           :class="[
-            // 竖屏时始终显示
             'translate-y-0',
-            // 当有 moreMenu 类时保持显示
-            'moreMenu:translate-y-0',
           ]"
         >
           <div v-if="selectedSubcategory" class="w-full active">
@@ -312,3 +305,26 @@ defineExpose({
   addMoreMenu,
 })
 </script>
+
+<style>
+@media (orientation: landscape) {
+  .adv-outer {
+    padding: 1rem;
+  }
+
+  .adv-grid {
+    grid-template-columns: min(30%, 280px) 1fr;
+    grid-template-rows: 1fr;
+  }
+
+  .adv-nav {
+    border-bottom: none;
+    border-right: 1px solid var(--accent-color);
+  }
+
+  .adv-main {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+}
+</style>

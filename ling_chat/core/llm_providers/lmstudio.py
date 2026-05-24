@@ -1,9 +1,9 @@
 import json
-import os
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 
+from ling_chat.configs.llm_config import llm_config
 from ling_chat.core.logger import logger
 
 from .base import BaseLLMProvider
@@ -14,10 +14,14 @@ from .base import BaseLLMProvider
 class LMStudioProvider(BaseLLMProvider):
     def __init__(self):
         super().__init__()
-        self.model_type = os.environ.get("LMSTUDIO_MODEL_TYPE", "")
-        base_url = os.environ.get("LMSTUDIO_BASE_URL", "http://localhost:1234")
+        # 从LLMConfig读取LMStudio配置
+        cfg = llm_config.get_provider_config("lmstudio")
+        main_cfg = llm_config.get_main_config()
+
+        self.model_type = cfg.get("model", "")
+        base_url = cfg.get("base_url", "http://localhost:1234")
         self.base_url = base_url.replace("/v1", "")
-        self.api_token = os.environ.get("LMSTUDIO_API_TOKEN", "")
+        self.api_token = cfg.get("api_key", "")
 
     def initialize_client(self):
         """LM Studio 客户端在每次请求时创建，无需初始化"""
@@ -149,12 +153,12 @@ class LMStudioProvider(BaseLLMProvider):
                 )
             body["temperature"] = temp_value
 
-        top_p = os.environ.get("TOP_P", "0.9")
+        top_p = main_cfg.get("top_p", 0.9)
         if top_p:
             body["top_p"] = float(top_p)
 
-        # 以下参数未使用
-        max_tokens = os.environ.get("MAX_TOKENS")
+        # 以下参数未使用（暂不实现）
+        max_tokens = None
         if max_tokens:
             body["max_output_tokens"] = int(max_tokens)
 

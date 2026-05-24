@@ -82,7 +82,7 @@ async def get_music_list():
 
         return music_files
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"无法获取文件: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"无法获取文件: {str(e)}") from e
 
 
 @router.post("/upload")
@@ -107,7 +107,7 @@ async def upload_music(file: UploadFile, name: str = None):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"未能上传音乐: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"未能上传音乐: {str(e)}") from e
 
 
 @router.delete("/delete")
@@ -132,4 +132,4 @@ async def delete_music(url: str):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"删除音乐的时候出现了问题: {str(e)}"
-        )
+        ) from e

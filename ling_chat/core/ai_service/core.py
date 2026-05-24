@@ -464,12 +464,12 @@ class AIService:
         logger.info("正在关闭AI服务...")
 
         # 取消所有客户端任务
-        for client_id, task in self.client_tasks.items():
+        for _client_id, task in self.client_tasks.items():
             task.cancel()
             try:
                 await task
             except asyncio.CancelledError:
-                pass
+                pass  # 忽略取消错误
 
         # 取消全局消息处理任务
         self.global_task.cancel()

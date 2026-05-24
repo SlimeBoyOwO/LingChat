@@ -83,7 +83,7 @@ async def load_user_conversations(user_id: int, conversation_id: int):
         role_id = SaveManager.get_chat_main_character_id(save_id=conversation_id)
         game_status = service_manager.ai_service.game_status
 
-        if line_list != None:
+        if line_list is not None:
             if not role_id:
                 return HTTPException(status_code=500, detail="本存档主角色不存在")
 
@@ -218,7 +218,7 @@ async def create_user_conversations(request: Request):
     except Exception as e:
         print("创建save的时候出错")
         print(str(e))
-        raise HTTPException(status_code=500, detail=f"创建存档失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"创建存档失败: {str(e)}") from e
 
 
 @router.post("/save")
@@ -287,7 +287,7 @@ async def save_user_conversation(request: Request):
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"保存对话失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"保存对话失败: {str(e)}") from e
 
 
 @router.post("/delete")
@@ -333,7 +333,7 @@ async def delete_user_conversation(request: Request):
     except HTTPException as he:
         raise he
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"删除对话失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"删除对话失败: {str(e)}") from e
 
 
 @router.post("/clear")
@@ -384,4 +384,4 @@ async def clear_chat_history(request: Request):
     except HTTPException as he:
         raise he
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"清除对话历史失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"清除对话历史失败: {str(e)}") from e

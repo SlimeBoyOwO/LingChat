@@ -9,9 +9,9 @@
       <SettingsSave v-show="uiStore.currentSettingsTab === 'save'" />
       <SettingsText v-show="uiStore.currentSettingsTab === 'text'" />
       <SettingsSound v-show="uiStore.currentSettingsTab === 'sound'" />
-      <SettingsAdvance
-        ref="settingsAdvanceRef"
-        v-show="uiStore.currentSettingsTab === 'advance'"
+      <SettingsOthers
+        ref="settingsOthersRef"
+        v-if="uiStore.currentSettingsTab === 'other'"
         @remove-more-menu-from-b="onAddFromB"
       />
       <SettingsAdventure v-show="uiStore.currentSettingsTab === 'adventure'" />
@@ -30,7 +30,7 @@ import {
   SettingsSave,
   SettingsSound,
   SettingsHistory,
-  SettingsAdvance,
+  SettingsOthers,
   SettingsCharacter,
   SettingsBackground,
   SettingsUpdate,
@@ -45,7 +45,7 @@ const uiStore = useUIStore()
 
 // 获取 A 组件和 B 组件的 Ref 实例
 const settingsNavRef = ref<InstanceType<typeof SettingsNav> | null>(null)
-const settingsAdvanceRef = ref<InstanceType<typeof SettingsAdvance> | null>(null)
+const settingsOthersRef = ref<InstanceType<typeof SettingsOthers> | null>(null)
 
 // 添加延迟状态
 const shouldShowOverlay = ref(false)
@@ -76,7 +76,7 @@ watch(
 const onAddFromA = () => {
   // console.log('父组件收到 A 的添加事件，准备通知 B 组件');
   // 调用 B 组件实例上暴露的 removeMoreMenu 方法
-  settingsAdvanceRef.value?.addMoreMenu()
+  settingsOthersRef.value?.addMoreMenu()
 }
 
 // 当 B 组件发来 "remove-more-menu-from-b" 事件时

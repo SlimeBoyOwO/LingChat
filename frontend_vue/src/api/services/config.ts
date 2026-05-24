@@ -26,18 +26,26 @@ export async function saveEnvConfig(
 }
 
 export const getEnvConfigByKey = async (key: string): Promise<ConfigItem> => {
-  try {
-    const data = await http.get(`/v1/chat/config/key/${key}`)
-    return data as ConfigItem
-  } catch (error) {
-    console.error('Error fetching config by key:', error)
-    throw error
+  // 从已有的 /settings 接口获取所有配置，再提取目标 key
+  const allSettings = await getEnvConfigSettings()
+  for (const category of Object.values(allSettings)) {
+    const cat = category as any
+    const subcategories = cat?.subcategories
+    if (!subcategories) continue
+    for (const sub of Object.values(subcategories) as any[]) {
+      for (const setting of sub?.settings || []) {
+        if (setting.key === key) {
+          return setting as ConfigItem
+        }
+      }
+    }
   }
+  throw new Error(`配置项 ${key} 未找到`)
 }
 
 export const getEnvConfigSettings = async (): Promise<StructuredConfig> => {
   try {
-    const data = await http.get(`/v1/chat/config/settings`)
+    const data = await http.get(`/v1/config/settings`)
     return data
   } catch (error) {
     console.error('Error fetching config env settings:', error)
@@ -49,7 +57,7 @@ export const saveEnvConfigSettings = async (
   values: Record<string, string>,
 ): Promise<{ status: string; message: string }> => {
   try {
-    const data = await http.patch(`/v1/chat/config/settings`, values)
+    const data = await http.patch(`/v1/config/settings`, values)
     return data
   } catch (error) {
     console.error('Error modifying config env settings:', error)

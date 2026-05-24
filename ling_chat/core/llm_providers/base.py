@@ -3,6 +3,7 @@ from typing import AsyncGenerator, Dict, List
 
 
 class BaseLLMProvider(ABC):
+    @abstractmethod
     def __init__(self):
         pass
 

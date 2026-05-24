@@ -128,7 +128,7 @@ def _validate_and_pair_emotion_files(
         raise HTTPException(status_code=400, detail="; ".join(detail_parts))
 
     paired: dict[str, UploadFile] = {}
-    for emotion_name, upload_file in zip(emotion_names, emotion_files):
+    for emotion_name, upload_file in zip(emotion_names, emotion_files, strict=False):
         _validate_image_file(upload_file.filename, f"{emotion_name} file")
         paired[emotion_name] = upload_file
 
@@ -235,7 +235,7 @@ async def refresh_characters():
         return {"success": True}
     except Exception as e:
         logger.error(f"刷新人物列表请求失败: {str(e)}")
-        raise HTTPException(status_code=500, detail="刷新人物列表失败")
+        raise HTTPException(status_code=500, detail="刷新人物列表失败") from e
 
 
 @router.get("/open_web")
@@ -247,7 +247,7 @@ async def open_creative_web():
         webbrowser.open(url)
     except Exception as e:
         logger.error(f"无法使用浏览器启动创意工坊: {str(e)}")
-        raise HTTPException(status_code=500, detail="无法使用浏览器启动网页")
+        raise HTTPException(status_code=500, detail="无法使用浏览器启动网页") from e
 
 
 @router.post("/update_settings")

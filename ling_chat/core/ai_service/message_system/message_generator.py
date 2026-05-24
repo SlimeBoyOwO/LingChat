@@ -3,7 +3,7 @@ import os
 import time
 from typing import AsyncGenerator, Dict, List, Optional
 
-from ling_chat.core.ai_service.ai_logger import AILogger, logger
+from ling_chat.core.ai_service.ai_logger import AILogger
 from ling_chat.core.ai_service.config import AIServiceConfig
 from ling_chat.core.ai_service.game_system.game_status import GameStatus
 from ling_chat.core.ai_service.message_system.message_processor import MessageProcessor
@@ -15,6 +15,7 @@ from ling_chat.core.ai_service.message_system.stream_producer import StreamProdu
 from ling_chat.core.ai_service.translator import Translator
 from ling_chat.core.llm_providers.manager import LLMManager
 from ling_chat.core.logger import logger
+from ling_chat.core.messaging.broker import message_broker
 from ling_chat.core.schemas.response_models import ResponseFactory
 from ling_chat.core.schemas.responses import ReplyResponse
 from ling_chat.game_database.models import LineAttribute, LineBase
@@ -210,7 +211,6 @@ class MessageGenerator:
                 logger.warning(
                     f"消费者处理超时（>{cleanup_timeout}s），跳过 {remaining} 个未处理句子，强制进入清理"
                 )
-                from ling_chat.core.messaging.broker import message_broker
 
                 timeout_msg = {
                     "type": "error",
@@ -254,8 +254,6 @@ class MessageGenerator:
 
         except Exception as e:
             logger.error(f"消息流管道中发生错误: {e}", exc_info=True)
-
-            from ling_chat.core.messaging.broker import message_broker
 
             # 准备错误代码（前端负责翻译）
             error_message = str(e)

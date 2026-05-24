@@ -59,7 +59,7 @@ class MemorySystem:
     def _safe_read_int(self, key, default):
         try:
             return int(os.environ.get(key, default))
-        except:
+        except Exception:
             return default
 
     def _init_prompts(self):

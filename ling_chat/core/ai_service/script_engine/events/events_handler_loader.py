@@ -47,7 +47,7 @@ class EventHandlerLoader:
                 spec.loader.exec_module(module)
 
                 # 查找模块中的所有类
-                for name, obj in inspect.getmembers(module, inspect.isclass):
+                for _name, obj in inspect.getmembers(module, inspect.isclass):
                     if (
                         issubclass(obj, BaseEvent)
                         and obj != BaseEvent

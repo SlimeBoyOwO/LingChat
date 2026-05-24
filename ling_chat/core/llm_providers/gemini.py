@@ -1,9 +1,9 @@
 import json
-import os
 from typing import AsyncGenerator, Dict, List, Optional
 
 import httpx
 
+from ling_chat.configs.llm_config import llm_config
 from ling_chat.core.llm_providers.base import BaseLLMProvider
 from ling_chat.core.logger import logger
 
@@ -12,14 +12,16 @@ from ling_chat.core.logger import logger
 class GeminiProvider(BaseLLMProvider):
     def __init__(self):
         super().__init__()
-        self.api_key = os.environ.get("GEMINI_API_KEY")
-        self.base_url = os.environ.get(
-            "GEMINI_API_URL", "https://generativelanguage.googleapis.com/v1beta"
-        )
-        self.model_type = os.environ.get("GEMINI_MODEL_TYPE", "gemini-2.5-flash")
-        self.proxy_url = os.environ.get("GEMINI_PROXY_URL")
-        self.temperature = float(os.environ.get("TEMPERATURE", 1.0))
-        self.top_p = float(os.environ.get("TOP_P", 1.0))
+        # 从LLMConfig读取Gemini配置
+        cfg = llm_config.get_provider_config("gemini")
+        main_cfg = llm_config.get_main_config()
+
+        self.api_key = cfg.get("api_key", "")
+        self.base_url = cfg.get("base_url", "https://generativelanguage.googleapis.com/v1beta")
+        self.model_type = cfg.get("model", "gemini-2.5-flash")
+        self.proxy_url = cfg.get("proxy_url", "")
+        self.temperature = main_cfg.get("temperature", 1.0)
+        self.top_p = main_cfg.get("top_p", 1.0)
 
         if not self.api_key:
             raise ValueError("需要Gemini API密钥！")

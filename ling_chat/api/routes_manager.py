@@ -4,6 +4,7 @@ from ling_chat.api.chat_achievement import router as chat_achievement_router
 from ling_chat.api.chat_adventure import router as chat_adventure_router
 from ling_chat.api.chat_background import router as chat_background_router
 from ling_chat.api.chat_character import router as chat_character_router
+from ling_chat.api.llm_config_api import router as llm_config_router
 from ling_chat.api.chat_history import router as chat_history_router
 from ling_chat.api.chat_info import router as chat_info_router
 from ling_chat.api.chat_music import router as chat_music_router
@@ -50,6 +51,7 @@ class RoutesManager:
         app.include_router(chat_schedule_router)
         app.include_router(chat_scene_router)
         app.include_router(chat_adventure_router)
+        app.include_router(llm_config_router)  # 注册LLM配置路由
 
         app.websocket("/ws")(websocket_endpoint)
 

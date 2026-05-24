@@ -76,7 +76,10 @@ async def init_web_infos(
 
 
 @router.get("/reactivate", response_model=APIResponse)
-async def reactivate_tts_engine():
+async def reactivate_tts_engine(
+    client_id: str = Query(..., description="客户端唯一标识"),
+    user_id: int = Query(..., description="用户ID"),
+):
     try:
         # 1. 初始化或获取服务
         ai_service = service_manager.get_ai_service()
@@ -90,5 +93,5 @@ async def reactivate_tts_engine():
         import traceback
 
         traceback.print_exc()
-        logger.error(f"初始化游戏信息 {client_id}, 用户 {user_id} 失败了捏")
-        return APIResponse(code=500, msg="Failed to fetch user info", error=str(e))
+        logger.error(f"重新激活TTS引擎失败 client_id: {client_id}, user_id: {user_id}")
+        return APIResponse(code=500, msg="Failed to reactivate TTS engine", error=str(e))

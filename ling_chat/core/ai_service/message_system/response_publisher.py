@@ -2,7 +2,6 @@ import asyncio
 from typing import Dict
 
 from ling_chat.core.ai_service.ai_logger import logger
-from ling_chat.core.logger import logger
 from ling_chat.core.schemas.responses import ReplyResponse
 
 
@@ -49,5 +48,4 @@ class ResponsePublisher:
                 logger.info("发布循环被取消")
                 break
             except Exception as e:
-                logger.error(f"在发布循环中发生错误: {e}", exc_info=True)
-                break
+                logger.error(f"发布消息时出错: {e}")

@@ -1,9 +1,9 @@
-import os
 from typing import AsyncGenerator, Dict, List
 
 import httpx
 from openai import AsyncOpenAI, OpenAI
 
+from ling_chat.configs.llm_config import llm_config
 from ling_chat.core.llm_providers.base import BaseLLMProvider
 from ling_chat.core.logger import logger
 
@@ -14,9 +14,12 @@ class WebLLMProvider(BaseLLMProvider):
         self.api_key = api_key
         self.base_url = base_url
         self.model_type = model_type
-        self.temperature = float(os.environ.get("TEMPERATURE", 1.3))
-        self.top_p = float(os.environ.get("TOP_P", 0.9))
-        self.thinking = os.environ.get("ENABLE_THINKING", "None").lower()
+
+        # 从LLMConfig读取模型参数
+        main_cfg = llm_config.get_main_config()
+        self.temperature = main_cfg.get("temperature", 1.3)
+        self.top_p = main_cfg.get("top_p", 0.9)
+        self.thinking = str(main_cfg.get("enable_thinking", "none")).lower()
 
         if (not api_key) or api_key == "sk-114514":
             logger.warning("通用网络大模型未初始化：CHAT_API_KEY 为空或为占位值。")

@@ -334,8 +334,8 @@ class ScriptFunction:
         如果解析失败，返回 (None, None, None)
         支持随机数赋值，例如: var_name = random(1, 100)
         """
+        import random
         import re
-        import random  
 
         action = action.strip()
         match = re.match(r"^([a-zA-Z_][a-zA-Z0-9_]*)\s*([+\-]?=)\s*(.+)$", action)

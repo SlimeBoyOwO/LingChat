@@ -1,6 +1,6 @@
-import os
 from typing import Dict, List
 
+from ling_chat.configs.llm_config import llm_config
 from ling_chat.core.llm_providers.base import BaseLLMProvider
 from ling_chat.core.llm_providers.provider_factory import LLMProviderFactory
 from ling_chat.core.logger import logger
@@ -11,43 +11,24 @@ class LLMManager:
         """
         初始化LLM管理器
 
-        :param provider_config: 可选，提供者配置字典。如果为None，则从环境变量加载
+        :param llm_job: 可选，"main"或"translator"，决定使用哪个配置
         """
         if not llm_job or llm_job == "main":
-            self.llm_provider_type = os.environ.get("LLM_PROVIDER", "webllm")
-            self.model_type = os.environ.get("MODEL_TYPE", "deepseek-chat")
-            self.api_key = os.environ.get("CHAT_API_KEY", "")
-            self.api_url = os.environ.get(
-                "CHAT_BASE_URL", "https://api.deepseek.com/v1"
-            )
-            # 确保provider_type存在
+            cfg = llm_config.get_main_config()
+            self.llm_provider_type = cfg.get("provider", "webllm")
+            self.model_type = cfg.get("model", "deepseek-chat")
+            self.api_key = cfg.get("api_key", "")
+            self.api_url = cfg.get("base_url", "https://api.deepseek.com/v1")
             provider_type = self.llm_provider_type.lower()
             logger.info(f"初始化LLM {provider_type} 提供商中...")
         elif llm_job == "translator":
-            translate_provider = os.environ.get("TRANSLATE_LLM_PROVIDER", "none")
-
-            # 检查是否需要使用主LLM配置
-            if translate_provider.lower() in ["none", ""]:
-                logger.info(
-                    "检测到TRANSLATE_LLM_PROVIDER为none或空值，将使用主LLM配置进行翻译"
-                )
-
-                self.llm_provider_type = os.environ.get("LLM_PROVIDER", "webllm")
-                self.model_type = os.environ.get("MODEL_TYPE", "deepseek-chat")
-                self.api_key = os.environ.get("CHAT_API_KEY", "")
-                self.api_url = os.environ.get(
-                    "CHAT_BASE_URL", "https://api.deepseek.com/v1"
-                )
-                provider_type = self.llm_provider_type.lower()
-                logger.info(f"翻译模型将使用主LLM配置: {provider_type}")
-            else:
-                # 使用独立的翻译配置
-                self.llm_provider_type = translate_provider
-                self.model_type = os.environ.get("TRANSLATE_MODEL", "")
-                self.api_key = os.environ.get("TRANSLATE_API_KEY", "")
-                self.api_url = os.environ.get("TRANSLATE_BASE_URL", "")
-                provider_type = self.llm_provider_type.lower()
-                logger.info(f"初始化翻译模型 {provider_type} 提供商中...")
+            cfg = llm_config.get_translator_config()
+            self.llm_provider_type = cfg.get("provider", "webllm")
+            self.model_type = cfg.get("model", "deepseek-chat")
+            self.api_key = cfg.get("api_key", "")
+            self.api_url = cfg.get("base_url", "https://api.deepseek.com/v1")
+            provider_type = self.llm_provider_type.lower()
+            logger.info(f"翻译模型使用 {provider_type} 配置中...")
 
         self.provider = self._initialize_provider()
 

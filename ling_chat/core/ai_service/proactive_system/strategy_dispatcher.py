@@ -137,7 +137,7 @@ class StrategyDispatcher:
             new_topics = ["天气", "最近的游戏", "休息一下"]
             self.pending_topics.extend(new_topics)
 
-        topic = self.pending_topics.pop(0) if self.pending_topics else "发呆"
+        _topic = self.pending_topics.pop(0) if self.pending_topics else "发呆"
         ai_name = (
             self.game_status.current_character.display_name
             if self.game_status.current_character

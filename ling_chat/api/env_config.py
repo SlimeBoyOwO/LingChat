@@ -30,7 +30,6 @@ def parse_env_file():
     env_var_re = re.compile(r"^([A-Z_0-9]+)=")
     type_re = re.compile(r"\[type:\s*(\w+)\s*\]")
 
-    # --- 核心修改：引入状态机来处理多行 ---
     in_multiline_block = False
     multiline_buffer = ""
     current_key = None
@@ -80,7 +79,6 @@ def parse_env_file():
         # --- 状态1: 如果正在读取一个多行值 ---
         if in_multiline_block:
             multiline_buffer += line
-            # 如果在当前行找到了结束的双引号，说明多行块结束
             if '"' in line.split("#")[0]:
                 setting = process_setting(current_key, multiline_buffer)
                 structured_config[current_category]["subcategories"][
@@ -126,17 +124,13 @@ def parse_env_file():
             key = env_match.group(1)
             value_part = line[len(key) + 1 :].strip()
 
-            # 判断是单行还是多行的开始
-            # 计算值部分中未被转义的引号数量
             unescaped_quotes = len(re.findall(r'(?<!\\)"', value_part.split("#")[0]))
 
             if value_part.startswith('"') and unescaped_quotes % 2 != 0:
-                # 值的开头是引号，且引号数量为奇数，说明是多行块的开始
                 in_multiline_block = True
                 current_key = key
                 multiline_buffer = value_part
             else:
-                # 这是一个完整的单行值
                 setting = process_setting(key, value_part)
                 structured_config[current_category]["subcategories"][
                     current_subcategory
@@ -195,15 +189,11 @@ def save_env_file(new_values: Dict[str, str]):
                 original_comment = " #" + comment_part.rstrip()
 
             if str(new_val).lower() in ["true", "false"] or new_val.isdigit():
-                # 对于布尔值或数字，直接写入
                 updated_lines.append(f"{key}={new_val}{original_comment}\n")
             else:
-                # 对于字符串值，进行判断
                 if "\n" in new_val:
-                    # **多行字符串**: 在值的内外添加换行符
                     updated_lines.append(f'{key}="\n{new_val}\n"{original_comment}\n')
                 else:
-                    # **单行字符串**: 按原样标准格式写入
                     updated_lines.append(f'{key}="{new_val}"{original_comment}\n')
         else:
             updated_lines.extend(block_lines)
@@ -214,7 +204,7 @@ def save_env_file(new_values: Dict[str, str]):
         f.writelines(updated_lines)
 
 
-router = APIRouter(prefix="/api/v1/chat/config", tags=["Chat Env Config"])
+router = APIRouter(prefix="/api/v1/config", tags=["Environment Config"])
 
 
 @router.get("/key/{key}")
@@ -225,12 +215,11 @@ async def get_single_config(key: str):
     """
     try:
         full_config = parse_env_file()
-        # 遍历整个配置树查找 key
         for category in full_config.values():
             for sub in category["subcategories"].values():
                 for setting in sub["settings"]:
                     if setting["key"] == key:
-                        return setting  # 返回该配置项的完整信息
+                        return setting
         raise HTTPException(status_code=404, detail=f"Key '{key}' not found")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to read config: {str(e)}")
@@ -252,7 +241,6 @@ async def get_settings():
 async def save_config(new_values: Dict[str, str] = Body(...)):
     try:
         save_env_file(new_values)
-        # 看这里！！保存文件后，进行运行时热更新
         apply_runtime_config_changes(new_values)
         return {"status": "success", "message": "配置已成功保存并已生效！"}
     except Exception as e:
