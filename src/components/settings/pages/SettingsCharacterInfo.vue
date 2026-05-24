@@ -73,20 +73,17 @@
             </div>
 
             <div v-else class="max-w-3xl mx-auto space-y-6">
+              <!-- Data-Driven Form (tabs with schemas) -->
               <div v-if="currentTabConfig" class="space-y-4">
-                <!-- Data-Driven Form Rendering -->
                 <div
                   v-for="(field, index) in currentTabFields"
                   :key="index"
                   class="flex flex-col gap-2"
                 >
-                  <!-- Conditional Rendering wrapper -->
                   <template v-if="!field.visibleIf || field.visibleIf(localSettings)">
                     <label :for="field.key" class="text-[13px] text-white/60 font-medium"
                       >{{ field.label }} ({{ field.key }})</label
                     >
-
-                    <!-- Text Input -->
                     <input
                       v-if="field.type === 'text' || field.type === 'number'"
                       :id="field.key"
@@ -95,8 +92,6 @@
                       :step="field.step"
                       class="form-control bg-black/20 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-sm outline-none transition-all duration-200"
                     />
-
-                    <!-- Textarea -->
                     <textarea
                       v-else-if="field.type === 'textarea'"
                       :id="field.key"
@@ -104,8 +99,6 @@
                       :rows="field.rows || 4"
                       class="form-control bg-black/20 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-sm outline-none transition-all duration-200 font-mono leading-relaxed"
                     ></textarea>
-
-                    <!-- Select -->
                     <select
                       v-else-if="field.type === 'select'"
                       :id="field.key"
@@ -124,6 +117,7 @@
                   </template>
                 </div>
 
+                <!-- Voice model sub-section -->
                 <div
                   v-if="activeTab === 'voice' && voiceModelFields.length > 0"
                   class="p-4 bg-white/5 rounded-xl border border-white/10 space-y-4 mt-4"
@@ -146,6 +140,53 @@
                       />
                     </div>
                   </div>
+                </div>
+              </div>
+
+              <!-- Clothes Tab (custom UI, outside data-driven block) -->
+              <div v-if="activeTab === 'clothes'" class="space-y-4">
+                <div class="flex items-center justify-between">
+                  <h3 class="text-sm font-bold text-white/70">服装列表</h3>
+                  <button
+                    class="px-3 py-1.5 rounded-lg border-none bg-[#5e72e4] text-white text-xs cursor-pointer hover:bg-[#4a5acf] transition-colors"
+                    @click="addClothesItem"
+                  >
+                    + 添加服装
+                  </button>
+                </div>
+                <div
+                  v-for="(item, idx) in clothesList"
+                  :key="idx"
+                  class="p-4 bg-white/5 rounded-xl border border-white/10 space-y-3"
+                >
+                  <div class="flex items-center justify-between">
+                    <span class="text-sm font-medium text-white/80">服装 #{{ idx + 1 }}</span>
+                    <button
+                      class="w-6 h-6 rounded-full border-none bg-red-500/20 text-red-400 cursor-pointer text-xs hover:bg-red-500/40 transition-colors"
+                      @click="removeClothesItem(idx)"
+                    >
+                      x
+                    </button>
+                  </div>
+                  <div class="flex flex-col gap-2">
+                    <label class="text-[13px] text-white/60 font-medium">name</label>
+                    <input
+                      v-model="item.name"
+                      type="text"
+                      class="form-control bg-black/20 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-sm outline-none transition-all duration-200"
+                    />
+                  </div>
+                  <div class="flex flex-col gap-2">
+                    <label class="text-[13px] text-white/60 font-medium">prompt</label>
+                    <textarea
+                      v-model="item.prompt"
+                      rows="3"
+                      class="form-control bg-black/20 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-sm outline-none transition-all duration-200 font-mono leading-relaxed"
+                    ></textarea>
+                  </div>
+                </div>
+                <div v-if="clothesList.length === 0" class="text-sm text-white/40 text-center py-8">
+                  暂无服装配置，点击"添加服装"创建
                 </div>
               </div>
             </div>
@@ -183,6 +224,7 @@
 import { ref, watch, computed } from 'vue'
 import { getRoleSettings, updateRoleSettings } from '../../../api/services/character'
 import { Icon } from '../../base'
+import { useDialogStore } from '../../../stores/modules/ui/dialog'
 
 const props = defineProps<{
   visible: boolean
@@ -195,12 +237,15 @@ const emit = defineEmits(['close', 'saved'])
 const activeTab = ref('basic')
 const loading = ref(false)
 const saving = ref(false)
+const dialogStore = useDialogStore()
 const localSettings = ref<any>({})
 
 const tabs = [
   { id: 'basic', label: '基本信息' },
   { id: 'prompts', label: '提示词' },
   { id: 'visuals', label: '视觉效果' },
+  { id: 'clothes', label: '服装' },
+  { id: 'pet', label: '桌宠' },
   { id: 'voice', label: '语音设置' },
 ]
 
@@ -235,10 +280,16 @@ const schemas: Record<string, FieldSchema[]> = {
   ],
   visuals: [
     { key: 'scale', label: '缩放', type: 'number', step: '0.01' },
-    { key: 'offset', label: '偏移', type: 'number' },
+    { key: 'offset_x', label: '水平偏移', type: 'number', step: '0.1' },
+    { key: 'offset_y', label: '垂直偏移', type: 'number', step: '0.1' },
     { key: 'bubble_top', label: '气泡顶部距离', type: 'number' },
     { key: 'bubble_left', label: '气泡左侧距离', type: 'number' },
     { key: 'thinking_message', label: '思考消息文本', type: 'text' },
+  ],
+  pet: [
+    { key: 'scale_p', label: '桌宠缩放', type: 'number', step: '0.01' },
+    { key: 'offset_x_p', label: '桌宠水平偏移', type: 'number', step: '0.1' },
+    { key: 'offset_y_p', label: '桌宠垂直偏移', type: 'number', step: '0.1' },
   ],
   voice: [
     {
@@ -353,6 +404,31 @@ const fieldModel = (field: FieldSchema) => {
   })
 }
 
+const clothesList = computed({
+  get: () => {
+    if (!Array.isArray(localSettings.value.clothes)) {
+      localSettings.value.clothes = []
+    }
+    return localSettings.value.clothes as Array<{ name: string; prompt: string }>
+  },
+  set: (val) => {
+    localSettings.value.clothes = val
+  },
+})
+
+const addClothesItem = () => {
+  if (!Array.isArray(localSettings.value.clothes)) {
+    localSettings.value.clothes = []
+  }
+  localSettings.value.clothes.push({ name: '', prompt: '' })
+}
+
+const removeClothesItem = (idx: number) => {
+  if (Array.isArray(localSettings.value.clothes)) {
+    localSettings.value.clothes.splice(idx, 1)
+  }
+}
+
 // --- Watchers & Methods ---
 
 watch(
@@ -390,7 +466,7 @@ const saveSettings = async () => {
     emit('close')
   } catch (e) {
     console.error('Failed to save settings', e)
-    alert('保存失败，请检查控制台日志')
+    await dialogStore.alert('保存失败，请检查控制台日志')
   } finally {
     saving.value = false
   }

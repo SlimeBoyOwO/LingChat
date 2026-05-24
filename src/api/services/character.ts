@@ -90,13 +90,9 @@ export const getRoleSettings = async (roleId: number): Promise<any> => {
 
 export const updateRoleSettings = async (roleId: number, settings: any): Promise<any> => {
   try {
-    const response = await http.post('/v1/chat/character/update_settings', {
-      role_id: roleId,
-      settings: settings,
-    })
-    return response
+    return await invoke('update_role_settings', { roleId, settings })
   } catch (error: any) {
-    throw new Error(error.response?.data?.detail || '更新角色配置失败')
+    throw new Error(typeof error === 'string' ? error : '更新角色配置失败')
   }
 }
 

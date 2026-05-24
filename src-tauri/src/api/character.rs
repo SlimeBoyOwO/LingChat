@@ -8,7 +8,9 @@ use tauri::{AppHandle, Manager};
 
 use crate::ai_service::types::{CharacterSettings, LineAttributeExt, LineBase};
 use crate::db::entities::line::LineAttribute;
+use crate::db::entities::role::RoleType;
 use crate::db::managers::role_repo::RoleRepo;
+use crate::utils::prompt::PromptRole;
 use crate::AppState;
 
 use super::{characters_dir, data_dir, game_data_dir};
@@ -452,20 +454,22 @@ pub async fn select_clothes(
         role.current_clothes = clothes_name.clone();
 
         let ai_name = role.settings.ai_name.clone();
-        let prompt = role
-            .settings
-            .clothes
-            .as_ref()
-            .and_then(|clothes_list| {
-                clothes_list.iter().find_map(|item| {
+        let prompt = format!(
+            "{}换上了新服装：{}，{}",
+            ai_name,
+            clothes_name,
+            role.settings
+                .clothes
+                .as_ref()
+                .and_then(|list| list.iter().find_map(|item| {
                     if item.get("name").map(|s| s.as_str()) == Some(clothes_name.as_str()) {
                         item.get("prompt").cloned()
                     } else {
                         None
                     }
-                })
-            })
-            .unwrap_or_else(|| format!("{}换上了新服装：{}", ai_name, clothes_name));
+                }))
+                .unwrap_or_default()
+        );
 
         (ai_name, prompt)
     };
@@ -477,7 +481,7 @@ pub async fn select_clothes(
         .add_line(
             db,
             LineBase {
-                content: format!("{{系统提示: {}}}", prompt),
+                content: PromptRole::Plot.build_prompt(&prompt),
                 attribute: LineAttributeExt(LineAttribute::User),
                 display_name: Some("旁白".to_string()),
                 ..Default::default()
@@ -487,4 +491,65 @@ pub async fn select_clothes(
         .map_err(|e| format!("添加台词失败: {}", e))?;
 
     Ok(serde_json::json!({"success": true, "message": "衣服更换成功"}))
+}
+
+#[tauri::command]
+pub async fn update_role_settings(
+    app: AppHandle,
+    role_id: i32,
+    settings: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let state = app.state::<AppState>();
+    let db = &state.db;
+
+    let role = RoleRepo::get_role_by_id(db, role_id)
+        .await
+        .map_err(|e| format!("查询角色失败: {}", e))?
+        .ok_or_else(|| format!("角色 {} 不存在", role_id))?;
+
+    let folder = role
+        .resource_folder
+        .clone()
+        .ok_or_else(|| format!("角色 {} 资源不存在", role_id))?;
+
+    let base_path = match role.role_type {
+        RoleType::Main => characters_dir().join(&folder),
+        RoleType::Npc => {
+            let script_key = role
+                .script_key
+                .clone()
+                .ok_or_else(|| format!("角色 {} 缺少剧本关联", role_id))?;
+            game_data_dir()
+                .join("scripts")
+                .join(&script_key)
+                .join("characters")
+                .join(&folder)
+        }
+        RoleType::System => {
+            return Err("系统角色不允许修改配置".to_string());
+        }
+    };
+
+    if !base_path.exists() {
+        return Err(format!("角色目录不存在: {:?}", base_path));
+    }
+
+    let _validated: CharacterSettings = serde_json::from_value(settings.clone())
+        .map_err(|e| format!("配置验证失败: {}", e))?;
+
+    let mut save_data = settings;
+    if let Some(obj) = save_data.as_object_mut() {
+        obj.remove("character_id");
+        obj.remove("resource_path");
+        obj.remove("script_key");
+        obj.remove("script_role_key");
+    }
+
+    let yaml_path = base_path.join("settings.yml");
+    let yaml_str =
+        serde_yaml::to_string(&save_data).map_err(|e| format!("序列化失败: {}", e))?;
+    fs::write(&yaml_path, yaml_str).map_err(|e| format!("保存失败: {}", e))?;
+
+    tracing::info!("角色 {} 配置已保存到 {:?}", role_id, yaml_path);
+    Ok(serde_json::json!({"success": true, "message": "设置已保存"}))
 }

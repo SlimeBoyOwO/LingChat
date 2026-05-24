@@ -108,6 +108,7 @@ import { useRouter } from 'vue-router'
 import { MenuPage, MenuItem } from '../../ui'
 import { Slider, Text, Toggle, Button } from '../../base'
 import { useUIStore } from '../../../stores/modules/ui/ui'
+import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { useSettingsStore } from '../../../stores/modules/settings'
 import { useUserStore } from '../../../stores/modules/user/user'
 import { useGameStore } from '../../../stores/modules/game'
@@ -131,6 +132,7 @@ const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
 const userStore = useUserStore()
 const gameStore = useGameStore()
+const dialogStore = useDialogStore()
 const envSettings = ref<Record<string, ConfigItem>>({})
 
 // 判断是否在自由对话模式（没有运行剧本）
@@ -143,7 +145,7 @@ const returnToMain = () => {
 
 const handleClearHistory = async () => {
   // 提示用户保存
-  const confirmed = window.confirm(
+  const confirmed = await dialogStore.confirm(
     '清除历史对话将丢失当前所有对话记录，建议先存档。\n\n是否已存档或确认清除？',
   )
   if (!confirmed) return
@@ -237,9 +239,9 @@ const openWebsite = (url: string) => {
 const refreshTTS = async () => {
   try {
     await reactivateTTS()
-    alert('刷新TTS成功，将会在TTS可用的时候自动调用')
+    await dialogStore.alert('刷新TTS成功，将会在TTS可用的时候自动调用')
   } catch (error) {
-    alert('刷新TTS失败')
+    await dialogStore.alert('刷新TTS失败')
   }
 }
 </script>

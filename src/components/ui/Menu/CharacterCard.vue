@@ -184,6 +184,7 @@ import {
 } from '@/api/services/character'
 import { useGameStore } from '@/stores/modules/game'
 import { applyWebInitData } from '@/stores/modules/game/actions'
+import { useDialogStore } from '@/stores/modules/ui/dialog'
 import { Settings } from 'lucide-vue-next'
 import { Cat, Check } from 'lucide-vue-next'
 import type { Clothes } from '@/types'
@@ -214,6 +215,7 @@ const isDetailVisible = ref(false)
 const isSettingsModalVisible = ref(false)
 
 const gameStore = useGameStore()
+const dialogStore = useDialogStore()
 
 // 逻辑函数
 const isSelected = () => gameStore.mainRoleId === props.id
@@ -223,7 +225,7 @@ const showDetailModal = () => (isDetailVisible.value = true)
 const closeDetailModal = () => (isDetailVisible.value = false)
 
 const selectCharacter = async () => {
-  const confirmed = window.confirm('切换角色会导致当前角色记忆清空，有需要的话不要忘记存档哦')
+  const confirmed = await dialogStore.confirm('切换角色会导致当前角色记忆清空，有需要的话不要忘记存档哦')
   if (!confirmed) return
 
   try {

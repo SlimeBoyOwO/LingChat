@@ -1,4 +1,4 @@
-mod achievements;
+﻿mod achievements;
 mod adventures;
 mod ai_service;
 mod api;
@@ -6,6 +6,7 @@ mod config;
 mod db;
 mod init;
 mod migration;
+mod utils;
 
 use std::sync::Arc;
 
@@ -41,8 +42,7 @@ pub struct AppState {
     pub generation_lock: Arc<tokio::sync::Mutex<()>>,
     pub proactive_system:
         Option<Arc<tokio::sync::Mutex<ai_service::proactive_system::ProactiveSystem>>>,
-    pub achievement_manager:
-        Arc<tokio::sync::Mutex<achievements::manager::AchievementManager>>,
+    pub achievement_manager: Arc<tokio::sync::Mutex<achievements::manager::AchievementManager>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -204,6 +204,7 @@ pub fn run() {
             api::character::get_character_file,
             api::character::get_avatar_file,
             api::character::select_clothes,
+            api::character::update_role_settings,
             api::background::get_background_list,
             api::background::get_background_file,
             api::background::upload_background_image,

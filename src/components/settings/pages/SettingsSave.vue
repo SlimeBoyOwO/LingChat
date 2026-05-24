@@ -90,6 +90,7 @@ import { Input } from '../../base'
 import { useGameStore } from '../../../stores/modules/game'
 import { applyWebInitData } from '../../../stores/modules/game/actions'
 import { useUIStore } from '../../../stores/modules/ui/ui'
+import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { invoke } from '@tauri-apps/api/core'
 import type { SaveInfo } from '../../../types'
 import type { WebInitData } from '../../../api/services/game-info'
@@ -107,6 +108,7 @@ interface CreateSaveResponse {
 
 const gameStore = useGameStore()
 const uiStore = useUIStore()
+const dialogStore = useDialogStore()
 
 const saves = ref<SaveInfo[]>([])
 const newSaveTitle = ref('')
@@ -161,7 +163,7 @@ const handleCreateSave = async () => {
 }
 
 const handleLoadSave = async (saveId: number) => {
-  const confirmed = window.confirm('加载存档会导致丢失当前对话进度，确定要加载吗？')
+  const confirmed = await dialogStore.confirm('加载存档会导致丢失当前对话进度，确定要加载吗？')
   if (!confirmed) return
   actionLoading.value = saveId
   try {
@@ -180,7 +182,7 @@ const handleLoadSave = async (saveId: number) => {
 }
 
 const handleSaveGame = async (saveId: number) => {
-  const confirmed = window.confirm(
+  const confirmed = await dialogStore.confirm(
     '覆盖存档会导致丢失之前的存档进度，确定要覆盖吗？',
   )
   if (!confirmed) return
@@ -201,7 +203,7 @@ const handleSaveGame = async (saveId: number) => {
 }
 
 const handleDeleteSave = async (saveId: number) => {
-  if (!window.confirm('确定要删除这个存档吗？此操作不可撤销。')) return
+  if (!await dialogStore.confirm('确定要删除这个存档吗？此操作不可撤销。')) return
   actionLoading.value = saveId
   try {
     await invoke('delete_save', { saveId })

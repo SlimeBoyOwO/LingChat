@@ -6,6 +6,7 @@
   <Notification />
   <AchievementToast />
   <AdventureUnlockNotify />
+  <AppDialog />
 </template>
 
 <script setup>
@@ -14,6 +15,7 @@ import CursorEffects from './components/effects/CursorEffects.vue'
 import Notification from './components/ui/Notification.vue'
 import AchievementToast from './components/ui/AchievementToast.vue'
 import AdventureUnlockNotify from './components/ui/AdventureUnlockNotify.vue'
+import AppDialog from './components/ui/AppDialog.vue'
 import { initUIStore } from './stores/modules/ui/ui'
 import { useAchievementStore } from './stores/modules/ui/achievement'
 

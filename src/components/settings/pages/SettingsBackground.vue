@@ -246,6 +246,7 @@ import { MenuPage, MenuItem } from '../../ui'
 import { Button, Toggle, Slider } from '../../base'
 import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
+import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { useSettingsStore } from '../../../stores/modules/settings'
 import {
   listScenes,
@@ -271,6 +272,7 @@ const gameStore = useGameStore()
 const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
 const userStore = useUserStore()
+const dialogStore = useDialogStore()
 
 const mainMenuStarsEnabled = computed(() => settingsStore.mainMenuStarsEnabled)
 const mainMenuMeteorsEnabled = computed(() => settingsStore.mainMenuMeteorsEnabled)
@@ -366,7 +368,7 @@ const handleUpdateScene = () => {
 
 const handleDeleteScene = async () => {
   if (!currentScene.value) return
-  if (!confirm(`确定要删除场景"${currentScene.value.sceneName}"吗？`)) return
+  if (!await dialogStore.confirm(`确定要删除场景"${currentScene.value.sceneName}"吗？`)) return
 
   try {
     await deleteScene(currentScene.value.id)
@@ -482,7 +484,7 @@ async function handleFileUpload(event: Event): Promise<void> {
   const allowedExts = ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.svg', '.tif', '.gif']
 
   if (!allowedExts.includes(fileExt)) {
-    alert('请上传支持的图片格式: ' + allowedExts.join(', '))
+    await dialogStore.alert('请上传支持的图片格式: ' + allowedExts.join(', '))
     return
   }
 
@@ -494,7 +496,7 @@ async function handleFileUpload(event: Event): Promise<void> {
     if (target) target.value = ''
   } catch (error) {
     console.error('上传失败', error)
-    alert('上传失败，请重试')
+    await dialogStore.alert('上传失败，请重试')
   }
 }
 

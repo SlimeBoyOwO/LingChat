@@ -75,6 +75,7 @@ import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { Button } from '../../base'
 import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
+import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { useTypeWriter } from '../../../composables/ui/useTypeWriter'
 import { eventQueue } from '../../../core/events/event-queue'
 import { invoke } from '@tauri-apps/api/core'
@@ -83,6 +84,7 @@ const inputMessage = ref('')
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const gameStore = useGameStore()
 const uiStore = useUIStore()
+const dialogStore = useDialogStore()
 const isHidden = ref(false)
 
 // 语音识别相关状态
@@ -274,9 +276,9 @@ const initSpeechRecognition = () => {
   return recognition
 }
 
-const toggleRecording = () => {
+const toggleRecording = async () => {
   if (!speechRecognition) {
-    alert('您的浏览器不支持语音输入功能，建议使用最新版的 Chrome 或 Edge 浏览器。')
+    await dialogStore.alert('您的浏览器不支持语音输入功能，建议使用最新版的 Chrome 或 Edge 浏览器。')
     return
   }
   if (isRecording.value) {
@@ -284,7 +286,7 @@ const toggleRecording = () => {
   } else {
     // 如果不在允许输入的阶段，阻止录音
     if (gameStore.currentStatus !== 'input') {
-      alert('当前状态不允许输入，请稍候再试。')
+      await dialogStore.alert('当前状态不允许输入，请稍候再试。')
       return
     }
     speechRecognition.start()

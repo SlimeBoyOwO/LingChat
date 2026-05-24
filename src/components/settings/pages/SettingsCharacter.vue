@@ -85,6 +85,7 @@ import { MenuItem, MenuPage } from '../../ui'
 import { characterGetAll } from '../../../api/services/character'
 import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
+import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import type { Character as ApiCharacter, Clothes } from '../../../types'
 
 interface CharacterCardData {
@@ -105,6 +106,7 @@ const isCreateModalVisible = ref(false)
 
 const gameStore = useGameStore()
 const uiStore = useUIStore()
+const dialogStore = useDialogStore()
 
 const mapCharacter = (char: ApiCharacter): CharacterCardData => {
   return {
@@ -149,29 +151,7 @@ const changePage = async (page: number): Promise<void> => {
 }
 
 const refreshCharacters = async (): Promise<void> => {
-  try {
-    const response = await fetch('/api/v1/chat/character/refresh_characters', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    })
-
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
-
-    await response.json()
-    currentPage.value = 1
-    await loadCharacters()
-
-    const tip = uiStore.getRefreshTip('success')
-    uiStore.showSuccess({ title: tip.title, message: tip.message, duration: 3000 })
-  } catch (error) {
-    console.error('刷新失败:', error)
-    const tip = uiStore.getRefreshTip('fail')
-    uiStore.showError({
-      title: tip.title,
-      message: (error as Error)?.message || tip.message,
-      duration: 3000,
-    })
-  }
+  loadCharacters()
 }
 
 const openCreativeWeb = async (): Promise<void> => {
@@ -180,7 +160,7 @@ const openCreativeWeb = async (): Promise<void> => {
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
     await response.json()
   } catch (error) {
-    alert('启动失败，请手动打开 LingChat 的 discussion 页面')
+    await dialogStore.alert('启动失败，请手动打开 LingChat 的 discussion 页面')
     console.error('打开创意工坊失败:', error)
   }
 }

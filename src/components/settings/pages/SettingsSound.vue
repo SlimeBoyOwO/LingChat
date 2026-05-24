@@ -175,6 +175,7 @@ import {
   setCurrentBackgroundMusic,
 } from '../../../api/services/music'
 import { useUIStore } from '../../../stores/modules/ui/ui'
+import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { useSettingsStore } from '../../../stores/modules/settings'
 import {
   AudioLines,
@@ -196,6 +197,7 @@ import {
 
 const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
+const dialogStore = useDialogStore()
 
 // 状态绑定
 const characterVolume = computed({
@@ -377,7 +379,7 @@ const loadMusicList = async () => {
 
 const deleteMusic = async (music: MusicItem) => {
   if (!music) return
-  if (!confirm(`确定要删除《${music.name}》吗？`)) return
+  if (!await dialogStore.confirm(`确定要删除《${music.name}》吗？`)) return
 
   try {
     await musicDelete(music.url)
@@ -398,14 +400,14 @@ const deleteMusic = async (music: MusicItem) => {
     await loadMusicList()
   } catch (error) {
     console.error('删除音乐失败:', error)
-    alert('删除音乐失败')
+    await dialogStore.alert('删除音乐失败')
   }
 }
 
 // 批量上传逻辑
 const uploadMusic = async () => {
   if (selectedFiles.value.length === 0) {
-    alert('请先选择音乐文件')
+    await dialogStore.alert('请先选择音乐文件')
     return
   }
 
@@ -430,7 +432,7 @@ const uploadMusic = async () => {
     // alert('音乐上传成功') // 可选提示
   } catch (error: any) {
     console.error('批量上传音乐出现问题:', error)
-    alert(error.message || '部分或全部音乐上传失败')
+    await dialogStore.alert(error.message || '部分或全部音乐上传失败')
   }
 }
 
