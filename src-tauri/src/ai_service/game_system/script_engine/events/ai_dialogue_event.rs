@@ -59,6 +59,8 @@ impl ScriptEvent for AIDialogueEvent {
         // Set as current character
         ctx.game_status.lock().await.current_role_id = Some(role_id);
 
+        tracing::info!("[AIDialogueEvent] 开始执行");
+
         // Inject prompt as SYSTEM line if provided
         // TODO: 这里的 prompt 是暂时的，应该标记为临时 prompt，并且在代码逻辑中在AI回复后清除这部分提示词。
         if let Some(ref prompt) = self.prompt {
@@ -97,6 +99,8 @@ impl ScriptEvent for AIDialogueEvent {
 
         let generator = MessageGenerator::new(deps);
         generator.process_message(None).await?;
+
+        tracing::info!("[AIDialogueEvent] 执行完毕");
 
         Ok(None)
     }

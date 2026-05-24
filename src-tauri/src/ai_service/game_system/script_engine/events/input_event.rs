@@ -4,12 +4,14 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::ai_service::game_system::script_engine::events::{register_event, ScriptContext, ScriptEvent};
+use crate::ai_service::game_system::script_engine::events::{
+    register_event, ScriptContext, ScriptEvent,
+};
 use crate::ai_service::game_system::script_engine::responses::{
     event_names::SCRIPT_INPUT, InputPayload,
 };
 use crate::ai_service::message_system::events::emit;
-use crate::ai_service::types::{LineBase, LineAttributeExt};
+use crate::ai_service::types::{LineAttributeExt, LineBase};
 use crate::db::entities::line::LineAttribute;
 
 pub struct InputEvent {
@@ -50,15 +52,21 @@ impl ScriptEvent for InputEvent {
 
         tracing::info!("[InputEvent] 收到用户输入: {}", user_input);
 
-        // Add USER line
+        // Add USER line — read fields under a single lock to avoid deadlock
+        let (user_name, main_role_id) = {
+            let gs = ctx.game_status.lock().await;
+            (gs.player.user_name.clone(), gs.main_role_id)
+        };
         let line = LineBase {
             content: user_input,
             attribute: LineAttributeExt(LineAttribute::User),
-            display_name: Some(ctx.game_status.lock().await.player.user_name.clone()),
-            sender_role_id: ctx.game_status.lock().await.main_role_id,
+            display_name: Some(user_name),
+            sender_role_id: main_role_id,
             ..Default::default()
         };
         ctx.game_status.lock().await.add_line(ctx.db, line).await?;
+
+        tracing::info!("[InputEvent] 执行完毕");
 
         Ok(None)
     }
