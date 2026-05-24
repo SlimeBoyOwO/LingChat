@@ -399,7 +399,11 @@ const fieldModel = (field: FieldSchema) => {
       return localSettings.value[field.key]
     },
     set: (val) => {
-      localSettings.value[field.key] = val
+      if (field.type === 'number') {
+        localSettings.value[field.key] = Number(val)
+      } else {
+        localSettings.value[field.key] = val
+      }
     },
   })
 }
