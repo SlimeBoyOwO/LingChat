@@ -1,6 +1,6 @@
 <template>
   <div class="w-full h-full flex items-center justify-between relative px-5 py-2">
-    <img src="@/assets/images/LingChatLogo.png" alt="Logo" class="w-20 ml-5 hidden xl:block" />
+    <img src="@/assets/images/LingChatLogo.webp" alt="Logo" class="w-20 ml-5 hidden xl:block" />
     <nav
       ref="navContainer"
       class="relative w-full flex flex-nowrap items-center justify-start gap-1 h-full ease-in-out duration-100 xl:justify-center overflow-x-auto overflow-y-hidden px-2"

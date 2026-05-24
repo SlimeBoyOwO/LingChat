@@ -151,6 +151,34 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('vue') || id.includes('vue-router')) {
+                return 'vue-core';
+              }
+              if (id.includes('element-plus')) {
+                return 'element-plus';
+              }
+              if (id.includes('pinia')) {
+                return 'pinia';
+              }
+              if (id.includes('axios')) {
+                return 'axios';
+              }
+              // 将其他大型第三方库归类到 vendor-chunk
+              if (id.includes('@vueuse') || id.includes('@floating-ui')) {
+                return 'vendor-chunk';
+              }
+            }
+          }
+        }
+      },
+      // 提高chunk大小警告限制到1.5MB（默认500kB）
+      chunkSizeWarningLimit: 1500,
+    },
     // 将环境变量注入到客户端
     define: {
       'import.meta.env.VITE_BACKEND_BIND_ADDR': JSON.stringify(backendHost),

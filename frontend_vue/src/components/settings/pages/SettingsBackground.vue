@@ -420,7 +420,7 @@ onMounted(async () => {
 
     if (
       uiStore.currentBackground &&
-      uiStore.currentBackground !== '@/assets/images/default_bg.jpg'
+      uiStore.currentBackground !== '@/assets/images/default_bg.webp'
     ) {
       selectBackground(uiStore.currentBackground)
     } else if (backgroundList.value.length > 0) {

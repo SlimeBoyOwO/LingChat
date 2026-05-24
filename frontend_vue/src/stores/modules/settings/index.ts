@@ -22,7 +22,7 @@ export const DEFAULT_SETTINGS = {
   },
   // 显示设置
   display: {
-    currentBackground: '@/assets/images/default_bg.jpg', // 当前背景图片
+    currentBackground: '@/assets/images/default_bg.webp', // 当前背景图片
     backgroundEffect: 'StarField', // 背景效果名称
     mainMenuStarsEnabled: true, // 主菜单星星粒子开关
     mainMenuMeteorsEnabled: true, // 主菜单流星开关

@@ -3,7 +3,7 @@
   <ImageAcrossFade
     ref="imageFadeRef"
     class="game-background"
-    :src="uiStore.currentBackground || '@/assets/images/default_bg.jpg'"
+    :src="uiStore.currentBackground || '@/assets/images/default_bg.webp'"
     position="center center"
     object-fit="cover"
     :duration="uiStore.currentBackgroundTransition"

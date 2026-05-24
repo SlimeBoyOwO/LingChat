@@ -21,7 +21,7 @@
     />
 
     <!-- 人物图层（位于星星之上，菜单之下） -->
-    <img class="character-image" ref="charRef" src="../../assets/images/alona.png" alt="人物" />
+    <img class="character-image" ref="charRef" src="../../assets/images/alona.webp" alt="人物" />
 
     <!-- 菜单容器，绑定鼠标移动和移出事件实现视差 -->
     <div
@@ -62,7 +62,7 @@
       </Transition>
 
       <img
-        src="../../assets/images/LingChatLogo.png"
+        src="../../assets/images/LingChatLogo.webp"
         alt="LingChatLogo"
         class="main-menu-page__logo cursor-pointer hover:scale-105 transition-transform duration-300"
         @click="goToGithub"
@@ -312,7 +312,7 @@ onMounted(() => {
   left: -10%;
   width: 120%;
   height: 100%;
-  background-image: url('../../assets/images/background2.png');
+  background-image: url('../../assets/images/background2.webp');
   background-size: cover;
   background-position: center;
   z-index: -2;
