@@ -44,8 +44,43 @@ def _get_gui_backends():
         return ["gtk", "qt"]
 
 
+def _migrate_webview_storage():
+    """后端从 winforms 切换到 edgechromium 后，旧缓存格式不兼容。
+
+    检测旧缓存目录中是否存在 winforms 特征文件（如 .NET 相关），
+    如果有则将旧目录重命名备份，让新后端从干净状态启动。
+    避免新后端读取不兼容的旧缓存导致异常。
+    """
+    storage_dir = user_data_path / "webview_storage_path"
+    if not storage_dir.exists():
+        return
+
+    # winforms 后端会在 storage_path 下生成 .NET WebBrowser 缓存结构
+    # edgechromium 后端使用 Chromium 的 WebView2 用户数据目录结构
+    # 通过检测是否缺少 EBWebView 目录（edgechromium 特征）来判断是否为旧缓存
+    ebwebview_dir = storage_dir / "EBWebView"
+    if ebwebview_dir.exists():
+        # 已经是 edgechromium 格式，无需迁移
+        return
+
+    # 目录存在但不是 edgechromium 格式 → 旧后端遗留，备份后清空
+    legacy_dir = user_data_path / "webview_storage_path_legacy"
+    if legacy_dir.exists():
+        # 已经备份过一次，直接删除当前目录内容让新后端重建
+        import shutil
+
+        shutil.rmtree(storage_dir, ignore_errors=True)
+        logger.info("已清理旧 webview 缓存目录")
+    else:
+        storage_dir.rename(legacy_dir)
+        logger.info(
+            f"检测到旧版 webview 缓存，已备份到 {legacy_dir.name}，新后端将重新初始化"
+        )
+
+
 def func_webview():
     try:
+        _migrate_webview_storage()
         api: Api = Api()
 
         frontend_bind_addr = os.getenv("FRONTEND_BIND_ADDR") or os.getenv(
