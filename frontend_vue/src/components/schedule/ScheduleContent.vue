@@ -69,8 +69,8 @@
       <header class="mt-2 p-6 flex justify-between items-center border-b border-cyan-300">
         <div class="flex items-center space-x-4 pl-4">
           <button
-            v-show="uiStore.scheduleView === 'schedule_detail'"
-            @click="uiStore.scheduleView = 'schedule_groups'"
+            v-show="uiStore.scheduleView === 'schedule_detail' || uiStore.scheduleView === 'todo_detail'"
+            @click="uiStore.scheduleView = uiStore.scheduleView === 'schedule_detail' ? 'schedule_groups' : 'todo_groups'"
             class="p-2 hover:bg-cyan-50 rounded-full text-cyan-600 transition-all"
           >
             <ChevronLeft />
