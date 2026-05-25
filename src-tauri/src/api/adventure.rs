@@ -71,7 +71,11 @@ pub async fn list_character_adventures(
             .await
             .unwrap_or(false);
 
-        let status = if completed.contains(&adv.path_key()) {
+        let is_db_completed = AdventureManager::is_globally_completed(db, &adv.folder_key)
+            .await
+            .unwrap_or(false);
+
+        let status = if completed.contains(&adv.path_key()) || is_db_completed {
             "completed"
         } else if is_running && current_script_folder.as_deref() == Some(&adv.folder_key) {
             "in_progress"
@@ -135,7 +139,11 @@ pub async fn list_all_adventures(app: AppHandle) -> Result<Vec<AdventureInfo>, S
             .await
             .unwrap_or(false);
 
-        let status = if completed.contains(&adv.path_key()) {
+        let is_db_completed = AdventureManager::is_globally_completed(db, &adv.folder_key)
+            .await
+            .unwrap_or(false);
+
+        let status = if completed.contains(&adv.path_key()) || is_db_completed {
             "completed"
         } else if is_running && current_script_folder.as_deref() == Some(&adv.folder_key) {
             "in_progress"
@@ -317,22 +325,12 @@ pub(crate) async fn handle_adventure_completion(
     >,
     app: &AppHandle,
     ai_service: &crate::ai_service::service::SharedAIService,
+    folder_key: &str,
+    completion_achievements: &[serde_json::Value],
+    name: &str,
 ) {
-    let (folder_key, completion_achievements, name) = {
-        let service = ai_service.lock().await;
-        let gs = service.game_status.lock().await;
-        match gs.script_status.as_ref() {
-            Some(ss) if ss.adventure.is_adventure => (
-                ss.folder_key.clone(),
-                ss.adventure.completion_achievements.clone(),
-                ss.name.clone(),
-            ),
-            _ => return,
-        }
-    };
-
     // Mark global completion in DB
-    if let Err(e) = AdventureManager::mark_global_completed(db, &folder_key).await {
+    if let Err(e) = AdventureManager::mark_global_completed(db, folder_key).await {
         tracing::error!("[AdventureAPI] 持久化冒险完成状态失败: {}", e);
         return;
     }
@@ -340,7 +338,7 @@ pub(crate) async fn handle_adventure_completion(
     // Unlock completion achievements
     if !completion_achievements.is_empty() {
         let mut ach_mgr = achievement_manager.lock().await;
-        for ach_def in &completion_achievements {
+        for ach_def in completion_achievements {
             let (ach_id, title, desc, ach_type) = match (
                 ach_def.get("id").and_then(|v| v.as_str()),
                 ach_def.get("title").and_then(|v| v.as_str()),

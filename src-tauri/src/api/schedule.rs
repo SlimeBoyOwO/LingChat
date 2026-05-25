@@ -31,7 +31,28 @@ pub async fn save_schedules(
         .join("game_data")
         .join("schedules.json");
 
-    let content = serde_json::to_string_pretty(&data)
+    // Read-merge-write: only overwrite fields the frontend actually sent.
+    // None means "not provided" — preserve the existing value on disk.
+    let merged = if schedules_path.exists() {
+        let existing_content = std::fs::read_to_string(&schedules_path)
+            .map_err(|e| format!("Failed to read schedules.json: {}", e))?;
+        let mut existing: UserScheduleSettings = serde_json::from_str(&existing_content)
+            .unwrap_or_default();
+        if data.schedule_groups.is_some() {
+            existing.schedule_groups = data.schedule_groups;
+        }
+        if data.todo_groups.is_some() {
+            existing.todo_groups = data.todo_groups;
+        }
+        if data.important_days.is_some() {
+            existing.important_days = data.important_days;
+        }
+        existing
+    } else {
+        data
+    };
+
+    let content = serde_json::to_string_pretty(&merged)
         .map_err(|e| format!("Failed to serialize schedules data: {}", e))?;
 
     std::fs::write(&schedules_path, content)

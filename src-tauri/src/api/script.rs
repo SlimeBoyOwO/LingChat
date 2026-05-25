@@ -388,43 +388,55 @@ pub(crate) async fn run_script_background(
         }
     }
 
-    // Script ended — cleanup
+    // Script ended — extract completion data, then cleanup
     {
         let mut service = ai_service.lock().await;
 
-        use crate::ai_service::game_system::script_engine::responses::{
-            event_names::SCRIPT_END, ScriptEndPayload,
+        // Extract everything we need from script_status BEFORE clearing it
+        let (completed_key, adventure_info) = {
+            let gs = service.game_status.lock().await;
+            let key = gs.script_status.as_ref().map(|ss| ss.path_key());
+            let info = gs.script_status.as_ref().map(|ss| {
+                (
+                    ss.folder_key.clone(),
+                    ss.adventure.completion_achievements.clone(),
+                    ss.name.clone(),
+                    ss.adventure.is_adventure,
+                )
+            });
+            (key, info)
         };
-        use crate::ai_service::message_system::events::emit;
-        let _ = emit(&app, SCRIPT_END, &ScriptEndPayload {});
 
-        let completed_key = service
-            .game_status
-            .lock().await
-            .script_status
-            .as_ref()
-            .map(|ss| ss.path_key());
+        // Mark script as completed in-memory
         if let Some(key) = completed_key {
             service.game_status.lock().await.completed_scripts.insert(key);
         }
-        let is_adventure = service
-            .game_status
-            .lock().await
-            .script_status
-            .as_ref()
-            .map(|ss| ss.adventure.is_adventure)
-            .unwrap_or(false);
+
+        // Now safe to clear script_status
         service.game_status.lock().await.script_status = None;
         service.script_manager.is_running = false;
+
+        // Emit script end event
+        {
+            use crate::ai_service::game_system::script_engine::responses::{
+                event_names::SCRIPT_END, ScriptEndPayload,
+            };
+            use crate::ai_service::message_system::events::emit;
+            let _ = emit(&app, SCRIPT_END, &ScriptEndPayload {});
+        }
+
         drop(service);
 
         // Handle adventure completion (achievements, chained unlocks)
-        if is_adventure {
+        if let Some((folder_key, completion_achievements, name, true)) = adventure_info {
             super::adventure::handle_adventure_completion(
                 &db,
                 &achievement_manager,
                 &app,
                 &ai_service,
+                &folder_key,
+                &completion_achievements,
+                &name,
             )
             .await;
         }

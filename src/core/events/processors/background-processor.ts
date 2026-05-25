@@ -20,7 +20,7 @@ export default class BackgroundProcessor implements IEventProcessor {
 
     if (event.imagePath) {
       try {
-        const path = await invoke<string>('get_script_background_file', {
+        const path = await invoke<string>('get_script_media_file', {
           filePath: event.imagePath,
         })
         url = convertFileSrc(path)

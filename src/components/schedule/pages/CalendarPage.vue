@@ -254,6 +254,7 @@ interface Day {
 }
 
 const importantDays = ref<ImportantDay[]>([])
+const calendarLoaded = ref(false)
 
 const loadData = async () => {
   try {
@@ -262,6 +263,8 @@ const loadData = async () => {
     importantDays.value = data.importantDays || []
   } catch (e) {
     console.error('Failed to load calendar events', e)
+  } finally {
+    calendarLoaded.value = true
   }
 }
 
@@ -269,6 +272,7 @@ const loadData = async () => {
 watch(
   importantDays,
   async (newVal) => {
+    if (!calendarLoaded.value) return
     try {
       await saveSchedules({ importantDays: newVal })
     } catch (e) {
