@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import type { SceneInfo } from './scene'
 
 // 1. 定义角色配置接口 (原先摊平的字段现在归属到这里)
 export interface CharacterSettings {
@@ -40,6 +41,8 @@ export interface WebInitData {
   background: string
   background_effect: string
   background_music: string
+  current_scene_id: string | null
+  current_scene: SceneInfo | null
   lines: GameLineInit[]
 }
 

@@ -92,11 +92,6 @@ export const actions = {
     this.currentScene = scene
   },
 
-  // 切换场景感知
-  toggleSceneAware(this: GameState, aware: boolean) {
-    this.sceneAware = aware
-  },
-
   // 清除场景（更新 store，API 调用由组件负责）
   clearCurrentScene(this: GameState) {
     this.currentScene = null
@@ -142,6 +137,11 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
   if (gameInfo.background_effect !== '') uiStore.setBackgroundEffect(gameInfo.background_effect)
   if (gameInfo.background_music !== '')
     uiStore.currentBackgroundMusic = gameInfo.background_music
+
+  // 恢复场景状态
+  if (gameInfo.current_scene) {
+    state.currentScene = gameInfo.current_scene
+  }
 
   if (gameInfo.lines && gameInfo.lines.length > 0) {
     state.dialogHistory = convertInitLines(gameInfo.lines)

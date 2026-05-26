@@ -117,9 +117,9 @@ export class ScriptHandler {
         gameStore.setCurrentScene(data.scene)
 
         // 更新背景图片
-        if (data.scene.imageUrl) {
+        if (data.scene.background) {
           const uiStore = useUIStore()
-          uiStore.setCurrentBackground(data.scene.imageUrl)
+          uiStore.setCurrentBackground(data.scene.background)
         }
       }
     })

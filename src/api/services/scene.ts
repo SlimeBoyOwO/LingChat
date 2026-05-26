@@ -1,61 +1,43 @@
-import http from '../http'
+import { invoke } from '@tauri-apps/api/core'
 
 export interface SceneInfo {
   id: string
-  sceneName: string
-  sceneImage: string | null
-  sceneDescription: string
-  imageUrl?: string
-  createdAt: string
-  updatedAt: string
-  source?: string
+  scene_name: string
+  scene_description: string
+  background: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface CreateSceneRequest {
-  sceneName: string
-  sceneImage: string | null
-  sceneDescription: string
-  autoAnalyze: boolean
+  scene_name: string
+  scene_description: string
+  background: string
 }
 
-// 列出所有场景
+export interface UpdateSceneRequest {
+  id: string
+  scene_name: string
+  scene_description: string
+  background: string
+}
+
 export async function listScenes(): Promise<SceneInfo[]> {
-  const response = await http.get<{ scenes: SceneInfo[] }>('/v1/chat/scene/list')
-  return response.scenes
+  return invoke<SceneInfo[]>('list_scenes')
 }
 
-// 加载场景
-export async function loadScene(sceneId: string, triggerAIResponse: boolean): Promise<void> {
-  await http.post('/v1/chat/scene/load', {
-    sceneId,
-    triggerAIResponse,
-  })
+export async function createScene(req: CreateSceneRequest): Promise<SceneInfo> {
+  return invoke<SceneInfo>('create_scene', { req })
 }
 
-// 清除场景
-export async function clearScene(): Promise<void> {
-  await http.post('/v1/chat/scene/clear')
+export async function updateScene(req: UpdateSceneRequest): Promise<SceneInfo> {
+  return invoke<SceneInfo>('update_scene', { req })
 }
 
-// 创建场景
-export async function createScene(request: CreateSceneRequest): Promise<SceneInfo> {
-  const response = await http.post<{ scene: SceneInfo }>('/v1/chat/scene/create', request)
-  return response.scene
+export async function deleteScene(id: string): Promise<void> {
+  return invoke('delete_scene', { id })
 }
 
-// 更新场景
-export async function updateScene(
-  sceneId: string,
-  updates: Partial<CreateSceneRequest>,
-): Promise<SceneInfo> {
-  const response = await http.put<{ scene: SceneInfo }>('/v1/chat/scene/update', {
-    id: sceneId,
-    ...updates,
-  })
-  return response.scene
-}
-
-// 删除场景
-export async function deleteScene(sceneId: string): Promise<void> {
-  await http.delete('/v1/chat/scene/delete', { data: { id: sceneId } })
+export async function selectScene(sceneId: string | null): Promise<void> {
+  return invoke('select_scene', { sceneId })
 }

@@ -58,6 +58,8 @@ pub mod keys {
     pub const COMMUNITY_URL: &str = "community.url";
     /// 上次游玩的角色 ID（启动时自动恢复）
     pub const LAST_CHARACTER_ID: &str = "game.last_character_id";
+    /// 上次选择的场景 ID（启动时自动恢复）
+    pub const LAST_SCENE_ID: &str = "game.last_scene_id";
 }
 
 // ========== 类型化配置 ==========

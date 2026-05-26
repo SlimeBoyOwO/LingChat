@@ -14,8 +14,6 @@ use crate::db::entities::line::LineAttribute;
 pub struct GameStatus {
     pub player: Player,
 
-    /// 当前加载的场景描述（若为 None 则处于普通自由对话模式）
-    pub scene_description: Option<String>,
     /// 台词列表，用于记忆构建和历史记忆
     pub line_list: Vec<GameLine>,
 
@@ -29,11 +27,15 @@ pub struct GameStatus {
     /// 游戏主角的 role_id（剧本模式冒险的主角）
     pub main_role_id: Option<i32>,
 
-    pub current_scene: String,
     pub background: String,
     pub present_pic: String,
     pub background_music: String,
     pub background_effect: String,
+
+    /// 当前用户选择的场景 ID（对应 scenes.json 中的场景）
+    pub current_scene_id: Option<String>,
+    /// 上一次 process_message 处理时的场景 ID，用于检测场景切换
+    pub last_processed_scene_id: Option<String>,
 
     pub global_variables: HashMap<String, Value>,
     pub completed_scripts: HashSet<String>,
@@ -49,18 +51,18 @@ impl GameStatus {
     pub fn new(role_manager: GameRoleManager) -> Self {
         Self {
             player: Player::default(),
-            scene_description: None,
             line_list: Vec::new(),
             role_manager,
             current_role_id: None,
             onstage_role_ids: Vec::new(),
             present_role_ids: HashSet::new(),
             main_role_id: None,
-            current_scene: String::new(),
             background: String::new(),
             present_pic: String::new(),
             background_music: String::new(),
             background_effect: String::new(),
+            current_scene_id: None,
+            last_processed_scene_id: None,
             global_variables: HashMap::new(),
             completed_scripts: HashSet::new(),
             last_dialog_time: None,
@@ -138,6 +140,7 @@ impl GameStatus {
             background: self.background.clone(),
             background_music: self.background_music.clone(),
             background_effect: self.background_effect.clone(),
+            current_scene_id: self.current_scene_id.clone(),
             global_variables: self.global_variables.clone(),
             completed_scripts: self.completed_scripts.iter().cloned().collect(),
             last_dialog_time: self.last_dialog_time.map(|dt| dt.to_rfc3339()),
@@ -149,6 +152,7 @@ impl GameStatus {
         self.background = snapshot.background.clone();
         self.background_music = snapshot.background_music.clone();
         self.background_effect = snapshot.background_effect.clone();
+        self.current_scene_id = snapshot.current_scene_id.clone();
         self.global_variables = snapshot.global_variables.clone();
         self.completed_scripts = snapshot.completed_scripts.iter().cloned().collect();
         self.last_dialog_time = snapshot
@@ -177,6 +181,8 @@ pub struct GameStatusSnapshot {
     pub background_music: String,
     #[serde(default = "default_background_effect")]
     pub background_effect: String,
+    #[serde(default)]
+    pub current_scene_id: Option<String>,
     #[serde(default)]
     pub global_variables: HashMap<String, Value>,
     #[serde(default)]

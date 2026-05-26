@@ -15,16 +15,19 @@ use sea_orm::DatabaseConnection;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{mpsc, Mutex};
 
+use crate::ai_service::game_system::game_status::GameStatus;
+use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::llm::LlmClient;
 use crate::ai_service::message_system::processor::{MessageProcessor, UserMessageOutcome};
 use crate::ai_service::message_system::producer::{SentenceItem, StreamProducer};
 use crate::ai_service::message_system::responses::{
     event_names, ErrorResponse, ReplyResponse, StatusResetResponse, ThinkingResponse,
 };
-use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::translator::Translator;
 use crate::ai_service::types::{LineAttributeExt, LineBase, LlmMessage};
+use crate::api::data_dir;
 use crate::db::entities::line::LineAttribute;
+use crate::utils::prompt::PromptRole;
 
 /// MessageGenerator 运行时依赖。
 #[derive(Clone)]
@@ -73,6 +76,35 @@ impl MessageGenerator {
             };
             gs.add_line(&self.deps.db, line).await?;
             inserted_user_line_index = Some(gs.line_list.len().saturating_sub(1));
+        }
+
+        // === 1.5. 场景变化检测 ===
+        {
+            let mut gs = self.deps.game_status.lock().await;
+            if gs.current_scene_id.is_some()
+                && gs.current_scene_id != gs.last_processed_scene_id
+            {
+                let scene_id = gs.current_scene_id.clone().unwrap();
+                let store = SceneStore::new(&data_dir());
+                if let Ok(Some(scene)) = store.find_by_id(&scene_id) {
+                    // 若场景无描述则跳过旁白台词
+                    if !scene.description.trim().is_empty() {
+                        let text = format!(
+                            "你们一起去了新的场景 - \"{}\"，\"{}\"",
+                            scene.name, scene.description
+                        );
+                        let prompt = PromptRole::Narrator.build_prompt(&text);
+                        let line = LineBase {
+                            content: prompt,
+                            attribute: LineAttributeExt(LineAttribute::User),
+                            display_name: Some("系统".to_string()),
+                            ..Default::default()
+                        };
+                        let _ = gs.add_line(&self.deps.db, line).await;
+                    }
+                }
+                gs.last_processed_scene_id = gs.current_scene_id.clone();
+            }
         }
 
         // === 2. 取当前角色记忆 ===

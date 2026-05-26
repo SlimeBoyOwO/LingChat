@@ -4,13 +4,13 @@
     <label
       class="inline-flex items-center cursor-pointer font-medium text-brand"
       :for="setting.key"
-      >{{ setting.key }}</label
+      >{{ setting.description || '' }}</label
     >
     <div class="flex align-baseline py-2.5 px-1">
       <Toggle :checked="setting.value.toLowerCase() === 'true'" @change="handleCheckboxChange">
       </Toggle>
       <p class="text-sm text-gray-300">
-        {{ setting.description || '' }}
+        {{ setting.key }}
       </p>
     </div>
   </template>
@@ -20,10 +20,10 @@
     <label
       class="inline-flex items-center cursor-pointer font-medium text-brand"
       :for="setting.key"
-      >{{ setting.key }}</label
+      >{{ setting.description || '支持多行输入' }}</label
     >
     <p class="text-sm mt-1 mb-2 text-gray-300">
-      {{ setting.description || '支持多行输入' }}
+      {{ setting.key }}
     </p>
     <textarea
       :id="setting.key"
@@ -38,10 +38,10 @@
     <label
       class="inline-flex items-center cursor-pointer font-medium text-brand"
       :for="setting.key"
-      >{{ setting.key }}</label
+      >{{ setting.description || '' }}</label
     >
     <p class="text-sm mt-1 mb-2 text-gray-300">
-      {{ setting.description || '' }}
+      {{ setting.key }}
     </p>
     <!-- 如果是 path 类型，添加文件选择按钮 -->
     <div v-if="setting.type === 'path'" class="flex gap-2">

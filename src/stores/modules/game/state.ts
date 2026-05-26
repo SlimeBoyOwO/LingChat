@@ -61,7 +61,6 @@ export interface GameState {
   currentStatus: 'input' | 'thinking' | 'responding' | 'presenting'
   dialogHistory: GameMessage[]
   currentScene: SceneInfo | null // 当前加载的场景
-  sceneAware: boolean // 场景感知开关
   command: string | null
 }
 
@@ -80,6 +79,5 @@ export const state: GameState = {
   currentStatus: 'input',
   dialogHistory: [],
   currentScene: null,
-  sceneAware: true, // 默认开启
   command: null,
 }

@@ -1,62 +1,107 @@
 <template>
   <MenuPage>
-    <MenuItem title="背景选择">
+    <!-- ========== 场景管理 ========== -->
+    <MenuItem title="场景管理">
       <template #header>
-        <Image :size="20" />
+        <PictureInPicture :size="20" />
       </template>
+
+      <!-- 当前场景信息 + 操作按钮 -->
+      <div class="flex items-center gap-3 mb-4">
+        <div class="text-brand font-bold">当前场景：{{ currentSceneDisplay }}</div>
+        <div class="ml-auto flex gap-3">
+          <button
+            class="px-5 py-1.5 rounded-full text-sm font-bold transition-all border shadow-lg bg-brand/80 border-brand text-white hover:bg-brand shadow-indigo-500/20"
+            @click="handleCreateScene"
+          >
+            创建场景
+          </button>
+          <button
+            class="px-4 py-1.5 rounded-full text-sm font-bold transition-all border shadow-lg bg-white/10 border-white/20 text-white/80 hover:bg-white/20"
+            @click="triggerUpload"
+          >
+            上传背景
+          </button>
+          <button
+            class="px-4 py-1.5 rounded-full text-sm font-bold transition-all border shadow-lg bg-white/10 border-white/20 text-white/80 hover:bg-white/20"
+            @click="handleOpenFolder"
+          >
+            打开文件夹
+          </button>
+          <button
+            class="px-4 py-1.5 rounded-full text-sm font-bold transition-all border shadow-lg bg-red-500/20 border-red-500/30 text-red-300 hover:bg-red-500/30"
+            :disabled="!currentScene"
+            @click="handleDeleteScene"
+          >
+            删除
+          </button>
+        </div>
+      </div>
+
+      <!-- 场景卡片网格 -->
       <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 pb-5 w-full">
         <div
-          v-for="(background, index) in backgroundList"
-          :key="index"
+          v-for="scene in scenes"
+          :key="scene.id"
           :class="[
-            'relative flex flex-col rounded-xl overflow-hidden bg-white/10 backdrop-blur-[20px] backdrop-saturate-180 border border-white/12.5 shadow-[0_8px_32px_rgba(0,0,0,0.1),inset_0_1px_1px_rgba(255,255,255,0.1)] transition-all duration-300 hover:bg-white/15 hover:backdrop-blur-[25px] hover:backdrop-saturate-200 hover:-translate-y-1 hover:scale-[1.01] hover:shadow-[0_12px_40px_rgba(0,0,0,0.15),inset_0_2px_2px_rgba(255,255,255,0.15)]',
-            isSelected(background.url)
+            'relative flex flex-col rounded-xl overflow-hidden bg-white/10 backdrop-blur-[20px] backdrop-saturate-180 border border-white/12.5 shadow-[0_8px_32px_rgba(0,0,0,0.1),inset_0_1px_1px_rgba(255,255,255,0.1)] transition-all duration-300 hover:bg-white/15 hover:backdrop-blur-[25px] hover:backdrop-saturate-200 hover:-translate-y-1 hover:scale-[1.01] hover:shadow-[0_12px_40px_rgba(0,0,0,0.15),inset_0_2px_2px_rgba(255,255,255,0.15)] cursor-pointer group',
+            isSceneSelected(scene.id)
               ? 'border-2 border-[#3bc7f6d8] shadow-[0_0_0_2px_rgba(255,255,255,0.3)]'
               : '',
           ]"
+          @click="handleSceneClick(scene)"
         >
-          <!-- 图片容器 -->
+          <!-- 编辑按钮（右上角扳手） -->
+          <button
+            class="absolute top-2 right-2 z-10 p-1.5 rounded-lg bg-black/50 text-white/60 hover:text-white hover:bg-black/70 transition-all opacity-0 group-hover:opacity-100"
+            @click.stop="handleWrenchClick(scene)"
+            title="编辑场景"
+          >
+            <Wrench :size="16" />
+          </button>
+
+          <!-- 背景预览 -->
           <div
             class="flex-1 relative overflow-hidden after:absolute after:inset-0 after:bg-linear-to-b after:from-transparent after:to-black/30 after:pointer-events-none"
           >
             <img
-              :src="getBackgroundDisplayUrl(background.url)"
-              :alt="background.title"
+              v-if="scene.background"
+              :src="convertFileSrc(scene.background)"
+              :alt="scene.scene_name"
               class="w-full h-full object-cover aspect-video transition-transform duration-300 group-hover:scale-[1.03]"
             />
+            <div v-else class="w-full h-full aspect-video bg-black/40 flex items-center justify-center text-white/20">
+              <Image :size="48" />
+            </div>
           </div>
 
-          <!-- 标题栏 -->
+          <!-- 信息栏 -->
           <div
-            class="px-4 py-3 flex justify-between items-center bg-white/15 backdrop-blur-[10px] border-t border-white/20 relative z-2"
+            class="px-4 py-3 flex flex-col gap-1 bg-white/15 backdrop-blur-[10px] border-t border-white/20 relative z-2"
           >
-            <span class="font-medium text-white/90 truncate max-w-[70%] drop-shadow-md">
-              {{ background.title }}
+            <span class="font-medium text-white/90 truncate drop-shadow-md">
+              {{ scene.scene_name }}
             </span>
-            <Button
-              :class="[
-                'px-3 py-1.5 rounded-md text-[13px] font-medium transition-all duration-200 shrink-0 hover:-translate-y-px active:translate-y-0',
-                isSelected(background.url) ? 'bg-[#10b981]' : 'bg-[#4f46e5] hover:bg-[#4338ca]',
-              ]"
-              @click="selectBackground(background.url)"
-            >
-              {{ isSelected(background.url) ? '已选中' : '选择' }}
-            </Button>
+            <span
+              v-if="scene.scene_description"
+              class="text-xs text-white/50 line-clamp-2"
+            >{{ scene.scene_description }}</span>
+            <span
+              v-else
+              class="text-xs text-yellow-400/60 italic"
+            >暂无描述（选择后不会触发旁白）</span>
           </div>
         </div>
       </div>
-      <div class="flex gap-2 justify-center items-center">
-        <Button type="big" @click="triggerUpload">上传自定义背景</Button>
-        <input
-          type="file"
-          ref="uploadInput"
-          @change="handleFileUpload"
-          accept=".jpg,.jpeg,.png,.webp,.bmp,.svg,.tif,.gif"
-          style="display: none"
-        />
 
-        <Button type="big" @click="handleOpenFolder">打开背景文件夹</Button>
-      </div>
+      <!-- 隐藏的文件上传 input -->
+      <input
+        type="file"
+        ref="uploadInput"
+        @change="handleFileUpload"
+        accept=".jpg,.jpeg,.png,.webp,.bmp,.svg,.tif,.gif"
+        style="display: none"
+      />
     </MenuItem>
 
     <MenuItem title="AI 生成背景">
@@ -87,33 +132,6 @@
         <p v-if="isGenerating" class="text-xs text-white/50">
           正在后台生成中，完成后会自动通知你...
         </p>
-      </div>
-    </MenuItem>
-
-    <MenuItem title="场景感知">
-      <template #header>
-        <PictureInPicture :size="20" />
-      </template>
-      <div class="p-2 flex flex-col gap-2 justify-center">
-        <div class="flex gap-3 mb-2 items-center">
-          <Bubbles />
-          <div class="text-brand font-bold">当前场景：{{ currentSceneDisplay }}</div>
-
-          <div class="ml-auto flex gap-6">
-            <button
-              class="px-5 py-1.5 rounded-full text-sm font-bold transition-all border shadow-lg bg-brand/80 border-brand text-white hover:bg-brand shadow-indigo-500/20"
-              @click="showSceneSelect = true"
-            >
-              选择场景
-            </button>
-          </div>
-        </div>
-
-        <div class="flex w-full gap-6 justify-around items-center">
-          <Button type="big" @click="handleCreateScene">添加场景</Button>
-          <Button type="big" @click="handleUpdateScene" :disabled="!currentScene">更新场景</Button>
-          <Button type="big" @click="handleDeleteScene" :disabled="!currentScene">删除场景</Button>
-        </div>
       </div>
     </MenuItem>
 
@@ -168,7 +186,6 @@
         <Sparkles :size="20" />
       </template>
       <div class="flex flex-col gap-4 p-2">
-        <!-- 流星帧率 -->
         <div class="flex items-center gap-4">
           <span class="text-sm font-medium text-white/90 min-w-30">流星帧率 (FPS)</span>
           <Slider
@@ -193,7 +210,6 @@
           />
         </div>
 
-        <!-- 星星帧率 -->
         <div class="flex items-center gap-4">
           <span class="text-sm font-medium text-white/90 min-w-30">星星帧率 (FPS)</span>
           <Slider
@@ -220,13 +236,6 @@
       </div>
     </MenuItem>
 
-    <SceneSelectModal
-      :show="showSceneSelect"
-      :scenes="scenes"
-      @close="showSceneSelect = false"
-      @confirm="handleSceneSelect"
-    />
-
     <SceneEditModal
       :show="showSceneEdit"
       :mode="editMode"
@@ -250,10 +259,10 @@ import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { useSettingsStore } from '../../../stores/modules/settings'
 import {
   listScenes,
-  loadScene,
   createScene,
   updateScene,
   deleteScene,
+  selectScene,
   type SceneInfo,
 } from '../../../api/services/scene'
 import type { BackgroundImageInfo } from '../../../types'
@@ -263,8 +272,7 @@ import {
   generateBackgroundImage,
   openBackgroundsFolder,
 } from '../../../api/services/background'
-import { Bubbles, Image, PictureInPicture, Sparkles, Settings, Wand2 } from 'lucide-vue-next'
-import SceneSelectModal from '../scene/SceneSelectModal.vue'
+import { Image, PictureInPicture, Sparkles, Settings, Wand2, Wrench } from 'lucide-vue-next'
 import SceneEditModal from '../scene/SceneEditModal.vue'
 import { useUserStore } from '../../../stores/modules/user/user'
 
@@ -297,30 +305,21 @@ const starsFps = computed({
 const starsFpsInput = ref(settingsStore.starsFps)
 
 const backgroundList = ref<BackgroundImageInfo[]>([])
-const selectedBackground = ref<string>('')
 const uploadInput = ref<HTMLInputElement | null>(null)
 const generatePrompt = ref('')
 const isGenerating = ref(false)
 
 const scenes = ref<SceneInfo[]>([])
-const sceneAwareLocal = ref(gameStore.sceneAware)
 
-const showSceneSelect = ref(false)
 const showSceneEdit = ref(false)
 const editMode = ref<'create' | 'update'>('create')
+const editingSceneId = ref<string | null>(null)
 const editInitialData = ref<
   { sceneName: string; sceneImage: string | null; sceneDescription: string } | undefined
 >()
 
-const currentSceneDisplay = computed(() => gameStore.currentScene?.sceneName || '无感知')
+const currentSceneDisplay = computed(() => gameStore.currentScene?.scene_name || '无')
 const currentScene = computed(() => gameStore.currentScene)
-
-watch(
-  () => gameStore.sceneAware,
-  (val) => {
-    sceneAwareLocal.value = val
-  },
-)
 
 const fetchScenes = async () => {
   try {
@@ -330,45 +329,53 @@ const fetchScenes = async () => {
   }
 }
 
-const handleSceneSelect = async (sceneId: string) => {
-  try {
-    const scene = scenes.value.find((s) => s.id === sceneId)
-    if (!scene) return
+const isSceneSelected = (sceneId: string): boolean => {
+  return gameStore.currentScene?.id === sceneId
+}
 
-    await loadScene(sceneId, sceneAwareLocal.value)
-    gameStore.setCurrentScene(scene)
-
-    if (scene.imageUrl) {
-      uiStore.setCurrentBackground(scene.imageUrl)
-    }
-
-    showSceneSelect.value = false
-  } catch (error) {
-    console.error('加载场景失败', error)
+const handleSceneClick = async (scene: SceneInfo) => {
+  // 无描述时提醒用户
+  if (!scene.scene_description?.trim()) {
+    uiStore.showInfo({
+      title: '提示',
+      message: `场景"${scene.scene_name}"暂无描述，选择后不会触发场景旁白`,
+      duration: 4000,
+    })
   }
+
+  try {
+    await selectScene(scene.id)
+    gameStore.setCurrentScene(scene)
+    if (scene.background) {
+      uiStore.setCurrentBackground(scene.background)
+    }
+    await fetchScenes()
+  } catch (error) {
+    console.error('选择场景失败', error)
+  }
+}
+
+const handleWrenchClick = (scene: SceneInfo) => {
+  editMode.value = 'update'
+  editingSceneId.value = scene.id
+  editInitialData.value = {
+    sceneName: scene.scene_name,
+    sceneImage: scene.background || null,
+    sceneDescription: scene.scene_description,
+  }
+  showSceneEdit.value = true
 }
 
 const handleCreateScene = () => {
   editMode.value = 'create'
+  editingSceneId.value = null
   editInitialData.value = undefined
-  showSceneEdit.value = true
-}
-
-const handleUpdateScene = () => {
-  if (!currentScene.value) return
-
-  editMode.value = 'update'
-  editInitialData.value = {
-    sceneName: currentScene.value.sceneName,
-    sceneImage: currentScene.value.sceneImage || null,
-    sceneDescription: currentScene.value.sceneDescription,
-  }
   showSceneEdit.value = true
 }
 
 const handleDeleteScene = async () => {
   if (!currentScene.value) return
-  if (!await dialogStore.confirm(`确定要删除场景"${currentScene.value.sceneName}"吗？`)) return
+  if (!(await dialogStore.confirm(`确定要删除场景"${currentScene.value.scene_name}"吗？`))) return
 
   try {
     await deleteScene(currentScene.value.id)
@@ -383,52 +390,44 @@ const handleSceneSubmit = async (data: {
   sceneName: string
   sceneImage: string | null
   sceneDescription: string
-  autoAnalyze: boolean
 }) => {
   try {
     if (editMode.value === 'create') {
-      await createScene(data)
-      await fetchScenes()
+      await createScene({
+        scene_name: data.sceneName,
+        scene_description: data.sceneDescription,
+        background: data.sceneImage || '',
+      })
     } else {
-      if (!currentScene.value) return
-      const updated = await updateScene(currentScene.value.id, data)
-      gameStore.setCurrentScene(updated)
-      await fetchScenes()
+      if (!editingSceneId.value) return
+      await updateScene({
+        id: editingSceneId.value,
+        scene_name: data.sceneName,
+        scene_description: data.sceneDescription,
+        background: data.sceneImage || '',
+      })
     }
     showSceneEdit.value = false
+    await fetchScenes()
   } catch (error) {
     console.error('操作失败', error)
   }
 }
 
-const onSceneAwareChange = (val: boolean) => {
-  gameStore.toggleSceneAware(val)
-}
-
 onMounted(async () => {
-  // 监听 WebSocket 触发的背景生成完成事件
   window.addEventListener('background-generated', onBackgroundGenerated)
 
   try {
     await refreshBackground()
-
-    if (
-      uiStore.currentBackground &&
-      uiStore.currentBackground !== '@/assets/images/default_bg.jpg'
-    ) {
-      selectBackground(uiStore.currentBackground)
-    } else if (backgroundList.value.length > 0) {
-      const randomIndex = Math.floor(Math.random() * backgroundList.value.length)
-      selectBackground(backgroundList.value[randomIndex]?.url || '')
-    }
   } catch (error) {
     console.error('加载背景图片失败', error)
   }
 
   await fetchScenes()
 
-  if (gameStore.currentScene && gameStore.currentScene.imageUrl) {
-    uiStore.setCurrentBackground(gameStore.currentScene.imageUrl)
+  // 恢复上次选中的场景
+  if (gameStore.currentScene?.background) {
+    uiStore.setCurrentBackground(gameStore.currentScene.background)
   }
 })
 
@@ -436,19 +435,14 @@ onUnmounted(() => {
   window.removeEventListener('background-generated', onBackgroundGenerated)
 })
 
-function getBackgroundDisplayUrl(filePath: string): string {
-  return convertFileSrc(filePath)
-}
-
 async function fetchBackgrounds(): Promise<BackgroundImageInfo[]> {
   try {
     const data = await getBackgroundImages()
-    const items = data.map((background: BackgroundImageInfo) => ({
+    return data.map((background: BackgroundImageInfo) => ({
       title: background.title || 'Untitled',
       url: background.url || '',
       time: background.time,
     }))
-    return items
   } catch (error) {
     console.error('Failed to fetch background list:', error)
     return []
@@ -458,15 +452,6 @@ async function fetchBackgrounds(): Promise<BackgroundImageInfo[]> {
 async function refreshBackground(): Promise<void> {
   const items = await fetchBackgrounds()
   backgroundList.value = items
-}
-
-function isSelected(url: string): boolean {
-  return selectedBackground.value === url
-}
-
-function selectBackground(url: string): void {
-  selectedBackground.value = url
-  uiStore.setCurrentBackground(url)
 }
 
 function triggerUpload(): void {
@@ -480,7 +465,6 @@ async function handleFileUpload(event: Event): Promise<void> {
 
   const fileName = file.name
   const fileExt = fileName.slice(fileName.lastIndexOf('.')).toLowerCase()
-
   const allowedExts = ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.svg', '.tif', '.gif']
 
   if (!allowedExts.includes(fileExt)) {
@@ -492,7 +476,8 @@ async function handleFileUpload(event: Event): Promise<void> {
     const buf = await file.arrayBuffer()
     await uploadBackgroundImage(fileName, new Uint8Array(buf))
     await refreshBackground()
-
+    // 刷新场景列表（后端会自动将新背景注册为场景）
+    await fetchScenes()
     if (target) target.value = ''
   } catch (error) {
     console.error('上传失败', error)
@@ -504,7 +489,6 @@ function updateParticle(value: string): void {
   uiStore.setBackgroundEffect(value)
 }
 
-// AI 背景图生成
 async function handleGenerate(): Promise<void> {
   const prompt = generatePrompt.value.trim()
   if (!prompt || isGenerating.value) return
@@ -525,7 +509,6 @@ async function handleGenerate(): Promise<void> {
   }
 }
 
-// 打开背景文件夹
 async function handleOpenFolder(): Promise<void> {
   try {
     await openBackgroundsFolder()
@@ -537,7 +520,6 @@ async function handleOpenFolder(): Promise<void> {
   }
 }
 
-// 监听 WebSocket 通知的背景生成完成事件
 function onBackgroundGenerated(event: Event) {
   const detail = (event as CustomEvent).detail
   isGenerating.value = false
@@ -545,62 +527,49 @@ function onBackgroundGenerated(event: Event) {
     generatePrompt.value = ''
   }
   refreshBackground()
+  fetchScenes()
 }
 
-// 处理滑块变化
 function handleMeteorFpsChange(value: number) {
   const clampedValue = Math.max(10, Math.min(60, value))
   meteorFpsInput.value = clampedValue
   settingsStore.setMeteorFps(clampedValue)
 }
 
-// 处理输入框失去焦点
 function handleInputBlur() {
   let value = Number(meteorFpsInput.value)
-  if (isNaN(value) || value < 10) {
-    value = 10
-  } else if (value > 300) {
-    value = 300
-  }
+  if (isNaN(value) || value < 10) value = 10
+  else if (value > 300) value = 300
   meteorFpsInput.value = value
   settingsStore.setMeteorFps(value)
 }
 
-// 处理输入框回车
 function handleInputEnter() {
   handleInputBlur()
 }
 
-// 监听meteorFps变化，同步更新输入框
 watch(meteorFps, (newValue) => {
   meteorFpsInput.value = newValue
 })
 
-// 处理星星滑块变化
 function handleStarsFpsChange(value: number) {
   const clampedValue = Math.max(10, Math.min(60, value))
   starsFpsInput.value = clampedValue
   settingsStore.setStarsFps(clampedValue)
 }
 
-// 处理星星输入框失去焦点
 function handleStarsInputBlur() {
   let value = Number(starsFpsInput.value)
-  if (isNaN(value) || value < 10) {
-    value = 10
-  } else if (value > 300) {
-    value = 300
-  }
+  if (isNaN(value) || value < 10) value = 10
+  else if (value > 300) value = 300
   starsFpsInput.value = value
   settingsStore.setStarsFps(value)
 }
 
-// 处理星星输入框回车
 function handleStarsInputEnter() {
   handleStarsInputBlur()
 }
 
-// 监听starsFps变化，同步更新输入框
 watch(starsFps, (newValue) => {
   starsFpsInput.value = newValue
 })

@@ -210,7 +210,7 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
     }
 
     // 10. 返回前端初始化数据
-    build_web_init_data(&service).await
+    build_web_init_data(&service, &app).await
 }
 
 #[tauri::command]

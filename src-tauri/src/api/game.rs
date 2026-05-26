@@ -5,6 +5,7 @@ use serde_json::Value as JsonValue;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_store::StoreExt;
 
+use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::types::CharacterSettings;
 use crate::config::{self, AppConfig};
 use crate::db::managers::role_repo::RoleRepo;
@@ -24,6 +25,8 @@ pub struct WebInitData {
     pub background: String,
     pub background_effect: String,
     pub background_music: String,
+    pub current_scene_id: Option<String>,
+    pub current_scene: Option<super::scene::SceneInfo>,
     /// 初始化台词列表（至少包含一条 system 人设台词）
     pub lines: Vec<GameLineInit>,
 }
@@ -105,7 +108,7 @@ pub async fn reactivate_tts(app: AppHandle) -> Result<(), String> {
 pub async fn init_game(app: AppHandle) -> Result<WebInitData, String> {
     let state = app.state::<AppState>();
     let service = state.ai_service.lock().await;
-    build_web_init_data(&service).await
+    build_web_init_data(&service, &app).await
 }
 
 // ========== 角色切换 ==========
@@ -166,7 +169,7 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
     //    drop 后再拿锁，避免同一个锁两次借用
     let init = {
         let service = state.ai_service.lock().await;
-        build_web_init_data(&service).await?
+        build_web_init_data(&service, &app).await?
     };
     Ok(init)
 }
@@ -174,6 +177,7 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
 /// 从 AIService 快照构建 WebInitData（不持锁的函数）
 pub(crate) async fn build_web_init_data(
     service: &crate::ai_service::service::AIService,
+    app: &AppHandle,
 ) -> Result<WebInitData, String> {
     let settings = service
         .settings
@@ -182,30 +186,104 @@ pub(crate) async fn build_web_init_data(
 
     let character_settings = CharacterSettingsInit::from(settings);
 
-    let gs = service.game_status.lock().await;
-    let lines: Vec<GameLineInit> = gs
-        .line_list
-        .iter()
-        .map(|gl| GameLineInit {
-            content: gl.base.content.clone(),
-            attribute: gl.base.attribute.as_str().to_string(),
-            sender_role_id: gl.base.sender_role_id,
-            display_name: gl.base.display_name.clone(),
-            original_emotion: gl.base.original_emotion.clone(),
-            predicted_emotion: gl.base.predicted_emotion.clone(),
-            action_content: gl.base.action_content.clone(),
-            audio_file: gl.base.audio_file.clone(),
-            perceived_role_ids: gl.perceived_role_ids.clone(),
-        })
-        .collect();
+    let (lines, current_scene_id, current_role_id, onstage_roles_ids, background, background_effect, background_music) = {
+        let mut gs = service.game_status.lock().await;
+        let lines: Vec<GameLineInit> = gs
+            .line_list
+            .iter()
+            .map(|gl| GameLineInit {
+                content: gl.base.content.clone(),
+                attribute: gl.base.attribute.as_str().to_string(),
+                sender_role_id: gl.base.sender_role_id,
+                display_name: gl.base.display_name.clone(),
+                original_emotion: gl.base.original_emotion.clone(),
+                predicted_emotion: gl.base.predicted_emotion.clone(),
+                action_content: gl.base.action_content.clone(),
+                audio_file: gl.base.audio_file.clone(),
+                perceived_role_ids: gl.perceived_role_ids.clone(),
+            })
+            .collect();
+
+        let mut sid = gs.current_scene_id.clone();
+
+        // 若无当前场景，尝试从 store 恢复上次选择的场景
+        if sid.is_none() {
+            if let Ok(store) = app.store(config::STORE_FILE) {
+                if let Some(v) = store.get(config::keys::LAST_SCENE_ID) {
+                    if let Some(id) = v.as_str() {
+                        sid = Some(id.to_string());
+                    }
+                }
+            }
+        }
+
+        // 若仍无场景，随机选一个
+        if sid.is_none() {
+            let store = SceneStore::new(&service.data_dir);
+            if let Ok(scenes) = store.load_all() {
+                if !scenes.is_empty() {
+                    let idx = chrono::Utc::now().timestamp_subsec_nanos() as usize % scenes.len();
+                    sid = Some(scenes[idx].id.clone());
+                }
+            }
+        }
+
+        // 若恢复了场景，更新 GameStatus
+        if sid != gs.current_scene_id {
+            gs.current_scene_id = sid.clone();
+            if let Some(ref scene_id) = sid {
+                let store = SceneStore::new(&service.data_dir);
+                if let Ok(Some(scene)) = store.find_by_id(scene_id) {
+                    let bg = super::scene::normalize_background(&scene.background);
+                    if !bg.is_empty() {
+                        gs.background = bg;
+                    }
+                }
+            }
+        }
+
+        (
+            lines,
+            sid,
+            gs.current_role_id,
+            gs.onstage_role_ids.clone(),
+            gs.background.clone(),
+            gs.background_effect.clone(),
+            gs.background_music.clone(),
+        )
+    };
+
+    // Resolve scene info from SceneStore
+    let current_scene = if let Some(ref sid) = current_scene_id {
+        let store = SceneStore::new(&service.data_dir);
+        store
+            .find_by_id(sid)
+            .ok()
+            .flatten()
+            .map(|s| super::scene::SceneInfo {
+                id: s.id,
+                scene_name: s.name,
+                scene_description: s.description,
+                background: {
+                    let bg = super::scene::normalize_background(&s.background);
+                    if bg.is_empty() { None } else { Some(bg) }
+                },
+                created_at: s.created_at,
+                updated_at: s.updated_at,
+            })
+    } else {
+        None
+    };
 
     let result = WebInitData {
         character_settings,
-        current_interact_role_id: gs.current_role_id,
-        onstage_roles_ids: gs.onstage_role_ids.clone(),
-        background: gs.background.clone(),
-        background_effect: gs.background_effect.clone(),
-        background_music: gs.background_music.clone(),
+        current_interact_role_id: current_role_id,
+        onstage_roles_ids,
+        background,
+        background_effect,
+        background_music,
+        current_scene_id,
+        current_scene,
         lines,
     };
     Ok(result)

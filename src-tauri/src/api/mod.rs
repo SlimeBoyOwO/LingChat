@@ -8,6 +8,7 @@ pub mod game;
 pub mod music;
 pub mod pet;
 pub mod save;
+pub mod scene;
 pub mod schedule;
 pub mod script;
 

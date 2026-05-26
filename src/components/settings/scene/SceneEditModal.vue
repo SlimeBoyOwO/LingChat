@@ -62,7 +62,7 @@
                   <option
                     v-for="bg in backgrounds"
                     :key="bg.url"
-                    :value="getFilename(bg.url)"
+                    :value="bg.url"
                     class="bg-slate-800 text-white"
                   >
                     {{ bg.title }}
@@ -74,6 +74,16 @@
                 >
                   上传
                 </Button>
+              </div>
+              <!-- 背景预览 -->
+              <div
+                v-if="selectedBackgroundPreview"
+                class="mt-3 rounded-xl overflow-hidden border border-white/10"
+              >
+                <img
+                  :src="selectedBackgroundPreview"
+                  class="w-full h-32 object-cover"
+                />
               </div>
             </section>
 
@@ -92,15 +102,6 @@
               ></textarea>
             </section>
 
-            <!-- 自动分析开关 -->
-            <section class="flex items-center gap-3 pt-2">
-              <Toggle
-                :checked="formData.autoAnalyze"
-                @change="formData.autoAnalyze = $event"
-                :disabled="!formData.sceneImage"
-              />
-              <span class="text-sm font-medium text-white/70">自动分析图片生成描述</span>
-            </section>
           </div>
 
           <!-- Footer -->
@@ -126,8 +127,9 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, watch } from 'vue'
-import { Button, Toggle } from '../../base'
+import { computed, reactive, watch } from 'vue'
+import { convertFileSrc } from '@tauri-apps/api/core'
+import { Button } from '../../base'
 import type { BackgroundImageInfo } from '../../../types'
 
 const props = defineProps<{
@@ -148,7 +150,6 @@ const emit = defineEmits<{
       sceneName: string
       sceneImage: string | null
       sceneDescription: string
-      autoAnalyze: boolean
     },
   ]
   upload: []
@@ -158,7 +159,6 @@ const formData = reactive({
   sceneName: '',
   sceneImage: '',
   sceneDescription: '',
-  autoAnalyze: false,
 })
 
 watch(
@@ -168,35 +168,24 @@ watch(
       formData.sceneName = props.initialData.sceneName
       formData.sceneImage = props.initialData.sceneImage || ''
       formData.sceneDescription = props.initialData.sceneDescription
-      formData.autoAnalyze = false
     } else if (val) {
       formData.sceneName = ''
       formData.sceneImage = ''
       formData.sceneDescription = ''
-      formData.autoAnalyze = false
     }
   },
 )
 
-const getFilename = (url: string): string => {
-  // 兼容旧 API URL 格式和新的文件路径 / asset protocol URL
-  const apiMatch = url.match(/background_file\/(.+)$/)
-  if (apiMatch && apiMatch[1]) return decodeURIComponent(apiMatch[1])
-  try {
-    const decoded = decodeURIComponent(url)
-    const parts = decoded.replace(/\\/g, '/').split('/')
-    return parts[parts.length - 1] || ''
-  } catch {
-    return ''
-  }
-}
+const selectedBackgroundPreview = computed(() => {
+  if (!formData.sceneImage) return null
+  return convertFileSrc(formData.sceneImage)
+})
 
 const handleSubmit = () => {
   emit('submit', {
     sceneName: formData.sceneName.trim(),
     sceneImage: formData.sceneImage || null,
     sceneDescription: formData.sceneDescription.trim(),
-    autoAnalyze: formData.autoAnalyze,
   })
 }
 </script>
