@@ -8,6 +8,7 @@ use crate::ai_service::game_system::script_engine::events::{register_event, Scri
 use crate::ai_service::game_system::script_engine::responses::{
     event_names::SCRIPT_PRESENT_PIC, PresentPicPayload,
 };
+use crate::ai_service::game_system::script_engine::utils::media::{resolve_script_media, MediaType};
 use crate::ai_service::message_system::events::emit;
 
 pub struct PresentPicEvent {
@@ -34,10 +35,26 @@ impl PresentPicEvent {
 #[async_trait]
 impl ScriptEvent for PresentPicEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
-        ctx.game_status.lock().await.present_pic = self.image_path.clone();
+        let script_path = ctx
+            .game_status
+            .lock()
+            .await
+            .script_status
+            .as_ref()
+            .map(|ss| ss.script_path.clone());
+
+        let resolved = resolve_script_media(
+            ctx.data_dir,
+            script_path.as_deref(),
+            &self.image_path,
+            MediaType::Pic,
+        )
+        .unwrap_or_default();
+
+        ctx.game_status.lock().await.present_pic = resolved.clone();
 
         let payload = PresentPicPayload {
-            image_path: self.image_path.clone(),
+            image_path: resolved,
             scale: self.scale,
         };
         let _ = emit(ctx.app, SCRIPT_PRESENT_PIC, &payload);

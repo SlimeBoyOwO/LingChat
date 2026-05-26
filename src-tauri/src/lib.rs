@@ -212,7 +212,7 @@ pub fn run() {
             api::music::get_music_list,
             api::music::get_music_file,
             api::music::upload_music,
-            api::media::get_script_media_file,
+
             api::asset::get_asset_base64,
             api::asset::get_voice_audio,
             api::game::init_game,

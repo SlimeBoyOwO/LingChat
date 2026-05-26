@@ -4,12 +4,14 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::ai_service::game_system::script_engine::events::{register_event, ScriptContext, ScriptEvent};
+use crate::ai_service::game_system::script_engine::events::{
+    register_event, ScriptContext, ScriptEvent,
+};
 use crate::ai_service::game_system::script_engine::responses::{
     event_names::SCRIPT_NARRATION, NarrationPayload,
 };
 use crate::ai_service::message_system::events::emit;
-use crate::ai_service::types::{LineBase, LineAttributeExt};
+use crate::ai_service::types::{LineAttributeExt, LineBase};
 use crate::db::entities::line::LineAttribute;
 
 pub struct NarrationEvent {
@@ -36,14 +38,22 @@ impl NarrationEvent {
 #[async_trait]
 impl ScriptEvent for NarrationEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
-        // Emit narration to frontend
-        let payload = NarrationPayload {
-            text: self.text.clone(),
-            display_name: self.display_name.clone(),
-        };
-        let _ = emit(ctx.app, SCRIPT_NARRATION, &payload);
+        // Split text by newlines and emit each line separately
+        let lines: Vec<&str> = self
+            .text
+            .split('\n')
+            .filter(|line| !line.is_empty())
+            .collect();
 
-        // Add as ASSISTANT line
+        for line in lines {
+            let payload = NarrationPayload {
+                text: line.to_string(),
+                display_name: self.display_name.clone(),
+            };
+            let _ = emit(ctx.app, SCRIPT_NARRATION, &payload);
+        }
+
+        // Add as ASSISTANT line (keep the original text with newlines)
         let line = LineBase {
             content: self.text.clone(),
             attribute: LineAttributeExt(LineAttribute::Assistant),

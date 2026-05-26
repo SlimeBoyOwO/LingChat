@@ -1,4 +1,3 @@
-import { invoke } from '@tauri-apps/api/core'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import type { IEventProcessor } from '../event-processor'
 import type { ScriptSoundEvent } from '../../../types'
@@ -20,11 +19,7 @@ export default class SoundProcessor implements IEventProcessor {
 
     if (event.soundPath) {
       try {
-        const path = await invoke<string>('get_script_media_file', {
-          filePath: event.soundPath,
-          mediaType: 'sound',
-        })
-        url = convertFileSrc(path)
+        url = convertFileSrc(event.soundPath)
       } catch {
         url = 'None'
       }

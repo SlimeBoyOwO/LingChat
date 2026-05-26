@@ -5,11 +5,11 @@ use serde_json::Value as JsonValue;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_store::StoreExt;
 
-use crate::ai_service::prompt::PromptOptions;
 use crate::ai_service::types::CharacterSettings;
 use crate::config::{self, AppConfig};
 use crate::db::managers::role_repo::RoleRepo;
 use crate::init::static_copy;
+use crate::utils::prompt::PromptOptions;
 use crate::AppState;
 
 // ========== 响应类型 ==========
@@ -92,7 +92,11 @@ pub struct GameLineInit {
 pub async fn reactivate_tts(app: AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
     let service = state.ai_service.lock().await;
-    service.game_status.lock().await.reactivate_all_voice_makers();
+    service
+        .game_status
+        .lock()
+        .await
+        .reactivate_all_voice_makers();
     tracing::info!("TTS 服务已通过 reactivate_tts 命令重新启用");
     Ok(())
 }
@@ -134,7 +138,9 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
     // 3. 更新 AIService 状态
     {
         let mut service = state.ai_service.lock().await;
-        service.import_settings(settings.clone(), prompt_options).await;
+        service
+            .import_settings(settings.clone(), prompt_options)
+            .await;
         service
             .init_game_status()
             .await
@@ -166,7 +172,9 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
 }
 
 /// 从 AIService 快照构建 WebInitData（不持锁的函数）
-pub(crate) async fn build_web_init_data(service: &crate::ai_service::service::AIService) -> Result<WebInitData, String> {
+pub(crate) async fn build_web_init_data(
+    service: &crate::ai_service::service::AIService,
+) -> Result<WebInitData, String> {
     let settings = service
         .settings
         .as_ref()

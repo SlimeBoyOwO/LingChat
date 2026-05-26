@@ -1,4 +1,3 @@
-import { invoke } from '@tauri-apps/api/core'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import type { IEventProcessor } from '../event-processor'
 import type { ScriptBackgroundEvent } from '../../../types'
@@ -20,10 +19,7 @@ export default class BackgroundProcessor implements IEventProcessor {
 
     if (event.imagePath) {
       try {
-        const path = await invoke<string>('get_script_media_file', {
-          filePath: event.imagePath,
-        })
-        url = convertFileSrc(path)
+        url = convertFileSrc(event.imagePath)
       } catch {
         url = '../pictures/background/default.png'
       }

@@ -5,7 +5,6 @@ pub mod background;
 pub mod character;
 pub mod chat;
 pub mod game;
-pub mod media;
 pub mod music;
 pub mod pet;
 pub mod save;

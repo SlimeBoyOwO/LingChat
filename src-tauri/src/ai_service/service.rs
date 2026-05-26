@@ -10,10 +10,10 @@ use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::role_manager::GameRoleManager;
 use crate::ai_service::game_system::script_engine::ScriptManager;
 use crate::ai_service::llm::LlmClient;
-use crate::ai_service::prompt::{sys_prompt_builder, PromptOptions};
-use crate::ai_service::types::{CharacterSettings, GameLine, LineBase, LineAttributeExt};
+use crate::ai_service::types::{CharacterSettings, GameLine, LineAttributeExt, LineBase};
 use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
+use crate::utils::prompt::{sys_prompt_builder, PromptOptions};
 
 /// AI 服务：承载 `GameStatus` 与会话级配置。
 ///

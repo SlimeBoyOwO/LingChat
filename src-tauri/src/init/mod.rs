@@ -12,13 +12,13 @@ use tokio::sync::Mutex;
 use crate::ai_service::emotion::EmotionClassifier;
 use crate::ai_service::llm::{create_llm_client, LlmClient, LlmConfig};
 use crate::ai_service::message_system::processor::{MessageProcessor, ProcessorOptions};
-use crate::ai_service::prompt::PromptOptions;
 use crate::ai_service::service::{AIService, SharedAIService};
 use crate::ai_service::translator::Translator;
 use crate::ai_service::types::CharacterSettings;
 use crate::config::{self, AppConfig};
 use crate::db;
 use crate::db::managers::role_repo::RoleRepo;
+use crate::utils::prompt::PromptOptions;
 use crate::ChatComponents;
 
 pub async fn initialize(

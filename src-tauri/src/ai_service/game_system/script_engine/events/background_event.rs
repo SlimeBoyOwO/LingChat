@@ -8,6 +8,7 @@ use crate::ai_service::game_system::script_engine::events::{register_event, Scri
 use crate::ai_service::game_system::script_engine::responses::{
     event_names::SCRIPT_BACKGROUND, BackgroundPayload,
 };
+use crate::ai_service::game_system::script_engine::utils::media::{resolve_script_media, MediaType};
 use crate::ai_service::message_system::events::emit;
 
 pub struct BackgroundEvent {
@@ -34,10 +35,26 @@ impl BackgroundEvent {
 #[async_trait]
 impl ScriptEvent for BackgroundEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
-        ctx.game_status.lock().await.background = self.image_path.clone();
+        let script_path = ctx
+            .game_status
+            .lock()
+            .await
+            .script_status
+            .as_ref()
+            .map(|ss| ss.script_path.clone());
+
+        let resolved = resolve_script_media(
+            ctx.data_dir,
+            script_path.as_deref(),
+            &self.image_path,
+            MediaType::Background,
+        )
+        .unwrap_or_default();
+
+        ctx.game_status.lock().await.background = resolved.clone();
 
         let payload = BackgroundPayload {
-            image_path: self.image_path.clone(),
+            image_path: resolved,
             transition: self.transition,
         };
         let _ = emit(ctx.app, SCRIPT_BACKGROUND, &payload);

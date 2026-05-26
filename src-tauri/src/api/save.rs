@@ -2,12 +2,12 @@
 use tauri::{AppHandle, Manager};
 
 use crate::ai_service::game_system::game_status::GameStatusSnapshot;
-use crate::ai_service::prompt::PromptOptions;
 use crate::api::game::build_web_init_data;
 use crate::api::game::WebInitData;
 use crate::config::AppConfig;
 use crate::db::managers::role_repo::RoleRepo;
 use crate::db::managers::save_repo::SaveRepo;
+use crate::utils::prompt::PromptOptions;
 use crate::AppState;
 
 // ========== 响应类型 ==========

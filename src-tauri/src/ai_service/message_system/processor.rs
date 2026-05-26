@@ -117,7 +117,11 @@ impl MessageProcessor {
 
         let re = emotion_re();
         let mut i = 0usize;
-        for cap in re.captures_iter(text) {
+
+        // 前处理，修复 AI 回复可能出现的问题
+        let text = text.replace('＜', "<").replace('＞', ">");
+
+        for cap in re.captures_iter(&text) {
             i += 1;
             let emotion_tag = cap.get(1).map(|m| m.as_str()).unwrap_or("");
             let following_raw = cap.get(2).map(|m| m.as_str()).unwrap_or("");
@@ -128,6 +132,9 @@ impl MessageProcessor {
                 .and_then(|c| c.get(1))
                 .map(|m| m.as_str().trim().to_string())
                 .unwrap_or_default();
+
+            // 修复：如果japanese_text包含波浪号，修复它
+            let japanese_text = japanese_text.replace('~', "。");
             let motion_text = motion_re()
                 .captures(&following_text)
                 .and_then(|c| c.get(1))
@@ -278,10 +285,11 @@ impl MessageProcessor {
 
 /// `Function.fix_ai_generated_text`：规范化带情绪标签的文本。语义 1:1 对照。
 pub fn fix_ai_generated_text(text: &str) -> String {
+    let text = text.replace('＜', "<").replace('＞', ">");
     let re = emotion_re();
     let mut parts: Vec<String> = Vec::new();
     let mut has_any = false;
-    for cap in re.captures_iter(text) {
+    for cap in re.captures_iter(&text) {
         has_any = true;
         let emotion_tag = cap.get(1).map(|m| m.as_str()).unwrap_or("");
         let full_tag = format!("【{emotion_tag}】");
@@ -304,10 +312,14 @@ pub fn fix_ai_generated_text(text: &str) -> String {
             .to_string();
 
         let japanese_text = if !japanese_text.is_empty() {
-            motion_re().replace_all(&japanese_text, "").trim().to_string()
+            motion_re()
+                .replace_all(&japanese_text, "")
+                .trim()
+                .to_string()
         } else {
             japanese_text
         };
+        let japanese_text = japanese_text.replace('~', "。");
 
         let mut normalized = full_tag;
         if !cleaned_text.is_empty() {
