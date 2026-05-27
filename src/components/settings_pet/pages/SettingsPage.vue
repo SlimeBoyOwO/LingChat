@@ -73,8 +73,8 @@ import {
 } from '../../../stores/modules/settings'
 
 const PET_SCALE_DEFAULT = 1.0
-const PET_SCALE_MAX = 2.0
-const PET_SCALE_MIN = 0.5
+const PET_SCALE_MAX = 1.3
+const PET_SCALE_MIN = 0.7
 import { useGameStore } from '../../../stores/modules/game'
 
 // 引入 Lucide 图标

@@ -141,7 +141,4 @@ const sendMessage = () => {
 </script>
 
 <style scoped>
-.chat-input-container {
-  transform: scale(var(--pet-ui-scale, 1));
-}
 </style>
