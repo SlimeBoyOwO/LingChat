@@ -9,6 +9,11 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from ling_chat.configs.llm_config import llm_config
+from ling_chat.configs.llm_toml_config import (
+    find_key_in_toml,
+    get_all_llm_toml_configs,
+    parse_llm_toml,
+)
 from ling_chat.core.logger import logger
 
 router = APIRouter(prefix="/api/v1/llm-config", tags=["LLM Config"])
@@ -108,4 +113,34 @@ async def delete_config(name: str) -> Dict[str, str]:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         logger.error(f"删除LLM配置失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+# ============================================================
+# TOML 配置解析接口（与 env_config.py 的 parse_env_file 对齐）
+# ============================================================
+
+@router.get("/settings")
+async def get_llm_toml_settings() -> Dict[str, Any]:
+    """获取所有 LLM TOML 配置方案的结构化数据（与 /api/v1/config/settings 对齐）"""
+    try:
+        configs = get_all_llm_toml_configs()
+        return configs
+    except Exception as e:
+        logger.error(f"获取LLM TOML配置失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/key/{key}")
+async def get_llm_toml_key(key: str) -> Dict[str, Any]:
+    """在所有 TOML 配置中查找指定键（与 /api/v1/config/key/{key} 对齐）"""
+    try:
+        result = find_key_in_toml(key)
+        if result is None:
+            raise HTTPException(status_code=404, detail=f"Key '{key}' not found in any TOML config")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"查找LLM TOML键失败: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e

@@ -15,9 +15,6 @@ class DesktopAnalyzer:
         初始化桌面分析器
         """
         self.api_key = os.environ.get("VD_API_KEY", "")
-        if not self.api_key:
-            raise ValueError("VD_API_KEY 环境变量未设置。请设置您的API密钥。")
-
         self.base_url = os.environ.get(
             "VD_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
         )
@@ -27,11 +24,18 @@ class DesktopAnalyzer:
         self.last_input_tokens = None
         self.last_output_tokens = None
 
-        # 初始化 OpenAI 客户端
-        self._timeout = httpx.Timeout(15.0)
-        self.client = OpenAI(
-            api_key=self.api_key, base_url=self.base_url, timeout=self._timeout
-        )
+        self._client: OpenAI | None = None
+
+    def _get_client(self) -> OpenAI:
+        """惰性初始化 OpenAI 客户端"""
+        if self._client is None:
+            if not self.api_key:
+                raise ValueError("VD_API_KEY 环境变量未设置。请设置您的API密钥。")
+            self._client = OpenAI(
+                api_key=self.api_key, base_url=self.base_url,
+                timeout=httpx.Timeout(15.0),
+            )
+        return self._client
 
     def _capture_desktop_sync(self):
         """
@@ -87,7 +91,7 @@ class DesktopAnalyzer:
         try:
             # 使用 asyncio.to_thread 将同步调用转为异步
             completion = await asyncio.to_thread(
-                self.client.chat.completions.create,
+                self._get_client().chat.completions.create,
                 model=self.model,
                 messages=[
                     {
@@ -150,7 +154,7 @@ class DesktopAnalyzer:
         try:
             # 使用 asyncio.to_thread 将同步调用转为异步
             completion = await asyncio.to_thread(
-                self.client.chat.completions.create,
+                self._get_client().chat.completions.create,
                 model=self.model,
                 messages=[
                     {
