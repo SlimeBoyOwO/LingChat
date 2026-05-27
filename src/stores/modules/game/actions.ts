@@ -157,6 +157,8 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
   } else {
     state.dialogHistory = []
   }
+
+  state.initialized = true
 }
 
 /** 将 Rust GameLineInit 转换为前端 GameMessage 列表 */

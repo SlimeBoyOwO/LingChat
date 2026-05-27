@@ -65,6 +65,8 @@ export interface GameState {
   dialogHistory: GameMessage[]
   currentScene: SceneInfo | null // 当前加载的场景
   command: string | null
+
+  initialized: boolean
 }
 
 export const state: GameState = {
@@ -83,4 +85,6 @@ export const state: GameState = {
   dialogHistory: [],
   currentScene: null,
   command: null,
+
+  initialized: false,
 }

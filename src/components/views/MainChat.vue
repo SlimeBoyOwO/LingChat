@@ -83,7 +83,9 @@ const runInitialization = async () => {
 
 // 初始化游戏信息
 onMounted(() => {
-  runInitialization()
+  if (!gameStore.initialized) {
+    runInitialization()
+  }
 })
 
 /* 以下代码为自动AUTO模式逻辑 比较复杂 */

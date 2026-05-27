@@ -225,7 +225,9 @@ const showDetailModal = () => (isDetailVisible.value = true)
 const closeDetailModal = () => (isDetailVisible.value = false)
 
 const selectCharacter = async () => {
-  const confirmed = await dialogStore.confirm('切换角色会导致当前角色记忆清空，有需要的话不要忘记存档哦')
+  const confirmed = await dialogStore.confirm(
+    '切换角色会导致当前角色记忆清空，有需要的话不要忘记存档哦',
+  )
   if (!confirmed) return
 
   try {
@@ -239,7 +241,6 @@ const selectCharacter = async () => {
 const selectClothes = async (clothes_name: string) => {
   try {
     // 调用后端API选择衣服
-    console.log(`选择衣服: ${clothes_name}`)
     const response = await selectClothesApi(clothes_name)
 
     if (response.success) {
