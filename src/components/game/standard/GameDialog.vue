@@ -38,6 +38,27 @@
           @click="toggleRecording"
         ></Button>
 
+        <div class="relative inline-flex group">
+          <div
+            v-if="hasScreenshot"
+            class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50"
+          >
+            <img
+              :src="'data:image/jpeg;base64,' + screenshotBase64"
+              class="max-w-96 max-h-64 rounded-lg shadow-lg border-2 object-contain"
+              style="border-color: var(--accent-color); background: #000"
+            />
+          </div>
+          <Button
+            type="nav"
+            icon="camera"
+            :title="hasScreenshot ? '点击重新截图，右键取消截图' : '截图提问'"
+            :style="hasScreenshot ? { color: 'var(--accent-color)' } : {}"
+            @click="startScreenshot"
+            @contextmenu.prevent="clearScreenshot"
+          ></Button>
+        </div>
+
         <Button type="nav" icon="close" title="关闭对话" @click="removeDialog"></Button>
       </div>
 
@@ -79,6 +100,7 @@ import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { useTypeWriter } from '../../../composables/ui/useTypeWriter'
 import { eventQueue } from '../../../core/events/event-queue'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 
 const inputMessage = ref('')
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
@@ -91,6 +113,11 @@ const isHidden = ref(false)
 const isRecording = ref(false)
 const interimText = ref('') // 新增：用于实时存储临时识别出来的文本
 let speechRecognition: any = null
+
+// 截图相关状态
+const hasScreenshot = ref(false)
+const screenshotBase64 = ref<string | null>(null)
+const isCapturing = ref(false)
 
 // 响应式容器宽度
 const containerWidth = ref(60)
@@ -278,7 +305,9 @@ const initSpeechRecognition = () => {
 
 const toggleRecording = async () => {
   if (!speechRecognition) {
-    await dialogStore.alert('您的浏览器不支持语音输入功能，建议使用最新版的 Chrome 或 Edge 浏览器。')
+    await dialogStore.alert(
+      '您的浏览器不支持语音输入功能，建议使用最新版的 Chrome 或 Edge 浏览器。',
+    )
     return
   }
   if (isRecording.value) {
@@ -293,7 +322,9 @@ const toggleRecording = async () => {
   }
 }
 
-onMounted(() => {
+let unlistenScreenshot: (() => void) | null = null
+
+onMounted(async () => {
   document.addEventListener('contextmenu', handleDialogShow)
   // 初始化语音识别对象
   speechRecognition = initSpeechRecognition()
@@ -301,12 +332,39 @@ onMounted(() => {
   updateContainerWidth()
   // 监听窗口大小变化
   window.addEventListener('resize', updateContainerWidth)
+
+  // 监听截图完成事件
+  unlistenScreenshot = await listen<{ base64: string }>('screenshot:captured', (event) => {
+    screenshotBase64.value = event.payload.base64
+    hasScreenshot.value = true
+    isCapturing.value = false
+  })
 })
 
 onUnmounted(() => {
   document.removeEventListener('contextmenu', handleDialogShow)
   window.removeEventListener('resize', updateContainerWidth)
+  if (unlistenScreenshot) unlistenScreenshot()
 })
+
+async function startScreenshot() {
+  if (isCapturing.value) return
+  isCapturing.value = true
+  try {
+    await invoke('start_screenshot')
+  } catch (error) {
+    console.error('启动截图失败:', error)
+    isCapturing.value = false
+    await dialogStore.alert('截图功能初始化失败，请重试')
+  }
+}
+
+function clearScreenshot() {
+  if (hasScreenshot.value) {
+    hasScreenshot.value = false
+    screenshotBase64.value = null
+  }
+}
 
 function sendOrContinue() {
   if (gameStore.currentStatus === 'input') {
@@ -337,12 +395,18 @@ function send() {
       gameStore.runningScript.freeDialogueInfo.currentRound++
     }
   } else {
-    invoke('send_chat_message', { text }).catch((error) => {
+    invoke('send_chat_message', {
+      text,
+      screenshotBase64: screenshotBase64.value,
+    }).catch((error) => {
       console.error('发送消息失败:', error)
       gameStore.currentStatus = 'input'
     })
   }
 
+  // 发送后清除截图状态
+  hasScreenshot.value = false
+  screenshotBase64.value = null
   inputMessage.value = ''
 }
 

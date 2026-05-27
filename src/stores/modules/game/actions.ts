@@ -4,6 +4,7 @@ import { getGameInfo } from '../../../api/services/game-info'
 import type { GameLineInit, WebInitData } from '../../../api/services/game-info'
 import { getRoleInfo } from '../../../api/services/character'
 import { useUIStore } from '../ui/ui'
+import { useSettingsStore } from '../settings'
 import type { SceneInfo } from '@/api/services/scene'
 export const actions = {
 
@@ -127,6 +128,7 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
   state.currentInteractRoleId = gameInfo.current_interact_role_id ?? charId
 
   const uiStore = useUIStore()
+  const settingsStore = useSettingsStore()
   state.userName = characterInfo.user_name
   state.userSubtitle = characterInfo.user_subtitle
 
@@ -137,6 +139,9 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
   if (gameInfo.background_effect !== '') uiStore.setBackgroundEffect(gameInfo.background_effect)
   if (gameInfo.background_music !== '')
     uiStore.currentBackgroundMusic = gameInfo.background_music
+
+  // 同步场景感知开关
+  settingsStore.setSceneAwarenessEnabled(gameInfo.scene_awareness_enabled)
 
   // 恢复场景状态
   if (gameInfo.current_scene) {

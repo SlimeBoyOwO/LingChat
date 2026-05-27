@@ -17,6 +17,7 @@ use tracing_subscriber::fmt::time::FormatTime;
 
 use ai_service::llm::LlmClient;
 use ai_service::message_system::processor::MessageProcessor;
+use ai_service::screen_analyzer::{ScreenAnalyzer, ScreenAnalyzerConfig};
 use ai_service::service::SharedAIService;
 use ai_service::translator::Translator;
 
@@ -34,6 +35,13 @@ pub struct ChatComponents {
     pub translator: Arc<Translator>,
 }
 
+/// 截图流程中的临时状态（全屏捕获 + 覆盖窗口标签）。
+#[derive(Default)]
+pub struct ScreenshotCaptureState {
+    pub full_capture_base64: Option<String>,
+    pub overlay_label: Option<String>,
+}
+
 pub struct AppState {
     pub db: DatabaseConnection,
     pub ai_service: SharedAIService,
@@ -43,6 +51,8 @@ pub struct AppState {
     pub proactive_system:
         Option<Arc<tokio::sync::Mutex<ai_service::proactive_system::ProactiveSystem>>>,
     pub achievement_manager: Arc<tokio::sync::Mutex<achievements::manager::AchievementManager>>,
+    pub screen_analyzer: Arc<tokio::sync::Mutex<ScreenAnalyzer>>,
+    pub screenshot_capture: Arc<tokio::sync::Mutex<ScreenshotCaptureState>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -104,6 +114,20 @@ pub fn run() {
                 achievements::manager::AchievementManager::new(&api::data_dir()),
             ));
 
+            let screen_analyzer = {
+                let pconfig = config::proactive::ProactiveConfig::load(&app.handle());
+                let sa_config = ScreenAnalyzerConfig {
+                    vd_api_key: pconfig.vd_api_key,
+                    vd_base_url: pconfig.vd_base_url,
+                    vd_model: pconfig.vd_model,
+                };
+                std::sync::Arc::new(tokio::sync::Mutex::new(ScreenAnalyzer::new(sa_config)))
+            };
+
+            let screenshot_capture = std::sync::Arc::new(tokio::sync::Mutex::new(
+                ScreenshotCaptureState::default(),
+            ));
+
             app.manage(AppState {
                 db,
                 ai_service,
@@ -112,6 +136,8 @@ pub fn run() {
                 generation_lock,
                 proactive_system: Some(proactive),
                 achievement_manager,
+                screen_analyzer,
+                screenshot_capture,
             });
 
             // Spawn Windows mouse polling click-through loop
@@ -214,6 +240,7 @@ pub fn run() {
             api::scene::update_scene,
             api::scene::delete_scene,
             api::scene::select_scene,
+            api::scene::set_scene_awareness,
             api::music::get_music_list,
             api::music::get_music_file,
             api::music::upload_music,
@@ -224,6 +251,10 @@ pub fn run() {
             api::game::select_character,
             api::game::reactivate_tts,
             api::chat::send_chat_message,
+            api::screenshot::start_screenshot,
+            api::screenshot::get_overlay_data,
+            api::screenshot::confirm_screenshot,
+            api::screenshot::cancel_screenshot,
             api::save::list_saves,
             api::save::create_save,
             api::save::load_save,

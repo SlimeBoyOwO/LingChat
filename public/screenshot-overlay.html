@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100vw; height: 100vh; overflow: hidden;
+      background: transparent; cursor: crosshair;
+      user-select: none; -webkit-user-select: none;
+    }
+    #stage {
+      position: fixed;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+    }
+    #canvas { display: block; }
+    #overlay {
+      position: fixed; top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.35);
+      pointer-events: none; z-index: 10;
+    }
+    #selection {
+      position: absolute;
+      border: 2px solid #04bcff;
+      background: rgba(4,188,255,0.12);
+      pointer-events: none; z-index: 20;
+      display: none;
+    }
+    #toolbar {
+      position: fixed; bottom: 32px; right: 32px;
+      display: none; z-index: 30;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    .btn {
+      padding: 8px 24px; margin-left: 8px; border-radius: 6px;
+      border: none; cursor: pointer; font-size: 14px;
+      transition: opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.85; }
+    #confirm-btn { background: #04bcff; color: #fff; }
+    #cancel-btn { background: rgba(255,255,255,0.25); color: #fff; }
+    #hint {
+      position: fixed; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      color: #fff; font-size: 18px; pointer-events: none; z-index: 15;
+      text-shadow: 0 2px 6px rgba(0,0,0,0.6);
+      font-family: system-ui, -apple-system, sans-serif;
+      text-align: center; line-height: 1.6;
+    }
+    #dimensions {
+      position: fixed; top: 12px; left: 12px;
+      color: #fff; font-size: 13px; z-index: 30;
+      font-family: system-ui, monospace;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.7);
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <canvas id="canvas"></canvas>
+    <div id="selection"></div>
+  </div>
+  <div id="overlay"></div>
+  <div id="dimensions"></div>
+  <div id="hint">拖拽鼠标框选区域<br>Enter 确认 · Esc 取消</div>
+  <div id="toolbar">
+    <button id="cancel-btn" class="btn">取消 (Esc)</button>
+    <button id="confirm-btn" class="btn">确认 (Enter)</button>
+  </div>
+
+  <script type="module">
+    async function tauriInvoke(cmd, args) {
+      if (typeof window.__TAURI_INTERNALS__ !== 'undefined') {
+        return window.__TAURI_INTERNALS__.invoke(cmd, args);
+      }
+      const { invoke } = await import('https://tauri.localhost/@tauri-apps/api/core.js');
+      return invoke(cmd, args);
+    }
+
+    const stage = document.getElementById('stage');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const selection = document.getElementById('selection');
+    const toolbar = document.getElementById('toolbar');
+    const hint = document.getElementById('hint');
+    const dimensions = document.getElementById('dimensions');
+
+    let startX = 0, startY = 0;
+    let isDragging = false;
+    // selRect in CSS-display coordinates (relative to stage/canvas display area)
+    let selRect = null;
+    // Scale: canvas internal (physical) pixels ÷ display (CSS) pixels
+    let sx = 1, sy = 1;
+
+    async function init() {
+      try {
+        const base64 = await tauriInvoke('get_overlay_data');
+        const img = new Image();
+        img.onload = () => {
+          // Canvas internal resolution = physical screen pixels
+          const cw = img.naturalWidth;
+          const ch = img.naturalHeight;
+
+          // Fit canvas into viewport while maintaining aspect ratio
+          const vw = window.innerWidth;
+          const vh = window.innerHeight;
+          const fit = Math.min(vw / cw, vh / ch);
+          const dw = Math.round(cw * fit);
+          const dh = Math.round(ch * fit);
+
+          // Size and center the stage
+          stage.style.left = Math.round((vw - dw) / 2) + 'px';
+          stage.style.top = Math.round((vh - dh) / 2) + 'px';
+          stage.style.width = dw + 'px';
+          stage.style.height = dh + 'px';
+
+          canvas.width = cw;
+          canvas.height = ch;
+          canvas.style.width = dw + 'px';
+          canvas.style.height = dh + 'px';
+          ctx.drawImage(img, 0, 0);
+
+          // Scale factors: canvas internal coords → display coords
+          sx = cw / dw;
+          sy = ch / dh;
+        };
+        img.src = 'data:image/jpeg;base64,' + base64;
+      } catch (err) {
+        console.error('Failed to load screenshot:', err);
+        hint.textContent = '加载截图失败，请按 Esc 关闭';
+      }
+    }
+
+    canvas.addEventListener('mousedown', (e) => {
+      startX = e.offsetX;
+      startY = e.offsetY;
+      isDragging = true;
+      selection.style.display = 'block';
+      hint.style.display = 'none';
+      toolbar.style.display = 'none';
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const x = Math.min(startX, e.offsetX);
+      const y = Math.min(startY, e.offsetY);
+      const w = Math.abs(e.offsetX - startX);
+      const h = Math.abs(e.offsetY - startY);
+
+      // Selection div is positioned absolutely within stage (same CSS coord space as canvas)
+      selection.style.left = x + 'px';
+      selection.style.top = y + 'px';
+      selection.style.width = w + 'px';
+      selection.style.height = h + 'px';
+
+      // Show dimensions in physical pixels
+      dimensions.textContent = Math.round(w * sx) + ' × ' + Math.round(h * sy);
+      dimensions.style.display = 'block';
+
+      selRect = { x, y, w, h };
+    });
+
+    canvas.addEventListener('mouseup', () => {
+      if (!isDragging) return;
+      isDragging = false;
+      if (selRect && selRect.w > 5 && selRect.h > 5) {
+        toolbar.style.display = 'block';
+      } else {
+        selection.style.display = 'none';
+        dimensions.style.display = 'none';
+        hint.style.display = 'block';
+        selRect = null;
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') cancel();
+      if (e.key === 'Enter' && selRect && selRect.w > 5 && selRect.h > 5) confirm();
+    });
+
+    document.getElementById('confirm-btn').addEventListener('click', confirm);
+    document.getElementById('cancel-btn').addEventListener('click', cancel);
+
+    async function confirm() {
+      if (!selRect || selRect.w < 5 || selRect.h < 5) return;
+
+      // Convert from display (CSS) coords to canvas internal (physical) coords
+      const cropX = Math.round(selRect.x * sx);
+      const cropY = Math.round(selRect.y * sy);
+      const cropW = Math.round(selRect.w * sx);
+      const cropH = Math.round(selRect.h * sy);
+
+      const cropCanvas = document.createElement('canvas');
+      cropCanvas.width = cropW;
+      cropCanvas.height = cropH;
+      const cropCtx = cropCanvas.getContext('2d');
+      cropCtx.drawImage(
+        canvas,
+        cropX, cropY, cropW, cropH,
+        0, 0, cropW, cropH,
+      );
+
+      const dataUrl = cropCanvas.toDataURL('image/jpeg', 0.85);
+      const base64 = dataUrl.replace('data:image/jpeg;base64,', '');
+
+      try {
+        await tauriInvoke('confirm_screenshot', { base64Cropped: base64 });
+      } catch (err) {
+        console.error('Failed to confirm screenshot:', err);
+      }
+    }
+
+    async function cancel() {
+      try {
+        await tauriInvoke('cancel_screenshot');
+      } catch (err) {
+        console.error('Failed to cancel screenshot:', err);
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

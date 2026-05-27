@@ -44,6 +44,7 @@ export interface WebInitData {
   current_scene_id: string | null
   current_scene: SceneInfo | null
   lines: GameLineInit[]
+  scene_awareness_enabled: boolean
 }
 
 /**

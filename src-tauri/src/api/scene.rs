@@ -5,7 +5,7 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_store::StoreExt;
 use uuid::Uuid;
 
-use crate::ai_service::game_system::scene_store::{Scene, SceneStore};
+use crate::ai_service::game_system::scene_store::{LightingParams, Scene, SceneStore};
 use crate::api::data_dir;
 use crate::AppState;
 
@@ -18,6 +18,7 @@ pub struct SceneInfo {
     pub scene_name: String,
     pub scene_description: String,
     pub background: Option<String>,
+    pub lighting: Option<LightingParams>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -29,6 +30,8 @@ pub struct CreateSceneRequest {
     pub scene_name: String,
     pub scene_description: String,
     pub background: String,
+    #[serde(default)]
+    pub lighting: Option<LightingParams>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -37,6 +40,8 @@ pub struct UpdateSceneRequest {
     pub scene_name: String,
     pub scene_description: String,
     pub background: String,
+    #[serde(default)]
+    pub lighting: Option<LightingParams>,
 }
 
 // ========== Helpers ==========
@@ -63,6 +68,7 @@ fn model_to_info(s: &Scene) -> SceneInfo {
         scene_name: s.name.clone(),
         scene_description: s.description.clone(),
         background: if bg.is_empty() { None } else { Some(bg) },
+        lighting: s.lighting.clone(),
         created_at: s.created_at.clone(),
         updated_at: s.updated_at.clone(),
     }
@@ -120,6 +126,7 @@ pub async fn list_scenes(_app: AppHandle) -> Result<Vec<SceneInfo>, String> {
                     name,
                     description: String::new(),
                     background: full_path,
+                    lighting: None,
                     created_at: now.clone(),
                     updated_at: now,
                 });
@@ -146,6 +153,7 @@ pub async fn create_scene(_app: AppHandle, req: CreateSceneRequest) -> Result<Sc
         name: req.scene_name,
         description: req.scene_description,
         background: normalize_background(&req.background),
+        lighting: req.lighting,
         created_at: now.clone(),
         updated_at: now,
     };
@@ -168,6 +176,7 @@ pub async fn update_scene(_app: AppHandle, req: UpdateSceneRequest) -> Result<Sc
     scenes[idx].name = req.scene_name;
     scenes[idx].description = req.scene_description;
     scenes[idx].background = normalize_background(&req.background);
+    scenes[idx].lighting = req.lighting;
     scenes[idx].updated_at = now_iso();
 
     let info = model_to_info(&scenes[idx]);
@@ -213,6 +222,25 @@ pub async fn select_scene(app: AppHandle, scene_id: Option<String>) -> Result<()
             None => serde_json::Value::Null,
         };
         store.set(crate::config::keys::LAST_SCENE_ID.to_string(), val);
+        let _ = store.save();
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_scene_awareness(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let service = state.ai_service.lock().await;
+    let mut gs = service.game_status.lock().await;
+    gs.scene_awareness_enabled = enabled;
+
+    // 持久化到 store
+    if let Ok(store) = app.store(crate::config::STORE_FILE) {
+        store.set(
+            crate::config::keys::SCENE_AWARENESS_ENABLED.to_string(),
+            serde_json::Value::Bool(enabled),
+        );
         let _ = store.save();
     }
 

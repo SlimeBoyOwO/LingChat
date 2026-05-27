@@ -115,7 +115,7 @@ const sendMessage = () => {
       gameStore.runningScript.freeDialogueInfo.currentRound++
     }
   } else {
-    invoke('send_chat_message', { text }).catch((error) => {
+    invoke('send_chat_message', { text, screenshotBase64: null }).catch((error) => {
       console.error('发送消息失败:', error)
       gameStore.currentStatus = 'input'
     })

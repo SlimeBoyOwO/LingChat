@@ -1,11 +1,18 @@
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::ai_service::message_system::generator::{GeneratorDeps, MessageGenerator};
+use crate::ai_service::types::{LineAttributeExt, LineBase};
 use crate::config::AppConfig;
+use crate::db::entities::line::LineAttribute;
+use crate::utils::prompt::PromptRole;
 use crate::AppState;
 
 #[tauri::command]
-pub async fn send_chat_message(app: AppHandle, text: String) -> Result<(), String> {
+pub async fn send_chat_message(
+    app: AppHandle,
+    text: String,
+    screenshot_base64: Option<String>,
+) -> Result<(), String> {
     let text = text.trim().to_string();
     if text.is_empty() {
         return Err("消息内容不能为空".to_string());
@@ -33,6 +40,40 @@ pub async fn send_chat_message(app: AppHandle, text: String) -> Result<(), Strin
         let svc = state.ai_service.lock().await;
         svc.game_status.clone()
     };
+
+    let user_name = game_status.lock().await.player.user_name.clone();
+
+    // 截图分析：在创建 GeneratorDeps 之前，确保旁白台词已写入 line_list
+    if let Some(ref b64) = screenshot_base64 {
+        if let Ok(image_bytes) = base64::Engine::decode(&base64::prelude::BASE64_STANDARD, b64) {
+            let prompt = format!(
+                "你是一个图像信息转述者，你将饰演旁白这一角色输出台词，用第三人称叙述把你看到的画面描述给其他AI让他理解用户的图片内容。用户（名字是\"{}\"）的信息是：\"{}\"\n\n以上是用户发的消息，请切合用户实际获取信息的需要，获取画面中的重点内容，用200字描述主体部分即可。如果你看到一个聊天窗口，有角色的立绘和对话框，不要描述这部分，只描述桌面上的其他内容。因为那部分是玩家与AI的聊天窗口。但如果用户信息中明确提到了AI的立绘，背景等（比如用户消息说“看看你的周围，这是哪里呀？”）的时候，你可以描述AI的立绘或背景来告诉主AI的环境感知能力。",
+                user_name, text
+            );
+
+            let analysis = {
+                let mut sa = state.screen_analyzer.lock().await;
+                sa.analyze_image(&image_bytes, &prompt).await
+            };
+
+            if let Some(narration) = analysis {
+                let mut gs = game_status.lock().await;
+                gs.add_line(
+                    &state.db,
+                    LineBase {
+                        content: PromptRole::Narrator.build_prompt(&narration),
+                        attribute: LineAttributeExt(LineAttribute::User),
+                        display_name: Some("旁白".to_string()),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .map_err(|e| format!("添加旁白台词失败: {}", e))?;
+                tracing::info!("[Chat] Screenshot analysis narration added to game_status.");
+            }
+        }
+    }
+
     let deps = GeneratorDeps {
         app: app.clone(),
         db: state.db.clone(),
@@ -58,11 +99,10 @@ pub async fn send_chat_message(app: AppHandle, text: String) -> Result<(), Strin
     let trigger_text = text.clone();
     tokio::spawn(async move {
         let mut mgr = achievement_manager.lock().await;
-        let unlocks =
-            crate::achievements::triggers::AchievementTriggerHandler::handle_user_message(
-                &trigger_text,
-                &mut mgr,
-            );
+        let unlocks = crate::achievements::triggers::AchievementTriggerHandler::handle_user_message(
+            &trigger_text,
+            &mut mgr,
+        );
         for achievement in unlocks {
             if let Err(e) = app_handle.emit("achievement:unlocked", &achievement) {
                 tracing::error!("发送成就事件失败: {}", e);
@@ -136,8 +176,11 @@ async fn handle_debug_command(app: &AppHandle, text: &str) -> Result<(), String>
                 }
             };
 
-            tracing::info!("=== 角色记忆 [{}] (role_id={}) ===",
-                role.display_name.as_deref().unwrap_or("未知"), current_id);
+            tracing::info!(
+                "=== 角色记忆 [{}] (role_id={}) ===",
+                role.display_name.as_deref().unwrap_or("未知"),
+                current_id
+            );
 
             for msg in &role.memory {
                 tracing::info!("[{}] {}", msg.role, msg.content);

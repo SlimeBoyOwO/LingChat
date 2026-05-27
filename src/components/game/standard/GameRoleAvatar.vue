@@ -66,17 +66,34 @@ const layoutPosition = computed(() => {
   return ((myIndex + 1) / (totalCount + 1)) * 100
 })
 
+const lightingFilter = computed(() => {
+  const c = gameStore.currentScene?.lighting?.character
+  if (!c) return undefined
+  const parts: string[] = []
+  if (c.brightness !== 1.0) parts.push(`brightness(${c.brightness})`)
+  if (c.contrast !== 1.0) parts.push(`contrast(${c.contrast})`)
+  if (c.saturation !== 1.0) parts.push(`saturate(${c.saturation})`)
+  if (c.glow_radius > 0) parts.push(`drop-shadow(0 0 ${c.glow_radius}px ${c.glow_color})`)
+  if (c.sepia > 0) parts.push(`sepia(${c.sepia})`)
+  return parts.length > 0 ? parts.join(' ') : undefined
+})
+
 const containerStyle = computed(() => {
   const autoLeft = layoutPosition.value
   const manualOffset = role.value.offsetX || 0
 
-  return {
+  const style: Record<string, string> = {
     left: `calc(${autoLeft}% + ${manualOffset}px)`,
     top: `${role.value.offsetY}px`,
     transform: `translateX(-50%) scale(${role.value.scale})`,
     opacity: `${role.value.show ? 1 : 0}`,
-    zIndex: 1,
+    zIndex: '1',
   }
+  const filter = lightingFilter.value
+  if (filter) {
+    style.filter = filter
+  }
+  return style
 })
 
 const containerClasses = computed(() => ({

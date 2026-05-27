@@ -59,7 +59,7 @@ impl ProactiveSystem {
         let activity_monitor = UserActivityMonitor::new();
         let visual_monitor = VisualMonitor::new();
         let schedule_manager = ScheduleManager::new();
-        let strategy_dispatcher = StrategyDispatcher::new();
+        let strategy_dispatcher = StrategyDispatcher::new(&app);
 
         let system = Self {
             app,
@@ -147,6 +147,7 @@ impl ProactiveSystem {
     pub async fn reload(&mut self) {
         tracing::info!("[ProactiveSystem] Reloading configuration and schedule settings...");
         self.config = ProactiveConfig::load(&self.app);
+        self.strategy_dispatcher.update_config(&self.app);
         self.interest_manager.update_from_config(self.config.max_proactive_times);
         self.load_schedule_settings().await;
     }

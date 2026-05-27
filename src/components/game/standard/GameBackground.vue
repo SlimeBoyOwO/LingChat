@@ -1,48 +1,57 @@
 <template>
-  <!-- 背景图，已使用 Tailwind 类替代原本的 css -->
-  <ImageAcrossFade
-    ref="imageFadeRef"
-    class="game-background"
-    :src="backgroundSrc"
-    position="center center"
-    object-fit="cover"
-    :duration="uiStore.currentBackgroundTransition"
-  >
-    <StarField
-      ref="starfieldRef"
-      v-if="uiStore.currentBackgroundEffect === 'StarField'"
-      :enabled="starfieldEnabled"
-      :star-count="starCount"
-      :scroll-speed="scrollSpeed"
-      :colors="starColors"
-      :style="`z-index:${BACKGROUND_ZINDEX}`"
-      @ready="onStarfieldReady"
-    />
-    <Rain
-      v-if="uiStore.currentBackgroundEffect === 'Rain'"
-      :enabled="rainEnabled"
-      :intensity="rainIntensity"
-      :style="`z-index:${BACKGROUND_ZINDEX}`"
-    />
-    <Sakura
-      v-if="uiStore.currentBackgroundEffect === 'Sakura'"
-      :enabled="true"
-      :intensity="1.5"
-      :style="`z-index:${BACKGROUND_ZINDEX}`"
-    />
-    <Snow
-      v-if="uiStore.currentBackgroundEffect === 'Snow'"
-      :intensity="snowIntensity"
-      :enabled="true"
-      :style="`z-index:${BACKGROUND_ZINDEX}`"
-    />
-    <Fireworks
-      v-if="uiStore.currentBackgroundEffect === 'Fireworks'"
-      :enabled="true"
-      :intensity="1.5"
-      :style="`z-index:${BACKGROUND_ZINDEX}`"
-    />
-  </ImageAcrossFade>
+  <!-- 背景图 + 背景光照滤镜 -->
+  <div class="absolute inset-0" :style="bgLightingFilter">
+    <ImageAcrossFade
+      ref="imageFadeRef"
+      class="game-background"
+      :src="backgroundSrc"
+      position="center center"
+      object-fit="cover"
+      :duration="uiStore.currentBackgroundTransition"
+    >
+      <StarField
+        ref="starfieldRef"
+        v-if="uiStore.currentBackgroundEffect === 'StarField'"
+        :enabled="starfieldEnabled"
+        :star-count="starCount"
+        :scroll-speed="scrollSpeed"
+        :colors="starColors"
+        :style="`z-index:${BACKGROUND_ZINDEX}`"
+        @ready="onStarfieldReady"
+      />
+      <Rain
+        v-if="uiStore.currentBackgroundEffect === 'Rain'"
+        :enabled="rainEnabled"
+        :intensity="rainIntensity"
+        :style="`z-index:${BACKGROUND_ZINDEX}`"
+      />
+      <Sakura
+        v-if="uiStore.currentBackgroundEffect === 'Sakura'"
+        :enabled="true"
+        :intensity="1.5"
+        :style="`z-index:${BACKGROUND_ZINDEX}`"
+      />
+      <Snow
+        v-if="uiStore.currentBackgroundEffect === 'Snow'"
+        :intensity="snowIntensity"
+        :enabled="true"
+        :style="`z-index:${BACKGROUND_ZINDEX}`"
+      />
+      <Fireworks
+        v-if="uiStore.currentBackgroundEffect === 'Fireworks'"
+        :enabled="true"
+        :intensity="1.5"
+        :style="`z-index:${BACKGROUND_ZINDEX}`"
+      />
+    </ImageAcrossFade>
+  </div>
+
+  <!-- 背景光照叠加层（在背景上方、角色下方） -->
+  <div
+    v-if="bgOverlayStyle"
+    class="absolute inset-0 pointer-events-none"
+    :style="bgOverlayStyle as any"
+  ></div>
 
   <!-- 短效音效保留默认实现即可，不需要淡入淡出 -->
   <audio ref="soundEffectPlayer"></audio>
@@ -63,6 +72,7 @@
 import { ref, watch, computed } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useUIStore } from '../../../stores/modules/ui/ui'
+import { useGameStore } from '../../../stores/modules/game'
 import ImageAcrossFade from '@/components/ui/ImageAcrossFade.vue'
 import AudioAcrossFade from '@/components/ui/AudioAcrossFade.vue'
 import StarField from './particles/StarField.vue'
@@ -72,6 +82,7 @@ import Snow from './particles/Snow.vue'
 import Fireworks from './particles/Fireworks.vue'
 
 const uiStore = useUIStore()
+const gameStore = useGameStore()
 
 const backgroundSrc = computed(() => {
   const bg = uiStore.currentBackground
@@ -89,6 +100,32 @@ const backgroundSrc = computed(() => {
 
 const backgroundMusicSrc = computed(() => {
   return convertFileSrc(uiStore.currentBackgroundMusic)
+})
+
+// 背景光照滤镜
+const bgLightingFilter = computed(() => {
+  const c = gameStore.currentScene?.lighting?.background
+  if (!c) return undefined
+  const parts: string[] = []
+  if (c.brightness !== 1.0) parts.push(`brightness(${c.brightness})`)
+  if (c.contrast !== 1.0) parts.push(`contrast(${c.contrast})`)
+  if (c.saturation !== 1.0) parts.push(`saturate(${c.saturation})`)
+  if (c.glow_radius > 0) parts.push(`drop-shadow(0 0 ${c.glow_radius}px ${c.glow_color})`)
+  if (c.sepia > 0) parts.push(`sepia(${c.sepia})`)
+  return parts.length > 0 ? { filter: parts.join(' ') } : undefined
+})
+
+// 背景光照叠加层（仅当 target 为 background 或 both 时启用）
+const bgOverlayStyle = computed(() => {
+  const l = gameStore.currentScene?.lighting
+  if (!l?.overlay_enabled) return undefined
+  if (l.overlay_target !== 'background' && l.overlay_target !== 'both') return undefined
+  const blend = l.blend_mode !== 'normal' ? l.blend_mode : 'overlay'
+  return {
+    background: `radial-gradient(circle at ${l.light_x}% ${l.light_y}%, ${l.overlay_color1} 0%, ${l.overlay_color2} ${l.overlay_radius}%)`,
+    mixBlendMode: blend,
+    opacity: l.overlay_opacity,
+  }
 })
 
 // 背景效果 z-index 应该比其他组件高，否则会被覆盖

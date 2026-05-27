@@ -3,6 +3,7 @@
  * 集中管理所有用户偏好设置，自动持久化到 localStorage
  */
 import { setCurrentBackground } from '@/api/services/background'
+import { setSceneAwareness } from '@/api/services/scene'
 import { defineStore } from 'pinia'
 
 // 默认设置值
@@ -30,6 +31,7 @@ export const DEFAULT_SETTINGS = {
     clickAnimationEnabled: true, // 点击动画开关
     meteorFps: 30, // 流星动画帧率
     starsFps: 30, // 星星动画帧率
+    sceneAwarenessEnabled: true, // 场景感知开关
   },
   // 角色设置
   character: {
@@ -62,6 +64,7 @@ export interface DisplaySettings {
   clickAnimationEnabled: boolean
   meteorFps: number
   starsFps: number
+  sceneAwarenessEnabled: boolean
 }
 
 export interface CharacterSettings {
@@ -115,6 +118,7 @@ export const useSettingsStore = defineStore('settings', {
     clickAnimationEnabled: (state) => state.display.clickAnimationEnabled,
     meteorFps: (state) => state.display.meteorFps,
     starsFps: (state) => state.display.starsFps,
+    sceneAwarenessEnabled: (state) => state.display.sceneAwarenessEnabled,
     // 各音量
     characterVolume: (state) => state.audio.characterVolume,
     bubbleVolume: (state) => state.audio.bubbleVolume,
@@ -262,6 +266,12 @@ export const useSettingsStore = defineStore('settings', {
     // 设置星星动画帧率
     setStarsFps(fps: number) {
       this.display.starsFps = fps
+    },
+
+    // 设置场景感知开关（同步到后端）
+    setSceneAwarenessEnabled(enabled: boolean) {
+      this.display.sceneAwarenessEnabled = enabled
+      setSceneAwareness(enabled)
     },
 
     // 设置角色文件夹

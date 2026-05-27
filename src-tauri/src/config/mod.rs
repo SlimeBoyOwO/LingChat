@@ -60,6 +60,8 @@ pub mod keys {
     pub const LAST_CHARACTER_ID: &str = "game.last_character_id";
     /// 上次选择的场景 ID（启动时自动恢复）
     pub const LAST_SCENE_ID: &str = "game.last_scene_id";
+    /// 场景感知开关（切换场景时是否自动产生旁白台词）
+    pub const SCENE_AWARENESS_ENABLED: &str = "game.scene_awareness_enabled";
 }
 
 // ========== 类型化配置 ==========

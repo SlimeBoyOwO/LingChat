@@ -1,18 +1,41 @@
+use crate::ai_service::game_system::game_status::GameStatus;
+use crate::ai_service::proactive_system::config::ProactiveConfig;
+use crate::ai_service::proactive_system::types::{
+    PerceptionResult, UserScheduleSettings, UserState,
+};
+use crate::ai_service::screen_analyzer::{ScreenAnalyzer, ScreenAnalyzerConfig};
 use chrono::Local;
 use rand::Rng;
-use reqwest::Client;
-use serde_json::Value;
-use crate::ai_service::proactive_system::types::{
-    UserScheduleSettings, PerceptionResult, UserState
-};
-use crate::ai_service::proactive_system::config::ProactiveConfig;
-use crate::ai_service::game_system::game_status::GameStatus;
+use tokio::sync::Mutex;
 
-pub struct StrategyDispatcher;
+pub struct StrategyDispatcher {
+    screen_analyzer: Mutex<ScreenAnalyzer>,
+}
 
 impl StrategyDispatcher {
-    pub fn new() -> Self {
-        Self
+    pub fn new(app_handle: &tauri::AppHandle) -> Self {
+        let config = ProactiveConfig::load(app_handle);
+        let sa_config = ScreenAnalyzerConfig {
+            vd_api_key: config.vd_api_key.clone(),
+            vd_base_url: config.vd_base_url.clone(),
+            vd_model: config.vd_model.clone(),
+        };
+        Self {
+            screen_analyzer: Mutex::new(ScreenAnalyzer::new(sa_config)),
+        }
+    }
+
+    /// 更新配置（同时同步 ScreenAnalyzer 的配置，同步执行无需 async）。
+    pub fn update_config(&self, app_handle: &tauri::AppHandle) {
+        let config = ProactiveConfig::load(app_handle);
+        // try_lock: update_config 不涉及 async，用同步锁即可
+        if let Ok(mut sa) = self.screen_analyzer.try_lock() {
+            sa.update_config(ScreenAnalyzerConfig {
+                vd_api_key: config.vd_api_key,
+                vd_base_url: config.vd_base_url,
+                vd_model: config.vd_model,
+            });
+        }
     }
 
     /// 生成主动对话的 Prompt。
@@ -44,8 +67,11 @@ impl StrategyDispatcher {
                                 .and_then(|rid| game_status.role_manager.get_loaded(rid))
                                 .and_then(|role| role.display_name.clone())
                                 .unwrap_or_else(|| "小灵".to_string());
-                            
-                            tracing::info!("[StrategyDispatcher] Triggered important day reminder: {}", day.title);
+
+                            tracing::info!(
+                                "[StrategyDispatcher] Triggered important day reminder: {}",
+                                day.title
+                            );
                             return Some(format!(
                                 "{{今天是特殊的一天：{}，{}。可以和{}聊聊哦}}",
                                 day.title, desc, char_name
@@ -66,13 +92,25 @@ impl StrategyDispatcher {
         let mut screen_w = config.screen_weight;
 
         if todo_w <= 0.0 {
-            todo_w = if perception.state == UserState::WORK { 60.0 } else { 10.0 };
+            todo_w = if perception.state == UserState::WORK {
+                60.0
+            } else {
+                10.0
+            };
         }
         if topic_w <= 0.0 {
-            topic_w = if perception.state == UserState::IDLE { 80.0 } else { 60.0 };
+            topic_w = if perception.state == UserState::IDLE {
+                80.0
+            } else {
+                60.0
+            };
         }
         if screen_w <= 0.0 {
-            screen_w = if perception.state == UserState::GAME { 60.0 } else { 30.0 };
+            screen_w = if perception.state == UserState::GAME {
+                60.0
+            } else {
+                30.0
+            };
         }
 
         if config.enable_todo_perception {
@@ -125,7 +163,7 @@ impl StrategyDispatcher {
                 None
             }
             "SCREEN" => {
-                if let Some(prompt) = self.get_screen_prompt(game_status, config).await {
+                if let Some(prompt) = self.get_screen_prompt(game_status).await {
                     return Some(prompt);
                 }
                 // SCREEN 抓取失败或接口失败时降级到 TOPIC
@@ -172,80 +210,22 @@ impl StrategyDispatcher {
     async fn get_screen_prompt(
         &self,
         game_status: &GameStatus,
-        config: &ProactiveConfig,
     ) -> Option<String> {
-        if config.vd_api_key.is_empty() {
-            tracing::warn!("[StrategyDispatcher] VD_API_KEY is empty, skipping screenshot analysis.");
-            return None;
-        }
-
-        // 截取桌面画面并压缩为 JPEG 字节
-        let jpeg_bytes = match capture_screen_as_jpeg() {
-            Some(bytes) => bytes,
-            None => {
-                tracing::error!("[StrategyDispatcher] Failed to capture desktop screenshot.");
-                return None;
-            }
-        };
-
-        let base64_image = base64::Engine::encode(&base64::prelude::BASE64_STANDARD, &jpeg_bytes);
-        let image_url = format!("data:image/jpeg;base64,{}", base64_image);
-
         let analyze_prompt = "你是一个图像信息转述者，你将需要把你看到的画面描述给另一个AI让他理解用户的图片内容。用户开放了那个AI的自主窥屏功能，请获取桌面画面中的重点内容，用200字描述主体部分即可。如果你看到一个聊天窗口，有角色的立绘和对话框，不要描述这部分，只描述桌面上的其他内容。因为那部分是玩家与AI的聊天窗口。";
 
-        tracing::info!("[StrategyDispatcher] Sending screenshot to Vision LLM ({}) for analysis...", config.vd_model);
+        let analysis = self.screen_analyzer.lock().await.analyze_screen(analyze_prompt).await?;
 
-        let client = Client::new();
-        let payload = serde_json::json!({
-            "model": &config.vd_model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": analyze_prompt},
-                        {"type": "image_url", "image_url": {"url": image_url}}
-                    ]
-                }
-            ],
-            "max_tokens": 512
-        });
+        let user_name = &game_status.player.user_name;
+        let ai_name = game_status
+            .current_role_id
+            .and_then(|rid| game_status.role_manager.get_loaded(rid))
+            .and_then(|role| role.display_name.clone())
+            .unwrap_or_else(|| "你".to_string());
 
-        let res = client.post(&format!("{}/chat/completions", config.vd_base_url))
-            .bearer_auth(&config.vd_api_key)
-            .json(&payload)
-            .send()
-            .await;
-
-        match res {
-            Ok(response) => {
-                if response.status().is_success() {
-                    if let Ok(json_res) = response.json::<Value>().await {
-                        if let Some(content) = json_res["choices"][0]["message"]["content"].as_str() {
-                            let user_name = &game_status.player.user_name;
-                            let ai_name = game_status
-                                .current_role_id
-                                .and_then(|rid| game_status.role_manager.get_loaded(rid))
-                                .and_then(|role| role.display_name.clone())
-                                .unwrap_or_else(|| "你".to_string());
-                            
-                            tracing::info!("[StrategyDispatcher] Screenshot analysis success: {}", content);
-                            return Some(format!(
-                                "{{ {} 偷看了一眼 {} 的电脑桌面信息: {} }}",
-                                ai_name, user_name, content
-                            ));
-                        }
-                    }
-                } else {
-                    let err_text = response.text().await.unwrap_or_default();
-                    tracing::error!("[StrategyDispatcher] VLM API returned error status: {}", err_text);
-                }
-            }
-            Err(e) => {
-                tracing::error!("[StrategyDispatcher] Failed to send request to VLM: {:?}", e);
-            }
-        }
-
-        None
+        Some(format!(
+            "{{ {} 偷看了一眼 {} 的电脑桌面: {} }}",
+            ai_name, user_name, analysis
+        ))
     }
 
     fn get_topic_prompt(&self, game_status: &GameStatus) -> String {
@@ -254,90 +234,8 @@ impl StrategyDispatcher {
             .and_then(|rid| game_status.role_manager.get_loaded(rid))
             .and_then(|role| role.display_name.clone())
             .unwrap_or_else(|| "你".to_string());
-        
+
         format!("{{ {} 想继续说话了}}", ai_name)
     }
 }
 
-/// 捕获桌面并将其转换为 JPEG 格式的辅助函数。
-fn capture_screen_as_jpeg() -> Option<Vec<u8>> {
-    #[cfg(target_os = "windows")]
-    {
-        use windows::Win32::Graphics::Gdi::{
-            GetDC, ReleaseDC, CreateCompatibleDC, CreateCompatibleBitmap, SelectObject,
-            BitBlt, GetDIBits, DeleteDC, DeleteObject, SRCCOPY, BITMAPINFOHEADER, DIB_RGB_COLORS,
-        };
-        use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
-
-        unsafe {
-            let hdc_screen = GetDC(None);
-            if hdc_screen.is_invalid() {
-                return None;
-            }
-            let w = GetSystemMetrics(SM_CXSCREEN);
-            let h = GetSystemMetrics(SM_CYSCREEN);
-            if w <= 0 || h <= 0 {
-                ReleaseDC(None, hdc_screen);
-                return None;
-            }
-            
-            let hdc_mem = CreateCompatibleDC(Some(hdc_screen));
-            let hbitmap = CreateCompatibleBitmap(hdc_screen, w, h);
-            
-            let old_obj = SelectObject(hdc_mem, hbitmap.into());
-            let _ = BitBlt(hdc_mem, 0, 0, w, h, Some(hdc_screen), 0, 0, SRCCOPY);
-            
-            // setup BITMAPINFO
-            let mut bmi = windows::Win32::Graphics::Gdi::BITMAPINFO::default();
-            bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
-            bmi.bmiHeader.biWidth = w;
-            bmi.bmiHeader.biHeight = -h; // Negative height for top-down bitmap
-            bmi.bmiHeader.biPlanes = 1;
-            bmi.bmiHeader.biBitCount = 24;
-            bmi.bmiHeader.biCompression = 0; // BI_RGB
-            
-            let mut buffer = vec![0u8; (w * h * 3) as usize];
-            
-            let lines = GetDIBits(
-                hdc_screen,
-                hbitmap,
-                0,
-                h as u32,
-                Some(buffer.as_mut_ptr() as *mut _),
-                &mut bmi,
-                DIB_RGB_COLORS,
-            );
-            
-            // cleanup GDI objects
-            SelectObject(hdc_mem, old_obj);
-            let _ = DeleteObject(hbitmap.into());
-            let _ = DeleteDC(hdc_mem);
-            ReleaseDC(None, hdc_screen);
-            
-            if lines <= 0 {
-                return None;
-            }
-            
-            // Swap B and R to get RGB from BGR
-            for chunk in buffer.chunks_exact_mut(3) {
-                chunk.swap(0, 2);
-            }
-            
-            // Compress image to 1024x768 for faster Vision API upload and fewer tokens
-            let img = image::ImageBuffer::<image::Rgb<u8>, _>::from_raw(w as u32, h as u32, buffer)?;
-            let dynamic_img = image::DynamicImage::ImageRgb8(img);
-            let resized = dynamic_img.resize(1024, 768, image::imageops::FilterType::Triangle);
-            
-            let mut jpeg_bytes = Vec::new();
-            let mut cursor = std::io::Cursor::new(&mut jpeg_bytes);
-            let _ = resized.write_to(&mut cursor, image::ImageFormat::Jpeg);
-            
-            Some(jpeg_bytes)
-        }
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        None
-    }
-}

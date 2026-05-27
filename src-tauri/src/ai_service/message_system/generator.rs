@@ -81,7 +81,8 @@ impl MessageGenerator {
         // === 1.5. 场景变化检测 ===
         {
             let mut gs = self.deps.game_status.lock().await;
-            if gs.current_scene_id.is_some()
+            if gs.scene_awareness_enabled
+                && gs.current_scene_id.is_some()
                 && gs.current_scene_id != gs.last_processed_scene_id
             {
                 let scene_id = gs.current_scene_id.clone().unwrap();

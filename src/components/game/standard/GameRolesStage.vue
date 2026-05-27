@@ -1,21 +1,26 @@
 <template>
   <div class="absolute w-full h-full overflow-hidden">
     <!-- 1. 遍历渲染所有在场角色 -->
-    <!-- z-index 可以根据 index 动态设置，保证后面渲染的在上面，或者根据 y轴 排序 -->
     <RoleAvatar
       v-for="(role, index) in gameStore.presentRolesList"
       :key="role.roleId"
       :role="role"
     />
 
-    <!-- 2. 全局主语音播放器 -->
-    <!-- 将语音逻辑放在父级，因为通常同一时间只有一段对话语音 -->
+    <!-- 2. 场景光照叠加层 -->
+    <div
+      v-if="lightOverlayStyle"
+      class="absolute inset-0 pointer-events-none z-10"
+      :style="lightOverlayStyle as any"
+    ></div>
+
+    <!-- 3. 全局主语音播放器 -->
     <audio ref="mainAudio" @ended="onAudioEnded"></audio>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { getVoiceAudio } from '@/api/services/game-info'
@@ -26,6 +31,14 @@ const uiStore = useUIStore()
 const emit = defineEmits(['audio-ended', 'audio-started'])
 
 const mainAudio = ref<HTMLAudioElement | null>(null)
+
+const lightOverlayStyle = computed(() => {
+  const l = gameStore.currentScene?.lighting
+  if (!l?.overlay_enabled) return undefined
+  if (l.overlay_target !== 'character' && l.overlay_target !== 'both') return undefined
+  const blend = l.blend_mode !== 'normal' ? l.blend_mode : 'overlay'
+  return `background: radial-gradient(circle at ${l.light_x}% ${l.light_y}%, ${l.overlay_color1} 0%, ${l.overlay_color2} ${l.overlay_radius}%); mix-blend-mode: ${blend}; opacity: ${l.overlay_opacity}`
+})
 
 // --- 音频逻辑 (全局) ---
 // 监听 UI Store 的音频播放指令

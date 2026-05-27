@@ -29,6 +29,8 @@ pub struct WebInitData {
     pub current_scene: Option<super::scene::SceneInfo>,
     /// 初始化台词列表（至少包含一条 system 人设台词）
     pub lines: Vec<GameLineInit>,
+    /// 场景感知开关（切换场景时是否自动产生旁白）
+    pub scene_awareness_enabled: bool,
 }
 
 /// 精简的角色设定，匹配前端 `CharacterSettings` 接口
@@ -186,7 +188,7 @@ pub(crate) async fn build_web_init_data(
 
     let character_settings = CharacterSettingsInit::from(settings);
 
-    let (lines, current_scene_id, current_role_id, onstage_roles_ids, background, background_effect, background_music) = {
+    let (lines, current_scene_id, current_role_id, onstage_roles_ids, background, background_effect, background_music, scene_awareness_enabled) = {
         let mut gs = service.game_status.lock().await;
         let lines: Vec<GameLineInit> = gs
             .line_list
@@ -242,6 +244,14 @@ pub(crate) async fn build_web_init_data(
             }
         }
 
+        // 从 store 恢复场景感知开关
+        if let Ok(store) = app.store(config::STORE_FILE) {
+            if let Some(v) = store.get(config::keys::SCENE_AWARENESS_ENABLED) {
+                gs.scene_awareness_enabled = v.as_bool().unwrap_or(true);
+            }
+        }
+        let scene_awareness = gs.scene_awareness_enabled;
+
         (
             lines,
             sid,
@@ -250,6 +260,7 @@ pub(crate) async fn build_web_init_data(
             gs.background.clone(),
             gs.background_effect.clone(),
             gs.background_music.clone(),
+            scene_awareness,
         )
     };
 
@@ -268,6 +279,7 @@ pub(crate) async fn build_web_init_data(
                     let bg = super::scene::normalize_background(&s.background);
                     if bg.is_empty() { None } else { Some(bg) }
                 },
+                lighting: s.lighting.clone(),
                 created_at: s.created_at,
                 updated_at: s.updated_at,
             })
@@ -285,6 +297,7 @@ pub(crate) async fn build_web_init_data(
         current_scene_id,
         current_scene,
         lines,
+        scene_awareness_enabled,
     };
     Ok(result)
 }

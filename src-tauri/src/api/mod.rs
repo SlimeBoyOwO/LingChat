@@ -10,6 +10,7 @@ pub mod pet;
 pub mod save;
 pub mod scene;
 pub mod schedule;
+pub mod screenshot;
 pub mod script;
 
 use std::path::PathBuf;

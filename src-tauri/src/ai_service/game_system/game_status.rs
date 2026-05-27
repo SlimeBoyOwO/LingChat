@@ -45,6 +45,9 @@ pub struct GameStatus {
 
     /// 当前激活的存档 ID（用于 MemoryBank 持久化/载入/自动压缩）
     pub active_save_id: Option<i32>,
+
+    /// 场景感知开关（关闭后切换场景不再触发旁白）
+    pub scene_awareness_enabled: bool,
 }
 
 impl GameStatus {
@@ -68,6 +71,7 @@ impl GameStatus {
             last_dialog_time: None,
             script_status: None,
             active_save_id: None,
+            scene_awareness_enabled: true,
         }
     }
 
@@ -144,6 +148,7 @@ impl GameStatus {
             global_variables: self.global_variables.clone(),
             completed_scripts: self.completed_scripts.iter().cloned().collect(),
             last_dialog_time: self.last_dialog_time.map(|dt| dt.to_rfc3339()),
+            scene_awareness_enabled: self.scene_awareness_enabled,
         }
     }
 
@@ -166,6 +171,7 @@ impl GameStatus {
         self.current_role_id = snapshot.current_role_id;
         self.present_role_ids = snapshot.present_role_ids.iter().copied().collect();
         self.onstage_role_ids = snapshot.present_role_ids.clone();
+        self.scene_awareness_enabled = snapshot.scene_awareness_enabled;
     }
 }
 
@@ -188,6 +194,12 @@ pub struct GameStatusSnapshot {
     #[serde(default)]
     pub completed_scripts: Vec<String>,
     pub last_dialog_time: Option<String>,
+    #[serde(default = "default_true")]
+    pub scene_awareness_enabled: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_background_music() -> String {
