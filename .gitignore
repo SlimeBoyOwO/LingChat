@@ -130,6 +130,9 @@ game_data/musics/
 CLAUDE.md
 AGENTS.md
 
+# pnpm workspace 配置（本地开发用）
+pnpm-workspace.yaml
+
 
 # ============================================================
 #     开发者个人目录 (Developer Personal Directories)

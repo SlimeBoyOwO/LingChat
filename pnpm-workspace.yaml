@@ -1,7 +1,0 @@
-packages:
-  - 'frontend_vue'
-  - 'backend'
-
-allowBuilds:
-  esbuild: true
-  vue-demi: true
