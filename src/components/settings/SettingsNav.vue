@@ -95,6 +95,15 @@
       >
         <p class="hidden xl:block">高级设置</p>
       </Button>
+      <Button
+        ref="logBtn"
+        type="nav"
+        icon="log"
+        @click="() => switchTab('log', 'logBtn')"
+        :class="{ active: uiStore.currentSettingsTab === 'log' }"
+      >
+        <p class="hidden xl:block">日志</p>
+      </Button>
     </nav>
     <Icon
       icon="close"
@@ -136,6 +145,7 @@ const saveBtn = ref<ButtonRef | null>(null)
 const advanceBtn = ref<ButtonRef | null>(null)
 const updateBtn = ref<ButtonRef | null>(null)
 const adventureBtn = ref<ButtonRef | null>(null)
+const logBtn = ref<ButtonRef | null>(null)
 
 // 设置可重设的值（使用 ref 存储，确保响应式或跨函数访问）
 const oldRefName = ref('textBtn')
@@ -154,6 +164,7 @@ const handleIndicatorMove = (currentRefName: string) => {
     advanceBtn,
     updateBtn,
     adventureBtn,
+    logBtn,
   }[currentRefName]
 
   if (buttonRef?.value?.$el) {
@@ -246,6 +257,9 @@ const initIndicator = () => {
       break
     case 'adventure':
       activeButton = adventureBtn.value
+      break
+    case 'log':
+      activeButton = logBtn.value
       break
   }
 

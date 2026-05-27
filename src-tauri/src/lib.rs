@@ -14,6 +14,9 @@ use chrono::Local;
 use sea_orm::DatabaseConnection;
 use tauri::Manager;
 use tracing_subscriber::fmt::time::FormatTime;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::Layer;
 
 use ai_service::llm::LlmClient;
 use ai_service::message_system::processor::MessageProcessor;
@@ -61,9 +64,16 @@ pub fn run() {
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,ling_chat_lib=info"))
         .add_directive("sqlx=warn".parse().unwrap());
 
-    tracing_subscriber::fmt()
-        .with_timer(LocalTimer)
-        .with_env_filter(filter)
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_timer(LocalTimer)
+                .with_filter(filter.clone()),
+        )
+        .with(
+            utils::log_bridge::LogBridgeLayer
+                .with_filter(filter),
+        )
         .init();
 
     #[allow(deprecated)]
@@ -79,6 +89,8 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            utils::log_bridge::set_app_handle(app.handle().clone());
+
             app.manage(api::pet::HitTestState::default());
 
             let rt = tokio::runtime::Runtime::new()?;
@@ -220,6 +232,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            utils::log_bridge::get_log_history,
             config::get_settings_tree,
             config::save_settings,
             config::get_setting_by_key,
