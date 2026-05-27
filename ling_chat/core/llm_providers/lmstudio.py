@@ -12,16 +12,14 @@ from .base import BaseLLMProvider
 # LM Studio API 文档：https://lmstudio.ai/docs/developer/rest/chat
 # POST /api/v1/chat
 class LMStudioProvider(BaseLLMProvider):
-    def __init__(self):
+    def __init__(self, model_type: str = "", api_key: str = "", base_url: str = "", proxy: str = ""):
         super().__init__()
-        # 从LLMConfig读取LMStudio配置
-        cfg = llm_config.get_provider_config("lmstudio")
         main_cfg = llm_config.get_main_config()
-
-        self.model_type = cfg.get("model", "")
-        base_url = cfg.get("base_url", "http://localhost:1234")
-        self.base_url = base_url.replace("/v1", "")
-        self.api_token = cfg.get("api_key", "")
+        self.model_type = model_type or main_cfg.get("model", "")
+        self.base_url = base_url.replace("/v1", "") if base_url else "http://localhost:1234"
+        self.api_token = api_key
+        self._temperature = float(main_cfg.get("temperature", 1.3))
+        self._top_p = float(main_cfg.get("top_p", 0.9))
 
     def initialize_client(self):
         """LM Studio 客户端在每次请求时创建，无需初始化"""
@@ -142,20 +140,15 @@ class LMStudioProvider(BaseLLMProvider):
         if system_prompt:
             body["system_prompt"] = system_prompt
 
-        temperature = os.environ.get("TEMPERATURE", "1.3")
-        if temperature:
-            temp_value = float(temperature)
-            # LM Studio只支持temperature范围[0,1]，强制将大于1的值限制为1
-            if temp_value > 1.0:
-                temp_value = 1.0
-                logger.debug(
-                    f"LM Studio temperature 超出范围({temperature})，已重置为1.0"
-                )
-            body["temperature"] = temp_value
-
-        top_p = main_cfg.get("top_p", 0.9)
-        if top_p:
-            body["top_p"] = float(top_p)
+        # LM Studio只支持temperature范围[0,1]，强制将大于1的值限制为1
+        temp_value = self._temperature
+        if temp_value > 1.0:
+            temp_value = 1.0
+            logger.debug(
+                f"LM Studio temperature 超出范围({self._temperature})，已重置为1.0"
+            )
+        body["temperature"] = temp_value
+        body["top_p"] = self._top_p
 
         # 以下参数未使用（暂不实现）
         max_tokens = None

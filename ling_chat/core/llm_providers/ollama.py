@@ -18,14 +18,11 @@ def _normalize_base_url(raw: str) -> str:
 
 
 class OllamaProvider(BaseLLMProvider):
-    def __init__(self):
+    def __init__(self, model_type: str = "", api_key: str = "", base_url: str = "", proxy: str = ""):
         super().__init__()
-        # 从LLMConfig读取Ollama配置
-        cfg = llm_config.get_provider_config("ollama")
+        self.model_type = model_type or "llama3"
+        self.base_url = _normalize_base_url(base_url or "http://localhost:11434")
         main_cfg = llm_config.get_main_config()
-
-        self.base_url = _normalize_base_url(cfg.get("base_url", "http://localhost:11434"))
-        self.model_type = cfg.get("model", main_cfg.get("model", "llama3"))
         self._timeout = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
         self.temperature = main_cfg.get("temperature", 1.3)
         self.top_p = main_cfg.get("top_p", 0.9)

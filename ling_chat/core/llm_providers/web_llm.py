@@ -9,7 +9,7 @@ from ling_chat.core.logger import logger
 
 
 class WebLLMProvider(BaseLLMProvider):
-    def __init__(self, model_type: str, api_key: str, base_url: str):
+    def __init__(self, model_type: str, api_key: str, base_url: str, proxy: str = ""):
         super().__init__()
         self.api_key = api_key
         self.base_url = base_url
@@ -37,9 +37,11 @@ class WebLLMProvider(BaseLLMProvider):
             return
 
         self._timeout = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
-        self.client = OpenAI(api_key=api_key, base_url=base_url, timeout=self._timeout)
+        http_client = httpx.Client(proxy=proxy, timeout=self._timeout) if proxy else None
+        async_http_client = httpx.AsyncClient(proxy=proxy, timeout=self._timeout) if proxy else None
+        self.client = OpenAI(api_key=api_key, base_url=base_url, http_client=http_client, timeout=self._timeout)
         self.async_client = AsyncOpenAI(
-            api_key=api_key, base_url=base_url, timeout=self._timeout
+            api_key=api_key, base_url=base_url, http_client=async_http_client, timeout=self._timeout
         )
         logger.info("通用网络大模型初始化完毕！")
 

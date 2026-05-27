@@ -10,7 +10,7 @@ from ling_chat.core.logger import logger
 class LLMProviderFactory:
     @staticmethod
     def create_provider(
-        provider_type: str, model_type: str = "", api_key: str = "", base_url: str = ""
+        provider_type: str, model_type: str = "", api_key: str = "", base_url: str = "", proxy: str = ""
     ) -> BaseLLMProvider:
         """
         创建指定类型的大模型提供者
@@ -24,16 +24,16 @@ class LLMProviderFactory:
         try:
             if provider_type == "webllm":
                 logger.info("创建通用联网大模型服务提供商")
-                return WebLLMProvider(model_type, api_key, base_url)
+                return WebLLMProvider(model_type, api_key, base_url, proxy)
             elif provider_type == "ollama":
                 logger.info("创建OLLAMA服务提供商")
-                return OllamaProvider()
+                return OllamaProvider(model_type, api_key, base_url, proxy)
             elif provider_type == "lmstudio":
                 logger.info("创建LM STUDIO服务提供商")
-                return LMStudioProvider()
+                return LMStudioProvider(model_type, api_key, base_url, proxy)
             elif provider_type == "gemini":
                 logger.info("创建Gemini服务提供商")
-                return GeminiProvider()
+                return GeminiProvider(model_type, api_key, base_url, proxy)
             elif provider_type == "qwen-translate":
                 logger.info("创建Qwen翻译服务提供商")
                 return QwenTranslateProvider()

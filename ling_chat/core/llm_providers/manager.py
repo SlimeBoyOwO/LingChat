@@ -15,20 +15,16 @@ class LLMManager:
         """
         if not llm_job or llm_job == "main":
             cfg = llm_config.get_main_config()
-            self.llm_provider_type = cfg.get("provider", "webllm")
-            self.model_type = cfg.get("model", "deepseek-chat")
-            self.api_key = cfg.get("api_key", "")
-            self.api_url = cfg.get("base_url", "https://api.deepseek.com/v1")
-            provider_type = self.llm_provider_type.lower()
-            logger.info(f"初始化LLM {provider_type} 提供商中...")
         elif llm_job == "translator":
             cfg = llm_config.get_translator_config()
-            self.llm_provider_type = cfg.get("provider", "webllm")
-            self.model_type = cfg.get("model", "deepseek-chat")
-            self.api_key = cfg.get("api_key", "")
-            self.api_url = cfg.get("base_url", "https://api.deepseek.com/v1")
-            provider_type = self.llm_provider_type.lower()
-            logger.info(f"翻译模型使用 {provider_type} 配置中...")
+
+        self.llm_provider_type = cfg.get("provider", "webllm")
+        self.model_type = cfg.get("model", "deepseek-chat")
+        self.api_key = cfg.get("api_key", "")
+        self.base_url = cfg.get("base_url", "https://api.deepseek.com/v1")
+        self.proxy = cfg.get("proxy", "")
+        provider_type = self.llm_provider_type.lower()
+        logger.info(f"初始化LLM {provider_type} 提供商中...")
 
         self.provider = self._initialize_provider()
 
@@ -41,12 +37,9 @@ class LLMManager:
         """
         # 确保provider_type存在
         provider_type = self.llm_provider_type.lower()
-        if provider_type == "webllm":
-            return LLMProviderFactory.create_provider(
-                provider_type, self.model_type, self.api_key, self.api_url
-            )
-        else:
-            return LLMProviderFactory.create_provider(provider_type)
+        return LLMProviderFactory.create_provider(
+            provider_type, self.model_type, self.api_key, self.base_url, self.proxy
+        )
 
     def process_message(self, messages: List[Dict]):
         return self.provider.generate_response(messages)

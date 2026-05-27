@@ -64,41 +64,58 @@ class LLMConfig:
         logger.info(f"已创建默认LLM配置: {default_path}")
 
     def _extract_env_llm_config(self) -> Dict[str, Any]:
-        """从环境变量提取LLM配置"""
+        """从环境变量提取LLM配置（兼容旧provider专用环境变量）"""
+        provider = os.environ.get("LLM_PROVIDER", "webllm")
+
+        # 通用字段
+        main = {
+            "provider": provider,
+            "temperature": float(os.environ.get("TEMPERATURE", "1.3")),
+            "top_p": float(os.environ.get("TOP_P", "0.9")),
+            "enable_thinking": os.environ.get("ENABLE_THINKING", "none").lower(),
+            "proxy": "",
+        }
+
+        # 按 provider 映射旧环境变量到统一字段
+        provider_mappings = {
+            "webllm": {
+                "api_key": ("CHAT_API_KEY", ""),
+                "base_url": ("CHAT_BASE_URL", "https://api.deepseek.com/v1"),
+                "model": ("MODEL_TYPE", "deepseek-chat"),
+                "proxy": ("CHAT_PROXY_URL", ""),
+            },
+            "gemini": {
+                "api_key": ("GEMINI_API_KEY", ""),
+                "base_url": ("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"),
+                "model": ("GEMINI_MODEL_TYPE", "gemini-2.5-flash"),
+                "proxy": ("GEMINI_PROXY_URL", ""),
+            },
+            "ollama": {
+                "base_url": ("OLLAMA_BASE_URL", "http://localhost:11434"),
+                "model": ("OLLAMA_MODEL", "llama3"),
+            },
+            "lmstudio": {
+                "api_key": ("LMSTUDIO_API_KEY", ""),
+                "base_url": ("LMSTUDIO_BASE_URL", "http://localhost:1234/"),
+                "model": ("LMSTUDIO_MODEL_TYPE", "unknown"),
+            },
+        }
+
+        mapping = provider_mappings.get(provider, provider_mappings["webllm"])
+        for key, (env_var, default) in mapping.items():
+            main[key] = os.environ.get(env_var, default)
+
         return {
             "config_name": "默认配置",
             "config_description": "从.env自动迁移的默认配置",
-            "main": {
-                "provider": os.environ.get("LLM_PROVIDER", "webllm"),
-                "model": os.environ.get("MODEL_TYPE", "deepseek-chat"),
-                "api_key": os.environ.get("CHAT_API_KEY", ""),
-                "base_url": os.environ.get("CHAT_BASE_URL", "https://api.deepseek.com/v1"),
-                "temperature": float(os.environ.get("TEMPERATURE", "1.3")),
-                "top_p": float(os.environ.get("TOP_P", "0.9")),
-                "enable_thinking": os.environ.get("ENABLE_THINKING", "none").lower(),
-            },
+            "main": main,
             "translator": {
                 "provider": os.environ.get("TRANSLATE_LLM_PROVIDER", "none"),
                 "model": os.environ.get("TRANSLATE_MODEL", ""),
                 "api_key": os.environ.get("TRANSLATE_API_KEY", ""),
                 "base_url": os.environ.get("TRANSLATE_BASE_URL", ""),
             },
-            "providers": {
-                "ollama": {
-                    "base_url": os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434"),
-                    "model": os.environ.get("OLLAMA_MODEL", "llama3"),
-                },
-                "lmstudio": {
-                    "base_url": os.environ.get("LMSTUDIO_BASE_URL", "http://localhost:1234/"),
-                    "model": os.environ.get("LMSTUDIO_MODEL_TYPE", "unknown"),
-                    "api_key": os.environ.get("LMSTUDIO_API_KEY", "lm-studio"),
-                },
-                "gemini": {
-                    "api_key": os.environ.get("GEMINI_API_KEY", ""),
-                    "model": os.environ.get("GEMINI_MODEL_TYPE", "gemini-2.5-flash"),
-                    "proxy_url": os.environ.get("GEMINI_PROXY_URL", ""),
-                },
-            },
+            "providers": {},
         }
 
     def _load_active(self) -> None:
@@ -189,6 +206,7 @@ class LLMConfig:
                 "model": "deepseek-chat",
                 "api_key": "",
                 "base_url": "https://api.deepseek.com/v1",
+                "proxy": "",
                 "temperature": 1.3,
                 "top_p": 0.9,
                 "enable_thinking": "none",
@@ -199,22 +217,7 @@ class LLMConfig:
                 "api_key": "",
                 "base_url": "",
             },
-            "providers": {
-                "ollama": {
-                    "base_url": "http://localhost:11434",
-                    "model": "llama3",
-                },
-                "lmstudio": {
-                    "base_url": "http://localhost:1234/",
-                    "model": "unknown",
-                    "api_key": "lm-studio",
-                },
-                "gemini": {
-                    "api_key": "",
-                    "model": "gemini-2.5-flash",
-                    "proxy_url": "",
-                },
-            },
+            "providers": {},
         }
 
     def register_reload_callback(self, callback: Callable[[], None]) -> None:

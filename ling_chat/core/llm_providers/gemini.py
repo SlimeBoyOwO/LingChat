@@ -10,16 +10,14 @@ from ling_chat.core.logger import logger
 
 # 文档：https://ai.google.dev/api
 class GeminiProvider(BaseLLMProvider):
-    def __init__(self):
+    def __init__(self, model_type: str = "", api_key: str = "", base_url: str = "", proxy: str = ""):
         super().__init__()
-        # 从LLMConfig读取Gemini配置
-        cfg = llm_config.get_provider_config("gemini")
         main_cfg = llm_config.get_main_config()
 
-        self.api_key = cfg.get("api_key", "")
-        self.base_url = cfg.get("base_url", "https://generativelanguage.googleapis.com/v1beta")
-        self.model_type = cfg.get("model", "gemini-2.5-flash")
-        self.proxy_url = cfg.get("proxy_url", "")
+        self.api_key = api_key or main_cfg.get("api_key", "")
+        self.model_type = model_type or main_cfg.get("model", "gemini-2.5-flash")
+        self.base_url = base_url or main_cfg.get("base_url", "https://generativelanguage.googleapis.com/v1beta")
+        self.proxy_url = proxy or main_cfg.get("proxy", "")
         self.temperature = main_cfg.get("temperature", 1.0)
         self.top_p = main_cfg.get("top_p", 1.0)
 
