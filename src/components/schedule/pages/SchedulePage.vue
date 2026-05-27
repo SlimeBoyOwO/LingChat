@@ -1,17 +1,11 @@
 <template>
   <!-- 视图：日程主题列表 -->
   <div v-if="uiStore.scheduleView === 'schedule_groups'">
-    <div
-      v-if="Object.keys(scheduleGroups).length === 0"
-      class="text-center py-20 text-slate-300"
-    >
+    <div v-if="Object.keys(scheduleGroups).length === 0" class="text-center py-20 text-slate-300">
       <Inbox class="w-10 h-10 mx-auto mb-4 opacity-20" />
       <p>还没有日程主题，点击右上角新建一个吧</p>
     </div>
-    <div
-      v-else
-      class="grid grid-cols-1 sm:grid-cols-1 lg:grid-cols-2 gap-6"
-    >
+    <div v-else class="grid grid-cols-1 sm:grid-cols-1 lg:grid-cols-2 gap-6">
       <div
         v-for="(group, id) in scheduleGroups"
         :key="id"
@@ -47,10 +41,7 @@
 
   <!-- 视图：日程详情列表 -->
   <div v-if="uiStore.scheduleView === 'schedule_detail'" class="max-w-3xl mx-auto space-y-4">
-    <div
-      v-if="activeGroup.items.length === 0"
-      class="text-center py-20 text-slate-300"
-    >
+    <div v-if="activeGroup.items.length === 0" class="text-center py-20 text-slate-300">
       <Inbox class="w-10 h-10 mx-auto mb-4 opacity-20" />
       <p>还没有日程，点击右上角新建一个吧</p>
     </div>
@@ -141,6 +132,7 @@ interface ScheduleGroup {
 
 const scheduleGroups = ref<Record<string, ScheduleGroup>>({})
 const loaded = ref(false)
+const preventFirstSave = ref(true)
 
 const loadData = async () => {
   try {
@@ -159,6 +151,10 @@ watch(
   scheduleGroups,
   async (newVal) => {
     if (!loaded.value) return
+    if (preventFirstSave.value) {
+      preventFirstSave.value = false
+      return
+    }
     try {
       await saveSchedules({ scheduleGroups: newVal })
     } catch (e) {

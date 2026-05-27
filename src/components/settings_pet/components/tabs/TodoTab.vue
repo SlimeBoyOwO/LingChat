@@ -24,11 +24,7 @@
               class="text-xl font-black tracking-wide transition-colors"
               :class="isDarkMode ? 'text-slate-100' : 'text-slate-800'"
             >
-              {{
-                activePage === "todo_groups"
-                  ? "待办任务总览"
-                  : activeTodoGroup.title
-              }}
+              {{ activePage === 'todo_groups' ? '待办任务总览' : activeTodoGroup.title }}
             </h2>
           </div>
           <p
@@ -36,9 +32,9 @@
             :class="isDarkMode ? 'text-slate-400' : 'text-slate-500'"
           >
             {{
-              activePage === "todo_groups"
-                ? "管理您的任务分组与全局进度"
-                : "管理当前分组下的所有任务"
+              activePage === 'todo_groups'
+                ? '管理您的任务分组与全局进度'
+                : '管理当前分组下的所有任务'
             }}
           </p>
         </div>
@@ -58,7 +54,7 @@
           class="text-4xl font-bold italic select-none font-mono transition-colors uppercase"
           :class="isDarkMode ? 'text-slate-700' : 'text-sky-100'"
         >
-          {{ activePage === "todo_groups" ? "ALL" : "LIST" }}
+          {{ activePage === 'todo_groups' ? 'ALL' : 'LIST' }}
         </span>
       </header>
 
@@ -155,15 +151,11 @@
               :key="'global-' + todo.id"
               class="p-4 rounded-xl border shadow-sm relative overflow-hidden flex items-center justify-between transition-colors duration-300"
               :class="
-                isDarkMode
-                  ? 'bg-slate-800/80 border-slate-700'
-                  : 'bg-slate-50 border-slate-200'
+                isDarkMode ? 'bg-slate-800/80 border-slate-700' : 'bg-slate-50 border-slate-200'
               "
             >
               <!-- 优先级左侧强调线 -->
-              <div
-                class="absolute top-0 left-0 w-1 h-full bg-sky-400 opacity-80"
-              ></div>
+              <div class="absolute top-0 left-0 w-1 h-full bg-sky-400 opacity-80"></div>
 
               <div class="flex items-center gap-4 pl-2 flex-1 min-w-0">
                 <button
@@ -184,11 +176,7 @@
                   <div class="flex items-center gap-2 mb-1">
                     <span
                       class="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded"
-                      :class="
-                        isDarkMode
-                          ? 'bg-slate-700 text-sky-400'
-                          : 'bg-sky-100 text-sky-600'
-                      "
+                      :class="isDarkMode ? 'bg-slate-700 text-sky-400' : 'bg-sky-100 text-sky-600'"
                     >
                       {{ todo.groupTitle }}
                     </span>
@@ -229,13 +217,8 @@
                   : 'text-slate-500 hover:text-sky-600'
               "
             >
-              <component
-                :is="showCompleted ? ChevronDown : ChevronRight"
-                class="w-4 h-4"
-              />
-              <span
-                class="text-[10px] font-bold font-mono uppercase tracking-widest"
-              >
+              <component :is="showCompleted ? ChevronDown : ChevronRight" class="w-4 h-4" />
+              <span class="text-[10px] font-bold font-mono uppercase tracking-widest">
                 已完成历史 ({{ globalCompletedTodos.length }})
               </span>
             </button>
@@ -302,9 +285,7 @@
             :key="'detail-todo-' + todo.id"
             class="p-4 rounded-xl border shadow-sm relative overflow-hidden flex items-center justify-between transition-colors duration-300 group"
             :class="[
-              isDarkMode
-                ? 'bg-slate-800/80 border-slate-700'
-                : 'bg-slate-50 border-slate-200',
+              isDarkMode ? 'bg-slate-800/80 border-slate-700' : 'bg-slate-50 border-slate-200',
               todo.completed ? 'opacity-50' : '',
             ]"
           >
@@ -317,9 +298,7 @@
             <div class="flex items-center gap-4 pl-2 flex-1 min-w-0">
               <!-- 勾选框 -->
               <button
-                @click.stop="
-                  todo.completed ? undoComplete(todo) : completeTodo(todo)
-                "
+                @click.stop="todo.completed ? undoComplete(todo) : completeTodo(todo)"
                 class="w-5 h-5 rounded-md border-2 shrink-0 transition-all flex items-center justify-center"
                 :class="
                   todo.completed
@@ -421,9 +400,7 @@
           <div
             class="flex items-center gap-3 p-3 rounded-lg border"
             :class="
-              isDarkMode
-                ? 'bg-slate-800/50 border-slate-700'
-                : 'bg-slate-50 border-slate-200'
+              isDarkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-200'
             "
           >
             <span
@@ -458,7 +435,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, watch, onMounted } from "vue";
+import { ref, computed, reactive, watch, onMounted } from 'vue'
 import {
   Trash2,
   Star,
@@ -471,81 +448,83 @@ import {
   Check,
   ArrowLeft,
   Cross,
-} from "lucide-vue-next";
-import { getSchedules, saveSchedules } from "../../../../api/services/schedule";
-import BaseModal from "@/components/ui/BaseModal.vue";
+} from 'lucide-vue-next'
+import { getSchedules, saveSchedules } from '../../../../api/services/schedule'
+import BaseModal from '@/components/ui/BaseModal.vue'
 
 // 必须接收暗色模式状态
 defineProps<{
-  isDarkMode: boolean;
-}>();
+  isDarkMode: boolean
+}>()
 
-const showCompleted = ref(false);
-const selectedTodoGroupId = ref<string | null>(null);
+const showCompleted = ref(false)
+const selectedTodoGroupId = ref<string | null>(null)
+const initialized = ref(false)
 
-const activePage = ref<"todo_detail" | "todo_groups">("todo_groups");
+const activePage = ref<'todo_detail' | 'todo_groups'>('todo_groups')
 
 interface TodoItem {
-  id: number;
-  text: string;
-  deadline?: string;
-  priority: number;
-  completed: boolean;
+  id: number
+  text: string
+  deadline?: string
+  priority: number
+  completed: boolean
 }
 
 interface TodoGroup {
-  title: string;
-  description?: string;
-  todos: TodoItem[];
+  title: string
+  description?: string
+  todos: TodoItem[]
 }
 
 interface TodoItemWithGroup extends TodoItem {
-  groupTitle: string;
-  gid: string;
+  groupTitle: string
+  gid: string
 }
 
-const todoGroups = ref<Record<string, TodoGroup>>({});
+const todoGroups = ref<Record<string, TodoGroup>>({})
 
 const loadData = async () => {
   try {
-    const data = await getSchedules();
+    const data = await getSchedules()
     if (data && data.todoGroups) {
-      todoGroups.value = data.todoGroups;
+      todoGroups.value = data.todoGroups
     }
   } catch (e) {
-    console.error("Failed to load todos", e);
+    console.error('Failed to load todos', e)
+  } finally {
+    initialized.value = true
   }
-};
+}
 
 watch(
   todoGroups,
   async (newVal) => {
+    if (!initialized.value) return
     try {
-      await saveSchedules({ todoGroups: newVal });
+      await saveSchedules({ todoGroups: newVal })
     } catch (e) {
-      console.error("Failed to save todos", e);
+      console.error('Failed to save todos', e)
     }
   },
   { deep: true },
-);
+)
 
 onMounted(() => {
-  loadData();
-});
+  loadData()
+})
 
 const activeTodoGroup = computed(() => {
   if (!selectedTodoGroupId.value) {
-    return { title: "", todos: [] };
+    return { title: '', todos: [] }
   }
-  return (
-    todoGroups.value[selectedTodoGroupId.value] || { title: "", todos: [] }
-  );
-});
+  return todoGroups.value[selectedTodoGroupId.value] || { title: '', todos: [] }
+})
 
 const globalPendingTodos = computed(() => {
-  const list: TodoItemWithGroup[] = [];
+  const list: TodoItemWithGroup[] = []
   Object.keys(todoGroups.value).forEach((gid) => {
-    const group = todoGroups.value[gid];
+    const group = todoGroups.value[gid]
     if (group) {
       group.todos.forEach((t) => {
         if (!t.completed)
@@ -553,17 +532,17 @@ const globalPendingTodos = computed(() => {
             ...t,
             groupTitle: group.title,
             gid,
-          });
-      });
+          })
+      })
     }
-  });
-  return list.sort((a, b) => b.priority - a.priority);
-});
+  })
+  return list.sort((a, b) => b.priority - a.priority)
+})
 
 const globalCompletedTodos = computed(() => {
-  const list: TodoItemWithGroup[] = [];
+  const list: TodoItemWithGroup[] = []
   Object.keys(todoGroups.value).forEach((gid) => {
-    const group = todoGroups.value[gid];
+    const group = todoGroups.value[gid]
     if (group) {
       group.todos.forEach((t) => {
         if (t.completed)
@@ -571,99 +550,95 @@ const globalCompletedTodos = computed(() => {
             ...t,
             groupTitle: group.title,
             gid,
-          });
-      });
+          })
+      })
     }
-  });
-  return list;
-});
+  })
+  return list
+})
 
 const completeTodo = (todo: TodoItem | TodoItemWithGroup) => {
-  const todoWithGid = todo as TodoItemWithGroup;
-  const gid = todoWithGid.gid || selectedTodoGroupId.value;
+  const todoWithGid = todo as TodoItemWithGroup
+  const gid = todoWithGid.gid || selectedTodoGroupId.value
   if (gid && todoGroups.value[gid]) {
-    const targetTodo = todoGroups.value[gid].todos.find(
-      (t) => t.id === todo.id,
-    );
+    const targetTodo = todoGroups.value[gid].todos.find((t) => t.id === todo.id)
     if (targetTodo) {
-      targetTodo.completed = true;
+      targetTodo.completed = true
     }
   }
-};
+}
 
 const undoComplete = (todo: TodoItem | TodoItemWithGroup) => {
-  const todoWithGid = todo as TodoItemWithGroup;
-  const gid = todoWithGid.gid || selectedTodoGroupId.value;
+  const todoWithGid = todo as TodoItemWithGroup
+  const gid = todoWithGid.gid || selectedTodoGroupId.value
   if (gid && todoGroups.value[gid]) {
-    const targetTodo = todoGroups.value[gid].todos.find(
-      (t) => t.id === todo.id,
-    );
+    const targetTodo = todoGroups.value[gid].todos.find((t) => t.id === todo.id)
     if (targetTodo) {
-      targetTodo.completed = false;
+      targetTodo.completed = false
     }
   }
-};
+}
 
 const removeItem = (idx: number) => {
-  activeTodoGroup.value.todos.splice(idx, 1);
-};
+  activeTodoGroup.value.todos.splice(idx, 1)
+}
 
 const removeTodoGroup = (id: string) => {
-  delete todoGroups.value[id];
+  delete todoGroups.value[id]
   // 如果删除的是当前选中的组，返回总览
   if (selectedTodoGroupId.value === id) {
-    activePage.value = "todo_groups";
-    selectedTodoGroupId.value = null;
+    activePage.value = 'todo_groups'
+    selectedTodoGroupId.value = null
   }
-};
+}
 
 const selectTodoGroup = (id: string) => {
-  selectedTodoGroupId.value = id;
-  activePage.value = "todo_detail";
-};
+  selectedTodoGroupId.value = id
+  activePage.value = 'todo_detail'
+}
 
-const showModal = ref(false);
+const showModal = ref(false)
 const formData = reactive({
-  groupTitle: "",
-  todoText: "",
+  groupTitle: '',
+  todoText: '',
   priority: 1,
-});
+})
 
 const modalTitle = computed(() => {
-  return activePage.value === "todo_groups" ? "新建任务组" : "新建待办任务";
-});
+  return activePage.value === 'todo_groups' ? '新建任务组' : '新建待办任务'
+})
 
 const handleCreate = () => {
-  formData.groupTitle = "";
-  formData.todoText = "";
-  formData.priority = 1;
-  showModal.value = true;
-};
+  formData.groupTitle = ''
+  formData.todoText = ''
+  formData.priority = 1
+  showModal.value = true
+}
 
 const confirmCreate = () => {
-  if (activePage.value === "todo_groups") {
-    if (!formData.groupTitle.trim()) return;
-    const newId = "t" + Date.now();
+  if (activePage.value === 'todo_groups') {
+    if (!formData.groupTitle.trim()) return
+    const newId = 't' + Date.now()
     todoGroups.value[newId] = {
       title: formData.groupTitle,
       todos: [],
-    };
+    }
   } else {
-    if (!formData.todoText.trim()) return;
+    if (!formData.todoText.trim()) return
     if (selectedTodoGroupId.value) {
-      const group = todoGroups.value[selectedTodoGroupId.value];
+      const group = todoGroups.value[selectedTodoGroupId.value]
       if (group) {
         group.todos.push({
           id: Date.now(),
           text: formData.todoText,
           priority: formData.priority,
           completed: false,
-        });
+        })
       }
     }
   }
-  showModal.value = false;
-};
+  showModal.value = false
+}
 
-defineExpose({ handleCreate });
+defineExpose({ handleCreate })
 </script>

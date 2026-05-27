@@ -1,31 +1,31 @@
-pub mod types;
+pub mod activity_monitor;
 pub mod config;
 pub mod interest_manager;
-pub mod activity_monitor;
-pub mod visual_monitor;
 pub mod schedule_manager;
 pub mod strategy_dispatcher;
+pub mod types;
+pub mod visual_monitor;
 
+use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 use std::time::Duration;
+use tauri::AppHandle;
 use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
-use tauri::AppHandle;
-use sea_orm::DatabaseConnection;
 
-use crate::ChatComponents;
+use crate::ai_service::message_system::generator::{GeneratorDeps, MessageGenerator};
 use crate::ai_service::service::SharedAIService;
-use crate::ai_service::message_system::generator::{MessageGenerator, GeneratorDeps};
+use crate::ai_service::types::{LineAttributeExt, LineBase};
 use crate::db::entities::line::LineAttribute;
-use crate::ai_service::types::{LineBase, LineAttributeExt};
+use crate::ChatComponents;
 
-use types::UserScheduleSettings;
+use activity_monitor::UserActivityMonitor;
 use config::ProactiveConfig;
 use interest_manager::InterestManager;
-use activity_monitor::UserActivityMonitor;
-use visual_monitor::VisualMonitor;
 use schedule_manager::ScheduleManager;
 use strategy_dispatcher::StrategyDispatcher;
+use types::UserScheduleSettings;
+use visual_monitor::VisualMonitor;
 
 pub struct ProactiveSystem {
     app: AppHandle,
@@ -95,7 +95,7 @@ impl ProactiveSystem {
         let sys_clone = system_arc.clone();
         let handle = tokio::spawn(async move {
             tracing::info!("[ProactiveSystem] Loop task started.");
-            
+
             // Loop runs every 30 seconds
             let mut interval = tokio::time::interval(Duration::from_secs(30));
             loop {
@@ -107,7 +107,7 @@ impl ProactiveSystem {
                     if !sys.is_running {
                         break;
                     }
-                    
+
                     let svc = sys.ai_service.lock().await;
                     let is_script_active = svc.game_status.lock().await.script_status.is_some();
                     (sys.config.enable_proactive_system, is_script_active)
@@ -145,10 +145,10 @@ impl ProactiveSystem {
 
     /// 重新载入环境配置和日程设置。
     pub async fn reload(&mut self) {
-        tracing::info!("[ProactiveSystem] Reloading configuration and schedule settings...");
         self.config = ProactiveConfig::load(&self.app);
         self.strategy_dispatcher.update_config(&self.app);
-        self.interest_manager.update_from_config(self.config.max_proactive_times);
+        self.interest_manager
+            .update_from_config(self.config.max_proactive_times);
         self.load_schedule_settings().await;
     }
 
@@ -160,24 +160,27 @@ impl ProactiveSystem {
 
         if schedules_path.exists() {
             match std::fs::read_to_string(&schedules_path) {
-                Ok(content) => {
-                    match serde_json::from_str::<UserScheduleSettings>(&content) {
-                        Ok(parsed) => {
-                            let mut settings_lock = self.settings.write().await;
-                            *settings_lock = parsed;
-                            tracing::info!("[ProactiveSystem] Successfully parsed schedules.json!");
-                        }
-                        Err(e) => {
-                            tracing::error!("[ProactiveSystem] Failed to parse schedules.json: {:?}", e);
-                        }
+                Ok(content) => match serde_json::from_str::<UserScheduleSettings>(&content) {
+                    Ok(parsed) => {
+                        let mut settings_lock = self.settings.write().await;
+                        *settings_lock = parsed;
                     }
-                }
+                    Err(e) => {
+                        tracing::error!(
+                            "[ProactiveSystem] Failed to parse schedules.json: {:?}",
+                            e
+                        );
+                    }
+                },
                 Err(e) => {
                     tracing::error!("[ProactiveSystem] Failed to read schedules.json: {:?}", e);
                 }
             }
         } else {
-            tracing::warn!("[ProactiveSystem] schedules.json not found at {:?}", schedules_path);
+            tracing::warn!(
+                "[ProactiveSystem] schedules.json not found at {:?}",
+                schedules_path
+            );
         }
     }
 
@@ -205,7 +208,8 @@ impl ProactiveSystem {
                     let gs = svc.game_status.lock().await;
                     gs.player.user_name.clone()
                 };
-                sys.schedule_manager.check_schedule_reminder(&user_name, &settings_snap)
+                sys.schedule_manager
+                    .check_schedule_reminder(&user_name, &settings_snap)
             };
 
             if let Some(prompt) = reminder_prompt {
@@ -222,7 +226,7 @@ impl ProactiveSystem {
         if sys.config.enable_visual_perception {
             let change = sys.visual_monitor.check_visual_change();
             perception.visual_change_detected = change;
-            
+
             // 画面有变动时，好感度/兴趣值增加 15 点以加速主动出击
             if change {
                 perception.interest_modifier += 15;
@@ -232,9 +236,14 @@ impl ProactiveSystem {
         // 4. 更新好感度/兴趣度
         sys.interest_manager.update_interest();
         if perception.interest_modifier != 0 {
-            sys.interest_manager.interest = (sys.interest_manager.interest + perception.interest_modifier as f64)
+            sys.interest_manager.interest = (sys.interest_manager.interest
+                + perception.interest_modifier as f64)
                 .clamp(0.0, sys.interest_manager.max_interest_cap);
-            tracing::info!("[Engagement] Interest modified by {}. Current: {:.2}", perception.interest_modifier, sys.interest_manager.interest);
+            tracing::info!(
+                "[Engagement] Interest modified by {}. Current: {:.2}",
+                perception.interest_modifier,
+                sys.interest_manager.interest
+            );
         }
 
         // 5. 检查是否满足主动出击触发阈值
@@ -242,7 +251,9 @@ impl ProactiveSystem {
             // 确保没有正在进行的 LLM 对话
             let lock_clone = sys.generation_lock.clone();
             if lock_clone.try_lock().is_err() {
-                tracing::debug!("[ProactiveSystem] Chat generation is locked. Postponing proactive talk...");
+                tracing::debug!(
+                    "[ProactiveSystem] Chat generation is locked. Postponing proactive talk..."
+                );
                 return Ok(());
             }
 
@@ -252,12 +263,14 @@ impl ProactiveSystem {
             let prompt_opt = {
                 let svc = sys.ai_service.lock().await;
                 let gs = svc.game_status.lock().await;
-                sys.strategy_dispatcher.get_proactive_prompt(&gs, &settings_snap, &perception, &sys.config).await
+                sys.strategy_dispatcher
+                    .get_proactive_prompt(&gs, &settings_snap, &perception, &sys.config)
+                    .await
             };
 
             if let Some(prompt) = prompt_opt {
                 sys.interest_manager.reset_interest();
-                
+
                 // 必须在持有 generation_lock 期间进行消息处理，防止与用户回复混淆
                 let generator = {
                     let game_status = {
@@ -270,25 +283,36 @@ impl ProactiveSystem {
                         game_status,
                         processor: sys.chat.processor.clone(),
                         translator: sys.chat.translator.clone(),
-                        llm: sys.chat.llm.clone().ok_or_else(|| anyhow::anyhow!("LLM is not configured"))?,
+                        llm: sys
+                            .chat
+                            .llm
+                            .clone()
+                            .ok_or_else(|| anyhow::anyhow!("LLM is not configured"))?,
                         concurrency: 1,
                     };
                     MessageGenerator::new(deps)
                 };
 
-                tracing::info!("[ProactiveSystem] Dispatching proactive message generator: {}", prompt);
+                tracing::info!(
+                    "[ProactiveSystem] Dispatching proactive message generator: {}",
+                    prompt
+                );
 
                 // 往 game_status 追加系统级的主动 prompt 作为隐形触发台词
                 {
                     let svc = sys.ai_service.lock().await;
                     let mut gs = svc.game_status.lock().await;
-                    gs.add_line(&sys.db, LineBase {
-                        attribute: LineAttributeExt(LineAttribute::System),
-                        content: prompt.clone(),
-                        sender_role_id: None,
-                        display_name: None,
-                        ..Default::default()
-                    }).await?;
+                    gs.add_line(
+                        &sys.db,
+                        LineBase {
+                            attribute: LineAttributeExt(LineAttribute::System),
+                            content: prompt.clone(),
+                            sender_role_id: None,
+                            display_name: None,
+                            ..Default::default()
+                        },
+                    )
+                    .await?;
                 }
 
                 // 派发流式生成任务并等待其处理完毕 (包括 TTS 音频分段输出)
@@ -314,24 +338,35 @@ impl ProactiveSystem {
                 game_status,
                 processor: self.chat.processor.clone(),
                 translator: self.chat.translator.clone(),
-                llm: self.chat.llm.clone().ok_or_else(|| anyhow::anyhow!("LLM is not configured"))?,
+                llm: self
+                    .chat
+                    .llm
+                    .clone()
+                    .ok_or_else(|| anyhow::anyhow!("LLM is not configured"))?,
                 concurrency: 1,
             };
             MessageGenerator::new(deps)
         };
 
-        tracing::info!("[ProactiveSystem] Forcing proactive schedule alarm dialogue: {}", prompt);
+        tracing::info!(
+            "[ProactiveSystem] Forcing proactive schedule alarm dialogue: {}",
+            prompt
+        );
 
         {
             let svc = self.ai_service.lock().await;
             let mut gs = svc.game_status.lock().await;
-            gs.add_line(&self.db, LineBase {
-                attribute: LineAttributeExt(LineAttribute::System),
-                content: prompt.clone(),
-                sender_role_id: None,
-                display_name: None,
-                ..Default::default()
-            }).await?;
+            gs.add_line(
+                &self.db,
+                LineBase {
+                    attribute: LineAttributeExt(LineAttribute::System),
+                    content: prompt.clone(),
+                    sender_role_id: None,
+                    display_name: None,
+                    ..Default::default()
+                },
+            )
+            .await?;
         }
 
         let _ = generator.process_message(Some(prompt)).await;

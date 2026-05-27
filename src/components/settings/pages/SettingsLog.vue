@@ -239,7 +239,7 @@ watch(paused, (now) => {
   font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
   font-size: 13px;
   line-height: 1.7;
-  max-height: 60vh;
+  max-height: 70vh;
 }
 
 /* Log line */

@@ -18,6 +18,7 @@ export const getSchedules = async (): Promise<ScheduleData> => {
 
 export const saveSchedules = async (data: ScheduleData): Promise<void> => {
   try {
+    console.log('日程信息触发提醒')
     await invoke('save_schedules', { data })
   } catch (error: any) {
     console.error('保存日程信息错误:', error.message)

@@ -254,17 +254,17 @@ interface Day {
 }
 
 const importantDays = ref<ImportantDay[]>([])
-const calendarLoaded = ref(false)
+const calendarInitialized = ref(false)
+const preventFirstSave = ref(true)
 
 const loadData = async () => {
   try {
     const data = await getSchedules()
     // 注意：这里要确保 data.importantDays 存在，否则给空数组
     importantDays.value = data.importantDays || []
+    calendarInitialized.value = true
   } catch (e) {
     console.error('Failed to load calendar events', e)
-  } finally {
-    calendarLoaded.value = true
   }
 }
 
@@ -272,7 +272,11 @@ const loadData = async () => {
 watch(
   importantDays,
   async (newVal) => {
-    if (!calendarLoaded.value) return
+    if (!calendarInitialized.value) return
+    if (preventFirstSave.value) {
+      preventFirstSave.value = false
+      return
+    }
     try {
       await saveSchedules({ importantDays: newVal })
     } catch (e) {
