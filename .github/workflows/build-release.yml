@@ -16,6 +16,11 @@ on:
         description: 'LingChat-Pal Release 的 Tag（留空则不打包 Pal）'
         required: false
         type: string
+      compile_test:
+        description: '编译测试模式（关闭LTO、最低优化、跳过LFS）'
+        required: false
+        default: false
+        type: boolean
 
 # 设置权限，允许创建 Release 和上传资产
 permissions:
@@ -30,6 +35,7 @@ jobs:
       release_title: ${{ steps.set_title.outputs.release_title }}
       platforms_json: ${{ steps.set_platforms.outputs.platforms_json }}
       pal_release_tag: ${{ github.event.inputs.pal_release_tag }}
+      compile_test: ${{ steps.compile_test.outputs.compile_test }}
 
     steps:
       - name: 检出代码
@@ -63,6 +69,10 @@ jobs:
           # 默认构建所有平台：windows, linux-amd64, linux-aarch64
           echo "platforms_json=['windows','linux-amd64','linux-aarch64']" >> $GITHUB_OUTPUT
 
+      - name: 设置编译测试模式
+        id: compile_test
+        run: echo "compile_test=${{ github.event.inputs.compile_test || 'false' }}" >> $GITHUB_OUTPUT
+
   build:
     needs: prepare
     runs-on: ${{ matrix.os }}
@@ -94,12 +104,23 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare.outputs.tag_name }}
-          lfs: true
+          lfs: false
+
+      - name: 拉取 LFS 文件
+        if: needs.prepare.outputs.compile_test != 'true'
+        run: |
+          git lfs install
+          git lfs pull
 
       - name: 设置 Python 环境（使用 uv）
         uses: astral-sh/setup-uv@v3
         with:
           version: 'latest'
+          enable-cache: true
+          cache-dependency-glob: |
+            **/pyproject.toml
+            **/uv.lock
+          cache-python: true
 
       - name: 安装项目依赖
         run: |
@@ -109,19 +130,35 @@ jobs:
       - name: 安装 Nuitka 编译器
         run: uv pip install nuitka
 
+      - name: 安装 pnpm
+        run: npm install -g pnpm
+
       - name: 设置 Node.js 环境
         uses: actions/setup-node@v4
         with:
           node-version: 24
-
-      - name: 安装 pnpm
-        run: npm install -g pnpm
+          cache: 'pnpm'
+          cache-dependency-path: 'frontend_vue/pnpm-lock.yaml'
 
       - name: 构建前端
         working-directory: frontend_vue
         run: |
           pnpm install
           pnpm build
+
+      - name: 安装 ccache（Linux）
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ccache mold
+
+      - name: 设置 Nuitka 缓存目录并恢复缓存
+        id: nuitka-cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ${{ runner.temp }}/nuitka-cache
+          key: ${{ runner.os }}-nuitka-${{ hashFiles('**/pyproject.toml', '**/uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-nuitka-
 
       - name: 安装 UPX
         shell: bash
@@ -146,15 +183,25 @@ jobs:
       - name: 使用 Nuitka 编译
         shell: bash
         env:
-          CFLAGS: '-flto=thin -O2'
-          CXXFLAGS: '-flto=thin -O2'
+          CFLAGS: ${{ needs.prepare.outputs.compile_test == 'true' && '-O0' || '-flto=thin -O2' }}
+          CXXFLAGS: ${{ needs.prepare.outputs.compile_test == 'true' && '-O0' || '-flto=thin -O2' }}
+          NUITKA_CACHE_DIR: ${{ runner.temp }}/nuitka-cache
         run: |
           NUMERIC_VERSION=$(echo ${{ needs.prepare.outputs.tag_name }} | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
 
-          if [[ "${{ matrix.platform }}" == linux* ]]; then
-            echo "yes" | uv run nuitka --clang --standalone --enable-plugins=upx --upx-binary=$UPX_BIN --jobs=4 --lto=yes --low-memory --assume-yes-for-downloads --linux-icon=ling_chat/static/game_data/resources/lingchat.png --output-filename=LingChat --product-name=${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }} --file-version="$NUMERIC_VERSION" --product-version="$NUMERIC_VERSION" --company-name="LingChat Studio" --show-memory main.py
+          IS_COMPILE_TEST="${{ needs.prepare.outputs.compile_test }}"
+          if [ "$IS_COMPILE_TEST" = "true" ]; then
+            LTO_FLAG=""
+            ARCHIVE_NAME="LingChat-test"
           else
-            echo "yes" | uv run nuitka --clang --standalone --enable-plugins=upx --upx-binary=$UPX_BIN --jobs=4 --lto=yes --low-memory --assume-yes-for-downloads --windows-icon-from-ico=ling_chat/static/game_data/resources/lingchat.ico --output-filename=LingChat --product-name=${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }} --file-version="$NUMERIC_VERSION" --product-version="$NUMERIC_VERSION" --company-name="LingChat Studio"  --show-memory main.py
+            LTO_FLAG="--lto=yes"
+            ARCHIVE_NAME="LingChat"
+          fi
+
+          if [[ "${{ matrix.platform }}" == linux* ]]; then
+            echo "yes" | LDFLAGS="-fuse-ld=mold" uv run nuitka --clang --standalone --enable-plugins=upx --upx-binary=$UPX_BIN --jobs=4 $LTO_FLAG --low-memory --assume-yes-for-downloads --linux-icon=ling_chat/static/game_data/resources/lingchat.png --output-filename=$ARCHIVE_NAME --product-name=${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }} --file-version="$NUMERIC_VERSION" --product-version="$NUMERIC_VERSION" --company-name="LingChat Studio" --show-memory main.py
+          else
+            echo "yes" | uv run nuitka --clang --standalone --enable-plugins=upx --upx-binary=$UPX_BIN --jobs=4 $LTO_FLAG --low-memory --assume-yes-for-downloads --windows-icon-from-ico=ling_chat/static/game_data/resources/lingchat.ico --output-filename=$ARCHIVE_NAME --product-name=${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }} --file-version="$NUMERIC_VERSION" --product-version="$NUMERIC_VERSION" --company-name="LingChat Studio"  --show-memory main.py
           fi
 
       - name: 下载 LingChat-Pal 以加入打包
