@@ -32,16 +32,27 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { useSettingsStore } from '@/stores/modules/settings'
+import { useScreenshot } from '@/composables/useScreenshot'
 import { Forward } from 'lucide-vue-next'
 
 const gameStore = useGameStore()
 const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
+
+const {
+  screenshotBase64,
+  init: initScreenshot,
+  destroy: destroyScreenshot,
+  clear: clearScreenshot,
+} = useScreenshot()
+
+onMounted(() => initScreenshot())
+onUnmounted(() => destroyScreenshot())
 
 const scale = computed(() => settingsStore.pet?.scale || 1.0)
 
@@ -115,14 +126,17 @@ const sendMessage = () => {
       gameStore.runningScript.freeDialogueInfo.currentRound++
     }
   } else {
-    invoke('send_chat_message', { text, screenshotBase64: null }).catch((error) => {
-      console.error('发送消息失败:', error)
-      gameStore.currentStatus = 'input'
-    })
+    invoke('send_chat_message', { text, screenshotBase64: screenshotBase64.value }).catch(
+      (error) => {
+        console.error('发送消息失败:', error)
+        gameStore.currentStatus = 'input'
+      },
+    )
   }
 
   emit('message-sent', text)
   messageText.value = ''
+  clearScreenshot()
 }
 </script>
 
