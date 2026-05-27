@@ -7,7 +7,6 @@ import { useUIStore } from '../ui/ui'
 import { useSettingsStore } from '../settings'
 import type { SceneInfo } from '@/api/services/scene'
 export const actions = {
-
   appendGameMessage(this: GameState, message: GameMessage) {
     this.dialogHistory.push({
       ...message,
@@ -48,6 +47,9 @@ export const actions = {
         scale: roleInfo.scale,
         offsetX: roleInfo.offset_x,
         offsetY: roleInfo.offset_y,
+        scaleP: roleInfo.scale_p,
+        offsetXP: roleInfo.offset_x_p,
+        offsetYP: roleInfo.offset_y_p,
         bubbleLeft: roleInfo.bubble_left,
         bubbleTop: roleInfo.bubble_top,
         clothes: roleInfo.clothes,
@@ -113,6 +115,9 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
     scale: characterInfo.scale,
     offsetX: characterInfo.offset_x,
     offsetY: characterInfo.offset_y,
+    scaleP: characterInfo.scale_p,
+    offsetXP: characterInfo.offset_x_p,
+    offsetYP: characterInfo.offset_y_p,
     bubbleLeft: characterInfo.bubble_left,
     bubbleTop: characterInfo.bubble_top,
     clothes: characterInfo.clothes,
@@ -137,8 +142,7 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
 
   if (gameInfo.background !== '') uiStore.setCurrentBackground(gameInfo.background)
   if (gameInfo.background_effect !== '') uiStore.setBackgroundEffect(gameInfo.background_effect)
-  if (gameInfo.background_music !== '')
-    uiStore.currentBackgroundMusic = gameInfo.background_music
+  if (gameInfo.background_music !== '') uiStore.currentBackgroundMusic = gameInfo.background_music
 
   // 同步场景感知开关
   settingsStore.setSceneAwarenessEnabled(gameInfo.scene_awareness_enabled)
@@ -160,9 +164,7 @@ function convertInitLines(lines: GameLineInit[]): GameMessage[] {
   const filtered = lines.filter((line) => line.attribute !== 'system')
 
   return filtered.map((line, index, array) => {
-    const filteredContent = line.content
-      .replace(/\{[\s\S]*?\}/g, '')
-      .trim()
+    const filteredContent = line.content.replace(/\{[\s\S]*?\}/g, '').trim()
 
     const isLast = index === array.length - 1
     const nextLine = isLast ? null : array[index + 1]

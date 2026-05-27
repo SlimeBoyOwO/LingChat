@@ -60,6 +60,9 @@ pub struct RoleInfoResponse {
     pub scale: f64,
     pub offset_x: f64,
     pub offset_y: f64,
+    pub scale_p: f64,
+    pub offset_x_p: f64,
+    pub offset_y_p: f64,
     pub bubble_top: i32,
     pub bubble_left: i32,
     pub clothes: Option<Vec<HashMap<String, String>>>,
@@ -311,6 +314,9 @@ pub async fn get_role_info(app: AppHandle, role_id: i32) -> Result<RoleInfoRespo
         scale: settings.scale,
         offset_x: settings.offset_x,
         offset_y: settings.offset_y,
+        scale_p: settings.scale_p,
+        offset_x_p: settings.offset_x_p,
+        offset_y_p: settings.offset_y_p,
         bubble_top: settings.bubble_top,
         bubble_left: settings.bubble_left,
         clothes: settings.clothes,
@@ -534,8 +540,8 @@ pub async fn update_role_settings(
         return Err(format!("角色目录不存在: {:?}", base_path));
     }
 
-    let _validated: CharacterSettings = serde_json::from_value(settings.clone())
-        .map_err(|e| format!("配置验证失败: {}", e))?;
+    let _validated: CharacterSettings =
+        serde_json::from_value(settings.clone()).map_err(|e| format!("配置验证失败: {}", e))?;
 
     let mut save_data = settings;
     if let Some(obj) = save_data.as_object_mut() {
@@ -546,8 +552,7 @@ pub async fn update_role_settings(
     }
 
     let yaml_path = base_path.join("settings.yml");
-    let yaml_str =
-        serde_yaml::to_string(&save_data).map_err(|e| format!("序列化失败: {}", e))?;
+    let yaml_str = serde_yaml::to_string(&save_data).map_err(|e| format!("序列化失败: {}", e))?;
     fs::write(&yaml_path, yaml_str).map_err(|e| format!("保存失败: {}", e))?;
 
     tracing::info!("角色 {} 配置已保存到 {:?}", role_id, yaml_path);

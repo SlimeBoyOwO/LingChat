@@ -37,6 +37,9 @@ export interface GameRole {
   scale: number
   offsetY: number
   offsetX: number
+  scaleP: number
+  offsetXP: number
+  offsetYP: number
   bubbleTop: number
   bubbleLeft: number
   show: boolean

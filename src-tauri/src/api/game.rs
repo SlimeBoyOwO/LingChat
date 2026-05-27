@@ -46,6 +46,9 @@ pub struct CharacterSettingsInit {
     pub scale: f64,
     pub offset_x: f64,
     pub offset_y: f64,
+    pub scale_p: f64,
+    pub offset_x_p: f64,
+    pub offset_y_p: f64,
     pub bubble_top: i32,
     pub bubble_left: i32,
     pub clothes: Option<Vec<HashMap<String, String>>>,
@@ -66,6 +69,9 @@ impl From<&CharacterSettings> for CharacterSettingsInit {
             scale: s.scale,
             offset_x: s.offset_x,
             offset_y: s.offset_y,
+            scale_p: s.scale_p,
+            offset_x_p: s.offset_x_p,
+            offset_y_p: s.offset_y_p,
             bubble_top: s.bubble_top,
             bubble_left: s.bubble_left,
             clothes: s.clothes.clone(),
@@ -188,7 +194,16 @@ pub(crate) async fn build_web_init_data(
 
     let character_settings = CharacterSettingsInit::from(settings);
 
-    let (lines, current_scene_id, current_role_id, onstage_roles_ids, background, background_effect, background_music, scene_awareness_enabled) = {
+    let (
+        lines,
+        current_scene_id,
+        current_role_id,
+        onstage_roles_ids,
+        background,
+        background_effect,
+        background_music,
+        scene_awareness_enabled,
+    ) = {
         let mut gs = service.game_status.lock().await;
         let lines: Vec<GameLineInit> = gs
             .line_list
@@ -277,7 +292,11 @@ pub(crate) async fn build_web_init_data(
                 scene_description: s.description,
                 background: {
                     let bg = super::scene::normalize_background(&s.background);
-                    if bg.is_empty() { None } else { Some(bg) }
+                    if bg.is_empty() {
+                        None
+                    } else {
+                        Some(bg)
+                    }
                 },
                 lighting: s.lighting.clone(),
                 created_at: s.created_at,
