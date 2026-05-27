@@ -109,6 +109,7 @@ import { getSchedules, saveSchedules } from '@/api/services/schedule'
 import BaseModal from '@/components/ui/BaseModal.vue'
 
 const uiStore = useUIStore()
+const scheduleInitialized = ref(false)
 
 // 数据存储
 interface ScheduleItem {
@@ -131,6 +132,7 @@ const loadData = async () => {
     if (data && data.scheduleGroups) {
       scheduleGroups.value = data.scheduleGroups
     }
+    scheduleInitialized.value = true
   } catch (e) {
     console.error('Failed to load schedules', e)
   }
@@ -139,6 +141,7 @@ const loadData = async () => {
 watch(
   scheduleGroups,
   async (newVal) => {
+    if (!scheduleInitialized.value) return
     try {
       // 只发送 scheduleGroups 字段，后端只会更新这一部分
       await saveSchedules({ scheduleGroups: newVal })

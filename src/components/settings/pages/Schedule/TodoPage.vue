@@ -217,6 +217,7 @@ import BaseModal from '@/components/ui/BaseModal.vue'
 const uiStore = useUIStore()
 
 const showCompleted = ref(false)
+const todoInitialized = ref(false)
 const selectedTodoGroupId = ref<string | null>(null)
 
 interface TodoItem {
@@ -246,6 +247,7 @@ const loadData = async () => {
     if (data && data.todoGroups) {
       todoGroups.value = data.todoGroups
     }
+    todoInitialized.value = true
   } catch (e) {
     console.error('Failed to load todos', e)
   }
@@ -254,6 +256,8 @@ const loadData = async () => {
 watch(
   todoGroups,
   async (newVal) => {
+    if (!todoInitialized.value) return
+
     try {
       await saveSchedules({ todoGroups: newVal })
     } catch (e) {
