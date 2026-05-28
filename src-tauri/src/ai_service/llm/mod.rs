@@ -29,6 +29,7 @@ pub struct LlmConfig {
     pub timeout_secs: u64,
     pub temperature: Option<f64>,
     pub top_p: Option<f64>,
+    pub enable_thinking: bool,
 }
 
 impl LlmConfig {

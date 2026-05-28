@@ -17,6 +17,7 @@ use crate::ai_service::message_system::generator::{GeneratorDeps, MessageGenerat
 use crate::ai_service::service::SharedAIService;
 use crate::ai_service::types::{LineAttributeExt, LineBase};
 use crate::db::entities::line::LineAttribute;
+use crate::utils::prompt::PromptRole;
 use crate::ChatComponents;
 
 use activity_monitor::UserActivityMonitor;
@@ -114,12 +115,12 @@ impl ProactiveSystem {
                 };
 
                 if !enabled {
-                    tracing::debug!("[ProactiveSystem] Disabled via settings, skipping...");
+                    tracing::info!("[ProactiveSystem] Disabled via settings, skipping...");
                     continue;
                 }
 
                 if is_script_active {
-                    tracing::debug!("[ProactiveSystem] Script is currently running, bypassing proactive talk to avoid collision.");
+                    tracing::info!("[ProactiveSystem] Script is currently running, bypassing proactive talk to avoid collision.");
                     continue;
                 }
 
@@ -194,6 +195,14 @@ impl ProactiveSystem {
     async fn run_cycle(system_arc: Arc<Mutex<Self>>) -> anyhow::Result<()> {
         let mut sys = system_arc.lock().await;
 
+        tracing::info!(
+            "[ProactiveSystem] Cycle start. Interest: {:.2}/{:.2}, count today: {}/{}",
+            sys.interest_manager.interest,
+            sys.interest_manager.max_interest_cap,
+            sys.interest_manager.proactive_times_today,
+            sys.interest_manager.max_proactive_count
+        );
+
         // 1. 获取日程设置快照以供后续分析使用
         let settings_snap = {
             let snap = sys.settings.read().await;
@@ -248,6 +257,11 @@ impl ProactiveSystem {
 
         // 5. 检查是否满足主动出击触发阈值
         if sys.interest_manager.should_trigger_talk() {
+            tracing::info!(
+                "[ProactiveSystem] Trigger fired! Interest: {:.2}, preparing proactive dialogue...",
+                sys.interest_manager.interest
+            );
+
             // 确保没有正在进行的 LLM 对话
             let lock_clone = sys.generation_lock.clone();
             if lock_clone.try_lock().is_err() {
@@ -305,8 +319,8 @@ impl ProactiveSystem {
                     gs.add_line(
                         &sys.db,
                         LineBase {
-                            attribute: LineAttributeExt(LineAttribute::System),
-                            content: prompt.clone(),
+                            attribute: LineAttributeExt(LineAttribute::User),
+                            content: PromptRole::Plot.build_prompt(&prompt),
                             sender_role_id: None,
                             display_name: None,
                             ..Default::default()
@@ -316,7 +330,7 @@ impl ProactiveSystem {
                 }
 
                 // 派发流式生成任务并等待其处理完毕 (包括 TTS 音频分段输出)
-                let _ = generator.process_message(Some(prompt)).await;
+                let _ = generator.process_message(None).await;
             }
         }
 

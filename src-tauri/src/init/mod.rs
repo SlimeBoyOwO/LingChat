@@ -41,6 +41,7 @@ pub async fn initialize(
         app_config.llm_base_url.as_deref().unwrap_or(""),
         app_config.temperature,
         app_config.top_p,
+        app_config.enable_thinking,
     )
     .map(Arc::new);
 
@@ -77,6 +78,7 @@ pub async fn initialize(
         app_config.translate_base_url.as_deref().unwrap_or(""),
         None,
         None,
+        false, // thinking not needed for translation
     );
 
     let classifier = load_emotion_classifier(app_config.enable_emotion_classifier, &data_dir);
@@ -109,6 +111,7 @@ fn build_llm_client(
     base_url: &str,
     temperature: Option<f64>,
     top_p: Option<f64>,
+    enable_thinking: bool,
 ) -> Option<LlmClient> {
     if api_key.is_empty() || model.is_empty() {
         tracing::warn!(
@@ -126,6 +129,7 @@ fn build_llm_client(
         timeout_secs: 120,
         temperature,
         top_p,
+        enable_thinking,
     };
     create_llm_client(cfg).ok()
 }

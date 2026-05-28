@@ -157,7 +157,7 @@ impl UserActivityMonitor {
             0.0
         };
 
-        tracing::debug!(
+        tracing::info!(
             "[ActivityMonitor] Stats last 20s: Keys={}, GameKeys={}, Clicks={}, Distance={:.1}, GameRatio={:.2}",
             keystrokes, game_keys, clicks, mouse_distance, game_ratio
         );
@@ -170,24 +170,35 @@ impl UserActivityMonitor {
         if mouse_distance < 10.0 && keystrokes == 0 && clicks == 0 {
             state = UserState::IDLE;
             description = "挂机发呆".to_string();
-            interest_modifier = 0;
+            interest_modifier = 5;
         } else if keystrokes < 5 && (mouse_distance > 2000.0 || clicks > 2) {
             state = UserState::BROWSING;
             description = "在网上冲浪".to_string();
-            interest_modifier = -5;
-        } else {
+            interest_modifier = -2;
+        } else if keystrokes >= 5 {
             let is_gaming =
                 (game_ratio >= 0.6 && keystrokes > 20) || (clicks > 30 && game_ratio >= 0.4);
             if is_gaming {
                 state = UserState::GAME;
                 description = "在打游戏".to_string();
-                interest_modifier = 10;
+                interest_modifier = 5;
             } else {
                 state = UserState::WORK;
                 description = "在认真工作/学习".to_string();
-                interest_modifier = -25;
+                interest_modifier = -5;
             }
+        } else {
+            state = UserState::CASUAL;
+            description = "轻度活动".to_string();
+            interest_modifier = 0;
         }
+
+        tracing::info!(
+            "[ActivityMonitor] State={} desc={} modifier={}",
+            state.as_str(),
+            description,
+            interest_modifier
+        );
 
         PerceptionResult {
             state,

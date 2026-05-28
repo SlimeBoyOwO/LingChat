@@ -8,6 +8,7 @@ pub enum UserState {
     BROWSING,
     WORK,
     GAME,
+    CASUAL,
 }
 
 impl UserState {
@@ -17,6 +18,7 @@ impl UserState {
             UserState::BROWSING => "BROWSING",
             UserState::WORK => "WORK",
             UserState::GAME => "GAME",
+            UserState::CASUAL => "CASUAL",
         }
     }
 }

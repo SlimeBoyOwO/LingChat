@@ -18,6 +18,7 @@ pub struct OpenAiProvider {
     base_url: String,
     temperature: Option<f64>,
     top_p: Option<f64>,
+    enable_thinking: bool,
 }
 
 impl OpenAiProvider {
@@ -28,6 +29,7 @@ impl OpenAiProvider {
             base_url: cfg.base_url.clone(),
             temperature: cfg.temperature,
             top_p: cfg.top_p,
+            enable_thinking: cfg.enable_thinking,
         })
     }
 
@@ -41,18 +43,34 @@ impl OpenAiProvider {
             format!("{base}/chat/completions")
         }
     }
+
+    fn build_request<'a>(
+        &'a self,
+        messages: &'a [LlmMessage],
+        stream: bool,
+    ) -> ChatRequest<'a> {
+        let thinking = if self.enable_thinking {
+            Some(ThinkingConfig {
+                type_: "enabled".to_string(),
+            })
+        } else {
+            None
+        };
+        ChatRequest {
+            model: &self.model,
+            messages,
+            stream,
+            temperature: self.temperature,
+            top_p: self.top_p,
+            thinking,
+        }
+    }
 }
 
 #[async_trait]
 impl LlmProvider for OpenAiProvider {
     async fn complete(&self, http: &Client, messages: &[LlmMessage]) -> Result<String> {
-        let body = ChatRequest {
-            model: &self.model,
-            messages,
-            stream: false,
-            temperature: self.temperature,
-            top_p: self.top_p,
-        };
+        let body = self.build_request(messages, false);
 
         let resp = http
             .post(self.endpoint())
@@ -85,13 +103,7 @@ impl LlmProvider for OpenAiProvider {
         http: &Client,
         messages: &[LlmMessage],
     ) -> Result<ChunkStream> {
-        let body = ChatRequest {
-            model: &self.model,
-            messages,
-            stream: true,
-            temperature: self.temperature,
-            top_p: self.top_p,
-        };
+        let body = self.build_request(messages, true);
 
         let resp = http
             .post(self.endpoint())
@@ -162,6 +174,14 @@ struct ChatRequest<'a> {
     temperature: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     top_p: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking: Option<ThinkingConfig>,
+}
+
+#[derive(Serialize)]
+struct ThinkingConfig {
+    #[serde(rename = "type")]
+    type_: String,
 }
 
 #[derive(Deserialize)]

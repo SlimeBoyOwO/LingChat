@@ -24,6 +24,7 @@ pub struct GeminiProvider {
     base_url: String,
     temperature: Option<f64>,
     top_p: Option<f64>,
+    enable_thinking: bool,
 }
 
 impl GeminiProvider {
@@ -39,6 +40,7 @@ impl GeminiProvider {
             base_url,
             temperature: cfg.temperature,
             top_p: cfg.top_p,
+            enable_thinking: cfg.enable_thinking,
         })
     }
 
@@ -95,6 +97,21 @@ impl GeminiProvider {
 
         (contents, system_instruction)
     }
+
+    fn build_generation_config(&self) -> GeminiGenerationConfig {
+        let thinking_config = if self.enable_thinking {
+            Some(GeminiThinkingConfig {
+                thinking_budget: 1024,
+            })
+        } else {
+            None
+        };
+        GeminiGenerationConfig {
+            temperature: self.temperature,
+            top_p: self.top_p,
+            thinking_config,
+        }
+    }
 }
 
 #[async_trait]
@@ -102,13 +119,12 @@ impl LlmProvider for GeminiProvider {
     async fn complete(&self, http: &Client, messages: &[LlmMessage]) -> Result<String> {
         let (contents, system_instruction) = self.convert_messages(messages);
 
+        let generation_config = self.build_generation_config();
+
         let body = GeminiRequest {
             contents: &contents,
             system_instruction: system_instruction.as_ref(),
-            generation_config: Some(GeminiGenerationConfig {
-                temperature: self.temperature,
-                top_p: self.top_p,
-            }),
+            generation_config: Some(generation_config),
         };
 
         let resp = http
@@ -156,13 +172,12 @@ impl LlmProvider for GeminiProvider {
     ) -> Result<ChunkStream> {
         let (contents, system_instruction) = self.convert_messages(messages);
 
+        let generation_config = self.build_generation_config();
+
         let body = GeminiRequest {
             contents: &contents,
             system_instruction: system_instruction.as_ref(),
-            generation_config: Some(GeminiGenerationConfig {
-                temperature: self.temperature,
-                top_p: self.top_p,
-            }),
+            generation_config: Some(generation_config),
         };
 
         // 流式端点需要加 `&alt=sse`
@@ -276,6 +291,14 @@ struct GeminiGenerationConfig {
     temperature: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     top_p: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking_config: Option<GeminiThinkingConfig>,
+}
+
+#[derive(Serialize)]
+struct GeminiThinkingConfig {
+    #[serde(rename = "thinkingBudget")]
+    thinking_budget: i32,
 }
 
 #[derive(Deserialize)]

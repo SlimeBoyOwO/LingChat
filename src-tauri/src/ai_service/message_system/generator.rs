@@ -148,11 +148,7 @@ impl MessageGenerator {
         Ok(accumulated)
     }
 
-    async fn run_pipeline(
-        &self,
-        context: Vec<LlmMessage>,
-        user_message: String,
-    ) -> Result<String> {
+    async fn run_pipeline(&self, context: Vec<LlmMessage>, user_message: String) -> Result<String> {
         let (sentence_tx, sentence_rx) =
             mpsc::channel::<SentenceItem>(self.deps.concurrency.max(1) * 2);
         let (publish_tx, mut publish_rx) =
@@ -269,12 +265,10 @@ async fn consume_sentence(
     if sentence.is_empty() {
         return Ok(None);
     }
-    tracing::info!(
-        "Consumer {consumer_id} 处理句子: {}...",
-        sentence.chars().take(30).collect::<String>()
-    );
 
-    let mut segments = deps.processor.parse_and_classify_emotional_segments(&sentence);
+    let mut segments = deps
+        .processor
+        .parse_and_classify_emotional_segments(&sentence);
     if segments.is_empty() {
         tracing::warn!("AI 回复格式错误（未找到情绪 tag）");
         return Ok(None);
@@ -282,7 +276,9 @@ async fn consume_sentence(
 
     // 翻译（当第一段 japanese_text 为空时）
     if segments[0].japanese_text.is_empty() {
-        deps.translator.translate_segments(&mut segments, false).await?;
+        deps.translator
+            .translate_segments(&mut segments, false)
+            .await?;
     }
 
     // VoiceMaker：取当前角色的 voice_maker（若配置）并生成语音文件

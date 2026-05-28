@@ -56,7 +56,7 @@
             <div class="text-center text-xl font-bold text-gray-100 opacity-60">暂无日志</div>
           </div>
 
-          <template v-for="(entry, i) in filteredLogs" :key="i">
+          <template v-for="(entry, _idx) in filteredLogs" :key="_idx">
             <div :class="['log-line', entry.level.toLowerCase()]">
               <span class="timestamp">{{ entry.timestamp }}</span>
               <span :class="['level-tag', entry.level.toLowerCase()]">{{ entry.level }}</span>

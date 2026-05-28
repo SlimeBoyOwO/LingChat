@@ -116,9 +116,9 @@ pub fn run() {
                 ),
             ));
 
-            // Start proactive system loop
+            // Start proactive system loop on Tauri's runtime (NOT rt — rt is dropped when setup returns)
             let proactive_clone = proactive.clone();
-            rt.spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 ai_service::proactive_system::ProactiveSystem::start(proactive_clone).await;
             });
 
