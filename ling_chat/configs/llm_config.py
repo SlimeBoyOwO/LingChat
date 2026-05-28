@@ -292,10 +292,25 @@ class LLMConfig:
                     "display_name": cfg.get("config_name", f.stem),
                     "description": cfg.get("config_description", ""),
                     "is_active": f.stem == self._active_config_name,
+                    "main_provider": cfg.get("main", {}).get("provider", ""),
                 })
             except Exception as e:
                 logger.warning(f"跳过损坏的配置文件 {f}: {e}")
         return configs
+
+    def get_config(self, name: str) -> Dict[str, Any]:
+        """获取指定配置方案的完整内容
+
+        Args:
+            name: 配置方案名称
+
+        Raises:
+            ValueError: 配置方案不存在
+        """
+        config_path = self._config_dir / f"{name}.toml"
+        if not config_path.exists():
+            raise ValueError(f"配置方案不存在: {name}")
+        return self._parse_toml(config_path)
 
     def save_config(self, name: str, config: Dict[str, Any]) -> None:
         """保存/更新配置方案

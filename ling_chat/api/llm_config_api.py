@@ -35,6 +35,20 @@ class DeleteConfigRequest(BaseModel):
     name: str = Field(..., description="配置方案名称")
 
 
+@router.get("/config/{name}")
+async def get_config_by_name(name: str) -> Dict[str, Any]:
+    """获取指定配置方案的完整内容"""
+    try:
+        config = llm_config.get_config(name)
+        return {
+            "status": "success",
+            "name": name,
+            "config": config,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+
 @router.get("/configs")
 async def list_configs() -> Dict[str, Any]:
     """列出所有LLM配置方案"""

@@ -1,22 +1,38 @@
 <template>
   <div>
     <MenuPage>
+      <MenuItem title="大模型管理">
+        <template #header>
+          <Icon icon="bot" :size="20" />
+        </template>
+        <div class="flex flex-col items-center gap-3 w-full">
+          <p class="text-white/60 text-sm">管理 LLM 模型配置</p>
+          <button
+            class="w-full px-8 py-4 bg-white/10 backdrop-blur-xl border border-white/10 rounded-xl text-white text-base font-bold cursor-pointer hover:bg-white/20 hover:border-brand/50 active:scale-95 transition-all duration-200 inline-flex items-center gap-3 justify-center"
+            @click="showLlmPanel = true"
+          >
+            <Icon icon="bot" :size="20" />
+            打开大模型管理
+          </button>
+        </div>
+      </MenuItem>
+
       <MenuItem title="高级设置">
         <template #header>
           <Icon icon="advance" :size="20" />
         </template>
-      <div class="flex flex-col items-center gap-4 w-full">
-        <p class="text-white/60 text-sm">点击下方按钮进入高级设置面板</p>
-        <button
-          class="px-8 py-4 bg-white/10 backdrop-blur-xl border border-white/10 rounded-xl text-white text-base font-bold cursor-pointer hover:bg-white/20 hover:border-brand/50 active:scale-95 transition-all duration-200 inline-flex items-center gap-3"
-          @click="showAdvancePanel = true"
-        >
-          <Icon icon="advance" :size="20" />
-          打开高级设置
-        </button>
-      </div>
-    </MenuItem>
-  </MenuPage>
+        <div class="flex flex-col items-center gap-3 w-full">
+          <p class="text-white/60 text-sm">点击下方按钮进入高级设置面板</p>
+          <button
+            class="w-full px-8 py-4 bg-white/10 backdrop-blur-xl border border-white/10 rounded-xl text-white text-base font-bold cursor-pointer hover:bg-white/20 hover:border-brand/50 active:scale-95 transition-all duration-200 inline-flex items-center gap-3 justify-center"
+            @click="showAdvancePanel = true"
+          >
+            <Icon icon="advance" :size="20" />
+            打开高级设置
+          </button>
+        </div>
+      </MenuItem>
+    </MenuPage>
 
   <!-- 滑入面板 -->
   <Teleport to="body">
@@ -47,6 +63,9 @@
       </div>
     </Transition>
   </Teleport>
+
+  <!-- LLM 配置面板 -->
+  <SettingsLlmConfig v-if="showLlmPanel" @close="showLlmPanel = false" />
   </div>
 </template>
 
@@ -55,8 +74,10 @@ import { ref } from 'vue'
 import { MenuPage, MenuItem } from '../../ui'
 import Icon from '../../base/widget/Icon.vue'
 import SettingsAdvance from './SettingsAdvance.vue'
+import SettingsLlmConfig from './SettingsLlmConfig.vue'
 
 const showAdvancePanel = ref(false)
+const showLlmPanel = ref(false)
 const settingsAdvanceRef = ref<InstanceType<typeof SettingsAdvance> | null>(null)
 
 const emit = defineEmits(['remove-more-menu-from-b'])

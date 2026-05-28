@@ -120,7 +120,6 @@ jobs:
           cache-dependency-glob: |
             **/pyproject.toml
             **/uv.lock
-          cache-python: true
 
       - name: 安装项目依赖
         run: |
@@ -131,7 +130,10 @@ jobs:
         run: uv pip install nuitka
 
       - name: 安装 pnpm
-        run: npm install -g pnpm
+        if: steps.changes.outputs.frontend == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
 
       - name: 设置 Node.js 环境
         uses: actions/setup-node@v4
