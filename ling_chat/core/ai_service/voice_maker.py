@@ -23,6 +23,7 @@ class VoiceMaker:
         self.sbv2api_available = False
         self.gsv_available = False
         self.aivis_available = False
+        self.openai_tts_available = False
 
     def check_tts_availability(self, tts_settings: VoiceModel) -> None:
         """检查TTS配置可用性，设置各语音合成器状态"""
@@ -63,6 +64,13 @@ class VoiceMaker:
         # 检查AIVIS配置
         aivis_model_uuid = tts_settings.aivis_model_uuid
         self.aivis_available = _is_valid(aivis_model_uuid)
+
+        # 检查OpenAI TTS配置
+        openai_tts_model = tts_settings.openai_tts_model
+        openai_tts_voice = tts_settings.openai_tts_voice
+        self.openai_tts_available = _is_valid(openai_tts_model) and _is_valid(
+            openai_tts_voice
+        )
 
     def set_tts_settings(self, tts_settings: VoiceModel, name: str) -> None:
         """获取可用的TTS配置并且进行基础配置"""
@@ -163,12 +171,25 @@ class VoiceMaker:
                 )
             elif self.tts_type == "indextts2":
                 self.tts_provider.init_index_adapter()
-                self.set_lang("zh")
+            elif self.tts_type == "openai-tts" and self.openai_tts_available:
+                self.tts_provider.init_openai_tts_adapter(
+                    model=tts_settings.openai_tts_model,
+                    voice=tts_settings.openai_tts_voice,
+                )
             else:
                 logger.warning(
                     f"你的环境变量中TTS设置有误，此角色{name}不支持{self.tts_type}，将使用角色卡的默认语音合成器！"
                 )
                 raise ValueError
+
+            # 统一设置TTS语言（ja=日语, zh=中文）
+            tts_language = getattr(tts_settings, "tts_language", None)
+            if tts_language in ("ja", "zh"):
+                self.set_lang(tts_language)
+                logger.info(f"角色{name}的TTS语言已设置为: {tts_language}")
+            elif self.tts_type == "indextts2":
+                self.set_lang("zh")
+                logger.info(f"角色{name}的TTS语言已设置为: zh (indextts2默认)")
         except KeyError as e:
             logger.error(f"当前角色卡{name}的TTS设置出错，问题是：{e}")
 
@@ -182,6 +203,7 @@ class VoiceMaker:
             "sbv2api",
             "aivis",
             "indextts2",
+            "openai-tts",
         )
         try:
             if tts_type in available_tts_types:

@@ -6,6 +6,7 @@ from ling_chat.core.TTS.aivis_adapter import AIVISAdapter
 from ling_chat.core.TTS.bv2_adapter import BV2Adapter
 from ling_chat.core.TTS.gsv_adapter import GPTSoVITSAdapter
 from ling_chat.core.TTS.index_adpater import IndexTTSAdapter
+from ling_chat.core.TTS.openai_tts_adapter import OpenAITTSAdapter
 from ling_chat.core.TTS.sbv2_adapter import SBV2Adapter
 from ling_chat.core.TTS.sbv2api_adapter import SBV2APIAdapter
 from ling_chat.core.TTS.vits_adapter import VitsAdapter
@@ -48,6 +49,7 @@ class TTS:
         self.gsv_adapter = None
         self.aivis_adapter = None
         self.index_adapter = None
+        self.openai_tts_adapter = None
 
     def init_sva_adapter(self, speaker_id: int):
         """
@@ -139,6 +141,19 @@ class TTS:
         """
         self.index_adapter = IndexTTSAdapter()
 
+    def init_openai_tts_adapter(self, model: str, voice: str):
+        """
+        初始化 OpenAI TTS 适配器
+
+        :param model: TTS 模型名称
+        :param voice: 音色/声音 ID
+        """
+        self.openai_tts_adapter = OpenAITTSAdapter(
+            model=model,
+            voice=voice,
+            audio_format=self.format,
+        )
+
     def _select_adapter(self, tts_type: str):
         """
         根据tts_type选择适配器(如果传入),为空则自动选择
@@ -178,6 +193,10 @@ class TTS:
                 if self.index_adapter is None:
                     raise ValueError("IndexTTS2适配器未初始化")
                 return self.index_adapter
+            elif tts_type == "openai-tts":
+                if self.openai_tts_adapter is None:
+                    raise ValueError("OpenAI TTS适配器未初始化")
+                return self.openai_tts_adapter
             else:
                 raise ValueError(f"未知的TTS类型: {tts_type}")
         elif self.sbv2_adapter is not None:
