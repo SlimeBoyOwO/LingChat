@@ -60,7 +60,7 @@ class LLMManager:
         """
         # 确保provider_type存在
         provider_type = self.llm_provider_type.lower()
-        if provider_type == "webllm":
+        if provider_type in ("webllm", "kimi-code"):
             return LLMProviderFactory.create_provider(
                 provider_type, self.model_type, self.api_key, self.api_url
             )
