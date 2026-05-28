@@ -12,7 +12,7 @@ from ling_chat.core.logger import logger
 from ling_chat.core.service_manager import service_manager
 from ling_chat.game_database.managers.role_manager import RoleManager
 from ling_chat.game_database.managers.user_manager import UserManager
-from ling_chat.game_database.models import LineAttribute, LineBase, RoleType
+from ling_chat.game_database.models import RoleType
 from ling_chat.schemas.character_settings import CharacterSettings
 from ling_chat.utils.function import Function
 from ling_chat.utils.runtime_path import user_data_path
@@ -298,37 +298,55 @@ async def update_settings(
 
 
 @router.get("/get_full_role_settings/{role_id}")
-async def get_full_role_settings(role_id: int):
-    settings = RoleManager.get_role_settings_by_id(role_id)
+async def get_full_role_settings(role_id: str):
+    if role_id is None or role_id.lower() in ("null", "none", ""):
+        raise HTTPException(status_code=400, detail="角色ID不能为空")
+    try:
+        role_id_int = int(role_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"角色ID必须是整数: {role_id}")
+    settings = RoleManager.get_role_settings_by_id(role_id_int)
     if not settings:
         raise HTTPException(status_code=404, detail="角色配置不存在")
     return settings.model_dump()
 
 
 @router.get("/get_role_info/{role_id}")
-async def get_role_info(role_id: int):
+async def get_role_info(role_id: str):
+    if role_id is None or role_id.lower() in ("null", "none", ""):
+        raise HTTPException(status_code=400, detail="角色ID不能为空")
+    try:
+        role_id_int = int(role_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"角色ID必须是整数: {role_id}")
     # 1. 获取角色信息
-    role = RoleManager.get_role_by_id(role_id)
+    role = RoleManager.get_role_by_id(role_id_int)
     if not role:
-        raise HTTPException(status_code=404, detail=f"角色{role_id}不存在")
+        raise HTTPException(status_code=404, detail=f"角色{role_id_int}不存在")
     if not role.resource_folder:
-        raise HTTPException(status_code=404, detail=f"角色{role_id}资源不存在")
+        raise HTTPException(status_code=404, detail=f"角色{role_id_int}资源不存在")
 
-    settings = RoleManager.get_role_settings_by_id(role_id)
+    settings = RoleManager.get_role_settings_by_id(role_id_int)
 
     if settings is None:
-        raise HTTPException(status_code=404, detail=f"角色{role_id}设置不存在")
-    return Function.convert_settings_to_role_info_dict(settings, role_id)
+        raise HTTPException(status_code=404, detail=f"角色{role_id_int}设置不存在")
+    return Function.convert_settings_to_role_info_dict(settings, role_id_int)
 
 
 @router.get("/get_avatar/{role_id}/{emotion}/{clothes_name}")
-async def get_role_avatar(role_id: int, emotion: str, clothes_name: str):
+async def get_role_avatar(role_id: str, emotion: str, clothes_name: str):
+    if role_id is None or role_id.lower() in ("null", "none", ""):
+        raise HTTPException(status_code=400, detail="角色ID不能为空")
+    try:
+        role_id_int = int(role_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"角色ID必须是整数: {role_id}")
     # 1. 获取角色信息
-    role = RoleManager.get_role_by_id(role_id)
+    role = RoleManager.get_role_by_id(role_id_int)
     if not role:
-        raise HTTPException(status_code=404, detail=f"角色{role_id}不存在")
+        raise HTTPException(status_code=404, detail=f"角色{role_id_int}不存在")
     if not role.resource_folder:
-        raise HTTPException(status_code=404, detail=f"角色{role_id}资源不存在")
+        raise HTTPException(status_code=404, detail=f"角色{role_id_int}资源不存在")
 
     # 2. 根据角色类型获取形象基础路径
     base_path = Path()
@@ -525,45 +543,6 @@ async def get_all_characters(
     except Exception as e:
         logger.error(f"获取角色列表失败: {str(e)}")
         return JSONResponse(status_code=500, content={"message": "获取角色列表失败"})
-
-
-@router.post("/clothes/select")
-async def select_clothes(
-    clothes_name: str = Body(..., description="衣服名称"),
-):
-    ai_service = service_manager.get_ai_service()
-
-    if not ai_service.game_status.main_role:
-        raise HTTPException(status_code=500, detail="角色不存在")
-
-    # 检查是否需要更换
-    if ai_service.game_status.main_role.current_clothes == clothes_name:
-        return {"success": True, "message": "当前衣服已经是选中状态"}
-
-    # 更换衣服
-    ai_service.game_status.main_role.current_clothes = clothes_name
-    settings = ai_service.game_status.main_role.settings
-
-    # 查找衣服配置并生成提示语
-    prompt = next(
-        (
-            clothes.get("prompt")
-            for clothes in (settings.clothes or [])
-            if clothes.get("name") == clothes_name
-        ),
-        f"{settings.ai_name}换上了新服装：{clothes_name}",
-    )
-
-    # 添加系统提示
-    ai_service.game_status.add_line(
-        LineBase(
-            content=f"{{系统提示: {prompt}}}",
-            attribute=LineAttribute.USER,
-            display_name="旁白",
-        )
-    )
-
-    return {"success": True, "message": "衣服更换成功"}
 
 
 @router.get("/character_file/{file_path:path}")

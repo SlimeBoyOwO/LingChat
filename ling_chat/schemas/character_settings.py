@@ -19,6 +19,9 @@ class VoiceModel(BaseModel):
     gsv_gpt_model_name: Optional[str] = None
     gsv_sovits_model_name: Optional[str] = None
     aivis_model_uuid: Optional[str] = None
+    openai_tts_model: Optional[str] = None
+    openai_tts_voice: Optional[str] = None
+    tts_language: Optional[str] = "ja"
 
 
 class CharacterSettings(BaseModel):
