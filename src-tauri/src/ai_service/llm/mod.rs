@@ -5,6 +5,7 @@
 
 mod factory;
 mod provider;
+pub mod provider_config;
 mod providers;
 
 pub use factory::create_llm_client;

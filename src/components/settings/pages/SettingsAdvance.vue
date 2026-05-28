@@ -8,8 +8,27 @@
         ></div>
       </div>
 
-      <!-- 响应式布局容器 -->
-      <div class="flex flex-col md:grid md:grid-cols-[min(30%,280px)_1fr] h-full min-h-0">
+      <!-- 内部 Tab 切换 -->
+      <div class="flex items-center gap-1 mb-4 px-1">
+        <button
+          class="px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200"
+          :class="advanceTab === 'llm' ? 'bg-brand text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'"
+          @click="advanceTab = 'llm'"
+        >大模型管理</button>
+        <button
+          class="px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200"
+          :class="advanceTab === 'other' ? 'bg-brand text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'"
+          @click="advanceTab = 'other'"
+        >其他高级设置</button>
+      </div>
+
+      <!-- ====== 大模型管理 ====== -->
+      <div v-if="advanceTab === 'llm'" class="h-[calc(100%-3rem)]">
+        <SettingsLlmProviders />
+      </div>
+
+      <!-- ====== 其他高级设置 ====== -->
+      <div v-else class="flex flex-col md:grid md:grid-cols-[min(30%,280px)_1fr] h-[calc(100%-3rem)] min-h-0">
         <!-- 导航菜单 -->
         <nav
           ref="navContainerRef"
@@ -17,9 +36,7 @@
           class="transition-all duration-300 ease-[cubic-bezier(0.18,0.89,0.32,1.00)] flex flex-col justify-start gap-6.25 overflow-y-auto relative border-b md:border-b-0 md:border-r border-brand md:moreMenu:left-0"
           :class="[
             'md:left-0',
-            // 竖屏时始终显示在顶部
             'translate-y-0',
-            // 当有 moreMenu 类时保持显示
             'moreMenu:translate-y-0',
           ]"
         >
@@ -64,9 +81,7 @@
         <main
           class="flex justify-center h-full overflow-auto relative px-10 py-10 md:px-10 md:py-0"
           :class="[
-            // 竖屏时始终显示
             'translate-y-0',
-            // 当有 moreMenu 类时保持显示
             'moreMenu:translate-y-0',
           ]"
         >
@@ -90,7 +105,6 @@
                   :key="setting.key"
                   class="mb-6"
                 >
-                  <!-- 使用 SettingItem 组件渲染不同类型的输入控件 -->
                   <SettingItem
                     :setting="setting"
                     @update:value="(value) => (setting.value = value)"
@@ -135,10 +149,12 @@
 import { ref, onMounted, computed, reactive, watch, nextTick } from 'vue'
 import { MenuPage } from '../../ui'
 import SettingItem from '@/components/base/items/SettingItem.vue'
+import SettingsLlmProviders from './SettingsLlmProviders.vue'
 import { getEnvConfigSettings } from '@/api/services/config'
 import { saveEnvConfigSettings } from '@/api/services/config'
 
 // --- 响应式状态定义 ---
+const advanceTab = ref<'llm' | 'other'>('other')
 const isLoading = ref(false)
 const configData = ref<Record<string, any>>({})
 const activeSelection = reactive({

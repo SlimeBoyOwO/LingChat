@@ -10,7 +10,10 @@ use tauri_plugin_store::StoreExt;
 use tokio::sync::Mutex;
 
 use crate::ai_service::emotion::EmotionClassifier;
-use crate::ai_service::llm::{create_llm_client, LlmClient, LlmConfig};
+use crate::ai_service::llm::provider_config::{
+    build_llm_client_from_provider, migrate_if_needed, resolve_chat_provider,
+    resolve_translate_provider,
+};
 use crate::ai_service::message_system::processor::{MessageProcessor, ProcessorOptions};
 use crate::ai_service::service::{AIService, SharedAIService};
 use crate::ai_service::translator::Translator;
@@ -31,19 +34,15 @@ pub async fn initialize(
 
     role_sync::sync_roles_from_folder(&db, &data_dir).await?;
 
+    // 迁移旧的扁平 LLM 配置 → 多供应商列表
+    migrate_if_needed(&app.handle());
+
     // 提前加载配置 + 构建 LlmClient（AIService 的子成员 GameRoleManager 需要它）
     let app_config = AppConfig::load(&app.handle()).unwrap_or_default();
 
-    let llm = build_llm_client(
-        app_config.llm_provider.as_deref().unwrap_or(""),
-        app_config.llm_model.as_deref().unwrap_or(""),
-        app_config.llm_api_key.as_deref().unwrap_or(""),
-        app_config.llm_base_url.as_deref().unwrap_or(""),
-        app_config.temperature,
-        app_config.top_p,
-        app_config.enable_thinking,
-    )
-    .map(Arc::new);
+    let llm = resolve_chat_provider(&app.handle())
+        .and_then(|p| build_llm_client_from_provider(&p))
+        .map(Arc::new);
 
     let mut ai_service = AIService::new(
         db.clone(),
@@ -71,15 +70,8 @@ pub async fn initialize(
     let ai_service: SharedAIService = Arc::new(Mutex::new(ai_service));
 
     // —— 构建聊天组件 ——
-    let translate_llm = build_llm_client(
-        app_config.translate_provider.as_deref().unwrap_or(""),
-        app_config.translate_model.as_deref().unwrap_or(""),
-        app_config.translate_api_key.as_deref().unwrap_or(""),
-        app_config.translate_base_url.as_deref().unwrap_or(""),
-        None,
-        None,
-        false, // thinking not needed for translation
-    );
+    let translate_llm = resolve_translate_provider(&app.handle())
+        .and_then(|p| build_llm_client_from_provider(&p));
 
     let classifier = load_emotion_classifier(app_config.enable_emotion_classifier, &data_dir);
     let processor = Arc::new(MessageProcessor::new(
@@ -102,36 +94,6 @@ pub async fn initialize(
     };
 
     Ok((db, ai_service, chat))
-}
-
-fn build_llm_client(
-    provider: &str,
-    model: &str,
-    api_key: &str,
-    base_url: &str,
-    temperature: Option<f64>,
-    top_p: Option<f64>,
-    enable_thinking: bool,
-) -> Option<LlmClient> {
-    if api_key.is_empty() || model.is_empty() {
-        tracing::warn!(
-            "LLM 未配置 (provider={}, model={})，将无法生成对话",
-            provider,
-            model
-        );
-        return None;
-    }
-    let cfg = LlmConfig {
-        provider: provider.to_string(),
-        model: model.to_string(),
-        api_key: api_key.to_string(),
-        base_url: base_url.to_string(),
-        timeout_secs: 120,
-        temperature,
-        top_p,
-        enable_thinking,
-    };
-    create_llm_client(cfg).ok()
 }
 
 fn load_emotion_classifier(

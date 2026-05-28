@@ -13,6 +13,10 @@ pub mod proactive;
 pub mod tts;
 
 use crate::config::tts::TtsConfig;
+use crate::ai_service::llm::provider_config::{
+    build_llm_client_from_provider, load_providers, save_providers,
+    load_role_assignment, save_role_assignment, LlmProviderConfig, LlmProvidersResponse,
+};
 
 // ========== 字段键（对标 Python .env） ==========
 pub mod keys {
@@ -21,6 +25,11 @@ pub mod keys {
     pub const LLM_MODEL: &str = "llm.model";
     pub const LLM_API_KEY: &str = "llm.api_key";
     pub const LLM_BASE_URL: &str = "llm.base_url";
+
+    // LLM 多供应商管理
+    pub const LLM_PROVIDERS: &str = "llm.providers";
+    pub const LLM_CHAT_PROVIDER_ID: &str = "llm.chat_provider_id";
+    pub const LLM_TRANSLATE_PROVIDER_ID: &str = "llm.translate_provider_id";
 
     // LLM 生成参数（对应 TEMPERATURE / TOP_P / ENABLE_THINKING）
     pub const LLM_TEMPERATURE: &str = "llm.temperature";
@@ -291,68 +300,6 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
     {
         let mut llm_subs = BTreeMap::new();
 
-        // 连接设置（对应 LLM_PROVIDER / MODEL_TYPE / CHAT_API_KEY / CHAT_BASE_URL）
-        llm_subs.insert(
-            "连接设置".to_string(),
-            Subcategory {
-                description: "对应 ENV: LLM_PROVIDER / MODEL_TYPE / CHAT_API_KEY / CHAT_BASE_URL".to_string(),
-                settings: vec![
-                    ConfigSetting {
-                        key: keys::LLM_PROVIDER.to_string(),
-                        value: read_setting(app, keys::LLM_PROVIDER, ""),
-                        description: "LLM 服务提供商（openai / deepseek / gemini / ollama）".to_string(),
-                        setting_type: "text".to_string(),
-                    },
-                    ConfigSetting {
-                        key: keys::LLM_MODEL.to_string(),
-                        value: read_setting(app, keys::LLM_MODEL, ""),
-                        description: "模型名称（如 deepseek-chat / gpt-4o）".to_string(),
-                        setting_type: "text".to_string(),
-                    },
-                    ConfigSetting {
-                        key: keys::LLM_API_KEY.to_string(),
-                        value: read_setting(app, keys::LLM_API_KEY, ""),
-                        description: "API 密钥".to_string(),
-                        setting_type: "text".to_string(),
-                    },
-                    ConfigSetting {
-                        key: keys::LLM_BASE_URL.to_string(),
-                        value: read_setting(app, keys::LLM_BASE_URL, ""),
-                        description: "API 基础 URL（留空使用默认，如 DeepSeek 官方 https://api.deepseek.com/v1）".to_string(),
-                        setting_type: "text".to_string(),
-                    },
-                ],
-            },
-        );
-
-        // 生成参数（对应 TEMPERATURE / TOP_P / ENABLE_THINKING）
-        llm_subs.insert(
-            "生成参数".to_string(),
-            Subcategory {
-                description: "对应 ENV: TEMPERATURE / TOP_P / ENABLE_THINKING".to_string(),
-                settings: vec![
-                    ConfigSetting {
-                        key: keys::LLM_TEMPERATURE.to_string(),
-                        value: read_setting(app, keys::LLM_TEMPERATURE, ""),
-                        description: "生成温度 TEMPERATURE（越高越随机，留空使用默认 1.3）".to_string(),
-                        setting_type: "text".to_string(),
-                    },
-                    ConfigSetting {
-                        key: keys::LLM_TOP_P.to_string(),
-                        value: read_setting(app, keys::LLM_TOP_P, ""),
-                        description: "核采样 TOP_P（留空使用默认 0.9）".to_string(),
-                        setting_type: "text".to_string(),
-                    },
-                    ConfigSetting {
-                        key: keys::LLM_ENABLE_THINKING.to_string(),
-                        value: read_setting(app, keys::LLM_ENABLE_THINKING, "false"),
-                        description: "ENABLE_THINKING — 启用思考链（部分模型支持）".to_string(),
-                        setting_type: "bool".to_string(),
-                    },
-                ],
-            },
-        );
-
         // 高级选项
         llm_subs.insert(
             "高级选项".to_string(),
@@ -387,39 +334,6 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
     // ===== 翻译配置 =====
     {
         let mut trans_subs = BTreeMap::new();
-
-        trans_subs.insert(
-            "连接设置".to_string(),
-            Subcategory {
-                description: "对应 ENV: TRANSLATE_LLM_PROVIDER / TRANSLATE_MODEL / TRANSLATE_API_KEY / TRANSLATE_BASE_URL".to_string(),
-                settings: vec![
-                    ConfigSetting {
-                        key: keys::TRANSLATE_PROVIDER.to_string(),
-                        value: read_setting(app, keys::TRANSLATE_PROVIDER, ""),
-                        description: "翻译服务提供商（留空则复用主 LLM 配置）".to_string(),
-                        setting_type: "text".to_string(),
-                    },
-                    ConfigSetting {
-                        key: keys::TRANSLATE_MODEL.to_string(),
-                        value: read_setting(app, keys::TRANSLATE_MODEL, ""),
-                        description: "翻译模型名称（如 qwen-mt-plus）".to_string(),
-                        setting_type: "text".to_string(),
-                    },
-                    ConfigSetting {
-                        key: keys::TRANSLATE_API_KEY.to_string(),
-                        value: read_setting(app, keys::TRANSLATE_API_KEY, ""),
-                        description: "翻译 API 密钥".to_string(),
-                        setting_type: "text".to_string(),
-                    },
-                    ConfigSetting {
-                        key: keys::TRANSLATE_BASE_URL.to_string(),
-                        value: read_setting(app, keys::TRANSLATE_BASE_URL, ""),
-                        description: "翻译 API 基础 URL".to_string(),
-                        setting_type: "text".to_string(),
-                    },
-                ],
-            },
-        );
 
         trans_subs.insert(
             "功能选项".to_string(),
@@ -805,4 +719,121 @@ pub fn get_setting_by_key(app: AppHandle, key: String) -> Result<ConfigSetting, 
 pub fn select_file(app: AppHandle) -> Result<Option<String>, String> {
     let file = app.dialog().file().blocking_pick_file();
     Ok(file.map(|f| f.to_string()))
+}
+
+// ============================================================
+// LLM multi-provider management commands
+// ============================================================
+
+#[tauri::command]
+pub fn list_llm_providers(app: AppHandle) -> LlmProvidersResponse {
+    let providers = load_providers(&app);
+    let assignment = load_role_assignment(&app);
+    LlmProvidersResponse {
+        providers,
+        chat_provider_id: assignment.chat_provider_id,
+        translate_provider_id: assignment.translate_provider_id,
+    }
+}
+
+#[tauri::command]
+pub fn save_llm_provider(app: AppHandle, provider: LlmProviderConfig) -> Result<(), String> {
+    let mut providers = load_providers(&app);
+
+    let id = if provider.id.is_empty() {
+        uuid::Uuid::new_v4().to_string()
+    } else {
+        provider.id.clone()
+    };
+
+    let mut updated = provider;
+    updated.id = id.clone();
+
+    // Insert or update
+    if let Some(pos) = providers.iter().position(|p| p.id == id) {
+        providers[pos] = updated;
+    } else {
+        providers.push(updated);
+    }
+
+    save_providers(&app, &providers).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_llm_provider(app: AppHandle, id: String) -> Result<(), String> {
+    let mut providers = load_providers(&app);
+    providers.retain(|p| p.id != id);
+    save_providers(&app, &providers).map_err(|e| e.to_string())?;
+
+    // Clear role assignment if this was the selected provider
+    let mut assignment = load_role_assignment(&app);
+    let mut changed = false;
+    if assignment.chat_provider_id.as_deref() == Some(&id) {
+        assignment.chat_provider_id = None;
+        changed = true;
+    }
+    if assignment.translate_provider_id.as_deref() == Some(&id) {
+        assignment.translate_provider_id = None;
+        changed = true;
+    }
+    if changed {
+        save_role_assignment(&app, &assignment).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_llm_role(
+    app: AppHandle,
+    role: String,
+    provider_id: Option<String>,
+) -> Result<(), String> {
+    // Validate that the provider exists (unless setting to None)
+    if let Some(ref pid) = provider_id {
+        let providers = load_providers(&app);
+        if !providers.iter().any(|p| p.id == *pid) {
+            return Err(format!("Provider '{pid}' not found"));
+        }
+    }
+
+    let mut assignment = load_role_assignment(&app);
+    match role.as_str() {
+        "chat" => assignment.chat_provider_id = provider_id,
+        "translate" => assignment.translate_provider_id = provider_id,
+        other => return Err(format!("Invalid role: {other}")),
+    }
+    save_role_assignment(&app, &assignment).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn test_llm_provider(
+    provider: LlmProviderConfig,
+    message: String,
+) -> Result<String, String> {
+    let Some(client) = build_llm_client_from_provider(&provider) else {
+        return Err("无法创建 LLM 客户端：请检查 API Key 和模型名称".to_string());
+    };
+
+    let messages = vec![
+        crate::ai_service::types::LlmMessage {
+            role: "system".to_string(),
+            content: "你是一个有帮助的AI助手。请简洁地回答用户的问题。".to_string(),
+        },
+        crate::ai_service::types::LlmMessage {
+            role: "user".to_string(),
+            content: message,
+        },
+    ];
+
+    let timeout = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        client.complete(&messages),
+    )
+    .await
+    .map_err(|_| "请求超时（30秒），请检查网络或 API 地址".to_string())?;
+
+    timeout.map_err(|e| format!("测试请求失败: {e}"))
 }

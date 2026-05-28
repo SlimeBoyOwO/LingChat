@@ -71,11 +71,7 @@ pub async fn list_character_adventures(
             .await
             .unwrap_or(false);
 
-        let is_db_completed = AdventureManager::is_globally_completed(db, &adv.folder_key)
-            .await
-            .unwrap_or(false);
-
-        let status = if completed.contains(&adv.path_key()) || is_db_completed {
+        let status = if completed.contains(&adv.path_key()) {
             "completed"
         } else if is_running && current_script_folder.as_deref() == Some(&adv.folder_key) {
             "in_progress"
