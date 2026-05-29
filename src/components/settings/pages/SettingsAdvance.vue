@@ -9,17 +9,23 @@
       </div>
 
       <!-- 内部 Tab 切换 -->
-      <div class="flex items-center gap-1 mb-4 px-1">
+      <div class="flex items-center justify-between mb-5 select-none">
         <button
-          class="px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200"
-          :class="advanceTab === 'llm' ? 'bg-brand text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'"
-          @click="advanceTab = 'llm'"
-        >大模型管理</button>
-        <button
-          class="px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200"
-          :class="advanceTab === 'other' ? 'bg-brand text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'"
+          class="group flex items-center gap-1.5 text-sm font-medium transition-all duration-300"
+          :class="advanceTab === 'llm' ? 'text-white/40 hover:text-white/70' : 'text-white/80'"
           @click="advanceTab = 'other'"
-        >其他高级设置</button>
+        >
+          <svg class="w-4 h-4 transition-transform duration-300" :class="advanceTab === 'llm' ? 'group-hover:-translate-x-1' : 'invisible'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+          <span>其他高级设置</span>
+        </button>
+        <button
+          class="group flex items-center gap-1.5 text-sm font-medium transition-all duration-300"
+          :class="advanceTab === 'other' ? 'text-white/40 hover:text-white/70' : 'text-white/80'"
+          @click="advanceTab = 'llm'"
+        >
+          <span>大模型管理</span>
+          <svg class="w-4 h-4 transition-transform duration-300" :class="advanceTab === 'other' ? 'group-hover:translate-x-1' : 'invisible'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        </button>
       </div>
 
       <!-- ====== 大模型管理 ====== -->

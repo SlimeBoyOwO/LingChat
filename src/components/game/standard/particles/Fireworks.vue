@@ -61,7 +61,7 @@ let lastFrameTime = 0
 
 // Animation frame
 let animationId: number
-let autoLaunchInterval: number
+let autoLaunchInterval: ReturnType<typeof setInterval>
 
 // Stars and particles
 interface StarInstance {

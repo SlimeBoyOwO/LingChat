@@ -1,3 +1,4 @@
+pub mod compat;
 pub mod entities;
 pub mod managers;
 
@@ -18,6 +19,15 @@ pub async fn init_db(data_dir: &Path) -> Result<DatabaseConnection> {
     let db = Database::connect(&db_url)
         .await
         .context("Failed to connect to database")?;
+
+    // Detect and migrate old Python-backend databases before running standard migrations
+    if let Err(e) = compat::migrate_from_python(&db, data_dir).await {
+        // Log the full error chain since Tauri's panic only shows the outermost message
+        for cause in e.chain() {
+            tracing::error!("compat migration error: {cause}");
+        }
+        return Err(e).context("Failed to migrate database from old Python schema");
+    }
 
     Migrator::up(&db, None)
         .await
