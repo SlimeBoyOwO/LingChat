@@ -4,7 +4,7 @@
       <template #header>
         <History :size="20" />
       </template>
-      <div class="flex flex-col h-full min-h-0">
+      <div class="flex flex-col h-full max-h-[75vh] min-h-0">
         <div v-if="dialogHistory.length === 0" class="flex flex-1 items-center justify-center">
           <div
             class="py-10 text-center text-2xl font-bold text-gray-100 [text-shadow:0_0_5px_rgba(255,255,255,0.5)]"
@@ -88,7 +88,7 @@
 
 <script setup lang="ts">
 // 1. 从 vue 中引入 ref 和 watch
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { MenuPage, MenuItem } from '../../ui'
 import { useGameStore } from '../../../stores/modules/game'
 import type { GameMessage } from '../../../stores/modules/game/state'
@@ -113,6 +113,7 @@ interface HistoryBlock {
 
 const gameStore = useGameStore()
 const audioRef = ref<HTMLAudioElement>()
+const contentRef = ref<HTMLDivElement>()
 
 const dialogHistory = computed<GameMessage[]>(() => gameStore.dialogHistory)
 const narrationNames = new Set(['', '旁白', '系统', 'Narrator', 'System'])
@@ -212,14 +213,35 @@ const playAudio = async (audioFile: string) => {
   audioRef.value.play()
 }
 
-// 监听对话历史变化，重置到第一页
+// 滚动到内容底部（最新记录）
+async function scrollToBottom() {
+  await nextTick()
+  if (contentRef.value) {
+    contentRef.value.scrollTop = contentRef.value.scrollHeight
+  }
+}
+
+// 打开面板时自动跳转到最后一页，并滚动到底部
+onMounted(async () => {
+  if (dialogHistory.value.length > 0) {
+    currentPage.value = totalPages.value
+    await scrollToBottom()
+  }
+})
+
+// 当切换到最后一页时，自动滚动到底部
+watch([currentPage, groupedHistory], async () => {
+  if (currentPage.value === totalPages.value) {
+    await scrollToBottom()
+  }
+})
+
+// 监听对话历史变化，跳转到最后一页（最新记录）
 watch(
   dialogHistory,
   () => {
-    currentPage.value = 1
+    currentPage.value = totalPages.value
   },
   { deep: true },
 )
-
-// 对话初始化逻辑在 gameStore 的初始化中处理
 </script>

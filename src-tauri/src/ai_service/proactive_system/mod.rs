@@ -13,6 +13,7 @@ use tauri::AppHandle;
 use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
 
+use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::generator::{GeneratorDeps, MessageGenerator};
 use crate::ai_service::service::SharedAIService;
 use crate::ai_service::types::{LineAttributeExt, LineBase};
@@ -115,12 +116,12 @@ impl ProactiveSystem {
                 };
 
                 if !enabled {
-                    tracing::info!("[ProactiveSystem] Disabled via settings, skipping...");
+                    // tracing::info!("[ProactiveSystem] Disabled via settings, skipping...");
                     continue;
                 }
 
                 if is_script_active {
-                    tracing::info!("[ProactiveSystem] Script is currently running, bypassing proactive talk to avoid collision.");
+                    // tracing::info!("[ProactiveSystem] Script is currently running, bypassing proactive talk to avoid collision.");
                     continue;
                 }
 
@@ -199,7 +200,7 @@ impl ProactiveSystem {
             "[ProactiveSystem] Cycle start. Interest: {:.2}/{:.2}, count today: {}/{}",
             sys.interest_manager.interest,
             sys.interest_manager.max_interest_cap,
-            sys.interest_manager.proactive_times_today,
+            sys.interest_manager.proactive_times,
             sys.interest_manager.max_proactive_count
         );
 
@@ -229,31 +230,18 @@ impl ProactiveSystem {
         }
 
         // 3. 执行键盘鼠标与视觉变更感知
-        let mut perception = sys.activity_monitor.get_user_status();
+        let perception = sys.activity_monitor.get_user_status();
 
-        // 视觉变化监测
-        if sys.config.enable_visual_perception {
-            let change = sys.visual_monitor.check_visual_change();
-            perception.visual_change_detected = change;
-
-            // 画面有变动时，好感度/兴趣值增加 15 点以加速主动出击
-            if change {
-                perception.interest_modifier += 15;
-            }
-        }
+        // 视觉变化监测 TODO: 视觉模块将会在后面优化为更智能的模块，目前先不启用
+        // if sys.config.enable_visual_perception {
+        //     let change = sys.visual_monitor.check_visual_change();
+        //     perception.visual_change_detected = change;
+        // }
 
         // 4. 更新好感度/兴趣度
         sys.interest_manager.update_interest();
-        if perception.interest_modifier != 0 {
-            sys.interest_manager.interest = (sys.interest_manager.interest
-                + perception.interest_modifier as f64)
-                .clamp(0.0, sys.interest_manager.max_interest_cap);
-            tracing::info!(
-                "[Engagement] Interest modified by {}. Current: {:.2}",
-                perception.interest_modifier,
-                sys.interest_manager.interest
-            );
-        }
+        sys.interest_manager
+            .set_status_mod(perception.interest_modifier);
 
         // 5. 检查是否满足主动出击触发阈值
         if sys.interest_manager.should_trigger_talk() {
@@ -273,6 +261,9 @@ impl ProactiveSystem {
 
             // 获取锁，准备触发主动对话
             let _lock = lock_clone.lock().await;
+
+            // 发送思考状态，防止前端输入
+            events::emit_thinking(&sys.app, true);
 
             let prompt_opt = {
                 let svc = sys.ai_service.lock().await;
@@ -331,6 +322,8 @@ impl ProactiveSystem {
 
                 // 派发流式生成任务并等待其处理完毕 (包括 TTS 音频分段输出)
                 let _ = generator.process_message(None).await;
+            } else {
+                events::emit_thinking(&sys.app, false);
             }
         }
 

@@ -63,7 +63,7 @@
     </MenuItem>
 
     <!-- 羁绊冒险部分 -->
-    <MenuItem title="羁绊冒险">
+    <MenuItem title="羁绊冒险（测试中）">
       <template #header>
         <Book :size="20" />
       </template>

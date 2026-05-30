@@ -20,9 +20,8 @@ use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::llm::LlmClient;
 use crate::ai_service::message_system::processor::{MessageProcessor, UserMessageOutcome};
 use crate::ai_service::message_system::producer::{SentenceItem, StreamProducer};
-use crate::ai_service::message_system::responses::{
-    event_names, ErrorResponse, ReplyResponse, StatusResetResponse, ThinkingResponse,
-};
+use crate::ai_service::message_system::events;
+use crate::ai_service::message_system::responses::{event_names, ReplyResponse};
 use crate::ai_service::translator::Translator;
 use crate::ai_service::types::{LineAttributeExt, LineBase, LlmMessage};
 use crate::api::data_dir;
@@ -120,7 +119,7 @@ impl MessageGenerator {
         };
 
         // === 3. 启动 LLM 流 + 句子管道 ===
-        self.emit_thinking(true);
+        events::emit_thinking(&self.deps.app, true);
 
         let accumulated = match self
             .run_pipeline(current_context, user_message.clone().unwrap_or_default())
@@ -128,13 +127,13 @@ impl MessageGenerator {
         {
             Ok(v) => v,
             Err(e) => {
-                self.emit_error(&e);
-                self.emit_thinking(false);
+                events::emit_error(&self.deps.app, &e);
+                events::emit_thinking(&self.deps.app, false);
                 return Err(e);
             }
         };
 
-        self.emit_thinking(false);
+        events::emit_thinking(&self.deps.app, false);
 
         // === 4. 后处理：若 temp_message 存在，需要把 user 行里的 temp 段清理掉后重建记忆 ===
         if let (Some(temp), Some(idx)) = (temp_message.as_deref(), inserted_user_line_index) {
@@ -225,34 +224,6 @@ impl MessageGenerator {
         Ok(acc)
     }
 
-    fn emit_thinking(&self, is_thinking: bool) {
-        let payload = ThinkingResponse::new(is_thinking);
-        if let Err(e) = self.deps.app.emit(event_names::AI_THINKING, &payload) {
-            tracing::warn!("emit thinking 失败: {e}");
-        }
-    }
-
-    fn emit_error(&self, err: &anyhow::Error) {
-        let msg = err.to_string();
-        let code = classify_error(&msg);
-        let err_payload = ErrorResponse::new(code, &msg);
-        let _ = self.deps.app.emit(event_names::AI_ERROR, &err_payload);
-        let reset = StatusResetResponse::new("input");
-        let _ = self.deps.app.emit(event_names::STATUS_RESET, &reset);
-    }
-}
-
-fn classify_error(msg: &str) -> &'static str {
-    let lc = msg.to_lowercase();
-    if msg.contains("401") || msg.contains("Api key is invalid") {
-        "401"
-    } else if msg.contains("404") {
-        "404"
-    } else if lc.contains("network") || msg.contains("网络") {
-        "network_error"
-    } else {
-        "default_error"
-    }
 }
 
 async fn consume_sentence(

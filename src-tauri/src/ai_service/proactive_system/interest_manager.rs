@@ -7,7 +7,7 @@ pub struct InterestManager {
     pub status_mod: i32,
     pub max_proactive_count: i32,
     pub decay_step: f64,
-    pub proactive_times_today: i32,
+    pub proactive_times: i32,
 }
 
 impl InterestManager {
@@ -19,7 +19,7 @@ impl InterestManager {
             status_mod: 0,
             max_proactive_count,
             decay_step: 50.0,
-            proactive_times_today: 0,
+            proactive_times: 0,
         }
     }
 
@@ -40,8 +40,7 @@ impl InterestManager {
     }
 
     pub fn should_trigger_talk(&self) -> bool {
-        if self.proactive_times_today >= self.max_proactive_count {
-            tracing::info!("[Engagement] Proactive daily limit reached: {}/{}", self.proactive_times_today, self.max_proactive_count);
+        if self.proactive_times >= self.max_proactive_count {
             return false;
         }
 
@@ -66,9 +65,8 @@ impl InterestManager {
 
     pub fn reset_interest(&mut self) {
         self.interest = 0.0;
-        self.proactive_times_today += 1;
+        self.proactive_times += 1;
         self.decay_max_interest_cap();
-        tracing::info!("[Engagement] Interest reset. Today count: {}", self.proactive_times_today);
     }
 
     pub fn decay_max_interest_cap(&mut self) {
@@ -78,15 +76,10 @@ impl InterestManager {
 
     pub fn restore_max_interest_cap(&mut self) {
         self.max_interest_cap = self.initial_max_cap;
-        tracing::info!("[Engagement] Cap fully restored to {:.2}", self.max_interest_cap);
+        self.proactive_times = 0;
     }
 
     pub fn set_status_mod(&mut self, val: i32) {
         self.status_mod = val;
-    }
-
-    pub fn reset_daily_count(&mut self) {
-        self.proactive_times_today = 0;
-        tracing::info!("[Engagement] Daily count reset.");
     }
 }
