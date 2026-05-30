@@ -264,7 +264,7 @@
                   <label class="text-sm text-white/70">TTS 类型</label>
                   <select
                     v-model="form.tts_type"
-                    class="w-full rounded-xl bg-white/10 border border-white/20 px-3 py-2"
+                    class="w-full rounded-xl bg-white/10 border border-white/20 px-3 py-2 [&>option]:bg-slate-800"
                   >
                     <option value="">不设置</option>
                     <option value="sva">sva</option>
@@ -273,8 +273,41 @@
                     <option value="sbv2api">sbv2api</option>
                     <option value="gsv">gsv</option>
                     <option value="aivis">aivis</option>
+                    <option value="openai-tts">openai-tts</option>
                   </select>
                 </div>
+
+                <div class="space-y-2">
+                  <label class="text-sm text-white/70">TTS 语言</label>
+                  <select
+                    v-model="form.tts_language"
+                    class="w-full rounded-xl bg-white/10 border border-white/20 px-3 py-2 [&>option]:bg-slate-800"
+                  >
+                    <option value="ja">日语</option>
+                    <option value="zh">中文</option>
+                  </select>
+                </div>
+
+                <template v-if="form.tts_type === 'openai-tts'">
+                  <div class="space-y-2">
+                    <label class="text-sm text-white/70">TTS 模型 ID</label>
+                    <input
+                      v-model="form.voice_models.openai_tts_model"
+                      type="text"
+                      placeholder="如：FunAudioLLM/CosyVoice2-0.5B"
+                      class="w-full rounded-xl bg-white/10 border border-white/20 px-3 py-2"
+                    />
+                  </div>
+                  <div class="space-y-2">
+                    <label class="text-sm text-white/70">TTS 音色 (Voice)</label>
+                    <input
+                      v-model="form.voice_models.openai_tts_voice"
+                      type="text"
+                      placeholder="如：canyue"
+                      class="w-full rounded-xl bg-white/10 border border-white/20 px-3 py-2"
+                    />
+                  </div>
+                </template>
 
                 <div class="space-y-2">
                   <label class="text-sm text-white/70">系统提示词</label>
@@ -361,6 +394,8 @@ interface CharacterFormState {
   bubble_left: number
   thinking_message: string
   tts_type: string
+  tts_language: string
+  voice_models: Record<string, string>
   system_prompt: string
   system_prompt_example: string
   system_prompt_example_old: string
@@ -426,6 +461,8 @@ const form = reactive<CharacterFormState>({
   bubble_left: 20,
   thinking_message: '正在思考中...',
   tts_type: '',
+  tts_language: 'ja',
+  voice_models: {},
   system_prompt: '',
   system_prompt_example: '',
   system_prompt_example_old: '',
@@ -466,6 +503,8 @@ const resetAll = () => {
   form.bubble_left = 20
   form.thinking_message = '正在思考中...'
   form.tts_type = ''
+  form.tts_language = 'ja'
+  form.voice_models = {}
   form.system_prompt = ''
   form.system_prompt_example = ''
   form.system_prompt_example_old = ''
@@ -636,6 +675,8 @@ const submitCreate = async () => {
       bubble_left: Number(form.bubble_left),
       thinking_message: form.thinking_message.trim() || '正在思考中...',
       tts_type: form.tts_type || null,
+      tts_language: form.tts_language || 'ja',
+      voice_models: form.voice_models || {},
       system_prompt: form.system_prompt.trim() || null,
       system_prompt_example: form.system_prompt_example.trim() || null,
       system_prompt_example_old: form.system_prompt_example_old.trim() || null,

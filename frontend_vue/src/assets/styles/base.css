@@ -29,6 +29,7 @@
 @layer base {
   html {
     font-family: var(--font-sans);
+    color-scheme: dark;
   }
 }
 
