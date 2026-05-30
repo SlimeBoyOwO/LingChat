@@ -227,13 +227,17 @@ PerfTier classify_cpu_performance(void)
             // - 低压 Core i，代数 <=7 时归为 LOW
             if (low_power && gen <= 7)
                 return PERF_LOW;
+            
+            // - 6代及以上的 i7 一律 HIGH（补充特例，避免部分高端i7被误判为MEDIUM）
+            if(gen >= 6 && strstr(brand, "i7-") != NULL)
+                return PERF_HIGH;
 
             // 其余桌面/标压 7 代前 MEDIUM
             return PERF_MEDIUM;
         }
 
-        // Core 2 系列（超5GHz 再战5年）
-        if (strstr(brand, "Duo") || strstr(brand, "Quad") || strstr(brand, "Extreme"))
+        // Core 2 系列 统一风格（超4GHz 再战5年）
+        if (strstr(brand, "Duo") != NULL || strstr(brand, "Quad") != NULL || strstr(brand, "Extreme") != NULL)
         {
             return PERF_LOW;
         }
@@ -248,7 +252,7 @@ PerfTier classify_cpu_performance(void)
     // Xeon 洋垃圾 （E3/E5/E7）
     if (strstr(brand, "Xeon") != NULL)
     {
-        if (strstr(brand, "E5") || strstr(brand, "E7"))
+        if (strstr(brand, "E5") != NULL || strstr(brand, "E7") != NULL)
             return PERF_HIGH;
 
         return PERF_MEDIUM;
