@@ -134,6 +134,7 @@ class GameRole:
             if self.settings.voice_models
             else VoiceModel(),
             name=role_name,
+            tts_language=self.settings.tts_language or "ja",
         )
 
     def __hash__(self):
