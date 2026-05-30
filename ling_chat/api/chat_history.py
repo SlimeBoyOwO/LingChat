@@ -119,9 +119,20 @@ async def load_user_conversations(user_id: int, conversation_id: int):
                 for role_id in save.status.get("present_role_ids", set())
                 if (role := game_status.get_role(role_id)) is not None
             }
-            game_status.last_dialog_time = save.status.get(
-                "last_dialog_time", datetime.now()
-            )
+            # 注意：last_dialog_time 从 JSON 反序列化后是 str，不是 datetime。
+            # save_manager.py 中序列化时调用了 .isoformat() 转成了 ISO 字符串，
+            # 所以这里需要手动 parse 回 datetime，否则下游调用 .isoformat()/.strftime() 会崩溃。
+            # 见 https://github.com/SlimeBoyOwO/LingChat/issues/421
+            raw_time = save.status.get("last_dialog_time")
+            if isinstance(raw_time, datetime):
+                game_status.last_dialog_time = raw_time
+            elif isinstance(raw_time, str):
+                try:
+                    game_status.last_dialog_time = datetime.fromisoformat(raw_time)
+                except (ValueError, TypeError):
+                    game_status.last_dialog_time = datetime.now()
+            else:
+                game_status.last_dialog_time = datetime.now()
 
             # 4. 如果当时有正在运行的剧本，还原游戏状态
             if save.running_script_id is not None:

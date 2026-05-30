@@ -32,9 +32,11 @@ class StrategyDispatcher:
         )
         if enable_important_day and self.settings.importantDays:
             last_talk_date = (
+                # last_dialog_time 理论上在 chat_history.py 加载后已经是 datetime，
+                # 但为防止极端情况（上层未初始化或上游改动），用 isinstance 兜底。
                 self.game_status.last_dialog_time.strftime("%m-%d")
-                if self.game_status.last_dialog_time
-                else ""
+                if isinstance(self.game_status.last_dialog_time, datetime)
+                else (str(self.game_status.last_dialog_time) if self.game_status.last_dialog_time else "")
             )
             if last_talk_date != today_str:
                 for day in self.settings.importantDays:

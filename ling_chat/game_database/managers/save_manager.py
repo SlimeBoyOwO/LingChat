@@ -135,9 +135,11 @@ class SaveManager:
                 # 记录已经玩过的剧本
                 "completed_scripts": list(game_status.completed_scripts),
                 # 最后一次对话时间记录
+                # 注意：.isoformat() 会转为字符串，chat_history.py 加载时会 parse 回 datetime。
+                # 这里用 isinstance 兜底：如果是 datetime 就走 isoformat，否则透传（上游没初始化或已经是 str）。
                 "last_dialog_time": game_status.last_dialog_time.isoformat()
-                if game_status.last_dialog_time
-                else None,
+                if isinstance(game_status.last_dialog_time, datetime)
+                else game_status.last_dialog_time,
             }
 
             session.add(save)
