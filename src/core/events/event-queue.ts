@@ -26,6 +26,10 @@ export class EventQueue {
       while (this.queue.length > 0) {
         const event = this.queue.shift()
         if (event) {
+          // 如果当前事件是thinking类型，且队列后面还有别的事件，则跳过
+          if (event.type === 'thinking' && this.queue.length > 0) {
+            continue
+          }
           this.currentEvent = event
           try {
             await this.processSingleEvent(event)
