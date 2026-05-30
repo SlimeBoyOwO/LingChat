@@ -19,6 +19,8 @@ class VoiceModel(BaseModel):
     gsv_gpt_model_name: Optional[str] = None
     gsv_sovits_model_name: Optional[str] = None
     aivis_model_uuid: Optional[str] = None
+    openai_tts_model: Optional[str] = None
+    openai_tts_voice: Optional[str] = None
 
 
 class CharacterSettings(BaseModel):
@@ -52,6 +54,7 @@ class CharacterSettings(BaseModel):
     # 语音与TTS
     voice_models: Optional[VoiceModel] = None
     tts_type: Optional[str] = None
+    tts_language: Optional[str] = "ja"
 
     # UI / 气泡
     thinking_message: str = "正在思考中..."
