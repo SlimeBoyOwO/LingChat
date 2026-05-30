@@ -1,5 +1,6 @@
 from ling_chat.core.llm_providers.base import BaseLLMProvider
 from ling_chat.core.llm_providers.gemini import GeminiProvider
+from ling_chat.core.llm_providers.kimi_code import KimiCodeProvider
 from ling_chat.core.llm_providers.lmstudio import LMStudioProvider
 from ling_chat.core.llm_providers.ollama import OllamaProvider
 from ling_chat.core.llm_providers.qwen_translate import QwenTranslateProvider
@@ -15,7 +16,7 @@ class LLMProviderFactory:
         """
         创建指定类型的大模型提供者
 
-        :param provider_type: 提供者类型 (webllm, ollama, lmstudio, gemini, qwen)
+        :param provider_type: 提供者类型 (webllm, ollama, lmstudio, gemini, qwen, kimi-code)
         :param config: 配置字典
         :return: 大模型提供者实例
         """
@@ -34,6 +35,9 @@ class LLMProviderFactory:
             elif provider_type == "gemini":
                 logger.info("创建Gemini服务提供商")
                 return GeminiProvider(model_type, api_key, base_url, proxy)
+            elif provider_type == "kimi-code":
+                logger.info("创建 Kimi Code 服务提供商")
+                return KimiCodeProvider(model_type, api_key, base_url)
             elif provider_type == "qwen-translate":
                 logger.info("创建Qwen翻译服务提供商")
                 return QwenTranslateProvider()
