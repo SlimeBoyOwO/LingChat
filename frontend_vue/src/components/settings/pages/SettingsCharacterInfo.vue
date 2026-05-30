@@ -252,6 +252,17 @@ const schemas: Record<string, FieldSchema[]> = {
         { label: 'sbv2api', value: 'sbv2api' },
         { label: 'gsv', value: 'gsv' },
         { label: 'aivis', value: 'aivis' },
+        { label: 'openai-tts', value: 'openai-tts' },
+      ],
+    },
+
+    {
+      key: 'tts_language',
+      label: 'TTS 语言',
+      type: 'select',
+      options: [
+        { label: '日语', value: 'ja' },
+        { label: '中文', value: 'zh' },
       ],
     },
 
@@ -322,6 +333,21 @@ const schemas: Record<string, FieldSchema[]> = {
       type: 'text',
       isVoiceModel: true,
       visibleIf: (s) => s.tts_type === 'aivis',
+    },
+
+    {
+      key: 'openai_tts_model',
+      label: 'TTS 模型 ID',
+      type: 'text',
+      isVoiceModel: true,
+      visibleIf: (s) => s.tts_type === 'openai-tts',
+    },
+    {
+      key: 'openai_tts_voice',
+      label: 'TTS 音色 (Voice)',
+      type: 'text',
+      isVoiceModel: true,
+      visibleIf: (s) => s.tts_type === 'openai-tts',
     },
   ],
 }
