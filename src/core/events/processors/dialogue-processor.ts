@@ -41,6 +41,17 @@ export default class DialogueProcessor implements IEventProcessor {
       userMessageSeq: event.userMessageSeq,
     })
 
+    // 回溯更新最近一条没有序号标记的用户消息（前端发送消息时尚未拿到序号）
+    if (event.userMessageSeq !== undefined) {
+      const history = gameStore.dialogHistory
+      for (let i = history.length - 1; i >= 0; i--) {
+        if (history[i].type === 'message' && history[i].userMessageSeq === undefined) {
+          history[i].userMessageSeq = event.userMessageSeq
+          break
+        }
+      }
+    }
+
     uiStore.showCharacterLine = gameStore.currentLine // TODO: 这部分逻辑之后整合
     role.emotion = event.emotion || '正常'
     role.originalEmotion = event.originalTag || '正常'

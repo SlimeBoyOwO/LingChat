@@ -234,10 +234,11 @@ function parseSegments(raw: string, isNarration: boolean): Segment[] {
 }
 
 async function handleBacktrack(messageSeq: number) {
-  await dialogStore.alert(
+  const confirmed = await dialogStore.confirm(
     '确定要回溯到此对话吗？此操作将清除该消息及之后的所有对话，且不可撤销。',
     '回溯确认',
   )
+  if (!confirmed) return
 
   try {
     const lines = await invoke<any[]>('rollback_conversation', {
