@@ -269,6 +269,7 @@ pub fn run() {
             api::game::select_character,
             api::game::reactivate_tts,
             api::chat::send_chat_message,
+            api::chat::rollback_conversation,
             api::screenshot::start_screenshot,
             api::screenshot::get_overlay_data,
             api::screenshot::confirm_screenshot,

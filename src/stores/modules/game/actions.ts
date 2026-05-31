@@ -162,7 +162,7 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
 }
 
 /** 将 Rust GameLineInit 转换为前端 GameMessage 列表 */
-function convertInitLines(lines: GameLineInit[]): GameMessage[] {
+export function convertInitLines(lines: GameLineInit[]): GameMessage[] {
   const filtered = lines.filter((line) => line.attribute !== 'system')
 
   return filtered.map((line, index, array) => {
@@ -187,6 +187,7 @@ function convertInitLines(lines: GameLineInit[]): GameMessage[] {
       motionText: line.action_content || undefined,
       originalTag: line.original_emotion || undefined,
       timestamp: Date.now(),
+      userMessageSeq: line.user_message_seq ?? undefined,
     }
   })
 }

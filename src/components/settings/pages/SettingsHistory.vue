@@ -24,8 +24,18 @@
                 class="py-1"
                 :class="{ 'border-t border-white/10 pt-3 mt-0': !item.isNarration && i > 0 }"
               >
-                <div v-if="!item.isNarration" class="mb-1 text-[17px] font-semibold text-[#79d9ff]">
-                  {{ item.displayName }}
+                <div v-if="!item.isNarration" class="mb-1 flex items-center justify-between">
+                  <span class="text-[17px] font-semibold text-[#79d9ff]">
+                    {{ item.displayName }}
+                  </span>
+                  <button
+                    v-if="item.userMessageSeq !== undefined"
+                    class="shrink-0 cursor-pointer rounded border border-white/10 bg-transparent px-2 py-0.5 text-xs text-white/40 transition-all duration-200 hover:border-red-400/50 hover:bg-red-500/20 hover:text-white"
+                    title="回溯到此消息之前（将清除此消息及之后所有对话）"
+                    @click.stop="handleBacktrack(item.userMessageSeq!)"
+                  >
+                    回溯
+                  </button>
                 </div>
                 <template v-for="(entry, j) in item.lines" :key="j">
                   <div
@@ -92,8 +102,12 @@ import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { MenuPage, MenuItem } from '../../ui'
 import { useGameStore } from '../../../stores/modules/game'
 import type { GameMessage } from '../../../stores/modules/game/state'
+import { convertInitLines } from '../../../stores/modules/game/actions'
+import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { History, Volume2 } from 'lucide-vue-next'
 import { getVoiceAudio } from '@/api/services/game-info'
+import { invoke } from '@tauri-apps/api/core'
+import type { GameLineInit } from '@/api/services/game-info'
 
 interface Segment {
   type: 'dialogue' | 'action'
@@ -103,15 +117,18 @@ interface Segment {
 interface LineEntry {
   segments: Segment[]
   audioFile?: string
+  userMessageSeq?: number
 }
 
 interface HistoryBlock {
   displayName: string
   isNarration: boolean
   lines: LineEntry[]
+  userMessageSeq?: number
 }
 
 const gameStore = useGameStore()
+const dialogStore = useDialogStore()
 const audioRef = ref<HTMLAudioElement>()
 const contentRef = ref<HTMLDivElement>()
 
@@ -155,13 +172,22 @@ const groupedHistory = computed<HistoryBlock[]>(() => {
     const entry: LineEntry = {
       segments,
       audioFile: msg.audioFile,
+      userMessageSeq: msg.userMessageSeq,
     }
 
     const last = blocks.length > 0 ? blocks[blocks.length - 1] : null
     if (last && last.displayName === name && last.isNarration === isNarration) {
+      if (entry.userMessageSeq !== undefined && last.userMessageSeq === undefined) {
+        last.userMessageSeq = entry.userMessageSeq
+      }
       last.lines.push(entry)
     } else {
-      blocks.push({ displayName: name, isNarration, lines: [entry] })
+      blocks.push({
+        displayName: name,
+        isNarration,
+        lines: [entry],
+        userMessageSeq: entry.userMessageSeq,
+      })
     }
   }
 
@@ -205,6 +231,44 @@ function parseSegments(raw: string, isNarration: boolean): Segment[] {
   }
 
   return segments
+}
+
+async function handleBacktrack(messageSeq: number) {
+  await dialogStore.alert(
+    '确定要回溯到此对话吗？此操作将清除该消息及之后的所有对话，且不可撤销。',
+    '回溯确认',
+  )
+
+  try {
+    const lines = await invoke<any[]>('rollback_conversation', {
+      messageSeq,
+    })
+
+    // 将后端返回值映射为 GameLineInit 形状后重建 dialogHistory
+    const messages = convertInitLines(
+      lines.map(
+        (l: any): GameLineInit => ({
+          content: l.content,
+          attribute: l.attribute,
+          sender_role_id: l.sender_role_id,
+          display_name: l.display_name,
+          original_emotion: l.original_emotion,
+          predicted_emotion: l.predicted_emotion,
+          action_content: l.action_content,
+          audio_file: l.audio_file,
+          perceived_role_ids: l.perceived_role_ids,
+          user_message_seq: l.user_message_seq,
+        }),
+      ),
+    )
+
+    gameStore.setGameMessages(messages)
+  } catch (error: any) {
+    console.error('回溯对话失败:', error)
+    await dialogStore.alert(
+      '回溯失败：' + (typeof error === 'string' ? error : error.message),
+    )
+  }
 }
 
 const playAudio = async (audioFile: string) => {

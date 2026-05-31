@@ -2,8 +2,10 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::ai_service::message_system::generator::{GeneratorDeps, MessageGenerator};
 use crate::ai_service::types::{LineAttributeExt, LineBase};
+use crate::api::game::{compute_user_message_seqs, GameLineInit};
 use crate::config::AppConfig;
 use crate::db::entities::line::LineAttribute;
+use crate::db::managers::save_repo::SaveRepo;
 use crate::utils::prompt::PromptRole;
 use crate::AppState;
 
@@ -227,4 +229,84 @@ async fn handle_debug_command(app: &AppHandle, text: &str) -> Result<(), String>
         _ => unreachable!(),
     }
     Ok(())
+}
+
+/// 回溯对话：将台词列表截断到指定玩家消息之前（移除该消息及之后所有内容）。
+///
+/// `message_seq` 为 1-indexed 的玩家消息序号（由 `sender_role_id == Some(0)` 标识）。
+#[tauri::command]
+pub async fn rollback_conversation(
+    app: AppHandle,
+    message_seq: u32,
+) -> Result<Vec<GameLineInit>, String> {
+    let state = app.state::<AppState>();
+    let db = state.db.clone();
+
+    // 串行化：等待正在进行的消息生成完成再截断
+    let gen_lock = state.generation_lock.clone();
+    let _lock = gen_lock.lock().await;
+
+    let remaining = {
+        let svc = state.ai_service.lock().await;
+        let mut gs = svc.game_status.lock().await;
+
+        // 按序号定位第 N 条玩家消息（1-indexed）
+        let mut count = 0u32;
+        let idx = gs
+            .line_list
+            .iter()
+            .position(|line| {
+                if line.base.sender_role_id == Some(0)
+                    && matches!(line.attribute(), LineAttribute::User)
+                {
+                    count += 1;
+                    count == message_seq
+                } else {
+                    false
+                }
+            })
+            .ok_or_else(|| format!("未找到序号为 {} 的用户消息", message_seq))?;
+
+        // truncate(idx) 移除 idx..len（含目标消息及之后所有内容）
+        gs.line_list.truncate(idx);
+        gs.refresh_memories(&db)
+            .await
+            .map_err(|e| format!("刷新记忆失败: {}", e))?;
+
+        // 若存在活跃存档，同步截断到 DB
+        if let Some(save_id) = gs.active_save_id {
+            SaveRepo::sync_lines(&db, save_id, &gs.line_list)
+                .await
+                .map_err(|e| format!("同步存档失败: {}", e))?;
+        }
+
+        gs.line_list.clone()
+    }; // 释放锁
+
+    // 转换为前端格式（带序号）
+    let seqs = compute_user_message_seqs(&remaining);
+    let init_lines: Vec<GameLineInit> = remaining
+        .iter()
+        .zip(seqs.iter())
+        .map(|(gl, &seq)| GameLineInit {
+            content: gl.base.content.clone(),
+            attribute: gl.base.attribute.as_str().to_string(),
+            sender_role_id: gl.base.sender_role_id,
+            display_name: gl.base.display_name.clone(),
+            original_emotion: gl.base.original_emotion.clone(),
+            predicted_emotion: gl.base.predicted_emotion.clone(),
+            action_content: gl.base.action_content.clone(),
+            audio_file: gl.base.audio_file.clone(),
+            perceived_role_ids: gl.perceived_role_ids.clone(),
+            user_message_seq: seq,
+        })
+        .collect();
+
+    tracing::info!(
+        "回溯对话完成: message_seq={}, 剩余台词 {} 条",
+        message_seq,
+        init_lines.len()
+    );
+
+    Ok(init_lines)
 }

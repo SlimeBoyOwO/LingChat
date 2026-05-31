@@ -43,6 +43,9 @@ pub struct ReplyResponse {
     pub original_message: String,
     pub display_name: Option<String>,
     pub display_subtitle: Option<String>,
+    /// 触发此回复的用户消息序号（1-indexed，由 sender_role_id == Some(0) 计数得出）。
+    /// `None` 表示主动对话等非用户触发的回复。
+    pub user_message_seq: Option<u32>,
 }
 
 impl ReplyResponse {
@@ -62,6 +65,7 @@ impl ReplyResponse {
             original_message: String::new(),
             display_name: None,
             display_subtitle: None,
+            user_message_seq: None,
         }
     }
 }

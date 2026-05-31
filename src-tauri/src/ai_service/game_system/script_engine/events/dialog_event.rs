@@ -100,6 +100,7 @@ impl ScriptEvent for DialogueEvent {
             original_message: self.text.clone(),
             display_name: Some(display_name.clone()),
             display_subtitle: Some(display_subtitle),
+            user_message_seq: None,
         };
         let _ = emit(ctx.app, "ai:reply", &payload);
 

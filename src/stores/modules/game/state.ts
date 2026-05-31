@@ -10,6 +10,8 @@ export interface GameMessage {
   motionText?: string
   originalTag?: string
   timestamp?: number
+  /** 玩家消息序号（1-indexed），用于回溯定位 */
+  userMessageSeq?: number
 }
 
 export interface FreeDialogueInfo {

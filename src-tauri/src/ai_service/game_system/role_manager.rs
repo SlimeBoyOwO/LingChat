@@ -92,23 +92,22 @@ impl GameRoleManager {
         tracing::info!("所有角色的短期记忆已清除");
     }
 
-    async fn register_role_by_id(
-        &mut self,
-        db: &DatabaseConnection,
-        role_id: i32,
-    ) -> Result<()> {
+    async fn register_role_by_id(&mut self, db: &DatabaseConnection, role_id: i32) -> Result<()> {
         let role = RoleRepo::get_role_by_id(db, role_id).await?;
         let role = role.ok_or_else(|| anyhow!("角色 ID {} 未在数据库中找到", role_id))?;
 
-        let settings =
-            RoleRepo::get_role_settings_by_id(db, &self.data_dir, role.id).await?;
-        let settings = settings
-            .ok_or_else(|| anyhow!("角色 ID {} 的设置相关文件缺失", role_id))?;
+        let settings = RoleRepo::get_role_settings_by_id(db, &self.data_dir, role.id).await?;
+        let settings = settings.ok_or_else(|| anyhow!("角色 ID {} 的设置相关文件缺失", role_id))?;
 
         let display_name = settings.ai_name.clone();
         let resource_path = role.resource_folder.clone();
 
-        let voice_maker = build_voice_maker(&self.data_dir, &settings, resource_path.as_deref(), &self.tts_config);
+        let voice_maker = build_voice_maker(
+            &self.data_dir,
+            &settings,
+            resource_path.as_deref(),
+            &self.tts_config,
+        );
 
         let new_role = GameRole {
             role_id: Some(role.id),
@@ -162,7 +161,10 @@ impl GameRoleManager {
         let mut involved_ids: HashSet<i32> = HashSet::new();
         for line in source_lines {
             if let Some(sid) = line.sender_role_id() {
-                involved_ids.insert(sid);
+                // 跳过 id 为 0 的角色（ 0 代表的是玩家，不参与记忆同步）
+                if sid != 0 {
+                    involved_ids.insert(sid);
+                }
             }
             for rid in &line.perceived_role_ids {
                 involved_ids.insert(*rid);
@@ -175,10 +177,7 @@ impl GameRoleManager {
 
             // Phase 1: 提取角色数据后释放借用，再惰性构造 MemoryBank 系统
             let (display_name, bank_clone, mb_enabled) = {
-                let role = self
-                    .loaded_roles
-                    .get(&rid)
-                    .expect("role just loaded");
+                let role = self.loaded_roles.get(&rid).expect("role just loaded");
                 let name = role
                     .display_name
                     .clone()
@@ -235,10 +234,7 @@ impl GameRoleManager {
                 if let Some(sp) = Self::find_first_system_prompt(source_lines, rid) {
                     final_sliced.insert(0, sp.clone());
                 } else {
-                    tracing::warn!(
-                        "role_id={} 没有找到 SYSTEM 属性的台词，可能人设丢失",
-                        rid
-                    );
+                    tracing::warn!("role_id={} 没有找到 SYSTEM 属性的台词，可能人设丢失", rid);
                 }
             }
 
@@ -283,7 +279,10 @@ impl GameRoleManager {
         let Some(ref llm) = self.llm else {
             // 仅在 enabled 但 LLM 缺失时告警（正常启动流程不应到达）
             if enabled {
-                tracing::warn!("MemoryBank: role_id={} 永久记忆已开启但 LLM 未就绪", role_id);
+                tracing::warn!(
+                    "MemoryBank: role_id={} 永久记忆已开启但 LLM 未就绪",
+                    role_id
+                );
             }
             return;
         };
@@ -316,7 +315,10 @@ impl GameRoleManager {
             let Some(rid) = m.role_id else { continue };
             let mid = m.id;
             if !best.contains_key(&rid) || mid > best[&rid].0 {
-                best.insert(rid, (mid, serde_json::from_str(&m.info).unwrap_or_default()));
+                best.insert(
+                    rid,
+                    (mid, serde_json::from_str(&m.info).unwrap_or_default()),
+                );
             }
         }
 
@@ -339,10 +341,7 @@ impl GameRoleManager {
 
             // 提取数据（释放借用后传递给 ensure）
             let (bank, display_name, enabled) = {
-                let role = self
-                    .loaded_roles
-                    .get(&rid)
-                    .expect("role just loaded");
+                let role = self.loaded_roles.get(&rid).expect("role just loaded");
                 (
                     role.memory_bank.clone(),
                     role.display_name
@@ -355,14 +354,7 @@ impl GameRoleManager {
                         .unwrap_or(false),
                 )
             };
-            self.ensure_memory_bank_system(
-                rid,
-                &bank,
-                &display_name,
-                enabled,
-                250,
-                30,
-            );
+            self.ensure_memory_bank_system(rid, &bank, &display_name, enabled, 250, 30);
 
             // 若已有压缩系统且 DB 有数据，同步重置
             if let Some((_, info)) = best.get(&rid) {

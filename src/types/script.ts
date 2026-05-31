@@ -37,6 +37,8 @@ export interface ScriptDialogueEvent extends ScriptEvent {
   originalMessage: string
   displayName?: string
   displaySubtitle?: string
+  /** 触发此回复的用户消息序号（1-indexed） */
+  userMessageSeq?: number
 }
 
 export interface ScriptThinkingEvent extends ScriptEvent {

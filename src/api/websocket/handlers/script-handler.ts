@@ -123,29 +123,6 @@ export class ScriptHandler {
         }
       }
     })
-
-    // AI 背景生成完成事件
-    registerHandler(WebSocketMessageTypes.BACKGROUND_GENERATED, (data: any) => {
-      console.log('收到 AI 背景生成事件:', data)
-      const uiStore = useUIStore()
-
-      if (data.data?.success) {
-        uiStore.showSuccess({
-          title: '背景生成完成',
-          message: 'AI 背景图已生成完毕',
-          duration: 5000,
-        })
-      } else {
-        uiStore.showError({
-          title: '背景生成失败',
-          message: data.data?.error || '未知错误',
-          duration: 5000,
-        })
-      }
-
-      // 派发自定义事件，通知 SettingsBackground 组件刷新背景列表
-      window.dispatchEvent(new CustomEvent('background-generated', { detail: data.data }))
-    })
   }
 
   public sendMessage(text: string, instruction?: string) {

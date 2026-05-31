@@ -38,6 +38,7 @@ export default class DialogueProcessor implements IEventProcessor {
       isFinal: event.isFinal,
       motionText: event.motionText,
       originalTag: event.originalTag,
+      userMessageSeq: event.userMessageSeq,
     })
 
     uiStore.showCharacterLine = gameStore.currentLine // TODO: 这部分逻辑之后整合

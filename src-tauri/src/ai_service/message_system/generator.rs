@@ -58,6 +58,7 @@ impl MessageGenerator {
         let mut processed_user_message = String::new();
         let mut temp_message: Option<String> = None;
         let mut inserted_user_line_index: Option<usize> = None;
+        let mut user_msg_seq: Option<u32> = None;
 
         if let Some(raw) = user_message.as_deref() {
             let UserMessageOutcome { main, temp } =
@@ -71,10 +72,20 @@ impl MessageGenerator {
                 content: main,
                 attribute: LineAttributeExt(LineAttribute::User),
                 display_name: Some(user_name),
+                sender_role_id: Some(0),
                 ..Default::default()
             };
             gs.add_line(&self.deps.db, line).await?;
             inserted_user_line_index = Some(gs.line_list.len().saturating_sub(1));
+            user_msg_seq = Some(
+                gs.line_list
+                    .iter()
+                    .filter(|l| {
+                        l.base.sender_role_id == Some(0)
+                            && matches!(l.attribute(), LineAttribute::User)
+                    })
+                    .count() as u32,
+            );
         }
 
         // === 1.5. 场景变化检测 ===
@@ -122,7 +133,11 @@ impl MessageGenerator {
         events::emit_thinking(&self.deps.app, true);
 
         let accumulated = match self
-            .run_pipeline(current_context, user_message.clone().unwrap_or_default())
+            .run_pipeline(
+                current_context,
+                user_message.clone().unwrap_or_default(),
+                user_msg_seq,
+            )
             .await
         {
             Ok(v) => v,
@@ -147,7 +162,12 @@ impl MessageGenerator {
         Ok(accumulated)
     }
 
-    async fn run_pipeline(&self, context: Vec<LlmMessage>, user_message: String) -> Result<String> {
+    async fn run_pipeline(
+        &self,
+        context: Vec<LlmMessage>,
+        user_message: String,
+        user_message_seq: Option<u32>,
+    ) -> Result<String> {
         let (sentence_tx, sentence_rx) =
             mpsc::channel::<SentenceItem>(self.deps.concurrency.max(1) * 2);
         let (publish_tx, mut publish_rx) =
@@ -193,8 +213,15 @@ impl MessageGenerator {
                     let Some((sentence, index, is_final)) = item else {
                         break;
                     };
-                    let resp = match consume_sentence(&deps, cid, sentence, &user_message, is_final)
-                        .await
+                    let resp = match consume_sentence(
+                        &deps,
+                        cid,
+                        sentence,
+                        &user_message,
+                        is_final,
+                        user_message_seq,
+                    )
+                    .await
                     {
                         Ok(r) => r,
                         Err(e) => {
@@ -232,6 +259,7 @@ async fn consume_sentence(
     sentence: String,
     user_message: &str,
     is_final: bool,
+    user_message_seq: Option<u32>,
 ) -> Result<Option<ReplyResponse>> {
     if sentence.is_empty() {
         return Ok(None);
@@ -313,6 +341,7 @@ async fn consume_sentence(
     };
     response.original_message = user_message.to_string();
     response.is_final = is_final;
+    response.user_message_seq = user_message_seq;
 
     // assistant LINE 入 GameStatus
     let line = LineBase {

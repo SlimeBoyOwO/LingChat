@@ -6,7 +6,8 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_store::StoreExt;
 
 use crate::ai_service::game_system::scene_store::SceneStore;
-use crate::ai_service::types::CharacterSettings;
+use crate::ai_service::types::{CharacterSettings, GameLine};
+use crate::db::entities::line::LineAttribute;
 use crate::config::{self, AppConfig};
 use crate::db::managers::role_repo::RoleRepo;
 use crate::init::static_copy;
@@ -95,6 +96,8 @@ pub struct GameLineInit {
     pub action_content: Option<String>,
     pub audio_file: Option<String>,
     pub perceived_role_ids: Vec<i32>,
+    /// 玩家消息序号（1-indexed），仅对 sender_role_id == Some(0) 的 User 行有值
+    pub user_message_seq: Option<u32>,
 }
 
 // ========== Tauri 命令 ==========
@@ -182,6 +185,23 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
     Ok(init)
 }
 
+/// 为台词列表计算玩家消息序号（1-indexed）。
+/// 玩家消息由 `sender_role_id == Some(0) && attribute == User` 标识。
+pub fn compute_user_message_seqs(line_list: &[GameLine]) -> Vec<Option<u32>> {
+    let mut count = 0u32;
+    line_list
+        .iter()
+        .map(|gl| {
+            if gl.base.sender_role_id == Some(0) && matches!(gl.attribute(), LineAttribute::User) {
+                count += 1;
+                Some(count)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 /// 从 AIService 快照构建 WebInitData（不持锁的函数）
 pub(crate) async fn build_web_init_data(
     service: &crate::ai_service::service::AIService,
@@ -205,10 +225,12 @@ pub(crate) async fn build_web_init_data(
         scene_awareness_enabled,
     ) = {
         let mut gs = service.game_status.lock().await;
+        let seqs = compute_user_message_seqs(&gs.line_list);
         let lines: Vec<GameLineInit> = gs
             .line_list
             .iter()
-            .map(|gl| GameLineInit {
+            .zip(seqs.iter())
+            .map(|(gl, &seq)| GameLineInit {
                 content: gl.base.content.clone(),
                 attribute: gl.base.attribute.as_str().to_string(),
                 sender_role_id: gl.base.sender_role_id,
@@ -218,6 +240,7 @@ pub(crate) async fn build_web_init_data(
                 action_content: gl.base.action_content.clone(),
                 audio_file: gl.base.audio_file.clone(),
                 perceived_role_ids: gl.perceived_role_ids.clone(),
+                user_message_seq: seq,
             })
             .collect();
 

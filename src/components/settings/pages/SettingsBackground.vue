@@ -46,7 +46,7 @@
           :class="[
             'relative flex flex-col rounded-xl overflow-hidden bg-white/10 backdrop-blur-[20px] backdrop-saturate-180 border border-white/12.5 shadow-[0_8px_32px_rgba(0,0,0,0.1),inset_0_1px_1px_rgba(255,255,255,0.1)] transition-all duration-300 hover:bg-white/15 hover:backdrop-blur-[25px] hover:backdrop-saturate-200 hover:-translate-y-1 hover:scale-[1.01] hover:shadow-[0_12px_40px_rgba(0,0,0,0.15),inset_0_2px_2px_rgba(255,255,255,0.15)] cursor-pointer group',
             isSceneSelected(scene.id)
-              ? '!border-2 !border-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.5),0_0_3px_rgba(56,189,248,0.8),inset_0_0_8px_rgba(56,189,248,0.15)]'
+              ? 'border-2! border-sky-400! shadow-[0_0_12px_rgba(56,189,248,0.5),0_0_3px_rgba(56,189,248,0.8),inset_0_0_8px_rgba(56,189,248,0.15)]'
               : '',
           ]"
           @click="handleSceneClick(scene)"
@@ -70,7 +70,10 @@
               :alt="scene.scene_name"
               class="w-full h-full object-cover aspect-video transition-transform duration-300 group-hover:scale-[1.03]"
             />
-            <div v-else class="w-full h-full aspect-video bg-black/40 flex items-center justify-center text-white/20">
+            <div
+              v-else
+              class="w-full h-full aspect-video bg-black/40 flex items-center justify-center text-white/20"
+            >
               <Image :size="48" />
             </div>
           </div>
@@ -82,23 +85,18 @@
             <span class="font-medium text-white/90 truncate drop-shadow-md">
               {{ scene.scene_name }}
             </span>
-            <span
-              v-if="scene.scene_description"
-              class="text-xs text-white/50 line-clamp-2"
-            >{{ scene.scene_description }}</span>
-            <span
-              v-else
-              class="text-xs text-yellow-400/60 italic"
-            >暂无描述（选择后不会触发旁白）</span>
+            <span v-if="scene.scene_description" class="text-xs text-white/50 line-clamp-2">{{
+              scene.scene_description
+            }}</span>
+            <span v-else class="text-xs text-yellow-400/60 italic"
+              >暂无描述（选择后不会触发旁白）</span
+            >
           </div>
         </div>
       </div>
 
       <!-- 分页控件 -->
-      <div
-        v-if="totalPages > 1"
-        class="flex items-center justify-center gap-2 pb-2"
-      >
+      <div v-if="totalPages > 1" class="flex items-center justify-center gap-2 pb-2">
         <button
           :disabled="currentPage <= 1"
           @click="currentPage = 1"
@@ -113,9 +111,7 @@
         >
           上一页
         </button>
-        <span class="text-xs text-white/60 px-3">
-          第 {{ currentPage }} / {{ totalPages }} 页
-        </span>
+        <span class="text-xs text-white/60 px-3"> 第 {{ currentPage }} / {{ totalPages }} 页 </span>
         <button
           :disabled="currentPage >= totalPages"
           @click="currentPage = currentPage + 1"
@@ -140,37 +136,6 @@
         accept=".jpg,.jpeg,.png,.webp,.bmp,.svg,.tif,.gif"
         style="display: none"
       />
-    </MenuItem>
-
-    <MenuItem title="AI 生成背景">
-      <template #header>
-        <Wand2 :size="20" />
-      </template>
-      <div class="flex flex-col gap-3 p-2">
-        <div class="text-xs text-white/60">
-          输入描述文字，AI 将为你自动生成一张背景图片并添加到图库中
-        </div>
-        <div class="flex flex-col gap-2 items-center">
-          <input
-            v-model="generatePrompt"
-            type="text"
-            placeholder="描述你想要的背景，例如：夜晚的樱花小路，二次元风格..."
-            class="w-full flex-1 px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-            :disabled="isGenerating"
-            @keyup.enter="handleGenerate"
-          />
-          <Button
-            type="big"
-            :disabled="isGenerating || !generatePrompt.trim()"
-            @click="handleGenerate"
-          >
-            {{ isGenerating ? '生成中...' : '生成' }}
-          </Button>
-        </div>
-        <p v-if="isGenerating" class="text-xs text-white/50">
-          正在后台生成中，完成后会自动通知你...
-        </p>
-      </div>
     </MenuItem>
 
     <MenuItem title="粒子选择" size="large">
@@ -293,7 +258,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { MenuPage, MenuItem } from '../../ui'
 import { Button, Toggle, Slider } from '../../base'
@@ -352,8 +317,6 @@ const starsFpsInput = ref(settingsStore.starsFps)
 
 const backgroundList = ref<BackgroundImageInfo[]>([])
 const uploadInput = ref<HTMLInputElement | null>(null)
-const generatePrompt = ref('')
-const isGenerating = ref(false)
 
 const scenes = ref<SceneInfo[]>([])
 
@@ -374,7 +337,13 @@ const showSceneEdit = ref(false)
 const editMode = ref<'create' | 'update'>('create')
 const editingSceneId = ref<string | null>(null)
 const editInitialData = ref<
-  { sceneName: string; sceneImage: string | null; sceneDescription: string; lighting?: LightingParams | null } | undefined
+  | {
+      sceneName: string
+      sceneImage: string | null
+      sceneDescription: string
+      lighting?: LightingParams | null
+    }
+  | undefined
 >()
 
 const currentSceneDisplay = computed(() => gameStore.currentScene?.scene_name || '无')
@@ -475,7 +444,7 @@ const handleSceneSubmit = async (data: {
 
     // 如果更新的是当前选中的场景，立即同步到 gameStore 使光影等参数即时生效
     if (editMode.value === 'update' && editingSceneId.value === gameStore.currentScene?.id) {
-      const updatedScene = scenes.value.find(s => s.id === editingSceneId.value)
+      const updatedScene = scenes.value.find((s) => s.id === editingSceneId.value)
       if (updatedScene) {
         gameStore.setCurrentScene(updatedScene)
         if (updatedScene.background) {
@@ -489,8 +458,6 @@ const handleSceneSubmit = async (data: {
 }
 
 onMounted(async () => {
-  window.addEventListener('background-generated', onBackgroundGenerated)
-
   try {
     await refreshBackground()
   } catch (error) {
@@ -503,10 +470,6 @@ onMounted(async () => {
   if (gameStore.currentScene?.background) {
     uiStore.setCurrentBackground(gameStore.currentScene.background)
   }
-})
-
-onUnmounted(() => {
-  window.removeEventListener('background-generated', onBackgroundGenerated)
 })
 
 async function fetchBackgrounds(): Promise<BackgroundImageInfo[]> {
@@ -563,26 +526,6 @@ function updateParticle(value: string): void {
   uiStore.setBackgroundEffect(value)
 }
 
-async function handleGenerate(): Promise<void> {
-  const prompt = generatePrompt.value.trim()
-  if (!prompt || isGenerating.value) return
-
-  isGenerating.value = true
-  try {
-    await generateBackgroundImage(prompt, userStore.client_id)
-    uiStore.showInfo({
-      title: '生成已开始',
-      message: '背景图正在生成中，请稍候...',
-    })
-  } catch (e: any) {
-    uiStore.showError({
-      title: '请求失败',
-      message: e.message || '无法开始生成',
-    })
-    isGenerating.value = false
-  }
-}
-
 async function handleOpenFolder(): Promise<void> {
   try {
     await openBackgroundsFolder()
@@ -592,16 +535,6 @@ async function handleOpenFolder(): Promise<void> {
       message: '无法打开文件夹',
     })
   }
-}
-
-function onBackgroundGenerated(event: Event) {
-  const detail = (event as CustomEvent).detail
-  isGenerating.value = false
-  if (detail?.success) {
-    generatePrompt.value = ''
-  }
-  refreshBackground()
-  fetchScenes()
 }
 
 function handleMeteorFpsChange(value: number) {
