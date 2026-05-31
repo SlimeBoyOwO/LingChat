@@ -7,24 +7,28 @@
 
         <!-- 面板 -->
         <div class="absolute inset-0 flex flex-col overflow-hidden bg-transparent">
-          <!-- 头部 -->
+          <!-- 头部：标题靠左，操作按钮统一在右上角 -->
           <div class="flex items-center justify-between shrink-0 px-5 py-3">
-            <button
-              class="p-1.5 rounded-full text-white hover:bg-white/10 hover:text-[var(--accent-color)] hover:rotate-90 transition-all duration-300"
-              @click="onBack"
-            >
-              <Icon icon="chevron-left" :size="28" />
-            </button>
             <div class="flex items-center gap-2 text-[var(--accent-color)] font-bold text-base drop-shadow-md">
               <Icon icon="bot" :size="20" />
               <span>{{ headerTitle }}</span>
             </div>
-            <button
-              class="p-1.5 rounded-full text-white hover:bg-white/10 hover:text-[var(--accent-color)] hover:rotate-90 transition-all duration-300"
-              @click="emit('close')"
-            >
-              <Icon icon="close" :size="28" />
-            </button>
+            <div class="flex items-center gap-2">
+              <button
+                v-if="view !== 'list'"
+                class="p-1.5 rounded-full text-white hover:bg-white/10 hover:text-[var(--accent-color)] hover:rotate-90 transition-all duration-300"
+                @click="onBack"
+              >
+                <Icon icon="chevron-left" :size="28" />
+              </button>
+              <button
+                v-if="view === 'list'"
+                class="p-1.5 rounded-full text-white hover:bg-white/10 hover:text-[var(--accent-color)] hover:rotate-90 transition-all duration-300"
+                @click="emit('close')"
+              >
+                <Icon icon="close" :size="28" />
+              </button>
+            </div>
           </div>
 
           <!-- 内容 -->
@@ -110,42 +114,34 @@
                 </div>
 
                 <div class="text-[var(--accent-color)] font-bold text-sm pb-1 border-b border-white/10 mt-1">主对话模型</div>
-                <FormField label="提供商类型">
-                  <select v-model="form.main.provider" class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]">
-                    <option value="webllm" class="bg-[#222]">OpenAI 兼容 (DeepSeek / 通义千问)</option>
-                    <option value="gemini" class="bg-[#222]">Gemini</option>
-                    <option value="ollama" class="bg-[#222]">Ollama</option>
-                    <option value="lmstudio" class="bg-[#222]">LM Studio</option>
-                  </select>
-                </FormField>
-                <FormField label="模型名称">
-                  <input v-model="form.main.model" type="text" class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]" placeholder="例如: deepseek-chat" />
-                </FormField>
-                <FormField label="API 密钥">
-                  <input v-model="form.main.api_key" type="password" class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]" placeholder="sk-..." />
-                </FormField>
-                <FormField label="API 地址">
-                  <input v-model="form.main.base_url" type="text" class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]" placeholder="留空使用默认地址" />
-                </FormField>
-                <FormField label="代理地址">
-                  <input v-model="form.main.proxy" type="text" class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]" placeholder="HTTP 代理（可选）" />
-                </FormField>
-                <div class="flex gap-3">
-                  <FormField label="Temperature" class="flex-1">
-                    <input v-model.number="form.main.temperature" type="number" step="0.1" min="0" max="2" class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]" />
+
+                <!-- 动态渲染 main 配置字段：特殊字段自定义，其余从 schema 读取 -->
+                <template v-for="setting in mainSettings" :key="setting.key">
+                  <!-- provider → 特殊下拉框 -->
+                  <FormField v-if="setting.key === 'provider'" label="提供商类型">
+                    <select v-model="form.main.provider" class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]">
+                      <option value="webllm" class="bg-[#222]">OpenAI 兼容 (DeepSeek / 通义千问)</option>
+                      <option value="gemini" class="bg-[#222]">Gemini</option>
+                      <option value="kimi-code" class="bg-[#222]">Kimi Code</option>
+                      <option value="ollama" class="bg-[#222]">Ollama</option>
+                      <option value="lmstudio" class="bg-[#222]">LM Studio</option>
+                    </select>
                   </FormField>
-                  <FormField label="Top P" class="flex-1">
-                    <input v-model.number="form.main.top_p" type="number" step="0.05" min="0" max="1" class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]" />
+
+                  <!-- enable_thinking → 特殊下拉框 -->
+                  <FormField v-else-if="setting.key === 'enable_thinking'" label="思考链">
+                    <select v-model="form.main.enable_thinking" class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]">
+                      <option value="none" class="bg-[#222]">不启用</option>
+                      <option value="true" class="bg-[#222]">启用</option>
+                      <option value="false" class="bg-[#222]">禁用</option>
+                    </select>
                   </FormField>
-                </div>
-                <!-- enable_thinking 使用字符串而非布尔值：与后端 TOML 存储格式一致（'none'/'true'/'false'），勿改为 boolean -->
-                <FormField label="思考链">
-                  <select v-model="form.main.enable_thinking" class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]">
-                    <option value="none" class="bg-[#222]">不启用</option>
-                    <option value="true" class="bg-[#222]">启用</option>
-                    <option value="false" class="bg-[#222]">禁用</option>
-                  </select>
-                </FormField>
+
+                  <!-- 其余字段 → 根据 schema type 动态渲染 -->
+                  <FormField v-else :label="setting.description || setting.key">
+                    <SettingItem :setting="setting" @update:value="(v) => { (form.main as any)[setting.key] = v }" />
+                  </FormField>
+                </template>
 
                 <div class="text-[var(--accent-color)] font-bold text-sm pb-1 border-b border-white/10 mt-1">翻译模型</div>
                 <FormField label="提供商类型">
@@ -216,12 +212,29 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import Icon from '../../base/widget/Icon.vue'
 import FormField from '../../base/items/FormField.vue'
+import SettingItem from '../../base/items/SettingItem.vue'
 import { useLlmConfigStore } from '../../../stores/modules/llm-config'
-import { testProvider } from '../../../api/services/llm-config'
+import { testProvider, getLlmTomlSettings, getConfigTemplate } from '../../../api/services/llm-config'
 import type { LlmConfigScheme } from '../../../api/services/llm-config'
+
+/** 从 /v1/llm-config/settings 提取当前配置方案的 [main] 段 schema */
+async function fetchMainSettings(): Promise<any[]> {
+  try {
+    const data = await getLlmTomlSettings()
+    // data 形如 { "LLM 配置方案: 默认配置": { subcategories: { main: { settings: [...] } } } }
+    for (const key of Object.keys(data || {})) {
+      const scheme = data[key]
+      const main = scheme?.subcategories?.main
+      if (main?.settings) return main.settings
+    }
+  } catch (e) {
+    console.warn('获取 LLM 配置 schema 失败', e)
+  }
+  return []
+}
 
 const store = useLlmConfigStore()
 
@@ -230,10 +243,30 @@ const view = ref<'list' | 'edit' | 'test'>('list')
 onMounted(() => { store.load() })
 
 const editName = ref('')
-const form = reactive<LlmConfigScheme>(store.emptyScheme())
+const form = reactive<LlmConfigScheme>({
+  config_name: '',
+  config_description: '',
+  main: { provider: 'webllm', model: '', api_key: '', base_url: '' },
+  translator: { provider: 'none', model: '', api_key: '', base_url: '' },
+})
 const saving = ref(false)
 const saveMsg = ref('')
 const saveError = ref(false)
+
+/** 动态 [main] 段配置项列表（排除特殊处理的字段） */
+const mainSettings = ref<any[]>([])
+watch(view, async (v) => {
+  if (v === 'edit') {
+    const all = await fetchMainSettings()
+    mainSettings.value = all
+    // 将 schema 中的默认值注入 form.main，确保动态字段可被保存
+    for (const s of mainSettings.value) {
+      if (!(s.key in form.main)) {
+        (form.main as any)[s.key] = s.value
+      }
+    }
+  }
+})
 
 const testSchemeName = ref('')
 const testSection = ref<'main' | 'translator'>('main')
@@ -263,9 +296,19 @@ async function activateConfig(name: string) {
   catch (e: any) { console.error('激活失败', e) }
 }
 
-function startAdd() {
+async function startAdd() {
   editName.value = ''
-  Object.assign(form, store.emptyScheme())
+  try {
+    const tpl = await getConfigTemplate()
+    Object.assign(form, tpl)
+  } catch {
+    // fallback: 用最小空模板
+    Object.assign(form, {
+      config_name: '', config_description: '',
+      main: { provider: 'webllm', model: '', api_key: '', base_url: '' },
+      translator: { provider: 'none', model: '', api_key: '', base_url: '' },
+    })
+  }
   view.value = 'edit'
 }
 

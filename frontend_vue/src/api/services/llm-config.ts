@@ -100,3 +100,14 @@ export async function getConfig(name: string): Promise<{ name: string; config: L
 export async function testProvider(data: TestProviderRequest): Promise<TestProviderResponse> {
   return http.post('/v1/llm-config/test', data)
 }
+
+/** 获取所有 LLM TOML 配置的结构化 schema（含类型、描述） */
+export async function getLlmTomlSettings(): Promise<Record<string, any>> {
+  return http.get('/v1/llm-config/settings')
+}
+
+/** 获取新配置的默认模板（后端提供完整字段） */
+export async function getConfigTemplate(): Promise<LlmConfigScheme> {
+  const res = await http.get<any>('/v1/llm-config/template')
+  return res.template
+}

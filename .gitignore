@@ -95,6 +95,7 @@ ling_chat/third_party/emotion_model_19emo/*
 
 # LLM 配置文件（含密钥，首次启动自动从 .env 重建）
 ling_chat/configs/llm_configs/
+src-tauri/
 
 
 # ============================================================

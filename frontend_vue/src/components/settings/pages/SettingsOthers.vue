@@ -44,13 +44,13 @@
         <!-- 面板容器：透明底，内容自带玻璃效果 -->
         <div class="advance-slide-panel">
           <div class="advance-slide-header">
-            <button class="advance-back-btn" @click="closePanel">
-              <Icon icon="close" :size="28" />
-            </button>
             <div class="advance-header-title">
               <Icon icon="advance" :size="20" />
               <span>高级设置</span>
             </div>
+            <button class="advance-back-btn" @click="closePanel">
+              <Icon icon="close" :size="28" />
+            </button>
           </div>
 
           <div class="advance-slide-content">

@@ -20,6 +20,7 @@ class GeminiProvider(BaseLLMProvider):
         self.proxy_url = proxy or main_cfg.get("proxy", "")
         self.temperature = main_cfg.get("temperature", 1.0)
         self.top_p = main_cfg.get("top_p", 1.0)
+        self.max_tokens = int(main_cfg.get("max_tokens", 8192))
 
         if not self.api_key:
             raise ValueError("需要Gemini API密钥！")
@@ -82,6 +83,7 @@ class GeminiProvider(BaseLLMProvider):
             "generationConfig": {
                 "temperature": self.temperature,
                 "topP": self.top_p,
+                "maxOutputTokens": self.max_tokens,
             },
         }
 

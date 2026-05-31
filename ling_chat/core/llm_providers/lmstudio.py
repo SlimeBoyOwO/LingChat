@@ -20,6 +20,7 @@ class LMStudioProvider(BaseLLMProvider):
         self.api_token = api_key
         self._temperature = float(main_cfg.get("temperature", 1.3))
         self._top_p = float(main_cfg.get("top_p", 0.9))
+        self._max_tokens = int(main_cfg.get("max_tokens", 8192))
 
     def initialize_client(self):
         """LM Studio 客户端在每次请求时创建，无需初始化"""
@@ -150,10 +151,9 @@ class LMStudioProvider(BaseLLMProvider):
         body["temperature"] = temp_value
         body["top_p"] = self._top_p
 
-        # 以下参数未使用（暂不实现）
-        max_tokens = None
-        if max_tokens:
-            body["max_output_tokens"] = int(max_tokens)
+        # max_tokens
+        if self._max_tokens:
+            body["max_output_tokens"] = self._max_tokens
 
         top_k = os.environ.get("TOP_K")
         if top_k:

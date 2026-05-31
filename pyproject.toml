@@ -33,6 +33,7 @@ dependencies = [
     "rapidocr-onnxruntime>=1.4.4",
     "packaging>=21.0",
     "tqdm>=4.65.0",
+    "anthropic>=0.100.0"
 ]
 
 [tool.setuptools]

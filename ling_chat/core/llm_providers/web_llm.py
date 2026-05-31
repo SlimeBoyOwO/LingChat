@@ -20,6 +20,7 @@ class WebLLMProvider(BaseLLMProvider):
         self.temperature = main_cfg.get("temperature", 1.3)
         self.top_p = main_cfg.get("top_p", 0.9)
         self.thinking = str(main_cfg.get("enable_thinking", "none")).lower()
+        self.max_tokens = int(main_cfg.get("max_tokens", 8192))
 
         if (not api_key) or api_key == "sk-114514":
             logger.warning("通用网络大模型未初始化：CHAT_API_KEY 为空或为占位值。")
@@ -72,6 +73,7 @@ class WebLLMProvider(BaseLLMProvider):
                 "messages": messages,
                 "temperature": self.temperature,
                 "top_p": self.top_p,
+                "max_tokens": self.max_tokens,
                 "stream": False,
             }
             self._add_thinking_extra_body(create_kwargs)
@@ -104,6 +106,7 @@ class WebLLMProvider(BaseLLMProvider):
                 "messages": messages,
                 "temperature": self.temperature,
                 "top_p": self.top_p,
+                "max_tokens": self.max_tokens,
                 "stream": True,
             }
             self._add_thinking_extra_body(create_kwargs)

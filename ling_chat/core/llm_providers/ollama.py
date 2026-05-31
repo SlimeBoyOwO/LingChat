@@ -26,6 +26,7 @@ class OllamaProvider(BaseLLMProvider):
         self._timeout = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
         self.temperature = main_cfg.get("temperature", 1.3)
         self.top_p = main_cfg.get("top_p", 0.9)
+        self.max_tokens = int(main_cfg.get("max_tokens", 8192))
 
     def initialize_client(self):
         pass
@@ -41,6 +42,7 @@ class OllamaProvider(BaseLLMProvider):
                 "options": {
                     "temperature": self.temperature,
                     "top_p": self.top_p,
+                    "num_predict": self.max_tokens,
                 },
                 "stream": False,
             }
@@ -76,6 +78,7 @@ class OllamaProvider(BaseLLMProvider):
                 "options": {
                     "temperature": self.temperature,
                     "top_p": self.top_p,
+                    "num_predict": self.max_tokens,
                 },
                 "stream": True,
             }

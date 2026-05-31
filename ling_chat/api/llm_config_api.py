@@ -131,8 +131,21 @@ async def delete_config(name: str) -> Dict[str, str]:
 
 
 # ============================================================
-# TOML 配置解析接口（与 env_config.py 的 parse_env_file 对齐）
+# 配置模板与解析接口（与 env_config.py 的 parse_env_file 对齐）
 # ============================================================
+
+@router.get("/template")
+async def get_config_template() -> Dict[str, Any]:
+    """获取新配置的默认模板（含所有最新字段）"""
+    try:
+        return {
+            "status": "success",
+            "template": llm_config.get_config_template(),
+        }
+    except Exception as e:
+        logger.error(f"获取配置模板失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
 
 @router.get("/settings")
 async def get_llm_toml_settings() -> Dict[str, Any]:

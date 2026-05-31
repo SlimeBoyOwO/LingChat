@@ -72,6 +72,7 @@ class LLMConfig:
             "provider": provider,
             "temperature": float(os.environ.get("TEMPERATURE", "1.3")),
             "top_p": float(os.environ.get("TOP_P", "0.9")),
+            "max_tokens": int(os.environ.get("MAX_TOKENS", "8192")),
             "enable_thinking": os.environ.get("ENABLE_THINKING", "none").lower(),
             "proxy": "",
         }
@@ -209,6 +210,7 @@ class LLMConfig:
                 "proxy": "",
                 "temperature": 1.3,
                 "top_p": 0.9,
+                "max_tokens": 8192,
                 "enable_thinking": "none",
             },
             "translator": {
@@ -263,8 +265,10 @@ class LLMConfig:
         return self._config.copy()
 
     def get_main_config(self) -> Dict[str, Any]:
-        """获取主对话模型配置"""
-        return self._config.get("main", self._create_default_config()["main"])
+        """获取主对话模型配置（合入默认值，新键自动补全）"""
+        config = self._config.get("main", {})
+        defaults = self._create_default_config()["main"]
+        return {**defaults, **config}
 
     def get_translator_config(self) -> Dict[str, Any]:
         """获取翻译模型配置
@@ -348,6 +352,31 @@ class LLMConfig:
         # 如果删除的是当前激活配置，切换回default
         if name == self._active_config_name:
             self.set_active_config("default")
+
+    def get_config_template(self) -> Dict[str, Any]:
+        """获取新配置的默认模板"""
+        return {
+            "config_name": "",
+            "config_description": "",
+            "main": {
+                "provider": "webllm",
+                "model": "",
+                "api_key": "",
+                "base_url": "https://api.deepseek.com/v1",
+                "proxy": "",
+                "temperature": 1.3,
+                "top_p": 0.9,
+                "max_tokens": 8192,
+                "enable_thinking": "none",
+            },
+            "translator": {
+                "provider": "none",
+                "model": "",
+                "api_key": "",
+                "base_url": "",
+            },
+            "providers": {},
+        }
 
     def reload(self) -> None:
         """热重载配置"""

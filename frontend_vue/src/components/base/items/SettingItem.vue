@@ -15,6 +15,44 @@
     </div>
   </template>
 
+  <!-- Case: 数字输入 (Number) -->
+  <template v-else-if="setting.type === 'number'">
+    <label
+      class="inline-flex items-center cursor-pointer font-medium text-brand"
+      :for="setting.key"
+      >{{ setting.key }}</label
+    >
+    <p class="text-sm mt-1 mb-2 text-gray-300">
+      {{ setting.description || '' }}
+    </p>
+    <input
+      type="number"
+      :id="setting.key"
+      v-model.number="localValue"
+      step="1"
+      min="0"
+      class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+    />
+  </template>
+
+  <!-- Case: 密码输入 (Password) -->
+  <template v-else-if="setting.type === 'password'">
+    <label
+      class="inline-flex items-center cursor-pointer font-medium text-brand"
+      :for="setting.key"
+      >{{ setting.key }}</label
+    >
+    <p class="text-sm mt-1 mb-2 text-gray-300">
+      {{ setting.description || '' }}
+    </p>
+    <input
+      type="password"
+      :id="setting.key"
+      v-model="localValue"
+      class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+    />
+  </template>
+
   <!-- Case: 文本域 (Textarea) -->
   <template v-else-if="setting.type === 'textarea'">
     <label
@@ -75,7 +113,7 @@ import Toggle from '../widget/Toggle.vue'
 interface Setting {
   key: string
   value: string
-  type: 'bool' | 'textarea' | 'text' | 'path'
+  type: 'bool' | 'number' | 'password' | 'textarea' | 'text' | 'path'
   description?: string
 }
 

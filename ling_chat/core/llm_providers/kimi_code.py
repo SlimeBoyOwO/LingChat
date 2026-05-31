@@ -23,11 +23,17 @@ class KimiCodeProvider(BaseLLMProvider):
     def __init__(self, model_type: str, api_key: str, base_url: str):
         super().__init__()
         self.api_key = api_key
-        # Kimi Code 使用固定的 coding endpoint，忽略传入的 base_url 中的 /v1 后缀
+        # Kimi Code 使用固定的 coding endpoint
+        if base_url and base_url != self.KIMI_CODE_API_BASE:
+            logger.warning(
+                f"Kimi Code 使用固定 API 端点 {self.KIMI_CODE_API_BASE}，"
+                f"传入的 base_url ({base_url}) 已被忽略"
+            )
         self.base_url = self.KIMI_CODE_API_BASE
         self.model_type = model_type or self.KIMI_CODE_DEFAULT_MODEL
         self.temperature = float(os.environ.get("TEMPERATURE", 1.3))
         self.top_p = float(os.environ.get("TOP_P", 0.9))
+        self.max_tokens = int(os.environ.get("MAX_TOKENS", "8192"))
 
         if (not api_key) or api_key == "sk-114514":
             logger.warning("Kimi Code 未初始化：CHAT_API_KEY 为空或为占位值。")
@@ -53,7 +59,8 @@ class KimiCodeProvider(BaseLLMProvider):
         logger.info("Kimi Code 大模型初始化完毕！")
 
     def initialize_client(self):
-        return super().initialize_client()
+        """Kimi Code 客户端在 __init__ 时已初始化，无需额外操作"""
+        pass
 
     @staticmethod
     def _convert_messages(messages: List[Dict]) -> tuple[str, List[Dict]]:
@@ -157,7 +164,7 @@ class KimiCodeProvider(BaseLLMProvider):
         payload = {
             "model": self.model_type,
             "messages": anthropic_messages,
-            "max_tokens": 8192,
+            "max_tokens": self.max_tokens,
         }
 
         if system_prompt:

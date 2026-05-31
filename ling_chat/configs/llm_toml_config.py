@@ -29,6 +29,7 @@ KEY_DESCRIPTIONS: Dict[str, Dict[str, str]] = {
         "proxy": "HTTP 代理地址",
         "temperature": "温度，控制模型输出的随机性，0-2.0 之间 [type:number]",
         "top_p": "核采样，控制模型的选词范围，0-1.0 之间 [type:number]",
+        "max_tokens": "最大输出令牌数，控制单次生成的最大长度 [type:number]",
         "enable_thinking": "是否启用模型思考能力，可选值: none / false / true [type:text]",
     },
     "translator": {
