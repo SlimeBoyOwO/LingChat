@@ -16,7 +16,6 @@ class TestProviderRequest(BaseModel):
     model: str = Field(default="", description="模型名称")
     api_key: str = Field(default="", description="API 密钥")
     base_url: str = Field(default="", description="API 地址")
-    proxy: str = Field(default="", description="代理地址")
     temperature: Optional[float] = Field(default=None, description="Temperature 参数")
     top_p: Optional[float] = Field(default=None, description="Top P 参数")
     enable_thinking: str = Field(default="none", description="是否启用思考链 (none/true/false)")
@@ -36,7 +35,6 @@ def test_llm_provider(request: TestProviderRequest) -> Dict[str, Any]:
             model_type=request.model,
             api_key=request.api_key,
             base_url=request.base_url,
-            proxy=request.proxy,
         )
 
         messages = [

@@ -216,6 +216,13 @@ class LLMConfig:
                     lines.append(self._format_toml_line(key, value))
                 lines.append("")
 
+            # 写入network配置（全局网络设置，位于 providers 之前）
+            if "network" in config:
+                lines.append("[network]")
+                for key, value in config["network"].items():
+                    lines.append(self._format_toml_line(key, value))
+                lines.append("")
+
             # 写入providers配置
             if "providers" in config:
                 for provider, pconfig in config["providers"].items():
@@ -224,13 +231,6 @@ class LLMConfig:
                         for key, value in pconfig.items():
                             lines.append(self._format_toml_line(key, value))
                         lines.append("")
-
-            # 写入network配置（全局网络设置，置于providers之后）
-            if "network" in config:
-                lines.append("[network]")
-                for key, value in config["network"].items():
-                    lines.append(self._format_toml_line(key, value))
-                lines.append("")
 
             with open(path, "w", encoding="utf-8") as f:
                 f.write("\n".join(lines))

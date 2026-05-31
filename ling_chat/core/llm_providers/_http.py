@@ -5,6 +5,15 @@
 - 留空走系统代理（httpx 默认 trust_env=True）
 - 配了代理则强制走该代理（trust_env=False）
 - 当 base_url 指向本地地址时强制不走代理（避免 Ollama/LMStudio 等被中断）
+
+⚠️ 循环依赖约束
+- ``build_httpx_client`` 内部延迟导入 ``llm_config`` 以避免循环依赖
+- 所有模块级 ``from ._http import build_httpx_client`` 的模块
+  必须在 ``llm_config`` 初始化之后才被实际加载（Python 只在首次调用函数时
+  才会真正执行 import）——当前所有 provider 通过 ``LLMProviderFactory
+  .create_provider()`` 懒加载，故安全。
+- 如果未来有人在模块顶层（如 ``__init__.py``）直接 import provider 且该
+  模块早于 ``llm_config`` 被加载，则会导致循环导入，请用函数内延迟导入代替。
 """
 
 from typing import Any, Optional, Union
@@ -16,14 +25,26 @@ _LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
 
 
 def _is_local_url(url: Optional[str]) -> bool:
-    """判断 URL 是否指向本机地址"""
+    """判断 URL 是否指向本机地址
+
+    覆盖：
+    - 精确匹配：localhost、127.0.0.1、::1、0.0.0.0
+    - 后缀匹配：*.localhost（如 mymodel.localhost）
+    - 大小写不敏感
+    """
     if not url:
         return False
     try:
         host = urlparse(url).hostname or ""
     except Exception:
         return False
-    return host.lower() in _LOCAL_HOSTS
+    host = host.lower()
+    if host in _LOCAL_HOSTS:
+        return True
+    # 匹配 *.localhost 变体（如 llama.localhost）
+    if host.endswith(".localhost"):
+        return True
+    return False
 
 
 def build_httpx_client(
