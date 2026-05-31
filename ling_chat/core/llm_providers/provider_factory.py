@@ -11,30 +11,37 @@ from ling_chat.core.logger import logger
 class LLMProviderFactory:
     @staticmethod
     def create_provider(
-        provider_type: str, model_type: str = "", api_key: str = "", base_url: str = "", proxy: str = ""
+        provider_type: str, model_type: str = "", api_key: str = "", base_url: str = "", **kwargs
     ) -> BaseLLMProvider:
         """
         创建指定类型的大模型提供者
 
         :param provider_type: 提供者类型 (webllm, ollama, lmstudio, gemini, qwen, kimi-code)
-        :param config: 配置字典
+        :param model_type: 模型名称
+        :param api_key: API 密钥
+        :param base_url: API 访问地址
         :return: 大模型提供者实例
+
+        网络代理由全局 ``[network]`` 配置统一管理，无需在此传入。
         """
+        # 兼容旧调用：忽略遗留的 proxy 参数
+        kwargs.pop("proxy", None)
+
         provider_type = provider_type.lower()
 
         try:
             if provider_type == "webllm":
                 logger.info("创建通用联网大模型服务提供商")
-                return WebLLMProvider(model_type, api_key, base_url, proxy)
+                return WebLLMProvider(model_type, api_key, base_url)
             elif provider_type == "ollama":
                 logger.info("创建OLLAMA服务提供商")
-                return OllamaProvider(model_type, api_key, base_url, proxy)
+                return OllamaProvider(model_type, api_key, base_url)
             elif provider_type == "lmstudio":
                 logger.info("创建LM STUDIO服务提供商")
-                return LMStudioProvider(model_type, api_key, base_url, proxy)
+                return LMStudioProvider(model_type, api_key, base_url)
             elif provider_type == "gemini":
                 logger.info("创建Gemini服务提供商")
-                return GeminiProvider(model_type, api_key, base_url, proxy)
+                return GeminiProvider(model_type, api_key, base_url)
             elif provider_type == "kimi-code":
                 logger.info("创建 Kimi Code 服务提供商")
                 return KimiCodeProvider(model_type, api_key, base_url)

@@ -5,6 +5,7 @@ import httpx
 from openai import AsyncOpenAI, OpenAI
 
 from ling_chat.configs.llm_config import llm_config
+from ling_chat.core.llm_providers._http import build_httpx_client
 from ling_chat.core.logger import logger
 
 from .base import BaseLLMProvider
@@ -33,9 +34,15 @@ class QwenTranslateProvider(BaseLLMProvider):
             return
 
         self._timeout = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
-        self.client = OpenAI(api_key=api_key, base_url=base_url, timeout=self._timeout)
+        http_client = build_httpx_client(timeout=self._timeout, base_url=base_url)
+        async_http_client = build_httpx_client(
+            async_client=True, timeout=self._timeout, base_url=base_url
+        )
+        self.client = OpenAI(
+            api_key=api_key, base_url=base_url, timeout=self._timeout, http_client=http_client
+        )
         self.async_client = AsyncOpenAI(
-            api_key=api_key, base_url=base_url, timeout=self._timeout
+            api_key=api_key, base_url=base_url, timeout=self._timeout, http_client=async_http_client
         )
         self.model_type = cfg.get("model", "qwen-mt-plus")
 

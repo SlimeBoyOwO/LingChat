@@ -71,7 +71,6 @@ export const useLlmConfigStore = defineStore('llm-config', {
           model: '',
           api_key: '',
           base_url: 'https://api.deepseek.com/v1',
-          proxy: '',
           temperature: 1.3,
           top_p: 0.9,
           enable_thinking: 'none',
@@ -81,6 +80,9 @@ export const useLlmConfigStore = defineStore('llm-config', {
           model: '',
           api_key: '',
           base_url: '',
+        },
+        network: {
+          proxy: '',
         },
       }
     },

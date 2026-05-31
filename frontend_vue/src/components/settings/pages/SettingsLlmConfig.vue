@@ -166,6 +166,17 @@
                   </FormField>
                 </template>
 
+                <div class="text-[var(--accent-color)] font-bold text-sm pb-1 border-b border-white/10 mt-1">全局网络</div>
+                <FormField label="HTTP 代理">
+                  <input
+                    type="text"
+                    :value="form.network?.proxy ?? ''"
+                    @input="onProxyInput"
+                    class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)] placeholder:text-white/25"
+                    placeholder="留空走系统代理，本地模型自动绕过"
+                  />
+                </FormField>
+
                 <div class="flex gap-2.5 pt-2">
                   <button class="px-5 py-2 rounded-lg bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-85 disabled:opacity-50 transition-all" @click="doSave" :disabled="saving">
                     {{ saving ? '保存中...' : '保存' }}
@@ -248,6 +259,7 @@ const form = reactive<LlmConfigScheme>({
   config_description: '',
   main: { provider: 'webllm', model: '', api_key: '', base_url: '' },
   translator: { provider: 'none', model: '', api_key: '', base_url: '' },
+  network: { proxy: '' },
 })
 const saving = ref(false)
 const saveMsg = ref('')
@@ -290,6 +302,12 @@ function onBack() {
   }
 }
 
+function onProxyInput(e: Event) {
+  const value = (e.target as HTMLInputElement).value
+  if (!form.network) form.network = { proxy: '' }
+  form.network.proxy = value
+}
+
 // ——— 列表操作 ———
 async function activateConfig(name: string) {
   try { await store.switchTo(name) }
@@ -301,12 +319,14 @@ async function startAdd() {
   try {
     const tpl = await getConfigTemplate()
     Object.assign(form, tpl)
+    if (!form.network) form.network = { proxy: '' }
   } catch {
     // fallback: 用最小空模板
     Object.assign(form, {
       config_name: '', config_description: '',
       main: { provider: 'webllm', model: '', api_key: '', base_url: '' },
       translator: { provider: 'none', model: '', api_key: '', base_url: '' },
+      network: { proxy: '' },
     })
   }
   view.value = 'edit'
@@ -321,6 +341,7 @@ async function startEdit(name: string) {
       config_description: cfg.config_description || '',
       main: { ...cfg.main },
       translator: { ...cfg.translator },
+      network: { proxy: '', ...(cfg.network || {}) },
     })
     view.value = 'edit'
   } catch (e) {

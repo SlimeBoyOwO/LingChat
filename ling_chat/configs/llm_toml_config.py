@@ -18,6 +18,7 @@ from ling_chat.core.logger import logger
 SECTION_DESCRIPTIONS: Dict[str, str] = {
     "main": "主对话模型配置 — 配置 LLM 提供商、API 密钥、模型参数等",
     "translator": "翻译模型配置 — 配置日语翻译功能相关的 LLM 参数",
+    "network": "全局网络配置 — 所有 LLM 请求共用的代理设置",
 }
 
 KEY_DESCRIPTIONS: Dict[str, Dict[str, str]] = {
@@ -26,7 +27,6 @@ KEY_DESCRIPTIONS: Dict[str, Dict[str, str]] = {
         "model": "模型名称",
         "api_key": "API 密钥",
         "base_url": "API 访问地址",
-        "proxy": "HTTP 代理地址",
         "temperature": "温度，控制模型输出的随机性，0-2.0 之间 [type:number]",
         "top_p": "核采样，控制模型的选词范围，0-1.0 之间 [type:number]",
         "max_tokens": "最大输出令牌数，控制单次生成的最大长度 [type:number]",
@@ -38,13 +38,15 @@ KEY_DESCRIPTIONS: Dict[str, Dict[str, str]] = {
         "api_key": "翻译模型 API 密钥",
         "base_url": "翻译模型 API 访问地址",
     },
+    "network": {
+        "proxy": "全局 HTTP 代理地址（留空走系统代理；本地模型自动绕过）",
+    },
 }
 
 PROVIDER_KEY_DESCRIPTIONS: Dict[str, str] = {
     "api_key": "API 密钥",
     "base_url": "API 访问地址",
     "model": "模型名称",
-    "proxy": "HTTP 代理地址",
 }
 
 

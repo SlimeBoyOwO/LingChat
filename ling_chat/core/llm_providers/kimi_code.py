@@ -4,6 +4,7 @@ from typing import AsyncGenerator, Dict, List
 import httpx
 from anthropic import Anthropic, AsyncAnthropic
 
+from ling_chat.core.llm_providers._http import build_httpx_client
 from ling_chat.core.llm_providers.base import BaseLLMProvider
 from ling_chat.core.logger import logger
 
@@ -44,17 +45,24 @@ class KimiCodeProvider(BaseLLMProvider):
         self._timeout = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
         default_headers = {"User-Agent": self.KIMI_CODE_USER_AGENT}
 
+        http_client = build_httpx_client(timeout=self._timeout, base_url=self.base_url)
+        async_http_client = build_httpx_client(
+            async_client=True, timeout=self._timeout, base_url=self.base_url
+        )
+
         self.client = Anthropic(
             api_key=api_key,
             base_url=self.base_url,
             timeout=self._timeout,
             default_headers=default_headers,
+            http_client=http_client,
         )
         self.async_client = AsyncAnthropic(
             api_key=api_key,
             base_url=self.base_url,
             timeout=self._timeout,
             default_headers=default_headers,
+            http_client=async_http_client,
         )
         logger.info("Kimi Code 大模型初始化完毕！")
 

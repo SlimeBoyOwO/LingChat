@@ -22,7 +22,6 @@ class LLMManager:
         self.model_type = cfg.get("model", "deepseek-chat")
         self.api_key = cfg.get("api_key", "")
         self.base_url = cfg.get("base_url", "https://api.deepseek.com/v1")
-        self.proxy = cfg.get("proxy", "")
         provider_type = self.llm_provider_type.lower()
         logger.info(f"初始化LLM {provider_type} 提供商中...")
 
@@ -38,7 +37,7 @@ class LLMManager:
         # 确保provider_type存在
         provider_type = self.llm_provider_type.lower()
         return LLMProviderFactory.create_provider(
-            provider_type, self.model_type, self.api_key, self.base_url, self.proxy
+            provider_type, self.model_type, self.api_key, self.base_url
         )
 
     def process_message(self, messages: List[Dict]):
