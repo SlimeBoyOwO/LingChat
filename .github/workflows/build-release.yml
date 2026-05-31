@@ -165,7 +165,7 @@ jobs:
           pnpm install
           pnpm build
 
-      - name: 安装 ccache（Linux）
+      - name: 安装 ccache 和 mold（Linux）
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y ccache mold
 
@@ -208,7 +208,8 @@ jobs:
               if [[ "$RUNNER_OS" == "Linux" ]]; then
                 free -m | awk '/^Mem:/{printf "[Memory] Used: %sM / Total: %sM, Free: %sM\n", $3, $2, $4}'
               elif [[ "$RUNNER_OS" == "Windows" ]]; then
-                powershell.exe -Command "& { $os = Get-CimInstance Win32_OperatingSystem; $total = [math]::Round($os.TotalVisibleMemorySize/1KB); $free = [math]::Round($os.FreePhysicalMemory/1KB); $used = $total - $free; Write-Output \"[Memory] Used: $used MB / Total: $total MB, Free: $free MB\" }"
+                # 修复：使用正确的 PowerShell 变量语法
+                powershell.exe -Command "& { \$os = Get-CimInstance Win32_OperatingSystem; \$total = [math]::Round(\$os.TotalVisibleMemorySize/1KB); \$free = [math]::Round(\$os.FreePhysicalMemory/1KB); \$used = \$total - \$free; Write-Output \"[Memory] Used: \$used MB / Total: \$total MB, Free: \$free MB\" }"
               fi
               sleep 20
             done
