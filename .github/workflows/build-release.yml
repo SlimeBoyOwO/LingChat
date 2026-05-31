@@ -175,8 +175,9 @@ jobs:
         with:
           path: |
             ${{ runner.temp }}/nuitka-cache
-          key: ${{ runner.os }}-nuitka-${{ hashFiles('**/pyproject.toml', '**/uv.lock') }}
+          key: ${{ runner.os }}-${{ matrix.platform }}-nuitka-${{ hashFiles('**/pyproject.toml', '**/uv.lock') }}
           restore-keys: |
+            ${{ runner.os }}-${{ matrix.platform }}-nuitka-
             ${{ runner.os }}-nuitka-
 
       - name: 安装 UPX
