@@ -115,15 +115,11 @@ const mapCharacter = (char: ApiCharacter): CharacterCardData => {
     name: char.name,
     subName: char.sub_name,
     info: char.info || '暂无角色描述',
-    avatar: char.avatar_path
-      ? convertFileSrc(char.avatar_path)
-      : '../pictures/characters/default.png',
+    avatar: char.avatar_path ? convertFileSrc(char.avatar_path) : '',
     clothes: char.clothes
       ? char.clothes.map((clothes: Clothes) => ({
           title: clothes.title,
-          avatar: clothes.avatar
-            ? convertFileSrc(clothes.avatar)
-            : '../pictures/characters/default.png',
+          avatar: clothes.avatar ? convertFileSrc(clothes.avatar) : '',
         }))
       : [],
     resourceFolder: char.resource_folder,

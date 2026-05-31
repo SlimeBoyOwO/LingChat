@@ -15,13 +15,13 @@ export default class BackgroundProcessor implements IEventProcessor {
 
     gameStore.currentStatus = 'presenting'
 
-    let url = '../pictures/background/default.png'
+    let url = ''
 
     if (event.imagePath) {
       try {
         url = convertFileSrc(event.imagePath)
       } catch {
-        url = '../pictures/background/default.png'
+        url = ''
       }
     }
 

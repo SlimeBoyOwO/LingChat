@@ -150,7 +150,7 @@ const standaloneScriptsLoading = ref(true)
 const currentCharacter = computed(() => gameStore.mainRole)
 
 // 获取角色头像
-const currentCharacterAvatar = ref('../pictures/characters/default.png')
+const currentCharacterAvatar = ref('')
 
 async function updateCharacterAvatar() {
   if (gameStore.mainRole?.character_folder) {
@@ -161,10 +161,10 @@ async function updateCharacterAvatar() {
       )
       currentCharacterAvatar.value = convertFileSrc(path)
     } catch {
-      currentCharacterAvatar.value = '../pictures/characters/default.png'
+      currentCharacterAvatar.value = ''
     }
   } else {
-    currentCharacterAvatar.value = '../pictures/characters/default.png'
+    currentCharacterAvatar.value = ''
   }
 }
 
