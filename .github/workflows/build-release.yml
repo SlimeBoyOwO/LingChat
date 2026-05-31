@@ -16,13 +16,22 @@ on:
         description: 'LingChat-Pal Release 的 Tag（留空则不打包 Pal）'
         required: false
         type: string
+      pull_lfs:
+        description: '拉取 LFS 文件'
+        required: false
+        default: true
+        type: boolean
       compile_test:
-        description: '编译测试模式（关闭LTO、最低优化、跳过LFS）'
+        description: '编译测试模式（关闭LTO、最低优化、附带调试符号）'
+        required: false
+        default: false
+        type: boolean
+      upload_to_modelscope:
+        description: '上传到 ModelScope'
         required: false
         default: false
         type: boolean
 
-# 设置权限，允许创建 Release 和上传资产
 permissions:
   contents: write
 
@@ -35,7 +44,9 @@ jobs:
       release_title: ${{ steps.set_title.outputs.release_title }}
       platforms_json: ${{ steps.set_platforms.outputs.platforms_json }}
       pal_release_tag: ${{ github.event.inputs.pal_release_tag }}
-      compile_test: ${{ steps.compile_test.outputs.compile_test }}
+      pull_lfs: ${{ steps.set_pull_lfs.outputs.pull_lfs }}
+      compile_test: ${{ steps.set_compile_test.outputs.compile_test }}
+      upload_to_modelscope: ${{ steps.set_modelscope.outputs.upload_to_modelscope }}
 
     steps:
       - name: 检出代码
@@ -66,12 +77,19 @@ jobs:
       - name: 设置固定平台列表
         id: set_platforms
         run: |
-          # 默认构建所有平台：windows, linux-amd64, linux-aarch64
           echo "platforms_json=['windows','linux-amd64','linux-aarch64']" >> $GITHUB_OUTPUT
 
+      - name: 设置 LFS 拉取选项
+        id: set_pull_lfs
+        run: echo "pull_lfs=${{ github.event.inputs.pull_lfs || 'true' }}" >> $GITHUB_OUTPUT
+
       - name: 设置编译测试模式
-        id: compile_test
+        id: set_compile_test
         run: echo "compile_test=${{ github.event.inputs.compile_test || 'false' }}" >> $GITHUB_OUTPUT
+
+      - name: 设置 ModelScope 上传选项
+        id: set_modelscope
+        run: echo "upload_to_modelscope=${{ github.event.inputs.upload_to_modelscope || 'false' }}" >> $GITHUB_OUTPUT
 
   build:
     needs: prepare
@@ -107,7 +125,7 @@ jobs:
           lfs: false
 
       - name: 拉取 LFS 文件
-        if: needs.prepare.outputs.compile_test != 'true'
+        if: needs.prepare.outputs.pull_lfs == 'true'
         run: |
           git lfs install
           git lfs pull
@@ -130,7 +148,6 @@ jobs:
         run: uv pip install nuitka
 
       - name: 安装 pnpm
-        if: steps.changes.outputs.frontend == 'true'
         uses: pnpm/action-setup@v4
         with:
           version: 11
@@ -168,16 +185,13 @@ jobs:
           if [[ "${{ matrix.platform }}" == windows* ]]; then
             curl -L -o upx.zip "${{ matrix.upx_url }}"
             unzip upx.zip
-            # 获取解压出的目录名
             UPX_DIR=$(ls -d upx-*/)
-            # 获取 upx.exe 的绝对路径
             UPX_PATH=$(realpath "$UPX_DIR/upx.exe")
             echo "UPX_BIN=$UPX_PATH" >> $GITHUB_ENV
           else
             curl -L -o upx.tar.xz "${{ matrix.upx_url }}"
             tar -xf upx.tar.xz
             UPX_DIR=$(ls -d upx-*/)
-            # 移动到标准位置并记录路径
             sudo mv "$UPX_DIR/upx" /usr/local/bin/upx
             echo "UPX_BIN=/usr/local/bin/upx" >> $GITHUB_ENV
           fi
@@ -185,25 +199,62 @@ jobs:
       - name: 使用 Nuitka 编译
         shell: bash
         env:
-          CFLAGS: ${{ needs.prepare.outputs.compile_test == 'true' && '-O0' || '-flto=thin -O2' }}
-          CXXFLAGS: ${{ needs.prepare.outputs.compile_test == 'true' && '-O0' || '-flto=thin -O2' }}
           NUITKA_CACHE_DIR: ${{ runner.temp }}/nuitka-cache
         run: |
+          # --- 内存监控开始 ---
+          monitor_memory() {
+            while true; do
+              if [[ "$RUNNER_OS" == "Linux" ]]; then
+                free -m | awk '/^Mem:/{printf "[Memory] Used: %sM / Total: %sM, Free: %sM\n", $3, $2, $4}'
+              elif [[ "$RUNNER_OS" == "Windows" ]]; then
+                powershell.exe -Command "& { $os = Get-CimInstance Win32_OperatingSystem; $total = [math]::Round($os.TotalVisibleMemorySize/1KB); $free = [math]::Round($os.FreePhysicalMemory/1KB); $used = $total - $free; Write-Output \"[Memory] Used: $used MB / Total: $total MB, Free: $free MB\" }"
+              fi
+              sleep 20
+            done
+          }
+          monitor_memory &
+          MONITOR_PID=$!
+          # 确保脚本退出时（成功/失败）自动终止后台监控
+          trap "kill $MONITOR_PID 2>/dev/null || true" EXIT
+          # --- 内存监控结束 ---
+
           NUMERIC_VERSION=$(echo ${{ needs.prepare.outputs.tag_name }} | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
 
           IS_COMPILE_TEST="${{ needs.prepare.outputs.compile_test }}"
           if [ "$IS_COMPILE_TEST" = "true" ]; then
+            # 测试模式：最低优化、关闭 LTO、附带调试符号
             LTO_FLAG=""
+            OPT_FLAG="--no-deployment"
+            DEBUG_FLAG=""
+            UPX_FLAG=""
+            if [[ "${{ matrix.platform }}" == linux* ]]; then
+              export CFLAGS="-O0 -g"
+              export CXXFLAGS="-O0 -g"
+            else
+              export CFLAGS="-O0 -g"
+              export CXXFLAGS="-O0 -g"
+            fi
             ARCHIVE_NAME="LingChat-test"
           else
+            # 正常模式：优化编译
             LTO_FLAG="--lto=yes"
+            OPT_FLAG=""
+            DEBUG_FLAG=""
+            UPX_FLAG="--enable-plugins=upx"
+            if [[ "${{ matrix.platform }}" == linux* ]]; then
+              export CFLAGS="-flto=thin -O2"
+              export CXXFLAGS="-flto=thin -O2"
+            else
+              export CFLAGS="-flto=thin -O2"
+              export CXXFLAGS="-flto=thin -O2"
+            fi
             ARCHIVE_NAME="LingChat"
           fi
 
           if [[ "${{ matrix.platform }}" == linux* ]]; then
-            echo "yes" | LDFLAGS="-fuse-ld=mold" uv run nuitka --clang --standalone --enable-plugins=upx --upx-binary=$UPX_BIN --jobs=4 $LTO_FLAG --low-memory --assume-yes-for-downloads --linux-icon=ling_chat/static/game_data/resources/lingchat.png --output-filename=$ARCHIVE_NAME --product-name=${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }} --file-version="$NUMERIC_VERSION" --product-version="$NUMERIC_VERSION" --company-name="LingChat Studio" --show-memory main.py
+            echo "yes" | LDFLAGS="-fuse-ld=mold" uv run nuitka --clang --standalone $UPX_FLAG --upx-binary=$UPX_BIN --jobs=4 $LTO_FLAG $OPT_FLAG $DEBUG_FLAG --low-memory --assume-yes-for-downloads --linux-icon=ling_chat/static/game_data/resources/lingchat.png --output-filename=$ARCHIVE_NAME --product-name=${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }} --file-version="$NUMERIC_VERSION" --product-version="$NUMERIC_VERSION" --company-name="LingChat Studio" --show-memory main.py
           else
-            echo "yes" | uv run nuitka --clang --standalone --enable-plugins=upx --upx-binary=$UPX_BIN --jobs=4 $LTO_FLAG --low-memory --assume-yes-for-downloads --windows-icon-from-ico=ling_chat/static/game_data/resources/lingchat.ico --output-filename=$ARCHIVE_NAME --product-name=${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }} --file-version="$NUMERIC_VERSION" --product-version="$NUMERIC_VERSION" --company-name="LingChat Studio"  --show-memory main.py
+            echo "yes" | uv run nuitka --clang --standalone $UPX_FLAG --upx-binary=$UPX_BIN --jobs=4 $LTO_FLAG $OPT_FLAG $DEBUG_FLAG --low-memory --assume-yes-for-downloads --windows-icon-from-ico=ling_chat/static/game_data/resources/lingchat.ico --output-filename=$ARCHIVE_NAME --product-name=${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }} --file-version="$NUMERIC_VERSION" --product-version="$NUMERIC_VERSION" --company-name="LingChat Studio" --show-memory main.py
           fi
 
       - name: 下载 LingChat-Pal 以加入打包
@@ -269,7 +320,6 @@ jobs:
           path: ${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }}-${{ matrix.platform }}.${{ matrix.archive_ext }}
           archive: false
 
-  # 发布到 GitHub Release
   release:
     needs: [prepare, build]
     runs-on: ubuntu-latest
@@ -292,7 +342,8 @@ jobs:
         with:
           version: 'latest'
 
-      - name: 安装modelscope
+      - name: 安装 modelscope
+        if: needs.prepare.outputs.upload_to_modelscope == 'true'
         run: uv tool install modelscope
 
       - name: 创建或更新 Release 并上传所有资产
@@ -305,7 +356,6 @@ jobs:
           TITLE="${{ needs.prepare.outputs.release_title }}"
           PRERELEASE="${{ needs.prepare.outputs.is_prerelease }}"
 
-          # 检查或创建 Release
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG 已存在，将上传资产到现有 Release"
           else
@@ -313,7 +363,6 @@ jobs:
             gh release create "$TAG" --title "$TITLE" --prerelease="$PRERELEASE" --notes "自动构建的 Release"
           fi
 
-          # 获取所有文件（包括子目录中的文件）
           echo "正在收集 artifacts 目录下的所有文件..."
           mapfile -t files < <(find ./artifacts -type f)
 
@@ -325,17 +374,22 @@ jobs:
           echo "找到 ${#files[@]} 个文件待上传："
           printf '%s\n' "${files[@]}"
 
-          # 逐个上传所有文件
           for file in "${files[@]}"; do
             echo "正在上传 $file ..."
             gh release upload "$TAG" "$file" --clobber
             echo "✓ 上传完成：$file"
           done
 
-          for file in "${files[@]}"; do
-            echo "正在上传modelcope: $file ..."
-            ms upload lingchat-research-studio/LingChat-release-mirror "$file" ./$TAG/$file --token ${{ secrets.MODELSCOPE_ACCESS_TOKEN }}
-            echo "✓ 上传完成：$file"
-          done
+          UPLOAD_MS="${{ needs.prepare.outputs.upload_to_modelscope }}"
+          if [ "$UPLOAD_MS" = "true" ]; then
+            echo "开始上传到 ModelScope..."
+            for file in "${files[@]}"; do
+              echo "正在上传到 ModelScope: $file ..."
+              ms upload lingchat-research-studio/LingChat-release-mirror "$file" ./$TAG/$file --token ${{ secrets.MODELSCOPE_ACCESS_TOKEN }}
+              echo "✓ ModelScope 上传完成：$file"
+            done
+          else
+            echo "跳过 ModelScope 上传（upload_to_modelscope 未启用）"
+          fi
 
           echo "✅ 所有 ${#files[@]} 个资产上传完成"
