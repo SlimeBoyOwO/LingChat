@@ -21,12 +21,18 @@ export interface LlmModelSection {
   enable_thinking?: string
 }
 
+/** 全局网络配置 */
+export interface LlmNetworkSection {
+  proxy: string
+}
+
 /** 完整配置方案 */
 export interface LlmConfigScheme {
   config_name?: string
   config_description?: string
   main: LlmModelSection
   translator: LlmModelSection
+  network?: LlmNetworkSection
   providers?: Record<string, any>
 }
 

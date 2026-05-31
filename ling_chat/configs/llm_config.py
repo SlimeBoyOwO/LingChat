@@ -74,7 +74,6 @@ class LLMConfig:
             "top_p": float(os.environ.get("TOP_P", "0.9")),
             "max_tokens": int(os.environ.get("MAX_TOKENS", "8192")),
             "enable_thinking": os.environ.get("ENABLE_THINKING", "none").lower(),
-            "proxy": "",
         }
 
         # 按 provider 映射旧环境变量到统一字段
@@ -83,13 +82,11 @@ class LLMConfig:
                 "api_key": ("CHAT_API_KEY", ""),
                 "base_url": ("CHAT_BASE_URL", "https://api.deepseek.com/v1"),
                 "model": ("MODEL_TYPE", "deepseek-chat"),
-                "proxy": ("CHAT_PROXY_URL", ""),
             },
             "gemini": {
                 "api_key": ("GEMINI_API_KEY", ""),
                 "base_url": ("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"),
                 "model": ("GEMINI_MODEL_TYPE", "gemini-2.5-flash"),
-                "proxy": ("GEMINI_PROXY_URL", ""),
             },
             "ollama": {
                 "base_url": ("OLLAMA_BASE_URL", "http://localhost:11434"),
@@ -106,10 +103,31 @@ class LLMConfig:
         for key, (env_var, default) in mapping.items():
             main[key] = os.environ.get(env_var, default)
 
+        # 从旧 provider 专用代理环境变量迁移到全局 network.proxy
+        # 优先级: 当前 provider 对应的旧变量 > CHAT_PROXY_URL > GEMINI_PROXY_URL
+        proxy_env_map = {
+            "webllm": "CHAT_PROXY_URL",
+            "gemini": "GEMINI_PROXY_URL",
+        }
+        proxy_value = ""
+        primary_var = proxy_env_map.get(provider)
+        if primary_var:
+            proxy_value = os.environ.get(primary_var, "")
+        if not proxy_value:
+            # 任何旧变量非空都尝试迁移过来
+            for env_var in ("CHAT_PROXY_URL", "GEMINI_PROXY_URL"):
+                value = os.environ.get(env_var, "")
+                if value:
+                    proxy_value = value
+                    break
+
         return {
             "config_name": "默认配置",
             "config_description": "从.env自动迁移的默认配置",
             "main": main,
+            "network": {
+                "proxy": proxy_value,
+            },
             "translator": {
                 "provider": os.environ.get("TRANSLATE_LLM_PROVIDER", "none"),
                 "model": os.environ.get("TRANSLATE_MODEL", ""),
@@ -131,6 +149,36 @@ class LLMConfig:
                 return
 
         self._config = self._parse_toml(config_path)
+        # 一次性迁移：旧版本将 proxy 放在 [main]，需挪到 [network]
+        self._migrate_legacy_proxy(config_path)
+
+    def _migrate_legacy_proxy(self, config_path: Path) -> None:
+        """将旧 main.proxy 迁移到 network.proxy 并写回磁盘
+
+        触发条件：
+        - main.proxy 存在（无论是否为空）
+        - 且 [network] 段不存在或没有 proxy 字段（避免覆盖已有设置）
+        """
+        main = self._config.get("main")
+        if not isinstance(main, dict) or "proxy" not in main:
+            return
+
+        legacy_proxy = main.pop("proxy", "")
+        network = self._config.get("network")
+        if not isinstance(network, dict):
+            network = {}
+            self._config["network"] = network
+
+        # 已有 network.proxy 时不覆盖；否则把旧值搬过去
+        if "proxy" not in network:
+            network["proxy"] = legacy_proxy or ""
+
+        # 落盘，下次启动就不再触发
+        try:
+            self._write_toml(config_path, self._config)
+            logger.info(f"已将旧版 main.proxy 迁移到 network.proxy: {config_path}")
+        except Exception as e:
+            logger.warning(f"迁移 main.proxy 到 network.proxy 写盘失败: {e}")
 
     def _parse_toml(self, path: Path) -> Dict[str, Any]:
         """解析TOML文件"""
@@ -177,6 +225,13 @@ class LLMConfig:
                             lines.append(self._format_toml_line(key, value))
                         lines.append("")
 
+            # 写入network配置（全局网络设置，置于providers之后）
+            if "network" in config:
+                lines.append("[network]")
+                for key, value in config["network"].items():
+                    lines.append(self._format_toml_line(key, value))
+                lines.append("")
+
             with open(path, "w", encoding="utf-8") as f:
                 f.write("\n".join(lines))
 
@@ -207,7 +262,6 @@ class LLMConfig:
                 "model": "deepseek-chat",
                 "api_key": "",
                 "base_url": "https://api.deepseek.com/v1",
-                "proxy": "",
                 "temperature": 1.3,
                 "top_p": 0.9,
                 "max_tokens": 8192,
@@ -218,6 +272,9 @@ class LLMConfig:
                 "model": "",
                 "api_key": "",
                 "base_url": "",
+            },
+            "network": {
+                "proxy": "",
             },
             "providers": {},
         }
@@ -279,6 +336,16 @@ class LLMConfig:
         if trans.get("provider", "none") in ["none", ""]:
             return self.get_main_config()
         return trans
+
+    def get_network_config(self) -> Dict[str, Any]:
+        """获取全局网络配置（合入默认值，新键自动补全）
+
+        当前包含：
+        - proxy: HTTP/HTTPS 代理地址；留空表示走系统代理（trust_env=True）
+        """
+        defaults = {"proxy": ""}
+        config = self._config.get("network", {}) or {}
+        return {**defaults, **config}
 
     def get_provider_config(self, provider: str) -> Dict[str, Any]:
         """获取指定提供商的配置"""
@@ -363,7 +430,6 @@ class LLMConfig:
                 "model": "",
                 "api_key": "",
                 "base_url": "https://api.deepseek.com/v1",
-                "proxy": "",
                 "temperature": 1.3,
                 "top_p": 0.9,
                 "max_tokens": 8192,
@@ -374,6 +440,9 @@ class LLMConfig:
                 "model": "",
                 "api_key": "",
                 "base_url": "",
+            },
+            "network": {
+                "proxy": "",
             },
             "providers": {},
         }

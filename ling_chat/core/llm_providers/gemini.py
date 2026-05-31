@@ -4,20 +4,20 @@ from typing import AsyncGenerator, Dict, List, Optional
 import httpx
 
 from ling_chat.configs.llm_config import llm_config
+from ling_chat.core.llm_providers._http import build_httpx_client
 from ling_chat.core.llm_providers.base import BaseLLMProvider
 from ling_chat.core.logger import logger
 
 
 # 文档：https://ai.google.dev/api
 class GeminiProvider(BaseLLMProvider):
-    def __init__(self, model_type: str = "", api_key: str = "", base_url: str = "", proxy: str = ""):
+    def __init__(self, model_type: str = "", api_key: str = "", base_url: str = ""):
         super().__init__()
         main_cfg = llm_config.get_main_config()
 
         self.api_key = api_key or main_cfg.get("api_key", "")
         self.model_type = model_type or main_cfg.get("model", "gemini-2.5-flash")
         self.base_url = base_url or main_cfg.get("base_url", "https://generativelanguage.googleapis.com/v1beta")
-        self.proxy_url = proxy or main_cfg.get("proxy", "")
         self.temperature = main_cfg.get("temperature", 1.0)
         self.top_p = main_cfg.get("top_p", 1.0)
         self.max_tokens = int(main_cfg.get("max_tokens", 8192))
@@ -29,18 +29,16 @@ class GeminiProvider(BaseLLMProvider):
         pass
 
     def _get_http_client(self):
-        """获取HTTP客户端，支持代理"""
+        """获取HTTP客户端（同步），由全局 [network] 代理决定是否走代理"""
         timeout_config = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
-        if self.proxy_url and self.proxy_url.strip():
-            return httpx.Client(proxy=self.proxy_url, timeout=timeout_config)
-        return httpx.Client(timeout=timeout_config)
+        return build_httpx_client(timeout=timeout_config, base_url=self.base_url)
 
     def _get_async_http_client(self):
-        """获取异步HTTP客户端，支持代理"""
+        """获取异步HTTP客户端，由全局 [network] 代理决定是否走代理"""
         timeout_config = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
-        if self.proxy_url and self.proxy_url.strip():
-            return httpx.AsyncClient(proxy=self.proxy_url, timeout=timeout_config)
-        return httpx.AsyncClient(timeout=timeout_config)
+        return build_httpx_client(
+            async_client=True, timeout=timeout_config, base_url=self.base_url
+        )
 
     def _convert_messages_to_contents(
         self, messages: List[Dict]

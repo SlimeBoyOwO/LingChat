@@ -4,12 +4,13 @@ import httpx
 from openai import AsyncOpenAI, OpenAI
 
 from ling_chat.configs.llm_config import llm_config
+from ling_chat.core.llm_providers._http import build_httpx_client
 from ling_chat.core.llm_providers.base import BaseLLMProvider
 from ling_chat.core.logger import logger
 
 
 class WebLLMProvider(BaseLLMProvider):
-    def __init__(self, model_type: str, api_key: str, base_url: str, proxy: str = ""):
+    def __init__(self, model_type: str, api_key: str, base_url: str):
         super().__init__()
         self.api_key = api_key
         self.base_url = base_url
@@ -38,8 +39,10 @@ class WebLLMProvider(BaseLLMProvider):
             return
 
         self._timeout = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
-        http_client = httpx.Client(proxy=proxy, timeout=self._timeout) if proxy else None
-        async_http_client = httpx.AsyncClient(proxy=proxy, timeout=self._timeout) if proxy else None
+        http_client = build_httpx_client(timeout=self._timeout, base_url=base_url)
+        async_http_client = build_httpx_client(
+            async_client=True, timeout=self._timeout, base_url=base_url
+        )
         self.client = OpenAI(api_key=api_key, base_url=base_url, http_client=http_client, timeout=self._timeout)
         self.async_client = AsyncOpenAI(
             api_key=api_key, base_url=base_url, http_client=async_http_client, timeout=self._timeout
