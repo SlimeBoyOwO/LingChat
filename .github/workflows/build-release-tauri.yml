@@ -1,0 +1,297 @@
+name: 构建并发布 (Tauri)
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_title:
+        description: 'Release 显示标题（留空则使用标签名）'
+        required: false
+        type: string
+      prerelease:
+        description: '是否为预发布版'
+        required: false
+        default: false
+        type: boolean
+      pull_lfs:
+        description: '拉取 LFS 文件'
+        required: false
+        default: true
+        type: boolean
+      upload_to_modelscope:
+        description: '上传到 ModelScope'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.check_tag.outputs.tag_name }}
+      is_prerelease: ${{ github.event.inputs.prerelease }}
+      release_title: ${{ steps.set_title.outputs.release_title }}
+      platforms_json: ${{ steps.set_platforms.outputs.platforms_json }}
+      pull_lfs: ${{ steps.set_pull_lfs.outputs.pull_lfs }}
+      upload_to_modelscope: ${{ steps.set_modelscope.outputs.upload_to_modelscope }}
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 验证当前 ref 是否为标签
+        id: check_tag
+        run: |
+          TAG=$(git describe --exact-match --tags HEAD 2>/dev/null || true)
+          if [ -z "$TAG" ]; then
+            echo "错误：当前 ref 不是一个标签。请在下拉列表中选择一个标签再触发工作流。"
+            exit 1
+          fi
+          echo "tag_name=$TAG" >> $GITHUB_OUTPUT
+          echo "当前标签：$TAG"
+
+      - name: 设置 Release 标题
+        id: set_title
+        run: |
+          TITLE="${{ github.event.inputs.release_title }}"
+          if [ -z "$TITLE" ]; then
+            TITLE="${{ steps.check_tag.outputs.tag_name }}"
+          fi
+          echo "release_title=$TITLE" >> $GITHUB_OUTPUT
+
+      - name: 设置固定平台列表
+        id: set_platforms
+        run: |
+          # 默认构建所有平台：windows, macos-x64, macos-arm64, linux-amd64, linux-aarch64
+          echo "platforms_json=['windows','macos-x64','macos-arm64','linux-amd64','linux-aarch64']" >> $GITHUB_OUTPUT
+
+      - name: 设置 LFS 拉取选项
+        id: set_pull_lfs
+        run: echo "pull_lfs=${{ github.event.inputs.pull_lfs || 'true' }}" >> $GITHUB_OUTPUT
+
+      - name: 设置 ModelScope 上传选项
+        id: set_modelscope
+        run: echo "upload_to_modelscope=${{ github.event.inputs.upload_to_modelscope || 'false' }}" >> $GITHUB_OUTPUT
+
+  build:
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      matrix:
+        platform: ${{ fromJSON(needs.prepare.outputs.platforms_json) }}
+        include:
+          - platform: windows
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            # 构建产物拓展名示例，实际采集时直接取 bundle 目录内文件
+            archive_ext: zip
+            bundle_pattern: '*.msi *.exe'
+          - platform: macos-x64
+            os: macos-13
+            target: x86_64-apple-darwin
+            archive_ext: zip
+            bundle_pattern: '*.dmg'
+          - platform: macos-arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            archive_ext: zip
+            bundle_pattern: '*.dmg'
+          - platform: linux-amd64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive_ext: tar.xz
+            bundle_pattern: '*.AppImage *.deb'
+          - platform: linux-aarch64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            archive_ext: tar.xz
+            bundle_pattern: '*.AppImage *.deb'
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag_name }}
+          lfs: false
+
+      - name: 拉取 LFS 文件
+        if: needs.prepare.outputs.pull_lfs == 'true'
+        run: |
+          git lfs install
+          git lfs pull
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: 设置 Node.js 环境
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: 安装系统依赖 (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: 安装 Tauri CLI
+        uses: tauri-apps/tauri-action@v0
+        # 仅用于安装 CLI，实际构建在下一步手动执行以插入监控
+        with:
+          # 不执行构建，只是确保 cli 可用
+          tauriScript: "npx tauri"
+          args: "--help"
+
+      - name: 安装前端依赖并构建
+        run: |
+          pnpm install
+          pnpm build
+
+      - name: 使用 Tauri 构建 (含内存监控)
+        shell: bash
+        env:
+          # 跳过签名（若需要签名请配置对应 secret 并移除这些变量）
+          TAURI_PRIVATE_KEY: ""
+          TAURI_KEY_PASSWORD: ""
+          CI: true
+        run: |
+          # --- 内存监控函数 (跨平台) ---
+          monitor_memory() {
+            while true; do
+              if [[ "$RUNNER_OS" == "Linux" ]]; then
+                free -m | awk '/^Mem:/{printf "[Memory] Used: %sM / Total: %sM, Free: %sM\n", $3, $2, $4}'
+              elif [[ "$RUNNER_OS" == "Windows" ]]; then
+                powershell.exe -Command "& { $os = Get-CimInstance Win32_OperatingSystem; $total = [math]::Round($os.TotalVisibleMemorySize/1KB); $free = [math]::Round($os.FreePhysicalMemory/1KB); $used = $total - $free; Write-Output \"[Memory] Used: $used MB / Total: $total MB, Free: $free MB\" }"
+              elif [[ "$RUNNER_OS" == "macOS" ]]; then
+                # macOS 使用 vm_stat 和 sysctl
+                page_size=$(vm_stat | awk '/page size of/ {print $8}')
+                pages_free=$(vm_stat | awk '/Pages free/ {gsub(/\./,""); print $3}')
+                pages_used=$(vm_stat | awk '/Pages active/ {gsub(/\./,""); print $3}') # 近似
+                mem_used=$(( (pages_used * page_size) / 1048576 ))
+                mem_free=$(( (pages_free * page_size) / 1048576 ))
+                mem_total=$(( $(sysctl -n hw.memsize) / 1048576 ))
+                echo "[Memory] Used: ${mem_used}M / Total: ${mem_total}M, Free: ${mem_free}M"
+              fi
+              sleep 20
+            done
+          }
+
+          monitor_memory &
+          MONITOR_PID=$!
+          trap "kill $MONITOR_PID 2>/dev/null || true" EXIT
+
+          # 执行 Tauri 构建 (release 模式)
+          npx tauri build --target ${{ matrix.target }}
+
+      - name: 收集构建产物
+        shell: bash
+        run: |
+          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
+          mkdir -p dist
+          # 复制所有匹配的产物到 dist 目录并重命名包含版本信息
+          VERSION="${{ needs.prepare.outputs.tag_name }}"
+          shopt -s nullglob
+          for file in $BUNDLE_DIR/${{ matrix.bundle_pattern }}; do
+            filename=$(basename "$file")
+            name_no_ext="${filename%.*}"
+            ext="${filename##*.}"
+            # 重命名为 项目名-版本-平台.ext
+            new_name="${{ github.event.repository.name }}-${VERSION}-${{ matrix.platform }}.${ext}"
+            cp "$file" "dist/${new_name}"
+          done
+          echo "产物已收集到 dist/ 目录："
+          ls -la dist/
+
+      - name: 上传构建产物 (供 Release 使用)
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-${{ matrix.platform }}
+          path: dist/*
+          archive: false
+
+  release:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.prepare.outputs.tag_name }}
+
+      - name: 下载所有平台的构建包
+        uses: actions/download-artifact@v8
+        with:
+          path: ./artifacts
+          merge-multiple: true
+          skip-decompress: true
+
+      - name: 设置 Python 环境 (用于 ModelScope 上传)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 安装 modelscope
+        if: needs.prepare.outputs.upload_to_modelscope == 'true'
+        run: pip install modelscope
+
+      - name: 创建或更新 Release 并上传所有资产
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODELSCOPE_ACCESS_TOKEN: ${{ secrets.MODELSCOPE_ACCESS_TOKEN }}
+        run: |
+          set -e
+          TAG="${{ needs.prepare.outputs.tag_name }}"
+          TITLE="${{ needs.prepare.outputs.release_title }}"
+          PRERELEASE="${{ needs.prepare.outputs.is_prerelease }}"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG 已存在，将上传资产到现有 Release"
+          else
+            echo "Release $TAG 不存在，正在创建..."
+            gh release create "$TAG" --title "$TITLE" --prerelease="$PRERELEASE" --notes "自动构建的 Release (Tauri)"
+          fi
+
+          echo "正在收集 artifacts 目录下的所有文件..."
+          mapfile -t files < <(find ./artifacts -type f)
+
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "错误：artifacts 目录下没有文件"
+            exit 1
+          fi
+
+          echo "找到 ${#files[@]} 个文件待上传："
+          printf '%s\n' "${files[@]}"
+
+          for file in "${files[@]}"; do
+            echo "正在上传 $file ..."
+            gh release upload "$TAG" "$file" --clobber
+            echo "✓ 上传完成：$file"
+          done
+
+          UPLOAD_MS="${{ needs.prepare.outputs.upload_to_modelscope }}"
+          if [ "$UPLOAD_MS" = "true" ]; then
+            echo "开始上传到 ModelScope..."
+            for file in "${files[@]}"; do
+              echo "正在上传到 ModelScope: $file ..."
+              ms upload lingchat-research-studio/LingChat-release-mirror "$file" ./tauri/$TAG/$(basename "$file") --token ${{ secrets.MODELSCOPE_ACCESS_TOKEN }}
+              echo "✓ ModelScope 上传完成：$file"
+            done
+          else
+            echo "跳过 ModelScope 上传（upload_to_modelscope 未启用）"
+          fi
+
+          echo "✅ 所有 ${#files[@]} 个资产上传完成"
