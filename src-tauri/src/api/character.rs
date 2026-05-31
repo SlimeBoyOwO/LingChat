@@ -531,7 +531,7 @@ pub async fn update_role_settings(
                 .join("characters")
                 .join(&folder)
         }
-        RoleType::System => {
+        RoleType::System | RoleType::User => {
             return Err("系统角色不允许修改配置".to_string());
         }
     };

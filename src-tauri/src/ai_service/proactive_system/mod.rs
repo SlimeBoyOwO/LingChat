@@ -298,11 +298,6 @@ impl ProactiveSystem {
                     MessageGenerator::new(deps)
                 };
 
-                tracing::info!(
-                    "[ProactiveSystem] Dispatching proactive message generator: {}",
-                    prompt
-                );
-
                 // 往 game_status 追加系统级的主动 prompt 作为隐形触发台词
                 {
                     let svc = sys.ai_service.lock().await;
@@ -311,7 +306,7 @@ impl ProactiveSystem {
                         &sys.db,
                         LineBase {
                             attribute: LineAttributeExt(LineAttribute::User),
-                            content: PromptRole::Plot.build_prompt(&prompt),
+                            content: PromptRole::System.build_prompt(&prompt),
                             sender_role_id: None,
                             display_name: None,
                             ..Default::default()
@@ -355,19 +350,14 @@ impl ProactiveSystem {
             MessageGenerator::new(deps)
         };
 
-        tracing::info!(
-            "[ProactiveSystem] Forcing proactive schedule alarm dialogue: {}",
-            prompt
-        );
-
         {
             let svc = self.ai_service.lock().await;
             let mut gs = svc.game_status.lock().await;
             gs.add_line(
                 &self.db,
                 LineBase {
-                    attribute: LineAttributeExt(LineAttribute::System),
-                    content: prompt.clone(),
+                    attribute: LineAttributeExt(LineAttribute::User),
+                    content: PromptRole::System.build_prompt(&prompt),
                     sender_role_id: None,
                     display_name: None,
                     ..Default::default()
@@ -376,7 +366,7 @@ impl ProactiveSystem {
             .await?;
         }
 
-        let _ = generator.process_message(Some(prompt)).await;
+        let _ = generator.process_message(None).await;
         Ok(())
     }
 }

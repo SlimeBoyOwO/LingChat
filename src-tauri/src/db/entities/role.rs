@@ -10,6 +10,8 @@ pub enum RoleType {
     Npc,
     #[sea_orm(string_value = "system")]
     System,
+    #[sea_orm(string_value = "user")]
+    User,
 }
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]

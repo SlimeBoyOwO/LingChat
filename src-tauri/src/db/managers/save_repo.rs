@@ -45,6 +45,19 @@ impl SaveRepo {
             .map_err(|e| anyhow!("{e}"))
     }
 
+    /// Find the most recent save whose title starts with the given prefix.
+    pub async fn find_save_by_title_prefix(
+        db: &DatabaseConnection,
+        prefix: &str,
+    ) -> Result<Option<save::Model>> {
+        save::Entity::find()
+            .filter(save::Column::Title.like(&format!("{}%", prefix)))
+            .order_by_desc(save::Column::UpdateDate)
+            .one(db)
+            .await
+            .map_err(|e| anyhow!("{e}"))
+    }
+
     pub async fn create_save(db: &DatabaseConnection, title: &str) -> Result<save::Model> {
         let now = Utc::now().naive_utc();
         let active = save::ActiveModel {

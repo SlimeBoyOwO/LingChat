@@ -38,12 +38,15 @@ impl MemoryBuilder {
             s.push_str(emo);
             s.push('】');
         }
+        s.push('\n');
         s.push_str(&line.content);
+        s.push('\n');
         if let Some(tts) = line.tts_content.as_deref().filter(|v| !v.is_empty()) {
             s.push('<');
             s.push_str(tts);
             s.push('>');
         }
+        s.push('\n');
         if let Some(act) = line.action_content.as_deref().filter(|v| !v.is_empty()) {
             s.push('(');
             s.push_str(act);
@@ -111,13 +114,12 @@ impl MemoryBuilder {
                         parts.push(user_text);
                     }
 
-                    let final_content = if !context_lines.is_empty()
-                        && !active_user_lines.is_empty()
-                    {
-                        parts.join("\n")
-                    } else {
-                        parts.concat()
-                    };
+                    let final_content =
+                        if !context_lines.is_empty() && !active_user_lines.is_empty() {
+                            parts.join("\n")
+                        } else {
+                            parts.concat()
+                        };
                     memory.push(LlmMessage::user(final_content));
                 }
                 None => {}

@@ -77,6 +77,7 @@ impl InterestManager {
     pub fn restore_max_interest_cap(&mut self) {
         self.max_interest_cap = self.initial_max_cap;
         self.proactive_times = 0;
+        self.interest = 0.0;
     }
 
     pub fn set_status_mod(&mut self, val: i32) {

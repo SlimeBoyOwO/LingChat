@@ -70,6 +70,31 @@ impl RoleRepo {
             .await?)
     }
 
+    /// 确保 role 表中存在 id=0 的 User 角色（代表人类玩家）。
+    /// 若已有 id=0 的行但名称/类型不匹配，则更新为正确值。
+    /// 幂等操作，每次启动调用。
+    pub async fn ensure_user_role(db: &DatabaseConnection) -> Result<()> {
+        if let Some(existing) = role::Entity::find_by_id(0).one(db).await? {
+            if existing.name != "User" || existing.role_type != RoleType::User {
+                let mut active: role::ActiveModel = existing.into();
+                active.name = Set("User".to_string());
+                active.role_type = Set(RoleType::User);
+                active.update(db).await?;
+            }
+            return Ok(());
+        }
+
+        let active = role::ActiveModel {
+            id: Set(0),
+            name: Set("User".to_string()),
+            role_type: Set(RoleType::User),
+            ..Default::default()
+        };
+        active.insert(db).await?;
+        tracing::info!("Created user role with id=0");
+        Ok(())
+    }
+
     /// 读取某个角色的 settings.yml（MAIN 在 characters/下；NPC 在 scripts/{key}/characters/下）
     pub async fn get_role_settings_by_id(
         db: &DatabaseConnection,
@@ -95,7 +120,7 @@ impl RoleRepo {
                     .join("characters")
                     .join(&folder)
             }
-            RoleType::System => {
+            RoleType::System | RoleType::User => {
                 return Ok(None);
             }
         };

@@ -34,6 +34,9 @@ pub async fn initialize(
 
     role_sync::sync_roles_from_folder(&db, &data_dir).await?;
 
+    // 确保玩家 User 角色存在（id=0，用于 line.sender_role_id 的 FK 约束）
+    RoleRepo::ensure_user_role(&db).await?;
+
     // 迁移旧的扁平 LLM 配置 → 多供应商列表
     migrate_if_needed(&app.handle());
 

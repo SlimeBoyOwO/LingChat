@@ -56,6 +56,8 @@ pub struct AppState {
     pub achievement_manager: Arc<tokio::sync::Mutex<achievements::manager::AchievementManager>>,
     pub screen_analyzer: Arc<tokio::sync::Mutex<ScreenAnalyzer>>,
     pub screenshot_capture: Arc<tokio::sync::Mutex<ScreenshotCaptureState>>,
+    pub auto_save_manager:
+        Arc<tokio::sync::Mutex<ai_service::game_system::auto_save::AutoSaveManager>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -140,6 +142,14 @@ pub fn run() {
                 ScreenshotCaptureState::default(),
             ));
 
+            let auto_save_manager = std::sync::Arc::new(tokio::sync::Mutex::new(
+                ai_service::game_system::auto_save::AutoSaveManager::new(
+                    app.handle().clone(),
+                    db.clone(),
+                    ai_service.clone(),
+                ),
+            ));
+
             app.manage(AppState {
                 db,
                 ai_service,
@@ -150,12 +160,27 @@ pub fn run() {
                 achievement_manager,
                 screen_analyzer,
                 screenshot_capture,
+                auto_save_manager: auto_save_manager.clone(),
             });
 
             // Spawn Windows mouse polling click-through loop
             let window = app
                 .get_webview_window("main")
                 .ok_or_else(|| tauri::Error::AssetNotFound("main window not found".to_string()))?;
+
+            // Set up close handler for exit auto-save
+            ai_service::game_system::auto_save::AutoSaveManager::setup_close_handler(
+                window.clone(),
+                auto_save_manager.clone(),
+            );
+
+            // Start periodic auto-save loop (every 5 minutes)
+            tauri::async_runtime::spawn(async move {
+                ai_service::game_system::auto_save::AutoSaveManager::run_periodic(
+                    auto_save_manager,
+                )
+                .await;
+            });
 
             let hit_test_state = app.state::<api::pet::HitTestState>();
             let rects_arc = hit_test_state.solid_rects.clone();

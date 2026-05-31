@@ -2,6 +2,7 @@ import { listen } from '@tauri-apps/api/event'
 import { eventQueue } from '../core/events/event-queue'
 import type { ScriptEventType } from '../types'
 import { useAdventureStore } from '../stores/modules/adventure'
+import { useUIStore } from '../stores/modules/ui/ui'
 
 function asEvent(payload: unknown, overrides: Partial<ScriptEventType>): ScriptEventType {
   return { ...(payload as Record<string, unknown>), ...overrides } as unknown as ScriptEventType
@@ -52,6 +53,20 @@ export function initializeTauriEventListeners() {
     if (payload?.adventure_folder) {
       adventureStore.markAdventureCompleted(payload.adventure_folder)
     }
+  })
+
+  // === Auto-save events ===
+
+  listen('save:auto-saved', (event) => {
+    const payload = event.payload as { save_id: number; title: string; timestamp: string }
+    console.log('[Tauri] save:auto-saved', payload)
+    useUIStore().showNotification({
+      type: 'info',
+      title: '自动存档',
+      message: `已于 ${payload.timestamp} 自动保存`,
+      duration: 2500,
+      skipTipsCheck: true,
+    })
   })
 
   // === Script events ===
@@ -108,5 +123,5 @@ export function initializeTauriEventListeners() {
     eventQueue.addEvent(asEvent(event.payload, { type: 'free_dialogue', duration: 0 }))
   })
 
-  console.log('[Tauri] Event listeners initialized (ai + adventure + 13 script events)')
+  console.log('[Tauri] Event listeners initialized (ai + adventure + auto-save + 13 script events)')
 }

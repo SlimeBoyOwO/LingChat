@@ -1,6 +1,6 @@
+use serde_json::Value;
 use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
-use serde_json::Value;
 
 pub mod keys {
     pub const ENABLE_PROACTIVE_SYSTEM: &str = "ENABLE_PROACTIVE_SYSTEM";
@@ -40,7 +40,8 @@ impl ProactiveConfig {
         let store = app.store(super::STORE_FILE).ok();
 
         let get_bool = |key: &str, default: bool| -> bool {
-            store.as_ref()
+            store
+                .as_ref()
                 .and_then(|s| s.get(key))
                 .and_then(|v| match v {
                     Value::Bool(b) => Some(b),
@@ -51,7 +52,8 @@ impl ProactiveConfig {
         };
 
         let get_string = |key: &str, default: &str| -> String {
-            store.as_ref()
+            store
+                .as_ref()
                 .and_then(|s| s.get(key))
                 .and_then(|v| match v {
                     Value::String(s) => Some(s.clone()),
@@ -61,7 +63,8 @@ impl ProactiveConfig {
         };
 
         let get_i32 = |key: &str, default: i32| -> i32 {
-            store.as_ref()
+            store
+                .as_ref()
                 .and_then(|s| s.get(key))
                 .and_then(|v| match v {
                     Value::Number(n) => n.as_i64().map(|x| x as i32),
@@ -72,7 +75,8 @@ impl ProactiveConfig {
         };
 
         let get_f64 = |key: &str, default: f64| -> f64 {
-            store.as_ref()
+            store
+                .as_ref()
                 .and_then(|s| s.get(key))
                 .and_then(|v| match v {
                     Value::Number(n) => n.as_f64(),
@@ -86,14 +90,17 @@ impl ProactiveConfig {
             enable_proactive_system: get_bool(keys::ENABLE_PROACTIVE_SYSTEM, false),
             max_proactive_times: get_i32(keys::MAX_PROACTIVE_TIMES, 3),
             vd_api_key: get_string(keys::VD_API_KEY, ""),
-            vd_base_url: get_string(keys::VD_BASE_URL, "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+            vd_base_url: get_string(
+                keys::VD_BASE_URL,
+                "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            ),
             vd_model: get_string(keys::VD_MODEL, "qwen3.5-plus"),
             enable_visual_perception: get_bool(keys::ENABLE_VISUAL_PRECEPTION, true),
             screen_weight: get_f64(keys::SCREEN_WEIGHT, 30.0),
             enable_topic_creator: get_bool(keys::ENABLE_TOPIC_CREATER, true),
-            topic_weight: get_f64(keys::TOPIC_WEIGHT, 30.0),
+            topic_weight: get_f64(keys::TOPIC_WEIGHT, 60.0),
             enable_todo_perception: get_bool(keys::ENABLE_TODO_PRECEPTION, true),
-            todo_weight: get_f64(keys::TODO_WEIGHT, 40.0),
+            todo_weight: get_f64(keys::TODO_WEIGHT, 10.0),
             enable_schedule_reminder: get_bool(keys::ENABLE_SCHEDULE_REMINDER, true),
             enable_important_day_reminder: get_bool(keys::ENABLE_IMPORTANT_DAY_REMINDER, true),
         }
