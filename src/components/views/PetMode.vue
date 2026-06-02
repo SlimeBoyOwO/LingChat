@@ -110,6 +110,7 @@ let hitTestInterval: number | undefined
 let scaleUnlisten: (() => void) | null = null
 let effectUnlisten: (() => void) | null = null
 let volumeUnlisten: (() => void) | null = null
+let dialogHistoryUnlisten: (() => void) | null = null
 
 onMounted(async () => {
   const appWindow = getCurrentWindow()
@@ -138,6 +139,14 @@ onMounted(async () => {
       settingsStore.updateAudio({ characterVolume: volume })
     }
   })
+
+  // 响应设置窗口的初始历史数据请求
+  dialogHistoryUnlisten = await appWindow.listen('request-dialog-history', () => {
+    appWindow.emit('dialog-history-changed', {
+      dialogHistory: JSON.parse(JSON.stringify(gameStore.dialogHistory)),
+    })
+  })
+
   // 设置透明背景的 body 属性样式（额外防护）
   document.body.style.backgroundColor = 'transparent'
   document.documentElement.style.backgroundColor = 'transparent'
@@ -188,6 +197,17 @@ watch(
   },
 )
 
+// 监听 dialogHistory 变化，推送给设置窗口
+watch(
+  () => gameStore.dialogHistory.length,
+  () => {
+    const appWindow = getCurrentWindow()
+    appWindow.emit('dialog-history-changed', {
+      dialogHistory: JSON.parse(JSON.stringify(gameStore.dialogHistory)),
+    })
+  },
+)
+
 onUnmounted(() => {
   // 恢复默认背景色
   document.body.style.backgroundColor = ''
@@ -196,6 +216,7 @@ onUnmounted(() => {
   if (scaleUnlisten) scaleUnlisten()
   if (effectUnlisten) effectUnlisten()
   if (volumeUnlisten) volumeUnlisten()
+  if (dialogHistoryUnlisten) dialogHistoryUnlisten()
 
   if (hitTestInterval !== undefined) {
     window.clearInterval(hitTestInterval)
@@ -322,6 +343,16 @@ const handleSwitchAutoMode = () => {
 }
 
 const handleExitPetMode = async () => {
+  // 关闭设置窗口（如果打开的话）
+  try {
+    const settingsWindow = await WebviewWindow.getByLabel('settings')
+    if (settingsWindow) {
+      await settingsWindow.close()
+    }
+  } catch {
+    // 窗口不存在，忽略
+  }
+
   // 退出时清除 solid region，防止残留
   await invoke('update_solid_regions', { rects: [] })
   // 1. 关闭桌宠窗口特性，恢复 1500x800 的正常主窗口

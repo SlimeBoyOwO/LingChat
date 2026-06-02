@@ -167,7 +167,7 @@ const groupedHistory = computed<HistoryBlock[]>(() => {
           ? gameStore.userName || gameStore.mainRole?.roleName || '你'
           : '谜之音')
 
-    const segments = parseSegments(msg.content, isNarration)
+    const segments = parseSegments(msg.content, msg.motionText, isNarration)
 
     const entry: LineEntry = {
       segments,
@@ -198,7 +198,11 @@ function stripTrailPeriod(text: string): string {
   return text.replace(/[。]+$/, '')
 }
 
-function parseSegments(raw: string, isNarration: boolean): Segment[] {
+function parseSegments(
+  raw: string,
+  actionPart: string | undefined,
+  isNarration: boolean,
+): Segment[] {
   const segments: Segment[] = []
   let remaining = raw
   const actions: string[] = []
@@ -220,14 +224,8 @@ function parseSegments(raw: string, isNarration: boolean): Segment[] {
     segments.push({ type: 'dialogue', text: remaining })
   }
 
-  if (segments.length === 0 && actions.length > 0) {
-    for (const act of actions) {
-      segments.push({ type: 'action', text: act })
-    }
-  } else {
-    for (const act of actions) {
-      segments.push({ type: 'action', text: act })
-    }
+  if (actionPart) {
+    segments.push({ type: 'action', text: actionPart })
   }
 
   return segments
@@ -266,9 +264,7 @@ async function handleBacktrack(messageSeq: number) {
     gameStore.setGameMessages(messages)
   } catch (error: any) {
     console.error('回溯对话失败:', error)
-    await dialogStore.alert(
-      '回溯失败：' + (typeof error === 'string' ? error : error.message),
-    )
+    await dialogStore.alert('回溯失败：' + (typeof error === 'string' ? error : error.message))
   }
 }
 

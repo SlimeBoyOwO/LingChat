@@ -199,7 +199,7 @@ onMounted(async () => {
   // 从 localStorage 加载深色模式设置
   loadDarkModeFromStorage()
 
-  // 监听Main窗口的dialogHistory变化
+  // 先注册监听，再请求数据（避免响应在监听就绪前到达而被丢弃）
   const unlisten = await appWindow.listen<{ dialogHistory: any[] }>(
     DIALOG_HISTORY_EVENT,
     (event) => {
@@ -209,6 +209,9 @@ onMounted(async () => {
       }
     },
   )
+
+  // 向主窗口请求当前历史数据（主窗口会响应 dialog-history-changed）
+  await appWindow.emit('request-dialog-history')
 
   // 组件卸载时取消监听
   onUnmounted(() => {
