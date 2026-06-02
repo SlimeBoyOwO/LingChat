@@ -23,6 +23,11 @@ pub struct OpenAiProvider {
 
 impl OpenAiProvider {
     pub fn from_config(cfg: &LlmConfig) -> Result<Self> {
+        tracing::info!(
+            "[OpenAI] from_config: enable_thinking={}, model={}",
+            cfg.enable_thinking,
+            cfg.model
+        );
         Ok(Self {
             model: cfg.model.clone(),
             api_key: cfg.api_key.clone(),
@@ -44,17 +49,19 @@ impl OpenAiProvider {
         }
     }
 
-    fn build_request<'a>(
-        &'a self,
-        messages: &'a [LlmMessage],
-        stream: bool,
-    ) -> ChatRequest<'a> {
+    fn build_request<'a>(&'a self, messages: &'a [LlmMessage], stream: bool) -> ChatRequest<'a> {
+        // DeepSeek reasoner 等模型在 thinking 字段缺失时默认启用思考模式，
+        // 因此必须显式发送 "disabled" 才能真正关闭。
         let thinking = if self.enable_thinking {
-            Some(ThinkingConfig {
+            tracing::info!("[OpenAI] build_request: thinking=enabled");
+            ThinkingConfig {
                 type_: "enabled".to_string(),
-            })
+            }
         } else {
-            None
+            tracing::info!("[OpenAI] build_request: thinking=disabled");
+            ThinkingConfig {
+                type_: "disabled".to_string(),
+            }
         };
         ChatRequest {
             model: &self.model,
@@ -86,10 +93,8 @@ impl LlmProvider for OpenAiProvider {
             return Err(anyhow!("LLM 非流式调用失败 ({status}): {text}"));
         }
 
-        let parsed: ChatCompletionResponse = resp
-            .json()
-            .await
-            .context("解析 LLM 响应 JSON 失败")?;
+        let parsed: ChatCompletionResponse =
+            resp.json().await.context("解析 LLM 响应 JSON 失败")?;
         parsed
             .choices
             .into_iter()
@@ -98,13 +103,12 @@ impl LlmProvider for OpenAiProvider {
             .ok_or_else(|| anyhow!("LLM 响应无可用内容"))
     }
 
-    async fn complete_stream(
-        &self,
-        http: &Client,
-        messages: &[LlmMessage],
-    ) -> Result<ChunkStream> {
+    async fn complete_stream(&self, http: &Client, messages: &[LlmMessage]) -> Result<ChunkStream> {
         let body = self.build_request(messages, true);
-
+        tracing::info!(
+            "[OpenAI] complete_stream: thinking 字段 = {}",
+            body.thinking.type_
+        );
         let resp = http
             .post(self.endpoint())
             .bearer_auth(&self.api_key)
@@ -146,6 +150,12 @@ impl LlmProvider for OpenAiProvider {
                             Err(_) => continue,
                         };
                         if let Some(choice) = parsed.choices.into_iter().next() {
+                            // 思考模式内容（reasoning_content）：仅记录日志，不输出
+                            if let Some(reasoning) = choice.delta.reasoning_content {
+                                if !reasoning.is_empty() {
+                                    tracing::info!("[LLM Thinking] {}", reasoning);
+                                }
+                            }
                             if let Some(content) = choice.delta.content {
                                 if !content.is_empty() {
                                     yield content;
@@ -174,8 +184,7 @@ struct ChatRequest<'a> {
     temperature: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     top_p: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    thinking: Option<ThinkingConfig>,
+    thinking: ThinkingConfig,
 }
 
 #[derive(Serialize)]
@@ -213,4 +222,7 @@ struct ChatStreamChoice {
 struct ChatStreamDelta {
     #[serde(default)]
     content: Option<String>,
+    /// 思考模式内容（DeepSeek R1 等模型的 reasoning_content）。
+    #[serde(default)]
+    reasoning_content: Option<String>,
 }

@@ -4,10 +4,7 @@
     @click="handleAvatarClick"
   >
     <!-- 缩放与尺寸控制层 (无位移) -->
-    <div
-      class="relative transition-transform duration-300 ease-out animate-pet-scale"
-      :style="{ width: frameSize + 'px', height: frameSize + 'px' }"
-    >
+    <div class="relative w-full h-full">
       <!-- 1. 右上角信息铭牌 -->
       <div
         class="absolute top-1 -right-4 z-50 flex flex-col items-start pointer-events-none opacity-0 translate-x-4 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-400 ease-out"
@@ -22,61 +19,6 @@
         >
           {{ role.roleSubTitle }}
         </div>
-      </div>
-
-      <!-- 2. 设置按钮 -->
-      <button
-        type="button"
-        aria-label="打开设置"
-        title="设置"
-        class="absolute top-1 -left-3.5 z-40 w-8 h-8 rounded-full bg-white/20 backdrop-blur-md border border-white/40 text-cyan-700 dark:text-white flex items-center justify-center opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 hover:bg-cyan-500/80 hover:text-white hover:scale-110 shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-all duration-300"
-        @click.stop="handleOpenSettings"
-      >
-        <Settings :size="16"></Settings>
-      </button>
-
-      <!-- 2.5 自动按钮-->
-      <button
-        type="button"
-        aria-label="打开自动对话"
-        title="自动"
-        class="absolute top-10 -left-3.5 z-40 w-8 h-8 rounded-full bg-white/20 backdrop-blur-md border border-white/40 text-cyan-700 dark:text-white flex items-center justify-center opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 hover:bg-cyan-500/80 hover:text-white hover:scale-110 shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-all duration-300"
-        :class="[{ active: uiStore.autoMode }]"
-        @click.stop="handleSwitchAutoMode"
-      >
-        <Play v-if="!uiStore.autoMode" :size="16"></Play>
-        <Pause v-else :size="16"></Pause>
-      </button>
-
-      <!-- 2.75 返回主页按钮-->
-      <button
-        type="button"
-        aria-label="返回主页"
-        title="返回主页"
-        class="absolute top-19 -left-3.5 z-40 w-8 h-8 rounded-full bg-white/20 backdrop-blur-md border border-white/40 text-cyan-700 dark:text-white flex items-center justify-center opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 hover:bg-cyan-500/80 hover:text-white hover:scale-110 shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-all duration-300"
-        @click.stop="handleExitPetMode"
-      >
-        <LogOut :size="16"></LogOut>
-      </button>
-
-      <!-- 2.8 截图按钮 -->
-      <div
-        class="absolute top-28 -left-3.5 z-40 opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 group/screenshot"
-      >
-        <button
-          type="button"
-          :title="hasScreenshot ? '点击重新截图，右键取消截图' : '截图提问'"
-          class="w-8 h-8 rounded-full dark:text-white bg-white/20 backdrop-blur-md border border-white/40 flex items-center justify-center hover:bg-cyan-500/80 hover:text-white hover:scale-110 shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-all duration-300"
-          :style="
-            hasScreenshot
-              ? { color: 'var(--accent-color)', borderColor: 'var(--accent-color)' }
-              : {}
-          "
-          @click.stop="startScreenshot"
-          @contextmenu.prevent="clearScreenshot"
-        >
-          <Camera :size="16"></Camera>
-        </button>
       </div>
 
       <!-- 3. 常驻特效：现代科技感流光圆环 -->
@@ -139,33 +81,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, toRefs, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, toRefs } from 'vue'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import BAParticles from './BAParticles.vue'
 import ImageCrossFade from '@/components/ui/ImageAcrossFade.vue'
 import StarField from '../game/standard/particles/StarField.vue'
 import type { GameRole } from '@/stores/modules/game/state'
 import { EMOTION_CONFIG, EMOTION_CONFIG_EMO } from '@/controllers/emotion/config'
-import { useSettingsStore } from '@/stores/modules/settings'
 import { useUIStore } from '@/stores/modules/ui/ui'
-import { useScreenshot } from '@/composables/useScreenshot'
 import './avatar-animation.css'
-import { Play, Pause, Settings, LogOut, Camera } from 'lucide-vue-next'
 
 const props = defineProps<{ role: GameRole }>()
 const { role } = toRefs(props)
 
-const emit = defineEmits([
-  'mouseenter',
-  'mouseleave',
-  'avatar-click',
-  'open-settings',
-  'switch-auto-mode',
-  'exit-pet-mode',
-])
+const emit = defineEmits(['avatar-click'])
 const bubbleAudio = ref<HTMLAudioElement | null>(null)
 const imageFadeRef = ref<InstanceType<typeof ImageCrossFade> | null>(null)
-const settingsStore = useSettingsStore()
 const uiStore = useUIStore()
 
 const activeAnimationClass = ref('normal')
@@ -175,11 +106,6 @@ const currentBubbleClass = ref('')
 
 let bubbleTimeoutId: number | null = null
 let latestEmotionId = 0
-
-const frameSize = computed(() => {
-  const scale = settingsStore.pet?.scale || 1
-  return Math.round(210 * scale)
-})
 
 const containerClasses = computed(() => ({
   [activeAnimationClass.value]: true,
@@ -206,26 +132,12 @@ const bubbleStyles = computed(() => ({
 }))
 
 const handleAvatarClick = () => emit('avatar-click')
-const handleOpenSettings = () => emit('open-settings')
-const handleSwitchAutoMode = () => emit('switch-auto-mode')
-const handleExitPetMode = () => emit('exit-pet-mode')
 
 const handleAnimationEnd = () => {
   if (activeAnimationClass.value !== 'normal') {
     activeAnimationClass.value = 'normal'
   }
 }
-
-const {
-  hasScreenshot,
-  init: initScreenshot,
-  destroy: destroyScreenshot,
-  start: startScreenshot,
-  clear: clearScreenshot,
-} = useScreenshot()
-
-onMounted(() => initScreenshot())
-onUnmounted(() => destroyScreenshot())
 
 const targetAvatarUrl = ref('')
 let resolveAvatarId = 0

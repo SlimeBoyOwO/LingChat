@@ -156,7 +156,6 @@ impl GameRoleManager {
             Some(n) if n < lines.len() => &lines[lines.len() - n..],
             _ => lines,
         };
-
         // 收集涉及到的角色 ID
         let mut involved_ids: HashSet<i32> = HashSet::new();
         for line in source_lines {

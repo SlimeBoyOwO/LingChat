@@ -7,14 +7,14 @@
     :style="{ '--pet-ui-scale': scale }"
   >
     <div
-      class="flex items-center p-[calc(4px*var(--pet-ui-scale,1))] rounded-[calc(20px*var(--pet-ui-scale,1))] bg-white/20 backdrop-blur-[10px] saturate-180 border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.1),inset_0_1px_1px_rgba(255,255,255,0.1)] chat-input-container"
+      class="flex items-center p-[calc(4px*var(--pet-ui-scale,1))] rounded-[calc(20px*var(--pet-ui-scale,1))] bg-neutral-950/50 backdrop-blur-xl saturate-200 border border-white/10 chat-input-container"
     >
       <input
         v-model="messageText"
         type="text"
         :placeholder="placeholderText"
         :readonly="!isInputEnabled"
-        class="flex-1 bg-transparent border-none outline-none text-white text-[calc(13px*var(--pet-ui-scale,1))] p-[calc(5px*var(--pet-ui-scale,1))] placeholder-white/60"
+        class="flex-1 bg-transparent border-none outline-none text-white text-[calc(13px*var(--pet-ui-scale,1))] p-[calc(5px*var(--pet-ui-scale,1))] placeholder-white/40 [text-shadow:0_1px_4px_rgba(0,0,0,0.5)]"
         @keyup.enter="sendMessage"
       />
       <button
@@ -140,5 +140,4 @@ const sendMessage = () => {
 }
 </script>
 
-<style scoped>
-</style>
+<style scoped></style>
