@@ -12,11 +12,11 @@ pub const STORE_FILE: &str = "settings.json";
 pub mod proactive;
 pub mod tts;
 
-use crate::config::tts::TtsConfig;
 use crate::ai_service::llm::provider_config::{
-    build_llm_client_from_provider, load_providers, save_providers,
-    load_role_assignment, save_role_assignment, LlmProviderConfig, LlmProvidersResponse,
+    build_llm_client_from_provider, load_providers, load_role_assignment, save_providers,
+    save_role_assignment, LlmProviderConfig, LlmProvidersResponse,
 };
+use crate::config::tts::TtsConfig;
 
 // ========== 字段键（对标 Python .env） ==========
 pub mod keys {
@@ -148,13 +148,27 @@ pub struct AppConfig {
     pub tts: TtsConfig,
 }
 
-fn default_output_sec_lang() -> bool { true }
-fn default_consumers() -> u32 { 3 }
-fn default_enable_translate() -> bool { true }
-fn default_enable_time_sense() -> bool { true }
-fn default_enable_emotion_classifier() -> bool { true }
-fn default_memory_update_interval() -> u32 { 50 }
-fn default_memory_recent_window() -> u32 { 15 }
+fn default_output_sec_lang() -> bool {
+    true
+}
+fn default_consumers() -> u32 {
+    3
+}
+fn default_enable_translate() -> bool {
+    true
+}
+fn default_enable_time_sense() -> bool {
+    true
+}
+fn default_enable_emotion_classifier() -> bool {
+    true
+}
+fn default_memory_update_interval() -> u32 {
+    50
+}
+fn default_memory_recent_window() -> u32 {
+    15
+}
 
 impl Default for AppConfig {
     fn default() -> Self {
@@ -190,14 +204,13 @@ impl Default for AppConfig {
 }
 
 fn get_string(store: &Store<Wry>, key: &str) -> Option<String> {
-    store.get(key).and_then(|v| v.as_str().map(|s| s.to_string()))
+    store
+        .get(key)
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
 }
 
 fn get_bool(store: &Store<Wry>, key: &str, default: bool) -> bool {
-    store
-        .get(key)
-        .and_then(|v| v.as_bool())
-        .unwrap_or(default)
+    store.get(key).and_then(|v| v.as_bool()).unwrap_or(default)
 }
 
 fn get_u32(store: &Store<Wry>, key: &str, default: u32) -> u32 {
@@ -250,7 +263,8 @@ impl AppConfig {
 }
 
 pub fn settings_store(app: &AppHandle) -> Result<Arc<Store<Wry>>> {
-    app.store(STORE_FILE).context("Failed to open settings store")
+    app.store(STORE_FILE)
+        .context("Failed to open settings store")
 }
 
 // ========== 结构化配置树（前端"高级设置"页面使用） ==========
@@ -309,26 +323,36 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                     ConfigSetting {
                         key: keys::LLM_OUTPUT_SEC_LANG.to_string(),
                         value: read_setting(app, keys::LLM_OUTPUT_SEC_LANG, "true"),
-                        description: "LLM_OUTPUT_SEC_LANG — 是否允许输出第二语言（关闭后仅输出中文）".to_string(),
+                        description:
+                            "LLM_OUTPUT_SEC_LANG — 是否允许输出第二语言（关闭后仅输出中文）"
+                                .to_string(),
                         setting_type: "bool".to_string(),
                     },
                     ConfigSetting {
                         key: keys::CONSUMERS.to_string(),
                         value: read_setting(app, keys::CONSUMERS, "3"),
-                        description: "COMSUMERS — 并发消费者数量（增大可加速流式输出，默认 3）".to_string(),
+                        description: "COMSUMERS — 并发消费者数量（增大可加速流式输出，默认 3）"
+                            .to_string(),
                         setting_type: "text".to_string(),
                     },
                     ConfigSetting {
                         key: keys::LLM_NO_EMOTION_LIMIT.to_string(),
                         value: read_setting(app, keys::LLM_NO_EMOTION_LIMIT, "false"),
-                        description: "NO_EMOTION_LIMIT_PROMPT — 解除 emotion 数量限制（可能增加 token 消耗）".to_string(),
+                        description:
+                            "NO_EMOTION_LIMIT_PROMPT — 解除 emotion 数量限制（可能增加 token 消耗）"
+                                .to_string(),
                         setting_type: "bool".to_string(),
                     },
                 ],
             },
         );
 
-        tree.insert("LLM 配置".to_string(), Category { subcategories: llm_subs });
+        tree.insert(
+            "LLM 配置".to_string(),
+            Category {
+                subcategories: llm_subs,
+            },
+        );
     }
 
     // ===== 翻译配置 =====
@@ -342,13 +366,19 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                 settings: vec![ConfigSetting {
                     key: keys::TRANSLATE_ENABLE.to_string(),
                     value: read_setting(app, keys::TRANSLATE_ENABLE, "true"),
-                    description: "ENABLE_TRANSLATE — 启用 AI 翻译（将中文对话翻译为第二语言）".to_string(),
+                    description: "ENABLE_TRANSLATE — 启用 AI 翻译（将中文对话翻译为第二语言）"
+                        .to_string(),
                     setting_type: "bool".to_string(),
                 }],
             },
         );
 
-        tree.insert("翻译配置".to_string(), Category { subcategories: trans_subs });
+        tree.insert(
+            "翻译配置".to_string(),
+            Category {
+                subcategories: trans_subs,
+            },
+        );
     }
 
     // ===== 功能设置 =====
@@ -411,7 +441,12 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
             },
         );
 
-        tree.insert("功能设置".to_string(), Category { subcategories: feat_subs });
+        tree.insert(
+            "功能设置".to_string(),
+            Category {
+                subcategories: feat_subs,
+            },
+        );
     }
 
     // ===== TTS 配置 =====
@@ -505,7 +540,9 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
         tts_subs.insert(
             "音频参数".to_string(),
             Subcategory {
-                description: "TTS 音频输出格式与语言设置，对应原环境变量 TTS_AUDIO_FORMAT / VOICE_LANG".to_string(),
+                description:
+                    "TTS 音频输出格式与语言设置，对应原环境变量 TTS_AUDIO_FORMAT / VOICE_LANG"
+                        .to_string(),
                 settings: vec![
                     ConfigSetting {
                         key: tts::keys::TTS_AUDIO_FORMAT.to_string(),
@@ -523,7 +560,12 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
             },
         );
 
-        tree.insert("TTS 配置".to_string(), Category { subcategories: tts_subs });
+        tree.insert(
+            "TTS 配置".to_string(),
+            Category {
+                subcategories: tts_subs,
+            },
+        );
     }
 
     // ===== 主动对话配置 =====
@@ -566,7 +608,11 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                     },
                     ConfigSetting {
                         key: proactive::keys::VD_BASE_URL.to_string(),
-                        value: read_setting(app, proactive::keys::VD_BASE_URL, "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+                        value: read_setting(
+                            app,
+                            proactive::keys::VD_BASE_URL,
+                            "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                        ),
                         description: "VD_BASE_URL — 视觉模型 API Base URL".to_string(),
                         setting_type: "text".to_string(),
                     },
@@ -579,13 +625,17 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                     ConfigSetting {
                         key: proactive::keys::ENABLE_VISUAL_PRECEPTION.to_string(),
                         value: read_setting(app, proactive::keys::ENABLE_VISUAL_PRECEPTION, "true"),
-                        description: "ENABLE_VISUAL_PRECEPTION — 是否允许主动视觉感知桌面画面（偷看屏幕）".to_string(),
+                        description:
+                            "ENABLE_VISUAL_PRECEPTION — 是否允许主动视觉感知桌面画面（偷看屏幕）"
+                                .to_string(),
                         setting_type: "bool".to_string(),
                     },
                     ConfigSetting {
                         key: proactive::keys::SCREEN_WEIGHT.to_string(),
                         value: read_setting(app, proactive::keys::SCREEN_WEIGHT, "30.0"),
-                        description: "SCREEN_WEIGHT — 视觉模式触发权重（越大越容易偷看屏幕聊天，默认 30）".to_string(),
+                        description:
+                            "SCREEN_WEIGHT — 视觉模式触发权重（越大越容易偷看屏幕聊天，默认 30）"
+                                .to_string(),
                         setting_type: "text".to_string(),
                     },
                 ],
@@ -606,39 +656,53 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                     },
                     ConfigSetting {
                         key: proactive::keys::TOPIC_WEIGHT.to_string(),
-                        value: read_setting(app, proactive::keys::TOPIC_WEIGHT, "30.0"),
-                        description: "TOPIC_WEIGHT — 随机话题触发权重（默认 30）".to_string(),
+                        value: read_setting(app, proactive::keys::TOPIC_WEIGHT, "60.0"),
+                        description: "TOPIC_WEIGHT — 随机话题触发权重（默认 60）".to_string(),
                         setting_type: "text".to_string(),
                     },
                     ConfigSetting {
                         key: proactive::keys::ENABLE_TODO_PRECEPTION.to_string(),
                         value: read_setting(app, proactive::keys::ENABLE_TODO_PRECEPTION, "true"),
-                        description: "ENABLE_TODO_PRECEPTION — 允许在闲暇时自动读取未完成 TODO 并温和提醒".to_string(),
+                        description:
+                            "ENABLE_TODO_PRECEPTION — 允许在闲暇时自动读取未完成 TODO 并温和提醒"
+                                .to_string(),
                         setting_type: "bool".to_string(),
                     },
                     ConfigSetting {
                         key: proactive::keys::TODO_WEIGHT.to_string(),
-                        value: read_setting(app, proactive::keys::TODO_WEIGHT, "40.0"),
-                        description: "TODO_WEIGHT — TODO 提醒触发权重（默认 40）".to_string(),
+                        value: read_setting(app, proactive::keys::TODO_WEIGHT, "10.0"),
+                        description: "TODO_WEIGHT — TODO 提醒触发权重（默认 10）".to_string(),
                         setting_type: "text".to_string(),
                     },
                     ConfigSetting {
                         key: proactive::keys::ENABLE_SCHEDULE_REMINDER.to_string(),
                         value: read_setting(app, proactive::keys::ENABLE_SCHEDULE_REMINDER, "true"),
-                        description: "ENABLE_SCHEDULE_REMINDER — 启用强日程日程报时弹窗提醒".to_string(),
+                        description: "ENABLE_SCHEDULE_REMINDER — 启用强日程日程报时弹窗提醒"
+                            .to_string(),
                         setting_type: "bool".to_string(),
                     },
                     ConfigSetting {
                         key: proactive::keys::ENABLE_IMPORTANT_DAY_REMINDER.to_string(),
-                        value: read_setting(app, proactive::keys::ENABLE_IMPORTANT_DAY_REMINDER, "true"),
-                        description: "ENABLE_IMPORTANT_DAY_REMINDER — 启用重要节日与特殊日子暖心提醒".to_string(),
+                        value: read_setting(
+                            app,
+                            proactive::keys::ENABLE_IMPORTANT_DAY_REMINDER,
+                            "true",
+                        ),
+                        description:
+                            "ENABLE_IMPORTANT_DAY_REMINDER — 启用重要节日与特殊日子暖心提醒"
+                                .to_string(),
                         setting_type: "bool".to_string(),
                     },
                 ],
             },
         );
 
-        tree.insert("主动对话配置".to_string(), Category { subcategories: proactive_subs });
+        tree.insert(
+            "主动对话配置".to_string(),
+            Category {
+                subcategories: proactive_subs,
+            },
+        );
     }
 
     // ===== 其他设置 =====
@@ -658,7 +722,12 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
             },
         );
 
-        tree.insert("其他设置".to_string(), Category { subcategories: other_subs });
+        tree.insert(
+            "其他设置".to_string(),
+            Category {
+                subcategories: other_subs,
+            },
+        );
     }
 
     tree

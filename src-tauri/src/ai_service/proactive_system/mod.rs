@@ -156,7 +156,7 @@ impl ProactiveSystem {
 
     /// 重新载入日程设置文件 schedules.json。
     pub async fn load_schedule_settings(&mut self) {
-        let schedules_path = crate::init::static_copy::resolve_data_dir()
+        let schedules_path = crate::api::data_dir()
             .join("game_data")
             .join("schedules.json");
 

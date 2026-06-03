@@ -15,12 +15,10 @@ pub mod script;
 
 use std::path::PathBuf;
 
-use crate::init::static_copy;
-
 // ========== 共享路径辅助函数 ==========
 
 pub(crate) fn data_dir() -> PathBuf {
-    static_copy::resolve_data_dir()
+    crate::init::static_copy::get_data_dir().clone()
 }
 
 pub(crate) fn game_data_dir() -> PathBuf {

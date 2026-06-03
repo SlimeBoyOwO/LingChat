@@ -203,7 +203,9 @@ impl AutoSaveManager {
         let service = self.ai_service.lock().await;
         let lines = &service.game_status.lock().await.line_list;
 
-        if lines.is_empty() {
+        // 初始化时 line_list 自带一条 system 台词（角色人设），
+        // 只有大于 1 条时才说明有实际对话发生，才需要自动存档。
+        if lines.len() <= 1 {
             return None;
         }
 
@@ -221,6 +223,13 @@ impl AutoSaveManager {
     /// Updates the title with the current timestamp.
     async fn find_or_create_slot(&mut self) -> Result<i32, String> {
         // Try to find an existing auto-save by prefix
+        // Read current main_role_id once (used in both branches)
+        let main_id = {
+            let service = self.ai_service.lock().await;
+            let gs = service.game_status.lock().await;
+            gs.main_role_id
+        };
+
         if let Ok(Some(existing)) =
             SaveRepo::find_save_by_title_prefix(&self.db, AUTO_SAVE_PREFIX).await
         {
@@ -233,6 +242,10 @@ impl AutoSaveManager {
             SaveRepo::update_save_title(&self.db, save_id, &new_title)
                 .await
                 .map_err(|e| format!("更新自动存档标题失败: {}", e))?;
+            // 每次存档都同步 main_role_id，防止切角色后指向旧角色
+            SaveRepo::update_save_main_role(&self.db, save_id, main_id)
+                .await
+                .map_err(|e| format!("设置主角失败: {}", e))?;
             self.auto_save_id = Some(save_id);
             return Ok(save_id);
         }
@@ -248,14 +261,9 @@ impl AutoSaveManager {
             .map_err(|e| format!("创建自动存档失败: {}", e))?;
         let save_id = model.id;
 
-        // Set main role if available
-        let service = self.ai_service.lock().await;
-        if let Some(main_id) = service.game_status.lock().await.main_role_id {
-            SaveRepo::update_save_main_role(&self.db, save_id, Some(main_id))
-                .await
-                .map_err(|e| format!("设置主角失败: {}", e))?;
-        }
-        drop(service);
+        SaveRepo::update_save_main_role(&self.db, save_id, main_id)
+            .await
+            .map_err(|e| format!("设置主角失败: {}", e))?;
 
         self.auto_save_id = Some(save_id);
         Ok(save_id)

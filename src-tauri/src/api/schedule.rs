@@ -4,7 +4,7 @@ use crate::ai_service::proactive_system::types::UserScheduleSettings;
 
 #[tauri::command]
 pub async fn get_schedules() -> Result<UserScheduleSettings, String> {
-    let schedules_path = crate::init::static_copy::resolve_data_dir()
+    let schedules_path = crate::api::data_dir()
         .join("game_data")
         .join("schedules.json");
 
@@ -27,7 +27,7 @@ pub async fn save_schedules(
     data: UserScheduleSettings,
 ) -> Result<String, String> {
     let state = app.state::<AppState>();
-    let schedules_path = crate::init::static_copy::resolve_data_dir()
+    let schedules_path = crate::api::data_dir()
         .join("game_data")
         .join("schedules.json");
 

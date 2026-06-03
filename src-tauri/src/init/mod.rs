@@ -27,9 +27,8 @@ use crate::ChatComponents;
 pub async fn initialize(
     app: &App,
 ) -> Result<(DatabaseConnection, SharedAIService, ChatComponents)> {
-    static_copy::copy_game_data(app)?;
-
-    let data_dir = static_copy::resolve_data_dir();
+    static_copy::init_data_dir(&app.handle());
+    let data_dir = static_copy::get_data_dir().clone();
     let db = db::init_db(&data_dir).await?;
 
     role_sync::sync_roles_from_folder(&db, &data_dir).await?;

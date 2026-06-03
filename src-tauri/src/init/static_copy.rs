@@ -1,78 +1,47 @@
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+use std::sync::OnceLock;
 
-use anyhow::{Context, Result};
-use tauri::{App, Manager};
+use tauri::Manager;
 
-pub fn resolve_data_dir() -> PathBuf {
+static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// 初始化 data 目录缓存（必须在 App 启动时调用一次）。
+pub fn init_data_dir(app: &tauri::AppHandle) {
+    let dir = resolve_data_dir(app);
+    DATA_DIR.set(dir).expect("data_dir already initialized");
+}
+
+/// 获取已缓存的 data 目录（必须先调用 `init_data_dir`）。
+pub fn get_data_dir() -> &'static PathBuf {
+    DATA_DIR
+        .get()
+        .expect("data_dir not initialized — call init_data_dir first")
+}
+
+/// 解析 data 目录路径。
+///
+/// - 开发模式（debug）：项目根目录下的 `data/`
+/// - 移动端（android/ios）：平台沙盒内的应用数据目录
+/// - 桌面端（release portable）：exe 所在目录下的 `data/`
+///
+/// 所有可读写数据（数据库、game_data、存档等）都放在此目录下。
+fn resolve_data_dir(app: &tauri::AppHandle) -> PathBuf {
     if cfg!(debug_assertions) {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .unwrap()
             .join("data")
+    } else if cfg!(any(target_os = "android", target_os = "ios")) {
+        // 移动端必须使用平台沙盒路径，current_exe() 指向 APK/IPA 内部只读路径
+        app.path()
+            .app_data_dir()
+            .expect("failed to resolve app_data_dir on mobile")
     } else {
+        // 桌面端 portable：data 目录放在 exe 旁边，用户可直接访问
         std::env::current_exe()
             .unwrap()
             .parent()
             .unwrap()
             .join("data")
     }
-}
-
-fn resolve_resource_game_data(app: &App) -> Result<PathBuf> {
-    if cfg!(debug_assertions) {
-        Ok(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources").join("game_data"))
-    } else {
-        app.path()
-            .resource_dir()
-            .map(|p| p.join("game_data"))
-            .context("Failed to resolve resource directory")
-    }
-}
-
-fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
-    fs::create_dir_all(dst)?;
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let file_type = entry.file_type()?;
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-
-        if file_type.is_dir() {
-            copy_dir_recursive(&src_path, &dst_path)?;
-        } else {
-            fs::copy(&src_path, &dst_path)?;
-        }
-    }
-    Ok(())
-}
-
-pub fn copy_game_data(app: &App) -> Result<()> {
-    let source = resolve_resource_game_data(app)?;
-    let data_dir = resolve_data_dir();
-    let target = data_dir.join("game_data");
-
-    if !source.exists() {
-        tracing::warn!("Resource game_data not found at {:?}, skipping copy", source);
-        return Ok(());
-    }
-
-    if !target.exists() {
-        tracing::info!("First run: copying game_data to {:?}", target);
-        copy_dir_recursive(&source, &target)
-            .context("Failed to copy game_data directory")?;
-    } else {
-        for entry in fs::read_dir(&source)? {
-            let entry = entry?;
-            if entry.file_type()?.is_dir() {
-                let sub_target = target.join(entry.file_name());
-                if !sub_target.exists() {
-                    tracing::info!("Backfilling missing subdirectory: {:?}", entry.file_name());
-                    copy_dir_recursive(&entry.path(), &sub_target)?;
-                }
-            }
-        }
-    }
-
-    Ok(())
 }

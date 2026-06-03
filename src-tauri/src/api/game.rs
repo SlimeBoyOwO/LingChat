@@ -10,7 +10,6 @@ use crate::ai_service::types::{CharacterSettings, GameLine};
 use crate::db::entities::line::LineAttribute;
 use crate::config::{self, AppConfig};
 use crate::db::managers::role_repo::RoleRepo;
-use crate::init::static_copy;
 use crate::utils::prompt::PromptOptions;
 use crate::AppState;
 
@@ -126,7 +125,7 @@ pub async fn init_game(app: AppHandle) -> Result<WebInitData, String> {
 
 #[tauri::command]
 pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebInitData, String> {
-    let data_dir = static_copy::resolve_data_dir();
+    let data_dir = crate::api::data_dir();
 
     // 1. 从 DB 加载角色设定
     let state = app.state::<AppState>();

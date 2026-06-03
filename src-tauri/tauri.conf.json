@@ -30,9 +30,6 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/icon.ico"],
-    "resources": {
-      "resources/game_data": "game_data/"
-    }
+    "icon": ["icons/icon.ico"]
   }
 }
