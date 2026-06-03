@@ -29,6 +29,9 @@ importers:
       tailwindcss:
         specifier: ^4.3.0
         version: 4.3.0
+      tauri-plugin-screenshots-api:
+        specifier: file:./src-tauri/plugins/tauri-plugin-screenshots
+        version: file:src-tauri/plugins/tauri-plugin-screenshots
       vue:
         specifier: ^3.5.13
         version: 3.5.34(typescript@5.6.3)
@@ -1305,6 +1308,9 @@ packages:
     resolution: {integrity: sha512-uxc/zpqFg6x7C8vOE7lh6Lbda8eEL9zmVm/PLeTPBRhh1xCgdWaQ+J1CUieGpIfm2HdtsUpRv+HshiasBMcc6A==}
     engines: {node: '>=6'}
 
+  tauri-plugin-screenshots-api@file:src-tauri/plugins/tauri-plugin-screenshots:
+    resolution: {directory: src-tauri/plugins/tauri-plugin-screenshots, type: directory}
+
   tinyglobby@0.2.16:
     resolution: {integrity: sha512-pn99VhoACYR8nFHhxqix+uvsbXineAasWm5ojXoN8xEwK5Kd3/TrhNn1wByuD52UxWRLy8pu+kRMniEi6Eq9Zg==}
     engines: {node: '>=12.0.0'}
@@ -2567,6 +2573,10 @@ snapshots:
   tailwindcss@4.3.0: {}
 
   tapable@2.3.3: {}
+
+  tauri-plugin-screenshots-api@file:src-tauri/plugins/tauri-plugin-screenshots:
+    dependencies:
+      '@tauri-apps/api': 2.11.0
 
   tinyglobby@0.2.16:
     dependencies:

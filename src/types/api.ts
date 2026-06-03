@@ -63,6 +63,8 @@ export interface SaveInfo {
   title: string
   update_date: string
   create_date: string
+  last_message?: string
+  screenshot?: string
 }
 
 export interface MusicTrack {

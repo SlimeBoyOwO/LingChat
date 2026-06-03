@@ -65,6 +65,8 @@ const goToPetMode = () => {
 const gameDialogRef = ref<InstanceType<typeof GameDialog> | null>(null)
 
 const openSettings = () => {
+  // 后台截图（不阻塞 UI），设置面板立即打开
+  gameStore.captureScreenshot()
   uiStore.toggleSettings(true)
   uiStore.setSettingsTab('text')
 }

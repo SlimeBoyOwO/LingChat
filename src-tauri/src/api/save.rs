@@ -1,4 +1,4 @@
-﻿use serde::Serialize;
+use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
 use crate::ai_service::game_system::game_status::GameStatusSnapshot;
@@ -19,6 +19,8 @@ pub struct SaveListItem {
     pub title: String,
     pub create_date: String,
     pub update_date: String,
+    pub last_message: Option<String>,
+    pub screenshot: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -39,6 +41,15 @@ pub struct CreateSaveResponse {
 
 fn format_datetime(dt: &chrono::NaiveDateTime) -> String {
     dt.and_utc().to_rfc3339()
+}
+
+async fn save_screenshot_file(save_id: i32, source_path: &str) -> Result<(), String> {
+    let screenshots_dir = super::data_dir().join("screenshots");
+    std::fs::create_dir_all(&screenshots_dir).map_err(|e| e.to_string())?;
+    let dest_path = screenshots_dir.join(format!("{}.png", save_id));
+    std::fs::copy(source_path, &dest_path)
+        .map_err(|e| format!("复制截图文件失败: {} → {:?}: {}", source_path, dest_path, e))?;
+    Ok(())
 }
 
 // ========== Tauri 命令 ==========
@@ -62,13 +73,45 @@ pub async fn list_saves(
         .await
         .map_err(|e| format!("查询存档列表失败: {}", e))?;
 
+    // 1. 获取所有 last_message_id 并批量查询内容
+    let last_msg_ids: Vec<i32> = saves.iter().filter_map(|s| s.last_message_id).collect();
+    let mut lines_map = std::collections::HashMap::new();
+    if !last_msg_ids.is_empty() {
+        use crate::db::entities::line;
+        use sea_orm::entity::prelude::*;
+        if let Ok(lines) = line::Entity::find()
+            .filter(line::Column::Id.is_in(last_msg_ids))
+            .all(db)
+            .await
+        {
+            for l in lines {
+                lines_map.insert(l.id, l.content);
+            }
+        }
+    }
+
+    let data_dir = super::data_dir();
+    let screenshots_dir = data_dir.join("screenshots");
+
     let items: Vec<SaveListItem> = saves
         .into_iter()
-        .map(|s| SaveListItem {
-            id: s.id,
-            title: s.title,
-            create_date: format_datetime(&s.create_date),
-            update_date: format_datetime(&s.update_date),
+        .map(|s| {
+            let last_message = s.last_message_id.and_then(|id| lines_map.get(&id).cloned());
+            let screenshot_path = screenshots_dir.join(format!("{}.png", s.id));
+            let screenshot = if screenshot_path.exists() {
+                Some(screenshot_path.to_string_lossy().to_string())
+            } else {
+                None
+            };
+
+            SaveListItem {
+                id: s.id,
+                title: s.title,
+                create_date: format_datetime(&s.create_date),
+                update_date: format_datetime(&s.update_date),
+                last_message,
+                screenshot,
+            }
         })
         .collect();
 
@@ -79,7 +122,11 @@ pub async fn list_saves(
 }
 
 #[tauri::command]
-pub async fn create_save(app: AppHandle, title: String) -> Result<CreateSaveResponse, String> {
+pub async fn create_save(
+    app: AppHandle,
+    title: String,
+    screenshot_path: Option<String>,
+) -> Result<CreateSaveResponse, String> {
     let state = app.state::<AppState>();
     let db = &state.db;
 
@@ -91,6 +138,11 @@ pub async fn create_save(app: AppHandle, title: String) -> Result<CreateSaveResp
         .await
         .map_err(|e| format!("创建存档失败: {}", e))?;
     let save_id = save_model.id;
+
+    // 复制截图到 screenshots 目录
+    if let Some(ref path) = screenshot_path {
+        let _ = save_screenshot_file(save_id, path).await;
+    }
 
     // 2. 同步台词
     if !lines.is_empty() {
@@ -214,7 +266,11 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
 }
 
 #[tauri::command]
-pub async fn update_save(app: AppHandle, save_id: i32) -> Result<(), String> {
+pub async fn update_save(
+    app: AppHandle,
+    save_id: i32,
+    screenshot_path: Option<String>,
+) -> Result<(), String> {
     let state = app.state::<AppState>();
     let db = &state.db;
 
@@ -225,6 +281,11 @@ pub async fn update_save(app: AppHandle, save_id: i32) -> Result<(), String> {
         .await
         .map_err(|e| format!("查询存档失败: {}", e))?
         .ok_or_else(|| format!("存档 {} 不存在", save_id))?;
+
+    // 复制截图到 screenshots 目录
+    if let Some(ref path) = screenshot_path {
+        let _ = save_screenshot_file(save_id, path).await;
+    }
 
     let lines = service.game_status.lock().await.line_list.clone();
 
@@ -287,6 +348,12 @@ pub async fn delete_save(app: AppHandle, save_id: i32) -> Result<(), String> {
         }
     }
 
+    // 删除关联的截图文件
+    let screenshot_path = super::data_dir().join("screenshots").join(format!("{}.png", save_id));
+    if screenshot_path.exists() {
+        let _ = std::fs::remove_file(screenshot_path);
+    }
+
     // 3. 删除存档（级联删除关联的 line / line_perception）
     let deleted = SaveRepo::delete_save(db, save_id)
         .await
@@ -302,4 +369,67 @@ pub async fn delete_save(app: AppHandle, save_id: i32) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn update_save_title(
+    app: AppHandle,
+    save_id: i32,
+    title: String,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let db = &state.db;
+    SaveRepo::update_save_title(db, save_id, &title)
+        .await
+        .map_err(|e| format!("修改存档名称失败: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn save_screenshot(
+    save_id: i32,
+    screenshot_path: String,
+) -> Result<(), String> {
+    save_screenshot_file(save_id, &screenshot_path).await
+}
+
+/// 直接通过 HWND 截图主窗口（Windows）。
+///
+/// 跳过所有窗口枚举（`EnumWindows` / `Window::all()`），
+/// 用 Tauri 拿到的原生 HWND 直接 GDI 截图 → 写入临时 PNG → 返回路径。
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub async fn capture_main_window_screenshot(app: AppHandle) -> Result<String, String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main window not found".to_string())?;
+
+    let hwnd = window
+        .hwnd()
+        .map_err(|e| format!("获取窗口句柄失败: {}", e))?;
+
+    // HWND.0 → *mut c_void → usize → u32（Windows 句柄是 32 位值）
+    let id = hwnd.0 as usize as u32;
+
+    let image = tauri_plugin_screenshots::windows::capture_own_window(id)?;
+
+    let temp_dir = std::env::temp_dir();
+    let temp_path =
+        temp_dir.join(format!("lingchat_screenshot_{}.png", std::process::id()));
+    image
+        .save(&temp_path)
+        .map_err(|e| format!("保存截图失败: {}", e))?;
+
+    tracing::info!(
+        "[capture_main_window_screenshot] Captured → {}",
+        temp_path.display()
+    );
+    Ok(temp_path.to_string_lossy().to_string())
+}
+
+/// 非 Windows 平台的占位实现（该命令始终可注册，但在非 Windows 上返回错误）。
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+pub async fn capture_main_window_screenshot(_app: AppHandle) -> Result<String, String> {
+    Err("capture_main_window_screenshot is only available on Windows".to_string())
 }

@@ -18,6 +18,7 @@
     "core:window:allow-set-position",
     "core:window:allow-inner-position",
     "core:window:allow-inner-size",
-    "opener:default"
+    "opener:default",
+    "screenshots:default"
   ]
 }

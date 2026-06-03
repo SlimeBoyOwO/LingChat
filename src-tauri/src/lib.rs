@@ -1,4 +1,4 @@
-﻿mod achievements;
+mod achievements;
 mod adventures;
 mod ai_service;
 mod api;
@@ -90,6 +90,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_screenshots::init())
         .setup(|app| {
             utils::log_bridge::set_app_handle(app.handle().clone());
 
@@ -304,6 +305,9 @@ pub fn run() {
             api::save::load_save,
             api::save::update_save,
             api::save::delete_save,
+            api::save::update_save_title,
+            api::save::save_screenshot,
+            api::save::capture_main_window_screenshot,
             api::script::list_scripts,
             api::script::list_standalone_scripts,
             api::script::start_script,

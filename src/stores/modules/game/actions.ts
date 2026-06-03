@@ -6,6 +6,8 @@ import { getRoleInfo } from '../../../api/services/character'
 import { useUIStore } from '../ui/ui'
 import { useSettingsStore } from '../settings'
 import type { SceneInfo } from '@/api/services/scene'
+import { invoke } from '@tauri-apps/api/core'
+
 export const actions = {
   appendGameMessage(this: GameState, message: GameMessage) {
     this.dialogHistory.push({
@@ -98,6 +100,32 @@ export const actions = {
   // 清除场景（更新 store，API 调用由组件负责）
   clearCurrentScene(this: GameState) {
     this.currentScene = null
+  },
+
+  /** 截图主窗口（1 次 IPC，0 次窗口枚举）。若已有截图进行中则复用同一个 Promise。 */
+  async captureScreenshot(this: GameState): Promise<string | null> {
+    // 已有截图进行中 → 复用
+    if (this.screenshotPending) return this.screenshotPending
+
+    this.screenshotPending = (async () => {
+      try {
+        const filePath = await invoke<string>('capture_main_window_screenshot')
+        if (!filePath) {
+          console.warn('[Screenshot] capture_main_window_screenshot returned empty path')
+          return null
+        }
+        console.log('[Screenshot] Captured:', filePath)
+        this.latestScreenshot = filePath
+        return filePath
+      } catch (err) {
+        console.error('[Screenshot] Capture failed:', err)
+        return null
+      } finally {
+        this.screenshotPending = null
+      }
+    })()
+
+    return this.screenshotPending
   },
 }
 

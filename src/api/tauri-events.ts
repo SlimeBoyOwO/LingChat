@@ -1,8 +1,10 @@
 import { listen } from '@tauri-apps/api/event'
+import { invoke } from '@tauri-apps/api/core'
 import { eventQueue } from '../core/events/event-queue'
 import type { ScriptEventType } from '../types'
 import { useAdventureStore } from '../stores/modules/adventure'
 import { useUIStore } from '../stores/modules/ui/ui'
+import { useGameStore } from '../stores/modules/game'
 
 function asEvent(payload: unknown, overrides: Partial<ScriptEventType>): ScriptEventType {
   return { ...(payload as Record<string, unknown>), ...overrides } as unknown as ScriptEventType
@@ -57,9 +59,24 @@ export function initializeTauriEventListeners() {
 
   // === Auto-save events ===
 
-  listen('save:auto-saved', (event) => {
+  listen('save:auto-saved', async (event) => {
     const payload = event.payload as { save_id: number; title: string; timestamp: string }
     console.log('[Tauri] save:auto-saved', payload)
+
+    // Capture screenshot for auto-save slot
+    const gameStore = useGameStore()
+    const screenshotPath = await gameStore.captureScreenshot()
+    if (screenshotPath) {
+      try {
+        await invoke('save_screenshot', {
+          saveId: payload.save_id,
+          screenshotPath,
+        })
+      } catch (e) {
+        console.error('[Tauri] Failed to save auto-save screenshot', e)
+      }
+    }
+
     useUIStore().showNotification({
       type: 'info',
       title: '自动存档',

@@ -69,6 +69,9 @@ export interface GameState {
   command: string | null
 
   initialized: boolean
+  latestScreenshot: string | null
+  /** 正在进行的截图 Promise，供 save handler 等待 */
+  screenshotPending: Promise<string | null> | null
 }
 
 export const state: GameState = {
@@ -89,4 +92,6 @@ export const state: GameState = {
   command: null,
 
   initialized: false,
+  latestScreenshot: null,
+  screenshotPending: null,
 }
