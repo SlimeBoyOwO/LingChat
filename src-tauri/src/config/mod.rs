@@ -53,7 +53,6 @@ pub mod keys {
     pub const ENABLE_EMOTION_CLASSIFIER: &str = "features.enable_emotion_classifier";
 
     // 功能开关
-    pub const USE_RAG: &str = "features.use_rag";
     pub const USE_PERSISTENT_MEMORY: &str = "features.use_persistent_memory";
     pub const MEMORY_UPDATE_INTERVAL: &str = "features.memory_update_interval";
     pub const MEMORY_RECENT_WINDOW: &str = "features.memory_recent_window";
@@ -64,7 +63,6 @@ pub mod keys {
     pub const VOICE_CHECK: &str = "tts.voice_check";
 
     // 其他
-    pub const COMMUNITY_URL: &str = "community.url";
     /// 上次游玩的角色 ID（启动时自动恢复）
     pub const LAST_CHARACTER_ID: &str = "game.last_character_id";
     /// 上次选择的场景 ID（启动时自动恢复）
@@ -123,8 +121,6 @@ pub struct AppConfig {
 
     // 功能开关
     #[serde(default)]
-    pub use_rag: bool,
-    #[serde(default)]
     pub use_persistent_memory: bool,
     #[serde(default = "default_memory_update_interval")]
     pub memory_update_interval: u32,
@@ -138,10 +134,6 @@ pub struct AppConfig {
     pub tts_software_path: Option<String>,
     #[serde(default)]
     pub voice_check: bool,
-
-    // 其他
-    #[serde(default)]
-    pub community_url: Option<String>,
 
     /// TTS 引擎配置（适配器 URL、音频格式等）
     #[serde(default)]
@@ -190,14 +182,12 @@ impl Default for AppConfig {
             enable_translate: true,
             enable_time_sense: true,
             enable_emotion_classifier: true,
-            use_rag: false,
             use_persistent_memory: false,
             memory_update_interval: 50,
             memory_recent_window: 15,
             auto_start_tts_software: false,
             tts_software_path: None,
             voice_check: false,
-            community_url: None,
             tts: TtsConfig::default(),
         }
     }
@@ -249,14 +239,12 @@ impl AppConfig {
             enable_translate: get_bool(&store, keys::TRANSLATE_ENABLE, true),
             enable_time_sense: get_bool(&store, keys::ENABLE_TIME_SENSE, true),
             enable_emotion_classifier: get_bool(&store, keys::ENABLE_EMOTION_CLASSIFIER, true),
-            use_rag: get_bool(&store, keys::USE_RAG, false),
             use_persistent_memory: get_bool(&store, keys::USE_PERSISTENT_MEMORY, false),
-            memory_update_interval: get_u32(&store, keys::MEMORY_UPDATE_INTERVAL, 50),
-            memory_recent_window: get_u32(&store, keys::MEMORY_RECENT_WINDOW, 15),
+            memory_update_interval: get_u32(&store, keys::MEMORY_UPDATE_INTERVAL, 150),
+            memory_recent_window: get_u32(&store, keys::MEMORY_RECENT_WINDOW, 30),
             auto_start_tts_software: get_bool(&store, keys::AUTO_START_TTS_SOFTWARE, false),
             tts_software_path: get_string(&store, keys::TTS_SOFTWARE_PATH),
             voice_check: get_bool(&store, keys::VOICE_CHECK, false),
-            community_url: get_string(&store, keys::COMMUNITY_URL),
             tts: TtsConfig::from_store(Some(&store)),
         })
     }
@@ -430,12 +418,6 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         value: read_setting(app, keys::MEMORY_RECENT_WINDOW, "15"),
                         description: "MEMORY_RECENT_WINDOW — 摘要时保留的最近消息数（默认 15）".to_string(),
                         setting_type: "text".to_string(),
-                    },
-                    ConfigSetting {
-                        key: keys::USE_RAG.to_string(),
-                        value: read_setting(app, keys::USE_RAG, "false"),
-                        description: "USE_RAG — 启用 RAG 检索增强生成（需要额外配置向量数据库）".to_string(),
-                        setting_type: "bool".to_string(),
                     },
                 ],
             },
@@ -701,31 +683,6 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
             "主动对话配置".to_string(),
             Category {
                 subcategories: proactive_subs,
-            },
-        );
-    }
-
-    // ===== 其他设置 =====
-    {
-        let mut other_subs = BTreeMap::new();
-
-        other_subs.insert(
-            "基础设置".to_string(),
-            Subcategory {
-                description: "其他杂项配置".to_string(),
-                settings: vec![ConfigSetting {
-                    key: keys::COMMUNITY_URL.to_string(),
-                    value: read_setting(app, keys::COMMUNITY_URL, ""),
-                    description: "社区或资源下载地址".to_string(),
-                    setting_type: "text".to_string(),
-                }],
-            },
-        );
-
-        tree.insert(
-            "其他设置".to_string(),
-            Category {
-                subcategories: other_subs,
             },
         );
     }

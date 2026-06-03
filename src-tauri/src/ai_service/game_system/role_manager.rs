@@ -26,16 +26,32 @@ pub struct GameRoleManager {
     memory_bank_systems: HashMap<i32, PersistentMemorySystem>,
     /// TTS 引擎配置（适配器 URL、音频格式等）。
     tts_config: TtsConfig,
+    /// 全局永久记忆开关（来自 `AppConfig::use_persistent_memory`）。
+    use_persistent_memory: bool,
+    /// 触发记忆摘要的新消息数（来自 `AppConfig::memory_update_interval`）。
+    memory_update_interval: u32,
+    /// 摘要时保留的最近消息数（来自 `AppConfig::memory_recent_window`）。
+    memory_recent_window: u32,
 }
 
 impl GameRoleManager {
-    pub fn new(data_dir: PathBuf, llm: Option<Arc<LlmClient>>, tts_config: TtsConfig) -> Self {
+    pub fn new(
+        data_dir: PathBuf,
+        llm: Option<Arc<LlmClient>>,
+        tts_config: TtsConfig,
+        use_persistent_memory: bool,
+        memory_update_interval: u32,
+        memory_recent_window: u32,
+    ) -> Self {
         Self {
             loaded_roles: HashMap::new(),
             data_dir,
             llm,
             memory_bank_systems: HashMap::new(),
             tts_config,
+            use_persistent_memory,
+            memory_update_interval,
+            memory_recent_window,
         }
     }
 
@@ -182,12 +198,7 @@ impl GameRoleManager {
                     .clone()
                     .unwrap_or_else(|| "AI".to_string());
                 let bank = role.memory_bank.clone();
-                let enabled = role
-                    .settings
-                    .extra
-                    .get("use_persistent_memory")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
+                let enabled = self.use_persistent_memory;
                 (name, bank, enabled)
             };
             self.ensure_memory_bank_system(
@@ -195,8 +206,8 @@ impl GameRoleManager {
                 &bank_clone,
                 &display_name,
                 mb_enabled,
-                250, // update_interval default
-                30,  // recent_window default
+                self.memory_update_interval as usize,
+                self.memory_recent_window as usize,
             );
 
             // Phase 2: MemoryBank 启用时 — 同步后台结果 + 触发压缩 + 获取记忆文本
@@ -346,14 +357,10 @@ impl GameRoleManager {
                     role.display_name
                         .clone()
                         .unwrap_or_else(|| "AI".to_string()),
-                    role.settings
-                        .extra
-                        .get("use_persistent_memory")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false),
+                    self.use_persistent_memory,
                 )
             };
-            self.ensure_memory_bank_system(rid, &bank, &display_name, enabled, 250, 30);
+            self.ensure_memory_bank_system(rid, &bank, &display_name, enabled, self.memory_update_interval as usize, self.memory_recent_window as usize);
 
             // 若已有压缩系统且 DB 有数据，同步重置
             if let Some((_, info)) = best.get(&rid) {

@@ -51,6 +51,9 @@ pub async fn initialize(
         data_dir.clone(),
         llm.clone(),
         app_config.tts.clone(),
+        app_config.use_persistent_memory,
+        app_config.memory_update_interval,
+        app_config.memory_recent_window,
     )
     .await;
 

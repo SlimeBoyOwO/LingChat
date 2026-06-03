@@ -15,7 +15,7 @@ fn init_prompts() -> HashMap<String, String> {
         "你是一个专业的【记忆档案管理员】。你的任务是基于【旧的记忆档案】和【新增的对话日志】，",
         "生成一份更新后的、逻辑连贯的记忆文本。\n",
         "通用规则：\n",
-        "1. 视角：必须严格使用【第三人称】（例如：'用户提到...'，'AI感到...'）。\n",
+        "1. 视角：必须严格使用【第三人称】（例如：'（用户的名字）提到...'，'（本AI角色的名字）感到...'）。\n",
         "2. 时态：使用陈述语气，客观记录事实。\n",
         "3. 输出：直接输出更新后的内容本身，不要包含任何解释。\n",
         "4. 逻辑：如果没有新信息需要更新，请原样保留【旧的记忆档案】的内容。\n",
@@ -48,7 +48,7 @@ fn init_prompts() -> HashMap<String, String> {
     m.insert(
         "user_info".to_string(),
         format!(
-            "{}\n【任务目标】：更新【用户画像】，确保 AI 了解屏幕对面的人。\n\
+            "{}\n【任务目标】：更新【taの画像】，确保 AI 了解屏幕对面的人。\n\
              【处理逻辑】：\n\
              1. 事实提取：提取用户的姓名、年龄、职业、喜好、雷点等。\n\
              2. 冲突修正：如果信息冲突（如换了工作），以【新增对话】为准。\n",
@@ -251,10 +251,38 @@ impl PersistentMemorySystem {
             let old = &old_bank.data;
 
             let (st, lt, ui, pr) = tokio::join!(
-                Self::update_section(&llm, &prompts, &chat_text, "short_term", &old.short_term, &ai_name),
-                Self::update_section(&llm, &prompts, &chat_text, "long_term", &old.long_term, &ai_name),
-                Self::update_section(&llm, &prompts, &chat_text, "user_info", &old.user_info, &ai_name),
-                Self::update_section(&llm, &prompts, &chat_text, "promises", &old.promises, &ai_name),
+                Self::update_section(
+                    &llm,
+                    &prompts,
+                    &chat_text,
+                    "short_term",
+                    &old.short_term,
+                    &ai_name
+                ),
+                Self::update_section(
+                    &llm,
+                    &prompts,
+                    &chat_text,
+                    "long_term",
+                    &old.long_term,
+                    &ai_name
+                ),
+                Self::update_section(
+                    &llm,
+                    &prompts,
+                    &chat_text,
+                    "user_info",
+                    &old.user_info,
+                    &ai_name
+                ),
+                Self::update_section(
+                    &llm,
+                    &prompts,
+                    &chat_text,
+                    "promises",
+                    &old.promises,
+                    &ai_name
+                ),
             );
 
             // 写回
@@ -367,7 +395,5 @@ impl PersistentMemorySystem {
 }
 
 fn now_str() -> String {
-    chrono::Local::now()
-        .format("%Y-%m-%d %H:%M:%S")
-        .to_string()
+    chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
 }

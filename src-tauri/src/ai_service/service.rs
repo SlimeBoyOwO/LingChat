@@ -51,11 +51,21 @@ impl AIService {
         data_dir: PathBuf,
         llm: Option<Arc<LlmClient>>,
         tts_config: TtsConfig,
+        use_persistent_memory: bool,
+        memory_update_interval: u32,
+        memory_recent_window: u32,
     ) -> Self {
         // Initialize the event handler registry before any script is run
         crate::ai_service::game_system::script_engine::init_event_registry();
 
-        let role_manager = GameRoleManager::new(data_dir.clone(), llm, tts_config);
+        let role_manager = GameRoleManager::new(
+            data_dir.clone(),
+            llm,
+            tts_config,
+            use_persistent_memory,
+            memory_update_interval,
+            memory_recent_window,
+        );
         let game_status = Arc::new(Mutex::new(GameStatus::new(role_manager)));
         let script_manager = ScriptManager::new(&data_dir);
         Self {
