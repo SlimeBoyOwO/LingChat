@@ -1,5 +1,6 @@
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::generator::{GeneratorDeps, MessageGenerator};
 use crate::ai_service::types::{LineAttributeExt, LineBase};
 use crate::api::game::{compute_user_message_seqs, GameLineInit};
@@ -44,6 +45,9 @@ pub async fn send_chat_message(
     };
 
     let user_name = game_status.lock().await.player.user_name.clone();
+
+    // 发送思考事件
+    events::emit_thinking(&app, true);
 
     // 截图分析：在创建 GeneratorDeps 之前，确保旁白台词已写入 line_list
     if let Some(ref b64) = screenshot_base64 {
