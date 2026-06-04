@@ -46,19 +46,33 @@ pub struct UpdateSceneRequest {
 
 // ========== Helpers ==========
 
-/// 规范化背景路径：若只是文件名则拼接 backgrounds 目录
-pub(crate) fn normalize_background(raw: &str) -> String {
+/// 从任意路径中提取纯文件名（用于存储到 scenes.json）
+fn to_background_filename(raw: &str) -> String {
     if raw.is_empty() {
         return String::new();
     }
     let p = std::path::Path::new(raw);
-    // 如果已经是绝对路径或包含目录分隔符，直接返回
-    if p.is_absolute() || p.parent().map_or(false, |par| par.as_os_str() != "") {
-        return raw.to_string();
+    p.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| raw.to_string())
+}
+
+/// 将存储的文件名解析为完整路径（用于返回给前端显示）
+fn to_background_fullpath(filename: &str) -> String {
+    if filename.is_empty() {
+        return String::new();
     }
-    // 否则是纯文件名，拼接 backgrounds 目录
-    let full = super::backgrounds_dir().join(raw);
-    full.to_string_lossy().into_owned()
+    // 如果已经是完整路径（旧数据兼容），先提取文件名再拼接
+    let name = to_background_filename(filename);
+    if name.is_empty() {
+        return String::new();
+    }
+    super::backgrounds_dir().join(&name).to_string_lossy().into_owned()
+}
+
+/// 【已废弃】改为仅提取文件名；保留此函数供外部用（game.rs），行为改为解析为完整路径。
+pub(crate) fn normalize_background(raw: &str) -> String {
+    to_background_fullpath(raw)
 }
 
 fn model_to_info(s: &Scene) -> SceneInfo {
@@ -89,7 +103,7 @@ pub async fn list_scenes(_app: AppHandle) -> Result<Vec<SceneInfo>, String> {
     let bg_dir = super::backgrounds_dir();
     let existing_bgs: HashSet<String> = scenes
         .iter()
-        .map(|s| normalize_background(&s.background))
+        .map(|s| to_background_filename(&s.background))
         .filter(|b| !b.is_empty())
         .collect();
 
@@ -111,11 +125,14 @@ pub async fn list_scenes(_app: AppHandle) -> Result<Vec<SceneInfo>, String> {
                 if !allowed.contains(&ext.as_str()) {
                     continue;
                 }
-                let full_path = path.to_string_lossy().into_owned();
-                if existing_bgs.contains(&full_path) {
+                let file_name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                if existing_bgs.contains(&file_name) {
                     continue;
                 }
-                // 自动注册：名称为文件名（不含后缀），无描述
+                // 自动注册：名称为文件名（不含后缀），仅存文件名
                 let name = path
                     .file_stem()
                     .map(|s| s.to_string_lossy().to_string())
@@ -125,7 +142,7 @@ pub async fn list_scenes(_app: AppHandle) -> Result<Vec<SceneInfo>, String> {
                     id: Uuid::new_v4().to_string(),
                     name,
                     description: String::new(),
-                    background: full_path,
+                    background: file_name.clone(),
                     lighting: None,
                     created_at: now.clone(),
                     updated_at: now,
@@ -152,7 +169,7 @@ pub async fn create_scene(_app: AppHandle, req: CreateSceneRequest) -> Result<Sc
         id: Uuid::new_v4().to_string(),
         name: req.scene_name,
         description: req.scene_description,
-        background: normalize_background(&req.background),
+        background: to_background_filename(&req.background),
         lighting: req.lighting,
         created_at: now.clone(),
         updated_at: now,
@@ -175,7 +192,7 @@ pub async fn update_scene(_app: AppHandle, req: UpdateSceneRequest) -> Result<Sc
 
     scenes[idx].name = req.scene_name;
     scenes[idx].description = req.scene_description;
-    scenes[idx].background = normalize_background(&req.background);
+    scenes[idx].background = to_background_filename(&req.background);
     scenes[idx].lighting = req.lighting;
     scenes[idx].updated_at = now_iso();
 

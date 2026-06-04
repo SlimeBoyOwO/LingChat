@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-remove-window-screenshot"
+description = "Enables the remove_window_screenshot command without any pre-configured scope."
+commands.allow = ["remove_window_screenshot"]
+
+[[permission]]
+identifier = "deny-remove-window-screenshot"
+description = "Denies the remove_window_screenshot command without any pre-configured scope."
+commands.deny = ["remove_window_screenshot"]

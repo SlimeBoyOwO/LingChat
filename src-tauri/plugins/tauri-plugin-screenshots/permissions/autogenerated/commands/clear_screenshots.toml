@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-clear-screenshots"
+description = "Enables the clear_screenshots command without any pre-configured scope."
+commands.allow = ["clear_screenshots"]
+
+[[permission]]
+identifier = "deny-clear-screenshots"
+description = "Denies the clear_screenshots command without any pre-configured scope."
+commands.deny = ["clear_screenshots"]

@@ -1,0 +1,39 @@
+[package]
+name = "tauri-plugin-screenshots"
+version = "2.2.0"
+authors = [ "ayangweb" ]
+description = "Get screenshots of windows and monitors."
+repository = "https://github.com/ayangweb/tauri-plugin-screenshots"
+keywords = ["screenshots", "tauri", "tauri-plugin"]
+license = "MIT"
+edition = "2021"
+rust-version = "1.77.2"
+exclude = ["/examples", "/dist-js", "/guest-js", "/node_modules"]
+links = "tauri-plugin-screenshots"
+
+[dependencies]
+tauri = { version = "2" }
+serde = "1"
+thiserror = "2"
+xcap = "0.9.6"
+log = "0.4"
+
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Graphics_Dwm",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Storage_Xps",
+    "Win32_System_Threading",
+    "Win32_System_ProcessStatus",
+    "Win32_Storage_FileSystem",
+    "Win32_System_LibraryLoader",
+] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+widestring = "1.1"
+scopeguard = "1"
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }

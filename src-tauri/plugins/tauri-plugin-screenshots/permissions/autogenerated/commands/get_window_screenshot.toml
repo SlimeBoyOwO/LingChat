@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-get-window-screenshot"
+description = "Enables the get_window_screenshot command without any pre-configured scope."
+commands.allow = ["get_window_screenshot"]
+
+[[permission]]
+identifier = "deny-get-window-screenshot"
+description = "Denies the get_window_screenshot command without any pre-configured scope."
+commands.deny = ["get_window_screenshot"]

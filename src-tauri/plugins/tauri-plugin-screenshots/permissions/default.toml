@@ -1,0 +1,5 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "Default permissions for the plugin"
+permissions = ["allow-get-screenshotable-windows", "allow-get-screenshotable-monitors", "allow-get-window-screenshot", "allow-get-monitor-screenshot", "allow-remove-window-screenshot", "allow-remove-monitor-screenshot", "allow-clear-screenshots"]
