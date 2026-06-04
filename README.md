@@ -95,7 +95,7 @@
       <img src="https://github.com/user-attachments/assets/aae9ac5d-1aa4-40d3-a36b-0a0a6073c230" width="100%" style="border-radius: 8px; max-width: 450px;" alt="实机截图1" />
     </td>
     <td align="center" width="50%">
-      <img src="https://via.placeholder.com/600x350/e6f2ff/b3d9ff?text=Screenshot+2" width="100%" style="border-radius: 8px; max-width: 450px;" alt="实机截图2" />
+      <img src="https://github.com/user-attachments/assets/1638e3b1-92aa-48e1-bfb1-fd19f20aa4b6" width="100%" style="border-radius: 8px; max-width: 450px;" alt="实机截图2" />
     </td>
   </tr>
 </table>
