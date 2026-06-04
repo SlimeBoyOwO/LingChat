@@ -1,11 +1,11 @@
 <div align="center">
 
-# LingChat 
-### 一款灵动の人工智能聊天陪伴助手
+<img src="https://github.com/user-attachments/assets/ffccbe79-87ed-4dbc-8e60-f400efbbab26" width="1000" style="border-radius: 12px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);" alt="official_gif">
 
-<img src="https://github.com/user-attachments/assets/ffccbe79-87ed-4dbc-8e60-f400efbbab26" width="800" style="border-radius: 12px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);" alt="official_gif">
+[![OS Support](https://img.shields.io/badge/OS-Windows%20|%20Linux%20|%20macOS-blue?style=flat-square&logo=windows)](https://github.com/SlimeBoyOwO/LingChat)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](http://makeapullrequest.com)
 
-**选择你喜欢的人物，陪伴你度过每一个寂寞的夜晚。**
+**LingChat - 一个灵动の人工智能聊天陪伴助手**
 
 [📥 下载最新版本](https://github.com/SlimeBoyOwO/LingChat/releases) · [🐛 报告 Bug](https://github.com/SlimeBoyOwO/LingChat/issues) · [📖 源代码使用教程](https://github.com/SlimeBoyOwO/LingChat/blob/develop/others/document/%E6%BA%90%E4%BB%A3%E7%A0%81%E4%BD%BF%E7%94%A8.md)
 
@@ -15,34 +15,51 @@
 
 ## 🖥️ 快速指引 & 社区支持
 
-<div align="center">
-  <img width="400" style="border-radius: 8px; margin-right: 15px;" alt="preview_image" src="https://github.com/user-attachments/assets/a7db1801-a209-4948-abf2-7409b00e5017" />
-</div>
-
-<br>
-
-| 📌 资源直达 | 🔗 链接 | 说明 |
-| :--- | :--- | :--- |
-| **安装互助群** | **QQ群：1055935861** | 纯安装问题请加此群，目前通过二维码进入。 |
-| **代码报错求助** | [👉 帮助文档-代码报错](https://github.com/SlimeBoyOwO/LingChat/blob/main/README-help.md) | 遇到终端或后台代码红字报错时查看。 |
-| **截图报错求助** | [👉 帮助文档-截图报错](https://github.com/SlimeBoyOwO/LingChat/blob/develop/others/document/Q&A.md) | 遇到弹窗或画面显示异常时查看。 |
+<table width="100%">
+  <tr>
+    <!-- 左侧：跨 4 行显示图片 -->
+    <td rowspan="4" width="20%" align="center" valign="middle">
+      <img src="https://github.com/user-attachments/assets/a7db1801-a209-4948-abf2-7409b00e5017" width="100%" style="border-radius: 8px; max-width: 260px;" alt="preview_image" />
+    </td>
+    <!-- 右侧：表格表头 -->
+    <th align="left">📌 资源直达</th>
+    <th align="left">🔗 链接</th>
+    <th align="left">说明</th>
+  </tr>
+  <tr>
+    <!-- 右侧：第一行数据 -->
+    <td><b>安装互助群</b></td>
+    <td><b>QQ群：1055935861</b></td>
+    <td>纯安装问题请加此群，目前通过二维码进入。</td>
+  </tr>
+  <tr>
+    <!-- 右侧：第二行数据 -->
+    <td><b>代码报错求助</b></td>
+    <td><a href="https://github.com/SlimeBoyOwO/LingChat/blob/main/README-help.md">👉 帮助文档-代码报错</a></td>
+    <td>遇到终端或后台代码红字报错时查看。</td>
+  </tr>
+  <tr>
+    <!-- 右侧：第三行数据 -->
+    <td><b>截图报错求助</b></td>
+    <td><a href="https://github.com/SlimeBoyOwO/LingChat/blob/develop/others/document/Q&A.md">👉 帮助文档-截图报错</a></td>
+    <td>遇到弹窗或画面显示异常时查看。</td>
+  </tr>
+</table>
 
 ---
 
-## 🛠️ 核心功能列表
+## 核心功能列表
 
 我们致力于提供最沉浸、最自由的 AI 陪伴体验。
-
-| 🤖 AI 智能与情感 | 🎨 界面与自定义 |
-| :--- | :--- |
-| **🧠 永久记忆与独立存档**<br>每一个存档拥有独立的永久记忆，自由体验不同的对话风格。 | **🎭 完全自定义角色**<br>支持导入自己的 OC 或喜欢的游戏人物，开启专属对话。 |
-| **💓 自研情绪识别模型**<br>自动判定 AI 每次对话的情绪，告别机械式回复。 | **👗 服装切换与互动**<br>支持切换角色服装，更加入了摸摸角色等趣味互动功能！ |
-| **👁️ 视觉感受与主动窥屏**<br>自动识别你的桌面状态（工作/游戏/挂机），AI 会主动关心你。 | **✨ 动态UI与沉浸式体验**<br>表情、动作、气泡随 AI 情绪改变，搭配不同背景与音乐聊天。 |
-
-| 🎙️ 语音与剧情扩展 | ⚙️ 实用工具与兼容性 |
-| :--- | :--- |
-| **🎧 真实语音与音效陪伴**<br>支持接入 Vits 语音服务或对话音效，用真实的耳语调动你的真心。 | **🍅 内置效率工具**<br>自带番茄钟、日程、待办清单，AI 会根据你的状态贴心提醒。 |
-| **📜 多角色剧本与羁绊系统**<br>支持导入剧本进行多角色对话，为角色编写羁绊剧情，解锁成就！ | **💻 极致的系统兼容**<br>兼容 Linux/macOS，且完美兼容 32 位 Windows 7 及老旧 CPU！ |
+1. 🧠 永久记忆与独立存档：每个存档拥有独立永久记忆，可自由体验不同对话风格。
+2. 💓 自研情绪识别模型：自动判定 AI 每次对话的情绪，告别机械式回复。
+3. 👀 视觉感受与主动窥屏：自动识别桌面状态（工作/游戏/挂机），AI 会主动关心你。
+4. 🐱 完全自定义角色：支持导入自己的 OC 或喜欢的游戏人物，开启专属对话。
+5. 🌸 服装切换与互动：支持切换角色服装，并加入摸摸角色等趣味互动功能。
+6. ✨ 动态 UI 与沉浸式体验：表情、动作、气泡随 AI 情绪改变，搭配不同背景与音乐聊天。
+7. 🎧 真实语音与音效陪伴：支持接入 VITS 语音服务或对话音效，用耳语调动真心。
+8. 📜 多角色剧本与羁绊系统：支持导入剧本进行多角色对话，为角色编写羁绊剧情并解锁成就。
+9. 🍅 内置效率工具：自带番茄钟、日程、待办清单，AI 会根据状态贴心提醒。
 
 ---
 
@@ -54,10 +71,10 @@
 
 ### 📦 第一步：下载与安装
 1. 根据你的系统选择合适的版本：
-   - 💻 **Win10 64位及以上**：请下载最新版 `0.4.0 Pre`。
+   - 💻 **Win10 64位及以上**：请下载最新版 `v0.4.5`。
    - 💻 **32位或老旧机器**：请前往 [Issues #379](https://github.com/SlimeBoyOwO/LingChat/issues/379) 下载兼容版（如 `LingChat v0.4.0-pre Python3.8 win32.7z`）。
-2. 在 [Releases](https://github.com/SlimeBoyOwO/LingChat/releases) 页面下载 `LingChat_setup.exe` 或 `.7z` 压缩包。
-3. 安装或解压后，双击 `LingChat.exe` 或 `启动器.bat` 运行。
+2. 在 [Releases](https://github.com/SlimeBoyOwO/LingChat/releases) 页面下载 `LingChat vX.X.X.7z`压缩包。
+3. 安装或解压后，双击 `LingChat.exe` 运行。
 
 > [!WARNING]  
 > 解压后如果发现 `LingChat.exe` 不见了，通常是被 Windows Defender 误杀了。请进入 **Windows 安全中心 -> 病毒和威胁防护** 允许该文件运行。
@@ -65,14 +82,8 @@
 ### ⚙️ 第二步：首次启动配置
 1. 启动程序后，点击**开始游戏**。
 2. 打开右上角菜单，进入**【高级设置】**。
-3. 填入必填信息：**大模型类型**、**API Key** 及 **模型信息**。
-4. 滑动到底部保存配置，**完全关闭程序及黑色控制台窗口**，重新启动即可使用！
-
-> [!IMPORTANT]
-> - **加载卡住：** 若 `LingChat.exe` 无限卡加载页，请使用谷歌等现代浏览器访问 `localhost:8765` 进入。
-> - **重启注意：** 重启初始化前，务必确保前端、后端、网页及 cmd 窗口已全部关闭，否则可能导致角色消失。
-> - **色彩灰暗：** 支持 P3 色域的屏幕若出现画面发灰，请尝试更换正常颜色显示的浏览器进入。
-> - **老电脑注意：** 老旧 CPU（如 Intel Atom Z540）启动时间可能长达 7~9 分钟，请耐心等待 ☕。
+3. 点击右上角的**大模型提供商**，添加自己的大模型信息：**大模型类型**、**API Key** 及 **模型信息**。
+4. 滑动到底部保存配置，重新启动即可使用！
 
 ---
 
