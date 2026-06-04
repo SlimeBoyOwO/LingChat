@@ -1,0 +1,62 @@
+name: 4 路旁的小河畔
+
+events:
+  - type: modify_character
+    action: hide_character
+    character: MAIN
+    duration: 1.5
+
+  - type: narration
+    text: |
+      吃饱的我们一起走到了河边
+
+  - type: background
+    imagePath: 河畔堤坝步道_晚上.jpg
+    duration: 2
+
+  - type: background_effect
+    effect: starfield
+    duration: 0
+
+  - type: narration
+    text: |
+      天色渐渐暗淡了下来
+      河边的空气显得格外清新
+
+  - type: modify_character
+    action: show_character
+    character: MAIN
+    duration: 1.5
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 钦灵很高兴今天能和%player%一起出来玩呢
+
+  - type: input
+
+  - type: ai_dialogue
+    character: MAIN
+
+  - type: narration
+    text: |
+      此刻，天气似乎更加暗淡下来
+      几片乌云慢慢遮住的月光
+      然后...
+
+  - type: background_effect
+    effect: Rain
+    duration: 0
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 钦灵的头上滴下了雨滴，得赶快回家了！
+
+  - type: input
+
+  - type: ai_dialogue
+    character: MAIN
+    prompt: 无论如何，钦灵拉着%player%一起回去了
+
+  - type: chapter_end
+    end_type: linear
+    next_chapter: 'final'

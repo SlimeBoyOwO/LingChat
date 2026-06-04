@@ -13,9 +13,6 @@ logs/
 .env.*
 !.env.example
 
-
-
-
 # ============================================================
 #      IDE 和编辑器配置 (IDE & Editor Configuration)
 # ============================================================
@@ -55,8 +52,6 @@ ling_chat/*
 ling_chat_python/
 ling_chat_pal/
 
-
-
 # ============================================================
 #   前端和通用构建产物 (Frontend & General Build Artifacts)
 # ============================================================
@@ -66,20 +61,13 @@ build/
 dist/
 ling_chat/static/frontend/
 
-
-
-
 # ============================================================
 #          特定项目文件 (Project Specific Files)
 # ============================================================
 
 # 用户数据文件
-data/*
 # 数据库、聊天记录和本地数据存储
-chat_system.db
-chroma_db_store/
-rag_chat_history/
-browser_data/
+game_data.db
 # 大模型文件和本地缓存，这些文件过大很大
 models/
 embedding_models/
@@ -100,20 +88,37 @@ ling_chat/third_party/emotion_model_19emo/*
 # ============================================================
 # 规则：默认忽略开发中的资源，但保留部分确定要使用的文件
 
-# 忽略 data 目录下的 voice 文件夹，但保留 data 目录本身，以便跟踪其他文件（如果需要）
-data/voice/
+# 忽略 data 目录下的 其他文件，但保留 初始化资源本身
+data/**
 !data/.gitkeep
+!data/game_data/
+!data/third_party/
+!data/third_party/emotion_model_19emo/
+!data/third_party/emotion_model_19emo/.gitkeep
 # 忽略 game_data/backgrounds/ 下的所有内容，但不忽略该目录本身，并保留指定的几个背景图
-game_data/backgrounds/**
-!game_data/backgrounds/
-!game_data/backgrounds/白天.jpeg
-!game_data/backgrounds/夜晚.jpg
+data/game_data/backgrounds/**
+!data/game_data/backgrounds/
+!data/game_data/backgrounds/白天.webp
+!data/game_data/backgrounds/夜晚.webp
+!data/game_data/backgrounds/占卜摊2.webp
+# 忽略 game_data/characters/ 下的所有内容，但不忽略该目录本身，并保留指定的几个角色图
+data/game_data/characters/**
+!data/game_data/characters/
+!data/game_data/characters/诺一钦灵/
+!data/game_data/characters/诺一钦灵/**
+!data/game_data/characters/风雪/
+!data/game_data/characters/风雪/**
 # 忽略 game_data/musics/ 目录下的所有内容，但保留指定的音效文件
-game_data/musics/
-!game_data/musics/夜晚音效
-
-
-
+data/game_data/musics/**
+!data/game_data/musics/
+!data/game_data/musics/夜晚音效.mp3
+# 忽略 game_data/scripts/ 目录下的所有内容，但保留指定的剧本文件
+data/game_data/scripts/**
+!data/game_data/scripts/
+!data/game_data/scripts/character/
+!data/game_data/scripts/standalone/
+data/game_data/scripts/standalone/**
+!data/game_data/scripts/character/**
 
 # ============================================================
 #        文档和其他工具 (Documentation & Other Tools)
@@ -127,11 +132,3 @@ game_data/musics/
 .claude
 CLAUDE.md
 AGENTS.md
-
-
-# ============================================================
-#     开发者个人目录 (Developer Personal Directories)
-# ============================================================
-
-# 风雪
-memory-bank/
