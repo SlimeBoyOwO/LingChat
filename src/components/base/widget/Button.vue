@@ -1,5 +1,6 @@
 <template>
-  <button :class="type" :disabled="disabled" @click="$emit('click')">
+  <!-- 修改点：将原生的 $event 对象作为参数传递给 emit -->
+  <button :class="type" :disabled="disabled" @click="$emit('click', $event)">
     <Icon v-if="icon" :icon="icon" :size="icon_size"></Icon>
     <slot></slot>
   </button>
@@ -19,8 +20,10 @@ interface ButtonProps {
 }
 const props = defineProps<ButtonProps>()
 
-// 定义组件事件
-const emit = defineEmits(['click'])
+// 修改点：为 click 事件添加类型声明，明确它会传递 MouseEvent
+const emit = defineEmits<{
+  (e: 'click', event: MouseEvent): void
+}>()
 </script>
 
 <style scoped>

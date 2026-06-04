@@ -3,11 +3,15 @@
 //! Replaces Python's `/v1/chat/adventure/*` HTTP endpoints.
 //! Frontend calls these via `invoke()` instead of HTTP.
 
+use std::sync::atomic::Ordering;
+
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::adventures::manager::AdventureManager;
 use crate::adventures::trigger::{self, UnlockedAdventureInfo};
+use crate::ai_service::game_system::script_engine::events::ScriptContext;
+use crate::ai_service::game_system::script_engine::ScriptManager;
 use crate::AppState;
 
 // ============================================================
@@ -60,7 +64,7 @@ pub async fn list_character_adventures(
         }
     }
 
-    let is_running = service.script_manager.is_running;
+    let is_running = service.script_manager.is_running.load(Ordering::Relaxed);
     let gs = service.game_status.lock().await;
     let current_script_folder = gs.script_status.as_ref().map(|ss| ss.folder_key.clone());
     let completed = &gs.completed_scripts;
@@ -124,7 +128,7 @@ pub async fn list_all_adventures(app: AppHandle) -> Result<Vec<AdventureInfo>, S
         }
     }
 
-    let is_running = service.script_manager.is_running;
+    let is_running = service.script_manager.is_running.load(Ordering::Relaxed);
     let gs = service.game_status.lock().await;
     let current_script_folder = gs.script_status.as_ref().map(|ss| ss.folder_key.clone());
     let completed = &gs.completed_scripts;
@@ -175,19 +179,22 @@ pub async fn start_adventure(app: AppHandle, adventure_folder: String) -> Result
         return Err("冒险尚未解锁，无法启动".to_string());
     }
 
-    // Find the script_name matching this adventure folder_key
-    let script_name = {
+    // Find the script and extract needed data while holding AIService lock
+    let (script, game_status, config, is_running) = {
         let service = state.ai_service.lock().await;
-        service
+        let script = service
             .script_manager
             .all_scripts
             .values()
             .find(|s| s.folder_key == adventure_folder)
-            .map(|s| s.name.clone())
             .ok_or_else(|| format!("冒险不存在: '{}'", adventure_folder))?
+            .clone();
+        let game_status = service.game_status.clone();
+        let config = service.config.clone();
+        let is_running = service.script_manager.is_running.clone();
+        (script, game_status, config, is_running)
     };
 
-    // Delegate to the same background execution as start_script
     let ai_service = state.ai_service.clone();
     let channels = state.script_channels.clone();
     let db = state.db.clone();
@@ -196,19 +203,33 @@ pub async fn start_adventure(app: AppHandle, adventure_folder: String) -> Result
     let achievement_manager = state.achievement_manager.clone();
 
     tokio::spawn(async move {
-        match super::script::run_script_background(
-            ai_service,
+        let mut ctx = ScriptContext {
+            db: &db,
+            data_dir: &data_dir,
+            app: &app,
+            game_status,
+            config: &config,
+            llm: llm.as_ref(),
             channels,
-            db,
-            data_dir,
-            app,
-            llm,
-            script_name,
-            achievement_manager,
-        )
-        .await
-        {
-            Ok(()) => tracing::info!("[AdventureAPI] 冒险执行完成"),
+        };
+
+        match ScriptManager::execute_script(&script, &mut ctx, &is_running).await {
+            Ok(()) => {
+                // Handle adventure completion (achievements, chained unlocks)
+                if script.adventure.is_adventure {
+                    handle_adventure_completion(
+                        &db,
+                        &achievement_manager,
+                        &app,
+                        &ai_service,
+                        &script.folder_key,
+                        &script.adventure.completion_achievements,
+                        &script.name,
+                    )
+                    .await;
+                }
+                tracing::info!("[AdventureAPI] 冒险执行完成")
+            }
             Err(e) => tracing::error!("[AdventureAPI] 冒险执行错误: {}", e),
         }
     });
@@ -309,7 +330,7 @@ pub async fn reset_adventure(app: AppHandle, adventure_folder: String) -> Result
 // ============================================================
 
 /// Handle adventure completion: persist to DB, unlock achievements, check chained unlocks.
-/// Called from `run_script_background` when a script finishes.
+/// Called after `ScriptManager::execute_script` when a script finishes.
 pub(crate) async fn handle_adventure_completion(
     db: &sea_orm::DatabaseConnection,
     achievement_manager: &std::sync::Arc<

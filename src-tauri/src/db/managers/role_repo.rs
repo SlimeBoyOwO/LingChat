@@ -5,12 +5,17 @@ use anyhow::{Context, Result};
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 
 use crate::ai_service::types::CharacterSettings;
-use crate::db::entities::role::{self, ActiveModel as RoleActiveModel, Model as RoleModel, RoleType};
+use crate::db::entities::role::{
+    self, ActiveModel as RoleActiveModel, Model as RoleModel, RoleType,
+};
 
 pub struct RoleRepo;
 
 impl RoleRepo {
-    pub async fn get_role_by_id(db: &DatabaseConnection, role_id: i32) -> Result<Option<RoleModel>> {
+    pub async fn get_role_by_id(
+        db: &DatabaseConnection,
+        role_id: i32,
+    ) -> Result<Option<RoleModel>> {
         Ok(role::Entity::find_by_id(role_id).one(db).await?)
     }
 
@@ -43,6 +48,7 @@ impl RoleRepo {
         role_type: RoleType,
         script_key: Option<&str>,
         script_role_key: Option<&str>,
+        resource_folder: Option<&str>,
     ) -> Result<i32> {
         // Try to find existing
         if let (Some(sk), Some(srk)) = (script_key, script_role_key) {
@@ -57,6 +63,7 @@ impl RoleRepo {
             role_type: Set(role_type),
             script_key: Set(script_key.map(|s| s.to_string())),
             script_role_key: Set(script_role_key.map(|s| s.to_string())),
+            resource_folder: Set(resource_folder.map(|s| s.to_string())),
             ..Default::default()
         };
         let inserted = active.insert(db).await?;
@@ -131,8 +138,8 @@ impl RoleRepo {
             return Ok(None);
         }
 
-        let content = fs::read_to_string(&yaml)
-            .with_context(|| format!("Failed to read {:?}", yaml))?;
+        let content =
+            fs::read_to_string(&yaml).with_context(|| format!("Failed to read {:?}", yaml))?;
         let mut settings: CharacterSettings = serde_yaml::from_str(&content)
             .with_context(|| format!("Failed to parse {:?}", yaml))?;
         settings.character_id = Some(role_id);

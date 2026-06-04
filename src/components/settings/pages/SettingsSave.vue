@@ -39,7 +39,7 @@
                 <div class="save-screenshot-container shrink-0">
                   <img
                     v-if="save.screenshot"
-                    :src="convertFileSrc(save.screenshot)"
+                    :src="`${convertFileSrc(save.screenshot)}?v=${save.update_date}`"
                     class="save-screenshot-img animate-fade-in"
                     alt="game screenshot"
                   />

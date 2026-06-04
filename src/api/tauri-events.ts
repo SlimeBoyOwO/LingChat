@@ -18,7 +18,7 @@ export function initializeTauriEventListeners() {
 
   listen('ai:thinking', (event) => {
     console.log('[Tauri] ai:thinking', event.payload)
-    eventQueue.addEvent(asEvent(event.payload, { type: 'thinking', duration: 0 }))
+    eventQueue.addEvent(asEvent(event.payload, { type: 'thinking', duration: 0, isFinal: true }))
   })
 
   listen('ai:error', (event) => {
@@ -133,7 +133,8 @@ export function initializeTauriEventListeners() {
   })
 
   listen('script:end', (event) => {
-    eventQueue.addEvent(asEvent(event.payload, { type: 'script_end', duration: 0 }))
+    console.log('[Tauri] script:end', event.payload)
+    eventQueue.addEvent(asEvent(event.payload, { type: 'script_end', duration: 0, isFinal: true }))
   })
 
   listen('script:free-dialogue', (event) => {
