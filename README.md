@@ -63,6 +63,45 @@
 
 ---
 
+## 📸 实机画面展示
+
+<table width="100%">
+  <tr>
+    <td align="center" width="50%">
+      <h4>✨ Galgame 同款气泡+表情+动作+语音</h4>
+    </td>
+    <td align="center" width="50%">
+      <h4>🐝 支持感知+自定义背景，服装，时间，剧情等</h4>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="https://github.com/user-attachments/assets/c4da6d49-131f-4938-b11c-78d89e0c3a34" width="100%" style="border-radius: 8px; max-width: 450px;" alt="实机截图1" />
+    </td>
+    <td align="center" width="50%">
+      <img src="https://github.com/user-attachments/assets/58cca016-cc60-4682-bd80-7880a2ee23bf" width="100%" style="border-radius: 8px; max-width: 450px;" alt="实机截图4" />
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <h4>🐈 随时切换桌宠模式，主动对话与屏幕感知</h4>
+    </td>
+    <td align="center" width="50%">
+      <h4>🍈 允许自定义任何人物，设计羁绊剧情并游玩剧本</h4>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="https://github.com/user-attachments/assets/aae9ac5d-1aa4-40d3-a36b-0a0a6073c230" width="100%" style="border-radius: 8px; max-width: 450px;" alt="实机截图1" />
+    </td>
+    <td align="center" width="50%">
+      <img src="https://via.placeholder.com/600x350/e6f2ff/b3d9ff?text=Screenshot+2" width="100%" style="border-radius: 8px; max-width: 450px;" alt="实机截图2" />
+    </td>
+  </tr>
+</table>
+
+---
+
 ## 🚀 快速上手指南
 
 ### 🔧 准备工作
@@ -81,7 +120,7 @@
 
 ### ⚙️ 第二步：首次启动配置
 1. 启动程序后，点击**开始游戏**。
-2. 打开右上角菜单，进入**【高级设置】**。
+2. 打开右上角菜单，进入**高级设置**。
 3. 点击右上角的**大模型提供商**，添加自己的大模型信息：**大模型类型**、**API Key** 及 **模型信息**。
 4. 滑动到底部保存配置，重新启动即可使用！
 
