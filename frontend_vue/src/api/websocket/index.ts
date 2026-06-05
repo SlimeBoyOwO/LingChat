@@ -9,6 +9,10 @@ const reconnectAttempts = ref(0)
 const maxReconnectAttempts = 5
 const reconnectDelay = 3000
 
+// 心跳配置
+const heartbeatInterval = 25000 // 每 25s 发送一次心跳，略短于服务端 ping 间隔 (30s)
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+
 // 连接状态追踪
 const connectionReady = ref(false) // WebSocket 是否已经成功连接过
 const initializationTime = Date.now() // 页面初始化时间
@@ -51,6 +55,24 @@ const handleConnectionError = (errorMessage: string = '无法连接到服务器'
   console.log('游戏状态已重置为: input (WebSocket断开)')
 }
 
+// 启动心跳：定期发送 ping 以保持连接活跃
+const startHeartbeat = () => {
+  stopHeartbeat() // 避免重复启动
+  heartbeatTimer = setInterval(() => {
+    if (socket.value?.readyState === WebSocket.OPEN) {
+      socket.value.send(JSON.stringify({ type: 'ping' }))
+    }
+  }, heartbeatInterval)
+}
+
+// 停止心跳
+const stopHeartbeat = () => {
+  if (heartbeatTimer !== null) {
+    clearInterval(heartbeatTimer)
+    heartbeatTimer = null
+  }
+}
+
 export const connectWebSocket = (url: string) => {
   socket.value = new WebSocket(url)
 
@@ -58,6 +80,8 @@ export const connectWebSocket = (url: string) => {
     console.log('WebSocket connected')
     reconnectAttempts.value = 0
     connectionReady.value = true // 标记连接已就绪
+    // 连接成功后启动心跳
+    startHeartbeat()
   }
 
   socket.value.onmessage = (event) => {
@@ -76,6 +100,8 @@ export const connectWebSocket = (url: string) => {
 
   socket.value.onclose = () => {
     console.log('WebSocket disconnected')
+    // 断开时停止心跳
+    stopHeartbeat()
     if (reconnectAttempts.value < maxReconnectAttempts) {
       setTimeout(() => {
         reconnectAttempts.value++
@@ -118,6 +144,7 @@ export const sendWebSocketChatMessage = (type: string, content: string) => {
 }
 
 export const closeWebSocket = () => {
+  stopHeartbeat()
   if (socket.value) {
     socket.value.close()
     socket.value = null

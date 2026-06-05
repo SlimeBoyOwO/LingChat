@@ -173,6 +173,10 @@ def run_app():
             log_level=log_level,
             log_config=None,
             access_log=access_log_enabled,
+            # WebSocket keepalive: 每 30s 发一次 ping，45s 无响应视为断开
+            # 相比 uvicorn 默认 (20s/20s) 更宽容，减少因浏览器后台化导致的误断开
+            ws_ping_interval=30,
+            ws_ping_timeout=45,
         )
 
         _attach_project_handlers_to_uvicorn(project_logger_instance, uvicorn_log_level)
