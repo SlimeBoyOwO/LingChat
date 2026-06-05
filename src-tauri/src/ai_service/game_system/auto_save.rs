@@ -62,14 +62,18 @@ impl AutoSaveManager {
 
     /// Register a close-requested handler on the main window that performs a
     /// final auto-save before allowing the window to actually close.
-    pub fn setup_close_handler(window: WebviewWindow, manager: Arc<Mutex<Self>>) {
+    pub fn setup_close_handler(
+        app: AppHandle,
+        window: WebviewWindow,
+        manager: Arc<Mutex<Self>>,
+    ) {
         window.clone().on_window_event(move |event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 // Prevent the window from closing immediately
                 api.prevent_close();
 
                 let mgr = manager.clone();
-                let w = window.clone();
+                let ah = app.clone();
 
                 tauri::async_runtime::spawn(async move {
                     tracing::info!("[AutoSave] 正在执行退出前自动存档...");
@@ -89,11 +93,11 @@ impl AutoSaveManager {
                         Err(_) => tracing::warn!("[AutoSave] 退出前存档超时（{} 秒），放弃等待", EXIT_SAVE_TIMEOUT_SECS),
                     }
 
-                    // Drop the manager lock before destroying the window
+                    // Drop the manager lock before exiting
                     drop(save_result);
 
-                    // Actually close the window
-                    let _ = w.destroy();
+                    // 退出整个应用程序（destroy 只会销毁窗口，不会结束进程）
+                    let _ = ah.exit(0);
                 });
             }
         });

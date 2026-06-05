@@ -171,6 +171,7 @@ pub fn run() {
 
             // Set up close handler for exit auto-save
             ai_service::game_system::auto_save::AutoSaveManager::setup_close_handler(
+                app.handle().clone(),
                 window.clone(),
                 auto_save_manager.clone(),
             );
