@@ -1,0 +1,401 @@
+name: 构建并发布
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_title:
+        description: 'Release 显示标题（留空则使用标签名）'
+        required: false
+        type: string
+      prerelease:
+        description: '是否为预发布版'
+        required: false
+        default: false
+        type: boolean
+      pal_release_tag:
+        description: 'LingChat-Pal Release 的 Tag（留空则不打包 Pal）'
+        required: false
+        type: string
+      pull_lfs:
+        description: '拉取 LFS 文件'
+        required: false
+        default: true
+        type: boolean
+      compile_test:
+        description: '编译测试模式（关闭LTO、最低优化、附带调试符号）'
+        required: false
+        default: false
+        type: boolean
+      upload_to_modelscope:
+        description: '上传到 ModelScope'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.check_tag.outputs.tag_name }}
+      is_prerelease: ${{ github.event.inputs.prerelease }}
+      release_title: ${{ steps.set_title.outputs.release_title }}
+      platforms_json: ${{ steps.set_platforms.outputs.platforms_json }}
+      pal_release_tag: ${{ github.event.inputs.pal_release_tag }}
+      pull_lfs: ${{ steps.set_pull_lfs.outputs.pull_lfs }}
+      compile_test: ${{ steps.set_compile_test.outputs.compile_test }}
+      upload_to_modelscope: ${{ steps.set_modelscope.outputs.upload_to_modelscope }}
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 验证当前 ref 是否为标签
+        id: check_tag
+        run: |
+          TAG=$(git describe --exact-match --tags HEAD 2>/dev/null || true)
+          if [ -z "$TAG" ]; then
+            echo "错误：当前 ref 不是一个标签。请在下拉列表中选择一个标签再触发工作流。"
+            exit 1
+          fi
+          echo "tag_name=$TAG" >> $GITHUB_OUTPUT
+          echo "当前标签：$TAG"
+
+      - name: 设置 Release 标题
+        id: set_title
+        run: |
+          TITLE="${{ github.event.inputs.release_title }}"
+          if [ -z "$TITLE" ]; then
+            TITLE="${{ steps.check_tag.outputs.tag_name }}"
+          fi
+          echo "release_title=$TITLE" >> $GITHUB_OUTPUT
+
+      - name: 设置固定平台列表
+        id: set_platforms
+        run: |
+          echo "platforms_json=['windows','linux-amd64','linux-aarch64']" >> $GITHUB_OUTPUT
+
+      - name: 设置 LFS 拉取选项
+        id: set_pull_lfs
+        run: echo "pull_lfs=${{ github.event.inputs.pull_lfs || 'true' }}" >> $GITHUB_OUTPUT
+
+      - name: 设置编译测试模式
+        id: set_compile_test
+        run: echo "compile_test=${{ github.event.inputs.compile_test || 'false' }}" >> $GITHUB_OUTPUT
+
+      - name: 设置 ModelScope 上传选项
+        id: set_modelscope
+        run: echo "upload_to_modelscope=${{ github.event.inputs.upload_to_modelscope || 'false' }}" >> $GITHUB_OUTPUT
+
+  build:
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    env:
+      PYTHONUTF8: 1
+    strategy:
+      matrix:
+        platform: ${{ fromJSON(needs.prepare.outputs.platforms_json) }}
+        include:
+          - platform: windows
+            os: windows-latest
+            upx_url: https://github.com/upx/upx/releases/download/v5.1.1/upx-5.1.1-win64.zip
+            archive_ext: 7z
+            archive_cmd: 7z a -t7z -mx9 -md=128m -mmt=4 ../${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }}-windows.7z .
+          - platform: linux-amd64
+            os: ubuntu-latest
+            upx_url: https://github.com/upx/upx/releases/download/v5.1.1/upx-5.1.1-amd64_linux.tar.xz
+            archive_ext: tar.xz
+            archive_cmd: XZ_OPT="-9 -T0" tar -cJf ../${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }}-linux-amd64.tar.xz  .
+          - platform: linux-aarch64
+            os: ubuntu-24.04-arm
+            upx_url: https://github.com/upx/upx/releases/download/v5.1.1/upx-5.1.1-arm64_linux.tar.xz
+            archive_ext: tar.xz
+            archive_cmd: XZ_OPT="-9 -T0" tar -cJf ../${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }}-linux-aarch64.tar.xz .
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag_name }}
+          lfs: false
+
+      - name: 拉取 LFS 文件
+        if: needs.prepare.outputs.pull_lfs == 'true'
+        run: |
+          git lfs install
+          git lfs pull
+
+      - name: 设置 Python 环境（使用 uv）
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: 'latest'
+          enable-cache: true
+          cache-dependency-glob: |
+            **/pyproject.toml
+            **/uv.lock
+
+      - name: 安装项目依赖
+        run: |
+          uv sync
+          uv run main.py install emo
+
+      - name: 安装 Nuitka 编译器
+        run: uv pip install nuitka
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: 设置 Node.js 环境
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+          cache-dependency-path: 'frontend_vue/pnpm-lock.yaml'
+
+      - name: 构建前端
+        working-directory: frontend_vue
+        run: |
+          pnpm install
+          pnpm build
+
+      - name: 安装 ccache 和 mold（Linux）
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ccache mold
+
+      - name: 设置 Nuitka 缓存目录并恢复缓存
+        id: nuitka-cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ${{ runner.temp }}/nuitka-cache
+          key: ${{ runner.os }}-${{ matrix.platform }}-nuitka-${{ hashFiles('**/pyproject.toml', '**/uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.platform }}-nuitka-
+            ${{ runner.os }}-nuitka-
+
+      - name: 安装 UPX
+        shell: bash
+        run: |
+          if [[ "${{ matrix.platform }}" == windows* ]]; then
+            curl -L -o upx.zip "${{ matrix.upx_url }}"
+            unzip upx.zip
+            UPX_DIR=$(ls -d upx-*/)
+            UPX_PATH=$(realpath "$UPX_DIR/upx.exe")
+            echo "UPX_BIN=$UPX_PATH" >> $GITHUB_ENV
+          else
+            curl -L -o upx.tar.xz "${{ matrix.upx_url }}"
+            tar -xf upx.tar.xz
+            UPX_DIR=$(ls -d upx-*/)
+            sudo mv "$UPX_DIR/upx" /usr/local/bin/upx
+            echo "UPX_BIN=/usr/local/bin/upx" >> $GITHUB_ENV
+          fi
+
+      - name: 使用 Nuitka 编译
+        shell: bash
+        env:
+          NUITKA_CACHE_DIR: ${{ runner.temp }}/nuitka-cache
+        run: |
+          # --- 内存监控开始 ---
+          monitor_memory() {
+            while true; do
+              if [[ "$RUNNER_OS" == "Linux" ]]; then
+                free -m | awk '/^Mem:/{printf "[Memory] Used: %sM / Total: %sM, Free: %sM\n", $3, $2, $4}'
+              elif [[ "$RUNNER_OS" == "Windows" ]]; then
+                powershell.exe -Command "& { \$os = Get-CimInstance Win32_OperatingSystem; \$total = [math]::Round(\$os.TotalVisibleMemorySize/1KB); \$free = [math]::Round(\$os.FreePhysicalMemory/1KB); \$used = \$total - \$free; Write-Output \"[Memory] Used: \$used MB / Total: \$total MB, Free: \$free MB\" }"
+              fi
+              sleep 20
+            done
+          }
+          monitor_memory &
+          MONITOR_PID=$!
+          # 确保脚本退出时（成功/失败）自动终止后台监控
+          trap "kill $MONITOR_PID 2>/dev/null || true" EXIT
+          # --- 内存监控结束 ---
+
+          NUMERIC_VERSION=$(echo ${{ needs.prepare.outputs.tag_name }} | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+
+          IS_COMPILE_TEST="${{ needs.prepare.outputs.compile_test }}"
+          if [ "$IS_COMPILE_TEST" = "true" ]; then
+            # 测试模式：最低优化、关闭 LTO、附带调试符号
+            LTO_FLAG=""
+            OPT_FLAG="--no-deployment"
+            DEBUG_FLAG=""
+            UPX_FLAG=""
+            if [[ "${{ matrix.platform }}" == linux* ]]; then
+              export CFLAGS="-O0 -g"
+              export CXXFLAGS="-O0 -g"
+            else
+              export CFLAGS="-O0 -g"
+              export CXXFLAGS="-O0 -g"
+              export LDFLAGS="-fuse-ld=lld"
+            fi
+            ARCHIVE_NAME="LingChat-test"
+          else
+            # 正常模式：优化编译
+            LTO_FLAG="--lto=yes"
+            OPT_FLAG=""
+            DEBUG_FLAG=""
+            UPX_FLAG="--enable-plugins=upx"
+            if [[ "${{ matrix.platform }}" == linux* ]]; then
+              export CFLAGS="-flto=thin -O2"
+              export CXXFLAGS="-flto=thin -O2"
+            else
+              export CFLAGS="-flto=thin -O2"
+              export CXXFLAGS="-flto=thin -O2"
+              export LDFLAGS="-fuse-ld=lld"
+            fi
+            ARCHIVE_NAME="LingChat"
+          fi
+
+          if [[ "${{ matrix.platform }}" == linux* ]]; then
+            echo "yes" | LDFLAGS="-fuse-ld=mold" uv run nuitka --clang --standalone $UPX_FLAG --upx-binary=$UPX_BIN --jobs=4 $LTO_FLAG $OPT_FLAG $DEBUG_FLAG --assume-yes-for-downloads --linux-icon=ling_chat/static/game_data/resources/lingchat.png  --include-plugin-directory=./ling_chat/core/ai_service/script_engine/events --include-data-dir=./ling_chat/core/ai_service/script_engine/events=ling_chat/core/ai_service/script_engine/events --output-filename=$ARCHIVE_NAME --product-name=${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }} --file-version="$NUMERIC_VERSION" --product-version="$NUMERIC_VERSION" --company-name="LingChat Studio" main.py
+          else
+            echo "yes" | uv run nuitka --clang --standalone $UPX_FLAG --upx-binary=$UPX_BIN --jobs=4 $LTO_FLAG $OPT_FLAG $DEBUG_FLAG --assume-yes-for-downloads --windows-icon-from-ico=ling_chat/static/game_data/resources/lingchat.ico --output-filename=$ARCHIVE_NAME  --include-plugin-directory=./ling_chat/core/ai_service/script_engine/events --include-data-dir=./ling_chat/core/ai_service/script_engine/events=ling_chat/core/ai_service/script_engine/events --product-name=${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }} --file-version="$NUMERIC_VERSION" --product-version="$NUMERIC_VERSION" --company-name="LingChat Studio" main.py
+          fi
+
+      - name: 下载 LingChat-Pal 以加入打包
+        if: ${{ needs.prepare.outputs.pal_release_tag != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          # 设置变量
+          PAL_REPO="${{ github.repository_owner }}/LingChat-Pal"
+          PAL_TAG="${{ needs.prepare.outputs.pal_release_tag }}"
+          
+          echo "正在从 GitHub 下载 LingChat-Pal ${PAL_TAG}..."
+          
+          # 根据平台确定文件名模式（自动匹配版本号）
+          if [[ "${{ matrix.platform }}" == windows* ]]; then
+            PAL_PATTERN="lingchat-pal*.exe"
+          elif [[ "${{ matrix.platform }}" == "linux-amd64" ]]; then
+            PAL_PATTERN="lingchat-pal_*_amd64.AppImage"
+          elif [[ "${{ matrix.platform }}" == "linux-aarch64" ]]; then
+            PAL_PATTERN="lingchat-pal_*_aarch64.AppImage"
+          fi
+          
+          # 使用 gh 下载指定文件到 main.dist 目录
+          echo "正在下载匹配模式: ${PAL_PATTERN}"
+          gh release download "${PAL_TAG}" \
+            --repo "${PAL_REPO}" \
+            --pattern "${PAL_PATTERN}" \
+            --dir "main.dist"
+          
+          if [ $? -ne 0 ]; then
+            echo "错误: 下载 LingChat-Pal 失败"
+            exit 1
+          fi
+          
+          echo "✓ LingChat-Pal 已下载到 main.dist/"
+          ls -la main.dist/
+
+      - name: 整理文件（准备打包）
+        shell: bash
+        run: |
+          ls -la main.dist
+          rm -rf ling_chat/static/frontend
+          mkdir -p ling_chat/static/frontend
+          cp -r frontend_vue/dist/* ling_chat/static/frontend/
+          
+          mkdir -p ling_chat/configs/
+          cp -r ling_chat/configs/* main.dist/ling_chat/configs/
+
+          cp .env.example main.dist/.env
+          cp LICENSE main.dist/LICENSE
+          cp version main.dist/version
+
+          mkdir main.dist/ling_chat
+          mv ling_chat/static main.dist/ling_chat
+          mv ling_chat/third_party main.dist/ling_chat
+
+      - name: 打包
+        working-directory: main.dist
+        run: ${{ matrix.archive_cmd }}
+
+      - name: 上传构建产物（供后续 release 使用）
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-${{ matrix.platform }}
+          path: ${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }}-${{ matrix.platform }}.${{ matrix.archive_ext }}
+          archive: false
+
+  release:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.prepare.outputs.tag_name }}
+
+      - name: 下载所有平台的构建包
+        uses: actions/download-artifact@v8
+        with:
+          path: ./artifacts
+          merge-multiple: true
+          skip-decompress: true
+
+      - name: 设置 Python 环境
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: 'latest'
+
+      - name: 安装 modelscope
+        if: needs.prepare.outputs.upload_to_modelscope == 'true'
+        run: uv tool install modelscope
+
+      - name: 创建或更新 Release 并上传所有资产
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODELSCOPE_ACCESS_TOKEN: ${{ secrets.MODELSCOPE_ACCESS_TOKEN }}
+        run: |
+          set -e
+          TAG="${{ needs.prepare.outputs.tag_name }}"
+          TITLE="${{ needs.prepare.outputs.release_title }}"
+          PRERELEASE="${{ needs.prepare.outputs.is_prerelease }}"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG 已存在，将上传资产到现有 Release"
+          else
+            echo "Release $TAG 不存在，正在创建..."
+            gh release create "$TAG" --title "$TITLE" --prerelease="$PRERELEASE" --notes "自动构建的 Release"
+          fi
+
+          echo "正在收集 artifacts 目录下的所有文件..."
+          mapfile -t files < <(find ./artifacts -type f)
+
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "错误：artifacts 目录下没有文件"
+            exit 1
+          fi
+
+          echo "找到 ${#files[@]} 个文件待上传："
+          printf '%s\n' "${files[@]}"
+
+          for file in "${files[@]}"; do
+            echo "正在上传 $file ..."
+            gh release upload "$TAG" "$file" --clobber
+            echo "✓ 上传完成：$file"
+          done
+
+          UPLOAD_MS="${{ needs.prepare.outputs.upload_to_modelscope }}"
+          if [ "$UPLOAD_MS" = "true" ]; then
+            echo "开始上传到 ModelScope..."
+            for file in "${files[@]}"; do
+              echo "正在上传到 ModelScope: $file ..."
+              ms upload lingchat-research-studio/LingChat-release-mirror "$file" ./$TAG/$file --token ${{ secrets.MODELSCOPE_ACCESS_TOKEN }}
+              echo "✓ ModelScope 上传完成：$file"
+            done
+          else
+            echo "跳过 ModelScope 上传（upload_to_modelscope 未启用）"
+          fi
+
+          echo "✅ 所有 ${#files[@]} 个资产上传完成"
