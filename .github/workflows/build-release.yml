@@ -208,7 +208,6 @@ jobs:
               if [[ "$RUNNER_OS" == "Linux" ]]; then
                 free -m | awk '/^Mem:/{printf "[Memory] Used: %sM / Total: %sM, Free: %sM\n", $3, $2, $4}'
               elif [[ "$RUNNER_OS" == "Windows" ]]; then
-                # 修复：使用正确的 PowerShell 变量语法
                 powershell.exe -Command "& { \$os = Get-CimInstance Win32_OperatingSystem; \$total = [math]::Round(\$os.TotalVisibleMemorySize/1KB); \$free = [math]::Round(\$os.FreePhysicalMemory/1KB); \$used = \$total - \$free; Write-Output \"[Memory] Used: \$used MB / Total: \$total MB, Free: \$free MB\" }"
               fi
               sleep 20
@@ -235,6 +234,7 @@ jobs:
             else
               export CFLAGS="-O0 -g"
               export CXXFLAGS="-O0 -g"
+              export LDFLAGS="-fuse-ld=lld"
             fi
             ARCHIVE_NAME="LingChat-test"
           else
@@ -249,14 +249,15 @@ jobs:
             else
               export CFLAGS="-flto=thin -O2"
               export CXXFLAGS="-flto=thin -O2"
+              export LDFLAGS="-fuse-ld=lld"
             fi
             ARCHIVE_NAME="LingChat"
           fi
 
           if [[ "${{ matrix.platform }}" == linux* ]]; then
-            echo "yes" | LDFLAGS="-fuse-ld=mold" uv run nuitka --clang --standalone $UPX_FLAG --upx-binary=$UPX_BIN --jobs=4 $LTO_FLAG $OPT_FLAG $DEBUG_FLAG --low-memory --assume-yes-for-downloads --linux-icon=ling_chat/static/game_data/resources/lingchat.png --output-filename=$ARCHIVE_NAME --product-name=${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }} --file-version="$NUMERIC_VERSION" --product-version="$NUMERIC_VERSION" --company-name="LingChat Studio" --show-memory main.py
+            echo "yes" | LDFLAGS="-fuse-ld=mold" uv run nuitka --clang --standalone $UPX_FLAG --upx-binary=$UPX_BIN --jobs=4 $LTO_FLAG $OPT_FLAG $DEBUG_FLAG --assume-yes-for-downloads --linux-icon=ling_chat/static/game_data/resources/lingchat.png  --include-plugin-directory=./ling_chat/core/ai_service/script_engine/events --include-data-dir=./ling_chat/core/ai_service/script_engine/events=ling_chat/core/ai_service/script_engine/events --output-filename=$ARCHIVE_NAME --product-name=${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }} --file-version="$NUMERIC_VERSION" --product-version="$NUMERIC_VERSION" --company-name="LingChat Studio" main.py
           else
-            echo "yes" | uv run nuitka --clang --standalone $UPX_FLAG --upx-binary=$UPX_BIN --jobs=4 $LTO_FLAG $OPT_FLAG $DEBUG_FLAG --low-memory --assume-yes-for-downloads --windows-icon-from-ico=ling_chat/static/game_data/resources/lingchat.ico --output-filename=$ARCHIVE_NAME --product-name=${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }} --file-version="$NUMERIC_VERSION" --product-version="$NUMERIC_VERSION" --company-name="LingChat Studio" --show-memory main.py
+            echo "yes" | uv run nuitka --clang --standalone $UPX_FLAG --upx-binary=$UPX_BIN --jobs=4 $LTO_FLAG $OPT_FLAG $DEBUG_FLAG --assume-yes-for-downloads --windows-icon-from-ico=ling_chat/static/game_data/resources/lingchat.ico --output-filename=$ARCHIVE_NAME  --include-plugin-directory=./ling_chat/core/ai_service/script_engine/events --include-data-dir=./ling_chat/core/ai_service/script_engine/events=ling_chat/core/ai_service/script_engine/events --product-name=${{ github.event.repository.name }}-${{ needs.prepare.outputs.tag_name }} --file-version="$NUMERIC_VERSION" --product-version="$NUMERIC_VERSION" --company-name="LingChat Studio" main.py
           fi
 
       - name: 下载 LingChat-Pal 以加入打包
@@ -302,6 +303,9 @@ jobs:
           rm -rf ling_chat/static/frontend
           mkdir -p ling_chat/static/frontend
           cp -r frontend_vue/dist/* ling_chat/static/frontend/
+          
+          mkdir -p ling_chat/configs/
+          cp -r ling_chat/configs/* main.dist/ling_chat/configs/
 
           cp .env.example main.dist/.env
           cp LICENSE main.dist/LICENSE

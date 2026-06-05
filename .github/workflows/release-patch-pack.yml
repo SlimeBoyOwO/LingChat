@@ -1,0 +1,152 @@
+name: 增量升级包生成
+
+on:
+  workflow_dispatch:
+    inputs:
+      old_url:
+        description: '初始版本压缩包URL'
+        required: true
+        type: string
+      new_url:
+        description: '新版本压缩包URL'
+        required: true
+        type: string
+      output_name:
+        description: '最终压缩包文件名(含后缀，如 upgrade.tar.xz 或 upgrade.7z)'
+        required: true
+        type: string
+      tag_name:
+        description: '目标Release的tag(不存在则创建)'
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: 安装依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full xz-utils
+          pip install xxhash
+
+      - name: 下载并解压初始版本
+        run: |
+          mkdir -p old new final
+          wget -O old_archive "${{ inputs.old_url }}"
+          if [[ "${{ inputs.old_url }}" == *.tar.xz ]]; then
+            tar -xf old_archive -C old --strip-components=1
+          elif [[ "${{ inputs.old_url }}" == *.7z ]]; then
+            7z x old_archive -oold -y
+            # 如果7z有顶层目录，移到正确位置
+            if [ $(ls old | wc -l) -eq 1 ] && [ -d "old/$(ls old)" ]; then
+              mv "old/$(ls old)"/* old/
+              rmdir "old/$(ls old)"
+            fi
+          fi
+
+      - name: 下载并解压新版本
+        run: |
+          wget -O new_archive "${{ inputs.new_url }}"
+          if [[ "${{ inputs.new_url }}" == *.tar.xz ]]; then
+            tar -xf new_archive -C new --strip-components=1
+          elif [[ "${{ inputs.new_url }}" == *.7z ]]; then
+            7z x new_archive -onew -y
+            if [ $(ls new | wc -l) -eq 1 ] && [ -d "new/$(ls new)" ]; then
+              mv "new/$(ls new)"/* new/
+              rmdir "new/$(ls new)"
+            fi
+          fi
+
+      - name: 运行增量同步脚本
+        run: |
+          python3 << 'EOF'
+          import os
+          import sys
+          import shutil
+          import xxhash
+          from pathlib import Path
+          from typing import Dict, Set
+          
+          def get_file_hash(filepath: str) -> str:
+              h = xxhash.xxh64()
+              try:
+                  with open(filepath, 'rb') as f:
+                      while chunk := f.read(8192):
+                          h.update(chunk)
+                  return h.hexdigest()
+              except:
+                  return ""
+          
+          def get_all_files(base_path: str) -> Dict[str, str]:
+              base = Path(base_path)
+              if not base.exists():
+                  return {}
+              return {str(item.relative_to(base)): str(item) 
+                      for item in base.rglob('*') if item.is_file()}
+          
+          old_files = get_all_files("old")
+          new_files = get_all_files("new")
+          
+          stats = {"new": 0, "updated": 0, "skipped": 0, "errors": 0}
+          
+          # 新增文件
+          for rel_path in sorted(set(new_files.keys()) - set(old_files.keys())):
+              try:
+                  dest = Path("final") / rel_path
+                  dest.parent.mkdir(parents=True, exist_ok=True)
+                  shutil.copy2(new_files[rel_path], dest)
+                  stats["new"] += 1
+                  print(f"  [新增] {rel_path}")
+              except Exception as e:
+                  print(f"  [错误] {rel_path}: {e}", file=sys.stderr)
+                  stats["errors"] += 1
+          
+          # 变更文件
+          for rel_path in sorted(set(old_files.keys()) & set(new_files.keys())):
+              if get_file_hash(old_files[rel_path]) != get_file_hash(new_files[rel_path]):
+                  try:
+                      dest = Path("final") / rel_path
+                      dest.parent.mkdir(parents=True, exist_ok=True)
+                      shutil.copy2(new_files[rel_path], dest)
+                      stats["updated"] += 1
+                      print(f"  [更新] {rel_path}")
+                  except Exception as e:
+                      print(f"  [错误] {rel_path}: {e}", file=sys.stderr)
+                      stats["errors"] += 1
+              else:
+                  stats["skipped"] += 1
+          
+          print(f"\n同步完成: 新增{stats['new']} 更新{stats['updated']} 跳过{stats['skipped']} 错误{stats['errors']}")
+          EOF
+
+      - name: 压缩最终文件
+        run: |
+          cd final
+          if [[ "${{ inputs.output_name }}" == *.tar.xz ]]; then
+            XZ_OPT="-9 -T0" tar -cJf "../${{ inputs.output_name }}" .
+          elif [[ "${{ inputs.output_name }}" == *.7z ]]; then
+            7z a -t7z -mx9 -md=128m -mmt=4 "../${{ inputs.output_name }}" .
+          else
+            echo "不支持的后缀: ${{ inputs.output_name }}"
+            exit 1
+          fi
+
+      - name: 创建或获取Release
+        run: |
+          if ! gh release view "${{ inputs.tag_name }}" &>/dev/null; then
+            gh release create "${{ inputs.tag_name }}" --title "${{ inputs.tag_name }}" --notes "增量升级包"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: 上传到Release
+        run: |
+          gh release upload "${{ inputs.tag_name }}" "${{ inputs.output_name }}" --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
