@@ -35,7 +35,7 @@ class MyApplication:
     def __init__(
         self,
         version: str,
-        update_url: str = "http://localhost:5000/updates",
+        update_url: str = "lupd.uwaspace.work",
         app_dir: Optional[str] = None,
         config_file: str = "update_config.json",
         backup_dir: str = "backup",
@@ -157,7 +157,7 @@ class MyApplication:
 
 def create_application(
     version_file: Optional[str] = None,
-    update_url: str = "http://localhost:5000/updates",
+    update_url: str = "lupd.uwaspace.work",
     **kwargs,
 ) -> MyApplication:
     version = load_version_from_file(version_file)
