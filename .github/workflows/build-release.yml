@@ -269,9 +269,9 @@ jobs:
           # 设置变量
           PAL_REPO="${{ github.repository_owner }}/LingChat-Pal"
           PAL_TAG="${{ needs.prepare.outputs.pal_release_tag }}"
-          
+
           echo "正在从 GitHub 下载 LingChat-Pal ${PAL_TAG}..."
-          
+
           # 根据平台确定文件名模式（自动匹配版本号）
           if [[ "${{ matrix.platform }}" == windows* ]]; then
             PAL_PATTERN="lingchat-pal*.exe"
@@ -280,19 +280,19 @@ jobs:
           elif [[ "${{ matrix.platform }}" == "linux-aarch64" ]]; then
             PAL_PATTERN="lingchat-pal_*_aarch64.AppImage"
           fi
-          
+
           # 使用 gh 下载指定文件到 main.dist 目录
           echo "正在下载匹配模式: ${PAL_PATTERN}"
           gh release download "${PAL_TAG}" \
             --repo "${PAL_REPO}" \
             --pattern "${PAL_PATTERN}" \
             --dir "main.dist"
-          
+
           if [ $? -ne 0 ]; then
             echo "错误: 下载 LingChat-Pal 失败"
             exit 1
           fi
-          
+
           echo "✓ LingChat-Pal 已下载到 main.dist/"
           ls -la main.dist/
 
@@ -303,15 +303,18 @@ jobs:
           rm -rf ling_chat/static/frontend
           mkdir -p ling_chat/static/frontend
           cp -r frontend_vue/dist/* ling_chat/static/frontend/
-          
-          mkdir -p ling_chat/configs/
+
+          mkdir -p main.dist/ling_chat/configs/
           cp -r ling_chat/configs/* main.dist/ling_chat/configs/
+
+          mkdir -p main.dist/ling_chat/core/ai_service/script_engine/events
+          cp -r ling_chat/core/ai_service/script_engine/events/* main.dist/ling_chat/core/ai_service/script_engine/events
 
           cp .env.example main.dist/.env
           cp LICENSE main.dist/LICENSE
           cp version main.dist/version
 
-          mkdir main.dist/ling_chat
+          mkdir -p main.dist/ling_chat
           mv ling_chat/static main.dist/ling_chat
           mv ling_chat/third_party main.dist/ling_chat
 
