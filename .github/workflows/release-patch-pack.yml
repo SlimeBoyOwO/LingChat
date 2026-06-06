@@ -20,6 +20,9 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -33,7 +36,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y p7zip-full xz-utils
-          pip install xxhash
+          pip install xxhash modelscope
 
       - name: 下载并解压初始版本
         run: |
@@ -43,7 +46,6 @@ jobs:
             tar -xf old_archive -C old --strip-components=1
           elif [[ "${{ inputs.old_url }}" == *.7z ]]; then
             7z x old_archive -oold -y
-            # 如果7z有顶层目录，移到正确位置
             if [ $(ls old | wc -l) -eq 1 ] && [ -d "old/$(ls old)" ]; then
               mv "old/$(ls old)"/* old/
               rmdir "old/$(ls old)"
@@ -95,7 +97,6 @@ jobs:
           
           stats = {"new": 0, "updated": 0, "skipped": 0, "errors": 0}
           
-          # 新增文件
           for rel_path in sorted(set(new_files.keys()) - set(old_files.keys())):
               try:
                   dest = Path("final") / rel_path
@@ -107,7 +108,6 @@ jobs:
                   print(f"  [错误] {rel_path}: {e}", file=sys.stderr)
                   stats["errors"] += 1
           
-          # 变更文件
           for rel_path in sorted(set(old_files.keys()) & set(new_files.keys())):
               if get_file_hash(old_files[rel_path]) != get_file_hash(new_files[rel_path]):
                   try:
@@ -145,8 +145,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - name: 上传到Release
+      - name: 上传到GitHub Release
         run: |
           gh release upload "${{ inputs.tag_name }}" "${{ inputs.output_name }}" --clobber
         env:
           GH_TOKEN: ${{ github.token }}
+
+      - name: 上传到ModelScope
+        run: |
+          # 获取文件名（不含路径）
+          FILE_NAME="${{ inputs.output_name }}"
+          TAG_NAME="${{ inputs.tag_name }}"
+          
+          # 使用 modelscope CLI 上传
+          # 注意：需要提前设置 MODELSCOPE_ACCESS_TOKEN secret
+          ms upload lingchat-research-studio/LingChat-release-mirror "./$FILE_NAME" "./$TAG_NAME/$FILE_NAME" --token ${{ secrets.MODELSCOPE_ACCESS_TOKEN }}
+          
+          echo "✓ ModelScope 上传完成：$FILE_NAME -> $TAG_NAME/$FILE_NAME"
