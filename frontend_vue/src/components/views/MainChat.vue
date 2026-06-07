@@ -17,15 +17,30 @@
 
     <!-- 原有的菜单按钮 -->
     <div id="menu-panel">
-      <Button
-        type="nav"
-        icon="play"
-        @click="switchAutoMode"
-        :class="[{ active: uiStore.autoMode }]"
-        v-show="uiStore.showSettings !== true"
-      >
-        <h3>自动</h3>
-      </Button>
+      <!-- Code 模式：显示会话管理按钮 -->
+      <template v-if="settingsStore.codeMode">
+        <Button type="nav" icon="close" @click="handleClearHistory" v-show="uiStore.showSettings !== true" title="清空记录">
+          <h3>清空</h3>
+        </Button>
+        <Button type="nav" icon="plus" @click="handleNewSession" v-show="uiStore.showSettings !== true" title="新建会话">
+          <h3>新建</h3>
+        </Button>
+        <Button type="nav" icon="history" @click="handleContinueSession" v-show="uiStore.showSettings !== true" title="继续上次会话">
+          <h3>继续</h3>
+        </Button>
+      </template>
+      <!-- 普通模式：显示自动按钮 -->
+      <template v-else>
+        <Button
+          type="nav"
+          icon="play"
+          @click="switchAutoMode"
+          :class="[{ active: uiStore.autoMode }]"
+          v-show="uiStore.showSettings !== true"
+        >
+          <h3>自动</h3>
+        </Button>
+      </template>
       <Button type="nav" icon="text" @click="openSettings" v-show="uiStore.showSettings !== true">
         <h3>菜单</h3>
       </Button>
@@ -41,9 +56,12 @@ import FreeModeTools from '@/components/tools/FreeModeTools.vue'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { useGameStore } from '../../stores/modules/game'
 import { useUserStore } from '../../stores/modules/user/user'
+import { useSettingsStore } from '../../stores/modules/settings'
 import { GameBackground, GameRolesStage } from '../game/standard'
 import { GameDialog } from '../game/standard'
 import { Button } from '../base'
+import { clearChatHistory } from '@/api/services/history'
+import { saveCreate, saveContinue } from '@/api/services/save'
 
 import GameExtraUI from '../game/standard/GameExtraUI.vue'
 import WheelHistory from '../game/standard/extra/WheelHistory.vue'
@@ -51,6 +69,7 @@ import WheelHistory from '../game/standard/extra/WheelHistory.vue'
 const uiStore = useUIStore()
 const gameStore = useGameStore()
 const userStore = useUserStore()
+const settingsStore = useSettingsStore()
 
 const gameDialogRef = ref<InstanceType<typeof GameDialog> | null>(null)
 const wheelHistoryRef = ref<InstanceType<typeof WheelHistory> | null>(null)
@@ -62,6 +81,45 @@ const openSettings = () => {
 
 const switchAutoMode = () => {
   uiStore.autoMode = !uiStore.autoMode
+  if (uiStore.autoMode) {
+    isContinueTriggered.value = false
+    nextTick(tryAutoAdvance)
+  } else if (timerId) {
+    clearTimeout(timerId)
+    timerId = null
+  }
+}
+
+const handleClearHistory = async () => {
+  if (!confirm('确定要清空当前对话记录吗？')) return
+  try {
+    await clearChatHistory('1')
+    gameStore.clearDialogHistory()
+  } catch (error) {
+    console.error('清空记录失败:', error)
+    alert('清空记录失败')
+  }
+}
+
+const handleNewSession = async () => {
+  try {
+    const title = 'Code 会话 ' + new Date().toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    await saveCreate({ user_id: '1', title })
+    await gameStore.initializeGame(userStore.client_id, '1')
+  } catch (error) {
+    console.error('新建会话失败:', error)
+    alert('新建会话失败')
+  }
+}
+
+const handleContinueSession = async () => {
+  try {
+    await saveContinue({ user_id: '1' })
+    await gameStore.initializeGame(userStore.client_id, '1')
+  } catch (error) {
+    console.error('继续会话失败:', error)
+    alert('继续会话失败，可能没有上次会话')
+  }
 }
 
 const runInitialization = async () => {
@@ -91,6 +149,23 @@ watch(
   },
 )
 
+watch(
+  () => settingsStore.codeMode,
+  async (isCodeMode) => {
+    if (isCodeMode) {
+      if (timerId) {
+        clearTimeout(timerId)
+        timerId = null
+      }
+      isContinueTriggered.value = false
+      return
+    }
+
+    await nextTick()
+    tryAutoAdvance()
+  },
+)
+
 /* 以下代码为自动AUTO模式逻辑 比较复杂 */
 // 1. 用于存储 setTimeout 返回的 ID
 let timerId: any = null
@@ -113,13 +188,25 @@ const resetInteraction = () => {
 const tryAutoAdvance = () => {
   if (!uiStore.autoMode) return
   if (isContinueTriggered.value) return
-  if (gameStore.currentStatus !== 'responding') return
+
+  // 如果状态卡在 thinking/presenting 等异常状态，强制重置为 input
+  if (gameStore.currentStatus === 'thinking' || gameStore.currentStatus === 'presenting') {
+    console.log('[自动模式] 状态异常，强制重置:', gameStore.currentStatus, '→ input')
+    gameStore.currentStatus = 'input'
+    gameStore.currentLine = ''
+    return
+  }
+
+  // 如果有对话气泡显示，也可以推进
+  const hasDialogue = !!uiStore.showCharacterLine
+  if (gameStore.currentStatus !== 'responding' && !hasDialogue) return
 
   const typing = gameDialogRef.value?.isTyping ?? false
   if (typing || !audioFinished.value) return
 
   if (timerId) clearTimeout(timerId)
   timerId = setTimeout(() => {
+    timerId = null
     if (gameDialogRef.value) {
       const needWait = gameDialogRef.value.continueDialog(false)
       if (needWait) {
