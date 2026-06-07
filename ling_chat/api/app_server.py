@@ -16,7 +16,6 @@ from ling_chat.game_database.database import init_db
 from ling_chat.game_database.managers.role_manager import RoleManager
 from ling_chat.utils.runtime_path import user_data_path
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
@@ -166,6 +165,9 @@ def run_app():
         backend_host = os.getenv("BACKEND_BIND_ADDR", "0.0.0.0")
         backend_port = int(os.getenv("BACKEND_PORT", "8765"))
 
+        # 开发环境自动重载：通过环境变量 BACKEND_RELOAD=true 开启
+        use_reload = os.getenv("BACKEND_RELOAD", "false").lower() == "true"
+
         config = uvicorn.Config(
             app,
             host=backend_host,
@@ -177,6 +179,7 @@ def run_app():
             # 相比 uvicorn 默认 (20s/20s) 更宽容，减少因浏览器后台化导致的误断开
             ws_ping_interval=30,
             ws_ping_timeout=45,
+            reload=use_reload,
         )
 
         _attach_project_handlers_to_uvicorn(project_logger_instance, uvicorn_log_level)
