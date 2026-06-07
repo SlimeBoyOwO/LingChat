@@ -87,6 +87,10 @@ export const connectWebSocket = (url: string) => {
   socket.value.onmessage = (event) => {
     try {
       const message = JSON.parse(event.data)
+      // pong 是心跳响应，静默忽略
+      if (message.type === 'pong') {
+        return
+      }
       const handler = handlers.get(message.type)
       if (handler) {
         handler(message)
