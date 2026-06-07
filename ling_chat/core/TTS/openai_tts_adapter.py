@@ -22,9 +22,6 @@ class OpenAITTSAdapter(TTSBaseAdapter):
         api_key = os.environ.get("OPENAI_TTS_API_KEY", "")
         base_url = os.environ.get("OPENAI_TTS_BASE_URL", "https://api.openai.com/v1")
 
-        if not api_key:
-            raise ValueError("未设置 OPENAI_TTS_API_KEY 环境变量")
-
         self.client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         self.model = model
         self.voice = voice

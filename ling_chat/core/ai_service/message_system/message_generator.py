@@ -3,6 +3,7 @@ import os
 import time
 from typing import AsyncGenerator, Dict, List, Optional
 
+from ling_chat.core.agent_tools.runner import SimpleAgentRunner
 from ling_chat.core.ai_service.ai_logger import AILogger
 from ling_chat.core.ai_service.config import AIServiceConfig
 from ling_chat.core.ai_service.game_system.game_status import GameStatus
@@ -40,6 +41,7 @@ class MessageGenerator:
         self.function = Function()
         self.game_status = game_status
         self.concurrency = int(os.environ.get("COMSUMERS", 3))
+        self.agent_runner = SimpleAgentRunner(llm_model, game_status)
 
     async def process_sentence(self, sentence: str, emotion_segments: List[Dict]):
         """处理单个句子的情绪分析、翻译和语音合成"""
@@ -60,9 +62,13 @@ class MessageGenerator:
                 await self.translator.translate_ai_response(sentence_segments)
             else:
                 if self.game_status.current_character:
-                    await self.game_status.current_character.voice_maker.generate_voice_files(
+                    voice_maker = self.game_status.current_character.voice_maker
+                    # 检查并重新合成缺失的语音文件
+                    _, regenerated_count = await voice_maker.regenerate_missing_audio(
                         sentence_segments
                     )
+                    if regenerated_count > 0:
+                        logger.info(f"中文 TTS：成功重新合成 {regenerated_count} 条缺失语音")
             end_time = time.perf_counter()
             # 更新情绪片段列表
             emotion_segments.extend(sentence_segments)
@@ -73,9 +79,18 @@ class MessageGenerator:
         self,
         user_message: Optional[str] = None,
         memory: Optional[List[Dict]] = None,
+        client_id: Optional[str] = None,
+        code_mode: bool = False,
+        code_tts: bool = False,
     ) -> AsyncGenerator[ReplyResponse, None]:
         """
         协调流处理管道并生成响应，避免死锁。
+
+        :param user_message: 用户消息文本
+        :param memory: 可选的记忆列表
+        :param client_id: 客户端 ID，用于 agent 工具调用
+        :param code_mode: 是否为代码模式（启用沙箱和计划工具）
+        :param code_tts: 代码模式下是否启用 TTS
         """
         rag_messages = []
         processed_user_message = ""
@@ -107,6 +122,15 @@ class MessageGenerator:
         else:
             logger.error("生成消息的时候没有当前角色或者记忆，取消生成消息")
             return
+
+        # 3.5 Agent 工具调用增强上下文（Code 模式下可用沙箱和计划工具）
+        if user_message:
+            current_context = await self.agent_runner.enrich_context_if_needed(
+                current_context,
+                user_message,
+                client_id=client_id,
+                code_mode=code_mode,
+            )
 
         if logger.should_print_context():
             self.ai_logger.print_debug_message(
