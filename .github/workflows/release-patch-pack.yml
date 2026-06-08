@@ -1,4 +1,4 @@
-name: 增量升级包生成（使用 build_package.py）
+name: 增量升级包生成
 
 on:
   workflow_dispatch:

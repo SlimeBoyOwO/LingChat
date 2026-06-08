@@ -30,10 +30,10 @@ def test_merge_memory_bank_keeps_single_system():
     assert "persona" in merged[0]["content"]
     assert "[MB] long term" in merged[0]["content"]
 
-    # short term 被拼到 user 前缀
+    # short_term_prefix 被有意禁用（commit 65c03e60），不应出现在 user 消息中
     user_msgs = [m for m in merged if m.get("role") == "user"]
     assert user_msgs
-    assert user_msgs[0]["content"].startswith("[MB] short term")
+    assert "[MB] short term" not in user_msgs[0]["content"]
 
 
 def test_game_role_has_typed_memory_bank():
