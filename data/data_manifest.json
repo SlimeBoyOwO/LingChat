@@ -1,6 +1,10 @@
 {
   "data_version": 1,
   "files": {
+    "data_manifest.json": {
+      "sha256": "9c59439fac3da28c4e86fb70e6f6fdeed2bab2a4ed4839e1b0b8ee980293dca1",
+      "size": 18187
+    },
     "game_data/backgrounds/占卜摊2.webp": {
       "sha256": "4aa14b3fc1eb457825ca4bba68106ea759dfa5e09f70a961640fe0cda215384d",
       "size": 795080

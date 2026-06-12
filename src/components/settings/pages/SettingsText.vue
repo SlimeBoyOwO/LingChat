@@ -242,7 +242,7 @@ async function handleCheckUpdate() {
       updateLatestVersion.value = updateLatestVersion.value || `(数据 v${updateDataInfo.value.newVersion})`
     }
   } catch (e) {
-    console.error('[SettingsText] 更新检查失败:', e)
+    console.debug('[SettingsText] 更新检查跳过 (无 Release):', String(e).slice(0, 80))
   } finally {
     updateChecking.value = false
   }

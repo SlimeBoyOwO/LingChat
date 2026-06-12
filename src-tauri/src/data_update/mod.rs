@@ -44,6 +44,7 @@ impl Default for DataUpdateState {
 /// 检查是否有可用的数据更新。
 ///
 /// 返回 `DataUpdateInfo`，前端可据此展示更新详情。
+/// 如果远程清单不存在（尚无 Release），静默返回无可更新状态。
 #[tauri::command]
 pub async fn check_data_update() -> Result<DataUpdateInfo, String> {
     info!("检查数据更新...");
@@ -51,7 +52,23 @@ pub async fn check_data_update() -> Result<DataUpdateInfo, String> {
     let data_dir = data_dir();
     let local = load_local_manifest(&data_dir);
 
-    let remote = fetch_remote_manifest().await?;
+    // 尝试获取远程清单 — 无 Release 时静默返回
+    let remote = match fetch_remote_manifest().await {
+        Ok(m) => m,
+        Err(e) => {
+            info!("跳过数据更新检查 ({e})");
+            let local_version = local.as_ref().map_or(0, |m| m.data_version);
+            return Ok(DataUpdateInfo {
+                available: false,
+                new_version: local_version,
+                current_version: local_version,
+                files_to_add: vec![],
+                files_to_modify: vec![],
+                files_to_remove: vec![],
+                total_download_size: 0,
+            });
+        }
+    };
 
     match local {
         None => {

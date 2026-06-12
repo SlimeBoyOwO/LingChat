@@ -128,11 +128,11 @@ export function useUpdater() {
         phase.value = 'app-update-available'
       }
     } catch (e) {
-      console.warn('[Updater] App update check failed:', e)
-      // app 更新检查失败不阻塞 data 更新检查
+      // 开发阶段没有 Release 时静默跳过（正常情况）
+      console.debug('[Updater] App update check failed (expected if no release yet):', String(e).slice(0, 80))
     }
 
-    // 2. 检查 data 更新 (自定义 Rust 模块)
+    // 2. 检查 data 更新
     try {
       const info = await invoke<DataUpdateInfo>('check_data_update')
       dataInfo.value = info
@@ -143,7 +143,7 @@ export function useUpdater() {
         }
       }
     } catch (e) {
-      console.warn('[Updater] Data update check failed:', e)
+      console.debug('[Updater] Data update check failed (expected if no release yet):', String(e).slice(0, 80))
     }
 
     if (!hasAppUpdate && !hasDataUpdate) {
