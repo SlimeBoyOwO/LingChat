@@ -37,20 +37,6 @@
         <Toggle @change="voiceSound">启用无vits时的对话音效</Toggle>
       </MenuItem>
 
-      <MenuItem title="WebSocket通信状态" size="small">
-        <template #header>
-          <Rss :size="20" />
-        </template>
-        <p>√ 连接正常</p>
-      </MenuItem>
-
-      <MenuItem title="当前使用的AI大模型（这里是假的嘻嘻）" size="small">
-        <template #header>
-          <Settings :size="20" />
-        </template>
-        <p>DeepSeek V3</p>
-      </MenuItem>
-
       <MenuItem title="语音推理引擎下载（SBV2）" size="small">
         <template #header>
           <Download :size="20" />
@@ -86,40 +72,47 @@
         </div>
       </MenuItem>
 
+      <MenuItem title="返回主菜单" size="small">
+        <template #header>
+          <ArrowBigLeft :size="20" />
+        </template>
+        <div class="flex gap-3">
+          <Button type="big" @click="returnToMain">返回主菜单</Button>
+          <Button type="big" @click="refreshTTS">刷新TTS服务</Button>
+          <Button v-if="isFreeDialogMode" type="big" variant="danger" @click="handleClearHistory"
+            >清除历史对话</Button
+          >
+        </div>
+      </MenuItem>
+
       <!-- ─── 版本更新 ──────────────────────────────── -->
-      <MenuItem title="版本更新" size="small">
+      <MenuItem title="版本更新" size="large">
         <template #header>
           <RefreshCw :size="20" :class="{ 'animate-spin': updateChecking }" />
         </template>
         <div class="space-y-2 w-full">
-          <div class="flex items-center justify-between text-sm">
-            <span class="text-slate-500">当前版本</span>
-            <span class="font-mono text-slate-700">{{ currentAppVersion }}</span>
+          <div class="flex items-center justify-between text-base">
+            <span class="text-gray-50">当前版本</span>
+            <span class="text-gray-50">v{{ currentAppVersion }}</span>
           </div>
-          <div v-if="updateDataInfo" class="flex items-center justify-between text-sm">
-            <span class="text-slate-500">数据版本</span>
-            <span class="font-mono text-slate-700">v{{ updateDataInfo.currentVersion }}</span>
+          <div v-if="updateDataInfo" class="flex items-center justify-between">
+            <span class="text-gray-50">数据版本</span>
+            <span class="text-gray-50">v{{ updateDataInfo.currentVersion }}</span>
           </div>
-          <div v-if="updateLatestVersion" class="flex items-center justify-between text-sm">
-            <span class="text-slate-500">最新版本</span>
-            <span class="font-mono text-cyan-600 font-bold">{{ updateLatestVersion }}</span>
+          <div v-if="updateLatestVersion" class="flex items-center justify-between">
+            <span class="text-gray-50">最新版本</span>
+            <span class="text-gray-50 font-bold">{{ updateLatestVersion }}</span>
           </div>
-          <div v-if="updateStatusText" class="text-xs" :class="updateStatusColor">
+          <div v-if="updateStatusText" :class="updateStatusColor">
             {{ updateStatusText }}
           </div>
           <div class="flex gap-3 pt-1">
             <Button type="big" @click="handleCheckUpdate" :disabled="updateChecking">
               {{ updateChecking ? '检查中...' : '检查更新' }}
             </Button>
-            <Button
-              v-if="updateAvailable"
-              type="big"
-              @click="handleDoUpdate"
-            >
-              立即更新
-            </Button>
+            <Button v-if="updateAvailable" type="big" @click="handleDoUpdate"> 立即更新 </Button>
           </div>
-           <UpdateDialog
+          <UpdateDialog
             :visible="showUpdateInlineDialog"
             :phase="updatePhase"
             :app-version="updateAppVersion"
@@ -131,19 +124,6 @@
             @later="showUpdateInlineDialog = false"
             @close="showUpdateInlineDialog = false"
           />
-        </div>
-      </MenuItem>
-
-      <MenuItem title="返回主菜单" size="small">
-        <template #header>
-          <ArrowBigLeft :size="20" />
-        </template>
-        <div class="flex gap-3">
-          <Button type="big" @click="returnToMain">返回主菜单</Button>
-          <Button type="big" @click="refreshTTS">刷新TTS服务</Button>
-          <Button v-if="isFreeDialogMode" type="big" variant="danger" @click="handleClearHistory"
-            >清除历史对话</Button
-          >
         </div>
       </MenuItem>
     </MenuPage>
@@ -211,7 +191,11 @@ const updateAvailable = computed(() => updateLatestVersion.value !== '')
 
 const updateStatusText = computed(() => {
   if (updateAvailable.value) return '发现新版本可用！'
-  if (updateDataInfo.value && !updateDataInfo.value.available && updateDataInfo.value.currentVersion > 0)
+  if (
+    updateDataInfo.value &&
+    !updateDataInfo.value.available &&
+    updateDataInfo.value.currentVersion > 0
+  )
     return '✓ 已是最新版本'
   return ''
 })
@@ -239,7 +223,8 @@ async function handleCheckUpdate() {
     }
     // 即使没有 app 更新，也同步 data 版本信息
     if (updateDataInfo.value && updateDataInfo.value.available) {
-      updateLatestVersion.value = updateLatestVersion.value || `(数据 v${updateDataInfo.value.newVersion})`
+      updateLatestVersion.value =
+        updateLatestVersion.value || `(数据 v${updateDataInfo.value.newVersion})`
     }
   } catch (e) {
     console.debug('[SettingsText] 更新检查跳过 (无 Release):', String(e).slice(0, 80))

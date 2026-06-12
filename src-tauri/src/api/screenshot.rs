@@ -25,7 +25,7 @@ pub async fn start_screenshot(app: AppHandle) -> Result<(), String> {
     }
 
     // 创建全屏无边框覆盖窗口
-    let _overlay = WebviewWindowBuilder::new(
+    let w = WebviewWindowBuilder::new(
         &app,
         "screenshot-overlay",
         WebviewUrl::App("screenshot-overlay.html".into()),
@@ -33,14 +33,18 @@ pub async fn start_screenshot(app: AppHandle) -> Result<(), String> {
     .title("截图选择")
     .fullscreen(true)
     .decorations(false)
-    .transparent(true)
     .always_on_top(true)
     .visible_on_all_workspaces(true)
     .skip_taskbar(true)
     .shadow(false)
-    .focused(true)
-    .build()
-    .map_err(|e| format!("创建截图覆盖窗口失败: {}", e))?;
+    .focused(true);
+
+    // transparent 仅 Windows 支持
+    #[cfg(target_os = "windows")]
+    let w = w.transparent(true);
+
+    w.build()
+        .map_err(|e| format!("创建截图覆盖窗口失败: {}", e))?;
 
     tracing::info!("[Screenshot] Overlay window created, waiting for user selection.");
     Ok(())
