@@ -24,6 +24,9 @@ on:
 env:
   DATA_VERSION: ${{ github.event.inputs.data_version || github.run_number }}
 
+permissions:
+  contents: write
+
 jobs:
   # ─── 生成 data 产物 ─────────────────────────────────────────
   generate-data:
@@ -192,7 +195,7 @@ jobs:
       - name: 安装系统依赖
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libpipewire-0.3-dev
 
       - name: 安装 Rust
         uses: dtolnay/rust-toolchain@stable
