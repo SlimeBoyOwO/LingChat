@@ -101,6 +101,7 @@
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { MenuPage, MenuItem } from '../../ui'
 import { useGameStore } from '../../../stores/modules/game'
+import { useUIStore } from '@/stores/modules/ui/ui'
 import type { GameMessage } from '../../../stores/modules/game/state'
 import { convertInitLines } from '../../../stores/modules/game/actions'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
@@ -128,6 +129,7 @@ interface HistoryBlock {
 }
 
 const gameStore = useGameStore()
+const uiStore = useUIStore()
 const dialogStore = useDialogStore()
 const audioRef = ref<HTMLAudioElement>()
 const contentRef = ref<HTMLDivElement>()
@@ -276,6 +278,7 @@ const playAudio = async (audioFile: string) => {
 
 // 滚动到内容底部（最新记录）
 async function scrollToBottom() {
+  console.log('scrollToBottom')
   await nextTick()
   if (contentRef.value) {
     contentRef.value.scrollTop = contentRef.value.scrollHeight
@@ -293,6 +296,12 @@ onMounted(async () => {
 // 当切换到最后一页时，自动滚动到底部
 watch([currentPage, groupedHistory], async () => {
   if (currentPage.value === totalPages.value) {
+    await scrollToBottom()
+  }
+})
+
+watch([() => uiStore.currentSettingsTab, () => uiStore.showSettings], async () => {
+  if (uiStore.currentSettingsTab === 'history' && uiStore.showSettings) {
     await scrollToBottom()
   }
 })

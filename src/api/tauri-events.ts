@@ -18,7 +18,7 @@ export function initializeTauriEventListeners() {
 
   listen('ai:thinking', (event) => {
     console.log('[Tauri] ai:thinking', event.payload)
-    eventQueue.addEvent(asEvent(event.payload, { type: 'thinking', duration: 0, isFinal: true }))
+    eventQueue.addEvent(asEvent(event.payload, { type: 'thinking', duration: 0 }))
   })
 
   listen('ai:error', (event) => {
