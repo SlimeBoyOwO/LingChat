@@ -1,0 +1,213 @@
+# LingChat 发布工作流
+#
+# 当推送版本标签 (v*) 时:
+# 1. 生成 data_manifest.json + data_files.zip（默认游戏资源）
+# 2. 为 Windows / macOS / Linux 构建 Tauri 应用
+# 3. 创建 GitHub Release 草稿，上传所有产物
+#
+# 需要的 GitHub Secrets:
+#   - TAURI_SIGNING_PRIVATE_KEY        (tauri signer generate 生成的私钥)
+#   - TAURI_SIGNING_PRIVATE_KEY_PASSWORD (私钥密码)
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      data_version:
+        description: '数据版本号（整数）'
+        required: false
+        default: '1'
+
+env:
+  DATA_VERSION: ${{ github.event.inputs.data_version || github.run_number }}
+
+jobs:
+  # ─── 生成 data 产物 ─────────────────────────────────────────
+  generate-data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 生成 data_manifest.json
+        run: node scripts/generate-data-manifest.js --data-version ${{ env.DATA_VERSION }}
+
+      - name: 打包 data_files.zip
+        run: |
+          if [ -d data/game_data ]; then
+            cd data
+            zip -r ../data_files.zip game_data/ -x "game_data/screenshots/*" "game_data/voice/*" "game_data/.trash/*" "*.db" "*.backup.db"
+            cd ..
+          else
+            echo "⚠ 未找到 data/game_data/ 目录，将创建空 zip"
+            touch empty.txt
+            zip data_files.zip empty.txt
+            rm empty.txt
+          fi
+
+      - name: 上传 data 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-artifacts
+          path: |
+            data_manifest.json
+            data_files.zip
+
+  # ─── 构建 Windows Tauri 应用 ──────────────────────────────
+  build-windows:
+    needs: generate-data
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: data-artifacts
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: 安装前端依赖
+        run: pnpm install
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: 构建 Tauri 应用
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'LingChat ${{ github.ref_name }}'
+          releaseBody: |
+            ## 更新内容
+
+            请查看 [CHANGELOG](https://github.com/SlimeBoyOwO/LingChat/blob/main/CHANGELOG.md) 了解详情。
+
+            ## 安装
+
+            下载下方的 `.msi` 或 `.exe` 安装程序。
+            - `ling-chat_*_x64_zh-CN.msi` — 标准 Windows 安装包（推荐）
+            - `ling-chat_*_x64-setup.exe` — NSIS 安装程序
+
+            ## 数据资源
+
+            如需手动更新游戏资源，请下载 `data_files.zip` 并解压到程序目录下的 `data/` 文件夹。
+
+            ### 校验信息
+          includeUpdaterJson: true
+          releaseDraft: true
+          prerelease: false
+
+      - name: 上传 data 产物到 Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $release = gh release view "${{ github.ref_name }}" --json tagName,uploadUrl | ConvertFrom-Json
+          # data 产物放在工作目录根下
+          Write-Host "上传 data_manifest.json 和 data_files.zip 到 Release..."
+          gh release upload "${{ github.ref_name }}" data_manifest.json data_files.zip --clobber
+
+  # ─── 构建 macOS Tauri 应用 ─────────────────────────────────
+  build-macos:
+    needs: generate-data
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: data-artifacts
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: 安装前端依赖
+        run: pnpm install
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: 构建 Tauri 应用
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'LingChat ${{ github.ref_name }}'
+          includeUpdaterJson: true
+          releaseDraft: true
+          prerelease: false
+
+  # ─── 构建 Linux Tauri 应用 ─────────────────────────────────
+  build-linux:
+    needs: generate-data
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: data-artifacts
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: 安装前端依赖
+        run: pnpm install
+
+      - name: 安装系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: 构建 Tauri 应用
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'LingChat ${{ github.ref_name }}'
+          includeUpdaterJson: true
+          releaseDraft: true
+          prerelease: false

@@ -27,9 +27,19 @@
       }
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://github.com/SlimeBoyOwO/LingChat/releases/latest/download/latest.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE2Rjc5NjkwNkY3OEM4RjMKUldUenlIaHZrSmIzcG9KdSttdllDcFVZTmk3dG9NVlhrWGFvUVdPTmNFZjRFMFVOQlVZd2pjamgK",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/icon.ico"]
+    "icon": ["icons/icon.ico"],
+    "createUpdaterArtifacts": true
   }
 }

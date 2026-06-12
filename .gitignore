@@ -77,6 +77,7 @@ Pytorch/RAG/embedding_models/
 *.data
 # 发布产物
 release/
+data_manifest.json
 
 emotion_labels.csv
 ling_chat/third_party/emotion_model/*
@@ -91,6 +92,7 @@ ling_chat/third_party/emotion_model_19emo/*
 # 忽略 data 目录下的 其他文件，但保留 初始化资源本身
 data/**
 !data/.gitkeep
+!data/data_manifest.json
 !data/game_data/
 !data/third_party/
 !data/third_party/emotion_model_19emo/

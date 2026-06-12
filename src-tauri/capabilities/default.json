@@ -19,6 +19,10 @@
     "core:window:allow-inner-position",
     "core:window:allow-inner-size",
     "opener:default",
-    "screenshots:default"
+    "screenshots:default",
+    "updater:default",
+    "updater:allow-check",
+    "updater:allow-download-and-install",
+    "process:allow-restart"
   ]
 }

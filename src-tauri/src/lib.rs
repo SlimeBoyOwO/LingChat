@@ -3,6 +3,7 @@ mod adventures;
 mod ai_service;
 mod api;
 mod config;
+mod data_update;
 mod db;
 mod init;
 mod migration;
@@ -91,10 +92,13 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_screenshots::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             utils::log_bridge::set_app_handle(app.handle().clone());
 
             app.manage(api::pet::HitTestState::default());
+            app.manage(data_update::DataUpdateState::default());
 
             let rt = tokio::runtime::Runtime::new()?;
             let (db, ai_service, chat) = rt.block_on(init::initialize(app))?;
@@ -326,6 +330,8 @@ pub fn run() {
             api::adventure::start_adventure,
             api::adventure::check_adventure_unlocks,
             api::adventure::reset_adventure,
+            data_update::check_data_update,
+            data_update::apply_data_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

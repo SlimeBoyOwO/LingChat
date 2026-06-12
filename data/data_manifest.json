@@ -1,0 +1,405 @@
+{
+  "data_version": 1,
+  "files": {
+    "game_data/backgrounds/占卜摊2.webp": {
+      "sha256": "4aa14b3fc1eb457825ca4bba68106ea759dfa5e09f70a961640fe0cda215384d",
+      "size": 795080
+    },
+    "game_data/backgrounds/夜晚.webp": {
+      "sha256": "0e91d1b708fc9eee554a653c10b16f317daa2589460ace54f9ca79762559c469",
+      "size": 282892
+    },
+    "game_data/backgrounds/白天.webp": {
+      "sha256": "09ff689d1959fd8789aa9dccdd22c3f7d62fe4a7bbb52ce671c501e6551af75c",
+      "size": 345708
+    },
+    "game_data/characters/诺一钦灵/ai模式钦灵.txt": {
+      "sha256": "a0487384ce1cb9a88bcc761b51eb33f08b29c7f247b3dba134adead59de65e55",
+      "size": 7771
+    },
+    "game_data/characters/诺一钦灵/avatar/伤心.webp": {
+      "sha256": "0cbec51f892e47a1642bf19cb5795b1c0b64a4da66bbacd563eff3f56793f593",
+      "size": 592980
+    },
+    "game_data/characters/诺一钦灵/avatar/兴奋.webp": {
+      "sha256": "bbd03cb22018062461666ae16c2f25aad08057af2c1a7ff773317c991d2486d8",
+      "size": 602804
+    },
+    "game_data/characters/诺一钦灵/avatar/厌恶.webp": {
+      "sha256": "df583e10a9715dd725260a24f8e51de7c387595dcb946e8d488408c80583c507",
+      "size": 592168
+    },
+    "game_data/characters/诺一钦灵/avatar/头像.webp": {
+      "sha256": "21efb8afc5894f7b2ae5aee2807a2a67abd59b077a44f063c655b0f9a40c5ddf",
+      "size": 25968
+    },
+    "game_data/characters/诺一钦灵/avatar/害怕.webp": {
+      "sha256": "d0c2933ccc5429fa176559d96a21212d51bc4e381a62ea586de01502d58139c2",
+      "size": 602718
+    },
+    "game_data/characters/诺一钦灵/avatar/害羞.webp": {
+      "sha256": "b0924c8a2abd5f6dba50565e16eb1f3ec95ed1bb4dccdf8686e33141af298db3",
+      "size": 594572
+    },
+    "game_data/characters/诺一钦灵/avatar/心动.webp": {
+      "sha256": "6fa1c6773c67e622aedc381cf975f8a068ba92a3c7624c1f9e93fbc53f7caf53",
+      "size": 594482
+    },
+    "game_data/characters/诺一钦灵/avatar/惊讶.webp": {
+      "sha256": "d0c2933ccc5429fa176559d96a21212d51bc4e381a62ea586de01502d58139c2",
+      "size": 602718
+    },
+    "game_data/characters/诺一钦灵/avatar/慌张.webp": {
+      "sha256": "7404f99d2e912c5789699e124033ba2878fb046027265169e2a79f57ce42f667",
+      "size": 596602
+    },
+    "game_data/characters/诺一钦灵/avatar/担心.webp": {
+      "sha256": "cf6c314baab168095d5ab2f20da63bfd5de0327454f39f1da50326120d72375a",
+      "size": 593158
+    },
+    "game_data/characters/诺一钦灵/avatar/无奈.webp": {
+      "sha256": "adbe8ba5dcbdb516732f022b7eeafbbc79b888698c926899768fd7d9a882011b",
+      "size": 588010
+    },
+    "game_data/characters/诺一钦灵/avatar/正常.webp": {
+      "sha256": "6702de971b07c8048fe718556b74e88613b0e56a960b816d4cb17ca662dc56c4",
+      "size": 591872
+    },
+    "game_data/characters/诺一钦灵/avatar/泳装/伤心.png": {
+      "sha256": "9476fd926e78111efc11931fb5ca625815935b6e706d10fbea818c2b42851060",
+      "size": 2193610
+    },
+    "game_data/characters/诺一钦灵/avatar/泳装/兴奋.png": {
+      "sha256": "42cfc440af3215ee2dc3f3e9ecddabfa5edc5ed3a79d4899e1c08f24185a91e4",
+      "size": 2227400
+    },
+    "game_data/characters/诺一钦灵/avatar/泳装/厌恶.png": {
+      "sha256": "87d9e5253efe4776f44d8aa59ed5c1165319fcfb89898e2433250988b585abc1",
+      "size": 2183752
+    },
+    "game_data/characters/诺一钦灵/avatar/泳装/头像.png": {
+      "sha256": "0153bde2d765e966a111c18ef6a80ca761f682465b114b4c56d3d4d3d9756ef0",
+      "size": 161129
+    },
+    "game_data/characters/诺一钦灵/avatar/泳装/害怕.png": {
+      "sha256": "a191c59ded47b1af92547e1466e614ff1deeb3612c69301319cc11ad0356a30e",
+      "size": 2225300
+    },
+    "game_data/characters/诺一钦灵/avatar/泳装/害羞.png": {
+      "sha256": "7c6806d0c4a90b76ccffffca31f2d3c199c42d2cf52bd2159d4a403af8834b70",
+      "size": 2203138
+    },
+    "game_data/characters/诺一钦灵/avatar/泳装/平静.png": {
+      "sha256": "49c82bfcd51691da327fbe1645445705e8f710e0c32ed8fac15c851576cd9b67",
+      "size": 2165634
+    },
+    "game_data/characters/诺一钦灵/avatar/泳装/心动.png": {
+      "sha256": "76a2a203898cf685e74c43dc73c59bf3686836c3d561634a198c451547798c69",
+      "size": 2203794
+    },
+    "game_data/characters/诺一钦灵/avatar/泳装/惊讶.png": {
+      "sha256": "6e2a50db33e1188b506a8027b0b16aa3f89bfbb9f939dbaa0d517713922e9fb4",
+      "size": 2225124
+    },
+    "game_data/characters/诺一钦灵/avatar/泳装/慌张.png": {
+      "sha256": "934223209946f503c869a4aad22ac88cb51504db93b2f66883f2c5271b4a19e4",
+      "size": 2209193
+    },
+    "game_data/characters/诺一钦灵/avatar/泳装/担心.png": {
+      "sha256": "0a92d3217fe9ffe18ab8a0dd5793cb28577fdeaa5d00b38c5178716736d76d98",
+      "size": 2187192
+    },
+    "game_data/characters/诺一钦灵/avatar/泳装/无奈.png": {
+      "sha256": "24c8909c82c97c4c1c983d37d6b7c71ee5b4e249bcec220aa8530307b872dfee",
+      "size": 2169721
+    },
+    "game_data/characters/诺一钦灵/avatar/泳装/正常.png": {
+      "sha256": "567a95c75bbc005a43eb0085a70cf018589ee2053b296b8e8baba02aed29d54a",
+      "size": 2288915
+    },
+    "game_data/characters/诺一钦灵/avatar/泳装/生气.png": {
+      "sha256": "a259d33d9e541fdeea13325c9d3dbf99837a14d5a57e9d93f24feedf21ac8b15",
+      "size": 2202536
+    },
+    "game_data/characters/诺一钦灵/avatar/泳装/疑惑.png": {
+      "sha256": "6978acee7fb6bec533054e203adc6fa952b75ec9a364ec209450372b2eb9b626",
+      "size": 2205224
+    },
+    "game_data/characters/诺一钦灵/avatar/泳装/紧张.png": {
+      "sha256": "49fe18d14858cb2e1c03e5ca8ee09cc68d700715e1ba8ad573c69bdf8662727f",
+      "size": 2193544
+    },
+    "game_data/characters/诺一钦灵/avatar/泳装/羞耻.png": {
+      "sha256": "2450d4a798fba66fd085448a0b87f618f223d0bae34ba3778cebeb4e7c278ddc",
+      "size": 2186451
+    },
+    "game_data/characters/诺一钦灵/avatar/泳装/自信.png": {
+      "sha256": "a9df20a1b3e3fa02ba4c1dca37b4cacc7b8f98574fc718e61910012d05d70725",
+      "size": 2226418
+    },
+    "game_data/characters/诺一钦灵/avatar/泳装/认真.png": {
+      "sha256": "ce837b17b599bdaee4642d7534ced3d311f28fd9e538d4d7825d66782f87e4bd",
+      "size": 2188955
+    },
+    "game_data/characters/诺一钦灵/avatar/泳装/调皮.png": {
+      "sha256": "9f6544574a34ab99ec4aa64ca6f946a7a89fc519c94bfd80078aa27c4d988b9b",
+      "size": 2180754
+    },
+    "game_data/characters/诺一钦灵/avatar/泳装/高兴.png": {
+      "sha256": "500c9feac18a3b4c89519f9d45f463dd534a3388f1621b9185f7a27ccd5961cd",
+      "size": 2226656
+    },
+    "game_data/characters/诺一钦灵/avatar/生气.webp": {
+      "sha256": "438db20718e384e61951c2eba1279cec6494e08a8053a9c441d550355b47456a",
+      "size": 598116
+    },
+    "game_data/characters/诺一钦灵/avatar/疑惑.webp": {
+      "sha256": "f08774b111c9612c3b94024543e4dddcc6ebad13d9c31b397b5556da895e5927",
+      "size": 601094
+    },
+    "game_data/characters/诺一钦灵/avatar/紧张.webp": {
+      "sha256": "9ddaf5ae2866e611720e028891c110c017e927191edfc5b014142b8ac4c3a190",
+      "size": 594198
+    },
+    "game_data/characters/诺一钦灵/avatar/羞耻.webp": {
+      "sha256": "4a469bc5d0e214c1438f480d9e6dd19ce1889dc67f52acd39f10d732cc806e9b",
+      "size": 588724
+    },
+    "game_data/characters/诺一钦灵/avatar/自信.webp": {
+      "sha256": "6c19d1732fa03c827bae80b8f3a98250824b85f01e2b75acfc63243f2949b354",
+      "size": 602534
+    },
+    "game_data/characters/诺一钦灵/avatar/认真.webp": {
+      "sha256": "92f9f5cd34a58fd46951c48ec2593b48afbb8da90c3e4e2a474aa99cc7badcf5",
+      "size": 593510
+    },
+    "game_data/characters/诺一钦灵/avatar/调皮.webp": {
+      "sha256": "2d749f014a0a353116e03e3a3cce126e9da83c41b157b3ee23a547345e3da4d3",
+      "size": 592176
+    },
+    "game_data/characters/诺一钦灵/avatar/高兴.webp": {
+      "sha256": "6c19d1732fa03c827bae80b8f3a98250824b85f01e2b75acfc63243f2949b354",
+      "size": 602534
+    },
+    "game_data/characters/诺一钦灵/settings.yml": {
+      "sha256": "a634bfa7219acc2590ee5ff5450f3458ad5b561fdceb7eda94f96202cb814490",
+      "size": 5121
+    },
+    "game_data/characters/风雪/avatar/伤心.webp": {
+      "sha256": "0719a7a593794161598d74b16819f81e8ab724c038d385c0c85039afa5dd0465",
+      "size": 172380
+    },
+    "game_data/characters/风雪/avatar/兴奋.png": {
+      "sha256": "79ba1ff4488acce700614b98fe604d42fd02b4c558212c8c53e49e5d711a35ee",
+      "size": 4655184
+    },
+    "game_data/characters/风雪/avatar/厌恶.png": {
+      "sha256": "6c564ee92d38003bcfd487314d8c34f3e4e131b6b6f7880b56ecda21f907a9de",
+      "size": 4691759
+    },
+    "game_data/characters/风雪/avatar/头像.png": {
+      "sha256": "a3044d56e3dd9046ea75e15bd05dd8acda6b141295f2a305619ec57425c16c1c",
+      "size": 615348
+    },
+    "game_data/characters/风雪/avatar/害怕.png": {
+      "sha256": "fcc7089ff9cf1e59c27dfd0bef9bdb34f6c001a3e2a5b559f3653118b6a14aa1",
+      "size": 4645515
+    },
+    "game_data/characters/风雪/avatar/害羞.png": {
+      "sha256": "a691bf2275d4ba85576b10019bce7418c8219d222fc3d4ec52bf4e7297d3abdd",
+      "size": 4682069
+    },
+    "game_data/characters/风雪/avatar/平静.png": {
+      "sha256": "40b21da51914a7815c8c245ae8e817a90e80136d181e1f23594f227a75b53c9b",
+      "size": 4635050
+    },
+    "game_data/characters/风雪/avatar/心动.png": {
+      "sha256": "0c7eaf39375900fe0ca34c38d617b4c2f320806a55271d51fbafdfbe07597e3a",
+      "size": 4683752
+    },
+    "game_data/characters/风雪/avatar/惊讶.png": {
+      "sha256": "bac60c59bf000b79fb95883001b5b1f452a900c3352450d6da67625229993286",
+      "size": 4654278
+    },
+    "game_data/characters/风雪/avatar/慌张.png": {
+      "sha256": "c9a5d5cb46141e4eeeda3c972bc4ab5adef081201d65bc374ca5ce49bcf979d8",
+      "size": 4654173
+    },
+    "game_data/characters/风雪/avatar/担心.png": {
+      "sha256": "bba67a92a28726586ce9e8134163c929f9a801311f837a83c1089a9cb1a4475c",
+      "size": 4680112
+    },
+    "game_data/characters/风雪/avatar/无奈.png": {
+      "sha256": "f6e27d24d233a0268d4a5bfcc85fa82933877666ccf5d749bf49efca678aae44",
+      "size": 4651260
+    },
+    "game_data/characters/风雪/avatar/正常.png": {
+      "sha256": "6571ac10d8a7a54ef85ea00a0f4a52d9712e39ec1805ff87a5beac660695f061",
+      "size": 4653667
+    },
+    "game_data/characters/风雪/avatar/生气.webp": {
+      "sha256": "49183ee6e69acd98254620a05a76db493a4680a9457a87a542da519e6c2ca63f",
+      "size": 172460
+    },
+    "game_data/characters/风雪/avatar/疑惑.png": {
+      "sha256": "6c6aace237c107f09d22e2fa2533b30e7680fd1d1ff8e58848c3ecc83b0e7d78",
+      "size": 4661556
+    },
+    "game_data/characters/风雪/avatar/紧张.png": {
+      "sha256": "98d5aa9b6352f803f53bf4f041fd74a4b36a4a10cacc50de569be611cafd73e4",
+      "size": 4656345
+    },
+    "game_data/characters/风雪/avatar/羞耻.png": {
+      "sha256": "46bb38a54abf8367838ced91b55e40251afbb539696ea8a87f027edf58d80215",
+      "size": 4646823
+    },
+    "game_data/characters/风雪/avatar/自信.png": {
+      "sha256": "dee90440cccb792c35393a9c8237b5577ee7e6f36d1ffe0b396cb618e5f06106",
+      "size": 4656647
+    },
+    "game_data/characters/风雪/avatar/认真.webp": {
+      "sha256": "0c114ef4ed335359d6dc4dcddf08c9fa6c87e040068e762bf8b0692f7b31d33d",
+      "size": 172228
+    },
+    "game_data/characters/风雪/avatar/调皮.png": {
+      "sha256": "8e29f87a557015e16d451d810c492c38f21bbcf1c8b5a99f4524ecff1a72117f",
+      "size": 4644091
+    },
+    "game_data/characters/风雪/avatar/高兴.png": {
+      "sha256": "223b8b4935b6891f00bbe9baf4c3ca55178d04e94e555c1e08cba0daab187ef4",
+      "size": 4652806
+    },
+    "game_data/characters/风雪/settings.yml": {
+      "sha256": "7de87259ad7437a6e8e12f24cd90a66e1f755edc91683d6bde29b50251cdbf4e",
+      "size": 16533
+    },
+    "game_data/musics/夜晚音效.mp3": {
+      "sha256": "00c0f86820720f85d61b357c4b76a95912cd359dc0c9db04b3c605b0947c830b",
+      "size": 2906253
+    },
+    "game_data/scripts/character/诺一钦灵/小狼的爱好/Chapters/Intro/intro.yaml": {
+      "sha256": "43f8809bf396d5b3ff6158e66f50f57742d3106b2f0f9fe4736c14108541f5ae",
+      "size": 466
+    },
+    "game_data/scripts/character/诺一钦灵/小狼的爱好/Chapters/Intro/intro2.yaml": {
+      "sha256": "5ea43dcad10f009cc2c3078e6eb8a2cf5423833752f34b5deb16e01cb79ee4b9",
+      "size": 1061
+    },
+    "game_data/scripts/character/诺一钦灵/小狼的爱好/story_config.yaml": {
+      "sha256": "2e4e8d5718626ab46e256d2ba76d55c7e52575594174aa255c0d58f83dd4a9d6",
+      "size": 599
+    },
+    "game_data/scripts/character/诺一钦灵/想出去玩啦/Assets/Backgrounds/公园小卖部_夕阳.jpg": {
+      "sha256": "29a1414fe1685c7def74c24fd57a803a15dd4f0fd101ff7eacfa9ed24f161544",
+      "size": 2886348
+    },
+    "game_data/scripts/character/诺一钦灵/想出去玩啦/Assets/Backgrounds/公园小卖部_晚上.jpg": {
+      "sha256": "9b71bdf9d5829daf88326d92cb05284c7ec187e82e1440a435edb3487d5e06d1",
+      "size": 2575853
+    },
+    "game_data/scripts/character/诺一钦灵/想出去玩啦/Assets/Backgrounds/夜晚.jpg": {
+      "sha256": "0e285c0e83f5efae4e796a66359b24d71599c65fdcaefdc197d8110a95c37c0d",
+      "size": 309870
+    },
+    "game_data/scripts/character/诺一钦灵/想出去玩啦/Assets/Backgrounds/春天的公园_晚上.jpg": {
+      "sha256": "f8e766d46099fd2bbd48469878d4fdb73572649f8f93cdc5607934dd9ef0e2c4",
+      "size": 3310590
+    },
+    "game_data/scripts/character/诺一钦灵/想出去玩啦/Assets/Backgrounds/春天的公园_白天.jpg": {
+      "sha256": "a997a15de3d84c4b15192ec0898a6bce65b3ad79f9877c3f3ab4154108e52712",
+      "size": 3252256
+    },
+    "game_data/scripts/character/诺一钦灵/想出去玩啦/Assets/Backgrounds/河畔堤坝步道_晚上.jpg": {
+      "sha256": "f9a5170ba3778ac55c7192d613b6fea7fe2e6495d26e2269e3459a5c0f4a492a",
+      "size": 2528106
+    },
+    "game_data/scripts/character/诺一钦灵/想出去玩啦/Chapters/final.yaml": {
+      "sha256": "ff0184490cfa8c02559c48aa6ff1a00e467d83824981dbb4053629a3a526af76",
+      "size": 726
+    },
+    "game_data/scripts/character/诺一钦灵/想出去玩啦/Chapters/main.yaml": {
+      "sha256": "60b7b3304fe0815b69f90ceb5b7a6298e33415739dc69ec51dc658b483faf474",
+      "size": 859
+    },
+    "game_data/scripts/character/诺一钦灵/想出去玩啦/Chapters/main2.yaml": {
+      "sha256": "d801aff590a44a60424be0a0ee9794771fbcaf5646fef774c83a2d9afe59f505",
+      "size": 1062
+    },
+    "game_data/scripts/character/诺一钦灵/想出去玩啦/Chapters/main3.yaml": {
+      "sha256": "5eb54386cd2f2d0130e14a3a7fa459bc61b205c464a19d3bf3e5889d69c7848f",
+      "size": 1268
+    },
+    "game_data/scripts/character/诺一钦灵/想出去玩啦/Chapters/main4.yaml": {
+      "sha256": "d43516695a13e8b067d98d10502480268fbc0219b4db3c1d71db73aca06b42e9",
+      "size": 1285
+    },
+    "game_data/scripts/character/诺一钦灵/想出去玩啦/story_config.yaml": {
+      "sha256": "57852e05f7ebfdf37daa6676697ddee6f44cef7dfd270aa7ef39d9ddf3f38cf0",
+      "size": 705
+    },
+    "game_data/scripts/character/诺一钦灵/钦灵黄油/Chapters/Intro/intro.yaml": {
+      "sha256": "d0a7d7c360da4c338df44c12a1d14c3ece326a84d66c08f45d6c243f461e9cb9",
+      "size": 1782
+    },
+    "game_data/scripts/character/诺一钦灵/钦灵黄油/Chapters/Intro/intro2.yaml": {
+      "sha256": "5ea43dcad10f009cc2c3078e6eb8a2cf5423833752f34b5deb16e01cb79ee4b9",
+      "size": 1061
+    },
+    "game_data/scripts/character/诺一钦灵/钦灵黄油/story_config.yaml": {
+      "sha256": "60df61bac92300880d45f143ca641edbd2f0721ba689aa214f996a7532b50b4f",
+      "size": 912
+    },
+    "game_data/scripts/character/风雪/神秘の魔法药水/Chapters/main.yaml": {
+      "sha256": "e8996ae8689c396cbef75485ac0d24c634d43c2500d9e2790dbcb3748103853e",
+      "size": 3287
+    },
+    "game_data/scripts/character/风雪/神秘の魔法药水/story_config.yaml": {
+      "sha256": "3616e23b301bf30c7236ecc6ffa21e19a1132b1ce7a9dac569fbd4c1228fba8f",
+      "size": 707
+    },
+    "game_data/scripts/character/风雪/自己做饭才香哦/Assets/Backgrounds/超市.jpg": {
+      "sha256": "a9b919398842a209af8a1e0b6a90a58e0b3697e77fa7a93cbd880ca181431119",
+      "size": 2563237
+    },
+    "game_data/scripts/character/风雪/自己做饭才香哦/Assets/Backgrounds/风雪家厨房.png": {
+      "sha256": "47f293f00cf603bf4bcd3942209d026823a93b76027d2a1b566499607ec35e3f",
+      "size": 9380870
+    },
+    "game_data/scripts/character/风雪/自己做饭才香哦/Chapters/final.yaml": {
+      "sha256": "262ae568c30d16c810f3d905705e18b4aa410c1012f822def3f07497012d0413",
+      "size": 506
+    },
+    "game_data/scripts/character/风雪/自己做饭才香哦/Chapters/main.yaml": {
+      "sha256": "ccefa0c922f945cb1c86c5621f9f55be4489c5a916c84fe408be523dcbdfe16e",
+      "size": 1918
+    },
+    "game_data/scripts/character/风雪/自己做饭才香哦/Chapters/main2.yaml": {
+      "sha256": "1c388f3da72811bd4ae971a2dd61519f08285433b73fa4aa81d06420f6fa5e53",
+      "size": 2297
+    },
+    "game_data/scripts/character/风雪/自己做饭才香哦/Chapters/main3.yaml": {
+      "sha256": "d2a626f8d1f10b8b87e6640c7942ca7daa656fad1f5628b4eea81cb40ee1f364",
+      "size": 1295
+    },
+    "game_data/scripts/character/风雪/自己做饭才香哦/Chapters/main4.yaml": {
+      "sha256": "42ca64849b1b90327327d69b426f703d6f2a787151d6b20ac0beecc962c30539",
+      "size": 1507
+    },
+    "game_data/scripts/character/风雪/自己做饭才香哦/story_config.yaml": {
+      "sha256": "c3a4364352bd2736c73b4179284c577e164692d6f41338f014d3c6cbe50794c9",
+      "size": 698
+    },
+    "game_data/scripts/character/风雪/试着仰望星空/Chapters/main.yaml": {
+      "sha256": "981da5f45d606f72f81843d22f9663ab360cee7cdce5a94f472d677ac21fec37",
+      "size": 1238
+    },
+    "game_data/scripts/character/风雪/试着仰望星空/story_config.yaml": {
+      "sha256": "825ab937a8761e90d430ba55aa996d76c1a57866e78b12f85a08e49a5523b502",
+      "size": 595
+    },
+    "third_party/emotion_model_19emo/.gitkeep": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    }
+  }
+}

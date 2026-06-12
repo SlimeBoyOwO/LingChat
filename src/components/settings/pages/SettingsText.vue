@@ -86,6 +86,54 @@
         </div>
       </MenuItem>
 
+      <!-- ─── 版本更新 ──────────────────────────────── -->
+      <MenuItem title="版本更新" size="small">
+        <template #header>
+          <RefreshCw :size="20" :class="{ 'animate-spin': updateChecking }" />
+        </template>
+        <div class="space-y-2 w-full">
+          <div class="flex items-center justify-between text-sm">
+            <span class="text-slate-500">当前版本</span>
+            <span class="font-mono text-slate-700">{{ currentAppVersion }}</span>
+          </div>
+          <div v-if="updateDataInfo" class="flex items-center justify-between text-sm">
+            <span class="text-slate-500">数据版本</span>
+            <span class="font-mono text-slate-700">v{{ updateDataInfo.currentVersion }}</span>
+          </div>
+          <div v-if="updateLatestVersion" class="flex items-center justify-between text-sm">
+            <span class="text-slate-500">最新版本</span>
+            <span class="font-mono text-cyan-600 font-bold">{{ updateLatestVersion }}</span>
+          </div>
+          <div v-if="updateStatusText" class="text-xs" :class="updateStatusColor">
+            {{ updateStatusText }}
+          </div>
+          <div class="flex gap-3 pt-1">
+            <Button type="big" @click="handleCheckUpdate" :disabled="updateChecking">
+              {{ updateChecking ? '检查中...' : '检查更新' }}
+            </Button>
+            <Button
+              v-if="updateAvailable"
+              type="big"
+              @click="handleDoUpdate"
+            >
+              立即更新
+            </Button>
+          </div>
+           <UpdateDialog
+            :visible="showUpdateInlineDialog"
+            :phase="updatePhase"
+            :app-version="updateAppVersion"
+            :app-release-notes="updateAppReleaseNotes"
+            :data-info="updateDataInfo"
+            :data-progress="updateDataProgress"
+            :error-message="updateErrorMessage"
+            @update="handleInstallFromSettings"
+            @later="showUpdateInlineDialog = false"
+            @close="showUpdateInlineDialog = false"
+          />
+        </div>
+      </MenuItem>
+
       <MenuItem title="返回主菜单" size="small">
         <template #header>
           <ArrowBigLeft :size="20" />
@@ -124,8 +172,12 @@ import {
   ArrowBigLeft,
   Rss,
   Download,
+  RefreshCw,
 } from 'lucide-vue-next'
 import { reactivateTTS } from '@/api/services/game-info'
+import { useUpdater } from '@/composables/useUpdater'
+import { getVersion } from '@tauri-apps/api/app'
+import UpdateDialog from '@/components/UpdateDialog.vue'
 
 const router = useRouter()
 const uiStore = useUIStore()
@@ -137,6 +189,80 @@ const envSettings = ref<Record<string, ConfigItem>>({})
 
 // 判断是否在自由对话模式（没有运行剧本）
 const isFreeDialogMode = computed(() => gameStore.runningScript === null)
+
+// ─── 更新检查 ────────────────────────────────────────────────
+
+const updater = useUpdater()
+const {
+  phase: updatePhase,
+  appVersion: updateAppVersion,
+  appReleaseNotes: updateAppReleaseNotes,
+  dataInfo: updateDataInfo,
+  dataProgress: updateDataProgress,
+  errorMessage: updateErrorMessage,
+} = updater
+
+const currentAppVersion = ref('0.1.0')
+const updateLatestVersion = ref('')
+const updateChecking = ref(false)
+const showUpdateInlineDialog = ref(false)
+
+const updateAvailable = computed(() => updateLatestVersion.value !== '')
+
+const updateStatusText = computed(() => {
+  if (updateAvailable.value) return '发现新版本可用！'
+  if (updateDataInfo.value && !updateDataInfo.value.available && updateDataInfo.value.currentVersion > 0)
+    return '✓ 已是最新版本'
+  return ''
+})
+
+const updateStatusColor = computed(() => {
+  if (updateAvailable.value) return 'text-amber-600'
+  return 'text-green-600'
+})
+
+async function loadAppVersion() {
+  try {
+    currentAppVersion.value = await getVersion()
+  } catch {
+    // 使用默认值
+  }
+}
+
+async function handleCheckUpdate() {
+  updateChecking.value = true
+  updateLatestVersion.value = ''
+  try {
+    const hasUpdate = await updater.checkForUpdates()
+    if (hasUpdate) {
+      updateLatestVersion.value = updateAppVersion.value || updatePhase.value
+    }
+    // 即使没有 app 更新，也同步 data 版本信息
+    if (updateDataInfo.value && updateDataInfo.value.available) {
+      updateLatestVersion.value = updateLatestVersion.value || `(数据 v${updateDataInfo.value.newVersion})`
+    }
+  } catch (e) {
+    console.error('[SettingsText] 更新检查失败:', e)
+  } finally {
+    updateChecking.value = false
+  }
+}
+
+async function handleDoUpdate() {
+  showUpdateInlineDialog.value = true
+}
+
+async function handleInstallFromSettings() {
+  try {
+    await updater.installAllUpdates()
+    updateLatestVersion.value = ''
+  } catch {
+    // 错误通过 phase 反映
+  }
+}
+
+// 加载版本号
+loadAppVersion()
 
 const returnToMain = () => {
   uiStore.toggleSettings(false)
