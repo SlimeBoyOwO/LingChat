@@ -151,7 +151,6 @@ watch(
 
 // 用户手动触发的函数
 const manualTriggerContinue = () => {
-  console.log('用户主动点击了')
   if (timerId) {
     clearTimeout(timerId)
     timerId = null

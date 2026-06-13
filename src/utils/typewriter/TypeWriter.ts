@@ -1,39 +1,56 @@
 import { useUIStore } from '../../stores/modules/ui/ui'
 
+export type TypeWriterStatus = 'idle' | 'typing' | 'completed'
+
 export class TypeWriter {
   private element: HTMLInputElement | HTMLTextAreaElement
   private timer: ReturnType<typeof setTimeout> | null = null
-  private abortController: AbortController | null
   private speed: number
-  private isFinished: boolean
+  private generation: number
+  private textBuffer: string
+
   private onFinishCallback: (() => void) | null
+  private onTextUpdateCallback: ((text: string) => void) | null
+
+  // Audio
   private audioContext: AudioContext | null
   private soundBuffers: AudioBuffer[]
-  private textBuffers: string
   private readonly soundUrls: string[]
-  private onTextUpdateCallback: ((text: string) => void) | null
+
+  // State
+  private _status: TypeWriterStatus = 'idle'
 
   constructor(
     element: HTMLInputElement | HTMLTextAreaElement,
     onTextUpdateCallback?: (text: string) => void,
+    soundUrls?: string[],
   ) {
     this.element = element
     this.timer = null
-    this.abortController = null
-    this.speed = 50 // 默认速度
-    this.isFinished = false
+    this.speed = 50
+    this.generation = 0
+    this.textBuffer = ''
     this.onFinishCallback = null
+    this.onTextUpdateCallback = onTextUpdateCallback || null
     this.audioContext = null
     this.soundBuffers = []
-    this.textBuffers = ''
-    this.soundUrls = ['../audio_effects/对话.wav']
-    this.onTextUpdateCallback = onTextUpdateCallback || null
+    this.soundUrls = soundUrls ?? ['../audio_effects/对话.wav']
   }
 
-  // 初始化音频系统
+  /** Current typewriter state, queryable externally at any time. */
+  public get status(): TypeWriterStatus {
+    return this._status
+  }
+
+  // ─── Audio ───────────────────────────────────────────────
+
   private async initAudio(): Promise<void> {
     try {
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+      // Modern browsers require user gesture; resume if suspended
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume()
+      }
       await this.loadSounds()
     } catch (e) {
       console.warn('音频初始化失败:', e)
@@ -42,7 +59,6 @@ export class TypeWriter {
     }
   }
 
-  // 加载音效
   private async loadSounds(): Promise<void> {
     if (!this.audioContext) return
 
@@ -52,140 +68,171 @@ export class TypeWriter {
         const arrayBuffer = await response.arrayBuffer()
         return this.audioContext!.decodeAudioData(arrayBuffer)
       })
-
       this.soundBuffers = await Promise.all(promises)
     } catch (e) {
       console.warn('音效加载失败:', e)
     }
   }
 
-  // 播放随机音效
+  /** Safe wrapper — never throws, so the timer chain cannot be broken. */
   private playRandomSound(): void {
-    const uiStore = useUIStore()
-    if (!uiStore.enableChatEffectSound || !this.audioContext || this.soundBuffers.length === 0) {
-      return
-    }
+    try {
+      const uiStore = useUIStore()
+      if (!uiStore.enableChatEffectSound || !this.audioContext || this.soundBuffers.length === 0) {
+        return
+      }
+      if (uiStore.currentAvatarAudio !== 'None') return
 
-    if (uiStore.currentAvatarAudio !== 'None') return
+      // Ensure context is running (may have been suspended by browser policy)
+      if (this.audioContext.state === 'suspended') {
+        this.audioContext.resume()
+      }
 
-    const buffer = this.soundBuffers[Math.floor(Math.random() * this.soundBuffers.length)]
-    const source = this.audioContext.createBufferSource()
-    if (buffer) {
+      const buffer = this.soundBuffers[Math.floor(Math.random() * this.soundBuffers.length)]
+      if (!buffer) return
+
+      const source = this.audioContext.createBufferSource()
       source.buffer = buffer
+      source.playbackRate.value = 1.0 + (Math.random() - 0.5) * 0.01 // slight variation
+
+      const gainNode = this.audioContext.createGain()
+      gainNode.gain.value = 0.8
+      source.connect(gainNode)
+      gainNode.connect(this.audioContext.destination)
+      source.start()
+    } catch {
+      // Silently ignore audio playback failures — never break the typing animation
     }
-
-    // 添加一些随机变化使音效更自然
-    source.playbackRate.value = 1.0
-
-    const gainNode = this.audioContext.createGain()
-    gainNode.gain.value = 0.8 // 降低音量
-
-    source.connect(gainNode)
-    gainNode.connect(this.audioContext.destination)
-
-    source.start()
   }
 
-  // 设置是否启用音效
   public setSoundEnabled(enabled: boolean): void {
     const uiStore = useUIStore()
     uiStore.setEnableChatEffectSound(enabled)
     if (enabled && !this.audioContext) {
+      this.initAudio() // fire-and-forget: audio is optional enhancement
+    }
+  }
+
+  // ─── Core Typing ─────────────────────────────────────────
+
+  /**
+   * Start typing the given text character by character.
+   *
+   * Returns a Promise that resolves when:
+   *   - All characters have been displayed (natural completion), OR
+   *   - The animation is cancelled by a subsequent `start()` call
+   *
+   * Safe to call while a previous animation is still running — the old one
+   * is cancelled cleanly via generation counter before the new one begins.
+   */
+  public start(text: string, speed?: number): Promise<void> {
+    // Cancel any previous animation and advance generation
+    this.stop()
+    this.generation++
+    const currentGen = this.generation
+
+    this._status = 'typing'
+    this.textBuffer = ''
+
+    // Parse speed
+    if (speed !== undefined) {
+      this.speed = Number.isInteger(speed) ? speed : parseInt(String(speed), 10) || 50
+    }
+
+    // Init audio if needed (fire-and-forget — audio is non-critical)
+    const uiStore = useUIStore()
+    if (uiStore.enableChatEffectSound && !this.audioContext) {
       this.initAudio()
     }
-  }
 
-  public async start(text: string, numSpeed?: number): Promise<void> {
-    const uiStore = useUIStore()
-    // 停止上一个动画
-    this.stop()
-    this.isFinished = false
-
-    // 处理速度参数
-    if (numSpeed !== undefined) {
-      this.speed = Number.isInteger(numSpeed)
-        ? numSpeed
-        : Number.parseInt(numSpeed.toString(), 10) || 50
-    } else {
-      console.warn('速度值未定义，将采用默认速度。')
-      this.speed = 50
-    }
-
-    this.abortController = new AbortController()
     let i = 0
-    // this.element.value = "";
-    // this.element.textContent = "";
-    this.textBuffers = ''
 
-    // 如果启用音效但音频未初始化，则初始化
-    if (uiStore.enableChatEffectSound && !this.audioContext) {
-      await this.initAudio()
-    }
-
-    const typing = (): void => {
-      if (this.abortController?.signal.aborted) {
-        return
-      }
-
-      if (i < text.length) {
-        this.textBuffers += text.charAt(i)
-        this.element.value = this.textBuffers
-        this.element.textContent = this.textBuffers
-        this.playRandomSound()
-        // 调用文本更新回调
-        if (this.onTextUpdateCallback) {
-          this.onTextUpdateCallback(this.textBuffers)
+    return new Promise<void>((resolve) => {
+      const typing = (): void => {
+        // Guard: stale generation means a newer start() has taken over
+        if (this.generation !== currentGen) {
+          resolve()
+          return
         }
-        i++
-        this.element.scrollTop = this.element.scrollHeight
 
-        // 计算随机间隔时间
-        const baseDelay = this.speed * 0.8 // 基础速度为设定值的一半
-        const randomVariation = this.speed * 0.4 // 随机变化范围为设定值的一半
-        const delay = baseDelay + Math.random() * randomVariation
+        if (i < text.length) {
+          this.textBuffer += text.charAt(i)
+          this.element.value = this.textBuffer
+          if (this.onTextUpdateCallback) {
+            this.onTextUpdateCallback(this.textBuffer)
+          }
+          i++
+          this.element.scrollTop = this.element.scrollHeight
 
-        this.timer = setTimeout(typing, delay)
-      } else {
-        this.finish()
+          this.playRandomSound()
+
+          // Calculate delay with random variation for natural feel
+          // Effective range: speed * 0.8 to speed * 1.2
+          const baseDelay = this.speed * 0.8
+          const randomVariation = this.speed * 0.4
+          const delay = baseDelay + Math.random() * randomVariation
+
+          this.timer = setTimeout(typing, delay)
+        } else {
+          this.finish()
+          resolve()
+        }
       }
-    }
 
-    // 立即开始第一次输入
-    typing()
+      // Start the typing loop immediately
+      typing()
+    })
   }
 
+  /** Immediately complete the current typing animation (show all text). */
   public finish(): void {
-    this.stop()
-    this.isFinished = true
-    ;(this.element.style as any).borderRight = 'none'
+    this.stopTimer()
+    this._status = 'completed'
+    this.element.style.setProperty('border-right', 'none')
     if (this.onFinishCallback) {
       this.onFinishCallback()
     }
   }
 
+  /**
+   * Cancel the current typing animation.
+   * Resets status to idle but does NOT clear the displayed text.
+   */
   public stop(): void {
+    this.stopTimer()
+    this.generation++ // invalidate any lingering typing closures
+    this._status = 'idle'
+  }
+
+  /** Clear the DOM element and internal text buffer. */
+  public clear(): void {
+    this.element.value = ''
+    this.textBuffer = ''
+  }
+
+  /** Full cleanup: stop animation, clear text, close audio resources. */
+  public destroy(): void {
+    this.stop()
+    this.clear()
+    if (this.audioContext) {
+      this.audioContext.close().catch(() => {})
+      this.audioContext = null
+    }
+    this.soundBuffers = []
+  }
+
+  // ─── Callback registration ───────────────────────────────
+
+  public onFinish(callback: () => void): void {
+    this.onFinishCallback = callback
+  }
+
+  // ─── Private helpers ─────────────────────────────────────
+
+  private stopTimer(): void {
     if (this.timer) {
       clearTimeout(this.timer)
       this.timer = null
     }
-    if (this.abortController) {
-      this.abortController.abort()
-      this.abortController = null
-    }
-    this.isFinished = false
-  }
-
-  public clear(): void {
-    this.element.value = ''
-    this.element.textContent = ''
-    this.textBuffers = ''
-  }
-
-  public checkFinished(): boolean {
-    return this.isFinished
-  }
-
-  public onFinish(callback: () => void): void {
-    this.onFinishCallback = callback
   }
 }

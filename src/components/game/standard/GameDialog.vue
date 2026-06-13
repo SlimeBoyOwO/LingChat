@@ -134,15 +134,11 @@ const openSceneSettings = () => {
 }
 const currentDisplayedText = ref('')
 
-const { startTyping, stopTyping } = useTypeWriter(textareaRef, (text) => {
+const { startTyping, stopTyping, isTyping } = useTypeWriter(textareaRef, (text) => {
   currentDisplayedText.value = text
 })
 
 const isSending = computed(() => gameStore.currentStatus === 'thinking')
-const isTyping = computed(
-  () =>
-    uiStore.showCharacterLine !== '' && currentDisplayedText.value !== uiStore.showCharacterLine,
-)
 
 const emit = defineEmits(['player-continued', 'dialog-proceed'])
 

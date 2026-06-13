@@ -47,11 +47,6 @@ const isVisible = computed(() => {
   return gameStore.currentStatus === 'responding' && gameStore.currentLine.trim() !== ''
 })
 
-const isTyping = computed(
-  () =>
-    uiStore.showCharacterLine !== '' && currentDisplayedText.value !== uiStore.showCharacterLine,
-)
-
 const characterEmotion = computed(() => {
   return uiStore.showCharacterEmotion ? uiStore.showCharacterEmotion : ''
 })
@@ -66,7 +61,7 @@ const handleDialogueClick = () => {
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 
-const { startTyping, stopTyping } = useTypeWriter(textareaRef, (text) => {
+const { startTyping, stopTyping, isTyping } = useTypeWriter(textareaRef, (text) => {
   currentDisplayedText.value = text
 })
 
