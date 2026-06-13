@@ -33,8 +33,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          lfs: true
+
+      - name: 拉取 LFS 游戏资源 (仅 data/game_data/)
+        run: git lfs pull --include="data/game_data/**"
 
       - uses: actions/setup-node@v4
         with:
@@ -70,8 +71,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          lfs: true
+
+      - name: 拉取 LFS 应用资源 (仅 public/ + src/assets/ + icons)
+        run: git lfs pull --include="public/**,src/assets/**,src-tauri/icons/**"
 
       - uses: actions/download-artifact@v4
         with:
@@ -138,8 +140,9 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          lfs: true
+
+      - name: 拉取 LFS 应用资源 (仅 public/ + src/assets/ + icons)
+        run: git lfs pull --include="public/**,src/assets/**,src-tauri/icons/**"
 
       - uses: actions/download-artifact@v4
         with:
@@ -181,8 +184,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          lfs: true
+
+      - name: 拉取 LFS 应用资源 (仅 public/ + src/assets/ + icons)
+        run: git lfs pull --include="public/**,src/assets/**,src-tauri/icons/**"
 
       - uses: actions/download-artifact@v4
         with:
