@@ -207,7 +207,7 @@ jobs:
       - name: 安装系统依赖
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libpipewire-0.3-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libpipewire-0.3-dev libgbm-dev libxdo-dev libxcb-shape0-dev libxcb-xfixes0-dev libasound2-dev libssl-dev
 
       - name: 安装 Rust
         uses: dtolnay/rust-toolchain@stable
