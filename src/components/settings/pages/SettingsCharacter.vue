@@ -51,6 +51,15 @@
       </div>
     </MenuItem>
 
+    <MenuItem title="自定义修改" size="small">
+      <template #header>
+        <UserPlus :size="20" />
+      </template>
+      <div class="space-y-2">
+        <Button type="big" @click="openCharacterFolder">打开角色文件夹</Button>
+      </div>
+    </MenuItem>
+
     <MenuItem title="刷新人物列表" size="small">
       <template #header>
         <RefreshCcw :size="20" />
@@ -77,6 +86,7 @@
 import { onMounted, ref, watch } from 'vue'
 import { Birdhouse, Rabbit, RefreshCcw, UserPlus } from 'lucide-vue-next'
 import { convertFileSrc } from '@tauri-apps/api/core'
+import { invoke } from '@tauri-apps/api/core'
 
 import CharacterCard from '../../ui/Menu/CharacterCard.vue'
 import SettingsCharacterCreate from './SettingsCharacterCreate.vue'
@@ -151,14 +161,11 @@ const refreshCharacters = async (): Promise<void> => {
 }
 
 const openCreativeWeb = async (): Promise<void> => {
-  try {
-    const response = await fetch('/api/v1/chat/character/open_web')
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
-    await response.json()
-  } catch (error) {
-    await dialogStore.alert('启动失败，请手动打开 LingChat 的 discussion 页面')
-    console.error('打开创意工坊失败:', error)
-  }
+  uiStore.currentSettingsTab = 'workshop'
+}
+
+const openCharacterFolder = async () => {
+  await invoke('open_characters_folder')
 }
 
 const openCreateModal = () => {

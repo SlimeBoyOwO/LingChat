@@ -73,10 +73,7 @@ pub fn run() {
                 .with_timer(LocalTimer)
                 .with_filter(filter.clone()),
         )
-        .with(
-            utils::log_bridge::LogBridgeLayer
-                .with_filter(filter),
-        )
+        .with(utils::log_bridge::LogBridgeLayer.with_filter(filter))
         .init();
 
     #[allow(deprecated)]
@@ -143,9 +140,8 @@ pub fn run() {
                 std::sync::Arc::new(tokio::sync::Mutex::new(ScreenAnalyzer::new(sa_config)))
             };
 
-            let screenshot_capture = std::sync::Arc::new(tokio::sync::Mutex::new(
-                ScreenshotCaptureState::default(),
-            ));
+            let screenshot_capture =
+                std::sync::Arc::new(tokio::sync::Mutex::new(ScreenshotCaptureState::default()));
 
             let auto_save_manager = std::sync::Arc::new(tokio::sync::Mutex::new(
                 ai_service::game_system::auto_save::AutoSaveManager::new(
@@ -280,6 +276,7 @@ pub fn run() {
             api::character::get_avatar_file,
             api::character::select_clothes,
             api::character::update_role_settings,
+            api::character::open_characters_folder,
             api::background::get_background_list,
             api::background::get_background_file,
             api::background::upload_background_image,
@@ -293,7 +290,6 @@ pub fn run() {
             api::music::get_music_list,
             api::music::get_music_file,
             api::music::upload_music,
-
             api::asset::get_asset_base64,
             api::asset::get_voice_audio,
             api::game::init_game,
@@ -330,6 +326,7 @@ pub fn run() {
             api::adventure::start_adventure,
             api::adventure::check_adventure_unlocks,
             api::adventure::reset_adventure,
+            api::workshop::fetch_discussions,
             data_update::check_data_update,
             data_update::apply_data_update,
         ])

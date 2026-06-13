@@ -1,6 +1,7 @@
 use std::fs;
 use std::io::Write;
 
+use crate::utils::system::open_folder;
 use serde::{Deserialize, Serialize};
 
 use super::{backgrounds_dir, validate_path_in_base};
@@ -128,32 +129,4 @@ pub fn open_backgrounds_folder() -> Result<(), String> {
 
     let path_str = bg_dir.to_string_lossy().into_owned();
     open_folder(&path_str)
-}
-
-fn open_folder(path: &str) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        std::process::Command::new("explorer")
-            .arg(path)
-            .spawn()
-            .map_err(|e| format!("打开文件夹失败: {}", e))?;
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg(path)
-            .spawn()
-            .map_err(|e| format!("打开文件夹失败: {}", e))?;
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        std::process::Command::new("xdg-open")
-            .arg(path)
-            .spawn()
-            .map_err(|e| format!("打开文件夹失败: {}", e))?;
-    }
-
-    Ok(())
 }

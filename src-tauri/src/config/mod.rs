@@ -69,6 +69,10 @@ pub mod keys {
     pub const LAST_SCENE_ID: &str = "game.last_scene_id";
     /// 场景感知开关（切换场景时是否自动产生旁白台词）
     pub const SCENE_AWARENESS_ENABLED: &str = "game.scene_awareness_enabled";
+
+    // 创意工坊
+    /// GitHub Personal Access Token（可选，用于 GraphQL 获取 upvote 数）
+    pub const GITHUB_TOKEN: &str = "workshop.github_token";
 }
 
 // ========== 类型化配置 ==========
@@ -197,6 +201,11 @@ fn get_string(store: &Store<Wry>, key: &str) -> Option<String> {
     store
         .get(key)
         .and_then(|v| v.as_str().map(|s| s.to_string()))
+}
+
+/// Public accessor for reading a string value from the settings store.
+pub fn get_setting_string(app: &AppHandle, key: &str) -> Option<String> {
+    settings_store(app).ok().and_then(|store| get_string(&store, key))
 }
 
 fn get_bool(store: &Store<Wry>, key: &str, default: bool) -> bool {
@@ -546,6 +555,31 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
             "TTS 配置".to_string(),
             Category {
                 subcategories: tts_subs,
+            },
+        );
+    }
+
+    // ===== 创意工坊 =====
+    {
+        let mut workshop_subs = BTreeMap::new();
+
+        workshop_subs.insert(
+            "GitHub Token".to_string(),
+            Subcategory {
+                description: "配置 GitHub Personal Access Token 以获取准确的 Discussion upvote 热度排序（可选）".to_string(),
+                settings: vec![ConfigSetting {
+                    key: keys::GITHUB_TOKEN.to_string(),
+                    value: read_setting(app, keys::GITHUB_TOKEN, ""),
+                    description: "填入你的 GitHub Token（无需任何权限，仅用于调用 GraphQL API）。留空使用 REST API，无法获取独立 upvote 数（会用 👍 表情数代替）。Token 创建地址：https://github.com/settings/tokens".to_string(),
+                    setting_type: "text".to_string(),
+                }],
+            },
+        );
+
+        tree.insert(
+            "创意工坊".to_string(),
+            Category {
+                subcategories: workshop_subs,
             },
         );
     }
