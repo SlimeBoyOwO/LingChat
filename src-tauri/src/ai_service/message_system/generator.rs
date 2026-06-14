@@ -18,7 +18,7 @@ use tokio::sync::{mpsc, Mutex};
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::llm::LlmClient;
-use crate::ai_service::message_system::processor::{MessageProcessor, UserMessageOutcome};
+use crate::ai_service::message_system::processor::{EmotionSegment, MessageProcessor, UserMessageOutcome};
 use crate::ai_service::message_system::producer::{SentenceItem, StreamProducer};
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::responses::{event_names, ReplyResponse};
@@ -40,6 +40,18 @@ pub struct GeneratorDeps {
     pub concurrency: usize,
 }
 
+/// `process_message` 各步骤间传递的用户消息上下文。
+struct UserMessageContext {
+    /// 处理后的完整消息（含 temp 段）。
+    processed: String,
+    /// 临时消息段（如有）。
+    temp: Option<String>,
+    /// 插入的用户行在 line_list 中的索引。
+    line_index: Option<usize>,
+    /// 用户消息序号（1-indexed，按 sender_role_id==0 且 User 属性计数）。
+    seq: Option<u32>,
+}
+
 pub struct MessageGenerator {
     deps: GeneratorDeps,
 }
@@ -54,112 +66,155 @@ impl MessageGenerator {
     /// 若 `user_message=None` 表示主动对话触发；此时会跳过 user 行构造，直接走
     /// `GameStatus` 的 current role memory 发起 LLM。
     pub async fn process_message(&self, user_message: Option<String>) -> Result<String> {
-        // === 1. 处理用户消息 ===
-        let mut processed_user_message = String::new();
-        let mut temp_message: Option<String> = None;
-        let mut inserted_user_line_index: Option<usize> = None;
-        let mut user_msg_seq: Option<u32> = None;
+        // 1. 处理用户消息
+        let user_ctx = self.handle_user_message(user_message.as_deref()).await?;
 
-        if let Some(raw) = user_message.as_deref() {
-            let UserMessageOutcome { main, temp } =
-                self.deps.processor.append_user_message(raw).await;
-            processed_user_message = main.clone();
-            temp_message = temp;
+        // 1.5. 场景变化检测
+        self.detect_scene_change().await?;
 
-            let mut gs = self.deps.game_status.lock().await;
-            let user_name = gs.player.user_name.clone();
-            let line = LineBase {
-                content: main,
-                attribute: LineAttributeExt(LineAttribute::User),
-                display_name: Some(user_name),
-                sender_role_id: Some(0),
-                ..Default::default()
-            };
-            gs.add_line(&self.deps.db, line).await?;
-            inserted_user_line_index = Some(gs.line_list.len().saturating_sub(1));
-            user_msg_seq = Some(
-                gs.line_list
-                    .iter()
-                    .filter(|l| {
-                        l.base.sender_role_id == Some(0)
-                            && matches!(l.attribute(), LineAttribute::User)
-                    })
-                    .count() as u32,
-            );
-        }
+        // 2. 取当前角色记忆
+        let context = self.get_current_context().await?;
 
-        // === 1.5. 场景变化检测 ===
-        {
-            let mut gs = self.deps.game_status.lock().await;
-            if gs.scene_awareness_enabled
-                && gs.current_scene_id.is_some()
-                && gs.current_scene_id != gs.last_processed_scene_id
-            {
-                let scene_id = gs.current_scene_id.clone().unwrap();
-                let store = SceneStore::new(&data_dir());
-                if let Ok(Some(scene)) = store.find_by_id(&scene_id) {
-                    // 若场景无描述则跳过旁白台词
-                    if !scene.description.trim().is_empty() {
-                        let text = format!(
-                            "你们一起去了新的场景 - \"{}\"，\"{}\"",
-                            scene.name, scene.description
-                        );
-                        let prompt = PromptRole::Narrator.build_prompt(&text);
-                        let line = LineBase {
-                            content: prompt,
-                            attribute: LineAttributeExt(LineAttribute::User),
-                            display_name: Some("系统".to_string()),
-                            ..Default::default()
-                        };
-                        let _ = gs.add_line(&self.deps.db, line).await;
-                    }
-                }
-                gs.last_processed_scene_id = gs.current_scene_id.clone();
-            }
-        }
+        // 3. 启动 LLM 流 + 句子管道
+        let original_msg = user_message.unwrap_or_default();
+        let accumulated = self
+            .execute_pipeline(context, &original_msg, user_ctx.seq)
+            .await?;
 
-        // === 2. 取当前角色记忆 ===
-        let current_context: Vec<LlmMessage> = {
-            let mut gs = self.deps.game_status.lock().await;
-            let Some(rid) = gs.current_role_id else {
-                tracing::error!("生成消息的时候没有当前角色，取消生成");
-                return Ok(String::new());
-            };
-            let role = gs.get_role(&self.deps.db, rid).await?;
-            role.memory.clone()
+        // 4. 后处理：若 temp_message 存在，清理 user 行中的 temp 段后重建记忆
+        self.cleanup_temp_message(&user_ctx).await?;
+
+        Ok(accumulated)
+    }
+
+    // ============================================================
+    // 子步骤
+    // ============================================================
+
+    /// Step 1: 预处理用户消息，构建 USER Line 并写入 GameStatus。
+    ///
+    /// 返回 `UserMessageContext` 供后续步骤使用。
+    async fn handle_user_message(&self, raw: Option<&str>) -> Result<UserMessageContext> {
+        let Some(raw) = raw else {
+            return Ok(UserMessageContext {
+                processed: String::new(),
+                temp: None,
+                line_index: None,
+                seq: None,
+            });
         };
 
-        // === 3. 启动 LLM 流 + 句子管道 ===
+        let UserMessageOutcome { main, temp } =
+            self.deps.processor.append_user_message(raw).await;
+
+        let mut gs = self.deps.game_status.lock().await;
+        let user_name = gs.player.user_name.clone();
+        let line = LineBase {
+            content: main.clone(),
+            attribute: LineAttributeExt(LineAttribute::User),
+            display_name: Some(user_name),
+            sender_role_id: Some(0),
+            ..Default::default()
+        };
+        gs.add_line(&self.deps.db, line).await?;
+        let line_index = Some(gs.line_list.len().saturating_sub(1));
+        let seq = Some(
+            gs.line_list
+                .iter()
+                .filter(|l| {
+                    l.base.sender_role_id == Some(0)
+                        && matches!(l.attribute(), LineAttribute::User)
+                })
+                .count() as u32,
+        );
+
+        Ok(UserMessageContext {
+            processed: main,
+            temp,
+            line_index,
+            seq,
+        })
+    }
+
+    /// Step 1.5: 检测场景变化，若场景切换则添加系统旁白台词。
+    async fn detect_scene_change(&self) -> Result<()> {
+        let mut gs = self.deps.game_status.lock().await;
+        if !gs.scene_awareness_enabled
+            || gs.current_scene_id.is_none()
+            || gs.current_scene_id == gs.last_processed_scene_id
+        {
+            return Ok(());
+        }
+
+        let scene_id = gs.current_scene_id.clone().unwrap();
+        let store = SceneStore::new(&data_dir());
+        if let Ok(Some(scene)) = store.find_by_id(&scene_id) {
+            if !scene.description.trim().is_empty() {
+                let text = format!(
+                    "你们一起去了新的场景 - \"{}\"，\"{}\"",
+                    scene.name, scene.description
+                );
+                let prompt = PromptRole::Narrator.build_prompt(&text);
+                let line = LineBase {
+                    content: prompt,
+                    attribute: LineAttributeExt(LineAttribute::User),
+                    display_name: Some("系统".to_string()),
+                    ..Default::default()
+                };
+                let _ = gs.add_line(&self.deps.db, line).await;
+            }
+        }
+        gs.last_processed_scene_id = gs.current_scene_id.clone();
+        Ok(())
+    }
+
+    /// Step 2: 根据 current_role_id 获取当前角色的 memory 上下文。
+    async fn get_current_context(&self) -> Result<Vec<LlmMessage>> {
+        let mut gs = self.deps.game_status.lock().await;
+        let Some(rid) = gs.current_role_id else {
+            tracing::error!("生成消息的时候没有当前角色，取消生成");
+            return Ok(Vec::new());
+        };
+        let role = gs.get_role(&self.deps.db, rid).await?;
+        Ok(role.memory.clone())
+    }
+
+    /// Step 3: 启动 LLM 流管道，统一处理 thinking emit 与错误分发。
+    async fn execute_pipeline(
+        &self,
+        context: Vec<LlmMessage>,
+        user_message: &str,
+        user_msg_seq: Option<u32>,
+    ) -> Result<String> {
         events::emit_thinking(&self.deps.app, true);
 
-        let accumulated = match self
-            .run_pipeline(
-                current_context,
-                user_message.clone().unwrap_or_default(),
-                user_msg_seq,
-            )
+        match self
+            .run_pipeline(context, user_message.to_string(), user_msg_seq)
             .await
         {
-            Ok(v) => v,
+            Ok(acc) => {
+                events::emit_thinking(&self.deps.app, false);
+                Ok(acc)
+            }
             Err(e) => {
                 events::emit_error(&self.deps.app, &e);
                 events::emit_thinking(&self.deps.app, false);
-                return Err(e);
+                Err(e)
             }
-        };
-
-        events::emit_thinking(&self.deps.app, false);
-
-        // === 4. 后处理：若 temp_message 存在，需要把 user 行里的 temp 段清理掉后重建记忆 ===
-        if let (Some(temp), Some(idx)) = (temp_message.as_deref(), inserted_user_line_index) {
-            let mut gs = self.deps.game_status.lock().await;
-            if let Some(line) = gs.line_list.get_mut(idx) {
-                line.base.content = processed_user_message.replace(temp, "");
-            }
-            gs.refresh_memories(&self.deps.db).await?;
         }
+    }
 
-        Ok(accumulated)
+    /// Step 4: 后处理 — 若存在 temp_message，将 user 行中的 temp 段清理后重建记忆。
+    async fn cleanup_temp_message(&self, ctx: &UserMessageContext) -> Result<()> {
+        let (Some(temp), Some(idx)) = (ctx.temp.as_deref(), ctx.line_index) else {
+            return Ok(());
+        };
+        let mut gs = self.deps.game_status.lock().await;
+        if let Some(line) = gs.line_list.get_mut(idx) {
+            line.base.content = ctx.processed.replace(temp, "");
+        }
+        gs.refresh_memories(&self.deps.db).await?;
+        Ok(())
     }
 
     async fn run_pipeline(
@@ -253,9 +308,14 @@ impl MessageGenerator {
 
 }
 
+// ============================================================
+// consumer 句子处理
+// ============================================================
+
+/// 处理单个句子：解析 → 富化 → 构建响应 → 保存行。
 async fn consume_sentence(
     deps: &GeneratorDeps,
-    consumer_id: usize,
+    _consumer_id: usize,
     sentence: String,
     user_message: &str,
     is_final: bool,
@@ -265,22 +325,49 @@ async fn consume_sentence(
         return Ok(None);
     }
 
-    let mut segments = deps
-        .processor
-        .parse_and_classify_emotional_segments(&sentence);
+    // 1. 解析情绪分段
+    let mut segments = parse_segments(deps, &sentence);
     if segments.is_empty() {
-        tracing::warn!("AI 回复格式错误（未找到情绪 tag）");
         return Ok(None);
     }
 
-    // 翻译（当第一段 japanese_text 为空时）
+    // 2. 富化：翻译 + 语音
+    enrich_segments(deps, &mut segments).await?;
+
+    // 3. 构建前端响应
+    let response =
+        build_reply_response(deps, &segments, user_message, is_final, user_message_seq).await?;
+
+    // 4. 写入 GameStatus
+    add_assistant_line(deps, &response).await?;
+
+    Ok(Some(response))
+}
+
+/// Step A: 解析并分类情绪片段。
+fn parse_segments(deps: &GeneratorDeps, sentence: &str) -> Vec<EmotionSegment> {
+    let segments = deps
+        .processor
+        .parse_and_classify_emotional_segments(sentence);
+    if segments.is_empty() {
+        tracing::warn!("AI 回复格式错误（未找到情绪 tag）");
+    }
+    segments
+}
+
+/// Step B: 翻译（中文→日文）与语音生成。
+async fn enrich_segments(
+    deps: &GeneratorDeps,
+    segments: &mut [EmotionSegment],
+) -> Result<()> {
+    // 翻译：当第一段 japanese_text 为空时
     if segments[0].japanese_text.is_empty() {
         deps.translator
-            .translate_segments(&mut segments, false)
+            .translate_segments(segments, false)
             .await?;
     }
 
-    // VoiceMaker：取当前角色的 voice_maker（若配置）并生成语音文件
+    // 语音：取当前角色的 voice_maker 生成语音文件
     let voice_maker = {
         let gs = deps.game_status.lock().await;
         gs.current_role_id.and_then(|rid| {
@@ -290,10 +377,21 @@ async fn consume_sentence(
         })
     };
     if let Some(vm) = voice_maker {
-        vm.generate_voice_files(&mut segments).await;
+        vm.generate_voice_files(segments).await;
     }
 
-    // 从 GameStatus 取当前角色信息，填入第一个段
+    Ok(())
+}
+
+/// Step C: 构建 ReplyResponse（含角色信息填充）。
+async fn build_reply_response(
+    deps: &GeneratorDeps,
+    segments: &[EmotionSegment],
+    user_message: &str,
+    is_final: bool,
+    user_message_seq: Option<u32>,
+) -> Result<ReplyResponse> {
+    // 从 GameStatus 取当前角色信息
     let role_info: Option<(Option<String>, Option<i32>)> = {
         let gs = deps.game_status.lock().await;
         gs.current_role_id.and_then(|rid| {
@@ -302,16 +400,16 @@ async fn consume_sentence(
                 .map(|role| (role.display_name.clone(), role.role_id))
         })
     };
-    if let Some((name, rid)) = role_info {
-        let first = &mut segments[0];
-        first.character = name;
-        first.role_id = rid;
-    }
 
     let first = &segments[0];
+    let (character, role_id) = match role_info {
+        Some((name, rid)) => (name, rid),
+        None => (first.character.clone(), first.role_id),
+    };
+
     let mut response = ReplyResponse::new_reply();
-    response.character = first.character.clone();
-    response.role_id = first.role_id;
+    response.character = character;
+    response.role_id = role_id;
     response.emotion = if !first.predicted.is_empty() {
         first.predicted.clone()
     } else {
@@ -343,7 +441,11 @@ async fn consume_sentence(
     response.is_final = is_final;
     response.user_message_seq = user_message_seq;
 
-    // assistant LINE 入 GameStatus
+    Ok(response)
+}
+
+/// Step D: 将 assistant LINE 写入 GameStatus。
+async fn add_assistant_line(deps: &GeneratorDeps, response: &ReplyResponse) -> Result<()> {
     let line = LineBase {
         content: response.message.clone(),
         sender_role_id: response.role_id,
@@ -356,10 +458,7 @@ async fn consume_sentence(
         attribute: LineAttributeExt(LineAttribute::Assistant),
         ..Default::default()
     };
-    {
-        let mut gs = deps.game_status.lock().await;
-        gs.add_line(&deps.db, line).await?;
-    }
-
-    Ok(Some(response))
+    let mut gs = deps.game_status.lock().await;
+    gs.add_line(&deps.db, line).await?;
+    Ok(())
 }
