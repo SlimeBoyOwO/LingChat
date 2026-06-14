@@ -5,9 +5,11 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { useSettingsStore } from '../../stores/modules/settings'
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
+const settingsStore = useSettingsStore()
 
 const FILLED_CIRCLE_CFG = { rAddRate: 26, maxLife: 16 }
 const RINGS_ANIM_CFG = {
@@ -55,9 +57,14 @@ class MouseSpark {
   trail: any[] = []
   isDown: boolean = false
   lastPos: { x: number, y: number } | null = null
+  lastMouseTime: number = 0
+  MOUSE_THROTTLE: number = 16
   baseFrameMs: number = 1000 / 60
   maxDeltaMs: number = 100
   lastFrameTime: number = performance.now()
+  lastDrawTime: number = 0
+  targetFPS: number = 60
+  frameInterval: number = 1000 / 60
   dpr: number = 1
   cssWidth: number = 1
   cssHeight: number = 1
@@ -76,7 +83,7 @@ class MouseSpark {
     this.opacity = opts.opacity || 1.0
     this.trailSpeed = opts.trailSpeed != null ? opts.trailSpeed : (opts.speed || 1.0)
     this.clickSpeed = opts.clickSpeed != null ? opts.clickSpeed : (opts.speed || 1.0)
-    this.maxTrail = opts.maxTrail || 16
+    this.maxTrail = opts.maxTrail || 36
 
     this.ringsEndColor = ringsEndColorFromRgb(this.color)
 
@@ -96,37 +103,31 @@ class MouseSpark {
     const dist = (a: any, b: any) => Math.hypot(a.x - b.x, a.y - b.y)
 
     this.onMouseDown = (e: MouseEvent) => {
+      if (!settingsStore.clickAnimationEnabled) return
       this.isDown = true
       this.lastPos = getPos(e)
       this.createEffects(this.lastPos.x, this.lastPos.y)
     }
 
     this.onMouseMove = (e: MouseEvent) => {
+      if (!settingsStore.globalMouseTrailEnabled) return
       const p = getPos(e)
       const prev = this.lastPos
       if (!prev) {
         this.lastPos = p
         return
       }
-      if (dist(p, prev) > 2) {
-        this.trail.push({ x: p.x, y: p.y, life: 1 })
-        if (this.trail.length > this.maxTrail) this.trail.shift()
 
-        if (Math.random() < 0.3) {
-          const a = Math.random() * Math.PI * 2
-          const speedAdjust = this.scale / 1.5
-          this.sparks.push({
-            x: p.x + Math.cos(a) * 10 * this.scale,
-            y: p.y + Math.sin(a) * 10 * this.scale,
-            vx: Math.cos(a) * 1.3 * speedAdjust,
-            vy: Math.sin(a) * 1.3 * speedAdjust,
-            rot: Math.random() * Math.PI * 2,
-            rs: 0.16,
-            s: 9 * this.scale,
-            a: 0.7,
-            f: 0.95,
-            fromClick: false,
-          })
+      const now = performance.now()
+      if (now - this.lastMouseTime < this.MOUSE_THROTTLE) {
+        return
+      }
+      this.lastMouseTime = now
+
+      if (dist(p, prev) > 2) {
+        this.trail.push({ x: p.x, y: p.y, alpha: 1.0 })
+        if (this.trail.length > this.maxTrail * 1.5) {
+          this.trail.splice(0, this.trail.length - this.maxTrail)
         }
       }
       this.lastPos = p
@@ -243,6 +244,11 @@ class MouseSpark {
       spark.a = 1
       spark.f = 0.9
       spark.fromClick = true
+      const t = Math.random()
+      const r = Math.round(100 + 155 * t) // 100 到 255
+      const g = Math.round(180 + 75 * t)  // 180 到 255
+      const b = 255                       // 蓝色通道保持最高
+      spark.color = `${r},${g},${b}`
       this.sparks.push(spark)
     }
   }
@@ -267,69 +273,83 @@ class MouseSpark {
   _updateTrail(frameScale: number) {
     const ctx = this.bufferCtx
     if (!ctx) return
-    const n = this.trail.length
-    const baseDecay = 0.085 * frameScale
-    const maxStep = 0.42
-    for (let i = n - 1; i >= 0; i--) {
-      const t = this.trail[i]
-      const span = Math.max(1, n - 1)
-      const along = n > 1 ? i / span : 1
-      const towardCursorBias = 1.25 - 0.55 * along
-      let step = baseDecay * towardCursorBias
-      if (step > maxStep) step = maxStep
-      t.life -= step
-      if (t.life <= 0) this.trail.splice(i, 1)
+    
+    // --- 更新点透明度 ---
+    for (let i = this.trail.length - 1; i >= 0; i--) {
+      const p = this.trail[i]
+      if (!p) continue
+      p.alpha -= 0.025 * frameScale
+      if (p.alpha <= 0) {
+        this.trail.splice(i, 1)
+      }
     }
 
-    const head = this.lastPos
-    const pts =
-      head && this.trail.length > 0
-        ? this.trail.concat([{ x: head.x, y: head.y, life: 1 }])
-        : this.trail.slice()
-
-    if (pts.length < 2) return
-
-    const pLast = pts[pts.length - 1]!
-    const pPrev = pts[pts.length - 2]!
-    const gap = Math.hypot(pLast.x - pPrev.x, pLast.y - pPrev.y)
-
-    if (gap < 0.75 && this.trail.length === 1) {
-      const trail0 = this.trail[0]!
-      const fade = Math.max(0, trail0.life)
-      ctx.shadowColor = 'transparent'
-      ctx.beginPath()
-      ctx.arc(pts[0]!.x, pts[0]!.y, 2.5 + 2 * fade, 0, Math.PI * 2)
-      ctx.fillStyle = `rgba(${this.color}, ${fade * 0.85})`
-      ctx.fill()
-      return
+    if (this.trail.length > this.maxTrail) {
+      this.trail.splice(0, this.trail.length - this.maxTrail)
     }
 
-    ctx.shadowColor = `rgba(${this.color}, 0.9)`
-    ctx.shadowBlur = 5
-    ctx.shadowOffsetX = 0
-    ctx.shadowOffsetY = 0
-    ctx.lineCap = 'butt'
+    if (this.trail.length < 2) return
 
-    const lastIdx = pts.length - 1
-    for (let i = 0; i < lastIdx; i++) {
-      const alphaStart = i / lastIdx
-      const alphaEnd = (i + 1) / lastIdx
-      const a0 = pts[i]!
-      const a1 = pts[i + 1]!
+    ctx.save()
+    ctx.lineWidth = 3
+    ctx.lineCap = 'butt' // 使用 butt 消除连接处的重叠变黑问题
+    ctx.lineJoin = 'round'
+    ctx.shadowBlur = 10
+    ctx.shadowColor = '#87CEFA'
 
-      const segGrad = ctx.createLinearGradient(a0.x, a0.y, a1.x, a1.y)
-      segGrad.addColorStop(0, `rgba(${this.color}, ${alphaStart})`)
-      segGrad.addColorStop(1, `rgba(${this.color}, ${alphaEnd})`)
+    let startX = this.trail[0]?.x || 0
+    let startY = this.trail[0]?.y || 0
+    let startAlpha = this.trail[0]?.alpha || 0
+
+    // 分段绘制：使用线性渐变填充每一段，确保颜色过渡平滑
+    for (let i = 1; i < this.trail.length - 1; i++) {
+      const p = this.trail[i]
+      const nextP = this.trail[i + 1]
+      if (!p || !nextP) continue
+      const xc = (p.x + nextP.x) * 0.5
+      const yc = (p.y + nextP.y) * 0.5
+      const endAlpha = (p.alpha + nextP.alpha) * 0.5
 
       ctx.beginPath()
-      ctx.moveTo(a0.x, a0.y)
-      ctx.lineTo(a1.x, a1.y)
-      ctx.strokeStyle = segGrad
-      ctx.lineWidth = 1.0 + alphaStart * 4.5
+      ctx.moveTo(startX, startY)
+      ctx.quadraticCurveTo(p.x, p.y, xc, yc)
+
+      // 创建每一段的渐变
+      const gradient = ctx.createLinearGradient(startX, startY, xc, yc)
+      gradient.addColorStop(0, `rgba(135, 206, 250, ${startAlpha})`)
+      gradient.addColorStop(1, `rgba(135, 206, 250, ${endAlpha})`)
+      ctx.strokeStyle = gradient
       ctx.stroke()
+
+      startX = xc
+      startY = yc
+      startAlpha = endAlpha
     }
 
-    ctx.shadowColor = 'transparent'
+    // 连接到最后一个点
+    if (this.trail.length > 1) {
+      const last = this.trail[this.trail.length - 1]
+      if (!last) {
+        ctx.restore()
+        return
+      }
+      ctx.beginPath()
+      ctx.moveTo(startX, startY)
+      ctx.lineTo(last.x, last.y)
+
+      const gradient = ctx.createLinearGradient(startX, startY, last.x, last.y)
+      gradient.addColorStop(0, `rgba(135, 206, 250, ${startAlpha})`)
+      gradient.addColorStop(1, `rgba(135, 206, 250, ${last.alpha})`)
+      ctx.strokeStyle = gradient
+      ctx.stroke()
+
+      // 绘制头部圆帽
+      ctx.beginPath()
+      ctx.arc(last.x, last.y, 1.5, 0, Math.PI * 2)
+      ctx.fillStyle = `rgba(135, 206, 250, ${last.alpha})`
+      ctx.fill()
+    }
+    ctx.restore()
   }
 
   _strokeRingSegment(wx: number, wy: number, radius: number, a0: number, a1: number, lineWidth: number, strokeStyle: string) {
@@ -352,7 +372,7 @@ class MouseSpark {
       w.life += clickFrameScale
       const ease = 1 - Math.pow(1 - waveProg, 3)
       w.r = filled.rAddRate * this.scale * ease
-      const alpha = Math.max(0, 1 - waveProg)
+      const alpha = Math.max(0, 1 - waveProg) * 0.25
       if (alpha > 0) {
         ctx.beginPath()
         ctx.arc(w.x, w.y, w.r, 0, Math.PI * 2)
@@ -459,7 +479,7 @@ class MouseSpark {
       ctx.moveTo(0, -s.s)
       ctx.lineTo(s.s * 0.6, s.s * 0.6)
       ctx.lineTo(-s.s * 0.6, s.s * 0.6)
-      ctx.fillStyle = `rgba(255,255,255,${this.alpha(s.a)})`
+      ctx.fillStyle = `rgba(${s.color},${this.alpha(s.a)})`
       ctx.fill()
       ctx.restore()
     }
@@ -596,6 +616,12 @@ class MouseSpark {
   }
 
   animationLoops(now: number) {
+    if (now - this.lastDrawTime < this.frameInterval) {
+      this.animationId = requestAnimationFrame((nextNow) => this.animationLoops(nextNow))
+      return
+    }
+    this.lastDrawTime = now
+
     const hasWork = this.waves.length > 0 || this.sparks.length > 0 || this.trail.length > 0
 
     if (!hasWork) {
@@ -640,6 +666,25 @@ class MouseSpark {
 }
 
 let sparkInstance: MouseSpark | null = null
+
+watch(
+  () => settingsStore.globalMouseTrailEnabled,
+  (enabled) => {
+    if (!enabled && sparkInstance) {
+      sparkInstance.trail.length = 0
+    }
+  },
+)
+
+watch(
+  () => settingsStore.clickAnimationEnabled,
+  (enabled) => {
+    if (!enabled && sparkInstance) {
+      sparkInstance.sparks.length = 0
+      sparkInstance.waves.length = 0
+    }
+  },
+)
 
 onMounted(() => {
   if (canvasRef.value) {
