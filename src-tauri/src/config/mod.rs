@@ -30,6 +30,7 @@ pub mod keys {
     pub const LLM_PROVIDERS: &str = "llm.providers";
     pub const LLM_CHAT_PROVIDER_ID: &str = "llm.chat_provider_id";
     pub const LLM_TRANSLATE_PROVIDER_ID: &str = "llm.translate_provider_id";
+    pub const LLM_GOD_AGENT_PROVIDER_ID: &str = "llm.god_agent_provider_id";
 
     // LLM 生成参数（对应 TEMPERATURE / TOP_P / ENABLE_THINKING）
     pub const LLM_TEMPERATURE: &str = "llm.temperature";
@@ -69,6 +70,10 @@ pub mod keys {
     pub const LAST_SCENE_ID: &str = "game.last_scene_id";
     /// 场景感知开关（切换场景时是否自动产生旁白台词）
     pub const SCENE_AWARENESS_ENABLED: &str = "game.scene_awareness_enabled";
+
+    // 上帝 Agent（God Agent）多人对话
+    pub const GOD_AGENT_MAX_CONSECUTIVE_NPC: &str = "god_agent.max_consecutive_npc";
+    pub const GOD_AGENT_RECENT_WINDOW: &str = "god_agent.recent_window";
 
     // 创意工坊
     /// GitHub Personal Access Token（可选，用于 GraphQL 获取 upvote 数）
@@ -793,6 +798,7 @@ pub fn list_llm_providers(app: AppHandle) -> LlmProvidersResponse {
         providers,
         chat_provider_id: assignment.chat_provider_id,
         translate_provider_id: assignment.translate_provider_id,
+        god_agent_provider_id: assignment.god_agent_provider_id,
     }
 }
 
@@ -878,14 +884,8 @@ pub async fn test_llm_provider(
     };
 
     let messages = vec![
-        crate::ai_service::types::LlmMessage {
-            role: "system".to_string(),
-            content: "你是一个有帮助的AI助手。请简洁地回答用户的问题。".to_string(),
-        },
-        crate::ai_service::types::LlmMessage {
-            role: "user".to_string(),
-            content: message,
-        },
+        crate::ai_service::types::LlmMessage::system("你是一个有帮助的AI助手。请简洁地回答用户的问题。"),
+        crate::ai_service::types::LlmMessage::user(&message),
     ];
 
     let timeout = tokio::time::timeout(

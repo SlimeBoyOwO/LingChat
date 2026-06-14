@@ -141,5 +141,16 @@ export function initializeTauriEventListeners() {
     eventQueue.addEvent(asEvent(event.payload, { type: 'free_dialogue', duration: 0 }))
   })
 
-  console.log('[Tauri] Event listeners initialized (ai + adventure + auto-save + 13 script events)')
+  // === God Agent multi-dialogue event ===
+
+  listen('character:switch', (event) => {
+    const payload = event.payload as { type: string; roleId: number; characterName: string }
+    console.log('[Tauri] character:switch', payload)
+    const gameStore = useGameStore()
+    gameStore.currentInteractRoleId = payload.roleId
+    // Ensure the role is loaded in gameRoles
+    gameStore.getOrCreateGameRole(payload.roleId)
+  })
+
+  console.log('[Tauri] Event listeners initialized (ai + adventure + auto-save + 13 script events + character:switch)')
 }

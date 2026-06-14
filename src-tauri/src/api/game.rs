@@ -6,11 +6,11 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_store::StoreExt;
 
 use crate::ai_service::game_system::scene_store::SceneStore;
-use crate::ai_service::types::{CharacterSettings, GameLine};
+use crate::ai_service::types::{CharacterSettings, GameLine, LineAttributeExt, LineBase};
 use crate::db::entities::line::LineAttribute;
 use crate::config::{self, AppConfig};
 use crate::db::managers::role_repo::RoleRepo;
-use crate::utils::prompt::PromptOptions;
+use crate::utils::prompt::{sys_prompt_builder_by_settings, PromptOptions, PromptRole};
 use crate::AppState;
 
 // ========== 响应类型 ==========
@@ -341,4 +341,107 @@ pub(crate) async fn build_web_init_data(
         scene_awareness_enabled,
     };
     Ok(result)
+}
+
+// ============================================================
+// 多人对话：将角色加入场景
+// ============================================================
+
+#[tauri::command]
+pub async fn add_role_to_scene(
+    app: AppHandle,
+    role_id: i32,
+) -> Result<JsonValue, String> {
+    if role_id == 0 {
+        return Err("无法添加玩家角色 (role_id=0)".to_string());
+    }
+
+    let state = app.state::<AppState>();
+    let db = &state.db;
+
+    // 提前加载配置（PromptOptions 在 Phase 1 和 Phase 2 之间共享）
+    let app_config = AppConfig::load(&app).unwrap_or_default();
+    let prompt_options = PromptOptions {
+        output_sec_lang: app_config.llm_output_sec_lang,
+        no_emotion_limit: app_config.no_emotion_limit_prompt,
+    };
+
+    // Phase 1: 加载角色 → 注入 System prompt（在 onstage_role 之前） → 上台 → 刷新记忆
+    let role_name = {
+        let svc = state.ai_service.lock().await;
+        let mut gs = svc.game_status.lock().await;
+
+        // 剧本模式下不允许手动添加
+        if gs.script_status.is_some() {
+            return Err("剧本模式下无法手动添加角色到场景".to_string());
+        }
+
+        // 已在场
+        if gs.present_role_ids.contains(&role_id) {
+            return Ok(serde_json::json!({"success": false, "message": "角色已在场景中"}));
+        }
+
+        // 确保角色已加载到 role_manager
+        gs.get_role(db, role_id)
+            .await
+            .map_err(|e| format!("加载角色失败: {}", e))?;
+
+        // 获取角色信息用于 System prompt 和 display_name
+        let role = gs
+            .role_manager
+            .get_loaded(role_id)
+            .ok_or_else(|| "角色未加载".to_string())?;
+        let name = role
+            .display_name
+            .clone()
+            .unwrap_or_else(|| format!("角色{}", role_id));
+
+        // 构建角色的 system prompt
+        let system_prompt = sys_prompt_builder_by_settings(&role.settings, prompt_options);
+
+        // ★ 注入 System 行必须在 onstage_role 之前：
+        //    此时 present_roles 尚未包含新角色，perceived_role_ids 不会把其他角色也标记为感知者。
+        gs.add_line(
+            db,
+            LineBase {
+                content: system_prompt,
+                attribute: LineAttributeExt(LineAttribute::System),
+                sender_role_id: Some(role_id),
+                display_name: Some(name.clone()),
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(|e| format!("添加角色 system prompt 失败: {}", e))?;
+
+        // 上台 + 刷新记忆（让新角色感知后续台词）
+        gs.onstage_role(role_id);
+        gs.refresh_memories(db)
+            .await
+            .map_err(|e| format!("刷新记忆失败: {}", e))?;
+
+        tracing::info!("角色 {} ({}) 加入场景", role_id, name);
+        name
+    }; // 释放 GameStatus 锁
+
+    // Phase 2: 添加旁白台词
+    {
+        let svc = state.ai_service.lock().await;
+        let mut gs = svc.game_status.lock().await;
+
+        let prompt = PromptRole::Narrator.build_prompt(&format!("{}加入了对话", role_name));
+        gs.add_line(
+            db,
+            LineBase {
+                content: prompt,
+                attribute: LineAttributeExt(LineAttribute::User),
+                display_name: Some("系统".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(|e| format!("添加系统台词失败: {}", e))?;
+    }
+
+    Ok(serde_json::json!({"success": true, "message": format!("{} 已加入对话", role_name)}))
 }

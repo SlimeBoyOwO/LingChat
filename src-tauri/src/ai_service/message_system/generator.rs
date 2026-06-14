@@ -18,6 +18,7 @@ use tokio::sync::{mpsc, Mutex};
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::llm::LlmClient;
+use crate::ai_service::god_agent::GodAgentCore;
 use crate::ai_service::message_system::processor::{EmotionSegment, MessageProcessor, UserMessageOutcome};
 use crate::ai_service::message_system::producer::{SentenceItem, StreamProducer};
 use crate::ai_service::message_system::events;
@@ -38,6 +39,8 @@ pub struct GeneratorDeps {
     pub translator: Arc<Translator>,
     pub llm: Arc<LlmClient>,
     pub concurrency: usize,
+    /// 上帝 Agent（多人自由对话编排器），`None` 时退化为单角色对话。
+    pub god_agent: Option<Arc<GodAgentCore>>,
 }
 
 /// `process_message` 各步骤间传递的用户消息上下文。
@@ -65,6 +68,8 @@ impl MessageGenerator {
     ///
     /// 若 `user_message=None` 表示主动对话触发；此时会跳过 user 行构造，直接走
     /// `GameStatus` 的 current role memory 发起 LLM。
+    ///
+    /// 在多人自由对话模式下（God Agent 激活），会自动循环生成多轮 NPC 对话。
     pub async fn process_message(&self, user_message: Option<String>) -> Result<String> {
         // 1. 处理用户消息
         let user_ctx = self.handle_user_message(user_message.as_deref()).await?;
@@ -72,17 +77,48 @@ impl MessageGenerator {
         // 1.5. 场景变化检测
         self.detect_scene_change().await?;
 
-        // 2. 取当前角色记忆
-        let context = self.get_current_context().await?;
+        // 2. 上帝 Agent 预处理：用户发消息时，先决定谁回应
+        if user_message.is_some() {
+            self.god_agent_pre_select().await?;
+        }
 
-        // 3. 启动 LLM 流 + 句子管道
+        // 3. 生成循环（God Agent 激活时可能多轮）
+        let mut accumulated = String::new();
+        let mut consecutive_npc_rounds: usize = 0;
         let original_msg = user_message.unwrap_or_default();
-        let accumulated = self
-            .execute_pipeline(context, &original_msg, user_ctx.seq)
-            .await?;
 
-        // 4. 后处理：若 temp_message 存在，清理 user 行中的 temp 段后重建记忆
-        self.cleanup_temp_message(&user_ctx).await?;
+        loop {
+            // 取当前角色记忆（每轮重新获取，因为 current_role_id 可能已变化）
+            let context = self.get_current_context().await?;
+            if context.is_empty() {
+                break;
+            }
+
+            // 启动 LLM 流生成
+            let round_msg_seq = if consecutive_npc_rounds == 0 {
+                user_ctx.seq
+            } else {
+                None
+            };
+            let round_acc = self
+                .execute_pipeline(context, &original_msg, round_msg_seq)
+                .await?;
+            accumulated.push_str(&round_acc);
+
+            // 后处理：仅第一轮清理 temp_message
+            if consecutive_npc_rounds == 0 {
+                self.cleanup_temp_message(&user_ctx).await?;
+            }
+
+            consecutive_npc_rounds += 1;
+
+            // 上帝 Agent 后处理：决定下一个说话者
+            let (should_continue, _next_role) =
+                self.god_agent_post_select(consecutive_npc_rounds).await?;
+            if !should_continue {
+                break;
+            }
+        }
 
         Ok(accumulated)
     }
@@ -215,6 +251,122 @@ impl MessageGenerator {
         }
         gs.refresh_memories(&self.deps.db).await?;
         Ok(())
+    }
+
+    // ============================================================
+    // 上帝 Agent 集成
+    // ============================================================
+
+    /// 预处理：用户发消息时，上帝 Agent 决定哪个角色先回应。
+    async fn god_agent_pre_select(&self) -> Result<()> {
+        let Some(god) = &self.deps.god_agent else {
+            return Ok(());
+        };
+
+        let (should_activate, current_speaker) = {
+            let gs = self.deps.game_status.lock().await;
+            (god.should_activate(&gs), gs.current_role_id)
+        };
+        if !should_activate {
+            return Ok(());
+        }
+
+        // 决策下一个说话者
+        let (selected_role_id, reason) = {
+            let gs = self.deps.game_status.lock().await;
+            god.decide_next_speaker(&gs, current_speaker).await?
+        };
+
+        if selected_role_id == 0 {
+            return Ok(()); // 选择玩家，保持现状
+        }
+
+        // 设定新的 current_role_id
+        let character_name = {
+            let mut gs = self.deps.game_status.lock().await;
+            gs.current_role_id = Some(selected_role_id);
+            let role = gs.get_role(&self.deps.db, selected_role_id).await?;
+            role.display_name.clone().unwrap_or_default()
+        };
+
+        tracing::info!(
+            "[GodAgent] pre-select: role_id={}, name={}, reason={}",
+            selected_role_id, character_name, reason
+        );
+
+        self.emit_character_switch(selected_role_id, &character_name);
+        Ok(())
+    }
+
+    /// 后处理：消息生成完毕后，上帝 Agent 决定下一个说话者。
+    ///
+    /// 返回 `(should_continue, next_role_id)`：
+    /// - `should_continue=true` 表示应继续循环（NPC 说话）
+    /// - `should_continue=false` 表示应停止（交还玩家或 God Agent 未激活）
+    async fn god_agent_post_select(
+        &self,
+        consecutive_npc_rounds: usize,
+    ) -> Result<(bool, i32)> {
+        let Some(god) = &self.deps.god_agent else {
+            return Ok((false, 0));
+        };
+
+        // 检查是否超过连续 NPC 轮数上限
+        if consecutive_npc_rounds >= god.config.max_consecutive_npc {
+            tracing::info!(
+                "[GodAgent] 连续 {} 轮 NPC 发言，强制返回玩家",
+                consecutive_npc_rounds
+            );
+            return Ok((false, 0));
+        }
+
+        // 检查是否应激活
+        let (should_activate, current_speaker) = {
+            let gs = self.deps.game_status.lock().await;
+            (god.should_activate(&gs), gs.current_role_id)
+        };
+        if !should_activate {
+            return Ok((false, 0));
+        }
+
+        // 决策
+        let (selected_role_id, reason) = {
+            let gs = self.deps.game_status.lock().await;
+            god.decide_next_speaker(&gs, current_speaker).await?
+        };
+
+        if selected_role_id == 0 {
+            // 交还玩家
+            return Ok((false, 0));
+        }
+
+        // 设定下一个说话者
+        let character_name = {
+            let mut gs = self.deps.game_status.lock().await;
+            gs.current_role_id = Some(selected_role_id);
+            let role = gs.get_role(&self.deps.db, selected_role_id).await?;
+            role.display_name.clone().unwrap_or_default()
+        };
+
+        tracing::info!(
+            "[GodAgent] post-select: role_id={}, name={}, reason={}",
+            selected_role_id, character_name, reason
+        );
+
+        self.emit_character_switch(selected_role_id, &character_name);
+        Ok((true, selected_role_id))
+    }
+
+    /// 通知前端当前说话角色已切换。
+    fn emit_character_switch(&self, role_id: i32, name: &str) {
+        let payload = serde_json::json!({
+            "type": "character_switch",
+            "roleId": role_id,
+            "characterName": name,
+        });
+        if let Err(e) = self.deps.app.emit("character:switch", &payload) {
+            tracing::warn!("emit character:switch 失败: {e}");
+        }
     }
 
     async fn run_pipeline(

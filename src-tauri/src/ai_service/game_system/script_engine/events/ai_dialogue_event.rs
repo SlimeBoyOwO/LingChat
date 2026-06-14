@@ -95,6 +95,7 @@ impl ScriptEvent for AIDialogueEvent {
             translator: state.chat.translator.clone(),
             llm,
             concurrency: 1,
+            god_agent: None,
         };
 
         let generator = MessageGenerator::new(deps);

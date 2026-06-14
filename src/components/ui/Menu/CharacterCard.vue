@@ -55,6 +55,18 @@
           详情
         </button>
         <button
+          @click="joinScene"
+          :class="[
+            'px-4 py-1.5 rounded-full text-xs font-semibold border transition-all shadow-lg',
+            isInScene()
+              ? 'bg-amber-500/50 border-amber-400/50 text-amber-200 cursor-not-allowed'
+              : 'bg-amber-500/80 hover:bg-amber-500 border-amber-400 text-white shadow-amber-500/20',
+          ]"
+          :disabled="isInScene()"
+        >
+          {{ isInScene() ? '已在场' : '加入' }}
+        </button>
+        <button
           @click="selectCharacter"
           :class="[
             'px-5 py-1.5 rounded-full text-xs font-bold transition-all border shadow-lg',
@@ -176,6 +188,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
 import { Icon } from '../../base'
 import SettingsCharacterInfo from '@/components/settings/pages/SettingsCharacterInfo.vue'
 import {
@@ -252,6 +265,24 @@ const selectClothes = async (clothes_name: string) => {
   } catch (error) {
     console.error('选择衣服失败:', error)
     // 可选：显示错误提示
+  }
+}
+
+// 多人对话：将角色加入场景
+const isInScene = () => gameStore.presentRoleIds.includes(props.id)
+
+const joinScene = async () => {
+  if (isInScene()) return
+  try {
+    const result = await invoke('add_role_to_scene', { roleId: props.id }) as { success: boolean; message: string }
+    if (result.success) {
+      gameStore.presentRoleIds.push(props.id)
+      // 确保角色信息已加载
+      await gameStore.getOrCreateGameRole(props.id)
+    }
+    console.log('[CharacterCard] 角色加入场景:', result.message)
+  } catch (error) {
+    console.error('[CharacterCard] 角色加入场景失败:', error)
   }
 }
 

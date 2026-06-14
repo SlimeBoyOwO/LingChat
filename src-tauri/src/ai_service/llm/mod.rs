@@ -18,7 +18,8 @@ use anyhow::{anyhow, Context, Result};
 use futures_util::Stream;
 use reqwest::Client;
 
-use crate::ai_service::types::LlmMessage;
+use crate::ai_service::types::{LlmMessage, ToolDefinition};
+use crate::ai_service::llm::provider::LlmResponseWithTools;
 
 /// 运行时 LLM 配置。
 #[derive(Debug, Clone)]
@@ -75,5 +76,20 @@ impl LlmClient {
             return Err(anyhow!("LLM 未配置 API key 或 model"));
         }
         self.provider.complete_stream(&self.http, messages).await
+    }
+
+    /// 非流式 + function calling。
+    pub async fn complete_with_tools(
+        &self,
+        messages: &[LlmMessage],
+        tools: &[ToolDefinition],
+        tool_choice: Option<&str>,
+    ) -> Result<LlmResponseWithTools> {
+        if !self.cfg.is_usable() {
+            return Err(anyhow!("LLM 未配置 API key 或 model"));
+        }
+        self.provider
+            .complete_with_tools(&self.http, messages, tools, tool_choice)
+            .await
     }
 }

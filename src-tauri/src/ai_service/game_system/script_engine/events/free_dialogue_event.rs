@@ -115,6 +115,7 @@ impl ScriptEvent for FreeDialogueEvent {
                     translator: state.chat.translator.clone(),
                     llm,
                     concurrency: 1,
+                    god_agent: None,
                 };
                 MessageGenerator::new(deps)
             })

@@ -5,24 +5,85 @@ use std::path::PathBuf;
 use crate::db::entities::line::LineAttribute;
 
 // ==========================================
-// LLM 消息
+// LLM 消息 & Function Calling
 // ==========================================
+
+/// Function call 请求参数。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FunctionCall {
+    pub name: String,
+    pub arguments: String, // JSON 字符串
+}
+
+/// LLM 返回的 tool call。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub id: String,
+    #[serde(rename = "type", default = "default_tool_type")]
+    pub type_: String,
+    pub function: FunctionCall,
+}
+
+fn default_tool_type() -> String {
+    "function".to_string()
+}
+
+/// 注册给 LLM 的 tool / function 定义。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ToolDefinition {
+    #[serde(rename = "type")]
+    pub type_: String,
+    pub function: FunctionSchema,
+}
+
+impl ToolDefinition {
+    pub fn new(name: impl Into<String>, description: impl Into<String>, parameters: serde_json::Value) -> Self {
+        Self {
+            type_: "function".to_string(),
+            function: FunctionSchema {
+                name: name.into(),
+                description: description.into(),
+                parameters,
+            },
+        }
+    }
+}
+
+/// Function 的 JSON Schema 描述。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FunctionSchema {
+    pub name: String,
+    pub description: String,
+    pub parameters: serde_json::Value,
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LlmMessage {
     pub role: String,
     pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCall>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
 }
 
 impl LlmMessage {
     pub fn system(content: impl Into<String>) -> Self {
-        Self { role: "system".into(), content: content.into() }
+        Self { role: "system".into(), content: content.into(), tool_calls: None, tool_call_id: None }
     }
     pub fn user(content: impl Into<String>) -> Self {
-        Self { role: "user".into(), content: content.into() }
+        Self { role: "user".into(), content: content.into(), tool_calls: None, tool_call_id: None }
     }
     pub fn assistant(content: impl Into<String>) -> Self {
-        Self { role: "assistant".into(), content: content.into() }
+        Self { role: "assistant".into(), content: content.into(), tool_calls: None, tool_call_id: None }
+    }
+    /// 助手消息携带 tool calls（LLM 请求调用工具）。
+    pub fn tool(tool_calls: Vec<ToolCall>) -> Self {
+        Self { role: "assistant".into(), content: String::new(), tool_calls: Some(tool_calls), tool_call_id: None }
+    }
+    /// 工具调用结果（role = "tool"）。
+    pub fn tool_result(tool_call_id: impl Into<String>, content: impl Into<String>) -> Self {
+        Self { role: "tool".into(), content: content.into(), tool_calls: None, tool_call_id: Some(tool_call_id.into()) }
     }
 }
 

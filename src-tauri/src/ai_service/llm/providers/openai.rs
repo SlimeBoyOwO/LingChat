@@ -8,9 +8,9 @@ use futures_util::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-use crate::ai_service::llm::provider::LlmProvider;
+use crate::ai_service::llm::provider::{LlmProvider, LlmResponseWithTools};
 use crate::ai_service::llm::{ChunkStream, LlmConfig};
-use crate::ai_service::types::LlmMessage;
+use crate::ai_service::types::{LlmMessage, ToolCall, ToolDefinition};
 
 pub struct OpenAiProvider {
     model: String,
@@ -49,7 +49,13 @@ impl OpenAiProvider {
         }
     }
 
-    fn build_request<'a>(&'a self, messages: &'a [LlmMessage], stream: bool) -> ChatRequest<'a> {
+    fn build_request<'a>(
+        &'a self,
+        messages: &'a [LlmMessage],
+        stream: bool,
+        tools: Option<&'a [ToolDefinition]>,
+        tool_choice: Option<serde_json::Value>,
+    ) -> ChatRequest<'a> {
         // DeepSeek reasoner 等模型在 thinking 字段缺失时默认启用思考模式，
         // 因此必须显式发送 "disabled" 才能真正关闭。
         let thinking = if self.enable_thinking {
@@ -70,6 +76,8 @@ impl OpenAiProvider {
             temperature: self.temperature,
             top_p: self.top_p,
             thinking,
+            tools,
+            tool_choice,
         }
     }
 }
@@ -77,7 +85,7 @@ impl OpenAiProvider {
 #[async_trait]
 impl LlmProvider for OpenAiProvider {
     async fn complete(&self, http: &Client, messages: &[LlmMessage]) -> Result<String> {
-        let body = self.build_request(messages, false);
+        let body = self.build_request(messages, false, None, None);
 
         let resp = http
             .post(self.endpoint())
@@ -103,8 +111,55 @@ impl LlmProvider for OpenAiProvider {
             .ok_or_else(|| anyhow!("LLM 响应无可用内容"))
     }
 
+    async fn complete_with_tools(
+        &self,
+        http: &Client,
+        messages: &[LlmMessage],
+        tools: &[ToolDefinition],
+        tool_choice: Option<&str>,
+    ) -> Result<LlmResponseWithTools> {
+        let tool_choice_value = tool_choice.map(|tc| {
+            if tc == "auto" || tc == "none" || tc == "required" {
+                serde_json::Value::String(tc.to_string())
+            } else {
+                // 尝试解析为 JSON object（如 {"type":"function","function":{"name":"xxx"}}）
+                serde_json::from_str(tc).unwrap_or(serde_json::Value::String("auto".to_string()))
+            }
+        });
+
+        let body = self.build_request(messages, false, Some(tools), tool_choice_value);
+
+        let resp = http
+            .post(self.endpoint())
+            .bearer_auth(&self.api_key)
+            .json(&body)
+            .send()
+            .await
+            .context("LLM (tools) 请求发送失败")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(anyhow!("LLM function calling 失败 ({status}): {text}"));
+        }
+
+        let parsed: ChatCompletionResponse =
+            resp.json().await.context("解析 LLM (tools) 响应 JSON 失败")?;
+
+        let choice = parsed
+            .choices
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow!("LLM (tools) 响应无可用选项"))?;
+
+        Ok(LlmResponseWithTools {
+            content: choice.message.content,
+            tool_calls: choice.message.tool_calls,
+        })
+    }
+
     async fn complete_stream(&self, http: &Client, messages: &[LlmMessage]) -> Result<ChunkStream> {
-        let body = self.build_request(messages, true);
+        let body = self.build_request(messages, true, None, None);
         tracing::info!(
             "[OpenAI] complete_stream: thinking 字段 = {}",
             body.thinking.type_
@@ -185,6 +240,10 @@ struct ChatRequest<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     top_p: Option<f64>,
     thinking: ThinkingConfig,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<&'a [ToolDefinition]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<serde_json::Value>,
 }
 
 #[derive(Serialize)]
@@ -206,6 +265,8 @@ struct ChatChoice {
 #[derive(Deserialize)]
 struct ChatMessageContent {
     content: Option<String>,
+    #[serde(default)]
+    tool_calls: Option<Vec<ToolCall>>,
 }
 
 #[derive(Deserialize)]

@@ -19,6 +19,8 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
 
+use ai_service::god_agent::config::resolve_god_agent_provider;
+use ai_service::god_agent::GodAgentCore;
 use ai_service::llm::LlmClient;
 use ai_service::message_system::processor::MessageProcessor;
 use ai_service::screen_analyzer::{ScreenAnalyzer, ScreenAnalyzerConfig};
@@ -59,6 +61,7 @@ pub struct AppState {
     pub screenshot_capture: Arc<tokio::sync::Mutex<ScreenshotCaptureState>>,
     pub auto_save_manager:
         Arc<tokio::sync::Mutex<ai_service::game_system::auto_save::AutoSaveManager>>,
+    pub god_agent: Option<Arc<GodAgentCore>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -151,6 +154,14 @@ pub fn run() {
                 ),
             ));
 
+            // 构建上帝 Agent（多人对话编排器）
+            let god_agent = resolve_god_agent_provider(&app.handle())
+                .map(|llm| {
+                    let config =
+                        ai_service::god_agent::config::GodAgentConfig::load(&app.handle());
+                    Arc::new(GodAgentCore::new(Arc::new(llm), config))
+                });
+
             app.manage(AppState {
                 db,
                 ai_service,
@@ -162,6 +173,7 @@ pub fn run() {
                 screen_analyzer,
                 screenshot_capture,
                 auto_save_manager: auto_save_manager.clone(),
+                god_agent,
             });
 
             // Spawn Windows mouse polling click-through loop
@@ -295,6 +307,7 @@ pub fn run() {
             api::game::init_game,
             api::game::select_character,
             api::game::reactivate_tts,
+            api::game::add_role_to_scene,
             api::chat::send_chat_message,
             api::chat::rollback_conversation,
             api::screenshot::start_screenshot,

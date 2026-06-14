@@ -128,12 +128,24 @@ impl MemoryBuilder {
             *buffer_kind = None;
         };
 
+        let mut has_system_for_target = false;
+
         for line in lines {
-            // system 消息：被感知才加入
+            // system 消息：角色的私有配置，仅 sender 自身可见，不走 perceived 感知
             if matches!(line.attribute(), LineAttribute::System) {
-                if self.is_target(line) {
+                if line.sender_role_id() == Some(self.target_role_id) {
                     flush(&mut memory, &mut buffer, &mut buffer_kind, self);
-                    memory.push(LlmMessage::system(line.content().to_string()));
+                    if has_system_for_target {
+                        tracing::warn!(
+                            "[MemoryBuilder] 角色 {} 存在多条 System 台词，已跳过重复项 \
+                             (sender_role_id={})",
+                            self.target_role_id,
+                            line.sender_role_id().unwrap_or(-1)
+                        );
+                    } else {
+                        has_system_for_target = true;
+                        memory.push(LlmMessage::system(line.content().to_string()));
+                    }
                 }
                 continue;
             }

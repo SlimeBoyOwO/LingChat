@@ -59,6 +59,8 @@ pub struct LlmRoleAssignment {
     pub chat_provider_id: Option<String>,
     #[serde(default)]
     pub translate_provider_id: Option<String>,
+    #[serde(default)]
+    pub god_agent_provider_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,6 +68,7 @@ pub struct LlmProvidersResponse {
     pub providers: Vec<LlmProviderConfig>,
     pub chat_provider_id: Option<String>,
     pub translate_provider_id: Option<String>,
+    pub god_agent_provider_id: Option<String>,
 }
 
 // ============================================================
@@ -105,6 +108,7 @@ pub fn load_role_assignment(app: &AppHandle) -> LlmRoleAssignment {
     LlmRoleAssignment {
         chat_provider_id: get_string_opt(&store, keys::LLM_CHAT_PROVIDER_ID),
         translate_provider_id: get_string_opt(&store, keys::LLM_TRANSLATE_PROVIDER_ID),
+        god_agent_provider_id: get_string_opt(&store, keys::LLM_GOD_AGENT_PROVIDER_ID),
     }
 }
 
@@ -122,6 +126,10 @@ pub fn save_role_assignment(
     store.set(
         keys::LLM_TRANSLATE_PROVIDER_ID.to_string(),
         json_string_opt(assignment.translate_provider_id.as_deref()),
+    );
+    store.set(
+        keys::LLM_GOD_AGENT_PROVIDER_ID.to_string(),
+        json_string_opt(assignment.god_agent_provider_id.as_deref()),
     );
     store.save().context("Failed to save settings store")?;
     Ok(())
