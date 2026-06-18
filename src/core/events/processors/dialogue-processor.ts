@@ -25,9 +25,8 @@ export default class DialogueProcessor implements IEventProcessor {
     const displayName = event.displayName ? event.displayName : role.roleName
     const displaySubtitle = event.displaySubtitle ? event.displaySubtitle : role.roleSubTitle
 
-    gameStore.currentLine = event.motionText
-      ? `${event.message} (${event.motionText})`
-      : event.message || ''
+    gameStore.currentLine = event.message || ''
+    uiStore.showCharacterMotionText = event.motionText || ''
 
     gameStore.appendGameMessage({
       type: 'reply',
