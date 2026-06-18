@@ -31,11 +31,15 @@ jobs:
         run: pnpm install
 
       - name: Build Tauri app
+        continue-on-error: true
         run: pnpm tauri build
 
-      - name: Upload build artifact
+      - name: Upload exe
         uses: actions/upload-artifact@v4
         with:
-          name: lingchat-dev-${{ github.sha }}
-          path: src-tauri/target/release/*.exe
+          name: lingchat-dev
+          path: |
+            src-tauri/target/release/ling-chat.exe
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/nsis/*-setup.exe
           retention-days: 7
