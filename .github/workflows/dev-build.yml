@@ -1,0 +1,41 @@
+name: Dev Build
+
+on:
+  push:
+    branches: ['dev/**']
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install frontend dependencies
+        run: pnpm install
+
+      - name: Build Tauri app
+        run: pnpm tauri build --bundles none
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lingchat-dev-${{ github.sha }}
+          path: src-tauri/target/release/*.exe
+          retention-days: 7
