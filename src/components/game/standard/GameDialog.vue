@@ -73,6 +73,7 @@
           id="inputMessage"
           ref="textareaRef"
           class="w-full min-h-10 bg-transparent border-none text-white text-[20px] font-bold resize-none my-1.25 outline-none transition-all duration-300 placeholder:text-white/50 placeholder:shadow-none font-[inherit] text-shadow-[inherit]"
+          :class="{ 'italic text-white/50 text-[16px]': isShowingMotionText }"
           :placeholder="placeholderText"
           v-model="inputMessage"
           @keydown.enter.exact.prevent="sendOrContinue"
@@ -103,6 +104,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 
 const inputMessage = ref('')
+const isShowingMotionText = ref(false)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const gameStore = useGameStore()
 const uiStore = useUIStore()
@@ -234,6 +236,7 @@ watch([() => uiStore.showCharacterLine, () => gameStore.currentStatus], ([newLin
     startTyping(newLine, uiStore.typeWriterSpeed)
   } else if (newStatus === 'input') {
     stopTyping()
+    isShowingMotionText.value = false
     inputMessage.value = ''
     currentDisplayedText.value = ''
   }
@@ -407,6 +410,20 @@ function send() {
 }
 
 function continueDialog(isPlayerTrigger: boolean): boolean {
+  // Phase 2: motion text already shown, now advance normally
+  if (isShowingMotionText.value) {
+    isShowingMotionText.value = false
+    uiStore.showCharacterMotionText = ''
+  }
+  // Phase 1: there's pending motion text, show it instead of advancing
+  else if (uiStore.showCharacterMotionText) {
+    isShowingMotionText.value = true
+    // Type the motion text into the same textarea with typewriter
+    startTyping(uiStore.showCharacterMotionText, uiStore.typeWriterSpeed)
+    return false // don't advance event queue
+  }
+
+  // Normal: advance to next event
   const needWait = eventQueue.continue()
   if (!needWait) {
     if (isPlayerTrigger) emit('player-continued')
