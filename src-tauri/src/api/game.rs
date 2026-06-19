@@ -27,6 +27,8 @@ pub struct WebInitData {
     pub background_music: String,
     pub current_scene_id: Option<String>,
     pub current_scene: Option<super::scene::SceneInfo>,
+    /// 在场角色的设定（含主角与非主角），前端据此初始化 gameRoles 与 presentRoleIds
+    pub onstage_roles: Vec<CharacterSettingsInit>,
     /// 初始化台词列表（至少包含一条 system 人设台词）
     pub lines: Vec<GameLineInit>,
     /// 场景感知开关（切换场景时是否自动产生旁白）
@@ -218,6 +220,7 @@ pub(crate) async fn build_web_init_data(
         current_scene_id,
         current_role_id,
         onstage_roles_ids,
+        onstage_roles,
         background,
         background_effect,
         background_music,
@@ -289,11 +292,23 @@ pub(crate) async fn build_web_init_data(
         }
         let scene_awareness = gs.scene_awareness_enabled;
 
+        // 收集在场角色的设定信息，供前端初始化 gameRoles / presentRoleIds
+        let onstage_roles: Vec<CharacterSettingsInit> = gs
+            .onstage_role_ids
+            .iter()
+            .filter_map(|&id| {
+                gs.role_manager
+                    .get_loaded(id)
+                    .map(|r| CharacterSettingsInit::from(&r.settings))
+            })
+            .collect();
+
         (
             lines,
             sid,
             gs.current_role_id,
             gs.onstage_role_ids.clone(),
+            onstage_roles,
             gs.background.clone(),
             gs.background_effect.clone(),
             gs.background_music.clone(),
@@ -332,6 +347,7 @@ pub(crate) async fn build_web_init_data(
         character_settings,
         current_interact_role_id: current_role_id,
         onstage_roles_ids,
+        onstage_roles,
         background,
         background_effect,
         background_music,

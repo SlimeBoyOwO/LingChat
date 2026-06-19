@@ -16,6 +16,7 @@ export interface LlmProvidersResponse {
   providers: LlmProviderConfig[]
   chat_provider_id: string | null
   translate_provider_id: string | null
+  god_agent_provider_id: string | null
 }
 
 export async function listLlmProviders(): Promise<LlmProvidersResponse> {
@@ -33,7 +34,7 @@ export async function deleteLlmProvider(id: string): Promise<void> {
 }
 
 export async function setLlmRole(
-  role: 'chat' | 'translate',
+  role: 'chat' | 'translate' | 'god_agent',
   providerId: string | null,
 ): Promise<void> {
   return invoke('set_llm_role', { role, providerId })

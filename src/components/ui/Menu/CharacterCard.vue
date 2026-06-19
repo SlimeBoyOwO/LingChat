@@ -59,8 +59,8 @@
           :class="[
             'px-4 py-1.5 rounded-full text-xs font-semibold border transition-all shadow-lg',
             isInScene()
-              ? 'bg-amber-500/50 border-amber-400/50 text-amber-200 cursor-not-allowed'
-              : 'bg-amber-500/80 hover:bg-amber-500 border-amber-400 text-white shadow-amber-500/20',
+              ? 'bg-cyan-500/50 border-cyan-400/50 text-cyan-200 cursor-not-allowed'
+              : 'bg-cyan-500/80 hover:bg-cyan-500 border-cyan-400 text-white shadow-cyan-500/20',
           ]"
           :disabled="isInScene()"
         >
@@ -274,7 +274,10 @@ const isInScene = () => gameStore.presentRoleIds.includes(props.id)
 const joinScene = async () => {
   if (isInScene()) return
   try {
-    const result = await invoke('add_role_to_scene', { roleId: props.id }) as { success: boolean; message: string }
+    const result = (await invoke('add_role_to_scene', { roleId: props.id })) as {
+      success: boolean
+      message: string
+    }
     if (result.success) {
       gameStore.presentRoleIds.push(props.id)
       // 确保角色信息已加载

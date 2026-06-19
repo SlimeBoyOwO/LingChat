@@ -43,6 +43,8 @@ export interface WebInitData {
   character_settings: CharacterSettings
   current_interact_role_id: number | null
   onstage_roles_ids: number[]
+  /** 在场角色的完整设定（含主角与非主角），用于初始化 gameRoles / presentRoleIds */
+  onstage_roles: CharacterSettings[]
   background: string
   background_effect: string
   background_music: string

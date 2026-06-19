@@ -12,6 +12,7 @@ export const useLlmProvidersStore = defineStore('llm-providers', {
     providers: [] as LlmProviderConfig[],
     chatProviderId: null as string | null,
     translateProviderId: null as string | null,
+    godAgentProviderId: null as string | null,
     loaded: false,
   }),
   getters: {
@@ -19,6 +20,17 @@ export const useLlmProvidersStore = defineStore('llm-providers', {
       state.providers.find((p) => p.id === state.chatProviderId) ?? null,
     translateProvider: (state) =>
       state.providers.find((p) => p.id === state.translateProviderId) ?? null,
+    godAgentProvider: (state) =>
+      state.providers.find((p) => p.id === state.godAgentProviderId) ?? null,
+    effectiveGodAgentProvider: (state) => {
+      if (state.godAgentProviderId) {
+        return (
+          state.providers.find((p) => p.id === state.godAgentProviderId) ??
+          null
+        )
+      }
+      return state.providers.find((p) => p.id === state.chatProviderId) ?? null
+    },
     effectiveTranslateProvider: (state) => {
       if (state.translateProviderId) {
         return (
@@ -47,6 +59,7 @@ export const useLlmProvidersStore = defineStore('llm-providers', {
         this.providers = data.providers
         this.chatProviderId = data.chat_provider_id
         this.translateProviderId = data.translate_provider_id
+        this.godAgentProviderId = data.god_agent_provider_id
         this.loaded = true
       } catch (e) {
         console.error('Failed to load LLM providers:', e)
@@ -60,7 +73,7 @@ export const useLlmProvidersStore = defineStore('llm-providers', {
       await deleteLlmProvider(id)
       await this.load()
     },
-    async assignRole(role: 'chat' | 'translate', providerId: string | null) {
+    async assignRole(role: 'chat' | 'translate' | 'god_agent', providerId: string | null) {
       await setLlmRole(role, providerId)
       await this.load()
     },

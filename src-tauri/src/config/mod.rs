@@ -868,6 +868,7 @@ pub fn set_llm_role(
     match role.as_str() {
         "chat" => assignment.chat_provider_id = provider_id,
         "translate" => assignment.translate_provider_id = provider_id,
+        "god_agent" => assignment.god_agent_provider_id = provider_id,
         other => return Err(format!("Invalid role: {other}")),
     }
     save_role_assignment(&app, &assignment).map_err(|e| e.to_string())?;
