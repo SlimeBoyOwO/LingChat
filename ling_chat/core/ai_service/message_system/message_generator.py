@@ -341,6 +341,8 @@ class MessageGenerator:
                 error_code = "401"
             elif "404" in error_message:
                 error_code = "404"
+            elif "未初始化" in error_message or "未配置" in error_message:
+                error_code = "401"
             elif "网络" in error_message or "connection" in error_message.lower():
                 error_code = "network_error"
 

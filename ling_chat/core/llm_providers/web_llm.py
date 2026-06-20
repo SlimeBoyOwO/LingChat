@@ -26,6 +26,7 @@ class WebLLMProvider(BaseLLMProvider):
         if (not api_key) or api_key == "sk-114514":
             logger.warning("通用网络大模型未初始化：CHAT_API_KEY 为空或为占位值。")
             self.client = None
+            self.async_client = None
             return
 
         if not (
@@ -36,6 +37,7 @@ class WebLLMProvider(BaseLLMProvider):
                 "通用网络大模型未初始化：CHAT_BASE_URL 缺少 http:// 或 https:// 协议头。"
             )
             self.client = None
+            self.async_client = None
             return
 
         self._timeout = httpx.Timeout(connect=20.0, read=60.0, write=20.0, pool=20.0)
@@ -97,8 +99,7 @@ class WebLLMProvider(BaseLLMProvider):
         if self.async_client is None:
             error_message = "通用网络大模型未初始化，请检查配置"
             logger.error(error_message)
-            yield error_message
-            return
+            raise ConnectionError(error_message)
 
         try:
             logger.debug(f"正在对通用网络大模型发送流式请求: {self.model_type}")
