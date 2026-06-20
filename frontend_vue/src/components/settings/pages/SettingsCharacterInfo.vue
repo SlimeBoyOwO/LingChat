@@ -182,6 +182,8 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { getRoleSettings, updateRoleSettings } from '../../../api/services/character'
+import { useGameStore } from '../../../stores/modules/game'
+import { useUserStore } from '../../../stores/modules/user/user'
 import { Icon } from '../../base'
 
 const props = defineProps<{
@@ -191,6 +193,9 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits(['close', 'saved'])
+
+const gameStore = useGameStore()
+const userStore = useUserStore()
 
 const activeTab = ref('basic')
 const loading = ref(false)
@@ -412,6 +417,12 @@ const saveSettings = async () => {
   saving.value = true
   try {
     await updateRoleSettings(props.roleId, localSettings.value)
+
+    // 如果编辑的是当前主角色，刷新游戏状态以实现实时生效
+    if (props.roleId === gameStore.mainRoleId && userStore.client_id) {
+      await gameStore.initializeGame(userStore.client_id, userStore.user_id)
+    }
+
     emit('saved')
     emit('close')
   } catch (e) {

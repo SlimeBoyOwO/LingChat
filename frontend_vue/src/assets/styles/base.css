@@ -31,6 +31,22 @@
     font-family: var(--font-sans);
     color-scheme: dark;
   }
+
+  select {
+    background-color: rgba(15, 23, 42, 0.35);
+    color: rgba(255, 255, 255, 0.95);
+  }
+
+  select option,
+  select optgroup {
+    background-color: rgba(15, 23, 42, 0.96);
+    color: rgba(255, 255, 255, 0.95);
+  }
+
+  select option:checked {
+    background-color: rgba(14, 165, 233, 0.85);
+    color: #fff;
+  }
 }
 
 /* 滚动条样式 */

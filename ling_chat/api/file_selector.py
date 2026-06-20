@@ -69,7 +69,7 @@ end tell
                 ),
             ]
 
-            for cmd, _name in commands:
+            for cmd, name in commands:
                 try:
                     result = subprocess.run(
                         cmd, capture_output=True, text=True, timeout=60

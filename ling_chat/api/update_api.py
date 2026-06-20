@@ -248,7 +248,7 @@ async def check_update():
         return {"success": True, "message": "开始检查更新"}
     except Exception as e:
         update_lock.release()
-        raise HTTPException(status_code=500, detail=f"启动检查更新失败: {str(e)}") from e
+        raise HTTPException(status_code=500, detail=f"启动检查更新失败: {str(e)}")
 
 
 @router.post("/apply")
@@ -282,7 +282,7 @@ async def apply_update(request_data: ApplyUpdateRequest):
         return {"success": True, "message": "开始更新"}
     except Exception as e:
         update_lock.release()
-        raise HTTPException(status_code=500, detail=f"启动更新失败: {str(e)}") from e
+        raise HTTPException(status_code=500, detail=f"启动更新失败: {str(e)}")
 
 
 @router.post("/rollback")
@@ -314,7 +314,7 @@ async def rollback_update():
         return {"success": True, "message": "开始回滚"}
     except Exception as e:
         update_lock.release()
-        raise HTTPException(status_code=500, detail=f"启动回滚失败: {str(e)}") from e
+        raise HTTPException(status_code=500, detail=f"启动回滚失败: {str(e)}")
 
 
 @router.get("/status")
@@ -358,7 +358,7 @@ async def update_config_route(config: UpdateConfig):
         update_config["auto_apply"] = config.auto_apply
         return {"success": True, "message": "配置已更新", "config": update_config}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/health")
