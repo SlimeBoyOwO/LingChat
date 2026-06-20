@@ -8,4 +8,22 @@
 *.zip filter=lfs diff=lfs merge=lfs -text
 *.woff2 filter=lfs diff=lfs merge=lfs -text
 *.jpeg filter=lfs diff=lfs merge=lfs -text
+
+# 设置默认行为，自动检测文本文件
+* text=auto
+# 强制 Python 及其他代码文件使用 LF，其它文件另外处理
+*.py    text eol=lf
+*.json  text eol=lf
+*.toml  text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.sh    text eol=lf
+*.md    text eol=lf
+*.env   text eol=lf
+*.example text eol=lf
+.gitignore text eol=lf
+*.bat   text eol=crlf
+*.png   binary
+*.jpg   binary
+*.ico   binary
 my_app_signed.apk filter=lfs diff=lfs merge=lfs -text
