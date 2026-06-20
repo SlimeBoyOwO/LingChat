@@ -4,52 +4,83 @@ on:
   workflow_dispatch:
     inputs:
       old_url:
-        description: '初始版本压缩包URL'
+        description: '基线版本压缩包URL（完整包或增量包均可）'
         required: true
         type: string
       new_url:
-        description: '新版本压缩包URL'
+        description: '新版本完整压缩包URL'
         required: true
         type: string
-      output_name:
-        description: '最终压缩包文件名(含后缀，如 upgrade.tar.xz 或 upgrade.7z)'
+      version:
+        description: '新版本号，如 0.4.5.0'
         required: true
         type: string
+      base_version:
+        description: '基线版本号（可选，用于元数据）'
+        required: false
+        type: string
+      format:
+        description: '压缩格式：zip / tar.xz / 7z'
+        required: true
+        default: '7z'
+        type: choice
+        options:
+          - zip
+          - tar.xz
+          - 7z
       tag_name:
-        description: '目标Release的tag(不存在则创建)'
+        description: '目标Release的tag（用于上传GitHub Release）'
         required: true
         type: string
+      changelog:
+        description: '更新日志（可选）'
+        required: false
+        type: string
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: 检出仓库
+      # 1. 检出仓库并切换到目标tag（确保 others/build_package.py 存在且版本匹配）
+      - name: 检出仓库并切换 tag
         uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.tag_name }}
           lfs: false
 
+      # 2. 安装系统依赖和 Python 依赖
       - name: 安装依赖
         run: |
           sudo apt-get update
           sudo apt-get install -y p7zip-full xz-utils
-          pip install xxhash
+          pip install requests modelscope
 
-      - name: 下载并解压初始版本
+      # 3. 下载并解压基线版本（old）
+      - name: 下载并解压基线版本
         run: |
-          mkdir -p old new final
+          mkdir -p old new
           wget -O old_archive "${{ inputs.old_url }}"
           if [[ "${{ inputs.old_url }}" == *.tar.xz ]]; then
             tar -xf old_archive -C old --strip-components=1
           elif [[ "${{ inputs.old_url }}" == *.7z ]]; then
             7z x old_archive -oold -y
-            # 如果7z有顶层目录，移到正确位置
+            # 处理可能的顶层目录
+            if [ $(ls old | wc -l) -eq 1 ] && [ -d "old/$(ls old)" ]; then
+              mv "old/$(ls old)"/* old/
+              rmdir "old/$(ls old)"
+            fi
+          elif [[ "${{ inputs.old_url }}" == *.zip ]]; then
+            unzip -q old_archive -d old
             if [ $(ls old | wc -l) -eq 1 ] && [ -d "old/$(ls old)" ]; then
               mv "old/$(ls old)"/* old/
               rmdir "old/$(ls old)"
             fi
           fi
 
+      # 4. 下载并解压新版本（new）
       - name: 下载并解压新版本
         run: |
           wget -O new_archive "${{ inputs.new_url }}"
@@ -61,92 +92,105 @@ jobs:
               mv "new/$(ls new)"/* new/
               rmdir "new/$(ls new)"
             fi
+          elif [[ "${{ inputs.new_url }}" == *.zip ]]; then
+            unzip -q new_archive -d new
+            if [ $(ls new | wc -l) -eq 1 ] && [ -d "new/$(ls new)" ]; then
+              mv "new/$(ls new)"/* new/
+              rmdir "new/$(ls new)"
+            fi
           fi
 
-      - name: 运行增量同步脚本
+      # 5. 运行 build_package.py 生成增量包
+      - name: 生成增量包并上传
         run: |
-          python3 << 'EOF'
-          import os
-          import sys
-          import shutil
-          import xxhash
-          from pathlib import Path
-          from typing import Dict, Set
+          # 构建命令参数
+          CMD="python others/build_package.py \"${{ inputs.version }}\" ./new"
           
-          def get_file_hash(filepath: str) -> str:
-              h = xxhash.xxh64()
-              try:
-                  with open(filepath, 'rb') as f:
-                      while chunk := f.read(8192):
-                          h.update(chunk)
-                  return h.hexdigest()
-              except:
-                  return ""
-          
-          def get_all_files(base_path: str) -> Dict[str, str]:
-              base = Path(base_path)
-              if not base.exists():
-                  return {}
-              return {str(item.relative_to(base)): str(item) 
-                      for item in base.rglob('*') if item.is_file()}
-          
-          old_files = get_all_files("old")
-          new_files = get_all_files("new")
-          
-          stats = {"new": 0, "updated": 0, "skipped": 0, "errors": 0}
-          
-          # 新增文件
-          for rel_path in sorted(set(new_files.keys()) - set(old_files.keys())):
-              try:
-                  dest = Path("final") / rel_path
-                  dest.parent.mkdir(parents=True, exist_ok=True)
-                  shutil.copy2(new_files[rel_path], dest)
-                  stats["new"] += 1
-                  print(f"  [新增] {rel_path}")
-              except Exception as e:
-                  print(f"  [错误] {rel_path}: {e}", file=sys.stderr)
-                  stats["errors"] += 1
-          
-          # 变更文件
-          for rel_path in sorted(set(old_files.keys()) & set(new_files.keys())):
-              if get_file_hash(old_files[rel_path]) != get_file_hash(new_files[rel_path]):
-                  try:
-                      dest = Path("final") / rel_path
-                      dest.parent.mkdir(parents=True, exist_ok=True)
-                      shutil.copy2(new_files[rel_path], dest)
-                      stats["updated"] += 1
-                      print(f"  [更新] {rel_path}")
-                  except Exception as e:
-                      print(f"  [错误] {rel_path}: {e}", file=sys.stderr)
-                      stats["errors"] += 1
-              else:
-                  stats["skipped"] += 1
-          
-          print(f"\n同步完成: 新增{stats['new']} 更新{stats['updated']} 跳过{stats['skipped']} 错误{stats['errors']}")
-          EOF
-
-      - name: 压缩最终文件
-        run: |
-          cd final
-          if [[ "${{ inputs.output_name }}" == *.tar.xz ]]; then
-            XZ_OPT="-9 -T0" tar -cJf "../${{ inputs.output_name }}" .
-          elif [[ "${{ inputs.output_name }}" == *.7z ]]; then
-            7z a -t7z -mx9 -md=128m -mmt=4 "../${{ inputs.output_name }}" .
+          # 添加 changelog（如果有）
+          if [ -n "${{ inputs.changelog }}" ]; then
+            CMD="$CMD \"${{ inputs.changelog }}\""
           else
-            echo "不支持的后缀: ${{ inputs.output_name }}"
-            exit 1
+            CMD="$CMD \"\""
           fi
+          
+          # 添加基线目录
+          CMD="$CMD --base ./old"
+          
+          # 添加基线版本号（如果有）
+          if [ -n "${{ inputs.base_version }}" ]; then
+            CMD="$CMD --base-version \"${{ inputs.base_version }}\""
+          fi
+          
+          # 添加压缩格式
+          CMD="$CMD --format ${{ inputs.format }}"
+          
+          # 添加上传到 ModelScope（使用配置的 secrets）
+          if [ -n "${{ secrets.MODELSCOPE_ACCESS_TOKEN }}" ]; then
+            CMD="$CMD --ms-token \"${{ secrets.MODELSCOPE_ACCESS_TOKEN }}\""
+            CMD="$CMD --owner-name \"lingchat-research-studio\""
+            CMD="$CMD --repo-name \"LingChat-release-mirror\""
+          fi
+          
+          # 添加上传到自定义服务器（使用 UWA_UPDATE_KEY）
+          if [ -n "${{ secrets.UWA_UPDATE_KEY }}" ]; then
+            CMD="$CMD --upload-url \"https://lupdr.uwaspace.work\""
+            CMD="$CMD --upload-key \"${{ secrets.UWA_UPDATE_KEY }}\""
+          fi
+          
+          # 执行命令
+          echo "执行: $CMD"
+          eval $CMD
+          
+          # 记录生成的文件名（build_package.py 会在 updates/downloads/ 下生成）
+          if [ "${{ inputs.format }}" = "zip" ]; then
+            EXT="zip"
+          elif [ "${{ inputs.format }}" = "tar.xz" ]; then
+            EXT="tar.xz"
+          elif [ "${{ inputs.format }}" = "7z" ]; then
+            EXT="7z"
+          fi
+          
+          # 检查生成的是增量包还是完整包
+          GENERATED_FILE="updates/downloads/Lingchat_${{ inputs.version }}_delta.${EXT}"
+          if [ ! -f "$GENERATED_FILE" ]; then
+            GENERATED_FILE="updates/downloads/Lingchat_${{ inputs.version }}.${EXT}"
+          fi
+          echo "GENERATED_FILE=${GENERATED_FILE}" >> $GITHUB_ENV
 
-      - name: 创建或获取Release
+      # 6. 上传到 GitHub Release
+      - name: 创建或获取 Release
         run: |
           if ! gh release view "${{ inputs.tag_name }}" &>/dev/null; then
-            gh release create "${{ inputs.tag_name }}" --title "${{ inputs.tag_name }}" --notes "增量升级包"
+            gh release create "${{ inputs.tag_name }}" \
+              --title "${{ inputs.tag_name }}" \
+              --notes "增量升级包 ${{ inputs.version }}"
           fi
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - name: 上传到Release
+      - name: 上传到 GitHub Release
         run: |
-          gh release upload "${{ inputs.tag_name }}" "${{ inputs.output_name }}" --clobber
+          if [ -f "${{ env.GENERATED_FILE }}" ]; then
+            gh release upload "${{ inputs.tag_name }}" "${{ env.GENERATED_FILE }}" --clobber
+            echo "✅ GitHub Release 上传成功: ${{ env.GENERATED_FILE }}"
+          else
+            echo "❌ 找不到生成的文件: ${{ env.GENERATED_FILE }}"
+            exit 1
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
+
+      # 7. 输出最终结果
+      - name: 输出生成文件信息
+        run: |
+          echo "=========================================="
+          echo "✅ 增量包生成完成！"
+          echo "=========================================="
+          echo "文件: ${{ env.GENERATED_FILE }}"
+          echo "大小: $(ls -lh ${{ env.GENERATED_FILE }} | awk '{print $5}')"
+          echo ""
+          echo "上传目标："
+          echo "  - GitHub Release: ${{ inputs.tag_name }}"
+          echo "  - ModelScope: lingchat-research-studio/LingChat-release-mirror"
+          echo "  - 自定义服务器: https://lupdr.uwaspace.work"
+          echo "=========================================="

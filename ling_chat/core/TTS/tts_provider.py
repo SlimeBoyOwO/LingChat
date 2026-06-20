@@ -148,6 +148,10 @@ class TTS:
         :param model: TTS 模型名称
         :param voice: 音色/声音 ID
         """
+        if os.environ.get("OPENAI_TTS_API_KEY", "") == "":
+            logger.warning("未设置 OPENAI_TTS_API_KEY 环境变量，请检查是否正确设置")
+            self.enable = False
+            return None
         self.openai_tts_adapter = OpenAITTSAdapter(
             model=model,
             voice=voice,

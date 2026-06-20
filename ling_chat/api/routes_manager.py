@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from ling_chat.api.chat_achievement import router as chat_achievement_router
+from ling_chat.api.chat_cache import router as cache_router
 from ling_chat.api.chat_adventure import router as chat_adventure_router
 from ling_chat.api.chat_background import router as chat_background_router
 from ling_chat.api.chat_character import router as chat_character_router
@@ -54,6 +55,7 @@ class RoutesManager:
         app.include_router(chat_adventure_router)
         app.include_router(llm_config_router)  # 注册LLM配置路由
         app.include_router(llm_test_router)  # 注册LLM测试路由
+        app.include_router(cache_router)  # 注册缓存管理路由
 
         app.websocket("/ws")(websocket_endpoint)
 
