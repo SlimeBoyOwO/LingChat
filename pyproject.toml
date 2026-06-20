@@ -16,7 +16,6 @@ dependencies = [
     "fastapi>=0.116.1",
     "uvicorn>=0.35.0",
     "httpx>=0.28.0",
-    "pywebview>=5.4",
     "openai>=1.85.0",
     "platformdirs>=4.3.8",
     "python-multipart>=0.0.20",
@@ -28,7 +27,6 @@ dependencies = [
     "pillow>=10.0.0",
     "sqlmodel>=0.0.31",
     "pyyaml>=6.0.2",
-    "pynput>=1.8.1",
     "imagehash>=4.3.2",
     "rapidocr-onnxruntime>=1.4.4",
     "packaging>=21.0",
@@ -36,20 +34,23 @@ dependencies = [
     "anthropic>=0.100.0"
 ]
 
-[tool.setuptools]
-packages = ["ling_chat"]
-
-[tool.uv]
-index-strategy = "unsafe-best-match"
-default-groups = ["dev"]
-
-[dependency-groups]
+[project.optional-dependencies]
+gui = [
+    "pywebview>=5.4",
+    "pynput>=1.8.1",
+]
 dev = [
     "ruff>=0.14.10",
     "pytest>=7.0",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=6.2.1",
 ]
+
+[tool.setuptools]
+packages = ["ling_chat"]
+
+[tool.uv]
+index-strategy = "unsafe-best-match"
 
 [[tool.uv.index]]
 name = "tuna"
