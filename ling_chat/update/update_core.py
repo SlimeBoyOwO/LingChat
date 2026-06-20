@@ -17,6 +17,7 @@ from ling_chat.utils.http_utils import download_file, fetch_json
 from packaging import version
 
 
+# 更新状态枚举，用于表示更新流程的各个阶段
 class UpdateStatus(Enum):
     IDLE = "idle"
     CHECKING = "checking"
@@ -31,22 +32,26 @@ class UpdateStatus(Enum):
 
 
 class UpdateStrategy(ABC):
+    """抽象更新策略基类：
+    子类需要实现检查、下载和应用更新的具体逻辑。保持接口简单明确。
+    """
+
     def __init__(self):
         self.current_version = "0.0.0"
 
     @abstractmethod
     def check_update(self) -> Optional[Dict[str, Any]]:
-        """检查更新"""
+        """检查是否有可用更新，返回更新信息或 None"""
         pass
 
     @abstractmethod
     def download_update(self, progress_callback: Optional[Callable] = None) -> str:
-        """下载更新"""
+        """下载更新包，返回下载文件路径"""
         pass
 
     @abstractmethod
     def apply_update(self) -> bool:
-        """应用更新"""
+        """应用已下载的更新，返回是否成功"""
         pass
 
     def download_update_chain(
@@ -130,6 +135,7 @@ class UpdateManager:
         self.load_config()
 
     def load_config(self):
+        # 加载或初始化更新器配置（如上次检查时间、跳过的版本等）
         self.config = {
             "last_check": 0,
             "skipped_versions": [],
@@ -147,6 +153,7 @@ class UpdateManager:
                 logger.warning(f"加载配置失败，使用默认配置: {e}")
 
     def save_config(self):
+        # 将配置写回磁盘，失败只记录日志
         try:
             with open(self.config_file, "w", encoding="utf-8") as f:
                 json.dump(self.config, f, indent=2, ensure_ascii=False)
@@ -995,7 +1002,7 @@ class MyUpdateStrategy(UpdateStrategy):
                 # 捕获当前的i用于闭包
                 current_i = i
 
-                def _wrapped_progress(progress: int) -> None:
+                def _wrapped_progress(progress: int, current_i=current_i) -> None:
                     if progress_callback and total_files > 0:
                         file_progress = int(progress / total_files)
                         current_progress = (
