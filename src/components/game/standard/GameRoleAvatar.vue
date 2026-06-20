@@ -16,7 +16,7 @@
         :src="targetAvatarUrl"
         :duration="300"
         position="center bottom"
-        object-fit="contain"
+        :object-fit="computedObjectFit"
       />
 
       <!-- 气泡 -->
@@ -29,7 +29,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, toRefs } from 'vue'
+import { ref, computed, watch, nextTick, toRefs, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useGameStore } from '@/stores/modules/game'
@@ -56,6 +56,26 @@ const currentBubbleClass = ref('')
 
 let bubbleTimeoutId: number | null = null
 let latestEmotionId = 0
+
+// --- 移动端适配：追踪视口尺寸，窄屏时切换 object-fit ---
+const viewportWidth = ref(window.innerWidth)
+const viewportHeight = ref(window.innerHeight)
+
+function onResize() {
+  viewportWidth.value = window.innerWidth
+  viewportHeight.value = window.innerHeight
+}
+
+onMounted(() => window.addEventListener('resize', onResize))
+onUnmounted(() => window.removeEventListener('resize', onResize))
+
+// 窄屏适配：宽高比 < 1.0 时，高度从 100% 线性过渡到 80%（ratio=0.5 时到达 80%）
+const computedObjectFit = computed(() => {
+  const ratio = viewportWidth.value / viewportHeight.value
+  if (ratio >= 1.0) return 'contain'
+  const percent = Math.max(98, 100 - (1.0 - ratio) * 40)
+  return `auto ${Math.round(percent)}%`
+})
 
 // --- 样式计算 ---
 const layoutPosition = computed(() => {
@@ -144,7 +164,12 @@ async function resolveAvatar() {
 }
 
 watch(
-  () => [role.value.roleId, role.value.emotion, role.value.clothesName, role.value.character_folder],
+  () => [
+    role.value.roleId,
+    role.value.emotion,
+    role.value.clothesName,
+    role.value.character_folder,
+  ],
   () => resolveAvatar(),
   { immediate: true },
 )

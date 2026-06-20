@@ -10,7 +10,7 @@
       @click="toggleEnabled"
       v-show="!uiStore.showSettings"
     >
-      <h3 class="text-lg font-bold m-0">日程</h3>
+      <h3 class="text-lg font-bold m-0 hidden xl:block">日程</h3>
     </Button>
 
     <Transition
