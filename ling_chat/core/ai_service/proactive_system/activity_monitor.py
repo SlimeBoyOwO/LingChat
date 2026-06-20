@@ -10,7 +10,15 @@ from ling_chat.core.ai_service.proactive_system.type import UserState
 from ling_chat.core.logger import logger
 from mss import mss
 from PIL import Image
-from rapidocr_onnxruntime import RapidOCR
+# 尝试导入 RapidOCR，无图形界面/缺失依赖时优雅降级
+try:
+    from rapidocr_onnxruntime import RapidOCR
+
+    OCR_AVAILABLE = True
+except Exception as e:
+    logger.warning(f"RapidOCR 不可用（依赖缺失）: {e}，OCR 功能已禁用")
+    RapidOCR = None
+    OCR_AVAILABLE = False
 
 # 尝试导入 pynput，无图形界面时优雅降级
 try:
@@ -166,12 +174,16 @@ class VisualMonitor(threading.Thread):
         self.ocr_engine = None
 
     def run(self):
-        try:
-            # RapidOCR (ONNX) 初始化
-            self.ocr_engine = RapidOCR()
-            logger.info("RapidOCR (ONNX) 初始化成功")
-        except Exception as e:
-            logger.error(f"OCR初始化失败: {e}")
+        if OCR_AVAILABLE:
+            try:
+                # RapidOCR (ONNX) 初始化
+                self.ocr_engine = RapidOCR()
+                logger.info("RapidOCR (ONNX) 初始化成功")
+            except Exception as e:
+                logger.error(f"OCR初始化失败: {e}")
+                self.ocr_engine = None
+        else:
+            logger.info("OCR 模块不可用，跳过 OCR 初始化（Server 模式）")
             self.ocr_engine = None
 
         self.running = True
