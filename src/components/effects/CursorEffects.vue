@@ -132,6 +132,31 @@ class MouseSpark {
         if (this.trail.length > this.maxTrail * 1.5) {
           this.trail.splice(0, this.trail.length - this.maxTrail)
         }
+
+        // --- 随机生成轨迹拖尾的发光三角形特效（仅在按下左键拖动时） ---
+        if (this.isDown && Math.random() > 0.5) {
+          let spark: any
+          if (this.sparksPool.length > 0) {
+            spark = this.sparksPool.pop()
+          } else {
+            spark = {}
+          }
+          const a = Math.random() * Math.PI * 2
+          const speed = (1.0 + Math.random() * 1.5) * this.scale // 微调初始散开速度
+          spark.x = p.x
+          spark.y = p.y
+          spark.vx = Math.cos(a) * speed
+          spark.vy = Math.sin(a) * speed
+          spark.rot = Math.random() * Math.PI * 2
+          spark.rs = (Math.random() - 0.5) * 0.15
+          spark.s = (4.0 + Math.random() * 3.0) * this.scale // 进一步调大三角形尺寸
+          spark.a = 1
+          spark.f = 0.93 // 轻微调整阻尼
+          spark.fromClick = false
+          spark.isTrailGlow = true
+          spark.color = '135,206,250' // 发光蓝
+          this.sparks.push(spark)
+        }
       }
       this.lastPos = p
     }
@@ -243,7 +268,7 @@ class MouseSpark {
       spark.vy = Math.sin(a) * speed
       spark.rot = Math.random() * Math.PI * 2
       spark.rs = (Math.random() - 0.5) * 0.28
-      spark.s = (4 + Math.random() * 3) * this.scale
+      spark.s = (5 + Math.random() * 4) * this.scale // 调大点击生成的三角形尺寸
       spark.a = 1
       spark.f = 0.9
       spark.fromClick = true
@@ -294,8 +319,7 @@ class MouseSpark {
     if (this.trail.length < 2) return
 
     ctx.save()
-    ctx.lineWidth = 3
-    ctx.lineCap = 'butt' // 使用 butt 消除连接处的重叠变黑问题
+    ctx.lineCap = 'butt' // 恢复 butt 避免线段连接处因叠加产生明显亮点
     ctx.lineJoin = 'round'
     ctx.shadowBlur = 10
     ctx.shadowColor = '#87CEFA'
@@ -316,6 +340,9 @@ class MouseSpark {
       ctx.beginPath()
       ctx.moveTo(startX, startY)
       ctx.quadraticCurveTo(p.x, p.y, xc, yc)
+
+      // 根据透明度调整线宽，实现前面粗后面细
+      ctx.lineWidth = 1 + 4 * endAlpha
 
       // 创建每一段的渐变
       const gradient = ctx.createLinearGradient(startX, startY, xc, yc)
@@ -340,6 +367,8 @@ class MouseSpark {
       ctx.moveTo(startX, startY)
       ctx.lineTo(last.x, last.y)
 
+      ctx.lineWidth = 1 + 5 * last.alpha
+
       const gradient = ctx.createLinearGradient(startX, startY, last.x, last.y)
       gradient.addColorStop(0, `rgba(135, 206, 250, ${startAlpha})`)
       gradient.addColorStop(1, `rgba(135, 206, 250, ${last.alpha})`)
@@ -348,7 +377,7 @@ class MouseSpark {
 
       // 绘制头部圆帽
       ctx.beginPath()
-      ctx.arc(last.x, last.y, 1.5, 0, Math.PI * 2)
+      ctx.arc(last.x, last.y, ctx.lineWidth / 2, 0, Math.PI * 2)
       ctx.fillStyle = `rgba(135, 206, 250, ${last.alpha})`
       ctx.fill()
     }
@@ -490,6 +519,12 @@ class MouseSpark {
       ctx.moveTo(0, -s.s)
       ctx.lineTo(s.s * 0.6, s.s * 0.6)
       ctx.lineTo(-s.s * 0.6, s.s * 0.6)
+
+      if (s.isTrailGlow) {
+        ctx.shadowBlur = 8
+        ctx.shadowColor = `rgba(${s.color},${this.alpha(s.a)})`
+      }
+
       ctx.fillStyle = `rgba(${s.color},${this.alpha(s.a)})`
       ctx.fill()
       ctx.restore()

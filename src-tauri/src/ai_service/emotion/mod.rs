@@ -4,4 +4,4 @@
 
 pub mod classifier;
 
-pub use classifier::{EmotionClassifier, EmotionPrediction};
+pub use classifier::EmotionClassifier;
