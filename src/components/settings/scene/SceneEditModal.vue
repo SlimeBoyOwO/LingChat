@@ -3,7 +3,7 @@
     <Transition name="modal">
       <div
         v-if="show"
-        class="fixed inset-0 z-9999 flex items-center justify-center p-4 backdrop-blur-md bg-black/40"
+        class="fixed inset-0 z-9998 flex items-center justify-center p-4 backdrop-blur-md bg-black/40"
         @click="$emit('close')"
       >
         <div
