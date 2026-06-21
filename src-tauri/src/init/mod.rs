@@ -28,6 +28,7 @@ pub async fn initialize(
     app: &App,
 ) -> Result<(DatabaseConnection, SharedAIService, ChatComponents)> {
     static_copy::init_data_dir(&app.handle());
+    static_copy::seed_data_dir(&app.handle())?;
     let data_dir = static_copy::get_data_dir().clone();
     let db = db::init_db(&data_dir).await?;
 

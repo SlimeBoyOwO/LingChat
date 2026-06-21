@@ -44,6 +44,10 @@ interface UIState {
   currentAvatarAudio: string
   autoMode: boolean
 
+  // 视口响应式追踪（全局唯一 resize 监听，组件直接读值）
+  viewportWidth: number
+  viewportHeight: number
+
   // Schedule 相关状态
   scheduleView: string
 
@@ -89,6 +93,10 @@ export const useUIStore = defineStore('ui', {
     currentSoundEffect: 'None',
     currentAvatarAudio: 'None',
     autoMode: false,
+
+    // 视口响应式追踪
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
 
     // Schedule 相关状态
     scheduleView: 'schedule_groups',
@@ -138,6 +146,14 @@ export const useUIStore = defineStore('ui', {
     // 角色文件夹（从 settings store 获取）
     currentCharacterFolder(): string {
       return useSettingsStore().characterFolder
+    },
+    // 视口宽高比
+    aspectRatio(): number {
+      return this.viewportWidth / this.viewportHeight
+    },
+    // 窄屏判断（竖屏 / 移动端）
+    isNarrowScreen(): boolean {
+      return this.aspectRatio < 1.0
     },
   },
 
@@ -426,6 +442,13 @@ export function initUIStore() {
   initialized = true
 
   const store = useUIStore()
+
+  // 全局唯一 resize 监听：更新视口尺寸供所有组件复用
+  window.addEventListener('resize', () => {
+    store.viewportWidth = window.innerWidth
+    store.viewportHeight = window.innerHeight
+  })
+
   const settingsStore = useSettingsStore()
   // 使用 getter 获取角色文件夹
   store.loadCharacterTips(store.currentCharacterFolder)

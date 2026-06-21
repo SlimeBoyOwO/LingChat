@@ -29,10 +29,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, toRefs, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, toRefs } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useGameStore } from '@/stores/modules/game'
+import { useUIStore } from '@/stores/modules/ui/ui'
 import { EMOTION_CONFIG, EMOTION_CONFIG_EMO } from '@/controllers/emotion/config'
 import type { GameRole } from '@/stores/modules/game/state'
 import TouchAreas from './TouchAreas.vue'
@@ -44,6 +45,7 @@ const props = defineProps<{
 }>()
 
 const gameStore = useGameStore()
+const uiStore = useUIStore()
 const { role } = toRefs(props)
 
 const bubbleAudio = ref<HTMLAudioElement | null>(null)
@@ -57,24 +59,22 @@ const currentBubbleClass = ref('')
 let bubbleTimeoutId: number | null = null
 let latestEmotionId = 0
 
-// --- 移动端适配：追踪视口尺寸，窄屏时切换 object-fit ---
-const viewportWidth = ref(window.innerWidth)
-const viewportHeight = ref(window.innerHeight)
+// --- 移动端适配：从 uiStore 读取视口尺寸（全局唯一 resize 监听） ---
 
-function onResize() {
-  viewportWidth.value = window.innerWidth
-  viewportHeight.value = window.innerHeight
-}
-
-onMounted(() => window.addEventListener('resize', onResize))
-onUnmounted(() => window.removeEventListener('resize', onResize))
-
-// 窄屏适配：宽高比 < 1.0 时，高度从 100% 线性过渡到 80%（ratio=0.5 时到达 80%）
+// 窄屏适配：宽高比 1.0→0.5 区间，高度 100%→80%（rate=40）
 const computedObjectFit = computed(() => {
-  const ratio = viewportWidth.value / viewportHeight.value
+  const ratio = uiStore.aspectRatio
   if (ratio >= 1.0) return 'contain'
-  const percent = Math.max(98, 100 - (1.0 - ratio) * 40)
+  const percent = Math.max(80, 100 - (1.0 - ratio) * 40)
   return `auto ${Math.round(percent)}%`
+})
+
+// 窄屏 Y 轴补偿：同步上述区间，0%→20% 视口高度上移（rate=40）
+const narrowScreenYCompensation = computed(() => {
+  const ratio = uiStore.aspectRatio
+  if (ratio >= 1.0) return 0
+  const percent = Math.min(20, (1.0 - ratio) * 40)
+  return Math.round((uiStore.viewportHeight * percent) / 100)
 })
 
 // --- 样式计算 ---
@@ -104,7 +104,7 @@ const containerStyle = computed(() => {
 
   const style: Record<string, string> = {
     left: `calc(${autoLeft}% + ${manualOffset}px)`,
-    top: `${role.value.offsetY}px`,
+    top: `${role.value.offsetY - narrowScreenYCompensation.value}px`,
     transform: `translateX(-50%) scale(${role.value.scale})`,
     opacity: `${role.value.show ? 1 : 0}`,
     zIndex: '1',

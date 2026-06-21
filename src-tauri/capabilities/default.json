@@ -20,9 +20,10 @@
     "core:window:allow-inner-size",
     "opener:default",
     "screenshots:default",
-    "updater:default",
-    "updater:allow-check",
-    "updater:allow-download-and-install",
-    "process:allow-restart"
+    "fs:default",
+    {
+      "identifier": "fs:scope",
+      "allow": [{ "path": "$RESOURCE/**" }]
+    }
   ]
 }

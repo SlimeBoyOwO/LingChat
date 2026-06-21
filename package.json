@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "android:prepare": "node scripts/prepare-bundled-resources.mjs",
+    "android:build": "node scripts/prepare-bundled-resources.mjs && tauri android build --target aarch64"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.0",
