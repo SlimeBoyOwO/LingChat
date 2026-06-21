@@ -4,10 +4,6 @@ from pathlib import Path
 
 from platformdirs import user_data_dir
 
-# 应用信息（用于构建平台特定路径）
-APP_NAME = "ling_chat"
-APP_AUTHOR = "ling_chat"  # Windows 用于 AppData\Roaming\MyCompany\MyApp
-
 
 def get_package_root() -> Path:
     """
@@ -40,6 +36,10 @@ def get_user_data_path() -> Path:
             return Path(user_data_dir(appname=APP_NAME, appauthor=APP_AUTHOR))
     return get_package_root() / "data"  # 开发环境使用 package 根目录下的 data 文件夹
 
+
+# 应用信息（用于构建平台特定路径）
+APP_NAME = "ling_chat"
+APP_AUTHOR = "ling_chat"  # Windows 用于 AppData\Roaming\MyCompany\MyApp
 
 package_root: Path = get_package_root()
 

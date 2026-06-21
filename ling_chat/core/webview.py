@@ -2,10 +2,18 @@ import multiprocessing
 import os
 import platform
 
-import webview
-
 from ling_chat.core.logger import logger
 from ling_chat.utils.runtime_path import static_path, user_data_path
+
+# 尝试导入 webview，可选依赖缺失时降级 Server 模式
+try:
+    import webview
+
+    WEBVIEW_AVAILABLE = True
+except ImportError:
+    logger.warning("pywebview 未安装，降级为 Server 模式（无本地窗口）")
+    webview = None
+    WEBVIEW_AVAILABLE = False
 
 
 # 创建一个类以向JavaScript暴露函数
@@ -137,6 +145,10 @@ def func_webview():
 
 
 def start_webview():
+    if not WEBVIEW_AVAILABLE:
+        logger.info("pywebview 不可用，跳过本地窗口（Server 模式）")
+        return None
+
     webview_process = multiprocessing.Process(target=func_webview)
     webview_process.start()
     webview_process.join()

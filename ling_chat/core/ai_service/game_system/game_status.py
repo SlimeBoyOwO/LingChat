@@ -87,7 +87,7 @@ class GameStatus:
         """获取当前对话中非系统消息的数量（用于羁绊冒险解锁条件检测）"""
         from ling_chat.game_database.models import LineAttribute
 
-        return len([line for line in self.line_list if line.attribute != LineAttribute.SYSTEM])
+        return len([l for l in self.line_list if l.attribute != LineAttribute.SYSTEM])
 
     # ============ 特殊函数 ============
     def onstage_role(self, role: GameRole):
