@@ -1,4 +1,5 @@
 from ling_chat.core.llm_providers.base import BaseLLMProvider
+from ling_chat.core.llm_providers.anthropic import AnthropicProvider
 from ling_chat.core.llm_providers.gemini import GeminiProvider
 from ling_chat.core.llm_providers.kimi_code import KimiCodeProvider
 from ling_chat.core.llm_providers.lmstudio import LMStudioProvider
@@ -16,7 +17,7 @@ class LLMProviderFactory:
         """
         创建指定类型的大模型提供者
 
-        :param provider_type: 提供者类型 (webllm, ollama, lmstudio, gemini, qwen, kimi-code)
+        :param provider_type: 提供者类型 (webllm, ollama, lmstudio, gemini, anthropic, qwen, kimi-code)
         :param model_type: 模型名称
         :param api_key: API 密钥
         :param base_url: API 访问地址
@@ -42,6 +43,9 @@ class LLMProviderFactory:
             elif provider_type == "gemini":
                 logger.info("创建Gemini服务提供商")
                 return GeminiProvider(model_type, api_key, base_url)
+            elif provider_type == "anthropic":
+                logger.info("创建 Anthropic Claude 服务提供商")
+                return AnthropicProvider(model_type, api_key, base_url)
             elif provider_type == "kimi-code":
                 logger.info("创建 Kimi Code 服务提供商")
                 return KimiCodeProvider(model_type, api_key, base_url)

@@ -88,6 +88,11 @@ class LLMConfig:
                 "base_url": ("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"),
                 "model": ("GEMINI_MODEL_TYPE", "gemini-2.5-flash"),
             },
+            "anthropic": {
+                "api_key": ("ANTHROPIC_API_KEY", ""),
+                "base_url": ("ANTHROPIC_BASE_URL", "https://api.anthropic.com"),
+                "model": ("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929"),
+            },
             "ollama": {
                 "base_url": ("OLLAMA_BASE_URL", "http://localhost:11434"),
                 "model": ("OLLAMA_MODEL", "llama3"),
