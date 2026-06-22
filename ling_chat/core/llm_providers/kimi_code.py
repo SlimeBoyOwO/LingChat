@@ -6,6 +6,12 @@ from anthropic import Anthropic, AsyncAnthropic
 
 from ling_chat.core.llm_providers._http import build_httpx_client
 from ling_chat.core.llm_providers.base import BaseLLMProvider
+from ling_chat.core.llm_providers.tool_types import (
+    LLMResponse,
+    ToolCall,
+    ToolConverter,
+    ToolDefinition,
+)
 from ling_chat.core.logger import logger
 
 
@@ -227,6 +233,227 @@ class KimiCodeProvider(BaseLLMProvider):
 
         except Exception as e:
             logger.error(f"Kimi Code 流式请求失败: {str(e)}")
+            import traceback
+
+            traceback.print_exc()
+            raise
+
+    def _convert_messages_with_tool_results(
+        self, messages: List[Dict]
+    ) -> tuple[str, List[Dict]]:
+        """转换消息，处理 tool 和 tool_result 角色（复用 Anthropic 逻辑）"""
+        system_prompt = ""
+        converted_messages = []
+
+        for msg in messages:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+
+            if role == "system":
+                system_prompt = content or ""
+                continue
+
+            # 转换 tool 角色
+            if role == "tool":
+                converted_messages.append(
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": msg.get("tool_call_id", ""),
+                                "content": str(content),
+                            }
+                        ],
+                    }
+                )
+                continue
+
+            # 转换 tool_calls 消息格式
+            if role == "assistant" and msg.get("tool_calls"):
+                content_blocks = []
+                if content:
+                    content_blocks.append({"type": "text", "text": str(content)})
+                for tc in msg.get("tool_calls", []):
+                    content_blocks.append(
+                        {
+                            "type": "tool_use",
+                            "id": tc.get("id", ""),
+                            "name": tc.get("name", ""),
+                            "input": tc.get("arguments", {}),
+                        }
+                    )
+                converted_messages.append(
+                    {"role": "assistant", "content": content_blocks}
+                )
+                continue
+
+            # 其他消息使用基类转换逻辑
+            if role == "assistant":
+                blocks = []
+                if isinstance(content, str) and content.strip():
+                    blocks.append({"type": "text", "text": content})
+                elif isinstance(content, list):
+                    for part in content:
+                        if isinstance(part, dict):
+                            blocks.append(part)
+                        else:
+                            blocks.append({"type": "text", "text": str(part)})
+                converted_messages.append({"role": "assistant", "content": blocks})
+            elif role == "user":
+                blocks = []
+                if isinstance(content, str):
+                    blocks.append({"type": "text", "text": content})
+                elif isinstance(content, list):
+                    for part in content:
+                        if isinstance(part, dict):
+                            pt = part.get("type", "")
+                            if pt == "image_url":
+                                image_url_data = part.get("image_url", {})
+                                url = image_url_data.get("url", "")
+                                if url.startswith("data:"):
+                                    try:
+                                        import base64
+
+                                        _, base64_data = url.split(",", 1)
+                                        image_bytes = base64.b64decode(base64_data)
+                                        media_type = "image/jpeg"
+                                        if image_bytes[:8] == b"\\x89PNG\\r\\n\\x1a\\n":
+                                            media_type = "image/png"
+                                        blocks.append(
+                                            {
+                                                "type": "image",
+                                                "source": {
+                                                    "type": "base64",
+                                                    "media_type": media_type,
+                                                    "data": base64_data,
+                                                },
+                                            }
+                                        )
+                                    except Exception:
+                                        blocks.append(
+                                            {"type": "text", "text": "[图片解析失败]"}
+                                        )
+                                else:
+                                    blocks.append(
+                                        {"type": "text", "text": f"[图片: {url}]"}
+                                    )
+                            else:
+                                blocks.append(part)
+                        else:
+                            blocks.append({"type": "text", "text": str(part)})
+                converted_messages.append({"role": "user", "content": blocks})
+            else:
+                converted_messages.append({"role": role, "content": content})
+
+        return system_prompt, converted_messages
+
+    def _build_payload_with_tools(
+        self, messages: List[Dict], tools: List[ToolDefinition] = None
+    ) -> Dict:
+        """构建 Anthropic API 请求参数（支持工具）"""
+        system_prompt, anthropic_messages = self._convert_messages_with_tool_results(
+            messages
+        )
+
+        # 确保 user/assistant 交替
+        if anthropic_messages and anthropic_messages[0].get("role") != "user":
+            anthropic_messages.insert(
+                0, {"role": "user", "content": [{"type": "text", "text": "..."}]}
+            )
+
+        payload = {
+            "model": self.model_type,
+            "messages": anthropic_messages,
+            "max_tokens": self.max_tokens,
+        }
+
+        if system_prompt:
+            payload["system"] = system_prompt
+
+        if tools:
+            payload["tools"] = ToolConverter.to_anthropic(tools)
+
+        return payload
+
+    def generate_with_tools(
+        self, messages: List[Dict], tools: List[ToolDefinition]
+    ) -> LLMResponse:
+        """生成带工具调用的响应"""
+        if self.client is None:
+            error_message = "Kimi Code 未初始化，请检查配置"
+            logger.error(error_message)
+            return LLMResponse(content=error_message)
+
+        try:
+            logger.debug(f"正在对 Kimi Code 发送工具调用请求: {self.model_type}")
+            payload = self._build_payload_with_tools(messages, tools)
+
+            response = self.client.messages.create(**payload, stream=False)
+
+            text_content = ""
+            tool_calls = []
+
+            for block in response.content:
+                if hasattr(block, "type"):
+                    if block.type == "text":
+                        text_content += block.text
+                    elif block.type == "tool_use":
+                        tool_calls.append(
+                            ToolCall.from_anthropic(
+                                {
+                                    "id": block.id,
+                                    "name": block.name,
+                                    "input": block.input,
+                                }
+                            )
+                        )
+
+            return LLMResponse(content=text_content, tool_calls=tool_calls)
+
+        except Exception as e:
+            logger.error(f"Kimi Code 工具调用请求失败: {str(e)}")
+            raise
+
+    async def generate_stream_with_tools(
+        self, messages: List[Dict], tools: List[ToolDefinition]
+    ) -> AsyncGenerator[LLMResponse, None]:
+        """生成带工具调用的流式响应"""
+        if self.async_client is None:
+            error_message = "Kimi Code 未初始化，请检查配置"
+            logger.error(error_message)
+            yield LLMResponse(content=error_message)
+            return
+
+        try:
+            logger.debug(f"正在对 Kimi Code 发送工具调用流式请求: {self.model_type}")
+            payload = self._build_payload_with_tools(messages, tools)
+
+            response = await self.async_client.messages.create(**payload)
+
+            text_content = ""
+            tool_calls = []
+
+            for block in response.content:
+                if hasattr(block, "type"):
+                    if block.type == "text":
+                        text_content += block.text
+                        yield LLMResponse(content=block.text, is_finished=False)
+                    elif block.type == "tool_use":
+                        tool_calls.append(
+                            ToolCall.from_anthropic(
+                                {
+                                    "id": block.id,
+                                    "name": block.name,
+                                    "input": block.input,
+                                }
+                            )
+                        )
+
+            yield LLMResponse(content="", tool_calls=tool_calls, is_finished=True)
+
+        except Exception as e:
+            logger.error(f"Kimi Code 工具调用流式请求失败: {str(e)}")
             import traceback
 
             traceback.print_exc()

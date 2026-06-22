@@ -18,6 +18,12 @@ from anthropic import Anthropic, AsyncAnthropic
 from ling_chat.configs.llm_config import llm_config
 from ling_chat.core.llm_providers._http import build_httpx_client
 from ling_chat.core.llm_providers.base import BaseLLMProvider
+from ling_chat.core.llm_providers.tool_types import (
+    LLMResponse,
+    ToolCall,
+    ToolConverter,
+    ToolDefinition,
+)
 from ling_chat.core.logger import logger
 
 
@@ -29,8 +35,12 @@ class AnthropicProvider(BaseLLMProvider):
         main_cfg = llm_config.get_main_config()
 
         self.api_key = api_key or main_cfg.get("api_key", "")
-        self.model_type = model_type or main_cfg.get("model", "claude-sonnet-4-5-20250929")
-        self.base_url = base_url or main_cfg.get("base_url", "https://api.anthropic.com")
+        self.model_type = model_type or main_cfg.get(
+            "model", "claude-sonnet-4-5-20250929"
+        )
+        self.base_url = base_url or main_cfg.get(
+            "base_url", "https://api.anthropic.com"
+        )
         self.temperature = main_cfg.get("temperature", 1.0)
         self.top_p = main_cfg.get("top_p", 0.9)
         self.top_k = main_cfg.get("top_k", 40)
@@ -102,10 +112,12 @@ class AnthropicProvider(BaseLLMProvider):
                 role = "user"
 
             # Anthropic 要求 content 为字符串或内容块列表
-            converted_messages.append({
-                "role": role,
-                "content": str(content),
-            })
+            converted_messages.append(
+                {
+                    "role": role,
+                    "content": str(content),
+                }
+            )
 
         return system_prompt, converted_messages
 
@@ -119,7 +131,9 @@ class AnthropicProvider(BaseLLMProvider):
         try:
             logger.debug(f"正在向 Anthropic 发送请求: {self.model_type}")
 
-            system_prompt, converted_messages = self._extract_system_and_messages(messages)
+            system_prompt, converted_messages = self._extract_system_and_messages(
+                messages
+            )
 
             # 构建请求参数
             create_kwargs = {
@@ -166,7 +180,9 @@ class AnthropicProvider(BaseLLMProvider):
         try:
             logger.debug(f"正在向 Anthropic 发送流式请求: {self.model_type}")
 
-            system_prompt, converted_messages = self._extract_system_and_messages(messages)
+            system_prompt, converted_messages = self._extract_system_and_messages(
+                messages
+            )
 
             # 构建请求参数
             create_kwargs = {
@@ -195,5 +211,223 @@ class AnthropicProvider(BaseLLMProvider):
         except Exception as e:
             logger.error(f"Anthropic 流式请求失败: {str(e)}")
             import traceback
+
+            traceback.print_exc()
+            raise
+
+    def _convert_messages_with_tool_results(
+        self, messages: List[Dict]
+    ) -> tuple[Optional[str], List[Dict]]:
+        """转换消息，处理 tool 和 tool_result 角色"""
+        system_prompt = None
+        converted_messages = []
+
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+
+            if role == "system":
+                system_prompt = str(content)
+                continue
+
+            # 转换 tool 角色为 Anthropic 格式
+            if role == "tool":
+                # Anthropic 使用 role="user"，content 包含 tool_result 块
+                converted_messages.append(
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": msg.get("tool_call_id", ""),
+                                "content": str(content),
+                            }
+                        ],
+                    }
+                )
+                continue
+
+            # 转换 tool_calls 消息格式
+            if role == "assistant" and msg.get("tool_calls"):
+                content_blocks = []
+                if content:
+                    content_blocks.append({"type": "text", "text": str(content)})
+                for tc in msg.get("tool_calls", []):
+                    content_blocks.append(
+                        {
+                            "type": "tool_use",
+                            "id": tc.get("id", ""),
+                            "name": tc.get("name", ""),
+                            "input": tc.get("arguments", {}),
+                        }
+                    )
+                converted_messages.append(
+                    {"role": "assistant", "content": content_blocks}
+                )
+                continue
+
+            converted_messages.append({"role": role, "content": str(content)})
+
+        return system_prompt, converted_messages
+
+    def generate_with_tools(
+        self, messages: List[Dict], tools: List[ToolDefinition]
+    ) -> LLMResponse:
+        """生成带工具调用的响应"""
+        if self.client is None:
+            error_message = "Anthropic 未初始化，请检查配置"
+            logger.error(error_message)
+            return LLMResponse(content=error_message)
+
+        try:
+            logger.debug(f"正在向 Anthropic 发送工具调用请求: {self.model_type}")
+
+            system_prompt, converted_messages = (
+                self._convert_messages_with_tool_results(messages)
+            )
+
+            # 转换工具定义
+            anthropic_tools = ToolConverter.to_anthropic(tools)
+
+            # 构建请求参数
+            create_kwargs = {
+                "model": self.model_type,
+                "max_tokens": self.max_tokens,
+                "messages": converted_messages,
+                "tools": anthropic_tools,
+            }
+
+            if system_prompt:
+                create_kwargs["system"] = system_prompt
+
+            if self.temperature > 0:
+                create_kwargs["temperature"] = self.temperature
+                if self.top_p and self.top_p < 1.0:
+                    create_kwargs["top_p"] = self.top_p
+                if self.top_k:
+                    create_kwargs["top_k"] = self.top_k
+
+            response = self.client.messages.create(**create_kwargs)
+
+            # 解析响应内容
+            text_content = ""
+            tool_calls = []
+
+            for block in response.content:
+                if hasattr(block, "type"):
+                    if block.type == "text":
+                        text_content += block.text
+                    elif block.type == "tool_use":
+                        tool_calls.append(
+                            ToolCall.from_anthropic(
+                                {
+                                    "id": block.id,
+                                    "name": block.name,
+                                    "input": block.input,
+                                }
+                            )
+                        )
+
+            return LLMResponse(content=text_content, tool_calls=tool_calls)
+
+        except Exception as e:
+            logger.error(f"Anthropic 工具调用请求失败: {str(e)}")
+            raise
+
+    async def generate_stream_with_tools(
+        self, messages: List[Dict], tools: List[ToolDefinition]
+    ) -> AsyncGenerator[LLMResponse, None]:
+        """生成带工具调用的流式响应"""
+        if self.async_client is None:
+            error_message = "Anthropic 未初始化，请检查配置"
+            logger.error(error_message)
+            raise ConnectionError(error_message)
+
+        try:
+            logger.debug(f"正在向 Anthropic 发送工具调用流式请求: {self.model_type}")
+
+            system_prompt, converted_messages = (
+                self._convert_messages_with_tool_results(messages)
+            )
+
+            anthropic_tools = ToolConverter.to_anthropic(tools)
+
+            create_kwargs = {
+                "model": self.model_type,
+                "max_tokens": self.max_tokens,
+                "messages": converted_messages,
+                "tools": anthropic_tools,
+            }
+
+            if system_prompt:
+                create_kwargs["system"] = system_prompt
+
+            if self.temperature > 0:
+                create_kwargs["temperature"] = self.temperature
+                if self.top_p and self.top_p < 1.0:
+                    create_kwargs["top_p"] = self.top_p
+                if self.top_k:
+                    create_kwargs["top_k"] = self.top_k
+
+            # Anthropic 支持流式工具调用，使用 messages.stream()
+            # 流式响应中通过 content_block_start/content_block_delta 事件获取
+            async with self.async_client.messages.stream(**create_kwargs) as stream:
+                tool_calls = []
+                current_tool_use_id = ""
+                current_tool_name = ""
+                current_tool_input_json = ""
+
+                async for event in stream:
+                    if event.type == "content_block_start":
+                        block = event.content_block
+                        if block.type == "text":
+                            # 文本块开始
+                            pass
+                        elif block.type == "tool_use":
+                            current_tool_use_id = block.id
+                            current_tool_name = block.name
+                            current_tool_input_json = ""
+
+                    elif event.type == "content_block_delta":
+                        delta = event.delta
+                        if delta.type == "text_delta":
+                            yield LLMResponse(content=delta.text, is_finished=False)
+                        elif delta.type == "input_json_delta":
+                            # 工具调用的输入参数（JSON 流式）
+                            current_tool_input_json += delta.partial_json
+
+                    elif event.type == "content_block_stop":
+                        if current_tool_use_id:
+                            # 工具调用块结束，解析完整参数
+                            try:
+                                import json
+
+                                input_data = (
+                                    json.loads(current_tool_input_json)
+                                    if current_tool_input_json
+                                    else {}
+                                )
+                            except json.JSONDecodeError:
+                                input_data = {}
+
+                            tool_calls.append(
+                                ToolCall.from_anthropic(
+                                    {
+                                        "id": current_tool_use_id,
+                                        "name": current_tool_name,
+                                        "input": input_data,
+                                    }
+                                )
+                            )
+                            current_tool_use_id = ""
+                            current_tool_name = ""
+                            current_tool_input_json = ""
+
+            yield LLMResponse(content="", tool_calls=tool_calls, is_finished=True)
+
+        except Exception as e:
+            logger.error(f"Anthropic 工具调用流式请求失败: {str(e)}")
+            import traceback
+
             traceback.print_exc()
             raise

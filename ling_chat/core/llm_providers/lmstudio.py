@@ -1,10 +1,16 @@
 import json
+import os
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 
 from ling_chat.configs.llm_config import llm_config
 from ling_chat.core.llm_providers._http import build_httpx_client
+from ling_chat.core.llm_providers.tool_types import (
+    LLMResponse,
+    ToolCall,
+    ToolDefinition,
+)
 from ling_chat.core.logger import logger
 
 from .base import BaseLLMProvider
@@ -17,7 +23,9 @@ class LMStudioProvider(BaseLLMProvider):
         super().__init__()
         main_cfg = llm_config.get_main_config()
         self.model_type = model_type or main_cfg.get("model", "")
-        self.base_url = base_url.replace("/v1", "") if base_url else "http://localhost:1234"
+        self.base_url = (
+            base_url.replace("/v1", "") if base_url else "http://localhost:1234"
+        )
         self.api_token = api_key
         self._temperature = float(main_cfg.get("temperature", 1.3))
         self._top_p = float(main_cfg.get("top_p", 0.9))
@@ -345,4 +353,101 @@ class LMStudioProvider(BaseLLMProvider):
             raise
         except Exception as e:
             logger.error(f"LM Studio 流式 API 请求失败：{str(e)}")
+            raise
+
+    def generate_with_tools(
+        self, messages: List[Dict], tools: List[ToolDefinition]
+    ) -> LLMResponse:
+        """生成带工具调用的响应
+
+        LM Studio 的 /api/v1/chat 端点支持 tool_call 响应格式
+        """
+        try:
+            logger.debug("向 LM Studio /api/v1/chat 发送工具调用请求")
+
+            request_body = self._create_request_body(messages, stream=False)
+
+            # 转换工具定义
+            # LM Studio 使用类似 OpenAI 的格式
+            request_body["tools"] = [tool.model_dump() for tool in tools]
+
+            with self._get_http_client() as client:
+                response = client.post("/api/v1/chat", json=request_body)
+                response.raise_for_status()
+                data = response.json()
+
+                # 解析响应
+                output = data.get("output", [])
+                content_parts = []
+                tool_calls = []
+
+                for item in output:
+                    item_type = item.get("type")
+                    if item_type == "message":
+                        content_parts.append(item.get("content", ""))
+                    elif item_type == "tool_call":
+                        tool_name = item.get("tool", "")
+                        tool_output = item.get("output", "")
+                        content_parts.append(f"[工具：{tool_name}] {tool_output}")
+                        # 尝试解析为 ToolCall
+                        try:
+                            tool_calls.append(
+                                ToolCall(
+                                    id=item.get("id", "call_" + tool_name),
+                                    name=tool_name,
+                                    arguments=item.get("arguments", {}),
+                                )
+                            )
+                        except Exception:
+                            pass
+
+                return LLMResponse(
+                    content="".join(content_parts), tool_calls=tool_calls
+                )
+
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                f"LM Studio 工具调用 HTTP 错误：{e.response.status_code} - {e.response.text}"
+            )
+            raise
+        except Exception as e:
+            logger.error(f"LM Studio 工具调用 API 请求失败：{str(e)}")
+            raise
+
+    async def generate_stream_with_tools(
+        self, messages: List[Dict], tools: List[ToolDefinition]
+    ) -> AsyncGenerator[LLMResponse, None]:
+        """生成带工具调用的流式响应"""
+        try:
+            logger.debug("向 LM Studio /api/v1/chat 发送工具调用流式请求")
+
+            request_body = self._create_request_body(messages, stream=True)
+            request_body["tools"] = [tool.model_dump() for tool in tools]
+
+            async with self._get_async_client() as client:
+                async with client.stream(
+                    "POST", "/api/v1/chat", json=request_body
+                ) as response:
+                    response.raise_for_status()
+
+                    content_parts = []
+                    tool_calls = []
+
+                    async for chunk in self._handle_stream_response(response):
+                        content_parts.append(chunk)
+                        yield LLMResponse(content=chunk, is_finished=False)
+
+                    # LM Studio 可能在最后一个 SSE 事件中包含 tool_call
+                    # 这里简化处理，返回累积的内容
+                    yield LLMResponse(
+                        content="", tool_calls=tool_calls, is_finished=True
+                    )
+
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                f"LM Studio 工具调用流式 HTTP 错误：{e.response.status_code} - {e.response.text}"
+            )
+            raise
+        except Exception as e:
+            logger.error(f"LM Studio 工具调用流式 API 请求失败：{str(e)}")
             raise

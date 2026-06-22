@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import AsyncGenerator, Dict, List
 
+from ling_chat.core.llm_providers.tool_types import LLMResponse, ToolDefinition
+
 
 class BaseLLMProvider(ABC):
     @abstractmethod
@@ -23,3 +25,33 @@ class BaseLLMProvider(ABC):
     ) -> AsyncGenerator[str, None]:
         """生成模型流式响应"""
         yield ""  # hack return type for async generator
+
+    @abstractmethod
+    def generate_with_tools(
+        self, messages: List[Dict], tools: List[ToolDefinition]
+    ) -> LLMResponse:
+        """生成带工具调用的响应
+
+        Args:
+            messages: 消息列表
+            tools: 工具定义列表
+
+        Returns:
+            LLMResponse: 包含内容和工具调用的响应
+        """
+        pass
+
+    @abstractmethod
+    async def generate_stream_with_tools(
+        self, messages: List[Dict], tools: List[ToolDefinition]
+    ) -> AsyncGenerator[LLMResponse, None]:
+        """生成带工具调用的流式响应
+
+        Args:
+            messages: 消息列表
+            tools: 工具定义列表
+
+        Yields:
+            LLMResponse: 包含内容和工具调用的响应片段
+        """
+        yield LLMResponse(content="")

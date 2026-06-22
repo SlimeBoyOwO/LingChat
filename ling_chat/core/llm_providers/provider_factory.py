@@ -1,5 +1,5 @@
-from ling_chat.core.llm_providers.base import BaseLLMProvider
 from ling_chat.core.llm_providers.anthropic import AnthropicProvider
+from ling_chat.core.llm_providers.base import BaseLLMProvider
 from ling_chat.core.llm_providers.gemini import GeminiProvider
 from ling_chat.core.llm_providers.kimi_code import KimiCodeProvider
 from ling_chat.core.llm_providers.lmstudio import LMStudioProvider
@@ -12,7 +12,11 @@ from ling_chat.core.logger import logger
 class LLMProviderFactory:
     @staticmethod
     def create_provider(
-        provider_type: str, model_type: str = "", api_key: str = "", base_url: str = "", **kwargs
+        provider_type: str,
+        model_type: str = "",
+        api_key: str = "",
+        base_url: str = "",
+        **kwargs,
     ) -> BaseLLMProvider:
         """
         创建指定类型的大模型提供者

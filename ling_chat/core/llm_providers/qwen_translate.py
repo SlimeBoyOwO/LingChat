@@ -6,6 +6,7 @@ from openai import AsyncOpenAI, OpenAI
 
 from ling_chat.configs.llm_config import llm_config
 from ling_chat.core.llm_providers._http import build_httpx_client
+from ling_chat.core.llm_providers.tool_types import LLMResponse, ToolDefinition
 from ling_chat.core.logger import logger
 
 from .base import BaseLLMProvider
@@ -24,7 +25,9 @@ class QwenTranslateProvider(BaseLLMProvider):
         # 从LLMConfig读取翻译配置
         cfg = llm_config.get_translator_config()
         api_key = cfg.get("api_key", "")
-        base_url = cfg.get("base_url", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+        base_url = cfg.get(
+            "base_url", "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        )
 
         if not api_key:
             error_message = "没有配置翻译模型的API Key，请检查配置"
@@ -39,10 +42,16 @@ class QwenTranslateProvider(BaseLLMProvider):
             async_client=True, timeout=self._timeout, base_url=base_url
         )
         self.client = OpenAI(
-            api_key=api_key, base_url=base_url, timeout=self._timeout, http_client=http_client
+            api_key=api_key,
+            base_url=base_url,
+            timeout=self._timeout,
+            http_client=http_client,
         )
         self.async_client = AsyncOpenAI(
-            api_key=api_key, base_url=base_url, timeout=self._timeout, http_client=async_http_client
+            api_key=api_key,
+            base_url=base_url,
+            timeout=self._timeout,
+            http_client=async_http_client,
         )
         self.model_type = cfg.get("model", "qwen-mt-plus")
 
@@ -135,3 +144,20 @@ class QwenTranslateProvider(BaseLLMProvider):
         except Exception as e:
             logger.error(f"Qwen翻译模型流式请求失败: {str(e)}")
             raise
+
+    def generate_with_tools(
+        self, messages: List[Dict], tools: List[ToolDefinition]
+    ) -> LLMResponse:
+        """生成带工具调用的响应
+
+        翻译场景通常不需要工具调用，这里返回不支持错误
+        """
+        logger.warning("Qwen翻译模型不支持工具调用，请使用主模型进行工具调用")
+        return LLMResponse(content="", tool_calls=[], is_finished=True)
+
+    async def generate_stream_with_tools(
+        self, messages: List[Dict], tools: List[ToolDefinition]
+    ) -> AsyncGenerator[LLMResponse, None]:
+        """生成带工具调用的流式响应"""
+        logger.warning("Qwen翻译模型不支持工具调用，请使用主模型进行工具调用")
+        yield LLMResponse(content="", tool_calls=[], is_finished=True)
