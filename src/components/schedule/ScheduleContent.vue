@@ -1,15 +1,11 @@
 <template>
-  <div
-    class="absolute -top-1 -left-2 w-10 h-10 rounded-full flex items-center justify-center text-brand shadow-md transform -rotate-18"
-  >
-    <PawPrint :size="58" />
-  </div>
-  <div
-    class="w-full flex-1 glass-panel bg-white/10 rounded-2xl overflow-hidden flex flex-col md:flex-row"
-    :class="containerClass"
-  >
-    <!-- 导航菜单 (左侧) -->
-    <aside class="w-full md:w-64 p-6 flex flex-col border-r border-cyan-300">
+  <div class="w-full flex-1 overflow-hidden flex flex-col md:flex-row" :class="containerClass">
+    <!-- 导航菜单 (左侧)：宽屏始终可见；窄屏仅在浏览菜单层级时可见 -->
+    <aside
+      v-show="!uiStore.isNarrowScreen || narrowViewLevel === 'menu'"
+      class="w-full md:w-64 p-6 flex flex-col border-r border-cyan-300"
+      :class="{ 'flex-1 min-h-0': uiStore.isNarrowScreen }"
+    >
       <div
         class="flex items-center space-x-3 text-base font-bold px-3.75 py-2.5 rounded-lg mb-8 text-brand inset_0_1px_1px_rgba(255,255,255,0.1)]"
       >
@@ -23,7 +19,7 @@
         <h1 class="font-bold text-xl text-white tracking-tight">LingChat AI</h1>
       </div>
 
-      <nav class="flex-1 space-y-2 w-full">
+      <nav class="flex-1 min-h-0 overflow-y-auto space-y-2 w-full">
         <button
           class="w-full flex items-center space-x-6 px-5 py-3 no-underline rounded-lg text-white transition-colors duration-200 relative z-10 adv-nav-link hover:bg-gray-200 hover:text-black active:text-white active:font-bold"
           @click="changeView('schedule_groups')"
@@ -65,35 +61,65 @@
       </div>
     </aside>
 
-    <main class="flex-1 flex flex-col overflow-hidden w-2xl">
-      <header class="mt-2 p-6 flex justify-between items-center border-b border-cyan-300">
-        <div class="flex items-center space-x-4 pl-4">
+    <main
+      v-show="!uiStore.isNarrowScreen || narrowViewLevel === 'content'"
+      class="flex-1 flex flex-col overflow-hidden w-full"
+    >
+      <header
+        class="flex justify-between items-center border-b border-cyan-300 shrink-0"
+        :class="uiStore.isNarrowScreen ? 'px-3 py-3' : 'mt-2 p-6'"
+      >
+        <div
+          class="flex items-center min-w-0"
+          :class="uiStore.isNarrowScreen ? 'space-x-2' : 'space-x-4 pl-4'"
+        >
+          <!-- 窄屏：返回菜单按钮 -->
+          <button
+            v-if="uiStore.isNarrowScreen"
+            @click="narrowViewLevel = 'menu'"
+            class="flex items-center gap-1 text-sm text-white/70 hover:text-white transition-colors py-1 px-1.5 rounded-lg hover:bg-white/10 shrink-0"
+          >
+            <ChevronLeft :size="18" />
+          </button>
+          <!-- 宽屏：返回上级视图（详情 → 分组） -->
           <button
             v-show="
-              uiStore.scheduleView === 'schedule_detail' || uiStore.scheduleView === 'todo_detail'
+              !uiStore.isNarrowScreen &&
+              (uiStore.scheduleView === 'schedule_detail' || uiStore.scheduleView === 'todo_detail')
             "
             @click="goBackToParentView"
             class="p-2 hover:bg-cyan-50 rounded-full text-cyan-600 transition-all"
           >
             <ChevronLeft />
           </button>
-          <div>
-            <h2 class="text-2xl font-bold text-brand mb-2">{{ titleInfo.title }}</h2>
-            <p class="text-xs text-white mt-0.5 tracking-wide">{{ titleInfo.subtitle }}</p>
+          <div class="min-w-0">
+            <h2
+              class="font-bold text-brand truncate"
+              :class="uiStore.isNarrowScreen ? 'text-base' : 'text-2xl mb-2'"
+            >
+              {{ titleInfo.title }}
+            </h2>
+            <p v-show="!uiStore.isNarrowScreen" class="text-xs text-white mt-0.5 tracking-wide">
+              {{ titleInfo.subtitle }}
+            </p>
           </div>
         </div>
 
         <button
           @click="triggerCreate"
-          class="bg-cyan-500 hover:bg-cyan-600 text-white px-5 py-2.5 rounded-xl shadow-lg transition-all flex items-center space-x-2"
+          class="bg-cyan-500 hover:bg-cyan-600 text-white rounded-xl shadow-lg transition-all flex items-center shrink-0"
+          :class="uiStore.isNarrowScreen ? 'px-3 py-2 text-sm space-x-1' : 'px-5 py-2.5 space-x-2'"
         >
-          <Plus></Plus>
-          <span class="font-medium">新建</span>
+          <Plus :size="uiStore.isNarrowScreen ? 16 : undefined" />
+          <span class="font-medium" :class="{ hidden: uiStore.isNarrowScreen }">新建</span>
         </button>
       </header>
 
       <!-- 内容滚动容器 -->
-      <div class="flex-1 overflow-y-auto p-6 custom-scrollbar">
+      <div
+        class="flex-1 overflow-y-auto custom-scrollbar"
+        :class="uiStore.isNarrowScreen ? 'p-3' : 'p-6'"
+      >
         <!--日程界面-->
         <SchedulePage ref="scheduleRef" />
 
@@ -124,7 +150,6 @@ import {
   Cat,
   ChevronLeft,
   Sparkles,
-  PawPrint,
 } from 'lucide-vue-next'
 
 type Variant = 'settings' | 'popup'
@@ -135,6 +160,9 @@ const props = withDefaults(
   }>(),
   { variant: 'settings' },
 )
+
+const uiStore = useUIStore()
+const narrowViewLevel = ref<'menu' | 'content'>('menu')
 
 const scheduleRef = ref()
 const todoRef = ref()
@@ -171,8 +199,6 @@ const titleInfo = computed(() => {
   }
 })
 
-const uiStore = useUIStore()
-
 const triggerCreate = () => {
   const currentView = uiStore.scheduleView
 
@@ -191,6 +217,10 @@ const triggerCreate = () => {
 
 const changeView = (view: string) => {
   uiStore.scheduleView = view
+  // 窄屏下自动切换到内容视图
+  if (uiStore.isNarrowScreen) {
+    narrowViewLevel.value = 'content'
+  }
 }
 
 const goBackToParentView = () => {
@@ -204,9 +234,9 @@ const goBackToParentView = () => {
 const containerClass = computed(() => {
   // settings：沿用原来的全屏设置页布局
   if (props.variant === 'settings') {
-    return 'h-[85vh] max-w-6xl md:w-[calc(100vw-4rem)]'
+    return 'h-[85vh] max-w-6xl md:w-[calc(100vw-4rem)] glass-panel bg-white/10 rounded-2xl'
   }
-  // popup：弹窗尺寸，不再全屏
-  return 'h-[70vh] w-[820px] max-w-[90vw]'
+  // popup：由父级 modal 控制尺寸和样式，此处填满容器
+  return 'w-full h-full'
 })
 </script>

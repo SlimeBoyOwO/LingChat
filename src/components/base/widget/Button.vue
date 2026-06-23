@@ -106,7 +106,7 @@ button {
   border: none;
   cursor: pointer;
   margin: 0 5px;
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: bold;
   position: relative;
   z-index: 1;
@@ -115,13 +115,13 @@ button {
     background-color 0.3s ease;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0.5rem;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .nav svg {
-  width: 18px;
-  height: 18px;
+  width: 1.125rem;
+  height: 1.125rem;
   stroke-width: 2.5px;
   flex-shrink: 0;
 }
@@ -184,4 +184,5 @@ button {
     background-color: rgba(0, 160, 255, 0.5) !important;
   }
 }
+
 </style>

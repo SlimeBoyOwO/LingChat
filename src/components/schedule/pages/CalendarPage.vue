@@ -1,8 +1,13 @@
 <template>
   <!-- Calendar View -->
-  <div v-if="uiStore.scheduleView === 'calendar'" class="h-full flex items-center justify-center">
+  <div
+    v-if="uiStore.scheduleView === 'calendar'"
+    class="h-full flex items-center justify-center"
+    :class="uiStore.isNarrowScreen ? 'flex-col gap-4' : ''"
+  >
     <div
-      class="w-2/3 glass-effect rounded-xl border border-cyan-500 shadow-sm overflow-hidden flex flex-col"
+      class="glass-effect rounded-xl border border-cyan-500 shadow-sm overflow-hidden flex flex-col"
+      :class="uiStore.isNarrowScreen ? 'w-full flex-1 min-h-0' : 'w-2/3'"
     >
       <div class="p-4 flex justify-between items-center border-b border-cyan-500">
         <div class="flex w-full justify-around items-center">
@@ -63,10 +68,11 @@
         </div>
       </div>
     </div>
-    <div class="h-full w-1/3 pl-4">
-      <div
-        class="glass-effect rounded-xl border border-cyan-500 shadow-sm p-4 h-full flex flex-col"
-      >
+    <div
+      class="glass-effect rounded-xl border border-cyan-500 shadow-sm flex flex-col"
+      :class="uiStore.isNarrowScreen ? 'w-full min-h-0' : 'h-full w-1/3 pl-4'"
+    >
+      <div :class="uiStore.isNarrowScreen ? 'p-3' : 'p-4 h-full flex flex-col'">
         <h3 class="text-lg font-bold text-brand mb-4">重要日子</h3>
 
         <!-- 添加新事件按钮 -->

@@ -1,16 +1,22 @@
 <template>
   <div class="flex-1 flex h-full min-h-0 overflow-hidden">
     <!-- ========== LEFT: Provider List ========== -->
+    <!-- 窄屏浏览编辑/测试面板时隐藏列表 -->
     <div
+      v-show="!uiStore.isNarrowScreen || !sidePanel"
       class="flex flex-col min-h-0 transition-all duration-300 ease-[cubic-bezier(0.18,0.89,0.32,1)]"
-      :class="sidePanel ? 'w-[45%] pr-4 border-r border-white/10' : 'w-full'"
+      :class="
+        !uiStore.isNarrowScreen && sidePanel ? 'w-[45%] pr-4 border-r border-white/10' : 'w-full'
+      "
     >
       <div class="flex items-center justify-between mb-4 shrink-0">
         <h3 class="text-white text-base font-semibold">已配置的模型</h3>
         <button
           class="px-4 py-2 bg-brand text-white rounded-lg text-sm font-medium hover:bg-brand/80 transition-colors"
           @click="startAdd"
-        >+ 添加模型</button>
+        >
+          + 添加模型
+        </button>
       </div>
 
       <div v-if="store.providers.length === 0" class="text-white/50 text-base py-8 text-center">
@@ -27,8 +33,12 @@
           <!-- Info -->
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-1">
-              <span class="text-[15px] font-semibold text-white truncate">{{ p.label || '(未命名)' }}</span>
-              <span class="text-xs px-2 py-0.5 rounded bg-brand/20 text-brand/90">{{ p.provider }}</span>
+              <span class="text-[15px] font-semibold text-white truncate">{{
+                p.label || '(未命名)'
+              }}</span>
+              <span class="text-xs px-2 py-0.5 rounded bg-brand/20 text-brand/90">{{
+                p.provider
+              }}</span>
             </div>
             <div class="text-sm text-white/40 truncate">{{ p.model || '未设置模型' }}</div>
           </div>
@@ -38,15 +48,18 @@
             <span
               v-if="store.chatProviderId === p.id"
               class="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-300 border border-green-500/30"
-            >对话</span>
+              >对话</span
+            >
             <span
               v-if="store.translateProviderId === p.id"
               class="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30"
-            >翻译</span>
+              >翻译</span
+            >
             <span
               v-if="store.godAgentProviderId === p.id"
               class="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30"
-            >上帝Agent</span>
+              >Agent</span
+            >
           </div>
 
           <!-- Actions -->
@@ -54,15 +67,21 @@
             <button
               class="px-3 py-1.5 text-sm rounded-lg bg-white/10 text-white/70 hover:bg-white/20 hover:text-white transition-colors"
               @click="startEdit(p)"
-            >编辑</button>
+            >
+              编辑
+            </button>
             <button
               class="px-3 py-1.5 text-sm rounded-lg bg-white/10 text-white/70 hover:bg-blue-500/20 hover:text-blue-300 transition-colors"
               @click="startTest(p)"
-            >测试</button>
+            >
+              测试
+            </button>
             <button
               class="px-3 py-1.5 text-sm rounded-lg bg-white/10 text-white/70 hover:bg-red-500/20 hover:text-red-300 transition-colors"
               @click="confirmDelete(p)"
-            >删除</button>
+            >
+              删除
+            </button>
           </div>
         </div>
       </div>
@@ -79,10 +98,29 @@
                 class="w-full appearance-none pl-3 pr-8 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors cursor-pointer"
               >
                 <option :value="null" class="bg-gray-800 text-white">未选择</option>
-                <option v-for="p in store.providers" :key="p.id" :value="p.id" class="bg-gray-800 text-white">{{ p.label || p.model || '(未命名)' }}</option>
+                <option
+                  v-for="p in store.providers"
+                  :key="p.id"
+                  :value="p.id"
+                  class="bg-gray-800 text-white"
+                >
+                  {{ p.label || p.model || '(未命名)' }}
+                </option>
               </select>
               <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5">
-                <svg class="w-4 h-4 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                <svg
+                  class="w-4 h-4 text-white/40"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
               </div>
             </div>
           </div>
@@ -95,10 +133,29 @@
                 class="w-full appearance-none pl-3 pr-8 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors cursor-pointer"
               >
                 <option value="__follow__" class="bg-gray-800 text-white">跟随对话模型</option>
-                <option v-for="p in store.providers" :key="p.id" :value="p.id" class="bg-gray-800 text-white">{{ p.label || p.model || '(未命名)' }}</option>
+                <option
+                  v-for="p in store.providers"
+                  :key="p.id"
+                  :value="p.id"
+                  class="bg-gray-800 text-white"
+                >
+                  {{ p.label || p.model || '(未命名)' }}
+                </option>
               </select>
               <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5">
-                <svg class="w-4 h-4 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                <svg
+                  class="w-4 h-4 text-white/40"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
               </div>
             </div>
           </div>
@@ -111,42 +168,101 @@
                 class="w-full appearance-none pl-3 pr-8 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors cursor-pointer"
               >
                 <option value="__follow__" class="bg-gray-800 text-white">跟随对话模型</option>
-                <option v-for="p in store.providers" :key="p.id" :value="p.id" class="bg-gray-800 text-white">{{ p.label || p.model || '(未命名)' }}</option>
+                <option
+                  v-for="p in store.providers"
+                  :key="p.id"
+                  :value="p.id"
+                  class="bg-gray-800 text-white"
+                >
+                  {{ p.label || p.model || '(未命名)' }}
+                </option>
               </select>
               <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5">
-                <svg class="w-4 h-4 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                <svg
+                  class="w-4 h-4 text-white/40"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <p v-if="saveMessage" class="mt-3 text-xs shrink-0" :class="saveError ? 'text-red-400' : 'text-green-400'">{{ saveMessage }}</p>
+      <p
+        v-if="saveMessage"
+        class="mt-3 text-xs shrink-0"
+        :class="saveError ? 'text-red-400' : 'text-green-400'"
+      >
+        {{ saveMessage }}
+      </p>
     </div>
 
     <!-- ========== RIGHT: Slide-in Panel ========== -->
     <Transition name="slide">
       <div
         v-if="sidePanel"
-        class="w-[55%] flex flex-col min-h-0 pl-4"
+        class="flex flex-col min-h-0"
+        :class="uiStore.isNarrowScreen ? 'w-full' : 'w-[55%] pl-4'"
       >
-        <!-- Close button -->
+        <!-- Header: narrow shows back button, wide shows close button -->
         <div class="flex items-center justify-between mb-4 shrink-0">
-          <h3 class="text-white text-base font-semibold">
-            <template v-if="sidePanel === 'edit'">{{ editing.id ? '编辑模型' : '添加模型' }}</template>
-            <template v-else>测试 {{ testProvider?.label || testProvider?.model || '' }}</template>
-          </h3>
-          <button
-            class="text-white/50 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10"
-            @click="closePanel"
-          >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-          </button>
+          <!-- 窄屏：返回按钮 + 标题 -->
+          <template v-if="uiStore.isNarrowScreen">
+            <button
+              class="flex items-center gap-1.5 text-sm text-white/70 hover:text-white transition-colors py-1 px-2 rounded-lg hover:bg-white/10"
+              @click="closePanel"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M15 19l-7-7 7-7"
+                />
+              </svg>
+              返回模型列表
+            </button>
+          </template>
+          <template v-else>
+            <h3 class="text-white text-base font-semibold">
+              <template v-if="sidePanel === 'edit'">{{
+                editing.id ? '编辑模型' : '添加模型'
+              }}</template>
+              <template v-else
+                >测试 {{ testProvider?.label || testProvider?.model || '' }}</template
+              >
+            </h3>
+            <button
+              class="text-white/50 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10"
+              @click="closePanel"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </template>
         </div>
 
         <!-- ===== EDIT FORM ===== -->
         <template v-if="sidePanel === 'edit'">
-          <form @submit.prevent="saveCurrent" class="flex flex-col gap-4 overflow-y-auto flex-1 pr-1">
+          <form
+            @submit.prevent="saveCurrent"
+            class="flex flex-col gap-4 overflow-y-auto flex-1 pr-1"
+          >
             <!-- Label -->
             <div class="flex flex-col gap-1">
               <label class="text-xs font-medium text-white/60">名称</label>
@@ -166,11 +282,27 @@
                   v-model="editing.provider"
                   class="w-full appearance-none pl-3 pr-8 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors cursor-pointer"
                 >
-                  <option value="openai" class="bg-gray-800 text-white">OpenAI 兼容 (DeepSeek / 通义千问 / Ollama)</option>
+                  <option value="openai" class="bg-gray-800 text-white">
+                    OpenAI 兼容 (DeepSeek / 通义千问 / Ollama)
+                  </option>
                   <option value="gemini" class="bg-gray-800 text-white">Gemini</option>
                 </select>
-                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5">
-                  <svg class="w-4 h-4 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                <div
+                  class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5"
+                >
+                  <svg
+                    class="w-4 h-4 text-white/40"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
                 </div>
               </div>
             </div>
@@ -239,18 +371,39 @@
               <span class="text-xs font-medium text-white/60">启用思考链（部分模型支持）</span>
               <div class="relative">
                 <input v-model="editing.enable_thinking" type="checkbox" class="sr-only peer" />
-                <div class="w-9 h-5 bg-white/10 rounded-full peer-checked:bg-brand transition-colors border border-white/20 peer-checked:border-brand"></div>
-                <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full peer-checked:translate-x-4 transition-transform"></div>
+                <div
+                  class="w-9 h-5 bg-white/10 rounded-full peer-checked:bg-brand transition-colors border border-white/20 peer-checked:border-brand"
+                ></div>
+                <div
+                  class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full peer-checked:translate-x-4 transition-transform"
+                ></div>
               </div>
             </label>
 
             <!-- Action buttons -->
             <div class="flex gap-3 pt-2">
-              <button type="submit" class="px-5 py-2 bg-brand text-white rounded-lg text-sm font-medium hover:bg-brand/80 transition-colors">保存</button>
-              <button type="button" class="px-5 py-2 bg-white/10 text-white/70 rounded-lg text-sm hover:bg-white/20 transition-colors" @click="closePanel">取消</button>
+              <button
+                type="submit"
+                class="px-5 py-2 bg-brand text-white rounded-lg text-sm font-medium hover:bg-brand/80 transition-colors"
+              >
+                保存
+              </button>
+              <button
+                type="button"
+                class="px-5 py-2 bg-white/10 text-white/70 rounded-lg text-sm hover:bg-white/20 transition-colors"
+                @click="closePanel"
+              >
+                取消
+              </button>
             </div>
 
-            <p v-if="saveMessage" class="text-xs" :class="saveError ? 'text-red-400' : 'text-green-400'">{{ saveMessage }}</p>
+            <p
+              v-if="saveMessage"
+              class="text-xs"
+              :class="saveError ? 'text-red-400' : 'text-green-400'"
+            >
+              {{ saveMessage }}
+            </p>
           </form>
         </template>
 
@@ -269,16 +422,29 @@
                 class="px-4 py-2 bg-brand text-white rounded-lg text-sm font-medium hover:bg-brand/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 :disabled="testing || !testMessage.trim()"
                 @click="doTest"
-              >{{ testing ? '测试中...' : '发送' }}</button>
+              >
+                {{ testing ? '测试中...' : '发送' }}
+              </button>
             </div>
 
-            <div class="flex-1 min-h-0 rounded-lg bg-white/5 border border-white/10 p-4 overflow-y-auto">
+            <div
+              class="flex-1 min-h-0 rounded-lg bg-white/5 border border-white/10 p-4 overflow-y-auto"
+            >
               <div v-if="testing" class="flex items-center gap-2 text-white/40 text-sm">
-                <div class="w-4 h-4 border-2 border-white/20 border-t-brand rounded-full animate-spin"></div>
+                <div
+                  class="w-4 h-4 border-2 border-white/20 border-t-brand rounded-full animate-spin"
+                ></div>
                 等待响应...
               </div>
-              <div v-else-if="testError" class="text-red-400 text-sm whitespace-pre-wrap">{{ testError }}</div>
-              <div v-else-if="testResponse" class="text-white/80 text-sm whitespace-pre-wrap leading-relaxed">{{ testResponse }}</div>
+              <div v-else-if="testError" class="text-red-400 text-sm whitespace-pre-wrap">
+                {{ testError }}
+              </div>
+              <div
+                v-else-if="testResponse"
+                class="text-white/80 text-sm whitespace-pre-wrap leading-relaxed"
+              >
+                {{ testResponse }}
+              </div>
               <div v-else class="text-white/30 text-sm">输入消息并点击发送，测试模型响应</div>
             </div>
           </div>
@@ -291,10 +457,12 @@
 <script setup lang="ts">
 import { ref, onMounted, reactive } from 'vue'
 import { useLlmProvidersStore } from '@/stores/modules/llm-providers'
+import { useUIStore } from '@/stores/modules/ui/ui'
 import { invoke } from '@tauri-apps/api/core'
 import type { LlmProviderConfig } from '@/api/services/llm-providers'
 
 const store = useLlmProvidersStore()
+const uiStore = useUIStore()
 
 const sidePanel = ref<'edit' | 'test' | null>(null)
 const editing = reactive<LlmProviderConfig>(emptyProvider())
@@ -418,7 +586,7 @@ async function doTest() {
     })
     testResponse.value = res
   } catch (e: any) {
-    testError.value = typeof e === 'string' ? e : (e.message || JSON.stringify(e))
+    testError.value = typeof e === 'string' ? e : e.message || JSON.stringify(e)
   } finally {
     testing.value = false
   }
@@ -431,10 +599,14 @@ onMounted(async () => {
 
 <style scoped>
 .slide-enter-active {
-  transition: transform 0.35s ease-[cubic-bezier(0.18,0.89,0.32,1)], opacity 0.35s ease;
+  transition:
+    transform 0.35s ease-[cubic-bezier(0.18, 0.89, 0.32, 1)],
+    opacity 0.35s ease;
 }
 .slide-leave-active {
-  transition: transform 0.25s ease-[cubic-bezier(0.6,-0.28,0.74,0.05)], opacity 0.25s ease;
+  transition:
+    transform 0.25s ease-[cubic-bezier(0.6, -0.28, 0.74, 0.05)],
+    opacity 0.25s ease;
 }
 .slide-enter-from {
   transform: translateX(40px);

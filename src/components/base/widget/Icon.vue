@@ -1,5 +1,5 @@
 <template>
-  <span v-html="svg" :style="`width:${size}px, height:${size}px`" @click="$emit('click')"></span>
+  <span v-html="svg" :style="`width:${size}px; height:${size}px`" @click="$emit('click')"></span>
 </template>
 
 <script setup lang="ts">
@@ -85,8 +85,8 @@ const html: Record<IconType, string> = {
 <style scoped>
 span {
   display: inline-flex;
-  min-width: 24px;
-  min-height: 24px;
+  min-width: 1.5rem;
+  min-height: 1.5rem;
 }
 
 span :deep(svg) {
@@ -94,7 +94,7 @@ span :deep(svg) {
   width: 100%;
   height: 100%;
   stroke: currentColor;
-  min-width: 12px;
-  min-height: 12px;
+  min-width: 0.75rem;
+  min-height: 0.75rem;
 }
 </style>

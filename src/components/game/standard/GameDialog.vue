@@ -12,14 +12,16 @@
         <div class="flex items-baseline mb-2 shrink-0">
           <!-- 角色名称（窄屏时可截断，为右侧按钮腾出空间） -->
           <div
-            class="text-[24px] font-bold text-white mr-3.75 font-[inherit] text-shadow-[inherit]"
-            :class="{ 'min-w-0 overflow-hidden text-ellipsis whitespace-nowrap': uiStore.isNarrowScreen }"
+            class="text-2xl font-bold text-white mr-3.75 font-[inherit] text-shadow-[inherit]"
+            :class="{
+              'min-w-0 overflow-hidden text-ellipsis whitespace-nowrap': uiStore.isNarrowScreen,
+            }"
           >
             <div id="character">{{ uiStore.showCharacterTitle }}</div>
           </div>
           <div
             v-show="!uiStore.isNarrowScreen"
-            class="text-[20px] font-bold text-[#6eb4ff] font-[inherit] text-shadow-[inherit]"
+            class="text-xl font-bold text-[#6eb4ff] font-[inherit] text-shadow-[inherit]"
           >
             <div id="character-sub">{{ uiStore.showCharacterSubtitle }}</div>
           </div>
@@ -30,14 +32,14 @@
             :class="{ 'flex-1 shrink-0': uiStore.isNarrowScreen }"
           >
             <div
-              class="text-[20px] font-bold text-[#ff77dd] font-[inherit] text-shadow-[inherit] shrink-0"
+              class="text-xl font-bold text-[#ff77dd] font-[inherit] text-shadow-[inherit] shrink-0"
             >
               <div id="character-emotion">{{ uiStore.showCharacterEmotion }}</div>
             </div>
 
             <!-- 操作按钮组（窄屏时占据右侧容器剩余空间，可横向滚动） -->
             <div
-              class="overflow-x-scroll scrollbar-none"
+              class="overflow-x-auto custom-scroll"
               :class="uiStore.isNarrowScreen ? 'flex-1 min-w-0' : 'shrink-0'"
             >
               <div class="flex whitespace-nowrap">
@@ -97,13 +99,13 @@
 
         <!-- 输入区 -->
         <div
-          class="flex flex-1 min-h-20 whitespace-pre-line w-full bg-transparent border-none text-[20px] font-bold my-1.25 outline-none transition-all duration-300"
+          class="flex flex-1 min-h-30 whitespace-pre-line w-full bg-transparent border-none text-xl font-bold my-1.25 outline-none transition-all duration-300"
         >
           <textarea
             id="inputMessage"
             ref="textareaRef"
-            class="flex-1 min-h-20 max-h-[50vh] bg-transparent border-none text-white text-[20px] font-bold resize-none my-1.25 outline-none transition-all duration-300 placeholder:text-white/50 placeholder:shadow-none font-[inherit] text-shadow-[inherit]"
-            :class="{ 'italic text-white/50 text-[16px]': isShowingMotionText }"
+            class="flex-1 min-h-30 max-h-[50vh] bg-transparent border-none text-white text-xl font-bold resize-none my-1.25 outline-none transition-all duration-300 placeholder:text-white/50 placeholder:shadow-none font-[inherit] text-shadow-[inherit]"
+            :class="{ 'italic text-white/50 text-base': isShowingMotionText }"
             :placeholder="placeholderText"
             v-model="inputMessage"
             @keydown.enter.exact.prevent="sendOrContinue"
@@ -114,7 +116,7 @@
       <!-- 发送按钮（内层右侧外部） -->
       <button
         id="sendButton"
-        class="absolute right-0 bottom-0 translate-x-full bg-transparent text-[#04bcff] border-none px-2 py-2 rounded-[5px] cursor-pointer transition-all duration-300 text-[14px] font-bold hover:bg-transparent hover:text-[rgba(136,255,251,0.827)] disabled:bg-[#333] disabled:cursor-not-allowed disabled:opacity-70 font-[inherit] text-shadow-[inherit]"
+        class="absolute right-0 bottom-0 translate-x-full bg-transparent text-[#04bcff] border-none px-2 py-2 rounded-[5px] cursor-pointer transition-all duration-300 text-sm font-bold hover:bg-transparent hover:text-[rgba(136,255,251,0.827)] disabled:bg-[#333] disabled:cursor-not-allowed disabled:opacity-70 font-[inherit] text-shadow-[inherit]"
         :disabled="isSending"
         @click="sendOrContinue"
       >
@@ -472,3 +474,16 @@ defineExpose({
   isTyping,
 })
 </script>
+
+<style scoped>
+/* 兼容 Firefox */
+.custom-scroll {
+  scrollbar-width: thin;
+}
+
+/* 兼容 Chrome / Edge / Safari */
+.custom-scroll::-webkit-scrollbar {
+  width: 6px; /* 纵向滚动条宽度 */
+  height: 6px; /* 横向滚动条高度（你这个是 overflow-x，主要控制这个） */
+}
+</style>

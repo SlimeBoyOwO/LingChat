@@ -35,9 +35,10 @@
 
       <!-- ====== 其他高级设置 ====== -->
       <div v-else class="flex flex-col md:grid md:grid-cols-[min(30%,280px)_1fr] h-[calc(100%-3rem)] min-h-0">
-        <!-- 导航菜单 -->
+        <!-- 导航菜单：宽屏始终可见；窄屏仅在浏览菜单层级时可见 -->
         <nav
           ref="navContainerRef"
+          v-show="!uiStore.isNarrowScreen || narrowViewLevel === 'menu'"
           @click="() => removeMoreMenu()"
           class="transition-all duration-300 ease-[cubic-bezier(0.18,0.89,0.32,1.00)] flex flex-col justify-start gap-6.25 overflow-y-auto relative border-b md:border-b-0 md:border-r border-brand md:moreMenu:left-0"
           :class="[
@@ -83,14 +84,24 @@
           </div>
         </nav>
 
-        <!-- 设置内容区域 -->
+        <!-- 设置内容区域：宽屏始终可见；窄屏仅在浏览内容层级时可见 -->
         <main
+          v-show="!uiStore.isNarrowScreen || narrowViewLevel === 'content'"
           class="flex justify-center h-full overflow-auto relative px-10 py-10 md:px-10 md:py-0"
           :class="[
             'translate-y-0',
             'moreMenu:translate-y-0',
           ]"
         >
+          <!-- 窄屏返回按钮 -->
+          <button
+            v-if="uiStore.isNarrowScreen"
+            class="absolute top-0 left-4 flex items-center gap-1.5 text-sm text-white/70 hover:text-white transition-colors py-1 px-2 rounded-lg hover:bg-white/10"
+            @click="narrowViewLevel = 'menu'"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+            返回设置列表
+          </button>
           <div v-if="selectedSubcategory" class="w-full active">
             <div class="pt-2.5 overflow-auto">
               <header class="pb-4 mb-6 border-b border-brand">
@@ -154,13 +165,16 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, reactive, watch, nextTick } from 'vue'
 import { MenuPage } from '../../ui'
+import { useUIStore } from '@/stores/modules/ui/ui'
 import SettingItem from '@/components/base/items/SettingItem.vue'
 import SettingsLlmProviders from './SettingsLlmProviders.vue'
 import { getEnvConfigSettings } from '@/api/services/config'
 import { saveEnvConfigSettings } from '@/api/services/config'
 
 // --- 响应式状态定义 ---
+const uiStore = useUIStore()
 const advanceTab = ref<'llm' | 'other'>('other')
+const narrowViewLevel = ref<'menu' | 'content'>('menu')
 const isLoading = ref(false)
 const configData = ref<Record<string, any>>({})
 const activeSelection = reactive({
@@ -197,6 +211,10 @@ const isActive = (category: string, subcategory: string) => {
 const selectSubcategory = (category: string, subcategory: string) => {
   activeSelection.category = category
   activeSelection.subcategory = subcategory
+  // 窄屏下自动切换到内容视图
+  if (uiStore.isNarrowScreen) {
+    narrowViewLevel.value = 'content'
+  }
 }
 
 const saveSettings = async () => {

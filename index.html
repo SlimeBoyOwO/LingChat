@@ -5,6 +5,12 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tauri + Vue + Typescript App</title>
+    <!-- 小屏根字号缩放（min(vw,vh) 横竖屏均覆盖，!important 防止构建产物覆盖） -->
+    <style>
+      html {
+        font-size: clamp(12px, min(2.5vw, 2.5vh), 16px) !important;
+      }
+    </style>
   </head>
 
   <body>

@@ -57,11 +57,17 @@
           </div>
 
           <template v-for="(entry, _idx) in filteredLogs" :key="_idx">
-            <div :class="['log-line', entry.level.toLowerCase()]">
+            <div
+              :class="[
+                'log-line',
+                entry.level.toLowerCase(),
+                { 'log-line--narrow': uiStore.isNarrowScreen },
+              ]"
+            >
               <span class="timestamp">{{ entry.timestamp }}</span>
               <span :class="['level-tag', entry.level.toLowerCase()]">{{ entry.level }}</span>
               <span class="target">{{ entry.target }}</span>
-              <span class="message">{{ entry.message }}</span>
+              <span class="message" :class="{ 'w-full': uiStore.isNarrowScreen }">{{ entry.message }}</span>
             </div>
           </template>
 
@@ -83,7 +89,10 @@ import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import type { UnlistenFn } from '@tauri-apps/api/event'
 import { MenuPage, MenuItem } from '../../ui'
+import { useUIStore } from '@/stores/modules/ui/ui'
 import { ScrollText, Pause, Play, Trash2 } from 'lucide-vue-next'
+
+const uiStore = useUIStore()
 
 interface LogEntry {
   timestamp: string
@@ -321,5 +330,16 @@ watch(paused, (now) => {
 }
 .log-line.trace .message {
   color: rgba(255, 255, 255, 0.45);
+}
+
+/* Narrow screen: two-row log layout */
+.log-line--narrow {
+  flex-wrap: wrap;
+  column-gap: 10px;
+  row-gap: 1px;
+  padding: 2px 0;
+}
+.log-line--narrow .target::after {
+  content: none;
 }
 </style>

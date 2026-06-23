@@ -93,8 +93,6 @@ const updateImage = async (newUrl: string) => {
     await nextTick()
 
     // 4. 关键：强制浏览器重排 (Reflow)
-    // 这行代码会让浏览器立即停下来，去读取一遍新图片的样式
-    // 此时它处于 opacity: 0 的状态，浏览器会默默在后台把它准备好
     if (topDivRef.value) {
       void topDivRef.value.offsetHeight
     }

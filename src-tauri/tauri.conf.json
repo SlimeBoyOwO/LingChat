@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "ling-chat",
+  "productName": "LingChat",
   "version": "0.4.6",
   "identifier": "com.noiq.ling-chat",
   "build": {

@@ -155,6 +155,10 @@ export const useUIStore = defineStore('ui', {
     isNarrowScreen(): boolean {
       return this.aspectRatio < 1.0
     },
+    // 小屏/低分辨率判断（手机横竖屏、小窗口均覆盖）
+    isSmallScreen(): boolean {
+      return Math.min(this.viewportWidth, this.viewportHeight) < 500
+    },
   },
 
   actions: {
