@@ -166,11 +166,13 @@ export class TypeWriter {
 
           this.playRandomSound()
 
-          // Calculate delay with random variation for natural feel
-          // Effective range: speed * 0.8 to speed * 1.2
-          const baseDelay = this.speed * 0.8
-          const randomVariation = this.speed * 0.4
-          const delay = baseDelay + Math.random() * randomVariation
+          //timer接收delay的是延迟（越大越慢），而传入的speed是速度（越大越快）
+          //此处按照Text.vue（速度演示文本）中的方式重新计算延迟值
+          //并保留了原本的微量随机偏移设计
+          const maxDelay = 200
+          const minDelay = 10
+          const randomVariation = this.speed * 0.2
+          const delay = maxDelay - ((this.speed - 1) / 99) * (maxDelay - minDelay) + Math.random() * randomVariation
 
           this.timer = setTimeout(typing, delay)
         } else {
