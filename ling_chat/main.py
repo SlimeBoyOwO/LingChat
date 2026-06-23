@@ -136,18 +136,18 @@ def run_main_program(args, is_wv=False):
             logger.info("已禁用语音合成软件自动启动")
 
         # 检查环境变量决定是否启动前端界面
-        if (
+        use_frontend = (
             os.getenv("OPEN_FRONTEND_APP", "false").lower() == "true" and not args.nogui
-        ) or args.gui:
+        ) or args.gui
+
+        if use_frontend:
             logger.stop_loading_animation(success=True, final_message="应用加载成功")
             print_logo()
             logger.warning("[前端界面已启用，可使用 --nogui 启用无前端窗口模式")
             try:
                 webview_process = start_webview()
-                # 子进程异常退出时（比如所有 pywebview 后端都启动失败），
-                # 不要让主程序也跟着退出，提示用户用浏览器访问即可。
-                exit_code = getattr(webview_process, "exitcode", 0)
-                if exit_code:
+                # pywebview 不可用时，start_webview() 返回 None，自动降级到 Server 模式
+                if webview_process is None:
                     frontend_bind_addr = os.getenv(
                         "FRONTEND_BIND_ADDR"
                     ) or os.getenv("BACKEND_BIND_ADDR", "127.0.0.1")
@@ -155,18 +155,68 @@ def run_main_program(args, is_wv=False):
                         "BACKEND_PORT", "8765"
                     )
                     logger.warning(
-                        f"前端窗口启动失败（exitcode={exit_code}），"
+                        f"pywebview 不可用，降级为 Server 模式（无本地窗口）"
+                    )
+                    logger.warning(
                         f"请打开浏览器访问 http://{frontend_bind_addr}:{frontend_port}/"
                     )
-                    # 后端继续运行，等待用户手动关闭
+                    # 降级到 Server 模式，后端继续运行，等待用户手动关闭
                     while (
                         (not exit_event.is_set())
                         and (app_thread is not None)
                         and app_thread.is_alive()
                     ):
                         time.sleep(0.1)
+                else:
+                    # 子进程异常退出时（比如所有 pywebview 后端都启动失败），
+                    # 不要让主程序也跟着退出，提示用户用浏览器访问即可。
+                    exit_code = getattr(webview_process, "exitcode", 0)
+                    if exit_code:
+                        frontend_bind_addr = os.getenv(
+                            "FRONTEND_BIND_ADDR"
+                        ) or os.getenv("BACKEND_BIND_ADDR", "127.0.0.1")
+                        frontend_port = os.getenv("FRONTEND_PORT") or os.getenv(
+                            "BACKEND_PORT", "8765"
+                        )
+                        logger.warning(
+                            f"前端窗口启动失败（exitcode={exit_code}），"
+                            f"请打开浏览器访问 http://{frontend_bind_addr}:{frontend_port}/"
+                        )
+                        # 降级到 Server 模式，后端继续运行，等待用户手动关闭
+                        while (
+                            (not exit_event.is_set())
+                            and (app_thread is not None)
+                            and app_thread.is_alive()
+                        ):
+                            time.sleep(0.1)
+                    else:
+                        # webview 正常运行，等待用户手动关闭
+                        while (
+                            (not exit_event.is_set())
+                            and (app_thread is not None)
+                            and app_thread.is_alive()
+                        ):
+                            time.sleep(0.1)
             except KeyboardInterrupt:
                 logger.info("用户关闭程序")
+            except Exception as e:
+                # 其他异常时，提示用户用浏览器访问
+                logger.warning(f"前端窗口启动异常：{e}")
+                frontend_bind_addr = os.getenv(
+                    "FRONTEND_BIND_ADDR"
+                ) or os.getenv("BACKEND_BIND_ADDR", "127.0.0.1")
+                frontend_port = os.getenv("FRONTEND_PORT") or os.getenv(
+                    "BACKEND_PORT", "8765"
+                )
+                logger.warning(
+                    f"请打开浏览器访问 http://{frontend_bind_addr}:{frontend_port}/"
+                )
+                while (
+                    (not exit_event.is_set())
+                    and (app_thread is not None)
+                    and app_thread.is_alive()
+                ):
+                    time.sleep(0.1)
         else:
             logger.info("前端界面已禁用，可使用请使用 --gui 强制启用前端窗口")
             logger.stop_loading_animation(success=True, final_message="应用加载成功")
