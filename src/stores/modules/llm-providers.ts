@@ -46,7 +46,7 @@ export const useLlmProvidersStore = defineStore('llm-providers', {
       provider: 'openai',
       model: '',
       api_key: '',
-      base_url: '',
+      base_url: 'https://api.deepseek.com',
       temperature: null,
       top_p: null,
       enable_thinking: false,
