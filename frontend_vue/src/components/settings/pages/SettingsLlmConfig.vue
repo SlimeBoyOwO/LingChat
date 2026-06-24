@@ -9,7 +9,9 @@
         <div class="absolute inset-0 flex flex-col overflow-hidden bg-transparent">
           <!-- 头部：标题靠左，操作按钮统一在右上角 -->
           <div class="flex items-center justify-between shrink-0 px-5 py-3">
-            <div class="flex items-center gap-2 text-[var(--accent-color)] font-bold text-base drop-shadow-md">
+            <div
+              class="flex items-center gap-2 text-[var(--accent-color)] font-bold text-base drop-shadow-md"
+            >
               <Icon icon="bot" :size="20" />
               <span>{{ headerTitle }}</span>
             </div>
@@ -34,19 +36,29 @@
           <!-- 内容 -->
           <div class="flex-1 overflow-y-auto px-6 pb-8">
             <!-- 加载 -->
-            <div v-if="store.loading" class="flex flex-col items-center justify-center gap-3 h-48 text-white/60 text-sm">
-              <div class="w-8 h-8 border-3 border-white/20 border-t-[var(--accent-color)] rounded-full animate-spin"></div>
+            <div
+              v-if="store.loading"
+              class="flex flex-col items-center justify-center gap-3 h-48 text-white/60 text-sm"
+            >
+              <div
+                class="w-8 h-8 border-3 border-white/20 border-t-[var(--accent-color)] rounded-full animate-spin"
+              ></div>
               <span>加载中...</span>
             </div>
 
             <!-- ===== 列表视图 ===== -->
             <template v-else-if="view === 'list'">
               <div class="flex flex-col gap-3">
-                <div class="text-[var(--accent-color)] font-bold text-sm pb-1 border-b border-white/10">
+                <div
+                  class="text-[var(--accent-color)] font-bold text-sm pb-1 border-b border-white/10"
+                >
                   已配置的方案
                 </div>
 
-                <div v-if="store.configs.length === 0" class="text-white/50 text-center py-8 text-sm">
+                <div
+                  v-if="store.configs.length === 0"
+                  class="text-white/50 text-center py-8 text-sm"
+                >
                   暂无配置方案，点击下方按钮新建
                 </div>
 
@@ -56,12 +68,20 @@
                   class="bg-white/8 backdrop-blur-xl border border-white/10 rounded-xl p-4 flex flex-col gap-2 transition-all duration-200 hover:bg-white/12 hover:border-[var(--accent-color)]"
                 >
                   <div class="flex items-center justify-between">
-                    <span class="text-white font-semibold text-sm">{{ cfg.display_name || cfg.name }}</span>
-                    <span v-if="cfg.is_active" class="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 font-semibold">当前</span>
+                    <span class="text-white font-semibold text-sm">{{
+                      cfg.display_name || cfg.name
+                    }}</span>
+                    <span
+                      v-if="cfg.is_active"
+                      class="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 font-semibold"
+                      >当前</span
+                    >
                   </div>
                   <p class="text-white/50 text-xs m-0">{{ cfg.description || '无描述' }}</p>
                   <div class="flex gap-1.5 flex-wrap">
-                    <span class="text-[10px] px-2 py-0.5 rounded-full bg-[rgba(121,217,255,0.2)] text-[#79d9ff]">
+                    <span
+                      class="text-[10px] px-2 py-0.5 rounded-full bg-[rgba(121,217,255,0.2)] text-[#79d9ff]"
+                    >
                       {{ cfg.main_provider || '?' }}
                     </span>
                   </div>
@@ -70,20 +90,28 @@
                       v-if="!cfg.is_active"
                       class="text-xs px-3 py-1 rounded-lg bg-[var(--accent-color)] text-white hover:opacity-85 transition-all"
                       @click="activateConfig(cfg.name)"
-                    >激活</button>
+                    >
+                      激活
+                    </button>
                     <button
                       class="text-xs px-3 py-1 rounded-lg bg-white/10 text-white border border-white/15 hover:bg-white/20 transition-all"
                       @click="startEdit(cfg.name)"
-                    >编辑</button>
+                    >
+                      编辑
+                    </button>
                     <button
                       class="text-xs px-3 py-1 rounded-lg bg-white/10 text-white border border-white/15 hover:bg-white/20 transition-all"
                       @click="startTest(cfg.name)"
-                    >测试</button>
+                    >
+                      测试
+                    </button>
                     <button
                       v-if="cfg.name !== 'default'"
                       class="text-xs px-3 py-1 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/35 transition-all"
                       @click="confirmDelete(cfg.name)"
-                    >删除</button>
+                    >
+                      删除
+                    </button>
                   </div>
                 </div>
 
@@ -96,7 +124,9 @@
                 </button>
 
                 <div class="text-white/50 text-xs text-center pt-2">
-                  当前激活：<strong>{{ store.activeSummary?.display_name || store.activeName || '无' }}</strong>
+                  当前激活：<strong>{{
+                    store.activeSummary?.display_name || store.activeName || '无'
+                  }}</strong>
                 </div>
               </div>
             </template>
@@ -106,21 +136,40 @@
               <div class="flex flex-col gap-2.5">
                 <div class="flex flex-col gap-1">
                   <label class="text-white/70 text-xs font-medium">配置名称</label>
-                  <input v-model="form.config_name" type="text" class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)] placeholder:text-white/25" placeholder="例如: 我的配置" />
+                  <input
+                    v-model="form.config_name"
+                    type="text"
+                    class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)] placeholder:text-white/25"
+                    placeholder="例如: 我的配置"
+                  />
                 </div>
                 <div class="flex flex-col gap-1">
                   <label class="text-white/70 text-xs font-medium">配置描述</label>
-                  <input v-model="form.config_description" type="text" class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)] placeholder:text-white/25" placeholder="可选的描述" />
+                  <input
+                    v-model="form.config_description"
+                    type="text"
+                    class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)] placeholder:text-white/25"
+                    placeholder="可选的描述"
+                  />
                 </div>
 
-                <div class="text-[var(--accent-color)] font-bold text-sm pb-1 border-b border-white/10 mt-1">主对话模型</div>
+                <div
+                  class="text-[var(--accent-color)] font-bold text-sm pb-1 border-b border-white/10 mt-1"
+                >
+                  主对话模型
+                </div>
 
                 <!-- 动态渲染 main 配置字段：特殊字段自定义，其余从 schema 读取 -->
                 <template v-for="setting in mainSettings" :key="setting.key">
                   <!-- provider → 特殊下拉框 -->
                   <FormField v-if="setting.key === 'provider'" label="提供商类型">
-                    <select v-model="form.main.provider" class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]">
-                      <option value="webllm" class="bg-[#222]">OpenAI 兼容 (DeepSeek / 通义千问)</option>
+                    <select
+                      v-model="form.main.provider"
+                      class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]"
+                    >
+                      <option value="webllm" class="bg-[#222]">
+                        OpenAI 兼容 (DeepSeek / 通义千问)
+                      </option>
                       <option value="gemini" class="bg-[#222]">Gemini</option>
                       <option value="kimi-code" class="bg-[#222]">Kimi Code</option>
                       <option value="ollama" class="bg-[#222]">Ollama</option>
@@ -130,7 +179,10 @@
 
                   <!-- enable_thinking → 特殊下拉框 -->
                   <FormField v-else-if="setting.key === 'enable_thinking'" label="思考链">
-                    <select v-model="form.main.enable_thinking" class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]">
+                    <select
+                      v-model="form.main.enable_thinking"
+                      class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]"
+                    >
                       <option value="none" class="bg-[#222]">不启用</option>
                       <option value="true" class="bg-[#222]">启用</option>
                       <option value="false" class="bg-[#222]">禁用</option>
@@ -139,13 +191,27 @@
 
                   <!-- 其余字段 → 根据 schema type 动态渲染 -->
                   <FormField v-else :label="setting.description || setting.key">
-                    <SettingItem :setting="setting" @update:value="(v) => { (form.main as any)[setting.key] = v }" />
+                    <SettingItem
+                      :setting="setting"
+                      @update:value="
+                        (v) => {
+                          ;(form.main as any)[setting.key] = v
+                        }
+                      "
+                    />
                   </FormField>
                 </template>
 
-                <div class="text-[var(--accent-color)] font-bold text-sm pb-1 border-b border-white/10 mt-1">翻译模型</div>
+                <div
+                  class="text-[var(--accent-color)] font-bold text-sm pb-1 border-b border-white/10 mt-1"
+                >
+                  翻译模型
+                </div>
                 <FormField label="提供商类型">
-                  <select v-model="form.translator.provider" class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]">
+                  <select
+                    v-model="form.translator.provider"
+                    class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]"
+                  >
                     <option value="none" class="bg-[#222]">跟随主对话模型</option>
                     <option value="webllm" class="bg-[#222]">OpenAI 兼容</option>
                     <option value="gemini" class="bg-[#222]">Gemini</option>
@@ -156,17 +222,33 @@
                 </FormField>
                 <template v-if="form.translator.provider !== 'none'">
                   <FormField label="模型名称">
-                    <input v-model="form.translator.model" type="text" class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]" />
+                    <input
+                      v-model="form.translator.model"
+                      type="text"
+                      class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]"
+                    />
                   </FormField>
                   <FormField label="API 密钥">
-                    <input v-model="form.translator.api_key" type="password" class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]" />
+                    <input
+                      v-model="form.translator.api_key"
+                      type="password"
+                      class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]"
+                    />
                   </FormField>
                   <FormField label="API 地址">
-                    <input v-model="form.translator.base_url" type="text" class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]" />
+                    <input
+                      v-model="form.translator.base_url"
+                      type="text"
+                      class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]"
+                    />
                   </FormField>
                 </template>
 
-                <div class="text-[var(--accent-color)] font-bold text-sm pb-1 border-b border-white/10 mt-1">全局网络</div>
+                <div
+                  class="text-[var(--accent-color)] font-bold text-sm pb-1 border-b border-white/10 mt-1"
+                >
+                  全局网络
+                </div>
                 <FormField label="HTTP 代理">
                   <input
                     type="text"
@@ -178,39 +260,86 @@
                 </FormField>
 
                 <div class="flex gap-2.5 pt-2">
-                  <button class="px-5 py-2 rounded-lg bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-85 disabled:opacity-50 transition-all" @click="doSave" :disabled="saving">
+                  <button
+                    class="px-5 py-2 rounded-lg bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-85 disabled:opacity-50 transition-all"
+                    @click="doSave"
+                    :disabled="saving"
+                  >
                     {{ saving ? '保存中...' : '保存' }}
                   </button>
-                  <button class="px-5 py-2 rounded-lg bg-transparent text-white/60 text-sm hover:text-white transition-all" @click="view = 'list'">取消</button>
+                  <button
+                    class="px-5 py-2 rounded-lg bg-transparent text-white/60 text-sm hover:text-white transition-all"
+                    @click="view = 'list'"
+                  >
+                    取消
+                  </button>
                 </div>
-                <p v-if="saveMsg" :class="saveError ? 'text-red-400' : 'text-green-400'" class="text-xs mt-1">{{ saveMsg }}</p>
+                <p
+                  v-if="saveMsg"
+                  :class="saveError ? 'text-red-400' : 'text-green-400'"
+                  class="text-xs mt-1"
+                >
+                  {{ saveMsg }}
+                </p>
               </div>
             </template>
 
             <!-- ===== 测试视图 ===== -->
             <template v-else-if="view === 'test'">
               <div class="flex flex-col gap-3">
-                <div class="text-white/70 text-sm">测试方案：<strong>{{ testSchemeName }}</strong></div>
+                <div class="text-white/70 text-sm">
+                  测试方案：<strong>{{ testSchemeName }}</strong>
+                </div>
                 <FormField label="测试对象">
-                  <select v-model="testSection" class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]">
+                  <select
+                    v-model="testSection"
+                    class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]"
+                  >
                     <option value="main" class="bg-[#222]">主对话模型</option>
                     <option value="translator" class="bg-[#222]">翻译模型</option>
                   </select>
                 </FormField>
                 <FormField label="测试消息">
-                  <input v-model="testMessage" type="text" class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]" placeholder="输入测试消息..." @keyup.enter="doTest" />
+                  <input
+                    v-model="testMessage"
+                    type="text"
+                    class="w-full px-3 py-2 rounded-lg border border-white/12 bg-white/8 text-white text-sm outline-none focus:border-[var(--accent-color)]"
+                    placeholder="输入测试消息..."
+                    @keyup.enter="doTest"
+                  />
                 </FormField>
-                <button class="self-start px-4 py-2 rounded-lg bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-85 disabled:opacity-50 transition-all" :disabled="testing || !testMessage.trim()" @click="doTest">
+                <button
+                  class="self-start px-4 py-2 rounded-lg bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-85 disabled:opacity-50 transition-all"
+                  :disabled="testing || !testMessage.trim()"
+                  @click="doTest"
+                >
                   {{ testing ? '测试中...' : '发送' }}
                 </button>
 
-                <div class="min-h-[120px] rounded-xl border border-white/10 bg-black/20 p-4 flex items-center justify-center">
-                  <div v-if="testing" class="flex flex-col items-center gap-2 text-white/50 text-sm">
-                    <div class="w-6 h-6 border-3 border-white/20 border-t-[var(--accent-color)] rounded-full animate-spin"></div>
+                <div
+                  class="min-h-[120px] rounded-xl border border-white/10 bg-black/20 p-4 flex items-center justify-center"
+                >
+                  <div
+                    v-if="testing"
+                    class="flex flex-col items-center gap-2 text-white/50 text-sm"
+                  >
+                    <div
+                      class="w-6 h-6 border-3 border-white/20 border-t-[var(--accent-color)] rounded-full animate-spin"
+                    ></div>
                     <span>等待响应...</span>
                   </div>
-                  <div v-else-if="testError" class="text-red-400 text-sm whitespace-pre-wrap break-words w-full">{{ testError }}</div>
-                  <div v-else-if="testResult" class="text-white text-sm whitespace-pre-wrap break-words w-full">{{ testResult }}</div>
+                  <div
+                    v-else-if="testError"
+                    class="text-red-400 text-sm whitespace-pre-wrap break-words w-full"
+                  >
+                    {{ testError }}
+                  </div>
+                  <div
+                    v-else-if="testResult"
+                    class="text-white text-sm whitespace-pre-wrap break-words w-full"
+                  >
+                    {{ testResult }}
+                  </div>
                   <div v-else class="text-white/30 text-sm">输入消息并点击发送，测试模型响应</div>
                 </div>
               </div>
@@ -228,7 +357,11 @@ import Icon from '../../base/widget/Icon.vue'
 import FormField from '../../base/items/FormField.vue'
 import SettingItem from '../../base/items/SettingItem.vue'
 import { useLlmConfigStore } from '../../../stores/modules/llm-config'
-import { testProvider, getLlmTomlSettings, getConfigTemplate } from '../../../api/services/llm-config'
+import {
+  testProvider,
+  getLlmTomlSettings,
+  getConfigTemplate,
+} from '../../../api/services/llm-config'
 import type { LlmConfigScheme } from '../../../api/services/llm-config'
 
 /** 从 /v1/llm-config/settings 提取当前配置方案的 [main] 段 schema */
@@ -251,7 +384,9 @@ const store = useLlmConfigStore()
 
 const view = ref<'list' | 'edit' | 'test'>('list')
 
-onMounted(() => { store.load() })
+onMounted(() => {
+  store.load()
+})
 
 const editName = ref('')
 const form = reactive<LlmConfigScheme>({
@@ -274,7 +409,7 @@ watch(view, async (v) => {
     // 将 schema 中的默认值注入 form.main，确保动态字段可被保存
     for (const s of mainSettings.value) {
       if (!(s.key in form.main)) {
-        (form.main as any)[s.key] = s.value
+        ;(form.main as any)[s.key] = s.value
       }
     }
   }
@@ -310,8 +445,11 @@ function onProxyInput(e: Event) {
 
 // ——— 列表操作 ———
 async function activateConfig(name: string) {
-  try { await store.switchTo(name) }
-  catch (e: any) { console.error('激活失败', e) }
+  try {
+    await store.switchTo(name)
+  } catch (e: any) {
+    console.error('激活失败', e)
+  }
 }
 
 async function startAdd() {
@@ -323,7 +461,8 @@ async function startAdd() {
   } catch {
     // fallback: 用最小空模板
     Object.assign(form, {
-      config_name: '', config_description: '',
+      config_name: '',
+      config_description: '',
       main: { provider: 'webllm', model: '', api_key: '', base_url: '' },
       translator: { provider: 'none', model: '', api_key: '', base_url: '' },
       network: { proxy: '' },
@@ -366,7 +505,9 @@ async function doSave() {
   } catch (e: any) {
     saveMsg.value = `保存失败: ${e.message}`
     saveError.value = true
-  } finally { saving.value = false }
+  } finally {
+    saving.value = false
+  }
 }
 
 // ——— 测试 ———
@@ -396,7 +537,9 @@ async function doTest() {
     else testError.value = res.response || '测试失败'
   } catch (e: any) {
     testError.value = `请求错误: ${e.message}`
-  } finally { testing.value = false }
+  } finally {
+    testing.value = false
+  }
 }
 
 function startTest(name: string) {
@@ -407,7 +550,6 @@ function startTest(name: string) {
   testError.value = ''
   view.value = 'test'
 }
-
 </script>
 
 <style>

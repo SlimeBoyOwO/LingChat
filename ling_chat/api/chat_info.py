@@ -94,4 +94,6 @@ async def reactivate_tts_engine(
 
         traceback.print_exc()
         logger.error(f"重新激活TTS引擎失败 client_id: {client_id}, user_id: {user_id}")
-        return APIResponse(code=500, msg="Failed to reactivate TTS engine", error=str(e))
+        return APIResponse(
+            code=500, msg="Failed to reactivate TTS engine", error=str(e)
+        )

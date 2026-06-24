@@ -18,8 +18,7 @@ export const useLlmConfigStore = defineStore('llm-config', {
   }),
 
   getters: {
-    activeSummary: (state): LlmConfigSummary | undefined =>
-      state.configs.find((c) => c.is_active),
+    activeSummary: (state): LlmConfigSummary | undefined => state.configs.find((c) => c.is_active),
 
     hasConfigs: (state) => state.configs.length > 0,
   },
@@ -28,10 +27,7 @@ export const useLlmConfigStore = defineStore('llm-config', {
     async load() {
       this.loading = true
       try {
-        const [configList, active] = await Promise.all([
-          listConfigs(),
-          getActiveConfig(),
-        ])
+        const [configList, active] = await Promise.all([listConfigs(), getActiveConfig()])
         this.configs = configList
         this.activeName = active.name
         this.activeConfig = active.config

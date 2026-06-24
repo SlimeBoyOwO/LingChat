@@ -73,7 +73,9 @@ class VoiceMaker:
             openai_tts_voice
         )
 
-    def set_tts_settings(self, tts_settings: VoiceModel, name: str, tts_language: str = "ja") -> None:
+    def set_tts_settings(
+        self, tts_settings: VoiceModel, name: str, tts_language: str = "ja"
+    ) -> None:
         """获取可用的 TTS 配置并且进行基础配置"""
         try:
             # 先检查所有 TTS 配置的可用性
@@ -193,7 +195,13 @@ class VoiceMaker:
         except KeyError as e:
             logger.error(f"当前角色卡{name}的 TTS 设置出错，问题是：{e}")
 
-    def set_tts(self, tts_type: str, tts_settings: VoiceModel, name: str, tts_language: str = "ja") -> None:
+    def set_tts(
+        self,
+        tts_type: str,
+        tts_settings: VoiceModel,
+        name: str,
+        tts_language: str = "ja",
+    ) -> None:
         """设置默认的 TTS 类型"""
         available_tts_types = (
             "sva-bv2",
@@ -301,7 +309,11 @@ class VoiceMaker:
             elif self.lang == "zh":
                 text_to_synthesize = seg.get("following_text") or seg.get("tts_content")
             else:
-                text_to_synthesize = seg.get("japanese_text") or seg.get("following_text") or seg.get("tts_content")
+                text_to_synthesize = (
+                    seg.get("japanese_text")
+                    or seg.get("following_text")
+                    or seg.get("tts_content")
+                )
 
             if not text_to_synthesize or not text_to_synthesize.strip():
                 logger.warning(f"无法找到合成文本，跳过：{audio_file}")

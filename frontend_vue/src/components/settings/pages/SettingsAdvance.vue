@@ -15,9 +15,7 @@
           ref="navContainerRef"
           @click="() => removeMoreMenu()"
           class="adv-nav transition-all duration-300 ease-[cubic-bezier(0.18,0.89,0.32,1.00)] flex flex-col justify-start gap-6.25 overflow-y-auto relative border-b border-brand"
-          :class="[
-            'translate-y-0',
-          ]"
+          :class="['translate-y-0']"
         >
           <!-- 滑动指示器 -->
           <div
@@ -27,7 +25,7 @@
 
           <div
             class="flex items-center gap-1 mt-2 text-sm px-5"
-            style="color: white; text-shadow: 0 0 3px rgba(0,0,0,0.6);"
+            style="color: white; text-shadow: 0 0 3px rgba(0, 0, 0, 0.6)"
           >
             💡 这里的设置重启软件生效哦！
           </div>
@@ -59,9 +57,7 @@
         <!-- 设置内容区域 -->
         <main
           class="adv-main flex justify-center h-full overflow-auto relative px-10 py-10"
-          :class="[
-            'translate-y-0',
-          ]"
+          :class="['translate-y-0']"
         >
           <div v-if="selectedSubcategory" class="w-full active">
             <div class="pt-2.5 overflow-auto">

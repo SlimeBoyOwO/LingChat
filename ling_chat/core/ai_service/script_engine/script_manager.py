@@ -102,7 +102,9 @@ class ScriptManager:
                         subdirs_to_scan.append(first_level_dir)
                     else:
                         # 否则检查是否有第二层子目录
-                        second_level_dirs = [p for p in first_level_dir.iterdir() if p.is_dir()]
+                        second_level_dirs = [
+                            p for p in first_level_dir.iterdir() if p.is_dir()
+                        ]
                         if second_level_dirs:
                             # 如果有第二层子目录，扫描这些子目录
                             subdirs_to_scan.extend(second_level_dirs)

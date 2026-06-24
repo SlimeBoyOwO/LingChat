@@ -395,4 +395,6 @@ async def clear_chat_history(request: Request):
     except HTTPException as he:
         raise he
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"清除对话历史失败: {str(e)}") from e
+        raise HTTPException(
+            status_code=500, detail=f"清除对话历史失败: {str(e)}"
+        ) from e

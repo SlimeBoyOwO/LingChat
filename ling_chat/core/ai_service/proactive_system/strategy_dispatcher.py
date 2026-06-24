@@ -36,7 +36,11 @@ class StrategyDispatcher:
                 # 但为防止极端情况（上层未初始化或上游改动），用 isinstance 兜底。
                 self.game_status.last_dialog_time.strftime("%m-%d")
                 if isinstance(self.game_status.last_dialog_time, datetime)
-                else (str(self.game_status.last_dialog_time) if self.game_status.last_dialog_time else "")
+                else (
+                    str(self.game_status.last_dialog_time)
+                    if self.game_status.last_dialog_time
+                    else ""
+                )
             )
             if last_talk_date != today_str:
                 for day in self.settings.importantDays:

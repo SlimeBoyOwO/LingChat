@@ -60,7 +60,9 @@ class Translator:
         # 如果有缺失的语音文件，重新合成
         if missing_segments:
             try:
-                _, regenerated_count = await voice_maker.regenerate_missing_audio(missing_segments)
+                _, regenerated_count = await voice_maker.regenerate_missing_audio(
+                    missing_segments
+                )
                 if regenerated_count > 0:
                     logger.info(f"成功重新合成 {regenerated_count} 条缺失语音")
             except Exception as e:
@@ -87,7 +89,9 @@ class Translator:
                 buffer = ""
                 current_segment_index = 0
 
-                japanese_stream = self.translator_llm.process_message_stream(send_messages)
+                japanese_stream = self.translator_llm.process_message_stream(
+                    send_messages
+                )
 
                 async for chunk in japanese_stream:
                     print(chunk, end="", flush=True)
@@ -110,10 +114,11 @@ class Translator:
                                 )
 
                                 # 实时生成语音（自动检查并修复缺失文件）
-                                voice_maker = self.game_status.current_character.voice_maker
+                                voice_maker = (
+                                    self.game_status.current_character.voice_maker
+                                )
                                 await self._generate_voice_with_check(
-                                    voice_maker,
-                                    [results[current_segment_index]]
+                                    voice_maker, [results[current_segment_index]]
                                 )
                                 logger.info("开始生成下一条语音...")
 
@@ -129,7 +134,9 @@ class Translator:
 
                 # 处理完整响应中的所有句子
                 while (
-                    "<" in buffer and ">" in buffer and current_segment_index < len(results)
+                    "<" in buffer
+                    and ">" in buffer
+                    and current_segment_index < len(results)
                 ):
                     start = buffer.index("<")
                     end = buffer.index(">") + 1
@@ -146,8 +153,7 @@ class Translator:
                         # 生成语音（自动检查并修复缺失文件）
                         voice_maker = self.game_status.current_character.voice_maker
                         await self._generate_voice_with_check(
-                            voice_maker,
-                            [results[current_segment_index]]
+                            voice_maker, [results[current_segment_index]]
                         )
                         logger.info(f"生成语音完成：{clean_sentence}")
 

@@ -80,7 +80,9 @@ export async function getActiveConfig(): Promise<ActiveConfigResponse> {
 }
 
 /** 切换激活配置 */
-export async function switchConfig(name: string): Promise<{ status: string; message: string; active: string }> {
+export async function switchConfig(
+  name: string,
+): Promise<{ status: string; message: string; active: string }> {
   return http.post('/v1/llm-config/switch', { name })
 }
 
@@ -93,7 +95,9 @@ export async function saveConfig(
 }
 
 /** 删除配置方案 */
-export async function deleteConfig(name: string): Promise<{ status: string; message: string; deleted: string }> {
+export async function deleteConfig(
+  name: string,
+): Promise<{ status: string; message: string; deleted: string }> {
   return http.delete(`/v1/llm-config/${encodeURIComponent(name)}`)
 }
 

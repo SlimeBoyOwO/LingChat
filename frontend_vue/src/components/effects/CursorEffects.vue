@@ -33,7 +33,10 @@ const CREATE_CLICK_CFG = {
 }
 
 function ringsEndColorFromRgb(rgbString: string) {
-  return rgbString.split(',').map(Number).map((n) => (n + 255 * 2) / 3)
+  return rgbString
+    .split(',')
+    .map(Number)
+    .map((n) => (n + 255 * 2) / 3)
 }
 
 class MouseSpark {
@@ -56,7 +59,7 @@ class MouseSpark {
   sparks: any[] = []
   trail: any[] = []
   isDown: boolean = false
-  lastPos: { x: number, y: number } | null = null
+  lastPos: { x: number; y: number } | null = null
   lastMouseTime: number = 0
   MOUSE_THROTTLE: number = 16
   baseFrameMs: number = 1000 / 60
@@ -81,8 +84,8 @@ class MouseSpark {
     this.color = opts.color || '45,175,255'
     this.scale = opts.scale || 1.5
     this.opacity = opts.opacity || 1.0
-    this.trailSpeed = opts.trailSpeed != null ? opts.trailSpeed : (opts.speed || 1.0)
-    this.clickSpeed = opts.clickSpeed != null ? opts.clickSpeed : (opts.speed || 1.0)
+    this.trailSpeed = opts.trailSpeed != null ? opts.trailSpeed : opts.speed || 1.0
+    this.clickSpeed = opts.clickSpeed != null ? opts.clickSpeed : opts.speed || 1.0
     this.maxTrail = opts.maxTrail || 36
 
     this.ringsEndColor = ringsEndColorFromRgb(this.color)
@@ -129,7 +132,7 @@ class MouseSpark {
         if (this.trail.length > this.maxTrail * 1.5) {
           this.trail.splice(0, this.trail.length - this.maxTrail)
         }
-        
+
         // --- 随机生成轨迹拖尾的发光三角形特效（仅在按下左键拖动时） ---
         if (this.isDown && Math.random() > 0.5) {
           let spark: any
@@ -168,26 +171,26 @@ class MouseSpark {
   }
 
   bindEvents() {
-    window.addEventListener("mousedown", this.onMouseDown)
-    window.addEventListener("mousemove", this.onMouseMove)
-    window.addEventListener("mouseup", this.onMouseUp)
-    window.addEventListener("resize", this.onResize)
+    window.addEventListener('mousedown', this.onMouseDown)
+    window.addEventListener('mousemove', this.onMouseMove)
+    window.addEventListener('mouseup', this.onMouseUp)
+    window.addEventListener('resize', this.onResize)
   }
 
   destroy() {
-    window.removeEventListener("mousedown", this.onMouseDown)
-    window.removeEventListener("mousemove", this.onMouseMove)
-    window.removeEventListener("mouseup", this.onMouseUp)
-    window.removeEventListener("resize", this.onResize)
+    window.removeEventListener('mousedown', this.onMouseDown)
+    window.removeEventListener('mousemove', this.onMouseMove)
+    window.removeEventListener('mouseup', this.onMouseUp)
+    window.removeEventListener('resize', this.onResize)
     if (this.animationId) {
       cancelAnimationFrame(this.animationId)
     }
   }
 
   initCanvas() {
-    this.mainCtx = this.mainCanvas.getContext("2d")
-    this.bufferCanvas = document.createElement("canvas")
-    this.bufferCtx = this.bufferCanvas.getContext("2d")
+    this.mainCtx = this.mainCanvas.getContext('2d')
+    this.bufferCanvas = document.createElement('canvas')
+    this.bufferCtx = this.bufferCanvas.getContext('2d')
     this.resize()
   }
 
@@ -271,8 +274,8 @@ class MouseSpark {
       spark.fromClick = true
       const t = Math.random()
       const r = Math.round(100 + 155 * t) // 100 到 255
-      const g = Math.round(180 + 75 * t)  // 180 到 255
-      const b = 255                       // 蓝色通道保持最高
+      const g = Math.round(180 + 75 * t) // 180 到 255
+      const b = 255 // 蓝色通道保持最高
       spark.color = `${r},${g},${b}`
       this.sparks.push(spark)
     }
@@ -298,7 +301,7 @@ class MouseSpark {
   _updateTrail(frameScale: number) {
     const ctx = this.bufferCtx
     if (!ctx) return
-    
+
     // --- 更新点透明度 ---
     for (let i = this.trail.length - 1; i >= 0; i--) {
       const p = this.trail[i]
@@ -381,7 +384,15 @@ class MouseSpark {
     ctx.restore()
   }
 
-  _strokeRingSegment(wx: number, wy: number, radius: number, a0: number, a1: number, lineWidth: number, strokeStyle: string) {
+  _strokeRingSegment(
+    wx: number,
+    wy: number,
+    radius: number,
+    a0: number,
+    a1: number,
+    lineWidth: number,
+    strokeStyle: string,
+  ) {
     const ctx = this.bufferCtx
     if (!ctx) return
     ctx.beginPath()
@@ -508,12 +519,12 @@ class MouseSpark {
       ctx.moveTo(0, -s.s)
       ctx.lineTo(s.s * 0.6, s.s * 0.6)
       ctx.lineTo(-s.s * 0.6, s.s * 0.6)
-      
+
       if (s.isTrailGlow) {
         ctx.shadowBlur = 8
         ctx.shadowColor = `rgba(${s.color},${this.alpha(s.a)})`
       }
-      
+
       ctx.fillStyle = `rgba(${s.color},${this.alpha(s.a)})`
       ctx.fill()
       ctx.restore()
@@ -682,14 +693,14 @@ class MouseSpark {
     const renderRects = this._getRenderRects()
     bctx.save()
     this._clipToRects(bctx, renderRects)
-    bctx.globalCompositeOperation = "lighter"
+    bctx.globalCompositeOperation = 'lighter'
 
     this._clearBufferRects(renderRects)
     this._updateTrail(trailFrameScale)
     this._updateWaves(clickFrameScale)
     this._updateSparks(clickFrameScale, trailFrameScale)
 
-    bctx.globalCompositeOperation = "source-over"
+    bctx.globalCompositeOperation = 'source-over'
     bctx.restore()
 
     this._renderToMain(renderRects)

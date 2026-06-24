@@ -19,10 +19,7 @@ import router from './router' // './router/index.js' 的简写
 import logForwarderPlugin from './plugins/logForwarder'
 
 // 导入性能检测
-import {
-  initializePerformanceDetection,
-  getRecommendedSettings,
-} from './utils/devicePerformance'
+import { initializePerformanceDetection, getRecommendedSettings } from './utils/devicePerformance'
 import { useSettingsStore } from './stores/modules/settings'
 
 // TODO: 清理旧版本 localStorage 残留数据（v2.x 之前的独立存储格式，以后此逻辑可以删除）

@@ -34,38 +34,35 @@
       </MenuItem>
     </MenuPage>
 
-  <!-- 滑入面板 -->
-  <Teleport to="body">
-    <Transition name="advance-slide">
-      <div v-if="showAdvancePanel" class="advance-slide-wrapper">
-        <!-- 模糊遮罩 — 使用与 SettingsPanel 一致的 blur 效果 -->
-        <div class="advance-slide-overlay" @click="closePanel"></div>
+    <!-- 滑入面板 -->
+    <Teleport to="body">
+      <Transition name="advance-slide">
+        <div v-if="showAdvancePanel" class="advance-slide-wrapper">
+          <!-- 模糊遮罩 — 使用与 SettingsPanel 一致的 blur 效果 -->
+          <div class="advance-slide-overlay" @click="closePanel"></div>
 
-        <!-- 面板容器：透明底，内容自带玻璃效果 -->
-        <div class="advance-slide-panel">
-          <div class="advance-slide-header">
-            <button class="advance-back-btn" @click="closePanel">
-              <Icon icon="close" :size="28" />
-            </button>
-            <div class="advance-header-title">
-              <Icon icon="advance" :size="20" />
-              <span>高级设置</span>
+          <!-- 面板容器：透明底，内容自带玻璃效果 -->
+          <div class="advance-slide-panel">
+            <div class="advance-slide-header">
+              <button class="advance-back-btn" @click="closePanel">
+                <Icon icon="close" :size="28" />
+              </button>
+              <div class="advance-header-title">
+                <Icon icon="advance" :size="20" />
+                <span>高级设置</span>
+              </div>
+            </div>
+
+            <div class="advance-slide-content">
+              <SettingsAdvance ref="settingsAdvanceRef" @remove-more-menu-from-b="onRemoveFromB" />
             </div>
           </div>
-
-          <div class="advance-slide-content">
-            <SettingsAdvance
-              ref="settingsAdvanceRef"
-              @remove-more-menu-from-b="onRemoveFromB"
-            />
-          </div>
         </div>
-      </div>
-    </Transition>
-  </Teleport>
+      </Transition>
+    </Teleport>
 
-  <!-- LLM 配置面板 -->
-  <SettingsLlmConfig v-if="showLlmPanel" @close="showLlmPanel = false" />
+    <!-- LLM 配置面板 -->
+    <SettingsLlmConfig v-if="showLlmPanel" @close="showLlmPanel = false" />
   </div>
 </template>
 

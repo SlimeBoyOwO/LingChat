@@ -70,7 +70,9 @@ async def create_scene(request: SceneCreateRequest):
             logger.info(f"自动分析图片生成描述: {scene_description}")
         except Exception as e:
             logger.error(f"图片分析失败: {e}")
-            raise HTTPException(status_code=500, detail=f"图片分析失败: {str(e)}") from e
+            raise HTTPException(
+                status_code=500, detail=f"图片分析失败: {str(e)}"
+            ) from e
 
     # 创建场景
     if not scene_description:
