@@ -29,6 +29,7 @@
       <Slider @change="updateAchievementVolume" v-model="achievementVolume"> 弱/强 </Slider>
     </MenuItem>
 
+    <!-- 测试声音部分 -->
     <!-- 环境音音量控制 -->
     <MenuItem title="环境音音量" size="small">
       <template #header>
