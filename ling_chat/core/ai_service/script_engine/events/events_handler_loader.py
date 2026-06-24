@@ -36,8 +36,7 @@ class EventHandlerLoader:
             try:
                 # 直接从文件路径加模块
                 spec = importlib.util.spec_from_file_location(
-                    module_name,
-                    str(file_path.resolve())
+                    module_name, str(file_path.resolve())
                 )
                 if spec is None or spec.loader is None:
                     logger.error(f"无法为 {module_name} 创建模块规格")

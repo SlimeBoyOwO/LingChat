@@ -85,7 +85,10 @@ class LLMConfig:
             },
             "gemini": {
                 "api_key": ("GEMINI_API_KEY", ""),
-                "base_url": ("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"),
+                "base_url": (
+                    "GEMINI_BASE_URL",
+                    "https://generativelanguage.googleapis.com/v1beta",
+                ),
                 "model": ("GEMINI_MODEL_TYPE", "gemini-2.5-flash"),
             },
             "anthropic": {
@@ -248,8 +251,8 @@ class LLMConfig:
     def _format_toml_line(self, key: str, value: Any) -> str:
         """格式化TOML行"""
         if isinstance(value, str):
-            if "\"" in value:
-                return f'{key} = \'{value}\''
+            if '"' in value:
+                return f"{key} = '{value}'"
             return f'{key} = "{value}"'
         elif isinstance(value, bool):
             return f"{key} = {str(value).lower()}"
@@ -363,13 +366,15 @@ class LLMConfig:
         for f in sorted(self._config_dir.glob("*.toml")):
             try:
                 cfg = self._parse_toml(f)
-                configs.append({
-                    "name": f.stem,
-                    "display_name": cfg.get("config_name", f.stem),
-                    "description": cfg.get("config_description", ""),
-                    "is_active": f.stem == self._active_config_name,
-                    "main_provider": cfg.get("main", {}).get("provider", ""),
-                })
+                configs.append(
+                    {
+                        "name": f.stem,
+                        "display_name": cfg.get("config_name", f.stem),
+                        "description": cfg.get("config_description", ""),
+                        "is_active": f.stem == self._active_config_name,
+                        "main_provider": cfg.get("main", {}).get("provider", ""),
+                    }
+                )
             except Exception as e:
                 logger.warning(f"跳过损坏的配置文件 {f}: {e}")
         return configs

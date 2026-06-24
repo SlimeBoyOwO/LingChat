@@ -16,6 +16,7 @@ from ling_chat.game_database.database import init_db
 from ling_chat.game_database.managers.role_manager import RoleManager
 from ling_chat.utils.runtime_path import user_data_path
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:

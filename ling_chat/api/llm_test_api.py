@@ -18,7 +18,9 @@ class TestProviderRequest(BaseModel):
     base_url: str = Field(default="", description="API 地址")
     temperature: Optional[float] = Field(default=None, description="Temperature 参数")
     top_p: Optional[float] = Field(default=None, description="Top P 参数")
-    enable_thinking: str = Field(default="none", description="是否启用思考链 (none/true/false)")
+    enable_thinking: str = Field(
+        default="none", description="是否启用思考链 (none/true/false)"
+    )
     message: str = Field(default="只需回复两个字：你好", description="测试消息")
 
     model_config = {"extra": "ignore"}

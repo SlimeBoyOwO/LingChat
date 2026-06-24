@@ -10,6 +10,7 @@ from ling_chat.core.ai_service.proactive_system.type import UserState
 from ling_chat.core.logger import logger
 from mss import mss
 from PIL import Image
+
 # 尝试导入 RapidOCR，无图形界面/缺失依赖时优雅降级
 try:
     from rapidocr_onnxruntime import RapidOCR

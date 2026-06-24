@@ -1,4 +1,3 @@
-
 from ling_chat.core.ai_service.script_engine.events.base_event import BaseEvent
 from ling_chat.core.ai_service.script_engine.utils.script_function import ScriptFunction
 from ling_chat.core.logger import logger

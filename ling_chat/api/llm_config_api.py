@@ -21,17 +21,20 @@ router = APIRouter(prefix="/api/v1/llm-config", tags=["LLM Config"])
 
 class SwitchConfigRequest(BaseModel):
     """切换配置请求"""
+
     name: str = Field(..., description="配置方案名称")
 
 
 class SaveConfigRequest(BaseModel):
     """保存配置请求"""
+
     name: str = Field(..., description="配置方案名称")
     config: Dict[str, Any] = Field(..., description="配置内容")
 
 
 class DeleteConfigRequest(BaseModel):
     """删除配置请求"""
+
     name: str = Field(..., description="配置方案名称")
 
 
@@ -134,6 +137,7 @@ async def delete_config(name: str) -> Dict[str, str]:
 # 配置模板与解析接口（与 env_config.py 的 parse_env_file 对齐）
 # ============================================================
 
+
 @router.get("/template")
 async def get_config_template() -> Dict[str, Any]:
     """获取新配置的默认模板（含所有最新字段）"""
@@ -164,7 +168,9 @@ async def get_llm_toml_key(key: str) -> Dict[str, Any]:
     try:
         result = find_key_in_toml(key)
         if result is None:
-            raise HTTPException(status_code=404, detail=f"Key '{key}' not found in any TOML config")
+            raise HTTPException(
+                status_code=404, detail=f"Key '{key}' not found in any TOML config"
+            )
         return result
     except HTTPException:
         raise

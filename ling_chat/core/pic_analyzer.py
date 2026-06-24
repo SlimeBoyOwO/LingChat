@@ -32,7 +32,8 @@ class DesktopAnalyzer:
             if not self.api_key:
                 raise ValueError("VD_API_KEY 环境变量未设置。请设置您的API密钥。")
             self._client = OpenAI(
-                api_key=self.api_key, base_url=self.base_url,
+                api_key=self.api_key,
+                base_url=self.base_url,
                 timeout=httpx.Timeout(15.0),
             )
         return self._client

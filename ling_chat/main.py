@@ -136,6 +136,7 @@ def run_main_program(args, is_wv=False):
             logger.info("已禁用语音合成软件自动启动")
 
         # 检查环境变量决定是否启动前端界面
+
         use_frontend = (
             os.getenv("OPEN_FRONTEND_APP", "false").lower() == "true" and not args.nogui
         ) or args.gui
@@ -148,15 +149,13 @@ def run_main_program(args, is_wv=False):
                 webview_process = start_webview()
                 # pywebview 不可用时，start_webview() 返回 None，自动降级到 Server 模式
                 if webview_process is None:
-                    frontend_bind_addr = os.getenv(
-                        "FRONTEND_BIND_ADDR"
-                    ) or os.getenv("BACKEND_BIND_ADDR", "127.0.0.1")
+                    frontend_bind_addr = os.getenv("FRONTEND_BIND_ADDR") or os.getenv(
+                        "BACKEND_BIND_ADDR", "127.0.0.1"
+                    )
                     frontend_port = os.getenv("FRONTEND_PORT") or os.getenv(
                         "BACKEND_PORT", "8765"
                     )
-                    logger.warning(
-                        f"pywebview 不可用，降级为 Server 模式（无本地窗口）"
-                    )
+                    logger.warning("pywebview 不可用，降级为 Server 模式（无本地窗口）")
                     logger.warning(
                         f"请打开浏览器访问 http://{frontend_bind_addr}:{frontend_port}/"
                     )
@@ -202,9 +201,9 @@ def run_main_program(args, is_wv=False):
             except Exception as e:
                 # 其他异常时，提示用户用浏览器访问
                 logger.warning(f"前端窗口启动异常：{e}")
-                frontend_bind_addr = os.getenv(
-                    "FRONTEND_BIND_ADDR"
-                ) or os.getenv("BACKEND_BIND_ADDR", "127.0.0.1")
+                frontend_bind_addr = os.getenv("FRONTEND_BIND_ADDR") or os.getenv(
+                    "BACKEND_BIND_ADDR", "127.0.0.1"
+                )
                 frontend_port = os.getenv("FRONTEND_PORT") or os.getenv(
                     "BACKEND_PORT", "8765"
                 )

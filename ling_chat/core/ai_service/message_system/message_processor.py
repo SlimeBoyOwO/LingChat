@@ -259,9 +259,7 @@ class MessageProcessor:
         format_prompt_template = prompt_config.format_prompt_template
 
         # 根据环境变量决定使用哪种语言模式
-        use_cn_mode = (
-            os.environ.get("LLM_OUTPUT_SEC_LANG", "False").lower() == "true"
-        )
+        use_cn_mode = os.environ.get("LLM_OUTPUT_SEC_LANG", "False").lower() == "true"
 
         if use_cn_mode:
             # 中文模式（无翻译）

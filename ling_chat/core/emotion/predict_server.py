@@ -57,7 +57,11 @@ async def predict_emotion(request: PredictionRequest):
     if classifier is None:
         raise HTTPException(status_code=500, detail="Classifier not initialized")
     try:
-        confidence_threshold = request.confidence_threshold if request.confidence_threshold is not None else 0.08
+        confidence_threshold = (
+            request.confidence_threshold
+            if request.confidence_threshold is not None
+            else 0.08
+        )
         result = classifier.predict(request.text, confidence_threshold)
         return result
     except Exception as e:

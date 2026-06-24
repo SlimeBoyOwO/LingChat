@@ -39,7 +39,9 @@ class OpenAITTSAdapter(TTSBaseAdapter):
         if not self.voice:
             raise ValueError("OpenAI TTS 音色(voice)未设置")
 
-        logger.debug(f"OpenAI TTS 请求: model={self.model}, voice={self.voice}, text={text[:50]}...")
+        logger.debug(
+            f"OpenAI TTS 请求: model={self.model}, voice={self.voice}, text={text[:50]}..."
+        )
 
         response = await self.client.audio.speech.create(
             model=self.model,

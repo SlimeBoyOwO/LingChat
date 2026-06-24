@@ -222,4 +222,3 @@ async def open_backgrounds_folder():
     except Exception as e:
         logger.error(f"打开背景文件夹失败: {e}")
         raise HTTPException(status_code=500, detail=f"打开文件夹失败: {str(e)}")
-

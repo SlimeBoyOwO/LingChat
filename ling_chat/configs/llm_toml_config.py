@@ -54,9 +54,11 @@ PROVIDER_KEY_DESCRIPTIONS: Dict[str, str] = {
 # 辅助函数
 # ============================================================
 
+
 def _get_type_from_description(desc: str) -> str:
     """从描述中提取 [type:xxx] 标注，返回 (清理后的描述, 类型)"""
     import re
+
     type_match = re.search(r"\[type:\s*(\w+)\s*\]", desc)
     if type_match:
         return type_match.group(1).lower()
@@ -66,6 +68,7 @@ def _get_type_from_description(desc: str) -> str:
 def _clean_description(desc: str) -> str:
     """移除描述中的 [type:xxx] 标注，返回纯文本描述"""
     import re
+
     return re.sub(r"\s*\[type:\s*\w+\s*\]", "", desc).strip()
 
 
@@ -125,6 +128,7 @@ def _get_settings_for_section(
 # ============================================================
 # 核心解析函数
 # ============================================================
+
 
 def parse_llm_toml(config_name: Optional[str] = None) -> Dict[str, Any]:
     """解析单个 LLM TOML 配置，返回与 parse_env_file() 对齐的结构
@@ -250,7 +254,10 @@ def find_key_in_toml(
                 key_descriptions = KEY_DESCRIPTIONS.get(section_key, {})
                 if key in key_descriptions:
                     desc = key_descriptions[key]
-                elif section_key.startswith("providers") and key in PROVIDER_KEY_DESCRIPTIONS:
+                elif (
+                    section_key.startswith("providers")
+                    and key in PROVIDER_KEY_DESCRIPTIONS
+                ):
                     desc = PROVIDER_KEY_DESCRIPTIONS[key]
                 else:
                     desc = ""
