@@ -41,6 +41,7 @@ gui = [
 ]
 dev = [
     "ruff>=0.14.10",
+    "ty>=0.0.1",
     "pytest>=7.0",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=6.2.1",
