@@ -3,13 +3,13 @@ use std::io::Write;
 
 use serde::{Deserialize, Serialize};
 
-use super::{music_dir, validate_path_in_base};
+use super::{ambient_dir, validate_path_in_base};
 
 // ========== 响应类型 ==========
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub struct MusicItemInfo {
+pub struct AmbientItemInfo {
     pub name: String,
     pub url: String,
     pub time: String,
@@ -18,18 +18,18 @@ pub struct MusicItemInfo {
 // ========== Tauri 命令 ==========
 
 #[tauri::command]
-pub fn get_music_list() -> Result<Vec<MusicItemInfo>, String> {
-    let music_dir = music_dir();
+pub fn get_ambient_list() -> Result<Vec<AmbientItemInfo>, String> {
+    let ambient_dir = ambient_dir();
 
-    if !music_dir.exists() {
+    if !ambient_dir.exists() {
         return Ok(Vec::new());
     }
 
     let allowed_extensions = ["mp3", "wav", "flac", "webm", "weba", "ogg", "m4a", "oga"];
 
-    let mut items: Vec<MusicItemInfo> = Vec::new();
+    let mut items: Vec<AmbientItemInfo> = Vec::new();
 
-    let entries = fs::read_dir(&music_dir).map_err(|e| format!("读取音乐目录失败: {}", e))?;
+    let entries = fs::read_dir(&ambient_dir).map_err(|e| format!("读取环境音目录失败: {}", e))?;
 
     for entry in entries.flatten() {
         let path = entry.path();
@@ -62,7 +62,7 @@ pub fn get_music_list() -> Result<Vec<MusicItemInfo>, String> {
 
         let url = path.to_string_lossy().into_owned();
 
-        items.push(MusicItemInfo { name, url, time });
+        items.push(AmbientItemInfo { name, url, time });
     }
 
     items.sort_by(|a, b| {
@@ -77,27 +77,10 @@ pub fn get_music_list() -> Result<Vec<MusicItemInfo>, String> {
 }
 
 #[tauri::command]
-pub fn get_music_file(filename: String) -> Result<String, String> {
-    let base = music_dir();
-    let resolved = base.join(&filename);
-
-    validate_path_in_base(&resolved, &base)?;
-
-    if !resolved.exists() {
-        return Err(format!("音乐文件不存在: {}", filename));
-    }
-
-    let canon = resolved
-        .canonicalize()
-        .map_err(|e| format!("路径解析失败: {}", e))?;
-    Ok(canon.to_string_lossy().into_owned())
-}
-
-#[tauri::command]
-pub fn upload_music(file_name: String, file_data: Vec<u8>) -> Result<Vec<MusicItemInfo>, String> {
-    let music_dir = music_dir();
-    if !music_dir.exists() {
-        fs::create_dir_all(&music_dir).map_err(|e| format!("创建音乐目录失败: {}", e))?;
+pub fn upload_ambient(file_name: String, file_data: Vec<u8>) -> Result<Vec<AmbientItemInfo>, String> {
+    let ambient_dir = ambient_dir();
+    if !ambient_dir.exists() {
+        fs::create_dir_all(&ambient_dir).map_err(|e| format!("创建环境音目录失败: {}", e))?;
     }
 
     // 安全检查：只保留文件名，防止路径遍历
@@ -107,20 +90,20 @@ pub fn upload_music(file_name: String, file_data: Vec<u8>) -> Result<Vec<MusicIt
         .to_string_lossy()
         .into_owned();
 
-    let file_path = music_dir.join(&safe_name);
+    let file_path = ambient_dir.join(&safe_name);
     let mut f = fs::File::create(&file_path).map_err(|e| format!("创建文件失败: {}", e))?;
     f.write_all(&file_data)
         .map_err(|e| format!("写入文件失败: {}", e))?;
     f.flush().map_err(|e| format!("刷新文件失败: {}", e))?;
 
-    get_music_list()
+    get_ambient_list()
 }
 
-/// 删除指定音乐文件
-/// url 参数可以是完整路径或纯文件名，统一从 music_dir 中删除
+/// 删除指定环境音文件
+/// url 参数可以是完整路径或纯文件名，统一从 ambient_dir 中删除
 #[tauri::command]
-pub fn delete_music(url: String) -> Result<Vec<MusicItemInfo>, String> {
-    let base = music_dir();
+pub fn delete_ambient(url: String) -> Result<Vec<AmbientItemInfo>, String> {
+    let base = ambient_dir();
 
     // 从路径中提取文件名，兼容完整路径和纯文件名
     let filename = std::path::Path::new(&url)
@@ -133,10 +116,10 @@ pub fn delete_music(url: String) -> Result<Vec<MusicItemInfo>, String> {
     validate_path_in_base(&file_path, &base)?;
 
     if !file_path.exists() {
-        return Err(format!("音乐文件不存在: {}", filename));
+        return Err(format!("环境音文件不存在: {}", filename));
     }
 
-    fs::remove_file(&file_path).map_err(|e| format!("删除音乐文件失败: {}", e))?;
+    fs::remove_file(&file_path).map_err(|e| format!("删除环境音文件失败: {}", e))?;
 
-    get_music_list()
+    get_ambient_list()
 }

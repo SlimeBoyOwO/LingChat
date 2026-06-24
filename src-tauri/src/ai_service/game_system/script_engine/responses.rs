@@ -18,6 +18,7 @@ pub mod event_names {
     pub const SCRIPT_BACKGROUND_EFFECT: &str = "script:background-effect";
     pub const SCRIPT_MUSIC: &str = "script:music";
     pub const SCRIPT_SOUND: &str = "script:sound";
+    pub const SCRIPT_AMBIENT: &str = "script:ambient";
     pub const SCRIPT_PRESENT_PIC: &str = "script:present-pic";
     pub const SCRIPT_MODIFY_CHARACTER: &str = "script:modify-character";
     pub const SCRIPT_INPUT: &str = "script:input";
@@ -76,6 +77,29 @@ pub struct MusicPayload {
 #[serde(rename_all = "camelCase")]
 pub struct SoundPayload {
     pub sound_path: String,
+}
+
+/// 环境音 payload，支持多轨并行、独立音量和循环控制
+fn default_ambient_volume() -> f64 {
+    100.0
+}
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AmbientPayload {
+    pub ambient_path: String,
+    #[serde(default = "default_ambient_volume")]
+    pub volume: f64,
+    #[serde(default = "default_true", rename = "loop")]
+    pub is_loop: bool,
+    #[serde(default)]
+    pub stop: bool,
+    /// 是否启用淡入淡出，默认 true
+    #[serde(default = "default_true")]
+    pub fade: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

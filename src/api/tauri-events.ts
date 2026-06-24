@@ -116,6 +116,11 @@ export function initializeTauriEventListeners() {
     eventQueue.addEvent(asEvent(event.payload, { type: 'sound', duration: 0 }))
   })
 
+  // 环境音事件（多轨并行，与BGM共存）
+  listen('script:ambient', (event) => {
+    eventQueue.addEvent(asEvent(event.payload, { type: 'ambient', duration: 0 }))
+  })
+
   listen('script:present-pic', (event) => {
     eventQueue.addEvent(asEvent(event.payload, { type: 'present_pic', duration: -1 }))
   })

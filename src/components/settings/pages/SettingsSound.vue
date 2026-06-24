@@ -29,7 +29,15 @@
       <Slider @change="updateAchievementVolume" v-model="achievementVolume"> 弱/强 </Slider>
     </MenuItem>
 
-    <!-- 测试声音部分 -->
+    <!-- 环境音音量控制 -->
+    <MenuItem title="环境音音量" size="small">
+      <template #header>
+        <CloudRain :size="20" class="text-cyan-400" />
+      </template>
+      <Slider @change="updateAmbientVolume" v-model="ambientVolume"> 弱/强 </Slider>
+    </MenuItem>
+
+    <!-- 声音测试（放在音量滑块下方、环境音管理上方） -->
     <MenuItem title="声音测试" size="small">
       <template #header>
         <FlaskConical :size="20" class="text-pink-400" />
@@ -157,6 +165,148 @@
       </div>
     </MenuItem>
 
+
+    <!-- 环境音管理 -->
+    <MenuItem title="环境音管理">
+      <template #header>
+        <Wind :size="20" class="text-teal-400" />
+      </template>
+
+      <!-- 环境音文件库 -->
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-xs text-gray-400">已导入文件</span>
+        <span class="text-xs text-gray-500">{{ ambientFileList.length }} 个</span>
+      </div>
+      <div
+        class="border border-white/10 rounded-xl bg-black/20 backdrop-blur-sm overflow-hidden flex flex-col"
+      >
+        <div v-if="ambientFileList.length === 0" class="text-center text-gray-400 py-4 text-sm">
+          暂无环境音文件，请在下方上传
+        </div>
+        <div v-else class="max-h-32 overflow-y-auto p-1.5 space-y-1 custom-scrollbar">
+          <div
+            v-for="ambient in ambientFileList"
+            :key="ambient.url"
+            class="group flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all duration-200"
+          >
+            <Wind :size="13" class="text-teal-400/60 shrink-0" />
+            <span class="flex-1 text-sm text-gray-200 truncate">{{ ambient.name }}</span>
+            <button
+              @click="addFileToTrack(ambient)"
+              class="opacity-70 hover:opacity-100 transition-opacity px-2 py-0.5 text-xs rounded bg-teal-500/20 hover:bg-teal-500/40 text-teal-300"
+              title="添加到播放轨道"
+            >
+              播放
+            </button>
+            <button
+              @click.stop="removeAmbientFile(ambient)"
+              class="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md bg-red-500/10 hover:bg-red-500/80 text-red-400 hover:text-white"
+              title="删除"
+            >
+              <Trash2 :size="14" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 上传环境音 -->
+      <div class="mt-2 flex items-center gap-3">
+        <Button
+          type="big"
+          @click="triggerAmbientUpload"
+          class="flex-1 flex justify-center items-center gap-2"
+        >
+          <UploadCloud :size="16" /> 添加环境音
+        </Button>
+        <input
+          ref="ambientFileInput"
+          type="file"
+          multiple
+          @change="handleAmbientFileSelect"
+          accept=".mp3,.wav,.flac,.ogg,.m4a"
+          class="hidden"
+        />
+        <div class="flex-1 flex items-center justify-between gap-2">
+          <span class="text-xs text-gray-400 truncate w-24" v-if="selectedAmbientFiles.length > 0">
+            已选 {{ selectedAmbientFiles.length }} 个文件
+          </span>
+          <span class="text-xs text-gray-500 truncate w-24" v-else>未选择文件</span>
+          <Button
+            type="big"
+            @click="uploadAmbientFiles"
+            :disabled="selectedAmbientFiles.length === 0"
+            class="flex-1"
+            :class="{ 'opacity-50 cursor-not-allowed': selectedAmbientFiles.length === 0 }"
+          >
+            确认上传
+          </Button>
+        </div>
+      </div>
+
+      <!-- 活跃轨道（带单轨音量控制） -->
+      <div class="mt-4 flex items-center justify-between mb-2">
+        <span class="text-xs text-gray-400">播放中的环境音</span>
+        <span class="text-xs text-gray-500">{{ uiStore.ambientTracks.length }}/{{ maxAmbientTracks }}</span>
+      </div>
+      <div
+        class="border border-white/10 rounded-xl bg-black/20 backdrop-blur-sm overflow-hidden flex flex-col"
+      >
+        <div v-if="uiStore.ambientTracks.length === 0" class="text-center text-gray-400 py-4 text-sm">
+          暂无正在播放的环境音（从上方添加或通过剧本指令触发）
+        </div>
+        <div v-else class="max-h-48 overflow-y-auto p-1.5 space-y-1 custom-scrollbar">
+          <div
+            v-for="track in uiStore.ambientTracks"
+            :key="track.id"
+            class="group flex flex-col gap-1.5 px-3 py-2 rounded-lg bg-cyan-500/10 transition-all duration-200"
+          >
+            <!-- 轨道名 + 控制按钮 -->
+            <div class="flex items-center gap-2">
+              <CloudRain :size="14" class="text-cyan-400 shrink-0" />
+              <span class="flex-1 text-sm text-gray-200 truncate">{{ getTrackDisplayName(track) }}</span>
+              <button
+                @click="uiStore.toggleAmbientTrackPause(track.id)"
+                class="p-1 rounded text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+                :title="track.paused ? '恢复播放' : '暂停'"
+              >
+                <Play v-if="track.paused" :size="12" />
+                <Pause v-else :size="12" />
+              </button>
+              <button
+                @click="uiStore.removeAmbientTrack(track.id)"
+                class="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded bg-red-500/10 hover:bg-red-500/40 text-red-400 hover:text-white"
+                title="移除轨道"
+              >
+                <X :size="12" />
+              </button>
+            </div>
+            <!-- 单轨音量滑块 -->
+            <div class="flex items-center gap-2 pl-6">
+              <span class="text-xs text-gray-400 w-8 shrink-0">音量</span>
+              <Slider
+                :model-value="track.volume"
+                @change="(val: number) => uiStore.updateAmbientTrackVolume(track.id, val)"
+                class="flex-1"
+              />
+              <span class="text-xs text-gray-400 w-8 text-right shrink-0">{{ track.volume }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 全部停止 -->
+      <div class="mt-2">
+        <Button
+          type="big"
+          @click="stopAllAmbient"
+          class="w-full flex justify-center items-center gap-1"
+          :disabled="uiStore.ambientTracks.length === 0"
+        >
+          <Square :size="14" /> 全部停止
+        </Button>
+      </div>
+    </MenuItem>
+
     <!-- 音频播放器 (隐藏) -->
     <audio ref="characterTestPlayer"></audio>
     <audio ref="bubbleTestPlayer"></audio>
@@ -174,6 +324,7 @@ import {
   musicUpload,
   setCurrentBackgroundMusic,
 } from '../../../api/services/music'
+import { ambientGetAll, ambientUpload, ambientDelete, type AmbientItem } from '../../../api/services/ambient'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { useSettingsStore } from '../../../stores/modules/settings'
@@ -193,6 +344,9 @@ import {
   Trash2,
   UploadCloud,
   Music,
+  CloudRain,
+  Wind,
+  X,
 } from 'lucide-vue-next'
 
 const uiStore = useUIStore()
@@ -215,6 +369,11 @@ const backgroundVolume = computed({
 const achievementVolume = computed({
   get: () => settingsStore.achievementVolume,
   set: (val: number) => settingsStore.update('audio.achievementVolume', val),
+})
+// 环境音音量双向绑定
+const ambientVolume = computed({
+  get: () => settingsStore.ambientVolume,
+  set: (val: number) => settingsStore.update('audio.ambientVolume', val),
 })
 
 // 音频引用
@@ -315,6 +474,124 @@ const updateBackgroundVolume = (value: number) => {
 const updateAchievementVolume = (value: number) => {
   settingsStore.update('audio.achievementVolume', value)
   if (achievementTestPlayer.value) achievementTestPlayer.value.volume = value / 100
+}
+// 更新环境音音量（全局控制所有环境音轨道）
+const updateAmbientVolume = (value: number) => {
+  settingsStore.update('audio.ambientVolume', value)
+}
+
+// ========== 环境音管理 ==========
+const maxAmbientTracks = 8
+
+// 环境音文件库条目（服务端存储）
+const ambientFileList = ref<AmbientItem[]>([])
+const selectedAmbientFiles = ref<File[]>([])
+const ambientFileInput = ref<HTMLInputElement | null>(null)
+
+// 从文件URL推断显示名称
+const inferTrackName = (src: string): string => {
+  if (!src) return '未知'
+  try {
+    // convertFileSrc 生成的 URL 取最后一段
+    const parts = src.split(/[/\\]/)
+    const name = parts[parts.length - 1] || '未知'
+    return decodeURIComponent(name.replace(/\.[^/.]+$/, '')) || '未知'
+  } catch {
+    return '未知'
+  }
+}
+
+// 停止单条环境音轨道
+const stopAmbientTrack = (id: string) => {
+  uiStore.removeAmbientTrack(id)
+}
+
+// 停止所有环境音
+const stopAllAmbient = () => {
+  uiStore.clearAmbientTracks()
+}
+
+// 触发环境音文件选择
+const triggerAmbientUpload = () => {
+  ambientFileInput.value?.click()
+}
+
+// 从服务端加载环境音列表
+const loadAmbientList = async () => {
+  try {
+    ambientFileList.value = await ambientGetAll()
+  } catch (e) {
+    console.error('加载环境音列表失败:', e)
+  }
+}
+
+// 处理环境音文件选择（暂存文件，等待确认上传）
+const handleAmbientFileSelect = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  if (target.files && target.files.length > 0) {
+    selectedAmbientFiles.value = Array.from(target.files)
+  } else {
+    selectedAmbientFiles.value = []
+  }
+  target.value = ''
+}
+
+// 确认上传已选环境音文件到服务端
+const uploadAmbientFiles = async () => {
+  if (selectedAmbientFiles.value.length === 0) {
+    await dialogStore.alert('请先选择环境音文件')
+    return
+  }
+  const allowedExts = ['.mp3', '.wav', '.flac', '.ogg', '.m4a']
+  try {
+    await Promise.all(
+      selectedAmbientFiles.value.map(async (file) => {
+        const fileExt = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
+        if (!allowedExts.includes(fileExt)) throw new Error(`格式不支持: ${file.name}`)
+        const buf = await file.arrayBuffer()
+        await ambientUpload(file.name, new Uint8Array(buf))
+      }),
+    )
+    selectedAmbientFiles.value = []
+    await loadAmbientList()
+  } catch (error: any) {
+    console.error('上传环境音失败:', error)
+    await dialogStore.alert(error.message || '部分或全部环境音上传失败')
+  }
+}
+
+// 从文件库添加到播放轨道
+const addFileToTrack = (ambient: AmbientItem) => {
+  uiStore.addAmbientTrack({
+    src: ambient.url,
+    name: ambient.name,
+    volume: 80,
+    loop: true,
+    fade: true,
+  })
+}
+
+// 从服务端删除环境音文件
+const removeAmbientFile = async (ambient: AmbientItem) => {
+  if (!await dialogStore.confirm(`确定要删除环境音《${ambient.name}》吗？`)) return
+  try {
+    await ambientDelete(ambient.url)
+    // 同时移除使用该文件的活跃轨道
+    const tracksToRemove = uiStore.ambientTracks.filter(t => t.src === ambient.url)
+    for (const track of tracksToRemove) {
+      uiStore.removeAmbientTrack(track.id)
+    }
+    await loadAmbientList()
+  } catch (error: any) {
+    console.error('删除环境音失败:', error)
+    await dialogStore.alert('删除环境音失败')
+  }
+}
+
+// 获取轨道显示名称（优先使用 name 字段，回退到路径推断）
+const getTrackDisplayName = (track: { name?: string; src: string }): string => {
+  if (track.name) return track.name
+  return inferTrackName(track.src)
 }
 
 watch(
@@ -463,18 +740,14 @@ const playMusic = async (music: MusicItem) => {
 }
 
 const handlePlayPause = () => {
-  if (uiStore.currentBackgroundMusic === 'None' && musicList.value.length > 0) {
-    // 如果还没选过歌，默认播放第一首
-    const music = musicList.value[0]
-    if (music) playMusic(music)
-  } else {
-    uiStore.bgMusicPaused = !uiStore.bgMusicPaused
-  }
+  if (uiStore.currentBackgroundMusic === 'None') return  // 未选曲目时不自动选中
+  uiStore.bgMusicPaused = !uiStore.bgMusicPaused
 }
 
 const handleStop = () => {
   uiStore.bgMusicStoped = true
   uiStore.bgMusicPaused = true
+  uiStore.currentBackgroundMusic = 'None'
   if (backgroundAudioPlayer.value) {
     backgroundAudioPlayer.value.currentTime = 0
   }
@@ -496,6 +769,7 @@ const handleFileSelect = (event: Event) => {
 
 onMounted(async () => {
   await loadMusicList()
+  await loadAmbientList()
 
   // 初始化音量
   if (characterTestPlayer.value) characterTestPlayer.value.volume = characterVolume.value / 100

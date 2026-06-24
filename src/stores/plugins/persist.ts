@@ -17,6 +17,25 @@ declare module 'pinia' {
   }
 }
 
+// 深度合并：target 的默认值 + source 的持久化值
+function deepMerge(target: Record<string, any>, source: Record<string, any>): Record<string, any> {
+  for (const key of Object.keys(source)) {
+    if (
+      source[key] &&
+      typeof source[key] === 'object' &&
+      !Array.isArray(source[key]) &&
+      target[key] &&
+      typeof target[key] === 'object' &&
+      !Array.isArray(target[key])
+    ) {
+      deepMerge(target[key], source[key])
+    } else {
+      target[key] = source[key]
+    }
+  }
+  return target
+}
+
 export function persist({ store, options }: PiniaPluginContext) {
   // 只有明确配置了 persist: true 的 store 才持久化
   if (!options.persist) return
@@ -34,7 +53,9 @@ export function persist({ store, options }: PiniaPluginContext) {
       const filtered = excludeFields.length
         ? Object.fromEntries(Object.entries(parsed).filter(([key]) => !excludeFields.includes(key)))
         : parsed
-      store.$patch(filtered)
+      // 深度合并：确保新增的默认字段不会因旧持久化数据丢失
+      const merged = deepMerge(JSON.parse(JSON.stringify(store.$state)), filtered)
+      store.$patch(merged)
     } catch (e) {
       console.error(`恢复设置失败 (${storageKey}):`, e)
     }

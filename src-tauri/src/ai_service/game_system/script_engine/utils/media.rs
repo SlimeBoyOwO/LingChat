@@ -8,10 +8,13 @@ use std::path::Path;
 /// Media type determines which subdirectories and fallback to search.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MediaType {
+    /// 媒体类型枚举，决定搜索的子目录和 fallback 目录
     Background,
     Music,
     Sound,
     Pic,
+    /// 环境音（雨声、风声等持续场景音效）
+    Ambient,
 }
 
 impl MediaType {
@@ -22,6 +25,7 @@ impl MediaType {
             MediaType::Music => &["Musics", "BGMs", "Music", "BGM"],
             MediaType::Sound => &["Sounds", "SoundEffects", "Sound", "SoundEffect"],
             MediaType::Pic => &["Pics", "Pictures", "Pic", "Picture"],
+            MediaType::Ambient => &["Ambients", "AmbientSounds", "Environment", "Ambient"],
         }
     }
 
@@ -30,6 +34,7 @@ impl MediaType {
         match self {
             MediaType::Background | MediaType::Pic => "backgrounds",
             MediaType::Music | MediaType::Sound => "musics",
+            MediaType::Ambient => "ambient",
         }
     }
 }
