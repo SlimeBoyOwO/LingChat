@@ -34,7 +34,7 @@ dev:
 pnpmdev:
 	cd frontend_vue && pnpm dev
 
-# 前端完全检查（构建）
+# 前端完全检查（类型检查后构建，可检查所有问题）
 pnpmbuild:
 	cd frontend_vue && pnpm build
 
