@@ -292,7 +292,9 @@ export function usePomodoro() {
       enabled.value = !!savedEnabled
       workDurationMs.value = Number.isFinite(savedWorkMs) ? savedWorkMs : DEFAULT_WORK_MS
       breakDurationMs.value = Number.isFinite(savedBreakMs) ? savedBreakMs : DEFAULT_BREAK_MS
-      cyclesTotal.value = Number.isFinite(savedCyclesTotal) ? savedCyclesTotal : DEFAULT_CYCLES_TOTAL
+      cyclesTotal.value = Number.isFinite(savedCyclesTotal)
+        ? savedCyclesTotal
+        : DEFAULT_CYCLES_TOTAL
       cycleIndex.value = Number.isFinite(savedCycleIdx) ? savedCycleIdx : 1
       mode.value = savedMode === 'break' ? 'break' : 'work'
       remainingMs.value = Number.isFinite(savedRemaining) ? savedRemaining : workDurationMs.value

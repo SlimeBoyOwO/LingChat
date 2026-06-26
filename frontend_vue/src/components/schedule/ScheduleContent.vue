@@ -39,7 +39,9 @@
       </nav>
 
       <!-- 底部提示 - 桌面端显示 -->
-      <div class="hidden md:block mt-auto mb-6 p-4 bg-cyan-50/10 rounded-2xl border border-cyan-500/20">
+      <div
+        class="hidden md:block mt-auto mb-6 p-4 bg-cyan-50/10 rounded-2xl border border-cyan-500/20"
+      >
         <div class="flex items-center text-brand font-bold text-xs mb-2">
           <span class="w-2 h-2 bg-cyan-500 rounded-full animate-pulse mr-2"></span>
           Ling Clock
@@ -51,7 +53,9 @@
     </aside>
 
     <main class="flex-1 flex flex-col overflow-hidden min-w-0">
-      <header class="mt-2 p-3 md:p-6 flex justify-between items-center border-b border-cyan-300 gap-2">
+      <header
+        class="mt-2 p-3 md:p-6 flex justify-between items-center border-b border-cyan-300 gap-2"
+      >
         <div class="flex items-center space-x-2 md:space-x-4 pl-1 md:pl-4 min-w-0">
           <button
             v-show="
@@ -66,8 +70,12 @@
             <ChevronLeft />
           </button>
           <div class="min-w-0">
-            <h2 class="text-base md:text-2xl font-bold text-brand mb-0.5 md:mb-2 truncate">{{ titleInfo.title }}</h2>
-            <p class="text-xs text-white mt-0.5 tracking-wide hidden md:block">{{ titleInfo.subtitle }}</p>
+            <h2 class="text-base md:text-2xl font-bold text-brand mb-0.5 md:mb-2 truncate">
+              {{ titleInfo.title }}
+            </h2>
+            <p class="text-xs text-white mt-0.5 tracking-wide hidden md:block">
+              {{ titleInfo.subtitle }}
+            </p>
           </div>
         </div>
 

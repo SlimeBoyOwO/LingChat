@@ -80,17 +80,20 @@ import { Bot, CheckCircle2, LoaderCircle, Wrench } from 'lucide-vue-next'
 import type { GameMessage } from '@/stores/modules/game/state'
 import type { ToolCallLog } from '@/stores/modules/ui/ui'
 
-const props = withDefaults(defineProps<{
-  messages: GameMessage[]
-  toolLogs: ToolCallLog[]
-  showStatusBubble: boolean
-  statusBubbleText: string
-  toolPreview: string
-  isThinking: boolean
-  welcomeMessage?: string
-}>(), {
-  welcomeMessage: '晚上好，主人！',
-})
+const props = withDefaults(
+  defineProps<{
+    messages: GameMessage[]
+    toolLogs: ToolCallLog[]
+    showStatusBubble: boolean
+    statusBubbleText: string
+    toolPreview: string
+    isThinking: boolean
+    welcomeMessage?: string
+  }>(),
+  {
+    welcomeMessage: '晚上好，主人！',
+  },
+)
 
 // ── 打字效果 ──
 
@@ -188,8 +191,11 @@ const toolKey = (tool: ToolCallLog) => `${tool.id || tool.timestamp}-${tool.tool
 // 工具详情渲染器注册表（可按需扩展）
 const parseToolPreview = (tool: ToolCallLog): any => {
   if (!tool.preview) return null
-  try { return JSON.parse(tool.preview) }
-  catch { return null }
+  try {
+    return JSON.parse(tool.preview)
+  } catch {
+    return null
+  }
 }
 
 const nestedToolResult = (tool: ToolCallLog): any => {
@@ -220,7 +226,10 @@ const toolDetailRenderers: Record<string, ToolDetailRenderer> = {
   sandbox_list_files: (tool) => {
     const r = nestedToolResult(tool)
     if (!r || typeof r !== 'object' || !Array.isArray(r.items)) return ''
-    return r.items.slice(0, 4).map((item: any) => item.name).join(' · ')
+    return r.items
+      .slice(0, 4)
+      .map((item: any) => item.name)
+      .join(' · ')
   },
   sandbox_read_file: (tool) => {
     const r = nestedToolResult(tool)

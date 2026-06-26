@@ -227,7 +227,7 @@ watch(
       scheduleEnabled.value = false
       advancedEnabled.value = false
     }
-  }
+  },
 )
 </script>
 

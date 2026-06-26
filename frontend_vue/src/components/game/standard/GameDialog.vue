@@ -413,7 +413,11 @@ function continueDialog(isPlayerTrigger: boolean): boolean {
     emit('dialog-proceed')
   }
 
-  if (!eventQueue.getState().isWaitingForUser && uiStore.showCharacterLine && uiStore.showCharacterLine !== '') {
+  if (
+    !eventQueue.getState().isWaitingForUser &&
+    uiStore.showCharacterLine &&
+    uiStore.showCharacterLine !== ''
+  ) {
     uiStore.showCharacterLine = ''
     currentDisplayedText.value = ''
     inputMessage.value = ''

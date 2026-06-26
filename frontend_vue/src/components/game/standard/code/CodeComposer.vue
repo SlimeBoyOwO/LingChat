@@ -53,14 +53,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import {
-  ClipboardList,
-  Hand,
-  ListChecks,
-  SendHorizontal,
-  Sparkles,
-  Volume2,
-} from 'lucide-vue-next'
+import { ClipboardList, Hand, ListChecks, SendHorizontal, Sparkles, Volume2 } from 'lucide-vue-next'
 
 const props = defineProps<{
   modelLabel: string
@@ -182,7 +175,9 @@ defineExpose({ inputRef })
   background: none;
   color: rgba(224, 242, 254, 0.72);
   cursor: pointer;
-  transition: background 0.2s, color 0.2s;
+  transition:
+    background 0.2s,
+    color 0.2s;
 }
 
 .composer-tools button:hover {
