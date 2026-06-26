@@ -29,7 +29,9 @@ class WebLLMProvider(BaseLLMProvider):
         self.max_tokens = int(main_cfg.get("max_tokens", 8192))
 
         if (not api_key) or api_key == "sk-114514":
-            logger.warning("通用网络大模型未初始化：CHAT_API_KEY 为空或为占位值。")
+            logger.warning(
+                "通用网络大模型未初始化：API_KEY 为空或为占位值，请到 LLM 配置页面设置。"
+            )
             self.client = None
             self.async_client = None
             return
@@ -39,7 +41,7 @@ class WebLLMProvider(BaseLLMProvider):
             and (base_url.startswith("http://") or base_url.startswith("https://"))
         ):
             logger.warning(
-                "通用网络大模型未初始化：CHAT_BASE_URL 缺少 http:// 或 https:// 协议头。"
+                "通用网络大模型未初始化：BASE_URL 缺少 http:// 或 https:// 协议头，请到 LLM 配置页面检查。"
             )
             self.client = None
             self.async_client = None
@@ -129,7 +131,6 @@ class WebLLMProvider(BaseLLMProvider):
             self._add_thinking_extra_body(create_kwargs)
 
             stream = await self.async_client.chat.completions.create(**create_kwargs)
-
             async for chunk in stream:
                 if chunk.choices[0].delta.content is not None:
                     yield chunk.choices[0].delta.content
@@ -219,7 +220,6 @@ class WebLLMProvider(BaseLLMProvider):
             self._add_thinking_extra_body(create_kwargs)
 
             stream = await self.async_client.chat.completions.create(**create_kwargs)
-
             accumulated_content = ""
             tool_calls_data = {}
 

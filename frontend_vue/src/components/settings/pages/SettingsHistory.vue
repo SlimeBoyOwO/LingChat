@@ -46,7 +46,7 @@
 
 <script setup lang="ts">
 // 1. 从 vue 中引入 ref 和 watch
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { MenuPage, MenuItem } from '../../ui'
 import { useGameStore } from '../../../stores/modules/game'
 import type { GameMessage } from '../../../stores/modules/game/state'
@@ -56,6 +56,8 @@ import { History } from 'lucide-vue-next'
 const gameStore = useGameStore()
 
 const dialogHistory = computed<GameMessage[]>(() => gameStore.dialogHistory)
+
+const chatContainer = ref<HTMLElement | null>(null)
 
 // 每页显示的台词数量
 const PAGE_SIZE = 100
@@ -73,14 +75,28 @@ const currentPageHistory = computed(() => {
   return dialogHistory.value.slice(start, end)
 })
 
-// 监听对话历史变化，重置到第一页
+// 监听对话历史变化，跳转到最后一页并滚动到底部
 watch(
   dialogHistory,
   () => {
-    currentPage.value = 1
+    if (dialogHistory.value.length > 0) {
+      currentPage.value = totalPages.value || 1
+      nextTick(() => scrollToBottom())
+    }
   },
   { deep: true },
 )
+
+const scrollToBottom = () => {
+  requestAnimationFrame(() => {
+    if (chatContainer.value) {
+      chatContainer.value.scrollTo({
+        top: chatContainer.value.scrollHeight,
+        behavior: 'smooth',
+      })
+    }
+  })
+}
 
 // 对话初始化逻辑在 gameStore 的初始化中处理
 </script>

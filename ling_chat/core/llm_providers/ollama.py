@@ -33,6 +33,24 @@ class OllamaProvider(BaseLLMProvider):
         self.temperature = main_cfg.get("temperature", 1.3)
         self.top_p = main_cfg.get("top_p", 0.9)
         self.max_tokens = int(main_cfg.get("max_tokens", 8192))
+        self.thinking = str(main_cfg.get("enable_thinking", "none")).lower()
+
+    def _get_think_param(self) -> object:
+        """将 enable_thinking 配置转换为 Ollama think 参数
+
+        Ollama /api/chat 的 think 参数支持:
+        - boolean true/false
+        - string "high"/"medium"/"low"/"max"
+
+        Returns:
+            None: 不设置（使用模型默认）
+            True/False: 启用/禁用思考
+        """
+        if self.thinking == "true":
+            return True
+        elif self.thinking == "false":
+            return False
+        return None
 
     def initialize_client(self):
         pass
@@ -52,6 +70,9 @@ class OllamaProvider(BaseLLMProvider):
                 },
                 "stream": False,
             }
+            think_val = self._get_think_param()
+            if think_val is not None:
+                payload["think"] = think_val
 
             with build_httpx_client(
                 timeout=self._timeout, base_url=self.base_url
@@ -90,6 +111,9 @@ class OllamaProvider(BaseLLMProvider):
                 },
                 "stream": True,
             }
+            think_val = self._get_think_param()
+            if think_val is not None:
+                payload["think"] = think_val
 
             async with build_httpx_client(
                 async_client=True, timeout=self._timeout, base_url=self.base_url
@@ -153,6 +177,9 @@ class OllamaProvider(BaseLLMProvider):
                 },
                 "stream": False,
             }
+            think_val = self._get_think_param()
+            if think_val is not None:
+                payload["think"] = think_val
 
             with build_httpx_client(
                 timeout=self._timeout, base_url=self.base_url
@@ -216,6 +243,9 @@ class OllamaProvider(BaseLLMProvider):
                 },
                 "stream": True,
             }
+            think_val = self._get_think_param()
+            if think_val is not None:
+                payload["think"] = think_val
 
             async with build_httpx_client(
                 async_client=True, timeout=self._timeout, base_url=self.base_url

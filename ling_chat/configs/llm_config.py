@@ -44,7 +44,11 @@ class LLMConfig:
         self._load_active()
 
     def _init_config_dir(self) -> None:
-        """初始化配置文件夹，首次启动时从.env迁移"""
+        """初始化配置文件夹，首次启动时从.env迁移
+
+        Deprecated: LLM 配置已全面迁移至 TOML 文件管理，
+        此首次启动兜底迁移将在未来版本中移除。
+        """
         self._config_dir.mkdir(parents=True, exist_ok=True)
 
         # 检查是否存在任何toml配置文件
@@ -54,7 +58,13 @@ class LLMConfig:
             self._migrate_from_env()
 
     def _migrate_from_env(self) -> None:
-        """从.env提取LLM配置并生成default.toml"""
+        """从.env提取LLM配置并生成default.toml
+
+        Deprecated: 此方法仅在首次启动且无 TOML 配置文件时调用，
+        用于将旧版 .env 中的 LLM 配置迁移到 TOML 格式。
+        所有 LLM 配置已全面迁移至 TOML 文件管理，此兜底逻辑将在未来版本中移除。
+        如仍需设置环境变量，请直接编辑 configs/llm_configs/ 下的 TOML 文件。
+        """
         # 提取LLM相关环境变量
         llm_config = self._extract_env_llm_config()
 
@@ -64,7 +74,12 @@ class LLMConfig:
         logger.info(f"已创建默认LLM配置: {default_path}")
 
     def _extract_env_llm_config(self) -> Dict[str, Any]:
-        """从环境变量提取LLM配置（兼容旧provider专用环境变量）"""
+        """从环境变量提取LLM配置（兼容旧provider专用环境变量）
+
+        Deprecated: 所有 LLM 配置已迁移至 TOML 文件管理，
+        此方法仅在首次启动兜底迁移时调用，将在未来版本中移除。
+        请使用 configs/llm_configs/default.toml 管理配置。
+        """
         provider = os.environ.get("LLM_PROVIDER", "webllm")
 
         # 通用字段

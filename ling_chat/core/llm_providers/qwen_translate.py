@@ -1,4 +1,3 @@
-from types import NoneType
 from typing import AsyncGenerator, Dict, List
 
 import httpx
@@ -16,7 +15,7 @@ class QwenTranslateProvider(BaseLLMProvider):
     def __init__(self):
         super().__init__()
         self.client = None
-        self.async_client = NoneType
+        self.async_client = None
         self.model_type = None
         self.initialize_client()
 
@@ -83,7 +82,7 @@ class QwenTranslateProvider(BaseLLMProvider):
             # 这里继续使用 self.client（同步客户端），不会报错
             response = self.client.chat.completions.create(
                 model=str(self.model_type),
-                messages=filtered_messages,  # type: ignore
+                messages=filtered_messages,
                 stream=False,
                 extra_body={"translation_options": translation_options},
             )
@@ -124,7 +123,7 @@ class QwenTranslateProvider(BaseLLMProvider):
 
             stream = await self.async_client.chat.completions.create(
                 model=str(self.model_type),
-                messages=filtered_messages,  # type: ignore
+                messages=filtered_messages,
                 stream=True,
                 extra_body={"translation_options": translation_options},
             )

@@ -1,5 +1,4 @@
 import json
-import os
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
@@ -30,6 +29,7 @@ class LMStudioProvider(BaseLLMProvider):
         self._temperature = float(main_cfg.get("temperature", 1.3))
         self._top_p = float(main_cfg.get("top_p", 0.9))
         self._max_tokens = int(main_cfg.get("max_tokens", 8192))
+        self._thinking = str(main_cfg.get("enable_thinking", "none")).lower()
 
     def initialize_client(self):
         """LM Studio 客户端在每次请求时创建，无需初始化"""
@@ -169,25 +169,12 @@ class LMStudioProvider(BaseLLMProvider):
         if self._max_tokens:
             body["max_output_tokens"] = self._max_tokens
 
-        top_k = os.environ.get("TOP_K")
-        if top_k:
-            body["top_k"] = int(top_k)
-
-        min_p = os.environ.get("MIN_P")
-        if min_p:
-            body["min_p"] = float(min_p)
-
-        repeat_penalty = os.environ.get("LMSTUDIO_REPEAT_PENALTY")
-        if repeat_penalty:
-            body["repeat_penalty"] = float(repeat_penalty)
-
-        context_length = os.environ.get("LMSTUDIO_CONTEXT_LENGTH")
-        if context_length:
-            body["context_length"] = int(context_length)
-
-        reasoning = os.environ.get("LMSTUDIO_REASONING")
-        if reasoning:
-            body["reasoning"] = reasoning
+        # reasoning 参数：使用统一的 enable_thinking 配置
+        # LM Studio 支持: "off"|"low"|"medium"|"high"|"on"
+        if self._thinking == "true":
+            body["reasoning"] = "on"
+        elif self._thinking == "false":
+            body["reasoning"] = "off"
 
         return body
 

@@ -45,6 +45,7 @@ class AnthropicProvider(BaseLLMProvider):
         self.top_p = main_cfg.get("top_p", 0.9)
         self.top_k = main_cfg.get("top_k", 40)
         self.max_tokens = int(main_cfg.get("max_tokens", 8192))
+        self.thinking = str(main_cfg.get("enable_thinking", "none")).lower()
 
         # API key 验证
         if not self.api_key:
@@ -80,6 +81,29 @@ class AnthropicProvider(BaseLLMProvider):
     def initialize_client(self):
         """客户端已在 __init__ 中初始化"""
         pass
+
+    def _get_thinking_param(self) -> Optional[Dict]:
+        """将 enable_thinking 配置转换为 Anthropic thinking 参数
+
+        Anthropic extended thinking API (Claude 3.7+):
+        {"type": "enabled", "budget_tokens": int}
+
+        enable_thinking 配置值:
+        - "none" → 不设置（使用模型默认）
+        - "true" → 启用 extended thinking，预算为 max_tokens 的一半
+        - "false" → 不设置（Anthropic 默认不启用思考）
+
+        Returns:
+            dict 或 None: thinking 参数字典
+        """
+        if self.thinking == "true":
+            # budget_tokens 至少 1024，且不超过 max_tokens - 1024
+            budget = max(1024, self.max_tokens // 2)
+            # 确保 max_tokens > budget_tokens
+            if self.max_tokens <= budget:
+                budget = self.max_tokens - 1024
+            return {"type": "enabled", "budget_tokens": max(1024, budget)}
+        return None
 
     def _extract_system_and_messages(
         self, messages: List[Dict]
@@ -146,6 +170,16 @@ class AnthropicProvider(BaseLLMProvider):
             if system_prompt:
                 create_kwargs["system"] = system_prompt
 
+            # 添加思考参数（extended thinking）
+            thinking_param = self._get_thinking_param()
+            if thinking_param:
+                create_kwargs["thinking"] = thinking_param
+                # 启用 extended thinking 时，max_tokens 需要包含 think budget
+                create_kwargs["max_tokens"] = max(
+                    self.max_tokens,
+                    thinking_param["budget_tokens"] + 1024,
+                )
+
             # 添加可选参数（Anthropic 不支持 temperature=0 时同时设置 top_p/top_k）
             if self.temperature > 0:
                 create_kwargs["temperature"] = self.temperature
@@ -155,7 +189,6 @@ class AnthropicProvider(BaseLLMProvider):
                     create_kwargs["top_k"] = self.top_k
 
             response = self.client.messages.create(**create_kwargs)
-
             # Anthropic 返回 content 列表，提取文本内容
             text_content = ""
             for block in response.content:
@@ -195,6 +228,15 @@ class AnthropicProvider(BaseLLMProvider):
             if system_prompt:
                 create_kwargs["system"] = system_prompt
 
+            # 添加思考参数（extended thinking）
+            thinking_param = self._get_thinking_param()
+            if thinking_param:
+                create_kwargs["thinking"] = thinking_param
+                create_kwargs["max_tokens"] = max(
+                    self.max_tokens,
+                    thinking_param["budget_tokens"] + 1024,
+                )
+
             # 添加可选参数
             if self.temperature > 0:
                 create_kwargs["temperature"] = self.temperature
@@ -204,7 +246,7 @@ class AnthropicProvider(BaseLLMProvider):
                     create_kwargs["top_k"] = self.top_k
 
             # 使用 messages.stream() 进行流式调用
-            async with self.async_client.messages.stream(**create_kwargs) as stream:
+            async with self.async_client.messages.stream(**create_kwargs) as stream:  # ty: ignore[invalid-argument-type]
                 async for text in stream.text_stream:
                     yield text
 
@@ -300,6 +342,15 @@ class AnthropicProvider(BaseLLMProvider):
             if system_prompt:
                 create_kwargs["system"] = system_prompt
 
+            # 添加思考参数（extended thinking）
+            thinking_param = self._get_thinking_param()
+            if thinking_param:
+                create_kwargs["thinking"] = thinking_param
+                create_kwargs["max_tokens"] = max(
+                    self.max_tokens,
+                    thinking_param["budget_tokens"] + 1024,
+                )
+
             if self.temperature > 0:
                 create_kwargs["temperature"] = self.temperature
                 if self.top_p and self.top_p < 1.0:
@@ -308,7 +359,6 @@ class AnthropicProvider(BaseLLMProvider):
                     create_kwargs["top_k"] = self.top_k
 
             response = self.client.messages.create(**create_kwargs)
-
             # 解析响应内容
             text_content = ""
             tool_calls = []
@@ -362,6 +412,15 @@ class AnthropicProvider(BaseLLMProvider):
             if system_prompt:
                 create_kwargs["system"] = system_prompt
 
+            # 添加思考参数（extended thinking）
+            thinking_param = self._get_thinking_param()
+            if thinking_param:
+                create_kwargs["thinking"] = thinking_param
+                create_kwargs["max_tokens"] = max(
+                    self.max_tokens,
+                    thinking_param["budget_tokens"] + 1024,
+                )
+
             if self.temperature > 0:
                 create_kwargs["temperature"] = self.temperature
                 if self.top_p and self.top_p < 1.0:
@@ -371,7 +430,7 @@ class AnthropicProvider(BaseLLMProvider):
 
             # Anthropic 支持流式工具调用，使用 messages.stream()
             # 流式响应中通过 content_block_start/content_block_delta 事件获取
-            async with self.async_client.messages.stream(**create_kwargs) as stream:
+            async with self.async_client.messages.stream(**create_kwargs) as stream:  # ty: ignore[invalid-argument-type]
                 tool_calls = []
                 current_tool_use_id = ""
                 current_tool_name = ""

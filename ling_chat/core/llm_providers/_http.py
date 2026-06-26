@@ -16,7 +16,7 @@
   模块早于 ``llm_config`` 被加载，则会导致循环导入，请用函数内延迟导入代替。
 """
 
-from typing import Any, Optional, Union
+from typing import Any, Literal, Optional, Union, overload
 from urllib.parse import urlparse
 
 import httpx
@@ -45,6 +45,26 @@ def _is_local_url(url: Optional[str]) -> bool:
     if host.endswith(".localhost"):
         return True
     return False
+
+
+@overload
+def build_httpx_client(
+    *,
+    async_client: Literal[False] = ...,
+    timeout: Any = None,
+    base_url: Optional[str] = None,
+    **kwargs: Any,
+) -> httpx.Client: ...
+
+
+@overload
+def build_httpx_client(
+    *,
+    async_client: Literal[True],
+    timeout: Any = None,
+    base_url: Optional[str] = None,
+    **kwargs: Any,
+) -> httpx.AsyncClient: ...
 
 
 def build_httpx_client(

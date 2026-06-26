@@ -29,12 +29,34 @@ class GeminiProvider(BaseLLMProvider):
         self.temperature = main_cfg.get("temperature", 1.0)
         self.top_p = main_cfg.get("top_p", 1.0)
         self.max_tokens = int(main_cfg.get("max_tokens", 8192))
+        self.thinking = str(main_cfg.get("enable_thinking", "none")).lower()
 
         if not self.api_key:
             raise ValueError("需要Gemini API密钥！")
 
     def initialize_client(self):
         pass
+
+    def _get_thinking_config(self) -> Optional[Dict]:
+        """将 enable_thinking 配置转换为 Gemini thinkingConfig 参数
+
+        Gemini 的 thinkingConfig 支持:
+        - thinkingBudget: int，0=禁用，-1=动态，>0=预算token数
+        - thinkingLevel: str，可配合 "low"/"medium"/"high"
+
+        enable_thinking 配置值:
+        - "none" → 不设置（使用模型默认）
+        - "true" → 启用动态思考 (thinkingBudget=-1)
+        - "false" → 禁用思考 (thinkingBudget=0)
+
+        Returns:
+            dict 或 None: thinkingConfig 参数字典
+        """
+        if self.thinking == "true":
+            return {"thinkingBudget": -1}
+        elif self.thinking == "false":
+            return {"thinkingBudget": 0}
+        return None
 
     def _get_http_client(self):
         """获取HTTP客户端（同步），由全局 [network] 代理决定是否走代理"""
@@ -134,6 +156,11 @@ class GeminiProvider(BaseLLMProvider):
                 "maxOutputTokens": self.max_tokens,
             },
         }
+
+        # 根据 enable_thinking 配置添加 thinkingConfig
+        thinking_config = self._get_thinking_config()
+        if thinking_config is not None:
+            body["generationConfig"]["thinkingConfig"] = thinking_config
 
         # 添加system instruction（如果有）
         if system_instruction:
@@ -260,6 +287,11 @@ class GeminiProvider(BaseLLMProvider):
                     "maxOutputTokens": self.max_tokens,
                 },
             }
+
+            # 根据 enable_thinking 配置添加 thinkingConfig
+            thinking_config = self._get_thinking_config()
+            if thinking_config is not None:
+                body["generationConfig"]["thinkingConfig"] = thinking_config
 
             if system_instruction:
                 body["systemInstruction"] = {"parts": [{"text": system_instruction}]}

@@ -7,7 +7,9 @@ from ling_chat.core.service_manager import service_manager
 
 _runtime_update_lock = threading.Lock()
 
-# LLM相关环境变量key（用于触发热重载）
+# LLM相关配置key（用于触发热重载）
+# 注意：LLM 配置已迁移至 TOML 文件管理，
+# 此集合用于兼容从 .env 保存触发的重载，将在未来版本中移除。
 LLM_CONFIG_KEYS = {
     "LLM_PROVIDER",
     "MODEL_TYPE",
@@ -20,14 +22,6 @@ LLM_CONFIG_KEYS = {
     "TRANSLATE_MODEL",
     "TRANSLATE_API_KEY",
     "TRANSLATE_BASE_URL",
-    "OLLAMA_BASE_URL",
-    "OLLAMA_MODEL",
-    "LMSTUDIO_BASE_URL",
-    "LMSTUDIO_MODEL_TYPE",
-    "LMSTUDIO_API_KEY",
-    "GEMINI_API_KEY",
-    "GEMINI_MODEL_TYPE",
-    "GEMINI_PROXY_URL",
 }
 
 

@@ -1,9 +1,9 @@
-import os
-from typing import AsyncGenerator, Dict, List
+from typing import AsyncGenerator, Dict, List, Optional
 
 import httpx
 from anthropic import Anthropic, AsyncAnthropic
 
+from ling_chat.configs.llm_config import llm_config
 from ling_chat.core.llm_providers._http import build_httpx_client
 from ling_chat.core.llm_providers.base import BaseLLMProvider
 from ling_chat.core.llm_providers.tool_types import (
@@ -38,12 +38,15 @@ class KimiCodeProvider(BaseLLMProvider):
             )
         self.base_url = self.KIMI_CODE_API_BASE
         self.model_type = model_type or self.KIMI_CODE_DEFAULT_MODEL
-        self.temperature = float(os.environ.get("TEMPERATURE", 1.3))
-        self.top_p = float(os.environ.get("TOP_P", 0.9))
-        self.max_tokens = int(os.environ.get("MAX_TOKENS", "8192"))
+        main_cfg = llm_config.get_main_config()
+        self.temperature = float(main_cfg.get("temperature", 1.3))
+        self.top_p = float(main_cfg.get("top_p", 0.9))
+        self.max_tokens = int(main_cfg.get("max_tokens", 8192))
 
         if (not api_key) or api_key == "sk-114514":
-            logger.warning("Kimi Code 未初始化：CHAT_API_KEY 为空或为占位值。")
+            logger.warning(
+                "Kimi Code 未初始化：API_KEY 为空或为占位值，请到 LLM 配置页面设置。"
+            )
             self.client = None
             self.async_client = None
             return
@@ -349,7 +352,7 @@ class KimiCodeProvider(BaseLLMProvider):
         return system_prompt, converted_messages
 
     def _build_payload_with_tools(
-        self, messages: List[Dict], tools: List[ToolDefinition] = None
+        self, messages: List[Dict], tools: Optional[List[ToolDefinition]] = None
     ) -> Dict:
         """构建 Anthropic API 请求参数（支持工具）"""
         system_prompt, anthropic_messages = self._convert_messages_with_tool_results(

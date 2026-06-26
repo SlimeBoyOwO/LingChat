@@ -64,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { useSettingsStore } from '@/stores/modules/settings'
@@ -208,10 +208,22 @@ const show = () => {
   if (uiStore.showSettings || visible.value) return
   visible.value = true
   currentPage.value = totalPages.value
+  nextTick(() => scrollToBottom())
   if (!keydownBound) {
     document.addEventListener('keydown', handleKeyDown)
     keydownBound = true
   }
+}
+
+const scrollToBottom = () => {
+  requestAnimationFrame(() => {
+    if (contentRef.value) {
+      contentRef.value.scrollTo({
+        top: contentRef.value.scrollHeight,
+        behavior: 'smooth',
+      })
+    }
+  })
 }
 
 const close = () => {

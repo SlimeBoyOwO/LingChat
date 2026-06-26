@@ -67,7 +67,8 @@ line-length = 88
 # 目标Python版本与项目保持一致
 target-version = "py313"
 # 指定要检查的源代码目录
-src = ["ling_chat", "tests"]
+exclude = ["others"]
+include = ["ling_chat/**/*.py", "tests/**/*.py", "main.py"]
 
 [tool.ruff.lint]
 # 启用pycodestyle errors (E), warnings (W), pyflakes (F), isort (I), flake8-comprehensions (C), flake8-bugbear (B)
@@ -78,3 +79,16 @@ ignore = ["E501", "C901"]
 # 为__init__.py文件忽略未使用的导入（F401）
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
+
+[tool.ty.src]
+include = ["ling_chat", "tests"]
+
+# 运行环境
+[tool.ty.environment]
+python-version = "3.13"
+
+# 规则严重度
+# no-matching-overload: 忽略. OpenAI/Anthropic 等 SDK 的 create() 有大量 overload,
+#   **kwargs 解包无法静态匹配具体签名，但运行时完全正确.
+[tool.ty.rules]
+no-matching-overload = "ignore"
