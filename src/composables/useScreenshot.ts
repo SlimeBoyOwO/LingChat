@@ -7,6 +7,7 @@ const hasScreenshot = ref(false)
 const screenshotBase64 = ref<string | null>(null)
 const isCapturing = ref(false)
 let unlisten: (() => void) | null = null
+let unlistenCanceled: (() => void) | null = null
 let initCount = 0
 
 export function useScreenshot() {
@@ -19,6 +20,13 @@ export function useScreenshot() {
     }).then((fn) => {
       unlisten = fn
     })
+
+    listen('screenshot:cancelled', () => {  //监听截图取消事件
+      hasScreenshot.value = false
+      isCapturing.value = false
+    }).then((fn) => {
+      unlistenCanceled = fn
+    })
   }
 
   function destroy() {
@@ -26,6 +34,11 @@ export function useScreenshot() {
     if (unlisten) {
       unlisten()
       unlisten = null
+    }
+
+    if (unlistenCanceled) {
+      unlistenCanceled()
+      unlistenCanceled = null
     }
   }
 

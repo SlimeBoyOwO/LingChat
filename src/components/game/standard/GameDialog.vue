@@ -354,6 +354,7 @@ const toggleRecording = async () => {
 }
 
 let unlistenScreenshot: (() => void) | null = null
+let unlistenCancelled: (() => void) | null = null
 
 onMounted(async () => {
   document.addEventListener('contextmenu', handleDialogShow)
@@ -370,12 +371,19 @@ onMounted(async () => {
     hasScreenshot.value = true
     isCapturing.value = false
   })
+
+  // 监听截图取消事件
+  unlistenCancelled = await listen('screenshot:cancelled', () => {
+    isCapturing.value = false
+    hasScreenshot.value = false
+  })
 })
 
 onUnmounted(() => {
   document.removeEventListener('contextmenu', handleDialogShow)
   window.removeEventListener('resize', updateContainerWidth)
   if (unlistenScreenshot) unlistenScreenshot()
+  if (unlistenCancelled) unlistenCancelled()
 })
 
 async function startScreenshot() {
