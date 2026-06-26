@@ -143,8 +143,10 @@ impl LlmProvider for OpenAiProvider {
             return Err(anyhow!("LLM function calling 失败 ({status}): {text}"));
         }
 
-        let parsed: ChatCompletionResponse =
-            resp.json().await.context("解析 LLM (tools) 响应 JSON 失败")?;
+        let parsed: ChatCompletionResponse = resp
+            .json()
+            .await
+            .context("解析 LLM (tools) 响应 JSON 失败")?;
 
         let choice = parsed
             .choices

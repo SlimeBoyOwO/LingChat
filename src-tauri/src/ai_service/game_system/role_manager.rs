@@ -360,7 +360,14 @@ impl GameRoleManager {
                     self.use_persistent_memory,
                 )
             };
-            self.ensure_memory_bank_system(rid, &bank, &display_name, enabled, self.memory_update_interval as usize, self.memory_recent_window as usize);
+            self.ensure_memory_bank_system(
+                rid,
+                &bank,
+                &display_name,
+                enabled,
+                self.memory_update_interval as usize,
+                self.memory_recent_window as usize,
+            );
 
             // 若已有压缩系统且 DB 有数据，同步重置
             if let Some((_, info)) = best.get(&rid) {

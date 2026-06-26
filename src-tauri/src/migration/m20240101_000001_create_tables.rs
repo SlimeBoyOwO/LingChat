@@ -11,11 +11,22 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(Role::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(Role::Id).integer().not_null().auto_increment().primary_key())
+                    .col(
+                        ColumnDef::new(Role::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
                     .col(ColumnDef::new(Role::ScriptKey).string_len(255))
                     .col(ColumnDef::new(Role::ScriptRoleKey).string_len(255))
                     .col(ColumnDef::new(Role::Name).string_len(255).not_null())
-                    .col(ColumnDef::new(Role::RoleType).string_len(32).not_null().default("npc"))
+                    .col(
+                        ColumnDef::new(Role::RoleType)
+                            .string_len(32)
+                            .not_null()
+                            .default("npc"),
+                    )
                     .col(ColumnDef::new(Role::ResourceFolder).string_len(512))
                     .to_owned(),
             )
@@ -50,7 +61,13 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(Save::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(Save::Id).integer().not_null().auto_increment().primary_key())
+                    .col(
+                        ColumnDef::new(Save::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
                     .col(ColumnDef::new(Save::Title).string_len(255).not_null())
                     .col(ColumnDef::new(Save::Status).text().not_null().default("{}"))
                     .col(ColumnDef::new(Save::CreateDate).date_time().not_null())
@@ -72,11 +89,34 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(RunningScript::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(RunningScript::Id).integer().not_null().auto_increment().primary_key())
-                    .col(ColumnDef::new(RunningScript::ScriptFolder).string_len(512).not_null())
-                    .col(ColumnDef::new(RunningScript::VariableInfo).text().not_null().default("{}"))
-                    .col(ColumnDef::new(RunningScript::CurrentChapter).string_len(255).not_null())
-                    .col(ColumnDef::new(RunningScript::EventSequence).integer().not_null())
+                    .col(
+                        ColumnDef::new(RunningScript::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(RunningScript::ScriptFolder)
+                            .string_len(512)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(RunningScript::VariableInfo)
+                            .text()
+                            .not_null()
+                            .default("{}"),
+                    )
+                    .col(
+                        ColumnDef::new(RunningScript::CurrentChapter)
+                            .string_len(255)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(RunningScript::EventSequence)
+                            .integer()
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(RunningScript::SaveId).integer().not_null())
                     .foreign_key(
                         ForeignKey::create()
@@ -103,7 +143,13 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(Line::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(Line::Id).integer().not_null().auto_increment().primary_key())
+                    .col(
+                        ColumnDef::new(Line::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
                     .col(ColumnDef::new(Line::Content).text().not_null())
                     .col(ColumnDef::new(Line::OriginalEmotion).string_len(64))
                     .col(ColumnDef::new(Line::PredictedEmotion).string_len(64))
@@ -165,8 +211,19 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(MemoryBank::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(MemoryBank::Id).integer().not_null().auto_increment().primary_key())
-                    .col(ColumnDef::new(MemoryBank::Info).text().not_null().default("{}"))
+                    .col(
+                        ColumnDef::new(MemoryBank::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(MemoryBank::Info)
+                            .text()
+                            .not_null()
+                            .default("{}"),
+                    )
                     .col(ColumnDef::new(MemoryBank::SaveId).integer().not_null())
                     .col(ColumnDef::new(MemoryBank::RoleId).integer())
                     .foreign_key(
@@ -188,9 +245,24 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(AdventureUnlock::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(AdventureUnlock::Id).integer().not_null().auto_increment().primary_key())
-                    .col(ColumnDef::new(AdventureUnlock::AdventureFolder).string_len(512).not_null().unique_key())
-                    .col(ColumnDef::new(AdventureUnlock::CharacterFolder).string_len(512).not_null())
+                    .col(
+                        ColumnDef::new(AdventureUnlock::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(AdventureUnlock::AdventureFolder)
+                            .string_len(512)
+                            .not_null()
+                            .unique_key(),
+                    )
+                    .col(
+                        ColumnDef::new(AdventureUnlock::CharacterFolder)
+                            .string_len(512)
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(AdventureUnlock::UnlockedAt).date_time())
                     .col(ColumnDef::new(AdventureUnlock::CompletedAt).date_time())
                     .to_owned(),
@@ -212,13 +284,27 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager.drop_table(Table::drop().table(MemoryBank::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(AdventureUnlock::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(LinePerception::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(Line::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(RunningScript::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(Save::Table).to_owned()).await?;
-        manager.drop_table(Table::drop().table(Role::Table).to_owned()).await?;
+        manager
+            .drop_table(Table::drop().table(MemoryBank::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(AdventureUnlock::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(LinePerception::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Line::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(RunningScript::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Save::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Role::Table).to_owned())
+            .await?;
         Ok(())
     }
 }

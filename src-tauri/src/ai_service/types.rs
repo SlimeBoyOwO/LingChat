@@ -37,7 +37,11 @@ pub struct ToolDefinition {
 }
 
 impl ToolDefinition {
-    pub fn new(name: impl Into<String>, description: impl Into<String>, parameters: serde_json::Value) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        parameters: serde_json::Value,
+    ) -> Self {
         Self {
             type_: "function".to_string(),
             function: FunctionSchema {
@@ -69,21 +73,46 @@ pub struct LlmMessage {
 
 impl LlmMessage {
     pub fn system(content: impl Into<String>) -> Self {
-        Self { role: "system".into(), content: content.into(), tool_calls: None, tool_call_id: None }
+        Self {
+            role: "system".into(),
+            content: content.into(),
+            tool_calls: None,
+            tool_call_id: None,
+        }
     }
     pub fn user(content: impl Into<String>) -> Self {
-        Self { role: "user".into(), content: content.into(), tool_calls: None, tool_call_id: None }
+        Self {
+            role: "user".into(),
+            content: content.into(),
+            tool_calls: None,
+            tool_call_id: None,
+        }
     }
     pub fn assistant(content: impl Into<String>) -> Self {
-        Self { role: "assistant".into(), content: content.into(), tool_calls: None, tool_call_id: None }
+        Self {
+            role: "assistant".into(),
+            content: content.into(),
+            tool_calls: None,
+            tool_call_id: None,
+        }
     }
     /// 助手消息携带 tool calls（LLM 请求调用工具）。
     pub fn tool(tool_calls: Vec<ToolCall>) -> Self {
-        Self { role: "assistant".into(), content: String::new(), tool_calls: Some(tool_calls), tool_call_id: None }
+        Self {
+            role: "assistant".into(),
+            content: String::new(),
+            tool_calls: Some(tool_calls),
+            tool_call_id: None,
+        }
     }
     /// 工具调用结果（role = "tool"）。
     pub fn tool_result(tool_call_id: impl Into<String>, content: impl Into<String>) -> Self {
-        Self { role: "tool".into(), content: content.into(), tool_calls: None, tool_call_id: Some(tool_call_id.into()) }
+        Self {
+            role: "tool".into(),
+            content: content.into(),
+            tool_calls: None,
+            tool_call_id: Some(tool_call_id.into()),
+        }
     }
 }
 
@@ -118,11 +147,15 @@ impl Default for LineAttributeExt {
 }
 
 impl From<LineAttribute> for LineAttributeExt {
-    fn from(v: LineAttribute) -> Self { Self(v) }
+    fn from(v: LineAttribute) -> Self {
+        Self(v)
+    }
 }
 
 impl LineAttributeExt {
-    pub fn inner(&self) -> &LineAttribute { &self.0 }
+    pub fn inner(&self) -> &LineAttribute {
+        &self.0
+    }
 
     pub fn as_str(&self) -> &'static str {
         match &self.0 {
@@ -143,12 +176,21 @@ pub struct GameLine {
 
 impl GameLine {
     pub fn from_base(base: LineBase, perceived_role_ids: Vec<i32>) -> Self {
-        Self { base, perceived_role_ids }
+        Self {
+            base,
+            perceived_role_ids,
+        }
     }
 
-    pub fn content(&self) -> &str { &self.base.content }
-    pub fn sender_role_id(&self) -> Option<i32> { self.base.sender_role_id }
-    pub fn attribute(&self) -> &LineAttribute { self.base.attribute.inner() }
+    pub fn content(&self) -> &str {
+        &self.base.content
+    }
+    pub fn sender_role_id(&self) -> Option<i32> {
+        self.base.sender_role_id
+    }
+    pub fn attribute(&self) -> &LineAttribute {
+        self.base.attribute.inner()
+    }
 }
 
 // ==========================================
@@ -192,7 +234,9 @@ pub struct GameMemoryBank {
     pub data: GameMemoryBankData,
 }
 
-fn default_schema_version() -> u32 { 1 }
+fn default_schema_version() -> u32 {
+    1
+}
 
 impl Default for GameMemoryBank {
     fn default() -> Self {
@@ -213,10 +257,7 @@ impl GameMemoryBank {
              【长期经历】：{}\n\
              【近期回顾】：{}\n\
              ====================================\n",
-            self.data.user_info,
-            self.data.promises,
-            self.data.long_term,
-            self.data.short_term,
+            self.data.user_info, self.data.promises, self.data.long_term, self.data.short_term,
         )
     }
 }
@@ -311,12 +352,24 @@ pub struct CharacterSettings {
     pub extra: HashMap<String, serde_json::Value>,
 }
 
-fn default_ai_name() -> String { "ai_name未设定".into() }
-fn default_user_name() -> String { "user_name未设定".into() }
-fn default_scale() -> f64 { 1.0 }
-fn default_thinking_message() -> String { "正在思考中...".into() }
-fn default_bubble_top() -> i32 { 5 }
-fn default_bubble_left() -> i32 { 20 }
+fn default_ai_name() -> String {
+    "ai_name未设定".into()
+}
+fn default_user_name() -> String {
+    "user_name未设定".into()
+}
+fn default_scale() -> f64 {
+    1.0
+}
+fn default_thinking_message() -> String {
+    "正在思考中...".into()
+}
+fn default_bubble_top() -> i32 {
+    5
+}
+fn default_bubble_left() -> i32 {
+    20
+}
 
 impl Default for CharacterSettings {
     fn default() -> Self {

@@ -26,11 +26,7 @@ impl TauriEventSink {
 }
 
 impl EventSink for TauriEventSink {
-    fn emit_event(
-        &self,
-        event: &str,
-        payload: &dyn erased_payload::ErasedSerialize,
-    ) -> Result<()> {
+    fn emit_event(&self, event: &str, payload: &dyn erased_payload::ErasedSerialize) -> Result<()> {
         let value = payload.to_json_value()?;
         self.app.emit(event, value).map_err(anyhow::Error::from)
     }
@@ -38,7 +34,8 @@ impl EventSink for TauriEventSink {
 
 /// 便捷函数：直接向 AppHandle 发 serde 可序列化 payload。业务层也可以绕过 trait。
 pub fn emit<T: Serialize + Clone>(app: &AppHandle, event: &str, payload: &T) -> Result<()> {
-    app.emit(event, payload.clone()).map_err(anyhow::Error::from)
+    app.emit(event, payload.clone())
+        .map_err(anyhow::Error::from)
 }
 
 /// 通知前端 AI 正在思考或结束思考。

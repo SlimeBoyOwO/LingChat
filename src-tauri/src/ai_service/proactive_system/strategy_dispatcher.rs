@@ -207,13 +207,15 @@ impl StrategyDispatcher {
         ))
     }
 
-    async fn get_screen_prompt(
-        &self,
-        game_status: &GameStatus,
-    ) -> Option<String> {
+    async fn get_screen_prompt(&self, game_status: &GameStatus) -> Option<String> {
         let analyze_prompt = "你是一个图像信息转述者，你将需要把你看到的画面描述给另一个AI让他理解用户的图片内容。用户开放了那个AI的自主窥屏功能，请获取桌面画面中的重点内容，用200字描述主体部分即可。如果你看到一个聊天窗口，有角色的立绘和对话框，不要描述这部分，只描述桌面上的其他内容。因为那部分是玩家与AI的聊天窗口。";
 
-        let analysis = self.screen_analyzer.lock().await.analyze_screen(analyze_prompt).await?;
+        let analysis = self
+            .screen_analyzer
+            .lock()
+            .await
+            .analyze_screen(analyze_prompt)
+            .await?;
 
         let user_name = &game_status.player.user_name;
         let ai_name = game_status
@@ -238,4 +240,3 @@ impl StrategyDispatcher {
         format!("{{ {} 想继续说话了}}", ai_name)
     }
 }
-

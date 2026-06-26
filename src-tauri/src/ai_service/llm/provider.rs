@@ -24,11 +24,7 @@ pub trait LlmProvider: Send + Sync {
     async fn complete(&self, http: &Client, messages: &[LlmMessage]) -> Result<String>;
 
     /// 流式：返回逐字符（或逐 token）的 chunk 流。
-    async fn complete_stream(
-        &self,
-        http: &Client,
-        messages: &[LlmMessage],
-    ) -> Result<ChunkStream>;
+    async fn complete_stream(&self, http: &Client, messages: &[LlmMessage]) -> Result<ChunkStream>;
 
     /// 非流式 + function calling。
     ///

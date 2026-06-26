@@ -105,9 +105,7 @@ impl StreamProducer {
                             break;
                         }
                     }
-                    if num_end > 0
-                        && buffer[num_end..].chars().next() == Some('】')
-                    {
+                    if num_end > 0 && buffer[num_end..].chars().next() == Some('】') {
                         let close_end = num_end + '】'.len_utf8();
                         sentence.push_str(&buffer[..close_end]);
                         buffer.drain(..close_end);

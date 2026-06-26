@@ -10,10 +10,7 @@ pub struct AdventureManager;
 
 impl AdventureManager {
     /// Check if an adventure has been unlocked (row exists).
-    pub async fn is_unlocked(
-        db: &DatabaseConnection,
-        adventure_folder: &str,
-    ) -> Result<bool> {
+    pub async fn is_unlocked(db: &DatabaseConnection, adventure_folder: &str) -> Result<bool> {
         let exists = adventure_unlock::Entity::find()
             .filter(adventure_unlock::Column::AdventureFolder.eq(adventure_folder))
             .one(db)
@@ -89,10 +86,7 @@ impl AdventureManager {
     }
 
     /// Reset an adventure: delete the row entirely (lock + completion both removed).
-    pub async fn reset_adventure(
-        db: &DatabaseConnection,
-        adventure_folder: &str,
-    ) -> Result<()> {
+    pub async fn reset_adventure(db: &DatabaseConnection, adventure_folder: &str) -> Result<()> {
         let model = adventure_unlock::Entity::find()
             .filter(adventure_unlock::Column::AdventureFolder.eq(adventure_folder))
             .one(db)

@@ -4,11 +4,15 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::ai_service::game_system::script_engine::events::{register_event, ScriptContext, ScriptEvent};
+use crate::ai_service::game_system::script_engine::events::{
+    register_event, ScriptContext, ScriptEvent,
+};
 use crate::ai_service::game_system::script_engine::responses::{
     event_names::SCRIPT_PRESENT_PIC, PresentPicPayload,
 };
-use crate::ai_service::game_system::script_engine::utils::media::{resolve_script_media, MediaType};
+use crate::ai_service::game_system::script_engine::utils::media::{
+    resolve_script_media, MediaType,
+};
 use crate::ai_service::message_system::events::emit;
 
 pub struct PresentPicEvent {
@@ -24,10 +28,7 @@ impl PresentPicEvent {
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string(),
-            scale: data
-                .get("scale")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(1.0),
+            scale: data.get("scale").and_then(|v| v.as_f64()).unwrap_or(1.0),
         }
     }
 }

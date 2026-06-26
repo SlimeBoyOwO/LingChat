@@ -53,9 +53,7 @@ impl EventsHandler {
         let event_type = event_data
             .get("type")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                anyhow!("事件缺少 'type' 字段，索引: {}", self.progress - 1)
-            })?
+            .ok_or_else(|| anyhow!("事件缺少 'type' 字段，索引: {}", self.progress - 1))?
             .to_string();
 
         // Resolve placeholders in event data before dispatching
@@ -71,9 +69,8 @@ impl EventsHandler {
             return Ok(());
         }
 
-        let mut handler = create_event(&event_type, event_data).ok_or_else(|| {
-            anyhow!("未注册的事件类型: '{}'", event_type)
-        })?;
+        let mut handler = create_event(&event_type, event_data)
+            .ok_or_else(|| anyhow!("未注册的事件类型: '{}'", event_type))?;
 
         if let Some(result) = handler.execute(ctx).await? {
             self.chapter_result = Some(result);
@@ -87,8 +84,14 @@ impl EventsHandler {
 fn resolve_placeholders(mut event_data: Value, game_status: &GameStatus) -> Value {
     if let Value::Object(ref mut map) = event_data {
         let text_fields = [
-            "text", "prompt", "hint", "end_line", "dialog_prompt", "end_prompt",
-            "content", "description",
+            "text",
+            "prompt",
+            "hint",
+            "end_line",
+            "dialog_prompt",
+            "end_prompt",
+            "content",
+            "description",
         ];
         for field in &text_fields {
             if let Some(Value::String(s)) = map.get_mut(*field) {

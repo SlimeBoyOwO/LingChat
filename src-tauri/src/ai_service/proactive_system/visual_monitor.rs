@@ -1,7 +1,7 @@
 #[cfg(target_os = "windows")]
-use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
+use windows::Win32::Graphics::Gdi::{GetDC, GetPixel, ReleaseDC};
 #[cfg(target_os = "windows")]
-use windows::Win32::Graphics::Gdi::{GetDC, ReleaseDC, GetPixel};
+use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
 
 pub struct VisualMonitor {
     last_hash: Option<u64>,
@@ -38,7 +38,7 @@ impl VisualMonitor {
                         let y = (j as f32 + 0.5) * (screen_height as f32 / 8.0);
 
                         let color = GetPixel(hdc, x as i32, y as i32).0;
-                        
+
                         // Extract RGB from COLORREF (0x00BBGGRR)
                         let r = (color & 0x000000FF) as f64;
                         let g = ((color & 0x0000FF00) >> 8) as f64;
@@ -72,7 +72,10 @@ impl VisualMonitor {
                     // Hamming distance >= 6 means change detected (threshold matching Python dhash difference)
                     let change_detected = diff >= 6;
                     if change_detected {
-                        tracing::info!("[VisualMonitor] Screen change detected! Hamming distance: {}", diff);
+                        tracing::info!(
+                            "[VisualMonitor] Screen change detected! Hamming distance: {}",
+                            diff
+                        );
                     }
                     change_detected
                 } else {

@@ -84,7 +84,9 @@ impl AchievementManager {
         // 确保所有默认成就都有状态条目
         manager.ensure_default_states();
         // 检查是否有新成就需要初始化
-        let needs_save = DEFAULT_ACHIEVEMENTS.keys().any(|id| !manager.state.contains_key(*id));
+        let needs_save = DEFAULT_ACHIEVEMENTS
+            .keys()
+            .any(|id| !manager.state.contains_key(*id));
         if needs_save {
             manager.save();
         } else {
@@ -105,11 +107,13 @@ impl AchievementManager {
 
     fn ensure_default_states(&mut self) {
         for id in DEFAULT_ACHIEVEMENTS.keys() {
-            self.state.entry(id.to_string()).or_insert_with(|| AchievementState {
-                unlocked: false,
-                unlocked_at: None,
-                current_progress: 0,
-            });
+            self.state
+                .entry(id.to_string())
+                .or_insert_with(|| AchievementState {
+                    unlocked: false,
+                    unlocked_at: None,
+                    current_progress: 0,
+                });
         }
     }
 
@@ -118,22 +122,30 @@ impl AchievementManager {
     pub fn get_all_achievements(&self) -> HashMap<String, Achievement> {
         let mut result = HashMap::new();
         for (id, def) in DEFAULT_ACHIEVEMENTS.iter() {
-            let state = self.state.get(*id).cloned().unwrap_or_else(|| AchievementState {
-                unlocked: false,
-                unlocked_at: None,
-                current_progress: 0,
-            });
+            let state = self
+                .state
+                .get(*id)
+                .cloned()
+                .unwrap_or_else(|| AchievementState {
+                    unlocked: false,
+                    unlocked_at: None,
+                    current_progress: 0,
+                });
             result.insert(
                 id.to_string(),
                 Achievement::from_parts(id.to_string(), def, &state),
             );
         }
         for (id, def) in &self.dynamic_achievements {
-            let state = self.state.get(id).cloned().unwrap_or_else(|| AchievementState {
-                unlocked: false,
-                unlocked_at: None,
-                current_progress: 0,
-            });
+            let state = self
+                .state
+                .get(id)
+                .cloned()
+                .unwrap_or_else(|| AchievementState {
+                    unlocked: false,
+                    unlocked_at: None,
+                    current_progress: 0,
+                });
             result.insert(id.clone(), Achievement::from_parts(id.clone(), def, &state));
         }
         result
@@ -143,11 +155,14 @@ impl AchievementManager {
     pub fn register_achievement(&mut self, id: String, def: AchievementDef) {
         self.dynamic_achievements.insert(id.clone(), def);
         if !self.state.contains_key(&id) {
-            self.state.insert(id, AchievementState {
-                unlocked: false,
-                unlocked_at: None,
-                current_progress: 0,
-            });
+            self.state.insert(
+                id,
+                AchievementState {
+                    unlocked: false,
+                    unlocked_at: None,
+                    current_progress: 0,
+                },
+            );
         }
     }
 
@@ -155,11 +170,14 @@ impl AchievementManager {
     pub fn increment_progress(&mut self, id: &str, amount: u32) -> Option<Achievement> {
         let def = self.get_def(id)?;
 
-        let state = self.state.entry(id.to_string()).or_insert_with(|| AchievementState {
-            unlocked: false,
-            unlocked_at: None,
-            current_progress: 0,
-        });
+        let state = self
+            .state
+            .entry(id.to_string())
+            .or_insert_with(|| AchievementState {
+                unlocked: false,
+                unlocked_at: None,
+                current_progress: 0,
+            });
 
         if state.unlocked {
             return None;
@@ -180,20 +198,20 @@ impl AchievementManager {
 
     /// 检查成就是否已解锁
     pub fn is_unlocked(&self, id: &str) -> bool {
-        self.state
-            .get(id)
-            .map(|s| s.unlocked)
-            .unwrap_or(false)
+        self.state.get(id).map(|s| s.unlocked).unwrap_or(false)
     }
 
     /// 直接解锁成就
     pub fn unlock(&mut self, id: &str) -> Option<Achievement> {
         let def = self.get_def(id)?;
-        let state = self.state.entry(id.to_string()).or_insert_with(|| AchievementState {
-            unlocked: false,
-            unlocked_at: None,
-            current_progress: 0,
-        });
+        let state = self
+            .state
+            .entry(id.to_string())
+            .or_insert_with(|| AchievementState {
+                unlocked: false,
+                unlocked_at: None,
+                current_progress: 0,
+            });
 
         if state.unlocked {
             return None;

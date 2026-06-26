@@ -62,11 +62,7 @@ impl AutoSaveManager {
 
     /// Register a close-requested handler on the main window that performs a
     /// final auto-save before allowing the window to actually close.
-    pub fn setup_close_handler(
-        app: AppHandle,
-        window: WebviewWindow,
-        manager: Arc<Mutex<Self>>,
-    ) {
+    pub fn setup_close_handler(app: AppHandle, window: WebviewWindow, manager: Arc<Mutex<Self>>) {
         window.clone().on_window_event(move |event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 // Prevent the window from closing immediately
@@ -78,19 +74,20 @@ impl AutoSaveManager {
                 tauri::async_runtime::spawn(async move {
                     tracing::info!("[AutoSave] 正在执行退出前自动存档...");
 
-                    let save_result = tokio::time::timeout(
-                        Duration::from_secs(EXIT_SAVE_TIMEOUT_SECS),
-                        async {
+                    let save_result =
+                        tokio::time::timeout(Duration::from_secs(EXIT_SAVE_TIMEOUT_SECS), async {
                             let mut mgr = mgr.lock().await;
                             mgr.perform_exit_save().await
-                        },
-                    )
-                    .await;
+                        })
+                        .await;
 
                     match save_result {
                         Ok(Ok(())) => tracing::info!("[AutoSave] 退出前存档完成"),
                         Ok(Err(ref e)) => tracing::error!("[AutoSave] 退出前存档失败: {}", e),
-                        Err(_) => tracing::warn!("[AutoSave] 退出前存档超时（{} 秒），放弃等待", EXIT_SAVE_TIMEOUT_SECS),
+                        Err(_) => tracing::warn!(
+                            "[AutoSave] 退出前存档超时（{} 秒），放弃等待",
+                            EXIT_SAVE_TIMEOUT_SECS
+                        ),
                     }
 
                     // Drop the manager lock before exiting

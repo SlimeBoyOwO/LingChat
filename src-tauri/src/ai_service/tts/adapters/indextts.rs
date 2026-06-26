@@ -58,7 +58,11 @@ impl TtsAdapter for IndexTtsAdapter {
             ("_verify", "0".into()),
             ("text", text.to_string()),
         ];
-        let resp = http_client().get(&self.base_url).query(&query).send().await?;
+        let resp = http_client()
+            .get(&self.base_url)
+            .query(&query)
+            .send()
+            .await?;
         if !resp.status().is_success() {
             return Err(anyhow!("IndexTTS 请求失败: HTTP {}", resp.status()));
         }

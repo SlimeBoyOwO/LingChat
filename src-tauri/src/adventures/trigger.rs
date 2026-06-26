@@ -36,10 +36,9 @@ pub fn check_all_adventures(
         let folder = &adv.folder_key;
 
         // Skip if already unlocked
-        let already_unlocked = tokio::task::block_in_place(|| {
-            rt.block_on(AdventureManager::is_unlocked(db, folder))
-        })
-        .unwrap_or(false);
+        let already_unlocked =
+            tokio::task::block_in_place(|| rt.block_on(AdventureManager::is_unlocked(db, folder)))
+                .unwrap_or(false);
         if already_unlocked {
             continue;
         }
@@ -65,9 +64,9 @@ pub fn check_all_adventures(
             continue;
         }
 
-        let all_passed = conditions.iter().all(|cond| {
-            evaluate_condition(db, achievement_mgr, game_status, cond)
-        });
+        let all_passed = conditions
+            .iter()
+            .all(|cond| evaluate_condition(db, achievement_mgr, game_status, cond));
 
         if all_passed {
             tokio::task::block_in_place(|| {
@@ -97,10 +96,7 @@ fn evaluate_condition(
     game_status: &GameStatus,
     condition: &Value,
 ) -> bool {
-    let cond_type = condition
-        .get("type")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let cond_type = condition.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
     match cond_type {
         "chat_count" => {

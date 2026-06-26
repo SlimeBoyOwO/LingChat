@@ -4,11 +4,13 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::ai_service::game_system::script_engine::events::{register_event, ScriptContext, ScriptEvent};
+use crate::ai_service::game_system::script_engine::events::{
+    register_event, ScriptContext, ScriptEvent,
+};
 use crate::ai_service::game_system::script_engine::utils::script_function;
 use crate::ai_service::message_system::events::emit;
 use crate::ai_service::message_system::responses::ReplyResponse;
-use crate::ai_service::types::{LineBase, LineAttributeExt};
+use crate::ai_service::types::{LineAttributeExt, LineBase};
 use crate::db::entities::line::LineAttribute;
 
 pub struct DialogueEvent {
@@ -53,20 +55,16 @@ impl ScriptEvent for DialogueEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
         let script_status = ctx
             .game_status
-            .lock().await
+            .lock()
+            .await
             .script_status
             .clone()
             .ok_or_else(|| anyhow!("ScriptStatus 未设置"))?;
 
         let (role_id, role_display_name) = {
             let mut gs = ctx.game_status.lock().await;
-            let role = script_function::get_role(
-                &mut *gs,
-                ctx.db,
-                &script_status,
-                &self.character,
-            )
-            .await?;
+            let role = script_function::get_role(&mut *gs, ctx.db, &script_status, &self.character)
+                .await?;
             let id = role.role_id.ok_or_else(|| anyhow!("角色 ID 未设置"))?;
             let dn = role.display_name.clone();
             (id, dn)

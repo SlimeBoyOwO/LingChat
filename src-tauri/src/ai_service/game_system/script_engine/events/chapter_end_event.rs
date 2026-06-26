@@ -67,27 +67,19 @@ impl ScriptEvent for ChapterEndEvent {
         }
 
         let next = match self.end_type.as_str() {
-            "linear" => {
-                self.next
-                    .clone()
-                    .or_else(|| self.next_chapter.clone())
-                    .unwrap_or_else(|| "end".to_string())
-            }
+            "linear" => self
+                .next
+                .clone()
+                .or_else(|| self.next_chapter.clone())
+                .unwrap_or_else(|| "end".to_string()),
             "branching" => {
                 let gs = ctx.game_status.lock().await;
                 let script_status = gs.script_status.as_ref().unwrap(); // safe: checked above
                 let mut result = "end".to_string();
                 for opt in &self.options {
-                    let condition = opt
-                        .get("condition")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-                    if condition.is_empty()
-                        || evaluate_condition(condition, &script_status.vars)
-                    {
-                        if let Some(next) =
-                            opt.get("next").and_then(|v| v.as_str())
-                        {
+                    let condition = opt.get("condition").and_then(|v| v.as_str()).unwrap_or("");
+                    if condition.is_empty() || evaluate_condition(condition, &script_status.vars) {
+                        if let Some(next) = opt.get("next").and_then(|v| v.as_str()) {
                             result = next.to_string();
                             break;
                         }
@@ -96,7 +88,11 @@ impl ScriptEvent for ChapterEndEvent {
                 // Check for default option
                 if result == "end" {
                     for opt in &self.options {
-                        if opt.get("default").and_then(|v| v.as_bool()).unwrap_or(false) {
+                        if opt
+                            .get("default")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false)
+                        {
                             if let Some(next) = opt.get("next").and_then(|v| v.as_str()) {
                                 result = next.to_string();
                             }

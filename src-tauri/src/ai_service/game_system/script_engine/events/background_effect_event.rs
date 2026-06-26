@@ -4,7 +4,9 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::ai_service::game_system::script_engine::events::{register_event, ScriptContext, ScriptEvent};
+use crate::ai_service::game_system::script_engine::events::{
+    register_event, ScriptContext, ScriptEvent,
+};
 use crate::ai_service::game_system::script_engine::responses::{
     event_names::SCRIPT_BACKGROUND_EFFECT, BackgroundEffectPayload,
 };

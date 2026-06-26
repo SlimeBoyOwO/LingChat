@@ -72,8 +72,13 @@ impl GodAgentCore {
                 .unwrap_or_default();
             role_info_block.push_str(&format!(
                 "- role_id={}: {}\n  简介: {}\n  设定: {}\n",
-                rid, name,
-                if subtitle.is_empty() { "无" } else { &subtitle },
+                rid,
+                name,
+                if subtitle.is_empty() {
+                    "无"
+                } else {
+                    &subtitle
+                },
                 if info.is_empty() { "无" } else { &info },
             ));
         }
@@ -84,11 +89,7 @@ impl GodAgentCore {
             dialog_block.push_str("（无对话记录）\n");
         } else {
             for line in lines {
-                let name = line
-                    .base
-                    .display_name
-                    .as_deref()
-                    .unwrap_or("未知");
+                let name = line.base.display_name.as_deref().unwrap_or("未知");
                 let sid = line.base.sender_role_id.unwrap_or(-1);
                 let emotion = line
                     .base
@@ -192,10 +193,7 @@ impl GodAgentCore {
                     if result.0 == 0 || gs.present_role_ids.contains(&result.0) {
                         return Ok(result);
                     }
-                    tracing::warn!(
-                        "上帝Agent 选择了不在场的角色 {}，忽略",
-                        result.0
-                    );
+                    tracing::warn!("上帝Agent 选择了不在场的角色 {}，忽略", result.0);
                 }
             }
         }

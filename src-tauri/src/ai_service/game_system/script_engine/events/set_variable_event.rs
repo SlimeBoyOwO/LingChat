@@ -9,7 +9,9 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::ai_service::game_system::script_engine::events::{register_event, ScriptContext, ScriptEvent};
+use crate::ai_service::game_system::script_engine::events::{
+    register_event, ScriptContext, ScriptEvent,
+};
 use crate::ai_service::game_system::script_engine::utils::script_function::{
     apply_variable_action, parse_variable_action,
 };
@@ -41,10 +43,7 @@ impl ScriptEvent for SetVariableEvent {
 
         for opt in &self.options {
             // Check condition
-            let condition = opt
-                .get("condition")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let condition = opt.get("condition").and_then(|v| v.as_str()).unwrap_or("");
             if !condition.is_empty() {
                 if !crate::ai_service::game_system::script_engine::events::evaluate_condition(
                     condition,
@@ -57,25 +56,19 @@ impl ScriptEvent for SetVariableEvent {
             // Process actions
             if let Some(actions) = opt.get("actions").and_then(|v| v.as_array()) {
                 for action in actions {
-                    let action_type = action
-                        .get("type")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
+                    let action_type = action.get("type").and_then(|v| v.as_str()).unwrap_or("");
                     if action_type == "set_var" {
-                        let content = action
-                            .get("content")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("");
+                        let content = action.get("content").and_then(|v| v.as_str()).unwrap_or("");
                         if let Ok((op, var_name, value)) = parse_variable_action(content) {
                             let current = script_status.get_variable(&var_name).cloned();
-                            let result =
-                                apply_variable_action(op, current.as_ref(), value);
+                            let result = apply_variable_action(op, current.as_ref(), value);
                             script_status.set_variable(var_name, result);
                             tracing::info!(
                                 "[SetVariableEvent] {} = {:?}",
                                 content,
                                 script_status.get_variable(
-                                    &content.split(&['=', '+', '-'][..])
+                                    &content
+                                        .split(&['=', '+', '-'][..])
                                         .next()
                                         .unwrap_or("")
                                         .trim()

@@ -17,11 +17,13 @@ use tokio::sync::{mpsc, Mutex};
 
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::scene_store::SceneStore;
-use crate::ai_service::llm::LlmClient;
 use crate::ai_service::god_agent::GodAgentCore;
-use crate::ai_service::message_system::processor::{EmotionSegment, MessageProcessor, UserMessageOutcome};
-use crate::ai_service::message_system::producer::{SentenceItem, StreamProducer};
+use crate::ai_service::llm::LlmClient;
 use crate::ai_service::message_system::events;
+use crate::ai_service::message_system::processor::{
+    EmotionSegment, MessageProcessor, UserMessageOutcome,
+};
+use crate::ai_service::message_system::producer::{SentenceItem, StreamProducer};
 use crate::ai_service::message_system::responses::{event_names, ReplyResponse};
 use crate::ai_service::translator::Translator;
 use crate::ai_service::types::{LineAttributeExt, LineBase, LlmMessage};
@@ -140,8 +142,7 @@ impl MessageGenerator {
             });
         };
 
-        let UserMessageOutcome { main, temp } =
-            self.deps.processor.append_user_message(raw).await;
+        let UserMessageOutcome { main, temp } = self.deps.processor.append_user_message(raw).await;
 
         let mut gs = self.deps.game_status.lock().await;
         let user_name = gs.player.user_name.clone();
@@ -158,8 +159,7 @@ impl MessageGenerator {
             gs.line_list
                 .iter()
                 .filter(|l| {
-                    l.base.sender_role_id == Some(0)
-                        && matches!(l.attribute(), LineAttribute::User)
+                    l.base.sender_role_id == Some(0) && matches!(l.attribute(), LineAttribute::User)
                 })
                 .count() as u32,
         );
@@ -291,7 +291,9 @@ impl MessageGenerator {
 
         tracing::info!(
             "[GodAgent] pre-select: role_id={}, name={}, reason={}",
-            selected_role_id, character_name, reason
+            selected_role_id,
+            character_name,
+            reason
         );
 
         self.emit_character_switch(selected_role_id, &character_name);
@@ -303,10 +305,7 @@ impl MessageGenerator {
     /// 返回 `(should_continue, next_role_id)`：
     /// - `should_continue=true` 表示应继续循环（NPC 说话）
     /// - `should_continue=false` 表示应停止（交还玩家或 God Agent 未激活）
-    async fn god_agent_post_select(
-        &self,
-        consecutive_npc_rounds: usize,
-    ) -> Result<(bool, i32)> {
+    async fn god_agent_post_select(&self, consecutive_npc_rounds: usize) -> Result<(bool, i32)> {
         let Some(god) = &self.deps.god_agent else {
             return Ok((false, 0));
         };
@@ -350,7 +349,9 @@ impl MessageGenerator {
 
         tracing::info!(
             "[GodAgent] post-select: role_id={}, name={}, reason={}",
-            selected_role_id, character_name, reason
+            selected_role_id,
+            character_name,
+            reason
         );
 
         self.emit_character_switch(selected_role_id, &character_name);
@@ -457,7 +458,6 @@ impl MessageGenerator {
 
         Ok(acc)
     }
-
 }
 
 // ============================================================
@@ -508,15 +508,10 @@ fn parse_segments(deps: &GeneratorDeps, sentence: &str) -> Vec<EmotionSegment> {
 }
 
 /// Step B: 翻译（中文→日文）与语音生成。
-async fn enrich_segments(
-    deps: &GeneratorDeps,
-    segments: &mut [EmotionSegment],
-) -> Result<()> {
+async fn enrich_segments(deps: &GeneratorDeps, segments: &mut [EmotionSegment]) -> Result<()> {
     // 翻译：当第一段 japanese_text 为空时
     if segments[0].japanese_text.is_empty() {
-        deps.translator
-            .translate_segments(segments, false)
-            .await?;
+        deps.translator.translate_segments(segments, false).await?;
     }
 
     // 语音：取当前角色的 voice_maker 生成语音文件

@@ -52,15 +52,15 @@ impl GeminiProvider {
         };
         format!(
             "{}models/{}:{}?key={}",
-            self.base_url,
-            self.model,
-            action,
-            self.api_key,
+            self.base_url, self.model, action, self.api_key,
         )
     }
 
     /// 将 OpenAI-format 消息转换为 Gemini 的 `contents` + `systemInstruction` 格式。
-    fn convert_messages(&self, messages: &[LlmMessage]) -> (Vec<GeminiContent>, Option<GeminiSystemInstruction>) {
+    fn convert_messages(
+        &self,
+        messages: &[LlmMessage],
+    ) -> (Vec<GeminiContent>, Option<GeminiSystemInstruction>) {
         let mut contents: Vec<GeminiContent> = Vec::new();
         let mut system_parts: Vec<GeminiTextPart> = Vec::new();
 
@@ -91,7 +91,9 @@ impl GeminiProvider {
             None
         } else {
             Some(GeminiSystemInstruction {
-                parts: GeminiSystemParts { parts: system_parts },
+                parts: GeminiSystemParts {
+                    parts: system_parts,
+                },
             })
         };
 
@@ -141,10 +143,7 @@ impl LlmProvider for GeminiProvider {
             return Err(anyhow!("Gemini 调用失败 ({status}): {text}"));
         }
 
-        let parsed: GeminiResponse = resp
-            .json()
-            .await
-            .context("解析 Gemini 响应 JSON 失败")?;
+        let parsed: GeminiResponse = resp.json().await.context("解析 Gemini 响应 JSON 失败")?;
 
         let text: String = parsed
             .candidates
@@ -165,11 +164,7 @@ impl LlmProvider for GeminiProvider {
         Ok(text)
     }
 
-    async fn complete_stream(
-        &self,
-        http: &Client,
-        messages: &[LlmMessage],
-    ) -> Result<ChunkStream> {
+    async fn complete_stream(&self, http: &Client, messages: &[LlmMessage]) -> Result<ChunkStream> {
         let (contents, system_instruction) = self.convert_messages(messages);
 
         let generation_config = self.build_generation_config();

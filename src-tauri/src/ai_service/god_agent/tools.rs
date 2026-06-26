@@ -39,8 +39,7 @@ pub fn select_next_speaker_tool() -> ToolDefinition {
 /// 从 tool call 结果中解析出选中的 role_id 和理由。
 /// 返回 `None` 表示无法解析（arguments 格式异常）。
 pub fn parse_speaker_selection(tool_call: &ToolCall) -> Option<(i32, String)> {
-    let args: serde_json::Value =
-        serde_json::from_str(&tool_call.function.arguments).ok()?;
+    let args: serde_json::Value = serde_json::from_str(&tool_call.function.arguments).ok()?;
 
     let role_id = args.get("role_id")?.as_i64()? as i32;
     let reason = args

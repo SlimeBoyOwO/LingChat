@@ -18,8 +18,8 @@ use anyhow::{anyhow, Context, Result};
 use futures_util::Stream;
 use reqwest::Client;
 
-use crate::ai_service::types::{LlmMessage, ToolDefinition};
 use crate::ai_service::llm::provider::LlmResponseWithTools;
+use crate::ai_service::types::{LlmMessage, ToolDefinition};
 
 /// 运行时 LLM 配置。
 #[derive(Debug, Clone)]
@@ -55,7 +55,11 @@ impl LlmClient {
             .timeout(Duration::from_secs(cfg.timeout_secs.max(10)))
             .build()
             .context("创建 LLM HTTP 客户端失败")?;
-        Ok(Self { cfg, http, provider })
+        Ok(Self {
+            cfg,
+            http,
+            provider,
+        })
     }
 
     pub fn config(&self) -> &LlmConfig {
