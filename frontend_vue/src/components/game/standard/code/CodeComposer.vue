@@ -10,13 +10,9 @@
         <ListChecks :size="14" />
         计划
       </button>
-      <button type="button" @click="$emit('append-summary')">
+      <button type="button" @click="quickSend('总结以上你的所有操作')">
         <ClipboardList :size="14" />
         总结
-      </button>
-      <button type="button" @click="$emit('append-tool-info')">
-        <Wrench :size="14" />
-        工具
       </button>
     </div>
 
@@ -41,9 +37,6 @@
           >
             <Hand :size="15" />
           </button>
-          <button type="button" title="查看最近工具结果" @click="$emit('append-tool-info')">
-            <Wrench :size="15" />
-          </button>
           <button type="button" title="Code TTS 设置" @click="$emit('open-settings')">
             <Volume2 :size="15" />
           </button>
@@ -67,7 +60,6 @@ import {
   SendHorizontal,
   Sparkles,
   Volume2,
-  Wrench,
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -80,8 +72,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   send: [text: string]
-  'append-summary': []
-  'append-tool-info': []
   'open-settings': []
   'toggle-touch': []
 }>()

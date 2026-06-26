@@ -42,7 +42,7 @@ const audio = ref<HTMLAudioElement | null>(null)
 
 function rephrase(audioFile: string | undefined) {
   audio.value!.src = `${API_CONFIG.VOICE.BASE}/${audioFile}`
-  audio.value!.play()
+  audio.value!.play().catch(() => {})
 }
 </script>
 

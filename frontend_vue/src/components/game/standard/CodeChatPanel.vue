@@ -40,8 +40,6 @@
       :is-touch-mode="gameStore.command === 'touch'"
       placeholder-text="Code 模式：输入代码任务，AI 会优先连续调用工具..."
       @send="handleSend"
-      @append-summary="appendLocalSummary"
-      @append-tool-info="appendToolSummary"
       @open-settings="openTextSettings"
       @toggle-touch="touchMode.toggleTouchMode"
     />
@@ -137,72 +135,6 @@ const toolBubbleText = computed(() => {
 const latestToolPreview = computed(() => latestTool.value?.preview || '')
 const canSend = computed(() => gameStore.currentStatus === 'input')
 const statusText = computed(() => (gameStore.currentStatus === 'thinking' ? '思考中' : '就绪'))
-
-// ── 工具信息辅助函数 ──
-
-const compactText = (text: string, maxLength = 180) => {
-  const normalized = text.replace(/\s+/g, ' ').trim()
-  return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized
-}
-
-const toolStatusLabel = (status?: string, ok?: boolean | null) => {
-  if (status === 'running') return '进行中'
-  if (status === 'error' || ok === false) return '失败'
-  if (status === 'success' || ok === true) return '已完成'
-  return status || '未知'
-}
-
-const appendAssistantNote = (content: string) => {
-  gameStore.appendGameMessage({
-    type: 'reply',
-    displayName: 'Code Agent',
-    content,
-    isFinal: true,
-  })
-}
-
-const latestReplyContent = computed(() => {
-  for (let i = displayMessages.value.length - 1; i >= 0; i--) {
-    const m = displayMessages.value[i]
-    if (m?.type === 'reply') return m.content || ''
-  }
-  return ''
-})
-
-const appendLocalSummary = () => {
-  const tool = latestTool.value
-  const lastReply = latestReplyContent.value
-  const completedByTool = tool && (tool.status === 'success' || tool.ok === true)
-  const completedByReply = /完成|成功|已清空|已删除|已写入|执行完成|已修复/.test(lastReply)
-
-  const status =
-    gameStore.currentStatus === 'thinking'
-      ? '进行中'
-      : completedByTool || completedByReply
-        ? '已完成'
-        : '没有正在运行的任务'
-
-  const lines: string[] = [`当前代码任务状态：${status}。`]
-  if (tool) {
-    lines.push(`最近工具：${tool.tool}（${toolStatusLabel(tool.status, tool.ok)}）。`)
-    if (tool.preview) lines.push(`工具结果：${compactText(tool.preview)}`)
-  }
-  if (lastReply) lines.push(`最近回复：${compactText(lastReply)}`)
-  if (!tool && !lastReply) lines.push('还没有可总结的 Code 模式记录。')
-
-  appendAssistantNote(lines.join('\n'))
-}
-
-const appendToolSummary = () => {
-  const tool = latestTool.value
-  if (!tool) {
-    appendAssistantNote('当前还没有工具执行记录。')
-    return
-  }
-  const lines = [`最近工具：${tool.tool}`, `状态：${toolStatusLabel(tool.status, tool.ok)}`]
-  if (tool.preview) lines.push(`结果：${compactText(tool.preview, 260)}`)
-  appendAssistantNote(lines.join('\n'))
-}
 
 // ── 发送消息 ──
 

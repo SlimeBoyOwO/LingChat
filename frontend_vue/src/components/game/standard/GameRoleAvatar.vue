@@ -156,7 +156,7 @@ watch(
     if (config.audio && config.audio !== 'none' && bubbleAudio.value) {
       bubbleAudio.value.src = config.audio
       bubbleAudio.value.load()
-      bubbleAudio.value.play()
+      bubbleAudio.value.play().catch(() => {})
     }
   },
   { immediate: true },

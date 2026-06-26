@@ -101,9 +101,7 @@ const handleTrackEnd = (): void => {
 }
 
 // 星空就绪回调
-const onStarfieldReady = (instance: any): void => {
-  console.debug('Starfield ready', instance)
-}
+const onStarfieldReady = (_instance: any): void => {}
 
 // 只保留监听瞬时音效 (由于音效很短，不需要淡入淡出，保持原生调用)
 watch(
@@ -112,7 +110,7 @@ watch(
     if (soundEffectPlayer.value && newAudioUrl && newAudioUrl !== 'None') {
       soundEffectPlayer.value.src = newAudioUrl
       soundEffectPlayer.value.load()
-      soundEffectPlayer.value.play()
+      soundEffectPlayer.value.play().catch(() => {})
     }
   },
 )

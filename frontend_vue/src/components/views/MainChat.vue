@@ -17,17 +17,8 @@
 
     <!-- 原有的菜单按钮 -->
     <div id="menu-panel">
-      <!-- Code 模式：显示会话管理按钮 -->
+      <!-- Code 模式：新建会话按钮 -->
       <template v-if="settingsStore.codeMode">
-        <Button
-          type="nav"
-          icon="close"
-          @click="handleClearHistory"
-          v-show="uiStore.showSettings !== true"
-          title="清空记录"
-        >
-          <h3 class="hidden md:inline">清空</h3>
-        </Button>
         <Button
           type="nav"
           icon="plus"
@@ -37,28 +28,18 @@
         >
           <h3 class="hidden md:inline">新建</h3>
         </Button>
-        <Button
-          type="nav"
-          icon="history"
-          @click="handleContinueSession"
-          v-show="uiStore.showSettings !== true"
-          title="继续上次会话"
-        >
-          <h3 class="hidden md:inline">继续</h3>
-        </Button>
       </template>
-      <!-- 普通模式：显示自动按钮 -->
-      <template v-else>
-        <Button
-          type="nav"
-          icon="play"
-          @click="switchAutoMode"
-          :class="[{ active: uiStore.autoMode }]"
-          v-show="uiStore.showSettings !== true"
-        >
-          <h3 class="hidden md:inline">自动</h3>
-        </Button>
-      </template>
+      <!-- 自动按钮（两种模式都显示） -->
+      <Button
+        type="nav"
+        :icon="uiStore.autoMode ? 'loader' : 'play'"
+        @click="switchAutoMode"
+        :class="[{ active: uiStore.autoMode }]"
+        v-show="uiStore.showSettings !== true"
+        title="自动推进对话"
+      >
+        <h3 class="hidden md:inline">{{ uiStore.autoMode ? '自动中...' : '自动' }}</h3>
+      </Button>
       <Button type="nav" icon="text" @click="openSettings" v-show="uiStore.showSettings !== true">
         <h3 class="hidden md:inline">菜单</h3>
       </Button>
@@ -78,8 +59,7 @@ import { useSettingsStore } from '../../stores/modules/settings'
 import { GameBackground, GameRolesStage } from '../game/standard'
 import { GameDialog } from '../game/standard'
 import { Button } from '../base'
-import { clearChatHistory } from '@/api/services/history'
-import { saveCreate, saveContinue } from '@/api/services/save'
+import { saveCreate } from '@/api/services/save'
 
 import GameExtraUI from '../game/standard/GameExtraUI.vue'
 import WheelHistory from '../game/standard/extra/WheelHistory.vue'
@@ -108,17 +88,6 @@ const switchAutoMode = () => {
   }
 }
 
-const handleClearHistory = async () => {
-  if (!confirm('确定要清空当前对话记录吗？')) return
-  try {
-    await clearChatHistory('1')  // TODO: 多用户支持时使用真实 user_id
-    gameStore.clearDialogHistory()
-  } catch (error) {
-    console.error('清空记录失败:', error)
-    alert('清空记录失败')
-  }
-}
-
 const handleNewSession = async () => {
   try {
     const title =
@@ -134,16 +103,6 @@ const handleNewSession = async () => {
   } catch (error) {
     console.error('新建会话失败:', error)
     alert('新建会话失败')
-  }
-}
-
-const handleContinueSession = async () => {
-  try {
-    await saveContinue({ user_id: '1' })
-    await gameStore.initializeGame(userStore.client_id, '1')
-  } catch (error) {
-    console.error('继续会话失败:', error)
-    alert('继续会话失败，可能没有上次会话')
   }
 }
 
@@ -298,6 +257,15 @@ const manualTriggerContinue = () => {
   top: 15px;
   right: 20px;
   z-index: 1000;
+}
+
+#menu-panel .nav.active svg {
+  animation: code-loader-spin 1s linear infinite;
+}
+
+@keyframes code-loader-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 .scene-controls {
   position: fixed;

@@ -199,7 +199,7 @@ const onContentWheel = (e: WheelEvent) => {
 const playAudio = (audioFile: string) => {
   if (!audioFile || !audioRef.value) return
   audioRef.value.src = `${API_CONFIG.VOICE.BASE}/${audioFile}`
-  audioRef.value.play()
+  audioRef.value.play().catch(() => {})
 }
 
 let keydownBound = false
