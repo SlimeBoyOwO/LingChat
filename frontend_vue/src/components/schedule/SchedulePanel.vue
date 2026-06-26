@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col gap-3">
+  <div class="flex flex-col gap-3" data-wheel-history-ignore @wheel.stop>
     <Button
       type="nav"
       icon="schedule"
@@ -22,6 +22,8 @@
       <div
         v-if="enabled"
         class="bg-[#12121c]/75 backdrop-blur-[20px] border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)] rounded-3xl p-3 text-white box-border"
+        data-wheel-history-ignore
+        @wheel.stop
       >
         <ScheduleContent variant="popup" />
       </div>

@@ -15,6 +15,28 @@ export default class DialogueProcessor implements IEventProcessor {
     // 更新游戏状态显示对话
     gameStore.currentStatus = 'responding'
 
+    if (event.roleId == null) {
+      gameStore.currentLine = event.motionText
+        ? `${event.message} (${event.motionText})`
+        : event.message || ''
+      gameStore.appendGameMessage({
+        type: 'reply',
+        displayName: event.displayName || event.character || 'Code Agent',
+        content: event.message,
+        emotion: event.emotion,
+        audioFile: event.audioFile,
+        isFinal: event.isFinal,
+        motionText: event.motionText,
+        originalTag: event.originalTag,
+      })
+      uiStore.showCharacterLine = gameStore.currentLine
+      uiStore.showCharacterTitle = event.displayName || event.character || 'Code Agent'
+      uiStore.showCharacterSubtitle = event.displaySubtitle || ''
+      uiStore.showCharacterEmotion = event.originalTag || ''
+      uiStore.currentAvatarAudio = event.audioFile || 'None'
+      return
+    }
+
     // 针对剧本模式，获取角色
     const role = await gameStore.getOrCreateGameRole(event.roleId)
     if (!role) {

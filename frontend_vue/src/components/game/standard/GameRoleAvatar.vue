@@ -1,6 +1,10 @@
 <template>
   <!-- 触摸区域 -->
-  <TouchAreas v-if="gameStore.command === 'touch'" :body-parts="role.bodyPart" />
+  <TouchAreas
+    v-if="gameStore.command === 'touch'"
+    :body-parts="role.bodyPart"
+    :offset-x="codeModeOffset"
+  />
 
   <Transition name="character-fade">
     <div
@@ -31,6 +35,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, toRefs } from 'vue'
 import { useGameStore } from '@/stores/modules/game'
+import { useSettingsStore } from '@/stores/modules/settings'
 import { EMOTION_CONFIG, EMOTION_CONFIG_EMO } from '@/controllers/emotion/config'
 import type { GameRole } from '@/stores/modules/game/state'
 import TouchAreas from './TouchAreas.vue'
@@ -42,6 +47,7 @@ const props = defineProps<{
 }>()
 
 const gameStore = useGameStore()
+const settingsStore = useSettingsStore()
 const { role } = toRefs(props)
 
 const bubbleAudio = ref<HTMLAudioElement | null>(null)
@@ -64,12 +70,14 @@ const layoutPosition = computed(() => {
   return ((myIndex + 1) / (totalCount + 1)) * 100
 })
 
+const codeModeOffset = computed(() => (settingsStore.codeMode ? -90 : 0))
+
 const containerStyle = computed(() => {
   const autoLeft = layoutPosition.value
   const manualOffset = role.value.offsetX || 0
 
   return {
-    left: `calc(${autoLeft}% + ${manualOffset}px)`,
+    left: `calc(${autoLeft}% + ${manualOffset + codeModeOffset.value}px)`,
     top: `${role.value.offsetY}px`,
     transform: `translateX(-50%) scale(${role.value.scale})`,
     opacity: `${role.value.show ? 1 : 0}`,

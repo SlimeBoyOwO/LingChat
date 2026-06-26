@@ -10,7 +10,10 @@
   ],
   "compilerOptions": {
     "types": ["vite/client", "node"],
+    "module": "ESNext",
     "moduleResolution": "bundler",
-    "allowJs": true
+    "allowJs": true,
+    "incremental": true,
+    "tsBuildInfoFile": ".tsbuildinfo"
   }
 }

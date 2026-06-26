@@ -75,7 +75,7 @@ class GameRoleManager:
             role_id=role.id,
             resource_path=role.resource_folder,
             settings=role_settings,
-            display_name=role_settings.ai_name,
+            display_name=role.name,
         )
         self.loaded_roles[role_id] = new_role
 
@@ -113,7 +113,7 @@ class GameRoleManager:
             role = self.get_role(rid)
 
             # 同步名字 (复用逻辑，提取为独立动作)
-            # self._sync_display_name(role, source_lines)
+            self._sync_display_name(role, source_lines)
             slice_start_idx = 0
             system_addendum = ""
             short_term_prefix = ""
@@ -138,7 +138,7 @@ class GameRoleManager:
             )
             # 额外寻找本角色的第一个 SYSTEM 属性的台词，防止人设丢失
             # 如果sliced_lines里已经有 SYSTEM 属性的台词，则不需要额外添加
-            has_prompt = self._find_first_system_prompt(sliced_lines, rid) is not None
+            has_prompt = self._find_first_system_prompt(sliced_lines, rid) != None
             if not has_prompt:
                 system_prompt = self._find_first_system_prompt(source_lines, rid)
                 # 把 system_prompt 移动到 sliced_lines 的开头
@@ -282,6 +282,14 @@ class GameRoleManager:
                 )
         except Exception as e:
             logger.error(f"persist_memory_banks_to_db 失败: {e}", exc_info=True)
+
+    def _sync_display_name(self, role: GameRole, lines: List[GameLine]):
+        """辅助方法：从最近的台词中更新显示名称"""
+        # 倒序查找该角色说的最后一句话
+        for line in reversed(lines):
+            if line.sender_role_id == role.role_id and line.display_name:
+                role.display_name = line.display_name
+                break
 
     def _db_ensure_role_exists(self, script_key: str, script_role_key: str) -> int:
         """

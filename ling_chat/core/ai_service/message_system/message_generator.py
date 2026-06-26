@@ -68,7 +68,9 @@ class MessageGenerator:
                         sentence_segments
                     )
                     if regenerated_count > 0:
-                        logger.info(f"中文 TTS：成功重新合成 {regenerated_count} 条缺失语音")
+                        logger.info(
+                            f"中文 TTS：成功重新合成 {regenerated_count} 条缺失语音"
+                        )
             end_time = time.perf_counter()
             # 更新情绪片段列表
             emotion_segments.extend(sentence_segments)
@@ -185,9 +187,7 @@ class MessageGenerator:
             # 同时设置一个超时兜底，避免 publisher/consumer 出现意外死锁时
             # 主协程永远阻塞在 output_queue.get() 上 —— 那会让外层的
             # _generation_lock 永不释放，前端持续转圈无法恢复。
-            pipeline_idle_timeout = float(
-                os.environ.get("PIPELINE_IDLE_TIMEOUT", 90)
-            )
+            pipeline_idle_timeout = float(os.environ.get("PIPELINE_IDLE_TIMEOUT", 90))
             timed_out = False
             while True:
                 # 创建一个获取队列的任务
@@ -274,7 +274,9 @@ class MessageGenerator:
             accumulated_response = await producer_task
 
             try:
-                cleanup_timeout = max(1, int(os.environ.get("PIPELINE_CLEANUP_TIMEOUT", "10")))
+                cleanup_timeout = max(
+                    1, int(os.environ.get("PIPELINE_CLEANUP_TIMEOUT", "10"))
+                )
             except (ValueError, TypeError):
                 cleanup_timeout = 10
             try:

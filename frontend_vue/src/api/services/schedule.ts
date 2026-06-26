@@ -4,6 +4,8 @@ export interface ScheduleData {
   scheduleGroups?: Record<string, any>
   todoGroups?: Record<string, any>
   importantDays?: any[]
+  memoryNotes?: any[]
+  updatedPlan?: any | null
 }
 
 export const getSchedules = async (): Promise<ScheduleData> => {

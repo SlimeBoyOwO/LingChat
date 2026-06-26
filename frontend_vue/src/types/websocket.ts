@@ -46,6 +46,7 @@ export enum WebSocketMessageTypes {
 
   // 场景切换
   SCENE_CHANGE = 'scene_change',
+  CHARACTER_CHANGE = 'character_change',
 
   // AI 背景生成
   BACKGROUND_GENERATED = 'background_generated',

@@ -137,9 +137,13 @@ export const sendWebSocketMessage = (type: string, data: any) => {
   return false
 }
 
-export const sendWebSocketChatMessage = (type: string, content: string) => {
+export const sendWebSocketChatMessage = (
+  type: string,
+  content: string,
+  extra: Record<string, unknown> = {},
+) => {
   if (socket.value?.readyState === WebSocket.OPEN) {
-    socket.value.send(JSON.stringify({ type, content }))
+    socket.value.send(JSON.stringify({ type, content, ...extra }))
     return true
   }
   // 发送失败时显示错误

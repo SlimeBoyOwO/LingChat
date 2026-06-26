@@ -1,33 +1,18 @@
 <template>
-  <div
-    v-show="visible"
-    class="wheel-history-overlay"
-    @contextmenu.prevent="close"
-    @click="close"
-  >
-    <div
-      class="wheel-history-panel"
-      @click.stop
-    >
+  <div v-show="visible" class="wheel-history-overlay" @contextmenu.prevent="close" @click="close">
+    <div class="wheel-history-panel" @click.stop>
       <div class="wheel-history-header">
         <History :size="20" />
         <h4 class="wheel-history-title">历史对话</h4>
         <span class="wheel-history-hint">右键 / ESC / 框外点击 / 滚到底再下滑 关闭</span>
       </div>
 
-      <div
-        v-if="dialogHistory.length === 0"
-        class="empty-state"
-      >
+      <div v-if="dialogHistory.length === 0" class="empty-state">
         暂无历史记录，去和ta聊聊天叭(*^▽^*)
       </div>
 
       <div v-else class="wheel-history-body">
-        <div
-          class="wheel-history-content"
-          ref="contentRef"
-          @wheel="onContentWheel"
-        >
+        <div class="wheel-history-content" ref="contentRef" @wheel="onContentWheel">
           <template v-for="(item, i) in groupedHistory" :key="i">
             <div class="history-block" :class="{ 'is-narration': item.isNarration }">
               <div v-if="!item.isNarration" class="history-name">
@@ -59,20 +44,11 @@
             </div>
           </template>
         </div>
-        <div
-          v-if="totalPages > 1"
-          class="wheel-history-pagination"
-        >
-          <button
-            class="pagination-btn"
-            :disabled="currentPage === 1"
-            @click="currentPage--"
-          >
+        <div v-if="totalPages > 1" class="wheel-history-pagination">
+          <button class="pagination-btn" :disabled="currentPage === 1" @click="currentPage--">
             上一页
           </button>
-          <span class="pagination-info">
-            第 {{ currentPage }} 页 / 共 {{ totalPages }} 页
-          </span>
+          <span class="pagination-info"> 第 {{ currentPage }} 页 / 共 {{ totalPages }} 页 </span>
           <button
             class="pagination-btn"
             :disabled="currentPage >= totalPages"
@@ -91,12 +67,14 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
+import { useSettingsStore } from '@/stores/modules/settings'
 import { History, Volume2 } from 'lucide-vue-next'
 import type { GameMessage } from '@/stores/modules/game/state'
 import { API_CONFIG } from '@/controllers/core/config'
 
 const gameStore = useGameStore()
 const uiStore = useUIStore()
+const settingsStore = useSettingsStore()
 
 const visible = ref(false)
 const contentRef = ref<HTMLElement | null>(null)
@@ -106,9 +84,7 @@ const PAGE_SIZE = 100
 
 const dialogHistory = computed<GameMessage[]>(() => gameStore.dialogHistory || [])
 
-const totalPages = computed(() =>
-  Math.max(1, Math.ceil(dialogHistory.value.length / PAGE_SIZE))
-)
+const totalPages = computed(() => Math.max(1, Math.ceil(dialogHistory.value.length / PAGE_SIZE)))
 
 const currentPageHistory = computed(() => {
   const start = (currentPage.value - 1) * PAGE_SIZE
@@ -185,8 +161,9 @@ const groupedHistory = computed<HistoryBlock[]>(() => {
 
     const name = isNarration
       ? ''
-      : msg.displayName || (msg.type === 'message'
-          ? (gameStore.userName || gameStore.mainRole?.roleName || '你')
+      : msg.displayName ||
+        (msg.type === 'message'
+          ? gameStore.userName || gameStore.mainRole?.roleName || '你'
           : '谜之音')
 
     const segments = parseSegments(msg.content, isNarration)
@@ -225,16 +202,24 @@ const playAudio = (audioFile: string) => {
   audioRef.value.play()
 }
 
+let keydownBound = false
+
 const show = () => {
-  if (uiStore.showSettings) return
+  if (uiStore.showSettings || visible.value) return
   visible.value = true
   currentPage.value = totalPages.value
-  document.addEventListener('keydown', handleKeyDown)
+  if (!keydownBound) {
+    document.addEventListener('keydown', handleKeyDown)
+    keydownBound = true
+  }
 }
 
 const close = () => {
   visible.value = false
-  document.removeEventListener('keydown', handleKeyDown)
+  if (keydownBound) {
+    document.removeEventListener('keydown', handleKeyDown)
+    keydownBound = false
+  }
 }
 
 const handleKeyDown = (e: KeyboardEvent) => {
@@ -249,6 +234,8 @@ const WHEEL_THRESHOLD = 80
 const handleWheel = (e: WheelEvent) => {
   if (uiStore.showSettings) return
   if (visible.value) return
+  if (settingsStore.codeMode) return // Code 模式下禁用滚轮呼出历史记录
+  if (shouldIgnoreWheelTarget(e.target)) return
 
   if (e.deltaY < 0) {
     wheelAccumulator += Math.abs(e.deltaY)
@@ -261,6 +248,22 @@ const handleWheel = (e: WheelEvent) => {
   }
 }
 
+const shouldIgnoreWheelTarget = (target: EventTarget | null): boolean => {
+  if (!(target instanceof Element)) return false
+  return Boolean(
+    target.closest(
+      [
+        '[data-wheel-history-ignore]',
+        'button',
+        'input',
+        'textarea',
+        'select',
+        '[contenteditable="true"]',
+      ].join(','),
+    ),
+  )
+}
+
 defineExpose({ show, close, visible })
 
 onMounted(() => {
@@ -269,7 +272,10 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('wheel', handleWheel)
-  document.removeEventListener('keydown', handleKeyDown)
+  if (keydownBound) {
+    document.removeEventListener('keydown', handleKeyDown)
+    keydownBound = false
+  }
 })
 </script>
 

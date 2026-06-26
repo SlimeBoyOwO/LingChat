@@ -16,7 +16,7 @@ from ling_chat.core.logger import logger
 from ling_chat.core.messaging.broker import message_broker
 from ling_chat.core.schemas.response_models import ResponseFactory
 from ling_chat.game_database.models import GameLine, LineAttribute, LineBase
-from ling_chat.schemas.character_settings import CharacterSettings
+from ling_chat.schemas.character_settings import CharacterSettings, VoiceModel
 from ling_chat.utils.function import Function
 
 
@@ -109,6 +109,18 @@ class AIService:
             self.clothes = settings.clothes
             self.settings = settings
 
+            # 实时刷新当前角色的 TTS 配置（语言、音色等）
+            current_role = self.game_status.current_character
+            if current_role and current_role.voice_maker:
+                current_role.voice_maker.set_tts(
+                    tts_type=self.settings.tts_type or "sbv",
+                    tts_settings=self.settings.voice_models
+                    if self.settings.voice_models
+                    else VoiceModel(),
+                    name=self.ai_name or "Unknown",
+                    tts_language=self.settings.tts_language or "ja",
+                )
+
         else:
             logger.error("角色信息settings没有被正常导入，请检查问题！")
 
@@ -134,6 +146,7 @@ class AIService:
             if any(k in updates for k in llm_keys):
                 self.llm_model = LLMManager()
                 self.message_generator.llm_model = self.llm_model
+                self.message_generator.agent_runner.llm_model = self.llm_model
                 logger.info("运行时配置更新：LLMManager 已重建并替换。")
 
             if "COMSUMERS" in updates:
@@ -329,6 +342,8 @@ class AIService:
             async for message in self.message_broker.subscribe(input_queue_name):
                 try:
                     user_message = message.get("content", "")
+                    code_mode = str(message.get("mode") or "chat").lower() == "code"
+                    code_tts = code_mode and bool(message.get("code_tts", False))
                     if user_message:
                         # 用全局生成锁串行化所有流式生成，防止主动对话与用户消息并发交叉
                         async with self._generation_lock:
@@ -346,7 +361,10 @@ class AIService:
                                 async for (
                                     response
                                 ) in self.message_generator.process_message_stream(
-                                    user_message=user_message
+                                    user_message=user_message,
+                                    client_id=client_id,
+                                    code_mode=code_mode,
+                                    code_tts=code_tts,
                                 ):
                                     await message_broker.publish(
                                         client_id, response.model_dump()
@@ -464,12 +482,12 @@ class AIService:
         logger.info("正在关闭AI服务...")
 
         # 取消所有客户端任务
-        for _client_id, task in self.client_tasks.items():
+        for client_id, task in self.client_tasks.items():
             task.cancel()
             try:
                 await task
             except asyncio.CancelledError:
-                pass  # 忽略取消错误
+                pass
 
         # 取消全局消息处理任务
         self.global_task.cancel()

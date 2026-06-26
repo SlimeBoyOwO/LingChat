@@ -15,6 +15,23 @@
         <Text :speed="textSpeedSample">Ling Chat: 测试文本显示速度</Text>
       </MenuItem>
 
+      <MenuItem title="Code 模式" size="small">
+        <template #header>
+          <Code2 :size="20" />
+        </template>
+        <div class="flex flex-col gap-2 text-white/80 text-sm">
+          <Toggle :checked="settingsStore.codeMode" @change="codeModeChange">
+            开启后代码任务会优先连续调用工具
+          </Toggle>
+          <Toggle :checked="settingsStore.codeTts" @change="codeTtsChange">
+            Code 模式自动文字转语音
+          </Toggle>
+          <p class="text-white/45 text-xs leading-relaxed">
+            适合写代码、改文件、运行测试；自动朗读使用浏览器语音，可随时关闭。
+          </p>
+        </div>
+      </MenuItem>
+
       <MenuItem title="启用永久记忆" size="small">
         <div v-for="setting in envSettings" :key="setting.key" class="">
           <!-- 使用 SettingItem 组件渲染不同类型的输入控件 -->
@@ -44,11 +61,56 @@
         <p>√ 连接正常</p>
       </MenuItem>
 
-      <MenuItem title="当前使用的AI大模型（这里是假的嘻嘻）" size="small">
+      <MenuItem title="当前使用的AI大模型" size="small">
         <template #header>
           <Settings :size="20" />
         </template>
-        <p>DeepSeek V3</p>
+        <div v-if="llmModelLoading" class="text-white/50 text-sm">加载中...</div>
+        <div v-else-if="llmModelError" class="text-red-400 text-sm">{{ llmModelError }}</div>
+        <div v-else class="text-white text-sm">
+          <p><span class="text-white/50">Provider:</span> {{ llmModel.provider }}</p>
+          <p><span class="text-white/50">Model:</span> {{ llmModel.model }}</p>
+          <p v-if="llmModel.base_url" class="text-white/30 text-xs mt-1">{{ llmModel.base_url }}</p>
+        </div>
+      </MenuItem>
+
+      <MenuItem title="语音缓存" size="small">
+        <template #header>
+          <HardDrive :size="20" />
+        </template>
+        <div class="flex flex-col gap-3">
+          <div v-if="voiceCacheLoading" class="text-white/50 text-sm">检查中...</div>
+          <div v-else class="text-white text-sm">
+            <p>
+              <span class="text-white/50">当前缓存:</span>
+              {{ voiceCacheStats ? formatCacheSize(voiceCacheStats.total_size_mb) : '未检查' }}
+            </p>
+            <p v-if="voiceCacheStats" class="text-white/40 text-xs mt-1">
+              {{ voiceCacheStats.file_count }} 个文件 /
+              {{ voiceCacheStats.saved_voice_count }} 条语音记录
+            </p>
+          </div>
+          <div class="flex gap-3">
+            <Button
+              type="big"
+              class="flex items-center justify-center gap-2"
+              :disabled="voiceCacheLoading || voiceCacheClearing"
+              @click="loadVoiceCacheStats"
+            >
+              <RefreshCw :size="16" />
+              检查缓存
+            </Button>
+            <Button
+              type="big"
+              class="flex items-center justify-center gap-2"
+              :disabled="voiceCacheLoading || voiceCacheClearing"
+              @click="handleClearVoiceCache"
+            >
+              <Trash2 :size="16" />
+              {{ voiceCacheClearing ? '清理中...' : '清理语音缓存' }}
+            </Button>
+          </div>
+        </div>
       </MenuItem>
 
       <MenuItem title="语音推理引擎下载（SBV2）" size="small">
@@ -123,8 +185,18 @@ import {
   ArrowBigLeft,
   Rss,
   Download,
+  HardDrive,
+  RefreshCw,
+  Trash2,
+  Code2,
 } from 'lucide-vue-next'
-import { reactivateTTS } from '@/api/services/game-info'
+import {
+  clearVoiceCache,
+  getVoiceCacheStats,
+  reactivateTTS,
+  type VoiceCacheStats,
+} from '@/api/services/game-info'
+import http from '@/api/http'
 
 const router = useRouter()
 const uiStore = useUIStore()
@@ -132,6 +204,13 @@ const settingsStore = useSettingsStore()
 const userStore = useUserStore()
 const gameStore = useGameStore()
 const envSettings = ref<Record<string, ConfigItem>>({})
+
+const llmModel = ref({ provider: '', model: '', base_url: '' })
+const llmModelLoading = ref(true)
+const llmModelError = ref('')
+const voiceCacheStats = ref<VoiceCacheStats | null>(null)
+const voiceCacheLoading = ref(false)
+const voiceCacheClearing = ref(false)
 
 // 判断是否在自由对话模式（没有运行剧本）
 const isFreeDialogMode = computed(() => gameStore.runningScript === null)
@@ -192,6 +271,8 @@ const handleClearHistory = async () => {
 
 onMounted(() => {
   loadConfig()
+  loadLLMModel()
+  loadVoiceCacheStats()
 })
 
 const loadConfig = async () => {
@@ -211,6 +292,68 @@ const loadConfig = async () => {
   }
 }
 
+const loadLLMModel = async () => {
+  try {
+    llmModelLoading.value = true
+    llmModelError.value = ''
+    const res = await http.get('/v1/chat/info/llm_model', { silent: true })
+    if (res) {
+      llmModel.value = {
+        provider: res.provider || 'unknown',
+        model: res.model || 'unknown',
+        base_url: res.base_url || '',
+      }
+    } else {
+      llmModelError.value = '获取模型信息失败'
+    }
+  } catch {
+    llmModelError.value = '获取模型信息失败'
+  } finally {
+    llmModelLoading.value = false
+  }
+}
+
+const formatCacheSize = (sizeMb: number) => `${sizeMb.toFixed(2)} MB`
+
+const loadVoiceCacheStats = async () => {
+  try {
+    voiceCacheLoading.value = true
+    voiceCacheStats.value = await getVoiceCacheStats()
+  } catch {
+    voiceCacheStats.value = null
+  } finally {
+    voiceCacheLoading.value = false
+  }
+}
+
+const handleClearVoiceCache = async () => {
+  const confirmed = window.confirm('确认清理已生成的语音缓存吗？历史记录中的语音回放也会被移除。')
+  if (!confirmed) return
+
+  try {
+    voiceCacheClearing.value = true
+    const result = await clearVoiceCache()
+    voiceCacheStats.value = result.stats
+    uiStore.showNotification({
+      type: 'success',
+      title: '清理完成',
+      message: `已清理 ${result.deleted_size_mb.toFixed(2)} MB 语音缓存`,
+      duration: 3000,
+      skipTipsCheck: true,
+    })
+  } catch (error: any) {
+    uiStore.showNotification({
+      type: 'error',
+      title: '清理失败',
+      message: error.message || '清理语音缓存失败',
+      duration: 3000,
+      skipTipsCheck: true,
+    })
+  } finally {
+    voiceCacheClearing.value = false
+  }
+}
+
 // 使用 settings store 的文字速度
 const textSpeed = computed({
   get: () => settingsStore.textSpeed,
@@ -223,6 +366,14 @@ const textSpeedSample = ref<number>(settingsStore.textSpeed)
 const textSpeedChange = (data: number) => {
   settingsStore.update('text.speed', data)
   textSpeedSample.value = data
+}
+
+const codeModeChange = (data: boolean) => {
+  settingsStore.setCodeMode(data)
+}
+
+const codeTtsChange = (data: boolean) => {
+  settingsStore.setCodeTts(data)
 }
 
 const voiceSound = (data: boolean) => {

@@ -21,10 +21,18 @@ class MessageBroker:
         for client_id in clients:
             await self.publish(client_id, message)
 
-    async def enqueue_ai_message(self, client_id: str, message: str):
+    async def enqueue_ai_message(
+        self, client_id: str, message: str, mode: str = "chat", code_tts: bool = False
+    ):
         """专门用于将消息加入到AI处理队列"""
         await self.publish(
-            f"ai_input_{client_id}", {"type": "user_message", "content": message}
+            f"ai_input_{client_id}",
+            {
+                "type": "user_message",
+                "content": message,
+                "mode": mode,
+                "code_tts": code_tts,
+            },
         )
 
     async def enqueue_ai_script_message(self, client_id: str, message: str):

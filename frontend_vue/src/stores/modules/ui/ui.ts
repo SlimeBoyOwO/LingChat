@@ -6,10 +6,23 @@ import { useSettingsStore } from '../settings'
 export type NotificationType = 'error' | 'success' | 'info' | 'warning'
 export type ScheduleViewType =
   | 'schedule_groups'
+  | 'schedule_detail'
   | 'schedule_details'
   | 'todo_groups'
   | 'todo_detail'
   | 'calendar'
+  | 'proactive_settings'
+
+export interface ToolCallLog {
+  id?: string
+  tool: string
+  status: 'running' | 'success' | 'error' | string
+  timestamp: string
+  arguments?: Record<string, unknown>
+  ok?: boolean | null
+  summary?: string
+  preview?: string
+}
 
 // 通知状态接口
 interface NotificationState {
@@ -27,6 +40,7 @@ interface UIState {
   showCharacterEmotion: string
   showCharacterLine: string
   showPlayerHintLine: string
+  activeToolStatusText: string
   showCharacterThinkLine: string
   showSettings: boolean
   currentSettingsTab: string
@@ -44,7 +58,8 @@ interface UIState {
   autoMode: boolean
 
   // Schedule 相关状态
-  scheduleView: string
+  scheduleView: ScheduleViewType
+  toolCallLogs: ToolCallLog[]
 
   // Notification 相关状态
   notification: NotificationState
@@ -64,6 +79,87 @@ const DEBOUNCE_MS_NETWORK = 10000 // "未注明的错误" 10秒
 const DEBOUNCE_MS_DEFAULT = 3000 // 其他 3秒
 
 let hideTimer: number | null = null
+let toolStatusTimer: ReturnType<typeof setTimeout> | null = null
+
+const getToolTarget = (entry: ToolCallLog): string => {
+  const args = entry.arguments || {}
+  const raw = args.path || args.command || args.text || args.title || ''
+  return typeof raw === 'string' && raw ? `：${raw}` : ''
+}
+
+const getToolRunningText = (entry: ToolCallLog): string => {
+  const target = getToolTarget(entry)
+  switch (entry.tool) {
+    case 'sandbox_list_files':
+      return `正在查看沙盒文件${target}...`
+    case 'sandbox_read_file':
+      return `正在读取文件${target}...`
+    case 'sandbox_write_file':
+      return `正在写入/编辑文件${target}...`
+    case 'sandbox_delete_file':
+      return `正在删除文件${target}...`
+    case 'sandbox_execute_command':
+      return `正在执行命令${target}...`
+    case 'schedule_add_todo':
+      return `正在添加待办${target}...`
+    case 'update_plan':
+      return `正在更新计划${target}...`
+    case 'get_updated_plan':
+      return '正在读取计划...'
+    case 'memory_add_note':
+      return `正在写入手动记忆库${target}...`
+    case 'get_memory_notes':
+      return '正在读取手动记忆库...'
+    case 'get_schedules':
+      return '正在读取日程...'
+    case 'get_current_status':
+      return '正在读取当前状态...'
+    case 'get_current_scene':
+      return '正在查看当前场景...'
+    case 'get_memory':
+      return '正在读取角色自动记忆...'
+    case 'get_current_time':
+      return '正在读取时间...'
+    case 'list_scenes':
+      return '正在查看场景列表...'
+    case 'list_characters':
+      return '正在查看角色列表...'
+    case 'switch_scene':
+      return `正在切换场景${target}...`
+    case 'switch_character':
+      return `正在切换角色${target}...`
+    default:
+      return `正在调用工具：${entry.tool}...`
+  }
+}
+
+const getToolFinishedText = (entry: ToolCallLog): string => {
+  if (entry.status === 'error' || entry.ok === false) {
+    return `工具执行失败：${entry.tool}`
+  }
+  switch (entry.tool) {
+    case 'sandbox_write_file':
+      return `文件写入完成${getToolTarget(entry)}`
+    case 'sandbox_read_file':
+      return `文件读取完成${getToolTarget(entry)}`
+    case 'sandbox_execute_command':
+      return `命令执行完成${getToolTarget(entry)}`
+    case 'schedule_add_todo':
+      return '待办已添加'
+    case 'update_plan':
+      return '计划已更新'
+    case 'get_updated_plan':
+      return '计划读取完成'
+    case 'memory_add_note':
+      return '手动记忆已保存'
+    case 'get_memory_notes':
+      return '手动记忆读取完成'
+    case 'get_memory':
+      return '角色自动记忆读取完成'
+    default:
+      return `工具执行完成：${entry.tool}`
+  }
+}
 
 export const useUIStore = defineStore('ui', {
   state: (): UIState => ({
@@ -72,6 +168,7 @@ export const useUIStore = defineStore('ui', {
     showCharacterEmotion: '',
     showCharacterLine: '',
     showPlayerHintLine: '',
+    activeToolStatusText: '',
     showCharacterThinkLine: 'Ling Ling Thinking...',
     showSettings: false,
     currentSettingsTab: 'text',
@@ -90,6 +187,7 @@ export const useUIStore = defineStore('ui', {
 
     // Schedule 相关状态
     scheduleView: 'schedule_groups',
+    toolCallLogs: [],
 
     // Notification 初始状态
     notification: {
@@ -157,6 +255,65 @@ export const useUIStore = defineStore('ui', {
     },
     setSettingsTab(tab: string) {
       this.currentSettingsTab = tab
+    },
+
+    addToolCallLog(entry: ToolCallLog) {
+      this.showToolCallNotification(entry)
+
+      if (entry.id) {
+        const index = this.toolCallLogs.findIndex((item) => item.id === entry.id)
+        if (index !== -1) {
+          this.toolCallLogs[index] = { ...this.toolCallLogs[index], ...entry }
+          return
+        }
+      }
+
+      this.toolCallLogs.unshift(entry)
+      if (this.toolCallLogs.length > 50) {
+        this.toolCallLogs = this.toolCallLogs.slice(0, 50)
+      }
+    },
+
+    showToolCallNotification(entry: ToolCallLog) {
+      const isFailure = entry.status === 'error' || entry.ok === false
+      const isRunning = entry.status === 'running'
+
+      this.showNotification({
+        type: isFailure ? 'error' : isRunning ? 'info' : 'success',
+        title: isFailure ? '工具执行失败' : isRunning ? '正在执行工具' : '工具执行完成',
+        message: isRunning ? getToolRunningText(entry) : getToolFinishedText(entry),
+        duration: isRunning ? 1800 : 2600,
+        skipTipsCheck: true,
+      })
+    },
+
+    updateActiveToolStatus(entry: ToolCallLog) {
+      if (toolStatusTimer) {
+        clearTimeout(toolStatusTimer)
+        toolStatusTimer = null
+      }
+
+      if (entry.status === 'running') {
+        this.activeToolStatusText = getToolRunningText(entry)
+        return
+      }
+
+      if (entry.status === 'success' || entry.status === 'error') {
+        this.activeToolStatusText = getToolFinishedText(entry)
+        toolStatusTimer = setTimeout(() => {
+          this.activeToolStatusText = ''
+          toolStatusTimer = null
+        }, 1600)
+      }
+    },
+
+    clearToolCallLogs() {
+      this.toolCallLogs = []
+      this.activeToolStatusText = ''
+      if (toolStatusTimer) {
+        clearTimeout(toolStatusTimer)
+        toolStatusTimer = null
+      }
     },
 
     // ========== Notification Actions ==========

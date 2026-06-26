@@ -152,28 +152,32 @@ class ProactiveSystem:
                         LineBase(attribute=LineAttribute.USER, content=prompt)
                     )
 
-                    if self.config.last_active_client:
-                        await message_broker.publish(
-                            self.config.last_active_client,
-                            (ResponseFactory.create_thinking(True)).model_dump(),
-                        )
-                        async for (
-                            response
-                        ) in self.message_generator.process_message_stream():
-                            await message_broker.publish(
-                                self.config.last_active_client, response.model_dump()
-                            )
-                    else:
-                        await message_broker.publish_clients(
-                            self.config.clients,
-                            (ResponseFactory.create_thinking(True)).model_dump(),
-                        )
+                    # 获取要发布的目标客户端
+                    target_clients = (
+                        {self.config.last_active_client}
+                        if self.config.last_active_client
+                        else self.config.clients
+                    )
+
+                    # 发送 thinking=True 通知前端开始思考
+                    await message_broker.publish_clients(
+                        target_clients,
+                        (ResponseFactory.create_thinking(True)).model_dump(),
+                    )
+
+                    try:
                         async for (
                             response
                         ) in self.message_generator.process_message_stream():
                             await message_broker.publish_clients(
-                                self.config.clients, response.model_dump()
+                                target_clients, response.model_dump()
                             )
+                    finally:
+                        # 发送 thinking=False 通知前端思考结束，回到输入状态
+                        await message_broker.publish_clients(
+                            target_clients,
+                            (ResponseFactory.create_thinking(False)).model_dump(),
+                        )
 
                 self.interest_manager.on_ai_reply()
 

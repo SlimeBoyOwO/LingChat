@@ -54,10 +54,12 @@ interface BodyParts {
 
 interface Props {
   bodyParts?: BodyParts | Record<string, BodyPart> | object
+  offsetX?: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
   bodyParts: () => ({}),
+  offsetX: 0,
 })
 
 const gameStore = useGameStore()
@@ -135,7 +137,7 @@ watch(
 const getPolygonPoints = (part: BodyPart): string => {
   // bodyPart 需跟随人物移动，PC端横向分辨率变化不会使人物缩放
   const scale = windowHeight.value / part.windowHeight
-  const centerX = windowWidth.value / 2
+  const centerX = windowWidth.value / 2 + (props.offsetX || 0)
   const centerY = windowHeight.value / 2
   const originalCenterX = part.windowWidth / 2
   const originalCenterY = part.windowHeight / 2
@@ -192,7 +194,7 @@ const findClickedPart = (clientX: number, clientY: number): BodyPart | null => {
     if (!part || !part.X || part.X.length === 0) continue
 
     const scale = windowHeight.value / part.windowHeight
-    const centerX = windowWidth.value / 2
+    const centerX = windowWidth.value / 2 + (props.offsetX || 0)
     const centerY = windowHeight.value / 2
     const originalCenterX = part.windowWidth / 2
     const originalCenterY = part.windowHeight / 2

@@ -19,14 +19,32 @@
     <div id="menu-panel">
       <!-- Code 模式：显示会话管理按钮 -->
       <template v-if="settingsStore.codeMode">
-        <Button type="nav" icon="close" @click="handleClearHistory" v-show="uiStore.showSettings !== true" title="清空记录">
-          <h3>清空</h3>
+        <Button
+          type="nav"
+          icon="close"
+          @click="handleClearHistory"
+          v-show="uiStore.showSettings !== true"
+          title="清空记录"
+        >
+          <h3 class="hidden md:inline">清空</h3>
         </Button>
-        <Button type="nav" icon="plus" @click="handleNewSession" v-show="uiStore.showSettings !== true" title="新建会话">
-          <h3>新建</h3>
+        <Button
+          type="nav"
+          icon="plus"
+          @click="handleNewSession"
+          v-show="uiStore.showSettings !== true"
+          title="新建会话"
+        >
+          <h3 class="hidden md:inline">新建</h3>
         </Button>
-        <Button type="nav" icon="history" @click="handleContinueSession" v-show="uiStore.showSettings !== true" title="继续上次会话">
-          <h3>继续</h3>
+        <Button
+          type="nav"
+          icon="history"
+          @click="handleContinueSession"
+          v-show="uiStore.showSettings !== true"
+          title="继续上次会话"
+        >
+          <h3 class="hidden md:inline">继续</h3>
         </Button>
       </template>
       <!-- 普通模式：显示自动按钮 -->
@@ -38,11 +56,11 @@
           :class="[{ active: uiStore.autoMode }]"
           v-show="uiStore.showSettings !== true"
         >
-          <h3>自动</h3>
+          <h3 class="hidden md:inline">自动</h3>
         </Button>
       </template>
       <Button type="nav" icon="text" @click="openSettings" v-show="uiStore.showSettings !== true">
-        <h3>菜单</h3>
+        <h3 class="hidden md:inline">菜单</h3>
       </Button>
     </div>
     <GameExtraUI />
@@ -93,7 +111,7 @@ const switchAutoMode = () => {
 const handleClearHistory = async () => {
   if (!confirm('确定要清空当前对话记录吗？')) return
   try {
-    await clearChatHistory('1')
+    await clearChatHistory('1')  // TODO: 多用户支持时使用真实 user_id
     gameStore.clearDialogHistory()
   } catch (error) {
     console.error('清空记录失败:', error)
@@ -103,7 +121,14 @@ const handleClearHistory = async () => {
 
 const handleNewSession = async () => {
   try {
-    const title = 'Code 会话 ' + new Date().toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    const title =
+      'Code 会话 ' +
+      new Date().toLocaleString('zh-CN', {
+        month: 'numeric',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
     await saveCreate({ user_id: '1', title })
     await gameStore.initializeGame(userStore.client_id, '1')
   } catch (error) {

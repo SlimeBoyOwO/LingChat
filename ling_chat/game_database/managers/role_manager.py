@@ -157,6 +157,18 @@ class RoleManager:
             return list(session.exec(stmt).all())
 
     @staticmethod
+    def get_role_by_name(name: str) -> Optional[Role]:
+        with Session(engine) as session:
+            statement = select(Role).where(Role.name == name)
+            return session.exec(statement).first()
+
+    @staticmethod
+    def search_roles_by_name(keyword: str, limit: int = 10) -> List[Role]:
+        with Session(engine) as session:
+            statement = select(Role).where(Role.name.contains(keyword)).limit(limit)
+            return list(session.exec(statement).all())
+
+    @staticmethod
     def get_role_settings_by_id(role_id: int) -> Optional[CharacterSettings]:
         role = RoleManager.get_role_by_id(role_id)
         if role is None or not role.resource_folder:

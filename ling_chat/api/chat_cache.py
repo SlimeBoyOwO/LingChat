@@ -54,7 +54,12 @@ def _build_voice_cache_stats() -> dict[str, Any]:
     cache_dir = _resolve_voice_cache_dir()
     cache_files = _iter_voice_cache_files(cache_dir)
     file_names = {path.name for path in cache_files}
-    total_bytes = sum(path.stat().st_size for path in cache_files)
+    total_bytes = 0
+    for path in cache_files:
+        try:
+            total_bytes += path.stat().st_size
+        except (FileNotFoundError, OSError):
+            pass  # 文件在迭代期间被删除，跳过
 
     with Session(engine, expire_on_commit=False) as session:
         saved_lines = _get_saved_voice_lines(session)

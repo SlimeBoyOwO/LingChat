@@ -111,6 +111,10 @@ class WebSocketManager:
 
         ai_service.config.last_active_client = client_id  # 更新最后一次活跃的客户端ID
         user_message = message.get("content", "")
+        chat_mode = str(message.get("mode") or "chat").lower()
+        if chat_mode not in {"chat", "code"}:
+            chat_mode = "chat"
+        code_tts = chat_mode == "code" and bool(message.get("code_tts", False))
 
         # --- 成就触发检查 ---
         try:
@@ -159,7 +163,12 @@ class WebSocketManager:
                 )
             else:
                 asyncio.create_task(
-                    message_broker.enqueue_ai_message(client_id, user_message)
+                    message_broker.enqueue_ai_message(
+                        client_id,
+                        user_message,
+                        mode=chat_mode,
+                        code_tts=code_tts,
+                    )
                 )
 
     async def _send_messages(self, websocket: WebSocket, client_id: str):

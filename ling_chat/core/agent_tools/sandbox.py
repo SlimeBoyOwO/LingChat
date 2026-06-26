@@ -49,6 +49,8 @@ def _line_change_stats(before: str, after: str) -> dict[str, int]:
 
 # 命令白名单（只允许这些命令及其变体）
 # 格式: (命令前缀, 允许的最大参数数量)
+# 注意: rm 命令在白名单内（受 DANGEROUS_PATTERNS 拦截 rm -rf /），
+#      沙盒内 rm -rf ./xxx 是允许的——沙盒目录是隔离的工作区，AI 可清理临时文件
 COMMAND_ALLOWLIST = {
     "python": 50,
     "python3": 50,

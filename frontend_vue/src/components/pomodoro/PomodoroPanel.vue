@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col gap-3">
+  <div class="relative inline-block">
     <Button
       type="nav"
       :class="[
@@ -7,10 +7,10 @@
         enabled ? 'text-[#4facfe]' : 'text-white',
       ]"
       @click="toggleEnabled"
-      v-show="!uiStore.showSettings"
+      v-show="!uiStore.showSettings && !hideButton"
     >
       <span class="text-xl">🍅</span>
-      <h3 class="text-lg font-bold m-0">番茄钟(实验)</h3>
+      <h3 class="text-lg font-bold m-0 hidden md:inline">番茄钟(实验)</h3>
     </Button>
 
     <Transition
@@ -21,7 +21,7 @@
     >
       <div
         v-if="enabled"
-        class="w-65 bg-[#12121c]/75 backdrop-blur-[20px] border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)] rounded-3xl p-6 text-white flex flex-col items-center box-border"
+        class="absolute top-full left-0 mt-2 w-65 bg-[#12121c]/75 backdrop-blur-[20px] border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)] rounded-3xl p-6 text-white flex flex-col items-center box-border"
       >
         <div class="relative mb-6 outline-none">
           <div class="w-45 h-45 relative outline-none border-none">
@@ -224,6 +224,10 @@ import Button from '../base/widget/Button.vue'
 import { useGameStore } from '../../stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { scriptHandler } from '../../api/websocket/handlers/script-handler'
+
+defineProps<{
+  hideButton?: boolean
+}>()
 
 const gameStore = useGameStore()
 const uiStore = useUIStore()

@@ -67,9 +67,17 @@ export const actions = {
 
       if (gameInfo.background && gameInfo.background !== '' && gameInfo.background !== 'default')
         uiStore.setCurrentBackground(gameInfo.background)
-      if (gameInfo.background_effect && gameInfo.background_effect !== '' && gameInfo.background_effect !== 'none')
+      if (
+        gameInfo.background_effect &&
+        gameInfo.background_effect !== '' &&
+        gameInfo.background_effect !== 'none'
+      )
         uiStore.setBackgroundEffect(gameInfo.background_effect)
-      if (gameInfo.background_music && gameInfo.background_music !== '' && gameInfo.background_music !== 'none')
+      if (
+        gameInfo.background_music &&
+        gameInfo.background_music !== '' &&
+        gameInfo.background_music !== 'none'
+      )
         uiStore.currentBackgroundMusic = gameInfo.background_music
 
       await adventureStore.fetchCharacterAdventures(characterInfo.character_folder)

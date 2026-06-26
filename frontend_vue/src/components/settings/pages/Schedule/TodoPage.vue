@@ -1,5 +1,7 @@
 <template>
   <div v-if="uiStore.scheduleView === 'todo_groups'" class="space-y-8">
+    <UpdatedPlanPage />
+
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div
         v-for="(group, id) in todoGroups"
@@ -197,7 +199,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, watch, onMounted } from 'vue'
+import { ref, computed, reactive, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import {
   Trash2,
@@ -211,6 +213,7 @@ import {
   Check,
 } from 'lucide-vue-next'
 import { getSchedules, saveSchedules } from '@/api/services/schedule'
+import UpdatedPlanPage from '@/components/settings/pages/Schedule/UpdatedPlanPage.vue'
 
 import BaseModal from '@/components/ui/BaseModal.vue'
 
@@ -263,8 +266,17 @@ watch(
   { deep: true },
 )
 
+const handleScheduleUpdated = () => {
+  loadData()
+}
+
 onMounted(() => {
   loadData()
+  window.addEventListener('schedule-updated', handleScheduleUpdated)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('schedule-updated', handleScheduleUpdated)
 })
 
 const activeTodoGroup = computed(() => {

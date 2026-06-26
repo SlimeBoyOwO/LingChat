@@ -45,7 +45,7 @@ export const getEnvConfigByKey = async (key: string): Promise<ConfigItem> => {
 
 export const getEnvConfigSettings = async (): Promise<StructuredConfig> => {
   try {
-    const data = await http.get(`/v1/config/settings`)
+    const data = await http.get(`/v1/chat/config/settings`)
     return data
   } catch (error) {
     console.error('Error fetching config env settings:', error)
@@ -57,7 +57,7 @@ export const saveEnvConfigSettings = async (
   values: Record<string, string>,
 ): Promise<{ status: string; message: string }> => {
   try {
-    const data = await http.patch(`/v1/config/settings`, values)
+    const data = await http.patch(`/v1/chat/config/settings`, values)
     return data
   } catch (error) {
     console.error('Error modifying config env settings:', error)

@@ -34,3 +34,4 @@ coverage
 
 # Vitest
 __screenshots__/
+.tsbuildinfo

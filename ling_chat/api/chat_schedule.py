@@ -1,3 +1,4 @@
+import asyncio
 import json
 import traceback
 from pathlib import Path
@@ -7,6 +8,8 @@ from fastapi import APIRouter
 from ling_chat.core.service_manager import service_manager
 from ling_chat.schemas.schedule_settings import ScheduleDataPayload
 from ling_chat.utils.runtime_path import user_data_path
+
+_schedule_lock = asyncio.Lock()
 
 # --- 工具函数 ---
 
@@ -47,12 +50,13 @@ async def get_schedules():
     """
     获取所有日程、待办和日历数据
     """
-    try:
-        data = _load_data()
-        return {"code": 200, "msg": "success", "data": data}
-    except Exception as e:
-        traceback.print_exc()
-        return {"code": 500, "msg": str(e), "data": None}
+    async with _schedule_lock:
+        try:
+            data = _load_data()
+            return {"code": 200, "msg": "success", "data": data}
+        except Exception as e:
+            traceback.print_exc()
+            return {"code": 500, "msg": str(e), "data": None}
 
 
 @router.post("/save_schedules")
@@ -63,37 +67,48 @@ async def save_schedules(
     保存数据。支持局部更新。
     前端只传 scheduleGroups 时，不会覆盖 todoGroups。
     """
-    try:
-        # 1. 读取现有数据
-        current_data = _load_data()
+    async with _schedule_lock:
+        try:
+            # 1. 读取现有数据
+            current_data = _load_data()
 
-        # 2. 更新数据 (只更新 payload 中不为 None 的字段)
-        if payload.scheduleGroups is not None:
-            current_data["scheduleGroups"] = payload.scheduleGroups
+            # 2. 更新数据 (只更新 payload 中不为 None 的字段)
+            if payload.scheduleGroups is not None:
+                current_data["scheduleGroups"] = payload.scheduleGroups
 
-        if payload.todoGroups is not None:
-            current_data["todoGroups"] = payload.todoGroups
+            if payload.todoGroups is not None:
+                current_data["todoGroups"] = payload.todoGroups
 
-        if payload.importantDays is not None:
-            # Pydantic model 转 dict
-            current_data["importantDays"] = [
-                day.model_dump() for day in payload.importantDays
-            ]
+            if payload.importantDays is not None:
+                # Pydantic model 转 dict
+                current_data["importantDays"] = [
+                    day.model_dump() for day in payload.importantDays
+                ]
 
-        # 3. 写入文件
-        _save_data(current_data)
+            if payload.memoryNotes is not None:
+                # Pydantic model 转 dict
+                current_data["memoryNotes"] = [
+                    note.model_dump() for note in payload.memoryNotes
+                ]
 
-        # 4. reload schedule
-        ai_service = service_manager.ai_service
-        if ai_service:
-            ai_service.proactive_system.reload_schedule()
-            return {"code": 200, "msg": "saved successfully"}
-        else:
-            return {"code": 500, "msg": "ai_service not found"}
+            if payload.updatedPlan is not None:
+                # Pydantic model 转 dict
+                current_data["updatedPlan"] = payload.updatedPlan.model_dump()
 
-    except Exception as e:
-        traceback.print_exc()
-        return {"code": 500, "msg": str(e)}
+            # 3. 写入文件
+            _save_data(current_data)
+
+            # 4. reload schedule
+            ai_service = service_manager.ai_service
+            if ai_service:
+                ai_service.proactive_system.reload_schedule()
+                return {"code": 200, "msg": "saved successfully"}
+            else:
+                return {"code": 500, "msg": "ai_service not found"}
+
+        except Exception as e:
+            traceback.print_exc()
+            return {"code": 500, "msg": str(e)}
 
 
 @router.post("/reload_proactive")

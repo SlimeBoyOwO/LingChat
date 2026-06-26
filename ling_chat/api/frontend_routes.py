@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 from fastapi import APIRouter
+from fastapi import HTTPException
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -9,7 +10,6 @@ from ling_chat.utils.runtime_path import static_path, temp_path
 
 frontend_path = static_path / "frontend"
 frontend_audio_path = frontend_path / "audio"
-
 
 router = APIRouter()
 
@@ -91,3 +91,11 @@ async def index():
 @router.get("/about")
 async def about():
     return get_file_response(str(frontend_path / "pages/about.html"))
+
+
+@router.get("/@/assets/images/default_bg.webp")
+async def default_background_alias():
+    candidates = list(frontend_path.glob("assets/background2-*.webp"))
+    if not candidates:
+        raise HTTPException(status_code=404)
+    return get_file_response(str(candidates[0]))

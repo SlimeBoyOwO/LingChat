@@ -1,5 +1,7 @@
 <template>
+  <CodeChatPanel v-show="settingsStore.codeMode" />
   <div
+    v-show="!settingsStore.codeMode"
     class="relative flex justify-center w-full z-2 p-3.75 backdrop-blur-[1px] transition-all duration-2000 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] bg-linear-to-t from-[rgba(0,14,39,0.7)] to-[rgba(0,14,39,0.6)] before:content-[''] before:absolute before:-top-10 before:left-0 before:right-0 before:h-10 before:bg-linear-to-b before:from-transparent before:via-[rgba(0,14,39,0.3)] before:to-[rgba(0,14,39,0.6)] before:pointer-events-none [scrollbar-width:thin] [scrollbar-color:var(--accent-color)_transparent]"
     :class="{
       'opacity-0 z-[-1]! overflow-hidden duration-500! ease-linear before:opacity-0 before:duration-1000!':
@@ -17,6 +19,14 @@
         <div class="text-[20px] font-bold text-[#ff77dd] m-auto">
           <div id="character-emotion">{{ uiStore.showCharacterEmotion }}</div>
         </div>
+        <button
+          v-if="settingsStore.codeMode"
+          class="mr-2 rounded-md border border-cyan-300/40 bg-cyan-500/20 px-2 py-1 text-xs font-bold text-cyan-100 tracking-wide cursor-pointer hover:bg-cyan-500/30 transition-colors"
+          title="Code 模式已开启，点击进行设置"
+          @click="openTextSettings"
+        >
+          CODE
+        </button>
 
         <!-- 操作按钮组 -->
         <Button type="nav" icon="background" title="场景设置" @click="openSceneSettings"></Button>
@@ -71,18 +81,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
+import { ref, watch, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { Button } from '../../base'
 import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
+import { useSettingsStore } from '../../../stores/modules/settings'
 import { useTypeWriter } from '../../../composables/ui/useTypeWriter'
 import { eventQueue } from '../../../core/events/event-queue'
 import { scriptHandler } from '../../../api/websocket/handlers/script-handler'
+import CodeChatPanel from './CodeChatPanel.vue'
 
 const inputMessage = ref('')
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const gameStore = useGameStore()
 const uiStore = useUIStore()
+const settingsStore = useSettingsStore()
 const isHidden = ref(false)
 
 // 语音识别相关状态
@@ -120,6 +133,11 @@ const emit = defineEmits(['player-continued', 'dialog-proceed'])
 const openHistory = () => {
   uiStore.toggleSettings(true)
   uiStore.setSettingsTab('history')
+}
+
+const openTextSettings = () => {
+  uiStore.toggleSettings(true)
+  uiStore.setSettingsTab('text')
 }
 
 const handleRightClick = (e: MouseEvent) => {
@@ -160,7 +178,9 @@ const placeholderText = computed(() => {
 
   switch (gameStore.currentStatus) {
     case 'input':
-      return uiStore.showPlayerHintLine || '在这里输入消息...'
+      return settingsStore.codeMode
+        ? 'Code 模式：输入代码任务，AI 会优先连续调用工具...'
+        : uiStore.showPlayerHintLine || '在这里输入消息...'
     case 'thinking':
       const currentInteractRole = gameStore.currentInteractRole
       if (currentInteractRole) {
@@ -301,16 +321,63 @@ onMounted(() => {
   window.addEventListener('resize', updateContainerWidth)
 })
 
+// 从 Code 模式切换回 Chat 模式时，恢复文字并把焦点交给 Chat 输入框
+watch(
+  () => settingsStore.codeMode,
+  async (isCodeMode) => {
+    if (!isCodeMode) {
+      await nextTick()
+      if (uiStore.showCharacterLine && uiStore.showCharacterLine !== '') {
+        currentDisplayedText.value = uiStore.showCharacterLine
+        if (textareaRef.value) {
+          textareaRef.value.value = uiStore.showCharacterLine
+        }
+      }
+      textareaRef.value?.focus()
+    }
+  },
+)
+
 onUnmounted(() => {
   document.removeEventListener('contextmenu', handleDialogShow)
   window.removeEventListener('resize', updateContainerWidth)
 })
 
 function sendOrContinue() {
-  if (gameStore.currentStatus === 'input') {
+  console.log(
+    '[sendOrContinue] currentStatus:',
+    gameStore.currentStatus,
+    'hasText:',
+    !!inputMessage.value.trim(),
+    'hasDialogue:',
+    !!uiStore.showCharacterLine,
+  )
+
+  // 情况1：用户在输入状态 + 输入框有文字 → 发送
+  if (gameStore.currentStatus === 'input' && inputMessage.value.trim()) {
     send()
-  } else if (gameStore.currentStatus === 'responding') {
+    return
+  }
+
+  // 情况2：有任何对话气泡显示 → 跳过/确认（最常见的情况）
+  // 不管 currentStatus 是 responding/presenting/thinking 还是 input，
+  // 只要气泡还在显示，回车就应该把气泡收掉
+  if (uiStore.showCharacterLine && uiStore.showCharacterLine !== '') {
+    stopTyping()
+    currentDisplayedText.value = uiStore.showCharacterLine
+    if (textareaRef.value) {
+      textareaRef.value.value = uiStore.showCharacterLine
+    }
     continueDialog(true)
+    return
+  }
+
+  // 情况3：状态异常（如卡在 thinking/presenting）但没有气泡显示 → 强制重置
+  if (gameStore.currentStatus !== 'input') {
+    console.warn('[sendOrContinue] 状态异常，强制重置:', gameStore.currentStatus)
+    gameStore.currentStatus = 'input'
+    gameStore.currentLine = ''
+    eventQueue.continue()
   }
 }
 
@@ -344,6 +411,14 @@ function continueDialog(isPlayerTrigger: boolean): boolean {
   if (!needWait) {
     if (isPlayerTrigger) emit('player-continued')
     emit('dialog-proceed')
+  }
+
+  if (!eventQueue.getState().isWaitingForUser && uiStore.showCharacterLine && uiStore.showCharacterLine !== '') {
+    uiStore.showCharacterLine = ''
+    currentDisplayedText.value = ''
+    inputMessage.value = ''
+    gameStore.currentStatus = 'input'
+    gameStore.currentLine = ''
   }
 
   return needWait

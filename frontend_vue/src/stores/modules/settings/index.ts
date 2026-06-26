@@ -11,6 +11,8 @@ export const DEFAULT_SETTINGS = {
   text: {
     speed: 50, // 打字速度 (0-100)
     animation: true, // 页面切换动画
+    codeMode: false, // Code 模式：更适合连续代码任务
+    codeTts: false, // Code 模式回复自动朗读
   },
   // 音频设置
   audio: {
@@ -41,6 +43,8 @@ export const DEFAULT_SETTINGS = {
 export interface TextSettings {
   speed: number
   animation: boolean
+  codeMode: boolean
+  codeTts: boolean
 }
 export interface AudioSettings {
   characterVolume: number
@@ -96,6 +100,9 @@ export const useSettingsStore = defineStore('settings', {
     textSpeed: (state) => state.text.speed,
     // 对话音效开关
     chatEffectSound: (state) => state.audio.chatEffectSound,
+    // Code 模式
+    codeMode: (state) => state.text.codeMode,
+    codeTts: (state) => state.text.codeTts,
     // 背景效果
     currentBackground: (state) => state.display.currentBackground,
     backgroundEffect: (state) => state.display.backgroundEffect,
@@ -211,6 +218,14 @@ export const useSettingsStore = defineStore('settings', {
     // 设置文字速度
     setTextSpeed(speed: number) {
       this.text.speed = speed
+    },
+
+    setCodeMode(enabled: boolean) {
+      this.text.codeMode = enabled
+    },
+
+    setCodeTts(enabled: boolean) {
+      this.text.codeTts = enabled
     },
 
     setCurrentBackground(background: string) {

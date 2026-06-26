@@ -37,10 +37,32 @@ class ImportantDay(BaseModel):
     cycle: Optional[str] = ""
 
 
+class MemoryNote(BaseModel):
+    id: str
+    content: str
+    tags: Optional[List[str]] = None
+    source: Optional[str] = ""
+    createdAt: Optional[str] = ""
+
+
 class UserScheduleSettings(BaseModel):
     scheduleGroups: Optional[Dict[str, ScheduleGroup]] = None
     todoGroups: Optional[Dict[str, TodoGroup]] = None
     importantDays: Optional[List[ImportantDay]] = None
+    memoryNotes: Optional[List[MemoryNote]] = None
+
+
+class UpdatedPlanItem(BaseModel):
+    step: str
+    status: str = "pending"  # pending | in_progress | completed | cancelled
+    note: Optional[str] = None
+
+
+class UpdatedPlan(BaseModel):
+    title: Optional[str] = None
+    items: Optional[List[UpdatedPlanItem]] = None
+    source: Optional[str] = None
+    updatedAt: Optional[str] = None
 
 
 class ScheduleDataPayload(BaseModel):
@@ -49,3 +71,5 @@ class ScheduleDataPayload(BaseModel):
     )
     todoGroups: Optional[Dict[str, Any]] = None
     importantDays: Optional[List[ImportantDay]] = None
+    memoryNotes: Optional[List[MemoryNote]] = None
+    updatedPlan: Optional[UpdatedPlan] = None

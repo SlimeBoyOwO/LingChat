@@ -23,7 +23,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive } from 'vue'
+import { ref, watch, reactive } from 'vue'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { getEnvConfigByKey, saveEnvConfigSettings } from '@/api/services/config'
 import { reloadProactiveSystem } from '@/api/services/schedule'
@@ -31,6 +31,7 @@ import type { ConfigItem } from '@/api/services/config'
 import SettingItem from '@/components/base/items/SettingItem.vue'
 const uiStore = useUIStore()
 const settings = ref<Record<string, ConfigItem>>({})
+const configLoaded = ref(false)
 const saveStatus = reactive({
   message: '',
   color: 'var(--success-color)',
@@ -50,6 +51,7 @@ const saveSettings = async () => {
     saveStatus.color = 'var(--success-color)'
     reloadProactiveSystem()
 
+    configLoaded.value = false
     await loadConfig()
   } catch (error: any) {
     saveStatus.message = `错误: ${error.message}`
@@ -62,6 +64,7 @@ const saveSettings = async () => {
 }
 
 const loadConfig = async () => {
+  if (configLoaded.value) return
   const configKeys = [
     'ENABLE_PROACTIVE_SYSTEM',
     'MAX_PROACTIVE_TIMES',
@@ -81,9 +84,16 @@ const loadConfig = async () => {
   for (const key of configKeys) {
     settings.value[key] = await getEnvConfigByKey(key)
   }
+  configLoaded.value = true
 }
 
-onMounted(async () => {
-  loadConfig()
-})
+watch(
+  () => uiStore.scheduleView,
+  async (view) => {
+    if (view === 'proactive_settings') {
+      await loadConfig()
+    }
+  },
+  { immediate: true },
+)
 </script>

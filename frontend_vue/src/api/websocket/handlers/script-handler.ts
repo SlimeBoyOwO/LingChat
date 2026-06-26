@@ -4,6 +4,7 @@ import { eventQueue } from '../../../core/events/event-queue'
 import { useUserStore } from '../../../stores/modules/user/user'
 import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
+import { useSettingsStore } from '../../../stores/modules/settings'
 import type * as ScriptTypes from '../../../types/script'
 
 export class ScriptHandler {
@@ -108,6 +109,25 @@ export class ScriptHandler {
       } as ScriptTypes.ScriptStatusResetEvent)
     })
 
+    registerHandler('tool_call', (data: any) => {
+      console.log('收到工具调用事件:', data)
+      useUIStore().addToolCallLog({
+        id: data.id,
+        tool: data.tool || 'unknown_tool',
+        status: data.status || 'unknown',
+        timestamp: data.timestamp || new Date().toISOString(),
+        arguments: data.arguments || {},
+        ok: data.ok,
+        summary: data.summary || '',
+        preview: data.preview || '',
+      })
+    })
+
+    registerHandler('schedule_updated', (data: any) => {
+      console.log('收到日程更新事件:', data)
+      window.dispatchEvent(new CustomEvent('schedule-updated', { detail: data }))
+    })
+
     // 场景切换事件
     registerHandler(WebSocketMessageTypes.SCENE_CHANGE, (data: any) => {
       console.log('收到场景切换事件:', data)
@@ -121,6 +141,17 @@ export class ScriptHandler {
           const uiStore = useUIStore()
           uiStore.setCurrentBackground(data.scene.imageUrl)
         }
+      }
+    })
+
+    // 角色切换事件
+    registerHandler(WebSocketMessageTypes.CHARACTER_CHANGE, async (data: any) => {
+      console.log('收到角色切换事件:', data)
+      const gameStore = useGameStore()
+      const userStore = useUserStore()
+
+      if (data.character) {
+        await gameStore.initializeGame(userStore.client_id, String(userStore.user_id || '1'))
       }
     })
 
@@ -159,7 +190,11 @@ export class ScriptHandler {
       useGameStore().enterStoryMode(scriptName)
     }
 
-    sendWebSocketChatMessage(WebSocketMessageTypes.MESSAGE, message)
+    const settingsStore = useSettingsStore()
+    sendWebSocketChatMessage(WebSocketMessageTypes.MESSAGE, message, {
+      mode: settingsStore.codeMode ? 'code' : 'chat',
+      code_tts: settingsStore.codeMode && settingsStore.codeTts,
+    })
   }
 }
 
