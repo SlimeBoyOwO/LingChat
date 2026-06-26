@@ -1,6 +1,6 @@
 {
   "name": "LingChat-frontend",
-  "version": "0.4.1",
+  "version": "0.4.6",
   "private": false,
   "type": "module",
   "engines": {
