@@ -89,6 +89,7 @@ pub async fn confirm_screenshot(app: AppHandle, base64_cropped: String) -> Resul
 /// 覆盖窗口调用：用户取消截图。
 #[tauri::command]
 pub async fn cancel_screenshot(app: AppHandle) -> Result<(), String> {
+    let _ = app.emit("screenshot:cancelled", ());
     cleanup(&app).await;
     tracing::info!("[Screenshot] Cancelled by user.");
     Ok(())

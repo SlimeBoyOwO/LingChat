@@ -331,11 +331,11 @@
 
             <!-- Base URL -->
             <div class="flex flex-col gap-1">
-              <label class="text-xs font-medium text-white/60">API 地址（留空使用默认）</label>
+              <label class="text-xs font-medium text-white/60">API 地址</label>
               <input
                 v-model="editing.base_url"
                 type="text"
-                placeholder="留空使用默认地址"
+                placeholder="https://api.deepseek.com"
                 class="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors placeholder:text-white/20"
               />
             </div>
