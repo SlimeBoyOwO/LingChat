@@ -43,6 +43,8 @@ export enum WebSocketMessageTypes {
   SCRIPT_BACKGROUND_EFFECT = 'background_effect',
   SCRIPT_MUSIC = 'music',
   SCRIPT_SOUND = 'sound',
+  // 环境音事件（多轨并行，与BGM共存）
+  SCRIPT_AMBIENT = 'ambient',
 
   // 场景切换
   SCENE_CHANGE = 'scene_change',

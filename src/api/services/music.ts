@@ -22,11 +22,9 @@ export const musicUpload = async (fileName: string, fileData: Uint8Array): Promi
 
 export const musicDelete = async (url: string): Promise<void> => {
   try {
-    await http.delete('/v1/chat/back-music/delete', {
-      params: { url: url },
-    })
+    await invoke('delete_music', { url })
   } catch (error: any) {
-    throw new Error(error.response?.data?.detail || 'Music delete failed')
+    throw new Error(typeof error === 'string' ? error : error.message || 'Music delete failed')
   }
 }
 

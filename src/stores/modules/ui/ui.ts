@@ -44,6 +44,17 @@ interface UIState {
   currentAvatarAudio: string
   autoMode: boolean
 
+  // 环境音轨道列表（多轨并行，最多8轨）
+  ambientTracks: Array<{
+    id: string         // 唯一标识（基于时间戳+随机数）
+    src: string        // 音频文件URL
+    name?: string      // 显示名称（可选，回退到从路径推断）
+    volume: number     // 单轨音量 0-100
+    loop: boolean      // 是否循环
+    paused?: boolean   // 是否暂停
+    fade?: boolean     // 是否启用淡入淡出
+  }>
+
   // 视口响应式追踪（全局唯一 resize 监听，组件直接读值）
   viewportWidth: number
   viewportHeight: number
@@ -94,6 +105,9 @@ export const useUIStore = defineStore('ui', {
     currentAvatarAudio: 'None',
     autoMode: false,
 
+    // 环境音轨道列表初始值
+    ambientTracks: [],
+
     // 视口响应式追踪
     viewportWidth: window.innerWidth,
     viewportHeight: window.innerHeight,
@@ -142,6 +156,10 @@ export const useUIStore = defineStore('ui', {
     },
     achievementVolume(): number {
       return useSettingsStore().achievementVolume
+    },
+    // 从 settings store 获取全局环境音音量
+    ambientVolume(): number {
+      return useSettingsStore().ambientVolume
     },
     // 角色文件夹（从 settings store 获取）
     currentCharacterFolder(): string {
@@ -433,6 +451,70 @@ export const useUIStore = defineStore('ui', {
       // 触发一个内部状态变化，让SettingsSound组件能够监听到
       // 使用时间戳确保每次都能触发watch
       this._musicEndTime = Date.now()
+    },
+
+    // ========== 环境音轨道管理 ==========
+
+    /**
+     * 添加环境音轨道
+     * 如果已存在相同 src 的轨道则替换，超出上限时移除最早的
+     */
+    addAmbientTrack(track: { src: string; volume: number; loop: boolean; name?: string; paused?: boolean; fade?: boolean }) {
+      const MAX_AMBIENT_TRACKS = 8
+      // 提取文件名用于去重（剧本 Assets 和手动导入可能路径不同但文件相同）
+      const getFileName = (src: string) => {
+        const parts = src.replace(/\\/g, '/').split('/')
+        return parts.pop() || src
+      }
+      const newFileName = getFileName(track.src)
+      // 按完整路径或文件名去重，剧本指令优先覆盖手动导入
+      this.ambientTracks = this.ambientTracks.filter(t =>
+        t.src !== track.src && getFileName(t.src) !== newFileName
+      )
+      // 超出上限时移除最早的
+      if (this.ambientTracks.length >= MAX_AMBIENT_TRACKS) {
+        this.ambientTracks.shift()
+      }
+      const id = `ambient_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      this.ambientTracks.push({ id, ...track, paused: track.paused ?? false, fade: track.fade ?? true })
+    },
+
+    /**
+     * 更新指定环境音轨道的音量
+     */
+    updateAmbientTrackVolume(id: string, volume: number) {
+      const track = this.ambientTracks.find(t => t.id === id)
+      if (track) track.volume = volume
+    },
+
+    /**
+     * 切换环境音轨道暂停状态
+     */
+    toggleAmbientTrackPause(id: string) {
+      const track = this.ambientTracks.find(t => t.id === id)
+      if (track) track.paused = !track.paused
+    },
+
+    /**
+     * 移除指定环境音轨道（通过ID）
+     */
+    removeAmbientTrack(id: string) {
+      this.ambientTracks = this.ambientTracks.filter(t => t.id !== id)
+    },
+
+    /**
+     * 清除环境音轨道
+     * 传入 targetSrc 时按文件名匹配清除指定轨道，否则清除全部
+     */
+    clearAmbientTracks(targetSrc?: string) {
+      if (targetSrc) {
+        // 按文件名匹配清除指定轨道
+        this.ambientTracks = this.ambientTracks.filter(
+          t => !t.src.endsWith(targetSrc) && !t.src.includes(targetSrc)
+        )
+      } else {
+        this.ambientTracks = []
+      }
     },
   },
 })

@@ -16,8 +16,8 @@
     <!-- 5. 自由对话动画与提示区域 -->
     <ScriptFreeDialogueDisplay />
 
-    <!-- 6. 右下角音乐播放器 -->
-    <MusicPlayer />
+    <!-- 6. 声效控制面板 -->
+    <SoundEffectPanel />
   </div>
 </template>
 
@@ -27,5 +27,5 @@ import GameChoices from './extra/GameChoices.vue'
 import ScriptCompleteDisplay from './extra/ScriptCompleteDisplay.vue'
 import ScriptPicDisplay from './extra/ScriptPicDisplay.vue'
 import ScriptFreeDialogueDisplay from './extra/ScriptFreeDialogueDisplay.vue'
-import MusicPlayer from './extra/MusicPlayer.vue'
+import SoundEffectPanel from './extra/SoundEffectPanel.vue'
 </script>

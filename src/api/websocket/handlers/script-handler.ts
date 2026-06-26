@@ -72,6 +72,12 @@ export class ScriptHandler {
       eventQueue.addEvent(data as ScriptTypes.ScriptSoundEvent)
     })
 
+    // 环境音事件（多轨并行，与BGM共存）
+    registerHandler(WebSocketMessageTypes.SCRIPT_AMBIENT, (data: any) => {
+      console.log('收到环境音事件:', data)
+      eventQueue.addEvent(data as ScriptTypes.ScriptAmbientEvent)
+    })
+
     registerHandler(WebSocketMessageTypes.SCRIPT_MODIFY_CHARACTER, (data: any) => {
       console.log('收到修改角色事件:', data)
       eventQueue.addEvent(data as ScriptTypes.ScriptModifyCharacterEvent)
