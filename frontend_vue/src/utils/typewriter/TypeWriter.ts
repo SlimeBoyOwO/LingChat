@@ -26,7 +26,7 @@ export class TypeWriter {
     this.audioContext = null
     this.soundBuffers = []
     this.textBuffers = ''
-    this.soundUrls = ['../audio_effects/对话.wav']
+    this.soundUrls = ['/audio_effects/对话.wav']
     this.onTextUpdateCallback = onTextUpdateCallback || null
   }
 
