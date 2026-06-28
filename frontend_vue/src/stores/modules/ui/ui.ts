@@ -68,6 +68,12 @@ interface UIState {
 
   // 背景音乐结束时间戳，用于触发音乐切换
   _musicEndTime: number
+
+  // 全局启动加载状态
+  appLoading: boolean
+
+  // LLM 配置面板显隐（用于教程联动）
+  showLlmConfig: boolean
 }
 
 // 默认 avatar
@@ -203,6 +209,12 @@ export const useUIStore = defineStore('ui', {
 
     // 背景音乐结束时间戳
     _musicEndTime: 0,
+
+    // 全局启动加载状态
+    appLoading: true,
+
+    // LLM 配置面板显隐
+    showLlmConfig: false,
   }),
 
   getters: {
@@ -255,6 +267,10 @@ export const useUIStore = defineStore('ui', {
     },
     setSettingsTab(tab: string) {
       this.currentSettingsTab = tab
+    },
+
+    completeAppLoading() {
+      this.appLoading = false
     },
 
     addToolCallLog(entry: ToolCallLog) {

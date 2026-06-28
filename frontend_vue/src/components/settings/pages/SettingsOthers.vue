@@ -62,20 +62,33 @@
     </Teleport>
 
     <!-- LLM 配置面板 -->
-    <SettingsLlmConfig v-if="showLlmPanel" @close="showLlmPanel = false" />
+    <SettingsLlmConfig v-if="showLlmPanel" @close="closeLlmPanel" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
+import { useUIStore } from '../../../stores/modules/ui/ui'
 import { MenuPage, MenuItem } from '../../ui'
 import Icon from '../../base/widget/Icon.vue'
 import SettingsAdvance from './SettingsAdvance.vue'
 import SettingsLlmConfig from './SettingsLlmConfig.vue'
 
+const uiStore = useUIStore()
 const showAdvancePanel = ref(false)
 const showLlmPanel = ref(false)
 const settingsAdvanceRef = ref<InstanceType<typeof SettingsAdvance> | null>(null)
+
+// 监听外部触发的 LLM 配置面板打开/关闭请求（来自新手教程）
+watch(() => uiStore.showLlmConfig, (val) => {
+  showLlmPanel.value = val
+})
+
+/** 关闭 LLM 配置面板时同步重置 store 状态 */
+function closeLlmPanel() {
+  showLlmPanel.value = false
+  uiStore.showLlmConfig = false
+}
 
 const emit = defineEmits(['remove-more-menu-from-b'])
 

@@ -4,8 +4,8 @@
     :class="{ 'main-menu-page--panel-active': currentPage !== 'mainMenu' }"
   >
     <MainChat v-if="currentPage === 'gameMainView'" />
-    <Settings v-else-if="currentPage === 'settings'" />
-    <Save v-else-if="currentPage === 'save'" />
+    <Settings v-show="currentPage === 'settings'" />
+    <Save v-show="currentPage === 'save'" />
 
     <!-- 背景层（最底层） -->
     <div class="video-background" ref="bgRef"></div>
@@ -148,7 +148,10 @@ function handleOpenSettings(tab?: string) {
 watch(
   () => uiStore.showSettings,
   (newVal) => {
-    if (!newVal && (currentPage.value === 'settings' || currentPage.value === 'save')) {
+    if (newVal && currentPage.value === 'mainMenu') {
+      // 新手教程或外部调用 toggleSettings(true) 时切换到设置页
+      currentPage.value = 'settings'
+    } else if (!newVal && (currentPage.value === 'settings' || currentPage.value === 'save')) {
       currentPage.value = 'mainMenu'
       menuState.value = 'main'
     }

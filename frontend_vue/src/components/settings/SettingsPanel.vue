@@ -1,25 +1,27 @@
 <template>
-  <div class="blur-overlay" v-if="shouldShowOverlay" :style="{ opacity: overlayOpacity }"></div>
-  <div class="settings-panel flex flex-col h-full" v-show="uiStore.showSettings">
-    <div class="shrink-0 w-full">
-      <SettingsNav ref="settingsNavRef" @remove-more-menu-from-a="onAddFromA" />
-    </div>
+  <div v-show="uiStore.showSettings" class="settings-panel-root">
+    <div class="blur-overlay" v-if="shouldShowOverlay" :style="{ opacity: overlayOpacity }"></div>
+    <div class="settings-panel flex flex-col h-full">
+      <div class="shrink-0 w-full">
+        <SettingsNav ref="settingsNavRef" @remove-more-menu-from-a="onAddFromA" />
+      </div>
 
-    <div class="w-full flex-1 overflow-auto">
-      <SettingsSave v-show="uiStore.currentSettingsTab === 'save'" />
-      <SettingsText v-show="uiStore.currentSettingsTab === 'text'" />
-      <SettingsSound v-show="uiStore.currentSettingsTab === 'sound'" />
-      <SettingsOthers
-        ref="settingsOthersRef"
-        v-if="uiStore.currentSettingsTab === 'other'"
-        @remove-more-menu-from-b="onAddFromB"
-      />
-      <SettingsAdventure v-show="uiStore.currentSettingsTab === 'adventure'" />
-      <SettingsHistory v-show="uiStore.currentSettingsTab === 'history'" />
-      <SettingsAchievement v-show="uiStore.currentSettingsTab === 'achievement'" />
-      <SettingsCharacter v-show="uiStore.currentSettingsTab === 'character'" />
-      <SettingsBackground v-show="uiStore.currentSettingsTab === 'background'" />
-      <SettingsUpdate v-show="uiStore.currentSettingsTab === 'update'" />
+      <div class="w-full flex-1 overflow-auto">
+        <SettingsSave v-show="uiStore.currentSettingsTab === 'save'" />
+        <SettingsText v-show="uiStore.currentSettingsTab === 'text'" />
+        <SettingsSound v-show="uiStore.currentSettingsTab === 'sound'" />
+        <SettingsOthers
+          ref="settingsOthersRef"
+          v-show="uiStore.currentSettingsTab === 'other'"
+          @remove-more-menu-from-b="onAddFromB"
+        />
+        <SettingsAdventure v-show="uiStore.currentSettingsTab === 'adventure'" />
+        <SettingsHistory v-show="uiStore.currentSettingsTab === 'history'" />
+        <SettingsAchievement v-show="uiStore.currentSettingsTab === 'achievement'" />
+        <SettingsCharacter v-show="uiStore.currentSettingsTab === 'character'" />
+        <SettingsBackground v-show="uiStore.currentSettingsTab === 'background'" />
+        <SettingsUpdate v-show="uiStore.currentSettingsTab === 'update'" />
+      </div>
     </div>
   </div>
 </template>
@@ -97,6 +99,11 @@ const onAddFromB = () => {
   /* background: rgba(0, 0, 0, 0.2); */
 }
 
+.settings-panel-root {
+  /* 仅作为 v-show 单根元素包装，不参与定位 */
+  /* 定位由内部子元素完成 */
+}
+
 .settings-panel {
   position: fixed;
   top: 0;
@@ -108,7 +115,6 @@ const onAddFromB = () => {
   box-sizing: border-box;
   z-index: 1000;
   color: #333;
-  /* background-color: rgba(0, 0, 0, 0.25); */
   background-color: transparent;
 }
 

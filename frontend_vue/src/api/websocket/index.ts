@@ -73,6 +73,8 @@ const stopHeartbeat = () => {
   }
 }
 
+export { connectionReady }
+
 export const connectWebSocket = (url: string) => {
   socket.value = new WebSocket(url)
 
