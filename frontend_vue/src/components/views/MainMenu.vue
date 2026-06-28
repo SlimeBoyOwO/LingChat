@@ -1,11 +1,10 @@
 <template>
+  <Settings v-show="currentPage === 'settings' || currentPage === 'save'" />
   <div
     class="main-menu-page"
     :class="{ 'main-menu-page--panel-active': currentPage !== 'mainMenu' }"
   >
     <MainChat v-if="currentPage === 'gameMainView'" />
-    <Settings v-show="currentPage === 'settings'" />
-    <Save v-show="currentPage === 'save'" />
 
     <!-- 背景层（最底层） -->
     <div class="video-background" ref="bgRef"></div>
@@ -107,7 +106,6 @@ const bgRef = ref<HTMLElement | null>(null)
 const charRef = ref<HTMLElement | null>(null)
 const starsLayerRef = ref<HTMLElement | null>(null)
 
-const Save = Settings
 
 /* ================== 菜单逻辑 ================== */
 function showGameModeMenu() {
