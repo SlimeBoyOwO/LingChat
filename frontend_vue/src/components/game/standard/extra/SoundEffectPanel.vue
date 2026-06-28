@@ -3,7 +3,7 @@
   <button
     class="sound-effect-trigger"
     :class="{ 'has-active': hasActiveAudio }"
-    @click="togglePanel"
+    @click.stop="togglePanel"
     title="音效控制"
   >
     <Music2 :size="20" />
@@ -30,40 +30,45 @@
           <span>背景音乐</span>
         </div>
 
-        <!-- BGM 当前曲目 -->
-        <div class="bgm-current">
-          <span class="truncate">{{ currentMusicName }}</span>
-          <span class="mode-badge">{{ modeText[uiStore.bgMusicMode] }}</span>
+        <!-- 未播放时显示指引 -->
+        <div v-if="!hasBgm" class="empty-hint">
+          前往 <button class="text-link" @click="openSettings">设置 → 声音</button> 选择背景音乐
         </div>
 
-        <!-- BGM 控制按钮组 -->
-        <div class="control-row">
-          <button class="ctrl-btn" @click="handlePlayPause" title="播放/暂停">
-            <Play v-if="uiStore.bgMusicPaused" :size="16" />
-            <Pause v-else :size="16" />
-          </button>
-          <button class="ctrl-btn" @click="handleStop" title="停止">
-            <Square :size="14" />
-          </button>
-          <button class="ctrl-btn" @click="togglePlaybackMode" :title="modeText[uiStore.bgMusicMode]">
-            <Repeat1 v-if="uiStore.bgMusicMode === 'loop-single'" :size="16" />
-            <Repeat v-else-if="uiStore.bgMusicMode === 'loop-list'" :size="16" />
-            <Shuffle v-else :size="16" />
-          </button>
-        </div>
+        <!-- 有播放时显示曲目 + 控制 -->
+        <template v-else>
+          <div class="bgm-current">
+            <span class="truncate">{{ currentMusicName }}</span>
+            <span class="mode-badge">{{ modeText[uiStore.bgMusicMode] }}</span>
+          </div>
 
-        <!-- BGM 音量 -->
-        <div class="volume-row">
-          <Volume2 :size="14" class="text-gray-400 shrink-0" />
-          <input
-            type="range"
-            min="0"
-            max="100"
-            :value="uiStore.backgroundVolume"
-            @input="onBgmVolumeChange"
-            class="volume-slider"
-          />
-        </div>
+          <div class="control-row">
+            <button class="ctrl-btn" @click.stop="handlePlayPause" title="播放/暂停">
+              <Play v-if="uiStore.bgMusicPaused" :size="16" />
+              <Pause v-else :size="16" />
+            </button>
+            <button class="ctrl-btn" @click.stop="handleStop" title="停止">
+              <Square :size="14" />
+            </button>
+            <button class="ctrl-btn" @click.stop="togglePlaybackMode" :title="modeText[uiStore.bgMusicMode]">
+              <Repeat1 v-if="uiStore.bgMusicMode === 'loop-single'" :size="16" />
+              <Repeat v-else-if="uiStore.bgMusicMode === 'loop-list'" :size="16" />
+              <Shuffle v-else :size="16" />
+            </button>
+          </div>
+
+          <div class="volume-row">
+            <Volume2 :size="14" class="text-gray-400 shrink-0" />
+            <input
+              type="range"
+              min="0"
+              max="100"
+              :value="uiStore.backgroundVolume"
+              @input.stop="onBgmVolumeChange"
+              class="volume-slider"
+            />
+          </div>
+        </template>
       </div>
 
       <!-- 分隔线 -->
@@ -77,7 +82,7 @@
           <button
             v-if="uiStore.ambientTracks.length > 0"
             class="stop-all-btn"
-            @click="stopAllAmbient"
+            @click.stop="stopAllAmbient"
           >
             <Square :size="12" /> 全部停止
           </button>
@@ -95,7 +100,7 @@
               <button
                 class="ctrl-btn small"
                 :title="track.paused ? '恢复' : '暂停'"
-                @click="uiStore.toggleAmbientTrackPause(track.id)"
+                @click.stop="uiStore.toggleAmbientTrackPause(track.id)"
               >
                 <Play v-if="track.paused" :size="12" />
                 <Pause v-else :size="12" />
@@ -105,13 +110,13 @@
                 min="0"
                 max="100"
                 :value="track.volume"
-                @input="onAmbientVolumeChange(track.id, $event)"
+                @input.stop="onAmbientVolumeChange(track.id, $event)"
                 class="volume-slider mini"
               />
               <button
                 class="ctrl-btn small danger"
                 title="移除"
-                @click="uiStore.removeAmbientTrack(track.id)"
+                @click.stop="uiStore.removeAmbientTrack(track.id)"
               >
                 <X :size="12" />
               </button>
@@ -129,7 +134,7 @@
             :key="item.url"
             class="ambient-library-item"
             :class="{ active: isTrackPlaying(item.url) }"
-            @click="playAmbientFile(item)"
+            @click.stop="playAmbientFile(item)"
           >
             <Wind :size="14" />
             <span class="truncate">{{ item.name }}</span>
@@ -168,12 +173,22 @@ const hasActiveAudio = computed(() =>
   || (uiStore.currentBackgroundMusic !== 'None' && !uiStore.bgMusicPaused),
 )
 
+const hasBgm = computed(() =>
+  uiStore.currentBackgroundMusic && uiStore.currentBackgroundMusic !== 'None'
+)
+
 const currentMusicName = computed(() => {
   const url = uiStore.currentBackgroundMusic
   if (!url || url === 'None') return '未选择音乐'
   const fileName = decodeURIComponent(url.split('/').pop() || '')
   return fileName.replace(/\.[^/.]+$/, '') || fileName
 })
+
+function openSettings() {
+  uiStore.showSettings = true
+  uiStore.currentSettingsTab = 'sound'
+  panelVisible.value = false
+}
 
 function togglePanel() {
   panelVisible.value = !panelVisible.value
@@ -517,5 +532,20 @@ onUnmounted(() => {
   font-size: 0.75rem;
   color: rgba(255, 255, 255, 0.3);
   padding: 0.5rem 0;
+}
+
+.text-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #4facfe;
+  cursor: pointer;
+  font-size: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.text-link:hover {
+  color: #93c5fd;
 }
 </style>

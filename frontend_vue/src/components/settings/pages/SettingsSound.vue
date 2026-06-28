@@ -118,7 +118,7 @@
             </div>
             <button
               @click.stop="deleteMusic(music)"
-              class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1.5 rounded-md bg-red-500/10 hover:bg-red-500/80 text-red-400 hover:text-white"
+              class="opacity-60 hover:opacity-100 transition-opacity duration-200 p-1.5 rounded-md bg-red-500/10 hover:bg-red-500/80 text-red-400 hover:text-white"
               title="删除"
             >
               <Trash2 :size="14" />
@@ -164,6 +164,75 @@
       </div>
     </MenuItem>
 
+    <!-- 环境音设置部分 -->
+    <MenuItem title="环境音设置">
+      <template #header>
+        <Wind :size="20" class="text-cyan-400" />
+      </template>
+
+      <!-- 环境音列表 -->
+      <div
+        class="border border-white/10 rounded-xl bg-black/20 backdrop-blur-sm overflow-hidden flex flex-col"
+      >
+        <div v-if="ambientList.length === 0" class="text-center text-gray-400 py-8 text-sm">
+          暂无环境音文件，请上传
+        </div>
+        <div v-else class="max-h-40 overflow-y-auto p-1.5 space-y-1 custom-scrollbar">
+          <div
+            v-for="item in ambientList"
+            :key="item.url"
+            class="group flex justify-between items-center px-3 py-2 rounded-lg transition-all duration-200 hover:bg-white/10"
+          >
+            <div class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium pr-2">
+              {{ item.name }}
+            </div>
+            <button
+              @click.stop="deleteAmbient(item)"
+              class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1.5 rounded-md bg-red-500/10 hover:bg-red-500/80 text-red-400 hover:text-white"
+              title="删除"
+            >
+              <Trash2 :size="14" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 上传区域 -->
+      <div class="mt-4 flex items-center gap-3">
+        <Button
+          type="big"
+          @click="triggerAmbientUpload"
+          class="flex-1 flex justify-center items-center gap-2"
+        >
+          <UploadCloud :size="18" /> 添加上传
+        </Button>
+        <input
+          ref="ambientFileInput"
+          type="file"
+          multiple
+          @change="handleAmbientFileSelect"
+          accept=".mp3,.wav,.flac,.webm,.weba,.ogg,.m4a"
+          class="hidden"
+        />
+        <div class="flex-1 flex items-center justify-between gap-2">
+          <span class="text-xs text-gray-400 truncate w-24" v-if="ambientSelectedFiles.length > 0">
+            已选 {{ ambientSelectedFiles.length }} 个文件
+          </span>
+          <span class="text-xs text-gray-500 truncate w-24" v-else>未选择文件</span>
+
+          <Button
+            type="big"
+            @click="uploadAmbientFiles"
+            :disabled="ambientSelectedFiles.length === 0"
+            class="flex-1"
+            :class="{ 'opacity-50 cursor-not-allowed': ambientSelectedFiles.length === 0 }"
+          >
+            确认上传
+          </Button>
+        </div>
+      </div>
+    </MenuItem>
+
     <!-- 音频播放器 (隐藏) -->
     <audio ref="characterTestPlayer"></audio>
     <audio ref="bubbleTestPlayer"></audio>
@@ -181,6 +250,11 @@ import {
   musicUpload,
   setCurrentBackgroundMusic,
 } from '../../../api/services/music'
+import {
+  ambientGetAll,
+  ambientUpload,
+  ambientDelete,
+} from '../../../api/services/ambient'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useSettingsStore } from '../../../stores/modules/settings'
 import {
@@ -244,6 +318,15 @@ const currentMusicName = ref('未选择音乐')
 // 批量上传状态
 const selectedFiles = ref<File[]>([])
 const fileInput = ref<HTMLInputElement | null>(null)
+
+// 环境音状态
+interface AmbientItem {
+  name: string
+  url: string
+}
+const ambientList = ref<AmbientItem[]>([])
+const ambientSelectedFiles = ref<File[]>([])
+const ambientFileInput = ref<HTMLInputElement | null>(null)
 
 // 播放模式设定 (loop-list: 列表循环, loop-single: 单曲循环, random: 随机)
 type PlaybackMode = 'loop-list' | 'loop-single' | 'random'
@@ -454,6 +537,71 @@ const uploadMusic = async () => {
   }
 }
 
+// ====== 环境音相关逻辑 ======
+
+const loadAmbientList = async () => {
+  try {
+    ambientList.value = await ambientGetAll()
+  } catch (error) {
+    console.error('加载环境音列表失败:', error)
+  }
+}
+
+const deleteAmbient = async (item: AmbientItem) => {
+  if (!confirm(`确定要删除《${item.name}》吗？`)) return
+
+  try {
+    await ambientDelete(item.url)
+    await loadAmbientList()
+  } catch (error) {
+    console.error('删除环境音失败:', error)
+    alert('删除环境音失败')
+  }
+}
+
+const uploadAmbientFiles = async () => {
+  if (ambientSelectedFiles.value.length === 0) {
+    alert('请先选择环境音文件')
+    return
+  }
+
+  const allowedExts = ['.mp3', '.wav', '.flac', '.webm', '.weba', '.ogg', '.m4a']
+
+  try {
+    await Promise.all(
+      ambientSelectedFiles.value.map(async (file) => {
+        const fileExt = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
+        if (!allowedExts.includes(fileExt)) {
+          throw new Error(`格式不支持: ${file.name}`)
+        }
+        const formData = new FormData()
+        formData.append('file', file)
+        await ambientUpload(formData)
+      }),
+    )
+
+    ambientSelectedFiles.value = []
+    if (ambientFileInput.value) ambientFileInput.value.value = ''
+    await loadAmbientList()
+  } catch (error: any) {
+    console.error('批量上传环境音出现问题:', error)
+    alert(error.message || '部分或全部环境音上传失败')
+  }
+}
+
+const triggerAmbientUpload = () => {
+  ambientFileInput.value?.click()
+}
+
+const handleAmbientFileSelect = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  if (target.files && target.files.length > 0) {
+    ambientSelectedFiles.value = Array.from(target.files)
+  } else {
+    ambientSelectedFiles.value = []
+  }
+}
+
 const playPauseButtonText = computed(() => (!uiStore.bgMusicPaused ? '暂停' : '播放'))
 
 const playMusic = async (music: MusicItem) => {
@@ -515,6 +663,7 @@ const handleFileSelect = (event: Event) => {
 
 onMounted(async () => {
   await loadMusicList()
+  await loadAmbientList()
 
   // 初始化音量
   if (characterTestPlayer.value) characterTestPlayer.value.volume = characterVolume.value / 100
