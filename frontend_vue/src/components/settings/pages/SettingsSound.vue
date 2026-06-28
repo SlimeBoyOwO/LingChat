@@ -183,7 +183,9 @@
             :key="item.url"
             class="group flex justify-between items-center px-3 py-2 rounded-lg transition-all duration-200 hover:bg-white/10"
           >
-            <div class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium pr-2">
+            <div
+              class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium pr-2"
+            >
               {{ item.name }}
             </div>
             <button
@@ -250,11 +252,7 @@ import {
   musicUpload,
   setCurrentBackgroundMusic,
 } from '../../../api/services/music'
-import {
-  ambientGetAll,
-  ambientUpload,
-  ambientDelete,
-} from '../../../api/services/ambient'
+import { ambientGetAll, ambientUpload, ambientDelete } from '../../../api/services/ambient'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useSettingsStore } from '../../../stores/modules/settings'
 import {

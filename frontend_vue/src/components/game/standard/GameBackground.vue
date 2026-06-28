@@ -117,7 +117,12 @@ function setAmbientRef(id: string, el: HTMLAudioElement | null) {
   }
 }
 
-function fadeInAmbient(audioEl: HTMLAudioElement, trackId: string, targetVolume: number, durationMs = 1000) {
+function fadeInAmbient(
+  audioEl: HTMLAudioElement,
+  trackId: string,
+  targetVolume: number,
+  durationMs = 1000,
+) {
   // 清除旧的淡入定时器
   const oldTimer = fadeTimers.get(trackId)
   if (oldTimer) {

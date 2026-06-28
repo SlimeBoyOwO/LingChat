@@ -65,11 +65,13 @@
 
       <!-- 移动端：折叠菜单下拉面板 -->
       <Transition name="mobile-menu">
-        <div
-          v-if="isMobile && showMobileMenu"
-          class="mobile-menu-dropdown"
-        >
-          <Button type="nav" icon="background" title="场景设置" @click="onMobileMenuAction(openSceneSettings)"></Button>
+        <div v-if="isMobile && showMobileMenu" class="mobile-menu-dropdown">
+          <Button
+            type="nav"
+            icon="background"
+            title="场景设置"
+            @click="onMobileMenuAction(openSceneSettings)"
+          ></Button>
           <Button
             type="nav"
             icon="hand"
@@ -77,7 +79,12 @@
             @click="onMobileMenuAction(toggleTouchMode)"
             @contextmenu.prevent="exitTouchMode"
           ></Button>
-          <Button type="nav" icon="history" title="历史记录" @click="onMobileMenuAction(openHistory)"></Button>
+          <Button
+            type="nav"
+            icon="history"
+            title="历史记录"
+            @click="onMobileMenuAction(openHistory)"
+          ></Button>
           <Button
             type="nav"
             icon="mic"

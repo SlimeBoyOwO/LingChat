@@ -625,7 +625,11 @@ export const useUIStore = defineStore('ui', {
       this.ambientTracks.push({
         id,
         src: track.src,
-        name: track.src.split('/').pop()?.replace(/\.[^/.]+$/, '') || track.src,
+        name:
+          track.src
+            .split('/')
+            .pop()
+            ?.replace(/\.[^/.]+$/, '') || track.src,
         volume: track.volume ?? 100,
         loop: track.loop ?? true,
         paused: false,

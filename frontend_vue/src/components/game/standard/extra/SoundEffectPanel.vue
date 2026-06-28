@@ -50,7 +50,11 @@
             <button class="ctrl-btn" @click.stop="handleStop" title="停止">
               <Square :size="14" />
             </button>
-            <button class="ctrl-btn" @click.stop="togglePlaybackMode" :title="modeText[uiStore.bgMusicMode]">
+            <button
+              class="ctrl-btn"
+              @click.stop="togglePlaybackMode"
+              :title="modeText[uiStore.bgMusicMode]"
+            >
               <Repeat1 v-if="uiStore.bgMusicMode === 'loop-single'" :size="16" />
               <Repeat v-else-if="uiStore.bgMusicMode === 'loop-list'" :size="16" />
               <Shuffle v-else :size="16" />
@@ -90,11 +94,7 @@
 
         <!-- 活跃轨道列表 -->
         <div v-if="uiStore.ambientTracks.length > 0" class="ambient-track-list">
-          <div
-            v-for="track in uiStore.ambientTracks"
-            :key="track.id"
-            class="ambient-track-item"
-          >
+          <div v-for="track in uiStore.ambientTracks" :key="track.id" class="ambient-track-item">
             <span class="track-name truncate">{{ track.name }}</span>
             <div class="track-controls">
               <button
@@ -148,7 +148,17 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import {
-  Music2, Music, Play, Pause, Square, Repeat, Repeat1, Shuffle, Wind, X, Volume2,
+  Music2,
+  Music,
+  Play,
+  Pause,
+  Square,
+  Repeat,
+  Repeat1,
+  Shuffle,
+  Wind,
+  X,
+  Volume2,
 } from 'lucide-vue-next'
 import { useUIStore } from '../../../../stores/modules/ui/ui'
 import { useSettingsStore } from '../../../../stores/modules/settings'
@@ -168,13 +178,14 @@ const modeText: Record<PlaybackMode, string> = {
   random: '随机播放',
 }
 
-const hasActiveAudio = computed(() =>
-  uiStore.ambientTracks.length > 0
-  || (uiStore.currentBackgroundMusic !== 'None' && !uiStore.bgMusicPaused),
+const hasActiveAudio = computed(
+  () =>
+    uiStore.ambientTracks.length > 0 ||
+    (uiStore.currentBackgroundMusic !== 'None' && !uiStore.bgMusicPaused),
 )
 
-const hasBgm = computed(() =>
-  uiStore.currentBackgroundMusic && uiStore.currentBackgroundMusic !== 'None'
+const hasBgm = computed(
+  () => uiStore.currentBackgroundMusic && uiStore.currentBackgroundMusic !== 'None',
 )
 
 const currentMusicName = computed(() => {
@@ -299,8 +310,13 @@ onUnmounted(() => {
 }
 
 @keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(79, 172, 254, 0.3); }
-  50% { box-shadow: 0 0 0 8px rgba(79, 172, 254, 0); }
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(79, 172, 254, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(79, 172, 254, 0);
+  }
 }
 
 .sound-effect-panel {
