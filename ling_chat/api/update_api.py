@@ -248,7 +248,9 @@ async def check_update():
         return {"success": True, "message": "开始检查更新"}
     except Exception as e:
         update_lock.release()
-        raise HTTPException(status_code=500, detail=f"启动检查更新失败: {str(e)}") from e
+        raise HTTPException(
+            status_code=500, detail=f"启动检查更新失败: {str(e)}"
+        ) from e
 
 
 @router.post("/apply")

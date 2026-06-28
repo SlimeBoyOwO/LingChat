@@ -73,6 +73,15 @@ export interface ScriptSoundEvent extends ScriptEvent {
   soundPath: string
 }
 
+export interface ScriptAmbientEvent extends ScriptEvent {
+  type: 'ambient'
+  ambientPath: string
+  volume?: number
+  loop?: boolean
+  stop?: boolean
+  fade?: boolean
+}
+
 export interface ScriptMusicEvent extends ScriptEvent {
   type: 'music'
   musicPath: string
@@ -119,6 +128,7 @@ export type ScriptEventType =
   | ScriptBackgroundEffectEvent
   | ScriptMusicEvent
   | ScriptSoundEvent
+  | ScriptAmbientEvent
   | ScriptInputEvent
   | ScriptErrorEvent
   | ScriptStatusResetEvent

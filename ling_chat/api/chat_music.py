@@ -86,18 +86,20 @@ async def get_music_list():
 
 
 @router.post("/upload")
-async def upload_music(file: UploadFile, name: str = None):
+async def upload_music(file: UploadFile, name: str | None = None):
     """
     上传一个音乐文件到服务器
     """
     try:
-        file_ext = Path(file.filename).suffix.lower()
+        file_ext = Path(file.filename or "").suffix.lower()
         if file_ext not in ALLOWED_EXTENSIONS:
             raise HTTPException(status_code=400, detail="无效文件类型")
 
         MUSIC_DIR.mkdir(parents=True, exist_ok=True)
 
         filename = name if name else file.filename
+        if not filename:
+            raise HTTPException(status_code=400, detail="文件名无效")
         save_path = MUSIC_DIR / filename
 
         with save_path.open("wb") as buffer:

@@ -24,6 +24,16 @@ export interface ToolCallLog {
   preview?: string
 }
 
+export interface AmbientTrack {
+  id: string
+  src: string
+  name?: string
+  volume: number
+  loop: boolean
+  paused?: boolean
+  fade?: boolean
+}
+
 // 通知状态接口
 interface NotificationState {
   isVisible: boolean
@@ -74,6 +84,9 @@ interface UIState {
 
   // LLM 配置面板显隐（用于教程联动）
   showLlmConfig: boolean
+
+  // 环境音多轨
+  ambientTracks: AmbientTrack[]
 }
 
 // 默认 avatar
@@ -215,6 +228,9 @@ export const useUIStore = defineStore('ui', {
 
     // LLM 配置面板显隐
     showLlmConfig: false,
+
+    // 环境音多轨
+    ambientTracks: [],
   }),
 
   getters: {
@@ -242,6 +258,9 @@ export const useUIStore = defineStore('ui', {
     },
     achievementVolume(): number {
       return useSettingsStore().achievementVolume
+    },
+    ambientVolume(): number {
+      return useSettingsStore().ambientVolume
     },
     // 角色文件夹（从 settings store 获取）
     currentCharacterFolder(): string {
@@ -584,6 +603,79 @@ export const useUIStore = defineStore('ui', {
       // 触发一个内部状态变化，让SettingsSound组件能够监听到
       // 使用时间戳确保每次都能触发watch
       this._musicEndTime = Date.now()
+    },
+
+    // ========== Ambient Track Actions ==========
+
+    /**
+     * 添加环境音轨道（文件名去重，上限 8 轨）
+     */
+    addAmbientTrack(track: { src: string; volume?: number; loop?: boolean; fade?: boolean }) {
+      // 如果已存在相同 src 的轨道，则更新音量
+      const existing = this.ambientTracks.find((t) => t.src === track.src)
+      if (existing) {
+        existing.volume = track.volume ?? existing.volume
+        existing.loop = track.loop ?? existing.loop
+        return
+      }
+
+      if (this.ambientTracks.length >= 8) return
+
+      const id = `ambient_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      this.ambientTracks.push({
+        id,
+        src: track.src,
+        name: track.src.split('/').pop()?.replace(/\.[^/.]+$/, '') || track.src,
+        volume: track.volume ?? 100,
+        loop: track.loop ?? true,
+        paused: false,
+        fade: track.fade ?? true,
+      })
+    },
+
+    /**
+     * 更新指定环境音轨道的音量
+     */
+    updateAmbientTrackVolume(id: string, volume: number) {
+      const track = this.ambientTracks.find((t) => t.id === id)
+      if (track) {
+        track.volume = Math.max(0, Math.min(100, volume))
+      }
+    },
+
+    /**
+     * 切换指定环境音轨道的暂停状态
+     */
+    toggleAmbientTrackPause(id: string) {
+      const track = this.ambientTracks.find((t) => t.id === id)
+      if (track) {
+        track.paused = !track.paused
+      }
+    },
+
+    /**
+     * 移除指定 id 的环境音轨道
+     */
+    removeAmbientTrack(id: string) {
+      this.ambientTracks = this.ambientTracks.filter((t) => t.id !== id)
+    },
+
+    /**
+     * 根据 src 移除环境音轨道（用于 stop 指令按文件名停止）
+     */
+    removeAmbientTrackBySrc(src: string) {
+      this.ambientTracks = this.ambientTracks.filter((t) => t.src !== src)
+    },
+
+    /**
+     * 清除所有环境音轨道（或清除指定 src 的轨道）
+     */
+    clearAmbientTracks(targetSrc?: string) {
+      if (targetSrc) {
+        this.ambientTracks = this.ambientTracks.filter((t) => t.src !== targetSrc)
+      } else {
+        this.ambientTracks = []
+      }
     },
   },
 })

@@ -249,7 +249,9 @@ async def get_single_config(key: str):
             }
         raise HTTPException(status_code=404, detail=f"Key '{key}' not found")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to read config: {str(e)}") from e
+        raise HTTPException(
+            status_code=500, detail=f"Failed to read config: {str(e)}"
+        ) from e
 
 
 @router.get("/settings")

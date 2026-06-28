@@ -121,13 +121,15 @@ async def upload_music(file: UploadFile, name: str | None = None):
     上传一个背景图片文件到服务器
     """
     try:
-        file_ext = Path(file.filename).suffix.lower()
+        file_ext = Path(file.filename or "").suffix.lower()
         if file_ext not in ALLOWED_EXTENSIONS:
             raise HTTPException(status_code=400, detail="无效文件类型")
 
         BACKGROUND_DIR.mkdir(parents=True, exist_ok=True)
 
         filename = name if name else file.filename
+        if not filename:
+            raise HTTPException(status_code=400, detail="文件名无效")
         save_path = BACKGROUND_DIR / filename
 
         with save_path.open("wb") as buffer:
@@ -137,7 +139,9 @@ async def upload_music(file: UploadFile, name: str | None = None):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"未能上传背景图片: {str(e)}") from e
+        raise HTTPException(
+            status_code=500, detail=f"未能上传背景图片: {str(e)}"
+        ) from e
 
 
 @router.post("/generate")
@@ -211,7 +215,10 @@ async def open_backgrounds_folder():
         system = platform.system()
 
         if system == "Windows":
-            os.startfile(path)
+            if hasattr(os, "startfile"):
+                os.startfile(path)  # type: ignore[attr-defined]
+            else:
+                subprocess.Popen(["explorer", path])
         elif system == "Darwin":
             subprocess.Popen(["open", path])
         else:

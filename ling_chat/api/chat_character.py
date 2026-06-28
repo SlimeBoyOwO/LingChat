@@ -246,6 +246,7 @@ async def refresh_characters():
         logger.error(f"刷新人物列表请求失败: {str(e)}")
         raise HTTPException(status_code=500, detail="刷新人物列表失败") from e
 
+
 @router.get("/open_web")
 async def open_creative_web():
     try:
@@ -256,8 +257,6 @@ async def open_creative_web():
     except Exception as e:
         logger.error(f"无法使用浏览器启动创意工坊: {str(e)}")
         raise HTTPException(status_code=500, detail="无法使用浏览器启动网页") from e
-
-
 
 
 @router.post("/update_settings")

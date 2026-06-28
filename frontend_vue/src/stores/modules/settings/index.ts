@@ -20,6 +20,7 @@ export const DEFAULT_SETTINGS = {
     bubbleVolume: 80, // 气泡音量
     backgroundVolume: 80, // 背景音量
     achievementVolume: 80, // 成就音量
+    ambientVolume: 70, // 环境音音量
     chatEffectSound: true, // 对话音效开关
   },
   // 显示设置
@@ -51,6 +52,7 @@ export interface AudioSettings {
   bubbleVolume: number
   backgroundVolume: number
   achievementVolume: number
+  ambientVolume: number
   chatEffectSound: boolean
 }
 export interface DisplaySettings {
@@ -117,6 +119,7 @@ export const useSettingsStore = defineStore('settings', {
     bubbleVolume: (state) => state.audio.bubbleVolume,
     backgroundVolume: (state) => state.audio.backgroundVolume,
     achievementVolume: (state) => state.audio.achievementVolume,
+    ambientVolume: (state) => state.audio.ambientVolume,
     // 角色文件夹
     characterFolder: (state) => state.character.folder,
   },

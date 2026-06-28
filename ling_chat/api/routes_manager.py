@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from ling_chat.api.chat_achievement import router as chat_achievement_router
 from ling_chat.api.chat_advanced import router as chat_advanced_router
 from ling_chat.api.chat_adventure import router as chat_adventure_router
+from ling_chat.api.chat_ambient import router as chat_ambient_router
 from ling_chat.api.chat_background import router as chat_background_router
 from ling_chat.api.chat_cache import router as chat_cache_router
 from ling_chat.api.chat_character import router as chat_character_router
@@ -56,6 +57,7 @@ class RoutesManager:
         if is_frontend_available():
             app.include_router(frontend_router)
         app.include_router(chat_music_router)
+        app.include_router(chat_ambient_router)
         app.include_router(env_config_router)
         app.include_router(file_selector_router)
         app.include_router(chat_achievement_router)

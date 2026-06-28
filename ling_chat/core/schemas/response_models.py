@@ -7,6 +7,7 @@ from ling_chat.core.schemas.responses import (
     ChoiceResponse,
     FreeDialogueResponse,
     ReplyResponse,
+    ScriptAmbientResponse,
     ScriptBackgroundEffectResponse,
     ScriptBackgroundResponse,
     ScriptEndResponse,
@@ -113,6 +114,10 @@ class ResponseFactory:
     @staticmethod
     def create_sound(sound: str, **kwargs) -> ScriptSoundResponse:
         return ScriptSoundResponse(soundPath=sound, **kwargs)
+
+    @staticmethod
+    def create_ambient(ambient: str, **kwargs) -> ScriptAmbientResponse:
+        return ScriptAmbientResponse(ambientPath=ambient, **kwargs)
 
     @staticmethod
     def create_music(music: str, **kwargs) -> ScriptMusicResponse:

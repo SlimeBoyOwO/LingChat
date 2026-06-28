@@ -161,6 +161,35 @@ async def get_script_sound(soundPath: str):
         print(f"An error occurred: {e}")
 
 
+@router.get("/ambient_file/{ambientPath}")
+async def get_script_ambient(ambientPath: str):
+    try:
+        ai_service = service_manager.ai_service
+        if ai_service is None:
+            raise HTTPException(status_code=404, detail="AISERVICE not found")
+
+        assets_dir = ai_service.scripts_manager.get_assests_dir()
+        candidates = [
+            assets_dir / "Assets/Ambients" / ambientPath,
+            assets_dir / "Assets/AmbientSounds" / ambientPath,
+            assets_dir / "Assets/Environment" / ambientPath,
+            assets_dir / "Assets/Ambient" / ambientPath,
+            user_data_path / "game_data/ambients" / ambientPath,
+        ]
+        file_path = next((p for p in candidates if os.path.exists(p)), candidates[0])
+
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="Ambient not found")
+
+        return FileResponse(file_path)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"获取环境音文件失败: {str(e)}"
+        ) from e
+
+
 @router.get("/music_file/{musicPath}")
 async def get_script_music(musicPath: str):
     try:

@@ -77,6 +77,15 @@ class ScriptSoundResponse(BaseResponse):
     soundPath: str
 
 
+class ScriptAmbientResponse(BaseResponse):
+    type: str = ResponseType.SCRIPT_AMBIENT
+    ambientPath: str
+    volume: float = 100.0
+    loop: bool = True
+    stop: bool = False
+    fade: bool = True
+
+
 class ScriptMusicResponse(BaseResponse):
     type: str = ResponseType.SCRIPT_MUSIC
     musicPath: str

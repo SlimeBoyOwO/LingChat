@@ -29,6 +29,13 @@
       <Slider @change="updateAchievementVolume" v-model="achievementVolume"> 弱/强 </Slider>
     </MenuItem>
 
+    <MenuItem title="环境音音量" size="small">
+      <template #header>
+        <Wind :size="20" class="text-cyan-400" />
+      </template>
+      <Slider @change="updateAmbientVolume" v-model="ambientVolume"> 弱/强 </Slider>
+    </MenuItem>
+
     <!-- 测试声音部分 -->
     <MenuItem title="声音测试" size="small">
       <template #header>
@@ -192,6 +199,7 @@ import {
   Trash2,
   UploadCloud,
   Music,
+  Wind,
 } from 'lucide-vue-next'
 
 const uiStore = useUIStore()
@@ -213,6 +221,10 @@ const backgroundVolume = computed({
 const achievementVolume = computed({
   get: () => settingsStore.achievementVolume,
   set: (val: number) => settingsStore.update('audio.achievementVolume', val),
+})
+const ambientVolume = computed({
+  get: () => settingsStore.ambientVolume,
+  set: (val: number) => settingsStore.update('audio.ambientVolume', val),
 })
 
 // 音频引用
@@ -316,6 +328,10 @@ const updateBackgroundVolume = (value: number) => {
 const updateAchievementVolume = (value: number) => {
   settingsStore.update('audio.achievementVolume', value)
   if (achievementTestPlayer.value) achievementTestPlayer.value.volume = value / 100
+}
+
+const updateAmbientVolume = (value: number) => {
+  settingsStore.update('audio.ambientVolume', value)
 }
 
 watch(

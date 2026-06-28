@@ -103,7 +103,9 @@ class MemoryBuilder:
                 final_content_parts = []
 
                 if context_lines:
-                    context_strs = [self._format_context_line(line) for line in context_lines]
+                    context_strs = [
+                        self._format_context_line(line) for line in context_lines
+                    ]
                     joined_context = "\n".join(context_strs)
                     final_content_parts.append(f"{{{joined_context}}}")
 

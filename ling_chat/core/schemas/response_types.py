@@ -24,6 +24,7 @@ class ResponseType:
     SCRIPT_BACKGROUND_EFFECT = "background_effect"  # 背景特效切换
     SCRIPT_MUSIC = "music"  # 背景切换
     SCRIPT_SOUND = "sound"  # 背景切换
+    SCRIPT_AMBIENT = "ambient"  # 环境音
 
     # 输入控制系统
     SCRIPT_INPUT = "input"  # 玩家输入

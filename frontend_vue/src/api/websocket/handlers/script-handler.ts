@@ -73,6 +73,11 @@ export class ScriptHandler {
       eventQueue.addEvent(data as ScriptTypes.ScriptSoundEvent)
     })
 
+    registerHandler(WebSocketMessageTypes.SCRIPT_AMBIENT, (data: any) => {
+      console.log('收到环境音切换事件:', data)
+      eventQueue.addEvent(data as ScriptTypes.ScriptAmbientEvent)
+    })
+
     registerHandler(WebSocketMessageTypes.SCRIPT_MODIFY_CHARACTER, (data: any) => {
       console.log('收到修改角色事件:', data)
       eventQueue.addEvent(data as ScriptTypes.ScriptModifyCharacterEvent)
