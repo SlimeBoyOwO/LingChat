@@ -78,7 +78,7 @@ class MemoryBuilder:
             if buffer_type == "target_assistant":
                 # 合并 Target Assistant 消息
                 full_content = "".join(
-                    [self._format_content_with_extras(l) for l in current_buffer]
+                    [self._format_content_with_extras(line) for line in current_buffer]
                 )
                 memory.append({"role": "assistant", "content": full_content})
 
@@ -103,12 +103,12 @@ class MemoryBuilder:
                 final_content_parts = []
 
                 if context_lines:
-                    context_strs = [self._format_context_line(l) for l in context_lines]
+                    context_strs = [self._format_context_line(line) for line in context_lines]
                     joined_context = "\n".join(context_strs)
                     final_content_parts.append(f"{{{joined_context}}}")
 
                 if active_user_lines:
-                    user_text = "".join([l.content for l in active_user_lines])
+                    user_text = "".join([line.content for line in active_user_lines])
                     final_content_parts.append(user_text)
 
                 if context_lines and active_user_lines:

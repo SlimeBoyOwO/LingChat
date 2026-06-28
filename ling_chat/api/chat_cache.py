@@ -101,7 +101,7 @@ async def get_voice_cache_stats():
         return {"code": 200, "data": _build_voice_cache_stats()}
     except Exception as e:
         logger.error(f"获取语音缓存信息失败: {e}")
-        raise HTTPException(status_code=500, detail=f"获取语音缓存信息失败: {e}")
+        raise HTTPException(status_code=500, detail=f"获取语音缓存信息失败: {e}") from e
 
 
 @router.delete("/voice")
@@ -148,4 +148,4 @@ async def clear_voice_cache():
         }
     except Exception as e:
         logger.error(f"清理语音缓存失败: {e}")
-        raise HTTPException(status_code=500, detail=f"清理语音缓存失败: {e}")
+        raise HTTPException(status_code=500, detail=f"清理语音缓存失败: {e}") from e

@@ -2,7 +2,7 @@
 
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from ling_chat.core.llm_providers.provider_factory import LLMProviderFactory

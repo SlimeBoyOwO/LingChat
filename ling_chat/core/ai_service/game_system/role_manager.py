@@ -138,7 +138,7 @@ class GameRoleManager:
             )
             # 额外寻找本角色的第一个 SYSTEM 属性的台词，防止人设丢失
             # 如果sliced_lines里已经有 SYSTEM 属性的台词，则不需要额外添加
-            has_prompt = self._find_first_system_prompt(sliced_lines, rid) != None
+            has_prompt = self._find_first_system_prompt(sliced_lines, rid) is not None
             if not has_prompt:
                 system_prompt = self._find_first_system_prompt(source_lines, rid)
                 # 把 system_prompt 移动到 sliced_lines 的开头

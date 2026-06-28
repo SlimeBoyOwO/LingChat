@@ -33,7 +33,7 @@ class MessageProcessor:
             return []
 
         results = []
-        for i, (full_tag, emotion_tag, following_text) in enumerate(
+        for i, (_full_tag, emotion_tag, following_text) in enumerate(
             emotion_segments, 1
         ):
             following_text = following_text.replace("(", "（").replace(")", "）")
@@ -87,7 +87,6 @@ class MessageProcessor:
                 prediction_result = {"label": "normal", "confidence": 0.5}
 
             file_str = ""
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             if self.game_status.current_character:
                 voice_maker = self.game_status.current_character.voice_maker
                 file_str = str(

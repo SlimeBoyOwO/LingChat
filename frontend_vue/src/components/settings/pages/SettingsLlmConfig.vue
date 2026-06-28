@@ -3,7 +3,11 @@
     <Transition name="llm-slide">
       <div class="fixed inset-0 z-[1200]">
         <!-- 模糊遮罩 — 与父组件 SettingsOthers 的 .advance-slide-overlay 对齐 -->
-        <div class="absolute inset-0 bg-black/45" style="backdrop-filter: blur(5px)" @click="emit('close')"></div>
+        <div
+          class="absolute inset-0 bg-black/45"
+          style="backdrop-filter: blur(5px)"
+          @click="emit('close')"
+        ></div>
 
         <!-- 面板 -->
         <div class="absolute inset-0 flex flex-col overflow-hidden bg-transparent">

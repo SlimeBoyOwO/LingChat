@@ -299,7 +299,6 @@ class ConsoleLogService:
     def _log_to_backend(self, log_entry: ConsoleLogEntry, mapping: LogLevelMapping):
         """记录到后端日志系统"""
         # 构建格式化消息
-        timestamp = log_entry.timestamp.strftime("%Y-%m-%d %H:%M:%S")
         source = log_entry.source.value
         component = f"[{log_entry.component}]" if log_entry.component else ""
 

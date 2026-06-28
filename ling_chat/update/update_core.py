@@ -12,9 +12,10 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import urlparse
 
+from packaging import version
+
 from ling_chat.core.logger import logger
 from ling_chat.utils.http_utils import download_file, fetch_json
-from packaging import version
 
 
 # 更新状态枚举，用于表示更新流程的各个阶段

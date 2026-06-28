@@ -142,11 +142,11 @@ def _cleanup_character_dir(character_dir: Path) -> None:
 
 @router.post("/create")
 async def create_character(
-    resource_folder: str = Form(...),
-    settings_json: str = Form(...),
-    avatar_file: UploadFile = File(...),
-    emotion_names: list[str] = Form(...),
-    emotion_files: list[UploadFile] = File(...),
+    resource_folder: str = Form(...),  # noqa: B008
+    settings_json: str = Form(...),  # noqa: B008
+    avatar_file: UploadFile = File(...),  # noqa: B008
+    emotion_names: list[str] = Form(...),  # noqa: B008
+    emotion_files: list[UploadFile] = File(...),  # noqa: B008
 ):
     folder = _validate_resource_folder(resource_folder)
     character_dir = user_data_path / "game_data" / "characters" / folder
@@ -165,6 +165,15 @@ async def create_character(
     except json.JSONDecodeError as exc:
         raise HTTPException(
             status_code=400, detail=f"settings_json is not valid JSON: {exc}"
+        ) from exc
+    except HTTPException:
+        _cleanup_character_dir(character_dir)
+        raise
+    except Exception as exc:
+        _cleanup_character_dir(character_dir)
+        logger.error(f"create character failed: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"create character failed: {exc}"
         ) from exc
 
     if not isinstance(settings_data, dict):
@@ -237,7 +246,6 @@ async def refresh_characters():
         logger.error(f"刷新人物列表请求失败: {str(e)}")
         raise HTTPException(status_code=500, detail="刷新人物列表失败") from e
 
-
 @router.get("/open_web")
 async def open_creative_web():
     try:
@@ -250,10 +258,12 @@ async def open_creative_web():
         raise HTTPException(status_code=500, detail="无法使用浏览器启动网页") from e
 
 
+
+
 @router.post("/update_settings")
 async def update_settings(
-    role_id: int = Body(..., embed=True),
-    settings: Dict[str, Any] = Body(..., embed=True),
+    role_id: int = Body(..., embed=True),  # noqa: B008
+    settings: Dict[str, Any] = Body(..., embed=True),  # noqa: B008
 ):
     # 1. 获取角色信息以定位文件夹
     role = RoleManager.get_role_by_id(role_id)
@@ -294,7 +304,7 @@ async def update_settings(
             raise HTTPException(status_code=500, detail="保存失败")
     except Exception as e:
         logger.error(f"保存角色设置失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"保存失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"保存失败: {str(e)}") from e
 
 
 @router.get("/get_full_role_settings/{role_id}")
@@ -380,7 +390,7 @@ async def get_role_avatar(role_id: int, emotion: str, clothes_name: str):
         ]
     except Exception as e:
         logger.error(f"读取目录失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"读取目录失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"读取目录失败: {str(e)}") from e
 
     # 如果没找到对应情绪的图片，且当前情绪是"平静"，则尝试查找"正常"的图片
     if not emotion_files and emotion == "平静":
@@ -440,7 +450,7 @@ async def select_character(
         }
     except Exception as e:
         logger.error(f"切换角色失败: {str(e)}")
-        raise HTTPException(status_code=500, detail="切换角色失败")
+        raise HTTPException(status_code=500, detail="切换角色失败") from e
 
 
 @router.get("/characters")

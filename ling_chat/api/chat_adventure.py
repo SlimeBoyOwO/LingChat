@@ -70,7 +70,7 @@ async def list_character_adventures(character_folder: str, user_id: int = 1):
         return {"data": result}
     except Exception as e:
         logger.error(f"获取角色冒险列表失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/all")
@@ -112,7 +112,7 @@ async def list_all_adventures(user_id: int = 1):
         return {"data": result}
     except Exception as e:
         logger.error(f"获取全部冒险列表失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/progress/{user_id}")
@@ -132,7 +132,7 @@ async def get_user_progress(user_id: int):
         }
     except Exception as e:
         logger.error(f"获取冒险进度失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/start")
@@ -171,7 +171,7 @@ async def start_adventure(
         raise
     except Exception as e:
         logger.error(f"启动冒险失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/check_unlocks")
@@ -196,7 +196,7 @@ async def check_unlocks(user_id: int = Body(..., embed=True)):
         return {"data": newly_unlocked, "count": len(newly_unlocked)}
     except Exception as e:
         logger.error(f"检测冒险解锁失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/complete")
@@ -226,7 +226,7 @@ async def complete_adventure(
         # 检查并触发完成成就
         scripts_manager = ai_service.scripts_manager
         unlocked_achievements = []
-        for name, s in scripts_manager.all_scripts.items():
+        for _name, s in scripts_manager.all_scripts.items():
             if s.folder_key == adventure_folder and s.adventure.completion_achievements:
                 from ling_chat.core.achievement_manager import achievement_manager
 
@@ -260,7 +260,7 @@ async def complete_adventure(
         raise
     except Exception as e:
         logger.error(f"完成冒险失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/reset")
@@ -302,4 +302,4 @@ async def reset_adventure(
         raise
     except Exception as e:
         logger.error(f"重置冒险失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

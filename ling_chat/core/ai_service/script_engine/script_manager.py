@@ -178,7 +178,7 @@ class ScriptManager:
                 logger.error(
                     f"运行章节 '{next_chapter_name}' 时发生严重错误: {e}", exc_info=True
                 )
-                raise ScriptEngineError("运行章节的时候发生错误")
+                raise ScriptEngineError("运行章节的时候发生错误") from e
 
         self.is_running = False
 
@@ -339,7 +339,7 @@ class ScriptManager:
         AdventureManager.mark_global_completed(user_id, script_folder)
 
         unlocked_achievements = []
-        for name, s in self.all_scripts.items():
+        for _name, s in self.all_scripts.items():
             if s.folder_key == script_folder and s.adventure.completion_achievements:
                 from ling_chat.core.achievement_manager import achievement_manager
 

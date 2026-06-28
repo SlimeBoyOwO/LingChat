@@ -122,7 +122,7 @@ class DesktopAnalyzer:
 
             return content
         except Exception as e:
-            raise Exception(f"请求失败: {e}")
+            raise Exception(f"请求失败: {e}") from e
 
     async def analyze_image_file(
         self, image_path, prompt="请用100字左右描述这个场景的环境、氛围、光线等特征"
@@ -183,7 +183,7 @@ class DesktopAnalyzer:
 
             return content
         except Exception as e:
-            raise Exception(f"图片分析失败: {e}")
+            raise Exception(f"图片分析失败: {e}") from e
 
     def get_analysis_report(self):
         """

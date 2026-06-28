@@ -7,10 +7,10 @@ from sqlmodel import Session
 project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(project_root))
 
-from ling_chat.game_database.database import engine, init_db
-from ling_chat.game_database.managers.save_manager import SaveManager
-from ling_chat.game_database.managers.user_manager import UserManager
-from ling_chat.game_database.models import Role
+from ling_chat.game_database.database import engine, init_db  # noqa: E402
+from ling_chat.game_database.managers.save_manager import SaveManager  # noqa: E402
+from ling_chat.game_database.managers.user_manager import UserManager  # noqa: E402
+from ling_chat.game_database.models import Role  # noqa: E402
 
 
 def test_managers():

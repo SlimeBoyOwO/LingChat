@@ -249,7 +249,7 @@ async def get_single_config(key: str):
             }
         raise HTTPException(status_code=404, detail=f"Key '{key}' not found")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to read config: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to read config: {str(e)}") from e
 
 
 @router.get("/settings")
@@ -261,11 +261,11 @@ async def get_settings():
         raise HTTPException(
             status_code=500,
             detail=f"An unexpected error occurred while parsing .env file: {str(e)}",
-        )
+        ) from e
 
 
 @router.patch("/settings")
-async def save_config(new_values: Dict[str, str] = Body(...)):
+async def save_config(new_values: Dict[str, str] = Body(...)):  # noqa: B008
     try:
         save_env_file(new_values)
         # 同时更新 os.environ，确保之后 os.environ.get() 和 _OPTIONAL_DEFAULTS 兜底能读到新值
@@ -277,4 +277,4 @@ async def save_config(new_values: Dict[str, str] = Body(...)):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to save .env file: {str(e)}"
-        )
+        ) from e

@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from ling_chat.api.chat_achievement import router as chat_achievement_router
+from ling_chat.api.chat_advanced import router as chat_advanced_router
 from ling_chat.api.chat_adventure import router as chat_adventure_router
 from ling_chat.api.chat_background import router as chat_background_router
 from ling_chat.api.chat_cache import router as chat_cache_router
@@ -8,15 +9,12 @@ from ling_chat.api.chat_character import router as chat_character_router
 from ling_chat.api.chat_history import router as chat_history_router
 from ling_chat.api.chat_info import router as chat_info_router
 from ling_chat.api.chat_music import router as chat_music_router
-from ling_chat.api.chat_scene import router as chat_scene_router
 from ling_chat.api.chat_sandbox import router as chat_sandbox_router
+from ling_chat.api.chat_scene import router as chat_scene_router
 from ling_chat.api.chat_schedule import router as chat_schedule_router
-from ling_chat.api.chat_advanced import router as chat_advanced_router
 from ling_chat.api.chat_script import router as chat_script_router
 from ling_chat.api.chat_sound import router as chat_sound_router
 from ling_chat.api.console_logs import router as console_logs_router
-from ling_chat.api.llm_config_api import router as llm_config_router
-from ling_chat.api.llm_test_api import router as llm_test_router
 from ling_chat.api.env_config import router as env_config_router
 from ling_chat.api.file_selector import router as file_selector_router
 from ling_chat.api.frontend_routes import (
@@ -28,6 +26,8 @@ from ling_chat.api.frontend_routes import (
     is_frontend_available,
 )
 from ling_chat.api.frontend_routes import router as frontend_router
+from ling_chat.api.llm_config_api import router as llm_config_router
+from ling_chat.api.llm_test_api import router as llm_test_router
 from ling_chat.api.new_chat_main import websocket_endpoint
 from ling_chat.api.update_api import router as update_router
 from ling_chat.core.logger import logger

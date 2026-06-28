@@ -80,9 +80,12 @@ const showLlmPanel = ref(false)
 const settingsAdvanceRef = ref<InstanceType<typeof SettingsAdvance> | null>(null)
 
 // 监听外部触发的 LLM 配置面板打开/关闭请求（来自新手教程）
-watch(() => uiStore.showLlmConfig, (val) => {
-  showLlmPanel.value = val
-})
+watch(
+  () => uiStore.showLlmConfig,
+  (val) => {
+    showLlmPanel.value = val
+  },
+)
 
 /** 关闭 LLM 配置面板时同步重置 store 状态 */
 function closeLlmPanel() {

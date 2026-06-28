@@ -12,7 +12,6 @@ from ling_chat.configs.llm_config import llm_config
 from ling_chat.configs.llm_toml_config import (
     find_key_in_toml,
     get_all_llm_toml_configs,
-    parse_llm_toml,
 )
 from ling_chat.core.logger import logger
 

@@ -333,11 +333,11 @@ class SaveManager:
             db_history: List[Line] = []
             curr_id = save.last_message_id
             while curr_id:
-                l = lines_map.get(curr_id)
-                if not l:
+                line = lines_map.get(curr_id)
+                if not line:
                     break
-                db_history.append(l)
-                curr_id = l.parent_line_id
+                db_history.append(line)
+                curr_id = line.parent_line_id
             db_history.reverse()  # [Line1, Line2, Line3...]
 
             # 2. 寻找分叉点 & 执行更新
@@ -408,8 +408,8 @@ class SaveManager:
             # 任何在 divergence_index 之后的 DB 数据都是“旧分支”，需要切除
             if divergence_index < len(db_history):
                 lines_to_delete = db_history[divergence_index:]
-                for l in lines_to_delete:
-                    session.delete(l)
+                for line in lines_to_delete:
+                    session.delete(line)
 
                 # 修正指针：回退到分叉点的前一个
                 if divergence_index > 0:

@@ -55,8 +55,7 @@ registerTutorialPreset({
     {
       id: 'character-info',
       title: '选择聊天角色',
-      content:
-        '接下来，选择一个你喜欢的角色来开始对话。\n\n点击"下一步"打开角色设置面板。',
+      content: '接下来，选择一个你喜欢的角色来开始对话。\n\n点击"下一步"打开角色设置面板。',
       tooltipPlacement: 'bottom',
       nextAction: { type: 'switchSettingsTab', payload: { tab: 'character' } },
       waitForField: 'showSettings',

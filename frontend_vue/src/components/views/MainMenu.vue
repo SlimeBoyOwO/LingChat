@@ -106,7 +106,6 @@ const bgRef = ref<HTMLElement | null>(null)
 const charRef = ref<HTMLElement | null>(null)
 const starsLayerRef = ref<HTMLElement | null>(null)
 
-
 /* ================== 菜单逻辑 ================== */
 function showGameModeMenu() {
   menuState.value = 'gameMode'

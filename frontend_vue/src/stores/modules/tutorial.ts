@@ -27,12 +27,14 @@
 import { defineStore } from 'pinia'
 import { watch } from 'vue'
 import { useUIStore } from './ui/ui'
-import {
-  getEnvConfigByKey,
-  saveEnvConfigSettings,
-} from '../../api/services/config'
+import { getEnvConfigByKey, saveEnvConfigSettings } from '../../api/services/config'
 import { REGISTERED_PRESETS } from './tutorial-presets'
-import type { TutorialAction, TutorialMode, TutorialState, TutorialStep } from '../../types/tutorial'
+import type {
+  TutorialAction,
+  TutorialMode,
+  TutorialState,
+  TutorialStep,
+} from '../../types/tutorial'
 
 /** 自动推进定时器（模块级，避免被 persist 序列化） */
 let autoAdvanceTimer: ReturnType<typeof setTimeout> | null = null

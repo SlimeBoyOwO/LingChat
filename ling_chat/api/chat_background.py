@@ -95,7 +95,6 @@ async def list_all_backgrounds():
         for f in BACKGROUND_DIR.iterdir():
             filename = f.name
             if f.suffix.lower() in ALLOWED_EXTENSIONS:
-                file_path = BACKGROUND_DIR / filename
                 stat = f.stat()
 
                 title = f.stem  # 使用文件名作为标题
@@ -138,7 +137,7 @@ async def upload_music(file: UploadFile, name: str | None = None):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"未能上传背景图片: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"未能上传背景图片: {str(e)}") from e
 
 
 @router.post("/generate")
@@ -221,4 +220,4 @@ async def open_backgrounds_folder():
         return {"code": 200, "data": {"message": "文件夹已打开"}}
     except Exception as e:
         logger.error(f"打开背景文件夹失败: {e}")
-        raise HTTPException(status_code=500, detail=f"打开文件夹失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"打开文件夹失败: {str(e)}") from e

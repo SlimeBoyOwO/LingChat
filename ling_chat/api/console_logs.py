@@ -23,7 +23,7 @@ router = APIRouter(prefix="/api/v1/logs", tags=["Console Logs"])
 
 @router.post("/console")
 async def receive_console_log(
-    request: Request, log_entry: ConsoleLogEntry = Body(..., embed=True)
+    request: Request, log_entry: ConsoleLogEntry = Body(..., embed=True)  # noqa: B008
 ):
     """
     接收单个前端控制台日志条目
@@ -50,12 +50,12 @@ async def receive_console_log(
     except Exception as e:
         logger.error(f"处理前端控制台日志失败: {str(e)}")
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"处理日志失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"处理日志失败: {str(e)}") from e
 
 
 @router.post("/console/batch")
 async def receive_console_logs_batch(
-    request: Request, log_batch: ConsoleLogBatch = Body(..., embed=True)
+    request: Request, log_batch: ConsoleLogBatch = Body(..., embed=True)  # noqa: B008
 ):
     """
     批量接收前端控制台日志条目
@@ -116,7 +116,7 @@ async def receive_console_logs_batch(
     except Exception as e:
         logger.error(f"处理批量前端控制台日志失败: {str(e)}")
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"处理批量日志失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"处理批量日志失败: {str(e)}") from e
 
 
 @router.get("/levels")
@@ -142,12 +142,12 @@ async def get_log_levels():
 
     except Exception as e:
         logger.error(f"获取日志级别列表失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取日志级别列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取日志级别列表失败: {str(e)}") from e
 
 
 @router.put("/mapping/{console_level}")
 async def update_level_mapping(
-    console_level: ConsoleLogLevel, mapping: LogLevelMapping = Body(..., embed=True)
+    console_level: ConsoleLogLevel, mapping: LogLevelMapping = Body(..., embed=True)  # noqa: B008
 ):
     """
     更新日志级别映射配置
@@ -184,11 +184,11 @@ async def update_level_mapping(
         raise
     except Exception as e:
         logger.error(f"更新日志级别映射失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"更新映射配置失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"更新映射配置失败: {str(e)}") from e
 
 
 @router.put("/filters")
-async def update_log_filters(filter_config: LogFilterConfig = Body(..., embed=True)):
+async def update_log_filters(filter_config: LogFilterConfig = Body(..., embed=True)):  # noqa: B008
     """
     更新日志过滤配置
 
@@ -213,7 +213,7 @@ async def update_log_filters(filter_config: LogFilterConfig = Body(..., embed=Tr
 
     except Exception as e:
         logger.error(f"更新日志过滤配置失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"更新过滤配置失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"更新过滤配置失败: {str(e)}") from e
 
 
 @router.get("/stats")
@@ -260,13 +260,13 @@ async def get_log_stats():
 
     except Exception as e:
         logger.error(f"获取日志服务统计信息失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取统计信息失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取统计信息失败: {str(e)}") from e
 
 
 @router.post("/test")
 async def test_log_processing(
-    test_message: str = Body(..., embed=True),
-    test_level: ConsoleLogLevel = Body(ConsoleLogLevel.INFO, embed=True),
+    test_message: str = Body(..., embed=True),  # noqa: B008
+    test_level: ConsoleLogLevel = Body(ConsoleLogLevel.INFO, embed=True),  # noqa: B008
 ):
     """
     测试日志处理功能
@@ -304,4 +304,4 @@ async def test_log_processing(
 
     except Exception as e:
         logger.error(f"测试日志处理失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"测试失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"测试失败: {str(e)}") from e

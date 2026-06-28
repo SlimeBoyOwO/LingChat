@@ -296,7 +296,7 @@ async def save_user_conversation(request: Request):
     except HTTPException as he:
         raise he
     except ValueError as ve:
-        raise HTTPException(status_code=404, detail=str(ve))
+        raise HTTPException(status_code=404, detail=str(ve)) from None
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"保存对话失败: {str(e)}") from e
 

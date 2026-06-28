@@ -1,7 +1,7 @@
 import asyncio
 import os
 from pathlib import Path
-from typing import Awaitable, Dict, List, Optional, Tuple
+from typing import Awaitable, Dict, List, Tuple
 
 from ling_chat.core.logger import logger
 from ling_chat.core.TTS.tts_provider import TTS

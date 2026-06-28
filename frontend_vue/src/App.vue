@@ -121,10 +121,7 @@ onMounted(async () => {
   // 关闭 Loader —— 等待教程第一帧（如果有）或立即关闭
   // 设置 3s 超时防止教程卡死阻塞主界面
   if (tutorialFirstFrameWaiter) {
-    await Promise.race([
-      tutorialFirstFrameWaiter,
-      new Promise((r) => setTimeout(r, 3000)),
-    ])
+    await Promise.race([tutorialFirstFrameWaiter, new Promise((r) => setTimeout(r, 3000))])
   }
   finishLoading()
 

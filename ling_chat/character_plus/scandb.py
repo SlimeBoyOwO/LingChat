@@ -2,6 +2,7 @@ import json
 import os
 
 import httpx
+
 from ling_chat.core.logger import logger
 
 BASE_URL = os.getenv("COMMUNITY_URL", "https://192.168.0.116:8000").rstrip("/")

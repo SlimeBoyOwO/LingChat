@@ -89,7 +89,7 @@ class Function:
 
         normalized_parts = []
 
-        for full_tag, emotion_tag, following_text in emotion_segments:
+        for full_tag, _emotion_tag, following_text in emotion_segments:
             following_text = following_text.replace("(", "（").replace(")", "）")
 
             # 提取日语部分和动作文本（与原函数一致）
@@ -172,7 +172,7 @@ class Function:
                 try:
                     # 使用ast.literal_eval将字符串转换为字典
                     settings[key] = ast.literal_eval(value)
-                except:
+                except Exception:
                     # 如果解析失败，保留原始字符串
                     settings[key] = value
 
@@ -360,7 +360,6 @@ class Function:
         """计算到下一个提醒时间的秒数"""
         now = datetime.now()
         current_time = now.time()
-        current_time_str = current_time.strftime("%H:%M")
 
         # 将时间字符串转换为时间对象
         process_schedule_times = [
@@ -393,7 +392,6 @@ class Function:
         """计算到下一个提醒时间的秒数"""
         now = datetime.now()
         current_time = now.time()
-        current_time_str = current_time.strftime("%H:%M")
 
         next_time = None
         try:

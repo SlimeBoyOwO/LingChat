@@ -28,12 +28,7 @@
             </mask>
           </defs>
           <!-- 半透明遮罩层 -->
-          <rect
-            width="100%"
-            height="100%"
-            fill="rgba(0, 0, 0, 0.6)"
-            :mask="`url(#${maskId})`"
-          />
+          <rect width="100%" height="100%" fill="rgba(0, 0, 0, 0.6)" :mask="`url(#${maskId})`" />
         </svg>
 
         <!-- ===== 背景遮罩（center 模式） ===== -->
@@ -68,7 +63,9 @@
           <div class="tutorial-progress-bar">
             <div
               class="tutorial-progress-fill"
-              :style="{ width: `${((tutorialStore.currentStepIndex + 1) / tutorialStore.totalSteps) * 100}%` }"
+              :style="{
+                width: `${((tutorialStore.currentStepIndex + 1) / tutorialStore.totalSteps) * 100}%`,
+              }"
             ></div>
           </div>
 
