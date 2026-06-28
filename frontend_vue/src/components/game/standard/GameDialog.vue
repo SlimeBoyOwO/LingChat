@@ -28,28 +28,65 @@
           CODE
         </button>
 
-        <!-- 操作按钮组 -->
-        <Button type="nav" icon="background" title="场景设置" @click="openSceneSettings"></Button>
-        <Button
-          type="nav"
-          icon="hand"
-          title="触摸模式"
-          @click="toggleTouchMode"
-          @contextmenu.prevent="exitTouchMode"
-        ></Button>
-        <Button type="nav" icon="history" title="历史记录" @click="openHistory"></Button>
+        <!-- 桌面端：直接显示所有操作按钮 -->
+        <template v-if="!isMobile">
+          <Button type="nav" icon="background" title="场景设置" @click="openSceneSettings"></Button>
+          <Button
+            type="nav"
+            icon="hand"
+            title="触摸模式"
+            @click="toggleTouchMode"
+            @contextmenu.prevent="exitTouchMode"
+          ></Button>
+          <Button type="nav" icon="history" title="历史记录" @click="openHistory"></Button>
+          <Button
+            type="nav"
+            icon="mic"
+            :title="isRecording ? '录音中，点击停止' : '语音输入'"
+            :class="{ 'text-red-500 animate-pulse': isRecording }"
+            @click="toggleRecording"
+          ></Button>
+        </template>
 
-        <!-- 新增：语音输入按钮 (已将 icon 修复为 mic) -->
-        <Button
-          type="nav"
-          icon="mic"
-          :title="isRecording ? '录音中，点击停止' : '语音输入'"
-          :class="{ 'text-red-500 animate-pulse': isRecording }"
-          @click="toggleRecording"
-        ></Button>
+        <!-- 移动端：箭头折叠按钮 -->
+        <button
+          v-if="isMobile"
+          class="mobile-toggle-btn"
+          :class="{ 'is-open': showMobileMenu }"
+          title="更多操作"
+          @click="showMobileMenu = !showMobileMenu"
+        >
+          ▲
+        </button>
 
+        <!-- 关闭按钮始终可见 -->
         <Button type="nav" icon="close" title="关闭对话" @click="removeDialog"></Button>
       </div>
+
+      <!-- 移动端：折叠菜单下拉面板 -->
+      <Transition name="mobile-menu">
+        <div
+          v-if="isMobile && showMobileMenu"
+          class="mobile-menu-dropdown"
+        >
+          <Button type="nav" icon="background" title="场景设置" @click="onMobileMenuAction(openSceneSettings)"></Button>
+          <Button
+            type="nav"
+            icon="hand"
+            title="触摸模式"
+            @click="onMobileMenuAction(toggleTouchMode)"
+            @contextmenu.prevent="exitTouchMode"
+          ></Button>
+          <Button type="nav" icon="history" title="历史记录" @click="onMobileMenuAction(openHistory)"></Button>
+          <Button
+            type="nav"
+            icon="mic"
+            :title="isRecording ? '录音中，点击停止' : '语音输入'"
+            :class="{ 'text-red-500 animate-pulse': isRecording }"
+            @click="onMobileMenuAction(toggleRecording)"
+          ></Button>
+        </div>
+      </Transition>
 
       <!-- 分割线 -->
       <div class="h-px bg-white/30 my-1.5"></div>
@@ -98,6 +135,10 @@ const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
 const isHidden = ref(false)
 
+// 移动端按钮折叠状态
+const isMobile = ref(window.innerWidth <= 768)
+const showMobileMenu = ref(false)
+
 // 语音识别相关状态
 const isRecording = ref(false)
 const interimText = ref('') // 新增：用于实时存储临时识别出来的文本
@@ -110,6 +151,8 @@ const containerWidth = ref(60)
 const updateContainerWidth = () => {
   const aspectRatio = window.innerWidth / window.innerHeight
   containerWidth.value = Math.max(60, aspectRatio > 1 ? 70 : 90)
+  isMobile.value = window.innerWidth <= 768
+  if (!isMobile.value) showMobileMenu.value = false
 }
 
 const openSceneSettings = () => {
@@ -168,6 +211,12 @@ const exitTouchMode = () => {
   document.body.style.cursor = 'default'
   gameStore.command = null
   document.removeEventListener('contextmenu', handleRightClick)
+}
+
+// 移动端菜单操作：执行动作后自动收起菜单
+const onMobileMenuAction = (action: () => void) => {
+  action()
+  showMobileMenu.value = false
 }
 
 const placeholderText = computed(() => {
@@ -437,3 +486,78 @@ defineExpose({
   isTyping,
 })
 </script>
+
+<style scoped>
+/* 移动端折叠按钮 — 与右侧 nav 关闭按钮等大 */
+.mobile-toggle-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  border-radius: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  transition: all 0.25s ease;
+  margin: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+}
+.mobile-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: var(--accent-color, #6eb4ff);
+}
+.mobile-toggle-btn:active {
+  transform: scale(0.92);
+}
+.mobile-toggle-btn > span,
+.mobile-toggle-btn {
+  transition: transform 0.25s ease;
+}
+.mobile-toggle-btn.is-open {
+  transform: rotate(180deg);
+  background: rgba(255, 255, 255, 0.18);
+  color: var(--accent-color, #6eb4ff);
+  border-color: var(--accent-color, #6eb4ff);
+}
+
+/* 移动端下拉菜单 */
+.mobile-menu-dropdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px 4px 4px;
+  margin-top: 2px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 14, 39, 0.5);
+  border-radius: 0 0 8px 8px;
+}
+
+/* Vue Transition: 移动端菜单展开/收起 */
+.mobile-menu-enter-active {
+  animation: menu-slide-down 0.2s ease-out;
+}
+.mobile-menu-leave-active {
+  animation: menu-slide-down 0.15s ease-in reverse;
+}
+@keyframes menu-slide-down {
+  from {
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-top: 0;
+    border-top-width: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 200px;
+    padding-top: 8px;
+    padding-bottom: 4px;
+    margin-top: 2px;
+    border-top-width: 1px;
+  }
+}
+</style>
