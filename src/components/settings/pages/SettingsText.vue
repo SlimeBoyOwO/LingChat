@@ -86,7 +86,7 @@
       </MenuItem>
 
       <!-- ─── 版本更新 ──────────────────────────────── -->
-      <MenuItem title="版本更新" size="large">
+      <MenuItem title="版本更新" size="small">
         <template #header>
           <RefreshCw :size="20" :class="{ 'animate-spin': updateChecking }" />
         </template>
@@ -126,12 +126,56 @@
           />
         </div>
       </MenuItem>
+
+      <!-- ─── 局域网同步 ──────────────────────────────── -->
+      <MenuItem title="局域网数据同步" size="small">
+        <template #header>
+          <Wifi :size="20" />
+        </template>
+        <div class="space-y-2 w-full">
+          <p class="text-gray-50 text-sm">
+            在同一局域网内的设备之间同步 data 文件夹（游戏存档、语音、截图等）。
+          </p>
+          <div class="flex gap-3 pt-1">
+            <Button type="big" @click="openLanSync"> 打开局域网同步 </Button>
+          </div>
+          <!-- 局域网同步对话框 -->
+          <LanSyncDialog
+            :visible="lanSync.dialogVisible.value"
+            :view="lanSyncView"
+            :phase="lanSync.phase.value"
+            :server-port="lanSync.serverPort.value"
+            :peers="lanSync.peers.value"
+            :sync-plan="lanSync.syncPlan.value"
+            :progress="lanSync.progress.value"
+            :last-result="lanSync.lastResult.value"
+            :error-message="lanSync.errorMessage.value"
+            @close="lanSync.closeDialog()"
+            @rescan="lanSync.scanPeers()"
+            @pull="
+              (peer) => {
+                lanSync.selectPeer(peer)
+                lanSync.planPull()
+              }
+            "
+            @push="
+              (peer) => {
+                lanSync.selectPeer(peer)
+                lanSync.planPush()
+              }
+            "
+            @confirm="handleLanSyncConfirm"
+            @cancel="lanSync.reset()"
+            @restart="lanSync.restart()"
+          />
+        </div>
+      </MenuItem>
     </MenuPage>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { MenuPage, MenuItem } from '../../ui'
 import { Slider, Text, Toggle, Button } from '../../base'
@@ -153,11 +197,15 @@ import {
   Rss,
   Download,
   RefreshCw,
+  Wifi,
 } from 'lucide-vue-next'
 import { reactivateTTS } from '@/api/services/game-info'
 import { useUpdater } from '@/composables/useUpdater'
+import { useLanSync } from '@/composables/useLanSync'
 import { getVersion } from '@tauri-apps/api/app'
 import UpdateDialog from '@/components/UpdateDialog.vue'
+import LanSyncDialog from '@/components/LanSyncDialog.vue'
+import type { DialogView } from '@/types/lanSync'
 
 const router = useRouter()
 const uiStore = useUIStore()
@@ -243,6 +291,51 @@ async function handleInstallFromSettings() {
     updateLatestVersion.value = ''
   } catch {
     // 错误通过 phase 反映
+  }
+}
+
+// ─── 局域网同步 ────────────────────────────────────────────────
+
+const lanSync = useLanSync()
+const lanSyncView = ref<DialogView>('device-list')
+
+// 监听阶段变化，自动切换视图
+watch(
+  () => lanSync.phase.value,
+  (newPhase) => {
+    switch (newPhase) {
+      case 'idle':
+      case 'scanning':
+        lanSyncView.value = 'device-list'
+        break
+      case 'planning':
+        lanSyncView.value = 'sync-plan'
+        break
+      case 'executing':
+        lanSyncView.value = 'progress'
+        break
+      case 'complete':
+      case 'error':
+        lanSyncView.value = 'result'
+        break
+    }
+  },
+)
+
+async function openLanSync() {
+  lanSync.init()
+  await lanSync.openDialog()
+  lanSyncView.value = 'device-list'
+}
+
+async function handleLanSyncConfirm() {
+  const plan = lanSync.syncPlan.value
+  if (!plan) return
+  lanSyncView.value = 'progress'
+  if (plan.direction === 'pull') {
+    await lanSync.executePull()
+  } else {
+    await lanSync.executePush()
   }
 }
 

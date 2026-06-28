@@ -6,6 +6,7 @@ mod config;
 mod data_update;
 mod db;
 mod init;
+mod lan_sync;
 mod migration;
 mod utils;
 
@@ -104,6 +105,7 @@ pub fn run() {
 
             app.manage(api::pet::HitTestState::default());
             app.manage(data_update::DataUpdateState::default());
+            app.manage(lan_sync::LanSyncState::default());
 
             let rt = tokio::runtime::Runtime::new()?;
             let (db, ai_service, chat) = rt.block_on(init::initialize(app))?;
@@ -351,6 +353,14 @@ pub fn run() {
             api::workshop::fetch_discussions,
             data_update::check_data_update,
             data_update::apply_data_update,
+            lan_sync::lan_sync_start_server,
+            lan_sync::lan_sync_stop_server,
+            lan_sync::lan_sync_scan_peers,
+            lan_sync::lan_sync_plan_push,
+            lan_sync::lan_sync_execute_push,
+            lan_sync::lan_sync_plan_pull,
+            lan_sync::lan_sync_execute_pull,
+            lan_sync::lan_sync_restart,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

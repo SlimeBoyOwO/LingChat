@@ -10,6 +10,10 @@ pub struct FileEntry {
     pub sha256: String,
     /// 文件大小（字节）
     pub size: u64,
+    /// Unix 时间戳（秒），记录文件的最后修改时间。
+    /// 用于 LAN 同步冲突解决。旧清单中无此字段时默认为 0。
+    #[serde(default)]
+    pub modified_at: i64,
 }
 
 /// 数据资源版本清单。

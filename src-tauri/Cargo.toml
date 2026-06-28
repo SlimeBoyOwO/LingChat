@@ -53,6 +53,12 @@ zip = "2"
 sha2 = "0.10"
 tempfile = "3"
 
+# ─── LAN Sync ────────────────────────────────────────────────
+axum = { version = "0.7", features = ["tokio"] }
+mdns-sd = "0.11"
+if-addrs = "0.13"
+tokio-util = { version = "0.7", features = ["io"] }
+
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
