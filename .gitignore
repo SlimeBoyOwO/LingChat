@@ -63,6 +63,7 @@ ling_chat/static/frontend/
 # Tauri auto-generated files
 src-tauri/gen/
 src-tauri/bundled_resources/
+frontend_vue/
 
 # ============================================================
 #          特定项目文件 (Project Specific Files)
