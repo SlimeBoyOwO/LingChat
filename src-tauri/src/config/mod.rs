@@ -210,7 +210,9 @@ fn get_string(store: &Store<Wry>, key: &str) -> Option<String> {
 
 /// Public accessor for reading a string value from the settings store.
 pub fn get_setting_string(app: &AppHandle, key: &str) -> Option<String> {
-    settings_store(app).ok().and_then(|store| get_string(&store, key))
+    settings_store(app)
+        .ok()
+        .and_then(|store| get_string(&store, key))
 }
 
 fn get_bool(store: &Store<Wry>, key: &str, default: bool) -> bool {
@@ -413,24 +415,28 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
         feat_subs.insert(
             "记忆系统".to_string(),
             Subcategory {
-                description: "对应 ENV: MEMORY_UPDATE_INTERVAL / MEMORY_RECENT_WINDOW / USE_PERSISTENT_MEMORY".to_string(),
+                description: "在这里设定你想要的永久记忆效果".to_string(),
                 settings: vec![
                     ConfigSetting {
                         key: keys::USE_PERSISTENT_MEMORY.to_string(),
-                        value: read_setting(app, keys::USE_PERSISTENT_MEMORY, "false"),
-                        description: "USE_PERSISTENT_MEMORY — 开启后记忆会自动压缩，减少 token 消耗".to_string(),
+                        value: read_setting(app, keys::USE_PERSISTENT_MEMORY, "true"),
+                        description:
+                            "USE_PERSISTENT_MEMORY — 开启后记忆会自动压缩，减少 token 消耗"
+                                .to_string(),
                         setting_type: "bool".to_string(),
                     },
                     ConfigSetting {
                         key: keys::MEMORY_UPDATE_INTERVAL.to_string(),
-                        value: read_setting(app, keys::MEMORY_UPDATE_INTERVAL, "50"),
-                        description: "MEMORY_UPDATE_INTERVAL — 触发记忆摘要的新消息数（默认 50）".to_string(),
+                        value: read_setting(app, keys::MEMORY_UPDATE_INTERVAL, "150"),
+                        description: "MEMORY_UPDATE_INTERVAL — 触发记忆摘要的新消息数（默认 150）"
+                            .to_string(),
                         setting_type: "text".to_string(),
                     },
                     ConfigSetting {
                         key: keys::MEMORY_RECENT_WINDOW.to_string(),
-                        value: read_setting(app, keys::MEMORY_RECENT_WINDOW, "15"),
-                        description: "MEMORY_RECENT_WINDOW — 摘要时保留的最近消息数（默认 15）".to_string(),
+                        value: read_setting(app, keys::MEMORY_RECENT_WINDOW, "30"),
+                        description: "MEMORY_RECENT_WINDOW — 摘要时保留的最近消息数（默认 30）"
+                            .to_string(),
                         setting_type: "text".to_string(),
                     },
                 ],
@@ -885,7 +891,9 @@ pub async fn test_llm_provider(
     };
 
     let messages = vec![
-        crate::ai_service::types::LlmMessage::system("你是一个有帮助的AI助手。请简洁地回答用户的问题。"),
+        crate::ai_service::types::LlmMessage::system(
+            "你是一个有帮助的AI助手。请简洁地回答用户的问题。",
+        ),
         crate::ai_service::types::LlmMessage::user(&message),
     ];
 
