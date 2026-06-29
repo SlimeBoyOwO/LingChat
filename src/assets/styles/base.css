@@ -25,6 +25,7 @@
 @layer base {
   html {
     font-family: var(--font-sans);
+    font-size: clamp(12px, min(2.5vw, 2.5vh), 16px) !important;
   }
 }
 
