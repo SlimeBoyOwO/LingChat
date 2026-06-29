@@ -11,12 +11,13 @@ use std::path::PathBuf;
 
 use axum::{
     body::Body,
-    extract::{Query, State as AxumState},
+    extract::{DefaultBodyLimit, Query, State as AxumState},
     http::StatusCode,
     response::{IntoResponse, Json, Response},
     routing::{get, post},
     Router,
 };
+use futures_util::StreamExt;
 use serde::Deserialize;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
@@ -66,6 +67,7 @@ pub async fn start_server(
         .route("/file", get(file_handler))
         .route("/push-file", post(push_file_handler))
         .route("/push-delete", post(push_delete_handler))
+        .layer(DefaultBodyLimit::disable())
         .with_state(state);
 
     // 绑定随机端口
@@ -188,11 +190,11 @@ async fn file_handler(
     Ok(response)
 }
 
-/// POST /push-file?path=... — 接收文件（原子写入）。
+/// POST /push-file?path=... — 接收文件（流式写入 + 原子 rename）。
 async fn push_file_handler(
     AxumState(state): AxumState<ServerState>,
     Query(query): Query<FileQuery>,
-    body: axum::body::Bytes,
+    body: Body,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let file_path = state.data_dir.join(&query.path);
 
@@ -208,7 +210,7 @@ async fn push_file_handler(
             .map_err(|e| AppError(StatusCode::FORBIDDEN, e))?;
     }
 
-    // 原子写入：先写 .tmp，再 rename；若 rename 失败则暂存
+    // 原子写入：先流式写 .tmp，再 rename；若 rename 失败则暂存
     let tmp_path = file_path.with_extension(format!(
         "{}.tmp",
         file_path
@@ -217,8 +219,30 @@ async fn push_file_handler(
             .unwrap_or_default()
     ));
 
-    std::fs::write(&tmp_path, &body)
-        .map_err(|e| AppError(StatusCode::INTERNAL_SERVER_ERROR, format!("写入失败: {e}")))?;
+    // 流式写入 + 边写边算 SHA-256
+    let mut dest = tokio::fs::File::create(&tmp_path)
+        .await
+        .map_err(|e| AppError(StatusCode::INTERNAL_SERVER_ERROR, format!("创建临时文件失败: {e}")))?;
+
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    let mut stream = body.into_data_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk =
+            chunk.map_err(|e| AppError(StatusCode::INTERNAL_SERVER_ERROR, format!("接收数据失败: {e}")))?;
+        tokio::io::AsyncWriteExt::write_all(&mut dest, &chunk)
+            .await
+            .map_err(|e| AppError(StatusCode::INTERNAL_SERVER_ERROR, format!("写入临时文件失败: {e}")))?;
+        hasher.update(&chunk);
+    }
+
+    // 确保数据落盘
+    tokio::io::AsyncWriteExt::flush(&mut dest)
+        .await
+        .map_err(|e| AppError(StatusCode::INTERNAL_SERVER_ERROR, format!("flush 失败: {e}")))?;
+    drop(dest);
+
+    let sha256 = format!("{:x}", hasher.finalize());
 
     if let Err(e) = std::fs::rename(&tmp_path, &file_path) {
         // 目标文件被锁定（如 SQLite DB），回退到暂存
@@ -228,7 +252,7 @@ async fn push_file_handler(
                 return Ok(Json(serde_json::json!({
                     "ok": true,
                     "staged": true,
-                    "sha256": "",
+                    "sha256": sha256,
                 })));
             }
             Err(se) => {
@@ -239,14 +263,6 @@ async fn push_file_handler(
             }
         }
     }
-
-    // 计算 SHA-256
-    let sha256 = {
-        use sha2::{Digest, Sha256};
-        let mut hasher = Sha256::new();
-        hasher.update(&body);
-        format!("{:x}", hasher.finalize())
-    };
 
     Ok(Json(serde_json::json!({
         "ok": true,

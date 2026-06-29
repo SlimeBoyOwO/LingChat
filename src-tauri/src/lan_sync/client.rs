@@ -7,6 +7,7 @@ use std::path::Path;
 use std::sync::LazyLock;
 
 use reqwest::Client;
+use tokio_util::io::ReaderStream;
 use tracing::info;
 
 use super::messages::{CompleteManifest, PeerInfo};
@@ -146,7 +147,7 @@ pub async fn download_file(
     Ok(())
 }
 
-/// 向对端推送单个文件。
+/// 向对端流式推送单个文件（避免将大文件一次加载到内存）。
 pub async fn upload_file(
     peer: &PeerInfo,
     local_path: &Path,
@@ -160,12 +161,24 @@ pub async fn upload_file(
     );
     let client = &*HTTP_CLIENT;
 
-    let data = std::fs::read(local_path)
-        .map_err(|e| format!("读取本地文件失败 [{}]: {}", remote_path, e))?;
+    let file = tokio::fs::File::open(local_path)
+        .await
+        .map_err(|e| format!("打开本地文件失败 [{}]: {e}", remote_path))?;
+
+    let file_size = file
+        .metadata()
+        .await
+        .map(|m| m.len())
+        .unwrap_or(0);
+    info!("开始流式推送: {} ({:.1} MB)", remote_path, file_size as f64 / 1_048_576.0);
+
+    // 用 ReaderStream 将文件变为字节流，避免 std::fs::read 一次加载全部
+    let stream = ReaderStream::new(file);
+    let body = reqwest::Body::wrap_stream(stream);
 
     let response = client
         .post(&url)
-        .body(data)
+        .body(body)
         .send()
         .await
         .map_err(|e| format!("推送文件失败 [{}]: {e}", remote_path))?;

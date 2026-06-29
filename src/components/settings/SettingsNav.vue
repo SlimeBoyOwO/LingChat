@@ -3,7 +3,7 @@
     <img src="@/assets/images/LingChatLogo.png" alt="Logo" class="w-20 ml-5 hidden xl:block" />
     <nav
       ref="navContainer"
-      class="relative w-full flex flex-nowrap items-center justify-start gap-1 h-full ease-in-out duration-100 xl:justify-center overflow-x-auto overflow-y-hidden px-2"
+      class="relative w-full flex flex-nowrap items-center justify-start gap-1 h-full ease-in-out duration-100 xl:justify-center overflow-x-auto overflow-y-hidden px-2 custom-scroll"
     >
       <div
         ref="indicator"
@@ -336,3 +336,10 @@ watch(
   { immediate: true },
 )
 </script>
+
+<style lang="css" scoped>
+.custom-scroll ::-webkit-scrollbar {
+  width: 8px;
+  height: 2px;
+}
+</style>

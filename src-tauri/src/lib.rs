@@ -109,6 +109,12 @@ pub fn run() {
 
             let rt = tokio::runtime::Runtime::new()?;
             let (db, ai_service, chat) = rt.block_on(init::initialize(app))?;
+
+            // 启动时自动清理未被引用的孤立语音文件
+            if let Err(e) = rt.block_on(init::voice_cleanup::cleanup_orphan_voice_files(&db)) {
+                tracing::warn!("语音文件清理失败（非致命错误）: {e:#}");
+            }
+
             let script_channels = std::sync::Arc::new(tokio::sync::Mutex::new(
                 ai_service::game_system::script_engine::ScriptChannels::new(),
             ));
