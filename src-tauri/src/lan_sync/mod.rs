@@ -455,11 +455,18 @@ pub async fn lan_sync_execute_pull(
     result
 }
 
-// ─── 重启（桌面端） ────────────────────────────────────────────
+// ─── 重启 ─────────────────────────────────────────────────────
 
-/// 重启应用以应用暂存的同步文件（仅桌面端，依赖 tauri-plugin-process）。
+/// 重启应用以应用暂存的同步文件（桌面端，依赖 tauri-plugin-process）。
 #[cfg(desktop)]
 #[tauri::command]
 pub fn lan_sync_restart(app: tauri::AppHandle) -> Result<(), String> {
     app.restart();
+}
+
+/// 重启应用（移动端暂不支持，返回提示）。
+#[cfg(not(desktop))]
+#[tauri::command]
+pub fn lan_sync_restart() -> Result<(), String> {
+    Err("重启功能仅在桌面端可用".to_string())
 }

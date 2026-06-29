@@ -1,188 +1,89 @@
 <template>
-  <!-- 修改点：将原生的 $event 对象作为参数传递给 emit -->
-  <button :class="type" :disabled="disabled" @click="$emit('click', $event)">
+  <button :disabled="disabled" :class="[baseClasses, typeClasses]" @click="$emit('click', $event)">
     <Icon v-if="icon" :icon="icon" :size="icon_size"></Icon>
     <slot></slot>
   </button>
 </template>
 
 <script setup lang="ts">
-// 导入外部模块
+import { computed } from 'vue'
 import Icon from './Icon.vue'
 import type { IconType } from './Icon.vue'
 
-// 定义组件属性
 interface ButtonProps {
   type?: 'big' | 'menu' | 'nav' | 'select' | 'delete' | 'add' | 'save' | 'start' | 'close'
   disabled?: boolean
   icon?: IconType
   icon_size?: number
+  // 新增：用于替代原CSS中的 .nav.active 和 .select.selected
+  active?: boolean
 }
 const props = defineProps<ButtonProps>()
 
-// 修改点：为 click 事件添加类型声明，明确它会传递 MouseEvent
 const emit = defineEmits<{
   (e: 'click', event: MouseEvent): void
 }>()
+
+// 1. 所有按钮的基础通用样式
+const baseClasses = `
+  inline-flex items-center justify-center gap-2
+  border-none outline-none cursor-pointer
+  transition-all duration-200 ease-in-out
+  disabled:opacity-60 disabled:cursor-not-allowed
+`
+
+// 2. 根据 type 和 active 状态计算特定的 Tailwind 类
+const typeClasses = computed(() => {
+  switch (props.type) {
+    case 'menu':
+      return `
+        bg-transparent text-white p-[15px] my-[10px] rounded-xl
+        text-[clamp(32px,4vw,72px)] font-normal font-['Maoken_Assorted_Sans',sans-serif]
+        justify-start [text-shadow:0_2px_4px_rgba(0,0,0,0.5)]
+        hover:text-[#f0f0f0] hover:[text-shadow:0_0_10px_rgba(255,255,255,0.8)]
+      `
+
+    case 'start':
+      return 'px-4 py-2 font-medium rounded bg-[#4caf50] text-white hover:bg-[#45a049]'
+
+    case 'close':
+      return 'px-4 py-2 font-medium rounded bg-[#f44336] text-white hover:bg-[#d32f2f]'
+
+    case 'nav':
+      return `
+        px-[15px] py-[10px] mx-[5px] rounded-lg text-base font-bold relative z-10 
+        [text-shadow:0_2px_4px_rgba(0,0,0,0.2)] transition-colors duration-300
+        [&>svg]:w-[1.125rem] [&>svg]:h-[1.125rem] [&>svg]:stroke-[2.5px] [&>svg]:shrink-0
+        ${
+          props.active
+            ? 'text-[var(--accent-color)] bg-white/10 hover:bg-white/15'
+            : 'text-white bg-transparent hover:text-[var(--accent-color)]'
+        }
+      `
+
+    case 'big':
+      return `
+        w-full p-3 text-base font-bold rounded-lg
+        bg-[#e9ecef] text-[#495057]
+        hover:bg-[var(--accent-color)] hover:text-white 
+        hover:-translate-y-0.5 hover:shadow-[0_4px_10px_rgba(121,217,255,0.4)]
+      `
+
+    case 'select':
+      return `
+        self-end px-[15px] py-[8px] rounded-full text-[13px] font-medium
+        ${
+          props.active
+            ? 'bg-[var(--accent-color)] text-white'
+            : 'bg-[#ccc] text-[#666] hover:bg-[#555] hover:text-white'
+        }
+      `
+
+    // 默认兜底样式 (适用于 delete, add, save 等没写特定样式的type)
+    default:
+      return 'px-4 py-2 font-medium rounded bg-gray-200 text-gray-800 hover:bg-gray-300'
+  }
+})
 </script>
 
-<style scoped>
-button {
-  border: none;
-  outline: none;
-  cursor: pointer;
-  font-weight: 500;
-  padding: 8px 16px;
-  border-radius: 4px;
-  transition: all 0.2s ease;
-}
-
-/* 禁用状态 */
-.base-button--disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.menu {
-  background: transparent; /* 去除背景 */
-  color: white;
-  border: none; /* 去除边框 */
-  padding: 15px;
-  margin: 10px 0;
-  border-radius: 12px;
-  /* 使用clamp()实现响应式字体大小 */
-  /* 最小32px, 根据视口宽度的4%缩放, 最大72px */
-  font-size: clamp(32px, 4vw, 72px);
-  font-weight: normal; /* 字体加粗 */
-  font-family:
-    'Maoken Assorted Sans',
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    Roboto,
-    'Helvetica Neue',
-    Arial,
-    sans-serif; /* 应用自定义字体，并提供备用字体 */
-  cursor: pointer;
-  transition:
-    color 0.3s,
-    text-shadow 0.3s; /* 平滑过渡 */
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5); /* 加一点文字阴影以保证清晰度 */
-  text-align: left; /* 文字左对齐 */
-}
-
-.menu:hover {
-  color: #f0f0f0;
-  text-shadow: 0 0 10px rgba(255, 255, 255, 0.8); /* 悬停时发光效果 */
-  transform: none; /* 移除之前的缩放效果 */
-}
-
-/* 开始按钮样式 */
-.start {
-  background-color: #4caf50;
-  color: white;
-}
-
-.start:hover {
-  background-color: #45a049;
-}
-
-/* 关闭按钮样式 */
-.close {
-  background-color: #f44336;
-  color: white;
-}
-
-.close:hover {
-  background-color: #d32f2f;
-}
-
-.nav {
-  color: white; /* 改为白色 */
-  background: none;
-  text-align: center;
-  padding: 10px 15px;
-  border-radius: 8px;
-  border: none;
-  cursor: pointer;
-  margin: 0 5px;
-  font-size: 1rem;
-  font-weight: bold;
-  position: relative;
-  z-index: 1;
-  transition:
-    color 0.3s ease,
-    background-color 0.3s ease;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-.nav svg {
-  width: 1.125rem;
-  height: 1.125rem;
-  stroke-width: 2.5px;
-  flex-shrink: 0;
-}
-
-.nav:hover {
-  color: var(--accent-color);
-}
-.nav.active {
-  color: var(--accent-color);
-  background-color: rgba(255, 255, 255, 0.1); /* 半透明白色背景 */
-}
-
-.nav.active:hover {
-  color: var(--accent-color);
-  background-color: rgba(255, 255, 255, 0.15);
-}
-
-.big {
-  width: 100%;
-  padding: 12px;
-  font-size: 16px;
-  font-weight: bold;
-  border-radius: 8px;
-  border: none;
-  cursor: pointer;
-  background-color: #e9ecef;
-  color: #495057;
-  transition: all 0.2s ease;
-}
-
-.big:hover {
-  background-color: var(--accent-color);
-  color: white;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 10px rgba(121, 217, 255, 0.4);
-}
-
-.select {
-  align-self: flex-end; /* 按钮靠右 */
-  background-color: #ccc;
-  color: #666;
-  border: none;
-  padding: 8px 15px;
-  border-radius: 20px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 13px;
-  font-weight: 500;
-}
-.select.selected {
-  background-color: var(--accent-color);
-  color: white;
-}
-.select:not(.selected):hover {
-  background-color: #555;
-  color: white;
-}
-@media (max-width: 768px) {
-  .moreMenu {
-    background-color: rgba(0, 160, 255, 0.5) !important;
-  }
-}
-
-</style>
+<!-- <style scoped> 已经被完全移除！ -->
