@@ -24,7 +24,7 @@
         :class="[{ active: uiStore.autoMode }]"
         v-show="uiStore.showSettings !== true"
       >
-        <h3>自动</h3>
+        <h3 class="hidden xl:block">自动</h3>
       </Button>
       <Button
         type="nav"
@@ -32,10 +32,10 @@
         @click="goToPetMode"
         v-show="uiStore.showSettings !== true"
       >
-        <h3>桌宠</h3>
+        <h3 class="hidden xl:block">桌宠</h3>
       </Button>
       <Button type="nav" icon="text" @click="openSettings" v-show="uiStore.showSettings !== true">
-        <h3>菜单</h3>
+        <h3 class="hidden xl:block">菜单</h3>
       </Button>
     </div>
     <GameExtraUI />
@@ -151,7 +151,6 @@ watch(
 
 // 用户手动触发的函数
 const manualTriggerContinue = () => {
-  console.log('用户主动点击了')
   if (timerId) {
     clearTimeout(timerId)
     timerId = null

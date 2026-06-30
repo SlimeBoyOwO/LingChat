@@ -2,6 +2,7 @@ export * from './api'
 export * from './ui'
 export * from './websocket'
 export * from './script'
+export * from './lanSync'
 export type {
   ChatMessage,
   Conversation,

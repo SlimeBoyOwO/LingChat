@@ -157,9 +157,15 @@ impl<'de> Deserialize<'de> for LightingParams {
 
         // 旧格式迁移：滤镜字段在顶层，同时复制给 character 和 background
         let migrated = FilterParams {
-            brightness: val.get("brightness").and_then(|v| v.as_f64()).unwrap_or(1.0),
+            brightness: val
+                .get("brightness")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(1.0),
             contrast: val.get("contrast").and_then(|v| v.as_f64()).unwrap_or(1.0),
-            saturation: val.get("saturation").and_then(|v| v.as_f64()).unwrap_or(1.0),
+            saturation: val
+                .get("saturation")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(1.0),
             sepia: val.get("sepia").and_then(|v| v.as_f64()).unwrap_or(0.0),
             glow_radius: val.get("glow_radius").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
             glow_color: val
@@ -172,7 +178,10 @@ impl<'de> Deserialize<'de> for LightingParams {
         Ok(LightingParams {
             character: migrated.clone(),
             background: migrated,
-            overlay_enabled: val.get("overlay_enabled").and_then(|v| v.as_bool()).unwrap_or(false),
+            overlay_enabled: val
+                .get("overlay_enabled")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
             blend_mode: val
                 .get("blend_mode")
                 .and_then(|v| v.as_str())
@@ -190,8 +199,14 @@ impl<'de> Deserialize<'de> for LightingParams {
                 .and_then(|v| v.as_str())
                 .unwrap_or("#18202e")
                 .to_string(),
-            overlay_radius: val.get("overlay_radius").and_then(|v| v.as_i64()).unwrap_or(80) as i32,
-            overlay_opacity: val.get("overlay_opacity").and_then(|v| v.as_f64()).unwrap_or(0.5),
+            overlay_radius: val
+                .get("overlay_radius")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(80) as i32,
+            overlay_opacity: val
+                .get("overlay_opacity")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.5),
             overlay_target: val
                 .get("overlay_target")
                 .and_then(|v| v.as_str())

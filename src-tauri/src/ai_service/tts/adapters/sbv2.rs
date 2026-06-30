@@ -19,8 +19,18 @@ pub struct Sbv2Adapter {
 }
 
 impl Sbv2Adapter {
-    pub fn new(api_url: String, speaker_id: i32, model_name: String, audio_format: String, lang: &str) -> Self {
-        let language = if lang == "ja" { "JP".to_string() } else { lang.to_string() };
+    pub fn new(
+        api_url: String,
+        speaker_id: i32,
+        model_name: String,
+        audio_format: String,
+        lang: &str,
+    ) -> Self {
+        let language = if lang == "ja" {
+            "JP".to_string()
+        } else {
+            lang.to_string()
+        };
         let api_url = api_url.trim_end_matches('/').to_string();
         Self {
             api_url,

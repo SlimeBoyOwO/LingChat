@@ -22,7 +22,12 @@ pub struct GsvAdapter {
 }
 
 impl GsvAdapter {
-    pub fn new(api_url: String, ref_audio_path: String, prompt_text: String, prompt_lang: String) -> Self {
+    pub fn new(
+        api_url: String,
+        ref_audio_path: String,
+        prompt_text: String,
+        prompt_lang: String,
+    ) -> Self {
         let api_url = api_url.trim_end_matches('/').to_string();
         Self {
             api_url,
@@ -30,17 +35,13 @@ impl GsvAdapter {
             prompt_text,
             prompt_lang,
             audio_format: "wav".into(),
-            text_lang: "auto".into(),
+            text_lang: "ja".into(),
             parallel_infer: true,
         }
     }
 
     /// 设置 GPT + SoVITS 权重。对应 Python `set_model`。
-    pub async fn set_model(
-        &self,
-        gpt_model_path: &str,
-        sovits_model_path: &str,
-    ) -> Result<()> {
+    pub async fn set_model(&self, gpt_model_path: &str, sovits_model_path: &str) -> Result<()> {
         if !Path::new(gpt_model_path).exists() {
             return Err(anyhow!("GPT 模型文件不存在: {gpt_model_path}"));
         }

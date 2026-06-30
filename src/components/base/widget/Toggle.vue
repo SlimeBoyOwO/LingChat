@@ -9,7 +9,7 @@
     />
     <label
       :for="id"
-      class="relative cursor-pointer text-white text-[14px] select-none inline-flex items-center"
+      class="relative cursor-pointer text-white text-3.5 select-none inline-flex items-center"
       style="text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3)"
     >
       <span

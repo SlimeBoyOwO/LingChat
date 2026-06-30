@@ -3,8 +3,10 @@ mod adventures;
 mod ai_service;
 mod api;
 mod config;
+mod data_update;
 mod db;
 mod init;
+mod lan_sync;
 mod migration;
 mod utils;
 
@@ -18,6 +20,8 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
 
+use ai_service::god_agent::config::resolve_god_agent_provider;
+use ai_service::god_agent::GodAgentCore;
 use ai_service::llm::LlmClient;
 use ai_service::message_system::processor::MessageProcessor;
 use ai_service::screen_analyzer::{ScreenAnalyzer, ScreenAnalyzerConfig};
@@ -58,6 +62,7 @@ pub struct AppState {
     pub screenshot_capture: Arc<tokio::sync::Mutex<ScreenshotCaptureState>>,
     pub auto_save_manager:
         Arc<tokio::sync::Mutex<ai_service::game_system::auto_save::AutoSaveManager>>,
+    pub god_agent: Option<Arc<GodAgentCore>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -72,10 +77,7 @@ pub fn run() {
                 .with_timer(LocalTimer)
                 .with_filter(filter.clone()),
         )
-        .with(
-            utils::log_bridge::LogBridgeLayer
-                .with_filter(filter),
-        )
+        .with(utils::log_bridge::LogBridgeLayer.with_filter(filter))
         .init();
 
     #[allow(deprecated)]
@@ -86,18 +88,33 @@ pub fn run() {
         );
     }
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_screenshots::init())
-        .setup(|app| {
+        .plugin(tauri_plugin_fs::init());
+
+    #[cfg(desktop)]
+    let builder = builder
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init());
+
+    builder.setup(|app| {
             utils::log_bridge::set_app_handle(app.handle().clone());
 
             app.manage(api::pet::HitTestState::default());
+            app.manage(data_update::DataUpdateState::default());
+            app.manage(lan_sync::LanSyncState::default());
 
             let rt = tokio::runtime::Runtime::new()?;
             let (db, ai_service, chat) = rt.block_on(init::initialize(app))?;
+
+            // 启动时自动清理未被引用的孤立语音文件
+            if let Err(e) = rt.block_on(init::voice_cleanup::cleanup_orphan_voice_files(&db)) {
+                tracing::warn!("语音文件清理失败（非致命错误）: {e:#}");
+            }
+
             let script_channels = std::sync::Arc::new(tokio::sync::Mutex::new(
                 ai_service::game_system::script_engine::ScriptChannels::new(),
             ));
@@ -139,9 +156,8 @@ pub fn run() {
                 std::sync::Arc::new(tokio::sync::Mutex::new(ScreenAnalyzer::new(sa_config)))
             };
 
-            let screenshot_capture = std::sync::Arc::new(tokio::sync::Mutex::new(
-                ScreenshotCaptureState::default(),
-            ));
+            let screenshot_capture =
+                std::sync::Arc::new(tokio::sync::Mutex::new(ScreenshotCaptureState::default()));
 
             let auto_save_manager = std::sync::Arc::new(tokio::sync::Mutex::new(
                 ai_service::game_system::auto_save::AutoSaveManager::new(
@@ -150,6 +166,14 @@ pub fn run() {
                     ai_service.clone(),
                 ),
             ));
+
+            // 构建上帝 Agent（多人对话编排器）
+            let god_agent = resolve_god_agent_provider(&app.handle())
+                .map(|llm| {
+                    let config =
+                        ai_service::god_agent::config::GodAgentConfig::load(&app.handle());
+                    Arc::new(GodAgentCore::new(Arc::new(llm), config))
+                });
 
             app.manage(AppState {
                 db,
@@ -162,6 +186,7 @@ pub fn run() {
                 screen_analyzer,
                 screenshot_capture,
                 auto_save_manager: auto_save_manager.clone(),
+                god_agent,
             });
 
             // Spawn Windows mouse polling click-through loop
@@ -171,6 +196,7 @@ pub fn run() {
 
             // Set up close handler for exit auto-save
             ai_service::game_system::auto_save::AutoSaveManager::setup_close_handler(
+                app.handle().clone(),
                 window.clone(),
                 auto_save_manager.clone(),
             );
@@ -275,6 +301,7 @@ pub fn run() {
             api::character::get_avatar_file,
             api::character::select_clothes,
             api::character::update_role_settings,
+            api::character::open_characters_folder,
             api::background::get_background_list,
             api::background::get_background_file,
             api::background::upload_background_image,
@@ -288,12 +315,16 @@ pub fn run() {
             api::music::get_music_list,
             api::music::get_music_file,
             api::music::upload_music,
-
+            api::music::delete_music,
+            api::ambient::get_ambient_list,
+            api::ambient::upload_ambient,
+            api::ambient::delete_ambient,
             api::asset::get_asset_base64,
             api::asset::get_voice_audio,
             api::game::init_game,
             api::game::select_character,
             api::game::reactivate_tts,
+            api::game::add_role_to_scene,
             api::chat::send_chat_message,
             api::chat::rollback_conversation,
             api::screenshot::start_screenshot,
@@ -325,6 +356,17 @@ pub fn run() {
             api::adventure::start_adventure,
             api::adventure::check_adventure_unlocks,
             api::adventure::reset_adventure,
+            api::workshop::fetch_discussions,
+            data_update::check_data_update,
+            data_update::apply_data_update,
+            lan_sync::lan_sync_start_server,
+            lan_sync::lan_sync_stop_server,
+            lan_sync::lan_sync_scan_peers,
+            lan_sync::lan_sync_plan_push,
+            lan_sync::lan_sync_execute_push,
+            lan_sync::lan_sync_plan_pull,
+            lan_sync::lan_sync_execute_pull,
+            lan_sync::lan_sync_restart,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

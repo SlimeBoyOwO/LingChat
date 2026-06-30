@@ -38,6 +38,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useGameStore } from '@/stores/modules/game'
 import { scriptHandler } from '@/api/websocket/handlers/script-handler'
 import { eventQueue } from '@/core/events/event-queue'
+import { invoke } from '@tauri-apps/api/core'
 
 interface BodyPart {
   X: number[]
@@ -247,7 +248,13 @@ const handlePolygonClick = (event: MouseEvent) => {
           message = defaultMessage
         }
 
-        scriptHandler.sendMessage(message)
+        // scriptHandler.sendMessage(message)
+        invoke('send_chat_message', {
+          message,
+        }).catch((error) => {
+          console.error('发送消息失败:', error)
+          gameStore.currentStatus = 'input'
+        })
         sent.value = true
       } else {
         const needWait = eventQueue.continue()

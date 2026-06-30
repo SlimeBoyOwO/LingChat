@@ -5,9 +5,9 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 // 导入外部模块
-import { useSlots, ref, watch, onMounted } from 'vue'
+import { useSlots, ref, watch, onMounted, onUnmounted } from 'vue'
 
 // 定义组件属性
 const props = defineProps({
@@ -20,8 +20,8 @@ const props = defineProps({
 // 定义动态变量
 const text = ref()
 
-// 获取插槽内容
-const sampleText = useSlots().default()[0].children
+// 获取插槽内容（slot 默认内容是静态文本字符串）
+const sampleText = (useSlots().default?.()[0]?.children ?? '') as string
 
 // 处理组件行为
 
@@ -36,9 +36,12 @@ watch(
   () => typewriter(props.speed),
 )
 
-let typingInterval
-const typewriter = (speed) => {
-  clearInterval(typingInterval)
+let typingInterval: ReturnType<typeof setInterval> | null = null
+let restartTimer: ReturnType<typeof setTimeout> | null = null
+
+const typewriter = (speed: number) => {
+  if (typingInterval) clearInterval(typingInterval)
+  if (restartTimer) clearTimeout(restartTimer)
   text.value = ''
   let i = 0
   const maxDelay = 200
@@ -49,14 +52,26 @@ const typewriter = (speed) => {
       text.value += sampleText.charAt(i)
       i++
     } else {
-      clearInterval(typingInterval)
+      if (typingInterval) clearInterval(typingInterval)
+      typingInterval = null
       // 打字结束后1秒自动重新显示打字效果
-      setTimeout(() => {
+      restartTimer = setTimeout(() => {
         typewriter(props.speed)
       }, 1000)
     }
   }, delay)
 }
+
+onUnmounted(() => {
+  if (typingInterval) {
+    clearInterval(typingInterval)
+    typingInterval = null
+  }
+  if (restartTimer) {
+    clearTimeout(restartTimer)
+    restartTimer = null
+  }
+})
 </script>
 
 <style scoped>

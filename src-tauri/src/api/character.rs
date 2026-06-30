@@ -11,6 +11,7 @@ use crate::db::entities::line::LineAttribute;
 use crate::db::entities::role::RoleType;
 use crate::db::managers::role_repo::RoleRepo;
 use crate::utils::prompt::PromptRole;
+use crate::utils::system::open_folder;
 use crate::AppState;
 
 use super::{characters_dir, data_dir, game_data_dir};
@@ -557,4 +558,15 @@ pub async fn update_role_settings(
 
     tracing::info!("角色 {} 配置已保存到 {:?}", role_id, yaml_path);
     Ok(serde_json::json!({"success": true, "message": "设置已保存"}))
+}
+
+#[tauri::command]
+pub fn open_characters_folder() -> Result<(), String> {
+    let char_dir = characters_dir();
+    if !char_dir.exists() {
+        fs::create_dir_all(&char_dir).map_err(|e| format!("创建角色目录失败: {}", e))?;
+    }
+
+    let path_str = char_dir.to_string_lossy().into_owned();
+    open_folder(&path_str)
 }

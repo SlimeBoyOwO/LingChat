@@ -294,6 +294,7 @@ impl ProactiveSystem {
                             .clone()
                             .ok_or_else(|| anyhow::anyhow!("LLM is not configured"))?,
                         concurrency: 1,
+                        god_agent: None,
                     };
                     MessageGenerator::new(deps)
                 };
@@ -346,6 +347,7 @@ impl ProactiveSystem {
                     .clone()
                     .ok_or_else(|| anyhow::anyhow!("LLM is not configured"))?,
                 concurrency: 1,
+                god_agent: None,
             };
             MessageGenerator::new(deps)
         };

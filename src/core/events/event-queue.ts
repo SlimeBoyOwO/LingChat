@@ -96,7 +96,7 @@ export class EventQueue {
     // 假如当前消息不是最后一个，但是队列事件已经没了
     if (!this.currentEvent?.isFinal && this.queue.length === 0) {
       needWait = true
-      console.log('后面的消息还没到，请稍等')
+      console.log('后面的消息还没到，请稍等，最后一个消息是:', this.currentEvent)
     }
 
     return needWait

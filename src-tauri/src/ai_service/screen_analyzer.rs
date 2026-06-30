@@ -75,11 +75,7 @@ impl ScreenAnalyzer {
 
     /// 分析任意图片字节（支持 JPEG / PNG / WebP 等格式）。
     /// 供脚本事件、文件分析等外部调用方使用。
-    pub async fn analyze_image(
-        &mut self,
-        image_bytes: &[u8],
-        prompt: &str,
-    ) -> Option<String> {
+    pub async fn analyze_image(&mut self, image_bytes: &[u8], prompt: &str) -> Option<String> {
         let api_key = &self.config.vd_api_key;
         if api_key.is_empty() {
             tracing::warn!("[ScreenAnalyzer] VD_API_KEY is empty, skipping image analysis.");
@@ -91,11 +87,7 @@ impl ScreenAnalyzer {
     }
 
     /// 分析本地图片文件路径。
-    pub async fn analyze_image_file(
-        &mut self,
-        image_path: &str,
-        prompt: &str,
-    ) -> Option<String> {
+    pub async fn analyze_image_file(&mut self, image_path: &str, prompt: &str) -> Option<String> {
         let api_key = &self.config.vd_api_key;
         if api_key.is_empty() {
             tracing::warn!("[ScreenAnalyzer] VD_API_KEY is empty, skipping image file analysis.");

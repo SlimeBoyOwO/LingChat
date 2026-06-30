@@ -1,92 +1,127 @@
 <template>
   <div
-    class="relative flex justify-center w-full z-2 p-3.75 backdrop-blur-[1px] transition-all duration-2000 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] bg-linear-to-t from-[rgba(0,14,39,0.7)] to-[rgba(0,14,39,0.6)] before:content-[''] before:absolute before:-top-10 before:left-0 before:right-0 before:h-10 before:bg-linear-to-b before:from-transparent before:via-[rgba(0,14,39,0.3)] before:to-[rgba(0,14,39,0.6)] before:pointer-events-none scrollbar-thin [scrollbar-color:var(--accent-color)_transparent]"
+    class="relative flex justify-center w-full z-2 p-3.75 backdrop-blur-[1px] transition-all duration-200 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] bg-linear-to-t from-[rgba(0,14,39,0.7)] to-[rgba(0,14,39,0.6)] before:content-[''] before:absolute before:-top-10 before:left-0 before:right-0 before:h-10 before:bg-linear-to-b before:from-transparent before:via-[rgba(0,14,39,0.3)] before:to-[rgba(0,14,39,0.6)] before:pointer-events-none scrollbar-thin [scrollbar-color:var(--accent-color)_transparent]"
     :class="{
       'opacity-0 z-[-1]! overflow-hidden duration-500! ease-linear before:opacity-0 before:duration-1000!':
         isHidden,
+      'max-h-[40vh]': !uiStore.isNarrowScreen,
     }"
   >
-    <div :style="{ width: containerWidth + '%' }">
-      <div class="flex items-baseline mb-2.5">
-        <div class="text-[24px] font-bold text-white mr-3.75 font-[inherit] text-shadow-[inherit]">
-          <div id="character">{{ uiStore.showCharacterTitle }}</div>
-        </div>
-        <div class="text-[20px] font-bold text-[#6eb4ff] font-[inherit] text-shadow-[inherit]">
-          <div id="character-sub">{{ uiStore.showCharacterSubtitle }}</div>
-        </div>
-        <div class="text-[20px] font-bold text-[#ff77dd] m-auto">
-          <div id="character-emotion">{{ uiStore.showCharacterEmotion }}</div>
-        </div>
-
-        <!-- 操作按钮组 -->
-        <Button type="nav" icon="background" title="场景设置" @click="openSceneSettings"></Button>
-        <Button
-          type="nav"
-          icon="hand"
-          title="触摸模式"
-          @click="toggleTouchMode"
-          @contextmenu.prevent="exitTouchMode"
-        ></Button>
-        <Button type="nav" icon="history" title="历史记录" @click="openHistory"></Button>
-
-        <!-- 新增：语音输入按钮 (已将 icon 修复为 mic) -->
-        <Button
-          type="nav"
-          icon="mic"
-          :title="isRecording ? '录音中，点击停止' : '语音输入'"
-          :class="{ 'text-red-500 animate-pulse': isRecording }"
-          @click="toggleRecording"
-        ></Button>
-
-        <div class="relative inline-flex group">
+    <div :style="{ width: containerWidth + '%' }" class="relative">
+      <div class="overflow-y-auto flex flex-col">
+        <div class="flex items-baseline mb-2 shrink-0">
+          <!-- 角色名称（窄屏时可截断，为右侧按钮腾出空间） -->
           <div
-            v-if="hasScreenshot"
-            class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50"
+            class="text-2xl font-bold text-white mr-3.75 font-[inherit] text-shadow-[inherit]"
+            :class="{
+              'min-w-0 overflow-hidden text-ellipsis whitespace-nowrap': uiStore.isNarrowScreen,
+            }"
           >
-            <img
-              :src="'data:image/jpeg;base64,' + screenshotBase64"
-              class="max-w-96 max-h-64 rounded-lg shadow-lg border-2 object-contain"
-              style="border-color: var(--accent-color); background: #000"
-            />
+            <div id="character">{{ uiStore.showCharacterTitle }}</div>
           </div>
-          <Button
-            type="nav"
-            icon="camera"
-            :title="hasScreenshot ? '点击重新截图，右键取消截图' : '截图提问'"
-            :style="hasScreenshot ? { color: 'var(--accent-color)' } : {}"
-            @click="startScreenshot"
-            @contextmenu.prevent="clearScreenshot"
-          ></Button>
+          <div
+            v-show="!uiStore.isNarrowScreen"
+            class="text-xl font-bold text-[#6eb4ff] font-[inherit] text-shadow-[inherit]"
+          >
+            <div id="character-sub">{{ uiStore.showCharacterSubtitle }}</div>
+          </div>
+
+          <!-- 右侧区域：情绪标签 + 操作按钮组（窄屏时占据剩余全部宽度，优先显示） -->
+          <div
+            class="flex items-baseline ml-auto min-w-0"
+            :class="{ 'flex-1 shrink-0': uiStore.isNarrowScreen }"
+          >
+            <div
+              class="text-xl font-bold text-[#ff77dd] font-[inherit] text-shadow-[inherit] shrink-0"
+            >
+              <div id="character-emotion">{{ uiStore.showCharacterEmotion }}</div>
+            </div>
+
+            <!-- 操作按钮组（窄屏时占据右侧容器剩余空间，可横向滚动） -->
+            <div
+              class="overflow-x-auto custom-scroll"
+              :class="uiStore.isNarrowScreen ? 'flex-1 min-w-0' : 'shrink-0'"
+            >
+              <div class="flex whitespace-nowrap">
+                <Button
+                  type="nav"
+                  icon="background"
+                  title="场景设置"
+                  @click="openSceneSettings"
+                ></Button>
+                <Button
+                  type="nav"
+                  icon="hand"
+                  title="触摸模式"
+                  @click="toggleTouchMode"
+                  @contextmenu.prevent="exitTouchMode"
+                ></Button>
+                <Button type="nav" icon="history" title="历史记录" @click="openHistory"></Button>
+
+                <!-- 新增：语音输入按钮 (已将 icon 修复为 mic) -->
+                <Button
+                  type="nav"
+                  icon="mic"
+                  :title="isRecording ? '录音中，点击停止' : '语音输入'"
+                  :class="{ 'text-red-500 animate-pulse': isRecording }"
+                  @click="toggleRecording"
+                ></Button>
+
+                <div class="relative inline-flex group">
+                  <div
+                    v-if="hasScreenshot"
+                    class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50"
+                  >
+                    <img
+                      :src="'data:image/jpeg;base64,' + screenshotBase64"
+                      class="max-w-96 max-h-64 rounded-lg shadow-lg border-2 object-contain"
+                      style="border-color: var(--accent-color); background: #000"
+                    />
+                  </div>
+                  <Button
+                    type="nav"
+                    icon="camera"
+                    :title="hasScreenshot ? '点击重新截图，右键取消截图' : '截图提问'"
+                    :style="hasScreenshot ? { color: 'var(--accent-color)' } : {}"
+                    @click="startScreenshot"
+                    @contextmenu.prevent="clearScreenshot"
+                  ></Button>
+                </div>
+
+                <Button type="nav" icon="close" title="关闭对话" @click="removeDialog"></Button>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <Button type="nav" icon="close" title="关闭对话" @click="removeDialog"></Button>
-      </div>
+        <!-- 分割线 -->
+        <div class="h-px bg-white/30 my-1.5 shrink-0"></div>
 
-      <!-- 分割线 -->
-      <div class="h-px bg-white/30 my-1.5"></div>
-
-      <!-- 输入框区域 -->
-      <div
-        class="flex flex-col whitespace-pre-line w-full min-h-10 bg-transparent border-none text-white text-[20px] font-bold resize-none my-1.25 outline-none transition-all duration-300"
-      >
-        <textarea
-          id="inputMessage"
-          ref="textareaRef"
-          class="w-full min-h-10 bg-transparent border-none text-white text-[20px] font-bold resize-none my-1.25 outline-none transition-all duration-300 placeholder:text-white/50 placeholder:shadow-none font-[inherit] text-shadow-[inherit]"
-          :placeholder="placeholderText"
-          v-model="inputMessage"
-          @keydown.enter.exact.prevent="sendOrContinue"
-          :readonly="!isInputEnabled"
-        ></textarea>
-        <button
-          id="sendButton"
-          class="self-end bg-transparent text-[#04bcff] border-none px-2.5 py-1 rounded-[5px] cursor-pointer transition-all duration-300 text-[20px] font-bold scale-x-150 hover:bg-transparent hover:text-[rgba(136,255,251,0.827)] disabled:bg-[#333] disabled:cursor-not-allowed disabled:opacity-70 font-[inherit] text-shadow-[inherit]"
-          :disabled="isSending"
-          @click="sendOrContinue"
+        <!-- 输入区 -->
+        <div
+          class="flex flex-1 min-h-30 whitespace-pre-line w-full bg-transparent border-none text-xl font-bold my-1.25 outline-none transition-all duration-300"
         >
-          ▼
-        </button>
+          <textarea
+            id="inputMessage"
+            ref="textareaRef"
+            class="flex-1 min-h-30 max-h-[50vh] bg-transparent border-none text-white text-xl font-bold resize-none my-1.25 outline-none transition-all duration-300 placeholder:text-white/50 placeholder:shadow-none font-[inherit] text-shadow-[inherit]"
+            :class="{ 'italic text-white/50 text-base': isShowingMotionText }"
+            :placeholder="placeholderText"
+            v-model="inputMessage"
+            @keydown.enter.exact.prevent="sendOrContinue"
+            :readonly="!isInputEnabled"
+          ></textarea>
+        </div>
       </div>
+      <!-- 发送按钮（内层右侧外部） -->
+      <button
+        id="sendButton"
+        class="absolute right-0 bottom-0 translate-x-full bg-transparent text-[#04bcff] border-none px-2 py-2 rounded-[5px] cursor-pointer transition-all duration-300 text-sm font-bold hover:bg-transparent hover:text-[rgba(136,255,251,0.827)] disabled:bg-[#333] disabled:cursor-not-allowed disabled:opacity-70 font-[inherit] text-shadow-[inherit]"
+        :disabled="isSending"
+        @click="sendOrContinue"
+      >
+        ▼
+      </button>
     </div>
   </div>
 </template>
@@ -103,6 +138,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 
 const inputMessage = ref('')
+const isShowingMotionText = ref(false)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const gameStore = useGameStore()
 const uiStore = useUIStore()
@@ -119,13 +155,11 @@ const hasScreenshot = ref(false)
 const screenshotBase64 = ref<string | null>(null)
 const isCapturing = ref(false)
 
-// 响应式容器宽度
+// 响应式容器宽度（窄屏判断从 uiStore 读取）
 const containerWidth = ref(60)
 
-// 计算窗口宽高比并调整容器宽度
 const updateContainerWidth = () => {
-  const aspectRatio = window.innerWidth / window.innerHeight
-  containerWidth.value = Math.max(60, aspectRatio > 1 ? 70 : 90)
+  containerWidth.value = Math.max(60, uiStore.aspectRatio > 1 ? 70 : 90)
 }
 
 const openSceneSettings = () => {
@@ -134,15 +168,11 @@ const openSceneSettings = () => {
 }
 const currentDisplayedText = ref('')
 
-const { startTyping, stopTyping } = useTypeWriter(textareaRef, (text) => {
+const { startTyping, stopTyping, isTyping } = useTypeWriter(textareaRef, (text) => {
   currentDisplayedText.value = text
 })
 
 const isSending = computed(() => gameStore.currentStatus === 'thinking')
-const isTyping = computed(
-  () =>
-    uiStore.showCharacterLine !== '' && currentDisplayedText.value !== uiStore.showCharacterLine,
-)
 
 const emit = defineEmits(['player-continued', 'dialog-proceed'])
 
@@ -238,6 +268,7 @@ watch([() => uiStore.showCharacterLine, () => gameStore.currentStatus], ([newLin
     startTyping(newLine, uiStore.typeWriterSpeed)
   } else if (newStatus === 'input') {
     stopTyping()
+    isShowingMotionText.value = false
     inputMessage.value = ''
     currentDisplayedText.value = ''
   }
@@ -323,6 +354,7 @@ const toggleRecording = async () => {
 }
 
 let unlistenScreenshot: (() => void) | null = null
+let unlistenCancelled: (() => void) | null = null
 
 onMounted(async () => {
   document.addEventListener('contextmenu', handleDialogShow)
@@ -339,12 +371,19 @@ onMounted(async () => {
     hasScreenshot.value = true
     isCapturing.value = false
   })
+
+  // 监听截图取消事件
+  unlistenCancelled = await listen('screenshot:cancelled', () => {
+    isCapturing.value = false
+    hasScreenshot.value = false
+  })
 })
 
 onUnmounted(() => {
   document.removeEventListener('contextmenu', handleDialogShow)
   window.removeEventListener('resize', updateContainerWidth)
   if (unlistenScreenshot) unlistenScreenshot()
+  if (unlistenCancelled) unlistenCancelled()
 })
 
 async function startScreenshot() {
@@ -411,6 +450,20 @@ function send() {
 }
 
 function continueDialog(isPlayerTrigger: boolean): boolean {
+  // Phase 2: motion text already shown, now advance normally
+  if (isShowingMotionText.value) {
+    isShowingMotionText.value = false
+    uiStore.showCharacterMotionText = ''
+  }
+  // Phase 1: there's pending motion text, show it instead of advancing
+  else if (uiStore.showCharacterMotionText) {
+    isShowingMotionText.value = true
+    // Type the motion text into the same textarea with typewriter
+    startTyping(uiStore.showCharacterMotionText, uiStore.typeWriterSpeed)
+    return false // don't advance event queue
+  }
+
+  // Normal: advance to next event
   const needWait = eventQueue.continue()
   if (!needWait) {
     if (isPlayerTrigger) emit('player-continued')
@@ -429,3 +482,16 @@ defineExpose({
   isTyping,
 })
 </script>
+
+<style scoped>
+/* 兼容 Firefox */
+.custom-scroll {
+  scrollbar-width: thin;
+}
+
+/* 兼容 Chrome / Edge / Safari */
+.custom-scroll::-webkit-scrollbar {
+  width: 6px; /* 纵向滚动条宽度 */
+  height: 6px; /* 横向滚动条高度（你这个是 overflow-x，主要控制这个） */
+}
+</style>

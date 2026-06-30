@@ -1,5 +1,6 @@
 pub mod role_sync;
 pub mod static_copy;
+pub mod voice_cleanup;
 
 use std::sync::Arc;
 
@@ -28,7 +29,12 @@ pub async fn initialize(
     app: &App,
 ) -> Result<(DatabaseConnection, SharedAIService, ChatComponents)> {
     static_copy::init_data_dir(&app.handle());
+    static_copy::seed_data_dir(&app.handle())?;
     let data_dir = static_copy::get_data_dir().clone();
+
+    // 应用 LAN 同步暂存文件（必须在 DB 初始化之前，否则 .db 仍被锁定）
+    crate::lan_sync::staging::apply_staged_files(&data_dir);
+
     let db = db::init_db(&data_dir).await?;
 
     role_sync::sync_roles_from_folder(&db, &data_dir).await?;

@@ -4,7 +4,9 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::ai_service::game_system::script_engine::events::{register_event, ScriptContext, ScriptEvent};
+use crate::ai_service::game_system::script_engine::events::{
+    register_event, ScriptContext, ScriptEvent,
+};
 use crate::ai_service::game_system::script_engine::responses::{
     event_names::SCRIPT_MODIFY_CHARACTER, ModifyCharacterPayload,
 };
@@ -52,20 +54,16 @@ impl ScriptEvent for ModifyCharacterEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
         let script_status = ctx
             .game_status
-            .lock().await
+            .lock()
+            .await
             .script_status
             .clone()
             .ok_or_else(|| anyhow!("ScriptStatus 未设置"))?;
 
         let role_id = {
             let mut gs = ctx.game_status.lock().await;
-            let role = script_function::get_role(
-                &mut *gs,
-                ctx.db,
-                &script_status,
-                &self.character,
-            )
-            .await?;
+            let role = script_function::get_role(&mut *gs, ctx.db, &script_status, &self.character)
+                .await?;
             let id = role.role_id.ok_or_else(|| anyhow!("角色 ID 未设置"))?;
 
             // Apply clothes (while we have mutable access to role)
@@ -91,9 +89,17 @@ impl ScriptEvent for ModifyCharacterEvent {
         // Apply perceive
         if let Some(perceive) = self.perceive {
             if perceive {
-                ctx.game_status.lock().await.present_role_ids.insert(role_id);
+                ctx.game_status
+                    .lock()
+                    .await
+                    .present_role_ids
+                    .insert(role_id);
             } else {
-                ctx.game_status.lock().await.present_role_ids.remove(&role_id);
+                ctx.game_status
+                    .lock()
+                    .await
+                    .present_role_ids
+                    .remove(&role_id);
             }
         }
 

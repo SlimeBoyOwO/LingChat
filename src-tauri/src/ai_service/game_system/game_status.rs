@@ -160,14 +160,11 @@ impl GameStatus {
         self.current_scene_id = snapshot.current_scene_id.clone();
         self.global_variables = snapshot.global_variables.clone();
         self.completed_scripts = snapshot.completed_scripts.iter().cloned().collect();
-        self.last_dialog_time = snapshot
-            .last_dialog_time
-            .as_ref()
-            .and_then(|s| {
-                chrono::DateTime::parse_from_rfc3339(s)
-                    .ok()
-                    .map(|dt| dt.with_timezone(&Local))
-            });
+        self.last_dialog_time = snapshot.last_dialog_time.as_ref().and_then(|s| {
+            chrono::DateTime::parse_from_rfc3339(s)
+                .ok()
+                .map(|dt| dt.with_timezone(&Local))
+        });
         self.current_role_id = snapshot.current_role_id;
         self.present_role_ids = snapshot.present_role_ids.iter().copied().collect();
         self.onstage_role_ids = snapshot.present_role_ids.clone();

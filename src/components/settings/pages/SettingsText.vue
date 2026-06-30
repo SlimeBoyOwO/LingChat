@@ -37,20 +37,6 @@
         <Toggle @change="voiceSound">启用无vits时的对话音效</Toggle>
       </MenuItem>
 
-      <MenuItem title="WebSocket通信状态" size="small">
-        <template #header>
-          <Rss :size="20" />
-        </template>
-        <p>√ 连接正常</p>
-      </MenuItem>
-
-      <MenuItem title="当前使用的AI大模型（这里是假的嘻嘻）" size="small">
-        <template #header>
-          <Settings :size="20" />
-        </template>
-        <p>DeepSeek V3</p>
-      </MenuItem>
-
       <MenuItem title="语音推理引擎下载（SBV2）" size="small">
         <template #header>
           <Download :size="20" />
@@ -98,12 +84,98 @@
           >
         </div>
       </MenuItem>
+
+      <!-- ─── 版本更新 ──────────────────────────────── -->
+      <MenuItem title="版本更新" size="small">
+        <template #header>
+          <RefreshCw :size="20" :class="{ 'animate-spin': updateChecking }" />
+        </template>
+        <div class="space-y-2 w-full">
+          <div class="flex items-center justify-between text-base">
+            <span class="text-gray-50">当前版本</span>
+            <span class="text-gray-50">v{{ currentAppVersion }}</span>
+          </div>
+          <div v-if="updateDataInfo" class="flex items-center justify-between">
+            <span class="text-gray-50">数据版本</span>
+            <span class="text-gray-50">v{{ updateDataInfo.currentVersion }}</span>
+          </div>
+          <div v-if="updateLatestVersion" class="flex items-center justify-between">
+            <span class="text-gray-50">最新版本</span>
+            <span class="text-gray-50 font-bold">{{ updateLatestVersion }}</span>
+          </div>
+          <div v-if="updateStatusText" :class="updateStatusColor">
+            {{ updateStatusText }}
+          </div>
+          <div class="flex gap-3 pt-1">
+            <Button type="big" @click="handleCheckUpdate" :disabled="updateChecking">
+              {{ updateChecking ? '检查中...' : '检查更新' }}
+            </Button>
+            <Button v-if="updateAvailable" type="big" @click="handleDoUpdate"> 立即更新 </Button>
+          </div>
+          <UpdateDialog
+            :visible="showUpdateInlineDialog"
+            :phase="updatePhase"
+            :app-version="updateAppVersion"
+            :app-release-notes="updateAppReleaseNotes"
+            :data-info="updateDataInfo"
+            :data-progress="updateDataProgress"
+            :error-message="updateErrorMessage"
+            @update="handleInstallFromSettings"
+            @later="showUpdateInlineDialog = false"
+            @close="showUpdateInlineDialog = false"
+          />
+        </div>
+      </MenuItem>
+
+      <!-- ─── 局域网同步 ──────────────────────────────── -->
+      <MenuItem title="局域网数据同步" size="small">
+        <template #header>
+          <Wifi :size="20" />
+        </template>
+        <div class="space-y-2 w-full">
+          <p class="text-gray-50 text-sm">
+            在同一局域网内的设备之间同步 data 文件夹（游戏存档、语音、截图等）。
+          </p>
+          <div class="flex gap-3 pt-1">
+            <Button type="big" @click="openLanSync"> 打开局域网同步 </Button>
+          </div>
+          <!-- 局域网同步对话框 -->
+          <LanSyncDialog
+            :visible="lanSync.dialogVisible.value"
+            :view="lanSyncView"
+            :phase="lanSync.phase.value"
+            :server-port="lanSync.serverPort.value"
+            :peers="lanSync.peers.value"
+            :sync-plan="lanSync.syncPlan.value"
+            :progress="lanSync.progress.value"
+            :last-result="lanSync.lastResult.value"
+            :error-message="lanSync.errorMessage.value"
+            @close="lanSync.closeDialog()"
+            @rescan="lanSync.scanPeers()"
+            @pull="
+              (peer) => {
+                lanSync.selectPeer(peer)
+                lanSync.planPull()
+              }
+            "
+            @push="
+              (peer) => {
+                lanSync.selectPeer(peer)
+                lanSync.planPush()
+              }
+            "
+            @confirm="handleLanSyncConfirm"
+            @cancel="lanSync.reset()"
+            @restart="lanSync.restart()"
+          />
+        </div>
+      </MenuItem>
     </MenuPage>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { MenuPage, MenuItem } from '../../ui'
 import { Slider, Text, Toggle, Button } from '../../base'
@@ -124,8 +196,16 @@ import {
   ArrowBigLeft,
   Rss,
   Download,
+  RefreshCw,
+  Wifi,
 } from 'lucide-vue-next'
 import { reactivateTTS } from '@/api/services/game-info'
+import { useUpdater } from '@/composables/useUpdater'
+import { useLanSync } from '@/composables/useLanSync'
+import { getVersion } from '@tauri-apps/api/app'
+import UpdateDialog from '@/components/UpdateDialog.vue'
+import LanSyncDialog from '@/components/LanSyncDialog.vue'
+import type { DialogView } from '@/types/lanSync'
 
 const router = useRouter()
 const uiStore = useUIStore()
@@ -137,6 +217,130 @@ const envSettings = ref<Record<string, ConfigItem>>({})
 
 // 判断是否在自由对话模式（没有运行剧本）
 const isFreeDialogMode = computed(() => gameStore.runningScript === null)
+
+// ─── 更新检查 ────────────────────────────────────────────────
+
+const updater = useUpdater()
+const {
+  phase: updatePhase,
+  appVersion: updateAppVersion,
+  appReleaseNotes: updateAppReleaseNotes,
+  dataInfo: updateDataInfo,
+  dataProgress: updateDataProgress,
+  errorMessage: updateErrorMessage,
+} = updater
+
+const currentAppVersion = ref('0.1.0')
+const updateLatestVersion = ref('')
+const updateChecking = ref(false)
+const showUpdateInlineDialog = ref(false)
+
+const updateAvailable = computed(() => updateLatestVersion.value !== '')
+
+const updateStatusText = computed(() => {
+  if (updateAvailable.value) return '发现新版本可用！'
+  if (
+    updateDataInfo.value &&
+    !updateDataInfo.value.available &&
+    updateDataInfo.value.currentVersion > 0
+  )
+    return '✓ 已是最新版本'
+  return ''
+})
+
+const updateStatusColor = computed(() => {
+  if (updateAvailable.value) return 'text-amber-600'
+  return 'text-green-600'
+})
+
+async function loadAppVersion() {
+  try {
+    currentAppVersion.value = await getVersion()
+  } catch {
+    // 使用默认值
+  }
+}
+
+async function handleCheckUpdate() {
+  updateChecking.value = true
+  updateLatestVersion.value = ''
+  try {
+    const hasUpdate = await updater.checkForUpdates()
+    if (hasUpdate) {
+      updateLatestVersion.value = updateAppVersion.value || updatePhase.value
+    }
+    // 即使没有 app 更新，也同步 data 版本信息
+    if (updateDataInfo.value && updateDataInfo.value.available) {
+      updateLatestVersion.value =
+        updateLatestVersion.value || `(数据 v${updateDataInfo.value.newVersion})`
+    }
+  } catch (e) {
+    console.debug('[SettingsText] 更新检查跳过 (无 Release):', String(e).slice(0, 80))
+  } finally {
+    updateChecking.value = false
+  }
+}
+
+async function handleDoUpdate() {
+  showUpdateInlineDialog.value = true
+}
+
+async function handleInstallFromSettings() {
+  try {
+    await updater.installAllUpdates()
+    updateLatestVersion.value = ''
+  } catch {
+    // 错误通过 phase 反映
+  }
+}
+
+// ─── 局域网同步 ────────────────────────────────────────────────
+
+const lanSync = useLanSync()
+const lanSyncView = ref<DialogView>('device-list')
+
+// 监听阶段变化，自动切换视图
+watch(
+  () => lanSync.phase.value,
+  (newPhase) => {
+    switch (newPhase) {
+      case 'idle':
+      case 'scanning':
+        lanSyncView.value = 'device-list'
+        break
+      case 'planning':
+        lanSyncView.value = 'sync-plan'
+        break
+      case 'executing':
+        lanSyncView.value = 'progress'
+        break
+      case 'complete':
+      case 'error':
+        lanSyncView.value = 'result'
+        break
+    }
+  },
+)
+
+async function openLanSync() {
+  lanSync.init()
+  await lanSync.openDialog()
+  lanSyncView.value = 'device-list'
+}
+
+async function handleLanSyncConfirm() {
+  const plan = lanSync.syncPlan.value
+  if (!plan) return
+  lanSyncView.value = 'progress'
+  if (plan.direction === 'pull') {
+    await lanSync.executePull()
+  } else {
+    await lanSync.executePush()
+  }
+}
+
+// 加载版本号
+loadAppVersion()
 
 const returnToMain = () => {
   uiStore.toggleSettings(false)

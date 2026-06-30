@@ -4,12 +4,14 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::ai_service::game_system::script_engine::events::{register_event, ScriptContext, ScriptEvent};
+use crate::ai_service::game_system::script_engine::events::{
+    register_event, ScriptContext, ScriptEvent,
+};
 use crate::ai_service::game_system::script_engine::responses::{
     event_names::SCRIPT_PLAYER, PlayerPayload,
 };
 use crate::ai_service::message_system::events::emit;
-use crate::ai_service::types::{LineBase, LineAttributeExt};
+use crate::ai_service::types::{LineAttributeExt, LineBase};
 use crate::db::entities::line::LineAttribute;
 
 pub struct PlayerEvent {
@@ -37,10 +39,7 @@ impl PlayerEvent {
 impl ScriptEvent for PlayerEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
         let player_name = ctx.game_status.lock().await.player.user_name.clone();
-        let display_name = self
-            .display_name
-            .clone()
-            .unwrap_or(player_name);
+        let display_name = self.display_name.clone().unwrap_or(player_name);
 
         let payload = PlayerPayload {
             text: self.text.clone(),

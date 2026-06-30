@@ -134,29 +134,62 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
   const characterInfo = gameInfo.character_settings
   const charId = characterInfo.character_id ?? 0
 
+  // 从 onstage_roles 填充 gameRoles（含主角 + 所有在场角色）
   state.gameRoles = {}
-  state.gameRoles[charId] = {
-    roleId: charId,
-    roleName: characterInfo.ai_name,
-    roleSubTitle: characterInfo.ai_subtitle,
-    thinkMessage: characterInfo.thinking_message,
-    scale: characterInfo.scale,
-    offsetX: characterInfo.offset_x,
-    offsetY: characterInfo.offset_y,
-    scaleP: characterInfo.scale_p,
-    offsetXP: characterInfo.offset_x_p,
-    offsetYP: characterInfo.offset_y_p,
-    bubbleLeft: characterInfo.bubble_left,
-    bubbleTop: characterInfo.bubble_top,
-    clothes: characterInfo.clothes,
-    clothesName: characterInfo.clothes_name,
-    bodyPart: characterInfo.body_part,
-    character_folder: characterInfo.character_folder,
-    emotion: '正常',
-    originalEmotion: '正常',
-    show: true,
+  for (const settings of gameInfo.onstage_roles) {
+    const rid = settings.character_id ?? 0
+    if (rid === 0) continue
+    state.gameRoles[rid] = {
+      roleId: rid,
+      roleName: settings.ai_name,
+      roleSubTitle: settings.ai_subtitle,
+      thinkMessage: settings.thinking_message,
+      scale: settings.scale,
+      offsetX: settings.offset_x,
+      offsetY: settings.offset_y,
+      scaleP: settings.scale_p,
+      offsetXP: settings.offset_x_p,
+      offsetYP: settings.offset_y_p,
+      bubbleLeft: settings.bubble_left,
+      bubbleTop: settings.bubble_top,
+      clothes: settings.clothes,
+      clothesName: settings.clothes_name,
+      bodyPart: settings.body_part,
+      character_folder: settings.character_folder,
+      emotion: '正常',
+      originalEmotion: '正常',
+      show: true,
+    }
   }
-  state.presentRoleIds = [charId]
+
+  // fallback：若 onstage_roles 中未包含主角（如旧版存档），从 character_settings 补充
+  if (!state.gameRoles[charId] && charId !== 0) {
+    state.gameRoles[charId] = {
+      roleId: charId,
+      roleName: characterInfo.ai_name,
+      roleSubTitle: characterInfo.ai_subtitle,
+      thinkMessage: characterInfo.thinking_message,
+      scale: characterInfo.scale,
+      offsetX: characterInfo.offset_x,
+      offsetY: characterInfo.offset_y,
+      scaleP: characterInfo.scale_p,
+      offsetXP: characterInfo.offset_x_p,
+      offsetYP: characterInfo.offset_y_p,
+      bubbleLeft: characterInfo.bubble_left,
+      bubbleTop: characterInfo.bubble_top,
+      clothes: characterInfo.clothes,
+      clothesName: characterInfo.clothes_name,
+      bodyPart: characterInfo.body_part,
+      character_folder: characterInfo.character_folder,
+      emotion: '正常',
+      originalEmotion: '正常',
+      show: true,
+    }
+  }
+
+  state.presentRoleIds = gameInfo.onstage_roles_ids.length > 0
+    ? [...gameInfo.onstage_roles_ids]
+    : [charId]
   state.mainRoleId = charId
   state.currentInteractRoleId = gameInfo.current_interact_role_id ?? charId
 

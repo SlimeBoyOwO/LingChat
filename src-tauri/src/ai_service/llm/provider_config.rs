@@ -59,6 +59,8 @@ pub struct LlmRoleAssignment {
     pub chat_provider_id: Option<String>,
     #[serde(default)]
     pub translate_provider_id: Option<String>,
+    #[serde(default)]
+    pub god_agent_provider_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,6 +68,7 @@ pub struct LlmProvidersResponse {
     pub providers: Vec<LlmProviderConfig>,
     pub chat_provider_id: Option<String>,
     pub translate_provider_id: Option<String>,
+    pub god_agent_provider_id: Option<String>,
 }
 
 // ============================================================
@@ -105,13 +108,11 @@ pub fn load_role_assignment(app: &AppHandle) -> LlmRoleAssignment {
     LlmRoleAssignment {
         chat_provider_id: get_string_opt(&store, keys::LLM_CHAT_PROVIDER_ID),
         translate_provider_id: get_string_opt(&store, keys::LLM_TRANSLATE_PROVIDER_ID),
+        god_agent_provider_id: get_string_opt(&store, keys::LLM_GOD_AGENT_PROVIDER_ID),
     }
 }
 
-pub fn save_role_assignment(
-    app: &AppHandle,
-    assignment: &LlmRoleAssignment,
-) -> anyhow::Result<()> {
+pub fn save_role_assignment(app: &AppHandle, assignment: &LlmRoleAssignment) -> anyhow::Result<()> {
     let store = app
         .store(config::STORE_FILE)
         .context("Failed to open settings store")?;
@@ -122,6 +123,10 @@ pub fn save_role_assignment(
     store.set(
         keys::LLM_TRANSLATE_PROVIDER_ID.to_string(),
         json_string_opt(assignment.translate_provider_id.as_deref()),
+    );
+    store.set(
+        keys::LLM_GOD_AGENT_PROVIDER_ID.to_string(),
+        json_string_opt(assignment.god_agent_provider_id.as_deref()),
     );
     store.save().context("Failed to save settings store")?;
     Ok(())
@@ -147,11 +152,7 @@ pub fn resolve_translate_provider(app: &AppHandle) -> Option<LlmProviderConfig> 
     if let Some(ref id) = assignment.translate_provider_id {
         if let Some(p) = providers.iter().find(|p| p.id == *id) {
             if p.is_usable() {
-                tracing::info!(
-                    "Using explicit translate provider: {} ({})",
-                    p.label,
-                    p.id
-                );
+                tracing::info!("Using explicit translate provider: {} ({})", p.label, p.id);
                 return Some(p.clone());
             }
         }
@@ -177,11 +178,7 @@ pub fn resolve_translate_provider(app: &AppHandle) -> Option<LlmProviderConfig> 
 
 pub fn build_llm_client_from_provider(cfg: &LlmProviderConfig) -> Option<LlmClient> {
     if !cfg.is_usable() {
-        tracing::warn!(
-            "Skipping unusable LLM provider: {} ({})",
-            cfg.label,
-            cfg.id
-        );
+        tracing::warn!("Skipping unusable LLM provider: {} ({})", cfg.label, cfg.id);
         return None;
     }
     match create_llm_client(cfg.to_llm_config()) {
@@ -251,7 +248,8 @@ pub fn migrate_if_needed(app: &AppHandle) {
     let mut translate_id: Option<String> = None;
     if !trans_api_key.is_empty() && !trans_model.is_empty() {
         // Check if translate config is different from chat
-        let is_different = trans_provider != get_string_opt(&store, keys::LLM_PROVIDER).unwrap_or_default()
+        let is_different = trans_provider
+            != get_string_opt(&store, keys::LLM_PROVIDER).unwrap_or_default()
             || trans_model != get_string_opt(&store, keys::LLM_MODEL).unwrap_or_default()
             || trans_api_key != get_string_opt(&store, keys::LLM_API_KEY).unwrap_or_default()
             || trans_base_url != get_string_opt(&store, keys::LLM_BASE_URL).unwrap_or_default();
@@ -302,22 +300,17 @@ pub fn migrate_if_needed(app: &AppHandle) {
 // ============================================================
 
 fn get_string_opt(store: &tauri_plugin_store::Store<tauri::Wry>, key: &str) -> Option<String> {
-    store.get(key).and_then(|v| v.as_str().map(|s| s.to_string()))
+    store
+        .get(key)
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
 }
 
 fn get_f64_opt(store: &tauri_plugin_store::Store<tauri::Wry>, key: &str) -> Option<f64> {
     store.get(key).and_then(|v| v.as_f64())
 }
 
-fn get_bool_opt(
-    store: &tauri_plugin_store::Store<tauri::Wry>,
-    key: &str,
-    default: bool,
-) -> bool {
-    store
-        .get(key)
-        .and_then(|v| v.as_bool())
-        .unwrap_or(default)
+fn get_bool_opt(store: &tauri_plugin_store::Store<tauri::Wry>, key: &str, default: bool) -> bool {
+    store.get(key).and_then(|v| v.as_bool()).unwrap_or(default)
 }
 
 fn json_string_opt(s: Option<&str>) -> JsonValue {

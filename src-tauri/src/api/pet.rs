@@ -1,6 +1,8 @@
 use std::sync::{Arc, Mutex};
 use serde::Deserialize;
-use tauri::{AppHandle, Manager, LogicalSize};
+use tauri::{AppHandle, Manager};
+#[cfg(desktop)]
+use tauri::LogicalSize;
 
 #[derive(Clone, Deserialize, Debug)]
 pub struct Rect {
@@ -42,10 +44,11 @@ pub fn set_pet_mode(
         *locked_enabled = enable;
     }
 
+    #[cfg(desktop)]
     if let Some(window) = app_handle.get_webview_window("main") {
         if enable {
             let scale_val = scale.unwrap_or(1.0);
-            
+
             // Calculate sizes based on pet dimensions: BASE_AVATAR_SIZE = 240, CHAT_BASE_H = 45, DIALOG_BASE_H = 75
             // But let's check: GameRoleAvatar frame size is Math.round(210 * scale). Let's use standard pet size:
             // Width: 240 * scale, Height: (240 + 75 + 45) * scale = 360 * scale.

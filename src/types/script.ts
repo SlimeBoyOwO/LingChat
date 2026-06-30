@@ -80,6 +80,20 @@ export interface ScriptMusicEvent extends ScriptEvent {
   musicPath: string
 }
 
+/** 环境音事件 —— 循环持续的场景音效，与 BGM 共存 */
+export interface ScriptAmbientEvent extends ScriptEvent {
+  type: 'ambient'
+  ambientPath: string
+  /** 单轨音量 0-100，默认 100 */
+  volume?: number
+  /** 是否循环，默认 true */
+  loop?: boolean
+  /** 是否停止（true 时淡出停止），默认 false */
+  stop?: boolean
+  /** 是否启用淡入淡出，默认 true */
+  fade?: boolean
+}
+
 export interface ScriptModifyCharacterEvent extends ScriptEvent {
   type: 'modify_character'
   characterId: number
@@ -121,6 +135,7 @@ export type ScriptEventType =
   | ScriptBackgroundEffectEvent
   | ScriptMusicEvent
   | ScriptSoundEvent
+  | ScriptAmbientEvent
   | ScriptInputEvent
   | ScriptErrorEvent
   | ScriptStatusResetEvent

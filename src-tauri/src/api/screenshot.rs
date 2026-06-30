@@ -1,6 +1,8 @@
 //! 用户主动截图功能：全屏捕获 → 覆盖窗口框选 → 裁剪结果回传。
 
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager};
+#[cfg(desktop)]
+use tauri::{WebviewUrl, WebviewWindowBuilder};
 
 use crate::ai_service::screen_analyzer::capture_screen_raw_jpeg;
 
@@ -24,25 +26,32 @@ pub async fn start_screenshot(app: AppHandle) -> Result<(), String> {
         capture.overlay_label = Some("screenshot-overlay".to_string());
     }
 
-    // 创建全屏无边框覆盖窗口
-    let _overlay = WebviewWindowBuilder::new(
-        &app,
-        "screenshot-overlay",
-        WebviewUrl::App("screenshot-overlay.html".into()),
-    )
-    .title("截图选择")
-    .fullscreen(true)
-    .decorations(false)
-    .transparent(true)
-    .always_on_top(true)
-    .visible_on_all_workspaces(true)
-    .skip_taskbar(true)
-    .shadow(false)
-    .focused(true)
-    .build()
-    .map_err(|e| format!("创建截图覆盖窗口失败: {}", e))?;
+    // 创建全屏无边框覆盖窗口（仅桌面端）
+    #[cfg(desktop)]
+    {
+        let w = WebviewWindowBuilder::new(
+            &app,
+            "screenshot-overlay",
+            WebviewUrl::App("screenshot-overlay.html".into()),
+        )
+        .title("截图选择")
+        .fullscreen(true)
+        .decorations(false)
+        .always_on_top(true)
+        .visible_on_all_workspaces(true)
+        .skip_taskbar(true)
+        .shadow(false)
+        .focused(true);
 
-    tracing::info!("[Screenshot] Overlay window created, waiting for user selection.");
+        // transparent 仅 Windows 支持
+        #[cfg(target_os = "windows")]
+        let w = w.transparent(true);
+
+        w.build()
+            .map_err(|e| format!("创建截图覆盖窗口失败: {}", e))?;
+
+        tracing::info!("[Screenshot] Overlay window created, waiting for user selection.");
+    }
     Ok(())
 }
 
@@ -80,6 +89,7 @@ pub async fn confirm_screenshot(app: AppHandle, base64_cropped: String) -> Resul
 /// 覆盖窗口调用：用户取消截图。
 #[tauri::command]
 pub async fn cancel_screenshot(app: AppHandle) -> Result<(), String> {
+    let _ = app.emit("screenshot:cancelled", ());
     cleanup(&app).await;
     tracing::info!("[Screenshot] Cancelled by user.");
     Ok(())

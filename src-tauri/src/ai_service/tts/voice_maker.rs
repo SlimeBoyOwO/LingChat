@@ -127,7 +127,11 @@ impl VoiceMaker {
 
         match tts_type {
             "sva-vits" if self.availability.sva => {
-                if let Some(id) = cfg.sva_speaker_id.as_deref().and_then(|s| s.parse::<i32>().ok()) {
+                if let Some(id) = cfg
+                    .sva_speaker_id
+                    .as_deref()
+                    .and_then(|s| s.parse::<i32>().ok())
+                {
                     self.provider.sva = Some(Arc::new(VitsAdapter::new(
                         self.tts_config.simple_vits_api_url.clone(),
                         id,
@@ -180,11 +184,9 @@ impl VoiceMaker {
             "gsv" if self.availability.gsv => {
                 // 参考音频：character_path/voice/<gsv_voice_filename>
                 let ref_audio_path = match (&self.character_path, &cfg.gsv_voice_filename) {
-                    (Some(base), Some(name_)) if !name_.is_empty() => base
-                        .join("voice")
-                        .join(name_)
-                        .to_string_lossy()
-                        .to_string(),
+                    (Some(base), Some(name_)) if !name_.is_empty() => {
+                        base.join("voice").join(name_).to_string_lossy().to_string()
+                    }
                     _ => String::new(),
                 };
                 let prompt_text = cfg.gsv_voice_text.clone().unwrap_or_default();
@@ -192,7 +194,7 @@ impl VoiceMaker {
                     self.tts_config.gsv_api_url.clone(),
                     ref_audio_path,
                     prompt_text,
-                    "auto".into(),
+                    "ja".into(),
                 );
                 self.provider.gsv = Some(Arc::new(adapter));
                 let _ = name; // 预留：Python 版还有按 name 查找 gpt/sovits 权重的逻辑
@@ -260,7 +262,12 @@ impl VoiceMaker {
             };
 
             let file_name = if seg.voice_file.is_empty() {
-                format!("{}_part_{}.{}", uuid::Uuid::new_v4(), seg.index, self.audio_format)
+                format!(
+                    "{}_part_{}.{}",
+                    uuid::Uuid::new_v4(),
+                    seg.index,
+                    self.audio_format
+                )
             } else {
                 seg.voice_file.clone()
             };

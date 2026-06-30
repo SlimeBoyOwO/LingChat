@@ -30,6 +30,7 @@ pub mod keys {
     pub const LLM_PROVIDERS: &str = "llm.providers";
     pub const LLM_CHAT_PROVIDER_ID: &str = "llm.chat_provider_id";
     pub const LLM_TRANSLATE_PROVIDER_ID: &str = "llm.translate_provider_id";
+    pub const LLM_GOD_AGENT_PROVIDER_ID: &str = "llm.god_agent_provider_id";
 
     // LLM 生成参数（对应 TEMPERATURE / TOP_P / ENABLE_THINKING）
     pub const LLM_TEMPERATURE: &str = "llm.temperature";
@@ -69,6 +70,14 @@ pub mod keys {
     pub const LAST_SCENE_ID: &str = "game.last_scene_id";
     /// 场景感知开关（切换场景时是否自动产生旁白台词）
     pub const SCENE_AWARENESS_ENABLED: &str = "game.scene_awareness_enabled";
+
+    // 上帝 Agent（God Agent）多人对话
+    pub const GOD_AGENT_MAX_CONSECUTIVE_NPC: &str = "god_agent.max_consecutive_npc";
+    pub const GOD_AGENT_RECENT_WINDOW: &str = "god_agent.recent_window";
+
+    // 创意工坊
+    /// GitHub Personal Access Token（可选，用于 GraphQL 获取 upvote 数）
+    pub const GITHUB_TOKEN: &str = "workshop.github_token";
 }
 
 // ========== 类型化配置 ==========
@@ -197,6 +206,13 @@ fn get_string(store: &Store<Wry>, key: &str) -> Option<String> {
     store
         .get(key)
         .and_then(|v| v.as_str().map(|s| s.to_string()))
+}
+
+/// Public accessor for reading a string value from the settings store.
+pub fn get_setting_string(app: &AppHandle, key: &str) -> Option<String> {
+    settings_store(app)
+        .ok()
+        .and_then(|store| get_string(&store, key))
 }
 
 fn get_bool(store: &Store<Wry>, key: &str, default: bool) -> bool {
@@ -399,24 +415,28 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
         feat_subs.insert(
             "记忆系统".to_string(),
             Subcategory {
-                description: "对应 ENV: MEMORY_UPDATE_INTERVAL / MEMORY_RECENT_WINDOW / USE_PERSISTENT_MEMORY".to_string(),
+                description: "在这里设定你想要的永久记忆效果".to_string(),
                 settings: vec![
                     ConfigSetting {
                         key: keys::USE_PERSISTENT_MEMORY.to_string(),
-                        value: read_setting(app, keys::USE_PERSISTENT_MEMORY, "false"),
-                        description: "USE_PERSISTENT_MEMORY — 开启后记忆会自动压缩，减少 token 消耗".to_string(),
+                        value: read_setting(app, keys::USE_PERSISTENT_MEMORY, "true"),
+                        description:
+                            "USE_PERSISTENT_MEMORY — 开启后记忆会自动压缩，减少 token 消耗"
+                                .to_string(),
                         setting_type: "bool".to_string(),
                     },
                     ConfigSetting {
                         key: keys::MEMORY_UPDATE_INTERVAL.to_string(),
-                        value: read_setting(app, keys::MEMORY_UPDATE_INTERVAL, "50"),
-                        description: "MEMORY_UPDATE_INTERVAL — 触发记忆摘要的新消息数（默认 50）".to_string(),
+                        value: read_setting(app, keys::MEMORY_UPDATE_INTERVAL, "150"),
+                        description: "MEMORY_UPDATE_INTERVAL — 触发记忆摘要的新消息数（默认 150）"
+                            .to_string(),
                         setting_type: "text".to_string(),
                     },
                     ConfigSetting {
                         key: keys::MEMORY_RECENT_WINDOW.to_string(),
-                        value: read_setting(app, keys::MEMORY_RECENT_WINDOW, "15"),
-                        description: "MEMORY_RECENT_WINDOW — 摘要时保留的最近消息数（默认 15）".to_string(),
+                        value: read_setting(app, keys::MEMORY_RECENT_WINDOW, "30"),
+                        description: "MEMORY_RECENT_WINDOW — 摘要时保留的最近消息数（默认 30）"
+                            .to_string(),
                         setting_type: "text".to_string(),
                     },
                 ],
@@ -546,6 +566,31 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
             "TTS 配置".to_string(),
             Category {
                 subcategories: tts_subs,
+            },
+        );
+    }
+
+    // ===== 创意工坊 =====
+    {
+        let mut workshop_subs = BTreeMap::new();
+
+        workshop_subs.insert(
+            "GitHub Token".to_string(),
+            Subcategory {
+                description: "配置 GitHub Personal Access Token 以获取准确的 Discussion upvote 热度排序（可选）".to_string(),
+                settings: vec![ConfigSetting {
+                    key: keys::GITHUB_TOKEN.to_string(),
+                    value: read_setting(app, keys::GITHUB_TOKEN, ""),
+                    description: "填入你的 GitHub Token（无需任何权限，仅用于调用 GraphQL API）。留空使用 REST API，无法获取独立 upvote 数（会用 👍 表情数代替）。Token 创建地址：https://github.com/settings/tokens".to_string(),
+                    setting_type: "text".to_string(),
+                }],
+            },
+        );
+
+        tree.insert(
+            "创意工坊".to_string(),
+            Category {
+                subcategories: workshop_subs,
             },
         );
     }
@@ -759,6 +804,7 @@ pub fn list_llm_providers(app: AppHandle) -> LlmProvidersResponse {
         providers,
         chat_provider_id: assignment.chat_provider_id,
         translate_provider_id: assignment.translate_provider_id,
+        god_agent_provider_id: assignment.god_agent_provider_id,
     }
 }
 
@@ -828,6 +874,7 @@ pub fn set_llm_role(
     match role.as_str() {
         "chat" => assignment.chat_provider_id = provider_id,
         "translate" => assignment.translate_provider_id = provider_id,
+        "god_agent" => assignment.god_agent_provider_id = provider_id,
         other => return Err(format!("Invalid role: {other}")),
     }
     save_role_assignment(&app, &assignment).map_err(|e| e.to_string())?;
@@ -844,14 +891,10 @@ pub async fn test_llm_provider(
     };
 
     let messages = vec![
-        crate::ai_service::types::LlmMessage {
-            role: "system".to_string(),
-            content: "你是一个有帮助的AI助手。请简洁地回答用户的问题。".to_string(),
-        },
-        crate::ai_service::types::LlmMessage {
-            role: "user".to_string(),
-            content: message,
-        },
+        crate::ai_service::types::LlmMessage::system(
+            "你是一个有帮助的AI助手。请简洁地回答用户的问题。",
+        ),
+        crate::ai_service::types::LlmMessage::user(&message),
     ];
 
     let timeout = tokio::time::timeout(

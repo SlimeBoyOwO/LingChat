@@ -210,7 +210,11 @@ impl EmotionClassifier {
             Tensor::from_array(([1i64, MAX_SEQ_LEN as i64], mask_f32.into_boxed_slice()))
                 .context("创建 attention_mask tensor 失败")?;
 
-        let input_names: Vec<String> = session.inputs().iter().map(|o| o.name().to_string()).collect();
+        let input_names: Vec<String> = session
+            .inputs()
+            .iter()
+            .map(|o| o.name().to_string())
+            .collect();
 
         let outputs = session
             .run(ort::inputs![

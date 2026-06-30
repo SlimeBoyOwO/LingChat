@@ -115,3 +115,28 @@ pub fn upload_music(file_name: String, file_data: Vec<u8>) -> Result<Vec<MusicIt
 
     get_music_list()
 }
+
+/// 删除指定音乐文件
+/// url 参数可以是完整路径或纯文件名，统一从 music_dir 中删除
+#[tauri::command]
+pub fn delete_music(url: String) -> Result<Vec<MusicItemInfo>, String> {
+    let base = music_dir();
+
+    // 从路径中提取文件名，兼容完整路径和纯文件名
+    let filename = std::path::Path::new(&url)
+        .file_name()
+        .ok_or_else(|| format!("无效的文件路径: {}", url))?
+        .to_string_lossy()
+        .into_owned();
+
+    let file_path = base.join(&filename);
+    validate_path_in_base(&file_path, &base)?;
+
+    if !file_path.exists() {
+        return Err(format!("音乐文件不存在: {}", filename));
+    }
+
+    fs::remove_file(&file_path).map_err(|e| format!("删除音乐文件失败: {}", e))?;
+
+    get_music_list()
+}

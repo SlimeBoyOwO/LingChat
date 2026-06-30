@@ -1,5 +1,6 @@
 pub mod achievement;
 pub mod adventure;
+pub mod ambient;
 pub mod asset;
 pub mod background;
 pub mod character;
@@ -12,6 +13,7 @@ pub mod scene;
 pub mod schedule;
 pub mod screenshot;
 pub mod script;
+pub mod workshop;
 
 use std::path::PathBuf;
 
@@ -35,6 +37,10 @@ pub(crate) fn backgrounds_dir() -> PathBuf {
 
 pub(crate) fn music_dir() -> PathBuf {
     game_data_dir().join("musics")
+}
+
+pub(crate) fn ambient_dir() -> PathBuf {
+    game_data_dir().join("ambients")
 }
 
 pub(crate) fn voice_dir() -> PathBuf {

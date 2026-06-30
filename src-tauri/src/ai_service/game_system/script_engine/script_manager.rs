@@ -7,6 +7,8 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use serde_json::Value;
@@ -14,14 +16,14 @@ use serde_json::Value;
 use crate::ai_service::game_system::script_engine::chapter::Chapter;
 use crate::ai_service::game_system::script_engine::events::ScriptContext;
 use crate::ai_service::game_system::script_engine::responses::{
-    event_names::SCRIPT_END,
-    ScriptEndPayload,
+    event_names::SCRIPT_END, ScriptEndPayload,
 };
 use crate::ai_service::message_system::events::emit;
-use crate::ai_service::types::{AdventureConfig, LineBase, LineAttributeExt, ScriptStatus};
+use crate::ai_service::types::{AdventureConfig, LineAttributeExt, LineBase, ScriptStatus};
 use crate::db::entities::line::LineAttribute;
 use crate::db::entities::role::RoleType;
 use crate::db::managers::role_repo::RoleRepo;
+use crate::utils::prompt::{sys_prompt_builder, PromptOptions};
 
 /// YAML structure for `story_config.yaml` top-level keys.
 #[derive(serde::Deserialize, Default)]
@@ -41,8 +43,8 @@ struct StoryConfigRaw {
 pub struct ScriptManager {
     /// All discovered scripts by name (folder_key or display name).
     pub all_scripts: HashMap<String, ScriptStatus>,
-    /// Whether a script is currently running.
-    pub is_running: bool,
+    /// Whether a script is currently running (shared so callers can read without lock).
+    pub is_running: Arc<AtomicBool>,
 }
 
 impl ScriptManager {
@@ -54,7 +56,7 @@ impl ScriptManager {
     pub fn new(data_dir: &Path) -> Self {
         let mut manager = Self {
             all_scripts: HashMap::new(),
-            is_running: false,
+            is_running: Arc::new(AtomicBool::new(false)),
         };
         manager.init_all_scripts(data_dir);
         manager
@@ -106,7 +108,10 @@ impl ScriptManager {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir()
-                    && path.file_name().map(|n| n != "character" && n != "standalone").unwrap_or(false)
+                    && path
+                        .file_name()
+                        .map(|n| n != "character" && n != "standalone")
+                        .unwrap_or(false)
                 {
                     let config = path.join("story_config.yaml");
                     if config.exists() {
@@ -116,10 +121,7 @@ impl ScriptManager {
             }
         }
 
-        tracing::info!(
-            "[ScriptManager] 发现 {} 个剧本",
-            self.all_scripts.len()
-        );
+        tracing::info!("[ScriptManager] 发现 {} 个剧本", self.all_scripts.len());
     }
 
     fn try_load_script(&mut self, script_path: &Path) {
@@ -129,11 +131,7 @@ impl ScriptManager {
                 self.all_scripts.insert(name, script_status);
             }
             Err(e) => {
-                tracing::warn!(
-                    "[ScriptManager] 跳过无效剧本目录 {:?}: {}",
-                    script_path,
-                    e
-                );
+                tracing::warn!("[ScriptManager] 跳过无效剧本目录 {:?}: {}", script_path, e);
             }
         }
     }
@@ -200,39 +198,46 @@ impl ScriptManager {
 
     /// Main entry point: initialize and run a script by name.
     /// This is a long-running async operation — it awaits user input inside.
-    pub async fn start_script(
-        &mut self,
-        name: &str,
-        ctx: &mut ScriptContext<'_>,
-    ) -> Result<()> {
+    pub async fn start_script(&self, name: &str, ctx: &mut ScriptContext<'_>) -> Result<()> {
         let script = self
             .all_scripts
             .get(name)
             .ok_or_else(|| anyhow!("剧本不存在: '{}'", name))?
             .clone();
 
-        self.is_running = true;
+        self.is_running.store(true, Ordering::SeqCst);
 
         // Initialize: register roles, set script_status, load player
-        self.init_script(&script, ctx).await?;
+        Self::init_script(&script, ctx).await?;
 
         // Run the chapter loop
-        self.run_script(ctx).await?;
+        Self::run_script(ctx).await?;
+
+        // Cleanup
+        Self::on_script_end(ctx, &self.is_running).await?;
 
         Ok(())
     }
 
-    /// Initialize a script: register its roles, set script_status, load player info.
-    async fn init_script(
-        &mut self,
+    /// Execute a script from start to finish without needing `&self`.
+    /// This is the entry point for the API layer, which holds script data
+    /// independently and builds its own `ScriptContext`.
+    pub async fn execute_script(
         script: &ScriptStatus,
         ctx: &mut ScriptContext<'_>,
+        is_running: &AtomicBool,
     ) -> Result<()> {
+        is_running.store(true, Ordering::SeqCst);
+        Self::init_script(script, ctx).await?;
+        Self::run_script(ctx).await?;
+        Self::on_script_end(ctx, is_running).await?;
+        Ok(())
+    }
+
+    /// Initialize a script: register its roles, set script_status, load player info.
+    pub async fn init_script(script: &ScriptStatus, ctx: &mut ScriptContext<'_>) -> Result<()> {
         // Set script_status on GameStatus
         ctx.game_status.lock().await.script_status = Some(script.clone());
-
-        // Register script roles from characters/ subdirectory (if exists)
-        self.register_script_roles(script, ctx).await?;
 
         // Load player info from script settings
         if let Some(user_name) = script.settings.get("user_name").and_then(|v| v.as_str()) {
@@ -240,17 +245,23 @@ impl ScriptManager {
                 ctx.game_status.lock().await.player.user_name = user_name.to_string();
             }
         }
-        if let Some(user_subtitle) = script.settings.get("user_subtitle").and_then(|v| v.as_str()) {
+        if let Some(user_subtitle) = script
+            .settings
+            .get("user_subtitle")
+            .and_then(|v| v.as_str())
+        {
             ctx.game_status.lock().await.player.user_subtitle = user_subtitle.to_string();
         }
+
+        // Register script roles from characters/ subdirectory (if exists)
+        Self::register_script_roles(script, ctx).await?;
 
         tracing::info!("[ScriptManager] 剧本 '{}' 初始化完成", script.name);
         Ok(())
     }
 
     /// Register script-specific NPC roles into DB and load them.
-    async fn register_script_roles(
-        &self,
+    pub async fn register_script_roles(
         script: &ScriptStatus,
         ctx: &mut ScriptContext<'_>,
     ) -> Result<()> {
@@ -277,8 +288,8 @@ impl ScriptManager {
 
             // Check if role already exists in DB
             let path_key = script.path_key();
-            let existing = RoleRepo::get_role_by_script_keys(ctx.db, &path_key, &role_folder)
-                .await?;
+            let existing =
+                RoleRepo::get_role_by_script_keys(ctx.db, &path_key, &role_folder).await?;
 
             if existing.is_some() {
                 tracing::info!(
@@ -292,10 +303,7 @@ impl ScriptManager {
             // Read settings.yml for this character
             let settings_path = path.join("settings.yml");
             if !settings_path.exists() {
-                tracing::warn!(
-                    "[ScriptManager] 角色缺少 settings.yml: {:?}",
-                    settings_path
-                );
+                tracing::warn!("[ScriptManager] 角色缺少 settings.yml: {:?}", settings_path);
                 continue;
             }
 
@@ -312,6 +320,7 @@ impl ScriptManager {
                 &settings.ai_name,
                 RoleType::Npc,
                 Some(&path_key),
+                settings.script_role_key.as_deref(),
                 Some(&role_folder),
             )
             .await?;
@@ -325,19 +334,40 @@ impl ScriptManager {
             );
 
             // Load the role into RoleManager
-            let _ = ctx.game_status.lock().await.get_role(ctx.db, role_id).await?;
+            let _ = ctx
+                .game_status
+                .lock()
+                .await
+                .get_role(ctx.db, role_id)
+                .await?;
 
             // Add system prompt line for this role
             let prompt = settings.system_prompt.clone().unwrap_or_default();
+            let prompt_options = PromptOptions {
+                output_sec_lang: true,
+                no_emotion_limit: true,
+            };
             if !prompt.is_empty() {
+                let ai_prompt = sys_prompt_builder(
+                    &ctx.game_status.lock().await.player.user_name,
+                    &settings.ai_name,
+                    &prompt,
+                    settings.system_prompt_example.as_deref(),
+                    settings.system_prompt_example_old.as_deref(),
+                    prompt_options,
+                );
                 let sys_line = LineBase {
-                    content: prompt,
+                    content: ai_prompt,
                     attribute: LineAttributeExt(LineAttribute::System),
                     sender_role_id: Some(role_id),
                     display_name: Some(settings.ai_name.clone()),
                     ..Default::default()
                 };
-                ctx.game_status.lock().await.add_line(ctx.db, sys_line).await?;
+                ctx.game_status
+                    .lock()
+                    .await
+                    .add_line(ctx.db, sys_line)
+                    .await?;
             }
         }
 
@@ -345,10 +375,11 @@ impl ScriptManager {
     }
 
     /// The main chapter loop: load chapters and run them until "end".
-    async fn run_script(&mut self, ctx: &mut ScriptContext<'_>) -> Result<()> {
+    pub async fn run_script(ctx: &mut ScriptContext<'_>) -> Result<()> {
         let script = ctx
             .game_status
-            .lock().await
+            .lock()
+            .await
             .script_status
             .as_ref()
             .ok_or_else(|| anyhow!("ScriptStatus 未设置"))?
@@ -374,17 +405,14 @@ impl ScriptManager {
 
             let script_ref = ctx
                 .game_status
-                .lock().await
+                .lock()
+                .await
                 .script_status
                 .as_ref()
                 .ok_or_else(|| anyhow!("ScriptStatus 丢失"))?
                 .clone();
 
-            let mut chapter = Chapter::new(
-                next_chapter.clone(),
-                chapter_config,
-                &script_ref,
-            );
+            let mut chapter = Chapter::new(next_chapter.clone(), chapter_config, &script_ref);
 
             // Update tracking fields
             if let Some(ref mut ss) = ctx.game_status.lock().await.script_status {
@@ -395,34 +423,42 @@ impl ScriptManager {
             next_chapter = chapter.run(ctx).await?;
         }
 
-        // Script ended
-        self.on_script_end(ctx).await?;
-
         Ok(())
     }
 
     /// Cleanup after script ends: emit script_end event, clear script_status,
     /// mark adventures complete.
-    async fn on_script_end(&mut self, ctx: &mut ScriptContext<'_>) -> Result<()> {
+    pub async fn on_script_end(ctx: &mut ScriptContext<'_>, is_running: &AtomicBool) -> Result<()> {
         tracing::info!("[ScriptManager] 剧本结束");
 
         // Emit script_end event
         let _ = emit(ctx.app, SCRIPT_END, &ScriptEndPayload {});
 
-        // Mark adventures as completed
-        if let Some(ref ss) = ctx.game_status.lock().await.script_status {
-            let folder = ss.path_key();
-            ctx.game_status.lock().await.completed_scripts.insert(folder.clone());
-
-            if ss.adventure.is_adventure {
-                tracing::info!("[ScriptManager] 羁绊冒险完成: {}", folder);
-                // TODO: persist adventure completion to DB
+        // Extract data under one lock, then mutate under a second lock.
+        // tokio::sync::Mutex is NOT reentrant — nesting lock().await deadlocks.
+        let (folder, is_adventure) = {
+            let gs = ctx.game_status.lock().await;
+            match gs.script_status.as_ref() {
+                Some(ss) => (Some(ss.path_key()), ss.adventure.is_adventure),
+                None => (None, false),
             }
+        };
+
+        // Now re-acquire the lock and do all writes in one critical section
+        {
+            let mut gs = ctx.game_status.lock().await;
+            if let Some(folder) = folder {
+                gs.completed_scripts.insert(folder.clone());
+                if is_adventure {
+                    tracing::info!("[ScriptManager] 羁绊冒险完成: {}", folder);
+                }
+            }
+            gs.script_status = None;
         }
 
-        // Clear script status
-        ctx.game_status.lock().await.script_status = None;
-        self.is_running = false;
+        is_running.store(false, Ordering::SeqCst);
+
+        tracing::info!("[ScriptManager] 剧本状态已清除");
 
         Ok(())
     }
@@ -435,8 +471,7 @@ impl ScriptManager {
         self.all_scripts
             .values()
             .filter(|s| {
-                s.adventure.is_adventure
-                    && s.adventure.bound_character_folder == character_folder
+                s.adventure.is_adventure && s.adventure.bound_character_folder == character_folder
             })
             .collect()
     }

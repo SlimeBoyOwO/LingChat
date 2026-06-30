@@ -3,7 +3,7 @@
     <img src="@/assets/images/LingChatLogo.png" alt="Logo" class="w-20 ml-5 hidden xl:block" />
     <nav
       ref="navContainer"
-      class="relative w-full flex flex-nowrap items-center justify-start gap-1 h-full ease-in-out duration-100 xl:justify-center overflow-x-auto overflow-y-hidden px-2"
+      class="relative w-full flex flex-nowrap items-center justify-start gap-1 h-full ease-in-out duration-100 xl:justify-center overflow-x-auto overflow-y-hidden px-2 custom-scroll"
     >
       <div
         ref="indicator"
@@ -104,6 +104,15 @@
       >
         <p class="hidden xl:block">日志</p>
       </Button>
+      <Button
+        ref="workshopBtn"
+        type="nav"
+        icon="package"
+        @click="() => switchTab('workshop', 'workshopBtn')"
+        :class="{ active: uiStore.currentSettingsTab === 'workshop' }"
+      >
+        <p class="hidden xl:block">创意工坊</p>
+      </Button>
     </nav>
     <Icon
       icon="close"
@@ -146,6 +155,7 @@ const advanceBtn = ref<ButtonRef | null>(null)
 const updateBtn = ref<ButtonRef | null>(null)
 const adventureBtn = ref<ButtonRef | null>(null)
 const logBtn = ref<ButtonRef | null>(null)
+const workshopBtn = ref<ButtonRef | null>(null)
 
 // 设置可重设的值（使用 ref 存储，确保响应式或跨函数访问）
 const oldRefName = ref('textBtn')
@@ -165,6 +175,7 @@ const handleIndicatorMove = (currentRefName: string) => {
     updateBtn,
     adventureBtn,
     logBtn,
+    workshopBtn,
   }[currentRefName]
 
   if (buttonRef?.value?.$el) {
@@ -261,6 +272,9 @@ const initIndicator = () => {
     case 'log':
       activeButton = logBtn.value
       break
+    case 'workshop':
+      activeButton = workshopBtn.value
+      break
   }
 
   if (activeButton?.$el) {
@@ -322,3 +336,10 @@ watch(
   { immediate: true },
 )
 </script>
+
+<style lang="css" scoped>
+.custom-scroll ::-webkit-scrollbar {
+  width: 8px;
+  height: 2px;
+}
+</style>

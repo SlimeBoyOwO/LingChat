@@ -4,9 +4,7 @@ use sea_orm::*;
 use std::collections::HashMap;
 
 use crate::ai_service::types::{GameLine, LineAttributeExt};
-use crate::db::entities::{
-    line, line_perception, memory_bank, running_script, save,
-};
+use crate::db::entities::{line, line_perception, memory_bank, running_script, save};
 
 pub struct SaveRepo;
 
@@ -194,10 +192,7 @@ impl SaveRepo {
 impl SaveRepo {
     /// Reconstruct ordered line list by walking `parent_line_id` chain
     /// from `save.last_message_id` backwards, then reversing.
-    pub async fn get_line_list(
-        db: &DatabaseConnection,
-        save_id: i32,
-    ) -> Result<Vec<line::Model>> {
+    pub async fn get_line_list(db: &DatabaseConnection, save_id: i32) -> Result<Vec<line::Model>> {
         let all_lines = line::Entity::find()
             .filter(line::Column::SaveId.eq(save_id))
             .all(db)
@@ -228,10 +223,7 @@ impl SaveRepo {
     }
 
     /// Convert DB lines to `GameLine` with perception data batch-fetched.
-    pub async fn get_gameline_list(
-        db: &DatabaseConnection,
-        save_id: i32,
-    ) -> Result<Vec<GameLine>> {
+    pub async fn get_gameline_list(db: &DatabaseConnection, save_id: i32) -> Result<Vec<GameLine>> {
         let lines = Self::get_line_list(db, save_id).await?;
 
         if lines.is_empty() {
@@ -254,10 +246,7 @@ impl SaveRepo {
         let game_lines: Vec<GameLine> = lines
             .into_iter()
             .map(|db_line| {
-                let perceived = perception_map
-                    .get(&db_line.id)
-                    .cloned()
-                    .unwrap_or_default();
+                let perceived = perception_map.get(&db_line.id).cloned().unwrap_or_default();
                 GameLine {
                     base: crate::ai_service::types::LineBase {
                         id: Some(db_line.id),
@@ -319,10 +308,7 @@ impl SaveRepo {
                         active.action_content = Set(input_line.base.action_content.clone());
                         active.audio_file = Set(input_line.base.audio_file.clone());
                         active.display_name = Set(input_line.base.display_name.clone());
-                        active
-                            .update(db)
-                            .await
-                            .map_err(|e| anyhow!("{e}"))?;
+                        active.update(db).await.map_err(|e| anyhow!("{e}"))?;
                     }
                     continue;
                 }
@@ -421,6 +407,7 @@ impl SaveRepo {
 // ========== Memory Bank ==========
 
 impl SaveRepo {
+    #[allow(dead_code)]
     pub async fn upsert_memory_bank(
         db: &DatabaseConnection,
         save_id: i32,
@@ -428,8 +415,8 @@ impl SaveRepo {
         info_json: &str,
     ) -> Result<()> {
         // Delete existing for this (save_id, role_id) pair
-        let mut delete = memory_bank::Entity::delete_many()
-            .filter(memory_bank::Column::SaveId.eq(save_id));
+        let mut delete =
+            memory_bank::Entity::delete_many().filter(memory_bank::Column::SaveId.eq(save_id));
         if let Some(rid) = role_id {
             delete = delete.filter(memory_bank::Column::RoleId.eq(rid));
         } else {
@@ -448,6 +435,7 @@ impl SaveRepo {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub async fn get_memory_banks(
         db: &DatabaseConnection,
         save_id: i32,
@@ -459,10 +447,7 @@ impl SaveRepo {
             .map_err(|e| anyhow!("{e}"))
     }
 
-    pub async fn delete_memory_banks_by_save(
-        db: &DatabaseConnection,
-        save_id: i32,
-    ) -> Result<()> {
+    pub async fn delete_memory_banks_by_save(db: &DatabaseConnection, save_id: i32) -> Result<()> {
         memory_bank::Entity::delete_many()
             .filter(memory_bank::Column::SaveId.eq(save_id))
             .exec(db)
@@ -532,10 +517,7 @@ impl SaveRepo {
         Ok(inserted.id)
     }
 
-    pub async fn delete_running_script(
-        db: &DatabaseConnection,
-        script_id: i32,
-    ) -> Result<()> {
+    pub async fn delete_running_script(db: &DatabaseConnection, script_id: i32) -> Result<()> {
         running_script::Entity::delete_by_id(script_id)
             .exec(db)
             .await

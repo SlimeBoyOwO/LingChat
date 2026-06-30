@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "ling-chat",
-  "version": "0.1.0",
+  "productName": "LingChat",
+  "version": "0.4.6",
   "identifier": "com.noiq.ling-chat",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -27,9 +27,19 @@
       }
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://github.com/SlimeBoyOwO/LingChat/releases/latest/download/latest.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE2Rjc5NjkwNkY3OEM4RjMKUldUenlIaHZrSmIzcG9KdSttdllDcFVZTmk3dG9NVlhrWGFvUVdPTmNFZjRFMFVOQlVZd2pjamgK",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/icon.ico"]
+    "icon": ["icons/icon.ico"],
+    "createUpdaterArtifacts": false
   }
 }

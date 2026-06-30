@@ -116,6 +116,11 @@ export function initializeTauriEventListeners() {
     eventQueue.addEvent(asEvent(event.payload, { type: 'sound', duration: 0 }))
   })
 
+  // 环境音事件（多轨并行，与BGM共存）
+  listen('script:ambient', (event) => {
+    eventQueue.addEvent(asEvent(event.payload, { type: 'ambient', duration: 0 }))
+  })
+
   listen('script:present-pic', (event) => {
     eventQueue.addEvent(asEvent(event.payload, { type: 'present_pic', duration: -1 }))
   })
@@ -133,12 +138,24 @@ export function initializeTauriEventListeners() {
   })
 
   listen('script:end', (event) => {
-    eventQueue.addEvent(asEvent(event.payload, { type: 'script_end', duration: 0 }))
+    console.log('[Tauri] script:end', event.payload)
+    eventQueue.addEvent(asEvent(event.payload, { type: 'script_end', duration: 0, isFinal: true }))
   })
 
   listen('script:free-dialogue', (event) => {
     eventQueue.addEvent(asEvent(event.payload, { type: 'free_dialogue', duration: 0 }))
   })
 
-  console.log('[Tauri] Event listeners initialized (ai + adventure + auto-save + 13 script events)')
+  // === God Agent multi-dialogue event ===
+
+  listen('character:switch', (event) => {
+    const payload = event.payload as { type: string; roleId: number; characterName: string }
+    console.log('[Tauri] character:switch', payload)
+    const gameStore = useGameStore()
+    gameStore.currentInteractRoleId = payload.roleId
+    // Ensure the role is loaded in gameRoles
+    gameStore.getOrCreateGameRole(payload.roleId)
+  })
+
+  console.log('[Tauri] Event listeners initialized (ai + adventure + auto-save + 13 script events + character:switch)')
 }

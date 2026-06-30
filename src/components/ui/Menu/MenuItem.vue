@@ -43,7 +43,6 @@ section.small {
 
 .title-wrapper h4 {
   margin: 0;
-  font-size: 18px;
   color: #fff;
   font-weight: 600;
   text-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
