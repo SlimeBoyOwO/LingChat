@@ -58,7 +58,11 @@ fn scan_dir(
         if file_name.starts_with('.') || file_name.ends_with(".tmp") {
             continue;
         }
-        if file_name.ends_with("-wal") || file_name.ends_with("-shm") || file_name.ends_with("-journal") {
+        if file_name.ends_with("-wal")
+            || file_name.ends_with("-shm")
+            || file_name.ends_with("-journal")
+            || file_name.ends_with(".db")
+        {
             continue;
         }
 

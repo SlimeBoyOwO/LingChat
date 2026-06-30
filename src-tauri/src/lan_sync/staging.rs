@@ -55,8 +55,10 @@ pub fn apply_staged_files(data_dir: &Path) -> u64 {
         }
     };
 
-    // 清理暂存目录
-    if let Err(e) = std::fs::remove_dir_all(&staging) {
+    // 清理暂存目录（如果 db_records.json 仍在则保留，由 apply_staged_db_records 处理）
+    if staging.join("db_records.json").exists() {
+        info!("暂存目录中仍有 db_records.json，等待数据库导入");
+    } else if let Err(e) = std::fs::remove_dir_all(&staging) {
         warn!("清理暂存目录失败: {}", e);
     } else if count > 0 {
         info!("已应用 {} 个暂存文件，暂存目录已清理", count);
@@ -74,6 +76,11 @@ fn apply_dir(staging: &Path, target_base: &Path) -> Result<u64, String> {
         let entry = entry.map_err(|e| format!("读取暂存条目失败: {}", e))?;
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().to_string();
+
+        // db_records.json 由 apply_staged_db_records() 专门处理，不在此处移动
+        if name == "db_records.json" {
+            continue;
+        }
 
         if path.is_dir() {
             let sub_target = target_base.join(&name);

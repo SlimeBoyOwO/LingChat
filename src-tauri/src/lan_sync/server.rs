@@ -67,6 +67,8 @@ pub async fn start_server(
         .route("/file", get(file_handler))
         .route("/push-file", post(push_file_handler))
         .route("/push-delete", post(push_delete_handler))
+        .route("/db-records", get(db_records_handler))
+        .route("/db-records", post(db_records_push_handler))
         .layer(DefaultBodyLimit::disable())
         .with_state(state);
 
@@ -123,6 +125,31 @@ pub async fn stop_server() -> Result<(), String> {
 }
 
 // ─── 端点处理器 ──────────────────────────────────────────────
+
+/// GET /db-records — 导出全部数据库记录（只读连接，不阻塞主 DB）。
+async fn db_records_handler(
+    AxumState(state): AxumState<ServerState>,
+) -> Result<Json<super::messages::DbRecords>, AppError> {
+    let records = super::db_sync::export_all_records(&state.data_dir)
+        .await
+        .map_err(|e| AppError(StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(records))
+}
+
+/// POST /db-records — 接收数据库记录并暂存（导入在下次启动时生效）。
+async fn db_records_push_handler(
+    AxumState(state): AxumState<ServerState>,
+    Json(records): Json<super::messages::DbRecords>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    super::db_sync::stage_db_records(&state.data_dir, &records)
+        .map_err(|e| AppError(StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "staged": true,
+        "message": "数据库记录已暂存，将在下次启动时导入"
+    })))
+}
 
 /// GET /health — 健康检查。
 async fn health_handler(AxumState(state): AxumState<ServerState>) -> Json<serde_json::Value> {

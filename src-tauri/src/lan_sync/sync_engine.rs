@@ -18,6 +18,7 @@ use tracing::{error, info, warn};
 use crate::api::data_dir;
 
 use super::client;
+use super::db_sync;
 use super::manifest as sync_manifest;
 use super::messages::{
     DeviceIdentity, PeerInfo, SyncDirection, SyncPlan, SyncProgressEvent, SyncResult,
@@ -170,9 +171,41 @@ pub async fn execute_push(
         }
     }
 
+    // ─── 数据库记录同步 ────────────────────────────────────
+    let mut db_synced = false;
+    if failed_count == 0 {
+        emit_progress(
+            app,
+            "syncing-database",
+            current,
+            total,
+            95,
+            None,
+            bytes_transferred,
+            Some("正在同步数据库记录...".to_string()),
+        );
+        match db_sync::export_all_records(&data_dir).await {
+            Ok(records) => match client::push_db_records(&plan.peer, &records).await {
+                Ok(()) => {
+                    db_synced = true;
+                    info!("数据库记录推送完成");
+                }
+                Err(e) => {
+                    warn!("推送数据库记录失败（非致命）: {e}");
+                }
+            },
+            Err(e) => {
+                warn!("导出数据库记录失败（非致命）: {e}");
+            }
+        }
+    }
+
     let elapsed = start.elapsed();
     let success = failed_count == 0;
-    let message = build_message(success, "push", files_ok, plan.files_to_transfer.len(), failed_count, bytes_transferred, elapsed.as_secs_f64());
+    let mut message = build_message(success, "push", files_ok, plan.files_to_transfer.len(), failed_count, bytes_transferred, elapsed.as_secs_f64());
+    if db_synced {
+        message.push_str("（含数据库同步）");
+    }
 
     emit_progress(app, "complete", current, total, 100, None, bytes_transferred, Some(message.clone()));
 
@@ -309,6 +342,35 @@ pub async fn execute_pull(
         current += 1;
     }
 
+    // ─── 数据库记录同步 ────────────────────────────────────
+    let mut db_staged = false;
+    if failed_count == 0 {
+        emit_progress(
+            app,
+            "syncing-database",
+            current,
+            total,
+            95,
+            None,
+            bytes_transferred,
+            Some("正在拉取数据库记录...".to_string()),
+        );
+        match client::fetch_db_records(&plan.peer).await {
+            Ok(records) => match db_sync::stage_db_records(&data_dir, &records) {
+                Ok(()) => {
+                    db_staged = true;
+                    info!("数据库记录已暂存，将在下次启动时导入");
+                }
+                Err(e) => {
+                    warn!("暂存数据库记录失败（非致命）: {e}");
+                }
+            },
+            Err(e) => {
+                warn!("拉取数据库记录失败（非致命）: {e}");
+            }
+        }
+    }
+
     let elapsed = start.elapsed();
     let success = failed_count == 0;
     let mut message = build_message(success, "pull", files_ok, plan.files_to_transfer.len(), failed_count, bytes_transferred, elapsed.as_secs_f64());
@@ -317,6 +379,9 @@ pub async fn execute_pull(
             "；{} 个文件因被占用已暂存，重启后自动生效",
             files_staged
         ));
+    }
+    if db_staged {
+        message.push_str("；数据库记录已暂存，重启后自动导入");
     }
 
     emit_progress(
