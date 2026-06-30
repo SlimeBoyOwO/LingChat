@@ -13,7 +13,7 @@
           'flex items-center gap-2 px-4 py-2 transition-colors',
           hasActiveAudio ? 'text-[#4facfe] pulse-icon' : 'text-white',
         ]"
-        @click="panelVisible = !panelVisible"
+        @click.stop="panelVisible = !panelVisible"
       >
         <h3 class="text-lg font-bold m-0 hidden xl:block">声效</h3>
       </Button>
@@ -40,7 +40,7 @@
             </span>
             <div class="flex items-center gap-1">
               <button
-                @click="handlePlayPause"
+                @click.stop="handlePlayPause"
                 class="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
                 :title="uiStore.bgMusicPaused ? '播放' : '暂停'"
               >
@@ -48,14 +48,14 @@
                 <Pause v-else :size="14" />
               </button>
               <button
-                @click="handleStop"
+                @click.stop="handleStop"
                 class="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
                 title="停止"
               >
                 <Square :size="13" />
               </button>
               <button
-                @click="togglePlaybackMode"
+                @click.stop="togglePlaybackMode"
                 class="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
                 :title="modeText[uiStore.bgMusicMode]"
               >
@@ -66,15 +66,21 @@
             </div>
           </div>
 
-          <!-- 当前曲名 + 模式 -->
-          <div class="text-xs text-gray-400 mb-2 px-1 truncate">
-            {{ currentMusicName }}
-            <span v-if="uiStore.bgMusicMode" class="ml-2 text-gray-500">
-              {{ modeText[uiStore.bgMusicMode] }}
-            </span>
+          <!-- 未播放时显示指引 -->
+          <div v-if="!hasBgm" class="text-center text-gray-500 py-4 text-xs">
+            前往 <button class="text-link" @click.stop="openSettings">设置 → 声音</button> 选择背景音乐
           </div>
 
-          <!-- BGM 音量滑块 -->
+          <!-- 有播放时显示曲目 + 控制 -->
+          <template v-else>
+            <div class="text-xs text-gray-400 mb-2 px-1 truncate">
+              {{ currentMusicName }}
+              <span v-if="uiStore.bgMusicMode" class="ml-2 text-gray-500">
+                {{ modeText[uiStore.bgMusicMode] }}
+              </span>
+            </div>
+
+            <!-- BGM 音量滑块 -->
           <div class="flex items-center gap-2 px-1 mb-2">
             <Volume2 :size="12" class="text-gray-500 shrink-0" />
             <input
@@ -82,14 +88,14 @@
               min="0"
               max="100"
               :value="settingsStore.audio.backgroundVolume"
-              @input="(e) => settingsStore.audio.backgroundVolume = Number((e.target as HTMLInputElement).value)"
+              @input.stop="(e) => settingsStore.audio.backgroundVolume = Number((e.target as HTMLInputElement).value)"
               class="flex-1 h-1 accent-[#79d9ff] bg-white/10 rounded-full appearance-none cursor-pointer"
             />
             <span class="text-[10px] text-gray-500 w-6 text-right shrink-0 tabular-nums">{{ settingsStore.audio.backgroundVolume }}</span>
           </div>
 
-          <!-- BGM 曲目列表（始终可见，可滚动） -->
-          <div
+            <!-- BGM 曲目列表 -->
+            <div
             class="border border-white/5 rounded-xl bg-white/[0.03] overflow-hidden"
           >
             <div v-if="bgmList.length === 0" class="text-center text-gray-500 py-4 text-xs">
@@ -99,7 +105,7 @@
               <div
                 v-for="music in bgmList"
                 :key="music.url"
-                @click="playMusic(music)"
+                @click.stop="playMusic(music)"
                 class="group flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer transition-all duration-150"
                 :class="[
                   uiStore.currentBackgroundMusic === music.url
@@ -111,6 +117,7 @@
               </div>
             </div>
           </div>
+          </template>
         </div>
 
         <!-- 分隔线 -->
@@ -126,7 +133,7 @@
             </span>
             <button
               v-if="uiStore.ambientTracks.length > 0"
-              @click="stopAllAmbient"
+              @click.stop="stopAllAmbient"
               class="text-xs text-red-400 hover:text-red-300 transition-colors flex items-center gap-1 px-2 py-1 rounded hover:bg-red-500/10"
             >
               <Square :size="10" /> 全部停止
@@ -148,7 +155,7 @@
                 <Wind :size="12" class="text-[#79d9ff] shrink-0" />
                 <span class="flex-1 text-xs text-gray-200 truncate">{{ getTrackDisplayName(track) }}</span>
                 <button
-                  @click="uiStore.toggleAmbientTrackPause(track.id)"
+                  @click.stop="uiStore.toggleAmbientTrackPause(track.id)"
                   class="p-1 rounded text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
                   :title="track.paused ? '恢复' : '暂停'"
                 >
@@ -156,7 +163,7 @@
                   <Pause v-else :size="11" />
                 </button>
                 <button
-                  @click="uiStore.removeAmbientTrack(track.id)"
+                  @click.stop="uiStore.removeAmbientTrack(track.id)"
                   class="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
                   title="移除"
                 >
@@ -171,7 +178,7 @@
                   min="0"
                   max="100"
                   :value="track.volume"
-                  @input="(e) => uiStore.updateAmbientTrackVolume(track.id, Number((e.target as HTMLInputElement).value))"
+                  @input.stop="(e) => uiStore.updateAmbientTrackVolume(track.id, Number((e.target as HTMLInputElement).value))"
                   class="flex-1 h-1 accent-[#79d9ff] bg-white/10 rounded-full appearance-none cursor-pointer"
                 />
                 <span class="text-[10px] text-gray-500 w-6 text-right shrink-0 tabular-nums">{{ track.volume }}</span>
@@ -186,7 +193,7 @@
                 <div
                   v-for="ambient in ambientFileList"
                   :key="ambient.url"
-                  @click="playAmbientFromList(ambient)"
+                  @click.stop="playAmbientFromList(ambient)"
                   class="group flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/10 text-gray-400 hover:text-white"
                 >
                   <Wind :size="12" class="text-[#79d9ff] shrink-0" />
@@ -237,6 +244,10 @@ const hasActiveAudio = computed(() => {
 })
 
 // ===== BGM 相关 =====
+const hasBgm = computed(() =>
+  uiStore.currentBackgroundMusic && uiStore.currentBackgroundMusic !== 'None'
+)
+
 interface MusicItem {
   name: string
   url: string
@@ -296,6 +307,13 @@ const playMusic = (music: MusicItem) => {
   uiStore.currentBackgroundMusic = music.url
   uiStore.bgMusicPaused = false
   uiStore.bgMusicStoped = false
+}
+
+/** 前往设置 */
+const openSettings = () => {
+  uiStore.showSettings = true
+  uiStore.currentSettingsTab = 'sound'
+  panelVisible.value = false
 }
 
 // ===== 环境音相关 =====
@@ -404,6 +422,20 @@ input[type='range']::-webkit-slider-thumb {
   background: #79d9ff;
   cursor: pointer;
   border: 2px solid rgba(0, 0, 0, 0.3);
+}
+
+/* 链接按钮样式 */
+.text-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #79d9ff;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.text-link:hover {
+  color: #93c5fd;
 }
 
 /* 图标脉冲动画（.pulse-icon 仅让第一个子元素即 Icon 闪烁，文字不闪） */
