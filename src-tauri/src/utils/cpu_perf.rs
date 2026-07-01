@@ -1,0 +1,365 @@
+//! CPU 性能检测模块
+//!
+//! 初次启动时检测 CPU 型号并划分性能等级，结果缓存到本地文件，
+//! 后续启动直接读取缓存。前端可获取 CPU 信息用于自适应画质。
+
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use std::sync::Mutex;
+
+// ────────────────────────────────────────
+// 公共类型
+// ────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PerfTier {
+    Internet,
+    Low,
+    Medium,
+    High,
+}
+
+impl PerfTier {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PerfTier::Internet => "INTERNET",
+            PerfTier::Low => "LOW",
+            PerfTier::Medium => "MEDIUM",
+            PerfTier::High => "HIGH",
+        }
+    }
+
+    /// 根据性能等级返回建议的帧率上限
+    pub fn suggested_max_fps(&self) -> u32 {
+        match self {
+            PerfTier::Internet => 15,
+            PerfTier::Low => 30,
+            PerfTier::Medium => 60,
+            PerfTier::High => 120,
+        }
+    }
+
+    /// 建议的粒子数量比例 (0.0 ~ 1.0)
+    pub fn suggested_particle_scale(&self) -> f64 {
+        match self {
+            PerfTier::Internet => 0.2,
+            PerfTier::Low => 0.5,
+            PerfTier::Medium => 0.8,
+            PerfTier::High => 1.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CpuInfo {
+    pub brand: String,
+    pub tier: PerfTier,
+}
+
+/// 缓存到状态中的 CPU 检测结果
+pub struct CpuDetectionCache {
+    pub info: Mutex<Option<CpuInfo>>,
+}
+
+impl CpuDetectionCache {
+    pub fn new() -> Self {
+        Self {
+            info: Mutex::new(None),
+        }
+    }
+}
+
+// ────────────────────────────────────────
+// x86 / x86_64 CPUID 实现
+// ────────────────────────────────────────
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+mod x86_impl {
+    use super::*;
+
+    /// 执行 CPUID 指令
+    #[inline]
+    fn cpuid(leaf: u32, subleaf: u32) -> (u32, u32, u32, u32) {
+        let eax: u32;
+        let ebx: u32;
+        let ecx: u32;
+        let edx: u32;
+        unsafe {
+            core::arch::asm!(
+                "cpuid",
+                inout("eax") leaf => eax,
+                inout("ecx") subleaf => ecx,
+                out("ebx") ebx,
+                out("edx") edx,
+                options(nostack, preserves_flags)
+            );
+        }
+        (eax, ebx, ecx, edx)
+    }
+
+    /// 获取 CPU 品牌字符串
+    fn get_brand_string() -> Option<String> {
+        let (max_ext, _, _, _) = cpuid(0x80000000, 0);
+        if max_ext < 0x80000004 {
+            return None;
+        }
+
+        let mut buf = [0u8; 48];
+        for i in 0..3 {
+            let leaf = 0x80000002 + i;
+            let (eax, ebx, ecx, edx) = cpuid(leaf, 0);
+            let offset = i * 16;
+            buf[offset..offset + 4].copy_from_slice(&eax.to_le_bytes());
+            buf[offset + 4..offset + 8].copy_from_slice(&ebx.to_le_bytes());
+            buf[offset + 8..offset + 12].copy_from_slice(&ecx.to_le_bytes());
+            buf[offset + 12..offset + 16].copy_from_slice(&edx.to_le_bytes());
+        }
+
+        let s = String::from_utf8_lossy(&buf).trim().to_string();
+        if s.is_empty() { None } else { Some(s) }
+    }
+
+    /// 检查是否为 Intel CPU
+    fn is_intel() -> bool {
+        let (_, ebx, ecx, edx) = cpuid(0, 0);
+        ebx == 0x756e6547 && edx == 0x49656e69 && ecx == 0x6c65746e
+    }
+
+    /// 检查是否为 AMD CPU
+    fn is_amd() -> bool {
+        let (_, ebx, ecx, edx) = cpuid(0, 0);
+        ebx == 0x68747541 && edx == 0x69746e65 && ecx == 0x444d4163
+    }
+
+    /// 从品牌字符串提取 Core 代数
+    fn extract_core_generation(brand: &str) -> Option<i32> {
+        let p = brand.find("Core")?;
+        let after_core = &brand[p..];
+
+        let patterns = ["i3-", "i5-", "i7-", "i9-", "m3-", "m5-", "m7-"];
+        let marker = patterns.iter().find_map(|pat| {
+            let pos = after_core.find(pat)?;
+            Some(pos + 3) // 跳过 "iX-" 或 "mX-"
+        })?;
+
+        let num_str = &after_core[marker..];
+        let model_num: i64 = num_str.chars().take_while(|c| c.is_ascii_digit()).collect::<String>().parse().ok()?;
+
+        if model_num >= 1000 {
+            Some((model_num / 1000) as i32)
+        } else {
+            None // 初代 Core
+        }
+    }
+
+    /// 判断是否为低电压后缀（U / Y）
+    fn is_low_power_suffix(brand: &str) -> bool {
+        let cpu_at = match brand.find("CPU @") {
+            Some(pos) => pos,
+            None => return false,
+        };
+
+        let before = &brand[..cpu_at].trim();
+        let last_part = before.split(' ').last().unwrap_or("");
+        last_part.contains('U') || last_part.contains('Y')
+    }
+
+    /// 核心分级逻辑 —— 与原始 C 版保持语义一致
+    fn classify_brand(brand: &str) -> PerfTier {
+        if brand.contains("Atom") {
+            return PerfTier::Internet;
+        }
+
+        if brand.contains("Celeron") || brand.contains("Pentium") {
+            return if is_low_power_suffix(brand) {
+                PerfTier::Internet
+            } else {
+                PerfTier::Low
+            };
+        }
+
+        if brand.contains("Core") {
+            let gen = extract_core_generation(brand);
+            let low_power = is_low_power_suffix(brand);
+
+            if gen >= Some(8) {
+                return PerfTier::High;
+            }
+
+            // 特判 12/13 代
+            if brand.contains("12th Gen") || brand.contains("13th Gen") {
+                return PerfTier::High;
+            }
+
+            // Core Ultra
+            if brand.contains("Ultra") {
+                return PerfTier::High;
+            }
+
+            if let Some(gen) = gen {
+                if gen < 8 {
+                    let is_i3 = brand.contains("i3-");
+
+                    if is_i3 && gen < 5 {
+                        return PerfTier::Low;
+                    }
+                    if low_power && gen <= 7 {
+                        return PerfTier::Low;
+                    }
+                    // 6代及以上 i7 → High
+                    if gen >= 6 && brand.contains("i7-") {
+                        return PerfTier::High;
+                    }
+                    return PerfTier::Medium;
+                }
+            }
+
+            // Core 2 系列
+            if brand.contains("Duo") || brand.contains("Quad") || brand.contains("Extreme") {
+                return PerfTier::Low;
+            }
+
+            if low_power {
+                return PerfTier::Low;
+            }
+        }
+
+        // Xeon
+        if brand.contains("Xeon") {
+            if brand.contains("E5") || brand.contains("E7") {
+                return PerfTier::High;
+            }
+            return PerfTier::Medium;
+        }
+
+        PerfTier::Low
+    }
+
+    pub fn detect_cpu() -> CpuInfo {
+        let brand = get_brand_string().unwrap_or_default();
+
+        if !is_intel() {
+            if is_amd() {
+                return CpuInfo {
+                    brand,
+                    tier: PerfTier::Low,
+                };
+            }
+            // 非 Intel/AMD（如兆芯、海光等）
+            return CpuInfo {
+                brand,
+                tier: PerfTier::Low,
+            };
+        }
+
+        let tier = classify_brand(&brand);
+        CpuInfo { brand, tier }
+    }
+}
+
+// ────────────────────────────────────────
+// 非 x86 平台（ARM 等）—— 直接返回 Low
+// ────────────────────────────────────────
+
+#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+mod imp {
+    use super::*;
+
+    pub fn detect_cpu() -> CpuInfo {
+        // ARM 或不支持 CPUID 的平台
+        let brand = std::env::consts::ARCH.to_string();
+        CpuInfo {
+            brand: format!("还有我不认识的设备，哈！(Arch: {brand})"),
+            tier: PerfTier::Low,
+        }
+    }
+}
+
+// ────────────────────────────────────────
+// 公开 API（统一入口）
+// ────────────────────────────────────────
+
+/// 执行 CPU 检测（仅在 x86/x86_64 上真正执行 CPUID）
+pub fn detect_cpu() -> CpuInfo {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    {
+        x86_impl::detect_cpu()
+    }
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        imp::detect_cpu()
+    }
+}
+
+/// 缓存文件路径（在 app data 目录下）
+fn cache_path(data_dir: &PathBuf) -> PathBuf {
+    data_dir.join("cpu_perf_cache.json")
+}
+
+/// 从缓存读取 CPU 信息
+pub fn load_cached_info(data_dir: &PathBuf) -> Option<CpuInfo> {
+    let path = cache_path(data_dir);
+    if !path.exists() {
+        return None;
+    }
+    let content = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str(&content).ok()
+}
+
+/// 将 CPU 信息写入缓存（后续不再重复检测）
+pub fn save_cached_info(info: &CpuInfo, data_dir: &PathBuf) {
+    if let Ok(content) = serde_json::to_string_pretty(info) {
+        let path = cache_path(data_dir);
+        let _ = std::fs::write(path, content);
+    }
+}
+
+/// 清除缓存（用于前端"重新检测"按钮）
+pub fn clear_cache(data_dir: &PathBuf) {
+    let path = cache_path(data_dir);
+    if path.exists() {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
+// ────────────────────────────────────────
+// Tauri 命令
+// ────────────────────────────────────────
+
+use tauri::State;
+
+/// Tauri 命令：获取 CPU 信息（优先缓存，不存在则检测）
+#[tauri::command]
+pub fn get_cpu_info(state: State<'_, CpuDetectionCache>) -> Result<CpuInfo, String> {
+    let mut guard = state.info.lock().map_err(|e| e.to_string())?;
+    if let Some(ref info) = *guard {
+        return Ok(info.clone());
+    }
+
+    // 从文件缓存读取
+    let data_dir = crate::api::data_dir();
+    if let Some(info) = load_cached_info(&data_dir) {
+        *guard = Some(info.clone());
+        return Ok(info);
+    }
+
+    // 首次运行：检测并缓存
+    let info = detect_cpu();
+    save_cached_info(&info, &data_dir);
+    *guard = Some(info.clone());
+    Ok(info)
+}
+
+/// Tauri 命令：重新检测 CPU 性能（清除缓存后重测）
+#[tauri::command]
+pub fn redetect_cpu(state: State<'_, CpuDetectionCache>) -> Result<CpuInfo, String> {
+    let data_dir = crate::api::data_dir();
+    clear_cache(&data_dir);
+
+    let info = detect_cpu();
+    save_cached_info(&info, &data_dir);
+
+    let mut guard = state.info.lock().map_err(|e| e.to_string())?;
+    *guard = Some(info.clone());
+    Ok(info)
+}
