@@ -37,6 +37,14 @@ pub async fn initialize(
 
     let db = db::init_db(&data_dir).await?;
 
+    // 导入 LAN 同步暂存的数据库记录（表结构就绪后才执行）
+    let db_imported = crate::lan_sync::db_sync::apply_staged_db_records(&db, &data_dir)
+        .await
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    if db_imported > 0 {
+        tracing::info!("已导入 {} 条数据库记录（来自 LAN 同步）", db_imported);
+    }
+
     role_sync::sync_roles_from_folder(&db, &data_dir).await?;
 
     // 确保玩家 User 角色存在（id=0，用于 line.sender_role_id 的 FK 约束）
