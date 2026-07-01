@@ -1,10 +1,10 @@
 //! CPU 性能检测模块
 //!
-//! 初次启动时检测 CPU 型号并划分性能等级，结果缓存到本地文件，
-//! 后续启动直接读取缓存。前端可获取 CPU 信息用于自适应画质。
+//! 初次启动时检测 CPU 型号并划分性能等级。
+//! 前端负责将检测结果缓存到 localStorage，后续启动直接读取缓存，
+//! 不再重复调用后端。后端仅维持会话级内存缓存。
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 use std::sync::Mutex;
 
 // ────────────────────────────────────────
@@ -315,44 +315,16 @@ pub fn detect_cpu() -> CpuInfo {
     }
 }
 
-/// 缓存文件路径（在 app data 目录下）
-fn cache_path(data_dir: &PathBuf) -> PathBuf {
-    data_dir.join("cpu_perf_cache.json")
-}
-
-/// 从缓存读取 CPU 信息
-pub fn load_cached_info(data_dir: &PathBuf) -> Option<CpuInfo> {
-    let path = cache_path(data_dir);
-    if !path.exists() {
-        return None;
-    }
-    let content = std::fs::read_to_string(path).ok()?;
-    serde_json::from_str(&content).ok()
-}
-
-/// 将 CPU 信息写入缓存（后续不再重复检测）
-pub fn save_cached_info(info: &CpuInfo, data_dir: &PathBuf) {
-    if let Ok(content) = serde_json::to_string_pretty(info) {
-        let path = cache_path(data_dir);
-        let _ = std::fs::write(path, content);
-    }
-}
-
-/// 清除缓存（用于前端"重新检测"按钮）
-pub fn clear_cache(data_dir: &PathBuf) {
-    let path = cache_path(data_dir);
-    if path.exists() {
-        let _ = std::fs::remove_file(path);
-    }
-}
-
 // ────────────────────────────────────────
 // Tauri 命令
 // ────────────────────────────────────────
 
 use tauri::State;
 
-/// Tauri 命令：获取 CPU 信息（优先缓存，不存在则检测）
+/// Tauri 命令：获取 CPU 信息（仅维持会话级内存缓存）
+///
+/// 注意：持久化缓存由前端在 localStorage 中管理，
+/// 后端不再读写磁盘文件。
 #[tauri::command]
 pub fn get_cpu_info(state: State<'_, CpuDetectionCache>) -> Result<CpuInfo, String> {
     let mut guard = state.info.lock().map_err(|e| e.to_string())?;
@@ -360,28 +332,16 @@ pub fn get_cpu_info(state: State<'_, CpuDetectionCache>) -> Result<CpuInfo, Stri
         return Ok(info.clone());
     }
 
-    // 从文件缓存读取
-    let data_dir = crate::api::data_dir();
-    if let Some(info) = load_cached_info(&data_dir) {
-        *guard = Some(info.clone());
-        return Ok(info);
-    }
-
-    // 首次运行：检测并缓存
+    // 会话内首次调用：执行检测
     let info = detect_cpu();
-    save_cached_info(&info, &data_dir);
     *guard = Some(info.clone());
     Ok(info)
 }
 
-/// Tauri 命令：重新检测 CPU 性能（清除缓存后重测）
+/// Tauri 命令：重新检测 CPU 性能（清除内存缓存后重测）
 #[tauri::command]
 pub fn redetect_cpu(state: State<'_, CpuDetectionCache>) -> Result<CpuInfo, String> {
-    let data_dir = crate::api::data_dir();
-    clear_cache(&data_dir);
-
     let info = detect_cpu();
-    save_cached_info(&info, &data_dir);
 
     let mut guard = state.info.lock().map_err(|e| e.to_string())?;
     *guard = Some(info.clone());

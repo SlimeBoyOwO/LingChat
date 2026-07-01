@@ -15,14 +15,65 @@ export interface CpuInfo {
   unknown_message: string | null
 }
 
-/** 获取 CPU 信息（优先使用缓存，首次运行时自动检测） */
-export async function getCpuInfo(): Promise<CpuInfo> {
-  return invoke<CpuInfo>('get_cpu_info')
+/** localStorage 键名 */
+const STORAGE_KEY = 'lingchat-cpu-perf'
+
+/** 从 localStorage 读取缓存的 CPU 信息 */
+function loadFromCache(): CpuInfo | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    return JSON.parse(raw) as CpuInfo
+  } catch {
+    return null
+  }
 }
 
-/** 重新检测 CPU 性能（清除缓存后重新检测） */
+/** 将 CPU 信息写入 localStorage */
+function saveToCache(info: CpuInfo): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(info))
+  } catch {
+    // localStorage 不可用时静默失败
+  }
+}
+
+/** 清除 localStorage 缓存 */
+function clearCache(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY)
+  } catch {
+    // 静默失败
+  }
+}
+
+/**
+ * 获取 CPU 信息（优先使用 localStorage 缓存）
+ *
+ * 首次调用时调用 Tauri 后端检测，结果存入 localStorage；
+ * 后续启动直接从 localStorage 读取，不再调用后端。
+ */
+export async function getCpuInfo(): Promise<CpuInfo> {
+  // 优先读取 localStorage 缓存
+  const cached = loadFromCache()
+  if (cached) {
+    return cached
+  }
+
+  // 缓存不存在，调后端检测
+  const info = await invoke<CpuInfo>('get_cpu_info')
+  saveToCache(info)
+  return info
+}
+
+/**
+ * 重新检测 CPU 性能（清除 localStorage 缓存后重新检测）
+ */
 export async function redetectCpu(): Promise<CpuInfo> {
-  return invoke<CpuInfo>('redetect_cpu')
+  clearCache()
+  const info = await invoke<CpuInfo>('redetect_cpu')
+  saveToCache(info)
+  return info
 }
 
 /** 获取性能等级的中文描述 */
