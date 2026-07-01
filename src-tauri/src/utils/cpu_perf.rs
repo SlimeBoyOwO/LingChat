@@ -52,8 +52,14 @@ impl PerfTier {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CpuInfo {
+    /// CPU 品牌字符串，例如 "Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz"
     pub brand: String,
+    /// 性能等级
     pub tier: PerfTier,
+    /// 是否为 ARM 等非 x86 无法识别的 CPU
+    pub is_unknown: bool,
+    /// 未知 CPU 时的友好提示（仅在 is_unknown 为 true 时有值）
+    pub unknown_message: Option<String>,
 }
 
 /// 缓存到状态中的 CPU 检测结果
@@ -86,10 +92,14 @@ mod x86_impl {
         let edx: u32;
         unsafe {
             core::arch::asm!(
+                "mov {tmp}, rbx",
                 "cpuid",
+                "mov {ebx}, rbx",
+                "mov rbx, {tmp}",
+                tmp = out(reg) _,
+                ebx = out(reg) ebx,
                 inout("eax") leaf => eax,
                 inout("ecx") subleaf => ecx,
-                out("ebx") ebx,
                 out("edx") edx,
                 options(nostack, preserves_flags)
             );
@@ -105,8 +115,8 @@ mod x86_impl {
         }
 
         let mut buf = [0u8; 48];
-        for i in 0..3 {
-            let leaf = 0x80000002 + i;
+        for i in 0usize..3 {
+            let leaf = 0x80000002 + i as u32;
             let (eax, ebx, ecx, edx) = cpuid(leaf, 0);
             let offset = i * 16;
             buf[offset..offset + 4].copy_from_slice(&eax.to_le_bytes());
@@ -115,7 +125,10 @@ mod x86_impl {
             buf[offset + 12..offset + 16].copy_from_slice(&edx.to_le_bytes());
         }
 
-        let s = String::from_utf8_lossy(&buf).trim().to_string();
+        // 去除尾部空白和空字符（CPUID 字符串以空字符填充）
+        let s = String::from_utf8_lossy(&buf)
+            .trim_end_matches(|c: char| c.is_ascii_whitespace() || c == '\0')
+            .to_string();
         if s.is_empty() { None } else { Some(s) }
     }
 
@@ -243,17 +256,26 @@ mod x86_impl {
                 return CpuInfo {
                     brand,
                     tier: PerfTier::Low,
+                    is_unknown: false,
+                    unknown_message: None,
                 };
             }
-            // 非 Intel/AMD（如兆芯、海光等）
+            // 非 Intel/AMD（如兆芯、海光等）—— 无法准确识别
             return CpuInfo {
                 brand,
                 tier: PerfTier::Low,
+                is_unknown: true,
+                unknown_message: Some("还有我不认识的设备，哈！".to_string()),
             };
         }
 
         let tier = classify_brand(&brand);
-        CpuInfo { brand, tier }
+        CpuInfo {
+            brand,
+            tier,
+            is_unknown: false,
+            unknown_message: None,
+        }
     }
 }
 
@@ -267,10 +289,12 @@ mod imp {
 
     pub fn detect_cpu() -> CpuInfo {
         // ARM 或不支持 CPUID 的平台
-        let brand = std::env::consts::ARCH.to_string();
+        let arch = std::env::consts::ARCH.to_string();
         CpuInfo {
-            brand: format!("还有我不认识的设备，哈！(Arch: {brand})"),
+            brand: format!("{arch} 架构处理器"),
             tier: PerfTier::Low,
+            is_unknown: true,
+            unknown_message: Some("还有我不认识的设备，哈！".to_string()),
         }
     }
 }

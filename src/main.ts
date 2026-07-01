@@ -12,7 +12,7 @@ import "./assets/styles/variables.css";
 // import "./api/websocket/handlers/adventure-handler";
 
 import router from "./router";
-import { getCpuInfo, getSuggestedMaxFps, getSuggestedParticleScale } from "./api/services/cpu-perf";
+import { getCpuInfo, getSuggestedMaxFps, getSuggestedParticleScale, getRecommendedEffects } from "./api/services/cpu-perf";
 
 const app = createApp(App);
 
@@ -34,17 +34,31 @@ async function autoConfigurePerformance(): Promise<void> {
     const particleScale = getSuggestedParticleScale(info.tier);
 
     // 从 pinia 获取 settingsStore 并应用推荐值
-    const { useSettingsStore } = await import("./stores/modules/settings");
+    const { useSettingsStore, DEFAULT_SETTINGS } = await import("./stores/modules/settings");
     const settingsStore = useSettingsStore();
-
-    // 仅当当前值等于默认值时覆盖（避免覆盖用户手动调整）
-    const { DEFAULT_SETTINGS } = await import("./stores/modules/settings");
 
     if (settingsStore.display.meteorFps === DEFAULT_SETTINGS.display.meteorFps) {
       settingsStore.setMeteorFps(Math.min(fps, 60));
     }
     if (settingsStore.display.starsFps === DEFAULT_SETTINGS.display.starsFps) {
       settingsStore.setStarsFps(Math.min(fps, 60));
+    }
+
+    // 低性能设备自动关闭高开销特效（仅当用户未手动修改时）
+    if (info.tier === 'Internet' || info.tier === 'Low') {
+      const effects = getRecommendedEffects(info.tier);
+      if (settingsStore.display.mainMenuStarsEnabled === DEFAULT_SETTINGS.display.mainMenuStarsEnabled) {
+        settingsStore.setMainMenuStarsEnabled(effects.mainMenuStarsEnabled);
+      }
+      if (settingsStore.display.mainMenuMeteorsEnabled === DEFAULT_SETTINGS.display.mainMenuMeteorsEnabled) {
+        settingsStore.setMainMenuMeteorsEnabled(effects.mainMenuMeteorsEnabled);
+      }
+      if (settingsStore.display.globalMouseTrailEnabled === DEFAULT_SETTINGS.display.globalMouseTrailEnabled) {
+        settingsStore.setGlobalMouseTrailEnabled(effects.globalMouseTrailEnabled);
+      }
+      if (settingsStore.display.clickAnimationEnabled === DEFAULT_SETTINGS.display.clickAnimationEnabled) {
+        settingsStore.setClickAnimationEnabled(effects.clickAnimationEnabled);
+      }
     }
 
     console.log(

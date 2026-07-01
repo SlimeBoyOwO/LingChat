@@ -258,6 +258,14 @@
 
         <!-- 检测结果 -->
         <div v-else-if="cpuInfo" class="flex flex-col gap-2">
+          <!-- 未知 CPU 提示 -->
+          <div
+            v-if="cpuInfo.is_unknown && cpuInfo.unknown_message"
+            class="flex items-center gap-2 px-3 py-2 rounded-lg bg-yellow-500/15 border border-yellow-500/30 text-yellow-200 text-sm"
+          >
+            <span>⚠️ {{ cpuInfo.unknown_message }}</span>
+          </div>
+
           <div class="flex items-center gap-2">
             <span class="text-white/50 text-xs font-medium min-w-16">CPU 名称：</span>
             <span class="text-white/90 text-sm font-mono break-all">{{ cpuInfo.brand }}</span>
@@ -267,6 +275,7 @@
             <span
               class="px-2.5 py-0.5 rounded-full text-xs font-bold"
               :class="tierBadgeClass"
+              :style="{ backgroundColor: cpuTierColor + '99' }"
             >
               {{ cpuTierLabel }}
             </span>
@@ -335,6 +344,7 @@ import {
   redetectCpu,
   getTierLabel,
   getSuggestedMaxFps,
+  getPerfTierColor,
   type CpuInfo,
   type PerfTier,
 } from '../../../api/services/cpu-perf'
@@ -381,6 +391,9 @@ const cpuError = ref<string | null>(null)
 
 const cpuTierLabel = computed(() =>
   cpuInfo.value ? getTierLabel(cpuInfo.value.tier as PerfTier) : '',
+)
+const cpuTierColor = computed(() =>
+  cpuInfo.value ? getPerfTierColor(cpuInfo.value.tier as PerfTier) : '#888888',
 )
 const cpuSuggestedFps = computed(() =>
   cpuInfo.value ? getSuggestedMaxFps(cpuInfo.value.tier as PerfTier) : 30,
