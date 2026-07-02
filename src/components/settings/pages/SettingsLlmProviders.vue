@@ -280,10 +280,14 @@
               <div class="relative">
                 <select
                   v-model="editing.provider"
+                  @change="onProviderChange"
                   class="w-full appearance-none pl-3 pr-8 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors cursor-pointer"
                 >
                   <option value="openai" class="bg-gray-800 text-white">
                     OpenAI 兼容 (DeepSeek / 通义千问 / Ollama)
+                  </option>
+                  <option value="lmstudio" class="bg-gray-800 text-white">
+                    LM Studio（本地）
                   </option>
                   <option value="gemini" class="bg-gray-800 text-white">Gemini</option>
                 </select>
@@ -313,7 +317,7 @@
               <input
                 v-model="editing.model"
                 type="text"
-                placeholder="例如: deepseek-chat"
+                :placeholder="editing.provider === 'lmstudio' ? '如: llama-3.2-3b-instruct' : '如: deepseek-chat'"
                 class="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors placeholder:text-white/20"
               />
             </div>
@@ -493,6 +497,21 @@ function emptyProvider(): LlmProviderConfig {
 function closePanel() {
   sidePanel.value = null
   saveMessage.value = ''
+}
+
+function onProviderChange() {
+  if (editing.provider === 'lmstudio') {
+    editing.base_url = 'http://localhost:1234/v1'
+    editing.api_key = 'sk-lingchat70'
+  } else {
+    // 切回其他供应商时清除 LM Studio 的默认值
+    if (editing.base_url === 'http://localhost:1234/v1') {
+      editing.base_url = ''
+    }
+    if (editing.api_key === 'sk-lingchat70') {
+      editing.api_key = ''
+    }
+  }
 }
 
 function startAdd() {
