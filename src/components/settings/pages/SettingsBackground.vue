@@ -245,6 +245,63 @@
       </div>
     </MenuItem>
 
+    <MenuItem title="CPU 性能检测" size="large">
+      <template #header>
+        <Cpu :size="20" />
+      </template>
+      <div class="flex flex-col gap-3">
+        <!-- 加载中 -->
+        <div v-if="cpuLoading" class="flex items-center gap-2 text-white/60 text-sm">
+          <span class="inline-block w-4 h-4 border-2 border-white/30 border-t-white/80 rounded-full animate-spin"></span>
+          正在检测 CPU …
+        </div>
+
+        <!-- 检测结果 -->
+        <div v-else-if="cpuInfo" class="flex flex-col gap-2">
+          <!-- 未知 CPU 提示 -->
+          <div
+            v-if="cpuInfo.is_unknown && cpuInfo.unknown_message"
+            class="flex items-center gap-2 px-3 py-2 rounded-lg bg-yellow-500/15 border border-yellow-500/30 text-yellow-200 text-sm"
+          >
+            <span>⚠️ {{ cpuInfo.unknown_message }}</span>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <span class="text-white/50 text-xs font-medium min-w-16">CPU 名称：</span>
+            <span class="text-white/90 text-sm font-mono break-all">{{ cpuInfo.brand }}</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-white/50 text-xs font-medium min-w-16">性能等级：</span>
+            <span
+              class="px-2.5 py-0.5 rounded-full text-xs font-bold"
+              :class="tierBadgeClass"
+              :style="{ backgroundColor: cpuTierColor + '99' }"
+            >
+              {{ cpuTierLabel }}
+            </span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-white/50 text-xs font-medium min-w-16">建议帧率：</span>
+            <span class="text-white/70 text-sm">{{ cpuSuggestedFps }} FPS</span>
+          </div>
+        </div>
+
+        <!-- 错误状态 -->
+        <div v-else-if="cpuError" class="text-red-300 text-sm">
+          {{ cpuError }}
+        </div>
+
+        <!-- 重新检测按钮 -->
+        <button
+          class="self-start mt-1 px-4 py-1.5 rounded-full text-sm font-bold transition-all border shadow-lg bg-brand/80 border-brand text-white hover:bg-brand shadow-indigo-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+          :disabled="cpuLoading"
+          @click="handleRedetectCpu"
+        >
+          {{ cpuLoading ? '检测中…' : '重新检测' }}
+        </button>
+      </div>
+    </MenuItem>
+
     <SceneEditModal
       :show="showSceneEdit"
       :mode="editMode"
@@ -282,7 +339,16 @@ import {
   generateBackgroundImage,
   openBackgroundsFolder,
 } from '../../../api/services/background'
-import { Image, PictureInPicture, Sparkles, Settings, Wand2, Wrench } from 'lucide-vue-next'
+import {
+  getCpuInfo,
+  redetectCpu,
+  getTierLabel,
+  getSuggestedMaxFps,
+  getPerfTierColor,
+  type CpuInfo,
+  type PerfTier,
+} from '../../../api/services/cpu-perf'
+import { Image, PictureInPicture, Sparkles, Settings, Wand2, Wrench, Cpu } from 'lucide-vue-next'
 import SceneEditModal from '../scene/SceneEditModal.vue'
 import { useUserStore } from '../../../stores/modules/user/user'
 
@@ -317,6 +383,36 @@ const starsFpsInput = ref(settingsStore.starsFps)
 
 const backgroundList = ref<BackgroundImageInfo[]>([])
 const uploadInput = ref<HTMLInputElement | null>(null)
+
+// ── CPU 性能检测 ──
+const cpuInfo = ref<CpuInfo | null>(null)
+const cpuLoading = ref(true)
+const cpuError = ref<string | null>(null)
+
+const cpuTierLabel = computed(() =>
+  cpuInfo.value ? getTierLabel(cpuInfo.value.tier as PerfTier) : '',
+)
+const cpuTierColor = computed(() =>
+  cpuInfo.value ? getPerfTierColor(cpuInfo.value.tier as PerfTier) : '#888888',
+)
+const cpuSuggestedFps = computed(() =>
+  cpuInfo.value ? getSuggestedMaxFps(cpuInfo.value.tier as PerfTier) : 30,
+)
+const tierBadgeClass = computed(() => {
+  if (!cpuInfo.value) return 'bg-white/20 text-white/60'
+  switch (cpuInfo.value.tier as PerfTier) {
+    case 'Internet':
+      return 'bg-gray-500/60 text-gray-100'
+    case 'Low':
+      return 'bg-yellow-600/60 text-yellow-100'
+    case 'Medium':
+      return 'bg-blue-500/60 text-blue-100'
+    case 'High':
+      return 'bg-green-500/60 text-green-100'
+    default:
+      return 'bg-white/20 text-white/60'
+  }
+})
 
 const scenes = ref<SceneInfo[]>([])
 
@@ -470,7 +566,45 @@ onMounted(async () => {
   if (gameStore.currentScene?.background) {
     uiStore.setCurrentBackground(gameStore.currentScene.background)
   }
+
+  // 加载 CPU 信息
+  await fetchCpuInfo()
 })
+
+// ── CPU 性能检测 ──
+
+async function fetchCpuInfo(): Promise<void> {
+  cpuLoading.value = true
+  cpuError.value = null
+  try {
+    const info = await getCpuInfo()
+    cpuInfo.value = info
+  } catch (e: any) {
+    cpuError.value = e?.message || '获取 CPU 信息失败'
+    console.error('获取 CPU 信息失败', e)
+  } finally {
+    cpuLoading.value = false
+  }
+}
+
+async function handleRedetectCpu(): Promise<void> {
+  cpuLoading.value = true
+  cpuError.value = null
+  try {
+    const info = await redetectCpu()
+    cpuInfo.value = info
+    uiStore.showSuccess({
+      title: '检测完成',
+      message: `CPU 性能等级：${getTierLabel(info.tier as PerfTier)}`,
+      duration: 3000,
+    })
+  } catch (e: any) {
+    cpuError.value = e?.message || '重新检测失败'
+    console.error('重新检测 CPU 失败', e)
+  } finally {
+    cpuLoading.value = false
+  }
+}
 
 async function fetchBackgrounds(): Promise<BackgroundImageInfo[]> {
   try {

@@ -106,6 +106,7 @@ pub fn run() {
             app.manage(api::pet::HitTestState::default());
             app.manage(data_update::DataUpdateState::default());
             app.manage(lan_sync::LanSyncState::default());
+            app.manage(utils::cpu_perf::CpuDetectionCache::new());
 
             let rt = tokio::runtime::Runtime::new()?;
             let (db, ai_service, chat) = rt.block_on(init::initialize(app))?;
@@ -367,6 +368,8 @@ pub fn run() {
             lan_sync::lan_sync_plan_pull,
             lan_sync::lan_sync_execute_pull,
             lan_sync::lan_sync_restart,
+            utils::cpu_perf::get_cpu_info,
+            utils::cpu_perf::redetect_cpu,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
