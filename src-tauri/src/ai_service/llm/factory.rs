@@ -9,7 +9,7 @@ use super::{LlmClient, LlmConfig};
 /// 对标 Python `LLMProviderFactory.create_provider()`。
 pub fn create_llm_client(cfg: LlmConfig) -> Result<LlmClient> {
     let provider: Box<dyn LlmProvider> = match cfg.provider.to_lowercase().as_str() {
-        "" | "openai" | "webllm" => Box::new(OpenAiProvider::from_config(&cfg)?),
+        "" | "openai" | "webllm" | "lmstudio" => Box::new(OpenAiProvider::from_config(&cfg)?),
         "gemini" => Box::new(GeminiProvider::from_config(&cfg)?),
         other => return Err(anyhow!("不支持的 LLM 提供商: {other}")),
     };
