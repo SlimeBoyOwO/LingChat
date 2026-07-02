@@ -128,6 +128,68 @@ export interface RecommendedEffects {
   clickAnimationEnabled: boolean
 }
 
+/**
+ * 根据 CPU 性能等级自动调整画质设定（供 main.ts 初始化调用）
+ *
+ * - 仅首次启动时生效（缓存已在 localStorage）
+ * - 不覆盖用户手动调整的值（仅当当前值仍为默认值时覆盖）
+ * - 低性能设备自动关闭高开销特效
+ */
+export async function autoConfigureCpuPerformance(): Promise<void> {
+  try {
+    const info = await getCpuInfo()
+    const fps = getSuggestedMaxFps(info.tier)
+
+    // 延迟导入避免循环依赖，等 pinia store 就绪
+    const { useSettingsStore, DEFAULT_SETTINGS } = await import(
+      '../../stores/modules/settings'
+    )
+    const settingsStore = useSettingsStore()
+
+    if (settingsStore.display.meteorFps === DEFAULT_SETTINGS.display.meteorFps) {
+      settingsStore.setMeteorFps(Math.min(fps, 60))
+    }
+    if (settingsStore.display.starsFps === DEFAULT_SETTINGS.display.starsFps) {
+      settingsStore.setStarsFps(Math.min(fps, 60))
+    }
+
+    // 低性能设备自动关闭高开销特效
+    if (info.tier === 'Internet' || info.tier === 'Low') {
+      const effects = getRecommendedEffects(info.tier)
+      if (
+        settingsStore.display.mainMenuStarsEnabled ===
+        DEFAULT_SETTINGS.display.mainMenuStarsEnabled
+      ) {
+        settingsStore.setMainMenuStarsEnabled(effects.mainMenuStarsEnabled)
+      }
+      if (
+        settingsStore.display.mainMenuMeteorsEnabled ===
+        DEFAULT_SETTINGS.display.mainMenuMeteorsEnabled
+      ) {
+        settingsStore.setMainMenuMeteorsEnabled(effects.mainMenuMeteorsEnabled)
+      }
+      if (
+        settingsStore.display.globalMouseTrailEnabled ===
+        DEFAULT_SETTINGS.display.globalMouseTrailEnabled
+      ) {
+        settingsStore.setGlobalMouseTrailEnabled(effects.globalMouseTrailEnabled)
+      }
+      if (
+        settingsStore.display.clickAnimationEnabled ===
+        DEFAULT_SETTINGS.display.clickAnimationEnabled
+      ) {
+        settingsStore.setClickAnimationEnabled(effects.clickAnimationEnabled)
+      }
+    }
+
+    console.log(
+      `[CPU-Perf] ${info.brand} → ${info.tier}, 建议帧率 ${fps}FPS, 粒子比例 ${getSuggestedParticleScale(info.tier)}`,
+    )
+  } catch (e) {
+    console.warn('[CPU-Perf] 自动配置失效，使用默认画质', e)
+  }
+}
+
 export function getRecommendedEffects(tier: PerfTier): RecommendedEffects {
   switch (tier) {
     case 'Internet':
