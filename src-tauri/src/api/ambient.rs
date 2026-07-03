@@ -77,7 +77,10 @@ pub fn get_ambient_list() -> Result<Vec<AmbientItemInfo>, String> {
 }
 
 #[tauri::command]
-pub fn upload_ambient(file_name: String, file_data: Vec<u8>) -> Result<Vec<AmbientItemInfo>, String> {
+pub fn upload_ambient(
+    file_name: String,
+    file_data: Vec<u8>,
+) -> Result<Vec<AmbientItemInfo>, String> {
     let ambient_dir = ambient_dir();
     if !ambient_dir.exists() {
         fs::create_dir_all(&ambient_dir).map_err(|e| format!("创建环境音目录失败: {}", e))?;

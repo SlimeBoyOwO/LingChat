@@ -1,6 +1,6 @@
-use tauri::{AppHandle, Manager};
-use crate::AppState;
 use crate::ai_service::proactive_system::types::UserScheduleSettings;
+use crate::AppState;
+use tauri::{AppHandle, Manager};
 
 #[tauri::command]
 pub async fn get_schedules() -> Result<UserScheduleSettings, String> {
@@ -15,17 +15,13 @@ pub async fn get_schedules() -> Result<UserScheduleSettings, String> {
     let content = std::fs::read_to_string(&schedules_path)
         .map_err(|e| format!("Failed to read schedules.json: {}", e))?;
 
-    let parsed: UserScheduleSettings = serde_json::from_str(&content)
-        .unwrap_or_default();
+    let parsed: UserScheduleSettings = serde_json::from_str(&content).unwrap_or_default();
 
     Ok(parsed)
 }
 
 #[tauri::command]
-pub async fn save_schedules(
-    app: AppHandle,
-    data: UserScheduleSettings,
-) -> Result<String, String> {
+pub async fn save_schedules(app: AppHandle, data: UserScheduleSettings) -> Result<String, String> {
     let state = app.state::<AppState>();
     let schedules_path = crate::api::data_dir()
         .join("game_data")
@@ -36,8 +32,8 @@ pub async fn save_schedules(
     let merged = if schedules_path.exists() {
         let existing_content = std::fs::read_to_string(&schedules_path)
             .map_err(|e| format!("Failed to read schedules.json: {}", e))?;
-        let mut existing: UserScheduleSettings = serde_json::from_str(&existing_content)
-            .unwrap_or_default();
+        let mut existing: UserScheduleSettings =
+            serde_json::from_str(&existing_content).unwrap_or_default();
         if data.schedule_groups.is_some() {
             existing.schedule_groups = data.schedule_groups;
         }
@@ -58,7 +54,10 @@ pub async fn save_schedules(
     std::fs::write(&schedules_path, content)
         .map_err(|e| format!("Failed to write schedules.json: {}", e))?;
 
-    tracing::info!("[ScheduleAPI] Schedules saved successfully at {:?}", schedules_path);
+    tracing::info!(
+        "[ScheduleAPI] Schedules saved successfully at {:?}",
+        schedules_path
+    );
 
     // Reload settings in the proactive system
     if let Some(proactive) = &state.proactive_system {

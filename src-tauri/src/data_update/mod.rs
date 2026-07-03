@@ -21,7 +21,10 @@ use tracing::{error, info};
 use crate::api::data_dir;
 
 use self::manifest::{DataUpdateInfo, DataUpdateResult};
-use self::sync::{compare_manifests, fetch_remote_manifest, load_local_manifest, perform_data_update, save_local_manifest};
+use self::sync::{
+    compare_manifests, fetch_remote_manifest, load_local_manifest, perform_data_update,
+    save_local_manifest,
+};
 
 // ─── 更新状态 ────────────────────────────────────────────────
 
@@ -148,17 +151,23 @@ pub async fn apply_data_update(
     // 通知前端更新结果
     match &result {
         Ok(r) => {
-            let _ = app.emit("data-update-complete", serde_json::json!({
-                "success": true,
-                "message": r.message,
-                "newVersion": r.new_version,
-            }));
+            let _ = app.emit(
+                "data-update-complete",
+                serde_json::json!({
+                    "success": true,
+                    "message": r.message,
+                    "newVersion": r.new_version,
+                }),
+            );
         }
         Err(e) => {
-            let _ = app.emit("data-update-complete", serde_json::json!({
-                "success": false,
-                "message": e,
-            }));
+            let _ = app.emit(
+                "data-update-complete",
+                serde_json::json!({
+                    "success": false,
+                    "message": e,
+                }),
+            );
         }
     }
 

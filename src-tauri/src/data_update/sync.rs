@@ -88,8 +88,7 @@ pub async fn fetch_remote_manifest() -> Result<DataManifest, String> {
         .await
         .map_err(|e| format!("读取远程清单响应失败: {e}"))?;
 
-    serde_json::from_str::<DataManifest>(&json)
-        .map_err(|e| format!("解析远程清单 JSON 失败: {e}"))
+    serde_json::from_str::<DataManifest>(&json).map_err(|e| format!("解析远程清单 JSON 失败: {e}"))
 }
 
 // ─── 清单比较 ────────────────────────────────────────────────
@@ -99,30 +98,23 @@ pub fn compare_manifests(old: &DataManifest, new: &DataManifest) -> DataUpdateIn
     let old_keys: HashSet<&String> = old.files.keys().collect();
     let new_keys: HashSet<&String> = new.files.keys().collect();
 
-    let mut files_to_add: Vec<String> = new_keys
-        .difference(&old_keys)
-        .map(|&k| k.clone())
-        .collect();
+    let mut files_to_add: Vec<String> =
+        new_keys.difference(&old_keys).map(|&k| k.clone()).collect();
 
     let mut files_to_modify: Vec<String> = old_keys
         .intersection(&new_keys)
         .filter(|&&k| {
-            old.files[k].sha256 != new.files[k].sha256
-                || old.files[k].size != new.files[k].size
+            old.files[k].sha256 != new.files[k].sha256 || old.files[k].size != new.files[k].size
         })
         .map(|&k| k.clone())
         .collect();
 
-    let files_to_remove: Vec<String> = old_keys
-        .difference(&new_keys)
-        .map(|&k| k.clone())
-        .collect();
+    let files_to_remove: Vec<String> = old_keys.difference(&new_keys).map(|&k| k.clone()).collect();
 
     files_to_add.sort();
     files_to_modify.sort();
 
-    let total_changes =
-        files_to_add.len() + files_to_modify.len() + files_to_remove.len();
+    let total_changes = files_to_add.len() + files_to_modify.len() + files_to_remove.len();
 
     DataUpdateInfo {
         available: total_changes > 0,
@@ -169,8 +161,7 @@ async fn download_data_zip(temp_dir: &Path) -> Result<PathBuf, String> {
     let total_size = resp.content_length();
     let zip_path = temp_dir.join(DATA_ZIP_FILENAME);
 
-    let mut file = File::create(&zip_path)
-        .map_err(|e| format!("创建临时文件失败: {e}"))?;
+    let mut file = File::create(&zip_path).map_err(|e| format!("创建临时文件失败: {e}"))?;
 
     let mut downloaded: u64 = 0;
     let mut stream = resp.bytes_stream();
@@ -178,8 +169,7 @@ async fn download_data_zip(temp_dir: &Path) -> Result<PathBuf, String> {
     use futures_util::StreamExt;
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| format!("下载数据块失败: {e}"))?;
-        io::Write::write_all(&mut file, &chunk)
-            .map_err(|e| format!("写入数据块失败: {e}"))?;
+        io::Write::write_all(&mut file, &chunk).map_err(|e| format!("写入数据块失败: {e}"))?;
         downloaded += chunk.len() as u64;
     }
 
@@ -201,8 +191,7 @@ fn extract_zip(zip_path: &Path, dest_dir: &Path) -> Result<(), String> {
     info!("正在解压数据包到临时目录...");
 
     let file = File::open(zip_path).map_err(|e| format!("打开 zip 文件失败: {e}"))?;
-    let mut archive =
-        zip::ZipArchive::new(file).map_err(|e| format!("读取 zip 文件失败: {e}"))?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("读取 zip 文件失败: {e}"))?;
 
     for i in 0..archive.len() {
         let mut entry = archive
@@ -270,8 +259,7 @@ pub fn apply_extracted_files(
         .iter()
         .filter(|&&k| {
             // 新增或修改
-            !old_keys.contains(k)
-                || old_manifest.files[k].sha256 != new_manifest.files[k].sha256
+            !old_keys.contains(k) || old_manifest.files[k].sha256 != new_manifest.files[k].sha256
         })
         .copied()
         .collect();
@@ -289,8 +277,7 @@ pub fn apply_extracted_files(
         // 原子写入：先写 .tmp，再重命名
         let tmp = data_dir.join(format!(".{}.tmp", rel_path.replace('/', "_")));
         if let Some(parent) = dst.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("创建目录失败: {e}"))?;
+            fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
         }
 
         fs::copy(&src, &tmp).map_err(|e| format!("复制文件失败 {rel_path}: {e}"))?;
@@ -298,17 +285,19 @@ pub fn apply_extracted_files(
 
         // 发送进度事件给前端
         let progress = ((idx + 1) as f64 / total as f64 * 100.0) as u32;
-        let _ = app_handle.emit("data-update-progress", serde_json::json!({
-            "current": idx + 1,
-            "total": total,
-            "progress": progress,
-            "currentFile": rel_path,
-        }));
+        let _ = app_handle.emit(
+            "data-update-progress",
+            serde_json::json!({
+                "current": idx + 1,
+                "total": total,
+                "progress": progress,
+                "currentFile": rel_path,
+            }),
+        );
     }
 
     // ── 3. 写入新清单 ──
-    save_local_manifest(data_dir, new_manifest)
-        .map_err(|e| format!("写入新清单失败: {e}"))?;
+    save_local_manifest(data_dir, new_manifest).map_err(|e| format!("写入新清单失败: {e}"))?;
 
     Ok(DataUpdateResult {
         success: true,
@@ -345,35 +334,50 @@ pub async fn perform_data_update(
     fs::create_dir_all(&temp_dir).map_err(|e| format!("创建临时目录失败: {e}"))?;
 
     // 通知前端：开始下载
-    let _ = app_handle.emit("data-update-progress", serde_json::json!({
-        "phase": "downloading",
-        "progress": 0,
-        "message": "正在下载数据包...",
-    }));
+    let _ = app_handle.emit(
+        "data-update-progress",
+        serde_json::json!({
+            "phase": "downloading",
+            "progress": 0,
+            "message": "正在下载数据包...",
+        }),
+    );
 
     // 下载 zip
     let zip_path = download_data_zip(&temp_dir).await?;
 
     // 通知前端：开始解压
-    let _ = app_handle.emit("data-update-progress", serde_json::json!({
-        "phase": "extracting",
-        "progress": 0,
-        "message": "正在解压数据包...",
-    }));
+    let _ = app_handle.emit(
+        "data-update-progress",
+        serde_json::json!({
+            "phase": "extracting",
+            "progress": 0,
+            "message": "正在解压数据包...",
+        }),
+    );
 
     // 解压
     let extract_dir = temp_dir.join("data");
     extract_zip(&zip_path, &extract_dir)?;
 
     // 通知前端：开始合并
-    let _ = app_handle.emit("data-update-progress", serde_json::json!({
-        "phase": "applying",
-        "progress": 0,
-        "message": "正在合并文件...",
-    }));
+    let _ = app_handle.emit(
+        "data-update-progress",
+        serde_json::json!({
+            "phase": "applying",
+            "progress": 0,
+            "message": "正在合并文件...",
+        }),
+    );
 
     // 应用文件变更
-    let result = apply_extracted_files(data_dir, &extract_dir, new_manifest, old_manifest, app_handle)?;
+    let result = apply_extracted_files(
+        data_dir,
+        &extract_dir,
+        new_manifest,
+        old_manifest,
+        app_handle,
+    )?;
 
     // 清理临时文件
     let _ = fs::remove_dir_all(&temp_dir);

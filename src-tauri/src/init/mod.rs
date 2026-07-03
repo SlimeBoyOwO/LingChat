@@ -89,8 +89,8 @@ pub async fn initialize(
     let ai_service: SharedAIService = Arc::new(Mutex::new(ai_service));
 
     // —— 构建聊天组件 ——
-    let translate_llm = resolve_translate_provider(&app.handle())
-        .and_then(|p| build_llm_client_from_provider(&p));
+    let translate_llm =
+        resolve_translate_provider(&app.handle()).and_then(|p| build_llm_client_from_provider(&p));
 
     let classifier = load_emotion_classifier(app_config.enable_emotion_classifier, &data_dir);
     let processor = Arc::new(MessageProcessor::new(

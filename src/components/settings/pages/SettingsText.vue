@@ -15,6 +15,18 @@
         <Text :speed="textSpeedSample">Ling Chat: 测试文本显示速度</Text>
       </MenuItem>
 
+      <MenuItem title="内联动作文本" size="small">
+        <template #header>
+          <AlignJustify :size="20" />
+        </template>
+        <Toggle
+          :checked="settingsStore.text.inlineMotionText"
+          @change="toggleInlineMotionText"
+        >
+          开启后动作文本将与台词同时显示（灰字换行），无需二次点击
+        </Toggle>
+      </MenuItem>
+
       <MenuItem title="启用永久记忆" size="small">
         <div v-for="setting in envSettings" :key="setting.key" class="">
           <!-- 使用 SettingItem 组件渲染不同类型的输入控件 -->
@@ -198,6 +210,7 @@ import {
   Download,
   RefreshCw,
   Wifi,
+  AlignJustify,
 } from 'lucide-vue-next'
 import { reactivateTTS } from '@/api/services/game-info'
 import { useUpdater } from '@/composables/useUpdater'
@@ -423,6 +436,10 @@ const textSpeedChange = (data: number) => {
 
 const voiceSound = (data: boolean) => {
   settingsStore.update('audio.chatEffectSound', data)
+}
+
+const toggleInlineMotionText = (data: boolean) => {
+  settingsStore.update('text.inlineMotionText', data)
 }
 
 const handleMemorySettingChange = (checked: boolean, setting: ConfigItem) => {

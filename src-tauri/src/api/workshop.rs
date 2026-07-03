@@ -11,8 +11,7 @@ use tauri::AppHandle;
 
 use crate::config;
 
-const REST_URL: &str =
-    "https://api.github.com/repos/SlimeBoyOwO/LingChat/discussions?per_page=100";
+const REST_URL: &str = "https://api.github.com/repos/SlimeBoyOwO/LingChat/discussions?per_page=100";
 const GRAPHQL_URL: &str = "https://api.github.com/graphql";
 
 const GRAPHQL_QUERY: &str = r#"
@@ -199,10 +198,7 @@ fn parse_tags(body: &str) -> Vec<String> {
         return Vec::new();
     }
     // 按空白字符分割，过滤空串
-    content
-        .split_whitespace()
-        .map(|s| s.to_string())
-        .collect()
+    content.split_whitespace().map(|s| s.to_string()).collect()
 }
 
 fn enrich_discussions(discussions: &mut [Discussion]) {

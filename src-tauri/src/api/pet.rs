@@ -1,8 +1,8 @@
-use std::sync::{Arc, Mutex};
 use serde::Deserialize;
-use tauri::{AppHandle, Manager};
+use std::sync::{Arc, Mutex};
 #[cfg(desktop)]
 use tauri::LogicalSize;
+use tauri::{AppHandle, Manager};
 
 #[derive(Clone, Deserialize, Debug)]
 pub struct Rect {

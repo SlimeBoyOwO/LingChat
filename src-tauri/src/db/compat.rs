@@ -58,8 +58,18 @@ pub async fn migrate_from_python(db: &DatabaseConnection, data_dir: &Path) -> Re
     let txn = db.begin().await.context("Failed to begin transaction")?;
 
     // 1. Normalize data from old Python backend to Tauri schema conventions
-    exec(&txn, "lowercase line attribute", "UPDATE line SET attribute = LOWER(attribute)").await?;
-    exec(&txn, "lowercase role role_type", "UPDATE role SET role_type = LOWER(role_type)").await?;
+    exec(
+        &txn,
+        "lowercase line attribute",
+        "UPDATE line SET attribute = LOWER(attribute)",
+    )
+    .await?;
+    exec(
+        &txn,
+        "lowercase role role_type",
+        "UPDATE role SET role_type = LOWER(role_type)",
+    )
+    .await?;
     // Old backend used "current_character_id", new one uses "current_role_id"
     exec(
         &txn,
@@ -70,7 +80,12 @@ pub async fn migrate_from_python(db: &DatabaseConnection, data_dir: &Path) -> Re
 
     // 2. Drop user_info and adventure_progress first — they hold FKs pointing to
     //    save/user_info that would interfere with table rewrites below.
-    exec(&txn, "drop adventure_progress (legacy)", "DROP TABLE IF EXISTS adventure_progress").await?;
+    exec(
+        &txn,
+        "drop adventure_progress (legacy)",
+        "DROP TABLE IF EXISTS adventure_progress",
+    )
+    .await?;
     exec(&txn, "drop user_info table", "DROP TABLE user_info").await?;
 
     // 3. Recreate save without user_id column.
@@ -104,7 +119,12 @@ pub async fn migrate_from_python(db: &DatabaseConnection, data_dir: &Path) -> Re
     .await?;
 
     exec(&txn, "drop old save", "DROP TABLE save").await?;
-    exec(&txn, "rename save_new", "ALTER TABLE save_new RENAME TO save").await?;
+    exec(
+        &txn,
+        "rename save_new",
+        "ALTER TABLE save_new RENAME TO save",
+    )
+    .await?;
 
     // 3. Recreate adventure_unlock without user_id and with corrected unique constraint
     exec(
@@ -130,7 +150,12 @@ pub async fn migrate_from_python(db: &DatabaseConnection, data_dir: &Path) -> Re
     )
     .await?;
 
-    exec(&txn, "drop old adventure_unlock", "DROP TABLE adventure_unlock").await?;
+    exec(
+        &txn,
+        "drop old adventure_unlock",
+        "DROP TABLE adventure_unlock",
+    )
+    .await?;
     exec(
         &txn,
         "rename adventure_unlock_new",

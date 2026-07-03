@@ -101,11 +101,22 @@
         <div
           class="flex flex-1 min-h-30 whitespace-pre-line w-full bg-transparent border-none text-xl font-bold my-1.25 outline-none transition-all duration-300"
         >
+          <!-- 内联动作文本显示区（仅内联模式+回应状态时可见） -->
+          <div
+            v-show="isInlineDisplayMode"
+            ref="inlineDisplayRef"
+            tabindex="0"
+            class="inline-motion-display flex-1 min-h-30 max-h-[50vh] bg-transparent border-none text-xl font-bold resize-none my-1.25 outline-none whitespace-pre-line font-[inherit] text-shadow-[inherit] overflow-y-auto"
+            @keydown.enter.exact.prevent="sendOrContinue"
+          ></div>
+
+          <!-- 标准 textarea（输入模式或非内联显示模式） -->
           <textarea
+            v-show="!isInlineDisplayMode"
             id="inputMessage"
             ref="textareaRef"
             class="flex-1 min-h-30 max-h-[50vh] bg-transparent border-none text-white text-xl font-bold resize-none my-1.25 outline-none transition-all duration-300 placeholder:text-white/50 placeholder:shadow-none font-[inherit] text-shadow-[inherit]"
-            :class="{ 'italic text-white/50 text-base': isShowingMotionText }"
+            :class="textareaMotionClass"
             :placeholder="placeholderText"
             v-model="inputMessage"
             @keydown.enter.exact.prevent="sendOrContinue"
@@ -132,7 +143,9 @@ import { Button } from '../../base'
 import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
+import { useSettingsStore } from '../../../stores/modules/settings'
 import { useTypeWriter } from '../../../composables/ui/useTypeWriter'
+import { escapeHtml } from '../../../utils/escapeHtml'
 import { eventQueue } from '../../../core/events/event-queue'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
@@ -140,10 +153,17 @@ import { listen } from '@tauri-apps/api/event'
 const inputMessage = ref('')
 const isShowingMotionText = ref(false)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
+const inlineDisplayRef = ref<HTMLDivElement | null>(null)
 const gameStore = useGameStore()
 const uiStore = useUIStore()
 const dialogStore = useDialogStore()
+const settingsStore = useSettingsStore()
 const isHidden = ref(false)
+
+// 内联显示模式：设置开启 + 回应状态 → 用 div 做混色显示
+const isInlineDisplayMode = computed(
+  () => settingsStore.text.inlineMotionText && gameStore.currentStatus === 'responding',
+)
 
 // 语音识别相关状态
 const isRecording = ref(false)
@@ -168,11 +188,59 @@ const openSceneSettings = () => {
 }
 const currentDisplayedText = ref('')
 
-const { startTyping, stopTyping, isTyping } = useTypeWriter(textareaRef, (text) => {
+/**
+ * 内联显示写入函数：根据文本中 \n 的位置构建混色 innerHTML。
+ * 换行前 → 白色 span，换行后 → 灰色 span（.motion-text-gray）。
+ */
+function writeInlineHtml(_element: HTMLElement, text: string): void {
+  if (!inlineDisplayRef.value) return
+  const newlineIndex = text.indexOf('\n')
+  if (newlineIndex > 0) {
+    const dialogue = escapeHtml(text.substring(0, newlineIndex))
+    const motion = escapeHtml(text.substring(newlineIndex + 1))
+    inlineDisplayRef.value.innerHTML =
+      `<span style="color:#fff">${dialogue}</span><br><span class="motion-text-gray">${motion}</span>`
+  } else if (newlineIndex === 0) {
+    const motion = escapeHtml(text.substring(1))
+    inlineDisplayRef.value.innerHTML =
+      `<br><span class="motion-text-gray">${motion}</span>`
+  } else {
+    inlineDisplayRef.value.innerHTML =
+      `<span style="color:#fff">${escapeHtml(text)}</span>`
+  }
+}
+
+// 标准模式 TypeWriter（textarea）
+const {
+  startTyping: startTextTyping,
+  stopTyping: stopTextTyping,
+  isTyping: isTextTyping,
+} = useTypeWriter(textareaRef, (text) => {
   currentDisplayedText.value = text
 })
 
+// 内联模式 TypeWriter（div + HTML 混色渲染）
+const {
+  startTyping: startInlineTyping,
+  stopTyping: stopInlineTyping,
+  isTyping: isInlineTyping,
+  finishTyping: finishInlineTyping,
+} = useTypeWriter(inlineDisplayRef, (text) => {
+  currentDisplayedText.value = text
+}, writeInlineHtml)
+
+// 统一 isTyping（父组件通过 defineExpose 使用）
+const isTyping = computed(() =>
+  isInlineDisplayMode.value ? isInlineTyping.value : isTextTyping.value,
+)
+
 const isSending = computed(() => gameStore.currentStatus === 'thinking')
+
+// textarea 动态样式（仅两段式模式使用；内联模式用 div 渲染，不需要此 class）
+const textareaMotionClass = computed(() => {
+  if (!isShowingMotionText.value) return {}
+  return { 'italic text-white/50 text-base': true }
+})
 
 const emit = defineEmits(['player-continued', 'dialog-proceed'])
 
@@ -265,12 +333,31 @@ watch([() => uiStore.showCharacterLine, () => gameStore.currentStatus], ([newLin
   if (newLine && newLine !== '' && newStatus === 'responding') {
     inputMessage.value = ''
     currentDisplayedText.value = ''
-    startTyping(newLine, uiStore.typeWriterSpeed)
+    isShowingMotionText.value = false
+
+    // 内联模式：始终用 div 渲染（有动作文本时拼接换行+灰字，无则仅白字）
+    if (settingsStore.text.inlineMotionText) {
+      const text = uiStore.showCharacterMotionText
+        ? newLine + '\n' + uiStore.showCharacterMotionText
+        : newLine
+      startInlineTyping(text, uiStore.typeWriterSpeed)
+    } else {
+      startTextTyping(newLine, uiStore.typeWriterSpeed)
+    }
   } else if (newStatus === 'input') {
-    stopTyping()
+    stopTextTyping()
+    stopInlineTyping()
     isShowingMotionText.value = false
     inputMessage.value = ''
     currentDisplayedText.value = ''
+  }
+})
+
+// 内联模式 div 可见时自动聚焦，确保 Enter 键能推进对话
+watch(isInlineDisplayMode, (visible) => {
+  if (visible) {
+    // nextTick 确保 v-show 已生效、DOM 已渲染
+    setTimeout(() => inlineDisplayRef.value?.focus(), 0)
   }
 })
 
@@ -450,6 +537,20 @@ function send() {
 }
 
 function continueDialog(isPlayerTrigger: boolean): boolean {
+  // 内联动作文本模式：第一次点击跳过打字动画，第二次推进事件队列
+  if (settingsStore.text.inlineMotionText) {
+    if (isInlineTyping.value) {
+      finishInlineTyping()
+      return false // 先跳到末尾，不推进
+    }
+    const needWait = eventQueue.continue()
+    if (!needWait) {
+      if (isPlayerTrigger) emit('player-continued')
+      emit('dialog-proceed')
+    }
+    return needWait
+  }
+
   // Phase 2: motion text already shown, now advance normally
   if (isShowingMotionText.value) {
     isShowingMotionText.value = false
@@ -459,7 +560,7 @@ function continueDialog(isPlayerTrigger: boolean): boolean {
   else if (uiStore.showCharacterMotionText) {
     isShowingMotionText.value = true
     // Type the motion text into the same textarea with typewriter
-    startTyping(uiStore.showCharacterMotionText, uiStore.typeWriterSpeed)
+    startTextTyping(uiStore.showCharacterMotionText, uiStore.typeWriterSpeed)
     return false // don't advance event queue
   }
 
@@ -479,11 +580,21 @@ function removeDialog(e: Event) {
 
 defineExpose({
   continueDialog,
-  isTyping,
+  isTyping, // 统一 computed：内联模式用 div 实例，否则用 textarea 实例
 })
 </script>
 
 <style scoped>
+/* 内联显示 div：外观与 textarea 一致，支持 innerHTML 混色 */
+.inline-motion-display {
+  color: #9ca3af; /* fallback：极端情况下 div 直接显示文字时用灰色 */
+}
+
+/* 内联模式下的动作文本灰字 span（通过 writeInlineHtml 写入 innerHTML） */
+.motion-text-gray {
+  color: #9ca3af !important;
+}
+
 /* 兼容 Firefox */
 .custom-scroll {
   scrollbar-width: thin;

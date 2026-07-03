@@ -4,8 +4,9 @@ import { TypeWriter } from '../../utils/typewriter/TypeWriter'
 import type { TypeWriterStatus } from '../../utils/typewriter/TypeWriter'
 
 export function useTypeWriter(
-  elementRef: Ref<HTMLInputElement | HTMLTextAreaElement | null>,
+  elementRef: Ref<HTMLElement | null>,
   onTextUpdate?: (text: string) => void,
+  writeFn?: (element: HTMLElement, text: string) => void,
 ) {
   const typeWriter = ref<TypeWriter | null>(null)
   const localStatus = ref<TypeWriterStatus>('idle')
@@ -18,7 +19,7 @@ export function useTypeWriter(
 
   const init = () => {
     if (elementRef.value && !typeWriter.value) {
-      typeWriter.value = new TypeWriter(elementRef.value, onTextUpdate)
+      typeWriter.value = new TypeWriter(elementRef.value, onTextUpdate, undefined, writeFn)
     }
   }
 

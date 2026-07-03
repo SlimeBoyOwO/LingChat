@@ -325,6 +325,7 @@ pub fn run() {
             api::game::select_character,
             api::game::reactivate_tts,
             api::game::add_role_to_scene,
+            api::game::remove_role_from_scene,
             api::chat::send_chat_message,
             api::chat::rollback_conversation,
             api::screenshot::start_screenshot,

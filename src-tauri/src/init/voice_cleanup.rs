@@ -22,10 +22,7 @@ pub async fn cleanup_orphan_voice_files(db: &DatabaseConnection) -> Result<()> {
         .filter_map(|x| x)
         .collect();
 
-    tracing::info!(
-        "数据库中引用了 {} 个语音文件",
-        referenced.len()
-    );
+    tracing::info!("数据库中引用了 {} 个语音文件", referenced.len());
 
     // 2. 检查 voice/ 目录是否存在（首次运行可能还没有）
     let voice_dir = crate::api::voice_dir();
@@ -35,17 +32,20 @@ pub async fn cleanup_orphan_voice_files(db: &DatabaseConnection) -> Result<()> {
     }
 
     // 3. 遍历 voice/ 目录，删除不在引用集合中的文件
-    let mut read_dir = tokio::fs::read_dir(&voice_dir).await.map_err(|e| {
-        anyhow!("无法读取语音目录 {:?}: {e}", voice_dir)
-    })?;
+    let mut read_dir = tokio::fs::read_dir(&voice_dir)
+        .await
+        .map_err(|e| anyhow!("无法读取语音目录 {:?}: {e}", voice_dir))?;
     let mut deleted_count: u64 = 0;
 
-    while let Some(entry) = read_dir.next_entry().await.map_err(|e| {
-        anyhow!("遍历语音目录时出错: {e}")
-    })? {
-        let file_type = entry.file_type().await.map_err(|e| {
-            anyhow!("获取文件类型失败: {e}")
-        })?;
+    while let Some(entry) = read_dir
+        .next_entry()
+        .await
+        .map_err(|e| anyhow!("遍历语音目录时出错: {e}"))?
+    {
+        let file_type = entry
+            .file_type()
+            .await
+            .map_err(|e| anyhow!("获取文件类型失败: {e}"))?;
 
         // 跳过非普通文件（目录、符号链接等）
         if !file_type.is_file() {
@@ -56,9 +56,9 @@ pub async fn cleanup_orphan_voice_files(db: &DatabaseConnection) -> Result<()> {
         let file_name_str = file_name.to_string_lossy().to_string();
 
         if !referenced.contains(&file_name_str) {
-            tokio::fs::remove_file(entry.path()).await.map_err(|e| {
-                anyhow!("删除孤立语音文件 {:?} 失败: {e}", entry.path())
-            })?;
+            tokio::fs::remove_file(entry.path())
+                .await
+                .map_err(|e| anyhow!("删除孤立语音文件 {:?} 失败: {e}", entry.path()))?;
             deleted_count += 1;
             tracing::debug!("已删除孤立语音文件: {}", file_name_str);
         }

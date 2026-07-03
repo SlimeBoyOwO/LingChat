@@ -12,6 +12,7 @@ export const DEFAULT_SETTINGS = {
   text: {
     speed: 50, // 打字速度 (0-100)
     animation: true, // 页面切换动画
+    inlineMotionText: false, // 内联动作文本（单次显示台词+灰字动作）
   },
   // 音频设置
   audio: {
@@ -48,6 +49,7 @@ export const DEFAULT_SETTINGS = {
 export interface TextSettings {
   speed: number
   animation: boolean
+  inlineMotionText: boolean
 }
 export interface AudioSettings {
   characterVolume: number

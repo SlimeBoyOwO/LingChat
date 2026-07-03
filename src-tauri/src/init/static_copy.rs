@@ -87,7 +87,9 @@ fn seed_via_fs_plugin(app: &tauri::AppHandle, data_dir: &std::path::Path) -> any
     use anyhow::Context;
     use tauri_plugin_fs::FsExt;
 
-    let resource_dir = app.path().resource_dir()
+    let resource_dir = app
+        .path()
+        .resource_dir()
         .context("failed to resolve resource_dir on mobile")?;
 
     let base = resource_dir.to_string_lossy();
@@ -95,20 +97,21 @@ fn seed_via_fs_plugin(app: &tauri::AppHandle, data_dir: &std::path::Path) -> any
 
     // 读取 data.zip（唯一需要从 asset:// 读取的文件，纯 ASCII 路径）
     let zip_asset = format!("{}/data/data.zip", base);
-    let zip_bytes = app.fs()
+    let zip_bytes = app
+        .fs()
         .read(std::path::Path::new(&zip_asset))
         .with_context(|| format!("failed to read data.zip from {}", zip_asset))?;
 
     let cursor = std::io::Cursor::new(zip_bytes);
-    let mut archive = zip::ZipArchive::new(cursor)
-        .context("failed to open data.zip archive")?;
+    let mut archive = zip::ZipArchive::new(cursor).context("failed to open data.zip archive")?;
 
     let total = archive.len();
     tracing::info!("Extracting {} entries from data.zip", total);
 
     let mut extracted = 0usize;
     for i in 0..archive.len() {
-        let mut file = archive.by_index(i)
+        let mut file = archive
+            .by_index(i)
             .with_context(|| format!("failed to read entry {} in data.zip", i))?;
 
         let raw_name = file.name().to_string();
@@ -126,8 +129,8 @@ fn seed_via_fs_plugin(app: &tauri::AppHandle, data_dir: &std::path::Path) -> any
             std::fs::create_dir_all(parent)?;
         }
 
-        let mut out = std::fs::File::create(&dest)
-            .with_context(|| format!("failed to create {:?}", dest))?;
+        let mut out =
+            std::fs::File::create(&dest).with_context(|| format!("failed to create {:?}", dest))?;
         std::io::copy(&mut file, &mut out)
             .with_context(|| format!("failed to extract {} from data.zip", name))?;
         extracted += 1;
