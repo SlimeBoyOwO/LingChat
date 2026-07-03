@@ -223,7 +223,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import Button from '../base/widget/Button.vue'
 import { useGameStore } from '../../stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
-import { scriptHandler } from '../../api/websocket/handlers/script-handler'
+import { invoke } from '@tauri-apps/api/core'
 
 const gameStore = useGameStore()
 const uiStore = useUIStore()
@@ -319,12 +319,27 @@ function sendUserPrompt(text: string) {
   }
 
   gameStore.currentStatus = 'thinking'
+  // 记录用户消息的插入位置，失败时回退要把它从聊天里撤掉
+  const userMessageIndex = gameStore.dialogHistory.length
   gameStore.appendGameMessage({
     type: 'message',
     displayName: gameStore.userName,
     content,
   })
-  scriptHandler.sendMessage(content)
+  invoke('send_chat_message', { text: content })
+    .then(() => {
+      // 发送成功，状态由后端事件驱动更新
+    })
+    .catch((error) => {
+      console.error('发送消息失败:', error)
+      // 移除孤立的用户消息，避免在聊天里留下无回复的尾巴
+      // 仅当那条消息仍是用户发出的原内容时才删除，防止误删后端并发写入
+      const last = gameStore.dialogHistory[userMessageIndex]
+      if (last && last.type === 'message' && last.content === content) {
+        gameStore.dialogHistory.splice(userMessageIndex, 1)
+      }
+      gameStore.currentStatus = 'input'
+    })
 }
 
 function flushPendingPrompts() {
