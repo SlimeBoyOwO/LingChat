@@ -32,6 +32,10 @@ import UpdateDialog from './components/UpdateDialog.vue'
 import { initUIStore } from './stores/modules/ui/ui'
 import { useAchievementStore } from './stores/modules/ui/achievement'
 import { useUpdater } from './composables/useUpdater'
+import { useSedentaryReminder } from './composables/useSedentaryReminder'
+
+// ─── 久坐提醒 ────────────────────────────────────────────────
+useSedentaryReminder()
 
 // 在使用 <router-view> 的情况下，通常不需要在这里再导入具体的页面组件了
 

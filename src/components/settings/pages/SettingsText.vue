@@ -19,11 +19,17 @@
         <template #header>
           <AlignJustify :size="20" />
         </template>
-        <Toggle
-          :checked="settingsStore.text.inlineMotionText"
-          @change="toggleInlineMotionText"
-        >
-          开启后动作文本将与台词同时显示（灰字换行），无需二次点击
+        <Toggle :checked="settingsStore.text.inlineMotionText" @change="toggleInlineMotionText">
+          开启后动作文本将与台词同时显示，无需二次点击
+        </Toggle>
+      </MenuItem>
+
+      <MenuItem title="久坐喝水提醒" size="small">
+        <template #header>
+          <GlassWater :size="20" />
+        </template>
+        <Toggle :checked="settingsStore.text.sedentaryReminder" @change="toggleSedentaryReminder">
+          开启后每40分钟发送提醒一下久坐哦，只是健康小助手捏
         </Toggle>
       </MenuItem>
 
@@ -211,6 +217,7 @@ import {
   RefreshCw,
   Wifi,
   AlignJustify,
+  GlassWater,
 } from 'lucide-vue-next'
 import { reactivateTTS } from '@/api/services/game-info'
 import { useUpdater } from '@/composables/useUpdater'
@@ -440,6 +447,10 @@ const voiceSound = (data: boolean) => {
 
 const toggleInlineMotionText = (data: boolean) => {
   settingsStore.update('text.inlineMotionText', data)
+}
+
+const toggleSedentaryReminder = (data: boolean) => {
+  settingsStore.update('text.sedentaryReminder', data)
 }
 
 const handleMemorySettingChange = (checked: boolean, setting: ConfigItem) => {

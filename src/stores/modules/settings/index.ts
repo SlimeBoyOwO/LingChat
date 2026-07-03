@@ -13,6 +13,7 @@ export const DEFAULT_SETTINGS = {
     speed: 50, // 打字速度 (0-100)
     animation: true, // 页面切换动画
     inlineMotionText: false, // 内联动作文本（单次显示台词+灰字动作）
+    sedentaryReminder: false, // 久坐喝水提醒
   },
   // 音频设置
   audio: {
@@ -50,6 +51,7 @@ export interface TextSettings {
   speed: number
   animation: boolean
   inlineMotionText: boolean
+  sedentaryReminder: boolean
 }
 export interface AudioSettings {
   characterVolume: number
