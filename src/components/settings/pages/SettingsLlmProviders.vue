@@ -472,6 +472,7 @@ const sidePanel = ref<'edit' | 'test' | null>(null)
 const editing = reactive<LlmProviderConfig>(emptyProvider())
 const saveMessage = ref('')
 const saveError = ref(false)
+const lmstudioAutoFilled = ref(false)
 
 // Test state
 const testProvider = ref<LlmProviderConfig | null>(null)
@@ -499,17 +500,22 @@ function closePanel() {
   saveMessage.value = ''
 }
 
+// LM Studio 兼容：本质是 OpenAI 协议，这里只帮用户预填默认地址和假 key
 function onProviderChange() {
   if (editing.provider === 'lmstudio') {
     editing.base_url = 'http://localhost:1234/v1'
     editing.api_key = 'sk-lingchat70'
+    lmstudioAutoFilled.value = true
   } else {
-    // 切回其他供应商时清除 LM Studio 的默认值
-    if (editing.base_url === 'http://localhost:1234/v1') {
-      editing.base_url = ''
-    }
-    if (editing.api_key === 'sk-lingchat70') {
-      editing.api_key = ''
+    // 仅清除由 LM Studio 自动填入的默认值，不误伤用户手写的相同值
+    if (lmstudioAutoFilled.value) {
+      if (editing.base_url === 'http://localhost:1234/v1') {
+        editing.base_url = ''
+      }
+      if (editing.api_key === 'sk-lingchat70') {
+        editing.api_key = ''
+      }
+      lmstudioAutoFilled.value = false
     }
   }
 }
