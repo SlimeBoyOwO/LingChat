@@ -78,6 +78,17 @@ export const reactivateTTS = async (): Promise<void> => {
   }
 }
 
+export const clearTtsCache = async (): Promise<{ success: boolean; message: string; deleted: number }> => {
+  try {
+    const result = await invoke<{ success: boolean; message: string; deleted: number }>('clear_tts_cache')
+    console.log('清理TTS缓存成功:', result)
+    return result
+  } catch (error: any) {
+    console.error('清理TTS缓存错误:', typeof error === 'string' ? error : error.message)
+    throw error
+  }
+}
+
 /**
  * 获取 TTS 生成的语音文件，返回 base64 data URL
  */

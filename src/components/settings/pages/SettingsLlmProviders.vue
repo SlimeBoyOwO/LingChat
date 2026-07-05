@@ -290,6 +290,9 @@
                     LM Studio（本地）
                   </option>
                   <option value="gemini" class="bg-gray-800 text-white">Gemini</option>
+                  <option value="kimicode" class="bg-gray-800 text-white">
+                    Kimi Code (kimi-for-coding)
+                  </option>
                 </select>
                 <div
                   class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5"
@@ -312,7 +315,7 @@
             </div>
 
             <!-- Model -->
-            <div class="flex flex-col gap-1">
+            <div v-if="editing.provider !== 'kimicode'" class="flex flex-col gap-1">
               <label class="text-xs font-medium text-white/60">模型名称</label>
               <input
                 v-model="editing.model"
@@ -321,6 +324,9 @@
                 class="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors placeholder:text-white/20"
               />
             </div>
+
+            <!-- Hidden model for kimicode -->
+            <input v-if="editing.provider === 'kimicode'" v-model="editing.model" type="hidden" />
 
             <!-- API Key -->
             <div class="flex flex-col gap-1">
@@ -334,7 +340,7 @@
             </div>
 
             <!-- Base URL -->
-            <div class="flex flex-col gap-1">
+            <div v-if="editing.provider !== 'kimicode'" class="flex flex-col gap-1">
               <label class="text-xs font-medium text-white/60">API 地址</label>
               <input
                 v-model="editing.base_url"
@@ -343,6 +349,9 @@
                 class="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors placeholder:text-white/20"
               />
             </div>
+
+            <!-- Hidden base_url for kimicode -->
+            <input v-if="editing.provider === 'kimicode'" v-model="editing.base_url" type="hidden" />
 
             <!-- Temperature -->
             <div class="flex flex-col gap-1">
@@ -473,6 +482,7 @@ const editing = reactive<LlmProviderConfig>(emptyProvider())
 const saveMessage = ref('')
 const saveError = ref(false)
 const lmstudioAutoFilled = ref(false)
+const kimicodeAutoFilled = ref(false)
 
 // Test state
 const testProvider = ref<LlmProviderConfig | null>(null)
@@ -506,6 +516,10 @@ function onProviderChange() {
     editing.base_url = 'http://localhost:1234/v1'
     editing.api_key = 'sk-lingchat70'
     lmstudioAutoFilled.value = true
+  } else if (editing.provider === 'kimicode') {
+    editing.model = 'kimi-for-coding'
+    editing.base_url = 'https://api.kimi.com/coding'
+    kimicodeAutoFilled.value = true
   } else {
     // 仅清除由 LM Studio 自动填入的默认值，不误伤用户手写的相同值
     if (lmstudioAutoFilled.value) {
@@ -516,6 +530,15 @@ function onProviderChange() {
         editing.api_key = ''
       }
       lmstudioAutoFilled.value = false
+    }
+    if (kimicodeAutoFilled.value) {
+      if (editing.model === 'kimi-for-coding') {
+        editing.model = ''
+      }
+      if (editing.base_url === 'https://api.kimi.com/coding') {
+        editing.base_url = ''
+      }
+      kimicodeAutoFilled.value = false
     }
   }
 }

@@ -279,6 +279,7 @@ pub struct VoiceModel {
     pub gsv_gpt_model_name: Option<String>,
     pub gsv_sovits_model_name: Option<String>,
     pub aivis_model_uuid: Option<String>,
+    pub opentts_voice: Option<String>,
 }
 
 /// 角色设定模型，对应 Python `CharacterSettings`。
@@ -321,6 +322,10 @@ pub struct CharacterSettings {
     pub voice_models: Option<VoiceModel>,
     #[serde(default)]
     pub tts_type: Option<String>,
+    #[serde(default)]
+    pub voice_lang: Option<String>,
+    #[serde(default)]
+    pub opentts_voice: Option<String>,
 
     #[serde(default = "default_thinking_message")]
     pub thinking_message: String,
@@ -391,6 +396,8 @@ impl Default for CharacterSettings {
             offset_y_p: 0.0,
             voice_models: None,
             tts_type: None,
+            voice_lang: None,
+            opentts_voice: None,
             thinking_message: default_thinking_message(),
             bubble_top: default_bubble_top(),
             bubble_left: default_bubble_left(),

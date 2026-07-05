@@ -16,6 +16,7 @@ use crate::ai_service::tts::adapters::aivis::AivisAdapter;
 use crate::ai_service::tts::adapters::bv2::Bv2Adapter;
 use crate::ai_service::tts::adapters::gsv::GsvAdapter;
 use crate::ai_service::tts::adapters::indextts::IndexTtsAdapter;
+use crate::ai_service::tts::adapters::opentts::OpenTtsAdapter;
 use crate::ai_service::tts::adapters::sbv2::Sbv2Adapter;
 use crate::ai_service::tts::adapters::sbv2api::Sbv2ApiAdapter;
 use crate::ai_service::tts::adapters::vits::VitsAdapter;
@@ -32,6 +33,7 @@ pub struct TtsAvailability {
     pub sbv2api: bool,
     pub gsv: bool,
     pub aivis: bool,
+    pub opentts: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -107,6 +109,8 @@ impl VoiceMaker {
         let gsv = (non_empty(&cfg.gsv_voice_filename) && non_empty(&cfg.gsv_voice_text))
             || (non_empty(&cfg.gsv_gpt_model_name) && non_empty(&cfg.gsv_sovits_model_name));
         let aivis = non_empty(&cfg.aivis_model_uuid);
+        // OpenTTS 可用性由全局配置决定，只要有全局 voice 就视为可用
+        let opentts = !self.tts_config.opentts_voice.trim().is_empty();
 
         self.availability = TtsAvailability {
             sva,
@@ -115,6 +119,7 @@ impl VoiceMaker {
             sbv2api,
             gsv,
             aivis,
+            opentts,
         };
     }
 
@@ -216,6 +221,39 @@ impl VoiceMaker {
                     }
                 }
             }
+            "opentts" if self.availability.opentts => {
+                let voice = cfg.opentts_voice.clone().unwrap_or_default();
+                let model = if self.tts_config.opentts_model.trim().is_empty() {
+                    "FunAudioLLM/CosyVoice2-0.5B".to_string()
+                } else {
+                    self.tts_config.opentts_model.clone()
+                };
+                let api_url = if self.tts_config.opentts_api_url.trim().is_empty() {
+                    "https://api.siliconflow.cn/v1".to_string()
+                } else {
+                    self.tts_config.opentts_api_url.clone()
+                };
+                let api_key = self.tts_config.opentts_api_key.clone().unwrap_or_default();
+                if api_key.trim().is_empty() {
+                    tracing::warn!("OpenTTS API 密钥未设置，禁用 TTS");
+                    self.provider.disable();
+                } else {
+                    match OpenTtsAdapter::new(
+                        api_url,
+                        api_key,
+                        model,
+                        voice,
+                        self.audio_format.clone(),
+                        self.lang.clone(),
+                    ) {
+                        Ok(a) => self.provider.opentts = Some(Arc::new(a)),
+                        Err(e) => {
+                            tracing::warn!("OpenTTS 初始化失败: {e}");
+                            self.provider.disable();
+                        }
+                    }
+                }
+            }
             "indextts2" => {
                 self.provider.indextts = Some(Arc::new(IndexTtsAdapter::new(
                     self.tts_config.indextts_api_url.clone(),
@@ -229,7 +267,23 @@ impl VoiceMaker {
         Ok(())
     }
 
-    /// 为一批 segment 生成语音文件；成功时把写入的绝对路径回填到 segment.voice_file。
+    /// 更新语言并重新初始化当前 TTS adapter。
+    pub fn update_lang_and_refresh(
+        &mut self,
+        cfg: &VoiceModel,
+        tts_type: &str,
+        name: &str,
+        lang: impl Into<String>,
+    ) {
+        self.lang = lang.into();
+        // 清空已有 provider，按新语言重新初始化
+        self.provider = TtsProvider::new(&self.audio_format);
+        if let Err(e) = self.set_tts_settings(cfg, tts_type, name) {
+            tracing::warn!("切换语音语言后重新初始化 TTS 失败: {e}");
+        } else {
+            tracing::info!("语音语言已切换为: {}, tts_type: {}", self.lang, tts_type);
+        }
+    }
     pub async fn generate_voice_files(&self, segments: &mut [EmotionSegment]) {
         if !self.is_enabled() {
             return;
@@ -240,23 +294,26 @@ impl VoiceMaker {
         for seg in segments.iter_mut() {
             let (text, emo) = match self.lang.as_str() {
                 "ja" => {
-                    if seg.japanese_text.trim().is_empty() {
-                        if !seg.following_text.trim().is_empty() {
-                            tracing::warn!("片段 {} 没有日语文本，跳过语音生成", seg.index);
-                        }
+                    // 日文优先用 japanese_text；没有则 fallback 到 following_text
+                    if !seg.japanese_text.trim().is_empty() {
+                        (seg.japanese_text.clone(), String::new())
+                    } else if !seg.following_text.trim().is_empty() {
+                        tracing::warn!("片段 {} 没有日语文本，使用中文回退", seg.index);
+                        (seg.following_text.clone(), String::new())
+                    } else {
                         continue;
                     }
-                    (seg.japanese_text.clone(), String::new())
                 }
                 "zh" => {
-                    if seg.following_text.trim().is_empty() {
-                        tracing::warn!(
-                            "片段 {} 没有中文文本，跳过语音生成 (检查 LLM 输出)",
-                            seg.index
-                        );
+                    // 中文优先用 following_text；没有则 fallback 到 japanese_text
+                    if !seg.following_text.trim().is_empty() {
+                        (seg.following_text.clone(), String::new())
+                    } else if !seg.japanese_text.trim().is_empty() {
+                        tracing::warn!("片段 {} 没有中文文本，使用日文回退", seg.index);
+                        (seg.japanese_text.clone(), String::new())
+                    } else {
                         continue;
                     }
-                    (seg.following_text.clone(), seg.predicted.clone())
                 }
                 _ => continue,
             };

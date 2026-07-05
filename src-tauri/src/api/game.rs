@@ -117,6 +117,92 @@ pub async fn reactivate_tts(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn clear_tts_cache(_app: AppHandle) -> Result<serde_json::Value, String> {
+    let data_dir = crate::api::data_dir();
+    let voice_dir = data_dir.join("voice");
+
+    if !voice_dir.exists() {
+        return Ok(serde_json::json!({
+            "success": true,
+            "message": "TTS 缓存目录不存在，无需清理",
+            "deleted": 0
+        }));
+    }
+
+    let mut deleted = 0usize;
+    let mut failed = 0usize;
+
+    if let Ok(entries) = std::fs::read_dir(&voice_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            // 只清理音频文件，保留子目录（如果有）
+            if path.is_file() {
+                match std::fs::remove_file(&path) {
+                    Ok(()) => deleted += 1,
+                    Err(e) => {
+                        tracing::warn!("删除 TTS 缓存文件失败 {:?}: {}", path, e);
+                        failed += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    tracing::info!("TTS 缓存清理完成: 删除 {} 个文件, 失败 {} 个", deleted, failed);
+    Ok(serde_json::json!({
+        "success": failed == 0,
+        "message": format!("已清理 {} 个 TTS 缓存文件", deleted),
+        "deleted": deleted,
+        "failed": failed
+    }))
+}
+
+/// 实时切换指定角色的语音语言，无需保存 settings.yml。
+#[tauri::command]
+pub async fn update_voice_lang(app: AppHandle, role_id: i32, lang: String) -> Result<serde_json::Value, String> {
+    let state = app.state::<AppState>();
+    let service = state.ai_service.lock().await;
+    let mut gs = service.game_status.lock().await;
+
+    gs.role_manager.update_role_voice_lang(role_id, &lang);
+
+    tracing::info!("角色 {} 语音语言已实时切换为: {}", role_id, lang);
+    Ok(serde_json::json!({
+        "success": true,
+        "role_id": role_id,
+        "lang": lang,
+    }))
+}
+
+#[tauri::command]
+pub fn get_tts_cache_info() -> Result<serde_json::Value, String> {
+    let data_dir = crate::api::data_dir();
+    let voice_dir = data_dir.join("voice");
+
+    let mut total_size: u64 = 0;
+    let mut file_count: usize = 0;
+
+    if voice_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&voice_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() {
+                    file_count += 1;
+                    if let Ok(metadata) = std::fs::metadata(&path) {
+                        total_size += metadata.len();
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(serde_json::json!({
+        "size": total_size,
+        "files": file_count
+    }))
+}
+
+#[tauri::command]
 pub async fn init_game(app: AppHandle) -> Result<WebInitData, String> {
     let state = app.state::<AppState>();
     let service = state.ai_service.lock().await;

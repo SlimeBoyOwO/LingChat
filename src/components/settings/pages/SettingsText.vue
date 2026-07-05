@@ -103,6 +103,30 @@
         </div>
       </MenuItem>
 
+      <!-- ─── 语音缓存 ──────────────────────────────── -->
+      <MenuItem title="语音缓存" size="small">
+        <template #header>
+          <HardDrive :size="20" />
+        </template>
+        <div class="space-y-2 w-full">
+          <div class="flex items-center justify-between text-base">
+            <span class="text-gray-50">当前缓存</span>
+            <span class="text-gray-50 font-medium">{{ ttsCacheSize }}</span>
+          </div>
+          <div class="text-gray-50/70 text-xs">
+            {{ ttsCacheFiles }} 个文件
+          </div>
+          <div class="flex gap-3 pt-1">
+            <Button type="big" @click="checkTtsCache">
+              <RefreshCw :size="16" class="mr-1" /> 检查缓存
+            </Button>
+            <Button type="big" @click="handleClearTtsCache">
+              <Trash2 :size="16" class="mr-1" /> 清理语音缓存
+            </Button>
+          </div>
+        </div>
+      </MenuItem>
+
       <!-- ─── 版本更新 ──────────────────────────────── -->
       <MenuItem title="版本更新" size="small">
         <template #header>
@@ -218,8 +242,11 @@ import {
   Wifi,
   AlignJustify,
   GlassWater,
+  HardDrive,
+  Trash2,
 } from 'lucide-vue-next'
-import { reactivateTTS } from '@/api/services/game-info'
+import { reactivateTTS, clearTtsCache } from '@/api/services/game-info'
+import { invoke } from '@tauri-apps/api/core'
 import { useUpdater } from '@/composables/useUpdater'
 import { useLanSync } from '@/composables/useLanSync'
 import { getVersion } from '@tauri-apps/api/app'
@@ -234,6 +261,8 @@ const userStore = useUserStore()
 const gameStore = useGameStore()
 const dialogStore = useDialogStore()
 const envSettings = ref<Record<string, ConfigItem>>({})
+const ttsCacheSize = ref('0 B')
+const ttsCacheFiles = ref(0)
 
 // 判断是否在自由对话模式（没有运行剧本）
 const isFreeDialogMode = computed(() => gameStore.runningScript === null)
@@ -418,6 +447,7 @@ const handleClearHistory = async () => {
 
 onMounted(() => {
   loadConfig()
+  checkTtsCache()
 })
 
 const loadConfig = async () => {
@@ -475,6 +505,48 @@ const refreshTTS = async () => {
   } catch (error) {
     await dialogStore.alert('刷新TTS失败')
   }
+}
+
+const handleClearTtsCache = async () => {
+  try {
+    const result = await clearTtsCache()
+    await checkTtsCache()
+    uiStore.showNotification({
+      type: result.success ? 'success' : 'warning',
+      title: result.success ? '清理成功' : '清理完成',
+      message: result.message,
+      duration: 3000,
+      skipTipsCheck: true,
+    })
+  } catch (error: any) {
+    uiStore.showNotification({
+      type: 'error',
+      title: '清理失败',
+      message: error.message || '清理TTS缓存失败',
+      duration: 3000,
+      skipTipsCheck: true,
+    })
+  }
+}
+
+async function checkTtsCache() {
+  try {
+    const result = await invoke<{ size: number; files: number }>('get_tts_cache_info')
+    ttsCacheFiles.value = result.files
+    ttsCacheSize.value = formatBytes(result.size)
+  } catch (error: any) {
+    console.error('获取TTS缓存信息失败:', error)
+    ttsCacheSize.value = '未知'
+    ttsCacheFiles.value = 0
+  }
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 </script>
 

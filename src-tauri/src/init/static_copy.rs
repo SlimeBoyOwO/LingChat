@@ -20,12 +20,26 @@ pub fn get_data_dir() -> &'static PathBuf {
 
 /// 解析 data 目录路径。
 ///
-/// - 移动端（android/ios）：始终使用平台沙盒内的应用数据目录
-/// - 桌面端开发模式（debug）：项目根目录下的 `data/`
-/// - 桌面端发布模式（release portable）：exe 所在目录下的 `data/`
+/// 优先级：
+/// 1. `LINGCHAT_DATA_DIR` 环境变量（如果设置且目录存在/可创建）
+/// 2. 移动端（android/ios）：平台沙盒内的应用数据目录
+/// 3. 桌面端开发模式（debug）：项目根目录下的 `data/`
+/// 4. 桌面端发布模式（release portable）：exe 所在目录下的 `data/`
 ///
 /// 所有可读写数据（数据库、game_data、存档等）都放在此目录下。
 fn resolve_data_dir(app: &tauri::AppHandle) -> PathBuf {
+    // 优先尊重环境变量，便于发布目录独立运行
+    if let Ok(env_dir) = std::env::var("LINGCHAT_DATA_DIR") {
+        let path = PathBuf::from(env_dir);
+        if !path.exists() {
+            let _ = std::fs::create_dir_all(&path);
+        }
+        if path.is_dir() {
+            return path;
+        }
+        tracing::warn!("LINGCHAT_DATA_DIR 指向的目录无效: {:?}", path);
+    }
+
     if cfg!(any(target_os = "android", target_os = "ios")) {
         // 移动端必须使用平台沙盒路径，无论 debug/release
         app.path()
