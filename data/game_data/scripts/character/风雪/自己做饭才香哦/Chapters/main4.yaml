@@ -2,7 +2,7 @@ name: 4 制作红豆派
 
 events:
   - type: background
-    imagePath: 风雪家厨房.png
+    imagePath: 风雪家厨房.webp
 
   - type: choices
     options:
