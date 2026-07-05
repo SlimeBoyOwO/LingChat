@@ -1,350 +1,75 @@
 <template>
   <MenuPage>
-    <div class="flex-1 h-[85vh] w-full bg-white/10 p-0 md:p-4 rounded-lg overflow-hidden">
-      <!-- 加载动画 -->
-      <div v-if="isLoading" class="fixed inset-0 bg-white/80 flex justify-center items-center z-50">
-        <div
-          class="border-5 border-gray-200 border-t-brand rounded-full w-12 h-12 animate-spin"
-        ></div>
-      </div>
-
-      <!-- 内部 Tab 切换 -->
-      <div class="flex items-center justify-between mb-5 select-none">
+    <div class="flex-1 h-[85vh] w-full bg-white/10 p-0 md:p-4 rounded-lg overflow-hidden flex flex-col">
+      <!-- 顶部 Tab 切换栏：左 / 中 / 右 -->
+      <div class="flex items-center justify-between mb-5 select-none shrink-0">
         <button
-          class="group flex items-center gap-1.5 text-sm font-medium transition-all duration-300"
-          :class="advanceTab === 'llm' ? 'text-white/40 hover:text-white/70' : 'text-white/80'"
-          @click="advanceTab = 'other'"
+          class="px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200"
+          :class="advanceTab === 'menu'
+            ? 'bg-brand text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
+            : 'text-white/60 hover:text-white/80'"
+          @click="advanceTab = 'menu'"
         >
-          <svg class="w-4 h-4 transition-transform duration-300" :class="advanceTab === 'llm' ? 'group-hover:-translate-x-1' : 'invisible'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-          <span>其他高级设置</span>
+          主菜单
         </button>
         <button
-          class="group flex items-center gap-1.5 text-sm font-medium transition-all duration-300"
-          :class="advanceTab === 'other' ? 'text-white/40 hover:text-white/70' : 'text-white/80'"
+          class="px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200"
+          :class="advanceTab === 'llm'
+            ? 'bg-brand text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
+            : 'text-white/60 hover:text-white/80'"
           @click="advanceTab = 'llm'"
         >
-          <span>大模型管理</span>
-          <svg class="w-4 h-4 transition-transform duration-300" :class="advanceTab === 'other' ? 'group-hover:translate-x-1' : 'invisible'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          大模型管理
         </button>
+        <button
+          class="px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200"
+          :class="advanceTab === 'other'
+            ? 'bg-brand text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
+            : 'text-white/60 hover:text-white/80'"
+          @click="advanceTab = 'other'"
+        >
+          其他高级设置
+        </button>
+      </div>
+
+      <!-- ====== 主菜单 ====== -->
+      <div v-if="advanceTab === 'menu'" class="flex-1 min-h-0 overflow-y-auto">
+        <SettingsAdvanceMenu @navigate="advanceTab = $event" />
       </div>
 
       <!-- ====== 大模型管理 ====== -->
-      <div v-if="advanceTab === 'llm'" class="h-[calc(100%-3rem)]">
+      <div v-else-if="advanceTab === 'llm'" class="flex-1 min-h-0">
         <SettingsLlmProviders />
       </div>
 
       <!-- ====== 其他高级设置 ====== -->
-      <div v-else class="flex flex-col md:grid md:grid-cols-[min(30%,280px)_1fr] h-[calc(100%-3rem)] min-h-0">
-        <!-- 导航菜单：宽屏始终可见；窄屏仅在浏览菜单层级时可见 -->
-        <nav
-          ref="navContainerRef"
-          v-show="!uiStore.isNarrowScreen || narrowViewLevel === 'menu'"
-          @click="() => removeMoreMenu()"
-          class="transition-all duration-300 ease-[cubic-bezier(0.18,0.89,0.32,1.00)] flex flex-col justify-start gap-6.25 overflow-y-auto relative border-b md:border-b-0 md:border-r border-brand md:moreMenu:left-0"
-          :class="[
-            'md:left-0',
-            'translate-y-0',
-            'moreMenu:translate-y-0',
-          ]"
-        >
-          <!-- 滑动指示器 -->
-          <div
-            ref="indicatorRef"
-            class="absolute left-2 w-[calc(100%-40px)] bg-brand rounded-lg z-0 transition-all duration-300 ease-[cubic-bezier(0.18,0.89,0.32,1.00)]"
-          ></div>
-
-          <div
-            class="flex items-center gap-1 mt-2 text-sm px-5"
-            style="color: white; -webkit-text-stroke: 1px black; paint-order: stroke fill"
-          >
-            💡 这里的设置重启软件生效哦！
-          </div>
-
-          <div
-            v-for="(categoryData, categoryName) in configData"
-            :key="categoryName"
-            class="flex flex-col gap-1 w-full"
-          >
-            <span
-              class="text-base font-bold px-3.75 py-2.5 block rounded-lg mb-1 text-brand bg-white/10 backdrop-blur-xl backdrop-saturate-150 border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.1),inset_0_1px_1px_rgba(255,255,255,0.1)]"
-              >{{ categoryName }}</span
-            >
-            <a
-              v-for="(, subcategoryName) in categoryData.subcategories"
-              :key="subcategoryName"
-              href="#"
-              class="block px-5 py-3 no-underline rounded-lg text-white transition-colors duration-200 relative z-10 adv-nav-link hover:bg-gray-200 hover:text-black active:text-white active:font-bold"
-              :class="{
-                active: isActive(categoryName, subcategoryName.toString()),
-              }"
-              @click.prevent="selectSubcategory(categoryName, subcategoryName.toString())"
-            >
-              {{ subcategoryName }}
-            </a>
-          </div>
-        </nav>
-
-        <!-- 设置内容区域：宽屏始终可见；窄屏仅在浏览内容层级时可见 -->
-        <main
-          v-show="!uiStore.isNarrowScreen || narrowViewLevel === 'content'"
-          class="flex justify-center h-full overflow-auto relative px-10 py-10 md:px-10 md:py-0"
-          :class="[
-            'translate-y-0',
-            'moreMenu:translate-y-0',
-          ]"
-        >
-          <!-- 窄屏返回按钮 -->
-          <button
-            v-if="uiStore.isNarrowScreen"
-            class="absolute top-0 left-4 flex items-center gap-1.5 text-sm text-white/70 hover:text-white transition-colors py-1 px-2 rounded-lg hover:bg-white/10"
-            @click="narrowViewLevel = 'menu'"
-          >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-            返回设置列表
-          </button>
-          <div v-if="selectedSubcategory" class="w-full active">
-            <div class="pt-2.5 overflow-auto">
-              <header class="pb-4 mb-6 border-b border-brand">
-                <h2 class="m-0 text-2xl text-brand font-semibold">
-                  {{ activeSelection.subcategory }}
-                </h2>
-                <p class="mt-2 text-base">
-                  {{
-                    selectedSubcategory.description ||
-                    `修改 ${activeSelection.subcategory} 的相关配置`
-                  }}
-                </p>
-              </header>
-
-              <form @submit.prevent="saveSettings">
-                <div
-                  v-for="setting in selectedSubcategory.settings"
-                  :key="setting.key"
-                  class="mb-6"
-                >
-                  <SettingItem
-                    :setting="setting"
-                    @update:value="(value) => (setting.value = value)"
-                  />
-                </div>
-              </form>
-
-              <!-- 保存操作区域 -->
-              <div
-                class="inline-flex flex-col gap-2 px-5 py-2.5 bg-brand text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-colors duration-200 hover:bg-[#0056b3] min-w-30"
-                @click="saveSettings"
-              >
-                <button
-                  class="bg-transparent border-none text-white cursor-pointer p-0 m-0 w-full h-full"
-                >
-                  保存
-                </button>
-                <p
-                  :class="saveStatus.colorClass"
-                  class="text-xs whitespace-normal wrap-break-word max-w-75"
-                >
-                  {{ saveStatus.message }}
-                </p>
-              </div>
-            </div>
-          </div>
-          <div v-else-if="!isLoading && !Object.keys(configData).length" class="w-full active">
-            <div class="advanced-settings-container">
-              <header>
-                <h2 class="adv-title">加载失败</h2>
-                <p class="adv-description">无法加载配置或配置为空。</p>
-              </header>
-            </div>
-          </div>
-        </main>
+      <div v-else class="flex-1 min-h-0">
+        <SettingsAdvanceOther
+          ref="advanceOtherRef"
+          @remove-more-menu-from-b="emit('remove-more-menu-from-b')"
+        />
       </div>
     </div>
   </MenuPage>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, reactive, watch, nextTick } from 'vue'
+import { ref } from 'vue'
 import { MenuPage } from '../../ui'
-import { useUIStore } from '@/stores/modules/ui/ui'
-import SettingItem from '@/components/base/items/SettingItem.vue'
 import SettingsLlmProviders from './SettingsLlmProviders.vue'
-import { getEnvConfigSettings } from '@/api/services/config'
-import { saveEnvConfigSettings } from '@/api/services/config'
+import SettingsAdvanceMenu from './SettingsAdvanceMenu.vue'
+import SettingsAdvanceOther from './SettingsAdvanceOther.vue'
 
-// --- 响应式状态定义 ---
-const uiStore = useUIStore()
-const advanceTab = ref<'llm' | 'other'>('other')
-const narrowViewLevel = ref<'menu' | 'content'>('menu')
-const isLoading = ref(false)
-const configData = ref<Record<string, any>>({})
-const activeSelection = reactive({
-  category: null as string | null,
-  subcategory: null as string | null,
-})
-const saveStatus = reactive({
-  message: '',
-  colorClass: 'text-green-500', // Tailwind 类名
-})
+const advanceTab = ref<'menu' | 'llm' | 'other'>('menu')
 
-const emit = defineEmits([
-  'remove-more-menu-from-b', // B 组件触发 remove 时通知父组件
-])
+const advanceOtherRef = ref<InstanceType<typeof SettingsAdvanceOther> | null>(null)
 
-// --- Refs for DOM elements ---
-const navContainerRef = ref<HTMLElement | null>(null)
-const indicatorRef = ref<HTMLElement | null>(null)
+const emit = defineEmits<{
+  'remove-more-menu-from-b': []
+}>()
 
-// --- 计算属性 ---
-const selectedSubcategory = computed(() => {
-  if (activeSelection.category && activeSelection.subcategory) {
-    return configData.value[activeSelection.category]?.subcategories[activeSelection.subcategory]
-  }
-  return null
-})
-
-// --- 方法定义 ---
-
-const isActive = (category: string, subcategory: string) => {
-  return activeSelection.category === category && activeSelection.subcategory === subcategory
-}
-
-const selectSubcategory = (category: string, subcategory: string) => {
-  activeSelection.category = category
-  activeSelection.subcategory = subcategory
-  // 窄屏下自动切换到内容视图
-  if (uiStore.isNarrowScreen) {
-    narrowViewLevel.value = 'content'
-  }
-}
-
-const saveSettings = async () => {
-  if (!selectedSubcategory.value) return
-
-  const formData: Record<string, string> = {}
-  selectedSubcategory.value.settings.forEach((setting: { key: string; value: string }) => {
-    formData[setting.key] = setting.value
-  })
-
-  isLoading.value = true
-  saveStatus.message = ''
-
-  try {
-    saveStatus.message = (await saveEnvConfigSettings(formData)).message
-    saveStatus.colorClass = 'text-green-500'
-
-    await loadConfig(false)
-  } catch (error: any) {
-    saveStatus.message = `错误: ${error.message}`
-    saveStatus.colorClass = 'text-red-500'
-  } finally {
-    isLoading.value = false
-    setTimeout(() => {
-      saveStatus.message = ''
-    }, 5000)
-  }
-}
-
-const loadConfig = async (selectFirst = true) => {
-  isLoading.value = true
-  try {
-    configData.value = await getEnvConfigSettings()
-
-    if (selectFirst && Object.keys(configData.value).length > 0) {
-      const firstCategory = Object.keys(configData.value)[0]
-      if (firstCategory) {
-        const firstSubcategory = Object.keys(
-          configData.value[firstCategory]?.subcategories || {},
-        )[0]
-
-        if (firstCategory && firstSubcategory) {
-          selectSubcategory(firstCategory, firstSubcategory)
-        }
-      }
-    }
-  } catch (error: any) {
-    console.error(error)
-    saveStatus.message = `加载配置失败: ${error.message}`
-    saveStatus.colorClass = 'text-red-500'
-  } finally {
-    isLoading.value = false
-  }
-}
-
-// --- 导航指示器逻辑 ---
-const updateIndicatorPosition = () => {
-  if (!navContainerRef.value || !indicatorRef.value) return
-
-  // 找到当前激活的链接元素
-  const activeLink = navContainerRef.value.querySelector('.adv-nav-link.active') as HTMLElement
-
-  if (activeLink) {
-    // 计算激活链接相对于导航容器的位置和大小
-    const top = activeLink.offsetTop
-    const height = activeLink.offsetHeight
-
-    // 更新指示器的样式 解决自动消失，在值非空时才应用参数
-    if (top) {
-      indicatorRef.value.style.top = `${top}px`
-    }
-    if (height) {
-      indicatorRef.value.style.height = `${height}px`
-    }
-  }
-}
-
-// --- 监听导航容器尺寸变化 ---
-const setupNavResizeObserver = () => {
-  if (!navContainerRef.value) {
-    return
-  }
-
-  const resizeObserver = new ResizeObserver(() => {
-    updateIndicatorPosition()
-  })
-
-  // 监听导航容器
-  resizeObserver.observe(navContainerRef.value)
-}
-
-// 监视 activeSelection 的变化，并在 DOM 更新后移动指示器
-watch(
-  activeSelection,
-  async () => {
-    // 等待 Vue 更新 DOM
-    await nextTick()
-    updateIndicatorPosition()
-  },
-  { deep: true },
-)
-
-// --- 生命周期钩子 ---
-onMounted(async () => {
-  await loadConfig()
-  // 初始加载后，也需要更新一次指示器位置
-  await nextTick()
-  updateIndicatorPosition()
-  setupNavResizeObserver()
-})
-
-// 2. 原生 add/removeMoreMenu 逻辑（操作 B 组件自身 DOM）
 const addMoreMenu = () => {
-  const btnEl = navContainerRef.value as HTMLElement | null
-  if (btnEl) {
-    // console.log('B 组件执行 addMoreMenu');
-    btnEl.classList.add('moreMenu')
-  }
-}
-
-// 2. 修改 removeMoreMenu 函数
-// 当这个函数被调用时，不仅执行自身逻辑，还要通知父组件
-const removeMoreMenu = () => {
-  const btnEl = navContainerRef.value as HTMLElement | null
-  if (btnEl) {
-    btnEl.classList.remove('moreMenu')
-  }
-
-  // 关键：向父组件发送事件
-  emit('remove-more-menu-from-b')
+  advanceOtherRef.value?.addMoreMenu()
 }
 
 defineExpose({

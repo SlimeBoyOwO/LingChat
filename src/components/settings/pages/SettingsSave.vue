@@ -4,7 +4,7 @@
       <template #header>
         <PencilLine :size="20" />
       </template>
-      <div class="new-save-form">
+      <div class="flex gap-2.5">
         <Input
           type="text"
           v-model="newSaveTitle"
@@ -12,7 +12,7 @@
           @keyup.enter="handleCreateSave"
         />
         <button
-          class="glass-effect action-btn-create"
+          class="px-4 py-2 text-[#ddd] cursor-pointer rounded-md transition-all duration-200 whitespace-nowrap bg-[rgba(0,255,55,0.2)] border border-[rgba(0,255,55,0.3)] w-[10%] min-w-[65px] hover:-translate-y-px hover:bg-[rgba(0,255,55,0.35)] hover:shadow-[0_0_10px_rgba(0,255,55,0.15)]"
           @click="handleCreateSave"
           :disabled="actionLoading !== null"
         >
@@ -24,28 +24,34 @@
       <template #header>
         <LayoutList :size="20" />
       </template>
-      <div class="save-section">
-        <div class="save-list-container">
-          <div v-if="loading" class="status-message">加载中...</div>
+      <div class="flex flex-col">
+        <div class="h-[calc(100vh-22rem)] min-h-[300px] overflow-y-auto pr-1 pb-4">
+          <div v-if="loading" class="text-center text-[#888] p-8">加载中...</div>
 
-          <div v-else-if="error" class="status-message error">加载失败: {{ error }}</div>
+          <div v-else-if="error" class="text-center text-[#ff6b6b] p-8">加载失败: {{ error }}</div>
 
-          <div v-else-if="saves.length === 0" class="status-message">暂无存档记录</div>
+          <div v-else-if="saves.length === 0" class="text-center text-[#888] p-8">暂无存档记录</div>
 
-          <div v-else class="save-list">
-            <div v-for="(save, index) in saves" :key="save.id" class="save-card-modern">
-              <div class="save-card-top flex gap-4">
+          <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-5 p-[5px]">
+            <div
+              v-for="(save, index) in saves"
+              :key="save.id"
+              class="bg-[rgba(20,20,20,0.45)] border border-white/10 rounded-xl p-4 flex flex-col transition-all duration-300 ease-[cubic-bezier(0.25,0.8,0.25,1)] shadow-[0_8px_32px_rgba(0,0,0,0.2)] backdrop-blur-[10px] hover:-translate-y-[3px] hover:border-[rgba(121,217,255,0.35)] hover:shadow-[0_12px_40px_rgba(121,217,255,0.08)] hover:bg-[rgba(20,20,20,0.55)]"
+            >
+              <div class="flex gap-4">
                 <!-- Left: Screenshot Preview -->
-                <div class="save-screenshot-container shrink-0">
+                <div
+                  class="w-1/2 h-48 rounded-lg overflow-hidden bg-black/40 border border-white/[0.08] shrink-0"
+                >
                   <img
                     v-if="save.screenshot"
                     :src="`${convertFileSrc(save.screenshot)}?v=${save.update_date}`"
-                    class="save-screenshot-img animate-fade-in"
+                    class="w-full h-full object-cover animate-[fadeIn_0.4s_ease]"
                     alt="game screenshot"
                   />
                   <div
                     v-else
-                    class="save-screenshot-placeholder flex flex-col items-center justify-center"
+                    class="w-full h-full bg-white/[0.02] flex flex-col items-center justify-center"
                   >
                     <SaveIcon :size="24" class="text-white/20 mb-1" />
                     <span class="text-[10px] text-white/30 font-semibold">暂无截图</span>
@@ -53,30 +59,30 @@
                 </div>
 
                 <!-- Right: Save Info -->
-                <div class="save-meta flex-1 flex flex-col justify-between overflow-hidden">
+                <div class="flex-1 flex flex-col justify-between overflow-hidden">
                   <!-- Line 1: Index & Time -->
                   <div class="flex justify-between items-center text-xs text-white/40 font-mono">
-                    <span class="save-index font-bold">No.{{ index + 1 }}</span>
-                    <span class="save-time flex items-center gap-1">
+                    <span class="font-bold">No.{{ index + 1 }}</span>
+                    <span class="flex items-center gap-1">
                       <Clock :size="10" />
                       {{ formatDate(save.update_date) }}
                     </span>
                   </div>
 
                   <!-- Line 2: Title (Editable on Double Click) -->
-                  <div class="save-title-row mt-1.5 min-h-[26px] flex items-center">
+                  <div class="mt-1.5 min-h-[26px] flex items-center">
                     <input
                       v-if="editingSaveId === save.id"
                       v-model="editTitleText"
                       v-focus
                       @blur="handleSaveTitle(save.id)"
                       @keyup.enter="handleSaveTitle(save.id)"
-                      class="save-title-input"
+                      class="bg-black/50 border border-[rgba(121,217,255,0.5)] text-white text-sm font-bold rounded px-1.5 py-0.5 w-full outline-none"
                     />
                     <div
                       v-else
                       @dblclick="startEditTitle(save)"
-                      class="save-title-text select-none cursor-pointer text-white font-bold hover:text-sky-300 transition-colors duration-200 truncate"
+                      class="text-sm font-bold max-w-full select-none cursor-pointer text-white hover:text-sky-300 transition-colors duration-200 truncate"
                       title="双击以修改存档标题"
                     >
                       {{ save.title || '未命名存档' }}
@@ -84,34 +90,37 @@
                   </div>
 
                   <!-- Separator -->
-                  <div class="save-separator"></div>
+                  <div class="border-b border-dashed border-white/15 my-2 w-full"></div>
 
                   <!-- Line 3: Last Message -->
-                  <div class="save-last-message mt-0.5" :title="save.last_message">
+                  <div
+                    class="text-xs text-white/65 leading-[1.4] h-[33px] italic line-clamp-2"
+                    :title="save.last_message"
+                  >
                     {{ save.last_message || '暂无对话台词记录' }}
                   </div>
                 </div>
               </div>
 
               <!-- Bottom: Buttons -->
-              <div class="save-card-bottom mt-4 flex gap-2 pt-3 border-t border-white/5">
+              <div class="mt-4 flex gap-2 pt-3 border-t border-white/5">
                 <button
                   @click="handleLoadSave(save.id)"
-                  class="save-btn save-btn-load flex-1"
+                  class="px-3 py-1.5 rounded-md text-xs font-semibold cursor-pointer transition-all duration-200 text-white whitespace-nowrap bg-blue-500/25 border border-blue-500/40 hover:bg-blue-500/45 hover:shadow-[0_0_10px_rgba(59,130,246,0.2)] disabled:opacity-50 disabled:cursor-not-allowed flex-1"
                   :disabled="actionLoading !== null"
                 >
                   {{ actionLoading === save.id ? '读取中...' : '读取存档' }}
                 </button>
                 <button
                   @click="handleSaveGame(save.id)"
-                  class="save-btn save-btn-save flex-1"
+                  class="px-3 py-1.5 rounded-md text-xs font-semibold cursor-pointer transition-all duration-200 text-white whitespace-nowrap bg-emerald-500/25 border border-emerald-500/40 hover:bg-emerald-500/45 hover:shadow-[0_0_10px_rgba(16,185,129,0.2)] disabled:opacity-50 disabled:cursor-not-allowed flex-1"
                   :disabled="actionLoading !== null"
                 >
                   {{ actionLoading === save.id ? '保存中...' : '覆盖存档' }}
                 </button>
                 <button
                   @click="handleDeleteSave(save.id)"
-                  class="save-btn save-btn-delete flex-1"
+                  class="px-3 py-1.5 rounded-md text-xs font-semibold cursor-pointer transition-all duration-200 text-white whitespace-nowrap bg-red-500/25 border border-red-500/40 hover:bg-red-500/45 hover:shadow-[0_0_10px_rgba(239,68,68,0.2)] disabled:opacity-50 disabled:cursor-not-allowed flex-1"
                   :disabled="actionLoading !== null"
                 >
                   {{ actionLoading === save.id ? '删除中...' : '删除存档' }}
@@ -325,230 +334,12 @@ onMounted(() => {
 </script>
 
 <style scoped>
-h3 {
-  color: #eee;
-  border-bottom: 1px solid #444;
-  padding-bottom: 0.5rem;
-  margin-bottom: 1rem;
-}
-
-.action-btn-create.glass-effect {
-  background: rgba(0, 255, 55, 0.2);
-  border: 1px solid rgba(0, 255, 55, 0.3);
-  width: 10%;
-  min-width: 65px;
-  transition: all 0.2s ease;
-}
-
-.action-btn-create.glass-effect:hover {
-  transform: translateY(-1px);
-  background: rgba(0, 255, 55, 0.35);
-  box-shadow: 0 0 10px rgba(0, 255, 55, 0.15);
-}
-
-button {
-  padding: 8px 16px;
-  color: #ddd;
-  cursor: pointer;
-  border-radius: 6px;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-}
-
-input[type='text'] {
-  width: 100%;
-  padding: 10px 12px;
-  border-radius: 8px;
-  font-size: 15px;
-  font-family: inherit;
-  transition: all 0.2s ease;
-  resize: vertical;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.1),
-    inset 0 1px 1px rgba(255, 255, 255, 0.05);
-}
-
-input[type='text']:focus {
-  outline: none;
-  border-color: var(--accent-color);
-  box-shadow: 0 0 0 3px rgba(121, 217, 255, 0.2);
-}
-
-/* 新建存档表单 */
-.new-save-form {
-  display: flex;
-  gap: 10px;
-}
-
-/* 存档列表 */
-.save-list-container {
-  max-height: 520px;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-.save-list {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 20px;
-  padding: 5px;
-}
-
-.status-message {
-  text-align: center;
-  color: #888;
-  padding: 2rem;
-}
-
-.status-message.error {
-  color: #ff6b6b;
-}
-
-/* 现代卡片样式 */
-.save-card-modern {
-  background: rgba(20, 20, 20, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-  backdrop-filter: blur(10px);
-}
-
-.save-card-modern:hover {
-  transform: translateY(-3px);
-  border-color: rgba(121, 217, 255, 0.35);
-  box-shadow: 0 12px 40px rgba(121, 217, 255, 0.08);
-  background: rgba(20, 20, 20, 0.55);
-}
-
-.save-screenshot-container {
-  width: 50%;
-  height: 100%;
-  border-radius: 8px;
-  overflow: hidden;
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.save-screenshot-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.save-screenshot-placeholder {
-  width: 100%;
-  height: 100%;
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.save-title-input {
-  background: rgba(0, 0, 0, 0.5);
-  border: 1px solid rgba(121, 217, 255, 0.5);
-  color: #fff;
-  font-size: 14px;
-  font-weight: bold;
-  border-radius: 4px;
-  padding: 2px 6px;
-  width: 100%;
-  outline: none;
-}
-
-.save-title-text {
-  font-size: 14px;
-  font-weight: 700;
-  max-width: 100%;
-}
-
-.save-separator {
-  border-bottom: 1px dashed rgba(255, 255, 255, 0.15);
-  margin: 8px 0;
-  width: 100%;
-}
-
-.save-last-message {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.65);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  line-height: 1.4;
-  height: 33px; /* 固定高度确保一致性 */
-  font-style: italic;
-}
-
-.save-btn {
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border: none;
-  color: #fff;
-  white-space: nowrap;
-}
-
-.save-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.save-btn-load {
-  background: rgba(59, 130, 246, 0.25);
-  border: 1px solid rgba(59, 130, 246, 0.4);
-}
-
-.save-btn-load:hover:not(:disabled) {
-  background: rgba(59, 130, 246, 0.45);
-  box-shadow: 0 0 10px rgba(59, 130, 246, 0.2);
-}
-
-.save-btn-save {
-  background: rgba(16, 185, 129, 0.25);
-  border: 1px solid rgba(16, 185, 129, 0.4);
-}
-
-.save-btn-save:hover:not(:disabled) {
-  background: rgba(16, 185, 129, 0.45);
-  box-shadow: 0 0 10px rgba(16, 185, 129, 0.2);
-}
-
-.save-btn-delete {
-  background: rgba(239, 68, 68, 0.25);
-  border: 1px solid rgba(239, 68, 68, 0.4);
-}
-
-.save-btn-delete:hover:not(:disabled) {
-  background: rgba(239, 68, 68, 0.45);
-  box-shadow: 0 0 10px rgba(239, 68, 68, 0.2);
-}
-
-/* 渐入动画 */
-.animate-fade-in {
-  animation: fadeIn 0.4s ease;
-}
-
 @keyframes fadeIn {
   from {
     opacity: 0;
   }
   to {
     opacity: 1;
-  }
-}
-
-@media (max-width: 900px) {
-  .save-list {
-    grid-template-columns: 1fr;
   }
 }
 </style>
