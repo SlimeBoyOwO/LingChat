@@ -3,11 +3,12 @@ mod adventures;
 mod ai_service;
 mod api;
 mod config;
-mod data_update;
 mod db;
 mod init;
 mod lan_sync;
+mod manifest;
 mod migration;
+mod resource_sync;
 mod utils;
 
 use std::sync::Arc;
@@ -105,7 +106,7 @@ pub fn run() {
             utils::log_bridge::set_app_handle(app.handle().clone());
 
             app.manage(api::pet::HitTestState::default());
-            app.manage(data_update::DataUpdateState::default());
+            app.manage(resource_sync::ResourceSyncState::default());
             app.manage(lan_sync::LanSyncState::default());
             app.manage(utils::cpu_perf::CpuDetectionCache::new());
 
@@ -360,8 +361,9 @@ pub fn run() {
             api::adventure::check_adventure_unlocks,
             api::adventure::reset_adventure,
             api::workshop::fetch_discussions,
-            data_update::check_data_update,
-            data_update::apply_data_update,
+            resource_sync::check_resource_sync,
+            resource_sync::apply_resource_sync,
+            resource_sync::get_data_version,
             lan_sync::lan_sync_start_server,
             lan_sync::lan_sync_stop_server,
             lan_sync::lan_sync_scan_peers,

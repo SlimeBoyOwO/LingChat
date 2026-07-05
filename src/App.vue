@@ -12,8 +12,6 @@
     :phase="updatePhase"
     :app-version="updateAppVersion"
     :app-release-notes="updateAppReleaseNotes"
-    :data-info="updateDataInfo"
-    :data-progress="updateDataProgress"
     :error-message="updateErrorMessage"
     @update="handleInstallUpdates"
     @later="handleRemindLater"
@@ -46,8 +44,6 @@ const {
   phase: updatePhase,
   appVersion: updateAppVersion,
   appReleaseNotes: updateAppReleaseNotes,
-  dataInfo: updateDataInfo,
-  dataProgress: updateDataProgress,
   errorMessage: updateErrorMessage,
 } = updater
 
@@ -56,22 +52,20 @@ const showUpdateDialog = ref(false)
 async function checkUpdatesOnStartup() {
   // 延迟 3 秒后检查更新（不阻塞启动体验）
   setTimeout(async () => {
-    try {
-      const hasUpdate = await updater.checkForUpdates()
-      if (hasUpdate) {
-        showUpdateDialog.value = true
-      }
-    } catch {
-      // 静默失败 — 不影响正常使用
+    const hasUpdate = await updater.checkForUpdates()
+    if (hasUpdate) {
+      showUpdateDialog.value = true
+    } else if (updater.phase.value === 'error') {
+      // 启动时网络错误静默处理，不影响正常使用
+      updater.reset()
     }
   }, 3000)
 }
 
 async function handleInstallUpdates() {
   try {
-    await updater.installAllUpdates()
-    // 如果有 app 更新，installAllUpdates 会调用 relaunch()
-    // 如果没有 app 更新（仅 data 更新），phase 变为 complete
+    await updater.installAppUpdate()
+    // installAppUpdate 内部调用 relaunch()，下面通常不会执行
   } catch {
     // 错误已通过 phase 状态反映
   }
@@ -117,7 +111,6 @@ onMounted(() => {
   achievementStore.listenForUnlocks()
 
   // 初始化更新检查（延迟执行，不阻塞启动）
-  updater.init()
   checkUpdatesOnStartup()
 
   // 等待 pywebview API 准备就绪

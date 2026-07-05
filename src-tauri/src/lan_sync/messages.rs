@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::data_update::manifest::FileEntry;
+use crate::manifest::FileEntry;
 
 // ─── 设备标识 ────────────────────────────────────────────────
 

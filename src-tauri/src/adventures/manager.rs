@@ -4,12 +4,12 @@ use sea_orm::*;
 
 use crate::db::entities::adventure_unlock;
 
-/// Stateless repository for the `adventure_unlock` table.
-/// Follows the `SaveRepo` pattern — functions take `&DatabaseConnection`.
+/// adventure_unlock 表的无状态仓库.
+/// 遵循 SaveRepo 模式 — 函数接收 &DatabaseConnection 参数。
 pub struct AdventureManager;
 
 impl AdventureManager {
-    /// Check if an adventure has been unlocked (row exists).
+    /// 检查冒险是否已解锁（行是否存在）。
     pub async fn is_unlocked(db: &DatabaseConnection, adventure_folder: &str) -> Result<bool> {
         let exists = adventure_unlock::Entity::find()
             .filter(adventure_unlock::Column::AdventureFolder.eq(adventure_folder))
@@ -20,13 +20,13 @@ impl AdventureManager {
         Ok(exists)
     }
 
-    /// Unlock an adventure: insert a row if it doesn't exist.
+    /// 解锁一个冒险，如果不存在的话就新增一行
     pub async fn unlock_adventure(
         db: &DatabaseConnection,
         adventure_folder: &str,
         character_folder: &str,
     ) -> Result<()> {
-        // Idempotent: skip if already unlocked
+        //  幂等：如已完成则跳过
         if Self::is_unlocked(db, adventure_folder).await? {
             return Ok(());
         }

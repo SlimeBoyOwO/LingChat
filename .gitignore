@@ -63,6 +63,7 @@ ling_chat/static/frontend/
 # Tauri auto-generated files
 src-tauri/gen/
 src-tauri/bundled_resources/
+src-tauri/.bundled_resources/
 frontend_vue/
 
 # ============================================================
@@ -107,6 +108,7 @@ data/game_data/backgrounds/**
 !data/game_data/backgrounds/白天.webp
 !data/game_data/backgrounds/夜晚.webp
 !data/game_data/backgrounds/占卜摊2.webp
+!data/game_data/backgrounds/夕阳.webp
 # 忽略 game_data/characters/ 下的所有内容，但不忽略该目录本身，并保留指定的几个角色图
 data/game_data/characters/**
 !data/game_data/characters/
