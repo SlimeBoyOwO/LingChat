@@ -112,6 +112,22 @@ jobs:
           releaseDraft: true
           prerelease: false
 
+  # ─── 发布 Release ─────────────────────────────────────────
+  #
+  # 等所有平台构建完成后，将草稿 Release 公开发布。
+  # 发布后 latest.json 才能通过 releases/latest/download/ 访问。
+  publish-release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: 发布 Release
+        run: |
+          gh release edit "${{ github.ref_name }}" --draft=false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   # ─── 构建 Linux Tauri 应用 ─────────────────────────────────
   build-linux:
     runs-on: ubuntu-latest

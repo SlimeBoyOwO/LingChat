@@ -119,18 +119,26 @@
             <span class="text-gray-50">数据版本</span>
             <span class="text-gray-50">v{{ currentDataVersion }}</span>
           </div>
-          <!-- 最新程序 -->
-          <div v-if="updateLatestVersion" class="flex items-center justify-between">
-            <span class="text-gray-50">最新程序</span>
-            <span class="text-gray-50 font-bold">{{ updateLatestVersion }}</span>
-          </div>
-          <!-- 状态文字 -->
-          <div v-if="updateStatusText" :class="updateStatusColor">
+          <!-- 状态文字（内联显示，不用 modal） -->
+          <div
+            v-if="updateStatusText"
+            :class="updateStatusColor"
+            class="text-sm font-medium"
+          >
             {{ updateStatusText }}
           </div>
           <div class="flex gap-3 pt-1">
             <Button type="big" @click="handleCheckUpdate" :disabled="updateChecking">
               {{ updateChecking ? '检查中...' : '检查程序更新' }}
+            </Button>
+            <Button
+              v-if="updateAvailable"
+              type="big"
+              variant="primary"
+              :disabled="updateInstalling"
+              @click="handleInstallUpdate"
+            >
+              {{ updateInstalling ? '正在更新...' : `更新到 v${updateLatestVersion}` }}
             </Button>
             <Button
               v-if="resourceSyncAvailable"
@@ -140,17 +148,6 @@
               同步数据
             </Button>
           </div>
-          <!-- App 更新对话框 -->
-          <UpdateDialog
-            :visible="showUpdateInlineDialog"
-            :phase="updatePhase"
-            :app-version="updateAppVersion"
-            :app-release-notes="updateAppReleaseNotes"
-            :error-message="updateErrorMessage"
-            @update="handleInstallFromSettings"
-            @later="showUpdateInlineDialog = false"
-            @close="showUpdateInlineDialog = false"
-          />
           <!-- 资源同步对话框 -->
           <ResourceSyncDialog
             :visible="showResourceSyncDialog"
@@ -241,7 +238,6 @@ import { reactivateTTS } from '@/api/services/game-info'
 import { useUpdater } from '@/composables/useUpdater'
 import { useLanSync } from '@/composables/useLanSync'
 import { getVersion } from '@tauri-apps/api/app'
-import UpdateDialog from '@/components/UpdateDialog.vue'
 import ResourceSyncDialog from '@/components/ResourceSyncDialog.vue'
 import LanSyncDialog from '@/components/LanSyncDialog.vue'
 import type { DialogView } from '@/types/lanSync'
@@ -263,7 +259,6 @@ const updater = useUpdater()
 const {
   phase: updatePhase,
   appVersion: updateAppVersion,
-  appReleaseNotes: updateAppReleaseNotes,
   errorMessage: updateErrorMessage,
   // 资源同步
   resourceSyncInfo,
@@ -279,22 +274,23 @@ const currentAppVersion = ref('0.1.0')
 const currentDataVersion = ref(0)
 const updateLatestVersion = ref('')
 const updateChecking = ref(false)
-const showUpdateInlineDialog = ref(false)
+const updateInstalling = ref(false)
 const showResourceSyncDialog = ref(false)
 const resourceSyncAvailable = ref(false)
 
-const updateAvailable = computed(() => updateLatestVersion.value !== '')
+const updateAvailable = computed(() => updateLatestVersion.value !== '' && updatePhase.value === 'app-update-available')
 
 const updateStatusText = computed(() => {
+  if (updatePhase.value === 'checking') return '正在检查更新...'
   if (updatePhase.value === 'error') return updateErrorMessage.value || '检查更新失败'
   if (updateAvailable.value) return '发现新版本可用！'
   return ''
 })
 
 const updateStatusColor = computed(() => {
-  if (updatePhase.value === 'error') return 'text-red-500'
-  if (updateAvailable.value) return 'text-amber-600'
-  return 'text-green-600'
+  if (updatePhase.value === 'error') return 'text-red-400'
+  if (updateAvailable.value) return 'text-amber-400'
+  return 'text-green-400'
 })
 
 async function loadAppVersion() {
@@ -309,6 +305,19 @@ async function loadDataVersion() {
   currentDataVersion.value = await getDataVersion()
 }
 
+/** 进入页面时自动检查一次（静默，失败不弹窗） */
+async function autoCheckUpdate() {
+  try {
+    const hasUpdate = await updater.checkForUpdates()
+    if (hasUpdate) {
+      updateLatestVersion.value = updateAppVersion.value
+    }
+    // 自动检查失败：重置错误状态，不显示任何提示
+  } catch {
+    updater.reset()
+  }
+}
+
 async function handleCheckUpdate() {
   updateChecking.value = true
   updateLatestVersion.value = ''
@@ -316,13 +325,22 @@ async function handleCheckUpdate() {
     const hasUpdate = await updater.checkForUpdates()
     if (hasUpdate) {
       updateLatestVersion.value = updateAppVersion.value
-      showUpdateInlineDialog.value = true
-    } else if (updatePhase.value === 'error') {
-      // 检查失败，显示错误对话框
-      showUpdateInlineDialog.value = true
     }
+    // 失败或错误状态通过 updatePhase / updateStatusText 内联展示
   } finally {
     updateChecking.value = false
+  }
+}
+
+/** 直接安装更新（不弹 modal） */
+async function handleInstallUpdate() {
+  updateInstalling.value = true
+  try {
+    await updater.installAppUpdate()
+  } catch {
+    // 错误通过 phase 内联展示
+  } finally {
+    updateInstalling.value = false
   }
 }
 
@@ -344,19 +362,6 @@ async function handleApplyResourceSync(selectedFiles: string[]) {
 function handleResourceSyncClose() {
   showResourceSyncDialog.value = false
   resetResourceSync()
-}
-
-async function handleDoUpdate() {
-  showUpdateInlineDialog.value = true
-}
-
-async function handleInstallFromSettings() {
-  try {
-    await updater.installAppUpdate()
-    updateLatestVersion.value = ''
-  } catch {
-    // 错误通过 phase 反映
-  }
 }
 
 // ─── 局域网同步 ────────────────────────────────────────────────
@@ -404,9 +409,10 @@ async function handleLanSyncConfirm() {
   }
 }
 
-// 加载版本号并预检数据同步
+// 加载版本号、预检更新和数据同步
 loadAppVersion()
 loadDataVersion()
+autoCheckUpdate()
 checkResourceSyncAvailability()
 
 async function checkResourceSyncAvailability() {
