@@ -30,8 +30,7 @@ impl MemoryRepo {
         save_id: i32,
         role_id: Option<i32>,
     ) -> Result<Vec<memory_bank::Model>, anyhow::Error> {
-        let mut stmt =
-            memory_bank::Entity::find().filter(memory_bank::Column::SaveId.eq(save_id));
+        let mut stmt = memory_bank::Entity::find().filter(memory_bank::Column::SaveId.eq(save_id));
         if let Some(rid) = role_id {
             stmt = stmt.filter(memory_bank::Column::RoleId.eq(rid));
         }

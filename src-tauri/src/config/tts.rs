@@ -124,10 +124,7 @@ impl TtsConfig {
         };
 
         Self {
-            simple_vits_api_url: get_string(
-                keys::SIMPLE_VITS_API_URL,
-                &default_simple_vits_url(),
-            ),
+            simple_vits_api_url: get_string(keys::SIMPLE_VITS_API_URL, &default_simple_vits_url()),
             bv2_api_url: get_string(keys::BV2_API_URL, &default_bv2_url()),
             gsv_api_url: get_string(keys::GSV_API_URL, &default_gsv_url()),
             sbv2_api_url: get_string(keys::SBV2_API_URL, &default_sbv2_url()),
@@ -135,7 +132,11 @@ impl TtsConfig {
             aivis_api_url: get_string(keys::AIVIS_API_URL, &default_aivis_url()),
             aivis_api_key: {
                 let s = get_string(keys::AIVIS_API_KEY, "");
-                if s.is_empty() { None } else { Some(s) }
+                if s.is_empty() {
+                    None
+                } else {
+                    Some(s)
+                }
             },
             indextts_api_url: get_string(keys::INDEXTTS_API_URL, &default_indextts_url()),
             audio_format: get_string(keys::TTS_AUDIO_FORMAT, &default_audio_format()),

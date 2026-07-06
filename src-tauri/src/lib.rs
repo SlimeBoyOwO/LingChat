@@ -3,11 +3,12 @@ mod adventures;
 mod ai_service;
 mod api;
 mod config;
-mod data_update;
 mod db;
 mod init;
 mod lan_sync;
+mod manifest;
 mod migration;
+mod resource_sync;
 mod utils;
 
 use std::sync::Arc;
@@ -93,7 +94,8 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_screenshots::init())
-        .plugin(tauri_plugin_fs::init());
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_notification::init());
 
     #[cfg(desktop)]
     let builder = builder
@@ -104,8 +106,9 @@ pub fn run() {
             utils::log_bridge::set_app_handle(app.handle().clone());
 
             app.manage(api::pet::HitTestState::default());
-            app.manage(data_update::DataUpdateState::default());
+            app.manage(resource_sync::ResourceSyncState::default());
             app.manage(lan_sync::LanSyncState::default());
+            app.manage(utils::cpu_perf::CpuDetectionCache::new());
 
             let rt = tokio::runtime::Runtime::new()?;
             let (db, ai_service, chat) = rt.block_on(init::initialize(app))?;
@@ -325,6 +328,7 @@ pub fn run() {
             api::game::select_character,
             api::game::reactivate_tts,
             api::game::add_role_to_scene,
+            api::game::remove_role_from_scene,
             api::chat::send_chat_message,
             api::chat::rollback_conversation,
             api::screenshot::start_screenshot,
@@ -357,8 +361,9 @@ pub fn run() {
             api::adventure::check_adventure_unlocks,
             api::adventure::reset_adventure,
             api::workshop::fetch_discussions,
-            data_update::check_data_update,
-            data_update::apply_data_update,
+            resource_sync::check_resource_sync,
+            resource_sync::apply_resource_sync,
+            resource_sync::get_data_version,
             lan_sync::lan_sync_start_server,
             lan_sync::lan_sync_stop_server,
             lan_sync::lan_sync_scan_peers,
@@ -367,6 +372,8 @@ pub fn run() {
             lan_sync::lan_sync_plan_pull,
             lan_sync::lan_sync_execute_pull,
             lan_sync::lan_sync_restart,
+            utils::cpu_perf::get_cpu_info,
+            utils::cpu_perf::redetect_cpu,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

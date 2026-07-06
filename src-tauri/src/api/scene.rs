@@ -67,7 +67,10 @@ fn to_background_fullpath(filename: &str) -> String {
     if name.is_empty() {
         return String::new();
     }
-    super::backgrounds_dir().join(&name).to_string_lossy().into_owned()
+    super::backgrounds_dir()
+        .join(&name)
+        .to_string_lossy()
+        .into_owned()
 }
 
 /// 【已废弃】改为仅提取文件名；保留此函数供外部用（game.rs），行为改为解析为完整路径。
@@ -97,7 +100,9 @@ fn now_iso() -> String {
 #[tauri::command]
 pub async fn list_scenes(_app: AppHandle) -> Result<Vec<SceneInfo>, String> {
     let store = SceneStore::new(&data_dir());
-    let mut scenes = store.load_all().map_err(|e| format!("加载场景列表失败: {}", e))?;
+    let mut scenes = store
+        .load_all()
+        .map_err(|e| format!("加载场景列表失败: {}", e))?;
 
     // 自动将背景目录中未被注册为场景的图片注册为场景
     let bg_dir = super::backgrounds_dir();
@@ -153,7 +158,9 @@ pub async fn list_scenes(_app: AppHandle) -> Result<Vec<SceneInfo>, String> {
     }
 
     if added {
-        store.save_all(&scenes).map_err(|e| format!("保存场景失败: {}", e))?;
+        store
+            .save_all(&scenes)
+            .map_err(|e| format!("保存场景失败: {}", e))?;
     }
 
     Ok(scenes.iter().map(|s| model_to_info(s)).collect())
@@ -162,7 +169,9 @@ pub async fn list_scenes(_app: AppHandle) -> Result<Vec<SceneInfo>, String> {
 #[tauri::command]
 pub async fn create_scene(_app: AppHandle, req: CreateSceneRequest) -> Result<SceneInfo, String> {
     let store = SceneStore::new(&data_dir());
-    let mut scenes = store.load_all().map_err(|e| format!("加载场景列表失败: {}", e))?;
+    let mut scenes = store
+        .load_all()
+        .map_err(|e| format!("加载场景列表失败: {}", e))?;
 
     let now = now_iso();
     let scene = Scene {
@@ -176,14 +185,18 @@ pub async fn create_scene(_app: AppHandle, req: CreateSceneRequest) -> Result<Sc
     };
     let info = model_to_info(&scene);
     scenes.push(scene);
-    store.save_all(&scenes).map_err(|e| format!("保存场景失败: {}", e))?;
+    store
+        .save_all(&scenes)
+        .map_err(|e| format!("保存场景失败: {}", e))?;
     Ok(info)
 }
 
 #[tauri::command]
 pub async fn update_scene(_app: AppHandle, req: UpdateSceneRequest) -> Result<SceneInfo, String> {
     let store = SceneStore::new(&data_dir());
-    let mut scenes = store.load_all().map_err(|e| format!("加载场景列表失败: {}", e))?;
+    let mut scenes = store
+        .load_all()
+        .map_err(|e| format!("加载场景列表失败: {}", e))?;
 
     let idx = scenes
         .iter()
@@ -197,14 +210,18 @@ pub async fn update_scene(_app: AppHandle, req: UpdateSceneRequest) -> Result<Sc
     scenes[idx].updated_at = now_iso();
 
     let info = model_to_info(&scenes[idx]);
-    store.save_all(&scenes).map_err(|e| format!("保存场景失败: {}", e))?;
+    store
+        .save_all(&scenes)
+        .map_err(|e| format!("保存场景失败: {}", e))?;
     Ok(info)
 }
 
 #[tauri::command]
 pub async fn delete_scene(app: AppHandle, id: String) -> Result<(), String> {
     let store = SceneStore::new(&data_dir());
-    let mut scenes = store.load_all().map_err(|e| format!("加载场景列表失败: {}", e))?;
+    let mut scenes = store
+        .load_all()
+        .map_err(|e| format!("加载场景列表失败: {}", e))?;
 
     let before = scenes.len();
     scenes.retain(|s| s.id != id);
@@ -212,7 +229,9 @@ pub async fn delete_scene(app: AppHandle, id: String) -> Result<(), String> {
         return Err(format!("场景 {} 不存在", id));
     }
 
-    store.save_all(&scenes).map_err(|e| format!("保存场景失败: {}", e))?;
+    store
+        .save_all(&scenes)
+        .map_err(|e| format!("保存场景失败: {}", e))?;
 
     // 若删除的是当前选中场景，清除引用
     let state = app.state::<AppState>();

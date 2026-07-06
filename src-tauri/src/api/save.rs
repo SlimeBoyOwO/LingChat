@@ -349,7 +349,9 @@ pub async fn delete_save(app: AppHandle, save_id: i32) -> Result<(), String> {
     }
 
     // 删除关联的截图文件
-    let screenshot_path = super::data_dir().join("screenshots").join(format!("{}.png", save_id));
+    let screenshot_path = super::data_dir()
+        .join("screenshots")
+        .join(format!("{}.png", save_id));
     if screenshot_path.exists() {
         let _ = std::fs::remove_file(screenshot_path);
     }
@@ -372,11 +374,7 @@ pub async fn delete_save(app: AppHandle, save_id: i32) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn update_save_title(
-    app: AppHandle,
-    save_id: i32,
-    title: String,
-) -> Result<(), String> {
+pub async fn update_save_title(app: AppHandle, save_id: i32, title: String) -> Result<(), String> {
     let state = app.state::<AppState>();
     let db = &state.db;
     SaveRepo::update_save_title(db, save_id, &title)
@@ -386,10 +384,7 @@ pub async fn update_save_title(
 }
 
 #[tauri::command]
-pub async fn save_screenshot(
-    save_id: i32,
-    screenshot_path: String,
-) -> Result<(), String> {
+pub async fn save_screenshot(save_id: i32, screenshot_path: String) -> Result<(), String> {
     save_screenshot_file(save_id, &screenshot_path).await
 }
 
@@ -414,8 +409,7 @@ pub async fn capture_main_window_screenshot(app: AppHandle) -> Result<String, St
     let image = tauri_plugin_screenshots::windows::capture_own_window(id)?;
 
     let temp_dir = std::env::temp_dir();
-    let temp_path =
-        temp_dir.join(format!("lingchat_screenshot_{}.png", std::process::id()));
+    let temp_path = temp_dir.join(format!("lingchat_screenshot_{}.png", std::process::id()));
     image
         .save(&temp_path)
         .map_err(|e| format!("保存截图失败: {}", e))?;

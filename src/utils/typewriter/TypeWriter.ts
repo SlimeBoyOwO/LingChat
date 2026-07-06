@@ -3,11 +3,12 @@ import { useUIStore } from '../../stores/modules/ui/ui'
 export type TypeWriterStatus = 'idle' | 'typing' | 'completed'
 
 export class TypeWriter {
-  private element: HTMLInputElement | HTMLTextAreaElement
+  private element: HTMLElement
   private timer: ReturnType<typeof setTimeout> | null = null
   private speed: number
   private generation: number
   private textBuffer: string
+  private writeFn: ((element: HTMLElement, text: string) => void) | null
 
   private onFinishCallback: (() => void) | null
   private onTextUpdateCallback: ((text: string) => void) | null
@@ -21,15 +22,17 @@ export class TypeWriter {
   private _status: TypeWriterStatus = 'idle'
 
   constructor(
-    element: HTMLInputElement | HTMLTextAreaElement,
+    element: HTMLElement,
     onTextUpdateCallback?: (text: string) => void,
     soundUrls?: string[],
+    writeFn?: (element: HTMLElement, text: string) => void,
   ) {
     this.element = element
     this.timer = null
     this.speed = 50
     this.generation = 0
     this.textBuffer = ''
+    this.writeFn = writeFn || null
     this.onFinishCallback = null
     this.onTextUpdateCallback = onTextUpdateCallback || null
     this.audioContext = null
@@ -157,7 +160,11 @@ export class TypeWriter {
 
         if (i < text.length) {
           this.textBuffer += text.charAt(i)
-          this.element.value = this.textBuffer
+          if (this.writeFn) {
+            this.writeFn(this.element, this.textBuffer)
+          } else if (this.element instanceof HTMLInputElement || this.element instanceof HTMLTextAreaElement) {
+            this.element.value = this.textBuffer
+          }
           if (this.onTextUpdateCallback) {
             this.onTextUpdateCallback(this.textBuffer)
           }
@@ -208,7 +215,11 @@ export class TypeWriter {
 
   /** Clear the DOM element and internal text buffer. */
   public clear(): void {
-    this.element.value = ''
+    if (this.writeFn) {
+      this.writeFn(this.element, '')
+    } else if (this.element instanceof HTMLInputElement || this.element instanceof HTMLTextAreaElement) {
+      this.element.value = ''
+    }
     this.textBuffer = ''
   }
 

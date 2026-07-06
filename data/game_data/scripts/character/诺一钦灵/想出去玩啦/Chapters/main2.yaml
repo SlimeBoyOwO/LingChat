@@ -11,7 +11,7 @@ events:
       于是钦灵和%player%整理好了小包，出门前往公园！
 
   - type: background
-    imagePath: 春天的公园_白天.jpg
+    imagePath: 春天的公园_白天.webp
     duration: 2
 
   - type: background_effect

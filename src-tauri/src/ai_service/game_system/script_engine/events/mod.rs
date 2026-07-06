@@ -6,6 +6,7 @@
 
 // Event handler submodules
 pub mod ai_dialogue_event;
+pub mod ambient_event;
 pub mod background_effect_event;
 pub mod background_event;
 pub mod chapter_end_event;
@@ -19,7 +20,6 @@ pub mod narration_event;
 pub mod player_event;
 pub mod present_pic_event;
 pub mod set_variable_event;
-pub mod ambient_event;
 pub mod sound_event;
 
 use std::collections::HashMap;

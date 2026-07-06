@@ -19,7 +19,8 @@ import { join, relative, resolve } from "node:path";
 // ─── 参数解析 ────────────────────────────────────────────────
 
 const args = process.argv.slice(2);
-let dataVersion = 1;
+// DATA_VERSION 环境变量优先级高于命令行参数（CI 中由 github.run_number 注入）
+let dataVersion = parseInt(process.env.DATA_VERSION, 10) || 1;
 let outputPath = "data_manifest.json";
 
 for (let i = 0; i < args.length; i++) {
@@ -42,6 +43,7 @@ const EXTRA_EXCLUDE_PREFIXES = [
   "game_database",          // SQLite 数据库（运行时数据）
   "screenshots/",           // 截图（用户数据）
   "voice/",                 // TTS 语音（用户数据）
+  "third_party/",           // 模型文件（由 installer 直接管理，不走 .official seed）
   ".trash/",                // 软删除回收站
   ".gitkeep",               // 占位文件
 ];

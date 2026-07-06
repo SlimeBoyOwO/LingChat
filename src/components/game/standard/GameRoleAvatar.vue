@@ -77,6 +77,13 @@ const narrowScreenYCompensation = computed(() => {
   return Math.round((uiStore.viewportHeight * percent) / 100)
 })
 
+const wideScreenYCompensation = computed(() => {
+  const ratio = uiStore.aspectRatio
+  if (ratio < 2.0) return 0
+  const percent = Math.min(10, (ratio - 2.0) * 20)
+  return Math.round((uiStore.viewportHeight * percent) / 100)
+})
+
 // --- 样式计算 ---
 const layoutPosition = computed(() => {
   const allIds = gameStore.presentRoleIds
@@ -104,7 +111,7 @@ const containerStyle = computed(() => {
 
   const style: Record<string, string> = {
     left: `calc(${autoLeft}% + ${manualOffset}px)`,
-    top: `${role.value.offsetY - narrowScreenYCompensation.value}px`,
+    top: `${role.value.offsetY - narrowScreenYCompensation.value - wideScreenYCompensation.value}px`,
     transform: `translateX(-50%) scale(${role.value.scale})`,
     opacity: `${role.value.show ? 1 : 0}`,
     zIndex: '1',

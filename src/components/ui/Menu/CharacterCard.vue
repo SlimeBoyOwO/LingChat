@@ -54,17 +54,27 @@
         >
           详情
         </button>
+        <!-- 加入/退场 切换按钮 -->
         <button
+          v-if="!isInScene()"
           @click="joinScene"
-          :class="[
-            'px-4 py-1.5 rounded-full text-xs font-semibold border transition-all shadow-lg',
-            isInScene()
-              ? 'bg-cyan-500/50 border-cyan-400/50 text-cyan-200 cursor-not-allowed'
-              : 'bg-cyan-500/80 hover:bg-cyan-500 border-cyan-400 text-white shadow-cyan-500/20',
-          ]"
-          :disabled="isInScene()"
+          class="px-4 py-1.5 rounded-full bg-cyan-500/80 hover:bg-cyan-500 border border-cyan-400 text-white text-xs font-semibold transition-all shadow-lg shadow-cyan-500/20"
         >
-          {{ isInScene() ? '已在场' : '加入' }}
+          加入
+        </button>
+        <button
+          v-else-if="!isSelected()"
+          @click="leaveScene"
+          class="px-4 py-1.5 rounded-full bg-red-500/80 hover:bg-red-500 border border-red-400 text-white text-xs font-semibold transition-all shadow-lg shadow-red-500/20"
+        >
+          退场
+        </button>
+        <button
+          v-else
+          disabled
+          class="px-4 py-1.5 rounded-full bg-cyan-500/50 border border-cyan-400/50 text-cyan-200 cursor-not-allowed text-xs font-semibold transition-all shadow-lg"
+        >
+          已在场
         </button>
         <button
           @click="selectCharacter"
@@ -286,6 +296,23 @@ const joinScene = async () => {
     console.log('[CharacterCard] 角色加入场景:', result.message)
   } catch (error) {
     console.error('[CharacterCard] 角色加入场景失败:', error)
+  }
+}
+
+// 多人对话：将角色移出场景
+const leaveScene = async () => {
+  if (!isInScene()) return
+  try {
+    const result = (await invoke('remove_role_from_scene', { roleId: props.id })) as {
+      success: boolean
+      message: string
+    }
+    if (result.success) {
+      gameStore.presentRoleIds = gameStore.presentRoleIds.filter((id) => id !== props.id)
+    }
+    console.log('[CharacterCard] 角色退场:', result.message)
+  } catch (error) {
+    console.error('[CharacterCard] 角色退场失败:', error)
   }
 }
 

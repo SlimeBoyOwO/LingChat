@@ -21,6 +21,7 @@
     "opener:default",
     "screenshots:default",
     "fs:default",
+    "notification:default",
     {
       "identifier": "fs:scope",
       "allow": [{ "path": "$RESOURCE/**" }]

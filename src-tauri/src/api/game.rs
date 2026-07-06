@@ -2,13 +2,13 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 use serde_json::Value as JsonValue;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
 use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::types::{CharacterSettings, GameLine, LineAttributeExt, LineBase};
-use crate::db::entities::line::LineAttribute;
 use crate::config::{self, AppConfig};
+use crate::db::entities::line::LineAttribute;
 use crate::db::managers::role_repo::RoleRepo;
 use crate::utils::prompt::{sys_prompt_builder_by_settings, PromptOptions, PromptRole};
 use crate::AppState;
@@ -364,10 +364,7 @@ pub(crate) async fn build_web_init_data(
 // ============================================================
 
 #[tauri::command]
-pub async fn add_role_to_scene(
-    app: AppHandle,
-    role_id: i32,
-) -> Result<JsonValue, String> {
+pub async fn add_role_to_scene(app: AppHandle, role_id: i32) -> Result<JsonValue, String> {
     if role_id == 0 {
         return Err("无法添加玩家角色 (role_id=0)".to_string());
     }
@@ -415,20 +412,27 @@ pub async fn add_role_to_scene(
         // 构建角色的 system prompt
         let system_prompt = sys_prompt_builder_by_settings(&role.settings, prompt_options);
 
-        // ★ 注入 System 行必须在 onstage_role 之前：
-        //    此时 present_roles 尚未包含新角色，perceived_role_ids 不会把其他角色也标记为感知者。
-        gs.add_line(
-            db,
-            LineBase {
-                content: system_prompt,
-                attribute: LineAttributeExt(LineAttribute::System),
-                sender_role_id: Some(role_id),
-                display_name: Some(name.clone()),
-                ..Default::default()
-            },
-        )
-        .await
-        .map_err(|e| format!("添加角色 system prompt 失败: {}", e))?;
+        // ★ 注入 System 行必须在 onstage_role 之前。
+        //    仅当台词表中不存在本角色的 System 行时才添加（避免退出后重入时重复）。
+        let already_has_system = gs.line_list.iter().any(|l| {
+            matches!(l.attribute(), LineAttribute::System) && l.base.sender_role_id == Some(role_id)
+        });
+        if !already_has_system {
+            gs.add_line(
+                db,
+                LineBase {
+                    content: system_prompt,
+                    attribute: LineAttributeExt(LineAttribute::System),
+                    sender_role_id: Some(role_id),
+                    display_name: Some(name.clone()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(|e| format!("添加角色 system prompt 失败: {}", e))?;
+        } else {
+            tracing::info!("角色 {} 已有 system prompt，跳过重复注入", role_id);
+        }
 
         // 上台 + 刷新记忆（让新角色感知后续台词）
         gs.onstage_role(role_id);
@@ -460,4 +464,102 @@ pub async fn add_role_to_scene(
     }
 
     Ok(serde_json::json!({"success": true, "message": format!("{} 已加入对话", role_name)}))
+}
+
+// ============================================================
+// 多人对话：将角色移出场景
+// ============================================================
+
+#[tauri::command]
+pub async fn remove_role_from_scene(app: AppHandle, role_id: i32) -> Result<JsonValue, String> {
+    if role_id == 0 {
+        return Err("无法移除玩家角色 (role_id=0)".to_string());
+    }
+
+    let state = app.state::<AppState>();
+    let db = &state.db;
+
+    let (role_name, switched_to) = {
+        let svc = state.ai_service.lock().await;
+        let mut gs = svc.game_status.lock().await;
+
+        // 剧本模式下不允许手动移除
+        if gs.script_status.is_some() {
+            return Err("剧本模式下无法手动让角色退场".to_string());
+        }
+
+        // 主角不可退场
+        if gs.main_role_id == Some(role_id) {
+            return Err("无法移除主角".to_string());
+        }
+
+        // 不在场
+        if !gs.present_role_ids.contains(&role_id) {
+            return Ok(serde_json::json!({"success": false, "message": "角色不在场景中"}));
+        }
+
+        let name = gs
+            .role_manager
+            .get_loaded(role_id)
+            .and_then(|r| r.display_name.clone())
+            .unwrap_or_else(|| format!("角色{}", role_id));
+
+        // 从舞台和在场集合中移除
+        gs.offstage_role(role_id);
+
+        // 如果退场角色是当前说话者，切回主角（避免后续对话指向已退场角色）
+        let mut switched_to: Option<(i32, String)> = None;
+        if gs.current_role_id == Some(role_id) {
+            gs.current_role_id = gs.main_role_id;
+            // 收集主角信息，用于 lock 外 emit character:switch
+            if let Some(main_id) = gs.main_role_id {
+                let main_name = gs
+                    .role_manager
+                    .get_loaded(main_id)
+                    .and_then(|r| r.display_name.clone())
+                    .unwrap_or_else(|| format!("角色{}", main_id));
+                switched_to = Some((main_id, main_name));
+            }
+        }
+
+        gs.refresh_memories(db)
+            .await
+            .map_err(|e| format!("刷新记忆失败: {}", e))?;
+
+        tracing::info!("角色 {} ({}) 退出场景", role_id, name);
+        (name, switched_to)
+    }; // 释放 GameStatus 锁
+
+    // 若切换了 current_role_id，通知前端
+    if let Some((target_id, target_name)) = switched_to {
+        let payload = serde_json::json!({
+            "type": "character_switch",
+            "roleId": target_id,
+            "characterName": target_name,
+        });
+        if let Err(e) = app.emit("character:switch", &payload) {
+            tracing::warn!("emit character:switch 失败: {e}");
+        }
+    }
+
+    // 添加退场旁白
+    {
+        let svc = state.ai_service.lock().await;
+        let mut gs = svc.game_status.lock().await;
+
+        let prompt = PromptRole::Narrator.build_prompt(&format!("{}离开了对话", role_name));
+        gs.add_line(
+            db,
+            LineBase {
+                content: prompt,
+                attribute: LineAttributeExt(LineAttribute::User),
+                display_name: Some("系统".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(|e| format!("添加系统台词失败: {}", e))?;
+    }
+
+    Ok(serde_json::json!({"success": true, "message": format!("{} 已离开对话", role_name)}))
 }

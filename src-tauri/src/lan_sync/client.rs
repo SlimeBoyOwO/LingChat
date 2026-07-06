@@ -222,6 +222,83 @@ pub async fn push_delete(peer: &PeerInfo, remote_path: &str) -> Result<(), Strin
     Ok(())
 }
 
+/// 从对端拉取全部数据库记录。
+pub async fn fetch_db_records(
+    peer: &PeerInfo,
+) -> Result<super::messages::DbRecords, String> {
+    let url = format!("http://{}:{}/db-records", peer.host, peer.port);
+    info!("请求对端数据库记录: {}", url);
+
+    let client = &*HTTP_CLIENT;
+
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("请求数据库记录失败 [{}:{}]: {}", peer.host, peer.port, e))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "对端返回错误 [{}:{}]: {}",
+            peer.host,
+            peer.port,
+            response.status()
+        ));
+    }
+
+    let records: super::messages::DbRecords = response
+        .json()
+        .await
+        .map_err(|e| format!("解析数据库记录失败 [{}:{}]: {}", peer.host, peer.port, e))?;
+
+    let total: usize = records.roles.len()
+        + records.saves.len()
+        + records.running_scripts.len()
+        + records.adventure_unlocks.len()
+        + records.lines.len()
+        + records.memory_banks.len()
+        + records.line_perceptions.len();
+    info!("拉取数据库记录完成: {} 条记录", total);
+    Ok(records)
+}
+
+/// 向对端推送全部数据库记录。
+pub async fn push_db_records(
+    peer: &PeerInfo,
+    records: &super::messages::DbRecords,
+) -> Result<(), String> {
+    let url = format!("http://{}:{}/db-records", peer.host, peer.port);
+    let total: usize = records.roles.len()
+        + records.saves.len()
+        + records.running_scripts.len()
+        + records.adventure_unlocks.len()
+        + records.lines.len()
+        + records.memory_banks.len()
+        + records.line_perceptions.len();
+    info!("推送数据库记录到 {}:{} ({} 条)", peer.host, peer.port, total);
+
+    let client = &*HTTP_CLIENT;
+
+    let response = client
+        .post(&url)
+        .json(records)
+        .send()
+        .await
+        .map_err(|e| format!("推送数据库记录失败 [{}:{}]: {}", peer.host, peer.port, e))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "对端拒绝数据库记录 [{}:{}]: {}",
+            peer.host,
+            peer.port,
+            response.status()
+        ));
+    }
+
+    info!("推送数据库记录完成");
+    Ok(())
+}
+
 /// URL 编码（仅编码路径中需要编码的字符，保留 `/` 作为路径分隔符）。
 fn urlencoding(s: &str) -> String {
     let mut result = String::with_capacity(s.len());

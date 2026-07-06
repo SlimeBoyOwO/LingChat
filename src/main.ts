@@ -12,6 +12,7 @@ import "./assets/styles/variables.css";
 // import "./api/websocket/handlers/adventure-handler";
 
 import router from "./router";
+import { autoConfigureCpuPerformance } from "./api/services/cpu-perf";
 
 const app = createApp(App);
 
@@ -21,3 +22,6 @@ initializeTauriEventListeners();
 app.use(pinia);
 app.use(router);
 app.mount("#app");
+
+// 延迟执行 CPU 画质自适应，确保 pinia store 已就绪
+setTimeout(autoConfigureCpuPerformance, 1000);

@@ -4,11 +4,15 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::ai_service::game_system::script_engine::events::{register_event, ScriptContext, ScriptEvent};
+use crate::ai_service::game_system::script_engine::events::{
+    register_event, ScriptContext, ScriptEvent,
+};
 use crate::ai_service::game_system::script_engine::responses::{
     event_names::SCRIPT_AMBIENT, AmbientPayload,
 };
-use crate::ai_service::game_system::script_engine::utils::media::{resolve_script_media, MediaType};
+use crate::ai_service::game_system::script_engine::utils::media::{
+    resolve_script_media, MediaType,
+};
 use crate::ai_service::message_system::events::emit;
 
 pub struct AmbientEvent {
@@ -28,25 +32,13 @@ impl AmbientEvent {
                 .unwrap_or("")
                 .to_string(),
             // 音量字段，默认 100.0
-            volume: data
-                .get("volume")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(100.0),
+            volume: data.get("volume").and_then(|v| v.as_f64()).unwrap_or(100.0),
             // 循环字段，默认 true
-            is_loop: data
-                .get("loop")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(true),
+            is_loop: data.get("loop").and_then(|v| v.as_bool()).unwrap_or(true),
             // 停止字段，默认 false
-            stop: data
-                .get("stop")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false),
+            stop: data.get("stop").and_then(|v| v.as_bool()).unwrap_or(false),
             // 淡入淡出字段，默认 true
-            fade: data
-                .get("fade")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(true),
+            fade: data.get("fade").and_then(|v| v.as_bool()).unwrap_or(true),
         }
     }
 }

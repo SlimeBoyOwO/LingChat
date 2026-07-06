@@ -15,6 +15,7 @@
 //! - `lan_sync_execute_pull`: 执行拉取
 
 pub mod client;
+pub mod db_sync;
 pub mod discovery;
 pub mod manifest;
 pub mod messages;

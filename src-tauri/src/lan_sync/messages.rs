@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::data_update::manifest::FileEntry;
+use crate::manifest::FileEntry;
 
 // ─── 设备标识 ────────────────────────────────────────────────
 
@@ -118,6 +118,25 @@ pub struct SyncPlan {
     pub files_to_delete: Vec<String>,
     /// 总传输字节数
     pub total_bytes: u64,
+}
+
+// ─── 数据库同步 ──────────────────────────────────────────────
+
+/// 数据库记录导出包，用于 LAN 同步传输。
+///
+/// 每张表的全部行被序列化为对应 Model 的 JSON 数组。
+/// 导入时按外键依赖顺序 DELETE 全部行后重新 INSERT。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DbRecords {
+    pub device_id: String,
+    pub roles: Vec<serde_json::Value>,
+    pub saves: Vec<serde_json::Value>,
+    pub running_scripts: Vec<serde_json::Value>,
+    pub adventure_unlocks: Vec<serde_json::Value>,
+    pub lines: Vec<serde_json::Value>,
+    pub memory_banks: Vec<serde_json::Value>,
+    pub line_perceptions: Vec<serde_json::Value>,
 }
 
 // ─── 进度事件 ────────────────────────────────────────────────

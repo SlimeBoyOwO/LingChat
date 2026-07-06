@@ -47,33 +47,62 @@ fn resolve_data_dir(app: &tauri::AppHandle) -> PathBuf {
     }
 }
 
-/// 首次启动时将 APK 内嵌资源播种到 data 目录（仅移动端）。
+/// 首次启动时将内嵌资源播种到 data 目录。
 ///
-/// 桌面端直接使用已有的 data/ 目录，此函数为 no-op。
+/// - 移动端（android/ios）：从 APK 中解压 data.zip
+/// - 桌面端：从安装包的 `data/.official/` 复制 default 资源
 pub fn seed_data_dir(app: &tauri::AppHandle) -> anyhow::Result<()> {
+    let data_dir = get_data_dir().clone();
+    let seeded = data_dir.join(".seeded");
+
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
-        let data_dir = get_data_dir().clone();
-        let marker = data_dir.join(".seeded");
         let manifest = data_dir.join("data_manifest.json");
-
-        if marker.exists() && manifest.exists() {
+        if seeded.exists() && manifest.exists() {
             return Ok(());
         }
-
-        // 可能存在上一次损坏的解压残留（如 Windows zip 的反斜杠路径），
-        // 删除标记以触发干净的重新解压
-        let _ = std::fs::remove_file(&marker);
-
+        let _ = std::fs::remove_file(&seeded);
         seed_via_fs_plugin(app, &data_dir)?;
-
-        std::fs::write(&marker, b"")
+        std::fs::write(&seeded, b"")
             .map_err(|e| anyhow::anyhow!("failed to write .seeded marker: {}", e))?;
-        tracing::info!("Data directory seeding complete");
+        tracing::info!("Data directory seeding complete (mobile)");
     }
 
-    // Desktop: data/ dir already exists, nothing to seed
-    let _ = app;
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        seed_desktop(app, &data_dir, &seeded)?;
+    }
+
+    Ok(())
+}
+
+/// 桌面端播种逻辑。
+///
+/// - `.official/` 不存在 → 无需操作
+/// - `.seeded` 不存在 → 首次启动，全量 seed ← 删除 .official
+/// - `.seeded` 存在 + `.official` 存在 → 更新待同步（留给前端 check_resource_sync）
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn seed_desktop(
+    _app: &tauri::AppHandle,
+    data_dir: &std::path::Path,
+    seeded: &std::path::Path,
+) -> anyhow::Result<()> {
+    let official = data_dir.join(".official");
+
+    if !official.exists() {
+        return Ok(());
+    }
+
+    if !seeded.exists() {
+        // 首次启动：全量播种
+        tracing::info!("First launch — seeding from .official/");
+        crate::resource_sync::sync::seed_full_from_official(data_dir, &official)?;
+        std::fs::write(seeded, b"")?;
+        std::fs::remove_dir_all(&official)?;
+        tracing::info!("Seed complete, .official removed");
+    }
+    // seeded 存在 + official 存在 → 更新待处理，不自动操作
+
     Ok(())
 }
 
@@ -87,7 +116,9 @@ fn seed_via_fs_plugin(app: &tauri::AppHandle, data_dir: &std::path::Path) -> any
     use anyhow::Context;
     use tauri_plugin_fs::FsExt;
 
-    let resource_dir = app.path().resource_dir()
+    let resource_dir = app
+        .path()
+        .resource_dir()
         .context("failed to resolve resource_dir on mobile")?;
 
     let base = resource_dir.to_string_lossy();
@@ -95,20 +126,21 @@ fn seed_via_fs_plugin(app: &tauri::AppHandle, data_dir: &std::path::Path) -> any
 
     // 读取 data.zip（唯一需要从 asset:// 读取的文件，纯 ASCII 路径）
     let zip_asset = format!("{}/data/data.zip", base);
-    let zip_bytes = app.fs()
+    let zip_bytes = app
+        .fs()
         .read(std::path::Path::new(&zip_asset))
         .with_context(|| format!("failed to read data.zip from {}", zip_asset))?;
 
     let cursor = std::io::Cursor::new(zip_bytes);
-    let mut archive = zip::ZipArchive::new(cursor)
-        .context("failed to open data.zip archive")?;
+    let mut archive = zip::ZipArchive::new(cursor).context("failed to open data.zip archive")?;
 
     let total = archive.len();
     tracing::info!("Extracting {} entries from data.zip", total);
 
     let mut extracted = 0usize;
     for i in 0..archive.len() {
-        let mut file = archive.by_index(i)
+        let mut file = archive
+            .by_index(i)
             .with_context(|| format!("failed to read entry {} in data.zip", i))?;
 
         let raw_name = file.name().to_string();
@@ -126,8 +158,8 @@ fn seed_via_fs_plugin(app: &tauri::AppHandle, data_dir: &std::path::Path) -> any
             std::fs::create_dir_all(parent)?;
         }
 
-        let mut out = std::fs::File::create(&dest)
-            .with_context(|| format!("failed to create {:?}", dest))?;
+        let mut out =
+            std::fs::File::create(&dest).with_context(|| format!("failed to create {:?}", dest))?;
         std::io::copy(&mut file, &mut out)
             .with_context(|| format!("failed to extract {} from data.zip", name))?;
         extracted += 1;
