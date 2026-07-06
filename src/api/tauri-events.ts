@@ -21,6 +21,15 @@ export function initializeTauriEventListeners() {
     eventQueue.addEvent(asEvent(event.payload, { type: 'thinking', duration: 0 }))
   })
 
+  listen('ai:thinking_progress', (event) => {
+    const payload = event.payload as { thinkingLength?: number }
+    console.log('[Tauri] ai:thinking_progress', payload)
+    const gameStore = useGameStore()
+    if (typeof payload.thinkingLength === 'number') {
+      gameStore.thinkingLength = payload.thinkingLength
+    }
+  })
+
   listen('ai:error', (event) => {
     const p = event.payload as Record<string, unknown>
     console.log('[Tauri] ai:error', p)
@@ -157,5 +166,5 @@ export function initializeTauriEventListeners() {
     gameStore.getOrCreateGameRole(payload.roleId)
   })
 
-  console.log('[Tauri] Event listeners initialized (ai + adventure + auto-save + 13 script events + character:switch)')
+  console.log('[Tauri] Event listeners initialized (ai + ai:thinking_progress + adventure + auto-save + 13 script events + character:switch)')
 }

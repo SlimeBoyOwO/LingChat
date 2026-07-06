@@ -203,6 +203,24 @@ pub fn get_tts_cache_info() -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
+pub fn get_voice_cleanup_info() -> Result<serde_json::Value, String> {
+    // 返回最近一次启动时自动清理的统计信息，从环境变量中读取（由启动逻辑设置）。
+    let deleted = std::env::var("LINGCHAT_VOICE_CLEANUP_DELETED")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0);
+    let has_run = std::env::var("LINGCHAT_VOICE_CLEANUP_HAS_RUN")
+        .ok()
+        .map(|s| s == "true")
+        .unwrap_or(false);
+
+    Ok(serde_json::json!({
+        "deleted": deleted,
+        "hasRun": has_run
+    }))
+}
+
+#[tauri::command]
 pub async fn init_game(app: AppHandle) -> Result<WebInitData, String> {
     let state = app.state::<AppState>();
     let service = state.ai_service.lock().await;

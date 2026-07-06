@@ -89,6 +89,17 @@ export const clearTtsCache = async (): Promise<{ success: boolean; message: stri
   }
 }
 
+export const getVoiceCleanupInfo = async (): Promise<{ deleted: number; hasRun: boolean }> => {
+  try {
+    const result = await invoke<{ deleted: number; hasRun: boolean }>('get_voice_cleanup_info')
+    console.log('获取语音自动清理信息成功:', result)
+    return result
+  } catch (error: any) {
+    console.error('获取语音自动清理信息错误:', typeof error === 'string' ? error : error.message)
+    return { deleted: 0, hasRun: false }
+  }
+}
+
 /**
  * 获取 TTS 生成的语音文件，返回 base64 data URL
  */

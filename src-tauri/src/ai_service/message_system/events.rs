@@ -46,6 +46,14 @@ pub fn emit_thinking(app: &AppHandle, is_thinking: bool) {
     }
 }
 
+/// 通知前端思考链累计字数有更新。
+pub fn emit_thinking_progress(app: &AppHandle, thinking_length: usize) {
+    let payload = super::responses::ThinkingProgressResponse::new(thinking_length);
+    if let Err(e) = app.emit(super::responses::event_names::AI_THINKING_PROGRESS, &payload) {
+        tracing::warn!("emit thinking_progress 失败: {e}");
+    }
+}
+
 /// 通知前端 AI 发生错误，同时重置前端状态为 input。
 pub fn emit_error(app: &AppHandle, err: &anyhow::Error) {
     let msg = err.to_string();

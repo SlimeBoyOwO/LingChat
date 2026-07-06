@@ -7,8 +7,14 @@ use sea_orm::*;
 
 use crate::db::entities::line;
 
+/// 清理统计信息。
+#[derive(Debug, Clone, Default)]
+pub struct CleanupStats {
+    pub deleted_count: u64,
+}
+
 /// 查询数据库中所有被引用的语音文件名，删除 voice/ 目录下未被引用的文件。
-pub async fn cleanup_orphan_voice_files(db: &DatabaseConnection) -> Result<()> {
+pub async fn cleanup_orphan_voice_files(db: &DatabaseConnection) -> Result<CleanupStats> {
     // 1. 查询 line 表中所有非空 audio_file 值
     let referenced: HashSet<String> = line::Entity::find()
         .select_only()
@@ -28,7 +34,7 @@ pub async fn cleanup_orphan_voice_files(db: &DatabaseConnection) -> Result<()> {
     let voice_dir = crate::api::voice_dir();
     if !voice_dir.exists() {
         tracing::info!("语音目录不存在，跳过清理");
-        return Ok(());
+        return Ok(CleanupStats::default());
     }
 
     // 3. 遍历 voice/ 目录，删除不在引用集合中的文件
@@ -70,5 +76,5 @@ pub async fn cleanup_orphan_voice_files(db: &DatabaseConnection) -> Result<()> {
         tracing::info!("没有发现孤立语音文件");
     }
 
-    Ok(())
+    Ok(CleanupStats { deleted_count })
 }

@@ -40,7 +40,16 @@ impl LlmConfig {
     }
 }
 
-pub type ChunkStream = Pin<Box<dyn Stream<Item = Result<String>> + Send>>;
+/// LLM 流式返回的一个片段：可能是正式回复内容，也可能是思考链内容。
+#[derive(Debug, Clone)]
+pub enum LlmChunk {
+    /// 正式回复内容（会被前端显示并加入记忆）。
+    Content(String),
+    /// 思考链内容（仅用于实时统计，不加入正式回复）。
+    Reasoning(String),
+}
+
+pub type ChunkStream = Pin<Box<dyn Stream<Item = Result<LlmChunk>> + Send>>;
 
 /// LLM 客户端：薄包装，把协议细节委托给内部的 `LlmProvider`。
 pub struct LlmClient {
@@ -74,7 +83,7 @@ impl LlmClient {
         self.provider.complete(&self.http, messages).await
     }
 
-    /// 流式：返回 `AsyncStream<Result<String>>`。每个元素是一个字符 chunk。
+    /// 流式：返回 `AsyncStream<Result<LlmChunk>>`。每个元素是一段内容或思考链片段。
     pub async fn complete_stream(&self, messages: &[LlmMessage]) -> Result<ChunkStream> {
         if !self.cfg.is_usable() {
             return Err(anyhow!("LLM 未配置 API key 或 model"));

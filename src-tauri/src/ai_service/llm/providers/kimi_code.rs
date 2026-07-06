@@ -12,7 +12,7 @@ use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use serde::{Deserialize, Serialize};
 
 use crate::ai_service::llm::provider::{LlmProvider, LlmResponseWithTools};
-use crate::ai_service::llm::{ChunkStream, LlmConfig};
+use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmConfig};
 use crate::ai_service::types::{LlmMessage, ToolCall, ToolDefinition};
 
 pub struct KimiCodeProvider {
@@ -237,6 +237,7 @@ impl LlmProvider for KimiCodeProvider {
         let stream = async_stream::try_stream! {
             let mut pending = String::new();
             let mut thinking_buffer = String::new();
+            let mut text_buffer = String::new();
             let mut last_flush_len: usize = 0;
             let mut bs = byte_stream;
             while let Some(item) = bs.next().await {
@@ -258,28 +259,48 @@ impl LlmProvider for KimiCodeProvider {
                             // 流式响应结束前输出剩余的 thinking 内容
                             if !thinking_buffer.is_empty() {
                                 tracing::info!("[Kimi-Code Thinking] {}", thinking_buffer);
+                                yield LlmChunk::Reasoning(thinking_buffer.clone());
                                 thinking_buffer.clear();
                                 last_flush_len = 0;
+                            }
+                            // 如果 text 为空但 thinking 有内容，把 thinking 作为正式回复兜底
+                            if text_buffer.is_empty() && !thinking_buffer.is_empty() {
+                                tracing::info!("[Kimi-Code] text 为空，使用 thinking 作为回复");
+                                for line in thinking_buffer.lines() {
+                                    yield LlmChunk::Content(line.to_string());
+                                }
                             }
                             return;
                         }
                         if data.is_empty() { continue; }
                         let parsed: MessagesStreamChunk = match serde_json::from_str(data) {
                             Ok(v) => v,
-                            Err(_) => continue,
+                            Err(e) => {
+                                tracing::debug!("[Kimi-Code] 无法解析 SSE 数据: {e}, data={data}");
+                                continue;
+                            }
                         };
-                        if parsed.type_ == "content_block_delta" {
-                            if let Some(delta) = parsed.delta {
-                                if let Some(t) = delta.text {
-                                    if !t.is_empty() {
-                                        yield t;
+                        match parsed.type_.as_str() {
+                            "content_block_delta" => {
+                                if let Some(delta) = parsed.delta {
+                                    if let Some(t) = delta.text {
+                                        if !t.is_empty() {
+                                            text_buffer.push_str(&t);
+                                            yield LlmChunk::Content(t);
+                                        }
+                                    }
+                                    if let Some(thinking) = delta.thinking {
+                                        if !thinking.is_empty() {
+                                            thinking_buffer.push_str(&thinking);
+                                        }
                                     }
                                 }
-                                if let Some(thinking) = delta.thinking {
-                                    if !thinking.is_empty() {
-                                        thinking_buffer.push_str(&thinking);
-                                    }
-                                }
+                            }
+                            "content_block_start" | "content_block_stop" | "message_start" | "message_delta" | "message_stop" => {
+                                tracing::debug!("[Kimi-Code SSE] type={}, delta={:?}", parsed.type_, parsed.delta);
+                            }
+                            other => {
+                                tracing::debug!("[Kimi-Code SSE] 未处理的事件类型: {other}");
                             }
                         }
                     }
@@ -288,13 +309,23 @@ impl LlmProvider for KimiCodeProvider {
                 // 每次处理完 chunk 后，如果 thinking 累计新增了一定长度，就输出增量部分
                 if thinking_buffer.len() > last_flush_len && thinking_buffer.len() - last_flush_len >= 60 {
                     let delta = &thinking_buffer[last_flush_len..];
-                    tracing::info!("[Kimi-Code Thinking] {}", delta);
+                    if !delta.is_empty() {
+                        yield LlmChunk::Reasoning(delta.to_string());
+                    }
                     last_flush_len = thinking_buffer.len();
                 }
             }
             // 流正常结束时也输出未打印的 thinking
             if !thinking_buffer.is_empty() {
                 tracing::info!("[Kimi-Code Thinking] {}", thinking_buffer);
+                yield LlmChunk::Reasoning(thinking_buffer.clone());
+            }
+            // 兜底：text 为空时使用 thinking
+            if text_buffer.is_empty() && !thinking_buffer.is_empty() {
+                tracing::info!("[Kimi-Code] text 为空，使用 thinking 作为回复");
+                for line in thinking_buffer.lines() {
+                    yield LlmChunk::Content(line.to_string());
+                }
             }
         };
 
@@ -365,7 +396,7 @@ struct MessagesStreamChunk {
     delta: Option<MessageDelta>,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, Debug)]
 struct MessageDelta {
     #[serde(default)]
     text: Option<String>,

@@ -113,8 +113,18 @@ pub fn run() {
             let (db, ai_service, chat) = rt.block_on(init::initialize(app))?;
 
             // 启动时自动清理未被引用的孤立语音文件
-            if let Err(e) = rt.block_on(init::voice_cleanup::cleanup_orphan_voice_files(&db)) {
-                tracing::warn!("语音文件清理失败（非致命错误）: {e:#}");
+            match rt.block_on(init::voice_cleanup::cleanup_orphan_voice_files(&db)) {
+                Ok(stats) => {
+                    std::env::set_var("LINGCHAT_VOICE_CLEANUP_HAS_RUN", "true");
+                    std::env::set_var(
+                        "LINGCHAT_VOICE_CLEANUP_DELETED",
+                        stats.deleted_count.to_string(),
+                    );
+                    tracing::info!("语音文件清理完成: 删除 {} 个文件", stats.deleted_count);
+                }
+                Err(e) => {
+                    tracing::warn!("语音文件清理失败（非致命错误）: {e:#}");
+                }
             }
 
             let script_channels = std::sync::Arc::new(tokio::sync::Mutex::new(
@@ -329,6 +339,7 @@ pub fn run() {
             api::game::clear_tts_cache,
             api::game::update_voice_lang,
             api::game::get_tts_cache_info,
+            api::game::get_voice_cleanup_info,
             api::game::add_role_to_scene,
             api::game::remove_role_from_scene,
             api::chat::send_chat_message,

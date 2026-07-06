@@ -116,6 +116,18 @@
           <div class="text-gray-50/70 text-xs">
             {{ ttsCacheFiles }} 个文件
           </div>
+          <div
+            v-if="voiceCleanupHasRun && voiceCleanupDeleted > 0"
+            class="text-emerald-300/90 text-xs"
+          >
+            启动时已自动清理 {{ voiceCleanupDeleted }} 个孤立语音文件
+          </div>
+          <div
+            v-else-if="voiceCleanupHasRun"
+            class="text-gray-50/50 text-xs"
+          >
+            启动时未发现孤立语音文件
+          </div>
           <div class="flex gap-3 pt-1">
             <Button type="big" @click="checkTtsCache">
               <RefreshCw :size="16" class="mr-1" /> 检查缓存
@@ -217,7 +229,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { MenuPage, MenuItem } from '../../ui'
 import { Slider, Text, Toggle, Button } from '../../base'
@@ -245,7 +257,7 @@ import {
   HardDrive,
   Trash2,
 } from 'lucide-vue-next'
-import { reactivateTTS, clearTtsCache } from '@/api/services/game-info'
+import { reactivateTTS, clearTtsCache, getVoiceCleanupInfo } from '@/api/services/game-info'
 import { invoke } from '@tauri-apps/api/core'
 import { useUpdater } from '@/composables/useUpdater'
 import { useLanSync } from '@/composables/useLanSync'
@@ -263,6 +275,9 @@ const dialogStore = useDialogStore()
 const envSettings = ref<Record<string, ConfigItem>>({})
 const ttsCacheSize = ref('0 B')
 const ttsCacheFiles = ref(0)
+const voiceCleanupDeleted = ref(0)
+const voiceCleanupHasRun = ref(false)
+let ttsCacheRefreshTimer: ReturnType<typeof setInterval> | null = null
 
 // 判断是否在自由对话模式（没有运行剧本）
 const isFreeDialogMode = computed(() => gameStore.runningScript === null)
@@ -448,7 +463,29 @@ const handleClearHistory = async () => {
 onMounted(() => {
   loadConfig()
   checkTtsCache()
+  loadVoiceCleanupInfo()
+  // 每 30 秒自动刷新一次 TTS 缓存信息，频率适中不浪费资源
+  ttsCacheRefreshTimer = setInterval(() => {
+    checkTtsCache()
+  }, 30000)
 })
+
+onUnmounted(() => {
+  if (ttsCacheRefreshTimer) {
+    clearInterval(ttsCacheRefreshTimer)
+    ttsCacheRefreshTimer = null
+  }
+})
+
+async function loadVoiceCleanupInfo() {
+  try {
+    const result = await getVoiceCleanupInfo()
+    voiceCleanupDeleted.value = result.deleted
+    voiceCleanupHasRun.value = result.hasRun
+  } catch (error: any) {
+    console.error('获取语音自动清理信息失败:', error)
+  }
+}
 
 const loadConfig = async () => {
   const configKeys = ['features.use_persistent_memory']
