@@ -28,8 +28,40 @@
     <!-- 3. 加载面板 (带 SVG 遮罩) -->
     <div
       v-if="!loadingDestroyed"
-      class="masked-loading fixed inset-0 z-9998 bg-[#070f15] flex flex-col items-center justify-between py-12 px-6 overflow-hidden"
+      class="masked-loading fixed inset-0 z-9998 flex flex-col items-center justify-between py-12 px-6 overflow-hidden"
     >
+      <!-- 赛博网格背景 -->
+      <div class="absolute inset-0 bg-grid opacity-30"></div>
+      <!-- 扫描线效果 -->
+      <div class="absolute inset-0 scanline pointer-events-none"></div>
+
+      <!-- 四角装饰 -->
+      <div
+        class="absolute top-4 left-4 w-8 h-8 border-l-2 border-t-2 border-teal-500/30 pointer-events-none"
+      ></div>
+      <div
+        class="absolute top-4 right-4 w-8 h-8 border-r-2 border-t-2 border-teal-500/30 pointer-events-none"
+      ></div>
+      <div
+        class="absolute bottom-4 left-4 w-8 h-8 border-l-2 border-b-2 border-teal-500/30 pointer-events-none"
+      ></div>
+      <div
+        class="absolute bottom-4 right-4 w-8 h-8 border-r-2 border-b-2 border-teal-500/30 pointer-events-none"
+      ></div>
+
+      <!-- 浮动粒子（position:absolute 默认 top:0，translateY(100vh)→(-10vh) = 底部→顶部） -->
+      <div
+        v-for="p in particles"
+        :key="p.id"
+        class="absolute rounded-full bg-cyan-400/50 glow-cyan animate-particle pointer-events-none"
+        :style="{
+          left: p.left + '%',
+          width: p.size + 'px',
+          height: p.size + 'px',
+          animationDuration: p.duration + 's',
+          animationDelay: p.delay + 's',
+        }"
+      ></div>
       <!-- 顶部状态条 -->
       <div
         class="w-full max-w-6xl flex justify-between items-center z-10 text-sm tracking-wider text-teal-400 opacity-80 px-4"
@@ -183,14 +215,14 @@
             </span>
           </div>
 
-          <div class="w-[30vh] flex justify-between text-sm font-mono text-cyan-500/50">
-            <span>建立连接中...</span>
-            <span>TCP握手中...</span>
-            <span>心灵链接中...</span>
+          <div
+            class="w-[40vh] text-center text-sm font-mono text-cyan-400/70 transition-all duration-300"
+          >
+            {{ currentStatusText }}
           </div>
 
           <!-- 进度条 -->
-          <div class="w-[60vh] flex flex-col items-center space-y-2 mt-4">
+          <div class="w-[60vh] flex items-center space-y-2 mt-4">
             <div
               class="w-[60vh] h-6 bg-slate-950/80 rounded-full border border-teal-500/20 p-0.5 relative overflow-hidden flex items-center"
             >
@@ -201,11 +233,18 @@
                 <div class="w-full h-0.5 bg-white/30 rounded-full"></div>
               </div>
             </div>
+
+            <div
+              class="absolute -right-12 justify-center items-center text-sm font-mono text-cyan-300/80"
+            >
+              <span>{{ Math.floor(progress) }}%</span>
+            </div>
           </div>
 
-          <div class="w-[40vh] flex justify-center gap-12 text-sm font-mono text-cyan-300/80">
-            <span class="text-cyan-500/80">长时间工作的话，不要忘记喝水~</span>
-            <span>{{ Math.floor(progress) }}%</span>
+          <div
+            class="w-[40vh] flex text-center justify-center gap-12 text-sm font-mono text-cyan-300/80"
+          >
+            <span class="text-cyan-500/80">{{ randomTip }}</span>
           </div>
         </div>
       </div>
@@ -229,13 +268,21 @@ const NekoSynth = {
 
   init() {
     if (!this.ctx) {
-      this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+      try {
+        this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+      } catch {
+        // 浏览器不支持 Web Audio API
+      }
+    }
+    // 某些浏览器需要 resume（autoplay policy）
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume()
     }
   },
 
   playTick() {
-    if (this.isMuted || !this.ctx) return
     this.init()
+    if (this.isMuted || !this.ctx) return
     const osc = this.ctx!.createOscillator()
     const gain = this.ctx!.createGain()
     osc.type = 'sine'
@@ -249,8 +296,8 @@ const NekoSynth = {
   },
 
   playChime() {
-    if (this.isMuted || !this.ctx) return
     this.init()
+    if (this.isMuted || !this.ctx) return
     const now = this.ctx!.currentTime
     const chords = [523.25, 659.25, 783.99, 1046.5]
     chords.forEach((freq, i) => {
@@ -269,8 +316,8 @@ const NekoSynth = {
   },
 
   playPop() {
-    if (this.isMuted || !this.ctx) return
     this.init()
+    if (this.isMuted || !this.ctx) return
     const osc = this.ctx!.createOscillator()
     const gain = this.ctx!.createGain()
     osc.type = 'sine'
@@ -285,8 +332,8 @@ const NekoSynth = {
   },
 
   playUnveil() {
-    if (this.isMuted || !this.ctx) return
     this.init()
+    if (this.isMuted || !this.ctx) return
     const osc = this.ctx!.createOscillator()
     const gain = this.ctx!.createGain()
     osc.type = 'triangle'
@@ -312,6 +359,161 @@ const dots = ref('.')
 const isPeeking = ref(false)
 const isUnveiling = ref(false)
 const loadingDestroyed = ref(false)
+
+// 背景浮动粒子（负延迟 = 直接进入动画中间阶段，无等待期）
+interface Particle {
+  id: number
+  left: number
+  size: number
+  duration: number
+  delay: number
+}
+const particles: Particle[] = Array.from({ length: 30 }, (_, i) => ({
+  id: i,
+  left: Math.random() * 100,
+  size: 2 + Math.random() * 5,
+  duration: 3 + Math.random() * 5,
+  delay: -(Math.random() * 6), // 负值：初始即处于动画中途
+}))
+
+// ============================================================
+//  加载状态台词（在 50% / 70% / 90% 时切换）
+// ============================================================
+const statusTexts = [
+  '正在校准量子猫爪频率...',
+  'TCP 握爪中，请不要松开~',
+  '心灵链接建立中，请耐心等待...',
+  '正在唤醒终端小可爱...',
+  '加载猫薄荷驱动中...',
+  '同步星际中继站信号...',
+  '正在烘焙虚拟小饼干...',
+  '调整全息投影参数中...',
+  '喵喵喵，马上就好啦~',
+  '正在连接喵星服务器...',
+  '激光笔定位校准完毕！',
+  '检测到大量可爱粒子，收集中...',
+]
+const currentStatusText = ref(statusTexts[0])
+
+// 记录已触发过的阈值，防止重复切换
+const triggeredThresholds = new Set<number>()
+
+function updateStatusText(p: number) {
+  const thresholds = [50, 70, 90]
+  for (const t of thresholds) {
+    if (p >= t && !triggeredThresholds.has(t)) {
+      triggeredThresholds.add(t)
+      // 从未使用的台词中选
+      const unused = statusTexts.filter((s) => s !== currentStatusText.value)
+      const pick = unused[Math.floor(Math.random() * unused.length)]
+      if (pick) currentStatusText.value = pick
+      return
+    }
+  }
+}
+
+// ============================================================
+//  随机小贴士（权重归类随机）
+// ============================================================
+interface TipCategory {
+  name: string
+  weight: number
+  messages: string[]
+}
+
+const tipCategories: TipCategory[] = [
+  {
+    name: '游戏提示',
+    weight: 0.4,
+    messages: [
+      '欢迎使用 LingChat 终端机 (*^▽^*)',
+      'LingChat 正在努力加载中... 稍等一下哦',
+      '看进度条会变傻，不许看！',
+      '你有打开过久坐提醒功能吗？工作党必须哦~',
+      '桌宠模式下的代办功能很方便哦，试试看吧~',
+      '欢迎向创意工坊投稿自己制作的角色！',
+      '你可以在设置中更改角色和背景哦~',
+      '你可以为背景添加相关提示词让它可以被感知哦~',
+      '你知道羁绊剧情是可以自己做的吗？试试看吧！',
+      '通用板块有很多实用的功能，去试试捏',
+      '和 Galgame 一样，不要忘记存档！',
+      '别忘了打开永久记忆功能呢',
+      '为了你的沉浸式体验，可以加自己喜欢的音乐和环境音哦',
+      '在背景界面有很多可以设置的部分，个性化你的游戏去吧！',
+      '欢迎前往创意工坊投稿你的角色和剧情！',
+      'LingChat 的角色表情是通过深度学习推理出情绪的哦，厉害吧！',
+      '永久记忆会自动压缩记忆，放心啦~',
+      'LingChat 的运行逻辑比你想象中复杂很多呢，快去探索吧！',
+      '发现那个照相机了吗？你可以截图给她看东西的哦！',
+      '可以用麦克风直接和她语音对话呢',
+      '用你的小爪爪可以摸摸她~',
+    ],
+  },
+  {
+    name: '求情广告',
+    weight: 0.1,
+    messages: [
+      '给LingChat点点star喵，给LingChat点点star谢谢喵',
+      '灌注钦灵喵，灌注钦灵谢谢喵~',
+      '钦灵这么可爱，真的不给她点个star吗？',
+      '开发者都是学生哦，软件制作不易~',
+      '你有注意到致谢吗？这是社区的力量哦！',
+      '开发者缺人啦！欢迎想要参与开发的人加入哦！',
+      'LingChat 的开源社区的每一个贡献者都很辛苦哦...',
+      'LingChat 的 Star 数量超过 1000 了！好耶！',
+    ],
+  },
+  {
+    name: '开发者彩蛋',
+    weight: 0.2,
+    messages: [
+      '你知道吗？钦灵本人比AI钦灵更可爱（也更淫荡）',
+      '其实风雪并不会写代码，她只是趴在键盘上睡着了，然后恰好对LingChat提交了commit',
+      '影空正在被钦灵催情变得越来越淫荡...',
+      '正在加载PL的代码... 等等，python 已经被换成 rust 了...',
+      '你们看到云小姐了吗？嗯嗯，她没有失踪也没有怎么样的，我们只是想让你知道，她很可爱',
+      '喵？喵~ 喵！',
+      'uwa是萝莉音，望周知',
+      '七毛钱的苹果？好吃，耶！',
+      '大饼鸡蛋一听就很好吃的样子，AstroBot 也有他哦！',
+      '喵本喵正在努力的学习画画以此变为项目的黑奴...',
+      '开发者群最淫荡的七辰正在用户群穿胖次外漏乱跑中',
+      '钦灵正在努力的改写有梦当然留下的组件的代码 >A<',
+      '波奶很可爱~啵啵~❤',
+      '饲养员莱尔正在努力供养开发者群...',
+      '诺亚狐和七辰喜欢管理着文档，也喜欢开银趴',
+      '魔法少女总督挥动了神奇的魔法棒，让你看到了奇妙的鼠标粒子特效~',
+      'Heiyaha正在视奸你的CPU',
+      '哦~卷大人，你是一只可爱的猫娘喵~',
+      '徒花花可爱爱，红瞳长发令人爱~',
+      '晚安喜欢被钦灵用鞭子抽着屁股干活，嘿嘿嘿',
+      '远足正在从钦灵疯狂的偷猫图，可恶！',
+      '45454，用 10M token 感动了钦灵做安卓版本，快谢谢他',
+      '元初是个小男娘，喜欢艾草',
+      'RatMan 挖了个地洞偷偷跑了...',
+      '琉璃子非常喜欢白丝，我们希望你能知道，之后可以送他一份',
+      'Flame 小姐的代码和她一样美丽',
+      'Yukito柏海和梦轩一起创造了你看到的美丽的UI！',
+      'Matsuko 喜欢被榨奶... 狐狐澪爱看❤',
+    ],
+  },
+]
+
+/** 按权重随机选分类，再从分类中随机选一条消息 */
+function pickRandomTip(): string {
+  const totalWeight = tipCategories.reduce((sum, c) => sum + c.weight, 0)
+  let r = Math.random() * totalWeight
+  for (const cat of tipCategories) {
+    r -= cat.weight
+    if (r <= 0) {
+      return cat.messages[Math.floor(Math.random() * cat.messages.length)]
+    }
+  }
+  // fallback
+  return tipCategories[0].messages[0]
+}
+
+const randomTip = ref(pickRandomTip())
 
 // ============================================================
 //  SVG 遮罩动画核心
@@ -487,7 +689,7 @@ function startDotAnimation() {
 let progressInterval: ReturnType<typeof setInterval> | null = null
 let fallbackTimer: ReturnType<typeof setTimeout> | null = null
 
-const MAX_PROGRESS_DURATION = 2000 // 2 秒强制完成
+const MAX_PROGRESS_DURATION = 10000 // 2 秒强制完成
 
 function handleTransitionSequence() {
   if (dotTimer) clearInterval(dotTimer)
@@ -534,6 +736,7 @@ function startProgress() {
       progressInterval = setInterval(() => {
         if (progress.value < 100) {
           progress.value = Math.min(100, progress.value + 5)
+          updateStatusText(progress.value)
         } else {
           if (progressInterval) clearInterval(progressInterval)
           handleTransitionSequence()
@@ -545,8 +748,9 @@ function startProgress() {
   // 正常进度模拟
   progressInterval = setInterval(() => {
     if (progress.value < 100) {
-      const step = Math.random() * 2.8 + 0.6
+      const step = Math.random() * 4 + 0.6
       progress.value = Math.min(100, progress.value + step)
+      updateStatusText(progress.value)
       if (Math.random() > 0.8) NekoSynth.playTick()
     } else {
       if (progressInterval) clearInterval(progressInterval)
@@ -611,6 +815,25 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
+/* ===== 粒子上升 ===== */
+@keyframes particleUp {
+  0% {
+    transform: translateY(100vh) scale(0.5);
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateY(-10vh) scale(1.2);
+    opacity: 0;
+  }
+}
+
+.animate-particle {
+  animation: particleUp 8s linear infinite backwards;
+}
+
 /* ===== 霓虹发光 ===== */
 .glow-cyan {
   filter: drop-shadow(0 0 10px rgba(34, 211, 238, 0.5));
@@ -622,6 +845,7 @@ onUnmounted(() => {
 
 /* ===== SVG 遮罩 (加载面板用) ===== */
 .masked-loading {
+  background-color: #070f15;
   mask: url(#cat-mask);
   -webkit-mask: url(#cat-mask);
 }
