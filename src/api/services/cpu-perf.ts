@@ -17,6 +17,8 @@ export interface CpuInfo {
 
 /** localStorage 键名 */
 const STORAGE_KEY = 'lingchat-cpu-perf'
+/** 标记是否已完成首次自动配置 */
+const CONFIGURED_KEY = 'lingchat-cpu-perf-configured'
 
 /** 从 localStorage 读取缓存的 CPU 信息 */
 function loadFromCache(): CpuInfo | null {
@@ -136,6 +138,11 @@ export interface RecommendedEffects {
  * - 低性能设备自动关闭高开销特效
  */
 export async function autoConfigureCpuPerformance(): Promise<void> {
+  // 仅首次启动时执行自动配置（由 localStorage 标记控制）
+  if (localStorage.getItem(CONFIGURED_KEY)) {
+    return
+  }
+
   try {
     const info = await getCpuInfo()
     const fps = getSuggestedMaxFps(info.tier)
@@ -181,6 +188,9 @@ export async function autoConfigureCpuPerformance(): Promise<void> {
         settingsStore.setClickAnimationEnabled(effects.clickAnimationEnabled)
       }
     }
+
+    // 标记已完成首次自动配置
+    localStorage.setItem(CONFIGURED_KEY, '1')
 
     console.log(
       `[CPU-Perf] ${info.brand} → ${info.tier}, 建议帧率 ${fps}FPS, 粒子比例 ${getSuggestedParticleScale(info.tier)}`,

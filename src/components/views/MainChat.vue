@@ -1,6 +1,6 @@
 <template>
   <div class="main-box">
-    <!-- 左上角番茄钟开关与面板 -->
+    <!-- 主界面始终渲染，加载动画期间在后台初始化 -->
     <FreeModeTools />
     <GameBackground></GameBackground>
     <!-- <GameAvatar ref="gameAvatarRef" @audio-ended="handleAudioFinished" />  -->
@@ -39,6 +39,9 @@
       </Button>
     </div>
     <GameExtraUI />
+
+    <!-- 首次加载过渡动画（覆盖在主界面上方，主界面在后台并行初始化） -->
+    <LoadingTransition v-if="showLoading" @complete="onLoadingComplete" />
   </div>
 </template>
 
@@ -51,12 +54,23 @@ import { useGameStore } from '../../stores/modules/game'
 import { GameBackground, GameRolesStage } from '../game/standard'
 import { GameDialog } from '../game/standard'
 import { Button } from '../base'
+import LoadingTransition from './LoadingTransition.vue'
 
 import GameExtraUI from '../game/standard/GameExtraUI.vue'
+
+const LOADING_STORAGE_KEY = 'lingchat_loading_shown'
 
 const router = useRouter()
 const uiStore = useUIStore()
 const gameStore = useGameStore()
+
+// 首次加载过渡状态（通过 localStorage 跨路由导航保持，启动时由 main.ts 清除）
+const showLoading = ref(!localStorage.getItem(LOADING_STORAGE_KEY))
+
+function onLoadingComplete() {
+  showLoading.value = false
+  localStorage.setItem(LOADING_STORAGE_KEY, '1')
+}
 
 const goToPetMode = () => {
   router.push('/pet')
