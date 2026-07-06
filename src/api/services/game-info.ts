@@ -78,25 +78,14 @@ export const reactivateTTS = async (): Promise<void> => {
   }
 }
 
-export const clearTtsCache = async (): Promise<{ success: boolean; message: string; deleted: number }> => {
+export const clearTtsCache = async (): Promise<{ success: boolean; message: string; deleted: number; failed: number; orphan_files_before?: number; orphan_size_before?: number }> => {
   try {
-    const result = await invoke<{ success: boolean; message: string; deleted: number }>('clear_tts_cache')
+    const result = await invoke<{ success: boolean; message: string; deleted: number; failed: number; orphan_files_before?: number; orphan_size_before?: number }>('clear_tts_cache')
     console.log('清理TTS缓存成功:', result)
     return result
   } catch (error: any) {
     console.error('清理TTS缓存错误:', typeof error === 'string' ? error : error.message)
     throw error
-  }
-}
-
-export const getVoiceCleanupInfo = async (): Promise<{ deleted: number; hasRun: boolean }> => {
-  try {
-    const result = await invoke<{ deleted: number; hasRun: boolean }>('get_voice_cleanup_info')
-    console.log('获取语音自动清理信息成功:', result)
-    return result
-  } catch (error: any) {
-    console.error('获取语音自动清理信息错误:', typeof error === 'string' ? error : error.message)
-    return { deleted: 0, hasRun: false }
   }
 }
 

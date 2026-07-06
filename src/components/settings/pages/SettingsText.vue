@@ -117,23 +117,20 @@
             {{ ttsCacheFiles }} 个文件
           </div>
           <div
-            v-if="voiceCleanupHasRun && voiceCleanupDeleted > 0"
+            v-if="lastCleanupInfo && lastCleanupInfo.deleted > 0"
             class="text-emerald-300/90 text-xs"
           >
-            启动时已自动清理 {{ voiceCleanupDeleted }} 个孤立语音文件
+            最近已自动清理 {{ lastCleanupInfo.deleted }} 个孤立语音文件
           </div>
-          <div
-            v-else-if="voiceCleanupHasRun"
-            class="text-gray-50/50 text-xs"
-          >
-            启动时未发现孤立语音文件
+          <div class="text-gray-50/70 text-xs">
+            其中孤立文件 {{ ttsOrphanFiles }} 个（{{ ttsOrphanSize }}）
           </div>
           <div class="flex gap-3 pt-1">
             <Button type="big" @click="checkTtsCache">
               <RefreshCw :size="16" class="mr-1" /> 检查缓存
             </Button>
             <Button type="big" @click="handleClearTtsCache">
-              <Trash2 :size="16" class="mr-1" /> 清理语音缓存
+              <Trash2 :size="16" class="mr-1" /> 清理孤立语音缓存
             </Button>
           </div>
         </div>
@@ -257,7 +254,7 @@ import {
   HardDrive,
   Trash2,
 } from 'lucide-vue-next'
-import { reactivateTTS, clearTtsCache, getVoiceCleanupInfo } from '@/api/services/game-info'
+import { reactivateTTS, clearTtsCache } from '@/api/services/game-info'
 import { invoke } from '@tauri-apps/api/core'
 import { useUpdater } from '@/composables/useUpdater'
 import { useLanSync } from '@/composables/useLanSync'
@@ -275,8 +272,9 @@ const dialogStore = useDialogStore()
 const envSettings = ref<Record<string, ConfigItem>>({})
 const ttsCacheSize = ref('0 B')
 const ttsCacheFiles = ref(0)
-const voiceCleanupDeleted = ref(0)
-const voiceCleanupHasRun = ref(false)
+const ttsOrphanFiles = ref(0)
+const ttsOrphanSize = ref('0 B')
+const lastCleanupInfo = ref<{ deleted: number; timestamp: number } | null>(null)
 let ttsCacheRefreshTimer: ReturnType<typeof setInterval> | null = null
 
 // 判断是否在自由对话模式（没有运行剧本）
@@ -463,7 +461,7 @@ const handleClearHistory = async () => {
 onMounted(() => {
   loadConfig()
   checkTtsCache()
-  loadVoiceCleanupInfo()
+  loadLastTtsCleanup()
   // 每 30 秒自动刷新一次 TTS 缓存信息，频率适中不浪费资源
   ttsCacheRefreshTimer = setInterval(() => {
     checkTtsCache()
@@ -477,13 +475,20 @@ onUnmounted(() => {
   }
 })
 
-async function loadVoiceCleanupInfo() {
+function loadLastTtsCleanup() {
   try {
-    const result = await getVoiceCleanupInfo()
-    voiceCleanupDeleted.value = result.deleted
-    voiceCleanupHasRun.value = result.hasRun
+    const raw = localStorage.getItem('lingchat:last_tts_cleanup')
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed && typeof parsed.deleted === 'number') {
+        lastCleanupInfo.value = {
+          deleted: parsed.deleted,
+          timestamp: parsed.timestamp ?? 0,
+        }
+      }
+    }
   } catch (error: any) {
-    console.error('获取语音自动清理信息失败:', error)
+    console.error('读取 TTS 清理记录失败:', error)
   }
 }
 
@@ -568,13 +573,22 @@ const handleClearTtsCache = async () => {
 
 async function checkTtsCache() {
   try {
-    const result = await invoke<{ size: number; files: number }>('get_tts_cache_info')
+    const result = await invoke<{
+      size: number
+      files: number
+      orphan_size: number
+      orphan_files: number
+    }>('get_tts_cache_info')
     ttsCacheFiles.value = result.files
     ttsCacheSize.value = formatBytes(result.size)
+    ttsOrphanFiles.value = result.orphan_files
+    ttsOrphanSize.value = formatBytes(result.orphan_size)
   } catch (error: any) {
     console.error('获取TTS缓存信息失败:', error)
     ttsCacheSize.value = '未知'
     ttsCacheFiles.value = 0
+    ttsOrphanFiles.value = 0
+    ttsOrphanSize.value = '未知'
   }
 }
 

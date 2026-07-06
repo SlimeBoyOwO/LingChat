@@ -1,13 +1,16 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
 use serde_json::Value as JsonValue;
+use sea_orm::*;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
 use crate::ai_service::game_system::scene_store::SceneStore;
+use crate::ai_service::message_system::events;
 use crate::ai_service::types::{CharacterSettings, GameLine, LineAttributeExt, LineBase};
 use crate::config::{self, AppConfig};
+use crate::db::entities::line;
 use crate::db::entities::line::LineAttribute;
 use crate::db::managers::role_repo::RoleRepo;
 use crate::utils::prompt::{sys_prompt_builder_by_settings, PromptOptions, PromptRole};
@@ -116,12 +119,58 @@ pub async fn reactivate_tts(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// 获取所有被台词引用的语音文件名。
+async fn get_referenced_voice_files(db: &DatabaseConnection) -> Result<HashSet<String>, String> {
+    line::Entity::find()
+        .select_only()
+        .column(line::Column::AudioFile)
+        .filter(line::Column::AudioFile.is_not_null())
+        .into_tuple::<Option<String>>()
+        .all(db)
+        .await
+        .map(|v| v.into_iter().filter_map(|x| x).collect())
+        .map_err(|e| format!("查询语音文件引用失败: {e}"))
+}
+
+/// 统计 voice/ 目录中的孤立文件。
+fn count_orphan_files_in_voice_dir(
+    voice_dir: &std::path::Path,
+    referenced: &HashSet<String>,
+) -> (usize, u64) {
+    let mut files = 0usize;
+    let mut size = 0u64;
+    if !voice_dir.exists() {
+        return (files, size);
+    }
+    if let Ok(entries) = std::fs::read_dir(voice_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            if referenced.contains(&name) {
+                continue;
+            }
+            files += 1;
+            if let Ok(meta) = entry.metadata() {
+                size += meta.len();
+            }
+        }
+    }
+    (files, size)
+}
+
 #[tauri::command]
-pub fn clear_tts_cache(_app: AppHandle) -> Result<serde_json::Value, String> {
+pub async fn clear_tts_cache(app: AppHandle) -> Result<serde_json::Value, String> {
+    let state = app.state::<AppState>();
+    let db = state.db.clone();
+
     let data_dir = crate::api::data_dir();
     let voice_dir = data_dir.join("voice");
 
     if !voice_dir.exists() {
+        events::emit_tts_cleanup(&app, 0, 0, 0);
         return Ok(serde_json::json!({
             "success": true,
             "message": "TTS 缓存目录不存在，无需清理",
@@ -129,31 +178,44 @@ pub fn clear_tts_cache(_app: AppHandle) -> Result<serde_json::Value, String> {
         }));
     }
 
-    let mut deleted = 0usize;
-    let mut failed = 0usize;
+    let referenced = get_referenced_voice_files(&db).await?;
+    let (orphan_files_before, orphan_size_before) = count_orphan_files_in_voice_dir(&voice_dir, &referenced);
+
+    let mut deleted: u64 = 0;
+    let mut failed: usize = 0;
 
     if let Ok(entries) = std::fs::read_dir(&voice_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            // 只清理音频文件，保留子目录（如果有）
-            if path.is_file() {
-                match std::fs::remove_file(&path) {
-                    Ok(()) => deleted += 1,
-                    Err(e) => {
-                        tracing::warn!("删除 TTS 缓存文件失败 {:?}: {}", path, e);
-                        failed += 1;
-                    }
+            if !path.is_file() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            // 只删除未被数据库引用的孤立文件，避免破坏存档语音
+            if referenced.contains(&name) {
+                continue;
+            }
+            match std::fs::remove_file(&path) {
+                Ok(()) => deleted += 1,
+                Err(e) => {
+                    tracing::warn!("删除 TTS 缓存文件失败 {:?}: {}", path, e);
+                    failed += 1;
                 }
             }
         }
     }
 
-    tracing::info!("TTS 缓存清理完成: 删除 {} 个文件, 失败 {} 个", deleted, failed);
+    let (orphan_files_after, orphan_size_after) = count_orphan_files_in_voice_dir(&voice_dir, &referenced);
+    events::emit_tts_cleanup(&app, deleted, orphan_files_after, orphan_size_after);
+
+    tracing::info!("TTS 缓存清理完成: 删除 {} 个孤立文件, 失败 {} 个", deleted, failed);
     Ok(serde_json::json!({
         "success": failed == 0,
-        "message": format!("已清理 {} 个 TTS 缓存文件", deleted),
+        "message": format!("已清理 {} 个孤立 TTS 缓存文件", deleted),
         "deleted": deleted,
-        "failed": failed
+        "failed": failed,
+        "orphan_files_before": orphan_files_before,
+        "orphan_size_before": orphan_size_before,
     }))
 }
 
@@ -175,22 +237,38 @@ pub async fn update_voice_lang(app: AppHandle, role_id: i32, lang: String) -> Re
 }
 
 #[tauri::command]
-pub fn get_tts_cache_info() -> Result<serde_json::Value, String> {
+pub async fn get_tts_cache_info(app: AppHandle) -> Result<serde_json::Value, String> {
+    let state = app.state::<AppState>();
+    let db = state.db.clone();
+
     let data_dir = crate::api::data_dir();
     let voice_dir = data_dir.join("voice");
 
+    let referenced = get_referenced_voice_files(&db).await?;
+
     let mut total_size: u64 = 0;
     let mut file_count: usize = 0;
+    let mut orphan_size: u64 = 0;
+    let mut orphan_files: usize = 0;
 
     if voice_dir.exists() {
         if let Ok(entries) = std::fs::read_dir(&voice_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_file() {
-                    file_count += 1;
-                    if let Ok(metadata) = std::fs::metadata(&path) {
-                        total_size += metadata.len();
-                    }
+                if !path.is_file() {
+                    continue;
+                }
+                let name = entry.file_name().to_string_lossy().to_string();
+                let size = if let Ok(metadata) = std::fs::metadata(&path) {
+                    metadata.len()
+                } else {
+                    0
+                };
+                file_count += 1;
+                total_size += size;
+                if !referenced.contains(&name) {
+                    orphan_files += 1;
+                    orphan_size += size;
                 }
             }
         }
@@ -198,25 +276,9 @@ pub fn get_tts_cache_info() -> Result<serde_json::Value, String> {
 
     Ok(serde_json::json!({
         "size": total_size,
-        "files": file_count
-    }))
-}
-
-#[tauri::command]
-pub fn get_voice_cleanup_info() -> Result<serde_json::Value, String> {
-    // 返回最近一次启动时自动清理的统计信息，从环境变量中读取（由启动逻辑设置）。
-    let deleted = std::env::var("LINGCHAT_VOICE_CLEANUP_DELETED")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-        .unwrap_or(0);
-    let has_run = std::env::var("LINGCHAT_VOICE_CLEANUP_HAS_RUN")
-        .ok()
-        .map(|s| s == "true")
-        .unwrap_or(false);
-
-    Ok(serde_json::json!({
-        "deleted": deleted,
-        "hasRun": has_run
+        "files": file_count,
+        "orphan_size": orphan_size,
+        "orphan_files": orphan_files,
     }))
 }
 

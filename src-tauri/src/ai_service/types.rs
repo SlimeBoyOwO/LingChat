@@ -324,8 +324,6 @@ pub struct CharacterSettings {
     pub tts_type: Option<String>,
     #[serde(default)]
     pub voice_lang: Option<String>,
-    #[serde(default)]
-    pub opentts_voice: Option<String>,
 
     #[serde(default = "default_thinking_message")]
     pub thinking_message: String,
@@ -397,7 +395,6 @@ impl Default for CharacterSettings {
             voice_models: None,
             tts_type: None,
             voice_lang: None,
-            opentts_voice: None,
             thinking_message: default_thinking_message(),
             bubble_top: default_bubble_top(),
             bubble_left: default_bubble_left(),

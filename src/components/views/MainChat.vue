@@ -12,7 +12,6 @@
     <GameDialog
       ref="gameDialogRef"
       @player-continued="manualTriggerContinue"
-      @dialog-proceed="resetInteraction"
     />
 
     <!-- 原有的菜单按钮 -->
@@ -90,143 +89,101 @@ onMounted(() => {
   }
 })
 
-/* 以下代码为自动AUTO模式逻辑 比较复杂 */
-// 1. 用于存储 setTimeout 返回的 ID
-let timerId: any = null
-// 2. 状态标志，记录 continue() 是否已被调用
-const isContinueTriggered = ref(false)
-// 3. 追踪音频和打字状态
-const audioFinished = ref(true) // 默认 true（无音频时视为已完成）
-// 4. 轮询检查间隔（毫秒）
-const AUTO_ADVANCE_INTERVAL = 500
+/* 自动模式（AUTO）逻辑：事件驱动，非轮询
+ * 当且仅当以下全部满足时，延迟 1 秒自动推进下一句：
+ * 1. 自动模式开启
+ * 2. 当前处于 responding 状态
+ * 3. 当前台词打字机已结束
+ * 4. 当前台词语音已播放完毕
+ * 用户手动推进时取消当前调度。
+ */
+const AUTO_ADVANCE_DELAY_MS = 1000
 
-// 在新交互开始前调用的重置函数
-const resetInteraction = () => {
-  isContinueTriggered.value = false
-  audioFinished.value = true
-  if (timerId) {
-    clearTimeout(timerId)
-    timerId = null
+const typingFinished = ref(true)
+const audioFinished = ref(true)
+let autoAdvanceTimer: ReturnType<typeof setTimeout> | null = null
+
+const cancelAutoAdvance = () => {
+  if (autoAdvanceTimer) {
+    clearTimeout(autoAdvanceTimer)
+    autoAdvanceTimer = null
   }
 }
 
-// 清理当前轮询（用于关闭自动模式或组件卸载）
-const clearAutoAdvance = () => {
-  if (timerId) {
-    clearTimeout(timerId)
-    timerId = null
-  }
-}
+const scheduleAutoAdvance = () => {
+  cancelAutoAdvance()
 
-// 尝试触发自动继续（打字和音频都结束后才执行）
-const tryAutoAdvance = () => {
-  // 自动模式关闭时立即停止
-  if (!uiStore.autoMode) {
-    clearAutoAdvance()
-    return
-  }
+  if (!uiStore.autoMode) return
+  if (gameStore.currentStatus !== 'responding') return
+  if (!typingFinished.value || !audioFinished.value) return
 
-  // 已经触发过继续，或当前不在回应状态，都只做一次清理后退出
-  if (isContinueTriggered.value) {
-    clearAutoAdvance()
-    return
-  }
+  autoAdvanceTimer = setTimeout(() => {
+    autoAdvanceTimer = null
+    if (!uiStore.autoMode || gameStore.currentStatus !== 'responding') return
+    if (!typingFinished.value || !audioFinished.value) return
 
-  if (gameStore.currentStatus !== 'responding') {
-    // 状态不对时延迟重试，避免状态切换期间漏触发
-    scheduleNextCheck()
-    return
-  }
-
-  const typing = gameDialogRef.value?.isTyping ?? false
-  if (typing || !audioFinished.value) {
-    // 条件未满足，继续轮询等待
-    scheduleNextCheck()
-    return
-  }
-
-  // 条件满足：延迟 1 秒后触发继续
-  clearAutoAdvance()
-  timerId = setTimeout(() => {
-    timerId = null
-    if (!uiStore.autoMode || isContinueTriggered.value) return
-    if (gameDialogRef.value) {
-      const needWait = gameDialogRef.value.continueDialog(false)
-      if (needWait) {
-        // 还需要等待，继续轮询
-        scheduleNextCheck()
-      }
+    const needWait = gameDialogRef.value?.continueDialog(false) ?? true
+    if (!needWait) {
+      // 推进后重置状态，等待下一条台词的打字/语音事件
+      typingFinished.value = true
+      audioFinished.value = true
     }
-  }, 1000)
-}
-
-// 安排下一次轮询检查
-const scheduleNextCheck = () => {
-  clearAutoAdvance()
-  timerId = setTimeout(() => {
-    timerId = null
-    tryAutoAdvance()
-  }, AUTO_ADVANCE_INTERVAL)
+  }, AUTO_ADVANCE_DELAY_MS)
 }
 
 // 音频开始播放
 const handleAudioStarted = () => {
   audioFinished.value = false
-  tryAutoAdvance()
+  cancelAutoAdvance()
 }
 
 // 音频播放结束
 const handleAudioFinished = () => {
   audioFinished.value = true
-  tryAutoAdvance()
+  scheduleAutoAdvance()
 }
 
-// 监听打字结束
-watch(
-  () => gameDialogRef.value?.isTyping,
-  (typing) => {
-    if (typing === false) {
-      tryAutoAdvance()
-    }
-  },
-)
+// 用户手动推进
+const manualTriggerContinue = () => {
+  cancelAutoAdvance()
+}
 
-// 监听自动模式开关：开启时立即启动轮询，关闭时清理
+// 监听自动模式开关
 watch(
   () => uiStore.autoMode,
   (enabled) => {
-    if (enabled) {
-      tryAutoAdvance()
-    } else {
-      clearAutoAdvance()
-    }
+    if (enabled) scheduleAutoAdvance()
+    else cancelAutoAdvance()
   },
 )
 
-// 监听游戏状态：进入 responding 时重置继续标志，让自动模式可以工作
+// 监听游戏状态：进入 responding 时重置状态并等待事件
 watch(
   () => gameStore.currentStatus,
   (status) => {
     if (status === 'responding') {
-      // 新回应开始时，允许自动继续
-      isContinueTriggered.value = false
-      audioFinished.value = true
-      tryAutoAdvance()
-    } else if (status === 'input') {
-      // 进入输入状态时清理轮询，避免无意义等待
-      clearAutoAdvance()
+      typingFinished.value = !(gameDialogRef.value?.isTyping ?? false)
+      audioFinished.value = true // 新台词初始无音频
+      scheduleAutoAdvance()
+    } else {
+      cancelAutoAdvance()
     }
   },
 )
 
-// 用户手动触发的函数
-const manualTriggerContinue = () => {
-  clearAutoAdvance()
-
-  if (!isContinueTriggered.value) {
-    isContinueTriggered.value = true
-  }
-}
+// 监听打字状态：结束立即尝试推进，开始则取消
+watch(
+  () => gameDialogRef.value?.isTyping,
+  (typing) => {
+    if (typing) {
+      typingFinished.value = false
+      cancelAutoAdvance()
+    } else {
+      typingFinished.value = true
+      scheduleAutoAdvance()
+    }
+  },
+)
 </script>
 
 <style>

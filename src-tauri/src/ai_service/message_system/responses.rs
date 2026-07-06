@@ -16,6 +16,8 @@ pub mod event_names {
     pub const AI_THINKING: &str = "ai:thinking";
     /// AI 思考链字数进度（流式统计，仅在启用思考链时触发）。
     pub const AI_THINKING_PROGRESS: &str = "ai:thinking_progress";
+    /// TTS 语音缓存（孤立文件）清理结果。
+    pub const TTS_CLEANUP: &str = "tts:cleanup";
     /// AI 侧错误（鉴权失败 / 网络错误等）。
     pub const AI_ERROR: &str = "ai:error";
     /// 强制将前端状态重置为 `input`。
@@ -109,6 +111,30 @@ impl ThinkingProgressResponse {
         Self {
             type_: "thinking_progress".to_string(),
             thinking_length,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TtsCleanupResponse {
+    #[serde(rename = "type")]
+    pub type_: String,
+    /// 本次清理的孤立语音文件数量。
+    pub deleted: u64,
+    /// 当前剩余的孤立语音文件数量（清理后）。
+    pub orphan_files: usize,
+    /// 当前剩余孤立语音文件总大小（字节）。
+    pub orphan_size: u64,
+}
+
+impl TtsCleanupResponse {
+    pub fn new(deleted: u64, orphan_files: usize, orphan_size: u64) -> Self {
+        Self {
+            type_: "tts_cleanup".to_string(),
+            deleted,
+            orphan_files,
+            orphan_size,
         }
     }
 }

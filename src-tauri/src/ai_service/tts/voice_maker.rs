@@ -292,31 +292,22 @@ impl VoiceMaker {
 
         let mut futs = Vec::new();
         for seg in segments.iter_mut() {
-            let (text, emo) = match self.lang.as_str() {
-                "ja" => {
-                    // 日文优先用 japanese_text；没有则 fallback 到 following_text
-                    if !seg.japanese_text.trim().is_empty() {
-                        (seg.japanese_text.clone(), String::new())
-                    } else if !seg.following_text.trim().is_empty() {
-                        tracing::warn!("片段 {} 没有日语文本，使用中文回退", seg.index);
-                        (seg.following_text.clone(), String::new())
-                    } else {
-                        continue;
-                    }
-                }
-                "zh" => {
-                    // 中文优先用 following_text；没有则 fallback 到 japanese_text
+            // 严格按当前设置语言选择文本；跨语言生成容易导致 TTS 输出异常，
+            // 因此目标语言无文本时直接跳过该片段的语音生成。
+            let text = match self.lang.as_str() {
+                "ja" if !seg.japanese_text.trim().is_empty() => seg.japanese_text.clone(),
+                "zh" if !seg.following_text.trim().is_empty() => seg.following_text.clone(),
+                _ => {
                     if !seg.following_text.trim().is_empty() {
-                        (seg.following_text.clone(), String::new())
+                        seg.following_text.clone()
                     } else if !seg.japanese_text.trim().is_empty() {
-                        tracing::warn!("片段 {} 没有中文文本，使用日文回退", seg.index);
-                        (seg.japanese_text.clone(), String::new())
+                        seg.japanese_text.clone()
                     } else {
                         continue;
                     }
                 }
-                _ => continue,
             };
+            let emo = String::new();
 
             let file_name = if seg.voice_file.is_empty() {
                 format!(
