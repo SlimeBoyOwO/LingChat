@@ -412,7 +412,8 @@ impl ProactiveSystem {
             return Ok(());
         }
 
-        // ─── 生成 prompt ───
+        // ─── 生成 prompt（SCREEN 调用视觉模型可能耗时，先禁用前端输入）───
+        events::emit_thinking(&sys.app, true);
         let prompt_result = {
             let svc = sys.ai_service.lock().await;
             let gs = svc.game_status.lock().await;
@@ -422,6 +423,7 @@ impl ProactiveSystem {
         };
 
         let Some((raw_prompt, intent_type)) = prompt_result else {
+            events::emit_thinking(&sys.app, false);
             return Ok(());
         };
 

@@ -18,7 +18,7 @@ impl InterestManager {
             initial_max_cap: 100.0,
             status_mod: 0,
             max_proactive_count,
-            decay_step: 50.0,
+            decay_step: 20.0,
             proactive_times: 0,
         }
     }
@@ -70,7 +70,7 @@ impl InterestManager {
     }
 
     pub fn decay_max_interest_cap(&mut self) {
-        self.max_interest_cap = (self.max_interest_cap - self.decay_step).max(0.0);
+        self.max_interest_cap = (self.max_interest_cap - self.decay_step).max(50.0);
         tracing::info!("[Engagement] Cap decayed to {:.2}", self.max_interest_cap);
     }
 

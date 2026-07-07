@@ -18,37 +18,9 @@ impl DeliveryEvaluator {
             tracing::debug!("[DeliveryEval] can_deliver=false (frontend report)");
             return false;
         }
-
-        if perception.state == UserState::GAME {
-            // Alarm 例外：日程闹钟连游戏时也允许投放
-            if intent_type != IntentType::Alarm {
-                tracing::debug!("[DeliveryEval] User is GAME -> deny {:?}", intent_type);
-                return false;
-            }
-        }
-
-        // 各意图类型允许的 UserState
-        let allowed = match intent_type {
-            // Alarm：任何时候都可以
-            IntentType::Alarm => true,
-            // 重要提醒：除 GAME（上面已拦截）外均可
-            IntentType::ImportantDay | IntentType::Todo => true,
-            // 屏幕感知：直接允许
-            IntentType::Screen => true,
-            // 闲聊：仅真正空闲时
-            IntentType::Topic => matches!(
-                perception.state,
-                UserState::IDLE | UserState::CASUAL
-            ),
-        };
-
-            if !allowed {
-            tracing::debug!(
-                "[DeliveryEval] State={:?} denies intent {:?}",
-                perception.state,
-                intent_type
-            );
-        }
-        allowed
+        /*
+        Tips: 此处可以添加更多判断逻辑，比如过滤掉无意义对话等
+         */
+        true
     }
 }
