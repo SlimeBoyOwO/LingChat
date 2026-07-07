@@ -25,7 +25,7 @@ use tokio_util::io::ReaderStream;
 use tracing::{error, info};
 
 use crate::api::{self, data_dir};
-use crate::data_update::manifest::DataManifest;
+use crate::manifest::DataManifest;
 
 use super::manifest as sync_manifest;
 use super::messages::{CompleteManifest, DeviceIdentity};

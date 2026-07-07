@@ -11,7 +11,7 @@ use std::time::UNIX_EPOCH;
 use sha2::{Digest, Sha256};
 use tracing::warn;
 
-use crate::data_update::manifest::{DataManifest, FileEntry};
+use crate::manifest::{DataManifest, FileEntry};
 
 use super::messages::CompleteManifest;
 

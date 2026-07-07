@@ -11,7 +11,7 @@ events:
       吃饱的我们一起走到了河边
 
   - type: background
-    imagePath: 河畔堤坝步道_晚上.jpg
+    imagePath: 河畔堤坝步道_晚上.webp
     duration: 2
 
   - type: background_effect

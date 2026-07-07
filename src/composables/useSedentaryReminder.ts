@@ -18,8 +18,22 @@ const REMINDER_INTERVAL_MS = 40 * 60 * 1000 // 40 分钟
 const NOTIFICATION_TITLE = 'LingChat 久坐提醒'
 const NOTIFICATION_BODY = '久坐时间有点长，记得活动一下哦'
 const APP_ICON_PATH = '/pictures/icons/icon.ico'
+const AUDIO_PATH = '/audio_effects/生气.wav'
 
 let timerId: ReturnType<typeof setInterval> | null = null
+
+/** 播放提醒音效 */
+function playReminderSound(): void {
+  try {
+    const audio = new Audio(AUDIO_PATH)
+    audio.volume = 0.8
+    audio.play().catch(() => {
+      // 静默忽略自动播放策略限制
+    })
+  } catch {
+    // 静默忽略音频播放失败
+  }
+}
 
 /** 发送久坐提醒系统通知 */
 async function showReminderNotification(): Promise<void> {
@@ -34,6 +48,8 @@ async function showReminderNotification(): Promise<void> {
       console.warn('[SedentaryReminder] 通知权限未授予，跳过本次提醒')
       return
     }
+
+    playReminderSound()
 
     await sendNotification({
       title: NOTIFICATION_TITLE,

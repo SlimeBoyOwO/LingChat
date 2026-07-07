@@ -2,7 +2,7 @@ name: 3 超市里扫货！
 
 events:
   - type: background
-    imagePath: 超市.jpg
+    imagePath: 超市.webp
 
   - type: narration
     text: |

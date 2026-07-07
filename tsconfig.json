@@ -21,6 +21,10 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
 
+    /* Incremental Build */
+    "incremental": true,
+    "tsBuildInfoFile": ".tsbuildinfo",
+
     "paths": {
       "@/*": ["./src/*"]
     }

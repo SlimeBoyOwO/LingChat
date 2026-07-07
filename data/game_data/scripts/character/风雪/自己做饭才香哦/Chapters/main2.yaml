@@ -2,7 +2,7 @@ name: 2 奇妙的...厨房？
 
 events:
   - type: background
-    imagePath: 风雪家厨房.png
+    imagePath: 风雪家厨房.webp
 
   - type: narration
     text: |

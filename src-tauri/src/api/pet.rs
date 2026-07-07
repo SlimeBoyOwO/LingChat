@@ -67,6 +67,8 @@ pub fn set_pet_mode(
             let _ = window.set_resizable(true);
             let _ = window.set_decorations(true);
             let _ = window.set_size(LogicalSize::new(1500, 800));
+            // Center the window on screen so it doesn't expand from the pet's top-left corner
+            let _ = window.center();
             // Always restore cursor ignore to false
             let _ = window.set_ignore_cursor_events(false);
         }

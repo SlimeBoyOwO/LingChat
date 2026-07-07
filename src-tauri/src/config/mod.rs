@@ -256,7 +256,7 @@ impl AppConfig {
             enable_time_sense: get_bool(&store, keys::ENABLE_TIME_SENSE, true),
             enable_emotion_classifier: get_bool(&store, keys::ENABLE_EMOTION_CLASSIFIER, true),
             use_persistent_memory: get_bool(&store, keys::USE_PERSISTENT_MEMORY, true),
-            memory_update_interval: get_u32(&store, keys::MEMORY_UPDATE_INTERVAL, 150),
+            memory_update_interval: get_u32(&store, keys::MEMORY_UPDATE_INTERVAL, 250),
             memory_recent_window: get_u32(&store, keys::MEMORY_RECENT_WINDOW, 30),
             auto_start_tts_software: get_bool(&store, keys::AUTO_START_TTS_SOFTWARE, false),
             tts_software_path: get_string(&store, keys::TTS_SOFTWARE_PATH),
@@ -393,7 +393,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
         feat_subs.insert(
             "对话增强".to_string(),
             Subcategory {
-                description: "对应 ENV: USE_TIME_SENSE / ENABLE_EMOTION_CLASSIFIER".to_string(),
+                description: "这里可以设置是否启用时间感知和情绪分类器功能".to_string(),
                 settings: vec![
                     ConfigSetting {
                         key: keys::ENABLE_TIME_SENSE.to_string(),
@@ -427,8 +427,8 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                     },
                     ConfigSetting {
                         key: keys::MEMORY_UPDATE_INTERVAL.to_string(),
-                        value: read_setting(app, keys::MEMORY_UPDATE_INTERVAL, "150"),
-                        description: "MEMORY_UPDATE_INTERVAL — 触发记忆摘要的新消息数（默认 150）"
+                        value: read_setting(app, keys::MEMORY_UPDATE_INTERVAL, "250"),
+                        description: "MEMORY_UPDATE_INTERVAL — 触发记忆摘要的新消息数（默认 250）"
                             .to_string(),
                         setting_type: "text".to_string(),
                     },
