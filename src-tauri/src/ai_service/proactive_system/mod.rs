@@ -46,6 +46,10 @@ pub struct ProactiveSystem {
 
     loop_handle: Option<JoinHandle<()>>,
     is_running: bool,
+
+    /// 前端上报的“当前是否适合投放主动对话”。
+    /// 条件：用户在聊天界面(/chat 或 /pet) 且 设置面板未打开 且 输入框为空。
+    can_deliver: bool,
 }
 
 impl ProactiveSystem {
@@ -78,6 +82,7 @@ impl ProactiveSystem {
             strategy_dispatcher,
             loop_handle: None,
             is_running: false,
+            can_deliver: false,
         };
 
         system
@@ -192,16 +197,31 @@ impl ProactiveSystem {
         self.interest_manager.restore_max_interest_cap();
     }
 
+    /// 前端通知后端当前是否具备投放条件。
+    /// 前端仅在最终布尔值翻转时调用（不会反复上报）。
+    pub fn set_can_deliver(&mut self, val: bool) {
+        if self.can_deliver == val {
+            return; // 未变化，忽略
+        }
+        tracing::info!(
+            "[ProactiveSystem] can_deliver changed: {} -> {}",
+            self.can_deliver,
+            val
+        );
+        self.can_deliver = val;
+    }
+
     /// 执行单次主动对话检查周期。
     async fn run_cycle(system_arc: Arc<Mutex<Self>>) -> anyhow::Result<()> {
         let mut sys = system_arc.lock().await;
 
         tracing::info!(
-            "[ProactiveSystem] Cycle start. Interest: {:.2}/{:.2}, count today: {}/{}",
+            "[ProactiveSystem] Cycle start. Interest: {:.2}/{:.2}, count today: {}/{}, can_deliver={}",
             sys.interest_manager.interest,
             sys.interest_manager.max_interest_cap,
             sys.interest_manager.proactive_times,
-            sys.interest_manager.max_proactive_count
+            sys.interest_manager.max_proactive_count,
+            sys.can_deliver,
         );
 
         // 1. 获取日程设置快照以供后续分析使用
