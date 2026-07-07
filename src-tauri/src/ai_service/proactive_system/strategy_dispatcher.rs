@@ -1,7 +1,7 @@
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::proactive_system::config::ProactiveConfig;
 use crate::ai_service::proactive_system::types::{
-    PerceptionResult, UserScheduleSettings, UserState,
+    IntentType, PerceptionResult, UserScheduleSettings, UserState,
 };
 use crate::ai_service::screen_analyzer::{ScreenAnalyzer, ScreenAnalyzerConfig};
 use chrono::Local;
@@ -46,7 +46,7 @@ impl StrategyDispatcher {
         settings: &UserScheduleSettings,
         perception: &PerceptionResult,
         config: &ProactiveConfig,
-    ) -> Option<String> {
+    ) -> Option<(String, IntentType)> {
         let now = Local::now();
         let today_str = now.format("%m-%d").to_string();
 
@@ -72,9 +72,12 @@ impl StrategyDispatcher {
                                 "[StrategyDispatcher] Triggered important day reminder: {}",
                                 day.title
                             );
-                            return Some(format!(
-                                "{{今天是特殊的一天：{}，{}。可以和{}聊聊哦}}",
-                                day.title, desc, char_name
+                            return Some((
+                                format!(
+                                    "{{今天是特殊的一天：{}，{}。可以和{}聊聊哦}}",
+                                    day.title, desc, char_name
+                                ),
+                                IntentType::ImportantDay,
                             ));
                         }
                     }
@@ -154,25 +157,25 @@ impl StrategyDispatcher {
         match selected_mode {
             "TODO" => {
                 if let Some(prompt) = self.get_todo_prompt(game_status, settings) {
-                    return Some(prompt);
+                    return Some((prompt, IntentType::Todo));
                 }
                 // 没有 Todo 时降级到 TOPIC
                 if config.enable_topic_creator {
-                    return Some(self.get_topic_prompt(game_status));
+                    return Some((self.get_topic_prompt(game_status), IntentType::Topic));
                 }
                 None
             }
             "SCREEN" => {
                 if let Some(prompt) = self.get_screen_prompt(game_status).await {
-                    return Some(prompt);
+                    return Some((prompt, IntentType::Screen));
                 }
                 // SCREEN 抓取失败或接口失败时降级到 TOPIC
                 if config.enable_topic_creator {
-                    return Some(self.get_topic_prompt(game_status));
+                    return Some((self.get_topic_prompt(game_status), IntentType::Topic));
                 }
                 None
             }
-            _ => Some(self.get_topic_prompt(game_status)),
+            _ => Some((self.get_topic_prompt(game_status), IntentType::Topic)),
         }
     }
 

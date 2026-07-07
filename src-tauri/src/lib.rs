@@ -365,6 +365,7 @@ pub fn run() {
             api::schedule::get_schedules,
             api::schedule::save_schedules,
             api::schedule::reload_proactive_system,
+            api::proactive_set_can_deliver,
             api::achievement::get_achievement_list,
             api::achievement::unlock_achievement,
             api::adventure::list_character_adventures,

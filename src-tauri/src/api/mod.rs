@@ -17,6 +17,9 @@ pub mod workshop;
 
 use std::path::PathBuf;
 
+use tauri::Manager;
+use crate::AppState;
+
 // ========== 共享路径辅助函数 ==========
 
 pub(crate) fn data_dir() -> PathBuf {
@@ -66,6 +69,22 @@ pub(crate) fn validate_path_in_base(resolved: &PathBuf, base: &PathBuf) -> Resul
              规范基础目录: {:?}",
             resolved, canon_resolved, base, canon_base
         ));
+    }
+    Ok(())
+}
+
+// ========== 主动对话系统指令 ==========
+
+/// 前端通知后端当前是否具备主动对话投放条件。
+/// 仅在最终布尔值翻转时调用。
+#[tauri::command]
+pub async fn proactive_set_can_deliver(
+    app: tauri::AppHandle,
+    can_deliver: bool,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    if let Some(ref ps) = state.proactive_system {
+        ps.lock().await.set_can_deliver(can_deliver);
     }
     Ok(())
 }

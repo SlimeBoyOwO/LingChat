@@ -21,6 +21,11 @@ import AppDialog from './components/ui/AppDialog.vue'
 import { initUIStore } from './stores/modules/ui/ui'
 import { useAchievementStore } from './stores/modules/ui/achievement'
 import { useSedentaryReminder } from './composables/useSedentaryReminder'
+import { useUpdater } from './composables/useUpdater'
+import { useCanDeliver } from './composables/useCanDeliver'
+
+// 激活主动对话投放条件上报（仅在此处挂载一次）
+useCanDeliver()
 
 // ─── 久坐提醒 ────────────────────────────────────────────────
 useSedentaryReminder()

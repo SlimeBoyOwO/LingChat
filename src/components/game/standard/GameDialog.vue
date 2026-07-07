@@ -149,8 +149,11 @@ import { escapeHtml } from '../../../utils/escapeHtml'
 import { eventQueue } from '../../../core/events/event-queue'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { setInputHasText } from '../../../composables/useCanDeliver'
 
 const inputMessage = ref('')
+// 输入框内容变化 → 通知 can_deliver 追踪
+watch(inputMessage, (val) => setInputHasText(Boolean(val.trim())), { immediate: true })
 const isShowingMotionText = ref(false)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const inlineDisplayRef = ref<HTMLDivElement | null>(null)

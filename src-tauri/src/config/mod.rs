@@ -639,7 +639,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                     ConfigSetting {
                         key: proactive::keys::MAX_PROACTIVE_TIMES.to_string(),
                         value: read_setting(app, proactive::keys::MAX_PROACTIVE_TIMES, "3"),
-                        description: "MAX_PROACTIVE_TIMES — 每日主动出击上限次数".to_string(),
+                        description: "MAX_PROACTIVE_TIMES — 在用户响应之前，能主动对话的次数".to_string(),
                         setting_type: "text".to_string(),
                     },
                 ],
