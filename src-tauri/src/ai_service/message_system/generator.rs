@@ -456,7 +456,7 @@ impl MessageGenerator {
 
         // producer：LLM 流 -> 句子
         let llm_stream = self.deps.llm.complete_stream(&context).await?;
-        let producer = StreamProducer::new(llm_stream, sentence_tx);
+        let producer = StreamProducer::new(llm_stream, sentence_tx, self.deps.app.clone());
         let acc = producer.run().await.context("StreamProducer 失败")?;
 
         for t in consumer_tasks {

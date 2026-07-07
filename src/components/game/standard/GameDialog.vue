@@ -291,7 +291,11 @@ const placeholderText = computed(() => {
     case 'thinking':
       const currentInteractRole = gameStore.currentInteractRole
       if (currentInteractRole) {
-        return currentInteractRole.thinkMessage
+        const baseMessage = currentInteractRole.thinkMessage
+        if (gameStore.thinkingLength > 0) {
+          return `${baseMessage}（已深度思考 ${gameStore.thinkingLength} 字）`
+        }
+        return baseMessage
       } else {
         return '等待回应中...'
       }

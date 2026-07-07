@@ -23,7 +23,7 @@ pub trait LlmProvider: Send + Sync {
     /// 非流式：发送消息列表，返回完整回复文本。
     async fn complete(&self, http: &Client, messages: &[LlmMessage]) -> Result<String>;
 
-    /// 流式：返回逐字符（或逐 token）的 chunk 流。
+    /// 流式：返回逐字符（或逐 token）的 chunk 流，每个 chunk 区分内容与思考链。
     async fn complete_stream(&self, http: &Client, messages: &[LlmMessage]) -> Result<ChunkStream>;
 
     /// 非流式 + function calling。

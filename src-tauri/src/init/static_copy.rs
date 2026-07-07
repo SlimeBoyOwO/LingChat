@@ -20,10 +20,12 @@ pub fn get_data_dir() -> &'static PathBuf {
 
 /// 解析 data 目录路径。
 ///
-/// - 移动端（android/ios）：始终使用平台沙盒内的应用数据目录
-/// - 桌面端开发模式（debug）：项目根目录下的 `data/`
-/// - 桌面端发布模式（release portable）：exe 所在目录下的 `data/`
+/// 优先级：
+/// 1. 移动端（android/ios）：平台沙盒内的应用数据目录
+/// 2. 桌面端开发模式（debug）：项目根目录下的 `data/`
+/// 3. 桌面端发布模式（release portable）：exe 所在目录下的 `data/`
 ///
+/// 不使用环境变量，以避免跨进程配置泄漏和难以调试的路径问题。
 /// 所有可读写数据（数据库、game_data、存档等）都放在此目录下。
 fn resolve_data_dir(app: &tauri::AppHandle) -> PathBuf {
     if cfg!(any(target_os = "android", target_os = "ios")) {
