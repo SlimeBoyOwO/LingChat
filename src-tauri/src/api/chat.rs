@@ -89,6 +89,7 @@ pub async fn send_chat_message(
         llm,
         concurrency,
         god_agent: state.god_agent.clone(),
+        suppress_thinking: false,
     };
 
     // Notify proactive system of user input

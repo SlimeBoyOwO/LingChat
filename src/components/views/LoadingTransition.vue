@@ -254,6 +254,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+import { eventQueue } from '@/core/events/event-queue'
 
 const emit = defineEmits<{
   complete: []
@@ -637,7 +638,7 @@ function animateUnveil(onComplete?: () => void) {
     { t: 1.0, ty: -4.0, sx: 80.0, sy: 80.0 },
   ]
 
-  const duration = 1100
+  const duration = 500
   const startTime = performance.now()
 
   function step(now: number) {
@@ -684,12 +685,57 @@ function startDotAnimation() {
 }
 
 // ============================================================
-//  进度条 + 转场序列
+//  进度条模拟算法
 // ============================================================
-let progressInterval: ReturnType<typeof setInterval> | null = null
-let fallbackTimer: ReturnType<typeof setTimeout> | null = null
+// 约束：
+//   - MIN_DISPLAY_MS = 5000  : 最少展示 5s
+//   - MAX_TIMEOUT_MS = 15000 : 最晚 15s 强制完成
+//   - ACCEL_WINDOW_MS = 1000 : 检测到事件后 1s 内冲至 100%
+// 正常曲线：√(t) 减速增长（起步快、后期慢，模拟真实加载）
+// 加速曲线：事件到达后线性冲刺，但仍遵守 5s 最短展示
 
-const MAX_PROGRESS_DURATION = 10000 // 2 秒强制完成
+const MIN_DISPLAY_MS = 5000
+const MAX_TIMEOUT_MS = 15000
+const ACCEL_WINDOW_MS = 1000
+const TICK_MS = 50
+
+let progressTimer: ReturnType<typeof setInterval> | null = null
+let startTime = 0
+let eventDetectedTime = 0
+
+/** 正常减速曲线：√(t) → 0~95% */
+function normalCurve(elapsed: number): number {
+  const raw = Math.min(elapsed / (MAX_TIMEOUT_MS - ACCEL_WINDOW_MS), 1)
+  return Math.sqrt(raw) * 95
+}
+
+/** 根据当前状态计算目标进度 (0–100) */
+function computeTarget(elapsed: number): number {
+  // 硬上限
+  if (elapsed >= MAX_TIMEOUT_MS) return 100
+
+  // 检测事件队列
+  const hasEvents = eventQueue.getState().queueLength > 0
+  if (hasEvents && eventDetectedTime === 0) {
+    eventDetectedTime = elapsed
+  }
+
+  if (eventDetectedTime > 0) {
+    // 加速模式
+    if (elapsed < MIN_DISPLAY_MS) {
+      // 未到最短展示期：按比例增长，5s 时恰好 99%
+      return (elapsed / MIN_DISPLAY_MS) * 99
+    }
+    // 已过 5s：从检测点起 ACCEL_WINDOW_MS 内线性完成
+    const sinceDetect = elapsed - eventDetectedTime
+    const progressAtDetect = normalCurve(eventDetectedTime)
+    const remaining = 100 - progressAtDetect
+    return Math.min(100, progressAtDetect + remaining * Math.min(1, sinceDetect / ACCEL_WINDOW_MS))
+  }
+
+  // 正常模式
+  return normalCurve(elapsed)
+}
 
 function handleTransitionSequence() {
   if (dotTimer) clearInterval(dotTimer)
@@ -698,20 +744,15 @@ function handleTransitionSequence() {
 
   // 等 1.2s 让用户看到 "Connection Established" 后开始转场
   setTimeout(() => {
-    // 阶段 1：猫耳弹出
     isPeeking.value = true
     NekoSynth.playPop()
     animatePeek(() => {
-      // 阶段 2：短暂停顿 500ms
       setTimeout(() => {
-        // 阶段 3：蓄力下压
         isPeeking.value = false
         isUnveiling.value = true
         animateAnticipation(() => {
-          // 阶段 4：爆发展开揭幕
           NekoSynth.playUnveil()
           animateUnveil(() => {
-            // 动画完成 → 销毁加载 DOM → 通知父组件
             setTimeout(() => {
               loadingDestroyed.value = true
               emit('complete')
@@ -724,40 +765,32 @@ function handleTransitionSequence() {
 }
 
 function startProgress() {
-  // 清除旧的定时器
-  if (progressInterval) clearInterval(progressInterval)
-  if (fallbackTimer) clearTimeout(fallbackTimer)
+  if (progressTimer) clearInterval(progressTimer)
 
-  // 2 秒强制完成定时器
-  fallbackTimer = setTimeout(() => {
-    if (progress.value < 100) {
-      // 快速补完进度
-      if (progressInterval) clearInterval(progressInterval)
-      progressInterval = setInterval(() => {
-        if (progress.value < 100) {
-          progress.value = Math.min(100, progress.value + 5)
-          updateStatusText(progress.value)
-        } else {
-          if (progressInterval) clearInterval(progressInterval)
-          handleTransitionSequence()
-        }
-      }, 30)
-    }
-  }, MAX_PROGRESS_DURATION)
+  startTime = performance.now()
+  eventDetectedTime = 0
 
-  // 正常进度模拟
-  progressInterval = setInterval(() => {
-    if (progress.value < 100) {
-      const step = Math.random() * 4 + 0.6
-      progress.value = Math.min(100, progress.value + step)
-      updateStatusText(progress.value)
-      if (Math.random() > 0.8) NekoSynth.playTick()
-    } else {
-      if (progressInterval) clearInterval(progressInterval)
-      if (fallbackTimer) clearTimeout(fallbackTimer)
+  progressTimer = setInterval(() => {
+    const elapsed = performance.now() - startTime
+    const target = computeTarget(elapsed)
+
+    // 指数平滑：避免跳变，视觉上自然连续
+    const smoothStep = (target - progress.value) * 0.12
+    progress.value = Math.min(100, progress.value + Math.max(0.3, smoothStep))
+
+    updateStatusText(progress.value)
+
+    // tick 音效：进度越低越密集（营造忙碌感），高进度时降低频率
+    const tickChance = progress.value < 40 ? 0.55 : progress.value < 80 ? 0.35 : 0.2
+    if (Math.random() < tickChance) NekoSynth.playTick()
+
+    if (progress.value >= 99.9) {
+      progress.value = 100
+      if (progressTimer) clearInterval(progressTimer)
+      progressTimer = null
       handleTransitionSequence()
     }
-  }, 80)
+  }, TICK_MS)
 }
 
 // ============================================================
@@ -780,8 +813,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  if (progressInterval) clearInterval(progressInterval)
-  if (fallbackTimer) clearTimeout(fallbackTimer)
+  if (progressTimer) clearInterval(progressTimer)
   if (dotTimer) clearInterval(dotTimer)
   cancelMaskAnimation()
 })

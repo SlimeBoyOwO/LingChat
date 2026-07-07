@@ -6,6 +6,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
 use crate::ai_service::game_system::scene_store::SceneStore;
+use crate::ai_service::message_system::generator::{GeneratorDeps, MessageGenerator};
 use crate::ai_service::types::{CharacterSettings, GameLine, LineAttributeExt, LineBase};
 use crate::config::{self, AppConfig};
 use crate::db::entities::line::LineAttribute;
@@ -562,4 +563,113 @@ pub async fn remove_role_from_scene(app: AppHandle, role_id: i32) -> Result<Json
     }
 
     Ok(serde_json::json!({"success": true, "message": format!("{} 已离开对话", role_name)}))
+}
+
+// ============================================================
+// 玩家入场问候
+// ============================================================
+
+/// 玩家进入主界面时调用（仅会话内首次有效）。
+///
+/// 根据 `active_save_id` 判断是首次见面还是回归：
+/// - 无存档 → 旁白："{AI名称}看到{玩家名称}过来了"
+/// - 有存档 → 旁白："{玩家名称}回来了"
+///
+/// 添加台词后自动触发一轮 AI 生成（无需用户输入），
+/// 且不 emit `ai:thinking` 事件（入场问候为后台触发）。
+#[tauri::command]
+pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+
+    // Phase 1: 去重 & 添加旁白台词
+    {
+        let svc = state.ai_service.lock().await;
+        let mut gs = svc.game_status.lock().await;
+
+        if gs.player_entered {
+            return Ok(());
+        }
+        gs.player_entered = true;
+
+        let current_role_id = match gs.current_role_id {
+            Some(id) => id,
+            None => {
+                tracing::info!("[Entry] 没有当前角色，跳过问候");
+                return Ok(());
+            }
+        };
+
+        let ai_name = gs
+            .role_manager
+            .get_loaded(current_role_id)
+            .and_then(|r| r.display_name.clone())
+            .unwrap_or_else(|| format!("角色{}", current_role_id));
+
+        let player_name = if gs.player.user_name.is_empty() {
+            "玩家".to_string()
+        } else {
+            gs.player.user_name.clone()
+        };
+
+        let greeting = if gs.active_save_id.is_some() {
+            format!("{}回来了", player_name)
+        } else {
+            format!("{}看到{}过来了", ai_name, player_name)
+        };
+
+        let prompt = PromptRole::Narrator.build_prompt(&greeting);
+        gs.add_line(
+            &state.db,
+            LineBase {
+                content: prompt,
+                attribute: LineAttributeExt(LineAttribute::User),
+                display_name: Some("旁白".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(|e| format!("添加入场问候台词失败: {}", e))?;
+
+        tracing::info!("[Entry] 已添加问候台词: {}", greeting);
+    } // 释放锁
+
+    // Phase 2: 触发 AI 响应（suppress_thinking=true，不显示思考指示器）
+    let llm = state
+        .chat
+        .llm
+        .clone()
+        .ok_or_else(|| "LLM 未配置".to_string())?;
+    let concurrency = AppConfig::load(&app)
+        .map(|c| c.consumers as usize)
+        .unwrap_or(1)
+        .max(1);
+    let game_status = {
+        let svc = state.ai_service.lock().await;
+        svc.game_status.clone()
+    };
+
+    let deps = GeneratorDeps {
+        app: app.clone(),
+        db: state.db.clone(),
+        game_status,
+        processor: state.chat.processor.clone(),
+        translator: state.chat.translator.clone(),
+        llm,
+        concurrency,
+        god_agent: state.god_agent.clone(),
+        suppress_thinking: true,
+    };
+
+    let generator = MessageGenerator::new(deps);
+    let gen_lock = state.generation_lock.clone();
+
+    tokio::spawn(async move {
+        let _lock = gen_lock.lock().await;
+        match generator.process_message(None).await {
+            Ok(acc) => tracing::info!("[Entry] 入场问候生成完成，长度: {}", acc.len()),
+            Err(e) => tracing::error!("[Entry] 入场问候生成失败: {:#}", e),
+        }
+    });
+
+    Ok(())
 }

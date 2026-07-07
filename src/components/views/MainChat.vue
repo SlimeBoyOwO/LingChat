@@ -55,6 +55,7 @@ import { GameBackground, GameRolesStage } from '../game/standard'
 import { GameDialog } from '../game/standard'
 import { Button } from '../base'
 import LoadingTransition from './LoadingTransition.vue'
+import { eventQueue } from '@/core/events/event-queue'
 
 import GameExtraUI from '../game/standard/GameExtraUI.vue'
 
@@ -70,6 +71,8 @@ const showLoading = ref(!localStorage.getItem(LOADING_STORAGE_KEY))
 function onLoadingComplete() {
   showLoading.value = false
   localStorage.setItem(LOADING_STORAGE_KEY, '1')
+  // 加载动画结束，恢复事件队列消费
+  eventQueue.resume()
 }
 
 const goToPetMode = () => {
