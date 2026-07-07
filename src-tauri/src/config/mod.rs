@@ -642,6 +642,24 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         description: "MAX_PROACTIVE_TIMES — 在用户响应之前，能主动对话的次数".to_string(),
                         setting_type: "text".to_string(),
                     },
+                    ConfigSetting {
+                        key: proactive::keys::PROACTIVE_INTERVAL_SECS.to_string(),
+                        value: read_setting(app, proactive::keys::PROACTIVE_INTERVAL_SECS, "10"),
+                        description: "PROACTIVE_INTERVAL_SECS — 主动对话轮询间隔（秒，默认 10，最小 1）".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: proactive::keys::INTEREST_TRIGGER_THRESHOLD.to_string(),
+                        value: read_setting(app, proactive::keys::INTEREST_TRIGGER_THRESHOLD, "30.0"),
+                        description: "INTEREST_TRIGGER_THRESHOLD — 兴趣度触发阈值（默认 30，越低越容易被触发）".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: proactive::keys::INTEREST_DECAY_STEP.to_string(),
+                        value: read_setting(app, proactive::keys::INTEREST_DECAY_STEP, "15.0"),
+                        description: "INTEREST_DECAY_STEP — 每次主动对话后兴趣度上限衰减量（默认 15，设为 0 则不衰减）".to_string(),
+                        setting_type: "text".to_string(),
+                    },
                 ],
             },
         );
@@ -652,6 +670,12 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
             Subcategory {
                 description: "主动对话时调用的 Vision LLM 视觉分析模型以及截图分析设置".to_string(),
                 settings: vec![
+                    ConfigSetting {
+                        key: proactive::keys::VD_FOLLOW_CHAT_MODEL.to_string(),
+                        value: read_setting(app, proactive::keys::VD_FOLLOW_CHAT_MODEL, "true"),
+                        description: "VD_FOLLOW_CHAT_MODEL — 视觉模型跟随当前对话模型（开启后将使用对话模型的 API Key / Base URL / 模型名）".to_string(),
+                        setting_type: "bool".to_string(),
+                    },
                     ConfigSetting {
                         key: proactive::keys::VD_API_KEY.to_string(),
                         value: read_setting(app, proactive::keys::VD_API_KEY, ""),

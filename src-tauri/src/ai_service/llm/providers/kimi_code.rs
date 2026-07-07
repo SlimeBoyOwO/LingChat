@@ -99,6 +99,17 @@ impl KimiCodeProvider {
             }
         }
 
+        // 转换工具定义为 Anthropic 原生格式
+        let anthropic_tools: Option<Vec<AnthropicTool>> = tools.map(|ts| {
+            ts.iter()
+                .map(|t| AnthropicTool {
+                    name: t.function.name.clone(),
+                    description: t.function.description.clone(),
+                    input_schema: t.function.parameters.clone(),
+                })
+                .collect()
+        });
+
         MessagesRequest {
             model: &self.model,
             max_tokens: 65536,
@@ -107,16 +118,17 @@ impl KimiCodeProvider {
             top_p: self.top_p,
             system: if system_text.is_empty() { None } else { Some(system_text) },
             messages: conversation,
-            tools,
+            tools: anthropic_tools,
             tool_choice,
             thinking: if self.enable_thinking {
                 Some(ThinkingConfig {
                     type_: "enabled".to_string(),
                 })
             } else {
-                Some(ThinkingConfig {
-                    type_: "disabled".to_string(),
-                })
+                // Kimi Code 后端（Fable）会拒绝显式的 thinking: {type: "disabled"}，
+                // 所以关闭思考链时直接省略该字段。参考 kimi-code 官方 anthropic provider:
+                // https://github.com/MoonshotAI/kimi-code/blob/main/packages/kosong/src/providers/anthropic.ts
+                None
             },
         }
     }
@@ -164,15 +176,32 @@ impl LlmProvider for KimiCodeProvider {
         tools: &[ToolDefinition],
         tool_choice: Option<&str>,
     ) -> Result<LlmResponseWithTools> {
-        let tool_choice_value = tool_choice.map(|tc| {
-            if tc == "auto" || tc == "none" || tc == "required" {
-                serde_json::Value::String(tc.to_string())
-            } else {
-                serde_json::from_str(tc).unwrap_or(serde_json::Value::String("auto".to_string()))
+        // Anthropic Messages API 的 tool_choice 格式与 OpenAI 不同：
+        // OpenAI: "auto" | "none" | "required" | {"type": "function", "function": {"name": "..."}}
+        // Anthropic: {"type": "auto"} | {"type": "any"} | {"type": "tool", "name": "..."}
+        let anthropic_tool_choice: Option<serde_json::Value> = tool_choice.and_then(|tc| {
+            match tc {
+                "auto" | "none" => Some(serde_json::json!({"type": "auto"})),
+                "required" => Some(serde_json::json!({"type": "any"})),
+                _ => {
+                    // 尝试解析 OpenAI 的 function 指定格式
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(tc) {
+                        if v.get("type").and_then(|t| t.as_str()) == Some("function") {
+                            if let Some(name) = v.get("function").and_then(|f| f.get("name")).and_then(|n| n.as_str()) {
+                                return Some(serde_json::json!({"type": "tool", "name": name}));
+                            }
+                        }
+                    }
+                    Some(serde_json::json!({"type": "auto"}))
+                }
             }
         });
 
-        let body = self.build_request(messages, false, Some(tools), tool_choice_value);
+        let body = self.build_request(messages, false, Some(tools), anthropic_tool_choice);
+        if let Ok(body_json) = serde_json::to_string(&body) {
+            tracing::debug!("[KimiCode] complete_with_tools request body: {}", body_json);
+        }
+
         let resp = http
             .post(self.endpoint())
             .headers(self.headers()?)
@@ -338,6 +367,14 @@ impl LlmProvider for KimiCodeProvider {
 // ============================================================
 
 #[derive(Serialize)]
+struct AnthropicTool {
+    name: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    description: String,
+    input_schema: serde_json::Value,
+}
+
+#[derive(Serialize)]
 struct MessagesRequest<'a> {
     model: &'a str,
     max_tokens: u32,
@@ -350,7 +387,7 @@ struct MessagesRequest<'a> {
     system: Option<String>,
     messages: Vec<AnthropicMessage<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tools: Option<&'a [ToolDefinition]>,
+    tools: Option<Vec<AnthropicTool>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]

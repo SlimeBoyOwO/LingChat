@@ -3,7 +3,7 @@ use crate::ai_service::proactive_system::config::ProactiveConfig;
 use crate::ai_service::proactive_system::types::{
     IntentType, PerceptionResult, UserScheduleSettings, UserState,
 };
-use crate::ai_service::screen_analyzer::{ScreenAnalyzer, ScreenAnalyzerConfig};
+use crate::ai_service::screen_analyzer::{ScreenAnalyzer, build_screen_analyzer_config};
 use chrono::Local;
 use rand::Rng;
 use tokio::sync::Mutex;
@@ -15,11 +15,7 @@ pub struct StrategyDispatcher {
 impl StrategyDispatcher {
     pub fn new(app_handle: &tauri::AppHandle) -> Self {
         let config = ProactiveConfig::load(app_handle);
-        let sa_config = ScreenAnalyzerConfig {
-            vd_api_key: config.vd_api_key.clone(),
-            vd_base_url: config.vd_base_url.clone(),
-            vd_model: config.vd_model.clone(),
-        };
+        let sa_config = build_screen_analyzer_config(app_handle, &config);
         Self {
             screen_analyzer: Mutex::new(ScreenAnalyzer::new(sa_config)),
         }
@@ -30,11 +26,7 @@ impl StrategyDispatcher {
         let config = ProactiveConfig::load(app_handle);
         // try_lock: update_config 不涉及 async，用同步锁即可
         if let Ok(mut sa) = self.screen_analyzer.try_lock() {
-            sa.update_config(ScreenAnalyzerConfig {
-                vd_api_key: config.vd_api_key,
-                vd_base_url: config.vd_base_url,
-                vd_model: config.vd_model,
-            });
+            sa.update_config(build_screen_analyzer_config(app_handle, &config));
         }
     }
 

@@ -64,7 +64,11 @@ impl ProactiveSystem {
         generation_lock: Arc<Mutex<()>>,
     ) -> Self {
         let config = ProactiveConfig::load(&app);
-        let interest_manager = InterestManager::new(config.max_proactive_times);
+        let interest_manager = InterestManager::new(
+            config.max_proactive_times,
+            config.interest_trigger_threshold,
+            config.interest_decay_step,
+        );
         let activity_monitor = UserActivityMonitor::new();
         let visual_monitor = VisualMonitor::new();
         let schedule_manager = ScheduleManager::new();
@@ -107,10 +111,17 @@ impl ProactiveSystem {
         let handle = tokio::spawn(async move {
             tracing::info!("[ProactiveSystem] Loop task started.");
 
-            // Loop runs every 30 seconds
-            let mut interval = tokio::time::interval(Duration::from_secs(30));
             loop {
-                interval.tick().await;
+                // 每次循环从配置读取最新轮询间隔，保存后无需重启即可生效
+                let interval_secs = {
+                    let sys = sys_clone.lock().await;
+                    if !sys.is_running {
+                        break;
+                    }
+                    sys.config.proactive_interval_secs.max(1)
+                };
+
+                tokio::time::sleep(Duration::from_secs(interval_secs)).await;
 
                 // Grab locks safely to avoid blocking startup or chat interaction
                 let (enabled, is_script_active) = {
@@ -158,8 +169,11 @@ impl ProactiveSystem {
     pub async fn reload(&mut self) {
         self.config = ProactiveConfig::load(&self.app);
         self.strategy_dispatcher.update_config(&self.app);
-        self.interest_manager
-            .update_from_config(self.config.max_proactive_times);
+        self.interest_manager.update_from_config(
+            self.config.max_proactive_times,
+            self.config.interest_trigger_threshold,
+            self.config.interest_decay_step,
+        );
         self.load_schedule_settings().await;
     }
 
@@ -351,6 +365,9 @@ impl ProactiveSystem {
             sys.pending_intents.len(),
         );
 
+        // 跨天时重置每日计数与上限，避免前一天用光后永远不再触发
+        sys.interest_manager.check_daily_reset();
+
         // ─── 0. 优先清暂存队列 ───
         if sys.try_flush_pending_intent().await? {
             return Ok(());
@@ -393,9 +410,7 @@ impl ProactiveSystem {
         }
 
         // ─── 4. 兴趣累积 ───
-        sys.interest_manager.update_interest();
-        sys.interest_manager
-            .set_status_mod(perception.interest_modifier);
+        sys.interest_manager.update_interest(perception.interest_modifier);
 
         // ─── 5. 触发检查 ───
         if !sys.interest_manager.should_trigger_talk() {
