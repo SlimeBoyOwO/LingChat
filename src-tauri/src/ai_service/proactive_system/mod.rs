@@ -108,7 +108,7 @@ impl ProactiveSystem {
             tracing::info!("[ProactiveSystem] Loop task started.");
 
             // Loop runs every 30 seconds
-            let mut interval = tokio::time::interval(Duration::from_secs(5));
+            let mut interval = tokio::time::interval(Duration::from_secs(30));
             loop {
                 interval.tick().await;
 
@@ -421,7 +421,6 @@ impl ProactiveSystem {
                 .get_proactive_prompt(&gs, &settings_snap, &perception, &sys.config)
                 .await
         };
-
         let Some((raw_prompt, intent_type)) = prompt_result else {
             events::emit_thinking(&sys.app, false);
             return Ok(());
@@ -451,6 +450,7 @@ impl ProactiveSystem {
                 intent_type,
                 triggered_at: std::time::Instant::now(),
             });
+            events::emit_thinking(&sys.app, false);
         }
 
         Ok(())
