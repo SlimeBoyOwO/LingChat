@@ -5,6 +5,10 @@ use tauri_plugin_store::StoreExt;
 pub mod keys {
     pub const ENABLE_PROACTIVE_SYSTEM: &str = "ENABLE_PROACTIVE_SYSTEM";
     pub const MAX_PROACTIVE_TIMES: &str = "MAX_PROACTIVE_TIMES";
+    pub const PROACTIVE_INTERVAL_SECS: &str = "PROACTIVE_INTERVAL_SECS";
+    pub const INTEREST_TRIGGER_THRESHOLD: &str = "INTEREST_TRIGGER_THRESHOLD";
+    pub const INTEREST_DECAY_STEP: &str = "INTEREST_DECAY_STEP";
+    pub const VD_FOLLOW_CHAT_MODEL: &str = "VD_FOLLOW_CHAT_MODEL";
     pub const VD_API_KEY: &str = "VD_API_KEY";
     pub const VD_BASE_URL: &str = "VD_BASE_URL";
     pub const VD_MODEL: &str = "VD_MODEL";
@@ -22,6 +26,10 @@ pub mod keys {
 pub struct ProactiveConfig {
     pub enable_proactive_system: bool,
     pub max_proactive_times: i32,
+    pub proactive_interval_secs: u64,
+    pub interest_trigger_threshold: f64,
+    pub interest_decay_step: f64,
+    pub vd_follow_chat_model: bool,
     pub vd_api_key: String,
     pub vd_base_url: String,
     pub vd_model: String,
@@ -89,6 +97,10 @@ impl ProactiveConfig {
         Self {
             enable_proactive_system: get_bool(keys::ENABLE_PROACTIVE_SYSTEM, false),
             max_proactive_times: get_i32(keys::MAX_PROACTIVE_TIMES, 3),
+            proactive_interval_secs: get_i32(keys::PROACTIVE_INTERVAL_SECS, 10).max(1) as u64,
+            interest_trigger_threshold: get_f64(keys::INTEREST_TRIGGER_THRESHOLD, 30.0).max(0.0),
+            interest_decay_step: get_f64(keys::INTEREST_DECAY_STEP, 15.0).max(0.0),
+            vd_follow_chat_model: get_bool(keys::VD_FOLLOW_CHAT_MODEL, true),
             vd_api_key: get_string(keys::VD_API_KEY, ""),
             vd_base_url: get_string(
                 keys::VD_BASE_URL,

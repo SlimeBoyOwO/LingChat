@@ -160,6 +160,35 @@ pub async fn send_chat_message(
     Ok(())
 }
 
+#[tauri::command]
+pub async fn test_screen_analyzer(app: AppHandle, prompt: Option<String>) -> Result<String, String> {
+    let state = app.state::<AppState>();
+
+    let default_prompt = "你是一个图像信息转述者，请用200字描述你看到的桌面主要内容。".to_string();
+    let prompt = prompt.unwrap_or(default_prompt);
+
+    let mut sa = state.screen_analyzer.lock().await;
+    match sa.analyze_screen(&prompt).await {
+        Some(result) => {
+            let report = sa.get_report();
+            tracing::info!(
+                "[TestScreenAnalyzer] success in {:.2}s, input_tokens={:?}, output_tokens={:?}",
+                report.response_time_secs,
+                report.input_tokens,
+                report.output_tokens
+            );
+            Ok(result)
+        }
+        None => {
+            let report = sa.get_report();
+            Err(format!(
+                "视觉理解测试失败。可能原因：API Key 为空、模型不支持视觉、网络超时或 Base URL 错误。耗时 {:.2}s",
+                report.response_time_secs
+            ))
+        }
+    }
+}
+
 /// 处理以 "/" 开头的调试指令（仅在后端日志输出，不发往前端）。
 async fn handle_debug_command(app: &AppHandle, text: &str) -> Result<(), String> {
     match text {
