@@ -4,11 +4,22 @@ use std::collections::HashSet;
 
 use anyhow::{anyhow, Result};
 use sea_orm::*;
+use tauri::AppHandle;
 
+use crate::ai_service::message_system::events;
 use crate::db::entities::line;
 
+/// 清理统计信息。
+#[derive(Debug, Clone, Default)]
+pub struct CleanupStats {
+    pub deleted_count: u64,
+}
+
 /// 查询数据库中所有被引用的语音文件名，删除 voice/ 目录下未被引用的文件。
-pub async fn cleanup_orphan_voice_files(db: &DatabaseConnection) -> Result<()> {
+pub async fn cleanup_orphan_voice_files(
+    db: &DatabaseConnection,
+    app: &AppHandle,
+) -> Result<CleanupStats> {
     // 1. 查询 line 表中所有非空 audio_file 值
     let referenced: HashSet<String> = line::Entity::find()
         .select_only()
@@ -28,7 +39,8 @@ pub async fn cleanup_orphan_voice_files(db: &DatabaseConnection) -> Result<()> {
     let voice_dir = crate::api::voice_dir();
     if !voice_dir.exists() {
         tracing::info!("语音目录不存在，跳过清理");
-        return Ok(());
+        events::emit_tts_cleanup(app, 0, 0, 0);
+        return Ok(CleanupStats::default());
     }
 
     // 3. 遍历 voice/ 目录，删除不在引用集合中的文件
@@ -70,5 +82,40 @@ pub async fn cleanup_orphan_voice_files(db: &DatabaseConnection) -> Result<()> {
         tracing::info!("没有发现孤立语音文件");
     }
 
-    Ok(())
+    // 4. 向前端通知清理结果与剩余孤立文件统计
+    let (orphan_files, orphan_size) = count_orphan_voice_files(&referenced).await?;
+    events::emit_tts_cleanup(app, deleted_count, orphan_files, orphan_size);
+
+    Ok(CleanupStats { deleted_count })
+}
+
+async fn count_orphan_voice_files(referenced: &HashSet<String>) -> Result<(usize, u64)> {
+    let voice_dir = crate::api::voice_dir();
+    if !voice_dir.exists() {
+        return Ok((0, 0));
+    }
+    let mut read_dir = tokio::fs::read_dir(&voice_dir)
+        .await
+        .map_err(|e| anyhow!("无法读取语音目录 {:?}: {e}", voice_dir))?;
+    let mut files = 0usize;
+    let mut size = 0u64;
+
+    while let Some(entry) = read_dir
+        .next_entry()
+        .await
+        .map_err(|e| anyhow!("遍历语音目录时出错: {e}"))?
+    {
+        if !entry.file_type().await.map_err(|e| anyhow!("获取文件类型失败: {e}"))?.is_file() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !referenced.contains(&name) {
+            files += 1;
+            if let Ok(meta) = entry.metadata().await {
+                size += meta.len();
+            }
+        }
+    }
+
+    Ok((files, size))
 }

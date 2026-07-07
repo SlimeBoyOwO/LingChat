@@ -21,6 +21,15 @@ export function initializeTauriEventListeners() {
     eventQueue.addEvent(asEvent(event.payload, { type: 'thinking', duration: 0 }))
   })
 
+  listen('ai:thinking_progress', (event) => {
+    const payload = event.payload as { thinkingLength?: number }
+    console.log('[Tauri] ai:thinking_progress', payload)
+    const gameStore = useGameStore()
+    if (typeof payload.thinkingLength === 'number') {
+      gameStore.thinkingLength = payload.thinkingLength
+    }
+  })
+
   listen('ai:error', (event) => {
     const p = event.payload as Record<string, unknown>
     console.log('[Tauri] ai:error', p)
@@ -35,6 +44,28 @@ export function initializeTauriEventListeners() {
   listen('status:reset', (event) => {
     console.log('[Tauri] status:reset', event.payload)
     eventQueue.addEvent(asEvent(event.payload, { type: 'status_reset', duration: 0 }))
+  })
+
+  listen('tts:cleanup', (event) => {
+    const payload = event.payload as {
+      deleted?: number
+      orphanFiles?: number
+      orphanSize?: number
+    }
+    console.log('[Tauri] tts:cleanup', payload)
+    try {
+      localStorage.setItem(
+        'lingchat:last_tts_cleanup',
+        JSON.stringify({
+          deleted: payload.deleted ?? 0,
+          orphanFiles: payload.orphanFiles ?? 0,
+          orphanSize: payload.orphanSize ?? 0,
+          timestamp: Date.now(),
+        }),
+      )
+    } catch (e) {
+      console.warn('[Tauri] 保存 tts:cleanup 状态到 localStorage 失败:', e)
+    }
   })
 
   // === Adventure events ===
@@ -157,5 +188,5 @@ export function initializeTauriEventListeners() {
     gameStore.getOrCreateGameRole(payload.roleId)
   })
 
-  console.log('[Tauri] Event listeners initialized (ai + adventure + auto-save + 13 script events + character:switch)')
+  console.log('[Tauri] Event listeners initialized (ai + ai:thinking_progress + tts:cleanup + adventure + auto-save + 13 script events + character:switch)')
 }

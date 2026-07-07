@@ -12,6 +12,7 @@ use super::adapters::aivis::AivisAdapter;
 use super::adapters::bv2::Bv2Adapter;
 use super::adapters::gsv::GsvAdapter;
 use super::adapters::indextts::IndexTtsAdapter;
+use super::adapters::opentts::OpenTtsAdapter;
 use super::adapters::sbv2::Sbv2Adapter;
 use super::adapters::sbv2api::Sbv2ApiAdapter;
 use super::adapters::vits::VitsAdapter;
@@ -45,6 +46,7 @@ pub struct TtsProvider {
     pub gsv: Option<Arc<GsvAdapter>>,
     pub aivis: Option<Arc<AivisAdapter>>,
     pub indextts: Option<Arc<IndexTtsAdapter>>,
+    pub opentts: Option<Arc<OpenTtsAdapter>>,
 }
 
 impl Default for TtsProvider {
@@ -59,6 +61,7 @@ impl Default for TtsProvider {
             gsv: None,
             aivis: None,
             indextts: None,
+            opentts: None,
         }
     }
 }
@@ -75,6 +78,7 @@ impl std::fmt::Debug for TtsProvider {
             .field("gsv", &self.gsv.is_some())
             .field("aivis", &self.aivis.is_some())
             .field("indextts", &self.indextts.is_some())
+            .field("opentts", &self.opentts.is_some())
             .finish()
     }
 }
@@ -132,6 +136,10 @@ impl TtsProvider {
                 .indextts
                 .clone()
                 .ok_or_else(|| anyhow!("IndexTTS2 适配器未初始化"))?,
+            "opentts" => self
+                .opentts
+                .clone()
+                .ok_or_else(|| anyhow!("OpenTTS 适配器未初始化"))?,
             "" => {
                 // 旧版：未指定时优先 sbv2
                 if let Some(a) = self.sbv2.clone() {

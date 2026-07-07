@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 
 use super::provider::LlmProvider;
-use super::providers::{GeminiProvider, OpenAiProvider};
+use super::providers::{GeminiProvider, KimiCodeProvider, OpenAiProvider};
 use super::{LlmClient, LlmConfig};
 
 /// 根据 `cfg.provider` 创建对应的 LLM 客户端。
@@ -12,6 +12,7 @@ pub fn create_llm_client(cfg: LlmConfig) -> Result<LlmClient> {
         // LM Studio 走 OpenAI 兼容协议，复用 OpenAiProvider
         "" | "openai" | "webllm" | "lmstudio" => Box::new(OpenAiProvider::from_config(&cfg)?),
         "gemini" => Box::new(GeminiProvider::from_config(&cfg)?),
+        "kimicode" => Box::new(KimiCodeProvider::from_config(&cfg)?),
         other => return Err(anyhow!("不支持的 LLM 提供商: {other}")),
     };
     LlmClient::new(cfg, provider)
