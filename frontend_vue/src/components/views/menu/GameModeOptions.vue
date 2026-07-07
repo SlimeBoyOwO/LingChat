@@ -44,6 +44,4 @@ const startStoryMode = async () => {
 }
 </script>
 
-<style scoped>
-@import './menu-item.css';
-</style>
+<style scoped></style>
