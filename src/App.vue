@@ -11,6 +11,8 @@
 
 <script setup>
 import { onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import CursorEffects from './components/effects/CursorEffects.vue'
 import Notification from './components/ui/Notification.vue'
 import AchievementToast from './components/ui/AchievementToast.vue'
@@ -25,18 +27,23 @@ useSedentaryReminder()
 
 // ─── 键盘处理 ────────────────────────────────────────────────
 
-const handleKeyDown = (event) => {
+const route = useRoute()
+
+const handleKeyDown = async (event) => {
   if (event.key === 'F11') {
     event.preventDefault()
-    if (
-      window.pywebview &&
-      window.pywebview.api &&
-      typeof window.pywebview.api.toggle_fullscreen === 'function'
-    ) {
-      // 调用从 Python 暴露的函数
-      window.pywebview.api.toggle_fullscreen()
-    } else {
-      console.error('全屏API不可用。')
+
+    // Pet 路由时不允许全屏
+    if (route.path === '/pet') {
+      return
+    }
+
+    try {
+      const appWindow = getCurrentWindow()
+      const isFullscreen = await appWindow.isFullscreen()
+      await appWindow.setFullscreen(!isFullscreen)
+    } catch (e) {
+      console.error('全屏切换失败:', e)
     }
   }
 }
@@ -52,10 +59,8 @@ onMounted(() => {
   // 成就系统启动WebSocket监听
   achievementStore.listenForUnlocks()
 
-  // 等待 pywebview API 准备就绪
-  window.addEventListener('pywebviewready', () => {
-    window.addEventListener('keydown', handleKeyDown)
-  })
+  // 注册 F11 全屏快捷键
+  window.addEventListener('keydown', handleKeyDown)
 })
 
 onUnmounted(() => {

@@ -617,7 +617,13 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
             format!("{}看到{}过来了", ai_name, player_name)
         };
 
-        let prompt = PromptRole::Narrator.build_prompt(&greeting);
+        let time_info = chrono::Local::now()
+            .format("（现在是%_m月%_d日，%H:%M）")
+            .to_string()
+            .replace(' ', "");
+        let greeting_with_time = format!("{}，{}", greeting, time_info);
+
+        let prompt = PromptRole::Narrator.build_prompt(&greeting_with_time);
         gs.add_line(
             &state.db,
             LineBase {

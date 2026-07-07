@@ -393,7 +393,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
         feat_subs.insert(
             "对话增强".to_string(),
             Subcategory {
-                description: "对应 ENV: USE_TIME_SENSE / ENABLE_EMOTION_CLASSIFIER".to_string(),
+                description: "这里可以设置是否启用时间感知和情绪分类器功能".to_string(),
                 settings: vec![
                     ConfigSetting {
                         key: keys::ENABLE_TIME_SENSE.to_string(),
