@@ -12,19 +12,33 @@ pub struct InterestManager {
 
 impl InterestManager {
     pub fn new(max_proactive_count: i32) -> Self {
+        // 计算 decay_step: 50.0 / max_proactive_count
+        // 注意：需要处理 max_proactive_count 为 0 的情况，防止除以零导致 panic 或产生 NaN/Inf
+        let decay_step = if max_proactive_count > 0 {
+            50.0 / max_proactive_count as f64
+        } else {
+            0.0 // 如果最大次数为0，则不衰减
+        };
+
         Self {
             interest: 0.0,
             max_interest_cap: 100.0,
             initial_max_cap: 100.0,
             status_mod: 0,
             max_proactive_count,
-            decay_step: 20.0,
+            decay_step,
             proactive_times: 0,
         }
     }
 
     pub fn update_from_config(&mut self, max_proactive_count: i32) {
         self.max_proactive_count = max_proactive_count;
+        // 当配置更新时，同步更新 decay_step
+        self.decay_step = if max_proactive_count > 0 {
+            50.0 / max_proactive_count as f64
+        } else {
+            0.0
+        };
     }
 
     pub fn update_interest(&mut self) {
