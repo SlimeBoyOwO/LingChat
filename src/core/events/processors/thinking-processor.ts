@@ -19,6 +19,7 @@ export default class ThinkingProcessor implements IEventProcessor {
       gameStore.currentStatus = 'input'
       gameStore.currentLine = ''
       gameStore.thinkingLength = 0
+      gameStore.isProactiveThinking = false
     }
   }
 }

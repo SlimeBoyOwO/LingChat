@@ -30,6 +30,16 @@ export function initializeTauriEventListeners() {
     }
   })
 
+  listen('ai:proactive_thinking', (event) => {
+    const payload = event.payload as { isThinking?: boolean }
+    console.log('[Tauri] ai:proactive_thinking', payload)
+    const gameStore = useGameStore()
+    gameStore.isProactiveThinking = Boolean(payload.isThinking)
+    if (!payload.isThinking) {
+      gameStore.thinkingLength = 0
+    }
+  })
+
   listen('ai:error', (event) => {
     const p = event.payload as Record<string, unknown>
     console.log('[Tauri] ai:error', p)

@@ -54,6 +54,14 @@ pub fn emit_thinking_progress(app: &AppHandle, thinking_length: usize) {
     }
 }
 
+/// 通知前端主动回复的思考状态切换。
+pub fn emit_proactive_thinking(app: &AppHandle, is_thinking: bool) {
+    let payload = super::responses::ProactiveThinkingResponse::new(is_thinking);
+    if let Err(e) = app.emit(super::responses::event_names::AI_PROACTIVE_THINKING, &payload) {
+        tracing::warn!("emit proactive_thinking 失败: {e}");
+    }
+}
+
 /// 通知前端 TTS 孤立语音文件已清理。
 pub fn emit_tts_cleanup(app: &AppHandle, deleted: u64, orphan_files: usize, orphan_size: u64) {
     let payload = super::responses::TtsCleanupResponse::new(deleted, orphan_files, orphan_size);
