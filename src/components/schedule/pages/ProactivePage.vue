@@ -16,8 +16,18 @@
       >
         保存
       </button>
+      <button
+        class="px-5 py-2.5 bg-[#6366f1] text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-colors duration-200 hover:bg-[#4f46e5] disabled:opacity-50 disabled:cursor-not-allowed"
+        :disabled="testStatus.loading"
+        @click="handleTestProactive"
+      >
+        {{ testStatus.loading ? '测试中...' : '测试主动消息' }}
+      </button>
       <p :style="{ color: saveStatus.color }" class="text-sm">
         {{ saveStatus.message }}
+      </p>
+      <p :style="{ color: testStatus.color }" class="text-sm">
+        {{ testStatus.message }}
       </p>
     </div>
   </div>
@@ -27,7 +37,7 @@
 import { ref, onMounted, reactive, computed } from 'vue'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { getEnvConfigByKey, saveEnvConfigSettings } from '@/api/services/config'
-import { reloadProactiveSystem } from '@/api/services/schedule'
+import { reloadProactiveSystem, testProactiveMessage } from '@/api/services/schedule'
 import type { ConfigItem } from '@/api/services/config'
 import SettingItem from '@/components/base/items/SettingItem.vue'
 const uiStore = useUIStore()
@@ -45,6 +55,12 @@ const SUCCESS_COLOR = '#4ade80'
 const saveStatus = reactive({
   message: '',
   color: SUCCESS_COLOR,
+})
+
+const testStatus = reactive({
+  message: '',
+  color: SUCCESS_COLOR,
+  loading: false,
 })
 
 const saveSettings = async () => {
@@ -102,6 +118,25 @@ const loadConfig = async () => {
 
   for (const key of configKeys) {
     settings.value[key] = await getEnvConfigByKey(key)
+  }
+}
+
+const handleTestProactive = async () => {
+  testStatus.loading = true
+  testStatus.message = ''
+
+  try {
+    const result = await testProactiveMessage()
+    testStatus.message = result
+    testStatus.color = SUCCESS_COLOR
+  } catch (error: any) {
+    testStatus.message = `测试失败: ${error.message || error}`
+    testStatus.color = '#ef4444'
+  } finally {
+    testStatus.loading = false
+    setTimeout(() => {
+      testStatus.message = ''
+    }, 6000)
   }
 }
 

@@ -69,6 +69,22 @@ pub async fn save_schedules(app: AppHandle, data: UserScheduleSettings) -> Resul
 }
 
 #[tauri::command]
+pub async fn test_proactive_message(app: AppHandle) -> Result<String, String> {
+    let state = app.state::<AppState>();
+
+    if let Some(ps) = &state.proactive_system {
+        let mut sys = ps.lock().await;
+        match sys.test_screen_proactive().await {
+            Ok(Some(prompt)) => Ok(format!("已触发主动搭话: {}", prompt)),
+            Ok(None) => Ok("屏幕分析返回 [PASS]，未触发搭话".to_string()),
+            Err(e) => Err(e),
+        }
+    } else {
+        Err("主动对话系统未初始化".to_string())
+    }
+}
+
+#[tauri::command]
 pub async fn reload_proactive_system(app: AppHandle) -> Result<String, String> {
     let state = app.state::<AppState>();
 

@@ -178,6 +178,29 @@ impl ProactiveSystem {
         self.load_schedule_settings().await;
     }
 
+    /// 手动触发一次基于屏幕的主动搭话测试，直接截屏 → VLM → 投递到前端。
+    /// 跳过兴趣累积、投放闸门和反重复检测，用于在设置页快速验证视觉主动回复链路。
+    pub async fn test_screen_proactive(&mut self,
+    ) -> Result<Option<String>, String> {
+        let (raw_prompt, _intent_type) = {
+            let svc = self.ai_service.lock().await;
+            let gs = svc.game_status.lock().await;
+            self.strategy_dispatcher
+                .get_screen_prompt(&gs)
+                .await
+                .ok_or_else(|| {
+                    "屏幕分析未返回有效内容（可能返回了 [PASS]、API Key 为空、网络超时或模型不支持视觉）".to_string()
+                })?
+        };
+
+        let formatted = crate::utils::prompt::PromptRole::System.build_prompt(&raw_prompt);
+        self.deliver(formatted)
+            .await
+            .map_err(|e| format!("投递主动消息失败: {}", e))?;
+
+        Ok(Some(raw_prompt))
+    }
+
     /// 重新载入日程设置文件 schedules.json。
     pub async fn load_schedule_settings(&mut self) {
         let schedules_path = crate::api::data_dir()
