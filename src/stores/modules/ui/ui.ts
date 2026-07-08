@@ -31,6 +31,7 @@ interface UIState {
   showCharacterThinkLine: string
   showSettings: boolean
   currentSettingsTab: string
+  advanceInitialTab: 'menu' | 'llm' | 'other'
 
   currentBackgroundTransition: number
   currentPresentPic: string
@@ -92,6 +93,7 @@ export const useUIStore = defineStore('ui', {
     showCharacterThinkLine: 'Ling Ling Thinking...',
     showSettings: false,
     currentSettingsTab: 'text',
+    advanceInitialTab: 'menu',
     currentBackgroundTransition: 300,
     currentPresentPic: '',
     currentPresentPicScale: 1,
@@ -197,6 +199,9 @@ export const useUIStore = defineStore('ui', {
     },
     setSettingsTab(tab: string) {
       this.currentSettingsTab = tab
+    },
+    setAdvanceInitialTab(tab: 'menu' | 'llm' | 'other') {
+      this.advanceInitialTab = tab
     },
 
     // ========== Notification Actions ==========
