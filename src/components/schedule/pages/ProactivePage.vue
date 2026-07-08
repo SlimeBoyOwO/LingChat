@@ -103,17 +103,6 @@ const loadConfig = async () => {
     'INTEREST_TRIGGER_THRESHOLD',
     'INTEREST_DECAY_STEP',
     'VD_FOLLOW_CHAT_MODEL',
-    'VD_API_KEY',
-    'VD_BASE_URL',
-    'VD_MODEL',
-    'ENABLE_VISUAL_PRECEPTION',
-    'SCREEN_WEIGHT',
-    'ENABLE_TOPIC_CREATER',
-    'TOPIC_WEIGHT',
-    'ENABLE_TODO_PRECEPTION',
-    'TODO_WEIGHT',
-    'ENABLE_SCHEDULE_REMINDER',
-    'ENABLE_IMPORTANT_DAY_REMINDER',
   ]
 
   for (const key of configKeys) {
