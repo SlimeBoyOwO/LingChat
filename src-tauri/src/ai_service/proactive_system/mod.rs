@@ -189,10 +189,10 @@ impl ProactiveSystem {
             let svc = self.ai_service.lock().await;
             let gs = svc.game_status.lock().await;
             self.strategy_dispatcher
-                .get_screen_prompt(&gs)
+                .get_screen_prompt_for_test(&gs)
                 .await
                 .ok_or_else(|| {
-                    "屏幕分析未返回有效内容（可能返回了 [PASS]、API Key 为空、网络超时或模型不支持视觉）".to_string()
+                    "屏幕分析未返回有效内容（API Key 为空、网络超时或模型不支持视觉）".to_string()
                 })?
         };
 
