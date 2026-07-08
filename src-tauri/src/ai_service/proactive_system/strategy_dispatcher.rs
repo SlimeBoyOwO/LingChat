@@ -227,6 +227,46 @@ impl StrategyDispatcher {
         ))
     }
 
+    pub(crate) async fn get_screen_prompt_for_test(
+        &self,
+        game_status: &GameStatus,
+    ) -> Option<(String, IntentType)> {
+        let user_name = game_status.player.user_name.clone();
+        let ai_name = game_status
+            .current_role_id
+            .and_then(|rid| game_status.role_manager.get_loaded(rid))
+            .and_then(|role| role.display_name.clone())
+            .unwrap_or_else(|| "你".to_string());
+
+        let context = ScreenContext {
+            ai_name: Some(ai_name.clone()),
+            user_name: Some(user_name.clone()),
+            recent_chat_summary: None,
+        };
+
+        // 测试专用：强制评论屏幕，不允许 [PASS]。
+        let test_prompt = "你刚刚看了一眼主人的电脑屏幕。请用一句简短自然的话（不超过30字）评论屏幕上最有趣或最新的内容，像不经意间看到的那样。不要解释，直接说出这句话。";
+
+        let reply = self
+            .screen_analyzer
+            .lock()
+            .await
+            .analyze_screen(test_prompt, Some(&context))
+            .await?;
+
+        let cleaned = reply
+            .trim_start_matches("[PASS]")
+            .trim_start_matches(":")
+            .trim()
+            .to_string();
+
+        if cleaned.is_empty() {
+            return None;
+        }
+
+        Some((format!("{{ {}}}", cleaned), IntentType::Screen))
+    }
+
     pub(crate) async fn get_screen_prompt(
         &self,
         game_status: &GameStatus,
