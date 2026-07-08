@@ -227,7 +227,7 @@ impl StrategyDispatcher {
         ))
     }
 
-    async fn get_screen_prompt(
+    pub(crate) async fn get_screen_prompt(
         &self,
         game_status: &GameStatus,
     ) -> Option<(String, IntentType)> {
