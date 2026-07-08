@@ -141,8 +141,6 @@ const saveSettings = async () => {
 
 const loadConfig = async () => {
   const configKeys = [
-    'ENABLE_PROACTIVE_SYSTEM',
-    'MAX_PROACTIVE_TIMES',
     'VD_API_KEY',
     'VD_BASE_URL',
     'VD_MODEL',
