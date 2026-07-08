@@ -18,6 +18,7 @@ export default class StatusResetProcessor implements IEventProcessor {
       (event.status as 'input' | 'thinking' | 'responding' | 'presenting') || 'input'
     gameStore.currentLine = ''
     gameStore.thinkingLength = 0
+    gameStore.isProactiveThinking = false
     console.log('游戏状态已重置为:', event.status || 'input')
   }
 }

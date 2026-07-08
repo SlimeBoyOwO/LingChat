@@ -184,30 +184,42 @@ impl ProactiveSystem {
         &mut self,
     ) -> Result<Option<String>, String> {
         tracing::info!("[ProactiveSystem] Test proactive message triggered.");
+        events::emit_thinking(&self.app, true);
+        events::emit_proactive_thinking(&self.app, true);
 
-        let (raw_prompt, _intent_type) = {
-            let svc = self.ai_service.lock().await;
-            let gs = svc.game_status.lock().await;
-            self.strategy_dispatcher
-                .get_screen_prompt_for_test(&gs)
+        let prompt_result = async {
+            let (raw_prompt, _intent_type) = {
+                let svc = self.ai_service.lock().await;
+                let gs = svc.game_status.lock().await;
+                self.strategy_dispatcher
+                    .get_screen_prompt_for_test(&gs)
+                    .await
+                    .ok_or_else(|| {
+                        "屏幕分析未返回有效内容（API Key 为空、网络超时或模型不支持视觉）".to_string()
+                    })?
+            };
+
+            tracing::info!(
+                "[ProactiveSystem] Test screen prompt generated: {}",
+                raw_prompt
+            );
+
+            let formatted = crate::utils::prompt::PromptRole::System.build_prompt(&raw_prompt);
+            self.deliver(formatted)
                 .await
-                .ok_or_else(|| {
-                    "屏幕分析未返回有效内容（API Key 为空、网络超时或模型不支持视觉）".to_string()
-                })?
-        };
+                .map_err(|e| format!("投递主动消息失败: {}", e))?;
 
-        tracing::info!(
-            "[ProactiveSystem] Test screen prompt generated: {}",
-            raw_prompt
-        );
+            Ok::<String, String>(raw_prompt)
+        }
+        .await;
 
-        let formatted = crate::utils::prompt::PromptRole::System.build_prompt(&raw_prompt);
-        self.deliver(formatted)
-            .await
-            .map_err(|e| format!("投递主动消息失败: {}", e))?;
+        if let Err(ref e) = prompt_result {
+            tracing::error!("[ProactiveSystem] Test proactive message failed: {}", e);
+            events::emit_thinking(&self.app, false);
+            events::emit_proactive_thinking(&self.app, false);
+        }
 
-        tracing::info!("[ProactiveSystem] Test proactive message delivered.");
-        Ok(Some(raw_prompt))
+        prompt_result.map(Some)
     }
 
     /// 重新载入日程设置文件 schedules.json。
@@ -275,6 +287,7 @@ impl ProactiveSystem {
 
         let _lock = self.generation_lock.lock().await;
         events::emit_thinking(&self.app, true);
+        events::emit_proactive_thinking(&self.app, true);
 
         let generator = {
             let game_status = {
@@ -313,6 +326,7 @@ impl ProactiveSystem {
         }
 
         let _ = generator.process_message(None).await;
+        events::emit_proactive_thinking(&self.app, false);
         Ok(())
     }
 
