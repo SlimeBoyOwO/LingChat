@@ -2,6 +2,7 @@ pub mod activity_monitor;
 pub mod config;
 pub mod delivery_evaluator;
 pub mod interest_manager;
+pub mod proactive_history;
 pub mod schedule_manager;
 pub mod strategy_dispatcher;
 pub mod types;

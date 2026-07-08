@@ -25,6 +25,9 @@ pub struct ScreenAnalyzerConfig {
     pub vd_api_key: String,
     pub vd_base_url: String,
     pub vd_model: String,
+    /// 提供者协议类型，例如 `"openai"` 或 `"kimicode"`。
+    /// 用于决定使用 OpenAI Chat Completions 还是 Anthropic Messages API。
+    pub provider: String,
 }
 
 impl Default for ScreenAnalyzerConfig {
@@ -33,8 +36,17 @@ impl Default for ScreenAnalyzerConfig {
             vd_api_key: String::new(),
             vd_base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1".to_string(),
             vd_model: "qwen3.5-plus".to_string(),
+            provider: "openai".to_string(),
         }
     }
+}
+
+/// 屏幕分析时的角色/对话上下文，让 VLM 以角色视角描述屏幕。
+#[derive(Clone, Debug, Default)]
+pub struct ScreenContext {
+    pub ai_name: Option<String>,
+    pub user_name: Option<String>,
+    pub recent_chat_summary: Option<String>,
 }
 
 /// 图片压缩目标参数。
@@ -97,9 +109,34 @@ impl ScreenAnalyzer {
         &self.last_report
     }
 
+    /// 主动搭话专用：让 VLM 直接看图决定"说不说"。
+    /// 返回 `[PASS]` 表示不说话；否则返回要说出的话语。
+    pub async fn analyze_screen_for_proactive(
+        &mut self,
+        context: Option<&ScreenContext>,
+    ) -> Option<String> {
+        let prompt = "你刚刚偷偷看了一眼主人的电脑屏幕。请根据屏幕内容和当前窗口标题，判断是否要主动和主人搭话。\
+规则：\
+1. 如果屏幕上有有趣、新鲜或值得讨论的内容，可以说一句简短自然的话；\
+2. 如果内容与你们之前的对话或主人的兴趣相关，更应该提起；\
+3. 如果内容无聊、不适合讨论，或者主人看起来在忙，不要说话；\
+4. 不要描述聊天窗口或角色立绘区域，只关注桌面上的其他内容；\
+5. 回复要简短自然，像不经意间看到的。\
+\
+回复格式：\
+- 如果要搭话，直接说出你想说的话（不超过50字）；\
+- 如果不想搭话，只回复\"[PASS]\"，不要解释。";
+
+        self.analyze_screen(prompt, context).await
+    }
+
     /// 核心方法：截屏 → 发送给 VLM 分析 → 返回文本描述。
     /// 这是策略分发器和主动对话系统的主要入口。
-    pub async fn analyze_screen(&mut self, prompt: &str) -> Option<String> {
+    pub async fn analyze_screen(
+        &mut self,
+        prompt: &str,
+        context: Option<&ScreenContext>,
+    ) -> Option<String> {
         let api_key = &self.config.vd_api_key;
         if api_key.is_empty() {
             tracing::warn!("[ScreenAnalyzer] VD_API_KEY is empty, skipping screenshot analysis.");
@@ -113,7 +150,7 @@ impl ScreenAnalyzer {
         );
 
         let window_title = get_active_window_title();
-        let enriched_prompt = build_screen_prompt(prompt, window_title.as_deref());
+        let enriched_prompt = build_screen_prompt(prompt, window_title.as_deref(), context);
 
         let (base64, mime) = encode_image_base64(&jpeg_bytes, "jpeg");
         self.call_vlm(&enriched_prompt, &base64, &mime).await
@@ -164,6 +201,7 @@ impl ScreenAnalyzer {
     }
 
     /// 调用视觉语言模型 API。
+    /// 根据 provider 字段自动选择 OpenAI Chat Completions 或 Anthropic Messages API。
     async fn call_vlm(
         &mut self,
         prompt: &str,
@@ -179,6 +217,52 @@ impl ScreenAnalyzer {
             return None;
         }
 
+        let provider = self.config.provider.to_lowercase();
+        let is_anthropic = provider == "kimicode" || provider == "anthropic";
+        let model = &self.config.vd_model;
+
+        tracing::info!(
+            "[ScreenAnalyzer] Sending image to VLM ({}, provider={}) for analysis...",
+            model,
+            self.config.provider
+        );
+
+        let start = Instant::now();
+
+        let result = if is_anthropic {
+            self.call_vlm_anthropic(prompt, base64_image, mime_type).await
+        } else {
+            self.call_vlm_openai(prompt, base64_image, mime_type).await
+        };
+
+        let elapsed = start.elapsed().as_secs_f64();
+
+        match result {
+            Ok(content) => {
+                self.last_report.response_time_secs = elapsed;
+                if content.is_some() {
+                    tracing::info!("[ScreenAnalyzer] Analysis success");
+                }
+                content
+            }
+            Err(e) => {
+                tracing::error!("[ScreenAnalyzer] VLM request failed: {}", e);
+                self.last_report = AnalysisReport {
+                    response_time_secs: elapsed,
+                    ..Default::default()
+                };
+                None
+            }
+        }
+    }
+
+    /// OpenAI 兼容协议调用路径。
+    async fn call_vlm_openai(
+        &mut self,
+        prompt: &str,
+        base64_image: &str,
+        mime_type: &str,
+    ) -> Result<Option<String>, String> {
         let image_url = format!("data:image/{};base64,{}", mime_type, base64_image);
         let model = &self.config.vd_model;
 
@@ -200,115 +284,166 @@ impl ScreenAnalyzer {
             "max_tokens": VISION_MAX_TOKENS
         });
 
-        tracing::info!(
-            "[ScreenAnalyzer] Sending image to VLM ({}) for analysis...",
-            model
-        );
-
-        let start = Instant::now();
-
-        let api_key = &self.config.vd_api_key;
         let endpoint = normalize_endpoint(&self.config.vd_base_url);
 
-        let res = self
+        let response = self
             .client
             .post(&endpoint)
-            .bearer_auth(api_key)
+            .bearer_auth(&self.config.vd_api_key)
             .json(&payload)
             .send()
-            .await;
+            .await
+            .map_err(|e| format!("request failed: {:?}", e))?;
 
-        let elapsed = start.elapsed().as_secs_f64();
-
-        match res {
-            Ok(response) => {
-                let status = response.status();
-                if status.is_success() {
-                    match response.json::<Value>().await {
-                        Ok(json_res) => {
-                            let content = json_res["choices"][0]["message"]["content"]
-                                .as_str()
-                                .map(|s| s.to_string());
-
-                            let usage = &json_res["usage"];
-                            self.last_report = AnalysisReport {
-                                response_time_secs: elapsed,
-                                input_tokens: usage["prompt_tokens"].as_u64().map(|n| n as u32),
-                                output_tokens: usage["completion_tokens"]
-                                    .as_u64()
-                                    .map(|n| n as u32),
-                            };
-
-                            if let Some(ref c) = content {
-                                tracing::info!("[ScreenAnalyzer] Analysis success: {}", c);
-                            } else {
-                                tracing::warn!(
-                                    "[ScreenAnalyzer] VLM response missing content: {:?}",
-                                    json_res
-                                );
-                            }
-
-                            return content;
-                        }
-                        Err(e) => {
-                            tracing::error!(
-                                "[ScreenAnalyzer] Failed to parse VLM JSON response: {:?}",
-                                e
-                            );
-                        }
-                    }
-                } else {
-                    let err_text = response.text().await.unwrap_or_default();
-                    tracing::error!(
-                        "[ScreenAnalyzer] VLM API returned error status {}: {}",
-                        status,
-                        err_text
-                    );
-                }
-            }
-            Err(e) => {
-                if e.is_timeout() {
-                    tracing::error!(
-                        "[ScreenAnalyzer] VLM request timed out (default 30s without explicit timeout): {:?}",
-                        e
-                    );
-                } else if e.is_connect() {
-                    tracing::error!(
-                        "[ScreenAnalyzer] VLM connection failed, check base_url/network: {:?}",
-                        e
-                    );
-                } else {
-                    tracing::error!("[ScreenAnalyzer] Failed to send request to VLM: {:?}", e);
-                }
-            }
+        let status = response.status();
+        if !status.is_success() {
+            let err_text = response.text().await.unwrap_or_default();
+            return Err(format!(
+                "VLM API returned error status {}: {}",
+                status, err_text
+            ));
         }
 
+        let json_res = response
+            .json::<Value>()
+            .await
+            .map_err(|e| format!("failed to parse VLM JSON response: {:?}", e))?;
+
+        let content = json_res["choices"][0]["message"]["content"]
+            .as_str()
+            .map(|s| s.to_string());
+
+        let usage = &json_res["usage"];
         self.last_report = AnalysisReport {
-            response_time_secs: elapsed,
-            ..Default::default()
+            response_time_secs: 0.0,
+            input_tokens: usage["prompt_tokens"].as_u64().map(|n| n as u32),
+            output_tokens: usage["completion_tokens"].as_u64().map(|n| n as u32),
         };
 
-        None
+        if content.is_none() {
+            tracing::warn!(
+                "[ScreenAnalyzer] VLM response missing content: {:?}",
+                json_res
+            );
+        }
+
+        Ok(content)
+    }
+
+    /// Anthropic Messages API 调用路径（用于 Kimi Code / kimi-for-coding 等）。
+    async fn call_vlm_anthropic(
+        &mut self,
+        prompt: &str,
+        base64_image: &str,
+        mime_type: &str,
+    ) -> Result<Option<String>, String> {
+        let model = &self.config.vd_model;
+        let media_type = format!("image/{}", mime_type);
+
+        let payload = serde_json::json!({
+            "model": model,
+            "max_tokens": VISION_MAX_TOKENS,
+            "system": VISION_SYSTEM_PROMPT,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": base64_image
+                            }
+                        }
+                    ]
+                }
+            ]
+        });
+
+        let endpoint = normalize_anthropic_endpoint(&self.config.vd_base_url);
+
+        let response = self
+            .client
+            .post(&endpoint)
+            .header("x-api-key", self.config.vd_api_key.clone())
+            .header("anthropic-version", "2023-06-01")
+            .header(reqwest::header::USER_AGENT, "claude-code/0.1.0")
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| format!("request failed: {:?}", e))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let err_text = response.text().await.unwrap_or_default();
+            return Err(format!(
+                "VLM API returned error status {}: {}",
+                status, err_text
+            ));
+        }
+
+        let json_res = response
+            .json::<Value>()
+            .await
+            .map_err(|e| format!("failed to parse VLM JSON response: {:?}", e))?;
+
+        let content = json_res["content"][0]["text"]
+            .as_str()
+            .map(|s| s.to_string());
+
+        let usage = &json_res["usage"];
+        self.last_report = AnalysisReport {
+            response_time_secs: 0.0,
+            input_tokens: usage["input_tokens"].as_u64().map(|n| n as u32),
+            output_tokens: usage["output_tokens"].as_u64().map(|n| n as u32),
+        };
+
+        if content.is_none() {
+            tracing::warn!(
+                "[ScreenAnalyzer] VLM response missing content: {:?}",
+                json_res
+            );
+        }
+
+        Ok(content)
     }
 }
 
 /// VLM 系统提示：让模型知道自己在做什么，以及忽略聊天窗口。
-const VISION_SYSTEM_PROMPT: &str = "你是一个桌面画面观察者。用户授权你查看他的屏幕截图，请用简洁的中文描述画面主体内容。\
+const VISION_SYSTEM_PROMPT: &str = "你是一个桌面画面观察者，也是用户的AI伙伴。用户授权你查看他的屏幕截图，请用简洁的中文描述画面主体内容。\
 如果截图里包含用户与 AI 的聊天窗口或角色立绘对话框，请不要描述这部分，只描述桌面上的其他内容。\
-如果提供了当前窗口标题，可以结合标题理解用户正在做什么。";
+如果提供了当前窗口标题，可以结合标题理解用户正在做什么。\
+如果提供了角色身份或近期对话摘要，请结合这些信息理解用户当前可能在做什么。";
 
-/// 把用户提示与当前窗口标题结合，给 VLM 更丰富的上下文。
-fn build_screen_prompt(base_prompt: &str, window_title: Option<&str>) -> String {
-    match window_title {
-        Some(title) if !title.is_empty() => {
-            format!("{}\n\n[当前焦点窗口标题]：{}", base_prompt, title)
-        }
-        _ => base_prompt.to_string(),
+/// 把用户提示与当前窗口标题、角色上下文结合，给 VLM 更丰富的上下文。
+fn build_screen_prompt(
+    base_prompt: &str,
+    window_title: Option<&str>,
+    context: Option<&ScreenContext>,
+) -> String {
+    let mut sections = vec![base_prompt.to_string()];
+
+    if let Some(title) = window_title.filter(|t| !t.is_empty()) {
+        sections.push(format!("\n\n[当前焦点窗口标题]：{}", title));
     }
+
+    if let Some(ctx) = context {
+        let ai_name = ctx.ai_name.as_deref().unwrap_or("AI");
+        let user_name = ctx.user_name.as_deref().unwrap_or("用户");
+        sections.push(format!("\n\n[角色身份]：你是{}，正在陪伴{}。", ai_name, user_name));
+
+        if let Some(summary) = ctx.recent_chat_summary.as_deref().filter(|s| !s.is_empty()) {
+            sections.push(format!("\n[近期对话摘要]：{}", summary));
+        }
+    }
+
+    sections.concat()
 }
 
 /// 根据 ProactiveConfig 构建 ScreenAnalyzerConfig。
-/// 当 `VD_FOLLOW_CHAT_MODEL` 为 true 时，复用当前对话模型（chat provider）的 API Key、Base URL 和模型名；
+/// 当 `VD_FOLLOW_CHAT_MODEL` 为 true 时，复用当前对话模型（chat provider）的 API Key、Base URL、模型名和提供者协议；
 /// 如果对话模型未配置或不可用，则回退到独立的视觉模型配置并记录警告。
 pub fn build_screen_analyzer_config(
     app_handle: &tauri::AppHandle,
@@ -317,14 +452,16 @@ pub fn build_screen_analyzer_config(
     if config.vd_follow_chat_model {
         if let Some(provider) = resolve_chat_provider(app_handle) {
             tracing::info!(
-                "[ScreenAnalyzer] VD follows chat model: {} ({})",
+                "[ScreenAnalyzer] VD follows chat model: {} ({}) provider={}",
                 provider.label,
-                provider.model
+                provider.model,
+                provider.provider
             );
             return ScreenAnalyzerConfig {
                 vd_api_key: provider.api_key,
                 vd_base_url: provider.base_url,
                 vd_model: provider.model,
+                provider: provider.provider,
             };
         } else {
             tracing::warn!(
@@ -337,6 +474,7 @@ pub fn build_screen_analyzer_config(
         vd_api_key: config.vd_api_key.clone(),
         vd_base_url: config.vd_base_url.clone(),
         vd_model: config.vd_model.clone(),
+        provider: "openai".to_string(),
     }
 }
 
@@ -353,6 +491,16 @@ fn normalize_endpoint(base_url: &str) -> String {
         "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions".to_string()
     } else {
         format!("{}/chat/completions", trimmed)
+    }
+}
+
+/// 为 Anthropic Messages API 规范化 endpoint：base_url 末尾去斜杠后拼接 `/v1/messages`。
+fn normalize_anthropic_endpoint(base_url: &str) -> String {
+    let trimmed = base_url.trim_end_matches('/');
+    if trimmed.is_empty() {
+        "https://api.kimi.com/coding/v1/messages".to_string()
+    } else {
+        format!("{}/v1/messages", trimmed)
     }
 }
 
