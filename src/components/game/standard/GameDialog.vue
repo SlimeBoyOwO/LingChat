@@ -21,22 +21,24 @@
           </div>
           <div
             v-show="!uiStore.isNarrowScreen"
-            class="text-xl font-bold text-[#6eb4ff] font-[inherit] text-shadow-[inherit]"
+            class="text-xl font-bold text-[#6eb4ff] font-[inherit] text-shadow-[inherit] mr-3.75"
           >
             <div id="character-sub">{{ uiStore.showCharacterSubtitle }}</div>
           </div>
 
-          <!-- 右侧区域：情绪标签 + 操作按钮组（窄屏时占据剩余全部宽度，优先显示） -->
+          <!-- 情绪标签，放在名称与操作按钮组之间 -->
+          <div
+            v-show="!uiStore.isNarrowScreen"
+            class="text-xl font-bold text-[#ff77dd] font-[inherit] text-shadow-[inherit] shrink-0"
+          >
+            <div id="character-emotion">{{ uiStore.showCharacterEmotion }}</div>
+          </div>
+
+          <!-- 右侧区域：操作按钮组（窄屏时占据剩余全部宽度，优先显示） -->
           <div
             class="flex items-baseline ml-auto min-w-0"
             :class="{ 'flex-1 shrink-0': uiStore.isNarrowScreen }"
           >
-            <div
-              class="text-xl font-bold text-[#ff77dd] font-[inherit] text-shadow-[inherit] shrink-0"
-            >
-              <div id="character-emotion">{{ uiStore.showCharacterEmotion }}</div>
-            </div>
-
             <!-- 操作按钮组（窄屏时占据右侧容器剩余空间，可横向滚动） -->
             <div
               class="overflow-x-auto custom-scroll"
