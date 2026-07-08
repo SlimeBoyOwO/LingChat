@@ -184,7 +184,7 @@ impl ProactiveSystem {
         &mut self,
     ) -> Result<Option<String>, String> {
         tracing::info!("[ProactiveSystem] Test proactive message triggered.");
-        events::emit_thinking(&self.app, true);
+        events::emit_thinking(&self.app, true, true);
         events::emit_proactive_thinking(&self.app, true);
 
         let prompt_result = async {
@@ -215,7 +215,7 @@ impl ProactiveSystem {
 
         if let Err(ref e) = prompt_result {
             tracing::error!("[ProactiveSystem] Test proactive message failed: {}", e);
-            events::emit_thinking(&self.app, false);
+            events::emit_thinking(&self.app, false, true);
             events::emit_proactive_thinking(&self.app, false);
         }
 
@@ -286,7 +286,7 @@ impl ProactiveSystem {
         tracing::info!("[ProactiveSystem] Delivering proactive dialogue...");
 
         let _lock = self.generation_lock.lock().await;
-        events::emit_thinking(&self.app, true);
+        events::emit_thinking(&self.app, true, true);
         events::emit_proactive_thinking(&self.app, true);
 
         let generator = {
@@ -305,6 +305,7 @@ impl ProactiveSystem {
                 concurrency: 1,
                 god_agent: None,
                 suppress_thinking: false,
+                is_proactive: true,
             };
             MessageGenerator::new(deps)
         };
@@ -476,7 +477,7 @@ impl ProactiveSystem {
         }
 
         // ─── 生成 prompt（SCREEN 调用视觉模型可能耗时，先禁用前端输入）───
-        events::emit_thinking(&sys.app, true);
+        events::emit_thinking(&sys.app, true, true);
         let prompt_result = {
             let svc = sys.ai_service.lock().await;
             let gs = svc.game_status.lock().await;
@@ -485,7 +486,7 @@ impl ProactiveSystem {
                 .await
         };
         let Some((raw_prompt, intent_type)) = prompt_result else {
-            events::emit_thinking(&sys.app, false);
+            events::emit_thinking(&sys.app, false, false);
             return Ok(());
         };
 
@@ -513,7 +514,7 @@ impl ProactiveSystem {
                 intent_type,
                 triggered_at: std::time::Instant::now(),
             });
-            events::emit_thinking(&sys.app, false);
+            events::emit_thinking(&sys.app, false, true);
         }
 
         Ok(())

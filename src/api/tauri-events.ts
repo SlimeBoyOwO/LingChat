@@ -18,7 +18,14 @@ export function initializeTauriEventListeners() {
 
   listen('ai:thinking', (event) => {
     console.log('[Tauri] ai:thinking', event.payload)
-    eventQueue.addEvent(asEvent(event.payload, { type: 'thinking', duration: 0 }))
+    const payload = event.payload as { isThinking?: boolean; isProactive?: boolean }
+    eventQueue.addEvent(
+      asEvent(event.payload, {
+        type: 'thinking',
+        duration: 0,
+        isProactive: Boolean(payload.isProactive),
+      }),
+    )
   })
 
   listen('ai:thinking_progress', (event) => {

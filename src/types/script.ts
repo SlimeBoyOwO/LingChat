@@ -44,6 +44,8 @@ export interface ScriptDialogueEvent extends ScriptEvent {
 export interface ScriptThinkingEvent extends ScriptEvent {
   type: 'thinking'
   isThinking: boolean
+  /** 是否为主动回复触发的前置思考 */
+  isProactive?: boolean
 }
 
 export interface ScriptFreeDialogueEvent extends ScriptEvent {

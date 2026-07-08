@@ -39,8 +39,9 @@ pub fn emit<T: Serialize + Clone>(app: &AppHandle, event: &str, payload: &T) -> 
 }
 
 /// 通知前端 AI 正在思考或结束思考。
-pub fn emit_thinking(app: &AppHandle, is_thinking: bool) {
-    let payload = super::responses::ThinkingResponse::new(is_thinking);
+/// `is_proactive` 为 true 时表示这是主动回复触发的前置思考，前端可据此显示"主动回复中"。
+pub fn emit_thinking(app: &AppHandle, is_thinking: bool, is_proactive: bool) {
+    let payload = super::responses::ThinkingResponse::new(is_thinking, is_proactive);
     if let Err(e) = app.emit(super::responses::event_names::AI_THINKING, &payload) {
         tracing::warn!("emit thinking 失败: {e}");
     }

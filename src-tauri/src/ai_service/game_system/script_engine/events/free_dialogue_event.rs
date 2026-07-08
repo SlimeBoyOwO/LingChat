@@ -117,6 +117,7 @@ impl ScriptEvent for FreeDialogueEvent {
                     concurrency: 1,
                     god_agent: None,
                     suppress_thinking: false,
+                    is_proactive: false,
                 };
                 MessageGenerator::new(deps)
             })
