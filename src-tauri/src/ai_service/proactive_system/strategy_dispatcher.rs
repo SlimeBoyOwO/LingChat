@@ -92,6 +92,16 @@ impl StrategyDispatcher {
             }
         }
 
+        // 如果开启视觉理解优先模式，优先尝试 SCREEN，失败再按原逻辑随机
+        if config.enable_visual_perception && config.visual_perception_priority {
+            tracing::info!("[StrategyDispatcher] Visual perception priority enabled, trying SCREEN first.");
+            if let Some((prompt, intent)) = self.get_screen_prompt(game_status).await {
+                let prompt = self.filter_duplicate(prompt).await?;
+                return Some((prompt, intent));
+            }
+            tracing::info!("[StrategyDispatcher] SCREEN priority failed, falling back to weighted random.");
+        }
+
         // 2. 随机模式选择，根据启用状态动态构建候选列表
         let mut modes = Vec::new();
         let mut weights = Vec::new();
