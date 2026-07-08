@@ -15,7 +15,8 @@ use crate::config::proactive::ProactiveConfig;
 const MAX_IMAGE_SIZE_BYTES: usize = 10 * 1024 * 1024;
 const MAX_BASE64_SIZE: usize = MAX_IMAGE_SIZE_BYTES * 4 / 3 + 100;
 /// 视觉模型输出 token 上限。
-const VISION_MAX_TOKENS: u32 = 1024;
+/// Anthropic 模型（如 kimi-for-coding）默认会输出思考链，需要给 text 留足空间。
+const VISION_MAX_TOKENS: u32 = 4096;
 /// 图片像素数安全上限（避免超大图片耗尽内存）。
 const MAX_IMAGE_PIXELS: u64 = 100_000_000;
 
