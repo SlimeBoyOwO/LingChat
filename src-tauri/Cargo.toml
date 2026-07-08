@@ -1,5 +1,5 @@
 [package]
-name = "ling-chat"
+name = "ling_chat"
 version = "0.4.6"
 description = "A Tauri App"
 authors = ["you"]

@@ -1,0 +1,119 @@
+name: 安卓开发版构建
+
+on:
+  # push:
+  #  branches: ['dev/**']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - name: 设置 pnpm store 缓存
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+            #  armv7-linux-androideabi
+            #  i686-linux-android
+            #  x86_64-linux-android
+
+      - name: 设置 Rust 缓存
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri
+          cache-targets: true
+          shared-key: ${{ runner.os }}-main-pnpm-tauri-build-android
+
+      - name: 安装 Linux 依赖 (Ubuntu)
+        run: |
+          sudo apt-get update
+          sudo apt-get install eatmydata
+          sudo eatmydata apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libjavascriptcoregtk-4.1-dev \
+            libsoup-3.0-dev \
+            libpipewire-0.3-dev \
+            libspa-0.2-dev \
+            libgbm-dev \
+            libegl1-mesa-dev \
+            libx11-dev \
+            libxcb1-dev \
+            libxrandr-dev \
+            libxcomposite-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxtst-dev \
+            libwayland-dev \
+            libdbus-1-dev \
+            zip
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      - name: pnpm 安装依赖
+        run: pnpm i
+
+      - name: 删除未 lfs pull 的图标
+        run: |
+          rm -rf src-tauri/icons/*
+          git lfs pull --include="src-tauri/icons/icon.png"
+          pnpm tauri icon src-tauri/icons/icon.png
+
+      - name: 清理并准备 Android 项目
+        run: |
+          rm -rf src-tauri/gen/android
+          pnpm android:prepare
+          pnpm tauri android init
+
+      - name: 配置 Android 签名
+        run: |
+          echo "${{ secrets.ANDROID_KEY_BASE64 }}" | base64 -d > $HOME/upload-keystore.jks
+          cat > src-tauri/gen/android/keystore.properties << EOF
+          storeFile=$HOME/upload-keystore.jks
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          EOF
+
+      - name: 构建 Android APK
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          mobile: 'android'
+          args: ''
+
+      - name: 上传 artifact (APK)
+        uses: actions/upload-artifact@v4
+        with:
+          name: lingchat-dev-android
+          path: |
+            src-tauri/gen/android/app/build/outputs/apk/universal/debug/*.apk
+            src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
+          retention-days: 7
