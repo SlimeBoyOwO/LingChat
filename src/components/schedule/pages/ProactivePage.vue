@@ -4,37 +4,50 @@
     v-if="uiStore.scheduleView === 'proactive_settings'"
     class="grid grid-cols-1 sm:grid-cols-1 lg:grid-cols-1 p-1"
   >
-    <div v-for="setting in visibleSettings" :key="setting.key" class="mb-6">
-      <!-- 使用 SettingItem 组件渲染不同类型的输入控件 -->
-      <SettingItem :setting="setting" @update:value="(value) => (setting.value = value)" />
+    <div v-if="settings['ENABLE_PROACTIVE_SYSTEM']" class="mb-6">
+      <SettingItem
+        :setting="settings['ENABLE_PROACTIVE_SYSTEM']"
+        @update:value="(value) => (settings['ENABLE_PROACTIVE_SYSTEM'].value = value)"
+      />
     </div>
 
-    <div class="flex gap-3 align-text-bottom w-auto h-auto items-center">
-      <button
-        class="px-5 py-2.5 bg-brand text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-colors duration-200 hover:bg-[#0056b3]"
-        @click="saveSettings"
-      >
-        保存
-      </button>
-      <button
-        class="px-5 py-2.5 bg-[#6366f1] text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-colors duration-200 hover:bg-[#4f46e5] disabled:opacity-50 disabled:cursor-not-allowed"
-        :disabled="testStatus.loading"
-        @click="handleTestProactive"
-      >
-        {{ testStatus.loading ? '测试中...' : '测试主动消息' }}
-      </button>
-      <p :style="{ color: saveStatus.color }" class="text-sm">
-        {{ saveStatus.message }}
-      </p>
-      <p :style="{ color: testStatus.color }" class="text-sm">
-        {{ testStatus.message }}
+    <div class="flex flex-col gap-3">
+      <div class="flex gap-3 align-text-bottom w-auto h-auto items-center">
+        <button
+          class="px-5 py-2.5 bg-brand text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-colors duration-200 hover:bg-[#0056b3]"
+          @click="saveSettings"
+        >
+          保存
+        </button>
+        <button
+          class="px-5 py-2.5 bg-[#6366f1] text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-colors duration-200 hover:bg-[#4f46e5] disabled:opacity-50 disabled:cursor-not-allowed"
+          :disabled="testStatus.loading"
+          @click="handleTestProactive"
+        >
+          {{ testStatus.loading ? '测试中...' : '测试主动消息' }}
+        </button>
+        <button
+          class="px-5 py-2.5 bg-slate-600 text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-colors duration-200 hover:bg-slate-500"
+          @click="openAdvancedSettings"
+        >
+          更多设置
+        </button>
+        <p :style="{ color: saveStatus.color }" class="text-sm">
+          {{ saveStatus.message }}
+        </p>
+        <p :style="{ color: testStatus.color }" class="text-sm">
+          {{ testStatus.message }}
+        </p>
+      </div>
+      <p class="text-xs text-white/60">
+        更多主动对话参数（视觉模型、兴趣度阈值、话题权重等）请前往「更多设置」调整。
       </p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive, computed } from 'vue'
+import { ref, onMounted, reactive } from 'vue'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { getEnvConfigByKey, saveEnvConfigSettings } from '@/api/services/config'
 import { reloadProactiveSystem, testProactiveMessage } from '@/api/services/schedule'
@@ -42,14 +55,6 @@ import type { ConfigItem } from '@/api/services/config'
 import SettingItem from '@/components/base/items/SettingItem.vue'
 const uiStore = useUIStore()
 const settings = ref<Record<string, ConfigItem>>({})
-const hiddenKeysWhenFollowing = ['VD_API_KEY', 'VD_BASE_URL', 'VD_MODEL']
-const visibleSettings = computed(() => {
-  const followChatModel = settings.value['VD_FOLLOW_CHAT_MODEL']?.value?.toLowerCase() === 'true'
-  return Object.values(settings.value).filter((s) => {
-    if (!followChatModel) return true
-    return !hiddenKeysWhenFollowing.includes(s.key)
-  })
-})
 const SUCCESS_COLOR = '#4ade80'
 
 const saveStatus = reactive({
@@ -95,14 +100,15 @@ const saveSettings = async () => {
   }
 }
 
+const openAdvancedSettings = () => {
+  // 打开高级设置并直接切换到"其他高级设置"页签，方便用户找到主动对话配置
+  uiStore.setAdvanceInitialTab('other')
+  uiStore.setSettingsTab('advance')
+  uiStore.toggleSettings(true)
+}
+
 const loadConfig = async () => {
-  const configKeys = [
-    'ENABLE_PROACTIVE_SYSTEM',
-    'MAX_PROACTIVE_TIMES',
-    'PROACTIVE_INTERVAL_SECS',
-    'INTEREST_TRIGGER_THRESHOLD',
-    'INTEREST_DECAY_STEP',
-  ]
+  const configKeys = ['ENABLE_PROACTIVE_SYSTEM']
 
   for (const key of configKeys) {
     settings.value[key] = await getEnvConfigByKey(key)
