@@ -389,9 +389,13 @@ impl ScreenAnalyzer {
             .await
             .map_err(|e| format!("failed to parse VLM JSON response: {:?}", e))?;
 
-        let content = json_res["content"][0]["text"]
-            .as_str()
-            .map(|s| s.to_string());
+        // Anthropic 响应的 content 是数组，可能同时包含 thinking 和 text 块。
+        // kimi-for-coding 默认会输出 thinking，需要遍历所有 block 提取文本。
+        let (content, thinking_text) = extract_anthropic_text(&json_res);
+
+        if !thinking_text.is_empty() {
+            tracing::info!("[ScreenAnalyzer] VLM thinking: {}", thinking_text);
+        }
 
         let usage = &json_res["usage"];
         self.last_report = AnalysisReport {
@@ -402,13 +406,55 @@ impl ScreenAnalyzer {
 
         if content.is_none() {
             tracing::warn!(
-                "[ScreenAnalyzer] VLM response missing content: {:?}",
+                "[ScreenAnalyzer] VLM response missing text content: {:?}",
                 json_res
             );
         }
 
         Ok(content)
     }
+}
+
+/// 从 Anthropic Messages API 响应中提取可读的文本内容。
+/// 返回 `(text_content, thinking_content)`，其中 text_content 会把所有 text block 拼接起来。
+fn extract_anthropic_text(json_res: &Value) -> (Option<String>, String) {
+    let mut text_parts = Vec::new();
+    let mut thinking_parts = Vec::new();
+
+    if let Some(content) = json_res["content"].as_array() {
+        for block in content {
+            match block["type"].as_str() {
+                Some("text") => {
+                    if let Some(t) = block["text"].as_str() {
+                        text_parts.push(t.to_string());
+                    }
+                }
+                Some("thinking") => {
+                    if let Some(t) = block["thinking"].as_str() {
+                        thinking_parts.push(t.to_string());
+                    }
+                }
+                Some(other) => {
+                    tracing::debug!("[ScreenAnalyzer] Unhandled Anthropic content block type: {}", other);
+                }
+                None => {}
+            }
+        }
+    }
+
+    let text = if text_parts.is_empty() {
+        None
+    } else {
+        Some(text_parts.join("\n"))
+    };
+
+    let thinking = if thinking_parts.is_empty() {
+        String::new()
+    } else {
+        thinking_parts.join("\n")
+    };
+
+    (text, thinking)
 }
 
 /// VLM 系统提示：让模型知道自己在做什么，以及忽略聊天窗口。
