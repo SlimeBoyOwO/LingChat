@@ -97,6 +97,7 @@ impl ScriptEvent for AIDialogueEvent {
             concurrency: 1,
             god_agent: None,
             suppress_thinking: false,
+            is_proactive: false,
         };
 
         let generator = MessageGenerator::new(deps);
