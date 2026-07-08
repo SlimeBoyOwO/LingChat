@@ -388,6 +388,7 @@ impl ProactiveSystem {
                     self.pending_intents.len()
                 );
                 self.deliver(intent.prompt).await?;
+                self.interest_manager.reset_interest();
                 return Ok(true);
             }
         }
@@ -490,9 +491,6 @@ impl ProactiveSystem {
             return Ok(());
         };
 
-        // 兴趣立刻消耗（"已经想说话了"）
-        sys.interest_manager.reset_interest();
-
         // ─── 投放闸门 ───
         if DeliveryEvaluator::can_deliver(intent_type, &perception, sys.can_deliver) {
             tracing::info!(
@@ -501,6 +499,8 @@ impl ProactiveSystem {
             );
             let formatted = PromptRole::System.build_prompt(&raw_prompt);
             sys.deliver(formatted).await?;
+            // 只有真正成功投递到前端，才消耗兴趣并计数
+            sys.interest_manager.reset_interest();
         } else {
             let formatted = PromptRole::System.build_prompt(&raw_prompt);
             tracing::info!(
