@@ -830,6 +830,7 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
         concurrency,
         god_agent: state.god_agent.clone(),
         suppress_thinking: true,
+        is_proactive: false,
     };
 
     let generator = MessageGenerator::new(deps);

@@ -87,14 +87,17 @@ pub struct ThinkingResponse {
     pub type_: String,
     pub is_thinking: bool,
     pub duration: f64,
+    /// 标记这次思考是否来自主动回复触发，用于前端区分 placeholder 文案。
+    pub is_proactive: bool,
 }
 
 impl ThinkingResponse {
-    pub fn new(is_thinking: bool) -> Self {
+    pub fn new(is_thinking: bool, is_proactive: bool) -> Self {
         Self {
             type_: "thinking".to_string(),
             is_thinking,
             duration: 0.0,
+            is_proactive,
         }
     }
 }

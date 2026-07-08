@@ -14,6 +14,7 @@ export default class ThinkingProcessor implements IEventProcessor {
       // AI 开始思考，锁定输入
       gameStore.currentStatus = 'thinking'
       gameStore.thinkingLength = 0
+      gameStore.isProactiveThinking = Boolean(event.isProactive)
     } else {
       // AI 停止思考（通常是错误恢复），重置到可输入状态
       gameStore.currentStatus = 'input'

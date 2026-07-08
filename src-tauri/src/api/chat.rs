@@ -47,9 +47,10 @@ pub async fn send_chat_message(
     let user_name = game_status.lock().await.player.user_name.clone();
 
     // 发送思考事件
-    events::emit_thinking(&app, true);
+    events::emit_thinking(&app, true, false);
 
-    // 截图分析：在创建 GeneratorDeps 之前，确保旁白台词已写入 line_list
+    // 截图分析：先异步获取旁白文本，实际写入 line_list 推迟到 generation_lock 内
+    let mut narration_opt: Option<String> = None;
     if let Some(ref b64) = screenshot_base64 {
         if let Ok(image_bytes) = base64::Engine::decode(&base64::prelude::BASE64_STANDARD, b64) {
             let prompt = format!(
@@ -63,19 +64,8 @@ pub async fn send_chat_message(
             };
 
             if let Some(narration) = analysis {
-                let mut gs = game_status.lock().await;
-                gs.add_line(
-                    &state.db,
-                    LineBase {
-                        content: PromptRole::Narrator.build_prompt(&narration),
-                        attribute: LineAttributeExt(LineAttribute::User),
-                        display_name: Some("旁白".to_string()),
-                        ..Default::default()
-                    },
-                )
-                .await
-                .map_err(|e| format!("添加旁白台词失败: {}", e))?;
-                tracing::info!("[Chat] Screenshot analysis narration added to game_status.");
+                narration_opt = Some(PromptRole::Narrator.build_prompt(&narration));
+                tracing::info!("[Chat] Screenshot analysis narration ready.");
             }
         }
     }
@@ -83,13 +73,14 @@ pub async fn send_chat_message(
     let deps = GeneratorDeps {
         app: app.clone(),
         db: state.db.clone(),
-        game_status,
+        game_status: game_status.clone(),
         processor: state.chat.processor.clone(),
         translator: state.chat.translator.clone(),
         llm,
         concurrency,
         god_agent: state.god_agent.clone(),
         suppress_thinking: false,
+        is_proactive: false,
     };
 
     // Notify proactive system of user input
@@ -148,9 +139,31 @@ pub async fn send_chat_message(
 
     let generator = MessageGenerator::new(deps);
     let gen_lock = state.generation_lock.clone();
+    let db_for_narration = state.db.clone();
 
     tokio::spawn(async move {
         let _lock = gen_lock.lock().await;
+
+        // 在 generation_lock 保护下按顺序写入旁白行，避免被主动回复插队覆盖
+        if let Some(narration) = narration_opt {
+            let mut gs = game_status.lock().await;
+            if let Err(e) = gs.add_line(
+                &db_for_narration,
+                LineBase {
+                    content: narration,
+                    attribute: LineAttributeExt(LineAttribute::User),
+                    display_name: Some("旁白".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            {
+                tracing::error!("[Chat] 添加旁白台词失败: {}", e);
+            } else {
+                tracing::info!("[Chat] Screenshot analysis narration added to game_status.");
+            }
+        }
+
         match generator.process_message(Some(text)).await {
             Ok(acc) => tracing::info!("消息生成完成，长度: {}", acc.len()),
             Err(e) => tracing::error!("消息生成失败: {:#}", e),
