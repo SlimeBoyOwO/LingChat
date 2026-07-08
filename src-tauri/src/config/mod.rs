@@ -714,6 +714,14 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                                 .to_string(),
                         setting_type: "text".to_string(),
                     },
+                    ConfigSetting {
+                        key: proactive::keys::VISUAL_PERCEPTION_PRIORITY.to_string(),
+                        value: read_setting(app, proactive::keys::VISUAL_PERCEPTION_PRIORITY, "false"),
+                        description:
+                            "VISUAL_PERCEPTION_PRIORITY — 视觉理解优先模式（开启后每次主动回复优先看屏幕，失败才找话题）"
+                                .to_string(),
+                        setting_type: "bool".to_string(),
+                    },
                 ],
             },
         );

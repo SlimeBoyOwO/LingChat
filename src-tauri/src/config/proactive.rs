@@ -14,6 +14,7 @@ pub mod keys {
     pub const VD_MODEL: &str = "VD_MODEL";
     pub const ENABLE_VISUAL_PRECEPTION: &str = "ENABLE_VISUAL_PRECEPTION";
     pub const SCREEN_WEIGHT: &str = "SCREEN_WEIGHT";
+    pub const VISUAL_PERCEPTION_PRIORITY: &str = "VISUAL_PERCEPTION_PRIORITY";
     pub const ENABLE_TOPIC_CREATER: &str = "ENABLE_TOPIC_CREATER";
     pub const TOPIC_WEIGHT: &str = "TOPIC_WEIGHT";
     pub const ENABLE_TODO_PRECEPTION: &str = "ENABLE_TODO_PRECEPTION";
@@ -35,6 +36,7 @@ pub struct ProactiveConfig {
     pub vd_model: String,
     pub enable_visual_perception: bool,
     pub screen_weight: f64,
+    pub visual_perception_priority: bool,
     pub enable_topic_creator: bool,
     pub topic_weight: f64,
     pub enable_todo_perception: bool,
@@ -109,6 +111,7 @@ impl ProactiveConfig {
             vd_model: get_string(keys::VD_MODEL, "qwen3.5-plus"),
             enable_visual_perception: get_bool(keys::ENABLE_VISUAL_PRECEPTION, true),
             screen_weight: get_f64(keys::SCREEN_WEIGHT, 30.0),
+            visual_perception_priority: get_bool(keys::VISUAL_PERCEPTION_PRIORITY, false),
             enable_topic_creator: get_bool(keys::ENABLE_TOPIC_CREATER, true),
             topic_weight: get_f64(keys::TOPIC_WEIGHT, 60.0),
             enable_todo_perception: get_bool(keys::ENABLE_TODO_PRECEPTION, true),
