@@ -168,7 +168,7 @@ pub async fn test_screen_analyzer(app: AppHandle, prompt: Option<String>) -> Res
     let prompt = prompt.unwrap_or(default_prompt);
 
     let mut sa = state.screen_analyzer.lock().await;
-    match sa.analyze_screen(&prompt).await {
+    match sa.analyze_screen(&prompt, None).await {
         Some(result) => {
             let report = sa.get_report();
             tracing::info!(

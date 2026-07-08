@@ -3,13 +3,15 @@ use crate::ai_service::proactive_system::config::ProactiveConfig;
 use crate::ai_service::proactive_system::types::{
     IntentType, PerceptionResult, UserScheduleSettings, UserState,
 };
-use crate::ai_service::screen_analyzer::{ScreenAnalyzer, build_screen_analyzer_config};
+use crate::ai_service::proactive_system::proactive_history::ProactiveDeduplicator;
+use crate::ai_service::screen_analyzer::{ScreenAnalyzer, ScreenContext, build_screen_analyzer_config};
 use chrono::Local;
 use rand::Rng;
 use tokio::sync::Mutex;
 
 pub struct StrategyDispatcher {
     screen_analyzer: Mutex<ScreenAnalyzer>,
+    deduplicator: Mutex<ProactiveDeduplicator>,
 }
 
 impl StrategyDispatcher {
@@ -18,6 +20,7 @@ impl StrategyDispatcher {
         let sa_config = build_screen_analyzer_config(app_handle, &config);
         Self {
             screen_analyzer: Mutex::new(ScreenAnalyzer::new(sa_config)),
+            deduplicator: Mutex::new(ProactiveDeduplicator::default()),
         }
     }
 
@@ -30,6 +33,19 @@ impl StrategyDispatcher {
         }
     }
 
+    async fn filter_duplicate(&self, prompt: String) -> Option<String> {
+        let mut dedup = self.deduplicator.lock().await;
+        let (dup, score) = dedup.check_and_record(&prompt);
+        if dup {
+            tracing::info!(
+                "[StrategyDispatcher] Duplicate proactive prompt detected (score={:.2}), skipping.",
+                score
+            );
+            None
+        } else {
+            Some(prompt)
+        }
+    }
     /// 生成主动对话的 Prompt。
     /// 优先顺序: ImportantDay (每天仅一次) > Todo > Screen Observation > Topic
     pub async fn get_proactive_prompt(
@@ -64,13 +80,12 @@ impl StrategyDispatcher {
                                 "[StrategyDispatcher] Triggered important day reminder: {}",
                                 day.title
                             );
-                            return Some((
-                                format!(
-                                    "{{今天是特殊的一天：{}，{}。可以和{}聊聊哦}}",
-                                    day.title, desc, char_name
-                                ),
-                                IntentType::ImportantDay,
-                            ));
+                            let prompt = format!(
+                                "{{今天是特殊的一天：{}，{}。可以和{}聊聊哦}}",
+                                day.title, desc, char_name
+                            );
+                            let prompt = self.filter_duplicate(prompt).await?;
+                            return Some((prompt, IntentType::ImportantDay));
                         }
                     }
                 }
@@ -149,25 +164,35 @@ impl StrategyDispatcher {
         match selected_mode {
             "TODO" => {
                 if let Some(prompt) = self.get_todo_prompt(game_status, settings) {
+                    let prompt = self.filter_duplicate(prompt).await?;
                     return Some((prompt, IntentType::Todo));
                 }
                 // 没有 Todo 时降级到 TOPIC
                 if config.enable_topic_creator {
-                    return Some((self.get_topic_prompt(game_status), IntentType::Topic));
+                    let prompt = self.get_topic_prompt(game_status);
+                    let prompt = self.filter_duplicate(prompt).await?;
+                    return Some((prompt, IntentType::Topic));
                 }
                 None
             }
             "SCREEN" => {
-                if let Some(prompt) = self.get_screen_prompt(game_status).await {
-                    return Some((prompt, IntentType::Screen));
+                if let Some((prompt, intent)) = self.get_screen_prompt(game_status).await {
+                    let prompt = self.filter_duplicate(prompt).await?;
+                    return Some((prompt, intent));
                 }
                 // SCREEN 抓取失败或接口失败时降级到 TOPIC
                 if config.enable_topic_creator {
-                    return Some((self.get_topic_prompt(game_status), IntentType::Topic));
+                    let prompt = self.get_topic_prompt(game_status);
+                    let prompt = self.filter_duplicate(prompt).await?;
+                    return Some((prompt, IntentType::Topic));
                 }
                 None
             }
-            _ => Some((self.get_topic_prompt(game_status), IntentType::Topic)),
+            _ => {
+                let prompt = self.get_topic_prompt(game_status);
+                let prompt = self.filter_duplicate(prompt).await?;
+                Some((prompt, IntentType::Topic))
+            }
         }
     }
 
@@ -202,27 +227,48 @@ impl StrategyDispatcher {
         ))
     }
 
-    async fn get_screen_prompt(&self, game_status: &GameStatus) -> Option<String> {
-        let analyze_prompt = "你是一个图像信息转述者，你将需要把你看到的画面描述给另一个AI让他理解用户的图片内容。用户开放了那个AI的自主窥屏功能，请获取桌面画面中的重点内容，用200字描述主体部分即可。如果你看到一个聊天窗口，有角色的立绘和对话框，不要描述这部分，只描述桌面上的其他内容。因为那部分是玩家与AI的聊天窗口。";
-
-        let analysis = self
-            .screen_analyzer
-            .lock()
-            .await
-            .analyze_screen(analyze_prompt)
-            .await?;
-
-        let user_name = &game_status.player.user_name;
+    async fn get_screen_prompt(
+        &self,
+        game_status: &GameStatus,
+    ) -> Option<(String, IntentType)> {
+        let user_name = game_status.player.user_name.clone();
         let ai_name = game_status
             .current_role_id
             .and_then(|rid| game_status.role_manager.get_loaded(rid))
             .and_then(|role| role.display_name.clone())
             .unwrap_or_else(|| "你".to_string());
 
-        Some(format!(
-            "{{ {} 偷看了一眼 {} 的电脑桌面: {} }}",
-            ai_name, user_name, analysis
-        ))
+        let context = ScreenContext {
+            ai_name: Some(ai_name.clone()),
+            user_name: Some(user_name.clone()),
+            recent_chat_summary: None,
+        };
+
+        let reply = self
+            .screen_analyzer
+            .lock()
+            .await
+            .analyze_screen_for_proactive(Some(&context))
+            .await?;
+
+        let reply = reply.trim();
+        if reply.is_empty() || reply == "[PASS]" {
+            tracing::info!("[StrategyDispatcher] Screen proactive returned [PASS], falling back.");
+            return None;
+        }
+
+        // 清理模型可能附带的前缀（如 "AI:" 或引号）
+        let cleaned = reply
+            .trim_start_matches("[PASS]")
+            .trim_start_matches(":")
+            .trim()
+            .to_string();
+
+        if cleaned.is_empty() {
+            return None;
+        }
+
+        Some((format!("{{ {}}}", cleaned), IntentType::Screen))
     }
 
     fn get_topic_prompt(&self, game_status: &GameStatus) -> String {
