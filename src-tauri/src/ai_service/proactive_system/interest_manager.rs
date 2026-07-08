@@ -97,8 +97,9 @@ impl InterestManager {
     }
 
     pub fn decay_max_interest_cap(&mut self) {
-        // 衰减后至少保留触发阈值或 20 分，避免上限掉到 0 导致永远无法触发
-        let floor = self.trigger_threshold.max(20.0);
+        // 衰减后至少保留触发阈值 + 5 或 20 分，确保上限始终高于阈值，
+        // 避免 interest 永远涨不过 threshold 导致主动回复卡死
+        let floor = (self.trigger_threshold + 5.0).max(20.0);
         self.max_interest_cap = (self.max_interest_cap - self.decay_step).max(floor);
         tracing::info!("[Engagement] Cap decayed to {:.2}", self.max_interest_cap);
     }
