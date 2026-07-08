@@ -102,7 +102,6 @@ const loadConfig = async () => {
     'PROACTIVE_INTERVAL_SECS',
     'INTEREST_TRIGGER_THRESHOLD',
     'INTEREST_DECAY_STEP',
-    'VD_FOLLOW_CHAT_MODEL',
   ]
 
   for (const key of configKeys) {
