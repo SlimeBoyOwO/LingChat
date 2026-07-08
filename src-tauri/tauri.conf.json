@@ -40,7 +40,7 @@
     "active": true,
     "targets": "nsis",
     "icon": ["icons/icon.ico"],
-    "createUpdaterArtifacts": true,
+    "createUpdaterArtifacts": false,
     "resources": {
       ".bundled_resources/game_data/": "data/.official/game_data/",
       ".bundled_resources/third_party/": "data/third_party/",
