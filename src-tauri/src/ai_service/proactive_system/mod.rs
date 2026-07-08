@@ -180,8 +180,11 @@ impl ProactiveSystem {
 
     /// 手动触发一次基于屏幕的主动搭话测试，直接截屏 → VLM → 投递到前端。
     /// 跳过兴趣累积、投放闸门和反重复检测，用于在设置页快速验证视觉主动回复链路。
-    pub async fn test_screen_proactive(&mut self,
+    pub async fn test_screen_proactive(
+        &mut self,
     ) -> Result<Option<String>, String> {
+        tracing::info!("[ProactiveSystem] Test proactive message triggered.");
+
         let (raw_prompt, _intent_type) = {
             let svc = self.ai_service.lock().await;
             let gs = svc.game_status.lock().await;
@@ -193,11 +196,17 @@ impl ProactiveSystem {
                 })?
         };
 
+        tracing::info!(
+            "[ProactiveSystem] Test screen prompt generated: {}",
+            raw_prompt
+        );
+
         let formatted = crate::utils::prompt::PromptRole::System.build_prompt(&raw_prompt);
         self.deliver(formatted)
             .await
             .map_err(|e| format!("投递主动消息失败: {}", e))?;
 
+        tracing::info!("[ProactiveSystem] Test proactive message delivered.");
         Ok(Some(raw_prompt))
     }
 
