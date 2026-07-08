@@ -311,13 +311,26 @@ impl StrategyDispatcher {
         Some((format!("{{ {}}}", cleaned), IntentType::Screen))
     }
 
-    fn get_topic_prompt(&self, game_status: &GameStatus) -> String {
+    fn get_topic_prompt(&self,
+        game_status: &GameStatus,
+    ) -> String {
         let ai_name = game_status
             .current_role_id
             .and_then(|rid| game_status.role_manager.get_loaded(rid))
             .and_then(|role| role.display_name.clone())
             .unwrap_or_else(|| "你".to_string());
 
-        format!("{{ {} 想继续说话了}}", ai_name)
+        // 加入随机变体，避免 deduplicator 把每次 TOPIC 都判为重复
+        let templates = [
+            format!("{{ {} 想找主人说说话}}", ai_name),
+            format!("{{ {} 突然想到一件事}}", ai_name),
+            format!("{{ {} 有话想对主人说}}", ai_name),
+            format!("{{ {} 想继续陪主人聊天}}", ai_name),
+            format!("{{ {} 看着主人，忍不住想开口}}", ai_name),
+        ];
+
+        let mut rng = rand::thread_rng();
+        let idx = rng.gen_range(0..templates.len());
+        templates[idx].clone()
     }
 }
