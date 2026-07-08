@@ -242,12 +242,12 @@ impl ScreenAnalyzer {
             Ok(content) => {
                 self.last_report.response_time_secs = elapsed;
                 if content.is_some() {
-                    tracing::info!("[ScreenAnalyzer] Analysis success");
+                    tracing::info!("[ScreenAnalyzer] Analysis success in {:.2}s", elapsed);
                 }
                 content
             }
             Err(e) => {
-                tracing::error!("[ScreenAnalyzer] VLM request failed: {}", e);
+                tracing::error!("[ScreenAnalyzer] VLM request failed after {:.2}s: {}", elapsed, e);
                 self.last_report = AnalysisReport {
                     response_time_secs: elapsed,
                     ..Default::default()
