@@ -38,8 +38,15 @@
   },
   "bundle": {
     "active": true,
-    "targets": "nsis",
-    "icon": ["icons/icon.ico"],
+    "targets": ["nsis", "dmg", "deb", "appimage"],
+    "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png",
+        "icons/icon.icns",
+        "icons/icon.ico",
+        "icons/icon.png"
+    ],
     "createUpdaterArtifacts": true,
     "resources": {
       ".bundled_resources/game_data/": "data/.official/game_data/",
