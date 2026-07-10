@@ -55,6 +55,8 @@ import { GameDialog } from '../game/standard'
 import { Button } from '../base'
 import LoadingTransition from './LoadingTransition.vue'
 import { eventQueue } from '@/core/events/event-queue'
+import { useSettingsStore } from '@/stores/modules/settings'
+import { normalizePetScale, setPetWindowModeAndWait } from '@/utils/windowSizing'
 
 import GameExtraUI from '../game/standard/GameExtraUI.vue'
 
@@ -63,6 +65,7 @@ const LOADING_STORAGE_KEY = 'lingchat_loading_shown'
 const router = useRouter()
 const uiStore = useUIStore()
 const gameStore = useGameStore()
+const settingsStore = useSettingsStore()
 
 // 首次加载过渡状态（通过 localStorage 跨路由导航保持，启动时由 main.ts 清除）
 const showLoading = ref(!localStorage.getItem(LOADING_STORAGE_KEY))
@@ -74,8 +77,45 @@ function onLoadingComplete() {
   eventQueue.resume()
 }
 
-const goToPetMode = () => {
-  router.push('/pet')
+const switchingToPet = ref(false)
+
+const windowOperationErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : String(error || '未知错误')
+
+const goToPetMode = async () => {
+  if (switchingToPet.value) return
+
+  switchingToPet.value = true
+  let petWindowRequested = false
+  try {
+    const scale = normalizePetScale(settingsStore.pet?.scale)
+    petWindowRequested = true
+    const isLatestRequest = await setPetWindowModeAndWait(true, scale)
+    if (!isLatestRequest) throw new Error('桌宠窗口切换请求已失效')
+    await router.push('/pet')
+  } catch (error) {
+    console.error('切换桌宠模式失败:', error)
+    let rollbackError: unknown = null
+    if (petWindowRequested) {
+      await setPetWindowModeAndWait(false).catch((caughtRollbackError) => {
+        rollbackError = caughtRollbackError
+        console.error('恢复主窗口失败:', caughtRollbackError)
+      })
+    }
+
+    const rollbackSuffix = rollbackError
+      ? `；恢复主窗口也失败：${windowOperationErrorMessage(rollbackError)}`
+      : ''
+    uiStore.showNotification({
+      type: 'error',
+      title: '进入桌宠模式失败',
+      message: `${windowOperationErrorMessage(error)}${rollbackSuffix}`,
+      duration: 6000,
+      skipTipsCheck: true,
+    })
+  } finally {
+    switchingToPet.value = false
+  }
 }
 
 const gameDialogRef = ref<InstanceType<typeof GameDialog> | null>(null)

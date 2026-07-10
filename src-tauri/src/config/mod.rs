@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use tauri::{AppHandle, Wry};
+use tauri::{AppHandle, Manager, Wry};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_store::{Store, StoreExt};
 
@@ -17,6 +17,9 @@ use crate::ai_service::llm::provider_config::{
     save_role_assignment, LlmProviderConfig, LlmProvidersResponse,
 };
 use crate::config::tts::TtsConfig;
+use crate::window_geometry::{
+    self, WindowDimensions, WindowSizePlan, MAIN_WINDOW_DEFAULT_HEIGHT, MAIN_WINDOW_DEFAULT_WIDTH,
+};
 
 // ========== 字段键（对标 Python .env） ==========
 pub mod keys {
@@ -52,6 +55,11 @@ pub mod keys {
     // 对话增强
     pub const ENABLE_TIME_SENSE: &str = "features.enable_time_sense";
     pub const ENABLE_EMOTION_CLASSIFIER: &str = "features.enable_emotion_classifier";
+
+    // 界面设置
+    pub const WINDOW_WIDTH: &str = "ui.window_width";
+    pub const WINDOW_HEIGHT: &str = "ui.window_height";
+    pub const WINDOW_RESOLUTION_PRESET: &str = "ui.window_resolution_preset";
 
     // 功能开关
     pub const USE_PERSISTENT_MEMORY: &str = "features.use_persistent_memory";
@@ -280,6 +288,8 @@ pub struct ConfigSetting {
     pub description: String,
     #[serde(rename = "type")]
     pub setting_type: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub options: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -295,7 +305,7 @@ pub struct Category {
 
 pub type ConfigTree = BTreeMap<String, Category>;
 
-fn read_setting(app: &AppHandle, key: &str, default: &str) -> String {
+pub fn read_setting(app: &AppHandle, key: &str, default: &str) -> String {
     settings_store(app)
         .ok()
         .and_then(|store| {
@@ -331,6 +341,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             "LLM_OUTPUT_SEC_LANG — 是否允许输出第二语言（关闭后仅输出中文）"
                                 .to_string(),
                         setting_type: "bool".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: keys::CONSUMERS.to_string(),
@@ -338,6 +349,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         description: "COMSUMERS — 并发消费者数量（增大可加速流式输出，默认 3）"
                             .to_string(),
                         setting_type: "text".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: keys::LLM_NO_EMOTION_LIMIT.to_string(),
@@ -346,6 +358,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             "NO_EMOTION_LIMIT_PROMPT — 解除 emotion 数量限制（可能增加 token 消耗）"
                                 .to_string(),
                         setting_type: "bool".to_string(),
+                        options: vec![],
                     },
                 ],
             },
@@ -373,6 +386,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                     description: "ENABLE_TRANSLATE — 启用 AI 翻译（将中文对话翻译为第二语言）"
                         .to_string(),
                     setting_type: "bool".to_string(),
+                    options: vec![],
                 }],
             },
         );
@@ -400,12 +414,14 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         value: read_setting(app, keys::ENABLE_TIME_SENSE, "true"),
                         description: "USE_TIME_SENSE — 启用时间感知（根据上下文时间添加系统提醒）".to_string(),
                         setting_type: "bool".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: keys::ENABLE_EMOTION_CLASSIFIER.to_string(),
                         value: read_setting(app, keys::ENABLE_EMOTION_CLASSIFIER, "true"),
                         description: "ENABLE_EMOTION_CLASSIFIER — 启用情感分类器（ONNX 模型，用于自动标注对话 emotion）".to_string(),
                         setting_type: "bool".to_string(),
+                        options: vec![],
                     },
                 ],
             },
@@ -424,6 +440,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             "USE_PERSISTENT_MEMORY — 开启后记忆会自动压缩，减少 token 消耗"
                                 .to_string(),
                         setting_type: "bool".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: keys::MEMORY_UPDATE_INTERVAL.to_string(),
@@ -431,6 +448,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         description: "MEMORY_UPDATE_INTERVAL — 触发记忆摘要的新消息数（默认 250）"
                             .to_string(),
                         setting_type: "text".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: keys::MEMORY_RECENT_WINDOW.to_string(),
@@ -438,6 +456,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         description: "MEMORY_RECENT_WINDOW — 摘要时保留的最近消息数（默认 30）"
                             .to_string(),
                         setting_type: "text".to_string(),
+                        options: vec![],
                     },
                 ],
             },
@@ -465,18 +484,21 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         value: read_setting(app, keys::AUTO_START_TTS_SOFTWARE, "false"),
                         description: "启动游戏时自动启动 TTS 软件".to_string(),
                         setting_type: "bool".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: keys::TTS_SOFTWARE_PATH.to_string(),
                         value: read_setting(app, keys::TTS_SOFTWARE_PATH, ""),
                         description: "TTS 软件的可执行文件路径".to_string(),
                         setting_type: "path".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: keys::VOICE_CHECK.to_string(),
                         value: read_setting(app, keys::VOICE_CHECK, "false"),
                         description: "启动时检查语音模型是否就绪".to_string(),
                         setting_type: "bool".to_string(),
+                        options: vec![],
                     },
                 ],
             },
@@ -492,72 +514,84 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         value: read_setting(app, tts::keys::SIMPLE_VITS_API_URL, "http://127.0.0.1:23456"),
                         description: "Simple-Vits-API 地址（VITS 适配器）".to_string(),
                         setting_type: "text".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: tts::keys::BV2_API_URL.to_string(),
                         value: read_setting(app, tts::keys::BV2_API_URL, "http://127.0.0.1:6006"),
                         description: "Simple-Vits-API 地址（Bert-Vits2 适配器）".to_string(),
                         setting_type: "text".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: tts::keys::GSV_API_URL.to_string(),
                         value: read_setting(app, tts::keys::GSV_API_URL, "http://127.0.0.1:9880"),
                         description: "GPT-SoVITS API 地址".to_string(),
                         setting_type: "text".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: tts::keys::SBV2_API_URL.to_string(),
                         value: read_setting(app, tts::keys::SBV2_API_URL, "http://127.0.0.1:5000"),
                         description: "Style-Bert-Vits2 本地服务地址".to_string(),
                         setting_type: "text".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: tts::keys::SBV2API_API_URL.to_string(),
                         value: read_setting(app, tts::keys::SBV2API_API_URL, "http://localhost:3000"),
                         description: "SBV2 API 服务地址".to_string(),
                         setting_type: "text".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: tts::keys::AIVIS_API_URL.to_string(),
                         value: read_setting(app, tts::keys::AIVIS_API_URL, "https://api.aivis-project.com/v1"),
                         description: "AIVIS 云 API 地址".to_string(),
                         setting_type: "text".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: tts::keys::AIVIS_API_KEY.to_string(),
                         value: read_setting(app, tts::keys::AIVIS_API_KEY, ""),
                         description: "AIVIS API 密钥（原环境变量 AIVIS_API_KRY）".to_string(),
                         setting_type: "text".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: tts::keys::INDEXTTS_API_URL.to_string(),
                         value: read_setting(app, tts::keys::INDEXTTS_API_URL, "http://127.0.0.1:23467/voice/indextts/presets"),
                         description: "IndexTTS2 API 地址".to_string(),
                         setting_type: "text".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: tts::keys::OPENTTS_API_URL.to_string(),
                         value: read_setting(app, tts::keys::OPENTTS_API_URL, "https://api.siliconflow.cn/v1"),
                         description: "OpenTTS API 地址（硅基流动）".to_string(),
                         setting_type: "text".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: tts::keys::OPENTTS_API_KEY.to_string(),
                         value: read_setting(app, tts::keys::OPENTTS_API_KEY, ""),
                         description: "OpenTTS API 密钥".to_string(),
                         setting_type: "text".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: tts::keys::OPENTTS_MODEL.to_string(),
                         value: read_setting(app, tts::keys::OPENTTS_MODEL, "FunAudioLLM/CosyVoice2-0.5B"),
                         description: "OpenTTS 模型名称".to_string(),
                         setting_type: "text".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: tts::keys::OPENTTS_VOICE.to_string(),
                         value: read_setting(app, tts::keys::OPENTTS_VOICE, "speech:pai:7s86w73x9i:vkgcswgqicskwpdwevri"),
                         description: "OpenTTS voice / 音色标识".to_string(),
                         setting_type: "text".to_string(),
+                        options: vec![],
                     },
                 ],
             },
@@ -575,6 +609,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         value: read_setting(app, tts::keys::TTS_AUDIO_FORMAT, "wav"),
                         description: "音频文件格式（wav / mp3 / flac / ogg 等）".to_string(),
                         setting_type: "text".to_string(),
+                        options: vec![],
                     },
                     // 语音语言改为角色级配置，全局入口隐藏
                     // ConfigSetting {
@@ -582,6 +617,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                     //     value: read_setting(app, tts::keys::VOICE_LANG, "ja"),
                     //     description: "语音合成语言（ja / zh / auto）".to_string(),
                     //     setting_type: "text".to_string(),
+                    //     options: vec![],
                     // },
                 ],
             },
@@ -608,7 +644,8 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                     value: read_setting(app, keys::GITHUB_TOKEN, ""),
                     description: "填入你的 GitHub Token（无需任何权限，仅用于调用 GraphQL API）。留空使用 REST API，无法获取独立 upvote 数（会用 👍 表情数代替）。Token 创建地址：https://github.com/settings/tokens".to_string(),
                     setting_type: "text".to_string(),
-                }],
+                        options: vec![],
+                    }],
             },
         );
 
@@ -616,6 +653,55 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
             "创意工坊".to_string(),
             Category {
                 subcategories: workshop_subs,
+            },
+        );
+    }
+
+    // ===== 界面设置 =====
+    {
+        let mut ui_subs = BTreeMap::new();
+
+        ui_subs.insert(
+            "窗口".to_string(),
+            Subcategory {
+                description: "主窗口内容区尺寸（逻辑像素；保存后立即安全应用）".to_string(),
+                settings: vec![
+                    ConfigSetting {
+                        key: keys::WINDOW_RESOLUTION_PRESET.to_string(),
+                        value: read_setting(app, keys::WINDOW_RESOLUTION_PRESET, "default"),
+                        description: "尺寸预设".to_string(),
+                        setting_type: "select".to_string(),
+                        options: vec![
+                            "default".to_string(),
+                            "fit".to_string(),
+                            "1920x1080".to_string(),
+                            "2560x1440".to_string(),
+                            "1280x720".to_string(),
+                            "custom".to_string(),
+                        ],
+                    },
+                    ConfigSetting {
+                        key: keys::WINDOW_WIDTH.to_string(),
+                        value: read_setting(app, keys::WINDOW_WIDTH, "1500"),
+                        description: "内容区宽度（逻辑像素，默认 1500）".to_string(),
+                        setting_type: "text".to_string(),
+                        options: vec![],
+                    },
+                    ConfigSetting {
+                        key: keys::WINDOW_HEIGHT.to_string(),
+                        value: read_setting(app, keys::WINDOW_HEIGHT, "800"),
+                        description: "内容区高度（逻辑像素，默认 800）".to_string(),
+                        setting_type: "text".to_string(),
+                        options: vec![],
+                    },
+                ],
+            },
+        );
+
+        tree.insert(
+            "界面设置".to_string(),
+            Category {
+                subcategories: ui_subs,
             },
         );
     }
@@ -635,12 +721,14 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         value: read_setting(app, proactive::keys::ENABLE_PROACTIVE_SYSTEM, "false"),
                         description: "ENABLE_PROACTIVE_SYSTEM — 是否启用主动对话系统".to_string(),
                         setting_type: "bool".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: proactive::keys::MAX_PROACTIVE_TIMES.to_string(),
                         value: read_setting(app, proactive::keys::MAX_PROACTIVE_TIMES, "3"),
                         description: "MAX_PROACTIVE_TIMES — 在用户响应之前，能主动对话的次数".to_string(),
                         setting_type: "text".to_string(),
+                        options: vec![],
                     },
                 ],
             },
@@ -657,6 +745,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         value: read_setting(app, proactive::keys::VD_API_KEY, ""),
                         description: "VD_API_KEY — 视觉模型 API Key".to_string(),
                         setting_type: "text".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: proactive::keys::VD_BASE_URL.to_string(),
@@ -667,12 +756,14 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         ),
                         description: "VD_BASE_URL — 视觉模型 API Base URL".to_string(),
                         setting_type: "text".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: proactive::keys::VD_MODEL.to_string(),
                         value: read_setting(app, proactive::keys::VD_MODEL, "qwen3.5-plus"),
                         description: "VD_MODEL — 视觉模型型号".to_string(),
                         setting_type: "text".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: proactive::keys::ENABLE_VISUAL_PRECEPTION.to_string(),
@@ -681,6 +772,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             "ENABLE_VISUAL_PRECEPTION — 是否允许主动视觉感知桌面画面（偷看屏幕）"
                                 .to_string(),
                         setting_type: "bool".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: proactive::keys::SCREEN_WEIGHT.to_string(),
@@ -689,6 +781,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             "SCREEN_WEIGHT — 视觉模式触发权重（越大越容易偷看屏幕聊天，默认 30）"
                                 .to_string(),
                         setting_type: "text".to_string(),
+                        options: vec![],
                     },
                 ],
             },
@@ -705,12 +798,14 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         value: read_setting(app, proactive::keys::ENABLE_TOPIC_CREATER, "true"),
                         description: "ENABLE_TOPIC_CREATER — 允许自主寻找并开启新话题".to_string(),
                         setting_type: "bool".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: proactive::keys::TOPIC_WEIGHT.to_string(),
                         value: read_setting(app, proactive::keys::TOPIC_WEIGHT, "60.0"),
                         description: "TOPIC_WEIGHT — 随机话题触发权重（默认 60）".to_string(),
                         setting_type: "text".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: proactive::keys::ENABLE_TODO_PRECEPTION.to_string(),
@@ -719,12 +814,14 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             "ENABLE_TODO_PRECEPTION — 允许在闲暇时自动读取未完成 TODO 并温和提醒"
                                 .to_string(),
                         setting_type: "bool".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: proactive::keys::TODO_WEIGHT.to_string(),
                         value: read_setting(app, proactive::keys::TODO_WEIGHT, "10.0"),
                         description: "TODO_WEIGHT — TODO 提醒触发权重（默认 10）".to_string(),
                         setting_type: "text".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: proactive::keys::ENABLE_SCHEDULE_REMINDER.to_string(),
@@ -732,6 +829,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         description: "ENABLE_SCHEDULE_REMINDER — 启用强日程日程报时弹窗提醒"
                             .to_string(),
                         setting_type: "bool".to_string(),
+                        options: vec![],
                     },
                     ConfigSetting {
                         key: proactive::keys::ENABLE_IMPORTANT_DAY_REMINDER.to_string(),
@@ -744,6 +842,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             "ENABLE_IMPORTANT_DAY_REMINDER — 启用重要节日与特殊日子暖心提醒"
                                 .to_string(),
                         setting_type: "bool".to_string(),
+                        options: vec![],
                     },
                 ],
             },
@@ -762,38 +861,318 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
 
 // ========== Tauri 命令 ==========
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowSaveResult {
+    pub status: String,
+    pub requested: WindowDimensions,
+    pub applied: WindowDimensions,
+    pub adjusted: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveSettingsResult {
+    pub status: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub window: Option<WindowSaveResult>,
+}
+
+fn string_to_json_value(value: &str) -> JsonValue {
+    if value == "true" {
+        JsonValue::Bool(true)
+    } else if value == "false" {
+        JsonValue::Bool(false)
+    } else if let Ok(number) = value.parse::<i64>() {
+        JsonValue::Number(number.into())
+    } else if let Ok(number) = value.parse::<f64>() {
+        serde_json::Number::from_f64(number)
+            .map(JsonValue::Number)
+            .unwrap_or_else(|| JsonValue::String(value.to_string()))
+    } else {
+        JsonValue::String(value.to_string())
+    }
+}
+
+fn restore_store_values(
+    store: &Arc<Store<Wry>>,
+    previous_values: &[(String, Option<JsonValue>)],
+) -> Result<(), String> {
+    for (key, previous) in previous_values {
+        match previous {
+            Some(value) => store.set(key.clone(), value.clone()),
+            None => {
+                store.delete(key);
+            }
+        }
+    }
+    store
+        .save()
+        .map_err(|error| format!("回滚配置存储失败：{error}"))
+}
+
+pub(crate) fn persist_main_window_size(
+    app: &AppHandle,
+    dimensions: WindowDimensions,
+    preset: Option<&str>,
+) -> Result<(), String> {
+    let store = settings_store(app).map_err(|error| error.to_string())?;
+    store.set(
+        keys::WINDOW_WIDTH,
+        JsonValue::Number(dimensions.width.into()),
+    );
+    store.set(
+        keys::WINDOW_HEIGHT,
+        JsonValue::Number(dimensions.height.into()),
+    );
+    if let Some(preset) = preset {
+        store.set(
+            keys::WINDOW_RESOLUTION_PRESET,
+            JsonValue::String(preset.to_string()),
+        );
+    }
+    store.save().map_err(|error| error.to_string())
+}
+
+fn resolve_window_plan(
+    app: &AppHandle,
+    window: &tauri::WebviewWindow<Wry>,
+    values: &mut BTreeMap<String, String>,
+) -> Result<WindowSizePlan, String> {
+    let preset = values
+        .get(keys::WINDOW_RESOLUTION_PRESET)
+        .map(String::as_str);
+
+    let requested = match preset {
+        Some("default") => {
+            WindowDimensions::new(MAIN_WINDOW_DEFAULT_WIDTH, MAIN_WINDOW_DEFAULT_HEIGHT)
+        }
+        Some("fit") => window_geometry::recommended_main_window_size(window)?,
+        Some("1920x1080") => WindowDimensions::new(1920, 1080),
+        Some("2560x1440") => WindowDimensions::new(2560, 1440),
+        Some("1280x720") => WindowDimensions::new(1280, 720),
+        Some("custom") | None => {
+            let width_raw = values.get(keys::WINDOW_WIDTH).cloned().unwrap_or_else(|| {
+                read_setting(
+                    app,
+                    keys::WINDOW_WIDTH,
+                    &MAIN_WINDOW_DEFAULT_WIDTH.to_string(),
+                )
+            });
+            let height_raw = values.get(keys::WINDOW_HEIGHT).cloned().unwrap_or_else(|| {
+                read_setting(
+                    app,
+                    keys::WINDOW_HEIGHT,
+                    &MAIN_WINDOW_DEFAULT_HEIGHT.to_string(),
+                )
+            });
+            window_geometry::parse_main_window_size(&width_raw, &height_raw)?
+        }
+        Some(other) => return Err(format!("未知的窗口尺寸预设：{other}")),
+    };
+
+    let plan = window_geometry::plan_main_window_size(window, requested)?;
+    // Persist the safe effective size, not an impossible off-screen request.
+    values.insert(
+        keys::WINDOW_WIDTH.to_string(),
+        plan.applied.width.to_string(),
+    );
+    values.insert(
+        keys::WINDOW_HEIGHT.to_string(),
+        plan.applied.height.to_string(),
+    );
+    Ok(plan)
+}
+
 #[tauri::command]
 pub fn get_settings_tree(app: AppHandle) -> ConfigTree {
     build_config_tree(&app)
 }
 
 #[tauri::command]
-pub fn save_settings(app: AppHandle, values: BTreeMap<String, String>) -> Result<String, String> {
+pub fn save_settings(
+    app: AppHandle,
+    state: tauri::State<'_, crate::api::pet::HitTestState>,
+    mut values: BTreeMap<String, String>,
+) -> Result<SaveSettingsResult, String> {
     let store = settings_store(&app).map_err(|e| e.to_string())?;
 
+    let has_window_values = values.contains_key(keys::WINDOW_RESOLUTION_PRESET)
+        || values.contains_key(keys::WINDOW_WIDTH)
+        || values.contains_key(keys::WINDOW_HEIGHT);
+
+    // Serialize main-window saves with pet-mode transitions.  Unrelated
+    // settings do not need to wait on native window operations.
+    let _window_transition = if has_window_values {
+        Some(
+            state
+                .transition_lock
+                .lock()
+                .map_err(|error| format!("等待窗口模式切换失败：{error}"))?,
+        )
+    } else {
+        None
+    };
+
+    let main_window = if has_window_values {
+        Some(
+            app.get_webview_window("main")
+                .ok_or_else(|| "找不到 main 窗口，无法校验并应用窗口尺寸".to_string())?,
+        )
+    } else {
+        None
+    };
+
+    let target_window_plan = if let Some(window) = main_window.as_ref() {
+        Some(
+            resolve_window_plan(&app, window, &mut values).map_err(|message| {
+                tracing::warn!("拒绝保存无效窗口尺寸：{message}");
+                message
+            })?,
+        )
+    } else {
+        None
+    };
+
+    // Read the mode before mutating the store so a poisoned state lock cannot
+    // leave a successfully written configuration with no corresponding result.
+    let pet_mode_enabled = if target_window_plan.is_some() {
+        Some(
+            *state
+                .enabled
+                .lock()
+                .map_err(|error| format!("读取桌宠模式状态失败：{error}"))?,
+        )
+    } else {
+        None
+    };
+
+    let previous_values: Vec<_> = values
+        .keys()
+        .map(|key| (key.clone(), store.get(key)))
+        .collect();
+
     for (key, value) in &values {
-        let json_value = if value == "true" {
-            JsonValue::Bool(true)
-        } else if value == "false" {
-            JsonValue::Bool(false)
-        } else if let Ok(n) = value.parse::<i64>() {
-            JsonValue::Number(n.into())
-        } else if let Ok(n) = value.parse::<f64>() {
-            // 浮点数也存为 Number（serde_json 内部会区分）
-            if let Some(f) = serde_json::Number::from_f64(n) {
-                JsonValue::Number(f)
-            } else {
-                JsonValue::String(value.clone())
-            }
-        } else {
-            JsonValue::String(value.clone())
-        };
-        store.set(key.clone(), json_value);
+        store.set(key.clone(), string_to_json_value(value));
     }
 
-    store.save().map_err(|e| e.to_string())?;
+    if let Err(error) = store.save() {
+        let rollback_error = restore_store_values(&store, &previous_values).err();
+        return Err(match rollback_error {
+            Some(rollback_error) => {
+                format!("保存配置失败：{error}；同时无法完整恢复原配置：{rollback_error}")
+            }
+            None => format!("保存配置失败，已恢复原配置：{error}"),
+        });
+    }
 
-    Ok("配置已成功保存并已生效！".to_string())
+    let window_result = if let (Some(window), Some(plan)) =
+        (main_window.as_ref(), target_window_plan.as_ref())
+    {
+        if pet_mode_enabled.unwrap_or(false) {
+            tracing::info!(
+                width = plan.applied.width,
+                height = plan.applied.height,
+                "桌宠模式已开启，主窗口尺寸已保存并延迟到退出桌宠时应用"
+            );
+            Some(WindowSaveResult {
+                status: "deferred".to_string(),
+                requested: plan.requested,
+                applied: plan.applied,
+                adjusted: plan.adjusted,
+            })
+        } else {
+            let applied = match window_geometry::apply_main_window_plan(window, plan, None) {
+                Ok(applied) => applied,
+                Err(error) => {
+                    let rollback_error = restore_store_values(&store, &previous_values).err();
+                    return Err(match rollback_error {
+                        Some(rollback_error) => format!(
+                            "应用窗口尺寸失败：{error}；同时无法完整恢复原配置：{rollback_error}"
+                        ),
+                        None => format!("应用窗口尺寸失败，已恢复原配置：{error}"),
+                    });
+                }
+            };
+            let final_plan = applied.plan;
+
+            // Fullscreen/maximized transitions can change the measured frame or
+            // active DPI.  If the final safe plan differs from the preliminary
+            // one, commit the authoritative size and roll back both native state
+            // and Store if this second persistence step fails.
+            if final_plan.applied != plan.applied {
+                store.set(
+                    keys::WINDOW_WIDTH,
+                    JsonValue::Number(final_plan.applied.width.into()),
+                );
+                store.set(
+                    keys::WINDOW_HEIGHT,
+                    JsonValue::Number(final_plan.applied.height.into()),
+                );
+                if let Err(error) = store.save() {
+                    let store_rollback = restore_store_values(&store, &previous_values).err();
+                    let window_rollback =
+                        window_geometry::rollback_applied_main_window_plan(window, &applied).err();
+                    let mut rollback_errors = Vec::new();
+                    if let Some(error) = store_rollback {
+                        rollback_errors.push(error);
+                    }
+                    if let Some(error) = window_rollback {
+                        rollback_errors.push(error);
+                    }
+                    return Err(if rollback_errors.is_empty() {
+                        format!("保存最终窗口尺寸失败，配置与窗口均已恢复：{error}")
+                    } else {
+                        format!(
+                            "保存最终窗口尺寸失败：{error}；回滚不完整：{}",
+                            rollback_errors.join("；")
+                        )
+                    });
+                }
+            }
+            Some(WindowSaveResult {
+                status: "applied".to_string(),
+                requested: final_plan.requested,
+                applied: final_plan.applied,
+                adjusted: final_plan.adjusted,
+            })
+        }
+    } else {
+        None
+    };
+
+    let message = match window_result.as_ref() {
+        Some(result) if result.status == "deferred" && result.adjusted => format!(
+            "配置已保存；目标尺寸 {}x{} 超出当前显示器工作区，已安全调整为 {}x{}，将在退出桌宠后应用。",
+            result.requested.width,
+            result.requested.height,
+            result.applied.width,
+            result.applied.height
+        ),
+        Some(result) if result.status == "deferred" => format!(
+            "配置已保存；主窗口将在退出桌宠后调整为 {}x{}。",
+            result.applied.width, result.applied.height
+        ),
+        Some(result) if result.adjusted => format!(
+            "目标尺寸 {}x{} 超出当前显示器工作区，已安全调整并应用为 {}x{}。",
+            result.requested.width,
+            result.requested.height,
+            result.applied.width,
+            result.applied.height
+        ),
+        Some(result) => format!(
+            "配置已保存，主窗口内容区已调整为 {}x{}。",
+            result.applied.width, result.applied.height
+        ),
+        None => "配置已成功保存。".to_string(),
+    };
+
+    Ok(SaveSettingsResult {
+        status: "success".to_string(),
+        message,
+        window: window_result,
+    })
 }
 
 #[tauri::command]

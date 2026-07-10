@@ -10,6 +10,7 @@ mod manifest;
 mod migration;
 mod resource_sync;
 mod utils;
+mod window_geometry;
 
 use std::sync::Arc;
 
@@ -110,6 +111,56 @@ pub fn run() {
             app.manage(lan_sync::LanSyncState::default());
             app.manage(utils::cpu_perf::CpuDetectionCache::new());
 
+            let window = app
+                .get_webview_window("main")
+                .ok_or_else(|| tauri::Error::AssetNotFound("main window not found".to_string()))?;
+
+            // Apply persisted geometry before heavyweight service initialization so a
+            // custom size does not visibly jump after the application has loaded.
+            let width_raw = config::read_setting(
+                app.handle(),
+                config::keys::WINDOW_WIDTH,
+                &window_geometry::MAIN_WINDOW_DEFAULT_WIDTH.to_string(),
+            );
+            let height_raw = config::read_setting(
+                app.handle(),
+                config::keys::WINDOW_HEIGHT,
+                &window_geometry::MAIN_WINDOW_DEFAULT_HEIGHT.to_string(),
+            );
+            let (requested_size, repair_preset) =
+                match window_geometry::parse_main_window_size(&width_raw, &height_raw) {
+                    Ok(size) => (size, None),
+                    Err(error) => {
+                        tracing::warn!("启动时窗口尺寸配置无效，将恢复安全默认值：{error}");
+                        (window_geometry::default_main_window_size(), Some("default"))
+                    }
+                };
+
+            match window_geometry::plan_main_window_size(&window, requested_size) {
+                Ok(plan) => match window_geometry::apply_main_window_plan(&window, &plan, None) {
+                    Ok(applied) => {
+                        let final_plan = applied.plan;
+                        if repair_preset.is_some() || final_plan.adjusted {
+                            if let Err(error) = config::persist_main_window_size(
+                                app.handle(),
+                                final_plan.applied,
+                                repair_preset,
+                            ) {
+                                tracing::warn!(
+                                    "窗口已恢复到安全尺寸，但修复持久化配置失败：{error}"
+                                );
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        tracing::error!("启动时应用主窗口尺寸失败：{error}");
+                    }
+                },
+                Err(error) => {
+                    tracing::error!("启动时无法为当前显示器规划安全窗口尺寸：{error}");
+                }
+            }
+
             let rt = tokio::runtime::Runtime::new()?;
             let (db, ai_service, chat) = rt.block_on(init::initialize(app))?;
 
@@ -200,10 +251,7 @@ pub fn run() {
                 god_agent,
             });
 
-            // Spawn Windows mouse polling click-through loop
-            let window = app
-                .get_webview_window("main")
-                .ok_or_else(|| tauri::Error::AssetNotFound("main window not found".to_string()))?;
+            // Spawn Windows mouse polling click-through loop.
 
             // Set up close handler for exit auto-save
             ai_service::game_system::auto_save::AutoSaveManager::setup_close_handler(
