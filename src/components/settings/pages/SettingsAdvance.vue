@@ -70,10 +70,12 @@ const advanceTab = ref<'menu' | 'llm' | 'other'>(uiStore.advanceInitialTab)
 watch(
   () => uiStore.advanceInitialTab,
   (newTab) => {
+    // `menu` is the consumed/default state.  Ignore the reset notification so
+    // it does not immediately overwrite an externally requested destination.
+    if (newTab === 'menu') return
+
     advanceTab.value = newTab
-    if (newTab !== 'menu') {
-      uiStore.advanceInitialTab = 'menu'
-    }
+    uiStore.advanceInitialTab = 'menu'
   },
   { immediate: true },
 )
