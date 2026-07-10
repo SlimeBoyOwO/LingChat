@@ -8,6 +8,7 @@
     "build": "vue-tsc --noEmit --skipLibCheck && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "desktop:build:local": "tauri build --config src-tauri/tauri.local.conf.json",
     "android:prepare": "node scripts/prepare-bundled-resources.mjs",
     "android:build": "node scripts/prepare-bundled-resources.mjs && tauri android build --target aarch64"
   },
