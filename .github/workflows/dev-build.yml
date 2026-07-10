@@ -1,46 +1,128 @@
-name: Dev Build
+name: 构建开发版（测试）
 
 on:
   push:
     branches: ['dev/**']
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.vscode/**'
+  pull_request:
+    branches: ['dev/**']
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.vscode/**'
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: windows-latest
+    # 避免 push 和 pull_request 重复触发
+    if: |
+      (github.event_name == 'push' && !github.event.pull_request) ||
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch'
+    
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-amd64
+            os: windows-latest
+            artifact-name: lingchat-dev-windows
+            artifact-path: src-tauri/target/release/ling_chat.exe
+          - platform: linux-amd64
+            os: ubuntu-latest
+            artifact-name: lingchat-dev-linux-amd64
+            artifact-path: src-tauri/target/release/ling_chat
+          - platform: macos
+            os: macos-latest
+            artifact-name: lingchat-dev-macos
+            artifact-path: src-tauri/target/release/ling_chat
+          - platform: linux-aarch64
+            os: ubuntu-24.04-arm
+            artifact-name: lingchat-dev-linux-aarch64
+            artifact-path: src-tauri/target/release/ling_chat
+    
     steps:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: latest
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: 'pnpm'
+      
+      - name: 设置 pnpm store 缓存
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
 
-      - name: Install Rust
+      - name: 安装 rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Rust cache
+      - name: 设置 rust 缓存
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: './src-tauri -> target'
+          workspaces: |
+              ./src-tauri
+          cache-targets: true
+          shared-key: ${{ runner.os }}-${{ runner.arch }}-main-pnpm-tauri-build-${{ hashFiles('src-tauri/Cargo.lock') }}
 
-      - name: Install frontend dependencies
-        run: pnpm install
+      - name: 安装 Linux 依赖 (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libjavascriptcoregtk-4.1-dev \
+            libsoup-3.0-dev \
+            libpipewire-0.3-dev \
+            libspa-0.2-dev \
+            libgbm-dev \
+            libegl1-mesa-dev \
+            libx11-dev \
+            libxcb1-dev \
+            libxrandr-dev \
+            libxcomposite-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxtst-dev \
+            libwayland-dev \
+            libdbus-1-dev \
+            mold
+          
+      - name: pnpm 安装依赖
+        run: pnpm i
 
-      - name: Build Tauri app
-        continue-on-error: true
-        run: pnpm tauri build
+      - name: 删除未 lfs pull 的图标
+        shell: bash
+        run: |
+          rm -rf src-tauri/icons/*
+          git lfs pull --include="src-tauri/icons/icon.png"
+          pnpm tauri icon src-tauri/icons/icon.png
 
-      - name: Upload exe
+      - name: 构建应用
+        env:
+          RUSTFLAGS: ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold' || '' }}
+        run: pnpm tauri build --no-bundle
+
+      - name: 上传 artifact
         uses: actions/upload-artifact@v4
         with:
-          name: lingchat-dev
-          path: |
-            src-tauri/target/release/ling-chat.exe
-            src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/bundle/nsis/*-setup.exe
+          name: ${{ matrix.artifact-name }}
+          path: ${{ matrix.artifact-path }}
           retention-days: 7

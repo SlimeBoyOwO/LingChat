@@ -70,16 +70,25 @@ if (existsSync(thirdParty)) {
   console.log(`Generated data_manifest.json with ${Object.keys(manifest.files).length} entries`);
 }
 
-// --- 打包为 data.zip ---
+// --- 打包为 data.zip（跨平台支持） ---
 const zipPath = join(buildDir, 'data.zip');
 try {
-  execSync(
-    `powershell -Command "Compress-Archive -Path '${buildDir}\\*' -DestinationPath '${zipPath}' -Force"`,
-    { cwd: projectRoot, stdio: 'inherit' }
-  );
+  if (process.platform === 'win32') {
+    // Windows: 使用 PowerShell Compress-Archive
+    execSync(
+      `powershell -Command "Compress-Archive -Path '${buildDir}\\*' -DestinationPath '${zipPath}' -Force"`,
+      { cwd: projectRoot, stdio: 'inherit' }
+    );
+  } else {
+    // Linux / macOS: 使用系统 zip 命令
+    execSync(`zip -r "${zipPath}" .`, { cwd: buildDir, stdio: 'inherit' });
+  }
   console.log('Created data.zip');
 } catch (e) {
   console.error('Failed to create data.zip:', e.message);
+  if (process.platform !== 'win32') {
+    console.error('Make sure "zip" is installed (e.g., apt-get install zip).');
+  }
   process.exit(1);
 }
 
