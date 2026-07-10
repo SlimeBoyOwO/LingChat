@@ -1,7 +1,18 @@
 use sea_orm_migration::prelude::*;
 
-#[derive(DeriveMigrationName)]
 pub struct Migration;
+
+// sea-orm 工具链在某些版本会自动用文件路径当作 migration name 写进
+// `seaql_migrations.version`（这条 db 里就是这个值）。为了保持跟旧
+// app 生成的 db 互通，name 必须跟 db 里实际记录的字符串完全一致。
+// 不要换成 "Migration" 或其他派生值，否则覆盖 db 后 migrator 找不到
+// 匹配项，会重新跑一次 CREATE TABLE IF NOT EXISTS（no-op），但 schema
+// 错位不会被发现，后续查询 panic。
+impl MigrationName for Migration {
+    fn name(&self) -> &str {
+        "src\\migration\\m20240101_000001_create_tables"
+    }
+}
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {

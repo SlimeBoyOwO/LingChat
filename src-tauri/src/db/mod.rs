@@ -31,6 +31,11 @@ pub async fn init_db(data_dir: &Path) -> Result<DatabaseConnection> {
 
     Migrator::up(&db, None)
         .await
+        .map_err(|e: sea_orm::DbErr| {
+            // Tauri only prints the outermost context, so log the full chain here.
+            tracing::error!("migration error: {e}");
+            e
+        })
         .context("Failed to run database migrations")?;
 
     tracing::info!("Database initialized at {:?}", db_path);
