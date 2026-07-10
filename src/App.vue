@@ -24,8 +24,10 @@ import { useSedentaryReminder } from './composables/useSedentaryReminder'
 import { useUpdater } from './composables/useUpdater'
 import { useCanDeliver } from './composables/useCanDeliver'
 
-// 激活主动对话投放条件上报（仅在此处挂载一次）
-useCanDeliver()
+// 只有主窗口能作为主动回复投放闸门；设置/截图等辅助 WebView 不能覆盖主窗口状态。
+if (getCurrentWindow().label === 'main') {
+  useCanDeliver()
+}
 
 // ─── 久坐提醒 ────────────────────────────────────────────────
 useSedentaryReminder()

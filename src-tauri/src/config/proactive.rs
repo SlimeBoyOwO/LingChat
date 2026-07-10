@@ -96,26 +96,46 @@ impl ProactiveConfig {
                 .unwrap_or(default)
         };
 
+        let get_bounded_f64 = |key: &str, default: f64, min: f64, max: f64| -> f64 {
+            let value = get_f64(key, default);
+            if value.is_finite() {
+                value.clamp(min, max)
+            } else {
+                tracing::warn!(
+                    "[ProactiveConfig] {} is not finite, falling back to {}",
+                    key,
+                    default
+                );
+                default
+            }
+        };
+
         Self {
             enable_proactive_system: get_bool(keys::ENABLE_PROACTIVE_SYSTEM, false),
-            max_proactive_times: get_i32(keys::MAX_PROACTIVE_TIMES, 3),
-            proactive_interval_secs: get_i32(keys::PROACTIVE_INTERVAL_SECS, 10).max(1) as u64,
-            interest_trigger_threshold: get_f64(keys::INTEREST_TRIGGER_THRESHOLD, 30.0).max(0.0),
-            interest_decay_step: get_f64(keys::INTEREST_DECAY_STEP, 15.0).max(0.0),
+            max_proactive_times: get_i32(keys::MAX_PROACTIVE_TIMES, 3).clamp(0, 1_000),
+            proactive_interval_secs: get_i32(keys::PROACTIVE_INTERVAL_SECS, 10).clamp(2, 3_600)
+                as u64,
+            interest_trigger_threshold: get_bounded_f64(
+                keys::INTEREST_TRIGGER_THRESHOLD,
+                30.0,
+                0.0,
+                95.0,
+            ),
+            interest_decay_step: get_bounded_f64(keys::INTEREST_DECAY_STEP, 15.0, 0.0, 100.0),
             vd_follow_chat_model: get_bool(keys::VD_FOLLOW_CHAT_MODEL, true),
             vd_api_key: get_string(keys::VD_API_KEY, ""),
             vd_base_url: get_string(
                 keys::VD_BASE_URL,
                 "https://dashscope.aliyuncs.com/compatible-mode/v1",
             ),
-            vd_model: get_string(keys::VD_MODEL, "qwen3.5-plus"),
+            vd_model: get_string(keys::VD_MODEL, "qwen3-vl-flash"),
             enable_visual_perception: get_bool(keys::ENABLE_VISUAL_PRECEPTION, true),
-            screen_weight: get_f64(keys::SCREEN_WEIGHT, 30.0),
+            screen_weight: get_bounded_f64(keys::SCREEN_WEIGHT, 30.0, 0.0, 10_000.0),
             visual_perception_priority: get_bool(keys::VISUAL_PERCEPTION_PRIORITY, false),
             enable_topic_creator: get_bool(keys::ENABLE_TOPIC_CREATER, true),
-            topic_weight: get_f64(keys::TOPIC_WEIGHT, 60.0),
+            topic_weight: get_bounded_f64(keys::TOPIC_WEIGHT, 60.0, 0.0, 10_000.0),
             enable_todo_perception: get_bool(keys::ENABLE_TODO_PRECEPTION, true),
-            todo_weight: get_f64(keys::TODO_WEIGHT, 10.0),
+            todo_weight: get_bounded_f64(keys::TODO_WEIGHT, 10.0, 0.0, 10_000.0),
             enable_schedule_reminder: get_bool(keys::ENABLE_SCHEDULE_REMINDER, true),
             enable_important_day_reminder: get_bool(keys::ENABLE_IMPORTANT_DAY_REMINDER, true),
         }

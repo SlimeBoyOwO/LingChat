@@ -60,6 +60,7 @@ import { eventQueue } from '@/core/events/event-queue'
 import ChatInput from '../pet/ChatInput.vue'
 import DialogueBox from '../pet/DialogueBox.vue'
 import GameRolesStage from '../pet/GameRolesStage.vue'
+import { setExternalDeliveryBlocked } from '@/composables/useCanDeliver'
 
 const BASE_AVATAR_SIZE = 240
 const CHAT_BASE_H = 45
@@ -246,9 +247,13 @@ const handleAvatarClick = () => {
 }
 
 const handleOpenSettings = async () => {
+  setExternalDeliveryBlocked(true)
   try {
     const existing = await WebviewWindow.getByLabel('settings')
     if (existing) {
+      void existing.once('tauri://destroyed', () => {
+        setExternalDeliveryBlocked(false)
+      })
       await existing.setFocus()
       return
     }
@@ -270,9 +275,14 @@ const handleOpenSettings = async () => {
     })
 
     webview.once('tauri://error', (e) => {
+      setExternalDeliveryBlocked(false)
       console.error('创建桌宠轻量设置窗口失败:', e)
     })
+    webview.once('tauri://destroyed', () => {
+      setExternalDeliveryBlocked(false)
+    })
   } catch (error) {
+    setExternalDeliveryBlocked(false)
     console.error('打开设置窗口时出错:', error)
   }
 }
@@ -349,7 +359,9 @@ const handleExitPetMode = async () => {
     if (settingsWindow) {
       await settingsWindow.close()
     }
+    setExternalDeliveryBlocked(false)
   } catch {
+    setExternalDeliveryBlocked(false)
     // 窗口不存在，忽略
   }
 
