@@ -135,12 +135,21 @@ const saveSettings = async () => {
   saveStatus.color = "#6366f1"; // 靛蓝色提示
 
   try {
-    saveStatus.message = (await saveEnvConfigSettings(formData)).message;
+    const saveResult = await saveEnvConfigSettings(formData);
+
+    try {
+      await reloadProactiveSystem();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || "未知错误");
+      throw new Error(`配置已保存，但主动对话系统重载失败，当前运行实例尚未应用：${message}`);
+    }
+
+    saveStatus.message = `${saveResult.message} 主动对话系统已重载。`;
     saveStatus.color = "#10b981";
-    reloadProactiveSystem();
     await loadConfig();
-  } catch (error: any) {
-    saveStatus.message = `错误: ${error.message}`;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || "未知错误");
+    saveStatus.message = `错误: ${message}`;
     saveStatus.color = "#ef4444";
   } finally {
     setTimeout(() => {
@@ -157,6 +166,7 @@ const loadConfig = async () => {
     'VD_MODEL',
     'ENABLE_VISUAL_PRECEPTION',
     'SCREEN_WEIGHT',
+    'VISUAL_PERCEPTION_PRIORITY',
     'ENABLE_TOPIC_CREATER',
     'TOPIC_WEIGHT',
     'ENABLE_TODO_PRECEPTION',

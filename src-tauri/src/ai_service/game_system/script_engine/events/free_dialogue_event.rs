@@ -163,6 +163,9 @@ impl ScriptEvent for FreeDialogueEvent {
 
             let user_input = rx.await.map_err(|_| anyhow!("用户输入通道已关闭"))?;
 
+            // 用户输入、剧情提示与对应 AI 回复必须保持同一生成顺序。
+            let _generation_guard = ctx.generation_lock.clone().lock_owned().await;
+
             // ---- 添加用户输入台词先 ----
             {
                 let mut gs = ctx.game_status.lock().await;

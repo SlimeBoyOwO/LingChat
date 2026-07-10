@@ -33,6 +33,15 @@ pub struct PerceptionResult {
     pub current_screen_text: String,
 }
 
+/// 主动对话调度所需的最小只读上下文。
+///
+/// 这里刻意不持有 `GameStatus` 的锁，避免屏幕分析的网络请求阻塞正常聊天。
+#[derive(Clone, Debug, Default)]
+pub struct ProactiveContext {
+    pub user_name: String,
+    pub ai_name: String,
+}
+
 // ==========================================
 // 日程与待办配置结构 (schedules.json 映射)
 // ==========================================
@@ -124,7 +133,46 @@ impl IntentType {
 pub struct PendingIntent {
     /// 已格式化的系统旁白（PromptRole::System.build_prompt 的结果）
     pub prompt: String,
+    /// 去重使用的原始提示词。只有真正投递成功后才写入主动对话历史。
+    pub raw_prompt: Option<String>,
     pub intent_type: IntentType,
+    /// 创建策略时的用户交互代次；用于丢弃用户发言前启动的过期屏幕/闲聊结果。
+    pub interaction_epoch: u64,
+    /// 已进入生成阶段但未产出任何持久化回复的次数。
+    pub delivery_attempts: u8,
     /// 生成时间，用于 TTL 过期判断
     pub triggered_at: Instant,
+}
+
+impl PendingIntent {
+    pub fn new(
+        prompt: String,
+        raw_prompt: Option<String>,
+        intent_type: IntentType,
+        interaction_epoch: u64,
+    ) -> Self {
+        let now = Instant::now();
+        Self {
+            prompt,
+            raw_prompt,
+            intent_type,
+            interaction_epoch,
+            delivery_attempts: 0,
+            triggered_at: now,
+        }
+    }
+}
+
+/// 调度器生成的候选意图。prompt 仍是未经过 PromptRole 包装的原始文本。
+#[derive(Clone, Debug)]
+pub struct ProactiveCandidate {
+    pub prompt: String,
+    pub intent_type: IntentType,
+}
+
+/// 一轮策略选择的结果，同时告诉主循环本轮是否真的调用过视觉模型。
+#[derive(Clone, Debug, Default)]
+pub struct DispatchOutcome {
+    pub candidate: Option<ProactiveCandidate>,
+    pub screen_attempted: bool,
 }

@@ -129,6 +129,7 @@ import { ref, onMounted, computed, reactive, watch, nextTick } from 'vue'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import SettingItem from '@/components/base/items/SettingItem.vue'
 import { getEnvConfigSettings, saveEnvConfigSettings } from '@/api/services/config'
+import { reloadProactiveSystem } from '@/api/services/schedule'
 
 // --- 响应式状态定义 ---
 const uiStore = useUIStore()
@@ -199,12 +200,22 @@ const saveSettings = async () => {
   saveStatus.message = ''
 
   try {
-    saveStatus.message = (await saveEnvConfigSettings(formData)).message
+    const saveResult = await saveEnvConfigSettings(formData)
+
+    try {
+      await reloadProactiveSystem()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || '未知错误')
+      throw new Error(`配置已保存，但主动对话系统重载失败，当前运行实例尚未应用：${message}`)
+    }
+
+    saveStatus.message = `${saveResult.message} 主动对话系统已重载。`
     saveStatus.colorClass = 'text-green-500'
 
     await loadConfig(false)
-  } catch (error: any) {
-    saveStatus.message = `错误: ${error.message}`
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || '未知错误')
+    saveStatus.message = `错误: ${message}`
     saveStatus.colorClass = 'text-red-500'
   } finally {
     isLoading.value = false
