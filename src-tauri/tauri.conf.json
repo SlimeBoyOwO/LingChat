@@ -15,6 +15,10 @@
         "title": "LingChat",
         "width": 1500,
         "height": 800,
+        "minWidth": 1024,
+        "minHeight": 640,
+        "center": true,
+        "preventOverflow": true,
         "transparent": true,
         "shadow": false
       }
