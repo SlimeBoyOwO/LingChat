@@ -31,7 +31,11 @@ pub struct ProactiveDeduplicator {
 
 impl Default for ProactiveDeduplicator {
     fn default() -> Self {
-        Self::new(DEFAULT_MAX_HISTORY, DEFAULT_SIMILARITY_THRESHOLD, DEFAULT_MAX_AGE_MS)
+        Self::new(
+            DEFAULT_MAX_HISTORY,
+            DEFAULT_SIMILARITY_THRESHOLD,
+            DEFAULT_MAX_AGE_MS,
+        )
     }
 }
 
@@ -52,7 +56,8 @@ impl ProactiveDeduplicator {
             return;
         }
         let ts_ms = now_ms();
-        self.entries.push_back(ProactiveHistoryEntry { text, ts_ms });
+        self.entries
+            .push_back(ProactiveHistoryEntry { text, ts_ms });
         self.evict(ts_ms);
     }
 

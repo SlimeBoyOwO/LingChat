@@ -746,16 +746,29 @@ pub async fn remove_role_from_scene(app: AppHandle, role_id: i32) -> Result<Json
 #[tauri::command]
 pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
+    let llm = state
+        .chat
+        .llm
+        .clone()
+        .ok_or_else(|| "LLM 未配置".to_string())?;
+    let concurrency = AppConfig::load(&app)
+        .map(|c| c.consumers as usize)
+        .unwrap_or(1)
+        .max(1);
+    let game_status = {
+        let svc = state.ai_service.lock().await;
+        svc.game_status.clone()
+    };
+    // 入场旁白和对应生成必须是一个原子顺序，不能被主动回复插到中间。
+    let generation_guard = state.generation_lock.clone().lock_owned().await;
 
     // Phase 1: 去重 & 添加旁白台词
     {
-        let svc = state.ai_service.lock().await;
-        let mut gs = svc.game_status.lock().await;
+        let mut gs = game_status.lock().await;
 
         if gs.player_entered {
             return Ok(());
         }
-        gs.player_entered = true;
 
         let current_role_id = match gs.current_role_id {
             Some(id) => id,
@@ -764,6 +777,7 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
                 return Ok(());
             }
         };
+        gs.player_entered = true;
 
         let ai_name = gs
             .role_manager
@@ -806,20 +820,6 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
     } // 释放锁
 
     // Phase 2: 触发 AI 响应（suppress_thinking=true，不显示思考指示器）
-    let llm = state
-        .chat
-        .llm
-        .clone()
-        .ok_or_else(|| "LLM 未配置".to_string())?;
-    let concurrency = AppConfig::load(&app)
-        .map(|c| c.consumers as usize)
-        .unwrap_or(1)
-        .max(1);
-    let game_status = {
-        let svc = state.ai_service.lock().await;
-        svc.game_status.clone()
-    };
-
     let deps = GeneratorDeps {
         app: app.clone(),
         db: state.db.clone(),
@@ -834,10 +834,9 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
     };
 
     let generator = MessageGenerator::new(deps);
-    let gen_lock = state.generation_lock.clone();
 
     tokio::spawn(async move {
-        let _lock = gen_lock.lock().await;
+        let _generation_guard = generation_guard;
         match generator.process_message(None).await {
             Ok(acc) => tracing::info!("[Entry] 入场问候生成完成，长度: {}", acc.len()),
             Err(e) => tracing::error!("[Entry] 入场问候生成失败: {:#}", e),

@@ -645,7 +645,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                     ConfigSetting {
                         key: proactive::keys::PROACTIVE_INTERVAL_SECS.to_string(),
                         value: read_setting(app, proactive::keys::PROACTIVE_INTERVAL_SECS, "10"),
-                        description: "PROACTIVE_INTERVAL_SECS — 主动对话轮询间隔（秒，默认 10，最小 1）".to_string(),
+                        description: "PROACTIVE_INTERVAL_SECS — 主动对话轮询间隔（秒，默认 10，最小 2）".to_string(),
                         setting_type: "text".to_string(),
                     },
                     ConfigSetting {
@@ -673,7 +673,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                     ConfigSetting {
                         key: proactive::keys::VD_FOLLOW_CHAT_MODEL.to_string(),
                         value: read_setting(app, proactive::keys::VD_FOLLOW_CHAT_MODEL, "true"),
-                        description: "VD_FOLLOW_CHAT_MODEL — 视觉模型跟随当前对话模型（开启后将使用对话模型的 API Key / Base URL / 模型名）".to_string(),
+                        description: "VD_FOLLOW_CHAT_MODEL — 跟随当前对话模型；若当前是不可关闭长思考的模型，视觉识别也会明显变慢。低延迟建议关闭并配置独立轻量视觉模型".to_string(),
                         setting_type: "bool".to_string(),
                     },
                     ConfigSetting {
@@ -694,8 +694,10 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                     },
                     ConfigSetting {
                         key: proactive::keys::VD_MODEL.to_string(),
-                        value: read_setting(app, proactive::keys::VD_MODEL, "qwen3.5-plus"),
-                        description: "VD_MODEL — 视觉模型型号".to_string(),
+                        value: read_setting(app, proactive::keys::VD_MODEL, "qwen3-vl-flash"),
+                        description:
+                            "VD_MODEL — 独立视觉模型型号（低延迟推荐非思考型 VL/Flash，例如 qwen3-vl-flash）"
+                                .to_string(),
                         setting_type: "text".to_string(),
                     },
                     ConfigSetting {

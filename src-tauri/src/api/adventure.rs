@@ -194,12 +194,16 @@ pub async fn start_adventure(app: AppHandle, adventure_folder: String) -> Result
         let is_running = service.script_manager.is_running.clone();
         (script, game_status, config, is_running)
     };
+    is_running
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .map_err(|_| "已有剧本正在运行，请先结束当前剧情".to_string())?;
 
     let ai_service = state.ai_service.clone();
     let channels = state.script_channels.clone();
     let db = state.db.clone();
     let data_dir = state.ai_service.lock().await.data_dir.clone();
     let llm = state.chat.llm.clone();
+    let generation_lock = state.generation_lock.clone();
     let achievement_manager = state.achievement_manager.clone();
 
     tokio::spawn(async move {
@@ -208,6 +212,7 @@ pub async fn start_adventure(app: AppHandle, adventure_folder: String) -> Result
             data_dir: &data_dir,
             app: &app,
             game_status,
+            generation_lock,
             config: &config,
             llm: llm.as_ref(),
             channels,
