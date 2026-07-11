@@ -61,17 +61,43 @@ const placeholderText = computed(() => {
   switch (gameStore.currentStatus) {
     case 'input':
       return uiStore.showPlayerHintLine || '输入消息...'
-    case 'thinking':
+    case 'thinking': {
+      const len = gameStore.thinkingLength
+      if (gameStore.isProactiveThinking) {
+        if (len > 0) {
+          const stageHint =
+            len < 300
+              ? '正在观察屏幕'
+              : len < 1000
+                ? '正在组织语言'
+                : len < 2500
+                  ? '正在检查细节'
+                  : '正在深入构思'
+          return `主动回复中（${stageHint}，已思考 ${len} 字）`
+        }
+        return '主动回复中...'
+      }
+
       const currentInteractRole = gameStore.currentInteractRole
       if (currentInteractRole) {
         const baseMessage = currentInteractRole.thinkMessage
-        if (gameStore.thinkingLength > 0) {
-          return `${baseMessage}（已深度思考 ${gameStore.thinkingLength} 字）`
+        if (len > 0) {
+          // 根据思考字数给出更生动的阶段提示
+          const stageHint =
+            len < 300
+              ? '正在理解主人的话'
+              : len < 1000
+                ? '正在组织语言'
+                : len < 2500
+                  ? '正在检查细节'
+                  : '正在深入构思'
+          return `${baseMessage}（${stageHint}，已思考 ${len} 字）`
         }
         return baseMessage
       } else {
         return '等待回应中...'
       }
+    }
     case 'responding':
       return '聊天ing~'
     case 'presenting':

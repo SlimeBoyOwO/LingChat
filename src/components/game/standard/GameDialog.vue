@@ -21,22 +21,24 @@
           </div>
           <div
             v-show="!uiStore.isNarrowScreen"
-            class="text-xl font-bold text-[#6eb4ff] font-[inherit] text-shadow-[inherit]"
+            class="text-xl font-bold text-[#6eb4ff] font-[inherit] text-shadow-[inherit] mr-3.75"
           >
             <div id="character-sub">{{ uiStore.showCharacterSubtitle }}</div>
           </div>
 
-          <!-- 右侧区域：情绪标签 + 操作按钮组（窄屏时占据剩余全部宽度，优先显示） -->
+          <!-- 情绪标签，放在名称与操作按钮组之间 -->
+          <div
+            v-show="!uiStore.isNarrowScreen"
+            class="text-xl font-bold text-[#ff77dd] font-[inherit] text-shadow-[inherit] shrink-0"
+          >
+            <div id="character-emotion">{{ uiStore.showCharacterEmotion }}</div>
+          </div>
+
+          <!-- 右侧区域：操作按钮组（窄屏时占据剩余全部宽度，优先显示） -->
           <div
             class="flex items-baseline ml-auto min-w-0"
             :class="{ 'flex-1 shrink-0': uiStore.isNarrowScreen }"
           >
-            <div
-              class="text-xl font-bold text-[#ff77dd] font-[inherit] text-shadow-[inherit] shrink-0"
-            >
-              <div id="character-emotion">{{ uiStore.showCharacterEmotion }}</div>
-            </div>
-
             <!-- 操作按钮组（窄屏时占据右侧容器剩余空间，可横向滚动） -->
             <div
               class="overflow-x-auto custom-scroll"
@@ -291,17 +293,42 @@ const placeholderText = computed(() => {
   switch (gameStore.currentStatus) {
     case 'input':
       return uiStore.showPlayerHintLine || '在这里输入消息...'
-    case 'thinking':
+    case 'thinking': {
+      const len = gameStore.thinkingLength
+      if (gameStore.isProactiveThinking) {
+        if (len > 0) {
+          const stageHint =
+            len < 300
+              ? '正在观察屏幕'
+              : len < 1000
+                ? '正在组织语言'
+                : len < 2500
+                  ? '正在检查细节'
+                  : '正在深入构思'
+          return `主动回复中（${stageHint}，已思考 ${len} 字）`
+        }
+        return '主动回复中...'
+      }
+
       const currentInteractRole = gameStore.currentInteractRole
       if (currentInteractRole) {
         const baseMessage = currentInteractRole.thinkMessage
-        if (gameStore.thinkingLength > 0) {
-          return `${baseMessage}（已深度思考 ${gameStore.thinkingLength} 字）`
+        if (len > 0) {
+          const stageHint =
+            len < 300
+              ? '正在理解主人的话'
+              : len < 1000
+                ? '正在组织语言'
+                : len < 2500
+                  ? '正在检查细节'
+                  : '正在深入构思'
+          return `${baseMessage}（${stageHint}，已思考 ${len} 字）`
         }
         return baseMessage
       } else {
         return '等待回应中...'
       }
+    }
     case 'responding':
     case 'presenting':
       return ''

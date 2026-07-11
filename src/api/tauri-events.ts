@@ -18,7 +18,14 @@ export function initializeTauriEventListeners() {
 
   listen('ai:thinking', (event) => {
     console.log('[Tauri] ai:thinking', event.payload)
-    eventQueue.addEvent(asEvent(event.payload, { type: 'thinking', duration: 0 }))
+    const payload = event.payload as { isThinking?: boolean; isProactive?: boolean }
+    eventQueue.addEvent(
+      asEvent(event.payload, {
+        type: 'thinking',
+        duration: 0,
+        isProactive: Boolean(payload.isProactive),
+      }),
+    )
   })
 
   listen('ai:thinking_progress', (event) => {
@@ -27,6 +34,16 @@ export function initializeTauriEventListeners() {
     const gameStore = useGameStore()
     if (typeof payload.thinkingLength === 'number') {
       gameStore.thinkingLength = payload.thinkingLength
+    }
+  })
+
+  listen('ai:proactive_thinking', (event) => {
+    const payload = event.payload as { isThinking?: boolean }
+    console.log('[Tauri] ai:proactive_thinking', payload)
+    const gameStore = useGameStore()
+    gameStore.isProactiveThinking = Boolean(payload.isThinking)
+    if (!payload.isThinking) {
+      gameStore.thinkingLength = 0
     }
   })
 
