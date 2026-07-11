@@ -7,6 +7,7 @@ use crate::ai_service::game_system::script_engine::events::ScriptContext;
 use crate::ai_service::game_system::script_engine::ScriptManager;
 use crate::AppState;
 use serde::Serialize;
+use std::sync::atomic::Ordering;
 use tauri::{AppHandle, Manager};
 
 // ============================================================
@@ -81,6 +82,7 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
     let db = state.db.clone();
     let data_dir = state.ai_service.lock().await.data_dir.clone();
     let llm = state.chat.llm.clone();
+    let generation_lock = state.generation_lock.clone();
     let achievement_manager = state.achievement_manager.clone();
 
     // Lock AIService briefly to validate and extract needed data
@@ -97,6 +99,9 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
         let is_running = service.script_manager.is_running.clone();
         (script, game_status, config, is_running)
     };
+    is_running
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .map_err(|_| "已有剧本正在运行，请先结束当前剧情".to_string())?;
 
     // Run script in background task (does NOT hold AIService lock across awaits)
     tokio::spawn(async move {
@@ -105,6 +110,7 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
             data_dir: &data_dir,
             app: &app,
             game_status,
+            generation_lock,
             config: &config,
             llm: llm.as_ref(),
             channels,
