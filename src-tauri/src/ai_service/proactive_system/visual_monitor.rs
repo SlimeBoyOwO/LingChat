@@ -5,11 +5,15 @@ use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_
 
 pub struct VisualMonitor {
     last_hash: Option<u64>,
+    pending_change: bool,
 }
 
 impl VisualMonitor {
     pub fn new() -> Self {
-        Self { last_hash: None }
+        Self {
+            last_hash: None,
+            pending_change: false,
+        }
     }
 
     /// 执行快速的 GDI 像素网格采样并检测画面是否变化。
@@ -72,15 +76,19 @@ impl VisualMonitor {
                     // Hamming distance >= 6 means change detected (threshold matching Python dhash difference)
                     let change_detected = diff >= 6;
                     if change_detected {
+                        self.pending_change = true;
                         tracing::info!(
                             "[VisualMonitor] Screen change detected! Hamming distance: {}",
                             diff
                         );
                     }
-                    change_detected
+                    self.pending_change
                 } else {
                     self.last_hash = Some(hash);
-                    false
+                    // 首次采样也需要分析一次，否则用户在启动后画面不变化时永远不会进入视觉路径。
+                    self.pending_change = true;
+                    tracing::debug!("[VisualMonitor] Initial screen sample marked for analysis");
+                    true
                 }
             }
         }
@@ -89,5 +97,10 @@ impl VisualMonitor {
         {
             false
         }
+    }
+
+    /// 视觉模型已经消费了当前变化，清除待分析标记。
+    pub fn mark_analyzed(&mut self) {
+        self.pending_change = false;
     }
 }
