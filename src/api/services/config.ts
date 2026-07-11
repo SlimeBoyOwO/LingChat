@@ -7,7 +7,36 @@ export interface ConfigItem {
   key: string
   value: string
   description: string
-  type: 'text' | 'bool' | 'textarea' | 'path'
+  type: 'text' | 'bool' | 'textarea' | 'path' | 'select'
+  options?: string[]
+}
+
+export interface WindowDimensions {
+  width: number
+  height: number
+}
+
+export interface WindowSaveResult {
+  status: 'applied' | 'deferred'
+  requested: WindowDimensions
+  applied: WindowDimensions
+  adjusted: boolean
+}
+
+export interface SaveSettingsResult {
+  status: string
+  message: string
+  window?: WindowSaveResult
+}
+
+const normalizeSaveSettingsResult = (
+  result: string | SaveSettingsResult,
+): SaveSettingsResult => {
+  // 兼容仍返回纯字符串的旧版 Rust 后端。
+  if (typeof result === 'string') {
+    return { status: 'success', message: result }
+  }
+  return result
 }
 
 export async function fetchEnvConfig(): Promise<StructuredConfig> {
@@ -16,8 +45,9 @@ export async function fetchEnvConfig(): Promise<StructuredConfig> {
 
 export async function saveEnvConfig(
   values: Record<string, string>,
-): Promise<string> {
-  return invoke('save_settings', { values })
+): Promise<SaveSettingsResult> {
+  const result = await invoke<string | SaveSettingsResult>('save_settings', { values })
+  return normalizeSaveSettingsResult(result)
 }
 
 export const getEnvConfigByKey = async (key: string): Promise<ConfigItem> => {
@@ -42,10 +72,10 @@ export const getEnvConfigSettings = async (): Promise<StructuredConfig> => {
 
 export const saveEnvConfigSettings = async (
   values: Record<string, string>,
-): Promise<{ status: string; message: string }> => {
+): Promise<SaveSettingsResult> => {
   try {
-    const message = await invoke('save_settings', { values })
-    return { status: 'success', message: message as string }
+    const result = await invoke<string | SaveSettingsResult>('save_settings', { values })
+    return normalizeSaveSettingsResult(result)
   } catch (error) {
     console.error('Error modifying config env settings:', error)
     throw error
