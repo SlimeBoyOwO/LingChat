@@ -31,6 +31,7 @@ interface UIState {
   showCharacterThinkLine: string
   showSettings: boolean
   currentSettingsTab: string
+  advanceInitialTab: 'menu' | 'llm' | 'other'
 
   currentBackgroundTransition: number
   currentPresentPic: string
@@ -92,6 +93,7 @@ export const useUIStore = defineStore('ui', {
     showCharacterThinkLine: 'Ling Ling Thinking...',
     showSettings: false,
     currentSettingsTab: 'text',
+    advanceInitialTab: 'menu',
     currentBackgroundTransition: 300,
     currentPresentPic: '',
     currentPresentPicScale: 1,
@@ -169,9 +171,9 @@ export const useUIStore = defineStore('ui', {
     aspectRatio(): number {
       return this.viewportWidth / this.viewportHeight
     },
-    // 窄屏判断（竖屏 / 移动端）
+    // 窄屏判断：与 Tailwind 的 md 断点一致，并覆盖所有竖屏窗口。
     isNarrowScreen(): boolean {
-      return this.aspectRatio < 1.0
+      return this.viewportWidth < 768 || this.viewportHeight > this.viewportWidth
     },
     // 小屏/低分辨率判断（手机横竖屏、小窗口均覆盖）
     isSmallScreen(): boolean {
@@ -197,6 +199,9 @@ export const useUIStore = defineStore('ui', {
     },
     setSettingsTab(tab: string) {
       this.currentSettingsTab = tab
+    },
+    setAdvanceInitialTab(tab: 'menu' | 'llm' | 'other') {
+      this.advanceInitialTab = tab
     },
 
     // ========== Notification Actions ==========

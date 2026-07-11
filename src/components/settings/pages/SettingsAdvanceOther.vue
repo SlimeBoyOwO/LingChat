@@ -22,7 +22,7 @@
         class="flex items-center gap-1 mt-2 text-sm px-5"
         style="color: white; -webkit-text-stroke: 1px black; paint-order: stroke fill"
       >
-        💡 这里的设置重启软件生效哦！
+        💡 部分设置需要重启，具体以当前页面说明为准。
       </div>
 
       <div
@@ -82,34 +82,40 @@
 
           <form @submit.prevent="saveSettings">
             <div
-              v-for="setting in selectedSubcategory.settings"
+              v-for="setting in visibleSettings"
               :key="setting.key"
               class="mb-6"
             >
               <SettingItem
                 :setting="setting"
+                :readonly="isWindowDimensionLocked(setting)"
+                :helper-text="windowDimensionHelperText(setting)"
                 @update:value="(value) => (setting.value = value)"
               />
             </div>
-          </form>
 
-          <!-- 保存操作区域 -->
-          <div
-            class="inline-flex flex-col gap-2 px-5 py-2.5 bg-brand text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-colors duration-200 hover:bg-[#0056b3] min-w-30"
-            @click="saveSettings"
-          >
-            <button
-              class="bg-transparent border-none text-white cursor-pointer p-0 m-0 w-full h-full"
-            >
-              保存
-            </button>
-            <p
-              :class="saveStatus.colorClass"
-              class="text-xs whitespace-normal wrap-break-word max-w-75"
-            >
-              {{ saveStatus.message }}
-            </p>
-          </div>
+            <!-- 保存操作区域 -->
+            <div class="flex flex-col items-start gap-2">
+              <button
+                type="submit"
+                :disabled="isLoading"
+                :aria-busy="isLoading"
+                class="min-w-30 rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-slate-950 shadow-sm transition-colors duration-200 hover:bg-[#8be3ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {{ isLoading ? '保存中…' : '保存' }}
+              </button>
+              <p
+                v-if="saveStatus.message"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+                :class="saveStatus.colorClass"
+                class="max-w-125 rounded-lg border px-3 py-2 text-sm leading-5 whitespace-normal wrap-break-word"
+              >
+                {{ saveStatus.message }}
+              </p>
+            </div>
+          </form>
         </div>
       </div>
       <div v-else-if="!isLoading && !Object.keys(configData).length" class="w-full active">
@@ -129,6 +135,7 @@ import { ref, onMounted, computed, reactive, watch, nextTick } from 'vue'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import SettingItem from '@/components/base/items/SettingItem.vue'
 import { getEnvConfigSettings, saveEnvConfigSettings } from '@/api/services/config'
+import { reloadProactiveSystem } from '@/api/services/schedule'
 
 // --- 响应式状态定义 ---
 const uiStore = useUIStore()
@@ -141,7 +148,7 @@ const activeSelection = reactive({
 })
 const saveStatus = reactive({
   message: '',
-  colorClass: 'text-green-500',
+  colorClass: 'border-emerald-400/60 bg-emerald-950/90 text-emerald-100',
 })
 
 const emit = defineEmits<{
@@ -160,6 +167,68 @@ const selectedSubcategory = computed(() => {
   return null
 })
 
+const hiddenKeysWhenFollowing = ['VD_API_KEY', 'VD_BASE_URL', 'VD_MODEL']
+const visibleSettings = computed(() => {
+  if (!selectedSubcategory.value) return []
+  const settings = selectedSubcategory.value.settings
+  const followSetting = settings.find((s: any) => s.key === 'VD_FOLLOW_CHAT_MODEL')
+  const followChatModel = followSetting?.value?.toLowerCase() === 'true'
+  return settings.filter((s: any) => {
+    if (!followChatModel) return true
+    return !hiddenKeysWhenFollowing.includes(s.key)
+  })
+})
+
+// 分辨率预设切换时自动同步宽高输入框
+const WINDOW_RESOLUTION_PRESET_KEY = 'ui.window_resolution_preset'
+const WINDOW_WIDTH_KEY = 'ui.window_width'
+const WINDOW_HEIGHT_KEY = 'ui.window_height'
+
+const presetSizeMap: Record<string, { width: string; height: string }> = {
+  default: { width: '1500', height: '800' },
+  '1920x1080': { width: '1920', height: '1080' },
+  '2560x1440': { width: '2560', height: '1440' },
+  '1280x720': { width: '1280', height: '720' },
+}
+
+const windowResolutionPreset = computed<string | undefined>(() =>
+  selectedSubcategory.value?.settings?.find(
+    (setting: any) => setting.key === WINDOW_RESOLUTION_PRESET_KEY,
+  )?.value,
+)
+
+const isWindowDimension = (setting: { key: string }) =>
+  setting.key === WINDOW_WIDTH_KEY || setting.key === WINDOW_HEIGHT_KEY
+
+const isWindowDimensionLocked = (setting: { key: string }) =>
+  isWindowDimension(setting) && windowResolutionPreset.value !== 'custom'
+
+const windowDimensionHelperText = (setting: { key: string }): string => {
+  if (!isWindowDimensionLocked(setting)) return ''
+  if (windowResolutionPreset.value === 'fit') {
+    return '保存时会根据当前显示器的可用工作区计算尺寸；这里显示的是上次保存的尺寸。'
+  }
+  return '宽高由当前分辨率预设决定；如需手动输入，请选择“自定义”。'
+}
+
+watch(
+  () =>
+    selectedSubcategory.value?.settings?.find(
+      (s: any) => s.key === WINDOW_RESOLUTION_PRESET_KEY,
+    )?.value,
+  (newPreset, oldPreset) => {
+    if (!newPreset || newPreset === oldPreset) return
+    if (newPreset === 'custom') return
+    const size = presetSizeMap[newPreset]
+    if (!size || !selectedSubcategory.value) return
+    const settings = selectedSubcategory.value.settings
+    const widthSetting = settings.find((s: any) => s.key === WINDOW_WIDTH_KEY)
+    const heightSetting = settings.find((s: any) => s.key === WINDOW_HEIGHT_KEY)
+    if (widthSetting) widthSetting.value = size.width
+    if (heightSetting) heightSetting.value = size.height
+  },
+)
+
 // --- 方法定义 ---
 
 const isActive = (category: string, subcategory: string) => {
@@ -176,7 +245,7 @@ const selectSubcategory = (category: string, subcategory: string) => {
 }
 
 const saveSettings = async () => {
-  if (!selectedSubcategory.value) return
+  if (!selectedSubcategory.value || isLoading.value) return
 
   const formData: Record<string, string> = {}
   selectedSubcategory.value.settings.forEach((setting: { key: string; value: string }) => {
@@ -184,16 +253,31 @@ const saveSettings = async () => {
   })
 
   isLoading.value = true
-  saveStatus.message = ''
+  saveStatus.message = '正在保存…'
+  saveStatus.colorClass = 'border-sky-400/60 bg-sky-950/90 text-sky-100'
 
   try {
-    saveStatus.message = (await saveEnvConfigSettings(formData)).message
-    saveStatus.colorClass = 'text-green-500'
+    const saveResult = await saveEnvConfigSettings(formData)
+
+    if (activeSelection.category === '主动对话配置') {
+      try {
+        await reloadProactiveSystem()
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error || '未知错误')
+        throw new Error(`配置已保存，但主动对话系统重载失败，当前运行实例尚未应用：${message}`)
+      }
+      saveStatus.message = `${saveResult.message} 主动对话系统已重载。`
+    } else {
+      saveStatus.message = saveResult.message
+    }
+
+    saveStatus.colorClass = 'border-emerald-400/60 bg-emerald-950/90 text-emerald-100'
 
     await loadConfig(false)
-  } catch (error: any) {
-    saveStatus.message = `错误: ${error.message}`
-    saveStatus.colorClass = 'text-red-500'
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || '未知错误')
+    saveStatus.message = `错误: ${message}`
+    saveStatus.colorClass = 'border-red-400/60 bg-red-950/90 text-red-100'
   } finally {
     isLoading.value = false
     setTimeout(() => {
@@ -222,7 +306,7 @@ const loadConfig = async (selectFirst = true) => {
   } catch (error: any) {
     console.error(error)
     saveStatus.message = `加载配置失败: ${error.message}`
-    saveStatus.colorClass = 'text-red-500'
+    saveStatus.colorClass = 'border-red-400/60 bg-red-950/90 text-red-100'
   } finally {
     isLoading.value = false
   }
