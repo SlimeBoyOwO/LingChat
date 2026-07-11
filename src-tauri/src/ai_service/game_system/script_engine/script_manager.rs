@@ -205,18 +205,11 @@ impl ScriptManager {
             .ok_or_else(|| anyhow!("剧本不存在: '{}'", name))?
             .clone();
 
-        self.is_running.store(true, Ordering::SeqCst);
+        self.is_running
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .map_err(|_| anyhow!("已有剧本正在运行"))?;
 
-        // Initialize: register roles, set script_status, load player
-        Self::init_script(&script, ctx).await?;
-
-        // Run the chapter loop
-        Self::run_script(ctx).await?;
-
-        // Cleanup
-        Self::on_script_end(ctx, &self.is_running).await?;
-
-        Ok(())
+        Self::execute_reserved_script(&script, ctx, &self.is_running).await
     }
 
     /// Execute a script from start to finish without needing `&self`.
@@ -227,11 +220,31 @@ impl ScriptManager {
         ctx: &mut ScriptContext<'_>,
         is_running: &AtomicBool,
     ) -> Result<()> {
-        is_running.store(true, Ordering::SeqCst);
-        Self::init_script(script, ctx).await?;
-        Self::run_script(ctx).await?;
-        Self::on_script_end(ctx, is_running).await?;
-        Ok(())
+        debug_assert!(is_running.load(Ordering::SeqCst));
+        Self::execute_reserved_script(script, ctx, is_running).await
+    }
+
+    async fn execute_reserved_script(
+        script: &ScriptStatus,
+        ctx: &mut ScriptContext<'_>,
+        is_running: &AtomicBool,
+    ) -> Result<()> {
+        let execution = async {
+            {
+                let _generation_guard = ctx.generation_lock.clone().lock_owned().await;
+                Self::init_script(script, ctx).await?;
+            }
+            Self::run_script(ctx).await
+        }
+        .await;
+
+        match execution {
+            Ok(()) => Self::on_script_end(ctx, is_running).await,
+            Err(error) => {
+                Self::abort_script(ctx, is_running).await;
+                Err(error)
+            }
+        }
     }
 
     /// Initialize a script: register its roles, set script_status, load player info.
@@ -461,6 +474,20 @@ impl ScriptManager {
         tracing::info!("[ScriptManager] 剧本状态已清除");
 
         Ok(())
+    }
+
+    /// 异常结束只清理运行态，不把失败的剧本记入 completed_scripts。
+    async fn abort_script(ctx: &mut ScriptContext<'_>, is_running: &AtomicBool) {
+        tracing::warn!("[ScriptManager] 剧本异常终止，正在清理状态");
+        let _ = emit(ctx.app, SCRIPT_END, &ScriptEndPayload {});
+
+        {
+            let mut channels = ctx.channels.lock().await;
+            channels.input_tx = None;
+            channels.choice_tx = None;
+        }
+        ctx.game_status.lock().await.script_status = None;
+        is_running.store(false, Ordering::SeqCst);
     }
 
     // ============================================================

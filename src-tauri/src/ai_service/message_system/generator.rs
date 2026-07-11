@@ -45,6 +45,8 @@ pub struct GeneratorDeps {
     pub god_agent: Option<Arc<GodAgentCore>>,
     /// 抑制 ai:thinking 事件。用于系统触发的后台生成（如入场问候）。
     pub suppress_thinking: bool,
+    /// 标记本次生成是否由主动回复触发，用于前端区分思考状态文案。
+    pub is_proactive: bool,
 }
 
 /// `process_message` 各步骤间传递的用户消息上下文。
@@ -225,7 +227,7 @@ impl MessageGenerator {
         user_msg_seq: Option<u32>,
     ) -> Result<String> {
         if !self.deps.suppress_thinking {
-            events::emit_thinking(&self.deps.app, true);
+            events::emit_thinking(&self.deps.app, true, self.deps.is_proactive);
         }
 
         match self
@@ -234,14 +236,14 @@ impl MessageGenerator {
         {
             Ok(acc) => {
                 if !self.deps.suppress_thinking {
-                    events::emit_thinking(&self.deps.app, false);
+                    events::emit_thinking(&self.deps.app, false, self.deps.is_proactive);
                 }
                 Ok(acc)
             }
             Err(e) => {
                 events::emit_error(&self.deps.app, &e);
                 if !self.deps.suppress_thinking {
-                    events::emit_thinking(&self.deps.app, false);
+                    events::emit_thinking(&self.deps.app, false, self.deps.is_proactive);
                 }
                 Err(e)
             }

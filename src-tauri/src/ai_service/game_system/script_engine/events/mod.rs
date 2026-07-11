@@ -72,6 +72,8 @@ pub struct ScriptContext<'a> {
     /// Owned Arc — events lock as needed. Decoupled from AIService lock
     /// so events can safely call MessageGenerator without deadlock.
     pub game_status: Arc<Mutex<GameStatus>>,
+    /// 与普通聊天、入场问候和主动回复共用的全局生成门。
+    pub generation_lock: Arc<Mutex<()>>,
     pub config: &'a AIServiceConfig,
 
     /// Optional LLM client for `ai_dialogue`, `free_dialogue`, `chapter_end` (ai_judged).

@@ -117,6 +117,7 @@ impl ScriptEvent for FreeDialogueEvent {
                     concurrency: 1,
                     god_agent: None,
                     suppress_thinking: false,
+                    is_proactive: false,
                 };
                 MessageGenerator::new(deps)
             })
@@ -161,6 +162,9 @@ impl ScriptEvent for FreeDialogueEvent {
             let _ = emit(ctx.app, SCRIPT_INPUT, &payload);
 
             let user_input = rx.await.map_err(|_| anyhow!("用户输入通道已关闭"))?;
+
+            // 用户输入、剧情提示与对应 AI 回复必须保持同一生成顺序。
+            let _generation_guard = ctx.generation_lock.clone().lock_owned().await;
 
             // ---- 添加用户输入台词先 ----
             {

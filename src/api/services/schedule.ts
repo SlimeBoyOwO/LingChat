@@ -34,3 +34,13 @@ export const reloadProactiveSystem = async (): Promise<void> => {
     throw error
   }
 }
+
+export const testProactiveMessage = async (): Promise<string> => {
+  try {
+    const result = await invoke<string>('test_proactive_message')
+    return result
+  } catch (error: any) {
+    console.error('测试主动消息错误:', error.message)
+    throw error
+  }
+}

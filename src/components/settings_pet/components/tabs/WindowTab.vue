@@ -30,7 +30,7 @@
     <div class="flex flex-col pb-4 flex-1 gap-3">
       <!-- 渲染设置项卡片 (复刻原图 1、2 号卡片风格) -->
       <SettingItem
-        v-for="setting in settings"
+        v-for="setting in visibleSettings"
         :key="setting.key"
         :setting="setting"
         :is-dark-mode="isDarkMode"
@@ -95,7 +95,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive } from "vue";
+import { ref, onMounted, reactive, computed } from "vue";
 import { Save } from "lucide-vue-next";
 import {
   getEnvConfigByKey,
@@ -110,6 +110,16 @@ defineProps<{
 }>();
 
 const settings = ref<Record<string, ConfigItem>>({});
+const hiddenKeysWhenFollowing = ['VD_API_KEY', 'VD_BASE_URL', 'VD_MODEL']
+const visibleSettings = computed(() => {
+  const followChatModel = settings.value['VD_FOLLOW_CHAT_MODEL']?.value?.toLowerCase() === 'true'
+  return Object.values(settings.value).filter((s) => {
+    // VD_FOLLOW_CHAT_MODEL 在日程弹窗的主动对话设置中显示，此处仅用于控制隐藏
+    if (s.key === 'VD_FOLLOW_CHAT_MODEL') return false
+    if (!followChatModel) return true
+    return !hiddenKeysWhenFollowing.includes(s.key)
+  })
+})
 const saveStatus = reactive({
   message: "",
   color: "#10b981", // 成功颜色
@@ -125,12 +135,21 @@ const saveSettings = async () => {
   saveStatus.color = "#6366f1"; // 靛蓝色提示
 
   try {
-    saveStatus.message = (await saveEnvConfigSettings(formData)).message;
+    const saveResult = await saveEnvConfigSettings(formData);
+
+    try {
+      await reloadProactiveSystem();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || "未知错误");
+      throw new Error(`配置已保存，但主动对话系统重载失败，当前运行实例尚未应用：${message}`);
+    }
+
+    saveStatus.message = `${saveResult.message} 主动对话系统已重载。`;
     saveStatus.color = "#10b981";
-    reloadProactiveSystem();
     await loadConfig();
-  } catch (error: any) {
-    saveStatus.message = `错误: ${error.message}`;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || "未知错误");
+    saveStatus.message = `错误: ${message}`;
     saveStatus.color = "#ef4444";
   } finally {
     setTimeout(() => {
@@ -141,13 +160,13 @@ const saveSettings = async () => {
 
 const loadConfig = async () => {
   const configKeys = [
-    'ENABLE_PROACTIVE_SYSTEM',
-    'MAX_PROACTIVE_TIMES',
+    'VD_FOLLOW_CHAT_MODEL',
     'VD_API_KEY',
     'VD_BASE_URL',
     'VD_MODEL',
     'ENABLE_VISUAL_PRECEPTION',
     'SCREEN_WEIGHT',
+    'VISUAL_PERCEPTION_PRIORITY',
     'ENABLE_TOPIC_CREATER',
     'TOPIC_WEIGHT',
     'ENABLE_TODO_PRECEPTION',

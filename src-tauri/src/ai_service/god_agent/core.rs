@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
+use regex::Regex;
 
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::god_agent::config::GodAgentConfig;
@@ -201,8 +202,62 @@ impl GodAgentCore {
         // Fallback：如果 LLM 返回了文本但未调用工具，尝试从内容解析
         if let Some(ref content) = response.content {
             tracing::warn!("上帝Agent 未调用工具，返回了文本: {content}");
+            if let Some((role_id, reason)) = parse_fallback_speaker(content) {
+                if role_id == 0 || gs.present_role_ids.contains(&role_id) {
+                    tracing::info!("上帝Agent 文本回退解析成功: role_id={role_id}, reason={reason}");
+                    return Ok((role_id, reason));
+                }
+                tracing::warn!("上帝Agent 文本回退解析到不在场的角色 {role_id}，忽略");
+            }
+            // 仍无法解析时，安全降级为交给玩家，避免整轮对话失败
+            tracing::warn!("上帝Agent 无法解析发言者，降级为 role_id=0（玩家）");
+            return Ok((0, "fallback to player after unparsable response".into()));
         }
 
         Err(anyhow!("上帝Agent 无法解析下一个发言者"))
+    }
+}
+
+/// 从 LLM 文本回退解析下一个发言者。
+/// 优先匹配 `role_id = N` / `role_id=N`，其次匹配第一个独立整数。
+fn parse_fallback_speaker(content: &str) -> Option<(i32, String)> {
+    // 1. 显式的 role_id 标记
+    let re = Regex::new(r"role_id\s*=\s*(\d+)").ok()?;
+    if let Some(caps) = re.captures(content) {
+        if let Ok(id) = caps[1].parse::<i32>() {
+            return Some((id, "parsed role_id from text".into()));
+        }
+    }
+
+    // 2. 文本中的第一个独立整数
+    let re_num = Regex::new(r"\b(\d+)\b").ok()?;
+    if let Some(caps) = re_num.captures(content) {
+        if let Ok(id) = caps[1].parse::<i32>() {
+            return Some((id, "parsed first number from text".into()));
+        }
+    }
+
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_fallback_speaker() {
+        assert_eq!(
+            parse_fallback_speaker("我选择 role_id=3 继续发言"),
+            Some((3, "parsed role_id from text".into()))
+        );
+        assert_eq!(
+            parse_fallback_speaker("role_id = 0"),
+            Some((0, "parsed role_id from text".into()))
+        );
+        assert_eq!(
+            parse_fallback_speaker("交给玩家，选择 0"),
+            Some((0, "parsed first number from text".into()))
+        );
+        assert!(parse_fallback_speaker("I can't continue.").is_none());
     }
 }

@@ -99,6 +99,17 @@ impl KimiCodeProvider {
             }
         }
 
+        // 转换工具定义为 Anthropic 原生格式
+        let anthropic_tools: Option<Vec<AnthropicTool>> = tools.map(|ts| {
+            ts.iter()
+                .map(|t| AnthropicTool {
+                    name: t.function.name.clone(),
+                    description: t.function.description.clone(),
+                    input_schema: t.function.parameters.clone(),
+                })
+                .collect()
+        });
+
         MessagesRequest {
             model: &self.model,
             max_tokens: 65536,
@@ -107,16 +118,17 @@ impl KimiCodeProvider {
             top_p: self.top_p,
             system: if system_text.is_empty() { None } else { Some(system_text) },
             messages: conversation,
-            tools,
+            tools: anthropic_tools,
             tool_choice,
             thinking: if self.enable_thinking {
                 Some(ThinkingConfig {
                     type_: "enabled".to_string(),
                 })
             } else {
-                Some(ThinkingConfig {
-                    type_: "disabled".to_string(),
-                })
+                // Kimi Code 后端（Fable）会拒绝显式的 thinking: {type: "disabled"}，
+                // 所以关闭思考链时直接省略该字段。参考 kimi-code 官方 anthropic provider:
+                // https://github.com/MoonshotAI/kimi-code/blob/main/packages/kosong/src/providers/anthropic.ts
+                None
             },
         }
     }
@@ -164,15 +176,32 @@ impl LlmProvider for KimiCodeProvider {
         tools: &[ToolDefinition],
         tool_choice: Option<&str>,
     ) -> Result<LlmResponseWithTools> {
-        let tool_choice_value = tool_choice.map(|tc| {
-            if tc == "auto" || tc == "none" || tc == "required" {
-                serde_json::Value::String(tc.to_string())
-            } else {
-                serde_json::from_str(tc).unwrap_or(serde_json::Value::String("auto".to_string()))
+        // Anthropic Messages API 的 tool_choice 格式与 OpenAI 不同：
+        // OpenAI: "auto" | "none" | "required" | {"type": "function", "function": {"name": "..."}}
+        // Anthropic: {"type": "auto"} | {"type": "any"} | {"type": "tool", "name": "..."}
+        let anthropic_tool_choice: Option<serde_json::Value> = tool_choice.map(|tc| {
+            match tc {
+                "auto" | "none" => serde_json::json!({"type": "auto"}),
+                "required" => serde_json::json!({"type": "any"}),
+                _ => {
+                    // 尝试解析 OpenAI 的 function 指定格式
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(tc) {
+                        if v.get("type").and_then(|t| t.as_str()) == Some("function") {
+                            if let Some(name) = v.get("function").and_then(|f| f.get("name")).and_then(|n| n.as_str()) {
+                                return serde_json::json!({"type": "tool", "name": name});
+                            }
+                        }
+                    }
+                    serde_json::json!({"type": "auto"})
+                }
             }
         });
 
-        let body = self.build_request(messages, false, Some(tools), tool_choice_value);
+        let body = self.build_request(messages, false, Some(tools), anthropic_tool_choice);
+        if let Ok(body_json) = serde_json::to_string(&body) {
+            tracing::debug!("[KimiCode] complete_with_tools request body: {}", body_json);
+        }
+
         let resp = http
             .post(self.endpoint())
             .headers(self.headers()?)
@@ -256,12 +285,11 @@ impl LlmProvider for KimiCodeProvider {
                         let Some(data) = line.strip_prefix("data:") else { continue };
                         let data = data.trim();
                         if data == "[DONE]" {
-                            // 流式响应结束前输出剩余的 thinking 内容
-                            if !thinking_buffer.is_empty() {
+                            // 流式响应结束前只输出尚未发送的 thinking 增量，避免重复。
+                            if thinking_buffer.len() > last_flush_len {
+                                let delta = &thinking_buffer[last_flush_len..];
                                 tracing::info!("[Kimi-Code Thinking] {}", thinking_buffer);
-                                yield LlmChunk::Reasoning(thinking_buffer.clone());
-                                thinking_buffer.clear();
-                                last_flush_len = 0;
+                                yield LlmChunk::Reasoning(delta.to_string());
                             }
                             // 如果 text 为空但 thinking 有内容，把 thinking 作为正式回复兜底
                             if text_buffer.is_empty() && !thinking_buffer.is_empty() {
@@ -315,10 +343,11 @@ impl LlmProvider for KimiCodeProvider {
                     last_flush_len = thinking_buffer.len();
                 }
             }
-            // 流正常结束时也输出未打印的 thinking
-            if !thinking_buffer.is_empty() {
+            // 流正常结束时也只输出尚未发送的 thinking 增量。
+            if thinking_buffer.len() > last_flush_len {
+                let delta = &thinking_buffer[last_flush_len..];
                 tracing::info!("[Kimi-Code Thinking] {}", thinking_buffer);
-                yield LlmChunk::Reasoning(thinking_buffer.clone());
+                yield LlmChunk::Reasoning(delta.to_string());
             }
             // 兜底：text 为空时使用 thinking
             if text_buffer.is_empty() && !thinking_buffer.is_empty() {
@@ -338,6 +367,14 @@ impl LlmProvider for KimiCodeProvider {
 // ============================================================
 
 #[derive(Serialize)]
+struct AnthropicTool {
+    name: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    description: String,
+    input_schema: serde_json::Value,
+}
+
+#[derive(Serialize)]
 struct MessagesRequest<'a> {
     model: &'a str,
     max_tokens: u32,
@@ -350,7 +387,7 @@ struct MessagesRequest<'a> {
     system: Option<String>,
     messages: Vec<AnthropicMessage<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tools: Option<&'a [ToolDefinition]>,
+    tools: Option<Vec<AnthropicTool>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]

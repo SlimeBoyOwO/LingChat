@@ -1,40 +1,92 @@
-use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::proactive_system::config::ProactiveConfig;
+use crate::ai_service::proactive_system::proactive_history::ProactiveDeduplicator;
 use crate::ai_service::proactive_system::types::{
-    IntentType, PerceptionResult, UserScheduleSettings, UserState,
+    DispatchOutcome, IntentType, PerceptionResult, ProactiveCandidate, ProactiveContext,
+    UserScheduleSettings, UserState,
 };
-use crate::ai_service::screen_analyzer::{ScreenAnalyzer, ScreenAnalyzerConfig};
+use crate::ai_service::screen_analyzer::{
+    build_screen_analyzer_config, ScreenAnalyzer, ScreenContext,
+};
 use chrono::Local;
 use rand::Rng;
+use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
+
+const SCREEN_ATTEMPT_COOLDOWN: Duration = Duration::from_secs(60);
 
 pub struct StrategyDispatcher {
     screen_analyzer: Mutex<ScreenAnalyzer>,
+    deduplicator: Mutex<ProactiveDeduplicator>,
+    last_screen_attempt: Mutex<Option<Instant>>,
+    last_important_day_date: Mutex<Option<String>>,
 }
 
 impl StrategyDispatcher {
     pub fn new(app_handle: &tauri::AppHandle) -> Self {
         let config = ProactiveConfig::load(app_handle);
-        let sa_config = ScreenAnalyzerConfig {
-            vd_api_key: config.vd_api_key.clone(),
-            vd_base_url: config.vd_base_url.clone(),
-            vd_model: config.vd_model.clone(),
-        };
+        let sa_config = build_screen_analyzer_config(app_handle, &config);
         Self {
             screen_analyzer: Mutex::new(ScreenAnalyzer::new(sa_config)),
+            deduplicator: Mutex::new(ProactiveDeduplicator::default()),
+            last_screen_attempt: Mutex::new(None),
+            last_important_day_date: Mutex::new(None),
         }
     }
 
-    /// 更新配置（同时同步 ScreenAnalyzer 的配置，同步执行无需 async）。
-    pub fn update_config(&self, app_handle: &tauri::AppHandle) {
+    /// 更新配置，同时可靠地同步 ScreenAnalyzer。不能因视觉请求正在占锁而静默丢失更新。
+    pub async fn update_config(&self, app_handle: &tauri::AppHandle) {
         let config = ProactiveConfig::load(app_handle);
-        // try_lock: update_config 不涉及 async，用同步锁即可
-        if let Ok(mut sa) = self.screen_analyzer.try_lock() {
-            sa.update_config(ScreenAnalyzerConfig {
-                vd_api_key: config.vd_api_key,
-                vd_base_url: config.vd_base_url,
-                vd_model: config.vd_model,
-            });
+        self.screen_analyzer
+            .lock()
+            .await
+            .update_config(build_screen_analyzer_config(app_handle, &config));
+    }
+
+    async fn is_duplicate(&self, prompt: &str) -> bool {
+        let dedup = self.deduplicator.lock().await;
+        let (dup, score) = dedup.is_duplicate(prompt);
+        if dup {
+            tracing::info!(
+                "[StrategyDispatcher] Duplicate proactive prompt detected (score={:.2}), skipping.",
+                score
+            );
+            true
+        } else {
+            false
+        }
+    }
+
+    /// 只有真正生成出非空回复并成功投递后才提交去重历史。
+    pub async fn record_delivered(&self, prompt: &str, intent_type: IntentType) {
+        self.deduplicator.lock().await.record(prompt.to_string());
+        if intent_type == IntentType::ImportantDay {
+            *self.last_important_day_date.lock().await =
+                Some(Local::now().format("%Y-%m-%d").to_string());
+        }
+    }
+
+    async fn reserve_screen_attempt(&self) -> bool {
+        let mut last = self.last_screen_attempt.lock().await;
+        let now = Instant::now();
+        if last.is_some_and(|at| now.duration_since(at) < SCREEN_ATTEMPT_COOLDOWN) {
+            return false;
+        }
+        *last = Some(now);
+        true
+    }
+
+    async fn candidate_if_new(
+        &self,
+        prompt: String,
+        intent_type: IntentType,
+    ) -> Option<ProactiveCandidate> {
+        if self.is_duplicate(&prompt).await {
+            None
+        } else {
+            Some(ProactiveCandidate {
+                prompt,
+                intent_type,
+            })
         }
     }
 
@@ -42,47 +94,64 @@ impl StrategyDispatcher {
     /// 优先顺序: ImportantDay (每天仅一次) > Todo > Screen Observation > Topic
     pub async fn get_proactive_prompt(
         &self,
-        game_status: &GameStatus,
+        context: &ProactiveContext,
         settings: &UserScheduleSettings,
         perception: &PerceptionResult,
         config: &ProactiveConfig,
-    ) -> Option<(String, IntentType)> {
+        screen_eligible: bool,
+    ) -> DispatchOutcome {
+        let mut outcome = DispatchOutcome::default();
         let now = Local::now();
         let today_str = now.format("%m-%d").to_string();
+        let today_full = now.format("%Y-%m-%d").to_string();
 
-        // 1. 检查 ImportantDay (如果是今天且今天未触发过)
-        if config.enable_important_day_reminder {
+        // 1. 检查 ImportantDay。重复候选只跳过本策略，不能阻断后续策略。
+        let important_day_already_delivered =
+            self.last_important_day_date.lock().await.as_deref() == Some(today_full.as_str());
+        if config.enable_important_day_reminder && !important_day_already_delivered {
             if let Some(important_days) = &settings.important_days {
-                let last_talk_date = game_status
-                    .last_dialog_time
-                    .map(|dt| dt.format("%m-%d").to_string())
-                    .unwrap_or_default();
-
-                if last_talk_date != today_str {
-                    for day in important_days {
-                        if day.date.ends_with(&today_str) {
-                            let desc = day.desc.as_deref().unwrap_or("");
-                            let char_name = game_status
-                                .current_role_id
-                                .and_then(|rid| game_status.role_manager.get_loaded(rid))
-                                .and_then(|role| role.display_name.clone())
-                                .unwrap_or_else(|| "小灵".to_string());
-
+                for day in important_days {
+                    if day.date.ends_with(&today_str) {
+                        let desc = day.desc.as_deref().unwrap_or("");
+                        let prompt = format!(
+                            "{{今天是特殊的一天：{}，{}。可以和{}聊聊哦}}",
+                            day.title, desc, context.ai_name
+                        );
+                        if let Some(candidate) = self
+                            .candidate_if_new(prompt, IntentType::ImportantDay)
+                            .await
+                        {
                             tracing::info!(
                                 "[StrategyDispatcher] Triggered important day reminder: {}",
                                 day.title
                             );
-                            return Some((
-                                format!(
-                                    "{{今天是特殊的一天：{}，{}。可以和{}聊聊哦}}",
-                                    day.title, desc, char_name
-                                ),
-                                IntentType::ImportantDay,
-                            ));
+                            outcome.candidate = Some(candidate);
+                            return outcome;
                         }
                     }
                 }
             }
+        }
+
+        // 如果开启视觉理解优先模式，优先尝试 SCREEN，失败再按原逻辑随机
+        if config.enable_visual_perception
+            && config.visual_perception_priority
+            && screen_eligible
+            && self.reserve_screen_attempt().await
+        {
+            tracing::info!(
+                "[StrategyDispatcher] Visual perception priority enabled, trying SCREEN first."
+            );
+            outcome.screen_attempted = true;
+            if let Some((prompt, intent)) = self.get_screen_prompt(context).await {
+                if let Some(candidate) = self.candidate_if_new(prompt, intent).await {
+                    outcome.candidate = Some(candidate);
+                    return outcome;
+                }
+            }
+            tracing::info!(
+                "[StrategyDispatcher] SCREEN priority failed, falling back to weighted random."
+            );
         }
 
         // 2. 随机模式选择，根据启用状态动态构建候选列表
@@ -90,53 +159,59 @@ impl StrategyDispatcher {
         let mut weights = Vec::new();
 
         // 获取权重（如果配置文件有设置，否则基于 UserState 动态决定）
-        let mut todo_w = config.todo_weight;
-        let mut topic_w = config.topic_weight;
-        let mut screen_w = config.screen_weight;
+        let todo_default = if perception.state == UserState::WORK {
+            60.0
+        } else {
+            10.0
+        };
+        let topic_default = if perception.state == UserState::IDLE {
+            80.0
+        } else {
+            60.0
+        };
+        let screen_default = if perception.state == UserState::GAME {
+            60.0
+        } else {
+            30.0
+        };
+        let todo_w = normalized_weight(config.todo_weight, todo_default);
+        let topic_w = normalized_weight(config.topic_weight, topic_default);
+        // 有尚未消费的画面变化时提高 SCREEN 权重，但仍保留其他策略的机会。
+        let screen_w = normalized_weight(config.screen_weight, screen_default)
+            * if screen_eligible { 2.0 } else { 1.0 };
 
-        if todo_w <= 0.0 {
-            todo_w = if perception.state == UserState::WORK {
-                60.0
-            } else {
-                10.0
-            };
-        }
-        if topic_w <= 0.0 {
-            topic_w = if perception.state == UserState::IDLE {
-                80.0
-            } else {
-                60.0
-            };
-        }
-        if screen_w <= 0.0 {
-            screen_w = if perception.state == UserState::GAME {
-                60.0
-            } else {
-                30.0
-            };
-        }
-
-        if config.enable_todo_perception {
+        if config.enable_todo_perception && todo_w > 0.0 {
             modes.push("TODO");
             weights.push(todo_w);
         }
-        if config.enable_topic_creator {
+        if config.enable_topic_creator && topic_w > 0.0 {
             modes.push("TOPIC");
             weights.push(topic_w);
         }
-        if config.enable_visual_perception {
+        // priority 已经尝试过 SCREEN 时，本轮不能再次把 SCREEN 放回随机池。
+        if config.enable_visual_perception
+            && screen_eligible
+            && !outcome.screen_attempted
+            && screen_w > 0.0
+        {
             modes.push("SCREEN");
             weights.push(screen_w);
         }
 
         if modes.is_empty() {
-            return None;
+            return outcome;
         }
 
         // 轮盘赌/加权随机选择
         let selected_mode = {
             let mut rng = rand::thread_rng();
             let total_weight: f64 = weights.iter().sum();
+            if !total_weight.is_finite() || total_weight <= 0.0 {
+                tracing::warn!(
+                    "[StrategyDispatcher] Invalid total strategy weight: {total_weight}"
+                );
+                return outcome;
+            }
             let mut roll = rng.gen_range(0.0..total_weight);
             let mut selected = modes[0];
             for (i, &w) in weights.iter().enumerate() {
@@ -156,32 +231,47 @@ impl StrategyDispatcher {
 
         match selected_mode {
             "TODO" => {
-                if let Some(prompt) = self.get_todo_prompt(game_status, settings) {
-                    return Some((prompt, IntentType::Todo));
+                if let Some(prompt) = self.get_todo_prompt(context, settings) {
+                    if let Some(candidate) = self.candidate_if_new(prompt, IntentType::Todo).await {
+                        outcome.candidate = Some(candidate);
+                        return outcome;
+                    }
                 }
-                // 没有 Todo 时降级到 TOPIC
+                // 没有 Todo 或候选重复时降级到 TOPIC。
                 if config.enable_topic_creator {
-                    return Some((self.get_topic_prompt(game_status), IntentType::Topic));
+                    let prompt = self.get_topic_prompt(context);
+                    outcome.candidate = self.candidate_if_new(prompt, IntentType::Topic).await;
                 }
-                None
+                outcome
             }
             "SCREEN" => {
-                if let Some(prompt) = self.get_screen_prompt(game_status).await {
-                    return Some((prompt, IntentType::Screen));
+                if self.reserve_screen_attempt().await {
+                    outcome.screen_attempted = true;
+                    if let Some((prompt, intent)) = self.get_screen_prompt(context).await {
+                        if let Some(candidate) = self.candidate_if_new(prompt, intent).await {
+                            outcome.candidate = Some(candidate);
+                            return outcome;
+                        }
+                    }
                 }
-                // SCREEN 抓取失败或接口失败时降级到 TOPIC
+                // SCREEN 抓取失败、PASS、重复或仍在冷却时降级到 TOPIC。
                 if config.enable_topic_creator {
-                    return Some((self.get_topic_prompt(game_status), IntentType::Topic));
+                    let prompt = self.get_topic_prompt(context);
+                    outcome.candidate = self.candidate_if_new(prompt, IntentType::Topic).await;
                 }
-                None
+                outcome
             }
-            _ => Some((self.get_topic_prompt(game_status), IntentType::Topic)),
+            _ => {
+                let prompt = self.get_topic_prompt(context);
+                outcome.candidate = self.candidate_if_new(prompt, IntentType::Topic).await;
+                outcome
+            }
         }
     }
 
     fn get_todo_prompt(
         &self,
-        game_status: &GameStatus,
+        context: &ProactiveContext,
         settings: &UserScheduleSettings,
     ) -> Option<String> {
         let todo_groups = settings.todo_groups.as_ref()?;
@@ -202,44 +292,128 @@ impl StrategyDispatcher {
         let mut rng = rand::thread_rng();
         let idx = rng.gen_range(0..candidates.len());
         let selected = candidates[idx];
-        let user_name = &game_status.player.user_name;
-
         Some(format!(
             "{{你想起来{}有一个未完成的任务：'{} '。提醒一下吧？}}",
-            user_name, selected.text
+            context.user_name, selected.text
         ))
     }
 
-    async fn get_screen_prompt(&self, game_status: &GameStatus) -> Option<String> {
-        let analyze_prompt = "你是一个图像信息转述者，你将需要把你看到的画面描述给另一个AI让他理解用户的图片内容。用户开放了那个AI的自主窥屏功能，请获取桌面画面中的重点内容，用200字描述主体部分即可。如果你看到一个聊天窗口，有角色的立绘和对话框，不要描述这部分，只描述桌面上的其他内容。因为那部分是玩家与AI的聊天窗口。";
+    pub(crate) async fn get_screen_prompt_for_test(
+        &self,
+        proactive_context: &ProactiveContext,
+    ) -> Option<(String, IntentType)> {
+        let screen_context = ScreenContext {
+            ai_name: Some(proactive_context.ai_name.clone()),
+            user_name: Some(proactive_context.user_name.clone()),
+            recent_chat_summary: None,
+        };
 
-        let analysis = self
+        // 测试专用：强制评论屏幕，不允许 [PASS]。
+        let test_prompt = "你刚刚看了一眼主人的电脑屏幕。请用一句简短自然的话（不超过30字）评论屏幕上最有趣或最新的内容，像不经意间看到的那样。不要解释，直接说出这句话。";
+
+        let reply = self
             .screen_analyzer
             .lock()
             .await
-            .analyze_screen(analyze_prompt)
+            .analyze_screen(test_prompt, Some(&screen_context))
             .await?;
 
-        let user_name = &game_status.player.user_name;
-        let ai_name = game_status
-            .current_role_id
-            .and_then(|rid| game_status.role_manager.get_loaded(rid))
-            .and_then(|role| role.display_name.clone())
-            .unwrap_or_else(|| "你".to_string());
+        let cleaned = clean_screen_reply(&reply)?;
 
-        Some(format!(
-            "{{ {} 偷看了一眼 {} 的电脑桌面: {} }}",
-            ai_name, user_name, analysis
-        ))
+        Some((format!("{{ {}}}", cleaned), IntentType::Screen))
     }
 
-    fn get_topic_prompt(&self, game_status: &GameStatus) -> String {
-        let ai_name = game_status
-            .current_role_id
-            .and_then(|rid| game_status.role_manager.get_loaded(rid))
-            .and_then(|role| role.display_name.clone())
-            .unwrap_or_else(|| "你".to_string());
+    pub(crate) async fn get_screen_prompt(
+        &self,
+        proactive_context: &ProactiveContext,
+    ) -> Option<(String, IntentType)> {
+        let screen_context = ScreenContext {
+            ai_name: Some(proactive_context.ai_name.clone()),
+            user_name: Some(proactive_context.user_name.clone()),
+            recent_chat_summary: None,
+        };
 
-        format!("{{ {} 想继续说话了}}", ai_name)
+        let reply = self
+            .screen_analyzer
+            .lock()
+            .await
+            .analyze_screen_for_proactive(Some(&screen_context))
+            .await?;
+
+        let Some(cleaned) = clean_screen_reply(&reply) else {
+            tracing::info!("[StrategyDispatcher] Screen proactive returned [PASS], falling back.");
+            return None;
+        };
+
+        Some((format!("{{ {}}}", cleaned), IntentType::Screen))
+    }
+
+    fn get_topic_prompt(&self, context: &ProactiveContext) -> String {
+        // 加入随机变体，避免 deduplicator 把每次 TOPIC 都判为重复
+        let templates = [
+            format!("{{ {} 想找主人说说话}}", context.ai_name),
+            format!("{{ {} 突然想到一件事}}", context.ai_name),
+            format!("{{ {} 有话想对主人说}}", context.ai_name),
+            format!("{{ {} 想继续陪主人聊天}}", context.ai_name),
+            format!("{{ {} 看着主人，忍不住想开口}}", context.ai_name),
+        ];
+
+        let mut rng = rand::thread_rng();
+        let idx = rng.gen_range(0..templates.len());
+        templates[idx].clone()
+    }
+}
+
+fn normalized_weight(configured: f64, fallback: f64) -> f64 {
+    if configured.is_finite() && configured >= 0.0 {
+        configured
+    } else if fallback.is_finite() && fallback >= 0.0 {
+        fallback
+    } else {
+        0.0
+    }
+}
+
+fn clean_screen_reply(reply: &str) -> Option<String> {
+    let mut cleaned = reply.trim().trim_matches(['"', '\'', '“', '”']).trim();
+    for prefix in ["AI:", "Ai:", "ai:", "AI：", "Ai：", "ai："] {
+        if let Some(rest) = cleaned.strip_prefix(prefix) {
+            cleaned = rest.trim();
+            break;
+        }
+    }
+    cleaned = cleaned.trim_matches(['"', '\'', '“', '”']).trim();
+    if cleaned.is_empty() || cleaned.to_ascii_uppercase().starts_with("[PASS]") {
+        None
+    } else {
+        Some(cleaned.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invalid_weights_fall_back_to_positive_values() {
+        assert_eq!(normalized_weight(f64::NAN, 30.0), 30.0);
+        assert_eq!(normalized_weight(f64::INFINITY, 30.0), 30.0);
+        assert_eq!(normalized_weight(-10.0, 30.0), 30.0);
+        assert_eq!(normalized_weight(0.0, 30.0), 0.0);
+        assert_eq!(normalized_weight(f64::NAN, 0.0), 0.0);
+    }
+
+    #[test]
+    fn pass_variants_are_never_delivered() {
+        assert!(clean_screen_reply("[PASS]").is_none());
+        assert!(clean_screen_reply(" [pass]：画面没有变化").is_none());
+        assert!(clean_screen_reply("[PASS].").is_none());
+        assert!(clean_screen_reply("\"[PASS]\"").is_none());
+        assert!(clean_screen_reply("AI: [PASS]").is_none());
+        assert!(clean_screen_reply("“AI： [PASS]”").is_none());
+        assert_eq!(
+            clean_screen_reply("AI：挺有意思的").as_deref(),
+            Some("挺有意思的")
+        );
     }
 }

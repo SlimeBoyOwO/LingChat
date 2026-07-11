@@ -25,7 +25,7 @@ use ai_service::god_agent::config::resolve_god_agent_provider;
 use ai_service::god_agent::GodAgentCore;
 use ai_service::llm::LlmClient;
 use ai_service::message_system::processor::MessageProcessor;
-use ai_service::screen_analyzer::{ScreenAnalyzer, ScreenAnalyzerConfig};
+use ai_service::screen_analyzer::{ScreenAnalyzer, build_screen_analyzer_config};
 use ai_service::service::SharedAIService;
 use ai_service::translator::Translator;
 
@@ -158,12 +158,8 @@ pub fn run() {
             ));
 
             let screen_analyzer = {
-                let pconfig = config::proactive::ProactiveConfig::load(&app.handle());
-                let sa_config = ScreenAnalyzerConfig {
-                    vd_api_key: pconfig.vd_api_key,
-                    vd_base_url: pconfig.vd_base_url,
-                    vd_model: pconfig.vd_model,
-                };
+                let pconfig = config::proactive::ProactiveConfig::load(app.handle());
+                let sa_config = build_screen_analyzer_config(app.handle(), &pconfig);
                 std::sync::Arc::new(tokio::sync::Mutex::new(ScreenAnalyzer::new(sa_config)))
             };
 
@@ -343,6 +339,7 @@ pub fn run() {
             api::game::notify_player_entry,
             api::chat::send_chat_message,
             api::chat::rollback_conversation,
+            api::chat::test_screen_analyzer,
             api::screenshot::start_screenshot,
             api::screenshot::get_overlay_data,
             api::screenshot::confirm_screenshot,
@@ -365,6 +362,7 @@ pub fn run() {
             api::schedule::get_schedules,
             api::schedule::save_schedules,
             api::schedule::reload_proactive_system,
+            api::schedule::test_proactive_message,
             api::proactive_set_can_deliver,
             api::achievement::get_achievement_list,
             api::achievement::unlock_achievement,

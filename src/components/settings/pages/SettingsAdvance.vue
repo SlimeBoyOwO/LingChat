@@ -54,13 +54,31 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
+import { useUIStore } from '@/stores/modules/ui/ui'
 import { MenuPage } from '../../ui'
 import SettingsLlmProviders from './SettingsLlmProviders.vue'
 import SettingsAdvanceMenu from './SettingsAdvanceMenu.vue'
 import SettingsAdvanceOther from './SettingsAdvanceOther.vue'
 
-const advanceTab = ref<'menu' | 'llm' | 'other'>('menu')
+const uiStore = useUIStore()
+
+const advanceTab = ref<'menu' | 'llm' | 'other'>(uiStore.advanceInitialTab)
+
+// 当通过外部入口（如日程弹窗的"更多设置"）指定了初始页签时，
+// 打开高级设置后自动切到对应页签，并重置状态避免影响后续操作。
+watch(
+  () => uiStore.advanceInitialTab,
+  (newTab) => {
+    // `menu` is the consumed/default state.  Ignore the reset notification so
+    // it does not immediately overwrite an externally requested destination.
+    if (newTab === 'menu') return
+
+    advanceTab.value = newTab
+    uiStore.advanceInitialTab = 'menu'
+  },
+  { immediate: true },
+)
 
 const advanceOtherRef = ref<InstanceType<typeof SettingsAdvanceOther> | null>(null)
 
