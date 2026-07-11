@@ -163,6 +163,7 @@ pub fn run() {
                     vd_api_key: pconfig.vd_api_key,
                     vd_base_url: pconfig.vd_base_url,
                     vd_model: pconfig.vd_model,
+                    provider: "openai".to_string(),
                 };
                 std::sync::Arc::new(tokio::sync::Mutex::new(ScreenAnalyzer::new(sa_config)))
             };

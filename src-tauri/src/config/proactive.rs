@@ -5,11 +5,16 @@ use tauri_plugin_store::StoreExt;
 pub mod keys {
     pub const ENABLE_PROACTIVE_SYSTEM: &str = "ENABLE_PROACTIVE_SYSTEM";
     pub const MAX_PROACTIVE_TIMES: &str = "MAX_PROACTIVE_TIMES";
+    pub const PROACTIVE_INTERVAL_SECS: &str = "PROACTIVE_INTERVAL_SECS";
+    pub const INTEREST_TRIGGER_THRESHOLD: &str = "INTEREST_TRIGGER_THRESHOLD";
+    pub const INTEREST_DECAY_STEP: &str = "INTEREST_DECAY_STEP";
+    pub const VD_FOLLOW_CHAT_MODEL: &str = "VD_FOLLOW_CHAT_MODEL";
     pub const VD_API_KEY: &str = "VD_API_KEY";
     pub const VD_BASE_URL: &str = "VD_BASE_URL";
     pub const VD_MODEL: &str = "VD_MODEL";
     pub const ENABLE_VISUAL_PRECEPTION: &str = "ENABLE_VISUAL_PRECEPTION";
     pub const SCREEN_WEIGHT: &str = "SCREEN_WEIGHT";
+    pub const VISUAL_PERCEPTION_PRIORITY: &str = "VISUAL_PERCEPTION_PRIORITY";
     pub const ENABLE_TOPIC_CREATER: &str = "ENABLE_TOPIC_CREATER";
     pub const TOPIC_WEIGHT: &str = "TOPIC_WEIGHT";
     pub const ENABLE_TODO_PRECEPTION: &str = "ENABLE_TODO_PRECEPTION";
@@ -22,11 +27,16 @@ pub mod keys {
 pub struct ProactiveConfig {
     pub enable_proactive_system: bool,
     pub max_proactive_times: i32,
+    pub proactive_interval_secs: u64,
+    pub interest_trigger_threshold: f64,
+    pub interest_decay_step: f64,
+    pub vd_follow_chat_model: bool,
     pub vd_api_key: String,
     pub vd_base_url: String,
     pub vd_model: String,
     pub enable_visual_perception: bool,
     pub screen_weight: f64,
+    pub visual_perception_priority: bool,
     pub enable_topic_creator: bool,
     pub topic_weight: f64,
     pub enable_todo_perception: bool,
@@ -86,21 +96,46 @@ impl ProactiveConfig {
                 .unwrap_or(default)
         };
 
+        let get_bounded_f64 = |key: &str, default: f64, min: f64, max: f64| -> f64 {
+            let value = get_f64(key, default);
+            if value.is_finite() {
+                value.clamp(min, max)
+            } else {
+                tracing::warn!(
+                    "[ProactiveConfig] {} is not finite, falling back to {}",
+                    key,
+                    default
+                );
+                default
+            }
+        };
+
         Self {
             enable_proactive_system: get_bool(keys::ENABLE_PROACTIVE_SYSTEM, false),
-            max_proactive_times: get_i32(keys::MAX_PROACTIVE_TIMES, 3),
+            max_proactive_times: get_i32(keys::MAX_PROACTIVE_TIMES, 3).clamp(0, 1_000),
+            proactive_interval_secs: get_i32(keys::PROACTIVE_INTERVAL_SECS, 10).clamp(2, 3_600)
+                as u64,
+            interest_trigger_threshold: get_bounded_f64(
+                keys::INTEREST_TRIGGER_THRESHOLD,
+                30.0,
+                0.0,
+                95.0,
+            ),
+            interest_decay_step: get_bounded_f64(keys::INTEREST_DECAY_STEP, 15.0, 0.0, 100.0),
+            vd_follow_chat_model: get_bool(keys::VD_FOLLOW_CHAT_MODEL, true),
             vd_api_key: get_string(keys::VD_API_KEY, ""),
             vd_base_url: get_string(
                 keys::VD_BASE_URL,
                 "https://dashscope.aliyuncs.com/compatible-mode/v1",
             ),
-            vd_model: get_string(keys::VD_MODEL, "qwen3.5-plus"),
+            vd_model: get_string(keys::VD_MODEL, "qwen3-vl-flash"),
             enable_visual_perception: get_bool(keys::ENABLE_VISUAL_PRECEPTION, true),
-            screen_weight: get_f64(keys::SCREEN_WEIGHT, 30.0),
+            screen_weight: get_bounded_f64(keys::SCREEN_WEIGHT, 30.0, 0.0, 10_000.0),
+            visual_perception_priority: get_bool(keys::VISUAL_PERCEPTION_PRIORITY, false),
             enable_topic_creator: get_bool(keys::ENABLE_TOPIC_CREATER, true),
-            topic_weight: get_f64(keys::TOPIC_WEIGHT, 60.0),
+            topic_weight: get_bounded_f64(keys::TOPIC_WEIGHT, 60.0, 0.0, 10_000.0),
             enable_todo_perception: get_bool(keys::ENABLE_TODO_PRECEPTION, true),
-            todo_weight: get_f64(keys::TODO_WEIGHT, 10.0),
+            todo_weight: get_bounded_f64(keys::TODO_WEIGHT, 10.0, 0.0, 10_000.0),
             enable_schedule_reminder: get_bool(keys::ENABLE_SCHEDULE_REMINDER, true),
             enable_important_day_reminder: get_bool(keys::ENABLE_IMPORTANT_DAY_REMINDER, true),
         }

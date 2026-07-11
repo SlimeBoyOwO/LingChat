@@ -7,12 +7,16 @@ use reqwest::Client;
 use serde_json::Value;
 use std::time::Instant;
 
+use crate::ai_service::llm::provider_config::resolve_chat_provider;
+use crate::config::proactive::ProactiveConfig;
+
 /// 屏幕分析器的配置（从环境/Store 加载）。
 #[derive(Clone, Debug)]
 pub struct ScreenAnalyzerConfig {
     pub vd_api_key: String,
     pub vd_base_url: String,
     pub vd_model: String,
+    pub provider: String,
 }
 
 impl Default for ScreenAnalyzerConfig {
@@ -20,9 +24,18 @@ impl Default for ScreenAnalyzerConfig {
         Self {
             vd_api_key: String::new(),
             vd_base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1".to_string(),
-            vd_model: "qwen3.5-plus".to_string(),
+            vd_model: "qwen3-vl-flash".to_string(),
+            provider: "openai".to_string(),
         }
     }
+}
+
+/// Shared context passed by proactive and manual screen-analysis callers.
+#[derive(Clone, Debug, Default)]
+pub struct ScreenContext {
+    pub ai_name: Option<String>,
+    pub user_name: Option<String>,
+    pub recent_chat_summary: Option<String>,
 }
 
 /// 最后一次分析的性能与用量报告。
@@ -58,9 +71,24 @@ impl ScreenAnalyzer {
         &self.last_report
     }
 
+    /// Proactive entry point kept in the shared contract so engine and visual
+    /// implementation PRs can be reviewed independently.
+    pub async fn analyze_screen_for_proactive(
+        &mut self,
+        context: Option<&ScreenContext>,
+    ) -> Option<String> {
+        let prompt = "你刚刚看了一眼主人的电脑屏幕。若有值得自然搭话的内容，请直接回复一句不超过50字的话；否则只回复[PASS]。";
+        self.analyze_screen(prompt, context).await
+    }
+
     /// 核心方法：截屏 → 发送给 VLM 分析 → 返回文本描述。
-    /// 这是策略分发器和主动对话系统的主要入口。
-    pub async fn analyze_screen(&mut self, prompt: &str) -> Option<String> {
+    /// `context` is part of the stable cross-PR API; the visual implementation
+    /// PR enriches the prompt with it.
+    pub async fn analyze_screen(
+        &mut self,
+        prompt: &str,
+        _context: Option<&ScreenContext>,
+    ) -> Option<String> {
         let api_key = &self.config.vd_api_key;
         if api_key.is_empty() {
             tracing::warn!("[ScreenAnalyzer] VD_API_KEY is empty, skipping screenshot analysis.");
@@ -193,6 +221,31 @@ impl ScreenAnalyzer {
         };
 
         None
+    }
+}
+
+/// Resolve the visual model once for every caller. The visual implementation
+/// PR extends protocol handling without changing this shared API.
+pub fn build_screen_analyzer_config(
+    app_handle: &tauri::AppHandle,
+    config: &ProactiveConfig,
+) -> ScreenAnalyzerConfig {
+    if config.vd_follow_chat_model {
+        if let Some(provider) = resolve_chat_provider(app_handle) {
+            return ScreenAnalyzerConfig {
+                vd_api_key: provider.api_key,
+                vd_base_url: provider.base_url,
+                vd_model: provider.model,
+                provider: provider.provider,
+            };
+        }
+    }
+
+    ScreenAnalyzerConfig {
+        vd_api_key: config.vd_api_key.clone(),
+        vd_base_url: config.vd_base_url.clone(),
+        vd_model: config.vd_model.clone(),
+        provider: "openai".to_string(),
     }
 }
 

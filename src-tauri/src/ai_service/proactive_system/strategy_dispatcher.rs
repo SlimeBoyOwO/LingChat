@@ -19,6 +19,7 @@ impl StrategyDispatcher {
             vd_api_key: config.vd_api_key.clone(),
             vd_base_url: config.vd_base_url.clone(),
             vd_model: config.vd_model.clone(),
+            provider: "openai".to_string(),
         };
         Self {
             screen_analyzer: Mutex::new(ScreenAnalyzer::new(sa_config)),
@@ -34,6 +35,7 @@ impl StrategyDispatcher {
                 vd_api_key: config.vd_api_key,
                 vd_base_url: config.vd_base_url,
                 vd_model: config.vd_model,
+                provider: "openai".to_string(),
             });
         }
     }
@@ -217,7 +219,7 @@ impl StrategyDispatcher {
             .screen_analyzer
             .lock()
             .await
-            .analyze_screen(analyze_prompt)
+            .analyze_screen(analyze_prompt, None)
             .await?;
 
         let user_name = &game_status.player.user_name;
