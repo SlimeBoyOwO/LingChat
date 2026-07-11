@@ -44,12 +44,24 @@ pub async fn send_chat_message(
         svc.game_status.clone()
     };
 
+    // 从收到用户消息起就预留生成权；截图 VLM 期间也不能让旧的主动回复插队。
+    let generation_guard = state.generation_lock.clone().lock_owned().await;
+    if game_status.lock().await.script_status.is_some() {
+        return Err("剧情正在运行，请使用剧情输入框继续".to_string());
+    }
+
+    // 在截图分析前推进交互代次，让已经在途的旧 Screen/Topic 结果失效。
+    if let Some(proactive) = &state.proactive_system {
+        proactive.lock().await.on_user_message_received().await;
+    }
+
     let user_name = game_status.lock().await.player.user_name.clone();
 
     // 发送思考事件
-    events::emit_thinking(&app, true);
+    events::emit_thinking(&app, true, false);
 
-    // 截图分析：在创建 GeneratorDeps 之前，确保旁白台词已写入 line_list
+    // 截图分析：先异步获取旁白文本，实际写入 line_list 推迟到 generation_lock 内
+    let mut narration_opt: Option<String> = None;
     if let Some(ref b64) = screenshot_base64 {
         if let Ok(image_bytes) = base64::Engine::decode(&base64::prelude::BASE64_STANDARD, b64) {
             let prompt = format!(
@@ -63,19 +75,8 @@ pub async fn send_chat_message(
             };
 
             if let Some(narration) = analysis {
-                let mut gs = game_status.lock().await;
-                gs.add_line(
-                    &state.db,
-                    LineBase {
-                        content: PromptRole::Narrator.build_prompt(&narration),
-                        attribute: LineAttributeExt(LineAttribute::User),
-                        display_name: Some("旁白".to_string()),
-                        ..Default::default()
-                    },
-                )
-                .await
-                .map_err(|e| format!("添加旁白台词失败: {}", e))?;
-                tracing::info!("[Chat] Screenshot analysis narration added to game_status.");
+                narration_opt = Some(PromptRole::Narrator.build_prompt(&narration));
+                tracing::info!("[Chat] Screenshot analysis narration ready.");
             }
         }
     }
@@ -83,23 +84,15 @@ pub async fn send_chat_message(
     let deps = GeneratorDeps {
         app: app.clone(),
         db: state.db.clone(),
-        game_status,
+        game_status: game_status.clone(),
         processor: state.chat.processor.clone(),
         translator: state.chat.translator.clone(),
         llm,
         concurrency,
         god_agent: state.god_agent.clone(),
         suppress_thinking: false,
+        is_proactive: false,
     };
-
-    // Notify proactive system of user input
-    if let Some(proactive) = &state.proactive_system {
-        let proactive_clone = proactive.clone();
-        tokio::spawn(async move {
-            let mut sys = proactive_clone.lock().await;
-            sys.on_user_message_received().await;
-        });
-    }
 
     // 成就触发检查
     let achievement_manager = state.achievement_manager.clone();
@@ -147,10 +140,32 @@ pub async fn send_chat_message(
     });
 
     let generator = MessageGenerator::new(deps);
-    let gen_lock = state.generation_lock.clone();
+    let db_for_narration = state.db.clone();
 
     tokio::spawn(async move {
-        let _lock = gen_lock.lock().await;
+        let _generation_guard = generation_guard;
+
+        // 在 generation_lock 保护下按顺序写入旁白行，避免被主动回复插队覆盖
+        if let Some(narration) = narration_opt {
+            let mut gs = game_status.lock().await;
+            if let Err(e) = gs
+                .add_line(
+                    &db_for_narration,
+                    LineBase {
+                        content: narration,
+                        attribute: LineAttributeExt(LineAttribute::User),
+                        display_name: Some("旁白".to_string()),
+                        ..Default::default()
+                    },
+                )
+                .await
+            {
+                tracing::error!("[Chat] 添加旁白台词失败: {}", e);
+            } else {
+                tracing::info!("[Chat] Screenshot analysis narration added to game_status.");
+            }
+        }
+
         match generator.process_message(Some(text)).await {
             Ok(acc) => tracing::info!("消息生成完成，长度: {}", acc.len()),
             Err(e) => tracing::error!("消息生成失败: {:#}", e),
@@ -158,6 +173,38 @@ pub async fn send_chat_message(
     });
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn test_screen_analyzer(
+    app: AppHandle,
+    prompt: Option<String>,
+) -> Result<String, String> {
+    let state = app.state::<AppState>();
+
+    let default_prompt = "你是一个图像信息转述者，请用200字描述你看到的桌面主要内容。".to_string();
+    let prompt = prompt.unwrap_or(default_prompt);
+
+    let mut sa = state.screen_analyzer.lock().await;
+    match sa.analyze_screen(&prompt, None).await {
+        Some(result) => {
+            let report = sa.get_report();
+            tracing::info!(
+                "[TestScreenAnalyzer] success in {:.2}s, input_tokens={:?}, output_tokens={:?}",
+                report.response_time_secs,
+                report.input_tokens,
+                report.output_tokens
+            );
+            Ok(result)
+        }
+        None => {
+            let report = sa.get_report();
+            Err(format!(
+                "视觉理解测试失败。可能原因：API Key 为空、模型不支持视觉、网络超时或 Base URL 错误。耗时 {:.2}s",
+                report.response_time_secs
+            ))
+        }
+    }
 }
 
 /// 处理以 "/" 开头的调试指令（仅在后端日志输出，不发往前端）。

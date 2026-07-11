@@ -1,6 +1,11 @@
 use crate::ai_service::proactive_system::types::{PerceptionResult, UserState};
+use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
+
+const ACTIVITY_WINDOW: Duration = Duration::from_secs(20);
+const MOVE_SAMPLE_INTERVAL: Duration = Duration::from_millis(25);
+const MAX_ACTIVITY_EVENTS: usize = 4096;
 
 #[cfg(target_os = "windows")]
 use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
@@ -34,8 +39,8 @@ struct ActivityEvent {
 }
 
 struct MonitorInner {
-    events: Vec<ActivityEvent>,
-    last_mouse_pos: Option<(i32, i32)>,
+    events: VecDeque<ActivityEvent>,
+    last_move_sample_at: Option<Instant>,
 }
 
 pub struct UserActivityMonitor {
@@ -52,8 +57,8 @@ static GLOBAL_MONITOR_INNER: OnceLock<Arc<Mutex<MonitorInner>>> = OnceLock::new(
 impl UserActivityMonitor {
     pub fn new() -> Self {
         let inner = Arc::new(Mutex::new(MonitorInner {
-            events: Vec::new(),
-            last_mouse_pos: None,
+            events: VecDeque::new(),
+            last_move_sample_at: None,
         }));
 
         GLOBAL_MONITOR_INNER.get_or_init(|| inner.clone());
@@ -117,17 +122,25 @@ impl UserActivityMonitor {
     pub fn get_user_status(&self) -> PerceptionResult {
         let mut inner = self.inner.lock().unwrap();
         let now = Instant::now();
-        let cutoff = now - Duration::from_secs(20);
+        let cutoff = now - ACTIVITY_WINDOW;
 
         // Slide window
-        inner.events.retain(|e| e.timestamp >= cutoff);
+        while inner
+            .events
+            .front()
+            .is_some_and(|event| event.timestamp < cutoff)
+        {
+            inner.events.pop_front();
+        }
 
         let mut keystrokes = 0;
         let mut game_keys = 0;
         let mut clicks = 0;
         let mut mouse_distance = 0.0;
 
-        let mut running_last_pos = inner.last_mouse_pos;
+        // 只在当前滑动窗口内部计算相邻采样点距离。不能以上一轮的最新坐标作为
+        // 起点，否则会先从“最新点”跳回本轮最旧点，凭空制造一段巨大移动距离。
+        let mut running_last_pos = None;
         for event in &inner.events {
             match &event.input_type {
                 InputType::Key { is_game } => {
@@ -149,8 +162,6 @@ impl UserActivityMonitor {
                 }
             }
         }
-        inner.last_mouse_pos = running_last_pos;
-
         let game_ratio = if keystrokes > 0 {
             game_keys as f64 / keystrokes as f64
         } else {
@@ -210,6 +221,21 @@ impl UserActivityMonitor {
     }
 }
 
+fn push_activity_event(inner: &mut MonitorInner, event: ActivityEvent) {
+    let cutoff = event.timestamp - ACTIVITY_WINDOW;
+    while inner
+        .events
+        .front()
+        .is_some_and(|old| old.timestamp < cutoff)
+    {
+        inner.events.pop_front();
+    }
+    if inner.events.len() >= MAX_ACTIVITY_EVENTS {
+        inner.events.pop_front();
+    }
+    inner.events.push_back(event);
+}
+
 #[cfg(target_os = "windows")]
 unsafe extern "system" fn keyboard_hook_callback(
     code: i32,
@@ -230,10 +256,13 @@ unsafe extern "system" fn keyboard_hook_callback(
 
             if let Some(inner_arc) = GLOBAL_MONITOR_INNER.get() {
                 if let Ok(mut inner) = inner_arc.lock() {
-                    inner.events.push(ActivityEvent {
-                        timestamp: Instant::now(),
-                        input_type: InputType::Key { is_game },
-                    });
+                    push_activity_event(
+                        &mut inner,
+                        ActivityEvent {
+                            timestamp: Instant::now(),
+                            input_type: InputType::Key { is_game },
+                        },
+                    );
                 }
             }
         }
@@ -255,15 +284,35 @@ unsafe extern "system" fn mouse_hook_callback(
         if let Some(inner_arc) = GLOBAL_MONITOR_INNER.get() {
             if let Ok(mut inner) = inner_arc.lock() {
                 if msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN {
-                    inner.events.push(ActivityEvent {
-                        timestamp: Instant::now(),
-                        input_type: InputType::Click,
-                    });
+                    push_activity_event(
+                        &mut inner,
+                        ActivityEvent {
+                            timestamp: Instant::now(),
+                            input_type: InputType::Click,
+                        },
+                    );
                 } else if msg == WM_MOUSEMOVE {
-                    inner.events.push(ActivityEvent {
-                        timestamp: Instant::now(),
-                        input_type: InputType::Move { x: pt.x, y: pt.y },
-                    });
+                    let now = Instant::now();
+                    let should_append = inner
+                        .last_move_sample_at
+                        .is_none_or(|last| now.duration_since(last) >= MOVE_SAMPLE_INTERVAL);
+                    if should_append {
+                        inner.last_move_sample_at = Some(now);
+                        push_activity_event(
+                            &mut inner,
+                            ActivityEvent {
+                                timestamp: now,
+                                input_type: InputType::Move { x: pt.x, y: pt.y },
+                            },
+                        );
+                    } else if let Some(last) = inner.events.back_mut() {
+                        // 在采样间隔内只更新最后一个坐标，既保留位移终点又避免
+                        // WM_MOUSEMOVE 高频事件撑大队列、拖慢低级钩子回调。
+                        if matches!(last.input_type, InputType::Move { .. }) {
+                            last.timestamp = now;
+                            last.input_type = InputType::Move { x: pt.x, y: pt.y };
+                        }
+                    }
                 }
             }
         }

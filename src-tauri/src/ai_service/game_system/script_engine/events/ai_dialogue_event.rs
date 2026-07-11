@@ -39,6 +39,8 @@ impl AIDialogueEvent {
 #[async_trait]
 impl ScriptEvent for AIDialogueEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
+        let _generation_guard = ctx.generation_lock.clone().lock_owned().await;
+
         let script_status = ctx
             .game_status
             .lock()
@@ -97,6 +99,7 @@ impl ScriptEvent for AIDialogueEvent {
             concurrency: 1,
             god_agent: None,
             suppress_thinking: false,
+            is_proactive: false,
         };
 
         let generator = MessageGenerator::new(deps);

@@ -16,6 +16,8 @@ pub mod event_names {
     pub const AI_THINKING: &str = "ai:thinking";
     /// AI 思考链字数进度（流式统计，仅在启用思考链时触发）。
     pub const AI_THINKING_PROGRESS: &str = "ai:thinking_progress";
+    /// 主动回复思考状态切换。
+    pub const AI_PROACTIVE_THINKING: &str = "ai:proactive_thinking";
     /// TTS 语音缓存（孤立文件）清理结果。
     pub const TTS_CLEANUP: &str = "tts:cleanup";
     /// AI 侧错误（鉴权失败 / 网络错误等）。
@@ -85,14 +87,17 @@ pub struct ThinkingResponse {
     pub type_: String,
     pub is_thinking: bool,
     pub duration: f64,
+    /// 标记这次思考是否来自主动回复触发，用于前端区分 placeholder 文案。
+    pub is_proactive: bool,
 }
 
 impl ThinkingResponse {
-    pub fn new(is_thinking: bool) -> Self {
+    pub fn new(is_thinking: bool, is_proactive: bool) -> Self {
         Self {
             type_: "thinking".to_string(),
             is_thinking,
             duration: 0.0,
+            is_proactive,
         }
     }
 }
@@ -111,6 +116,23 @@ impl ThinkingProgressResponse {
         Self {
             type_: "thinking_progress".to_string(),
             thinking_length,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProactiveThinkingResponse {
+    #[serde(rename = "type")]
+    pub type_: String,
+    pub is_thinking: bool,
+}
+
+impl ProactiveThinkingResponse {
+    pub fn new(is_thinking: bool) -> Self {
+        Self {
+            type_: "proactive_thinking".to_string(),
+            is_thinking,
         }
     }
 }
