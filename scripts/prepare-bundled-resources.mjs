@@ -93,6 +93,10 @@ try {
 }
 
 // --- 复制到 Android assets 目录 ---
+// 先清空目标目录，确保每次都是全新的 data.zip
+if (existsSync(androidAssetsDir)) {
+  rmSync(androidAssetsDir, { recursive: true });
+}
 mkdirSync(androidAssetsDir, { recursive: true });
 copyFileSync(zipPath, join(androidAssetsDir, 'data.zip'));
 console.log(`Copied data.zip to ${androidAssetsDir}`);

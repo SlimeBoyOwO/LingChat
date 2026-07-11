@@ -98,16 +98,24 @@ for (const subPath of gameDataFiles) {
 }
 console.log(`✅ 已复制 ${gameDataCount} 个 game_data 文件`);
 
-// ─── 复制 third_party 文件 ──────────────────────────────────
+// ─── 复制 third_party 文件（移动端由 data.zip 提供，不额外复制） ───
 //
 // third_party 中的文件（如 model.onnx）被 .gitignore 的 *.onnx 规则排除，
-// git ls-files 不会返回它们。因此像 Android 版一样，直接从磁盘复制整个目录。
+// git ls-files 不会返回它们。因此直接从磁盘复制整个目录。
+// 移动端（android/ios）下 third_party 已打包在 data.zip 中，跳过以避免
+// bundle.resources 在 assets 中产生重复副本。
+
+const isMobile = ['android', 'ios'].includes(process.env.TAURI_ENV_PLATFORM);
 
 const thirdPartySrc = join(projectRoot, "data", "third_party");
 const thirdPartyDst = join(stagingDir, "third_party");
 
 let thirdPartyCount = 0;
-if (existsSync(thirdPartySrc)) {
+if (isMobile) {
+  // 移动端：third_party 由 data.zip 提供，不需要 bundle.resources 额外复制
+  // 但 Tauri 构建会校验 bundle.resources 的源路径是否存在，故创建空目录占位
+  mkdirSync(thirdPartyDst, { recursive: true });
+} else if (existsSync(thirdPartySrc)) {
   copyDirRecursive(thirdPartySrc, thirdPartyDst);
   thirdPartyCount = countFiles(thirdPartyDst);
 }
