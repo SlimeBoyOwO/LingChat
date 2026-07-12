@@ -25,6 +25,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-screenshots = { path = "plugins/tauri-plugin-screenshots" }
+tauri-plugin-android-fs = "28"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sea-orm = { version = "1", features = ["sqlx-sqlite", "runtime-tokio-rustls", "macros", "with-chrono"] }
@@ -50,7 +51,7 @@ rand = "0.8"
 indoc = "2"
 
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
-zip = "2"
+sevenz-rust2 = "0.21"
 sha2 = "0.10"
 tempfile = "3"
 
