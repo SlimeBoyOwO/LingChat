@@ -4,11 +4,13 @@
   "version": "0.4.6",
   "type": "module",
   "scripts": {
+    "init": "tauri icon src-tauri/icons/icon.png && node prepare-desktop-resources.mjs",
     "dev": "vite",
     "build": "vue-tsc --noEmit --skipLibCheck && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "android:prepare": "node scripts/prepare-bundled-resources.mjs 4",
+    "android:prepare": "tauri android init && node scripts/generate-android-icons.mjs",
+    "android:dev": "tauri android dev",
     "android:build": "node scripts/prepare-bundled-resources.mjs 9 && tauri android build --target aarch64"
   },
   "dependencies": {
@@ -32,6 +34,7 @@
     "@types/node": "^25.7.0",
     "@vitejs/plugin-vue": "^5.2.1",
     "prettier": "^3.8.3",
+    "sharp": "^0.35.3",
     "typescript": "~5.6.2",
     "vite": "^6.0.3",
     "vite-plugin-vue-devtools": "^8.1.2",

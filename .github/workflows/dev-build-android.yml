@@ -80,11 +80,12 @@ jobs:
       - name: pnpm 安装依赖
         run: pnpm i
 
-      - name: 删除未 lfs pull 的图标
+      - name: 删除未 lfs pull 的图标并重新生成
         run: |
           rm -rf src-tauri/icons/*
           git lfs pull --include="src-tauri/icons/icon.png"
           pnpm tauri icon src-tauri/icons/icon.png
+          node scripts/generate-android-icons.mjs
 
       - name: 清理并准备 Android 项目
         run: |
