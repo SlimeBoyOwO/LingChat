@@ -26,16 +26,17 @@
             <div id="character-sub">{{ uiStore.showCharacterSubtitle }}</div>
           </div>
 
-          <!-- 右侧区域：情绪标签 + 操作按钮组（窄屏时占据剩余全部宽度，优先显示） -->
+          <div
+            class="text-xl font-bold text-[#ff77dd] font-[inherit] text-shadow-[inherit] shrink-0"
+            :class="uiStore.isNarrowScreen ? 'ml-auto' : 'ml-3'"
+          >
+            <div id="character-emotion">{{ uiStore.showCharacterEmotion }}</div>
+          </div>
+
           <div
             class="flex items-baseline ml-auto min-w-0"
             :class="{ 'flex-1 shrink-0': uiStore.isNarrowScreen }"
           >
-            <div
-              class="text-xl font-bold text-[#ff77dd] font-[inherit] text-shadow-[inherit] shrink-0"
-            >
-              <div id="character-emotion">{{ uiStore.showCharacterEmotion }}</div>
-            </div>
 
             <!-- 桌面端：直接显示所有操作按钮 -->
             <template v-if="!isMobile">
