@@ -18,8 +18,3 @@ keystore.properties
 
 /.tauri
 /tauri.settings.gradle
-
-# keystore files
-*.p12
-*.jks
-*.keystore
