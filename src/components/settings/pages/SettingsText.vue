@@ -62,9 +62,10 @@
         <div class="flex gap-3">
           <Button
             type="big"
+            title="CPU 推理使用的是 SBV2-API，需要在 settings.yml 中把 sbv2 换成 sbv2api，人物设定也能改"
             @click="
               openWebsite(
-                'https://www.modelscope.cn/models/lingchat-research-studio/Style-Bert-VITS2-micro-CPU-infer/files',
+                'https://www.modelscope.cn/models/lingchat-research-studio/SBV2-API/files',
               )
             "
             >CPU推理</Button
@@ -73,16 +74,17 @@
             type="big"
             @click="
               openWebsite(
-                'https://www.modelscope.cn/models/lingchat-research-studio/Style-Bert-VITS2-micro-NVIDIA-infer/files',
+                'https://www.modelscope.cn/models/lingchat-research-studio/Style-Bert-VITS2-CUDA/files',
               )
             "
             >N卡推理</Button
           >
           <Button
             type="big"
+            title="A 卡推理使用的是 SBV2-API，需要在 settings.yml 中把 sbv2 换成 sbv2api，人物设定也能改"
             @click="
               openWebsite(
-                'https://www.modelscope.cn/models/lingchat-research-studio/Style-Bert-VITS2-micro-Directml-infer/files',
+                'https://www.modelscope.cn/models/lingchat-research-studio/SBV2-API/files',
               )
             "
             >A卡推理</Button
@@ -113,9 +115,7 @@
             <span class="text-gray-50">当前缓存</span>
             <span class="text-gray-50 font-medium">{{ ttsCacheSize }}</span>
           </div>
-          <div class="text-gray-50/70 text-xs">
-            {{ ttsCacheFiles }} 个文件
-          </div>
+          <div class="text-gray-50/70 text-xs">{{ ttsCacheFiles }} 个文件</div>
           <div
             v-if="lastCleanupInfo && lastCleanupInfo.deleted > 0"
             class="text-emerald-300/90 text-xs"
@@ -153,11 +153,7 @@
             <span class="text-gray-50">v{{ currentDataVersion }}</span>
           </div>
           <!-- 状态文字（内联显示，不用 modal） -->
-          <div
-            v-if="updateStatusText"
-            :class="updateStatusColor"
-            class="text-sm font-medium"
-          >
+          <div v-if="updateStatusText" :class="updateStatusColor" class="text-sm font-medium">
             {{ updateStatusText }}
           </div>
           <div class="flex gap-3 pt-1">
@@ -173,11 +169,7 @@
             >
               {{ updateInstalling ? '正在更新...' : `更新到 v${updateLatestVersion}` }}
             </Button>
-            <Button
-              v-if="resourceSyncAvailable"
-              type="big"
-              @click="handleCheckResourceSync"
-            >
+            <Button v-if="resourceSyncAvailable" type="big" @click="handleCheckResourceSync">
               同步数据
             </Button>
           </div>
@@ -271,6 +263,7 @@ import {
 } from 'lucide-vue-next'
 import { reactivateTTS, clearTtsCache } from '@/api/services/game-info'
 import { invoke } from '@tauri-apps/api/core'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { useUpdater } from '@/composables/useUpdater'
 import { useLanSync } from '@/composables/useLanSync'
 import { getVersion } from '@tauri-apps/api/app'
@@ -320,7 +313,9 @@ const updateInstalling = ref(false)
 const showResourceSyncDialog = ref(false)
 const resourceSyncAvailable = ref(false)
 
-const updateAvailable = computed(() => updateLatestVersion.value !== '' && updatePhase.value === 'app-update-available')
+const updateAvailable = computed(
+  () => updateLatestVersion.value !== '' && updatePhase.value === 'app-update-available',
+)
 
 const updateStatusText = computed(() => {
   if (updatePhase.value === 'checking') return '正在检查更新...'
@@ -599,7 +594,7 @@ const handleMemorySettingChange = (checked: boolean, setting: ConfigItem) => {
 }
 
 const openWebsite = (url: string) => {
-  window.open(url, '_blank') // '_blank' 表示在新窗口中打开
+  openUrl(url)
 }
 
 const refreshTTS = async () => {
