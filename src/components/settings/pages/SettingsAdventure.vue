@@ -127,12 +127,12 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, watch } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { MenuPage, MenuItem } from '../../ui'
 import { Button } from '@/components/base'
 import AdventurePanel from './Adeventure/AdventurePanel.vue'
 import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
-import { useDialogStore } from '@/stores/modules/ui/dialog'
 import { getAvatarFile } from '@/api/services/character'
 import { Birdhouse, Book, FileText, UserPlus } from 'lucide-vue-next'
 import { getStandaloneScriptList, startScript as startScriptApi } from '@/api/services/script-info'
@@ -140,7 +140,6 @@ import type { ScriptSummary } from '@/api/services/script-info'
 
 const gameStore = useGameStore()
 const uiStore = useUIStore()
-const dialogStore = useDialogStore()
 
 // 独立剧本相关状态
 const standaloneScripts = ref<ScriptSummary[]>([])
@@ -200,19 +199,13 @@ const fetchStandaloneScripts = async () => {
   }
 }
 
-const openCreativeWeb = async (): Promise<void> => {
-  try {
-    const response = await fetch('/api/v1/chat/character/open_web')
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
-    await response.json()
-  } catch (error) {
-    await dialogStore.alert('启动失败，请手动打开 LingChat 的 discussion 页面')
-    console.error('打开创意工坊失败:', error)
-  }
+const openCreativeWeb = () => {
+  // 创意工坊已内置为设置页的独立标签，直接切换即可
+  uiStore.setSettingsTab('workshop')
 }
 
-const openGuideWeb = async (): Promise<void> => {
-  // 弹出 提示框 显示网页
+const openGuideWeb = () => {
+  openUrl('https://slimeboyowo.github.io/LingBlog/blog/projects/ling-chat/script-events')
 }
 
 // 组件挂载时获取独立剧本列表

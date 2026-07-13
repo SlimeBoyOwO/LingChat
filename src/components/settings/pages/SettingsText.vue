@@ -191,8 +191,9 @@
           <Wifi :size="20" />
         </template>
         <div class="space-y-2 w-full">
-          <p class="text-gray-50 text-sm">
-            在同一局域网内的设备之间同步 data 文件夹（游戏存档、语音、截图等）。
+          <p class="text-gray-50/70 text-sm">
+            在同一局域网内的设备之间同步 data
+            文件夹（游戏存档、语音、截图等）。手机和电脑版互通必备~
           </p>
           <div class="flex gap-3 pt-1">
             <Button type="big" @click="openLanSync"> 打开局域网同步 </Button>
@@ -228,6 +229,28 @@
           />
         </div>
       </MenuItem>
+      <!-- ─── 相关文档 ──────────────────────────────── -->
+      <MenuItem title="了解 LingChat 的相关文档" size="small">
+        <template #header>
+          <BookOpen :size="20" />
+        </template>
+        <div class="space-y-2 w-full">
+          <p class="text-gray-50/70 text-sm">
+            如果你有任何疑惑，可以跳转到这里查看软件的自定义玩法，问题解决，功能列表！
+          </p>
+          <div class="flex gap-3 pt-1">
+            <Button
+              type="big"
+              @click="
+                openWebsite(
+                  'https://slimeboyowo.github.io/LingBlog/blog/projects/ling-chat/develop/Style-Bert-VITS2%E6%A8%A1%E5%9E%8B%E8%AE%AD%E7%BB%83%E6%95%99%E7%A8%8B',
+                )
+              "
+              >查看文档</Button
+            >
+          </div>
+        </div>
+      </MenuItem>
     </MenuPage>
   </div>
 </template>
@@ -260,6 +283,7 @@ import {
   GlassWater,
   HardDrive,
   Trash2,
+  BookOpen,
 } from 'lucide-vue-next'
 import { reactivateTTS, clearTtsCache } from '@/api/services/game-info'
 import { invoke } from '@tauri-apps/api/core'
