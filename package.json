@@ -4,7 +4,7 @@
   "version": "0.4.6",
   "type": "module",
   "scripts": {
-    "init": "tauri icon src-tauri/icons/icon.png && node prepare-desktop-resources.mjs",
+    "init": "tauri icon src-tauri/icons/icon.png && node scripts/prepare-desktop-resources.mjs",
     "dev": "vite",
     "build": "vue-tsc --noEmit --skipLibCheck && vite build",
     "preview": "vite preview",
