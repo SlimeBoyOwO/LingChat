@@ -37,61 +37,123 @@
               <div id="character-emotion">{{ uiStore.showCharacterEmotion }}</div>
             </div>
 
-            <!-- 操作按钮组（窄屏时占据右侧容器剩余空间，可横向滚动） -->
-            <div
-              class="overflow-x-auto custom-scroll"
-              :class="uiStore.isNarrowScreen ? 'flex-1 min-w-0' : 'shrink-0'"
-            >
-              <div class="flex whitespace-nowrap">
-                <Button
-                  type="nav"
-                  icon="background"
-                  title="场景设置"
-                  @click="openSceneSettings"
-                ></Button>
-                <Button
-                  type="nav"
-                  icon="hand"
-                  title="触摸模式"
-                  @click="toggleTouchMode"
-                  @contextmenu.prevent="exitTouchMode"
-                ></Button>
-                <Button type="nav" icon="history" title="历史记录" @click="openHistory"></Button>
-
-                <!-- 新增：语音输入按钮 (已将 icon 修复为 mic) -->
-                <Button
-                  type="nav"
-                  icon="mic"
-                  :title="isRecording ? '录音中，点击停止' : '语音输入'"
-                  :class="{ 'text-red-500 animate-pulse': isRecording }"
-                  @click="toggleRecording"
-                ></Button>
-
-                <div class="relative inline-flex group">
-                  <div
-                    v-if="hasScreenshot"
-                    class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50"
-                  >
-                    <img
-                      :src="'data:image/jpeg;base64,' + screenshotBase64"
-                      class="max-w-96 max-h-64 rounded-lg shadow-lg border-2 object-contain"
-                      style="border-color: var(--accent-color); background: #000"
-                    />
-                  </div>
+            <!-- 桌面端：直接显示所有操作按钮 -->
+            <template v-if="!isMobile">
+              <!-- 操作按钮组（窄屏时占据右侧容器剩余空间，可横向滚动） -->
+              <div
+                class="overflow-x-auto custom-scroll"
+                :class="uiStore.isNarrowScreen ? 'flex-1 min-w-0' : 'shrink-0'"
+              >
+                <div class="flex whitespace-nowrap">
                   <Button
                     type="nav"
-                    icon="camera"
-                    :title="hasScreenshot ? '点击重新截图，右键取消截图' : '截图提问'"
-                    :style="hasScreenshot ? { color: 'var(--accent-color)' } : {}"
-                    @click="startScreenshot"
-                    @contextmenu.prevent="clearScreenshot"
+                    icon="background"
+                    title="场景设置"
+                    @click="openSceneSettings"
                   ></Button>
-                </div>
+                  <Button
+                    type="nav"
+                    icon="hand"
+                    title="触摸模式"
+                    @click="toggleTouchMode"
+                    @contextmenu.prevent="exitTouchMode"
+                  ></Button>
+                  <Button type="nav" icon="history" title="历史记录" @click="openHistory"></Button>
 
-                <Button type="nav" icon="close" title="关闭对话" @click="removeDialog"></Button>
+                  <!-- 新增：语音输入按钮 (已将 icon 修复为 mic) -->
+                  <Button
+                    type="nav"
+                    icon="mic"
+                    :title="isRecording ? '录音中，点击停止' : '语音输入'"
+                    :class="{ 'text-red-500 animate-pulse': isRecording }"
+                    @click="toggleRecording"
+                  ></Button>
+
+                  <div class="relative inline-flex group">
+                    <div
+                      v-if="hasScreenshot"
+                      class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50"
+                    >
+                      <img
+                        :src="'data:image/jpeg;base64,' + screenshotBase64"
+                        class="max-w-96 max-h-64 rounded-lg shadow-lg border-2 object-contain"
+                        style="border-color: var(--accent-color); background: #000"
+                      />
+                    </div>
+                    <Button
+                      type="nav"
+                      icon="camera"
+                      :title="hasScreenshot ? '点击重新截图，右键取消截图' : '截图提问'"
+                      :style="hasScreenshot ? { color: 'var(--accent-color)' } : {}"
+                      @click="startScreenshot"
+                      @contextmenu.prevent="clearScreenshot"
+                    ></Button>
+                  </div>
+
+                  <Button type="nav" icon="close" title="关闭对话" @click="removeDialog"></Button>
+                </div>
+              </div>
+            </template>
+
+            <!-- 移动端：箭头折叠按钮 -->
+            <button
+              v-if="isMobile"
+              class="mobile-toggle-btn"
+              :class="{ 'is-open': showMobileMenu }"
+              title="更多操作"
+              @click="showMobileMenu = !showMobileMenu"
+            >
+              ▲
+            </button>
+
+            <!-- 关闭按钮始终可见 -->
+            <Button type="nav" icon="close" title="关闭对话" @click="removeDialog"></Button>
+          </div>
+
+          <!-- 移动端：折叠菜单下拉面板 -->
+          <Transition name="mobile-menu">
+            <div
+              v-if="isMobile && showMobileMenu"
+              class="mobile-menu-dropdown"
+            >
+              <Button type="nav" icon="background" title="场景设置" @click="onMobileMenuAction(openSceneSettings)"></Button>
+              <Button
+                type="nav"
+                icon="hand"
+                title="触摸模式"
+                @click="onMobileMenuAction(toggleTouchMode)"
+                @contextmenu.prevent="exitTouchMode"
+              ></Button>
+              <Button type="nav" icon="history" title="历史记录" @click="onMobileMenuAction(openHistory)"></Button>
+              <Button
+                type="nav"
+                icon="mic"
+                :title="isRecording ? '录音中，点击停止' : '语音输入'"
+                :class="{ 'text-red-500 animate-pulse': isRecording }"
+                @click="onMobileMenuAction(toggleRecording)"
+              ></Button>
+              <div class="relative inline-flex group">
+                <div
+                  v-if="hasScreenshot"
+                  class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50"
+                >
+                  <img
+                    :src="'data:image/jpeg;base64,' + screenshotBase64"
+                    class="max-w-96 max-h-64 rounded-lg shadow-lg border-2 object-contain"
+                    style="border-color: var(--accent-color); background: #000"
+                  />
+                </div>
+                <Button
+                  type="nav"
+                  icon="camera"
+                  :title="hasScreenshot ? '点击重新截图，右键取消截图' : '截图提问'"
+                  :style="hasScreenshot ? { color: 'var(--accent-color)' } : {}"
+                  @click="onMobileMenuAction(startScreenshot)"
+                  @contextmenu.prevent="onMobileMenuAction(clearScreenshot)"
+                ></Button>
               </div>
             </div>
-          </div>
+          </Transition>
         </div>
 
         <!-- 分割线 -->
@@ -163,6 +225,10 @@ const dialogStore = useDialogStore()
 const settingsStore = useSettingsStore()
 const isHidden = ref(false)
 
+// 移动端按钮折叠状态
+const isMobile = ref(window.innerWidth <= 768)
+const showMobileMenu = ref(false)
+
 // 内联显示模式：设置开启 + 回应状态 → 用 div 做混色显示
 const isInlineDisplayMode = computed(
   () => settingsStore.text.inlineMotionText && gameStore.currentStatus === 'responding',
@@ -183,11 +249,19 @@ const containerWidth = ref(60)
 
 const updateContainerWidth = () => {
   containerWidth.value = Math.max(60, uiStore.aspectRatio > 1 ? 70 : 90)
+  isMobile.value = window.innerWidth <= 768
+  if (!isMobile.value) showMobileMenu.value = false
 }
 
 const openSceneSettings = () => {
   uiStore.toggleSettings(true)
   uiStore.setSettingsTab('background')
+}
+
+// 移动端菜单操作：执行动作后自动收起菜单
+const onMobileMenuAction = (action: () => void) => {
+  action()
+  showMobileMenu.value = false
 }
 const currentDisplayedText = ref('')
 
@@ -611,5 +685,78 @@ defineExpose({
 .custom-scroll::-webkit-scrollbar {
   width: 6px; /* 纵向滚动条宽度 */
   height: 6px; /* 横向滚动条高度（你这个是 overflow-x，主要控制这个） */
+}
+
+/* 移动端折叠按钮 — 与右侧 nav 关闭按钮等大 */
+.mobile-toggle-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  border-radius: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  transition: all 0.25s ease;
+  margin: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+}
+.mobile-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: var(--accent-color, #6eb4ff);
+}
+.mobile-toggle-btn:active {
+  transform: scale(0.92);
+}
+.mobile-toggle-btn > span,
+.mobile-toggle-btn {
+  transition: transform 0.25s ease;
+}
+.mobile-toggle-btn.is-open {
+  transform: rotate(180deg);
+  background: rgba(255, 255, 255, 0.18);
+  color: var(--accent-color, #6eb4ff);
+  border-color: var(--accent-color, #6eb4ff);
+}
+
+/* 移动端下拉菜单 */
+.mobile-menu-dropdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px 4px 4px;
+  margin-top: 2px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 14, 39, 0.5);
+  border-radius: 0 0 8px 8px;
+}
+
+/* Vue Transition: 移动端菜单展开/收起 */
+.mobile-menu-enter-active {
+  animation: menu-slide-down 0.2s ease-out;
+}
+.mobile-menu-leave-active {
+  animation: menu-slide-down 0.15s ease-in reverse;
+}
+@keyframes menu-slide-down {
+  from {
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-top: 0;
+    border-top-width: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 200px;
+    padding-top: 8px;
+    padding-bottom: 4px;
+    margin-top: 2px;
+    border-top-width: 1px;
+  }
 }
 </style>
