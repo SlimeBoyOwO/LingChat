@@ -41,6 +41,7 @@ impl GsvAdapter {
     }
 
     /// 设置 GPT + SoVITS 权重。对应 Python `set_model`。
+    #[allow(dead_code)]
     pub async fn set_model(&self, gpt_model_path: &str, sovits_model_path: &str) -> Result<()> {
         if !Path::new(gpt_model_path).exists() {
             return Err(anyhow!("GPT 模型文件不存在: {gpt_model_path}"));

@@ -7,8 +7,8 @@
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use futures_util::StreamExt;
-use reqwest::Client;
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use crate::ai_service::llm::provider::{LlmProvider, LlmResponseWithTools};
@@ -56,13 +56,9 @@ impl KimiCodeProvider {
         headers.insert(USER_AGENT, HeaderValue::from_static("claude-code/0.1.0"));
         headers.insert(
             "x-api-key",
-            HeaderValue::from_str(&self.api_key)
-                .context("Kimi-Code API key 包含非法字符")?,
+            HeaderValue::from_str(&self.api_key).context("Kimi-Code API key 包含非法字符")?,
         );
-        headers.insert(
-            "anthropic-version",
-            HeaderValue::from_static("2023-06-01"),
-        );
+        headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
         Ok(headers)
     }
 
@@ -105,7 +101,11 @@ impl KimiCodeProvider {
             stream,
             temperature: self.temperature,
             top_p: self.top_p,
-            system: if system_text.is_empty() { None } else { Some(system_text) },
+            system: if system_text.is_empty() {
+                None
+            } else {
+                Some(system_text)
+            },
             messages: conversation,
             tools,
             tool_choice,
@@ -153,7 +153,8 @@ impl LlmProvider for KimiCodeProvider {
             return Err(anyhow!("Kimi-Code 非流式调用失败 ({status}): {text}"));
         }
 
-        let parsed: MessagesResponse = resp.json().await.context("解析 Kimi-Code 响应 JSON 失败")?;
+        let parsed: MessagesResponse =
+            resp.json().await.context("解析 Kimi-Code 响应 JSON 失败")?;
         self.parse_messages_response(parsed)
     }
 
@@ -184,7 +185,9 @@ impl LlmProvider for KimiCodeProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            return Err(anyhow!("Kimi-Code function calling 失败 ({status}): {text}"));
+            return Err(anyhow!(
+                "Kimi-Code function calling 失败 ({status}): {text}"
+            ));
         }
 
         let parsed: MessagesResponse = resp
@@ -204,7 +207,10 @@ impl LlmProvider for KimiCodeProvider {
                     let tc = ToolCall {
                         id,
                         type_: "function".to_string(),
-                        function: crate::ai_service::types::FunctionCall { name, arguments: args },
+                        function: crate::ai_service::types::FunctionCall {
+                            name,
+                            arguments: args,
+                        },
                     };
                     tool_calls.get_or_insert_with(Vec::new).push(tc);
                 }
@@ -212,7 +218,11 @@ impl LlmProvider for KimiCodeProvider {
         }
 
         Ok(LlmResponseWithTools {
-            content: if content_text.is_empty() { None } else { Some(content_text) },
+            content: if content_text.is_empty() {
+                None
+            } else {
+                Some(content_text)
+            },
             tool_calls,
         })
     }
@@ -261,7 +271,6 @@ impl LlmProvider for KimiCodeProvider {
                                 tracing::info!("[Kimi-Code Thinking] {}", thinking_buffer);
                                 yield LlmChunk::Reasoning(thinking_buffer.clone());
                                 thinking_buffer.clear();
-                                last_flush_len = 0;
                             }
                             // 如果 text 为空但 thinking 有内容，把 thinking 作为正式回复兜底
                             if text_buffer.is_empty() && !thinking_buffer.is_empty() {

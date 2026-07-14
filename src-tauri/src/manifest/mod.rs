@@ -48,7 +48,7 @@ pub struct ManifestDiff {
     /// 两方都有但 SHA-256 或大小不同的文件
     pub files_to_modify: Vec<String>,
     /// 旧清单有而新清单没有的文件
-    pub files_to_remove: Vec<String>,
+    pub _files_to_remove: Vec<String>,
 }
 
 // ─── 清单方法 ────────────────────────────────────────────────
@@ -82,15 +82,14 @@ impl DataManifest {
         ManifestDiff {
             files_to_add,
             files_to_modify,
-            files_to_remove,
+            _files_to_remove: files_to_remove,
         }
     }
 
     /// 从文件加载清单。
     pub fn load(path: &Path) -> io::Result<Self> {
         let json = std::fs::read_to_string(path)?;
-        serde_json::from_str(&json)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        serde_json::from_str(&json).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 
     /// 将清单原子写入文件（.tmp → rename）。
@@ -112,6 +111,7 @@ impl DataManifest {
 // ─── 工具函数 ────────────────────────────────────────────────
 
 /// 计算文件的 SHA-256 哈希（hex 字符串）。
+#[allow(dead_code)]
 pub fn compute_sha256(path: &Path) -> io::Result<String> {
     let mut file = std::fs::File::open(path)?;
     let mut hasher = Sha256::new();

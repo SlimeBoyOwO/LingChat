@@ -19,37 +19,6 @@ pub enum PerfTier {
     High,
 }
 
-impl PerfTier {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            PerfTier::Internet => "INTERNET",
-            PerfTier::Low => "LOW",
-            PerfTier::Medium => "MEDIUM",
-            PerfTier::High => "HIGH",
-        }
-    }
-
-    /// 根据性能等级返回建议的帧率上限
-    pub fn suggested_max_fps(&self) -> u32 {
-        match self {
-            PerfTier::Internet => 15,
-            PerfTier::Low => 30,
-            PerfTier::Medium => 60,
-            PerfTier::High => 120,
-        }
-    }
-
-    /// 建议的粒子数量比例 (0.0 ~ 1.0)
-    pub fn suggested_particle_scale(&self) -> f64 {
-        match self {
-            PerfTier::Internet => 0.2,
-            PerfTier::Low => 0.5,
-            PerfTier::Medium => 0.8,
-            PerfTier::High => 1.0,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CpuInfo {
     /// CPU 品牌字符串，例如 "Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz"
@@ -94,7 +63,7 @@ mod x86_impl {
             core::arch::asm!(
                 "mov {tmp}, rbx",
                 "cpuid",
-                "mov {ebx}, rbx",
+                "mov {ebx:e}, ebx",
                 "mov rbx, {tmp}",
                 tmp = out(reg) _,
                 ebx = out(reg) ebx,
@@ -129,7 +98,11 @@ mod x86_impl {
         let s = String::from_utf8_lossy(&buf)
             .trim_end_matches(|c: char| c.is_ascii_whitespace() || c == '\0')
             .to_string();
-        if s.is_empty() { None } else { Some(s) }
+        if s.is_empty() {
+            None
+        } else {
+            Some(s)
+        }
     }
 
     /// 检查是否为 Intel CPU
@@ -156,7 +129,12 @@ mod x86_impl {
         })?;
 
         let num_str = &after_core[marker..];
-        let model_num: i64 = num_str.chars().take_while(|c| c.is_ascii_digit()).collect::<String>().parse().ok()?;
+        let model_num: i64 = num_str
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect::<String>()
+            .parse()
+            .ok()?;
 
         if model_num >= 1000 {
             Some((model_num / 1000) as i32)

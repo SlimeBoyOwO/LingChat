@@ -4,16 +4,17 @@ use windows::Win32::Graphics::Gdi::{GetDC, GetPixel, ReleaseDC};
 use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
 
 pub struct VisualMonitor {
-    last_hash: Option<u64>,
+    _last_hash: Option<u64>,
 }
 
 impl VisualMonitor {
     pub fn new() -> Self {
-        Self { last_hash: None }
+        Self { _last_hash: None }
     }
 
     /// 执行快速的 GDI 像素网格采样并检测画面是否变化。
     /// 成功检测到变化时返回 true，否则返回 false。
+    #[allow(dead_code)]
     pub fn check_visual_change(&mut self) -> bool {
         #[cfg(target_os = "windows")]
         {
@@ -65,9 +66,9 @@ impl VisualMonitor {
                     }
                 }
 
-                if let Some(prev) = self.last_hash {
+                if let Some(prev) = self._last_hash {
                     let diff = (prev ^ hash).count_ones();
-                    self.last_hash = Some(hash);
+                    self._last_hash = Some(hash);
 
                     // Hamming distance >= 6 means change detected (threshold matching Python dhash difference)
                     let change_detected = diff >= 6;
@@ -79,7 +80,7 @@ impl VisualMonitor {
                     }
                     change_detected
                 } else {
-                    self.last_hash = Some(hash);
+                    self._last_hash = Some(hash);
                     false
                 }
             }

@@ -12,5 +12,4 @@ mod adapters;
 pub mod provider;
 pub mod voice_maker;
 
-pub use provider::{TtsAdapter, TtsProvider};
 pub use voice_maker::VoiceMaker;

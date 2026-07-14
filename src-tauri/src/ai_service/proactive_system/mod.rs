@@ -42,7 +42,7 @@ pub struct ProactiveSystem {
     settings: Arc<RwLock<UserScheduleSettings>>,
     interest_manager: InterestManager,
     activity_monitor: UserActivityMonitor,
-    visual_monitor: VisualMonitor,
+    _visual_monitor: VisualMonitor,
     schedule_manager: ScheduleManager,
     strategy_dispatcher: StrategyDispatcher,
 
@@ -53,7 +53,8 @@ pub struct ProactiveSystem {
     /// 条件：用户在聊天界面(/chat 或 /pet) 且 设置面板未打开 且 输入框为空。
     can_deliver: bool,
     /// 暂存的主动对话意图（"小本本"）。每轮 cycle 开头尝试投放。
-    pending_intents: Vec<PendingIntent>,}
+    pending_intents: Vec<PendingIntent>,
+}
 
 impl ProactiveSystem {
     pub fn new(
@@ -80,7 +81,7 @@ impl ProactiveSystem {
             settings: Arc::new(RwLock::new(UserScheduleSettings::default())),
             interest_manager,
             activity_monitor,
-            visual_monitor,
+            _visual_monitor: visual_monitor,
             schedule_manager,
             strategy_dispatcher,
             loop_handle: None,
@@ -240,7 +241,10 @@ impl ProactiveSystem {
                 game_status,
                 processor: self.chat.processor.clone(),
                 translator: self.chat.translator.clone(),
-                llm: self.chat.llm.clone()
+                llm: self
+                    .chat
+                    .llm
+                    .clone()
                     .ok_or_else(|| anyhow::anyhow!("LLM is not configured"))?,
                 concurrency: 1,
                 god_agent: None,
@@ -295,7 +299,8 @@ impl ProactiveSystem {
             if elapsed > intent.intent_type.ttl_secs() {
                 tracing::info!(
                     "[ProactiveSystem] Intent {:?} expired after {}s, discarding",
-                    intent.intent_type, elapsed
+                    intent.intent_type,
+                    elapsed
                 );
                 false
             } else {
@@ -312,11 +317,7 @@ impl ProactiveSystem {
 
         // 第二步：找第一个可投放的（索引有效，因为不在遍历中收集）
         for (i, intent) in self.pending_intents.iter().enumerate() {
-            if DeliveryEvaluator::can_deliver(
-                intent.intent_type,
-                &perception,
-                self.can_deliver,
-            ) {
+            if DeliveryEvaluator::can_deliver(intent.intent_type, &perception, self.can_deliver) {
                 let intent = self.pending_intents.remove(i);
                 let waited = now.duration_since(intent.triggered_at);
                 tracing::info!(
@@ -378,7 +379,9 @@ impl ProactiveSystem {
             {
                 let formatted = PromptRole::System.build_prompt(&raw_prompt);
                 if DeliveryEvaluator::can_deliver(IntentType::Alarm, &perception, sys.can_deliver) {
-                    tracing::info!("[ProactiveSystem] Alarm triggered, evaluate passed, delivering");
+                    tracing::info!(
+                        "[ProactiveSystem] Alarm triggered, evaluate passed, delivering"
+                    );
                     sys.deliver(formatted).await?;
                 } else {
                     tracing::info!("[ProactiveSystem] Alarm triggered, evaluate failed, stashing");

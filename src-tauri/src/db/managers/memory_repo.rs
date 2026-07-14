@@ -10,6 +10,7 @@ use crate::db::entities::memory_bank;
 pub struct MemoryRepo;
 
 impl MemoryRepo {
+    #[allow(dead_code)]
     pub async fn add_memory(
         db: &DatabaseConnection,
         save_id: i32,
@@ -86,6 +87,7 @@ impl MemoryRepo {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn update_memory(
         db: &DatabaseConnection,
         memory_id: i32,
@@ -110,6 +112,7 @@ impl MemoryRepo {
         Ok(Some(updated))
     }
 
+    #[allow(dead_code)]
     pub async fn delete_memory(
         db: &DatabaseConnection,
         memory_id: i32,
@@ -122,6 +125,7 @@ impl MemoryRepo {
     }
 
     /// 按存档+角色批量删除。若 role_id 为 None 则不执行（安全检查，对标 Python）。
+    #[allow(dead_code)]
     pub async fn delete_memories_by_role(
         db: &DatabaseConnection,
         save_id: i32,
@@ -139,6 +143,7 @@ impl MemoryRepo {
         Ok(result.rows_affected)
     }
 
+    #[allow(dead_code)]
     pub async fn delete_memories_by_save(
         db: &DatabaseConnection,
         save_id: i32,
