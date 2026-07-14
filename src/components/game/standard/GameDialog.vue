@@ -27,12 +27,16 @@
             <div id="character-sub">{{ uiStore.showCharacterSubtitle }}</div>
           </div>
 
-          <!-- 情绪标签 -->
           <div
-            class="text-xl font-bold text-[#ff77dd] font-[inherit] text-shadow-[inherit] shrink-0 mx-4"
+            class="text-xl font-bold text-[#ff77dd] font-[inherit] text-shadow-[inherit] shrink-0"
+            :class="uiStore.isNarrowScreen ? 'ml-auto' : 'ml-3'"
           >
             <div id="character-emotion">{{ uiStore.showCharacterEmotion }}</div>
           </div>
+
+          <div
+            class="text-xl font-bold text-[#ff77dd] font-[inherit] text-shadow-[inherit] shrink-0 mx-4"
+          >
 
           <!-- 操作按钮组配置 -->
           <div class="flex items-baseline ml-auto min-w-0">
