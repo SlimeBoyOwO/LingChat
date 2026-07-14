@@ -7,13 +7,45 @@
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use futures_util::StreamExt;
-use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
+use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, USER_AGENT};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
-use crate::ai_service::llm::provider::{LlmProvider, LlmResponseWithTools};
+use crate::ai_service::llm::provider::{LlmModelInfo, LlmProvider, LlmResponseWithTools};
 use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmConfig};
 use crate::ai_service::types::{LlmMessage, ToolCall, ToolDefinition};
+
+#[derive(Debug, Deserialize)]
+struct KimiCodeModelsResponse {
+    data: Vec<KimiCodeModelRecord>,
+}
+
+#[derive(Debug, Deserialize)]
+struct KimiCodeModelRecord {
+    id: String,
+    #[serde(default)]
+    display_name: Option<String>,
+    #[serde(default)]
+    context_length: Option<u64>,
+    #[serde(default)]
+    supports_reasoning: bool,
+    #[serde(default)]
+    supports_thinking_type: Option<String>,
+}
+
+fn kimi_code_models_endpoint(base_url: &str) -> String {
+    let base = if base_url.trim().is_empty() {
+        "https://api.kimi.com/coding"
+    } else {
+        base_url.trim().trim_end_matches('/')
+    };
+    if base.ends_with("/v1") {
+        format!("{base}/models")
+    } else {
+        format!("{base}/v1/models")
+    }
+}
 
 pub struct KimiCodeProvider {
     model: String,
@@ -137,6 +169,52 @@ impl KimiCodeProvider {
 
 #[async_trait]
 impl LlmProvider for KimiCodeProvider {
+    async fn list_models(&self, http: &Client) -> Result<Vec<LlmModelInfo>> {
+        if self.api_key.trim().is_empty() {
+            return Err(anyhow!("请先填写 Kimi Code API 密钥"));
+        }
+
+        let endpoint = kimi_code_models_endpoint(&self.base_url);
+        let response = http
+            .get(&endpoint)
+            .timeout(Duration::from_secs(30))
+            .bearer_auth(self.api_key.trim())
+            .header(USER_AGENT, "claude-code/0.1.0")
+            .header(ACCEPT, "application/json")
+            .send()
+            .await
+            .context("请求 Kimi Code 模型列表失败")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let detail = response.text().await.unwrap_or_default();
+            let detail = detail.chars().take(500).collect::<String>();
+            return Err(anyhow!("获取 Kimi Code 模型列表失败 ({status}): {detail}"));
+        }
+
+        let payload: KimiCodeModelsResponse = response
+            .json()
+            .await
+            .context("解析 Kimi Code 模型列表失败")?;
+        let models = payload
+            .data
+            .into_iter()
+            .filter(|model| !model.id.trim().is_empty())
+            .map(|model| LlmModelInfo {
+                id: model.id,
+                display_name: model.display_name,
+                context_length: model.context_length,
+                supports_reasoning: model.supports_reasoning,
+                supports_thinking_type: model.supports_thinking_type,
+            })
+            .collect::<Vec<_>>();
+
+        if models.is_empty() {
+            return Err(anyhow!("Kimi Code 没有返回可用模型"));
+        }
+        Ok(models)
+    }
+
     async fn complete(&self, http: &Client, messages: &[LlmMessage]) -> Result<String> {
         let body = self.build_request(messages, false, None, None);
         let resp = http

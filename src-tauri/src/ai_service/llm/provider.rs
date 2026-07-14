@@ -1,11 +1,21 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use reqwest::Client;
+use serde::Serialize;
 
 use crate::ai_service::llm::ChunkStream;
 use crate::ai_service::types::{LlmMessage, ToolCall, ToolDefinition};
 
 /// `complete_with_tools` 的返回值。
+#[derive(Debug, Clone, Serialize)]
+pub struct LlmModelInfo {
+    pub id: String,
+    pub display_name: Option<String>,
+    pub context_length: Option<u64>,
+    pub supports_reasoning: bool,
+    pub supports_thinking_type: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct LlmResponseWithTools {
     /// 文本回复（可能为空，如果 LLM 只返回 tool call）。
@@ -20,6 +30,10 @@ pub struct LlmResponseWithTools {
 /// 参照 `TtsAdapter` trait 使用 `async_trait` + `Send + Sync` 的模式。
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
+    async fn list_models(&self, _http: &Client) -> Result<Vec<LlmModelInfo>> {
+        Ok(Vec::new())
+    }
+
     /// 非流式：发送消息列表，返回完整回复文本。
     async fn complete(&self, http: &Client, messages: &[LlmMessage]) -> Result<String>;
 

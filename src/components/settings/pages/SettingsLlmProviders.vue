@@ -286,9 +286,7 @@
                   <option value="openai" class="bg-gray-800 text-white">
                     OpenAI 兼容 (DeepSeek / 通义千问 / Ollama)
                   </option>
-                  <option value="lmstudio" class="bg-gray-800 text-white">
-                    LM Studio（本地）
-                  </option>
+                  <option value="lmstudio" class="bg-gray-800 text-white">LM Studio（本地）</option>
                   <option value="gemini" class="bg-gray-800 text-white">Gemini</option>
                   <option value="kimicode" class="bg-gray-800 text-white">
                     Kimi Code (kimi-for-coding)
@@ -320,13 +318,75 @@
               <input
                 v-model="editing.model"
                 type="text"
-                :placeholder="editing.provider === 'lmstudio' ? '如: llama-3.2-3b-instruct' : '如: deepseek-chat'"
+                :placeholder="
+                  editing.provider === 'lmstudio'
+                    ? '如: llama-3.2-3b-instruct'
+                    : '如: deepseek-chat'
+                "
                 class="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors placeholder:text-white/20"
               />
             </div>
 
-            <!-- Hidden model for kimicode -->
-            <input v-if="editing.provider === 'kimicode'" v-model="editing.model" type="hidden" />
+            <!-- Kimi Code model discovery -->
+            <div v-else class="flex flex-col gap-1">
+              <label class="text-xs font-medium text-white/60">模型名称</label>
+              <div class="flex gap-2">
+                <div v-if="availableModels.length > 0" class="relative flex-1 min-w-0">
+                  <select
+                    v-model="editing.model"
+                    class="w-full appearance-none pl-3 pr-8 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors cursor-pointer"
+                  >
+                    <option
+                      v-for="model in availableModels"
+                      :key="model.id"
+                      :value="model.id"
+                      class="bg-gray-800 text-white"
+                    >
+                      {{ model.display_name ? `${model.display_name} (${model.id})` : model.id }}
+                    </option>
+                  </select>
+                  <div
+                    class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5"
+                  >
+                    <svg
+                      class="w-4 h-4 text-white/40"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M19 9l-7 7-7-7"
+                      />
+                    </svg>
+                  </div>
+                </div>
+                <input
+                  v-else
+                  v-model="editing.model"
+                  type="text"
+                  placeholder="kimi-for-coding"
+                  class="flex-1 min-w-0 px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors placeholder:text-white/20"
+                />
+                <button
+                  type="button"
+                  class="shrink-0 px-3 py-2 rounded-lg bg-brand/80 text-white text-sm hover:bg-brand transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  :disabled="loadingModels || !editing.api_key.trim()"
+                  @click="fetchProviderModels"
+                >
+                  {{ loadingModels ? '获取中...' : '自动获取' }}
+                </button>
+              </div>
+              <p
+                v-if="modelsMessage"
+                class="text-xs"
+                :class="modelsError ? 'text-red-400' : 'text-green-400'"
+              >
+                {{ modelsMessage }}
+              </p>
+            </div>
 
             <!-- API Key -->
             <div class="flex flex-col gap-1">
@@ -351,7 +411,11 @@
             </div>
 
             <!-- Hidden base_url for kimicode -->
-            <input v-if="editing.provider === 'kimicode'" v-model="editing.base_url" type="hidden" />
+            <input
+              v-if="editing.provider === 'kimicode'"
+              v-model="editing.base_url"
+              type="hidden"
+            />
 
             <!-- Temperature -->
             <div class="flex flex-col gap-1">
@@ -472,7 +536,11 @@ import { ref, onMounted, reactive } from 'vue'
 import { useLlmProvidersStore } from '@/stores/modules/llm-providers'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { invoke } from '@tauri-apps/api/core'
-import type { LlmProviderConfig } from '@/api/services/llm-providers'
+import {
+  listLlmModels,
+  type LlmModelInfo,
+  type LlmProviderConfig,
+} from '@/api/services/llm-providers'
 
 const store = useLlmProvidersStore()
 const uiStore = useUIStore()
@@ -483,6 +551,10 @@ const saveMessage = ref('')
 const saveError = ref(false)
 const lmstudioAutoFilled = ref(false)
 const kimicodeAutoFilled = ref(false)
+const availableModels = ref<LlmModelInfo[]>([])
+const loadingModels = ref(false)
+const modelsMessage = ref('')
+const modelsError = ref(false)
 
 // Test state
 const testProvider = ref<LlmProviderConfig | null>(null)
@@ -510,8 +582,15 @@ function closePanel() {
   saveMessage.value = ''
 }
 
+function resetModelList() {
+  availableModels.value = []
+  modelsMessage.value = ''
+  modelsError.value = false
+}
+
 // LM Studio 兼容：本质是 OpenAI 协议，这里只帮用户预填默认地址和假 key
 function onProviderChange() {
+  resetModelList()
   if (editing.provider === 'lmstudio') {
     editing.base_url = 'http://localhost:1234/v1'
     editing.api_key = 'sk-lingchat70'
@@ -545,12 +624,14 @@ function onProviderChange() {
 
 function startAdd() {
   Object.assign(editing, emptyProvider())
+  resetModelList()
   sidePanel.value = 'edit'
   saveMessage.value = ''
 }
 
 function startEdit(p: LlmProviderConfig) {
   Object.assign(editing, { ...p })
+  resetModelList()
   sidePanel.value = 'edit'
   saveMessage.value = ''
 }
@@ -587,6 +668,35 @@ async function saveCurrent() {
   } catch (e: any) {
     saveMessage.value = `保存失败: ${e}`
     saveError.value = true
+  }
+}
+
+async function fetchProviderModels() {
+  if (loadingModels.value) return
+  if (!editing.api_key.trim()) {
+    modelsMessage.value = '请先填写 Kimi Code API 密钥'
+    modelsError.value = true
+    return
+  }
+
+  loadingModels.value = true
+  modelsMessage.value = ''
+  modelsError.value = false
+  try {
+    const models = await listLlmModels({ ...editing })
+    availableModels.value = models
+    if (!models.some((model) => model.id === editing.model)) {
+      editing.model = models[0]?.id ?? editing.model
+    }
+    modelsMessage.value = `已获取 ${models.length} 个可用模型`
+  } catch (error: any) {
+    availableModels.value = []
+    modelsMessage.value = `获取失败: ${
+      typeof error === 'string' ? error : error?.message || JSON.stringify(error)
+    }`
+    modelsError.value = true
+  } finally {
+    loadingModels.value = false
   }
 }
 
