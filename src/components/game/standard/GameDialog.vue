@@ -8,9 +8,10 @@
     }"
   >
     <div :style="{ width: containerWidth + '%' }" class="relative">
-      <div class="overflow-y-auto flex flex-col">
-        <div class="flex items-baseline mb-2 shrink-0">
-          <!-- 角色名称（窄屏时可截断，为右侧按钮腾出空间） -->
+      <div class="overflow-y-auto">
+        <!-- 标题栏 -->
+        <div class="flex items-baseline mb-2">
+          <!-- 角色名称 -->
           <div
             class="text-2xl font-bold text-white mr-3.75 font-[inherit] text-shadow-[inherit]"
             :class="{
@@ -34,13 +35,14 @@
           </div>
 
           <div
-            class="flex items-baseline ml-auto min-w-0"
-            :class="{ 'flex-1 shrink-0': uiStore.isNarrowScreen }"
+            class="text-xl font-bold text-[#ff77dd] font-[inherit] text-shadow-[inherit] shrink-0 mx-4"
           >
 
+          <!-- 操作按钮组配置 -->
+          <div class="flex items-baseline ml-auto min-w-0">
             <!-- 桌面端：直接显示所有操作按钮 -->
             <template v-if="!isMobile">
-              <!-- 操作按钮组（窄屏时占据右侧容器剩余空间，可横向滚动） -->
+              <!-- 操作按钮组 -->
               <div
                 class="overflow-x-auto custom-scroll"
                 :class="uiStore.isNarrowScreen ? 'flex-1 min-w-0' : 'shrink-0'"
@@ -61,7 +63,7 @@
                   ></Button>
                   <Button type="nav" icon="history" title="历史记录" @click="openHistory"></Button>
 
-                  <!-- 新增：语音输入按钮 (已将 icon 修复为 mic) -->
+                  <!-- 语音输入按钮 -->
                   <Button
                     type="nav"
                     icon="mic"
@@ -96,28 +98,31 @@
               </div>
             </template>
 
-            <!-- 移动端：箭头折叠按钮 -->
-            <button
-              v-if="isMobile"
-              class="mobile-toggle-btn"
-              :class="{ 'is-open': showMobileMenu }"
-              title="更多操作"
-              @click="showMobileMenu = !showMobileMenu"
-            >
-              ▲
-            </button>
-
-            <!-- 关闭按钮始终可见 -->
-            <Button type="nav" icon="close" title="关闭对话" @click="removeDialog"></Button>
+            <!-- 移动端：箭头折叠按钮 + 关闭按钮 -->
+            <div v-if="isMobile" class="flex items-baseline gap-1">
+              <button
+                class="mobile-toggle-btn"
+                :class="{ 'is-open': showMobileMenu }"
+                title="更多操作"
+                @click="showMobileMenu = !showMobileMenu"
+              >
+                ▲
+              </button>
+              <Button type="nav" icon="close" title="关闭对话" @click="removeDialog"></Button>
+            </div>
           </div>
+        </div>
 
-          <!-- 移动端：折叠菜单下拉面板 -->
-          <Transition name="mobile-menu">
-            <div
-              v-if="isMobile && showMobileMenu"
-              class="mobile-menu-dropdown"
-            >
-              <Button type="nav" icon="background" title="场景设置" @click="onMobileMenuAction(openSceneSettings)"></Button>
+        <!-- 移动端：折叠菜单下拉面板 -->
+        <Transition name="mobile-menu">
+          <div v-if="isMobile && showMobileMenu" class="mobile-menu-dropdown">
+            <div class="overflow-x-auto custom-scroll flex whitespace-nowrap gap-1 pb-1">
+              <Button
+                type="nav"
+                icon="background"
+                title="场景设置"
+                @click="onMobileMenuAction(openSceneSettings)"
+              ></Button>
               <Button
                 type="nav"
                 icon="hand"
@@ -125,7 +130,12 @@
                 @click="onMobileMenuAction(toggleTouchMode)"
                 @contextmenu.prevent="exitTouchMode"
               ></Button>
-              <Button type="nav" icon="history" title="历史记录" @click="onMobileMenuAction(openHistory)"></Button>
+              <Button
+                type="nav"
+                icon="history"
+                title="历史记录"
+                @click="onMobileMenuAction(openHistory)"
+              ></Button>
               <Button
                 type="nav"
                 icon="mic"
@@ -154,15 +164,15 @@
                 ></Button>
               </div>
             </div>
-          </Transition>
-        </div>
+          </div>
+        </Transition>
 
         <!-- 分割线 -->
-        <div class="h-px bg-white/30 my-1.5 shrink-0"></div>
+        <div class="h-px bg-white/30 my-1.5"></div>
 
         <!-- 输入区 -->
         <div
-          class="flex flex-1 min-h-30 whitespace-pre-line w-full bg-transparent border-none text-xl font-bold my-1.25 outline-none transition-all duration-300"
+          class="flex flex-col whitespace-pre-line w-full min-h-10 bg-transparent border-none text-white text-xl font-bold resize-none my-1.25 outline-none transition-all duration-300"
         >
           <!-- 内联动作文本显示区（仅内联模式+回应状态时可见） -->
           <div
@@ -226,8 +236,8 @@ const dialogStore = useDialogStore()
 const settingsStore = useSettingsStore()
 const isHidden = ref(false)
 
-// 移动端按钮折叠状态
-const isMobile = ref(window.innerWidth <= 768)
+// 移动端按钮折叠状态（但是基于长宽比判断）
+const isMobile = ref(uiStore.aspectRatio <= 1)
 const showMobileMenu = ref(false)
 
 // 内联显示模式：设置开启 + 回应状态 → 用 div 做混色显示
@@ -250,7 +260,7 @@ const containerWidth = ref(60)
 
 const updateContainerWidth = () => {
   containerWidth.value = Math.max(60, uiStore.aspectRatio > 1 ? 70 : 90)
-  isMobile.value = window.innerWidth <= 768
+  isMobile.value = uiStore.aspectRatio <= 1
   if (!isMobile.value) showMobileMenu.value = false
 }
 
@@ -276,15 +286,12 @@ function writeInlineHtml(_element: HTMLElement, text: string): void {
   if (newlineIndex > 0) {
     const dialogue = escapeHtml(text.substring(0, newlineIndex))
     const motion = escapeHtml(text.substring(newlineIndex + 1))
-    inlineDisplayRef.value.innerHTML =
-      `<span style="color:#fff">${dialogue}</span><br><span class="motion-text-gray">${motion}</span>`
+    inlineDisplayRef.value.innerHTML = `<span style="color:#fff">${dialogue}</span><br><span class="motion-text-gray">${motion}</span>`
   } else if (newlineIndex === 0) {
     const motion = escapeHtml(text.substring(1))
-    inlineDisplayRef.value.innerHTML =
-      `<br><span class="motion-text-gray">${motion}</span>`
+    inlineDisplayRef.value.innerHTML = `<br><span class="motion-text-gray">${motion}</span>`
   } else {
-    inlineDisplayRef.value.innerHTML =
-      `<span style="color:#fff">${escapeHtml(text)}</span>`
+    inlineDisplayRef.value.innerHTML = `<span style="color:#fff">${escapeHtml(text)}</span>`
   }
 }
 
@@ -303,9 +310,13 @@ const {
   stopTyping: stopInlineTyping,
   isTyping: isInlineTyping,
   finishTyping: finishInlineTyping,
-} = useTypeWriter(inlineDisplayRef, (text) => {
-  currentDisplayedText.value = text
-}, writeInlineHtml)
+} = useTypeWriter(
+  inlineDisplayRef,
+  (text) => {
+    currentDisplayedText.value = text
+  },
+  writeInlineHtml,
+)
 
 // 统一 isTyping（父组件通过 defineExpose 使用）
 const isTyping = computed(() =>
@@ -733,6 +744,7 @@ defineExpose({
   border-top: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(0, 14, 39, 0.5);
   border-radius: 0 0 8px 8px;
+  width: 100%; /* 确保占满整个对话框宽度 */
 }
 
 /* Vue Transition: 移动端菜单展开/收起 */
