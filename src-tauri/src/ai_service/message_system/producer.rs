@@ -14,9 +14,11 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use futures_util::StreamExt;
+use tauri::AppHandle;
 use tokio::sync::mpsc;
 
-use crate::ai_service::llm::ChunkStream;
+use crate::ai_service::llm::{ChunkStream, LlmChunk};
+use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::processor::fix_ai_generated_text;
 
 /// 一个完整情绪段的投递项：(句子文本, 有序索引, 是否为最后一项)
@@ -25,11 +27,12 @@ pub type SentenceItem = (String, usize, bool);
 pub struct StreamProducer {
     llm_stream: ChunkStream,
     tx: mpsc::Sender<SentenceItem>,
+    app: AppHandle,
 }
 
 impl StreamProducer {
-    pub fn new(llm_stream: ChunkStream, tx: mpsc::Sender<SentenceItem>) -> Self {
-        Self { llm_stream, tx }
+    pub fn new(llm_stream: ChunkStream, tx: mpsc::Sender<SentenceItem>, app: AppHandle) -> Self {
+        Self { llm_stream, tx, app }
     }
 
     /// 消耗整个 LLM 流；返回原始 accumulated_response（未拆分）。
@@ -37,6 +40,7 @@ impl StreamProducer {
         let mut accumulated = String::new();
         let mut realtime_buffer = String::new();
         let mut last_display = Instant::now();
+        let mut thinking_length: usize = 0;
 
         let mut buffer = String::new();
         let mut sentence = String::new();
@@ -44,89 +48,104 @@ impl StreamProducer {
 
         while let Some(item) = self.llm_stream.next().await {
             let chunk = item?;
-            buffer.push_str(&chunk);
-            accumulated.push_str(&chunk);
-            realtime_buffer.push_str(&chunk);
+            match chunk {
+                LlmChunk::Content(text) => {
+                    buffer.push_str(&text);
+                    accumulated.push_str(&text);
+                    realtime_buffer.push_str(&text);
 
-            let now = Instant::now();
-            if realtime_buffer.chars().count() >= 3
-                || now.duration_since(last_display) > Duration::from_millis(100)
-                || realtime_buffer.contains('\n')
-            {
-                if !realtime_buffer.trim().is_empty() {
-                    print!("{}", realtime_buffer);
-                }
-                realtime_buffer.clear();
-                last_display = now;
-            }
-
-            // 句子切分
-            loop {
-                if !buffer.contains('【') {
-                    break;
-                }
-
-                if !sentence.is_empty() {
-                    // 已有 sentence 开头，等 】 闭合
-                    let Some(end_byte) = buffer.find('】') else {
-                        break;
-                    };
-                    let after_close = end_byte + '】'.len_utf8();
-                    sentence.push_str(&buffer[..after_close]);
-                    buffer.drain(..after_close);
-
-                    // 再向后吃到下一个【
-                    if let Some(next_start) = buffer.find('【') {
-                        sentence.push_str(&buffer[..next_start]);
-                        buffer.drain(..next_start);
-                    } else {
-                        sentence.push_str(&buffer);
-                        buffer.clear();
+                    let now = Instant::now();
+                    if realtime_buffer.chars().count() >= 3
+                        || now.duration_since(last_display) > Duration::from_millis(100)
+                        || realtime_buffer.contains('\n')
+                    {
+                        if !realtime_buffer.trim().is_empty() {
+                            print!("{}", realtime_buffer);
+                        }
+                        realtime_buffer.clear();
+                        last_display = now;
                     }
 
-                    Self::dispatch_sentence(&self.tx, &mut sentence, &mut sentence_index, false)
-                        .await?;
-                } else {
-                    // 寻找新情绪 tag 起点
-                    let Some(start_byte) = buffer.find('【') else {
-                        break;
-                    };
-                    let after_start = start_byte + '【'.len_utf8();
-                    sentence.push_str(&buffer[..after_start]);
-                    buffer.drain(..after_start);
-
-                    // 处理 `【数字】` 这类非情绪标签（例如 【1】）
-                    // 旧版检测：buffer 开头是不是全数字，若是就当作一个完整闭合句子
-                    let mut num_end = 0usize;
-                    for c in buffer.chars() {
-                        if c.is_ascii_digit() {
-                            num_end += c.len_utf8();
-                        } else {
+                    // 句子切分
+                    loop {
+                        if !buffer.contains('【') {
                             break;
                         }
-                    }
-                    if num_end > 0 && buffer[num_end..].chars().next() == Some('】') {
-                        let close_end = num_end + '】'.len_utf8();
-                        sentence.push_str(&buffer[..close_end]);
-                        buffer.drain(..close_end);
 
-                        if let Some(next_start) = buffer.find('【') {
-                            sentence.push_str(&buffer[..next_start]);
-                            buffer.drain(..next_start);
+                        if !sentence.is_empty() {
+                            // 已有 sentence 开头，等 】 闭合
+                            let Some(end_byte) = buffer.find('】') else {
+                                break;
+                            };
+                            let after_close = end_byte + '】'.len_utf8();
+                            sentence.push_str(&buffer[..after_close]);
+                            buffer.drain(..after_close);
+
+                            // 再向后吃到下一个【
+                            if let Some(next_start) = buffer.find('【') {
+                                sentence.push_str(&buffer[..next_start]);
+                                buffer.drain(..next_start);
+                            } else {
+                                sentence.push_str(&buffer);
+                                buffer.clear();
+                            }
+
+                            Self::dispatch_sentence(&self.tx,
+                                &mut sentence,
+                                &mut sentence_index,
+                                false,
+                            )
+                            .await?;
                         } else {
-                            sentence.push_str(&buffer);
-                            buffer.clear();
+                            // 寻找新情绪 tag 起点
+                            let Some(start_byte) = buffer.find('【') else {
+                                break;
+                            };
+                            let after_start = start_byte + '【'.len_utf8();
+                            sentence.push_str(&buffer[..after_start]);
+                            buffer.drain(..after_start);
+
+                            // 处理 `【数字】` 这类非情绪标签（例如 【1】）
+                            // 旧版检测：buffer 开头是不是全数字，若是就当作一个完整闭合句子
+                            let mut num_end = 0usize;
+                            for c in buffer.chars() {
+                                if c.is_ascii_digit() {
+                                    num_end += c.len_utf8();
+                                } else {
+                                    break;
+                                }
+                            }
+                            if num_end > 0 && buffer[num_end..].chars().next() == Some('】') {
+                                let close_end = num_end + '】'.len_utf8();
+                                sentence.push_str(&buffer[..close_end]);
+                                buffer.drain(..close_end);
+
+                                if let Some(next_start) = buffer.find('【') {
+                                    sentence.push_str(&buffer[..next_start]);
+                                    buffer.drain(..next_start);
+                                } else {
+                                    sentence.push_str(&buffer);
+                                    buffer.clear();
+                                }
+                                Self::dispatch_sentence(
+                                    &self.tx,
+                                    &mut sentence,
+                                    &mut sentence_index,
+                                    false,
+                                )
+                                .await?;
+                            } else {
+                                // 不完整句子，等下一轮 chunk
+                                break;
+                            }
                         }
-                        Self::dispatch_sentence(
-                            &self.tx,
-                            &mut sentence,
-                            &mut sentence_index,
-                            false,
-                        )
-                        .await?;
-                    } else {
-                        // 不完整句子，等下一轮 chunk
-                        break;
+                    }
+                }
+                LlmChunk::Reasoning(text) => {
+                    // 思考链内容：实时统计字数并通知前端，但不加入正式回复。
+                    if !text.is_empty() {
+                        thinking_length += text.chars().count();
+                        events::emit_thinking_progress(&self.app, thinking_length);
                     }
                 }
             }

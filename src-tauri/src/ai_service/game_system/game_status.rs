@@ -46,6 +46,10 @@ pub struct GameStatus {
     /// 当前激活的存档 ID（用于 MemoryBank 持久化/载入/自动压缩）
     pub active_save_id: Option<i32>,
 
+    /// 标记玩家是否已在本会话中入场（内存标记，重启重置）。
+    /// 用于防止重复触发入场问候。
+    pub player_entered: bool,
+
     /// 场景感知开关（关闭后切换场景不再触发旁白）
     pub scene_awareness_enabled: bool,
 }
@@ -71,6 +75,7 @@ impl GameStatus {
             last_dialog_time: None,
             script_status: None,
             active_save_id: None,
+            player_entered: false,
             scene_awareness_enabled: true,
         }
     }

@@ -18,6 +18,12 @@ pub mod keys {
     pub const AIVIS_API_KEY: &str = "tts.aivis_api_key";
     pub const INDEXTTS_API_URL: &str = "tts.indextts_api_url";
 
+    // OpenTTS
+    pub const OPENTTS_API_URL: &str = "tts.opentts_api_url";
+    pub const OPENTTS_API_KEY: &str = "tts.opentts_api_key";
+    pub const OPENTTS_MODEL: &str = "tts.opentts_model";
+    pub const OPENTTS_VOICE: &str = "tts.opentts_voice";
+
     // 音频参数
     pub const TTS_AUDIO_FORMAT: &str = "tts.audio_format";
     pub const VOICE_LANG: &str = "tts.voice_lang";
@@ -50,6 +56,19 @@ pub struct TtsConfig {
     #[serde(default = "default_indextts_url")]
     pub indextts_api_url: String,
 
+    /// OpenTTS API 地址
+    #[serde(default = "default_opentts_url")]
+    pub opentts_api_url: String,
+    /// OpenTTS API 密钥
+    #[serde(default)]
+    pub opentts_api_key: Option<String>,
+    /// OpenTTS 模型
+    #[serde(default = "default_opentts_model")]
+    pub opentts_model: String,
+    /// OpenTTS voice
+    #[serde(default = "default_opentts_voice")]
+    pub opentts_voice: String,
+
     /// TTS 音频文件格式（wav / mp3 / flac 等）
     #[serde(default = "default_audio_format")]
     pub audio_format: String,
@@ -80,6 +99,15 @@ fn default_aivis_url() -> String {
 fn default_indextts_url() -> String {
     "http://127.0.0.1:23467/voice/indextts/presets".into()
 }
+fn default_opentts_url() -> String {
+    "https://api.siliconflow.cn/v1".into()
+}
+fn default_opentts_model() -> String {
+    "FunAudioLLM/CosyVoice2-0.5B".into()
+}
+fn default_opentts_voice() -> String {
+    "speech:pai:7s86w73x9i:vkgcswgqicskwpdwevri".into()
+}
 fn default_audio_format() -> String {
     "wav".into()
 }
@@ -98,6 +126,10 @@ impl Default for TtsConfig {
             aivis_api_url: default_aivis_url(),
             aivis_api_key: None,
             indextts_api_url: default_indextts_url(),
+            opentts_api_url: default_opentts_url(),
+            opentts_api_key: None,
+            opentts_model: default_opentts_model(),
+            opentts_voice: default_opentts_voice(),
             audio_format: default_audio_format(),
             voice_lang: default_voice_lang(),
         }
@@ -139,6 +171,13 @@ impl TtsConfig {
                 }
             },
             indextts_api_url: get_string(keys::INDEXTTS_API_URL, &default_indextts_url()),
+            opentts_api_url: get_string(keys::OPENTTS_API_URL, &default_opentts_url()),
+            opentts_api_key: {
+                let s = get_string(keys::OPENTTS_API_KEY, "");
+                if s.is_empty() { None } else { Some(s) }
+            },
+            opentts_model: get_string(keys::OPENTTS_MODEL, &default_opentts_model()),
+            opentts_voice: get_string(keys::OPENTTS_VOICE, &default_opentts_voice()),
             audio_format: get_string(keys::TTS_AUDIO_FORMAT, &default_audio_format()),
             voice_lang: get_string(keys::VOICE_LANG, &default_voice_lang()),
         }

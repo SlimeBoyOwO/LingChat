@@ -99,7 +99,9 @@ jobs:
           key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: 安装前端依赖
-        run: pnpm i
+        run: |
+          pnpm i
+          pnpm run init
 
       - name: 安装系统依赖 (仅 Linux)
         if: matrix.platform == 'ubuntu-latest'

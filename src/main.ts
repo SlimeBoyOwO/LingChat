@@ -14,6 +14,9 @@ import "./assets/styles/variables.css";
 import router from "./router";
 import { autoConfigureCpuPerformance } from "./api/services/cpu-perf";
 
+// 每次启动时清除加载过渡标记，确保首次进入 MainChat 时播放加载动画
+localStorage.removeItem('lingchat_loading_shown')
+
 const app = createApp(App);
 
 initializeEventProcessors();

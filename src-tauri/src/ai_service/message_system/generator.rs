@@ -43,6 +43,8 @@ pub struct GeneratorDeps {
     pub concurrency: usize,
     /// 上帝 Agent（多人自由对话编排器），`None` 时退化为单角色对话。
     pub god_agent: Option<Arc<GodAgentCore>>,
+    /// 抑制 ai:thinking 事件。用于系统触发的后台生成（如入场问候）。
+    pub suppress_thinking: bool,
 }
 
 /// `process_message` 各步骤间传递的用户消息上下文。
@@ -222,19 +224,25 @@ impl MessageGenerator {
         user_message: &str,
         user_msg_seq: Option<u32>,
     ) -> Result<String> {
-        events::emit_thinking(&self.deps.app, true);
+        if !self.deps.suppress_thinking {
+            events::emit_thinking(&self.deps.app, true);
+        }
 
         match self
             .run_pipeline(context, user_message.to_string(), user_msg_seq)
             .await
         {
             Ok(acc) => {
-                events::emit_thinking(&self.deps.app, false);
+                if !self.deps.suppress_thinking {
+                    events::emit_thinking(&self.deps.app, false);
+                }
                 Ok(acc)
             }
             Err(e) => {
                 events::emit_error(&self.deps.app, &e);
-                events::emit_thinking(&self.deps.app, false);
+                if !self.deps.suppress_thinking {
+                    events::emit_thinking(&self.deps.app, false);
+                }
                 Err(e)
             }
         }
@@ -448,7 +456,7 @@ impl MessageGenerator {
 
         // producer：LLM 流 -> 句子
         let llm_stream = self.deps.llm.complete_stream(&context).await?;
-        let producer = StreamProducer::new(llm_stream, sentence_tx);
+        let producer = StreamProducer::new(llm_stream, sentence_tx, self.deps.app.clone());
         let acc = producer.run().await.context("StreamProducer 失败")?;
 
         for t in consumer_tasks {

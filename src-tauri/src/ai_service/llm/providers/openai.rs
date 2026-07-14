@@ -9,7 +9,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use crate::ai_service::llm::provider::{LlmProvider, LlmResponseWithTools};
-use crate::ai_service::llm::{ChunkStream, LlmConfig};
+use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmConfig};
 use crate::ai_service::types::{LlmMessage, ToolCall, ToolDefinition};
 
 pub struct OpenAiProvider {
@@ -207,15 +207,15 @@ impl LlmProvider for OpenAiProvider {
                             Err(_) => continue,
                         };
                         if let Some(choice) = parsed.choices.into_iter().next() {
-                            // 思考模式内容（reasoning_content）：仅记录日志，不输出
                             if let Some(reasoning) = choice.delta.reasoning_content {
                                 if !reasoning.is_empty() {
                                     tracing::info!("[LLM Thinking] {}", reasoning);
+                                    yield LlmChunk::Reasoning(reasoning);
                                 }
                             }
                             if let Some(content) = choice.delta.content {
                                 if !content.is_empty() {
-                                    yield content;
+                                    yield LlmChunk::Content(content);
                                 }
                             }
                         }

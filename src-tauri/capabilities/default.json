@@ -16,6 +16,8 @@
     "core:window:allow-start-dragging",
     "core:window:allow-set-size",
     "core:window:allow-set-position",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-is-fullscreen",
     "core:window:allow-inner-position",
     "core:window:allow-inner-size",
     "opener:default",

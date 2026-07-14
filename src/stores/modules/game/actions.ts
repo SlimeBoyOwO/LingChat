@@ -28,6 +28,10 @@ export const actions = {
     try {
       const gameInfo = await getGameInfo()
       applyWebInitData(this, gameInfo)
+      // 通知后端玩家已入场，触发 AI 问候（不等 LoadingTransition，fire-and-forget）
+      invoke('notify_player_entry').catch((err) =>
+        console.warn('[Entry] 问候触发失败（非致命）:', err),
+      )
       return gameInfo
     } catch (error) {
       console.error('初始化游戏信息失败:', error)

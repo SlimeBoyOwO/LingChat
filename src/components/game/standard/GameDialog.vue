@@ -8,9 +8,10 @@
     }"
   >
     <div :style="{ width: containerWidth + '%' }" class="relative">
-      <div class="overflow-y-auto flex flex-col">
-        <div class="flex items-baseline mb-2 shrink-0">
-          <!-- 角色名称（窄屏时可截断，为右侧按钮腾出空间） -->
+      <div class="overflow-y-auto">
+        <!-- 标题栏 -->
+        <div class="flex items-baseline mb-2">
+          <!-- 角色名称 -->
           <div
             class="text-2xl font-bold text-white mr-3.75 font-[inherit] text-shadow-[inherit]"
             :class="{
@@ -26,80 +27,148 @@
             <div id="character-sub">{{ uiStore.showCharacterSubtitle }}</div>
           </div>
 
-          <!-- 右侧区域：情绪标签 + 操作按钮组（窄屏时占据剩余全部宽度，优先显示） -->
+          <!-- 情绪标签 -->
           <div
-            class="flex items-baseline ml-auto min-w-0"
-            :class="{ 'flex-1 shrink-0': uiStore.isNarrowScreen }"
+            class="text-xl font-bold text-[#ff77dd] font-[inherit] text-shadow-[inherit] shrink-0 mx-4"
           >
-            <div
-              class="text-xl font-bold text-[#ff77dd] font-[inherit] text-shadow-[inherit] shrink-0"
-            >
-              <div id="character-emotion">{{ uiStore.showCharacterEmotion }}</div>
-            </div>
+            <div id="character-emotion">{{ uiStore.showCharacterEmotion }}</div>
+          </div>
 
-            <!-- 操作按钮组（窄屏时占据右侧容器剩余空间，可横向滚动） -->
-            <div
-              class="overflow-x-auto custom-scroll"
-              :class="uiStore.isNarrowScreen ? 'flex-1 min-w-0' : 'shrink-0'"
-            >
-              <div class="flex whitespace-nowrap">
-                <Button
-                  type="nav"
-                  icon="background"
-                  title="场景设置"
-                  @click="openSceneSettings"
-                ></Button>
-                <Button
-                  type="nav"
-                  icon="hand"
-                  title="触摸模式"
-                  @click="toggleTouchMode"
-                  @contextmenu.prevent="exitTouchMode"
-                ></Button>
-                <Button type="nav" icon="history" title="历史记录" @click="openHistory"></Button>
-
-                <!-- 新增：语音输入按钮 (已将 icon 修复为 mic) -->
-                <Button
-                  type="nav"
-                  icon="mic"
-                  :title="isRecording ? '录音中，点击停止' : '语音输入'"
-                  :class="{ 'text-red-500 animate-pulse': isRecording }"
-                  @click="toggleRecording"
-                ></Button>
-
-                <div class="relative inline-flex group">
-                  <div
-                    v-if="hasScreenshot"
-                    class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50"
-                  >
-                    <img
-                      :src="'data:image/jpeg;base64,' + screenshotBase64"
-                      class="max-w-96 max-h-64 rounded-lg shadow-lg border-2 object-contain"
-                      style="border-color: var(--accent-color); background: #000"
-                    />
-                  </div>
+          <!-- 操作按钮组配置 -->
+          <div class="flex items-baseline ml-auto min-w-0">
+            <!-- 桌面端：直接显示所有操作按钮 -->
+            <template v-if="!isMobile">
+              <!-- 操作按钮组 -->
+              <div
+                class="overflow-x-auto custom-scroll"
+                :class="uiStore.isNarrowScreen ? 'flex-1 min-w-0' : 'shrink-0'"
+              >
+                <div class="flex whitespace-nowrap">
                   <Button
                     type="nav"
-                    icon="camera"
-                    :title="hasScreenshot ? '点击重新截图，右键取消截图' : '截图提问'"
-                    :style="hasScreenshot ? { color: 'var(--accent-color)' } : {}"
-                    @click="startScreenshot"
-                    @contextmenu.prevent="clearScreenshot"
+                    icon="background"
+                    title="场景设置"
+                    @click="openSceneSettings"
                   ></Button>
-                </div>
+                  <Button
+                    type="nav"
+                    icon="hand"
+                    title="触摸模式"
+                    @click="toggleTouchMode"
+                    @contextmenu.prevent="exitTouchMode"
+                  ></Button>
+                  <Button type="nav" icon="history" title="历史记录" @click="openHistory"></Button>
 
-                <Button type="nav" icon="close" title="关闭对话" @click="removeDialog"></Button>
+                  <!-- 语音输入按钮 -->
+                  <Button
+                    type="nav"
+                    icon="mic"
+                    :title="isRecording ? '录音中，点击停止' : '语音输入'"
+                    :class="{ 'text-red-500 animate-pulse': isRecording }"
+                    @click="toggleRecording"
+                  ></Button>
+
+                  <div class="relative inline-flex group">
+                    <div
+                      v-if="hasScreenshot"
+                      class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50"
+                    >
+                      <img
+                        :src="'data:image/jpeg;base64,' + screenshotBase64"
+                        class="max-w-96 max-h-64 rounded-lg shadow-lg border-2 object-contain"
+                        style="border-color: var(--accent-color); background: #000"
+                      />
+                    </div>
+                    <Button
+                      type="nav"
+                      icon="camera"
+                      :title="hasScreenshot ? '点击重新截图，右键取消截图' : '截图提问'"
+                      :style="hasScreenshot ? { color: 'var(--accent-color)' } : {}"
+                      @click="startScreenshot"
+                      @contextmenu.prevent="clearScreenshot"
+                    ></Button>
+                  </div>
+
+                  <Button type="nav" icon="close" title="关闭对话" @click="removeDialog"></Button>
+                </div>
               </div>
+            </template>
+
+            <!-- 移动端：箭头折叠按钮 + 关闭按钮 -->
+            <div v-if="isMobile" class="flex items-baseline gap-1">
+              <button
+                class="mobile-toggle-btn"
+                :class="{ 'is-open': showMobileMenu }"
+                title="更多操作"
+                @click="showMobileMenu = !showMobileMenu"
+              >
+                ▲
+              </button>
+              <Button type="nav" icon="close" title="关闭对话" @click="removeDialog"></Button>
             </div>
           </div>
         </div>
 
+        <!-- 移动端：折叠菜单下拉面板 -->
+        <Transition name="mobile-menu">
+          <div v-if="isMobile && showMobileMenu" class="mobile-menu-dropdown">
+            <div class="overflow-x-auto custom-scroll flex whitespace-nowrap gap-1 pb-1">
+              <Button
+                type="nav"
+                icon="background"
+                title="场景设置"
+                @click="onMobileMenuAction(openSceneSettings)"
+              ></Button>
+              <Button
+                type="nav"
+                icon="hand"
+                title="触摸模式"
+                @click="onMobileMenuAction(toggleTouchMode)"
+                @contextmenu.prevent="exitTouchMode"
+              ></Button>
+              <Button
+                type="nav"
+                icon="history"
+                title="历史记录"
+                @click="onMobileMenuAction(openHistory)"
+              ></Button>
+              <Button
+                type="nav"
+                icon="mic"
+                :title="isRecording ? '录音中，点击停止' : '语音输入'"
+                :class="{ 'text-red-500 animate-pulse': isRecording }"
+                @click="onMobileMenuAction(toggleRecording)"
+              ></Button>
+              <div class="relative inline-flex group">
+                <div
+                  v-if="hasScreenshot"
+                  class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50"
+                >
+                  <img
+                    :src="'data:image/jpeg;base64,' + screenshotBase64"
+                    class="max-w-96 max-h-64 rounded-lg shadow-lg border-2 object-contain"
+                    style="border-color: var(--accent-color); background: #000"
+                  />
+                </div>
+                <Button
+                  type="nav"
+                  icon="camera"
+                  :title="hasScreenshot ? '点击重新截图，右键取消截图' : '截图提问'"
+                  :style="hasScreenshot ? { color: 'var(--accent-color)' } : {}"
+                  @click="onMobileMenuAction(startScreenshot)"
+                  @contextmenu.prevent="onMobileMenuAction(clearScreenshot)"
+                ></Button>
+              </div>
+            </div>
+          </div>
+        </Transition>
+
         <!-- 分割线 -->
-        <div class="h-px bg-white/30 my-1.5 shrink-0"></div>
+        <div class="h-px bg-white/30 my-1.5"></div>
 
         <!-- 输入区 -->
         <div
-          class="flex flex-1 min-h-30 whitespace-pre-line w-full bg-transparent border-none text-xl font-bold my-1.25 outline-none transition-all duration-300"
+          class="flex flex-col whitespace-pre-line w-full min-h-10 bg-transparent border-none text-white text-xl font-bold resize-none my-1.25 outline-none transition-all duration-300"
         >
           <!-- 内联动作文本显示区（仅内联模式+回应状态时可见） -->
           <div
@@ -149,8 +218,11 @@ import { escapeHtml } from '../../../utils/escapeHtml'
 import { eventQueue } from '../../../core/events/event-queue'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { setInputHasText } from '../../../composables/useCanDeliver'
 
 const inputMessage = ref('')
+// 输入框内容变化 → 通知 can_deliver 追踪
+watch(inputMessage, (val) => setInputHasText(Boolean(val.trim())), { immediate: true })
 const isShowingMotionText = ref(false)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const inlineDisplayRef = ref<HTMLDivElement | null>(null)
@@ -159,6 +231,10 @@ const uiStore = useUIStore()
 const dialogStore = useDialogStore()
 const settingsStore = useSettingsStore()
 const isHidden = ref(false)
+
+// 移动端按钮折叠状态（但是基于长宽比判断）
+const isMobile = ref(uiStore.aspectRatio <= 1)
+const showMobileMenu = ref(false)
 
 // 内联显示模式：设置开启 + 回应状态 → 用 div 做混色显示
 const isInlineDisplayMode = computed(
@@ -180,11 +256,19 @@ const containerWidth = ref(60)
 
 const updateContainerWidth = () => {
   containerWidth.value = Math.max(60, uiStore.aspectRatio > 1 ? 70 : 90)
+  isMobile.value = uiStore.aspectRatio <= 1
+  if (!isMobile.value) showMobileMenu.value = false
 }
 
 const openSceneSettings = () => {
   uiStore.toggleSettings(true)
   uiStore.setSettingsTab('background')
+}
+
+// 移动端菜单操作：执行动作后自动收起菜单
+const onMobileMenuAction = (action: () => void) => {
+  action()
+  showMobileMenu.value = false
 }
 const currentDisplayedText = ref('')
 
@@ -198,15 +282,12 @@ function writeInlineHtml(_element: HTMLElement, text: string): void {
   if (newlineIndex > 0) {
     const dialogue = escapeHtml(text.substring(0, newlineIndex))
     const motion = escapeHtml(text.substring(newlineIndex + 1))
-    inlineDisplayRef.value.innerHTML =
-      `<span style="color:#fff">${dialogue}</span><br><span class="motion-text-gray">${motion}</span>`
+    inlineDisplayRef.value.innerHTML = `<span style="color:#fff">${dialogue}</span><br><span class="motion-text-gray">${motion}</span>`
   } else if (newlineIndex === 0) {
     const motion = escapeHtml(text.substring(1))
-    inlineDisplayRef.value.innerHTML =
-      `<br><span class="motion-text-gray">${motion}</span>`
+    inlineDisplayRef.value.innerHTML = `<br><span class="motion-text-gray">${motion}</span>`
   } else {
-    inlineDisplayRef.value.innerHTML =
-      `<span style="color:#fff">${escapeHtml(text)}</span>`
+    inlineDisplayRef.value.innerHTML = `<span style="color:#fff">${escapeHtml(text)}</span>`
   }
 }
 
@@ -225,9 +306,13 @@ const {
   stopTyping: stopInlineTyping,
   isTyping: isInlineTyping,
   finishTyping: finishInlineTyping,
-} = useTypeWriter(inlineDisplayRef, (text) => {
-  currentDisplayedText.value = text
-}, writeInlineHtml)
+} = useTypeWriter(
+  inlineDisplayRef,
+  (text) => {
+    currentDisplayedText.value = text
+  },
+  writeInlineHtml,
+)
 
 // 统一 isTyping（父组件通过 defineExpose 使用）
 const isTyping = computed(() =>
@@ -291,7 +376,11 @@ const placeholderText = computed(() => {
     case 'thinking':
       const currentInteractRole = gameStore.currentInteractRole
       if (currentInteractRole) {
-        return currentInteractRole.thinkMessage
+        const baseMessage = currentInteractRole.thinkMessage
+        if (gameStore.thinkingLength > 0) {
+          return `${baseMessage}（已深度思考 ${gameStore.thinkingLength} 字）`
+        }
+        return baseMessage
       } else {
         return '等待回应中...'
       }
@@ -604,5 +693,79 @@ defineExpose({
 .custom-scroll::-webkit-scrollbar {
   width: 6px; /* 纵向滚动条宽度 */
   height: 6px; /* 横向滚动条高度（你这个是 overflow-x，主要控制这个） */
+}
+
+/* 移动端折叠按钮 — 与右侧 nav 关闭按钮等大 */
+.mobile-toggle-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  border-radius: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  transition: all 0.25s ease;
+  margin: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+}
+.mobile-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: var(--accent-color, #6eb4ff);
+}
+.mobile-toggle-btn:active {
+  transform: scale(0.92);
+}
+.mobile-toggle-btn > span,
+.mobile-toggle-btn {
+  transition: transform 0.25s ease;
+}
+.mobile-toggle-btn.is-open {
+  transform: rotate(180deg);
+  background: rgba(255, 255, 255, 0.18);
+  color: var(--accent-color, #6eb4ff);
+  border-color: var(--accent-color, #6eb4ff);
+}
+
+/* 移动端下拉菜单 */
+.mobile-menu-dropdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px 4px 4px;
+  margin-top: 2px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 14, 39, 0.5);
+  border-radius: 0 0 8px 8px;
+  width: 100%; /* 确保占满整个对话框宽度 */
+}
+
+/* Vue Transition: 移动端菜单展开/收起 */
+.mobile-menu-enter-active {
+  animation: menu-slide-down 0.2s ease-out;
+}
+.mobile-menu-leave-active {
+  animation: menu-slide-down 0.15s ease-in reverse;
+}
+@keyframes menu-slide-down {
+  from {
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-top: 0;
+    border-top-width: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 200px;
+    padding-top: 8px;
+    padding-bottom: 4px;
+    margin-top: 2px;
+    border-top-width: 1px;
+  }
 }
 </style>

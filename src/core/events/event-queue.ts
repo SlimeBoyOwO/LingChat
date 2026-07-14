@@ -5,6 +5,7 @@ import { useGameStore } from '../../stores/modules/game'
 export class EventQueue {
   private queue: ScriptEventType[] = []
   private isProcessing = false
+  private paused = true
   private currentEvent: ScriptEventType | null = null
   private currentResolve: (() => void) | null = null
 
@@ -15,7 +16,7 @@ export class EventQueue {
       this.queue = []
     }
     this.queue.push(event)
-    if (!this.isProcessing) {
+    if (!this.isProcessing && !this.paused) {
       this.processQueue()
     }
   }
@@ -105,8 +106,17 @@ export class EventQueue {
   clear() {
     this.queue = []
     this.isProcessing = false
+    this.paused = true
     this.currentResolve = null
     this.resetToInputState()
+  }
+
+  /** 恢复事件队列消费（MainChat 就绪后调用） */
+  resume() {
+    this.paused = false
+    if (this.queue.length > 0 && !this.isProcessing) {
+      this.processQueue()
+    }
   }
 
   private resetToInputState() {

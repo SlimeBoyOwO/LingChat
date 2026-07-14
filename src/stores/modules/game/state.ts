@@ -64,6 +64,8 @@ export interface GameState {
 
   currentLine: string
   currentStatus: 'input' | 'thinking' | 'responding' | 'presenting'
+  /** 当前思考链累计字数（用于实时显示“已深度思考 N 字”） */
+  thinkingLength: number
   dialogHistory: GameMessage[]
   currentScene: SceneInfo | null // 当前加载的场景
   command: string | null
@@ -87,6 +89,7 @@ export const state: GameState = {
 
   currentLine: '',
   currentStatus: 'input',
+  thinkingLength: 0,
   dialogHistory: [],
   currentScene: null,
   command: null,

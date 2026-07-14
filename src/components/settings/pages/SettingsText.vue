@@ -62,9 +62,10 @@
         <div class="flex gap-3">
           <Button
             type="big"
+            title="CPU 推理使用的是 SBV2-API，需要在 settings.yml 中把 sbv2 换成 sbv2api，人物设定也能改"
             @click="
               openWebsite(
-                'https://www.modelscope.cn/models/lingchat-research-studio/Style-Bert-VITS2-micro-CPU-infer/files',
+                'https://www.modelscope.cn/models/lingchat-research-studio/SBV2-API/files',
               )
             "
             >CPU推理</Button
@@ -73,16 +74,17 @@
             type="big"
             @click="
               openWebsite(
-                'https://www.modelscope.cn/models/lingchat-research-studio/Style-Bert-VITS2-micro-NVIDIA-infer/files',
+                'https://www.modelscope.cn/models/lingchat-research-studio/Style-Bert-VITS2-CUDA/files',
               )
             "
             >N卡推理</Button
           >
           <Button
             type="big"
+            title="A 卡推理使用的是 SBV2-API，需要在 settings.yml 中把 sbv2 换成 sbv2api，人物设定也能改"
             @click="
               openWebsite(
-                'https://www.modelscope.cn/models/lingchat-research-studio/Style-Bert-VITS2-micro-Directml-infer/files',
+                'https://www.modelscope.cn/models/lingchat-research-studio/SBV2-API/files',
               )
             "
             >A卡推理</Button
@@ -103,6 +105,37 @@
         </div>
       </MenuItem>
 
+      <!-- ─── 语音缓存 ──────────────────────────────── -->
+      <MenuItem title="语音缓存" size="small">
+        <template #header>
+          <HardDrive :size="20" />
+        </template>
+        <div class="space-y-2 w-full">
+          <div class="flex items-center justify-between text-base">
+            <span class="text-gray-50">当前缓存</span>
+            <span class="text-gray-50 font-medium">{{ ttsCacheSize }}</span>
+          </div>
+          <div class="text-gray-50/70 text-xs">{{ ttsCacheFiles }} 个文件</div>
+          <div
+            v-if="lastCleanupInfo && lastCleanupInfo.deleted > 0"
+            class="text-emerald-300/90 text-xs"
+          >
+            最近已自动清理 {{ lastCleanupInfo.deleted }} 个孤立语音文件
+          </div>
+          <div class="text-gray-50/70 text-xs">
+            其中孤立文件 {{ ttsOrphanFiles }} 个（{{ ttsOrphanSize }}）
+          </div>
+          <div class="flex gap-3 pt-1">
+            <Button type="big" @click="checkTtsCache">
+              <RefreshCw :size="16" class="mr-1" /> 检查缓存
+            </Button>
+            <Button type="big" @click="handleClearTtsCache">
+              <Trash2 :size="16" class="mr-1" /> 清理孤立语音缓存
+            </Button>
+          </div>
+        </div>
+      </MenuItem>
+
       <!-- ─── 版本更新 ──────────────────────────────── -->
       <MenuItem title="版本更新" size="small">
         <template #header>
@@ -120,11 +153,7 @@
             <span class="text-gray-50">v{{ currentDataVersion }}</span>
           </div>
           <!-- 状态文字（内联显示，不用 modal） -->
-          <div
-            v-if="updateStatusText"
-            :class="updateStatusColor"
-            class="text-sm font-medium"
-          >
+          <div v-if="updateStatusText" :class="updateStatusColor" class="text-sm font-medium">
             {{ updateStatusText }}
           </div>
           <div class="flex gap-3 pt-1">
@@ -140,11 +169,7 @@
             >
               {{ updateInstalling ? '正在更新...' : `更新到 v${updateLatestVersion}` }}
             </Button>
-            <Button
-              v-if="resourceSyncAvailable"
-              type="big"
-              @click="handleCheckResourceSync"
-            >
+            <Button v-if="resourceSyncAvailable" type="big" @click="handleCheckResourceSync">
               同步数据
             </Button>
           </div>
@@ -166,8 +191,9 @@
           <Wifi :size="20" />
         </template>
         <div class="space-y-2 w-full">
-          <p class="text-gray-50 text-sm">
-            在同一局域网内的设备之间同步 data 文件夹（游戏存档、语音、截图等）。
+          <p class="text-gray-50/70 text-sm">
+            在同一局域网内的设备之间同步 data
+            文件夹（游戏存档、语音、截图等）。手机和电脑版互通必备~
           </p>
           <div class="flex gap-3 pt-1">
             <Button type="big" @click="openLanSync"> 打开局域网同步 </Button>
@@ -203,12 +229,34 @@
           />
         </div>
       </MenuItem>
+      <!-- ─── 相关文档 ──────────────────────────────── -->
+      <MenuItem title="了解 LingChat 的相关文档" size="small">
+        <template #header>
+          <BookOpen :size="20" />
+        </template>
+        <div class="space-y-2 w-full">
+          <p class="text-gray-50/70 text-sm">
+            如果你有任何疑惑，可以跳转到这里查看软件的自定义玩法，问题解决，功能列表！
+          </p>
+          <div class="flex gap-3 pt-1">
+            <Button
+              type="big"
+              @click="
+                openWebsite(
+                  'https://slimeboyowo.github.io/LingBlog/blog/projects/ling-chat/develop/Style-Bert-VITS2%E6%A8%A1%E5%9E%8B%E8%AE%AD%E7%BB%83%E6%95%99%E7%A8%8B',
+                )
+              "
+              >查看文档</Button
+            >
+          </div>
+        </div>
+      </MenuItem>
     </MenuPage>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { MenuPage, MenuItem } from '../../ui'
 import { Slider, Text, Toggle, Button } from '../../base'
@@ -233,8 +281,13 @@ import {
   Wifi,
   AlignJustify,
   GlassWater,
+  HardDrive,
+  Trash2,
+  BookOpen,
 } from 'lucide-vue-next'
-import { reactivateTTS } from '@/api/services/game-info'
+import { reactivateTTS, clearTtsCache } from '@/api/services/game-info'
+import { invoke } from '@tauri-apps/api/core'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { useUpdater } from '@/composables/useUpdater'
 import { useLanSync } from '@/composables/useLanSync'
 import { getVersion } from '@tauri-apps/api/app'
@@ -249,6 +302,12 @@ const userStore = useUserStore()
 const gameStore = useGameStore()
 const dialogStore = useDialogStore()
 const envSettings = ref<Record<string, ConfigItem>>({})
+const ttsCacheSize = ref('0 B')
+const ttsCacheFiles = ref(0)
+const ttsOrphanFiles = ref(0)
+const ttsOrphanSize = ref('0 B')
+const lastCleanupInfo = ref<{ deleted: number; timestamp: number } | null>(null)
+let ttsCacheRefreshTimer: ReturnType<typeof setInterval> | null = null
 
 // 判断是否在自由对话模式（没有运行剧本）
 const isFreeDialogMode = computed(() => gameStore.runningScript === null)
@@ -278,7 +337,9 @@ const updateInstalling = ref(false)
 const showResourceSyncDialog = ref(false)
 const resourceSyncAvailable = ref(false)
 
-const updateAvailable = computed(() => updateLatestVersion.value !== '' && updatePhase.value === 'app-update-available')
+const updateAvailable = computed(
+  () => updateLatestVersion.value !== '' && updatePhase.value === 'app-update-available',
+)
 
 const updateStatusText = computed(() => {
   if (updatePhase.value === 'checking') return '正在检查更新...'
@@ -480,7 +541,37 @@ const handleClearHistory = async () => {
 
 onMounted(() => {
   loadConfig()
+  checkTtsCache()
+  loadLastTtsCleanup()
+  // 每 30 秒自动刷新一次 TTS 缓存信息，频率适中不浪费资源
+  ttsCacheRefreshTimer = setInterval(() => {
+    checkTtsCache()
+  }, 30000)
 })
+
+onUnmounted(() => {
+  if (ttsCacheRefreshTimer) {
+    clearInterval(ttsCacheRefreshTimer)
+    ttsCacheRefreshTimer = null
+  }
+})
+
+function loadLastTtsCleanup() {
+  try {
+    const raw = localStorage.getItem('lingchat:last_tts_cleanup')
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed && typeof parsed.deleted === 'number') {
+        lastCleanupInfo.value = {
+          deleted: parsed.deleted,
+          timestamp: parsed.timestamp ?? 0,
+        }
+      }
+    }
+  } catch (error: any) {
+    console.error('读取 TTS 清理记录失败:', error)
+  }
+}
 
 const loadConfig = async () => {
   const configKeys = ['features.use_persistent_memory']
@@ -527,7 +618,7 @@ const handleMemorySettingChange = (checked: boolean, setting: ConfigItem) => {
 }
 
 const openWebsite = (url: string) => {
-  window.open(url, '_blank') // '_blank' 表示在新窗口中打开
+  openUrl(url)
 }
 
 const refreshTTS = async () => {
@@ -537,6 +628,57 @@ const refreshTTS = async () => {
   } catch (error) {
     await dialogStore.alert('刷新TTS失败')
   }
+}
+
+const handleClearTtsCache = async () => {
+  try {
+    const result = await clearTtsCache()
+    await checkTtsCache()
+    uiStore.showNotification({
+      type: result.success ? 'success' : 'warning',
+      title: result.success ? '清理成功' : '清理完成',
+      message: result.message,
+      duration: 3000,
+      skipTipsCheck: true,
+    })
+  } catch (error: any) {
+    uiStore.showNotification({
+      type: 'error',
+      title: '清理失败',
+      message: error.message || '清理TTS缓存失败',
+      duration: 3000,
+      skipTipsCheck: true,
+    })
+  }
+}
+
+async function checkTtsCache() {
+  try {
+    const result = await invoke<{
+      size: number
+      files: number
+      orphan_size: number
+      orphan_files: number
+    }>('get_tts_cache_info')
+    ttsCacheFiles.value = result.files
+    ttsCacheSize.value = formatBytes(result.size)
+    ttsOrphanFiles.value = result.orphan_files
+    ttsOrphanSize.value = formatBytes(result.orphan_size)
+  } catch (error: any) {
+    console.error('获取TTS缓存信息失败:', error)
+    ttsCacheSize.value = '未知'
+    ttsCacheFiles.value = 0
+    ttsOrphanFiles.value = 0
+    ttsOrphanSize.value = '未知'
+  }
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 </script>
 

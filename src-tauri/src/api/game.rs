@@ -1,13 +1,17 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
 use serde_json::Value as JsonValue;
+use sea_orm::*;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
 use crate::ai_service::game_system::scene_store::SceneStore;
+use crate::ai_service::message_system::events;
+use crate::ai_service::message_system::generator::{GeneratorDeps, MessageGenerator};
 use crate::ai_service::types::{CharacterSettings, GameLine, LineAttributeExt, LineBase};
 use crate::config::{self, AppConfig};
+use crate::db::entities::line;
 use crate::db::entities::line::LineAttribute;
 use crate::db::managers::role_repo::RoleRepo;
 use crate::utils::prompt::{sys_prompt_builder_by_settings, PromptOptions, PromptRole};
@@ -114,6 +118,169 @@ pub async fn reactivate_tts(app: AppHandle) -> Result<(), String> {
         .reactivate_all_voice_makers();
     tracing::info!("TTS 服务已通过 reactivate_tts 命令重新启用");
     Ok(())
+}
+
+/// 获取所有被台词引用的语音文件名。
+async fn get_referenced_voice_files(db: &DatabaseConnection) -> Result<HashSet<String>, String> {
+    line::Entity::find()
+        .select_only()
+        .column(line::Column::AudioFile)
+        .filter(line::Column::AudioFile.is_not_null())
+        .into_tuple::<Option<String>>()
+        .all(db)
+        .await
+        .map(|v| v.into_iter().filter_map(|x| x).collect())
+        .map_err(|e| format!("查询语音文件引用失败: {e}"))
+}
+
+/// 统计 voice/ 目录中的孤立文件。
+fn count_orphan_files_in_voice_dir(
+    voice_dir: &std::path::Path,
+    referenced: &HashSet<String>,
+) -> (usize, u64) {
+    let mut files = 0usize;
+    let mut size = 0u64;
+    if !voice_dir.exists() {
+        return (files, size);
+    }
+    if let Ok(entries) = std::fs::read_dir(voice_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            if referenced.contains(&name) {
+                continue;
+            }
+            files += 1;
+            if let Ok(meta) = entry.metadata() {
+                size += meta.len();
+            }
+        }
+    }
+    (files, size)
+}
+
+#[tauri::command]
+pub async fn clear_tts_cache(app: AppHandle) -> Result<serde_json::Value, String> {
+    let state = app.state::<AppState>();
+    let db = state.db.clone();
+
+    let data_dir = crate::api::data_dir();
+    let voice_dir = data_dir.join("voice");
+
+    if !voice_dir.exists() {
+        events::emit_tts_cleanup(&app, 0, 0, 0);
+        return Ok(serde_json::json!({
+            "success": true,
+            "message": "TTS 缓存目录不存在，无需清理",
+            "deleted": 0
+        }));
+    }
+
+    let referenced = get_referenced_voice_files(&db).await?;
+    let (orphan_files_before, orphan_size_before) = count_orphan_files_in_voice_dir(&voice_dir, &referenced);
+
+    let mut deleted: u64 = 0;
+    let mut failed: usize = 0;
+
+    if let Ok(entries) = std::fs::read_dir(&voice_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            // 只删除未被数据库引用的孤立文件，避免破坏存档语音
+            if referenced.contains(&name) {
+                continue;
+            }
+            match std::fs::remove_file(&path) {
+                Ok(()) => deleted += 1,
+                Err(e) => {
+                    tracing::warn!("删除 TTS 缓存文件失败 {:?}: {}", path, e);
+                    failed += 1;
+                }
+            }
+        }
+    }
+
+    let (orphan_files_after, orphan_size_after) = count_orphan_files_in_voice_dir(&voice_dir, &referenced);
+    events::emit_tts_cleanup(&app, deleted, orphan_files_after, orphan_size_after);
+
+    tracing::info!("TTS 缓存清理完成: 删除 {} 个孤立文件, 失败 {} 个", deleted, failed);
+    Ok(serde_json::json!({
+        "success": failed == 0,
+        "message": format!("已清理 {} 个孤立 TTS 缓存文件", deleted),
+        "deleted": deleted,
+        "failed": failed,
+        "orphan_files_before": orphan_files_before,
+        "orphan_size_before": orphan_size_before,
+    }))
+}
+
+/// 实时切换指定角色的语音语言，无需保存 settings.yml。
+#[tauri::command]
+pub async fn update_voice_lang(app: AppHandle, role_id: i32, lang: String) -> Result<serde_json::Value, String> {
+    let state = app.state::<AppState>();
+    let service = state.ai_service.lock().await;
+    let mut gs = service.game_status.lock().await;
+
+    gs.role_manager.update_role_voice_lang(role_id, &lang);
+
+    tracing::info!("角色 {} 语音语言已实时切换为: {}", role_id, lang);
+    Ok(serde_json::json!({
+        "success": true,
+        "role_id": role_id,
+        "lang": lang,
+    }))
+}
+
+#[tauri::command]
+pub async fn get_tts_cache_info(app: AppHandle) -> Result<serde_json::Value, String> {
+    let state = app.state::<AppState>();
+    let db = state.db.clone();
+
+    let data_dir = crate::api::data_dir();
+    let voice_dir = data_dir.join("voice");
+
+    let referenced = get_referenced_voice_files(&db).await?;
+
+    let mut total_size: u64 = 0;
+    let mut file_count: usize = 0;
+    let mut orphan_size: u64 = 0;
+    let mut orphan_files: usize = 0;
+
+    if voice_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&voice_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_file() {
+                    continue;
+                }
+                let name = entry.file_name().to_string_lossy().to_string();
+                let size = if let Ok(metadata) = std::fs::metadata(&path) {
+                    metadata.len()
+                } else {
+                    0
+                };
+                file_count += 1;
+                total_size += size;
+                if !referenced.contains(&name) {
+                    orphan_files += 1;
+                    orphan_size += size;
+                }
+            }
+        }
+    }
+
+    Ok(serde_json::json!({
+        "size": total_size,
+        "files": file_count,
+        "orphan_size": orphan_size,
+        "orphan_files": orphan_files,
+    }))
 }
 
 #[tauri::command]
@@ -562,4 +729,119 @@ pub async fn remove_role_from_scene(app: AppHandle, role_id: i32) -> Result<Json
     }
 
     Ok(serde_json::json!({"success": true, "message": format!("{} 已离开对话", role_name)}))
+}
+
+// ============================================================
+// 玩家入场问候
+// ============================================================
+
+/// 玩家进入主界面时调用（仅会话内首次有效）。
+///
+/// 根据 `active_save_id` 判断是首次见面还是回归：
+/// - 无存档 → 旁白："{AI名称}看到{玩家名称}过来了"
+/// - 有存档 → 旁白："{玩家名称}回来了"
+///
+/// 添加台词后自动触发一轮 AI 生成（无需用户输入），
+/// 且不 emit `ai:thinking` 事件（入场问候为后台触发）。
+#[tauri::command]
+pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+
+    // Phase 1: 去重 & 添加旁白台词
+    {
+        let svc = state.ai_service.lock().await;
+        let mut gs = svc.game_status.lock().await;
+
+        if gs.player_entered {
+            return Ok(());
+        }
+        gs.player_entered = true;
+
+        let current_role_id = match gs.current_role_id {
+            Some(id) => id,
+            None => {
+                tracing::info!("[Entry] 没有当前角色，跳过问候");
+                return Ok(());
+            }
+        };
+
+        let ai_name = gs
+            .role_manager
+            .get_loaded(current_role_id)
+            .and_then(|r| r.display_name.clone())
+            .unwrap_or_else(|| format!("角色{}", current_role_id));
+
+        let player_name = if gs.player.user_name.is_empty() {
+            "玩家".to_string()
+        } else {
+            gs.player.user_name.clone()
+        };
+
+        let greeting = if gs.active_save_id.is_some() {
+            format!("{}回来了", player_name)
+        } else {
+            format!("{}看到{}过来了", ai_name, player_name)
+        };
+
+        let time_info = chrono::Local::now()
+            .format("（现在是%_m月%_d日，%H:%M）")
+            .to_string()
+            .replace(' ', "");
+        let greeting_with_time = format!("{}，{}", greeting, time_info);
+
+        let prompt = PromptRole::Narrator.build_prompt(&greeting_with_time);
+        gs.add_line(
+            &state.db,
+            LineBase {
+                content: prompt,
+                attribute: LineAttributeExt(LineAttribute::User),
+                display_name: Some("旁白".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(|e| format!("添加入场问候台词失败: {}", e))?;
+
+        tracing::info!("[Entry] 已添加问候台词: {}", greeting);
+    } // 释放锁
+
+    // Phase 2: 触发 AI 响应（suppress_thinking=true，不显示思考指示器）
+    let llm = state
+        .chat
+        .llm
+        .clone()
+        .ok_or_else(|| "LLM 未配置".to_string())?;
+    let concurrency = AppConfig::load(&app)
+        .map(|c| c.consumers as usize)
+        .unwrap_or(1)
+        .max(1);
+    let game_status = {
+        let svc = state.ai_service.lock().await;
+        svc.game_status.clone()
+    };
+
+    let deps = GeneratorDeps {
+        app: app.clone(),
+        db: state.db.clone(),
+        game_status,
+        processor: state.chat.processor.clone(),
+        translator: state.chat.translator.clone(),
+        llm,
+        concurrency,
+        god_agent: state.god_agent.clone(),
+        suppress_thinking: true,
+    };
+
+    let generator = MessageGenerator::new(deps);
+    let gen_lock = state.generation_lock.clone();
+
+    tokio::spawn(async move {
+        let _lock = gen_lock.lock().await;
+        match generator.process_message(None).await {
+            Ok(acc) => tracing::info!("[Entry] 入场问候生成完成，长度: {}", acc.len()),
+            Err(e) => tracing::error!("[Entry] 入场问候生成失败: {:#}", e),
+        }
+    });
+
+    Ok(())
 }

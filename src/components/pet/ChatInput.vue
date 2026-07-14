@@ -38,6 +38,7 @@ import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { useSettingsStore } from '@/stores/modules/settings'
 import { useScreenshot } from '@/composables/useScreenshot'
+import { setInputHasText } from '@/composables/useCanDeliver'
 import { Forward } from 'lucide-vue-next'
 
 const gameStore = useGameStore()
@@ -63,7 +64,11 @@ const placeholderText = computed(() => {
     case 'thinking':
       const currentInteractRole = gameStore.currentInteractRole
       if (currentInteractRole) {
-        return currentInteractRole.thinkMessage
+        const baseMessage = currentInteractRole.thinkMessage
+        if (gameStore.thinkingLength > 0) {
+          return `${baseMessage}（已深度思考 ${gameStore.thinkingLength} 字）`
+        }
+        return baseMessage
       } else {
         return '等待回应中...'
       }
@@ -105,6 +110,8 @@ const props = defineProps({
 const emit = defineEmits(['message-sent'])
 
 const messageText = ref('')
+// 输入框内容变化 → 通知 can_deliver 追踪
+watch(messageText, (val) => setInputHasText(Boolean(val.trim())), { immediate: true })
 
 const sendMessage = () => {
   const text = messageText.value.trim()

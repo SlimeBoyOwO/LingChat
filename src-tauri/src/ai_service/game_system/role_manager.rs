@@ -381,7 +381,38 @@ impl GameRoleManager {
         Ok(())
     }
 
-    /// 将运行时缓存（GameRole.memory_bank）写入 DB。应在 "保存存档" 时调用。
+    /// 更新已加载角色的语音语言并重新初始化其 VoiceMaker。
+    pub fn update_role_voice_lang(
+        &mut self,
+        role_id: i32,
+        lang: &str,
+    ) {
+        let Some(role) = self.loaded_roles.get_mut(&role_id) else {
+            tracing::warn!("update_role_voice_lang: 角色 {} 未加载", role_id);
+            return;
+        };
+
+        // 同步角色 settings 中的 voice_lang
+        role.settings.voice_lang = Some(lang.to_string());
+
+        let Some(vm) = role.voice_maker.as_mut() else {
+            tracing::info!("角色 {} 无 VoiceMaker，仅更新设置项", role_id);
+            return;
+        };
+
+        let tts_type = role.settings.tts_type.clone().unwrap_or_default();
+        if tts_type.is_empty() {
+            tracing::warn!("角色 {} 未设置 tts_type，无法切换语言", role_id);
+            return;
+        }
+
+        let mut voice_cfg = role.settings.voice_models.clone().unwrap_or_default();
+        voice_cfg.opentts_voice = Some(self.tts_config.opentts_voice.clone());
+        let name = role.settings.ai_name.clone();
+
+        vm.update_lang_and_refresh(&voice_cfg, &tts_type, &name, lang);
+    }
+
     pub async fn persist_memory_banks_to_db(
         &mut self,
         db: &DatabaseConnection,
@@ -481,10 +512,16 @@ fn build_voice_maker(
     if tts_type.is_empty() {
         return None;
     }
-    let voice_cfg = settings.voice_models.as_ref()?;
+    let mut voice_cfg = settings.voice_models.clone().unwrap_or_default();
+    // OpenTTS 音色标识统一使用全局 TTS 配置，不再读取角色级字段
+    voice_cfg.opentts_voice = Some(tts_config.opentts_voice.clone());
 
     let audio_format = tts_config.audio_format.clone();
-    let lang = tts_config.voice_lang.clone();
+    let lang = settings.voice_lang.as_deref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .unwrap_or(&tts_config.voice_lang)
+        .to_string();
 
     let temp_dir = data_dir.join("voice");
     let mut vm = VoiceMaker::new(temp_dir, audio_format, tts_config.clone());
@@ -492,7 +529,7 @@ fn build_voice_maker(
     if let Some(p) = resource_path {
         vm.set_character_path(Some(PathBuf::from(p)));
     }
-    match vm.set_tts_settings(voice_cfg, tts_type, &settings.ai_name) {
+    match vm.set_tts_settings(&voice_cfg, tts_type, &settings.ai_name) {
         Ok(()) => Some(vm),
         Err(e) => {
             tracing::warn!("VoiceMaker 初始化失败: {e}");

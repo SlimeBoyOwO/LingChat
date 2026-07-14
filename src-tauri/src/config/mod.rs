@@ -393,7 +393,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
         feat_subs.insert(
             "对话增强".to_string(),
             Subcategory {
-                description: "对应 ENV: USE_TIME_SENSE / ENABLE_EMOTION_CLASSIFIER".to_string(),
+                description: "这里可以设置是否启用时间感知和情绪分类器功能".to_string(),
                 settings: vec![
                     ConfigSetting {
                         key: keys::ENABLE_TIME_SENSE.to_string(),
@@ -535,6 +535,30 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         description: "IndexTTS2 API 地址".to_string(),
                         setting_type: "text".to_string(),
                     },
+                    ConfigSetting {
+                        key: tts::keys::OPENTTS_API_URL.to_string(),
+                        value: read_setting(app, tts::keys::OPENTTS_API_URL, "https://api.siliconflow.cn/v1"),
+                        description: "OpenTTS API 地址（硅基流动）".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: tts::keys::OPENTTS_API_KEY.to_string(),
+                        value: read_setting(app, tts::keys::OPENTTS_API_KEY, ""),
+                        description: "OpenTTS API 密钥".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: tts::keys::OPENTTS_MODEL.to_string(),
+                        value: read_setting(app, tts::keys::OPENTTS_MODEL, "FunAudioLLM/CosyVoice2-0.5B"),
+                        description: "OpenTTS 模型名称".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: tts::keys::OPENTTS_VOICE.to_string(),
+                        value: read_setting(app, tts::keys::OPENTTS_VOICE, "speech:pai:7s86w73x9i:vkgcswgqicskwpdwevri"),
+                        description: "OpenTTS voice / 音色标识".to_string(),
+                        setting_type: "text".to_string(),
+                    },
                 ],
             },
         );
@@ -552,12 +576,13 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         description: "音频文件格式（wav / mp3 / flac / ogg 等）".to_string(),
                         setting_type: "text".to_string(),
                     },
-                    ConfigSetting {
-                        key: tts::keys::VOICE_LANG.to_string(),
-                        value: read_setting(app, tts::keys::VOICE_LANG, "ja"),
-                        description: "语音合成语言（ja / zh / auto）".to_string(),
-                        setting_type: "text".to_string(),
-                    },
+                    // 语音语言改为角色级配置，全局入口隐藏
+                    // ConfigSetting {
+                    //     key: tts::keys::VOICE_LANG.to_string(),
+                    //     value: read_setting(app, tts::keys::VOICE_LANG, "ja"),
+                    //     description: "语音合成语言（ja / zh / auto）".to_string(),
+                    //     setting_type: "text".to_string(),
+                    // },
                 ],
             },
         );
@@ -614,7 +639,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                     ConfigSetting {
                         key: proactive::keys::MAX_PROACTIVE_TIMES.to_string(),
                         value: read_setting(app, proactive::keys::MAX_PROACTIVE_TIMES, "3"),
-                        description: "MAX_PROACTIVE_TIMES — 每日主动出击上限次数".to_string(),
+                        description: "MAX_PROACTIVE_TIMES — 在用户响应之前，能主动对话的次数".to_string(),
                         setting_type: "text".to_string(),
                     },
                 ],

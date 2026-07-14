@@ -46,6 +46,22 @@ pub fn emit_thinking(app: &AppHandle, is_thinking: bool) {
     }
 }
 
+/// 通知前端思考链累计字数有更新。
+pub fn emit_thinking_progress(app: &AppHandle, thinking_length: usize) {
+    let payload = super::responses::ThinkingProgressResponse::new(thinking_length);
+    if let Err(e) = app.emit(super::responses::event_names::AI_THINKING_PROGRESS, &payload) {
+        tracing::warn!("emit thinking_progress 失败: {e}");
+    }
+}
+
+/// 通知前端 TTS 孤立语音文件已清理。
+pub fn emit_tts_cleanup(app: &AppHandle, deleted: u64, orphan_files: usize, orphan_size: u64) {
+    let payload = super::responses::TtsCleanupResponse::new(deleted, orphan_files, orphan_size);
+    if let Err(e) = app.emit(super::responses::event_names::TTS_CLEANUP, &payload) {
+        tracing::warn!("emit tts:cleanup 失败: {e}");
+    }
+}
+
 /// 通知前端 AI 发生错误，同时重置前端状态为 input。
 pub fn emit_error(app: &AppHandle, err: &anyhow::Error) {
     let msg = err.to_string();

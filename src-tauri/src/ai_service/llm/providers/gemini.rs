@@ -15,7 +15,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use crate::ai_service::llm::provider::LlmProvider;
-use crate::ai_service::llm::{ChunkStream, LlmConfig};
+use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmConfig};
 use crate::ai_service::types::LlmMessage;
 
 pub struct GeminiProvider {
@@ -225,7 +225,7 @@ impl LlmProvider for GeminiProvider {
                                 match part {
                                     GeminiResponsePart::Text(t) => {
                                         if !t.text.is_empty() {
-                                            yield t.text;
+                                            yield LlmChunk::Content(t.text);
                                         }
                                     }
                                 }
