@@ -23,7 +23,7 @@
 
       <div
         ref="textareaRef"
-        class="text-[calc(15px*var(--pet-ui-scale,1))] leading-snug font-medium overflow-y-auto max-h-[calc(40px*var(--pet-ui-scale,1))]"
+        class="text-[calc(15px*var(--pet-ui-scale,1))] leading-snug font-medium overflow-y-auto max-h-[calc(40px*var(--pet-ui-scale,1))] whitespace-pre-line [text-shadow:0_0_3px_rgba(0,0,0,0.9),0_1px_4px_rgba(0,0,0,0.5)]"
       ></div>
     </div>
   </div>
@@ -59,11 +59,20 @@ const handleDialogueClick = () => {
   }
 }
 
-const textareaRef = ref<HTMLTextAreaElement | null>(null)
+const textareaRef = ref<HTMLElement | null>(null)
 
-const { startTyping, stopTyping, isTyping } = useTypeWriter(textareaRef, (text) => {
-  currentDisplayedText.value = text
-})
+const { startTyping, stopTyping, isTyping } = useTypeWriter(
+  textareaRef,
+  (text) => {
+    currentDisplayedText.value = text
+  },
+  // DialogueBox 正文为普通 <div>（非 textarea/input），必须提供 writeFn
+  // 否则 TypeWriter 仅对 HTMLInputElement/HTMLTextAreaElement 写入 value，
+  // 会导致桌宠模式下 AI 正文不显示
+  (el, text) => {
+    el.textContent = text
+  },
+)
 
 watch([() => uiStore.showCharacterLine, () => gameStore.currentStatus], ([newLine, newStatus]) => {
   if (newLine && newLine !== '' && newStatus === 'responding') {

@@ -213,6 +213,7 @@ import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { useSettingsStore } from '../../../stores/modules/settings'
+import { useLlmProvidersStore } from '../../../stores/modules/llm-providers'
 import { useTypeWriter } from '../../../composables/ui/useTypeWriter'
 import { escapeHtml } from '../../../utils/escapeHtml'
 import { eventQueue } from '../../../core/events/event-queue'
@@ -230,6 +231,7 @@ const gameStore = useGameStore()
 const uiStore = useUIStore()
 const dialogStore = useDialogStore()
 const settingsStore = useSettingsStore()
+const llmStore = useLlmProvidersStore()
 const isHidden = ref(false)
 
 // 移动端按钮折叠状态（但是基于长宽比判断）
@@ -592,6 +594,17 @@ function sendOrContinue() {
 function send() {
   const text = inputMessage.value
   if (!text.trim()) return
+
+  // 检查对话模型是否已选择
+  if (!llmStore.chatProviderId) {
+    uiStore.showNotification({
+      type: 'warning',
+      title: '提示',
+      message: '还没选择对话模型呢，笨蛋！要去高级设置配置模型并且左下角选择模型重启软件才行哦！',
+      skipTipsCheck: true,
+    })
+    return
+  }
 
   gameStore.appendGameMessage({
     type: 'message',
