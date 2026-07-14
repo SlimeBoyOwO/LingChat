@@ -11,12 +11,33 @@
     >
       <div class="flex items-center justify-between mb-4 shrink-0">
         <h3 class="text-white text-base font-semibold">已配置的模型</h3>
-        <button
-          class="px-4 py-2 bg-brand text-white rounded-lg text-sm font-medium hover:bg-brand/80 transition-colors"
-          @click="startAdd"
-        >
-          + 添加模型
-        </button>
+        <div class="flex items-center gap-2">
+          <button
+            class="px-4 py-2 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg text-sm font-medium hover:bg-amber-500/30 transition-colors flex items-center gap-1.5"
+            @click="restartApp"
+          >
+            <svg
+              class="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            重启软件
+          </button>
+          <button
+            class="px-4 py-2 bg-brand text-white rounded-lg text-sm font-medium hover:bg-brand/80 transition-colors"
+            @click="startAdd"
+          >
+            + 添加模型
+          </button>
+        </div>
       </div>
 
       <div v-if="store.providers.length === 0" class="text-white/50 text-base py-8 text-center">
@@ -472,6 +493,7 @@ import { ref, onMounted, reactive } from 'vue'
 import { useLlmProvidersStore } from '@/stores/modules/llm-providers'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { invoke } from '@tauri-apps/api/core'
+import { relaunch } from '@tauri-apps/plugin-process'
 import type { LlmProviderConfig } from '@/api/services/llm-providers'
 
 const store = useLlmProvidersStore()
@@ -508,6 +530,14 @@ function emptyProvider(): LlmProviderConfig {
 function closePanel() {
   sidePanel.value = null
   saveMessage.value = ''
+}
+
+async function restartApp() {
+  try {
+    await relaunch()
+  } catch (e) {
+    console.error('重启失败:', e)
+  }
 }
 
 // LM Studio 兼容：本质是 OpenAI 协议，这里只帮用户预填默认地址和假 key
