@@ -1,6 +1,10 @@
 <template>
   <Transition name="slide-up">
-    <div v-if="store.isVisible && store.current" class="achievement-toast" :class="typeClass">
+    <div
+      v-if="store.isVisible && store.current && !isPetMode"
+      class="achievement-toast"
+      :class="typeClass"
+    >
       <div class="glow-effect"></div>
 
       <div class="achievement-icon">
@@ -51,11 +55,16 @@
 
 <script setup lang="ts">
 import { computed, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAchievementStore } from '../../stores/modules/ui/achievement'
 import { useUIStore } from '../../stores/modules/ui/ui'
 
 const store = useAchievementStore()
 const uiStore = useUIStore()
+const route = useRoute()
+
+// 桌宠模式下不显示成就弹窗（小窗空间有限，且会遮挡桌宠交互区）
+const isPetMode = computed(() => route.path === '/pet')
 
 const typeClass = computed(() => {
   return store.current?.type === 'rare' ? 'achievement-gold' : 'achievement-green'
