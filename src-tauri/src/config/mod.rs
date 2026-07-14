@@ -16,6 +16,7 @@ use crate::ai_service::llm::provider_config::{
     build_llm_client_from_provider, load_providers, load_role_assignment, save_providers,
     save_role_assignment, LlmProviderConfig, LlmProvidersResponse,
 };
+use crate::ai_service::llm::LlmModelInfo;
 use crate::config::tts::TtsConfig;
 
 // ========== 字段键（对标 Python .env） ==========
@@ -930,4 +931,18 @@ pub async fn test_llm_provider(
     .map_err(|_| "请求超时（30秒），请检查网络或 API 地址".to_string())?;
 
     timeout.map_err(|e| format!("测试请求失败: {e}"))
+}
+
+#[tauri::command]
+pub async fn list_llm_models(
+    provider: LlmProviderConfig,
+) -> Result<Vec<LlmModelInfo>, String> {
+    let Some(client) = build_llm_client_from_provider(&provider) else {
+        return Err("无法创建 LLM 客户端，请检查 API Key 和模型名称".to_string());
+    };
+
+    client
+        .list_models()
+        .await
+        .map_err(|error| error.to_string())
 }

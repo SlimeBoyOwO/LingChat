@@ -9,7 +9,7 @@ pub mod provider_config;
 mod providers;
 
 pub use factory::create_llm_client;
-pub use provider::LlmProvider;
+pub use provider::{LlmModelInfo, LlmProvider};
 
 use std::pin::Pin;
 use std::time::Duration;
@@ -73,6 +73,10 @@ impl LlmClient {
 
     pub fn config(&self) -> &LlmConfig {
         &self.cfg
+    }
+
+    pub async fn list_models(&self) -> Result<Vec<LlmModelInfo>> {
+        self.provider.list_models(&self.http).await
     }
 
     /// 非流式：一次性取完整回复。
