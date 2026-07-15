@@ -389,7 +389,14 @@ pub fn run() {
             lan_sync::lan_sync_restart,
             utils::cpu_perf::get_cpu_info,
             utils::cpu_perf::redetect_cpu,
+            exit_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// 前端确认关闭后调用，终止整个 Tauri 进程。
+#[tauri::command]
+fn exit_app(app: tauri::AppHandle) {
+    app.exit(0);
 }

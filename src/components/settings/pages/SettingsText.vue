@@ -156,20 +156,38 @@
           <div v-if="updateStatusText" :class="updateStatusColor" class="text-sm font-medium">
             {{ updateStatusText }}
           </div>
+          <!-- 下载进度条 -->
+          <div
+            v-if="updatePhase === 'downloading'"
+            class="w-full bg-slate-700/50 rounded-full h-2 overflow-hidden"
+          >
+            <div
+              class="h-full bg-cyan-400 rounded-full transition-all duration-300"
+              :style="{ width: `${downloadProgress}%` }"
+            ></div>
+          </div>
           <div class="flex gap-3 pt-1">
-            <Button type="big" @click="handleCheckUpdate" :disabled="updateChecking">
+            <Button
+              type="big"
+              @click="handleCheckUpdate"
+              :disabled="updateChecking || updatePhase === 'downloading'"
+            >
               {{ updateChecking ? '检查中...' : '检查程序更新' }}
             </Button>
             <Button
               v-if="updateAvailable"
               type="big"
               variant="primary"
-              :disabled="updateInstalling"
+              :disabled="updatePhase === 'downloading'"
               @click="handleInstallUpdate"
             >
-              {{ updateInstalling ? '正在更新...' : `更新到 v${updateLatestVersion}` }}
+              {{ updatePhase === 'downloading' ? '下载中...' : `更新到 v${updateLatestVersion}` }}
             </Button>
-            <Button v-if="resourceSyncAvailable" type="big" @click="handleCheckResourceSync">
+            <Button
+              v-if="resourceSyncAvailable && updatePhase !== 'downloading'"
+              type="big"
+              @click="handleCheckResourceSync"
+            >
               同步数据
             </Button>
           </div>
@@ -319,6 +337,7 @@ const {
   phase: updatePhase,
   appVersion: updateAppVersion,
   errorMessage: updateErrorMessage,
+  downloadProgress,
   // 资源同步
   resourceSyncInfo,
   resourceSyncPhase,
@@ -333,7 +352,6 @@ const currentAppVersion = ref('0.1.0')
 const currentDataVersion = ref(0)
 const updateLatestVersion = ref('')
 const updateChecking = ref(false)
-const updateInstalling = ref(false)
 const showResourceSyncDialog = ref(false)
 const resourceSyncAvailable = ref(false)
 
@@ -343,6 +361,8 @@ const updateAvailable = computed(
 
 const updateStatusText = computed(() => {
   if (updatePhase.value === 'checking') return '正在检查更新...'
+  if (updatePhase.value === 'downloading') return `正在下载更新... ${downloadProgress.value}%`
+  if (updatePhase.value === 'complete') return '更新完成，即将重启...'
   if (updatePhase.value === 'error') return updateErrorMessage.value || '检查更新失败'
   if (updateAvailable.value) return '发现新版本可用！'
   return ''
@@ -351,6 +371,7 @@ const updateStatusText = computed(() => {
 const updateStatusColor = computed(() => {
   if (updatePhase.value === 'error') return 'text-red-400'
   if (updateAvailable.value) return 'text-amber-400'
+  if (updatePhase.value === 'complete') return 'text-green-400'
   return 'text-green-400'
 })
 
@@ -393,15 +414,13 @@ async function handleCheckUpdate() {
   }
 }
 
-/** 直接安装更新（不弹 modal） */
+/** 直接安装更新（下载进度+状态全部内联） */
 async function handleInstallUpdate() {
-  updateInstalling.value = true
   try {
     await updater.installAppUpdate()
+    // 成功：phase 变为 'complete'，自动重启
   } catch {
     // 错误通过 phase 内联展示
-  } finally {
-    updateInstalling.value = false
   }
 }
 
