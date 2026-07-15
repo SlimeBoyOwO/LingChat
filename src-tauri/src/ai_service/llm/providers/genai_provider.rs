@@ -7,12 +7,12 @@ use async_trait::async_trait;
 use futures_util::StreamExt;
 use genai::adapter::AdapterKind;
 use genai::chat::{
-    ChatMessage, ChatOptions, ChatRequest, ChatResponse, ChatStreamEvent, ToolCall as GenaiToolCall,
-    ToolChoice,
+    ChatMessage, ChatOptions, ChatRequest, ChatResponse, ChatStreamEvent,
+    ToolCall as GenaiToolCall, ToolChoice,
 };
-use genai::ServiceTarget;
 use genai::resolver::{AuthData, Endpoint};
 use genai::Client as GenaiClient;
+use genai::ServiceTarget;
 use reqwest::Client;
 
 use crate::ai_service::llm::provider::{LlmProvider, LlmResponseWithTools};
@@ -20,13 +20,16 @@ use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmConfig};
 use crate::ai_service::types::{LlmMessage, ToolDefinition};
 
 // ─── Provider ────────────────────────────────────────────────────
+// 钦灵：为了修复 DeepSeek 问题，我在这里预留了两个字段，以备将来使用。
 
 pub struct GenaiProvider {
     client: GenaiClient,
     model: String,
+    _provider: String,
     temperature: Option<f64>,
     top_p: Option<f64>,
     enable_thinking: bool,
+    _reasoning_effort: Option<String>,
 }
 
 impl GenaiProvider {
@@ -57,10 +60,11 @@ impl GenaiProvider {
                     .with_auth_resolver_fn(move |_| Ok(Some(AuthData::from_single(key))));
                 if !cfg.base_url.is_empty() {
                     let base = cfg.base_url.clone();
-                    builder = builder.with_service_target_resolver_fn(move |mut t: ServiceTarget| {
-                        t.endpoint = Endpoint::from_owned(base);
-                        Ok(t)
-                    });
+                    builder =
+                        builder.with_service_target_resolver_fn(move |mut t: ServiceTarget| {
+                            t.endpoint = Endpoint::from_owned(base);
+                            Ok(t)
+                        });
                 }
             }
             "lmstudio" => {
@@ -78,10 +82,11 @@ impl GenaiProvider {
                     .with_auth_resolver_fn(move |_| Ok(Some(AuthData::from_single(key))));
                 if !cfg.base_url.is_empty() {
                     let base = cfg.base_url.clone();
-                    builder = builder.with_service_target_resolver_fn(move |mut t: ServiceTarget| {
-                        t.endpoint = Endpoint::from_owned(base);
-                        Ok(t)
-                    });
+                    builder =
+                        builder.with_service_target_resolver_fn(move |mut t: ServiceTarget| {
+                            t.endpoint = Endpoint::from_owned(base);
+                            Ok(t)
+                        });
                 }
             }
             other => return Err(anyhow!("GenaiProvider 不支持的 provider: {other}")),
@@ -90,9 +95,11 @@ impl GenaiProvider {
         Ok(Self {
             client: builder.build(),
             model,
+            _provider: cfg.provider.to_lowercase(),
             temperature: cfg.temperature,
             top_p: cfg.top_p,
             enable_thinking: cfg.enable_thinking,
+            _reasoning_effort: cfg.reasoning_effort.clone(),
         })
     }
 
@@ -149,9 +156,25 @@ impl GenaiProvider {
         if let Some(p) = self.top_p {
             opts = opts.with_top_p(p);
         }
+
+        // DeepSeek Reasoner 等模型在 thinking 字段缺失时默认启用思考，
+        // 始终注入 thinking 字段，不区分 provider — 与旧 OpenAiProvider 行为一致。
+        // 对不支持该字段的 provider（如纯 OpenAI）通常会被忽略，无害。[TODO] 需要测试
+
+        let thinking_type = if self.enable_thinking {
+            "enabled"
+        } else {
+            "disabled"
+        };
+
+        opts = opts.with_extra_body(serde_json::json!({
+            "thinking": { "type": thinking_type }
+        }));
+
         if self.enable_thinking {
             opts = opts.with_capture_reasoning_content(true);
         }
+
         if let Some(tc) = tool_choice {
             let choice = match tc {
                 "auto" => ToolChoice::Auto,
@@ -210,7 +233,11 @@ impl LlmProvider for GenaiProvider {
             .ok_or_else(|| anyhow!("genai 响应无文本内容"))
     }
 
-    async fn complete_stream(&self, _http: &Client, messages: &[LlmMessage]) -> Result<ChunkStream> {
+    async fn complete_stream(
+        &self,
+        _http: &Client,
+        messages: &[LlmMessage],
+    ) -> Result<ChunkStream> {
         let chat_req = self.build_chat_request(messages, None);
         crate::utils::llm_request_logger::log_request_body(
             &self.model,
@@ -288,6 +315,9 @@ impl LlmProvider for GenaiProvider {
             }
         };
 
-        Ok(LlmResponseWithTools { content, tool_calls })
+        Ok(LlmResponseWithTools {
+            content,
+            tool_calls,
+        })
     }
 }
