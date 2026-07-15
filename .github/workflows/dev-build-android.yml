@@ -99,12 +99,7 @@ jobs:
           EOF
 
       - name: 构建 Android APK
-        uses: tauri-apps/tauri-action@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          mobile: 'android'
-          args: ''
+        run: pnpm android:build
 
       - name: 上传 artifact (APK)
         uses: actions/upload-artifact@v4
