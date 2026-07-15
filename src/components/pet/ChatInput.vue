@@ -16,6 +16,8 @@
         :readonly="!isInputEnabled"
         class="flex-1 bg-transparent border-none outline-none text-white text-[calc(13px*var(--pet-ui-scale,1))] p-[calc(5px*var(--pet-ui-scale,1))] placeholder-white/40 [text-shadow:0_1px_4px_rgba(0,0,0,0.5)]"
         @keyup.enter="sendMessage"
+        @compositionstart="isCompsing = true"
+        @compositionend="isCompsing =false"
       />
       <button
         class="h-6 px-2 bg-linear-to-tr from-cyan-500 to-blue-400 hover:from-cyan-400 hover:to-blue-300 text-white font-bold text-sm rounded-full shadow-[0_4px_15px_rgba(6,182,212,0.4)] hover:shadow-[0_6px_20px_rgba(6,182,212,0.6)] transition-all duration-300 active:scale-95 flex items-center gap-1 overflow-hidden relative"
@@ -114,6 +116,10 @@ const emit = defineEmits(['message-sent'])
 const messageText = ref('')
 // 输入框内容变化 → 通知 can_deliver 追踪
 watch(messageText, (val) => setInputHasText(Boolean(val.trim())), { immediate: true })
+
+const isCompsing = ref(false)
+const isTyping = () => messageText.value.trim() != '' || isCompsing.value
+defineExpose({ isTyping })
 
 const sendMessage = () => {
   const text = messageText.value.trim()
