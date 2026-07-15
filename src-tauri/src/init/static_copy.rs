@@ -1,8 +1,6 @@
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-use tauri::Manager;
-
 static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 /// 初始化 data 目录缓存（必须在 App 启动时调用一次）。
@@ -50,7 +48,7 @@ fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
+fn resolve_data_dir_impl(_app: &tauri::AppHandle) -> PathBuf {
     if cfg!(debug_assertions) {
         // 桌面端开发模式：项目根目录的 data/
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -152,13 +150,9 @@ fn seed_via_fs_plugin(app: &tauri::AppHandle, data_dir: &std::path::Path) -> any
         .with_context(|| format!("failed to read data.7z from {}", archive_asset))?;
 
     let cursor = std::io::Cursor::new(archive_bytes);
-    tracing::info!(
-        "Extracting data.7z ({} bytes)",
-        cursor.get_ref().len()
-    );
+    tracing::info!("Extracting data.7z ({} bytes)", cursor.get_ref().len());
 
-    sevenz_rust2::decompress(cursor, data_dir)
-        .context("failed to extract data.7z")?;
+    sevenz_rust2::decompress(cursor, data_dir).context("failed to extract data.7z")?;
 
     tracing::info!("Data extraction from data.7z complete");
     Ok(())

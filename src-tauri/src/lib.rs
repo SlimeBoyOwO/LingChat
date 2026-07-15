@@ -306,6 +306,7 @@ pub fn run() {
             config::delete_llm_provider,
             config::set_llm_role,
             config::test_llm_provider,
+            config::list_llm_models,
             api::character::get_character_list,
             api::character::get_role_info,
             api::character::get_role_settings,

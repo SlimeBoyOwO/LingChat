@@ -24,9 +24,11 @@ pub trait TtsAdapter: Send + Sync {
     async fn generate_voice(&self, text: &str, emo: &str) -> Result<Vec<u8>>;
 
     /// 返回当前适配器参数（对应 Python `get_params`）。
+    #[allow(dead_code)]
     fn get_params(&self) -> HashMap<String, JsonValue>;
 
     /// 流式语音合成。默认返回 `None`（不支持流式）。
+    #[allow(dead_code)]
     async fn generate_voice_stream(&self, _text: &str) -> Option<Vec<u8>> {
         None
     }

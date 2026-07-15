@@ -31,6 +31,7 @@ impl RoleRepo {
             .await?)
     }
 
+    #[allow(dead_code)]
     pub async fn get_script_roles(
         db: &DatabaseConnection,
         script_key: &str,

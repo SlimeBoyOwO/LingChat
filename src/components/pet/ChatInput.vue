@@ -37,6 +37,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { useSettingsStore } from '@/stores/modules/settings'
+import { useLlmProvidersStore } from '@/stores/modules/llm-providers'
 import { useScreenshot } from '@/composables/useScreenshot'
 import { setInputHasText } from '@/composables/useCanDeliver'
 import { Forward } from 'lucide-vue-next'
@@ -44,6 +45,7 @@ import { Forward } from 'lucide-vue-next'
 const gameStore = useGameStore()
 const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
+const llmStore = useLlmProvidersStore()
 
 const {
   screenshotBase64,
@@ -116,6 +118,17 @@ watch(messageText, (val) => setInputHasText(Boolean(val.trim())), { immediate: t
 const sendMessage = () => {
   const text = messageText.value.trim()
   if (!text) return
+
+  // 检查对话模型是否已选择
+  if (!llmStore.chatProviderId) {
+    uiStore.showNotification({
+      type: 'warning',
+      title: '提示',
+      message: '你还没选择对话模型呢，笨蛋！',
+      skipTipsCheck: true,
+    })
+    return
+  }
 
   gameStore.appendGameMessage({
     type: 'message',

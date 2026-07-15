@@ -1,0 +1,138 @@
+name: 安卓开发版构建
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag 名称'
+        required: true
+        type: string
+        default: 'v0.0.0'
+      release_title:
+        description: 'Release 标题'
+        required: true
+        type: string
+        default: '开发版构建'
+      is_prerelease:
+        description: '是否标记为预发布版本'
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - name: 签出lfs文件
+        run: |
+          git lfs pull
+
+      - name: 设置 pnpm store 缓存
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+            #  armv7-linux-androideabi
+            #  i686-linux-android
+            #  x86_64-linux-android
+
+      - name: 设置 Rust 缓存
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri
+          cache-targets: true
+          shared-key: ${{ runner.os }}-main-pnpm-tauri-build-android
+
+      - name: 安装 Linux 依赖 (Ubuntu)
+        run: |
+          sudo apt-get update
+          sudo apt-get install eatmydata
+          sudo eatmydata apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libjavascriptcoregtk-4.1-dev \
+            libsoup-3.0-dev \
+            libpipewire-0.3-dev \
+            libspa-0.2-dev \
+            libgbm-dev \
+            libegl1-mesa-dev \
+            libx11-dev \
+            libxcb1-dev \
+            libxrandr-dev \
+            libxcomposite-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxtst-dev \
+            libwayland-dev \
+            libdbus-1-dev \
+            zip
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      - name: pnpm 安装依赖
+        run: pnpm i
+
+      - name: 生成图标
+        run: |
+          git lfs pull src-tauri/icons/icon.png
+          pnpm run init
+
+      - name: 准备 Android 项目
+        run: |
+          pnpm android:prepare
+
+      - name: 配置 Android 签名
+        run: |
+          echo "${{ secrets.ANDROID_KEY_BASE64 }}" | base64 -d > $HOME/upload-keystore.jks
+          cat > src-tauri/gen/android/keystore.properties << EOF
+          storeFile=$HOME/upload-keystore.jks
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          EOF
+
+      - name: 构建 Android APK
+        run: pnpm android:build
+
+      - name: 创建 GitHub Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.inputs.tag_name }}
+          name: ${{ github.event.inputs.release_title }}
+          draft: false
+          prerelease: ${{ github.event.inputs.is_prerelease }}
+          generate_release_notes: true
+          files: |
+            # src-tauri/gen/android/app/build/outputs/apk/universal/debug/*.apk
+            src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

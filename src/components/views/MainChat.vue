@@ -60,14 +60,20 @@ import GameExtraUI from '../game/standard/GameExtraUI.vue'
 
 const LOADING_STORAGE_KEY = 'lingchat_loading_shown'
 
+// 会话级标记：同一页面 session 内只播放一次加载动画。
+// 仅靠 localStorage 会在路由卸载/重挂时回显（如桌宠切回聊天），
+// 用模块级变量兜底，确保一次启动只播放一次。
+let loadingShownThisSession = false
+
 const router = useRouter()
 const uiStore = useUIStore()
 const gameStore = useGameStore()
 
-// 首次加载过渡状态（通过 localStorage 跨路由导航保持，启动时由 main.ts 清除）
-const showLoading = ref(!localStorage.getItem(LOADING_STORAGE_KEY))
+// 首次加载过渡状态：仅当本次 session 未播放过且 localStorage 未标记时播放
+const showLoading = ref(!loadingShownThisSession && !localStorage.getItem(LOADING_STORAGE_KEY))
 
 function onLoadingComplete() {
+  loadingShownThisSession = true
   showLoading.value = false
   localStorage.setItem(LOADING_STORAGE_KEY, '1')
   // 加载动画结束，恢复事件队列消费

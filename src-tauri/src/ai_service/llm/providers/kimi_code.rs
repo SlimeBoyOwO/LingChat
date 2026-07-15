@@ -7,13 +7,45 @@
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use futures_util::StreamExt;
+use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, USER_AGENT};
 use reqwest::Client;
-use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
-use crate::ai_service::llm::provider::{LlmProvider, LlmResponseWithTools};
+use crate::ai_service::llm::provider::{LlmModelInfo, LlmProvider, LlmResponseWithTools};
 use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmConfig};
 use crate::ai_service::types::{LlmMessage, ToolCall, ToolDefinition};
+
+#[derive(Debug, Deserialize)]
+struct KimiCodeModelsResponse {
+    data: Vec<KimiCodeModelRecord>,
+}
+
+#[derive(Debug, Deserialize)]
+struct KimiCodeModelRecord {
+    id: String,
+    #[serde(default)]
+    display_name: Option<String>,
+    #[serde(default)]
+    context_length: Option<u64>,
+    #[serde(default)]
+    supports_reasoning: bool,
+    #[serde(default)]
+    supports_thinking_type: Option<String>,
+}
+
+fn kimi_code_models_endpoint(base_url: &str) -> String {
+    let base = if base_url.trim().is_empty() {
+        "https://api.kimi.com/coding"
+    } else {
+        base_url.trim().trim_end_matches('/')
+    };
+    if base.ends_with("/v1") {
+        format!("{base}/models")
+    } else {
+        format!("{base}/v1/models")
+    }
+}
 
 pub struct KimiCodeProvider {
     model: String,
@@ -56,13 +88,9 @@ impl KimiCodeProvider {
         headers.insert(USER_AGENT, HeaderValue::from_static("claude-code/0.1.0"));
         headers.insert(
             "x-api-key",
-            HeaderValue::from_str(&self.api_key)
-                .context("Kimi-Code API key 包含非法字符")?,
+            HeaderValue::from_str(&self.api_key).context("Kimi-Code API key 包含非法字符")?,
         );
-        headers.insert(
-            "anthropic-version",
-            HeaderValue::from_static("2023-06-01"),
-        );
+        headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
         Ok(headers)
     }
 
@@ -105,7 +133,11 @@ impl KimiCodeProvider {
             stream,
             temperature: self.temperature,
             top_p: self.top_p,
-            system: if system_text.is_empty() { None } else { Some(system_text) },
+            system: if system_text.is_empty() {
+                None
+            } else {
+                Some(system_text)
+            },
             messages: conversation,
             tools,
             tool_choice,
@@ -137,6 +169,52 @@ impl KimiCodeProvider {
 
 #[async_trait]
 impl LlmProvider for KimiCodeProvider {
+    async fn list_models(&self, http: &Client) -> Result<Vec<LlmModelInfo>> {
+        if self.api_key.trim().is_empty() {
+            return Err(anyhow!("请先填写 Kimi Code API 密钥"));
+        }
+
+        let endpoint = kimi_code_models_endpoint(&self.base_url);
+        let response = http
+            .get(&endpoint)
+            .timeout(Duration::from_secs(30))
+            .bearer_auth(self.api_key.trim())
+            .header(USER_AGENT, "claude-code/0.1.0")
+            .header(ACCEPT, "application/json")
+            .send()
+            .await
+            .context("请求 Kimi Code 模型列表失败")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let detail = response.text().await.unwrap_or_default();
+            let detail = detail.chars().take(500).collect::<String>();
+            return Err(anyhow!("获取 Kimi Code 模型列表失败 ({status}): {detail}"));
+        }
+
+        let payload: KimiCodeModelsResponse = response
+            .json()
+            .await
+            .context("解析 Kimi Code 模型列表失败")?;
+        let models = payload
+            .data
+            .into_iter()
+            .filter(|model| !model.id.trim().is_empty())
+            .map(|model| LlmModelInfo {
+                id: model.id,
+                display_name: model.display_name,
+                context_length: model.context_length,
+                supports_reasoning: model.supports_reasoning,
+                supports_thinking_type: model.supports_thinking_type,
+            })
+            .collect::<Vec<_>>();
+
+        if models.is_empty() {
+            return Err(anyhow!("Kimi Code 没有返回可用模型"));
+        }
+        Ok(models)
+    }
+
     async fn complete(&self, http: &Client, messages: &[LlmMessage]) -> Result<String> {
         let body = self.build_request(messages, false, None, None);
         let resp = http
@@ -153,7 +231,8 @@ impl LlmProvider for KimiCodeProvider {
             return Err(anyhow!("Kimi-Code 非流式调用失败 ({status}): {text}"));
         }
 
-        let parsed: MessagesResponse = resp.json().await.context("解析 Kimi-Code 响应 JSON 失败")?;
+        let parsed: MessagesResponse =
+            resp.json().await.context("解析 Kimi-Code 响应 JSON 失败")?;
         self.parse_messages_response(parsed)
     }
 
@@ -184,7 +263,9 @@ impl LlmProvider for KimiCodeProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            return Err(anyhow!("Kimi-Code function calling 失败 ({status}): {text}"));
+            return Err(anyhow!(
+                "Kimi-Code function calling 失败 ({status}): {text}"
+            ));
         }
 
         let parsed: MessagesResponse = resp
@@ -204,7 +285,10 @@ impl LlmProvider for KimiCodeProvider {
                     let tc = ToolCall {
                         id,
                         type_: "function".to_string(),
-                        function: crate::ai_service::types::FunctionCall { name, arguments: args },
+                        function: crate::ai_service::types::FunctionCall {
+                            name,
+                            arguments: args,
+                        },
                     };
                     tool_calls.get_or_insert_with(Vec::new).push(tc);
                 }
@@ -212,7 +296,11 @@ impl LlmProvider for KimiCodeProvider {
         }
 
         Ok(LlmResponseWithTools {
-            content: if content_text.is_empty() { None } else { Some(content_text) },
+            content: if content_text.is_empty() {
+                None
+            } else {
+                Some(content_text)
+            },
             tool_calls,
         })
     }
@@ -261,7 +349,6 @@ impl LlmProvider for KimiCodeProvider {
                                 tracing::info!("[Kimi-Code Thinking] {}", thinking_buffer);
                                 yield LlmChunk::Reasoning(thinking_buffer.clone());
                                 thinking_buffer.clear();
-                                last_flush_len = 0;
                             }
                             // 如果 text 为空但 thinking 有内容，把 thinking 作为正式回复兜底
                             if text_buffer.is_empty() && !thinking_buffer.is_empty() {

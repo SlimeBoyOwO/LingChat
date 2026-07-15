@@ -79,14 +79,6 @@ pub struct SoundPayload {
     pub sound_path: String,
 }
 
-/// 环境音 payload，支持多轨并行、独立音量和循环控制
-fn default_ambient_volume() -> f64 {
-    100.0
-}
-fn default_true() -> bool {
-    true
-}
-
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AmbientPayload {

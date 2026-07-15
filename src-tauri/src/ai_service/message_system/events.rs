@@ -10,27 +10,6 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 /// 前端事件发射器。实现方可以是真正的 AppHandle，也可以是测试 stub。
-pub trait EventSink: Send + Sync {
-    fn emit_event(&self, event: &str, payload: &dyn erased_payload::ErasedSerialize) -> Result<()>;
-}
-
-/// tauri 的 AppHandle 实现 EventSink。
-pub struct TauriEventSink {
-    pub app: AppHandle,
-}
-
-impl TauriEventSink {
-    pub fn new(app: AppHandle) -> Self {
-        Self { app }
-    }
-}
-
-impl EventSink for TauriEventSink {
-    fn emit_event(&self, event: &str, payload: &dyn erased_payload::ErasedSerialize) -> Result<()> {
-        let value = payload.to_json_value()?;
-        self.app.emit(event, value).map_err(anyhow::Error::from)
-    }
-}
 
 /// 便捷函数：直接向 AppHandle 发 serde 可序列化 payload。业务层也可以绕过 trait。
 pub fn emit<T: Serialize + Clone>(app: &AppHandle, event: &str, payload: &T) -> Result<()> {
@@ -49,7 +28,10 @@ pub fn emit_thinking(app: &AppHandle, is_thinking: bool) {
 /// 通知前端思考链累计字数有更新。
 pub fn emit_thinking_progress(app: &AppHandle, thinking_length: usize) {
     let payload = super::responses::ThinkingProgressResponse::new(thinking_length);
-    if let Err(e) = app.emit(super::responses::event_names::AI_THINKING_PROGRESS, &payload) {
+    if let Err(e) = app.emit(
+        super::responses::event_names::AI_THINKING_PROGRESS,
+        &payload,
+    ) {
         tracing::warn!("emit thinking_progress 失败: {e}");
     }
 }
@@ -92,11 +74,11 @@ pub mod erased_payload {
     use serde_json::Value;
 
     /// 对 `Serialize` 的对象安全封装，允许通过 `&dyn` 传递。
-    pub trait ErasedSerialize {
+    pub trait _ErasedSerialize {
         fn to_json_value(&self) -> Result<Value>;
     }
 
-    impl<T> ErasedSerialize for T
+    impl<T> _ErasedSerialize for T
     where
         T: Serialize,
     {
