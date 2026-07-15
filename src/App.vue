@@ -19,6 +19,7 @@ import AchievementToast from './components/ui/AchievementToast.vue'
 import AdventureUnlockNotify from './components/ui/AdventureUnlockNotify.vue'
 import AppDialog from './components/ui/AppDialog.vue'
 import { initUIStore } from './stores/modules/ui/ui'
+import { useLlmProvidersStore } from './stores/modules/llm-providers'
 import { useAchievementStore } from './stores/modules/ui/achievement'
 import { useSedentaryReminder } from './composables/useSedentaryReminder'
 import { useUpdater } from './composables/useUpdater'
@@ -56,6 +57,10 @@ const handleKeyDown = async (event) => {
 onMounted(() => {
   // 初始化 UI Store（加载角色 tips）
   initUIStore()
+
+  // 预加载 LLM 提供商配置，避免主界面因 store 未加载而误判未选择模型
+  const llmStore = useLlmProvidersStore()
+  llmStore.load().catch((e) => console.error('加载 LLM 提供商失败:', e))
 
   // 供成就系统控制台测试用，在 window 对象中注册一些方法
   const achievementStore = useAchievementStore()
