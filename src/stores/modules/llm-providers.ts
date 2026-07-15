@@ -67,10 +67,13 @@ export const useLlmProvidersStore = defineStore('llm-providers', {
       }
     },
     async saveProvider(provider: LlmProviderConfig) {
+      // 仅在原先没有任何提供商时自动触发热切换（首次添加）
+      const wasEmpty = this.providers.length === 0
       await saveLlmProvider(provider)
       await this.load()
-      // 保存后触发热切换（可能是编辑了当前正在使用的模型配置）
-      await switchLlm()
+      if (wasEmpty) {
+        await switchLlm()
+      }
     },
     async deleteProvider(id: string) {
       await deleteLlmProvider(id)

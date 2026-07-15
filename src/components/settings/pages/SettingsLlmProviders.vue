@@ -646,7 +646,7 @@ function confirmDelete(p: LlmProviderConfig) {
 async function deleteProvider(id: string) {
   try {
     await store.deleteProvider(id)
-    saveMessage.value = '已删除，如涉及已启用模型已自动热切换。'
+    saveMessage.value = '已删除'
     saveError.value = false
     if (editing.id === id) closePanel()
   } catch (e: any) {
@@ -660,7 +660,7 @@ async function saveCurrent() {
   saveError.value = false
   try {
     await store.saveProvider({ ...editing })
-    saveMessage.value = '保存成功！已自动热切换，无需重启。'
+    saveMessage.value = '保存成功！'
     const saved = store.providers.find(
       (p) => p.label === editing.label && p.model === editing.model,
     )
@@ -705,7 +705,7 @@ async function fetchProviderModels() {
 async function onChatRoleChange(value: string) {
   try {
     await store.assignRole('chat', value || null)
-    saveMessage.value = '对话模型已切换，即时生效！'
+    saveMessage.value = '对话模型已切换并生效！'
     saveError.value = false
   } catch (e: any) {
     saveMessage.value = `切换失败: ${e}`
@@ -717,7 +717,7 @@ async function onChatRoleChange(value: string) {
 async function onTranslateRoleChange(value: string) {
   try {
     await store.assignRole('translate', value === '__follow__' ? null : value)
-    saveMessage.value = '翻译模型已切换，即时生效！'
+    saveMessage.value = '翻译模型已切换并生效！'
     saveError.value = false
   } catch (e: any) {
     saveMessage.value = `切换失败: ${e}`
@@ -729,7 +729,7 @@ async function onTranslateRoleChange(value: string) {
 async function onGodAgentRoleChange(value: string) {
   try {
     await store.assignRole('god_agent', value === '__follow__' ? null : value)
-    saveMessage.value = '上帝Agent模型已切换，即时生效！'
+    saveMessage.value = '上帝Agent已切换并生效！'
     saveError.value = false
   } catch (e: any) {
     saveMessage.value = `切换失败: ${e}`
