@@ -52,7 +52,8 @@ impl CpuDetectionCache {
 mod x86_impl {
     use super::*;
 
-    /// 执行 CPUID 指令
+    /// 执行 CPUID 指令 (x86_64，使用 rbx)
+    #[cfg(target_arch = "x86_64")]
     #[inline]
     fn cpuid(leaf: u32, subleaf: u32) -> (u32, u32, u32, u32) {
         let eax: u32;
@@ -68,6 +69,27 @@ mod x86_impl {
                 tmp = out(reg) _,
                 ebx = out(reg) ebx,
                 inout("eax") leaf => eax,
+                inout("ecx") subleaf => ecx,
+                out("edx") edx,
+                options(nostack, preserves_flags)
+            );
+        }
+        (eax, ebx, ecx, edx)
+    }
+
+    /// 执行 CPUID 指令 (x86，直接使用 out("ebx") 让编译器处理保存/恢复)
+    #[cfg(target_arch = "x86")]
+    #[inline]
+    fn cpuid(leaf: u32, subleaf: u32) -> (u32, u32, u32, u32) {
+        let eax: u32;
+        let ebx: u32;
+        let ecx: u32;
+        let edx: u32;
+        unsafe {
+            core::arch::asm!(
+                "cpuid",
+                inout("eax") leaf => eax,
+                out("ebx") ebx,
                 inout("ecx") subleaf => ecx,
                 out("edx") edx,
                 options(nostack, preserves_flags)
