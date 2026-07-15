@@ -798,7 +798,7 @@ function confirmDelete(p: LlmProviderConfig) {
 async function deleteProvider(id: string) {
   try {
     await store.deleteProvider(id)
-    saveMessage.value = '已删除'
+    saveMessage.value = '已删除，如涉及已启用模型已自动热切换。'
     saveError.value = false
     if (editing.id === id) closePanel()
   } catch (e: any) {
