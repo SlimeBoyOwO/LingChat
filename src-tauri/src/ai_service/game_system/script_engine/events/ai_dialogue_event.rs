@@ -79,7 +79,11 @@ impl ScriptEvent for AIDialogueEvent {
 
         // Delegate AI response to MessageGenerator
         let state = ctx.app.state::<AppState>();
-        let llm = match state.chat.llm.clone() {
+        let llm = match state.chat.llm.as_ref() {
+            Some(slot) => crate::ai_service::llm::slot_snapshot(slot).await,
+            None => None,
+        };
+        let llm = match llm {
             Some(llm) => llm,
             None => {
                 tracing::warn!("[AIDialogueEvent] LLM 未配置，跳过 AI 对话");

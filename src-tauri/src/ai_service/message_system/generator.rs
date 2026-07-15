@@ -39,6 +39,7 @@ pub struct GeneratorDeps {
     pub game_status: Arc<Mutex<GameStatus>>,
     pub processor: Arc<MessageProcessor>,
     pub translator: Arc<Translator>,
+    /// 当前生成轮次使用的 LLM 客户端快照（构建 deps 时从槽位读取）。
     pub llm: Arc<LlmClient>,
     pub concurrency: usize,
     /// 上帝 Agent（多人自由对话编排器），`None` 时退化为单角色对话。

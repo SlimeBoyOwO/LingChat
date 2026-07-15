@@ -1,13 +1,12 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use sea_orm::DatabaseConnection;
 
 use crate::ai_service::game_system::memory_builder::MemoryBuilder;
 use crate::ai_service::game_system::persistent_memory_system::PersistentMemorySystem;
-use crate::ai_service::llm::LlmClient;
+use crate::ai_service::llm::LlmSlot;
 use crate::ai_service::tts::VoiceMaker;
 use crate::ai_service::types::{CharacterSettings, GameLine, GameMemoryBank, GameRole, LlmMessage};
 use crate::config::tts::TtsConfig;
@@ -20,8 +19,8 @@ pub struct GameRoleManager {
     pub loaded_roles: HashMap<i32, GameRole>,
     data_dir: PathBuf,
 
-    /// LLM 客户端（迟注入）。MemoryBank 压缩引擎依赖此字段。
-    llm: Option<Arc<LlmClient>>,
+    /// LLM 客户端槽位（支持运行时热切换）。MemoryBank 压缩引擎依赖此字段。
+    llm: Option<LlmSlot>,
     /// 每个角色的 MemoryBank 后台压缩引擎（惰性构造）。
     memory_bank_systems: HashMap<i32, PersistentMemorySystem>,
     /// TTS 引擎配置（适配器 URL、音频格式等）。
@@ -37,7 +36,7 @@ pub struct GameRoleManager {
 impl GameRoleManager {
     pub fn new(
         data_dir: PathBuf,
-        llm: Option<Arc<LlmClient>>,
+        llm: Option<LlmSlot>,
         tts_config: TtsConfig,
         use_persistent_memory: bool,
         memory_update_interval: u32,
@@ -270,7 +269,6 @@ impl GameRoleManager {
 
     // ── MemoryBank 集成方法 ──
 
-    /// 惰性构造角色的 `PersistentMemorySystem`（若尚未创建且 LLM 客户段就绪）。
     /// 惰性构造角色的 `PersistentMemorySystem`。
     ///
     /// 调用方保证在 `enabled=true` 时 `self.llm` 已就绪（构造函数注入）。

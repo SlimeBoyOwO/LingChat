@@ -12,12 +12,15 @@ pub const STORE_FILE: &str = "settings.json";
 pub mod proactive;
 pub mod tts;
 
+use crate::ai_service::god_agent::config::resolve_god_agent_provider;
 use crate::ai_service::llm::provider_config::{
-    build_llm_client_from_provider, load_providers, load_role_assignment, save_providers,
-    save_role_assignment, LlmProviderConfig, LlmProvidersResponse,
+    build_llm_client_from_provider, load_providers, load_role_assignment, resolve_chat_provider,
+    resolve_translate_provider, save_providers, save_role_assignment, LlmProviderConfig,
+    LlmProvidersResponse,
 };
 use crate::ai_service::llm::LlmModelInfo;
 use crate::config::tts::TtsConfig;
+use crate::AppState;
 
 // ========== 字段键（对标 Python .env） ==========
 pub mod keys {
@@ -945,4 +948,51 @@ pub async fn list_llm_models(
         .list_models()
         .await
         .map_err(|error| error.to_string())
+}
+
+/// 热切换 LLM —— 在不重启应用的前提下替换运行中的 LLM 客户端。
+///
+/// 一次性重建所有角色（chat / translate / god_agent）的 LLM 槽位，
+/// 确保任一角色分配变更后都能即时生效。
+#[tauri::command]
+pub async fn switch_llm(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    // —— 1. 重建聊天主 LLM 槽位 ——
+    let new_chat = resolve_chat_provider(&app)
+        .and_then(|p| build_llm_client_from_provider(&p))
+        .map(Arc::new);
+
+    if let Some(ref slot) = state.chat.llm {
+        let mut guard = slot.write().await;
+        *guard = new_chat;
+        tracing::info!("[switch_llm] 聊天 LLM 槽位已热切换");
+    }
+
+    // —— 2. 重建翻译 LLM 槽位 ——
+    let new_translate = resolve_translate_provider(&app)
+        .and_then(|p| build_llm_client_from_provider(&p))
+        .map(Arc::new);
+
+    if let Some(slot) = state.chat.translator.slot() {
+        let mut guard = slot.write().await;
+        *guard = new_translate;
+        tracing::info!("[switch_llm] 翻译 LLM 槽位已热切换");
+    }
+
+    // —— 3. 重建上帝 Agent LLM 槽位 ——
+    let new_god = resolve_god_agent_provider(&app).map(Arc::new);
+
+    if let Some(ref god) = state.god_agent {
+        let mut guard = god.llm.write().await;
+        *guard = new_god;
+        tracing::info!("[switch_llm] 上帝Agent LLM 槽位已热切换");
+    }
+
+    // —— 4. 重建 GameRoleManager 的 MemoryBank LLM 槽位 ——
+    // GameRoleManager 内部的 llm 槽位与 ChatComponents.llm 共享同一个 Arc<RwLock>，
+    // 因此上面的聊天槽位热切换已经自动覆盖了 MemoryBank 场景，无需额外操作。
+
+    Ok(())
 }

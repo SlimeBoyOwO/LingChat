@@ -12,14 +12,38 @@ pub use factory::create_llm_client;
 pub use provider::{LlmModelInfo, LlmProvider};
 
 use std::pin::Pin;
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use futures_util::Stream;
 use reqwest::Client;
+use tokio::sync::RwLock;
 
 use crate::ai_service::llm::provider::LlmResponseWithTools;
 use crate::ai_service::types::{LlmMessage, ToolDefinition};
+
+// ============================================================
+// SharedLlmClient —— 支持运行时热替换的 LLM 客户端槽位
+// ============================================================
+
+/// 可热替换的 LLM 客户端槽位。
+///
+/// 外层 `Arc` 允许多处共享同一个槽位；内层 `RwLock<Option<Arc<LlmClient>>>`
+/// 允许在运行时原子地替换内部客户端，而不需要重启应用。
+///
+/// - **读取**：调用 `snapshot()` 获取当前 `Arc<LlmClient>` 的快照，
+///   之后所有操作都基于该快照，不受后续热切换影响。
+/// - **替换**：调用 `swap()` 写入新的客户端，旧客户端的 `Arc` 引用
+///   在所有持有者释放后自然回收。
+pub type LlmSlot = Arc<RwLock<Option<Arc<LlmClient>>>>;
+
+/// 从 `LlmSlot` 异步读取当前客户端快照。
+///
+/// 返回 `Option<Arc<LlmClient>>`，`None` 表示尚未配置可用模型。
+pub async fn slot_snapshot(slot: &LlmSlot) -> Option<Arc<LlmClient>> {
+    slot.read().await.clone()
+}
 
 /// 运行时 LLM 配置。
 #[derive(Debug, Clone)]

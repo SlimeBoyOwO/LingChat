@@ -4,6 +4,7 @@ import {
   saveLlmProvider,
   deleteLlmProvider,
   setLlmRole,
+  switchLlm,
   type LlmProviderConfig,
 } from '@/api/services/llm-providers'
 
@@ -68,14 +69,20 @@ export const useLlmProvidersStore = defineStore('llm-providers', {
     async saveProvider(provider: LlmProviderConfig) {
       await saveLlmProvider(provider)
       await this.load()
+      // 保存后触发热切换（可能是编辑了当前正在使用的模型配置）
+      await switchLlm()
     },
     async deleteProvider(id: string) {
       await deleteLlmProvider(id)
       await this.load()
+      // 删除后触发热切换（可能删除了正在使用的模型）
+      await switchLlm()
     },
     async assignRole(role: 'chat' | 'translate' | 'god_agent', providerId: string | null) {
       await setLlmRole(role, providerId)
       await this.load()
+      // 角色分配变更后触发热切换
+      await switchLlm()
     },
   },
 })

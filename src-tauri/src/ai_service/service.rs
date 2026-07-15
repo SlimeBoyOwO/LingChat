@@ -9,7 +9,7 @@ use crate::ai_service::config::AIServiceConfig;
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::role_manager::GameRoleManager;
 use crate::ai_service::game_system::script_engine::ScriptManager;
-use crate::ai_service::llm::LlmClient;
+use crate::ai_service::llm::LlmSlot;
 use crate::ai_service::types::{CharacterSettings, GameLine, LineAttributeExt, LineBase};
 use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
@@ -49,7 +49,7 @@ impl AIService {
     pub async fn new(
         db: DatabaseConnection,
         data_dir: PathBuf,
-        llm: Option<Arc<LlmClient>>,
+        llm: Option<LlmSlot>,
         tts_config: TtsConfig,
         use_persistent_memory: bool,
         memory_update_interval: u32,

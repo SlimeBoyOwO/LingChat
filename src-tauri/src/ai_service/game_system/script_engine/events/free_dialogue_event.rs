@@ -106,7 +106,11 @@ impl ScriptEvent for FreeDialogueEvent {
         // ---- 构建 MessageGenerator（复用以提高性能） ----
         let generator = {
             let state = ctx.app.state::<AppState>();
-            state.chat.llm.clone().map(|llm| {
+            let llm = match state.chat.llm.as_ref() {
+                Some(slot) => crate::ai_service::llm::slot_snapshot(slot).await,
+                None => None,
+            };
+            llm.map(|llm| {
                 let deps = GeneratorDeps {
                     app: ctx.app.clone(),
                     db: ctx.db.clone(),

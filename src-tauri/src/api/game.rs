@@ -806,11 +806,11 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
     } // 释放锁
 
     // Phase 2: 触发 AI 响应（suppress_thinking=true，不显示思考指示器）
-    let llm = state
-        .chat
-        .llm
-        .clone()
-        .ok_or_else(|| "LLM 未配置".to_string())?;
+    let llm = crate::ai_service::llm::slot_snapshot(
+        state.chat.llm.as_ref().ok_or_else(|| "LLM 未配置".to_string())?,
+    )
+    .await
+    .ok_or_else(|| "LLM 未配置".to_string())?;
     let concurrency = AppConfig::load(&app)
         .map(|c| c.consumers as usize)
         .unwrap_or(1)
