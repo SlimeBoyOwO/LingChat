@@ -9,17 +9,21 @@
   <AppDialog />
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { listen } from '@tauri-apps/api/event'
+import { invoke } from '@tauri-apps/api/core'
 import CursorEffects from './components/effects/CursorEffects.vue'
 import Notification from './components/ui/Notification.vue'
 import AchievementToast from './components/ui/AchievementToast.vue'
 import AdventureUnlockNotify from './components/ui/AdventureUnlockNotify.vue'
 import AppDialog from './components/ui/AppDialog.vue'
 import { initUIStore } from './stores/modules/ui/ui'
+import { useLlmProvidersStore } from './stores/modules/llm-providers'
 import { useAchievementStore } from './stores/modules/ui/achievement'
+import { useDialogStore } from './stores/modules/ui/dialog'
 import { useSedentaryReminder } from './composables/useSedentaryReminder'
 import { useUpdater } from './composables/useUpdater'
 import { useCanDeliver } from './composables/useCanDeliver'
@@ -34,7 +38,7 @@ useSedentaryReminder()
 
 const route = useRoute()
 
-const handleKeyDown = async (event) => {
+const handleKeyDown = async (event: KeyboardEvent) => {
   if (event.key === 'F11') {
     event.preventDefault()
 
@@ -53,23 +57,69 @@ const handleKeyDown = async (event) => {
   }
 }
 
-onMounted(() => {
+// ─── 关闭确认 ────────────────────────────────────────────────
+
+const dialogStore = useDialogStore()
+let saveCompleted = false
+let userConfirmedExit = false
+let unlistenCloseReady: (() => void) | null = null
+let unlistenCloseRequested: (() => void) | null = null
+
+// 处理退出：两个条件都满足时调用 Rust exit_app
+function tryExit() {
+  if (saveCompleted && userConfirmedExit) {
+    invoke('exit_app')
+  }
+}
+
+onMounted(async () => {
   // 初始化 UI Store（加载角色 tips）
   initUIStore()
 
+  // 预加载 LLM 提供商配置，避免主界面因 store 未加载而误判未选择模型
+  const llmStore = useLlmProvidersStore()
+  llmStore.load().catch((e) => console.error('加载 LLM 提供商失败:', e))
+
   // 供成就系统控制台测试用，在 window 对象中注册一些方法
   const achievementStore = useAchievementStore()
-  window.requestAchievementUnlock = (data) => achievementStore.notifyBackendUnlock(data)
-  window.showAchievement = (data) => achievementStore.addAchievement(data)
+  ;(window as any).requestAchievementUnlock = (data: any) => achievementStore.notifyBackendUnlock(data)
+  ;(window as any).showAchievement = (data: any) => achievementStore.addAchievement(data)
   // 成就系统启动WebSocket监听
   achievementStore.listenForUnlocks()
 
   // 注册 F11 全屏快捷键
   window.addEventListener('keydown', handleKeyDown)
+
+  // ─── 关闭确认逻辑 ──────────────────────────────────────────
+
+  // 1. 监听 Rust 存档完成事件
+  unlistenCloseReady = await listen('app:close-ready', () => {
+    saveCompleted = true
+    tryExit()
+  })
+
+  // 2. 拦截窗口关闭请求
+  unlistenCloseRequested = await getCurrentWindow().onCloseRequested(async (event: { preventDefault: () => void }) => {
+    event.preventDefault()
+
+    // 重置状态
+    saveCompleted = false
+    userConfirmedExit = false
+
+    if (route.path === '/chat') {
+      const confirmed = await dialogStore.confirm('确定要退出程序吗？', '退出确认')
+      if (!confirmed) return // 用户取消，窗口保持打开
+    }
+
+    userConfirmedExit = true
+    tryExit()
+  })
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown)
+  if (unlistenCloseReady) unlistenCloseReady()
+  if (unlistenCloseRequested) unlistenCloseRequested()
 })
 </script>
 

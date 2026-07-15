@@ -93,8 +93,8 @@ impl AutoSaveManager {
                     // Drop the manager lock before exiting
                     drop(save_result);
 
-                    // 退出整个应用程序（destroy 只会销毁窗口，不会结束进程）
-                    let _ = ah.exit(0);
+                    // 通知前端存档已完成，由前端决定是否退出
+                    let _ = ah.emit("app:close-ready", ());
                 });
             }
         });

@@ -65,6 +65,7 @@ ling_chat/static/frontend/
 # src-tauri/gen/schemas/ 为 JSON schema 自动生成文件，可追踪
 src-tauri/bundled_resources/
 src-tauri/.bundled_resources/
+~/.tauri/
 frontend_vue/
 .tsbuildinfo
 src-tauri/gen/android/app/src/main/assets/

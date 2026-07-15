@@ -91,20 +91,31 @@ jobs:
 
       - name: 配置 Android 签名
         run: |
-          echo "${{ secrets.ANDROID_KEY_BASE64 }}" | base64 -d > $HOME/upload-keystore.jks
+          echo "${{ secrets.ANDROID_KEY_BASE64 }}" | base64 -d > $HOME/upload-keystore.p12
           cat > src-tauri/gen/android/keystore.properties << EOF
-          storeFile=$HOME/upload-keystore.jks
+          storeFile=$HOME/upload-keystore.p12
           keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
           password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           EOF
-
+          
       - name: 构建 Android APK
-        uses: tauri-apps/tauri-action@v1
+        run: pnpm android:build
+        
+      - name: 手动签名 APK
+        run: |
+          VERSION="${{ github.event.inputs.tag_name }}"
+          APK_PATH="src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk"
+          
+          APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner 2>/dev/null | head -1)
+          
+          $APKSIGNER sign \
+            --ks $HOME/upload-keystore.p12 \
+            --ks-key-alias ${{ secrets.ANDROID_KEY_ALIAS }} \
+            --ks-pass pass:${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
+            --key-pass pass:${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
+            "$APK_PATH"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          mobile: 'android'
-          args: ''
+          ANDROID_HOME: /usr/local/lib/android/sdk
 
       - name: 上传 artifact (APK)
         uses: actions/upload-artifact@v4
