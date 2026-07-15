@@ -16,7 +16,6 @@
     'Helvetica Neue', Arial, sans-serif;
   cursor: pointer;
   text-align: justify;
-  text-align-last: justify;
   white-space: nowrap;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
   transition: all 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);

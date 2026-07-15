@@ -243,6 +243,12 @@ onMounted(() => {
   transition: all 0.4s cubic-bezier(0.7, 0, 0.2, 1);
 }
 
+/* Remove leaving elements from flex flow immediately to prevent layout jump */
+.slide-left-leave-active,
+.slide-right-leave-active {
+  position: absolute;
+}
+
 .slide-left-enter-from,
 .slide-left-leave-to {
   transform: translateX(-120%);
