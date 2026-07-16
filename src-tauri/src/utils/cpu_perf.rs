@@ -210,9 +210,7 @@ mod x86_impl {
             return PerfTier::Internet;
         }
 
-        if brand.contains("Athlon II")
-            || brand.contains("Athlon")
-            || brand.contains("Phenom")
+        if brand.contains("Athlon II") || brand.contains("Athlon") || brand.contains("Phenom")
         {
             return PerfTier::Low;
         }
@@ -231,9 +229,7 @@ mod x86_impl {
             return PerfTier::Low;
         }
 
-        if brand.contains("A8-")
-            || brand.contains("A10-")
-            || brand.contains("A12-")
+        if brand.contains("A8-") || brand.contains("A10-") || brand.contains("A12-")
         {
             return PerfTier::Medium;
         }
@@ -264,10 +260,7 @@ mod x86_impl {
                     return PerfTier::High;
                 }
 
-                if suffix == "H"
-                    || suffix == "HS"
-                    || suffix == "HX"
-                    || suffix == "X"
+                if suffix == "H" || suffix == "HS" || suffix == "HX" || suffix == "X"
                 {
                     return PerfTier::High;
                 }
@@ -302,10 +295,7 @@ mod x86_impl {
                     return PerfTier::Medium;
                 }
 
-                if suffix == "H"
-                    || suffix == "HS"
-                    || suffix == "HX"
-                    || suffix == "X"
+                if suffix == "H" || suffix == "HS" || suffix == "HX" || suffix == "X"
                 {
                     return PerfTier::Medium;
                 }
