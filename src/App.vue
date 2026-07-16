@@ -6,7 +6,8 @@
   </Teleport>
 
   <!-- 全局通知组件（直接从 uiStore 读取状态） -->
-  <Notification />
+  <!-- 与桌宠专用通知组件区分开 -->
+  <Notification v-if="route.path !== '/pet'"/>
   <AchievementToast />
   <AdventureUnlockNotify />
   <AppDialog />
