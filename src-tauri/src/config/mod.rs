@@ -79,6 +79,12 @@ pub mod keys {
     // 创意工坊
     /// GitHub Personal Access Token（可选，用于 GraphQL 获取 upvote 数）
     pub const GITHUB_TOKEN: &str = "workshop.github_token";
+
+    // 日志
+    /// 是否启用文件日志记录
+    pub const LOG_ENABLE: &str = "log.enable";
+    /// 日志文件保留天数（超过此天数的旧日志在启动时自动清理）
+    pub const LOG_RETENTION_DAYS: &str = "log.retention_days";
 }
 
 // ========== 类型化配置 ==========
@@ -617,6 +623,43 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
             "创意工坊".to_string(),
             Category {
                 subcategories: workshop_subs,
+            },
+        );
+    }
+
+    // ===== 日志配置 =====
+    {
+        let mut log_subs = BTreeMap::new();
+
+        log_subs.insert(
+            "基础设置".to_string(),
+            Subcategory {
+                description: "程序运行时文件日志的相关设置".to_string(),
+                settings: vec![
+                    ConfigSetting {
+                        key: keys::LOG_ENABLE.to_string(),
+                        value: read_setting(app, keys::LOG_ENABLE, "true"),
+                        description:
+                            "LOG_ENABLE — 是否将运行日志写入文件（位于 data/log/app/ 目录）"
+                                .to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::LOG_RETENTION_DAYS.to_string(),
+                        value: read_setting(app, keys::LOG_RETENTION_DAYS, "10"),
+                        description:
+                            "LOG_RETENTION_DAYS — 日志文件保留天数，超过的旧文件在启动时自动清理"
+                                .to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                ],
+            },
+        );
+
+        tree.insert(
+            "日志配置".to_string(),
+            Category {
+                subcategories: log_subs,
             },
         );
     }

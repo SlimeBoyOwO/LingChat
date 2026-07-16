@@ -78,7 +78,14 @@ pub fn run() {
                 .with_timer(LocalTimer)
                 .with_filter(filter.clone()),
         )
-        .with(utils::log_bridge::LogBridgeLayer.with_filter(filter))
+        .with(utils::log_bridge::LogBridgeLayer.with_filter(filter.clone()))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(utils::file_logger::LogFileWriter)
+                .with_timer(LocalTimer)
+                .with_ansi(false)
+                .with_filter(filter),
+        )
         .init();
 
     #[allow(deprecated)]
@@ -113,6 +120,26 @@ pub fn run() {
 
             let rt = tokio::runtime::Runtime::new()?;
             let (db, ai_service, chat) = rt.block_on(init::initialize(app))?;
+
+            // 初始化文件日志（从设置读取开关和保留天数）
+            {
+                let store = config::settings_store(app.handle()).ok();
+                let log_enable = store
+                    .as_ref()
+                    .and_then(|s| s.get(config::keys::LOG_ENABLE))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                let retention_days = store
+                    .as_ref()
+                    .and_then(|s| s.get(config::keys::LOG_RETENTION_DAYS))
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u32)
+                    .unwrap_or(10);
+
+                let data_dir = init::static_copy::get_data_dir();
+                utils::file_logger::init_logging(data_dir, log_enable);
+                utils::file_logger::cleanup_old_logs(retention_days);
+            }
 
             // 启动时自动清理未被引用的孤立语音文件
             match rt.block_on(init::voice_cleanup::cleanup_orphan_voice_files(
