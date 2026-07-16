@@ -85,6 +85,8 @@ pub mod keys {
     pub const LOG_ENABLE: &str = "log.enable";
     /// 日志文件保留天数（超过此天数的旧日志在启动时自动清理）
     pub const LOG_RETENTION_DAYS: &str = "log.retention_days";
+    /// 是否记录 LLM 请求体到文件（完整请求 JSON，默认关闭）
+    pub const LOG_LLM_REQUEST_BODY: &str = "log.llm_request_body";
 }
 
 // ========== 类型化配置 ==========
@@ -651,6 +653,14 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             "LOG_RETENTION_DAYS — 日志文件保留天数，超过的旧文件在启动时自动清理"
                                 .to_string(),
                         setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::LOG_LLM_REQUEST_BODY.to_string(),
+                        value: read_setting(app, keys::LOG_LLM_REQUEST_BODY, "false"),
+                        description:
+                            "LOG_LLM_REQUEST_BODY — 记录每次 LLM 请求的完整请求体 JSON 到 data/log/llm/ 目录（默认关闭）"
+                                .to_string(),
+                        setting_type: "bool".to_string(),
                     },
                 ],
             },

@@ -86,6 +86,10 @@ impl OpenAiProvider {
 impl LlmProvider for OpenAiProvider {
     async fn complete(&self, http: &Client, messages: &[LlmMessage]) -> Result<String> {
         let body = self.build_request(messages, false, None, None);
+        crate::utils::llm_request_logger::log_request_body(
+            "openai",
+            &serde_json::to_value(&body).unwrap_or_default(),
+        );
 
         let resp = http
             .post(self.endpoint())
@@ -128,6 +132,10 @@ impl LlmProvider for OpenAiProvider {
         });
 
         let body = self.build_request(messages, false, Some(tools), tool_choice_value);
+        crate::utils::llm_request_logger::log_request_body(
+            "openai",
+            &serde_json::to_value(&body).unwrap_or_default(),
+        );
 
         let resp = http
             .post(self.endpoint())
@@ -162,6 +170,10 @@ impl LlmProvider for OpenAiProvider {
 
     async fn complete_stream(&self, http: &Client, messages: &[LlmMessage]) -> Result<ChunkStream> {
         let body = self.build_request(messages, true, None, None);
+        crate::utils::llm_request_logger::log_request_body(
+            "openai",
+            &serde_json::to_value(&body).unwrap_or_default(),
+        );
         tracing::info!(
             "[OpenAI] complete_stream: thinking 字段 = {}",
             body.thinking.type_

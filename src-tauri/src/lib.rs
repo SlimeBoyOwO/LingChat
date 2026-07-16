@@ -139,6 +139,14 @@ pub fn run() {
                 let data_dir = init::static_copy::get_data_dir();
                 utils::file_logger::init_logging(data_dir, log_enable);
                 utils::file_logger::cleanup_old_logs(retention_days);
+
+                // 初始化 LLM 请求体日志（默认关闭）
+                let llm_request_log_enable = store
+                    .as_ref()
+                    .and_then(|s| s.get(config::keys::LOG_LLM_REQUEST_BODY))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                utils::llm_request_logger::init(data_dir, llm_request_log_enable);
             }
 
             // 启动时自动清理未被引用的孤立语音文件

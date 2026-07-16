@@ -217,6 +217,10 @@ impl LlmProvider for KimiCodeProvider {
 
     async fn complete(&self, http: &Client, messages: &[LlmMessage]) -> Result<String> {
         let body = self.build_request(messages, false, None, None);
+        crate::utils::llm_request_logger::log_request_body(
+            "kimicode",
+            &serde_json::to_value(&body).unwrap_or_default(),
+        );
         let resp = http
             .post(self.endpoint())
             .headers(self.headers()?)
@@ -252,6 +256,10 @@ impl LlmProvider for KimiCodeProvider {
         });
 
         let body = self.build_request(messages, false, Some(tools), tool_choice_value);
+        crate::utils::llm_request_logger::log_request_body(
+            "kimicode",
+            &serde_json::to_value(&body).unwrap_or_default(),
+        );
         let resp = http
             .post(self.endpoint())
             .headers(self.headers()?)
@@ -307,6 +315,10 @@ impl LlmProvider for KimiCodeProvider {
 
     async fn complete_stream(&self, http: &Client, messages: &[LlmMessage]) -> Result<ChunkStream> {
         let body = self.build_request(messages, true, None, None);
+        crate::utils::llm_request_logger::log_request_body(
+            "kimicode",
+            &serde_json::to_value(&body).unwrap_or_default(),
+        );
         let resp = http
             .post(self.endpoint())
             .headers(self.headers()?)

@@ -128,6 +128,10 @@ impl LlmProvider for GeminiProvider {
             system_instruction: system_instruction.as_ref(),
             generation_config: Some(generation_config),
         };
+        crate::utils::llm_request_logger::log_request_body(
+            "gemini",
+            &serde_json::to_value(&body).unwrap_or_default(),
+        );
 
         let resp = http
             .post(self.endpoint(false))
@@ -174,6 +178,10 @@ impl LlmProvider for GeminiProvider {
             system_instruction: system_instruction.as_ref(),
             generation_config: Some(generation_config),
         };
+        crate::utils::llm_request_logger::log_request_body(
+            "gemini",
+            &serde_json::to_value(&body).unwrap_or_default(),
+        );
 
         // 流式端点需要加 `&alt=sse`
         let mut url = self.endpoint(true);
