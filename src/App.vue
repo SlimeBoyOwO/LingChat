@@ -1,6 +1,9 @@
 <template>
   <router-view />
-  <CursorEffects />
+  <!-- 将光标特效 teleport 到 body，避免 #app 上的 CSS zoom 导致坐标偏移 -->
+  <Teleport to="body">
+    <CursorEffects />
+  </Teleport>
 
   <!-- 全局通知组件（直接从 uiStore 读取状态） -->
   <Notification />
@@ -27,9 +30,13 @@ import { useDialogStore } from './stores/modules/ui/dialog'
 import { useSedentaryReminder } from './composables/useSedentaryReminder'
 import { useUpdater } from './composables/useUpdater'
 import { useCanDeliver } from './composables/useCanDeliver'
+import { useZoom } from './composables/useZoom'
 
 // 激活主动对话投放条件上报（仅在此处挂载一次）
 useCanDeliver()
+
+// 激活 Ctrl+滚轮 UI 全局缩放
+useZoom()
 
 // ─── 久坐提醒 ────────────────────────────────────────────────
 useSedentaryReminder()
