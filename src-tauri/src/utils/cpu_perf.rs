@@ -154,25 +154,51 @@ mod x86_impl {
         }
     }
 
-    /// 提取 Ryzen 型号（如 7840U -> 7840，4650G -> 4650）
-    fn extract_ryzen_model(brand: &str) -> Option<u32> {
+    /// 找到品牌字符串中的 Ryzen 型号单词（如 "7840U", "4650G", "8845HS"）
+    fn find_ryzen_model_word(brand: &str) -> Option<&str> {
         for word in brand.split_whitespace() {
-            let digits: String = word
+            let digit_count = word
                 .chars()
                 .take_while(|c| c.is_ascii_digit())
-                .collect();
+                .count();
 
-            if digits.len() == 4 {
-                if let Ok(model) = digits.parse::<u32>() {
-                    return Some(model);
-                }
+            if digit_count == 4 {
+                return Some(word);
             }
         }
         None
     }
 
-    /// 提取后缀
+    /// 提取 Ryzen 型号（如 7840U -> 7840，4650G -> 4650）
+    fn extract_ryzen_model(brand: &str) -> Option<u32> {
+        let word = find_ryzen_model_word(brand)?;
+        let digits: String = word.chars().take_while(|c| c.is_ascii_digit()).collect();
+        digits.parse::<u32>().ok()
+    }
+
+    /// 提取后缀（从型号单词中提取字母后缀，如 "7840U" → "U"、"8845HS" → "HS"）
     fn extract_ryzen_suffix(brand: &str) -> &'static str {
+        // 从型号单词中提取字母后缀（主要路径）
+        if let Some(word) = find_ryzen_model_word(brand) {
+            let suffix: String = word
+                .chars()
+                .skip_while(|c| c.is_ascii_digit())
+                .collect();
+
+            return match suffix.as_str() {
+                "HX" => "HX",
+                "HS" => "HS",
+                "GE" => "GE",
+                "PRO" => "PRO",
+                "U" => "U",
+                "H" => "H",
+                "X" => "X",
+                "G" => "G",
+                _ => "",
+            };
+        }
+
+        // 回退：旧逻辑（处理型号单词不在品牌字符串中的边缘情况）
         if brand.contains("HX") {
             "HX"
         } else if brand.contains("HS") {
@@ -256,15 +282,7 @@ mod x86_impl {
             }
 
             5 => {
-                if series >= 6 {
-                    return PerfTier::High;
-                }
-
-                if suffix == "H" || suffix == "HS" || suffix == "HX" || suffix == "X"
-                {
-                    return PerfTier::High;
-                }
-
+                // U 后缀优先处理（含 AMD 官方特殊型号映射，必须在 series >= 6 之前）
                 if suffix == "U" {
                     if series <= 2 {
                         return PerfTier::Low;
@@ -281,6 +299,15 @@ mod x86_impl {
                     }
 
                     return PerfTier::Medium;
+                }
+
+                if series >= 6 {
+                    return PerfTier::High;
+                }
+
+                if suffix == "H" || suffix == "HS" || suffix == "HX" || suffix == "X"
+                {
+                    return PerfTier::High;
                 }
 
                 if series <= 2 {
@@ -445,6 +472,7 @@ mod x86_impl {
             unknown_message: None,
         }
     }
+
 }
 
 // ────────────────────────────────────────
