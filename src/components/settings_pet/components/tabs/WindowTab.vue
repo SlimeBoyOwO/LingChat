@@ -30,7 +30,7 @@
     <div class="flex flex-col pb-4 flex-1 gap-3">
       <!-- 渲染设置项卡片 (复刻原图 1、2 号卡片风格) -->
       <SettingItem
-        v-for="setting in settings"
+        v-for="setting in visibleSettings"
         :key="setting.key"
         :setting="setting"
         :is-dark-mode="isDarkMode"
@@ -95,7 +95,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive } from "vue";
+import { ref, onMounted, reactive, computed } from "vue";
 import { Save } from "lucide-vue-next";
 import {
   getEnvConfigByKey,
@@ -110,6 +110,14 @@ defineProps<{
 }>();
 
 const settings = ref<Record<string, ConfigItem>>({});
+const dedicatedVisualKeys = new Set(['VD_API_KEY', 'VD_BASE_URL', 'VD_MODEL']);
+const visibleSettings = computed(() => {
+  const allSettings = Object.values(settings.value);
+  const followsChatModel = settings.value.VD_FOLLOW_CHAT_MODEL?.value === 'true';
+  return followsChatModel
+    ? allSettings.filter((setting) => !dedicatedVisualKeys.has(setting.key))
+    : allSettings;
+});
 const saveStatus = reactive({
   message: "",
   color: "#10b981", // 成功颜色
@@ -143,6 +151,7 @@ const loadConfig = async () => {
   const configKeys = [
     'ENABLE_PROACTIVE_SYSTEM',
     'MAX_PROACTIVE_TIMES',
+    'VD_FOLLOW_CHAT_MODEL',
     'VD_API_KEY',
     'VD_BASE_URL',
     'VD_MODEL',

@@ -4,7 +4,7 @@
     v-if="uiStore.scheduleView === 'proactive_settings'"
     class="grid grid-cols-1 sm:grid-cols-1 lg:grid-cols-1 p-1"
   >
-    <div v-for="setting in settings" :key="setting.key" class="mb-6">
+    <div v-for="setting in visibleSettings" :key="setting.key" class="mb-6">
       <!-- 使用 SettingItem 组件渲染不同类型的输入控件 -->
       <SettingItem :setting="setting" @update:value="(value) => (setting.value = value)" />
     </div>
@@ -23,7 +23,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive } from 'vue'
+import { ref, onMounted, reactive, computed } from 'vue'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { getEnvConfigByKey, saveEnvConfigSettings } from '@/api/services/config'
 import { reloadProactiveSystem } from '@/api/services/schedule'
@@ -31,6 +31,14 @@ import type { ConfigItem } from '@/api/services/config'
 import SettingItem from '@/components/base/items/SettingItem.vue'
 const uiStore = useUIStore()
 const settings = ref<Record<string, ConfigItem>>({})
+const dedicatedVisualKeys = new Set(['VD_API_KEY', 'VD_BASE_URL', 'VD_MODEL'])
+const visibleSettings = computed(() => {
+  const allSettings = Object.values(settings.value)
+  const followsChatModel = settings.value.VD_FOLLOW_CHAT_MODEL?.value === 'true'
+  return followsChatModel
+    ? allSettings.filter((setting) => !dedicatedVisualKeys.has(setting.key))
+    : allSettings
+})
 const saveStatus = reactive({
   message: '',
   color: 'var(--success-color)',
@@ -65,6 +73,7 @@ const loadConfig = async () => {
   const configKeys = [
     'ENABLE_PROACTIVE_SYSTEM',
     'MAX_PROACTIVE_TIMES',
+    'VD_FOLLOW_CHAT_MODEL',
     'VD_API_KEY',
     'VD_BASE_URL',
     'VD_MODEL',

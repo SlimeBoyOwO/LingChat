@@ -707,6 +707,16 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                 description: "主动对话时调用的 Vision LLM 视觉分析模型以及截图分析设置".to_string(),
                 settings: vec![
                     ConfigSetting {
+                        key: proactive::keys::VD_FOLLOW_CHAT_MODEL.to_string(),
+                        value: read_setting(
+                            app,
+                            proactive::keys::VD_FOLLOW_CHAT_MODEL,
+                            "false",
+                        ),
+                        description: "VD_FOLLOW_CHAT_MODEL — 跟随当前对话模型（模型需支持视觉输入及 OpenAI 兼容接口）".to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
                         key: proactive::keys::VD_API_KEY.to_string(),
                         value: read_setting(app, proactive::keys::VD_API_KEY, ""),
                         description: "VD_API_KEY — 视觉模型 API Key".to_string(),

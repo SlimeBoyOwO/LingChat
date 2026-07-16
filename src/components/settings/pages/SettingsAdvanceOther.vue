@@ -82,7 +82,7 @@
 
           <form @submit.prevent="saveSettings">
             <div
-              v-for="setting in selectedSubcategory.settings"
+              v-for="setting in visibleSettings"
               :key="setting.key"
               class="mb-6"
             >
@@ -158,6 +158,19 @@ const selectedSubcategory = computed(() => {
     return configData.value[activeSelection.category]?.subcategories[activeSelection.subcategory]
   }
   return null
+})
+
+const dedicatedVisualKeys = new Set(['VD_API_KEY', 'VD_BASE_URL', 'VD_MODEL'])
+const visibleSettings = computed(() => {
+  const allSettings = selectedSubcategory.value?.settings || []
+  const followsChatModel =
+    allSettings.find((setting: { key: string; value: string }) => {
+      return setting.key === 'VD_FOLLOW_CHAT_MODEL'
+    })?.value === 'true'
+
+  return followsChatModel
+    ? allSettings.filter((setting: { key: string }) => !dedicatedVisualKeys.has(setting.key))
+    : allSettings
 })
 
 // --- 方法定义 ---
