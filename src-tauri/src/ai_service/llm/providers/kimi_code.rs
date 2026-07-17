@@ -127,6 +127,49 @@ impl KimiCodeProvider {
             }
         }
 
+        // Anthropic Messages API 的 tool 格式为 {name, description, input_schema}
+        // 与项目内部通用的 OpenAI 格式 {type, function} 不同，需要在此转换
+        let anthropic_tools: Option<Vec<AnthropicTool<'a>>> =
+            tools.map(|ts| {
+                ts.iter()
+                    .map(|t| AnthropicTool {
+                        name: &t.function.name,
+                        description: &t.function.description,
+                        input_schema: &t.function.parameters,
+                    })
+                    .collect()
+            });
+
+        // Anthropic tool_choice 格式为 {"type": "auto"|"any"|"tool", "name": "..."}
+        let anthropic_tool_choice: Option<AnthropicToolChoice> =
+            tool_choice.and_then(|tc| match tc {
+                serde_json::Value::String(s) => match s.as_str() {
+                    "auto" => Some(AnthropicToolChoice {
+                        type_: "auto".to_string(),
+                        name: None,
+                    }),
+                    "any" | "required" => Some(AnthropicToolChoice {
+                        type_: "any".to_string(),
+                        name: None,
+                    }),
+                    "none" => None,
+                    _ => Some(AnthropicToolChoice {
+                        type_: "auto".to_string(),
+                        name: None,
+                    }),
+                },
+                serde_json::Value::Object(obj) => {
+                    let type_ = obj
+                        .get("type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("auto")
+                        .to_string();
+                    let name = obj.get("name").and_then(|v| v.as_str()).map(String::from);
+                    Some(AnthropicToolChoice { type_, name })
+                }
+                _ => None,
+            });
+
         MessagesRequest {
             model: &self.model,
             max_tokens: 65536,
@@ -139,17 +182,8 @@ impl KimiCodeProvider {
                 Some(system_text)
             },
             messages: conversation,
-            tools,
-            tool_choice,
-            thinking: if self.enable_thinking {
-                Some(ThinkingConfig {
-                    type_: "enabled".to_string(),
-                })
-            } else {
-                Some(ThinkingConfig {
-                    type_: "disabled".to_string(),
-                })
-            },
+            tools: anthropic_tools,
+            tool_choice: anthropic_tool_choice,
         }
     }
 
@@ -449,11 +483,9 @@ struct MessagesRequest<'a> {
     system: Option<String>,
     messages: Vec<AnthropicMessage<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tools: Option<&'a [ToolDefinition]>,
+    tools: Option<Vec<AnthropicTool<'a>>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tool_choice: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    thinking: Option<ThinkingConfig>,
+    tool_choice: Option<AnthropicToolChoice>,
 }
 
 #[derive(Serialize)]
@@ -462,10 +494,21 @@ struct AnthropicMessage<'a> {
     content: &'a str,
 }
 
+/// Anthropic Messages API 的 tool 定义格式：{name, description, input_schema}
 #[derive(Serialize)]
-struct ThinkingConfig {
+struct AnthropicTool<'a> {
+    name: &'a str,
+    description: &'a str,
+    input_schema: &'a serde_json::Value,
+}
+
+/// Anthropic Messages API 的 tool_choice 格式：{"type": "auto" | "any" | "tool", "name": "..."}
+#[derive(Serialize)]
+struct AnthropicToolChoice {
     #[serde(rename = "type")]
     type_: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
 }
 
 #[derive(Deserialize)]
