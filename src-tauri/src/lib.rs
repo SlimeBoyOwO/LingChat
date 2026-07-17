@@ -70,7 +70,8 @@ pub struct AppState {
 pub fn run() {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,ling_chat_lib=info"))
-        .add_directive("sqlx=warn".parse().unwrap());
+        .add_directive("sqlx=warn".parse().unwrap())
+        .add_directive("genai=error".parse().unwrap());
 
     tracing_subscriber::registry()
         .with(

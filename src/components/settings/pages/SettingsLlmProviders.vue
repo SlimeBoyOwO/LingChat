@@ -304,8 +304,9 @@
                   @change="onProviderChange"
                   class="w-full appearance-none pl-3 pr-8 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors cursor-pointer"
                 >
+                  <option value="deepseek" class="bg-gray-800 text-white">DeepSeek</option>
                   <option value="openai" class="bg-gray-800 text-white">
-                    OpenAI 兼容 (DeepSeek / 通义千问 / Ollama)
+                    OpenAI 兼容
                   </option>
                   <option value="lmstudio" class="bg-gray-800 text-white">LM Studio（本地）</option>
                   <option value="gemini" class="bg-gray-800 text-white">Gemini</option>
@@ -342,7 +343,7 @@
                 :placeholder="
                   editing.provider === 'lmstudio'
                     ? '如: llama-3.2-3b-instruct'
-                    : '如: deepseek-chat'
+                    : '如: gpt-4o'
                 "
                 class="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors placeholder:text-white/20"
               />
@@ -589,10 +590,10 @@ function emptyProvider(): LlmProviderConfig {
   return {
     id: '',
     label: '',
-    provider: 'openai',
-    model: '',
+    provider: 'deepseek',
+    model: 'deepseek-v4-flash',
     api_key: '',
-    base_url: '',
+    base_url: 'https://api.deepseek.com',
     temperature: null,
     top_p: null,
     enable_thinking: false,
@@ -621,7 +622,10 @@ async function restartApp() {
 // LM Studio 兼容：本质是 OpenAI 协议，这里只帮用户预填默认地址和假 key
 function onProviderChange() {
   resetModelList()
-  if (editing.provider === 'lmstudio') {
+  if (editing.provider === 'deepseek') {
+    editing.model = 'deepseek-v4-flash'
+    editing.base_url = 'https://api.deepseek.com'
+  } else if (editing.provider === 'lmstudio') {
     editing.base_url = 'http://localhost:1234/v1'
     editing.api_key = 'sk-lingchat70'
     lmstudioAutoFilled.value = true
