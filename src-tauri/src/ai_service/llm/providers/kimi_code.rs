@@ -54,6 +54,7 @@ pub struct KimiCodeProvider {
     temperature: Option<f64>,
     top_p: Option<f64>,
     enable_thinking: bool,
+    reasoning_effort: Option<String>,
 }
 
 impl KimiCodeProvider {
@@ -76,6 +77,7 @@ impl KimiCodeProvider {
             temperature: cfg.temperature,
             top_p: cfg.top_p,
             enable_thinking: cfg.enable_thinking,
+            reasoning_effort: cfg.reasoning_effort.clone(),
         })
     }
 
@@ -127,6 +129,9 @@ impl KimiCodeProvider {
             }
         }
 
+        // 推理深度（K3）：对齐 kimi-code 的做法，在 thinking 中携带
+        // effort: "low"|"high"|"max"，未设置则不携带 effort 字段。
+        let reasoning_effort = self.reasoning_effort.clone().filter(|e| !e.is_empty());
         // Anthropic Messages API 的 tool 格式为 {name, description, input_schema}
         // 与项目内部通用的 OpenAI 格式 {type, function} 不同，需要在此转换
         let anthropic_tools: Option<Vec<AnthropicTool<'a>>> =
@@ -182,6 +187,22 @@ impl KimiCodeProvider {
                 Some(system_text)
             },
             messages: conversation,
+            tools,
+            tool_choice,
+            thinking: {
+                // 设置了推理深度时视为启用思考链（K3 始终开启思考）
+                if reasoning_effort.is_some() || self.enable_thinking {
+                    Some(ThinkingConfig {
+                        type_: "enabled".to_string(),
+                        effort: reasoning_effort.clone(),
+                    })
+                } else {
+                    Some(ThinkingConfig {
+                        type_: "disabled".to_string(),
+                        effort: None,
+                    })
+                }
+            },
             tools: anthropic_tools,
             tool_choice: anthropic_tool_choice,
         }
@@ -507,6 +528,9 @@ struct AnthropicTool<'a> {
 struct AnthropicToolChoice {
     #[serde(rename = "type")]
     type_: String,
+    /// K3 推理深度："low" | "high" | "max"，未设置则不携带该字段
+    #[serde(skip_serializing_if = "Option::is_none")]
+    effort: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
 }
