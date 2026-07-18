@@ -54,6 +54,7 @@ pub struct KimiCodeProvider {
     temperature: Option<f64>,
     top_p: Option<f64>,
     enable_thinking: bool,
+    reasoning_effort: Option<String>,
 }
 
 impl KimiCodeProvider {
@@ -76,6 +77,7 @@ impl KimiCodeProvider {
             temperature: cfg.temperature,
             top_p: cfg.top_p,
             enable_thinking: cfg.enable_thinking,
+            reasoning_effort: cfg.reasoning_effort.clone(),
         })
     }
 
@@ -127,6 +129,10 @@ impl KimiCodeProvider {
             }
         }
 
+        // 推理深度（K3）：对齐 kimi-code 的做法，在 thinking 中携带
+        // effort: "low"|"high"|"max"，未设置则不携带 effort 字段。
+        let reasoning_effort = self.reasoning_effort.clone().filter(|e| !e.is_empty());
+
         MessagesRequest {
             model: &self.model,
             max_tokens: 65536,
@@ -141,14 +147,19 @@ impl KimiCodeProvider {
             messages: conversation,
             tools,
             tool_choice,
-            thinking: if self.enable_thinking {
-                Some(ThinkingConfig {
-                    type_: "enabled".to_string(),
-                })
-            } else {
-                Some(ThinkingConfig {
-                    type_: "disabled".to_string(),
-                })
+            thinking: {
+                // 设置了推理深度时视为启用思考链（K3 始终开启思考）
+                if reasoning_effort.is_some() || self.enable_thinking {
+                    Some(ThinkingConfig {
+                        type_: "enabled".to_string(),
+                        effort: reasoning_effort.clone(),
+                    })
+                } else {
+                    Some(ThinkingConfig {
+                        type_: "disabled".to_string(),
+                        effort: None,
+                    })
+                }
             },
         }
     }
@@ -466,6 +477,9 @@ struct AnthropicMessage<'a> {
 struct ThinkingConfig {
     #[serde(rename = "type")]
     type_: String,
+    /// K3 推理深度："low" | "high" | "max"，未设置则不携带该字段
+    #[serde(skip_serializing_if = "Option::is_none")]
+    effort: Option<String>,
 }
 
 #[derive(Deserialize)]
