@@ -284,6 +284,29 @@
             @submit.prevent="saveCurrent"
             class="flex flex-col gap-4 overflow-y-auto flex-1 pr-1"
           >
+            <!-- Presets -->
+            <div class="flex flex-col gap-2">
+              <label class="text-xs font-medium text-white/60">预设（快速配置）</label>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  v-for="preset in presets"
+                  :key="preset.key"
+                  type="button"
+                  class="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors"
+                  :class="
+                    editing.label === preset.label &&
+                    editing.provider === preset.provider &&
+                    editing.model === preset.model
+                      ? 'bg-brand/20 text-brand border-brand/40'
+                      : 'bg-white/5 text-white/60 border-white/15 hover:bg-white/10 hover:text-white/80 hover:border-white/25'
+                  "
+                  @click="applyPreset(preset)"
+                >
+                  {{ preset.label }}
+                </button>
+              </div>
+            </div>
+
             <!-- Label -->
             <div class="flex flex-col gap-1">
               <label class="text-xs font-medium text-white/60">名称</label>
@@ -304,8 +327,9 @@
                   @change="onProviderChange"
                   class="w-full appearance-none pl-3 pr-8 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors cursor-pointer"
                 >
+                  <option value="deepseek" class="bg-gray-800 text-white">DeepSeek</option>
                   <option value="openai" class="bg-gray-800 text-white">
-                    OpenAI 兼容 (DeepSeek / 通义千问 / Ollama)
+                    OpenAI 兼容
                   </option>
                   <option value="lmstudio" class="bg-gray-800 text-white">LM Studio（本地）</option>
                   <option value="gemini" class="bg-gray-800 text-white">Gemini</option>
@@ -342,7 +366,7 @@
                 :placeholder="
                   editing.provider === 'lmstudio'
                     ? '如: llama-3.2-3b-instruct'
-                    : '如: deepseek-chat'
+                    : '如: gpt-4o'
                 "
                 class="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors placeholder:text-white/20"
               />
@@ -407,6 +431,39 @@
               >
                 {{ modelsMessage }}
               </p>
+            </div>
+
+            <!-- Reasoning effort (K3) -->
+            <div v-if="showReasoningEffort" class="flex flex-col gap-1">
+              <label class="text-xs font-medium text-white/60">推理深度（K3 支持）</label>
+              <div class="relative">
+                <select
+                  v-model="editing.reasoning_effort"
+                  class="w-full appearance-none pl-3 pr-8 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors cursor-pointer"
+                >
+                  <option :value="null" class="bg-gray-800 text-white">默认（跟随模型）</option>
+                  <option value="low" class="bg-gray-800 text-white">Low（低）</option>
+                  <option value="high" class="bg-gray-800 text-white">High（高）</option>
+                  <option value="max" class="bg-gray-800 text-white">Max（最强）</option>
+                </select>
+                <div
+                  class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5"
+                >
+                  <svg
+                    class="w-4 h-4 text-white/40"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
+                </div>
+              </div>
             </div>
 
             <!-- API Key -->
@@ -553,7 +610,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive } from 'vue'
+import { ref, onMounted, reactive, computed, watch } from 'vue'
 import { useLlmProvidersStore } from '@/stores/modules/llm-providers'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { invoke } from '@tauri-apps/api/core'
@@ -566,6 +623,79 @@ import { relaunch } from '@tauri-apps/plugin-process'
 
 const store = useLlmProvidersStore()
 const uiStore = useUIStore()
+
+// ---- 预设 ----
+interface LlmPreset {
+  key: string
+  label: string
+  provider: string
+  model: string
+  base_url: string
+}
+
+const presets: LlmPreset[] = [
+  {
+    key: 'deepseek-v4-flash',
+    label: 'DeepSeek V4 Flash',
+    provider: 'openai',
+    model: 'deepseek-v4-flash',
+    base_url: 'https://api.deepseek.com',
+  },
+  {
+    key: 'deepseek-v4-pro',
+    label: 'DeepSeek V4 Pro',
+    provider: 'openai',
+    model: 'deepseek-v4-pro',
+    base_url: 'https://api.deepseek.com',
+  },
+  {
+    key: 'qwen-max',
+    label: '通义千问 Max',
+    provider: 'openai',
+    model: 'qwen3.7-max',
+    base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  },
+  {
+    key: 'qwen-plus',
+    label: '通义千问 Plus',
+    provider: 'openai',
+    model: 'qwen3.7-plus',
+    base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  },
+  {
+    key: 'kimi',
+    label: 'Kimi K2.6',
+    provider: 'openai',
+    model: 'kimi-k2.6',
+    base_url: 'https://api.moonshot.cn/v1',
+  },
+  {
+    key: 'ollama',
+    label: 'Ollama',
+    provider: 'openai',
+    model: '',
+    base_url: 'http://localhost:11434/v1',
+  },
+  {
+    key: 'lmstudio',
+    label: 'LM Studio',
+    provider: 'lmstudio',
+    model: '',
+    base_url: 'http://localhost:1234/v1',
+  },
+]
+
+function applyPreset(preset: LlmPreset) {
+  editing.label = preset.label
+  editing.provider = preset.provider
+  editing.model = preset.model
+  editing.base_url = preset.base_url
+  // 重置自动填充标记
+  lmstudioAutoFilled.value = false
+  kimicodeAutoFilled.value = false
+  resetModelList()
+}
+// --------------------
 
 const sidePanel = ref<'edit' | 'test' | null>(null)
 const editing = reactive<LlmProviderConfig>(emptyProvider())
@@ -589,13 +719,14 @@ function emptyProvider(): LlmProviderConfig {
   return {
     id: '',
     label: '',
-    provider: 'openai',
-    model: '',
+    provider: 'deepseek',
+    model: 'deepseek-v4-flash',
     api_key: '',
-    base_url: '',
+    base_url: 'https://api.deepseek.com',
     temperature: null,
     top_p: null,
     enable_thinking: false,
+    reasoning_effort: null,
   }
 }
 
@@ -603,6 +734,16 @@ function closePanel() {
   sidePanel.value = null
   saveMessage.value = ''
 }
+
+// K3 推理深度：仅 Kimi Code 且模型为 k3 时显示
+const showReasoningEffort = computed(
+  () => editing.provider === 'kimicode' && editing.model === 'k3',
+)
+
+// 切到不支持推理深度的模型/提供商时清掉已选档位，避免残留值被静默发往其他模型
+watch([() => editing.provider, () => editing.model], () => {
+  if (!showReasoningEffort.value) editing.reasoning_effort = null
+})
 
 function resetModelList() {
   availableModels.value = []
@@ -621,7 +762,10 @@ async function restartApp() {
 // LM Studio 兼容：本质是 OpenAI 协议，这里只帮用户预填默认地址和假 key
 function onProviderChange() {
   resetModelList()
-  if (editing.provider === 'lmstudio') {
+  if (editing.provider === 'deepseek') {
+    editing.model = 'deepseek-v4-flash'
+    editing.base_url = 'https://api.deepseek.com'
+  } else if (editing.provider === 'lmstudio') {
     editing.base_url = 'http://localhost:1234/v1'
     editing.api_key = 'sk-lingchat70'
     lmstudioAutoFilled.value = true

@@ -32,6 +32,9 @@ pub struct LlmProviderConfig {
     pub top_p: Option<f64>,
     #[serde(default)]
     pub enable_thinking: bool,
+    /// 推理深度（如 "low" / "high" / "max"），目前仅 Kimi Code 的 K3 模型使用。
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
 }
 
 impl LlmProviderConfig {
@@ -49,6 +52,7 @@ impl LlmProviderConfig {
             temperature: self.temperature,
             top_p: self.top_p,
             enable_thinking: self.enable_thinking,
+            reasoning_effort: self.reasoning_effort.clone(),
         }
     }
 }
@@ -235,6 +239,7 @@ pub fn migrate_if_needed(app: &AppHandle) {
             temperature: old_temperature,
             top_p: old_top_p,
             enable_thinking: old_thinking,
+            reasoning_effort: None,
         });
         chat_id = Some(id);
     }
@@ -267,6 +272,7 @@ pub fn migrate_if_needed(app: &AppHandle) {
                 temperature: None,
                 top_p: None,
                 enable_thinking: false,
+                reasoning_effort: None,
             });
             translate_id = Some(id);
         }

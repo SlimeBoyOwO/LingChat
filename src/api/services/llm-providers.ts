@@ -10,6 +10,7 @@ export interface LlmProviderConfig {
   temperature: number | null
   top_p: number | null
   enable_thinking: boolean
+  reasoning_effort: string | null
 }
 
 export interface LlmProvidersResponse {
