@@ -11,8 +11,11 @@
     <Transition name="picker-fade">
       <div
         v-if="isOpen"
-        class="fixed inset-0 z-[9999] flex items-end justify-center"
+        ref="dialogRef"
+        tabindex="-1"
+        class="fixed inset-0 z-[9999] flex items-end justify-center outline-none"
         @click.self="onBackdropClick"
+        @keydown.esc="onEsc"
       >
         <!-- 背景遮罩 -->
         <div
@@ -69,7 +72,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount, onUnmounted, watch, nextTick } from 'vue'
 import { Camera, Image } from 'lucide-vue-next'
 import { useImageSourcePicker } from '@/composables/useImageSourcePicker'
 
@@ -81,6 +84,8 @@ const {
   pickFromGallery,
   cancel,
 } = useImageSourcePicker()
+
+const dialogRef = ref<HTMLDivElement | null>(null)
 
 async function onCamera() {
   await pickFromCamera()
@@ -98,8 +103,42 @@ function onBackdropClick() {
   cancel()
 }
 
-onMounted(() => init())
-onUnmounted(() => destroy())
+function onEsc() {
+  cancel()
+}
+
+// 用户切到后台(扣 home / 拉下通知中心 / 弹出权限框等)时自动 cancel,
+// 避免 useScreenshot.isCapturing 永远卡 true。
+function onVisibilityChange() {
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+    cancel()
+  }
+}
+
+// sheet 打开时自动 focus 容器,以接收 keydown.esc。
+watch(
+  isOpen,
+  (open) => {
+    if (open) {
+      nextTick(() => dialogRef.value?.focus())
+    }
+  },
+)
+
+onMounted(() => {
+  init()
+  document.addEventListener('visibilitychange', onVisibilityChange)
+})
+
+// 路由切换 / 父组件卸载时兜底 cancel,防止 isCapturing 卡死。
+onBeforeUnmount(() => {
+  cancel()
+})
+
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+  destroy()
+})
 </script>
 
 <style scoped>

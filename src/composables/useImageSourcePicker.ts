@@ -25,6 +25,15 @@ const isOpen = ref(false)
 let unlistenRequest: UnlistenFn | null = null
 let initCount = 0
 
+// 当前进行中的选图会话 controller,每次 pickFromCamera / pickFromGallery
+// 都会被新的 controller 取代。旧 controller.abort() 同步撤销所有挂在它
+// signal 上的 listener,避免上一次未完成的 session cleanup 错杀这次的 input。
+let activeController: AbortController | null = null
+
+// 30s 兑底超时:用户进入系统相机 / 相册后即使扣 home 键再也不回 webview,
+// 也能 30s 后强制 cleanup,避免残留 input 和永远不会触发的 focus listener。
+const PICK_TIMEOUT_MS = 30_000
+
 export function useImageSourcePicker() {
   function init() {
     if (initCount++ > 0) return
@@ -85,6 +94,28 @@ interface InputAttrs {
 }
 
 async function readFileAsBase64(attrs: InputAttrs): Promise<void> {
+  // 撤销上一次还在飞行的 session,同步清掉旧 focus listener / 超时器。
+  // 避免上一次的 finish() 误杀这一次的 input / change。
+  activeController?.abort()
+  const controller = new AbortController()
+  activeController = controller
+  const { signal } = controller
+
+  // 30s 兜底超时:用户进入系统选择器后即使扣 home 不回,
+  // 也能强制 cleanup。
+  // finish / timeoutId 提到外面,让 setTimeout 与 Promise 体都能访问。
+  let timeoutId: ReturnType<typeof setTimeout> | null = null
+  let finish: () => void = () => {}
+
+  timeoutId = setTimeout(() => {
+    if (signal.aborted) return
+    console.warn('[ImageSourcePicker] pick timeout, forcing cancel')
+    invoke('cancel_screenshot').catch((e) =>
+      console.error('[ImageSourcePicker] cancel_screenshot failed:', e),
+    )
+    finish()
+  }, PICK_TIMEOUT_MS)
+
   return new Promise<void>((resolve) => {
     const input = document.createElement('input')
     input.type = 'file'
@@ -95,24 +126,29 @@ async function readFileAsBase64(attrs: InputAttrs): Promise<void> {
     input.style.top = '0'
 
     let settled = false
-    const finish = () => {
+    finish = () => {
       if (settled) return
       settled = true
+      if (timeoutId !== null) clearTimeout(timeoutId)
       input.remove()
-      window.removeEventListener('focus', onFocusBack, true)
       resolve()
+      // 不需要手动 removeEventListener:
+      // focus / cancel / change 都是挂在 signal 上的,
+      // controller.abort() 会同步卸载。
+      // 下一次 pickFromXxx 调用时 controller.abort() 会一并处理。
     }
 
-    // 用户从系统选择器回来,会触发 window focus 事件;用来清掉残留 input。
-    const onFocusBack = () => {
-      // 延迟一点再清,避免 change 还没派发就被回收。
-      setTimeout(finish, 1500)
-    }
-    window.addEventListener('focus', onFocusBack, true)
+    // 用户从系统选择器回 webview 会触发 window focus 事件,
+    // 此时 input 如果没被收起(change 已处理完),清掉它。
+    // 为了避免 “change 还未派发就被收”,
+    // 实际上上一个 click() 后 change 是同步调度到的,
+    // 所以这里不再延迟 finish，完全靠 controller.abort 走。
+    window.addEventListener('focus', finish, { signal, capture: true })
 
     input.addEventListener(
       'change',
       async () => {
+        if (signal.aborted) return
         const file = input.files?.[0]
         if (!file) {
           // 用户没选,直接走 cancel。
@@ -140,7 +176,7 @@ async function readFileAsBase64(attrs: InputAttrs): Promise<void> {
           finish()
         }
       },
-      { once: true },
+      { once: true, signal },
     )
 
     document.body.appendChild(input)

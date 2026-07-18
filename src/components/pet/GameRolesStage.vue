@@ -120,7 +120,7 @@ const {
 const titleText = computed(() => {
   if (isAndroid()) {
     return hasScreenshot.value
-      ? '点击重新拍照，长按清除'
+      ? '点击重新拍照'
       : '拍照或选图提问'
   }
   return hasScreenshot.value
