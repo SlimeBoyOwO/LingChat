@@ -11,7 +11,6 @@
   <AchievementToast />
   <AdventureUnlockNotify />
   <AppDialog />
-  <ImageSourcePicker />
 </template>
 
 <script setup lang="ts">
@@ -25,7 +24,6 @@ import Notification from './components/ui/Notification.vue'
 import AchievementToast from './components/ui/AchievementToast.vue'
 import AdventureUnlockNotify from './components/ui/AdventureUnlockNotify.vue'
 import AppDialog from './components/ui/AppDialog.vue'
-import ImageSourcePicker from './components/ui/ImageSourcePicker.vue'
 import { initUIStore } from './stores/modules/ui/ui'
 import { useLlmProvidersStore } from './stores/modules/llm-providers'
 import { useAchievementStore } from './stores/modules/ui/achievement'
