@@ -42,12 +42,12 @@
       </div>
     </MenuItem>
 
-    <MenuItem title="创建人物" size="small">
+    <MenuItem title="打开人物文件夹" size="small">
       <template #header>
-        <UserPlus :size="20" />
+        <FolderOpen :size="20" />
       </template>
       <div class="space-y-2">
-        <Button type="big" @click="openCreateModal">打开创建向导</Button>
+        <Button type="big" @click="openCharacterFolder">打开人物文件夹</Button>
       </div>
     </MenuItem>
 
@@ -85,22 +85,16 @@
       <Button type="big" @click="openCreativeWeb">进入创意工坊</Button>
     </MenuItem>
 
-    <SettingsCharacterCreate
-      :visible="isCreateModalVisible"
-      @close="closeCreateModal"
-      @created="handleCharacterCreated"
-    />
   </MenuPage>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
-import { Birdhouse, PackageOpen, Rabbit, RefreshCcw, UserPlus } from 'lucide-vue-next'
+import { Birdhouse, FolderOpen, PackageOpen, Rabbit, RefreshCcw } from 'lucide-vue-next'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { invoke } from '@tauri-apps/api/core'
 
 import CharacterCard from '../../ui/Menu/CharacterCard.vue'
-import SettingsCharacterCreate from './SettingsCharacterCreate.vue'
 import { Button } from '../../base'
 import { MenuItem, MenuPage } from '../../ui'
 import { characterGetAll } from '../../../api/services/character'
@@ -125,8 +119,6 @@ interface CharacterCardData {
 const characters = ref<CharacterCardData[]>([])
 const currentPage = ref(1)
 const totalPages = ref(1)
-const isCreateModalVisible = ref(false)
-
 const gameStore = useGameStore()
 const uiStore = useUIStore()
 const dialogStore = useDialogStore()
@@ -192,23 +184,8 @@ const handleImport = async () => {
   await refreshCharacters()
 }
 
-const openCreateModal = () => {
-  isCreateModalVisible.value = true
-}
-
-const closeCreateModal = () => {
-  isCreateModalVisible.value = false
-}
-
-const handleCharacterCreated = async () => {
-  isCreateModalVisible.value = false
-  currentPage.value = 1
-  await loadCharacters()
-  uiStore.showSuccess({
-    title: '创建成功',
-    message: '新人物已创建并刷新到角色列表',
-    duration: 3000,
-  })
+const openCharacterFolder = async () => {
+  await invoke('open_characters_folder')
 }
 
 const handleSettingsSaved = () => {
