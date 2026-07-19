@@ -13,6 +13,7 @@
     >
       <Settings />
     </button>
+    <RoleExportMenu :role-id="id" :role-name="name" />
 
     <div
       class="flex flex-col items-center w-28 md:w-32 shrink-0 space-y-2 border-r border-white/10 pr-4"
@@ -201,6 +202,7 @@ import { ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { Icon } from '../../base'
 import SettingsCharacterInfo from '@/components/settings/pages/SettingsCharacterInfo.vue'
+import RoleExportMenu from '@/components/ui/RoleExportMenu.vue'
 import {
   selectCharacter as selectCharacterApi,
   selectClothes as selectClothesApi,

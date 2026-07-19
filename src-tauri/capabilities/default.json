@@ -23,10 +23,15 @@
     "opener:default",
     "screenshots:default",
     "fs:default",
+    "dialog:default",
     "notification:default",
     {
       "identifier": "fs:scope",
-      "allow": [{ "path": "$RESOURCE/**" }]
+      "allow": [
+        { "path": "$RESOURCE/**" },
+        { "path": "$APPCACHE/**" },
+        { "path": "$APPDATA/**" }
+      ]
     }
   ]
 }

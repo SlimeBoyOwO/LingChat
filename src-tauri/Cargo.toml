@@ -55,6 +55,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 sevenz-rust2 = "0.21"
 sha2 = "0.10"
 tempfile = "3"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 # ─── LAN Sync ────────────────────────────────────────────────
 axum = { version = "0.7", features = ["tokio"] }
