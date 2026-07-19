@@ -1,4 +1,4 @@
-//! 用户主动截图功能：全屏捕获 → 覆盖窗口框选 → 裁剪结果回传。
+﻿//! 用户主动截图功能：全屏捕获 → 覆盖窗口框选 → 裁剪结果回传。
 
 use tauri::{AppHandle, Emitter, Manager};
 #[cfg(desktop)]
@@ -9,6 +9,19 @@ use crate::ai_service::screen_analyzer::capture_screen_raw_jpeg;
 /// 启动截图流程：捕获全屏 → 存储到临时状态 → 创建全屏覆盖窗口供用户框选。
 #[tauri::command]
 pub async fn start_screenshot(app: AppHandle) -> Result<(), String> {
+    // Android: 移动端没有 GDI 截屏能力,改走"拍照 + 调取相册"流程。
+    // 不再抓屏、不再创建覆盖层;而是 emit `screenshot:request-source` 事件,
+    // 让前端弹出底部 sheet(拍照 / 相册 / 取消)。
+    // 用户选好图后,前端调 confirm_screenshot 把图片 base64 传回来,
+    // 走和桌面端同一份数据通道。
+    #[cfg(target_os = "android")]
+    {
+        app.emit("screenshot:request-source", ())
+            .map_err(|e| format!("emit screenshot:request-source failed: {}", e))?;
+        tracing::info!("[Screenshot] Android picker requested.");
+        return Ok(());
+    }
+
     // 如果已有覆盖窗口，先关闭
     if let Some(overlay) = app.get_webview_window("screenshot-overlay") {
         let _ = overlay.close();
