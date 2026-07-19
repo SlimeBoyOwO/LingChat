@@ -231,13 +231,13 @@ export function useRoleImportExport() {
       store.export.message = '\u6b63\u5728\u538b\u7f29...'
       store.export.percent = -1
 
-      // Single backend invoke: compress to temp + std::fs::copy to dest + cleanup temp.
-      // Bypasses Tauri fs scope (std::fs not subject to plugin-fs permissions).
+      // Desktop uses native filesystem copy; Android SAF uses android-fs in the backend.
       const res: ExportResult = await exportRoleToPath({
         roleId,
         format,
         destPath: savedPath,
       })
+      console.log('[RoleArchive] doExport backend wrote destination: %s', res.temp_path)
 
       store.export.phase = 'done'
       store.export.savedPath = savedPath

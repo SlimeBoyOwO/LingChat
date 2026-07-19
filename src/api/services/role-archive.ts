@@ -72,9 +72,8 @@ export async function exportRole(params: {
   })
 }
 
-// Export role and copy to user-chosen dest path in one backend invoke.
-// Uses std::fs::copy on the backend (not subject to Tauri fs scope), avoiding
-// plugin-fs.copyFile permission issues for paths outside $APPCACHE/$APPDATA.
+// Export and write to the user-chosen destination in one backend invoke.
+// Desktop paths use std::fs; Android content URIs use android-fs SAF support.
 export async function exportRoleToPath(params: {
   roleId: number
   format: ArchiveFormat

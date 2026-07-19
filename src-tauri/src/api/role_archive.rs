@@ -666,8 +666,8 @@ pub async fn export_role(
     })
 }
 
-/// 导出角色并复制到用户指定的目标路径, 然后删除临时文件.
-/// 使用 std::fs::copy (后端原生 IO, 不受 Tauri fs scope 约束), 避免 plugin-fs.copyFile 权限问题.
+/// 导出角色并复制到用户指定的目标位置, 然后删除临时文件.
+/// 桌面路径使用 std::fs::copy; Android content URI 使用 android-fs SAF API.
 #[tauri::command]
 pub async fn export_role_to_path(
     app: AppHandle,
@@ -687,6 +687,38 @@ pub async fn export_role_to_path(
     let (temp_path, suggested_name, size) =
         compress_role_to_temp(&app, role_id, format).await?;
 
+    if dest_path.starts_with("content://") {
+        use tauri_plugin_android_fs::{AndroidFsExt, FsUri};
+
+        let source_uri = FsUri::from_path(&temp_path);
+        let destination_uri = FsUri::from_uri(dest_path.clone());
+        tracing::info!(
+            "[RoleArchive] export_role_to_path SAF copy: temp={} -> dest={}",
+            temp_path.display(),
+            dest_path
+        );
+
+        let copy_result = app
+            .android_fs_async()
+            .copy(&source_uri, &destination_uri)
+            .await;
+        let _ = tokio::fs::remove_file(&temp_path).await;
+        copy_result.map_err(|e| format!("copy to SAF destination: {e}"))?;
+
+        tracing::info!(
+            "[RoleArchive] export_role_to_path SAF completed: dest={}, size={}B ({}MB)",
+            dest_path,
+            size,
+            size / 1024 / 1024
+        );
+        return Ok(ExportResult {
+            temp_path: dest_path,
+            suggested_name,
+            size_bytes: size,
+        });
+    }
+
+    // 桌面: 后端原生复制 (不受 fs scope 约束)
     let dest = PathBuf::from(&dest_path);
     // 确保目标父目录存在
     if let Some(parent) = dest.parent() {
@@ -695,7 +727,6 @@ pub async fn export_role_to_path(
             .map_err(|e| format!("create dest parent dir: {e}"))?;
     }
 
-    // 后端原生复制 (不受 fs scope 约束)
     let temp_clone = temp_path.clone();
     let dest_clone = dest.clone();
     tokio::task::spawn_blocking(move || std::fs::copy(&temp_clone, &dest_clone))
