@@ -18,21 +18,64 @@ use crate::utils::archive::{
 };
 
 
-// ===== ???? (cancel token ? invoke ??) =====
+/// ===== 状态 (cancel token + invoke 锁) =====
 
+/// 单个导入任务的运行时条目.
+/// P2 #9: saf_cache_path 用于 cancel 时立刻清理 SAF 缓存副本.
+pub struct ImportTaskEntry {
+    pub cancel_token: Arc<CancellationToken>,
+    pub saf_cache_path: std::sync::Mutex<Option<PathBuf>>,
+}
+
+/// 角色压缩包导入/导出全局状态.
+/// - tasks: 当前在跑的导入任务 (task_id -> ImportTaskEntry).
+/// - importing: 全局导入并发锁, true 时拒绝新任务.
 pub struct RoleArchiveState {
-    pub cancel_token: Arc<std::sync::Mutex<Arc<CancellationToken>>>,
+    pub tasks: std::sync::Mutex<std::collections::HashMap<String, ImportTaskEntry>>,
+    pub importing: std::sync::atomic::AtomicBool,
 }
 
 impl Default for RoleArchiveState {
     fn default() -> Self {
         Self {
-            cancel_token: Arc::new(std::sync::Mutex::new(Arc::new(CancellationToken::new()))),
+            tasks: std::sync::Mutex::new(std::collections::HashMap::new()),
+            importing: std::sync::atomic::AtomicBool::new(false),
         }
     }
 }
 
-// ===== 响应结构 =====
+/// RAII: 函数返回时自动释放 importing 标志.
+struct ImportingGuard<'a> {
+    flag: &'a std::sync::atomic::AtomicBool,
+}
+
+impl Drop for ImportingGuard<'_> {
+    fn drop(&mut self) {
+        self.flag.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// RAII: 函数返回时自动从 tasks 移除 task_id, 并清理 SAF 缓存副本 (若存在).
+struct TaskRemoveGuard<'a> {
+    state: &'a RoleArchiveState,
+    task_id: &'a str,
+}
+
+impl Drop for TaskRemoveGuard<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut tasks) = self.state.tasks.lock() {
+            if let Some(entry) = tasks.remove(self.task_id) {
+                if let Ok(mut guard) = entry.saf_cache_path.lock() {
+                    if let Some(path) = guard.take() {
+                        let _ = std::fs::remove_file(&path);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// ===== 响应结构 =====
 
 #[derive(Debug, Serialize, Clone)]
 pub struct ImportResult {
@@ -50,7 +93,7 @@ pub struct ExportResult {
     pub size_bytes: u64,
 }
 
-// ===== Tauri 命令 =====
+/// ===== Tauri 命令 =====
 
 /// 通过单次 invoke 传入压缩包字节并导入角色。
 #[tauri::command]
@@ -62,21 +105,37 @@ pub async fn import_role(
     conflict: String,
     file_name: Option<String>,
 ) -> Result<ImportResult, String> {
+    // P1 #8: 并发锁
+    if state.importing.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return Err("å·²æå¯¼å¥ä»»å¡å¨è¿è¡ä¸­".into());
+    }
+    let _import_guard = ImportingGuard { flag: &state.importing };
+
     if bytes.is_empty() {
-        tracing::warn!("[RoleArchive] import_role 收到空文件");
-        return Err("空文件".into());
+        tracing::warn!("[RoleArchive] import_role æ¶å°ç©ºæä»¶");
+        return Err("ç©ºæä»¶".into());
     }
     let format = parse_format(&format)?;
     let policy = parse_policy(&conflict)?;
     tracing::info!(
-        "[RoleArchive] import_role 开始: format={:?}, conflict={:?}, size={}B ({}MB)",
+        "[RoleArchive] import_role å¼å§: format={:?}, conflict={:?}, size={}B ({}MB)",
         format,
         policy,
         bytes.len(),
         bytes.len() / 1024 / 1024
     );
-    let cancel_token = fresh_cancel_token(&state);
 
+    // P1 #5: ä¸ºæ¯ä¸ªä»»å¡åéç¬ç« cancel token
+    let task_id = uuid::Uuid::new_v4().to_string();
+    let cancel_token = Arc::new(CancellationToken::new());
+    state.tasks.lock().unwrap().insert(
+        task_id.clone(),
+        ImportTaskEntry {
+            cancel_token: cancel_token.clone(),
+            saf_cache_path: std::sync::Mutex::new(None),
+        },
+    );
+    let _remove_guard = TaskRemoveGuard { state: &state, task_id: &task_id };
     // 写临时文件 (用于 magic bytes 校验 + zip/sevenz crate 接受 path/reader)
     let tmp_path = write_temp_archive(&app, &bytes).await?;
     let cleanup_path = tmp_path.clone();
@@ -101,13 +160,31 @@ pub async fn import_role(
 
 /// 取消正在进行的导入。
 #[tauri::command]
-pub async fn cancel_role_import(state: State<'_, RoleArchiveState>) -> Result<(), String> {
-    tracing::info!("[RoleArchive] cancel_role_import 收到取消请求");
-    let guard = state.cancel_token.lock().unwrap();
-    guard.cancel();
+pub async fn cancel_role_import(
+    task_id: String,
+    state: State<'_, RoleArchiveState>,
+) -> Result<(), String> {
+    tracing::info!(
+        "[RoleArchive] cancel_role_import æ¶å°åæ¶: task_id={}",
+        task_id
+    );
+    let entry = state.tasks.lock().unwrap().remove(&task_id);
+    if let Some(entry) = entry {
+        entry.cancel_token.cancel();
+        // P2 #9: cancel æ¶ç«å³æ¸ç SAF ç¼å­, ä¸ç­ do_import è¿è¡å°æå
+        let cached_path = entry.saf_cache_path.lock().unwrap().take();
+        if let Some(path) = cached_path {
+            tracing::info!("[RoleArchive] cancel æ¸ç SAF ç¼å­: {}", path.display());
+            let _ = tokio::fs::remove_file(&path).await;
+        }
+    } else {
+        tracing::warn!(
+            "[RoleArchive] cancel_role_import æªæ¾å° task_id={}",
+            task_id
+        );
+    }
     Ok(())
 }
-
 // ===== 内部 helper =====
 
 /// Import from a desktop path or an Android SAF content URI.
@@ -120,28 +197,51 @@ pub async fn import_role_from_path(
     conflict: String,
     file_name: Option<String>,
 ) -> Result<ImportResult, String> {
+    // P1 #8: 并发锁
+    if state.importing.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return Err("å·²æå¯¼å¥ä»»å¡å¨è¿è¡ä¸­".into());
+    }
+    let _import_guard = ImportingGuard { flag: &state.importing };
+
     if path.is_empty() {
-        tracing::warn!("[RoleArchive] import_role_from_path 收到空 path");
-        return Err("path 为空".into());
+        tracing::warn!("[RoleArchive] import_role_from_path æ¶å°ç©º path");
+        return Err("path ä¸ºç©º".into());
     }
     let format = parse_format(&format)?;
     let policy = parse_policy(&conflict)?;
     tracing::info!(
-        "[RoleArchive] import_role_from_path 开始: path={}, format={:?}, conflict={:?}",
+        "[RoleArchive] import_role_from_path å¼å§: path={}, format={:?}, conflict={:?}",
         path, format, policy
     );
-    let cancel_token = fresh_cancel_token(&state);
+
+    // P1 #5: ä¸ºæ¯ä¸ªä»»å¡åéç¬ç« cancel token
+    let task_id = uuid::Uuid::new_v4().to_string();
+    let cancel_token = Arc::new(CancellationToken::new());
+    let entry = ImportTaskEntry {
+        cancel_token: cancel_token.clone(),
+        saf_cache_path: std::sync::Mutex::new(None),
+    };
+    state.tasks.lock().unwrap().insert(task_id.clone(), entry);
+    let _remove_guard = TaskRemoveGuard { state: &state, task_id: &task_id };
 
     let (path_buf, cleanup_after_import) = prepare_import_source(&app, &path).await?;
+
+    // P2 #9: å¦ææ¯ SAF å¤å¶æ¥ç, æ³¨å saf_cache_path å° state, cancel æ¶ç«å³æ¸ç
+    if cleanup_after_import {
+        if let Some(entry) = state.tasks.lock().unwrap().get_mut(&task_id) {
+            *entry.saf_cache_path.lock().unwrap() = Some(path_buf.clone());
+        }
+    }
+
     let result = async {
         if !path_buf.exists() {
-            return Err(format!("文件不存在: {}", path_buf.display()));
+            return Err(format!("æä»¶ä¸å­å¨: {}", path_buf.display()));
         }
         let meta = tokio::fs::metadata(&path_buf)
             .await
             .map_err(|e| format!("stat path: {e}"))?;
         tracing::info!(
-            "[RoleArchive] import_role_from_path 文件大小: {}B ({}MB)",
+            "[RoleArchive] import_role_from_path æä»¶å¤§å°: {}B ({}MB)",
             meta.len(),
             meta.len() / 1024 / 1024
         );
@@ -160,7 +260,7 @@ pub async fn import_role_from_path(
     if cleanup_after_import {
         if let Err(error) = tokio::fs::remove_file(&path_buf).await {
             tracing::warn!(
-                "[RoleArchive] import_role_from_path 清理 SAF 缓存失败: path={}, err={}",
+                "[RoleArchive] import_role_from_path æ¸ç SAF ç¼å­å¤±è´¥: path={}, err={}",
                 path_buf.display(),
                 error
             );
@@ -168,89 +268,16 @@ pub async fn import_role_from_path(
     }
     match &result {
         Ok(r) => tracing::info!(
-            "[RoleArchive] import_role_from_path 完成: role_name={}, role_id={:?}, action={}",
+            "[RoleArchive] import_role_from_path å®æ: role_name={}, role_id={:?}, action={}",
             r.role_name, r.role_id, r.conflict_action
         ),
-        Err(e) => tracing::error!("[RoleArchive] import_role_from_path 失败: {e}"),
+        Err(e) => tracing::error!("[RoleArchive] import_role_from_path å¤±è´¥: {e}"),
     }
     if result.is_ok() {
         let _ = app.emit("role:list-updated", ());
     }
     result
 }
-
-fn fresh_cancel_token(state: &State<'_, RoleArchiveState>) -> Arc<CancellationToken> {
-    let mut guard = state.cancel_token.lock().unwrap();
-    *guard = Arc::new(CancellationToken::new());
-    guard.clone()
-}
-
-async fn prepare_import_source(
-    app: &AppHandle,
-    source: &str,
-) -> Result<(PathBuf, bool), String> {
-    if !source.starts_with("content://") {
-        let path = if let Some(stripped) = source.strip_prefix("file://") {
-            PathBuf::from(stripped.trim_start_matches('/'))
-        } else {
-            PathBuf::from(source)
-        };
-        return Ok((path, false));
-    }
-
-    use tauri_plugin_android_fs::{AndroidFsExt, FsUri};
-
-    let cache_dir = app
-        .path()
-        .app_cache_dir()
-        .map_err(|e| format!("cache dir 不可用: {e}"))?
-        .join("role_imports");
-    tokio::fs::create_dir_all(&cache_dir)
-        .await
-        .map_err(|e| format!("创建角色导入缓存目录: {e}"))?;
-    let temp_path = cache_dir.join(format!("role_import_{}.tmp", uuid::Uuid::new_v4()));
-    tokio::fs::File::create(&temp_path)
-        .await
-        .map_err(|e| format!("创建角色导入缓存文件: {e}"))?;
-
-    let source_uri = FsUri::from_uri(source.to_owned());
-    let destination_uri = FsUri::from_path(&temp_path);
-    tracing::info!(
-        "[RoleArchive] prepare_import_source SAF copy: source={} -> cache={}",
-        source,
-        temp_path.display()
-    );
-    if let Err(error) = app
-        .android_fs_async()
-        .copy(&source_uri, &destination_uri)
-        .await
-    {
-        let _ = tokio::fs::remove_file(&temp_path).await;
-        return Err(format!("copy Android SAF archive to cache: {error}"));
-    }
-
-    tracing::info!(
-        "[RoleArchive] prepare_import_source SAF copy completed: cache={}",
-        temp_path.display()
-    );
-    Ok((temp_path, true))
-}
-
-async fn write_temp_archive(app: &AppHandle, bytes: &[u8]) -> Result<PathBuf, String> {
-    let cache_dir = app
-        .path()
-        .app_cache_dir()
-        .map_err(|e| format!("cache dir 不可用: {e}"))?;
-    tokio::fs::create_dir_all(&cache_dir)
-        .await
-        .map_err(|e| format!("创建 cache dir: {e}"))?;
-    let tmp_path = cache_dir.join(format!("role_import_{}.tmp", uuid::Uuid::new_v4()));
-    tokio::fs::write(&tmp_path, bytes)
-        .await
-        .map_err(|e| format!("写临时文件: {e}"))?;
-    Ok(tmp_path)
-}
-
 async fn do_import(
     app: &AppHandle,
     tmp_path: &Path,
@@ -302,9 +329,9 @@ async fn do_import(
             let _ = app_emit.emit("role:import-progress", &evt);
         };
         match format {
-            ArchiveFormat::Zip => archive::extract_zip(&path_for_blocking, &target, &on_entry),
+            ArchiveFormat::Zip => archive::extract_zip(&path_for_blocking, &target, &cancel_for_blocking, &on_entry),
             ArchiveFormat::SevenZ => {
-                archive::extract_sevenz(&path_for_blocking, &target, &on_entry)
+                archive::extract_sevenz(&path_for_blocking, &target, &cancel_for_blocking, &on_entry)
             }
         }
     })
@@ -325,6 +352,13 @@ async fn do_import(
         summary.skipped_macos_metadata,
         summary.warnings.len()
     );
+
+    // P0 #4: extract 完成后再次检查 cancel, 命中则立刻清理 staging + 退出.
+    if cancel_token.is_cancelled() {
+        tracing::info!("[RoleArchive] do_import cancel hit after extract: cleanup staging");
+        cleanup_err(&staging_root_for_cleanup);
+        return Err("导入已取消".into());
+    }
 
     // 5. 定位 extracted_dir:
     //    - 解压后 staging 只含单一子目录 (有外层角色名目录) -> extracted_dir = staging/{that}
@@ -360,6 +394,13 @@ async fn do_import(
         }
     };
 
+    // P0 #4: resolve 后再查 cancel (resolve 在 extract 之后, 用户可能中途取消).
+    if cancel_token.is_cancelled() {
+        tracing::info!("[RoleArchive] do_import cancel hit after resolve: cleanup staging");
+        cleanup_err(&staging_root_for_cleanup);
+        return Err("导入已取消".into());
+    }
+
     // Overwrite 策略: 先清空旧目录. 失败时报明确错误
     if resolution.action == "overwritten" {
         if let Err(e) = tokio::fs::remove_dir_all(&resolution.target).await {
@@ -381,6 +422,13 @@ async fn do_import(
                 cleanup_err(&staging_root_for_cleanup);
                 format!("创建目标父目录: {e}")
             })?;
+    }
+
+    // P0 #4: rename 前再查 cancel. 此时已确定目标位置, 用户中途取消则放弃.
+    if cancel_token.is_cancelled() {
+        tracing::info!("[RoleArchive] do_import cancel hit before rename: cleanup staging");
+        cleanup_err(&staging_root_for_cleanup);
+        return Err("导入已取消".into());
     }
 
     // 7. 移动 extracted_dir -> resolution.target
@@ -453,12 +501,27 @@ async fn do_import(
         ));
     }
 
+    // P0 #4: sync 前最后一次 cancel 检查. 
+    if cancel_token.is_cancelled() {
+        tracing::info!("[RoleArchive] do_import cancel hit before sync: rollback target");
+        let _ = tokio::fs::remove_dir_all(&resolution.target).await;
+        return Err("导入已取消".into());
+    }
+
     // 9. 同步角色到 DB
     let data_dir = crate::init::static_copy::get_data_dir().clone();
     let db = app.state::<crate::AppState>().db.clone();
     crate::init::role_sync::sync_roles_from_folder(&db, &data_dir)
         .await
-        .map_err(|e| format!("sync roles: {e}"))?;
+        .map_err(|e| {
+            // P1 #6: sync 失败回滚, 删除已移入的角色目录, 避免出现"目录在但 DB 没记录"的孤儿.
+            let target = resolution.target.clone();
+            tracing::error!("[RoleArchive] do_import sync failed, rolling back target={}", target.display());
+            tokio::spawn(async move {
+                let _ = tokio::fs::remove_dir_all(&target).await;
+            });
+            format!("sync roles: {e}")
+        })?;
 
     // 10. 查新角色 id
     let role_id = find_role_id_by_folder(&db, &resolution.final_name).await?;
@@ -470,6 +533,64 @@ async fn do_import(
         warnings: summary.warnings,
         bytes_extracted: summary.bytes_extracted,
     })
+}
+
+/// 把 invoke 传来的字节写入 app cache 下的临时文件, 返回路径.
+/// 调用方负责删除 (除非 RAII guard 接管).
+async fn write_temp_archive(app: &AppHandle, bytes: &[u8]) -> Result<PathBuf, String> {
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| format!("cache dir: {e}"))?;
+    let imports_root = cache_dir.join("imports");
+    tokio::fs::create_dir_all(&imports_root)
+        .await
+        .map_err(|e| format!("create imports dir: {e}"))?;
+    let tmp_id = uuid::Uuid::new_v4().to_string();
+    let tmp_path = imports_root.join(format!("import_{tmp_id}.bin"));
+    tokio::fs::write(&tmp_path, bytes)
+        .await
+        .map_err(|e| format!("write temp archive: {e}"))?;
+    tracing::info!("[RoleArchive] write_temp_archive: {}B -> {}", bytes.len(), tmp_path.display());
+    Ok(tmp_path)
+}
+
+/// 准备导入源文件路径.
+/// - 如果 path 以 `content://` 开头 (Android SAF URI), 复制到 cache_dir, 返回 (本地路径, true).
+/// - 否则视作 desktop 文件系统路径, 直接返回 (PathBuf::from(path), false).
+///
+/// 第二个 bool 表示调用方是否需要在导入完成后清理本地副本 (SAF 情况下需要, desktop 路径不需要).
+async fn prepare_import_source(app: &AppHandle, path: &str) -> Result<(PathBuf, bool), String> {
+    if path.starts_with("content://") {
+        use tauri_plugin_android_fs::{AndroidFsExt, FsUri};
+        let cache_dir = app
+            .path()
+            .app_cache_dir()
+            .map_err(|e| format!("cache dir: {e}"))?;
+        let imports_root = cache_dir.join("imports");
+        tokio::fs::create_dir_all(&imports_root)
+            .await
+            .map_err(|e| format!("create imports dir: {e}"))?;
+
+        let tmp_id = uuid::Uuid::new_v4().to_string();
+        let local_path = imports_root.join(format!("import_saf_{tmp_id}.bin"));
+        let local_uri = FsUri::from_path(&local_path);
+        let src_uri = FsUri::from_uri(path.to_string());
+        tracing::info!(
+            "[RoleArchive] prepare_import_source SAF: src={}, local={}",
+            path,
+            local_path.display()
+        );
+
+        app.android_fs_async()
+            .copy(&src_uri, &local_uri)
+            .await
+            .map_err(|e| format!("SAF copy to local cache: {e}"))?;
+
+        Ok((local_path, true))
+    } else {
+        Ok((PathBuf::from(path), false))
+    }
 }
 
 /// 定位解压后的角色内容根目录:
@@ -603,7 +724,7 @@ fn parse_policy(s: &str) -> Result<ConflictPolicy, String> {
     }
 }
 
-// ===== 导出命令 (导出流程其他 P 修复点的实现留待后续) =====
+/// ===== 导出命令 (P2 #14 export progress 在 compress_role_to_temp 内 emit) =====
 
 #[tauri::command]
 /// 内部: 压缩角色到 cache/exports 下的临时文件, 返回 (path, suggested_name, size)
@@ -653,8 +774,12 @@ async fn compress_role_to_temp(
     let arc_path = out_path.clone();
     let src_path = src_dir.clone();
     let fmt = format;
+    let app_for_emit = app.clone();
     tokio::task::spawn_blocking(move || {
-        let on_entry = |_evt: EntryEvent| {};
+        let on_entry = |evt: EntryEvent| {
+            // P2 #14: 导出进度 emit, 前端可复用 ImportProgressBar 监听.
+            let _ = app_for_emit.emit("role:export-progress", &evt);
+        };
         archive::compress(&src_path, fmt, &arc_path, &on_entry)
     })
     .await

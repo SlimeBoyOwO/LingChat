@@ -17,6 +17,7 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
+use tokio_util::sync::CancellationToken;
 
 // ===== 安全阈值常量 =====
 
@@ -70,6 +71,8 @@ pub enum ArchiveError {
     Io(#[from] io::Error),
     #[error("密码保护的压缩包暂不支持")]
     PasswordProtected,
+    #[error("操作被取消")]
+    Cancelled,
     #[error("目标已存在: {0}")]
     AlreadyExists(String),
 }
@@ -289,6 +292,7 @@ pub fn resolve_target(
 pub fn extract_zip(
     src: &Path,
     dest_root: &Path,
+    cancel_token: &CancellationToken,
     on_entry: &dyn Fn(EntryEvent),
 ) -> Result<ExtractSummary, ArchiveError> {
     use zip::ZipArchive;
@@ -308,6 +312,9 @@ pub fn extract_zip(
     let mut last_emit = std::time::Instant::now();
 
     for i in 0..total {
+        if cancel_token.is_cancelled() {
+            return Err(ArchiveError::Cancelled);
+        }
         let mut entry = archive.by_index(i)?;
         let raw_name = entry.name().to_string();
         let compressed = entry.compressed_size();
@@ -375,6 +382,7 @@ pub fn extract_zip(
 pub fn extract_sevenz(
     src: &Path,
     dest_root: &Path,
+    cancel_token: &CancellationToken,
     on_entry: &dyn Fn(EntryEvent),
 ) -> Result<ExtractSummary, ArchiveError> {
     use sevenz_rust2::Password;
@@ -398,6 +406,12 @@ pub fn extract_sevenz(
 
     // 1) ???"? data stream"? entry ? for_each_entries (? block)
     let result = reader.for_each_entries(|entry, reader| {
+        if cancel_token.is_cancelled() {
+            return Err(sevenz_rust2::Error::Io(
+                std::io::Error::new(std::io::ErrorKind::Interrupted, "cancelled"),
+                "".into(),
+            ));
+        }
         let raw_name = entry.name().to_string();
         let uncompressed = entry.size();
         let compressed = entry.compressed_size;
@@ -455,6 +469,11 @@ pub fn extract_sevenz(
         processed += 1;
         Ok(true)
     });
+    if let Err(ref e) = result {
+        if cancel_token.is_cancelled() {
+            return Err(ArchiveError::Cancelled);
+        }
+    }
     result.map_err(map_sevenz_err)?;
 
     // 2) for_each_entries ???"? data stream ???/???" entry (BlockDecoder 0 block ??);
@@ -818,7 +837,8 @@ fn sevenz_round_trip_self_contained() {
     sevenz_rust2::compress_to_path(&staging, &out_7z).expect("compress ok");
     let extract_root = tmp.join("extract");
     std::fs::create_dir_all(&extract_root).unwrap();
-    let summary = extract_sevenz(&out_7z, &extract_root, &|_| {}).unwrap();
+    let token = CancellationToken::new();
+    let summary = extract_sevenz(&out_7z, &extract_root, &token, &|_| {}).unwrap();
     assert!(summary.bytes_extracted > 0);
     assert!(extract_root.join("sample").is_dir());
     assert!(extract_root.join("sample/settings.yml").exists());
@@ -880,7 +900,8 @@ fn extract_zip_round_trip_self_contained() {
 
     let extract_root = tmp.join("extract");
     std::fs::create_dir_all(&extract_root).unwrap();
-    let summary = extract_zip(&out_zip, &extract_root, &|_| {}).unwrap();
+    let token = CancellationToken::new();
+    let summary = extract_zip(&out_zip, &extract_root, &token, &|_| {}).unwrap();
     assert!(summary.bytes_extracted > 0);
     assert!(extract_root.join("sample").is_dir());
     assert!(extract_root.join("sample/settings.yml").exists());
@@ -928,7 +949,8 @@ fn extract_zip_allows_entry_over_legacy_size_limit() {
     compress(staging.parent().unwrap(), ArchiveFormat::Zip, &out_zip, &|_| {}).unwrap();
     let extract_root = tmp.join("extract");
     std::fs::create_dir_all(&extract_root).unwrap();
-    let result = extract_zip(&out_zip, &extract_root, &|_| {}).unwrap();
+    let token = CancellationToken::new();
+    let result = extract_zip(&out_zip, &extract_root, &token, &|_| {}).unwrap();
     assert_eq!(result.files_extracted, 1);
     assert_eq!(
         std::fs::metadata(extract_root.join("sample/big.bin"))
@@ -959,7 +981,8 @@ fn extract_zip_throttles_progress_events() {
     compress(staging.parent().unwrap(), ArchiveFormat::Zip, &out_zip, &|_| {}).unwrap();
 
     let events = std::sync::Mutex::new(Vec::<String>::new());
-    extract_zip(&out_zip, &tmp.join("extract"), &|evt| {
+    let token = CancellationToken::new();
+    extract_zip(&out_zip, &tmp.join("extract"), &token, &|evt| {
         events.lock().unwrap().push(evt.phase.to_string());
     })
     .unwrap();
