@@ -10,7 +10,7 @@
 
 <script setup lang="ts">
 import { StartItem } from '../base'
-import { getCurrentWindow } from '@tauri-apps/api/window'
+import { invoke } from '@tauri-apps/api/core'
 
 const emit = defineEmits<{
   (e: 'start-game'): void
@@ -20,6 +20,6 @@ const emit = defineEmits<{
 
 // 退出游戏
 function exitGame() {
-  getCurrentWindow().destroy()
+  invoke('exit_app')
 }
 </script>
