@@ -119,17 +119,6 @@ fn load_emotion_classifier(
     enabled: bool,
     data_dir: &std::path::Path,
 ) -> Option<Arc<EmotionClassifier>> {
-    // Android x86_64 模拟器临时禁用: 模拟器运行 arm64-v8a 翻译层时,
-    // onnxruntime MLAS 的 ARM NEON intrinsic (MlasCastF16ToF32KernelNeon)
-    // 会触发 SIGILL (illegal instruction) 导致 app 崩溃。
-    // arm64 真机不会发生,所以只在 x86_64 编译期跳过,
-    // 真机可以正常使用 emotion classifier。
-    #[cfg(all(target_os = "android", target_arch = "x86_64"))]
-    {
-        tracing::info!("[Android x86_64] 跳过 emotion classifier 加载 (避免 emulator Neon intrinsic 崩溃)");
-        return None;
-    }
-
     if !enabled {
         tracing::info!("情绪分类器已在配置中禁用");
         return None;
