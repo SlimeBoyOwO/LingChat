@@ -1,27 +1,14 @@
 //! 角色压缩包导入/导出 Tauri 命令。
 //!
-//! # P0 #3 修复: 合并 prepare_import_slot + import_role_from_file 为单 invoke
-//!
-//! 旧设计 (有 Android 边界问题):
-//!   1. prepare_import_slot           → 返回 temp_path
-//!   2. 前端 plugin-fs.writeFile(...) → **Android 上不可靠**
-//!   3. import_role_from_file(...)    → 解压
-//!
-//! 新设计 (跨端一致):
-//!   1. import_role(bytes, format, conflict) — 小文件 (< 50MB) 直接传 Vec<u8>
-//!   2. import_role_from_path(path, ...)    — 大文件备用 (TODO 集成)
-//!
-//! 收益:
-//!   - 前端不依赖 plugin-fs 写 cache,绕开 Android plugin-fs scope 边界坑
-//!   - 单次 invoke,事务边界清晰
-//!   - 临时文件由 Rust 自己管理,失败也保证清理
+//! `import_role_from_path` accepts desktop paths and Android SAF content URIs.
+//! Android archives are copied to app cache by the backend before extraction,
+//! avoiding frontend byte IPC and explicit archive size limits.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::Serialize;
-use serde::Deserialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio_util::sync::CancellationToken;
 
@@ -65,9 +52,7 @@ pub struct ExportResult {
 
 // ===== Tauri 命令 =====
 
-const MAX_INVOKE_BYTES: usize = 50 * 1024 * 1024;
-
-/// P0 #3 修复: 单 invoke 导入角色 (小文件 < 50MB)。
+/// 通过单次 invoke 传入压缩包字节并导入角色。
 #[tauri::command]
 pub async fn import_role(
     app: AppHandle,
@@ -80,18 +65,6 @@ pub async fn import_role(
     if bytes.is_empty() {
         tracing::warn!("[RoleArchive] import_role 收到空文件");
         return Err("空文件".into());
-    }
-    if bytes.len() > MAX_INVOKE_BYTES {
-        tracing::warn!(
-            "[RoleArchive] import_role 超过单 invoke 上限: {}MB > {}MB",
-            bytes.len() / 1024 / 1024,
-            MAX_INVOKE_BYTES / 1024 / 1024
-        );
-        return Err(format!(
-            "单 invoke 上限 {}MB, 实际 {}MB, 请改用 import_role_from_path",
-            MAX_INVOKE_BYTES / 1024 / 1024,
-            bytes.len() / 1024 / 1024
-        ));
     }
     let format = parse_format(&format)?;
     let policy = parse_policy(&conflict)?;
@@ -137,8 +110,7 @@ pub async fn cancel_role_import(state: State<'_, RoleArchiveState>) -> Result<()
 
 // ===== 内部 helper =====
 
-/// ??? (>50MB) ????????? SAF / ?????? `$APPCACHE/imports/` ?????????,
-/// ??? `path` (file:// URI ?????) ?????
+/// Import from a desktop path or an Android SAF content URI.
 #[tauri::command]
 pub async fn import_role_from_path(
     app: AppHandle,
@@ -150,7 +122,7 @@ pub async fn import_role_from_path(
 ) -> Result<ImportResult, String> {
     if path.is_empty() {
         tracing::warn!("[RoleArchive] import_role_from_path 收到空 path");
-        return Err("path ??".into());
+        return Err("path 为空".into());
     }
     let format = parse_format(&format)?;
     let policy = parse_policy(&conflict)?;
@@ -160,36 +132,40 @@ pub async fn import_role_from_path(
     );
     let cancel_token = fresh_cancel_token(&state);
 
-    let path_buf = if let Some(stripped) = path.strip_prefix("file://") {
-        PathBuf::from(stripped.trim_start_matches('/'))
-    } else {
-        PathBuf::from(&path)
-    };
-    if !path_buf.exists() {
-        return Err(format!("?????: {}", path_buf.display()));
-    }
-    let meta = tokio::fs::metadata(&path_buf)
-        .await
-        .map_err(|e| format!("stat path: {e}"))?;
-    tracing::info!(
-        "[RoleArchive] import_role_from_path 文件大小: {}B ({}MB)",
-        meta.len(),
-        meta.len() / 1024 / 1024
-    );
-    if meta.len() > crate::utils::archive::MAX_EXTRACTED_BYTES {
-        tracing::warn!(
-            "[RoleArchive] import_role_from_path 超过解压上限: {}MB > {}MB",
-            meta.len() / 1024 / 1024,
-            crate::utils::archive::MAX_EXTRACTED_BYTES / 1024 / 1024
+    let (path_buf, cleanup_after_import) = prepare_import_source(&app, &path).await?;
+    let result = async {
+        if !path_buf.exists() {
+            return Err(format!("文件不存在: {}", path_buf.display()));
+        }
+        let meta = tokio::fs::metadata(&path_buf)
+            .await
+            .map_err(|e| format!("stat path: {e}"))?;
+        tracing::info!(
+            "[RoleArchive] import_role_from_path 文件大小: {}B ({}MB)",
+            meta.len(),
+            meta.len() / 1024 / 1024
         );
-        return Err(format!(
-            "????? {}MB ?????? {}MB, ???? (??????)",
-            meta.len() / 1024 / 1024,
-            crate::utils::archive::MAX_EXTRACTED_BYTES / 1024 / 1024
-        ));
+        do_import(
+            &app,
+            &path_buf,
+            format,
+            policy,
+            cancel_token,
+            file_name.as_deref(),
+        )
+        .await
     }
+    .await;
 
-    let result = do_import(&app, &path_buf, format, policy, cancel_token, file_name.as_deref()).await;
+    if cleanup_after_import {
+        if let Err(error) = tokio::fs::remove_file(&path_buf).await {
+            tracing::warn!(
+                "[RoleArchive] import_role_from_path 清理 SAF 缓存失败: path={}, err={}",
+                path_buf.display(),
+                error
+            );
+        }
+    }
     match &result {
         Ok(r) => tracing::info!(
             "[RoleArchive] import_role_from_path 完成: role_name={}, role_id={:?}, action={}",
@@ -207,6 +183,57 @@ fn fresh_cancel_token(state: &State<'_, RoleArchiveState>) -> Arc<CancellationTo
     let mut guard = state.cancel_token.lock().unwrap();
     *guard = Arc::new(CancellationToken::new());
     guard.clone()
+}
+
+async fn prepare_import_source(
+    app: &AppHandle,
+    source: &str,
+) -> Result<(PathBuf, bool), String> {
+    if !source.starts_with("content://") {
+        let path = if let Some(stripped) = source.strip_prefix("file://") {
+            PathBuf::from(stripped.trim_start_matches('/'))
+        } else {
+            PathBuf::from(source)
+        };
+        return Ok((path, false));
+    }
+
+    use tauri_plugin_android_fs::{AndroidFsExt, FsUri};
+
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| format!("cache dir 不可用: {e}"))?
+        .join("role_imports");
+    tokio::fs::create_dir_all(&cache_dir)
+        .await
+        .map_err(|e| format!("创建角色导入缓存目录: {e}"))?;
+    let temp_path = cache_dir.join(format!("role_import_{}.tmp", uuid::Uuid::new_v4()));
+    tokio::fs::File::create(&temp_path)
+        .await
+        .map_err(|e| format!("创建角色导入缓存文件: {e}"))?;
+
+    let source_uri = FsUri::from_uri(source.to_owned());
+    let destination_uri = FsUri::from_path(&temp_path);
+    tracing::info!(
+        "[RoleArchive] prepare_import_source SAF copy: source={} -> cache={}",
+        source,
+        temp_path.display()
+    );
+    if let Err(error) = app
+        .android_fs_async()
+        .copy(&source_uri, &destination_uri)
+        .await
+    {
+        let _ = tokio::fs::remove_file(&temp_path).await;
+        return Err(format!("copy Android SAF archive to cache: {error}"));
+    }
+
+    tracing::info!(
+        "[RoleArchive] prepare_import_source SAF copy completed: cache={}",
+        temp_path.display()
+    );
+    Ok((temp_path, true))
 }
 
 async fn write_temp_archive(app: &AppHandle, bytes: &[u8]) -> Result<PathBuf, String> {

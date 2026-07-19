@@ -1,10 +1,8 @@
 import { onUnmounted } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
-import { readFile } from '@tauri-apps/plugin-fs'
 import { useRoleArchiveStore } from '@/stores/modules/ui/role-archive'
 import {
-  importRole,
   importRoleFromPath,
   exportRoleToPath,
   cancelRoleImport,
@@ -15,9 +13,6 @@ import {
   type ExportResult,
   type EntryEvent,
 } from '@/api/services/role-archive'
-
-const LARGE_FILE_THRESHOLD = 50 * 1024 * 1024 // 50MB
-const PROGRESS_FILE_THRESHOLD = 5 * 1024 * 1024 // 5MB
 
 // 28-char truncation with leading ellipsis
 function truncateName(name: string, max = 28): string {
@@ -137,37 +132,18 @@ export function useRoleImportExport() {
     await setupListeners()
 
     try {
-      let result: ImportResult
-
-      if (isAndroidContentUri(filePath)) {
-        // Android SAF: read bytes via plugin-fs, then single-invoke importRole
-        console.log('[RoleArchive] Android SAF \u8bfb\u53d6 bytes:', filePath)
-        const bytes = await readFile(filePath)
-        store.import.sizeBytes = bytes.byteLength
-        console.log('[RoleArchive] Android \u8bfb\u53d6\u5b8c\u6210: %dB (%dMB)', bytes.byteLength, Math.floor(bytes.byteLength / 1024 / 1024))
-        if (bytes.byteLength >= PROGRESS_FILE_THRESHOLD) {
-          startFakeProgress()
-        }
-        if (bytes.byteLength > LARGE_FILE_THRESHOLD) {
-          // Exceeds single-invoke limit; backend will reject.
-          store.import.phase = 'error'
-          store.import.error = `\u6587\u4ef6 ${Math.floor(bytes.byteLength / 1024 / 1024)}MB \u8d85\u8fc7\u5355\u6b21\u4e0a\u4f20 50MB \u9650\u5236`
-          clearTimers()
-          clearTimers()
-          return
-        }
-        result = await importRole({
-          bytes: new Uint8Array(bytes),
-          format,
-          conflict,
-          fileName,
-        })
-      } else {
-        // Desktop: pass path directly, backend handles stat + size check + extraction
-        console.log('[RoleArchive] Desktop \u8d70 importRoleFromPath:', filePath)
-        startFakeProgress()
-        result = await importRoleFromPath({ path: filePath, format, conflict, fileName })
-      }
+      console.log(
+        '[RoleArchive] backend path import: source=%s, androidSaf=%s',
+        filePath,
+        isAndroidContentUri(filePath),
+      )
+      startFakeProgress()
+      const result: ImportResult = await importRoleFromPath({
+        path: filePath,
+        format,
+        conflict,
+        fileName,
+      })
 
       store.import.result = result
       store.import.phase = 'done'

@@ -1,14 +1,12 @@
 //! 角色压缩包 (zip / 7z) 解压/压缩统一接口。
 //!
-//! # P0 #4 修复要点: 解压炸弹四道防线
+//! # 解压安全防线
 //!
 //! 仅看总大小抓不住 zip 炸弹 (42.zip / 35.zip 这类递归解压炸弹每个 entry
 //! 都是 copy 压缩,解压/压缩比可达 1000+)。必须额外加压缩比防线:
 //!
-//! 1. **总解压大小** — `cumulative + entry_uncompressed <= 200MB`
-//! 2. **单文件大小** — `entry_uncompressed <= 50MB`
-//! 3. **文件个数** — `entry_index < 1000`
-//! 4. **压缩比** — `uncompressed / compressed <= 100` ← 关键防线
+//! 1. **文件个数** — `entry_index < 1000`
+//! 2. **压缩比** — `uncompressed / compressed <= 100` ← 关键防线
 //!
 //! # 路径遍历防御
 //! 任何 entry 名含 `..`、以 `/` 或 `\` 开头、Windows 盘符、UNC 路径,
@@ -16,14 +14,12 @@
 
 use std::fs::File;
 use std::io::{self, Read, Write};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
 // ===== 安全阈值常量 =====
 
-pub const MAX_EXTRACTED_BYTES: u64 = 200 * 1024 * 1024;
-pub const MAX_SINGLE_FILE_BYTES: u64 = 50 * 1024 * 1024;
 pub const MAX_ENTRY_COUNT: usize = 1000;
 pub const MAX_COMPRESSION_RATIO: u64 = 100;
 const MAX_NAME_LEN: usize = 4096;
@@ -62,8 +58,6 @@ pub enum ArchiveError {
     PathTraversal(String),
     #[error("非法文件名: {0}")]
     InvalidName(String),
-    #[error("解压超限: 实际 {actual} 字节, 限制 {limit} 字节")]
-    BombExceeded { actual: u64, limit: u64 },
     #[error("entry 数量超限: {0} 个, 限制 {MAX_ENTRY_COUNT}")]
     TooManyEntries(usize),
     #[error("压缩比超限 (解压/压缩 > {MAX_COMPRESSION_RATIO}): 解压 {actual} 字节, 压缩 {compressed} 字节")]
@@ -147,36 +141,19 @@ pub fn detect_format(path: &Path) -> Result<ArchiveFormat, ArchiveError> {
 
 /// 单 entry 解压前的安全检查。
 ///
-/// `cumulative_uncompressed` 是**之前已安全写盘的字节数**,不包含此 entry。
 /// 返回 Ok 表示 entry 可以解压,Err 表示必须立即终止整个解压流程。
 ///
 /// # 防线 (按检查顺序)
 /// 1. entry 数量 < MAX_ENTRY_COUNT
-/// 2. 单 entry 大小 <= MAX_SINGLE_FILE_BYTES
-/// 3. 累计大小 (saturating_add 防溢出) <= MAX_EXTRACTED_BYTES
-/// 4. **压缩比 <= MAX_COMPRESSION_RATIO** (解压后/压缩前)
+/// 2. **压缩比 <= MAX_COMPRESSION_RATIO** (解压后/压缩前)
 ///    跳过 compressed == 0 的情况 (stored / 异常)
 pub fn check_entry_safety(
     entry_index: usize,
     entry_compressed: u64,
     entry_uncompressed: u64,
-    cumulative_uncompressed: u64,
 ) -> Result<(), ArchiveError> {
     if entry_index >= MAX_ENTRY_COUNT {
         return Err(ArchiveError::TooManyEntries(entry_index));
-    }
-    if entry_uncompressed > MAX_SINGLE_FILE_BYTES {
-        return Err(ArchiveError::BombExceeded {
-            actual: entry_uncompressed,
-            limit: MAX_SINGLE_FILE_BYTES,
-        });
-    }
-    let new_total = cumulative_uncompressed.saturating_add(entry_uncompressed);
-    if new_total > MAX_EXTRACTED_BYTES {
-        return Err(ArchiveError::BombExceeded {
-            actual: new_total,
-            limit: MAX_EXTRACTED_BYTES,
-        });
     }
     if entry_compressed > 0 && entry_uncompressed / entry_compressed > MAX_COMPRESSION_RATIO {
         return Err(ArchiveError::CompressionRatio {
@@ -337,7 +314,7 @@ pub fn extract_zip(
         let uncompressed = entry.size();
 
         // (P0 #4) 解压前安全检查
-        check_entry_safety(i, compressed, uncompressed, bytes_done)?;
+        check_entry_safety(i, compressed, uncompressed)?;
 
         let cleaned = match sanitize_entry_name(&raw_name) {
             Ok(c) => c,
@@ -435,7 +412,7 @@ pub fn extract_sevenz(
             }
             Err(e) => return Err(sevenz_rust2::Error::Io(std::io::Error::other(e.to_string()), "".into())),
         };
-        if let Err(e) = check_entry_safety(entry_index, compressed, uncompressed, bytes_done) {
+        if let Err(e) = check_entry_safety(entry_index, compressed, uncompressed) {
             return Err(sevenz_rust2::Error::Io(std::io::Error::other(e.to_string()), "".into()));
         }
         entry_index += 1;
@@ -500,7 +477,7 @@ pub fn extract_sevenz(
             }
             Err(_) => continue,
         };
-        if let Err(e) = check_entry_safety(entry_index, 0, size, bytes_done) {
+        if let Err(e) = check_entry_safety(entry_index, 0, size) {
             // ?????: ??/???????? bomb; ?????????
             tracing::warn!("7z empty entry skipped: {}", e);
             entry_index += 1;
@@ -759,40 +736,37 @@ mod tests {
     }
 
     #[test]
-    fn bomb_blocks_oversize_single_file() {
-        let r = check_entry_safety(0, 1_000_000, 100 * 1024 * 1024, 0);
-        assert!(matches!(r, Err(ArchiveError::BombExceeded { .. })));
+    fn safety_allows_large_single_file_without_absolute_limit() {
+        let result = check_entry_safety(0, 2 * 1024 * 1024, 150 * 1024 * 1024);
+        assert!(result.is_ok());
     }
 
     #[test]
-    fn bomb_blocks_total_size() {
-        let r = check_entry_safety(5, 1000, 2 * 1024 * 1024, 199 * 1024 * 1024);
-        assert!(matches!(r, Err(ArchiveError::BombExceeded { .. })));
+    fn safety_allows_large_total_without_absolute_limit() {
+        for index in 0..100 {
+            let result = check_entry_safety(index, 10 * 1024 * 1024, 10 * 1024 * 1024);
+            assert!(result.is_ok(), "entry {index} should pass");
+        }
     }
 
     #[test]
     fn bomb_blocks_high_ratio() {
         // 100KB 压缩 → 15MB 解压 → 比 153 (> 100)
-        let r = check_entry_safety(0, 100 * 1024, 15 * 1024 * 1024, 0);
+        let r = check_entry_safety(0, 100 * 1024, 15 * 1024 * 1024);
         assert!(matches!(r, Err(ArchiveError::CompressionRatio { .. })));
     }
 
     #[test]
     fn bomb_allows_normal_zip() {
         for i in 0..100 {
-            let r = check_entry_safety(
-                i,
-                1024 * 1024,
-                2 * 1024 * 1024,
-                i as u64 * 2 * 1024 * 1024,
-            );
+            let r = check_entry_safety(i, 1024 * 1024, 2 * 1024 * 1024);
             assert!(r.is_ok(), "entry {i} 应通过");
         }
     }
 
     #[test]
     fn bomb_blocks_too_many_entries() {
-        let r = check_entry_safety(MAX_ENTRY_COUNT, 0, 0, 0);
+        let r = check_entry_safety(MAX_ENTRY_COUNT, 0, 0);
         assert!(matches!(r, Err(ArchiveError::TooManyEntries(_))));
     }
 
@@ -940,23 +914,28 @@ fn extract_zip_creates_top_dir_only_when_present() {
 }
 
 #[test]
-fn bomb_pipeline_blocks_zip_with_oversize_entry() {
-    // ? 4 ?????? zip ?????: ? entry 60MB ?? BombExceeded
+fn extract_zip_allows_entry_over_legacy_size_limit() {
+    // Absolute size limits are disabled, so a 60MB entry must extract completely.
     let tmp = std::env::temp_dir().join(format!("role_bomb_{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&tmp).unwrap();
     let staging = tmp.join("staging/sample");
     std::fs::create_dir_all(&staging).unwrap();
-    // 60MB padding -> ? MAX_SINGLE_FILE_BYTES (50MB)
-    let big = vec![0u8; 60 * 1024 * 1024];
+    use rand::{rngs::StdRng, RngCore, SeedableRng};
+    let mut big = vec![0u8; 60 * 1024 * 1024];
+    StdRng::seed_from_u64(42).fill_bytes(&mut big);
     std::fs::write(staging.join("big.bin"), &big).unwrap();
     let out_zip = tmp.join("bomb.zip");
     compress(staging.parent().unwrap(), ArchiveFormat::Zip, &out_zip, &|_| {}).unwrap();
     let extract_root = tmp.join("extract");
     std::fs::create_dir_all(&extract_root).unwrap();
-    let r = extract_zip(&out_zip, &extract_root, &|_| {});
-    assert!(matches!(r, Err(ArchiveError::BombExceeded { .. })));
-    // ???????? big.bin
-    assert!(!extract_root.join("sample/big.bin").exists());
+    let result = extract_zip(&out_zip, &extract_root, &|_| {}).unwrap();
+    assert_eq!(result.files_extracted, 1);
+    assert_eq!(
+        std::fs::metadata(extract_root.join("sample/big.bin"))
+            .unwrap()
+            .len(),
+        60 * 1024 * 1024
+    );
     std::fs::remove_dir_all(&tmp).unwrap();
 }
 

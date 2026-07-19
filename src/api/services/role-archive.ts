@@ -27,7 +27,7 @@ export interface EntryEvent {
   bytes_entry: number
 }
 
-// Small file (< 50MB): pass bytes directly via single invoke
+// Direct byte import retained for callers that already hold the archive in memory.
 export async function importRole(params: {
   bytes: number[] | Uint8Array
   format: ArchiveFormat
@@ -43,7 +43,7 @@ export async function importRole(params: {
   })
 }
 
-// Large file (> 50MB): pass file:// URI or absolute path
+// Preferred import path: desktop file path or Android SAF content URI.
 export async function importRoleFromPath(params: {
   path: string
   format: ArchiveFormat
