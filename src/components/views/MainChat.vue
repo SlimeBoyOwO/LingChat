@@ -39,6 +39,9 @@
     </div>
     <GameExtraUI />
 
+    <!-- Android 拍照 / 相册来源选择 sheet,见 useImageSourcePicker. 仅 chat 路由可见(PetMode 在手机上已停用) -->
+    <ImageSourcePicker />
+
     <!-- 首次加载过渡动画（覆盖在主界面上方，主界面在后台并行初始化） -->
     <LoadingTransition v-if="showLoading" @complete="onLoadingComplete" />
   </div>
@@ -57,6 +60,7 @@ import LoadingTransition from './LoadingTransition.vue'
 import { eventQueue } from '@/core/events/event-queue'
 
 import GameExtraUI from '../game/standard/GameExtraUI.vue'
+import ImageSourcePicker from '@/components/ui/ImageSourcePicker.vue'
 
 const LOADING_STORAGE_KEY = 'lingchat_loading_shown'
 
