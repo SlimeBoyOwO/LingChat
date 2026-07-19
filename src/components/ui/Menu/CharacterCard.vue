@@ -7,13 +7,15 @@
     >
       <Cat :size="20" />
     </div>
-    <button
-      class="absolute top-3 right-3 p-1 z-10 rounded-full bg-black/5 text-white/60 hover:text-white hover:bg-white/10 transition-all hover:rotate-90"
-      @click.stop="openSettingsModal"
-    >
-      <Settings />
-    </button>
-    <RoleExportMenu :role-id="id" :role-name="name" />
+    <div class="absolute top-3 right-3 z-10 flex items-center gap-2">
+      <RoleExportMenu :role-id="id" :role-name="name" />
+      <button
+        class="flex items-center justify-center p-1 rounded-full bg-black/5 text-white/60 hover:text-white hover:bg-white/10 transition-all hover:rotate-90"
+        @click.stop="openSettingsModal"
+      >
+        <Settings :size="24" />
+      </button>
+    </div>
 
     <div
       class="flex flex-col items-center w-28 md:w-32 shrink-0 space-y-2 border-r border-white/10 pr-4"

@@ -1,19 +1,11 @@
 <template>
-  <div class="absolute top-3 right-11 z-10">
+  <div class="relative">
     <button
       class="export-trigger"
       :title="'导出角色'"
       @click.stop="toggle"
     >
-      <svg
-        xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-        class="w-4 h-4"
-      >
-        <circle cx="12" cy="12" r="1" />
-        <circle cx="19" cy="12" r="1" />
-        <circle cx="5" cy="12" r="1" />
-      </svg>
+      <Upload :size="24" />
     </button>
 
     <Transition name="menu-pop">
@@ -36,6 +28,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+import { Upload } from 'lucide-vue-next'
 import { useRoleImportExport } from '@/composables/useRoleImportExport'
 import type { ArchiveFormat } from '@/api/services/role-archive'
 
@@ -87,9 +80,9 @@ onUnmounted(() => {
 @reference "tailwindcss";
 
 .export-trigger {
-  @apply p-1 rounded-full;
+  @apply flex items-center justify-center p-1 rounded-full;
   @apply bg-black/5 text-white/60 hover:text-white hover:bg-white/10;
-  @apply transition-all hover:rotate-90;
+  @apply transition-all;
 }
 
 .export-menu {
