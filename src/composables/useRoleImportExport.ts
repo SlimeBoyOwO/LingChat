@@ -14,7 +14,7 @@ import {
   type EntryEvent,
 } from '@/api/services/role-archive'
 
-// 28-char truncation with leading ellipsis
+// 名称超过 28 个字符时从左侧截断，并添加省略号。
 function truncateName(name: string, max = 28): string {
   if (name.length <= max) return name
   return '\u2026' + name.slice(name.length - max + 1)
@@ -31,7 +31,7 @@ function isAndroidContentUri(p: string): boolean {
   return p.startsWith('content://')
 }
 
-// Module-level singleton: listeners registered once for app lifetime
+// 模块级单例监听器：应用生命周期内只注册一次。
 let progressUnlisten: UnlistenFn | null = null
 let errorUnlisten: UnlistenFn | null = null
 let progressTimer: number | null = null
@@ -74,7 +74,7 @@ export function useRoleImportExport() {
     await ensureListeners()
   }
 
-  // Elapsed-time exponential curve to 90% for files >= 5MB (indeterminate mode)
+  // 使用基于耗时的指数曲线模拟进度，最高推进到 90%。
   function startFakeProgress() {
     store.import.percent = 0
     const start = Date.now()
@@ -186,7 +186,7 @@ export function useRoleImportExport() {
     store.export.percent = -1
     store.export.message = '\u7b49\u5f85\u4fdd\u5b58\u4f4d\u7f6e...'
 
-    // Generate suggested filename up front (mirrors backend sanitize + timestamp)
+    // 提前生成建议文件名，规则与后端的名称清洗和时间戳逻辑保持一致。
     const safeName = (roleName || 'role').replace(/[\\/:*?"<>|]/g, '_').trim() || 'role'
     const ts = Date.now()
     const suggestedName = `${safeName}_${ts}.${format}`
@@ -207,7 +207,7 @@ export function useRoleImportExport() {
       store.export.message = '\u6b63\u5728\u538b\u7f29...'
       store.export.percent = -1
 
-      // Desktop uses native filesystem copy; Android SAF uses android-fs in the backend.
+      // 桌面端使用原生文件系统复制，Android SAF 由后端通过 android-fs 写入。
       const res: ExportResult = await exportRoleToPath({
         roleId,
         format,

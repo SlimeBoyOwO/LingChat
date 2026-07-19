@@ -68,7 +68,7 @@ function onDocClick() {
 }
 
 onMounted(() => {
-  // Defer to avoid catching the click that opened the menu
+  // 延迟注册，避免捕获刚刚用于打开菜单的点击事件。
   setTimeout(() => document.addEventListener('click', onDocClick), 0)
 })
 onUnmounted(() => {

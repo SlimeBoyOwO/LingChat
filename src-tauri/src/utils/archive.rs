@@ -2,14 +2,14 @@
 //!
 //! # 解压安全防线
 //!
-//! 仅看总大小抓不住 zip 炸弹 (42.zip / 35.zip 这类递归解压炸弹每个 entry
-//! 都是 copy 压缩,解压/压缩比可达 1000+)。必须额外加压缩比防线:
+//! 仅检查总大小无法识别 ZIP 炸弹。类似 42.zip、35.zip 的递归压缩包中，
+//! 每个条目都可能具有极高压缩率，解压与压缩大小之比可超过 1000。
 //!
-//! 1. **文件个数** — `entry_index < 1000`
+//! 1. **条目数量** — `entry_index < 1000`
 //! 2. **压缩比** — `uncompressed / compressed <= 100` ← 关键防线
 //!
 //! # 路径遍历防御
-//! 任何 entry 名含 `..`、以 `/` 或 `\` 开头、Windows 盘符、UNC 路径,
+//! 任何条目名包含 `..`、以 `/` 或 `\` 开头、Windows 盘符或 UNC 路径时，
 //! 直接拒绝。同时跳过 macOS 元数据 (`__MACOSX/`、`._*`、`.DS_Store`)。
 
 use std::fs::File;
@@ -115,7 +115,7 @@ pub struct TargetResolution {
     pub action: &'static str, // "created" | "renamed" | "overwritten"
 }
 
-// ===== 1. magic bytes 检测 =====
+// ===== 1. 文件头魔数检测 =====
 
 const ZIP_MAGIC: [u8; 4] = [0x50, 0x4B, 0x03, 0x04];
 const ZIP_EMPTY_MAGIC: [u8; 4] = [0x50, 0x4B, 0x05, 0x06];
@@ -142,14 +142,14 @@ pub fn detect_format(path: &Path) -> Result<ArchiveFormat, ArchiveError> {
 
 // ===== 2. 安全检查 (P0 #4 修复核心) =====
 
-/// 单 entry 解压前的安全检查。
+/// 单个条目解压前的安全检查。
 ///
-/// 返回 Ok 表示 entry 可以解压,Err 表示必须立即终止整个解压流程。
+/// 返回 `Ok` 表示条目可以解压，返回 `Err` 表示必须立即终止解压流程。
 ///
 /// # 防线 (按检查顺序)
-/// 1. entry 数量 < MAX_ENTRY_COUNT
+/// 1. 条目数量小于 `MAX_ENTRY_COUNT`
 /// 2. **压缩比 <= MAX_COMPRESSION_RATIO** (解压后/压缩前)
-///    跳过 compressed == 0 的情况 (stored / 异常)
+///    压缩大小为零时跳过压缩比检查，例如仅存储条目或异常元数据。
 pub fn check_entry_safety(
     entry_index: usize,
     entry_compressed: u64,
@@ -169,7 +169,7 @@ pub fn check_entry_safety(
 
 // ===== 3. 路径清洗与安全拼接 =====
 
-/// 清洗 entry 名,拒绝危险路径。
+/// 清洗条目名称并拒绝危险路径。
 ///
 /// 拒绝: 空名、含 `..` 组件、绝对路径 (Unix `/` / Windows 盘符 / UNC `\\`)、
 /// macOS 元数据 (`__MACOSX/`、`._*`、`.DS_Store`)、过长文件名。
@@ -239,7 +239,7 @@ pub fn safe_join(dest_root: &Path, cleaned_name: &str) -> Result<PathBuf, Archiv
     Ok(out)
 }
 
-// ===== 4. resolve_target (冲突策略) =====
+// ===== 4. 解析目标目录（冲突策略） =====
 
 pub fn resolve_target(
     base: &Path,
@@ -320,7 +320,7 @@ pub fn extract_zip(
         let compressed = entry.compressed_size();
         let uncompressed = entry.size();
 
-        // (P0 #4) 解压前安全检查
+        // 写入文件前执行条目安全检查。
         check_entry_safety(i, compressed, uncompressed)?;
 
         let cleaned = match sanitize_entry_name(&raw_name) {
@@ -346,7 +346,7 @@ pub fn extract_zip(
         bytes_done += bytes_written;
         summary.files_extracted += 1;
 
-        // 节流: 80ms emit 一次,小 archive 每个 entry 都 emit
+        // 进度事件最短间隔为 80 毫秒；小型压缩包仍逐条发送。
         let elapsed = last_emit.elapsed();
         if elapsed >= std::time::Duration::from_millis(80)
             || total < 100
@@ -377,8 +377,8 @@ pub fn extract_zip(
     Ok(summary)
 }
 
-/// 7z 解压骨架。集成时需替换为 SevenZReader 手动迭代 + check_entry_safety。
-/// 7z ?????? ZIP ????? 4 ????? + ???? + 80ms ???
+/// 解压 7z 压缩包。
+/// 与 ZIP 解压保持相同的取消检查、条目安全检查、路径清洗和进度节流策略。
 pub fn extract_sevenz(
     src: &Path,
     dest_root: &Path,
@@ -404,7 +404,7 @@ pub fn extract_sevenz(
     let mut processed: usize = 0;
     let mut entry_index: usize = 0;
 
-    // 1) ???"? data stream"? entry ? for_each_entries (? block)
+    // 第一遍处理带数据流的条目，解压器会按固实块顺序提供数据。
     let result = reader.for_each_entries(|entry, reader| {
         if cancel_token.is_cancelled() {
             return Err(sevenz_rust2::Error::Io(
@@ -476,14 +476,13 @@ pub fn extract_sevenz(
     }
     result.map_err(map_sevenz_err)?;
 
-    // 2) for_each_entries ???"? data stream ???/???" entry (BlockDecoder 0 block ??);
-    //    ? archive().files ??: ??? + ???, ???? 4 ???
+    // 第二遍补建没有数据流的目录和空文件。
     for (i, entry) in reader.archive().files.iter().enumerate() {
         if entry.is_anti_item {
             continue;
         }
         if entry.has_stream() {
-            continue; // ???????
+            continue; // 已在第一遍处理。
         }
         let raw_name = entry.name.clone();
         let size = entry.size;
@@ -497,7 +496,7 @@ pub fn extract_sevenz(
             Err(_) => continue,
         };
         if let Err(e) = check_entry_safety(entry_index, 0, size) {
-            // ?????: ??/???????? bomb; ?????????
+            // 无数据流条目只可能触发条目数量限制，记录后跳过。
             tracing::warn!("7z empty entry skipped: {}", e);
             entry_index += 1;
             continue;
@@ -817,8 +816,7 @@ mod tests {
 
 #[test]
 fn sevenz_round_trip_self_contained() {
-    // ? sevenz-rust2 0.21 ??? compress_to_path ????? 7z,
-    // ?? extract_sevenz ??????????? sample/ ???
+    // 验证 7z 压缩与解压可以完整保留角色顶层目录和必要文件。
     let tmp = std::env::temp_dir().join(format!("role_7z_{}", uuid::Uuid::new_v4()));
     let role = _build_sample_role(&tmp);
     let staging = tmp.join("staging");
@@ -873,7 +871,7 @@ fn _build_sample_role(tmp: &Path) -> PathBuf {
 
 #[test]
 fn extract_zip_round_trip_self_contained() {
-    // ?? export_role: ? staging ????? wrapped/sample/..., ?? compress(staging) ? zip ???? sample/
+    // 模拟角色导出目录结构，验证 ZIP 往返后仍保留顶层角色目录。
     let tmp = std::env::temp_dir().join(format!("role_rt_{}", uuid::Uuid::new_v4()));
     let role = _build_sample_role(&tmp);
     let staging = tmp.join("staging");
@@ -888,7 +886,7 @@ fn extract_zip_round_trip_self_contained() {
             std::fs::copy(&entry, &dest).unwrap();
         }
     }
-    // compress ? staging (???) => zip ???? sample/...
+    // 压缩暂存目录后，压缩包内部应以 `sample/` 作为顶层目录。
     let out_zip = tmp.join("out.zip");
     let count = std::sync::atomic::AtomicUsize::new(0);
     compress(&staging, ArchiveFormat::Zip, &out_zip, &|_| {
@@ -910,12 +908,9 @@ fn extract_zip_round_trip_self_contained() {
 
 #[test]
 fn extract_zip_creates_top_dir_only_when_present() {
-    // ???? peek_role_name ????????? compress ???
+    // 验证带单一顶层角色目录的 ZIP 可以成功生成。
     let tmp = std::env::temp_dir().join(format!("role_peek_{}", uuid::Uuid::new_v4()));
     let role = _build_sample_role(&tmp);
-    // ???? peek_role_name ?????????, ???????? role ?????;
-    // ?????: ????? self_contained wrapper?
-    // ??: ????? "wrap.zip" ???? sample/... ??????? peek ? "sample"?
     let out_zip = tmp.join("ok.zip");
     let staging = tmp.join("staging/sample");
     for entry in walkdir(&role) {
@@ -929,14 +924,13 @@ fn extract_zip_creates_top_dir_only_when_present() {
         }
     }
     compress(staging.parent().unwrap(), ArchiveFormat::Zip, &out_zip, &|_| {}).unwrap();
-    // peek_role_name ? api ?, ????????
     assert!(out_zip.exists());
     std::fs::remove_dir_all(&tmp).unwrap();
 }
 
 #[test]
 fn extract_zip_allows_entry_over_legacy_size_limit() {
-    // Absolute size limits are disabled, so a 60MB entry must extract completely.
+    // 已取消绝对大小限制，因此 60MB 条目必须能够完整解压。
     let tmp = std::env::temp_dir().join(format!("role_bomb_{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&tmp).unwrap();
     let staging = tmp.join("staging/sample");
@@ -963,7 +957,7 @@ fn extract_zip_allows_entry_over_legacy_size_limit() {
 
 #[test]
 fn extract_zip_throttles_progress_events() {
-    // emit ??: ?? entry ????? emit, ????? finished ??
+    // 验证解压过程至少发送开始和完成事件。
     let tmp = std::env::temp_dir().join(format!("role_throttle_{}", uuid::Uuid::new_v4()));
     let role = _build_sample_role(&tmp);
     let staging = tmp.join("staging/sample");

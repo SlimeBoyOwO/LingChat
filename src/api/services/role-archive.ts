@@ -27,7 +27,7 @@ export interface EntryEvent {
   bytes_entry: number
 }
 
-// Direct byte import retained for callers that already hold the archive in memory.
+// 保留字节导入接口，供已经在内存中持有压缩包数据的调用方使用。
 export async function importRole(params: {
   bytes: number[] | Uint8Array
   format: ArchiveFormat
@@ -43,7 +43,7 @@ export async function importRole(params: {
   })
 }
 
-// Preferred import path: desktop file path or Android SAF content URI.
+// 推荐的导入接口：支持桌面文件路径和 Android SAF 内容 URI。
 export async function importRoleFromPath(params: {
   path: string
   format: ArchiveFormat
@@ -72,8 +72,8 @@ export async function exportRole(params: {
   })
 }
 
-// Export and write to the user-chosen destination in one backend invoke.
-// Desktop paths use std::fs; Android content URIs use android-fs SAF support.
+// 通过一次后端调用完成压缩，并写入用户选择的目标位置。
+// 桌面端使用原生文件系统，Android 内容 URI 使用 android-fs SAF 接口。
 export async function exportRoleToPath(params: {
   roleId: number
   format: ArchiveFormat
