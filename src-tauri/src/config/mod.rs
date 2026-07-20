@@ -32,6 +32,7 @@ pub mod keys {
     pub const LLM_CHAT_PROVIDER_ID: &str = "llm.chat_provider_id";
     pub const LLM_TRANSLATE_PROVIDER_ID: &str = "llm.translate_provider_id";
     pub const LLM_GOD_AGENT_PROVIDER_ID: &str = "llm.god_agent_provider_id";
+    pub const LLM_VISION_PROVIDER_ID: &str = "llm.vision_provider_id";
 
     // LLM 生成参数（对应 TEMPERATURE / TOP_P / ENABLE_THINKING）
     pub const LLM_TEMPERATURE: &str = "llm.temperature";
@@ -700,44 +701,13 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
             },
         );
 
-        // 视觉与模型配置
+        // 视觉感知配置（视觉模型本身在「高级设置 → 大模型管理」中以角色形式配置）
         proactive_subs.insert(
-            "视觉与模型配置".to_string(),
+            "视觉感知设置".to_string(),
             Subcategory {
-                description: "主动对话时调用的 Vision LLM 视觉分析模型以及截图分析设置".to_string(),
+                description: "主动对话时的桌面视觉感知开关与触发权重，视觉模型在大模型管理中配置"
+                    .to_string(),
                 settings: vec![
-                    ConfigSetting {
-                        key: proactive::keys::VD_FOLLOW_CHAT_MODEL.to_string(),
-                        value: read_setting(
-                            app,
-                            proactive::keys::VD_FOLLOW_CHAT_MODEL,
-                            "false",
-                        ),
-                        description: "VD_FOLLOW_CHAT_MODEL — 跟随当前对话模型（模型需支持视觉输入及 OpenAI 兼容接口）".to_string(),
-                        setting_type: "bool".to_string(),
-                    },
-                    ConfigSetting {
-                        key: proactive::keys::VD_API_KEY.to_string(),
-                        value: read_setting(app, proactive::keys::VD_API_KEY, ""),
-                        description: "VD_API_KEY — 视觉模型 API Key".to_string(),
-                        setting_type: "text".to_string(),
-                    },
-                    ConfigSetting {
-                        key: proactive::keys::VD_BASE_URL.to_string(),
-                        value: read_setting(
-                            app,
-                            proactive::keys::VD_BASE_URL,
-                            "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                        ),
-                        description: "VD_BASE_URL — 视觉模型 API Base URL".to_string(),
-                        setting_type: "text".to_string(),
-                    },
-                    ConfigSetting {
-                        key: proactive::keys::VD_MODEL.to_string(),
-                        value: read_setting(app, proactive::keys::VD_MODEL, "qwen3.5-plus"),
-                        description: "VD_MODEL — 视觉模型型号".to_string(),
-                        setting_type: "text".to_string(),
-                    },
                     ConfigSetting {
                         key: proactive::keys::ENABLE_VISUAL_PRECEPTION.to_string(),
                         value: read_setting(app, proactive::keys::ENABLE_VISUAL_PRECEPTION, "true"),
@@ -894,6 +864,7 @@ pub fn list_llm_providers(app: AppHandle) -> LlmProvidersResponse {
         chat_provider_id: assignment.chat_provider_id,
         translate_provider_id: assignment.translate_provider_id,
         god_agent_provider_id: assignment.god_agent_provider_id,
+        vision_provider_id: assignment.vision_provider_id,
     }
 }
 
@@ -938,6 +909,10 @@ pub fn delete_llm_provider(app: AppHandle, id: String) -> Result<(), String> {
         assignment.translate_provider_id = None;
         changed = true;
     }
+    if assignment.vision_provider_id.as_deref() == Some(&id) {
+        assignment.vision_provider_id = None;
+        changed = true;
+    }
     if changed {
         save_role_assignment(&app, &assignment).map_err(|e| e.to_string())?;
     }
@@ -964,6 +939,7 @@ pub fn set_llm_role(
         "chat" => assignment.chat_provider_id = provider_id,
         "translate" => assignment.translate_provider_id = provider_id,
         "god_agent" => assignment.god_agent_provider_id = provider_id,
+        "vision" => assignment.vision_provider_id = provider_id,
         other => return Err(format!("Invalid role: {other}")),
     }
     save_role_assignment(&app, &assignment).map_err(|e| e.to_string())?;

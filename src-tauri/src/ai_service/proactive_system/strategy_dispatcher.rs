@@ -14,27 +14,18 @@ pub struct StrategyDispatcher {
 
 impl StrategyDispatcher {
     pub fn new(app_handle: &tauri::AppHandle) -> Self {
-        let config = ProactiveConfig::load(app_handle);
-        let sa_config = ScreenAnalyzerConfig {
-            vd_api_key: config.vd_api_key.clone(),
-            vd_base_url: config.vd_base_url.clone(),
-            vd_model: config.vd_model.clone(),
-        };
         Self {
-            screen_analyzer: Mutex::new(ScreenAnalyzer::new(sa_config)),
+            screen_analyzer: Mutex::new(ScreenAnalyzer::new(ScreenAnalyzerConfig::resolve(
+                app_handle,
+            ))),
         }
     }
 
     /// 更新配置（同时同步 ScreenAnalyzer 的配置，同步执行无需 async）。
     pub fn update_config(&self, app_handle: &tauri::AppHandle) {
-        let config = ProactiveConfig::load(app_handle);
         // try_lock: update_config 不涉及 async，用同步锁即可
         if let Ok(mut sa) = self.screen_analyzer.try_lock() {
-            sa.update_config(ScreenAnalyzerConfig {
-                vd_api_key: config.vd_api_key,
-                vd_base_url: config.vd_base_url,
-                vd_model: config.vd_model,
-            });
+            sa.update_config(ScreenAnalyzerConfig::resolve(app_handle));
         }
     }
 

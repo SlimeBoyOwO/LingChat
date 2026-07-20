@@ -10,7 +10,7 @@ use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
 
 use crate::ai_service::llm::{create_llm_client, LlmClient, LlmConfig};
-use crate::config::{self, keys};
+use crate::config::{self, keys, proactive};
 
 // ============================================================
 // Data types
@@ -65,6 +65,8 @@ pub struct LlmRoleAssignment {
     pub translate_provider_id: Option<String>,
     #[serde(default)]
     pub god_agent_provider_id: Option<String>,
+    #[serde(default)]
+    pub vision_provider_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,6 +75,7 @@ pub struct LlmProvidersResponse {
     pub chat_provider_id: Option<String>,
     pub translate_provider_id: Option<String>,
     pub god_agent_provider_id: Option<String>,
+    pub vision_provider_id: Option<String>,
 }
 
 // ============================================================
@@ -113,6 +116,7 @@ pub fn load_role_assignment(app: &AppHandle) -> LlmRoleAssignment {
         chat_provider_id: get_string_opt(&store, keys::LLM_CHAT_PROVIDER_ID),
         translate_provider_id: get_string_opt(&store, keys::LLM_TRANSLATE_PROVIDER_ID),
         god_agent_provider_id: get_string_opt(&store, keys::LLM_GOD_AGENT_PROVIDER_ID),
+        vision_provider_id: get_string_opt(&store, keys::LLM_VISION_PROVIDER_ID),
     }
 }
 
@@ -131,6 +135,10 @@ pub fn save_role_assignment(app: &AppHandle, assignment: &LlmRoleAssignment) -> 
     store.set(
         keys::LLM_GOD_AGENT_PROVIDER_ID.to_string(),
         json_string_opt(assignment.god_agent_provider_id.as_deref()),
+    );
+    store.set(
+        keys::LLM_VISION_PROVIDER_ID.to_string(),
+        json_string_opt(assignment.vision_provider_id.as_deref()),
     );
     store.save().context("Failed to save settings store")?;
     Ok(())
@@ -177,6 +185,40 @@ pub fn resolve_translate_provider(app: &AppHandle) -> Option<LlmProviderConfig> 
     }
 
     tracing::warn!("No usable LLM provider for translation");
+    None
+}
+
+/// 解析视觉分析（截图理解）使用的 provider。
+/// 优先使用「视觉模型」角色显式指定的 provider，缺省时跟随对话模型。
+pub fn resolve_vision_provider(app: &AppHandle) -> Option<LlmProviderConfig> {
+    let assignment = load_role_assignment(app);
+    let providers = load_providers(app);
+
+    // 1. Explicit vision provider
+    if let Some(ref id) = assignment.vision_provider_id {
+        if let Some(p) = providers.iter().find(|p| p.id == *id) {
+            if p.is_usable() {
+                tracing::info!("Using explicit vision provider: {} ({})", p.label, p.id);
+                return Some(p.clone());
+            }
+        }
+    }
+
+    // 2. Fallback to chat provider
+    if let Some(ref id) = assignment.chat_provider_id {
+        if let Some(p) = providers.iter().find(|p| p.id == *id) {
+            if p.is_usable() {
+                tracing::info!(
+                    "Vision provider not set, falling back to chat provider: {} ({})",
+                    p.label,
+                    p.id
+                );
+                return Some(p.clone());
+            }
+        }
+    }
+
+    tracing::warn!("No usable LLM provider for vision analysis");
     None
 }
 
@@ -298,6 +340,71 @@ pub fn migrate_if_needed(app: &AppHandle) {
         tracing::error!("Migration save failed: {e}");
     } else {
         tracing::info!("Migration complete: {} provider(s)", providers.len());
+    }
+}
+
+/// 将旧的主动视觉独立配置（VD_API_KEY / VD_BASE_URL / VD_MODEL）迁移为
+/// 大模型管理中的一个 provider，并分配为「视觉模型」角色。
+/// 视觉模型配置已统一到大模型管理，旧键迁移后会被清理。
+pub fn migrate_legacy_vision_keys(app: &AppHandle) {
+    let Ok(store) = app.store(config::STORE_FILE) else {
+        return;
+    };
+
+    let api_key = get_string_opt(&store, proactive::keys::VD_API_KEY).unwrap_or_default();
+    if api_key.trim().is_empty() {
+        return;
+    }
+
+    // 已分配过视觉角色则不重复迁移
+    if get_string_opt(&store, keys::LLM_VISION_PROVIDER_ID).is_some() {
+        return;
+    }
+
+    let model = get_string_opt(&store, proactive::keys::VD_MODEL).unwrap_or_default();
+    let base_url = get_string_opt(&store, proactive::keys::VD_BASE_URL).unwrap_or_default();
+
+    tracing::info!("Migrating legacy VD_* vision config into LLM provider list...");
+
+    let id = uuid::Uuid::new_v4().to_string();
+    let label = if model.is_empty() {
+        "视觉模型".to_string()
+    } else {
+        format!("{model} (视觉)")
+    };
+    let provider = LlmProviderConfig {
+        id: id.clone(),
+        label,
+        provider: "openai".to_string(),
+        model,
+        api_key,
+        base_url,
+        temperature: None,
+        top_p: None,
+        enable_thinking: false,
+        reasoning_effort: None,
+    };
+
+    let mut providers = load_providers(app);
+    providers.push(provider);
+    if let Err(e) = save_providers(app, &providers) {
+        tracing::error!("Legacy vision config migration failed to save providers: {e}");
+        return;
+    }
+
+    let mut assignment = load_role_assignment(app);
+    assignment.vision_provider_id = Some(id);
+    if let Err(e) = save_role_assignment(app, &assignment) {
+        tracing::error!("Legacy vision config migration failed to assign vision role: {e}");
+        return;
+    }
+
+    // 清理旧键，避免重复迁移
+    store.delete(proactive::keys::VD_API_KEY);
+    store.delete(proactive::keys::VD_BASE_URL);
+    store.delete(proactive::keys::VD_MODEL);
+    if let Err(e) = store.save() {
+        tracing::warn!("Legacy vision keys cleanup save failed: {e}");
     }
 }
 

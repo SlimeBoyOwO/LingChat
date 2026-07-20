@@ -12,8 +12,8 @@ use tokio::sync::Mutex;
 
 use crate::ai_service::emotion::EmotionClassifier;
 use crate::ai_service::llm::provider_config::{
-    build_llm_client_from_provider, migrate_if_needed, resolve_chat_provider,
-    resolve_translate_provider,
+    build_llm_client_from_provider, migrate_if_needed, migrate_legacy_vision_keys,
+    resolve_chat_provider, resolve_translate_provider,
 };
 use crate::ai_service::message_system::processor::{MessageProcessor, ProcessorOptions};
 use crate::ai_service::service::{AIService, SharedAIService};
@@ -52,6 +52,8 @@ pub async fn initialize(
 
     // 迁移旧的扁平 LLM 配置 → 多供应商列表
     migrate_if_needed(&app.handle());
+    // 迁移旧的主动视觉独立配置（VD_*）→ 大模型管理中的视觉模型角色
+    migrate_legacy_vision_keys(&app.handle());
 
     // 提前加载配置 + 构建 LlmClient（AIService 的子成员 GameRoleManager 需要它）
     let app_config = AppConfig::load(&app.handle()).unwrap_or_default();
