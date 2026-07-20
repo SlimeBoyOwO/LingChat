@@ -41,6 +41,7 @@
         </button>
       </div>
     </MenuItem>
+    <RoleArchiveProgress />
 
     <MenuItem title="打开人物文件夹" size="small">
       <template #header>
@@ -104,6 +105,7 @@ import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import type { Character as ApiCharacter, Clothes } from '../../../types'
+import RoleArchiveProgress from '@/components/ui/RoleArchiveProgress.vue'
 
 interface CharacterCardData {
   id: number

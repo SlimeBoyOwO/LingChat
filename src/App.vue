@@ -9,7 +9,6 @@
   <!-- 与桌宠专用通知组件区分开 -->
   <Notification v-if="route.path !== '/pet'"/>
   <AchievementToast />
-  <ImportProgressBar />
   <AdventureUnlockNotify />
   <AppDialog />
 </template>
@@ -23,7 +22,6 @@ import { invoke } from '@tauri-apps/api/core'
 import CursorEffects from './components/effects/CursorEffects.vue'
 import Notification from './components/ui/Notification.vue'
 import AchievementToast from './components/ui/AchievementToast.vue'
-import ImportProgressBar from './components/ui/ImportProgressBar.vue'
 import AdventureUnlockNotify from './components/ui/AdventureUnlockNotify.vue'
 import AppDialog from './components/ui/AppDialog.vue'
 import { initUIStore } from './stores/modules/ui/ui'
