@@ -964,8 +964,8 @@ pub async fn switch_llm(
         .and_then(|p| build_llm_client_from_provider(&p))
         .map(Arc::new);
 
-    if let Some(ref slot) = state.chat.llm {
-        let mut guard = slot.write().await;
+    {
+        let mut guard = state.chat.llm.write().await;
         *guard = new_chat;
         tracing::info!("[switch_llm] 聊天 LLM 槽位已热切换");
     }
@@ -975,7 +975,8 @@ pub async fn switch_llm(
         .and_then(|p| build_llm_client_from_provider(&p))
         .map(Arc::new);
 
-    if let Some(slot) = state.chat.translator.slot() {
+    {
+        let slot = state.chat.translator.slot();
         let mut guard = slot.write().await;
         *guard = new_translate;
         tracing::info!("[switch_llm] 翻译 LLM 槽位已热切换");

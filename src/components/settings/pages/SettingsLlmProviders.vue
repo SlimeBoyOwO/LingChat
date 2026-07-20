@@ -13,6 +13,13 @@
         <h3 class="text-white text-base font-semibold">已配置的模型</h3>
         <div class="flex items-center gap-2">
           <button
+            class="px-4 py-2 bg-white/10 text-white/80 rounded-lg text-sm font-medium hover:bg-white/20 transition-colors"
+            title="热切换异常时的兜底重启"
+            @click="restartApp"
+          >
+            重启软件
+          </button>
+          <button
             class="px-4 py-2 bg-brand text-white rounded-lg text-sm font-medium hover:bg-brand/80 transition-colors"
             @click="startAdd"
           >
@@ -538,6 +545,7 @@ import { ref, onMounted, reactive } from 'vue'
 import { useLlmProvidersStore } from '@/stores/modules/llm-providers'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { invoke } from '@tauri-apps/api/core'
+import { relaunch } from '@tauri-apps/plugin-process'
 import {
   listLlmModels,
   type LlmModelInfo,
@@ -744,6 +752,11 @@ function startTest(p: LlmProviderConfig) {
   testResponse.value = ''
   testError.value = ''
   sidePanel.value = 'test'
+}
+
+// 兜底：热切换异常时手动重启
+async function restartApp() {
+  await relaunch()
 }
 
 async function doTest() {

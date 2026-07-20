@@ -49,7 +49,7 @@ impl AIService {
     pub async fn new(
         db: DatabaseConnection,
         data_dir: PathBuf,
-        llm: Option<LlmSlot>,
+        llm: LlmSlot,
         tts_config: TtsConfig,
         use_persistent_memory: bool,
         memory_update_interval: u32,

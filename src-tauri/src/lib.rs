@@ -39,7 +39,8 @@ impl FormatTime for LocalTimer {
 
 pub struct ChatComponents {
     /// 聊天主 LLM 槽位（支持运行时热切换）。
-    pub llm: Option<LlmSlot>,
+    /// 槽位本身始终存在，内部值可能为 None（表示尚未配置模型）。
+    pub llm: LlmSlot,
     pub processor: Arc<MessageProcessor>,
     /// 翻译 LLM 槽位（支持运行时热切换）。
     pub translator: Arc<Translator>,
