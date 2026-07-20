@@ -33,9 +33,9 @@ pub struct GenaiProvider {
 }
 
 impl GenaiProvider {
-    pub fn new(cfg: &LlmConfig) -> Result<Self> {
+    pub fn new(cfg: &LlmConfig, http: Client) -> Result<Self> {
         let model = cfg.model.clone();
-        let mut builder = GenaiClient::builder();
+        let mut builder = GenaiClient::builder().with_reqwest(http);
 
         match cfg.provider.to_lowercase().as_str() {
             "deepseek" => {

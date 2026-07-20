@@ -17,7 +17,8 @@ use crate::ai_service::llm::provider_config::{
     LlmProvidersResponse,
 };
 use crate::ai_service::llm::LlmModelInfo;
-use crate::config::{self, ConfigSetting, ConfigTree};
+use crate::config::app_config::{MAX_LLM_TIMEOUT_SECS, MIN_LLM_TIMEOUT_SECS};
+use crate::config::{self, keys, ConfigSetting, ConfigTree};
 use crate::AppState;
 
 // ========== Settings CRUD ==========
@@ -29,6 +30,17 @@ pub fn get_settings_tree(app: AppHandle) -> ConfigTree {
 
 #[tauri::command]
 pub fn save_settings(app: AppHandle, values: BTreeMap<String, String>) -> Result<String, String> {
+    if let Some(value) = values.get(keys::LLM_TIMEOUT_SECS) {
+        let timeout_secs = value
+            .parse::<u64>()
+            .map_err(|_| "LLM 请求空闲超时必须是整数".to_string())?;
+        if !(MIN_LLM_TIMEOUT_SECS..=MAX_LLM_TIMEOUT_SECS).contains(&timeout_secs) {
+            return Err(format!(
+                "LLM 请求空闲超时必须在 {MIN_LLM_TIMEOUT_SECS}–{MAX_LLM_TIMEOUT_SECS} 秒之间"
+            ));
+        }
+    }
+
     let store = config::settings_store(&app).map_err(|e| e.to_string())?;
 
     for (key, value) in &values {
@@ -163,13 +175,10 @@ pub fn set_llm_role(
 /// 热切换 LLM：无需重启即可生效的模型/提供商切换。
 /// 重建聊天主 LLM、翻译 LLM、上帝 Agent LLM 三个槽位。
 #[tauri::command]
-pub async fn switch_llm(
-    app: AppHandle,
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn switch_llm(app: AppHandle, state: tauri::State<'_, AppState>) -> Result<(), String> {
     // 1. 重建聊天主 LLM 槽位
     let new_chat = resolve_chat_provider(&app)
-        .and_then(|p| build_llm_client_from_provider(&p))
+        .and_then(|p| build_llm_client_from_provider(&app, &p))
         .map(Arc::new);
 
     {
@@ -180,7 +189,7 @@ pub async fn switch_llm(
 
     // 2. 重建翻译 LLM 槽位
     let new_translate = resolve_translate_provider(&app)
-        .and_then(|p| build_llm_client_from_provider(&p))
+        .and_then(|p| build_llm_client_from_provider(&app, &p))
         .map(Arc::new);
 
     {
@@ -204,10 +213,11 @@ pub async fn switch_llm(
 
 #[tauri::command]
 pub async fn test_llm_provider(
+    app: AppHandle,
     provider: LlmProviderConfig,
     message: String,
 ) -> Result<String, String> {
-    let Some(client) = build_llm_client_from_provider(&provider) else {
+    let Some(client) = build_llm_client_from_provider(&app, &provider) else {
         return Err("无法创建 LLM 客户端：请检查 API Key 和模型名称".to_string());
     };
 
@@ -218,21 +228,18 @@ pub async fn test_llm_provider(
         crate::ai_service::types::LlmMessage::user(&message),
     ];
 
-    let timeout = tokio::time::timeout(
-        std::time::Duration::from_secs(30),
-        client.complete(&messages),
-    )
-    .await
-    .map_err(|_| "请求超时（30秒），请检查网络或 API 地址".to_string())?;
-
-    timeout.map_err(|e| format!("测试请求失败: {e}"))
+    client
+        .complete(&messages)
+        .await
+        .map_err(|e| format!("测试请求失败: {e}"))
 }
 
 #[tauri::command]
 pub async fn list_llm_models(
+    app: AppHandle,
     provider: LlmProviderConfig,
 ) -> Result<Vec<LlmModelInfo>, String> {
-    let Some(client) = build_llm_client_from_provider(&provider) else {
+    let Some(client) = build_llm_client_from_provider(&app, &provider) else {
         return Err("无法创建 LLM 客户端，请检查 API Key 和模型名称".to_string());
     };
 

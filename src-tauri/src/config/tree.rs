@@ -71,6 +71,18 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         setting_type: "text".to_string(),
                     },
                     ConfigSetting {
+                        key: keys::LLM_TIMEOUT_SECS.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::LLM_TIMEOUT_SECS,
+                            &app_defaults.llm_timeout_secs.to_string(),
+                        ),
+                        description:
+                            "LLM 请求空闲超时（秒）— 首次响应及流式相邻事件最长等待时间（10–3600）"
+                                .to_string(),
+                        setting_type: "number".to_string(),
+                    },
+                    ConfigSetting {
                         key: keys::LLM_NO_EMOTION_LIMIT.to_string(),
                         value: read_setting(
                             app,
@@ -303,14 +315,12 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                 description:
                     "TTS 音频输出格式与语言设置，对应原环境变量 TTS_AUDIO_FORMAT / VOICE_LANG"
                         .to_string(),
-                settings: vec![
-                    ConfigSetting {
-                        key: keys::TTS_AUDIO_FORMAT.to_string(),
-                        value: read_setting(app, keys::TTS_AUDIO_FORMAT, &tts_defaults.audio_format),
-                        description: "音频文件格式（wav / mp3 / flac / ogg 等）".to_string(),
-                        setting_type: "text".to_string(),
-                    },
-                ],
+                settings: vec![ConfigSetting {
+                    key: keys::TTS_AUDIO_FORMAT.to_string(),
+                    value: read_setting(app, keys::TTS_AUDIO_FORMAT, &tts_defaults.audio_format),
+                    description: "音频文件格式（wav / mp3 / flac / ogg 等）".to_string(),
+                    setting_type: "text".to_string(),
+                }],
             },
         );
 
@@ -420,8 +430,8 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             keys::MAX_PROACTIVE_TIMES,
                             &proactive_defaults.max_proactive_times.to_string(),
                         ),
-                        description:
-                            "MAX_PROACTIVE_TIMES — 在用户响应之前，能主动对话的次数".to_string(),
+                        description: "MAX_PROACTIVE_TIMES — 在用户响应之前，能主动对话的次数"
+                            .to_string(),
                         setting_type: "text".to_string(),
                     },
                 ],

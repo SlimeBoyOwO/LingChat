@@ -59,6 +59,17 @@
         浏览
       </button>
     </div>
+    <div v-else-if="setting.type === 'number'">
+      <input
+        type="number"
+        :id="setting.key"
+        v-model="localValue"
+        :min="setting.key === 'llm.timeout_secs' ? 10 : undefined"
+        :max="setting.key === 'llm.timeout_secs' ? 3600 : undefined"
+        :step="setting.key === 'llm.timeout_secs' ? 1 : undefined"
+        class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+      />
+    </div>
     <div v-else>
       <input
         type="text"
@@ -78,7 +89,7 @@ import Toggle from '../widget/Toggle.vue'
 interface Setting {
   key: string
   value: string
-  type: 'bool' | 'textarea' | 'text' | 'path'
+  type: 'bool' | 'textarea' | 'text' | 'path' | 'number'
   description?: string
 }
 

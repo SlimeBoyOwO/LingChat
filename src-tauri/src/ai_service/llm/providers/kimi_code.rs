@@ -10,7 +10,6 @@ use futures_util::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, USER_AGENT};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 
 use crate::ai_service::llm::provider::{LlmModelInfo, LlmProvider, LlmResponseWithTools};
 use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmConfig};
@@ -245,7 +244,6 @@ impl LlmProvider for KimiCodeProvider {
         let endpoint = kimi_code_models_endpoint(&self.base_url);
         let response = http
             .get(&endpoint)
-            .timeout(Duration::from_secs(30))
             .bearer_auth(self.api_key.trim())
             .header(USER_AGENT, "claude-code/0.1.0")
             .header(ACCEPT, "application/json")

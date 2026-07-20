@@ -23,6 +23,7 @@ pub const LLM_ENABLE_THINKING: &str = "llm.enable_thinking";
 pub const LLM_OUTPUT_SEC_LANG: &str = "llm.output_sec_lang";
 pub const CONSUMERS: &str = "llm.consumers";
 pub const LLM_NO_EMOTION_LIMIT: &str = "llm.no_emotion_limit_prompt";
+pub const LLM_TIMEOUT_SECS: &str = "llm.timeout_secs";
 
 // ========== 翻译（对应 TRANSLATE_LLM_PROVIDER / TRANSLATE_MODEL / TRANSLATE_API_KEY / TRANSLATE_BASE_URL） ==========
 pub const TRANSLATE_PROVIDER: &str = "translate.provider";

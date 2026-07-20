@@ -41,6 +41,14 @@ fn default_memory_recent_window() -> u32 {
     30
 }
 
+pub const DEFAULT_LLM_TIMEOUT_SECS: u64 = 120;
+pub const MIN_LLM_TIMEOUT_SECS: u64 = 10;
+pub const MAX_LLM_TIMEOUT_SECS: u64 = 3600;
+
+fn default_llm_timeout_secs() -> u64 {
+    DEFAULT_LLM_TIMEOUT_SECS
+}
+
 // ========== AppConfig 结构体 ==========
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,6 +60,8 @@ pub struct AppConfig {
     pub consumers: u32,
     #[serde(default)]
     pub no_emotion_limit_prompt: bool,
+    #[serde(default = "default_llm_timeout_secs")]
+    pub llm_timeout_secs: u64,
 
     // ---- 翻译 ----
     #[serde(default = "default_enable_translate")]
@@ -84,6 +94,7 @@ impl Default for AppConfig {
             llm_output_sec_lang: default_output_sec_lang(),
             consumers: default_consumers(),
             no_emotion_limit_prompt: false,
+            llm_timeout_secs: default_llm_timeout_secs(),
             enable_translate: default_enable_translate(),
             enable_time_sense: default_enable_time_sense(),
             enable_emotion_classifier: default_enable_emotion_classifier(),
@@ -122,6 +133,14 @@ fn get_u32(store: &Store<Wry>, key: &str, default: u32) -> u32 {
         .unwrap_or(default)
 }
 
+fn get_u64_in_range(store: &Store<Wry>, key: &str, default: u64, min: u64, max: u64) -> u64 {
+    store
+        .get(key)
+        .and_then(|v| v.as_u64())
+        .filter(|value| (min..=max).contains(value))
+        .unwrap_or(default)
+}
+
 // ========== AppConfig 方法 ==========
 
 impl AppConfig {
@@ -144,6 +163,13 @@ impl AppConfig {
                 &store,
                 keys::LLM_NO_EMOTION_LIMIT,
                 default.no_emotion_limit_prompt,
+            ),
+            llm_timeout_secs: get_u64_in_range(
+                &store,
+                keys::LLM_TIMEOUT_SECS,
+                default.llm_timeout_secs,
+                MIN_LLM_TIMEOUT_SECS,
+                MAX_LLM_TIMEOUT_SECS,
             ),
             enable_translate: get_bool(
                 &store,

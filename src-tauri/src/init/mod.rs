@@ -63,7 +63,7 @@ pub async fn initialize(
     // 槽位本身始终存在，未配置模型时内部值为 None。
     let llm: LlmSlot = std::sync::Arc::new(tokio::sync::RwLock::new(
         resolve_chat_provider(&app.handle())
-            .and_then(|p| build_llm_client_from_provider(&p))
+            .and_then(|p| build_llm_client_from_provider(&app.handle(), &p))
             .map(Arc::new),
     ));
 
@@ -100,7 +100,7 @@ pub async fn initialize(
     // 翻译 LLM 槽位（支持运行时热切换）；槽位本身始终存在。
     let translate_llm: LlmSlot = std::sync::Arc::new(tokio::sync::RwLock::new(
         resolve_translate_provider(&app.handle())
-            .and_then(|p| build_llm_client_from_provider(&p))
+            .and_then(|p| build_llm_client_from_provider(&app.handle(), &p))
             .map(Arc::new),
     ));
 

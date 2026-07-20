@@ -129,6 +129,7 @@ import { ref, onMounted, computed, reactive, watch, nextTick } from 'vue'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import SettingItem from '@/components/base/items/SettingItem.vue'
 import { getEnvConfigSettings, saveEnvConfigSettings } from '@/api/services/config'
+import { switchLlm } from '@/api/services/llm-providers'
 
 // --- 响应式状态定义 ---
 const uiStore = useUIStore()
@@ -188,6 +189,9 @@ const saveSettings = async () => {
 
   try {
     saveStatus.message = (await saveEnvConfigSettings(formData)).message
+    if (Object.prototype.hasOwnProperty.call(formData, 'llm.timeout_secs')) {
+      await switchLlm()
+    }
     saveStatus.colorClass = 'text-green-500'
 
     await loadConfig(false)

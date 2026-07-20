@@ -10,6 +10,7 @@ use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
 
 use crate::ai_service::llm::{create_llm_client, LlmClient, LlmConfig};
+use crate::config::app_config::AppConfig;
 use crate::config::{self, keys, proactive};
 
 // ============================================================
@@ -42,13 +43,13 @@ impl LlmProviderConfig {
         !self.api_key.is_empty() && !self.model.is_empty()
     }
 
-    pub fn to_llm_config(&self) -> LlmConfig {
+    pub fn to_llm_config(&self, timeout_secs: u64) -> LlmConfig {
         LlmConfig {
             provider: self.provider.clone(),
             model: self.model.clone(),
             api_key: self.api_key.clone(),
             base_url: self.base_url.clone(),
-            timeout_secs: 120,
+            timeout_secs,
             temperature: self.temperature,
             top_p: self.top_p,
             enable_thinking: self.enable_thinking,
@@ -222,12 +223,16 @@ pub fn resolve_vision_provider(app: &AppHandle) -> Option<LlmProviderConfig> {
     None
 }
 
-pub fn build_llm_client_from_provider(cfg: &LlmProviderConfig) -> Option<LlmClient> {
+pub fn build_llm_client_from_provider(
+    app: &AppHandle,
+    cfg: &LlmProviderConfig,
+) -> Option<LlmClient> {
     if !cfg.is_usable() {
         tracing::warn!("Skipping unusable LLM provider: {} ({})", cfg.label, cfg.id);
         return None;
     }
-    match create_llm_client(cfg.to_llm_config()) {
+    let timeout_secs = AppConfig::load(app).unwrap_or_default().llm_timeout_secs;
+    match create_llm_client(cfg.to_llm_config(timeout_secs)) {
         Ok(client) => Some(client),
         Err(e) => {
             tracing::error!("Failed to create LLM client for {}: {e}", cfg.label);

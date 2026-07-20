@@ -15,8 +15,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{anyhow, Context, Result};
-use futures_util::Stream;
+use anyhow::{anyhow, Result};
+use futures_util::{Stream, StreamExt};
 use reqwest::Client;
 use tokio::sync::RwLock;
 
@@ -85,16 +85,12 @@ pub struct LlmClient {
 }
 
 impl LlmClient {
-    pub fn new(cfg: LlmConfig, provider: Box<dyn LlmProvider>) -> Result<Self> {
-        let http = Client::builder()
-            .timeout(Duration::from_secs(cfg.timeout_secs.max(10)))
-            .build()
-            .context("创建 LLM HTTP 客户端失败")?;
-        Ok(Self {
+    pub fn new(cfg: LlmConfig, http: Client, provider: Box<dyn LlmProvider>) -> Self {
+        Self {
             cfg,
             http,
             provider,
-        })
+        }
     }
 
     pub fn config(&self) -> &LlmConfig {
@@ -118,7 +114,21 @@ impl LlmClient {
         if !self.cfg.is_usable() {
             return Err(anyhow!("LLM 未配置 API key 或 model"));
         }
-        self.provider.complete_stream(&self.http, messages).await
+        let mut inner = self.provider.complete_stream(&self.http, messages).await?;
+        let timeout_secs = self.cfg.timeout_secs;
+        let idle_timeout = Duration::from_secs(timeout_secs);
+        let stream = async_stream::try_stream! {
+            loop {
+                let item = tokio::time::timeout(idle_timeout, inner.next())
+                    .await
+                    .map_err(|_| anyhow!("LLM 流式响应空闲超时（{timeout_secs} 秒）"))?;
+                match item {
+                    Some(chunk) => yield chunk?,
+                    None => break,
+                }
+            }
+        };
+        Ok(Box::pin(stream))
     }
 
     /// 非流式 + function calling。
