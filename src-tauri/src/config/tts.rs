@@ -1,33 +1,18 @@
 //! TTS 引擎配置（适配器 URL、音频格式、语言等），从 settings.json 统一加载。
 //!
 //! 对标 Python 侧通过 `os.environ` / `.env` 管理的 TTS 相关环境变量。
+//!
+//! 设计原则：默认值在 `default_*()` 函数和 `Default` 实现中定义一次，
+//! `from_store()` 通过调用相同的 `default_*()` 函数引用这些默认值。
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
 
-pub mod keys {
-    // TTS 适配器后端 URL
-    pub const SIMPLE_VITS_API_URL: &str = "tts.simple_vits_api_url";
-    pub const BV2_API_URL: &str = "tts.bv2_api_url";
-    pub const GSV_API_URL: &str = "tts.gsv_api_url";
-    pub const SBV2_API_URL: &str = "tts.sbv2_api_url";
-    pub const SBV2API_API_URL: &str = "tts.sbv2api_api_url";
-    pub const AIVIS_API_URL: &str = "tts.aivis_api_url";
-    pub const AIVIS_API_KEY: &str = "tts.aivis_api_key";
-    pub const INDEXTTS_API_URL: &str = "tts.indextts_api_url";
+use super::keys;
 
-    // OpenTTS
-    pub const OPENTTS_API_URL: &str = "tts.opentts_api_url";
-    pub const OPENTTS_API_KEY: &str = "tts.opentts_api_key";
-    pub const OPENTTS_MODEL: &str = "tts.opentts_model";
-    pub const OPENTTS_VOICE: &str = "tts.opentts_voice";
-
-    // 音频参数
-    pub const TTS_AUDIO_FORMAT: &str = "tts.audio_format";
-    pub const VOICE_LANG: &str = "tts.voice_lang";
-}
+// ========== TtsConfig 结构体 ==========
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TtsConfig {
@@ -77,43 +62,46 @@ pub struct TtsConfig {
     pub voice_lang: String,
 }
 
-// ---- 默认值 ----
-fn default_simple_vits_url() -> String {
+// ---- 默认值（单一真相源：serde + Default + from_store 均引用这些函数） ----
+
+pub fn default_simple_vits_url() -> String {
     "http://127.0.0.1:23456".into()
 }
-fn default_bv2_url() -> String {
+pub fn default_bv2_url() -> String {
     "http://127.0.0.1:6006".into()
 }
-fn default_gsv_url() -> String {
+pub fn default_gsv_url() -> String {
     "http://127.0.0.1:9880".into()
 }
-fn default_sbv2_url() -> String {
+pub fn default_sbv2_url() -> String {
     "http://127.0.0.1:5000".into()
 }
-fn default_sbv2api_url() -> String {
+pub fn default_sbv2api_url() -> String {
     "http://localhost:3000".into()
 }
-fn default_aivis_url() -> String {
+pub fn default_aivis_url() -> String {
     "https://api.aivis-project.com/v1".into()
 }
-fn default_indextts_url() -> String {
+pub fn default_indextts_url() -> String {
     "http://127.0.0.1:23467/voice/indextts/presets".into()
 }
-fn default_opentts_url() -> String {
+pub fn default_opentts_url() -> String {
     "https://api.siliconflow.cn/v1".into()
 }
-fn default_opentts_model() -> String {
+pub fn default_opentts_model() -> String {
     "FunAudioLLM/CosyVoice2-0.5B".into()
 }
-fn default_opentts_voice() -> String {
+pub fn default_opentts_voice() -> String {
     "speech:pai:7s86w73x9i:vkgcswgqicskwpdwevri".into()
 }
-fn default_audio_format() -> String {
+pub fn default_audio_format() -> String {
     "wav".into()
 }
-fn default_voice_lang() -> String {
+pub fn default_voice_lang() -> String {
     "ja".into()
 }
+
+// ========== Default 实现 ==========
 
 impl Default for TtsConfig {
     fn default() -> Self {
@@ -136,6 +124,8 @@ impl Default for TtsConfig {
     }
 }
 
+// ========== TtsConfig 方法 ==========
+
 impl TtsConfig {
     /// 从 `settings.json` 加载 TTS 配置，缺失项使用默认值。
     pub fn load(app: &AppHandle) -> Self {
@@ -156,7 +146,10 @@ impl TtsConfig {
         };
 
         Self {
-            simple_vits_api_url: get_string(keys::SIMPLE_VITS_API_URL, &default_simple_vits_url()),
+            simple_vits_api_url: get_string(
+                keys::SIMPLE_VITS_API_URL,
+                &default_simple_vits_url(),
+            ),
             bv2_api_url: get_string(keys::BV2_API_URL, &default_bv2_url()),
             gsv_api_url: get_string(keys::GSV_API_URL, &default_gsv_url()),
             sbv2_api_url: get_string(keys::SBV2_API_URL, &default_sbv2_url()),
@@ -174,7 +167,11 @@ impl TtsConfig {
             opentts_api_url: get_string(keys::OPENTTS_API_URL, &default_opentts_url()),
             opentts_api_key: {
                 let s = get_string(keys::OPENTTS_API_KEY, "");
-                if s.is_empty() { None } else { Some(s) }
+                if s.is_empty() {
+                    None
+                } else {
+                    Some(s)
+                }
             },
             opentts_model: get_string(keys::OPENTTS_MODEL, &default_opentts_model()),
             opentts_voice: get_string(keys::OPENTTS_VOICE, &default_opentts_voice()),
