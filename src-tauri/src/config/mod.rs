@@ -8,12 +8,12 @@
 //! - `tts`：TtsConfig（TTS 引擎配置）
 //! - `tree`：build_config_tree()（前端"高级设置"页面数据源）
 
-pub mod keys;
-pub mod types;
 pub mod app_config;
+pub mod keys;
 pub mod proactive;
-pub mod tts;
 pub mod tree;
+pub mod tts;
+pub mod types;
 
 pub const STORE_FILE: &str = "settings.json";
 
