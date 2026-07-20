@@ -23,7 +23,7 @@ use tracing_subscriber::Layer;
 
 use ai_service::god_agent::config::resolve_god_agent_provider;
 use ai_service::god_agent::GodAgentCore;
-use ai_service::llm::LlmClient;
+use ai_service::llm::LlmSlot;
 use ai_service::message_system::processor::MessageProcessor;
 use ai_service::screen_analyzer::{ScreenAnalyzer, ScreenAnalyzerConfig};
 use ai_service::service::SharedAIService;
@@ -38,8 +38,11 @@ impl FormatTime for LocalTimer {
 }
 
 pub struct ChatComponents {
-    pub llm: Option<Arc<LlmClient>>,
+    /// 聊天主 LLM 槽位（支持运行时热切换）。
+    /// 槽位本身始终存在，内部值可能为 None（表示尚未配置模型）。
+    pub llm: LlmSlot,
     pub processor: Arc<MessageProcessor>,
+    /// 翻译 LLM 槽位（支持运行时热切换）。
     pub translator: Arc<Translator>,
 }
 
@@ -216,11 +219,14 @@ pub fn run() {
                 ),
             ));
 
-            // 构建上帝 Agent（多人对话编排器）
-            let god_agent = resolve_god_agent_provider(&app.handle()).map(|llm| {
-                let config = ai_service::god_agent::config::GodAgentConfig::load(&app.handle());
-                Arc::new(GodAgentCore::new(Arc::new(llm), config))
-            });
+            // 构建上帝 Agent（多人对话编排器）—— 使用独立槽位以支持热切换
+            let god_agent = resolve_god_agent_provider(&app.handle())
+                .map(|llm| {
+                    let config =
+                        ai_service::god_agent::config::GodAgentConfig::load(&app.handle());
+                    let slot: LlmSlot = std::sync::Arc::new(tokio::sync::RwLock::new(Some(Arc::new(llm))));
+                    Arc::new(GodAgentCore::new(slot, config))
+                });
 
             app.manage(AppState {
                 db,
@@ -340,6 +346,7 @@ pub fn run() {
             api::settings::save_llm_provider,
             api::settings::delete_llm_provider,
             api::settings::set_llm_role,
+            api::settings::switch_llm,
             api::settings::test_llm_provider,
             api::settings::list_llm_models,
             api::character::get_character_list,

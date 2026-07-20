@@ -1,13 +1,12 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use sea_orm::DatabaseConnection;
 
 use crate::ai_service::game_system::memory_builder::MemoryBuilder;
 use crate::ai_service::game_system::persistent_memory_system::PersistentMemorySystem;
-use crate::ai_service::llm::LlmClient;
+use crate::ai_service::llm::LlmSlot;
 use crate::ai_service::tts::VoiceMaker;
 use crate::ai_service::types::{CharacterSettings, GameLine, GameMemoryBank, GameRole, LlmMessage};
 use crate::config::tts::TtsConfig;
@@ -20,8 +19,9 @@ pub struct GameRoleManager {
     pub loaded_roles: HashMap<i32, GameRole>,
     data_dir: PathBuf,
 
-    /// LLM 客户端（迟注入）。MemoryBank 压缩引擎依赖此字段。
-    llm: Option<Arc<LlmClient>>,
+    /// LLM 客户端槽位（支持运行时热切换）。MemoryBank 压缩引擎依赖此字段。
+    /// 槽位本身始终存在，内部值为 None 时表示尚未配置模型。
+    llm: LlmSlot,
     /// 每个角色的 MemoryBank 后台压缩引擎（惰性构造）。
     memory_bank_systems: HashMap<i32, PersistentMemorySystem>,
     /// TTS 引擎配置（适配器 URL、音频格式等）。
@@ -37,7 +37,7 @@ pub struct GameRoleManager {
 impl GameRoleManager {
     pub fn new(
         data_dir: PathBuf,
-        llm: Option<Arc<LlmClient>>,
+        llm: LlmSlot,
         tts_config: TtsConfig,
         use_persistent_memory: bool,
         memory_update_interval: u32,
@@ -270,10 +270,9 @@ impl GameRoleManager {
 
     // ── MemoryBank 集成方法 ──
 
-    /// 惰性构造角色的 `PersistentMemorySystem`（若尚未创建且 LLM 客户段就绪）。
     /// 惰性构造角色的 `PersistentMemorySystem`。
     ///
-    /// 调用方保证在 `enabled=true` 时 `self.llm` 已就绪（构造函数注入）。
+    /// 调用方保证在 `enabled=true` 时槽位内已就绪 LLM（构造函数注入）。
     fn ensure_memory_bank_system(
         &mut self,
         role_id: i32,
@@ -286,22 +285,22 @@ impl GameRoleManager {
         if self.memory_bank_systems.contains_key(&role_id) {
             return;
         }
-        let Some(ref llm) = self.llm else {
-            // 仅在 enabled 但 LLM 缺失时告警（正常启动流程不应到达）
+        // 仅在 enabled 但 LLM 槽位为空时告警（正常启动流程不应到达）
+        if self.llm.try_read().map(|g| g.is_none()).unwrap_or(true) {
             if enabled {
                 tracing::warn!(
-                    "MemoryBank: role_id={} 永久记忆已开启但 LLM 未就绪",
+                    "MemoryBank: role_id={} 永久记忆已开启但 LLM 槽位为空",
                     role_id
                 );
             }
             return;
-        };
+        }
         self.memory_bank_systems.insert(
             role_id,
             PersistentMemorySystem::new(
                 role_id,
                 bank,
-                llm.clone(),
+                self.llm.clone(),
                 enabled,
                 update_interval,
                 recent_window,

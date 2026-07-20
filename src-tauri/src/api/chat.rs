@@ -28,10 +28,8 @@ pub async fn send_chat_message(
 
     let state = app.state::<AppState>();
 
-    let llm = state
-        .chat
-        .llm
-        .clone()
+    let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm)
+        .await
         .ok_or_else(|| "LLM 未配置，请在设置中配置 API Key 和模型".to_string())?;
 
     let concurrency = AppConfig::load(&app)

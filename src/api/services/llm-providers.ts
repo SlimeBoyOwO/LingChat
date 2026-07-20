@@ -52,3 +52,8 @@ export async function listLlmModels(
 ): Promise<LlmModelInfo[]> {
   return invoke('list_llm_models', { provider })
 }
+
+/** 热切换 LLM —— 重建所有角色的 LLM 客户端，无需重启应用。 */
+export async function switchLlm(): Promise<void> {
+  return invoke('switch_llm')
+}

@@ -199,7 +199,7 @@ pub async fn start_adventure(app: AppHandle, adventure_folder: String) -> Result
     let channels = state.script_channels.clone();
     let db = state.db.clone();
     let data_dir = state.ai_service.lock().await.data_dir.clone();
-    let llm = state.chat.llm.clone();
+    let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm).await;
     let achievement_manager = state.achievement_manager.clone();
 
     tokio::spawn(async move {

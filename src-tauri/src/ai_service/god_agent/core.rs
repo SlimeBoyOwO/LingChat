@@ -1,13 +1,11 @@
 //! 上帝 Agent 核心：决策逻辑、prompt 构建、发言者选择。
 
-use std::sync::Arc;
-
 use anyhow::{anyhow, Result};
 
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::god_agent::config::GodAgentConfig;
 use crate::ai_service::god_agent::tools;
-use crate::ai_service::llm::LlmClient;
+use crate::ai_service::llm::{slot_snapshot, LlmSlot};
 use crate::ai_service::types::{GameLine, LlmMessage};
 
 // ============================================================
@@ -15,12 +13,13 @@ use crate::ai_service::types::{GameLine, LlmMessage};
 // ============================================================
 
 pub struct GodAgentCore {
-    pub llm: Arc<LlmClient>,
+    /// LLM 槽位（支持运行时热切换）。
+    pub llm: LlmSlot,
     pub config: GodAgentConfig,
 }
 
 impl GodAgentCore {
-    pub fn new(llm: Arc<LlmClient>, config: GodAgentConfig) -> Self {
+    pub fn new(llm: LlmSlot, config: GodAgentConfig) -> Self {
         Self { llm, config }
     }
 
@@ -180,8 +179,9 @@ impl GodAgentCore {
 
         // 调用 LLM function calling
         let tools = vec![tools::select_next_speaker_tool()];
-        let response = self
-            .llm
+        let llm = slot_snapshot(&self.llm).await
+            .ok_or_else(|| anyhow!("上帝Agent LLM 未配置"))?;
+        let response = llm
             .complete_with_tools(&messages, &tools, Some("auto"))
             .await?;
 

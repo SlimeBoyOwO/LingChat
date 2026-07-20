@@ -5,7 +5,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::ai_service::game_system::memory_builder::MemoryBuilder;
-use crate::ai_service::llm::LlmClient;
+use crate::ai_service::llm::{slot_snapshot, LlmClient, LlmSlot};
 use crate::ai_service::types::{GameLine, GameMemoryBank, GameRole, LlmMessage};
 
 // ── 中文压缩提示词（与 Python PersistentMemorySystem._init_prompts 完全一致） ──
@@ -85,7 +85,8 @@ pub struct PersistentMemorySystem {
     role_id: i32,
     ai_name: String,
 
-    llm: Arc<LlmClient>,
+    /// LLM 槽位（支持运行时热切换）。
+    llm: LlmSlot,
 
     memory_bank: Arc<Mutex<GameMemoryBank>>,
     is_updating: Arc<AtomicBool>,
@@ -102,7 +103,7 @@ impl PersistentMemorySystem {
     pub fn new(
         role_id: i32,
         initial_bank: &GameMemoryBank,
-        llm: Arc<LlmClient>,
+        llm: LlmSlot,
         enabled: bool,
         update_interval: usize,
         recent_window: usize,
@@ -237,7 +238,7 @@ impl PersistentMemorySystem {
     // ── 内部方法 ──
 
     fn spawn_background_update(&self, chat_text: String, target_idx: i64) {
-        let llm = self.llm.clone();
+        let llm_slot = self.llm.clone();
         let mb = self.memory_bank.clone();
         let prompts = self.section_prompts.clone();
         let is_updating = self.is_updating.clone();
@@ -246,6 +247,16 @@ impl PersistentMemorySystem {
         let ai_name = self.ai_name.clone();
 
         tokio::spawn(async move {
+            // 从槽位读取当前 LLM 客户端快照（支持热切换后使用新模型）
+            let llm = match slot_snapshot(&llm_slot).await {
+                Some(client) => client,
+                None => {
+                    tracing::warn!("MemoryBank: LLM 槽位为空，跳过本次更新");
+                    is_updating.store(false, Ordering::Release);
+                    return;
+                }
+            };
+
             // 读取旧内容
             let old_bank = mb.lock().await.clone();
             let old = &old_bank.data;

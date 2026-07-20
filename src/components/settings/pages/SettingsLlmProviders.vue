@@ -13,22 +13,10 @@
         <h3 class="text-white text-base font-semibold">已配置的模型</h3>
         <div class="flex items-center gap-2">
           <button
-            class="px-4 py-2 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg text-sm font-medium hover:bg-amber-500/30 transition-colors flex items-center gap-1.5"
+            class="px-4 py-2 bg-white/10 text-white/80 rounded-lg text-sm font-medium hover:bg-white/20 transition-colors"
+            title="热切换异常时的兜底重启"
             @click="restartApp"
           >
-            <svg
-              class="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
-            </svg>
             重启软件
           </button>
           <button
@@ -614,12 +602,12 @@ import { ref, onMounted, reactive, computed, watch } from 'vue'
 import { useLlmProvidersStore } from '@/stores/modules/llm-providers'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { invoke } from '@tauri-apps/api/core'
+import { relaunch } from '@tauri-apps/plugin-process'
 import {
   listLlmModels,
   type LlmModelInfo,
   type LlmProviderConfig,
 } from '@/api/services/llm-providers'
-import { relaunch } from '@tauri-apps/plugin-process'
 
 const store = useLlmProvidersStore()
 const uiStore = useUIStore()
@@ -751,14 +739,6 @@ function resetModelList() {
   modelsError.value = false
 }
 
-async function restartApp() {
-  try {
-    await relaunch()
-  } catch (e) {
-    console.error('重启失败:', e)
-  }
-}
-
 // LM Studio 兼容：本质是 OpenAI 协议，这里只帮用户预填默认地址和假 key
 function onProviderChange() {
   resetModelList()
@@ -832,7 +812,7 @@ async function saveCurrent() {
   saveError.value = false
   try {
     await store.saveProvider({ ...editing })
-    saveMessage.value = '保存成功！重启软件后生效。'
+    saveMessage.value = '保存成功！'
     const saved = store.providers.find(
       (p) => p.label === editing.label && p.model === editing.model,
     )
@@ -877,7 +857,11 @@ async function fetchProviderModels() {
 async function onChatRoleChange(value: string) {
   try {
     await store.assignRole('chat', value || null)
+    saveMessage.value = '对话模型已切换并生效！'
+    saveError.value = false
   } catch (e: any) {
+    saveMessage.value = `切换失败: ${e}`
+    saveError.value = true
     console.error('Failed to set chat role:', e)
   }
 }
@@ -885,7 +869,11 @@ async function onChatRoleChange(value: string) {
 async function onTranslateRoleChange(value: string) {
   try {
     await store.assignRole('translate', value === '__follow__' ? null : value)
+    saveMessage.value = '翻译模型已切换并生效！'
+    saveError.value = false
   } catch (e: any) {
+    saveMessage.value = `切换失败: ${e}`
+    saveError.value = true
     console.error('Failed to set translate role:', e)
   }
 }
@@ -893,7 +881,11 @@ async function onTranslateRoleChange(value: string) {
 async function onGodAgentRoleChange(value: string) {
   try {
     await store.assignRole('god_agent', value === '__follow__' ? null : value)
+    saveMessage.value = '上帝Agent已切换并生效！'
+    saveError.value = false
   } catch (e: any) {
+    saveMessage.value = `切换失败: ${e}`
+    saveError.value = true
     console.error('Failed to set god_agent role:', e)
   }
 }
@@ -904,6 +896,11 @@ function startTest(p: LlmProviderConfig) {
   testResponse.value = ''
   testError.value = ''
   sidePanel.value = 'test'
+}
+
+// 兜底：热切换异常时手动重启
+async function restartApp() {
+  await relaunch()
 }
 
 async function doTest() {

@@ -4,17 +4,21 @@
 //! 遵循项目其他 API 模块的约定（command 在 api/，业务逻辑在 config/）。
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use serde_json::Value as JsonValue;
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 
+use crate::ai_service::god_agent::config::resolve_god_agent_provider;
 use crate::ai_service::llm::provider_config::{
-    build_llm_client_from_provider, load_providers, load_role_assignment, save_providers,
-    save_role_assignment, LlmProviderConfig, LlmProvidersResponse,
+    build_llm_client_from_provider, load_providers, load_role_assignment, resolve_chat_provider,
+    resolve_translate_provider, save_providers, save_role_assignment, LlmProviderConfig,
+    LlmProvidersResponse,
 };
 use crate::ai_service::llm::LlmModelInfo;
 use crate::config::{self, ConfigSetting, ConfigTree};
+use crate::AppState;
 
 // ========== Settings CRUD ==========
 
@@ -153,6 +157,48 @@ pub fn set_llm_role(
         other => return Err(format!("Invalid role: {other}")),
     }
     save_role_assignment(&app, &assignment).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 热切换 LLM：无需重启即可生效的模型/提供商切换。
+/// 重建聊天主 LLM、翻译 LLM、上帝 Agent LLM 三个槽位。
+#[tauri::command]
+pub async fn switch_llm(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    // 1. 重建聊天主 LLM 槽位
+    let new_chat = resolve_chat_provider(&app)
+        .and_then(|p| build_llm_client_from_provider(&p))
+        .map(Arc::new);
+
+    {
+        let mut guard = state.chat.llm.write().await;
+        *guard = new_chat;
+        tracing::info!("[switch_llm] 聊天 LLM 槽位已热切换");
+    }
+
+    // 2. 重建翻译 LLM 槽位
+    let new_translate = resolve_translate_provider(&app)
+        .and_then(|p| build_llm_client_from_provider(&p))
+        .map(Arc::new);
+
+    {
+        let slot = state.chat.translator.slot();
+        let mut guard = slot.write().await;
+        *guard = new_translate;
+        tracing::info!("[switch_llm] 翻译 LLM 槽位已热切换");
+    }
+
+    // 3. 重建上帝 Agent LLM 槽位
+    let new_god = resolve_god_agent_provider(&app).map(Arc::new);
+
+    if let Some(ref god) = state.god_agent {
+        let mut guard = god.llm.write().await;
+        *guard = new_god;
+        tracing::info!("[switch_llm] 上帝Agent LLM 槽位已热切换");
+    }
+
     Ok(())
 }
 

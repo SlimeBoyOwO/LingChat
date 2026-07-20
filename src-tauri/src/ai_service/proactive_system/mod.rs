@@ -241,10 +241,8 @@ impl ProactiveSystem {
                 game_status,
                 processor: self.chat.processor.clone(),
                 translator: self.chat.translator.clone(),
-                llm: self
-                    .chat
-                    .llm
-                    .clone()
+                llm: crate::ai_service::llm::slot_snapshot(&self.chat.llm)
+                    .await
                     .ok_or_else(|| anyhow::anyhow!("LLM is not configured"))?,
                 concurrency: 1,
                 god_agent: None,
