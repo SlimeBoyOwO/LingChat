@@ -22,18 +22,18 @@ pub struct Translator {
     /// 是否启用实时翻译（对应旧版 `ENABLE_TRANSLATE`）。禁用时 `translate` 直接返回。
     pub enable: bool,
     /// 翻译用 LLM 槽位（支持运行时热切换）。
-    /// 配置不可用时 translator 仍可构造，只是 translate 会提前返回。
-    client: Option<LlmSlot>,
+    /// 槽位本身始终存在，内部值为 None 时表示未配置翻译模型。
+    client: LlmSlot,
 }
 
 impl Translator {
-    pub fn new(client: Option<LlmSlot>, enable: bool) -> Self {
+    pub fn new(client: LlmSlot, enable: bool) -> Self {
         Self { enable, client }
     }
 
     /// 返回翻译 LLM 槽位引用（用于热切换）。
-    pub fn slot(&self) -> Option<&LlmSlot> {
-        self.client.as_ref()
+    pub fn slot(&self) -> &LlmSlot {
+        &self.client
     }
 
     /// 把 segments 中的中文翻译成日文，原地写回 `japanese_text`。
@@ -47,11 +47,7 @@ impl Translator {
         if !self.enable && !script {
             return Ok(());
         }
-        let Some(slot) = self.client.as_ref() else {
-            tracing::warn!("Translator: 未配置翻译 LLM，跳过翻译");
-            return Ok(());
-        };
-        let Some(client) = slot_snapshot(slot).await else {
+        let Some(client) = slot_snapshot(&self.client).await else {
             tracing::warn!("Translator: 翻译 LLM 槽位为空，跳过翻译");
             return Ok(());
         };

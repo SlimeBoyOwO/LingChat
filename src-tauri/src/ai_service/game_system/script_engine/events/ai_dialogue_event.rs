@@ -79,10 +79,7 @@ impl ScriptEvent for AIDialogueEvent {
 
         // Delegate AI response to MessageGenerator
         let state = ctx.app.state::<AppState>();
-        let llm = match state.chat.llm.as_ref() {
-            Some(slot) => crate::ai_service::llm::slot_snapshot(slot).await,
-            None => None,
-        };
+        let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm).await;
         let llm = match llm {
             Some(llm) => llm,
             None => {

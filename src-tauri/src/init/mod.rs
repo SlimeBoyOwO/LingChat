@@ -57,10 +57,13 @@ pub async fn initialize(
     // 提前加载配置 + 构建 LlmClient（AIService 的子成员 GameRoleManager 需要它）
     let app_config = AppConfig::load(&app.handle()).unwrap_or_default();
 
-    // 构建聊天主 LLM 槽位（支持运行时热切换）
-    let llm: Option<LlmSlot> = resolve_chat_provider(&app.handle())
-        .and_then(|p| build_llm_client_from_provider(&p))
-        .map(|c| std::sync::Arc::new(tokio::sync::RwLock::new(Some(Arc::new(c)))));
+    // 构建聊天主 LLM 槽位（支持运行时热切换）。
+    // 槽位本身始终存在，未配置模型时内部值为 None。
+    let llm: LlmSlot = std::sync::Arc::new(tokio::sync::RwLock::new(
+        resolve_chat_provider(&app.handle())
+            .and_then(|p| build_llm_client_from_provider(&p))
+            .map(Arc::new),
+    ));
 
     // AIService 内部的 GameRoleManager 共享同一个聊天 LLM 槽位
     let mut ai_service = AIService::new(
@@ -92,11 +95,12 @@ pub async fn initialize(
     let ai_service: SharedAIService = Arc::new(Mutex::new(ai_service));
 
     // —— 构建聊天组件 ——
-    // 翻译 LLM 槽位（支持运行时热切换）
-    let translate_llm: Option<LlmSlot> =
+    // 翻译 LLM 槽位（支持运行时热切换）；槽位本身始终存在。
+    let translate_llm: LlmSlot = std::sync::Arc::new(tokio::sync::RwLock::new(
         resolve_translate_provider(&app.handle())
             .and_then(|p| build_llm_client_from_provider(&p))
-            .map(|c| std::sync::Arc::new(tokio::sync::RwLock::new(Some(Arc::new(c)))));
+            .map(Arc::new),
+    ));
 
     let classifier = load_emotion_classifier(app_config.enable_emotion_classifier, &data_dir);
     let processor = Arc::new(MessageProcessor::new(
