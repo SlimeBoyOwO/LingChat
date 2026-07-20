@@ -40,11 +40,6 @@ pub const USE_PERSISTENT_MEMORY: &str = "features.use_persistent_memory";
 pub const MEMORY_UPDATE_INTERVAL: &str = "features.memory_update_interval";
 pub const MEMORY_RECENT_WINDOW: &str = "features.memory_recent_window";
 
-// ========== TTS 基础 ==========
-pub const AUTO_START_TTS_SOFTWARE: &str = "tts.auto_start";
-pub const TTS_SOFTWARE_PATH: &str = "tts.software_path";
-pub const VOICE_CHECK: &str = "tts.voice_check";
-
 // ========== TTS 适配器后端 URL ==========
 pub const SIMPLE_VITS_API_URL: &str = "tts.simple_vits_api_url";
 pub const BV2_API_URL: &str = "tts.bv2_api_url";
