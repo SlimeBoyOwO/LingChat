@@ -60,11 +60,9 @@ pub(super) async fn do_import(
     let path_for_blocking = tmp_path.to_path_buf();
     let cancel_for_blocking = cancel_token.clone();
     let summary: ExtractSummary = tokio::task::spawn_blocking(move || {
+        // on_entry 不检查 cancel: archive.rs extract_zip/extract_sevenz 在每条 entry 前
+        // 已经检查 cancel_token 并直接 return ArchiveError::Cancelled, 不会调到这里.
         let on_entry = |evt: EntryEvent| {
-            if cancel_for_blocking.is_cancelled() {
-                let _ = app_emit.emit("role:import-error", "cancelled by user");
-                return;
-            }
             let _ = app_emit.emit("role:import-progress", &evt);
         };
         match format {
@@ -249,17 +247,14 @@ pub(super) async fn do_import(
     // 9. 把角色目录同步到数据库。
     let data_dir = crate::init::static_copy::get_data_dir().clone();
     let db = app.state::<crate::AppState>().db.clone();
-    crate::init::role_sync::sync_roles_from_folder(&db, &data_dir)
-        .await
-        .map_err(|e| {
-            // 同步失败时回滚已移入的角色目录，避免产生数据库无记录的孤立目录。
-            let target = resolution.target.clone();
-            tracing::error!("[RoleArchive] do_import sync failed, rolling back target={}", target.display());
-            tokio::spawn(async move {
-                let _ = tokio::fs::remove_dir_all(&target).await;
-            });
-            format!("sync roles: {e}")
-        })?;
+    if let Err(e) = crate::init::role_sync::sync_roles_from_folder(&db, &data_dir).await {
+        // 同步失败时立即回滚已移入的角色目录（await 而不是 spawn），
+        // 避免用户立刻重试同名导入时遇到尚未删除的旧目录。
+        let target = resolution.target.clone();
+        tracing::error!("[RoleArchive] do_import sync failed, rolling back target={}", target.display());
+        let _ = tokio::fs::remove_dir_all(&target).await;
+        return Err(format!("sync roles: {e}"));
+    }
 
     // 10. 查询新角色 ID。
     let role_id = find_role_id_by_folder(&db, &resolution.final_name).await?;
