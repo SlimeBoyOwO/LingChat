@@ -23,7 +23,6 @@
         </button>
       </div>
     </Transition>
-    <RoleArchiveProgress />
   </div>
 </template>
 
@@ -31,7 +30,6 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { Upload } from 'lucide-vue-next'
 import { useRoleImportExport } from '@/composables/useRoleImportExport'
-import RoleArchiveProgress from './RoleArchiveProgress.vue'
 import type { ArchiveFormat } from '@/api/services/role-archive'
 
 const props = defineProps<{
