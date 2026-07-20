@@ -71,3 +71,8 @@ tauri-plugin-process = "2"
 windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_Graphics_Gdi"] }
 
 
+# Integration tests organized in subdirectory; explicitly declared
+# because Cargo does not auto-discover tests/<dir>/mod.rs.
+[[test]]
+name = "archive"
+path = "tests/archive/mod.rs"

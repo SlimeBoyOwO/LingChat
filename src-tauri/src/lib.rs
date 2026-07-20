@@ -9,7 +9,7 @@ mod lan_sync;
 mod manifest;
 mod migration;
 mod resource_sync;
-mod utils;
+pub mod utils;
 
 use std::sync::Arc;
 
