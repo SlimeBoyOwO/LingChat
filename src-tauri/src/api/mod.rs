@@ -13,6 +13,7 @@ pub mod scene;
 pub mod schedule;
 pub mod screenshot;
 pub mod script;
+pub mod settings;
 pub mod workshop;
 
 use std::path::PathBuf;

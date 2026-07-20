@@ -111,7 +111,8 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init());
 
-    builder.setup(|app| {
+    builder
+        .setup(|app| {
             utils::log_bridge::set_app_handle(app.handle().clone());
 
             app.manage(api::pet::HitTestState::default());
@@ -216,12 +217,10 @@ pub fn run() {
             ));
 
             // 构建上帝 Agent（多人对话编排器）
-            let god_agent = resolve_god_agent_provider(&app.handle())
-                .map(|llm| {
-                    let config =
-                        ai_service::god_agent::config::GodAgentConfig::load(&app.handle());
-                    Arc::new(GodAgentCore::new(Arc::new(llm), config))
-                });
+            let god_agent = resolve_god_agent_provider(&app.handle()).map(|llm| {
+                let config = ai_service::god_agent::config::GodAgentConfig::load(&app.handle());
+                Arc::new(GodAgentCore::new(Arc::new(llm), config))
+            });
 
             app.manage(AppState {
                 db,
@@ -333,16 +332,16 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             utils::log_bridge::get_log_history,
-            config::get_settings_tree,
-            config::save_settings,
-            config::get_setting_by_key,
-            config::select_file,
-            config::list_llm_providers,
-            config::save_llm_provider,
-            config::delete_llm_provider,
-            config::set_llm_role,
-            config::test_llm_provider,
-            config::list_llm_models,
+            api::settings::get_settings_tree,
+            api::settings::save_settings,
+            api::settings::get_setting_by_key,
+            api::settings::select_file,
+            api::settings::list_llm_providers,
+            api::settings::save_llm_provider,
+            api::settings::delete_llm_provider,
+            api::settings::set_llm_role,
+            api::settings::test_llm_provider,
+            api::settings::list_llm_models,
             api::character::get_character_list,
             api::character::get_role_info,
             api::character::get_role_settings,
