@@ -4,7 +4,7 @@
       <div
         v-if="visible"
         class="role-archive-toast"
-        :class="variantClass"
+        :data-phase="state.phase"
       >
         <div class="glow-effect"></div>
 
@@ -88,14 +88,6 @@ const activeKey = computed<'import' | 'export'>(() =>
 const state = computed(() => (activeKey.value === 'import' ? store.import : store.export))
 
 const visible = computed(() => state.value.phase !== 'idle')
-
-const variantClass = computed(() => {
-  const p = state.value.phase
-  if (p === 'done') return 'variant-green'
-  if (p === 'error') return 'variant-red'
-  if (p === 'cancelled') return 'variant-gray'
-  return 'variant-blue'
-})
 
 const label = computed(() => {
   const p = state.value.phase
@@ -181,13 +173,13 @@ onUnmounted(() => clearDismiss())
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-.variant-blue {
+.role-archive-toast[data-phase="running"] {
   border: 1px solid rgba(121, 217, 255, 0.25);
   box-shadow:
     0 8px 32px rgba(0, 0, 0, 0.6),
     0 0 15px rgba(121, 217, 255, 0.12) inset;
 }
-.variant-blue .glow-effect {
+.role-archive-toast[data-phase="running"] .glow-effect {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -198,17 +190,17 @@ onUnmounted(() => clearDismiss())
   z-index: -1;
   filter: blur(20px);
 }
-.variant-blue .archive-label { @apply text-cyan-300; }
-.variant-blue .archive-icon { @apply text-cyan-300; background: rgba(121, 217, 255, 0.1); }
-.variant-blue .bar-fill { background-color: #79d9ff; }
+.role-archive-toast[data-phase="running"] .archive-label { @apply text-cyan-300; }
+.role-archive-toast[data-phase="running"] .archive-icon { @apply text-cyan-300; @apply bg-cyan-300/10; }
+.role-archive-toast[data-phase="running"] .bar-fill { @apply bg-cyan-300; }
 
-.variant-green {
+.role-archive-toast[data-phase="done"] {
   border: 1px solid rgba(74, 222, 128, 0.25);
   box-shadow:
     0 8px 32px rgba(0, 0, 0, 0.6),
     0 0 15px rgba(74, 222, 128, 0.12) inset;
 }
-.variant-green .glow-effect {
+.role-archive-toast[data-phase="done"] .glow-effect {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -219,17 +211,17 @@ onUnmounted(() => clearDismiss())
   z-index: -1;
   filter: blur(20px);
 }
-.variant-green .archive-label { @apply text-green-400; }
-.variant-green .archive-icon { @apply text-green-400; background: rgba(74, 222, 128, 0.1); }
-.variant-green .bar-fill { background-color: #4ade80; }
+.role-archive-toast[data-phase="done"] .archive-label { @apply text-green-400; }
+.role-archive-toast[data-phase="done"] .archive-icon { @apply text-green-400; @apply bg-green-400/10; }
+.role-archive-toast[data-phase="done"] .bar-fill { @apply bg-green-400; }
 
-.variant-red {
+.role-archive-toast[data-phase="error"] {
   border: 1px solid rgba(248, 113, 113, 0.3);
   box-shadow:
     0 8px 32px rgba(0, 0, 0, 0.6),
     0 0 15px rgba(248, 113, 113, 0.15) inset;
 }
-.variant-red .glow-effect {
+.role-archive-toast[data-phase="error"] .glow-effect {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -240,15 +232,15 @@ onUnmounted(() => clearDismiss())
   z-index: -1;
   filter: blur(20px);
 }
-.variant-red .archive-label { @apply text-red-400; }
-.variant-red .archive-icon { @apply text-red-400; background: rgba(248, 113, 113, 0.12); }
+.role-archive-toast[data-phase="error"] .archive-label { @apply text-red-400; }
+.role-archive-toast[data-phase="error"] .archive-icon { @apply text-red-400; @apply bg-red-400/[0.12]; }
 
-.variant-gray {
+.role-archive-toast[data-phase="cancelled"] {
   border: 1px solid rgba(156, 163, 175, 0.25);
 }
-.variant-gray .glow-effect { display: none; }
-.variant-gray .archive-label { @apply text-gray-400; }
-.variant-gray .archive-icon { @apply text-gray-400; background: rgba(156, 163, 175, 0.1); }
+.role-archive-toast[data-phase="cancelled"] .glow-effect { display: none; }
+.role-archive-toast[data-phase="cancelled"] .archive-label { @apply text-gray-400; }
+.role-archive-toast[data-phase="cancelled"] .archive-icon { @apply text-gray-400; @apply bg-gray-400/10; }
 
 .archive-icon {
   @apply shrink-0 w-12 h-12 rounded-lg flex items-center justify-center;
