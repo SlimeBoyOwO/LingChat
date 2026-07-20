@@ -217,6 +217,41 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
         let mut tts_subs = BTreeMap::new();
 
         tts_subs.insert(
+            "基础设置".to_string(),
+            Subcategory {
+                description: "文字转语音（TTS）的相关设置".to_string(),
+                settings: vec![
+                    ConfigSetting {
+                        key: keys::AUTO_START_TTS_SOFTWARE.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::AUTO_START_TTS_SOFTWARE,
+                            &app_defaults.auto_start_tts_software.to_string(),
+                        ),
+                        description: "启动游戏时自动启动 TTS 软件".to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::TTS_SOFTWARE_PATH.to_string(),
+                        value: read_setting(app, keys::TTS_SOFTWARE_PATH, ""),
+                        description: "TTS 软件的可执行文件路径".to_string(),
+                        setting_type: "path".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::VOICE_CHECK.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::VOICE_CHECK,
+                            &app_defaults.voice_check.to_string(),
+                        ),
+                        description: "启动时检查语音模型是否就绪".to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                ],
+            },
+        );
+
+        tts_subs.insert(
             "适配器 URL".to_string(),
             Subcategory {
                 description: "各个 TTS 后端的 API 地址，对应原环境变量 SIMPLE_VITS_API_URL / STYLE_BERT_VITS2_URL 等".to_string(),
