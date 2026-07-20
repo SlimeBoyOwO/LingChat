@@ -256,12 +256,7 @@ let rt = tokio::runtime::Runtime::new()?;
             ));
 
             let screen_analyzer = {
-                let pconfig = config::proactive::ProactiveConfig::load(&app.handle());
-                let sa_config = ScreenAnalyzerConfig {
-                    vd_api_key: pconfig.vd_api_key,
-                    vd_base_url: pconfig.vd_base_url,
-                    vd_model: pconfig.vd_model,
-                };
+                let sa_config = ScreenAnalyzerConfig::resolve(&app.handle());
                 std::sync::Arc::new(tokio::sync::Mutex::new(ScreenAnalyzer::new(sa_config)))
             };
 

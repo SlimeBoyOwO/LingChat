@@ -12,9 +12,6 @@ use super::keys;
 pub struct ProactiveConfig {
     pub enable_proactive_system: bool,
     pub max_proactive_times: i32,
-    pub vd_api_key: String,
-    pub vd_base_url: String,
-    pub vd_model: String,
     pub enable_visual_perception: bool,
     pub screen_weight: f64,
     pub enable_topic_creator: bool,
@@ -32,9 +29,6 @@ impl Default for ProactiveConfig {
         Self {
             enable_proactive_system: false,
             max_proactive_times: 3,
-            vd_api_key: String::new(),
-            vd_base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1".into(),
-            vd_model: "qwen3.5-plus".into(),
             enable_visual_perception: true,
             screen_weight: 30.0,
             enable_topic_creator: true,
@@ -67,17 +61,6 @@ impl ProactiveConfig {
                 .unwrap_or(default)
         };
 
-        let get_string = |key: &str, default: &str| -> String {
-            store
-                .as_ref()
-                .and_then(|s| s.get(key))
-                .and_then(|v| match v {
-                    Value::String(s) => Some(s.clone()),
-                    _ => None,
-                })
-                .unwrap_or_else(|| default.to_string())
-        };
-
         let get_i32 = |key: &str, default: i32| -> i32 {
             store
                 .as_ref()
@@ -108,9 +91,6 @@ impl ProactiveConfig {
                 default.enable_proactive_system,
             ),
             max_proactive_times: get_i32(keys::MAX_PROACTIVE_TIMES, default.max_proactive_times),
-            vd_api_key: get_string(keys::VD_API_KEY, &default.vd_api_key),
-            vd_base_url: get_string(keys::VD_BASE_URL, &default.vd_base_url),
-            vd_model: get_string(keys::VD_MODEL, &default.vd_model),
             enable_visual_perception: get_bool(
                 keys::ENABLE_VISUAL_PRECEPTION,
                 default.enable_visual_perception,

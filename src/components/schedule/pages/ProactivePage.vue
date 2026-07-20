@@ -65,9 +65,6 @@ const loadConfig = async () => {
   const configKeys = [
     'ENABLE_PROACTIVE_SYSTEM',
     'MAX_PROACTIVE_TIMES',
-    'VD_API_KEY',
-    'VD_BASE_URL',
-    'VD_MODEL',
     'ENABLE_VISUAL_PRECEPTION',
     'SCREEN_WEIGHT',
     'ENABLE_TOPIC_CREATER',
