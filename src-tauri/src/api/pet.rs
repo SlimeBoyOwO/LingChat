@@ -60,8 +60,10 @@ pub fn set_pet_mode(
             let _ = window.set_resizable(false);
             let _ = window.set_decorations(false);
             let _ = window.set_size(LogicalSize::new(width, height));
+            let _ = window.set_maximizable(false);
         } else {
             // Restore normal window
+            let _ = window.set_maximizable(true);
             let _ = window.set_skip_taskbar(false);
             let _ = window.set_always_on_top(false);
             let _ = window.set_resizable(true);

@@ -34,6 +34,14 @@ struct KimiCodeModelRecord {
     supports_thinking_type: Option<String>,
 }
 
+#[derive(Serialize)]
+struct ThinkingConfig {
+    #[serde(rename = "type")]
+    type_: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    effort: Option<String>,
+}
+
 fn kimi_code_models_endpoint(base_url: &str) -> String {
     let base = if base_url.trim().is_empty() {
         "https://api.kimi.com/coding"
@@ -54,6 +62,7 @@ pub struct KimiCodeProvider {
     temperature: Option<f64>,
     top_p: Option<f64>,
     enable_thinking: bool,
+    reasoning_effort: Option<String>,
 }
 
 impl KimiCodeProvider {
@@ -76,6 +85,7 @@ impl KimiCodeProvider {
             temperature: cfg.temperature,
             top_p: cfg.top_p,
             enable_thinking: cfg.enable_thinking,
+            reasoning_effort: cfg.reasoning_effort.clone(),
         })
     }
 
@@ -127,6 +137,59 @@ impl KimiCodeProvider {
             }
         }
 
+        // 推理深度（K3）：对齐 kimi-code 的做法，在 thinking 中携带
+        // effort: "low"|"high"|"max"，未设置则不携带 effort 字段。
+        let reasoning_effort = self.reasoning_effort.clone().filter(|e| !e.is_empty());
+        // Anthropic Messages API 的 tool 格式为 {name, description, input_schema}
+        // 与项目内部通用的 OpenAI 格式 {type, function} 不同，需要在此转换
+        let anthropic_tools: Option<Vec<AnthropicTool<'a>>> = tools.map(|ts| {
+            ts.iter()
+                .map(|t| AnthropicTool {
+                    name: &t.function.name,
+                    description: &t.function.description,
+                    input_schema: &t.function.parameters,
+                })
+                .collect()
+        });
+
+        // Anthropic tool_choice 格式为 {"type": "auto"|"any"|"tool", "name": "..."}
+        let anthropic_tool_choice: Option<AnthropicToolChoice> =
+            tool_choice.and_then(|tc| match tc {
+                serde_json::Value::String(s) => match s.as_str() {
+                    "auto" => Some(AnthropicToolChoice {
+                        type_: "auto".to_string(),
+                        effort: None,
+                        name: None,
+                    }),
+                    "any" | "required" => Some(AnthropicToolChoice {
+                        type_: "any".to_string(),
+                        effort: None,
+                        name: None,
+                    }),
+
+                    "none" => None,
+                    _ => Some(AnthropicToolChoice {
+                        type_: "auto".to_string(),
+                        effort: None,
+                        name: None,
+                    }),
+                },
+                serde_json::Value::Object(obj) => {
+                    let type_ = obj
+                        .get("type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("auto")
+                        .to_string();
+                    let name = obj.get("name").and_then(|v| v.as_str()).map(String::from);
+                    Some(AnthropicToolChoice {
+                        type_,
+                        effort: None,
+                        name,
+                    })
+                }
+                _ => None,
+            });
+
         MessagesRequest {
             model: &self.model,
             max_tokens: 65536,
@@ -139,16 +202,21 @@ impl KimiCodeProvider {
                 Some(system_text)
             },
             messages: conversation,
-            tools,
-            tool_choice,
-            thinking: if self.enable_thinking {
-                Some(ThinkingConfig {
-                    type_: "enabled".to_string(),
-                })
-            } else {
-                Some(ThinkingConfig {
-                    type_: "disabled".to_string(),
-                })
+            tools: anthropic_tools,
+            tool_choice: anthropic_tool_choice,
+            thinking: {
+                // 设置了推理深度时视为启用思考链（K3 始终开启思考）
+                if reasoning_effort.is_some() || self.enable_thinking {
+                    Some(ThinkingConfig {
+                        type_: "enabled".to_string(),
+                        effort: reasoning_effort.clone(),
+                    })
+                } else {
+                    Some(ThinkingConfig {
+                        type_: "disabled".to_string(),
+                        effort: None,
+                    })
+                }
             },
         }
     }
@@ -217,6 +285,10 @@ impl LlmProvider for KimiCodeProvider {
 
     async fn complete(&self, http: &Client, messages: &[LlmMessage]) -> Result<String> {
         let body = self.build_request(messages, false, None, None);
+        crate::utils::llm_request_logger::log_request_body(
+            "kimicode",
+            &serde_json::to_value(&body).unwrap_or_default(),
+        );
         let resp = http
             .post(self.endpoint())
             .headers(self.headers()?)
@@ -252,6 +324,10 @@ impl LlmProvider for KimiCodeProvider {
         });
 
         let body = self.build_request(messages, false, Some(tools), tool_choice_value);
+        crate::utils::llm_request_logger::log_request_body(
+            "kimicode",
+            &serde_json::to_value(&body).unwrap_or_default(),
+        );
         let resp = http
             .post(self.endpoint())
             .headers(self.headers()?)
@@ -307,6 +383,10 @@ impl LlmProvider for KimiCodeProvider {
 
     async fn complete_stream(&self, http: &Client, messages: &[LlmMessage]) -> Result<ChunkStream> {
         let body = self.build_request(messages, true, None, None);
+        crate::utils::llm_request_logger::log_request_body(
+            "kimicode",
+            &serde_json::to_value(&body).unwrap_or_default(),
+        );
         let resp = http
             .post(self.endpoint())
             .headers(self.headers()?)
@@ -437,11 +517,11 @@ struct MessagesRequest<'a> {
     system: Option<String>,
     messages: Vec<AnthropicMessage<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tools: Option<&'a [ToolDefinition]>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tool_choice: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     thinking: Option<ThinkingConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<Vec<AnthropicTool<'a>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<AnthropicToolChoice>,
 }
 
 #[derive(Serialize)]
@@ -450,10 +530,24 @@ struct AnthropicMessage<'a> {
     content: &'a str,
 }
 
+/// Anthropic Messages API 的 tool 定义格式：{name, description, input_schema}
 #[derive(Serialize)]
-struct ThinkingConfig {
+struct AnthropicTool<'a> {
+    name: &'a str,
+    description: &'a str,
+    input_schema: &'a serde_json::Value,
+}
+
+/// Anthropic Messages API 的 tool_choice 格式：{"type": "auto" | "any" | "tool", "name": "..."}
+#[derive(Serialize)]
+struct AnthropicToolChoice {
     #[serde(rename = "type")]
     type_: String,
+    /// K3 推理深度："low" | "high" | "max"，未设置则不携带该字段
+    #[serde(skip_serializing_if = "Option::is_none")]
+    effort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
 }
 
 #[derive(Deserialize)]

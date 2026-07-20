@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="relative flex items-center justify-center w-full h-full group">
     <!-- 缩放与尺寸控制层 (无位移) -->
     <div
@@ -46,7 +46,7 @@
       >
         <button
           type="button"
-          :title="hasScreenshot ? '点击重新截图，右键取消截图' : '截图提问'"
+          :title="titleText"
           class="w-8 h-8 rounded-full bg-neutral-950/60 backdrop-blur-xl border border-white/10 text-white flex items-center justify-center hover:bg-cyan-500/80 hover:text-white hover:scale-110 shadow-[0_4px_12px_rgba(0,0,0,0.3)] transition-all duration-300"
           :style="
             hasScreenshot
@@ -80,6 +80,7 @@ import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { useSettingsStore } from '@/stores/modules/settings'
 import { useScreenshot } from '@/composables/useScreenshot'
+import { isAndroid } from '@/utils/platform'
 import RoleAvatar from './GameRoleAvatar.vue'
 import { Play, Pause, Settings, LogOut, Camera } from 'lucide-vue-next'
 
@@ -115,6 +116,17 @@ const {
   start: startScreenshot,
   clear: clearScreenshot,
 } = useScreenshot()
+
+const titleText = computed(() => {
+  if (isAndroid()) {
+    return hasScreenshot.value
+      ? '点击重新拍照'
+      : '拍照或选图提问'
+  }
+  return hasScreenshot.value
+    ? '点击重新截图，右键取消截图'
+    : '截图提问'
+})
 
 onMounted(() => initScreenshot())
 onUnmounted(() => destroyScreenshot())

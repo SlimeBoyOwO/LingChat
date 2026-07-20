@@ -9,14 +9,17 @@
     <!-- DialogueBox 区域 -->
     <div
       ref="dialogContainer"
-      class="w-full shrink-0 flex items-end justify-center transition-none bg-transparent"
+      class="w-full shrink-0 flex flex-col transition-none bg-transparent"
       :style="{ height: 'var(--dialog-h)' }"
     >
-      <DialogueBox
-        ref="gameDialogRef"
-        @player-continued="manualTriggerContinue"
-        @dialog-proceed="resetInteraction"
-      />
+      <PetNotification />
+      <div class="flex-1 flex items-end justify-center mt-1">
+        <DialogueBox
+          ref="gameDialogRef"
+          @player-continued="manualTriggerContinue"
+          @dialog-proceed="resetInteraction"
+        />
+      </div>
     </div>
 
     <!-- Avatar 区域 -->
@@ -41,7 +44,7 @@
       class="w-full shrink-0 flex items-start justify-center transition-none bg-transparent"
       :style="{ height: 'var(--chat-h)' }"
     >
-      <ChatInput :visible="showChatInput" @message-sent="handleMessageSent" />
+      <ChatInput ref=ChatInputRef :visible="showChatInput" @message-sent="handleMessageSent" />
     </div>
   </div>
 </template>
@@ -57,6 +60,7 @@ import { useSettingsStore } from '@/stores/modules/settings'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { eventQueue } from '@/core/events/event-queue'
 
+import PetNotification from '../pet/PetNotification.vue'
 import ChatInput from '../pet/ChatInput.vue'
 import DialogueBox from '../pet/DialogueBox.vue'
 import GameRolesStage from '../pet/GameRolesStage.vue'
@@ -76,6 +80,7 @@ const dialogContainer = ref<HTMLElement | null>(null)
 const avatarContainer = ref<HTMLElement | null>(null)
 const chatContainer = ref<HTMLElement | null>(null)
 const gameDialogRef = ref<InstanceType<typeof DialogueBox> | null>(null)
+const ChatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
 
 const appStyleVars = computed(() => {
   const scale = settingsStore.pet?.scale || 1.0
@@ -231,12 +236,19 @@ const handleMessageSent = (message: string) => {
   })
 }
 
+
 const handleMouseEnter = () => {
   showChatInput.value = true
 }
 
 const handleMouseLeave = () => {
-  showChatInput.value = false
+  if (ChatInputRef.value?.isTyping()) {
+    showChatInput.value = true
+    return
+  }else{
+    showChatInput.value = false
+  }
+  
 }
 
 const handleAvatarClick = () => {

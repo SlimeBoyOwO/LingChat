@@ -66,7 +66,6 @@ pub struct AppState {
     pub screenshot_capture: Arc<tokio::sync::Mutex<ScreenshotCaptureState>>,
     pub auto_save_manager:
         Arc<tokio::sync::Mutex<ai_service::game_system::auto_save::AutoSaveManager>>,
-    /// 上帝 Agent（多人对话编排器），`None` 表示未配置可用 LLM。
     pub god_agent: Option<Arc<GodAgentCore>>,
 }
 
@@ -74,7 +73,8 @@ pub struct AppState {
 pub fn run() {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,ling_chat_lib=info"))
-        .add_directive("sqlx=warn".parse().unwrap());
+        .add_directive("sqlx=warn".parse().unwrap())
+        .add_directive("genai=error".parse().unwrap());
 
     tracing_subscriber::registry()
         .with(
@@ -82,7 +82,14 @@ pub fn run() {
                 .with_timer(LocalTimer)
                 .with_filter(filter.clone()),
         )
-        .with(utils::log_bridge::LogBridgeLayer.with_filter(filter))
+        .with(utils::log_bridge::LogBridgeLayer.with_filter(filter.clone()))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(utils::file_logger::LogFileWriter)
+                .with_timer(LocalTimer)
+                .with_ansi(false)
+                .with_filter(filter),
+        )
         .init();
 
     #[allow(deprecated)]
@@ -107,7 +114,8 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init());
 
-    builder.setup(|app| {
+    builder
+        .setup(|app| {
             utils::log_bridge::set_app_handle(app.handle().clone());
 
             app.manage(api::pet::HitTestState::default());
@@ -117,6 +125,34 @@ pub fn run() {
 
             let rt = tokio::runtime::Runtime::new()?;
             let (db, ai_service, chat) = rt.block_on(init::initialize(app))?;
+
+            // 初始化文件日志（从设置读取开关和保留天数）
+            {
+                let store = config::settings_store(app.handle()).ok();
+                let log_enable = store
+                    .as_ref()
+                    .and_then(|s| s.get(config::keys::LOG_ENABLE))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                let retention_days = store
+                    .as_ref()
+                    .and_then(|s| s.get(config::keys::LOG_RETENTION_DAYS))
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u32)
+                    .unwrap_or(10);
+
+                let data_dir = init::static_copy::get_data_dir();
+                utils::file_logger::init_logging(data_dir, log_enable);
+                utils::file_logger::cleanup_old_logs(retention_days);
+
+                // 初始化 LLM 请求体日志（默认关闭）
+                let llm_request_log_enable = store
+                    .as_ref()
+                    .and_then(|s| s.get(config::keys::LOG_LLM_REQUEST_BODY))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                utils::llm_request_logger::init(data_dir, llm_request_log_enable);
+            }
 
             // 启动时自动清理未被引用的孤立语音文件
             match rt.block_on(init::voice_cleanup::cleanup_orphan_voice_files(
@@ -302,17 +338,17 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             utils::log_bridge::get_log_history,
-            config::get_settings_tree,
-            config::save_settings,
-            config::get_setting_by_key,
-            config::select_file,
-            config::list_llm_providers,
-            config::save_llm_provider,
-            config::delete_llm_provider,
-            config::set_llm_role,
-            config::switch_llm,
-            config::test_llm_provider,
-            config::list_llm_models,
+            api::settings::get_settings_tree,
+            api::settings::save_settings,
+            api::settings::get_setting_by_key,
+            api::settings::select_file,
+            api::settings::list_llm_providers,
+            api::settings::save_llm_provider,
+            api::settings::delete_llm_provider,
+            api::settings::set_llm_role,
+            api::settings::switch_llm,
+            api::settings::test_llm_provider,
+            api::settings::list_llm_models,
             api::character::get_character_list,
             api::character::get_role_info,
             api::character::get_role_settings,
@@ -395,7 +431,14 @@ pub fn run() {
             lan_sync::lan_sync_restart,
             utils::cpu_perf::get_cpu_info,
             utils::cpu_perf::redetect_cpu,
+            exit_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// 前端确认关闭后调用，终止整个 Tauri 进程。
+#[tauri::command]
+fn exit_app(app: tauri::AppHandle) {
+    app.exit(0);
 }

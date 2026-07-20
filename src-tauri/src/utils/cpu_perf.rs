@@ -52,7 +52,8 @@ impl CpuDetectionCache {
 mod x86_impl {
     use super::*;
 
-    /// 执行 CPUID 指令
+    /// 执行 CPUID 指令 (x86_64，使用 rbx)
+    #[cfg(target_arch = "x86_64")]
     #[inline]
     fn cpuid(leaf: u32, subleaf: u32) -> (u32, u32, u32, u32) {
         let eax: u32;
@@ -68,6 +69,27 @@ mod x86_impl {
                 tmp = out(reg) _,
                 ebx = out(reg) ebx,
                 inout("eax") leaf => eax,
+                inout("ecx") subleaf => ecx,
+                out("edx") edx,
+                options(nostack, preserves_flags)
+            );
+        }
+        (eax, ebx, ecx, edx)
+    }
+
+    /// 执行 CPUID 指令 (x86，直接使用 out("ebx") 让编译器处理保存/恢复)
+    #[cfg(target_arch = "x86")]
+    #[inline]
+    fn cpuid(leaf: u32, subleaf: u32) -> (u32, u32, u32, u32) {
+        let eax: u32;
+        let ebx: u32;
+        let ecx: u32;
+        let edx: u32;
+        unsafe {
+            core::arch::asm!(
+                "cpuid",
+                inout("eax") leaf => eax,
+                out("ebx") ebx,
                 inout("ecx") subleaf => ecx,
                 out("edx") edx,
                 options(nostack, preserves_flags)
@@ -116,8 +138,202 @@ mod x86_impl {
         let (_, ebx, ecx, edx) = cpuid(0, 0);
         ebx == 0x68747541 && edx == 0x69746e65 && ecx == 0x444d4163
     }
+    
+    /// AMD:提取 Ryzen 等级（3/5/7/9）
+    fn extract_ryzen_level(brand: &str) -> Option<u32> {
+        if brand.contains("Ryzen 9") {
+            Some(9)
+        } else if brand.contains("Ryzen 7") {
+            Some(7)
+        } else if brand.contains("Ryzen 5") {
+            Some(5)
+        } else if brand.contains("Ryzen 3") {
+            Some(3)
+        } else {
+            None
+        }
+    }
 
-    /// 从品牌字符串提取 Core 代数
+    /// 找到品牌字符串中的 Ryzen 型号单词（如 "7840U", "4650G", "8845HS"）
+    fn find_ryzen_model_word(brand: &str) -> Option<&str> {
+        for word in brand.split_whitespace() {
+            let digit_count = word
+                .chars()
+                .take_while(|c| c.is_ascii_digit())
+                .count();
+
+            if digit_count == 4 {
+                return Some(word);
+            }
+        }
+        None
+    }
+
+    /// 提取 Ryzen 型号（如 7840U -> 7840，4650G -> 4650）
+    fn extract_ryzen_model(brand: &str) -> Option<u32> {
+        let word = find_ryzen_model_word(brand)?;
+        let digits: String = word.chars().take_while(|c| c.is_ascii_digit()).collect();
+        digits.parse::<u32>().ok()
+    }
+
+    /// 提取后缀（从型号单词中提取字母后缀，如 "7840U" → "U"、"8845HS" → "HS"）
+    fn extract_ryzen_suffix(brand: &str) -> &'static str {
+        // 从型号单词中提取字母后缀（主要路径）
+        if let Some(word) = find_ryzen_model_word(brand) {
+            let suffix: String = word
+                .chars()
+                .skip_while(|c| c.is_ascii_digit())
+                .collect();
+
+            return match suffix.as_str() {
+                "HX" => "HX",
+                "HS" => "HS",
+                "GE" => "GE",
+                "PRO" => "PRO",
+                "U" => "U",
+                "H" => "H",
+                "X" => "X",
+                "G" => "G",
+                _ => "",
+            };
+        }
+
+        // 回退：旧逻辑（处理型号单词不在品牌字符串中的边缘情况）
+        if brand.contains("HX") {
+            "HX"
+        } else if brand.contains("HS") {
+            "HS"
+        } else if brand.contains("GE") {
+            "GE"
+        } else if brand.contains("PRO") {
+            "PRO"
+        } else if brand.contains(" U") || brand.ends_with('U') {
+            "U"
+        } else if brand.contains(" H") || brand.ends_with('H') {
+            "H"
+        } else if brand.contains(" X") || brand.ends_with('X') {
+            "X"
+        } else if brand.contains(" G") || brand.ends_with('G') {
+            "G"
+        } else {
+            ""
+        }
+    }
+
+    fn classify_amd_brand(brand: &str) -> PerfTier {
+        // 服务器
+        if brand.contains("EPYC") || brand.contains("Threadripper") {
+            return PerfTier::High;
+        }
+
+        // Ryzen AI
+        if brand.contains("Ryzen AI") {
+            return PerfTier::High;
+        }
+
+        // 老系列
+        if brand.contains("Sempron") {
+            return PerfTier::Internet;
+        }
+
+        if brand.contains("Athlon II") || brand.contains("Athlon") || brand.contains("Phenom")
+        {
+            return PerfTier::Low;
+        }
+
+        // FX
+        if brand.contains("FX-") {
+            return PerfTier::Medium;
+        }
+
+        // APU
+        if brand.contains("A4-") {
+            return PerfTier::Internet;
+        }
+
+        if brand.contains("A6-") {
+            return PerfTier::Low;
+        }
+
+        if brand.contains("A8-") || brand.contains("A10-") || brand.contains("A12-")
+        {
+            return PerfTier::Medium;
+        }
+
+        if !brand.contains("Ryzen") {
+            return PerfTier::Low;
+        }
+
+        let level = extract_ryzen_level(brand).unwrap_or(5);
+        let model = extract_ryzen_model(brand).unwrap_or(0);
+        let suffix = extract_ryzen_suffix(brand);
+
+        let series = model / 1000;
+
+        match level {
+            9 => PerfTier::High,
+
+            7 => {
+                if series <= 2 {
+                    PerfTier::Medium
+                } else {
+                    PerfTier::High
+                }
+            }
+
+            5 => {
+                // U 后缀优先处理（含 AMD 官方特殊型号映射，必须在 series >= 6 之前）
+                if suffix == "U" {
+                    if series <= 2 {
+                        return PerfTier::Low;
+                    }
+
+                    // AMD 官方 7000 系特殊命名
+                    match model {
+                        7520 | 7320 => return PerfTier::Medium,
+                        7530 | 7730 => return PerfTier::Medium,
+                        7535 | 7735 | 7640 | 7840 | 8840 | 8845 => {
+                            return PerfTier::High
+                        }
+                        _ => {}
+                    }
+
+                    return PerfTier::Medium;
+                }
+
+                if series >= 6 {
+                    return PerfTier::High;
+                }
+
+                if suffix == "H" || suffix == "HS" || suffix == "HX" || suffix == "X"
+                {
+                    return PerfTier::High;
+                }
+
+                if series <= 2 {
+                    PerfTier::Medium
+                } else {
+                    PerfTier::High
+                }
+            }
+
+            3 => {
+                if series >= 6 {
+                    return PerfTier::Medium;
+                }
+
+                if suffix == "H" || suffix == "HS" || suffix == "HX" || suffix == "X"
+                {
+                    return PerfTier::Medium;
+                }
+
+                PerfTier::Low
+            }
+
+            _ => PerfTier::Medium,
+        }
+    }
+    /// Intel:从品牌字符串提取 Core 代数
     fn extract_core_generation(brand: &str) -> Option<i32> {
         let p = brand.find("Core")?;
         let after_core = &brand[p..];
@@ -231,9 +447,10 @@ mod x86_impl {
 
         if !is_intel() {
             if is_amd() {
+            let tier = classify_amd_brand(&brand);    
                 return CpuInfo {
                     brand,
-                    tier: PerfTier::Low,
+                    tier,
                     is_unknown: false,
                     unknown_message: None,
                 };
@@ -255,6 +472,7 @@ mod x86_impl {
             unknown_message: None,
         }
     }
+
 }
 
 // ────────────────────────────────────────

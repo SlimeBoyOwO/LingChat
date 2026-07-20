@@ -1,10 +1,10 @@
 {
   "name": "ling-chat",
-  "private": true,
-  "version": "0.4.6",
+  "private": false,
+  "version": "0.4.7",
   "type": "module",
   "scripts": {
-    "init": "tauri icon src-tauri/icons/icon.png && node scripts/prepare-desktop-resources.mjs",
+    "init": "tauri icon src-tauri/icons/icon.png && node scripts/prepare-desktop-resources.mjs && node scripts/download_emotion_model.mjs",
     "dev": "vite",
     "build": "vue-tsc --noEmit --skipLibCheck && vite build",
     "preview": "vite preview",
@@ -34,6 +34,8 @@
     "@types/node": "^25.7.0",
     "@vitejs/plugin-vue": "^5.2.1",
     "prettier": "^3.8.3",
+    "prettier-plugin-classnames": "^0.10.3",
+    "prettier-plugin-tailwindcss": "^0.8.0",
     "sharp": "^0.35.3",
     "typescript": "~5.6.2",
     "vite": "^6.0.3",
