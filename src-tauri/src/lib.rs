@@ -9,7 +9,7 @@ mod lan_sync;
 mod manifest;
 mod migration;
 mod resource_sync;
-mod utils;
+pub mod utils;
 
 use std::sync::Arc;
 
@@ -53,7 +53,8 @@ pub struct ScreenshotCaptureState {
     pub overlay_label: Option<String>,
 }
 
-pub struct AppState {
+/// AppState 内部数据,init::initialize 完成后所有字段填充。
+pub struct InnerAppState {
     pub db: DatabaseConnection,
     pub ai_service: SharedAIService,
     pub chat: ChatComponents,
@@ -68,6 +69,55 @@ pub struct AppState {
         Arc<tokio::sync::Mutex<ai_service::game_system::auto_save::AutoSaveManager>>,
     pub god_agent: Option<Arc<GodAgentCore>>,
 }
+
+/// AppState 在 Tauri 中 manage 的状态句柄。
+///
+/// **Android 修复**: Tauri 在 setup 闭包执行前就已经创建了 webview 窗口(见
+/// `tauri::app::setup()`),前端 JS 一旦加载就会立刻 invoke 命令。如果用户的 setup
+/// 闭包还在执行 init::initialize 时,前端命令 `init_game` 在 IPC runtime worker 上
+/// 被 dispatch 后调用 `state::<AppState>()` 就会 panic with
+/// "state() called before manage()"。
+///
+/// 解决方案: setup 闭包**最开始**就 manage 一个空壳 AppState,
+/// init::initialize 完成后用真实值填充。`ArcSwap` 提供 lock-free 读写,
+/// `Deref` 让所有原有访问代码保持不变。
+pub struct AppState {
+    inner: std::sync::OnceLock<&'static InnerAppState>,
+}
+
+impl AppState {
+    pub fn empty() -> Self {
+        Self {
+            inner: std::sync::OnceLock::new(),
+        }
+    }
+
+    /// 填充 AppState。只能调用一次。
+    pub fn fill(&self, inner: InnerAppState) {
+        let boxed: &'static InnerAppState = Box::leak(Box::new(inner));
+        if self.inner.set(boxed).is_err() {
+            panic!("AppState already filled (fill() must be called exactly once)");
+        }
+    }
+}
+
+impl std::ops::Deref for AppState {
+    type Target = InnerAppState;
+    fn deref(&self) -> &Self::Target {
+        // **Android 修复**: 前端 invoke 命令可能在 init::initialize 完成前就
+        // dispatch 到 Tauri IPC runtime worker。此时 AppState 已经 manage 了
+        // (空壳),但 InnerAppState 还没 fill。如果直接 panic,worker 线程整个
+        // 进程都会被拖死 — 但因为 Deref 返回的是 `&'static InnerAppState`,
+        // 一旦 fill 完成,所有访问自动安全。所以这里用 loop 自旋等待 fill。
+        loop {
+            if let Some(inner) = self.inner.get() {
+                return inner;
+            }
+            std::hint::spin_loop();
+        }
+    }
+}
+
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -122,8 +172,15 @@ pub fn run() {
             app.manage(resource_sync::ResourceSyncState::default());
             app.manage(lan_sync::LanSyncState::default());
             app.manage(utils::cpu_perf::CpuDetectionCache::new());
+            app.manage(api::role_archive::RoleArchiveState::default());
 
-            let rt = tokio::runtime::Runtime::new()?;
+            
+            // Android 修复: Tauri 在 setup 闭包执行前已创建 webview 窗口,前端 invoke
+            // 命令会在 IPC runtime worker 上立即 dispatch;如果 AppState 还没 manage
+            // 就会 panic "state() called before manage()"。所以 setup 一开始就 manage
+            // 一个空壳 AppState,init::initialize 完成后用真实值 fill。
+            app.manage(AppState::empty());
+let rt = tokio::runtime::Runtime::new()?;
             let (db, ai_service, chat) = rt.block_on(init::initialize(app))?;
 
             // 初始化文件日志（从设置读取开关和保留天数）
@@ -228,19 +285,22 @@ pub fn run() {
                     Arc::new(GodAgentCore::new(slot, config))
                 });
 
-            app.manage(AppState {
-                db,
-                ai_service,
-                chat,
-                script_channels,
-                generation_lock,
-                proactive_system: Some(proactive),
-                achievement_manager,
-                screen_analyzer,
-                screenshot_capture,
-                auto_save_manager: auto_save_manager.clone(),
-                god_agent,
-            });
+            {
+                let state = app.state::<AppState>();
+                state.fill(InnerAppState {
+                    db,
+                    ai_service,
+                    chat,
+                    script_channels,
+                    generation_lock,
+                    proactive_system: Some(proactive),
+                    achievement_manager,
+                    screen_analyzer,
+                    screenshot_capture,
+                    auto_save_manager: auto_save_manager.clone(),
+                    god_agent,
+                });
+            }
 
             // Spawn Windows mouse polling click-through loop
             let window = app
@@ -431,6 +491,12 @@ pub fn run() {
             lan_sync::lan_sync_restart,
             utils::cpu_perf::get_cpu_info,
             utils::cpu_perf::redetect_cpu,
+            api::role_archive::import_role,
+            api::role_archive::import_role_from_path,
+            api::role_archive::cancel_role_import,
+            api::role_archive::rescan_roles,
+            api::role_archive::export_role,
+            api::role_archive::export_role_to_path,
             exit_app,
         ])
         .run(tauri::generate_context!())

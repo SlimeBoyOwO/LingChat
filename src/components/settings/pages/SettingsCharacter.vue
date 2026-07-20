@@ -41,22 +41,34 @@
         </button>
       </div>
     </MenuItem>
+    <RoleArchiveProgress />
 
-    <MenuItem title="创建人物" size="small">
+    <MenuItem title="打开人物文件夹" size="small">
       <template #header>
-        <UserPlus :size="20" />
+        <FolderOpen :size="20" />
       </template>
       <div class="space-y-2">
-        <Button type="big" @click="openCreateModal">打开创建向导</Button>
+        <Button type="big" @click="openCharacterFolder">打开人物文件夹</Button>
       </div>
     </MenuItem>
 
-    <MenuItem title="自定义修改" size="small">
+    <MenuItem title="从压缩包导入角色 (.zip / .7z)" size="small">
       <template #header>
-        <UserPlus :size="20" />
+        <PackageOpen :size="20" />
       </template>
       <div class="space-y-2">
-        <Button type="big" @click="openCharacterFolder">打开角色文件夹</Button>
+        <div class="flex flex-col gap-1.5">
+          <label class="text-xs text-white/60 font-medium">同名冲突策略</label>
+          <select
+            v-model="conflictPolicy"
+            class="bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-white text-sm outline-none transition-all duration-200"
+          >
+            <option value="rename">自动重命名（默认）</option>
+            <option value="skip">跳过已存在的</option>
+            <option value="overwrite">覆盖已存在的</option>
+          </select>
+        </div>
+        <Button type="big" @click="handleImport">选择压缩包导入</Button>
       </div>
     </MenuItem>
 
@@ -74,29 +86,26 @@
       <Button type="big" @click="openCreativeWeb">进入创意工坊</Button>
     </MenuItem>
 
-    <SettingsCharacterCreate
-      :visible="isCreateModalVisible"
-      @close="closeCreateModal"
-      @created="handleCharacterCreated"
-    />
   </MenuPage>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
-import { Birdhouse, Rabbit, RefreshCcw, UserPlus } from 'lucide-vue-next'
+import { Birdhouse, FolderOpen, PackageOpen, Rabbit, RefreshCcw } from 'lucide-vue-next'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { invoke } from '@tauri-apps/api/core'
 
 import CharacterCard from '../../ui/Menu/CharacterCard.vue'
-import SettingsCharacterCreate from './SettingsCharacterCreate.vue'
 import { Button } from '../../base'
 import { MenuItem, MenuPage } from '../../ui'
 import { characterGetAll } from '../../../api/services/character'
+import { useRoleImportExport } from '../../../composables/useRoleImportExport'
+import type { ConflictPolicy } from '../../../api/services/role-archive'
 import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import type { Character as ApiCharacter, Clothes } from '../../../types'
+import RoleArchiveProgress from '@/components/ui/RoleArchiveProgress.vue'
 
 interface CharacterCardData {
   id: number
@@ -112,8 +121,6 @@ interface CharacterCardData {
 const characters = ref<CharacterCardData[]>([])
 const currentPage = ref(1)
 const totalPages = ref(1)
-const isCreateModalVisible = ref(false)
-
 const gameStore = useGameStore()
 const uiStore = useUIStore()
 const dialogStore = useDialogStore()
@@ -156,35 +163,31 @@ const changePage = async (page: number): Promise<void> => {
   await fetchCharacters(page)
 }
 
+const { pickAndImport, rescan } = useRoleImportExport()
+
+const conflictPolicy = ref<ConflictPolicy>('rename')
+
 const refreshCharacters = async (): Promise<void> => {
-  loadCharacters()
+  try {
+    await rescan()
+  } catch (e) {
+    console.error('刷新角色列表失败:', e)
+  }
+  await loadCharacters()
 }
 
 const openCreativeWeb = async (): Promise<void> => {
   uiStore.currentSettingsTab = 'workshop'
 }
 
+const handleImport = async () => {
+  await pickAndImport(conflictPolicy.value)
+  // After import dialog closes (success or cancel), refresh list
+  await refreshCharacters()
+}
+
 const openCharacterFolder = async () => {
   await invoke('open_characters_folder')
-}
-
-const openCreateModal = () => {
-  isCreateModalVisible.value = true
-}
-
-const closeCreateModal = () => {
-  isCreateModalVisible.value = false
-}
-
-const handleCharacterCreated = async () => {
-  isCreateModalVisible.value = false
-  currentPage.value = 1
-  await loadCharacters()
-  uiStore.showSuccess({
-    title: '创建成功',
-    message: '新人物已创建并刷新到角色列表',
-    duration: 3000,
-  })
 }
 
 const handleSettingsSaved = () => {
