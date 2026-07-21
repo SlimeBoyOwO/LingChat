@@ -27,6 +27,7 @@ use ai_service::llm::LlmSlot;
 use ai_service::message_system::processor::MessageProcessor;
 use ai_service::screen_analyzer::{ScreenAnalyzer, ScreenAnalyzerConfig};
 use ai_service::service::SharedAIService;
+use ai_service::tools::registry::ToolRegistry;
 use ai_service::translator::Translator;
 
 struct LocalTimer;
@@ -60,6 +61,7 @@ pub struct InnerAppState {
     pub chat: ChatComponents,
     pub script_channels: ai_service::game_system::script_engine::SharedScriptChannels,
     pub generation_lock: Arc<tokio::sync::Mutex<()>>,
+    pub tool_registry: Arc<ToolRegistry>,
     pub proactive_system:
         Option<Arc<tokio::sync::Mutex<ai_service::proactive_system::ProactiveSystem>>>,
     pub achievement_manager: Arc<tokio::sync::Mutex<achievements::manager::AchievementManager>>,
@@ -249,6 +251,7 @@ pub fn run() {
             ));
 
             let generation_lock = std::sync::Arc::new(tokio::sync::Mutex::new(()));
+            let tool_registry = Arc::new(ai_service::tools::built_in_registry()?);
 
             // Create proactive system
             let proactive = std::sync::Arc::new(tokio::sync::Mutex::new(
@@ -261,6 +264,7 @@ pub fn run() {
                         processor: chat.processor.clone(),
                         translator: chat.translator.clone(),
                     },
+                    tool_registry.clone(),
                     generation_lock.clone(),
                 ),
             ));
@@ -307,6 +311,7 @@ pub fn run() {
                     chat,
                     script_channels,
                     generation_lock,
+                    tool_registry,
                     proactive_system: Some(proactive),
                     achievement_manager,
                     screen_analyzer,
