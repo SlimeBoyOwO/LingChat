@@ -445,28 +445,6 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                 description: "主动对话时调用的 Vision LLM 视觉分析模型以及截图分析设置".to_string(),
                 settings: vec![
                     ConfigSetting {
-                        key: keys::VD_API_KEY.to_string(),
-                        value: read_setting(app, keys::VD_API_KEY, ""),
-                        description: "VD_API_KEY — 视觉模型 API Key".to_string(),
-                        setting_type: "text".to_string(),
-                    },
-                    ConfigSetting {
-                        key: keys::VD_BASE_URL.to_string(),
-                        value: read_setting(
-                            app,
-                            keys::VD_BASE_URL,
-                            &proactive_defaults.vd_base_url,
-                        ),
-                        description: "VD_BASE_URL — 视觉模型 API Base URL".to_string(),
-                        setting_type: "text".to_string(),
-                    },
-                    ConfigSetting {
-                        key: keys::VD_MODEL.to_string(),
-                        value: read_setting(app, keys::VD_MODEL, &proactive_defaults.vd_model),
-                        description: "VD_MODEL — 视觉模型型号".to_string(),
-                        setting_type: "text".to_string(),
-                    },
-                    ConfigSetting {
                         key: keys::ENABLE_VISUAL_PRECEPTION.to_string(),
                         value: read_setting(
                             app,

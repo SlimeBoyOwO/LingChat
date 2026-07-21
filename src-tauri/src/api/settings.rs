@@ -99,6 +99,7 @@ pub fn list_llm_providers(app: AppHandle) -> LlmProvidersResponse {
         chat_provider_id: assignment.chat_provider_id,
         translate_provider_id: assignment.translate_provider_id,
         god_agent_provider_id: assignment.god_agent_provider_id,
+        vision_provider_id: assignment.vision_provider_id,
     }
 }
 
@@ -141,6 +142,14 @@ pub fn delete_llm_provider(app: AppHandle, id: String) -> Result<(), String> {
         assignment.translate_provider_id = None;
         changed = true;
     }
+    if assignment.god_agent_provider_id.as_deref() == Some(&id) {
+        assignment.god_agent_provider_id = None;
+        changed = true;
+    }
+    if assignment.vision_provider_id.as_deref() == Some(&id) {
+        assignment.vision_provider_id = None;
+        changed = true;
+    }
     if changed {
         save_role_assignment(&app, &assignment).map_err(|e| e.to_string())?;
     }
@@ -166,6 +175,7 @@ pub fn set_llm_role(
         "chat" => assignment.chat_provider_id = provider_id,
         "translate" => assignment.translate_provider_id = provider_id,
         "god_agent" => assignment.god_agent_provider_id = provider_id,
+        "vision" => assignment.vision_provider_id = provider_id,
         other => return Err(format!("Invalid role: {other}")),
     }
     save_role_assignment(&app, &assignment).map_err(|e| e.to_string())?;

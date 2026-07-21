@@ -11,7 +11,7 @@ use tauri_plugin_store::StoreExt;
 
 use crate::ai_service::llm::{create_llm_client, LlmClient, LlmConfig};
 use crate::config::app_config::AppConfig;
-use crate::config::{self, keys, proactive};
+use crate::config::{self, keys};
 
 // ============================================================
 // Data types
@@ -356,7 +356,7 @@ pub fn migrate_legacy_vision_keys(app: &AppHandle) {
         return;
     };
 
-    let api_key = get_string_opt(&store, proactive::keys::VD_API_KEY).unwrap_or_default();
+    let api_key = get_string_opt(&store, keys::VD_API_KEY).unwrap_or_default();
     if api_key.trim().is_empty() {
         return;
     }
@@ -366,8 +366,8 @@ pub fn migrate_legacy_vision_keys(app: &AppHandle) {
         return;
     }
 
-    let model = get_string_opt(&store, proactive::keys::VD_MODEL).unwrap_or_default();
-    let base_url = get_string_opt(&store, proactive::keys::VD_BASE_URL).unwrap_or_default();
+    let model = get_string_opt(&store, keys::VD_MODEL).unwrap_or_default();
+    let base_url = get_string_opt(&store, keys::VD_BASE_URL).unwrap_or_default();
 
     tracing::info!("Migrating legacy VD_* vision config into LLM provider list...");
 
@@ -405,9 +405,9 @@ pub fn migrate_legacy_vision_keys(app: &AppHandle) {
     }
 
     // 清理旧键，避免重复迁移
-    store.delete(proactive::keys::VD_API_KEY);
-    store.delete(proactive::keys::VD_BASE_URL);
-    store.delete(proactive::keys::VD_MODEL);
+    store.delete(keys::VD_API_KEY);
+    store.delete(keys::VD_BASE_URL);
+    store.delete(keys::VD_MODEL);
     if let Err(e) = store.save() {
         tracing::warn!("Legacy vision keys cleanup save failed: {e}");
     }
