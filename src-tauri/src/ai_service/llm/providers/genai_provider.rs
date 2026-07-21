@@ -8,7 +8,7 @@ use futures_util::StreamExt;
 use genai::adapter::AdapterKind;
 use genai::chat::{
     ChatMessage, ChatOptions, ChatRequest, ChatResponse, ChatStreamEvent,
-    ToolCall as GenaiToolCall, ToolChoice,
+    ToolCall as GenaiToolCall, ToolChoice, ToolResponse,
 };
 use genai::resolver::{AuthData, Endpoint};
 use genai::Client as GenaiClient;
@@ -109,7 +109,7 @@ impl GenaiProvider {
         &self,
         messages: &[LlmMessage],
         tools: Option<&[ToolDefinition]>,
-    ) -> ChatRequest {
+    ) -> Result<ChatRequest> {
         let mut system_text = String::new();
         let mut genai_messages: Vec<ChatMessage> = Vec::new();
 
@@ -122,7 +122,32 @@ impl GenaiProvider {
                     system_text.push_str(&msg.content);
                 }
                 "tool" => {
-                    genai_messages.push(ChatMessage::user(&msg.content));
+                    let call_id = msg
+                        .tool_call_id
+                        .as_deref()
+                        .filter(|id| !id.trim().is_empty())
+                        .ok_or_else(|| anyhow!("tool 消息缺少 tool_call_id"))?;
+                    genai_messages
+                        .push(ChatMessage::from(ToolResponse::new(call_id, &msg.content)));
+                }
+                "assistant" if msg.tool_calls.is_some() => {
+                    let calls = msg
+                        .tool_calls
+                        .as_ref()
+                        .expect("tool_calls 已通过条件判断")
+                        .iter()
+                        .map(|call| {
+                            let arguments = serde_json::from_str(&call.function.arguments)
+                                .map_err(|error| anyhow!("工具调用参数无法编码: {error}"))?;
+                            Ok(GenaiToolCall {
+                                call_id: call.id.clone(),
+                                fn_name: call.function.name.clone(),
+                                fn_arguments: arguments,
+                                thought_signatures: None,
+                            })
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+                    genai_messages.push(ChatMessage::from(calls));
                 }
                 _ => {
                     let role = match msg.role.as_str() {
@@ -142,7 +167,7 @@ impl GenaiProvider {
             let gtools: Vec<_> = tools.iter().map(Self::convert_tool_def).collect();
             req = req.with_tools(gtools);
         }
-        req
+        Ok(req)
     }
 
     fn build_chat_options(&self, tool_choice: Option<&str>) -> ChatOptions {
@@ -208,6 +233,144 @@ impl GenaiProvider {
             },
         }
     }
+
+    async fn complete_stream_inner(
+        &self,
+        messages: &[LlmMessage],
+        tools: Option<&[ToolDefinition]>,
+        tool_choice: Option<&str>,
+    ) -> Result<ChunkStream> {
+        let chat_req = self.build_chat_request(messages, tools)?;
+        crate::utils::llm_request_logger::log_request_body(
+            &self.model,
+            &serde_json::to_value(&chat_req).unwrap_or_default(),
+        );
+        let opts = self.build_chat_options(tool_choice);
+        let stream_resp = self
+            .client
+            .exec_chat_stream(&self.model, chat_req, Some(&opts))
+            .await
+            .map_err(|e| anyhow!("genai 流式请求失败: {e}"))?;
+        let mut inner = stream_resp.stream;
+
+        let output = async_stream::try_stream! {
+            while let Some(event) = inner.next().await {
+                match event.map_err(|e| anyhow!("genai 流式事件错误: {e}"))? {
+                    ChatStreamEvent::Start | ChatStreamEvent::ThoughtSignatureChunk(_) | ChatStreamEvent::ToolCallChunk(_) => {}
+                    ChatStreamEvent::Chunk(chunk) if !chunk.content.is_empty() => {
+                        yield LlmChunk::Content(chunk.content);
+                    }
+                    ChatStreamEvent::ReasoningChunk(chunk) if !chunk.content.is_empty() => {
+                        yield LlmChunk::Reasoning(chunk.content);
+                    }
+                    ChatStreamEvent::Chunk(_) | ChatStreamEvent::ReasoningChunk(_) => {}
+                    ChatStreamEvent::End(end) => {
+                        if let Some(reasoning) = end.captured_reasoning_content.clone() {
+                            if !reasoning.is_empty() {
+                                yield LlmChunk::Reasoning(reasoning);
+                            }
+                        }
+                        if let Some(calls) = end.captured_into_tool_calls() {
+                            let calls = calls.iter().map(Self::convert_tool_call).collect();
+                            yield LlmChunk::ToolCalls(calls);
+                        }
+                    }
+                }
+            }
+        };
+
+        Ok(Box::pin(output))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ai_service::types::{FunctionCall, ToolCall};
+
+    fn provider() -> GenaiProvider {
+        GenaiProvider::new(
+            &LlmConfig {
+                provider: "openai".to_string(),
+                model: "test-model".to_string(),
+                api_key: "test".to_string(),
+                base_url: String::new(),
+                timeout_secs: 30,
+                temperature: None,
+                top_p: None,
+                enable_thinking: false,
+                reasoning_effort: None,
+            },
+            Client::new(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn serializes_plain_messages() {
+        let request = provider()
+            .build_chat_request(
+                &[
+                    LlmMessage::system("系统"),
+                    LlmMessage::user("你好"),
+                    LlmMessage::assistant("你好呀"),
+                ],
+                None,
+            )
+            .unwrap();
+        let value = serde_json::to_value(request).unwrap();
+        assert_eq!(value["system"], "系统");
+        assert_eq!(value["messages"][0]["role"], "User");
+        assert_eq!(value["messages"][1]["role"], "Assistant");
+    }
+
+    #[test]
+    fn serializes_tool_call_and_response_with_matching_id() {
+        let call = ToolCall {
+            id: "call-1".to_string(),
+            type_: "function".to_string(),
+            function: FunctionCall {
+                name: "get_current_time".to_string(),
+                arguments: "{}".to_string(),
+            },
+        };
+        let request = provider()
+            .build_chat_request(
+                &[
+                    LlmMessage::user("几点了"),
+                    LlmMessage::tool(vec![call]),
+                    LlmMessage::tool_result("call-1", r#"{"local_time":"now"}"#),
+                ],
+                None,
+            )
+            .unwrap();
+        let value = serde_json::to_value(request).unwrap();
+        assert_eq!(value["messages"][1]["role"], "Assistant");
+        assert_eq!(
+            value["messages"][1]["content"][0]["ToolCall"]["call_id"],
+            "call-1"
+        );
+        assert_eq!(
+            value["messages"][1]["content"][0]["ToolCall"]["fn_name"],
+            "get_current_time"
+        );
+        assert_eq!(value["messages"][2]["role"], "Tool");
+        assert_eq!(
+            value["messages"][2]["content"][0]["ToolResponse"]["call_id"],
+            "call-1"
+        );
+    }
+
+    #[test]
+    fn rejects_tool_result_without_call_id() {
+        let mut message = LlmMessage::tool_result("call-1", "{}");
+        message.tool_call_id = None;
+        let error = provider()
+            .build_chat_request(&[message], None)
+            .err()
+            .unwrap();
+        assert!(error.to_string().contains("缺少 tool_call_id"));
+    }
 }
 
 // ─── LlmProvider 实现 ────────────────────────────────────────────
@@ -215,7 +378,7 @@ impl GenaiProvider {
 #[async_trait]
 impl LlmProvider for GenaiProvider {
     async fn complete(&self, _http: &Client, messages: &[LlmMessage]) -> Result<String> {
-        let chat_req = self.build_chat_request(messages, None);
+        let chat_req = self.build_chat_request(messages, None)?;
         crate::utils::llm_request_logger::log_request_body(
             &self.model,
             &serde_json::to_value(&chat_req).unwrap_or_default(),
@@ -238,49 +401,22 @@ impl LlmProvider for GenaiProvider {
         _http: &Client,
         messages: &[LlmMessage],
     ) -> Result<ChunkStream> {
-        let chat_req = self.build_chat_request(messages, None);
-        crate::utils::llm_request_logger::log_request_body(
-            &self.model,
-            &serde_json::to_value(&chat_req).unwrap_or_default(),
-        );
-        let opts = self.build_chat_options(None);
+        self.complete_stream_inner(messages, None, None).await
+    }
 
-        let stream_resp = self
-            .client
-            .exec_chat_stream(&self.model, chat_req, Some(&opts))
+    fn supports_streaming_tools(&self) -> bool {
+        true
+    }
+
+    async fn complete_stream_with_tools(
+        &self,
+        _http: &Client,
+        messages: &[LlmMessage],
+        tools: &[ToolDefinition],
+        tool_choice: Option<&str>,
+    ) -> Result<ChunkStream> {
+        self.complete_stream_inner(messages, Some(tools), tool_choice)
             .await
-            .map_err(|e| anyhow!("genai 流式请求失败: {e}"))?;
-
-        let mut inner = stream_resp.stream;
-
-        let output = async_stream::try_stream! {
-            while let Some(event) = inner.next().await {
-                match event.map_err(|e| anyhow!("genai 流式事件错误: {e}"))? {
-                    ChatStreamEvent::Start => {}
-                    ChatStreamEvent::Chunk(chunk) => {
-                        if !chunk.content.is_empty() {
-                            yield LlmChunk::Content(chunk.content);
-                        }
-                    }
-                    ChatStreamEvent::ReasoningChunk(chunk) => {
-                        if !chunk.content.is_empty() {
-                            yield LlmChunk::Reasoning(chunk.content);
-                        }
-                    }
-                    ChatStreamEvent::ThoughtSignatureChunk(_) => {}
-                    ChatStreamEvent::ToolCallChunk(_) => {}
-                    ChatStreamEvent::End(end) => {
-                        if let Some(reasoning) = end.captured_reasoning_content {
-                            if !reasoning.is_empty() {
-                                yield LlmChunk::Reasoning(reasoning);
-                            }
-                        }
-                    }
-                }
-            }
-        };
-
-        Ok(Box::pin(output))
     }
 
     async fn complete_with_tools(
@@ -290,7 +426,7 @@ impl LlmProvider for GenaiProvider {
         tools: &[ToolDefinition],
         tool_choice: Option<&str>,
     ) -> Result<LlmResponseWithTools> {
-        let chat_req = self.build_chat_request(messages, Some(tools));
+        let chat_req = self.build_chat_request(messages, Some(tools))?;
         crate::utils::llm_request_logger::log_request_body(
             &self.model,
             &serde_json::to_value(&chat_req).unwrap_or_default(),

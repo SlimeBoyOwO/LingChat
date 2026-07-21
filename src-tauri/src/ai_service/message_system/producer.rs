@@ -32,7 +32,11 @@ pub struct StreamProducer {
 
 impl StreamProducer {
     pub fn new(llm_stream: ChunkStream, tx: mpsc::Sender<SentenceItem>, app: AppHandle) -> Self {
-        Self { llm_stream, tx, app }
+        Self {
+            llm_stream,
+            tx,
+            app,
+        }
     }
 
     /// 消耗整个 LLM 流；返回原始 accumulated_response（未拆分）。
@@ -90,7 +94,8 @@ impl StreamProducer {
                                 buffer.clear();
                             }
 
-                            Self::dispatch_sentence(&self.tx,
+                            Self::dispatch_sentence(
+                                &self.tx,
                                 &mut sentence,
                                 &mut sentence_index,
                                 false,
@@ -147,6 +152,9 @@ impl StreamProducer {
                         thinking_length += text.chars().count();
                         events::emit_thinking_progress(&self.app, thinking_length);
                     }
+                }
+                LlmChunk::ToolCalls(_) => {
+                    return Err(anyhow::anyhow!("工具调用片段不应进入正式回复流"));
                 }
             }
         }

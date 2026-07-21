@@ -25,6 +25,8 @@ use crate::ai_service::message_system::processor::{
 };
 use crate::ai_service::message_system::producer::{SentenceItem, StreamProducer};
 use crate::ai_service::message_system::responses::{event_names, ReplyResponse};
+use crate::ai_service::tools::registry::ToolRegistry;
+use crate::ai_service::tools::tool_loop::stream_with_tool_loop;
 use crate::ai_service::translator::Translator;
 use crate::ai_service::types::{LineAttributeExt, LineBase, LlmMessage};
 use crate::api::data_dir;
@@ -41,6 +43,8 @@ pub struct GeneratorDeps {
     pub translator: Arc<Translator>,
     /// 当前生成轮次使用的 LLM 客户端快照（构建 deps 时从槽位读取）。
     pub llm: Arc<LlmClient>,
+    /// 普通聊天可调用的共享工具注册表。
+    pub tool_registry: Arc<ToolRegistry>,
     pub concurrency: usize,
     /// 上帝 Agent（多人自由对话编排器），`None` 时退化为单角色对话。
     pub god_agent: Option<Arc<GodAgentCore>>,
@@ -385,6 +389,9 @@ impl MessageGenerator {
         user_message: String,
         user_message_seq: Option<u32>,
     ) -> Result<String> {
+        let llm_stream =
+            stream_with_tool_loop(&self.deps.llm, &self.deps.tool_registry, context).await?;
+
         let (sentence_tx, sentence_rx) =
             mpsc::channel::<SentenceItem>(self.deps.concurrency.max(1) * 2);
         let (publish_tx, mut publish_rx) =
@@ -456,7 +463,6 @@ impl MessageGenerator {
         drop(publish_tx);
 
         // producer：LLM 流 -> 句子
-        let llm_stream = self.deps.llm.complete_stream(&context).await?;
         let producer = StreamProducer::new(llm_stream, sentence_tx, self.deps.app.clone());
         let acc = producer.run().await.context("StreamProducer 失败")?;
 

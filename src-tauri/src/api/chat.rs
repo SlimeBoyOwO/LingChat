@@ -85,6 +85,7 @@ pub async fn send_chat_message(
         processor: state.chat.processor.clone(),
         translator: state.chat.translator.clone(),
         llm,
+        tool_registry: state.tool_registry.clone(),
         concurrency,
         god_agent: state.god_agent.clone(),
         suppress_thinking: false,

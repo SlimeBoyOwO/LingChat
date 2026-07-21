@@ -95,6 +95,7 @@ impl ScriptEvent for AIDialogueEvent {
             processor: state.chat.processor.clone(),
             translator: state.chat.translator.clone(),
             llm,
+            tool_registry: state.tool_registry.clone(),
             concurrency: 1,
             god_agent: None,
             suppress_thinking: false,
