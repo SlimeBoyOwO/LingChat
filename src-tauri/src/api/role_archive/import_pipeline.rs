@@ -372,15 +372,9 @@ fn sanitize_role_folder_name(name: Option<&str>, fallback: Option<&str>) -> Stri
         s.to_string()
     }
     fn sanitize_once(s: &str) -> String {
-        let chars: String = s
-            .chars()
-            .map(|c| match c {
-                '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
-                c if c.is_control() => '_',
-                c => c,
-            })
-            .collect();
-        chars.trim().to_string()
+        s.chars()
+            .filter(|c| c.is_alphanumeric() || matches!(c, '-' | '.'))
+            .collect()
     }
     fn is_reserved(s: &str) -> bool {
         let lower = s.to_lowercase();
