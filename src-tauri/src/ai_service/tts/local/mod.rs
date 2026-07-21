@@ -24,3 +24,4 @@ mod paths;
 mod registry;
 
 pub use paths::{LocalTtsPaths, REQUIRED_ASSETS, VoiceInstallInfo};
+pub use registry::AssetEntry;
