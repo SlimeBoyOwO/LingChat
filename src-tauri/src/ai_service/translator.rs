@@ -25,11 +25,6 @@ fn translator_system_prompt(target_lang: &str) -> Option<String> {
     let (language_name, extra_instruction) = match target_lang {
         "en" => ("英语", "使用自然、口语化的英语表达。"),
         "ko" => ("韩语", "使用自然、口语化且符合角色语气的韩语表达。"),
-        "ru" => ("俄语", "使用自然、口语化且符合角色语气的俄语表达。"),
-        "yue" => (
-            "粤语",
-            "使用自然口语化的粤语表达，并优先采用适合粤语朗读的繁体字。",
-        ),
         _ => return None,
     };
 
@@ -155,10 +150,6 @@ mod tests {
     fn builds_prompts_for_all_opentts_languages() {
         assert!(translator_system_prompt("en").unwrap().contains("英语"));
         assert!(translator_system_prompt("ko").unwrap().contains("韩语"));
-        assert!(translator_system_prompt("ru").unwrap().contains("俄语"));
-        let cantonese = translator_system_prompt("yue").unwrap();
-        assert!(cantonese.contains("粤语"));
-        assert!(cantonese.contains("繁体字"));
         assert!(translator_system_prompt("unsupported").is_none());
     }
 

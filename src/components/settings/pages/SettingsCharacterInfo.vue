@@ -306,23 +306,13 @@ const schemas: Record<string, FieldSchema[]> = {
         { label: '日语', value: 'ja' },
         { label: '中文', value: 'zh' },
         {
-          label: '英语（OpenTTS）',
+          label: '英语',
           value: 'en',
           visibleIf: (s) => s.tts_type === 'opentts',
         },
         {
-          label: '韩语（OpenTTS）',
+          label: '韩语',
           value: 'ko',
-          visibleIf: (s) => s.tts_type === 'opentts',
-        },
-        {
-          label: '俄语（OpenTTS）',
-          value: 'ru',
-          visibleIf: (s) => s.tts_type === 'opentts',
-        },
-        {
-          label: '粤语（OpenTTS）',
-          value: 'yue',
           visibleIf: (s) => s.tts_type === 'opentts',
         },
       ],
