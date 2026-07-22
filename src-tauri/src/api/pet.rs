@@ -1,3 +1,7 @@
+use crate::ai_service::types::{LineAttributeExt, LineBase};
+use crate::db::entities::line::LineAttribute;
+use crate::utils::prompt::PromptRole;
+use crate::AppState;
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
 #[cfg(desktop)]
@@ -75,5 +79,43 @@ pub fn set_pet_mode(
             let _ = window.set_ignore_cursor_events(false);
         }
     }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn pet_feed_image(
+    app: AppHandle,
+    path: String,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let (user_name, game_status) = {
+        let svc = state.ai_service.lock().await;
+        let gs = svc.game_status.lock().await;
+        (gs.player.user_name.clone(), svc.game_status.clone())
+    };
+
+    let prompt = format!("用户（名字是\"{}\"）给你看了一张图片，请你用第三人称叙述把你看到的画面描述给其他AI让他理解用户的图片内容",user_name);
+
+    let analysis = {
+        let mut sa = state.screen_analyzer.lock().await;
+        sa.analyze_image_file(&path, &prompt).await
+    };
+
+    if let Some(narration) = analysis {
+        let mut gs = game_status.lock().await;
+        gs.add_line(
+            &state.db,
+            LineBase {
+                content: PromptRole::Narrator.build_prompt(&narration),
+                attribute: LineAttributeExt(LineAttribute::User),
+                display_name: Some("旁白".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(|e| format!("添加旁白台词失败: {}", e))?;
+        tracing::info!("[PetFeed] 图片分析已注入上下文: {}", path);
+    }
+
     Ok(())
 }

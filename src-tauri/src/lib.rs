@@ -487,6 +487,7 @@ pub fn run() {
             api::script::script_submit_choice,
             api::pet::update_solid_regions,
             api::pet::set_pet_mode,
+            api::pet::pet_feed_image,
             api::schedule::get_schedules,
             api::schedule::save_schedules,
             api::schedule::reload_proactive_system,
