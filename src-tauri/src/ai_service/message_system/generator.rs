@@ -554,8 +554,12 @@ async fn enrich_segments(deps: &GeneratorDeps, segments: &mut [EmotionSegment]) 
 
     let opentts_target = opentts_translation_language(&tts_type, &voice_lang);
     let translated_for_opentts = if let Some(target_lang) = opentts_target {
+        // Selecting an OpenTTS target language is an explicit request to speak
+        // that language. Force this translation even when the legacy realtime
+        // translation switch is disabled because the main LLM already emits a
+        // secondary (Japanese) line.
         deps.translator
-            .translate_segments_to(segments, false, target_lang)
+            .translate_segments_to(segments, true, target_lang)
             .await?
     } else if segments[0].japanese_text.is_empty() {
         deps.translator.translate_segments(segments, false).await?;
