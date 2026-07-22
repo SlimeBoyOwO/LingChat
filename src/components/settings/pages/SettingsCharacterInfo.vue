@@ -325,6 +325,7 @@ const schemas: Record<string, FieldSchema[]> = {
       label: 'sbv2_name',
       type: 'text',
       isVoiceModel: true,
+      realtime: true,
       visibleIf: (s) => s.tts_type === 'sbv2',
     },
     {
@@ -332,6 +333,7 @@ const schemas: Record<string, FieldSchema[]> = {
       label: 'sbv2_speaker_id',
       type: 'text',
       isVoiceModel: true,
+      realtime: true,
       visibleIf: (s) => s.tts_type === 'sbv2',
     },
 

@@ -376,6 +376,32 @@ mod tests {
     }
 
     #[test]
+    fn refresh_rebuilds_sbv2_adapter_with_latest_values() {
+        let mut maker = VoiceMaker::new(PathBuf::from("voice"), "wav", TtsConfig::default());
+        let voice_model = VoiceModel {
+            sbv2_name: Some("Ling-JP".into()),
+            sbv2_speaker_id: Some("2".into()),
+            ..Default::default()
+        };
+
+        maker.update_lang_and_refresh(&voice_model, "sbv2", "Ling", "ja");
+
+        assert_eq!(maker.tts_type(), "sbv2");
+        let params = maker
+            .provider
+            .sbv2
+            .as_ref()
+            .expect("SBV2 adapter should be initialized")
+            .get_params();
+        assert_eq!(
+            params.get("model_name"),
+            Some(&serde_json::json!("Ling-JP"))
+        );
+        assert_eq!(params.get("speaker_id"), Some(&serde_json::json!(2)));
+        assert_eq!(params.get("language"), Some(&serde_json::json!("JP")));
+    }
+
+    #[test]
     fn refresh_rebuilds_sbv2api_adapter_with_latest_values() {
         let mut maker = VoiceMaker::new(PathBuf::from("voice"), "wav", TtsConfig::default());
         let voice_model = VoiceModel {
