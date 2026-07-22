@@ -52,9 +52,37 @@ fn non_empty(s: &Option<String>) -> bool {
     s.as_ref().map(|v| !v.trim().is_empty()).unwrap_or(false)
 }
 
+fn gsv_prompt_language(prompt_text: &str) -> &'static str {
+    if prompt_text
+        .chars()
+        .any(|c| matches!(c, '\u{ac00}'..='\u{d7af}'))
+    {
+        "ko"
+    } else if prompt_text.chars().any(|c| {
+        matches!(
+            c,
+            '\u{3040}'..='\u{30ff}' | '\u{31f0}'..='\u{31ff}'
+        )
+    }) {
+        "ja"
+    } else if prompt_text
+        .chars()
+        .any(|c| matches!(c, '\u{3400}'..='\u{4dbf}' | '\u{4e00}'..='\u{9fff}'))
+    {
+        "zh"
+    } else if prompt_text.chars().any(|c| c.is_ascii_alphabetic()) {
+        "en"
+    } else {
+        "zh"
+    }
+}
+
 fn segment_text_for_lang<'a>(lang: &str, segment: &'a EmotionSegment) -> Option<&'a str> {
     match lang {
-        "ja" if !segment.japanese_text.trim().is_empty() => Some(&segment.japanese_text),
+        "ja" | "en" | "ko" if !segment.japanese_text.trim().is_empty() => {
+            Some(&segment.japanese_text)
+        }
+        "en" | "ko" => None,
         "zh" if !segment.following_text.trim().is_empty() => Some(&segment.following_text),
         _ if !segment.following_text.trim().is_empty() => Some(&segment.following_text),
         _ if !segment.japanese_text.trim().is_empty() => Some(&segment.japanese_text),
@@ -205,9 +233,12 @@ impl VoiceMaker {
                     _ => String::new(),
                 };
                 let prompt_text = cfg.gsv_voice_text.clone().unwrap_or_default();
+                let prompt_lang = gsv_prompt_language(&prompt_text).to_string();
                 let voice_lang = match self.lang.as_str() {
                     "zh" => "zh",
                     "ja" => "ja",
+                    "en" => "en",
+                    "ko" => "ko",
                     other => {
                         tracing::warn!("GPT-SoVITS 暂不支持语言 {other}，回退到中文");
                         "zh"
@@ -218,7 +249,7 @@ impl VoiceMaker {
                     self.tts_config.gsv_api_url.clone(),
                     ref_audio_path,
                     prompt_text,
-                    voice_lang.clone(),
+                    prompt_lang,
                     voice_lang,
                     cfg.gsv_gpt_model_name.clone(),
                     cfg.gsv_sovits_model_name.clone(),
@@ -358,7 +389,7 @@ mod tests {
     use crate::ai_service::tts::provider::TtsAdapter;
 
     #[test]
-    fn chinese_language_selects_chinese_segment_text() {
+    fn selected_language_uses_original_or_translated_segment_text() {
         let segment = EmotionSegment {
             following_text: "你好，欢迎回来。".into(),
             japanese_text: "おかえりなさい。".into(),
@@ -373,6 +404,40 @@ mod tests {
             segment_text_for_lang("ja", &segment),
             Some("おかえりなさい。")
         );
+        let english = EmotionSegment {
+            following_text: "你好，欢迎回来。".into(),
+            japanese_text: "Hello, welcome back.".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            segment_text_for_lang("en", &english),
+            Some("Hello, welcome back.")
+        );
+
+        let korean = EmotionSegment {
+            following_text: "你好，欢迎回来。".into(),
+            japanese_text: "안녕하세요, 다시 오신 것을 환영합니다.".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            segment_text_for_lang("ko", &korean),
+            Some("안녕하세요, 다시 오신 것을 환영합니다.")
+        );
+
+        let untranslated = EmotionSegment {
+            following_text: "你好，欢迎回来。".into(),
+            ..Default::default()
+        };
+        assert_eq!(segment_text_for_lang("en", &untranslated), None);
+        assert_eq!(segment_text_for_lang("ko", &untranslated), None);
+    }
+
+    #[test]
+    fn gsv_prompt_language_is_independent_from_output_language() {
+        assert_eq!(gsv_prompt_language("中文参考文本"), "zh");
+        assert_eq!(gsv_prompt_language("こんにちは"), "ja");
+        assert_eq!(gsv_prompt_language("안녕하세요"), "ko");
+        assert_eq!(gsv_prompt_language("Hello there"), "en");
     }
 
     #[test]
@@ -439,7 +504,7 @@ mod tests {
             ..Default::default()
         };
 
-        maker.update_lang_and_refresh(&voice_model, "gsv", "角色", "zh");
+        maker.update_lang_and_refresh(&voice_model, "gsv", "角色", "en");
 
         let params = maker
             .provider
@@ -448,7 +513,7 @@ mod tests {
             .expect("GSV adapter should be initialized")
             .get_params();
         assert_eq!(params.get("prompt_lang"), Some(&serde_json::json!("zh")));
-        assert_eq!(params.get("text_lang"), Some(&serde_json::json!("zh")));
+        assert_eq!(params.get("text_lang"), Some(&serde_json::json!("en")));
         assert_eq!(
             params.get("gpt_model_path"),
             Some(&serde_json::json!("model.ckpt"))

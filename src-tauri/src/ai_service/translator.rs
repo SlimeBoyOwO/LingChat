@@ -15,7 +15,24 @@ use crate::ai_service::llm::{slot_snapshot, LlmSlot};
 use crate::ai_service::message_system::processor::EmotionSegment;
 use crate::ai_service::types::LlmMessage;
 
-const TRANSLATOR_SYSTEM_PROMPT: &str = "\n            你是一个二次元角色中文台词翻译师，任务是翻译二次元台词对话，\n            将中文翻译成日语，允许意译。确保你的翻译符合二次元的发言习惯，而不是生硬的直译，保持流畅自然生动。\n            除了翻译内容，你不提供额外的解释，并且你的翻译句子必须包裹在<>符号内，否则会导致严重错误。\n            比如，原文内容为：\n            <你好呀莱姆，今天过的怎么样呀？><哎？有点不高兴吗？没关系~>\n            那么你的回复内容为：\n            <はいはい、レムちゃん、今日はどうだった？><えっ？なんだかご機嫌ななめ？大丈夫だよ～>\n            ";
+const JAPANESE_TRANSLATOR_SYSTEM_PROMPT: &str = "\n            你是一个二次元角色中文台词翻译师，任务是翻译二次元台词对话，\n            将中文翻译成日语，允许意译。确保你的翻译符合二次元的发言习惯，而不是生硬的直译，保持流畅自然生动。\n            除了翻译内容，你不提供额外的解释，并且你的翻译句子必须包裹在<>符号内，否则会导致严重错误。\n            比如，原文内容为：\n            <你好呀莱姆，今天过的怎么样呀？><哎？有点不高兴吗？没关系~>\n            那么你的回复内容为：\n            <はいはい、レムちゃん、今日はどうだった？><えっ？なんだかご機嫌ななめ？大丈夫だよ～>\n            ";
+
+fn translator_system_prompt(target_lang: &str) -> Option<String> {
+    if target_lang == "ja" {
+        return Some(JAPANESE_TRANSLATOR_SYSTEM_PROMPT.to_string());
+    }
+
+    let (language_name, extra_instruction) = match target_lang {
+        "en" => ("英语", "使用自然、口语化的英语表达。"),
+        "ko" => ("韩语", "使用自然、口语化且符合角色语气的韩语表达。"),
+        _ => return None,
+    };
+
+    Some(format!(
+        "你是一个二次元角色中文台词翻译师。请将每个中文台词片段翻译成{language_name}，允许意译，保持角色语气自然生动。{extra_instruction}\n\
+         只返回翻译结果，不要解释；输出片段数量必须与输入一致，并且每个片段都必须分别包裹在 < 和 > 中。"
+    ))
+}
 
 /// 翻译器。
 pub struct Translator {
@@ -44,30 +61,52 @@ impl Translator {
         segments: &mut [EmotionSegment],
         script: bool,
     ) -> Result<()> {
+        self.translate_segments_to(segments, script, "ja")
+            .await
+            .map(|_| ())
+    }
+
+    /// 将中文台词翻译成指定语言，并返回是否取得了全部片段的译文。
+    pub async fn translate_segments_to(
+        &self,
+        segments: &mut [EmotionSegment],
+        script: bool,
+        target_lang: &str,
+    ) -> Result<bool> {
         if !self.enable && !script {
-            return Ok(());
+            return Ok(false);
         }
+        let Some(system_prompt) = translator_system_prompt(target_lang) else {
+            tracing::warn!("Translator: 不支持的目标语言 {target_lang}，跳过翻译");
+            return Ok(false);
+        };
         let Some(client) = slot_snapshot(&self.client).await else {
             tracing::warn!("Translator: 翻译 LLM 槽位为空，跳过翻译");
-            return Ok(());
+            return Ok(false);
         };
 
         let full_chinese = collect_chinese_part(segments);
         if full_chinese.is_empty() {
-            tracing::warn!("AI回复没有中文，跳过日语翻译");
-            return Ok(());
+            tracing::warn!("AI回复没有可翻译文本，跳过 {target_lang} 翻译");
+            return Ok(false);
         }
 
         let messages = vec![
-            LlmMessage::system(TRANSLATOR_SYSTEM_PROMPT),
+            LlmMessage::system(system_prompt),
             LlmMessage::user(full_chinese),
         ];
 
-        let japanese_response = client.complete(&messages).await?;
-        tracing::info!("完整日语翻译结果: {japanese_response}");
+        let translated_response = client.complete(&messages).await?;
+        tracing::info!("完整 {target_lang} 翻译结果: {translated_response}");
 
-        apply_translation_result(&japanese_response, segments);
-        Ok(())
+        let translated_count = apply_translation_result(&translated_response, segments);
+        if translated_count != segments.len() {
+            tracing::warn!(
+                "Translator: {target_lang} 译文片段不完整: {translated_count}/{}",
+                segments.len()
+            );
+        }
+        Ok(translated_count == segments.len())
     }
 }
 
@@ -82,12 +121,14 @@ fn collect_chinese_part(segments: &[EmotionSegment]) -> String {
 }
 
 /// 从翻译结果中依次抽取 `<...>` 片段并写回到每个 segment 的 `japanese_text`。
-fn apply_translation_result(response: &str, segments: &mut [EmotionSegment]) {
+fn apply_translation_result(response: &str, segments: &mut [EmotionSegment]) -> usize {
     let mut cursor = response;
     let mut idx = 0usize;
     while let Some(start) = cursor.find('<') {
         let after = &cursor[start + 1..];
-        let Some(end_rel) = after.find('>') else { break };
+        let Some(end_rel) = after.find('>') else {
+            break;
+        };
         let jp = &after[..end_rel];
         if idx >= segments.len() {
             break;
@@ -95,5 +136,38 @@ fn apply_translation_result(response: &str, segments: &mut [EmotionSegment]) {
         segments[idx].japanese_text = jp.to_string();
         idx += 1;
         cursor = &after[end_rel + 1..];
+    }
+    idx
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn builds_prompts_for_gsv_output_languages() {
+        assert!(translator_system_prompt("en").unwrap().contains("英语"));
+        assert!(translator_system_prompt("ko").unwrap().contains("韩语"));
+        assert!(translator_system_prompt("unsupported").is_none());
+    }
+
+    #[test]
+    fn applies_all_translated_segments() {
+        let mut segments = vec![
+            EmotionSegment {
+                following_text: "你好".into(),
+                ..Default::default()
+            },
+            EmotionSegment {
+                following_text: "欢迎回来".into(),
+                ..Default::default()
+            },
+        ];
+
+        let translated = apply_translation_result("<Hello><Welcome back>", &mut segments);
+
+        assert_eq!(translated, 2);
+        assert_eq!(segments[0].japanese_text, "Hello");
+        assert_eq!(segments[1].japanese_text, "Welcome back");
     }
 }

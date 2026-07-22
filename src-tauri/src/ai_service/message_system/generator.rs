@@ -516,22 +516,50 @@ fn parse_segments(deps: &GeneratorDeps, sentence: &str) -> Vec<EmotionSegment> {
     segments
 }
 
-/// Step B: 翻译（中文→日文）与语音生成。
+fn gsv_translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static str> {
+    if tts_type != "gsv" {
+        return None;
+    }
+    match voice_lang {
+        "en" => Some("en"),
+        "ko" => Some("ko"),
+        _ => None,
+    }
+}
+
+/// Step B: 翻译与语音生成。
 async fn enrich_segments(deps: &GeneratorDeps, segments: &mut [EmotionSegment]) -> Result<()> {
-    // 翻译：当第一段 japanese_text 为空时
-    if segments[0].japanese_text.is_empty() {
+    let (voice_maker, tts_type, voice_lang) = {
+        let gs = deps.game_status.lock().await;
+        gs.current_role_id
+            .and_then(|rid| {
+                gs.role_manager.get_loaded(rid).map(|role| {
+                    (
+                        role.voice_maker.clone(),
+                        role.settings.tts_type.clone().unwrap_or_default(),
+                        role.settings.voice_lang.clone().unwrap_or_default(),
+                    )
+                })
+            })
+            .unwrap_or_default()
+    };
+
+    if let Some(target_lang) = gsv_translation_language(&tts_type, &voice_lang) {
+        let translated = deps
+            .translator
+            .translate_segments_to(segments, true, target_lang)
+            .await?;
+        if !translated {
+            // Do not let GPT-SoVITS pronounce the main LLM's Japanese secondary
+            // line when the explicitly selected English/Korean translation fails.
+            for segment in segments.iter_mut() {
+                segment.japanese_text.clear();
+            }
+        }
+    } else if segments[0].japanese_text.is_empty() {
         deps.translator.translate_segments(segments, false).await?;
     }
 
-    // 语音：取当前角色的 voice_maker 生成语音文件
-    let voice_maker = {
-        let gs = deps.game_status.lock().await;
-        gs.current_role_id.and_then(|rid| {
-            gs.role_manager
-                .get_loaded(rid)
-                .and_then(|r| r.voice_maker.clone())
-        })
-    };
     if let Some(vm) = voice_maker {
         vm.generate_voice_files(segments).await;
     }
@@ -617,4 +645,17 @@ async fn add_assistant_line(deps: &GeneratorDeps, response: &ReplyResponse) -> R
     let mut gs = deps.game_status.lock().await;
     gs.add_line(&deps.db, line).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_gsv_enables_english_and_korean_translation() {
+        assert_eq!(gsv_translation_language("gsv", "en"), Some("en"));
+        assert_eq!(gsv_translation_language("gsv", "ko"), Some("ko"));
+        assert_eq!(gsv_translation_language("gsv", "zh"), None);
+        assert_eq!(gsv_translation_language("opentts", "en"), None);
+    }
 }
