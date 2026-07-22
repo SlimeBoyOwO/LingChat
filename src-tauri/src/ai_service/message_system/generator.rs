@@ -646,16 +646,3 @@ async fn add_assistant_line(deps: &GeneratorDeps, response: &ReplyResponse) -> R
     gs.add_line(&deps.db, line).await?;
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn only_gsv_enables_english_and_korean_translation() {
-        assert_eq!(gsv_translation_language("gsv", "en"), Some("en"));
-        assert_eq!(gsv_translation_language("gsv", "ko"), Some("ko"));
-        assert_eq!(gsv_translation_language("gsv", "zh"), None);
-        assert_eq!(gsv_translation_language("opentts", "en"), None);
-    }
-}

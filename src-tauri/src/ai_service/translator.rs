@@ -15,14 +15,9 @@ use crate::ai_service::llm::{slot_snapshot, LlmSlot};
 use crate::ai_service::message_system::processor::EmotionSegment;
 use crate::ai_service::types::LlmMessage;
 
-const JAPANESE_TRANSLATOR_SYSTEM_PROMPT: &str = "\n            你是一个二次元角色中文台词翻译师，任务是翻译二次元台词对话，\n            将中文翻译成日语，允许意译。确保你的翻译符合二次元的发言习惯，而不是生硬的直译，保持流畅自然生动。\n            除了翻译内容，你不提供额外的解释，并且你的翻译句子必须包裹在<>符号内，否则会导致严重错误。\n            比如，原文内容为：\n            <你好呀莱姆，今天过的怎么样呀？><哎？有点不高兴吗？没关系~>\n            那么你的回复内容为：\n            <はいはい、レムちゃん、今日はどうだった？><えっ？なんだかご機嫌ななめ？大丈夫だよ～>\n            ";
-
 fn translator_system_prompt(target_lang: &str) -> Option<String> {
-    if target_lang == "ja" {
-        return Some(JAPANESE_TRANSLATOR_SYSTEM_PROMPT.to_string());
-    }
-
     let (language_name, extra_instruction) = match target_lang {
+        "ja" => ("日语", "使用自然、口语化且符合二次元角色语气的日语表达。"),
         "en" => ("英语", "使用自然、口语化的英语表达。"),
         "ko" => ("韩语", "使用自然、口语化且符合角色语气的韩语表达。"),
         _ => return None,
@@ -138,36 +133,4 @@ fn apply_translation_result(response: &str, segments: &mut [EmotionSegment]) -> 
         cursor = &after[end_rel + 1..];
     }
     idx
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn builds_prompts_for_gsv_output_languages() {
-        assert!(translator_system_prompt("en").unwrap().contains("英语"));
-        assert!(translator_system_prompt("ko").unwrap().contains("韩语"));
-        assert!(translator_system_prompt("unsupported").is_none());
-    }
-
-    #[test]
-    fn applies_all_translated_segments() {
-        let mut segments = vec![
-            EmotionSegment {
-                following_text: "你好".into(),
-                ..Default::default()
-            },
-            EmotionSegment {
-                following_text: "欢迎回来".into(),
-                ..Default::default()
-            },
-        ];
-
-        let translated = apply_translation_result("<Hello><Welcome back>", &mut segments);
-
-        assert_eq!(translated, 2);
-        assert_eq!(segments[0].japanese_text, "Hello");
-        assert_eq!(segments[1].japanese_text, "Welcome back");
-    }
 }

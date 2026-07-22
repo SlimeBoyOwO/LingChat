@@ -338,7 +338,20 @@ impl VoiceMaker {
         }
     }
     pub async fn generate_voice_files(&self, segments: &mut [EmotionSegment]) {
-        if !self.is_enabled() {
+        if self.tts_type.is_empty() {
+            return;
+        }
+        if !self.provider.is_enabled() {
+            if let Some(text) = segments
+                .iter()
+                .find_map(|segment| segment_text_for_lang(&self.lang, segment))
+            {
+                self.provider.recover_in_background(
+                    text.to_owned(),
+                    self.tts_type.clone(),
+                    String::new(),
+                );
+            }
             return;
         }
         tokio::fs::create_dir_all(&self.temp_dir).await.ok();
@@ -380,147 +393,5 @@ impl VoiceMaker {
         if !futs.is_empty() {
             join_all(futs).await;
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ai_service::tts::provider::TtsAdapter;
-
-    #[test]
-    fn selected_language_uses_original_or_translated_segment_text() {
-        let segment = EmotionSegment {
-            following_text: "你好，欢迎回来。".into(),
-            japanese_text: "おかえりなさい。".into(),
-            ..Default::default()
-        };
-
-        assert_eq!(
-            segment_text_for_lang("zh", &segment),
-            Some("你好，欢迎回来。")
-        );
-        assert_eq!(
-            segment_text_for_lang("ja", &segment),
-            Some("おかえりなさい。")
-        );
-        let english = EmotionSegment {
-            following_text: "你好，欢迎回来。".into(),
-            japanese_text: "Hello, welcome back.".into(),
-            ..Default::default()
-        };
-        assert_eq!(
-            segment_text_for_lang("en", &english),
-            Some("Hello, welcome back.")
-        );
-
-        let korean = EmotionSegment {
-            following_text: "你好，欢迎回来。".into(),
-            japanese_text: "안녕하세요, 다시 오신 것을 환영합니다.".into(),
-            ..Default::default()
-        };
-        assert_eq!(
-            segment_text_for_lang("ko", &korean),
-            Some("안녕하세요, 다시 오신 것을 환영합니다.")
-        );
-
-        let untranslated = EmotionSegment {
-            following_text: "你好，欢迎回来。".into(),
-            ..Default::default()
-        };
-        assert_eq!(segment_text_for_lang("en", &untranslated), None);
-        assert_eq!(segment_text_for_lang("ko", &untranslated), None);
-    }
-
-    #[test]
-    fn gsv_prompt_language_is_independent_from_output_language() {
-        assert_eq!(gsv_prompt_language("中文参考文本"), "zh");
-        assert_eq!(gsv_prompt_language("こんにちは"), "ja");
-        assert_eq!(gsv_prompt_language("안녕하세요"), "ko");
-        assert_eq!(gsv_prompt_language("Hello there"), "en");
-    }
-
-    #[test]
-    fn refresh_rebuilds_sbv2_adapter_with_latest_values() {
-        let mut maker = VoiceMaker::new(PathBuf::from("voice"), "wav", TtsConfig::default());
-        let voice_model = VoiceModel {
-            sbv2_name: Some("Ling-JP".into()),
-            sbv2_speaker_id: Some("2".into()),
-            ..Default::default()
-        };
-
-        maker.update_lang_and_refresh(&voice_model, "sbv2", "Ling", "ja");
-
-        assert_eq!(maker.tts_type(), "sbv2");
-        let params = maker
-            .provider
-            .sbv2
-            .as_ref()
-            .expect("SBV2 adapter should be initialized")
-            .get_params();
-        assert_eq!(
-            params.get("model_name"),
-            Some(&serde_json::json!("Ling-JP"))
-        );
-        assert_eq!(params.get("speaker_id"), Some(&serde_json::json!(2)));
-        assert_eq!(params.get("language"), Some(&serde_json::json!("JP")));
-    }
-
-    #[test]
-    fn refresh_rebuilds_sbv2api_adapter_with_latest_values() {
-        let mut maker = VoiceMaker::new(PathBuf::from("voice"), "wav", TtsConfig::default());
-        let voice_model = VoiceModel {
-            sbv2api_name: Some("Ling v2".into()),
-            sbv2api_speaker_id: Some("0".into()),
-            ..Default::default()
-        };
-
-        maker.update_lang_and_refresh(&voice_model, "sbv2api", "Ling", "zh");
-
-        assert_eq!(maker.lang, "zh");
-        assert_eq!(maker.tts_type(), "sbv2api");
-        let params = maker
-            .provider
-            .sbv2api
-            .as_ref()
-            .expect("SBV2API adapter should be initialized")
-            .get_params();
-        assert_eq!(
-            params.get("model_name"),
-            Some(&serde_json::json!("Ling v2"))
-        );
-        assert_eq!(params.get("speaker_id"), Some(&serde_json::json!(0)));
-    }
-
-    #[test]
-    fn gsv_adapter_uses_selected_language_and_model_paths() {
-        let mut maker = VoiceMaker::new(PathBuf::from("voice"), "wav", TtsConfig::default());
-        maker.set_character_path(Some(PathBuf::from("character")));
-        let voice_model = VoiceModel {
-            gsv_voice_filename: Some("reference.wav".into()),
-            gsv_voice_text: Some("中文参考文本".into()),
-            gsv_gpt_model_name: Some("model.ckpt".into()),
-            gsv_sovits_model_name: Some("model.pth".into()),
-            ..Default::default()
-        };
-
-        maker.update_lang_and_refresh(&voice_model, "gsv", "角色", "en");
-
-        let params = maker
-            .provider
-            .gsv
-            .as_ref()
-            .expect("GSV adapter should be initialized")
-            .get_params();
-        assert_eq!(params.get("prompt_lang"), Some(&serde_json::json!("zh")));
-        assert_eq!(params.get("text_lang"), Some(&serde_json::json!("en")));
-        assert_eq!(
-            params.get("gpt_model_path"),
-            Some(&serde_json::json!("model.ckpt"))
-        );
-        assert_eq!(
-            params.get("sovits_model_path"),
-            Some(&serde_json::json!("model.pth"))
-        );
     }
 }

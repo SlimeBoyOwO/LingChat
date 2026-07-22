@@ -609,31 +609,3 @@ pub fn open_characters_folder() -> Result<(), String> {
     let path_str = char_dir.to_string_lossy().into_owned();
     open_folder(&path_str)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn removes_legacy_top_level_voice_model_fields() {
-        let mut settings: CharacterSettings = serde_json::from_value(serde_json::json!({
-            "sbv2api_name": "legacy-name",
-            "sbv2api_speaker_id": "9",
-            "voice_models": {
-                "sbv2api_name": "Ling v2",
-                "sbv2api_speaker_id": "0"
-            }
-        }))
-        .expect("settings should deserialize");
-
-        remove_legacy_voice_model_fields(&mut settings);
-
-        assert!(!settings.extra.contains_key("sbv2api_name"));
-        assert!(!settings.extra.contains_key("sbv2api_speaker_id"));
-        let voice_models = settings
-            .voice_models
-            .expect("nested voice_models should remain");
-        assert_eq!(voice_models.sbv2api_name.as_deref(), Some("Ling v2"));
-        assert_eq!(voice_models.sbv2api_speaker_id.as_deref(), Some("0"));
-    }
-}

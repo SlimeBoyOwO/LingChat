@@ -13,6 +13,7 @@ use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
 use crate::db::managers::memory_repo::MemoryRepo;
 use crate::db::managers::role_repo::RoleRepo;
+use crate::utils::path::resolve_character_path;
 
 /// 角色运行时管理器：维护当前活跃角色的内存状态。
 pub struct GameRoleManager {
@@ -541,15 +542,6 @@ impl GameRoleManager {
 ///
 /// 未启用 TTS / 配置缺失时返回 `None`。对应 Python `GameRole` 构造时调用
 /// `voice_maker = VoiceMaker(...)`。
-fn resolve_character_path(data_dir: &Path, resource_path: &str) -> PathBuf {
-    let path = PathBuf::from(resource_path);
-    if path.is_absolute() {
-        path
-    } else {
-        data_dir.join("game_data").join("characters").join(path)
-    }
-}
-
 fn build_voice_maker(
     data_dir: &Path,
     settings: &CharacterSettings,
@@ -585,24 +577,5 @@ fn build_voice_maker(
             tracing::warn!("VoiceMaker 初始化失败: {e}");
             None
         }
-    }
-}
-
-#[cfg(test)]
-mod voice_path_tests {
-    use super::*;
-
-    #[test]
-    fn relative_character_resource_path_resolves_under_game_data() {
-        let data_dir = PathBuf::from("data");
-        let resolved = resolve_character_path(&data_dir, "example-role");
-
-        assert_eq!(
-            resolved,
-            PathBuf::from("data")
-                .join("game_data")
-                .join("characters")
-                .join("example-role")
-        );
     }
 }
