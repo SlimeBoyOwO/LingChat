@@ -231,4 +231,23 @@ mod tests {
         assert_eq!(i.kind, PackageKind::RawSbv2);
         assert_eq!(i.size_bytes, 4);
     }
+
+    #[test]
+    fn inspect_zip_with_sbv2_inside() {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+        let dir = tempfile::tempdir().unwrap();
+        let zip_path = dir.path().join("voice.zip");
+        {
+            let f = std::fs::File::create(&zip_path).unwrap();
+            let mut zip = zip::ZipWriter::new(f);
+            zip.start_file("model.sbv2", SimpleFileOptions::default())
+                .unwrap();
+            zip.write_all(b"abc").unwrap();
+            zip.finish().unwrap();
+        }
+        let i = inspect_package(&zip_path).unwrap();
+        assert_eq!(i.kind, PackageKind::Zip);
+        assert_eq!(i.inner_model_name.as_deref(), Some("model.sbv2"));
+    }
 }
