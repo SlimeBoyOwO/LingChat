@@ -523,6 +523,7 @@ fn opentts_translation_language(tts_type: &str, voice_lang: &str) -> Option<&'st
     match voice_lang {
         "en" => Some("en"),
         "ko" => Some("ko"),
+        "ru" => Some("ru"),
         "yue" => Some("yue"),
         _ => None,
     }
@@ -672,6 +673,7 @@ mod tests {
     fn only_opentts_enables_additional_translation_languages() {
         assert_eq!(opentts_translation_language("opentts", "en"), Some("en"));
         assert_eq!(opentts_translation_language("opentts", "ko"), Some("ko"));
+        assert_eq!(opentts_translation_language("opentts", "ru"), Some("ru"));
         assert_eq!(opentts_translation_language("opentts", "yue"), Some("yue"));
         assert_eq!(opentts_translation_language("opentts", "zh"), None);
         assert_eq!(opentts_translation_language("gsv", "en"), None);

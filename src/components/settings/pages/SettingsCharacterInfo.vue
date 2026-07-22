@@ -316,6 +316,11 @@ const schemas: Record<string, FieldSchema[]> = {
           visibleIf: (s) => s.tts_type === 'opentts',
         },
         {
+          label: '俄语（OpenTTS）',
+          value: 'ru',
+          visibleIf: (s) => s.tts_type === 'opentts',
+        },
+        {
           label: '粤语（OpenTTS）',
           value: 'yue',
           visibleIf: (s) => s.tts_type === 'opentts',
