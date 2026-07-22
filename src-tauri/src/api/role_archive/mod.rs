@@ -80,6 +80,8 @@ pub async fn import_role(
         },
     );
     let _remove_guard = TaskRemoveGuard { state: &state, task_id: &task_id };
+    // 把 task_id 通过事件发给前端，让前端的取消按钮能找到正确的令牌。
+    let _ = app.emit("role:import-started", serde_json::json!({ "task_id": &task_id }));
     // 写入临时文件，供文件头校验和 ZIP/7z 解压库读取。
     let tmp_path = write_temp_archive(&app, &bytes).await?;
     let cleanup_path = tmp_path.clone();
@@ -168,6 +170,9 @@ pub async fn import_role_from_path(
     };
     state.tasks.lock().unwrap().insert(task_id.clone(), entry);
     let _remove_guard = TaskRemoveGuard { state: &state, task_id: &task_id };
+
+    // 把 task_id 通过事件发给前端，让前端的取消按钮能找到正确的令牌。
+    let _ = app.emit("role:import-started", serde_json::json!({ "task_id": &task_id }));
 
     let (path_buf, cleanup_after_import) = prepare_import_source(&app, &path).await?;
 
