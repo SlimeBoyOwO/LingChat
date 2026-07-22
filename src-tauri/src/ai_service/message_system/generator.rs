@@ -516,24 +516,65 @@ fn parse_segments(deps: &GeneratorDeps, sentence: &str) -> Vec<EmotionSegment> {
     segments
 }
 
-/// Step B: 翻译（中文→日文）与语音生成。
-async fn enrich_segments(deps: &GeneratorDeps, segments: &mut [EmotionSegment]) -> Result<()> {
-    // 翻译：当第一段 japanese_text 为空时
-    if segments[0].japanese_text.is_empty() {
-        deps.translator.translate_segments(segments, false).await?;
+fn opentts_translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static str> {
+    if tts_type != "opentts" {
+        return None;
     }
+    match voice_lang {
+        "en" => Some("en"),
+        "ko" => Some("ko"),
+        "yue" => Some("yue"),
+        _ => None,
+    }
+}
 
-    // 语音：取当前角色的 voice_maker 生成语音文件
-    let voice_maker = {
+fn swap_display_and_translated_text(segments: &mut [EmotionSegment]) {
+    for segment in segments {
+        std::mem::swap(&mut segment.following_text, &mut segment.japanese_text);
+    }
+}
+
+/// Step B: 翻译与语音生成。
+async fn enrich_segments(deps: &GeneratorDeps, segments: &mut [EmotionSegment]) -> Result<()> {
+    // 一次性取得当前角色的 TTS 运行时和语言配置，避免翻译与合成期间重复加锁。
+    let (voice_maker, tts_type, voice_lang) = {
         let gs = deps.game_status.lock().await;
-        gs.current_role_id.and_then(|rid| {
-            gs.role_manager
-                .get_loaded(rid)
-                .and_then(|r| r.voice_maker.clone())
-        })
+        gs.current_role_id
+            .and_then(|rid| {
+                gs.role_manager.get_loaded(rid).map(|role| {
+                    (
+                        role.voice_maker.clone(),
+                        role.settings.tts_type.clone().unwrap_or_default(),
+                        role.settings.voice_lang.clone().unwrap_or_default(),
+                    )
+                })
+            })
+            .unwrap_or_default()
     };
+
+    let opentts_target = opentts_translation_language(&tts_type, &voice_lang);
+    let translated_for_opentts = if let Some(target_lang) = opentts_target {
+        deps.translator
+            .translate_segments_to(segments, false, target_lang)
+            .await?
+    } else if segments[0].japanese_text.is_empty() {
+        deps.translator.translate_segments(segments, false).await?;
+        false
+    } else {
+        false
+    };
+
     if let Some(vm) = voice_maker {
+        // VoiceMaker 的兼容结构只区分 following_text 与 japanese_text。
+        // OpenTTS 多语言翻译完成后临时交换两者，让自动语言识别接口朗读译文；
+        // 合成结束立即换回，前端仍显示中文原文，tts_text 则保留目标语言。
+        if translated_for_opentts {
+            swap_display_and_translated_text(segments);
+        }
         vm.generate_voice_files(segments).await;
+        if translated_for_opentts {
+            swap_display_and_translated_text(segments);
+        }
     }
 
     Ok(())
@@ -617,4 +658,35 @@ async fn add_assistant_line(deps: &GeneratorDeps, response: &ReplyResponse) -> R
     let mut gs = deps.game_status.lock().await;
     gs.add_line(&deps.db, line).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_opentts_enables_additional_translation_languages() {
+        assert_eq!(opentts_translation_language("opentts", "en"), Some("en"));
+        assert_eq!(opentts_translation_language("opentts", "ko"), Some("ko"));
+        assert_eq!(opentts_translation_language("opentts", "yue"), Some("yue"));
+        assert_eq!(opentts_translation_language("opentts", "zh"), None);
+        assert_eq!(opentts_translation_language("gsv", "en"), None);
+    }
+
+    #[test]
+    fn translated_text_swap_is_reversible() {
+        let mut segments = vec![EmotionSegment {
+            following_text: "中文原文".into(),
+            japanese_text: "English translation".into(),
+            ..Default::default()
+        }];
+
+        swap_display_and_translated_text(&mut segments);
+        assert_eq!(segments[0].following_text, "English translation");
+        assert_eq!(segments[0].japanese_text, "中文原文");
+
+        swap_display_and_translated_text(&mut segments);
+        assert_eq!(segments[0].following_text, "中文原文");
+        assert_eq!(segments[0].japanese_text, "English translation");
+    }
 }

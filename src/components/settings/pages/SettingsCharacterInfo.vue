@@ -107,7 +107,7 @@
                       @change="handleFieldChange(field)"
                     >
                       <option
-                        v-for="opt in field.options"
+                        v-for="opt in fieldOptions(field)"
                         :key="opt.value"
                         :value="opt.value"
                         class="bg-[#333] text-white"
@@ -230,16 +230,28 @@ const tabs = [
 
 type FieldType = 'text' | 'number' | 'textarea' | 'select'
 
+interface FieldOption {
+  label: string
+  value: string
+  visibleIf?: (settings: any) => boolean
+}
+
 interface FieldSchema {
   key: string
   label: string
   type: FieldType
   rows?: number
   step?: string
-  options?: { label: string; value: string }[]
+  options?: FieldOption[]
   visibleIf?: (settings: any) => boolean
   isVoiceModel?: boolean
   realtime?: boolean
+}
+
+const fieldOptions = (field: FieldSchema) => {
+  return (field.options || []).filter(
+    (option) => !option.visibleIf || option.visibleIf(localSettings.value),
+  )
 }
 
 const schemas: Record<string, FieldSchema[]> = {
@@ -293,6 +305,21 @@ const schemas: Record<string, FieldSchema[]> = {
       options: [
         { label: '日语', value: 'ja' },
         { label: '中文', value: 'zh' },
+        {
+          label: '英语（OpenTTS）',
+          value: 'en',
+          visibleIf: (s) => s.tts_type === 'opentts',
+        },
+        {
+          label: '韩语（OpenTTS）',
+          value: 'ko',
+          visibleIf: (s) => s.tts_type === 'opentts',
+        },
+        {
+          label: '粤语（OpenTTS）',
+          value: 'yue',
+          visibleIf: (s) => s.tts_type === 'opentts',
+        },
       ],
     },
 
