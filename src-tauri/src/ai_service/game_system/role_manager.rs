@@ -380,12 +380,52 @@ impl GameRoleManager {
         Ok(())
     }
 
-    /// 更新已加载角色的语音语言并重新初始化其 VoiceMaker。
-    pub fn update_role_voice_lang(
+    /// 用最新角色配置更新已加载角色的 TTS 设置，并立即重建 VoiceMaker。
+    ///
+    /// 返回角色当前是否已经加载；未加载时磁盘配置仍会在下次注册角色时生效。
+    pub fn update_role_voice_settings(
         &mut self,
         role_id: i32,
-        lang: &str,
-    ) {
+        settings: &CharacterSettings,
+    ) -> bool {
+        let Some(resource_path) = self
+            .loaded_roles
+            .get(&role_id)
+            .map(|role| role.resource_path.clone())
+        else {
+            tracing::info!("角色 {} 尚未加载，TTS 设置将在下次加载时生效", role_id);
+            return false;
+        };
+
+        let voice_maker = build_voice_maker(
+            &self.data_dir,
+            settings,
+            resource_path.as_deref(),
+            &self.tts_config,
+        );
+        let voice_maker_ready = voice_maker.is_some();
+
+        let role = self
+            .loaded_roles
+            .get_mut(&role_id)
+            .expect("loaded role disappeared while updating TTS settings");
+        role.settings.tts_type = settings.tts_type.clone();
+        role.settings.voice_lang = settings.voice_lang.clone();
+        role.settings.voice_models = settings.voice_models.clone();
+        role.voice_maker = voice_maker;
+
+        tracing::info!(
+            "角色 {} TTS 已实时刷新: type={}, lang={}, ready={}",
+            role_id,
+            role.settings.tts_type.as_deref().unwrap_or(""),
+            role.settings.voice_lang.as_deref().unwrap_or(""),
+            voice_maker_ready,
+        );
+        true
+    }
+
+    /// 更新已加载角色的语音语言并重新初始化其 VoiceMaker。
+    pub fn update_role_voice_lang(&mut self, role_id: i32, lang: &str) {
         let Some(role) = self.loaded_roles.get_mut(&role_id) else {
             tracing::warn!("update_role_voice_lang: 角色 {} 未加载", role_id);
             return;
@@ -501,6 +541,15 @@ impl GameRoleManager {
 ///
 /// 未启用 TTS / 配置缺失时返回 `None`。对应 Python `GameRole` 构造时调用
 /// `voice_maker = VoiceMaker(...)`。
+fn resolve_character_path(data_dir: &Path, resource_path: &str) -> PathBuf {
+    let path = PathBuf::from(resource_path);
+    if path.is_absolute() {
+        path
+    } else {
+        data_dir.join("game_data").join("characters").join(path)
+    }
+}
+
 fn build_voice_maker(
     data_dir: &Path,
     settings: &CharacterSettings,
@@ -516,7 +565,9 @@ fn build_voice_maker(
     voice_cfg.opentts_voice = Some(tts_config.opentts_voice.clone());
 
     let audio_format = tts_config.audio_format.clone();
-    let lang = settings.voice_lang.as_deref()
+    let lang = settings
+        .voice_lang
+        .as_deref()
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
         .unwrap_or(&tts_config.voice_lang)
@@ -526,7 +577,7 @@ fn build_voice_maker(
     let mut vm = VoiceMaker::new(temp_dir, audio_format, tts_config.clone());
     vm.set_lang(&lang);
     if let Some(p) = resource_path {
-        vm.set_character_path(Some(PathBuf::from(p)));
+        vm.set_character_path(Some(resolve_character_path(data_dir, p)));
     }
     match vm.set_tts_settings(&voice_cfg, tts_type, &settings.ai_name) {
         Ok(()) => Some(vm),
@@ -534,5 +585,24 @@ fn build_voice_maker(
             tracing::warn!("VoiceMaker 初始化失败: {e}");
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod voice_path_tests {
+    use super::*;
+
+    #[test]
+    fn relative_character_resource_path_resolves_under_game_data() {
+        let data_dir = PathBuf::from("data");
+        let resolved = resolve_character_path(&data_dir, "example-role");
+
+        assert_eq!(
+            resolved,
+            PathBuf::from("data")
+                .join("game_data")
+                .join("characters")
+                .join("example-role")
+        );
     }
 }

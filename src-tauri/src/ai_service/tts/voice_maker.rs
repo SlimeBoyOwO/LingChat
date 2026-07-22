@@ -52,6 +52,16 @@ fn non_empty(s: &Option<String>) -> bool {
     s.as_ref().map(|v| !v.trim().is_empty()).unwrap_or(false)
 }
 
+fn segment_text_for_lang<'a>(lang: &str, segment: &'a EmotionSegment) -> Option<&'a str> {
+    match lang {
+        "ja" if !segment.japanese_text.trim().is_empty() => Some(&segment.japanese_text),
+        "zh" if !segment.following_text.trim().is_empty() => Some(&segment.following_text),
+        _ if !segment.following_text.trim().is_empty() => Some(&segment.following_text),
+        _ if !segment.japanese_text.trim().is_empty() => Some(&segment.japanese_text),
+        _ => None,
+    }
+}
+
 impl VoiceMaker {
     pub fn new(temp_dir: PathBuf, audio_format: impl Into<String>, tts_config: TtsConfig) -> Self {
         let audio_format = audio_format.into();
@@ -195,14 +205,26 @@ impl VoiceMaker {
                     _ => String::new(),
                 };
                 let prompt_text = cfg.gsv_voice_text.clone().unwrap_or_default();
+                let voice_lang = match self.lang.as_str() {
+                    "zh" => "zh",
+                    "ja" => "ja",
+                    other => {
+                        tracing::warn!("GPT-SoVITS 暂不支持语言 {other}，回退到中文");
+                        "zh"
+                    }
+                }
+                .to_string();
                 let adapter = GsvAdapter::new(
                     self.tts_config.gsv_api_url.clone(),
                     ref_audio_path,
                     prompt_text,
-                    "ja".into(),
+                    voice_lang.clone(),
+                    voice_lang,
+                    cfg.gsv_gpt_model_name.clone(),
+                    cfg.gsv_sovits_model_name.clone(),
                 );
                 self.provider.gsv = Some(Arc::new(adapter));
-                let _ = name; // 预留：Python 版还有按 name 查找 gpt/sovits 权重的逻辑
+                let _ = name;
             }
             "aivis" if self.availability.aivis => {
                 let model_uuid = cfg.aivis_model_uuid.clone().unwrap_or_default();
@@ -294,18 +316,8 @@ impl VoiceMaker {
         for seg in segments.iter_mut() {
             // 严格按当前设置语言选择文本；跨语言生成容易导致 TTS 输出异常，
             // 因此目标语言无文本时直接跳过该片段的语音生成。
-            let text = match self.lang.as_str() {
-                "ja" if !seg.japanese_text.trim().is_empty() => seg.japanese_text.clone(),
-                "zh" if !seg.following_text.trim().is_empty() => seg.following_text.clone(),
-                _ => {
-                    if !seg.following_text.trim().is_empty() {
-                        seg.following_text.clone()
-                    } else if !seg.japanese_text.trim().is_empty() {
-                        seg.japanese_text.clone()
-                    } else {
-                        continue;
-                    }
-                }
+            let Some(text) = segment_text_for_lang(&self.lang, seg).map(str::to_owned) else {
+                continue;
             };
             let emo = String::new();
 
@@ -337,5 +349,87 @@ impl VoiceMaker {
         if !futs.is_empty() {
             join_all(futs).await;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ai_service::tts::provider::TtsAdapter;
+
+    #[test]
+    fn chinese_language_selects_chinese_segment_text() {
+        let segment = EmotionSegment {
+            following_text: "你好，欢迎回来。".into(),
+            japanese_text: "おかえりなさい。".into(),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            segment_text_for_lang("zh", &segment),
+            Some("你好，欢迎回来。")
+        );
+        assert_eq!(
+            segment_text_for_lang("ja", &segment),
+            Some("おかえりなさい。")
+        );
+    }
+
+    #[test]
+    fn refresh_rebuilds_sbv2api_adapter_with_latest_values() {
+        let mut maker = VoiceMaker::new(PathBuf::from("voice"), "wav", TtsConfig::default());
+        let voice_model = VoiceModel {
+            sbv2api_name: Some("Ling v2".into()),
+            sbv2api_speaker_id: Some("0".into()),
+            ..Default::default()
+        };
+
+        maker.update_lang_and_refresh(&voice_model, "sbv2api", "Ling", "zh");
+
+        assert_eq!(maker.lang, "zh");
+        assert_eq!(maker.tts_type(), "sbv2api");
+        let params = maker
+            .provider
+            .sbv2api
+            .as_ref()
+            .expect("SBV2API adapter should be initialized")
+            .get_params();
+        assert_eq!(
+            params.get("model_name"),
+            Some(&serde_json::json!("Ling v2"))
+        );
+        assert_eq!(params.get("speaker_id"), Some(&serde_json::json!(0)));
+    }
+
+    #[test]
+    fn gsv_adapter_uses_selected_language_and_model_paths() {
+        let mut maker = VoiceMaker::new(PathBuf::from("voice"), "wav", TtsConfig::default());
+        maker.set_character_path(Some(PathBuf::from("character")));
+        let voice_model = VoiceModel {
+            gsv_voice_filename: Some("reference.wav".into()),
+            gsv_voice_text: Some("中文参考文本".into()),
+            gsv_gpt_model_name: Some("model.ckpt".into()),
+            gsv_sovits_model_name: Some("model.pth".into()),
+            ..Default::default()
+        };
+
+        maker.update_lang_and_refresh(&voice_model, "gsv", "角色", "zh");
+
+        let params = maker
+            .provider
+            .gsv
+            .as_ref()
+            .expect("GSV adapter should be initialized")
+            .get_params();
+        assert_eq!(params.get("prompt_lang"), Some(&serde_json::json!("zh")));
+        assert_eq!(params.get("text_lang"), Some(&serde_json::json!("zh")));
+        assert_eq!(
+            params.get("gpt_model_path"),
+            Some(&serde_json::json!("model.ckpt"))
+        );
+        assert_eq!(
+            params.get("sovits_model_path"),
+            Some(&serde_json::json!("model.pth"))
+        );
     }
 }

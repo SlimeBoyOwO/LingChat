@@ -179,7 +179,14 @@ impl TtsProvider {
                 Ok(())
             }
             Err(e) => {
-                self.disable();
+                // GPT-SoVITS is an external local service. A temporary ROCm or
+                // transport failure must not poison the role's TTS provider for
+                // all later segments/messages; the adapter already retries once.
+                if tts_type != "gsv" {
+                    self.disable();
+                } else {
+                    tracing::warn!("GPT-SoVITS request failed; keeping TTS enabled for recovery");
+                }
                 Err(e)
             }
         }
