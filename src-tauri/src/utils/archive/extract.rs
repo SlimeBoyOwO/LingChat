@@ -11,8 +11,8 @@ use std::path::Path;
 
 use tokio_util::sync::CancellationToken;
 
-use super::{map_sevenz_err, ArchiveError, EntryEvent, ExtractSummary};
 use super::safety::{check_entry_safety, safe_join, sanitize_entry_name};
+use super::{map_sevenz_err, ArchiveError, EntryEvent, ExtractSummary};
 
 // ===== 5. 解压 =====
 
@@ -93,10 +93,7 @@ pub fn extract_zip(
 
         // 进度事件最短间隔为 80 毫秒；小型压缩包仍逐条发送。
         let elapsed = last_emit.elapsed();
-        if elapsed >= std::time::Duration::from_millis(80)
-            || total < 100
-            || i + 1 == total
-        {
+        if elapsed >= std::time::Duration::from_millis(80) || total < 100 || i + 1 == total {
             on_entry(EntryEvent {
                 phase: "entry",
                 index: i + 1,
@@ -138,8 +135,8 @@ pub fn extract_sevenz(
     use sevenz_rust2::Password;
 
     let file = File::open(src)?;
-    let mut reader = sevenz_rust2::ArchiveReader::new(file, Password::empty())
-        .map_err(map_sevenz_err)?;
+    let mut reader =
+        sevenz_rust2::ArchiveReader::new(file, Password::empty()).map_err(map_sevenz_err)?;
     let total = reader.archive().files.len();
 
     on_entry(EntryEvent {
@@ -174,36 +171,51 @@ pub fn extract_sevenz(
                 entry_index += 1;
                 return Ok(true);
             }
-            Err(e) => return Err(sevenz_rust2::Error::Io(std::io::Error::other(e.to_string()), "".into())),
+            Err(e) => {
+                return Err(sevenz_rust2::Error::Io(
+                    std::io::Error::other(e.to_string()),
+                    "".into(),
+                ))
+            }
         };
         if let Err(e) = check_entry_safety(entry_index, compressed, uncompressed) {
-            return Err(sevenz_rust2::Error::Io(std::io::Error::other(e.to_string()), "".into()));
+            return Err(sevenz_rust2::Error::Io(
+                std::io::Error::other(e.to_string()),
+                "".into(),
+            ));
         }
         entry_index += 1;
 
         let out_path = match safe_join(dest_root, &cleaned) {
             Ok(p) => p,
-            Err(e) => return Err(sevenz_rust2::Error::Io(std::io::Error::other(e.to_string()), "".into())),
+            Err(e) => {
+                return Err(sevenz_rust2::Error::Io(
+                    std::io::Error::other(e.to_string()),
+                    "".into(),
+                ))
+            }
         };
 
         if entry.is_directory() {
-            std::fs::create_dir_all(&out_path).map_err(|e| sevenz_rust2::Error::Io(e, "".into()))?;
+            std::fs::create_dir_all(&out_path)
+                .map_err(|e| sevenz_rust2::Error::Io(e, "".into()))?;
         } else {
             if let Some(parent) = out_path.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| sevenz_rust2::Error::Io(e, "".into()))?;
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| sevenz_rust2::Error::Io(e, "".into()))?;
             }
-            let mut f = File::create(&out_path).map_err(|e| sevenz_rust2::Error::Io(e, "".into()))?;
+            let mut f =
+                File::create(&out_path).map_err(|e| sevenz_rust2::Error::Io(e, "".into()))?;
             if uncompressed > 0 {
-                let n = io::copy(reader, &mut f).map_err(|e| sevenz_rust2::Error::Io(e, "".into()))?;
+                let n =
+                    io::copy(reader, &mut f).map_err(|e| sevenz_rust2::Error::Io(e, "".into()))?;
                 bytes_done += n;
                 summary.files_extracted += 1;
             }
         }
 
         let elapsed = last_emit.elapsed();
-        if elapsed >= std::time::Duration::from_millis(80)
-            || total < 100
-            || processed + 1 == total
+        if elapsed >= std::time::Duration::from_millis(80) || total < 100 || processed + 1 == total
         {
             on_entry(EntryEvent {
                 phase: "entry",
@@ -219,7 +231,7 @@ pub fn extract_sevenz(
         processed += 1;
         Ok(true)
     });
-    if let Err(ref e) = result {
+    if let Err(ref _e) = result {
         if cancel_token.is_cancelled() {
             return Err(ArchiveError::Cancelled);
         }
