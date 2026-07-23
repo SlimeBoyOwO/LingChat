@@ -901,6 +901,7 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
         processor: state.chat.processor.clone(),
         translator: state.chat.translator.clone(),
         llm,
+        tool_registry: state.tool_registry.clone(),
         concurrency,
         god_agent: state.god_agent.clone(),
         suppress_thinking: true,

@@ -75,7 +75,7 @@ impl MessageGenerator {
 
     /// 处理一轮用户消息。返回 accumulated LLM 原始输出（便于日志 / 单测）。
     ///
-    /// 若 `user_message=None` 表示主动对话触发；此时会跳过 user 行构造，直接走
+    /// `None` 表示本轮没有原始用户输入；此时会跳过 user 行构造，直接走
     /// `GameStatus` 的 current role memory 发起 LLM。
     ///
     /// 在多人自由对话模式下（God Agent 激活），会自动循环生成多轮 NPC 对话。
