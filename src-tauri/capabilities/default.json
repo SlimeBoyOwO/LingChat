@@ -24,6 +24,13 @@
     "screenshots:default",
     "fs:default",
     "notification:default",
+        "tts_local_status:default",
+    "tts_local_list_catalog:default",
+    "tts_local_list_installed:default",
+    "tts_local_import_from_path:default",
+    "tts_local_download:default",
+    "tts_local_delete_voice:default",
+    "tts_local_synthesize_preview:default",
     {
       "identifier": "fs:scope",
       "allow": [{ "path": "$RESOURCE/**" }]
