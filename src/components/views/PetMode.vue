@@ -8,7 +8,6 @@
   >
     <!-- DialogueBox 区域 -->
     <div
-      ref="dialogContainer"
       class="w-full shrink-0 flex flex-col justify-end transition-none bg-transparent"
       :style="{ height: 'var(--dialog-h)' }"
     >
@@ -73,7 +72,6 @@ const uiStore = useUIStore()
 
 const showChatInput = ref(false)
 
-const dialogContainer = ref<HTMLElement | null>(null)
 const avatarContainer = ref<HTMLElement | null>(null)
 const chatContainer = ref<HTMLElement | null>(null)
 const gameDialogRef = ref<InstanceType<typeof DialogueBox> | null>(null)
