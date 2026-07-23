@@ -33,9 +33,21 @@ use crate::api::data_dir;
 use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::PromptRole;
 
+/// MessageGenerator 的业务调用来源。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GeneratorSource {
+    UserChat,
+    Proactive,
+    ScriptAiDialogue,
+    ScriptFreeDialogue,
+    EntryGreeting,
+}
+
 /// MessageGenerator 运行时依赖。
 #[derive(Clone)]
 pub struct GeneratorDeps {
+    /// 调用本轮生成的业务来源。
+    pub source: GeneratorSource,
     pub app: AppHandle,
     pub db: DatabaseConnection,
     pub game_status: Arc<Mutex<GameStatus>>,
@@ -75,8 +87,8 @@ impl MessageGenerator {
 
     /// 处理一轮用户消息。返回 accumulated LLM 原始输出（便于日志 / 单测）。
     ///
-    /// `None` 表示本轮没有原始用户输入；此时会跳过 user 行构造，直接走
-    /// `GameStatus` 的 current role memory 发起 LLM。
+    /// `None` 只表示本轮没有原始用户输入；业务调用来源由 `GeneratorDeps::source` 表示。
+    /// 此时会跳过 user 行构造，直接走 `GameStatus` 的 current role memory 发起 LLM。
     ///
     /// 在多人自由对话模式下（God Agent 激活），会自动循环生成多轮 NPC 对话。
     pub async fn process_message(&self, user_message: Option<String>) -> Result<String> {

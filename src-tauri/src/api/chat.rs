@@ -1,7 +1,9 @@
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::ai_service::message_system::events;
-use crate::ai_service::message_system::generator::{GeneratorDeps, MessageGenerator};
+use crate::ai_service::message_system::generator::{
+    GeneratorDeps, GeneratorSource, MessageGenerator,
+};
 use crate::ai_service::types::{LineAttributeExt, LineBase};
 use crate::api::game::{compute_user_message_seqs, GameLineInit};
 use crate::config::AppConfig;
@@ -79,6 +81,7 @@ pub async fn send_chat_message(
     }
 
     let deps = GeneratorDeps {
+        source: GeneratorSource::UserChat,
         app: app.clone(),
         db: state.db.clone(),
         game_status,

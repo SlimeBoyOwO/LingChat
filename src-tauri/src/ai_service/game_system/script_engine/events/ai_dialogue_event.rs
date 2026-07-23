@@ -9,7 +9,9 @@ use crate::ai_service::game_system::script_engine::events::{
     register_event, ScriptContext, ScriptEvent,
 };
 use crate::ai_service::game_system::script_engine::utils::script_function;
-use crate::ai_service::message_system::generator::{GeneratorDeps, MessageGenerator};
+use crate::ai_service::message_system::generator::{
+    GeneratorDeps, GeneratorSource, MessageGenerator,
+};
 use crate::ai_service::types::{LineAttributeExt, LineBase};
 use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::PromptRole;
@@ -89,6 +91,7 @@ impl ScriptEvent for AIDialogueEvent {
         };
 
         let deps = GeneratorDeps {
+            source: GeneratorSource::ScriptAiDialogue,
             app: ctx.app.clone(),
             db: ctx.db.clone(),
             game_status: ctx.game_status.clone(),

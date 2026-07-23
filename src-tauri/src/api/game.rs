@@ -8,7 +8,9 @@ use tauri_plugin_store::StoreExt;
 
 use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::message_system::events;
-use crate::ai_service::message_system::generator::{GeneratorDeps, MessageGenerator};
+use crate::ai_service::message_system::generator::{
+    GeneratorDeps, GeneratorSource, MessageGenerator,
+};
 use crate::ai_service::types::{CharacterSettings, GameLine, LineAttributeExt, LineBase};
 use crate::config::{self, AppConfig};
 use crate::db::entities::line;
@@ -895,6 +897,7 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
     };
 
     let deps = GeneratorDeps {
+        source: GeneratorSource::EntryGreeting,
         app: app.clone(),
         db: state.db.clone(),
         game_status,
