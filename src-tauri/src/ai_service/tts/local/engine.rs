@@ -68,14 +68,30 @@ impl LocalTtsEngine {
     ) -> std::result::Result<(), String> {
         let sbv2 = paths.voice_dir(voice_id).join("model.sbv2");
         let onnx = paths.voice_dir(voice_id).join("model.onnx");
-        let bytes = if sbv2.exists() {
-            tokio::fs::read(&sbv2)
-                .await
-                .map_err(|e| format!("read sbv2: {e}"))?
+        let (model_bytes, style_vectors) = if sbv2.exists() {
+            (
+                tokio::fs::read(&sbv2)
+                    .await
+                    .map_err(|e| format!("read sbv2: {e}"))?,
+                None,
+            )
         } else if onnx.exists() {
-            tokio::fs::read(&onnx)
-                .await
-                .map_err(|e| format!("read onnx: {e}"))?
+            let style_path = paths.voice_dir(voice_id).join("style_vectors.json");
+            if !style_path.exists() {
+                return Err(format!(
+                    "voice {voice_id} is missing style_vectors.json required by model.onnx"
+                ));
+            }
+            (
+                tokio::fs::read(&onnx)
+                    .await
+                    .map_err(|e| format!("read onnx: {e}"))?,
+                Some(
+                    tokio::fs::read(&style_path)
+                        .await
+                        .map_err(|e| format!("read style_vectors.json: {e}"))?,
+                ),
+            )
         } else {
             return Err(format!("voice {voice_id} not installed"));
         };
@@ -84,7 +100,7 @@ impl LocalTtsEngine {
         self.voice_cache
             .lock()
             .await
-            .insert(vid.clone(), bytes.clone());
+            .insert(vid.clone(), model_bytes.clone());
 
         // Take the holder out of the mutex, run the load on a blocking
         // thread, then put it back. ort::Session is !Send + !Sync, so we
@@ -97,7 +113,10 @@ impl LocalTtsEngine {
         // The closure owns holder, so we ship it back out alongside the
         // Result so we can reinsert it into the mutex below.
         let (holder, load_result) = tokio::task::spawn_blocking(move || {
-            let r = holder.load_sbv2file(vid_for_closure, bytes);
+            let r = match style_vectors {
+                Some(style_bytes) => holder.load(vid_for_closure, style_bytes, model_bytes),
+                None => holder.load_sbv2file(vid_for_closure, model_bytes),
+            };
             (holder, r)
         })
         .await

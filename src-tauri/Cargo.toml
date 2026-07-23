@@ -49,9 +49,9 @@ ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "
 # Local TTS engine (in-process SBV2 / Style-Bert-VITS2).
 # Vendored copy under src-tauri/vendor/sbv2_core/ -- keeps the upstream
 # sbv2-api repo untouched while letting us add the rc.12 ort::Error<T>
-# compatibility shim. See src-tauri/vendor/sbv2_core/src/error.rs for the
-# exact patch.
-sbv2_core = { path = "vendor/sbv2_core" }
+# compatibility shim and disable the optional AGPL user dictionary download.
+# See vendor/sbv2_core/src/error.rs and vendor/sbv2_core/build.rs.
+sbv2_core = { path = "vendor/sbv2_core", default-features = false, features = ["std"] }
 once_cell = "1"
 base64 = "0.22"
 rand = "0.8"

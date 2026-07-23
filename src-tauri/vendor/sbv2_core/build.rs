@@ -5,6 +5,10 @@ use std::io::copy;
 use std::path::PathBuf;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if env::var_os("CARGO_FEATURE_AGPL_DICT").is_none() {
+        return Ok(());
+    }
+
     let static_dir = home_dir().unwrap().join(".cache/sbv2");
     let static_path = static_dir.join("all.bin");
     let out_path = PathBuf::from(&env::var("OUT_DIR").unwrap()).join("all.bin");
