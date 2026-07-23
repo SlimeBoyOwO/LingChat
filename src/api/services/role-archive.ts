@@ -17,6 +17,11 @@ export interface ExportResult {
   size_bytes: number
 }
 
+// 后端 import_role / import_role_from_path 在生成 task_id 后立刻 emit 此事件，前端用来绑定取消按钮。
+export interface RoleImportStartedEvent {
+  task_id: string
+}
+
 export interface EntryEvent {
   phase: 'started' | 'entry' | 'finished' | 'error'
   index: number
@@ -58,8 +63,9 @@ export async function importRoleFromPath(params: {
   })
 }
 
-export async function cancelRoleImport(): Promise<void> {
-  await invoke('cancel_role_import')
+// 后端取消接口需要 task_id；前端通过监听 role:import-started 事件拿到当前任务的 id。
+export async function cancelRoleImport(taskId: string): Promise<void> {
+  await invoke('cancel_role_import', { taskId })
 }
 
 export async function exportRole(params: {

@@ -16,6 +16,27 @@ use crate::AppState;
 
 use super::{characters_dir, data_dir, game_data_dir};
 
+const LEGACY_VOICE_MODEL_FIELDS: &[&str] = &[
+    "sva_speaker_id",
+    "sbv2_name",
+    "sbv2_speaker_id",
+    "bv2_speaker_id",
+    "sbv2api_name",
+    "sbv2api_speaker_id",
+    "gsv_voice_text",
+    "gsv_voice_filename",
+    "gsv_gpt_model_name",
+    "gsv_sovits_model_name",
+    "aivis_model_uuid",
+    "opentts_voice",
+];
+
+fn remove_legacy_voice_model_fields(settings: &mut CharacterSettings) {
+    for key in LEGACY_VOICE_MODEL_FIELDS {
+        settings.extra.remove(*key);
+    }
+}
+
 // ========== 响应类型 ==========
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -541,10 +562,12 @@ pub async fn update_role_settings(
         return Err(format!("角色目录不存在: {:?}", base_path));
     }
 
-    let _validated: CharacterSettings =
-        serde_json::from_value(settings.clone()).map_err(|e| format!("配置验证失败: {}", e))?;
+    let mut validated: CharacterSettings =
+        serde_json::from_value(settings).map_err(|e| format!("配置验证失败: {}", e))?;
+    remove_legacy_voice_model_fields(&mut validated);
 
-    let mut save_data = settings;
+    let mut save_data =
+        serde_json::to_value(&validated).map_err(|e| format!("配置规范化失败: {}", e))?;
     if let Some(obj) = save_data.as_object_mut() {
         obj.remove("character_id");
         obj.remove("resource_path");
@@ -556,8 +579,24 @@ pub async fn update_role_settings(
     let yaml_str = serde_yaml::to_string(&save_data).map_err(|e| format!("序列化失败: {}", e))?;
     fs::write(&yaml_path, yaml_str).map_err(|e| format!("保存失败: {}", e))?;
 
-    tracing::info!("角色 {} 配置已保存到 {:?}", role_id, yaml_path);
-    Ok(serde_json::json!({"success": true, "message": "设置已保存"}))
+    let runtime_updated = {
+        let service = state.ai_service.lock().await;
+        let mut gs = service.game_status.lock().await;
+        gs.role_manager
+            .update_role_voice_settings(role_id, &validated)
+    };
+
+    tracing::info!(
+        "角色 {} 配置已保存到 {:?}, runtime_updated={}",
+        role_id,
+        yaml_path,
+        runtime_updated,
+    );
+    Ok(serde_json::json!({
+        "success": true,
+        "message": "设置已保存",
+        "runtime_updated": runtime_updated,
+    }))
 }
 
 #[tauri::command]

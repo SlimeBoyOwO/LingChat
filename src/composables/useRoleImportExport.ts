@@ -12,6 +12,7 @@ import {
   type ImportResult,
   type ExportResult,
   type EntryEvent,
+  type RoleImportStartedEvent,
 } from '@/api/services/role-archive'
 
 // 名称超过 28 个字符时从左侧截断，并添加省略号。
@@ -34,8 +35,12 @@ function isAndroidContentUri(p: string): boolean {
 // 模块级单例监听器：应用生命周期内只注册一次。
 let progressUnlisten: UnlistenFn | null = null
 let errorUnlisten: UnlistenFn | null = null
+let startedUnlisten: UnlistenFn | null = null
 let progressTimer: number | null = null
 let listenersInitialized = false
+// 当前正在进行的导入任务 id；cancel() 时传给后端以找到正确的取消令牌。
+// 后端有全局导入并发锁，所以同一时刻最多只有一个任务。
+let currentTaskId: string | null = null
 
 function clearTimers() {
   if (progressTimer !== null) {
@@ -64,6 +69,10 @@ async function ensureListeners() {
     store.import.phase = 'error'
     store.import.error = event.payload || 'import failed'
     clearTimers()
+  })
+  startedUnlisten = await listen<RoleImportStartedEvent>('role:import-started', (event) => {
+    // 后端刚生成 task_id 时立刻发送，前端存下来给 cancel() 用。
+    currentTaskId = event.payload?.task_id ?? null
   })
 }
 
@@ -129,6 +138,8 @@ export function useRoleImportExport() {
       fileName, format, conflict, isAndroidContentUri(filePath),
     )
     store.import.percent = -1
+    // 每次 runImport 都先把 task_id 清空，等后端 emit role:import-started 后再回填。
+    currentTaskId = null
     await setupListeners()
 
     try {
@@ -160,16 +171,22 @@ export function useRoleImportExport() {
       store.import.error = typeof e === 'string' ? e : e?.message || String(e)
       clearTimers()
     } finally {
+      currentTaskId = null
       clearTimers()
     }
   }
 
   async function cancel() {
-    console.log('[RoleArchive] cancel \u53d1\u9001\u53d6\u6d88\u8bf7\u6c42')
-    try {
-      await cancelRoleImport()
-    } catch (e) {
-      console.warn('[RoleArchive] cancel \u540e\u7aef\u8c03\u7528\u5931\u8d25:', e)
+    console.log('[RoleArchive] cancel \u53d1\u9001\u53d6\u6d88\u8bf7\u6c42', { taskId: currentTaskId })
+    if (!currentTaskId) {
+      // 极端情况：用户在 task_id 还没回填时（或者根本没在导入）就点了取消。
+      console.warn('[RoleArchive] cancel 没有可用的 task_id，跳过后端调用')
+    } else {
+      try {
+        await cancelRoleImport(currentTaskId)
+      } catch (e) {
+        console.warn('[RoleArchive] cancel \u540e\u7aef\u8c03\u7528\u5931\u8d25:', e)
+      }
     }
     store.import.phase = 'cancelled'
     store.import.message = '\u5df2\u53d6\u6d88'

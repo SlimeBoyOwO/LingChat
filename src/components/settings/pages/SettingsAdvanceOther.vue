@@ -93,6 +93,27 @@
             </div>
           </form>
 
+          <section
+            v-if="activeSelection.category === 'TTS 配置'"
+            class="mb-6 rounded-xl border border-white/10 bg-black/15 p-4"
+          >
+            <h3 class="mb-1 text-base font-semibold text-white">TTS 连接控制</h3>
+            <p class="mb-3 text-sm leading-6 text-white/65">
+              TTS 服务重启后，可在这里解除离线状态并让下一次语音立即重新连接。模型、语言或接口参数错误导致的 HTTP 400 仍需修正对应配置。
+            </p>
+            <Button type="big" :disabled="isReconnectingTts" @click="forceReconnectTts">
+              <RefreshCw :size="18" :class="{ 'animate-spin': isReconnectingTts }" />
+              {{ isReconnectingTts ? '正在重新连接…' : '强制重新连接 TTS' }}
+            </Button>
+            <p
+              v-if="reconnectStatus.message"
+              class="mt-2 text-sm"
+              :class="reconnectStatus.colorClass"
+            >
+              {{ reconnectStatus.message }}
+            </p>
+          </section>
+
           <!-- 保存操作区域 -->
           <div
             class="inline-flex flex-col gap-2 px-5 py-2.5 bg-brand text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-colors duration-200 hover:bg-[#0056b3] min-w-30"
@@ -125,11 +146,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, reactive, watch, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, computed, reactive, watch, nextTick } from 'vue'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import SettingItem from '@/components/base/items/SettingItem.vue'
+import { Button } from '@/components/base'
 import { getEnvConfigSettings, saveEnvConfigSettings } from '@/api/services/config'
+import { reactivateTTS } from '@/api/services/game-info'
 import { switchLlm } from '@/api/services/llm-providers'
+import { RefreshCw } from 'lucide-vue-next'
 
 // --- 响应式状态定义 ---
 const uiStore = useUIStore()
@@ -144,6 +168,12 @@ const saveStatus = reactive({
   message: '',
   colorClass: 'text-green-500',
 })
+const isReconnectingTts = ref(false)
+const reconnectStatus = reactive({
+  message: '',
+  colorClass: 'text-green-400',
+})
+let reconnectStatusTimer: ReturnType<typeof setTimeout> | null = null
 
 const emit = defineEmits<{
   'remove-more-menu-from-b': []
@@ -203,6 +233,34 @@ const saveSettings = async () => {
     setTimeout(() => {
       saveStatus.message = ''
     }, 5000)
+  }
+}
+
+const forceReconnectTts = async () => {
+  if (isReconnectingTts.value) return
+
+  isReconnectingTts.value = true
+  reconnectStatus.message = '正在重新启用 TTS 服务…'
+  reconnectStatus.colorClass = 'text-white/70'
+  if (reconnectStatusTimer) {
+    clearTimeout(reconnectStatusTimer)
+    reconnectStatusTimer = null
+  }
+
+  try {
+    await reactivateTTS()
+    reconnectStatus.message = 'TTS 已重新启用，下一次语音会立即重试连接。'
+    reconnectStatus.colorClass = 'text-green-400'
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error)
+    reconnectStatus.message = `重新连接失败：${message}`
+    reconnectStatus.colorClass = 'text-red-400'
+  } finally {
+    isReconnectingTts.value = false
+    reconnectStatusTimer = setTimeout(() => {
+      reconnectStatus.message = ''
+      reconnectStatusTimer = null
+    }, 8000)
   }
 }
 
@@ -278,6 +336,12 @@ onMounted(async () => {
   await nextTick()
   updateIndicatorPosition()
   setupNavResizeObserver()
+})
+
+onUnmounted(() => {
+  if (reconnectStatusTimer) {
+    clearTimeout(reconnectStatusTimer)
+  }
 })
 
 // --- 窄屏菜单控制 ---

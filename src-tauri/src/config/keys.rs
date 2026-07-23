@@ -65,6 +65,8 @@ pub const VOICE_LANG: &str = "tts.voice_lang";
 // ========== 主动对话系统 ==========
 pub const ENABLE_PROACTIVE_SYSTEM: &str = "ENABLE_PROACTIVE_SYSTEM";
 pub const MAX_PROACTIVE_TIMES: &str = "MAX_PROACTIVE_TIMES";
+// 旧的视觉模型独立配置键已废弃，视觉模型统一到大模型管理中配置；
+// 这些常量仅保留给迁移逻辑读取旧配置使用。
 pub const VD_API_KEY: &str = "VD_API_KEY";
 pub const VD_BASE_URL: &str = "VD_BASE_URL";
 pub const VD_MODEL: &str = "VD_MODEL";

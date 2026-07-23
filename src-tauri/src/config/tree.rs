@@ -438,11 +438,12 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
             },
         );
 
-        // 视觉与模型配置
+        // 视觉感知配置（视觉模型本身在「高级设置 → 大模型管理」中以角色形式配置）
         proactive_subs.insert(
-            "视觉与模型配置".to_string(),
+            "视觉感知设置".to_string(),
             Subcategory {
-                description: "主动对话时调用的 Vision LLM 视觉分析模型以及截图分析设置".to_string(),
+                description: "主动对话时的桌面视觉感知开关与触发权重，视觉模型在大模型管理中配置"
+                    .to_string(),
                 settings: vec![
                     ConfigSetting {
                         key: keys::ENABLE_VISUAL_PRECEPTION.to_string(),

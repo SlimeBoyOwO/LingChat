@@ -122,7 +122,7 @@ fn collect_chinese_part(segments: &[EmotionSegment]) -> String {
     out
 }
 
-/// 从翻译结果中依次抽取 `<...>` 片段并写回兼容字段 `japanese_text`。
+/// 从翻译结果中依次抽取 `<...>` 片段并写回到每个 segment 的 `japanese_text`。
 fn apply_translation_result(response: &str, segments: &mut [EmotionSegment]) -> usize {
     let mut cursor = response;
     let mut idx = 0usize;

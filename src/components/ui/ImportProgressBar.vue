@@ -3,12 +3,18 @@
     <Transition name="slide-up">
       <div
         v-if="visible"
-        class="role-archive-toast"
         :data-phase="state.phase"
+        class="bar fixed bottom-8 right-8 z-[9999] flex items-center gap-4 p-4 min-w-[340px] max-w-[440px] overflow-hidden rounded-xl backdrop-blur-[20px]"
       >
-        <div class="glow-effect"></div>
+        <div
+          v-if="state.phase !== 'cancelled'"
+          class="glow absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[150%] h-[150%] -z-10 blur-[20px]"
+          :style="glowStyle"
+        ></div>
 
-        <div class="archive-icon">
+        <div
+          class="icon-wrap shrink-0 w-12 h-12 rounded-lg flex items-center justify-center"
+        >
           <svg
             v-if="state.phase === 'running'"
             xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -48,28 +54,46 @@
           </svg>
         </div>
 
-        <div class="archive-content">
-          <div class="archive-header">
-            <span class="archive-label">{{ label }}</span>
-            <span v-if="state.phase === 'running' && state.percent >= 0" class="archive-percent">
-              {{ state.percent }}%
-            </span>
+        <div class="flex flex-col justify-center gap-0.5 flex-1 min-w-0">
+          <div class="flex items-center justify-between gap-2">
+            <span class="label-text text-xs font-bold tracking-wider">{{ label }}</span>
+            <span
+              v-if="state.phase === 'running' && state.percent >= 0"
+              class="text-xs font-bold text-white/70"
+            >{{ state.percent }}%</span>
           </div>
-          <div class="archive-title">{{ title }}</div>
-          <div v-if="message" class="archive-description">{{ message }}</div>
+          <div class="text-white font-bold text-sm leading-tight truncate">{{ title }}</div>
+          <div
+            v-if="message"
+            class="text-gray-300 text-xs leading-tight break-all line-clamp-2"
+          >{{ message }}</div>
 
-          <div v-if="state.phase === 'running'" class="bar-track">
-            <div class="bar-fill" :style="barStyle"></div>
+          <div
+            v-if="state.phase === 'running'"
+            class="mt-2 w-full h-1 rounded-full bg-white/10 overflow-hidden"
+          >
+            <div
+              class="fill h-full rounded-full"
+              :style="barStyle"
+            ></div>
           </div>
 
-          <div v-if="state.phase === 'error'" class="archive-actions">
-            <button class="action-btn" @click="dismiss">关闭</button>
+          <div
+            v-if="state.phase === 'error'"
+            class="mt-2 flex gap-2"
+          >
+            <button
+              class="btn-close px-3 py-1 rounded-md text-xs font-medium cursor-pointer text-white"
+              @click="dismiss"
+            >关闭</button>
           </div>
         </div>
 
-        <button v-if="state.phase === 'running'" class="cancel-btn" @click="onCancel">
-          取消
-        </button>
+        <button
+          v-if="state.phase === 'running'"
+          class="btn-cancel shrink-0 self-start px-3 py-1.5 rounded-md text-xs font-medium cursor-pointer text-white/80"
+          @click="onCancel"
+        >取消</button>
       </div>
     </Transition>
   </Teleport>
@@ -80,6 +104,8 @@ import { computed, watch, onUnmounted } from 'vue'
 import { useRoleImportExport } from '@/composables/useRoleImportExport'
 
 const { store, cancel } = useRoleImportExport()
+
+type Phase = 'idle' | 'running' | 'done' | 'error' | 'cancelled'
 
 const activeKey = computed<'import' | 'export'>(() =>
   store.import.phase !== 'idle' ? 'import' : 'export',
@@ -110,6 +136,25 @@ const message = computed(() => {
   const s = state.value
   if (s.phase === 'error') return s.error || s.message
   return s.message
+})
+
+// 阶段配色：4 个状态切换主容器的描边、阴影与子元素颜色。
+// running 变体统一用 #79d9ff（rgb 121,217,255），与原 border/box-shadow 颜色一致，
+// 之前散落的 cyan-300 (#67e8f9) 在本次 inline 化时统一为同一个色源。
+const GLOW_COLORS: Record<Phase, string> = {
+  idle: '',
+  running: 'rgba(121, 217, 255, 0.1)',
+  done: 'rgba(74, 222, 128, 0.12)',
+  error: 'rgba(248, 113, 113, 0.12)',
+  cancelled: '',
+}
+
+const glowStyle = computed(() => {
+  const color = GLOW_COLORS[state.value.phase]
+  if (!color) return {}
+  return {
+    background: `radial-gradient(circle, ${color} 0%, transparent 60%)`,
+  }
 })
 
 const barStyle = computed(() => {
@@ -157,141 +202,19 @@ function dismiss() {
 onUnmounted(() => clearDismiss())
 </script>
 
-<style scoped>
-@reference "tailwindcss";
-
-.role-archive-toast {
-  @apply fixed bottom-8 right-8 z-[9999];
-  @apply flex items-center gap-4;
-  @apply p-4 min-w-[340px] max-w-[440px];
-  @apply overflow-hidden;
-  @apply rounded-xl;
-
-  background: rgba(15, 15, 15, 0.55);
-  backdrop-filter: blur(20px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.role-archive-toast[data-phase="running"] {
-  border: 1px solid rgba(121, 217, 255, 0.25);
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.6),
-    0 0 15px rgba(121, 217, 255, 0.12) inset;
-}
-.role-archive-toast[data-phase="running"] .glow-effect {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 150%;
-  height: 150%;
-  background: radial-gradient(circle, rgba(121, 217, 255, 0.1) 0%, transparent 60%);
-  z-index: -1;
-  filter: blur(20px);
-}
-.role-archive-toast[data-phase="running"] .archive-label { @apply text-cyan-300; }
-.role-archive-toast[data-phase="running"] .archive-icon { @apply text-cyan-300; @apply bg-cyan-300/10; }
-.role-archive-toast[data-phase="running"] .bar-fill { @apply bg-cyan-300; }
-
-.role-archive-toast[data-phase="done"] {
-  border: 1px solid rgba(74, 222, 128, 0.25);
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.6),
-    0 0 15px rgba(74, 222, 128, 0.12) inset;
-}
-.role-archive-toast[data-phase="done"] .glow-effect {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 150%;
-  height: 150%;
-  background: radial-gradient(circle, rgba(74, 222, 128, 0.12) 0%, transparent 60%);
-  z-index: -1;
-  filter: blur(20px);
-}
-.role-archive-toast[data-phase="done"] .archive-label { @apply text-green-400; }
-.role-archive-toast[data-phase="done"] .archive-icon { @apply text-green-400; @apply bg-green-400/10; }
-.role-archive-toast[data-phase="done"] .bar-fill { @apply bg-green-400; }
-
-.role-archive-toast[data-phase="error"] {
-  border: 1px solid rgba(248, 113, 113, 0.3);
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.6),
-    0 0 15px rgba(248, 113, 113, 0.15) inset;
-}
-.role-archive-toast[data-phase="error"] .glow-effect {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 150%;
-  height: 150%;
-  background: radial-gradient(circle, rgba(248, 113, 113, 0.12) 0%, transparent 60%);
-  z-index: -1;
-  filter: blur(20px);
-}
-.role-archive-toast[data-phase="error"] .archive-label { @apply text-red-400; }
-.role-archive-toast[data-phase="error"] .archive-icon { @apply text-red-400; @apply bg-red-400/[0.12]; }
-
-.role-archive-toast[data-phase="cancelled"] {
-  border: 1px solid rgba(156, 163, 175, 0.25);
-}
-.role-archive-toast[data-phase="cancelled"] .glow-effect { display: none; }
-.role-archive-toast[data-phase="cancelled"] .archive-label { @apply text-gray-400; }
-.role-archive-toast[data-phase="cancelled"] .archive-icon { @apply text-gray-400; @apply bg-gray-400/10; }
-
-.archive-icon {
-  @apply shrink-0 w-12 h-12 rounded-lg flex items-center justify-center;
-}
-.archive-content {
-  @apply flex flex-col justify-center gap-0.5 flex-1 min-w-0;
-}
-.archive-header {
-  @apply flex items-center justify-between gap-2;
-}
-.archive-label {
-  @apply text-xs font-bold tracking-wider;
-}
-.archive-percent {
-  @apply text-xs font-bold text-white/70;
-}
-.archive-title {
-  @apply text-white font-bold text-sm leading-tight truncate;
-}
-.archive-description {
-  @apply text-gray-300 text-xs leading-tight break-all;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.bar-track {
-  @apply mt-2 w-full h-1 rounded-full bg-white/10 overflow-hidden;
-}
-.bar-fill {
-  @apply h-full rounded-full;
-  width: 0%;
-}
-
-.archive-actions {
-  @apply mt-2 flex gap-2;
-}
-.action-btn {
-  @apply px-3 py-1 rounded-md text-xs font-medium cursor-pointer;
-  @apply bg-white/10 text-white hover:bg-white/20 transition-colors;
-}
-.cancel-btn {
-  @apply shrink-0 self-start px-3 py-1.5 rounded-md text-xs font-medium cursor-pointer;
-  @apply bg-white/10 text-white/80 hover:bg-red-500/30 hover:text-white transition-colors;
-}
-
+<style>
+/* Vue scoped 会给 @keyframes 追加 hash 后缀，把 shimmer 改成 archive-shimmer-xxxxx。
+   ImportProgressBar.vue:163 的 inline style 引用的是原始名 archive-shimmer，
+   因此 shimmer 动画从不会触发。这里把 keyframe 放到非 scoped 块，
+   名字保持不变，让 inline animation 能匹配上。*/
 @keyframes archive-shimmer {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
 }
+</style>
+
+<style scoped>
+/* 仅保留 Tailwind 无法表达的两条动画：进度条 indeterminate shimmer + Toast 进出 */
 
 .slide-up-enter-active,
 .slide-up-leave-active {
@@ -301,5 +224,75 @@ onUnmounted(() => clearDismiss())
 .slide-up-leave-to {
   transform: translateY(80px) scale(0.9);
   opacity: 0;
+}
+
+/* 阶段配色：4 个状态切换主容器的描边、阴影与子元素颜色。
+   running 变体统一用 #79d9ff（rgb 121,217,255），与原 border/box-shadow 颜色一致，
+   之前散落的 cyan-300 (#67e8f9) 在本次 inline 化时统一为同一个色源。
+   全部使用静态选择器（[data-phase="..."] + 语义 class），避免 Tailwind JIT 
+   扫描不到动态拼接的 class。*/
+
+.bar {
+  background: rgba(15, 15, 15, 0.55);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+[data-phase="running"].bar {
+  border-color: rgba(121, 217, 255, 0.25);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 0 15px rgba(121, 217, 255, 0.12);
+}
+[data-phase="running"] .icon-wrap {
+  color: #79d9ff;
+  background: rgba(121, 217, 255, 0.1);
+}
+[data-phase="running"] .label-text { color: #79d9ff; }
+[data-phase="running"] .fill { background: #79d9ff; }
+
+[data-phase="done"].bar {
+  border-color: rgba(74, 222, 128, 0.25);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 0 15px rgba(74, 222, 128, 0.12);
+}
+[data-phase="done"] .icon-wrap {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.1);
+}
+[data-phase="done"] .label-text { color: #4ade80; }
+[data-phase="done"] .fill { background: #4ade80; }
+
+[data-phase="error"].bar {
+  border-color: rgba(248, 113, 113, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 0 15px rgba(248, 113, 113, 0.15);
+}
+[data-phase="error"] .icon-wrap {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.12);
+}
+[data-phase="error"] .label-text { color: #f87171; }
+
+[data-phase="cancelled"].bar {
+  border-color: rgba(156, 163, 175, 0.25);
+}
+[data-phase="cancelled"] .icon-wrap {
+  color: #9ca3af;
+  background: rgba(156, 163, 175, 0.1);
+}
+[data-phase="cancelled"] .label-text { color: #9ca3af; }
+
+.btn-close {
+  background: rgba(255, 255, 255, 0.1);
+  transition: background-color 0.2s;
+}
+.btn-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.btn-cancel {
+  background: rgba(255, 255, 255, 0.1);
+  transition: background-color 0.2s, color 0.2s;
+}
+.btn-cancel:hover {
+  background: rgba(239, 68, 68, 0.3);
+  color: #ffffff;
 }
 </style>

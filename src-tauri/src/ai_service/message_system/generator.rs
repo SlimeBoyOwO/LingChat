@@ -527,6 +527,17 @@ fn opentts_translation_language(tts_type: &str, voice_lang: &str) -> Option<&'st
     }
 }
 
+fn gsv_translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static str> {
+    if tts_type != "gsv" {
+        return None;
+    }
+    match voice_lang {
+        "en" => Some("en"),
+        "ko" => Some("ko"),
+        _ => None,
+    }
+}
+
 fn swap_display_and_translated_text(segments: &mut [EmotionSegment]) {
     for segment in segments {
         std::mem::swap(&mut segment.following_text, &mut segment.japanese_text);
@@ -552,6 +563,7 @@ async fn enrich_segments(deps: &GeneratorDeps, segments: &mut [EmotionSegment]) 
     };
 
     let opentts_target = opentts_translation_language(&tts_type, &voice_lang);
+    let gsv_target = gsv_translation_language(&tts_type, &voice_lang);
     let translated_for_opentts = if let Some(target_lang) = opentts_target {
         // Selecting an OpenTTS target language is an explicit request to speak
         // that language. Force this translation even when the legacy realtime
@@ -560,6 +572,19 @@ async fn enrich_segments(deps: &GeneratorDeps, segments: &mut [EmotionSegment]) 
         deps.translator
             .translate_segments_to(segments, true, target_lang)
             .await?
+    } else if let Some(target_lang) = gsv_target {
+        let translated = deps
+            .translator
+            .translate_segments_to(segments, true, target_lang)
+            .await?;
+        if !translated {
+            // Do not let GPT-SoVITS pronounce the main LLM's Japanese secondary
+            // line when the explicitly selected English/Korean translation fails.
+            for segment in segments.iter_mut() {
+                segment.japanese_text.clear();
+            }
+        }
+        false
     } else if segments[0].japanese_text.is_empty() {
         deps.translator.translate_segments(segments, false).await?;
         false
