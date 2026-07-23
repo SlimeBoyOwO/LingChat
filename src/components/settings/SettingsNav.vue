@@ -55,6 +55,15 @@
         <p class="hidden xl:block">声音</p>
       </Button>
       <Button
+        ref="ttsBtn"
+        type="nav"
+        icon="mic"
+        @click="() => switchTab('tts', 'ttsBtn')"
+        :class="{ active: uiStore.currentSettingsTab === 'tts' }"
+      >
+        <p class="hidden xl:block">本地TTS</p>
+      </Button>
+      <Button
         ref="historyBtn"
         type="nav"
         icon="history"
@@ -156,6 +165,7 @@ const updateBtn = ref<ButtonRef | null>(null)
 const adventureBtn = ref<ButtonRef | null>(null)
 const logBtn = ref<ButtonRef | null>(null)
 const workshopBtn = ref<ButtonRef | null>(null)
+const ttsBtn = ref<ButtonRef | null>(null)
 
 // 设置可重设的值（使用 ref 存储，确保响应式或跨函数访问）
 const oldRefName = ref('textBtn')
@@ -176,6 +186,7 @@ const handleIndicatorMove = (currentRefName: string) => {
     adventureBtn,
     logBtn,
     workshopBtn,
+    ttsBtn,
   }[currentRefName]
 
   if (buttonRef?.value?.$el) {
@@ -274,6 +285,9 @@ const initIndicator = () => {
       break
     case 'workshop':
       activeButton = workshopBtn.value
+      break
+    case 'tts':
+      activeButton = ttsBtn.value
       break
   }
 
