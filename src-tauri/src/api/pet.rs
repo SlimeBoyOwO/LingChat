@@ -50,7 +50,7 @@ pub fn set_pet_mode(
             let scale_val = scale.unwrap_or(1.0);
 
             let width = (240.0 * scale_val) as u32;
-            let height = ((240.0 + 280.0 + 45.0) * scale_val) as u32;
+            let height = ((240.0 + 200.0 + 45.0) * scale_val) as u32;
 
             let _ = window.set_skip_taskbar(true);
             let _ = window.set_always_on_top(true);

@@ -9,11 +9,11 @@
     <!-- DialogueBox 区域 -->
     <div
       ref="dialogContainer"
-      class="w-full shrink-0 flex flex-col transition-none bg-transparent"
+      class="w-full shrink-0 flex flex-col justify-end transition-none bg-transparent"
       :style="{ height: 'var(--dialog-h)' }"
     >
       <PetNotification />
-      <div class="flex-1 flex items-end justify-center mt-1">
+      <div class="flex items-end justify-center mt-1">
         <DialogueBox
           ref="gameDialogRef"
           @player-continued="manualTriggerContinue"
