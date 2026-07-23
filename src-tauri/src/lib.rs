@@ -1,4 +1,4 @@
-mod achievements;
+﻿mod achievements;
 mod adventures;
 mod ai_service;
 mod api;
@@ -43,7 +43,7 @@ pub struct ChatComponents {
     pub translator: Arc<Translator>,
 }
 
-/// 截图流程中的临时状态（全屏捕获 + 覆盖窗口标签）。
+/// 鎴浘娴佺▼涓殑涓存椂鐘舵€侊紙鍏ㄥ睆鎹曡幏 + 瑕嗙洊绐楀彛鏍囩锛夈€?
 #[derive(Default)]
 pub struct ScreenshotCaptureState {
     pub full_capture_base64: Option<String>,
@@ -110,20 +110,40 @@ pub fn run() {
             app.manage(resource_sync::ResourceSyncState::default());
             app.manage(lan_sync::LanSyncState::default());
             app.manage(utils::cpu_perf::CpuDetectionCache::new());
+            // Local TTS (SBV2 in-process). Resolves paths, ensures
+            // the on-disk layout, and auto-inits the engine if a
+            // DeBerta pair is already installed.
+            let tts_paths = ai_service::tts::local::paths::LocalTtsPaths::resolve(&app.handle())
+                .map_err(|e| format!("LocalTtsPaths::resolve: {e}"))?;
+            tts_paths.ensure()
+                .map_err(|e| format!("LocalTtsPaths::ensure: {e}"))?;
+            let local_state = ai_service::tts::local::LocalTtsState::new(tts_paths);
+            let local_engine = local_state.engine.clone();
+            let local_paths = local_state.paths.clone();
+            app.manage(local_state);
+            if local_paths.asset_present("deberta") {
+                tauri::async_runtime::block_on(async {
+                    if let Err(e) = local_engine.init(&local_paths).await {
+                        tracing::warn!(target: "tts_local", "auto-init failed: {e}");
+                    } else {
+                        tracing::info!(target: "tts_local", "engine auto-initialised");
+                    }
+                });
+            }
 
             let rt = tokio::runtime::Runtime::new()?;
             let (db, ai_service, chat) = rt.block_on(init::initialize(app))?;
 
-            // 启动时自动清理未被引用的孤立语音文件
+            // 鍚姩鏃惰嚜鍔ㄦ竻鐞嗘湭琚紩鐢ㄧ殑瀛ょ珛璇煶鏂囦欢
             match rt.block_on(init::voice_cleanup::cleanup_orphan_voice_files(
                 &db,
                 app.handle(),
             )) {
                 Ok(stats) => {
-                    tracing::info!("语音文件清理完成: 删除 {} 个文件", stats.deleted_count);
+                    tracing::info!("璇煶鏂囦欢娓呯悊瀹屾垚: 鍒犻櫎 {} 涓枃浠?, stats.deleted_count);
                 }
                 Err(e) => {
-                    tracing::warn!("语音文件清理失败（非致命错误）: {e:#}");
+                    tracing::warn!("璇煶鏂囦欢娓呯悊澶辫触锛堥潪鑷村懡閿欒锛? {e:#}");
                 }
             }
 
@@ -148,7 +168,7 @@ pub fn run() {
                 ),
             ));
 
-            // Start proactive system loop on Tauri's runtime (NOT rt — rt is dropped when setup returns)
+            // Start proactive system loop on Tauri's runtime (NOT rt 鈥?rt is dropped when setup returns)
             let proactive_clone = proactive.clone();
             tauri::async_runtime::spawn(async move {
                 ai_service::proactive_system::ProactiveSystem::start(proactive_clone).await;
@@ -179,7 +199,7 @@ pub fn run() {
                 ),
             ));
 
-            // 构建上帝 Agent（多人对话编排器）
+            // 鏋勫缓涓婂笣 Agent锛堝浜哄璇濈紪鎺掑櫒锛?
             let god_agent = resolve_god_agent_provider(&app.handle())
                 .map(|llm| {
                     let config =
@@ -389,6 +409,13 @@ pub fn run() {
             lan_sync::lan_sync_restart,
             utils::cpu_perf::get_cpu_info,
             utils::cpu_perf::redetect_cpu,
+            ai_service::tts::local::commands::tts_local_status,
+            ai_service::tts::local::commands::tts_local_list_catalog,
+            ai_service::tts::local::commands::tts_local_list_installed,
+            ai_service::tts::local::commands::tts_local_import_from_path,
+            ai_service::tts::local::commands::tts_local_download,
+            ai_service::tts::local::commands::tts_local_delete_voice,
+            ai_service::tts::local::commands::tts_local_synthesize_preview,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

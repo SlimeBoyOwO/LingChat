@@ -14,14 +14,14 @@
 // - `adapter`       impl TtsAdapter for LocalTtsEngine (Task 9)
 // - `commands`      tauri commands + LocalTtsState (Task 10)
 
-mod adapter;
-mod archive;
-mod commands;
-mod download;
-mod engine;
-mod model_manager;
-mod paths;
-mod registry;
+pub mod adapter;
+pub mod archive;
+pub mod commands;
+pub mod download;
+pub mod engine;
+pub mod model_manager;
+pub mod paths;
+pub mod registry;
 
 pub use paths::{LocalTtsPaths, REQUIRED_ASSETS, VoiceInstallInfo};
 pub use registry::AssetEntry;
