@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
 #[cfg(desktop)]
-use tauri::{LogicalSize, PhysicalPosition};
+use tauri::LogicalSize;
 use tauri::{AppHandle, Manager};
 
 #[derive(Clone, Deserialize, Debug)]
@@ -37,8 +37,6 @@ pub fn update_solid_regions(rects: Vec<Rect>, state: tauri::State<'_, HitTestSta
 pub fn set_pet_mode(
     enable: bool,
     scale: Option<f64>,
-    dialog_height: Option<f64>,
-    previous_dialog_height: Option<f64>,
     app_handle: AppHandle,
     state: tauri::State<'_, HitTestState>,
 ) -> Result<(), String> {
@@ -50,30 +48,16 @@ pub fn set_pet_mode(
     if let Some(window) = app_handle.get_webview_window("main") {
         if enable {
             let scale_val = scale.unwrap_or(1.0);
-            let dialog_h = dialog_height.unwrap_or(75.0);
-            let prev_dialog_h = previous_dialog_height.unwrap_or(75.0);
 
             let width = (240.0 * scale_val) as u32;
-            let height = ((240.0 + dialog_h + 45.0) * scale_val) as u32;
-
-            let height_delta = (dialog_h - prev_dialog_h) * scale_val;
+            let height = ((240.0 + 280.0 + 45.0) * scale_val) as u32;
 
             let _ = window.set_skip_taskbar(true);
             let _ = window.set_always_on_top(true);
             let _ = window.set_resizable(false);
             let _ = window.set_decorations(false);
             let _ = window.set_maximizable(false);
-
             let _ = window.set_size(LogicalSize::new(width, height));
-
-            if height_delta.abs() > f64::EPSILON {
-                if let Ok(pos) = window.outer_position() {
-                    let sf = window.scale_factor().unwrap_or(1.0);
-                    let physical_delta = (height_delta * sf) as i32;
-                    let _ =
-                        window.set_position(PhysicalPosition::new(pos.x, pos.y - physical_delta));
-                }
-            }
         } else {
             // Restore normal window
             let _ = window.set_maximizable(true);
