@@ -11,11 +11,14 @@ import "./assets/styles/variables.css";
 // import "./api/websocket/handlers/script-handler";
 // import "./api/websocket/handlers/adventure-handler";
 
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import router from "./router";
 import { autoConfigureCpuPerformance } from "./api/services/cpu-perf";
 
-// 每次启动时清除加载过渡标记，确保首次进入 MainChat 时播放加载动画
-localStorage.removeItem('lingchat_loading_shown')
+// 仅主窗口启动时清除加载过渡标记，避免设置窗口等其他窗口误清除
+if (getCurrentWindow().label === 'main') {
+  localStorage.removeItem('lingchat_loading_shown')
+}
 
 const app = createApp(App);
 
