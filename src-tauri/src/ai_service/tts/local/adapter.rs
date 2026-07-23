@@ -1,6 +1,7 @@
-﻿// Bridges the existing `TtsAdapter` trait to the new local engine.
+// Bridges the existing `TtsAdapter` trait to the new local engine.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
@@ -8,6 +9,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value as JsonValue};
 
 use super::engine::{LocalTtsEngine, SynthesizeRequest};
+use super::paths::LocalTtsPaths;
 use crate::ai_service::tts::provider::TtsAdapter;
 
 pub struct LocalTtsAdapter {
@@ -17,24 +19,15 @@ pub struct LocalTtsAdapter {
     style_id: i32,
     length_scale: f32,
     sdp_ratio: f32,
+    paths: LocalTtsPaths,
+    /// Marks whether DeBerta holder + target voice have been wired in.
+    /// Lazy because `set_tts_settings` is sync while `init`/`load_voice`
+    /// are async - the first `generate_voice` call pays the cost.
+    ready: AtomicBool,
 }
 
 impl LocalTtsAdapter {
-    pub fn new(
-        engine: Arc<LocalTtsEngine>,
-        voice_id: String,
-        speaker_id: i64,
-    ) -> Self {
-        Self {
-            engine,
-            voice_id,
-            speaker_id,
-            style_id: 0,
-            length_scale: 1.0,
-            sdp_ratio: 0.0,
-        }
-    }
-
+    #[allow(clippy::too_many_arguments)]
     pub fn with_params(
         engine: Arc<LocalTtsEngine>,
         voice_id: String,
@@ -42,6 +35,7 @@ impl LocalTtsAdapter {
         style_id: i32,
         length_scale: f32,
         sdp_ratio: f32,
+        paths: LocalTtsPaths,
     ) -> Self {
         Self {
             engine,
@@ -50,6 +44,8 @@ impl LocalTtsAdapter {
             style_id,
             length_scale,
             sdp_ratio,
+            paths,
+            ready: AtomicBool::new(false),
         }
     }
 }
@@ -57,6 +53,12 @@ impl LocalTtsAdapter {
 #[async_trait]
 impl TtsAdapter for LocalTtsAdapter {
     async fn generate_voice(&self, text: &str, _emo: &str) -> Result<Vec<u8>> {
+        if !self.ready.load(Ordering::Acquire) {
+            // Only one thread runs the bootstrap; concurrent callers fall
+            // through once the first call flips `ready` to true.
+            self.bootstrap().await?;
+            self.ready.store(true, Ordering::Release);
+        }
         let req = SynthesizeRequest {
             voice_id: self.voice_id.clone(),
             text: text.to_string(),
@@ -76,5 +78,25 @@ impl TtsAdapter for LocalTtsAdapter {
         m.insert("length_scale".into(), json!(self.length_scale));
         m.insert("sdp_ratio".into(), json!(self.sdp_ratio));
         m
+    }
+}
+
+impl LocalTtsAdapter {
+    /// One-shot bring-up: init the DeBerta holder if missing, then load the
+    /// target voice. Both `engine.init` and `engine.load_voice` are
+    /// idempotent, so a transient error simply leaves `ready` false and the
+    /// next call retries from scratch.
+    async fn bootstrap(&self) -> Result<()> {
+        if !self.engine.is_ready().await {
+            self.engine
+                .init(&self.paths)
+                .await
+                .map_err(|e| anyhow!("local tts init: {e}"))?;
+        }
+        self.engine
+            .load_voice(&self.paths, &self.voice_id)
+            .await
+            .map_err(|e| anyhow!("local tts load_voice: {e}"))?;
+        Ok(())
     }
 }

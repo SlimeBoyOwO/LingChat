@@ -9,6 +9,8 @@ use crate::ai_service::game_system::memory_builder::MemoryBuilder;
 use crate::ai_service::game_system::persistent_memory_system::PersistentMemorySystem;
 use crate::ai_service::llm::LlmClient;
 use crate::ai_service::tts::VoiceMaker;
+use crate::ai_service::tts::local::engine::LocalTtsEngine;
+use crate::ai_service::tts::local::paths::LocalTtsPaths;
 use crate::ai_service::types::{CharacterSettings, GameLine, GameMemoryBank, GameRole, LlmMessage};
 use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
@@ -26,6 +28,11 @@ pub struct GameRoleManager {
     memory_bank_systems: HashMap<i32, PersistentMemorySystem>,
     /// TTS 引擎配置（适配器 URL、音频格式等）。
     tts_config: TtsConfig,
+    /// Local TTS in-process engine (SBV2). Forwarded to each VoiceMaker so
+    /// the `sbv2_local` adapter can lazy-init the DeBerta holder + voice.
+    local_tts_engine: Option<Arc<LocalTtsEngine>>,
+    /// Filesystem layout for local TTS assets. Forwarded alongside the engine.
+    local_tts_paths: Option<LocalTtsPaths>,
     /// 全局永久记忆开关（来自 `AppConfig::use_persistent_memory`）。
     use_persistent_memory: bool,
     /// 触发记忆摘要的新消息数（来自 `AppConfig::memory_update_interval`）。
@@ -39,6 +46,8 @@ impl GameRoleManager {
         data_dir: PathBuf,
         llm: Option<Arc<LlmClient>>,
         tts_config: TtsConfig,
+        local_tts_engine: Option<Arc<LocalTtsEngine>>,
+        local_tts_paths: Option<LocalTtsPaths>,
         use_persistent_memory: bool,
         memory_update_interval: u32,
         memory_recent_window: u32,
@@ -49,10 +58,24 @@ impl GameRoleManager {
             llm,
             memory_bank_systems: HashMap::new(),
             tts_config,
+            local_tts_engine,
+            local_tts_paths,
             use_persistent_memory,
             memory_update_interval,
             memory_recent_window,
         }
+    }
+
+    /// Inject the in-process local TTS engine + resolved paths. Called once
+    /// from `lib.rs` setup right after `LocalTtsState` is constructed, so
+    /// every subsequently-built VoiceMaker picks them up.
+    pub fn set_local_tts_engine(
+        &mut self,
+        engine: Option<Arc<LocalTtsEngine>>,
+        paths: Option<LocalTtsPaths>,
+    ) {
+        self.local_tts_engine = engine;
+        self.local_tts_paths = paths;
     }
 
     /// 获取角色；若未加载则从 DB 惰性注册。
@@ -123,6 +146,8 @@ impl GameRoleManager {
             &settings,
             resource_path.as_deref(),
             &self.tts_config,
+            self.local_tts_engine.as_ref(),
+            self.local_tts_paths.as_ref(),
         );
 
         let new_role = GameRole {
@@ -507,6 +532,8 @@ fn build_voice_maker(
     settings: &CharacterSettings,
     resource_path: Option<&str>,
     tts_config: &TtsConfig,
+    local_tts_engine: Option<&Arc<LocalTtsEngine>>,
+    local_tts_paths: Option<&LocalTtsPaths>,
 ) -> Option<VoiceMaker> {
     let tts_type = settings.tts_type.as_deref().unwrap_or("").trim();
     if tts_type.is_empty() {
@@ -525,6 +552,7 @@ fn build_voice_maker(
 
     let temp_dir = data_dir.join("voice");
     let mut vm = VoiceMaker::new(temp_dir, audio_format, tts_config.clone());
+    vm.set_local_tts_engine(local_tts_engine.cloned(), local_tts_paths.cloned());
     vm.set_lang(&lang);
     if let Some(p) = resource_path {
         vm.set_character_path(Some(PathBuf::from(p)));

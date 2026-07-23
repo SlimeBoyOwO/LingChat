@@ -132,7 +132,11 @@ pub fn run() {
             }
 
             let rt = tokio::runtime::Runtime::new()?;
-            let (db, ai_service, chat) = rt.block_on(init::initialize(app))?;
+            let (db, ai_service, chat) = rt.block_on(init::initialize(
+                app,
+                Some(local_engine.clone()),
+                Some(local_paths.clone()),
+            ))?;
 
             // 鍚姩鏃惰嚜鍔ㄦ竻鐞嗘湭琚紩鐢ㄧ殑瀛ょ珛璇煶鏂囦欢
             match rt.block_on(init::voice_cleanup::cleanup_orphan_voice_files(

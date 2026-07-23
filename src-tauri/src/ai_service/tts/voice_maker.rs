@@ -20,6 +20,9 @@ use crate::ai_service::tts::adapters::opentts::OpenTtsAdapter;
 use crate::ai_service::tts::adapters::sbv2::Sbv2Adapter;
 use crate::ai_service::tts::adapters::sbv2api::Sbv2ApiAdapter;
 use crate::ai_service::tts::adapters::vits::VitsAdapter;
+use crate::ai_service::tts::local::adapter::LocalTtsAdapter;
+use crate::ai_service::tts::local::engine::LocalTtsEngine;
+use crate::ai_service::tts::local::paths::LocalTtsPaths;
 use crate::ai_service::tts::provider::TtsProvider;
 use crate::ai_service::types::VoiceModel;
 use crate::config::tts::TtsConfig;
@@ -34,6 +37,7 @@ pub struct TtsAvailability {
     pub gsv: bool,
     pub aivis: bool,
     pub opentts: bool,
+    pub sbv2_local: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -46,6 +50,10 @@ pub struct VoiceMaker {
     audio_format: String,
     availability: TtsAvailability,
     tts_config: TtsConfig,
+    /// Local TTS engine (in-process SBV2). Set once at startup so the
+    /// `sbv2_local` adapter can lazy-init the DeBerta holder + voice.
+    local_tts_engine: Option<Arc<LocalTtsEngine>>,
+    local_tts_paths: Option<LocalTtsPaths>,
 }
 
 fn non_empty(s: &Option<String>) -> bool {
@@ -65,7 +73,21 @@ impl VoiceMaker {
             audio_format,
             availability: TtsAvailability::default(),
             tts_config,
+            local_tts_engine: None,
+            local_tts_paths: None,
         }
+    }
+
+    /// Inject the in-process local TTS engine and resolved paths so the
+    /// `sbv2_local` adapter can lazy-init its holder + voice. Called from
+    /// `build_voice_maker` once per character registration.
+    pub fn set_local_tts_engine(
+        &mut self,
+        engine: Option<Arc<LocalTtsEngine>>,
+        paths: Option<LocalTtsPaths>,
+    ) {
+        self.local_tts_engine = engine;
+        self.local_tts_paths = paths;
     }
 
     pub fn set_lang(&mut self, lang: impl Into<String>) {
@@ -97,6 +119,9 @@ impl VoiceMaker {
     }
 
     pub fn reactivate(&self) {
+        // TtsProvider::reactivate mutates an internal Arc<AtomicBool>, so
+        // &self is enough. Keep signature &self so the existing callers
+        // (which only have shared VoiceMaker references) keep compiling.
         self.provider.reactivate();
     }
 
@@ -109,6 +134,10 @@ impl VoiceMaker {
         let gsv = (non_empty(&cfg.gsv_voice_filename) && non_empty(&cfg.gsv_voice_text))
             || (non_empty(&cfg.gsv_gpt_model_name) && non_empty(&cfg.gsv_sovits_model_name));
         let aivis = non_empty(&cfg.aivis_model_uuid);
+        // Local SBV2 only needs a voice_id; the engine + DeBERTa readiness
+        // is checked at synthesize time so a missing DeBERTa still leaves
+        // the option visible to the user (and falls back cleanly).
+        let sbv2_local = non_empty(&cfg.sbv2_local_voice_id);
         // OpenTTS 可用性由全局配置决定，只要有全局 voice 就视为可用
         let opentts = !self.tts_config.opentts_voice.trim().is_empty();
 
@@ -120,6 +149,7 @@ impl VoiceMaker {
             gsv,
             aivis,
             opentts,
+            sbv2_local,
         };
     }
 
@@ -171,6 +201,40 @@ impl VoiceMaker {
                     self.tts_config.sbv2api_api_url.clone(),
                     model_name,
                     id,
+                )));
+            }
+            "sbv2_local" if self.availability.sbv2_local => {
+                let engine = match &self.local_tts_engine {
+                    Some(e) => e.clone(),
+                    None => {
+                        tracing::warn!(
+                            "sbv2_local 已选择但本地 TTS 引擎未注入；chat 路由将返回错误"
+                        );
+                        self.provider.disable();
+                        return Ok(());
+                    }
+                };
+                let paths = match &self.local_tts_paths {
+                    Some(p) => p.clone(),
+                    None => {
+                        tracing::warn!("sbv2_local 路径未配置");
+                        self.provider.disable();
+                        return Ok(());
+                    }
+                };
+                let voice_id = cfg.sbv2_local_voice_id.clone().unwrap_or_default();
+                let speaker_id = cfg.sbv2_local_speaker_id.unwrap_or(0);
+                let style_id = cfg.sbv2_local_style_id.unwrap_or(0);
+                let length_scale = cfg.sbv2_local_length_scale.unwrap_or(1.0);
+                let sdp_ratio = cfg.sbv2_local_sdp_ratio.unwrap_or(0.0);
+                self.provider.sbv2_local = Some(Arc::new(LocalTtsAdapter::with_params(
+                    engine,
+                    voice_id,
+                    speaker_id,
+                    style_id,
+                    length_scale,
+                    sdp_ratio,
+                    paths,
                 )));
             }
             "sva-bv2" if self.availability.bv2 => {

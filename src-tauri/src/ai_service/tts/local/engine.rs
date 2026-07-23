@@ -162,3 +162,14 @@ impl LocalTtsEngine {
         result
     }
 }
+
+// Manual placeholder Debug: `TTSModelHolder` from sbv2_core owns ONNX
+// `Session`s (no `Debug`), so a derived impl is not possible. We emit
+// just the type name so the `Debug` derive on `VoiceMaker` keeps
+// compiling. Fields stay hidden — anything sensitive is already opaque
+// via the ONNX session.
+impl std::fmt::Debug for LocalTtsEngine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LocalTtsEngine").finish_non_exhaustive()
+    }
+}
