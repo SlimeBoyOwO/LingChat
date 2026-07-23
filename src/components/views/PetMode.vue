@@ -22,7 +22,7 @@
     </div>
 
     <!-- Avatar 区域 -->
-    <DragArea :isDragging="isDragging" :hasFile="hasFile">
+    <DragArea :isDragging="isDragging">
     <div
       ref="avatarContainer"
       class="shrink-0 flex items-center justify-center transition-all duration-100 bg-transparent"

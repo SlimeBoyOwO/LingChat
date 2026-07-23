@@ -15,8 +15,6 @@ function isImageFile(path: string): boolean {
 async function readAsText(path: string): Promise<string | null> {
   try {
     const bytes = await readFile(path)
-    const head = bytes.slice(0, 512)
-    if (head.includes(0)) return null
     return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
   } catch {
     return null

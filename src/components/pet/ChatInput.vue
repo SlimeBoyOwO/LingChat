@@ -136,12 +136,6 @@ const sendMessage = () => {
     return
   }
 
-  gameStore.appendGameMessage({
-    type: 'message',
-    displayName: gameStore.userName,
-    content: text,
-  })
-
   if (gameStore.runningScript) {
     invoke('script_submit_input', { input: text }).catch((error) => {
       console.error('发送脚本输入失败:', error)
