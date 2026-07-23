@@ -24,6 +24,12 @@ pub struct LocalTtsAdapter {
     /// Lazy because `set_tts_settings` is sync while `init`/`load_voice`
     /// are async - the first `generate_voice` call pays the cost.
     ready: AtomicBool,
+    /// Serialises the first-call bootstrap so concurrent fragments don't
+    /// each run `init` + `load_voice` in parallel. Combined with the
+    /// `engine.serialize` mutex, this eliminates the "engine not
+    /// initialized" race that surfaces when the first chat has many
+    /// segments.
+    bootstrap_lock: tokio::sync::Mutex<()>,
 }
 
 impl LocalTtsAdapter {
@@ -46,6 +52,7 @@ impl LocalTtsAdapter {
             sdp_ratio,
             paths,
             ready: AtomicBool::new(false),
+            bootstrap_lock: tokio::sync::Mutex::new(()),
         }
     }
 }
@@ -54,10 +61,15 @@ impl LocalTtsAdapter {
 impl TtsAdapter for LocalTtsAdapter {
     async fn generate_voice(&self, text: &str, _emo: &str) -> Result<Vec<u8>> {
         if !self.ready.load(Ordering::Acquire) {
-            // Only one thread runs the bootstrap; concurrent callers fall
-            // through once the first call flips `ready` to true.
-            self.bootstrap().await?;
-            self.ready.store(true, Ordering::Release);
+            // Double-checked locking: a fast path skips the lock for the
+            // common case; only the first fragment pays for bootstrap,
+            // and concurrent fragments queue behind the lock instead of
+            // each spinning up init + load_voice in parallel.
+            let _bootstrap_guard = self.bootstrap_lock.lock().await;
+            if !self.ready.load(Ordering::Acquire) {
+                self.bootstrap().await?;
+                self.ready.store(true, Ordering::Release);
+            }
         }
         let req = SynthesizeRequest {
             voice_id: self.voice_id.clone(),

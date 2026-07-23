@@ -13,6 +13,12 @@ use super::paths::LocalTtsPaths;
 pub struct LocalTtsEngine {
     holder: Arc<Mutex<Option<TTSModelHolder>>>,
     voice_cache: Arc<Mutex<HashMap<String, Vec<u8>>>>,
+    // Serialises the take-out-and-run-on-blocking-pool pattern used by
+    // `load_voice` / `synthesize`. Without it, two fragments running
+    // in parallel can both pass the `holder.lock().await` guard, each
+    // `take()` the holder (leaving the inner cell as None), and the
+    // loser reports `engine not initialized` even though init succeeded.
+    serialize: Arc<Mutex<()>>,
 }
 
 #[derive(Debug, Clone)]
@@ -30,6 +36,7 @@ impl LocalTtsEngine {
         Self {
             holder: Arc::new(Mutex::new(None)),
             voice_cache: Arc::new(Mutex::new(HashMap::new())),
+            serialize: Arc::new(Mutex::new(())),
         }
     }
 
@@ -102,6 +109,11 @@ impl LocalTtsEngine {
             .await
             .insert(vid.clone(), model_bytes.clone());
 
+        // Hold the serialize guard for the entire take-out + run +
+        // put-back window so concurrent fragments can't observe the
+        // empty inner cell mid-flight.
+        let _serialize_guard = self.serialize.lock().await;
+
         // Take the holder out of the mutex, run the load on a blocking
         // thread, then put it back. ort::Session is !Send + !Sync, so we
         // can't hold the guard across an await on spawn_blocking.
@@ -141,6 +153,9 @@ impl LocalTtsEngine {
         };
         let voice_id = req.voice_id.clone();
         let text = req.text.clone();
+
+        // Same serialisation rationale as `load_voice` above.
+        let _serialize_guard = self.serialize.lock().await;
 
         let mut guard = self.holder.lock().await;
         let mut holder = guard.take().ok_or("engine not initialized")?;
