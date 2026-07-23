@@ -83,3 +83,9 @@ windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win
 # [dependencies] entries of every consumer (LingChat + sbv2_core).
 [patch."https://github.com/pykeio/ort.git"]
 ort = "=2.0.0-rc.12"
+
+# esaxx-rs 0.1.10 forces /MT on Windows while the downloaded ONNX Runtime
+# binaries use /MD. The local patch keeps upstream behavior on other targets
+# and selects the dynamic CRT on Windows so both native libraries can link.
+[patch.crates-io]
+esaxx-rs = { path = "vendor/esaxx-rs" }
