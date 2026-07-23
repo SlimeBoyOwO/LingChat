@@ -22,7 +22,7 @@
     </div>
 
     <!-- Avatar 区域 -->
-    <DragArea>
+    <DragArea :isDragging="isDragging" :hasFile="hasFile">
     <div
       ref="avatarContainer"
       class="shrink-0 flex items-center justify-center transition-all duration-100 bg-transparent"
@@ -60,6 +60,7 @@ import { useGameStore } from '@/stores/modules/game'
 import { useSettingsStore } from '@/stores/modules/settings'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { eventQueue } from '@/core/events/event-queue'
+import { useFileDrop } from '../pet/useFileDrop'
 
 import PetNotification from '../pet/PetNotification.vue'
 import ChatInput from '../pet/ChatInput.vue'
@@ -74,6 +75,7 @@ const settingsStore = useSettingsStore()
 const uiStore = useUIStore()
 
 const showChatInput = ref(false)
+const { isDragging , hasFile } = useFileDrop()
 
 const avatarContainer = ref<HTMLElement | null>(null)
 const chatContainer = ref<HTMLElement | null>(null)
