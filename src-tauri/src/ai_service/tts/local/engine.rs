@@ -1,1 +1,145 @@
-// Placeholder. Implemented in Task 8 (LocalTtsEngine with take-and-spawn pattern).
+﻿// In-process SBV2 engine. All synthesis happens in spawn_blocking because
+// ONNX is CPU-bound and `ort::Session` is `!Send + !Sync`; the holder is
+// taken out of the async Mutex, used on the blocking pool, then put back.
+
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use sbv2_core::tts::{SynthesizeOptions, TTSModelHolder};
+use tokio::sync::Mutex;
+
+use super::paths::LocalTtsPaths;
+
+pub struct LocalTtsEngine {
+    holder: Arc<Mutex<Option<TTSModelHolder>>>,
+    voice_cache: Arc<Mutex<HashMap<String, Vec<u8>>>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SynthesizeRequest {
+    pub voice_id: String,
+    pub text: String,
+    pub style_id: i32,
+    pub speaker_id: i64,
+    pub sdp_ratio: f32,
+    pub length_scale: f32,
+}
+
+impl LocalTtsEngine {
+    pub fn new() -> Self {
+        Self {
+            holder: Arc::new(Mutex::new(None)),
+            voice_cache: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    pub async fn is_ready(&self) -> bool {
+        self.holder.lock().await.is_some()
+    }
+
+    /// Initialize the holder from on-disk DeBerta + tokenizer bytes.
+    pub async fn init(&self, paths: &LocalTtsPaths) -> std::result::Result<(), String> {
+        let bert = tokio::fs::read(paths.deberta_dir().join("deberta.onnx"))
+            .await
+            .map_err(|e| format!("read deberta: {e}"))?;
+        let tok = tokio::fs::read(paths.deberta_dir().join("tokenizer.json"))
+            .await
+            .map_err(|e| format!("read tokenizer: {e}"))?;
+
+        let bert_clone = bert.clone();
+        let tok_clone = tok.clone();
+        let holder = tokio::task::spawn_blocking(move || {
+            TTSModelHolder::new(bert_clone, tok_clone, Some(4))
+        })
+        .await
+        .map_err(|e| format!("join: {e}"))?
+        .map_err(|e| format!("TTSModelHolder::new: {e}"))?;
+
+        let mut guard = self.holder.lock().await;
+        *guard = Some(holder);
+        Ok(())
+    }
+
+    /// Lazy-load a voice from disk into the holder (cache bytes for re-load).
+    pub async fn load_voice(
+        &self,
+        paths: &LocalTtsPaths,
+        voice_id: &str,
+    ) -> std::result::Result<(), String> {
+        let sbv2 = paths.voice_dir(voice_id).join("model.sbv2");
+        let onnx = paths.voice_dir(voice_id).join("model.onnx");
+        let bytes = if sbv2.exists() {
+            tokio::fs::read(&sbv2)
+                .await
+                .map_err(|e| format!("read sbv2: {e}"))?
+        } else if onnx.exists() {
+            tokio::fs::read(&onnx)
+                .await
+                .map_err(|e| format!("read onnx: {e}"))?
+        } else {
+            return Err(format!("voice {voice_id} not installed"));
+        };
+
+        let vid = voice_id.to_string();
+        self.voice_cache
+            .lock()
+            .await
+            .insert(vid.clone(), bytes.clone());
+
+        // Take the holder out of the mutex, run the load on a blocking
+        // thread, then put it back. ort::Session is !Send + !Sync, so we
+        // can't hold the guard across an await on spawn_blocking.
+        let mut guard = self.holder.lock().await;
+        let mut holder = guard.take().ok_or("engine not initialized")?;
+        drop(guard);
+
+        let vid_for_closure = vid.clone();
+        // The closure owns holder, so we ship it back out alongside the
+        // Result so we can reinsert it into the mutex below.
+        let (holder, load_result) = tokio::task::spawn_blocking(move || {
+            let r = holder.load_sbv2file(vid_for_closure, bytes);
+            (holder, r)
+        })
+        .await
+        .map_err(|e| format!("join: {e}"))?;
+        let load_result = load_result.map_err(|e| format!("load_sbv2file: {e}"));
+
+        let mut guard = self.holder.lock().await;
+        *guard = Some(holder);
+        load_result
+    }
+
+    /// Synthesize speech to WAV bytes (CPU-bound, runs on blocking pool).
+    pub async fn synthesize(
+        &self,
+        req: SynthesizeRequest,
+    ) -> std::result::Result<Vec<u8>, String> {
+        let options = SynthesizeOptions {
+            sdp_ratio: req.sdp_ratio,
+            length_scale: req.length_scale,
+            style_weight: 1.0,
+            split_sentences: true,
+        };
+        let voice_id = req.voice_id.clone();
+        let text = req.text.clone();
+
+        let mut guard = self.holder.lock().await;
+        let mut holder = guard.take().ok_or("engine not initialized")?;
+        drop(guard);
+
+        let voice_id2 = voice_id.clone();
+        let style_id = req.style_id;
+        let speaker_id = req.speaker_id;
+        let (holder, result) = tokio::task::spawn_blocking(move || {
+            let r = holder.easy_synthesize(&voice_id2, &text, style_id, speaker_id, options);
+            (holder, r)
+        })
+        .await
+        .map_err(|e| format!("join: {e}"))?;
+        let result = result.map_err(|e| format!("synthesize: {e}"));
+
+        let mut guard = self.holder.lock().await;
+        *guard = Some(holder);
+        result
+    }
+}
