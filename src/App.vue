@@ -106,8 +106,10 @@ onMounted(async () => {
     tryExit()
   })
 
-  // 2. 拦截窗口关闭请求
+  // 2. 拦截窗口关闭请求（仅主窗口需要确认，其他窗口正常关闭）
   unlistenCloseRequested = await getCurrentWindow().onCloseRequested(async (event: { preventDefault: () => void }) => {
+    if (getCurrentWindow().label !== 'main') return
+
     event.preventDefault()
 
     // 重置状态
