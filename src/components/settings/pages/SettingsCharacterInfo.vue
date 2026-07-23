@@ -91,6 +91,7 @@
                       :type="field.type"
                       :step="field.step"
                       class="form-control bg-black/20 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-sm outline-none transition-all duration-200"
+                      @change="handleFieldChange(field)"
                     />
                     <textarea
                       v-else-if="field.type === 'textarea'"
@@ -107,7 +108,7 @@
                       @change="handleFieldChange(field)"
                     >
                       <option
-                        v-for="opt in field.options"
+                        v-for="opt in fieldOptions(field)"
                         :key="opt.value"
                         :value="opt.value"
                         class="bg-[#333] text-white"
@@ -198,7 +199,6 @@
 
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { getRoleSettings, updateRoleSettings } from '../../../api/services/character'
 import { Icon } from '../../base'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
@@ -226,9 +226,30 @@ const tabs = [
   { id: 'voice', label: '语音设置' },
 ]
 
+const voiceModelKeys = [
+  'sva_speaker_id',
+  'sbv2_name',
+  'sbv2_speaker_id',
+  'bv2_speaker_id',
+  'sbv2api_name',
+  'sbv2api_speaker_id',
+  'gsv_voice_text',
+  'gsv_voice_filename',
+  'gsv_gpt_model_name',
+  'gsv_sovits_model_name',
+  'aivis_model_uuid',
+  'opentts_voice',
+] as const
+
 // --- Schema Definition ---
 
 type FieldType = 'text' | 'number' | 'textarea' | 'select'
+
+interface FieldOption {
+  label: string
+  value: string
+  visibleIf?: (settings: any) => boolean
+}
 
 interface FieldSchema {
   key: string
@@ -236,10 +257,16 @@ interface FieldSchema {
   type: FieldType
   rows?: number
   step?: string
-  options?: { label: string; value: string }[]
+  options?: FieldOption[]
   visibleIf?: (settings: any) => boolean
   isVoiceModel?: boolean
   realtime?: boolean
+}
+
+const fieldOptions = (field: FieldSchema) => {
+  return (field.options || []).filter(
+    (option) => !option.visibleIf || option.visibleIf(localSettings.value),
+  )
 }
 
 const schemas: Record<string, FieldSchema[]> = {
@@ -274,6 +301,7 @@ const schemas: Record<string, FieldSchema[]> = {
       key: 'tts_type',
       label: 'TTS 类型',
       type: 'select',
+      realtime: true,
       options: [
         { label: 'sva', value: 'sva' },
         { label: 'sbv2', value: 'sbv2' },
@@ -293,6 +321,16 @@ const schemas: Record<string, FieldSchema[]> = {
       options: [
         { label: '日语', value: 'ja' },
         { label: '中文', value: 'zh' },
+        {
+          label: '英语',
+          value: 'en',
+          visibleIf: (s) => s.tts_type === 'gsv',
+        },
+        {
+          label: '韩语',
+          value: 'ko',
+          visibleIf: (s) => s.tts_type === 'gsv',
+        },
       ],
     },
 
@@ -300,6 +338,7 @@ const schemas: Record<string, FieldSchema[]> = {
       key: 'sva_speaker_id',
       label: 'sva_speaker_id',
       type: 'text',
+      isVoiceModel: true,
       visibleIf: (s) => s.tts_type === 'sva',
     },
 
@@ -307,12 +346,16 @@ const schemas: Record<string, FieldSchema[]> = {
       key: 'sbv2_name',
       label: 'sbv2_name',
       type: 'text',
+      isVoiceModel: true,
+      realtime: true,
       visibleIf: (s) => s.tts_type === 'sbv2',
     },
     {
       key: 'sbv2_speaker_id',
       label: 'sbv2_speaker_id',
       type: 'text',
+      isVoiceModel: true,
+      realtime: true,
       visibleIf: (s) => s.tts_type === 'sbv2',
     },
 
@@ -320,6 +363,7 @@ const schemas: Record<string, FieldSchema[]> = {
       key: 'bv2_speaker_id',
       label: 'bv2_speaker_id',
       type: 'text',
+      isVoiceModel: true,
       visibleIf: (s) => s.tts_type === 'bv2',
     },
 
@@ -327,12 +371,16 @@ const schemas: Record<string, FieldSchema[]> = {
       key: 'sbv2api_name',
       label: 'sbv2api_name',
       type: 'text',
+      isVoiceModel: true,
+      realtime: true,
       visibleIf: (s) => s.tts_type === 'sbv2api',
     },
     {
       key: 'sbv2api_speaker_id',
       label: 'sbv2api_speaker_id',
       type: 'text',
+      isVoiceModel: true,
+      realtime: true,
       visibleIf: (s) => s.tts_type === 'sbv2api',
     },
 
@@ -340,12 +388,32 @@ const schemas: Record<string, FieldSchema[]> = {
       key: 'gsv_voice_text',
       label: 'gsv_voice_text',
       type: 'text',
+      isVoiceModel: true,
+      realtime: true,
       visibleIf: (s) => s.tts_type === 'gsv',
     },
     {
       key: 'gsv_voice_filename',
       label: 'gsv_voice_filename',
       type: 'text',
+      isVoiceModel: true,
+      realtime: true,
+      visibleIf: (s) => s.tts_type === 'gsv',
+    },
+    {
+      key: 'gsv_gpt_model_name',
+      label: 'gsv_gpt_model_name',
+      type: 'text',
+      isVoiceModel: true,
+      realtime: true,
+      visibleIf: (s) => s.tts_type === 'gsv',
+    },
+    {
+      key: 'gsv_sovits_model_name',
+      label: 'gsv_sovits_model_name',
+      type: 'text',
+      isVoiceModel: true,
+      realtime: true,
       visibleIf: (s) => s.tts_type === 'gsv',
     },
 
@@ -353,6 +421,7 @@ const schemas: Record<string, FieldSchema[]> = {
       key: 'aivis_model_uuid',
       label: 'aivis_model_uuid',
       type: 'text',
+      isVoiceModel: true,
       visibleIf: (s) => s.tts_type === 'aivis',
     },
   ],
@@ -367,16 +436,40 @@ const currentTabFields = computed(() => {
   return currentTabConfig.value || []
 })
 
+const ensureVoiceModels = () => {
+  if (
+    !localSettings.value.voice_models ||
+    typeof localSettings.value.voice_models !== 'object' ||
+    Array.isArray(localSettings.value.voice_models)
+  ) {
+    localSettings.value.voice_models = {}
+  }
+  return localSettings.value.voice_models as Record<string, unknown>
+}
+
+const migrateLegacyVoiceModelFields = () => {
+  const voiceModels = ensureVoiceModels()
+  for (const key of voiceModelKeys) {
+    const legacyValue = localSettings.value[key]
+    if ((voiceModels[key] === undefined || voiceModels[key] === null) && legacyValue != null) {
+      voiceModels[key] = legacyValue
+    }
+    delete localSettings.value[key]
+  }
+}
+
 const fieldModel = (field: FieldSchema) => {
   return computed({
     get: () => {
-      return localSettings.value[field.key]
+      const target = field.isVoiceModel ? ensureVoiceModels() : localSettings.value
+      return target[field.key]
     },
     set: (val) => {
+      const target = field.isVoiceModel ? ensureVoiceModels() : localSettings.value
       if (field.type === 'number') {
-        localSettings.value[field.key] = Number(val)
+        target[field.key] = Number(val)
       } else {
-        localSettings.value[field.key] = val
+        target[field.key] = val
       }
     },
   })
@@ -417,10 +510,7 @@ watch(
       try {
         const data = await getRoleSettings(props.roleId)
         localSettings.value = JSON.parse(JSON.stringify(data))
-
-        if (!localSettings.value.voice_models) {
-          localSettings.value.voice_models = {}
-        }
+        migrateLegacyVoiceModelFields()
         if (!localSettings.value.voice_lang) {
           localSettings.value.voice_lang = 'ja'
         }
@@ -441,13 +531,8 @@ const handleClose = () => {
 const handleFieldChange = async (field: FieldSchema) => {
   if (!field.realtime || !props.roleId) return
 
-  const value = localSettings.value[field.key]
   try {
-    if (field.key === 'voice_lang') {
-      // 语音语言实时切换：先更新后端内存中的 VoiceMaker，再保存设置文件
-      await invoke('update_voice_lang', { roleId: props.roleId, lang: value })
-    }
-    // 同步保存到角色 settings.yml
+    // 后端会同时保存 settings.yml 并重建已加载角色的 VoiceMaker。
     await updateRoleSettings(props.roleId, localSettings.value)
   } catch (e) {
     console.error(`实时更新 ${field.key} 失败:`, e)

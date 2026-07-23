@@ -40,6 +40,7 @@ pub trait TtsAdapter: Send + Sync {
 pub struct TtsProvider {
     pub audio_format: String,
     enable: Arc<AtomicBool>,
+    recovery_in_flight: Arc<AtomicBool>,
 
     pub sva: Option<Arc<VitsAdapter>>,
     pub sbv2: Option<Arc<Sbv2Adapter>>,
@@ -56,6 +57,7 @@ impl Default for TtsProvider {
         Self {
             audio_format: String::new(),
             enable: Arc::new(AtomicBool::new(true)),
+            recovery_in_flight: Arc::new(AtomicBool::new(false)),
             sva: None,
             sbv2: None,
             sbv2api: None,
@@ -73,6 +75,7 @@ impl std::fmt::Debug for TtsProvider {
         f.debug_struct("TtsProvider")
             .field("audio_format", &self.audio_format)
             .field("enable", &self.enable)
+            .field("recovery_in_flight", &self.recovery_in_flight)
             .field("sva", &self.sva.is_some())
             .field("sbv2", &self.sbv2.is_some())
             .field("sbv2api", &self.sbv2api.is_some())
@@ -90,6 +93,7 @@ impl TtsProvider {
         Self {
             audio_format: audio_format.into(),
             enable: Arc::new(AtomicBool::new(true)),
+            recovery_in_flight: Arc::new(AtomicBool::new(false)),
             ..Default::default()
         }
     }
@@ -106,6 +110,37 @@ impl TtsProvider {
     pub fn reactivate(&self) {
         self.enable.store(true, Ordering::Relaxed);
         tracing::info!("TTS 服务已重新启用");
+    }
+
+    /// TTS 被禁用后，用当前消息在后台探测服务是否恢复。
+    ///
+    /// 探测音频不会写入文件；成功后仅重新启用 TTS，让下一条消息正常输出语音。
+    /// 同一时刻最多执行一次探测，避免多分段消息重复请求。
+    pub fn recover_in_background(&self, text: String, tts_type: String, emo: String) {
+        if self.is_enabled() || text.trim().is_empty() {
+            return;
+        }
+        if self.recovery_in_flight.swap(true, Ordering::AcqRel) {
+            return;
+        }
+
+        let adapter = match self.select(&tts_type) {
+            Ok(adapter) => adapter,
+            Err(error) => {
+                self.recovery_in_flight.store(false, Ordering::Release);
+                tracing::debug!("TTS 后台恢复探测跳过: {error}");
+                return;
+            }
+        };
+        let provider = self.clone();
+        tokio::spawn(async move {
+            tracing::debug!("开始后台探测 TTS 服务: {tts_type}");
+            match adapter.generate_voice(&text, &emo).await {
+                Ok(_) => provider.reactivate(),
+                Err(error) => tracing::debug!("TTS 服务仍不可用: {error}"),
+            }
+            provider.recovery_in_flight.store(false, Ordering::Release);
+        });
     }
 
     fn select(&self, tts_type: &str) -> Result<Arc<dyn TtsAdapter>> {
