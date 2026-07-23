@@ -15,7 +15,9 @@ use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
 
 use crate::ai_service::message_system::events;
-use crate::ai_service::message_system::generator::{GeneratorDeps, MessageGenerator};
+use crate::ai_service::message_system::generator::{
+    GeneratorDeps, GeneratorSource, MessageGenerator,
+};
 use crate::ai_service::service::SharedAIService;
 use crate::ai_service::tools::registry::ToolRegistry;
 use crate::ai_service::types::{LineAttributeExt, LineBase};
@@ -240,6 +242,7 @@ impl ProactiveSystem {
                 svc.game_status.clone()
             };
             let deps = GeneratorDeps {
+                source: GeneratorSource::Proactive,
                 app: self.app.clone(),
                 db: self.db.clone(),
                 game_status,
