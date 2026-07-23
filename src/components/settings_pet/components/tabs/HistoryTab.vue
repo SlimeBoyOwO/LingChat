@@ -160,6 +160,7 @@ import { useGameStore } from '../../../../stores/modules/game'
 import type { GameMessage } from '../../../../stores/modules/game/state'
 import { convertInitLines } from '../../../../stores/modules/game/actions'
 import { useDialogStore } from '../../../../stores/modules/ui/dialog'
+import { useUIStore } from '../../../../stores/modules/ui/ui'
 import { getVoiceAudio } from '@/api/services/game-info'
 import { invoke } from '@tauri-apps/api/core'
 import type { GameLineInit } from '@/api/services/game-info'
@@ -191,6 +192,7 @@ interface HistoryBlock {
 // --- Store & Refs ---
 const gameStore = useGameStore()
 const dialogStore = useDialogStore()
+const uiStore = useUIStore()
 const audioRef = ref<HTMLAudioElement>()
 const contentRef = ref<HTMLDivElement>()
 
@@ -331,8 +333,16 @@ async function handleBacktrack(messageSeq: number) {
 const playAudio = async (audioFile: string) => {
   if (!audioFile || !audioRef.value) return
   audioRef.value.src = await getVoiceAudio(audioFile)
+  audioRef.value.volume = uiStore.characterVolume / 100
   audioRef.value.play()
 }
+
+watch(
+  () => uiStore.characterVolume,
+  (v) => {
+    if (audioRef.value) audioRef.value.volume = v / 100
+  },
+)
 
 // --- 滚动到内容底部 ---
 async function scrollToBottom() {

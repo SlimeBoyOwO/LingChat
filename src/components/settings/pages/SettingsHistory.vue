@@ -273,8 +273,16 @@ async function handleBacktrack(messageSeq: number) {
 const playAudio = async (audioFile: string) => {
   if (!audioFile || !audioRef.value) return
   audioRef.value.src = await getVoiceAudio(audioFile)
+  audioRef.value.volume = uiStore.characterVolume / 100
   audioRef.value.play()
 }
+
+watch(
+  () => uiStore.characterVolume,
+  (v) => {
+    if (audioRef.value) audioRef.value.volume = v / 100
+  },
+)
 
 // 滚动到内容底部（最新记录）
 async function scrollToBottom() {

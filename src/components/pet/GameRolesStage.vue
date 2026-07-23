@@ -147,6 +147,7 @@ watch(
       const dataUrl = await getVoiceAudio(newAudio)
       mainAudio.value.src = dataUrl
       mainAudio.value.load()
+      mainAudio.value.volume = uiStore.characterVolume / 100
       mainAudio.value.play().catch((e) => console.error('播放失败', e))
       emit('audio-started')
     } catch (e) {
