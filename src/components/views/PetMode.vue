@@ -64,10 +64,8 @@ import PetNotification from '../pet/PetNotification.vue'
 import ChatInput from '../pet/ChatInput.vue'
 import DialogueBox from '../pet/DialogueBox.vue'
 import GameRolesStage from '../pet/GameRolesStage.vue'
-
-const BASE_AVATAR_SIZE = 240
-const CHAT_BASE_H = 45
-const DIALOG_BASE_H = 75
+import { BASE_AVATAR_SIZE, CHAT_BASE_H, DIALOG_MIN_BASE } from '../pet/constants'
+import { estimateDialogHeight } from '../pet/useDialogHeight'
 
 const router = useRouter()
 const gameStore = useGameStore()
@@ -75,6 +73,7 @@ const settingsStore = useSettingsStore()
 const uiStore = useUIStore()
 
 const showChatInput = ref(false)
+const currentDialogBaseH = ref(DIALOG_MIN_BASE)
 
 const dialogContainer = ref<HTMLElement | null>(null)
 const avatarContainer = ref<HTMLElement | null>(null)
@@ -91,21 +90,29 @@ const appStyleVars = computed(() => {
     '--app-height': `${layout.height}px`,
     '--avatar-size': `${Math.round(BASE_AVATAR_SIZE * scale)}px`,
     '--chat-h': `${Math.round(CHAT_BASE_H * scale)}px`,
-    '--dialog-h': `${Math.round(DIALOG_BASE_H * scale)}px`,
+    '--dialog-h': `${Math.round(currentDialogBaseH.value * scale)}px`,
   }
 })
 
 const calcWindowLayout = (scale: number): { width: number; height: number } => {
   const S = Math.round(BASE_AVATAR_SIZE * scale)
   const chatH = Math.round(CHAT_BASE_H * scale)
-  const dialogH = Math.round(DIALOG_BASE_H * scale)
+  const dialogH = Math.round(currentDialogBaseH.value * scale)
   return { width: S, height: S + dialogH + chatH }
 }
 
-const applyWindowLayout = async () => {
+const applyWindowLayout = async (newDialogH?: number, prevDialogH?: number) => {
   try {
     const scale = settingsStore.pet?.scale || 1.0
-    await invoke('set_pet_mode', { enable: true, scale })
+    const target = newDialogH ?? currentDialogBaseH.value
+    const prev = prevDialogH ?? currentDialogBaseH.value
+    await invoke('set_pet_mode', {
+      enable: true,
+      scale,
+      dialogHeight: target,
+      previousDialogHeight: prev,
+    })
+    currentDialogBaseH.value = target
   } catch (error) {
     console.error('调整窗口布局失败:', error)
   }
@@ -199,6 +206,20 @@ watch(
   () => settingsStore.pet?.scale,
   () => {
     void applyWindowLayout()
+  },
+)
+
+watch(
+  () => ({ line: uiStore.showCharacterLine, status: gameStore.currentStatus }),
+  ({ line, status }) => {
+    if (status === 'responding' && line && line.trim()) {
+      const newH = estimateDialogHeight(line.trim())
+      if (newH !== currentDialogBaseH.value) {
+        void applyWindowLayout(newH, currentDialogBaseH.value)
+      }
+    } else if (status !== 'responding' && currentDialogBaseH.value !== DIALOG_MIN_BASE) {
+      void applyWindowLayout(DIALOG_MIN_BASE, currentDialogBaseH.value)
+    }
   },
 )
 
