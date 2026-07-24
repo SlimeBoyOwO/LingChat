@@ -125,6 +125,7 @@ export interface SelectClothesResponse {
 export const selectClothes = async (clothesName: string): Promise<SelectClothesResponse> => {
   try {
     const data = await invoke('select_clothes', { clothesName })
+    console.log(data)
     return data as SelectClothesResponse
   } catch (error: any) {
     throw new Error(typeof error === 'string' ? error : '选择衣服失败')

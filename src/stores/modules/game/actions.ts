@@ -207,7 +207,31 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
 
   if (gameInfo.background !== '') uiStore.setCurrentBackground(gameInfo.background)
   if (gameInfo.background_effect !== '') uiStore.setBackgroundEffect(gameInfo.background_effect)
-  if (gameInfo.background_music !== '') uiStore.currentBackgroundMusic = gameInfo.background_music
+
+  // 恢复背景音乐：用户上次手动选择优先于场景/剧本设定
+  if (gameInfo.last_bgm_track && gameInfo.last_bgm_track !== 'None') {
+    uiStore.currentBackgroundMusic = gameInfo.last_bgm_track
+  } else if (gameInfo.background_music !== '') {
+    uiStore.currentBackgroundMusic = gameInfo.background_music
+  }
+  if (gameInfo.last_bgm_paused != null) {
+    uiStore.bgMusicPaused = gameInfo.last_bgm_paused
+  }
+  if (gameInfo.last_bgm_mode) {
+    uiStore.bgMusicMode = gameInfo.last_bgm_mode as 'loop-single' | 'loop-list' | 'random'
+  }
+
+  // 恢复环境音轨道（标记为暂停，避免启动时自动播放）
+  if (gameInfo.last_ambient_tracks) {
+    try {
+      const tracks = JSON.parse(gameInfo.last_ambient_tracks)
+      if (Array.isArray(tracks) && tracks.length > 0) {
+        uiStore.ambientTracks = tracks.map((t: any) => ({ ...t, paused: true }))
+      }
+    } catch (e) {
+      console.warn('解析环境音轨道数据失败:', e)
+    }
+  }
 
   // 同步场景感知开关
   settingsStore.setSceneAwarenessEnabled(gameInfo.scene_awareness_enabled)

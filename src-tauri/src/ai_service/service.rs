@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -92,6 +93,7 @@ impl AIService {
     ///
     /// `prompt_options` 控制对话格式提示（日语开关、情绪放开）。
     /// 调用方（通常是 Tauri command）从 AppConfig 读取后传入。
+    /// 钦灵：TODO，这一段代码是老函数，新版已经不是单一人物，而是多个人物，这部分代码之后需要清理。
     pub async fn import_settings(
         &mut self,
         settings: CharacterSettings,
@@ -109,7 +111,7 @@ impl AIService {
         let base_prompt = settings.system_prompt.clone().unwrap_or(default_prompt);
         self.ai_prompt_example = settings.system_prompt_example.clone();
         self.ai_prompt_example_old = settings.system_prompt_example_old.clone();
-        self.clothes_name = settings.clothes_name.clone();
+        self.clothes_name = settings.clothes_name.clone(); // TODO: 这个是冗余的，之后可以去掉
 
         self.ai_prompt = sys_prompt_builder(
             &self.user_name,
@@ -131,6 +133,13 @@ impl AIService {
 
     /// 初始化 `GameStatus`：清空台词列表，写入首条 system 人设，
     /// 并把导入的角色设为主角 + 上台。
+    /// 注入角色服装覆盖（session store → GameRoleManager）。
+    /// 必须在 `init_game_status()` 之前调用。
+    pub async fn set_clothes_overrides(&mut self, overrides: HashMap<i32, String>) {
+        let mut gs = self.game_status.lock().await;
+        gs.role_manager.set_clothes_overrides(overrides);
+    }
+
     pub async fn init_game_status(&mut self) -> Result<()> {
         let mut gs = self.game_status.lock().await;
         gs.role_manager.reset_roles();
@@ -148,10 +157,25 @@ impl AIService {
         gs.add_line(&self.db, system_line).await?;
 
         if let Some(cid) = self.character_id {
+            // 此处是初始角色被注册的地方
             let _ = gs.get_role(&self.db, cid).await?;
             gs.current_role_id = Some(cid);
             gs.onstage_role(cid);
             gs.main_role_id = Some(cid);
+
+            // 若恢复的服装不是默认服装，生成换装旁白
+            let clothes = gs
+                .role_manager
+                .get_loaded(cid)
+                .map(|r| r.current_clothes.clone())
+                .unwrap_or_default();
+            tracing::info!("外部获取的当前服装是: {:?}", clothes);
+            if clothes != "default" && !clothes.is_empty() {
+                // 不是你个傻逼 AI 角色服装已经换过了你再他妈比较那台词表能变吗我草你的？，已修复
+                let _ = gs
+                    .add_character_clothes_change_line(&self.db, cid, &clothes)
+                    .await;
+            }
         } else {
             tracing::error!("初始化游戏主角失败，未指定角色ID。");
         }

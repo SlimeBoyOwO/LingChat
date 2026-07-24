@@ -33,3 +33,12 @@ export const ambientDelete = async (url: string): Promise<void> => {
     throw new Error(typeof error === 'string' ? error : error.message || '环境音删除失败')
   }
 }
+
+/** 持久化环境音轨道列表到 settings.json，下次启动时自动恢复 */
+export const saveAmbientState = async (tracksJson: string): Promise<void> => {
+  try {
+    await invoke('save_ambient_state', { tracksJson })
+  } catch (error: any) {
+    console.warn('持久化环境音状态失败（非致命）:', typeof error === 'string' ? error : error.message)
+  }
+}

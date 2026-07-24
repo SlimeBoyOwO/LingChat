@@ -33,6 +33,8 @@ pub struct GameRoleManager {
     memory_update_interval: u32,
     /// 摘要时保留的最近消息数（来自 `AppConfig::memory_recent_window`）。
     memory_recent_window: u32,
+    /// 角色服装覆盖（session store → register_role_by_id 时优先读取）
+    clothes_overrides: HashMap<i32, String>,
 }
 
 impl GameRoleManager {
@@ -53,7 +55,17 @@ impl GameRoleManager {
             use_persistent_memory,
             memory_update_interval,
             memory_recent_window,
+            clothes_overrides: HashMap::new(),
         }
+    }
+
+    /// 设置角色服装覆盖（来自 session store，优先于 settings.yml 的默认值）。
+    pub fn set_clothes_overrides(&mut self, overrides: HashMap<i32, String>) {
+        self.clothes_overrides = overrides;
+    }
+
+    pub fn set_character_clothes_override(&mut self, role_id: i32, clothes: String) {
+        self.clothes_overrides.insert(role_id, clothes);
     }
 
     /// 获取角色；若未加载则从 DB 惰性注册。
@@ -126,12 +138,32 @@ impl GameRoleManager {
             &self.tts_config,
         );
 
+        tracing::info!(
+            "角色的服装各个优先级的设置如下：{}, {}, {}",
+            self.clothes_overrides
+                .get(&role.id)
+                .map(|s| s.as_str())
+                .unwrap_or("None"),
+            settings.clothes_name.as_deref().unwrap_or("None"),
+            "default"
+        );
+
+        // 服装优先级：session store 覆盖 → settings.yml 默认 → "default"
+        let clothes = self
+            .clothes_overrides
+            .get(&role.id)
+            .cloned()
+            .or_else(|| settings.clothes_name.clone())
+            .unwrap_or_else(|| "default".into());
+
+        tracing::info!("角色 {} 的服装设置为：{}", role.id, clothes);
+
         let new_role = GameRole {
             role_id: Some(role.id),
             display_name: Some(display_name),
             settings,
             resource_path,
-            current_clothes: "default".into(),
+            current_clothes: clothes,
             voice_maker,
             ..Default::default()
         };

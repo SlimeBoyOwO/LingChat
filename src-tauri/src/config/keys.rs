@@ -79,14 +79,6 @@ pub const TODO_WEIGHT: &str = "TODO_WEIGHT";
 pub const ENABLE_SCHEDULE_REMINDER: &str = "ENABLE_SCHEDULE_REMINDER";
 pub const ENABLE_IMPORTANT_DAY_REMINDER: &str = "ENABLE_IMPORTANT_DAY_REMINDER";
 
-// ========== 游戏 ==========
-/// 上次游玩的角色 ID（启动时自动恢复）
-pub const LAST_CHARACTER_ID: &str = "game.last_character_id";
-/// 上次选择的场景 ID（启动时自动恢复）
-pub const LAST_SCENE_ID: &str = "game.last_scene_id";
-/// 场景感知开关（切换场景时是否自动产生旁白台词）
-pub const SCENE_AWARENESS_ENABLED: &str = "game.scene_awareness_enabled";
-
 // ========== 上帝 Agent（God Agent）多人对话 ==========
 pub const GOD_AGENT_MAX_CONSECUTIVE_NPC: &str = "god_agent.max_consecutive_npc";
 pub const GOD_AGENT_RECENT_WINDOW: &str = "god_agent.recent_window";

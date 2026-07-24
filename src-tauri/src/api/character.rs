@@ -5,12 +5,12 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use tauri::{AppHandle, Manager};
+use tauri_plugin_store::StoreExt;
 
-use crate::ai_service::types::{CharacterSettings, LineAttributeExt, LineBase};
-use crate::db::entities::line::LineAttribute;
+use crate::ai_service::types::CharacterSettings;
+use crate::config;
 use crate::db::entities::role::RoleType;
 use crate::db::managers::role_repo::RoleRepo;
-use crate::utils::prompt::PromptRole;
 use crate::utils::system::open_folder;
 use crate::AppState;
 
@@ -458,6 +458,7 @@ pub async fn select_clothes(
 ) -> Result<serde_json::Value, String> {
     let state = app.state::<AppState>();
     let service = state.ai_service.lock().await;
+
     let db = &state.db;
 
     let main_role_id = service
@@ -467,58 +468,35 @@ pub async fn select_clothes(
         .main_role_id
         .ok_or_else(|| "角色不存在".to_string())?;
 
-    // 收集角色数据后释放借用，再调用 add_line
-    let (_, prompt) = {
-        let mut gs = service.game_status.lock().await;
-        let role = gs
-            .get_role(db, main_role_id)
-            .await
-            .map_err(|e| format!("获取角色失败: {}", e))?;
+    // 持久化该角色的服装选择（按角色 ID 存储）
+    if let Ok(store) = app.store(config::STORE_FILE) {
+        let key = config::session::last_clothes_key(main_role_id);
+        store.set(key, JsonValue::String(clothes_name.clone()));
+        let _ = store.save();
+    }
 
-        if role.current_clothes == clothes_name {
-            return Ok(serde_json::json!({"success": true, "message": "当前衣服已经是选中状态"}));
-        }
-
-        role.current_clothes = clothes_name.clone();
-
-        let ai_name = role.settings.ai_name.clone();
-        let prompt = format!(
-            "{}换上了新服装：{}，{}",
-            ai_name,
-            clothes_name,
-            role.settings
-                .clothes
-                .as_ref()
-                .and_then(|list| list.iter().find_map(|item| {
-                    if item.get("name").map(|s| s.as_str()) == Some(clothes_name.as_str()) {
-                        item.get("prompt").cloned()
-                    } else {
-                        None
-                    }
-                }))
-                .unwrap_or_default()
-        );
-
-        (ai_name, prompt)
-    };
-
+    // 在游戏内记录服装方便复原
     service
         .game_status
         .lock()
         .await
-        .add_line(
-            db,
-            LineBase {
-                content: PromptRole::Plot.build_prompt(&prompt),
-                attribute: LineAttributeExt(LineAttribute::User),
-                display_name: Some("旁白".to_string()),
-                ..Default::default()
-            },
-        )
-        .await
-        .map_err(|e| format!("添加台词失败: {}", e))?;
+        .role_manager
+        .set_character_clothes_override(main_role_id, clothes_name.clone());
 
-    Ok(serde_json::json!({"success": true, "message": "衣服更换成功"}))
+    // 委托给 GameStatus 统一处理换装逻辑（去重 + 旁白生成）
+    let switched = service
+        .game_status
+        .lock()
+        .await
+        .on_character_change_clothes(db, main_role_id, &clothes_name)
+        .await
+        .map_err(|e| format!("切换服装失败: {}", e))?;
+
+    if switched {
+        Ok(serde_json::json!({"success": true, "message": "衣服更换成功"}))
+    } else {
+        Ok(serde_json::json!({"success": true, "message": "当前衣服已经是选中状态"}))
+    }
 }
 
 #[tauri::command]

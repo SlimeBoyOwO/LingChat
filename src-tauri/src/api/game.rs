@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
+use sea_orm::*;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
-use sea_orm::*;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
@@ -37,6 +37,14 @@ pub struct WebInitData {
     pub lines: Vec<GameLineInit>,
     /// 场景感知开关（切换场景时是否自动产生旁白）
     pub scene_awareness_enabled: bool,
+    /// 上次背景音乐曲目（从 session store 恢复）
+    pub last_bgm_track: Option<String>,
+    /// 上次背景音乐是否暂停
+    pub last_bgm_paused: Option<bool>,
+    /// 上次背景音乐播放模式
+    pub last_bgm_mode: Option<String>,
+    /// 上次环境音轨道（JSON 字符串，前端解析）
+    pub last_ambient_tracks: Option<String>,
 }
 
 /// 精简的角色设定，匹配前端 `CharacterSettings` 接口
@@ -180,7 +188,8 @@ pub async fn clear_tts_cache(app: AppHandle) -> Result<serde_json::Value, String
     }
 
     let referenced = get_referenced_voice_files(&db).await?;
-    let (orphan_files_before, orphan_size_before) = count_orphan_files_in_voice_dir(&voice_dir, &referenced);
+    let (orphan_files_before, orphan_size_before) =
+        count_orphan_files_in_voice_dir(&voice_dir, &referenced);
 
     let mut deleted: u64 = 0;
     let mut failed: usize = 0;
@@ -206,10 +215,15 @@ pub async fn clear_tts_cache(app: AppHandle) -> Result<serde_json::Value, String
         }
     }
 
-    let (orphan_files_after, orphan_size_after) = count_orphan_files_in_voice_dir(&voice_dir, &referenced);
+    let (orphan_files_after, orphan_size_after) =
+        count_orphan_files_in_voice_dir(&voice_dir, &referenced);
     events::emit_tts_cleanup(&app, deleted, orphan_files_after, orphan_size_after);
 
-    tracing::info!("TTS 缓存清理完成: 删除 {} 个孤立文件, 失败 {} 个", deleted, failed);
+    tracing::info!(
+        "TTS 缓存清理完成: 删除 {} 个孤立文件, 失败 {} 个",
+        deleted,
+        failed
+    );
     Ok(serde_json::json!({
         "success": failed == 0,
         "message": format!("已清理 {} 个孤立 TTS 缓存文件", deleted),
@@ -222,7 +236,11 @@ pub async fn clear_tts_cache(app: AppHandle) -> Result<serde_json::Value, String
 
 /// 实时切换指定角色的语音语言，无需保存 settings.yml。
 #[tauri::command]
-pub async fn update_voice_lang(app: AppHandle, role_id: i32, lang: String) -> Result<serde_json::Value, String> {
+pub async fn update_voice_lang(
+    app: AppHandle,
+    role_id: i32,
+    lang: String,
+) -> Result<serde_json::Value, String> {
     let state = app.state::<AppState>();
     let service = state.ai_service.lock().await;
     let mut gs = service.game_status.lock().await;
@@ -332,7 +350,7 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
     // 4. 持久化上次游玩的角色 ID
     if let Ok(store) = app.store(config::STORE_FILE) {
         store.set(
-            config::keys::LAST_CHARACTER_ID.to_string(),
+            config::session::LAST_CHARACTER_ID.to_string(),
             JsonValue::Number((character_id as i64).into()),
         );
         let _ = store.save();
@@ -375,6 +393,7 @@ pub(crate) async fn build_web_init_data(
     service: &crate::ai_service::service::AIService,
     app: &AppHandle,
 ) -> Result<WebInitData, String> {
+    // 钦灵：旧版的 CharacterSettings 已经废弃，这一段代码之后可以精简一下。
     let settings = service
         .settings
         .as_ref()
@@ -418,7 +437,7 @@ pub(crate) async fn build_web_init_data(
         // 若无当前场景，尝试从 store 恢复上次选择的场景
         if sid.is_none() {
             if let Ok(store) = app.store(config::STORE_FILE) {
-                if let Some(v) = store.get(config::keys::LAST_SCENE_ID) {
+                if let Some(v) = store.get(config::session::LAST_SCENE_ID) {
                     if let Some(id) = v.as_str() {
                         sid = Some(id.to_string());
                     }
@@ -453,7 +472,7 @@ pub(crate) async fn build_web_init_data(
 
         // 从 store 恢复场景感知开关
         if let Ok(store) = app.store(config::STORE_FILE) {
-            if let Some(v) = store.get(config::keys::SCENE_AWARENESS_ENABLED) {
+            if let Some(v) = store.get(config::session::SCENE_AWARENESS_ENABLED) {
                 gs.scene_awareness_enabled = v.as_bool().unwrap_or(true);
             }
         }
@@ -464,9 +483,12 @@ pub(crate) async fn build_web_init_data(
             .onstage_role_ids
             .iter()
             .filter_map(|&id| {
-                gs.role_manager
-                    .get_loaded(id)
-                    .map(|r| CharacterSettingsInit::from(&r.settings))
+                gs.role_manager.get_loaded(id).map(|r| {
+                    let mut settings = CharacterSettingsInit::from(&r.settings);
+                    // 这其中 clothes 需要额外处理。
+                    settings.clothes_name = r.current_clothes.clone();
+                    settings
+                })
             })
             .collect();
 
@@ -483,7 +505,30 @@ pub(crate) async fn build_web_init_data(
         )
     };
 
-    // Resolve scene info from SceneStore
+    // 从 session store 恢复上次会话状态（服装、音乐、环境音）
+    let (last_bgm_track, last_bgm_paused, last_bgm_mode, last_ambient_tracks) = {
+        let store = app.store(config::STORE_FILE).ok();
+        let read_str = |key: &str| -> Option<String> {
+            store
+                .as_ref()
+                .and_then(|s| s.get(key))
+                .and_then(|v| v.as_str().map(String::from))
+        };
+        let read_bool = |key: &str| -> Option<bool> {
+            store
+                .as_ref()
+                .and_then(|s| s.get(key))
+                .and_then(|v| v.as_bool())
+        };
+        (
+            read_str(config::session::LAST_BGM_TRACK),
+            read_bool(config::session::LAST_BGM_PAUSED),
+            read_str(config::session::LAST_BGM_MODE),
+            read_str(config::session::LAST_AMBIENT_TRACKS),
+        )
+    };
+
+    // 从 Scene Store 场景存储中恢复场景信息
     let current_scene = if let Some(ref sid) = current_scene_id {
         let store = SceneStore::new(&service.data_dir);
         store
@@ -522,6 +567,10 @@ pub(crate) async fn build_web_init_data(
         current_scene,
         lines,
         scene_awareness_enabled,
+        last_bgm_track,
+        last_bgm_paused,
+        last_bgm_mode,
+        last_ambient_tracks,
     };
     Ok(result)
 }

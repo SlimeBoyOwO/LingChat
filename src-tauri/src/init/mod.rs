@@ -2,6 +2,7 @@ pub mod role_sync;
 pub mod static_copy;
 pub mod voice_cleanup;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -81,11 +82,32 @@ pub async fn initialize(
 
     // 加载默认角色：上次游玩的角色 → DB 中第一个主角色 → 默认空设定
     let settings = load_default_character(app, &db, &data_dir).await?;
+    let character_id = settings.character_id;
     let prompt_options = PromptOptions {
         output_sec_lang: app_config.llm_output_sec_lang,
         no_emotion_limit: app_config.no_emotion_limit_prompt,
     };
     ai_service.import_settings(settings, prompt_options).await;
+
+    // 从 session store 读取各角色的上次服装，注入 GameRoleManager
+    {
+        let mut overrides = HashMap::new();
+        if let Ok(store) = app.store(config::STORE_FILE) {
+            if let Some(cid) = character_id {
+                let key = config::session::last_clothes_key(cid);
+                if let Some(clothes) = store
+                    .get(&key)
+                    .and_then(|v| v.as_str().map(String::from))
+                {
+                    if !clothes.is_empty() {
+                        overrides.insert(cid, clothes);
+                    }
+                }
+            }
+        }
+        ai_service.set_clothes_overrides(overrides).await;
+    }
+
     ai_service.init_game_status().await?;
 
     tracing::info!(
@@ -179,7 +201,7 @@ async fn load_default_character(
         .store(config::STORE_FILE)
         .unwrap_or_else(|_| app.handle().store(config::STORE_FILE).unwrap());
     if let Some(last_id) = store
-        .get(config::keys::LAST_CHARACTER_ID)
+        .get(config::session::LAST_CHARACTER_ID)
         .and_then(|v| v.as_i64())
     {
         if let Ok(Some(settings)) =
