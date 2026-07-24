@@ -104,6 +104,41 @@
           <div class="section-heading">
             <div>
               <h3>下载目录</h3>
+        <section v-if="voicesMissingStyleVectors.length > 0">
+          <div class="section-heading">
+            <div>
+              <h3>补齐 style_vectors</h3>
+              <p>.onnx 语音需要同名的 style_vectors.json 才能在本地 TTS 中启用</p>
+            </div>
+            <Wand2 :size="18" class="text-white/40" />
+          </div>
+
+          <div class="flex min-w-0 flex-wrap items-center gap-2">
+            <select
+              v-model="styleVectorsTarget"
+              class="field h-9 min-w-0 flex-1 sm:max-w-72"
+              :disabled="busyAction !== null"
+            >
+              <option value="">选择需要补齐的语音</option>
+              <option
+                v-for="voice in voicesMissingStyleVectors"
+                :key="voice.voice_id"
+                :value="voice.voice_id"
+              >
+                {{ voice.display_name || voice.voice_id }} ({{ voice.voice_id }})
+              </option>
+            </select>
+            <button
+              class="action-button shrink-0"
+              :disabled="busyAction !== null || !styleVectorsTarget"
+              @click="pickStyleVectors"
+            >
+              <FileJson :size="17" />
+              <span>导入 style_vectors</span>
+            </button>
+          </div>
+        </section>
+
               <p>仅在点击下载后获取模型</p>
             </div>
             <CloudDownload :size="18" class="text-white/40" />
@@ -167,6 +202,23 @@
                 </p>
                 <p class="mt-1 truncate text-xs text-white/45">
                   {{ voice.voice_id }} · {{ voice.kind.toUpperCase() }} · {{ formatBytes(voice.size_bytes) }}
+                </p>
+                <p class="mt-1 flex items-center gap-1.5 text-[11px]">
+                  <span
+                    v-if="voice.kind === 'sbv2'"
+                    class="kind-badge"
+                    title=".sbv2 已内置 style_vectors"
+                  >style_vectors 已内置</span>
+                  <span
+                    v-else-if="voice.has_style_vectors"
+                    class="kind-badge"
+                    title="已找到同名的 style_vectors.json"
+                  >style_vectors 已配</span>
+                  <span
+                    v-else
+                    class="kind-badge kind-badge-warn"
+                    title="缺少 style_vectors.json，需在下方补齐后才能在本地 TTS 中启用该语音"
+                  >缺 style_vectors</span>
                 </p>
               </div>
               <button
@@ -258,6 +310,7 @@ import {
   RefreshCw,
   Trash2,
   Volume2,
+  Wand2,
 } from 'lucide-vue-next'
 import { MenuItem, MenuPage } from '@/components/ui'
 import { useDialogStore } from '@/stores/modules/ui/dialog'
@@ -279,6 +332,7 @@ const busyAction = ref<string | null>(null)
 const downloading = ref(new Set<string>())
 const progress = ref<Record<string, DownloadProgress | undefined>>({})
 const importVoiceId = ref('')
+const styleVectorsTarget = ref('')
 const notice = ref<{ kind: 'success' | 'error'; text: string } | null>(null)
 const previewText = ref('こんにちは、これはローカル音声のテストです。')
 const previewVoice = ref('')
@@ -291,6 +345,13 @@ let unlistenProgress: UnlistenFn | null = null
 
 const canPreview = computed(
   () => Boolean(status.value?.ready && previewVoice.value && previewText.value.trim()),
+)
+
+const voicesMissingStyleVectors = computed(
+  () =>
+    snapshot.value.voices.filter(
+      (voice) => voice.kind === 'onnx' && !voice.has_style_vectors,
+    ),
 )
 
 function errorText(error: unknown): string {
@@ -394,6 +455,32 @@ function isCatalogAssetInstalled(asset: AssetEntry): boolean {
   return snapshot.value.voices.some((voice) => voice.voice_id === asset.id)
 }
 
+async function pickStyleVectors(): Promise<void> {
+  if (!styleVectorsTarget.value) {
+    notice.value = { kind: 'error', text: '请先选择需要补齐 style_vectors 的语音' }
+    return
+  }
+  const selection = await open({
+    multiple: false,
+    filters: [{ name: 'style_vectors JSON', extensions: ['json'] }],
+  })
+  const path = selectedPath(selection)
+  if (!path) return
+
+  const target = styleVectorsTarget.value
+  busyAction.value = `style-vectors:${target}`
+  notice.value = null
+  try {
+    await TtsLocal.importStyleVectors(target, path)
+    notice.value = { kind: 'success', text: `${target} 的 style_vectors 已导入` }
+    await refreshAll()
+  } catch (error) {
+    notice.value = { kind: 'error', text: `导入失败：${errorText(error)}` }
+  } finally {
+    busyAction.value = null
+  }
+}
+
 async function downloadAsset(asset: AssetEntry): Promise<void> {
   downloading.value = new Set(downloading.value).add(asset.id)
   busyAction.value = `download:${asset.id}`
@@ -462,6 +549,12 @@ watch(
   (voices) => {
     if (!voices.some((voice) => voice.voice_id === previewVoice.value)) {
       previewVoice.value = voices[0]?.voice_id ?? ''
+    }
+    if (
+      styleVectorsTarget.value &&
+      !voices.some((voice) => voice.voice_id === styleVectorsTarget.value)
+    ) {
+      styleVectorsTarget.value = ''
     }
   },
 )
@@ -609,6 +702,11 @@ onUnmounted(() => {
 }
 
 .empty-state {
+.kind-badge-warn {
+  border-color: rgba(248, 113, 113, 0.35);
+  background: rgba(248, 113, 113, 0.1);
+  color: #fecaca;
+}
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   padding: 22px 0;

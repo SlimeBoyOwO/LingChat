@@ -22,6 +22,7 @@ export interface VoiceRecord {
   language: string | null
   display_name: string | null
   source: string | null
+  has_style_vectors: boolean
 }
 
 export interface AssetRecord {
@@ -94,6 +95,16 @@ export function download(assetId: string): Promise<TtsLocalImportResult> {
 
 export async function deleteVoice(voiceId: string): Promise<void> {
   await invoke('tts_local_delete_voice', { voiceId })
+}
+
+export function importStyleVectors(
+  voiceId: string,
+  path: string,
+): Promise<TtsLocalImportResult> {
+  return invoke<TtsLocalImportResult>('tts_local_import_style_vectors', {
+    voiceId,
+    path,
+  })
 }
 
 export function synthesizePreview(params: {
