@@ -125,7 +125,7 @@ impl TtsProvider {
                 .sbv2api
                 .clone()
                 .ok_or_else(|| anyhow!("sbv2-api 适配器未初始化"))?,
-            "sbv2_local" => self
+            "localsbv2api" => self
                 .sbv2_local
                 .clone()
                 .ok_or_else(|| anyhow!("SBV2 local 适配器未初始化"))?,

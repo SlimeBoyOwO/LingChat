@@ -203,7 +203,7 @@ impl VoiceMaker {
                     id,
                 )));
             }
-            "sbv2_local" if self.availability.sbv2_local => {
+            "localsbv2api" if self.availability.sbv2_local => {
                 let engine = match &self.local_tts_engine {
                     Some(e) => e.clone(),
                     None => {

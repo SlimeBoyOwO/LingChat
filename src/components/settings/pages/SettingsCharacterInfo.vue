@@ -107,7 +107,7 @@
                       @change="handleFieldChange(field)"
                     >
                       <option
-                        v-for="opt in field.options"
+                        v-for="opt in resolveFieldOptions(field)"
                         :key="opt.value"
                         :value="opt.value"
                         class="bg-[#333] text-white"
@@ -202,6 +202,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { getRoleSettings, updateRoleSettings } from '../../../api/services/character'
 import { Icon } from '../../base'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
+import * as TtsLocal from '../../../api/services/tts-local'
 
 const props = defineProps<{
   visible: boolean
@@ -216,6 +217,17 @@ const loading = ref(false)
 const saving = ref(false)
 const dialogStore = useDialogStore()
 const localSettings = ref<any>({})
+const installedVoices = ref<TtsLocal.VoiceRecord[]>([])
+
+async function refreshLocalVoices(): Promise<void> {
+  try {
+    const snapshot = await TtsLocal.listInstalled()
+    installedVoices.value = snapshot.voices
+  } catch (error) {
+    console.warn('refreshLocalVoices failed', error)
+    installedVoices.value = []
+  }
+}
 
 const tabs = [
   { id: 'basic', label: '基本信息' },
@@ -237,9 +249,14 @@ interface FieldSchema {
   rows?: number
   step?: string
   options?: { label: string; value: string }[]
+  // Dynamic options computed from refs/state. Overrides `options` when set.
+  dynamicOptions?: () => { label: string; value: string }[]
   visibleIf?: (settings: any) => boolean
   isVoiceModel?: boolean
   realtime?: boolean
+  // When set, the field reads/writes into localSettings.value[parent][key].
+  // The parent object is auto-initialised to {} on first write if missing.
+  parent?: string
 }
 
 const schemas: Record<string, FieldSchema[]> = {
@@ -282,6 +299,7 @@ const schemas: Record<string, FieldSchema[]> = {
         { label: 'gsv', value: 'gsv' },
         { label: 'aivis', value: 'aivis' },
         { label: 'opentts', value: 'opentts' },
+        { label: '本地 SBV2 API', value: 'localsbv2api' },
       ],
     },
 
@@ -355,6 +373,56 @@ const schemas: Record<string, FieldSchema[]> = {
       type: 'text',
       visibleIf: (s) => s.tts_type === 'aivis',
     },
+
+    // --- Local SBV2 (localsbv2api) ---
+    {
+      key: 'sbv2_local_voice_id',
+      parent: 'voice_models',
+      label: '本地语音 ID',
+      type: 'select',
+      dynamicOptions: () =>
+        installedVoices.value.length === 0
+          ? [{ label: '未安装本地模型（请先在 TTS 设置中导入）', value: '' }]
+          : installedVoices.value.map((voice) => ({
+              label: voice.display_name
+                ? `${voice.display_name} (${voice.voice_id})`
+                : voice.voice_id,
+              value: voice.voice_id,
+            })),
+      visibleIf: (s) => s.tts_type === 'localsbv2api',
+    },
+    {
+      key: 'sbv2_local_speaker_id',
+      parent: 'voice_models',
+      label: '说话人 ID',
+      type: 'number',
+      step: '1',
+      visibleIf: (s) => s.tts_type === 'localsbv2api',
+    },
+    {
+      key: 'sbv2_local_style_id',
+      parent: 'voice_models',
+      label: '风格 ID',
+      type: 'number',
+      step: '1',
+      visibleIf: (s) => s.tts_type === 'localsbv2api',
+    },
+    {
+      key: 'sbv2_local_length_scale',
+      parent: 'voice_models',
+      label: '长度缩放 (length_scale)',
+      type: 'number',
+      step: '0.05',
+      visibleIf: (s) => s.tts_type === 'localsbv2api',
+    },
+    {
+      key: 'sbv2_local_sdp_ratio',
+      parent: 'voice_models',
+      label: 'SDP 噪声比',
+      type: 'number',
+      step: '0.05',
+      visibleIf: (s) => s.tts_type === 'localsbv2api',
+    },
   ],
 }
 
@@ -367,18 +435,41 @@ const currentTabFields = computed(() => {
   return currentTabConfig.value || []
 })
 
+const resolveFieldOptions = (field: FieldSchema) => {
+  if (field.dynamicOptions) {
+    return field.dynamicOptions()
+  }
+  return field.options ?? []
+}
+
 const fieldModel = (field: FieldSchema) => {
-  return computed({
-    get: () => {
-      return localSettings.value[field.key]
-    },
-    set: (val) => {
-      if (field.type === 'number') {
-        localSettings.value[field.key] = Number(val)
-      } else {
-        localSettings.value[field.key] = val
+  const readPath = (): any => {
+    if (field.parent) {
+      const parentObj = localSettings.value[field.parent]
+      if (parentObj && typeof parentObj === 'object') {
+        return parentObj[field.key]
       }
-    },
+      return undefined
+    }
+    return localSettings.value[field.key]
+  }
+  const writeValue = (val: any) => {
+    const coerced = field.type === 'number' ? Number(val) : val
+    if (field.parent) {
+      if (
+        !localSettings.value[field.parent] ||
+        typeof localSettings.value[field.parent] !== 'object'
+      ) {
+        localSettings.value[field.parent] = {}
+      }
+      localSettings.value[field.parent][field.key] = coerced
+    } else {
+      localSettings.value[field.key] = coerced
+    }
+  }
+  return computed({
+    get: () => readPath(),
+    set: (val) => writeValue(val),
   })
 }
 
@@ -430,6 +521,18 @@ watch(
       } finally {
         loading.value = false
       }
+    }
+  },
+)
+
+// Refresh installed local voices whenever the voice tab is shown while the
+// dialog is visible. The dropdown only matters when tts_type=localsbv2api,
+// but loading early keeps things simple and the list is cheap to fetch.
+watch(
+  () => [props.visible, activeTab.value, localSettings.value.tts_type],
+  ([visible, tab, ttsType]) => {
+    if (visible && tab === 'voice' && ttsType === 'localsbv2api') {
+      void refreshLocalVoices()
     }
   },
 )
