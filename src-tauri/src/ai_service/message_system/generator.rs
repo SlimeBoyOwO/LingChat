@@ -527,12 +527,6 @@ fn translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static str
     }
 }
 
-fn swap_display_and_translated_text(segments: &mut [EmotionSegment]) {
-    for segment in segments {
-        std::mem::swap(&mut segment.following_text, &mut segment.japanese_text);
-    }
-}
-
 /// Step B: 翻译与语音生成。
 async fn enrich_segments(deps: &GeneratorDeps, segments: &mut [EmotionSegment]) -> Result<()> {
     // 一次性取得当前角色的 TTS 运行时和语言配置，避免翻译与合成期间重复加锁。
@@ -551,44 +545,25 @@ async fn enrich_segments(deps: &GeneratorDeps, segments: &mut [EmotionSegment]) 
             .unwrap_or_default()
     };
 
-    let translated_for_opentts =
-        if let Some(target_lang) = translation_language(&tts_type, &voice_lang) {
-            // 选择目标语言就表示需要朗读该语言；即使旧实时翻译开关关闭，
-            // 或主模型已经输出日语副行，也要强制生成目标语言译文。
-            let translated = deps
-                .translator
-                .translate_segments_to(segments, true, target_lang)
-                .await?;
-            if tts_type == "opentts" {
-                translated
-            } else {
-                if !translated {
-                    // 显式选择的英语或韩语翻译失败时，不让 GPT-SoVITS
-                    // 误读主模型生成的日语副行。
-                    for segment in segments.iter_mut() {
-                        segment.japanese_text.clear();
-                    }
-                }
-                false
+    if let Some(target_lang) = translation_language(&tts_type, &voice_lang) {
+        // VoiceMaker 会根据当前语音语言直接选择译文字段，无需改动原文。
+        // 显式选择英语或韩语时，即使旧实时翻译开关关闭也要生成译文。
+        let translated = deps
+            .translator
+            .translate_segments_to(segments, true, target_lang)
+            .await?;
+        if !translated {
+            // 翻译不完整时清空译文，避免误读主模型生成的其他语言副行。
+            for segment in segments.iter_mut() {
+                segment.japanese_text.clear();
             }
-        } else if segments[0].japanese_text.is_empty() {
-            deps.translator.translate_segments(segments, false).await?;
-            false
-        } else {
-            false
-        };
+        }
+    } else if segments[0].japanese_text.is_empty() {
+        deps.translator.translate_segments(segments, false).await?;
+    }
 
     if let Some(vm) = voice_maker {
-        // VoiceMaker 的兼容结构只区分 following_text 与 japanese_text。
-        // OpenTTS 多语言翻译完成后临时交换两者，让自动语言识别接口朗读译文；
-        // 合成结束立即换回，前端仍显示中文原文，tts_text 则保留目标语言。
-        if translated_for_opentts {
-            swap_display_and_translated_text(segments);
-        }
         vm.generate_voice_files(segments).await;
-        if translated_for_opentts {
-            swap_display_and_translated_text(segments);
-        }
     }
 
     Ok(())
