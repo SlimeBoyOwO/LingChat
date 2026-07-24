@@ -5,6 +5,7 @@ pub mod asset;
 pub mod background;
 pub mod character;
 pub mod chat;
+pub mod font;
 pub mod game;
 pub mod music;
 pub mod pet;

@@ -7,14 +7,14 @@
 
   <!-- 全局通知组件（直接从 uiStore 读取状态） -->
   <!-- 与桌宠专用通知组件区分开 -->
-  <Notification v-if="route.path !== '/pet'"/>
+  <Notification v-if="route.path !== '/pet'" />
   <AchievementToast />
   <AdventureUnlockNotify />
   <AppDialog />
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { listen } from '@tauri-apps/api/event'
@@ -25,6 +25,7 @@ import AchievementToast from './components/ui/AchievementToast.vue'
 import AdventureUnlockNotify from './components/ui/AdventureUnlockNotify.vue'
 import AppDialog from './components/ui/AppDialog.vue'
 import { initUIStore } from './stores/modules/ui/ui'
+import { useSettingsStore } from './stores/modules/settings'
 import { useLlmProvidersStore } from './stores/modules/llm-providers'
 import { useAchievementStore } from './stores/modules/ui/achievement'
 import { useDialogStore } from './stores/modules/ui/dialog'
@@ -32,8 +33,9 @@ import { useSedentaryReminder } from './composables/useSedentaryReminder'
 import { useUpdater } from './composables/useUpdater'
 import { useCanDeliver } from './composables/useCanDeliver'
 import { useZoom } from './composables/useZoom'
+import { listSystemFonts } from './api/services/font'
 
-// 激活主动对话投放条件上报（仅在此处挂载一次）
+// ─── 激活主动对话投放条件上报（仅在此处挂载一次） ────────────
 useCanDeliver()
 
 // 激活 Ctrl+滚轮 UI 全局缩放
@@ -41,6 +43,22 @@ useZoom()
 
 // ─── 久坐提醒 ────────────────────────────────────────────────
 useSedentaryReminder()
+
+// ─── 全局字体 ────────────────────────────────────────────────
+// 把设置中的自定义字体名同步到 <html> 的 --font-app；
+// 为空时 base.css 中的回退栈 --font-sans 生效。初始菜单 / 加载页因自带
+// 显式 font-family 不会继承此变量，自动保持原有字体。
+const settingsStore = useSettingsStore()
+function applyFont(font?: string) {
+  // 留空 → 软件默认（base.css 的 --font-sans 原版字体栈）
+  document.documentElement.style.setProperty('--font-app', font ? `'${font}'` : '')
+}
+watch(() => settingsStore.text.fontFamily, applyFont, { immediate: true })
+
+// 提前预取系统字体列表：在应用初始化时即调用一次 Rust 枚举并入内存缓存，
+// 避免打开设置页时才触发 IPC 造成可感知的卡顿。注：忽略结果即可，
+// SettingsText 进入时直接命中 font.ts 的缓存。
+void listSystemFonts()
 
 // ─── 键盘处理 ────────────────────────────────────────────────
 
@@ -90,7 +108,8 @@ onMounted(async () => {
 
   // 供成就系统控制台测试用，在 window 对象中注册一些方法
   const achievementStore = useAchievementStore()
-  ;(window as any).requestAchievementUnlock = (data: any) => achievementStore.notifyBackendUnlock(data)
+  ;(window as any).requestAchievementUnlock = (data: any) =>
+    achievementStore.notifyBackendUnlock(data)
   ;(window as any).showAchievement = (data: any) => achievementStore.addAchievement(data)
   // 成就系统启动WebSocket监听
   achievementStore.listenForUnlocks()
@@ -107,23 +126,25 @@ onMounted(async () => {
   })
 
   // 2. 拦截窗口关闭请求（仅主窗口需要确认，其他窗口正常关闭）
-  unlistenCloseRequested = await getCurrentWindow().onCloseRequested(async (event: { preventDefault: () => void }) => {
-    if (getCurrentWindow().label !== 'main') return
+  unlistenCloseRequested = await getCurrentWindow().onCloseRequested(
+    async (event: { preventDefault: () => void }) => {
+      if (getCurrentWindow().label !== 'main') return
 
-    event.preventDefault()
+      event.preventDefault()
 
-    // 重置状态
-    saveCompleted = false
-    userConfirmedExit = false
+      // 重置状态
+      saveCompleted = false
+      userConfirmedExit = false
 
-    if (route.path === '/chat') {
-      const confirmed = await dialogStore.confirm('确定要退出程序吗？', '退出确认')
-      if (!confirmed) return // 用户取消，窗口保持打开
-    }
+      if (route.path === '/chat') {
+        const confirmed = await dialogStore.confirm('确定要退出程序吗？', '退出确认')
+        if (!confirmed) return // 用户取消，窗口保持打开
+      }
 
-    userConfirmedExit = true
-    tryExit()
-  })
+      userConfirmedExit = true
+      tryExit()
+    },
+  )
 })
 
 onUnmounted(() => {
@@ -149,11 +170,8 @@ html {
   padding: 0;
   width: 100%;
   height: 100%;
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   overflow: hidden;
   background: transparent;
-  /* 确保body背景透明，不遮挡我们的背景图 */
 }
 
 #app {

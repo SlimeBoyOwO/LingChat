@@ -2,8 +2,13 @@
 
 @theme {
   /* 字体配置 */
-  --font-sans: -apple-system, BlinkMacSystemFont, 'Microsoft YaHei', sans-serif;
-  --font-mono: -apple-system, BlinkMacSystemFont, 'Microsoft YaHei', sans-serif;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  /* 用户自定义字体名（为空走 --font-sans 默认栈）；运行时由设置覆盖 */
+  --font-app: '';
 
   /* 颜色配置 */
   --color-brand: var(--accent-color);
@@ -24,7 +29,7 @@
 
 @layer base {
   html {
-    font-family: var(--font-sans);
+    font-family: var(--font-app), var(--font-sans);
     font-size: clamp(12px, min(2.5vw, 2.5vh), 16px) !important;
   }
 }

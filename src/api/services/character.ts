@@ -122,9 +122,12 @@ export interface SelectClothesResponse {
   message: string
 }
 
-export const selectClothes = async (clothesName: string): Promise<SelectClothesResponse> => {
+export const selectClothes = async (
+  roleId: number,
+  clothesName: string,
+): Promise<SelectClothesResponse> => {
   try {
-    const data = await invoke('select_clothes', { clothesName })
+    const data = await invoke('select_clothes', { roleId, clothesName })
     console.log(data)
     return data as SelectClothesResponse
   } catch (error: any) {

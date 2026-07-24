@@ -423,6 +423,7 @@ pub fn run() {
             api::settings::switch_llm,
             api::settings::test_llm_provider,
             api::settings::list_llm_models,
+            api::font::list_system_fonts,
             api::character::get_character_list,
             api::character::get_role_info,
             api::character::get_role_settings,

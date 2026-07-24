@@ -454,6 +454,7 @@ pub fn get_avatar_file(
 #[tauri::command]
 pub async fn select_clothes(
     app: AppHandle,
+    role_id: i32,
     clothes_name: String,
 ) -> Result<serde_json::Value, String> {
     let state = app.state::<AppState>();
@@ -461,16 +462,9 @@ pub async fn select_clothes(
 
     let db = &state.db;
 
-    let main_role_id = service
-        .game_status
-        .lock()
-        .await
-        .main_role_id
-        .ok_or_else(|| "角色不存在".to_string())?;
-
     // 持久化该角色的服装选择（按角色 ID 存储）
     if let Ok(store) = app.store(config::STORE_FILE) {
-        let key = config::session::last_clothes_key(main_role_id);
+        let key = config::session::last_clothes_key(role_id);
         store.set(key, JsonValue::String(clothes_name.clone()));
         let _ = store.save();
     }
@@ -481,14 +475,14 @@ pub async fn select_clothes(
         .lock()
         .await
         .role_manager
-        .set_character_clothes_override(main_role_id, clothes_name.clone());
+        .set_character_clothes_override(role_id, clothes_name.clone());
 
     // 委托给 GameStatus 统一处理换装逻辑（去重 + 旁白生成）
     let switched = service
         .game_status
         .lock()
         .await
-        .on_character_change_clothes(db, main_role_id, &clothes_name)
+        .on_character_change_clothes(db, role_id, &clothes_name)
         .await
         .map_err(|e| format!("切换服装失败: {}", e))?;
 
