@@ -1,5 +1,5 @@
 <template>
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-5 p-2">
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 p-2">
     <!-- 大模型管理 -->
     <div class="cursor-pointer transition-all duration-300" @click="emit('navigate', 'llm')">
       <MenuItem title="大模型管理" size="large">
@@ -10,6 +10,19 @@
           配置和管理 AI 大模型提供商，添加、编辑、测试模型连接参数
         </p>
         <Button type="big" icon="advance" :icon_size="18"> 进入大模型管理界面 </Button>
+      </MenuItem>
+    </div>
+
+    <!-- 本地 TTS -->
+    <div class="cursor-pointer transition-all duration-300" @click="emit('navigate', 'tts')">
+      <MenuItem title="本地 TTS" size="large">
+        <template #header>
+          <AudioLines :size="20" />
+        </template>
+        <p class="text-white/50 text-sm leading-relaxed mb-3">
+          导入 DeBERTa 模型、分词器和人物语音，离线使用本地 TTS 引擎
+        </p>
+        <Button type="big" icon="mic" :icon_size="18"> 进入本地 TTS 界面 </Button>
       </MenuItem>
     </div>
 
@@ -29,11 +42,11 @@
 </template>
 
 <script setup lang="ts">
-import { Cpu, SlidersHorizontal } from 'lucide-vue-next'
+import { AudioLines, Cpu, SlidersHorizontal } from 'lucide-vue-next'
 import { MenuItem } from '../../ui'
 import { Button } from '../../base'
 
 const emit = defineEmits<{
-  navigate: [tab: 'llm' | 'other']
+  navigate: [tab: 'llm' | 'tts' | 'other']
 }>()
 </script>

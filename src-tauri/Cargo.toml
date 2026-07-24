@@ -1,6 +1,11 @@
 [package]
 name = "ling_chat"
 version = "0.4.6"
+# When more than one [[bin]] is in the package, `cargo run` without
+# --bin fails with "could not determine which binary to run" because
+# Tauri dev / start spawn `cargo run` directly. Pin the default to
+# the desktop app binary so the Tauri toolchain keeps working.
+default-run = "ling_chat"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"

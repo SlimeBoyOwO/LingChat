@@ -9,7 +9,6 @@
       <SettingsSave v-show="uiStore.currentSettingsTab === 'save'" />
       <SettingsText v-show="uiStore.currentSettingsTab === 'text'" />
       <SettingsSound v-show="uiStore.currentSettingsTab === 'sound'" />
-      <SettingsTts v-show="uiStore.currentSettingsTab === 'tts'" />
       <SettingsAdvance
         ref="settingsAdvanceRef"
         v-show="uiStore.currentSettingsTab === 'advance'"
@@ -31,7 +30,6 @@ import {
   SettingsText,
   SettingsSave,
   SettingsSound,
-  SettingsTts,
   SettingsHistory,
   SettingsAdvance,
   SettingsCharacter,

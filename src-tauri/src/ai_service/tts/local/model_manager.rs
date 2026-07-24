@@ -13,6 +13,10 @@ pub struct VoiceRecord {
     pub language: Option<String>,
     pub display_name: Option<String>,
     pub source: Option<String>,
+    /// Whether the voice has its style vectors available alongside the
+    /// model. `sbv2` files embed them internally (always true); `onnx`
+    /// voices need a sibling `style_vectors.json`.
+    pub has_style_vectors: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -51,6 +55,8 @@ pub fn list_voices(
         } else {
             continue;
         };
+        let style_path = path.join("style_vectors.json");
+        let has_style_vectors = kind == "sbv2" || style_path.exists();
         let size = std::fs::metadata(&primary).map(|m| m.len()).unwrap_or(0);
         let catalog_match = super::registry::find(&voice_id);
         out.push(VoiceRecord {
@@ -61,6 +67,7 @@ pub fn list_voices(
             language: catalog_match.as_ref().map(|a| a.language.clone()),
             display_name: catalog_match.as_ref().map(|a| a.display_name.clone()),
             source: catalog_match.as_ref().map(|a| a.source.clone()),
+            has_style_vectors,
         });
     }
     Ok(out)

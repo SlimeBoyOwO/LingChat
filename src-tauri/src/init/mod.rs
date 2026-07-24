@@ -32,7 +32,10 @@ pub async fn initialize(
     local_tts_engine: Option<Arc<LocalTtsEngine>>,
     local_tts_paths: Option<LocalTtsPaths>,
 ) -> Result<(DatabaseConnection, SharedAIService, ChatComponents)> {
-    static_copy::init_data_dir(&app.handle());
+    // init_data_dir is invoked earlier from the Tauri setup closure
+    // (see lib.rs) so the cached data directory is available to
+    // LocalTtsPaths::resolve before this function runs. Calling it again
+    // here would panic on the OnceLock.
     static_copy::seed_data_dir(&app.handle())?;
     let data_dir = static_copy::get_data_dir().clone();
 

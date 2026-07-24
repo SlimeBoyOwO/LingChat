@@ -1,13 +1,16 @@
-﻿// Filesystem layout for local TTS assets.
+// Filesystem layout for local TTS assets.
 //
-// - `<app_data>/models/tts-local/`         root
-// - `<app_data>/models/tts-local/assets/`  DeBerta + tokenizer shared assets
-// - `<app_data>/models/tts-local/voices/`  one subdir per voice
-// - `<app_cache>/tts-local-cache/`         temp (decompression, downloads)
+// - `<data_root>/models/tts-local/`         root
+// - `<data_root>/models/tts-local/assets/`  DeBerta + tokenizer shared assets
+// - `<data_root>/models/tts-local/voices/`  one subdir per voice
+// - `<app_cache>/tts-local-cache/`          temp (decompression, downloads)
 //
-// All resolution goes through `AppHandle::path()`. Android sandbox mapping is
-// handled by tauri-plugin-android-fs (see `crate::init::static_copy`).
-
+// `data_root` is resolved by `crate::init::static_copy::get_data_dir()`:
+// - Desktop debug:    `<project_root>/data/`
+// - Desktop release:  `<exe_dir>/data/` (portable build)
+// - Android:          app external storage (`/storage/emulated/0/Android/data/<pkg>/files/`)
+// - iOS:              app sandbox
+//
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
@@ -32,12 +35,8 @@ pub struct VoiceInstallInfo {
 
 impl LocalTtsPaths {
     pub fn resolve(app: &AppHandle) -> std::result::Result<Self, String> {
-        let root = app
-            .path()
-            .app_data_dir()
-            .map_err(|e| format!("app_data_dir: {e}"))?
-            .join("models")
-            .join("tts-local");
+        let data_root = resolve_models_root(app)?;
+        let root = data_root.join("models").join("tts-local");
         let assets = root.join("assets");
         let voices = root.join("voices");
         let cache = app
@@ -62,6 +61,13 @@ impl LocalTtsPaths {
 
     pub fn voice_dir(&self, voice_id: &str) -> PathBuf {
         self.voices.join(voice_id)
+    }
+
+    /// Path to the optional `style_vectors.json` that pairs with
+    /// `voices/<voice_id>/model.onnx`. `.sbv2` files embed style vectors
+    /// internally so this file is only required for the separate-file form.
+    pub fn style_vectors_path(&self, voice_id: &str) -> PathBuf {
+        self.voices.join(voice_id).join("style_vectors.json")
     }
 
     pub fn installed_voices(&self) -> std::result::Result<Vec<VoiceInstallInfo>, String> {
@@ -98,6 +104,36 @@ impl LocalTtsPaths {
             }
             _ => false,
         }
+    }
+}
+
+/// Resolve the durable data root for local TTS assets.
+///
+/// On Android the root is the app's external files dir so users can sideload
+/// voice models via `adb push` without enabling debuggable builds. Every other
+/// platform delegates to `crate::init::static_copy::get_data_dir()`, which on
+/// desktop resolves to `<project_root>/data/` (debug) or `<exe_dir>/data/`
+/// (release), and to the iOS sandbox on iOS.
+fn resolve_models_root(_app: &AppHandle) -> std::result::Result<PathBuf, String> {
+    // Android keeps the external app-scoped storage so users can still
+    // sideload models via `adb push` without enabling debuggable builds.
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_android_fs::{AndroidFsExt, AppDir};
+        return _app
+            .android_fs()
+            .app_storage()
+            .resolve_path(None, AppDir::Data)
+            .map_err(|e| format!("android external files dir: {e}"));
+    }
+
+    // Every other platform reuses the same `data` directory the rest of
+    // the app writes to (see `crate::init::static_copy`). On desktop that
+    // puts models next to the executable (release) or under the project
+    // (debug) instead of inside `%APPDATA%`.
+    #[cfg(not(target_os = "android"))]
+    {
+        Ok(crate::init::static_copy::get_data_dir().clone())
     }
 }
 

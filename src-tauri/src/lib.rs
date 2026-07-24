@@ -106,6 +106,11 @@ pub fn run() {
     builder.setup(|app| {
             utils::log_bridge::set_app_handle(app.handle().clone());
 
+            // Initialize the cached data directory eagerly so any code that needs
+            // it (e.g. LocalTtsPaths::resolve, which delegates to get_data_dir)
+            // is safe to call here, before init::initialize runs.
+            init::static_copy::init_data_dir(&app.handle());
+
             app.manage(api::pet::HitTestState::default());
             app.manage(resource_sync::ResourceSyncState::default());
             app.manage(lan_sync::LanSyncState::default());
@@ -419,6 +424,7 @@ pub fn run() {
             ai_service::tts::local::commands::tts_local_import_from_path,
             ai_service::tts::local::commands::tts_local_download,
             ai_service::tts::local::commands::tts_local_delete_voice,
+            ai_service::tts::local::commands::tts_local_import_style_vectors,
             ai_service::tts::local::commands::tts_local_synthesize_preview,
         ])
         .run(tauri::generate_context!())

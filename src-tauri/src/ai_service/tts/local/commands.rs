@@ -223,6 +223,69 @@ pub async fn tts_local_delete_voice(
     model_manager::delete_voice(&state.paths, &voice_id)
 }
 
+/// Import a `style_vectors.json` file into an existing voice directory.
+///
+/// Required when the voice is `model.onnx` form (vs the all-in-one `.sbv2`
+/// which embeds style vectors internally). The target voice directory must
+/// already exist; we only copy the JSON file alongside the model.
+#[tauri::command]
+pub async fn tts_local_import_style_vectors(
+    app: AppHandle,
+    state: State<'_, LocalTtsState>,
+    voice_id: String,
+    path: String,
+) -> Result<ImportResult, String> {
+    if voice_id.is_empty() || voice_id.len() > 64 {
+        return Err("voice id length out of range".into());
+    }
+    if !voice_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err("voice id must be kebab-case ASCII".into());
+    }
+
+    let voice_dir = state.paths.voice_dir(&voice_id);
+    if !voice_dir.exists() {
+        return Err(format!(
+            "voice {voice_id} not found; import the .onnx or .sbv2 model first"
+        ));
+    }
+    // Refuse to install style vectors for a voice that already has the
+    // all-in-one form (.sbv2) - the embedded style vectors would be ignored.
+    if voice_dir.join("model.sbv2").exists() {
+        return Err(format!(
+            "voice {voice_id} is .sbv2 form; style vectors are embedded and cannot be replaced"
+        ));
+    }
+
+    let (src, cleanup_after_import) =
+        crate::api::role_archive::prepare_file_import_source(&app, &path).await?;
+    let result: std::result::Result<ImportResult, String> = async {
+        if !src.exists() {
+            return Err(format!("path not found: {path}"));
+        }
+        let destination = state.paths.style_vectors_path(&voice_id);
+        std::fs::copy(&src, &destination)
+            .map_err(|e| format!("copy style_vectors.json: {e}"))?;
+        let bytes = std::fs::metadata(&destination).map(|m| m.len()).unwrap_or(0);
+        let _ = app.emit("tts://install-complete", &voice_id);
+        Ok(ImportResult {
+            asset_id: voice_id.clone(),
+            voice_id: Some(voice_id),
+            path: destination.to_string_lossy().into_owned(),
+            bytes,
+            message: "style vectors imported".into(),
+        })
+    }
+    .await;
+
+    if cleanup_after_import {
+        let _ = tokio::fs::remove_file(&src).await;
+    }
+    result
+}
+
 #[tauri::command]
 pub async fn tts_local_synthesize_preview(
     state: State<'_, LocalTtsState>,

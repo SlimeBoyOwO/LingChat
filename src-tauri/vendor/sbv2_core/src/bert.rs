@@ -14,7 +14,9 @@ pub fn predict(
             "attention_mask" => TensorRef::from_array_view((vec![1, attention_masks.len() as i64], attention_masks.as_slice()))?,
         }
     )?;
-    let output = outputs["output"]
+    // DeBERTa exports use different names for the same single feature output.
+    // Read it positionally so compatible models are not tied to one exporter.
+    let output = outputs[0]
         .try_extract_array::<f32>()?
         .into_dimensionality::<Ix2>()?
         .to_owned();
