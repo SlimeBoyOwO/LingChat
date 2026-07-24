@@ -171,7 +171,7 @@
                 <div
                   :class="[
                     'relative mb-2 aspect-1/2 overflow-hidden rounded-xl border-2 transition-all',
-                    isClothesSelected(cloth.title)
+                    isClothesSelected(id, cloth.title)
                       ? 'border-indigo-400 shadow-[0_0_15px_rgba(129,140,248,0.5)]'
                       : 'border-white/10',
                   ]"
@@ -181,7 +181,7 @@
                     class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                   />
                   <div
-                    v-if="isClothesSelected(cloth.title)"
+                    v-if="isClothesSelected(id, cloth.title)"
                     class="absolute top-1 right-1 rounded-full bg-indigo-500 p-1"
                   >
                     <Check class="h-4 w-4"></Check>
@@ -258,7 +258,8 @@ const dialogStore = useDialogStore()
 
 // 逻辑函数
 const isSelected = () => gameStore.mainRoleId === props.id
-const isClothesSelected = (clothes_name: string) => gameStore.mainRole?.clothesName === clothes_name
+const isClothesSelected = (role_id: number, clothes_name: string) =>
+  gameStore.getGameRole(role_id)?.clothesName === clothes_name
 
 const showDetailModal = () => (isDetailVisible.value = true)
 const closeDetailModal = () => (isDetailVisible.value = false)
