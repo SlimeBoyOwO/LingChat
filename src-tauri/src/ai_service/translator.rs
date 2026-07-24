@@ -1,8 +1,8 @@
-//! 中文台词翻译器。对标 Python `ling_chat.core.ai_service.translator.Translator`。
+//! 中文 → 日文翻译器。对标 Python `ling_chat.core.ai_service.translator.Translator`。
 //!
 //! 输入/输出结构：输入是 `parse_and_classify_emotional_segments` 产出的若干
 //! [`crate::ai_service::message_system::processor::EmotionSegment`]，把每个 segment 的
-//! `following_text`（中文）翻译后写回到兼容字段 `japanese_text`。
+//! `following_text`（中文）翻译后写回到 `japanese_text` 字段。
 //!
 //! 与 Python 版差异：
 //! - 不再和 VoiceMaker 直接耦合（TTS 子系统尚未移植）。流式分支 / 非流式分支一律
@@ -15,14 +15,9 @@ use crate::ai_service::llm::{slot_snapshot, LlmSlot};
 use crate::ai_service::message_system::processor::EmotionSegment;
 use crate::ai_service::types::LlmMessage;
 
-const JAPANESE_TRANSLATOR_SYSTEM_PROMPT: &str = "\n            你是一个二次元角色中文台词翻译师，任务是翻译二次元台词对话，\n            将中文翻译成日语，允许意译。确保你的翻译符合二次元的发言习惯，而不是生硬的直译，保持流畅自然生动。\n            除了翻译内容，你不提供额外的解释，并且你的翻译句子必须包裹在<>符号内，否则会导致严重错误。\n            比如，原文内容为：\n            <你好呀莱姆，今天过的怎么样呀？><哎？有点不高兴吗？没关系~>\n            那么你的回复内容为：\n            <はいはい、レムちゃん、今日はどうだった？><えっ？なんだかご機嫌ななめ？大丈夫だよ～>\n            ";
-
 fn translator_system_prompt(target_lang: &str) -> Option<String> {
-    if target_lang == "ja" {
-        return Some(JAPANESE_TRANSLATOR_SYSTEM_PROMPT.to_string());
-    }
-
     let (language_name, extra_instruction) = match target_lang {
+        "ja" => ("日语", "使用自然、口语化且符合二次元角色语气的日语表达。"),
         "en" => ("英语", "使用自然、口语化的英语表达。"),
         "ko" => ("韩语", "使用自然、口语化且符合角色语气的韩语表达。"),
         _ => return None,
@@ -66,9 +61,7 @@ impl Translator {
             .map(|_| ())
     }
 
-    /// 将中文台词翻译成指定语言。
-    ///
-    /// 返回是否为所有片段都取得了译文；OpenTTS 使用它判断是否可以安全切换朗读文本。
+    /// 将中文台词翻译成指定语言，并返回是否取得了全部片段的译文。
     pub async fn translate_segments_to(
         &self,
         segments: &mut [EmotionSegment],

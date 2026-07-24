@@ -516,51 +516,102 @@ fn parse_segments(deps: &GeneratorDeps, sentence: &str) -> Vec<EmotionSegment> {
     segments
 }
 
-fn translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static str> {
-    if !matches!(tts_type, "opentts" | "gsv") {
-        return None;
+#[derive(Clone, Copy)]
+enum IncompleteTranslationPolicy {
+    KeepTranslated,
+    ClearTranslated,
+}
+
+#[derive(Clone, Copy)]
+struct TranslationPipeline {
+    target_lang: &'static str,
+    force: bool,
+    incomplete_policy: IncompleteTranslationPolicy,
+}
+
+impl Default for TranslationPipeline {
+    fn default() -> Self {
+        Self {
+            target_lang: "ja",
+            force: false,
+            incomplete_policy: IncompleteTranslationPolicy::KeepTranslated,
+        }
     }
-    match voice_lang {
-        "en" => Some("en"),
-        "ko" => Some("ko"),
-        _ => None,
+}
+
+impl TranslationPipeline {
+    fn route(tts_type: &str, voice_lang: &str) -> Self {
+        match (tts_type, voice_lang) {
+            ("opentts", "en") => Self::forced("en", IncompleteTranslationPolicy::KeepTranslated),
+            ("opentts", "ko") => Self::forced("ko", IncompleteTranslationPolicy::KeepTranslated),
+            ("gsv", "en") => Self::forced("en", IncompleteTranslationPolicy::ClearTranslated),
+            ("gsv", "ko") => Self::forced("ko", IncompleteTranslationPolicy::ClearTranslated),
+            _ => Self::default(),
+        }
+    }
+
+    fn forced(target_lang: &'static str, incomplete_policy: IncompleteTranslationPolicy) -> Self {
+        Self {
+            target_lang,
+            force: true,
+            incomplete_policy,
+        }
+    }
+
+    async fn run(self, translator: &Translator, segments: &mut [EmotionSegment]) -> Result<()> {
+        if !self.force
+            && segments
+                .first()
+                .is_some_and(|segment| !segment.japanese_text.is_empty())
+        {
+            return Ok(());
+        }
+
+        if self.force {
+            for segment in segments.iter_mut() {
+                segment.japanese_text.clear();
+            }
+        }
+
+        let complete = translator
+            .translate_segments_to(segments, self.force, self.target_lang)
+            .await?;
+        if !complete
+            && matches!(
+                self.incomplete_policy,
+                IncompleteTranslationPolicy::ClearTranslated
+            )
+        {
+            for segment in segments.iter_mut() {
+                segment.japanese_text.clear();
+            }
+        }
+        Ok(())
     }
 }
 
 /// Step B: 翻译与语音生成。
 async fn enrich_segments(deps: &GeneratorDeps, segments: &mut [EmotionSegment]) -> Result<()> {
     // 一次性取得当前角色的 TTS 运行时和语言配置，避免翻译与合成期间重复加锁。
-    let (voice_maker, tts_type, voice_lang) = {
+    let (voice_maker, translation_pipeline) = {
         let gs = deps.game_status.lock().await;
         gs.current_role_id
             .and_then(|rid| {
                 gs.role_manager.get_loaded(rid).map(|role| {
+                    let tts_type = role.settings.tts_type.as_deref().unwrap_or_default();
+                    let voice_lang = role.settings.voice_lang.as_deref().unwrap_or_default();
                     (
                         role.voice_maker.clone(),
-                        role.settings.tts_type.clone().unwrap_or_default(),
-                        role.settings.voice_lang.clone().unwrap_or_default(),
+                        TranslationPipeline::route(tts_type, voice_lang),
                     )
                 })
             })
             .unwrap_or_default()
     };
 
-    if let Some(target_lang) = translation_language(&tts_type, &voice_lang) {
-        // VoiceMaker 会根据当前语音语言直接选择译文字段，无需改动原文。
-        // 显式选择英语或韩语时，即使旧实时翻译开关关闭也要生成译文。
-        let translated = deps
-            .translator
-            .translate_segments_to(segments, true, target_lang)
-            .await?;
-        if !translated {
-            // 翻译不完整时清空译文，避免误读主模型生成的其他语言副行。
-            for segment in segments.iter_mut() {
-                segment.japanese_text.clear();
-            }
-        }
-    } else if segments[0].japanese_text.is_empty() {
-        deps.translator.translate_segments(segments, false).await?;
-    }
+    translation_pipeline
+        .run(deps.translator.as_ref(), segments)
+        .await?;
 
     if let Some(vm) = voice_maker {
         vm.generate_voice_files(segments).await;
