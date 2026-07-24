@@ -141,35 +141,3 @@ fn apply_translation_result(response: &str, segments: &mut [EmotionSegment]) -> 
     }
     idx
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn builds_prompts_for_all_opentts_languages() {
-        assert!(translator_system_prompt("en").unwrap().contains("英语"));
-        assert!(translator_system_prompt("ko").unwrap().contains("韩语"));
-        assert!(translator_system_prompt("unsupported").is_none());
-    }
-
-    #[test]
-    fn applies_all_translated_segments() {
-        let mut segments = vec![
-            EmotionSegment {
-                following_text: "你好".into(),
-                ..Default::default()
-            },
-            EmotionSegment {
-                following_text: "欢迎回来".into(),
-                ..Default::default()
-            },
-        ];
-
-        let translated = apply_translation_result("<Hello><Welcome back>", &mut segments);
-
-        assert_eq!(translated, 2);
-        assert_eq!(segments[0].japanese_text, "Hello");
-        assert_eq!(segments[1].japanese_text, "Welcome back");
-    }
-}

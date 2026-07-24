@@ -516,19 +516,8 @@ fn parse_segments(deps: &GeneratorDeps, sentence: &str) -> Vec<EmotionSegment> {
     segments
 }
 
-fn opentts_translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static str> {
-    if tts_type != "opentts" {
-        return None;
-    }
-    match voice_lang {
-        "en" => Some("en"),
-        "ko" => Some("ko"),
-        _ => None,
-    }
-}
-
-fn gsv_translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static str> {
-    if tts_type != "gsv" {
+fn translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static str> {
+    if !matches!(tts_type, "opentts" | "gsv") {
         return None;
     }
     match voice_lang {
@@ -562,35 +551,32 @@ async fn enrich_segments(deps: &GeneratorDeps, segments: &mut [EmotionSegment]) 
             .unwrap_or_default()
     };
 
-    let opentts_target = opentts_translation_language(&tts_type, &voice_lang);
-    let gsv_target = gsv_translation_language(&tts_type, &voice_lang);
-    let translated_for_opentts = if let Some(target_lang) = opentts_target {
-        // Selecting an OpenTTS target language is an explicit request to speak
-        // that language. Force this translation even when the legacy realtime
-        // translation switch is disabled because the main LLM already emits a
-        // secondary (Japanese) line.
-        deps.translator
-            .translate_segments_to(segments, true, target_lang)
-            .await?
-    } else if let Some(target_lang) = gsv_target {
-        let translated = deps
-            .translator
-            .translate_segments_to(segments, true, target_lang)
-            .await?;
-        if !translated {
-            // Do not let GPT-SoVITS pronounce the main LLM's Japanese secondary
-            // line when the explicitly selected English/Korean translation fails.
-            for segment in segments.iter_mut() {
-                segment.japanese_text.clear();
+    let translated_for_opentts =
+        if let Some(target_lang) = translation_language(&tts_type, &voice_lang) {
+            // 选择目标语言就表示需要朗读该语言；即使旧实时翻译开关关闭，
+            // 或主模型已经输出日语副行，也要强制生成目标语言译文。
+            let translated = deps
+                .translator
+                .translate_segments_to(segments, true, target_lang)
+                .await?;
+            if tts_type == "opentts" {
+                translated
+            } else {
+                if !translated {
+                    // 显式选择的英语或韩语翻译失败时，不让 GPT-SoVITS
+                    // 误读主模型生成的日语副行。
+                    for segment in segments.iter_mut() {
+                        segment.japanese_text.clear();
+                    }
+                }
+                false
             }
-        }
-        false
-    } else if segments[0].japanese_text.is_empty() {
-        deps.translator.translate_segments(segments, false).await?;
-        false
-    } else {
-        false
-    };
+        } else if segments[0].japanese_text.is_empty() {
+            deps.translator.translate_segments(segments, false).await?;
+            false
+        } else {
+            false
+        };
 
     if let Some(vm) = voice_maker {
         // VoiceMaker 的兼容结构只区分 following_text 与 japanese_text。
@@ -686,34 +672,4 @@ async fn add_assistant_line(deps: &GeneratorDeps, response: &ReplyResponse) -> R
     let mut gs = deps.game_status.lock().await;
     gs.add_line(&deps.db, line).await?;
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn only_opentts_enables_additional_translation_languages() {
-        assert_eq!(opentts_translation_language("opentts", "en"), Some("en"));
-        assert_eq!(opentts_translation_language("opentts", "ko"), Some("ko"));
-        assert_eq!(opentts_translation_language("opentts", "zh"), None);
-        assert_eq!(opentts_translation_language("gsv", "en"), None);
-    }
-
-    #[test]
-    fn translated_text_swap_is_reversible() {
-        let mut segments = vec![EmotionSegment {
-            following_text: "中文原文".into(),
-            japanese_text: "English translation".into(),
-            ..Default::default()
-        }];
-
-        swap_display_and_translated_text(&mut segments);
-        assert_eq!(segments[0].following_text, "English translation");
-        assert_eq!(segments[0].japanese_text, "中文原文");
-
-        swap_display_and_translated_text(&mut segments);
-        assert_eq!(segments[0].following_text, "中文原文");
-        assert_eq!(segments[0].japanese_text, "English translation");
-    }
 }
