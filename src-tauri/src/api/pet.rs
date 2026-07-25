@@ -49,18 +49,18 @@ pub fn set_pet_mode(
         if enable {
             let scale_val = scale.unwrap_or(1.0);
 
-            // Calculate sizes based on pet dimensions: BASE_AVATAR_SIZE = 240, CHAT_BASE_H = 45, DIALOG_BASE_H = 75
-            // But let's check: GameRoleAvatar frame size is Math.round(210 * scale). Let's use standard pet size:
-            // Width: 240 * scale, Height: (240 + 75 + 45) * scale = 360 * scale.
+            // 窗口尺寸基于桌宠组件尺寸计算：BASE_AVATAR_SIZE = 240, CHAT_BASE_H = 45, DIALOG_MAX_BASE = 200
+            // GameRoleAvatar 头像框: Math.round(210 * scale)，使用标准桌宠尺寸:
+            // Width: 240 * scale, Height: (240 + 200 + 45) * scale = 485 * scale
             let width = (240.0 * scale_val) as u32;
-            let height = ((240.0 + 75.0 + 45.0) * scale_val) as u32;
+            let height = ((240.0 + 200.0 + 45.0) * scale_val) as u32;
 
             let _ = window.set_skip_taskbar(true);
             let _ = window.set_always_on_top(true);
             let _ = window.set_resizable(false);
             let _ = window.set_decorations(false);
-            let _ = window.set_size(LogicalSize::new(width, height));
             let _ = window.set_maximizable(false);
+            let _ = window.set_size(LogicalSize::new(width, height));
         } else {
             // Restore normal window
             let _ = window.set_maximizable(true);

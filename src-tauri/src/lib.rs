@@ -82,7 +82,7 @@ pub struct InnerAppState {
 /// init::initialize 完成后用真实值填充。`ArcSwap` 提供 lock-free 读写,
 /// `Deref` 让所有原有访问代码保持不变。
 pub struct AppState {
-    inner: std::sync::OnceLock<&'static InnerAppState>,
+    inner: std::sync::OnceLock<InnerAppState>,
 }
 
 impl AppState {
@@ -94,21 +94,43 @@ impl AppState {
 
     /// 填充 AppState。只能调用一次。
     pub fn fill(&self, inner: InnerAppState) {
-        let boxed: &'static InnerAppState = Box::leak(Box::new(inner));
-        if self.inner.set(boxed).is_err() {
+        if self.inner.set(inner).is_err() {
             panic!("AppState already filled (fill() must be called exactly once)");
         }
     }
+
+    /// 直接返回内部数据引用，用于 IDE 补全。
+    ///
+    /// rust-analyzer 无法解析 `State<AppState>` → `AppState` → `InnerAppState`
+    /// 的双重 Deref 链，字段补全会失效。此方法将第二步 Deref 替换为方法调用，
+    /// 通过 `state.data().ai_service` 即可正常触发补全。
+    pub fn data(&self) -> &InnerAppState {
+        self.inner
+            .get()
+            .expect("AppState accessed before initialization")
+    }
 }
 
+/// 桌面端：简单 Deref，rust-analyzer 可以正确解析。
+/// Android 上的竞态窗口极小（manage → fill 只隔几行代码），桌面端从不触发。
+#[cfg(not(target_os = "android"))]
 impl std::ops::Deref for AppState {
     type Target = InnerAppState;
     fn deref(&self) -> &Self::Target {
-        // **Android 修复**: 前端 invoke 命令可能在 init::initialize 完成前就
-        // dispatch 到 Tauri IPC runtime worker。此时 AppState 已经 manage 了
-        // (空壳),但 InnerAppState 还没 fill。如果直接 panic,worker 线程整个
-        // 进程都会被拖死 — 但因为 Deref 返回的是 `&'static InnerAppState`,
-        // 一旦 fill 完成,所有访问自动安全。所以这里用 loop 自旋等待 fill。
+        self.inner
+            .get()
+            .expect("AppState accessed before initialization")
+    }
+}
+
+/// Android：spin-loop 等待 fill 完成。
+/// Tauri 在 Android 上会在 setup 闭包执行前就创建 webview 窗口，
+/// 前端 JS 一旦加载就会立刻 invoke 命令。如果此时 panic，IPC worker
+/// 线程会把整个进程拖死，所以必须自旋等待而非直接 panic。
+#[cfg(target_os = "android")]
+impl std::ops::Deref for AppState {
+    type Target = InnerAppState;
+    fn deref(&self) -> &Self::Target {
         loop {
             if let Some(inner) = self.inner.get() {
                 return inner;
@@ -117,7 +139,6 @@ impl std::ops::Deref for AppState {
         }
     }
 }
-
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -174,13 +195,12 @@ pub fn run() {
             app.manage(utils::cpu_perf::CpuDetectionCache::new());
             app.manage(api::role_archive::RoleArchiveState::default());
 
-            
             // Android 修复: Tauri 在 setup 闭包执行前已创建 webview 窗口,前端 invoke
             // 命令会在 IPC runtime worker 上立即 dispatch;如果 AppState 还没 manage
             // 就会 panic "state() called before manage()"。所以 setup 一开始就 manage
             // 一个空壳 AppState,init::initialize 完成后用真实值 fill。
             app.manage(AppState::empty());
-let rt = tokio::runtime::Runtime::new()?;
+            let rt = tokio::runtime::Runtime::new()?;
             let (db, ai_service, chat) = rt.block_on(init::initialize(app))?;
 
             // 初始化文件日志（从设置读取开关和保留天数）
@@ -272,13 +292,12 @@ let rt = tokio::runtime::Runtime::new()?;
             ));
 
             // 构建上帝 Agent（多人对话编排器）—— 使用独立槽位以支持热切换
-            let god_agent = resolve_god_agent_provider(&app.handle())
-                .map(|llm| {
-                    let config =
-                        ai_service::god_agent::config::GodAgentConfig::load(&app.handle());
-                    let slot: LlmSlot = std::sync::Arc::new(tokio::sync::RwLock::new(Some(Arc::new(llm))));
-                    Arc::new(GodAgentCore::new(slot, config))
-                });
+            let god_agent = resolve_god_agent_provider(&app.handle()).map(|llm| {
+                let config = ai_service::god_agent::config::GodAgentConfig::load(&app.handle());
+                let slot: LlmSlot =
+                    std::sync::Arc::new(tokio::sync::RwLock::new(Some(Arc::new(llm))));
+                Arc::new(GodAgentCore::new(slot, config))
+            });
 
             {
                 let state = app.state::<AppState>();
@@ -404,6 +423,7 @@ let rt = tokio::runtime::Runtime::new()?;
             api::settings::switch_llm,
             api::settings::test_llm_provider,
             api::settings::list_llm_models,
+            api::font::list_system_fonts,
             api::character::get_character_list,
             api::character::get_role_info,
             api::character::get_role_settings,
@@ -426,9 +446,11 @@ let rt = tokio::runtime::Runtime::new()?;
             api::music::get_music_file,
             api::music::upload_music,
             api::music::delete_music,
+            api::music::save_bgm_state,
             api::ambient::get_ambient_list,
             api::ambient::upload_ambient,
             api::ambient::delete_ambient,
+            api::ambient::save_ambient_state,
             api::asset::get_asset_base64,
             api::asset::get_voice_audio,
             api::game::init_game,

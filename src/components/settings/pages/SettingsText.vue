@@ -1,6 +1,34 @@
 <template>
   <div class="settings-text-container">
     <MenuPage>
+      <MenuItem title="界面字体">
+        <template #header>
+          <Type :size="20" />
+        </template>
+        <div class="flex items-stretch gap-2 w-full">
+          <select
+            v-model="fontFamily"
+            class="font-select"
+            @change="onFontChange"
+            title="选择界面显示字体"
+          >
+            <option value="">软件默认</option>
+            <option v-if="fontsLoading" value="" disabled>加载字体中…</option>
+            <option
+              v-for="f in systemFonts"
+              :key="f"
+              :value="f"
+              :style="{ fontFamily: `'${f}'` }"
+            >
+              {{ f }}
+            </option>
+          </select>
+          <div class="font-demo" :style="{ fontFamily: demoFontFamily }">
+            字体演示 Font Sample 123
+          </div>
+        </div>
+      </MenuItem>
+
       <MenuItem title="文字显示速度">
         <template #header>
           <Zap :size="20" />
@@ -302,6 +330,7 @@ import {
   HardDrive,
   Trash2,
   BookOpen,
+  Type,
 } from 'lucide-vue-next'
 import { reactivateTTS, clearTtsCache } from '@/api/services/game-info'
 import { invoke } from '@tauri-apps/api/core'
@@ -309,6 +338,7 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { useUpdater } from '@/composables/useUpdater'
 import { useLanSync } from '@/composables/useLanSync'
 import { getVersion } from '@tauri-apps/api/app'
+import { listSystemFonts } from '@/api/services/font'
 import ResourceSyncDialog from '@/components/ResourceSyncDialog.vue'
 import LanSyncDialog from '@/components/LanSyncDialog.vue'
 import type { DialogView } from '@/types/lanSync'
@@ -562,6 +592,8 @@ onMounted(() => {
   loadConfig()
   checkTtsCache()
   loadLastTtsCleanup()
+  // 加载本机已装字体族列表（Rust 侧枚举，单次缓存）
+  void loadSystemFonts()
   // 每 30 秒自动刷新一次 TTS 缓存信息，频率适中不浪费资源
   ttsCacheRefreshTimer = setInterval(() => {
     checkTtsCache()
@@ -604,6 +636,40 @@ const textSpeed = computed({
   get: () => settingsStore.textSpeed,
   set: (val: number) => settingsStore.update('text.speed', val),
 })
+
+// ─── 界面字体选择 ───────────────────────────────────────────
+// 字体列表由 Rust 侧 (`api::font::list_system_fonts`) 枚举本机已装字体族，
+// 由 App.vue 在应用初始化时已预取并内存缓存；此处进入设置页直接读取，
+// 避免打开页面时触发 IPC 的可感知卡顿。
+const systemFonts = ref<string[]>([])
+const fontsLoading = ref(false)
+const fontFamily = computed({
+  get: () => settingsStore.text.fontFamily ?? '',
+  set: (val: string) => settingsStore.update('text.fontFamily', val),
+})
+// 右侧字体演示：软件默认时复用原版字体栈以保证预览准确
+const SOFTWARE_DEFAULT_STACK =
+  "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif"
+const demoFontFamily = computed(() =>
+  fontFamily.value ? `'${fontFamily.value}'` : SOFTWARE_DEFAULT_STACK,
+)
+function onFontChange() {
+  // fontFamily 是 computed setter，已写入 store；App.vue 的 watcher 会应用
+}
+async function loadSystemFonts() {
+  // 列表通常已在初始化时由 App.vue 预取入缓存，这里几乎立即返回；
+  // 若预取尚未完成会等待其结束，仅极少数情况下有一次少量等待。
+  fontsLoading.value = true
+  try {
+    const list = await listSystemFonts()
+    // 中文优先：把含中文字符的族名排在前
+    const zh = list.filter((n) => /[一-鿿぀-ヿ]/.test(n))
+    const rest = list.filter((n) => !zh.includes(n))
+    systemFonts.value = [...zh, ...rest]
+  } finally {
+    fontsLoading.value = false
+  }
+}
 
 // 文字样本速度（响应式）
 const textSpeedSample = ref<number>(settingsStore.textSpeed)
@@ -706,5 +772,37 @@ function formatBytes(bytes: number): string {
   position: relative;
   width: 100%;
   height: 100%;
+}
+
+.font-select,
+.font-demo {
+  background: rgba(30, 41, 59, 0.6);
+  color: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.875rem;
+  outline: none;
+}
+.font-select {
+  flex: 0 0 auto;
+  min-width: 8rem;
+  max-width: 12rem;
+  cursor: pointer;
+}
+.font-demo {
+  flex: 1 1 0;
+  min-width: 0;
+  line-height: 1.5rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.font-select:focus {
+  border-color: var(--accent-color);
+}
+.font-select option {
+  background: #1e293b;
+  color: #f8fafc;
 }
 </style>

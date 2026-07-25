@@ -1,16 +1,19 @@
 <template>
   <div
-    class="relative flex items-center p-4 rounded-2xl transition-all duration-300 group bg-white/10 backdrop-blur-xl border border-white/20 hover:border-white/40 hover:-translate-y-1 hover:shadow-2xl hover:shadow-indigo-500/20"
+    class="group relative flex items-center rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-white/40 hover:shadow-2xl hover:shadow-indigo-500/20"
   >
     <div
-      class="absolute -top-2 -left-2 w-6 h-6 rounded-full flex items-center justify-center text-brand shadow-md transform -rotate-18"
+      class="text-brand absolute -top-2 -left-2 flex h-6 w-6 -rotate-18 transform items-center justify-center rounded-full shadow-md"
     >
       <Cat :size="20" />
     </div>
     <div class="absolute top-3 right-3 z-10 flex items-center gap-2">
-      <RoleExportMenu :role-id="id" :role-name="name" />
+      <RoleExportMenu
+        :role-id="id"
+        :role-name="name"
+      />
       <button
-        class="flex items-center justify-center p-1 rounded-full bg-black/5 text-white/60 hover:text-white hover:bg-white/10 transition-all hover:rotate-90"
+        class="flex items-center justify-center rounded-full bg-black/5 p-1 text-white/60 transition-all hover:rotate-90 hover:bg-white/10 hover:text-white"
         @click.stop="openSettingsModal"
       >
         <Settings :size="24" />
@@ -18,42 +21,42 @@
     </div>
 
     <div
-      class="flex flex-col items-center w-28 md:w-32 shrink-0 space-y-2 border-r border-white/10 pr-4"
+      class="flex w-28 shrink-0 flex-col items-center space-y-2 border-r border-white/10 pr-4 md:w-32"
     >
       <div
-        class="w-24 h-24 md:w-24 md:h-24 rounded-full overflow-hidden border-2 border-indigo-400/50 shadow-lg"
+        class="h-24 w-24 overflow-hidden rounded-full border-2 border-indigo-400/50 shadow-lg md:h-24 md:w-24"
       >
         <img
           :src="avatar"
           :alt="name"
-          class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+          class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
         />
       </div>
-      <span class="w-6 h-1 bg-brand rounded-full mt-1"></span>
-      <h4 class="font-bold text-white text-md tracking-wide drop-shadow-md text-center">
+      <span class="bg-brand mt-1 h-1 w-6 rounded-full"></span>
+      <h4 class="text-md text-center font-bold tracking-wide text-white drop-shadow-md">
         {{ title }}
       </h4>
     </div>
 
-    <div class="flex-1 pl-4 flex flex-col h-full justify-between min-h-36">
+    <div class="flex h-full min-h-36 flex-1 flex-col justify-between pl-4">
       <div class="pr-8">
-        <div class="flex gap-2 items-center">
-          <div class="text-xl text-brand font-bold uppercase tracking-widest mb-3 opacity-80">
+        <div class="flex items-center gap-2">
+          <div class="text-brand mb-3 text-xl font-bold tracking-widest uppercase opacity-80">
             {{ name }}
           </div>
-          <div class="text-sm font-medium text-brand uppercase tracking-widest mb-3 opacity-80">
+          <div class="text-brand mb-3 text-sm font-medium tracking-widest uppercase opacity-80">
             {{ subName }}
           </div>
         </div>
-        <p class="text-base text-gray-200/90 leading-relaxed line-clamp-3 opacity-80">
+        <p class="line-clamp-3 text-base leading-relaxed text-gray-200/90 opacity-80">
           {{ info || '暂无角色介绍' }}
         </p>
       </div>
 
-      <div class="flex justify-end items-center gap-2 mt-4">
+      <div class="mt-4 flex items-center justify-end gap-2">
         <button
           @click="showDetailModal"
-          class="px-4 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-semibold border border-white/10 transition-all"
+          class="rounded-full border border-white/10 bg-white/10 px-4 py-1.5 text-xs font-semibold text-white transition-all hover:bg-white/20"
         >
           详情
         </button>
@@ -61,31 +64,31 @@
         <button
           v-if="!isInScene()"
           @click="joinScene"
-          class="px-4 py-1.5 rounded-full bg-cyan-500/80 hover:bg-cyan-500 border border-cyan-400 text-white text-xs font-semibold transition-all shadow-lg shadow-cyan-500/20"
+          class="rounded-full border border-cyan-400 bg-cyan-500/80 px-4 py-1.5 text-xs font-semibold text-white shadow-lg shadow-cyan-500/20 transition-all hover:bg-cyan-500"
         >
           加入
         </button>
         <button
           v-else-if="!isSelected()"
           @click="leaveScene"
-          class="px-4 py-1.5 rounded-full bg-red-500/80 hover:bg-red-500 border border-red-400 text-white text-xs font-semibold transition-all shadow-lg shadow-red-500/20"
+          class="rounded-full border border-red-400 bg-red-500/80 px-4 py-1.5 text-xs font-semibold text-white shadow-lg shadow-red-500/20 transition-all hover:bg-red-500"
         >
           退场
         </button>
         <button
           v-else
           disabled
-          class="px-4 py-1.5 rounded-full bg-cyan-500/50 border border-cyan-400/50 text-cyan-200 cursor-not-allowed text-xs font-semibold transition-all shadow-lg"
+          class="cursor-not-allowed rounded-full border border-cyan-400/50 bg-cyan-500/50 px-4 py-1.5 text-xs font-semibold text-cyan-200 shadow-lg transition-all"
         >
           已在场
         </button>
         <button
           @click="selectCharacter"
           :class="[
-            'px-5 py-1.5 rounded-full text-xs font-bold transition-all border shadow-lg',
+            'rounded-full border px-5 py-1.5 text-xs font-bold shadow-lg transition-all',
             isSelected()
-              ? 'bg-emerald-500/80 border-emerald-400 text-white shadow-emerald-500/20'
-              : 'bg-indigo-600/80 border-indigo-500 text-white hover:bg-indigo-500 shadow-indigo-500/20',
+              ? 'border-emerald-400 bg-emerald-500/80 text-white shadow-emerald-500/20'
+              : 'border-indigo-500 bg-indigo-600/80 text-white shadow-indigo-500/20 hover:bg-indigo-500',
           ]"
         >
           {{ isSelected() ? '√ 已选中' : '选择' }}
@@ -97,91 +100,100 @@
   <Transition name="modal">
     <div
       v-if="isDetailVisible"
-      class="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md bg-black/40"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-md"
       @click="closeDetailModal"
     >
       <div
-        class="relative w-full max-w-4xl max-h-[85vh] overflow-hidden rounded-3xl border border-white/20 bg-slate-900/40 backdrop-blur-2xl shadow-2xl flex flex-col"
+        class="relative flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-white/20 bg-slate-900/40 shadow-2xl backdrop-blur-2xl"
         @click.stop
       >
-        <div class="p-6 flex items-center gap-4 bg-white/10 border-b border-white/10">
+        <div class="flex items-center gap-4 border-b border-white/10 bg-white/10 p-6">
           <img
             :src="avatar"
-            class="w-16 h-16 rounded-2xl object-cover border-2 border-indigo-500/50"
+            class="h-16 w-16 rounded-2xl border-2 border-indigo-500/50 object-cover"
           />
           <div class="flex-1">
-            <h2 class="text-2xl font-bold text-white leading-none">{{ name }}</h2>
-            <p class="text-indigo-300 text-sm mt-1 tracking-tighter">角色档案与外观配置</p>
+            <h2 class="text-2xl leading-none font-bold text-white">{{ name }}</h2>
+            <p class="mt-1 text-sm tracking-tighter text-indigo-300">角色档案与外观配置</p>
           </div>
           <button
             @click="closeDetailModal"
-            class="p-2 hover:bg-red-500/20 text-white/50 hover:text-white rounded-full transition-colors"
+            class="rounded-full p-2 text-white/50 transition-colors hover:bg-red-500/20 hover:text-white"
           >
-            <Icon icon="close" class="w-6 h-6" />
+            <Icon
+              icon="close"
+              class="h-6 w-6"
+            />
           </button>
         </div>
 
-        <div class="flex-1 overflow-y-auto p-6 space-y-8">
+        <div class="flex-1 space-y-8 overflow-y-auto p-6">
           <section>
-            <h3 class="text-white font-bold mb-4 flex items-center gap-2">
-              <span class="w-1 h-4 bg-orange-500 rounded-full"></span> 基础信息
+            <h3 class="mb-4 flex items-center gap-2 font-bold text-white">
+              <span class="h-4 w-1 rounded-full bg-orange-500"></span> 基础信息
             </h3>
             <div
-              class="text-sm text-gray-200/90 font-bold uppercase tracking-widest mb-3 opacity-80"
+              class="mb-3 text-sm font-bold tracking-widest text-gray-200/90 uppercase opacity-80"
             >
               名称：{{ name }}
             </div>
             <div
-              class="text-sm font-medium text-gray-200/90 uppercase tracking-widest mb-3 opacity-80"
+              class="mb-3 text-sm font-medium tracking-widest text-gray-200/90 uppercase opacity-80"
             >
               所属：{{ subName }}
             </div>
             <div
-              class="text-sm font-medium text-gray-200/90 uppercase tracking-widest mb-1 opacity-80"
+              class="mb-1 text-sm font-medium tracking-widest text-gray-200/90 uppercase opacity-80"
             >
               介绍：
             </div>
             <p
-              class="text-sm font-medium text-gray-200/90 uppercase tracking-widest mb-3 opacity-80"
+              class="mb-3 text-sm font-medium tracking-widest text-gray-200/90 uppercase opacity-80"
             >
               {{ info || '暂无角色介绍' }}
             </p>
           </section>
 
           <section>
-            <h3 class="text-white font-bold mb-4 flex items-center gap-2">
-              <span class="w-1 h-4 bg-indigo-500 rounded-full"></span> 可选服装
+            <h3 class="mb-4 flex items-center gap-2 font-bold text-white">
+              <span class="h-4 w-1 rounded-full bg-indigo-500"></span> 可选服装
             </h3>
-            <div v-if="clothes?.length" class="flex gap-4 overflow-x-auto pb-2 snap-x">
+            <div
+              v-if="clothes?.length"
+              class="flex snap-x gap-4 overflow-x-auto pb-2"
+            >
               <div
                 v-for="cloth in clothes"
                 :key="cloth.title"
-                @click="selectClothes(cloth.title)"
-                class="group shrink-0 w-48 snap-start cursor-pointer"
+                @click="selectClothes(id, cloth.title)"
+                class="group w-48 shrink-0 cursor-pointer snap-start"
               >
                 <div
                   :class="[
-                    'relative aspect-1/2 rounded-xl overflow-hidden border-2 transition-all mb-2',
-                    isClothesSelected(cloth.title)
+                    'relative mb-2 aspect-1/2 overflow-hidden rounded-xl border-2 transition-all',
+                    isClothesSelected(id, cloth.title)
                       ? 'border-indigo-400 shadow-[0_0_15px_rgba(129,140,248,0.5)]'
                       : 'border-white/10',
                   ]"
                 >
                   <img
                     :src="cloth.avatar"
-                    class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                   />
                   <div
-                    v-if="isClothesSelected(cloth.title)"
-                    class="absolute top-1 right-1 bg-indigo-500 rounded-full p-1"
+                    v-if="isClothesSelected(id, cloth.title)"
+                    class="absolute top-1 right-1 rounded-full bg-indigo-500 p-1"
                   >
-                    <Check class="w-4 h-4"></Check>
+                    <Check class="h-4 w-4"></Check>
                   </div>
                 </div>
-                <p class="text-xs text-center text-white/80 truncate">{{ cloth.title }}</p>
+                <p class="truncate text-center text-xs text-white/80">{{ cloth.title }}</p>
               </div>
             </div>
-            <div v-else class="text-white/40 text-sm italic p-4 bg-white/5 rounded-xl text-center">
+            <div
+              v-else
+              class="rounded-xl bg-white/5 p-4 text-center text-sm text-white/40 italic"
+            >
               暂无可用服装
             </div>
           </section>
@@ -246,7 +258,8 @@ const dialogStore = useDialogStore()
 
 // 逻辑函数
 const isSelected = () => gameStore.mainRoleId === props.id
-const isClothesSelected = (clothes_name: string) => gameStore.mainRole?.clothesName === clothes_name
+const isClothesSelected = (role_id: number, clothes_name: string) =>
+  gameStore.getGameRole(role_id)?.clothesName === clothes_name
 
 const showDetailModal = () => (isDetailVisible.value = true)
 const closeDetailModal = () => (isDetailVisible.value = false)
@@ -265,15 +278,16 @@ const selectCharacter = async () => {
   }
 }
 
-const selectClothes = async (clothes_name: string) => {
+const selectClothes = async (role_id: number, clothes_name: string) => {
   try {
     // 调用后端API选择衣服
-    const response = await selectClothesApi(clothes_name)
+    const response = await selectClothesApi(role_id, clothes_name)
 
     if (response.success) {
       // 更新本地状态
-      if (gameStore.mainRole) {
-        gameStore.mainRole.clothesName = clothes_name
+      const role = gameStore.getGameRole(role_id)
+      if (role) {
+        role.clothesName = clothes_name
       }
     }
   } catch (error) {

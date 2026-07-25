@@ -11,6 +11,7 @@
 pub mod app_config;
 pub mod keys;
 pub mod proactive;
+pub mod session;
 pub mod tree;
 pub mod tts;
 pub mod types;

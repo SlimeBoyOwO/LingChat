@@ -1,6 +1,8 @@
 // stores/ui.ts
 import { defineStore } from 'pinia'
 import { useSettingsStore } from '../settings'
+import { saveBgmState } from '../../../api/services/music'
+import { saveAmbientState } from '../../../api/services/ambient'
 
 // 通知类型
 export type NotificationType = 'error' | 'success' | 'info' | 'warning'
@@ -516,11 +518,33 @@ export const useUIStore = defineStore('ui', {
         this.ambientTracks = []
       }
     },
+
+    // ========== 会话状态持久化 ==========
+
+    /** 持久化 BGM 状态（防抖 500ms），由 $subscribe 自动触发 */
+    persistBgmState() {
+      if (bgmSaveTimer) clearTimeout(bgmSaveTimer)
+      bgmSaveTimer = setTimeout(() => {
+        saveBgmState(this.currentBackgroundMusic, this.bgMusicPaused, this.bgMusicMode)
+      }, 500)
+    },
+
+    /** 持久化环境音轨道（防抖 500ms），由 $subscribe 自动触发 */
+    persistAmbientState() {
+      if (ambientSaveTimer) clearTimeout(ambientSaveTimer)
+      ambientSaveTimer = setTimeout(() => {
+        saveAmbientState(JSON.stringify(this.ambientTracks))
+      }, 500)
+    },
   },
 })
 
 // 标记是否已初始化
 let initialized = false
+
+// 防抖定时器（模块级，避免污染 store state）
+let bgmSaveTimer: ReturnType<typeof setTimeout> | null = null
+let ambientSaveTimer: ReturnType<typeof setTimeout> | null = null
 
 // 初始化函数：在首次使用时调用
 export function initUIStore() {
@@ -538,4 +562,31 @@ export function initUIStore() {
   const settingsStore = useSettingsStore()
   // 使用 getter 获取角色文件夹
   store.loadCharacterTips(store.currentCharacterFolder)
+
+  // 订阅 BGM / 环境音状态变更，自动持久化到 settings.json。
+  // 注意：Pinia 的 mutation.events 仅在 Vue DevTools 激活时填充，
+  // 所以不能依赖它来判断变更。这里直接用前后值比较，每次 mutation
+  // 都检查，实际写盘由 500ms 防抖控制。
+  let prevBgmTrack = store.currentBackgroundMusic
+  let prevBgmPaused = store.bgMusicPaused
+  let prevBgmMode = store.bgMusicMode
+  let prevAmbientJson = JSON.stringify(store.ambientTracks)
+
+  store.$subscribe((_mutation, state) => {
+    if (
+      state.currentBackgroundMusic !== prevBgmTrack ||
+      state.bgMusicPaused !== prevBgmPaused ||
+      state.bgMusicMode !== prevBgmMode
+    ) {
+      store.persistBgmState()
+      prevBgmTrack = state.currentBackgroundMusic
+      prevBgmPaused = state.bgMusicPaused
+      prevBgmMode = state.bgMusicMode
+    }
+    const curAmbientJson = JSON.stringify(state.ambientTracks)
+    if (curAmbientJson !== prevAmbientJson) {
+      store.persistAmbientState()
+      prevAmbientJson = curAmbientJson
+    }
+  })
 }
