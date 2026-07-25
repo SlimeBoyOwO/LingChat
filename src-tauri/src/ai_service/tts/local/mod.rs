@@ -19,6 +19,7 @@ pub mod archive;
 pub mod commands;
 pub mod download;
 pub mod engine;
+pub mod import_bridge;
 pub mod model_manager;
 pub mod paths;
 pub mod registry;

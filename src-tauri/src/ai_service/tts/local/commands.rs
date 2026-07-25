@@ -260,7 +260,7 @@ pub async fn tts_local_import_style_vectors(
     }
 
     let (src, cleanup_after_import) =
-        crate::api::role_archive::prepare_file_import_source(&app, &path).await?;
+        super::import_bridge::prepare_file_import_source(&app, &path).await?;
     let result: std::result::Result<ImportResult, String> = async {
         if !src.exists() {
             return Err(format!("path not found: {path}"));
