@@ -16,11 +16,7 @@ export const actions = {
     })
   },
 
-  clearDialogHistory(this: GameState) {
-    this.dialogHistory = []
-  },
-
-  setGameMessages(this: GameState, messages: GameMessage[]) {
+setGameMessages(this: GameState, messages: GameMessage[]) {
     this.dialogHistory = messages
   },
 

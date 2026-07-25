@@ -455,6 +455,7 @@ pub fn run() {
             api::asset::get_voice_audio,
             api::game::init_game,
             api::game::select_character,
+            api::game::clear_conversation,
             api::game::reactivate_tts,
             api::game::clear_tts_cache,
             api::game::update_voice_lang,

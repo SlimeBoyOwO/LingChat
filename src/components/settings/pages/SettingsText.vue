@@ -309,11 +309,11 @@ import { Slider, Text, Toggle, Button } from '../../base'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { useSettingsStore } from '../../../stores/modules/settings'
-import { useUserStore } from '../../../stores/modules/user/user'
 import { useGameStore } from '../../../stores/modules/game'
 import type { ConfigItem } from '@/api/services/config'
 import { getEnvConfigByKey, saveEnvConfigSettings } from '@/api/services/config'
-import { clearChatHistory } from '@/api/services/history'
+import { applyWebInitData } from '@/stores/modules/game/actions'
+import type { WebInitData } from '@/api/services/game-info'
 import {
   Zap,
   ClipboardList,
@@ -346,7 +346,6 @@ import type { DialogView } from '@/types/lanSync'
 const router = useRouter()
 const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
-const userStore = useUserStore()
 const gameStore = useGameStore()
 const dialogStore = useDialogStore()
 const envSettings = ref<Record<string, ConfigItem>>({})
@@ -540,26 +539,19 @@ const returnToMain = () => {
 }
 
 const handleClearHistory = async () => {
-  // 提示用户保存
   const confirmed = await dialogStore.confirm(
     '清除历史对话将丢失当前所有对话记录，建议先存档。\n\n是否已存档或确认清除？',
   )
   if (!confirmed) return
 
   try {
-    // 调用后端清除对话历史
-    await clearChatHistory(userStore.user_id.toString())
+    // 调用后端重置对话（复用 init_game_status 逻辑）
+    const data = await invoke<WebInitData>('clear_conversation')
+    applyWebInitData(gameStore.$state, data)
 
-    // 清除前端状态
-    gameStore.clearDialogHistory()
+    // 重置前端输入状态
     gameStore.currentStatus = 'input'
     gameStore.currentLine = ''
-
-    // 重置在场角色列表为主角色（与后端对齐）
-    if (gameStore.mainRoleId !== -1) {
-      gameStore.presentRoleIds = [gameStore.mainRoleId]
-      gameStore.currentInteractRoleId = gameStore.mainRoleId
-    }
 
     // 重置 UI 状态
     uiStore.currentBackgroundMusic = 'None'

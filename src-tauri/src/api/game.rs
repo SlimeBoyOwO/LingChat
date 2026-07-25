@@ -371,6 +371,33 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
     Ok(init)
 }
 
+// ========== 清除对话 ==========
+
+/// 清除当前角色的全部对话历史，复用 `init_game_status` 逻辑，
+/// 保留角色设定、场景、背景音乐等配置。
+#[tauri::command]
+pub async fn clear_conversation(app: AppHandle) -> Result<WebInitData, String> {
+    let state = app.state::<AppState>();
+
+    // 串行化：等待正在进行的消息生成完成再重置
+    let gen_lock = state.generation_lock.clone();
+    let _lock = gen_lock.lock().await;
+
+    {
+        let mut service = state.ai_service.lock().await;
+        service
+            .init_game_status()
+            .await
+            .map_err(|e| format!("重置对话失败: {}", e))?;
+    }
+
+    let init = {
+        let service = state.ai_service.lock().await;
+        build_web_init_data(&service, &app).await?
+    };
+    Ok(init)
+}
+
 /// 为台词列表计算玩家消息序号（1-indexed）。
 /// 玩家消息由 `sender_role_id == Some(0) && attribute == User` 标识。
 pub fn compute_user_message_seqs(line_list: &[GameLine]) -> Vec<Option<u32>> {
