@@ -21,6 +21,7 @@
     "core:window:allow-inner-position",
     "core:window:allow-inner-size",
     "opener:default",
+    "dialog:allow-open",
     "screenshots:default",
     "fs:default",
     "notification:default",
