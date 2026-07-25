@@ -492,7 +492,7 @@ mod imp {
     /// High 等级所需的最低最高频率 (MHz)
     const HIGH_FREQ_THRESHOLD_MHZ: u64 = 3000;
     /// High 等级所需的最低大核数量（频率 ≥ BIG_CORE_FREQ_THRESHOLD_MHZ 的核心）
-    const HIGH_BIG_CORE_MIN: usize = 3;
+    const HIGH_BIG_CORE_MIN: usize = 2;
     /// 统计 big core 时的频率门槛 (MHz)
     const BIG_CORE_FREQ_THRESHOLD_MHZ: u64 = 2800;
     /// Medium 等级所需的最低最高频率 (MHz)
