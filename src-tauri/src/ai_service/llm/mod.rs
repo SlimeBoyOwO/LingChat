@@ -56,7 +56,7 @@ pub struct LlmConfig {
     pub temperature: Option<f64>,
     pub top_p: Option<f64>,
     pub enable_thinking: bool,
-    /// 推理深度（如 "low" / "high" / "max"），目前仅 Kimi Code 的 K3 模型使用。
+    /// 推理深度（如 "low" / "high" / "max"），由支持 reasoning 的模型使用（如 Kimi Code K3 系列）。
     pub reasoning_effort: Option<String>,
 }
 

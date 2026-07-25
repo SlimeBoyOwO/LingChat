@@ -27,6 +27,10 @@ export interface LlmModelInfo {
   context_length: number | null
   supports_reasoning: boolean
   supports_thinking_type: string | null
+  think_efforts: {
+    valid_efforts: string[]
+    default_effort: string | null
+  } | null
 }
 
 export async function listLlmProviders(): Promise<LlmProvidersResponse> {

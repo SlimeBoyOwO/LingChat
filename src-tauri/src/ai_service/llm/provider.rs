@@ -6,6 +6,13 @@ use serde::Serialize;
 use crate::ai_service::llm::ChunkStream;
 use crate::ai_service::types::{LlmMessage, ToolCall, ToolDefinition};
 
+/// 模型声明的推理深度档位（think_efforts）。
+#[derive(Debug, Clone, Serialize)]
+pub struct ThinkEffortsInfo {
+    pub valid_efforts: Vec<String>,
+    pub default_effort: Option<String>,
+}
+
 /// `complete_with_tools` 的返回值。
 #[derive(Debug, Clone, Serialize)]
 pub struct LlmModelInfo {
@@ -14,6 +21,8 @@ pub struct LlmModelInfo {
     pub context_length: Option<u64>,
     pub supports_reasoning: bool,
     pub supports_thinking_type: Option<String>,
+    /// 推理深度档位；None 表示该模型不可调档（思考常开或不支持思考）
+    pub think_efforts: Option<ThinkEffortsInfo>,
 }
 
 #[derive(Debug, Clone)]

@@ -473,18 +473,23 @@
               </p>
             </div>
 
-            <!-- Reasoning effort (K3) -->
+            <!-- Reasoning effort（按模型能力显示） -->
             <div v-if="showReasoningEffort" class="flex flex-col gap-1">
-              <label class="text-xs font-medium text-white/60">推理深度（K3 支持）</label>
+              <label class="text-xs font-medium text-white/60">推理深度（部分模型支持）</label>
               <div class="relative">
                 <select
                   v-model="editing.reasoning_effort"
                   class="w-full appearance-none pl-3 pr-8 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors cursor-pointer"
                 >
                   <option :value="null" class="bg-gray-800 text-white">默认（跟随模型）</option>
-                  <option value="low" class="bg-gray-800 text-white">Low（低）</option>
-                  <option value="high" class="bg-gray-800 text-white">High（高）</option>
-                  <option value="max" class="bg-gray-800 text-white">Max（最强）</option>
+                  <option
+                    v-for="effort in reasoningEffortOptions"
+                    :key="effort"
+                    :value="effort"
+                    class="bg-gray-800 text-white"
+                  >
+                    {{ effortLabel(effort) }}
+                  </option>
                 </select>
                 <div
                   class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5"
@@ -775,14 +780,38 @@ function closePanel() {
   saveMessage.value = ''
 }
 
-// K3 推理深度：仅 Kimi Code 且模型为 k3 时显示
-const showReasoningEffort = computed(
-  () => editing.provider === 'kimicode' && editing.model === 'k3',
-)
+// 推理深度档位完全由模型声明的 think_efforts.valid_efforts 驱动（与 kimi-code 官方一致）：
+// 列表非空 → 显示选择器并按其渲染档位；为空（如 K2.7 思考常开、不可调档）→ 不显示。
+// 列表尚未加载时无法判断能力，先不显示（startEdit 会自动拉取列表）
+const reasoningEffortOptions = computed<string[]>(() => {
+  if (editing.provider !== 'kimicode') return []
+  const info = availableModels.value.find((m) => m.id === editing.model)
+  return info?.think_efforts?.valid_efforts ?? []
+})
+const showReasoningEffort = computed(() => reasoningEffortOptions.value.length > 0)
 
-// 切到不支持推理深度的模型/提供商时清掉已选档位，避免残留值被静默发往其他模型
+const EFFORT_LABELS: Record<string, string> = {
+  low: 'Low（低）',
+  medium: 'Medium（中）',
+  high: 'High（高）',
+  max: 'Max（最强）',
+}
+function effortLabel(effort: string): string {
+  return EFFORT_LABELS[effort] ?? effort
+}
+
+// 切到不可调档的模型/提供商时清掉已选档位，避免残留值被静默发往其他模型；
+// 已选档位不在新模型的档位列表中时同样清空（跟随新模型默认）。
+// 但 Kimi Code 模型列表尚未加载时无法判断能力，先保留已配置值，待列表返回后再决定
 watch([() => editing.provider, () => editing.model], () => {
-  if (!showReasoningEffort.value) editing.reasoning_effort = null
+  if (editing.provider === 'kimicode' && availableModels.value.length === 0) return
+  const options = reasoningEffortOptions.value
+  if (
+    options.length === 0 ||
+    (editing.reasoning_effort && !options.includes(editing.reasoning_effort))
+  ) {
+    editing.reasoning_effort = null
+  }
 })
 
 function resetModelList() {
@@ -840,6 +869,11 @@ function startEdit(p: LlmProviderConfig) {
   resetModelList()
   sidePanel.value = 'edit'
   saveMessage.value = ''
+  // Kimi Code 已有 API 密钥时自动拉取模型列表，
+  // 以便按各模型的 supports_reasoning 能力显示推理深度选项
+  if (editing.provider === 'kimicode' && editing.api_key.trim()) {
+    fetchProviderModels()
+  }
 }
 
 function confirmDelete(p: LlmProviderConfig) {
