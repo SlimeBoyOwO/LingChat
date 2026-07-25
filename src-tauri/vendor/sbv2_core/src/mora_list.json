@@ -1,0 +1,816 @@
+{
+    "minimum": [
+        {
+            "mora": "ヴォ",
+            "consonant": "v",
+            "vowel": "o"
+        },
+        {
+            "mora": "ヴェ",
+            "consonant": "v",
+            "vowel": "e"
+        },
+        {
+            "mora": "ヴィ",
+            "consonant": "v",
+            "vowel": "i"
+        },
+        {
+            "mora": "ヴァ",
+            "consonant": "v",
+            "vowel": "a"
+        },
+        {
+            "mora": "ヴ",
+            "consonant": "v",
+            "vowel": "u"
+        },
+        {
+            "mora": "ン",
+            "consonant": null,
+            "vowel": "N"
+        },
+        {
+            "mora": "ワ",
+            "consonant": "w",
+            "vowel": "a"
+        },
+        {
+            "mora": "ロ",
+            "consonant": "r",
+            "vowel": "o"
+        },
+        {
+            "mora": "レ",
+            "consonant": "r",
+            "vowel": "e"
+        },
+        {
+            "mora": "ル",
+            "consonant": "r",
+            "vowel": "u"
+        },
+        {
+            "mora": "リョ",
+            "consonant": "ry",
+            "vowel": "o"
+        },
+        {
+            "mora": "リュ",
+            "consonant": "ry",
+            "vowel": "u"
+        },
+        {
+            "mora": "リャ",
+            "consonant": "ry",
+            "vowel": "a"
+        },
+        {
+            "mora": "リェ",
+            "consonant": "ry",
+            "vowel": "e"
+        },
+        {
+            "mora": "リ",
+            "consonant": "r",
+            "vowel": "i"
+        },
+        {
+            "mora": "ラ",
+            "consonant": "r",
+            "vowel": "a"
+        },
+        {
+            "mora": "ヨ",
+            "consonant": "y",
+            "vowel": "o"
+        },
+        {
+            "mora": "ユ",
+            "consonant": "y",
+            "vowel": "u"
+        },
+        {
+            "mora": "ヤ",
+            "consonant": "y",
+            "vowel": "a"
+        },
+        {
+            "mora": "モ",
+            "consonant": "m",
+            "vowel": "o"
+        },
+        {
+            "mora": "メ",
+            "consonant": "m",
+            "vowel": "e"
+        },
+        {
+            "mora": "ム",
+            "consonant": "m",
+            "vowel": "u"
+        },
+        {
+            "mora": "ミョ",
+            "consonant": "my",
+            "vowel": "o"
+        },
+        {
+            "mora": "ミュ",
+            "consonant": "my",
+            "vowel": "u"
+        },
+        {
+            "mora": "ミャ",
+            "consonant": "my",
+            "vowel": "a"
+        },
+        {
+            "mora": "ミェ",
+            "consonant": "my",
+            "vowel": "e"
+        },
+        {
+            "mora": "ミ",
+            "consonant": "m",
+            "vowel": "i"
+        },
+        {
+            "mora": "マ",
+            "consonant": "m",
+            "vowel": "a"
+        },
+        {
+            "mora": "ポ",
+            "consonant": "p",
+            "vowel": "o"
+        },
+        {
+            "mora": "ボ",
+            "consonant": "b",
+            "vowel": "o"
+        },
+        {
+            "mora": "ホ",
+            "consonant": "h",
+            "vowel": "o"
+        },
+        {
+            "mora": "ペ",
+            "consonant": "p",
+            "vowel": "e"
+        },
+        {
+            "mora": "ベ",
+            "consonant": "b",
+            "vowel": "e"
+        },
+        {
+            "mora": "ヘ",
+            "consonant": "h",
+            "vowel": "e"
+        },
+        {
+            "mora": "プ",
+            "consonant": "p",
+            "vowel": "u"
+        },
+        {
+            "mora": "ブ",
+            "consonant": "b",
+            "vowel": "u"
+        },
+        {
+            "mora": "フォ",
+            "consonant": "f",
+            "vowel": "o"
+        },
+        {
+            "mora": "フェ",
+            "consonant": "f",
+            "vowel": "e"
+        },
+        {
+            "mora": "フィ",
+            "consonant": "f",
+            "vowel": "i"
+        },
+        {
+            "mora": "ファ",
+            "consonant": "f",
+            "vowel": "a"
+        },
+        {
+            "mora": "フ",
+            "consonant": "f",
+            "vowel": "u"
+        },
+        {
+            "mora": "ピョ",
+            "consonant": "py",
+            "vowel": "o"
+        },
+        {
+            "mora": "ピュ",
+            "consonant": "py",
+            "vowel": "u"
+        },
+        {
+            "mora": "ピャ",
+            "consonant": "py",
+            "vowel": "a"
+        },
+        {
+            "mora": "ピェ",
+            "consonant": "py",
+            "vowel": "e"
+        },
+        {
+            "mora": "ピ",
+            "consonant": "p",
+            "vowel": "i"
+        },
+        {
+            "mora": "ビョ",
+            "consonant": "by",
+            "vowel": "o"
+        },
+        {
+            "mora": "ビュ",
+            "consonant": "by",
+            "vowel": "u"
+        },
+        {
+            "mora": "ビャ",
+            "consonant": "by",
+            "vowel": "a"
+        },
+        {
+            "mora": "ビェ",
+            "consonant": "by",
+            "vowel": "e"
+        },
+        {
+            "mora": "ビ",
+            "consonant": "b",
+            "vowel": "i"
+        },
+        {
+            "mora": "ヒョ",
+            "consonant": "hy",
+            "vowel": "o"
+        },
+        {
+            "mora": "ヒュ",
+            "consonant": "hy",
+            "vowel": "u"
+        },
+        {
+            "mora": "ヒャ",
+            "consonant": "hy",
+            "vowel": "a"
+        },
+        {
+            "mora": "ヒェ",
+            "consonant": "hy",
+            "vowel": "e"
+        },
+        {
+            "mora": "ヒ",
+            "consonant": "h",
+            "vowel": "i"
+        },
+        {
+            "mora": "パ",
+            "consonant": "p",
+            "vowel": "a"
+        },
+        {
+            "mora": "バ",
+            "consonant": "b",
+            "vowel": "a"
+        },
+        {
+            "mora": "ハ",
+            "consonant": "h",
+            "vowel": "a"
+        },
+        {
+            "mora": "ノ",
+            "consonant": "n",
+            "vowel": "o"
+        },
+        {
+            "mora": "ネ",
+            "consonant": "n",
+            "vowel": "e"
+        },
+        {
+            "mora": "ヌ",
+            "consonant": "n",
+            "vowel": "u"
+        },
+        {
+            "mora": "ニョ",
+            "consonant": "ny",
+            "vowel": "o"
+        },
+        {
+            "mora": "ニュ",
+            "consonant": "ny",
+            "vowel": "u"
+        },
+        {
+            "mora": "ニャ",
+            "consonant": "ny",
+            "vowel": "a"
+        },
+        {
+            "mora": "ニェ",
+            "consonant": "ny",
+            "vowel": "e"
+        },
+        {
+            "mora": "ニ",
+            "consonant": "n",
+            "vowel": "i"
+        },
+        {
+            "mora": "ナ",
+            "consonant": "n",
+            "vowel": "a"
+        },
+        {
+            "mora": "ドゥ",
+            "consonant": "d",
+            "vowel": "u"
+        },
+        {
+            "mora": "ド",
+            "consonant": "d",
+            "vowel": "o"
+        },
+        {
+            "mora": "トゥ",
+            "consonant": "t",
+            "vowel": "u"
+        },
+        {
+            "mora": "ト",
+            "consonant": "t",
+            "vowel": "o"
+        },
+        {
+            "mora": "デョ",
+            "consonant": "dy",
+            "vowel": "o"
+        },
+        {
+            "mora": "デュ",
+            "consonant": "dy",
+            "vowel": "u"
+        },
+        {
+            "mora": "デャ",
+            "consonant": "dy",
+            "vowel": "a"
+        },
+        {
+            "mora": "ディ",
+            "consonant": "d",
+            "vowel": "i"
+        },
+        {
+            "mora": "デ",
+            "consonant": "d",
+            "vowel": "e"
+        },
+        {
+            "mora": "テョ",
+            "consonant": "ty",
+            "vowel": "o"
+        },
+        {
+            "mora": "テュ",
+            "consonant": "ty",
+            "vowel": "u"
+        },
+        {
+            "mora": "テャ",
+            "consonant": "ty",
+            "vowel": "a"
+        },
+        {
+            "mora": "ティ",
+            "consonant": "t",
+            "vowel": "i"
+        },
+        {
+            "mora": "テ",
+            "consonant": "t",
+            "vowel": "e"
+        },
+        {
+            "mora": "ツォ",
+            "consonant": "ts",
+            "vowel": "o"
+        },
+        {
+            "mora": "ツェ",
+            "consonant": "ts",
+            "vowel": "e"
+        },
+        {
+            "mora": "ツィ",
+            "consonant": "ts",
+            "vowel": "i"
+        },
+        {
+            "mora": "ツァ",
+            "consonant": "ts",
+            "vowel": "a"
+        },
+        {
+            "mora": "ツ",
+            "consonant": "ts",
+            "vowel": "u"
+        },
+        {
+            "mora": "ッ",
+            "consonant": null,
+            "vowel": "q"
+        },
+        {
+            "mora": "チョ",
+            "consonant": "ch",
+            "vowel": "o"
+        },
+        {
+            "mora": "チュ",
+            "consonant": "ch",
+            "vowel": "u"
+        },
+        {
+            "mora": "チャ",
+            "consonant": "ch",
+            "vowel": "a"
+        },
+        {
+            "mora": "チェ",
+            "consonant": "ch",
+            "vowel": "e"
+        },
+        {
+            "mora": "チ",
+            "consonant": "ch",
+            "vowel": "i"
+        },
+        {
+            "mora": "ダ",
+            "consonant": "d",
+            "vowel": "a"
+        },
+        {
+            "mora": "タ",
+            "consonant": "t",
+            "vowel": "a"
+        },
+        {
+            "mora": "ゾ",
+            "consonant": "z",
+            "vowel": "o"
+        },
+        {
+            "mora": "ソ",
+            "consonant": "s",
+            "vowel": "o"
+        },
+        {
+            "mora": "ゼ",
+            "consonant": "z",
+            "vowel": "e"
+        },
+        {
+            "mora": "セ",
+            "consonant": "s",
+            "vowel": "e"
+        },
+        {
+            "mora": "ズィ",
+            "consonant": "z",
+            "vowel": "i"
+        },
+        {
+            "mora": "ズ",
+            "consonant": "z",
+            "vowel": "u"
+        },
+        {
+            "mora": "スィ",
+            "consonant": "s",
+            "vowel": "i"
+        },
+        {
+            "mora": "ス",
+            "consonant": "s",
+            "vowel": "u"
+        },
+        {
+            "mora": "ジョ",
+            "consonant": "j",
+            "vowel": "o"
+        },
+        {
+            "mora": "ジュ",
+            "consonant": "j",
+            "vowel": "u"
+        },
+        {
+            "mora": "ジャ",
+            "consonant": "j",
+            "vowel": "a"
+        },
+        {
+            "mora": "ジェ",
+            "consonant": "j",
+            "vowel": "e"
+        },
+        {
+            "mora": "ジ",
+            "consonant": "j",
+            "vowel": "i"
+        },
+        {
+            "mora": "ショ",
+            "consonant": "sh",
+            "vowel": "o"
+        },
+        {
+            "mora": "シュ",
+            "consonant": "sh",
+            "vowel": "u"
+        },
+        {
+            "mora": "シャ",
+            "consonant": "sh",
+            "vowel": "a"
+        },
+        {
+            "mora": "シェ",
+            "consonant": "sh",
+            "vowel": "e"
+        },
+        {
+            "mora": "シ",
+            "consonant": "sh",
+            "vowel": "i"
+        },
+        {
+            "mora": "ザ",
+            "consonant": "z",
+            "vowel": "a"
+        },
+        {
+            "mora": "サ",
+            "consonant": "s",
+            "vowel": "a"
+        },
+        {
+            "mora": "ゴ",
+            "consonant": "g",
+            "vowel": "o"
+        },
+        {
+            "mora": "コ",
+            "consonant": "k",
+            "vowel": "o"
+        },
+        {
+            "mora": "ゲ",
+            "consonant": "g",
+            "vowel": "e"
+        },
+        {
+            "mora": "ケ",
+            "consonant": "k",
+            "vowel": "e"
+        },
+        {
+            "mora": "グヮ",
+            "consonant": "gw",
+            "vowel": "a"
+        },
+        {
+            "mora": "グ",
+            "consonant": "g",
+            "vowel": "u"
+        },
+        {
+            "mora": "クヮ",
+            "consonant": "kw",
+            "vowel": "a"
+        },
+        {
+            "mora": "ク",
+            "consonant": "k",
+            "vowel": "u"
+        },
+        {
+            "mora": "ギョ",
+            "consonant": "gy",
+            "vowel": "o"
+        },
+        {
+            "mora": "ギュ",
+            "consonant": "gy",
+            "vowel": "u"
+        },
+        {
+            "mora": "ギャ",
+            "consonant": "gy",
+            "vowel": "a"
+        },
+        {
+            "mora": "ギェ",
+            "consonant": "gy",
+            "vowel": "e"
+        },
+        {
+            "mora": "ギ",
+            "consonant": "g",
+            "vowel": "i"
+        },
+        {
+            "mora": "キョ",
+            "consonant": "ky",
+            "vowel": "o"
+        },
+        {
+            "mora": "キュ",
+            "consonant": "ky",
+            "vowel": "u"
+        },
+        {
+            "mora": "キャ",
+            "consonant": "ky",
+            "vowel": "a"
+        },
+        {
+            "mora": "キェ",
+            "consonant": "ky",
+            "vowel": "e"
+        },
+        {
+            "mora": "キ",
+            "consonant": "k",
+            "vowel": "i"
+        },
+        {
+            "mora": "ガ",
+            "consonant": "g",
+            "vowel": "a"
+        },
+        {
+            "mora": "カ",
+            "consonant": "k",
+            "vowel": "a"
+        },
+        {
+            "mora": "オ",
+            "consonant": null,
+            "vowel": "o"
+        },
+        {
+            "mora": "エ",
+            "consonant": null,
+            "vowel": "e"
+        },
+        {
+            "mora": "ウォ",
+            "consonant": "w",
+            "vowel": "o"
+        },
+        {
+            "mora": "ウェ",
+            "consonant": "w",
+            "vowel": "e"
+        },
+        {
+            "mora": "ウィ",
+            "consonant": "w",
+            "vowel": "i"
+        },
+        {
+            "mora": "ウ",
+            "consonant": null,
+            "vowel": "u"
+        },
+        {
+            "mora": "イェ",
+            "consonant": "y",
+            "vowel": "e"
+        },
+        {
+            "mora": "イ",
+            "consonant": null,
+            "vowel": "i"
+        },
+        {
+            "mora": "ア",
+            "consonant": null,
+            "vowel": "a"
+        }
+    ],
+    "additional": [
+        {
+            "mora": "ヴョ",
+            "consonant": "by",
+            "vowel": "o"
+        },
+        {
+            "mora": "ヴュ",
+            "consonant": "by",
+            "vowel": "u"
+        },
+        {
+            "mora": "ヴャ",
+            "consonant": "by",
+            "vowel": "a"
+        },
+        {
+            "mora": "ヲ",
+            "consonant": null,
+            "vowel": "o"
+        },
+        {
+            "mora": "ヱ",
+            "consonant": null,
+            "vowel": "e"
+        },
+        {
+            "mora": "ヰ",
+            "consonant": null,
+            "vowel": "i"
+        },
+        {
+            "mora": "ヮ",
+            "consonant": "w",
+            "vowel": "a"
+        },
+        {
+            "mora": "ョ",
+            "consonant": "y",
+            "vowel": "o"
+        },
+        {
+            "mora": "ュ",
+            "consonant": "y",
+            "vowel": "u"
+        },
+        {
+            "mora": "ヅ",
+            "consonant": "z",
+            "vowel": "u"
+        },
+        {
+            "mora": "ヂ",
+            "consonant": "j",
+            "vowel": "i"
+        },
+        {
+            "mora": "ヶ",
+            "consonant": "k",
+            "vowel": "e"
+        },
+        {
+            "mora": "ャ",
+            "consonant": "y",
+            "vowel": "a"
+        },
+        {
+            "mora": "ォ",
+            "consonant": null,
+            "vowel": "o"
+        },
+        {
+            "mora": "ェ",
+            "consonant": null,
+            "vowel": "e"
+        },
+        {
+            "mora": "ゥ",
+            "consonant": null,
+            "vowel": "u"
+        },
+        {
+            "mora": "ィ",
+            "consonant": null,
+            "vowel": "i"
+        },
+        {
+            "mora": "ァ",
+            "consonant": null,
+            "vowel": "a"
+        }
+    ]
+}
