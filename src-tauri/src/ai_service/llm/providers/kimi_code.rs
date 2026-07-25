@@ -11,7 +11,9 @@ use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, USER_AGENT};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-use crate::ai_service::llm::provider::{LlmModelInfo, LlmProvider, LlmResponseWithTools};
+use crate::ai_service::llm::provider::{
+    LlmModelInfo, LlmProvider, LlmResponseWithTools, ThinkEffortsInfo,
+};
 use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmConfig};
 use crate::ai_service::types::{LlmMessage, ToolCall, ToolDefinition};
 
@@ -31,6 +33,18 @@ struct KimiCodeModelRecord {
     supports_reasoning: bool,
     #[serde(default)]
     supports_thinking_type: Option<String>,
+    #[serde(default)]
+    think_efforts: Option<KimiCodeThinkEfforts>,
+}
+
+#[derive(Debug, Deserialize)]
+struct KimiCodeThinkEfforts {
+    #[serde(default)]
+    support: bool,
+    #[serde(default)]
+    valid_efforts: Vec<String>,
+    #[serde(default)]
+    default_effort: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -272,6 +286,18 @@ impl LlmProvider for KimiCodeProvider {
                 context_length: model.context_length,
                 supports_reasoning: model.supports_reasoning,
                 supports_thinking_type: model.supports_thinking_type,
+                // 仅当模型显式声明支持调档且给出档位列表时才透传，
+                // 否则视为不可调档（如 K2.7 思考常开、无 valid_efforts）
+                think_efforts: model.think_efforts.and_then(|e| {
+                    if e.support && !e.valid_efforts.is_empty() {
+                        Some(ThinkEffortsInfo {
+                            valid_efforts: e.valid_efforts,
+                            default_effort: e.default_effort,
+                        })
+                    } else {
+                        None
+                    }
+                }),
             })
             .collect::<Vec<_>>();
 
