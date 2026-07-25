@@ -29,6 +29,8 @@ pub struct Model {
     pub attribute: LineAttribute,
     pub sender_role_id: Option<i32>,
     pub display_name: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub tool_context: Option<String>,
     pub save_id: i32,
     pub parent_line_id: Option<i32>,
 }

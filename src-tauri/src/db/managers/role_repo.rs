@@ -78,6 +78,29 @@ impl RoleRepo {
             .await?)
     }
 
+    /// 获取可调用工具的角色名称，返回 `(数据库名称, settings.yml 中的运行时名称)`。
+    /// User 和 System 没有角色 settings，不能作为工具调用主体。
+    pub async fn get_all_tool_role_names(
+        db: &DatabaseConnection,
+    ) -> Result<Vec<(String, String)>> {
+        let roles = role::Entity::find()
+            .filter(role::Column::RoleType.is_in([RoleType::Main, RoleType::Npc]))
+            .all(db)
+            .await?;
+        let data_dir = crate::api::data_dir();
+        let mut names = Vec::with_capacity(roles.len());
+
+        for role in roles {
+            let Some(settings) = Self::get_role_settings_by_id(db, &data_dir, role.id).await? else {
+                tracing::warn!("跳过缺少角色设置的工具权限初始化: role_id={}", role.id);
+                continue;
+            };
+            names.push((role.name, settings.ai_name));
+        }
+
+        Ok(names)
+    }
+
     /// 确保 role 表中存在 id=0 的 User 角色（代表人类玩家）。
     /// 若已有 id=0 的行但名称/类型不匹配，则更新为正确值。
     /// 幂等操作，每次启动调用。

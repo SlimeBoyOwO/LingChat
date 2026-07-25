@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use async_trait::async_trait;
 use serde_json::Value;
 use thiserror::Error;
@@ -8,7 +10,19 @@ use super::registry::ToolRegistry;
 
 /// 单次工具调用的只读运行上下文。
 #[derive(Clone, Debug, Default)]
-pub struct ToolContext;
+pub struct ToolContext {
+    pub allowed_tools: HashSet<String>,
+}
+
+impl ToolContext {
+    pub fn new(allowed_tools: HashSet<String>) -> Self {
+        Self { allowed_tools }
+    }
+
+    pub fn allows(&self, name: &str) -> bool {
+        self.allowed_tools.contains(name)
+    }
+}
 
 /// 工具成功执行后返回的 JSON 数据。
 pub type ToolResult = Value;
@@ -51,13 +65,12 @@ impl<'a> ToolExecutor<'a> {
         }
     }
 
-    #[cfg(test)]
-    fn with_timeout(registry: &'a ToolRegistry, timeout: std::time::Duration) -> Self {
-        Self { registry, timeout }
-    }
-
     /// 执行指定工具，并将可恢复错误编码为稳定 JSON。
     pub async fn execute(&self, name: &str, arguments: &str, context: &ToolContext) -> String {
+        if !context.allows(name) {
+            return error_result("tool_not_allowed", format!("当前调用上下文不允许工具: {name}"));
+        }
+
         let Some(tool) = self.registry.get(name) else {
             return error_result("unknown_tool", format!("未知工具: {name}"));
         };
@@ -86,6 +99,11 @@ impl<'a> ToolExecutor<'a> {
             }
         }
     }
+
+    #[cfg(test)]
+    fn with_timeout(registry: &'a ToolRegistry, timeout: std::time::Duration) -> Self {
+        Self { registry, timeout }
+    }
 }
 
 /// 构造稳定的工具错误 JSON。
@@ -106,6 +124,15 @@ mod tests {
 
     use super::*;
     use crate::ai_service::tools::registry::ToolRegistry;
+
+    fn test_context() -> ToolContext {
+        ToolContext::new(
+            ["echo", "error", "slow", "missing"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        )
+    }
 
     struct EchoTool;
 
@@ -157,18 +184,19 @@ mod tests {
         let mut registry = ToolRegistry::new();
         registry.register(Arc::new(EchoTool)).unwrap();
         let executor = ToolExecutor::new(&registry);
+        let ctx = test_context();
 
-        assert_eq!(executor.execute("echo", "{}", &ToolContext).await, "{}");
+        assert_eq!(executor.execute("echo", "{}", &ctx).await, "{}");
         assert!(executor
-            .execute("missing", "{}", &ToolContext)
+            .execute("missing", "{}", &ctx)
             .await
             .contains("unknown_tool"));
         assert!(executor
-            .execute("echo", "[", &ToolContext)
+            .execute("echo", "[", &ctx)
             .await
             .contains("invalid_json"));
         assert!(executor
-            .execute("echo", "[]", &ToolContext)
+            .execute("echo", "[]", &ctx)
             .await
             .contains("invalid_arguments"));
     }
@@ -179,8 +207,9 @@ mod tests {
         let mut registry = ToolRegistry::new();
         registry.register(Arc::new(ErrorTool)).unwrap();
         let executor = ToolExecutor::new(&registry);
+        let ctx = test_context();
 
-        let result = executor.execute("error", "{}", &ToolContext).await;
+        let result = executor.execute("error", "{}", &ctx).await;
         assert!(result.contains("tool_error"));
         assert!(result.contains("预期失败"));
     }
@@ -191,8 +220,10 @@ mod tests {
         let mut registry = ToolRegistry::new();
         registry.register(Arc::new(SlowTool)).unwrap();
         let executor = ToolExecutor::with_timeout(&registry, std::time::Duration::from_millis(1));
+        let ctx = test_context();
 
-        let result = executor.execute("slow", "{}", &ToolContext).await;
+        let result = executor.execute("slow", "{}", &ctx).await;
         assert!(result.contains("timeout"));
     }
 }
+
