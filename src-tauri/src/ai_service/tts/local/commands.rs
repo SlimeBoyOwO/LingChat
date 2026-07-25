@@ -81,7 +81,7 @@ pub async fn tts_local_list_installed(
 }
 
 fn default_voice_id(
-    inspected: &archive::InspectedPackage,
+    _inspected: &archive::InspectedPackage,
     src: &std::path::Path,
 ) -> String {
     let stem = src

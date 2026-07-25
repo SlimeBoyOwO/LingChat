@@ -98,6 +98,7 @@ pub async fn download_asset(
     Ok(bytes_done)
 }
 
+#[allow(dead_code)] // helper for future callers; resolve_target owns the active flow
 pub fn final_path_for(entry: &AssetEntry, base: &Path) -> PathBuf {
     let ext = super::registry::expected_extension(entry);
     base.join(format!("{}.{ext}", entry.id))

@@ -25,6 +25,8 @@ pub mod paths;
 pub mod registry;
 pub mod zip_extract;
 
+#[allow(unused_imports)] // TTS interface surface (frontend deferred)
 pub use paths::{LocalTtsPaths, REQUIRED_ASSETS, VoiceInstallInfo};
+#[allow(unused_imports)] // TTS interface surface (frontend deferred)
 pub use registry::AssetEntry;
 pub use commands::LocalTtsState;

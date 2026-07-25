@@ -1,6 +1,7 @@
 ﻿// Curated asset catalog. URLs are reference only - user triggers downloads
 // explicitly from the UI.
 
+#![allow(dead_code)]
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 

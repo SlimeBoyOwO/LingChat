@@ -15,6 +15,7 @@ use std::path::Path;
 use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, Clone, Default)]
+#[allow(dead_code)] // stub for the callback surface; frontend will read these
 pub struct EntryEvent {
     pub phase: &'static str,
     pub total: usize,

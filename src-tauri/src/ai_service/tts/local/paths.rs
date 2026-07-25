@@ -1,4 +1,4 @@
-// Filesystem layout for local TTS assets.
+﻿// Filesystem layout for local TTS assets.
 //
 // - `<data_root>/models/tts-local/`         root
 // - `<data_root>/models/tts-local/assets/`  DeBerta + tokenizer shared assets
@@ -11,6 +11,7 @@
 // - Android:          app external storage (`/storage/emulated/0/Android/data/<pkg>/files/`)
 // - iOS:              app sandbox
 //
+#![allow(dead_code)] // public path/asset contract reserved for TTS API surface
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
