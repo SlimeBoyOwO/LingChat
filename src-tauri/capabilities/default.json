@@ -25,6 +25,7 @@
     "screenshots:default",
     "fs:default",
     "notification:default",
+    "app-commands",
     "tts-local-status",
     "tts-local-list-catalog",
     "tts-local-list-installed",
