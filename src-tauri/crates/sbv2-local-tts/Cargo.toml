@@ -1,0 +1,44 @@
+﻿[package]
+name = "sbv2-local-tts"
+version = "0.1.0"
+edition = "2021"
+description = "In-process SBV2 / Style-Bert-VITS2 local TTS engine for LingChat"
+
+[lib]
+name = "sbv2_local_tts"
+crate-type = ["rlib"]
+
+[dependencies]
+# Backend engine vendored from the Style-Bert-VITS2 / SBV2 API project.
+sbv2_core = { path = "../../vendor/sbv2_core", default-features = false, features = ["std"] }
+
+# Tauri runtime (needed for AppHandle, Manager, State, Emitter).
+tauri = { version = "2", features = ["protocol-asset"] }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["io"] }
+reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls", "system-proxy"], default-features = false }
+futures-util = "0.3"
+sha2 = "0.10"
+sevenz-rust2 = "0.21"
+zip = "2"
+uuid = { version = "1", features = ["v4"] }
+async-trait = "0.1"
+anyhow = "1"
+tracing = "0.1"
+
+# Android-only: provides the SAF copy used by import_bridge on Android.
+[target.'cfg(target_os = "android")'.dependencies]
+tauri-plugin-android-fs = "28"
+
+[dev-dependencies]
+tempfile = "3"
+
+# Keep the vendored sbv2_core on the same ORT release as the host application.
+[patch."https://github.com/pykeio/ort.git"]
+ort = "=2.0.0-rc.12"
+
+[patch.crates-io]
+esaxx-rs = { path = "../../vendor/esaxx-rs" }

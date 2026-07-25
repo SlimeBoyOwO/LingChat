@@ -33,8 +33,12 @@ export default defineConfig(async () => ({
         }
       : undefined,
     watch: {
-      // 3. tell Vite to ignore watching some files
-      ignored: ['**/src-tauri/**', '**/.venv/**'],
+      // 3. tell Vite to ignore watching some files. `target/**` is the
+      // Rust workspace build output; on Windows the cargo build script
+      // holds the `.exe` files in a write-mapped state, and Vite's
+      // fs watcher tripping over them surfaces as `EBUSY: resource
+      // busy or locked` and aborts `tauri dev` mid-compile.
+      ignored: ['**/src-tauri/**', '**/.venv/**', '**/target/**'],
     },
   },
 }))

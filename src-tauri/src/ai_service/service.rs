@@ -11,6 +11,8 @@ use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::role_manager::GameRoleManager;
 use crate::ai_service::game_system::script_engine::ScriptManager;
 use crate::ai_service::llm::LlmSlot;
+use crate::ai_service::tts::local::engine::LocalTtsEngine;
+use crate::ai_service::tts::local::paths::LocalTtsPaths;
 use crate::ai_service::types::{CharacterSettings, GameLine, LineAttributeExt, LineBase};
 use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
@@ -52,6 +54,9 @@ impl AIService {
         data_dir: PathBuf,
         llm: LlmSlot,
         tts_config: TtsConfig,
+        local_tts_engine: Option<Arc<LocalTtsEngine>>,
+        local_tts_paths: Option<LocalTtsPaths>,
+        local_tts_switch: Option<crate::ai_service::tts::local::LocalTtsSwitch>,
         use_persistent_memory: bool,
         memory_update_interval: u32,
         memory_recent_window: u32,
@@ -63,6 +68,9 @@ impl AIService {
             data_dir.clone(),
             llm,
             tts_config,
+            local_tts_engine,
+            local_tts_paths,
+            local_tts_switch,
             use_persistent_memory,
             memory_update_interval,
             memory_recent_window,

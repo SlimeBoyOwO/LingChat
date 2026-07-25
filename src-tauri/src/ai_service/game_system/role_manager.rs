@@ -8,6 +8,8 @@ use crate::ai_service::game_system::memory_builder::MemoryBuilder;
 use crate::ai_service::game_system::persistent_memory_system::PersistentMemorySystem;
 use crate::ai_service::llm::LlmSlot;
 use crate::ai_service::tts::VoiceMaker;
+use crate::ai_service::tts::local::engine::LocalTtsEngine;
+use crate::ai_service::tts::local::paths::LocalTtsPaths;
 use crate::ai_service::types::{CharacterSettings, GameLine, GameMemoryBank, GameRole, LlmMessage};
 use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
@@ -27,6 +29,12 @@ pub struct GameRoleManager {
     memory_bank_systems: HashMap<i32, PersistentMemorySystem>,
     /// TTS 引擎配置（适配器 URL、音频格式等）。
     tts_config: TtsConfig,
+    /// Local TTS in-process engine (SBV2). Forwarded to each VoiceMaker so
+    /// the `sbv2_local` adapter can lazy-init the DeBerta holder + voice.
+    local_tts_engine: Option<Arc<LocalTtsEngine>>,
+    /// Filesystem layout for local TTS assets. Forwarded alongside the engine.
+    local_tts_paths: Option<LocalTtsPaths>,
+    local_tts_switch: Option<crate::ai_service::tts::local::LocalTtsSwitch>,
     /// 全局永久记忆开关（来自 `AppConfig::use_persistent_memory`）。
     use_persistent_memory: bool,
     /// 触发记忆摘要的新消息数（来自 `AppConfig::memory_update_interval`）。
@@ -42,6 +50,9 @@ impl GameRoleManager {
         data_dir: PathBuf,
         llm: LlmSlot,
         tts_config: TtsConfig,
+        local_tts_engine: Option<Arc<LocalTtsEngine>>,
+        local_tts_paths: Option<LocalTtsPaths>,
+        local_tts_switch: Option<crate::ai_service::tts::local::LocalTtsSwitch>,
         use_persistent_memory: bool,
         memory_update_interval: u32,
         memory_recent_window: u32,
@@ -52,6 +63,9 @@ impl GameRoleManager {
             llm,
             memory_bank_systems: HashMap::new(),
             tts_config,
+            local_tts_engine,
+            local_tts_paths,
+            local_tts_switch,
             use_persistent_memory,
             memory_update_interval,
             memory_recent_window,
@@ -66,6 +80,18 @@ impl GameRoleManager {
 
     pub fn set_character_clothes_override(&mut self, role_id: i32, clothes: String) {
         self.clothes_overrides.insert(role_id, clothes);
+    }
+
+    /// Inject the in-process local TTS engine + resolved paths. Called once
+    /// from `lib.rs` setup right after `LocalTtsState` is constructed, so
+    /// every subsequently-built VoiceMaker picks them up.
+    pub fn set_local_tts_engine(
+        &mut self,
+        engine: Option<Arc<LocalTtsEngine>>,
+        paths: Option<LocalTtsPaths>,
+    ) {
+        self.local_tts_engine = engine;
+        self.local_tts_paths = paths;
     }
 
     /// 获取角色；若未加载则从 DB 惰性注册。
@@ -136,6 +162,9 @@ impl GameRoleManager {
             &settings,
             resource_path.as_deref(),
             &self.tts_config,
+            self.local_tts_engine.as_ref(),
+            self.local_tts_paths.as_ref(),
+            self.local_tts_switch.as_ref(),
         );
 
         tracing::info!(
@@ -190,11 +219,6 @@ impl GameRoleManager {
     }
 
     /// 根据台词同步角色的状态和记忆。
-    ///
-    /// 若用户开启了永久记忆（`use_persistent_memory`），则会：
-    /// 1. 检查是否触发后台压缩
-    /// 2. 裁剪上下文窗口（避免无限膨胀）
-    /// 3. 将 MemoryBank 文本合并到 system / user 消息中
     pub async fn sync_memories(
         &mut self,
         db: &DatabaseConnection,
@@ -205,11 +229,9 @@ impl GameRoleManager {
             Some(n) if n < lines.len() => &lines[lines.len() - n..],
             _ => lines,
         };
-        // 收集涉及到的角色 ID
         let mut involved_ids: HashSet<i32> = HashSet::new();
         for line in source_lines {
             if let Some(sid) = line.sender_role_id() {
-                // 跳过 id 为 0 的角色（ 0 代表的是玩家，不参与记忆同步）
                 if sid != 0 {
                     involved_ids.insert(sid);
                 }
@@ -220,10 +242,8 @@ impl GameRoleManager {
         }
 
         for rid in involved_ids {
-            // 保证角色已加载
             let _ = self.get_role(db, rid).await?;
 
-            // Phase 1: 提取角色数据后释放借用，再惰性构造 MemoryBank 系统
             let (display_name, bank_clone, mb_enabled) = {
                 let role = self.loaded_roles.get(&rid).expect("role just loaded");
                 let name = role
@@ -243,12 +263,10 @@ impl GameRoleManager {
                 self.memory_recent_window as usize,
             );
 
-            // Phase 2: MemoryBank 启用时 — 同步后台结果 + 触发压缩 + 获取记忆文本
             let (mb_exists, slice_start, system_addendum, short_term_prefix) = {
                 let sys = self.memory_bank_systems.get(&rid);
                 match sys {
                     Some(s) if s.is_enabled() => {
-                        // 非阻塞同步后台压缩结果
                         if let Some(role) = self.loaded_roles.get_mut(&rid) {
                             s.sync_to_role(role);
                         }
@@ -263,14 +281,12 @@ impl GameRoleManager {
                 }
             };
 
-            // Phase 3: 裁剪 + 构建角色记忆
             let sliced: Vec<GameLine> = if slice_start > 0 && slice_start < source_lines.len() {
                 source_lines[slice_start..].to_vec()
             } else {
                 source_lines.to_vec()
             };
 
-            // 确保人设 SYSTEM 提示存在
             let has_prompt = Self::find_first_system_prompt(&sliced, rid).is_some();
             let mut final_sliced = sliced;
             if !has_prompt {
@@ -283,7 +299,6 @@ impl GameRoleManager {
 
             let built = MemoryBuilder::new(rid).build(&final_sliced);
 
-            // Phase 4: 写入角色记忆
             if let Some(role) = self.loaded_roles.get_mut(&rid) {
                 let use_mb = mb_exists && mb_enabled && !system_addendum.is_empty();
                 role.memory = if use_mb {
@@ -301,11 +316,6 @@ impl GameRoleManager {
         Ok(())
     }
 
-    // ── MemoryBank 集成方法 ──
-
-    /// 惰性构造角色的 `PersistentMemorySystem`。
-    ///
-    /// 调用方保证在 `enabled=true` 时槽位内已就绪 LLM（构造函数注入）。
     fn ensure_memory_bank_system(
         &mut self,
         role_id: i32,
@@ -318,7 +328,6 @@ impl GameRoleManager {
         if self.memory_bank_systems.contains_key(&role_id) {
             return;
         }
-        // 仅在 enabled 但 LLM 槽位为空时告警（正常启动流程不应到达）
         if self.llm.try_read().map(|g| g.is_none()).unwrap_or(true) {
             if enabled {
                 tracing::warn!(
@@ -342,7 +351,6 @@ impl GameRoleManager {
         );
     }
 
-    /// 从 DB 加载 MemoryBank 到运行时缓存。应在 "载入存档" 时调用。
     pub async fn load_memory_banks_from_db(
         &mut self,
         db: &DatabaseConnection,
@@ -351,7 +359,6 @@ impl GameRoleManager {
     ) -> Result<()> {
         let memories = MemoryRepo::get_memories(db, save_id, None).await?;
 
-        // 每个 role 取最新（id 最大）的记录
         let mut best: HashMap<i32, (i32, serde_json::Value)> = HashMap::new();
         for m in &memories {
             let Some(rid) = m.role_id else { continue };
@@ -372,7 +379,6 @@ impl GameRoleManager {
         for rid in target_ids {
             let _ = self.get_role(db, rid).await?;
 
-            // 更新 role.memory_bank（DB → 内存）
             if let Some((_, info)) = best.get(&rid) {
                 if let Ok(mb) = serde_json::from_value::<GameMemoryBank>(info.clone()) {
                     if let Some(role) = self.loaded_roles.get_mut(&rid) {
@@ -381,7 +387,6 @@ impl GameRoleManager {
                 }
             }
 
-            // 提取数据（释放借用后传递给 ensure）
             let (bank, display_name, enabled) = {
                 let role = self.loaded_roles.get(&rid).expect("role just loaded");
                 (
@@ -401,7 +406,6 @@ impl GameRoleManager {
                 self.memory_recent_window as usize,
             );
 
-            // 若已有压缩系统且 DB 有数据，同步重置
             if let Some((_, info)) = best.get(&rid) {
                 if let Ok(mb) = serde_json::from_value::<GameMemoryBank>(info.clone()) {
                     if let Some(sys) = self.memory_bank_systems.get(&rid) {
@@ -413,9 +417,6 @@ impl GameRoleManager {
         Ok(())
     }
 
-    /// 用最新角色配置更新已加载角色的 TTS 设置，并立即重建 VoiceMaker。
-    ///
-    /// 返回角色当前是否已经加载；未加载时磁盘配置仍会在下次注册角色时生效。
     pub fn update_role_voice_settings(
         &mut self,
         role_id: i32,
@@ -457,14 +458,12 @@ impl GameRoleManager {
         true
     }
 
-    /// 更新已加载角色的语音语言并重新初始化其 VoiceMaker。
     pub fn update_role_voice_lang(&mut self, role_id: i32, lang: &str) {
         let Some(role) = self.loaded_roles.get_mut(&role_id) else {
             tracing::warn!("update_role_voice_lang: 角色 {} 未加载", role_id);
             return;
         };
 
-        // 同步角色 settings 中的 voice_lang
         role.settings.voice_lang = Some(lang.to_string());
 
         let Some(vm) = role.voice_maker.as_mut() else {
@@ -478,7 +477,6 @@ impl GameRoleManager {
             return;
         }
 
-        // OpenTTS 音色标识：角色级优先，留空由 VoiceMaker 回退到全局配置
         let voice_cfg = role.settings.voice_models.clone().unwrap_or_default();
         let name = role.settings.ai_name.clone();
 
@@ -491,7 +489,6 @@ impl GameRoleManager {
         save_id: i32,
         role_ids: Option<&[i32]>,
     ) -> Result<()> {
-        // 先同步所有压缩系统的最新状态
         for rid in self.loaded_roles.keys().copied().collect::<Vec<_>>() {
             if let Some(sys) = self.memory_bank_systems.get(&rid) {
                 if let Some(role) = self.loaded_roles.get_mut(&rid) {
@@ -514,12 +511,6 @@ impl GameRoleManager {
         Ok(())
     }
 
-    /// 将 MemoryBank 文本合并到 LLM 消息中。
-    ///
-    /// - `system_addendum`：合并到第一条 system 消息末尾
-    /// - `short_term_prefix`：保留参数（Python 版对应的 user 前缀合并已注释，此处同步）
-    ///
-    /// 另会合并连续出现的多条 system 消息为一条。
     fn merge_memory_bank_into_context(
         memory: Vec<LlmMessage>,
         system_addendum: &str,
@@ -542,7 +533,6 @@ impl GameRoleManager {
             }
         }
 
-        // 合并连续 system 消息
         let mut cleaned: Vec<LlmMessage> = Vec::new();
         for msg in out {
             if let Some(last) = cleaned.last_mut() {
@@ -556,36 +546,30 @@ impl GameRoleManager {
         cleaned
     }
 
-    // ── 内部辅助方法（已有，未修改） ──
-
     fn find_first_system_prompt(lines: &[GameLine], role_id: i32) -> Option<&GameLine> {
         lines.iter().find(|l| {
             matches!(l.attribute(), LineAttribute::System) && l.sender_role_id() == Some(role_id)
         })
     }
 
-    /// 提供给 memory_builder 之外的工具：把 `memory` 合并成 `[{role,content}, ...]` 的 serde 形式。
     pub fn memory_as_json(&self, role_id: i32) -> Option<Vec<LlmMessage>> {
         self.loaded_roles.get(&role_id).map(|r| r.memory.clone())
     }
 }
 
-/// 根据 `CharacterSettings.tts_type` 与 `voice_models` 构造角色的 `VoiceMaker`。
-///
-/// 未启用 TTS / 配置缺失时返回 `None`。对应 Python `GameRole` 构造时调用
-/// `voice_maker = VoiceMaker(...)`。
 fn build_voice_maker(
     data_dir: &Path,
     settings: &CharacterSettings,
     resource_path: Option<&str>,
     tts_config: &TtsConfig,
+    local_tts_engine: Option<&Arc<LocalTtsEngine>>,
+    local_tts_paths: Option<&LocalTtsPaths>,
+    local_tts_switch: Option<&crate::ai_service::tts::local::LocalTtsSwitch>,
 ) -> Option<VoiceMaker> {
     let tts_type = settings.tts_type.as_deref().unwrap_or("").trim();
     if tts_type.is_empty() {
         return None;
     }
-    // OpenTTS 音色标识：角色级 voice_models.opentts_voice 优先，
-    // 留空时由 VoiceMaker 回退到全局 TTS 配置（tts.opentts_voice）
     let voice_cfg = settings.voice_models.clone().unwrap_or_default();
 
     let audio_format = tts_config.audio_format.clone();
@@ -599,6 +583,8 @@ fn build_voice_maker(
 
     let temp_dir = data_dir.join("voice");
     let mut vm = VoiceMaker::new(temp_dir, audio_format, tts_config.clone());
+    vm.set_local_tts_engine(local_tts_engine.cloned(), local_tts_paths.cloned());
+    vm.set_local_tts_switch(local_tts_switch.cloned());
     vm.set_lang(&lang);
     if let Some(p) = resource_path {
         vm.set_character_path(Some(resolve_character_path(data_dir, p)));

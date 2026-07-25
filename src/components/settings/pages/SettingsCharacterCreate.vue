@@ -273,6 +273,7 @@
                     <option value="sbv2api">sbv2api</option>
                     <option value="gsv">gsv</option>
                     <option value="aivis">aivis</option>
+                    <option value="localsbv2api">localsbv2api</option>
                   </select>
                 </div>
 

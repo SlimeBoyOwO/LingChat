@@ -1,4 +1,4 @@
-mod achievements;
+﻿mod achievements;
 mod adventures;
 mod ai_service;
 mod api;
@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use chrono::Local;
 use sea_orm::DatabaseConnection;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tracing_subscriber::fmt::time::FormatTime;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -79,8 +79,7 @@ pub struct InnerAppState {
 /// "state() called before manage()"。
 ///
 /// 解决方案: setup 闭包**最开始**就 manage 一个空壳 AppState,
-/// init::initialize 完成后用真实值填充。`ArcSwap` 提供 lock-free 读写,
-/// `Deref` 让所有原有访问代码保持不变。
+/// init::initialize 完成后用真实值填充。`OnceLock` 提供一次性写入。
 pub struct AppState {
     inner: std::sync::OnceLock<InnerAppState>,
 }
@@ -100,10 +99,6 @@ impl AppState {
     }
 
     /// 直接返回内部数据引用，用于 IDE 补全。
-    ///
-    /// rust-analyzer 无法解析 `State<AppState>` → `AppState` → `InnerAppState`
-    /// 的双重 Deref 链，字段补全会失效。此方法将第二步 Deref 替换为方法调用，
-    /// 通过 `state.data().ai_service` 即可正常触发补全。
     pub fn data(&self) -> &InnerAppState {
         self.inner
             .get()
@@ -112,7 +107,6 @@ impl AppState {
 }
 
 /// 桌面端：简单 Deref，rust-analyzer 可以正确解析。
-/// Android 上的竞态窗口极小（manage → fill 只隔几行代码），桌面端从不触发。
 #[cfg(not(target_os = "android"))]
 impl std::ops::Deref for AppState {
     type Target = InnerAppState;
@@ -124,9 +118,6 @@ impl std::ops::Deref for AppState {
 }
 
 /// Android：spin-loop 等待 fill 完成。
-/// Tauri 在 Android 上会在 setup 闭包执行前就创建 webview 窗口，
-/// 前端 JS 一旦加载就会立刻 invoke 命令。如果此时 panic，IPC worker
-/// 线程会把整个进程拖死，所以必须自旋等待而非直接 panic。
 #[cfg(target_os = "android")]
 impl std::ops::Deref for AppState {
     type Target = InnerAppState;
@@ -189,11 +180,34 @@ pub fn run() {
         .setup(|app| {
             utils::log_bridge::set_app_handle(app.handle().clone());
 
+            // Initialize the cached data directory eagerly so it can be passed
+            // into the standalone local TTS crate before init::initialize runs.
+            init::static_copy::init_data_dir(&app.handle());
+
             app.manage(api::pet::HitTestState::default());
             app.manage(resource_sync::ResourceSyncState::default());
             app.manage(lan_sync::LanSyncState::default());
             app.manage(utils::cpu_perf::CpuDetectionCache::new());
             app.manage(api::role_archive::RoleArchiveState::default());
+
+            // Local TTS (SBV2 in-process). Resolves paths, ensures
+            // the on-disk layout, and auto-inits the engine if a
+            // DeBerta pair is already installed.
+            let tts_paths = ai_service::tts::local::paths::LocalTtsPaths::resolve(
+                &app.handle(),
+                init::static_copy::get_data_dir().clone(),
+            )
+            .map_err(|e| format!("LocalTtsPaths::resolve: {e}"))?;
+            tts_paths.ensure()
+                .map_err(|e| format!("LocalTtsPaths::ensure: {e}"))?;
+            let local_state = ai_service::tts::local::LocalTtsState::new(tts_paths);
+            let app_config = config::AppConfig::load(&app.handle()).unwrap_or_default();
+            let local_tts_switch =
+                ai_service::tts::local::LocalTtsSwitch::new(app_config.enable_local_tts);
+            app.manage(local_tts_switch.clone());
+            let local_engine = local_state.engine.clone();
+            let local_paths = local_state.paths.clone();
+            app.manage(local_state);
 
             // Android 修复: Tauri 在 setup 闭包执行前已创建 webview 窗口,前端 invoke
             // 命令会在 IPC runtime worker 上立即 dispatch;如果 AppState 还没 manage
@@ -201,7 +215,12 @@ pub fn run() {
             // 一个空壳 AppState,init::initialize 完成后用真实值 fill。
             app.manage(AppState::empty());
             let rt = tokio::runtime::Runtime::new()?;
-            let (db, ai_service, chat) = rt.block_on(init::initialize(app))?;
+            let (db, ai_service, chat) = rt.block_on(init::initialize(
+                app,
+                Some(local_engine.clone()),
+                Some(local_paths.clone()),
+                Some(local_tts_switch.clone()),
+            ))?;
 
             // 初始化文件日志（从设置读取开关和保留天数）
             {
@@ -265,7 +284,7 @@ pub fn run() {
                 ),
             ));
 
-            // Start proactive system loop on Tauri's runtime (NOT rt — rt is dropped when setup returns)
+            // Start proactive system loop on Tauri's runtime
             let proactive_clone = proactive.clone();
             tauri::async_runtime::spawn(async move {
                 ai_service::proactive_system::ProactiveSystem::start(proactive_clone).await;
@@ -315,6 +334,43 @@ pub fn run() {
                     god_agent,
                 });
             }
+
+            // Defer DeBerta load until the app body is mounted; the
+            // LocalTtsAdapter's lazy bootstrap still runs if a chat
+            // arrives before this finishes, so first-message latency is
+            // the price of the boot-time win.
+            let preload = app.handle().clone();
+            let preload_engine = local_engine.clone();
+            let preload_paths = local_paths.clone();
+            let preload_switch = local_tts_switch.clone();
+            tauri::async_runtime::spawn(async move {
+                if !preload_switch.is_enabled() {
+                    tracing::info!(target: "tts_local", "local tts disabled, skipping preload");
+                    return;
+                }
+                if !preload_paths.asset_present("deberta") {
+                    tracing::info!(
+                        target: "tts_local",
+                        "local tts assets missing, skipping preload"
+                    );
+                    return;
+                }
+                if preload_engine.is_ready().await {
+                    return;
+                }
+                match preload_engine.init(&preload_paths).await {
+                    Ok(()) => {
+                        tracing::info!(target: "tts_local", "deberta preloaded in background");
+                        let _ = preload.emit("tts://engine-ready", ());
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            target: "tts_local",
+                            "deberta preload failed (first synthesize will retry): {e}"
+                        );
+                    }
+                }
+            });
 
             // Spawn Windows mouse polling click-through loop
             let window = app
@@ -520,6 +576,14 @@ pub fn run() {
             api::role_archive::rescan_roles,
             api::role_archive::export_role,
             api::role_archive::export_role_to_path,
+            ai_service::tts::local::commands::tts_local_status,
+            ai_service::tts::local::commands::tts_local_list_catalog,
+            ai_service::tts::local::commands::tts_local_list_installed,
+            ai_service::tts::local::commands::tts_local_import_from_path,
+            ai_service::tts::local::commands::tts_local_download,
+            ai_service::tts::local::commands::tts_local_delete_voice,
+            ai_service::tts::local::commands::tts_local_import_style_vectors,
+            ai_service::tts::local::commands::tts_local_synthesize_preview,
             exit_app,
         ])
         .run(tauri::generate_context!())

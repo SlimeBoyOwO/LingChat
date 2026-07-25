@@ -59,6 +59,10 @@ ling_chat_pal/
 node_modules/
 build/
 dist/
+
+# Rust workspace build artifacts (cargo uses target/ at the workspace root
+# even with multiple member crates).
+target/
 ling_chat/static/frontend/
 # Tauri auto-generated files
 # src-tauri/gen/android/ 已取消忽略（通过下级 .gitignore 控制具体排除项）
@@ -158,3 +162,7 @@ data/game_data/scripts/standalone/**
 .claude
 CLAUDE.md
 AGENTS.md
+
+# Local APK build archive (manual snapshot taken before each release build).
+prev-build-*/
+

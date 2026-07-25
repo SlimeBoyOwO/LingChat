@@ -19,6 +19,8 @@ use crate::ai_service::llm::provider_config::{
 use crate::ai_service::llm::LlmSlot;
 use crate::ai_service::message_system::processor::{MessageProcessor, ProcessorOptions};
 use crate::ai_service::service::{AIService, SharedAIService};
+use crate::ai_service::tts::local::engine::LocalTtsEngine;
+use crate::ai_service::tts::local::paths::LocalTtsPaths;
 use crate::ai_service::translator::Translator;
 use crate::ai_service::types::CharacterSettings;
 use crate::config::{self, AppConfig};
@@ -29,8 +31,14 @@ use crate::ChatComponents;
 
 pub async fn initialize(
     app: &App,
+    local_tts_engine: Option<Arc<LocalTtsEngine>>,
+    local_tts_paths: Option<LocalTtsPaths>,
+    local_tts_switch: Option<crate::ai_service::tts::local::LocalTtsSwitch>,
 ) -> Result<(DatabaseConnection, SharedAIService, ChatComponents)> {
-    static_copy::init_data_dir(&app.handle());
+    // init_data_dir is invoked earlier from the Tauri setup closure
+    // (see lib.rs) so the cached data directory is available to
+    // LocalTtsPaths::resolve before this function runs. Calling it again
+    // here would panic on the OnceLock.
     static_copy::seed_data_dir(&app.handle())?;
     let data_dir = static_copy::get_data_dir().clone();
 
@@ -74,6 +82,9 @@ pub async fn initialize(
         data_dir.clone(),
         llm.clone(),
         app_config.tts.clone(),
+        local_tts_engine,
+        local_tts_paths,
+        local_tts_switch,
         app_config.use_persistent_memory,
         app_config.memory_update_interval,
         app_config.memory_recent_window,
