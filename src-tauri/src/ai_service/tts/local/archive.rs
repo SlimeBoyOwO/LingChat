@@ -162,21 +162,20 @@ pub fn install_inspected(
         PackageKind::Zip | PackageKind::SevenZ => {
             let token =
                 std::sync::Arc::new(tokio_util::sync::CancellationToken::new());
-            let on_entry = |_evt: crate::utils::archive::EntryEvent| {};
+            let on_entry = |_evt: super::zip_extract::EntryEvent| {};
             let src_buf = src.to_path_buf();
             let dst_buf = dst.clone();
             let token_clone = token.clone();
             let kind = inspected.kind;
-            let _result: crate::utils::archive::ExtractSummary =
+            let _result: super::zip_extract::ExtractSummary =
                 tokio::task::block_in_place(|| match kind {
-                    PackageKind::Zip => crate::utils::archive::extract_zip(
                         &src_buf,
                         &dst_buf,
                         &token_clone,
                         &on_entry,
                     ),
                     PackageKind::SevenZ => {
-                        crate::utils::archive::extract_sevenz(
+                        super::zip_extract::extract_sevenz(
                             &src_buf,
                             &dst_buf,
                             &token_clone,

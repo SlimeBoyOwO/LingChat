@@ -23,6 +23,7 @@ pub mod import_bridge;
 pub mod model_manager;
 pub mod paths;
 pub mod registry;
+pub mod zip_extract;
 
 pub use paths::{LocalTtsPaths, REQUIRED_ASSETS, VoiceInstallInfo};
 pub use registry::AssetEntry;
