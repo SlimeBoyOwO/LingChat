@@ -185,6 +185,11 @@ impl MemoryBuilder {
                 buffer_kind = Some(BufferKind::OtherBlock);
                 buffer.push(line.clone());
             }
+
+            if !line.base.tool_context.is_empty() {
+                flush(&mut memory, &mut buffer, &mut buffer_kind, self);
+                memory.extend(line.base.tool_context.iter().cloned());
+            }
         }
 
         flush(&mut memory, &mut buffer, &mut buffer_kind, self);

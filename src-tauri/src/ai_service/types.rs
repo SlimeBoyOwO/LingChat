@@ -132,6 +132,8 @@ pub struct LineBase {
     pub attribute: LineAttributeExt,
     pub sender_role_id: Option<i32>,
     pub display_name: Option<String>,
+    #[serde(default)]
+    pub tool_context: Vec<LlmMessage>,
 }
 
 /// 对 `db::entities::line::LineAttribute` 的包装，提供 `Default` 实现

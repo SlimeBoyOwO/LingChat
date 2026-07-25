@@ -110,7 +110,7 @@ impl MessageGenerator {
 
         loop {
             // 取当前角色记忆（每轮重新获取，因为 current_role_id 可能已变化）
-            let context = self.get_current_context().await?;
+            let (context, tool_context_anchor) = self.get_current_context().await?;
             if context.is_empty() {
                 break;
             }
@@ -122,7 +122,7 @@ impl MessageGenerator {
                 None
             };
             let round_acc = self
-                .execute_pipeline(context, &original_msg, round_msg_seq)
+                .execute_pipeline(context, tool_context_anchor, &original_msg, round_msg_seq)
                 .await?;
             accumulated.push_str(&round_acc);
 
@@ -224,20 +224,22 @@ impl MessageGenerator {
     }
 
     /// Step 2: 根据 current_role_id 获取当前角色的 memory 上下文。
-    async fn get_current_context(&self) -> Result<Vec<LlmMessage>> {
+    async fn get_current_context(&self) -> Result<(Vec<LlmMessage>, Option<usize>)> {
         let mut gs = self.deps.game_status.lock().await;
         let Some(rid) = gs.current_role_id else {
             tracing::error!("生成消息的时候没有当前角色，取消生成");
-            return Ok(Vec::new());
+            return Ok((Vec::new(), None));
         };
+        let tool_context_anchor = gs.line_list.len().checked_sub(1);
         let role = gs.get_role(&self.deps.db, rid).await?;
-        Ok(role.memory.clone())
+        Ok((role.memory.clone(), tool_context_anchor))
     }
 
     /// Step 3: 启动 LLM 流管道，统一处理 thinking emit 与错误分发。
     async fn execute_pipeline(
         &self,
         context: Vec<LlmMessage>,
+        tool_context_anchor: Option<usize>,
         user_message: &str,
         user_msg_seq: Option<u32>,
     ) -> Result<String> {
@@ -246,7 +248,12 @@ impl MessageGenerator {
         }
 
         match self
-            .run_pipeline(context, user_message.to_string(), user_msg_seq)
+            .run_pipeline(
+                context,
+                tool_context_anchor,
+                user_message.to_string(),
+                user_msg_seq,
+            )
             .await
         {
             Ok(acc) => {
@@ -398,11 +405,37 @@ impl MessageGenerator {
     async fn run_pipeline(
         &self,
         context: Vec<LlmMessage>,
+        tool_context_anchor: Option<usize>,
         user_message: String,
         user_message_seq: Option<u32>,
     ) -> Result<String> {
-        let llm_stream =
-            stream_with_tool_loop(&self.deps.llm, &self.deps.tool_registry, context).await?;
+        let role_name = {
+            let mut gs = self.deps.game_status.lock().await;
+            let Some(role_id) = gs.current_role_id else {
+                return Err(anyhow::anyhow!("工具调用时没有当前角色"));
+            };
+            gs.get_role(&self.deps.db, role_id)
+                .await?
+                .display_name
+                .clone()
+        };
+        let tool_loop_result = stream_with_tool_loop(
+            &self.deps.llm,
+            &self.deps.tool_registry,
+            context,
+            self.deps.source,
+            role_name,
+        )
+        .await?;
+        if !tool_loop_result.tool_messages.is_empty() {
+            let mut gs = self.deps.game_status.lock().await;
+            let anchor = tool_context_anchor
+                .and_then(|index| gs.line_list.get_mut(index))
+                .context("工具上下文锚点台词不存在")?;
+            anchor.base.tool_context = tool_loop_result.tool_messages;
+            gs.refresh_memories(&self.deps.db).await?;
+        }
+        let llm_stream = tool_loop_result.stream;
 
         let (sentence_tx, sentence_rx) =
             mpsc::channel::<SentenceItem>(self.deps.concurrency.max(1) * 2);

@@ -67,7 +67,7 @@ mod tests {
     async fn returns_parseable_local_time() {
         let before = Local::now().timestamp();
         let result = CurrentTimeTool
-            .execute(&ToolContext, serde_json::json!({}))
+            .execute(&ToolContext::default(), serde_json::json!({}))
             .await
             .unwrap();
         let after = Local::now().timestamp();
@@ -76,8 +76,9 @@ mod tests {
         assert!((before..=after).contains(&timestamp));
         assert_eq!(result["timezone"], "local");
         assert!(CurrentTimeTool
-            .execute(&ToolContext, serde_json::json!({"x": 1}))
+            .execute(&ToolContext::default(), serde_json::json!({"x": 1}))
             .await
             .is_err());
     }
 }
+

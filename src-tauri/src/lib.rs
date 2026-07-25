@@ -251,7 +251,9 @@ pub fn run() {
             ));
 
             let generation_lock = std::sync::Arc::new(tokio::sync::Mutex::new(()));
-            let tool_registry = Arc::new(ai_service::tools::built_in_registry()?);
+            let role_names = rt
+                .block_on(db::managers::role_repo::RoleRepo::get_all_tool_role_names(&db))?;
+            let tool_registry = Arc::new(ai_service::tools::built_in_registry(role_names)?);
 
             // Create proactive system
             let proactive = std::sync::Arc::new(tokio::sync::Mutex::new(

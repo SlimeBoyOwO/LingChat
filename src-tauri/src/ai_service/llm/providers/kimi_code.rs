@@ -140,21 +140,28 @@ impl KimiCodeProvider {
                     content: AnthropicMessageContent::Text(m.content.clone()),
                 }),
                 "assistant" if m.tool_calls.is_some() => {
-                    let blocks = m
-                        .tool_calls
-                        .as_ref()
-                        .expect("tool_calls 已通过条件判断")
-                        .iter()
-                        .map(|call| {
-                            let input = serde_json::from_str(&call.function.arguments)
-                                .context("Kimi-Code 工具调用参数不是合法 JSON")?;
-                            Ok(AnthropicRequestBlock::ToolUse {
-                                id: call.id.clone(),
-                                name: call.function.name.clone(),
-                                input,
+                    let mut blocks = Vec::new();
+                    if !m.content.is_empty() {
+                        blocks.push(AnthropicRequestBlock::Text {
+                            text: m.content.clone(),
+                        });
+                    }
+                    blocks.extend(
+                        m.tool_calls
+                            .as_ref()
+                            .expect("tool_calls 已通过条件判断")
+                            .iter()
+                            .map(|call| {
+                                let input = serde_json::from_str(&call.function.arguments)
+                                    .context("Kimi-Code 工具调用参数不是合法 JSON")?;
+                                Ok(AnthropicRequestBlock::ToolUse {
+                                    id: call.id.clone(),
+                                    name: call.function.name.clone(),
+                                    input,
+                                })
                             })
-                        })
-                        .collect::<Result<Vec<_>>>()?;
+                            .collect::<Result<Vec<_>>>()?,
+                    );
                     conversation.push(AnthropicMessage {
                         role: "assistant".to_string(),
                         content: AnthropicMessageContent::Blocks(blocks),
@@ -616,6 +623,8 @@ enum AnthropicMessageContent {
 #[derive(Serialize)]
 #[serde(tag = "type")]
 enum AnthropicRequestBlock {
+    #[serde(rename = "text")]
+    Text { text: String },
     #[serde(rename = "tool_use")]
     ToolUse {
         id: String,
@@ -647,6 +656,41 @@ struct AnthropicToolChoice {
     effort: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct MessagesResponse {
+    content: Vec<ContentBlock>,
+}
+
+#[derive(Deserialize, Default)]
+struct ContentBlock {
+    #[serde(rename = "type")]
+    type_: String,
+    #[serde(default)]
+    text: Option<String>,
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    input: Option<serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+struct MessagesStreamChunk {
+    #[serde(rename = "type")]
+    type_: String,
+    #[serde(default)]
+    delta: Option<MessageDelta>,
+}
+
+#[derive(Deserialize, Default, Debug)]
+struct MessageDelta {
+    #[serde(default)]
+    text: Option<String>,
+    #[serde(default)]
+    thinking: Option<String>,
 }
 
 #[cfg(test)]
@@ -744,37 +788,3 @@ mod tests {
     }
 }
 
-#[derive(Deserialize)]
-struct MessagesResponse {
-    content: Vec<ContentBlock>,
-}
-
-#[derive(Deserialize, Default)]
-struct ContentBlock {
-    #[serde(rename = "type")]
-    type_: String,
-    #[serde(default)]
-    text: Option<String>,
-    #[serde(default)]
-    id: Option<String>,
-    #[serde(default)]
-    name: Option<String>,
-    #[serde(default)]
-    input: Option<serde_json::Value>,
-}
-
-#[derive(Deserialize)]
-struct MessagesStreamChunk {
-    #[serde(rename = "type")]
-    type_: String,
-    #[serde(default)]
-    delta: Option<MessageDelta>,
-}
-
-#[derive(Deserialize, Default, Debug)]
-struct MessageDelta {
-    #[serde(default)]
-    text: Option<String>,
-    #[serde(default)]
-    thinking: Option<String>,
-}

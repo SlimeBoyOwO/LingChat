@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use futures_util::{stream, StreamExt};
 
 use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmClient};
+use crate::ai_service::message_system::generator::GeneratorSource;
 use crate::ai_service::types::{LlmMessage, ToolDefinition};
 
 use super::executor::{ToolContext, ToolExecutor};
@@ -45,6 +46,11 @@ impl StreamingToolProvider for LlmClient {
     }
 }
 
+pub struct ToolLoopResult {
+    pub stream: ChunkStream,
+    pub tool_messages: Vec<LlmMessage>,
+}
+
 /// 以流式请求执行普通聊天的工具闭环。
 ///
 /// 仅支持原生流式 tools 的 provider 会携带工具定义请求。工具调用必须等到本轮
@@ -54,46 +60,60 @@ pub async fn stream_with_tool_loop(
     llm: &LlmClient,
     registry: &ToolRegistry,
     messages: Vec<LlmMessage>,
-) -> Result<ChunkStream> {
-    stream_with_tool_loop_with_provider(llm, registry, messages).await
+    source: GeneratorSource,
+    role_name: Option<String>,
+) -> Result<ToolLoopResult> {
+    stream_with_tool_loop_with_provider(llm, registry, messages, source, role_name).await
 }
 
 async fn stream_with_tool_loop_with_provider(
     provider: &dyn StreamingToolProvider,
     registry: &ToolRegistry,
     mut messages: Vec<LlmMessage>,
-) -> Result<ChunkStream> {
-    let definitions = registry.definitions();
+    source: GeneratorSource,
+    role_name: Option<String>,
+) -> Result<ToolLoopResult> {
+    let allowed = registry.allowed_tools(source, role_name.as_deref());
+    let definitions = registry.definitions_for_allowed(&allowed);
     if definitions.is_empty() || !provider.supports_streaming_tools() {
         if !definitions.is_empty() {
             tracing::info!("当前 LLM Provider 不支持原生流式工具调用，跳过普通聊天工具闭环");
         }
-        return provider.stream(&messages).await;
+        return Ok(ToolLoopResult {
+            stream: presentation_stream(provider.stream(&messages).await?),
+            tool_messages: Vec::new(),
+        });
     }
 
     let executor = ToolExecutor::new(registry);
-    let context = ToolContext;
+    let context = ToolContext::new(allowed);
+
+    let mut tool_messages = Vec::new();
 
     for round in 0..=MAX_TOOL_ROUNDS {
         tracing::info!(round = round + 1, "开始流式聊天工具决策");
         let mut response_stream = provider.stream_with_tools(&messages, &definitions).await?;
         let mut chunks = Vec::new();
-        let mut tool_calls = None;
+        let mut tool_calls = Vec::new();
 
         while let Some(chunk) = response_stream.next().await {
             match chunk? {
-                LlmChunk::ToolCalls(calls) => tool_calls = Some(calls),
+                LlmChunk::ToolCalls(calls) => tool_calls.extend(calls),
                 chunk => chunks.push(chunk),
             }
         }
 
-        let calls = tool_calls.unwrap_or_default();
-        if calls.is_empty() {
-            return Ok(Box::pin(stream::iter(chunks.into_iter().map(Ok))));
+        if tool_calls.is_empty() {
+            return Ok(ToolLoopResult {
+                stream: Box::pin(stream::iter(chunks.into_iter().map(Ok))),
+                tool_messages,
+            });
         }
         if round == MAX_TOOL_ROUNDS {
             return Err(anyhow!("工具调用超过最大轮次 {MAX_TOOL_ROUNDS}"));
         }
+
+        let calls = tool_calls;
 
         let mut ids = HashSet::new();
         for call in &calls {
@@ -105,15 +125,44 @@ async fn stream_with_tool_loop_with_provider(
             }
         }
 
-        messages.push(LlmMessage::tool(calls.clone()));
+        let content = chunks
+            .iter()
+            .filter_map(|chunk| match chunk {
+                LlmChunk::Content(text) => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<String>();
+        let assistant_message = LlmMessage {
+            role: "assistant".to_string(),
+            content,
+            tool_calls: Some(calls.clone()),
+            tool_call_id: None,
+        };
+        messages.push(assistant_message.clone());
+        tool_messages.push(assistant_message);
         for call in calls {
             tracing::info!(tool = call.function.name, call_id = call.id, "执行聊天工具");
             let result = executor
                 .execute(&call.function.name, &call.function.arguments, &context)
                 .await;
-            messages.push(LlmMessage::tool_result(call.id, result));
+            let tool_result = LlmMessage::tool_result(call.id, result);
+            messages.push(tool_result.clone());
+            tool_messages.push(tool_result);
         }
     }
 
     unreachable!("工具循环必须在限定轮次内返回")
 }
+
+fn presentation_stream(stream: ChunkStream) -> ChunkStream {
+    Box::pin(stream.filter_map(|chunk| async move {
+        match chunk {
+            Ok(LlmChunk::ToolCalls(calls)) => {
+                tracing::warn!(count = calls.len(), "非工具调用回复流包含工具调用，已丢弃");
+                None
+            }
+            chunk => Some(chunk),
+        }
+    }))
+}
+
