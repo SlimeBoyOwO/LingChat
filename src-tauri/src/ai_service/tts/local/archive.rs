@@ -169,11 +169,14 @@ pub fn install_inspected(
             let kind = inspected.kind;
             let _result: super::zip_extract::ExtractSummary =
                 tokio::task::block_in_place(|| match kind {
-                        &src_buf,
-                        &dst_buf,
-                        &token_clone,
-                        &on_entry,
-                    ),
+                    PackageKind::Zip => {
+                        super::zip_extract::extract_zip(
+                            &src_buf,
+                            &dst_buf,
+                            &token_clone,
+                            &on_entry,
+                        )
+                    }
                     PackageKind::SevenZ => {
                         super::zip_extract::extract_sevenz(
                             &src_buf,

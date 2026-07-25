@@ -149,10 +149,10 @@ pub fn run() {
                 app.handle(),
             )) {
                 Ok(stats) => {
-                    tracing::info!("璇煶鏂囦欢娓呯悊瀹屾垚: 鍒犻櫎 {} 涓枃浠?, stats.deleted_count);
+                    tracing::info!("语音文件清理完成: 删除 {} 个文件", stats.deleted_count);
                 }
                 Err(e) => {
-                    tracing::warn!("璇煶鏂囦欢娓呯悊澶辫触锛堥潪鑷村懡閿欒锛? {e:#}");
+                    tracing::warn!("语音文件清理失败 (致命错误): {e:#}");
                 }
             }
 
