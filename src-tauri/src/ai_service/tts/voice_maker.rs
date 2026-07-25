@@ -147,8 +147,9 @@ impl VoiceMaker {
         let gsv = (non_empty(&cfg.gsv_voice_filename) && non_empty(&cfg.gsv_voice_text))
             || (non_empty(&cfg.gsv_gpt_model_name) && non_empty(&cfg.gsv_sovits_model_name));
         let aivis = non_empty(&cfg.aivis_model_uuid);
-        // OpenTTS 可用性由全局配置决定，只要有全局 voice 就视为可用
-        let opentts = !self.tts_config.opentts_voice.trim().is_empty();
+        // OpenTTS 可用性：角色级 voice 优先，全局 TTS 配置兜底，任一非空即可用
+        let opentts =
+            non_empty(&cfg.opentts_voice) || !self.tts_config.opentts_voice.trim().is_empty();
 
         self.availability = TtsAvailability {
             sva,
@@ -275,7 +276,12 @@ impl VoiceMaker {
                 }
             }
             "opentts" if self.availability.opentts => {
-                let voice = cfg.opentts_voice.clone().unwrap_or_default();
+                // 角色级 voice 优先；为空时回退到全局 TTS 配置的音色标识
+                let voice = if non_empty(&cfg.opentts_voice) {
+                    cfg.opentts_voice.clone().unwrap_or_default()
+                } else {
+                    self.tts_config.opentts_voice.clone()
+                };
                 let model = if self.tts_config.opentts_model.trim().is_empty() {
                     "FunAudioLLM/CosyVoice2-0.5B".to_string()
                 } else {
