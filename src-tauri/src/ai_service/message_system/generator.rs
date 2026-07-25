@@ -516,8 +516,9 @@ fn parse_segments(deps: &GeneratorDeps, sentence: &str) -> Vec<EmotionSegment> {
     segments
 }
 
-fn gsv_translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static str> {
-    if tts_type != "gsv" {
+/// GPT-SoVITS 与 OpenTTS 支持把回复翻译成英语/韩语后再合成语音。
+fn translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static str> {
+    if tts_type != "gsv" && tts_type != "opentts" {
         return None;
     }
     match voice_lang {
@@ -544,13 +545,13 @@ async fn enrich_segments(deps: &GeneratorDeps, segments: &mut [EmotionSegment]) 
             .unwrap_or_default()
     };
 
-    if let Some(target_lang) = gsv_translation_language(&tts_type, &voice_lang) {
+    if let Some(target_lang) = translation_language(&tts_type, &voice_lang) {
         let translated = deps
             .translator
             .translate_segments_to(segments, true, target_lang)
             .await?;
         if !translated {
-            // Do not let GPT-SoVITS pronounce the main LLM's Japanese secondary
+            // Do not let TTS pronounce the main LLM's Japanese secondary
             // line when the explicitly selected English/Korean translation fails.
             for segment in segments.iter_mut() {
                 segment.japanese_text.clear();
