@@ -52,6 +52,10 @@ pub(crate) fn voice_dir() -> PathBuf {
     data_dir().join("voice")
 }
 
+pub(crate) fn fonts_dir() -> PathBuf {
+    data_dir().join("fonts")
+}
+
 /// 路径穿越防护：验证 canonical 路径是否以预期的基础目录开头
 pub(crate) fn validate_path_in_base(resolved: &PathBuf, base: &PathBuf) -> Result<(), String> {
     let canon_resolved = resolved

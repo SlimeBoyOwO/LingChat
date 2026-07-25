@@ -33,7 +33,7 @@ import { useSedentaryReminder } from './composables/useSedentaryReminder'
 import { useUpdater } from './composables/useUpdater'
 import { useCanDeliver } from './composables/useCanDeliver'
 import { useZoom } from './composables/useZoom'
-import { listSystemFonts } from './api/services/font'
+import { listSystemFonts, getImportedFonts, registerAllImportedFonts } from './api/services/font'
 
 // ─── 激活主动对话投放条件上报（仅在此处挂载一次） ────────────
 useCanDeliver()
@@ -59,6 +59,12 @@ watch(() => settingsStore.text.fontFamily, applyFont, { immediate: true })
 // 避免打开设置页时才触发 IPC 造成可感知的卡顿。注：忽略结果即可，
 // SettingsText 进入时直接命中 font.ts 的缓存。
 void listSystemFonts()
+
+// 启动时加载导入字体并注册 @font-face 规则，确保用户之前导入的字
+// 体在 settings store 恢复字体选择前已可用。
+void getImportedFonts().then((fonts) => {
+  registerAllImportedFonts(fonts)
+})
 
 // ─── 键盘处理 ────────────────────────────────────────────────
 
