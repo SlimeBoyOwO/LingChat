@@ -476,22 +476,142 @@ mod x86_impl {
 }
 
 // ────────────────────────────────────────
-// 非 x86 平台（ARM 等）—— 直接返回 Low
+// 非 x86 平台（ARM 等）—— 核心拓扑 + 频率启发式
 // ────────────────────────────────────────
 
 #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
 mod imp {
     use super::*;
+    use std::fs;
+    use std::path::Path;
+
+    // ────────────────────────────────────────
+    // 频率分级阈值常量（经验值，后续可调）
+    // ────────────────────────────────────────
+
+    /// High 等级所需的最低最高频率 (MHz)
+    const HIGH_FREQ_THRESHOLD_MHZ: u64 = 3000;
+    /// High 等级所需的最低大核数量（频率 ≥ BIG_CORE_FREQ_THRESHOLD_MHZ 的核心）
+    const HIGH_BIG_CORE_MIN: usize = 2;
+    /// 统计 big core 时的频率门槛 (MHz)
+    const BIG_CORE_FREQ_THRESHOLD_MHZ: u64 = 2800;
+    /// Medium 等级所需的最低最高频率 (MHz)
+    const MEDIUM_FREQ_THRESHOLD_MHZ: u64 = 2400;
+    /// Medium 等级所需的最低总核心数
+    const MEDIUM_TOTAL_CORES_MIN: usize = 8;
+
+    // ────────────────────────────────────────
+    // 辅助函数
+    // ────────────────────────────────────────
+
+    /// 读取指定 CPU 核心的 `cpuinfo_max_freq`（单位 kHz），失败返回 `None`。
+    fn read_core_max_freq(core_index: usize) -> Option<u64> {
+        let path = format!(
+            "/sys/devices/system/cpu/cpu{}/cpufreq/cpuinfo_max_freq",
+            core_index
+        );
+        let content = fs::read_to_string(&path).ok()?;
+        let trimmed = content.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        trimmed.parse::<u64>().ok()
+    }
+
+    /// 收集所有逻辑核心的最高频率。
+    ///
+    /// 遍历 `/sys/devices/system/cpu/cpu[0-9]+/cpufreq/cpuinfo_max_freq`，
+    /// 读取失败的核心会被静默跳过。
+    /// 返回 `(freqs_mhz, total_cores)`，其中 `freqs_mhz` 为成功读取到的以 MHz 为单位的频率列表。
+    fn collect_core_frequencies() -> (Vec<u64>, usize) {
+        let cpu_dir = Path::new("/sys/devices/system/cpu");
+
+        // 非 Linux 系统（如 iOS/macOS ARM）上此路径不存在，直接返回空
+        if !cpu_dir.is_dir() {
+            return (Vec::new(), 0);
+        }
+
+        let mut freqs = Vec::new();
+        let mut total_cores = 0usize;
+
+        if let Ok(entries) = fs::read_dir(cpu_dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let name_str = name.to_string_lossy();
+
+                if !name_str.starts_with("cpu") {
+                    continue;
+                }
+
+                // 提取 "cpu" 后面的数字部分
+                let num_part = &name_str[3..];
+                let index: usize = match num_part.parse() {
+                    Ok(n) => n,
+                    Err(_) => continue,
+                };
+
+                total_cores += 1;
+
+                if let Some(freq_khz) = read_core_max_freq(index) {
+                    freqs.push(freq_khz / 1000); // kHz → MHz
+                }
+            }
+        }
+
+        (freqs, total_cores)
+    }
+
+    /// 根据核心频率拓扑数据划分性能等级（纯函数，方便单元测试）。
+    fn classify_by_topology(freqs_mhz: &[u64], total_cores: usize) -> PerfTier {
+        if freqs_mhz.is_empty() || total_cores == 0 {
+            return PerfTier::Low;
+        }
+
+        let max_freq_mhz = *freqs_mhz.iter().max().unwrap_or(&0);
+        let big_core_count = freqs_mhz
+            .iter()
+            .filter(|&&f| f >= BIG_CORE_FREQ_THRESHOLD_MHZ)
+            .count();
+
+        if max_freq_mhz >= HIGH_FREQ_THRESHOLD_MHZ && big_core_count >= HIGH_BIG_CORE_MIN {
+            PerfTier::High
+        } else if max_freq_mhz >= MEDIUM_FREQ_THRESHOLD_MHZ
+            && total_cores >= MEDIUM_TOTAL_CORES_MIN
+        {
+            PerfTier::Medium
+        } else {
+            PerfTier::Low
+        }
+    }
+
+    /// 构建品牌字符串。
+    fn build_brand_string(total_cores: usize, max_freq_mhz: Option<u64>) -> String {
+        match max_freq_mhz {
+            Some(freq) => format!("ARM {}核 (最高{}MHz)", total_cores, freq),
+            None => format!("ARM {}核 (频率未知)", total_cores),
+        }
+    }
 
     pub fn detect_cpu() -> CpuInfo {
-        // ARM 或不支持 CPUID 的平台
-        let arch = std::env::consts::ARCH.to_string();
-        CpuInfo {
-            brand: format!("{arch} 架构处理器"),
-            tier: PerfTier::Low,
-            is_unknown: true,
-            unknown_message: Some("还有我不认识的设备，哈！".to_string()),
-        }
+        let (freqs_mhz, total_cores) = collect_core_frequencies();
+
+        let is_unknown = freqs_mhz.is_empty() || total_cores == 0;
+        let tier = if is_unknown {
+            PerfTier::Low
+        } else {
+            classify_by_topology(&freqs_mhz, total_cores)
+        };
+
+        let max_freq_mhz = freqs_mhz.iter().max().copied();
+        let brand = build_brand_string(total_cores, max_freq_mhz);
+
+        let unknown_message = if is_unknown {
+            Some("还有我不认识的设备，哈！".to_string())
+        } else {
+            None
+        };
+
+        CpuInfo {brand,tier,is_unknown,unknown_message,}
     }
 }
 
