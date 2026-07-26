@@ -369,7 +369,9 @@ impl VoiceMaker {
             let Some(text) = segment_text_for_lang(&self.lang, seg).map(str::to_owned) else {
                 continue;
             };
-            let emo = String::new();
+            // 将情绪分类器的预测标签传给 TTS 适配器（目前仅 IndexTTS2 消费 emo，
+            // 其余适配器忽略该参数，行为不变）
+            let emo = seg.predicted.clone();
 
             let file_name = if seg.voice_file.is_empty() {
                 format!(
