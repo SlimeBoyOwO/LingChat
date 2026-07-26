@@ -1,5 +1,4 @@
 import { invoke } from '@tauri-apps/api/core'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 export type AssetKind = 'bert' | 'voice'
 
@@ -54,13 +53,6 @@ export interface TtsLocalImportResult {
   message: string
 }
 
-export interface DownloadProgress {
-  asset_id: string
-  bytes_done: number
-  total_bytes: number
-  percent: number
-}
-
 export interface ImportOptions {
   voiceId?: string
   assetId?: 'deberta' | 'deberta-tokenizer'
@@ -68,10 +60,6 @@ export interface ImportOptions {
 
 export function status(): Promise<TtsLocalStatus> {
   return invoke<TtsLocalStatus>('tts_local_status')
-}
-
-export function listCatalog(): Promise<AssetEntry[]> {
-  return invoke<AssetEntry[]>('tts_local_list_catalog')
 }
 
 export function listInstalled(): Promise<TtsLocalInstallSnapshot> {
@@ -87,10 +75,6 @@ export function importFromPath(
     voiceId: options.voiceId ?? null,
     assetId: options.assetId ?? null,
   })
-}
-
-export function download(assetId: string): Promise<TtsLocalImportResult> {
-  return invoke<TtsLocalImportResult>('tts_local_download', { assetId })
 }
 
 export async function deleteVoice(voiceId: string): Promise<void> {
@@ -114,10 +98,4 @@ export function synthesizePreview(params: {
   sdpRatio: number
 }): Promise<number[]> {
   return invoke<number[]>('tts_local_synthesize_preview', params)
-}
-
-export function onDownloadProgress(
-  callback: (progress: DownloadProgress) => void,
-): Promise<UnlistenFn> {
-  return listen<DownloadProgress>('tts://download-progress', (event) => callback(event.payload))
 }

@@ -100,10 +100,6 @@
           </div>
         </section>
 
-        <section>
-          <div class="section-heading">
-            <div>
-              <h3>下载目录</h3>
         <section v-if="voicesMissingStyleVectors.length > 0">
           <div class="section-heading">
             <div>
@@ -136,47 +132,6 @@
               <FileJson :size="17" />
               <span>导入 style_vectors</span>
             </button>
-          </div>
-        </section>
-
-              <p>仅在点击下载后获取模型</p>
-            </div>
-            <CloudDownload :size="18" class="text-white/40" />
-          </div>
-
-          <div v-if="catalog.length === 0 && !loading" class="empty-state">暂无可下载资源</div>
-          <div v-else class="divide-y divide-white/8 border-y border-white/10">
-            <div
-              v-for="asset in catalog"
-              :key="asset.id"
-              class="grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 py-3"
-            >
-              <div class="min-w-0">
-                <div class="flex min-w-0 items-center gap-2">
-                  <p class="truncate text-sm font-medium text-white">{{ asset.display_name }}</p>
-                  <span class="kind-badge">{{ asset.kind === 'bert' ? '共享' : '语音' }}</span>
-                </div>
-                <p class="mt-1 truncate text-xs text-white/45">
-                  {{ asset.language.toUpperCase() }} · {{ formatBytes(asset.size_bytes) }} · {{ asset.source }}
-                </p>
-                <div v-if="progress[asset.id]" class="mt-2 h-1 w-full overflow-hidden bg-white/10">
-                  <div
-                    class="h-full bg-cyan-300 transition-[width] duration-200"
-                    :style="{ width: `${Math.min(100, progress[asset.id]?.percent ?? 0)}%` }"
-                  ></div>
-                </div>
-              </div>
-              <button
-                class="icon-button"
-                :title="downloading.has(asset.id) ? '下载中' : '下载'"
-                :disabled="busyAction !== null || downloading.has(asset.id) || isCatalogAssetInstalled(asset)"
-                @click="downloadAsset(asset)"
-              >
-                <LoaderCircle v-if="downloading.has(asset.id)" :size="16" class="animate-spin" />
-                <Check v-else-if="isCatalogAssetInstalled(asset)" :size="16" />
-                <Download v-else :size="16" />
-              </button>
-            </div>
           </div>
         </section>
 
@@ -294,13 +249,10 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { open } from '@tauri-apps/plugin-dialog'
 import type { DialogFilter } from '@tauri-apps/plugin-dialog'
-import type { UnlistenFn } from '@tauri-apps/api/event'
 import {
   AudioLines,
   Check,
   CircleAlert,
-  CloudDownload,
-  Download,
   FileArchive,
   FileJson,
   FileUp,
@@ -317,8 +269,6 @@ import { MenuItem, MenuPage } from '@/components/ui'
 import { useDialogStore } from '@/stores/modules/ui/dialog'
 import * as TtsLocal from '@/api/services/tts-local'
 import type {
-  AssetEntry,
-  DownloadProgress,
   TtsLocalInstallSnapshot,
   TtsLocalStatus,
   VoiceRecord,
@@ -327,11 +277,8 @@ import type {
 const dialogStore = useDialogStore()
 const status = ref<TtsLocalStatus | null>(null)
 const snapshot = ref<TtsLocalInstallSnapshot>({ assets: [], voices: [] })
-const catalog = ref<AssetEntry[]>([])
 const loading = ref(false)
 const busyAction = ref<string | null>(null)
-const downloading = ref(new Set<string>())
-const progress = ref<Record<string, DownloadProgress | undefined>>({})
 const importVoiceId = ref('')
 const styleVectorsTarget = ref('')
 const notice = ref<{ kind: 'success' | 'error'; text: string } | null>(null)
@@ -342,7 +289,6 @@ const previewSdp = ref(0)
 const previewing = ref(false)
 const audioRef = ref<HTMLAudioElement | null>(null)
 let audioUrl: string | null = null
-let unlistenProgress: UnlistenFn | null = null
 
 type FilterIntent = 'deberta' | 'tokenizer' | 'voice' | 'style_vectors'
 
@@ -423,14 +369,12 @@ function normalizeVoiceId(value: string): string {
 async function refreshAll(): Promise<void> {
   loading.value = true
   try {
-    const [nextStatus, nextSnapshot, nextCatalog] = await Promise.all([
+    const [nextStatus, nextSnapshot] = await Promise.all([
       TtsLocal.status(),
       TtsLocal.listInstalled(),
-      TtsLocal.listCatalog(),
     ])
     status.value = nextStatus
     snapshot.value = nextSnapshot
-    catalog.value = nextCatalog
     if (!previewVoice.value || !nextSnapshot.voices.some((voice) => voice.voice_id === previewVoice.value)) {
       previewVoice.value = nextSnapshot.voices[0]?.voice_id ?? ''
     }
@@ -489,11 +433,6 @@ async function pickVoice(): Promise<void> {
   }
 }
 
-function isCatalogAssetInstalled(asset: AssetEntry): boolean {
-  if (asset.kind === 'bert') return Boolean(status.value?.deberta_installed)
-  return snapshot.value.voices.some((voice) => voice.voice_id === asset.id)
-}
-
 async function pickStyleVectors(): Promise<void> {
   if (!styleVectorsTarget.value) {
     notice.value = { kind: 'error', text: '请先选择需要补齐 style_vectors 的语音' }
@@ -516,24 +455,6 @@ async function pickStyleVectors(): Promise<void> {
   } catch (error) {
     notice.value = { kind: 'error', text: `导入失败：${errorText(error)}` }
   } finally {
-    busyAction.value = null
-  }
-}
-
-async function downloadAsset(asset: AssetEntry): Promise<void> {
-  downloading.value = new Set(downloading.value).add(asset.id)
-  busyAction.value = `download:${asset.id}`
-  notice.value = null
-  try {
-    await TtsLocal.download(asset.id)
-    notice.value = { kind: 'success', text: `${asset.display_name} 已下载` }
-    await refreshAll()
-  } catch (error) {
-    notice.value = { kind: 'error', text: `下载失败：${errorText(error)}` }
-  } finally {
-    const next = new Set(downloading.value)
-    next.delete(asset.id)
-    downloading.value = next
     busyAction.value = null
   }
 }
@@ -600,13 +521,9 @@ watch(
 
 onMounted(async () => {
   await refreshAll()
-  unlistenProgress = await TtsLocal.onDownloadProgress((value) => {
-    progress.value = { ...progress.value, [value.asset_id]: value }
-  })
 })
 
 onUnmounted(() => {
-  unlistenProgress?.()
   if (audioUrl) URL.revokeObjectURL(audioUrl)
 })
 </script>
