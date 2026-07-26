@@ -27,11 +27,33 @@ use super::io;
 use super::paths;
 use super::schema::build_schema;
 
+/// 诊断级别。
+///
+/// 原先是 `&'static str`，写错一个 "warning" 能编译、能序列化、排序落到兜底分支、
+/// 前端当成 info —— 全链路静默。改成 enum 让编译器兜住。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Severity {
+    Error,
+    Warn,
+    Info,
+}
+
+impl Severity {
+    /// 排序权重：error 最前
+    fn rank(self) -> u8 {
+        match self {
+            Severity::Error => 0,
+            Severity::Warn => 1,
+            Severity::Info => 2,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Diagnostic {
-    /// error | warn | info
-    pub severity: &'static str,
+    pub severity: Severity,
     /// 稳定的机器可读代码，前端可据此做跳转/过滤
     pub code: &'static str,
     pub message: String,
@@ -46,7 +68,7 @@ pub struct Diagnostic {
 }
 
 impl Diagnostic {
-    fn script(severity: &'static str, code: &'static str, message: String) -> Self {
+    fn script(severity: Severity, code: &'static str, message: String) -> Self {
         Diagnostic {
             severity,
             code,
@@ -57,7 +79,7 @@ impl Diagnostic {
         }
     }
     fn chapter(
-        severity: &'static str,
+        severity: Severity,
         code: &'static str,
         chapter: &str,
         message: String,
@@ -72,7 +94,7 @@ impl Diagnostic {
         }
     }
     fn event(
-        severity: &'static str,
+        severity: Severity,
         code: &'static str,
         chapter: &str,
         index: usize,
@@ -102,14 +124,54 @@ pub struct ValidationReport {
     pub info_count: usize,
     /// 收集到的全部变量名，供编辑器做变量面板
     pub variables: Vec<String>,
+    /// 章节跳转边，供前端画真实的流程图连线与判断能否拖拽重排
+    pub edges: Vec<ChapterEdge>,
 }
 
-/// 章节图的一条边。
-struct Edge {
-    from: String,
-    to: String,
+/// 统一的章节 id 归一：去空白、剥一次 `.yaml`。
+///
+/// 之前三处各写一遍（两处 `trim_end_matches(".yaml")` 会把 `a.yaml.yaml` 剥成 `a`，
+/// 一处正则只剥一次），语义已经不一致了。
+pub fn chapter_id_of(raw: &str) -> &str {
+    let t = raw.trim();
+    t.strip_suffix(".yaml").unwrap_or(t)
+}
+
+/// 分支边在流程图上显示的标签：条件优先，其次 AI 分支名，兜底分支写「默认」。
+fn branch_label(opt: &serde_json::Map<String, JsonValue>, index: usize) -> String {
+    if let Some(c) = opt.get("condition").and_then(|v| v.as_str()) {
+        if !c.trim().is_empty() {
+            return c.trim().to_string();
+        }
+    }
+    if let Some(n) = opt.get("name").and_then(|v| v.as_str()) {
+        if !n.trim().is_empty() {
+            return n.trim().to_string();
+        }
+    }
+    if opt.get("default").and_then(|v| v.as_bool()).unwrap_or(false) {
+        return "默认".to_string();
+    }
+    format!("分支 {}", index + 1)
+}
+
+/// 章节图的一条边，从某章最后一条 `chapter_end` 反推而来。
+///
+/// 导出给前端画真连线。在这之前流程图只是把章节按文件名字典序排了一列，
+/// 箭头表达的是「章节 id 的字母顺序」而不是真实跳转 —— 看起来对但完全不对。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChapterEdge {
+    pub from: String,
+    /// 目标章节 id；`"end"` 表示剧本结束
+    pub to: String,
     /// 是否是显式的「剧本结束」
-    is_end: bool,
+    pub is_end: bool,
+    /// 分支条件 / AI 分支名，linear 时为空
+    #[serde(skip_serializing_if = "str::is_empty")]
+    pub label: String,
+    /// 该边所属章节的 end_type，前端据此决定能否拖拽重排
+    pub end_type: String,
 }
 
 /// 校验一个剧本包。
@@ -137,8 +199,8 @@ pub fn validate(
     let config = match io::read_story_config(script_dir) {
         Ok(c) => c,
         Err(e) => {
-            diags.push(Diagnostic::script("error", "config.unreadable", e));
-            return finish(diags, Vec::new());
+            diags.push(Diagnostic::script(Severity::Error, "config.unreadable", e));
+            return finish(diags, Vec::new(), Vec::new());
         }
     };
 
@@ -156,14 +218,14 @@ pub fn validate(
 
     if script_name.is_empty() {
         diags.push(Diagnostic::script(
-            "warn",
+            Severity::Warn,
             "config.no_script_name",
             format!("没有填剧本名，列表里会显示目录名「{}」", folder_name),
         ));
     } else if let Some(other_key) = other_script_names.get(&script_name) {
         if other_key != script_key {
             diags.push(Diagnostic::script(
-                "error",
+                Severity::Error,
                 "config.duplicate_name",
                 format!(
                     "剧本名「{}」与「{}」重复。引擎用剧本名作索引，重名会导致其中一个在列表里完全消失",
@@ -177,25 +239,24 @@ pub fn validate(
     let chapter_ids = paths::enumerate_chapter_ids(script_dir);
     if chapter_ids.is_empty() {
         diags.push(Diagnostic::script(
-            "error",
+            Severity::Error,
             "chapters.empty",
             "Chapters/ 下没有任何 .yaml 章节文件（引擎只认 .yaml，不认 .yml）".to_string(),
         ));
-        return finish(diags, Vec::new());
+        return finish(diags, Vec::new(), Vec::new());
     }
     let chapter_set: HashSet<&str> = chapter_ids.iter().map(|s| s.as_str()).collect();
 
     let intro = config
         .get("intro_chapter")
         .and_then(|v| v.as_str())
+        .map(chapter_id_of)
         .unwrap_or("main")
-        .trim()
-        .trim_end_matches(".yaml")
         .to_string();
 
     if !chapter_set.contains(intro.as_str()) {
         diags.push(Diagnostic::script(
-            "error",
+            Severity::Error,
             "config.intro_missing",
             format!("开场章节「{}」不存在", intro),
         ));
@@ -205,7 +266,7 @@ pub fn validate(
     let known_characters = collect_script_characters(script_dir);
 
     // ---------- 逐章节 ----------
-    let mut edges: Vec<Edge> = Vec::new();
+    let mut edges: Vec<ChapterEdge> = Vec::new();
     let mut vars_written: BTreeSet<String> = BTreeSet::new();
     let mut vars_read: BTreeSet<String> = BTreeSet::new();
 
@@ -213,28 +274,28 @@ pub fn validate(
         let file = match paths::resolve_chapter_file(script_dir, cid, true) {
             Ok(f) => f,
             Err(e) => {
-                diags.push(Diagnostic::chapter("error", "chapter.unreadable", cid, e));
+                diags.push(Diagnostic::chapter(Severity::Error, "chapter.unreadable", cid, e));
                 continue;
             }
         };
         let raw = match io::read_yaml_as_json(&file) {
             Ok(v) => v,
             Err(e) => {
-                diags.push(Diagnostic::chapter("error", "chapter.parse_failed", cid, e));
+                diags.push(Diagnostic::chapter(Severity::Error, "chapter.parse_failed", cid, e));
                 continue;
             }
         };
         let doc = match io::ChapterDoc::from_json(raw) {
             Ok(d) => d,
             Err(e) => {
-                diags.push(Diagnostic::chapter("error", "chapter.bad_shape", cid, e));
+                diags.push(Diagnostic::chapter(Severity::Error, "chapter.bad_shape", cid, e));
                 continue;
             }
         };
 
         if doc.events.is_empty() {
             diags.push(Diagnostic::chapter(
-                "warn",
+                Severity::Warn,
                 "chapter.no_events",
                 cid,
                 "章节没有任何事件，运行时会立刻结束整个剧本".to_string(),
@@ -249,7 +310,7 @@ pub fn validate(
                 Some(o) => o,
                 None => {
                     diags.push(Diagnostic::event(
-                        "error",
+                        Severity::Error,
                         "event.not_a_map",
                         cid,
                         i,
@@ -263,7 +324,7 @@ pub fn validate(
                 Some(t) => t,
                 None => {
                     diags.push(Diagnostic::event(
-                        "error",
+                        Severity::Error,
                         "event.missing_type",
                         cid,
                         i,
@@ -277,7 +338,7 @@ pub fn validate(
                 Some(f) => *f,
                 None => {
                     diags.push(Diagnostic::event(
-                        "error",
+                        Severity::Error,
                         "event.unknown_type",
                         cid,
                         i,
@@ -297,13 +358,9 @@ pub fn validate(
                     .map(|v| !matches!(v, JsonValue::Null) && v.as_str() != Some(""))
                     .unwrap_or(false);
                 if !present {
-                    // chapter_end 的 next_chapter 由 end_type 决定是否必填，单独处理
-                    if ty == "chapter_end" {
-                        continue;
-                    }
                     diags.push(
                         Diagnostic::event(
-                            "error",
+                            Severity::Error,
                             "field.required_missing",
                             cid,
                             i,
@@ -322,7 +379,7 @@ pub fn validate(
                 }
                 diags.push(
                     Diagnostic::event(
-                        "warn",
+                        Severity::Warn,
                         "field.unknown",
                         cid,
                         i,
@@ -332,17 +389,24 @@ pub fn validate(
                 );
             }
 
-            if obj.contains_key("duration") {
-                diags.push(
-                    Diagnostic::event(
-                        "info",
-                        "field.duration_inert",
-                        cid,
-                        i,
-                        "duration 引擎从不读取，写了不生效".to_string(),
-                    )
-                    .with_field("duration"),
-                );
+            // 遗留字段（schema 里 enabled == false 的通用字段）。
+            // 由 schema 驱动而不是硬编码 "duration"，这样加第二个遗留字段只改 schema.rs
+            for f in schema.common_fields.iter().filter(|f| !f.enabled) {
+                if obj.contains_key(f.key) {
+                    diags.push(
+                        Diagnostic::event(
+                            Severity::Info,
+                            "field.inert",
+                            cid,
+                            i,
+                            format!(
+                                "{} 引擎从不读取，写了不生效（保存时会原样保留）",
+                                f.key
+                            ),
+                        )
+                        .with_field(f.key),
+                    );
+                }
             }
 
             // condition
@@ -377,7 +441,7 @@ pub fn validate(
                             ),
                         };
                         diags.push(
-                            Diagnostic::event("error", "effect.invalid", cid, i, msg)
+                            Diagnostic::event(Severity::Error, "effect.invalid", cid, i, msg)
                                 .with_field("effect"),
                         );
                     }
@@ -393,7 +457,7 @@ pub fn validate(
                     let end_line = obj.get("end_line").and_then(|v| v.as_str()).unwrap_or("结束");
                     if rounds <= 0 && end_line.trim().is_empty() {
                         diags.push(Diagnostic::event(
-                            "error",
+                            Severity::Error,
                             "free_dialogue.no_exit",
                             cid,
                             i,
@@ -405,7 +469,7 @@ pub fn validate(
                     has_chapter_end = true;
                     if i != last_index {
                         diags.push(Diagnostic::event(
-                            "warn",
+                            Severity::Warn,
                             "chapter_end.not_last",
                             cid,
                             i,
@@ -425,7 +489,7 @@ pub fn validate(
                 if ch != "MAIN" && !known_characters.contains(ch) {
                     diags.push(
                         Diagnostic::event(
-                            "error",
+                            Severity::Error,
                             "character.unknown",
                             cid,
                             i,
@@ -442,7 +506,7 @@ pub fn validate(
 
         if !has_chapter_end {
             diags.push(Diagnostic::chapter(
-                "error",
+                Severity::Error,
                 "chapter.no_end",
                 cid,
                 "章节缺少「章节结束」事件。引擎会把这当成整个剧本结束，而不是接着下一章".to_string(),
@@ -456,7 +520,7 @@ pub fn validate(
     // ---------- 变量 ----------
     for v in vars_read.difference(&vars_written) {
         diags.push(Diagnostic::script(
-            "warn",
+            Severity::Warn,
             "variable.never_set",
             format!(
                 "条件里用到变量「{}」，但整个剧本都没有给它赋值过。未定义变量的 == 恒假、!= 恒真",
@@ -466,7 +530,7 @@ pub fn validate(
     }
     for v in vars_written.difference(&vars_read) {
         diags.push(Diagnostic::script(
-            "info",
+            Severity::Info,
             "variable.never_read",
             format!("变量「{}」被赋值但从未在任何条件里使用", v),
         ));
@@ -474,32 +538,33 @@ pub fn validate(
 
     let mut all_vars: Vec<String> = vars_written.union(&vars_read).cloned().collect();
     all_vars.sort();
-    finish(diags, all_vars)
+    finish(diags, all_vars, edges)
 }
 
-fn finish(mut diags: Vec<Diagnostic>, variables: Vec<String>) -> ValidationReport {
+fn finish(
+    mut diags: Vec<Diagnostic>,
+    variables: Vec<String>,
+    edges: Vec<ChapterEdge>,
+) -> ValidationReport {
     // error 在前，其次 warn，最后 info；同级按章节 + 事件序
-    let rank = |s: &str| match s {
-        "error" => 0,
-        "warn" => 1,
-        _ => 2,
-    };
     diags.sort_by(|a, b| {
-        rank(a.severity)
-            .cmp(&rank(b.severity))
+        a.severity
+            .rank()
+            .cmp(&b.severity.rank())
             .then_with(|| a.chapter.cmp(&b.chapter))
             .then_with(|| a.event_index.cmp(&b.event_index))
     });
 
-    let error_count = diags.iter().filter(|d| d.severity == "error").count();
-    let warn_count = diags.iter().filter(|d| d.severity == "warn").count();
-    let info_count = diags.iter().filter(|d| d.severity == "info").count();
+    let error_count = diags.iter().filter(|d| d.severity == Severity::Error).count();
+    let warn_count = diags.iter().filter(|d| d.severity == Severity::Warn).count();
+    let info_count = diags.iter().filter(|d| d.severity == Severity::Info).count();
     ValidationReport {
         diagnostics: diags,
         error_count,
         warn_count,
         info_count,
         variables,
+        edges,
     }
 }
 
@@ -563,7 +628,7 @@ fn check_asset(
     if resolve_script_media(data_dir, Some(script_dir), path, media).is_none() {
         diags.push(
             Diagnostic::event(
-                "error",
+                Severity::Error,
                 "asset.missing",
                 cid,
                 i,
@@ -590,29 +655,8 @@ fn check_condition(
         return;
     }
 
-    // 先挡不支持的运算符。== / != 里的 = 不算
-    let stripped = cond.replace("==", "").replace("!=", "");
-    let bad: Vec<&str> = ["&&", "||", ">=", "<=", ">", "<", "!", "(", ")", "+", "*", "/"]
-        .into_iter()
-        .filter(|op| stripped.contains(op))
-        .collect();
-    if !bad.is_empty() {
-        diags.push(
-            Diagnostic::event(
-                "error",
-                "condition.unsupported_operator",
-                cid,
-                i,
-                format!(
-                    "条件里用了不支持的运算符 {}。只支持 var == 值 / var != 值 / 裸变量真值 —— 写了别的不会报错，但条件会恒假",
-                    bad.join(" ")
-                ),
-            )
-            .with_field("condition"),
-        );
-        return;
-    }
-
+    // 只扫**运算符左侧**。右值是任意字符串，`bg == city/night` 里的 / 是合法内容，
+    // 早先在整串上找 / + * ( ) 会把它误判成「用了不支持的运算符」并跳过变量收集。
     let var = if let Some((v, _)) = cond.split_once("!=") {
         v.trim()
     } else if let Some((v, _)) = cond.split_once("==") {
@@ -621,10 +665,30 @@ fn check_condition(
         cond
     };
 
+    // 长运算符放前面，命中即停 —— 否则 `hp >= 5` 会同时报 >= 和 >
+    const BAD_OPS: [&str; 9] = ["&&", "||", ">=", "<=", ">", "<", "!", "(", ")"];
+    if let Some(op) = BAD_OPS.iter().find(|op| var.contains(**op)) {
+        diags.push(
+            Diagnostic::event(
+                Severity::Error,
+                "condition.unsupported_operator",
+                cid,
+                i,
+                format!(
+                    "条件里用了不支持的运算符「{}」。只支持 var == 值 / var != 值 / 裸变量真值 —— 写了别的不会报错，但条件会恒假",
+                    op
+                ),
+            )
+            .with_field("condition"),
+        );
+        return;
+    }
+
+
     if var.is_empty() {
         diags.push(
             Diagnostic::event(
-                "error",
+                Severity::Error,
                 "condition.no_variable",
                 cid,
                 i,
@@ -637,7 +701,7 @@ fn check_condition(
     if var.contains(' ') {
         diags.push(
             Diagnostic::event(
-                "error",
+                Severity::Error,
                 "condition.bad_variable",
                 cid,
                 i,
@@ -650,7 +714,7 @@ fn check_condition(
     if cond.contains("%player%") {
         diags.push(
             Diagnostic::event(
-                "warn",
+                Severity::Warn,
                 "condition.placeholder_not_replaced",
                 cid,
                 i,
@@ -673,7 +737,7 @@ fn check_actions(
     for a in actions {
         let Some(ao) = a.as_object() else {
             diags.push(Diagnostic::event(
-                "error",
+                Severity::Error,
                 "action.not_a_map",
                 cid,
                 i,
@@ -690,7 +754,7 @@ fn check_actions(
                     vars_written.insert(name);
                 }
                 Err(_) => diags.push(Diagnostic::event(
-                    "error",
+                    Severity::Error,
                     "action.bad_expression",
                     cid,
                     i,
@@ -703,7 +767,7 @@ fn check_actions(
             "add_line" => {
                 if event_type == "set_variable" {
                     diags.push(Diagnostic::event(
-                        "warn",
+                        Severity::Warn,
                         "action.not_supported_here",
                         cid,
                         i,
@@ -712,7 +776,7 @@ fn check_actions(
                 }
                 if content.trim().is_empty() {
                     diags.push(Diagnostic::event(
-                        "warn",
+                        Severity::Warn,
                         "action.empty_content",
                         cid,
                         i,
@@ -721,7 +785,7 @@ fn check_actions(
                 }
             }
             other => diags.push(Diagnostic::event(
-                "warn",
+                Severity::Warn,
                 "action.unknown_type",
                 cid,
                 i,
@@ -744,7 +808,7 @@ fn check_choices(
     };
     if options.is_empty() {
         diags.push(Diagnostic::event(
-            "error",
+            Severity::Error,
             "choices.empty",
             cid,
             i,
@@ -759,7 +823,7 @@ fn check_choices(
     for (oi, opt) in options.iter().enumerate() {
         let Some(oo) = opt.as_object() else {
             diags.push(Diagnostic::event(
-                "error",
+                Severity::Error,
                 "choices.option_not_a_map",
                 cid,
                 i,
@@ -772,7 +836,7 @@ fn check_choices(
         if text.is_empty() {
             if oi != last {
                 diags.push(Diagnostic::event(
-                    "warn",
+                    Severity::Warn,
                     "choices.catch_all_not_last",
                     cid,
                     i,
@@ -785,7 +849,7 @@ fn check_choices(
         } else {
             if !seen_texts.insert(text) {
                 diags.push(Diagnostic::event(
-                    "warn",
+                    Severity::Warn,
                     "choices.duplicate_text",
                     cid,
                     i,
@@ -794,7 +858,7 @@ fn check_choices(
             }
             if text.contains("%player%") {
                 diags.push(Diagnostic::event(
-                    "warn",
+                    Severity::Warn,
                     "choices.placeholder_in_text",
                     cid,
                     i,
@@ -808,7 +872,7 @@ fn check_choices(
 
         if oo.contains_key("next") {
             diags.push(Diagnostic::event(
-                "error",
+                Severity::Error,
                 "choices.option_next_ignored",
                 cid,
                 i,
@@ -839,7 +903,7 @@ fn check_set_variable(
 ) {
     let Some(options) = obj.get("options").and_then(|v| v.as_array()) else {
         diags.push(Diagnostic::event(
-            "error",
+            Severity::Error,
             "set_variable.no_options",
             cid,
             i,
@@ -849,7 +913,7 @@ fn check_set_variable(
     };
     if options.is_empty() {
         diags.push(Diagnostic::event(
-            "warn",
+            Severity::Warn,
             "set_variable.empty",
             cid,
             i,
@@ -874,26 +938,32 @@ fn check_set_variable(
 #[allow(clippy::too_many_arguments)]
 fn push_target(
     raw: &str,
+    // label: 诊断文案里怎么称呼这个跳转（「下一章」/「第 2 个分支」）
     label: &str,
+    // edge_label: 流程图连线上显示的标签（分支条件 / AI 分支名），linear 为空
+    edge_label: &str,
+    end_type: &str,
     cid: &str,
     i: usize,
     chapter_set: &HashSet<&str>,
-    edges: &mut Vec<Edge>,
+    edges: &mut Vec<ChapterEdge>,
     diags: &mut Vec<Diagnostic>,
 ) {
-    let target = raw.trim().trim_end_matches(".yaml");
+    let target = chapter_id_of(raw);
 
     if target == "end" {
-        edges.push(Edge {
+        edges.push(ChapterEdge {
             from: cid.to_string(),
             to: "end".to_string(),
             is_end: true,
+            label: edge_label.to_string(),
+            end_type: end_type.to_string(),
         });
         return;
     }
     if target.is_empty() {
         diags.push(Diagnostic::event(
-            "error",
+            Severity::Error,
             "chapter_end.empty_target",
             cid,
             i,
@@ -903,7 +973,7 @@ fn push_target(
     }
     if !chapter_set.contains(target) {
         diags.push(Diagnostic::event(
-            "error",
+            Severity::Error,
             "chapter_end.dangling",
             cid,
             i,
@@ -911,10 +981,12 @@ fn push_target(
         ));
         return;
     }
-    edges.push(Edge {
+    edges.push(ChapterEdge {
         from: cid.to_string(),
         to: target.to_string(),
         is_end: false,
+        label: edge_label.to_string(),
+        end_type: end_type.to_string(),
     });
 }
 
@@ -923,7 +995,7 @@ fn check_chapter_end(
     cid: &str,
     i: usize,
     chapter_set: &HashSet<&str>,
-    edges: &mut Vec<Edge>,
+    edges: &mut Vec<ChapterEdge>,
     diags: &mut Vec<Diagnostic>,
     vars_read: &mut BTreeSet<String>,
 ) {
@@ -940,7 +1012,7 @@ fn check_chapter_end(
 
             if next.is_some() && next_chapter.is_some() {
                 diags.push(Diagnostic::event(
-                    "warn",
+                    Severity::Warn,
                     "chapter_end.both_next_fields",
                     cid,
                     i,
@@ -948,9 +1020,9 @@ fn check_chapter_end(
                 ));
             }
             match next.or(next_chapter) {
-                Some(t) => push_target(t, "下一章", cid, i, chapter_set, edges, diags),
+                Some(t) => push_target(t, "下一章", "", end_type, cid, i, chapter_set, edges, diags),
                 None => diags.push(Diagnostic::event(
-                    "warn",
+                    Severity::Warn,
                     "chapter_end.no_next",
                     cid,
                     i,
@@ -962,7 +1034,7 @@ fn check_chapter_end(
             let options = obj.get("options").and_then(|v| v.as_array());
             let Some(options) = options else {
                 diags.push(Diagnostic::event(
-                    "error",
+                    Severity::Error,
                     "chapter_end.no_options",
                     cid,
                     i,
@@ -972,7 +1044,7 @@ fn check_chapter_end(
             };
             if options.is_empty() {
                 diags.push(Diagnostic::event(
-                    "error",
+                    Severity::Error,
                     "chapter_end.no_options",
                     cid,
                     i,
@@ -985,7 +1057,7 @@ fn check_chapter_end(
 
                 if oo.contains_key("text") || oo.contains_key("actions") {
                     diags.push(Diagnostic::event(
-                        "error",
+                        Severity::Error,
                         "chapter_end.choice_shaped_option",
                         cid,
                         i,
@@ -1006,7 +1078,7 @@ fn check_chapter_end(
 
                 if end_type == "ai_judged" && !oo.contains_key("name") {
                     diags.push(Diagnostic::event(
-                        "warn",
+                        Severity::Warn,
                         "chapter_end.ai_option_no_name",
                         cid,
                         i,
@@ -1023,7 +1095,7 @@ fn check_chapter_end(
                                 .unwrap_or(false)
                             {
                                 diags.push(Diagnostic::event(
-                                    "warn",
+                                    Severity::Warn,
                                     "chapter_end.branch_no_condition",
                                     cid,
                                     i,
@@ -1041,6 +1113,8 @@ fn check_chapter_end(
                     Some(t) => push_target(
                         t,
                         &format!("第 {} 个分支", oi + 1),
+                        &branch_label(oo, oi),
+                        end_type,
                         cid,
                         i,
                         chapter_set,
@@ -1048,7 +1122,7 @@ fn check_chapter_end(
                         diags,
                     ),
                     None => diags.push(Diagnostic::event(
-                        "error",
+                        Severity::Error,
                         "chapter_end.branch_no_next",
                         cid,
                         i,
@@ -1058,7 +1132,7 @@ fn check_chapter_end(
             }
             if !has_default {
                 diags.push(Diagnostic::event(
-                    "warn",
+                    Severity::Warn,
                     "chapter_end.no_default_branch",
                     cid,
                     i,
@@ -1069,7 +1143,7 @@ fn check_chapter_end(
         other => {
             diags.push(
                 Diagnostic::event(
-                    "error",
+                    Severity::Error,
                     "chapter_end.unknown_end_type",
                     cid,
                     i,
@@ -1085,7 +1159,7 @@ fn check_chapter_end(
 }
 
 /// 可达性、孤儿章节、环。
-fn check_graph(intro: &str, chapters: &[String], edges: &[Edge], diags: &mut Vec<Diagnostic>) {
+fn check_graph(intro: &str, chapters: &[String], edges: &[ChapterEdge], diags: &mut Vec<Diagnostic>) {
     let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();
     let mut inbound: HashMap<&str, usize> = HashMap::new();
     for c in chapters {
@@ -1127,7 +1201,7 @@ fn check_graph(intro: &str, chapters: &[String], edges: &[Edge], diags: &mut Vec
         } else {
             format!("章节「{}」没有任何章节指向它，玩家永远走不到", c)
         };
-        diags.push(Diagnostic::chapter("warn", "graph.unreachable", c, msg));
+        diags.push(Diagnostic::chapter(Severity::Warn, "graph.unreachable", c, msg));
     }
 
     // 环检测（DFS 三色）
@@ -1186,7 +1260,7 @@ fn check_graph(intro: &str, chapters: &[String], edges: &[Edge], diags: &mut Vec
 
     if let Some(c) = cycle {
         diags.push(Diagnostic::script(
-            "warn",
+            Severity::Warn,
             "graph.cycle",
             format!(
                 "章节之间存在循环：{}。引擎没有循环检测，玩家可能被困在里面出不来",
@@ -1368,11 +1442,14 @@ mod tests {
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let edges = vec![
-            Edge { from: "a".into(), to: "b".into(), is_end: false },
-            Edge { from: "b".into(), to: "a".into(), is_end: false },
-            Edge { from: "orphan".into(), to: "c".into(), is_end: false },
-        ];
+        let e = |from: &str, to: &str| ChapterEdge {
+            from: from.into(),
+            to: to.into(),
+            is_end: false,
+            label: String::new(),
+            end_type: "linear".into(),
+        };
+        let edges = vec![e("a", "b"), e("b", "a"), e("orphan", "c")];
         let mut d = Vec::new();
         check_graph("a", &chapters, &edges, &mut d);
 

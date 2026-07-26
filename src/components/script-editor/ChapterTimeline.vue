@@ -1,31 +1,31 @@
 <template>
   <div class="rail">
     <template
-      v-for="(row, ri) in rows"
-      :key="ri"
+      v-for="row in rows"
+      :key="row.key"
     >
       <!-- 复合块：默认折叠成一行 -->
       <div
         v-if="row.kind === 'group'"
         class="grp"
-        :class="{ open: expanded[ri] }"
+        :class="{ open: expanded[row.key] }"
       >
         <div
           class="ghead"
-          @click="toggle(ri)"
+          @click="toggle(row.key)"
         >
           <span class="chev">›</span>
-          <span class="badge badge-group">{{ row.label }}</span>
-          <span class="etext">{{ hl(row.summary) }}</span>
+          <span class="badge-group">{{ row.label }}</span>
+          <span class="etext">{{ row.summary }}</span>
           <span
             v-if="groupHasError(row)"
-            class="flag flag-bad"
+            class="flag-bad"
             >含错误</span
           >
           <span class="gcount">{{ row.to - row.from }} 个事件</span>
         </div>
         <div
-          v-if="expanded[ri]"
+          v-if="expanded[row.key]"
           class="gbody"
         >
           <div class="rail rail-nested">
@@ -51,7 +51,7 @@
       class="addev"
       @click="paletteOpen = true"
     >
-      ＋ 在末尾插入事件（{{ store.schema?.events.length ?? 0 }} 种全部可选）
+      ＋ 插入事件（{{ store.schema?.events.length ?? 0 }} 种全部可选，插在「章节结束」之前）
     </button>
 
     <!-- 事件类型选择面板 -->
@@ -111,7 +111,7 @@ import EventRow from './EventRow.vue'
 const store = useScriptEditorStore()
 
 const paletteOpen = ref(false)
-const expanded = ref<Record<number, boolean>>({})
+const expanded = ref<Record<string, boolean>>({})
 
 const rows = computed(() => foldEvents(store.chapter?.events ?? [], store.foldCompounds))
 
@@ -123,25 +123,27 @@ const groupedSpecs = computed(() => {
   return out
 })
 
-/** 选中的事件被折叠在块里时自动展开那个块，避免「选中项看不见」 */
+/**
+ * 换章节先收起全部，再按当前选中项展开所在块。
+ *
+ * 合成一个 watcher —— 拆成两个的话「按 selectedEvent 展开」会被
+ * 「换章节清空」覆盖掉（两个 watcher 按创建顺序执行）。
+ */
 watch(
-  () => store.selectedEvent,
-  (idx) => {
-    const gi = groupContaining(rows.value, idx)
-    if (gi !== null && !expanded.value[gi]) expanded.value = { ...expanded.value, [gi]: true }
+  [() => store.chapter?.id, () => store.selectedEvent],
+  ([id], [prevId]) => {
+    if (id !== prevId) expanded.value = {}
+    const gi = groupContaining(rows.value, store.selectedEvent)
+    if (gi !== null) {
+      const key = rows.value[gi]?.key
+      if (key && !expanded.value[key]) expanded.value = { ...expanded.value, [key]: true }
+    }
   },
+  { immediate: true },
 )
 
-/** 换章节时收起全部 */
-watch(
-  () => store.chapter?.id,
-  () => {
-    expanded.value = {}
-  },
-)
-
-const toggle = (ri: number) => {
-  expanded.value = { ...expanded.value, [ri]: !expanded.value[ri] }
+const toggle = (key: string) => {
+  expanded.value = { ...expanded.value, [key]: !expanded.value[key] }
 }
 
 const groupHasError = (row: FoldedGroup) => {
@@ -155,9 +157,6 @@ const insert = (typeKey: string) => {
   store.insertEvent(typeKey)
   paletteOpen.value = false
 }
-
-/** %player% 高亮成强调色，让作者一眼看出哪里会被替换 */
-const hl = (s: string) => s
 </script>
 
 <style scoped>
@@ -231,19 +230,20 @@ const hl = (s: string) => s
   color: rgba(255, 255, 255, 0.38);
 }
 
-.badge {
+/* 复合块的头部长得像一条事件行，所以下面几条与 EventRow 里的同名规则形状相近。
+   刻意不抽成全局类：`.badge` / `.flag` / `.etext` 这种名字放到全局 CSS 里
+   撞名的概率极高，代价比抄两行样式大得多。这里只留实际用到的那一档
+   （EventRow 的 .badge 需要基类是因为颜色由 :style 逐事件注入，这边是固定灰）。 */
+.badge-group {
   flex: 0 0 auto;
-  border: 1px solid;
+  border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 5px;
   padding: 2px 7px;
   font-size: 0.7rem;
   font-weight: 500;
   line-height: 1.5;
   white-space: nowrap;
-}
-.badge-group {
   color: #cbd5e1;
-  border-color: rgba(255, 255, 255, 0.25);
   background: rgba(255, 255, 255, 0.07);
 }
 .etext {
@@ -256,16 +256,14 @@ const hl = (s: string) => s
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.flag {
+.flag-bad {
   flex: 0 0 auto;
+  border: 1px solid rgba(248, 113, 113, 0.35);
   border-radius: 4px;
   padding: 1px 5px;
   font-size: 0.62rem;
   line-height: 1.6;
-}
-.flag-bad {
   color: #fca5a5;
-  border: 1px solid rgba(248, 113, 113, 0.35);
   background: rgba(248, 113, 113, 0.15);
 }
 

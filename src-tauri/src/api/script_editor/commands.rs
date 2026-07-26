@@ -5,8 +5,8 @@
 //!
 //! 命名统一 `editor_` 前缀，避免与既有的 `list_scripts` 等混淆。
 
-use std::collections::HashMap;
-use std::path::Path;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value as JsonValue};
@@ -143,7 +143,7 @@ pub struct WriteChapterRequest {
 // 内部辅助
 // ============================================================
 
-fn read_package(key: &str, loaded_names: &HashMap<String, ()>) -> Result<ScriptPackage, String> {
+fn read_package(key: &str, loaded_names: &HashSet<String>) -> Result<ScriptPackage, String> {
     let dir = paths::resolve_script_dir(key)?;
     let layout = paths::layout_of(key)?;
     let config = io::read_story_config(&dir)?;
@@ -181,7 +181,7 @@ fn read_package(key: &str, loaded_names: &HashMap<String, ()>) -> Result<ScriptP
         layout,
         folder_name,
         bound_character_folder,
-        loaded_by_engine: loaded_names.contains_key(&script_name),
+        loaded_by_engine: loaded_names.contains(&script_name),
         script_name,
         description: config
             .get("description")
@@ -197,15 +197,10 @@ fn read_package(key: &str, loaded_names: &HashMap<String, ()>) -> Result<ScriptP
 ///
 /// 引擎只在启动时扫一次目录，所以「磁盘上有」与「引擎能跑」是两件事。
 /// 编辑器把这个差异显式暴露出来，而不是让作者困惑于「我明明存了却试玩不了」。
-async fn loaded_script_names(app: &AppHandle) -> HashMap<String, ()> {
+async fn loaded_script_names(app: &AppHandle) -> HashSet<String> {
     let state = app.state::<AppState>();
     let service = state.ai_service.lock().await;
-    service
-        .script_manager
-        .all_scripts
-        .keys()
-        .map(|k| (k.clone(), ()))
-        .collect()
+    service.script_manager.all_scripts.keys().cloned().collect()
 }
 
 fn list_asset_dir(script_dir: &Path, subdirs: &[&str]) -> Vec<String> {
@@ -442,6 +437,7 @@ pub fn editor_create_chapter(
     if file.exists() {
         return Err(format!("章节已存在: '{}'", chapter_id));
     }
+    io::ensure_parent_dir(&file)?;
 
     let trimmed = name.trim();
     let doc = ChapterDoc {
@@ -491,20 +487,16 @@ pub fn editor_delete_chapter(key: String, chapter_id: String) -> Result<(), Stri
     Ok(())
 }
 
-#[tauri::command]
-pub fn editor_rename_chapter(key: String, from: String, to: String) -> Result<(), String> {
-    let dir = paths::resolve_script_dir(&key)?;
-    for seg in to.split('/') {
-        paths::sanitize_folder_name(seg)?;
-    }
-    let src = paths::resolve_chapter_file(&dir, &from, true)?;
-    let dest = paths::resolve_chapter_file(&dir, &to, false)?;
-    if dest.exists() {
-        return Err(format!("目标章节已存在: '{}'", to));
-    }
-    std::fs::rename(&src, &dest).map_err(|e| format!("重命名失败: {}", e))?;
-    Ok(())
-}
+// 这里原本有一个 editor_rename_chapter（改章节**文件名**）。已删除，理由：
+//
+// 1. 章节 id 会被别的章节的 `chapter_end.next_chapter` / `next` 以及
+//    `story_config.yaml` 的 `intro_chapter` 引用。只改文件名不重写引用，
+//    等于把作者的剧本悄悄改成断链——这正是校验器要报的 `graph.missing_target`。
+// 2. 作者真正想改的是**显示名**，也就是章节 YAML 里的 `name:`。那个已经能在
+//    章节编辑页顶部直接改（`setChapterName`），走正常的自动保存。
+//
+// 换句话说：真实需求已被覆盖，剩下的只是一个会破坏数据的入口。要是以后确实
+// 需要改 id，得连同引用一起重写（参考 editor_reorder_chapters 的接线逻辑）。
 
 #[tauri::command]
 pub async fn editor_create_script(
@@ -597,6 +589,7 @@ pub async fn editor_create_script(
 
     // 开场章节
     let intro_file = paths::resolve_chapter_file(&dir, &intro, false)?;
+    io::ensure_parent_dir(&intro_file)?;
     let first = ChapterDoc {
         name: Some("第一章".to_string()),
         events: vec![
@@ -629,46 +622,129 @@ pub fn editor_delete_script(key: String) -> Result<(), String> {
         .unwrap_or(0);
     let dest = trash.join(format!("{}.{}", key.replace('/', "__"), stamp));
 
-    std::fs::rename(&dir, &dest).map_err(|e| {
-        format!(
-            "移动剧本到回收目录失败: {}。剧本仍在原处，未做任何删除",
-            e
-        )
-    })?;
+    // 与 editor_delete_chapter 保持一致：rename 跨设备会失败，退回「复制目录树 + 删原目录」
+    if std::fs::rename(&dir, &dest).is_err() {
+        copy_dir_recursive(&dir, &dest)
+            .map_err(|e| format!("复制剧本到回收目录失败: {}。剧本仍在原处", e))?;
+        std::fs::remove_dir_all(&dir)
+            .map_err(|e| format!("剧本已复制到回收目录，但删除原目录失败: {}", e))?;
+    }
     Ok(())
 }
 
-/// 上传素材到剧本自带的 Assets 子目录。
+/// 素材落点。
 ///
-/// `kind` 取 background / music / sound / ambient / pic，与 schema 的 assetKind 一致。
+/// 引擎的查找顺序是「先本剧本 `Assets/`，再全局 `game_data/`」
+/// （见 `media.rs::resolve_script_media`），所以两种落点都能被找到，区别是：
+/// - `script`：只有这个剧本用，随剧本一起分发，别的剧本看不到
+/// - `global`：所有剧本共享，但导出剧本时不会带走
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AssetScope {
+    Script,
+    Global,
+}
+
+/// 素材类别 → 剧本内子目录 / 全局目录。
+///
+/// 剧本内一律落在 `media.rs` 候选列表的**第一个**目录，保证引擎一定能找到；
+/// 全局目录直接用 `MediaType::fallback_dir()` 的同一套值，避免又写一份会发散的映射。
+fn asset_dirs(kind: &str) -> Result<(&'static str, PathBuf), String> {
+    use crate::ai_service::game_system::script_engine::utils::media::MediaType;
+    let (subdir, media) = match kind {
+        "background" => ("Backgrounds", MediaType::Background),
+        "music" => ("Musics", MediaType::Music),
+        "sound" => ("Sounds", MediaType::Sound),
+        "ambient" => ("Ambients", MediaType::Ambient),
+        "pic" => ("Pics", MediaType::Pic),
+        other => return Err(format!("未知素材类别: {}", other)),
+    };
+    Ok((subdir, game_data_dir().join(media.fallback_dir())))
+}
+
+fn allowed_extensions(kind: &str) -> &'static [&'static str] {
+    match kind {
+        "background" | "pic" => &["png", "jpg", "jpeg", "webp", "bmp", "gif"],
+        _ => &["mp3", "wav", "ogg", "flac", "m4a"],
+    }
+}
+
+/// 列出全局素材（`game_data/backgrounds` / `musics` / `ambient`）。
+///
+/// 注意 background 与 pic、music 与 sound 在全局层共享同一个目录 ——
+/// 这是 `MediaType::fallback_dir()` 的既有行为，不是这里的简化。
+#[tauri::command]
+pub fn editor_list_global_assets() -> Result<AssetIndex, String> {
+    let one = |kind: &str| -> Vec<String> {
+        let Ok((_, dir)) = asset_dirs(kind) else {
+            return Vec::new();
+        };
+        let allowed = allowed_extensions(kind);
+        let mut out: Vec<String> = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for e in entries.flatten() {
+                if !e.file_type().map(|t| t.is_file()).unwrap_or(false) {
+                    continue;
+                }
+                let name = e.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') {
+                    continue;
+                }
+                let ext = Path::new(&name)
+                    .extension()
+                    .map(|x| x.to_string_lossy().to_lowercase())
+                    .unwrap_or_default();
+                if allowed.contains(&ext.as_str()) {
+                    out.push(name);
+                }
+            }
+        }
+        out.sort();
+        out
+    };
+
+    Ok(AssetIndex {
+        background: one("background"),
+        music: one("music"),
+        sound: one("sound"),
+        ambient: one("ambient"),
+        pic: one("pic"),
+    })
+}
+
+/// 导入素材。
+///
+/// 只收**源文件路径**，由 Rust 自己 `fs::copy` —— 与 `api/font.rs::import_font`
+/// 和 `import_role_from_path` 的既有做法一致。早先的实现让前端用
+/// `plugin-fs::readFile` 读成字节再走 IPC，两个问题：用户从任意位置选的文件
+/// 不在 `capabilities` 的 `fs:scope` 里会被直接拒绝；而且一个 64MB 的图会先
+/// 变成 6700 万元素的 JS 数组再 JSON 序列化进 IPC。
+///
+/// `scope` 决定落点，见 [`AssetScope`]。
 #[tauri::command]
 pub fn editor_upload_asset(
     key: String,
     kind: String,
-    file_name: String,
-    data: Vec<u8>,
+    scope: AssetScope,
+    src_path: String,
 ) -> Result<String, String> {
-    let dir = paths::resolve_script_dir(&key)?;
-    let name = paths::sanitize_folder_name(&file_name)?;
+    let src = Path::new(&src_path);
+    if !src.is_file() {
+        return Err(format!("源文件不存在: {}", src_path));
+    }
 
-    // 只放进 media.rs 候选列表的**第一个**目录，保证引擎一定能找到
-    let subdir = match kind.as_str() {
-        "background" => "Backgrounds",
-        "music" => "Musics",
-        "sound" => "Sounds",
-        "ambient" => "Ambients",
-        "pic" => "Pics",
-        other => return Err(format!("未知素材类别: {}", other)),
-    };
+    // 只取文件名，杜绝用源路径拼出目标路径
+    let raw_name = src
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .ok_or_else(|| "无法从源路径取出文件名".to_string())?;
+    let name = paths::sanitize_file_name(&raw_name)?;
 
     let ext = Path::new(&name)
         .extension()
         .map(|e| e.to_string_lossy().to_lowercase())
         .unwrap_or_default();
-    let allowed: &[&str] = match kind.as_str() {
-        "background" | "pic" => &["png", "jpg", "jpeg", "webp", "bmp", "gif"],
-        _ => &["mp3", "wav", "ogg", "flac", "m4a"],
-    };
+    let allowed = allowed_extensions(&kind);
     if !allowed.contains(&ext.as_str()) {
         return Err(format!(
             "不支持的文件类型 .{}；{} 支持: {}",
@@ -678,19 +754,35 @@ pub fn editor_upload_asset(
         ));
     }
 
-    const MAX_BYTES: usize = 64 * 1024 * 1024;
-    if data.len() > MAX_BYTES {
-        return Err(format!("文件过大（上限 {} MB）", MAX_BYTES / 1024 / 1024));
-    }
+    let (subdir, global_dir) = asset_dirs(&kind)?;
+    let target_dir = match scope {
+        AssetScope::Script => paths::resolve_script_dir(&key)?.join("Assets").join(subdir),
+        AssetScope::Global => global_dir,
+    };
 
-    let target_dir = dir.join("Assets").join(subdir);
     std::fs::create_dir_all(&target_dir).map_err(|e| format!("无法创建素材目录: {}", e))?;
     let target = target_dir.join(&name);
     if target.exists() {
-        return Err(format!("素材「{}」已存在", name));
+        return Err(format!("同名素材「{}」已存在", name));
     }
-    io::atomic_write(&target, &data)?;
+    std::fs::copy(src, &target).map_err(|e| format!("复制素材失败: {}", e))?;
     Ok(name)
+}
+
+/// 递归复制目录，供 rename 跨设备失败时兜底。
+fn copy_dir_recursive(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let src = entry.path();
+        let dst = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_recursive(&src, &dst)?;
+        } else {
+            std::fs::copy(&src, &dst)?;
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -744,21 +836,347 @@ pub fn editor_create_character(
 /// 重新扫描剧本目录，把新写/改名的剧本加载进引擎。
 ///
 /// 引擎原本只在启动时扫一次，作者存完剧本必须重启整个应用才能试玩。
+///
+/// 刻意做成**增量 merge** 而不是整体替换 `script_manager`：
+/// - `ScriptStatus` 里的 `current_chapter_key` / `current_event_process` / `vars` /
+///   `running_client_id` 是运行进度，整体替换会把**所有**剧本的进度清零；
+/// - `is_running` 是 `Arc<AtomicBool>`，调用方（`api/script.rs`、`api/adventure.rs`）
+///   会先 clone 出来、放掉锁之后才 `store(true)`。整体替换会换掉这个 Arc，让
+///   运行中的任务把状态写到一个已经被孤立的对象上，之后 `is_running` 永远是 false。
 #[tauri::command]
 pub async fn editor_rescan_scripts(app: AppHandle) -> Result<usize, String> {
     let state = app.state::<AppState>();
     let mut service = state.ai_service.lock().await;
 
-    if service.script_manager.is_running.load(std::sync::atomic::Ordering::SeqCst) {
+    if service
+        .script_manager
+        .is_running
+        .load(std::sync::atomic::Ordering::SeqCst)
+    {
         return Err("有剧本正在运行，请先结束再重新扫描".to_string());
     }
 
     let data = service.data_dir.clone();
-    service.script_manager =
-        crate::ai_service::game_system::script_engine::ScriptManager::new(&data);
-    let count = service.script_manager.all_scripts.len();
+    let fresh = crate::ai_service::game_system::script_engine::ScriptManager::new(&data);
+
+    let existing = &mut service.script_manager.all_scripts;
+
+    // 磁盘上已经没有的剧本要摘掉（改名 / 删除）
+    existing.retain(|name, _| fresh.all_scripts.contains_key(name));
+
+    for (name, scanned) in fresh.all_scripts {
+        match existing.get_mut(&name) {
+            Some(old) => {
+                // 配置字段来自磁盘，运行进度保留
+                old.folder_key = scanned.folder_key;
+                old.description = scanned.description;
+                old.intro_chapter = scanned.intro_chapter;
+                old.settings = scanned.settings;
+                old.script_path = scanned.script_path;
+                old.recommand_start = scanned.recommand_start;
+                old.adventure = scanned.adventure;
+            }
+            None => {
+                existing.insert(name, scanned);
+            }
+        }
+    }
+
+    let count = existing.len();
     tracing::info!("[ScriptEditor] 重新扫描完成，共 {} 个剧本", count);
     Ok(count)
+}
+
+/// 重排一条 linear 章节链的顺序。
+///
+/// 章节之间的先后不是由文件名决定的，而是由每章最后那条 `chapter_end.next_chapter`
+/// 串起来的。所以「拖动章节改顺序」的真实含义是**重新接线**：把 A→B→C 拖成
+/// A→C→B，需要改写 A、C、B 三章的 `next_chapter`。
+///
+/// 只处理 `end_type: linear`。分支章节的走向由条件决定，顺序没有意义，
+/// 遇到就整体拒绝而不是悄悄改坏。
+///
+/// `order` 是这条链的新顺序；链的**出口**（最后一章指向哪）保持不变。
+#[tauri::command]
+pub fn editor_reorder_chapters(key: String, order: Vec<String>) -> Result<(), String> {
+    if order.len() < 2 {
+        return Ok(());
+    }
+    let dir = paths::resolve_script_dir(&key)?;
+
+    // 先全部读出来并校验，任何一章不合格就整体放弃 —— 不做一半
+    let mut docs: Vec<(String, PathBuf, ChapterDoc)> = Vec::new();
+    for id in &order {
+        let file = paths::resolve_chapter_file(&dir, id, true)?;
+        let doc = ChapterDoc::from_json(io::read_yaml_as_json(&file)?)?;
+
+        let last = doc
+            .events
+            .last()
+            .ok_or_else(|| format!("章节「{}」没有任何事件，无法参与重排", id))?;
+        let obj = last
+            .as_object()
+            .ok_or_else(|| format!("章节「{}」的最后一个事件格式不对", id))?;
+        if obj.get("type").and_then(|v| v.as_str()) != Some("chapter_end") {
+            return Err(format!(
+                "章节「{}」的最后一个事件不是「章节结束」，无法参与重排",
+                id
+            ));
+        }
+        let end_type = obj
+            .get("end_type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("linear");
+        if end_type != "linear" {
+            return Err(format!(
+                "章节「{}」是 {} 分支，走向由条件决定，不能靠拖动改顺序",
+                id, end_type
+            ));
+        }
+        docs.push((id.clone(), file, doc));
+    }
+
+    // 链的出口：现有的 next 里第一个不属于本链的目标；全都在链内则是 end
+    let in_chain: HashSet<&str> = order.iter().map(|s| s.as_str()).collect();
+    let mut exit = "end".to_string();
+    for (_, _, doc) in &docs {
+        if let Some(obj) = doc.events.last().and_then(|e| e.as_object()) {
+            let cur = obj
+                .get("next")
+                .or_else(|| obj.get("next_chapter"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("end");
+            let cur = validate::chapter_id_of(cur);
+            if cur != "end" && !in_chain.contains(cur) {
+                exit = cur.to_string();
+                break;
+            }
+        }
+    }
+
+    verify_contiguous_chain(&docs, &order)?;
+
+    // 按新顺序接线
+    for (i, (id, file, doc)) in docs.iter_mut().enumerate() {
+        let target = order.get(i + 1).cloned().unwrap_or_else(|| exit.clone());
+
+        let last = doc
+            .events
+            .last_mut()
+            .and_then(|e| e.as_object_mut())
+            .ok_or_else(|| format!("章节「{}」的最后一个事件格式不对", id))?;
+
+        // 引擎里 next 的优先级高于 next_chapter，留着它会让改动无效
+        last.remove("next");
+        last.insert("next_chapter".to_string(), JsonValue::String(target));
+
+        io::write_json_as_yaml(file, &doc.to_json())?;
+    }
+
+    Ok(())
+}
+
+/// `order` 里的章节必须在**当前**接线下就已经是一条首尾相连的链。
+///
+/// 少了这道检查会真的改坏剧本：前端挑「可拖拽章节」时是按流程图逐层看的，
+/// 而分叉层会被整层跳过，于是 `A(linear) → B(分支) → {C,D} → … → E(linear)`
+/// 这种结构里，A 和 E 会被一起当成「同一条线性链」，中间隔着整个分支子图。
+/// 交换它们等于把 A→B 改成 E→A→B，E 之前的入口全断，E 自己也再没人指向。
+///
+/// 判定方式：在只看 `order` 这几章的子图里，恰好有一个成员没有链内前驱（链头），
+/// 且从链头沿 `next` 走一遍能不重复地走完所有成员。
+fn verify_contiguous_chain(
+    docs: &[(String, PathBuf, ChapterDoc)],
+    order: &[String],
+) -> Result<(), String> {
+    let in_chain: HashSet<&str> = order.iter().map(|s| s.as_str()).collect();
+
+    // 当前接线：成员 → 它现在指向的链内成员（指向链外/end 则没有出边）
+    let mut next_of: HashMap<&str, &str> = HashMap::new();
+    let mut has_pred: HashSet<&str> = HashSet::new();
+    for (id, _, doc) in docs {
+        if let Some(obj) = doc.events.last().and_then(|e| e.as_object()) {
+            let raw = obj
+                .get("next")
+                .or_else(|| obj.get("next_chapter"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("end");
+            let target = validate::chapter_id_of(raw);
+            if let Some(t) = in_chain.get(target) {
+                next_of.insert(id.as_str(), t);
+                has_pred.insert(t);
+            }
+        }
+    }
+
+    let heads: Vec<&str> = order
+        .iter()
+        .map(|s| s.as_str())
+        .filter(|id| !has_pred.contains(id))
+        .collect();
+    if heads.len() != 1 {
+        return Err(format!(
+            "这几章现在不是一条首尾相连的链（找到 {} 个链头），不能整体重排。\
+             请分别拖动真正相邻的章节",
+            heads.len()
+        ));
+    }
+
+    let mut walked = 1usize;
+    let mut cur = heads[0];
+    let mut seen: HashSet<&str> = HashSet::from([cur]);
+    while let Some(&nxt) = next_of.get(cur) {
+        if !seen.insert(nxt) {
+            return Err("这几章的跳转里有环，无法重排".to_string());
+        }
+        walked += 1;
+        cur = nxt;
+    }
+    if walked != order.len() {
+        return Err(format!(
+            "这几章之间隔着别的章节（链上只连通 {}/{} 章），不能当成一条链重排。\
+             中间的分支章节会被跳过，直接交换会把跳转改断",
+            walked,
+            order.len()
+        ));
+    }
+    Ok(())
+}
+
+/// 在编辑器里直接试玩，不必回主菜单。
+///
+/// 内部先 rescan（作者刚存的改动才能生效），然后用引擎的真实执行路径跑 ——
+/// 语义与正式游玩完全一致，这是当初选「复用真引擎」而不是另写一套预览解释器的理由。
+///
+/// 与正式游玩的两点区别：
+/// 1. `on_script_end` 传 `completed = false`，调试不会被记成通关；
+/// 2. 不调用 `handle_adventure_completion`，不会解锁后续羁绊冒险、不发成就。
+///
+/// 因此这里刻意不用 `execute_script`，而是自己组合它内部那三个 `pub` 步骤。
+/// `from_chapter` 为 `None` 时从开场章节开始。
+#[tauri::command]
+pub async fn editor_start_preview(
+    app: AppHandle,
+    key: String,
+    from_chapter: Option<String>,
+) -> Result<(), String> {
+    // 先把磁盘状态同步进引擎
+    editor_rescan_scripts(app.clone()).await?;
+
+    let state = app.state::<AppState>();
+    let dir = paths::resolve_script_dir(&key)?;
+    let config_name = io::read_story_config(&dir)?
+        .get("script_name")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| {
+            dir.file_name()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default()
+        });
+
+    let ai_service = state.ai_service.clone();
+    let channels = state.script_channels.clone();
+    let db = state.db.clone();
+    let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm).await;
+
+    let (mut script, game_status, cfg, is_running, data_dir) = {
+        let service = ai_service.lock().await;
+        if service
+            .script_manager
+            .is_running
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            return Err("已经有剧本在运行，请先停止再试玩".to_string());
+        }
+        let script = service
+            .script_manager
+            .all_scripts
+            .get(&config_name)
+            .ok_or_else(|| {
+                format!(
+                    "引擎里找不到剧本「{}」。请先检查 story_config.yaml 的 script_name",
+                    config_name
+                )
+            })?
+            .clone();
+        (
+            script,
+            service.game_status.clone(),
+            service.config.clone(),
+            service.script_manager.is_running.clone(),
+            service.data_dir.clone(),
+        )
+    };
+
+    // 从哪一章开始 —— run_script 以 script.intro_chapter 为起点
+    if let Some(from) = from_chapter {
+        let from = validate::chapter_id_of(&from).to_string();
+        if !from.is_empty() {
+            paths::resolve_chapter_file(&dir, &from, true)?;
+            script.intro_chapter = from;
+        }
+    }
+
+    is_running.store(true, std::sync::atomic::Ordering::SeqCst);
+
+    tokio::spawn(async move {
+        let mut ctx = crate::ai_service::game_system::script_engine::events::ScriptContext {
+            db: &db,
+            data_dir: &data_dir,
+            app: &app,
+            game_status,
+            config: &cfg,
+            llm: llm.as_ref(),
+            channels,
+        };
+        use crate::ai_service::game_system::script_engine::ScriptManager;
+
+        let mut outcome = ScriptManager::init_script(&script, &mut ctx).await;
+        if outcome.is_ok() {
+            outcome = ScriptManager::run_script(&mut ctx).await;
+        }
+        if let Err(ref e) = outcome {
+            tracing::error!("[ScriptEditor] 试玩执行失败: {:#}", e);
+            crate::ai_service::message_system::events::emit_error(ctx.app, e);
+        }
+        // completed = false：试玩永远不记通关
+        if let Err(e) = ScriptManager::on_script_end(&mut ctx, &is_running, false).await {
+            tracing::error!("[ScriptEditor] 试玩收尾失败: {:#}", e);
+        }
+        tracing::info!("[ScriptEditor] 试玩结束");
+    });
+
+    Ok(())
+}
+
+/// 中止试玩。
+///
+/// 剧本大概率正阻塞在「等输入」或「等选择」上，所以先往对应通道塞一个值把它
+/// 唤醒，再把 `is_running` 置 false。引擎会在当前事件跑完后走到章节末尾结束 ——
+/// 不是立即掐断，而是让它自然收尾，避免留下半个状态。
+#[tauri::command]
+pub async fn editor_stop_preview(app: AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+
+    {
+        let mut ch = state.script_channels.lock().await;
+        if let Some(tx) = ch.choice_tx.take() {
+            let _ = tx.send(String::new());
+        }
+        if let Some(tx) = ch.input_tx.take() {
+            let _ = tx.send(String::new());
+        }
+        ch.choice_allow_free = false;
+    }
+
+    let service = state.ai_service.lock().await;
+    service
+        .script_manager
+        .is_running
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    Ok(())
 }
 
 /// 在系统文件管理器里打开剧本目录。
@@ -767,4 +1185,102 @@ pub fn editor_open_script_folder(key: String) -> Result<(), String> {
     let dir = paths::resolve_script_dir(&key)?;
     // open_folder 收的是 &str，不是 &Path
     crate::utils::system::open_folder(&dir.to_string_lossy())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{allowed_extensions, verify_contiguous_chain, ChapterDoc};
+    use serde_json::json;
+    use std::path::PathBuf;
+
+    /// 造一章：只有一条 linear 的 chapter_end 指向 `next`
+    fn chap(id: &str, next: &str) -> (String, PathBuf, ChapterDoc) {
+        let doc = ChapterDoc::from_json(json!({
+            "events": [{ "type": "chapter_end", "end_type": "linear", "next_chapter": next }]
+        }))
+        .unwrap();
+        (id.to_string(), PathBuf::from(format!("{}.yaml", id)), doc)
+    }
+
+    fn ids(v: &[(String, PathBuf, ChapterDoc)]) -> Vec<String> {
+        v.iter().map(|(i, _, _)| i.clone()).collect()
+    }
+
+    #[test]
+    fn contiguous_chain_accepted() {
+        // A → B → C → end
+        let docs = vec![chap("A", "B"), chap("B", "C"), chap("C", "end")];
+        assert!(verify_contiguous_chain(&docs, &ids(&docs)).is_ok());
+    }
+
+    #[test]
+    fn chain_exiting_to_outside_accepted() {
+        // A → B → X（X 不在链里，是链的出口）
+        let docs = vec![chap("A", "B"), chap("B", "X")];
+        assert!(verify_contiguous_chain(&docs, &ids(&docs)).is_ok());
+    }
+
+    /// 这是加这道检查的原因。前端按流程图逐层挑「可拖章节」时会整层跳过分叉，
+    /// 于是 A 和 E 会被当成同一条链，实际中间隔着整个分支子图。
+    /// 交换它们会把 A→B 改成 E→A→B，E 之前的入口全断。
+    #[test]
+    fn non_adjacent_chapters_rejected() {
+        // A → B(分支，不在 order 里) …… E → end
+        let docs = vec![chap("A", "B"), chap("E", "end")];
+        let err = verify_contiguous_chain(&docs, &ids(&docs)).unwrap_err();
+        assert!(err.contains("链头"), "错误信息应说明找到了几个链头: {}", err);
+    }
+
+    #[test]
+    fn cycle_rejected() {
+        // A → B → A：没有链头
+        let docs = vec![chap("A", "B"), chap("B", "A")];
+        assert!(verify_contiguous_chain(&docs, &ids(&docs)).is_err());
+    }
+
+    /// 有唯一链头、但走不完所有成员：A→B→end 之外还挂着一个自成一段的 D→end。
+    /// 用两个链头会先被上一条规则挡掉，这里构造的是「一个链头 + 走不完」。
+    #[test]
+    fn disconnected_tail_rejected() {
+        // A → B → C，另外 D → C。链头是 A 和 D 两个 → 先被链头数挡掉
+        let docs = vec![chap("A", "B"), chap("B", "C"), chap("C", "end"), chap("D", "C")];
+        let err = verify_contiguous_chain(&docs, &ids(&docs)).unwrap_err();
+        assert!(err.contains("链头") || err.contains("连通"), "{}", err);
+    }
+
+    /// `next` 优先级高于 `next_chapter`，检查也必须先看 `next`，
+    /// 否则 A 实际指向 B 却被当成指向 Z。
+    #[test]
+    fn next_takes_precedence_over_next_chapter() {
+        let doc = ChapterDoc::from_json(json!({
+            "events": [{
+                "type": "chapter_end", "end_type": "linear",
+                "next": "B", "next_chapter": "Z"
+            }]
+        }))
+        .unwrap();
+        let docs = vec![
+            ("A".to_string(), PathBuf::from("A.yaml"), doc),
+            chap("B", "end"),
+        ];
+        assert!(verify_contiguous_chain(&docs, &ids(&docs)).is_ok());
+    }
+
+    /// 目标写成 `B.yaml` 也要能认出是 B —— 官方剧本里两种写法都有
+    #[test]
+    fn yaml_suffix_on_target_is_tolerated() {
+        let docs = vec![chap("A", "B.yaml"), chap("B", "end")];
+        assert!(verify_contiguous_chain(&docs, &ids(&docs)).is_ok());
+    }
+
+    #[test]
+    fn asset_extensions_split_image_and_audio() {
+        assert!(allowed_extensions("background").contains(&"png"));
+        assert!(allowed_extensions("pic").contains(&"webp"));
+        assert!(!allowed_extensions("background").contains(&"mp3"));
+        for k in ["music", "sound", "ambient"] {
+            assert!(allowed_extensions(k).contains(&"mp3"), "{}", k);
+            assert!(!allowed_extensions(k).contains(&"png"), "{}", k);
+        }
+    }
 }

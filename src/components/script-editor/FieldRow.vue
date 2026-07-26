@@ -100,18 +100,31 @@
           </option>
         </select>
         <button
-          class="shrink-0 rounded-lg border border-white/10 bg-white/6 px-3 text-sm
-            whitespace-nowrap text-white/70 transition-all hover:bg-white/12 hover:text-white"
-          @click="pickAsset"
+          class="import-btn"
+          title="导入到本剧本 —— 随剧本一起分发，别的剧本看不到"
+          @click="pickAsset('script')"
         >
-          导入…
+          导入
+        </button>
+        <button
+          class="import-btn global"
+          title="导入为全局素材 —— 所有剧本共享，但导出剧本时不会带走"
+          @click="pickAsset('global')"
+        >
+          全局
         </button>
       </div>
       <p
         v-if="assetOptions.length === 0"
         class="mt-1 text-xs text-yellow-200"
       >
-        这个剧本还没有该类素材，先点「导入…」
+        没有可用素材。「导入」放进本剧本，「全局」放进 game_data 供所有剧本共享。
+      </p>
+      <p
+        v-else-if="globalOnly.length"
+        class="mt-1 text-xs text-white/35"
+      >
+        其中 {{ globalOnly.length }} 个来自全局素材库
       </p>
     </div>
 
@@ -120,6 +133,7 @@
       v-else-if="isComposite"
       :field="field"
       :value="value"
+      :needs-name="needsBranchName"
       @update="(v: unknown) => emit('update', v)"
     />
 
@@ -153,16 +167,23 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
-import { readFile } from '@tauri-apps/plugin-fs'
-import Toggle from '@/components/base/widget/Toggle.vue'
+import { Toggle } from '@/components/base'
 import { EMOTION_CONFIG_EMO } from '@/controllers/emotion/config'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
-import type { AssetKind, Diagnostic, FieldSpec } from '@/api/services/script-editor'
+import type {
+  AssetKind,
+  AssetScope,
+  Diagnostic,
+  FieldSpec,
+  ScriptEventData,
+} from '@/api/services/script-editor'
 import CompositeField from './CompositeField.vue'
 
 const props = defineProps<{
   field: FieldSpec
   value: unknown
+  /** 整个事件对象。分支编辑器需要看兄弟字段 end_type 才知道要不要显示 AI 分支名 */
+  event?: ScriptEventData
   diagnostics: Diagnostic[]
 }>()
 
@@ -210,11 +231,28 @@ const selectOptions = computed<{ value: string; label: string }[]>(() => {
   }
 })
 
-const assetOptions = computed<string[]>(() => {
+/**
+ * 素材候选 = 本剧本 + 全局，去重合并。
+ *
+ * 引擎的查找顺序是「先本剧本 Assets/，再全局 game_data/」，两处的文件都能被
+ * 找到，所以下拉里必须都列出来 —— 否则作者会以为全局素材在剧本里用不了。
+ */
+const scriptAssets = computed<string[]>(() => {
+  const kind = props.field.assetKind
+  return kind ? (store.assets[kind] ?? []) : []
+})
+
+const globalOnly = computed<string[]>(() => {
   const kind = props.field.assetKind
   if (!kind) return []
-  return store.assets[kind] ?? []
+  const own = new Set(scriptAssets.value)
+  return (store.globalAssets[kind] ?? []).filter((n) => !own.has(n))
 })
+
+const assetOptions = computed<string[]>(() => [...scriptAssets.value, ...globalOnly.value])
+
+/** 分支列表里是否需要「AI 识别名」—— 只有 ai_judged 用得到 */
+const needsBranchName = computed(() => props.event?.end_type === 'ai_judged')
 
 const hintClass = computed(() =>
   /⚠|不生效|不会|无效|卡死/.test(props.field.hint ?? '') ? 'text-yellow-200' : 'text-white/40',
@@ -238,7 +276,14 @@ const onNumber = (e: Event) => {
 const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif']
 const AUDIO_EXT = ['mp3', 'wav', 'ogg', 'flac', 'm4a']
 
-const pickAsset = async () => {
+/**
+ * 选一个文件导入。只把**路径**交给后端，由 Rust 自己复制 —— 与
+ * `import_font` / `importRoleFromPath` 的既有做法一致。
+ *
+ * 不用 `plugin-fs` 读字节：用户从任意位置选的文件不在 capabilities 的
+ * `fs:scope` 内会被插件直接拒绝，而且大文件转成数字数组走 IPC 会 OOM。
+ */
+const pickAsset = async (scope: AssetScope) => {
   const kind = props.field.assetKind as AssetKind | undefined
   if (!kind) return
   const isImage = kind === 'background' || kind === 'pic'
@@ -253,33 +298,34 @@ const pickAsset = async () => {
   })
   if (typeof picked !== 'string') return
 
-  const bytes = await readFile(picked)
-  const fileName = picked.split(/[/\\]/).pop() ?? 'asset'
-  await store.uploadAsset(kind, fileName, bytes)
-  // 导入成功后直接选中它，省掉一次手动选择
-  if (store.assets[kind].includes(fileName)) emit('update', fileName)
+  // 用后端返回的名字而不是源文件名 —— Rust 会做一次名称清洗，两者可能不同
+  const saved = await store.uploadAsset(kind, scope, picked)
+  if (saved) emit('update', saved)
 }
 </script>
 
 <style scoped>
-.glass-input {
-  width: 100%;
+.import-btn {
+  flex-shrink: 0;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 0.5rem;
-  background: rgba(255, 255, 255, 0.1);
-  padding: 0.625rem 0.75rem;
-  font-size: 0.875rem;
-  color: #fff;
-  backdrop-filter: blur(20px) saturate(150%);
+  padding: 0 0.7rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.06);
   transition: all 0.2s;
 }
-.glass-input:focus {
-  outline: none;
-  border-color: var(--accent-color);
-  box-shadow: 0 0 0 2px rgba(121, 217, 255, 0.2);
-}
-.glass-input option {
-  background: #16202c;
+.import-btn:hover {
   color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+}
+.import-btn.global {
+  border-color: rgba(167, 139, 250, 0.3);
+  color: #c4b5fd;
+  background: rgba(167, 139, 250, 0.1);
+}
+.import-btn.global:hover {
+  background: rgba(167, 139, 250, 0.22);
 }
 </style>

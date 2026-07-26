@@ -18,6 +18,8 @@ import type { ScriptEventData } from '@/api/services/script-editor'
 
 export interface FoldedSingle {
   kind: 'event'
+  /** 稳定标识 */
+  key: string
   /** 在原始 events 数组里的下标 */
   index: number
   event: ScriptEventData
@@ -25,6 +27,8 @@ export interface FoldedSingle {
 
 export interface FoldedGroup {
   kind: 'group'
+  /** 稳定标识。用行下标做 key 会在插入/删除事件后让展开态跟错行 */
+  key: string
   /** 复合块类型，直接作为标签展示 */
   label: string
   /** 起始下标（含） */
@@ -58,7 +62,7 @@ const isShow = (e: ScriptEventData | undefined) =>
  */
 export function foldEvents(events: ScriptEventData[], enabled = true): FoldedRow[] {
   if (!enabled) {
-    return events.map((event, index) => ({ kind: 'event', index, event }))
+    return events.map((event, index) => ({ kind: 'event', key: `e${index}`, index, event }))
   }
 
   const rows: FoldedRow[] = []
@@ -79,6 +83,7 @@ export function foldEvents(events: ScriptEventData[], enabled = true): FoldedRow
         if (isShow(events[k])) k++
         rows.push({
           kind: 'group',
+          key: `g-transition-${i}`,
           label: '转场',
           from: i,
           to: k,
@@ -98,6 +103,7 @@ export function foldEvents(events: ScriptEventData[], enabled = true): FoldedRow
     ) {
       rows.push({
         kind: 'group',
+        key: `g-ai-${i}`,
         label: 'AI 互动轮次',
         from: i,
         to: i + 3,
@@ -108,7 +114,7 @@ export function foldEvents(events: ScriptEventData[], enabled = true): FoldedRow
       continue
     }
 
-    rows.push({ kind: 'event', index: i, event: events[i] })
+    rows.push({ kind: 'event', key: `e${i}`, index: i, event: events[i] })
     i++
   }
 

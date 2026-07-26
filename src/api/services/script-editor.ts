@@ -162,6 +162,19 @@ export interface ValidationReport {
   infoCount: number
   /** 剧本里出现过的全部变量名 */
   variables: string[]
+  /** 章节跳转边，从每章最后一条 chapter_end 反推 */
+  edges: ChapterEdge[]
+}
+
+/** 一条章节跳转。to === 'end' 表示剧本结束 */
+export interface ChapterEdge {
+  from: string
+  to: string
+  isEnd: boolean
+  /** 分支条件 / AI 分支名；linear 时不存在 */
+  label?: string
+  /** 该边所属章节的 end_type，前端据此判断能否拖拽重排 */
+  endType: string
 }
 
 // ============================================================
@@ -197,9 +210,6 @@ export const createChapter = (key: string, chapterId: string, name: string) =>
 export const deleteChapter = (key: string, chapterId: string) =>
   invoke<void>('editor_delete_chapter', { key, chapterId })
 
-export const renameChapter = (key: string, from: string, to: string) =>
-  invoke<void>('editor_rename_chapter', { key, from, to })
-
 export const createScript = (req: {
   folderName: string
   scriptName?: string
@@ -211,8 +221,39 @@ export const createScript = (req: {
 
 export const deleteScript = (key: string) => invoke<void>('editor_delete_script', { key })
 
-export const uploadAsset = (key: string, kind: AssetKind, fileName: string, data: Uint8Array) =>
-  invoke<string>('editor_upload_asset', { key, kind, fileName, data: Array.from(data) })
+/**
+ * 素材落点。
+ * - script：只有这个剧本用，随剧本一起分发
+ * - global：所有剧本共享，但导出剧本时不会带走
+ *
+ * 引擎的查找顺序是「先本剧本 Assets/，再全局 game_data/」，两种都能被找到。
+ */
+export type AssetScope = 'script' | 'global'
+
+/**
+ * 导入素材。只传源文件路径，由 Rust 自己复制 —— 与 import_font / importRoleFromPath
+ * 的既有做法一致。不用 plugin-fs 读字节，因为用户从任意位置选的文件不在
+ * capabilities 的 fs:scope 内，而且大文件转成数字数组走 IPC 会 OOM。
+ */
+export const uploadAsset = (key: string, kind: AssetKind, scope: AssetScope, srcPath: string) =>
+  invoke<string>('editor_upload_asset', { key, kind, scope, srcPath })
+
+/** 全局素材（game_data/backgrounds、musics、ambient） */
+export const listGlobalAssets = () => invoke<AssetIndex>('editor_list_global_assets')
+
+/**
+ * 重排一条 linear 章节链。章节先后是由 chapter_end.next_chapter 串起来的，
+ * 所以拖动改顺序的真实含义是重新接线。分支章节会被后端整体拒绝。
+ */
+export const reorderChapters = (key: string, order: string[]) =>
+  invoke<void>('editor_reorder_chapters', { key, order })
+
+/** 在编辑器里直接试玩。内部会先 rescan，from_chapter 留空则从开场章节开始 */
+export const startPreview = (key: string, fromChapter?: string) =>
+  invoke<void>('editor_start_preview', { key, fromChapter })
+
+/** 中止试玩 */
+export const stopPreview = () => invoke<void>('editor_stop_preview')
 
 export const createCharacter = (
   key: string,

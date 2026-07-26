@@ -39,6 +39,7 @@
         :key="field.key"
         :field="field"
         :value="event[field.key]"
+        :event="event"
         :diagnostics="fieldDiagnostics(field.key)"
         @update="(v: unknown) => emitField(field.key, v)"
       />
@@ -51,6 +52,7 @@
           :key="field.key"
           :field="field"
           :value="event[field.key]"
+          :event="event"
           :diagnostics="fieldDiagnostics(field.key)"
           @update="(v: unknown) => emitField(field.key, v)"
         />
@@ -134,41 +136,28 @@ const onTypeChange = (e: Event) => {
   const nextSpec = store.eventSpecs[next]
   if (!nextSpec || !event.value || !store.chapter) return
 
-  const keep = new Set<string>(nextSpec.fields.map((f) => f.key))
-  for (const f of store.schema?.commonFields ?? []) keep.add(f.key)
+  // 按「字段名相同 **且** 控件类型相同」保留旧值。
+  // 只比字段名会把 choices 的 options（[{text, actions}]）原样搬进
+  // set_variable 的 options（[{condition, actions}]），语义完全不同，
+  // 校验器立刻报错。复合类型之间一律不继承。
+  const prevSpec = spec.value
+  const prevKinds = new Map(prevSpec?.fields.map((f) => [f.key, f.kind]) ?? [])
+  const nextKinds = new Map(nextSpec.fields.map((f) => [f.key, f.kind]))
+  for (const f of store.schema?.commonFields ?? []) {
+    prevKinds.set(f.key, f.kind)
+    nextKinds.set(f.key, f.kind)
+  }
 
   const rebuilt = store.blankEvent(next)
   for (const [k, v] of Object.entries(event.value)) {
     if (k === 'type') continue
-    if (keep.has(k)) rebuilt[k] = v
+    const nk = nextKinds.get(k)
+    if (nk !== undefined && nk === prevKinds.get(k)) rebuilt[k] = v
   }
 
-  store.pushHistory()
-  store.chapter.events[store.selectedEvent] = rebuilt
-  store.markDirty()
+  store.replaceEvent(store.selectedEvent, rebuilt)
 }
 </script>
 
 <style scoped>
-.glass-input {
-  width: 100%;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 0.5rem;
-  background: rgba(255, 255, 255, 0.1);
-  padding: 0.625rem 0.75rem;
-  font-size: 0.875rem;
-  color: #fff;
-  backdrop-filter: blur(20px) saturate(150%);
-  transition: all 0.2s;
-}
-.glass-input:focus {
-  outline: none;
-  border-color: var(--accent-color);
-  box-shadow: 0 0 0 2px rgba(121, 217, 255, 0.2);
-}
-.glass-input option,
-.glass-input optgroup {
-  background: #16202c;
-  color: #fff;
-}
 </style>

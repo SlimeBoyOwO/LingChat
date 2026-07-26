@@ -37,6 +37,17 @@ pub fn write_json_as_yaml(path: &Path, value: &JsonValue) -> Result<(), String> 
     atomic_write(path, yaml.as_bytes())
 }
 
+/// 确保目标文件的父目录存在。
+///
+/// `paths::resolve_*` 刻意不建目录（解析路径不该有副作用），所以真正要写盘的
+/// 调用方需要显式调它一次。
+pub fn ensure_parent_dir(path: &Path) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("无法创建目录 {:?}: {}", parent, e))?;
+    }
+    Ok(())
+}
+
 /// 覆盖前留一份 `<原名>.bak`。
 ///
 /// 只保留最近一份 —— 真正的历史由编辑器的撤销栈负责，`.bak` 只是防「写坏了

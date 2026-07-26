@@ -122,11 +122,20 @@ pub fn resolve_new_script_dir(key: &str) -> Result<PathBuf, String> {
         return Err(format!("剧本已存在: '{}'", key));
     }
 
-    // 逐级确保父目录存在（character/<角色>/ 可能还没建）
-    if let Some(parent) = dir.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("无法创建父目录 {:?}: {}", parent, e))?;
-        crate::api::validate_path_in_base(&parent.to_path_buf(), &scripts_root())?;
+    // 只做纯路径校验，不建任何目录 —— 「解析路径」不该有副作用。
+    // 目标和父目录都可能还不存在，所以沿着祖先往上找第一个已存在的目录来做前缀校验。
+    let mut probe = dir.as_path();
+    loop {
+        match probe.parent() {
+            Some(parent) => {
+                if parent.is_dir() {
+                    crate::api::validate_path_in_base(&parent.to_path_buf(), &scripts_root())?;
+                    break;
+                }
+                probe = parent;
+            }
+            None => return Err(format!("剧本 key 无法定位到 scripts/ 之内: '{}'", key)),
+        }
     }
     Ok(dir)
 }
@@ -167,10 +176,13 @@ pub fn resolve_chapter_file(
         }
         crate::api::validate_path_in_base(&file, &chapters_dir)?;
     } else {
-        if let Some(parent) = file.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("无法创建章节目录 {:?}: {}", parent, e))?;
-            crate::api::validate_path_in_base(&parent.to_path_buf(), &chapters_dir)?;
+        // 同样不建目录。子目录可能还不存在，所以对 Chapters/ 本身做前缀校验，
+        // 再用字符串前缀确认拼出来的路径没有逃出去（父目录不存在时无法 canonicalize）。
+        if chapters_dir.is_dir() {
+            crate::api::validate_path_in_base(&chapters_dir, &script_dir.to_path_buf())?;
+        }
+        if !file.starts_with(&chapters_dir) {
+            return Err(format!("章节 id 逃出了 Chapters/ 目录: '{}'", chapter_id));
         }
     }
     Ok(file)
@@ -193,6 +205,10 @@ pub fn enumerate_script_keys() -> Vec<String> {
             continue;
         }
         let name1 = e1.file_name().to_string_lossy().to_string();
+        // 与 walk_chapters 同理：挡掉 .script_trash 之类的内部目录
+        if name1.starts_with('.') {
+            continue;
+        }
 
         match name1.as_str() {
             "character" => {
@@ -203,6 +219,9 @@ pub fn enumerate_script_keys() -> Vec<String> {
                             continue;
                         }
                         let name2 = e2.file_name().to_string_lossy().to_string();
+                        if name2.starts_with('.') {
+                            continue;
+                        }
                         if let Ok(level3) = std::fs::read_dir(e2.path()) {
                             for e3 in level3.flatten() {
                                 if !e3.file_type().map(|t| t.is_dir()).unwrap_or(false) {
@@ -212,6 +231,9 @@ pub fn enumerate_script_keys() -> Vec<String> {
                                     continue;
                                 }
                                 let name3 = e3.file_name().to_string_lossy().to_string();
+                                if name3.starts_with('.') {
+                                    continue;
+                                }
                                 keys.push(format!("character/{}/{}", name2, name3));
                             }
                         }
@@ -228,6 +250,9 @@ pub fn enumerate_script_keys() -> Vec<String> {
                             continue;
                         }
                         let name2 = e2.file_name().to_string_lossy().to_string();
+                        if name2.starts_with('.') {
+                            continue;
+                        }
                         keys.push(format!("standalone/{}", name2));
                     }
                 }
@@ -262,6 +287,16 @@ fn walk_chapters(dir: &Path, prefix: &str, out: &mut Vec<String>) {
     for e in entries.flatten() {
         let path = e.path();
         let name = e.file_name().to_string_lossy().to_string();
+
+        // 跳过点号开头的一切。`Chapters/.trash/` 里是删除章节的副本，
+        // 它们的 file_stem 形如 "main.1700000000"，扩展名仍是 .yaml —— 不挡住
+        // 就会被当成真章节，既污染章节列表和「下一章」下拉，也会给校验器的
+        // 可达性分析贡献虚假入边（每删一章多一条永久假警告）。
+        // 同时顺手挡掉编辑器写盘用的 .<name>.tmp 临时文件。
+        if name.starts_with('.') {
+            continue;
+        }
+
         if path.is_dir() {
             let next = if prefix.is_empty() {
                 name
@@ -286,6 +321,52 @@ fn walk_chapters(dir: &Path, prefix: &str, out: &mut Vec<String>) {
     }
 }
 
+/// 字符层面的公共校验，目录名和文件名共用。
+fn check_name_chars(name: &str) -> Result<(), String> {
+    const FORBIDDEN: [char; 9] = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
+    if let Some(bad) = name.chars().find(|c| FORBIDDEN.contains(c)) {
+        return Err(format!("名称不能包含字符 '{}'", bad));
+    }
+    if name.chars().any(|c| c.is_control()) {
+        return Err("名称不能包含控制字符".to_string());
+    }
+    if name.starts_with('.') {
+        // 点号开头的文件会被 walk_chapters / list_asset_dir 跳过，
+        // 允许创建等于制造「存了但看不见」的困惑
+        return Err("名称不能以点号开头".to_string());
+    }
+    if name.ends_with('.') || name.ends_with(' ') {
+        return Err("名称不能以点号或空格结尾（Windows 不允许）".to_string());
+    }
+    const RESERVED: [&str; 22] = [
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+        "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    ];
+    // Windows 的保留名对带扩展名的文件同样生效（CON.txt 也不行）
+    let stem = name.split('.').next().unwrap_or(name).to_uppercase();
+    if RESERVED.contains(&stem.as_str()) {
+        return Err(format!("'{}' 是系统保留名，不能使用", stem));
+    }
+    Ok(())
+}
+
+/// 校验用户上传的**素材文件名**。
+///
+/// 与目录名分开，因为规则不同：长度按字符数而不是字节数算（`sanitize_folder_name`
+/// 的 64 字节上限换成中文只有 21 个字，正常的背景图文件名都过不了），
+/// 也不需要排除 `character` / `standalone` 这两个目录保留名。
+pub fn sanitize_file_name(raw: &str) -> Result<String, String> {
+    let name = raw.trim();
+    if name.is_empty() {
+        return Err("文件名不能为空".to_string());
+    }
+    if name.chars().count() > 120 {
+        return Err("文件名过长（上限 120 个字符）".to_string());
+    }
+    check_name_chars(name)?;
+    Ok(name.to_string())
+}
+
 /// 校验用户输入的目录/文件名，返回可安全落盘的名字。
 ///
 /// 拒绝路径分隔符、Windows 保留名、控制字符、以及首尾空白/点号 ——
@@ -295,27 +376,11 @@ pub fn sanitize_folder_name(raw: &str) -> Result<String, String> {
     if name.is_empty() {
         return Err("名称不能为空".to_string());
     }
-    if name.len() > 64 {
-        return Err("名称过长（上限 64 字节）".to_string());
+    // 按字符数而不是字节数 —— 原先的 64 字节换成中文只有 21 个字
+    if name.chars().count() > 64 {
+        return Err("名称过长（上限 64 个字符）".to_string());
     }
-    const FORBIDDEN: [char; 9] = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
-    if let Some(bad) = name.chars().find(|c| FORBIDDEN.contains(c)) {
-        return Err(format!("名称不能包含字符 '{}'", bad));
-    }
-    if name.chars().any(|c| c.is_control()) {
-        return Err("名称不能包含控制字符".to_string());
-    }
-    if name.ends_with('.') || name.ends_with(' ') {
-        return Err("名称不能以点号或空格结尾（Windows 不允许）".to_string());
-    }
-    const RESERVED: [&str; 22] = [
-        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
-        "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
-    ];
-    let upper = name.to_uppercase();
-    if RESERVED.contains(&upper.as_str()) {
-        return Err(format!("'{}' 是系统保留名，不能使用", name));
-    }
+    check_name_chars(name)?;
     if RESERVED_TOP_LEVEL.contains(&name) {
         return Err(format!("'{}' 是保留目录名，不能作为剧本名", name));
     }
@@ -377,5 +442,26 @@ mod tests {
     fn sanitize_allows_dots_inside() {
         // 原型编辑器错误地禁止了所有点号，Windows 其实允许中间的点
         assert_eq!(sanitize_folder_name("v1.2 试作").unwrap(), "v1.2 试作");
+    }
+
+    #[test]
+    fn sanitize_rejects_leading_dot() {
+        // 点号开头的东西会被 walk_chapters / list_asset_dir 跳过，
+        // 允许创建等于制造「存了但看不见」
+        assert!(sanitize_folder_name(".hidden").is_err());
+        assert!(sanitize_file_name(".bg.png").is_err());
+    }
+
+    #[test]
+    fn file_name_allows_long_cjk_and_extensions() {
+        // 目录名的 64 字节上限会把正常的中文素材名拒掉，文件名按字符数算
+        let long = "樱花盛开的公园背景图片最终修正版二.png";
+        assert!(sanitize_file_name(long).is_ok());
+        assert!(sanitize_folder_name(long).is_ok());
+        // 带扩展名的 Windows 保留名同样要挡
+        assert!(sanitize_file_name("CON.png").is_err());
+        assert!(sanitize_file_name("nul.wav").is_err());
+        // 但正常带扩展名的文件不受影响
+        assert_eq!(sanitize_file_name("character.png").unwrap(), "character.png");
     }
 }
