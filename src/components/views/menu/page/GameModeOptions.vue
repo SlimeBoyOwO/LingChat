@@ -1,7 +1,7 @@
 <template>
   <nav class="flex flex-col items-stretch">
     <StartItem @click="startFreeDialogue">自由对话模式</StartItem>
-    <StartItem @click="startStoryMode" disabled>剧情模式（即将登场）</StartItem>
+    <StartItem @click="startStoryMode">剧情模式</StartItem>
     <StartItem disabled>小游戏（开发中）</StartItem>
     <StartItem @click="() => emit('back')">返回</StartItem>
   </nav>
