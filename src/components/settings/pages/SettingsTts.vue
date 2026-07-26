@@ -217,8 +217,8 @@
                 </select>
               </label>
               <label class="control-label">
-                <span>语速 {{ previewLength.toFixed(2) }}</span>
-                <input v-model.number="previewLength" type="range" min="0.5" max="2" step="0.05" />
+                <span>语速 {{ previewSpeed.toFixed(2) }}x</span>
+                <input v-model.number="previewSpeed" type="range" min="0.5" max="2" step="0.05" />
               </label>
               <label class="control-label">
                 <span>随机度 {{ previewSdp.toFixed(2) }}</span>
@@ -268,6 +268,7 @@ import {
 import { MenuItem, MenuPage } from '@/components/ui'
 import { useDialogStore } from '@/stores/modules/ui/dialog'
 import * as TtsLocal from '@/api/services/tts-local'
+import { speedToLengthScale } from '@/utils/tts-speed'
 import type {
   TtsLocalInstallSnapshot,
   TtsLocalStatus,
@@ -284,7 +285,7 @@ const styleVectorsTarget = ref('')
 const notice = ref<{ kind: 'success' | 'error'; text: string } | null>(null)
 const previewText = ref('こんにちは、これはローカル音声のテストです。')
 const previewVoice = ref('')
-const previewLength = ref(1)
+const previewSpeed = ref(1)
 const previewSdp = ref(0)
 const previewing = ref(false)
 const audioRef = ref<HTMLAudioElement | null>(null)
@@ -487,7 +488,7 @@ async function runPreview(): Promise<void> {
     const bytes = await TtsLocal.synthesizePreview({
       text: previewText.value.trim(),
       voiceId: previewVoice.value,
-      lengthScale: previewLength.value,
+      lengthScale: speedToLengthScale(previewSpeed.value),
       sdpRatio: previewSdp.value,
     })
     if (audioUrl) URL.revokeObjectURL(audioUrl)
