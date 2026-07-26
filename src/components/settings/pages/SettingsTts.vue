@@ -293,6 +293,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { open } from '@tauri-apps/plugin-dialog'
+import type { DialogFilter } from '@tauri-apps/plugin-dialog'
 import type { UnlistenFn } from '@tauri-apps/api/event'
 import {
   AudioLines,
@@ -342,6 +343,44 @@ const previewing = ref(false)
 const audioRef = ref<HTMLAudioElement | null>(null)
 let audioUrl: string | null = null
 let unlistenProgress: UnlistenFn | null = null
+
+type FilterIntent = 'deberta' | 'tokenizer' | 'voice' | 'style_vectors'
+
+// Android plugin-dialog interprets the `extensions` field as MIME types
+// (not file extensions). ONNX / SBV2 have no registered MIME, so they fall
+// back to application/octet-stream; the backend validates the actual file
+// via archive::inspect_package and rejects unknown formats.
+function dialogFilters(intent: FilterIntent): DialogFilter[] {
+  if (/android/i.test(navigator.userAgent)) {
+    switch (intent) {
+      case 'deberta':
+        return [{ name: 'ONNX model', extensions: ['application/octet-stream'] }]
+      case 'tokenizer':
+        return [{ name: 'Tokenizer', extensions: ['application/json', 'text/json'] }]
+      case 'voice':
+        return [{
+          name: 'Voice model',
+          extensions: [
+            'application/zip',
+            'application/x-7z-compressed',
+            'application/octet-stream',
+          ],
+        }]
+      case 'style_vectors':
+        return [{ name: 'style_vectors JSON', extensions: ['application/json', 'text/json'] }]
+    }
+  }
+  switch (intent) {
+    case 'deberta':
+      return [{ name: 'ONNX model', extensions: ['onnx'] }]
+    case 'tokenizer':
+      return [{ name: 'Tokenizer', extensions: ['json'] }]
+    case 'voice':
+      return [{ name: 'SBV2 voice', extensions: ['sbv2', 'onnx', 'zip', '7z'] }]
+    case 'style_vectors':
+      return [{ name: 'style_vectors JSON', extensions: ['json'] }]
+  }
+}
 
 const canPreview = computed(
   () => Boolean(status.value?.ready && previewVoice.value && previewText.value.trim()),
@@ -406,9 +445,9 @@ async function pickSharedAsset(assetId: 'deberta' | 'deberta-tokenizer'): Promis
   const selection = await open({
     multiple: false,
     filters: [
-      assetId === 'deberta'
-        ? { name: 'ONNX model', extensions: ['onnx'] }
-        : { name: 'Tokenizer', extensions: ['json'] },
+      ...(assetId === 'deberta'
+        ? dialogFilters('deberta')
+        : dialogFilters('tokenizer')),
     ],
   })
   const path = selectedPath(selection)
@@ -430,7 +469,7 @@ async function pickSharedAsset(assetId: 'deberta' | 'deberta-tokenizer'): Promis
 async function pickVoice(): Promise<void> {
   const selection = await open({
     multiple: false,
-    filters: [{ name: 'SBV2 voice', extensions: ['sbv2', 'onnx', 'zip', '7z'] }],
+    filters: dialogFilters('voice'),
   })
   const path = selectedPath(selection)
   if (!path) return
@@ -462,7 +501,7 @@ async function pickStyleVectors(): Promise<void> {
   }
   const selection = await open({
     multiple: false,
-    filters: [{ name: 'style_vectors JSON', extensions: ['json'] }],
+    filters: dialogFilters('style_vectors'),
   })
   const path = selectedPath(selection)
   if (!path) return
