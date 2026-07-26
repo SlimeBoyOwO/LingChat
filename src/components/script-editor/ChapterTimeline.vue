@@ -161,8 +161,6 @@ const hl = (s: string) => s
 </script>
 
 <style scoped>
-@reference "tailwindcss";
-
 .rail {
   position: relative;
   padding-left: 22px;

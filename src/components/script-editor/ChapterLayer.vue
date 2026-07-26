@@ -65,8 +65,6 @@ const leaf = (id: string) => (id.includes('/') ? id.slice(id.lastIndexOf('/') + 
 </script>
 
 <style scoped>
-@reference "tailwindcss";
-
 .layer {
   display: flex;
   flex-wrap: wrap;

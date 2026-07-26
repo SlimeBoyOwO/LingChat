@@ -14,17 +14,20 @@
           v-for="(layer, li) in band.layers"
           :key="li"
           :layer="layer"
-          :last="li === band.layers.length - 1 && bi === bands.length - 1"
+          :last="isLast(bi, li)"
         />
       </div>
 
-      <ChapterLayer
-        v-else
-        v-for="(layer, li) in band.layers"
-        :key="'p' + li"
-        :layer="layer"
-        :last="li === band.layers.length - 1 && bi === bands.length - 1"
-      />
+      <!-- 顶层章节。v-for 与 v-else 不能放在同一元素上，
+           所以这里用 template 把两者分开 -->
+      <template v-else>
+        <ChapterLayer
+          v-for="(layer, li) in band.layers"
+          :key="'p' + li"
+          :layer="layer"
+          :last="isLast(bi, li)"
+        />
+      </template>
     </template>
 
     <!-- 剧本结束 -->
@@ -90,6 +93,10 @@ interface Band {
   layers: Node[][]
 }
 
+/** 最后一层不画向下的连线，改由外层统一接到「剧本结束」 */
+const isLast = (bandIndex: number, layerIndex: number) =>
+  bandIndex === bands.value.length - 1 && layerIndex === bands.value[bandIndex].layers.length - 1
+
 const bands = computed<Band[]>(() => {
   const out: Band[] = []
   let current: Band | null = null
@@ -107,8 +114,6 @@ const bands = computed<Band[]>(() => {
 </script>
 
 <style scoped>
-@reference "tailwindcss";
-
 .flow {
   display: flex;
   flex-direction: column;

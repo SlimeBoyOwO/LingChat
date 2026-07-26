@@ -133,8 +133,6 @@ const highlighted = computed(() => {
 </script>
 
 <style scoped>
-@reference "tailwindcss";
-
 .tli {
   position: relative;
 }

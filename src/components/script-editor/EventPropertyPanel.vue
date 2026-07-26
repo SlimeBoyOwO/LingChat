@@ -150,12 +150,21 @@ const onTypeChange = (e: Event) => {
 </script>
 
 <style scoped>
-@reference "tailwindcss";
-
 .glass-input {
-  @apply w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white
-    backdrop-blur-xl backdrop-saturate-150 transition-all duration-200
-    focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none;
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0.625rem 0.75rem;
+  font-size: 0.875rem;
+  color: #fff;
+  backdrop-filter: blur(20px) saturate(150%);
+  transition: all 0.2s;
+}
+.glass-input:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(121, 217, 255, 0.2);
 }
 .glass-input option,
 .glass-input optgroup {

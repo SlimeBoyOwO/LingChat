@@ -292,18 +292,35 @@ const removeAction = (i: number, ai: number) => {
 </script>
 
 <style scoped>
-@reference "tailwindcss";
-
 .mini-input {
-  @apply w-full min-w-0 rounded-md border border-white/10 bg-black/25 px-2 py-1.5 text-xs
-    text-white transition-all focus:border-brand focus:outline-none;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.375rem;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 0.375rem 0.5rem;
+  font-size: 0.75rem;
+  color: #fff;
+  transition: all 0.2s;
+}
+.mini-input:focus {
+  outline: none;
+  border-color: var(--accent-color);
 }
 .mini-input option {
   background: #16202c;
   color: #fff;
 }
 .mini-btn {
-  @apply shrink-0 rounded-md px-1.5 py-1 text-xs text-white/35 transition-all
-    hover:bg-red-500/15 hover:text-red-300;
+  flex: 0 0 auto;
+  border-radius: 0.375rem;
+  padding: 0.25rem 0.375rem;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.35);
+  transition: all 0.2s;
+}
+.mini-btn:hover {
+  color: #fca5a5;
+  background: rgba(248, 113, 113, 0.15);
 }
 </style>
