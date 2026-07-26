@@ -11,6 +11,7 @@
       <div
         v-for="(row, ri) in rows"
         :key="row.key"
+        class="rowbox"
       >
         <!-- 层与层之间的连线。分支层上方画一个分叉提示 -->
         <div
@@ -213,6 +214,16 @@ const rows = computed<FlowRow[]>(() => {
   flex-direction: column;
   align-items: center;
   padding: 18px 8px 24px;
+}
+
+/* v-for 的每一层包一层容器。
+   这里必须是「flex 列 + 居中」：不加的话它是普通块元素，里面那根 1px 宽的
+   .conn 会贴到容器左边缘，于是箭头全跑到章节卡片的左侧去了。 */
+.rowbox {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
 }
 
 /* 层与层之间的竖直连线 + 箭头 */

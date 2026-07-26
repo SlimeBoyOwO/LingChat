@@ -419,7 +419,8 @@ const insert = (typeKey: string) => {
   border: 1px solid rgba(255, 255, 255, 0.125);
   border-radius: 12px;
   padding: 16px 18px 18px;
-  background: rgba(12, 20, 30, 0.94);
+  background: rgba(12, 20, 30, 0.86);
+  backdrop-filter: blur(18px) saturate(140%);
   box-shadow:
     0 8px 32px rgba(0, 0, 0, 0.45),
     inset 0 1px 1px rgba(255, 255, 255, 0.06);

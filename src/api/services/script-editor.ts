@@ -241,6 +241,30 @@ export const uploadAsset = (key: string, kind: AssetKind, scope: AssetScope, src
 /** 全局素材（game_data/backgrounds、musics、ambient） */
 export const listGlobalAssets = () => invoke<AssetIndex>('editor_list_global_assets')
 
+/** 一个素材文件，带绝对路径与体积 —— 素材页要靠它做预览 */
+export interface AssetFile {
+  name: string
+  /** 绝对路径。用 convertFileSrc 转成 asset URL 即可直接 <img> / <audio> */
+  path: string
+  size: number
+}
+
+export interface AssetFileIndex {
+  background: AssetFile[]
+  music: AssetFile[]
+  sound: AssetFile[]
+  ambient: AssetFile[]
+  pic: AssetFile[]
+}
+
+/** 列素材（带路径与体积）。与只给文件名的两个命令并存，那两个喂下拉框 */
+export const listAssetFiles = (key: string, scope: AssetScope) =>
+  invoke<AssetFileIndex>('editor_list_asset_files', { key, scope })
+
+/** 删除素材。与章节、剧本一致，移到同级 .trash/ 而不是真删 */
+export const deleteAsset = (key: string, kind: AssetKind, scope: AssetScope, name: string) =>
+  invoke<void>('editor_delete_asset', { key, kind, scope, name })
+
 /** 全局角色库里的一个角色 */
 export interface GlobalCharacter {
   folder: string

@@ -17,6 +17,7 @@ import type {
   ValidationReport,
   GlobalCharacter,
   PreviewReadiness,
+  AssetFileIndex,
 } from '@/api/services/script-editor'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { useDialogStore } from '@/stores/modules/ui/dialog'
@@ -83,6 +84,8 @@ interface State {
   readiness: PreviewReadiness | null
   /** 全局角色库，供「从全局导入」用 */
   globalCharacters: GlobalCharacter[]
+  /** 素材页用的详细列表（带路径与体积），只在打开素材页时才拉 */
+  assetFiles: { script: AssetFileIndex | null; global: AssetFileIndex | null }
 
   // ---- UI 偏好（唯一持久化的部分）----
   level: 'flow' | 'chapter'
@@ -122,6 +125,7 @@ export const useScriptEditorStore = defineStore('script-editor', {
     previewing: false,
     readiness: null,
     globalCharacters: [],
+    assetFiles: { script: null, global: null },
 
     level: 'flow',
     tab: 'flow',
@@ -152,6 +156,7 @@ export const useScriptEditorStore = defineStore('script-editor', {
       'previewing',
       'readiness',
       'globalCharacters',
+      'assetFiles',
     ],
   },
 
@@ -381,8 +386,18 @@ export const useScriptEditorStore = defineStore('script-editor', {
       }
     },
 
-    backToFlow() {
+    /**
+     * 回到章节流程图。
+     *
+     * 刻意先落盘再校验：流程图画的是 `report.edges`，而 `runValidation` 读的是
+     * **磁盘**。改完「下一章」立刻退回来时，自动保存的 800ms 防抖和校验的
+     * 2.5s 防抖都还没到点，图上仍是旧连线 —— 作者会以为改动没生效。
+     * 这里把两步都强制走一遍，代价是退回时多等一下，换来「看到的就是真的」。
+     */
+    async backToFlow() {
       this.level = 'flow'
+      await this.flushPendingSave()
+      await this.runValidation()
     },
 
     // ========================================================
@@ -826,6 +841,8 @@ export const useScriptEditorStore = defineStore('script-editor', {
           this.detail.assets[kind].push(saved)
           this.detail.assets[kind].sort()
         }
+        // 素材页开着的时候要跟着变，否则刚导进来的图不出现在列表里
+        if (this.assetFiles.script || this.assetFiles.global) void this.refreshAssetFiles()
         this.notifyOk(
           scope === 'global' ? '已导入为全局素材' : '已导入为剧本素材',
           saved,
@@ -847,6 +864,62 @@ export const useScriptEditorStore = defineStore('script-editor', {
         this.notifyOk('角色已创建', `剧本里写 character: ${c.roleKey}`)
       } catch (e) {
         this.notifyError('创建角色失败', e)
+      }
+    },
+
+    /** 素材页的详细列表。两次调用（剧本 + 全局），页面打开时拉一次 */
+    async refreshAssetFiles() {
+      const key = this.scriptKey
+      if (!key) return
+      try {
+        const [script, global] = await Promise.all([
+          api.listAssetFiles(key, 'script'),
+          api.listAssetFiles(key, 'global'),
+        ])
+        this.assetFiles = { script, global }
+      } catch (e) {
+        console.warn('读取素材详情失败:', e)
+      }
+    },
+
+    async deleteAsset(kind: AssetKind, scope: AssetScope, name: string) {
+      const key = this.scriptKey
+      if (!key) return
+      const dialog = useDialogStore()
+      const where =
+        scope === 'global'
+          ? '这是**全局**素材，删掉之后所有引用它的剧本都会找不到文件。'
+          : '这是本剧本的素材。'
+      const ok = await dialog.confirm(
+        `确定删除「${name}」吗？\n\n${where}\n文件会移到同级的 .trash/ 下，不会真正消失。\n` +
+          '如果还有事件在引用它，删完校验会报「素材找不到」。',
+        '删除素材',
+      )
+      if (!ok) return
+      try {
+        await api.deleteAsset(key, kind, scope, name)
+        // 三份列表都要刷：素材页的详情、属性面板下拉用的剧本内清单与全局清单
+        await Promise.all([
+          this.refreshAssetFiles(),
+          this.refreshGlobalAssets(),
+          this.reloadDetailAssets(),
+        ])
+        await this.runValidation()
+        this.notifyOk('素材已删除', '可以在同级的 .trash/ 里找回')
+      } catch (e) {
+        this.notifyError('删除素材失败', e)
+      }
+    },
+
+    /** 只把 detail 里的素材清单刷新一下，不动章节与编辑状态 */
+    async reloadDetailAssets() {
+      const key = this.scriptKey
+      if (!key || !this.detail) return
+      try {
+        const fresh = await api.readScript(key)
+        this.detail.assets = fresh.assets
+      } catch (e) {
+        console.warn('刷新剧本素材清单失败:', e)
       }
     },
 

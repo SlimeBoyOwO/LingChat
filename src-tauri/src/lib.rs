@@ -509,6 +509,8 @@ pub fn run() {
             api::script_editor::editor_upload_asset,
             api::script_editor::editor_create_character,
             api::script_editor::editor_list_global_assets,
+            api::script_editor::editor_list_asset_files,
+            api::script_editor::editor_delete_asset,
             api::script_editor::editor_rescan_scripts,
             api::script_editor::editor_start_preview,
             api::script_editor::editor_preview_readiness,

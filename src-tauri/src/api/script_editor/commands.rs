@@ -229,23 +229,29 @@ fn list_asset_dir(script_dir: &Path, subdirs: &[&str]) -> Vec<String> {
     out
 }
 
+/// 剧本内某类素材的子目录候选，与 `media.rs::subdir_candidates` 保持一致。
+///
+/// 抽成函数是因为有两个消费者（只要文件名的 `read_asset_index`、要路径的
+/// `editor_list_asset_files`），各抄一份迟早会发散成「下拉里有、素材页里没有」。
+fn asset_subdir_candidates(kind: &str) -> &'static [&'static str] {
+    match kind {
+        "background" => &["Backgrounds", "Pics", "Pictures", "Pic", "Picture"],
+        "music" => &["Musics", "BGMs", "Music", "BGM"],
+        "sound" => &["Sounds", "SoundEffects", "Sound", "SoundEffect"],
+        "ambient" => &["Ambients", "AmbientSounds", "Environment", "Ambient"],
+        "pic" => &["Pics", "Pictures", "Pic", "Picture"],
+        _ => &[],
+    }
+}
+
 fn read_asset_index(script_dir: &Path) -> AssetIndex {
-    // 子目录候选与 media.rs 的 subdir_candidates 保持一致
+    let one = |kind: &str| list_asset_dir(script_dir, asset_subdir_candidates(kind));
     AssetIndex {
-        background: list_asset_dir(
-            script_dir,
-            &["Backgrounds", "Pics", "Pictures", "Pic", "Picture"],
-        ),
-        music: list_asset_dir(script_dir, &["Musics", "BGMs", "Music", "BGM"]),
-        sound: list_asset_dir(
-            script_dir,
-            &["Sounds", "SoundEffects", "Sound", "SoundEffect"],
-        ),
-        ambient: list_asset_dir(
-            script_dir,
-            &["Ambients", "AmbientSounds", "Environment", "Ambient"],
-        ),
-        pic: list_asset_dir(script_dir, &["Pics", "Pictures", "Pic", "Picture"]),
+        background: one("background"),
+        music: one("music"),
+        sound: one("sound"),
+        ambient: one("ambient"),
+        pic: one("pic"),
     }
 }
 
@@ -719,6 +725,143 @@ pub fn editor_list_global_assets() -> Result<AssetIndex, String> {
     })
 }
 
+/// 一个素材文件的详细信息，供素材页做预览与删除。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetFile {
+    pub name: String,
+    /// 绝对路径。前端用 `convertFileSrc` 转成 asset URL 就能直接 `<img>` / `<audio>`
+    pub path: String,
+    pub size: u64,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetFileIndex {
+    pub background: Vec<AssetFile>,
+    pub music: Vec<AssetFile>,
+    pub sound: Vec<AssetFile>,
+    pub ambient: Vec<AssetFile>,
+    pub pic: Vec<AssetFile>,
+}
+
+/// 列素材，带路径和大小。
+///
+/// 与 `editor_read_script` / `editor_list_global_assets` 只给文件名的版本并存：
+/// 那两个喂的是属性面板的下拉框，只需要名字；素材页要显示缩略图、放音频、
+/// 报体积，就得有绝对路径。一次调用把五类全给出来，免得每个文件一次 IPC。
+#[tauri::command]
+pub fn editor_list_asset_files(key: String, scope: AssetScope) -> Result<AssetFileIndex, String> {
+    let script_dir = match scope {
+        AssetScope::Script => Some(paths::resolve_script_dir(&key)?),
+        AssetScope::Global => None,
+    };
+
+    let one = |kind: &str| -> Vec<AssetFile> {
+        let allowed = allowed_extensions(kind);
+        let dirs: Vec<PathBuf> = match &script_dir {
+            // 剧本内可能落在 media.rs 的任意一个候选子目录，全都扫
+            Some(root) => asset_subdir_candidates(kind)
+                .iter()
+                .map(|s| root.join("Assets").join(s))
+                .collect(),
+            None => asset_dirs(kind).map(|(_, d)| vec![d]).unwrap_or_default(),
+        };
+
+        let mut out: Vec<AssetFile> = Vec::new();
+        let mut seen: HashSet<String> = HashSet::new();
+        for dir in dirs {
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                continue;
+            };
+            for e in entries.flatten() {
+                let Ok(meta) = e.metadata() else { continue };
+                if !meta.is_file() {
+                    continue;
+                }
+                let name = e.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') || !seen.insert(name.clone()) {
+                    continue;
+                }
+                let ext = Path::new(&name)
+                    .extension()
+                    .map(|x| x.to_string_lossy().to_lowercase())
+                    .unwrap_or_default();
+                if !allowed.contains(&ext.as_str()) {
+                    continue;
+                }
+                out.push(AssetFile {
+                    path: e.path().to_string_lossy().to_string(),
+                    size: meta.len(),
+                    name,
+                });
+            }
+        }
+        out.sort_by(|a, b| a.name.cmp(&b.name));
+        out
+    };
+
+    Ok(AssetFileIndex {
+        background: one("background"),
+        music: one("music"),
+        sound: one("sound"),
+        ambient: one("ambient"),
+        pic: one("pic"),
+    })
+}
+
+/// 删除一个素材文件。
+///
+/// 与章节、剧本一样**不真删**：移到同级的 `.trash/` 下带时间戳的副本。素材可能
+/// 是作者画了半天的图，而且删掉之后剧本里的引用会变成校验器的一条 `asset.missing`，
+/// 想反悔时得能捡回来。
+#[tauri::command]
+pub fn editor_delete_asset(
+    key: String,
+    kind: String,
+    scope: AssetScope,
+    name: String,
+) -> Result<(), String> {
+    // 名字来自前端列表，仍然过一遍清洗：这是个会删文件的命令
+    let name = paths::sanitize_file_name(&name)?;
+
+    let files = editor_list_asset_files(key, scope)?;
+    let list = match kind.as_str() {
+        "background" => files.background,
+        "music" => files.music,
+        "sound" => files.sound,
+        "ambient" => files.ambient,
+        "pic" => files.pic,
+        other => return Err(format!("未知的素材类别: {}", other)),
+    };
+    let target = list
+        .into_iter()
+        .find(|f| f.name == name)
+        .ok_or_else(|| format!("找不到素材「{}」", name))?;
+    let path = PathBuf::from(&target.path);
+
+    let trash = path
+        .parent()
+        .ok_or_else(|| "素材路径异常".to_string())?
+        .join(".trash");
+    std::fs::create_dir_all(&trash).map_err(|e| format!("无法创建回收目录: {}", e))?;
+
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let dest = trash.join(format!("{}.{}", stamp, name));
+
+    std::fs::rename(&path, &dest)
+        .or_else(|_| {
+            std::fs::copy(&path, &dest)
+                .map(|_| ())
+                .and_then(|_| std::fs::remove_file(&path))
+        })
+        .map_err(|e| format!("删除素材失败: {}", e))?;
+    Ok(())
+}
+
 /// 导入素材。
 ///
 /// 只收**源文件路径**，由 Rust 自己 `fs::copy` —— 与 `api/font.rs::import_font`
@@ -1107,8 +1250,8 @@ pub async fn editor_start_preview(
         }
     }
 
-    // 把 MAIN 指到该指的人身上，并记住原值以便收尾时还原
-    let restore_main = apply_preview_main_role(&db, &game_status, &script).await?;
+    // 备份整个会话状态，并按「刚进游戏」的样子把试玩场次搭好
+    let session = PreviewSession::begin(&db, &data_dir, &game_status, &script).await?;
 
     is_running.store(true, std::sync::atomic::Ordering::SeqCst);
 
@@ -1138,71 +1281,176 @@ pub async fn editor_start_preview(
             tracing::error!("[ScriptEditor] 试玩收尾失败: {:#}", e);
         }
 
-        // 还原主角。放在这里而不是 stop_preview 里：正常跑完、报错、被 stop 掐断
-        // 三条路都会走到这，只在 stop 里还原会漏掉前两条。
-        if let Some(prev) = restore_main {
-            let mut gs = game_status.lock().await;
-            gs.main_role_id = prev;
-            gs.current_role_id = prev;
-        }
-        tracing::info!("[ScriptEditor] 试玩结束");
+        // 把会话状态整个还原回试玩之前。放在这里而不是 stop_preview 里：
+        // 正常跑完、中途报错、被 stop 掐断，三条路都会走到这，只在 stop 里
+        // 还原会漏掉前两条。
+        session.restore(&db, &game_status).await;
+        tracing::info!("[ScriptEditor] 试玩结束，会话状态已还原");
     });
 
     Ok(())
 }
 
-/// 试玩前把 `MAIN` 指到正确的角色上，返回原值供收尾还原（`None` 表示不用还原）。
+/// 一次试玩对**共享会话状态**的全部改动，以及把它们撤回去的能力。
 ///
-/// 引擎里 `character: MAIN` 解析成 `game_status.main_role_id`，而这个字段是
-/// **主菜单选角色**时设的（`init_game_status`）。正式玩羁绊冒险时你必然是从
-/// 该角色的角色卡进去的，所以它天然是对的；编辑器里没有这一步，于是：
+/// 这是这一轮最重要的一处修正。此前试玩直接在 `GameStatus` 上跑，而那是
+/// 玩家正在用的**同一个**会话对象，于是两个方向都出问题：
 ///
-/// - 没选过角色 → `main_role_id` 是 `None`，第一个 `character: MAIN` 事件直接
-///   报「MAIN 角色未设定」，剧本停在那里（表现就是立绘不出来、对话不往下走）；
-/// - 选的是别的角色 → `MAIN` 解析成另一个人，试玩的是一出张冠李戴的戏。
+/// **往里看**——试玩场次是残缺的。正式游玩前必然走过 `init_game_status()`，
+/// 它做三件事：清空台词表、写入主角的人设 SYSTEM 台词、把主角 `onstage`。
+/// 编辑器是独立路由，这三件一件都没做，后果是：立绘不出来（没人在台上），
+/// 日志刷「role_id=N 没有找到 SYSTEM 属性的台词，可能人设丢失」（没有人设台词），
+/// 而且 AI 对话是在没有人设的上下文里生成的。
 ///
-/// 所以这里复刻正式路径的那条保证：羁绊剧本按 `bound_character_folder` 把 MAIN
-/// 临时指过去，独立剧本沿用当前主角。两者都拿不到就直接报错让作者去选人，
-/// 而不是让他对着一个卡住的画面猜。
-async fn apply_preview_main_role(
+/// **往外看**——试玩会往真实会话里漏东西。剧本跑出来的每一句台词都进了玩家的
+/// `line_list`，`〔试玩已关闭 LLM〕` 这类占位也一样；背景、音乐、在场角色、
+/// `script_status` 全都留在原地。退出编辑器回自由对话，看到的就是试玩的残留。
+///
+/// 所以现在的做法是：**进来时整体备份、按新会话搭好场子、走的时候整体还原**。
+/// 试玩期间引擎爱怎么改怎么改，出去之后玩家的会话一个字节都没变。
+struct PreviewSession {
+    /// 试玩开始时台词表的长度。引擎只往后追加，截回这个长度即可
+    line_len: usize,
+    /// `to_snapshot()` 覆盖的场景状态：背景 / 音乐 / 特效 / 在场角色 / 全局变量 …
+    scene: crate::ai_service::game_system::game_status::GameStatusSnapshot,
+    /// 快照没覆盖的三个字段
+    main_role_id: Option<i32>,
+    current_role_id: Option<i32>,
+    script_status: Option<Box<ScriptStatus>>,
+}
+
+impl PreviewSession {
+    async fn begin(
+        db: &DatabaseConnection,
+        data_dir: &Path,
+        game_status: &Arc<Mutex<GameStatus>>,
+        script: &ScriptStatus,
+    ) -> Result<Self, String> {
+        // 先确定 MAIN 是谁 —— 定不下来就别开场，免得作者对着不动的画面猜
+        let main_id = resolve_preview_main_role(db, game_status, script).await?;
+
+        let mut gs = game_status.lock().await;
+        let saved = PreviewSession {
+            line_len: gs.line_list.len(),
+            scene: gs.to_snapshot(),
+            main_role_id: gs.main_role_id,
+            current_role_id: gs.current_role_id,
+            script_status: gs.script_status.clone().map(Box::new),
+        };
+
+        // ---- 按「刚进游戏」的样子搭场次，对齐 init_game_status 的三件事 ----
+        gs.get_role(db, main_id)
+            .await
+            .map_err(|e| format!("载入主角失败: {}", e))?;
+        gs.main_role_id = Some(main_id);
+        gs.current_role_id = Some(main_id);
+        gs.onstage_role(main_id); // 不做这步立绘不会出现
+
+        // 人设 SYSTEM 台词。缺了它 role_manager 会警告「人设丢失」，
+        // 而且 AI 对话会在没有人设的上下文里生成。
+        drop(gs);
+        if let Some(prompt) = build_main_role_prompt(db, data_dir, main_id).await {
+            let line = crate::ai_service::types::LineBase {
+                content: prompt.text,
+                attribute: crate::ai_service::types::LineAttributeExt(
+                    crate::db::entities::line::LineAttribute::System,
+                ),
+                sender_role_id: Some(main_id),
+                display_name: Some(prompt.name),
+                ..Default::default()
+            };
+            let mut gs = game_status.lock().await;
+            if let Err(e) = gs.add_line(db, line).await {
+                tracing::warn!("[ScriptEditor] 写入试玩人设台词失败: {}", e);
+            }
+        } else {
+            tracing::warn!("[ScriptEditor] 主角 {} 读不到人设，试玩将缺少人设上下文", main_id);
+        }
+
+        Ok(saved)
+    }
+
+    /// 尽力还原，任何一步失败都只记日志 —— 收尾阶段再抛错没有接收方，
+    /// 而且半途放弃只会让残留更多。
+    async fn restore(self, db: &DatabaseConnection, game_status: &Arc<Mutex<GameStatus>>) {
+        let mut gs = game_status.lock().await;
+        gs.line_list.truncate(self.line_len);
+        gs.apply_snapshot(&self.scene);
+        gs.main_role_id = self.main_role_id;
+        gs.current_role_id = self.current_role_id;
+        gs.script_status = self.script_status.map(|b| *b);
+        // 台词表变短了，角色记忆要按新的列表重建，否则里面还留着试玩的内容
+        if let Err(e) = gs.refresh_memories(db).await {
+            tracing::warn!("[ScriptEditor] 还原后刷新记忆失败: {}", e);
+        }
+    }
+}
+
+/// 试玩时 `MAIN` 应该解析成谁。
+///
+/// 引擎里 `character: MAIN` 走 `game_status.main_role_id`，而这个字段是
+/// **主菜单选角色**时设的。正式玩羁绊冒险你必然从该角色的角色卡进去，所以它
+/// 天然正确；编辑器没有这一步，于是羁绊剧本按 `bound_character_folder` 找人，
+/// 独立剧本沿用当前主角。两者都拿不到就直接报错。
+async fn resolve_preview_main_role(
     db: &DatabaseConnection,
     game_status: &Arc<Mutex<GameStatus>>,
     script: &ScriptStatus,
-) -> Result<Option<Option<i32>>, String> {
+) -> Result<i32, String> {
     let bound = script.adventure.bound_character_folder.trim();
 
     if bound.is_empty() {
-        // 独立剧本：没有绑定人，只能沿用当前主角
-        let current = game_status.lock().await.main_role_id;
-        return if current.is_some() {
-            Ok(None)
-        } else {
-            Err("这个剧本没有绑定角色，而当前也还没有选定主角。\
-                 请先回主菜单选一个角色（剧本里的 MAIN 就是他），再回来试玩。"
-                .to_string())
-        };
+        return game_status.lock().await.main_role_id.ok_or_else(|| {
+            "这个剧本没有绑定角色，而当前也还没有选定主角。\
+             请先回主菜单选一个角色（剧本里的 MAIN 就是他），再回来试玩。"
+                .to_string()
+        });
     }
 
-    let role_id = find_main_role_by_folder(db, bound).await?.ok_or_else(|| {
+    find_main_role_by_folder(db, bound).await?.ok_or_else(|| {
         format!(
             "剧本绑定的角色「{}」不在角色库里。请确认 game_data/characters/ 下有这个目录，\
              或到剧本设置里把「绑定角色目录名」改成实际存在的角色。",
             bound
         )
-    })?;
+    })
+}
 
-    let mut gs = game_status.lock().await;
-    let prev = gs.main_role_id;
-    if prev == Some(role_id) {
-        return Ok(None); // 本来就是他，不用动也不用还原
-    }
-    // 先把角色载进 RoleManager，否则后面 get_role 拿不到立绘/显示名
-    gs.get_role(db, role_id)
+struct MainRolePrompt {
+    text: String,
+    name: String,
+}
+
+/// 按 `init_game_status` 的同一套做法给主角构建人设提示词。
+///
+/// 读不到就返回 `None` —— 没有人设的试玩仍然能跑流程（作者多半就是在调流程），
+/// 只是 AI 对话会缺上下文，比直接拒绝开场好。
+async fn build_main_role_prompt(
+    db: &DatabaseConnection,
+    data_dir: &Path,
+    role_id: i32,
+) -> Option<MainRolePrompt> {
+    use crate::utils::prompt::{sys_prompt_builder_by_settings, PromptOptions};
+
+    let settings = RoleRepo::get_role_settings_by_id(db, data_dir, role_id)
         .await
-        .map_err(|e| format!("载入绑定角色失败: {}", e))?;
-    gs.main_role_id = Some(role_id);
-    gs.current_role_id = Some(role_id);
-    Ok(Some(prev))
+        .ok()
+        .flatten()?;
+    if settings.system_prompt.as_deref().unwrap_or("").trim().is_empty() {
+        return None;
+    }
+    // 用 by_settings 版本而不是自己拼参数：它会一并带上 settings.user_name，
+    // 与正式游玩走的是同一条构建路径
+    Some(MainRolePrompt {
+        text: sys_prompt_builder_by_settings(
+            &settings,
+            PromptOptions {
+                output_sec_lang: true,
+                no_emotion_limit: true,
+            },
+        ),
+        name: settings.ai_name,
+    })
 }
 
 /// 按资源目录名找主角色。目录名就是 `game_data/characters/<目录>`。

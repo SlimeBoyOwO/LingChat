@@ -53,8 +53,10 @@ import { GameBackground, GameDialog, GameRolesStage } from '@/components/game/st
 import GameExtraUI from '@/components/game/standard/GameExtraUI.vue'
 import { eventQueue } from '@/core/events/event-queue'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
+import { useGameStore } from '@/stores/modules/game'
 
 const store = useScriptEditorStore()
+const gameStore = useGameStore()
 
 const props = defineProps<{ fromChapter?: string }>()
 
@@ -68,6 +70,50 @@ const label = computed(() => {
 })
 
 /**
+ * 试玩期间会被引擎改写的 gameStore 字段，进出各存/还一次。
+ *
+ * 后端已经把 `GameStatus` 整个备份还原了（见 `PreviewSession`），但前端这份是
+ * 独立的一套状态：立绘在场名单、对话历史、剧情模式标记都只存在于浏览器里，
+ * 引擎 emit 的事件经 eventQueue 直接改它。不管的话，退出编辑器回自由对话，
+ * 看到的还是试玩留下的立绘和台词 —— 包括「AI 已关闭」那几条占位。
+ *
+ * 只存这几个字段而不是整个 `$state`：其余部分（用户名、场景配置、设置）试玩
+ * 不会碰，整份深拷贝反而可能把别处刚改好的东西覆盖回去。
+ */
+type GameSnapshot = {
+  runningScript: typeof gameStore.runningScript
+  presentRoleIds: number[]
+  currentInteractRoleId: number | null
+  currentLine: string
+  currentStatus: typeof gameStore.currentStatus
+  dialogHistory: typeof gameStore.dialogHistory
+  command: string | null
+}
+
+let snapshot: GameSnapshot | null = null
+
+const captureGameState = (): GameSnapshot => ({
+  runningScript: gameStore.runningScript,
+  presentRoleIds: [...gameStore.presentRoleIds],
+  currentInteractRoleId: gameStore.currentInteractRoleId,
+  currentLine: gameStore.currentLine,
+  currentStatus: gameStore.currentStatus,
+  dialogHistory: [...gameStore.dialogHistory],
+  command: gameStore.command,
+})
+
+const restoreGameState = (s: GameSnapshot) => {
+  gameStore.runningScript = s.runningScript
+  gameStore.presentRoleIds = s.presentRoleIds
+  gameStore.currentInteractRoleId = s.currentInteractRoleId
+  gameStore.currentLine = s.currentLine
+  gameStore.currentStatus = s.currentStatus
+  gameStore.dialogHistory = s.dialogHistory
+  gameStore.command = s.command
+  // gameRoles 是纯缓存（id → 角色信息），留着不会造成串味，下次用到还省一次请求
+}
+
+/**
  * eventQueue 初始是 paused 的 —— 正式游玩里由 LoadingTransition 完成时 resume。
  * 编辑器没有那道转场，所以在预览打开时自己放行；关闭时 clear()，它会同时
  * 清空队列并把 paused 置回 true，免得残留事件泄漏到下一次试玩。
@@ -76,10 +122,20 @@ watch(
   () => store.previewing,
   (on) => {
     if (on) {
+      snapshot = captureGameState()
+      // 从干净的舞台开始，而不是继承主界面此刻的立绘和台词
+      gameStore.presentRoleIds = []
+      gameStore.dialogHistory = []
+      gameStore.currentLine = ''
+      gameStore.currentStatus = 'presenting'
       eventQueue.resume()
     } else {
       // clear() 内部会把 paused 置回 true，所以不需要另外 pause
       eventQueue.clear()
+      if (snapshot) {
+        restoreGameState(snapshot)
+        snapshot = null
+      }
     }
   },
 )

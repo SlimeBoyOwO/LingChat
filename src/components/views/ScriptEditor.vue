@@ -516,35 +516,53 @@
               </button>
             </div>
             <div class="asset-cols">
-              <div>
-                <p class="asset-sub">本剧本 · {{ store.assets[k.key].length }}</p>
+              <div
+                v-for="col in ['script', 'global'] as AssetScope[]"
+                :key="col"
+              >
+                <p class="asset-sub">
+                  {{ col === 'script' ? '本剧本' : '全局' }} ·
+                  {{ filesOf(col, k.key).length }}
+                </p>
                 <p
-                  v-if="store.assets[k.key].length === 0"
+                  v-if="filesOf(col, k.key).length === 0"
                   class="asset-empty"
                 >
                   无
                 </p>
-                <span
-                  v-for="n in store.assets[k.key]"
-                  :key="n"
-                  class="asset-item"
-                  >{{ n }}</span
+                <div
+                  v-for="f in filesOf(col, k.key)"
+                  :key="f.path"
+                  class="asset-card"
+                  :class="{ global: col === 'global' }"
                 >
-              </div>
-              <div>
-                <p class="asset-sub">全局 · {{ store.globalAssets[k.key].length }}</p>
-                <p
-                  v-if="store.globalAssets[k.key].length === 0"
-                  class="asset-empty"
-                >
-                  无
-                </p>
-                <span
-                  v-for="n in store.globalAssets[k.key]"
-                  :key="n"
-                  class="asset-item global"
-                  >{{ n }}</span
-                >
+                  <!-- 图片直接出缩略图；音频给一个原生播放器，够用且零依赖 -->
+                  <img
+                    v-if="isImageKind(k.key)"
+                    class="asset-thumb"
+                    :src="assetUrl(f.path)"
+                    :alt="f.name"
+                    loading="lazy"
+                  />
+                  <div class="asset-meta">
+                    <span class="asset-name">{{ f.name }}</span>
+                    <span class="asset-size">{{ humanSize(f.size) }}</span>
+                    <audio
+                      v-if="!isImageKind(k.key)"
+                      class="asset-audio"
+                      controls
+                      preload="none"
+                      :src="assetUrl(f.path)"
+                    ></audio>
+                  </div>
+                  <button
+                    class="asset-del"
+                    title="删除（移到 .trash/）"
+                    @click="store.deleteAsset(k.key, col, f.name)"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -881,12 +899,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { convertFileSrc } from '@tauri-apps/api/core'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { Button, Icon, Toggle } from '@/components/base'
 import { MenuPage, MenuItem } from '@/components/ui'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 import { createScript, openScriptFolder } from '@/api/services/script-editor'
-import type { AssetKind, AssetScope, Diagnostic } from '@/api/services/script-editor'
+import type { AssetFile, AssetKind, AssetScope, Diagnostic } from '@/api/services/script-editor'
 import ChapterFlow from '@/components/script-editor/ChapterFlow.vue'
 import ChapterTimeline from '@/components/script-editor/ChapterTimeline.vue'
 import EventPropertyPanel from '@/components/script-editor/EventPropertyPanel.vue'
@@ -916,6 +935,22 @@ const assetKinds: { key: AssetKind; label: string }[] = [
   { key: 'sound', label: '音效' },
   { key: 'ambient', label: '环境音' },
 ]
+
+// ---- 素材页 ----
+
+const isImageKind = (k: AssetKind) => k === 'background' || k === 'pic'
+
+/** 绝对路径 → webview 能加载的 asset URL，与 GameBackground / GameRoleAvatar 同一套 */
+const assetUrl = (path: string) => convertFileSrc(path)
+
+const filesOf = (scope: AssetScope, kind: AssetKind): AssetFile[] =>
+  store.assetFiles[scope]?.[kind] ?? []
+
+const humanSize = (n: number) => {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
 
 // ---- nav 指示条（与 SettingsNav 同一套做法）----
 const navEl = ref<HTMLElement | null>(null)
@@ -978,7 +1013,13 @@ const switchTab = (key: TabKey) => {
   if (!store.detail && key !== 'flow') return
   store.tab = key
   if (key === 'validate') void store.runValidation()
-  if (key === 'assets') void store.refreshGlobalAssets()
+  if (key === 'assets') {
+    void store.refreshGlobalAssets()
+    void store.refreshAssetFiles()
+  }
+  if (key === 'characters') void store.refreshGlobalCharacters()
+  // 回到流程图时强制走一遍「落盘 → 重新校验」，图上画的才是磁盘里的真状态
+  if (key === 'flow' && store.level === 'flow') void store.backToFlow()
 }
 
 // ---- 面包屑 ----
@@ -1704,20 +1745,74 @@ onUnmounted(() => {
   font-size: 0.72rem;
   color: rgba(255, 255, 255, 0.25);
 }
-.asset-item {
-  display: inline-block;
-  margin: 0 4px 4px 0;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 5px;
-  padding: 1px 7px;
-  font-size: 0.7rem;
-  color: rgba(255, 255, 255, 0.7);
-  background: rgba(255, 255, 255, 0.05);
+/* 一条素材：缩略图 / 音频播放器 + 名字 + 体积 + 删除 */
+.asset-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: rgba(255, 255, 255, 0.04);
+  transition: all 0.15s;
 }
-.asset-item.global {
-  border-color: rgba(167, 139, 250, 0.3);
-  color: #c4b5fd;
-  background: rgba(167, 139, 250, 0.1);
+.asset-card:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.07);
+}
+.asset-card.global {
+  border-color: rgba(167, 139, 250, 0.22);
+  background: rgba(167, 139, 250, 0.07);
+}
+/* 棋盘底纹：透明立绘 / 带透明通道的插图不至于糊成一片黑 */
+.asset-thumb {
+  flex: 0 0 auto;
+  width: 56px;
+  height: 40px;
+  border-radius: 5px;
+  object-fit: cover;
+  background:
+    repeating-conic-gradient(rgba(255, 255, 255, 0.08) 0% 25%, transparent 0% 50%) 0 0 / 10px 10px;
+}
+.asset-meta {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+}
+.asset-name {
+  overflow: hidden;
+  font-size: 0.74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.8);
+}
+.asset-size {
+  font-size: 0.64rem;
+  color: rgba(255, 255, 255, 0.35);
+}
+.asset-audio {
+  width: 100%;
+  height: 26px;
+}
+.asset-del {
+  flex: 0 0 auto;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.25);
+  opacity: 0;
+  transition: all 0.15s;
+}
+.asset-card:hover .asset-del {
+  opacity: 1;
+}
+.asset-del:hover {
+  color: #fca5a5;
+  background: rgba(248, 113, 113, 0.15);
 }
 
 /* ---- 校验页 ---- */
@@ -1864,18 +1959,23 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  backdrop-filter: blur(5px);
-  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  background: rgba(0, 0, 0, 0.55);
 }
+/* 与「插入事件」面板同一套：同一个深蓝底、同样的亚克力模糊、同样的内高光。
+   之前这里是 rgba(30,41,59,.97) 的不透明面板，跟旁边一比像另一个应用的窗口。 */
 .modal {
   width: min(440px, 92vw);
   max-height: 86vh;
   overflow-y: auto;
   border: 1px solid rgba(255, 255, 255, 0.125);
   border-radius: 12px;
-  padding: 15px;
-  background: rgba(30, 41, 59, 0.97);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  padding: 16px 18px 18px;
+  background: rgba(12, 20, 30, 0.86);
+  backdrop-filter: blur(18px) saturate(140%);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.45),
+    inset 0 1px 1px rgba(255, 255, 255, 0.06);
 }
 .modal-head {
   display: flex;
