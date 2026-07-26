@@ -57,6 +57,59 @@
         <section>
           <div class="section-heading">
             <div>
+              <h3>模型下载</h3>
+              <p>从 ModelScope 一键拉取本地 TTS 所需的全部资产</p>
+            </div>
+            <FileDown :size="18" class="text-white/40" />
+          </div>
+
+          <ul class="flex flex-col gap-3">
+            <li
+              v-for="asset in TtsLocal.CATALOG"
+              :key="asset.id"
+              class="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/5 p-4"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="font-medium text-white">{{ asset.display_name }}</p>
+                  <p class="text-xs text-white/40">
+                    {{ asset.source }} · {{ formatBytes(asset.size_bytes) }} · {{ asset.language }}
+                  </p>
+                </div>
+                <button
+                  class="action-button shrink-0"
+                  :disabled="downloadingId === asset.id || rowState(asset.id) === 'installed'"
+                  @click="triggerDownload(asset.id)"
+                >
+                  <LoaderCircle v-if="downloadingId === asset.id" :size="16" class="animate-spin" />
+                  <Check v-else-if="rowState(asset.id) === 'installed'" :size="16" />
+                  <FileDown v-else :size="16" />
+                  <span>{{ rowLabel(asset.id) }}</span>
+                </button>
+              </div>
+              <div v-if="progressByAsset[asset.id] !== undefined" class="flex items-center gap-3">
+                <progress
+                  class="h-2 flex-1 overflow-hidden rounded bg-white/10"
+                  :value="progressByAsset[asset.id]"
+                  max="100"
+                />
+                <span class="w-12 text-right text-xs text-white/40">
+                  {{ Math.round(progressByAsset[asset.id] ?? 0) }}%
+                </span>
+              </div>
+              <p
+                v-if="downloadError[asset.id]"
+                class="border-l-2 border-red-400 px-3 py-1 text-xs text-red-300"
+              >
+                {{ downloadError[asset.id] }}
+              </p>
+            </li>
+          </ul>
+        </section>
+
+        <section>
+          <div class="section-heading">
+            <div>
               <h3>本地导入</h3>
               <p>支持原始模型文件、ZIP 和 7z 压缩包</p>
             </div>
@@ -254,6 +307,7 @@ import {
   Check,
   CircleAlert,
   FileArchive,
+  FileDown,
   FileJson,
   FileUp,
   HardDriveDownload,
@@ -269,6 +323,7 @@ import { MenuItem, MenuPage } from '@/components/ui'
 import { useDialogStore } from '@/stores/modules/ui/dialog'
 import * as TtsLocal from '@/api/services/tts-local'
 import { speedToLengthScale } from '@/utils/tts-speed'
+import { catalogRowState } from '@/utils/tts-download-state'
 import type {
   TtsLocalInstallSnapshot,
   TtsLocalStatus,
@@ -290,6 +345,10 @@ const previewSdp = ref(0)
 const previewing = ref(false)
 const audioRef = ref<HTMLAudioElement | null>(null)
 let audioUrl: string | null = null
+const progressByAsset = ref<Record<string, number>>({})
+const downloadError = ref<Record<string, string>>({})
+const downloadingId = ref<string | null>(null)
+let unlistenProgress: (() => void) | null = null
 
 type FilterIntent = 'deberta' | 'tokenizer' | 'voice' | 'style_vectors'
 
@@ -505,6 +564,26 @@ async function runPreview(): Promise<void> {
   }
 }
 
+function rowState(assetId: string) {
+  const asset = TtsLocal.CATALOG.find((item) => item.id === assetId)
+  if (!asset) return 'missing'
+  return catalogRowState({
+    asset,
+    progressPercent: progressByAsset.value[assetId],
+    errorMessage: downloadError.value[assetId],
+    status: status.value,
+    voices: snapshot.value.voices,
+  })
+}
+
+function rowLabel(assetId: string): string {
+  const state = rowState(assetId)
+  if (state === 'installed') return '已安装'
+  if (state === 'downloading') return '下载中'
+  if (state === 'error') return '重试下载'
+  return '下载'
+}
+
 watch(
   () => snapshot.value.voices,
   (voices) => {
@@ -522,11 +601,44 @@ watch(
 
 onMounted(async () => {
   await refreshAll()
+  unlistenProgress = TtsLocal.onDownloadProgress((progress) => {
+    progressByAsset.value = {
+      ...progressByAsset.value,
+      [progress.asset_id]: progress.percent,
+    }
+  })
 })
 
 onUnmounted(() => {
   if (audioUrl) URL.revokeObjectURL(audioUrl)
+  unlistenProgress?.()
+  unlistenProgress = null
 })
+
+async function triggerDownload(assetId: string): Promise<void> {
+  if (downloadingId.value) return
+  downloadingId.value = assetId
+  const nextProgress = { ...progressByAsset.value }
+  delete nextProgress[assetId]
+  progressByAsset.value = nextProgress
+  const nextErrors = { ...downloadError.value }
+  delete nextErrors[assetId]
+  downloadError.value = nextErrors
+  try {
+    await TtsLocal.download(assetId)
+    await refreshAll()
+    const completedProgress = { ...progressByAsset.value }
+    completedProgress[assetId] = 100
+    progressByAsset.value = completedProgress
+  } catch (error) {
+    downloadError.value = {
+      ...downloadError.value,
+      [assetId]: errorText(error),
+    }
+  } finally {
+    downloadingId.value = null
+  }
+}
 </script>
 
 <style scoped>

@@ -34,14 +34,32 @@ pub async fn download_asset(
     let tmp = dst.with_extension("part");
     let resp = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(600))
+        .user_agent("LingChat/0.4.6")
+        .redirect(reqwest::redirect::Policy::limited(10))
         .build()
         .map_err(|e| format!("client: {e}"))?
         .get(&entry.download_url)
+        .header(reqwest::header::ACCEPT, "*/*")
         .send()
         .await
         .map_err(|e| format!("request: {e}"))?;
     if !resp.status().is_success() {
-        return Err(format!("HTTP {} for {}", resp.status(), entry.id));
+        let status = resp.status();
+        let final_url = resp.url().to_string();
+        let body = resp
+            .text()
+            .await
+            .unwrap_or_else(|_| "<unreadable response body>".into());
+        let body = body.trim();
+        let body = if body.len() > 512 {
+            format!("{}...", &body[..512])
+        } else {
+            body.to_string()
+        };
+        return Err(format!(
+            "HTTP {status} for {} at {final_url}: {body}",
+            entry.id
+        ));
     }
     let total = resp.content_length().unwrap_or(entry.size_bytes);
     let mut stream = resp.bytes_stream();
@@ -110,8 +128,15 @@ mod tests {
 
     #[test]
     fn final_path_uses_extension() {
-        let e = super::super::registry::find("tsukuyomi").unwrap();
+        let e = super::super::registry::find("ling-v2").unwrap();
         let p = final_path_for(&e, Path::new("/tmp/cache"));
-        assert_eq!(p, PathBuf::from("/tmp/cache/tsukuyomi.zip"));
+        assert_eq!(p, PathBuf::from("/tmp/cache/ling-v2.onnx"));
+    }
+
+    #[test]
+    fn final_path_uses_extension_for_style_vectors() {
+        let e = super::super::registry::find("ling-v2-style").unwrap();
+        let p = final_path_for(&e, Path::new("/tmp/cache"));
+        assert_eq!(p, PathBuf::from("/tmp/cache/ling-v2-style.json"));
     }
 }

@@ -1,17 +1,62 @@
 import { invoke } from '@tauri-apps/api/core'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
-export type AssetKind = 'bert' | 'voice'
+import { TTS_LOCAL_CATALOG, type AssetKind, type CatalogAsset } from '@/api/services/tts-catalog'
+import {
+  createProgressBus,
+  type DownloadProgress,
+  type ProgressListener,
+} from '@/api/services/download-progress'
 
-export interface AssetEntry {
-  id: string
-  kind: AssetKind
-  display_name: string
-  language: string
-  size_bytes: number
-  sha256: string
-  download_url: string
-  source: string
+export type { AssetKind, CatalogAsset, DownloadProgress }
+
+export const CATALOG: readonly CatalogAsset[] = TTS_LOCAL_CATALOG
+
+const progressBus = createProgressBus()
+let progressUnlisten: UnlistenFn | null = null
+let progressSubscription: Promise<void> | null = null
+
+async function ensureProgressSubscription(): Promise<void> {
+  if (progressUnlisten) return
+  if (!progressSubscription) {
+    progressSubscription = listen<DownloadProgress>(
+      'tts://download-progress',
+      (event) => {
+        progressBus.dispatch(event.payload)
+      },
+    ).then((unlisten) => {
+      progressUnlisten = unlisten
+      if (progressBus.listenerCount === 0) {
+        progressUnlisten()
+        progressUnlisten = null
+      }
+    }).finally(() => {
+      progressSubscription = null
+    })
+  }
+  await progressSubscription
 }
+
+export function onDownloadProgress(listener: ProgressListener): () => void {
+  void ensureProgressSubscription()
+  const unsubscribe = progressBus.subscribe(listener)
+  return () => {
+    unsubscribe()
+    if (progressBus.listenerCount === 0 && progressUnlisten) {
+      progressUnlisten()
+      progressUnlisten = null
+    }
+  }
+}
+
+export function listCatalog(): Promise<readonly CatalogAsset[]> {
+  return Promise.resolve(CATALOG)
+}
+
+export function download(assetId: string): Promise<TtsLocalImportResult> {
+  return invoke<TtsLocalImportResult>('tts_local_download', { assetId })
+}
+
 
 export interface VoiceRecord {
   voice_id: string

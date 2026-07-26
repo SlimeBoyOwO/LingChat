@@ -59,9 +59,11 @@ pub async fn tts_local_status(
     state: State<'_, LocalTtsState>,
 ) -> Result<TtsLocalStatus, String> {
     let voices = model_manager::list_voices(&state.paths)?;
+    let deberta_installed = state.paths.asset_present("deberta")
+        && state.paths.deberta_dir().join("tokenizer.json").exists();
     Ok(TtsLocalStatus {
         ready: state.engine.is_ready().await,
-        deberta_installed: state.paths.asset_present("deberta"),
+        deberta_installed,
         installed_voice_count: voices.len(),
     })
 }
@@ -103,6 +105,37 @@ pub fn install_shared_asset(
         .map_err(|e| format!("copy {label}: {e}"))?;
     Ok(target)
 }
+
+/// Copy a downloaded `style_vectors.json` blob into the named voice's
+/// directory. Returns the canonical destination path.
+pub fn install_style_vectors_for(
+    paths: &LocalTtsPaths,
+    src: &Path,
+    voice_id: &str,
+) -> Result<PathBuf, String> {
+    let target = paths.voice_dir(voice_id).join("style_vectors.json");
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("create dir {}: {e}", parent.display()))?;
+    }
+    std::fs::copy(src, &target)
+        .map_err(|e| format!("copy style_vectors.json: {e}"))?;
+    Ok(target)
+}
+
+fn shared_asset_file_name(asset_id: &str) -> Result<&'static str, String> {
+    match asset_id {
+        "deberta" => Ok("deberta.onnx"),
+        "deberta-tokenizer" => Ok("tokenizer.json"),
+        other => Err(format!("unknown BERT asset: {other}")),
+    }
+}
+
+fn download_temp_path(entry: &AssetEntry, cache: &Path) -> PathBuf {
+    let ext = registry::expected_extension(entry);
+    cache.join(format!("{}.download.{ext}", entry.id))
+}
+
 fn default_voice_id(
     _inspected: &archive::InspectedPackage,
     src: &std::path::Path,
@@ -210,37 +243,23 @@ pub async fn tts_local_download(
     let result: std::result::Result<ImportResult, String> = async {
         match entry.kind {
             registry::AssetKind::Bert => {
-                let dst = state.paths.deberta_dir().join("deberta.onnx");
-                let tok_dst = state.paths.deberta_dir().join("tokenizer.json");
+                let file_name = shared_asset_file_name(&entry.id)?;
+                let dst = state.paths.deberta_dir().join(file_name);
                 std::fs::create_dir_all(state.paths.deberta_dir())
                     .map_err(|e| format!("mkdir deberta: {e}"))?;
                 let bytes =
                     download::download_asset(&app, &entry, &dst, cancel.clone())
                         .await?;
-                if !tok_dst.exists() {
-                    let tok_entry = registry::find("deberta-tokenizer")
-                        .ok_or_else(|| "tokenizer URL not in catalog".to_string())?;
-                    let _ = download::download_asset(
-                        &app,
-                        &tok_entry,
-                        &tok_dst,
-                        cancel.clone(),
-                    )
-                    .await?;
-                }
                 Ok(ImportResult {
                     asset_id: entry.id.clone(),
                     voice_id: None,
                     path: dst.to_string_lossy().into_owned(),
                     bytes,
-                    message: "deberta downloaded".into(),
+                    message: format!("{} downloaded", entry.id),
                 })
             }
             registry::AssetKind::Voice => {
-                let raw_dst = state
-                    .paths
-                    .cache
-                    .join(format!("{}.download", entry.id));
+                let raw_dst = download_temp_path(&entry, &state.paths.cache);
                 let bytes =
                     download::download_asset(&app, &entry, &raw_dst, cancel.clone())
                         .await?;
@@ -258,6 +277,28 @@ pub async fn tts_local_download(
                     path: installed.to_string_lossy().into_owned(),
                     bytes,
                     message: "voice downloaded".into(),
+                })
+            }
+            registry::AssetKind::StyleVectors => {
+                let voice_id = entry.voice_id.clone().ok_or_else(|| {
+                    format!("style_vectors asset {} missing voice_id", entry.id)
+                })?;
+                let raw_dst = download_temp_path(&entry, &state.paths.cache);
+                let bytes =
+                    download::download_asset(&app, &entry, &raw_dst, cancel.clone())
+                        .await?;
+                let installed = install_style_vectors_for(
+                    &state.paths,
+                    &raw_dst,
+                    &voice_id,
+                )?;
+                let _ = tokio::fs::remove_file(&raw_dst).await;
+                Ok(ImportResult {
+                    asset_id: entry.id.clone(),
+                    voice_id: Some(voice_id.clone()),
+                    path: installed.to_string_lossy().into_owned(),
+                    bytes,
+                    message: "style vectors downloaded".into(),
                 })
             }
         }
@@ -407,5 +448,43 @@ mod tests {
 
         let error = install_shared_asset(&paths, &source, "voice-model").unwrap_err();
         assert!(error.contains("unknown shared asset"));
+    }
+
+    #[test]
+    fn shared_asset_download_uses_individual_canonical_file_names() {
+        assert_eq!(shared_asset_file_name("deberta").unwrap(), "deberta.onnx");
+        assert_eq!(
+            shared_asset_file_name("deberta-tokenizer").unwrap(),
+            "tokenizer.json"
+        );
+        assert!(shared_asset_file_name("unknown").is_err());
+    }
+
+    #[test]
+    fn download_temp_path_preserves_catalog_extension() {
+        let cache = Path::new("C:/tts-cache");
+        let voice = registry::find("ling-v2").unwrap();
+        let style = registry::find("ling-v2-style").unwrap();
+        assert_eq!(
+            download_temp_path(&voice, cache),
+            PathBuf::from("C:/tts-cache/ling-v2.download.onnx")
+        );
+        assert_eq!(
+            download_temp_path(&style, cache),
+            PathBuf::from("C:/tts-cache/ling-v2-style.download.json")
+        );
+    }
+
+    #[test]
+    fn style_vectors_resolves_to_voice_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        let source = temp.path().join("downloaded.json");
+        std::fs::write(&source, b"{\"v\":1}").unwrap();
+
+        let installed = install_style_vectors_for(&paths, &source, "ling-v2").unwrap();
+        let expected = paths.voice_dir("ling-v2").join("style_vectors.json");
+        assert_eq!(installed, expected);
+        assert_eq!(std::fs::read(installed).unwrap(), b"{\"v\":1}");
     }
 }
