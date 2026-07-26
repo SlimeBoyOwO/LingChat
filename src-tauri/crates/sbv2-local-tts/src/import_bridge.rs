@@ -27,9 +27,22 @@ pub async fn prepare_file_import_source(
         let imports_root = cache_dir.join("imports");
         tokio::fs::create_dir_all(&imports_root).await.map_err(|e| format!("create imports dir: {e}"))?;
         let tmp_id = uuid::Uuid::new_v4().to_string();
-        let local_path = imports_root.join(format!("tts_import_saf_{tmp_id}.bin"));
-        let local_uri = FsUri::from_path(&local_path);
         let src_uri = FsUri::from_uri(path.to_string());
+
+        // Preserve the original filename (esp. extension) so
+        // `archive::inspect_package` can detect the file kind. Android SAF
+        // returns content:// URIs without usable path info; we ask
+        // tauri-plugin-android-fs for OpenableColumns.DISPLAY_NAME and fall
+        // back to the URI's last percent-decoded path segment.
+        let display = app
+            .android_fs_async()
+            .get_name_or_last_path_segment(&src_uri)
+            .await;
+        let suffix = sanitize_staged_filename(&display)
+            .unwrap_or_else(|| "import.bin".to_string());
+
+        let local_path = imports_root.join(format!("tts_import_saf_{tmp_id}_{suffix}"));
+        let local_uri = FsUri::from_path(&local_path);
         tracing::info!("[tts_local] prepare_file_import_source SAF: src={}, local={}", path, local_path.display());
         app.android_fs_async().copy(&src_uri, &local_uri).await.map_err(|e| format!("SAF copy to local cache: {e}"))?;
         return Ok((local_path, true));
@@ -42,5 +55,66 @@ pub async fn prepare_file_import_source(
         }
     } else {
         Ok((PathBuf::from(path), false))
+    }
+}
+
+/// Strip path separators and characters that are illegal on FAT/NTFS or
+/// could cause traversal problems. Returns `None` if the cleaned result is
+/// empty (caller should fall back to a default extension).
+#[allow(dead_code)] // only invoked from the `#[cfg(target_os = "android")]` arm above
+fn sanitize_staged_filename(raw: &str) -> Option<String> {
+    let basename = raw
+        .rsplit_once(['/', '\\'])
+        .map(|(_, name)| name)
+        .unwrap_or(raw);
+    let cleaned: String = basename
+        .chars()
+        .filter(|c| {
+            !c.is_control()
+                && !matches!(*c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
+        })
+        .collect();
+    let trimmed = cleaned.trim().trim_matches('.').to_string();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitize_staged_filename;
+
+    #[test]
+    fn strips_path_traversal() {
+        assert_eq!(sanitize_staged_filename("../etc/passwd").unwrap(), "passwd");
+        assert_eq!(sanitize_staged_filename("..\\evil.onnx").unwrap(), "evil.onnx");
+    }
+
+    #[test]
+    fn strips_control_chars() {
+        assert_eq!(sanitize_staged_filename("\nvoice.onnx\r").unwrap(), "voice.onnx");
+    }
+
+    #[test]
+    fn strips_illegal_chars() {
+        assert_eq!(sanitize_staged_filename("a:b*c?.onnx").unwrap(), "abc.onnx");
+    }
+
+    #[test]
+    fn empty_inputs_become_none() {
+        assert!(sanitize_staged_filename("").is_none());
+        assert!(sanitize_staged_filename("///").is_none());
+        assert!(sanitize_staged_filename("...").is_none());
+        assert!(sanitize_staged_filename(" \t ").is_none());
+    }
+
+    #[test]
+    fn keeps_common_extensions() {
+        assert_eq!(sanitize_staged_filename("voice.onnx").unwrap(), "voice.onnx");
+        assert_eq!(sanitize_staged_filename("MyModel.sbv2").unwrap(), "MyModel.sbv2");
+        assert_eq!(sanitize_staged_filename("archive.zip").unwrap(), "archive.zip");
+        assert_eq!(sanitize_staged_filename("voice.7z").unwrap(), "voice.7z");
     }
 }

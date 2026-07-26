@@ -34,6 +34,7 @@
     "tts-local-delete-voice",
     "tts-local-synthesize-preview",
     "tts-local-import-style-vectors",
+    "android-fs:allow-get-name",
     {
       "identifier": "fs:scope",
       "allow": [{ "path": "$RESOURCE/**" }]
