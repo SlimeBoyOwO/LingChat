@@ -161,3 +161,7 @@ data/game_data/scripts/standalone/**
 .claude
 CLAUDE.md
 AGENTS.md
+
+# Local APK build archive (manual snapshot taken before each release build).
+prev-build-*/
+
