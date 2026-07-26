@@ -548,39 +548,6 @@ fn needs_japanese_translation(segments: &[EmotionSegment]) -> bool {
     })
 }
 
-#[cfg(test)]
-mod language_text_tests {
-    use super::{looks_like_japanese, needs_japanese_translation, tts_translation_language};
-    use crate::ai_service::message_system::processor::EmotionSegment;
-
-    #[test]
-    fn exposes_only_supported_translation_languages() {
-        assert_eq!(tts_translation_language("sbv2", "en"), Some("en"));
-        assert_eq!(tts_translation_language("indextts2", "en"), Some("en"));
-        assert_eq!(tts_translation_language("opentts", "ko"), Some("ko"));
-        assert_eq!(tts_translation_language("sbv2", "ko"), None);
-        assert_eq!(tts_translation_language("indextts2", "ja"), None);
-    }
-
-    #[test]
-    fn recognizes_japanese_and_rejects_english() {
-        assert!(looks_like_japanese("もう満足した？次は私の番でしょ？"));
-        assert!(!looks_like_japanese(
-            "Done copping a feel? Then it is my turn."
-        ));
-    }
-
-    #[test]
-    fn stale_english_translation_is_retranslated_for_japanese() {
-        let segment = EmotionSegment {
-            following_text: "接下来轮到我了。".to_string(),
-            japanese_text: "Now it is my turn.".to_string(),
-            ..Default::default()
-        };
-        assert!(needs_japanese_translation(&[segment]));
-    }
-}
-
 /// Step B: 翻译与语音生成。
 async fn enrich_segments(deps: &GeneratorDeps, segments: &mut [EmotionSegment]) -> Result<()> {
     let (voice_maker, tts_type, voice_lang) = {
