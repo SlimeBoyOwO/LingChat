@@ -12,8 +12,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value as JsonValue};
 use tauri::{AppHandle, Manager};
 
+use crate::ai_service::game_system::game_status::GameStatus;
+use crate::ai_service::types::ScriptStatus;
 use crate::api::{data_dir, game_data_dir};
+use crate::db::managers::role_repo::RoleRepo;
 use crate::AppState;
+
+use sea_orm::DatabaseConnection;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use super::io::{self, ChapterDoc};
 use super::paths::{self, ScriptLayout};
@@ -496,7 +503,7 @@ pub fn editor_delete_chapter(key: String, chapter_id: String) -> Result<(), Stri
 //    章节编辑页顶部直接改（`setChapterName`），走正常的自动保存。
 //
 // 换句话说：真实需求已被覆盖，剩下的只是一个会破坏数据的入口。要是以后确实
-// 需要改 id，得连同引用一起重写（参考 editor_reorder_chapters 的接线逻辑）。
+// 需要改 id，得把所有引用它的 next_chapter / intro_chapter 一起重写。
 
 #[tauri::command]
 pub async fn editor_create_script(
@@ -833,6 +840,132 @@ pub fn editor_create_character(
     })
 }
 
+/// 全局角色库里的一个角色（`game_data/characters/<目录>`）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GlobalCharacter {
+    pub folder: String,
+    pub ai_name: String,
+    /// 该角色在**当前剧本**里是否已经导入过
+    pub already_in_script: bool,
+    /// 全局目录里有没有 avatar/，没有的话导入后也不会有立绘
+    pub has_avatar: bool,
+}
+
+/// 列出全局角色库，并标出哪些已经导入到当前剧本。
+#[tauri::command]
+pub fn editor_list_global_characters(key: String) -> Result<Vec<GlobalCharacter>, String> {
+    let existing: HashSet<String> = paths::resolve_script_dir(&key)
+        .map(|d| {
+            read_characters(&d)
+                .into_iter()
+                .map(|c| c.folder)
+                .collect::<HashSet<_>>()
+        })
+        .unwrap_or_default();
+
+    let base = crate::api::characters_dir();
+    let mut out = Vec::new();
+    let Ok(entries) = std::fs::read_dir(&base) else {
+        return Ok(out);
+    };
+    for e in entries.flatten() {
+        if !e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let folder = e.file_name().to_string_lossy().to_string();
+        if folder.starts_with('.') {
+            continue;
+        }
+        let settings: JsonValue = std::fs::read_to_string(e.path().join("settings.yml"))
+            .ok()
+            .and_then(|s| serde_yaml::from_str(&s).ok())
+            .unwrap_or(JsonValue::Null);
+        out.push(GlobalCharacter {
+            ai_name: settings
+                .get("ai_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or(&folder)
+                .to_string(),
+            already_in_script: existing.contains(&folder),
+            has_avatar: e.path().join("avatar").is_dir(),
+            folder,
+        });
+    }
+    out.sort_by(|a, b| a.folder.cmp(&b.folder));
+    Ok(out)
+}
+
+/// 把一个全局角色导入当前剧本。
+///
+/// **为什么是「复制 settings.yml」而不是「直接引用」**：引擎解析 `character:`
+/// 只有两条路（见 `script_function::get_role`）—— `MAIN` 走当前主角，其余一律
+/// 按「剧本 key + 角色 key」在剧本自己的 `characters/` 里找。全局角色库不在这
+/// 条路径上，所以剧本里写一个全局角色名，运行时必然解析不到人。
+///
+/// 但作者真正的诉求是「别让我把已有的人设再敲一遍」，那复制一份就够了：
+/// 复制之后 `register_script_roles` 能正常注册，剧本也仍然是自包含的。
+///
+/// **立绘默认不复制**：`get_avatar_file` 的查找顺序本来就是「先
+/// `game_data/characters/<目录>/avatar`，再各剧本的 `characters/<目录>/avatar`」，
+/// 同名目录的立绘会自动落到全局那份上，白复制一遍只是让剧本目录凭空变大。
+/// 只有作者打算把剧本单独分发给没有这个角色的人时，才需要 `with_avatar`。
+#[tauri::command]
+pub fn editor_import_global_character(
+    key: String,
+    folder: String,
+    with_avatar: bool,
+) -> Result<ScriptCharacter, String> {
+    let dir = paths::resolve_script_dir(&key)?;
+    let folder = paths::sanitize_folder_name(&folder)?;
+
+    let src = crate::api::characters_dir().join(&folder);
+    if !src.is_dir() {
+        return Err(format!("全局角色库里没有「{}」", folder));
+    }
+    let src_settings = src.join("settings.yml");
+    if !src_settings.is_file() {
+        return Err(format!("角色「{}」缺少 settings.yml，无法导入", folder));
+    }
+
+    let dest = dir.join("characters").join(&folder);
+    if dest.exists() {
+        return Err(format!("本剧本里已经有角色「{}」了", folder));
+    }
+    std::fs::create_dir_all(&dest).map_err(|e| format!("创建角色目录失败: {}", e))?;
+
+    // 不直接 copy 文件：要补写 script_role_key，并摘掉只对全局角色有意义的字段
+    let raw = std::fs::read_to_string(&src_settings)
+        .map_err(|e| format!("读取角色设定失败: {}", e))?;
+    let mut settings: JsonValue =
+        serde_yaml::from_str(&raw).map_err(|e| format!("角色设定不是合法 YAML: {}", e))?;
+    let obj = settings
+        .as_object_mut()
+        .ok_or_else(|| "角色设定顶层必须是键值映射".to_string())?;
+    obj.remove("character_id");
+    obj.remove("resource_path");
+    obj.remove("script_key");
+    obj.insert("script_role_key".into(), JsonValue::String(folder.clone()));
+
+    io::write_json_as_yaml(&dest.join("settings.yml"), &settings)?;
+
+    if with_avatar {
+        let avatar = src.join("avatar");
+        if avatar.is_dir() {
+            copy_dir_recursive(&avatar, &dest.join("avatar"))
+                .map_err(|e| format!("复制立绘失败: {}", e))?;
+        }
+    } else {
+        // 建空目录，作者想单独放几张覆盖用的立绘时有地方放
+        let _ = std::fs::create_dir_all(dest.join("avatar"));
+    }
+
+    read_characters(&dir)
+        .into_iter()
+        .find(|c| c.folder == folder)
+        .ok_or_else(|| "导入后读不回角色，请检查目录权限".to_string())
+}
+
 /// 重新扫描剧本目录，把新写/改名的剧本加载进引擎。
 ///
 /// 引擎原本只在启动时扫一次，作者存完剧本必须重启整个应用才能试玩。
@@ -887,161 +1020,15 @@ pub async fn editor_rescan_scripts(app: AppHandle) -> Result<usize, String> {
     Ok(count)
 }
 
-/// 重排一条 linear 章节链的顺序。
-///
-/// 章节之间的先后不是由文件名决定的，而是由每章最后那条 `chapter_end.next_chapter`
-/// 串起来的。所以「拖动章节改顺序」的真实含义是**重新接线**：把 A→B→C 拖成
-/// A→C→B，需要改写 A、C、B 三章的 `next_chapter`。
-///
-/// 只处理 `end_type: linear`。分支章节的走向由条件决定，顺序没有意义，
-/// 遇到就整体拒绝而不是悄悄改坏。
-///
-/// `order` 是这条链的新顺序；链的**出口**（最后一章指向哪）保持不变。
-#[tauri::command]
-pub fn editor_reorder_chapters(key: String, order: Vec<String>) -> Result<(), String> {
-    if order.len() < 2 {
-        return Ok(());
-    }
-    let dir = paths::resolve_script_dir(&key)?;
-
-    // 先全部读出来并校验，任何一章不合格就整体放弃 —— 不做一半
-    let mut docs: Vec<(String, PathBuf, ChapterDoc)> = Vec::new();
-    for id in &order {
-        let file = paths::resolve_chapter_file(&dir, id, true)?;
-        let doc = ChapterDoc::from_json(io::read_yaml_as_json(&file)?)?;
-
-        let last = doc
-            .events
-            .last()
-            .ok_or_else(|| format!("章节「{}」没有任何事件，无法参与重排", id))?;
-        let obj = last
-            .as_object()
-            .ok_or_else(|| format!("章节「{}」的最后一个事件格式不对", id))?;
-        if obj.get("type").and_then(|v| v.as_str()) != Some("chapter_end") {
-            return Err(format!(
-                "章节「{}」的最后一个事件不是「章节结束」，无法参与重排",
-                id
-            ));
-        }
-        let end_type = obj
-            .get("end_type")
-            .and_then(|v| v.as_str())
-            .unwrap_or("linear");
-        if end_type != "linear" {
-            return Err(format!(
-                "章节「{}」是 {} 分支，走向由条件决定，不能靠拖动改顺序",
-                id, end_type
-            ));
-        }
-        docs.push((id.clone(), file, doc));
-    }
-
-    // 链的出口：现有的 next 里第一个不属于本链的目标；全都在链内则是 end
-    let in_chain: HashSet<&str> = order.iter().map(|s| s.as_str()).collect();
-    let mut exit = "end".to_string();
-    for (_, _, doc) in &docs {
-        if let Some(obj) = doc.events.last().and_then(|e| e.as_object()) {
-            let cur = obj
-                .get("next")
-                .or_else(|| obj.get("next_chapter"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("end");
-            let cur = validate::chapter_id_of(cur);
-            if cur != "end" && !in_chain.contains(cur) {
-                exit = cur.to_string();
-                break;
-            }
-        }
-    }
-
-    verify_contiguous_chain(&docs, &order)?;
-
-    // 按新顺序接线
-    for (i, (id, file, doc)) in docs.iter_mut().enumerate() {
-        let target = order.get(i + 1).cloned().unwrap_or_else(|| exit.clone());
-
-        let last = doc
-            .events
-            .last_mut()
-            .and_then(|e| e.as_object_mut())
-            .ok_or_else(|| format!("章节「{}」的最后一个事件格式不对", id))?;
-
-        // 引擎里 next 的优先级高于 next_chapter，留着它会让改动无效
-        last.remove("next");
-        last.insert("next_chapter".to_string(), JsonValue::String(target));
-
-        io::write_json_as_yaml(file, &doc.to_json())?;
-    }
-
-    Ok(())
-}
-
-/// `order` 里的章节必须在**当前**接线下就已经是一条首尾相连的链。
-///
-/// 少了这道检查会真的改坏剧本：前端挑「可拖拽章节」时是按流程图逐层看的，
-/// 而分叉层会被整层跳过，于是 `A(linear) → B(分支) → {C,D} → … → E(linear)`
-/// 这种结构里，A 和 E 会被一起当成「同一条线性链」，中间隔着整个分支子图。
-/// 交换它们等于把 A→B 改成 E→A→B，E 之前的入口全断，E 自己也再没人指向。
-///
-/// 判定方式：在只看 `order` 这几章的子图里，恰好有一个成员没有链内前驱（链头），
-/// 且从链头沿 `next` 走一遍能不重复地走完所有成员。
-fn verify_contiguous_chain(
-    docs: &[(String, PathBuf, ChapterDoc)],
-    order: &[String],
-) -> Result<(), String> {
-    let in_chain: HashSet<&str> = order.iter().map(|s| s.as_str()).collect();
-
-    // 当前接线：成员 → 它现在指向的链内成员（指向链外/end 则没有出边）
-    let mut next_of: HashMap<&str, &str> = HashMap::new();
-    let mut has_pred: HashSet<&str> = HashSet::new();
-    for (id, _, doc) in docs {
-        if let Some(obj) = doc.events.last().and_then(|e| e.as_object()) {
-            let raw = obj
-                .get("next")
-                .or_else(|| obj.get("next_chapter"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("end");
-            let target = validate::chapter_id_of(raw);
-            if let Some(t) = in_chain.get(target) {
-                next_of.insert(id.as_str(), t);
-                has_pred.insert(t);
-            }
-        }
-    }
-
-    let heads: Vec<&str> = order
-        .iter()
-        .map(|s| s.as_str())
-        .filter(|id| !has_pred.contains(id))
-        .collect();
-    if heads.len() != 1 {
-        return Err(format!(
-            "这几章现在不是一条首尾相连的链（找到 {} 个链头），不能整体重排。\
-             请分别拖动真正相邻的章节",
-            heads.len()
-        ));
-    }
-
-    let mut walked = 1usize;
-    let mut cur = heads[0];
-    let mut seen: HashSet<&str> = HashSet::from([cur]);
-    while let Some(&nxt) = next_of.get(cur) {
-        if !seen.insert(nxt) {
-            return Err("这几章的跳转里有环，无法重排".to_string());
-        }
-        walked += 1;
-        cur = nxt;
-    }
-    if walked != order.len() {
-        return Err(format!(
-            "这几章之间隔着别的章节（链上只连通 {}/{} 章），不能当成一条链重排。\
-             中间的分支章节会被跳过，直接交换会把跳转改断",
-            walked,
-            order.len()
-        ));
-    }
-    Ok(())
-}
+// 这里原本有 editor_reorder_chapters（拖动章节改先后顺序）。已连同前端的拖拽
+// 一起删除，理由是这个功能本身就站不住：
+//
+// 1. 章节先后是 chapter_end.next_chapter 串出来的，只有纯线性的一段才谈得上
+//    「顺序」；一旦有分支，走向由条件决定，交换顺序没有意义 —— 这句话是我自己
+//    在流程图上写给作者看的，那就不该同时提供一个假装能换顺序的入口。
+// 2. 真正天天要调的是**章节内部的事件顺序**，那个已经改成拖拽（见前端
+//    ChapterTimeline）。章节之间的接线改的是剧情结构，作者应该在
+//    「章节结束」事件里显式指定下一章，那里看得见、可校验、可撤销。
 
 /// 在编辑器里直接试玩，不必回主菜单。
 ///
@@ -1053,12 +1040,13 @@ fn verify_contiguous_chain(
 /// 2. 不调用 `handle_adventure_completion`，不会解锁后续羁绊冒险、不发成就。
 ///
 /// 因此这里刻意不用 `execute_script`，而是自己组合它内部那三个 `pub` 步骤。
-/// `from_chapter` 为 `None` 时从开场章节开始。
+/// `from_chapter` 为 `None` 时从开场章节开始；`use_llm` 为 `false` 时 AI 事件出占位。
 #[tauri::command]
 pub async fn editor_start_preview(
     app: AppHandle,
     key: String,
     from_chapter: Option<String>,
+    use_llm: bool,
 ) -> Result<(), String> {
     // 先把磁盘状态同步进引擎
     editor_rescan_scripts(app.clone()).await?;
@@ -1119,6 +1107,9 @@ pub async fn editor_start_preview(
         }
     }
 
+    // 把 MAIN 指到该指的人身上，并记住原值以便收尾时还原
+    let restore_main = apply_preview_main_role(&db, &game_status, &script).await?;
+
     is_running.store(true, std::sync::atomic::Ordering::SeqCst);
 
     tokio::spawn(async move {
@@ -1126,10 +1117,11 @@ pub async fn editor_start_preview(
             db: &db,
             data_dir: &data_dir,
             app: &app,
-            game_status,
+            game_status: game_status.clone(),
             config: &cfg,
             llm: llm.as_ref(),
             channels,
+            dry_run_ai: !use_llm,
         };
         use crate::ai_service::game_system::script_engine::ScriptManager;
 
@@ -1145,10 +1137,170 @@ pub async fn editor_start_preview(
         if let Err(e) = ScriptManager::on_script_end(&mut ctx, &is_running, false).await {
             tracing::error!("[ScriptEditor] 试玩收尾失败: {:#}", e);
         }
+
+        // 还原主角。放在这里而不是 stop_preview 里：正常跑完、报错、被 stop 掐断
+        // 三条路都会走到这，只在 stop 里还原会漏掉前两条。
+        if let Some(prev) = restore_main {
+            let mut gs = game_status.lock().await;
+            gs.main_role_id = prev;
+            gs.current_role_id = prev;
+        }
         tracing::info!("[ScriptEditor] 试玩结束");
     });
 
     Ok(())
+}
+
+/// 试玩前把 `MAIN` 指到正确的角色上，返回原值供收尾还原（`None` 表示不用还原）。
+///
+/// 引擎里 `character: MAIN` 解析成 `game_status.main_role_id`，而这个字段是
+/// **主菜单选角色**时设的（`init_game_status`）。正式玩羁绊冒险时你必然是从
+/// 该角色的角色卡进去的，所以它天然是对的；编辑器里没有这一步，于是：
+///
+/// - 没选过角色 → `main_role_id` 是 `None`，第一个 `character: MAIN` 事件直接
+///   报「MAIN 角色未设定」，剧本停在那里（表现就是立绘不出来、对话不往下走）；
+/// - 选的是别的角色 → `MAIN` 解析成另一个人，试玩的是一出张冠李戴的戏。
+///
+/// 所以这里复刻正式路径的那条保证：羁绊剧本按 `bound_character_folder` 把 MAIN
+/// 临时指过去，独立剧本沿用当前主角。两者都拿不到就直接报错让作者去选人，
+/// 而不是让他对着一个卡住的画面猜。
+async fn apply_preview_main_role(
+    db: &DatabaseConnection,
+    game_status: &Arc<Mutex<GameStatus>>,
+    script: &ScriptStatus,
+) -> Result<Option<Option<i32>>, String> {
+    let bound = script.adventure.bound_character_folder.trim();
+
+    if bound.is_empty() {
+        // 独立剧本：没有绑定人，只能沿用当前主角
+        let current = game_status.lock().await.main_role_id;
+        return if current.is_some() {
+            Ok(None)
+        } else {
+            Err("这个剧本没有绑定角色，而当前也还没有选定主角。\
+                 请先回主菜单选一个角色（剧本里的 MAIN 就是他），再回来试玩。"
+                .to_string())
+        };
+    }
+
+    let role_id = find_main_role_by_folder(db, bound).await?.ok_or_else(|| {
+        format!(
+            "剧本绑定的角色「{}」不在角色库里。请确认 game_data/characters/ 下有这个目录，\
+             或到剧本设置里把「绑定角色目录名」改成实际存在的角色。",
+            bound
+        )
+    })?;
+
+    let mut gs = game_status.lock().await;
+    let prev = gs.main_role_id;
+    if prev == Some(role_id) {
+        return Ok(None); // 本来就是他，不用动也不用还原
+    }
+    // 先把角色载进 RoleManager，否则后面 get_role 拿不到立绘/显示名
+    gs.get_role(db, role_id)
+        .await
+        .map_err(|e| format!("载入绑定角色失败: {}", e))?;
+    gs.main_role_id = Some(role_id);
+    gs.current_role_id = Some(role_id);
+    Ok(Some(prev))
+}
+
+/// 按资源目录名找主角色。目录名就是 `game_data/characters/<目录>`。
+async fn find_main_role_by_folder(
+    db: &DatabaseConnection,
+    folder: &str,
+) -> Result<Option<i32>, String> {
+    let roles = RoleRepo::get_all_main_roles(db)
+        .await
+        .map_err(|e| format!("查询角色库失败: {}", e))?;
+    Ok(roles
+        .into_iter()
+        .find(|r| r.resource_folder.as_deref() == Some(folder))
+        .map(|r| r.id))
+}
+
+/// 角色显示名，查不到就算了 —— 这只是给作者看的提示文案，不值得让整个命令失败。
+async fn role_name_of(db: &DatabaseConnection, id: i32) -> Option<String> {
+    RoleRepo::get_role_by_id(db, id)
+        .await
+        .ok()
+        .flatten()
+        .map(|r| r.name)
+}
+
+/// 试玩前的可行性检查，供编辑器在打开剧本时提前提示，而不是等作者点了才报错。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewReadiness {
+    /// 能不能直接开跑
+    pub ok: bool,
+    /// 试玩时 `MAIN` 会是谁；`None` 表示定不下来
+    pub main_role_name: Option<String>,
+    /// 绑定角色目录名（独立剧本为空）
+    pub bound_character_folder: String,
+    /// `ok` 为 false 时给作者看的原因
+    pub reason: Option<String>,
+}
+
+#[tauri::command]
+pub async fn editor_preview_readiness(
+    app: AppHandle,
+    key: String,
+) -> Result<PreviewReadiness, String> {
+    let dir = paths::resolve_script_dir(&key)?;
+    let cfg = io::read_story_config(&dir)?;
+    let bound = cfg
+        .get("adventure")
+        .and_then(|a| a.get("bound_character_folder"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+
+    let state = app.state::<AppState>();
+    let db = state.db.clone();
+    let game_status = state.ai_service.lock().await.game_status.clone();
+
+    if bound.is_empty() {
+        let current = game_status.lock().await.main_role_id;
+        return Ok(match current {
+            Some(id) => PreviewReadiness {
+                ok: true,
+                main_role_name: role_name_of(&db, id).await,
+                bound_character_folder: bound,
+                reason: None,
+            },
+            None => PreviewReadiness {
+                ok: false,
+                main_role_name: None,
+                bound_character_folder: bound,
+                reason: Some(
+                    "这个剧本没有绑定角色，当前也还没选定主角，试玩时 MAIN 会解析不到人。\
+                     请先回主菜单选一个角色，或到剧本设置里把它设成某个角色的羁绊冒险。"
+                        .to_string(),
+                ),
+            },
+        });
+    }
+
+    match find_main_role_by_folder(&db, &bound).await? {
+        Some(id) => Ok(PreviewReadiness {
+            ok: true,
+            main_role_name: role_name_of(&db, id).await,
+            bound_character_folder: bound,
+            reason: None,
+        }),
+        None => Ok(PreviewReadiness {
+            ok: false,
+            main_role_name: None,
+            reason: Some(format!(
+                "剧本绑定的角色「{}」不在角色库里，试玩时 MAIN 会解析不到人。\
+                 请确认 game_data/characters/ 下有这个目录。",
+                bound
+            )),
+            bound_character_folder: bound,
+        }),
+    }
 }
 
 /// 中止试玩。
@@ -1189,89 +1341,7 @@ pub fn editor_open_script_folder(key: String) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{allowed_extensions, verify_contiguous_chain, ChapterDoc};
-    use serde_json::json;
-    use std::path::PathBuf;
-
-    /// 造一章：只有一条 linear 的 chapter_end 指向 `next`
-    fn chap(id: &str, next: &str) -> (String, PathBuf, ChapterDoc) {
-        let doc = ChapterDoc::from_json(json!({
-            "events": [{ "type": "chapter_end", "end_type": "linear", "next_chapter": next }]
-        }))
-        .unwrap();
-        (id.to_string(), PathBuf::from(format!("{}.yaml", id)), doc)
-    }
-
-    fn ids(v: &[(String, PathBuf, ChapterDoc)]) -> Vec<String> {
-        v.iter().map(|(i, _, _)| i.clone()).collect()
-    }
-
-    #[test]
-    fn contiguous_chain_accepted() {
-        // A → B → C → end
-        let docs = vec![chap("A", "B"), chap("B", "C"), chap("C", "end")];
-        assert!(verify_contiguous_chain(&docs, &ids(&docs)).is_ok());
-    }
-
-    #[test]
-    fn chain_exiting_to_outside_accepted() {
-        // A → B → X（X 不在链里，是链的出口）
-        let docs = vec![chap("A", "B"), chap("B", "X")];
-        assert!(verify_contiguous_chain(&docs, &ids(&docs)).is_ok());
-    }
-
-    /// 这是加这道检查的原因。前端按流程图逐层挑「可拖章节」时会整层跳过分叉，
-    /// 于是 A 和 E 会被当成同一条链，实际中间隔着整个分支子图。
-    /// 交换它们会把 A→B 改成 E→A→B，E 之前的入口全断。
-    #[test]
-    fn non_adjacent_chapters_rejected() {
-        // A → B(分支，不在 order 里) …… E → end
-        let docs = vec![chap("A", "B"), chap("E", "end")];
-        let err = verify_contiguous_chain(&docs, &ids(&docs)).unwrap_err();
-        assert!(err.contains("链头"), "错误信息应说明找到了几个链头: {}", err);
-    }
-
-    #[test]
-    fn cycle_rejected() {
-        // A → B → A：没有链头
-        let docs = vec![chap("A", "B"), chap("B", "A")];
-        assert!(verify_contiguous_chain(&docs, &ids(&docs)).is_err());
-    }
-
-    /// 有唯一链头、但走不完所有成员：A→B→end 之外还挂着一个自成一段的 D→end。
-    /// 用两个链头会先被上一条规则挡掉，这里构造的是「一个链头 + 走不完」。
-    #[test]
-    fn disconnected_tail_rejected() {
-        // A → B → C，另外 D → C。链头是 A 和 D 两个 → 先被链头数挡掉
-        let docs = vec![chap("A", "B"), chap("B", "C"), chap("C", "end"), chap("D", "C")];
-        let err = verify_contiguous_chain(&docs, &ids(&docs)).unwrap_err();
-        assert!(err.contains("链头") || err.contains("连通"), "{}", err);
-    }
-
-    /// `next` 优先级高于 `next_chapter`，检查也必须先看 `next`，
-    /// 否则 A 实际指向 B 却被当成指向 Z。
-    #[test]
-    fn next_takes_precedence_over_next_chapter() {
-        let doc = ChapterDoc::from_json(json!({
-            "events": [{
-                "type": "chapter_end", "end_type": "linear",
-                "next": "B", "next_chapter": "Z"
-            }]
-        }))
-        .unwrap();
-        let docs = vec![
-            ("A".to_string(), PathBuf::from("A.yaml"), doc),
-            chap("B", "end"),
-        ];
-        assert!(verify_contiguous_chain(&docs, &ids(&docs)).is_ok());
-    }
-
-    /// 目标写成 `B.yaml` 也要能认出是 B —— 官方剧本里两种写法都有
-    #[test]
-    fn yaml_suffix_on_target_is_tolerated() {
-        let docs = vec![chap("A", "B.yaml"), chap("B", "end")];
-        assert!(verify_contiguous_chain(&docs, &ids(&docs)).is_ok());
-    }
+    use super::allowed_extensions;
 
     #[test]
     fn asset_extensions_split_image_and_audio() {

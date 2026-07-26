@@ -49,7 +49,7 @@ impl ScriptEvent for AIDialogueEvent {
             .clone()
             .ok_or_else(|| anyhow!("ScriptStatus 未设置"))?;
 
-        let (role_id, _role_display_name) = {
+        let (role_id, role_display_name) = {
             let mut gs = ctx.game_status.lock().await;
             let role = script_function::get_role(&mut *gs, ctx.db, &script_status, &self.character)
                 .await?;
@@ -60,6 +60,22 @@ impl ScriptEvent for AIDialogueEvent {
 
         // Set as current character
         ctx.game_status.lock().await.current_role_id = Some(role_id);
+
+        // 编辑器试玩且作者关掉了 LLM：出一条占位台词就走，不花 token。
+        // 放在注入 prompt 之前 —— 那条 prompt 只是给 LLM 看的，不调 LLM 就别往台词表里塞。
+        if ctx.dry_run_ai {
+            return script_function::emit_ai_placeholder(
+                ctx.app,
+                ctx.db,
+                &ctx.game_status,
+                role_id,
+                role_display_name.as_deref().unwrap_or("AI"),
+                "试玩已关闭 LLM",
+                self.prompt.as_deref(),
+            )
+            .await
+            .map(|()| None);
+        }
 
         tracing::info!("[AIDialogueEvent] 开始执行");
 
@@ -85,8 +101,20 @@ impl ScriptEvent for AIDialogueEvent {
         let llm = match llm {
             Some(llm) => llm,
             None => {
-                tracing::warn!("[AIDialogueEvent] LLM 未配置，跳过 AI 对话");
-                return Ok(None);
+                // 原先是静默 return —— 没配 LLM 的玩家会看到剧情凭空跳过一段，
+                // 像 bug 而不像「有个设置没填」。现在出一条能看见的占位。
+                tracing::warn!("[AIDialogueEvent] LLM 未配置，改为占位台词");
+                return script_function::emit_ai_placeholder(
+                    ctx.app,
+                    ctx.db,
+                    &ctx.game_status,
+                    role_id,
+                    role_display_name.as_deref().unwrap_or("AI"),
+                    "尚未配置 LLM",
+                    self.prompt.as_deref(),
+                )
+                .await
+                .map(|()| None);
             }
         };
 

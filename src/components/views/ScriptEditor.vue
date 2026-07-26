@@ -83,6 +83,7 @@
           <button
             class="chip"
             :disabled="!store.canUndo"
+            title="Ctrl / ⌘ + Z"
             @click="store.undo()"
           >
             撤销
@@ -90,19 +91,53 @@
           <button
             class="chip"
             :disabled="!store.canRedo"
+            title="Ctrl / ⌘ + Shift + Z"
             @click="store.redo()"
           >
             重做
           </button>
         </template>
         <button
-          v-if="store.detail"
-          class="chip primary"
-          @click="playtest"
+          class="chip"
+          title="查看全部快捷键（? 键）"
+          @click="shortcutHelp = true"
         >
-          {{ store.level === 'chapter' ? '从本章试玩' : '从开场试玩' }}
+          快捷键
         </button>
+        <template v-if="store.detail">
+          <label
+            class="llm-toggle"
+            :title="
+              store.previewUseLlm
+                ? 'AI 对话会真的请求模型，按 token 计费'
+                : 'AI 对话出固定占位文本，不消耗 token —— 调流程时用这个'
+            "
+          >
+            <Toggle
+              :checked="store.previewUseLlm"
+              @change="(v: boolean) => (store.previewUseLlm = v)"
+            />
+            试玩用 AI
+          </label>
+          <button
+            class="chip primary"
+            title="Ctrl / ⌘ + Enter"
+            @click="playtest"
+          >
+            {{ store.level === 'chapter' ? '从本章试玩' : '从开场试玩' }}
+          </button>
+        </template>
       </span>
+    </div>
+
+    <!-- 试玩前置条件不满足时的常驻提示。等作者点了「试玩」才报，他会先对着
+         一个卡住不动的画面困惑一阵 —— 那正是这条横幅要省掉的时间。 -->
+    <div
+      v-if="store.detail && store.readiness && !store.readiness.ok"
+      class="warnbar"
+    >
+      <span class="wb-tag">试玩会卡住</span>
+      <span>{{ store.readiness.reason }}</span>
     </div>
 
     <!-- 主体 -->
@@ -227,12 +262,15 @@
                 :value="store.chapter?.name ?? ''"
                 @change="onRename"
               />
-              <label class="inline-toggle">
+              <label
+                class="inline-toggle"
+                :title="FOLD_HINT"
+              >
                 <Toggle
                   :checked="store.foldCompounds"
                   @change="(v: boolean) => (store.foldCompounds = v)"
                 />
-                折叠固定套路
+                合并转场等固定组合
               </label>
               <span class="shrink-0 text-xs text-white/40">
                 {{ store.chapter?.events.length ?? 0 }} 个事件
@@ -383,9 +421,11 @@
           </template>
 
           <p class="notice">
-            这些角色只属于本剧本（<code>characters/</code> 目录），随剧本一起分发。
-            剧本里用 <code>character: &lt;下面的引用名&gt;</code> 指代他们；
-            写 <code>MAIN</code> 表示当前选中的主角。
+            剧本里用 <code>character: &lt;下面的引用名&gt;</code> 指代角色；写
+            <code>MAIN</code> 表示当前主角（羁绊剧本里就是绑定的那位）。
+            <b>引擎只在本剧本的 <code>characters/</code> 里找人</b>，所以想用全局角色库里
+            已有的人设，得先「导入」一份到这里 —— 导入复制的是人设文件，立绘仍读全局那份，
+            不会让剧本目录白白变大。
           </p>
 
           <p
@@ -422,13 +462,20 @@
             </p>
           </div>
 
-          <Button
-            type="big"
-            class="mt-4"
-            @click="modal = 'character'"
-          >
-            ＋ 新建角色
-          </Button>
+          <div class="mt-4 flex flex-wrap gap-2">
+            <Button
+              type="big"
+              @click="modal = 'character'"
+            >
+              ＋ 新建角色
+            </Button>
+            <Button
+              type="big"
+              @click="modal = 'importChar'"
+            >
+              ↓ 从全局角色库导入
+            </Button>
+          </div>
         </MenuItem>
       </MenuPage>
 
@@ -705,6 +752,50 @@
               </div>
             </template>
 
+            <!-- 从全局角色库导入 -->
+            <template v-else-if="modal === 'importChar'">
+              <p
+                v-if="store.globalCharacters.length === 0"
+                class="empty"
+              >
+                全局角色库（game_data/characters/）是空的
+              </p>
+              <div
+                v-for="g in store.globalCharacters"
+                :key="g.folder"
+                class="pick-row"
+                :class="{ picked: importForm.folder === g.folder, used: g.alreadyInScript }"
+                @click="g.alreadyInScript || (importForm.folder = g.folder)"
+              >
+                <span class="font-semibold text-white">{{ g.aiName }}</span>
+                <code class="ref">{{ g.folder }}</code>
+                <span
+                  v-if="g.alreadyInScript"
+                  class="ml-auto text-xs text-white/35"
+                  >已在本剧本</span
+                >
+                <span
+                  v-else-if="!g.hasAvatar"
+                  class="ml-auto text-xs text-yellow-200"
+                  >没有立绘</span
+                >
+              </div>
+
+              <label class="inline-toggle mt-3">
+                <Toggle
+                  :checked="importForm.withAvatar"
+                  @change="(v: boolean) => (importForm.withAvatar = v)"
+                />
+                连立绘一起复制
+              </label>
+              <p class="f-hint">
+                默认不复制：引擎找立绘时本来就先看
+                <code>game_data/characters/&lt;同名目录&gt;/avatar</code>，会自动命中，
+                复制一份只是让剧本目录变大。只有打算把剧本单独发给<b>没有这个角色</b>的人时，
+                才需要勾上。
+              </p>
+            </template>
+
             <template v-else>
               <div class="field">
                 <label class="f-label">角色目录名</label>
@@ -748,6 +839,37 @@
               >
                 确定
               </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- ============ 快捷键表 ============ -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div
+          v-if="shortcutHelp"
+          class="modal-mask"
+          @click.self="shortcutHelp = false"
+        >
+          <div class="modal">
+            <div class="modal-head">
+              <h4>快捷键</h4>
+              <button
+                class="modal-x"
+                @click="shortcutHelp = false"
+              >
+                ✕
+              </button>
+            </div>
+            <div
+              v-for="s in SHORTCUTS"
+              :key="s.keys"
+              class="sc-row"
+            >
+              <kbd>{{ s.keys }}</kbd>
+              <span>{{ s.desc }}</span>
             </div>
           </div>
         </div>
@@ -804,19 +926,53 @@ const setTabRef = (key: string, el: unknown) => {
   tabRefs[key] = (el as { $el?: HTMLElement } | null)?.$el ?? null
 }
 
-const moveIndicator = async () => {
+/**
+ * 指示条定位。
+ *
+ * 之前它经常停在空白处，原因是位置只在「切标签」和「换剧本」时算一次，而
+ * 按钮宽度会在别的时刻变：校验跑完后「校验」上多一个错误数角标、窗口跨过
+ * xl 断点时文字标签整体显隐、字体加载完成后每个字的宽度都变。nav 是
+ * `justify-content: center`，任何一个按钮变宽都会把**所有**按钮推走，于是
+ * 上一次算出来的 left 就落到了两个按钮中间的空当里。
+ *
+ * 所以这里不再指望「在正确的时刻算一次」，而是让尺寸变化自己来触发重算：
+ * ResizeObserver 同时盯着 nav 和每一个按钮。另外用 getBoundingClientRect
+ * 相对 nav 求差而不是 offsetLeft —— 后者依赖 offsetParent 恰好是 nav，
+ * 一旦有人给中间层加了 position 就会静默偏移。
+ */
+const moveIndicator = async (animate = true) => {
   await nextTick()
+  const bar = indicatorEl.value
+  const nav = navEl.value
+  if (!bar || !nav) return
   const target = tabRefs[store.tab]
-  if (!indicatorEl.value || !target) return
-  indicatorEl.value.style.transition =
-    'left 0.3s cubic-bezier(0.18, 0.89, 0.32, 1), width 0.3s cubic-bezier(0.18, 0.89, 0.32, 1)'
-  indicatorEl.value.style.left = `${target.offsetLeft}px`
-  indicatorEl.value.style.width = `${target.offsetWidth}px`
+  bar.style.transition = animate
+    ? 'left 0.3s cubic-bezier(0.18, 0.89, 0.32, 1), width 0.3s cubic-bezier(0.18, 0.89, 0.32, 1)'
+    : 'none'
+  if (!target) {
+    // 目标不在了就收起来。早先这里是直接 return，于是指示条保持在上一次的
+    // 位置不动 —— 那正是「出现在空白处」最刺眼的一种。
+    bar.style.width = '0px'
+    return
+  }
+  const navBox = nav.getBoundingClientRect()
+  const box = target.getBoundingClientRect()
+  bar.style.left = `${box.left - navBox.left + nav.scrollLeft}px`
+  bar.style.width = `${box.width}px`
 }
 
-// 只由 watch 驱动，switchTab 里不重复调
-watch(() => store.tab, moveIndicator)
-watch(() => store.detail?.package.key, moveIndicator)
+watch(() => store.tab, () => moveIndicator())
+watch(() => store.detail?.package.key, () => moveIndicator())
+
+let navObserver: ResizeObserver | null = null
+
+const observeNav = () => {
+  if (typeof ResizeObserver === 'undefined' || !navEl.value) return
+  // 不加动画：这类重算是「布局变了跟着修正」，滑一下反而像在乱动
+  navObserver = new ResizeObserver(() => void moveIndicator(false))
+  navObserver.observe(navEl.value)
+  for (const el of Object.values(tabRefs)) if (el) navObserver.observe(el)
+}
 
 const switchTab = (key: TabKey) => {
   if (!store.detail && key !== 'flow') return
@@ -927,11 +1083,17 @@ const importAsset = async (kind: AssetKind, scope: AssetScope) => {
 }
 
 // ---- 弹窗 ----
-const modal = ref<'script' | 'chapter' | 'character' | null>(null)
+const modal = ref<'script' | 'chapter' | 'character' | 'importChar' | null>(null)
 
-const modalTitle = computed(() =>
-  modal.value === 'script' ? '新建剧本' : modal.value === 'chapter' ? '新建章节' : '新建角色',
-)
+const importForm = reactive({ folder: '', withAvatar: false })
+
+const MODAL_TITLES: Record<string, string> = {
+  script: '新建剧本',
+  chapter: '新建章节',
+  character: '新建角色',
+  importChar: '从全局角色库导入',
+}
+const modalTitle = computed(() => MODAL_TITLES[modal.value ?? ''] ?? '')
 
 const scriptForm = reactive({
   folderName: '',
@@ -966,6 +1128,10 @@ const confirmModal = async () => {
   } else if (which === 'character') {
     await store.createCharacter(charForm.folder, charForm.aiName, charForm.systemPrompt)
     Object.assign(charForm, { folder: '', aiName: '', systemPrompt: '' })
+  } else if (which === 'importChar') {
+    if (!importForm.folder) return
+    await store.importGlobalCharacter(importForm.folder, importForm.withAvatar)
+    importForm.folder = ''
   }
 }
 
@@ -988,6 +1154,28 @@ const playtest = async () => {
   await store.startPreview(previewFrom.value)
 }
 
+// ---- 快捷键表。既驱动实现，也直接渲染成帮助面板，不会两处走偏 ----
+const shortcutHelp = ref(false)
+
+/** 抽成常量纯粹是因为 title 内联会超出 100 列的行宽 */
+const FOLD_HINT =
+  '官方剧本里反复出现两组固定写法：「角色退场 → 背景 → 角色出场」的转场，' +
+  '和「AI 说 → 等玩家输入 → AI 说」的一轮互动。打开后它们各折成一行，' +
+  '长章节能少掉近一半行数；折起来的那行会写明这段切到哪个背景、用的什么提示。'
+
+const SHORTCUTS: { keys: string; desc: string }[] = [
+  { keys: 'Ctrl / ⌘ + S', desc: '立刻保存（平时是改完自动存，这条是给不放心的人的）' },
+  { keys: 'Ctrl / ⌘ + Z', desc: '撤销' },
+  { keys: 'Ctrl / ⌘ + Shift + Z', desc: '重做（Ctrl+Y 也行）' },
+  { keys: 'Ctrl / ⌘ + D', desc: '复制选中的事件' },
+  { keys: 'Ctrl / ⌘ + Enter', desc: '从当前位置试玩' },
+  { keys: 'Delete', desc: '删除选中的事件' },
+  { keys: '↑ / ↓', desc: '在事件之间移动光标' },
+  { keys: 'Alt + ↑ / ↓', desc: '把选中的事件上移 / 下移' },
+  { keys: 'Esc', desc: '结束试玩 / 返回上一层' },
+  { keys: '?', desc: '打开这张表' },
+]
+
 const leave = async () => {
   await store.stopPreview()
   await store.flushPendingSave()
@@ -998,40 +1186,86 @@ const leave = async () => {
 
 // ---- 快捷键 ----
 const onKey = (e: KeyboardEvent) => {
+  // 在输入框里让位给浏览器原生行为，否则作者想撤销一个词却把整个事件列表
+  // 回退了一帧，而且刚敲的字（还没 change 提交）会一起消失。
+  const el = e.target as HTMLElement | null
+  const typing =
+    !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
   const mod = e.ctrlKey || e.metaKey
-  if (!mod) return
   const k = e.key.toLowerCase()
 
-  // 在输入框里 Ctrl+Z 应该走浏览器原生撤销，否则作者想撤销一个词
-  // 却把整个事件列表回退了一帧，而且刚敲的字（还没 change 提交）一起消失。
-  const t = e.target as HTMLElement | null
-  const inEditor =
-    !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
+  // Esc 与 ? 不带修饰键，先处理
+  if (e.key === 'Escape') {
+    if (store.previewing) {
+      void store.stopPreview()
+    } else if (shortcutHelp.value) {
+      shortcutHelp.value = false
+    } else if (store.level === 'chapter') {
+      store.backToFlow()
+    }
+    return
+  }
+  if (!mod && !typing && (e.key === '?' || (e.key === '/' && e.shiftKey))) {
+    e.preventDefault()
+    shortcutHelp.value = !shortcutHelp.value
+    return
+  }
 
-  if (k === 's') {
+  // 试玩期间键盘归游戏，编辑器不抢
+  if (store.previewing) return
+
+  if (mod && k === 's') {
     e.preventDefault()
     void store.save()
     return
   }
-  if (inEditor) return
+  if (typing) return
 
-  if (k === 'z' && !e.shiftKey) {
+  if (mod) {
+    if (k === 'z' && !e.shiftKey) {
+      e.preventDefault()
+      store.undo()
+    } else if ((k === 'z' && e.shiftKey) || k === 'y') {
+      e.preventDefault()
+      store.redo()
+    } else if (k === 'd') {
+      e.preventDefault()
+      if (store.chapter) store.duplicateEvent(store.selectedEvent)
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      void playtest()
+    }
+    return
+  }
+
+  // 以下都只在章节编辑页有意义
+  if (store.level !== 'chapter' || !store.chapter) return
+  const last = store.chapter.events.length - 1
+
+  if (e.key === 'Delete') {
     e.preventDefault()
-    store.undo()
-  } else if ((k === 'z' && e.shiftKey) || k === 'y') {
+    store.removeEvent(store.selectedEvent)
+  } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
     e.preventDefault()
-    store.redo()
+    const step = e.key === 'ArrowUp' ? -1 : 1
+    const to = store.selectedEvent + step
+    if (to < 0 || to > last) return
+    if (e.altKey) store.moveEvent(store.selectedEvent, to)
+    else store.selectedEvent = to
   }
 }
 
 onMounted(async () => {
   window.addEventListener('keydown', onKey)
   await store.init()
-  await moveIndicator()
+  await moveIndicator(false)
+  observeNav()
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', onKey)
+  navObserver?.disconnect()
+  navObserver = null
   void store.stopPreview()
   void store.flushPendingSave()
 })
@@ -1100,6 +1334,96 @@ onUnmounted(() => {
   background: var(--accent-color);
   box-shadow: 0 0 10px rgba(121, 217, 255, 0.4);
 }
+/* 试玩前置条件不满足的横幅。用黄色而不是红色：剧本本身没错，
+   只是当前环境跑不起来，作者不该以为自己写坏了什么。 */
+.warnbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 1.25rem 0.5rem;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 0.76rem;
+  line-height: 1.7;
+  color: rgba(253, 230, 138, 0.9);
+  background: rgba(251, 191, 36, 0.1);
+}
+.wb-tag {
+  flex-shrink: 0;
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  border-radius: 99px;
+  padding: 1px 8px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: #fcd34d;
+}
+
+.llm-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+}
+
+/* 全局角色库的可选行 */
+.pick-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 9px 11px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.05);
+  transition: all 0.15s;
+}
+.pick-row:hover {
+  border-color: var(--accent-color);
+  background: rgba(121, 217, 255, 0.08);
+}
+.pick-row.picked {
+  border-color: var(--accent-color);
+  background: rgba(121, 217, 255, 0.16);
+}
+.pick-row.used {
+  cursor: default;
+  opacity: 0.45;
+}
+.pick-row.used:hover {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* 快捷键表 */
+.sc-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 0;
+  font-size: 0.78rem;
+  line-height: 1.8;
+  color: rgba(255, 255, 255, 0.7);
+}
+.sc-row + .sc-row {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.sc-row kbd {
+  flex: 0 0 auto;
+  min-width: 148px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 5px;
+  padding: 2px 8px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.7rem;
+  color: var(--accent-color);
+  background: rgba(255, 255, 255, 0.05);
+}
+
 .nav-badge {
   margin-left: 4px;
   border-radius: 99px;

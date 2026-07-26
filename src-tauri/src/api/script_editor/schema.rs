@@ -319,8 +319,12 @@ pub fn build_schema() -> ScriptSchema {
                     .hint("branching / ai_judged 使用；顺序即优先级，可设一个 default 兜底"),
                 FieldSpec::new("prompt", "AI 判定提示", FieldKind::Textarea)
                     .hint("仅 ai_judged 使用"),
-                FieldSpec::new("next", "下一章（旧字段）", FieldKind::Chapter)
-                    .hint("引擎里 next 的优先级高于 next_chapter。新剧本请用上面的「下一章」，这里只为兼容已有数据"),
+                // 只展示不给编辑。`next` 在引擎里优先级**高于** `next_chapter`，
+                // 两个都能填的话，作者改了上面那个「下一章」却不生效，而界面上
+                // 两处都写着下一章 —— 这是最难自己看出来的一类问题。老数据原样
+                // 保留，校验器会提示把它并到 next_chapter 去。
+                FieldSpec::new("next", "下一章（旧字段）", FieldKind::Deprecated)
+                    .disabled("引擎里它的优先级高于「下一章」。老剧本才有，新剧本请只用上面那个"),
             ],
         },
         // ---------- 演出 ----------
@@ -402,9 +406,11 @@ pub fn build_schema() -> ScriptSchema {
             category: "声音",
             color: "#22d3ee",
             fields: vec![
+                // 刻意不 required：开了「停止该轨」时留空正是「停掉全部轨道」的写法，
+                // 标成必填会让这种正常用法被校验器判成缺字段。
                 FieldSpec::new("ambientPath", "环境音", FieldKind::Asset)
-                    .required()
-                    .asset("ambient"),
+                    .asset("ambient")
+                    .hint("播放时必填；配合下面的「停止该轨」留空表示停掉全部环境音"),
                 FieldSpec::new("volume", "音量", FieldKind::Number)
                     .placeholder("100")
                     .hint("0–100"),
@@ -430,7 +436,8 @@ pub fn build_schema() -> ScriptSchema {
             .hint("全局唯一。重名会导致其中一个剧本在列表里被覆盖"),
         FieldSpec::new("description", "简介", FieldKind::Textarea),
         FieldSpec::new("recommand_start", "推荐开始时机", FieldKind::Text)
-            .hint("字段名少了一个 m 是历史拼写，照抄即可"),
+            .placeholder("例如：好感度达到 30 之后")
+            .hint("纯展示文案，给玩家在冒险列表里看的提示，引擎不会据此做任何判断（字段名少一个 m 是历史拼写）"),
         FieldSpec::new("intro_chapter", "开场章节", FieldKind::Chapter).required(),
     ];
 

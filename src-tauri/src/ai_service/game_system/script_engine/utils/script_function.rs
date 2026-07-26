@@ -22,6 +22,73 @@ pub fn replace_placeholder(text: &str, game_status: &GameStatus) -> String {
 }
 
 // ============================================================
+// LLM stand-in
+// ============================================================
+
+/// Emit a visible stand-in where an AI reply would have gone.
+///
+/// Two callers, both of which previously produced **nothing at all**:
+///
+/// - `dry_run_ai` (the editor's playtest with LLM turned off) — the author is
+///   debugging flow and does not want to pay for prose they will scroll past.
+/// - no LLM configured — a real player with no API key used to watch
+///   `ai_dialogue` events silently do nothing, which reads as the story
+///   skipping lines rather than as a missing setting.
+///
+/// The text is deliberately bracketed so nobody mistakes it for authored
+/// dialogue, and it carries `prompt` through so the author can still see which
+/// instruction the AI would have received.
+pub async fn emit_ai_placeholder(
+    app: &tauri::AppHandle,
+    db: &DatabaseConnection,
+    game_status: &std::sync::Arc<tokio::sync::Mutex<GameStatus>>,
+    role_id: i32,
+    display_name: &str,
+    reason: &str,
+    prompt: Option<&str>,
+) -> Result<()> {
+    use crate::ai_service::message_system::events::emit;
+    use crate::ai_service::message_system::responses::ReplyResponse;
+
+    let text = match prompt {
+        Some(p) if !p.trim().is_empty() => format!("〔{} · 此处本应由 AI 生成：{}〕", reason, p),
+        _ => format!("〔{} · 此处本应由 AI 即兴生成一段话〕", reason),
+    };
+
+    let payload = ReplyResponse {
+        type_: "reply".to_string(),
+        duration: -1.0,
+        is_final: true,
+        character: None,
+        role_id: Some(role_id),
+        emotion: "正常".to_string(),
+        original_tag: String::new(),
+        message: text.clone(),
+        tts_text: None,
+        motion_text: None,
+        audio_file: None,
+        original_message: text.clone(),
+        display_name: Some(display_name.to_string()),
+        display_subtitle: Some(String::new()),
+        user_message_seq: None,
+    };
+    let _ = emit(app, "ai:reply", &payload);
+
+    // 仍然写进台词表：后面的 AI 事件要靠上下文，缺一段会让它接不上；
+    // 而且作者回看历史时该看到「这里被跳过了」。
+    let line = LineBase {
+        content: text,
+        attribute: LineAttributeExt(LineAttribute::Assistant),
+        sender_role_id: Some(role_id),
+        display_name: Some(display_name.to_string()),
+        original_emotion: Some("正常".to_string()),
+        ..Default::default()
+    };
+    game_status.lock().await.add_line(db, line).await?;
+    Ok(())
+}
+
+// ============================================================
 // Role lookup
 // ============================================================
 

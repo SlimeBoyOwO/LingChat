@@ -1,51 +1,85 @@
 <template>
-  <div class="rail">
+  <div
+    class="rail"
+    @dragend="endDrag"
+  >
     <template
-      v-for="row in rows"
+      v-for="(row, ri) in rows"
       :key="row.key"
     >
-      <!-- 复合块：默认折叠成一行 -->
+      <!-- 插入位标记。落点一律是「插到这一行前面」，不按指针在上半还是下半区分：
+           useZoom 的 CSS zoom 会让 getBoundingClientRect 和鼠标坐标对不上，
+           而「悬停哪行就插哪行前面」根本不需要坐标。 -->
       <div
-        v-if="row.kind === 'group'"
-        class="grp"
-        :class="{ open: expanded[row.key] }"
+        class="slot"
+        :class="{ on: dropAt === rowStart(row) && dragging !== null }"
+        @dragover.prevent="dropAt = rowStart(row)"
+        @drop.prevent="finishDrag"
+      ></div>
+
+      <div
+        class="draggable"
+        :class="{ ghost: isDragged(row) }"
+        :draggable="canDrag(row)"
+        @dragstart="startDrag(row, $event)"
       >
+        <!-- 复合块：默认折叠成一行 -->
         <div
-          class="ghead"
-          @click="toggle(row.key)"
+          v-if="row.kind === 'group'"
+          class="grp"
+          :class="{ open: expanded[row.key] }"
         >
-          <span class="chev">›</span>
-          <span class="badge-group">{{ row.label }}</span>
-          <span class="etext">{{ row.summary }}</span>
-          <span
-            v-if="groupHasError(row)"
-            class="flag-bad"
-            >含错误</span
+          <div
+            class="ghead"
+            @click="toggle(row.key)"
           >
-          <span class="gcount">{{ row.to - row.from }} 个事件</span>
-        </div>
-        <div
-          v-if="expanded[row.key]"
-          class="gbody"
-        >
-          <div class="rail rail-nested">
-            <EventRow
-              v-for="item in row.items"
-              :key="item.index"
-              :index="item.index"
-              :event="item.event"
-            />
+            <span
+              class="handle"
+              title="拖动可以调整这一段在章节里的位置"
+              >⠿</span
+            >
+            <span class="chev">›</span>
+            <span class="badge-group">{{ row.label }}</span>
+            <span class="etext">{{ row.summary }}</span>
+            <span
+              v-if="groupHasError(row)"
+              class="flag-bad"
+              >含错误</span
+            >
+            <span class="gcount">{{ row.to - row.from }} 个事件</span>
+          </div>
+          <div
+            v-if="expanded[row.key]"
+            class="gbody"
+          >
+            <div class="rail rail-nested">
+              <EventRow
+                v-for="item in row.items"
+                :key="item.index"
+                :index="item.index"
+                :event="item.event"
+              />
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- 单个事件 -->
-      <EventRow
-        v-else
-        :index="row.index"
-        :event="row.event"
-      />
+        <!-- 单个事件 -->
+        <EventRow
+          v-else
+          :index="row.index"
+          :event="row.event"
+          :draggable-row="canDrag(row)"
+        />
+      </div>
     </template>
+
+    <!-- 末尾落点。有「章节结束」时插在它前面 —— 它必须留在最后一条 -->
+    <div
+      class="slot"
+      :class="{ on: dropAt === tailIndex && dragging !== null }"
+      @dragover.prevent="dropAt = tailIndex"
+      @drop.prevent="finishDrag"
+    ></div>
 
     <button
       class="addev"
@@ -63,10 +97,10 @@
           @click.self="paletteOpen = false"
         >
           <div class="palette">
-            <div class="mb-4 flex items-center gap-2 border-b-2 border-brand pb-2">
-              <h4 class="font-semibold text-white">插入事件</h4>
+            <div class="phead">
+              <h4>插入事件</h4>
               <button
-                class="ml-auto text-white/50 transition-all hover:rotate-90 hover:text-brand"
+                class="pclose"
                 @click="paletteOpen = false"
               >
                 ✕
@@ -75,19 +109,14 @@
             <div
               v-for="(group, cat) in groupedSpecs"
               :key="cat"
-              class="mb-3"
+              class="pcat"
             >
-              <p class="mb-1.5 text-xs text-white/40">{{ cat }}</p>
-              <div class="flex flex-wrap gap-2">
+              <p class="pcat-title">{{ cat }}</p>
+              <div class="pgrid">
                 <button
                   v-for="spec in group"
                   :key="spec.typeKey"
-                  class="rounded-lg border px-3 py-1.5 text-sm transition-all hover:bg-white/10"
-                  :style="{
-                    color: spec.color,
-                    borderColor: spec.color + '55',
-                    background: spec.color + '14',
-                  }"
+                  class="pitem"
                   @click="insert(spec.typeKey)"
                 >
                   {{ spec.label }}
@@ -104,7 +133,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
-import { foldEvents, groupContaining, type FoldedGroup } from '@/composables/useEventFolding'
+import {
+  foldEvents,
+  groupContaining,
+  type FoldedGroup,
+  type FoldedRow,
+} from '@/composables/useEventFolding'
 import type { EventSpec } from '@/api/services/script-editor'
 import EventRow from './EventRow.vue'
 
@@ -122,6 +156,62 @@ const groupedSpecs = computed(() => {
   }
   return out
 })
+
+// ============================================================
+// 拖拽排序
+// ============================================================
+
+/** 一行覆盖的事件区间 */
+const rowStart = (row: FoldedRow) => (row.kind === 'group' ? row.from : row.index)
+const rowSpan = (row: FoldedRow) => (row.kind === 'group' ? row.to - row.from : 1)
+
+const typeAt = (i: number) => {
+  const t = store.chapter?.events[i]?.type
+  return typeof t === 'string' ? t : ''
+}
+
+/**
+ * 末尾落点的下标：有「章节结束」就插在它前面。
+ *
+ * 引擎按顺序执行到 chapter_end 就跳走，排在它后面的事件永远跑不到 —— 校验器
+ * 会报这条，但更好的做法是压根不给作者把东西拖到那儿的机会。
+ */
+const tailIndex = computed(() => {
+  const list = store.chapter?.events ?? []
+  const last = list.length - 1
+  return last >= 0 && typeAt(last) === 'chapter_end' ? last : list.length
+})
+
+/** 章节结束固定在最后一条，不参与拖拽 */
+const canDrag = (row: FoldedRow) =>
+  !(row.kind === 'event' && typeAt(row.index) === 'chapter_end')
+
+const dragging = ref<{ from: number; count: number } | null>(null)
+const dropAt = ref<number | null>(null)
+
+const isDragged = (row: FoldedRow) => dragging.value?.from === rowStart(row)
+
+const startDrag = (row: FoldedRow, e: DragEvent) => {
+  if (!canDrag(row)) return
+  dragging.value = { from: rowStart(row), count: rowSpan(row) }
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', String(rowStart(row)))
+  }
+}
+
+const endDrag = () => {
+  dragging.value = null
+  dropAt.value = null
+}
+
+const finishDrag = () => {
+  const d = dragging.value
+  const at = dropAt.value
+  endDrag()
+  if (!d || at === null) return
+  store.moveEventRange(d.from, d.count, Math.min(at, tailIndex.value))
+}
 
 /**
  * 换章节先收起全部，再按当前选中项展开所在块。
@@ -180,6 +270,22 @@ const insert = (typeKey: string) => {
   left: -1px;
 }
 
+/* 落点。平时是 2px 的透明缝，拖动中才亮起来，所以静止时完全看不见它 */
+.slot {
+  height: 2px;
+  margin: 1px 0;
+  border-radius: 2px;
+  transition: all 0.12s;
+}
+.slot.on {
+  height: 6px;
+  background: var(--accent-color);
+  box-shadow: 0 0 8px rgba(121, 217, 255, 0.6);
+}
+.draggable.ghost {
+  opacity: 0.35;
+}
+
 .grp {
   position: relative;
   margin: 3px 0;
@@ -210,6 +316,14 @@ const insert = (typeKey: string) => {
 }
 .ghead:hover {
   background: rgba(255, 255, 255, 0.05);
+}
+.handle {
+  cursor: grab;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
+}
+.ghead:hover .handle {
+  color: var(--accent-color);
 }
 .chev {
   width: 0.8rem;
@@ -284,6 +398,10 @@ const insert = (typeKey: string) => {
   background: rgba(121, 217, 255, 0.05);
 }
 
+/* ---- 插入事件面板 ----
+   与编辑器其余部分同一套：深色玻璃底 + brand 下划线标题 + 悬停高亮。
+   按钮不再按事件类型上色 —— 十几个饱和色块摆在一起既吵又没有信息量，
+   分类标题已经把「这是哪一类」说清楚了。 */
 .palette-mask {
   position: fixed;
   inset: 0;
@@ -291,19 +409,73 @@ const insert = (typeKey: string) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  backdrop-filter: blur(5px);
-  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  background: rgba(0, 0, 0, 0.55);
 }
 .palette {
   width: min(560px, 92vw);
   max-height: 80vh;
   overflow-y: auto;
-  border-radius: 12px;
-  padding: 15px;
-  background: rgba(30, 41, 59, 0.96);
   border: 1px solid rgba(255, 255, 255, 0.125);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  border-radius: 12px;
+  padding: 16px 18px 18px;
+  background: rgba(12, 20, 30, 0.94);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.45),
+    inset 0 1px 1px rgba(255, 255, 255, 0.06);
 }
+.phead {
+  display: flex;
+  align-items: center;
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--accent-color);
+}
+.phead h4 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #fff;
+}
+.pclose {
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.5);
+  transition: all 0.2s;
+}
+.pclose:hover {
+  color: var(--accent-color);
+  transform: rotate(90deg);
+}
+.pcat + .pcat {
+  margin-top: 14px;
+}
+.pcat-title {
+  margin-bottom: 7px;
+  font-size: 0.7rem;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.38);
+}
+.pgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 7px;
+}
+.pitem {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.05);
+  transition: all 0.15s ease-in-out;
+}
+.pitem:hover {
+  border-color: var(--accent-color);
+  color: #fff;
+  background: rgba(121, 217, 255, 0.14);
+  transform: translateY(-1px);
+}
+
 .modal-enter-active,
 .modal-leave-active {
   transition: opacity 0.2s ease;

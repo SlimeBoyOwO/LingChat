@@ -30,19 +30,8 @@
             v-for="node in row.nodes"
             :key="node.id"
             class="cnode"
-            :class="{
-              entry: node.isIntro,
-              orphan: node.isOrphan,
-              dragging: dragId === node.id,
-              droptarget: dropId === node.id,
-            }"
-            :draggable="chainOf.has(node.id)"
+            :class="{ entry: node.isIntro, orphan: node.isOrphan }"
             @click="open(node.id)"
-            @dragstart="onDragStart(node, $event)"
-            @dragend="onDragEnd"
-            @dragover.prevent="onDragOver(node)"
-            @dragleave="onDragLeave(node)"
-            @drop.prevent="onDrop(node)"
           >
             <span class="cid">
               {{ leaf(node.id) }}.yaml{{ node.isIntro ? ' · 开场' : ''
@@ -50,12 +39,6 @@
             </span>
 
             <div class="crow">
-              <span
-                v-if="chainOf.has(node.id)"
-                class="handle"
-                title="拖动可以改变章节先后顺序（只能与紧挨着的线性章节互换）"
-                >⠿</span
-              >
               <span class="ct">{{ node.name || node.id }}</span>
               <span class="cm">{{ node.eventCount }} 个事件</span>
             </div>
@@ -97,17 +80,16 @@
       <div class="endcap">剧本结束</div>
 
       <p class="hint">
-        连线来自每章最后那条「章节结束」。<b>顺序也是它决定的</b> ——
-        所以拖动章节等于把
-        <code>next_chapter</code> 重新接线，编辑器会自动改写受影响的几章。
-        条件分支和 AI 判定分支的走向由条件决定，顺序没有意义，因此不可拖动。
+        这张图是<b>读出来的，不是排出来的</b> —— 连线来自每章最后那条「章节结束」，
+        章节的先后也由它决定。要改走向，进对应章节改那条事件的
+        <code>下一章</code>；改完这里会跟着变。
       </p>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 
 interface FlowNode {
@@ -118,9 +100,8 @@ interface FlowNode {
   isOrphan: boolean
   errors: number
   warns: number
-  /** 该章 chapter_end 的 end_type；linear 才能拖 */
+  /** 该章 chapter_end 的 end_type，用来标注分支类型 */
   endType: string
-  canDrag: boolean
 }
 
 interface FlowRow {
@@ -134,10 +115,7 @@ const store = useScriptEditorStore()
 
 const leaf = (id: string) => (id.includes('/') ? id.slice(id.lastIndexOf('/') + 1) : id)
 
-const open = (id: string) => {
-  if (dragId.value) return
-  void store.openChapter(id)
-}
+const open = (id: string) => void store.openChapter(id)
 
 /** 校验器已经算过可达性，直接用它的结论，避免前后端两套图算法 */
 const orphanIds = computed(() => {
@@ -182,8 +160,6 @@ const rows = computed<FlowRow[]>(() => {
       errors: d.errors,
       warns: d.warns,
       endType,
-      // 只有 linear 能拖：分支的走向由条件决定，交换顺序没有意义
-      canDrag: endType === 'linear',
     }
   }
 
@@ -229,92 +205,6 @@ const rows = computed<FlowRow[]>(() => {
   return out
 })
 
-/**
- * 可拖拽的「链段」——注意是复数。
- *
- * 早先这里把所有单节点线性层拉平成**一条**链，那是错的：分叉层会被整层跳过，
- * 于是 `A(linear) → B(分支) → {C,D} → … → E(linear)` 里的 A 和 E 会落进同一条
- * 链，看起来相邻其实隔着整个分支子图。交换它们会把 E 之前的入口全断掉。
- *
- * 正确的粒度是**连续**的单节点线性层构成的极大段，只有同一段内部才能互拖。
- * 后端 verify_contiguous_chain 还会再独立校验一遍，两侧都不依赖对方正确。
- */
-const dragChains = computed<string[][]>(() => {
-  const out: string[][] = []
-  let run: string[] = []
-  for (const r of rows.value) {
-    const ok = r.key !== '__unreached' && r.nodes.length === 1 && r.nodes[0].canDrag
-    if (ok) {
-      run.push(r.nodes[0].id)
-    } else {
-      if (run.length > 1) out.push(run)
-      run = []
-    }
-  }
-  if (run.length > 1) out.push(run)
-  return out
-})
-
-/** 每个可拖章节所属链段的下标，用来判断两个节点能不能互拖 */
-const chainOf = computed(() => {
-  const m = new Map<string, number>()
-  dragChains.value.forEach((chain, i) => chain.forEach((id) => m.set(id, i)))
-  return m
-})
-
-// ---- 拖拽 ----
-// 用 HTML5 拖放而不是自己算坐标：useZoom 的 CSS zoom 会让
-// getBoundingClientRect 与鼠标坐标不一致，而 drop 事件不受影响。
-const dragId = ref<string | null>(null)
-const dropId = ref<string | null>(null)
-
-/** 同一条链段内部才允许互拖 */
-const canSwap = (a: string, b: string) => {
-  const ca = chainOf.value.get(a)
-  return ca !== undefined && ca === chainOf.value.get(b)
-}
-
-const onDragStart = (node: FlowNode, e: DragEvent) => {
-  if (!chainOf.value.has(node.id)) return
-  dragId.value = node.id
-  e.dataTransfer?.setData('text/plain', node.id)
-  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
-}
-
-const onDragEnd = () => {
-  dragId.value = null
-  dropId.value = null
-}
-
-const onDragOver = (node: FlowNode) => {
-  // 不能落的地方就不高亮，作者不用拖到一半才发现不行
-  if (!dragId.value || node.id === dragId.value || !canSwap(dragId.value, node.id)) return
-  dropId.value = node.id
-}
-
-const onDragLeave = (node: FlowNode) => {
-  if (dropId.value === node.id) dropId.value = null
-}
-
-const onDrop = (node: FlowNode) => {
-  const from = dragId.value
-  onDragEnd()
-  if (!from || node.id === from) return
-  if (!canSwap(from, node.id)) {
-    store.notifyWarn(
-      '这两章之间隔着分支',
-      '只有紧挨着的线性章节能互相拖动。分支章节的走向由条件决定，顺序没有意义。',
-    )
-    return
-  }
-
-  const chain = [...dragChains.value[chainOf.value.get(from)!]]
-  const fromIdx = chain.indexOf(from)
-  const toIdx = chain.indexOf(node.id)
-  chain.splice(fromIdx, 1)
-  chain.splice(toIdx, 0, from)
-  void store.reorderChapters(chain)
-}
 </script>
 
 <style scoped>
@@ -404,14 +294,6 @@ const onDrop = (node: FlowNode) => {
   color: #fcd34d;
   border-color: rgba(251, 191, 36, 0.4);
 }
-.cnode.dragging {
-  opacity: 0.4;
-}
-.cnode.droptarget {
-  border-color: var(--accent-color);
-  background: rgba(121, 217, 255, 0.16);
-  transform: translateY(-2px) scale(1.01);
-}
 
 .cid {
   position: absolute;
@@ -430,14 +312,6 @@ const onDrop = (node: FlowNode) => {
   display: flex;
   align-items: baseline;
   gap: 8px;
-}
-.handle {
-  cursor: grab;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.3);
-}
-.cnode:hover .handle {
-  color: var(--accent-color);
 }
 .ct {
   font-size: 0.88rem;

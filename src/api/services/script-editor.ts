@@ -173,7 +173,7 @@ export interface ChapterEdge {
   isEnd: boolean
   /** 分支条件 / AI 分支名；linear 时不存在 */
   label?: string
-  /** 该边所属章节的 end_type，前端据此判断能否拖拽重排 */
+  /** 该边所属章节的 end_type，流程图据此标注「条件分支 / AI 判定分支」 */
   endType: string
 }
 
@@ -241,16 +241,46 @@ export const uploadAsset = (key: string, kind: AssetKind, scope: AssetScope, src
 /** 全局素材（game_data/backgrounds、musics、ambient） */
 export const listGlobalAssets = () => invoke<AssetIndex>('editor_list_global_assets')
 
-/**
- * 重排一条 linear 章节链。章节先后是由 chapter_end.next_chapter 串起来的，
- * 所以拖动改顺序的真实含义是重新接线。分支章节会被后端整体拒绝。
- */
-export const reorderChapters = (key: string, order: string[]) =>
-  invoke<void>('editor_reorder_chapters', { key, order })
+/** 全局角色库里的一个角色 */
+export interface GlobalCharacter {
+  folder: string
+  aiName: string
+  /** 在当前剧本里是否已导入 */
+  alreadyInScript: boolean
+  hasAvatar: boolean
+}
 
-/** 在编辑器里直接试玩。内部会先 rescan，from_chapter 留空则从开场章节开始 */
-export const startPreview = (key: string, fromChapter?: string) =>
-  invoke<void>('editor_start_preview', { key, fromChapter })
+export const listGlobalCharacters = (key: string) =>
+  invoke<GlobalCharacter[]>('editor_list_global_characters', { key })
+
+/**
+ * 把全局角色导入剧本。复制的是 settings.yml —— 引擎解析 `character:` 只认
+ * 剧本自己的 characters/，全局角色库不在那条查找路径上，所以必须复制而不是引用。
+ *
+ * 立绘默认不复制：get_avatar_file 本来就先找全局的 characters/<目录>/avatar，
+ * 同名目录会自动命中。只有要把剧本单独分发出去时才需要 withAvatar。
+ */
+export const importGlobalCharacter = (key: string, folder: string, withAvatar: boolean) =>
+  invoke<ScriptCharacter>('editor_import_global_character', { key, folder, withAvatar })
+
+/** 试玩可行性：MAIN 会解析成谁，解析不到的话为什么 */
+export interface PreviewReadiness {
+  ok: boolean
+  mainRoleName?: string
+  boundCharacterFolder: string
+  reason?: string
+}
+
+export const previewReadiness = (key: string) =>
+  invoke<PreviewReadiness>('editor_preview_readiness', { key })
+
+/**
+ * 在编辑器里直接试玩。内部会先 rescan，fromChapter 留空则从开场章节开始。
+ *
+ * useLlm=false 时 AI 事件出固定占位文本，不花 token —— 调流程时不需要真生成。
+ */
+export const startPreview = (key: string, fromChapter: string | undefined, useLlm: boolean) =>
+  invoke<void>('editor_start_preview', { key, fromChapter, useLlm })
 
 /** 中止试玩 */
 export const stopPreview = () => invoke<void>('editor_stop_preview')

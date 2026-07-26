@@ -43,9 +43,12 @@
       @change="onNumber"
     />
 
-    <!-- 开关 -->
+    <!-- 开关。必填字段只有开/关两态；可选字段必须能表达「不设置」——
+         引擎对这类字段的默认值往往不是 false（比如环境音的 loop / fade 默认 true），
+         用两态开关会让「没写过这个字段」和「显式写了 false」长得一模一样，
+         作者点一下再点回来就悄悄改变了行为。 -->
     <div
-      v-else-if="field.kind === 'bool'"
+      v-else-if="field.kind === 'bool' && field.required"
       class="flex items-center gap-2"
     >
       <Toggle
@@ -54,6 +57,16 @@
       />
       <span class="text-sm text-white/70">{{ value === true ? '开启' : '关闭' }}</span>
     </div>
+    <select
+      v-else-if="field.kind === 'bool'"
+      class="glass-input"
+      :value="value === true ? 'true' : value === false ? 'false' : ''"
+      @change="onTriState"
+    >
+      <option value="">（不设置 · 用引擎默认值）</option>
+      <option value="true">开启</option>
+      <option value="false">关闭</option>
+    </select>
 
     <!-- 固定候选 / 角色 / 情绪 / 章节 -->
     <select
@@ -261,6 +274,12 @@ const hintClass = computed(() =>
 const onText = (e: Event) => emit('update', (e.target as HTMLInputElement).value)
 
 const onSelect = (e: Event) => emit('update', (e.target as HTMLSelectElement).value)
+
+/** 空串会被 store 的 setEventField 当成「删键」，正好就是「不设置」的语义 */
+const onTriState = (e: Event) => {
+  const v = (e.target as HTMLSelectElement).value
+  emit('update', v === '' ? '' : v === 'true')
+}
 
 const onNumber = (e: Event) => {
   const raw = (e.target as HTMLInputElement).value.trim()

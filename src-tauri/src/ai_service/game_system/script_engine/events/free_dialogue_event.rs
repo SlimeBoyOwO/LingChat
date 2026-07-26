@@ -90,7 +90,7 @@ impl ScriptEvent for FreeDialogueEvent {
             .clone()
             .ok_or_else(|| anyhow!("ScriptStatus 未设置"))?;
 
-        let (role_id, _role_display_name) = {
+        let (role_id, role_display_name) = {
             let mut gs = ctx.game_status.lock().await;
             let role = script_function::get_role(&mut *gs, ctx.db, &script_status, &self.character)
                 .await?;
@@ -101,6 +101,25 @@ impl ScriptEvent for FreeDialogueEvent {
 
         // Set as current character
         ctx.game_status.lock().await.current_role_id = Some(role_id);
+
+        // 编辑器试玩关掉 LLM：自由对话整段跳过。
+        //
+        // 这里不能像 ai_dialogue 那样「出一句占位就继续」—— 自由对话会开一个
+        // 需要玩家反复输入、由 AI 判断何时收尾的循环，没有 LLM 就永远收不了尾
+        // （PR1 修的正是这个死锁）。所以直接出一条占位说明并跳过整段。
+        if ctx.dry_run_ai {
+            return script_function::emit_ai_placeholder(
+                ctx.app,
+                ctx.db,
+                &ctx.game_status,
+                role_id,
+                role_display_name.as_deref().unwrap_or("AI"),
+                "试玩已关闭 LLM，整段自由对话被跳过",
+                Some(&self.hint),
+            )
+            .await
+            .map(|()| None);
+        }
 
         // ---- 发送自由对话开始事件 ----
         let start_payload = FreeDialoguePayload {

@@ -15,20 +15,18 @@
       :class="{ sel: index === store.selectedEvent }"
       @click="store.selectedEvent = index"
     >
-      <button
-        class="grip"
-        title="上移"
-        @click.stop="store.moveEvent(index, index - 1)"
+      <span
+        v-if="draggableRow"
+        class="handle"
+        title="拖动可以调整这条事件在章节里的位置"
+        >⠿</span
       >
-        ▲
-      </button>
-      <button
-        class="grip"
-        title="下移"
-        @click.stop="store.moveEvent(index, index + 1)"
+      <span
+        v-else
+        class="handle handle-locked"
+        title="「章节结束」必须是最后一条，位置固定"
+        >⌁</span
       >
-        ▼
-      </button>
 
       <span
         class="badge"
@@ -95,7 +93,12 @@ import { useScriptEditorStore } from '@/stores/modules/script-editor'
 import { eventSummary } from '@/composables/useEventFolding'
 import type { ScriptEventData } from '@/api/services/script-editor'
 
-const props = defineProps<{ index: number; event: ScriptEventData }>()
+const props = defineProps<{
+  index: number
+  event: ScriptEventData
+  /** 由 ChapterTimeline 决定：章节结束固定在末尾，不给拖动柄 */
+  draggableRow?: boolean
+}>()
 
 const store = useScriptEditorStore()
 
@@ -177,28 +180,42 @@ const highlighted = computed(() => {
   background: rgba(121, 217, 255, 0.12);
 }
 
-.grip,
 .act {
   flex: 0 0 auto;
   border-radius: 4px;
   padding: 0 3px;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.7;
   color: rgba(255, 255, 255, 0.25);
   opacity: 0;
   transition: all 0.15s;
 }
-.evrow:hover .grip,
 .evrow:hover .act {
   opacity: 1;
 }
-.grip:hover,
 .act:hover {
   color: var(--accent-color);
   background: rgba(255, 255, 255, 0.1);
 }
-.act {
+
+/* 拖动柄常驻但很淡 —— 藏起来的话作者根本不知道这行能拖 */
+.handle {
+  flex: 0 0 auto;
+  cursor: grab;
   font-size: 11px;
+  line-height: 1.7;
+  color: rgba(255, 255, 255, 0.18);
+  transition: color 0.15s;
+}
+.evrow:hover .handle {
+  color: var(--accent-color);
+}
+.handle-locked {
+  cursor: default;
+  color: rgba(255, 255, 255, 0.12);
+}
+.evrow:hover .handle-locked {
+  color: rgba(255, 255, 255, 0.2);
 }
 .act-del:hover {
   color: #fca5a5;

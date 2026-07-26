@@ -5,21 +5,38 @@
         v-if="store.previewing"
         class="stage"
       >
-        <!-- 复用真实的游戏渲染层。这是当初选「复用真引擎 + 真渲染层」而不是
-             另写一套预览解释器的兑现点：这四个组件读的是同一份 store，
-             引擎 emit 的事件经 eventQueue 进来后，表现与正式游玩逐帧一致。 -->
-        <GameBackground />
-        <GameRolesStage />
-        <GameExtraUI />
-        <GameDialog />
+        <!--
+          `main-box` 是 MainChat 里的全局类（那个 <style> 没有 scoped），这里直接
+          复用而不是另写一套。它是 `flex-direction: column; justify-content: flex-end`，
+          对话框才会贴在屏幕底部 —— 早先这里只是个 `position: fixed` 的空壳，
+          GameDialog 作为普通块元素落在最上面，于是试玩时对话框跑到了屏幕顶部。
+          复用同一个类还顺带保证：以后正式游玩的布局改了，试玩跟着一起变。
+        -->
+        <div class="main-box">
+          <!-- 复用真实的游戏渲染层。这是当初选「复用真引擎 + 真渲染层」而不是
+               另写一套预览解释器的兑现点：这四个组件读的是同一份 store，
+               引擎 emit 的事件经 eventQueue 进来后，表现与正式游玩逐帧一致。 -->
+          <GameBackground />
+          <GameRolesStage />
+          <GameExtraUI />
+          <GameDialog />
+        </div>
 
         <!-- 预览专属的顶栏，明确「这是试玩」而不是真在玩 -->
         <div class="bar">
           <span class="badge">试玩中</span>
           <span class="meta">{{ label }}</span>
+          <span
+            class="llm"
+            :class="store.previewUseLlm ? 'llm-live' : 'llm-dry'"
+            >{{
+              store.previewUseLlm ? 'AI 已开启 · 按 token 计费' : 'AI 已关闭 · 出占位文本'
+            }}</span
+          >
           <span class="tip">调试不会记入通关，也不会解锁后续羁绊冒险</span>
           <button
             class="stop"
+            title="Esc"
             @click="store.stopPreview()"
           >
             结束试玩
@@ -42,8 +59,12 @@ const store = useScriptEditorStore()
 const props = defineProps<{ fromChapter?: string }>()
 
 const label = computed(() => {
-  const name = store.detail?.package.scriptName ?? ''
-  return props.fromChapter ? `${name} · 从「${props.fromChapter}」开始` : name
+  const parts = [store.detail?.package.scriptName ?? '']
+  if (props.fromChapter) parts.push(`从「${props.fromChapter}」开始`)
+  // 把 MAIN 解析成了谁直接写出来 —— 羁绊剧本里演错人是最难自己看出来的一类问题
+  const who = store.readiness?.mainRoleName
+  if (who) parts.push(`MAIN = ${who}`)
+  return parts.filter(Boolean).join(' · ')
 })
 
 /**
@@ -98,6 +119,22 @@ watch(
   font-size: 0.78rem;
   color: #fff;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+.llm {
+  border-radius: 99px;
+  padding: 2px 9px;
+  font-size: 0.66rem;
+  white-space: nowrap;
+}
+.llm-live {
+  color: #fcd34d;
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  background: rgba(251, 191, 36, 0.14);
+}
+.llm-dry {
+  color: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
 }
 .tip {
   font-size: 0.7rem;

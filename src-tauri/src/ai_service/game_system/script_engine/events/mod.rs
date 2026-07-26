@@ -88,6 +88,17 @@ pub struct ScriptContext<'a> {
     /// Shared channels for user input/choice events.
     /// Owned `Arc` clone — handlers lock/unlock as needed around await points.
     pub channels: SharedScriptChannels,
+
+    /// Skip every LLM call and substitute a visible placeholder line instead.
+    ///
+    /// Set only by the script editor's playtest. The author is debugging flow —
+    /// event order, backgrounds, sprites, branching — and each AI turn costs
+    /// real tokens for output they are about to scroll past. `false` everywhere
+    /// else, so normal play is untouched.
+    ///
+    /// This is the "Rust 干跑" half of the agreed preview design: real engine,
+    /// real render layer, but the expensive leaf nodes stubbed.
+    pub dry_run_ai: bool,
 }
 
 // ============================================================

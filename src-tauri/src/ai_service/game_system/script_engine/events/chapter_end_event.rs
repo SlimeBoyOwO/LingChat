@@ -103,12 +103,21 @@ impl ScriptEvent for ChapterEndEvent {
             }
             "ai_judged" => {
                 // Try LLM-based judgment
-                let llm = ctx.llm.cloned();
+                let llm = if ctx.dry_run_ai { None } else { ctx.llm.cloned() };
                 if let Some(llm) = llm {
                     self.call_llm_for_judgment(&llm, ctx).await?
                 } else {
-                    tracing::warn!("[ChapterEndEvent] ai_judged 需要 LLM 但未配置，默认 end");
-                    "end".to_string()
+                    // 原先直接回落 "end"，于是 ai_judged 分支在没有 LLM 时会让剧本
+                    // 悄悄结束 —— 分支目标一章都到不了。改为走 default 分支（没标
+                    // default 就走第一个），语义与 branching 的兜底一致，作者在
+                    // 编辑器里关掉 LLM 也能一路走完流程。
+                    let fallback = self.fallback_branch();
+                    tracing::warn!(
+                        "[ChapterEndEvent] ai_judged 无可用 LLM（dry_run={}），回落到 '{}'",
+                        ctx.dry_run_ai,
+                        fallback
+                    );
+                    fallback
                 }
             }
             _ => {
@@ -134,6 +143,26 @@ impl ScriptEvent for ChapterEndEvent {
 }
 
 impl ChapterEndEvent {
+    /// Which branch to take when no LLM is available to judge.
+    ///
+    /// Prefers the option flagged `default`, falling back to the first option
+    /// that names a target, and only then to `"end"`. Mirrors what `branching`
+    /// already does, so both branch kinds degrade the same way.
+    fn fallback_branch(&self) -> String {
+        let target = |opt: &Value| {
+            opt.get("next")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+        };
+        self.options
+            .iter()
+            .find(|o| o.get("default").and_then(|v| v.as_bool()).unwrap_or(false))
+            .and_then(target)
+            .or_else(|| self.options.iter().find_map(target))
+            .unwrap_or_else(|| "end".to_string())
+    }
+
     /// Call LLM to judge the next chapter based on a prompt and named options.
     async fn call_llm_for_judgment(
         &self,

@@ -15,6 +15,8 @@ import type {
   ScriptPackage,
   ScriptSchema,
   ValidationReport,
+  GlobalCharacter,
+  PreviewReadiness,
 } from '@/api/services/script-editor'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { useDialogStore } from '@/stores/modules/ui/dialog'
@@ -77,11 +79,17 @@ interface State {
 
   // ---- 试玩 ----
   previewing: boolean
+  /** 试玩前查出来的可行性：MAIN 会解析成谁 */
+  readiness: PreviewReadiness | null
+  /** 全局角色库，供「从全局导入」用 */
+  globalCharacters: GlobalCharacter[]
 
   // ---- UI 偏好（唯一持久化的部分）----
   level: 'flow' | 'chapter'
   tab: 'flow' | 'config' | 'characters' | 'assets' | 'validate'
   foldCompounds: boolean
+  /** 试玩时要不要真调 LLM。默认关 —— 调流程不该按 token 计费 */
+  previewUseLlm: boolean
 }
 
 const emptyAssets = (): AssetIndex => ({
@@ -112,10 +120,13 @@ export const useScriptEditorStore = defineStore('script-editor', {
 
     report: null,
     previewing: false,
+    readiness: null,
+    globalCharacters: [],
 
     level: 'flow',
     tab: 'flow',
     foldCompounds: true,
+    previewUseLlm: false,
   }),
 
   // 只持久化 UI 偏好。用白名单式的 exclude 很容易漏 —— 新增 state 字段会
@@ -139,6 +150,8 @@ export const useScriptEditorStore = defineStore('script-editor', {
       'redoStack',
       'report',
       'previewing',
+      'readiness',
+      'globalCharacters',
     ],
   },
 
@@ -284,6 +297,8 @@ export const useScriptEditorStore = defineStore('script-editor', {
         this.resetHistory()
         this.level = 'flow'
         this.tab = 'flow'
+        void this.refreshGlobalCharacters()
+        void this.checkReadiness()
         await this.runValidation()
       } catch (e) {
         if (seq === openSeq) this.notifyError('打开剧本失败', e)
@@ -520,6 +535,26 @@ export const useScriptEditorStore = defineStore('script-editor', {
       this.markDirty()
     },
 
+    /**
+     * 整段移动。时间轴把「转场」「AI 互动轮次」折叠成一行，拖那一行时移动的
+     * 是整块而不是一条 —— 拆开搬会把这几条事件打散，那正是折叠想避免的。
+     *
+     * `dest` 是移动前的下标语义：先抠出来再插入会让 dest 往前挪，所以这里
+     * 显式把「往后搬」的情况减掉抠走的长度。
+     */
+    moveEventRange(from: number, count: number, dest: number) {
+      if (!this.chapter) return
+      const list = this.chapter.events
+      if (count < 1 || from < 0 || from + count > list.length) return
+      if (dest >= from && dest < from + count) return // 落回自己身上
+      this.pushHistory()
+      const block = list.splice(from, count)
+      const at = dest > from ? dest - count : dest
+      list.splice(at, 0, ...block)
+      this.selectedEvent = at
+      this.markDirty()
+    },
+
     /** 改事件的一个字段。空值一律删键，避免往 YAML 里写一堆空字符串。 */
     setEventField(index: number, key: string, value: unknown) {
       if (!this.chapter) return
@@ -674,25 +709,6 @@ export const useScriptEditorStore = defineStore('script-editor', {
      * 章节先后是 chapter_end.next_chapter 串出来的，所以这里做的是重新接线，
      * 不是改文件名顺序。分支章节会被后端拒绝。
      */
-    async reorderChapters(order: string[]) {
-      const key = this.scriptKey
-      if (!key || order.length < 2) return
-      await this.flushPendingSave()
-      try {
-        await api.reorderChapters(key, order)
-        // 当前打开的章节可能就是被改写的那个，重读一次免得覆盖回去
-        if (this.chapter) {
-          const reread = await api.readChapter(key, this.chapter.id)
-          this.chapter = reread
-          this.resetHistory()
-        }
-        await this.runValidation()
-        this.notifyOk('章节顺序已更新')
-      } catch (e) {
-        this.notifyError('重排章节失败', e)
-      }
-    },
-
     // ========================================================
     // 校验
     // ========================================================
@@ -747,14 +763,33 @@ export const useScriptEditorStore = defineStore('script-editor', {
         )
         return false
       }
+      // 主角定不下来的话，第一个 character: MAIN 事件就会把剧本卡死在原地。
+      // 与其让作者对着不动的画面猜，不如现在就说清楚。
+      await this.checkReadiness()
+      if (this.readiness && !this.readiness.ok) {
+        this.notifyWarn('试玩前还差一步', this.readiness.reason ?? '主角未确定')
+        return false
+      }
       try {
-        await api.startPreview(key, fromChapter)
+        await api.startPreview(key, fromChapter, this.previewUseLlm)
         this.previewing = true
         await this.refreshScripts()
         return true
       } catch (e) {
         this.notifyError('试玩启动失败', e)
         return false
+      }
+    },
+
+    /** 查一次试玩可行性。失败不算错误 —— 引擎没起来时也不该拦着人编辑 */
+    async checkReadiness() {
+      const key = this.scriptKey
+      if (!key) return
+      try {
+        this.readiness = await api.previewReadiness(key)
+      } catch (e) {
+        console.warn('试玩可行性检查失败:', e)
+        this.readiness = null
       }
     },
 
@@ -808,9 +843,46 @@ export const useScriptEditorStore = defineStore('script-editor', {
       try {
         const c = await api.createCharacter(key, folder, aiName, systemPrompt)
         this.detail.characters.push(c)
+        void this.refreshGlobalCharacters()
         this.notifyOk('角色已创建', `剧本里写 character: ${c.roleKey}`)
       } catch (e) {
         this.notifyError('创建角色失败', e)
+      }
+    },
+
+    async refreshGlobalCharacters() {
+      const key = this.scriptKey
+      if (!key) return
+      try {
+        this.globalCharacters = await api.listGlobalCharacters(key)
+      } catch (e) {
+        console.warn('读取全局角色失败:', e)
+      }
+    },
+
+    /**
+     * 从全局角色库导入一个角色。
+     *
+     * 复制而不是引用：引擎解析 `character:` 只在剧本自己的 characters/ 里找
+     * （见 script_function::get_role），全局角色库不在那条路径上。所以「直接选
+     * 用全局角色」在引擎层面做不到，能做到的是「别让作者重新敲一遍人设」。
+     */
+    async importGlobalCharacter(folder: string, withAvatar: boolean) {
+      const key = this.scriptKey
+      if (!key || !this.detail) return
+      try {
+        const c = await api.importGlobalCharacter(key, folder, withAvatar)
+        this.detail.characters.push(c)
+        this.detail.characters.sort((a, b) => a.folder.localeCompare(b.folder))
+        await this.refreshGlobalCharacters()
+        this.notifyOk(
+          `已导入角色「${c.aiName}」`,
+          withAvatar
+            ? `立绘也复制了一份，剧本可以单独分发。剧本里写 character: ${c.roleKey}`
+            : `立绘仍读全局那份。剧本里写 character: ${c.roleKey}`,
+        )
+      } catch (e) {
+        this.notifyError('导入角色失败', e)
       }
     },
 
