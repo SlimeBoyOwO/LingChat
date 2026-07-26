@@ -315,6 +315,29 @@ pub async fn rollback_conversation(
     Ok(init_lines)
 }
 
+//拉起AI回复（无用户输入，直接触发对话）
+pub async fn trigger_ai_response(app: AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm)
+        .await
+        .ok_or_else(|| "LLM 未配置".to_string())?;
+    let concurrency = AppConfig::load(&app).map(|c| c.consumers as usize).unwrap_or(1).max(1);
+    let gs = { let svc = state.ai_service.lock().await; svc.game_status.clone() };
+    let deps = GeneratorDeps {
+        app: app.clone(), db: state.db.clone(), game_status: gs,
+        processor: state.chat.processor.clone(), translator: state.chat.translator.clone(),
+        llm, concurrency, god_agent: state.god_agent.clone(), suppress_thinking: false,
+    };
+    let gen_lock = state.generation_lock.clone();
+    tokio::spawn(async move {
+        let _lock = gen_lock.lock().await;
+        let _ = MessageGenerator::new(deps).process_message(None).await;
+    });
+    tracing::info!("[chat] 触发 AI 回复");
+
+    Ok(())
+}
+
 //处理图片投喂
 #[tauri::command]
 pub async fn feed_image(
@@ -325,7 +348,7 @@ pub async fn feed_image(
     let (user_name, game_status) = {
         let svc = state.ai_service.lock().await;
         let gs = svc.game_status.lock().await;
-        (gs.player.user_name.clone(), svc.game_status.clone())
+        (gs.player.user_name.clone(), svc.game_status.clone(),)
     };
 
     tracing::info!("[FileFeed] 收到图片投喂");
@@ -354,22 +377,7 @@ pub async fn feed_image(
     }
 
     events::emit_thinking(&app, false);
-    // 拉起 AI 回复
-    let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm)
-        .await
-        .ok_or_else(|| "LLM 未配置".to_string())?;
-    let concurrency = AppConfig::load(&app).map(|c| c.consumers as usize).unwrap_or(1).max(1);
-    let gs = { let svc = state.ai_service.lock().await; svc.game_status.clone() };
-    let deps = GeneratorDeps {
-        app: app.clone(), db: state.db.clone(), game_status: gs,
-        processor: state.chat.processor.clone(), translator: state.chat.translator.clone(),
-        llm, concurrency, god_agent: state.god_agent.clone(), suppress_thinking: false,
-    };
-    let gen_lock = state.generation_lock.clone();
-    tokio::spawn(async move {
-        let _lock = gen_lock.lock().await;
-        let _ = MessageGenerator::new(deps).process_message(None).await;
-    });
+    let _ = trigger_ai_response(app).await;
 
     Ok(())
 }
@@ -380,10 +388,12 @@ pub async fn feed_text(
     text: String,
 ) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let (user_name, game_status) = {
+    let (user_name, game_status, ai_name) = {
         let svc = state.ai_service.lock().await;
         let gs = svc.game_status.lock().await;
-        (gs.player.user_name.clone(), svc.game_status.clone())
+        let ai_name = gs
+            .current_role_id.and_then(|id| gs.role_manager.get_loaded(id)).and_then(|r| r.display_name.clone()).unwrap_or_else(|| "AI".to_string());
+        (gs.player.user_name.clone(), svc.game_status.clone(), ai_name)
     };
 
     tracing::info!("[FileFeed] 收到文本投喂");
@@ -395,8 +405,8 @@ pub async fn feed_text(
     };
 
     let prompt = format!(
-        "用户（名字是\"{}\"）给你看了一段文字内容：\n\n{}\n\n请用你的角色身份简短回应这段内容。",
-        user_name, truncated
+        "{} 给 {} 看了一段文字：\n\n{}\n\n请用你的角色身份简短回应这段内容。",
+        user_name, ai_name, truncated
     );
 
     let mut gs = game_status.lock().await;
@@ -413,22 +423,7 @@ pub async fn feed_text(
     .map_err(|e| format!("添加投喂文本台词失败: {}", e))?;
     tracing::info!("[FileFeed] 文本投喂已注入上下文, 长度: {}", truncated.len());
 
-    // 拉起 AI 回复
-    let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm)
-        .await
-        .ok_or_else(|| "LLM 未配置".to_string())?;
-    let concurrency = AppConfig::load(&app).map(|c| c.consumers as usize).unwrap_or(1).max(1);
-    let gs = { let svc = state.ai_service.lock().await; svc.game_status.clone() };
-    let deps = GeneratorDeps {
-        app: app.clone(), db: state.db.clone(), game_status: gs,
-        processor: state.chat.processor.clone(), translator: state.chat.translator.clone(),
-        llm, concurrency, god_agent: state.god_agent.clone(), suppress_thinking: false,
-    };
-    let gen_lock = state.generation_lock.clone();
-    tokio::spawn(async move {
-        let _lock = gen_lock.lock().await;
-        let _ = MessageGenerator::new(deps).process_message(None).await;
-    });
+    let _ = trigger_ai_response(app).await;
 
     Ok(())
 }
