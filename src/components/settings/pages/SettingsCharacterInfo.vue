@@ -326,7 +326,8 @@ const schemas: Record<string, FieldSchema[]> = {
         {
           label: '英语',
           value: 'en',
-          visibleIf: (s) => s.tts_type === 'gsv' || s.tts_type === 'opentts',
+          visibleIf: (s) =>
+            s.tts_type === 'gsv' || s.tts_type === 'opentts' || s.tts_type === 'sbv2',
         },
         {
           label: '韩语',
