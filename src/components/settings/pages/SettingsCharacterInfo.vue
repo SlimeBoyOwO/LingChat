@@ -312,6 +312,7 @@ const schemas: Record<string, FieldSchema[]> = {
         { label: 'gsv', value: 'gsv' },
         { label: 'aivis', value: 'aivis' },
         { label: 'opentts', value: 'opentts' },
+        { label: 'indextts2', value: 'indextts2' },
       ],
     },
 
@@ -321,13 +322,13 @@ const schemas: Record<string, FieldSchema[]> = {
       type: 'select',
       realtime: true,
       options: [
-        { label: '日语', value: 'ja' },
+        { label: '日语', value: 'ja', visibleIf: (s) => s.tts_type !== 'indextts2' },
         { label: '中文', value: 'zh' },
         {
           label: '英语',
           value: 'en',
           visibleIf: (s) =>
-            s.tts_type === 'gsv' || s.tts_type === 'opentts' || s.tts_type === 'sbv2',
+            ['gsv', 'opentts', 'sbv2', 'indextts2'].includes(s.tts_type),
         },
         {
           label: '韩语',
