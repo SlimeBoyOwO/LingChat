@@ -405,7 +405,7 @@ pub async fn feed_text(
     };
 
     let prompt = format!(
-        "{} 给 {} 看了一段文字：\n\n{}\n\n请用你的角色身份简短回应这段内容。",
+        "{} 给 {} 看了一段文字：\n\n{}\n\n",
         user_name, ai_name, truncated
     );
 
