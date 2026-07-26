@@ -11,7 +11,7 @@
 //!   4. Synthesize a short phrase and write the WAV bytes.
 //!
 //! Usage:
-//!     local_tts_smoke <deberta.onnx> <tokenizer.json> \
+//!     sbv2_local_smoke <deberta.onnx> <tokenizer.json> \
 //!                      <voice_model.onnx> <style_vectors.json> \
 //!                      <output.wav> [text] [speaker_id]
 //!
@@ -59,7 +59,7 @@ fn main() {
         eprintln!(
             "usage: {} <deberta.onnx> <tokenizer.json> <voice_model.onnx> \
              <style_vectors.json> <output.wav> [text] [speaker_id]",
-            args.first().map(|s| s.as_str()).unwrap_or("local_tts_smoke")
+            args.first().map(|s| s.as_str()).unwrap_or("sbv2_local_smoke")
         );
         std::process::exit(2);
     }

@@ -1,5 +1,6 @@
 ﻿// Tauri commands exposing the local TTS engine to the frontend.
 
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -80,6 +81,28 @@ pub async fn tts_local_list_installed(
     })
 }
 
+/// Copy a downloaded shared asset into its canonical location under
+/// `assets/deberta/`. Used for the DeBERTa model and tokenizer so the local
+/// TTS engine finds them via `LocalTtsPaths::deberta_dir()`. Returns the
+/// destination path on success.
+pub fn install_shared_asset(
+    paths: &LocalTtsPaths,
+    src: &Path,
+    asset_id: &str,
+) -> Result<PathBuf, String> {
+    let (target, label) = match asset_id {
+        "deberta" => (paths.deberta_dir().join("deberta.onnx"), "DeBERTa model"),
+        "deberta-tokenizer" => (paths.deberta_dir().join("tokenizer.json"), "DeBERTa tokenizer"),
+        other => return Err(format!("unknown shared asset: {other}")),
+    };
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("create dir {}: {e}", parent.display()))?;
+    }
+    std::fs::copy(src, &target)
+        .map_err(|e| format!("copy {label}: {e}"))?;
+    Ok(target)
+}
 fn default_voice_id(
     _inspected: &archive::InspectedPackage,
     src: &std::path::Path,
@@ -112,27 +135,61 @@ pub async fn tts_local_import_from_path(
     state: State<'_, LocalTtsState>,
     path: String,
     voice_id: Option<String>,
+    asset_id: Option<String>,
 ) -> Result<ImportResult, String> {
-    let src = PathBuf::from(&path);
-    if !src.exists() {
-        return Err(format!("path not found: {path}"));
+    let (src, cleanup_after_import) =
+        super::import_bridge::prepare_file_import_source(&app, &path).await?;
+
+    let result: std::result::Result<ImportResult, String> = async {
+        if let Some(asset_id) = asset_id {
+            // Shared-asset route (DeBERTa model / tokenizer): bypasses the
+            // voice pipeline and lands in `assets/deberta/`.
+            let installed = install_shared_asset(&state.paths, &src, &asset_id)?;
+            let bytes = std::fs::metadata(&installed)
+                .map(|m| m.len())
+                .unwrap_or(0);
+            if state.paths.asset_present("deberta") {
+                let _ = state.engine.init(&state.paths).await;
+            }
+            let _ = app.emit("tts://install-complete", &asset_id);
+            return Ok(ImportResult {
+                asset_id: asset_id.clone(),
+                voice_id: None,
+                path: installed.to_string_lossy().into_owned(),
+                bytes,
+                message: "shared asset imported".into(),
+            });
+        }
+
+        // Voice route: existing pipeline with SAF staging applied upstream.
+        if !src.exists() {
+            return Err(format!("path not found: {}", src.display()));
+        }
+        let inspected = archive::inspect_package(&src)?;
+        let voice_id = match voice_id {
+            Some(v) => v,
+            None => default_voice_id(&inspected, &src),
+        };
+        let installed =
+            archive::install_inspected(&inspected, &src, &state.paths, &voice_id)?;
+        let bytes = std::fs::metadata(&installed)
+            .map(|m| m.len())
+            .unwrap_or(0);
+        let _ = app.emit("tts://install-complete", &voice_id);
+        Ok(ImportResult {
+            asset_id: voice_id.clone(),
+            voice_id: Some(voice_id),
+            path: installed.to_string_lossy().into_owned(),
+            bytes,
+            message: "imported".into(),
+        })
     }
-    let inspected = archive::inspect_package(&src)?;
-    let voice_id = match voice_id {
-        Some(v) => v,
-        None => default_voice_id(&inspected, &src),
-    };
-    let installed =
-        archive::install_inspected(&inspected, &src, &state.paths, &voice_id)?;
-    let bytes = std::fs::metadata(&installed).map(|m| m.len()).unwrap_or(0);
-    let _ = app.emit("tts://install-complete", &voice_id);
-    Ok(ImportResult {
-        asset_id: voice_id.clone(),
-        voice_id: Some(voice_id),
-        path: installed.to_string_lossy().into_owned(),
-        bytes,
-        message: "imported".into(),
-    })
+    .await;
+
+    if cleanup_after_import {
+        let _ = tokio::fs::remove_file(&src).await;
+    }
+    result
 }
 
 #[tauri::command]
@@ -309,4 +366,46 @@ pub async fn tts_local_synthesize_preview(
         length_scale,
     };
     state.engine.synthesize(req).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_paths(root: &std::path::Path) -> LocalTtsPaths {
+        LocalTtsPaths {
+            root: root.join("models").join("tts-local"),
+            assets: root.join("models").join("tts-local").join("assets"),
+            voices: root.join("models").join("tts-local").join("voices"),
+            cache: root.join("cache"),
+        }
+    }
+
+    #[test]
+    fn shared_deberta_import_uses_expected_file_names() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        let source = temp.path().join("downloaded.bin");
+        std::fs::write(&source, b"fixture").unwrap();
+
+        let model = install_shared_asset(&paths, &source, "deberta").unwrap();
+        assert_eq!(model, paths.deberta_dir().join("deberta.onnx"));
+        assert_eq!(std::fs::read(model).unwrap(), b"fixture");
+
+        let tokenizer =
+            install_shared_asset(&paths, &source, "deberta-tokenizer").unwrap();
+        assert_eq!(tokenizer, paths.deberta_dir().join("tokenizer.json"));
+        assert_eq!(std::fs::read(tokenizer).unwrap(), b"fixture");
+    }
+
+    #[test]
+    fn shared_asset_import_rejects_unknown_asset() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        let source = temp.path().join("downloaded.bin");
+        std::fs::write(&source, b"fixture").unwrap();
+
+        let error = install_shared_asset(&paths, &source, "voice-model").unwrap_err();
+        assert!(error.contains("unknown shared asset"));
+    }
 }

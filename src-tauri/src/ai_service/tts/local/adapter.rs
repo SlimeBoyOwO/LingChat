@@ -8,8 +8,7 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use serde_json::{json, Value as JsonValue};
 
-use super::engine::{LocalTtsEngine, SynthesizeRequest};
-use super::paths::LocalTtsPaths;
+use sbv2_local_tts::{LocalTtsEngine, LocalTtsPaths, SynthesizeRequest};
 use crate::ai_service::tts::provider::TtsAdapter;
 
 pub struct LocalTtsAdapter {

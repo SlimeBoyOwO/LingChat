@@ -106,9 +106,8 @@ pub fn run() {
     builder.setup(|app| {
             utils::log_bridge::set_app_handle(app.handle().clone());
 
-            // Initialize the cached data directory eagerly so any code that needs
-            // it (e.g. LocalTtsPaths::resolve, which delegates to get_data_dir)
-            // is safe to call here, before init::initialize runs.
+            // Initialize the cached data directory eagerly so it can be passed
+            // into the standalone local TTS crate before init::initialize runs.
             init::static_copy::init_data_dir(&app.handle());
 
             app.manage(api::pet::HitTestState::default());
@@ -118,8 +117,11 @@ pub fn run() {
             // Local TTS (SBV2 in-process). Resolves paths, ensures
             // the on-disk layout, and auto-inits the engine if a
             // DeBerta pair is already installed.
-            let tts_paths = ai_service::tts::local::paths::LocalTtsPaths::resolve(&app.handle())
-                .map_err(|e| format!("LocalTtsPaths::resolve: {e}"))?;
+            let tts_paths = ai_service::tts::local::paths::LocalTtsPaths::resolve(
+                &app.handle(),
+                init::static_copy::get_data_dir().clone(),
+            )
+            .map_err(|e| format!("LocalTtsPaths::resolve: {e}"))?;
             tts_paths.ensure()
                 .map_err(|e| format!("LocalTtsPaths::ensure: {e}"))?;
             let local_state = ai_service::tts::local::LocalTtsState::new(tts_paths);

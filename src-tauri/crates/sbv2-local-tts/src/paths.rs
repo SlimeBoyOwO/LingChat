@@ -5,7 +5,7 @@
 // - `<data_root>/models/tts-local/voices/`  one subdir per voice
 // - `<app_cache>/tts-local-cache/`          temp (decompression, downloads)
 //
-// `data_root` is resolved by `crate::init::static_copy::get_data_dir()`:
+// `data_root` is supplied by the host application:
 // - Desktop debug:    `<project_root>/data/`
 // - Desktop release:  `<exe_dir>/data/` (portable build)
 // - Android:          app external storage (`/storage/emulated/0/Android/data/<pkg>/files/`)
@@ -35,8 +35,11 @@ pub struct VoiceInstallInfo {
 }
 
 impl LocalTtsPaths {
-    pub fn resolve(app: &AppHandle) -> std::result::Result<Self, String> {
-        let data_root = resolve_models_root(app)?;
+    pub fn resolve(
+        app: &AppHandle,
+        desktop_data_root: PathBuf,
+    ) -> std::result::Result<Self, String> {
+        let data_root = resolve_models_root(app, desktop_data_root)?;
         let root = data_root.join("models").join("tts-local");
         let assets = root.join("assets");
         let voices = root.join("voices");
@@ -112,10 +115,13 @@ impl LocalTtsPaths {
 ///
 /// On Android the root is the app's external files dir so users can sideload
 /// voice models via `adb push` without enabling debuggable builds. Every other
-/// platform delegates to `crate::init::static_copy::get_data_dir()`, which on
-/// desktop resolves to `<project_root>/data/` (debug) or `<exe_dir>/data/`
-/// (release), and to the iOS sandbox on iOS.
-fn resolve_models_root(_app: &AppHandle) -> std::result::Result<PathBuf, String> {
+/// platform uses the data root supplied by the host application. On desktop
+/// this normally resolves to `<project_root>/data/` (debug) or
+/// `<exe_dir>/data/` (release), and to the iOS sandbox on iOS.
+fn resolve_models_root(
+    _app: &AppHandle,
+    _desktop_data_root: PathBuf,
+) -> std::result::Result<PathBuf, String> {
     // Android keeps the external app-scoped storage so users can still
     // sideload models via `adb push` without enabling debuggable builds.
     #[cfg(target_os = "android")]
@@ -128,13 +134,12 @@ fn resolve_models_root(_app: &AppHandle) -> std::result::Result<PathBuf, String>
             .map_err(|e| format!("android external files dir: {e}"));
     }
 
-    // Every other platform reuses the same `data` directory the rest of
-    // the app writes to (see `crate::init::static_copy`). On desktop that
-    // puts models next to the executable (release) or under the project
-    // (debug) instead of inside `%APPDATA%`.
+    // Every other platform reuses the `data` directory supplied by the host.
+    // On desktop that puts models next to the executable (release) or under
+    // the project (debug) instead of inside `%APPDATA%`.
     #[cfg(not(target_os = "android"))]
     {
-        Ok(crate::init::static_copy::get_data_dir().clone())
+        Ok(_desktop_data_root)
     }
 }
 
