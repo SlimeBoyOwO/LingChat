@@ -25,7 +25,10 @@ pub fn built_in_registry(
             .into_iter()
             .map(|definition| definition.function.name),
     )?;
-    permissions.initialize_characters(&crate::api::data_dir(), role_names)?;
+    permissions.initialize_characters(
+        &crate::api::data_dir(),
+        role_names.into_iter().map(|(_, name)| name),
+    )?;
     registry.set_permissions(permissions);
     Ok(registry)
 }
