@@ -49,8 +49,8 @@
 
         <!-- Content -->
         <div class="flex-1 overflow-hidden flex flex-row">
-          <!-- Sidebar -->
-          <div class="w-48 bg-black/10 flex flex-col gap-2 p-4 border-r border-white/10">
+          <!-- Sidebar (vertical scrollable for narrow viewports) -->
+          <div class="w-44 shrink-0 bg-black/10 flex flex-col gap-2 p-3 border-r border-white/10 overflow-y-auto tab-sidebar-scroll">
             <button
               v-for="tab in tabs"
               :key="tab.id"
@@ -576,6 +576,25 @@ const saveSettings = async () => {
 
 <style scoped>
 /* 表单控件 :focus 选中状态 */
+/* Vertical sidebar: thin custom scrollbar (Webkit + Firefox). */
+.tab-sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+.tab-sidebar-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.tab-sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.tab-sidebar-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+}
+.tab-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.32);
+}
+
 .form-control:focus {
   border-color: #79d9ff;
   background: rgba(0, 0, 0, 0.3);
