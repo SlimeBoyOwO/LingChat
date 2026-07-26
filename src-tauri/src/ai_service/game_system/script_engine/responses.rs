@@ -145,4 +145,9 @@ pub struct FreeDialoguePayload {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ScriptEndPayload {}
+pub struct ScriptEndPayload {
+    /// `false` when the script was torn down because of an error rather than
+    /// reaching its end. The frontend must not credit the player with an
+    /// adventure completion in that case.
+    pub completed: bool,
+}

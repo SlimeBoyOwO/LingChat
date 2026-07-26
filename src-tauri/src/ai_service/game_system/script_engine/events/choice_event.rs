@@ -23,12 +23,27 @@ pub struct ChoiceEvent {
 
 impl ChoiceEvent {
     fn from_event_data(data: &Value) -> Self {
+        let options: Vec<Value> = data
+            .get("options")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        // 选项级 `next` 不存在：只有 chapter_end 的 options 支持 next。
+        // 作者写了不会报错也不会生效，跳转直接失效，属于最容易踩的静默失败之一。
+        for (i, opt) in options.iter().enumerate() {
+            if let Some(next) = opt.get("next").and_then(|v| v.as_str()) {
+                tracing::warn!(
+                    "[ChoiceEvent] 第 {} 个选项写了 next: '{}'，但 choices 不支持选项级跳转，\
+                     该字段被忽略；请改用 set_var + chapter_end 的 branching",
+                    i + 1,
+                    next
+                );
+            }
+        }
+
         Self {
-            options: data
-                .get("options")
-                .and_then(|v| v.as_array())
-                .cloned()
-                .unwrap_or_default(),
+            options,
             allow_free: data
                 .get("allow_free")
                 .and_then(|v| v.as_bool())
@@ -48,11 +63,15 @@ impl ScriptEvent for ChoiceEvent {
             .map(|s| s.to_string())
             .collect();
 
-        // Set up oneshot channel and store sender (brief lock)
+        // Set up oneshot channel and store sender (brief lock).
+        // `choice_allow_free` lets `script_submit_input` route free-typed text here
+        // instead of rejecting it — without it an `allow_free: true` choice can
+        // never be resolved and the script blocks forever.
         let rx = {
             let (tx, rx) = tokio::sync::oneshot::channel();
             let mut ch = ctx.channels.lock().await;
             ch.choice_tx = Some(tx);
+            ch.choice_allow_free = self.allow_free;
             rx
         };
 
@@ -65,6 +84,9 @@ impl ScriptEvent for ChoiceEvent {
 
         // Await user choice — no locks held
         let user_choice = rx.await.map_err(|_| anyhow!("用户选择通道已关闭"))?;
+
+        // The choice is resolved; stop accepting free text on its behalf.
+        ctx.channels.lock().await.choice_allow_free = false;
 
         tracing::info!("[ChoiceEvent] 用户选择: {}", user_choice);
 

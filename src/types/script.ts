@@ -115,6 +115,8 @@ export interface ScriptChoiceEvent extends ScriptEvent {
 }
 export interface ScriptEndEvent extends ScriptEvent {
   type: 'script_end'
+  /** false 表示剧本是因为出错被中止的，不应记为完成 */
+  completed?: boolean
 }
 
 export interface ScriptErrorEvent extends ScriptEvent {

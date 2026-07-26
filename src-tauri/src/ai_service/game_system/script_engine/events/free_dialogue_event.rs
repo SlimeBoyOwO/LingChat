@@ -48,10 +48,15 @@ impl FreeDialogueEvent {
             .to_string();
 
         Self {
+            // 与 dialogue / ai_dialogue / modify_character 对齐。
+            // 原默认值是 "default"，而 get_role 只把字面量 "MAIN" 解析成主角，
+            // 其余值一律去 DB 查 script_role_key —— 从来没有角色叫 "default"，
+            // 所以省略 character 时必然报「角色 default 未在数据库中找到」。
+            // 官方 5 处 free_dialogue 都显式写了 character，改默认值不影响它们。
             character: data
                 .get("character")
                 .and_then(|v| v.as_str())
-                .unwrap_or("default")
+                .unwrap_or("MAIN")
                 .to_string(),
             hint: data
                 .get("hint")
