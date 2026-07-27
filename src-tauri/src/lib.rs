@@ -141,7 +141,7 @@ pub fn run() {
                 Some(local_tts_switch.clone()),
             ))?;
 
-            // 鍚姩鏃惰嚜鍔ㄦ竻鐞嗘湭琚紩鐢ㄧ殑瀛ょ珛璇煶鏂囦欢
+            // 启动时自动清理未被引用的孤立语音文件。
             match rt.block_on(init::voice_cleanup::cleanup_orphan_voice_files(
                 &db,
                 app.handle(),
@@ -206,7 +206,7 @@ pub fn run() {
                 ),
             ));
 
-            // 鏋勫缓涓婂笣 Agent锛堝浜哄璇濈紪鎺掑櫒锛?
+            // 构建上帝 Agent(多人对话编排器)。
             let god_agent = resolve_god_agent_provider(&app.handle())
                 .map(|llm| {
                     let config =
