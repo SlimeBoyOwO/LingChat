@@ -1349,7 +1349,18 @@ pub async fn editor_start_preview(
     }
 
     // 备份整个会话状态，并按「刚进游戏」的样子把试玩场次搭好
-    let session = PreviewSession::begin(&db, &data_dir, &game_status, &script).await?;
+    let mut session = PreviewSession::begin(&db, &data_dir, &game_status, &script).await?;
+
+    // 关 AI 试玩时，把共享的 chat.llm 槽位临时清空。RoleManager 与 chat.llm 是同一个
+    // Arc，持久记忆的后台压缩（check_and_trigger_auto_update）读到槽位为空会跳过，
+    // 否则 dry-run 期间仍会后台调 LLM 烧 token（issue #5）。ai_dialogue / free_dialogue
+    // 自己在 dry_run 时就出占位、根本不碰槽位，所以不受影响。开 AI 时不动。
+    if !use_llm {
+        let state = app.state::<AppState>();
+        let saved = crate::ai_service::llm::slot_snapshot(&state.chat.llm).await;
+        *state.chat.llm.write().await = None;
+        session.saved_llm = saved;
+    }
 
     // 快照托管给 AppState：试玩任务自然结束时还原一次，editor_stop_preview 兜底
     // 再 take 一次（为空即跳过）。这样无论「跑完 / 报错 / 被中止」哪条路，
@@ -1430,6 +1441,12 @@ pub struct PreviewSession {
     main_role_id: Option<i32>,
     current_role_id: Option<i32>,
     script_status: Option<Box<ScriptStatus>>,
+    /// 玩家名。begin 会按绑定角色卡覆盖它，必须单独存还原（scene 快照不含 player）
+    user_name: String,
+    /// 关 AI 试玩时，把共享的 chat.llm 槽位临时清空、把原来的客户端存这里。
+    /// 持久记忆的 check_and_trigger_auto_update 读到槽位为空会跳过 LLM 压缩，
+    /// 这样 dry-run 才真的不花 token（issue #5）。None 表示没动过槽位。
+    saved_llm: Option<Arc<crate::ai_service::llm::LlmClient>>,
 }
 
 impl PreviewSession {
@@ -1449,6 +1466,8 @@ impl PreviewSession {
             main_role_id: gs.main_role_id,
             current_role_id: gs.current_role_id,
             script_status: gs.script_status.clone().map(Box::new),
+            user_name: gs.player.user_name.clone(),
+            saved_llm: None,
         };
 
         // ---- 按「刚进游戏」的样子搭场次，对齐 init_game_status 的三件事 ----
@@ -1458,6 +1477,12 @@ impl PreviewSession {
         gs.main_role_id = Some(main_id);
         gs.current_role_id = Some(main_id);
         gs.onstage_role(main_id); // 不做这步立绘不会出现
+        // 玩家名（绑定角色卡里的 settings.user_name）。缺了它 %player% 替换为空、
+        // 前端玩家气泡也会显示空名（issue #8）。读不到就保持原值，不阻断试玩。
+        let uname = user_name_of(db, main_id).await;
+        if !uname.is_empty() {
+            gs.player.user_name = uname;
+        }
 
         // 人设 SYSTEM 台词。缺了它 role_manager 会警告「人设丢失」，
         // 而且 AI 对话会在没有人设的上下文里生成。
@@ -1485,16 +1510,28 @@ impl PreviewSession {
 
     /// 尽力还原，任何一步失败都只记日志 —— 收尾阶段再抛错没有接收方，
     /// 而且半途放弃只会让残留更多。
-    async fn restore(self, db: &DatabaseConnection, game_status: &Arc<Mutex<GameStatus>>) {
+    async fn restore(
+        self,
+        db: &DatabaseConnection,
+        game_status: &Arc<Mutex<GameStatus>>,
+        chat_llm: &crate::ai_service::llm::LlmSlot,
+    ) {
         let mut gs = game_status.lock().await;
         gs.line_list.truncate(self.line_len);
         gs.apply_snapshot(&self.scene);
         gs.main_role_id = self.main_role_id;
         gs.current_role_id = self.current_role_id;
         gs.script_status = self.script_status.map(|b| *b);
+        gs.player.user_name = self.user_name;
         // 台词表变短了，角色记忆要按新的列表重建，否则里面还留着试玩的内容
         if let Err(e) = gs.refresh_memories(db).await {
             tracing::warn!("[ScriptEditor] 还原后刷新记忆失败: {}", e);
+        }
+        drop(gs);
+        // 关 AI 试玩时把共享 LLM 槽位清空过（掐断持久记忆的后台压缩），现在还回去。
+        // 放在 refresh_memories 之后：还原记忆时槽位仍为空，记忆库会跳过，不会反触发 LLM。
+        if let Some(llm) = self.saved_llm {
+            *chat_llm.write().await = Some(llm);
         }
     }
 }
@@ -1517,7 +1554,8 @@ async fn apply_pending_restore(app: &AppHandle) {
     let state = app.state::<AppState>();
     let db = state.db.clone();
     let game_status = state.ai_service.lock().await.game_status.clone();
-    session.restore(&db, &game_status).await;
+    let chat_llm = state.chat.llm.clone();
+    session.restore(&db, &game_status, &chat_llm).await;
 }
 
 /// 试玩时 `MAIN` 应该解析成谁。
@@ -1623,6 +1661,20 @@ async fn role_name_of(db: &DatabaseConnection, id: i32) -> Option<String> {
         .map(|r| r.name)
 }
 
+/// 角色卡里写的玩家名（settings.user_name）。查不到或为空返回空串 ——
+/// 试玩用它显示玩家身份、替换 %player%，缺了只是显示空，不该阻断试玩（issue #8）。
+async fn user_name_of(db: &DatabaseConnection, id: i32) -> String {
+    RoleRepo::get_role_settings_by_id(db, &data_dir(), id)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|s| {
+            let n = s.user_name.trim().to_string();
+            if n.is_empty() { None } else { Some(n) }
+        })
+        .unwrap_or_default()
+}
+
 /// 试玩前的可行性检查，供编辑器在打开剧本时提前提示，而不是等作者点了才报错。
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1631,6 +1683,11 @@ pub struct PreviewReadiness {
     pub ok: bool,
     /// 试玩时 `MAIN` 会是谁；`None` 表示定不下来
     pub main_role_name: Option<String>,
+    /// MAIN 对应的 role_id；前端据此载入角色立绘/名字、设 mainRoleId（issue #8）
+    pub main_role_id: Option<i32>,
+    /// 绑定角色卡里写的玩家名（settings.user_name）；前端用它显示玩家身份、
+    /// 后端用它替换 %player%。空字符串表示该角色卡没写玩家名
+    pub user_name: String,
     /// 绑定角色目录名（独立剧本为空）
     pub bound_character_folder: String,
     /// `ok` 为 false 时给作者看的原因
@@ -1662,12 +1719,16 @@ pub async fn editor_preview_readiness(
             Some(id) => PreviewReadiness {
                 ok: true,
                 main_role_name: role_name_of(&db, id).await,
+                main_role_id: Some(id),
+                user_name: user_name_of(&db, id).await,
                 bound_character_folder: bound,
                 reason: None,
             },
             None => PreviewReadiness {
                 ok: false,
                 main_role_name: None,
+                main_role_id: None,
+                user_name: String::new(),
                 bound_character_folder: bound,
                 reason: Some(
                     "这个剧本没有绑定角色，当前也还没选定主角，试玩时 MAIN 会解析不到人。\
@@ -1682,12 +1743,16 @@ pub async fn editor_preview_readiness(
         Some(id) => Ok(PreviewReadiness {
             ok: true,
             main_role_name: role_name_of(&db, id).await,
+            main_role_id: Some(id),
+            user_name: user_name_of(&db, id).await,
             bound_character_folder: bound,
             reason: None,
         }),
         None => Ok(PreviewReadiness {
             ok: false,
             main_role_name: None,
+            main_role_id: None,
+            user_name: String::new(),
             reason: Some(format!(
                 "剧本绑定的角色「{}」不在角色库里，试玩时 MAIN 会解析不到人。\
                  请确认 game_data/characters/ 下有这个目录。",

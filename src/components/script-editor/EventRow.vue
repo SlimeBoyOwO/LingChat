@@ -16,19 +16,6 @@
       @click="store.selectedEvent = index"
     >
       <span
-        v-if="draggableRow"
-        class="handle"
-        title="拖动可以调整这条事件在章节里的位置"
-        >⠿</span
-      >
-      <span
-        v-else
-        class="handle handle-locked"
-        title="「章节结束」必须是最后一条，位置固定"
-        >⌁</span
-      >
-
-      <span
         class="badge"
         :style="{
           color: spec?.color,
@@ -96,8 +83,6 @@ import type { ScriptEventData } from '@/api/services/script-editor'
 const props = defineProps<{
   index: number
   event: ScriptEventData
-  /** 由 ChapterTimeline 决定：章节结束固定在末尾，不给拖动柄 */
-  draggableRow?: boolean
 }>()
 
 const store = useScriptEditorStore()
@@ -169,7 +154,6 @@ const highlighted = computed(() => {
   border: 1px solid transparent;
   border-radius: 8px;
   padding: 6px 9px;
-  cursor: pointer;
   transition: all 0.15s;
 }
 .evrow:hover {
@@ -198,25 +182,6 @@ const highlighted = computed(() => {
   background: rgba(255, 255, 255, 0.1);
 }
 
-/* 拖动柄常驻但很淡 —— 藏起来的话作者根本不知道这行能拖 */
-.handle {
-  flex: 0 0 auto;
-  cursor: grab;
-  font-size: 11px;
-  line-height: 1.7;
-  color: rgba(255, 255, 255, 0.18);
-  transition: color 0.15s;
-}
-.evrow:hover .handle {
-  color: var(--accent-color);
-}
-.handle-locked {
-  cursor: default;
-  color: rgba(255, 255, 255, 0.12);
-}
-.evrow:hover .handle-locked {
-  color: rgba(255, 255, 255, 0.2);
-}
 .act-del:hover {
   color: #fca5a5;
   background: rgba(248, 113, 113, 0.15);

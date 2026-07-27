@@ -22,6 +22,7 @@ import type {
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { useDialogStore } from '@/stores/modules/ui/dialog'
 import { firstVisibleIndex } from '@/composables/useEventFolding'
+import { eventQueue } from '@/core/events/event-queue'
 
 /** 撤销栈里的一帧：某个章节某一时刻的完整事件列表 */
 interface UndoFrame {
@@ -816,6 +817,12 @@ export const useScriptEditorStore = defineStore('script-editor', {
       } catch (e) {
         console.warn('停止试玩失败:', e)
       }
+      // 关键：必须在后端 stopPreview 返回之后再清一次。
+      // PreviewStage 的 watch 在 previewing=false 时已经 clear 过一次，但那次早于
+      // 后端试玩任务收尾——任务在 await 期间还会继续 emit 晚到的占位/旁白事件，
+      // 它们入队（队列已暂停不处理），等下次进自由对话 resume 时被消费，就串到
+      // 正常对话的首句（issue #2）。这里把晚到事件排空。
+      eventQueue.clear()
     },
 
     // ========================================================

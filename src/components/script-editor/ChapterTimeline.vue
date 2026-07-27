@@ -19,9 +19,15 @@
 
       <div
         class="draggable"
-        :class="{ ghost: isDragged(row) }"
+        :class="{
+          ghost: isDragged(row),
+          'drop-before':
+            dropAt === rowStart(row) && dragging !== null && !isDragged(row),
+        }"
         :draggable="canDrag(row)"
         @dragstart="startDrag(row, $event)"
+        @dragover.prevent="canDrag(row) && (dropAt = rowStart(row))"
+        @drop.prevent="finishDrag"
       >
         <!-- 复合块：默认折叠成一行 -->
         <div
@@ -33,11 +39,6 @@
             class="ghead"
             @click="toggle(row.key)"
           >
-            <span
-              class="handle"
-              title="拖动可以调整这一段在章节里的位置"
-              >⠿</span
-            >
             <span class="chev">›</span>
             <span class="badge-group">{{ row.label }}</span>
             <span class="etext">{{ row.summary }}</span>
@@ -68,7 +69,6 @@
           v-else
           :index="row.index"
           :event="row.event"
-          :draggable-row="canDrag(row)"
         />
       </div>
     </template>
@@ -282,6 +282,15 @@ const insert = (typeKey: string) => {
   background: var(--accent-color);
   box-shadow: 0 0 8px rgba(121, 217, 255, 0.6);
 }
+.draggable {
+  cursor: grab;
+}
+.draggable:active {
+  cursor: grabbing;
+}
+.draggable.drop-before {
+  box-shadow: inset 0 2px 0 var(--accent-color);
+}
 .draggable.ghost {
   opacity: 0.35;
 }
@@ -316,14 +325,6 @@ const insert = (typeKey: string) => {
 }
 .ghead:hover {
   background: rgba(255, 255, 255, 0.05);
-}
-.handle {
-  cursor: grab;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.3);
-}
-.ghead:hover .handle {
-  color: var(--accent-color);
 }
 .chev {
   width: 0.8rem;

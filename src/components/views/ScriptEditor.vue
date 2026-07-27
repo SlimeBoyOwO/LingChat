@@ -10,7 +10,7 @@
 
     <!-- 顶栏：与 SettingsNav 同构 -->
     <div class="snav">
-      <span class="logo">LingChat</span>
+      <span class="logo">LingChat 剧本编辑器</span>
       <nav ref="navEl">
         <div
           ref="indicatorEl"
@@ -51,7 +51,7 @@
       >
         ‹ 剧本列表
       </button>
-      <span v-else>剧本编辑器</span>
+      <span v-else>首页</span>
 
       <template v-if="store.detail">
         <span class="sep">›</span>
@@ -1881,12 +1881,14 @@ onUnmounted(() => {
 .char-card {
   align-items: center;
 }
+/* 圆形头像，与游戏配置的角色列表同一观感（CharacterCard） */
 .char-thumb {
   flex: 0 0 auto;
-  width: 40px;
-  height: 56px;
-  border-radius: 5px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
   overflow: hidden;
+  border: 1.5px solid rgba(121, 217, 255, 0.35);
   background:
     repeating-conic-gradient(rgba(255, 255, 255, 0.08) 0% 25%, transparent 0% 50%) 0 0 / 10px 10px;
 }
@@ -1894,7 +1896,7 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: top center; /* 立绘通常头在上方，裁顶比裁中间合理 */
+  object-position: top center; /* 立绘通常头在上方，圆形裁顶才能露出脸 */
 }
 .char-thumb-ph {
   display: flex;
@@ -1902,7 +1904,7 @@ onUnmounted(() => {
   justify-content: center;
   width: 100%;
   height: 100%;
-  font-size: 0.58rem;
+  font-size: 0.56rem;
   color: rgba(255, 255, 255, 0.35);
 }
 .char-info {

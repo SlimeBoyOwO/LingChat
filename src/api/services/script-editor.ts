@@ -298,6 +298,10 @@ export const importGlobalCharacter = (key: string, folder: string, withAvatar: b
 export interface PreviewReadiness {
   ok: boolean
   mainRoleName?: string
+  /** MAIN 对应的 role_id；前端据此载入立绘/名字、设 mainRoleId */
+  mainRoleId?: number
+  /** 绑定角色卡里的玩家名；前端用它显示玩家身份 */
+  userName: string
   boundCharacterFolder: string
   reason?: string
 }

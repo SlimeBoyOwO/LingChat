@@ -33,7 +33,11 @@
               store.previewUseLlm ? 'AI 已开启 · 按 token 计费' : 'AI 已关闭 · 出占位文本'
             }}</span
           >
-          <span class="tip">调试不会记入通关，也不会解锁后续羁绊冒险</span>
+          <span class="tip">
+            试玩为调试用：不记通关、不解锁羁绊冒险<span v-if="!store.previewUseLlm"
+              >、不消耗 token、不写持久记忆</span
+            >
+          </span>
           <button
             class="stop"
             title="Esc"
@@ -84,10 +88,14 @@ type GameSnapshot = {
   runningScript: typeof gameStore.runningScript
   presentRoleIds: number[]
   currentInteractRoleId: number | null
+  mainRoleId: number
+  userName: string
   currentLine: string
   currentStatus: typeof gameStore.currentStatus
   dialogHistory: typeof gameStore.dialogHistory
   command: string | null
+  /** 试玩会往角色缓存里塞剧本角色，退出时要还回原样，否则回自由对话立绘会串/消失 */
+  gameRoles: typeof gameStore.gameRoles
 }
 
 let snapshot: GameSnapshot | null = null
@@ -96,21 +104,26 @@ const captureGameState = (): GameSnapshot => ({
   runningScript: gameStore.runningScript,
   presentRoleIds: [...gameStore.presentRoleIds],
   currentInteractRoleId: gameStore.currentInteractRoleId,
+  mainRoleId: gameStore.mainRoleId,
+  userName: gameStore.userName,
   currentLine: gameStore.currentLine,
   currentStatus: gameStore.currentStatus,
   dialogHistory: [...gameStore.dialogHistory],
   command: gameStore.command,
+  gameRoles: { ...gameStore.gameRoles },
 })
 
 const restoreGameState = (s: GameSnapshot) => {
   gameStore.runningScript = s.runningScript
   gameStore.presentRoleIds = s.presentRoleIds
   gameStore.currentInteractRoleId = s.currentInteractRoleId
+  gameStore.mainRoleId = s.mainRoleId
+  gameStore.userName = s.userName
   gameStore.currentLine = s.currentLine
   gameStore.currentStatus = s.currentStatus
   gameStore.dialogHistory = s.dialogHistory
   gameStore.command = s.command
-  // gameRoles 是纯缓存（id → 角色信息），留着不会造成串味，下次用到还省一次请求
+  gameStore.gameRoles = s.gameRoles
 }
 
 /**
@@ -120,7 +133,7 @@ const restoreGameState = (s: GameSnapshot) => {
  */
 watch(
   () => store.previewing,
-  (on) => {
+  async (on) => {
     if (on) {
       snapshot = captureGameState()
       // 从干净的舞台开始，而不是继承主界面此刻的立绘和台词
@@ -128,6 +141,40 @@ watch(
       gameStore.dialogHistory = []
       gameStore.currentLine = ''
       gameStore.currentStatus = 'presenting'
+
+      // 试玩需要 runningScript 非空：choice 处理器要求它存在才会显示选项（issue #4）。
+      // 不复用 enterStoryMode：它有 bgMusicMode 等 UI 副作用，这里只要一个最小标记。
+      const scriptName = store.detail?.package.scriptName ?? ''
+      gameStore.runningScript = {
+        scriptName,
+        currentChapterName: '',
+        choices: [],
+        isRunning: true,
+        freeDialogueInfo: {
+          isFreeDialogue: false,
+          maxRounds: -1,
+          currentRound: 0,
+          endLine: '',
+        },
+      }
+
+      // 注入主角身份：羁绊剧本的 MAIN 来自绑定角色卡。不设的话玩家气泡空名、
+      // 立绘也不会出现（issue #8）。readiness 已在试玩前算好 mainRoleId / userName。
+      const r = store.readiness
+      if (r?.mainRoleId != null) {
+        const id = r.mainRoleId
+        gameStore.mainRoleId = id
+        gameStore.currentInteractRoleId = id
+        gameStore.presentRoleIds = [id]
+        if (r.userName) gameStore.userName = r.userName
+        // 预载主角的立绘/名字到 gameRoles，否则第一句台词前画面是空的
+        try {
+          await gameStore.getOrCreateGameRole(id)
+        } catch (e) {
+          console.warn('[ScriptEditor] 预载主角立绘失败:', e)
+        }
+      }
+
       eventQueue.resume()
     } else {
       // clear() 内部会把 paused 置回 true，所以不需要另外 pause
