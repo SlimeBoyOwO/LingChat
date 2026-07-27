@@ -30,7 +30,7 @@
   "plugins": {
     "updater": {
       "endpoints": ["https://github.com/SlimeBoyOwO/LingChat/releases/latest/download/latest.json"],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE2Rjc5NjkwNkY3OEM4RjMKUldUenlIaHZrSmIzcG9KdSttdllDcFVZTmk3dG9NVlhrWGFvUVdPTmNFZjRFMFVOQlVZd2pjamgK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk1NzE1Q0FDQUE5RDFBMjkKUldRcEdwMnFyRnh4bFJJOEVCMlJaQS93TWgzUUo5REUybUNBT083MHhxbVhla3BWZEw3TzhPOTcK",
       "windows": {
         "installMode": "passive"
       }
@@ -40,12 +40,12 @@
     "active": true,
     "targets": ["nsis", "dmg", "deb", "appimage"],
     "icon": [
-        "icons/32x32.png",
-        "icons/128x128.png",
-        "icons/128x128@2x.png",
-        "icons/icon.icns",
-        "icons/icon.ico",
-        "icons/icon.png"
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico",
+      "icons/icon.png"
     ],
     "createUpdaterArtifacts": true,
     "resources": {

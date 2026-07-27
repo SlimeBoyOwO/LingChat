@@ -31,6 +31,7 @@ export type UpdatePhase =
   | 'idle'
   | 'checking'
   | 'app-update-available'
+  | 'downloading'
   | 'complete'
   | 'error'
 
@@ -40,6 +41,7 @@ const phase = ref<UpdatePhase>('idle')
 const appVersion = ref('')
 const appReleaseNotes = ref('')
 const errorMessage = ref('')
+const downloadProgress = ref(0) // 0-100
 
 // 资源同步独立状态
 const resourceSyncInfo = ref<ResourceSyncInfo | null>(null)
@@ -79,25 +81,40 @@ export function useUpdater() {
     }
   }
 
-  /** 安装 app 更新并重启 */
+  /** 安装 app 更新并重启（带进度追踪） */
   async function installAppUpdate(): Promise<void> {
     try {
       const update = await check()
-      if (update?.available) {
-        await update.downloadAndInstall()
-        await relaunch()
+      if (!update?.available) {
+        errorMessage.value = '没有可用的更新'
+        phase.value = 'error'
+        return
       }
+
+      phase.value = 'downloading'
+      downloadProgress.value = 0
+
+      let contentLength: number | undefined
+      let downloaded = 0
+
+      await update.downloadAndInstall((event) => {
+        if (event.event === 'Started') {
+          contentLength = event.data.contentLength
+        } else if (event.event === 'Progress') {
+          downloaded += event.data.chunkLength
+          if (contentLength) {
+            downloadProgress.value = Math.round((downloaded / contentLength) * 100)
+          }
+        }
+      })
+
+      phase.value = 'complete'
+      await relaunch()
     } catch (e) {
       console.error('[Updater] App update install failed:', e)
       phase.value = 'error'
       errorMessage.value = String(e)
-      throw e
     }
-  }
-
-  /** 稍后提醒 — 关闭对话框 */
-  function remindLater() {
-    phase.value = 'idle'
   }
 
   /** 重置状态 */
@@ -166,9 +183,9 @@ export function useUpdater() {
     appVersion,
     appReleaseNotes,
     errorMessage,
+    downloadProgress,
     checkForUpdates,
     installAppUpdate,
-    remindLater,
     reset,
     // 资源同步
     resourceSyncInfo,

@@ -5,16 +5,37 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use tauri::{AppHandle, Manager};
+use tauri_plugin_store::StoreExt;
 
-use crate::ai_service::types::{CharacterSettings, LineAttributeExt, LineBase};
-use crate::db::entities::line::LineAttribute;
+use crate::ai_service::types::CharacterSettings;
+use crate::config;
 use crate::db::entities::role::RoleType;
 use crate::db::managers::role_repo::RoleRepo;
-use crate::utils::prompt::PromptRole;
 use crate::utils::system::open_folder;
 use crate::AppState;
 
 use super::{characters_dir, data_dir, game_data_dir};
+
+const LEGACY_VOICE_MODEL_FIELDS: &[&str] = &[
+    "sva_speaker_id",
+    "sbv2_name",
+    "sbv2_speaker_id",
+    "bv2_speaker_id",
+    "sbv2api_name",
+    "sbv2api_speaker_id",
+    "gsv_voice_text",
+    "gsv_voice_filename",
+    "gsv_gpt_model_name",
+    "gsv_sovits_model_name",
+    "aivis_model_uuid",
+    "opentts_voice",
+];
+
+fn remove_legacy_voice_model_fields(settings: &mut CharacterSettings) {
+    for key in LEGACY_VOICE_MODEL_FIELDS {
+        settings.extra.remove(*key);
+    }
+}
 
 // ========== 响应类型 ==========
 
@@ -433,71 +454,43 @@ pub fn get_avatar_file(
 #[tauri::command]
 pub async fn select_clothes(
     app: AppHandle,
+    role_id: i32,
     clothes_name: String,
 ) -> Result<serde_json::Value, String> {
     let state = app.state::<AppState>();
     let service = state.ai_service.lock().await;
+
     let db = &state.db;
 
-    let main_role_id = service
-        .game_status
-        .lock()
-        .await
-        .main_role_id
-        .ok_or_else(|| "角色不存在".to_string())?;
+    // 持久化该角色的服装选择（按角色 ID 存储）
+    if let Ok(store) = app.store(config::STORE_FILE) {
+        let key = config::session::last_clothes_key(role_id);
+        store.set(key, JsonValue::String(clothes_name.clone()));
+        let _ = store.save();
+    }
 
-    // 收集角色数据后释放借用，再调用 add_line
-    let (_, prompt) = {
-        let mut gs = service.game_status.lock().await;
-        let role = gs
-            .get_role(db, main_role_id)
-            .await
-            .map_err(|e| format!("获取角色失败: {}", e))?;
-
-        if role.current_clothes == clothes_name {
-            return Ok(serde_json::json!({"success": true, "message": "当前衣服已经是选中状态"}));
-        }
-
-        role.current_clothes = clothes_name.clone();
-
-        let ai_name = role.settings.ai_name.clone();
-        let prompt = format!(
-            "{}换上了新服装：{}，{}",
-            ai_name,
-            clothes_name,
-            role.settings
-                .clothes
-                .as_ref()
-                .and_then(|list| list.iter().find_map(|item| {
-                    if item.get("name").map(|s| s.as_str()) == Some(clothes_name.as_str()) {
-                        item.get("prompt").cloned()
-                    } else {
-                        None
-                    }
-                }))
-                .unwrap_or_default()
-        );
-
-        (ai_name, prompt)
-    };
-
+    // 在游戏内记录服装方便复原
     service
         .game_status
         .lock()
         .await
-        .add_line(
-            db,
-            LineBase {
-                content: PromptRole::Plot.build_prompt(&prompt),
-                attribute: LineAttributeExt(LineAttribute::User),
-                display_name: Some("旁白".to_string()),
-                ..Default::default()
-            },
-        )
-        .await
-        .map_err(|e| format!("添加台词失败: {}", e))?;
+        .role_manager
+        .set_character_clothes_override(role_id, clothes_name.clone());
 
-    Ok(serde_json::json!({"success": true, "message": "衣服更换成功"}))
+    // 委托给 GameStatus 统一处理换装逻辑（去重 + 旁白生成）
+    let switched = service
+        .game_status
+        .lock()
+        .await
+        .on_character_change_clothes(db, role_id, &clothes_name)
+        .await
+        .map_err(|e| format!("切换服装失败: {}", e))?;
+
+    if switched {
+        Ok(serde_json::json!({"success": true, "message": "衣服更换成功"}))
+    } else {
+        Ok(serde_json::json!({"success": true, "message": "当前衣服已经是选中状态"}))
+    }
 }
 
 #[tauri::command]
@@ -541,10 +534,12 @@ pub async fn update_role_settings(
         return Err(format!("角色目录不存在: {:?}", base_path));
     }
 
-    let _validated: CharacterSettings =
-        serde_json::from_value(settings.clone()).map_err(|e| format!("配置验证失败: {}", e))?;
+    let mut validated: CharacterSettings =
+        serde_json::from_value(settings).map_err(|e| format!("配置验证失败: {}", e))?;
+    remove_legacy_voice_model_fields(&mut validated);
 
-    let mut save_data = settings;
+    let mut save_data =
+        serde_json::to_value(&validated).map_err(|e| format!("配置规范化失败: {}", e))?;
     if let Some(obj) = save_data.as_object_mut() {
         obj.remove("character_id");
         obj.remove("resource_path");
@@ -556,8 +551,24 @@ pub async fn update_role_settings(
     let yaml_str = serde_yaml::to_string(&save_data).map_err(|e| format!("序列化失败: {}", e))?;
     fs::write(&yaml_path, yaml_str).map_err(|e| format!("保存失败: {}", e))?;
 
-    tracing::info!("角色 {} 配置已保存到 {:?}", role_id, yaml_path);
-    Ok(serde_json::json!({"success": true, "message": "设置已保存"}))
+    let runtime_updated = {
+        let service = state.ai_service.lock().await;
+        let mut gs = service.game_status.lock().await;
+        gs.role_manager
+            .update_role_voice_settings(role_id, &validated)
+    };
+
+    tracing::info!(
+        "角色 {} 配置已保存到 {:?}, runtime_updated={}",
+        role_id,
+        yaml_path,
+        runtime_updated,
+    );
+    Ok(serde_json::json!({
+        "success": true,
+        "message": "设置已保存",
+        "runtime_updated": runtime_updated,
+    }))
 }
 
 #[tauri::command]

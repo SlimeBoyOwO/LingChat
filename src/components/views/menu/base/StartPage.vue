@@ -1,0 +1,21 @@
+<template>
+  <div
+    class="z-5
+      absolute
+      top-0
+      bottom-0
+      left-0
+      right-0
+      border-[6vw]
+      border-transparent
+      flex
+      items-center
+      justify-center
+      md:justify-start
+      [transform-style:preserve-3d]
+      will-change-transform"
+    v-bind="$attrs"
+  >
+    <slot />
+  </div>
+</template>

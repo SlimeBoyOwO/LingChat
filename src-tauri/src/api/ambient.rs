@@ -2,6 +2,7 @@ use std::fs;
 use std::io::Write;
 
 use serde::{Deserialize, Serialize};
+use tauri_plugin_store::StoreExt;
 
 use super::{ambient_dir, validate_path_in_base};
 
@@ -125,4 +126,22 @@ pub fn delete_ambient(url: String) -> Result<Vec<AmbientItemInfo>, String> {
     fs::remove_file(&file_path).map_err(|e| format!("删除环境音文件失败: {}", e))?;
 
     get_ambient_list()
+}
+
+// ========== 会话状态持久化 ==========
+
+/// 持久化环境音轨道列表到 settings.json，下次启动时自动恢复。
+#[tauri::command]
+pub fn save_ambient_state(
+    app: tauri::AppHandle,
+    tracks_json: String,
+) -> Result<(), String> {
+    let store = app
+        .store(crate::config::STORE_FILE)
+        .map_err(|e| format!("打开存储失败: {e}"))?;
+    store.set(
+        crate::config::session::LAST_AMBIENT_TRACKS.to_string(),
+        serde_json::Value::String(tracks_json),
+    );
+    store.save().map_err(|e| format!("保存失败: {e}"))
 }

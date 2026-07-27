@@ -257,7 +257,7 @@ pub async fn select_scene(app: AppHandle, scene_id: Option<String>) -> Result<()
             Some(id) => serde_json::Value::String(id.clone()),
             None => serde_json::Value::Null,
         };
-        store.set(crate::config::keys::LAST_SCENE_ID.to_string(), val);
+        store.set(crate::config::session::LAST_SCENE_ID.to_string(), val);
         let _ = store.save();
     }
 
@@ -274,7 +274,7 @@ pub async fn set_scene_awareness(app: AppHandle, enabled: bool) -> Result<(), St
     // 持久化到 store
     if let Ok(store) = app.store(crate::config::STORE_FILE) {
         store.set(
-            crate::config::keys::SCENE_AWARENESS_ENABLED.to_string(),
+            crate::config::session::SCENE_AWARENESS_ENABLED.to_string(),
             serde_json::Value::Bool(enabled),
         );
         let _ = store.save();

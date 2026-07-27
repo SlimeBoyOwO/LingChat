@@ -28,7 +28,10 @@ pub async fn sync_roles_from_folder(db: &DatabaseConnection, data_dir: &Path) ->
             continue;
         }
         let folder_name = entry.file_name().to_string_lossy().to_string();
-        if folder_name == "avatar" {
+        // 跳过保留名与隐藏目录:
+        // - "avatar" 是资源子目录, 非角色
+        // - 以 "." 开头的是隐藏目录 (包括 .import_staging_* 临时解压目录, 避免被误注册为角色)
+        if folder_name == "avatar" || folder_name.starts_with('.') {
             continue;
         }
 

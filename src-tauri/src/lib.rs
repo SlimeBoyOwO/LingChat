@@ -9,7 +9,7 @@ mod lan_sync;
 mod manifest;
 mod migration;
 mod resource_sync;
-mod utils;
+pub mod utils;
 
 use std::sync::Arc;
 
@@ -23,7 +23,7 @@ use tracing_subscriber::Layer;
 
 use ai_service::god_agent::config::resolve_god_agent_provider;
 use ai_service::god_agent::GodAgentCore;
-use ai_service::llm::LlmClient;
+use ai_service::llm::LlmSlot;
 use ai_service::message_system::processor::MessageProcessor;
 use ai_service::screen_analyzer::{ScreenAnalyzer, ScreenAnalyzerConfig};
 use ai_service::service::SharedAIService;
@@ -38,8 +38,11 @@ impl FormatTime for LocalTimer {
 }
 
 pub struct ChatComponents {
-    pub llm: Option<Arc<LlmClient>>,
+    /// 聊天主 LLM 槽位（支持运行时热切换）。
+    /// 槽位本身始终存在，内部值可能为 None（表示尚未配置模型）。
+    pub llm: LlmSlot,
     pub processor: Arc<MessageProcessor>,
+    /// 翻译 LLM 槽位（支持运行时热切换）。
     pub translator: Arc<Translator>,
 }
 
@@ -50,7 +53,8 @@ pub struct ScreenshotCaptureState {
     pub overlay_label: Option<String>,
 }
 
-pub struct AppState {
+/// AppState 内部数据,init::initialize 完成后所有字段填充。
+pub struct InnerAppState {
     pub db: DatabaseConnection,
     pub ai_service: SharedAIService,
     pub chat: ChatComponents,
@@ -66,11 +70,82 @@ pub struct AppState {
     pub god_agent: Option<Arc<GodAgentCore>>,
 }
 
+/// AppState 在 Tauri 中 manage 的状态句柄。
+///
+/// **Android 修复**: Tauri 在 setup 闭包执行前就已经创建了 webview 窗口(见
+/// `tauri::app::setup()`),前端 JS 一旦加载就会立刻 invoke 命令。如果用户的 setup
+/// 闭包还在执行 init::initialize 时,前端命令 `init_game` 在 IPC runtime worker 上
+/// 被 dispatch 后调用 `state::<AppState>()` 就会 panic with
+/// "state() called before manage()"。
+///
+/// 解决方案: setup 闭包**最开始**就 manage 一个空壳 AppState,
+/// init::initialize 完成后用真实值填充。`ArcSwap` 提供 lock-free 读写,
+/// `Deref` 让所有原有访问代码保持不变。
+pub struct AppState {
+    inner: std::sync::OnceLock<InnerAppState>,
+}
+
+impl AppState {
+    pub fn empty() -> Self {
+        Self {
+            inner: std::sync::OnceLock::new(),
+        }
+    }
+
+    /// 填充 AppState。只能调用一次。
+    pub fn fill(&self, inner: InnerAppState) {
+        if self.inner.set(inner).is_err() {
+            panic!("AppState already filled (fill() must be called exactly once)");
+        }
+    }
+
+    /// 直接返回内部数据引用，用于 IDE 补全。
+    ///
+    /// rust-analyzer 无法解析 `State<AppState>` → `AppState` → `InnerAppState`
+    /// 的双重 Deref 链，字段补全会失效。此方法将第二步 Deref 替换为方法调用，
+    /// 通过 `state.data().ai_service` 即可正常触发补全。
+    pub fn data(&self) -> &InnerAppState {
+        self.inner
+            .get()
+            .expect("AppState accessed before initialization")
+    }
+}
+
+/// 桌面端：简单 Deref，rust-analyzer 可以正确解析。
+/// Android 上的竞态窗口极小（manage → fill 只隔几行代码），桌面端从不触发。
+#[cfg(not(target_os = "android"))]
+impl std::ops::Deref for AppState {
+    type Target = InnerAppState;
+    fn deref(&self) -> &Self::Target {
+        self.inner
+            .get()
+            .expect("AppState accessed before initialization")
+    }
+}
+
+/// Android：spin-loop 等待 fill 完成。
+/// Tauri 在 Android 上会在 setup 闭包执行前就创建 webview 窗口，
+/// 前端 JS 一旦加载就会立刻 invoke 命令。如果此时 panic，IPC worker
+/// 线程会把整个进程拖死，所以必须自旋等待而非直接 panic。
+#[cfg(target_os = "android")]
+impl std::ops::Deref for AppState {
+    type Target = InnerAppState;
+    fn deref(&self) -> &Self::Target {
+        loop {
+            if let Some(inner) = self.inner.get() {
+                return inner;
+            }
+            std::hint::spin_loop();
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,ling_chat_lib=info"))
-        .add_directive("sqlx=warn".parse().unwrap());
+        .add_directive("sqlx=warn".parse().unwrap())
+        .add_directive("genai=error".parse().unwrap());
 
     tracing_subscriber::registry()
         .with(
@@ -78,7 +153,14 @@ pub fn run() {
                 .with_timer(LocalTimer)
                 .with_filter(filter.clone()),
         )
-        .with(utils::log_bridge::LogBridgeLayer.with_filter(filter))
+        .with(utils::log_bridge::LogBridgeLayer.with_filter(filter.clone()))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(utils::file_logger::LogFileWriter)
+                .with_timer(LocalTimer)
+                .with_ansi(false)
+                .with_filter(filter),
+        )
         .init();
 
     #[allow(deprecated)]
@@ -103,7 +185,8 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init());
 
-    builder.setup(|app| {
+    builder
+        .setup(|app| {
             utils::log_bridge::set_app_handle(app.handle().clone());
 
             // Initialize the cached data directory eagerly so it can be passed
@@ -117,7 +200,7 @@ pub fn run() {
             // Local TTS (SBV2 in-process). Resolves paths, ensures
             // the on-disk layout, and auto-inits the engine if a
             // DeBerta pair is already installed.
-            let tts_paths = ai_service::tts::local::paths::LocalTtsPaths::resolve(
+            let tts_paths = ai_service::tts::local::LocalTtsPaths::resolve(
                 &app.handle(),
                 init::static_copy::get_data_dir().clone(),
             )
@@ -132,7 +215,13 @@ pub fn run() {
             let local_engine = local_state.engine.clone();
             let local_paths = local_state.paths.clone();
             app.manage(local_state);
+            app.manage(api::role_archive::RoleArchiveState::default());
 
+            // Android 修复: Tauri 在 setup 闭包执行前已创建 webview 窗口,前端 invoke
+            // 命令会在 IPC runtime worker 上立即 dispatch;如果 AppState 还没 manage
+            // 就会 panic "state() called before manage()"。所以 setup 一开始就 manage
+            // 一个空壳 AppState,init::initialize 完成后用真实值 fill。
+            app.manage(AppState::empty());
             let rt = tokio::runtime::Runtime::new()?;
             let (db, ai_service, chat) = rt.block_on(init::initialize(
                 app,
@@ -141,7 +230,35 @@ pub fn run() {
                 Some(local_tts_switch.clone()),
             ))?;
 
-            // 启动时自动清理未被引用的孤立语音文件。
+            // 初始化文件日志（从设置读取开关和保留天数）
+            {
+                let store = config::settings_store(app.handle()).ok();
+                let log_enable = store
+                    .as_ref()
+                    .and_then(|s| s.get(config::keys::LOG_ENABLE))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                let retention_days = store
+                    .as_ref()
+                    .and_then(|s| s.get(config::keys::LOG_RETENTION_DAYS))
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u32)
+                    .unwrap_or(10);
+
+                let data_dir = init::static_copy::get_data_dir();
+                utils::file_logger::init_logging(data_dir, log_enable);
+                utils::file_logger::cleanup_old_logs(retention_days);
+
+                // 初始化 LLM 请求体日志（默认关闭）
+                let llm_request_log_enable = store
+                    .as_ref()
+                    .and_then(|s| s.get(config::keys::LOG_LLM_REQUEST_BODY))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                utils::llm_request_logger::init(data_dir, llm_request_log_enable);
+            }
+
+            // 启动时自动清理未被引用的孤立语音文件
             match rt.block_on(init::voice_cleanup::cleanup_orphan_voice_files(
                 &db,
                 app.handle(),
@@ -186,12 +303,7 @@ pub fn run() {
             ));
 
             let screen_analyzer = {
-                let pconfig = config::proactive::ProactiveConfig::load(&app.handle());
-                let sa_config = ScreenAnalyzerConfig {
-                    vd_api_key: pconfig.vd_api_key,
-                    vd_base_url: pconfig.vd_base_url,
-                    vd_model: pconfig.vd_model,
-                };
+                let sa_config = ScreenAnalyzerConfig::resolve(&app.handle());
                 std::sync::Arc::new(tokio::sync::Mutex::new(ScreenAnalyzer::new(sa_config)))
             };
 
@@ -206,29 +318,30 @@ pub fn run() {
                 ),
             ));
 
-            // 构建上帝 Agent(多人对话编排器)。
-            let god_agent = resolve_god_agent_provider(&app.handle())
-                .map(|llm| {
-                    let config =
-                        ai_service::god_agent::config::GodAgentConfig::load(&app.handle());
-                    Arc::new(GodAgentCore::new(Arc::new(llm), config))
-                });
-
-            app.manage(AppState {
-                db,
-                ai_service,
-                chat,
-                script_channels,
-                generation_lock,
-                proactive_system: Some(proactive),
-                achievement_manager,
-                screen_analyzer,
-                screenshot_capture,
-                auto_save_manager: auto_save_manager.clone(),
-                god_agent,
+            // 构建上帝 Agent（多人对话编排器）—— 使用独立槽位以支持热切换
+            let god_agent = resolve_god_agent_provider(&app.handle()).map(|llm| {
+                let config = ai_service::god_agent::config::GodAgentConfig::load(&app.handle());
+                let slot: LlmSlot =
+                    std::sync::Arc::new(tokio::sync::RwLock::new(Some(Arc::new(llm))));
+                Arc::new(GodAgentCore::new(slot, config))
             });
 
-
+            {
+                let state = app.state::<AppState>();
+                state.fill(InnerAppState {
+                    db,
+                    ai_service,
+                    chat,
+                    script_channels,
+                    generation_lock,
+                    proactive_system: Some(proactive),
+                    achievement_manager,
+                    screen_analyzer,
+                    screenshot_capture,
+                    auto_save_manager: auto_save_manager.clone(),
+                    god_agent,
+                });
+            }
             // Defer DeBerta load until the app body is mounted; the
             // LocalTtsAdapter's lazy bootstrap still runs if a chat
             // arrives before this finishes, so first-message latency is
@@ -362,16 +475,21 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             utils::log_bridge::get_log_history,
-            config::get_settings_tree,
-            config::save_settings,
-            config::get_setting_by_key,
-            config::select_file,
-            config::list_llm_providers,
-            config::save_llm_provider,
-            config::delete_llm_provider,
-            config::set_llm_role,
-            config::test_llm_provider,
-            config::list_llm_models,
+            api::settings::get_settings_tree,
+            api::settings::save_settings,
+            api::settings::get_setting_by_key,
+            api::settings::select_file,
+            api::settings::list_llm_providers,
+            api::settings::save_llm_provider,
+            api::settings::delete_llm_provider,
+            api::settings::set_llm_role,
+            api::settings::switch_llm,
+            api::settings::test_llm_provider,
+            api::settings::list_llm_models,
+            api::font::list_system_fonts,
+            api::font::import_font,
+            api::font::list_imported_fonts,
+            api::font::delete_imported_font,
             api::character::get_character_list,
             api::character::get_role_info,
             api::character::get_role_settings,
@@ -394,13 +512,16 @@ pub fn run() {
             api::music::get_music_file,
             api::music::upload_music,
             api::music::delete_music,
+            api::music::save_bgm_state,
             api::ambient::get_ambient_list,
             api::ambient::upload_ambient,
             api::ambient::delete_ambient,
+            api::ambient::save_ambient_state,
             api::asset::get_asset_base64,
             api::asset::get_voice_audio,
             api::game::init_game,
             api::game::select_character,
+            api::game::clear_conversation,
             api::game::reactivate_tts,
             api::game::clear_tts_cache,
             api::game::update_voice_lang,
@@ -410,6 +531,8 @@ pub fn run() {
             api::game::notify_player_entry,
             api::chat::send_chat_message,
             api::chat::rollback_conversation,
+            api::chat::feed_image,
+            api::chat::feed_text,
             api::screenshot::start_screenshot,
             api::screenshot::get_overlay_data,
             api::screenshot::confirm_screenshot,
@@ -462,7 +585,20 @@ pub fn run() {
             ai_service::tts::local::commands::tts_local_delete_voice,
             ai_service::tts::local::commands::tts_local_import_style_vectors,
             ai_service::tts::local::commands::tts_local_synthesize_preview,
+            api::role_archive::import_role,
+            api::role_archive::import_role_from_path,
+            api::role_archive::cancel_role_import,
+            api::role_archive::rescan_roles,
+            api::role_archive::export_role,
+            api::role_archive::export_role_to_path,
+            exit_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// 前端确认关闭后调用，终止整个 Tauri 进程。
+#[tauri::command]
+fn exit_app(app: tauri::AppHandle) {
+    app.exit(0);
 }

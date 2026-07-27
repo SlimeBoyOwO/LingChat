@@ -1,11 +1,13 @@
 <template>
   <div
     @click="handleDialogueClick"
-    class="relative flex items-center justify-center w-full h-full z-30 cursor-pointer transition-all duration-300 ease-out"
+    class="relative flex items-center justify-center w-full z-30 cursor-pointer transition-all duration-300 ease-out"
     :class="isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 pointer-events-none'"
   >
     <div
-      class="relative w-[85%] max-h-[calc(72px*var(--pet-ui-scale,1))] rounded-[calc(20px*var(--pet-ui-scale,1))] px-[calc(18px*var(--pet-ui-scale,1))] py-[calc(6px*var(--pet-ui-scale,1))] text-white backdrop-blur-xl backdrop-saturate-200 border bg-neutral-950/50 border-white/10 transition-all duration-300 hover:bg-neutral-950/65 hover:scale-[1.02] hover:-translate-y-0.2 hover:border-white/20 [text-shadow:0_1px_4px_rgba(0,0,0,0.5)]"
+      ref="bubbleRef"
+      class="relative w-[85%] rounded-[calc(20px*var(--pet-ui-scale,1))] px-[calc(18px*var(--pet-ui-scale,1))] py-[calc(6px*var(--pet-ui-scale,1))] text-white backdrop-blur-xl backdrop-saturate-200 border bg-neutral-950/50 border-white/10 transition-all duration-300 hover:bg-neutral-950/65 hover:scale-[1.02] hover:-translate-y-0.2 hover:border-white/20 [text-shadow:0_1px_4px_rgba(0,0,0,0.5)]"
+      :style="{ maxHeight: `calc(var(--dialog-h) - 20px)` }"
     >
       <div
         class="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-0 h-0 border-l-10 border-l-transparent border-r-10 border-r-transparent border-t-white/10 drop-shadow-md"
@@ -23,7 +25,8 @@
 
       <div
         ref="textareaRef"
-        class="text-[calc(15px*var(--pet-ui-scale,1))] leading-snug font-medium overflow-y-auto max-h-[calc(40px*var(--pet-ui-scale,1))] whitespace-pre-line [text-shadow:0_0_3px_rgba(0,0,0,0.9),0_1px_4px_rgba(0,0,0,0.5)]"
+        class="text-[calc(15px*var(--pet-ui-scale,1))] leading-snug font-medium overflow-y-auto whitespace-pre-line [text-shadow:0_0_3px_rgba(0,0,0,0.9),0_1px_4px_rgba(0,0,0,0.5)]"
+        :style="{ maxHeight: `calc(var(--dialog-h) - 52px)` }"
       ></div>
     </div>
   </div>
@@ -60,6 +63,7 @@ const handleDialogueClick = () => {
 }
 
 const textareaRef = ref<HTMLElement | null>(null)
+const bubbleRef = ref<HTMLElement | null>(null)
 
 const { startTyping, stopTyping, isTyping } = useTypeWriter(
   textareaRef,
@@ -97,6 +101,7 @@ function continueDialog(isPlayerTrigger: boolean): boolean {
 defineExpose({
   continueDialog,
   isTyping,
+  bubbleRef,
 })
 </script>
 

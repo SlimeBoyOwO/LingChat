@@ -7,23 +7,24 @@ use sea_orm::DatabaseConnection;
 
 use crate::ai_service::game_system::memory_builder::MemoryBuilder;
 use crate::ai_service::game_system::persistent_memory_system::PersistentMemorySystem;
-use crate::ai_service::llm::LlmClient;
+use crate::ai_service::llm::LlmSlot;
 use crate::ai_service::tts::VoiceMaker;
-use crate::ai_service::tts::local::engine::LocalTtsEngine;
-use crate::ai_service::tts::local::paths::LocalTtsPaths;
+use crate::ai_service::tts::local::{LocalTtsEngine, LocalTtsPaths};
 use crate::ai_service::types::{CharacterSettings, GameLine, GameMemoryBank, GameRole, LlmMessage};
 use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
 use crate::db::managers::memory_repo::MemoryRepo;
 use crate::db::managers::role_repo::RoleRepo;
+use crate::utils::path::resolve_character_path;
 
 /// 角色运行时管理器：维护当前活跃角色的内存状态。
 pub struct GameRoleManager {
     pub loaded_roles: HashMap<i32, GameRole>,
     data_dir: PathBuf,
 
-    /// LLM 客户端（迟注入）。MemoryBank 压缩引擎依赖此字段。
-    llm: Option<Arc<LlmClient>>,
+    /// LLM 客户端槽位（支持运行时热切换）。MemoryBank 压缩引擎依赖此字段。
+    /// 槽位本身始终存在，内部值为 None 时表示尚未配置模型。
+    llm: LlmSlot,
     /// 每个角色的 MemoryBank 后台压缩引擎（惰性构造）。
     memory_bank_systems: HashMap<i32, PersistentMemorySystem>,
     /// TTS 引擎配置（适配器 URL、音频格式等）。
@@ -40,12 +41,14 @@ pub struct GameRoleManager {
     memory_update_interval: u32,
     /// 摘要时保留的最近消息数（来自 `AppConfig::memory_recent_window`）。
     memory_recent_window: u32,
+    /// 角色服装覆盖（session store → register_role_by_id 时优先读取）
+    clothes_overrides: HashMap<i32, String>,
 }
 
 impl GameRoleManager {
     pub fn new(
         data_dir: PathBuf,
-        llm: Option<Arc<LlmClient>>,
+        llm: LlmSlot,
         tts_config: TtsConfig,
         local_tts_engine: Option<Arc<LocalTtsEngine>>,
         local_tts_paths: Option<LocalTtsPaths>,
@@ -66,6 +69,7 @@ impl GameRoleManager {
             use_persistent_memory,
             memory_update_interval,
             memory_recent_window,
+            clothes_overrides: HashMap::new(),
         }
     }
 
@@ -79,6 +83,15 @@ impl GameRoleManager {
     ) {
         self.local_tts_engine = engine;
         self.local_tts_paths = paths;
+    }
+
+    pub fn set_clothes_overrides(&mut self, overrides: HashMap<i32, String>) {
+        self.clothes_overrides = overrides;
+    }
+
+    pub fn set_character_clothes_override(&mut self, role_id: i32, clothes: String) {
+        self.clothes_overrides.insert(role_id, clothes);
+
     }
 
     /// 获取角色；若未加载则从 DB 惰性注册。
@@ -154,12 +167,32 @@ impl GameRoleManager {
             self.local_tts_switch.as_ref(),
         );
 
+        tracing::info!(
+            "角色的服装各个优先级的设置如下：{}, {}, {}",
+            self.clothes_overrides
+                .get(&role.id)
+                .map(|s| s.as_str())
+                .unwrap_or("None"),
+            settings.clothes_name.as_deref().unwrap_or("None"),
+            "default"
+        );
+
+        // 服装优先级：session store 覆盖 → settings.yml 默认 → "default"
+        let clothes = self
+            .clothes_overrides
+            .get(&role.id)
+            .cloned()
+            .or_else(|| settings.clothes_name.clone())
+            .unwrap_or_else(|| "default".into());
+
+        tracing::info!("角色 {} 的服装设置为：{}", role.id, clothes);
+
         let new_role = GameRole {
             role_id: Some(role.id),
             display_name: Some(display_name),
             settings,
             resource_path,
-            current_clothes: "default".into(),
+            current_clothes: clothes,
             voice_maker,
             ..Default::default()
         };
@@ -299,10 +332,9 @@ impl GameRoleManager {
 
     // ── MemoryBank 集成方法 ──
 
-    /// 惰性构造角色的 `PersistentMemorySystem`（若尚未创建且 LLM 客户段就绪）。
     /// 惰性构造角色的 `PersistentMemorySystem`。
     ///
-    /// 调用方保证在 `enabled=true` 时 `self.llm` 已就绪（构造函数注入）。
+    /// 调用方保证在 `enabled=true` 时槽位内已就绪 LLM（构造函数注入）。
     fn ensure_memory_bank_system(
         &mut self,
         role_id: i32,
@@ -315,22 +347,22 @@ impl GameRoleManager {
         if self.memory_bank_systems.contains_key(&role_id) {
             return;
         }
-        let Some(ref llm) = self.llm else {
-            // 仅在 enabled 但 LLM 缺失时告警（正常启动流程不应到达）
+        // 仅在 enabled 但 LLM 槽位为空时告警（正常启动流程不应到达）
+        if self.llm.try_read().map(|g| g.is_none()).unwrap_or(true) {
             if enabled {
                 tracing::warn!(
-                    "MemoryBank: role_id={} 永久记忆已开启但 LLM 未就绪",
+                    "MemoryBank: role_id={} 永久记忆已开启但 LLM 槽位为空",
                     role_id
                 );
             }
             return;
-        };
+        }
         self.memory_bank_systems.insert(
             role_id,
             PersistentMemorySystem::new(
                 role_id,
                 bank,
-                llm.clone(),
+                self.llm.clone(),
                 enabled,
                 update_interval,
                 recent_window,
@@ -410,12 +442,55 @@ impl GameRoleManager {
         Ok(())
     }
 
-    /// 更新已加载角色的语音语言并重新初始化其 VoiceMaker。
-    pub fn update_role_voice_lang(
+    /// 用最新角色配置更新已加载角色的 TTS 设置，并立即重建 VoiceMaker。
+    ///
+    /// 返回角色当前是否已经加载；未加载时磁盘配置仍会在下次注册角色时生效。
+    pub fn update_role_voice_settings(
         &mut self,
         role_id: i32,
-        lang: &str,
-    ) {
+        settings: &CharacterSettings,
+    ) -> bool {
+        let Some(resource_path) = self
+            .loaded_roles
+            .get(&role_id)
+            .map(|role| role.resource_path.clone())
+        else {
+            tracing::info!("角色 {} 尚未加载，TTS 设置将在下次加载时生效", role_id);
+            return false;
+        };
+
+        let voice_maker = build_voice_maker(
+            &self.data_dir,
+            settings,
+            resource_path.as_deref(),
+            &self.tts_config,
+            self.local_tts_engine.as_ref(),
+            self.local_tts_paths.as_ref(),
+            self.local_tts_switch.as_ref(),
+        );
+        let voice_maker_ready = voice_maker.is_some();
+
+        let role = self
+            .loaded_roles
+            .get_mut(&role_id)
+            .expect("loaded role disappeared while updating TTS settings");
+        role.settings.tts_type = settings.tts_type.clone();
+        role.settings.voice_lang = settings.voice_lang.clone();
+        role.settings.voice_models = settings.voice_models.clone();
+        role.voice_maker = voice_maker;
+
+        tracing::info!(
+            "角色 {} TTS 已实时刷新: type={}, lang={}, ready={}",
+            role_id,
+            role.settings.tts_type.as_deref().unwrap_or(""),
+            role.settings.voice_lang.as_deref().unwrap_or(""),
+            voice_maker_ready,
+        );
+        true
+    }
+
+    /// 更新已加载角色的语音语言并重新初始化其 VoiceMaker。
+    pub fn update_role_voice_lang(&mut self, role_id: i32, lang: &str) {
         let Some(role) = self.loaded_roles.get_mut(&role_id) else {
             tracing::warn!("update_role_voice_lang: 角色 {} 未加载", role_id);
             return;
@@ -435,8 +510,8 @@ impl GameRoleManager {
             return;
         }
 
-        let mut voice_cfg = role.settings.voice_models.clone().unwrap_or_default();
-        voice_cfg.opentts_voice = Some(self.tts_config.opentts_voice.clone());
+        // OpenTTS 音色标识：角色级优先，留空由 VoiceMaker 回退到全局配置
+        let voice_cfg = role.settings.voice_models.clone().unwrap_or_default();
         let name = role.settings.ai_name.clone();
 
         vm.update_lang_and_refresh(&voice_cfg, &tts_type, &name, lang);
@@ -544,12 +619,14 @@ fn build_voice_maker(
     if tts_type.is_empty() {
         return None;
     }
-    let mut voice_cfg = settings.voice_models.clone().unwrap_or_default();
-    // OpenTTS 音色标识统一使用全局 TTS 配置，不再读取角色级字段
-    voice_cfg.opentts_voice = Some(tts_config.opentts_voice.clone());
+    // OpenTTS 音色标识：角色级 voice_models.opentts_voice 优先，
+    // 留空时由 VoiceMaker 回退到全局 TTS 配置（tts.opentts_voice）
+    let voice_cfg = settings.voice_models.clone().unwrap_or_default();
 
     let audio_format = tts_config.audio_format.clone();
-    let lang = settings.voice_lang.as_deref()
+    let lang = settings
+        .voice_lang
+        .as_deref()
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
         .unwrap_or(&tts_config.voice_lang)
@@ -561,7 +638,7 @@ fn build_voice_maker(
     vm.set_local_tts_switch(local_tts_switch.cloned());
     vm.set_lang(&lang);
     if let Some(p) = resource_path {
-        vm.set_character_path(Some(PathBuf::from(p)));
+        vm.set_character_path(Some(resolve_character_path(data_dir, p)));
     }
     match vm.set_tts_settings(&voice_cfg, tts_type, &settings.ai_name) {
         Ok(()) => Some(vm),

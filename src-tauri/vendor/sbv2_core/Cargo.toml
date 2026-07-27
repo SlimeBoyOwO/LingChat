@@ -24,10 +24,9 @@ ndarray = "0.17.1"
 npyz = { version = "0.8.4", optional = true }
 num_cpus = "1.17.0"
 once_cell = "1.20.3"
-# Pinned to git rc.9 upstream; resolved through LingChat root [patch] section
-# to crates.io rc.12 so that all ort consumers in this workspace share a single
-# ort-sys / onnxruntime link.
-ort = { git = "https://github.com/pykeio/ort.git", version = "2.0.0-rc.9", optional = true }
+# Match LingChat's ORT package exactly so both crates share one ort-sys and
+# one ONNX Runtime instance in the final application.
+ort = { version = "=2.0.0-rc.12", optional = true }
 regex = "1.12.2"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"

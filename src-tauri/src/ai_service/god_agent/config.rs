@@ -79,7 +79,7 @@ pub fn resolve_god_agent_provider(app: &AppHandle) -> Option<LlmClient> {
         let providers = load_providers(app);
         if let Some(p) = providers.iter().find(|p| &p.id == id && p.is_usable()) {
             tracing::info!("上帝Agent 使用专用 LLM: {} ({})", p.label, p.id);
-            return build_llm_client_from_provider(p);
+            return build_llm_client_from_provider(app, p);
         }
     }
 
@@ -88,7 +88,7 @@ pub fn resolve_god_agent_provider(app: &AppHandle) -> Option<LlmClient> {
         let providers = load_providers(app);
         if let Some(p) = providers.iter().find(|p| &p.id == id && p.is_usable()) {
             tracing::info!("上帝Agent 使用角色分配的 LLM: {} ({})", p.label, p.id);
-            return build_llm_client_from_provider(p);
+            return build_llm_client_from_provider(app, p);
         }
     }
 
@@ -97,14 +97,14 @@ pub fn resolve_god_agent_provider(app: &AppHandle) -> Option<LlmClient> {
     if let Some(ref id) = assignment.chat_provider_id {
         if let Some(p) = providers.iter().find(|p| &p.id == id && p.is_usable()) {
             tracing::info!("上帝Agent fallback 到聊天 LLM: {} ({})", p.label, p.id);
-            return build_llm_client_from_provider(p);
+            return build_llm_client_from_provider(app, p);
         }
     }
 
     // 4. 任何可用的 provider
     if let Some(p) = providers.iter().find(|p| p.is_usable()) {
         tracing::info!("上帝Agent 使用第一个可用 LLM: {} ({})", p.label, p.id);
-        return build_llm_client_from_provider(p);
+        return build_llm_client_from_provider(app, p);
     }
 
     tracing::warn!("上帝Agent 未找到可用 LLM，多人对话功能将禁用");

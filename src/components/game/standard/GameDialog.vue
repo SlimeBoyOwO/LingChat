@@ -600,7 +600,7 @@ function send() {
     uiStore.showNotification({
       type: 'warning',
       title: '提示',
-      message: '还没选择对话模型呢，笨蛋！要去高级设置配置模型并且左下角选择模型重启软件才行哦！',
+      message: '还没选择对话模型呢，笨蛋！去高级设置里配置并选择模型就好啦，切换后自动生效哦！',
       skipTipsCheck: true,
     })
     return

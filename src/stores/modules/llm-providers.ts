@@ -4,6 +4,7 @@ import {
   saveLlmProvider,
   deleteLlmProvider,
   setLlmRole,
+  switchLlm,
   type LlmProviderConfig,
 } from '@/api/services/llm-providers'
 
@@ -13,6 +14,7 @@ export const useLlmProvidersStore = defineStore('llm-providers', {
     chatProviderId: null as string | null,
     translateProviderId: null as string | null,
     godAgentProviderId: null as string | null,
+    visionProviderId: null as string | null,
     loaded: false,
   }),
   getters: {
@@ -22,6 +24,8 @@ export const useLlmProvidersStore = defineStore('llm-providers', {
       state.providers.find((p) => p.id === state.translateProviderId) ?? null,
     godAgentProvider: (state) =>
       state.providers.find((p) => p.id === state.godAgentProviderId) ?? null,
+    visionProvider: (state) =>
+      state.providers.find((p) => p.id === state.visionProviderId) ?? null,
     effectiveGodAgentProvider: (state) => {
       if (state.godAgentProviderId) {
         return (
@@ -50,6 +54,7 @@ export const useLlmProvidersStore = defineStore('llm-providers', {
       temperature: null,
       top_p: null,
       enable_thinking: false,
+      reasoning_effort: null,
     }),
   },
   actions: {
@@ -60,6 +65,7 @@ export const useLlmProvidersStore = defineStore('llm-providers', {
         this.chatProviderId = data.chat_provider_id
         this.translateProviderId = data.translate_provider_id
         this.godAgentProviderId = data.god_agent_provider_id
+        this.visionProviderId = data.vision_provider_id
         this.loaded = true
       } catch (e) {
         console.error('Failed to load LLM providers:', e)
@@ -68,14 +74,20 @@ export const useLlmProvidersStore = defineStore('llm-providers', {
     async saveProvider(provider: LlmProviderConfig) {
       await saveLlmProvider(provider)
       await this.load()
+      // 任何变更（首次添加、修改 url/key/model）都触发热切换
+      await switchLlm()
     },
     async deleteProvider(id: string) {
       await deleteLlmProvider(id)
       await this.load()
+      // 删除后触发热切换（可能删除了正在使用的模型）
+      await switchLlm()
     },
-    async assignRole(role: 'chat' | 'translate' | 'god_agent', providerId: string | null) {
+    async assignRole(role: 'chat' | 'translate' | 'god_agent' | 'vision', providerId: string | null) {
       await setLlmRole(role, providerId)
       await this.load()
+      // 角色分配变更后触发热切换
+      await switchLlm()
     },
   },
 })

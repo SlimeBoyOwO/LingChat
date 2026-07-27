@@ -106,6 +106,7 @@
         </div>
 
         <button
+          v-show="!uiStore.scheduleView.startsWith('proactive')"
           @click="triggerCreate"
           class="bg-cyan-500 hover:bg-cyan-600 text-white rounded-xl shadow-lg transition-all flex items-center shrink-0"
           :class="uiStore.isNarrowScreen ? 'px-3 py-2 text-sm space-x-1' : 'px-5 py-2.5 space-x-2'"

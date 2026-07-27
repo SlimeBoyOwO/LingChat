@@ -1,7 +1,5 @@
-mod gemini;
+mod genai_provider;
 mod kimi_code;
-mod openai;
 
-pub use gemini::GeminiProvider;
+pub use genai_provider::GenaiProvider;
 pub use kimi_code::KimiCodeProvider;
-pub use openai::OpenAiProvider;

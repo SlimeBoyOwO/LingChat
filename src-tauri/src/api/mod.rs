@@ -5,6 +5,7 @@ pub mod asset;
 pub mod background;
 pub mod character;
 pub mod chat;
+pub mod font;
 pub mod game;
 pub mod music;
 pub mod pet;
@@ -13,6 +14,7 @@ pub mod scene;
 pub mod schedule;
 pub mod screenshot;
 pub mod script;
+pub mod settings;
 pub mod workshop;
 
 use std::path::PathBuf;
@@ -48,6 +50,10 @@ pub(crate) fn ambient_dir() -> PathBuf {
 
 pub(crate) fn voice_dir() -> PathBuf {
     data_dir().join("voice")
+}
+
+pub(crate) fn fonts_dir() -> PathBuf {
+    data_dir().join("fonts")
 }
 
 /// 路径穿越防护：验证 canonical 路径是否以预期的基础目录开头
@@ -88,3 +94,4 @@ pub async fn proactive_set_can_deliver(
     }
     Ok(())
 }
+pub mod role_archive;

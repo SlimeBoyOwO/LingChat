@@ -81,6 +81,11 @@
               class="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30"
               >Agent</span
             >
+            <span
+              v-if="store.visionProviderId === p.id"
+              class="text-xs px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30"
+              >视觉</span
+            >
           </div>
 
           <!-- Actions -->
@@ -109,7 +114,7 @@
 
       <!-- Role assignment -->
       <div class="mt-4 pt-4 border-t border-white/10 shrink-0">
-        <div class="grid grid-cols-3 gap-4">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div class="flex flex-col gap-1.5">
             <label class="text-xs font-medium text-white/60">对话模型</label>
             <div class="relative">
@@ -215,6 +220,41 @@
               </div>
             </div>
           </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-medium text-white/60">视觉模型</label>
+            <div class="relative">
+              <select
+                :value="store.visionProviderId ?? '__follow__'"
+                @change="onVisionRoleChange(($event.target as HTMLSelectElement).value)"
+                class="w-full appearance-none pl-3 pr-8 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors cursor-pointer"
+              >
+                <option value="__follow__" class="bg-gray-800 text-white">跟随对话模型</option>
+                <option
+                  v-for="p in store.providers"
+                  :key="p.id"
+                  :value="p.id"
+                  class="bg-gray-800 text-white"
+                >
+                  {{ p.label || p.model || '(未命名)' }}
+                </option>
+              </select>
+              <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5">
+                <svg
+                  class="w-4 h-4 text-white/40"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -284,6 +324,29 @@
             @submit.prevent="saveCurrent"
             class="flex flex-col gap-4 overflow-y-auto flex-1 pr-1"
           >
+            <!-- Presets -->
+            <div class="flex flex-col gap-2">
+              <label class="text-xs font-medium text-white/60">预设（快速配置）</label>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  v-for="preset in presets"
+                  :key="preset.key"
+                  type="button"
+                  class="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors"
+                  :class="
+                    editing.label === preset.label &&
+                    editing.provider === preset.provider &&
+                    editing.model === preset.model
+                      ? 'bg-brand/20 text-brand border-brand/40'
+                      : 'bg-white/5 text-white/60 border-white/15 hover:bg-white/10 hover:text-white/80 hover:border-white/25'
+                  "
+                  @click="applyPreset(preset)"
+                >
+                  {{ preset.label }}
+                </button>
+              </div>
+            </div>
+
             <!-- Label -->
             <div class="flex flex-col gap-1">
               <label class="text-xs font-medium text-white/60">名称</label>
@@ -304,8 +367,9 @@
                   @change="onProviderChange"
                   class="w-full appearance-none pl-3 pr-8 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors cursor-pointer"
                 >
+                  <option value="deepseek" class="bg-gray-800 text-white">DeepSeek</option>
                   <option value="openai" class="bg-gray-800 text-white">
-                    OpenAI 兼容 (DeepSeek / 通义千问 / Ollama)
+                    OpenAI 兼容
                   </option>
                   <option value="lmstudio" class="bg-gray-800 text-white">LM Studio（本地）</option>
                   <option value="gemini" class="bg-gray-800 text-white">Gemini</option>
@@ -342,7 +406,7 @@
                 :placeholder="
                   editing.provider === 'lmstudio'
                     ? '如: llama-3.2-3b-instruct'
-                    : '如: deepseek-chat'
+                    : '如: gpt-4o'
                 "
                 class="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors placeholder:text-white/20"
               />
@@ -407,6 +471,44 @@
               >
                 {{ modelsMessage }}
               </p>
+            </div>
+
+            <!-- Reasoning effort（按模型能力显示） -->
+            <div v-if="showReasoningEffort" class="flex flex-col gap-1">
+              <label class="text-xs font-medium text-white/60">推理深度（部分模型支持）</label>
+              <div class="relative">
+                <select
+                  v-model="editing.reasoning_effort"
+                  class="w-full appearance-none pl-3 pr-8 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors cursor-pointer"
+                >
+                  <option :value="null" class="bg-gray-800 text-white">默认（跟随模型）</option>
+                  <option
+                    v-for="effort in reasoningEffortOptions"
+                    :key="effort"
+                    :value="effort"
+                    class="bg-gray-800 text-white"
+                  >
+                    {{ effortLabel(effort) }}
+                  </option>
+                </select>
+                <div
+                  class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5"
+                >
+                  <svg
+                    class="w-4 h-4 text-white/40"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
+                </div>
+              </div>
             </div>
 
             <!-- API Key -->
@@ -553,19 +655,92 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive } from 'vue'
+import { ref, onMounted, reactive, computed, watch } from 'vue'
 import { useLlmProvidersStore } from '@/stores/modules/llm-providers'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { invoke } from '@tauri-apps/api/core'
+import { relaunch } from '@tauri-apps/plugin-process'
 import {
   listLlmModels,
   type LlmModelInfo,
   type LlmProviderConfig,
 } from '@/api/services/llm-providers'
-import { relaunch } from '@tauri-apps/plugin-process'
 
 const store = useLlmProvidersStore()
 const uiStore = useUIStore()
+
+// ---- 预设 ----
+interface LlmPreset {
+  key: string
+  label: string
+  provider: string
+  model: string
+  base_url: string
+}
+
+const presets: LlmPreset[] = [
+  {
+    key: 'deepseek-v4-flash',
+    label: 'DeepSeek V4 Flash',
+    provider: 'openai',
+    model: 'deepseek-v4-flash',
+    base_url: 'https://api.deepseek.com',
+  },
+  {
+    key: 'deepseek-v4-pro',
+    label: 'DeepSeek V4 Pro',
+    provider: 'openai',
+    model: 'deepseek-v4-pro',
+    base_url: 'https://api.deepseek.com',
+  },
+  {
+    key: 'qwen-max',
+    label: '通义千问 Max',
+    provider: 'openai',
+    model: 'qwen3.7-max',
+    base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  },
+  {
+    key: 'qwen-plus',
+    label: '通义千问 Plus',
+    provider: 'openai',
+    model: 'qwen3.7-plus',
+    base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  },
+  {
+    key: 'kimi',
+    label: 'Kimi K2.6',
+    provider: 'openai',
+    model: 'kimi-k2.6',
+    base_url: 'https://api.moonshot.cn/v1',
+  },
+  {
+    key: 'ollama',
+    label: 'Ollama',
+    provider: 'openai',
+    model: '',
+    base_url: 'http://localhost:11434/v1',
+  },
+  {
+    key: 'lmstudio',
+    label: 'LM Studio',
+    provider: 'lmstudio',
+    model: '',
+    base_url: 'http://localhost:1234/v1',
+  },
+]
+
+function applyPreset(preset: LlmPreset) {
+  editing.label = preset.label
+  editing.provider = preset.provider
+  editing.model = preset.model
+  editing.base_url = preset.base_url
+  // 重置自动填充标记
+  lmstudioAutoFilled.value = false
+  kimicodeAutoFilled.value = false
+  resetModelList()
+}
+// --------------------
 
 const sidePanel = ref<'edit' | 'test' | null>(null)
 const editing = reactive<LlmProviderConfig>(emptyProvider())
@@ -589,13 +764,14 @@ function emptyProvider(): LlmProviderConfig {
   return {
     id: '',
     label: '',
-    provider: 'openai',
-    model: '',
+    provider: 'deepseek',
+    model: 'deepseek-v4-flash',
     api_key: '',
-    base_url: '',
+    base_url: 'https://api.deepseek.com',
     temperature: null,
     top_p: null,
     enable_thinking: false,
+    reasoning_effort: null,
   }
 }
 
@@ -604,24 +780,53 @@ function closePanel() {
   saveMessage.value = ''
 }
 
+// 推理深度档位完全由模型声明的 think_efforts.valid_efforts 驱动（与 kimi-code 官方一致）：
+// 列表非空 → 显示选择器并按其渲染档位；为空（如 K2.7 思考常开、不可调档）→ 不显示。
+// 列表尚未加载时无法判断能力，先不显示（startEdit 会自动拉取列表）
+const reasoningEffortOptions = computed<string[]>(() => {
+  if (editing.provider !== 'kimicode') return []
+  const info = availableModels.value.find((m) => m.id === editing.model)
+  return info?.think_efforts?.valid_efforts ?? []
+})
+const showReasoningEffort = computed(() => reasoningEffortOptions.value.length > 0)
+
+const EFFORT_LABELS: Record<string, string> = {
+  low: 'Low（低）',
+  medium: 'Medium（中）',
+  high: 'High（高）',
+  max: 'Max（最强）',
+}
+function effortLabel(effort: string): string {
+  return EFFORT_LABELS[effort] ?? effort
+}
+
+// 切到不可调档的模型/提供商时清掉已选档位，避免残留值被静默发往其他模型；
+// 已选档位不在新模型的档位列表中时同样清空（跟随新模型默认）。
+// 但 Kimi Code 模型列表尚未加载时无法判断能力，先保留已配置值，待列表返回后再决定
+watch([() => editing.provider, () => editing.model], () => {
+  if (editing.provider === 'kimicode' && availableModels.value.length === 0) return
+  const options = reasoningEffortOptions.value
+  if (
+    options.length === 0 ||
+    (editing.reasoning_effort && !options.includes(editing.reasoning_effort))
+  ) {
+    editing.reasoning_effort = null
+  }
+})
+
 function resetModelList() {
   availableModels.value = []
   modelsMessage.value = ''
   modelsError.value = false
 }
 
-async function restartApp() {
-  try {
-    await relaunch()
-  } catch (e) {
-    console.error('重启失败:', e)
-  }
-}
-
 // LM Studio 兼容：本质是 OpenAI 协议，这里只帮用户预填默认地址和假 key
 function onProviderChange() {
   resetModelList()
-  if (editing.provider === 'lmstudio') {
+  if (editing.provider === 'deepseek') {
+    editing.model = 'deepseek-v4-flash'
+    editing.base_url = 'https://api.deepseek.com'
+  } else if (editing.provider === 'lmstudio') {
     editing.base_url = 'http://localhost:1234/v1'
     editing.api_key = 'sk-lingchat70'
     lmstudioAutoFilled.value = true
@@ -664,6 +869,11 @@ function startEdit(p: LlmProviderConfig) {
   resetModelList()
   sidePanel.value = 'edit'
   saveMessage.value = ''
+  // Kimi Code 已有 API 密钥时自动拉取模型列表，
+  // 以便按各模型的 supports_reasoning 能力显示推理深度选项
+  if (editing.provider === 'kimicode' && editing.api_key.trim()) {
+    fetchProviderModels()
+  }
 }
 
 function confirmDelete(p: LlmProviderConfig) {
@@ -688,7 +898,7 @@ async function saveCurrent() {
   saveError.value = false
   try {
     await store.saveProvider({ ...editing })
-    saveMessage.value = '保存成功！重启软件后生效。'
+    saveMessage.value = '保存成功！'
     const saved = store.providers.find(
       (p) => p.label === editing.label && p.model === editing.model,
     )
@@ -733,7 +943,11 @@ async function fetchProviderModels() {
 async function onChatRoleChange(value: string) {
   try {
     await store.assignRole('chat', value || null)
+    saveMessage.value = '对话模型已切换并生效！'
+    saveError.value = false
   } catch (e: any) {
+    saveMessage.value = `切换失败: ${e}`
+    saveError.value = true
     console.error('Failed to set chat role:', e)
   }
 }
@@ -741,7 +955,11 @@ async function onChatRoleChange(value: string) {
 async function onTranslateRoleChange(value: string) {
   try {
     await store.assignRole('translate', value === '__follow__' ? null : value)
+    saveMessage.value = '翻译模型已切换并生效！'
+    saveError.value = false
   } catch (e: any) {
+    saveMessage.value = `切换失败: ${e}`
+    saveError.value = true
     console.error('Failed to set translate role:', e)
   }
 }
@@ -749,8 +967,20 @@ async function onTranslateRoleChange(value: string) {
 async function onGodAgentRoleChange(value: string) {
   try {
     await store.assignRole('god_agent', value === '__follow__' ? null : value)
+    saveMessage.value = '上帝Agent已切换并生效！'
+    saveError.value = false
   } catch (e: any) {
+    saveMessage.value = `切换失败: ${e}`
+    saveError.value = true
     console.error('Failed to set god_agent role:', e)
+  }
+}
+
+async function onVisionRoleChange(value: string) {
+  try {
+    await store.assignRole('vision', value === '__follow__' ? null : value)
+  } catch (e: any) {
+    console.error('Failed to set vision role:', e)
   }
 }
 
@@ -760,6 +990,14 @@ function startTest(p: LlmProviderConfig) {
   testResponse.value = ''
   testError.value = ''
   sidePanel.value = 'test'
+}
+
+async function restartApp() {
+  try {
+    await relaunch()
+  } catch (e) {
+    console.error('重启失败:', e)
+  }
 }
 
 async function doTest() {

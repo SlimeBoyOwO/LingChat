@@ -52,6 +52,14 @@ export interface WebInitData {
   current_scene: SceneInfo | null
   lines: GameLineInit[]
   scene_awareness_enabled: boolean
+  /** 上次会话的背景音乐曲目（session store 恢复） */
+  last_bgm_track?: string | null
+  /** 上次会话背景音乐是否暂停 */
+  last_bgm_paused?: boolean | null
+  /** 上次会话背景音乐播放模式 */
+  last_bgm_mode?: string | null
+  /** 上次会话环境音轨道（JSON 字符串） */
+  last_ambient_tracks?: string | null
 }
 
 /**

@@ -6,6 +6,9 @@
 use reqwest::Client;
 use serde_json::Value;
 use std::time::Instant;
+use tauri::AppHandle;
+
+use crate::ai_service::llm::provider_config::{resolve_vision_provider, LlmProviderConfig};
 
 /// 屏幕分析器的配置（从环境/Store 加载）。
 #[derive(Clone, Debug)]
@@ -22,6 +25,60 @@ impl Default for ScreenAnalyzerConfig {
             vd_base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1".to_string(),
             vd_model: "qwen3.5-plus".to_string(),
         }
+    }
+}
+
+impl ScreenAnalyzerConfig {
+    /// 从大模型管理解析视觉分析配置：
+    /// 优先使用「视觉模型」角色指定的 provider，缺省时跟随对话模型；
+    /// 都没有可用配置时返回默认值（api_key 为空，分析会被跳过）。
+    pub fn resolve(app: &AppHandle) -> Self {
+        let Some(provider) = resolve_vision_provider(app) else {
+            return Self::default();
+        };
+
+        // 截图分析固定走 OpenAI 兼容的 chat/completions + image_url 协议
+        if !matches!(
+            provider.provider.as_str(),
+            "openai" | "deepseek" | "lmstudio" | "kimicode"
+        ) {
+            tracing::warn!(
+                "[ScreenAnalyzer] Provider '{}' may not support the OpenAI-compatible vision API",
+                provider.provider
+            );
+        }
+
+        Self {
+            vd_api_key: provider.api_key.clone(),
+            vd_base_url: vision_base_url(&provider),
+            vd_model: provider.model.clone(),
+        }
+    }
+}
+
+/// 将 provider 的 base_url 适配为视觉分析使用的 OpenAI 兼容端点前缀
+/// （请求时拼接 `{base}/chat/completions`）。
+/// Kimi Code 的聊天入口是 Anthropic 兼容协议，视觉请求需要改用
+/// 官方提供的 OpenAI 兼容入口。
+fn vision_base_url(provider: &LlmProviderConfig) -> String {
+    let base = provider.base_url.trim().trim_end_matches('/');
+    match provider.provider.as_str() {
+        "kimicode" => {
+            if base.is_empty() {
+                "https://api.kimi.com/coding/v1".to_string()
+            } else if base.ends_with("/v1/messages") {
+                base.trim_end_matches("/messages").to_string()
+            } else if base.ends_with("/v1/chat/completions") {
+                base.trim_end_matches("/chat/completions").to_string()
+            } else if base.ends_with("/v1") {
+                base.to_string()
+            } else {
+                format!("{base}/v1")
+            }
+        }
+        "openai" if base.is_empty() => "https://api.openai.com/v1".to_string(),
+        "deepseek" if base.is_empty() => "https://api.deepseek.com".to_string(),
+        _ => base.to_string(),
     }
 }
 
@@ -63,7 +120,7 @@ impl ScreenAnalyzer {
     pub async fn analyze_screen(&mut self, prompt: &str) -> Option<String> {
         let api_key = &self.config.vd_api_key;
         if api_key.is_empty() {
-            tracing::warn!("[ScreenAnalyzer] VD_API_KEY is empty, skipping screenshot analysis.");
+            tracing::warn!("[ScreenAnalyzer] Vision provider api key is empty, skipping screenshot analysis.");
             return None;
         }
 
@@ -78,7 +135,7 @@ impl ScreenAnalyzer {
     pub async fn analyze_image(&mut self, image_bytes: &[u8], prompt: &str) -> Option<String> {
         let api_key = &self.config.vd_api_key;
         if api_key.is_empty() {
-            tracing::warn!("[ScreenAnalyzer] VD_API_KEY is empty, skipping image analysis.");
+            tracing::warn!("[ScreenAnalyzer] Vision provider api key is empty, skipping image analysis.");
             return None;
         }
 
@@ -90,7 +147,7 @@ impl ScreenAnalyzer {
     pub async fn analyze_image_file(&mut self, image_path: &str, prompt: &str) -> Option<String> {
         let api_key = &self.config.vd_api_key;
         if api_key.is_empty() {
-            tracing::warn!("[ScreenAnalyzer] VD_API_KEY is empty, skipping image file analysis.");
+            tracing::warn!("[ScreenAnalyzer] Vision provider api key is empty, skipping image file analysis.");
             return None;
         }
 

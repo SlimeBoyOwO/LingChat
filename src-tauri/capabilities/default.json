@@ -7,6 +7,7 @@
     "core:default",
     "core:webview:allow-create-webview-window",
     "core:window:allow-close",
+    "core:window:allow-destroy",
     "core:window:allow-hide",
     "core:window:allow-minimize",
     "core:window:allow-unminimize",
@@ -24,6 +25,7 @@
     "dialog:allow-open",
     "screenshots:default",
     "fs:default",
+    "dialog:default",
     "notification:default",
     "app-commands",
     "tts-local-status",
@@ -37,7 +39,11 @@
     "android-fs:allow-get-name",
     {
       "identifier": "fs:scope",
-      "allow": [{ "path": "$RESOURCE/**" }]
+      "allow": [
+        { "path": "$RESOURCE/**" },
+        { "path": "$APPCACHE/**" },
+        { "path": "$APPDATA/**" }
+      ]
     }
   ]
 }

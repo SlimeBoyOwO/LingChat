@@ -12,14 +12,38 @@ pub use factory::create_llm_client;
 pub use provider::{LlmModelInfo, LlmProvider};
 
 use std::pin::Pin;
+use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{anyhow, Context, Result};
-use futures_util::Stream;
+use anyhow::{anyhow, Result};
+use futures_util::{Stream, StreamExt};
 use reqwest::Client;
+use tokio::sync::RwLock;
 
 use crate::ai_service::llm::provider::LlmResponseWithTools;
 use crate::ai_service::types::{LlmMessage, ToolDefinition};
+
+// ============================================================
+// SharedLlmClient —— 支持运行时热替换的 LLM 客户端槽位
+// ============================================================
+
+/// 可热替换的 LLM 客户端槽位。
+///
+/// 外层 `Arc` 允许多处共享同一个槽位；内层 `RwLock<Option<Arc<LlmClient>>>`
+/// 允许在运行时原子地替换内部客户端，而不需要重启应用。
+///
+/// - **读取**：调用 `snapshot()` 获取当前 `Arc<LlmClient>` 的快照，
+///   之后所有操作都基于该快照，不受后续热切换影响。
+/// - **替换**：调用 `swap()` 写入新的客户端，旧客户端的 `Arc` 引用
+///   在所有持有者释放后自然回收。
+pub type LlmSlot = Arc<RwLock<Option<Arc<LlmClient>>>>;
+
+/// 从 `LlmSlot` 异步读取当前客户端快照。
+///
+/// 返回 `Option<Arc<LlmClient>>`，`None` 表示尚未配置可用模型。
+pub async fn slot_snapshot(slot: &LlmSlot) -> Option<Arc<LlmClient>> {
+    slot.read().await.clone()
+}
 
 /// 运行时 LLM 配置。
 #[derive(Debug, Clone)]
@@ -32,6 +56,8 @@ pub struct LlmConfig {
     pub temperature: Option<f64>,
     pub top_p: Option<f64>,
     pub enable_thinking: bool,
+    /// 推理深度（如 "low" / "high" / "max"），由支持 reasoning 的模型使用（如 Kimi Code K3 系列）。
+    pub reasoning_effort: Option<String>,
 }
 
 impl LlmConfig {
@@ -59,16 +85,12 @@ pub struct LlmClient {
 }
 
 impl LlmClient {
-    pub fn new(cfg: LlmConfig, provider: Box<dyn LlmProvider>) -> Result<Self> {
-        let http = Client::builder()
-            .timeout(Duration::from_secs(cfg.timeout_secs.max(10)))
-            .build()
-            .context("创建 LLM HTTP 客户端失败")?;
-        Ok(Self {
+    pub fn new(cfg: LlmConfig, http: Client, provider: Box<dyn LlmProvider>) -> Self {
+        Self {
             cfg,
             http,
             provider,
-        })
+        }
     }
 
     pub fn config(&self) -> &LlmConfig {
@@ -92,7 +114,21 @@ impl LlmClient {
         if !self.cfg.is_usable() {
             return Err(anyhow!("LLM 未配置 API key 或 model"));
         }
-        self.provider.complete_stream(&self.http, messages).await
+        let mut inner = self.provider.complete_stream(&self.http, messages).await?;
+        let timeout_secs = self.cfg.timeout_secs;
+        let idle_timeout = Duration::from_secs(timeout_secs);
+        let stream = async_stream::try_stream! {
+            loop {
+                let item = tokio::time::timeout(idle_timeout, inner.next())
+                    .await
+                    .map_err(|_| anyhow!("LLM 流式响应空闲超时（{timeout_secs} 秒）"))?;
+                match item {
+                    Some(chunk) => yield chunk?,
+                    None => break,
+                }
+            }
+        };
+        Ok(Box::pin(stream))
     }
 
     /// 非流式 + function calling。

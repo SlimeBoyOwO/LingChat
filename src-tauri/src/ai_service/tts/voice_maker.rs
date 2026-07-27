@@ -21,8 +21,7 @@ use crate::ai_service::tts::adapters::sbv2::Sbv2Adapter;
 use crate::ai_service::tts::adapters::sbv2api::Sbv2ApiAdapter;
 use crate::ai_service::tts::adapters::vits::VitsAdapter;
 use crate::ai_service::tts::local::adapter::LocalTtsAdapter;
-use crate::ai_service::tts::local::engine::LocalTtsEngine;
-use crate::ai_service::tts::local::paths::LocalTtsPaths;
+use crate::ai_service::tts::local::{LocalTtsEngine, LocalTtsPaths};
 use crate::ai_service::tts::provider::TtsProvider;
 use crate::ai_service::types::VoiceModel;
 use crate::config::tts::TtsConfig;
@@ -59,6 +58,44 @@ pub struct VoiceMaker {
 
 fn non_empty(s: &Option<String>) -> bool {
     s.as_ref().map(|v| !v.trim().is_empty()).unwrap_or(false)
+}
+
+fn gsv_prompt_language(prompt_text: &str) -> &'static str {
+    if prompt_text
+        .chars()
+        .any(|c| matches!(c, '\u{ac00}'..='\u{d7af}'))
+    {
+        "ko"
+    } else if prompt_text.chars().any(|c| {
+        matches!(
+            c,
+            '\u{3040}'..='\u{30ff}' | '\u{31f0}'..='\u{31ff}'
+        )
+    }) {
+        "ja"
+    } else if prompt_text
+        .chars()
+        .any(|c| matches!(c, '\u{3400}'..='\u{4dbf}' | '\u{4e00}'..='\u{9fff}'))
+    {
+        "zh"
+    } else if prompt_text.chars().any(|c| c.is_ascii_alphabetic()) {
+        "en"
+    } else {
+        "zh"
+    }
+}
+
+fn segment_text_for_lang<'a>(lang: &str, segment: &'a EmotionSegment) -> Option<&'a str> {
+    match lang {
+        "ja" | "en" | "ko" if !segment.japanese_text.trim().is_empty() => {
+            Some(&segment.japanese_text)
+        }
+        "en" | "ko" => None,
+        "zh" if !segment.following_text.trim().is_empty() => Some(&segment.following_text),
+        _ if !segment.following_text.trim().is_empty() => Some(&segment.following_text),
+        _ if !segment.japanese_text.trim().is_empty() => Some(&segment.japanese_text),
+        _ => None,
+    }
 }
 
 impl VoiceMaker {
@@ -148,8 +185,10 @@ impl VoiceMaker {
         // is checked at synthesize time so a missing DeBERTa still leaves
         // the option visible to the user (and falls back cleanly).
         let sbv2_local = non_empty(&cfg.sbv2_local_voice_id);
-        // OpenTTS 可用性由全局配置决定，只要有全局 voice 就视为可用
-        let opentts = !self.tts_config.opentts_voice.trim().is_empty();
+        // OpenTTS 可用性：角色级 voice 优先，全局 TTS 配置兜底，任一非空即可用
+        let opentts =
+            non_empty(&cfg.opentts_voice) || !self.tts_config.opentts_voice.trim().is_empty();
+
 
         self.availability = TtsAvailability {
             sva,
@@ -281,14 +320,29 @@ impl VoiceMaker {
                     _ => String::new(),
                 };
                 let prompt_text = cfg.gsv_voice_text.clone().unwrap_or_default();
+                let prompt_lang = gsv_prompt_language(&prompt_text).to_string();
+                let voice_lang = match self.lang.as_str() {
+                    "zh" => "zh",
+                    "ja" => "ja",
+                    "en" => "en",
+                    "ko" => "ko",
+                    other => {
+                        tracing::warn!("GPT-SoVITS 暂不支持语言 {other}，回退到中文");
+                        "zh"
+                    }
+                }
+                .to_string();
                 let adapter = GsvAdapter::new(
                     self.tts_config.gsv_api_url.clone(),
                     ref_audio_path,
                     prompt_text,
-                    "ja".into(),
+                    prompt_lang,
+                    voice_lang,
+                    cfg.gsv_gpt_model_name.clone(),
+                    cfg.gsv_sovits_model_name.clone(),
                 );
                 self.provider.gsv = Some(Arc::new(adapter));
-                let _ = name; // 预留：Python 版还有按 name 查找 gpt/sovits 权重的逻辑
+                let _ = name;
             }
             "aivis" if self.availability.aivis => {
                 let model_uuid = cfg.aivis_model_uuid.clone().unwrap_or_default();
@@ -308,7 +362,12 @@ impl VoiceMaker {
                 }
             }
             "opentts" if self.availability.opentts => {
-                let voice = cfg.opentts_voice.clone().unwrap_or_default();
+                // 角色级 voice 优先；为空时回退到全局 TTS 配置的音色标识
+                let voice = if non_empty(&cfg.opentts_voice) {
+                    cfg.opentts_voice.clone().unwrap_or_default()
+                } else {
+                    self.tts_config.opentts_voice.clone()
+                };
                 let model = if self.tts_config.opentts_model.trim().is_empty() {
                     "FunAudioLLM/CosyVoice2-0.5B".to_string()
                 } else {
@@ -371,7 +430,20 @@ impl VoiceMaker {
         }
     }
     pub async fn generate_voice_files(&self, segments: &mut [EmotionSegment]) {
-        if !self.is_enabled() {
+        if self.tts_type.is_empty() {
+            return;
+        }
+        if !self.provider.is_enabled() {
+            if let Some(text) = segments
+                .iter()
+                .find_map(|segment| segment_text_for_lang(&self.lang, segment))
+            {
+                self.provider.recover_in_background(
+                    text.to_owned(),
+                    self.tts_type.clone(),
+                    String::new(),
+                );
+            }
             return;
         }
         tokio::fs::create_dir_all(&self.temp_dir).await.ok();
@@ -380,18 +452,8 @@ impl VoiceMaker {
         for seg in segments.iter_mut() {
             // 严格按当前设置语言选择文本；跨语言生成容易导致 TTS 输出异常，
             // 因此目标语言无文本时直接跳过该片段的语音生成。
-            let text = match self.lang.as_str() {
-                "ja" if !seg.japanese_text.trim().is_empty() => seg.japanese_text.clone(),
-                "zh" if !seg.following_text.trim().is_empty() => seg.following_text.clone(),
-                _ => {
-                    if !seg.following_text.trim().is_empty() {
-                        seg.following_text.clone()
-                    } else if !seg.japanese_text.trim().is_empty() {
-                        seg.japanese_text.clone()
-                    } else {
-                        continue;
-                    }
-                }
+            let Some(text) = segment_text_for_lang(&self.lang, seg).map(str::to_owned) else {
+                continue;
             };
             let emo = String::new();
 

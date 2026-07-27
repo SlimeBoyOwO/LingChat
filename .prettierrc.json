@@ -3,5 +3,11 @@
   "singleQuote": true,
   "printWidth": 100,
   "trailingComma": "all",
-  "tabWidth": 2
+  "singleAttributePerLine": true,
+  "tabWidth": 2,
+  "plugins": [
+    "prettier-plugin-classnames",
+    "prettier-plugin-tailwindcss"
+  ],
+  "classnamesPrintWidth": 0
 }

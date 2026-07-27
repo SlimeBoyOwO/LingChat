@@ -2,6 +2,7 @@ use std::fs;
 use std::io::Write;
 
 use serde::{Deserialize, Serialize};
+use tauri_plugin_store::StoreExt;
 
 use super::{music_dir, validate_path_in_base};
 
@@ -139,4 +140,32 @@ pub fn delete_music(url: String) -> Result<Vec<MusicItemInfo>, String> {
     fs::remove_file(&file_path).map_err(|e| format!("删除音乐文件失败: {}", e))?;
 
     get_music_list()
+}
+
+// ========== 会话状态持久化 ==========
+
+/// 持久化背景音乐播放状态到 settings.json，下次启动时自动恢复。
+#[tauri::command]
+pub fn save_bgm_state(
+    app: tauri::AppHandle,
+    track: String,
+    paused: bool,
+    mode: String,
+) -> Result<(), String> {
+    let store = app
+        .store(crate::config::STORE_FILE)
+        .map_err(|e| format!("打开存储失败: {e}"))?;
+    store.set(
+        crate::config::session::LAST_BGM_TRACK.to_string(),
+        serde_json::Value::String(track),
+    );
+    store.set(
+        crate::config::session::LAST_BGM_PAUSED.to_string(),
+        serde_json::Value::Bool(paused),
+    );
+    store.set(
+        crate::config::session::LAST_BGM_MODE.to_string(),
+        serde_json::Value::String(mode),
+    );
+    store.save().map_err(|e| format!("保存失败: {e}"))
 }

@@ -1,4 +1,4 @@
-name: 安卓开发版构建
+name: 安卓发行版构建
 
 on:
   workflow_dispatch:
@@ -9,12 +9,12 @@ on:
         type: string
         default: 'v0.0.0'
       release_title:
-        description: 'Release 标题'
-        required: true
+        description: 'Release 标题（仅新建时生效）'
+        required: false
         type: string
         default: '开发版构建'
       is_prerelease:
-        description: '是否标记为预发布版本'
+        description: '是否标记为预发布版本（仅新建时生效）'
         required: false
         type: boolean
         default: true
@@ -27,6 +27,8 @@ jobs:
     
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
         with:
@@ -37,9 +39,8 @@ jobs:
           node-version: 24
           cache: 'pnpm'
 
-      - name: 签出lfs文件
-        run: |
-          git lfs pull
+      - name: 签出 lfs 文件
+        run: git lfs pull
 
       - name: 设置 pnpm store 缓存
         uses: actions/cache@v4
@@ -51,9 +52,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android
-            #  armv7-linux-androideabi
-            #  i686-linux-android
-            #  x86_64-linux-android
 
       - name: 设置 Rust 缓存
         uses: swatinem/rust-cache@v2
@@ -107,14 +105,13 @@ jobs:
           pnpm run init
 
       - name: 准备 Android 项目
-        run: |
-          pnpm android:prepare
+        run: pnpm android:prepare
 
       - name: 配置 Android 签名
         run: |
-          echo "${{ secrets.ANDROID_KEY_BASE64 }}" | base64 -d > $HOME/upload-keystore.jks
+          echo "${{ secrets.ANDROID_KEY_BASE64 }}" | base64 -d > $HOME/upload-keystore.p12
           cat > src-tauri/gen/android/keystore.properties << EOF
-          storeFile=$HOME/upload-keystore.jks
+          storeFile=$HOME/upload-keystore.p12
           keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
           password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           EOF
@@ -122,17 +119,58 @@ jobs:
       - name: 构建 Android APK
         run: pnpm android:build
 
-      - name: 创建 GitHub Release
-        id: create_release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ github.event.inputs.tag_name }}
-          name: ${{ github.event.inputs.release_title }}
-          draft: false
-          prerelease: ${{ github.event.inputs.is_prerelease }}
-          generate_release_notes: true
-          files: |
-            # src-tauri/gen/android/app/build/outputs/apk/universal/debug/*.apk
-            src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
+      - name: 重命名 APK
+        run: |
+          VERSION="${{ github.event.inputs.tag_name }}"
+          APK_DIR="src-tauri/gen/android/app/build/outputs/apk/universal/release"
+          ORIGINAL_APK="$APK_DIR/app-universal-release-unsigned.apk"
+          
+          if [[ -f "$ORIGINAL_APK" ]]; then
+            NEW_NAME="LingChat-${VERSION}-universal.apk"
+            mv "$ORIGINAL_APK" "$APK_DIR/$NEW_NAME"
+            echo "APK 已重命名为: $NEW_NAME"
+          else
+            echo "未找到 APK 文件，跳过重命名"
+          fi
+
+      - name: 手动签名 APK
+        run: |
+          VERSION="${{ github.event.inputs.tag_name }}"
+          APK_PATH="src-tauri/gen/android/app/build/outputs/apk/universal/release/LingChat-${VERSION}-universal.apk"
+          
+          APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner 2>/dev/null | head -1)
+          
+          $APKSIGNER sign \
+            --ks $HOME/upload-keystore.p12 \
+            --ks-key-alias ${{ secrets.ANDROID_KEY_ALIAS }} \
+            --ks-pass pass:${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
+            --key-pass pass:${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
+            "$APK_PATH"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANDROID_HOME: /usr/local/lib/android/sdk
+
+      - name: 创建或更新 Release
+        run: |
+          TAG="${{ github.event.inputs.tag_name }}"
+          APK_PATH="src-tauri/gen/android/app/build/outputs/apk/universal/release/LingChat-${TAG}-universal.apk"
+          
+          if gh release view "$TAG" &>/dev/null; then
+            echo "📦 Release $TAG 已存在，上传 APK..."
+            gh release upload "$TAG" "$APK_PATH" --clobber
+          else
+            echo "✨ 创建新 Release: $TAG"
+            
+            CMD="gh release create \"$TAG\" \"$APK_PATH\" --generate-notes"
+            
+            if [[ -n "${{ github.event.inputs.release_title }}" ]]; then
+              CMD="$CMD --title \"${{ github.event.inputs.release_title }}\""
+            fi
+            
+            if [[ "${{ github.event.inputs.is_prerelease }}" == "true" ]]; then
+              CMD="$CMD --prerelease"
+            fi
+            
+            eval $CMD
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
