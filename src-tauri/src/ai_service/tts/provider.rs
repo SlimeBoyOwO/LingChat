@@ -50,6 +50,7 @@ pub struct TtsProvider {
     pub aivis: Option<Arc<AivisAdapter>>,
     pub indextts: Option<Arc<IndexTtsAdapter>>,
     pub opentts: Option<Arc<OpenTtsAdapter>>,
+    pub local_tts_switch: Option<crate::ai_service::tts::local::LocalTtsSwitch>,
 }
 
 impl Default for TtsProvider {
@@ -66,6 +67,7 @@ impl Default for TtsProvider {
             aivis: None,
             indextts: None,
             opentts: None,
+            local_tts_switch: None,
         }
     }
 }
@@ -99,6 +101,13 @@ impl TtsProvider {
 
     pub fn is_enabled(&self) -> bool {
         self.enable.load(Ordering::Relaxed)
+    }
+
+    pub fn set_local_tts_switch(
+        &mut self,
+        local_tts_switch: Option<crate::ai_service::tts::local::LocalTtsSwitch>,
+    ) {
+        self.local_tts_switch = local_tts_switch;
     }
 
     pub fn disable(&self) {

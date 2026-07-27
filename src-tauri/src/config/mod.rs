@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use tauri::{AppHandle, Wry};
+use tauri::{AppHandle, Manager, Wry};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_store::{Store, StoreExt};
 
@@ -60,6 +60,7 @@ pub mod keys {
     pub const MEMORY_RECENT_WINDOW: &str = "features.memory_recent_window";
 
     // TTS
+    pub const ENABLE_LOCAL_TTS: &str = "features.enable_local_tts";
     pub const AUTO_START_TTS_SOFTWARE: &str = "tts.auto_start";
     pub const TTS_SOFTWARE_PATH: &str = "tts.software_path";
     pub const VOICE_CHECK: &str = "tts.voice_check";
@@ -139,6 +140,8 @@ pub struct AppConfig {
 
     // TTS
     #[serde(default)]
+    pub enable_local_tts: bool,
+    #[serde(default)]
     pub auto_start_tts_software: bool,
     #[serde(default)]
     pub tts_software_path: Option<String>,
@@ -195,6 +198,7 @@ impl Default for AppConfig {
             use_persistent_memory: true,
             memory_update_interval: 50,
             memory_recent_window: 15,
+            enable_local_tts: false,
             auto_start_tts_software: false,
             tts_software_path: None,
             voice_check: false,
@@ -259,6 +263,7 @@ impl AppConfig {
             use_persistent_memory: get_bool(&store, keys::USE_PERSISTENT_MEMORY, true),
             memory_update_interval: get_u32(&store, keys::MEMORY_UPDATE_INTERVAL, 250),
             memory_recent_window: get_u32(&store, keys::MEMORY_RECENT_WINDOW, 30),
+            enable_local_tts: get_bool(&store, keys::ENABLE_LOCAL_TTS, false),
             auto_start_tts_software: get_bool(&store, keys::AUTO_START_TTS_SOFTWARE, false),
             tts_software_path: get_string(&store, keys::TTS_SOFTWARE_PATH),
             voice_check: get_bool(&store, keys::VOICE_CHECK, false),
@@ -461,6 +466,12 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
             Subcategory {
                 description: "文字转语音（TTS）的相关设置".to_string(),
                 settings: vec![
+                    ConfigSetting {
+                        key: keys::ENABLE_LOCAL_TTS.to_string(),
+                        value: read_setting(app, keys::ENABLE_LOCAL_TTS, "false"),
+                        description: "全局开关：关闭时不初始化本地 TTS，使用本地 TTS 配置的角色沿用现有云端 TTS 流程".to_string(),
+                        setting_type: "bool".to_string(),
+                    },
                     ConfigSetting {
                         key: keys::AUTO_START_TTS_SOFTWARE.to_string(),
                         value: read_setting(app, keys::AUTO_START_TTS_SOFTWARE, "false"),
@@ -793,6 +804,13 @@ pub fn save_settings(app: AppHandle, values: BTreeMap<String, String>) -> Result
     }
 
     store.save().map_err(|e| e.to_string())?;
+
+    if let Some(value) = values.get(keys::ENABLE_LOCAL_TTS) {
+        if let Some(runtime) = app.try_state::<crate::ai_service::tts::local::LocalTtsSwitch>() {
+            runtime.set_enabled(value == "true");
+            tracing::info!(enabled = runtime.is_enabled(), "本地 TTS 全局开关已更新");
+        }
+    }
 
     Ok("配置已成功保存并已生效！".to_string())
 }

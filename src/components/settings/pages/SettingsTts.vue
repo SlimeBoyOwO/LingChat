@@ -7,6 +7,31 @@
 
       <div class="flex min-h-0 flex-col gap-6">
         <div class="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-white/10 pb-5">
+          <label class="flex items-center gap-3">
+            <input
+              v-model="localTtsEnabled"
+              type="checkbox"
+              class="sr-only peer"
+              :disabled="savingLocalTts"
+              @change="saveLocalTtsSwitch"
+            />
+            <span
+              class="relative h-5 w-9 rounded-full transition-colors"
+              :class="localTtsEnabled ? 'bg-cyan-400/70' : 'bg-white/20'"
+            >
+              <span
+                class="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white transition-transform"
+                :class="localTtsEnabled ? 'translate-x-4' : 'translate-x-0'"
+              ></span>
+            </span>
+            <span>
+              <span class="block text-xs text-white/45">全局本地 TTS</span>
+              <span class="block text-sm font-medium text-white">
+                {{ localTtsEnabled ? '已启用' : '已关闭，使用云端 TTS' }}
+              </span>
+            </span>
+          </label>
+          <div class="h-8 w-px bg-white/10"></div>
           <div class="flex items-center gap-2">
             <span class="status-dot" :class="status?.ready ? 'ready' : 'blocked'"></span>
             <div>
@@ -322,6 +347,7 @@ import {
 import { MenuItem, MenuPage } from '@/components/ui'
 import { useDialogStore } from '@/stores/modules/ui/dialog'
 import * as TtsLocal from '@/api/services/tts-local'
+import { getEnvConfigByKey, saveEnvConfigSettings } from '@/api/services/config'
 import { speedToLengthScale } from '@/utils/tts-speed'
 import { catalogRowState } from '@/utils/tts-download-state'
 import type {
@@ -348,6 +374,8 @@ let audioUrl: string | null = null
 const progressByAsset = ref<Record<string, number>>({})
 const downloadError = ref<Record<string, string>>({})
 const downloadingId = ref<string | null>(null)
+const localTtsEnabled = ref(false)
+const savingLocalTts = ref(false)
 let unlistenProgress: (() => void) | null = null
 
 type FilterIntent = 'deberta' | 'tokenizer' | 'voice' | 'style_vectors'
@@ -564,6 +592,35 @@ async function runPreview(): Promise<void> {
   }
 }
 
+async function loadLocalTtsSwitch(): Promise<void> {
+  try {
+    const setting = await getEnvConfigByKey('features.enable_local_tts')
+    localTtsEnabled.value = setting.value === 'true'
+  } catch (error) {
+    notice.value = { kind: 'error', text: `读取本地 TTS 开关失败：${errorText(error)}` }
+  }
+}
+
+async function saveLocalTtsSwitch(): Promise<void> {
+  savingLocalTts.value = true
+  try {
+    await saveEnvConfigSettings({
+      'features.enable_local_tts': String(localTtsEnabled.value),
+    })
+    notice.value = {
+      kind: 'success',
+      text: localTtsEnabled.value
+        ? '本地 TTS 已启用，使用本地 TTS 配置的角色将在下次调用时生效（或重启后生效）'
+        : '本地 TTS 已关闭，使用本地 TTS 配置的角色将沿用云端 TTS',
+    }
+  } catch (error) {
+    localTtsEnabled.value = !localTtsEnabled.value
+    notice.value = { kind: 'error', text: `保存本地 TTS 开关失败：${errorText(error)}` }
+  } finally {
+    savingLocalTts.value = false
+  }
+}
+
 function rowState(assetId: string) {
   const asset = TtsLocal.CATALOG.find((item) => item.id === assetId)
   if (!asset) return 'missing'
@@ -600,6 +657,7 @@ watch(
 )
 
 onMounted(async () => {
+  await loadLocalTtsSwitch()
   await refreshAll()
   unlistenProgress = TtsLocal.onDownloadProgress((progress) => {
     progressByAsset.value = {

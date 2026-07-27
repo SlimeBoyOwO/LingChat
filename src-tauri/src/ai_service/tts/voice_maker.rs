@@ -54,6 +54,7 @@ pub struct VoiceMaker {
     /// `sbv2_local` adapter can lazy-init the DeBerta holder + voice.
     local_tts_engine: Option<Arc<LocalTtsEngine>>,
     local_tts_paths: Option<LocalTtsPaths>,
+    local_tts_switch: Option<crate::ai_service::tts::local::LocalTtsSwitch>,
 }
 
 fn non_empty(s: &Option<String>) -> bool {
@@ -75,6 +76,7 @@ impl VoiceMaker {
             tts_config,
             local_tts_engine: None,
             local_tts_paths: None,
+            local_tts_switch: None,
         }
     }
 
@@ -88,6 +90,14 @@ impl VoiceMaker {
     ) {
         self.local_tts_engine = engine;
         self.local_tts_paths = paths;
+    }
+
+    pub fn set_local_tts_switch(
+        &mut self,
+        local_tts_switch: Option<crate::ai_service::tts::local::LocalTtsSwitch>,
+    ) {
+        self.local_tts_switch = local_tts_switch.clone();
+        self.provider.set_local_tts_switch(local_tts_switch);
     }
 
     pub fn set_lang(&mut self, lang: impl Into<String>) {
@@ -204,6 +214,18 @@ impl VoiceMaker {
                 )));
             }
             "localsbv2api" if self.availability.sbv2_local => {
+                if let (Some(name), Some(id)) = (
+                    cfg.sbv2api_name.clone().filter(|v| !v.trim().is_empty()),
+                    cfg.sbv2api_speaker_id
+                        .as_deref()
+                        .and_then(|v| v.parse::<i32>().ok()),
+                ) {
+                    self.provider.sbv2api = Some(Arc::new(Sbv2ApiAdapter::new(
+                        self.tts_config.sbv2api_api_url.clone(),
+                        name,
+                        id,
+                    )));
+                }
                 let engine = match &self.local_tts_engine {
                     Some(e) => e.clone(),
                     None => {
@@ -387,7 +409,21 @@ impl VoiceMaker {
             seg.voice_file = file_path.to_string_lossy().to_string();
 
             let provider = self.provider.clone();
-            let tts_type = self.tts_type.clone();
+            let use_cloud_fallback = self.tts_type == "localsbv2api"
+                && self
+                    .local_tts_switch
+                    .as_ref()
+                    .is_some_and(|switch| !switch.is_enabled());
+            if use_cloud_fallback {
+                tracing::info!(
+                    "角色配置为 localsbv2api，但本地 TTS 已被全局禁用，改用现有云端 TTS 流程"
+                );
+            }
+            let tts_type = if use_cloud_fallback {
+                "sbv2api".to_string()
+            } else {
+                self.tts_type.clone()
+            };
             let index = seg.index;
             futs.push(async move {
                 if let Err(e) = provider

@@ -33,6 +33,7 @@ pub struct GameRoleManager {
     local_tts_engine: Option<Arc<LocalTtsEngine>>,
     /// Filesystem layout for local TTS assets. Forwarded alongside the engine.
     local_tts_paths: Option<LocalTtsPaths>,
+    local_tts_switch: Option<crate::ai_service::tts::local::LocalTtsSwitch>,
     /// 全局永久记忆开关（来自 `AppConfig::use_persistent_memory`）。
     use_persistent_memory: bool,
     /// 触发记忆摘要的新消息数（来自 `AppConfig::memory_update_interval`）。
@@ -48,6 +49,7 @@ impl GameRoleManager {
         tts_config: TtsConfig,
         local_tts_engine: Option<Arc<LocalTtsEngine>>,
         local_tts_paths: Option<LocalTtsPaths>,
+        local_tts_switch: Option<crate::ai_service::tts::local::LocalTtsSwitch>,
         use_persistent_memory: bool,
         memory_update_interval: u32,
         memory_recent_window: u32,
@@ -60,6 +62,7 @@ impl GameRoleManager {
             tts_config,
             local_tts_engine,
             local_tts_paths,
+            local_tts_switch,
             use_persistent_memory,
             memory_update_interval,
             memory_recent_window,
@@ -148,6 +151,7 @@ impl GameRoleManager {
             &self.tts_config,
             self.local_tts_engine.as_ref(),
             self.local_tts_paths.as_ref(),
+            self.local_tts_switch.as_ref(),
         );
 
         let new_role = GameRole {
@@ -534,6 +538,7 @@ fn build_voice_maker(
     tts_config: &TtsConfig,
     local_tts_engine: Option<&Arc<LocalTtsEngine>>,
     local_tts_paths: Option<&LocalTtsPaths>,
+    local_tts_switch: Option<&crate::ai_service::tts::local::LocalTtsSwitch>,
 ) -> Option<VoiceMaker> {
     let tts_type = settings.tts_type.as_deref().unwrap_or("").trim();
     if tts_type.is_empty() {
@@ -553,6 +558,7 @@ fn build_voice_maker(
     let temp_dir = data_dir.join("voice");
     let mut vm = VoiceMaker::new(temp_dir, audio_format, tts_config.clone());
     vm.set_local_tts_engine(local_tts_engine.cloned(), local_tts_paths.cloned());
+    vm.set_local_tts_switch(local_tts_switch.cloned());
     vm.set_lang(&lang);
     if let Some(p) = resource_path {
         vm.set_character_path(Some(PathBuf::from(p)));

@@ -31,6 +31,7 @@ pub async fn initialize(
     app: &App,
     local_tts_engine: Option<Arc<LocalTtsEngine>>,
     local_tts_paths: Option<LocalTtsPaths>,
+    local_tts_switch: Option<crate::ai_service::tts::local::LocalTtsSwitch>,
 ) -> Result<(DatabaseConnection, SharedAIService, ChatComponents)> {
     // init_data_dir is invoked earlier from the Tauri setup closure
     // (see lib.rs) so the cached data directory is available to
@@ -74,6 +75,7 @@ pub async fn initialize(
         app_config.tts.clone(),
         local_tts_engine,
         local_tts_paths,
+        local_tts_switch,
         app_config.use_persistent_memory,
         app_config.memory_update_interval,
         app_config.memory_recent_window,
