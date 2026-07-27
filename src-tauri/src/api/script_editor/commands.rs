@@ -86,6 +86,13 @@ pub struct ScriptCharacter {
     pub emotions: Vec<String>,
     /// avatar/ 下的服装子目录
     pub clothes: Vec<String>,
+    /// 可用作缩略图预览的立绘绝对路径：本地 avatar 优先，没有就回退到全局
+    /// `game_data/characters/<folder>/avatar/`——与引擎运行时同一个查找顺序。
+    /// 两处都没有时为 None，前端据此判断「立绘不会显示」（issue #9）。
+    pub preview_image: Option<String>,
+    /// 全局角色库里是否存在该角色的立绘。本地 avatar 为空但全局有时，引擎仍能
+    /// 找到立绘，所以不该提示「立绘不会显示」；前端用它显示「立绘读自全局」徽标。
+    pub global_avatar: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -302,16 +309,62 @@ fn read_characters(script_dir: &Path) -> Vec<ScriptCharacter> {
         emotions.dedup();
         clothes.sort();
 
+        // 立绘预览图与「全局有没有立绘」：本地 avatar 优先，没有再回退到全局
+        // game_data/characters/<folder>/avatar/。引擎运行时也是这个顺序（issue #9）。
+        let global_avatar_dir = crate::api::characters_dir().join(&folder).join("avatar");
+        let global_avatar = first_avatar_image(&global_avatar_dir).is_some();
+        let preview_image = first_avatar_image(&avatar)
+            .or_else(|| first_avatar_image(&global_avatar_dir));
+
         out.push(ScriptCharacter {
             folder,
             role_key,
             ai_name,
             emotions,
             clothes,
+            preview_image,
+            global_avatar,
         });
     }
     out.sort_by(|a, b| a.folder.cmp(&b.folder));
     out
+}
+
+/// 取一个 avatar 目录里「最适合当缩略图」的图片绝对路径。
+///
+/// 优先 default / normal / idle 这类基准表情，其次按文件名升序，保证每次选到的
+/// 是同一张（不会刷新一下就换脸）。目录不存在或没图返回 None。
+fn first_avatar_image(dir: &Path) -> Option<String> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    let mut imgs: Vec<(u8, String, std::path::PathBuf)> = Vec::new();
+    for e in entries.flatten() {
+        if !e.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            continue;
+        }
+        let path = e.path();
+        let ext = path
+            .extension()
+            .and_then(|x| x.to_str())
+            .map(|x| x.to_lowercase())
+            .unwrap_or_default();
+        if !matches!(ext.as_str(), "png" | "webp" | "jpg" | "jpeg" | "gif") {
+            continue;
+        }
+        let stem = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        // 基准表情优先级最高（0），其余统一 1，再按名字排序
+        let prio = match stem.as_str() {
+            "default" | "normal" | "idle" | "stand" => 0,
+            _ => 1,
+        };
+        imgs.push((prio, stem, path));
+    }
+    imgs.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+    imgs.into_iter()
+        .next()
+        .map(|(_, _, p)| p.to_string_lossy().to_string())
 }
 
 fn chapter_summaries(script_dir: &Path) -> Vec<ChapterSummary> {
@@ -500,6 +553,35 @@ pub fn editor_delete_chapter(key: String, chapter_id: String) -> Result<(), Stri
     Ok(())
 }
 
+/// 删除剧本内一个角色（整个 `characters/<folder>/` 目录）。
+///
+/// 与章节、素材一样**不真删**：移到 `characters/.trash/<folder>.<时间戳>/`。
+/// 角色的人设和立绘都是作者的工作量，误删不可返是不可接受的；移进 .trash 后
+/// 校验器会把它当成不存在，被引用的角色会变成一条 `character.unknown` 诊断，
+/// 正好提示作者剧本里还有地方在引用它。
+#[tauri::command]
+pub fn editor_delete_character(key: String, folder: String) -> Result<(), String> {
+    let dir = paths::resolve_script_dir(&key)?;
+    // folder 是用户输入的目录名，先走 sanitize 挡掉 ../ 之类的穿越
+    let safe = paths::sanitize_folder_name(&folder)?;
+    let target = dir.join("characters").join(&safe);
+    if !target.exists() {
+        return Err(format!("角色目录不存在: characters/{}", safe));
+    }
+
+    let trash = dir.join("characters").join(".trash");
+    std::fs::create_dir_all(&trash).map_err(|e| format!("无法创建回收目录: {}", e))?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let dest = trash.join(format!("{}.{}", safe, stamp));
+
+    // .trash 就在 characters/ 下，与目标同卷，rename 必定成功（跨卷才需要回退到递归拷贝）
+    std::fs::rename(&target, &dest).map_err(|e| format!("删除角色失败: {}", e))?;
+    Ok(())
+}
+
 // 这里原本有一个 editor_rename_chapter（改章节**文件名**）。已删除，理由：
 //
 // 1. 章节 id 会被别的章节的 `chapter_end.next_chapter` / `next` 以及
@@ -684,11 +766,17 @@ fn allowed_extensions(kind: &str) -> &'static [&'static str] {
 
 /// 列出全局素材（`game_data/backgrounds` / `musics` / `ambient`）。
 ///
-/// 注意 background 与 pic、music 与 sound 在全局层共享同一个目录 ——
-/// 这是 `MediaType::fallback_dir()` 的既有行为，不是这里的简化。
+/// 注意 background 与 pic 在全局层共享同一个目录 —— 这是 `MediaType::fallback_dir()`
+/// 的既有行为。**音效（sound）例外**：它没有独立的全局目录，此前会 fallback 到
+/// 全局音乐目录，但音效本就该是剧本私有素材，全局列出只会让作者误以为能跨剧本
+/// 复用，所以这里直接返回空（issue #6）。环境音（ambient）仍保留全局列。
 #[tauri::command]
 pub fn editor_list_global_assets() -> Result<AssetIndex, String> {
     let one = |kind: &str| -> Vec<String> {
+        // 全局没有音效目录：跳过，不读音乐目录
+        if kind == "sound" {
+            return Vec::new();
+        }
         let Ok((_, dir)) = asset_dirs(kind) else {
             return Vec::new();
         };
@@ -758,6 +846,10 @@ pub fn editor_list_asset_files(key: String, scope: AssetScope) -> Result<AssetFi
     };
 
     let one = |kind: &str| -> Vec<AssetFile> {
+        // 全局没有音效目录（与 editor_list_global_assets 一致），剧本内仍正常扫
+        if script_dir.is_none() && kind == "sound" {
+            return Vec::new();
+        }
         let allowed = allowed_extensions(kind);
         let dirs: Vec<PathBuf> = match &script_dir {
             // 剧本内可能落在 media.rs 的任意一个候选子目录，全都扫
@@ -1253,9 +1345,20 @@ pub async fn editor_start_preview(
     // 备份整个会话状态，并按「刚进游戏」的样子把试玩场次搭好
     let session = PreviewSession::begin(&db, &data_dir, &game_status, &script).await?;
 
+    // 快照托管给 AppState：试玩任务自然结束时还原一次，editor_stop_preview 兜底
+    // 再 take 一次（为空即跳过）。这样无论「跑完 / 报错 / 被中止」哪条路，
+    // 共享 GameStatus 都能回到试玩前，不会污染玩家自由对话的上下文（issue #5）。
+    {
+        let state = app.state::<AppState>();
+        *state.pending_preview_restore.lock().await = Some(session);
+        // 清掉上一轮可能残留的已结束句柄
+        let _ = state.preview_task.lock().await.take();
+    }
+
     is_running.store(true, std::sync::atomic::Ordering::SeqCst);
 
-    tokio::spawn(async move {
+    let app_for_handle = app.clone();
+    let handle = tokio::spawn(async move {
         let mut ctx = crate::ai_service::game_system::script_engine::events::ScriptContext {
             db: &db,
             data_dir: &data_dir,
@@ -1281,12 +1384,16 @@ pub async fn editor_start_preview(
             tracing::error!("[ScriptEditor] 试玩收尾失败: {:#}", e);
         }
 
-        // 把会话状态整个还原回试玩之前。放在这里而不是 stop_preview 里：
-        // 正常跑完、中途报错、被 stop 掐断，三条路都会走到这，只在 stop 里
-        // 还原会漏掉前两条。
-        session.restore(&db, &game_status).await;
+        // 把会话状态整个还原回试玩之前。幂等（Option::take）：被 editor_stop_preview
+        // 先 take 走时这里拿到 None 直接跳过。
+        apply_pending_restore(&app).await;
         tracing::info!("[ScriptEditor] 试玩结束，会话状态已还原");
     });
+    *app_for_handle
+        .state::<AppState>()
+        .preview_task
+        .lock()
+        .await = Some(handle);
 
     Ok(())
 }
@@ -1308,7 +1415,7 @@ pub async fn editor_start_preview(
 ///
 /// 所以现在的做法是：**进来时整体备份、按新会话搭好场子、走的时候整体还原**。
 /// 试玩期间引擎爱怎么改怎么改，出去之后玩家的会话一个字节都没变。
-struct PreviewSession {
+pub struct PreviewSession {
     /// 试玩开始时台词表的长度。引擎只往后追加，截回这个长度即可
     line_len: usize,
     /// `to_snapshot()` 覆盖的场景状态：背景 / 音乐 / 特效 / 在场角色 / 全局变量 …
@@ -1386,6 +1493,24 @@ impl PreviewSession {
     }
 }
 
+/// 取出托管在 AppState 里的试玩快照并还原（幂等）。
+///
+/// 试玩任务自然结束时调一次，`editor_stop_preview` 兜底再调一次：先到者拿走
+/// `Option` 执行还原，后到者拿到 `None` 直接返回，不会重复还原。
+async fn apply_pending_restore(app: &AppHandle) {
+    let session = {
+        let mut slot = app.state::<AppState>().pending_preview_restore.lock().await;
+        match slot.take() {
+            Some(s) => s,
+            None => return,
+        }
+    };
+    let state = app.state::<AppState>();
+    let db = state.db.clone();
+    let game_status = state.ai_service.lock().await.game_status.clone();
+    session.restore(&db, &game_status).await;
+}
+
 /// 试玩时 `MAIN` 应该解析成谁。
 ///
 /// 引擎里 `character: MAIN` 走 `game_status.main_role_id`，而这个字段是
@@ -1423,8 +1548,10 @@ struct MainRolePrompt {
 
 /// 按 `init_game_status` 的同一套做法给主角构建人设提示词。
 ///
-/// 读不到就返回 `None` —— 没有人设的试玩仍然能跑流程（作者多半就是在调流程），
-/// 只是 AI 对话会缺上下文，比直接拒绝开场好。
+/// 只有在角色设定**完全读不到**时才返回 `None`。system_prompt 为空时不返回
+/// None——而是走 `sys_prompt_builder_by_settings` 自带的占位回退（与正式游玩
+/// `import_settings` 一致），保证 MAIN 始终有一条 SYSTEM 台词；否则 role_manager
+/// 会刷「role_id=N 没有找到 SYSTEM 属性的台词，可能人设丢失」（issue #1）。
 async fn build_main_role_prompt(
     db: &DatabaseConnection,
     data_dir: &Path,
@@ -1436,8 +1563,19 @@ async fn build_main_role_prompt(
         .await
         .ok()
         .flatten()?;
-    if settings.system_prompt.as_deref().unwrap_or("").trim().is_empty() {
-        return None;
+    if settings
+        .system_prompt
+        .as_deref()
+        .unwrap_or("")
+        .trim()
+        .is_empty()
+    {
+        // 与正式游玩一致：空人设用占位提示词兜底，AI 对话至少有人设占位，
+        // 不至于在没人设的上下文里生成。作者应在角色卡里补上人设。
+        tracing::warn!(
+            "[ScriptEditor] 主角 {} 未填写人设，已用占位提示词兜底（AI 对话可能不符预期）",
+            role_id
+        );
     }
     // 用 by_settings 版本而不是自己拼参数：它会一并带上 settings.user_name，
     // 与正式游玩走的是同一条构建路径
@@ -1571,11 +1709,37 @@ pub async fn editor_stop_preview(app: AppHandle) -> Result<(), String> {
         ch.choice_allow_free = false;
     }
 
-    let service = state.ai_service.lock().await;
-    service
+    state
+        .ai_service
+        .lock()
+        .await
         .script_manager
         .is_running
         .store(false, std::sync::atomic::Ordering::SeqCst);
+
+    // 等试玩任务真正收尾——它在结束时会把共享 GameStatus 还原回试玩前。
+    // 超时（多半卡在长 AI 请求上）就 abort 并兜底截断，避免退出后自由对话
+    // 还读到试玩留下的台词/在场角色（issue #5）。
+    let mut handle = state.preview_task.lock().await.take();
+    if let Some(h) = handle.as_mut() {
+        let done = tokio::select! {
+            r = h => {
+                let _ = r;
+                true
+            }
+            _ = tokio::time::sleep(std::time::Duration::from_secs(4)) => false
+        };
+        if !done {
+            if let Some(h) = handle.as_mut() {
+                h.abort();
+            }
+            tracing::warn!(
+                "[ScriptEditor] 试玩任务 4s 未收尾（可能在跑长 AI 请求），已中止并兜底还原"
+            );
+        }
+    }
+    // 幂等兜底：任务已自行还原则 take 为空跳过；超时被中止则现在补上截断
+    apply_pending_restore(&app).await;
     Ok(())
 }
 

@@ -119,6 +119,10 @@ export interface ScriptCharacter {
   aiName: string
   emotions: string[]
   clothes: string[]
+  /** 可用作缩略图的立绘绝对路径（本地优先，回退全局）；都没有则为 null */
+  previewImage: string | null
+  /** 全局角色库里是否存在该角色立绘（用于「立绘读自全局」徽标） */
+  globalAvatar: boolean
 }
 
 export interface ScriptDetail {
@@ -209,6 +213,9 @@ export const createChapter = (key: string, chapterId: string, name: string) =>
 
 export const deleteChapter = (key: string, chapterId: string) =>
   invoke<void>('editor_delete_chapter', { key, chapterId })
+
+export const deleteCharacter = (key: string, folder: string) =>
+  invoke<void>('editor_delete_character', { key, folder })
 
 export const createScript = (req: {
   folderName: string

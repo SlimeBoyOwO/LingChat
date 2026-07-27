@@ -4,12 +4,14 @@
       type="checkbox"
       :id="id"
       :checked="internalChecked"
+      :disabled="disabled"
       @change="handleChange"
       class="hidden"
     />
     <label
       :for="id"
-      class="relative cursor-pointer text-white text-3.5 select-none inline-flex items-center"
+      class="relative text-white text-3.5 select-none inline-flex items-center"
+      :class="disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'"
       style="text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3)"
     >
       <span
@@ -39,6 +41,12 @@ import { ref, watch } from 'vue'
 
 const props = defineProps({
   checked: {
+    type: Boolean,
+    default: false,
+  },
+  /// 禁用开关。禁用时原生 input 也会被 disabled，避免点穿；
+  /// 视觉上变灰且鼠标变 not-allowed。默认 false，既有调用方不受影响。
+  disabled: {
     type: Boolean,
     default: false,
   },

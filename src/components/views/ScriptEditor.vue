@@ -108,13 +108,16 @@
           <label
             class="llm-toggle"
             :title="
-              store.previewUseLlm
-                ? 'AI 对话会真的请求模型，按 token 计费'
-                : 'AI 对话出固定占位文本，不消耗 token —— 调流程时用这个'
+              store.previewing
+                ? '试玩进行中无法切换。请先结束试玩，再拨动开关后重新开跑（AI 开关只在试玩启动时生效）'
+                : store.previewUseLlm
+                  ? 'AI 对话会真的请求模型，按 token 计费'
+                  : 'AI 对话出固定占位文本，不消耗 token —— 调流程时用这个'
             "
           >
             <Toggle
               :checked="store.previewUseLlm"
+              :disabled="store.previewing"
               @change="(v: boolean) => (store.previewUseLlm = v)"
             />
             试玩用 AI
@@ -437,29 +440,58 @@
           <div
             v-for="c in store.characters"
             :key="c.folder"
-            class="row-card"
+            class="row-card char-card"
           >
-            <div class="flex items-baseline gap-2">
-              <span class="font-semibold text-white">{{ c.aiName }}</span>
-              <code class="ref">character: {{ c.roleKey }}</code>
-              <span class="ml-auto text-xs text-white/40">
-                {{ c.emotions.length }} 个表情{{
-                  c.clothes.length ? ` · ${c.clothes.length} 套服装` : ''
-                }}
-              </span>
+            <!-- 立绘缩略图：本地 avatar 优先，没有回退全局；都没有时占位，与
+                 引擎运行时同一个查找顺序，避免「编辑器看着有、游戏里没有」 -->
+            <div class="char-thumb">
+              <img
+                v-if="c.previewImage"
+                :src="assetUrl(c.previewImage)"
+                :alt="c.aiName"
+                loading="lazy"
+              />
+              <span
+                v-else
+                class="char-thumb-ph"
+              >无立绘</span>
             </div>
-            <p
-              v-if="c.emotions.length === 0"
-              class="mt-1 text-xs text-yellow-200"
+            <div class="char-info">
+              <div class="flex items-baseline gap-2">
+                <span class="font-semibold text-white">{{ c.aiName }}</span>
+                <code class="ref">character: {{ c.roleKey }}</code>
+                <span
+                  v-if="c.emotions.length === 0 && c.globalAvatar"
+                  class="char-badge"
+                  title="本剧本没复制立绘，但全局角色库里有；引擎会自动用全局那份"
+                  >立绘读自全局</span
+                >
+                <span class="ml-auto text-xs text-white/40">
+                  {{ c.emotions.length }} 个表情{{
+                    c.clothes.length ? ` · ${c.clothes.length} 套服装` : ''
+                  }}
+                </span>
+              </div>
+              <p
+                v-if="!c.previewImage"
+                class="mt-1 text-xs text-yellow-200"
+              >
+                本剧本与全局角色库都没有这个角色的立绘，台词里它不会显示
+              </p>
+              <p
+                v-else
+                class="mt-1 text-xs text-white/40"
+              >
+                {{ c.emotions.slice(0, 12).join('、') }}{{ c.emotions.length > 12 ? ' …' : '' }}
+              </p>
+            </div>
+            <button
+              class="char-del"
+              title="删除角色（移到 .trash/）"
+              @click="store.deleteCharacter(c.folder, c.aiName)"
             >
-              avatar/ 下没有任何图片，立绘不会显示
-            </p>
-            <p
-              v-else
-              class="mt-1 text-xs text-white/40"
-            >
-              {{ c.emotions.slice(0, 12).join('、') }}{{ c.emotions.length > 12 ? ' …' : '' }}
-            </p>
+              ✕
+            </button>
           </div>
 
           <div class="mt-4 flex flex-wrap gap-2">
@@ -509,15 +541,21 @@
                 导入到本剧本
               </button>
               <button
+                v-if="k.key !== 'sound'"
                 class="chip"
                 @click="importAsset(k.key, 'global')"
               >
                 导入为全局
               </button>
+              <span
+                v-if="k.key === 'sound'"
+                class="asset-local-only"
+                >音效只属于本剧本，没有全局目录</span
+              >
             </div>
             <div class="asset-cols">
               <div
-                v-for="col in ['script', 'global'] as AssetScope[]"
+                v-for="col in scopesFor(k.key)"
                 :key="col"
               >
                 <p class="asset-sub">
@@ -552,6 +590,7 @@
                       class="asset-audio"
                       controls
                       preload="none"
+                      controlslist="nodownload noremoteplayback"
                       :src="assetUrl(f.path)"
                     ></audio>
                   </div>
@@ -945,6 +984,10 @@ const assetUrl = (path: string) => convertFileSrc(path)
 
 const filesOf = (scope: AssetScope, kind: AssetKind): AssetFile[] =>
   store.assetFiles[scope]?.[kind] ?? []
+
+// 音效没有全局目录（issue #6），只展示「本剧本」一列；其余素材仍是「本剧本 + 全局」
+const scopesFor = (kind: AssetKind): AssetScope[] =>
+  kind === 'sound' ? ['script'] : ['script', 'global']
 
 const humanSize = (n: number) => {
   if (n < 1024) return `${n} B`
@@ -1581,6 +1624,16 @@ onUnmounted(() => {
   overflow-y: auto;
   padding-right: 4px;
 }
+/* MenuItem 的 .content 默认只有 width:100%，在 .fill（flex 列）里不会收缩，
+   于是它按内容撑高、溢出 .fill，.scroll-body 的 overflow-y:auto 就形同虚设——
+   事件属性一多就超出屏幕且滚不动。只在编辑器用到的 .fill 下把 .content 也补成
+   可收缩的 flex 列，不动共享组件 MenuItem 本体（其它设置页不受影响）。 */
+.fill :deep(.content) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 
 .toolbar {
   display: flex;
@@ -1736,6 +1789,15 @@ onUnmounted(() => {
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
 }
+/* 音效只有「本剧本」一列（issue #6），单列铺满，别留半边空白 */
+.asset-cols:has(> :only-child) {
+  grid-template-columns: 1fr;
+}
+.asset-local-only {
+  margin-left: auto;
+  font-size: 0.66rem;
+  color: rgba(255, 255, 255, 0.4);
+}
 .asset-sub {
   margin-bottom: 0.35rem;
   font-size: 0.7rem;
@@ -1811,6 +1873,67 @@ onUnmounted(() => {
   opacity: 1;
 }
 .asset-del:hover {
+  color: #fca5a5;
+  background: rgba(248, 113, 113, 0.15);
+}
+
+/* ---- 角色卡片（参照素材卡，但缩略图竖向、更小） ---- */
+.char-card {
+  align-items: center;
+}
+.char-thumb {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 56px;
+  border-radius: 5px;
+  overflow: hidden;
+  background:
+    repeating-conic-gradient(rgba(255, 255, 255, 0.08) 0% 25%, transparent 0% 50%) 0 0 / 10px 10px;
+}
+.char-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center; /* 立绘通常头在上方，裁顶比裁中间合理 */
+}
+.char-thumb-ph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 0.58rem;
+  color: rgba(255, 255, 255, 0.35);
+}
+.char-info {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+.char-badge {
+  flex: 0 0 auto;
+  border: 1px solid rgba(121, 217, 255, 0.4);
+  border-radius: 99px;
+  padding: 1px 7px;
+  font-size: 0.6rem;
+  color: var(--accent-color);
+  background: rgba(121, 217, 255, 0.12);
+}
+.char-del {
+  flex: 0 0 auto;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.25);
+  opacity: 0;
+  transition: all 0.15s;
+}
+.char-card:hover .char-del {
+  opacity: 1;
+}
+.char-del:hover {
   color: #fca5a5;
   background: rgba(248, 113, 113, 0.15);
 }

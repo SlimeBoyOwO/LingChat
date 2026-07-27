@@ -867,6 +867,35 @@ export const useScriptEditorStore = defineStore('script-editor', {
       }
     },
 
+    /**
+     * 删除剧本内一个角色。后端把 `characters/<folder>/` 整个移到 `.trash/`，不真删。
+     * 删完后跑一次校验——剧本里若有 `character: <被删角色>` 的引用，会立刻变成
+     * 一条看得见的诊断，提示作者哪里还在用它。
+     */
+    async deleteCharacter(folder: string, displayName: string) {
+      const key = this.scriptKey
+      if (!key || !this.detail) return
+      const dialog = useDialogStore()
+      const ok = await dialog.confirm(
+        `确定删除角色「${displayName}」吗？\n\n` +
+          '整个目录（人设、立绘）会被移到 characters/.trash/ 下，不会真正消失，' +
+          '但剧本里立刻找不到它。仍在引用它的台词会显示为校验错误。',
+        '删除角色',
+      )
+      if (!ok) return
+      try {
+        await api.deleteCharacter(key, folder)
+        this.detail.characters = this.detail.characters.filter(
+          (c) => c.folder !== folder,
+        )
+        void this.refreshGlobalCharacters()
+        await this.runValidation()
+        this.notifyOk('角色已删除', '可在 characters/.trash/ 里找回')
+      } catch (e) {
+        this.notifyError('删除角色失败', e)
+      }
+    },
+
     /** 素材页的详细列表。两次调用（剧本 + 全局），页面打开时拉一次 */
     async refreshAssetFiles() {
       const key = this.scriptKey

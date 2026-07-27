@@ -265,6 +265,11 @@ pub fn validate(
     // 剧本内 NPC 目录名，用于校验 character 引用
     let known_characters = collect_script_characters(script_dir);
 
+    // 检查每个剧本角色的人设是否填写。空人设的 NPC 在试玩/正式游玩时不会写 SYSTEM
+    // 台词，role_manager 会刷「role_id=N 没有找到 SYSTEM 属性的台词，可能人设丢失」
+    // （issue #1）。把这条吓人的后台日志变成编辑器里看得见的提示，引导作者去补。
+    check_character_personas(script_dir, &known_characters, &mut diags);
+
     // ---------- 逐章节 ----------
     let mut edges: Vec<ChapterEdge> = Vec::new();
     let mut vars_written: BTreeSet<String> = BTreeSet::new();
@@ -523,7 +528,7 @@ pub fn validate(
             Severity::Warn,
             "variable.never_set",
             format!(
-                "条件里用到变量「{}」，但整个剧本都没有给它赋值过。未定义变量的 == 恒假、!= 恒真",
+                "条件里用到变量「{}」，但整个剧本都没有给它赋值过。没赋值的变量，用「等于」比较时永远不成立、用「不等于」比较时永远成立",
                 v
             ),
         ));
@@ -590,6 +595,66 @@ fn collect_script_characters(script_dir: &Path) -> HashSet<String> {
         }
     }
     out
+}
+
+/// 检查每个剧本角色的人设（`system_prompt`）是否填写。
+///
+/// 引擎在 `register_script_roles` 里只在 `system_prompt` 非空时才写 NPC 的 SYSTEM
+/// 台词；空人设的 NPC 一旦说话或被感知，`role_manager::sync_memories` 就会警告
+/// 「role_id=N 没有找到 SYSTEM 属性的台词，可能人设丢失」（issue #1）。这里把它
+/// 提前变成编辑器里看得见的提示，让作者去补，而不是面对后台日志猜原因。
+///
+/// 只给 Info 而不是 Warn：纯旁白/道具型 NPC 本就不需要人设，是否要补由作者判断。
+fn check_character_personas(
+    script_dir: &Path,
+    known_characters: &HashSet<String>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let dir = script_dir.join("characters");
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return;
+    };
+    for e in entries.flatten() {
+        if !e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let folder = e.file_name().to_string_lossy().to_string();
+        let settings = std::fs::read_to_string(e.path().join("settings.yml"))
+            .ok()
+            .and_then(|s| serde_yaml::from_str::<JsonValue>(&s).ok());
+        let Some(settings) = settings else {
+            continue;
+        };
+        // 显示名优先 ai_name，回落目录名，确保提示里是个作者认得的名字
+        let display = settings
+            .get("ai_name")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or(&folder);
+        let key = settings
+            .get("script_role_key")
+            .and_then(|v| v.as_str())
+            .map(|x| x.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| folder.clone());
+        let empty = settings
+            .get("system_prompt")
+            .map(|v| match v.as_str() {
+                Some(s) => s.trim().is_empty(),
+                None => false,
+            })
+            .unwrap_or(true);
+        if empty && known_characters.contains(&key) {
+            diags.push(Diagnostic::script(
+                Severity::Info,
+                "character.no_persona",
+                format!(
+                    "角色「{}」没有填写人设（settings.yml 的 system_prompt 为空）。它的 AI 对话会缺少性格设定，试玩时后台可能提示「人设丢失」",
+                    display
+                ),
+            ));
+        }
+    }
 }
 
 fn media_field_of(ty: &str) -> (&'static str, MediaType) {
@@ -675,7 +740,7 @@ fn check_condition(
                 cid,
                 i,
                 format!(
-                    "条件里用了不支持的运算符「{}」。只支持 var == 值 / var != 值 / 裸变量真值 —— 写了别的不会报错，但条件会恒假",
+                    "条件里用了不支持的运算符「{}」。只支持「变量 == 值」「变量 != 值」或单独一个变量判断真假——写了别的不会报错，但这个条件永远不成立",
                     op
                 ),
             )

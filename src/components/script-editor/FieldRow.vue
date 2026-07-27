@@ -1,6 +1,9 @@
 <template>
   <div class="mb-4">
-    <label class="inline-flex items-center gap-1.5 font-medium text-brand">
+    <label
+      class="inline-flex items-center gap-1.5 font-medium text-brand"
+      :title="`YAML 字段名：${field.key}`"
+    >
       {{ field.label }}
       <span
         v-if="field.required"
@@ -13,7 +16,6 @@
         >可选</span
       >
     </label>
-    <p class="mt-1 mb-2 text-sm text-gray-300">{{ field.key }}</p>
 
     <!-- 遗留字段：只展示，不给编辑 -->
     <template v-if="field.kind === 'deprecated' || !field.enabled">

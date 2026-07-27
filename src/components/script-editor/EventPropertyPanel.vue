@@ -8,7 +8,6 @@
       <!-- 事件类型 -->
       <div class="mb-4">
         <label class="inline-flex items-center font-medium text-brand">事件类型</label>
-        <p class="mt-1 mb-2 text-sm text-gray-300">type</p>
         <select
           class="glass-input"
           :value="eventType"
@@ -29,7 +28,7 @@
           </optgroup>
         </select>
         <p class="mt-1 text-xs text-white/40">
-          共 {{ store.schema?.events.length ?? 0 }} 种，列表由 Rust 侧 get_script_schema 提供
+          共 {{ store.schema?.events.length ?? 0 }} 种事件可选
         </p>
       </div>
 
