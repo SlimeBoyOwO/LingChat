@@ -160,10 +160,12 @@ impl ToolPermissionConfig {
 
     /// 根据调用来源和角色名，计算实际可用的工具集。
     /// 先通过 scene_mapping 找到场景组，再查角色组，取交集。
+    /// `all_names` 是全量工具名集合，当双方均 `all_tools = true` 时返回全集。
     pub fn allowed_tools(
         &self,
         source: GeneratorSource,
         role_name: Option<&str>,
+        all_names: &HashSet<String>,
     ) -> HashSet<String> {
         // 1. 查映射找到场景组名（映射不存在时回退到 scene_default）
         let key: GeneratorSourceKey = source.into();
@@ -189,10 +191,20 @@ impl ToolPermissionConfig {
         }
 
         // 3. 交集 / all_tools
+        // all_tools = true 且对方的工具集为空时，回退到全量名集合，
+        // 使得"双方都 all_tools"时能返回所有工具。
         if group.all_tools {
-            scene.tools.clone()
+            if scene.all_tools || scene.tools.is_empty() {
+                all_names.clone()
+            } else {
+                scene.tools.clone()
+            }
         } else if scene.all_tools {
-            group.tools.clone()
+            if group.all_tools || group.tools.is_empty() {
+                all_names.clone()
+            } else {
+                group.tools.clone()
+            }
         } else {
             let mut allowed = scene.tools.clone();
             allowed.retain(|name| group.tools.contains(name));

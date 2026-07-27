@@ -3,7 +3,7 @@ import type { GameMessage } from '@/stores/modules/game/state'
 
 export const convertToGameMessages = (lines: GameLine[]): GameMessage[] => {
   // 先过滤掉 SYSTEM 类型的消息（虽然后端已经过滤了，但再加一层保障）
-  const filteredLines = lines.filter((line) => line.attribute !== 'SYSTEM')
+  const filteredLines = lines.filter((line) => line.attribute !== 'SYSTEM' && line.attribute !== 'system' && line.attribute !== 'tool' && line.attribute !== 'TOOL')
 
   return filteredLines.map((line, index, array) => {
     const filteredContent = line.content

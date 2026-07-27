@@ -28,7 +28,7 @@ use crate::ai_service::message_system::responses::{event_names, ReplyResponse};
 use crate::ai_service::tools::registry::ToolRegistry;
 use crate::ai_service::tools::tool_loop::stream_with_tool_loop;
 use crate::ai_service::translator::Translator;
-use crate::ai_service::types::{LineAttributeExt, LineBase, LlmMessage};
+use crate::ai_service::types::{GameLine, LineAttributeExt, LineBase, LlmMessage};
 use crate::api::data_dir;
 use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::PromptRole;
@@ -429,10 +429,39 @@ impl MessageGenerator {
         .await?;
         if !tool_loop_result.tool_messages.is_empty() {
             let mut gs = self.deps.game_status.lock().await;
-            let anchor = tool_context_anchor
-                .and_then(|index| gs.line_list.get_mut(index))
-                .context("工具上下文锚点台词不存在")?;
-            anchor.base.tool_context = tool_loop_result.tool_messages;
+            let insert_pos = tool_context_anchor.map(|i| i + 1).unwrap_or(gs.line_list.len());
+            let perceived: Vec<i32> = gs.present_role_ids.iter().copied().collect();
+
+            for msg in tool_loop_result.tool_messages.iter().rev() {
+                let (attribute, content, tool_call) = match msg.role.as_str() {
+                    "assistant" => {
+                        let tool_call = msg.tool_calls.as_ref().map(|calls| {
+                            serde_json::to_string(calls).unwrap_or_default()
+                        });
+                        (LineAttribute::Assistant, msg.content.clone(), tool_call)
+                    },
+                    "tool" => (
+                        LineAttribute::Tool,
+                        serde_json::to_string(&serde_json::json!({
+                            "tool_call_id": msg.tool_call_id,
+                            "result": serde_json::from_str::<serde_json::Value>(&msg.content)
+                                .unwrap_or(serde_json::Value::String(msg.content.clone())),
+                        })).unwrap_or_default(),
+                        None,
+                    ),
+                    _ => continue,
+                };
+                let line = LineBase {
+                    content,
+                    tool_call,
+                    attribute: LineAttributeExt(attribute),
+                    sender_role_id: None,
+                    display_name: None,
+                    ..Default::default()
+                };
+                gs.line_list
+                    .insert(insert_pos, GameLine::from_base(line, perceived.clone()));
+            }
             gs.refresh_memories(&self.deps.db).await?;
         }
         let llm_stream = tool_loop_result.stream;

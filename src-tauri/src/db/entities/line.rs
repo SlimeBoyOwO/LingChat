@@ -10,6 +10,8 @@ pub enum LineAttribute {
     System,
     #[sea_orm(string_value = "assistant")]
     Assistant,
+    #[sea_orm(string_value = "tool")]
+    Tool,
 }
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
@@ -29,9 +31,9 @@ pub struct Model {
     pub attribute: LineAttribute,
     pub sender_role_id: Option<i32>,
     pub display_name: Option<String>,
-    #[sea_orm(column_type = "Text", nullable)]
-    pub tool_context: Option<String>,
     pub save_id: i32,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub tool_call: Option<String>,
     pub parent_line_id: Option<i32>,
 }
 

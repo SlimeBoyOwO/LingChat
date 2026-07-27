@@ -90,7 +90,11 @@ impl ToolRegistry {
         source: GeneratorSource,
         role_name: Option<&str>,
     ) -> std::collections::HashSet<String> {
-        self.permissions.allowed_tools(source, role_name)
+        let all_names: std::collections::HashSet<String> = self.definitions()
+            .into_iter()
+            .map(|d| d.function.name)
+            .collect();
+        self.permissions.allowed_tools(source, role_name, &all_names)
     }
 }
 

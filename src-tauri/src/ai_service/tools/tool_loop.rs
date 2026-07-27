@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use futures_util::{stream, StreamExt};
+use tokio::sync::mpsc;
 
 use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmClient};
 use crate::ai_service::message_system::generator::GeneratorSource;
@@ -87,29 +88,41 @@ async fn stream_with_tool_loop_with_provider(
 
     let executor = ToolExecutor::new(registry);
     let context = ToolContext::new(allowed);
-
     let mut tool_messages = Vec::new();
+
+    // 用 channel 把每轮的 Content chunk 实时透传出去，最终 stream 包含所有轮次的内容
+    let (content_tx, content_rx) = mpsc::unbounded_channel::<LlmChunk>();
 
     for round in 0..=MAX_TOOL_ROUNDS {
         tracing::info!(round = round + 1, "开始流式聊天工具决策");
         let mut response_stream = provider.stream_with_tools(&messages, &definitions).await?;
-        let mut chunks = Vec::new();
         let mut tool_calls = Vec::new();
+        let mut round_text = String::new();
 
         while let Some(chunk) = response_stream.next().await {
             match chunk? {
                 LlmChunk::ToolCalls(calls) => tool_calls.extend(calls),
-                chunk => chunks.push(chunk),
+                LlmChunk::Content(text) => {
+                    round_text.push_str(&text);
+                    let _ = content_tx.send(LlmChunk::Content(text));
+                }
+                // Thinking 等其它 chunk 也一起透传
+                other => {
+                    let _ = content_tx.send(other);
+                }
             }
         }
 
         if tool_calls.is_empty() {
+            // 本轮没有工具调用，工具闭环结束，关闭 channel 并返回合并 stream
+            drop(content_tx);
             return Ok(ToolLoopResult {
-                stream: Box::pin(stream::iter(chunks.into_iter().map(Ok))),
+                stream: Box::pin(content_rx_stream(content_rx)),
                 tool_messages,
             });
         }
         if round == MAX_TOOL_ROUNDS {
+            drop(content_tx);
             return Err(anyhow!("工具调用超过最大轮次 {MAX_TOOL_ROUNDS}"));
         }
 
@@ -125,16 +138,10 @@ async fn stream_with_tool_loop_with_provider(
             }
         }
 
-        let content = chunks
-            .iter()
-            .filter_map(|chunk| match chunk {
-                LlmChunk::Content(text) => Some(text.as_str()),
-                _ => None,
-            })
-            .collect::<String>();
+        // 本轮的内容文本 + tool_calls 一起存入助理消息
         let assistant_message = LlmMessage {
             role: "assistant".to_string(),
-            content,
+            content: round_text,
             tool_calls: Some(calls.clone()),
             tool_call_id: None,
         };
@@ -152,6 +159,16 @@ async fn stream_with_tool_loop_with_provider(
     }
 
     unreachable!("工具循环必须在限定轮次内返回")
+}
+
+/// 将 mpsc receiver 转为 ChunkStream。
+fn content_rx_stream(rx: mpsc::UnboundedReceiver<LlmChunk>) -> ChunkStream {
+    Box::pin(stream::unfold(rx, |mut rx| async move {
+        match rx.recv().await {
+            Some(chunk) => Some((Ok(chunk), rx)),
+            None => None,
+        }
+    }))
 }
 
 fn presentation_stream(stream: ChunkStream) -> ChunkStream {
