@@ -129,11 +129,10 @@ pub struct LineBase {
     pub tts_content: Option<String>,
     pub action_content: Option<String>,
     pub audio_file: Option<String>,
+    pub tool_call: Option<String>,
     pub attribute: LineAttributeExt,
     pub sender_role_id: Option<i32>,
     pub display_name: Option<String>,
-    #[serde(default)]
-    pub tool_context: Vec<LlmMessage>,
 }
 
 /// 对 `db::entities::line::LineAttribute` 的包装，提供 `Default` 实现
@@ -164,6 +163,7 @@ impl LineAttributeExt {
             LineAttribute::User => "user",
             LineAttribute::System => "system",
             LineAttribute::Assistant => "assistant",
+            LineAttribute::Tool => "tool",
         }
     }
 }

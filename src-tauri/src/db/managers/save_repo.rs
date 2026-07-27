@@ -3,27 +3,10 @@ use chrono::Utc;
 use sea_orm::*;
 use std::collections::HashMap;
 
-use crate::ai_service::types::{GameLine, LineAttributeExt, LlmMessage};
+use crate::ai_service::types::{GameLine, LineAttributeExt};
 use crate::db::entities::{line, line_perception, memory_bank, running_script, save};
 
 pub struct SaveRepo;
-
-fn serialize_tool_context(messages: &[LlmMessage]) -> Result<Option<String>> {
-    if messages.is_empty() {
-        return Ok(None);
-    }
-    serde_json::to_string(messages)
-        .map(Some)
-        .context("序列化台词工具上下文失败")
-}
-
-fn deserialize_tool_context(line_id: i32, value: Option<&str>) -> Result<Vec<LlmMessage>> {
-    let Some(value) = value else {
-        return Ok(Vec::new());
-    };
-    serde_json::from_str(value)
-        .with_context(|| format!("反序列化台词 {line_id} 的工具上下文失败"))
-}
 
 // ========== Save CRUD ==========
 
@@ -264,7 +247,6 @@ impl SaveRepo {
             .into_iter()
             .map(|db_line| {
                 let perceived = perception_map.get(&db_line.id).cloned().unwrap_or_default();
-                let tool_context = deserialize_tool_context(db_line.id, db_line.tool_context.as_deref())?;
                 Ok(GameLine {
                     base: crate::ai_service::types::LineBase {
                         id: Some(db_line.id),
@@ -274,10 +256,10 @@ impl SaveRepo {
                         tts_content: db_line.tts_content,
                         action_content: db_line.action_content,
                         audio_file: db_line.audio_file,
+                        tool_call: db_line.tool_call,
                         attribute: LineAttributeExt(db_line.attribute),
                         sender_role_id: db_line.sender_role_id,
                         display_name: db_line.display_name,
-                        tool_context,
                     },
                     perceived_role_ids: perceived,
                 })
@@ -309,8 +291,6 @@ impl SaveRepo {
             let db_line = &db_lines[i];
             let input_line = &input_lines[i];
 
-            let input_tool_context = serialize_tool_context(&input_line.base.tool_context)?;
-
             // Try ID match first
             if let Some(input_id) = input_line.base.id {
                 if input_id == db_line.id {
@@ -318,7 +298,8 @@ impl SaveRepo {
                     if db_line.content != input_line.base.content
                         || db_line.attribute != input_line.base.attribute.0
                         || db_line.sender_role_id != input_line.base.sender_role_id
-                        || db_line.tool_context != input_tool_context
+                        || db_line.action_content != input_line.base.action_content
+                        || db_line.tool_call != input_line.base.tool_call
                     {
                         let mut active: line::ActiveModel = db_line.clone().into();
                         active.content = Set(input_line.base.content.clone());
@@ -330,18 +311,19 @@ impl SaveRepo {
                         active.action_content = Set(input_line.base.action_content.clone());
                         active.audio_file = Set(input_line.base.audio_file.clone());
                         active.display_name = Set(input_line.base.display_name.clone());
-                        active.tool_context = Set(input_tool_context);
+                        active.tool_call = Set(input_line.base.tool_call.clone());
                         active.update(db).await.map_err(|e| anyhow!("{e}"))?;
                     }
                     continue;
                 }
             }
 
-            // Try weak match by content + attribute + sender
+            // Try weak match by content + attribute + sender + action_content + tool_call
             if db_line.content == input_line.base.content
                 && db_line.attribute == input_line.base.attribute.0
                 && db_line.sender_role_id == input_line.base.sender_role_id
-                && db_line.tool_context == input_tool_context
+                && db_line.action_content == input_line.base.action_content
+                && db_line.tool_call == input_line.base.tool_call
             {
                 // Same logical line — no update needed for existing DB row
                 continue;
@@ -391,7 +373,7 @@ impl SaveRepo {
                     tts_content: Set(input_line.base.tts_content.clone()),
                     action_content: Set(input_line.base.action_content.clone()),
                     audio_file: Set(input_line.base.audio_file.clone()),
-                    tool_context: Set(serialize_tool_context(&input_line.base.tool_context)?),
+                    tool_call: Set(input_line.base.tool_call.clone()),
                     save_id: Set(save_id),
                     parent_line_id: Set(parent_id),
                     ..Default::default()

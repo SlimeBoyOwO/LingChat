@@ -10,7 +10,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(Line::Table)
-                    .add_column(ColumnDef::new(Line::ToolContext).text())
+                    .add_column(ColumnDef::new(Line::ToolCall).text())
                     .to_owned(),
             )
             .await
@@ -21,7 +21,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(Line::Table)
-                    .drop_column(Line::ToolContext)
+                    .drop_column(Line::ToolCall)
                     .to_owned(),
             )
             .await
@@ -31,5 +31,5 @@ impl MigrationTrait for Migration {
 #[derive(DeriveIden)]
 enum Line {
     Table,
-    ToolContext,
+    ToolCall,
 }

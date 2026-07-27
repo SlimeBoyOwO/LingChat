@@ -7,10 +7,10 @@ impl MigratorTrait for Migrator {
     fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         vec![
             Box::new(m20240101_000001_create_tables::Migration),
-            Box::new(m20260724_000002_add_line_tool_context::Migration),
+            Box::new(m20260727_000002_add_line_tool_call::Migration),
         ]
     }
 }
 
 pub mod m20240101_000001_create_tables;
-pub mod m20260724_000002_add_line_tool_context;
+pub mod m20260727_000002_add_line_tool_call;
