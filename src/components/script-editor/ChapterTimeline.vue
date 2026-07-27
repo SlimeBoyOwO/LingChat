@@ -17,6 +17,9 @@
         @drop.prevent="finishDrag"
       ></div>
 
+      <!-- 整行可拖、整行可放：早先只有行间 2px 的 .slot 绑了 @drop，拖到事件行
+           上松手根本不触发（issue #1）。现在行容器本身也是落点——悬停哪行就把
+           dropAt 设成"插到它前面"，与上方 .slot 同一套语义。落点高亮用顶部描边。 -->
       <div
         class="draggable"
         :class="{
