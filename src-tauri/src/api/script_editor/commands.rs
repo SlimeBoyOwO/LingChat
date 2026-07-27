@@ -1066,12 +1066,18 @@ pub fn editor_create_character(
         &JsonValue::Object(settings),
     )?;
 
+    // 刚创建的角色 avatar 目录是空的；全局同名角色若有立绘，仍按引擎回退顺序标出来
+    let global_avatar_dir = crate::api::characters_dir().join(&folder).join("avatar");
+    let global_avatar = first_avatar_image(&global_avatar_dir).is_some();
+
     Ok(ScriptCharacter {
         folder: folder.clone(),
         role_key: folder,
         ai_name: name,
         emotions: Vec::new(),
         clothes: Vec::new(),
+        preview_image: None,
+        global_avatar,
     })
 }
 
@@ -1498,8 +1504,11 @@ impl PreviewSession {
 /// 试玩任务自然结束时调一次，`editor_stop_preview` 兜底再调一次：先到者拿走
 /// `Option` 执行还原，后到者拿到 `None` 直接返回，不会重复还原。
 async fn apply_pending_restore(app: &AppHandle) {
+    // 注意：app.state() 返回的 State 是借用，必须先用 let 绑定延长生命周期，
+    // 否则它作为临时值在本语句结束就被释放，MutexGuard 的借用会悬空（E0716）
     let session = {
-        let mut slot = app.state::<AppState>().pending_preview_restore.lock().await;
+        let state = app.state::<AppState>();
+        let mut slot = state.pending_preview_restore.lock().await;
         match slot.take() {
             Some(s) => s,
             None => return,
@@ -1720,19 +1729,16 @@ pub async fn editor_stop_preview(app: AppHandle) -> Result<(), String> {
     // 等试玩任务真正收尾——它在结束时会把共享 GameStatus 还原回试玩前。
     // 超时（多半卡在长 AI 请求上）就 abort 并兜底截断，避免退出后自由对话
     // 还读到试玩留下的台词/在场角色（issue #5）。
-    let mut handle = state.preview_task.lock().await.take();
-    if let Some(h) = handle.as_mut() {
+    if let Some(mut h) = state.preview_task.lock().await.take() {
         let done = tokio::select! {
-            r = h => {
+            r = &mut h => {
                 let _ = r;
                 true
             }
             _ = tokio::time::sleep(std::time::Duration::from_secs(4)) => false
         };
         if !done {
-            if let Some(h) = handle.as_mut() {
-                h.abort();
-            }
+            h.abort();
             tracing::warn!(
                 "[ScriptEditor] 试玩任务 4s 未收尾（可能在跑长 AI 请求），已中止并兜底还原"
             );
