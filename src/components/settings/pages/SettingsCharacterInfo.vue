@@ -1,560 +1,697 @@
-mod achievements;
-mod adventures;
-mod ai_service;
-mod api;
-mod config;
-mod db;
-mod init;
-mod lan_sync;
-mod manifest;
-mod migration;
-mod resource_sync;
-pub mod utils;
+<template>
+  <Transition name="modal">
+    <div
+      v-if="visible"
+      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+      @click="handleClose"
+    >
+      <div
+        class="bg-[linear-gradient(135deg,rgba(255,255,255,0.15)_0%,rgba(255,255,255,0.05)_100%)] backdrop-blur-[30px] backdrop-saturate-180 rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.4),inset_0_0_1px_rgba(255,255,255,0.3)] border border-white/20 w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden text-white"
+        @click.stop
+      >
+        <!-- Header -->
+        <div
+          class="flex items-center justify-between p-6 border-b border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.1)_0%,rgba(255,255,255,0.05)_100%)]"
+        >
+          <div class="flex items-center gap-4">
+            <div
+              class="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center shadow-inner"
+            >
+              <Icon icon="setting" />
+            </div>
+            <div>
+              <h2 class="text-xl font-bold m-0 drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]">
+                {{ title }} - 配置编辑
+              </h2>
+              <p class="text-sm text-white/50 m-0">修改角色的详细设置</p>
+            </div>
+          </div>
+          <button
+            class="w-9 h-9 rounded-full border-none bg-white/10 text-white flex items-center justify-center cursor-pointer transition-all duration-200 hover:bg-white/20 hover:rotate-90"
+            @click="handleClose"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
 
-use std::sync::Arc;
+        <!-- Content -->
+        <div class="flex-1 overflow-hidden flex flex-row">
+          <!-- Sidebar (vertical scrollable for narrow viewports) -->
+          <div class="w-44 shrink-0 bg-black/10 flex flex-col gap-2 p-3 border-r border-white/10 overflow-y-auto tab-sidebar-scroll">
+            <button
+              v-for="tab in tabs"
+              :key="tab.id"
+              class="w-full text-left px-4 py-2.5 rounded-xl border-none bg-transparent text-white/60 cursor-pointer transition-all duration-200 font-medium hover:bg-white/5 hover:text-white"
+              :class="{
+                'bg-[rgba(94,114,228,0.2)] text-[#79d9ff]! font-semibold!': activeTab === tab.id,
+              }"
+              @click="activeTab = tab.id"
+            >
+              {{ tab.label }}
+            </button>
+          </div>
 
-use chrono::Local;
-use sea_orm::DatabaseConnection;
-use tauri::Manager;
-use tracing_subscriber::fmt::time::FormatTime;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::Layer;
+          <!-- Tab Panels -->
+          <div class="flex-1 overflow-y-auto p-6 relative">
+            <div v-if="loading" class="flex items-center justify-center h-full">
+              <div
+                class="w-10 h-10 border-3 border-white/10 border-t-[#5e72e4] rounded-full animate-spin"
+              ></div>
+            </div>
 
-use ai_service::god_agent::config::resolve_god_agent_provider;
-use ai_service::god_agent::GodAgentCore;
-use ai_service::llm::LlmSlot;
-use ai_service::message_system::processor::MessageProcessor;
-use ai_service::screen_analyzer::{ScreenAnalyzer, ScreenAnalyzerConfig};
-use ai_service::service::SharedAIService;
-use ai_service::translator::Translator;
+            <div v-else class="max-w-3xl mx-auto space-y-6">
+              <!-- Data-Driven Form (tabs with schemas) -->
+              <div v-if="currentTabConfig" class="space-y-4">
+                <div
+                  v-for="(field, index) in currentTabFields"
+                  :key="index"
+                  class="flex flex-col gap-2"
+                >
+                  <template v-if="!field.visibleIf || field.visibleIf(localSettings)">
+                    <label :for="field.key" class="text-[13px] text-white/60 font-medium"
+                      >{{ field.label }} ({{ field.key }})</label
+                    >
+                    <input
+                      v-if="field.type === 'text' || field.type === 'number'"
+                      :id="field.key"
+                      v-model="fieldModel(field).value"
+                      :type="field.type"
+                      :step="field.step"
+                      :placeholder="field.placeholder"
+                      class="form-control bg-black/20 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-sm outline-none transition-all duration-200"
+                      @change="handleFieldChange(field)"
+                    />
+                    <textarea
+                      v-else-if="field.type === 'textarea'"
+                      :id="field.key"
+                      v-model="fieldModel(field).value"
+                      :rows="field.rows || 4"
+                      class="form-control bg-black/20 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-sm outline-none transition-all duration-200 font-mono leading-relaxed"
+                    ></textarea>
+                    <select
+                      v-else-if="field.type === 'select'"
+                      :id="field.key"
+                      v-model="fieldModel(field).value"
+                      class="form-control bg-black/20 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-sm outline-none transition-all duration-200"
+                      @change="handleFieldChange(field)"
+                    >
+                      <option
+                        v-for="opt in resolveFieldOptions(field)"                        :key="opt.value"
+                        :value="opt.value"
+                        class="bg-[#333] text-white"
+                      >
+                        {{ opt.label }}
+                      </option>
+                    </select>
+                  </template>
+                </div>
+              </div>
 
-struct LocalTimer;
+              <!-- Clothes Tab (custom UI, outside data-driven block) -->
+              <div v-if="activeTab === 'clothes'" class="space-y-4">
+                <div class="flex items-center justify-between">
+                  <h3 class="text-sm font-bold text-white/70">服装列表</h3>
+                  <button
+                    class="px-3 py-1.5 rounded-lg border-none bg-[#5e72e4] text-white text-xs cursor-pointer hover:bg-[#4a5acf] transition-colors"
+                    @click="addClothesItem"
+                  >
+                    + 添加服装
+                  </button>
+                </div>
+                <div
+                  v-for="(item, idx) in clothesList"
+                  :key="idx"
+                  class="p-4 bg-white/5 rounded-xl border border-white/10 space-y-3"
+                >
+                  <div class="flex items-center justify-between">
+                    <span class="text-sm font-medium text-white/80">服装 #{{ idx + 1 }}</span>
+                    <button
+                      class="w-6 h-6 rounded-full border-none bg-red-500/20 text-red-400 cursor-pointer text-xs hover:bg-red-500/40 transition-colors"
+                      @click="removeClothesItem(idx)"
+                    >
+                      x
+                    </button>
+                  </div>
+                  <div class="flex flex-col gap-2">
+                    <label class="text-[13px] text-white/60 font-medium">name</label>
+                    <input
+                      v-model="item.name"
+                      type="text"
+                      class="form-control bg-black/20 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-sm outline-none transition-all duration-200"
+                    />
+                  </div>
+                  <div class="flex flex-col gap-2">
+                    <label class="text-[13px] text-white/60 font-medium">prompt</label>
+                    <textarea
+                      v-model="item.prompt"
+                      rows="3"
+                      class="form-control bg-black/20 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-sm outline-none transition-all duration-200 font-mono leading-relaxed"
+                    ></textarea>
+                  </div>
+                </div>
+                <div v-if="clothesList.length === 0" class="text-sm text-white/40 text-center py-8">
+                  暂无服装配置，点击"添加服装"创建
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
-impl FormatTime for LocalTimer {
-    fn format_time(&self, w: &mut tracing_subscriber::fmt::format::Writer<'_>) -> std::fmt::Result {
-        write!(w, "{}", Local::now().format("%H:%M:%S"))
+        <!-- Footer -->
+        <div
+          class="p-4 border-t border-white/10 flex justify-end gap-3 bg-[linear-gradient(180deg,rgba(255,255,255,0.05)_0%,rgba(255,255,255,0.1)_100%)]"
+        >
+          <button
+            class="px-5 py-2 rounded-[20px] text-sm font-medium cursor-pointer transition-all duration-200 border-none bg-white/10 text-white hover:bg-white/20"
+            @click="handleClose"
+          >
+            取消
+          </button>
+          <button
+            class="px-5 py-2 rounded-[20px] text-sm font-medium cursor-pointer transition-all duration-200 border-none bg-[#5e72e4] text-white disabled:opacity-60 disabled:cursor-not-allowed hover:enabled:bg-[#4a5acf] hover:enabled:-translate-y-px hover:enabled:shadow-[0_4px_12px_rgba(94,114,228,0.3)]"
+            :disabled="saving"
+            @click="saveSettings"
+          >
+            <span
+              v-if="saving"
+              class="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"
+            ></span>
+            {{ saving ? '保存中...' : '保存更改' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </Transition>
+</template>
+
+<script setup lang="ts">
+import { ref, watch, computed } from 'vue'
+import { getRoleSettings, updateRoleSettings } from '../../../api/services/character'
+import { Icon } from '../../base'
+import { useDialogStore } from '../../../stores/modules/ui/dialog'
+import * as TtsLocal from '../../../api/services/tts-local'
+
+const props = defineProps<{
+  visible: boolean
+  roleId: number | null
+  title?: string
+}>()
+
+const emit = defineEmits(['close', 'saved'])
+
+const activeTab = ref('basic')
+const loading = ref(false)
+const saving = ref(false)
+const dialogStore = useDialogStore()
+const localSettings = ref<any>({})
+const installedVoices = ref<TtsLocal.VoiceRecord[]>([])
+
+async function refreshLocalVoices(): Promise<void> {
+  try {
+    const snapshot = await TtsLocal.listInstalled()
+    installedVoices.value = snapshot.voices
+  } catch (error) {
+    console.warn('refreshLocalVoices failed', error)
+    installedVoices.value = []
+  }
+}
+
+const tabs = [
+  { id: 'basic', label: '基本信息' },
+  { id: 'prompts', label: '提示词' },
+  { id: 'visuals', label: '视觉效果' },
+  { id: 'clothes', label: '服装' },
+  { id: 'pet', label: '桌宠' },
+  { id: 'voice', label: '语音设置' },
+]
+
+const voiceModelKeys = [
+  'sva_speaker_id',
+  'sbv2_name',
+  'sbv2_speaker_id',
+  'bv2_speaker_id',
+  'sbv2api_name',
+  'sbv2api_speaker_id',
+  'gsv_voice_text',
+  'gsv_voice_filename',
+  'gsv_gpt_model_name',
+  'gsv_sovits_model_name',
+  'aivis_model_uuid',
+  'opentts_voice',
+] as const
+
+// --- Schema Definition ---
+
+type FieldType = 'text' | 'number' | 'textarea' | 'select'
+
+interface FieldOption {
+  label: string
+  value: string
+  visibleIf?: (settings: any) => boolean
+}
+
+interface FieldSchema {
+  key: string
+  label: string
+  type: FieldType
+  rows?: number
+  step?: string
+  placeholder?: string
+  options?: FieldOption[]
+  // Dynamic options computed from refs/state. Overrides options when set.
+  dynamicOptions?: () => { label: string; value: string }[]
+  visibleIf?: (settings: any) => boolean
+  isVoiceModel?: boolean
+  realtime?: boolean
+  // When set, the field reads/writes into localSettings.value[parent][key].
+  // The parent object is auto-initialised to {} on first write if missing.
+  parent?: string
+}
+
+const fieldOptions = (field: FieldSchema) => {
+  return (field.options || []).filter(
+    (option) => !option.visibleIf || option.visibleIf(localSettings.value),
+  )
+}
+
+const schemas: Record<string, FieldSchema[]> = {
+  basic: [
+    { key: 'ai_name', label: 'AI 名称', type: 'text' },
+    { key: 'ai_subtitle', label: 'AI 副标题', type: 'text' },
+    { key: 'user_name', label: '用户名称', type: 'text' },
+    { key: 'user_subtitle', label: '用户副标题', type: 'text' },
+    { key: 'title', label: '角色标题', type: 'text' },
+    { key: 'info', label: '角色介绍', type: 'textarea', rows: 4 },
+  ],
+  prompts: [
+    { key: 'system_prompt', label: '系统提示词', type: 'textarea', rows: 10 },
+    { key: 'system_prompt_example', label: '对话示例', type: 'textarea', rows: 6 },
+    { key: 'system_prompt_example_old', label: '旧版兼容对话示例', type: 'textarea', rows: 4 },
+  ],
+  visuals: [
+    { key: 'scale', label: '缩放', type: 'number', step: '0.01' },
+    { key: 'offset_x', label: '水平偏移', type: 'number', step: '0.1' },
+    { key: 'offset_y', label: '垂直偏移', type: 'number', step: '0.1' },
+    { key: 'bubble_top', label: '气泡顶部距离', type: 'number' },
+    { key: 'bubble_left', label: '气泡左侧距离', type: 'number' },
+    { key: 'thinking_message', label: '思考消息文本', type: 'text' },
+  ],
+  pet: [
+    { key: 'scale_p', label: '桌宠缩放', type: 'number', step: '0.01' },
+    { key: 'offset_x_p', label: '桌宠水平偏移', type: 'number', step: '0.1' },
+    { key: 'offset_y_p', label: '桌宠垂直偏移', type: 'number', step: '0.1' },
+  ],
+  voice: [
+    {
+      key: 'tts_type',
+      label: 'TTS 类型',
+      type: 'select',
+      realtime: true,
+      options: [
+        { label: 'sva', value: 'sva' },
+        { label: 'sbv2', value: 'sbv2' },
+        { label: 'bv2', value: 'bv2' },
+        { label: 'sbv2api', value: 'sbv2api' },
+        { label: 'gsv', value: 'gsv' },
+        { label: 'aivis', value: 'aivis' },
+        { label: 'opentts', value: 'opentts' },
+        { label: '本地 SBV2 API', value: 'localsbv2api' },
+      ],
+    },
+
+    {
+      key: 'voice_lang',
+      label: '语音语言',
+      type: 'select',
+      realtime: true,
+      options: [
+        { label: '日语', value: 'ja' },
+        { label: '中文', value: 'zh' },
+        {
+          label: '英语',
+          value: 'en',
+          visibleIf: (s) => s.tts_type === 'gsv' || s.tts_type === 'opentts',
+        },
+        {
+          label: '韩语',
+          value: 'ko',
+          visibleIf: (s) => s.tts_type === 'gsv' || s.tts_type === 'opentts',
+        },
+      ],
+    },
+
+    {
+      key: 'sva_speaker_id',
+      label: 'sva_speaker_id',
+      type: 'text',
+      isVoiceModel: true,
+      visibleIf: (s) => s.tts_type === 'sva',
+    },
+
+    {
+      key: 'sbv2_name',
+      label: 'sbv2_name',
+      type: 'text',
+      isVoiceModel: true,
+      realtime: true,
+      visibleIf: (s) => s.tts_type === 'sbv2',
+    },
+    {
+      key: 'sbv2_speaker_id',
+      label: 'sbv2_speaker_id',
+      type: 'text',
+      isVoiceModel: true,
+      realtime: true,
+      visibleIf: (s) => s.tts_type === 'sbv2',
+    },
+
+    {
+      key: 'bv2_speaker_id',
+      label: 'bv2_speaker_id',
+      type: 'text',
+      isVoiceModel: true,
+      visibleIf: (s) => s.tts_type === 'bv2',
+    },
+
+    {
+      key: 'sbv2api_name',
+      label: 'sbv2api_name',
+      type: 'text',
+      isVoiceModel: true,
+      realtime: true,
+      visibleIf: (s) => s.tts_type === 'sbv2api',
+    },
+    {
+      key: 'sbv2api_speaker_id',
+      label: 'sbv2api_speaker_id',
+      type: 'text',
+      isVoiceModel: true,
+      realtime: true,
+      visibleIf: (s) => s.tts_type === 'sbv2api',
+    },
+
+    {
+      key: 'gsv_voice_text',
+      label: 'gsv_voice_text',
+      type: 'text',
+      isVoiceModel: true,
+      realtime: true,
+      visibleIf: (s) => s.tts_type === 'gsv',
+    },
+    {
+      key: 'gsv_voice_filename',
+      label: 'gsv_voice_filename',
+      type: 'text',
+      isVoiceModel: true,
+      realtime: true,
+      visibleIf: (s) => s.tts_type === 'gsv',
+    },
+    {
+      key: 'gsv_gpt_model_name',
+      label: 'gsv_gpt_model_name',
+      type: 'text',
+      isVoiceModel: true,
+      realtime: true,
+      visibleIf: (s) => s.tts_type === 'gsv',
+    },
+    {
+      key: 'gsv_sovits_model_name',
+      label: 'gsv_sovits_model_name',
+      type: 'text',
+      isVoiceModel: true,
+      realtime: true,
+      visibleIf: (s) => s.tts_type === 'gsv',
+    },
+
+    {
+      key: 'aivis_model_uuid',
+      label: 'aivis_model_uuid',
+      type: 'text',
+      isVoiceModel: true,
+      visibleIf: (s) => s.tts_type === 'aivis',
+    },
+
+    // --- Local SBV2 (localsbv2api) ---
+    {
+      key: 'sbv2_local_voice_id',
+      parent: 'voice_models',
+      label: '本地语音 ID',
+      type: 'select',
+      dynamicOptions: () =>
+        installedVoices.value.length === 0
+          ? [{ label: '未安装本地模型（请先在 TTS 设置中导入）', value: '' }]
+          : installedVoices.value.map((voice) => ({
+              label: voice.display_name
+                ? `${voice.display_name} (${voice.voice_id})`
+                : voice.voice_id,
+              value: voice.voice_id,
+            })),
+      visibleIf: (s) => s.tts_type === 'localsbv2api',
+    },
+    {
+      key: 'sbv2_local_speaker_id',
+      parent: 'voice_models',
+      label: '说话人 ID',
+      type: 'number',
+      step: '1',
+      visibleIf: (s) => s.tts_type === 'localsbv2api',
+    },
+    {
+      key: 'sbv2_local_style_id',
+      parent: 'voice_models',
+      label: '风格 ID',
+      type: 'number',
+      step: '1',
+      visibleIf: (s) => s.tts_type === 'localsbv2api',
+    },
+    {
+      key: 'sbv2_local_length_scale',
+      parent: 'voice_models',
+      label: '长度缩放 (length_scale)',
+      type: 'number',
+      step: '0.05',
+      visibleIf: (s) => s.tts_type === 'localsbv2api',
+    },
+    {
+      key: 'sbv2_local_sdp_ratio',
+      parent: 'voice_models',
+      label: 'SDP 噪声比',
+      type: 'number',
+      step: '0.05',
+      visibleIf: (s) => s.tts_type === 'localsbv2api',
+    },
+    {
+      key: 'opentts_voice',
+      label: 'OpenTTS 音色标识',
+      type: 'text',
+      isVoiceModel: true,
+      realtime: true,
+      placeholder: '留空则使用高级设置中的全局音色标识',
+      visibleIf: (s) => s.tts_type === 'opentts',
+    },
+  ],
+}
+
+// --- Computed Properties ---
+
+const currentTabConfig = computed(() => schemas[activeTab.value])
+
+// voice model 子区域已移除，所有字段统一在主表单渲染
+const currentTabFields = computed(() => {
+  return currentTabConfig.value || []
+})
+
+const resolveFieldOptions = (field: FieldSchema) => {
+  if (field.dynamicOptions) {
+    return field.dynamicOptions()
+  }
+  return field.options ?? []
+}
+
+const ensureVoiceModels = () => {
+  if (
+    !localSettings.value.voice_models ||
+    typeof localSettings.value.voice_models !== "object" ||
+    Array.isArray(localSettings.value.voice_models)
+  ) {
+    localSettings.value.voice_models = {}
+  }
+  return localSettings.value.voice_models as Record<string, unknown>
+}
+
+const migrateLegacyVoiceModelFields = () => {
+  const voiceModels = ensureVoiceModels()
+  for (const key of voiceModelKeys) {
+    const legacyValue = localSettings.value[key]
+    if ((voiceModels[key] === undefined || voiceModels[key] === null) && legacyValue != null) {
+      voiceModels[key] = legacyValue
     }
+    delete localSettings.value[key]
+  }
 }
 
-pub struct ChatComponents {
-    /// 聊天主 LLM 槽位（支持运行时热切换）。
-    /// 槽位本身始终存在，内部值可能为 None（表示尚未配置模型）。
-    pub llm: LlmSlot,
-    pub processor: Arc<MessageProcessor>,
-    /// 翻译 LLM 槽位（支持运行时热切换）。
-    pub translator: Arc<Translator>,
-}
-
-/// 截图流程中的临时状态（全屏捕获 + 覆盖窗口标签）。
-#[derive(Default)]
-pub struct ScreenshotCaptureState {
-    pub full_capture_base64: Option<String>,
-    pub overlay_label: Option<String>,
-}
-
-/// AppState 内部数据,init::initialize 完成后所有字段填充。
-pub struct InnerAppState {
-    pub db: DatabaseConnection,
-    pub ai_service: SharedAIService,
-    pub chat: ChatComponents,
-    pub script_channels: ai_service::game_system::script_engine::SharedScriptChannels,
-    pub generation_lock: Arc<tokio::sync::Mutex<()>>,
-    pub proactive_system:
-        Option<Arc<tokio::sync::Mutex<ai_service::proactive_system::ProactiveSystem>>>,
-    pub achievement_manager: Arc<tokio::sync::Mutex<achievements::manager::AchievementManager>>,
-    pub screen_analyzer: Arc<tokio::sync::Mutex<ScreenAnalyzer>>,
-    pub screenshot_capture: Arc<tokio::sync::Mutex<ScreenshotCaptureState>>,
-    pub auto_save_manager:
-        Arc<tokio::sync::Mutex<ai_service::game_system::auto_save::AutoSaveManager>>,
-    pub god_agent: Option<Arc<GodAgentCore>>,
-}
-
-/// AppState 在 Tauri 中 manage 的状态句柄。
-///
-/// **Android 修复**: Tauri 在 setup 闭包执行前就已经创建了 webview 窗口(见
-/// `tauri::app::setup()`),前端 JS 一旦加载就会立刻 invoke 命令。如果用户的 setup
-/// 闭包还在执行 init::initialize 时,前端命令 `init_game` 在 IPC runtime worker 上
-/// 被 dispatch 后调用 `state::<AppState>()` 就会 panic with
-/// "state() called before manage()"。
-///
-/// 解决方案: setup 闭包**最开始**就 manage 一个空壳 AppState,
-/// init::initialize 完成后用真实值填充。`OnceLock` 提供一次性写入。
-pub struct AppState {
-    inner: std::sync::OnceLock<InnerAppState>,
-}
-
-impl AppState {
-    pub fn empty() -> Self {
-        Self {
-            inner: std::sync::OnceLock::new(),
+const fieldModel = (field: FieldSchema) => {
+  return computed({
+    get: () => {
+      let target: any
+      if (field.parent) {
+        const parentObj = localSettings.value[field.parent]
+        target = (parentObj && typeof parentObj === "object") ? parentObj : (localSettings.value[field.parent] = {})
+      } else if (field.isVoiceModel) {
+        target = ensureVoiceModels()
+      } else {
+        target = localSettings.value
+      }
+      return target[field.key]
+    },
+    set: (val: any) => {
+      const coerced = field.type === "number" ? Number(val) : val
+      let target: any
+      if (field.parent) {
+        if (!localSettings.value[field.parent] || typeof localSettings.value[field.parent] !== "object") {
+          localSettings.value[field.parent] = {}
         }
-    }
+        target = localSettings.value[field.parent]
+      } else if (field.isVoiceModel) {
+        target = ensureVoiceModels()
+      } else {
+        target = localSettings.value
+      }
+      target[field.key] = coerced
+    },
+  })
+}
 
-    /// 填充 AppState。只能调用一次。
-    pub fn fill(&self, inner: InnerAppState) {
-        if self.inner.set(inner).is_err() {
-            panic!("AppState already filled (fill() must be called exactly once)");
+const clothesList = computed({
+  get: () => {
+    if (!Array.isArray(localSettings.value.clothes)) {
+      localSettings.value.clothes = []
+    }
+    return localSettings.value.clothes as Array<{ name: string; prompt: string }>
+  },
+  set: (val) => {
+    localSettings.value.clothes = val
+  },
+})
+
+const addClothesItem = () => {
+  if (!Array.isArray(localSettings.value.clothes)) {
+    localSettings.value.clothes = []
+  }
+  localSettings.value.clothes.push({ name: '', prompt: '' })
+}
+
+const removeClothesItem = (idx: number) => {
+  if (Array.isArray(localSettings.value.clothes)) {
+    localSettings.value.clothes.splice(idx, 1)
+  }
+}
+
+// --- Watchers & Methods ---
+
+watch(
+  () => props.visible,
+  async (newVal) => {
+    if (newVal && props.roleId) {
+      loading.value = true
+      try {
+        const data = await getRoleSettings(props.roleId)
+        localSettings.value = JSON.parse(JSON.stringify(data))
+        migrateLegacyVoiceModelFields()
+        if (!localSettings.value.voice_lang) {
+          localSettings.value.voice_lang = 'ja'
         }
+      } catch (e) {
+        console.error('Failed to load character settings', e)
+        emit('close')
+      } finally {
+        loading.value = false
+      }
     }
+  },
+)
 
-    /// 直接返回内部数据引用，用于 IDE 补全。
-    pub fn data(&self) -> &InnerAppState {
-        self.inner
-            .get()
-            .expect("AppState accessed before initialization")
+// Refresh installed local voices whenever the voice tab is shown while the
+// dialog is visible. The dropdown only matters when tts_type=localsbv2api,
+// but loading early keeps things simple and the list is cheap to fetch.
+watch(
+  () => [props.visible, activeTab.value, localSettings.value.tts_type],
+  ([visible, tab, ttsType]) => {
+    if (visible && tab === 'voice' && ttsType === 'localsbv2api') {
+      void refreshLocalVoices()
     }
+  },
+)
+
+const handleClose = () => {
+  emit('close')
 }
 
-/// 桌面端：简单 Deref，rust-analyzer 可以正确解析。
-#[cfg(not(target_os = "android"))]
-impl std::ops::Deref for AppState {
-    type Target = InnerAppState;
-    fn deref(&self) -> &Self::Target {
-        self.inner
-            .get()
-            .expect("AppState accessed before initialization")
-    }
+const handleFieldChange = async (field: FieldSchema) => {
+  if (!field.realtime || !props.roleId) return
+
+  try {
+    // 后端会同时保存 settings.yml 并重建已加载角色的 VoiceMaker。
+    await updateRoleSettings(props.roleId, localSettings.value)
+  } catch (e) {
+    console.error(`实时更新 ${field.key} 失败:`, e)
+    await dialogStore.alert(`实时更新 ${field.label} 失败，请检查控制台日志`)
+  }
 }
 
-/// Android：spin-loop 等待 fill 完成。
-#[cfg(target_os = "android")]
-impl std::ops::Deref for AppState {
-    type Target = InnerAppState;
-    fn deref(&self) -> &Self::Target {
-        loop {
-            if let Some(inner) = self.inner.get() {
-                return inner;
-            }
-            std::hint::spin_loop();
-        }
-    }
+const saveSettings = async () => {
+  if (!props.roleId) return
+  saving.value = true
+  try {
+    await updateRoleSettings(props.roleId, localSettings.value)
+    emit('saved')
+    emit('close')
+  } catch (e) {
+    console.error('Failed to save settings', e)
+    await dialogStore.alert('保存失败，请检查控制台日志')
+  } finally {
+    saving.value = false
+  }
+}
+</script>
+
+<style scoped>
+/* 表单控件 :focus 选中状态 */
+/* Vertical sidebar: thin custom scrollbar (Webkit + Firefox). */
+.tab-sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+.tab-sidebar-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.tab-sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.tab-sidebar-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+}
+.tab-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.32);
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,ling_chat_lib=info"))
-        .add_directive("sqlx=warn".parse().unwrap())
-        .add_directive("genai=error".parse().unwrap());
-
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::fmt::layer()
-                .with_timer(LocalTimer)
-                .with_filter(filter.clone()),
-        )
-        .with(utils::log_bridge::LogBridgeLayer.with_filter(filter.clone()))
-        .with(
-            tracing_subscriber::fmt::layer()
-                .with_writer(utils::file_logger::LogFileWriter)
-                .with_timer(LocalTimer)
-                .with_ansi(false)
-                .with_filter(filter),
-        )
-        .init();
-
-    #[allow(deprecated)]
-    unsafe {
-        std::env::set_var(
-            "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-            "--force-color-profile=scrgb-linear",
-        );
-    }
-
-    let builder = tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_store::Builder::new().build())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_screenshots::init())
-        .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_android_fs::init());
-
-    #[cfg(desktop)]
-    let builder = builder
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_process::init());
-
-    builder
-        .setup(|app| {
-            utils::log_bridge::set_app_handle(app.handle().clone());
-
-            // Initialize the cached data directory eagerly so any code that needs
-            // it (e.g. LocalTtsPaths::resolve, which delegates to get_data_dir)
-            // is safe to call here, before init::initialize runs.
-            init::static_copy::init_data_dir(&app.handle());
-
-            app.manage(api::pet::HitTestState::default());
-            app.manage(resource_sync::ResourceSyncState::default());
-            app.manage(lan_sync::LanSyncState::default());
-            app.manage(utils::cpu_perf::CpuDetectionCache::new());
-            app.manage(api::role_archive::RoleArchiveState::default());
-
-            // 本地 TTS 初始化：解析路径，确保目录结构，创建状态，若已有模型则自动初始化引擎
-            let tts_paths = ai_service::tts::local::paths::LocalTtsPaths::resolve(&app.handle())
-                .map_err(|e| format!("LocalTtsPaths::resolve: {e}"))?;
-            tts_paths.ensure()
-                .map_err(|e| format!("LocalTtsPaths::ensure: {e}"))?;
-            let local_state = ai_service::tts::local::LocalTtsState::new(tts_paths);
-            let local_engine = local_state.engine.clone();
-            let local_paths = local_state.paths.clone();
-            app.manage(local_state);
-            if local_paths.asset_present("deberta") {
-                tauri::async_runtime::block_on(async {
-                    if let Err(e) = local_engine.init(&local_paths).await {
-                        tracing::warn!(target: "tts_local", "auto-init failed: {e}");
-                    } else {
-                        tracing::info!(target: "tts_local", "engine auto-initialised");
-                    }
-                });
-            }
-
-            // Android 修复: Tauri 在 setup 闭包执行前已创建 webview 窗口,前端 invoke
-            // 命令会在 IPC runtime worker 上立即 dispatch;如果 AppState 还没 manage
-            // 就会 panic "state() called before manage()"。所以 setup 一开始就 manage
-            // 一个空壳 AppState,init::initialize 完成后用真实值 fill。
-            app.manage(AppState::empty());
-            let rt = tokio::runtime::Runtime::new()?;
-            let (db, ai_service, chat) = rt.block_on(init::initialize(
-                app,
-                Some(local_engine.clone()),
-                Some(local_paths.clone()),
-            ))?;
-
-            // 初始化文件日志（从设置读取开关和保留天数）
-            {
-                let store = config::settings_store(app.handle()).ok();
-                let log_enable = store
-                    .as_ref()
-                    .and_then(|s| s.get(config::keys::LOG_ENABLE))
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(true);
-                let retention_days = store
-                    .as_ref()
-                    .and_then(|s| s.get(config::keys::LOG_RETENTION_DAYS))
-                    .and_then(|v| v.as_u64())
-                    .map(|n| n as u32)
-                    .unwrap_or(10);
-
-                let data_dir = init::static_copy::get_data_dir();
-                utils::file_logger::init_logging(data_dir, log_enable);
-                utils::file_logger::cleanup_old_logs(retention_days);
-
-                // 初始化 LLM 请求体日志（默认关闭）
-                let llm_request_log_enable = store
-                    .as_ref()
-                    .and_then(|s| s.get(config::keys::LOG_LLM_REQUEST_BODY))
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                utils::llm_request_logger::init(data_dir, llm_request_log_enable);
-            }
-
-            // 启动时自动清理未被引用的孤立语音文件
-            match rt.block_on(init::voice_cleanup::cleanup_orphan_voice_files(
-                &db,
-                app.handle(),
-            )) {
-                Ok(stats) => {
-                    tracing::info!("语音文件清理完成: 删除 {} 个文件", stats.deleted_count);
-                }
-                Err(e) => {
-                    tracing::warn!("语音文件清理失败（非致命错误）: {e:#}");
-                }
-            }
-
-            let script_channels = std::sync::Arc::new(tokio::sync::Mutex::new(
-                ai_service::game_system::script_engine::ScriptChannels::new(),
-            ));
-
-            let generation_lock = std::sync::Arc::new(tokio::sync::Mutex::new(()));
-
-            // Create proactive system
-            let proactive = std::sync::Arc::new(tokio::sync::Mutex::new(
-                ai_service::proactive_system::ProactiveSystem::new(
-                    app.handle().clone(),
-                    db.clone(),
-                    ai_service.clone(),
-                    ChatComponents {
-                        llm: chat.llm.clone(),
-                        processor: chat.processor.clone(),
-                        translator: chat.translator.clone(),
-                    },
-                    generation_lock.clone(),
-                ),
-            ));
-
-            // Start proactive system loop on Tauri's runtime
-            let proactive_clone = proactive.clone();
-            tauri::async_runtime::spawn(async move {
-                ai_service::proactive_system::ProactiveSystem::start(proactive_clone).await;
-            });
-
-            let achievement_manager = std::sync::Arc::new(tokio::sync::Mutex::new(
-                achievements::manager::AchievementManager::new(&api::data_dir()),
-            ));
-
-            let screen_analyzer = {
-                let sa_config = ScreenAnalyzerConfig::resolve(&app.handle());
-                std::sync::Arc::new(tokio::sync::Mutex::new(ScreenAnalyzer::new(sa_config)))
-            };
-
-            let screenshot_capture =
-                std::sync::Arc::new(tokio::sync::Mutex::new(ScreenshotCaptureState::default()));
-
-            let auto_save_manager = std::sync::Arc::new(tokio::sync::Mutex::new(
-                ai_service::game_system::auto_save::AutoSaveManager::new(
-                    app.handle().clone(),
-                    db.clone(),
-                    ai_service.clone(),
-                ),
-            ));
-
-            // 构建上帝 Agent（多人对话编排器）—— 使用独立槽位以支持热切换
-            let god_agent = resolve_god_agent_provider(&app.handle()).map(|llm| {
-                let config = ai_service::god_agent::config::GodAgentConfig::load(&app.handle());
-                let slot: LlmSlot =
-                    std::sync::Arc::new(tokio::sync::RwLock::new(Some(Arc::new(llm))));
-                Arc::new(GodAgentCore::new(slot, config))
-            });
-
-            {
-                let state = app.state::<AppState>();
-                state.fill(InnerAppState {
-                    db,
-                    ai_service,
-                    chat,
-                    script_channels,
-                    generation_lock,
-                    proactive_system: Some(proactive),
-                    achievement_manager,
-                    screen_analyzer,
-                    screenshot_capture,
-                    auto_save_manager: auto_save_manager.clone(),
-                    god_agent,
-                });
-            }
-
-            // Spawn Windows mouse polling click-through loop
-            let window = app
-                .get_webview_window("main")
-                .ok_or_else(|| tauri::Error::AssetNotFound("main window not found".to_string()))?;
-
-            // Set up close handler for exit auto-save
-            ai_service::game_system::auto_save::AutoSaveManager::setup_close_handler(
-                app.handle().clone(),
-                window.clone(),
-                auto_save_manager.clone(),
-            );
-
-            // Start periodic auto-save loop (every 5 minutes)
-            tauri::async_runtime::spawn(async move {
-                ai_service::game_system::auto_save::AutoSaveManager::run_periodic(
-                    auto_save_manager,
-                )
-                .await;
-            });
-
-            let hit_test_state = app.state::<api::pet::HitTestState>();
-            let rects_arc = hit_test_state.solid_rects.clone();
-            let enabled_arc = hit_test_state.enabled.clone();
-
-            #[cfg(target_os = "windows")]
-            {
-                tauri::async_runtime::spawn(async move {
-                    let mut was_ignored = false;
-                    loop {
-                        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-
-                        let enabled = if let Ok(locked) = enabled_arc.lock() {
-                            *locked
-                        } else {
-                            false
-                        };
-
-                        if !enabled {
-                            if was_ignored {
-                                let _ = window.set_ignore_cursor_events(false);
-                                was_ignored = false;
-                            }
-                            continue;
-                        }
-
-                        use windows::Win32::Foundation::POINT;
-                        use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
-
-                        let mut pt = POINT { x: 0, y: 0 };
-                        unsafe {
-                            let _ = GetCursorPos(&mut pt);
-                        }
-
-                        if let Ok(window_pos) = window.outer_position() {
-                            if let Ok(scale_factor) = window.scale_factor() {
-                                let mouse_x = f64::from(pt.x) - f64::from(window_pos.x);
-                                let mouse_y = f64::from(pt.y) - f64::from(window_pos.y);
-
-                                let logical_x = mouse_x / scale_factor;
-                                let logical_y = mouse_y / scale_factor;
-
-                                let mut is_over_solid = false;
-                                if let Ok(rects) = rects_arc.lock() {
-                                    for r in rects.iter() {
-                                        if logical_x >= r.x
-                                            && logical_y >= r.y
-                                            && logical_x <= (r.x + r.width)
-                                            && logical_y <= (r.y + r.height)
-                                        {
-                                            is_over_solid = true;
-                                            break;
-                                        }
-                                    }
-                                }
-
-                                if is_over_solid {
-                                    if was_ignored {
-                                        let _ = window.set_ignore_cursor_events(false);
-                                        was_ignored = false;
-                                    }
-                                } else {
-                                    if !was_ignored {
-                                        let _ = window.set_ignore_cursor_events(true);
-                                        was_ignored = true;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                });
-            }
-
-            Ok(())
-        })
-        .invoke_handler(tauri::generate_handler![
-            utils::log_bridge::get_log_history,
-            api::settings::get_settings_tree,
-            api::settings::save_settings,
-            api::settings::get_setting_by_key,
-            api::settings::select_file,
-            api::settings::list_llm_providers,
-            api::settings::save_llm_provider,
-            api::settings::delete_llm_provider,
-            api::settings::set_llm_role,
-            api::settings::switch_llm,
-            api::settings::test_llm_provider,
-            api::settings::list_llm_models,
-            api::font::list_system_fonts,
-            api::font::import_font,
-            api::font::list_imported_fonts,
-            api::font::delete_imported_font,
-            api::character::get_character_list,
-            api::character::get_role_info,
-            api::character::get_role_settings,
-            api::character::get_character_file,
-            api::character::get_avatar_file,
-            api::character::select_clothes,
-            api::character::update_role_settings,
-            api::character::open_characters_folder,
-            api::background::get_background_list,
-            api::background::get_background_file,
-            api::background::upload_background_image,
-            api::background::open_backgrounds_folder,
-            api::scene::list_scenes,
-            api::scene::create_scene,
-            api::scene::update_scene,
-            api::scene::delete_scene,
-            api::scene::select_scene,
-            api::scene::set_scene_awareness,
-            api::music::get_music_list,
-            api::music::get_music_file,
-            api::music::upload_music,
-            api::music::delete_music,
-            api::music::save_bgm_state,
-            api::ambient::get_ambient_list,
-            api::ambient::upload_ambient,
-            api::ambient::delete_ambient,
-            api::ambient::save_ambient_state,
-            api::asset::get_asset_base64,
-            api::asset::get_voice_audio,
-            api::game::init_game,
-            api::game::select_character,
-            api::game::clear_conversation,
-            api::game::reactivate_tts,
-            api::game::clear_tts_cache,
-            api::game::update_voice_lang,
-            api::game::get_tts_cache_info,
-            api::game::add_role_to_scene,
-            api::game::remove_role_from_scene,
-            api::game::notify_player_entry,
-            api::chat::send_chat_message,
-            api::chat::rollback_conversation,
-            api::chat::feed_image,
-            api::chat::feed_text,
-            api::screenshot::start_screenshot,
-            api::screenshot::get_overlay_data,
-            api::screenshot::confirm_screenshot,
-            api::screenshot::cancel_screenshot,
-            api::save::list_saves,
-            api::save::create_save,
-            api::save::load_save,
-            api::save::update_save,
-            api::save::delete_save,
-            api::save::update_save_title,
-            api::save::save_screenshot,
-            api::save::capture_main_window_screenshot,
-            api::script::list_scripts,
-            api::script::list_standalone_scripts,
-            api::script::start_script,
-            api::script::script_submit_input,
-            api::script::script_submit_choice,
-            api::pet::update_solid_regions,
-            api::pet::set_pet_mode,
-            api::schedule::get_schedules,
-            api::schedule::save_schedules,
-            api::schedule::reload_proactive_system,
-            api::proactive_set_can_deliver,
-            api::achievement::get_achievement_list,
-            api::achievement::unlock_achievement,
-            api::adventure::list_character_adventures,
-            api::adventure::list_all_adventures,
-            api::adventure::start_adventure,
-            api::adventure::check_adventure_unlocks,
-            api::adventure::reset_adventure,
-            api::workshop::fetch_discussions,
-            resource_sync::check_resource_sync,
-            resource_sync::apply_resource_sync,
-            resource_sync::get_data_version,
-            lan_sync::lan_sync_start_server,
-            lan_sync::lan_sync_stop_server,
-            lan_sync::lan_sync_scan_peers,
-            lan_sync::lan_sync_plan_push,
-            lan_sync::lan_sync_execute_push,
-            lan_sync::lan_sync_plan_pull,
-            lan_sync::lan_sync_execute_pull,
-            lan_sync::lan_sync_restart,
-            utils::cpu_perf::get_cpu_info,
-            utils::cpu_perf::redetect_cpu,
-            api::role_archive::import_role,
-            api::role_archive::import_role_from_path,
-            api::role_archive::cancel_role_import,
-            api::role_archive::rescan_roles,
-            api::role_archive::export_role,
-            api::role_archive::export_role_to_path,
-            ai_service::tts::local::commands::tts_local_status,
-            ai_service::tts::local::commands::tts_local_list_catalog,
-            ai_service::tts::local::commands::tts_local_list_installed,
-            ai_service::tts::local::commands::tts_local_import_from_path,
-            ai_service::tts::local::commands::tts_local_download,
-            ai_service::tts::local::commands::tts_local_delete_voice,
-            ai_service::tts::local::commands::tts_local_import_style_vectors,
-            ai_service::tts::local::commands::tts_local_synthesize_preview,
-            exit_app,
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+.form-control:focus {
+  border-color: #79d9ff;
+  background: rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 0 3px rgba(121, 217, 255, 0.2);
 }
-
-/// 前端确认关闭后调用，终止整个 Tauri 进程。
-#[tauri::command]
-fn exit_app(app: tauri::AppHandle) {
-    app.exit(0);
-}
+</style>
