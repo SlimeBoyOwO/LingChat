@@ -43,7 +43,7 @@ pub struct ChatComponents {
     pub translator: Arc<Translator>,
 }
 
-/// 鎴浘娴佺▼涓殑涓存椂鐘舵€侊紙鍏ㄥ睆鎹曡幏 + 瑕嗙洊绐楀彛鏍囩锛夈€?
+/// 截图流程中的临时状态(全屏截取 + 覆盖窗口标签)。
 #[derive(Default)]
 pub struct ScreenshotCaptureState {
     pub full_capture_base64: Option<String>,
