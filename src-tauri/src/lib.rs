@@ -1,4 +1,4 @@
-﻿mod achievements;
+mod achievements;
 mod adventures;
 mod ai_service;
 mod api;
@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use chrono::Local;
 use sea_orm::DatabaseConnection;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tracing_subscriber::fmt::time::FormatTime;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -125,24 +125,20 @@ pub fn run() {
             tts_paths.ensure()
                 .map_err(|e| format!("LocalTtsPaths::ensure: {e}"))?;
             let local_state = ai_service::tts::local::LocalTtsState::new(tts_paths);
+            let app_config = config::AppConfig::load(&app.handle()).unwrap_or_default();
+            let local_tts_switch =
+                ai_service::tts::local::LocalTtsSwitch::new(app_config.enable_local_tts);
+            app.manage(local_tts_switch.clone());
             let local_engine = local_state.engine.clone();
             let local_paths = local_state.paths.clone();
             app.manage(local_state);
-            if local_paths.asset_present("deberta") {
-                tauri::async_runtime::block_on(async {
-                    if let Err(e) = local_engine.init(&local_paths).await {
-                        tracing::warn!(target: "tts_local", "auto-init failed: {e}");
-                    } else {
-                        tracing::info!(target: "tts_local", "engine auto-initialised");
-                    }
-                });
-            }
 
             let rt = tokio::runtime::Runtime::new()?;
             let (db, ai_service, chat) = rt.block_on(init::initialize(
                 app,
                 Some(local_engine.clone()),
                 Some(local_paths.clone()),
+                Some(local_tts_switch.clone()),
             ))?;
 
             // 鍚姩鏃惰嚜鍔ㄦ竻鐞嗘湭琚紩鐢ㄧ殑瀛ょ珛璇煶鏂囦欢
@@ -230,6 +226,44 @@ pub fn run() {
                 screenshot_capture,
                 auto_save_manager: auto_save_manager.clone(),
                 god_agent,
+            });
+
+
+            // Defer DeBerta load until the app body is mounted; the
+            // LocalTtsAdapter's lazy bootstrap still runs if a chat
+            // arrives before this finishes, so first-message latency is
+            // the price of the boot-time win.
+            let preload = app.handle().clone();
+            let preload_engine = local_engine.clone();
+            let preload_paths = local_paths.clone();
+            let preload_switch = local_tts_switch.clone();
+            tauri::async_runtime::spawn(async move {
+                if !preload_switch.is_enabled() {
+                    tracing::info!(target: "tts_local", "local tts disabled, skipping preload");
+                    return;
+                }
+                if !preload_paths.asset_present("deberta") {
+                    tracing::info!(
+                        target: "tts_local",
+                        "local tts assets missing, skipping preload"
+                    );
+                    return;
+                }
+                if preload_engine.is_ready().await {
+                    return;
+                }
+                match preload_engine.init(&preload_paths).await {
+                    Ok(()) => {
+                        tracing::info!(target: "tts_local", "deberta preloaded in background");
+                        let _ = preload.emit("tts://engine-ready", ());
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            target: "tts_local",
+                            "deberta preload failed (first synthesize will retry): {e}"
+                        );
+                    }
+                }
             });
 
             // Spawn Windows mouse polling click-through loop
