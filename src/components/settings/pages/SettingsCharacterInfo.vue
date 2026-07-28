@@ -333,7 +333,7 @@ const schemas: Record<string, FieldSchema[]> = {
           label: '英语',
           value: 'en',
           visibleIf: (s) =>
-            ['gsv', 'opentts', 'indextts2_builtin'].includes(s.tts_type),
+            ['gsv', 'opentts', 'sbv2', 'indextts2_builtin'].includes(s.tts_type),
         },
         {
           label: '韩语',

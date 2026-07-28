@@ -26,10 +26,11 @@ impl Sbv2Adapter {
         audio_format: String,
         lang: &str,
     ) -> Self {
-        let language = if lang == "ja" {
-            "JP".to_string()
-        } else {
-            lang.to_string()
+        let language = match lang {
+            "ja" => "JP",
+            "zh" => "ZH",
+            "en" => "EN",
+            other => other,
         };
         let api_url = api_url.trim_end_matches('/').to_string();
         Self {
@@ -37,7 +38,7 @@ impl Sbv2Adapter {
             audio_format,
             model_name,
             speaker_id,
-            language,
+            language: language.to_string(),
         }
     }
 }
