@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-show-floating-pet"
+description = "Enables the show_floating_pet command without any pre-configured scope."
+commands.allow = ["show_floating_pet"]
+
+[[permission]]
+identifier = "deny-show-floating-pet"
+description = "Denies the show_floating_pet command without any pre-configured scope."
+commands.deny = ["show_floating_pet"]

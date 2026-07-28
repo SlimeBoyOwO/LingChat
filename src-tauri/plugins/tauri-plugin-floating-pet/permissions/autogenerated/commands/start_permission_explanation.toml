@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-start-permission-explanation"
+description = "Enables the start_permission_explanation command without any pre-configured scope."
+commands.allow = ["start_permission_explanation"]
+
+[[permission]]
+identifier = "deny-start-permission-explanation"
+description = "Denies the start_permission_explanation command without any pre-configured scope."
+commands.deny = ["start_permission_explanation"]

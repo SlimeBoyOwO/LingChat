@@ -1,0 +1,3 @@
+"$schema" = "../../schemas/schema.json"
+identifier = "allow-hide-floating-pet"
+description = "Allows the hide_floating_pet command without any pre-configured scope."

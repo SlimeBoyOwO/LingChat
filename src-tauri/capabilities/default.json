@@ -36,6 +36,7 @@
     "tts-local-delete-voice",
     "tts-local-synthesize-preview",
     "tts-local-import-style-vectors",
+    "floating-pet:default",
     "android-fs:allow-get-name",
     {
       "identifier": "fs:scope",

@@ -473,6 +473,9 @@ pub fn run() {
 
             Ok(())
         })
+        .plugin(tauri_plugin_screenshots::init())
+        .plugin(tauri_plugin_floating_pet::init())
+        .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             utils::log_bridge::get_log_history,
             api::settings::get_settings_tree,

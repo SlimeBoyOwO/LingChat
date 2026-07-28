@@ -14,6 +14,21 @@ use tauri_plugin_store::{Store, StoreExt};
 use super::keys;
 use super::tts::TtsConfig;
 
+/// Android 悬浮桌宠功能开关。
+/// 其它运行时行为（贴边、长按动作、开机自启等）由 Kotlin 端
+/// SharedPreferences 直接管理；Rust 侧只需要"开/关"这一位作为上层哨兵。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FloatingPetConfig {
+    /// 总开关。关闭后前端入口隐藏，Android Service 不自启。
+    #[serde(default)]
+    pub enabled: bool,
+}
+
+impl Default for FloatingPetConfig {
+    fn default() -> Self {
+        Self { enabled: false }
+    }
+}
 // ========== Serde 默认值函数 ==========
 
 fn default_true() -> bool {
@@ -81,8 +96,6 @@ pub struct AppConfig {
     #[serde(default = "default_memory_recent_window")]
     pub memory_recent_window: u32,
 
-    /// TTS 引擎配置（适配器 URL、音频格式等）
-    #[serde(default)]
     // ---- 本地 TTS ----
     #[serde(default)]
     pub enable_local_tts: bool,
@@ -93,7 +106,13 @@ pub struct AppConfig {
     #[serde(default)]
     pub voice_check: bool,
 
-        pub tts: TtsConfig,
+    /// TTS 引擎配置（适配器 URL、音频格式等）
+    #[serde(default)]
+    pub tts: TtsConfig,
+
+    /// Android 悬浮桌宠总开关（桌面端无 effect）
+    #[serde(default)]
+    pub floating_pet: FloatingPetConfig,
 }
 
 // ========== Default 实现（单一真相源） ==========
@@ -116,6 +135,7 @@ impl Default for AppConfig {
             tts_software_path: None,
             voice_check: false,
             tts: TtsConfig::default(),
+            floating_pet: FloatingPetConfig::default(),
         }
     }
 }
@@ -220,6 +240,13 @@ impl AppConfig {
             tts_software_path: get_string(&store, keys::TTS_SOFTWARE_PATH),
             voice_check: get_bool(&store, keys::VOICE_CHECK, false),
             tts: TtsConfig::from_store(Some(&store)),
+            floating_pet: FloatingPetConfig {
+                enabled: get_bool(
+                    &store,
+                    keys::FLOATING_PET_ENABLED,
+                    default.floating_pet.enabled,
+                ),
+            },
         })
     }
 }

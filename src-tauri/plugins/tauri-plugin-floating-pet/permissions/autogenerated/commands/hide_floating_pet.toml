@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-hide-floating-pet"
+description = "Enables the hide_floating_pet command without any pre-configured scope."
+commands.allow = ["hide_floating_pet"]
+
+[[permission]]
+identifier = "deny-hide-floating-pet"
+description = "Denies the hide_floating_pet command without any pre-configured scope."
+commands.deny = ["hide_floating_pet"]

@@ -31,7 +31,7 @@
         @click="goToPetMode"
         v-show="uiStore.showSettings !== true"
       >
-        <h3 class="hidden xl:block">桌宠</h3>
+        <h3 class="hidden xl:block">悬浮桌宠</h3>
       </Button>
       <Button type="nav" icon="text" @click="openSettings" v-show="uiStore.showSettings !== true">
         <h3 class="hidden xl:block">菜单</h3>
@@ -50,6 +50,7 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { invoke } from '@tauri-apps/api/core'
 import FreeModeTools from '@/components/tools/FreeModeTools.vue'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { useGameStore } from '../../stores/modules/game'
@@ -85,6 +86,13 @@ function onLoadingComplete() {
 }
 
 const goToPetMode = () => {
+  // Android: invoke the floating pet plugin; desktop: legacy /pet route (保留桌面端桌宠)
+  if (import.meta.env.TAURI_FOUR_PLATFORM === 'android' || import.meta.env.PLATFORM === 'android') {
+    invoke('plugin:floating-pet|show_floating_pet', { scale: null }).catch((err) => {
+      console.warn('[floating-pet] show_floating_pet failed', err)
+    })
+    return
+  }
   router.push('/pet')
 }
 

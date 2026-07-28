@@ -27,6 +27,7 @@ tauri-plugin-fs = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-screenshots = { path = "plugins/tauri-plugin-screenshots" }
 tauri-plugin-android-fs = "28"
+tauri-plugin-floating-pet = { path = "plugins/tauri-plugin-floating-pet" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sea-orm = { version = "1", features = ["sqlx-sqlite", "runtime-tokio-rustls", "macros", "with-chrono"] }
@@ -73,4 +74,3 @@ windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win
 
 [patch.crates-io]
 esaxx-rs = { path = "vendor/esaxx-rs" }
-

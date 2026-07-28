@@ -45,6 +45,12 @@ export const DEFAULT_SETTINGS = {
   pet: {
     scale: 1, // 桌宠缩放比例
   },
+  // 悬浮桌宠设置（仅 Android 端生效）
+  floatingPet: {
+    enabled: false, // 总开关
+    snapToEdge: true, // 拖动结束自动贴边
+    autoShowOnLaunch: false, // 启动后自动弹出
+  },
 }
 
 // 设置状态类型
@@ -83,12 +89,19 @@ export interface PetSettings {
   scale: number
 }
 
+export interface FloatingPetSettings {
+  enabled: boolean
+  snapToEdge: boolean
+  autoShowOnLaunch: boolean
+}
+
 export interface SettingsState {
   text: TextSettings
   audio: AudioSettings
   display: DisplaySettings
   character: CharacterSettings
   pet: PetSettings
+  floatingPet: FloatingPetSettings
 }
 
 export const useSettingsStore = defineStore('settings', {
@@ -98,6 +111,7 @@ export const useSettingsStore = defineStore('settings', {
     display: { ...DEFAULT_SETTINGS.display },
     character: { ...DEFAULT_SETTINGS.character },
     pet: { ...DEFAULT_SETTINGS.pet },
+    floatingPet: { ...DEFAULT_SETTINGS.floatingPet },
   }),
 
   getters: {

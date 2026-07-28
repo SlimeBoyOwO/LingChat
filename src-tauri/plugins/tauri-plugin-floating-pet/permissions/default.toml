@@ -1,0 +1,14 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "Default permissions for the floating pet plugin"
+permissions = [
+    "allow-check-overlay-permission",
+    "allow-request-overlay-permission",
+    "allow-show-floating-pet",
+    "allow-hide-floating-pet",
+    "allow-stop-floating-pet-service",
+    "allow-update-pet-state",
+    "allow-start-permission-explanation",
+    "allow-mark-permission-explanation-shown",
+]

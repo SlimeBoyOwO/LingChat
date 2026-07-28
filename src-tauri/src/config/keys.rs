@@ -100,3 +100,8 @@ pub const ENABLE_LOCAL_TTS: &str = "features.enable_local_tts";
 pub const AUTO_START_TTS_SOFTWARE: &str = "tts.auto_start";
 pub const TTS_SOFTWARE_PATH: &str = "tts.software_path";
 pub const VOICE_CHECK: &str = "tts.voice_check";
+
+// ========== Android 悬浮桌宠 ==========
+/// 悬浮桌宠总开关。关闭后桌面端无影响，Android 端入口隐藏且 Service 不自启。
+/// 其它子项（贴边、长按动作、开机自启）由 Kotlin 端 SharedPreferences 自行管理。
+pub const FLOATING_PET_ENABLED: &str = "features.floating_pet_enabled";
