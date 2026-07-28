@@ -7,7 +7,7 @@
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="LingChat floating pet companion" />
+                android:value="Floating desktop pet for LingChat" />
         </service>
     </application>
 </manifest>

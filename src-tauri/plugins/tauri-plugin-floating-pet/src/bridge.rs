@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{de::DeserializeOwned, Serialize};
 use tauri::Runtime;
 
 /// 桥接到 Android Kotlin 插件的状态。
@@ -30,31 +30,33 @@ impl<R: Runtime> PetBridge<R> {
 /// `PluginHandle::run_mobile_plugin_async` 在非 Android 上不可用，本 trait
 /// 借助 cfg 屏蔽；调用方按平台分流。
 pub trait PetBridgeExt<R: Runtime> {
-    fn invoke_android(
+    fn invoke_android<T: DeserializeOwned>(
         &self,
         command: &'static str,
         payload: serde_json::Value,
-    ) -> tauri::Result<()>;
+    ) -> Result<T, String>;
 }
 
 impl<R: Runtime> PetBridgeExt<R> for PetBridge<R> {
     #[cfg(target_os = "android")]
-    fn invoke_android(
+    fn invoke_android<T: DeserializeOwned>(
         &self,
         command: &'static str,
         payload: serde_json::Value,
-    ) -> tauri::Result<()> {
-        self.handle.run_mobile_plugin(command, payload).map(|_| ())
+    ) -> Result<T, String> {
+        self.handle
+            .run_mobile_plugin(command, payload)
+            .map_err(|error| error.to_string())
     }
 
     #[cfg(not(target_os = "android"))]
-    fn invoke_android(
+    fn invoke_android<T: DeserializeOwned>(
         &self,
         _command: &'static str,
         _payload: serde_json::Value,
-    ) -> tauri::Result<()> {
+    ) -> Result<T, String> {
         // 在桌面 / iOS 上永远不会调用；保持接口一致。
-        Ok(())
+        unreachable!("Android bridge invoked on an unsupported platform")
     }
 }
 

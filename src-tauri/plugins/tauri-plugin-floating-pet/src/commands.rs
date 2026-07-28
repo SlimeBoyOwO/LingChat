@@ -1,4 +1,5 @@
-use crate::bridge::PetBridge;
+use crate::bridge::{PetBridge, PetBridgeExt};
+#[cfg(not(target_os = "android"))]
 use crate::error::PetError;
 use crate::state::CachedPetState;
 use serde::{Deserialize, Serialize};
@@ -16,7 +17,7 @@ pub enum OverlayPermissionStatus {
 }
 
 /// WebView -> 桌宠 的完整状态负载。
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PetStatePayload {
     pub character: Option<CharacterInfo>,
@@ -27,7 +28,7 @@ pub struct PetStatePayload {
     pub visible: Option<bool>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CharacterInfo {
     pub id: String,
@@ -36,7 +37,7 @@ pub struct CharacterInfo {
     pub expression: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DialogueInfo {
     pub text: String,
@@ -148,6 +149,30 @@ pub async fn stop_floating_pet_service<R: Runtime>(
         bridge
             .invoke_android("stopFloatingPetService", serde_json::json!({}))
             .map_err(|e| e.to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn stop_floating_pet_service_with_confirmation<R: Runtime>(
+    _app: AppHandle<R>,
+    bridge: State<'_, PetBridge<R>>,
+) -> std::result::Result<bool, String> {
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = bridge;
+        return Err(PetError::UnsupportedPlatform.to_string());
+    }
+    #[cfg(target_os = "android")]
+    {
+        #[derive(Deserialize)]
+        struct StopConfirmationResponse {
+            stopped: bool,
+        }
+
+        let response: StopConfirmationResponse = bridge
+            .invoke_android("stopFloatingPetServiceWithConfirmation", serde_json::json!({}))
+            .map_err(|e| e.to_string())?;
+        Ok(response.stopped)
     }
 }
 

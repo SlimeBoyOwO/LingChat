@@ -8,12 +8,15 @@ import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import android.view.WindowManager
+import android.webkit.WebView
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.ViewCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -35,9 +38,45 @@ private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 @TauriPlugin
 class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
 
-    override fun load() {
+    override fun load(webView: WebView) {
         instance = this
+        hookKeyboardInsets()
         Log.i(TAG, "FloatingPetPlugin loaded")
+    }
+
+    @Volatile private var lastImeVisible: Boolean = false
+    @Volatile private var hiddenByKeyboard: Boolean = false
+
+    /**
+     * 监听主 Activity 窗口的 IME insets：弹起时临时隐藏悬浮窗，收起时若曾因键盘隐藏则恢复。
+     * 阶段 1 只覆盖主 App 内的键盘事件；其他 App 弹起的键盘由系统上叠层被挡实现。
+     */
+    private fun hookKeyboardInsets() {
+        val root = activity.window.decorView
+        ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+            val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
+            if (imeVisible != lastImeVisible) {
+                lastImeVisible = imeVisible
+                try {
+                    if (imeVisible) {
+                        hiddenByKeyboard = true
+                        activity.startService(FloatingPetService.hideIntent(activity))
+                    } else if (hiddenByKeyboard) {
+                        hiddenByKeyboard = false
+                        val lastScale = SharedPrefs.create(activity).lastScale
+                        val intent = FloatingPetService.showIntent(activity, lastScale)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            activity.startForegroundService(intent)
+                        } else {
+                            activity.startService(intent)
+                        }
+                    }
+                } catch (t: Throwable) {
+                    Log.w(TAG, "keyboard insets dispatch failed: ${t.message}")
+                }
+            }
+            insets
+        }
     }
 
     @Command
@@ -122,6 +161,32 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     @Command
+    fun stopFloatingPetServiceWithConfirmation(invoke: Invoke) {
+        activity.runOnUiThread {
+            AlertDialog.Builder(activity)
+                .setTitle("停止悬浮桌宠")
+                .setMessage("确定要停止悬浮桌宠服务吗？之后需要手动重新启动桌宠。")
+                .setNegativeButton("取消") { dialog, _ ->
+                    dialog.dismiss()
+                    invoke.resolve(JSObject().apply { put("stopped", false) })
+                }
+                .setPositiveButton("停止") { _, _ ->
+                    runCatching {
+                        activity.startService(FloatingPetService.stopIntent(activity))
+                    }.onSuccess {
+                        invoke.resolve(JSObject().apply { put("stopped", true) })
+                    }.onFailure { error ->
+                        invoke.reject(error.message ?: "stopFloatingPetService failed")
+                    }
+                }
+                .setOnCancelListener {
+                    invoke.resolve(JSObject().apply { put("stopped", false) })
+                }
+                .show()
+        }
+    }
+
+    @Command
     fun updatePetState(invoke: Invoke) {
         @InvokeArg
         class Args {
@@ -190,7 +255,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         fun emitEvent(event: PetEvent) {
             val p = instance ?: return
             try {
-                p.trigger(EVENT_NAME, event.toJson())
+                p.triggerObject(EVENT_NAME, event.toJson())
             } catch (t: Throwable) {
                 Log.w(TAG, "emitEvent failed: ${t.message}")
             }

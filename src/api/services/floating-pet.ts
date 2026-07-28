@@ -102,6 +102,10 @@ export async function stopFloatingPetService(): Promise<void> {
   await invoke("plugin:floating-pet|stop_floating_pet_service");
 }
 
+export async function stopFloatingPetServiceWithConfirmation(): Promise<boolean> {
+  return await invoke<boolean>("plugin:floating-pet|stop_floating_pet_service_with_confirmation");
+}
+
 export async function updatePetState(payload: PetStatePayload): Promise<void> {
   await invoke("plugin:floating-pet|update_pet_state", { payload });
 }

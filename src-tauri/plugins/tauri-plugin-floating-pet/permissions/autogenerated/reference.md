@@ -9,6 +9,7 @@ Default permissions for the floating pet plugin
 - `allow-show-floating-pet`
 - `allow-hide-floating-pet`
 - `allow-stop-floating-pet-service`
+- `allow-stop-floating-pet-service-with-confirmation`
 - `allow-update-pet-state`
 - `allow-start-permission-explanation`
 - `allow-mark-permission-explanation-shown`
@@ -200,6 +201,32 @@ Enables the stop_floating_pet_service command without any pre-configured scope.
 <td>
 
 Denies the stop_floating_pet_service command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`floating-pet:allow-stop-floating-pet-service-with-confirmation`
+
+</td>
+<td>
+
+Enables the stop_floating_pet_service_with_confirmation command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`floating-pet:deny-stop-floating-pet-service-with-confirmation`
+
+</td>
+<td>
+
+Denies the stop_floating_pet_service_with_confirmation command without any pre-configured scope.
 
 </td>
 </tr>

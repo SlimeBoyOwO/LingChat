@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.DisplayMetrics
 import android.view.Gravity
+import android.view.WindowInsets
 import android.view.MenuItem
 import android.view.WindowManager
 import android.view.WindowMetrics
@@ -44,6 +45,8 @@ class FloatingPetWindowController(
 
     private var screenW: Int = 0
     private var screenH: Int = 0
+    private var safeTop: Int = 0
+    private var safeBottom: Int = 0
 
     @SuppressLint("ClickableViewAccessibility")
     fun attach(initialScale: Float) {
@@ -71,7 +74,7 @@ class FloatingPetWindowController(
         dialogueParams = baseParams().apply {
             gravity = Gravity.TOP or Gravity.START
             this.x = (avatarParams!!.x).coerceAtLeast(0)
-            this.y = (avatarParams!!.y - dp(72f)).coerceAtLeast(0)
+            this.y = (avatarParams!!.y - dp(72f).toInt()).coerceAtLeast(0)
             width = WindowManager.LayoutParams.WRAP_CONTENT
             height = WindowManager.LayoutParams.WRAP_CONTENT
         }
@@ -171,8 +174,8 @@ class FloatingPetWindowController(
         pm.setOnMenuItemClickListener { item: MenuItem ->
             when (item.itemId) {
                 com.noiq.lingchat.floatingpet.R.id.fp_menu_hide -> {
-                    detach()
                     avatarView?.resetGesture()
+                    detach()
                     true
                 }
                 com.noiq.lingchat.floatingpet.R.id.fp_menu_toggle -> {
@@ -191,6 +194,7 @@ class FloatingPetWindowController(
         pm.setOnDismissListener {
             mainHandler.removeCallbacks(menuAutoDismiss)
             popupMenu = null
+            avatarView?.resetGesture()
         }
         pm.show()
         popupMenu = pm
@@ -208,7 +212,7 @@ class FloatingPetWindowController(
         } else {
             (screenW - w).coerceAtLeast(0)
         }
-        p.y = rawY.coerceIn(0, screenH - h)
+        p.y = rawY.coerceIn(safeTop, (screenH - safeBottom - h).coerceAtLeast(safeTop))
         runCatching { windowManager.updateViewLayout(avatarView, p) }
         prefs.lastX = p.x
         prefs.lastY = p.y
@@ -237,11 +241,11 @@ class FloatingPetWindowController(
         if (savedX >= 0 && savedY >= 0) {
             return Pair(
                 savedX.coerceIn(0, (screenW - px).coerceAtLeast(0)),
-                savedY.coerceIn(0, (screenH - px).coerceAtLeast(0)),
+                savedY.coerceIn(safeTop, (screenH - safeBottom - px).coerceAtLeast(safeTop)),
             )
         }
         val x = (screenW - px - dp(16f)).toInt().coerceAtLeast(0)
-        val y = (screenH - px - dp(96f)).toInt().coerceAtLeast(0)
+        val y = (screenH - safeBottom - px - dp(96f)).toInt().coerceAtLeast(safeTop)
         return Pair(x, y)
     }
 
@@ -280,12 +284,19 @@ class FloatingPetWindowController(
             val bounds = metrics.bounds
             screenW = bounds.width()
             screenH = bounds.height()
+            val insets = metrics.windowInsets
+            safeTop = insets.getInsets(WindowInsets.Type.statusBars()).top
+            safeBottom = insets.getInsets(
+                WindowInsets.Type.navigationBars() or WindowInsets.Type.systemGestures(),
+            ).bottom
         } else {
             val dm = DisplayMetrics()
             @Suppress("DEPRECATION")
             windowManager.defaultDisplay.getRealMetrics(dm)
             screenW = dm.widthPixels
             screenH = dm.heightPixels
+            safeTop = 0
+            safeBottom = 0
         }
     }
 

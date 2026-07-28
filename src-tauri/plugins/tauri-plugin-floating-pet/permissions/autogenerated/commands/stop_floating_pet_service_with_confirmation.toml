@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-stop-floating-pet-service-with-confirmation"
+description = "Enables the stop_floating_pet_service_with_confirmation command without any pre-configured scope."
+commands.allow = ["stop_floating_pet_service_with_confirmation"]
+
+[[permission]]
+identifier = "deny-stop-floating-pet-service-with-confirmation"
+description = "Denies the stop_floating_pet_service_with_confirmation command without any pre-configured scope."
+commands.deny = ["stop_floating_pet_service_with_confirmation"]

@@ -201,7 +201,7 @@ import { useSettingsStore } from "@/stores/modules/settings";
 import {
   requestOverlayPermission,
   startPermissionExplanation,
-  stopFloatingPetService,
+  stopFloatingPetServiceWithConfirmation,
   showFloatingPet,
   hideFloatingPet,
 } from "@/api/services/floating-pet";
@@ -319,7 +319,8 @@ async function onHide() {
 }
 
 async function onStop() {
-  await store.stop();
+  const stopped = await stopFloatingPetServiceWithConfirmation();
+  if (!stopped) return;
   uiStore.showNotification({
     type: "success",
     title: "桌宠服务已停止",

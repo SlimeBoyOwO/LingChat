@@ -7,7 +7,7 @@
 
 use tauri::{
     plugin::{Builder, TauriPlugin},
-    Runtime,
+    Manager, Runtime,
 };
 
 pub mod commands;
@@ -44,6 +44,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::show_floating_pet,
             commands::hide_floating_pet,
             commands::stop_floating_pet_service,
+            commands::stop_floating_pet_service_with_confirmation,
             commands::update_pet_state,
             commands::start_permission_explanation,
             commands::mark_permission_explanation_shown,

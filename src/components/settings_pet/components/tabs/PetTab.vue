@@ -1,5 +1,21 @@
 <template>
   <article class="w-full flex-1 flex flex-col">
+    <div
+      v-if="isAndroidPlatform"
+      class="mb-6 rounded-xl border p-4 flex items-start gap-3 transition-colors"
+      :class="isDarkMode ? 'bg-amber-500/10 border-amber-500/30 text-amber-200' : 'bg-amber-50 border-amber-200 text-amber-800'"
+    >
+      <svg class="w-5 h-5 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+      <div class="text-sm leading-5">
+        <div class="font-bold mb-1">妗屽疇绐楀彛妯″紡浠呭脊绔栫鍙敤</div>
+        <div class="text-xs opacity-80">瀹夊崜绔浣跨敤鈥滄偓娴嬫瀹犫€濆湪楂樼骇璁剧疆 鈫?鎮诞妗屽疇 涓紑鍚拰璋冩暣銆?/div>
+      </div>
+    </div>
+    <template v-else>
     <header
       class="mb-6 flex items-end justify-between border-b-2 pb-2 transition-colors"
       :class="isDarkMode ? 'border-slate-700' : 'border-slate-100'"
@@ -275,6 +291,7 @@
         </div>
       </div>
     </div>
+    </template>
   </article>
 </template>
 
@@ -293,6 +310,7 @@ import {
 } from 'lucide-vue-next'
 import { useUIStore } from '../../../../stores/modules/ui/ui'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { isAndroid } from '../../../../utils/platform'
 
 const props = defineProps<{
   isDarkMode: boolean
@@ -301,6 +319,8 @@ const props = defineProps<{
   PET_SCALE_MIN: number
   PET_SCALE_MAX: number
 }>()
+
+const isAndroidPlatform = isAndroid()
 
 const emit = defineEmits<{
   updateScale: [value: number]

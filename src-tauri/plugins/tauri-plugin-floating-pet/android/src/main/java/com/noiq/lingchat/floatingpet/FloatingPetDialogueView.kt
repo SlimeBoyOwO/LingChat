@@ -128,7 +128,7 @@ class FloatingPetDialogueView @JvmOverloads constructor(
         canvas.drawPath(tailPath, tailPaint)
 
         val text = truncated()
-        val lines = wrapLines(text, w - (padding * 2).toInt())
+        val lines = wrapLines(text, (w - padding * 2f).toInt())
         var y = padding + textPaint.textSize
         for (line in lines) {
             canvas.drawText(line, padding, y, textPaint)

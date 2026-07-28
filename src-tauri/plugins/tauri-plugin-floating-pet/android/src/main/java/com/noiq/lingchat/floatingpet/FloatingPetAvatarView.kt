@@ -5,8 +5,13 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.RadialGradient
 import android.graphics.Paint
+import android.graphics.Shader
 import android.graphics.Rect
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.net.Uri
 import android.util.AttributeSet
 import android.util.Log
@@ -44,8 +49,16 @@ class FloatingPetAvatarView @JvmOverloads constructor(
     private var avatarBitmap: Bitmap? = null
     private var displayName: String = ""
     private var dragging: Boolean = false
+    private var breathingScale: Float = 1.0f
+    private var longPressScale: Float = 1.0f
+    private var longPressGlow: Float = 0.0f
+    private var breathingAnimator: ObjectAnimator? = null
+    private var longPressAnimator: ValueAnimator? = null
 
     private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
     private val placeholderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#80FFFFFF")
         style = Paint.Style.FILL
@@ -69,6 +82,7 @@ class FloatingPetAvatarView @JvmOverloads constructor(
             emit(PetEvent.DoubleTap(rawXInWindow(), rawYInWindow()))
         }
         override fun onLongPress() {
+            startLongPressHighlight()
             emit(PetEvent.LongPress(rawXInWindow(), rawYInWindow()))
         }
         override fun onDragStart(x: Float, y: Float) { dragging = true }
@@ -101,7 +115,70 @@ class FloatingPetAvatarView @JvmOverloads constructor(
         state.avatarUrl?.let { url ->
             loadAvatarAsync(url)
         }
+        state.audioPlaying?.let { playing ->
+            if (playing && breathingAnimator == null) startBreathing()
+            else if (!playing && breathingAnimator != null) stopBreathing()
+        }
         if (changed) invalidate()
+    }
+
+    private fun startBreathing() {
+        breathingAnimator?.cancel()
+        breathingAnimator = ObjectAnimator.ofFloat(this, "breathingScale", 1.0f, 1.03f).apply {
+            duration = 800L
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.REVERSE
+            interpolator = AccelerateDecelerateInterpolator()
+            start()
+        }
+    }
+
+    private fun stopBreathing() {
+        breathingAnimator?.cancel()
+        breathingAnimator = null
+        breathingScale = 1.0f
+        invalidate()
+    }
+
+    private fun startLongPressHighlight() {
+        longPressAnimator?.cancel()
+        val startScale = longPressScale
+        val startGlow = longPressGlow
+        longPressAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 160L
+            interpolator = AccelerateDecelerateInterpolator()
+            addUpdateListener { va ->
+                val t = va.animatedFraction
+                longPressScale = startScale + (1.05f - startScale) * t
+                longPressGlow = startGlow + (0.35f - startGlow) * t
+                invalidate()
+            }
+            start()
+        }
+    }
+
+    private fun stopLongPressHighlight() {
+        longPressAnimator?.cancel()
+        val startScale = longPressScale
+        val startGlow = longPressGlow
+        longPressAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 180L
+            interpolator = AccelerateDecelerateInterpolator()
+            addUpdateListener { va ->
+                val t = va.animatedFraction
+                longPressScale = startScale + (1.0f - startScale) * t
+                longPressGlow = startGlow + (0.0f - startGlow) * t
+                invalidate()
+            }
+            start()
+        }
+    }
+
+    /** ObjectAnimator 反射写入的 setter。 */
+    @Suppress("unused")
+    fun setBreathingScale(v: Float) {
+        breathingScale = v
+        invalidate()
     }
 
     private fun loadAvatarAsync(url: String) {
@@ -146,9 +223,19 @@ class FloatingPetAvatarView @JvmOverloads constructor(
     }
 
     override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
         val w = width.toFloat()
         val h = height.toFloat()
+        val s = breathingScale
+        val lpScale = longPressScale
+        if (s != 1.0f) {
+            canvas.save()
+            canvas.scale(s, s, w / 2f, h / 2f)
+        }
+        super.onDraw(canvas)
+        if (lpScale != 1.0f) {
+            canvas.save()
+            canvas.scale(lpScale, lpScale, w / 2f, h / 2f)
+        }
         val bmp = avatarBitmap
         if (bmp != null) {
             val rect = Rect(0, 0, w.toInt(), h.toInt())
@@ -160,6 +247,23 @@ class FloatingPetAvatarView @JvmOverloads constructor(
             val yOffset = (initialPaint.descent() + initialPaint.ascent()) / 2f
             canvas.drawText(initial, w / 2f, h / 2f - yOffset, initialPaint)
         }
+        if (longPressGlow > 0f) {
+            val cx = w / 2f
+            val cy = h / 2f
+            val radius = (maxOf(w, h) * 0.6f) * lpScale
+            glowPaint.shader = RadialGradient(
+                cx, cy, radius,
+                intArrayOf(
+                    Color.argb((255 * longPressGlow).toInt(), 255, 255, 255),
+                    Color.argb(0, 255, 255, 255),
+                ),
+                floatArrayOf(0f, 1f),
+                Shader.TileMode.CLAMP,
+            )
+            canvas.drawCircle(cx, cy, radius, glowPaint)
+        }
+        if (lpScale != 1.0f) canvas.restore()
+        if (s != 1.0f) canvas.restore()
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -187,6 +291,9 @@ class FloatingPetAvatarView @JvmOverloads constructor(
     fun resetGesture() {
         gestureHandler.reset()
         dragging = false
+        if (longPressScale != 1.0f || longPressGlow > 0f) {
+            stopLongPressHighlight()
+        }
     }
 
     companion object {

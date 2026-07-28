@@ -29,6 +29,7 @@ class FloatingPetService : Service() {
     override fun onCreate() {
         super.onCreate()
         notifHelper = PetNotificationHelper(this)
+        notifHelper?.setOnLargeIconReadyListener { startForegroundCompat() }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -58,7 +59,10 @@ class FloatingPetService : Service() {
             ACTION_UPDATE -> {
                 val json = intent?.getStringExtra(EXTRA_PAYLOAD_JSON)
                 val state = json?.let { PetState.fromJson(JSONObject(it)) }
-                if (state != null) controller?.applyState(state)
+                if (state != null) {
+                    controller?.applyState(state)
+                    notifHelper?.setAvatar(state.avatarUrl, state.characterName)
+                }
             }
         }
         return START_STICKY

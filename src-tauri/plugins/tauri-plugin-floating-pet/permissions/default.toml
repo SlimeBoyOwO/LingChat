@@ -8,6 +8,7 @@ permissions = [
     "allow-show-floating-pet",
     "allow-hide-floating-pet",
     "allow-stop-floating-pet-service",
+    "allow-stop-floating-pet-service-with-confirmation",
     "allow-update-pet-state",
     "allow-start-permission-explanation",
     "allow-mark-permission-explanation-shown",
