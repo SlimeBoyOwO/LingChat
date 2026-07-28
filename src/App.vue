@@ -33,6 +33,7 @@ import { useSedentaryReminder } from './composables/useSedentaryReminder'
 import { useUpdater } from './composables/useUpdater'
 import { useCanDeliver } from './composables/useCanDeliver'
 import { useZoom } from './composables/useZoom'
+import { useFloatingPetBridge } from './composables/useFloatingPetBridge'
 import { listSystemFonts, getImportedFonts, registerAllImportedFonts } from './api/services/font'
 
 // ─── 激活主动对话投放条件上报（仅在此处挂载一次） ────────────
@@ -40,6 +41,9 @@ useCanDeliver()
 
 // 激活 Ctrl+滚轮 UI 全局缩放
 useZoom()
+
+// ─── 悬浮桌宠（仅 Android 生效；内部 isAndroid() 判断桌面端是 no-op） ────
+useFloatingPetBridge()
 
 // ─── 久坐提醒 ────────────────────────────────────────────────
 useSedentaryReminder()
