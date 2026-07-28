@@ -39,6 +39,16 @@
         >
           其他高级设置
         </button>
+        <button
+          v-if="isAndroid()"
+          class="px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200"
+          :class="advanceTab === 'floatingPet'
+            ? 'bg-brand text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
+            : 'text-white/60 hover:text-white/80'"
+          @click="advanceTab = 'floatingPet'"
+        >
+          悬浮桌宠
+        </button>
       </div>
 
       <!-- ====== 主菜单 ====== -->
@@ -57,11 +67,15 @@
       </div>
 
       <!-- ====== 其他高级设置 ====== -->
-      <div v-else class="flex-1 min-h-0">
+      <div v-else-if="advanceTab === 'other'" class="flex-1 min-h-0">
         <SettingsAdvanceOther
           ref="advanceOtherRef"
           @remove-more-menu-from-b="emit('remove-more-menu-from-b')"
         />
+      </div>
+      <!-- ====== 悬浮桌宠（仅 Android） ====== -->
+      <div v-else-if="advanceTab === 'floatingPet'" class="flex-1 min-h-0">
+        <SettingsFloatingPet />
       </div>
     </div>
   </MenuPage>
@@ -74,8 +88,10 @@ import SettingsLlmProviders from './SettingsLlmProviders.vue'
 import SettingsAdvanceMenu from './SettingsAdvanceMenu.vue'
 import SettingsTts from './SettingsTts.vue'
 import SettingsAdvanceOther from './SettingsAdvanceOther.vue'
+import SettingsFloatingPet from './SettingsFloatingPet.vue'
+import { isAndroid } from '@/utils/platform'
 
-const advanceTab = ref<'menu' | 'llm' | 'tts' | 'other'>('menu')
+const advanceTab = ref<'menu' | 'llm' | 'tts' | 'other' | 'floatingPet'>('menu')
 
 const advanceOtherRef = ref<InstanceType<typeof SettingsAdvanceOther> | null>(null)
 

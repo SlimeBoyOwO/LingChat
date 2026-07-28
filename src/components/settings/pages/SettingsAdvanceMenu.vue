@@ -38,15 +38,34 @@
         <Button type="big" icon="setting" :icon_size="18"> 进入其他高级设置界面 </Button>
       </MenuItem>
     </div>
+
+    <!-- 悬浮桌宠（仅 Android） -->
+    <div
+      v-if="isAndroid()"
+      class="cursor-pointer transition-all duration-300"
+      @click="emit('navigate', 'floatingPet')"
+    >
+      <MenuItem title="悬浮桌宠" size="large">
+        <template #header>
+          <Sparkles :size="20" />
+        </template>
+        <p class="text-white/50 text-sm leading-relaxed mb-3">
+          配置安卓端「显示在其他应用之上」的悬浮桌宠：总开关、贴边、长按动作、开机自启
+        </p>
+        <Button type="big" icon="advance" :icon_size="18"> 进入悬浮桌宠设置 </Button>
+      </MenuItem>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { AudioLines, Cpu, SlidersHorizontal } from 'lucide-vue-next'
+import { AudioLines, Cpu, SlidersHorizontal, Sparkles } from 'lucide-vue-next'
 import { MenuItem } from '../../ui'
 import { Button } from '../../base'
+import { isAndroid } from '@/utils/platform'
 
 const emit = defineEmits<{
-  navigate: [tab: 'llm' | 'tts' | 'other']
+  navigate: [tab: 'llm' | 'tts' | 'other' | 'floatingPet']
 }>()
+
 </script>
