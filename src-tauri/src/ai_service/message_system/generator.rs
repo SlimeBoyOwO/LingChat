@@ -516,16 +516,34 @@ fn parse_segments(deps: &GeneratorDeps, sentence: &str) -> Vec<EmotionSegment> {
     segments
 }
 
-/// GPT-SoVITS 与 OpenTTS 支持把回复翻译成英语/韩语后再合成语音。
-fn translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static str> {
-    if tts_type != "gsv" && tts_type != "opentts" {
-        return None;
-    }
-    match voice_lang {
-        "en" => Some("en"),
-        "ko" => Some("ko"),
+/// 返回当前 TTS 需要的目标翻译语言。
+fn tts_translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static str> {
+    match (tts_type, voice_lang) {
+        ("gsv" | "opentts" | "sbv2", "en") => Some("en"),
+        ("gsv" | "opentts", "ko") => Some("ko"),
         _ => None,
     }
+}
+
+/// 判断文本是否适合作为日语 TTS 输入。
+fn looks_like_japanese(text: &str) -> bool {
+    let has_kana = text
+        .chars()
+        .any(|c| matches!(c, '\u{3040}'..='\u{30ff}' | '\u{31f0}'..='\u{31ff}'));
+    let has_cjk = text
+        .chars()
+        .any(|c| matches!(c, '\u{3400}'..='\u{4dbf}' | '\u{4e00}'..='\u{9fff}'));
+    let has_ascii_letters = text.chars().any(|c| c.is_ascii_alphabetic());
+
+    has_kana || (has_cjk && !has_ascii_letters)
+}
+
+/// 切回日语后，检测并修复上一次英语模式残留的译文。
+fn needs_japanese_translation(segments: &[EmotionSegment]) -> bool {
+    segments.iter().any(|segment| {
+        !segment.following_text.trim().is_empty()
+            && !looks_like_japanese(segment.japanese_text.trim())
+    })
 }
 
 /// Step B: 翻译与语音生成。
@@ -545,14 +563,21 @@ async fn enrich_segments(deps: &GeneratorDeps, segments: &mut [EmotionSegment]) 
             .unwrap_or_default()
     };
 
-    if let Some(target_lang) = translation_language(&tts_type, &voice_lang) {
+    let translation_language = tts_translation_language(&tts_type, &voice_lang).or_else(|| {
+        if voice_lang == "ja" && needs_japanese_translation(segments) {
+            Some("ja")
+        } else {
+            None
+        }
+    });
+
+    if let Some(target_lang) = translation_language {
         let translated = deps
             .translator
             .translate_segments_to(segments, true, target_lang)
             .await?;
         if !translated {
-            // Do not let TTS pronounce the main LLM's Japanese secondary
-            // line when the explicitly selected English/Korean translation fails.
+            // 目标语言翻译失败时不要回退朗读主模型附带的其他语言译文。
             for segment in segments.iter_mut() {
                 segment.japanese_text.clear();
             }
