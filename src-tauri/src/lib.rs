@@ -468,6 +468,8 @@ pub fn run() {
             api::game::notify_player_entry,
             api::chat::send_chat_message,
             api::chat::rollback_conversation,
+            api::chat::feed_image,
+            api::chat::feed_text,
             api::screenshot::start_screenshot,
             api::screenshot::get_overlay_data,
             api::screenshot::confirm_screenshot,
