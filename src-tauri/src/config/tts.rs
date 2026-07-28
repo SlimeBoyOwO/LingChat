@@ -37,9 +37,15 @@ pub struct TtsConfig {
     /// AIVIS API 密钥
     #[serde(default)]
     pub aivis_api_key: Option<String>,
-    /// IndexTTS2 服务地址
+    /// IndexTTS2 服务地址（外置 indextts2 使用）
     #[serde(default = "default_indextts_url")]
     pub indextts_api_url: String,
+    /// IndexTTS-AMD 内嵌引擎目录（留空 = `<data_dir>/third_party/IndexTTS-AMD`）
+    #[serde(default)]
+    pub indextts_engine_dir: String,
+    /// IndexTTS-AMD 情绪模式：blend（混合向量）/ qwen（标签→Qwen）/ auto（全文分析）
+    #[serde(default = "default_indextts_emo_mode")]
+    pub indextts_emo_mode: String,
 
     /// OpenTTS API 地址
     #[serde(default = "default_opentts_url")]
@@ -85,6 +91,9 @@ pub fn default_aivis_url() -> String {
 pub fn default_indextts_url() -> String {
     "http://127.0.0.1:23467/voice/indextts/presets".into()
 }
+pub fn default_indextts_emo_mode() -> String {
+    "qwen".into()
+}
 pub fn default_opentts_url() -> String {
     "https://api.siliconflow.cn/v1".into()
 }
@@ -114,6 +123,8 @@ impl Default for TtsConfig {
             aivis_api_url: default_aivis_url(),
             aivis_api_key: None,
             indextts_api_url: default_indextts_url(),
+            indextts_engine_dir: String::new(),
+            indextts_emo_mode: default_indextts_emo_mode(),
             opentts_api_url: default_opentts_url(),
             opentts_api_key: None,
             opentts_model: default_opentts_model(),
@@ -164,6 +175,14 @@ impl TtsConfig {
                 }
             },
             indextts_api_url: get_string(keys::INDEXTTS_API_URL, &default_indextts_url()),
+            indextts_engine_dir: get_string(keys::INDEXTTS_ENGINE_DIR, ""),
+            indextts_emo_mode: {
+                let mode = get_string(keys::INDEXTTS_EMO_MODE, &default_indextts_emo_mode());
+                match mode.as_str() {
+                    "blend" | "qwen" | "auto" => mode,
+                    _ => default_indextts_emo_mode(),
+                }
+            },
             opentts_api_url: get_string(keys::OPENTTS_API_URL, &default_opentts_url()),
             opentts_api_key: {
                 let s = get_string(keys::OPENTTS_API_KEY, "");

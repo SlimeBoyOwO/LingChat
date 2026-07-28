@@ -516,14 +516,11 @@ fn parse_segments(deps: &GeneratorDeps, sentence: &str) -> Vec<EmotionSegment> {
     segments
 }
 
-/// GPT-SoVITS 与 OpenTTS 支持把回复翻译成英语/韩语后再合成语音。
+/// 返回当前 TTS 需要的目标翻译语言。
 fn translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static str> {
-    if tts_type != "gsv" && tts_type != "opentts" {
-        return None;
-    }
-    match voice_lang {
-        "en" => Some("en"),
-        "ko" => Some("ko"),
+    match (tts_type, voice_lang) {
+        ("gsv" | "opentts" | "indextts2_builtin", "en") => Some("en"),
+        ("gsv" | "opentts", "ko") => Some("ko"),
         _ => None,
     }
 }
@@ -557,7 +554,7 @@ async fn enrich_segments(deps: &GeneratorDeps, segments: &mut [EmotionSegment]) 
                 segment.japanese_text.clear();
             }
         }
-    } else if segments[0].japanese_text.is_empty() {
+    } else if tts_type != "indextts2_builtin" && segments[0].japanese_text.is_empty() {
         deps.translator.translate_segments(segments, false).await?;
     }
 

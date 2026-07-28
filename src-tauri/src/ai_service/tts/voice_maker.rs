@@ -52,6 +52,13 @@ fn non_empty(s: &Option<String>) -> bool {
     s.as_ref().map(|v| !v.trim().is_empty()).unwrap_or(false)
 }
 
+fn indextts_language(lang: &str) -> &'static str {
+    match lang {
+        "en" => "en",
+        _ => "zh",
+    }
+}
+
 fn gsv_prompt_language(prompt_text: &str) -> &'static str {
     if prompt_text
         .chars()
@@ -168,6 +175,11 @@ impl VoiceMaker {
     pub fn set_tts_settings(&mut self, cfg: &VoiceModel, tts_type: &str, name: &str) -> Result<()> {
         self.check_tts_availability(cfg);
         self.tts_type = tts_type.to_string();
+        if tts_type == "indextts2_builtin" {
+            // 兼容旧角色残留的 ja/空值。这里必须同步修正 VoiceMaker.lang，
+            // 否则即使 adapter 使用 zh，选段时仍会拿 japanese_text 去合成。
+            self.lang = indextts_language(&self.lang).to_string();
+        }
 
         match tts_type {
             "sva-vits" if self.availability.sva => {
@@ -318,6 +330,25 @@ impl VoiceMaker {
                     self.tts_config.indextts_api_url.clone(),
                 )));
             }
+            "indextts2_builtin" => {
+                // 进程内嵌引擎：模型常驻主程序（无端口、无 HTTP、无独立进程）
+                let speaker_id = cfg
+                    .indextts_speaker_id
+                    .as_deref()
+                    .and_then(|value| value.trim().parse::<i64>().ok())
+                    .unwrap_or(0);
+                match super::engine_embed::IndexTtsEmbeddedAdapter::new(
+                    &self.tts_config,
+                    speaker_id,
+                    indextts_language(&self.lang),
+                ) {
+                    Ok(a) => self.provider.indextts_embedded = Some(Arc::new(a)),
+                    Err(e) => {
+                        tracing::warn!("内嵌 IndexTTS2 初始化失败: {e}");
+                        self.provider.disable();
+                    }
+                }
+            }
             _ => {
                 tracing::warn!("TTS 类型不可用或未初始化: {tts_type}");
             }
@@ -369,7 +400,11 @@ impl VoiceMaker {
             let Some(text) = segment_text_for_lang(&self.lang, seg).map(str::to_owned) else {
                 continue;
             };
-            let emo = String::new();
+            let emo = if self.tts_type == "indextts2_builtin" {
+                seg.predicted.clone()
+            } else {
+                String::new()
+            };
 
             let file_name = if seg.voice_file.is_empty() {
                 format!(

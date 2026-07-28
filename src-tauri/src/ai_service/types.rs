@@ -280,6 +280,7 @@ pub struct VoiceModel {
     pub gsv_sovits_model_name: Option<String>,
     pub aivis_model_uuid: Option<String>,
     pub opentts_voice: Option<String>,
+    pub indextts_speaker_id: Option<String>,
 }
 
 /// 角色设定模型，对应 Python `CharacterSettings`。

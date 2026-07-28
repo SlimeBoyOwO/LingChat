@@ -9,6 +9,9 @@
 //! 写音频文件到磁盘的目录由 `set_temp_dir` 决定，默认 `<data>/voice/`。
 
 mod adapters;
+mod audio;
+mod emotion;
+pub mod engine_embed;
 pub mod provider;
 pub mod voice_maker;
 

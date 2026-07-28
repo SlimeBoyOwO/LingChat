@@ -16,12 +16,26 @@ use super::adapters::opentts::OpenTtsAdapter;
 use super::adapters::sbv2::Sbv2Adapter;
 use super::adapters::sbv2api::Sbv2ApiAdapter;
 use super::adapters::vits::VitsAdapter;
+use super::engine_embed::IndexTtsEmbeddedAdapter;
 
 /// TTS 一次合成返回原始音频字节。
 #[async_trait]
 pub trait TtsAdapter: Send + Sync {
     /// `emo` 参数仅 IndexTTS2 使用，其它 adapter 忽略。
     async fn generate_voice(&self, text: &str, emo: &str) -> Result<Vec<u8>>;
+
+    /// 直接生成到文件。默认适配器仍先取得完整字节；内置 IndexTTS 覆盖此方法，
+    /// 由 Rust 边接收 PCM 边写临时 WAV，完成后原子提交。
+    async fn generate_voice_to_file(
+        &self,
+        text: &str,
+        emo: &str,
+        file_path: &std::path::Path,
+    ) -> Result<()> {
+        let bytes = self.generate_voice(text, emo).await?;
+        tokio::fs::write(file_path, bytes).await?;
+        Ok(())
+    }
 
     /// 返回当前适配器参数（对应 Python `get_params`）。
     #[allow(dead_code)]
@@ -49,6 +63,7 @@ pub struct TtsProvider {
     pub gsv: Option<Arc<GsvAdapter>>,
     pub aivis: Option<Arc<AivisAdapter>>,
     pub indextts: Option<Arc<IndexTtsAdapter>>,
+    pub indextts_embedded: Option<Arc<IndexTtsEmbeddedAdapter>>,
     pub opentts: Option<Arc<OpenTtsAdapter>>,
 }
 
@@ -65,6 +80,7 @@ impl Default for TtsProvider {
             gsv: None,
             aivis: None,
             indextts: None,
+            indextts_embedded: None,
             opentts: None,
         }
     }
@@ -83,6 +99,7 @@ impl std::fmt::Debug for TtsProvider {
             .field("gsv", &self.gsv.is_some())
             .field("aivis", &self.aivis.is_some())
             .field("indextts", &self.indextts.is_some())
+            .field("indextts_embedded", &self.indextts_embedded.is_some())
             .field("opentts", &self.opentts.is_some())
             .finish()
     }
@@ -173,6 +190,10 @@ impl TtsProvider {
                 .indextts
                 .clone()
                 .ok_or_else(|| anyhow!("IndexTTS2 适配器未初始化"))?,
+            "indextts2_builtin" => self
+                .indextts_embedded
+                .clone()
+                .ok_or_else(|| anyhow!("内嵌 IndexTTS2 适配器未初始化"))?,
             "opentts" => self
                 .opentts
                 .clone()
@@ -207,9 +228,8 @@ impl TtsProvider {
             return Ok(());
         }
         let adapter = self.select(tts_type)?;
-        match adapter.generate_voice(text, emo).await {
-            Ok(bytes) => {
-                tokio::fs::write(file_path, &bytes).await?;
+        match adapter.generate_voice_to_file(text, emo, file_path).await {
+            Ok(()) => {
                 tracing::debug!("TTS 生成成功: {}", file_path.display());
                 Ok(())
             }

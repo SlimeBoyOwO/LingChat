@@ -521,6 +521,11 @@ pub fn run() {
             api::role_archive::export_role,
             api::role_archive::export_role_to_path,
             exit_app,
+            indextts_engine_status,
+            indextts_engine_await_ready,
+            indextts_voice_list,
+            indextts_voice_upload,
+            indextts_voice_delete,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -530,4 +535,43 @@ pub fn run() {
 #[tauri::command]
 fn exit_app(app: tauri::AppHandle) {
     app.exit(0);
+}
+
+/// 前端启动门：查询内嵌 IndexTTS2 引擎状态（not_used / loading / ready / failed + 详情）。
+#[tauri::command]
+fn indextts_engine_status() -> (String, String) {
+    crate::ai_service::tts::engine_embed::current_status()
+}
+
+/// 前端启动门：等待内嵌引擎就绪（未使用内置时立即返回成功）。
+#[tauri::command]
+async fn indextts_engine_await_ready() -> Result<(), String> {
+    crate::ai_service::tts::engine_embed::await_ready().await
+}
+
+#[tauri::command]
+fn indextts_voice_list(
+    app: tauri::AppHandle,
+) -> Result<Vec<crate::ai_service::tts::engine_embed::IndexTtsVoicePreset>, String> {
+    let config = crate::config::tts::TtsConfig::load(&app);
+    crate::ai_service::tts::engine_embed::list_voice_presets(&config)
+}
+
+#[tauri::command]
+fn indextts_voice_upload(
+    app: tauri::AppHandle,
+    file_name: String,
+    file_data: Vec<u8>,
+) -> Result<Vec<crate::ai_service::tts::engine_embed::IndexTtsVoicePreset>, String> {
+    let config = crate::config::tts::TtsConfig::load(&app);
+    crate::ai_service::tts::engine_embed::upload_voice_preset(&config, &file_name, &file_data)
+}
+
+#[tauri::command]
+fn indextts_voice_delete(
+    app: tauri::AppHandle,
+    file_name: String,
+) -> Result<Vec<crate::ai_service::tts::engine_embed::IndexTtsVoicePreset>, String> {
+    let config = crate::config::tts::TtsConfig::load(&app);
+    crate::ai_service::tts::engine_embed::delete_voice_preset(&config, &file_name)
 }

@@ -114,6 +114,76 @@
             </p>
           </section>
 
+          <section
+            v-if="isIndexTtsSettings"
+            class="mb-8 rounded-xl border border-cyan-400/25 bg-black/20 p-5"
+          >
+            <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 class="m-0 text-lg font-semibold text-cyan-300">音色管理</h3>
+                <p class="mt-1 text-sm text-white/65">
+                  音色 ID 按文件名排序；删除文件后，请检查角色使用的预设 ID。
+                </p>
+              </div>
+              <button
+                type="button"
+                class="rounded-lg border border-cyan-300/40 bg-cyan-500/15 px-4 py-2 text-sm text-cyan-100 transition hover:bg-cyan-500/30 disabled:cursor-wait disabled:opacity-50"
+                :disabled="voiceBusy"
+                @click="voiceInputRef?.click()"
+              >
+                {{ voiceBusy ? '处理中…' : '上传音色' }}
+              </button>
+              <input
+                ref="voiceInputRef"
+                type="file"
+                class="hidden"
+                accept=".wav,.mp3,.flac,.ogg,audio/wav,audio/mpeg,audio/flac,audio/ogg"
+                @change="handleVoiceUpload"
+              />
+            </div>
+
+            <div
+              v-if="voiceMessage"
+              class="mb-3 rounded-lg px-3 py-2 text-sm"
+              :class="voiceMessageIsError ? 'bg-red-500/15 text-red-200' : 'bg-emerald-500/15 text-emerald-200'"
+            >
+              {{ voiceMessage }}
+            </div>
+
+            <div v-if="voiceBusy && !voicePresets.length" class="py-4 text-sm text-white/60">
+              正在读取音色列表…
+            </div>
+            <div v-else-if="!voicePresets.length" class="py-4 text-sm text-amber-200">
+              尚无音色。请上传一个 wav、mp3、flac 或 ogg 参考音频。
+            </div>
+            <div v-else class="space-y-2">
+              <div
+                v-for="preset in voicePresets"
+                :key="preset.file_name"
+                class="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2"
+              >
+                <span
+                  class="inline-flex h-8 min-w-8 items-center justify-center rounded-md bg-cyan-400/15 px-2 font-mono text-cyan-200"
+                >
+                  ID {{ preset.id }}
+                </span>
+                <div class="min-w-0 flex-1">
+                  <div class="truncate text-sm text-white">{{ preset.file_name }}</div>
+                  <div class="text-xs text-white/50">{{ formatBytes(preset.size) }}</div>
+                </div>
+                <button
+                  type="button"
+                  class="rounded-md border border-red-400/30 px-3 py-1.5 text-xs text-red-200 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-35"
+                  :disabled="voiceBusy || voicePresets.length <= 1"
+                  title="至少保留一个音色"
+                  @click="handleVoiceDelete(preset)"
+                >
+                  删除
+                </button>
+              </div>
+            </div>
+          </section>
+
           <!-- 保存操作区域 -->
           <div
             class="inline-flex flex-col gap-2 px-5 py-2.5 bg-brand text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-colors duration-200 hover:bg-[#0056b3] min-w-30"
@@ -154,9 +224,17 @@ import { getEnvConfigSettings, saveEnvConfigSettings } from '@/api/services/conf
 import { reactivateTTS } from '@/api/services/game-info'
 import { switchLlm } from '@/api/services/llm-providers'
 import { RefreshCw } from 'lucide-vue-next'
+import {
+  deleteIndexTtsVoice,
+  listIndexTtsVoices,
+  uploadIndexTtsVoice,
+  type IndexTtsVoicePreset,
+} from '@/api/services/indextts'
+import { useDialogStore } from '@/stores/modules/ui/dialog'
 
 // --- 响应式状态定义 ---
 const uiStore = useUIStore()
+const dialogStore = useDialogStore()
 const narrowViewLevel = ref<'menu' | 'content'>('menu')
 const isLoading = ref(false)
 const configData = ref<Record<string, any>>({})
@@ -174,6 +252,11 @@ const reconnectStatus = reactive({
   colorClass: 'text-green-400',
 })
 let reconnectStatusTimer: ReturnType<typeof setTimeout> | null = null
+const voiceInputRef = ref<HTMLInputElement | null>(null)
+const voicePresets = ref<IndexTtsVoicePreset[]>([])
+const voiceBusy = ref(false)
+const voiceMessage = ref('')
+const voiceMessageIsError = ref(false)
 
 const emit = defineEmits<{
   'remove-more-menu-from-b': []
@@ -190,6 +273,11 @@ const selectedSubcategory = computed(() => {
   }
   return null
 })
+const isIndexTtsSettings = computed(
+  () =>
+    activeSelection.category === 'TTS 配置' &&
+    activeSelection.subcategory === 'IndexTTS-AMD 引擎',
+)
 
 // --- 方法定义 ---
 
@@ -203,6 +291,75 @@ const selectSubcategory = (category: string, subcategory: string) => {
   // 窄屏下自动切换到内容视图
   if (uiStore.isNarrowScreen) {
     narrowViewLevel.value = 'content'
+  }
+  if (category === 'TTS 配置' && subcategory === 'IndexTTS-AMD 引擎') {
+    void loadVoicePresets()
+  }
+}
+
+const formatBytes = (size: number) => {
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / 1024 / 1024).toFixed(1)} MB`
+}
+
+const voiceErrorText = (error: unknown) => {
+  if (typeof error === 'string') return error
+  if (error instanceof Error) return error.message
+  return '未知错误'
+}
+
+const loadVoicePresets = async () => {
+  voiceBusy.value = true
+  voiceMessage.value = ''
+  try {
+    voicePresets.value = await listIndexTtsVoices()
+  } catch (error) {
+    voiceMessageIsError.value = true
+    voiceMessage.value = `读取音色失败：${voiceErrorText(error)}`
+  } finally {
+    voiceBusy.value = false
+  }
+}
+
+const handleVoiceUpload = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+
+  voiceBusy.value = true
+  voiceMessage.value = ''
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    voicePresets.value = await uploadIndexTtsVoice(file.name, bytes)
+    voiceMessageIsError.value = false
+    voiceMessage.value = `已上传音色：${file.name}`
+  } catch (error) {
+    voiceMessageIsError.value = true
+    voiceMessage.value = `上传失败：${voiceErrorText(error)}`
+  } finally {
+    voiceBusy.value = false
+  }
+}
+
+const handleVoiceDelete = async (preset: IndexTtsVoicePreset) => {
+  const confirmed = await dialogStore.confirm(
+    `确定删除音色“${preset.file_name}”吗？删除后音色 ID 会按文件名重新排序。`,
+  )
+  if (!confirmed) return
+
+  voiceBusy.value = true
+  voiceMessage.value = ''
+  try {
+    voicePresets.value = await deleteIndexTtsVoice(preset.file_name)
+    voiceMessageIsError.value = false
+    voiceMessage.value = `已删除音色：${preset.file_name}`
+  } catch (error) {
+    voiceMessageIsError.value = true
+    voiceMessage.value = `删除失败：${voiceErrorText(error)}`
+  } finally {
+    voiceBusy.value = false
   }
 }
 

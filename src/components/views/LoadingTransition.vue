@@ -221,6 +221,27 @@
             {{ currentStatusText }}
           </div>
 
+          <div
+            v-if="engineState === 'failed'"
+            class="mt-2 w-[min(80vw,760px)] rounded-lg border border-red-400/40 bg-red-950/55 px-4 py-3 text-left"
+          >
+            <div class="mb-1 font-mono text-sm font-semibold text-red-200">
+              内置 TTS 初始化失败，已阻止进入游戏
+            </div>
+            <div
+              class="max-h-28 overflow-auto whitespace-pre-wrap break-all font-mono text-xs text-red-100/75"
+            >
+              {{ engineDetail || '未返回详细错误，请查看 LingChat 日志。' }}
+            </div>
+            <button
+              type="button"
+              class="mt-3 rounded-md border border-red-300/40 bg-red-500/20 px-3 py-1.5 text-xs text-red-100 transition hover:bg-red-500/35"
+              @click="restartApplication"
+            >
+              修复后重新启动 LingChat
+            </button>
+          </div>
+
           <!-- 进度条 -->
           <div class="w-[60vh] flex items-center space-y-2 mt-4">
             <div
@@ -254,6 +275,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
+import { relaunch } from '@tauri-apps/plugin-process'
 import { eventQueue } from '@/core/events/event-queue'
 import { statusTexts, pickRandomStatusText, pickRandomTip } from '@/data/easterEggs'
 
@@ -402,6 +425,27 @@ function updateStatusText(p: number) {
 //  随机小贴士（权重归类随机 → @/data/easterEggs.ts）
 // ============================================================
 const randomTip = ref(pickRandomTip())
+
+// ============================================================
+//  内嵌语音引擎预热联动：使用内置 TTS 时必须等到 ready 才允许进入游戏
+// ============================================================
+const engineState = ref<string>('not_used')
+const engineDetail = ref('')
+let engineTimer: ReturnType<typeof setInterval> | null = null
+
+async function refreshEngineState() {
+  try {
+    const [state, detail] = await invoke<[string, string]>('indextts_engine_status')
+    engineState.value = state
+    engineDetail.value = detail
+  } catch {
+    // 查询失败时保持原状态，下一次轮询继续尝试。
+  }
+}
+
+async function restartApplication() {
+  await relaunch()
+}
 
 // ============================================================
 //  SVG 遮罩动画核心
@@ -576,7 +620,7 @@ function startDotAnimation() {
 // ============================================================
 // 约束：
 //   - MIN_DISPLAY_MS = 5000  : 最少展示 5s
-//   - MAX_TIMEOUT_MS = 15000 : 最晚 15s 强制完成
+//   - MAX_TIMEOUT_MS = 15000 : 未使用内置 TTS 时最晚 15s 完成
 //   - ACCEL_WINDOW_MS = 1000 : 检测到事件后 1s 内冲至 100%
 // 正常曲线：√(t) 减速增长（起步快、后期慢，模拟真实加载）
 // 加速曲线：事件到达后线性冲刺，但仍遵守 5s 最短展示
@@ -598,7 +642,12 @@ function normalCurve(elapsed: number): number {
 
 /** 根据当前状态计算目标进度 (0–100) */
 function computeTarget(elapsed: number): number {
-  // 硬上限
+  // 使用内置 TTS 时严格等待。失败也留在加载页展示错误，禁止带病进入游戏。
+  if (engineState.value === 'loading' || engineState.value === 'failed') {
+    return Math.min(normalCurve(elapsed), 90)
+  }
+
+  // 未使用内置 TTS，或引擎已经 ready，才应用普通启动硬上限。
   if (elapsed >= MAX_TIMEOUT_MS) return 100
 
   // 检测事件队列
@@ -661,11 +710,21 @@ function startProgress() {
     const elapsed = performance.now() - startTime
     const target = computeTarget(elapsed)
 
-    // 指数平滑：避免跳变，视觉上自然连续
+    // 指数平滑：避免跳变，视觉上自然连续；
+    // 目标低于 100 时（如引擎预热封顶 90%）不得被最小步长推过目标。
     const smoothStep = (target - progress.value) * 0.12
-    progress.value = Math.min(100, progress.value + Math.max(0.3, smoothStep))
+    const cap = Math.min(100, target)
+    progress.value = Math.min(cap, progress.value + Math.max(0.3, smoothStep))
 
-    updateStatusText(progress.value)
+    if (engineState.value === 'loading') {
+      currentStatusText.value = '内置语音引擎预热中…'
+    } else if (engineState.value === 'ready' && progress.value < 100) {
+      currentStatusText.value = '内置语音引擎预热完成'
+    } else if (engineState.value === 'failed') {
+      currentStatusText.value = '语音引擎初始化失败，正在等待处理…'
+    } else {
+      updateStatusText(progress.value)
+    }
 
     // tick 音效：进度越低越密集（营造忙碌感），高进度时降低频率
     const tickChance = progress.value < 40 ? 0.55 : progress.value < 80 ? 0.35 : 0.2
@@ -683,7 +742,7 @@ function startProgress() {
 // ============================================================
 //  生命周期
 // ============================================================
-onMounted(() => {
+onMounted(async () => {
   // 初始化遮罩位置：猫头完全隐藏在屏幕下方
   setMaskTransform(0.52, 1, 1)
 
@@ -696,12 +755,16 @@ onMounted(() => {
   }, 300)
 
   startDotAnimation()
+  // 首次查询完成后才启动进度，避免状态尚未取回就提前完成转场。
+  await refreshEngineState()
   startProgress()
+  engineTimer = setInterval(refreshEngineState, 500)
 })
 
 onUnmounted(() => {
   if (progressTimer) clearInterval(progressTimer)
   if (dotTimer) clearInterval(dotTimer)
+  if (engineTimer) clearInterval(engineTimer)
   cancelMaskAnimation()
 })
 </script>

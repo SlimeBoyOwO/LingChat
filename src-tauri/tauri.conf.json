@@ -51,7 +51,9 @@
     "resources": {
       ".bundled_resources/game_data/": "data/.official/game_data/",
       ".bundled_resources/third_party/": "data/third_party/",
-      ".bundled_resources/data_manifest.json": "data/.official/data_manifest.json"
+      ".bundled_resources/data_manifest.json": "data/.official/data_manifest.json",
+      ".bundled_resources/python3.dll": "python3.dll",
+      ".bundled_resources/python310.dll": "python310.dll"
     }
   }
 }

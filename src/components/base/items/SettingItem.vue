@@ -15,6 +15,27 @@
     </div>
   </template>
 
+  <!-- Case: 下拉选择 (select:值1,值2,...) -->
+  <template v-else-if="setting.type.startsWith('select:')">
+    <label
+      class="inline-flex items-center cursor-pointer font-medium text-brand"
+      :for="setting.key"
+      >{{ setting.description || '' }}</label
+    >
+    <p class="text-sm mt-1 mb-2 text-gray-300">
+      {{ setting.key }}
+    </p>
+    <select
+      :id="setting.key"
+      v-model="localValue"
+      class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+    >
+      <option v-for="opt in selectOptions" :key="opt" :value="opt" class="bg-gray-800 text-white">
+        {{ opt }}
+      </option>
+    </select>
+  </template>
+
   <!-- Case: 文本域 (Textarea) -->
   <template v-else-if="setting.type === 'textarea'">
     <label
@@ -82,14 +103,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import Toggle from '../widget/Toggle.vue'
 
 interface Setting {
   key: string
   value: string
-  type: 'bool' | 'textarea' | 'text' | 'path' | 'number'
+  type: string
   description?: string
 }
 
@@ -104,6 +125,16 @@ const emit = defineEmits<{
 }>()
 
 const localValue = ref(props.setting.value)
+
+const selectOptions = computed(() =>
+  props.setting.type.startsWith('select:')
+    ? props.setting.type
+        .slice(7)
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean)
+    : [],
+)
 
 // 监听本地值的变化，并触发更新事件
 watch(localValue, (newValue) => {

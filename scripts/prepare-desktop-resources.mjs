@@ -121,6 +121,38 @@ if (isMobile) {
 }
 console.log(`✅ 已复制 ${thirdPartyCount} 个 third_party 文件`);
 
+// ─── Windows 嵌入式 Python 启动 DLL ─────────────────────────
+//
+// ling-chat.exe 静态导入 python310.dll，因此这两个小型 DLL 必须与 exe 同级，
+// 否则即使用户不启用内置 TTS，程序也会在进入 Rust main() 前启动失败。
+// 完整 Python/ROCm 运行时和模型体积超过 16 GB，不放进主安装包，单独分发。
+
+if (process.platform === "win32") {
+  const runtimeCandidates = [
+    process.env.INDEXTTS_RUNTIME_DIR,
+    process.env.PYO3_PYTHON ? dirname(process.env.PYO3_PYTHON) : "",
+    join(projectRoot, "..", "LingChat-rust", "bin", "engine", "runtime"),
+  ].filter(Boolean);
+
+  const runtimeDir = runtimeCandidates.find(
+    (candidate) =>
+      existsSync(join(candidate, "python3.dll")) &&
+      existsSync(join(candidate, "python310.dll")),
+  );
+
+  if (!runtimeDir) {
+    console.error(
+      "❌ 找不到 IndexTTS Python DLL。请设置 INDEXTTS_RUNTIME_DIR，或确认 ../LingChat-rust/bin/engine/runtime 完整。",
+    );
+    process.exit(1);
+  }
+
+  for (const dllName of ["python3.dll", "python310.dll"]) {
+    copyFileSync(join(runtimeDir, dllName), join(stagingDir, dllName));
+  }
+  console.log(`✅ 已准备嵌入式 Python 启动 DLL（来源: ${runtimeDir}）`);
+}
+
 // ─── 生成 data_manifest.json (仅 game_data) ─────────────────
 
 const dataVersion = parseInt(process.env.DATA_VERSION, 10) || 1;

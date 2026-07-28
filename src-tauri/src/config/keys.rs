@@ -52,6 +52,10 @@ pub const AIVIS_API_URL: &str = "tts.aivis_api_url";
 pub const AIVIS_API_KEY: &str = "tts.aivis_api_key";
 pub const INDEXTTS_API_URL: &str = "tts.indextts_api_url";
 
+// ========== TTS IndexTTS-AMD 内嵌引擎 ==========
+pub const INDEXTTS_ENGINE_DIR: &str = "tts.indextts_engine_dir";
+pub const INDEXTTS_EMO_MODE: &str = "tts.indextts_emo_mode";
+
 // ========== TTS OpenTTS ==========
 pub const OPENTTS_API_URL: &str = "tts.opentts_api_url";
 pub const OPENTTS_API_KEY: &str = "tts.opentts_api_key";

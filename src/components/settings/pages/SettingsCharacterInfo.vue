@@ -240,6 +240,7 @@ const voiceModelKeys = [
   'gsv_sovits_model_name',
   'aivis_model_uuid',
   'opentts_voice',
+  'indextts_speaker_id',
 ] as const
 
 // --- Schema Definition ---
@@ -312,6 +313,7 @@ const schemas: Record<string, FieldSchema[]> = {
         { label: 'gsv', value: 'gsv' },
         { label: 'aivis', value: 'aivis' },
         { label: 'opentts', value: 'opentts' },
+        { label: 'IndexTTS-AMD（内置）', value: 'indextts2_builtin' },
       ],
     },
 
@@ -321,12 +323,17 @@ const schemas: Record<string, FieldSchema[]> = {
       type: 'select',
       realtime: true,
       options: [
-        { label: '日语', value: 'ja' },
+        {
+          label: '日语',
+          value: 'ja',
+          visibleIf: (s) => s.tts_type !== 'indextts2_builtin',
+        },
         { label: '中文', value: 'zh' },
         {
           label: '英语',
           value: 'en',
-          visibleIf: (s) => s.tts_type === 'gsv' || s.tts_type === 'opentts',
+          visibleIf: (s) =>
+            ['gsv', 'opentts', 'indextts2_builtin'].includes(s.tts_type),
         },
         {
           label: '韩语',
@@ -420,6 +427,16 @@ const schemas: Record<string, FieldSchema[]> = {
     },
 
     {
+      key: 'indextts_speaker_id',
+      label: 'IndexTTS 音色预设 ID',
+      type: 'text',
+      isVoiceModel: true,
+      realtime: true,
+      placeholder: '0（按 voices 目录中的预设顺序）',
+      visibleIf: (s) => s.tts_type === 'indextts2_builtin',
+    },
+
+    {
       key: 'aivis_model_uuid',
       label: 'aivis_model_uuid',
       type: 'text',
@@ -467,6 +484,15 @@ const migrateLegacyVoiceModelFields = () => {
       voiceModels[key] = legacyValue
     }
     delete localSettings.value[key]
+  }
+}
+
+const normalizeIndexTtsLanguage = () => {
+  if (
+    localSettings.value.tts_type === 'indextts2_builtin' &&
+    !['zh', 'en'].includes(localSettings.value.voice_lang)
+  ) {
+    localSettings.value.voice_lang = 'zh'
   }
 }
 
@@ -526,6 +552,7 @@ watch(
         if (!localSettings.value.voice_lang) {
           localSettings.value.voice_lang = 'ja'
         }
+        normalizeIndexTtsLanguage()
       } catch (e) {
         console.error('Failed to load character settings', e)
         emit('close')
@@ -544,6 +571,7 @@ const handleFieldChange = async (field: FieldSchema) => {
   if (!field.realtime || !props.roleId) return
 
   try {
+    normalizeIndexTtsLanguage()
     // 后端会同时保存 settings.yml 并重建已加载角色的 VoiceMaker。
     await updateRoleSettings(props.roleId, localSettings.value)
   } catch (e) {
@@ -556,6 +584,7 @@ const saveSettings = async () => {
   if (!props.roleId) return
   saving.value = true
   try {
+    normalizeIndexTtsLanguage()
     await updateRoleSettings(props.roleId, localSettings.value)
     emit('saved')
     emit('close')

@@ -324,6 +324,38 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
             },
         );
 
+        tts_subs.insert(
+            "IndexTTS-AMD 引擎".to_string(),
+            Subcategory {
+                description: "内嵌 IndexTTS2 引擎（随程序目录携带，模型在主程序进程内运行，无端口无服务器，选择 IndexTTS-AMD（内置）后即用）"
+                    .to_string(),
+                settings: vec![
+                    ConfigSetting {
+                        key: keys::INDEXTTS_ENGINE_DIR.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::INDEXTTS_ENGINE_DIR,
+                            &tts_defaults.indextts_engine_dir,
+                        ),
+                        description: "模型数据目录（留空使用程序 data/third_party/IndexTTS-AMD；修改后重启生效）"
+                            .to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::INDEXTTS_EMO_MODE.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::INDEXTTS_EMO_MODE,
+                            &tts_defaults.indextts_emo_mode,
+                        ),
+                        description: "情绪模式：blend=手工混合向量（最快） / qwen=标签描述经 Qwen 理解出向量（细腻，推荐） / auto=不看标签直接分析本句情绪"
+                            .to_string(),
+                        setting_type: "select:blend,qwen,auto".to_string(),
+                    },
+                ],
+            },
+        );
+
         tree.insert(
             "TTS 配置".to_string(),
             Category {

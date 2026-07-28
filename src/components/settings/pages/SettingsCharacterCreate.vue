@@ -273,6 +273,7 @@
                     <option value="sbv2api">sbv2api</option>
                     <option value="gsv">gsv</option>
                     <option value="aivis">aivis</option>
+                    <option value="indextts2_builtin">IndexTTS-AMD（内置）</option>
                   </select>
                 </div>
 
@@ -636,6 +637,7 @@ const submitCreate = async () => {
       bubble_left: Number(form.bubble_left),
       thinking_message: form.thinking_message.trim() || '正在思考中...',
       tts_type: form.tts_type || null,
+      voice_lang: form.tts_type === 'indextts2_builtin' ? 'zh' : 'ja',
       system_prompt: form.system_prompt.trim() || null,
       system_prompt_example: form.system_prompt_example.trim() || null,
       system_prompt_example_old: form.system_prompt_example_old.trim() || null,
