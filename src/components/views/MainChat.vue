@@ -62,6 +62,7 @@ import { eventQueue } from '@/core/events/event-queue'
 
 import GameExtraUI from '../game/standard/GameExtraUI.vue'
 import ImageSourcePicker from '@/components/ui/ImageSourcePicker.vue'
+import { useFloatingPetContinue } from '@/composables/useFloatingPetContinue'
 
 const LOADING_STORAGE_KEY = 'lingchat_loading_shown'
 
@@ -97,6 +98,7 @@ const goToPetMode = () => {
 }
 
 const gameDialogRef = ref<InstanceType<typeof GameDialog> | null>(null)
+useFloatingPetContinue(gameDialogRef)
 
 const openSettings = () => {
   // 后台截图（不阻塞 UI），设置面板立即打开
