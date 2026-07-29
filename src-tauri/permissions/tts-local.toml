@@ -9,6 +9,18 @@
 # identifier from `capabilities/default.json`.
 
 [[permission]]
+identifier = "tts-local-get-enabled"
+description = "Read the persisted and effective local TTS switch state."
+commands.allow = ["tts_local_get_enabled"]
+commands.deny = []
+
+[[permission]]
+identifier = "tts-local-set-enabled"
+description = "Persist and apply the local TTS switch state."
+commands.allow = ["tts_local_set_enabled"]
+commands.deny = []
+
+[[permission]]
 identifier = "tts-local-status"
 description = "Return local TTS engine status (readiness, deberta presence, installed voice count)."
 commands.allow = ["tts_local_status"]

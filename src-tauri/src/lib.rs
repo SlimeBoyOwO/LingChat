@@ -617,6 +617,8 @@ pub fn run() {
             ai_service::tts::local::commands::tts_local_delete_voice,
             ai_service::tts::local::commands::tts_local_import_style_vectors,
             ai_service::tts::local::commands::tts_local_synthesize_preview,
+            ai_service::tts::local::tts_local_get_enabled,
+            ai_service::tts::local::tts_local_set_enabled,
             exit_app,
         ])
         .run(tauri::generate_context!())
@@ -631,16 +633,10 @@ fn exit_app(app: tauri::AppHandle) {
 
 /// Reads `features.enable_local_tts` directly from the settings store.
 ///
-/// The frontend toggles this key from `SettingsTts.vue` via
-/// `saveEnvConfigSettings`; AppConfig intentionally does not own the field
-/// because it is a runtime-only gate, not a structural setting. Defaults to
-/// `false` when the key is missing so first-launch behaviour matches the
-/// global "cloud TTS" assumption.
+/// The dedicated local-TTS IPC persists this key and updates the runtime
+/// switch together. AppConfig intentionally does not own the field because it
+/// is a runtime gate, not a structural setting. Missing values default to
+/// `false`, matching the first-launch cloud-TTS behaviour.
 fn load_enable_local_tts(app: &tauri::AppHandle) -> bool {
-    use tauri_plugin_store::StoreExt;
-    app.store(config::STORE_FILE)
-        .ok()
-        .and_then(|store| store.get("features.enable_local_tts"))
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false)
+    ai_service::tts::local::load_configured_enabled(app)
 }

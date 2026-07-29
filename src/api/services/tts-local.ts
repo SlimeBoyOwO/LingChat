@@ -83,6 +83,11 @@ export interface TtsLocalStatus {
   installed_voice_count: number
 }
 
+export interface LocalTtsSwitchStatus {
+  configured_enabled: boolean
+  effective_enabled: boolean
+}
+
 export interface TtsLocalInstallSnapshot {
   assets: AssetRecord[]
   voices: VoiceRecord[]
@@ -103,6 +108,14 @@ export interface ImportOptions {
 
 export function status(): Promise<TtsLocalStatus> {
   return invoke<TtsLocalStatus>('tts_local_status')
+}
+
+export function getEnabled(): Promise<LocalTtsSwitchStatus> {
+  return invoke<LocalTtsSwitchStatus>('tts_local_get_enabled')
+}
+
+export function setEnabled(enabled: boolean): Promise<LocalTtsSwitchStatus> {
+  return invoke<LocalTtsSwitchStatus>('tts_local_set_enabled', { enabled })
 }
 
 export function listInstalled(): Promise<TtsLocalInstallSnapshot> {

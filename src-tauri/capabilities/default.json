@@ -28,6 +28,8 @@
     "dialog:default",
     "notification:default",
     "app-commands",
+    "tts-local-get-enabled",
+    "tts-local-set-enabled",
     "tts-local-status",
     "tts-local-list-catalog",
     "tts-local-list-installed",

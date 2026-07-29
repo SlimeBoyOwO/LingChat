@@ -386,6 +386,28 @@ audio.addEventListener('ended', () => URL.revokeObjectURL(url), { once: true })
 
 试听要求引擎已经初始化。若 DeBERTa 文件刚导入，导入命令会尝试初始化；应用启动时若检测到文件，则在游戏主体初始化后后台预加载。
 
+### 5.9 读取和设置全局开关
+
+命令：`tts_local_get_enabled`、`tts_local_set_enabled`
+
+```ts
+const state = await TtsLocal.getEnabled()
+const updated = await TtsLocal.setEnabled(true)
+```
+
+两条命令均返回：
+
+```ts
+interface LocalTtsSwitchStatus {
+  configured_enabled: boolean
+  effective_enabled: boolean
+}
+```
+
+`configured_enabled` 是 `settings.json` 中持久化的用户选择；`effective_enabled` 是当前进程实际使用的运行时开关。首次运行且尚未保存该键时，两者默认都是 `false`。
+
+启用时，后端先确认本地 TTS 数据目录可用，再持久化配置，最后更新当前进程的运行时开关。持久化失败时不会改变运行时状态。设置成功后无需重启，后续语音调用会立即使用新状态。
+
 ## 6. 事件
 
 ### 6.1 `tts://download-progress`

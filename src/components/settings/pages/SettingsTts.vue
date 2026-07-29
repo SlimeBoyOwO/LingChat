@@ -348,7 +348,6 @@ import {
 import { MenuItem, MenuPage } from '@/components/ui'
 import { useDialogStore } from '@/stores/modules/ui/dialog'
 import * as TtsLocal from '@/api/services/tts-local'
-import { getEnvConfigByKey, saveEnvConfigSettings } from '@/api/services/config'
 import { speedToLengthScale } from '@/utils/tts-speed'
 import { catalogRowState } from '@/utils/tts-download-state'
 import type {
@@ -602,8 +601,8 @@ async function runPreview(): Promise<void> {
 
 async function loadLocalTtsSwitch(): Promise<void> {
   try {
-    const setting = await getEnvConfigByKey('features.enable_local_tts')
-    localTtsEnabled.value = setting.value === 'true'
+    const switchStatus = await TtsLocal.getEnabled()
+    localTtsEnabled.value = switchStatus.effective_enabled
   } catch (error) {
     notice.value = { kind: 'error', text: `读取本地 TTS 开关失败：${errorText(error)}` }
   }
@@ -612,14 +611,13 @@ async function loadLocalTtsSwitch(): Promise<void> {
 async function saveLocalTtsSwitch(): Promise<void> {
   savingLocalTts.value = true
   try {
-    await saveEnvConfigSettings({
-      'features.enable_local_tts': String(localTtsEnabled.value),
-    })
+    const switchStatus = await TtsLocal.setEnabled(localTtsEnabled.value)
+    localTtsEnabled.value = switchStatus.effective_enabled
     notice.value = {
       kind: 'success',
       text: localTtsEnabled.value
-        ? '本地 TTS 已启用，使用本地 TTS 配置的角色将在下次调用时生效（或重启后生效）'
-        : '本地 TTS 已关闭，使用本地 TTS 配置的角色将沿用云端 TTS',
+        ? '本地 TTS 已启用，新配置将在下次调用或重启后生效。'
+        : '本地 TTS 已关闭，如需使用云端TTS，请将角色语音切换为“云端”并重启应用。',
     }
   } catch (error) {
     localTtsEnabled.value = !localTtsEnabled.value
