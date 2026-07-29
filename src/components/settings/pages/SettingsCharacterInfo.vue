@@ -545,6 +545,16 @@ const handleClose = () => {
 const handleFieldChange = async (field: FieldSchema) => {
   if (!field.realtime || !props.roleId) return
 
+  // IndexTTS2 仅支持中/英文：切换到该类型时，把残留的日语重置为中文，
+  // 避免日语选项被隐藏后旧值仍然生效。
+  if (
+    field.key === 'tts_type' &&
+    localSettings.value.tts_type === 'indextts2' &&
+    localSettings.value.voice_lang === 'ja'
+  ) {
+    localSettings.value.voice_lang = 'zh'
+  }
+
   try {
     // 后端会同时保存 settings.yml 并重建已加载角色的 VoiceMaker。
     await updateRoleSettings(props.roleId, localSettings.value)
