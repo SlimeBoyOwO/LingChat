@@ -19,7 +19,7 @@
       <StartItem disabled style="font-size: 28px">{{ currentPage }} / {{ totalPages }}</StartItem>
       <StartItem @click="currentPage++" :disabled="currentPage === totalPages">></StartItem>
       <!-- 返回按钮 -->
-      <StartItem @click="backToGameModeMenu">返回</StartItem>
+      <StartItem @click="backToGameModeMenu">{{ $t('views.menu.back') }}</StartItem>
     </div>
   </nav>
 </template>

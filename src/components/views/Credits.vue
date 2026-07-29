@@ -14,10 +14,10 @@
     >
       <!-- 右上角ESC退出提示 -->
       <div class="absolute top-6 right-6 text-white opacity-50 text-sm tracking-wider">
-        ESC 退出
+        {{ $t('views.credits.escExit') }}
       </div>
       <div class="text-center text-white animate-[pulse_3s_infinite]">
-        <p class="text-[2.2em] font-light tracking-[2px] mb-2">来自灵灵感谢の书❤</p>
+        <p class="text-[2.2em] font-light tracking-[2px] mb-2">{{ $t('views.credits.letterTitle') }}</p>
         <span class="text-[1.1em] opacity-70 tracking-[4px] uppercase"
           >A Letter For LingChat❤</span
         >
@@ -58,7 +58,7 @@
             class="w-1/2 max-w-100 object-contain mx-auto mb-6"
             alt="Logo"
           />
-          <h1 class="text-[3.5em] text-[#00e5ff] font-normal tracking-[5px]">致谢</h1>
+          <h1 class="text-[3.5em] text-[#00e5ff] font-normal tracking-[5px]">{{ $t('views.credits.heading') }}</h1>
           <p class="text-[1.2em] text-[#ebfafb] opacity-70 tracking-[8px] uppercase mt-2">
             CREDITS
           </p>

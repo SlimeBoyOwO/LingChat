@@ -1,1 +1,67 @@
-export default {}
+export default {
+  loader: {
+    preparing: 'きみのかわいい子が準備中だよ',
+  },
+  loadingTransition: {
+    starting: 'LingChat ターミナル起動中...',
+    almostReady: '⩌⩊⩌ もうすぐ準備完了だよ~',
+  },
+  mainChat: {
+    auto: '自動',
+    pet: 'デスクトップペット',
+    menu: 'メニュー',
+  },
+  mainMenu: {
+    characterAlt: 'キャラクター',
+    noSaveTitle: 'ヒント',
+    noSaveMessage: 'セーブデータがありません。先にセーブを作成してください',
+    continueFailTitle: '再開失敗',
+    continueFailMessage: 'セーブデータが未作成か、システムに問題があります',
+    scriptListFailed: 'シナリオ一覧の取得に失敗しました：バックエンドが起動しているか確認してください',
+    perfTip: 'このページの動作が重い場合は、一般設定で星のパーティクルや流星アニメーションをオフにできます。',
+  },
+  petMode: {
+    settingsWindowTitle: '設定',
+  },
+  credits: {
+    escExit: 'ESC で終了',
+    letterTitle: 'リンリンからの感謝の手紙❤',
+    heading: 'クレジット',
+  },
+  menu: {
+    startGame: 'ゲーム開始',
+    continueGame: '続きから',
+    gameConfig: 'ゲーム設定',
+    credits: 'クレジット',
+    exitGame: 'ゲーム終了',
+    freeDialogue: 'フリー会話モード',
+    storyMode: 'ストーリーモード（近日公開）',
+    miniGame: 'ミニゲーム（開発中）',
+    back: '戻る',
+  },
+  pet: {
+    chatInput: {
+      placeholder: 'メッセージを入力...',
+      deepThought: '{message}（{length} 文字の深い思考が完了）',
+      waiting: '応答を待っています...',
+      chatting: 'チャット中~',
+      placeholderDefault: 'ここにメッセージを入力...',
+      noModelTitle: 'ヒント',
+      noModelMessage: 'まだ会話モデルを選んでいないよ、バカ！',
+    },
+    stage: {
+      openSettingsAria: '設定を開く',
+      settings: '設定',
+      openAutoAria: '自動会話をオンにする',
+      auto: '自動',
+      backHome: 'ホームに戻る',
+      retakePhoto: 'タップして撮り直す',
+      photoOrImage: '写真を撮るか画像を選んで質問',
+      retakeScreenshot: 'クリックで撮り直し、右クリックでキャンセル',
+      screenshotAsk: 'スクリーンショットで質問',
+    },
+    notification: {
+      defaultTitle: '通知',
+    },
+  },
+}

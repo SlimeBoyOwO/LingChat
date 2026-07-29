@@ -1,10 +1,10 @@
 <template>
   <nav class="flex flex-col items-stretch">
-    <StartItem @click="() => emit('start-game')">开始游戏</StartItem>
-    <StartItem @click="() => emit('open-settings', 'save')">继续游戏</StartItem>
-    <StartItem @click="() => emit('open-settings')">游戏配置</StartItem>
-    <StartItem @click="() => emit('open-credits')">致谢名单</StartItem>
-    <StartItem @click="exitGame">退出游戏</StartItem>
+    <StartItem @click="() => emit('start-game')">{{ $t('views.menu.startGame') }}</StartItem>
+    <StartItem @click="() => emit('open-settings', 'save')">{{ $t('views.menu.continueGame') }}</StartItem>
+    <StartItem @click="() => emit('open-settings')">{{ $t('views.menu.gameConfig') }}</StartItem>
+    <StartItem @click="() => emit('open-credits')">{{ $t('views.menu.credits') }}</StartItem>
+    <StartItem @click="exitGame">{{ $t('views.menu.exitGame') }}</StartItem>
   </nav>
 </template>
 

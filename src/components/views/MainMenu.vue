@@ -21,7 +21,7 @@
     />
 
     <!-- 人物图层（位于星星之上，菜单之下） -->
-    <img class="character-image" ref="charRef" src="../../assets/images/alona.png" alt="人物" />
+    <img class="character-image" ref="charRef" src="../../assets/images/alona.png" :alt="$t('views.mainMenu.characterAlt')" />
 
     <!-- 菜单容器，绑定鼠标移动和移出事件实现视差 -->
     <StartPage
@@ -82,7 +82,9 @@ import type { WebInitData } from '@/api/services/game-info'
 import MeteorAnimation from '../game/standard/animations/MeteorAnimation.vue'
 import StarAnimation from '../game/standard/animations/StarAnimation.vue'
 import { useParallaxAnimation } from '../game/standard/animations/ParallaxAnimation'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const router = useRouter()
 const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
@@ -129,7 +131,10 @@ const handleContinueGame = async () => {
       { page: 1, pageSize: 1 },
     )
     if (!saves || saves.length === 0) {
-      uiStore.showWarning({ title: '提示', message: '没有存档记录，请先创建存档' })
+      uiStore.showWarning({
+        title: t('views.mainMenu.noSaveTitle'),
+        message: t('views.mainMenu.noSaveMessage'),
+      })
       return
     }
     const gameInfo = await invoke<WebInitData>('load_save', { saveId: saves[0].id })
@@ -138,7 +143,10 @@ const handleContinueGame = async () => {
     router.push('/chat')
   } catch (error) {
     console.error('继续游戏失败:', error)
-    uiStore.showError({ title: '继续失败', message: '未创建存档或系统问题' })
+    uiStore.showError({
+      title: t('views.mainMenu.continueFailTitle'),
+      message: t('views.mainMenu.continueFailMessage'),
+    })
   }
 }
 
@@ -177,7 +185,7 @@ async function fetchScripts() {
   } catch (e) {
     uiStore.showError({
       errorCode: 'script_list_failed',
-      message: '获取剧本列表失败：请确认后端已启动',
+      message: t('views.mainMenu.scriptListFailed'),
     })
     scripts.value = []
   } finally {
@@ -196,7 +204,7 @@ onMounted(() => {
       localStorage.setItem(PERFORMANCE_TIP_KEY, 'true')
       uiStore.showInfo({
         title: 'Tip',
-        message: '如果你觉得在这个页面很卡，可以前往 通用设置 中关闭星星粒子或流星动画。',
+        message: t('views.mainMenu.perfTip'),
         duration: 5000,
       })
     }

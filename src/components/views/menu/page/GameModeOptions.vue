@@ -1,9 +1,9 @@
 <template>
   <nav class="flex flex-col items-stretch">
-    <StartItem @click="startFreeDialogue">自由对话模式</StartItem>
-    <StartItem @click="startStoryMode" disabled>剧情模式（即将登场）</StartItem>
-    <StartItem disabled>小游戏（开发中）</StartItem>
-    <StartItem @click="() => emit('back')">返回</StartItem>
+    <StartItem @click="startFreeDialogue">{{ $t('views.menu.freeDialogue') }}</StartItem>
+    <StartItem @click="startStoryMode" disabled>{{ $t('views.menu.storyMode') }}</StartItem>
+    <StartItem disabled>{{ $t('views.menu.miniGame') }}</StartItem>
+    <StartItem @click="() => emit('back')">{{ $t('views.menu.back') }}</StartItem>
   </nav>
 </template>
 

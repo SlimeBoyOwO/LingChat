@@ -12,7 +12,7 @@
       <div class="progress-bar-container">
         <div class="progress-bar" :style="{ width: props.progress + '%' }"></div>
       </div>
-      <p class="loading-text">你的小可爱正在准备中</p>
+      <p class="loading-text">{{ $t('views.loader.preparing') }}</p>
     </div>
   </Transition>
 </template>
