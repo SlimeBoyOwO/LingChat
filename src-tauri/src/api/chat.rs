@@ -303,6 +303,7 @@ pub async fn rollback_conversation(
             audio_file: gl.base.audio_file.clone(),
             perceived_role_ids: gl.perceived_role_ids.clone(),
             user_message_seq: seq,
+            thinking: gl.base.thinking.clone(),
         })
         .collect();
 

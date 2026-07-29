@@ -111,6 +111,8 @@ pub struct GameLineInit {
     pub perceived_role_ids: Vec<i32>,
     /// 玩家消息序号（1-indexed），仅对 sender_role_id == Some(0) 的 User 行有值
     pub user_message_seq: Option<u32>,
+    /// 该轮生成的思考链（仅每轮最后一条 assistant 行有值）。
+    pub thinking: Option<String>,
 }
 
 // ========== Tauri 命令 ==========
@@ -429,6 +431,7 @@ pub(crate) async fn build_web_init_data(
                 audio_file: gl.base.audio_file.clone(),
                 perceived_role_ids: gl.perceived_role_ids.clone(),
                 user_message_seq: seq,
+                thinking: gl.base.thinking.clone(),
             })
             .collect();
 

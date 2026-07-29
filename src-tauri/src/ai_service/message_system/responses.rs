@@ -50,6 +50,8 @@ pub struct ReplyResponse {
     /// 触发此回复的用户消息序号（1-indexed，由 sender_role_id == Some(0) 计数得出）。
     /// `None` 表示主动对话等非用户触发的回复。
     pub user_message_seq: Option<u32>,
+    /// 本轮生成的思考链全文（仅最后一帧 is_final=true 时携带）。
+    pub thinking: Option<String>,
 }
 
 impl ReplyResponse {
@@ -70,6 +72,7 @@ impl ReplyResponse {
             display_name: None,
             display_subtitle: None,
             user_message_seq: None,
+            thinking: None,
         }
     }
 }

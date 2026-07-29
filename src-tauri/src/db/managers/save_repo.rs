@@ -255,6 +255,7 @@ impl SaveRepo {
                         predicted_emotion: db_line.predicted_emotion,
                         tts_content: db_line.tts_content,
                         action_content: db_line.action_content,
+                        thinking: db_line.thinking,
                         audio_file: db_line.audio_file,
                         attribute: LineAttributeExt(db_line.attribute),
                         sender_role_id: db_line.sender_role_id,
@@ -297,6 +298,7 @@ impl SaveRepo {
                     if db_line.content != input_line.base.content
                         || db_line.attribute != input_line.base.attribute.0
                         || db_line.sender_role_id != input_line.base.sender_role_id
+                        || db_line.thinking != input_line.base.thinking
                     {
                         let mut active: line::ActiveModel = db_line.clone().into();
                         active.content = Set(input_line.base.content.clone());
@@ -307,6 +309,7 @@ impl SaveRepo {
                         active.tts_content = Set(input_line.base.tts_content.clone());
                         active.action_content = Set(input_line.base.action_content.clone());
                         active.audio_file = Set(input_line.base.audio_file.clone());
+                        active.thinking = Set(input_line.base.thinking.clone());
                         active.display_name = Set(input_line.base.display_name.clone());
                         active.update(db).await.map_err(|e| anyhow!("{e}"))?;
                     }
@@ -367,6 +370,7 @@ impl SaveRepo {
                     tts_content: Set(input_line.base.tts_content.clone()),
                     action_content: Set(input_line.base.action_content.clone()),
                     audio_file: Set(input_line.base.audio_file.clone()),
+                    thinking: Set(input_line.base.thinking.clone()),
                     save_id: Set(save_id),
                     parent_line_id: Set(parent_id),
                     ..Default::default()

@@ -38,6 +38,7 @@ export default class DialogueProcessor implements IEventProcessor {
       motionText: event.motionText,
       originalTag: event.originalTag,
       userMessageSeq: event.userMessageSeq,
+      thinking: event.thinking,
     })
 
     // 回溯更新最近一条没有序号标记的用户消息（前端发送消息时尚未拿到序号）
