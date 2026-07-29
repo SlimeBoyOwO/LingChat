@@ -85,7 +85,7 @@
             <button
               class="btn-close px-3 py-1 rounded-md text-xs font-medium cursor-pointer text-white"
               @click="dismiss"
-            >关闭</button>
+            >{{ $t('ui.archiveProgress.close') }}</button>
           </div>
         </div>
 
@@ -93,7 +93,7 @@
           v-if="state.phase === 'running'"
           class="btn-cancel shrink-0 self-start px-3 py-1.5 rounded-md text-xs font-medium cursor-pointer text-white/80"
           @click="onCancel"
-        >取消</button>
+        >{{ $t('ui.archiveProgress.cancel') }}</button>
       </div>
     </Transition>
   </Teleport>
@@ -101,8 +101,10 @@
 
 <script setup lang="ts">
 import { computed, watch, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoleImportExport } from '@/composables/useRoleImportExport'
 
+const { t } = useI18n()
 const { store, cancel } = useRoleImportExport()
 
 type Phase = 'idle' | 'running' | 'done' | 'error' | 'cancelled'
@@ -117,19 +119,19 @@ const visible = computed(() => state.value.phase !== 'idle')
 
 const label = computed(() => {
   const p = state.value.phase
-  const kind = activeKey.value === 'import' ? '导入' : '导出'
-  if (p === 'running') return `${kind}中`
-  if (p === 'done') return `${kind}成功`
-  if (p === 'error') return `${kind}失败`
-  if (p === 'cancelled') return `已取消`
-  return kind
+  const isImport = activeKey.value === 'import'
+  if (p === 'running') return isImport ? t('ui.archiveProgress.importing') : t('ui.archiveProgress.exporting')
+  if (p === 'done') return isImport ? t('ui.archiveProgress.importSuccess') : t('ui.archiveProgress.exportSuccess')
+  if (p === 'error') return isImport ? t('ui.archiveProgress.importFailed') : t('ui.archiveProgress.exportFailed')
+  if (p === 'cancelled') return t('ui.archiveProgress.cancelled')
+  return isImport ? t('ui.archiveProgress.kindImport') : t('ui.archiveProgress.kindExport')
 })
 
 const title = computed(() => {
   if (activeKey.value === 'import') {
-    return store.import.fileName || '角色压缩包'
+    return store.import.fileName || t('ui.archiveProgress.defaultImportTitle')
   }
-  return store.export.roleName || '角色导出'
+  return store.export.roleName || t('ui.archiveProgress.defaultExportTitle')
 })
 
 const message = computed(() => {

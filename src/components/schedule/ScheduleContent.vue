@@ -25,28 +25,28 @@
           @click="changeView('schedule_groups')"
         >
           <Layers :size="18" />
-          <span>日程主题</span>
+          <span>{{ $t('ui.scheduleContent.navSchedule') }}</span>
         </button>
         <button
           class="w-full flex items-center space-x-6 px-5 py-3 no-underline rounded-lg text-white transition-colors duration-200 relative z-10 adv-nav-link hover:bg-gray-200 hover:text-black active:text-white active:font-bold"
           @click="changeView('todo_groups')"
         >
           <CheckCircle2 :size="18" />
-          <span>待办事项</span>
+          <span>{{ $t('ui.scheduleContent.navTodo') }}</span>
         </button>
         <button
           class="w-full flex items-center space-x-6 px-5 py-3 no-underline rounded-lg text-white transition-colors duration-200 relative z-10 adv-nav-link hover:bg-gray-200 hover:text-black active:text-white active:font-bold"
           @click="changeView('calendar')"
         >
           <CalendarDays :size="18" />
-          <span>重要日子</span>
+          <span>{{ $t('ui.scheduleContent.navCalendar') }}</span>
         </button>
         <button
           class="w-full flex items-center space-x-6 px-5 py-3 no-underline rounded-lg text-white transition-colors duration-200 relative z-10 adv-nav-link hover:bg-gray-200 hover:text-black active:text-white active:font-bold"
           @click="changeView('proactive_settings')"
         >
           <Cat :size="18" />
-          <span>主动对话</span>
+          <span>{{ $t('ui.scheduleContent.navProactive') }}</span>
         </button>
       </nav>
 
@@ -56,7 +56,7 @@
           Ling Clock
         </div>
         <p class="text-xs text-white italic leading-relaxed">
-          "在这里添加的信息屏幕后的那个ta也看得到哦！"
+          {{ $t('ui.scheduleContent.clockTip') }}
         </p>
       </div>
     </aside>
@@ -112,7 +112,7 @@
           :class="uiStore.isNarrowScreen ? 'px-3 py-2 text-sm space-x-1' : 'px-5 py-2.5 space-x-2'"
         >
           <Plus :size="uiStore.isNarrowScreen ? 16 : undefined" />
-          <span class="font-medium" :class="{ hidden: uiStore.isNarrowScreen }">新建</span>
+          <span class="font-medium" :class="{ hidden: uiStore.isNarrowScreen }">{{ $t('ui.scheduleContent.create') }}</span>
         </button>
       </header>
 
@@ -138,6 +138,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import TodoPage from '@/components/schedule/pages/TodoPage.vue'
 import SchedulePage from '@/components/schedule/pages/SchedulePage.vue'
@@ -163,6 +164,7 @@ const props = withDefaults(
 )
 
 const uiStore = useUIStore()
+const { t } = useI18n()
 const narrowViewLevel = ref<'menu' | 'content'>('menu')
 
 const scheduleRef = ref()
@@ -173,29 +175,29 @@ const titleInfo = computed(() => {
 
   if (currentView.startsWith('schedule')) {
     return {
-      title: '铃铃提醒闹钟',
-      subtitle: '到点的时候ta会提醒你的哦',
+      title: t('ui.scheduleContent.titleSchedule'),
+      subtitle: t('ui.scheduleContent.subtitleSchedule'),
     }
   } else if (currentView.startsWith('todo')) {
     return {
-      title: 'TODO 待办笔记',
-      subtitle: '在这里记录重要的事情吧，ta会随机提醒你哒',
+      title: t('ui.scheduleContent.titleTodo'),
+      subtitle: t('ui.scheduleContent.subtitleTodo'),
     }
   } else if (currentView.startsWith('proactive')) {
     return {
-      title: '主动对话设置',
-      subtitle: '需要专心和隐私的时候可以关闭哦（需要点击底部的保存才生效）',
+      title: t('ui.scheduleContent.titleProactive'),
+      subtitle: t('ui.scheduleContent.subtitleProactive'),
     }
   } else if (currentView.startsWith('calendar')) {
     return {
-      title: '君の重要な日',
-      subtitle: '可以记下你朋友的生日自动提醒哦',
+      title: t('ui.scheduleContent.titleCalendar'),
+      subtitle: t('ui.scheduleContent.subtitleCalendar'),
     }
   } else {
     // 默认情况
     return {
-      title: '小灵闹钟',
-      subtitle: '留下需要她提醒你的事情吧',
+      title: t('ui.scheduleContent.titleDefault'),
+      subtitle: t('ui.scheduleContent.subtitleDefault'),
     }
   }
 })

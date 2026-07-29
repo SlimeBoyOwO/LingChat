@@ -11,7 +11,7 @@
         <img
           v-if="store.current.imgUrl"
           :src="store.current.imgUrl"
-          alt="成就图标"
+          :alt="$t('ui.achievementToast.iconAlt')"
           class="icon-image"
         />
         <div v-else class="default-icon">
@@ -58,7 +58,9 @@ import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAchievementStore } from '../../stores/modules/ui/achievement'
 import { useUIStore } from '../../stores/modules/ui/ui'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const store = useAchievementStore()
 const uiStore = useUIStore()
 const route = useRoute()
@@ -71,7 +73,7 @@ const typeClass = computed(() => {
 })
 
 const typeLabel = computed(() => {
-  return store.current?.type === 'rare' ? '稀有成就' : '成就解锁'
+  return store.current?.type === 'rare' ? t('ui.achievementToast.rare') : t('ui.achievementToast.unlocked')
 })
 
 // 播放音效逻辑

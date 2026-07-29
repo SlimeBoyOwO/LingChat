@@ -40,7 +40,7 @@
 
       <!-- 内容 -->
       <div class="flex flex-col justify-center gap-0.5 flex-1">
-        <div class="text-purple-400 text-xs font-bold tracking-wider">羁绊冒险解锁</div>
+        <div class="text-purple-400 text-xs font-bold tracking-wider">{{ $t('ui.adventureUnlock.label') }}</div>
         <div class="text-white font-bold text-sm leading-tight">
           {{ currentAdventure.name }}
         </div>

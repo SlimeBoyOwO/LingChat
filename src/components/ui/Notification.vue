@@ -14,10 +14,10 @@
       <!-- 文字内容区域 -->
       <div class="notification-content">
         <div class="notification-title">
-          {{ uiStore.notification.title || '[通知标题]' }}
+          {{ uiStore.notification.title || $t('ui.notification.titlePlaceholder') }}
         </div>
         <div class="notification-message">
-          {{ uiStore.notification.message || '[通知内容]' }}
+          {{ uiStore.notification.message || $t('ui.notification.messagePlaceholder') }}
         </div>
       </div>
     </div>

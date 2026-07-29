@@ -38,7 +38,7 @@
               @click="$emit('confirm')"
               class="w-full py-4 bg-cyan-500 text-white font-black rounded-2xl shadow-lg hover:bg-cyan-600 active:scale-95 transition-all"
             >
-              确认创建
+              {{ $t('ui.baseModal.confirmCreate') }}
             </button>
           </div>
         </div>
