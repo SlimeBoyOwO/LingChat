@@ -17,6 +17,7 @@ use std::time::Duration;
 use chrono::Local;
 use sea_orm::DatabaseConnection;
 use tauri::{Emitter, Manager};
+use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tracing_subscriber::fmt::time::FormatTime;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -199,15 +200,31 @@ pub fn run() {
                 init::static_copy::get_data_dir().clone(),
             )
             .map_err(|e| format!("LocalTtsPaths::resolve: {e}"))?;
-            tts_paths.ensure()
-                .map_err(|e| format!("LocalTtsPaths::ensure: {e}"))?;
+            let local_tts_paths_available = match tts_paths.ensure() {
+                Ok(()) => true,
+                Err(e) => {
+                    tracing::error!(
+                        target: "tts_local",
+                        "failed to create local TTS data directories: {e}"
+                    );
+                    app.dialog()
+                        .message(format!(
+                            "无法创建本地 TTS 数据目录，本次启动将停用本地 TTS。\n\n请检查磁盘空间和数据目录权限。\n\n详细错误：{e}"
+                        ))
+                        .title("本地 TTS 初始化失败")
+                        .kind(MessageDialogKind::Error)
+                        .show(|_| {});
+                    false
+                }
+            };
             let local_state = ai_service::tts::local::LocalTtsState::new(tts_paths);
             // `enable_local_tts` is stored directly under `features.enable_local_tts`
             // (read by the frontend via `getEnvConfigByKey`); AppConfig does not own
             // the field. Read it once here so the in-process engine starts in the
             // user's chosen state.
-            let local_tts_switch =
-                ai_service::tts::local::LocalTtsSwitch::new(load_enable_local_tts(&app.handle()));
+            let local_tts_switch = ai_service::tts::local::LocalTtsSwitch::new(
+                local_tts_paths_available && load_enable_local_tts(&app.handle()),
+            );
             app.manage(local_tts_switch.clone());
             let local_engine = local_state.engine.clone();
             let local_paths = local_state.paths.clone();
@@ -348,6 +365,7 @@ pub fn run() {
             let preload_paths = local_paths.clone();
             let preload_switch = local_tts_switch.clone();
             tauri::async_runtime::spawn(async move {
+                tokio::task::yield_now().await;
                 if !preload_switch.is_enabled() {
                     tracing::info!(target: "tts_local", "local tts disabled, skipping preload");
                     return;
