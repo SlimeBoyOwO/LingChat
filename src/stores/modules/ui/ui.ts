@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { useSettingsStore } from '../settings'
 import { saveBgmState } from '../../../api/services/music'
 import { saveAmbientState } from '../../../api/services/ambient'
+import { i18n } from '@/locales'
 
 // 通知类型
 export type NotificationType = 'error' | 'success' | 'info' | 'warning'
@@ -354,13 +355,16 @@ export const useUIStore = defineStore('ui', {
     }) {
       const { errorCode, statusCode, title, message, avatarUrl, duration = 3000 } = options
 
-      let finalTitle = title || '错误'
-      let finalMessage = message || '发生了未知错误'
+      let finalTitle = title || i18n.global.t('stores.notification.errorTitle')
+      let finalMessage = message || i18n.global.t('stores.notification.unknownError')
 
       // 优先使用错误代码查询
       if (errorCode) {
         const tip = this.tipsMap[errorCode] ||
-          this.tipsMap['default_error'] || { title: '错误', message: '发生了未知错误' }
+          this.tipsMap['default_error'] || {
+            title: i18n.global.t('stores.notification.errorTitle'),
+            message: i18n.global.t('stores.notification.unknownError'),
+          }
         finalTitle = title || tip.title
         finalMessage = message || tip.message
       }
@@ -426,8 +430,14 @@ export const useUIStore = defineStore('ui', {
       const key = type === 'success' ? 'switch_success' : 'switch_fail'
       return (
         this.tipsMap[key] || {
-          title: type === 'success' ? '切换成功' : '切换失败',
-          message: type === 'success' ? '角色已切换' : '切换时出了问题',
+          title:
+            type === 'success'
+              ? i18n.global.t('stores.notification.switchSuccessTitle')
+              : i18n.global.t('stores.notification.switchFailTitle'),
+          message:
+            type === 'success'
+              ? i18n.global.t('stores.notification.switchSuccessMessage')
+              : i18n.global.t('stores.notification.switchFailMessage'),
         }
       )
     },
@@ -439,8 +449,14 @@ export const useUIStore = defineStore('ui', {
       const key = type === 'success' ? 'refresh_success' : 'refresh_fail'
       return (
         this.tipsMap[key] || {
-          title: type === 'success' ? '刷新成功' : '刷新失败',
-          message: type === 'success' ? '角色列表已成功刷新！' : '刷新时出了问题',
+          title:
+            type === 'success'
+              ? i18n.global.t('stores.notification.refreshSuccessTitle')
+              : i18n.global.t('stores.notification.refreshFailTitle'),
+          message:
+            type === 'success'
+              ? i18n.global.t('stores.notification.refreshSuccessMessage')
+              : i18n.global.t('stores.notification.refreshFailMessage'),
         }
       )
     },
