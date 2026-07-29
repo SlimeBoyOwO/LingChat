@@ -50,7 +50,7 @@ regex = "1"
 genai = "0.6"
 uuid = { version = "1", features = ["v4"] }
 async-trait = "0.1"
-ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "download-binaries", "tls-native"] }
+ort = { version = "=2.0.0-rc.10", default-features = false, features = ["std", "ndarray", "download-binaries"] }
 
 # Local TTS engine (in-process SBV2 / Style-Bert-VITS2).
 sbv2-local-tts = { path = "crates/sbv2-local-tts" }
@@ -78,17 +78,3 @@ tauri-plugin-process = "2"
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_Graphics_Gdi"] }
 
-# Unify sbv2_core's git-sourced ort with the crates.io ort already in this
-# workspace. Without this, cargo pulls a second ort-sys from
-# https://github.com/pykeio/ort.git and fails with a `links = "onnxruntime"`
-# conflict because both copies want to link the same native library.
-# `features` is intentionally omitted here -- cargo unifies features from the
-# [dependencies] entries of every consumer (LingChat + sbv2_core).
-[patch."https://github.com/pykeio/ort.git"]
-ort = "=2.0.0-rc.12"
-
-# esaxx-rs 0.1.10 forces /MT on Windows while the downloaded ONNX Runtime
-# binaries use /MD. The local patch keeps upstream behavior on other targets
-# and selects the dynamic CRT on Windows so both native libraries can link.
-[patch.crates-io]
-esaxx-rs = { path = "vendor/esaxx-rs" }

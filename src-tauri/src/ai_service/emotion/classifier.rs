@@ -211,9 +211,9 @@ impl EmotionClassifier {
                 .context("创建 attention_mask tensor 失败")?;
 
         let input_names: Vec<String> = session
-            .inputs()
+            .inputs
             .iter()
-            .map(|o| o.name().to_string())
+            .map(|o| o.name.to_string())
             .collect();
 
         let outputs = session
