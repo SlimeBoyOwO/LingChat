@@ -8,7 +8,7 @@
 //! - `paths`         filesystem layout + path helpers
 //! - `registry`      curated asset catalog
 //! - `archive`       zip/7z inspection + install roundtrip
-//! - `download`      streaming download + SHA256 + cancel
+//! - `download`      streaming download + cancellation
 //! - `model_manager` list/delete installed models
 //! - `engine`        LocalTtsEngine with take-and-spawn pattern
 //! - `import_bridge` SAF path staging for Android content:// URIs
@@ -25,9 +25,6 @@ pub mod paths;
 pub mod registry;
 pub mod zip_extract;
 
-#[allow(unused_imports)] // TTS interface surface (frontend deferred)
-pub use paths::{LocalTtsPaths, REQUIRED_ASSETS, VoiceInstallInfo};
-#[allow(unused_imports)] // TTS interface surface (frontend deferred)
-pub use registry::AssetEntry;
 pub use commands::LocalTtsState;
 pub use engine::{LocalTtsEngine, SynthesizeRequest};
+pub use paths::LocalTtsPaths;

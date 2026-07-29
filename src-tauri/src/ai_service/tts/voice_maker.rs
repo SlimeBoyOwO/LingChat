@@ -6,7 +6,7 @@
 //! - `generate_voice_files(segments)`：并发为每段生成音频到磁盘
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use anyhow::Result;
 use futures_util::future::join_all;
@@ -55,6 +55,28 @@ pub struct VoiceMaker {
     local_tts_engine: Option<Arc<LocalTtsEngine>>,
     local_tts_paths: Option<LocalTtsPaths>,
     local_tts_switch: Option<crate::ai_service::tts::local::LocalTtsSwitch>,
+    local_cloud_fallback: Option<LocalCloudFallback>,
+}
+
+#[derive(Clone, Debug)]
+struct LocalCloudFallback {
+    model_name: String,
+    speaker_id: i32,
+    adapter: Arc<OnceLock<Arc<Sbv2ApiAdapter>>>,
+}
+
+impl LocalCloudFallback {
+    fn adapter(&self, api_url: &str) -> Arc<Sbv2ApiAdapter> {
+        self.adapter
+            .get_or_init(|| {
+                Arc::new(Sbv2ApiAdapter::new(
+                    api_url.to_string(),
+                    self.model_name.clone(),
+                    self.speaker_id,
+                ))
+            })
+            .clone()
+    }
 }
 
 fn non_empty(s: &Option<String>) -> bool {
@@ -115,6 +137,7 @@ impl VoiceMaker {
             local_tts_engine: None,
             local_tts_paths: None,
             local_tts_switch: None,
+            local_cloud_fallback: None,
         }
     }
 
@@ -201,6 +224,7 @@ impl VoiceMaker {
     pub fn set_tts_settings(&mut self, cfg: &VoiceModel, tts_type: &str, name: &str) -> Result<()> {
         self.check_tts_availability(cfg);
         self.tts_type = tts_type.to_string();
+        self.local_cloud_fallback = None;
 
         match tts_type {
             "sva-vits" if self.availability.sva => {
@@ -246,18 +270,22 @@ impl VoiceMaker {
                 )));
             }
             "localsbv2api" if self.availability.sbv2_local => {
-                if let (Some(name), Some(id)) = (
-                    cfg.sbv2api_name.clone().filter(|v| !v.trim().is_empty()),
-                    cfg.sbv2api_speaker_id
+                self.provider.sbv2api = None;
+                self.local_cloud_fallback = match (
+                    cfg.sbv2_local_cloud_fallback_model
+                        .clone()
+                        .filter(|v| !v.trim().is_empty()),
+                    cfg.sbv2_local_cloud_fallback_speaker_id
                         .as_deref()
                         .and_then(|v| v.parse::<i32>().ok()),
                 ) {
-                    self.provider.sbv2api = Some(Arc::new(Sbv2ApiAdapter::new(
-                        self.tts_config.sbv2api_api_url.clone(),
-                        name,
-                        id,
-                    )));
-                }
+                    (Some(model_name), Some(speaker_id)) => Some(LocalCloudFallback {
+                        model_name,
+                        speaker_id,
+                        adapter: Arc::new(OnceLock::new()),
+                    }),
+                    _ => None,
+                };
                 let engine = match &self.local_tts_engine {
                     Some(e) => e.clone(),
                     None => {
@@ -440,6 +468,22 @@ impl VoiceMaker {
         }
         tokio::fs::create_dir_all(&self.temp_dir).await.ok();
 
+        let use_cloud_fallback = self.tts_type == "localsbv2api"
+            && self
+                .local_tts_switch
+                .as_ref()
+                .is_some_and(|switch| !switch.is_enabled());
+        let fallback_adapter = if use_cloud_fallback {
+            tracing::info!(
+                "角色配置为 localsbv2api，但本地 TTS 已被全局禁用，改用独立配置的云端 fallback"
+            );
+            self.local_cloud_fallback
+                .as_ref()
+                .map(|fallback| fallback.adapter(&self.tts_config.sbv2api_api_url))
+        } else {
+            None
+        };
+
         let mut futs = Vec::new();
         for seg in segments.iter_mut() {
             let Some(text) = segment_text_for_lang(&self.lang, seg).map(str::to_owned) else {
@@ -460,18 +504,15 @@ impl VoiceMaker {
             let file_path = self.temp_dir.join(&file_name);
             seg.voice_file = file_path.to_string_lossy().to_string();
 
-            let provider = self.provider.clone();
-            let use_cloud_fallback = self.tts_type == "localsbv2api"
-                && self
-                    .local_tts_switch
-                    .as_ref()
-                    .is_some_and(|switch| !switch.is_enabled());
-            if use_cloud_fallback {
-                tracing::info!(
-                    "角色配置为 localsbv2api，但本地 TTS 已被全局禁用，改用现有云端 TTS 流程"
-                );
-            }
+            let mut provider = self.provider.clone();
             let tts_type = if use_cloud_fallback {
+                if let Some(adapter) = fallback_adapter.clone() {
+                    provider.sbv2api = Some(adapter);
+                } else {
+                    tracing::warn!(
+                        "本地 TTS 已禁用，但角色未配置完整的云端 fallback 模型与说话人 ID"
+                    );
+                }
                 "sbv2api".to_string()
             } else {
                 self.tts_type.clone()
@@ -489,5 +530,42 @@ impl VoiceMaker {
         if !futs.is_empty() {
             join_all(futs).await;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn local_mode_defers_cloud_fallback_adapter_creation() {
+        let mut maker = VoiceMaker::new(PathBuf::from("voice"), "wav", TtsConfig::default());
+        maker.set_local_tts_engine(
+            Some(Arc::new(LocalTtsEngine::new())),
+            Some(LocalTtsPaths {
+                root: PathBuf::from("tts-local"),
+                assets: PathBuf::from("tts-local/assets"),
+                voices: PathBuf::from("tts-local/voices"),
+                cache: PathBuf::from("cache"),
+            }),
+        );
+        let cfg = VoiceModel {
+            sbv2api_name: Some("ordinary-cloud-model".into()),
+            sbv2api_speaker_id: Some("99".into()),
+            sbv2_local_voice_id: Some("local-voice".into()),
+            sbv2_local_cloud_fallback_model: Some("fallback-model".into()),
+            sbv2_local_cloud_fallback_speaker_id: Some("7".into()),
+            ..VoiceModel::default()
+        };
+
+        maker
+            .set_tts_settings(&cfg, "localsbv2api", "test")
+            .unwrap();
+
+        assert!(maker.provider.sbv2api.is_none());
+        let fallback = maker.local_cloud_fallback.as_ref().unwrap();
+        assert_eq!(fallback.model_name, "fallback-model");
+        assert_eq!(fallback.speaker_id, 7);
+        assert!(fallback.adapter.get().is_none());
     }
 }

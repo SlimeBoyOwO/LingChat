@@ -191,14 +191,13 @@ interface AssetEntry {
   display_name: string
   language: string
   size_bytes: number
-  sha256: string
   download_url: string
   source: string
   voice_id?: string
 }
 ```
 
-注意：当前 `TtsLocal.listCatalog()` 返回前端 `tts-catalog.ts` 中的静态目录，不调用这个后端命令。需要以服务器端目录为准的调用方应直接 `invoke('tts_local_list_catalog')`。
+`TtsLocal.listCatalog()` 直接调用该命令；后端 `registry` 是唯一目录数据源。
 
 ### 5.3 列出已安装模型
 
@@ -294,7 +293,7 @@ const result = await TtsLocal.download('ling-v2')
 | `ling-v2` | `voice` | `voices/ling-v2/model.onnx` |
 | `ling-v2-style` | `style_vectors` | `voices/ling-v2/style_vectors.json` |
 
-下载器支持重定向，超时为 600 秒，并发送 `User-Agent: LingChat/0.4.6`。下载期间会先写 `.part` 临时文件，成功后再改名。目录 SHA256 全为零时表示当前跳过校验。
+下载器支持重定向，超时为 600 秒，并发送 `User-Agent: LingChat/0.4.6`。下载期间会先写 `.part` 临时文件，成功后再改名。当前不执行哈希校验。
 
 当前没有公开的 `tts_local_cancel_download` command。后端存在取消令牌，但前端 API 暂时不能主动取消下载。
 
@@ -456,6 +455,8 @@ voice_models:
   sbv2_local_style_id: 0
   sbv2_local_length_scale: 1.0
   sbv2_local_sdp_ratio: 0.0
+  sbv2_local_cloud_fallback_model: Ling v2
+  sbv2_local_cloud_fallback_speaker_id: '0'
 ```
 
 字段说明：
@@ -467,6 +468,8 @@ voice_models:
 | `sbv2_local_style_id` | `0` | 风格 ID |
 | `sbv2_local_length_scale` | `1.0` | 时长缩放，越大越慢 |
 | `sbv2_local_sdp_ratio` | `0.0` | SDP 噪声比例 |
+| `sbv2_local_cloud_fallback_model` | 无 | 全局关闭本地 TTS 时使用的云端 SBV2 API 模型，可留空 |
+| `sbv2_local_cloud_fallback_speaker_id` | 无 | 云端备用模型的说话人 ID，可留空 |
 
 角色正式调用与试听独立：试听参数不会写回角色设置。角色设置保存后，已加载角色的 `VoiceMaker` 会重新构建并使用新的模型及参数。
 

@@ -11,12 +11,12 @@
 // - Android:          app external storage (`/storage/emulated/0/Android/data/<pkg>/files/`)
 // - iOS:              app sandbox
 //
-#![allow(dead_code)] // public path/asset contract reserved for TTS API surface
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
 // Logical assets that must be present for the local engine to function.
 // Order matters: DeBerta is the first gate, the rest depend on it.
+#[allow(dead_code)] // reserved for callers that validate all required local assets
 pub const REQUIRED_ASSETS: &[&str] = &["deberta"];
 
 #[derive(Debug, Clone)]
@@ -25,13 +25,6 @@ pub struct LocalTtsPaths {
     pub assets: PathBuf,
     pub voices: PathBuf,
     pub cache: PathBuf,
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct VoiceInstallInfo {
-    pub voice_id: String,
-    pub path: PathBuf,
-    pub size_bytes: u64,
 }
 
 impl LocalTtsPaths {
@@ -72,32 +65,6 @@ impl LocalTtsPaths {
     /// internally so this file is only required for the separate-file form.
     pub fn style_vectors_path(&self, voice_id: &str) -> PathBuf {
         self.voices.join(voice_id).join("style_vectors.json")
-    }
-
-    pub fn installed_voices(&self) -> std::result::Result<Vec<VoiceInstallInfo>, String> {
-        if !self.voices.exists() {
-            return Ok(vec![]);
-        }
-        let mut out = vec![];
-        for entry in std::fs::read_dir(&self.voices)
-            .map_err(|e| format!("read_dir voices: {e}"))?
-        {
-            let entry = entry.map_err(|e| format!("entry: {e}"))?;
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            let voice_id = entry.file_name().to_string_lossy().into_owned();
-            let sbv2 = path.join("model.sbv2");
-            let onnx = path.join("model.onnx");
-            let primary = if sbv2.exists() { sbv2 } else { onnx };
-            if !primary.exists() {
-                continue;
-            }
-            let size = file_size(&primary).unwrap_or(0);
-            out.push(VoiceInstallInfo { voice_id, path, size_bytes: size });
-        }
-        Ok(out)
     }
 
     pub fn asset_present(&self, asset_id: &str) -> bool {
@@ -143,10 +110,6 @@ fn resolve_models_root(
     }
 }
 
-fn file_size(p: &Path) -> std::io::Result<u64> {
-    Ok(std::fs::metadata(p)?.len())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -165,5 +128,21 @@ mod tests {
             cache: PathBuf::from("/tmp/y"),
         };
         assert_eq!(p.voice_dir("alice"), PathBuf::from("/tmp/x/voices/alice"));
+    }
+
+    #[test]
+    fn deberta_presence_requires_model_and_tokenizer() {
+        let temp = tempfile::tempdir().unwrap();
+        let p = LocalTtsPaths {
+            root: temp.path().join("tts-local"),
+            assets: temp.path().join("tts-local/assets"),
+            voices: temp.path().join("tts-local/voices"),
+            cache: temp.path().join("cache"),
+        };
+        std::fs::create_dir_all(p.deberta_dir()).unwrap();
+        std::fs::write(p.deberta_dir().join("deberta.onnx"), b"model").unwrap();
+        assert!(!p.asset_present("deberta"));
+        std::fs::write(p.deberta_dir().join("tokenizer.json"), b"{}").unwrap();
+        assert!(p.asset_present("deberta"));
     }
 }

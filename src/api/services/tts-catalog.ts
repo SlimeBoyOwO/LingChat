@@ -6,7 +6,6 @@ export interface CatalogAsset {
   display_name: string
   language: string
   size_bytes: number
-  sha256: string
   download_url: string
   source: string
   voice_id?: string

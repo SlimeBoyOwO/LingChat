@@ -1,12 +1,11 @@
 ﻿// Streaming downloader for curated assets. Emits progress events and
 // honors a shared cancellation token.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use futures_util::StreamExt;
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
@@ -68,7 +67,6 @@ pub async fn download_asset(
         .map_err(|e| format!("create tmp: {e}"))?;
     let mut bytes_done: u64 = 0;
     let mut last_pct: i32 = -1;
-    let mut hasher = Sha256::new();
 
     while let Some(chunk) = stream.next().await {
         if cancel.is_cancelled() {
@@ -76,7 +74,6 @@ pub async fn download_asset(
             return Err("download cancelled".into());
         }
         let chunk = chunk.map_err(|e| format!("chunk: {e}"))?;
-        hasher.update(&chunk);
         tokio::io::AsyncWriteExt::write_all(&mut file, &chunk)
             .await
             .map_err(|e| format!("write: {e}"))?;
@@ -106,37 +103,5 @@ pub async fn download_asset(
         .await
         .map_err(|e| format!("rename: {e}"))?;
 
-    if !entry.sha256.chars().all(|c| c == '0') {
-        let got = format!("{:x}", hasher.finalize());
-        if !got.eq_ignore_ascii_case(&entry.sha256) {
-            let _ = tokio::fs::remove_file(dst).await;
-            return Err(format!("SHA256 mismatch for {}", entry.id));
-        }
-    }
     Ok(bytes_done)
-}
-
-#[allow(dead_code)] // helper for future callers; resolve_target owns the active flow
-pub fn final_path_for(entry: &AssetEntry, base: &Path) -> PathBuf {
-    let ext = super::registry::expected_extension(entry);
-    base.join(format!("{}.{ext}", entry.id))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn final_path_uses_extension() {
-        let e = super::super::registry::find("ling-v2").unwrap();
-        let p = final_path_for(&e, Path::new("/tmp/cache"));
-        assert_eq!(p, PathBuf::from("/tmp/cache/ling-v2.onnx"));
-    }
-
-    #[test]
-    fn final_path_uses_extension_for_style_vectors() {
-        let e = super::super::registry::find("ling-v2-style").unwrap();
-        let p = final_path_for(&e, Path::new("/tmp/cache"));
-        assert_eq!(p, PathBuf::from("/tmp/cache/ling-v2-style.json"));
-    }
 }

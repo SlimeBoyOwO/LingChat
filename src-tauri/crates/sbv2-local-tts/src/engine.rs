@@ -2,7 +2,6 @@
 // ONNX is CPU-bound and `ort::Session` is `!Send + !Sync`; the holder is
 // taken out of the async Mutex, used on the blocking pool, then put back.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use sbv2_core::tts::{SynthesizeOptions, TTSModelHolder};
@@ -12,7 +11,6 @@ use super::paths::LocalTtsPaths;
 
 pub struct LocalTtsEngine {
     holder: Arc<Mutex<Option<TTSModelHolder>>>,
-    voice_cache: Arc<Mutex<HashMap<String, Vec<u8>>>>,
     // Serialises the take-out-and-run-on-blocking-pool pattern used by
     // `load_voice` / `synthesize`. Without it, two fragments running
     // in parallel can both pass the `holder.lock().await` guard, each
@@ -35,7 +33,6 @@ impl LocalTtsEngine {
     pub fn new() -> Self {
         Self {
             holder: Arc::new(Mutex::new(None)),
-            voice_cache: Arc::new(Mutex::new(HashMap::new())),
             serialize: Arc::new(Mutex::new(())),
         }
     }
@@ -67,7 +64,7 @@ impl LocalTtsEngine {
         Ok(())
     }
 
-    /// Lazy-load a voice from disk into the holder (cache bytes for re-load).
+    /// Lazy-load a voice from disk into the holder.
     pub async fn load_voice(
         &self,
         paths: &LocalTtsPaths,
@@ -104,11 +101,6 @@ impl LocalTtsEngine {
         };
 
         let vid = voice_id.to_string();
-        self.voice_cache
-            .lock()
-            .await
-            .insert(vid.clone(), model_bytes.clone());
-
         // Hold the serialize guard for the entire take-out + run +
         // put-back window so concurrent fragments can't observe the
         // empty inner cell mid-flight.

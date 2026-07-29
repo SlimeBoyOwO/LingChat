@@ -60,8 +60,7 @@ pub async fn tts_local_status(
     state: State<'_, LocalTtsState>,
 ) -> Result<TtsLocalStatus, String> {
     let voices = model_manager::list_voices(&state.paths)?;
-    let deberta_installed = state.paths.asset_present("deberta")
-        && state.paths.deberta_dir().join("tokenizer.json").exists();
+    let deberta_installed = state.paths.asset_present("deberta");
     Ok(TtsLocalStatus {
         ready: state.engine.is_ready().await,
         deberta_installed,

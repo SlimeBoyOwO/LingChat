@@ -494,6 +494,22 @@ const schemas: Record<string, FieldSchema[]> = {
       visibleIf: (s) => s.tts_type === 'localsbv2api',
     },
     {
+      key: 'sbv2_local_cloud_fallback_model',
+      parent: 'voice_models',
+      label: '本地 TTS 云端备用模型',
+      type: 'text',
+      placeholder: '本地 TTS 关闭时使用，可留空',
+      visibleIf: (s) => s.tts_type === 'localsbv2api',
+    },
+    {
+      key: 'sbv2_local_cloud_fallback_speaker_id',
+      parent: 'voice_models',
+      label: '本地 TTS 云端备用说话人 ID',
+      type: 'text',
+      placeholder: '本地 TTS 关闭时使用，可留空',
+      visibleIf: (s) => s.tts_type === 'localsbv2api',
+    },
+    {
       key: 'opentts_voice',
       label: 'OpenTTS 音色标识',
       type: 'text',

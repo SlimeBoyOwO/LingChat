@@ -1,9 +1,7 @@
 ﻿// Curated asset catalog. URLs are reference only - user triggers downloads
 // explicitly from the UI.
 
-#![allow(dead_code)]
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssetEntry {
@@ -12,7 +10,6 @@ pub struct AssetEntry {
     pub display_name: String,
     pub language: String,
     pub size_bytes: u64,
-    pub sha256: String,
     pub download_url: String,
     pub source: String,
     /// Required when `kind == StyleVectors`; identifies the parent voice
@@ -40,7 +37,6 @@ pub fn catalog() -> Vec<AssetEntry> {
             display_name: "DeBERTa-v3-base (Japanese BERT)".into(),
             language: "ja".into(),
             size_bytes: 278_000_000,
-            sha256: "0000000000000000000000000000000000000000000000000000000000000000".into(),
             download_url: "https://www.modelscope.cn/models/lingchat-research-studio/DeBERTa.onnx/resolve/master/deberta.onnx".into(),
             source: "lingchat-research-studio/DeBERTa.onnx".into(),
             voice_id: None,
@@ -51,7 +47,6 @@ pub fn catalog() -> Vec<AssetEntry> {
             display_name: "DeBERTa-v3-base Tokenizer".into(),
             language: "ja".into(),
             size_bytes: 2_100_000,
-            sha256: "0000000000000000000000000000000000000000000000000000000000000000".into(),
             download_url: "https://www.modelscope.cn/models/lingchat-research-studio/DeBERTa.onnx/resolve/master/tokenizer.json".into(),
             source: "lingchat-research-studio/DeBERTa.onnx".into(),
             voice_id: None,
@@ -62,7 +57,6 @@ pub fn catalog() -> Vec<AssetEntry> {
             display_name: "Ling-v2 (Japanese)".into(),
             language: "ja".into(),
             size_bytes: 249_000_000,
-            sha256: "0000000000000000000000000000000000000000000000000000000000000000".into(),
             download_url: "https://www.modelscope.cn/models/lingchat-research-studio/sbv2api-model-Ling-v2-onnx/resolve/master/sbv2api-model-Ling-v2-onnx.onnx".into(),
             source: "lingchat-research-studio/sbv2api-model-Ling-v2-onnx".into(),
             voice_id: None,
@@ -73,7 +67,6 @@ pub fn catalog() -> Vec<AssetEntry> {
             display_name: "Ling-v2 Style Vectors".into(),
             language: "ja".into(),
             size_bytes: 7_400,
-            sha256: "0000000000000000000000000000000000000000000000000000000000000000".into(),
             download_url: "https://www.modelscope.cn/models/lingchat-research-studio/sbv2api-model-Ling-v2-onnx/resolve/master/style_vectors.json".into(),
             source: "lingchat-research-studio/sbv2api-model-Ling-v2-onnx".into(),
             voice_id: Some("ling-v2".into()),
@@ -83,13 +76,6 @@ pub fn catalog() -> Vec<AssetEntry> {
 
 pub fn find(id: &str) -> Option<AssetEntry> {
     catalog().into_iter().find(|a| a.id == id)
-}
-
-pub fn all_voices() -> Vec<AssetEntry> {
-    catalog()
-        .into_iter()
-        .filter(|a| matches!(a.kind, AssetKind::Voice))
-        .collect()
 }
 
 pub fn all_assets() -> Vec<AssetEntry> {
@@ -108,20 +94,6 @@ pub fn expected_extension(entry: &AssetEntry) -> &'static str {
     } else {
         "bin"
     }
-}
-
-// Validate SHA256 against a downloaded blob. Returns true if the catalog
-// entry has the placeholder "all zeros" sha256 (skip check when unset).
-pub fn sha256_matches(entry: &AssetEntry, path: &Path) -> std::result::Result<bool, String> {
-    if entry.sha256.chars().all(|c| c == '0') {
-        return Ok(true);
-    }
-    let bytes = std::fs::read(path).map_err(|e| format!("read: {e}"))?;
-    use sha2::{Digest, Sha256};
-    let mut h = Sha256::new();
-    h.update(&bytes);
-    let got = format!("{:x}", h.finalize());
-    Ok(got.eq_ignore_ascii_case(&entry.sha256))
 }
 
 #[cfg(test)]
@@ -162,15 +134,6 @@ mod tests {
     }
 
     #[test]
-    fn sha256_matches_returns_true_when_unset() {
-        let e = find("ling-v2").unwrap();
-        let dir = tempfile::tempdir().unwrap();
-        let p = dir.path().join("blob");
-        std::fs::write(&p, b"abc").unwrap();
-        assert!(sha256_matches(&e, &p).unwrap());
-    }
-
-    #[test]
     fn expected_extension_handles_onnx_json_and_zip() {
         assert_eq!(expected_extension(&entry_with_url("a.onnx")), "onnx");
         assert_eq!(expected_extension(&entry_with_url("b.json")), "json");
@@ -184,7 +147,6 @@ mod tests {
             display_name: "tmp".into(),
             language: "ja".into(),
             size_bytes: 0,
-            sha256: String::new(),
             download_url: format!("https://example.com/{url_suffix}"),
             source: "test".into(),
             voice_id: None,

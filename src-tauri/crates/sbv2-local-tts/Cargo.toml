@@ -21,7 +21,6 @@ tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["io"] }
 reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls", "system-proxy"], default-features = false }
 futures-util = "0.3"
-sha2 = "0.10"
 sevenz-rust2 = "0.21"
 zip = "2"
 uuid = { version = "1", features = ["v4"] }
