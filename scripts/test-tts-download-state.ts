@@ -1,16 +1,28 @@
 import assert from 'node:assert/strict'
+import type { CatalogAsset } from '../src/api/services/tts-catalog.ts'
+
 const mod = await import('../src/utils/tts-download-state.ts')
 const { catalogRowState } = mod
-const catalog = (await import('../src/api/services/tts-catalog.ts')).TTS_LOCAL_CATALOG
-const find = (id: string) => {
-  const asset = catalog.find((a) => a.id === id)
-  if (!asset) throw new Error(`missing fixture: ${id}`)
-  return asset
-}
-const deberta = find('deberta')
-const tokenizer = find('deberta-tokenizer')
-const lingV2 = find('ling-v2')
-const lingV2Style = find('ling-v2-style')
+
+const asset = (
+  id: string,
+  kind: CatalogAsset['kind'],
+  voiceId?: string,
+): CatalogAsset => ({
+  id,
+  kind,
+  display_name: id,
+  language: 'ja',
+  size_bytes: 0,
+  download_url: 'https://example.invalid/model',
+  source: 'test',
+  voice_id: voiceId,
+})
+
+const deberta = asset('deberta', 'bert')
+const tokenizer = asset('deberta-tokenizer', 'bert')
+const lingV2 = asset('ling-v2', 'voice')
+const lingV2Style = asset('ling-v2-style', 'style_vectors', 'ling-v2')
 assert.equal(
   catalogRowState({ asset: deberta, status: { deberta_installed: true } }),
   'installed',

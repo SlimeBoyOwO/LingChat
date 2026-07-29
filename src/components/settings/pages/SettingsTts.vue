@@ -684,6 +684,7 @@ onMounted(async () => {
 
   await loadLocalTtsSwitch()
   await refreshAll()
+  if (!componentMounted) return
   unlistenProgress = TtsLocal.onDownloadProgress((progress) => {
     progressByAsset.value = {
       ...progressByAsset.value,

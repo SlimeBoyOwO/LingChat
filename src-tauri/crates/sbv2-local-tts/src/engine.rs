@@ -19,6 +19,12 @@ pub struct LocalTtsEngine {
     serialize: Arc<Mutex<()>>,
 }
 
+impl Default for LocalTtsEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SynthesizeRequest {
     pub voice_id: String,

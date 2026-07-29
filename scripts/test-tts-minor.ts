@@ -33,6 +33,11 @@ assert.match(settingsTts, /tts:\/\/install-complete/)
 assert.match(settingsTts, /tts:\/\/download-complete/)
 assert.match(settingsTts, /unlistenInstallComplete/)
 assert.match(settingsTts, /unlistenDownloadComplete/)
+assert.match(
+  settingsTts,
+  /await refreshAll\(\)\s*if \(!componentMounted\) return\s*unlistenProgress = TtsLocal\.onDownloadProgress/,
+  'download progress listener must not be registered after component unmount',
+)
 
 assert.match(
   adapter,

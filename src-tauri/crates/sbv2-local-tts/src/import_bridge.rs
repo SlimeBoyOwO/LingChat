@@ -63,7 +63,7 @@ pub async fn prepare_file_import_source(
         #[cfg(not(target_os = "android"))]
         {
             let _ = app;
-            return Err("content URI imports are only supported on Android".into());
+            Err("content URI imports are only supported on Android".into())
         }
     } else {
         Ok((PathBuf::from(path), false))

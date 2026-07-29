@@ -174,7 +174,7 @@ pub fn install_inspected(
                             &src_buf,
                             &dst_buf,
                             &token_clone,
-                            &on_entry,
+                            on_entry,
                         )
                     }
                     PackageKind::SevenZ => {
@@ -182,7 +182,7 @@ pub fn install_inspected(
                             &src_buf,
                             &dst_buf,
                             &token_clone,
-                            &on_entry,
+                            on_entry,
                         )
                     }
                     _ => unreachable!(),
