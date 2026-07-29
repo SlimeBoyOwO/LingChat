@@ -131,6 +131,7 @@ pub struct LineBase {
     pub audio_file: Option<String>,
     /// 该轮生成的思考链（仅挂在每轮最后一条 assistant 行上）。
     pub thinking: Option<String>,
+    pub tool_call: Option<String>,
     pub attribute: LineAttributeExt,
     pub sender_role_id: Option<i32>,
     pub display_name: Option<String>,
@@ -164,6 +165,7 @@ impl LineAttributeExt {
             LineAttribute::User => "user",
             LineAttribute::System => "system",
             LineAttribute::Assistant => "assistant",
+            LineAttribute::Tool => "tool",
         }
     }
 }

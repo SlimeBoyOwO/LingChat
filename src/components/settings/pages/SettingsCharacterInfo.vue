@@ -90,6 +90,7 @@
                       v-model="fieldModel(field).value"
                       :type="field.type"
                       :step="field.step"
+                      :placeholder="field.placeholder"
                       class="form-control bg-black/20 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-sm outline-none transition-all duration-200"
                       @change="handleFieldChange(field)"
                     />
@@ -257,6 +258,7 @@ interface FieldSchema {
   type: FieldType
   rows?: number
   step?: string
+  placeholder?: string
   options?: FieldOption[]
   visibleIf?: (settings: any) => boolean
   isVoiceModel?: boolean
@@ -324,12 +326,13 @@ const schemas: Record<string, FieldSchema[]> = {
         {
           label: '英语',
           value: 'en',
-          visibleIf: (s) => s.tts_type === 'gsv',
+          visibleIf: (s) =>
+            s.tts_type === 'gsv' || s.tts_type === 'opentts' || s.tts_type === 'sbv2',
         },
         {
           label: '韩语',
           value: 'ko',
-          visibleIf: (s) => s.tts_type === 'gsv',
+          visibleIf: (s) => s.tts_type === 'gsv' || s.tts_type === 'opentts',
         },
       ],
     },
@@ -423,6 +426,16 @@ const schemas: Record<string, FieldSchema[]> = {
       type: 'text',
       isVoiceModel: true,
       visibleIf: (s) => s.tts_type === 'aivis',
+    },
+
+    {
+      key: 'opentts_voice',
+      label: 'OpenTTS 音色标识',
+      type: 'text',
+      isVoiceModel: true,
+      realtime: true,
+      placeholder: '留空则使用高级设置中的全局音色标识',
+      visibleIf: (s) => s.tts_type === 'opentts',
     },
   ],
 }

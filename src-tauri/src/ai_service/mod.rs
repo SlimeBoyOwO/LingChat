@@ -7,6 +7,7 @@ pub mod message_system;
 pub mod proactive_system;
 pub mod screen_analyzer;
 pub mod service;
+pub mod tools;
 pub mod translator;
 pub mod tts;
 pub mod types;

@@ -49,6 +49,24 @@ pub trait LlmProvider: Send + Sync {
     /// 流式：返回逐字符（或逐 token）的 chunk 流，每个 chunk 区分内容与思考链。
     async fn complete_stream(&self, http: &Client, messages: &[LlmMessage]) -> Result<ChunkStream>;
 
+    /// 是否支持原生流式 function calling。
+    fn supports_streaming_tools(&self) -> bool {
+        false
+    }
+
+    /// 流式 + function calling。
+    ///
+    /// 仅在 `supports_streaming_tools()` 为 `true` 时由调用方使用。
+    async fn complete_stream_with_tools(
+        &self,
+        http: &Client,
+        messages: &[LlmMessage],
+        _tools: &[ToolDefinition],
+        _tool_choice: Option<&str>,
+    ) -> Result<ChunkStream> {
+        self.complete_stream(http, messages).await
+    }
+
     /// 非流式 + function calling。
     ///
     /// 默认实现 fallback 到 `complete()`（不支持 tools 的供应商）。

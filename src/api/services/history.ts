@@ -1,5 +1,3 @@
-import http from '../http'
-
 export interface GameLine {
   id?: number
   content: string
@@ -14,22 +12,3 @@ export interface GameLine {
   perceived_role_ids: number[]
 }
 
-export const getDialogueHistory = async (userId: string): Promise<GameLine[]> => {
-  try {
-    const data = await http.get('/v1/chat/history/get_chat_lines', {
-      params: { user_id: userId },
-    })
-    return data
-  } catch (error: any) {
-    console.error('获取游戏历史信息错误:', error.message)
-    throw error // 直接抛出拦截器处理过的错误
-  }
-}
-
-export const clearChatHistory = async (userId: string): Promise<void> => {
-  try {
-    await http.post('/v1/chat/history/clear', { user_id: userId })
-  } catch (error: any) {
-    throw new Error(error.response?.data?.detail || '清除对话历史失败')
-  }
-}

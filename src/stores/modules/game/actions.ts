@@ -16,11 +16,7 @@ export const actions = {
     })
   },
 
-  clearDialogHistory(this: GameState) {
-    this.dialogHistory = []
-  },
-
-  setGameMessages(this: GameState, messages: GameMessage[]) {
+setGameMessages(this: GameState, messages: GameMessage[]) {
     this.dialogHistory = messages
   },
 
@@ -252,7 +248,7 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
 
 /** 将 Rust GameLineInit 转换为前端 GameMessage 列表 */
 export function convertInitLines(lines: GameLineInit[]): GameMessage[] {
-  const filtered = lines.filter((line) => line.attribute !== 'system')
+  const filtered = lines.filter((line) => line.attribute !== 'system' && line.attribute !== 'tool')
 
   return filtered.map((line, index, array) => {
     const filteredContent = line.content.replace(/\{[\s\S]*?\}/g, '').trim()

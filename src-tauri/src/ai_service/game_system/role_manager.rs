@@ -478,8 +478,8 @@ impl GameRoleManager {
             return;
         }
 
-        let mut voice_cfg = role.settings.voice_models.clone().unwrap_or_default();
-        voice_cfg.opentts_voice = Some(self.tts_config.opentts_voice.clone());
+        // OpenTTS 音色标识：角色级优先，留空由 VoiceMaker 回退到全局配置
+        let voice_cfg = role.settings.voice_models.clone().unwrap_or_default();
         let name = role.settings.ai_name.clone();
 
         vm.update_lang_and_refresh(&voice_cfg, &tts_type, &name, lang);
@@ -584,9 +584,9 @@ fn build_voice_maker(
     if tts_type.is_empty() {
         return None;
     }
-    let mut voice_cfg = settings.voice_models.clone().unwrap_or_default();
-    // OpenTTS 音色标识统一使用全局 TTS 配置，不再读取角色级字段
-    voice_cfg.opentts_voice = Some(tts_config.opentts_voice.clone());
+    // OpenTTS 音色标识：角色级 voice_models.opentts_voice 优先，
+    // 留空时由 VoiceMaker 回退到全局 TTS 配置（tts.opentts_voice）
+    let voice_cfg = settings.voice_models.clone().unwrap_or_default();
 
     let audio_format = tts_config.audio_format.clone();
     let lang = settings

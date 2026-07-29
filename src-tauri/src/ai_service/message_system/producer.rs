@@ -102,7 +102,8 @@ impl StreamProducer {
                                 buffer.clear();
                             }
 
-                            Self::dispatch_sentence(&self.tx,
+                            Self::dispatch_sentence(
+                                &self.tx,
                                 &mut sentence,
                                 &mut sentence_index,
                                 false,
@@ -169,6 +170,9 @@ impl StreamProducer {
                         drop(buf);
                         events::emit_thinking_progress(&self.app, thinking_length);
                     }
+                }
+                LlmChunk::ToolCalls(_) => {
+                    return Err(anyhow::anyhow!("工具调用片段不应进入正式回复流"));
                 }
             }
         }

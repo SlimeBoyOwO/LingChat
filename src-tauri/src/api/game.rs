@@ -8,7 +8,9 @@ use tauri_plugin_store::StoreExt;
 
 use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::message_system::events;
-use crate::ai_service::message_system::generator::{GeneratorDeps, MessageGenerator};
+use crate::ai_service::message_system::generator::{
+    GeneratorDeps, GeneratorSource, MessageGenerator,
+};
 use crate::ai_service::types::{CharacterSettings, GameLine, LineAttributeExt, LineBase};
 use crate::config::{self, AppConfig};
 use crate::db::entities::line;
@@ -366,6 +368,33 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
 
     // 5. 返回最新游戏状态（复用 init_game 逻辑）
     //    drop 后再拿锁，避免同一个锁两次借用
+    let init = {
+        let service = state.ai_service.lock().await;
+        build_web_init_data(&service, &app).await?
+    };
+    Ok(init)
+}
+
+// ========== 清除对话 ==========
+
+/// 清除当前角色的全部对话历史，复用 `init_game_status` 逻辑，
+/// 保留角色设定、场景、背景音乐等配置。
+#[tauri::command]
+pub async fn clear_conversation(app: AppHandle) -> Result<WebInitData, String> {
+    let state = app.state::<AppState>();
+
+    // 串行化：等待正在进行的消息生成完成再重置
+    let gen_lock = state.generation_lock.clone();
+    let _lock = gen_lock.lock().await;
+
+    {
+        let mut service = state.ai_service.lock().await;
+        service
+            .init_game_status()
+            .await
+            .map_err(|e| format!("重置对话失败: {}", e))?;
+    }
+
     let init = {
         let service = state.ai_service.lock().await;
         build_web_init_data(&service, &app).await?
@@ -871,12 +900,14 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
     };
 
     let deps = GeneratorDeps {
+        source: GeneratorSource::EntryGreeting,
         app: app.clone(),
         db: state.db.clone(),
         game_status,
         processor: state.chat.processor.clone(),
         translator: state.chat.translator.clone(),
         llm,
+        tool_registry: state.tool_registry.clone(),
         concurrency,
         god_agent: state.god_agent.clone(),
         suppress_thinking: true,

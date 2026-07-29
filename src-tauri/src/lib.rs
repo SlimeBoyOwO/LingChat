@@ -27,6 +27,7 @@ use ai_service::llm::LlmSlot;
 use ai_service::message_system::processor::MessageProcessor;
 use ai_service::screen_analyzer::{ScreenAnalyzer, ScreenAnalyzerConfig};
 use ai_service::service::SharedAIService;
+use ai_service::tools::registry::ToolRegistry;
 use ai_service::translator::Translator;
 
 struct LocalTimer;
@@ -60,6 +61,7 @@ pub struct InnerAppState {
     pub chat: ChatComponents,
     pub script_channels: ai_service::game_system::script_engine::SharedScriptChannels,
     pub generation_lock: Arc<tokio::sync::Mutex<()>>,
+    pub tool_registry: Arc<ToolRegistry>,
     pub proactive_system:
         Option<Arc<tokio::sync::Mutex<ai_service::proactive_system::ProactiveSystem>>>,
     pub achievement_manager: Arc<tokio::sync::Mutex<achievements::manager::AchievementManager>>,
@@ -249,6 +251,9 @@ pub fn run() {
             ));
 
             let generation_lock = std::sync::Arc::new(tokio::sync::Mutex::new(()));
+            let role_names = rt
+                .block_on(db::managers::role_repo::RoleRepo::get_all_tool_role_names(&db))?;
+            let tool_registry = Arc::new(ai_service::tools::built_in_registry(role_names)?);
 
             // Create proactive system
             let proactive = std::sync::Arc::new(tokio::sync::Mutex::new(
@@ -261,6 +266,7 @@ pub fn run() {
                         processor: chat.processor.clone(),
                         translator: chat.translator.clone(),
                     },
+                    tool_registry.clone(),
                     generation_lock.clone(),
                 ),
             ));
@@ -307,6 +313,7 @@ pub fn run() {
                     chat,
                     script_channels,
                     generation_lock,
+                    tool_registry,
                     proactive_system: Some(proactive),
                     achievement_manager,
                     screen_analyzer,
@@ -424,6 +431,9 @@ pub fn run() {
             api::settings::test_llm_provider,
             api::settings::list_llm_models,
             api::font::list_system_fonts,
+            api::font::import_font,
+            api::font::list_imported_fonts,
+            api::font::delete_imported_font,
             api::character::get_character_list,
             api::character::get_role_info,
             api::character::get_role_settings,
@@ -455,6 +465,7 @@ pub fn run() {
             api::asset::get_voice_audio,
             api::game::init_game,
             api::game::select_character,
+            api::game::clear_conversation,
             api::game::reactivate_tts,
             api::game::clear_tts_cache,
             api::game::update_voice_lang,
@@ -464,6 +475,8 @@ pub fn run() {
             api::game::notify_player_entry,
             api::chat::send_chat_message,
             api::chat::rollback_conversation,
+            api::chat::feed_image,
+            api::chat::feed_text,
             api::screenshot::start_screenshot,
             api::screenshot::get_overlay_data,
             api::screenshot::confirm_screenshot,

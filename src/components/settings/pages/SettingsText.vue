@@ -8,11 +8,22 @@
         <div class="flex items-stretch gap-2 w-full">
           <select
             v-model="fontFamily"
-            class="font-select"
+            class="flex-none min-w-32 max-w-48 cursor-pointer bg-white/10 text-white border border-white/20 rounded-lg pl-3 pr-8 py-2 text-sm outline-none focus:border-(--accent-color) transition-colors appearance-none"
             @change="onFontChange"
             title="选择界面显示字体"
           >
             <option value="">软件默认</option>
+            <optgroup v-if="importedFonts.length > 0" label="已导入">
+              <option
+                v-for="f in importedFonts"
+                :key="f.name"
+                :value="f.name"
+                :style="{ fontFamily: `'${f.name}'` }"
+              >
+                {{ f.name }}
+              </option>
+            </optgroup>
+            <option v-if="importedFonts.length > 0" disabled>──────────</option>
             <option v-if="fontsLoading" value="" disabled>加载字体中…</option>
             <option
               v-for="f in systemFonts"
@@ -23,6 +34,13 @@
               {{ f }}
             </option>
           </select>
+          <button
+            class="flex-none flex items-center justify-center bg-white/10 text-white border border-white/20 rounded-lg px-[0.6rem] py-[0.35rem] cursor-pointer transition-colors hover:border-(--accent-color) hover:bg-white/20 active:bg-white/30"
+            @click="handleImportFont"
+            title="导入字体文件 (.ttf / .woff2)"
+          >
+            <Import :size="18" />
+          </button>
           <div class="font-demo" :style="{ fontFamily: demoFontFamily }">
             字体演示 Font Sample 123
           </div>
@@ -309,11 +327,11 @@ import { Slider, Text, Toggle, Button } from '../../base'
 import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { useSettingsStore } from '../../../stores/modules/settings'
-import { useUserStore } from '../../../stores/modules/user/user'
 import { useGameStore } from '../../../stores/modules/game'
 import type { ConfigItem } from '@/api/services/config'
 import { getEnvConfigByKey, saveEnvConfigSettings } from '@/api/services/config'
-import { clearChatHistory } from '@/api/services/history'
+import { applyWebInitData } from '@/stores/modules/game/actions'
+import type { WebInitData } from '@/api/services/game-info'
 import {
   Zap,
   ClipboardList,
@@ -331,6 +349,7 @@ import {
   Trash2,
   BookOpen,
   Type,
+  Import,
 } from 'lucide-vue-next'
 import { reactivateTTS, clearTtsCache } from '@/api/services/game-info'
 import { invoke } from '@tauri-apps/api/core'
@@ -338,7 +357,15 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { useUpdater } from '@/composables/useUpdater'
 import { useLanSync } from '@/composables/useLanSync'
 import { getVersion } from '@tauri-apps/api/app'
-import { listSystemFonts } from '@/api/services/font'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
+import {
+  listSystemFonts,
+  importFont,
+  getImportedFonts,
+  registerFontFace,
+  clearImportedFontsCache,
+  type ImportedFontInfo,
+} from '@/api/services/font'
 import ResourceSyncDialog from '@/components/ResourceSyncDialog.vue'
 import LanSyncDialog from '@/components/LanSyncDialog.vue'
 import type { DialogView } from '@/types/lanSync'
@@ -346,7 +373,6 @@ import type { DialogView } from '@/types/lanSync'
 const router = useRouter()
 const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
-const userStore = useUserStore()
 const gameStore = useGameStore()
 const dialogStore = useDialogStore()
 const envSettings = ref<Record<string, ConfigItem>>({})
@@ -540,26 +566,19 @@ const returnToMain = () => {
 }
 
 const handleClearHistory = async () => {
-  // 提示用户保存
   const confirmed = await dialogStore.confirm(
     '清除历史对话将丢失当前所有对话记录，建议先存档。\n\n是否已存档或确认清除？',
   )
   if (!confirmed) return
 
   try {
-    // 调用后端清除对话历史
-    await clearChatHistory(userStore.user_id.toString())
+    // 调用后端重置对话（复用 init_game_status 逻辑）
+    const data = await invoke<WebInitData>('clear_conversation')
+    applyWebInitData(gameStore.$state, data)
 
-    // 清除前端状态
-    gameStore.clearDialogHistory()
+    // 重置前端输入状态
     gameStore.currentStatus = 'input'
     gameStore.currentLine = ''
-
-    // 重置在场角色列表为主角色（与后端对齐）
-    if (gameStore.mainRoleId !== -1) {
-      gameStore.presentRoleIds = [gameStore.mainRoleId]
-      gameStore.currentInteractRoleId = gameStore.mainRoleId
-    }
 
     // 重置 UI 状态
     uiStore.currentBackgroundMusic = 'None'
@@ -594,6 +613,8 @@ onMounted(() => {
   loadLastTtsCleanup()
   // 加载本机已装字体族列表（Rust 侧枚举，单次缓存）
   void loadSystemFonts()
+  // 加载已导入字体列表
+  void loadImportedFonts()
   // 每 30 秒自动刷新一次 TTS 缓存信息，频率适中不浪费资源
   ttsCacheRefreshTimer = setInterval(() => {
     checkTtsCache()
@@ -638,16 +659,13 @@ const textSpeed = computed({
 })
 
 // ─── 界面字体选择 ───────────────────────────────────────────
-// 字体列表由 Rust 侧 (`api::font::list_system_fonts`) 枚举本机已装字体族，
-// 由 App.vue 在应用初始化时已预取并内存缓存；此处进入设置页直接读取，
-// 避免打开页面时触发 IPC 的可感知卡顿。
 const systemFonts = ref<string[]>([])
+const importedFonts = ref<ImportedFontInfo[]>([])
 const fontsLoading = ref(false)
 const fontFamily = computed({
   get: () => settingsStore.text.fontFamily ?? '',
   set: (val: string) => settingsStore.update('text.fontFamily', val),
 })
-// 右侧字体演示：软件默认时复用原版字体栈以保证预览准确
 const SOFTWARE_DEFAULT_STACK =
   "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif"
 const demoFontFamily = computed(() =>
@@ -657,17 +675,58 @@ function onFontChange() {
   // fontFamily 是 computed setter，已写入 store；App.vue 的 watcher 会应用
 }
 async function loadSystemFonts() {
-  // 列表通常已在初始化时由 App.vue 预取入缓存，这里几乎立即返回；
-  // 若预取尚未完成会等待其结束，仅极少数情况下有一次少量等待。
   fontsLoading.value = true
   try {
     const list = await listSystemFonts()
-    // 中文优先：把含中文字符的族名排在前
     const zh = list.filter((n) => /[一-鿿぀-ヿ]/.test(n))
     const rest = list.filter((n) => !zh.includes(n))
     systemFonts.value = [...zh, ...rest]
   } finally {
     fontsLoading.value = false
+  }
+}
+
+// ─── 导入字体 ───────────────────────────────────────────────
+async function loadImportedFonts() {
+  try {
+    const list = await getImportedFonts()
+    importedFonts.value = list
+  } catch (e) {
+    console.error('加载导入字体列表失败:', e)
+    importedFonts.value = []
+  }
+}
+
+async function handleImportFont() {
+  const selected = await openDialog({
+    multiple: false,
+    filters: [{ name: '字体文件', extensions: ['ttf', 'woff2'] }],
+  })
+  if (!selected) return
+
+  const filePath = typeof selected === 'string' ? selected : (selected as any).path
+  if (!filePath) return
+
+  try {
+    const info = await importFont(filePath)
+    registerFontFace(info.name, info.file_path)
+    clearImportedFontsCache()
+    await loadImportedFonts()
+    uiStore.showNotification({
+      type: 'success',
+      title: '字体导入成功',
+      message: `字体 "${info.name}" 已导入`,
+      duration: 3000,
+      skipTipsCheck: true,
+    })
+  } catch (error: any) {
+    uiStore.showNotification({
+      type: 'error',
+      title: '字体导入失败',
+      message: typeof error === 'string' ? error : error.message || '导入失败',
+      duration: 3000,
+      skipTipsCheck: true,
+    })
   }
 }
 
@@ -774,8 +833,13 @@ function formatBytes(bytes: number): string {
   height: 100%;
 }
 
-.font-select,
 .font-demo {
+  flex: 1 1 0;
+  min-width: 0;
+  line-height: 1.5rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   background: rgba(30, 41, 59, 0.6);
   color: #f8fafc;
   border: 1px solid rgba(148, 163, 184, 0.4);
@@ -784,24 +848,7 @@ function formatBytes(bytes: number): string {
   font-size: 0.875rem;
   outline: none;
 }
-.font-select {
-  flex: 0 0 auto;
-  min-width: 8rem;
-  max-width: 12rem;
-  cursor: pointer;
-}
-.font-demo {
-  flex: 1 1 0;
-  min-width: 0;
-  line-height: 1.5rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.font-select:focus {
-  border-color: var(--accent-color);
-}
-.font-select option {
+select option {
   background: #1e293b;
   color: #f8fafc;
 }
