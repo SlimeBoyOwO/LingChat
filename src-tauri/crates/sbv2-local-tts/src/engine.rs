@@ -133,10 +133,7 @@ impl LocalTtsEngine {
     }
 
     /// Synthesize speech to WAV bytes (CPU-bound, runs on blocking pool).
-    pub async fn synthesize(
-        &self,
-        req: SynthesizeRequest,
-    ) -> std::result::Result<Vec<u8>, String> {
+    pub async fn synthesize(&self, req: SynthesizeRequest) -> std::result::Result<Vec<u8>, String> {
         let options = SynthesizeOptions {
             sdp_ratio: req.sdp_ratio,
             length_scale: req.length_scale,
@@ -178,5 +175,94 @@ impl LocalTtsEngine {
 impl std::fmt::Debug for LocalTtsEngine {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LocalTtsEngine").finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{LocalTtsEngine, SynthesizeRequest};
+    use crate::paths::LocalTtsPaths;
+    use std::path::{Path, PathBuf};
+
+    fn fixture_voice_id(fixture_root: &Path) -> String {
+        if let Ok(voice_id) = std::env::var("SBV2_FIXTURE_VOICE_ID") {
+            if !voice_id.trim().is_empty() {
+                return voice_id;
+            }
+        }
+
+        let voices_dir = fixture_root.join("voices");
+        let mut candidates: Vec<String> = std::fs::read_dir(&voices_dir)
+            .unwrap_or_else(|e| panic!("read fixture voices {}: {e}", voices_dir.display()))
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+            .filter_map(|entry| {
+                let voice_dir = entry.path();
+                let complete = voice_dir.join("model.sbv2").is_file()
+                    || (voice_dir.join("model.onnx").is_file()
+                        && voice_dir.join("style_vectors.json").is_file());
+                complete.then(|| entry.file_name().to_string_lossy().into_owned())
+            })
+            .collect();
+        candidates.sort();
+        candidates.into_iter().next().unwrap_or_else(|| {
+            panic!(
+                "no complete voice fixture found under {}",
+                voices_dir.display()
+            )
+        })
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn fixture_happy_path_init_load_synthesize() {
+        let Ok(fixture_dir) = std::env::var("SBV2_FIXTURE_DIR") else {
+            eprintln!("SBV2_FIXTURE_DIR is not set; skipping model-backed happy-path test");
+            return;
+        };
+
+        let fixture_root = PathBuf::from(fixture_dir);
+        assert!(
+            fixture_root.join("assets/deberta/deberta.onnx").is_file(),
+            "fixture is missing assets/deberta/deberta.onnx"
+        );
+        assert!(
+            fixture_root.join("assets/deberta/tokenizer.json").is_file(),
+            "fixture is missing assets/deberta/tokenizer.json"
+        );
+
+        let voice_id = fixture_voice_id(&fixture_root);
+        let cache = tempfile::tempdir().expect("create fixture cache");
+        let paths = LocalTtsPaths {
+            root: fixture_root.clone(),
+            assets: fixture_root.join("assets"),
+            voices: fixture_root.join("voices"),
+            cache: cache.path().to_path_buf(),
+        };
+        let engine = LocalTtsEngine::new();
+
+        engine
+            .init(&paths)
+            .await
+            .expect("initialize fixture engine");
+        assert!(engine.is_ready().await);
+        engine
+            .load_voice(&paths, &voice_id)
+            .await
+            .expect("load fixture voice");
+        let wav = engine
+            .synthesize(SynthesizeRequest {
+                voice_id,
+                text: "\u{3053}\u{3093}\u{306b}\u{3061}\u{306f}\u{3002}".to_owned(),
+                style_id: 0,
+                speaker_id: 0,
+                sdp_ratio: 0.0,
+                length_scale: 1.0,
+            })
+            .await
+            .expect("synthesize fixture voice");
+
+        assert!(wav.len() > 44, "WAV output must contain audio data");
+        assert_eq!(&wav[..4], b"RIFF");
+        assert_eq!(&wav[8..12], b"WAVE");
     }
 }

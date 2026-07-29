@@ -615,7 +615,22 @@ std::fs::write("preview.wav", wav)?;
 
 原因：当前 CPU Execution Provider 无法执行该 FP16 自定义算子。应使用兼容 CPU Provider 的 FP32 DeBERTa ONNX 模型，或者在未来明确接入支持该模型的执行提供器。
 
-## 11. 当前接口边界
+## 11. 模型夹具测试
+
+独立 crate 提供真实模型驱动的核心链路测试，覆盖 `init -> load_voice -> synthesize` 并校验输出的 RIFF/WAVE 文件头。`SBV2_FIXTURE_DIR` 必须指向一个完整的 `tts-local` 根目录，也就是该目录下直接包含 `assets/` 和 `voices/`：
+
+```powershell
+$env:SBV2_FIXTURE_DIR = (Resolve-Path 'data/models/tts-local').Path
+$env:SBV2_FIXTURE_VOICE_ID = 'ling-v2'
+cargo test --manifest-path src-tauri/crates/sbv2-local-tts/Cargo.toml `
+  engine::tests::fixture_happy_path_init_load_synthesize -- --nocapture
+```
+
+`SBV2_FIXTURE_VOICE_ID` 可省略；测试会按目录名排序并选择第一个包含 `model.sbv2`，或同时包含 `model.onnx` 与 `style_vectors.json` 的语音目录。
+
+未设置 `SBV2_FIXTURE_DIR` 时，该测试会输出跳过原因并正常返回，因此普通 CI 不需要下载大型模型。只要显式设置了变量，目录或模型缺失就会使测试失败。
+
+## 12. 当前接口边界
 
 以下能力当前未公开或尚未实现：
 
@@ -625,7 +640,6 @@ std::fs::write("preview.wav", wav)?;
 - 试听接口不能指定 `speakerId` 或 `styleId`；
 - 导入 `style_vectors.json` 时不验证 JSON schema；
 - `download-complete` 不区分成功与失败；
-- `listCatalog()` 前端封装与后端 command 使用两个目录来源；
 - 引擎没有公开卸载单个语音或清空内存缓存的 command。
 
 调用方不应假设这些能力已经存在。扩展接口时需要同步更新 Rust command、`src-tauri/src/lib.rs` 的 invoke handler、TypeScript 封装及本文档。
