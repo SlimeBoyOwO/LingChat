@@ -41,4 +41,12 @@ export default defineConfig(async () => ({
       ignored: ['**/src-tauri/**', '**/.venv/**', '**/target/**'],
     },
   },
+
+  // 依赖优化配置
+  optimizeDeps: {
+    exclude: ['src-tauri/*'],
+    entries: [
+      'src/*'
+    ],
+  },
 }))

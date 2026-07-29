@@ -27,6 +27,7 @@ uuid = { version = "1", features = ["v4"] }
 async-trait = "0.1"
 anyhow = "1"
 tracing = "0.1"
+ort = "=2.0.0-rc.12"
 
 # Android-only: provides the SAF copy used by import_bridge on Android.
 [target.'cfg(target_os = "android")'.dependencies]
@@ -36,8 +37,8 @@ tauri-plugin-android-fs = "28"
 tempfile = "3"
 
 # Keep the vendored sbv2_core on the same ORT release as the host application.
-[patch."https://github.com/pykeio/ort.git"]
-ort = "=2.0.0-rc.12"
+#[patch."https://github.com/pykeio/ort.git"]
+#ort = "=2.0.0-rc.12"
 
 [patch.crates-io]
 esaxx-rs = { path = "../../vendor/esaxx-rs" }
