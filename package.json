@@ -29,6 +29,7 @@
     "tailwindcss": "^4.3.0",
     "tauri-plugin-screenshots-api": "file:./src-tauri/plugins/tauri-plugin-screenshots",
     "vue": "^3.5.13",
+    "vue-i18n": "^10.0.8",
     "vue-router": "^5.0.6"
   },
   "devDependencies": {

@@ -16,7 +16,7 @@
         @click="() => switchTab('character', 'characterBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'character' }"
       >
-        <p class="hidden xl:block">角色</p>
+        <p class="hidden xl:block">{{ $t('nav.character') }}</p>
       </Button>
       <Button
         ref="adventureBtn"
@@ -25,7 +25,7 @@
         @click="() => switchTab('adventure', 'adventureBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'adventure' }"
       >
-        <p class="hidden xl:block">羁绊</p>
+        <p class="hidden xl:block">{{ $t('nav.adventure') }}</p>
       </Button>
       <Button
         ref="textBtn"
@@ -34,7 +34,7 @@
         @click="() => switchTab('text', 'textBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'text' }"
       >
-        <p class="hidden xl:block">通用</p>
+        <p class="hidden xl:block">{{ $t('nav.text') }}</p>
       </Button>
       <Button
         ref="backgroundBtn"
@@ -43,7 +43,7 @@
         @click="() => switchTab('background', 'backgroundBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'background' }"
       >
-        <p class="hidden xl:block">背景</p>
+        <p class="hidden xl:block">{{ $t('nav.background') }}</p>
       </Button>
       <Button
         ref="soundBtn"
@@ -52,7 +52,7 @@
         @click="() => switchTab('sound', 'soundBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'sound' }"
       >
-        <p class="hidden xl:block">声音</p>
+        <p class="hidden xl:block">{{ $t('nav.sound') }}</p>
       </Button>
       <Button
         ref="historyBtn"
@@ -61,7 +61,7 @@
         @click="() => switchTab('history', 'historyBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'history' }"
       >
-        <p class="hidden xl:block">对话历史</p>
+        <p class="hidden xl:block">{{ $t('nav.history') }}</p>
       </Button>
       <Button
         ref="achievementBtn"
@@ -70,7 +70,7 @@
         @click="() => switchTab('achievement', 'achievementBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'achievement' }"
       >
-        <p class="hidden xl:block">成就</p>
+        <p class="hidden xl:block">{{ $t('nav.achievement') }}</p>
       </Button>
       <Button
         ref="saveBtn"
@@ -79,7 +79,7 @@
         @click="() => switchTab('save', 'saveBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'save' }"
       >
-        <p class="hidden xl:block">存档</p>
+        <p class="hidden xl:block">{{ $t('nav.save') }}</p>
       </Button>
       <Button
         ref="advanceBtn"
@@ -93,7 +93,7 @@
         "
         :class="{ active: uiStore.currentSettingsTab === 'advance' }"
       >
-        <p class="hidden xl:block">高级设置</p>
+        <p class="hidden xl:block">{{ $t('nav.advance') }}</p>
       </Button>
       <Button
         ref="logBtn"
@@ -102,7 +102,7 @@
         @click="() => switchTab('log', 'logBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'log' }"
       >
-        <p class="hidden xl:block">日志</p>
+        <p class="hidden xl:block">{{ $t('nav.log') }}</p>
       </Button>
       <Button
         ref="workshopBtn"
@@ -111,7 +111,7 @@
         @click="() => switchTab('workshop', 'workshopBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'workshop' }"
       >
-        <p class="hidden xl:block">创意工坊</p>
+        <p class="hidden xl:block">{{ $t('nav.workshop') }}</p>
       </Button>
     </nav>
     <Icon
