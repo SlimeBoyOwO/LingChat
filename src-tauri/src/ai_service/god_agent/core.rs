@@ -1,4 +1,4 @@
-//! 上帝 Agent 核心：决策逻辑、prompt 构建、发言者选择。
+﻿//! 上帝 Agent 核心：决策逻辑、prompt 构建、发言者选择。
 
 use anyhow::{anyhow, Result};
 

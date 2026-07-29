@@ -1,4 +1,4 @@
-#[cfg(target_os = "windows")]
+﻿#[cfg(target_os = "windows")]
 use windows::Win32::Graphics::Gdi::{GetDC, GetPixel, ReleaseDC};
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};

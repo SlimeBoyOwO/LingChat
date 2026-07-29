@@ -1,4 +1,4 @@
-//! 角色压缩包导入/导出 Tauri 命令。
+﻿//! 角色压缩包导入/导出 Tauri 命令。
 //!
 //! `import_role_from_path` 同时支持桌面文件路径和 Android SAF 内容 URI。
 //! Android 压缩包由后端复制到应用缓存后再解压，避免通过前端 IPC

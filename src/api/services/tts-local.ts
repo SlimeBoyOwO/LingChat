@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
-import { TTS_LOCAL_CATALOG, type AssetKind, type CatalogAsset } from '@/api/services/tts-catalog'
+import type { AssetKind, CatalogAsset } from '@/api/services/tts-catalog'
 import {
   createProgressBus,
   type DownloadProgress,
@@ -9,8 +9,6 @@ import {
 } from '@/api/services/download-progress'
 
 export type { AssetKind, CatalogAsset, DownloadProgress }
-
-export const CATALOG: readonly CatalogAsset[] = TTS_LOCAL_CATALOG
 
 const progressBus = createProgressBus()
 let progressUnlisten: UnlistenFn | null = null
@@ -50,7 +48,7 @@ export function onDownloadProgress(listener: ProgressListener): () => void {
 }
 
 export function listCatalog(): Promise<readonly CatalogAsset[]> {
-  return Promise.resolve(CATALOG)
+  return invoke<readonly CatalogAsset[]>('tts_local_list_catalog')
 }
 
 export function download(assetId: string): Promise<TtsLocalImportResult> {
@@ -141,6 +139,6 @@ export function synthesizePreview(params: {
   voiceId: string
   lengthScale: number
   sdpRatio: number
-}): Promise<number[]> {
-  return invoke<number[]>('tts_local_synthesize_preview', params)
+}): Promise<Uint8Array> {
+  return invoke<Uint8Array>('tts_local_synthesize_preview', params)
 }

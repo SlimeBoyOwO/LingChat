@@ -1,4 +1,4 @@
-//! Tauri IPC commands for script/story mode.
+﻿//! Tauri IPC commands for script/story mode.
 //!
 //! Replaces Python's WebSocket-based script communication.
 //! Frontend calls these via `invoke()` instead of `/v1/chat/script/*` HTTP endpoints.

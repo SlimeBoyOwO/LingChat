@@ -1,4 +1,4 @@
-//! Input event — prompts the user for text input, waits, then adds as USER line.
+﻿//! Input event — prompts the user for text input, waits, then adds as USER line.
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;

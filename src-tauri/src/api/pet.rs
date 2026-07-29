@@ -1,4 +1,4 @@
-use serde::Deserialize;
+﻿use serde::Deserialize;
 use std::sync::{Arc, Mutex};
 #[cfg(desktop)]
 use tauri::LogicalSize;

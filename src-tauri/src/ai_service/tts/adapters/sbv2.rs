@@ -1,4 +1,4 @@
-//! Style-Bert-Vits2 本地服务适配器，对应 `ling_chat/core/TTS/sbv2_adapter.py`。
+﻿//! Style-Bert-Vits2 本地服务适配器，对应 `ling_chat/core/TTS/sbv2_adapter.py`。
 
 use std::collections::HashMap;
 

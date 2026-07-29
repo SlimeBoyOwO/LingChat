@@ -1,4 +1,4 @@
-//! Background event — sets `game_status.background` and emits to frontend.
+﻿//! Background event — sets `game_status.background` and emits to frontend.
 
 use anyhow::Result;
 use async_trait::async_trait;

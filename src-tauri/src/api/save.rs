@@ -1,4 +1,4 @@
-use serde::Serialize;
+﻿use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
 use crate::ai_service::game_system::game_status::GameStatusSnapshot;

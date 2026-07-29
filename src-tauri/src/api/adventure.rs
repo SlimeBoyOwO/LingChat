@@ -1,4 +1,4 @@
-//! Tauri IPC commands for the adventure/bond (羁绊) system.
+﻿//! Tauri IPC commands for the adventure/bond (羁绊) system.
 //!
 //! Replaces Python's `/v1/chat/adventure/*` HTTP endpoints.
 //! Frontend calls these via `invoke()` instead of HTTP.

@@ -1,4 +1,4 @@
-//! 创意工坊 — 从 GitHub Discussions 获取内容列表。
+﻿//! 创意工坊 — 从 GitHub Discussions 获取内容列表。
 //!
 //! 优先使用 GraphQL API（需要用户在高级设置中配置 GitHub Token）
 //! 以获取准确的 upvote 计数；未配置 Token 时降级为 REST API。

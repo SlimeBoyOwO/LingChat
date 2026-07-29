@@ -1,4 +1,4 @@
-//! Narration event — displays narrator text and adds an ASSISTANT line.
+﻿//! Narration event — displays narrator text and adds an ASSISTANT line.
 
 use anyhow::Result;
 use async_trait::async_trait;

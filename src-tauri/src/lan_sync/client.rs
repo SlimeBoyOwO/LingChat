@@ -1,4 +1,4 @@
-//! LAN 同步 HTTP 客户端。
+﻿//! LAN 同步 HTTP 客户端。
 //!
 //! 封装对等设备的 HTTP API 调用，供 sync_engine 使用。
 //! 使用模块级 `LazyLock<Client>` 共享连接池，支持 TCP Keep-Alive。

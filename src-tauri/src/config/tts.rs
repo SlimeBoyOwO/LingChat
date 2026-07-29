@@ -1,4 +1,4 @@
-//! TTS 引擎配置（适配器 URL、音频格式、语言等），从 settings.json 统一加载。
+﻿//! TTS 引擎配置（适配器 URL、音频格式、语言等），从 settings.json 统一加载。
 //!
 //! 对标 Python 侧通过 `os.environ` / `.env` 管理的 TTS 相关环境变量。
 //!

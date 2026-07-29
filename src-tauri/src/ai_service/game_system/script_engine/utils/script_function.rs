@@ -1,4 +1,4 @@
-//! Static utility functions for script event execution.
+﻿//! Static utility functions for script event execution.
 //!
 //! Replaces Python `ScriptFunction` static methods and parts of `Function` YAML/string utilities.
 

@@ -1,4 +1,4 @@
-//! Script event trait, registry, and execution context.
+﻿//! Script event trait, registry, and execution context.
 //!
 //! Replaces Python's `BaseEvent` abstract class + `EventHandlerLoader` auto-discovery.
 //! Rust does not have `importlib`, so event handlers register themselves via

@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Emitter, Manager};
+﻿use tauri::{AppHandle, Emitter, Manager};
 
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::generator::{GeneratorDeps, MessageGenerator};

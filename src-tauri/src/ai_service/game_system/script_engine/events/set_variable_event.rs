@@ -1,4 +1,4 @@
-//! Set variable event — parses and applies variable assignments to ScriptStatus.
+﻿//! Set variable event — parses and applies variable assignments to ScriptStatus.
 //!
 //! # Python Parity
 //! Python's `SetVariableEvent` overrode `execute()` instead of `_execute()`,

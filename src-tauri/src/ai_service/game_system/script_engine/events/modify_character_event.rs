@@ -1,4 +1,4 @@
-//! Modify character event — emotion, clothes, show/hide, perceive changes.
+﻿//! Modify character event — emotion, clothes, show/hide, perceive changes.
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;

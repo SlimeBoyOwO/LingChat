@@ -1,4 +1,4 @@
-//! 角色压缩包导入/导出的全局并发状态与 RAII 守卫。
+﻿//! 角色压缩包导入/导出的全局并发状态与 RAII 守卫。
 //!
 //! `RoleArchiveState` 由 Tauri 管理；导入命令通过 `ImportingGuard` 与
 //! `TaskRemoveGuard` 自动释放并发锁、清理缓存副本。

@@ -1,4 +1,4 @@
-//! Kimi-Code provider adapter.
+﻿//! Kimi-Code provider adapter.
 //!
 //! 参考 AstrBot 的 `kimi_code_source.py`：复用 Anthropic Messages API 协议，
 //! 固定 base_url 为 https://api.kimi.com/coding，默认模型 kimi-for-coding，

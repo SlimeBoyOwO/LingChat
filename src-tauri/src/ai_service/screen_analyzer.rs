@@ -1,4 +1,4 @@
-//! 桌面截图分析器。
+﻿//! 桌面截图分析器。
 //! 独立的屏幕捕获与视觉语言模型(VLM)分析模块，可在多处复用（主动对话、脚本事件等）。
 //!
 //! 设计参考 Python 原版 `ling_chat_python/core/pic_analyzer.py` 的 DesktopAnalyzer。

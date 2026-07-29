@@ -1,4 +1,4 @@
-//! LLM 请求体日志模块
+﻿//! LLM 请求体日志模块
 //!
 //! 记录每次对 LLM 发送的完整请求体到 `data/log/llm/` 目录下。
 //! 文件名格式：`{YYYYMMDD_HHMMSS}_{provider}_{序列号:05}.json`

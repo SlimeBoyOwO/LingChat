@@ -1,4 +1,4 @@
-//! 同步引擎 — Push/Pull 编排逻辑。
+﻿//! 同步引擎 — Push/Pull 编排逻辑。
 //!
 //! 负责：
 //! - 扫描本地 data/ 目录生成 CompleteManifest

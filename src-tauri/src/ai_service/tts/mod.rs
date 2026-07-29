@@ -1,4 +1,4 @@
-//! TTS 子系统：对应 Python `ling_chat.core.TTS` + `voice_maker.py`。
+﻿//! TTS 子系统：对应 Python `ling_chat.core.TTS` + `voice_maker.py`。
 //!
 //! - `TtsAdapter`：适配器 trait（对一次合成请求抽象），每个后端一个实现。
 //! - `TtsProvider`：持有所有已初始化的适配器，根据 `tts_type` 路由。

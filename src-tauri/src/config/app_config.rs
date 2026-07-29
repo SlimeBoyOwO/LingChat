@@ -1,4 +1,4 @@
-//! 应用配置结构体、默认值和 store 读写逻辑。
+﻿//! 应用配置结构体、默认值和 store 读写逻辑。
 //!
 //! 设计原则：每个配置项的默认值仅在 `AppConfig::default()` 中定义一次，
 //! 其他所有位置（serde、load()、build_config_tree）均引用该实现。

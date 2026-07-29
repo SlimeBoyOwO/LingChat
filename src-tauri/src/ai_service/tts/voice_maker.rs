@@ -1,4 +1,4 @@
-//! 角色级 `VoiceMaker`
+﻿//! 角色级 `VoiceMaker`
 //!
 //! 职责：
 //! - 根据 `VoiceModel` 配置检测每种 TTS 的可用性

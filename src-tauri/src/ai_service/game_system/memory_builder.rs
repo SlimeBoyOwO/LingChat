@@ -1,4 +1,4 @@
-use crate::ai_service::types::{GameLine, LineBase, LlmMessage};
+﻿use crate::ai_service::types::{GameLine, LineBase, LlmMessage};
 use crate::db::entities::line::LineAttribute;
 
 /// 将 `GameLine` 序列构建成目标角色的 LLM 消息列表。
@@ -120,7 +120,7 @@ impl MemoryBuilder {
                             .iter()
                             .map(|l| {
                                 let name = l.base.display_name.as_deref().unwrap_or("未知");
-                                let mut s = match name {
+                                let s = match name {
                                     "旁白" | "系统" => l.base.content.clone(),
                                     _ => format!("{}: {}", name, l.base.content),
                                 };

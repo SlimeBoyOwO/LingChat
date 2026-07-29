@@ -1,4 +1,4 @@
-//! Background effect event — sets `game_status.background_effect`.
+﻿//! Background effect event — sets `game_status.background_effect`.
 
 use anyhow::Result;
 use async_trait::async_trait;

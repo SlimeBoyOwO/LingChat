@@ -1,4 +1,4 @@
-//! ScriptManager — script discovery, lifecycle, and chapter orchestration.
+﻿//! ScriptManager — script discovery, lifecycle, and chapter orchestration.
 //!
 //! Replaces Python `ScriptManager` class. Scans the scripts directory for
 //! `story_config.yaml` files, manages script start/run/complete, and provides

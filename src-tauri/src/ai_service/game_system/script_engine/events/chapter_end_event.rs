@@ -1,4 +1,4 @@
-//! Chapter end event — determines the next chapter.
+﻿//! Chapter end event — determines the next chapter.
 //!
 //! Three sub-types:
 //! - `linear`: returns the `next_chapter` / `next` field directly

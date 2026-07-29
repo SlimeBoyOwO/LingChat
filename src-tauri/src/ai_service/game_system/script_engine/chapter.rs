@@ -1,4 +1,4 @@
-//! Chapter — wraps a chapter YAML config and runs its events sequentially.
+﻿//! Chapter — wraps a chapter YAML config and runs its events sequentially.
 //!
 //! Replaces Python `Chapter` class.
 

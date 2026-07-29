@@ -1,4 +1,4 @@
-//! AIVIS 云 API 适配器，对应 `ling_chat/core/TTS/aivis_adapter.py`。
+﻿//! AIVIS 云 API 适配器，对应 `ling_chat/core/TTS/aivis_adapter.py`。
 
 use std::collections::HashMap;
 

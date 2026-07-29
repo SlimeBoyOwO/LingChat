@@ -1,4 +1,4 @@
-//! AI dialogue event — sets character and generates an AI reply via MessageGenerator.
+﻿//! AI dialogue event — sets character and generates an AI reply via MessageGenerator.
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;

@@ -1,4 +1,4 @@
-//! 环境音事件 —— 循环持续的场景音效（雨声、风声、人群嘈杂声），与 BGM 同时共存。
+﻿//! 环境音事件 —— 循环持续的场景音效（雨声、风声、人群嘈杂声），与 BGM 同时共存。
 
 use anyhow::Result;
 use async_trait::async_trait;

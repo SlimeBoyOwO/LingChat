@@ -1,4 +1,4 @@
-//! GPT-SoVITS 适配器，对应 `ling_chat/core/TTS/gsv_adapter.py`。
+﻿//! GPT-SoVITS 适配器，对应 `ling_chat/core/TTS/gsv_adapter.py`。
 
 use std::collections::HashMap;
 use std::path::Path;

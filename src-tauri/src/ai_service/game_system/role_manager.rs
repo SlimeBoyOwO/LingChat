@@ -1,5 +1,6 @@
-use std::collections::{HashMap, HashSet};
+﻿use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use sea_orm::DatabaseConnection;
@@ -436,6 +437,9 @@ impl GameRoleManager {
             settings,
             resource_path.as_deref(),
             &self.tts_config,
+            self.local_tts_engine.as_ref(),
+            self.local_tts_paths.as_ref(),
+            self.local_tts_switch.as_ref(),
         );
         let voice_maker_ready = voice_maker.is_some();
 

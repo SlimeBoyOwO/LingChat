@@ -1,4 +1,4 @@
-//! Sequential event processor for a chapter.
+﻿//! Sequential event processor for a chapter.
 //!
 //! Replaces Python `EventsHandler` — iterates through a YAML event list,
 //! dispatches each event to the registered handler, and collects chapter-end results.

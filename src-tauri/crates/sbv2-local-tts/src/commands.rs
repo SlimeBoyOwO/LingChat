@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde::Serialize;
+use tauri::ipc::Response;
 use tauri::{AppHandle, Emitter, State};
 use tokio_util::sync::CancellationToken;
 
@@ -391,7 +392,7 @@ pub async fn tts_local_synthesize_preview(
     voice_id: String,
     length_scale: f32,
     sdp_ratio: f32,
-) -> Result<Vec<u8>, String> {
+) -> Result<Response, String> {
     if !state.engine.is_ready().await {
         return Err(
             "local TTS engine not initialized (missing DeBerta)".into()
@@ -406,12 +407,17 @@ pub async fn tts_local_synthesize_preview(
         sdp_ratio,
         length_scale,
     };
-    state.engine.synthesize(req).await
+    state.engine.synthesize(req).await.map(wav_response)
+}
+
+fn wav_response(bytes: Vec<u8>) -> Response {
+    Response::new(bytes)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tauri::ipc::{InvokeResponseBody, IpcResponse};
 
     fn test_paths(root: &std::path::Path) -> LocalTtsPaths {
         LocalTtsPaths {
@@ -419,6 +425,15 @@ mod tests {
             assets: root.join("models").join("tts-local").join("assets"),
             voices: root.join("models").join("tts-local").join("voices"),
             cache: root.join("cache"),
+        }
+    }
+
+    #[test]
+    fn preview_wav_uses_raw_ipc_response() {
+        let response = wav_response(vec![0x52, 0x49, 0x46, 0x46]);
+        match response.body().unwrap() {
+            InvokeResponseBody::Raw(bytes) => assert_eq!(bytes, b"RIFF"),
+            InvokeResponseBody::Json(_) => panic!("preview WAV was JSON serialized"),
         }
     }
 

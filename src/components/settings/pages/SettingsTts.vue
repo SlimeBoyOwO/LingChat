@@ -90,7 +90,7 @@
 
           <ul class="flex flex-col gap-3">
             <li
-              v-for="asset in TtsLocal.CATALOG"
+              v-for="asset in catalog"
               :key="asset.id"
               class="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/5 p-4"
             >
@@ -295,7 +295,7 @@
                 </select>
               </label>
               <label class="control-label">
-                <span>语速 {{ previewSpeed.toFixed(2) }}x</span>
+                <span>长度倍率 {{ previewSpeed.toFixed(2) }}（1.0 = 正常）</span>
                 <input v-model.number="previewSpeed" type="range" min="0.5" max="2" step="0.05" />
               </label>
               <label class="control-label">
@@ -351,12 +351,14 @@ import { getEnvConfigByKey, saveEnvConfigSettings } from '@/api/services/config'
 import { speedToLengthScale } from '@/utils/tts-speed'
 import { catalogRowState } from '@/utils/tts-download-state'
 import type {
+  CatalogAsset,
   TtsLocalInstallSnapshot,
   TtsLocalStatus,
   VoiceRecord,
 } from '@/api/services/tts-local'
 
 const dialogStore = useDialogStore()
+const catalog = ref<readonly CatalogAsset[]>([])
 const status = ref<TtsLocalStatus | null>(null)
 const snapshot = ref<TtsLocalInstallSnapshot>({ assets: [], voices: [] })
 const loading = ref(false)
@@ -457,10 +459,12 @@ function normalizeVoiceId(value: string): string {
 async function refreshAll(): Promise<void> {
   loading.value = true
   try {
-    const [nextStatus, nextSnapshot] = await Promise.all([
+    const [nextCatalog, nextStatus, nextSnapshot] = await Promise.all([
+      TtsLocal.listCatalog(),
       TtsLocal.status(),
       TtsLocal.listInstalled(),
     ])
+    catalog.value = nextCatalog
     status.value = nextStatus
     snapshot.value = nextSnapshot
     if (!previewVoice.value || !nextSnapshot.voices.some((voice) => voice.voice_id === previewVoice.value)) {
@@ -579,7 +583,7 @@ async function runPreview(): Promise<void> {
       sdpRatio: previewSdp.value,
     })
     if (audioUrl) URL.revokeObjectURL(audioUrl)
-    audioUrl = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: 'audio/wav' }))
+    audioUrl = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }))
     await nextTick()
     if (audioRef.value) {
       audioRef.value.src = audioUrl
@@ -622,7 +626,7 @@ async function saveLocalTtsSwitch(): Promise<void> {
 }
 
 function rowState(assetId: string) {
-  const asset = TtsLocal.CATALOG.find((item) => item.id === assetId)
+  const asset = catalog.value.find((item) => item.id === assetId)
   if (!asset) return 'missing'
   return catalogRowState({
     asset,

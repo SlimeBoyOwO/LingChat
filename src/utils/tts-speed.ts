@@ -1,5 +1,4 @@
-/** Convert the user-facing speed multiplier to SBV2's duration multiplier. */
-export function speedToLengthScale(speed: number): number {
-  const normalized = Number.isFinite(speed) && speed > 0 ? speed : 1
-  return 1 / normalized
+/** Normalize the user-facing SBV2 duration multiplier. Larger values sound slower. */
+export function speedToLengthScale(lengthScale: number): number {
+  return Number.isFinite(lengthScale) && lengthScale > 0 ? lengthScale : 1
 }

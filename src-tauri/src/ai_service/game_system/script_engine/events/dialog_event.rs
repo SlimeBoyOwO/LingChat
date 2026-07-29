@@ -1,4 +1,4 @@
-//! Dialogue event — sets current_character and emits character dialogue lines.
+﻿//! Dialogue event — sets current_character and emits character dialogue lines.
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;

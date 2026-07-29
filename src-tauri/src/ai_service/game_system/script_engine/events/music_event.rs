@@ -1,4 +1,4 @@
-//! Music event — sets `game_status.background_music`.
+﻿//! Music event — sets `game_status.background_music`.
 
 use anyhow::Result;
 use async_trait::async_trait;

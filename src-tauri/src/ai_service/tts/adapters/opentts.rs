@@ -1,4 +1,4 @@
-//! OpenTTS / OpenAI TTS API 适配器。
+﻿//! OpenTTS / OpenAI TTS API 适配器。
 //!
 //! 参考 AstrBot 的 `astrbot_plugin_tts_tools`：使用 OpenAI 兼容的 `/v1/audio/speech`
 //! 端点，默认指向硅基流动 API，默认模型 FunAudioLLM/CosyVoice2-0.5B。

@@ -1,4 +1,4 @@
-//! Media file resolution for script events.
+﻿//! Media file resolution for script events.
 //!
 //! Searches the current script's `Assets/` subdirectories first,
 //! then falls back to global `game_data/` directories.

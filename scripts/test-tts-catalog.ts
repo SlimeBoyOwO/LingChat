@@ -1,33 +1,23 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 
-const catalogModule = await import('../src/api/services/tts-catalog.ts')
-const { TTS_LOCAL_CATALOG, catalogContains, expectedExtension } = catalogModule
-
-assert.equal(catalogContains.id('deberta'), true)
-assert.equal(catalogContains.id('deberta-tokenizer'), true)
-assert.equal(catalogContains.id('ling-v2'), true)
-assert.equal(catalogContains.id('ling-v2-style'), true)
-
-assert.equal(catalogContains.id('tsukuyomi'), false)
-assert.equal(catalogContains.id('amitaro'), false)
-
-assert.equal(expectedExtension('deberta.onnx'), 'onnx')
-assert.equal(expectedExtension('tokenizer.json'), 'json')
-assert.equal(expectedExtension('style_vectors.json'), 'json')
-assert.equal(expectedExtension('sbv2api-model-Ling-v2-onnx.onnx'), 'onnx')
-
-const deberta = TTS_LOCAL_CATALOG.find((a) => a.id === 'deberta')
-assert.equal(deberta?.kind, 'bert')
-assert.equal(
-  deberta?.download_url,
-  'https://www.modelscope.cn/models/lingchat-research-studio/DeBERTa.onnx/resolve/master/deberta.onnx',
+const catalogSource = await readFile(
+  new URL('../src/api/services/tts-catalog.ts', import.meta.url),
+  'utf8',
+)
+const serviceSource = await readFile(
+  new URL('../src/api/services/tts-local.ts', import.meta.url),
+  'utf8',
 )
 
-const lingV2 = TTS_LOCAL_CATALOG.find((a) => a.id === 'ling-v2')
-assert.equal(lingV2?.kind, 'voice')
+assert.doesNotMatch(catalogSource, /TTS_LOCAL_CATALOG/)
+assert.doesNotMatch(catalogSource, /modelscope\.cn/)
+assert.doesNotMatch(catalogSource, /catalogContains/)
 
-const lingV2Style = TTS_LOCAL_CATALOG.find((a) => a.id === 'ling-v2-style')
-assert.equal(lingV2Style?.kind, 'style_vectors')
-assert.equal(lingV2Style?.voice_id, 'ling-v2')
+assert.match(
+  serviceSource,
+  /invoke<readonly CatalogAsset\[\]>\('tts_local_list_catalog'\)/,
+)
+assert.doesNotMatch(serviceSource, /export const CATALOG/)
 
-console.log('TTS catalog tests passed')
+console.log('TTS catalog single-source tests passed')

@@ -1,4 +1,4 @@
-//! 消息预处理器：对标 Python `MessageProcessor`。
+﻿//! 消息预处理器：对标 Python `MessageProcessor`。
 //!
 //! 关键能力：
 //! - `append_user_message`：给用户消息追加 `{系统提醒: ...}` 段（时间/桌面/大括号/Temp）。

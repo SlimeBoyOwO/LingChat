@@ -1,4 +1,4 @@
-//! 情绪分类器（ONNX 版）。移植自 Python `core/emotion/classifier.py`。
+﻿//! 情绪分类器（ONNX 版）。移植自 Python `core/emotion/classifier.py`。
 //!
 //! - 模型：BERT 字符级分词 + 线性分类头，最大 seq_len=128
 //! - 词表：`vocab.txt`（每行一 token，id 按行号计）

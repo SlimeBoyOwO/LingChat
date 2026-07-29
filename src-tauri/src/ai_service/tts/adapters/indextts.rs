@@ -1,4 +1,4 @@
-//! IndexTTS2 适配器，对应 `ling_chat/core/TTS/index_adpater.py`（仅非流式）。
+﻿//! IndexTTS2 适配器，对应 `ling_chat/core/TTS/index_adpater.py`（仅非流式）。
 
 use std::collections::HashMap;
 

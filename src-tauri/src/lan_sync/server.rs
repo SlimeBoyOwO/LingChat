@@ -1,4 +1,4 @@
-//! LAN 同步 HTTP 服务端。
+﻿//! LAN 同步 HTTP 服务端。
 //!
 //! 基于 axum 提供轻量 HTTP API：
 //! - GET  /health       — 健康检查

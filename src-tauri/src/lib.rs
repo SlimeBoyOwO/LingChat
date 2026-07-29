@@ -201,9 +201,12 @@ pub fn run() {
             tts_paths.ensure()
                 .map_err(|e| format!("LocalTtsPaths::ensure: {e}"))?;
             let local_state = ai_service::tts::local::LocalTtsState::new(tts_paths);
-            let app_config = config::AppConfig::load(&app.handle()).unwrap_or_default();
+            // `enable_local_tts` is stored directly under `features.enable_local_tts`
+            // (read by the frontend via `getEnvConfigByKey`); AppConfig does not own
+            // the field. Read it once here so the in-process engine starts in the
+            // user's chosen state.
             let local_tts_switch =
-                ai_service::tts::local::LocalTtsSwitch::new(app_config.enable_local_tts);
+                ai_service::tts::local::LocalTtsSwitch::new(load_enable_local_tts(&app.handle()));
             app.manage(local_tts_switch.clone());
             let local_engine = local_state.engine.clone();
             let local_paths = local_state.paths.clone();
@@ -594,4 +597,20 @@ pub fn run() {
 #[tauri::command]
 fn exit_app(app: tauri::AppHandle) {
     app.exit(0);
+}
+
+/// Reads `features.enable_local_tts` directly from the settings store.
+///
+/// The frontend toggles this key from `SettingsTts.vue` via
+/// `saveEnvConfigSettings`; AppConfig intentionally does not own the field
+/// because it is a runtime-only gate, not a structural setting. Defaults to
+/// `false` when the key is missing so first-launch behaviour matches the
+/// global "cloud TTS" assumption.
+fn load_enable_local_tts(app: &tauri::AppHandle) -> bool {
+    use tauri_plugin_store::StoreExt;
+    app.store(config::STORE_FILE)
+        .ok()
+        .and_then(|store| store.get("features.enable_local_tts"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
 }
