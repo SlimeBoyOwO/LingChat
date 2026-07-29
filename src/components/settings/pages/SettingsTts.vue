@@ -325,6 +325,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import type { DialogFilter } from '@tauri-apps/plugin-dialog'
 import {
@@ -379,6 +380,9 @@ const downloadingId = ref<string | null>(null)
 const localTtsEnabled = ref(false)
 const savingLocalTts = ref(false)
 let unlistenProgress: (() => void) | null = null
+let unlistenInstallComplete: UnlistenFn | null = null
+let unlistenDownloadComplete: UnlistenFn | null = null
+let componentMounted = false
 
 type FilterIntent = 'deberta' | 'tokenizer' | 'voice' | 'style_vectors'
 
@@ -661,6 +665,23 @@ watch(
 )
 
 onMounted(async () => {
+  componentMounted = true
+  const [installComplete, downloadComplete] = await Promise.all([
+    listen('tts://install-complete', () => {
+      void refreshAll()
+    }),
+    listen('tts://download-complete', () => {
+      void refreshAll()
+    }),
+  ])
+  if (!componentMounted) {
+    installComplete()
+    downloadComplete()
+    return
+  }
+  unlistenInstallComplete = installComplete
+  unlistenDownloadComplete = downloadComplete
+
   await loadLocalTtsSwitch()
   await refreshAll()
   unlistenProgress = TtsLocal.onDownloadProgress((progress) => {
@@ -672,9 +693,14 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  componentMounted = false
   if (audioUrl) URL.revokeObjectURL(audioUrl)
   unlistenProgress?.()
   unlistenProgress = null
+  unlistenInstallComplete?.()
+  unlistenInstallComplete = null
+  unlistenDownloadComplete?.()
+  unlistenDownloadComplete = null
 })
 
 async function triggerDownload(assetId: string): Promise<void> {

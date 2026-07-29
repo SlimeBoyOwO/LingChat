@@ -1,4 +1,4 @@
-//! Platform-specific bridge for preparing an import source path for local TTS.
+﻿//! Platform-specific bridge for preparing an import source path for local TTS.
 //!
 //! Mirrors the wrapper that lived in `crate::api::role_archive` before the
 //! role-archive refactor was dropped from this branch. On desktop the user's
@@ -22,30 +22,42 @@ pub async fn prepare_file_import_source(
     if path.starts_with("content://") {
         #[cfg(target_os = "android")]
         {
-        use tauri_plugin_android_fs::{AndroidFsExt, FsUri};
-        let cache_dir = app.path().app_cache_dir().map_err(|e| format!("cache dir: {e}"))?;
-        let imports_root = cache_dir.join("imports");
-        tokio::fs::create_dir_all(&imports_root).await.map_err(|e| format!("create imports dir: {e}"))?;
-        let tmp_id = uuid::Uuid::new_v4().to_string();
-        let src_uri = FsUri::from_uri(path.to_string());
+            use tauri_plugin_android_fs::{AndroidFsExt, FsUri};
+            let cache_dir = app
+                .path()
+                .app_cache_dir()
+                .map_err(|e| format!("cache dir: {e}"))?;
+            let imports_root = cache_dir.join("imports");
+            tokio::fs::create_dir_all(&imports_root)
+                .await
+                .map_err(|e| format!("create imports dir: {e}"))?;
+            let tmp_id = uuid::Uuid::new_v4().to_string();
+            let src_uri = FsUri::from_uri(path.to_string());
 
-        // Preserve the original filename (esp. extension) so
-        // `archive::inspect_package` can detect the file kind. Android SAF
-        // returns content:// URIs without usable path info; we ask
-        // tauri-plugin-android-fs for OpenableColumns.DISPLAY_NAME and fall
-        // back to the URI's last percent-decoded path segment.
-        let display = app
-            .android_fs_async()
-            .get_name_or_last_path_segment(&src_uri)
-            .await;
-        let suffix = sanitize_staged_filename(&display)
-            .unwrap_or_else(|| "import.bin".to_string());
+            // Preserve the original filename (esp. extension) so
+            // `archive::inspect_package` can detect the file kind. Android SAF
+            // returns content:// URIs without usable path info; we ask
+            // tauri-plugin-android-fs for OpenableColumns.DISPLAY_NAME and fall
+            // back to the URI's last percent-decoded path segment.
+            let display = app
+                .android_fs_async()
+                .get_name_or_last_path_segment(&src_uri)
+                .await;
+            let suffix =
+                sanitize_staged_filename(&display).unwrap_or_else(|| "import.bin".to_string());
 
-        let local_path = imports_root.join(format!("tts_import_saf_{tmp_id}_{suffix}"));
-        let local_uri = FsUri::from_path(&local_path);
-        tracing::info!("[tts_local] prepare_file_import_source SAF: src={}, local={}", path, local_path.display());
-        app.android_fs_async().copy(&src_uri, &local_uri).await.map_err(|e| format!("SAF copy to local cache: {e}"))?;
-        return Ok((local_path, true));
+            let local_path = imports_root.join(format!("tts_import_saf_{tmp_id}_{suffix}"));
+            let local_uri = FsUri::from_path(&local_path);
+            tracing::info!(
+                "[tts_local] prepare_file_import_source SAF: src={}, local={}",
+                path,
+                local_path.display()
+            );
+            app.android_fs_async()
+                .copy(&src_uri, &local_uri)
+                .await
+                .map_err(|e| format!("SAF copy to local cache: {e}"))?;
+            return Ok((local_path, true));
         }
 
         #[cfg(not(target_os = "android"))]
@@ -70,11 +82,13 @@ fn sanitize_staged_filename(raw: &str) -> Option<String> {
     let cleaned: String = basename
         .chars()
         .filter(|c| {
-            !c.is_control()
-                && !matches!(*c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
+            !c.is_control() && !matches!(*c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
         })
         .collect();
-    let trimmed = cleaned.trim().trim_matches('.').to_string();
+    let trimmed = cleaned
+        .trim()
+        .trim_matches(|c| matches!(c, '.' | '\u{ff0e}' | '\u{2024}' | '\u{fe52}'))
+        .to_string();
     if trimmed.is_empty() {
         None
     } else {
@@ -89,12 +103,18 @@ mod tests {
     #[test]
     fn strips_path_traversal() {
         assert_eq!(sanitize_staged_filename("../etc/passwd").unwrap(), "passwd");
-        assert_eq!(sanitize_staged_filename("..\\evil.onnx").unwrap(), "evil.onnx");
+        assert_eq!(
+            sanitize_staged_filename("..\\evil.onnx").unwrap(),
+            "evil.onnx"
+        );
     }
 
     #[test]
     fn strips_control_chars() {
-        assert_eq!(sanitize_staged_filename("\nvoice.onnx\r").unwrap(), "voice.onnx");
+        assert_eq!(
+            sanitize_staged_filename("\nvoice.onnx\r").unwrap(),
+            "voice.onnx"
+        );
     }
 
     #[test]
@@ -111,10 +131,38 @@ mod tests {
     }
 
     #[test]
+    fn rejects_unicode_dot_only_names() {
+        assert!(sanitize_staged_filename("．．").is_none());
+        assert!(sanitize_staged_filename("․․").is_none());
+        assert!(sanitize_staged_filename("﹒﹒").is_none());
+    }
+
+    #[test]
+    fn strips_unicode_dot_traversal_prefixes() {
+        assert_eq!(
+            sanitize_staged_filename("．．voice.onnx").unwrap(),
+            "voice.onnx"
+        );
+        assert_eq!(
+            sanitize_staged_filename("․․style_vectors.json").unwrap(),
+            "style_vectors.json"
+        );
+    }
+
+    #[test]
     fn keeps_common_extensions() {
-        assert_eq!(sanitize_staged_filename("voice.onnx").unwrap(), "voice.onnx");
-        assert_eq!(sanitize_staged_filename("MyModel.sbv2").unwrap(), "MyModel.sbv2");
-        assert_eq!(sanitize_staged_filename("archive.zip").unwrap(), "archive.zip");
+        assert_eq!(
+            sanitize_staged_filename("voice.onnx").unwrap(),
+            "voice.onnx"
+        );
+        assert_eq!(
+            sanitize_staged_filename("MyModel.sbv2").unwrap(),
+            "MyModel.sbv2"
+        );
+        assert_eq!(
+            sanitize_staged_filename("archive.zip").unwrap(),
+            "archive.zip"
+        );
         assert_eq!(sanitize_staged_filename("voice.7z").unwrap(), "voice.7z");
     }
 }

@@ -312,10 +312,10 @@ impl VoiceMaker {
                 self.provider.sbv2_local = Some(Arc::new(LocalTtsAdapter::with_params(
                     engine,
                     voice_id,
-                    speaker_id,
                     style_id,
-                    length_scale,
+                    speaker_id,
                     sdp_ratio,
+                    length_scale,
                     paths,
                 )));
             }

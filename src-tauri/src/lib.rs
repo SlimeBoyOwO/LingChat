@@ -12,6 +12,7 @@ mod resource_sync;
 pub mod utils;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use chrono::Local;
 use sea_orm::DatabaseConnection;
@@ -361,15 +362,26 @@ pub fn run() {
                 if preload_engine.is_ready().await {
                     return;
                 }
-                match preload_engine.init(&preload_paths).await {
-                    Ok(()) => {
+                match tokio::time::timeout(
+                    Duration::from_secs(15),
+                    preload_engine.init(&preload_paths),
+                )
+                .await
+                {
+                    Ok(Ok(())) => {
                         tracing::info!(target: "tts_local", "deberta preloaded in background");
                         let _ = preload.emit("tts://engine-ready", ());
                     }
-                    Err(e) => {
+                    Ok(Err(e)) => {
                         tracing::warn!(
                             target: "tts_local",
                             "deberta preload failed (first synthesize will retry): {e}"
+                        );
+                    }
+                    Err(_) => {
+                        tracing::warn!(
+                            target: "tts_local",
+                            "deberta preload timed out after 15 seconds (first synthesize will retry)"
                         );
                     }
                 }

@@ -198,7 +198,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { getRoleSettings, updateRoleSettings } from '../../../api/services/character'
 import { Icon } from '../../base'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
@@ -621,6 +621,9 @@ const removeClothesItem = (idx: number) => {
 watch(
   () => props.visible,
   async (newVal) => {
+    if (!newVal) {
+      clearRealtimeSaveTimer()
+    }
     if (newVal && props.roleId) {
       loading.value = true
       try {
@@ -652,24 +655,42 @@ watch(
   },
 )
 
+const REALTIME_SAVE_DEBOUNCE_MS = 300
+let realtimeSaveTimer: ReturnType<typeof setTimeout> | null = null
+
+const clearRealtimeSaveTimer = () => {
+  if (realtimeSaveTimer !== null) {
+    clearTimeout(realtimeSaveTimer)
+    realtimeSaveTimer = null
+  }
+}
+
 const handleClose = () => {
+  clearRealtimeSaveTimer()
   emit('close')
 }
 
-const handleFieldChange = async (field: FieldSchema) => {
+const handleFieldChange = (field: FieldSchema) => {
   if (!field.realtime || !props.roleId) return
 
-  try {
-    // 后端会同时保存 settings.yml 并重建已加载角色的 VoiceMaker。
-    await updateRoleSettings(props.roleId, localSettings.value)
-  } catch (e) {
-    console.error(`实时更新 ${field.key} 失败:`, e)
-    await dialogStore.alert(`实时更新 ${field.label} 失败，请检查控制台日志`)
-  }
+  const roleId = props.roleId
+  clearRealtimeSaveTimer()
+  realtimeSaveTimer = setTimeout(async () => {
+    realtimeSaveTimer = null
+    if (!props.visible || props.roleId !== roleId) return
+    try {
+      // 后端会同时保存 settings.yml 并重建已加载角色的 VoiceMaker。
+      await updateRoleSettings(roleId, localSettings.value)
+    } catch (e) {
+      console.error(`实时更新 ${field.key} 失败:`, e)
+      await dialogStore.alert(`实时更新 ${field.label} 失败，请检查控制台日志`)
+    }
+  }, REALTIME_SAVE_DEBOUNCE_MS)
 }
 
 const saveSettings = async () => {
   if (!props.roleId) return
+  clearRealtimeSaveTimer()
   saving.value = true
   try {
     await updateRoleSettings(props.roleId, localSettings.value)
@@ -682,6 +703,8 @@ const saveSettings = async () => {
     saving.value = false
   }
 }
+
+onUnmounted(clearRealtimeSaveTimer)
 </script>
 
 <style scoped>

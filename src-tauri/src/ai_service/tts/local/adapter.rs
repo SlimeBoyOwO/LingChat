@@ -8,16 +8,16 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use serde_json::{json, Value as JsonValue};
 
-use sbv2_local_tts::{LocalTtsEngine, LocalTtsPaths, SynthesizeRequest};
 use crate::ai_service::tts::provider::TtsAdapter;
+use sbv2_local_tts::{LocalTtsEngine, LocalTtsPaths, SynthesizeRequest};
 
 pub struct LocalTtsAdapter {
     engine: Arc<LocalTtsEngine>,
     voice_id: String,
-    speaker_id: i64,
     style_id: i32,
-    length_scale: f32,
+    speaker_id: i64,
     sdp_ratio: f32,
+    length_scale: f32,
     paths: LocalTtsPaths,
     /// Marks whether DeBerta holder + target voice have been wired in.
     /// Lazy because `set_tts_settings` is sync while `init`/`load_voice`
@@ -36,19 +36,19 @@ impl LocalTtsAdapter {
     pub fn with_params(
         engine: Arc<LocalTtsEngine>,
         voice_id: String,
-        speaker_id: i64,
         style_id: i32,
-        length_scale: f32,
+        speaker_id: i64,
         sdp_ratio: f32,
+        length_scale: f32,
         paths: LocalTtsPaths,
     ) -> Self {
         Self {
             engine,
             voice_id,
-            speaker_id,
             style_id,
-            length_scale,
+            speaker_id,
             sdp_ratio,
+            length_scale,
             paths,
             ready: AtomicBool::new(false),
             bootstrap_lock: tokio::sync::Mutex::new(()),

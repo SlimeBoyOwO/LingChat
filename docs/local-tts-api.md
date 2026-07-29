@@ -323,6 +323,15 @@ await TtsLocal.deleteVoice('ling-v2')
 await TtsLocal.importStyleVectors('ling-v2', selectedJsonPath)
 ```
 
+直接调用 Tauri IPC 时也统一使用 `voiceId`，不要传 Rust 内部参数名 `voice_id`：
+
+```ts
+await invoke('tts_local_import_style_vectors', {
+  voiceId: 'ling-v2',
+  path: selectedJsonPath,
+})
+```
+
 前置条件：
 
 - `voices/<voice_id>` 已存在；
@@ -373,7 +382,7 @@ audio.addEventListener('ended', () => URL.revokeObjectURL(url), { once: true })
 - `style_weight = 1.0`
 - `split_sentences = true`
 
-返回值是 WAV 文件字节。Tauri 将 Rust `Vec<u8>` 映射为前端 `number[]`。
+返回值是 WAV 文件字节。后端使用 Tauri Raw IPC 响应，前端直接收到 `Uint8Array`。
 
 试听要求引擎已经初始化。若 DeBERTa 文件刚导入，导入命令会尝试初始化；应用启动时若检测到文件，则在游戏主体初始化后后台预加载。
 
@@ -381,7 +390,7 @@ audio.addEventListener('ended', () => URL.revokeObjectURL(url), { once: true })
 
 ### 6.1 `tts://download-progress`
 
-每当下载整数百分比发生变化时发送：
+下载期间每间隔 200 ms 或新增 1 MiB 数据时发送一次；成功完成后会强制发送 `percent: 100` 的最终事件：
 
 ```ts
 const unsubscribe = TtsLocal.onDownloadProgress((progress) => {
