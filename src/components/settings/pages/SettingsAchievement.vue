@@ -1,6 +1,6 @@
 <template>
   <MenuPage>
-    <MenuItem title="成就列表（实验）">
+    <MenuItem :title="$t('settings.achievement.title')">
       <template #header>
         <Award :size="20" />
       </template>
@@ -47,7 +47,7 @@
                 class="text-[10px] px-2 py-0.5 rounded-full border backdrop-blur-md shadow-sm font-medium"
                 :class="getBadgeClass(achievement)"
               >
-                {{ achievement.type === 'rare' ? '稀有' : '普通' }}
+                {{ achievement.type === 'rare' ? $t('settings.achievement.rare') : $t('settings.achievement.normal') }}
               </span>
             </div>
 
