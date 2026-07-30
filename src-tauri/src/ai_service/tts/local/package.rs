@@ -1,9 +1,12 @@
 // Inspect + install model packages. Supports raw SBV2/ONNX files and zip/7z
-// archives containing those files. Reuses `utils::archive` for extraction
-// when needed.
+// archives containing those files. Extraction delegates to the shared
+// `crate::utils::archive` module for safety (zip-bomb protection, path
+// sanitization, cancellation).
 
 use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
+
+use super::paths::LocalTtsPaths;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -118,9 +121,6 @@ fn scan_archive_for_model(
                 sevenz_rust2::Password::empty(),
             )
             .map_err(|e| format!("7z: {e}"))?;
-            // Cheap entry-name scan via the in-memory archive header; we
-            // don't decompress here. Matches the zip path's read-only
-            // iteration.
             let mut found: Option<String> = None;
             for entry in archive.archive().files.iter() {
                 let n = entry.name().to_lowercase();
@@ -136,58 +136,43 @@ fn scan_archive_for_model(
     found.ok_or_else(|| "archive does not contain a .sbv2 or .onnx file".to_string())
 }
 
-/// Install inspected package into the voice directory. `voice_id` is
-/// required for raw files; for archives the inner model file is extracted
-/// into `dst/<voice_id>/`.
+/// Install inspected package into the voice directory.
+/// Uses the shared archive extraction utilities from `crate::utils::archive`
+/// which include zip-bomb protection, path sanitization, and cancellation support.
 pub fn install_inspected(
     inspected: &InspectedPackage,
     src: &Path,
-    paths: &super::paths::LocalTtsPaths,
+    paths: &LocalTtsPaths,
     voice_id: &str,
 ) -> std::result::Result<PathBuf, String> {
     let dst = paths.voice_dir(voice_id);
     std::fs::create_dir_all(&dst).map_err(|e| format!("create voice dir: {e}"))?;
 
     match inspected.kind {
-        PackageKind::RawSbv2 => {
-            let target = dst.join("model.sbv2");
-            std::fs::copy(src, &target).map_err(|e| format!("copy sbv2: {e}"))?;
-            Ok(target)
-        }
-        PackageKind::RawOnnx => {
-            let target = dst.join("model.onnx");
-            std::fs::copy(src, &target).map_err(|e| format!("copy onnx: {e}"))?;
-            Ok(target)
-        }
+        PackageKind::RawSbv2 => crate::utils::fs::copy_with_parent(src, &dst.join("model.sbv2")),
+        PackageKind::RawOnnx => crate::utils::fs::copy_with_parent(src, &dst.join("model.onnx")),
         PackageKind::Zip | PackageKind::SevenZ => {
-            let token =
-                std::sync::Arc::new(tokio_util::sync::CancellationToken::new());
-            let on_entry = |_evt: super::zip_extract::EntryEvent| {};
+            let token = std::sync::Arc::new(tokio_util::sync::CancellationToken::new());
             let src_buf = src.to_path_buf();
             let dst_buf = dst.clone();
-            let token_clone = token.clone();
             let kind = inspected.kind;
-            let _result: super::zip_extract::ExtractSummary =
+            let result: Result<crate::utils::archive::ExtractSummary, crate::utils::archive::ArchiveError> =
                 tokio::task::block_in_place(|| match kind {
-                    PackageKind::Zip => {
-                        super::zip_extract::extract_zip(
-                            &src_buf,
-                            &dst_buf,
-                            &token_clone,
-                            on_entry,
-                        )
-                    }
-                    PackageKind::SevenZ => {
-                        super::zip_extract::extract_sevenz(
-                            &src_buf,
-                            &dst_buf,
-                            &token_clone,
-                            on_entry,
-                        )
-                    }
+                    PackageKind::Zip => crate::utils::archive::extract_zip(
+                        &src_buf,
+                        &dst_buf,
+                        &token,
+                        &|_| {},
+                    ),
+                    PackageKind::SevenZ => crate::utils::archive::extract_sevenz(
+                        &src_buf,
+                        &dst_buf,
+                        &token,
+                        &|_| {},
+                    ),
                     _ => unreachable!(),
-                })
-                .map_err(|e| format!("extract: {e}"))?;
+                });
+            result.map_err(|e| format!("extract: {e}"))?;
             for candidate in ["model.sbv2", "model.onnx"] {
                 let p = dst.join(candidate);
                 if p.exists() {

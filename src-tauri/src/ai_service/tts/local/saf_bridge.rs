@@ -1,9 +1,8 @@
 //! Platform-specific bridge for preparing an import source path for local TTS.
 //!
-//! Mirrors the wrapper that lived in `crate::api::role_archive` before the
-//! role-archive refactor was dropped from this branch. On desktop the user's
-//! path is returned as-is; on Android we transparently stage a
-//! `content://`-prefixed path into the app cache.
+//! On desktop the user's path is returned as-is; on Android we transparently
+//! stage a `content://`-prefixed path into the app cache.
+
 use std::path::PathBuf;
 use tauri::AppHandle;
 
@@ -14,7 +13,7 @@ use tauri::Manager;
 ///
 /// Returns `(path_to_import_from, should_cleanup_after_import)`. When
 /// `should_cleanup_after_import` is `true` the caller MUST delete the staged
-/// file once it has finished processing, to avoid leaking the cache.
+/// file once it has finished processing.
 pub async fn prepare_file_import_source(
     app: &AppHandle,
     path: &str,
@@ -34,11 +33,6 @@ pub async fn prepare_file_import_source(
             let tmp_id = uuid::Uuid::new_v4().to_string();
             let src_uri = FsUri::from_uri(path.to_string());
 
-            // Preserve the original filename (esp. extension) so
-            // `archive::inspect_package` can detect the file kind. Android SAF
-            // returns content:// URIs without usable path info; we ask
-            // tauri-plugin-android-fs for OpenableColumns.DISPLAY_NAME and fall
-            // back to the URI's last percent-decoded path segment.
             let display = app
                 .android_fs_async()
                 .get_name_or_last_path_segment(&src_uri)

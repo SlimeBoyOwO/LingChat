@@ -49,7 +49,7 @@ uuid = { version = "1", features = ["v4"] }
 async-trait = "0.1"
 ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "ndarray", "download-binaries"] }
 
-sbv2-local-tts = { path = "crates/sbv2-local-tts" }
+sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = ["std"] }
 once_cell = "1"
 base64 = "0.22"
 rand = "0.8"

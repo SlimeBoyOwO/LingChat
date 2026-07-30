@@ -36,24 +36,12 @@ export function catalogRowState(input: CatalogRowInputs): CatalogState {
     return 'downloading'
   }
 
-  const voiceList = voices ?? []
   if (asset.kind === 'bert') {
-    if (asset.id === 'deberta' || asset.id === 'deberta-tokenizer') {
-      return status?.deberta_installed ? 'installed' : 'missing'
-    }
-    return 'missing'
+    return status?.deberta_installed ? 'installed' : 'missing'
   }
   if (asset.kind === 'voice') {
-    const voice = findVoice(voiceList, asset.id)
-    if (!voice) return 'missing'
-    return 'installed'
-  }
-  if (asset.kind === 'style_vectors') {
-    const voiceId = asset.voice_id
-    if (!voiceId) return 'missing'
-    const voice = findVoice(voiceList, voiceId)
-    if (!voice) return 'missing'
-    return voice.has_style_vectors ? 'installed' : 'missing'
+    const voice = findVoice(voices ?? [], asset.id)
+    return voice ? 'installed' : 'missing'
   }
   return 'missing'
 }

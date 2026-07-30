@@ -51,8 +51,8 @@ export function listCatalog(): Promise<readonly CatalogAsset[]> {
   return invoke<readonly CatalogAsset[]>('tts_local_list_catalog')
 }
 
-export function download(assetId: string): Promise<TtsLocalImportResult> {
-  return invoke<TtsLocalImportResult>('tts_local_download', { assetId })
+export function download(assetId: string): Promise<TtsLocalImportResult[]> {
+  return invoke<TtsLocalImportResult[]>('tts_local_download', { assetId })
 }
 
 

@@ -107,21 +107,13 @@ impl LocalTtsEngine {
         };
 
         let vid = voice_id.to_string();
-        // Hold the serialize guard for the entire take-out + run +
-        // put-back window so concurrent fragments can't observe the
-        // empty inner cell mid-flight.
         let _serialize_guard = self.serialize.lock().await;
 
-        // Take the holder out of the mutex, run the load on a blocking
-        // thread, then put it back. ort::Session is !Send + !Sync, so we
-        // can't hold the guard across an await on spawn_blocking.
         let mut guard = self.holder.lock().await;
         let mut holder = guard.take().ok_or("engine not initialized")?;
         drop(guard);
 
         let vid_for_closure = vid.clone();
-        // The closure owns holder, so we ship it back out alongside the
-        // Result so we can reinsert it into the mutex below.
         let (holder, load_result) = tokio::task::spawn_blocking(move || {
             let r = match style_vectors {
                 Some(style_bytes) => holder.load(vid_for_closure, style_bytes, model_bytes),
@@ -149,7 +141,6 @@ impl LocalTtsEngine {
         let voice_id = req.voice_id.clone();
         let text = req.text.clone();
 
-        // Same serialisation rationale as `load_voice` above.
         let _serialize_guard = self.serialize.lock().await;
 
         let mut guard = self.holder.lock().await;
@@ -173,11 +164,6 @@ impl LocalTtsEngine {
     }
 }
 
-// Manual placeholder Debug: `TTSModelHolder` from sbv2_core owns ONNX
-// `Session`s (no `Debug`), so a derived impl is not possible. We emit
-// just the type name so the `Debug` derive on `VoiceMaker` keeps
-// compiling. Fields stay hidden — anything sensitive is already opaque
-// via the ONNX session.
 impl std::fmt::Debug for LocalTtsEngine {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LocalTtsEngine").finish_non_exhaustive()
@@ -187,7 +173,7 @@ impl std::fmt::Debug for LocalTtsEngine {
 #[cfg(test)]
 mod tests {
     use super::{LocalTtsEngine, SynthesizeRequest};
-    use crate::paths::LocalTtsPaths;
+    use crate::ai_service::tts::local::paths::LocalTtsPaths;
     use std::path::{Path, PathBuf};
 
     fn fixture_voice_id(fixture_root: &Path) -> String {

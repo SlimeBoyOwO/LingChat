@@ -9,4 +9,6 @@ export interface CatalogAsset {
   download_url: string
   source: string
   voice_id?: string
+  /** 下载此资产时自动连带下载的子资产 ID */
+  bundled_assets?: string[]
 }

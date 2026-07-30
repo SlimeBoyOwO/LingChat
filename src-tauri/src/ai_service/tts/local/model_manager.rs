@@ -13,9 +13,6 @@ pub struct VoiceRecord {
     pub language: Option<String>,
     pub display_name: Option<String>,
     pub source: Option<String>,
-    /// Whether the voice has its style vectors available alongside the
-    /// model. `sbv2` files embed them internally (always true); `onnx`
-    /// voices need a sibling `style_vectors.json`.
     pub has_style_vectors: bool,
 }
 
@@ -107,17 +104,8 @@ pub fn delete_voice(
     if !p.exists() {
         return Ok(());
     }
-    let canon_voices = paths
-        .voices
-        .canonicalize()
-        .map_err(|e| format!("canon voices: {e}"))?;
-    let canon_p = p
-        .canonicalize()
-        .map_err(|e| format!("canon voice: {e}"))?;
-    if !canon_p.starts_with(&canon_voices) {
-        return Err("invalid voice id (path escapes voices dir)".into());
-    }
-    std::fs::remove_dir_all(&canon_p).map_err(|e| format!("remove_dir_all: {e}"))
+    crate::api::validate_path_in_base(&p, &paths.voices)?;
+    std::fs::remove_dir_all(&p).map_err(|e| format!("remove_dir_all: {e}"))
 }
 
 fn validate_voice_id(id: &str) -> std::result::Result<(), String> {

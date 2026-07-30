@@ -1,5 +1,4 @@
-// Curated asset catalog. URLs are reference only - user triggers downloads
-// explicitly from the UI.
+// Curated asset catalog for local TTS models.
 
 use serde::{Deserialize, Serialize};
 
@@ -12,11 +11,11 @@ pub struct AssetEntry {
     pub size_bytes: u64,
     pub download_url: String,
     pub source: String,
-    /// Required when `kind == StyleVectors`; identifies the parent voice
-    /// directory under `<paths.voices>/<voice_id>/` that the downloaded
-    /// `style_vectors.json` should land in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub voice_id: Option<String>,
+    /// 下载此资产时一并下载的其他资产 ID（如 deberta → tokenizer，ling-v2 → style_vectors）。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bundled_assets: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -27,8 +26,6 @@ pub enum AssetKind {
     StyleVectors,
 }
 
-// Hardcoded catalog. Real project should seed from JSON; kept inline to
-// avoid an extra bundled file.
 pub fn catalog() -> Vec<AssetEntry> {
     vec![
         AssetEntry {
@@ -40,6 +37,7 @@ pub fn catalog() -> Vec<AssetEntry> {
             download_url: "https://www.modelscope.cn/models/lingchat-research-studio/DeBERTa.onnx/resolve/master/deberta.onnx".into(),
             source: "lingchat-research-studio/DeBERTa.onnx".into(),
             voice_id: None,
+            bundled_assets: vec!["deberta-tokenizer".into()],
         },
         AssetEntry {
             id: "deberta-tokenizer".into(),
@@ -50,6 +48,7 @@ pub fn catalog() -> Vec<AssetEntry> {
             download_url: "https://www.modelscope.cn/models/lingchat-research-studio/DeBERTa.onnx/resolve/master/tokenizer.json".into(),
             source: "lingchat-research-studio/DeBERTa.onnx".into(),
             voice_id: None,
+            bundled_assets: vec![],
         },
         AssetEntry {
             id: "ling-v2".into(),
@@ -60,6 +59,7 @@ pub fn catalog() -> Vec<AssetEntry> {
             download_url: "https://www.modelscope.cn/models/lingchat-research-studio/sbv2api-model-Ling-v2-onnx/resolve/master/sbv2api-model-Ling-v2-onnx.onnx".into(),
             source: "lingchat-research-studio/sbv2api-model-Ling-v2-onnx".into(),
             voice_id: None,
+            bundled_assets: vec!["ling-v2-style".into()],
         },
         AssetEntry {
             id: "ling-v2-style".into(),
@@ -70,6 +70,7 @@ pub fn catalog() -> Vec<AssetEntry> {
             download_url: "https://www.modelscope.cn/models/lingchat-research-studio/sbv2api-model-Ling-v2-onnx/resolve/master/style_vectors.json".into(),
             source: "lingchat-research-studio/sbv2api-model-Ling-v2-onnx".into(),
             voice_id: Some("ling-v2".into()),
+            bundled_assets: vec![],
         },
     ]
 }
@@ -150,6 +151,15 @@ mod tests {
             download_url: format!("https://example.com/{url_suffix}"),
             source: "test".into(),
             voice_id: None,
+            bundled_assets: vec![],
         }
+    }
+
+    #[test]
+    fn deberta_and_ling_v2_have_bundled_companions() {
+        let deberta = find("deberta").unwrap();
+        assert_eq!(deberta.bundled_assets, vec!["deberta-tokenizer"]);
+        let ling = find("ling-v2").unwrap();
+        assert_eq!(ling.bundled_assets, vec!["ling-v2-style"]);
     }
 }
