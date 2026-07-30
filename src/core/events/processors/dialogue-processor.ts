@@ -2,7 +2,7 @@ import type { IEventProcessor } from '../event-processor'
 import type { ScriptDialogueEvent } from '../../../types'
 import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
-import { isJaLocale } from '@/locales'
+import { isJaLocale, hkify } from '@/locales'
 
 export default class DialogueProcessor implements IEventProcessor {
   canHandle(eventType: string): boolean {
@@ -26,8 +26,8 @@ export default class DialogueProcessor implements IEventProcessor {
     const displayName = event.displayName ? event.displayName : role.roleName
     const displaySubtitle = event.displaySubtitle ? event.displaySubtitle : role.roleSubTitle
 
-    // 日文界面且存在日语译文时，当前台词直接显示日语译文（无译文回退中文）
-    const displayLine = isJaLocale() && event.ttsText ? event.ttsText : event.message || ''
+    // 日文界面且存在日语译文时显示日语译文；繁体（香港）界面下对话转繁体显示
+    const displayLine = hkify(isJaLocale() && event.ttsText ? event.ttsText : event.message || '')
     gameStore.currentLine = displayLine
     uiStore.showCharacterMotionText = event.motionText || ''
 

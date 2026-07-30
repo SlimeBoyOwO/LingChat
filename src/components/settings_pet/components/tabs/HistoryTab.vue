@@ -185,6 +185,7 @@ import { useDialogStore } from '../../../../stores/modules/ui/dialog'
 import { useUIStore } from '../../../../stores/modules/ui/ui'
 import { getVoiceAudio } from '@/api/services/game-info'
 import { invoke } from '@tauri-apps/api/core'
+import { hkify } from '@/locales'
 import type { GameLineInit } from '@/api/services/game-info'
 
 // --- Props ---
@@ -270,11 +271,11 @@ const groupedHistory = computed<HistoryBlock[]>(() => {
           ? gameStore.userName || gameStore.mainRole?.roleName || t('pet.history.you')
           : t('pet.history.mysteryVoice'))
 
-    // 日文界面且存在日语译文时，显示日语译文（无译文回退中文原文）
+    // 日文界面且存在日语译文时显示日语译文；繁体（香港）界面下转繁体显示
     const segments =
       locale.value === 'ja' && msg.ttsText
         ? [{ type: 'dialogue' as const, text: msg.ttsText }]
-        : parseSegments(msg.content, msg.motionText, isNarration)
+        : parseSegments(hkify(msg.content), hkify(msg.motionText), isNarration)
 
     const entry: LineEntry = {
       segments,

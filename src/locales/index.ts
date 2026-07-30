@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { createI18n } from 'vue-i18n'
+import OpenCC from 'opencc-js'
 import { useSettingsStore } from '@/stores/modules/settings'
 import zhCN from './zh-CN'
 import zhHK from './zh-HK'
@@ -101,4 +102,13 @@ export function setLocale(locale: AppLocale) {
 /** 当前是否为日文界面（对话内容显示日语译文的开关） */
 export function isJaLocale(): boolean {
   return globalLocale.value === 'ja'
+}
+
+/** 简→繁（港）转换器：繁体（香港）界面下把对话内容转繁体显示（仅显示层，不改数据） */
+const toHk = OpenCC.Converter({ from: 'cn', to: 'hk' })
+
+/** 繁体（香港）界面下将文本转为繁体；其他界面或空文本原样返回 */
+export function hkify<T extends string | undefined>(text: T): T {
+  if (!text || globalLocale.value !== 'zh-HK') return text
+  return toHk(text) as T
 }

@@ -41,6 +41,9 @@ importers:
       lucide-vue-next:
         specifier: ^1.0.0
         version: 1.0.0(vue@3.5.34(typescript@5.6.3))
+      opencc-js:
+        specifier: ^1.4.1
+        version: 1.4.1
       pinia:
         specifier: ^3.0.4
         version: 3.0.4(typescript@5.6.3)(vue@3.5.34(typescript@5.6.3))
@@ -69,9 +72,6 @@ importers:
       '@vitejs/plugin-vue':
         specifier: ^5.2.1
         version: 5.2.4(vite@6.4.2(@types/node@25.7.0)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.0))(vue@3.5.34(typescript@5.6.3))
-      opencc-js:
-        specifier: ^1.4.1
-        version: 1.4.1
       prettier:
         specifier: ^3.8.3
         version: 3.8.3
