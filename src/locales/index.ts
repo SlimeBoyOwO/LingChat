@@ -5,12 +5,14 @@ import { useSettingsStore } from '@/stores/modules/settings'
 import zhCN from './zh-CN'
 import zhHK from './zh-HK'
 import ja from './ja'
+import en from './en'
 
 /** 支持的界面语言 */
 export const SUPPORTED_LOCALES = [
   { value: 'zh-CN', label: '中文' },
   { value: 'zh-HK', label: '繁體中文（香港）' },
   { value: 'ja', label: '日本語' },
+  { value: 'en', label: 'English' },
 ] as const
 
 export type AppLocale = (typeof SUPPORTED_LOCALES)[number]['value']
@@ -20,6 +22,7 @@ const BUNDLED: Record<AppLocale, Record<string, unknown>> = {
   'zh-CN': zhCN as Record<string, unknown>,
   'zh-HK': zhHK as Record<string, unknown>,
   ja: ja as Record<string, unknown>,
+  en: en as Record<string, unknown>,
 }
 
 /** 与 stores/plugins/persist.ts 一致的统一设置存储键 */
@@ -44,7 +47,12 @@ export const i18n = createI18n<[MessageSchema], AppLocale>({
   locale: detectLocale(),
   fallbackLocale: 'zh-CN',
   // 各语言词条以 zh-CN 为基准 schema；缺失键运行时经 fallbackLocale 回落中文
-  messages: { 'zh-CN': zhCN, 'zh-HK': zhHK as MessageSchema, ja: ja as MessageSchema },
+  messages: {
+    'zh-CN': zhCN,
+    'zh-HK': zhHK as MessageSchema,
+    ja: ja as MessageSchema,
+    en: en as MessageSchema,
+  },
 })
 
 /** 全局 composer 的 locale 引用（legacy:false 下运行时为可写 Ref） */
