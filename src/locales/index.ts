@@ -2,11 +2,13 @@ import { invoke } from '@tauri-apps/api/core'
 import { createI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/modules/settings'
 import zhCN from './zh-CN'
+import zhHK from './zh-HK'
 import ja from './ja'
 
 /** 支持的界面语言 */
 export const SUPPORTED_LOCALES = [
   { value: 'zh-CN', label: '中文' },
+  { value: 'zh-HK', label: '繁體中文（香港）' },
   { value: 'ja', label: '日本語' },
 ] as const
 
@@ -15,6 +17,7 @@ export type AppLocale = (typeof SUPPORTED_LOCALES)[number]['value']
 /** 内置词条（打包进前端，作为兜底与播种源） */
 const BUNDLED: Record<AppLocale, Record<string, unknown>> = {
   'zh-CN': zhCN as Record<string, unknown>,
+  'zh-HK': zhHK as Record<string, unknown>,
   ja: ja as Record<string, unknown>,
 }
 
@@ -26,7 +29,7 @@ function detectLocale(): AppLocale {
   try {
     const raw = localStorage.getItem(SETTINGS_STORAGE_KEY)
     const saved = raw ? (JSON.parse(raw)?.display?.locale as string | undefined) : undefined
-    if (saved === 'zh-CN' || saved === 'ja') return saved
+    if (SUPPORTED_LOCALES.some((l) => l.value === saved)) return saved as AppLocale
   } catch {
     /* 解析失败退回默认语言 */
   }
@@ -39,8 +42,8 @@ export const i18n = createI18n<[MessageSchema], AppLocale>({
   legacy: false,
   locale: detectLocale(),
   fallbackLocale: 'zh-CN',
-  // ja 词条由分批迁移逐步补齐，缺失键运行时经 fallbackLocale 回落中文
-  messages: { 'zh-CN': zhCN, ja: ja as MessageSchema },
+  // 各语言词条以 zh-CN 为基准 schema；缺失键运行时经 fallbackLocale 回落中文
+  messages: { 'zh-CN': zhCN, 'zh-HK': zhHK as MessageSchema, ja: ja as MessageSchema },
 })
 
 /** 全局 composer 的 locale 引用（legacy:false 下运行时为可写 Ref） */
