@@ -150,7 +150,7 @@ interface HistoryBlock {
 const gameStore = useGameStore()
 const uiStore = useUIStore()
 const dialogStore = useDialogStore()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const audioRef = ref<HTMLAudioElement>()
 const contentRef = ref<HTMLDivElement>()
 
@@ -206,7 +206,11 @@ const groupedHistory = computed<HistoryBlock[]>(() => {
           ? gameStore.userName || gameStore.mainRole?.roleName || t('settings.history.you')
           : t('settings.history.mysteryVoice'))
 
-    const segments = parseSegments(msg.content, msg.motionText, isNarration)
+    // 日文界面且存在日语译文时，显示日语译文（无译文回退中文原文）
+    const segments =
+      locale.value === 'ja' && msg.ttsText
+        ? [{ type: 'dialogue' as const, text: msg.ttsText }]
+        : parseSegments(msg.content, msg.motionText, isNarration)
 
     const entry: LineEntry = {
       segments,
@@ -302,6 +306,7 @@ async function handleBacktrack(messageSeq: number) {
           perceived_role_ids: l.perceived_role_ids,
           user_message_seq: l.user_message_seq,
           thinking: l.thinking ?? null,
+          tts_content: l.tts_content ?? null,
         }),
       ),
     )

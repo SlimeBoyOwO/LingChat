@@ -51,3 +51,8 @@ export function setLocale(locale: AppLocale) {
     console.warn('写入统一设置存储失败（非致命）:', e)
   }
 }
+
+/** 当前是否为日文界面（对话内容显示日语译文的开关） */
+export function isJaLocale(): boolean {
+  return globalLocale.value === 'ja'
+}
