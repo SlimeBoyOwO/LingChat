@@ -204,7 +204,7 @@ export default {
     reasonNewer: '更新',
   },
   pomodoro: {
-    title: '番茄钟(实验)',
+    title: '番茄钟',
     editName: '点击修改名称',
     cycleInfo: '第 {current} / {total} 轮',
     start: '开始',
@@ -217,6 +217,9 @@ export default {
     statusIdle: '空闲中',
     statusWorking: '专注中',
     statusBreaking: '休息中',
+    statusPaused: '已暂停',
+    statusCompleted: '已完成',
+    defaultWorkLabel: '工作',
   },
   resourceSync: {
     totalChanges: '共 {count} 个变更',

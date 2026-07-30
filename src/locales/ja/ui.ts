@@ -204,7 +204,7 @@ export default {
     reasonNewer: '更新',
   },
   pomodoro: {
-    title: 'ポモドーロ(実験)',
+    title: 'ポモドーロ',
     editName: 'クリックで名前を変更',
     cycleInfo: '{current} / {total} セット',
     start: '開始',
@@ -217,6 +217,9 @@ export default {
     statusIdle: '待機中',
     statusWorking: '集中中',
     statusBreaking: '休憩中',
+    statusPaused: '一時停止中',
+    statusCompleted: '完了',
+    defaultWorkLabel: '作業',
   },
   resourceSync: {
     totalChanges: '変更 {count} 件',

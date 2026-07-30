@@ -205,7 +205,7 @@ export default {
     "reasonNewer": "更新"
   },
   "pomodoro": {
-    "title": "番茄鍾(實驗)",
+    "title": "番茄鍾",
     "editName": "撳嚟改名",
     "cycleInfo": "第 {current} / {total} 輪",
     "start": "開始",
@@ -217,7 +217,10 @@ export default {
     "cycleUnit": "次",
     "statusIdle": "而家得閒",
     "statusWorking": "專注緊",
-    "statusBreaking": "休息緊"
+    "statusBreaking": "休息緊",
+    "statusPaused": "已暫停",
+    "statusCompleted": "已完成",
+    "defaultWorkLabel": "工作"
   },
   "resourceSync": {
     "totalChanges": "總共 {count} 個變更",

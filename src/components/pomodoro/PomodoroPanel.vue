@@ -10,7 +10,12 @@
       v-show="!uiStore.showSettings"
     >
       <span class="text-xl">🍅</span>
-      <h3 class="text-lg font-bold m-0 hidden xl:block">{{ $t('ui.pomodoro.title') }}</h3>
+      <h3 class="text-lg font-bold m-0 hidden xl:block">
+        {{ $t('ui.pomodoro.title') }}
+        <span v-if="isRunning" class="ml-1 text-sm font-normal tabular-nums opacity-80">
+          {{ minutes }}:{{ seconds }}
+        </span>
+      </h3>
     </Button>
 
     <Transition
@@ -43,11 +48,20 @@
                 r="45"
                 :style="progressStyle"
               />
+              <!-- 隐形加宽轨道：圆环的拖动热区（不显示拖动手柄） -->
+              <circle
+                class="fill-none stroke-transparent cursor-pointer"
+                style="stroke-width: 14; touch-action: none"
+                cx="50"
+                cy="50"
+                r="45"
+                @pointerdown="onScrubStart"
+              />
             </svg>
 
-            <div class="absolute inset-0 flex flex-col items-center justify-center z-10">
+            <div class="absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-none">
               <div
-                class="h-6 flex items-center justify-center mb-1 cursor-pointer group"
+                class="h-6 flex items-center justify-center mb-1 cursor-pointer group pointer-events-auto"
                 @click="startEditLabel"
                 :title="$t('ui.pomodoro.editName')"
               >
@@ -239,6 +253,8 @@ const STORAGE_KEY_CYCLES_TOTAL = 'pomodoro_cycles_total'
 const STORAGE_KEY_WORK_MS = 'pomodoro_work_ms'
 const STORAGE_KEY_BREAK_MS = 'pomodoro_break_ms'
 const STORAGE_KEY_WORK_LABEL = 'pomodoro_work_label'
+const STORAGE_KEY_PHASE_END_AT = 'pomodoro_phase_end_at'
+const STORAGE_KEY_COMPLETED = 'pomodoro_completed'
 
 type Mode = 'work' | 'break'
 
@@ -249,7 +265,9 @@ const DEFAULT_CYCLES_TOTAL = 2
 const enabled = ref(false)
 const isRunning = ref(false)
 const mode = ref<Mode>('work')
-const workLabel = ref('工作')
+// 用户自定义的专注标签；为空时跟随界面语言显示默认文案
+const customWorkLabel = ref('')
+const workLabel = computed(() => customWorkLabel.value || t('ui.pomodoro.defaultWorkLabel'))
 const editingLabel = ref(false)
 const workLabelDraft = ref('')
 
@@ -259,6 +277,11 @@ const cyclesTotal = ref<number>(DEFAULT_CYCLES_TOTAL)
 const cycleIndex = ref<number>(1)
 
 const remainingMs = ref<number>(DEFAULT_WORK_MS)
+// 当前阶段的结束时刻（时间戳，毫秒）。运行中以它为准计算剩余时间，
+// 页面被节流/挂起/刷新后可以用 Date.now() 一次性补跑，不会丢时间。
+const phaseEndAt = ref<number>(0)
+// 全部轮次已完成（对应参考游戏的 Complete 状态），下次开始会从第一轮专注重新起步
+const justCompleted = ref(false)
 let timerId: number | null = null
 
 const workMinutesInput = ref(25)
@@ -284,25 +307,28 @@ const progress = computed(() => {
   const p = 1 - remainingMs.value / total
   return Math.min(1, Math.max(0, p))
 })
+// 正在拖动圆环调整时间（不显示拖动手柄，圆环本身就是热区）
+const scrubbing = ref(false)
+
 const progressStyle = computed(() => ({
   strokeDasharray: `${circumference}`,
   strokeDashoffset: `${(1 - progress.value) * circumference}`,
   transformOrigin: '50% 50%',
+  // 拖动时禁用过渡动画，否则圆环跟不上指针
+  transition: scrubbing.value ? 'none' : undefined,
 }))
 
 const statusText = computed(() => {
-  if (
-    !isRunning.value &&
-    remainingMs.value === currentTotalMs.value &&
-    cycleIndex.value === 1 &&
-    mode.value === 'work'
-  ) {
-    return t('ui.pomodoro.statusIdle')
+  if (isRunning.value) {
+    return mode.value === 'work' ? t('ui.pomodoro.statusWorking') : t('ui.pomodoro.statusBreaking')
   }
-  if (!isRunning.value) {
-    return t('ui.pomodoro.statusIdle')
+  if (justCompleted.value) {
+    return t('ui.pomodoro.statusCompleted')
   }
-  return mode.value === 'work' ? t('ui.pomodoro.statusWorking') : t('ui.pomodoro.statusBreaking')
+  // 从未启动过的初始状态才算空闲，停在半途中属于暂停
+  const isPristine =
+    remainingMs.value === currentTotalMs.value && cycleIndex.value === 1 && mode.value === 'work'
+  return isPristine ? t('ui.pomodoro.statusIdle') : t('ui.pomodoro.statusPaused')
 })
 
 const pendingPrompts = ref<string[]>([])
@@ -374,7 +400,9 @@ function persistState() {
   localStorage.setItem(STORAGE_KEY_CYCLES_TOTAL, JSON.stringify(cyclesTotal.value))
   localStorage.setItem(STORAGE_KEY_WORK_MS, JSON.stringify(workDurationMs.value))
   localStorage.setItem(STORAGE_KEY_BREAK_MS, JSON.stringify(breakDurationMs.value))
-  localStorage.setItem(STORAGE_KEY_WORK_LABEL, workLabel.value)
+  localStorage.setItem(STORAGE_KEY_WORK_LABEL, customWorkLabel.value)
+  localStorage.setItem(STORAGE_KEY_PHASE_END_AT, JSON.stringify(phaseEndAt.value))
+  localStorage.setItem(STORAGE_KEY_COMPLETED, JSON.stringify(justCompleted.value))
 }
 
 function clearTimer() {
@@ -384,45 +412,132 @@ function clearTimer() {
   }
 }
 
-function tick() {
-  const prevMode = mode.value
-  const prevCycle = cycleIndex.value
+// ─── 圆环拖动调时间 ─────────────────────────────────
+// 指针位置 → 从 12 点方向顺时针的进度比例（与圆环绘制方向一致）
+let scrubEl: Element | null = null
 
-  remainingMs.value = Math.max(0, remainingMs.value - 1000)
-  if (remainingMs.value === 0) {
-    if (mode.value === 'work') {
-      mode.value = 'break'
-      remainingMs.value = breakDurationMs.value
-      sendUserPrompt(
-        `{番茄钟提醒：第${prevCycle}/${cyclesTotal.value}轮专注结束，开始休息 ${formatMinutes(breakDurationMs.value)} 分钟。}`,
-      )
-    } else {
-      if (cycleIndex.value < cyclesTotal.value) {
-        cycleIndex.value += 1
-        mode.value = 'work'
-        remainingMs.value = workDurationMs.value
-        sendUserPrompt(
-          `{番茄钟提醒：休息结束，开始第${cycleIndex.value}/${cyclesTotal.value}轮专注（${workLabel.value}），时长 ${formatMinutes(workDurationMs.value)} 分钟}`,
-        )
-      } else {
-        clearTimer()
-        isRunning.value = false
-        sendUserPrompt(
-          `{番茄钟提醒：本次番茄钟已完成（专注 ${formatMinutes(workDurationMs.value)} 分钟 + 休息 ${formatMinutes(breakDurationMs.value)} 分钟 × ${cyclesTotal.value} 轮）。}`,
-        )
-      }
-    }
+function scrubFraction(e: PointerEvent) {
+  if (!scrubEl) return 0
+  const rect = scrubEl.getBoundingClientRect()
+  const dx = e.clientX - (rect.left + rect.width / 2)
+  const dy = e.clientY - (rect.top + rect.height / 2)
+  return (Math.atan2(dx, -dy) / (2 * Math.PI) + 1) % 1
+}
+
+function applyScrub(e: PointerEvent) {
+  const total = currentTotalMs.value
+  // 圆环进度 = 1 - 剩余/总时长；限制在 1 秒 ~ 总时长之间，避免误触阶段切换
+  const next = Math.round(((1 - scrubFraction(e)) * total) / 1000) * 1000
+  remainingMs.value = Math.min(total, Math.max(1000, next))
+  if (isRunning.value) {
+    phaseEndAt.value = Date.now() + remainingMs.value
   }
+}
+
+function onScrubStart(e: PointerEvent) {
+  scrubEl = e.currentTarget as Element
+  scrubbing.value = true
+  applyScrub(e)
+  window.addEventListener('pointermove', onScrubMove)
+  window.addEventListener('pointerup', onScrubEnd, { once: true })
+  e.preventDefault()
+}
+
+function onScrubMove(e: PointerEvent) {
+  if (!scrubbing.value) return
+  applyScrub(e)
+}
+
+function onScrubEnd() {
+  if (!scrubbing.value) return
+  scrubbing.value = false
+  scrubEl = null
+  window.removeEventListener('pointermove', onScrubMove)
+  persistState()
+}
+
+// 推进到下一个阶段，返回需要发给 AI 的提示文本。
+// 下一阶段的结束时刻沿用上一次的结束时间链式推算，长时间挂起后可以逐阶段补跑。
+function advancePhase(): string | null {
+  const prevCycle = cycleIndex.value
+  const endedAt = phaseEndAt.value
+
+  if (mode.value === 'work') {
+    mode.value = 'break'
+    phaseEndAt.value = endedAt + breakDurationMs.value
+    return `{番茄钟提醒：第${prevCycle}/${cyclesTotal.value}轮专注结束，开始休息 ${formatMinutes(breakDurationMs.value)} 分钟。}`
+  }
+
+  if (cycleIndex.value < cyclesTotal.value) {
+    cycleIndex.value += 1
+    mode.value = 'work'
+    phaseEndAt.value = endedAt + workDurationMs.value
+    return `{番茄钟提醒：休息结束，开始第${cycleIndex.value}/${cyclesTotal.value}轮专注（${workLabel.value}），时长 ${formatMinutes(workDurationMs.value)} 分钟}`
+  }
+
+  // 所有轮次完成：回到第一轮专注的待启动状态，下次按开始才能正确从专注起步
+  clearTimer()
+  isRunning.value = false
+  justCompleted.value = true
+  mode.value = 'work'
+  cycleIndex.value = 1
+  remainingMs.value = workDurationMs.value
+  phaseEndAt.value = 0
+  return `{番茄钟提醒：本次番茄钟已完成（专注 ${formatMinutes(workDurationMs.value)} 分钟 + 休息 ${formatMinutes(breakDurationMs.value)} 分钟 × ${cyclesTotal.value} 轮）。}`
+}
+
+function tick() {
+  if (!isRunning.value || phaseEndAt.value <= 0) return
+
+  const now = Date.now()
+  let remaining = phaseEndAt.value - now
+  const prompts: string[] = []
+  let guard = 0
+
+  // 页面被节流/挂起/刷新时 remaining 可能已跨过多个阶段，循环补跑直到追上当前时刻
+  while (remaining <= 0 && guard++ < 10000) {
+    const prompt = advancePhase()
+    if (prompt) prompts.push(prompt)
+    if (!isRunning.value) break // 全部轮次完成
+    remaining = phaseEndAt.value - now
+  }
+
+  if (isRunning.value) {
+    remainingMs.value = Math.max(0, remaining)
+  }
+
+  // 补跑跨过了多个阶段时只发最后一条提示，避免恢复时连续刷屏
+  const lastPrompt = prompts[prompts.length - 1]
+  if (lastPrompt) sendUserPrompt(lastPrompt)
+
   persistState()
 }
 
 function start() {
   if (isRunning.value) return
-  if (remainingMs.value <= 0) remainingMs.value = currentTotalMs.value
+  // 已完成或剩余时间异常归零时，从第一轮专注重新开始，
+  // 否则会错误地以上一次结束时的休息阶段启动
+  if (justCompleted.value || remainingMs.value <= 0) {
+    mode.value = 'work'
+    cycleIndex.value = 1
+    remainingMs.value = workDurationMs.value
+  }
+  // 中途继续和全新启动发给 AI 的提示不同（全新启动的消息格式被成就系统识别，不可改动）
+  const isResume = remainingMs.value > 0 && remainingMs.value < currentTotalMs.value
+  justCompleted.value = false
   isRunning.value = true
+  phaseEndAt.value = Date.now() + remainingMs.value
   clearTimer()
   timerId = window.setInterval(tick, 1000)
   persistState()
+
+  if (isResume) {
+    const resumePhase = mode.value === 'work' ? `专注（${workLabel.value}）` : '休息'
+    sendUserPrompt(
+      `{番茄钟提醒：我继续番茄钟，第${cycleIndex.value}/${cyclesTotal.value}轮${resumePhase}，剩余 ${minutes.value}:${seconds.value}。}`,
+    )
+    return
+  }
 
   const phaseText = mode.value === 'work' ? `开始专注（${workLabel.value}）` : '开始休息'
   sendUserPrompt(
@@ -432,15 +547,26 @@ function start() {
 
 function pause() {
   if (!isRunning.value) return
+  // 把剩余时间落盘为固定值，恢复时再折算成新的结束时刻
+  remainingMs.value = Math.max(0, phaseEndAt.value - Date.now())
+  phaseEndAt.value = 0
   isRunning.value = false
   clearTimer()
   persistState()
+
+  // 暂停也告知 AI，方便角色做出反应（与阶段切换提醒同格式）
+  const phaseText = mode.value === 'work' ? `专注（${workLabel.value}）` : '休息'
+  sendUserPrompt(
+    `{番茄钟提醒：我暂停了番茄钟，第${cycleIndex.value}/${cyclesTotal.value}轮${phaseText}，剩余 ${minutes.value}:${seconds.value}。}`,
+  )
 }
 
 function reset() {
   mode.value = 'work'
   cycleIndex.value = 1
   remainingMs.value = workDurationMs.value
+  justCompleted.value = false
+  phaseEndAt.value = 0
   isRunning.value = false
   clearTimer()
   persistState()
@@ -456,7 +582,8 @@ function startEditLabel() {
 }
 function commitEditLabel() {
   const v = workLabelDraft.value.trim()
-  workLabel.value = v || '工作'
+  // 清空则恢复为跟随界面语言的默认文案
+  customWorkLabel.value = v
   editingLabel.value = false
   persistState()
 }
@@ -499,11 +626,9 @@ function adjustCycles(delta: number) {
   applyCycles()
 }
 
-watch(enabled, (val) => {
-  if (!val) {
-    clearTimer()
-    isRunning.value = false
-  }
+// 折叠面板只隐藏界面，计时在后台继续（对应参考游戏的后台计时行为）：
+// 重新展开时剩余时间由 tick 持续刷新，阶段切换的 AI 提醒也照常触发
+watch(enabled, () => {
   persistState()
 })
 
@@ -525,7 +650,9 @@ onMounted(() => {
     const savedBreakMs = JSON.parse(
       localStorage.getItem(STORAGE_KEY_BREAK_MS) || String(DEFAULT_BREAK_MS),
     )
-    const savedWorkLabel = localStorage.getItem(STORAGE_KEY_WORK_LABEL) || '工作'
+    const savedWorkLabel = localStorage.getItem(STORAGE_KEY_WORK_LABEL) || ''
+    const savedPhaseEndAt = JSON.parse(localStorage.getItem(STORAGE_KEY_PHASE_END_AT) || '0')
+    const savedCompleted = JSON.parse(localStorage.getItem(STORAGE_KEY_COMPLETED) || 'false')
 
     enabled.value = !!savedEnabled
     workDurationMs.value = Number.isFinite(savedWorkMs) ? savedWorkMs : DEFAULT_WORK_MS
@@ -534,22 +661,30 @@ onMounted(() => {
     cycleIndex.value = Number.isFinite(savedCycleIdx) ? savedCycleIdx : 1
     mode.value = savedMode === 'break' ? 'break' : 'work'
     remainingMs.value = Number.isFinite(savedRemaining) ? savedRemaining : workDurationMs.value
-    workLabel.value = savedWorkLabel || '工作'
-    isRunning.value = !!savedRunning && enabled.value && savedRemaining > 0
+    // 旧版默认文案"工作"视为未自定义，迁移后跟随界面语言
+    customWorkLabel.value = savedWorkLabel === '工作' ? '' : savedWorkLabel
+    justCompleted.value = !!savedCompleted
+    // 不再要求面板处于展开状态：折叠状态下退出，下次启动计时也在后台恢复
+    isRunning.value = !!savedRunning && (savedPhaseEndAt > 0 || savedRemaining > 0)
 
     workMinutesInput.value = workDurationMs.value / 60000
     breakMinutesInput.value = breakDurationMs.value / 60000
     cyclesInput.value = cyclesTotal.value
 
     if (isRunning.value) {
+      // 兼容旧版存档：没有保存结束时刻时用剩余时间折算出一个新的
+      phaseEndAt.value = savedPhaseEndAt > 0 ? savedPhaseEndAt : Date.now() + remainingMs.value
       clearTimer()
       timerId = window.setInterval(tick, 1000)
+      // 立即补跑页面关闭/挂起期间流逝的时间（含跨阶段推进）
+      tick()
     }
   } catch {}
 })
 
 onUnmounted(() => {
   clearTimer()
+  window.removeEventListener('pointermove', onScrubMove)
 })
 </script>
 

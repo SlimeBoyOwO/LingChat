@@ -205,7 +205,7 @@ export default {
     reasonNewer: "Updated",
   },
   pomodoro: {
-    title: "Pomodoro (Experimental)",
+    title: "Pomodoro",
     editName: "Click to edit name",
     cycleInfo: "Round {current} / {total}",
     start: "Start",
@@ -218,6 +218,9 @@ export default {
     statusIdle: "Idle",
     statusWorking: "Focusing",
     statusBreaking: "On Break",
+    statusPaused: "Paused",
+    statusCompleted: "Completed",
+    defaultWorkLabel: "Work",
   },
   resourceSync: {
     totalChanges: "{count} changes in total",
