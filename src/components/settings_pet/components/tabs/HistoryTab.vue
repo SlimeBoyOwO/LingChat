@@ -68,6 +68,27 @@
                   回溯
                 </button>
               </div>
+              <div v-if="item.thinking" class="mb-1">
+                <button
+                  class="inline-flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs transition-all duration-200"
+                  :class="isDarkMode
+                    ? 'border-sky-400/25 bg-sky-400/10 text-sky-200/70 hover:border-sky-400/50 hover:text-sky-100'
+                    : 'border-sky-200 bg-sky-50 text-sky-500/80 hover:border-sky-300 hover:text-sky-600'"
+                  @click.stop="toggleThinking(i)"
+                >
+                  <span>{{ isThinkingExpanded(i) ? '▼' : '▶' }}</span>
+                  <span>思考过程（{{ item.thinking.length }} 字）</span>
+                </button>
+                <div
+                  v-if="isThinkingExpanded(i)"
+                  class="mt-1.5 max-h-64 overflow-y-auto rounded-2xl border px-4 py-3 text-[15px] leading-normal whitespace-pre-wrap scrollbar-thin"
+                  :class="isDarkMode
+                    ? 'border-sky-400/15 bg-sky-400/5 text-white/55'
+                    : 'border-sky-100 bg-sky-50/70 text-slate-500'"
+                >
+                  {{ item.thinking }}
+                </div>
+              </div>
               <template v-for="(entry, j) in item.lines" :key="j">
                 <div
                   v-for="(seg, k) in entry.segments"
@@ -180,6 +201,7 @@ interface LineEntry {
   segments: Segment[]
   audioFile?: string
   userMessageSeq?: number
+  thinking?: string
 }
 
 interface HistoryBlock {
@@ -187,6 +209,8 @@ interface HistoryBlock {
   isNarration: boolean
   lines: LineEntry[]
   userMessageSeq?: number
+  /** 该对话块（一轮生成）的思考链，取块内最后一条非空值 */
+  thinking?: string
 }
 
 // --- Store & Refs ---
@@ -204,6 +228,23 @@ const ACTION_RE = /（[^）]*）/
 const PAGE_SIZE = 100
 const currentPage = ref(1)
 const totalPages = computed(() => Math.ceil(dialogHistory.value.length / PAGE_SIZE))
+
+// 思考过程展开状态（key: 对话块索引），默认全部折叠
+const expandedThinking = ref<Set<number>>(new Set())
+
+function isThinkingExpanded(blockIdx: number): boolean {
+  return expandedThinking.value.has(blockIdx)
+}
+
+function toggleThinking(blockIdx: number) {
+  const next = new Set(expandedThinking.value)
+  if (next.has(blockIdx)) {
+    next.delete(blockIdx)
+  } else {
+    next.add(blockIdx)
+  }
+  expandedThinking.value = next
+}
 
 const currentPageHistory = computed(() => {
   const start = (currentPage.value - 1) * PAGE_SIZE
@@ -233,12 +274,16 @@ const groupedHistory = computed<HistoryBlock[]>(() => {
       segments,
       audioFile: msg.audioFile,
       userMessageSeq: msg.userMessageSeq,
+      thinking: msg.thinking,
     }
 
     const last = blocks.length > 0 ? blocks[blocks.length - 1] : null
     if (last && last.displayName === name && last.isNarration === isNarration) {
       if (entry.userMessageSeq !== undefined && last.userMessageSeq === undefined) {
         last.userMessageSeq = entry.userMessageSeq
+      }
+      if (entry.thinking) {
+        last.thinking = entry.thinking
       }
       last.lines.push(entry)
     } else {
@@ -247,6 +292,7 @@ const groupedHistory = computed<HistoryBlock[]>(() => {
         isNarration,
         lines: [entry],
         userMessageSeq: entry.userMessageSeq,
+        thinking: entry.thinking,
       })
     }
   }
@@ -318,6 +364,7 @@ async function handleBacktrack(messageSeq: number) {
           audio_file: l.audio_file,
           perceived_role_ids: l.perceived_role_ids,
           user_message_seq: l.user_message_seq,
+          thinking: l.thinking ?? null,
         }),
       ),
     )

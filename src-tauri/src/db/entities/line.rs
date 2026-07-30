@@ -28,6 +28,8 @@ pub struct Model {
     #[sea_orm(column_type = "Text", nullable)]
     pub action_content: Option<String>,
     pub audio_file: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub thinking: Option<String>,
     pub attribute: LineAttribute,
     pub sender_role_id: Option<i32>,
     pub display_name: Option<String>,

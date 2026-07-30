@@ -10,12 +10,13 @@
 //! - Python 里还会调用一个 `num_end > 0 && buffer[num_end]=='】'` 的数字拆分分支，
 //!   用于拦截 `【1】` 之类非情绪 tag 的起始符；这里等价处理（仍按 `【...】` 捕获）。
 
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use futures_util::StreamExt;
 use tauri::AppHandle;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 
 use crate::ai_service::llm::{ChunkStream, LlmChunk};
 use crate::ai_service::message_system::events;
@@ -28,14 +29,22 @@ pub struct StreamProducer {
     llm_stream: ChunkStream,
     tx: mpsc::Sender<SentenceItem>,
     app: AppHandle,
+    /// 与 consumer 共享的思考链缓冲：本轮生成的完整思考文本。
+    thinking_buf: Arc<Mutex<String>>,
 }
 
 impl StreamProducer {
-    pub fn new(llm_stream: ChunkStream, tx: mpsc::Sender<SentenceItem>, app: AppHandle) -> Self {
+    pub fn new(
+        llm_stream: ChunkStream,
+        tx: mpsc::Sender<SentenceItem>,
+        app: AppHandle,
+        thinking_buf: Arc<Mutex<String>>,
+    ) -> Self {
         Self {
             llm_stream,
             tx,
             app,
+            thinking_buf,
         }
     }
 
@@ -44,7 +53,6 @@ impl StreamProducer {
         let mut accumulated = String::new();
         let mut realtime_buffer = String::new();
         let mut last_display = Instant::now();
-        let mut thinking_length: usize = 0;
 
         let mut buffer = String::new();
         let mut sentence = String::new();
@@ -147,9 +155,19 @@ impl StreamProducer {
                     }
                 }
                 LlmChunk::Reasoning(text) => {
-                    // 思考链内容：实时统计字数并通知前端，但不加入正式回复。
+                    // 思考链内容：累积进共享缓冲（供 consumer 挂载到台词行），
+                    // 并实时统计字数通知前端，但不加入正式回复。
                     if !text.is_empty() {
-                        thinking_length += text.chars().count();
+                        let mut buf = self.thinking_buf.lock().await;
+                        // 部分供应商（kimi_code / genai）会在流结束时重发完整快照，
+                        // 若新 chunk 以已有内容为前缀则整体替换，避免重复累积。
+                        if text.starts_with(buf.as_str()) {
+                            *buf = text;
+                        } else {
+                            buf.push_str(&text);
+                        }
+                        let thinking_length = buf.chars().count();
+                        drop(buf);
                         events::emit_thinking_progress(&self.app, thinking_length);
                     }
                 }

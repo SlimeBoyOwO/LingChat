@@ -37,6 +37,21 @@
                     回溯
                   </button>
                 </div>
+                <div v-if="item.thinking" class="mb-1">
+                  <button
+                    class="inline-flex cursor-pointer items-center gap-1 rounded-full border border-[rgba(121,217,255,0.25)] bg-[rgba(121,217,255,0.08)] px-2.5 py-0.5 text-xs text-[#a8d8f0]/70 transition-all duration-200 hover:border-[rgba(121,217,255,0.5)] hover:text-[#c9e7ff]"
+                    @click.stop="toggleThinking(i)"
+                  >
+                    <span>{{ isThinkingExpanded(i) ? '▼' : '▶' }}</span>
+                    <span>思考过程（{{ item.thinking.length }} 字）</span>
+                  </button>
+                  <div
+                    v-if="isThinkingExpanded(i)"
+                    class="mt-1.5 max-h-64 overflow-y-auto rounded-2xl border border-[rgba(121,217,255,0.15)] bg-[rgba(121,217,255,0.05)] px-4 py-3 text-[15px] leading-normal whitespace-pre-wrap text-white/55 scrollbar-thin"
+                  >
+                    {{ item.thinking }}
+                  </div>
+                </div>
                 <template v-for="(entry, j) in item.lines" :key="j">
                   <div
                     v-for="(seg, k) in entry.segments"
@@ -119,6 +134,7 @@ interface LineEntry {
   segments: Segment[]
   audioFile?: string
   userMessageSeq?: number
+  thinking?: string
 }
 
 interface HistoryBlock {
@@ -126,6 +142,8 @@ interface HistoryBlock {
   isNarration: boolean
   lines: LineEntry[]
   userMessageSeq?: number
+  /** 该对话块（一轮生成）的思考链，取块内最后一条非空值 */
+  thinking?: string
 }
 
 const gameStore = useGameStore()
@@ -143,6 +161,23 @@ const PAGE_SIZE = 100
 
 // 当前页码
 const currentPage = ref(1)
+
+// 思考过程展开状态（key: 对话块索引），默认全部折叠
+const expandedThinking = ref<Set<number>>(new Set())
+
+function isThinkingExpanded(blockIdx: number): boolean {
+  return expandedThinking.value.has(blockIdx)
+}
+
+function toggleThinking(blockIdx: number) {
+  const next = new Set(expandedThinking.value)
+  if (next.has(blockIdx)) {
+    next.delete(blockIdx)
+  } else {
+    next.add(blockIdx)
+  }
+  expandedThinking.value = next
+}
 
 // 计算总页数
 const totalPages = computed(() => Math.ceil(dialogHistory.value.length / PAGE_SIZE))
@@ -175,12 +210,16 @@ const groupedHistory = computed<HistoryBlock[]>(() => {
       segments,
       audioFile: msg.audioFile,
       userMessageSeq: msg.userMessageSeq,
+      thinking: msg.thinking,
     }
 
     const last = blocks.length > 0 ? blocks[blocks.length - 1] : null
     if (last && last.displayName === name && last.isNarration === isNarration) {
       if (entry.userMessageSeq !== undefined && last.userMessageSeq === undefined) {
         last.userMessageSeq = entry.userMessageSeq
+      }
+      if (entry.thinking) {
+        last.thinking = entry.thinking
       }
       last.lines.push(entry)
     } else {
@@ -189,6 +228,7 @@ const groupedHistory = computed<HistoryBlock[]>(() => {
         isNarration,
         lines: [entry],
         userMessageSeq: entry.userMessageSeq,
+        thinking: entry.thinking,
       })
     }
   }
@@ -259,6 +299,7 @@ async function handleBacktrack(messageSeq: number) {
           audio_file: l.audio_file,
           perceived_role_ids: l.perceived_role_ids,
           user_message_seq: l.user_message_seq,
+          thinking: l.thinking ?? null,
         }),
       ),
     )

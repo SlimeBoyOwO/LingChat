@@ -307,6 +307,7 @@ pub async fn rollback_conversation(
             audio_file: gl.base.audio_file.clone(),
             perceived_role_ids: gl.perceived_role_ids.clone(),
             user_message_seq: seq,
+            thinking: gl.base.thinking.clone(),
         })
         .collect();
 
@@ -328,9 +329,10 @@ pub async fn trigger_ai_response(app: AppHandle) -> Result<(), String> {
     let concurrency = AppConfig::load(&app).map(|c| c.consumers as usize).unwrap_or(1).max(1);
     let gs = { let svc = state.ai_service.lock().await; svc.game_status.clone() };
     let deps = GeneratorDeps {
+        source: GeneratorSource::Proactive,
         app: app.clone(), db: state.db.clone(), game_status: gs,
         processor: state.chat.processor.clone(), translator: state.chat.translator.clone(),
-        llm, concurrency, god_agent: state.god_agent.clone(), suppress_thinking: false,
+        llm, tool_registry: state.tool_registry.clone(), concurrency, god_agent: state.god_agent.clone(), suppress_thinking: false,
     };
     let gen_lock = state.generation_lock.clone();
     tokio::spawn(async move {

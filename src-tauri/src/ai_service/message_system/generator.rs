@@ -471,6 +471,10 @@ impl MessageGenerator {
         let (publish_tx, mut publish_rx) =
             mpsc::channel::<(usize, Option<ReplyResponse>)>(self.deps.concurrency.max(1) * 2);
 
+        // producer 与 consumer 共享的思考链缓冲：累积本轮生成的完整思考文本，
+        // 由最终句（is_final）的 consumer 快照并挂载到台词行与前端响应。
+        let thinking_buf = Arc::new(Mutex::new(String::new()));
+
         // publisher：按索引顺序 emit 到前端
         let app = self.deps.app.clone();
         let publisher = tokio::spawn(async move {
@@ -502,6 +506,7 @@ impl MessageGenerator {
             let sentence_rx = sentence_rx.clone();
             let publish_tx = publish_tx.clone();
             let user_message = user_message.clone();
+            let thinking_buf = thinking_buf.clone();
             consumer_tasks.push(tokio::spawn(async move {
                 loop {
                     let item = {
@@ -518,6 +523,7 @@ impl MessageGenerator {
                         &user_message,
                         is_final,
                         user_message_seq,
+                        &thinking_buf,
                     )
                     .await
                     {
@@ -537,7 +543,7 @@ impl MessageGenerator {
         drop(publish_tx);
 
         // producer：LLM 流 -> 句子
-        let producer = StreamProducer::new(llm_stream, sentence_tx, self.deps.app.clone());
+        let producer = StreamProducer::new(llm_stream, sentence_tx, self.deps.app.clone(), thinking_buf);
         let acc = producer.run().await.context("StreamProducer 失败")?;
 
         for t in consumer_tasks {
@@ -561,6 +567,7 @@ async fn consume_sentence(
     user_message: &str,
     is_final: bool,
     user_message_seq: Option<u32>,
+    thinking_buf: &Mutex<String>,
 ) -> Result<Option<ReplyResponse>> {
     if sentence.is_empty() {
         return Ok(None);
@@ -576,8 +583,16 @@ async fn consume_sentence(
     enrich_segments(deps, &mut segments).await?;
 
     // 3. 构建前端响应
-    let response =
+    let mut response =
         build_reply_response(deps, &segments, user_message, is_final, user_message_seq).await?;
+
+    // 3.5 最终句：快照本轮思考链，挂载到响应与台词行（供历史对话展示思考过程）
+    if is_final {
+        let thinking = thinking_buf.lock().await;
+        if !thinking.is_empty() {
+            response.thinking = Some(thinking.clone());
+        }
+    }
 
     // 4. 写入 GameStatus
     add_assistant_line(deps, &response).await?;
@@ -744,6 +759,7 @@ async fn add_assistant_line(deps: &GeneratorDeps, response: &ReplyResponse) -> R
         tts_content: response.tts_text.clone(),
         action_content: response.motion_text.clone(),
         audio_file: response.audio_file.clone(),
+        thinking: response.thinking.clone(),
         display_name: response.character.clone(),
         attribute: LineAttributeExt(LineAttribute::Assistant),
         ..Default::default()

@@ -273,6 +273,7 @@ export function convertInitLines(lines: GameLineInit[]): GameMessage[] {
       originalTag: line.original_emotion || undefined,
       timestamp: Date.now(),
       userMessageSeq: line.user_message_seq ?? undefined,
+      thinking: line.thinking || undefined,
     }
   })
 }

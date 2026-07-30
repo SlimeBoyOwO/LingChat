@@ -39,6 +39,8 @@ export interface ScriptDialogueEvent extends ScriptEvent {
   displaySubtitle?: string
   /** 触发此回复的用户消息序号（1-indexed） */
   userMessageSeq?: number
+  /** 本轮生成的思考链（仅最后一帧携带） */
+  thinking?: string
 }
 
 export interface ScriptThinkingEvent extends ScriptEvent {

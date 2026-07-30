@@ -12,6 +12,8 @@ export interface GameMessage {
   timestamp?: number
   /** 玩家消息序号（1-indexed），用于回溯定位 */
   userMessageSeq?: number
+  /** 该轮生成的思考链（仅每轮最后一条回复消息有值） */
+  thinking?: string
 }
 
 export interface FreeDialogueInfo {
