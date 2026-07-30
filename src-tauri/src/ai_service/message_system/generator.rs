@@ -110,7 +110,7 @@ impl MessageGenerator {
 
         loop {
             // 取当前角色记忆（每轮重新获取，因为 current_role_id 可能已变化）
-            let (context, tool_context_anchor) = self.get_current_context().await?;
+            let context = self.get_current_context().await?;
             if context.is_empty() {
                 break;
             }
@@ -122,7 +122,7 @@ impl MessageGenerator {
                 None
             };
             let round_acc = self
-                .execute_pipeline(context, tool_context_anchor, &original_msg, round_msg_seq)
+                .execute_pipeline(context, &original_msg, round_msg_seq)
                 .await?;
             accumulated.push_str(&round_acc);
 
@@ -224,22 +224,20 @@ impl MessageGenerator {
     }
 
     /// Step 2: 根据 current_role_id 获取当前角色的 memory 上下文。
-    async fn get_current_context(&self) -> Result<(Vec<LlmMessage>, Option<usize>)> {
+    async fn get_current_context(&self) -> Result<Vec<LlmMessage>> {
         let mut gs = self.deps.game_status.lock().await;
         let Some(rid) = gs.current_role_id else {
             tracing::error!("生成消息的时候没有当前角色，取消生成");
-            return Ok((Vec::new(), None));
+            return Ok(Vec::new());
         };
-        let tool_context_anchor = gs.line_list.len().checked_sub(1);
         let role = gs.get_role(&self.deps.db, rid).await?;
-        Ok((role.memory.clone(), tool_context_anchor))
+        Ok(role.memory.clone())
     }
 
     /// Step 3: 启动 LLM 流管道，统一处理 thinking emit 与错误分发。
     async fn execute_pipeline(
         &self,
         context: Vec<LlmMessage>,
-        tool_context_anchor: Option<usize>,
         user_message: &str,
         user_msg_seq: Option<u32>,
     ) -> Result<String> {
@@ -250,7 +248,6 @@ impl MessageGenerator {
         match self
             .run_pipeline(
                 context,
-                tool_context_anchor,
                 user_message.to_string(),
                 user_msg_seq,
             )
@@ -405,7 +402,6 @@ impl MessageGenerator {
     async fn run_pipeline(
         &self,
         context: Vec<LlmMessage>,
-        tool_context_anchor: Option<usize>,
         user_message: String,
         user_message_seq: Option<u32>,
     ) -> Result<String> {
@@ -429,7 +425,7 @@ impl MessageGenerator {
         .await?;
         if !tool_loop_result.tool_messages.is_empty() {
             let mut gs = self.deps.game_status.lock().await;
-            let insert_pos = tool_context_anchor.map(|i| i + 1).unwrap_or(gs.line_list.len());
+            let insert_pos = gs.line_list.len();
             let perceived: Vec<i32> = gs.present_role_ids.iter().copied().collect();
 
             for msg in tool_loop_result.tool_messages.iter().rev() {
