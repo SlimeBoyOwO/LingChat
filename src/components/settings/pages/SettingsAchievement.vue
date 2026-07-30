@@ -40,7 +40,7 @@
                 class="text-base font-bold truncate tracking-wide"
                 :class="achievement.unlocked ? 'text-white text-shadow-sm' : 'text-white/90'"
               >
-                {{ achievement.title }}
+                {{ achievementTitle(achievement) }}
               </h3>
               <span
                 v-if="achievement.unlocked"
@@ -55,7 +55,7 @@
               class="text-xs line-clamp-2 h-8 leading-4 mb-2 transition-colors duration-300"
               :class="achievement.unlocked ? 'text-gray-200' : 'text-white/70'"
             >
-              {{ achievement.description }}
+              {{ achievementDescription(achievement) }}
             </p>
 
             <!-- Progress Bar -->
@@ -89,6 +89,7 @@
 import { computed, onMounted } from 'vue'
 import { MenuPage, MenuItem } from '../../ui'
 import { useAchievementStore } from '@/stores/modules/ui/achievement'
+import { achievementTitle, achievementDescription } from '@/utils/achievement-i18n'
 import Icon from '@/components/base/widget/Icon.vue'
 import { Award } from 'lucide-vue-next'
 

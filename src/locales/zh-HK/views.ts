@@ -27,7 +27,24 @@ export default {
   "credits": {
     "escExit": "ESC 退出",
     "letterTitle": "來自靈靈感謝の書❤",
-    "heading": "致謝"
+    "heading": "致謝",
+    "sections": {
+      "planDesign": "策劃 & 設計",
+      "programming": "程式開發",
+      "vitsTraining": "語音模型訓練",
+      "visualArts": "視覺藝術",
+      "characterDesign": "人物設計",
+      "communityWiki": "社區管理 & 維基搭建",
+      "packing": "軟件打包",
+      "specialThanks": "特別鳴謝",
+      "feedback": "反饋提供者",
+      "issueProviders": "Issue提供者",
+      "characterCreators": "創意工坊作者們",
+      "bilibiliFans": "B站粉絲們",
+      "donators": "贊助者們",
+      "moreover": "還有..."
+    },
+    "you": "你"
   },
   "menu": {
     "startGame": "開始遊戲",

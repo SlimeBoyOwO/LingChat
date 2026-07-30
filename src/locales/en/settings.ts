@@ -25,6 +25,12 @@ export default {
     title: "Achievements (Experimental)",
     rare: "Rare",
     normal: "Normal",
+    items: {
+      first_chat: { title: "First Meeting", description: "Had your first conversation with Qinling" },
+      chat_master: { title: "Chatterbox", description: "Had 10 conversations with Qinling" },
+      first_pomodoro: { title: "Focus Time", description: "Used the Pomodoro timer for the first time" },
+      night_owl: { title: "Night Owl", description: "Chatted with Qinling late at night (23:00-04:00)" },
+    },
   },
   adventure: {
     standalone: {

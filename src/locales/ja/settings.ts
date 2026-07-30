@@ -24,6 +24,12 @@ export default {
     title: '実績一覧（実験的）',
     rare: 'レア',
     normal: 'ノーマル',
+    items: {
+      first_chat: { title: '初めまして', description: '钦灵との最初の会話を完了した' },
+      chat_master: { title: 'おしゃべりさん', description: '钦灵との会話を10回完了した' },
+      first_pomodoro: { title: '集中タイム', description: '初めてポモドーロを使った' },
+      night_owl: { title: '夜更かし', description: '深夜（23:00-04:00）に钦灵とチャットした' },
+    },
   },
   adventure: {
     standalone: {

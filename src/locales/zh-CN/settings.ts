@@ -24,6 +24,13 @@ export default {
     title: '成就列表（实验）',
     rare: '稀有',
     normal: '普通',
+    // 内置成就文案（按成就 id 索引；剧本动态成就回退后端原文）
+    items: {
+      first_chat: { title: '初次见面', description: '与钦灵完成了第一次对话' },
+      chat_master: { title: '话痨', description: '与钦灵完成了 10 次对话' },
+      first_pomodoro: { title: '专注时刻', description: '第一次使用番茄钟' },
+      night_owl: { title: '夜猫子', description: '在深夜（23:00-04:00）与钦灵聊天' },
+    },
   },
   adventure: {
     standalone: {

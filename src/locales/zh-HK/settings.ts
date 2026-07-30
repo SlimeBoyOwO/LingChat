@@ -24,7 +24,13 @@ export default {
   "achievement": {
     "title": "成就列表（實驗）",
     "rare": "稀有",
-    "normal": "普通"
+    "normal": "普通",
+    "items": {
+      "first_chat": { "title": "初次見面", "description": "與欽靈完成了第一次對話" },
+      "chat_master": { "title": "話癆", "description": "與欽靈完成了 10 次對話" },
+      "first_pomodoro": { "title": "專注時刻", "description": "第一次使用番茄鍾" },
+      "night_owl": { "title": "夜貓子", "description": "在深夜（23:00-04:00）與欽靈聊天" }
+    }
   },
   "adventure": {
     "standalone": {

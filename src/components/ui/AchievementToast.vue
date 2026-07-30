@@ -39,8 +39,8 @@
         <div class="achievement-header">
           <span class="achievement-label">{{ typeLabel }}</span>
         </div>
-        <div class="achievement-title">{{ store.current.title }}</div>
-        <div class="achievement-description">{{ store.current.description }}</div>
+        <div class="achievement-title">{{ currentTitle }}</div>
+        <div class="achievement-description">{{ currentDescription }}</div>
       </div>
 
       <div class="progress-bar-container">
@@ -57,6 +57,7 @@
 import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAchievementStore } from '../../stores/modules/ui/achievement'
+import { achievementTitle, achievementDescription } from '@/utils/achievement-i18n'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { useI18n } from 'vue-i18n'
 
@@ -75,6 +76,12 @@ const typeClass = computed(() => {
 const typeLabel = computed(() => {
   return store.current?.type === 'rare' ? t('ui.achievementToast.rare') : t('ui.achievementToast.unlocked')
 })
+
+// 内置成就显示本地化文案；剧本动态成就回退后端原文
+const currentTitle = computed(() => (store.current ? achievementTitle(store.current) : ''))
+const currentDescription = computed(() =>
+  store.current ? achievementDescription(store.current) : '',
+)
 
 // 播放音效逻辑
 watch(
