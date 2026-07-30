@@ -6,4 +6,6 @@ export default {
   delete: '删除',
   close: '关闭',
   loading: '加载中…',
+  exitTitle: '退出确认',
+  exitMessage: '确定要退出程序吗？',
 }

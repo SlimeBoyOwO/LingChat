@@ -18,12 +18,12 @@
             <template v-if="phase === 'review' && syncInfo">
               <!-- 统计栏 -->
               <div class="flex items-center justify-between mb-3 text-sm text-slate-300 bg-slate-700/50 rounded-xl px-4 py-2">
-                <span>共 {{ totalCount }} 个变更</span>
-                <span>已选 {{ selectedCount }} 个</span>
+                <span>{{ $t('ui.resourceSync.totalChanges', { count: totalCount }) }}</span>
+                <span>{{ $t('ui.resourceSync.selectedCount', { count: selectedCount }) }}</span>
                 <span>{{ formatBytes(syncInfo.totalSize) }}</span>
                 <div class="flex gap-2">
-                  <button class="text-xs text-blue-400 hover:text-blue-300" @click="selectAll">全选</button>
-                  <button class="text-xs text-slate-400 hover:text-slate-300" @click="deselectAll">全不选</button>
+                  <button class="text-xs text-blue-400 hover:text-blue-300" @click="selectAll">{{ $t('ui.resourceSync.selectAll') }}</button>
+                  <button class="text-xs text-slate-400 hover:text-slate-300" @click="deselectAll">{{ $t('ui.resourceSync.deselectAll') }}</button>
                 </div>
               </div>
 
@@ -64,7 +64,7 @@
                           file.changeType === 'add' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400',
                         ]"
                       >
-                        {{ file.changeType === 'add' ? '新增' : '修改' }}
+                        {{ file.changeType === 'add' ? $t('ui.resourceSync.changeAdd') : $t('ui.resourceSync.changeModify') }}
                       </span>
                       <span class="text-xs text-slate-500 w-16 text-right">{{ formatBytes(file.size) }}</span>
                     </div>
@@ -77,7 +77,7 @@
             <template v-else-if="phase === 'syncing'">
               <div class="flex flex-col items-center py-8 gap-4">
                 <RefreshCw :size="40" class="text-blue-400 animate-spin" />
-                <p class="text-slate-300">正在同步文件...</p>
+                <p class="text-slate-300">{{ $t('ui.resourceSync.syncing') }}</p>
               </div>
             </template>
 
@@ -85,7 +85,7 @@
             <template v-else-if="phase === 'complete'">
               <div class="flex flex-col items-center py-8 gap-4">
                 <CheckCircle :size="48" class="text-emerald-400" />
-                <p class="text-slate-300">数据资源同步完成</p>
+                <p class="text-slate-300">{{ $t('ui.resourceSync.syncDone') }}</p>
               </div>
             </template>
 
@@ -93,7 +93,7 @@
             <template v-else-if="phase === 'error'">
               <div class="flex flex-col items-center py-8 gap-4">
                 <XCircle :size="48" class="text-red-400" />
-                <p class="text-red-400 text-sm text-center">{{ errorMessage || '同步失败' }}</p>
+                <p class="text-red-400 text-sm text-center">{{ errorMessage || $t('ui.resourceSync.syncFailed') }}</p>
               </div>
             </template>
           </div>
@@ -102,19 +102,19 @@
           <div class="px-6 py-4 flex justify-end gap-3 border-t border-slate-700/50">
             <template v-if="phase === 'review'">
               <button class="px-4 py-2 text-sm text-slate-400 hover:text-slate-200" @click="$emit('close')">
-                取消
+                {{ $t('ui.resourceSync.cancel') }}
               </button>
               <button
                 class="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-500 disabled:opacity-50"
                 :disabled="selectedCount === 0"
                 @click="handleApply"
               >
-                同步选中文件
+                {{ $t('ui.resourceSync.syncSelected') }}
               </button>
             </template>
             <template v-else-if="phase === 'complete' || phase === 'error'">
               <button class="px-4 py-2 text-sm bg-slate-600 text-white rounded-lg hover:bg-slate-500" @click="$emit('close')">
-                好的
+                {{ $t('ui.resourceSync.ok') }}
               </button>
             </template>
           </div>
@@ -126,6 +126,9 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import {
   Folder,
   Minus,
@@ -213,7 +216,7 @@ const fileGroups = computed<FileGroup[]>(() => {
   for (const file of allFiles) {
     // 取第一级子目录或根
     const parts = file.path.split('/')
-    const dir = parts.length > 1 ? parts.slice(0, -1).join('/') : '(根)'
+    const dir = parts.length > 1 ? parts.slice(0, -1).join('/') : t('ui.resourceSync.rootDir')
     if (!groups.has(dir)) groups.set(dir, [])
     groups.get(dir)!.push(file)
   }
@@ -267,15 +270,15 @@ function handleApply() {
 const dialogTitle = computed(() => {
   switch (props.phase) {
     case 'review':
-      return '数据资源同步'
+      return t('ui.resourceSync.titleDefault')
     case 'syncing':
-      return '正在同步...'
+      return t('ui.resourceSync.titleSyncing')
     case 'complete':
-      return '同步完成'
+      return t('ui.resourceSync.titleDone')
     case 'error':
-      return '同步失败'
+      return t('ui.resourceSync.titleFailed')
     default:
-      return '数据资源同步'
+      return t('ui.resourceSync.titleDefault')
   }
 })
 

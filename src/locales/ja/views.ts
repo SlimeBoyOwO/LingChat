@@ -64,4 +64,5 @@ export default {
       defaultTitle: '通知',
     },
   },
+  dragDrop: 'ドロップして与える',
 }

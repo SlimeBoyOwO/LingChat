@@ -10,7 +10,7 @@
       v-show="!uiStore.showSettings"
     >
       <span class="text-xl">🍅</span>
-      <h3 class="text-lg font-bold m-0 hidden xl:block">番茄钟(实验)</h3>
+      <h3 class="text-lg font-bold m-0 hidden xl:block">{{ $t('ui.pomodoro.title') }}</h3>
     </Button>
 
     <Transition
@@ -49,7 +49,7 @@
               <div
                 class="h-6 flex items-center justify-center mb-1 cursor-pointer group"
                 @click="startEditLabel"
-                title="点击修改名称"
+                :title="$t('ui.pomodoro.editName')"
               >
                 <span
                   v-if="!editingLabel"
@@ -77,7 +77,7 @@
                 {{ statusText }}
               </div>
               <div class="text-[11px] text-white/50">
-                第 {{ cycleIndex }} / {{ cyclesTotal }} 轮
+                {{ $t('ui.pomodoro.cycleInfo', { current: cycleIndex, total: cyclesTotal }) }}
               </div>
             </div>
           </div>
@@ -88,7 +88,7 @@
             class="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center cursor-pointer transition-all duration-200 text-white hover:bg-white/20 hover:scale-105 active:scale-95"
             :class="{ 'opacity-30 pointer-events-none bg-transparent shadow-none': isRunning }"
             @click="start"
-            title="开始"
+            :title="$t('ui.pomodoro.start')"
           >
             <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
               <path d="M8 5v14l11-7z" />
@@ -99,7 +99,7 @@
             class="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center cursor-pointer transition-all duration-200 text-white hover:bg-white/20 hover:scale-105 active:scale-95"
             :class="{ 'opacity-30 pointer-events-none bg-transparent shadow-none': !isRunning }"
             @click="pause"
-            title="暂停"
+            :title="$t('ui.pomodoro.pause')"
           >
             <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
               <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
@@ -109,7 +109,7 @@
           <div
             class="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center cursor-pointer transition-all duration-200 text-white hover:bg-white/20 hover:scale-105 active:scale-95"
             @click="reset"
-            title="重置"
+            :title="$t('ui.pomodoro.reset')"
           >
             <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
               <path
@@ -121,7 +121,7 @@
 
         <div class="flex justify-between w-full pt-4 border-t border-white/10">
           <div class="flex flex-col items-center flex-1">
-            <span class="text-[11px] text-white/50 mb-1.5">专注</span>
+            <span class="text-[11px] text-white/50 mb-1.5">{{ $t('ui.pomodoro.work') }}</span>
             <div class="flex items-center justify-center relative h-6">
               <input
                 type="number"
@@ -152,7 +152,7 @@
           </div>
 
           <div class="flex flex-col items-center flex-1">
-            <span class="text-[11px] text-white/50 mb-1.5">休息</span>
+            <span class="text-[11px] text-white/50 mb-1.5">{{ $t('ui.pomodoro.break') }}</span>
             <div class="flex items-center justify-center relative h-6">
               <input
                 type="number"
@@ -183,7 +183,7 @@
           </div>
 
           <div class="flex flex-col items-center flex-1">
-            <span class="text-[11px] text-white/50 mb-1.5">循环</span>
+            <span class="text-[11px] text-white/50 mb-1.5">{{ $t('ui.pomodoro.cycles') }}</span>
             <div class="flex items-center justify-center relative h-6">
               <input
                 type="number"
@@ -191,7 +191,7 @@
                 v-model.number="cyclesInput"
                 @change="applyCycles"
               />
-              <span class="text-[11px] text-white/50 pointer-events-none ml-0.5 mr-1">次</span>
+              <span class="text-[11px] text-white/50 pointer-events-none ml-0.5 mr-1">{{ $t('ui.pomodoro.cycleUnit') }}</span>
               <div class="flex flex-col justify-center h-full gap-0.5">
                 <div
                   class="flex items-center justify-center cursor-pointer opacity-60 hover:opacity-100 h-2.5 active:scale-90 transition-transform"
@@ -224,7 +224,9 @@ import Button from '../base/widget/Button.vue'
 import { useGameStore } from '../../stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { invoke } from '@tauri-apps/api/core'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const gameStore = useGameStore()
 const uiStore = useUIStore()
 
@@ -295,12 +297,12 @@ const statusText = computed(() => {
     cycleIndex.value === 1 &&
     mode.value === 'work'
   ) {
-    return '空闲中'
+    return t('ui.pomodoro.statusIdle')
   }
   if (!isRunning.value) {
-    return '空闲中'
+    return t('ui.pomodoro.statusIdle')
   }
-  return mode.value === 'work' ? '专注中' : '休息中'
+  return mode.value === 'work' ? t('ui.pomodoro.statusWorking') : t('ui.pomodoro.statusBreaking')
 })
 
 const pendingPrompts = ref<string[]>([])

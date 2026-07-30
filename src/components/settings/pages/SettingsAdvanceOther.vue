@@ -32,7 +32,7 @@
       >
         <span
           class="text-base font-bold px-3.75 py-2.5 block rounded-lg mb-1 text-brand bg-white/10 backdrop-blur-xl backdrop-saturate-150 border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.1),inset_0_1px_1px_rgba(255,255,255,0.1)]"
-        >{{ categoryName }}</span>
+        >{{ catLabel(categoryName) }}</span>
         <a
           v-for="(, subcategoryName) in categoryData.subcategories"
           :key="subcategoryName"
@@ -43,7 +43,7 @@
           }"
           @click.prevent="selectSubcategory(categoryName, subcategoryName.toString())"
         >
-          {{ subcategoryName }}
+          {{ subLabel(subcategoryName) }}
         </a>
       </div>
     </nav>
@@ -70,12 +70,12 @@
         <div class="pt-2.5 overflow-auto">
           <header class="pb-4 mb-6 border-b border-brand">
             <h2 class="m-0 text-2xl text-brand font-semibold">
-              {{ activeSelection.subcategory }}
+              {{ subLabel(activeSelection.subcategory ?? '') }}
             </h2>
             <p class="mt-2 text-base">
               {{
-                selectedSubcategory.description ||
-                $t('settings.advanceOther.subcategoryDesc', { name: activeSelection.subcategory })
+                subDesc(activeSelection.subcategory ?? '', selectedSubcategory.description) ||
+                $t('settings.advanceOther.subcategoryDesc', { name: subLabel(activeSelection.subcategory ?? '') })
               }}
             </p>
           </header>
@@ -87,7 +87,7 @@
               class="mb-6"
             >
               <SettingItem
-                :setting="setting"
+                :setting="localizedSetting(setting)"
                 @update:value="(value) => (setting.value = value)"
               />
             </div>
@@ -158,7 +158,26 @@ import { RefreshCw } from 'lucide-vue-next'
 
 // --- 响应式状态定义 ---
 const uiStore = useUIStore()
-const { t } = useI18n()
+const { t, te } = useI18n()
+
+// 后端配置树的分类/子类/设置项描述均为中文（config/tree.rs），
+// 这里按名称/键查 i18n 词条做界面日文化；查不到时回退后端原文。
+const catLabel = (name: string) =>
+  te(`settings.advanceOther.categories.${name}`) ? t(`settings.advanceOther.categories.${name}`) : name
+const subLabel = (name: string) =>
+  te(`settings.advanceOther.subcategories.${name}`)
+    ? t(`settings.advanceOther.subcategories.${name}`)
+    : name
+const subDesc = (name: string, fallback: string) =>
+  te(`settings.advanceOther.subcategoryDescs.${name}`)
+    ? t(`settings.advanceOther.subcategoryDescs.${name}`)
+    : fallback
+const localizedSetting = (setting: any) => ({
+  ...setting,
+  description: te(`settings.advanceOther.fields.${setting.key}`)
+    ? t(`settings.advanceOther.fields.${setting.key}`)
+    : setting.description,
+})
 const narrowViewLevel = ref<'menu' | 'content'>('menu')
 const isLoading = ref(false)
 const configData = ref<Record<string, any>>({})

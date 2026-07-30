@@ -6,4 +6,6 @@ export default {
   delete: '削除',
   close: '閉じる',
   loading: '読み込み中…',
+  exitTitle: '終了の確認',
+  exitMessage: 'アプリを終了しますか？',
 }
