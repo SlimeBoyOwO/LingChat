@@ -1,4 +1,4 @@
-﻿//! Simple-Vits-API VITS 适配器，对应 `ling_chat/core/TTS/vits_adapter.py`。
+//! Simple-Vits-API VITS 适配器，对应 `ling_chat/core/TTS/vits_adapter.py`。
 
 use std::collections::HashMap;
 

@@ -1,4 +1,4 @@
-﻿//! 情绪识别子系统（ONNX 推理）。
+//! 情绪识别子系统（ONNX 推理）。
 //!
 //! 对应 Python `ling_chat.core.emotion`。
 

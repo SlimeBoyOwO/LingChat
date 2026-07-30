@@ -1,4 +1,4 @@
-﻿use crate::ai_service::types::{GameLine, LineBase, LlmMessage};
+use crate::ai_service::types::{GameLine, LineBase, LlmMessage};
 use crate::db::entities::line::LineAttribute;
 
 /// 将 `GameLine` 序列构建成目标角色的 LLM 消息列表。

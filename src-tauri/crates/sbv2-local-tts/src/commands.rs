@@ -1,4 +1,4 @@
-﻿// Tauri commands exposing the local TTS engine to the frontend.
+// Tauri commands exposing the local TTS engine to the frontend.
 
 use std::path::Path;
 use std::path::PathBuf;

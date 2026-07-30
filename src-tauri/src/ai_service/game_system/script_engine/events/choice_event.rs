@@ -1,4 +1,4 @@
-﻿//! Choice event — presents branching options to the user, waits for selection,
+//! Choice event — presents branching options to the user, waits for selection,
 //! then evaluates conditions and executes actions for the matched option.
 
 use anyhow::{anyhow, Result};

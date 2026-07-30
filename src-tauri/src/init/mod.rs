@@ -1,4 +1,4 @@
-﻿pub mod role_sync;
+pub mod role_sync;
 pub mod static_copy;
 pub mod voice_cleanup;
 

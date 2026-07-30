@@ -1,4 +1,4 @@
-﻿//! Sound effect event — emits a sound to the frontend without storing state.
+//! Sound effect event — emits a sound to the frontend without storing state.
 
 use anyhow::Result;
 use async_trait::async_trait;

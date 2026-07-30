@@ -1,4 +1,4 @@
-﻿//! TTS 适配器 trait + 统一 Provider。
+//! TTS 适配器 trait + 统一 Provider。
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};

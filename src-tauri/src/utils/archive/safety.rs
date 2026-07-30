@@ -1,4 +1,4 @@
-﻿//! 解压安全防线：条目数 / 压缩比 / 路径清洗 / 路径拼接。
+//! 解压安全防线：条目数 / 压缩比 / 路径清洗 / 路径拼接。
 //!
 //! 提供四个核心函数供 [`super::extract::extract_zip`] / [`super::extract::extract_sevenz`] 调用：
 //! - [`check_entry_safety`] 单条目压缩比 + 数量闸门

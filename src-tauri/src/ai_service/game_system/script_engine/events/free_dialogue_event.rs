@@ -1,4 +1,4 @@
-﻿//! Free dialogue event — multi-round free conversation within a script.
+//! Free dialogue event — multi-round free conversation within a script.
 //!
 //! Emits free_dialogue start/stop boundaries, waits for input each round,
 //! and delegates AI generation to MessageGenerator.

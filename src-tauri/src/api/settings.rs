@@ -1,4 +1,4 @@
-﻿//! Settings / LLM provider management Tauri commands.
+//! Settings / LLM provider management Tauri commands.
 //!
 //! 这些命令原本位于 `config/mod.rs`，重构后移至 `api/` 层，
 //! 遵循项目其他 API 模块的约定（command 在 api/，业务逻辑在 config/）。

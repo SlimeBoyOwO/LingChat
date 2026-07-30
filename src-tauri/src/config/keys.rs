@@ -1,4 +1,4 @@
-﻿//! 所有 settings.json 存储键的字符串常量。
+//! 所有 settings.json 存储键的字符串常量。
 //!
 //! 合并自原 mod.rs、proactive.rs、tts.rs 中的 keys 子模块。
 

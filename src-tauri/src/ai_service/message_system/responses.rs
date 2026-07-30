@@ -1,4 +1,4 @@
-﻿//! 前端消息响应模型。与旧版 `ling_chat.core.schemas.responses` 对应。
+//! 前端消息响应模型。与旧版 `ling_chat.core.schemas.responses` 对应。
 //!
 //! Tauri 版通过 `window.emit("ai:reply", payload)` 发送给前端。序列化字段
 //! 保持与旧版一致（camelCase），使前端事件 handler 可以直接复用。

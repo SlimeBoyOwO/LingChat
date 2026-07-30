@@ -1,4 +1,4 @@
-﻿//! TTS 适配器实现集合。
+//! TTS 适配器实现集合。
 //!
 //! 每个后端对应 Python 的一个 `*_adapter.py`：
 //! - [`sbv2`] — Style-Bert-Vits2 本地 HTTP (`/voice`)

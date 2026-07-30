@@ -1,4 +1,4 @@
-﻿//! 基于 `genai` crate 的多供应商 LLM provider。
+//! 基于 `genai` crate 的多供应商 LLM provider。
 //!
 //! 替换原先手写 HTTP/SSE 的 OpenAiProvider 和 GeminiProvider。
 

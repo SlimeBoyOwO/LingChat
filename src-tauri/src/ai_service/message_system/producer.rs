@@ -1,4 +1,4 @@
-﻿//! 流式生产者：从 LLM chunk 流中切分出完整的"一个情绪段"并投递到 sentence channel。
+//! 流式生产者：从 LLM chunk 流中切分出完整的"一个情绪段"并投递到 sentence channel。
 //!
 //! 切分规则对标 Python `StreamProducer.run`：
 //! - 遇到 `【` 进入候选状态，再遇到 `】` 闭合情绪 tag。

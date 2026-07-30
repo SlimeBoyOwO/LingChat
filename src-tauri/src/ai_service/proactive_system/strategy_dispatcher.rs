@@ -1,4 +1,4 @@
-﻿use crate::ai_service::game_system::game_status::GameStatus;
+use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::proactive_system::config::ProactiveConfig;
 use crate::ai_service::proactive_system::types::{
     IntentType, PerceptionResult, UserScheduleSettings, UserState,

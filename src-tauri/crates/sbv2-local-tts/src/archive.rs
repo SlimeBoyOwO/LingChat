@@ -1,4 +1,4 @@
-﻿// Inspect + install model packages. Supports raw SBV2/ONNX files and zip/7z
+// Inspect + install model packages. Supports raw SBV2/ONNX files and zip/7z
 // archives containing those files. Reuses `utils::archive` for extraction
 // when needed.
 

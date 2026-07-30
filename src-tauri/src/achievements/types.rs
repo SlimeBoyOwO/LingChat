@@ -1,4 +1,4 @@
-﻿use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 /// 成就定义（预定义或动态注册）。
 #[derive(Debug, Clone, Serialize, Deserialize)]

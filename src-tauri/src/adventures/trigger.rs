@@ -1,4 +1,4 @@
-﻿use anyhow::Result;
+use anyhow::Result;
 use chrono::Timelike;
 use sea_orm::DatabaseConnection;
 use serde::Serialize;

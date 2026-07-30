@@ -1,4 +1,4 @@
-﻿use std::fs;
+use std::fs;
 use std::io::Write;
 
 use crate::utils::system::open_folder;

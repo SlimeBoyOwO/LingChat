@@ -1,4 +1,4 @@
-﻿//! Static utility functions for prompt 装饰.
+//! Static utility functions for prompt 装饰.
 //!
 //! 用于 prompt 装饰的静态工具函数，使其符合本项目的特定需求。
 

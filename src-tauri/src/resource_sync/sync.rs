@@ -1,4 +1,4 @@
-﻿//! 资源同步核心逻辑 — 从 resource_dir 的 .official/ 复制文件到 data/。
+//! 资源同步核心逻辑 — 从 resource_dir 的 .official/ 复制文件到 data/。
 //!
 //! 仅涉及本地文件操作，不走网络。
 

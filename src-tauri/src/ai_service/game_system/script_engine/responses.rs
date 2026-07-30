@@ -1,4 +1,4 @@
-﻿//! Serializable payload types for Tauri script events.
+//! Serializable payload types for Tauri script events.
 //!
 //! Each struct matches the payload shape expected by the frontend event processors
 //! in `src/core/events/processors/`. The frontend's `asEvent()` helper merges in

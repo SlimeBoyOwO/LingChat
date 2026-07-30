@@ -1,4 +1,4 @@
-﻿//! 上帝 Agent 的工具（function）定义与解析。
+//! 上帝 Agent 的工具（function）定义与解析。
 //!
 //! 目前仅包含 `select_next_speaker` 工具。后续扩展更多工具时在此注册。
 

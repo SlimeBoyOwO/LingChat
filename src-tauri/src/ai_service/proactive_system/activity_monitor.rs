@@ -1,4 +1,4 @@
-﻿use crate::ai_service::proactive_system::types::{PerceptionResult, UserState};
+use crate::ai_service::proactive_system::types::{PerceptionResult, UserState};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 

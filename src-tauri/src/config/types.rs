@@ -1,4 +1,4 @@
-﻿//! 前端"高级设置"页面使用的结构化配置树类型。
+//! 前端"高级设置"页面使用的结构化配置树类型。
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

@@ -1,4 +1,4 @@
-﻿// CRUD for installed local TTS voices and assets.
+// CRUD for installed local TTS voices and assets.
 
 use serde::Serialize;
 

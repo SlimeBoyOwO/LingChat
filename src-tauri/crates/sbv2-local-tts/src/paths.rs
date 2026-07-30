@@ -1,4 +1,4 @@
-﻿// Filesystem layout for local TTS assets.
+// Filesystem layout for local TTS assets.
 //
 // - `<data_root>/models/tts-local/`         root
 // - `<data_root>/models/tts-local/assets/`  DeBerta + tokenizer shared assets

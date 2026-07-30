@@ -1,4 +1,4 @@
-﻿//! In-process SBV2 / Style-Bert-VITS2 local TTS engine.
+//! In-process SBV2 / Style-Bert-VITS2 local TTS engine.
 //!
 //! Optional alternative to the cloud TTS adapters used by LingChat.
 //! Models are imported at runtime from a local file picker or downloaded

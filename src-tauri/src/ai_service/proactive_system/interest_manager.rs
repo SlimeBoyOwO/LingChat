@@ -1,4 +1,4 @@
-﻿use rand::Rng;
+use rand::Rng;
 
 pub struct InterestManager {
     pub interest: f64,

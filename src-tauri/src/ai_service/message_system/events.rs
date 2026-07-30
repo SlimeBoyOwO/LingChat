@@ -1,4 +1,4 @@
-﻿//! 前端事件分发抽象。
+//! 前端事件分发抽象。
 //!
 //! 旧版基于 WebSocket + `message_broker.publish(client_id, data)`。
 //! 现在走 Tauri 的 `Emitter::emit`，把结构化 payload 作为事件分发给前端。

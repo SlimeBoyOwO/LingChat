@@ -50,7 +50,7 @@ regex = "1"
 genai = "0.6"
 uuid = { version = "1", features = ["v4"] }
 async-trait = "0.1"
-ort = { version = "=2.0.0-rc.10", default-features = false, features = ["std", "ndarray", "download-binaries"] }
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "ndarray", "download-binaries"] }
 
 # Local TTS engine (in-process SBV2 / Style-Bert-VITS2).
 sbv2-local-tts = { path = "crates/sbv2-local-tts" }

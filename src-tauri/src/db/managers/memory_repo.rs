@@ -1,4 +1,4 @@
-﻿use anyhow::anyhow;
+use anyhow::anyhow;
 use sea_orm::*;
 
 use crate::db::entities::memory_bank;

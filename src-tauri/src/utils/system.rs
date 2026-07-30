@@ -1,4 +1,4 @@
-﻿pub fn open_folder(path: &str) -> Result<(), String> {
+pub fn open_folder(path: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("explorer")

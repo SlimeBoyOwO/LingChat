@@ -1,4 +1,4 @@
-﻿//! Multi-provider LLM configuration management.
+//! Multi-provider LLM configuration management.
 //!
 //! Replaces the old flat `llm.provider` / `llm.model` / ... keys with a list of named
 //! provider configs, each assignable as the "chat" or "translate" model.

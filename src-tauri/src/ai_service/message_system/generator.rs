@@ -1,4 +1,4 @@
-﻿//! 消息生成协调器。对标 Python `MessageGenerator.process_message_stream`。
+//! 消息生成协调器。对标 Python `MessageGenerator.process_message_stream`。
 //!
 //! 职责：
 //! 1. 把用户消息（如有）走 MessageProcessor 预处理后，作为 USER 行入 GameStatus。

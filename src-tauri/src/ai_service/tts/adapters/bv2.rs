@@ -1,4 +1,4 @@
-﻿//! Simple-Vits-API Bert-Vits2 适配器，对应 `ling_chat/core/TTS/bv2_adapter.py`。
+//! Simple-Vits-API Bert-Vits2 适配器，对应 `ling_chat/core/TTS/bv2_adapter.py`。
 
 use std::collections::HashMap;
 

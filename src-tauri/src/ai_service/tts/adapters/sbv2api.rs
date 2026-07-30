@@ -1,4 +1,4 @@
-﻿//! SBV2 API 适配器，对应 `ling_chat/core/TTS/sbv2api_adapter.py`。
+//! SBV2 API 适配器，对应 `ling_chat/core/TTS/sbv2api_adapter.py`。
 
 use std::collections::HashMap;
 

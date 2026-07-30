@@ -1,4 +1,4 @@
-﻿// Streaming downloader for curated assets. Emits progress events and
+// Streaming downloader for curated assets. Emits progress events and
 // honors a shared cancellation token.
 
 use std::path::Path;

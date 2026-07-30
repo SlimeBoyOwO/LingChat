@@ -1,4 +1,4 @@
-﻿use chrono::Timelike;
+use chrono::Timelike;
 
 use crate::achievements::manager::AchievementManager;
 use crate::achievements::types::Achievement;

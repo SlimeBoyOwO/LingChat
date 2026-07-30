@@ -1,4 +1,4 @@
-﻿//! 中文 → 日文翻译器。对标 Python `ling_chat.core.ai_service.translator.Translator`。
+//! 中文 → 日文翻译器。对标 Python `ling_chat.core.ai_service.translator.Translator`。
 //!
 //! 输入/输出结构：输入是 `parse_and_classify_emotional_segments` 产出的若干
 //! [`crate::ai_service::message_system::processor::EmotionSegment`]，把每个 segment 的

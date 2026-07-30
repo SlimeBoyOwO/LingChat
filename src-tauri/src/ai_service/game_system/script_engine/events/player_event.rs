@@ -1,4 +1,4 @@
-﻿//! Player event — displays player text and adds a USER line.
+//! Player event — displays player text and adds a USER line.
 
 use anyhow::Result;
 use async_trait::async_trait;

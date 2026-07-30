@@ -1,4 +1,4 @@
-﻿//! Present picture event — shows a full-screen image with optional scale.
+//! Present picture event — shows a full-screen image with optional scale.
 
 use anyhow::Result;
 use async_trait::async_trait;

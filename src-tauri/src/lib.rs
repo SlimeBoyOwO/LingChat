@@ -1,4 +1,4 @@
-﻿mod achievements;
+mod achievements;
 mod adventures;
 mod ai_service;
 mod api;

@@ -1,4 +1,4 @@
-﻿//! Platform-specific bridge for preparing an import source path for local TTS.
+//! Platform-specific bridge for preparing an import source path for local TTS.
 //!
 //! Mirrors the wrapper that lived in `crate::api::role_archive` before the
 //! role-archive refactor was dropped from this branch. On desktop the user's

@@ -1,4 +1,4 @@
-﻿// Curated asset catalog. URLs are reference only - user triggers downloads
+// Curated asset catalog. URLs are reference only - user triggers downloads
 // explicitly from the UI.
 
 use serde::{Deserialize, Serialize};

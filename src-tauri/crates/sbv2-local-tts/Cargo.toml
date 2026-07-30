@@ -10,7 +10,7 @@ crate-type = ["rlib"]
 
 [dependencies]
 # Style-Bert-VITS2 core inference engine from crates.io.
-sbv2_core = { version = "0.2.0-alpha8", default-features = false, features = ["std"] }
+sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = ["std"] }
 
 # Tauri runtime (needed for AppHandle, Manager, State, Emitter).
 tauri = { version = "2", features = ["protocol-asset"] }

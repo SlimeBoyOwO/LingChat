@@ -1,4 +1,4 @@
-﻿//! 主动对话系统配置，从 settings.json 统一加载。
+//! 主动对话系统配置，从 settings.json 统一加载。
 
 use serde_json::Value;
 use tauri::AppHandle;

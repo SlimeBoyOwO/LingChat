@@ -1,4 +1,4 @@
-﻿use crate::ai_service::proactive_system::types::UserScheduleSettings;
+use crate::ai_service::proactive_system::types::UserScheduleSettings;
 use crate::AppState;
 use tauri::{AppHandle, Manager};
 

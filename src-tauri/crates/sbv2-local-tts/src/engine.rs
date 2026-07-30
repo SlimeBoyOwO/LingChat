@@ -1,4 +1,4 @@
-﻿// In-process SBV2 engine. All synthesis happens in spawn_blocking because
+// In-process SBV2 engine. All synthesis happens in spawn_blocking because
 // ONNX is CPU-bound and `ort::Session` is `!Send + !Sync`; the holder is
 // taken out of the async Mutex, used on the blocking pool, then put back.
 

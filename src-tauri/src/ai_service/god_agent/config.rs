@@ -1,4 +1,4 @@
-﻿//! 上帝 Agent 配置。对标 Translator 的独立 LLM 配置模式。
+//! 上帝 Agent 配置。对标 Translator 的独立 LLM 配置模式。
 
 use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
