@@ -60,6 +60,12 @@ const SKIP_PATTERNS = [
 
 const gameDataFiles = [];
 
+// 本地定制发行版需要随角色携带的参考音频。它们可以保持未跟踪状态，
+// 但只要文件存在，就必须进入桌面安装包和数据清单。
+const LOCAL_RELEASE_FILES = [
+  "game_data/characters/诺一钦灵/voice/paimeng_ref.wav",
+];
+
 for (const relPath of gitFiles) {
   // 去掉 "data/" 前缀
   const subPath = relPath.slice("data/".length);
@@ -75,6 +81,13 @@ for (const relPath of gitFiles) {
   }
 
   gameDataFiles.push(subPath);
+}
+
+for (const subPath of LOCAL_RELEASE_FILES) {
+  const src = join(projectRoot, "data", subPath);
+  if (existsSync(src) && !gameDataFiles.includes(subPath)) {
+    gameDataFiles.push(subPath);
+  }
 }
 
 console.log(`   game_data: ${gameDataFiles.length} 个文件`);

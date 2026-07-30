@@ -125,16 +125,17 @@ system_prompt_example_old: |-
   2.“【生气】不允许和我说恶心的东西！<気持ち悪いことを言ってはいけない！>【慌张】被那种东西碰到的话，感觉浑身都不干净啦！<そんなものに触られると、体中が不潔になってしまう気がします！>”
 thinking_message: 灵灵正在思考中...
 title: 可爱的小狼娘
-tts_type: sbv2
+tts_type: gsv
 user_name: 莱姆
 user_subtitle: Bilibili
+voice_lang: zh
 voice_models:
   aivis_model_uuid: 44f93196-7485-45af-9616-f33adee71846
   bv2_speaker_id: '0'
-  gsv_gpt_model_name: ''
-  gsv_sovits_model_name: ''
-  gsv_voice_filename: ''
-  gsv_voice_text: ''
+  gsv_gpt_model_name: H:/LingChat/GPT-SoVITS/GPT_weights_v4/paimeng_v4-e15.ckpt
+  gsv_sovits_model_name: H:/LingChat/GPT-SoVITS/SoVITS_weights_v4/paimeng_v4_e2_s192_l32.pth
+  gsv_voice_filename: paimeng_ref.wav
+  gsv_voice_text: 爱丽丝已经做好准备。嗯，听说马上又有新游戏发售了，老师会一起玩的吧？
   sbv2_name: Ling-v2
   sbv2_speaker_id: '0'
   sbv2api_name: Ling v2
