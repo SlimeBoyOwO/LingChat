@@ -17,7 +17,9 @@ use crate::ai_service::game_system::script_engine::responses::{
 };
 use crate::ai_service::game_system::script_engine::utils::script_function;
 use crate::ai_service::message_system::events::emit;
-use crate::ai_service::message_system::generator::{GeneratorDeps, MessageGenerator};
+use crate::ai_service::message_system::generator::{
+    GeneratorDeps, GeneratorSource, MessageGenerator,
+};
 use crate::ai_service::types::{LineAttributeExt, LineBase};
 use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::{replace_placeholder, PromptRole};
@@ -109,12 +111,14 @@ impl ScriptEvent for FreeDialogueEvent {
             let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm).await;
             llm.map(|llm| {
                 let deps = GeneratorDeps {
+                    source: GeneratorSource::ScriptFreeDialogue,
                     app: ctx.app.clone(),
                     db: ctx.db.clone(),
                     game_status: ctx.game_status.clone(),
                     processor: state.chat.processor.clone(),
                     translator: state.chat.translator.clone(),
                     llm,
+                    tool_registry: state.tool_registry.clone(),
                     concurrency: 1,
                     god_agent: None,
                     suppress_thinking: false,

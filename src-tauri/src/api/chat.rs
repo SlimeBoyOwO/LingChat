@@ -1,7 +1,9 @@
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::ai_service::message_system::events;
-use crate::ai_service::message_system::generator::{GeneratorDeps, MessageGenerator};
+use crate::ai_service::message_system::generator::{
+    GeneratorDeps, GeneratorSource, MessageGenerator,
+};
 use crate::ai_service::types::{LineAttributeExt, LineBase};
 use crate::api::game::{compute_user_message_seqs, GameLineInit};
 use crate::config::AppConfig;
@@ -79,12 +81,14 @@ pub async fn send_chat_message(
     }
 
     let deps = GeneratorDeps {
+        source: GeneratorSource::UserChat,
         app: app.clone(),
         db: state.db.clone(),
         game_status,
         processor: state.chat.processor.clone(),
         translator: state.chat.translator.clone(),
         llm,
+        tool_registry: state.tool_registry.clone(),
         concurrency,
         god_agent: state.god_agent.clone(),
         suppress_thinking: false,
@@ -303,6 +307,7 @@ pub async fn rollback_conversation(
             audio_file: gl.base.audio_file.clone(),
             perceived_role_ids: gl.perceived_role_ids.clone(),
             user_message_seq: seq,
+            thinking: gl.base.thinking.clone(),
         })
         .collect();
 
@@ -324,9 +329,10 @@ pub async fn trigger_ai_response(app: AppHandle) -> Result<(), String> {
     let concurrency = AppConfig::load(&app).map(|c| c.consumers as usize).unwrap_or(1).max(1);
     let gs = { let svc = state.ai_service.lock().await; svc.game_status.clone() };
     let deps = GeneratorDeps {
+        source: GeneratorSource::Proactive,
         app: app.clone(), db: state.db.clone(), game_status: gs,
         processor: state.chat.processor.clone(), translator: state.chat.translator.clone(),
-        llm, concurrency, god_agent: state.god_agent.clone(), suppress_thinking: false,
+        llm, tool_registry: state.tool_registry.clone(), concurrency, god_agent: state.god_agent.clone(), suppress_thinking: false,
     };
     let gen_lock = state.generation_lock.clone();
     tokio::spawn(async move {

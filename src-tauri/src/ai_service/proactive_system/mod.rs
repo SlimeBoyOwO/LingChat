@@ -15,8 +15,11 @@ use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
 
 use crate::ai_service::message_system::events;
-use crate::ai_service::message_system::generator::{GeneratorDeps, MessageGenerator};
+use crate::ai_service::message_system::generator::{
+    GeneratorDeps, GeneratorSource, MessageGenerator,
+};
 use crate::ai_service::service::SharedAIService;
+use crate::ai_service::tools::registry::ToolRegistry;
 use crate::ai_service::types::{LineAttributeExt, LineBase};
 use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::PromptRole;
@@ -36,6 +39,7 @@ pub struct ProactiveSystem {
     db: DatabaseConnection,
     ai_service: SharedAIService,
     chat: ChatComponents,
+    tool_registry: Arc<ToolRegistry>,
     generation_lock: Arc<Mutex<()>>,
 
     config: ProactiveConfig,
@@ -62,6 +66,7 @@ impl ProactiveSystem {
         db: DatabaseConnection,
         ai_service: SharedAIService,
         chat: ChatComponents,
+        tool_registry: Arc<ToolRegistry>,
         generation_lock: Arc<Mutex<()>>,
     ) -> Self {
         let config = ProactiveConfig::load(&app);
@@ -76,6 +81,7 @@ impl ProactiveSystem {
             db,
             ai_service,
             chat,
+            tool_registry,
             generation_lock,
             config,
             settings: Arc::new(RwLock::new(UserScheduleSettings::default())),
@@ -236,6 +242,7 @@ impl ProactiveSystem {
                 svc.game_status.clone()
             };
             let deps = GeneratorDeps {
+                source: GeneratorSource::Proactive,
                 app: self.app.clone(),
                 db: self.db.clone(),
                 game_status,
@@ -244,6 +251,7 @@ impl ProactiveSystem {
                 llm: crate::ai_service::llm::slot_snapshot(&self.chat.llm)
                     .await
                     .ok_or_else(|| anyhow::anyhow!("LLM is not configured"))?,
+                tool_registry: self.tool_registry.clone(),
                 concurrency: 1,
                 god_agent: None,
                 suppress_thinking: false,

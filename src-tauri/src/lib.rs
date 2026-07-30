@@ -29,6 +29,7 @@ use ai_service::llm::LlmSlot;
 use ai_service::message_system::processor::MessageProcessor;
 use ai_service::screen_analyzer::{ScreenAnalyzer, ScreenAnalyzerConfig};
 use ai_service::service::SharedAIService;
+use ai_service::tools::registry::ToolRegistry;
 use ai_service::translator::Translator;
 
 /// 本地时间格式化器，用于日志输出的时间戳。
@@ -75,6 +76,7 @@ pub struct InnerAppState {
     /// 生成锁，用于控制并发生成。
     pub generation_lock: Arc<tokio::sync::Mutex<()>>,
     /// 主动系统实例（可选）。
+    pub tool_registry: Arc<ToolRegistry>,
     pub proactive_system:
         Option<Arc<tokio::sync::Mutex<ai_service::proactive_system::ProactiveSystem>>>,
     /// 成就管理器。
@@ -324,6 +326,9 @@ pub fn run() {
 
             // 创建生成锁
             let generation_lock = std::sync::Arc::new(tokio::sync::Mutex::new(()));
+            let role_names = rt
+                .block_on(db::managers::role_repo::RoleRepo::get_all_tool_role_names(&db))?;
+            let tool_registry = Arc::new(ai_service::tools::built_in_registry(role_names)?);
 
             // 创建主动系统
             let proactive = std::sync::Arc::new(tokio::sync::Mutex::new(
@@ -336,6 +341,7 @@ pub fn run() {
                         processor: chat.processor.clone(),
                         translator: chat.translator.clone(),
                     },
+                    tool_registry.clone(),
                     generation_lock.clone(),
                 ),
             ));
@@ -387,6 +393,7 @@ pub fn run() {
                     chat,
                     script_channels,
                     generation_lock,
+                    tool_registry,
                     proactive_system: Some(proactive),
                     achievement_manager,
                     screen_analyzer,

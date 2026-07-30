@@ -8,7 +8,9 @@ use tauri_plugin_store::StoreExt;
 
 use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::message_system::events;
-use crate::ai_service::message_system::generator::{GeneratorDeps, MessageGenerator};
+use crate::ai_service::message_system::generator::{
+    GeneratorDeps, GeneratorSource, MessageGenerator,
+};
 use crate::ai_service::types::{CharacterSettings, GameLine, LineAttributeExt, LineBase};
 use crate::config::{self, AppConfig};
 use crate::db::entities::line;
@@ -111,6 +113,8 @@ pub struct GameLineInit {
     pub perceived_role_ids: Vec<i32>,
     /// 玩家消息序号（1-indexed），仅对 sender_role_id == Some(0) 的 User 行有值
     pub user_message_seq: Option<u32>,
+    /// 该轮生成的思考链（仅每轮最后一条 assistant 行有值）。
+    pub thinking: Option<String>,
 }
 
 // ========== Tauri 命令 ==========
@@ -456,6 +460,7 @@ pub(crate) async fn build_web_init_data(
                 audio_file: gl.base.audio_file.clone(),
                 perceived_role_ids: gl.perceived_role_ids.clone(),
                 user_message_seq: seq,
+                thinking: gl.base.thinking.clone(),
             })
             .collect();
 
@@ -895,12 +900,14 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
     };
 
     let deps = GeneratorDeps {
+        source: GeneratorSource::EntryGreeting,
         app: app.clone(),
         db: state.db.clone(),
         game_status,
         processor: state.chat.processor.clone(),
         translator: state.chat.translator.clone(),
         llm,
+        tool_registry: state.tool_registry.clone(),
         concurrency,
         god_agent: state.god_agent.clone(),
         suppress_thinking: true,

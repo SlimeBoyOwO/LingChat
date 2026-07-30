@@ -248,7 +248,7 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
 
 /** 将 Rust GameLineInit 转换为前端 GameMessage 列表 */
 export function convertInitLines(lines: GameLineInit[]): GameMessage[] {
-  const filtered = lines.filter((line) => line.attribute !== 'system')
+  const filtered = lines.filter((line) => line.attribute !== 'system' && line.attribute !== 'tool')
 
   return filtered.map((line, index, array) => {
     const filteredContent = line.content.replace(/\{[\s\S]*?\}/g, '').trim()
@@ -273,6 +273,7 @@ export function convertInitLines(lines: GameLineInit[]): GameMessage[] {
       originalTag: line.original_emotion || undefined,
       timestamp: Date.now(),
       userMessageSeq: line.user_message_seq ?? undefined,
+      thinking: line.thinking || undefined,
     }
   })
 }

@@ -25,15 +25,29 @@ use crate::ai_service::message_system::processor::{
 };
 use crate::ai_service::message_system::producer::{SentenceItem, StreamProducer};
 use crate::ai_service::message_system::responses::{event_names, ReplyResponse};
+use crate::ai_service::tools::registry::ToolRegistry;
+use crate::ai_service::tools::tool_loop::stream_with_tool_loop;
 use crate::ai_service::translator::Translator;
-use crate::ai_service::types::{LineAttributeExt, LineBase, LlmMessage};
+use crate::ai_service::types::{GameLine, LineAttributeExt, LineBase, LlmMessage};
 use crate::api::data_dir;
 use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::PromptRole;
 
+/// MessageGenerator 的业务调用来源。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GeneratorSource {
+    UserChat,
+    Proactive,
+    ScriptAiDialogue,
+    ScriptFreeDialogue,
+    EntryGreeting,
+}
+
 /// MessageGenerator 运行时依赖。
 #[derive(Clone)]
 pub struct GeneratorDeps {
+    /// 调用本轮生成的业务来源。
+    pub source: GeneratorSource,
     pub app: AppHandle,
     pub db: DatabaseConnection,
     pub game_status: Arc<Mutex<GameStatus>>,
@@ -41,6 +55,8 @@ pub struct GeneratorDeps {
     pub translator: Arc<Translator>,
     /// 当前生成轮次使用的 LLM 客户端快照（构建 deps 时从槽位读取）。
     pub llm: Arc<LlmClient>,
+    /// 普通聊天可调用的共享工具注册表。
+    pub tool_registry: Arc<ToolRegistry>,
     pub concurrency: usize,
     /// 上帝 Agent（多人自由对话编排器），`None` 时退化为单角色对话。
     pub god_agent: Option<Arc<GodAgentCore>>,
@@ -71,8 +87,8 @@ impl MessageGenerator {
 
     /// 处理一轮用户消息。返回 accumulated LLM 原始输出（便于日志 / 单测）。
     ///
-    /// 若 `user_message=None` 表示主动对话触发；此时会跳过 user 行构造，直接走
-    /// `GameStatus` 的 current role memory 发起 LLM。
+    /// `None` 只表示本轮没有原始用户输入；业务调用来源由 `GeneratorDeps::source` 表示。
+    /// 此时会跳过 user 行构造，直接走 `GameStatus` 的 current role memory 发起 LLM。
     ///
     /// 在多人自由对话模式下（God Agent 激活），会自动循环生成多轮 NPC 对话。
     pub async fn process_message(&self, user_message: Option<String>) -> Result<String> {
@@ -94,7 +110,7 @@ impl MessageGenerator {
 
         loop {
             // 取当前角色记忆（每轮重新获取，因为 current_role_id 可能已变化）
-            let context = self.get_current_context().await?;
+            let (context, tool_context_anchor) = self.get_current_context().await?;
             if context.is_empty() {
                 break;
             }
@@ -106,7 +122,7 @@ impl MessageGenerator {
                 None
             };
             let round_acc = self
-                .execute_pipeline(context, &original_msg, round_msg_seq)
+                .execute_pipeline(context, tool_context_anchor, &original_msg, round_msg_seq)
                 .await?;
             accumulated.push_str(&round_acc);
 
@@ -208,20 +224,22 @@ impl MessageGenerator {
     }
 
     /// Step 2: 根据 current_role_id 获取当前角色的 memory 上下文。
-    async fn get_current_context(&self) -> Result<Vec<LlmMessage>> {
+    async fn get_current_context(&self) -> Result<(Vec<LlmMessage>, Option<usize>)> {
         let mut gs = self.deps.game_status.lock().await;
         let Some(rid) = gs.current_role_id else {
             tracing::error!("生成消息的时候没有当前角色，取消生成");
-            return Ok(Vec::new());
+            return Ok((Vec::new(), None));
         };
+        let tool_context_anchor = gs.line_list.len().checked_sub(1);
         let role = gs.get_role(&self.deps.db, rid).await?;
-        Ok(role.memory.clone())
+        Ok((role.memory.clone(), tool_context_anchor))
     }
 
     /// Step 3: 启动 LLM 流管道，统一处理 thinking emit 与错误分发。
     async fn execute_pipeline(
         &self,
         context: Vec<LlmMessage>,
+        tool_context_anchor: Option<usize>,
         user_message: &str,
         user_msg_seq: Option<u32>,
     ) -> Result<String> {
@@ -230,7 +248,12 @@ impl MessageGenerator {
         }
 
         match self
-            .run_pipeline(context, user_message.to_string(), user_msg_seq)
+            .run_pipeline(
+                context,
+                tool_context_anchor,
+                user_message.to_string(),
+                user_msg_seq,
+            )
             .await
         {
             Ok(acc) => {
@@ -382,13 +405,75 @@ impl MessageGenerator {
     async fn run_pipeline(
         &self,
         context: Vec<LlmMessage>,
+        tool_context_anchor: Option<usize>,
         user_message: String,
         user_message_seq: Option<u32>,
     ) -> Result<String> {
+        let role_name = {
+            let mut gs = self.deps.game_status.lock().await;
+            let Some(role_id) = gs.current_role_id else {
+                return Err(anyhow::anyhow!("工具调用时没有当前角色"));
+            };
+            gs.get_role(&self.deps.db, role_id)
+                .await?
+                .display_name
+                .clone()
+        };
+        let tool_loop_result = stream_with_tool_loop(
+            &self.deps.llm,
+            &self.deps.tool_registry,
+            context,
+            self.deps.source,
+            role_name,
+        )
+        .await?;
+        if !tool_loop_result.tool_messages.is_empty() {
+            let mut gs = self.deps.game_status.lock().await;
+            let insert_pos = tool_context_anchor.map(|i| i + 1).unwrap_or(gs.line_list.len());
+            let perceived: Vec<i32> = gs.present_role_ids.iter().copied().collect();
+
+            for msg in tool_loop_result.tool_messages.iter().rev() {
+                let (attribute, content, tool_call) = match msg.role.as_str() {
+                    "assistant" => {
+                        let tool_call = msg.tool_calls.as_ref().map(|calls| {
+                            serde_json::to_string(calls).unwrap_or_default()
+                        });
+                        (LineAttribute::Assistant, msg.content.clone(), tool_call)
+                    },
+                    "tool" => (
+                        LineAttribute::Tool,
+                        serde_json::to_string(&serde_json::json!({
+                            "tool_call_id": msg.tool_call_id,
+                            "result": serde_json::from_str::<serde_json::Value>(&msg.content)
+                                .unwrap_or(serde_json::Value::String(msg.content.clone())),
+                        })).unwrap_or_default(),
+                        None,
+                    ),
+                    _ => continue,
+                };
+                let line = LineBase {
+                    content,
+                    tool_call,
+                    attribute: LineAttributeExt(attribute),
+                    sender_role_id: None,
+                    display_name: None,
+                    ..Default::default()
+                };
+                gs.line_list
+                    .insert(insert_pos, GameLine::from_base(line, perceived.clone()));
+            }
+            gs.refresh_memories(&self.deps.db).await?;
+        }
+        let llm_stream = tool_loop_result.stream;
+
         let (sentence_tx, sentence_rx) =
             mpsc::channel::<SentenceItem>(self.deps.concurrency.max(1) * 2);
         let (publish_tx, mut publish_rx) =
             mpsc::channel::<(usize, Option<ReplyResponse>)>(self.deps.concurrency.max(1) * 2);
+
+        // producer 与 consumer 共享的思考链缓冲：累积本轮生成的完整思考文本，
+        // 由最终句（is_final）的 consumer 快照并挂载到台词行与前端响应。
+        let thinking_buf = Arc::new(Mutex::new(String::new()));
 
         // publisher：按索引顺序 emit 到前端
         let app = self.deps.app.clone();
@@ -421,6 +506,7 @@ impl MessageGenerator {
             let sentence_rx = sentence_rx.clone();
             let publish_tx = publish_tx.clone();
             let user_message = user_message.clone();
+            let thinking_buf = thinking_buf.clone();
             consumer_tasks.push(tokio::spawn(async move {
                 loop {
                     let item = {
@@ -437,6 +523,7 @@ impl MessageGenerator {
                         &user_message,
                         is_final,
                         user_message_seq,
+                        &thinking_buf,
                     )
                     .await
                     {
@@ -456,8 +543,7 @@ impl MessageGenerator {
         drop(publish_tx);
 
         // producer：LLM 流 -> 句子
-        let llm_stream = self.deps.llm.complete_stream(&context).await?;
-        let producer = StreamProducer::new(llm_stream, sentence_tx, self.deps.app.clone());
+        let producer = StreamProducer::new(llm_stream, sentence_tx, self.deps.app.clone(), thinking_buf);
         let acc = producer.run().await.context("StreamProducer 失败")?;
 
         for t in consumer_tasks {
@@ -481,6 +567,7 @@ async fn consume_sentence(
     user_message: &str,
     is_final: bool,
     user_message_seq: Option<u32>,
+    thinking_buf: &Mutex<String>,
 ) -> Result<Option<ReplyResponse>> {
     if sentence.is_empty() {
         return Ok(None);
@@ -496,8 +583,16 @@ async fn consume_sentence(
     enrich_segments(deps, &mut segments).await?;
 
     // 3. 构建前端响应
-    let response =
+    let mut response =
         build_reply_response(deps, &segments, user_message, is_final, user_message_seq).await?;
+
+    // 3.5 最终句：快照本轮思考链，挂载到响应与台词行（供历史对话展示思考过程）
+    if is_final {
+        let thinking = thinking_buf.lock().await;
+        if !thinking.is_empty() {
+            response.thinking = Some(thinking.clone());
+        }
+    }
 
     // 4. 写入 GameStatus
     add_assistant_line(deps, &response).await?;
@@ -516,16 +611,34 @@ fn parse_segments(deps: &GeneratorDeps, sentence: &str) -> Vec<EmotionSegment> {
     segments
 }
 
-/// GPT-SoVITS 与 OpenTTS 支持把回复翻译成英语/韩语后再合成语音。
-fn translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static str> {
-    if tts_type != "gsv" && tts_type != "opentts" {
-        return None;
-    }
-    match voice_lang {
-        "en" => Some("en"),
-        "ko" => Some("ko"),
+/// 返回当前 TTS 需要的目标翻译语言。
+fn tts_translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static str> {
+    match (tts_type, voice_lang) {
+        ("gsv" | "opentts" | "sbv2", "en") => Some("en"),
+        ("gsv" | "opentts", "ko") => Some("ko"),
         _ => None,
     }
+}
+
+/// 判断文本是否适合作为日语 TTS 输入。
+fn looks_like_japanese(text: &str) -> bool {
+    let has_kana = text
+        .chars()
+        .any(|c| matches!(c, '\u{3040}'..='\u{30ff}' | '\u{31f0}'..='\u{31ff}'));
+    let has_cjk = text
+        .chars()
+        .any(|c| matches!(c, '\u{3400}'..='\u{4dbf}' | '\u{4e00}'..='\u{9fff}'));
+    let has_ascii_letters = text.chars().any(|c| c.is_ascii_alphabetic());
+
+    has_kana || (has_cjk && !has_ascii_letters)
+}
+
+/// 切回日语后，检测并修复上一次英语模式残留的译文。
+fn needs_japanese_translation(segments: &[EmotionSegment]) -> bool {
+    segments.iter().any(|segment| {
+        !segment.following_text.trim().is_empty()
+            && !looks_like_japanese(segment.japanese_text.trim())
+    })
 }
 
 /// Step B: 翻译与语音生成。
@@ -545,14 +658,21 @@ async fn enrich_segments(deps: &GeneratorDeps, segments: &mut [EmotionSegment]) 
             .unwrap_or_default()
     };
 
-    if let Some(target_lang) = translation_language(&tts_type, &voice_lang) {
+    let translation_language = tts_translation_language(&tts_type, &voice_lang).or_else(|| {
+        if voice_lang == "ja" && needs_japanese_translation(segments) {
+            Some("ja")
+        } else {
+            None
+        }
+    });
+
+    if let Some(target_lang) = translation_language {
         let translated = deps
             .translator
             .translate_segments_to(segments, true, target_lang)
             .await?;
         if !translated {
-            // Do not let TTS pronounce the main LLM's Japanese secondary
-            // line when the explicitly selected English/Korean translation fails.
+            // 目标语言翻译失败时不要回退朗读主模型附带的其他语言译文。
             for segment in segments.iter_mut() {
                 segment.japanese_text.clear();
             }
@@ -639,6 +759,7 @@ async fn add_assistant_line(deps: &GeneratorDeps, response: &ReplyResponse) -> R
         tts_content: response.tts_text.clone(),
         action_content: response.motion_text.clone(),
         audio_file: response.audio_file.clone(),
+        thinking: response.thinking.clone(),
         display_name: response.character.clone(),
         attribute: LineAttributeExt(LineAttribute::Assistant),
         ..Default::default()

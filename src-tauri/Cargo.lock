@@ -3914,6 +3914,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",
+ "toml 0.8.2",
  "tracing",
  "tracing-subscriber",
  "uuid",
