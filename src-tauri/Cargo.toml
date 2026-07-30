@@ -1,10 +1,6 @@
 [package]
 name = "ling_chat"
 version = "0.4.6"
-# When more than one [[bin]] is in the package, `cargo run` without
-# --bin fails with "could not determine which binary to run" because
-# Tauri dev / start spawn `cargo run` directly. Pin the default to
-# the desktop app binary so the Tauri toolchain keeps working.
 default-run = "ling_chat"
 description = "A Tauri App"
 authors = ["you"]
@@ -52,7 +48,6 @@ uuid = { version = "1", features = ["v4"] }
 async-trait = "0.1"
 ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "ndarray", "download-binaries"] }
 
-# Local TTS engine (in-process SBV2 / Style-Bert-VITS2).
 sbv2-local-tts = { path = "crates/sbv2-local-tts" }
 once_cell = "1"
 base64 = "0.22"
@@ -77,4 +72,3 @@ tauri-plugin-process = "2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_Graphics_Gdi"] }
-

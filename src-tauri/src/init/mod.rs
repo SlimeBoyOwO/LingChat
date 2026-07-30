@@ -35,10 +35,10 @@ pub async fn initialize(
     local_tts_paths: Option<LocalTtsPaths>,
     local_tts_switch: Option<crate::ai_service::tts::local::LocalTtsSwitch>,
 ) -> Result<(DatabaseConnection, SharedAIService, ChatComponents)> {
-    // init_data_dir is invoked earlier from the Tauri setup closure
-    // (see lib.rs) so the cached data directory is available to
-    // LocalTtsPaths::resolve before this function runs. Calling it again
-    // here would panic on the OnceLock.
+    // init_data_dir 已经在 Tauri 设置闭包中提前调用过了
+    // （参见 lib.rs），因此在此函数运行之前，缓存的数据目录就已经对
+    // LocalTtsPaths::resolve 可用了。如果在这里再次调用它，会导致
+    // OnceLock 发生 panic。
     static_copy::seed_data_dir(&app.handle())?;
     let data_dir = static_copy::get_data_dir().clone();
 

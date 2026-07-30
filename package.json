@@ -7,7 +7,6 @@
     "init": "tauri icon src-tauri/icons/icon.png && node scripts/prepare-desktop-resources.mjs && node scripts/download_emotion_model.mjs",
     "dev": "vite",
     "build": "vue-tsc --noEmit --skipLibCheck && vite build",
-    "test:tts-speed": "node --experimental-strip-types scripts/test-tts-speed.ts",
     "preview": "vite preview",
     "tauri": "tauri",
     "android:prepare": "tauri android init && node scripts/generate-android-icons.mjs",
