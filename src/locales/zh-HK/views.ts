@@ -1,25 +1,25 @@
-// 本文件由 scripts/generate-zh-hk.mjs 自动生成（源：zh-CN/views.ts），请勿手改
+// 繁體中文（香港 · 粵語文體）语言包，由 zh-CN/views.ts（约 44 条） 翻譯維護
 export default {
   "loader": {
-    "preparing": "你的小可愛正在準備中"
+    "preparing": "你嘅小可愛準備緊"
   },
   "loadingTransition": {
-    "starting": "LingChat 終端機啓動ing...",
-    "almostReady": "⩌⩊⩌ 小可愛馬上準備就緒~"
+    "starting": "LingChat 終端機啟動緊...",
+    "almostReady": "⩌⩊⩌ 小可愛就快準備好啦~"
   },
   "mainChat": {
     "auto": "自動",
     "pet": "桌寵",
-    "menu": "菜單"
+    "menu": "選單"
   },
   "mainMenu": {
     "characterAlt": "人物",
     "noSaveTitle": "提示",
-    "noSaveMessage": "沒有存檔記錄，請先創建存檔",
+    "noSaveMessage": "冇存檔記錄，請先建立存檔",
     "continueFailTitle": "繼續失敗",
-    "continueFailMessage": "未創建存檔或系統問題",
-    "scriptListFailed": "獲取劇本列表失敗：請確認後端已啓動",
-    "perfTip": "如果你覺得在這個頁面很卡，可以前往 通用設置 中關閉星星粒子或流星動畫。"
+    "continueFailMessage": "未建立存檔或者系統出咗問題",
+    "scriptListFailed": "攞劇本列表失敗：請確認後端已經啟動咗",
+    "perfTip": "如果你覺得喺呢個頁面好卡，可以去 通用設置 度閂咗星星粒子或者流星動畫。"
   },
   "petMode": {
     "settingsWindowTitle": "設置"
@@ -35,20 +35,20 @@ export default {
     "gameConfig": "遊戲配置",
     "credits": "致謝名單",
     "exitGame": "退出遊戲",
-    "freeDialogue": "自由對話模式",
-    "storyMode": "劇情模式（即將登場）",
-    "miniGame": "小遊戲（開發中）",
+    "freeDialogue": "自由傾偈模式",
+    "storyMode": "劇情模式（就快登場）",
+    "miniGame": "小遊戲（開發緊）",
     "back": "返回"
   },
   "pet": {
     "chatInput": {
-      "placeholder": "輸入消息...",
-      "deepThought": "{message}（已深度思考 {length} 字）",
-      "waiting": "等待回應中...",
-      "chatting": "聊天ing~",
-      "placeholderDefault": "在這裏輸入消息...",
+      "placeholder": "輸入訊息...",
+      "deepThought": "{message}（深度思考咗 {length} 字）",
+      "waiting": "等緊回應...",
+      "chatting": "傾偈ing~",
+      "placeholderDefault": "喺呢度輸入訊息...",
       "noModelTitle": "提示",
-      "noModelMessage": "你還沒選擇對話模型呢，笨蛋！"
+      "noModelMessage": "你仲未揀對話模型喎，笨蛋！"
     },
     "stage": {
       "openSettingsAria": "打開設置",
@@ -56,14 +56,14 @@ export default {
       "openAutoAria": "打開自動對話",
       "auto": "自動",
       "backHome": "返回主頁",
-      "retakePhoto": "點擊重新拍照",
-      "photoOrImage": "拍照或選圖提問",
-      "retakeScreenshot": "點擊重新截圖，右鍵取消截圖",
+      "retakePhoto": "撳一下重新影相",
+      "photoOrImage": "影相或者揀圖提問",
+      "retakeScreenshot": "撳一下重新截圖，右鍵取消截圖",
       "screenshotAsk": "截圖提問"
     },
     "notification": {
       "defaultTitle": "通知"
     }
   },
-  "dragDrop": "鬆開投餵"
+  "dragDrop": "放手投餵"
 }

@@ -1,18 +1,18 @@
-// 本文件由 scripts/generate-zh-hk.mjs 自动生成（源：zh-CN/advance.ts），请勿手改
+// 繁體中文（香港 · 粵語文體）语言包，由 zh-CN/advance.ts（约 11 条） 翻譯維護
 export default {
-  "tabs": {
-    "menu": "主菜單",
-    "llm": "大模型管理",
-    "other": "其他高級設置"
+  tabs: {
+    menu: '主菜單',
+    llm: '大模型管理',
+    other: '其他進階設定',
   },
-  "menu": {
-    "llmTitle": "大模型管理",
-    "llmDesc": "配置和管理 AI 大模型提供商，添加、編輯、測試模型連接參數",
-    "llmButton": "進入大模型管理界面",
-    "otherTitle": "其他高級設置",
-    "otherDesc": "調整系統環境配置、提示詞模板、對話參數等高級選項（重啓後生效）",
-    "otherButton": "進入其他高級設置界面",
-    "languageTitle": "界面語言",
-    "languageDesc": "切換應用界面顯示語言，立即生效並自動保存"
-  }
+  menu: {
+    llmTitle: '大模型管理',
+    llmDesc: '喺呢度設定同管理 AI 大模型供應商，加新嘅、改返舊嘅、試下模型連接參數都得',
+    llmButton: '入去大模型管理界面',
+    otherTitle: '其他進階設定',
+    otherDesc: '調整系統環境配置、提示詞模板、對話參數呢啲進階選項（重新開機之後先至生效）',
+    otherButton: '入去其他進階設定界面',
+    languageTitle: '界面語言',
+    languageDesc: '切換應用界面顯示語言，即刻生效兼自動儲存',
+  },
 }

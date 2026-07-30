@@ -1,31 +1,31 @@
-// 本文件由 scripts/generate-zh-hk.mjs 自动生成（源：zh-CN/game.ts），请勿手改
+// 繁體中文（香港 · 粵語文體）語言包，由 zh-CN/game.ts 翻譯維護
 export default {
   "dialog": {
-    "sceneSettings": "場景設置",
+    "sceneSettings": "場景設定",
     "touchMode": "觸摸模式",
     "history": "歷史記錄",
     "voiceInput": "語音輸入",
-    "recordingStop": "錄音中，點擊停止",
+    "recordingStop": "錄緊音，撳一下就停",
     "screenshotAsk": "截圖提問",
-    "screenshotRetake": "點擊重新截圖，右鍵取消截圖",
+    "screenshotRetake": "撳一下重新截圖，右鍵取消截圖",
     "closeDialog": "關閉對話",
     "moreActions": "更多操作",
-    "listening": "正在聆聽...",
-    "inputPlaceholder": "在這裏輸入消息...",
-    "waitingResponse": "等待回應中...",
-    "thinkingDepth": "（已深度思考 {count} 字）",
-    "speechNotSupported": "您的瀏覽器不支持語音輸入功能，建議使用最新版的 Chrome 或 Edge 瀏覽器。",
-    "inputNotAllowed": "當前狀態不允許輸入，請稍候再試。",
-    "screenshotFailed": "截圖功能初始化失敗，請重試",
-    "noModelTitle": "提示",
-    "noModelMessage": "還沒選擇對話模型呢，笨蛋！去高級設置裏配置並選擇模型就好啦，切換後自動生效哦！"
+    "listening": "聽緊你講...",
+    "inputPlaceholder": "喺度輸入訊息...",
+    "waitingResponse": "等緊回應...",
+    "thinkingDepth": "（已經深入諗咗 {count} 字）",
+    "speechNotSupported": "你個瀏覽器唔支援語音輸入功能，建議用最新版嘅 Chrome 或者 Edge 瀏覽器。",
+    "inputNotAllowed": "而家嘅狀態唔入得字，唔該遲啲再試。",
+    "screenshotFailed": "截圖功能初始化搞唔掂，唔該再試過",
+    "noModelTitle": "提提你",
+    "noModelMessage": "仲未揀對話模型喎，笨蛋！去高級設定嗰度配置同揀返個模型就得㗎啦，切換之後自動生效㗎！"
   },
   "musicPlayer": {
     "previous": "上一首",
     "play": "播放",
     "pause": "暫停",
     "next": "下一首",
-    "noMusic": "未選擇音樂"
+    "noMusic": "未揀音樂"
   },
   "soundPanel": {
     "trigger": "聲效",
@@ -33,18 +33,18 @@ export default {
     "play": "播放",
     "pause": "暫停",
     "stop": "停止",
-    "resume": "恢復",
-    "remove": "移除",
+    "resume": "繼續播放",
+    "remove": "刪走",
     "modeLoopList": "列表循環",
     "modeLoopSingle": "單曲循環",
     "modeRandom": "隨機播放",
-    "selectBgmHint": "前往 {link} 選擇背景音樂",
-    "settingsSoundLink": "設置 → 聲音",
-    "emptyMusicList": "暫無音樂",
-    "noMusic": "未選擇音樂",
+    "selectBgmHint": "去 {link} 揀背景音樂",
+    "settingsSoundLink": "設定 → 聲音",
+    "emptyMusicList": "暫時冇音樂",
+    "noMusic": "未揀音樂",
     "ambient": "環境音",
-    "stopAll": "全部停止",
-    "noAmbientPlaying": "沒有正在播放的環境音",
+    "stopAll": "全部停晒",
+    "noAmbientPlaying": "冇環境音播緊",
     "availableAmbient": "可用環境音"
   },
   "freeDialogue": {
@@ -53,6 +53,6 @@ export default {
     "endWord": "結束詞"
   },
   "scriptComplete": {
-    "hint": "本次劇本已完成"
+    "hint": "今次嘅劇本搞掂咗"
   }
 }

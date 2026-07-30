@@ -1,2 +1,2 @@
-// 本文件由 scripts/generate-zh-hk.mjs 自动生成（源：zh-CN/misc.ts），请勿手改
+// 繁體中文（香港 · 粵語文體）语言包，由 zh-CN/misc.ts 翻譯維護
 export default {}

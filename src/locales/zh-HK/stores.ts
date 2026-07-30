@@ -1,4 +1,4 @@
-// 本文件由 scripts/generate-zh-hk.mjs 自动生成（源：zh-CN/stores.ts），请勿手改
+// 繁體中文（香港 · 粵語文體）语言包，由 zh-CN/stores.ts（约 22 条） 翻譯維護
 export default {
   "dialog": {
     "alertTitle": "提示",
@@ -6,30 +6,30 @@ export default {
   },
   "notification": {
     "errorTitle": "錯誤",
-    "unknownError": "發生了未知錯誤",
+    "unknownError": "發生咗未知錯誤",
     "switchSuccessTitle": "切換成功",
     "switchFailTitle": "切換失敗",
-    "switchSuccessMessage": "角色已切換",
-    "switchFailMessage": "切換時出了問題",
-    "refreshSuccessTitle": "刷新成功",
-    "refreshFailTitle": "刷新失敗",
-    "refreshSuccessMessage": "角色列表已成功刷新！",
-    "refreshFailMessage": "刷新時出了問題"
+    "switchSuccessMessage": "角色已經切換咗",
+    "switchFailMessage": "切換嗰陣出咗問題",
+    "refreshSuccessTitle": "重新整理成功",
+    "refreshFailTitle": "重新整理失敗",
+    "refreshSuccessMessage": "角色列表已經重新整理好喇！",
+    "refreshFailMessage": "重新整理嗰陣出咗問題"
   },
   "zoom": {
     "toastTitle": "縮放"
   },
   "updater": {
-    "networkError": "網絡連接失敗，無法訪問更新服務器。請檢查網絡後重試。",
-    "noUpdateAvailable": "沒有可用的更新"
+    "networkError": "網絡連線失敗，上唔到更新伺服器。唔該檢查下網絡之後再試過。",
+    "noUpdateAvailable": "冇可用嘅更新"
   },
   "sedentaryReminder": {
-    "notificationTitle": "LingChat 久坐提醒",
-    "notificationBody": "久坐時間有點長，記得活動一下哦"
+    "notificationTitle": "LingChat 久坐提提你",
+    "notificationBody": "坐咗有啲耐，記得郁一郁喎"
   },
   "lanSync": {
-    "noPeerSelected": "未選擇對等設備",
-    "manualRestart": "請手動重啓應用以應用同步文件",
+    "noPeerSelected": "未揀對等裝置",
+    "manualRestart": "請手動重新啟動應用程式，先可以套用同步檔案",
     "reason": {
       "new": "新增",
       "modified": "修改",
