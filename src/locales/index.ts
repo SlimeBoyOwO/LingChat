@@ -69,7 +69,8 @@ async function loadLocaleMessages(locale: AppLocale) {
   try {
     const json = await invoke<string>('get_locale_messages', {
       locale,
-      seedContent: JSON.stringify(BUNDLED[locale]),
+      // 缩进格式播种，方便用户直接编辑
+      seedContent: JSON.stringify(BUNDLED[locale], null, 2),
     })
     const fileMsgs = JSON.parse(json)
     i18n.global.setLocaleMessage(locale, deepMergeMessages(BUNDLED[locale], fileMsgs))
