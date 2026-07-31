@@ -149,6 +149,28 @@ const fetchCharacters = async (page: number): Promise<void> => {
   try {
     const result = await characterGetAll(page)
     totalPages.value = result.total_pages
+
+    // 防御：删除角色后当前页可能超出 total_pages（例如停在第 2 页删掉最后一个），
+    // 此时分页条 v-if="totalPages > 1" 整条消失，回退按钮不存在 → 空白列表死锁。
+    // 钳制并重取最后一页。
+    if (currentPage.value > result.total_pages && result.total_pages > 0) {
+      currentPage.value = result.total_pages
+      await fetchCharactersInternal(result.total_pages)
+      return
+    }
+
+    characters.value = result.items.map(mapCharacter)
+  } catch (error) {
+    console.error('获取角色列表失败:', error)
+    characters.value = []
+  }
+}
+
+// fetchCharacters 的内部调用（钳制回退时用，避免无限递归）
+const fetchCharactersInternal = async (page: number): Promise<void> => {
+  try {
+    const result = await characterGetAll(page)
+    totalPages.value = result.total_pages
     characters.value = result.items.map(mapCharacter)
   } catch (error) {
     console.error('获取角色列表失败:', error)
