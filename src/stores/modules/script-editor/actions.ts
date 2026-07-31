@@ -119,7 +119,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
   }
 
   /**
-   * 删除整个剧本包。后端把目录整体移到 `game_data/.script_trash/`，不真删。
+   * 删除整个剧本包。
    *
    * 与 deleteChapter 一样必须先问一遍：这里删掉的是作者的全部工作量。
    */
@@ -127,8 +127,8 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     const dialog = useDialogStore()
     const ok = await dialog.confirm(
       `确定删除剧本「${displayName}」吗？\n\n` +
-        '整个目录（章节、素材、角色）会被移到 game_data/.script_trash/ 下，' +
-        '不会真正消失，但引擎里会立刻消失。若它是某个角色的羁绊冒险，角色卡上也会不见。',
+        '整个目录（章节、素材、角色）将被永久删除，无法恢复。' +
+        '若它是某个角色的羁绊冒险，角色卡上也会消失。',
       '删除剧本',
     )
     if (!ok) return
@@ -138,7 +138,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
       await refreshScripts()
       // 引擎内存里还留着这个剧本，不同步的话主菜单仍然列得出来
       await syncEngine()
-      notifyOk('剧本已删除', '可以在 game_data/.script_trash/ 里找回')
+      notifyOk('剧本已删除', `${displayName} 已被永久删除`)
     } catch (e) {
       notifyError('删除剧本失败', e)
     }
@@ -513,7 +513,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     if (!key || !s.detail.value) return
     const dialog = useDialogStore()
     const ok = await dialog.confirm(
-      `确定删除章节「${chapterId}」吗？\n\n文件会被移到 Chapters/.trash/ 下，不会真正消失，但指向它的跳转会断链。`,
+      `确定删除章节「${chapterId}」吗？\n\n文件将被永久删除，指向它的跳转会断链。`,
       '删除章节',
     )
     if (!ok) return
@@ -687,7 +687,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
   }
 
   /**
-   * 删除剧本内一个角色。后端把 `characters/<folder>/` 整个移到 `.trash/`，不真删。
+   * 删除剧本内一个角色。
    * 删完后跑一次校验——剧本里若有 `character: <被删角色>` 的引用，会立刻变成
    * 一条看得见的诊断，提示作者哪里还在用它。
    */
@@ -697,8 +697,8 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     const dialog = useDialogStore()
     const ok = await dialog.confirm(
       `确定删除角色「${displayName}」吗？\n\n` +
-        '整个目录（人设、立绘）会被移到 characters/.trash/ 下，不会真正消失，' +
-        '但剧本里立刻找不到它。仍在引用它的台词会显示为校验错误。',
+        '整个目录（人设、立绘）将被永久删除，无法恢复。' +
+        '仍在引用它的台词会显示为校验错误。',
       '删除角色',
     )
     if (!ok) return
@@ -709,7 +709,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
       )
       void refreshGlobalCharacters()
       await runValidation()
-      notifyOk('角色已删除', '可在 characters/.trash/ 里找回')
+      notifyOk('角色已删除', `${displayName} 已被永久删除`)
     } catch (e) {
       notifyError('删除角色失败', e)
     }
@@ -736,11 +736,10 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     const dialog = useDialogStore()
     const where =
       scope === 'global'
-        ? '这是**全局**素材，删掉之后所有引用它的剧本都会找不到文件。'
-        : '这是本剧本的素材。'
+        ? '（全局素材）删掉之后所有引用它的剧本都会找不到文件。'
+        : '（本剧本素材）'
     const ok = await dialog.confirm(
-      `确定删除「${name}」吗？\n\n${where}\n文件会移到同级的 .trash/ 下，不会真正消失。\n` +
-        '如果还有事件在引用它，删完校验会报「素材找不到」。',
+      `确定删除「${name}」吗？\n\n${where}\n如果还有事件在引用它，删完校验会报「素材找不到」。`,
       '删除素材',
     )
     if (!ok) return
@@ -753,7 +752,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
         reloadDetailAssets(),
       ])
       await runValidation()
-      notifyOk('素材已删除', '可以在同级的 .trash/ 里找回')
+      notifyOk('素材已删除', `${name} 已被永久删除`)
     } catch (e) {
       notifyError('删除素材失败', e)
     }

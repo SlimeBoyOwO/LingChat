@@ -93,18 +93,18 @@
           <button
             class="inline-flex items-center gap-1 border border-white/10 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 bg-white/6 transition-all duration-200 hover:enabled:text-white hover:enabled:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
             :disabled="!store.canUndo"
-            title="Ctrl / ⌘ + Z"
+            title="撤销（Ctrl / ⌘ + Z）"
             @click="store.undo()"
           >
-            撤销
+            ↩ 撤销
           </button>
           <button
             class="inline-flex items-center gap-1 border border-white/10 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 bg-white/6 transition-all duration-200 hover:enabled:text-white hover:enabled:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
             :disabled="!store.canRedo"
-            title="Ctrl / ⌘ + Shift + Z"
+            title="重做（Ctrl / ⌘ + Shift + Z）"
             @click="store.redo()"
           >
-            重做
+            ↪ 重做
           </button>
         </template>
         <button
@@ -243,7 +243,7 @@
         <div class="flex min-w-0 flex-1 flex-col">
           <MenuItem
             title="事件时间线"
-            class="fill"
+            class="fill flex h-full min-h-0 flex-col"
           >
             <template #header>
               <Icon
@@ -281,7 +281,7 @@
         <div class="flex min-h-0 flex-[0_0_340px] flex-col">
           <MenuItem
             title="事件属性"
-            class="fill"
+            class="fill flex h-full min-h-0 flex-col"
           >
             <template #header>
               <Icon
@@ -386,7 +386,7 @@
                   :value="adventureField('order')"
                   @change="(e) => onAdventureNumber('order', e)"
                 />
-                <p class="mt-[0.3rem] text-[0.72rem] leading-[1.7] text-white/40">决定在角色卡里的显示顺序</p>
+                <p class="mt-[0.3rem] text-[0.72rem] leading-[1.7] text-white/40">数值越小越靠前显示，决定羁绊冒险在角色卡上的排列顺序</p>
               </div>
               <p class="mt-[0.3rem] text-[0.72rem] leading-[1.7] text-white/40 [&_code]:font-mono [&_code]:text-brand">
                 解锁条件（<code class="font-mono text-brand">unlock_conditions</code>）目前保持文件里的原值不动，
@@ -422,6 +422,8 @@
             <b class="font-semibold text-white/85">引擎只在本剧本的 <code class="font-mono text-brand">characters/</code> 里找人</b>，所以想用全局角色库里
             已有的人设，得先「导入」一份到这里 —— 导入复制的是人设文件，立绘仍读全局那份，
             不会让剧本目录白白变大。
+            <br /><span class="font-semibold text-amber-300">提示：</span>羁绊剧本里 <code class="font-mono text-brand">character: MAIN</code> 绑定的角色
+            <b class="font-semibold text-white/85">不需要导入</b>，引擎会直接从全局角色库读取它的人设和立绘。
           </p>
 
           <p
@@ -828,7 +830,7 @@
                   g.alreadyInScript
                     ? 'cursor-default border-white/10 opacity-45'
                     : 'cursor-pointer border-white/10 hover:border-brand hover:bg-[rgba(121,217,255,0.08)]',
-                  importForm.folder === g.folder && !g.alreadyInScript ? 'border-brand bg-brand/16' : '',
+                  importForm.folder === g.folder && !g.alreadyInScript ? '!border-brand bg-brand/20 ring-1 ring-brand/30' : '',
                 ]"
                 @click="g.alreadyInScript || (importForm.folder = g.folder)"
               >
@@ -1265,7 +1267,7 @@ const FOLD_HINT =
 const SHORTCUTS: { keys: string; desc: string }[] = [
   { keys: 'Ctrl / ⌘ + S', desc: '立刻保存（平时是改完自动存，这条是给不放心的人的）' },
   { keys: 'Ctrl / ⌘ + Z', desc: '撤销' },
-  { keys: 'Ctrl / ⌘ + Shift + Z', desc: '重做（Ctrl+Y 也行）' },
+  { keys: 'Ctrl / ⌘ + Shift + Z', desc: '重做（还原刚才撤销的操作，Ctrl+Y 也行）' },
   { keys: 'Ctrl / ⌘ + D', desc: '复制选中的事件' },
   { keys: 'Ctrl / ⌘ + Enter', desc: '从当前位置试玩' },
   { keys: 'Delete', desc: '删除选中的事件' },
@@ -1377,6 +1379,8 @@ onUnmounted(async () => {
     /* stopPreview 抛错不阻断清理 */
   }
   void store.flushPendingSave()
+  // 退出编辑器时关闭已打开的剧本——下次从主菜单进入时回到剧本列表
+  store.closeScript()
   gameStore.initialized = false
 })
 </script>

@@ -191,8 +191,11 @@ watch(
     if (on) {
       snapshot = captureGameState()
       sceneSnapshot = captureSceneState()
-      // 从干净的舞台开始，而不是继承主界面此刻的立绘和台词
+      // 从干净的舞台开始，而不是继承主界面此刻的立绘和台词。
+      // 清空整个角色缓存以确保多轮试玩之间不会残留前一回合剧本添加的角色
+      // 对象和立绘状态（否则切到不同剧本试玩时可能出现多角色站位残留）。
       gameStore.presentRoleIds = []
+      gameStore.gameRoles = {}
       gameStore.dialogHistory = []
       gameStore.currentLine = ''
       gameStore.currentStatus = 'presenting'

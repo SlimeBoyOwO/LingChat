@@ -11,7 +11,7 @@
           <span class="text-xs text-white/40">{{ i + 1 }}</span>
           <input
             class="w-full min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
-            placeholder="选项文案（留空＝匹配任意输入的兜底项，必须放最后）"
+            placeholder="选项文案（留空作为兜底，玩家输入不匹配任何选项时用这一条——必须放在最后）"
             :value="str(opt.text)"
             @change="(e) => patch(i, 'text', val(e))"
           />
@@ -30,7 +30,7 @@
           class="mt-1 flex items-center gap-2 pl-6"
         >
           <select
-            class="w-full min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)] w-32 shrink-0"
+            class="w-32 shrink-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
             :value="str(act.type)"
             @change="(e) => patchAction(i, ai, 'type', val(e))"
           >
@@ -111,7 +111,7 @@
               {{ c.label }}
             </option>
           </select>
-          <label class="flex shrink-0 items-center gap-1 text-xs whitespace-nowrap text-white/60">
+          <label class="flex shrink-0 items-center gap-1 text-xs whitespace-nowrap text-white/60" title="所有条件分支都不满足时，走这一条路。不设的话剧本会直接结束。">
             <input
               type="checkbox"
               :checked="opt.default === true"
@@ -269,6 +269,8 @@ const addAction = (i: number, type = 'add_line') => {
   const next = clone()
   if (!next[i]) return
   const list = Array.isArray(next[i].actions) ? (next[i].actions as Row[]) : []
+  // 同一个选项里不允许重复添加「追加玩家台词」——每条选项最多一句玩家台词有意义
+  if (type === 'add_line' && list.some((a) => a.type === 'add_line')) return
   list.push({ type, content: '' })
   next[i].actions = list
   commit(next)
