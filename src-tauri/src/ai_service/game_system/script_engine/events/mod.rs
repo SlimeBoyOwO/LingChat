@@ -86,6 +86,11 @@ pub struct ScriptContext<'a> {
     /// 用户输入/选择事件的共享通道。
     /// 持有的 `Arc` 克隆——处理器在 await 点前后加/解锁。
     pub channels: SharedScriptChannels,
+
+    /// 是否运行在编辑器试玩中。试玩产出的 `ai:reply` 会带 `preview_gen`
+    /// 标记，前端据此丢弃中止后迟到的流式回复（见 `ReplyResponse.preview_gen`）。
+    /// 正式游玩显式置 `false`。
+    pub is_preview: bool,
 }
 
 // ============================================================

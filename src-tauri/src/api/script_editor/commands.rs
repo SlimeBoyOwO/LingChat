@@ -1208,6 +1208,16 @@ pub async fn editor_rescan_scripts(app: AppHandle) -> Result<usize, String> {
 //    ChapterTimeline）。章节之间的接线改的是剧情结构，作者应该在
 //    「章节结束」事件里显式指定下一章，那里看得见、可校验、可撤销。
 
+/// 试玩启动结果。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewStartInfo {
+    /// 本轮试玩的会话代号（`GameStatus.preview_generation`）。
+    /// 前端据此丢弃上一轮试玩迟到的 `ai:reply`（快速连玩时旧一轮的流式片段
+    /// 不会串进新一轮）。
+    pub generation: u64,
+}
+
 /// 在编辑器里直接试玩，不必回主菜单。
 ///
 /// 内部先 rescan（作者刚存的改动才能生效），然后用引擎的真实执行路径跑 ——
@@ -1224,7 +1234,7 @@ pub async fn editor_start_preview(
     app: AppHandle,
     key: String,
     from_chapter: Option<String>,
-) -> Result<(), String> {
+) -> Result<PreviewStartInfo, String> {
     // 先把磁盘状态同步进引擎
     editor_rescan_scripts(app.clone()).await?;
 
@@ -1308,6 +1318,8 @@ pub async fn editor_start_preview(
 
     // 备份整个会话状态，并按「刚进游戏」的样子把试玩场次搭好
     let session = PreviewSession::begin(&db, &data_dir, &game_status, &script).await?;
+    // 提前取出本轮代号返回给前端（session 随后整体移入 AppState 托管）
+    let generation = session.generation;
 
     // 快照托管给 AppState：试玩任务自然结束时还原一次，editor_stop_preview 兜底
     // 再 take 一次（为空即跳过）。这样无论「跑完 / 报错 / 被中止」哪条路，
@@ -1331,6 +1343,8 @@ pub async fn editor_start_preview(
             config: &cfg,
             llm: llm.as_ref(),
             channels,
+            // 试玩产出标记：ai:reply 会带 preview_gen，前端据此丢弃迟到的流式回复
+            is_preview: true,
         };
         use crate::ai_service::game_system::script_engine::ScriptManager;
 
@@ -1358,7 +1372,7 @@ pub async fn editor_start_preview(
         .lock()
         .await = Some(handle);
 
-    Ok(())
+    Ok(PreviewStartInfo { generation })
 }
 
 /// 一次试玩对**共享会话状态**的全部改动，以及把它们撤回去的能力。
@@ -1381,6 +1395,9 @@ pub async fn editor_start_preview(
 pub struct PreviewSession {
     /// 试玩开始时台词表的长度。引擎只往后追加，截回这个长度即可
     line_len: usize,
+    /// 本场试玩的会话代号（GameStatus.preview_generation 递增后的值）。
+    /// 还原时再次递增，让上一场游离生成任务捕获的旧代号立即过期。
+    generation: u64,
     /// `to_snapshot()` 覆盖的场景状态：背景 / 音乐 / 特效 / 在场角色 / 全局变量 …
     scene: crate::ai_service::game_system::game_status::GameStatusSnapshot,
     /// 快照没覆盖的三个字段
@@ -1405,8 +1422,13 @@ impl PreviewSession {
         let main_id = resolve_preview_main_role(db, game_status, script).await?;
 
         let mut gs = game_status.lock().await;
+        // 递增试玩代号：本场次的生成管线捕获新代号；上一场被中止后仍在排空的
+        // 游离流式任务持有旧代号，此后写入会被 add_assistant_line 的守卫丢弃。
+        gs.preview_generation = gs.preview_generation.wrapping_add(1);
+        let generation = gs.preview_generation;
         let saved = PreviewSession {
             line_len: gs.line_list.len(),
+            generation,
             scene: gs.to_snapshot(),
             main_role_id: gs.main_role_id,
             current_role_id: gs.current_role_id,
@@ -1416,9 +1438,18 @@ impl PreviewSession {
         };
 
         // ---- 按「刚进游戏」的样子搭场次，对齐 init_game_status 的三件事 ----
-        gs.get_role(db, main_id)
-            .await
-            .map_err(|e| format!("载入主角失败: {}", e))?;
+        // 失败时把已拍快照套回去再报错：否则试玩启动失败也会把自由对话的
+        // 在场角色/台词表留在被清空的状态。
+        if let Err(e) = gs.get_role(db, main_id).await {
+            gs.line_list.truncate(saved.line_len);
+            gs.apply_snapshot(&saved.scene);
+            gs.main_role_id = saved.main_role_id;
+            gs.current_role_id = saved.current_role_id;
+            gs.script_status = saved.script_status.map(|b| *b);
+            gs.player.user_name = saved.user_name.clone();
+            gs.player.user_subtitle = saved.user_subtitle.clone();
+            return Err(format!("载入主角失败: {}", e));
+        }
         gs.main_role_id = Some(main_id);
         gs.current_role_id = Some(main_id);
         // 清空在场角色——试玩期间只该有主角一个人在台上。不做这步的话，自由对话
@@ -1461,6 +1492,10 @@ impl PreviewSession {
     /// 而且半途放弃只会让残留更多。
     async fn restore(self, db: &DatabaseConnection, game_status: &Arc<Mutex<GameStatus>>) {
         let mut gs = game_status.lock().await;
+        // 递增试玩代号：让上一场被中止后仍在排空的游离流式任务捕获的旧代号
+        // 立即过期，它们的迟到写入会被 add_assistant_line 的守卫丢弃，不再
+        // 污染已还原的自由对话会话。
+        gs.preview_generation = gs.preview_generation.wrapping_add(1);
         gs.line_list.truncate(self.line_len);
         gs.apply_snapshot(&self.scene);
         gs.main_role_id = self.main_role_id;
@@ -1703,9 +1738,12 @@ pub async fn editor_preview_readiness(
 
 /// 中止试玩。
 ///
-/// 剧本大概率正阻塞在「等输入」或「等选择」上，所以先往对应通道塞一个值把它
-/// 唤醒，再把 `is_running` 置 false。引擎会在当前事件跑完后走到章节末尾结束 ——
-/// 不是立即掐断，而是让它自然收尾，避免留下半个状态。
+/// 直接中止试玩任务，不做等待：任务可能正阻塞在 LLM 流上，等它自然收尾会
+/// 拖住退出（最坏是长请求）。会话状态由 `apply_pending_restore` 立即还原；
+/// 任务被中止后仍在排空的游离流式任务（publisher/consumer）写不进已还原的
+/// 会话——`restore` 已递增 `preview_generation`，`add_assistant_line` 的守卫
+/// 会丢弃它们的迟到写入；它们 emit 的 `ai:reply` 也带 `preview_gen` 代号，
+/// 前端比对不中即丢弃，不会串进自由对话或下一轮试玩。
 #[tauri::command]
 pub async fn editor_stop_preview(app: AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
@@ -1729,45 +1767,13 @@ pub async fn editor_stop_preview(app: AppHandle) -> Result<(), String> {
         .is_running
         .store(false, std::sync::atomic::Ordering::SeqCst);
 
-    // 等试玩任务真正收尾——它在结束时会把共享 GameStatus 还原回试玩前。
-    // 超时（多半卡在长 AI 请求上）就 abort 并兜底截断，避免退出后自由对话
-    // 还读到试玩留下的台词/在场角色（issue #5）。
-    if let Some(mut h) = state.preview_task.lock().await.take() {
-        let done = tokio::select! {
-            r = &mut h => {
-                let _ = r;
-                true
-            }
-            _ = tokio::time::sleep(std::time::Duration::from_secs(4)) => false
-        };
-        if !done {
-            h.abort();
-            tracing::warn!(
-                "[ScriptEditor] 试玩任务 4s 未收尾（可能在跑长 AI 请求），已中止并兜底还原"
-            );
-        }
+    // 立即中止任务并还原会话。幂等兜底：任务已自行还原则 take 为空跳过。
+    if let Some(h) = state.preview_task.lock().await.take() {
+        h.abort();
+        tracing::info!("[ScriptEditor] 试玩任务已中止，会话状态已还原");
     }
-    // 幂等兜底：任务已自行还原则 take 为空跳过；超时被中止则现在补上截断
     apply_pending_restore(&app).await;
     Ok(())
-}
-
-/// 离开编辑器时把游戏会话整体重置回「刚进游戏」的样子。
-///
-/// 编辑器内的试玩通过「快照 + 还原」隔离，但多次进出后还原链路存在
-/// 竞态窗口（如试玩任务被超时中止时，晚到的 AI 响应可能把剧本台词写回
-/// 已还原的 line_list）。与其继续在还原上打补丁，不如在离开编辑器这个
-/// 明确边界上直接全量重置：清空 line_list / 在场角色 / player_entered，
-/// 主角色重新上台。代价是编辑前后台往返会丢掉自由对话的历史 —— 这是
-/// 有意取舍，换取零残留的确定性。
-#[tauri::command]
-pub async fn editor_reset_game_status(app: AppHandle) -> Result<(), String> {
-    let state = app.state::<AppState>();
-    let mut service = state.ai_service.lock().await;
-    service
-        .init_game_status()
-        .await
-        .map_err(|e| format!("重置游戏状态失败: {}", e))
 }
 
 /// 在系统文件管理器里打开剧本目录。

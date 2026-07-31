@@ -108,6 +108,7 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
             config: &config,
             llm: llm.as_ref(),
             channels,
+            is_preview: false,
         };
 
         match ScriptManager::execute_script(&script, &mut ctx, &is_running).await {

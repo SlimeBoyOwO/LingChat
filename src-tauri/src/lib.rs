@@ -73,9 +73,9 @@ pub struct InnerAppState {
     /// 剧本编辑器「试玩」当前在跑的后台任务句柄。
     ///
     /// `editor_stop_preview` 会先唤醒被剧本阻塞的通道、把 `is_running` 置 false，
-    /// 再 await 这个句柄——确保试玩任务真正走到收尾、把共享 `GameStatus` 还原之后，
-    /// 才放前端退出编辑器。否则前端一退出、用户立刻进自由对话，后端还停在试玩
-    /// 的脏 `line_list` 上，下一句对话就会带出试玩残留（issue #5）。
+    /// 再立即 abort 这个句柄并还原共享 `GameStatus`。试玩任务即使被中止，其游离
+    /// 流式任务（publisher/consumer）的迟到写入也会被 `preview_generation` 守卫
+    /// 丢弃，`ai:reply` 则带 `preview_gen` 代号由前端比对丢弃（issue #5）。
     pub preview_task: Arc<tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
     /// 试玩开始时拍下的会话快照，供收尾时一次性还原。`Option::take` 保证幂等：
     /// 任务自然结束先还原、`editor_stop_preview` 兜底再 take 一次为空即跳过。
@@ -530,7 +530,6 @@ pub fn run() {
             api::script_editor::editor_list_global_characters,
             api::script_editor::editor_import_global_character,
             api::script_editor::editor_stop_preview,
-            api::script_editor::editor_reset_game_status,
             api::script_editor::editor_open_script_folder,
             api::pet::update_solid_regions,
             api::pet::set_pet_mode,

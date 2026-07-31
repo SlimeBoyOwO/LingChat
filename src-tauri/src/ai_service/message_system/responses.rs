@@ -52,6 +52,10 @@ pub struct ReplyResponse {
     pub user_message_seq: Option<u32>,
     /// 本轮生成的思考链全文（仅最后一帧 is_final=true 时携带）。
     pub thinking: Option<String>,
+    /// 试玩会话代号（编辑器试玩才有值）。前端据此丢弃试玩中止后迟到的
+    /// 流式回复：代号与当前轮不一致即过期。自由对话/正式剧本为 `None`。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preview_gen: Option<u64>,
 }
 
 impl ReplyResponse {
@@ -73,6 +77,7 @@ impl ReplyResponse {
             display_subtitle: None,
             user_message_seq: None,
             thinking: None,
+            preview_gen: None,
         }
     }
 }

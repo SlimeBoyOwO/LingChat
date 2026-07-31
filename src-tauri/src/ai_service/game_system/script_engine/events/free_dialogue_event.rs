@@ -129,6 +129,9 @@ impl ScriptEvent for FreeDialogueEvent {
                 concurrency: 1,
                 god_agent: None,
                 suppress_thinking: false,
+                // 试玩中跑的自由对话也属于试玩场次：捕获当前代号，迟到写入会被守卫丢弃
+                generation: ctx.game_status.lock().await.preview_generation,
+                is_preview: ctx.is_preview,
             };
             MessageGenerator::new(deps)
         };
