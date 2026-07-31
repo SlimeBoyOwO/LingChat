@@ -34,7 +34,6 @@ export const EMOTION_CONFIG_EMO: EmotionMap = {
   惊讶: '惊讶',
   正常: '正常',
   平静: '平静',
-  AI思考: 'none',
 }
 
 export const EMOTION_CONFIG: EmotionConfigMap = {
@@ -158,6 +157,7 @@ export const EMOTION_CONFIG: EmotionConfigMap = {
     bubbleClass: 'none',
     audio: 'none',
   },
+  // 思考态反馈（由 currentStatus === 'thinking' 驱动，非真实情感）
   AI思考: {
     animation: 'none',
     bubbleImage: '../pictures/animation/AI思考.webp',

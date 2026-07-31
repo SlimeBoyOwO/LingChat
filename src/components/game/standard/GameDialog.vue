@@ -403,7 +403,7 @@ watch(
     if (newStatus === 'thinking') {
       const currentInteractRole = gameStore.currentInteractRole
       if (currentInteractRole) {
-        currentInteractRole.emotion = 'AI思考'
+        //currentInteractRole.emotion = 'AI思考'
         uiStore.showCharacterTitle = currentInteractRole.roleName
         uiStore.showCharacterSubtitle = currentInteractRole.roleSubTitle
       }
