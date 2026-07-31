@@ -1,88 +1,74 @@
 <template>
-  <div
-    class="rail relative pl-[22px]"
-    @dragend="endDrag"
-  >
+  <div class="rail relative pl-[22px]">
     <template
       v-for="(row, ri) in rows"
       :key="row.key"
     >
-      <!-- 插入位标记。落点一律是「插到这一行前面」，不按指针在上半还是下半区分：
-           useZoom 的 CSS zoom 会让 getBoundingClientRect 和鼠标坐标对不上，
-           而「悬停哪行就插哪行前面」根本不需要坐标。 -->
       <div
-        class="h-0.5 my-px rounded-sm transition-all duration-[120ms]"
-        :class="{ 'h-1.5 bg-brand shadow-[0_0_8px_rgba(121,217,255,0.6)]': dropAt === rowStart(row) && dragging !== null }"
-        @dragover.prevent="dropAt = rowStart(row)"
-        @drop.prevent="finishDrag"
-      ></div>
-
-      <!-- 整行可拖、整行可放：早先只有行间 2px 的 .slot 绑了 @drop，拖到事件行
-           上松手根本不触发（issue #1）。现在行容器本身也是落点——悬停哪行就把
-           dropAt 设成"插到它前面"，与上方 .slot 同一套语义。落点高亮用顶部描边。 -->
-      <div
-        class="cursor-grab active:cursor-grabbing draggable-row"
-        :class="{
-          'opacity-35': isDragged(row),
-          'drop-before':
-            dropAt === rowStart(row) && dragging !== null && !isDragged(row),
-        }"
-        :draggable="canDrag(row)"
-        @dragstart="startDrag(row, $event)"
-        @dragover.prevent="canDrag(row) && (dropAt = rowStart(row))"
-        @drop.prevent="finishDrag"
+        class="flex items-start gap-1"
       >
-        <!-- 复合块：默认折叠成一行 -->
-        <div
-          v-if="row.kind === 'group'"
-          class="grp group relative my-[3px] overflow-hidden border border-white/[0.13] rounded-[9px] bg-black/16"
-          :class="{ open: expanded[row.key] }"
-        >
-          <div
-            class="flex items-center gap-2 px-[9px] py-[7px] cursor-pointer transition-colors duration-150 hover:bg-white/5"
-            @click="toggle(row.key)"
-          >
-            <span class="w-3.5 text-[0.8rem] text-white/40 transition-transform duration-200 group-[.open]:rotate-90">›</span>
-            <span class="shrink-0 border border-white/25 rounded-[5px] px-[7px] py-0.5 text-[0.7rem] font-medium leading-[1.5] whitespace-nowrap text-slate-300 bg-white/7">{{ row.label }}</span>
-            <span class="flex-1 min-w-0 overflow-hidden text-[0.78rem] leading-[1.7] text-white/[0.72] truncate">{{ row.summary }}</span>
-            <span
-              v-if="groupHasError(row)"
-              class="shrink-0 border border-red-400/35 rounded px-[5px] py-px text-[0.62rem] leading-[1.6] whitespace-nowrap text-red-300 bg-red-400/15"
-              >含错误</span
-            >
-            <span class="text-[0.66rem] whitespace-nowrap text-white/[0.38]">{{ row.to - row.from }} 个事件</span>
-          </div>
-          <div
-            v-if="expanded[row.key]"
-            class="px-1.5 pb-1.5 border-t border-white/[0.08]"
-          >
-            <div class="rail-nested pl-4">
-              <EventRow
-                v-for="item in row.items"
-                :key="item.index"
-                :index="item.index"
-                :event="item.event"
-              />
-            </div>
-          </div>
+        <!-- ↑↓ 移动按钮。CSS zoom 会破坏 HTML5 拖放事件分发（Chromium 已知 bug，
+             多轮迭代都失败在同一原因），改为稳定可靠的箭头按钮。 -->
+        <div class="flex shrink-0 flex-col gap-0.5 pt-[3px]">
+          <button
+            v-if="canMoveUp(row) && !isChapterEnd(row)"
+            class="rounded px-0.5 py-0 text-[0.55rem] leading-none text-white/25 hover:text-white/60 transition-colors"
+            title="上移"
+            @click="moveUp(row)"
+          >▲</button>
+          <button
+            v-if="canMoveDown(row) && !isChapterEnd(row)"
+            class="rounded px-0.5 py-0 text-[0.55rem] leading-none text-white/25 hover:text-white/60 transition-colors"
+            title="下移"
+            @click="moveDown(row)"
+          >▼</button>
         </div>
 
-        <!-- 单个事件 -->
-        <EventRow
-          v-else
-          :index="row.index"
-          :event="row.event"
-        />
+        <div class="min-w-0 flex-1">
+          <!-- 复合块：默认折叠成一行 -->
+          <div
+            v-if="row.kind === 'group'"
+            class="grp group relative my-[3px] overflow-hidden border border-white/[0.13] rounded-[9px] bg-black/16"
+            :class="{ open: expanded[row.key] }"
+          >
+            <div
+              class="flex items-center gap-2 px-[9px] py-[7px] cursor-pointer transition-colors duration-150 hover:bg-white/5"
+              @click="toggle(row.key)"
+            >
+              <span class="w-3.5 text-[0.8rem] text-white/40 transition-transform duration-200 group-[.open]:rotate-90">›</span>
+              <span class="shrink-0 border border-white/25 rounded-[5px] px-[7px] py-0.5 text-[0.7rem] font-medium leading-[1.5] whitespace-nowrap text-slate-300 bg-white/7">{{ row.label }}</span>
+              <span class="flex-1 min-w-0 overflow-hidden text-[0.78rem] leading-[1.7] text-white/[0.72] truncate">{{ row.summary }}</span>
+              <span
+                v-if="groupHasError(row)"
+                class="shrink-0 border border-red-400/35 rounded px-[5px] py-px text-[0.62rem] leading-[1.6] whitespace-nowrap text-red-300 bg-red-400/15"
+                >含错误</span
+              >
+              <span class="text-[0.66rem] whitespace-nowrap text-white/[0.38]">{{ row.to - row.from }} 个事件</span>
+            </div>
+            <div
+              v-if="expanded[row.key]"
+              class="px-1.5 pb-1.5 border-t border-white/[0.08]"
+            >
+              <div class="rail-nested pl-4">
+                <EventRow
+                  v-for="item in row.items"
+                  :key="item.index"
+                  :index="item.index"
+                  :event="item.event"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- 单个事件 -->
+          <EventRow
+            v-else
+            :index="row.index"
+            :event="row.event"
+          />
+        </div>
       </div>
     </template>
-
-    <!-- 末尾落点。有「章节结束」时插在它前面 —— 它必须留在最后一条 -->
-    <div
-      class="h-0.5 my-px rounded-sm transition-all duration-[120ms]"
-      :class="{ 'h-1.5 bg-brand shadow-[0_0_8px_rgba(121,217,255,0.6)]': dropAt === tailIndex && dragging !== null }"
-      @dragover.prevent="dropAt = tailIndex"
-      @drop.prevent="finishDrag"
-    ></div>
 
     <button
       class="mt-2 -ml-[22px] w-[calc(100%+22px)] border border-dashed border-white/18 rounded-lg p-[7px] text-[0.78rem] text-white/45 transition-all duration-150 hover:border-brand hover:text-brand hover:bg-[rgba(121,217,255,0.05)]"
@@ -165,68 +151,41 @@ const groupedSpecs = computed(() => {
   return out
 })
 
-// ============================================================
-// 拖拽排序
-// ============================================================
-
-/** 一行覆盖的事件区间 */
-const rowStart = (row: FoldedRow) => (row.kind === 'group' ? row.from : row.index)
-const rowSpan = (row: FoldedRow) => (row.kind === 'group' ? row.to - row.from : 1)
+// ---- 事件排序（↑↓ 箭头按钮） ----
 
 const typeAt = (i: number) => {
   const t = store.chapter?.events[i]?.type
   return typeof t === 'string' ? t : ''
 }
 
-/**
- * 末尾落点的下标：有「章节结束」就插在它前面。
- *
- * 引擎按顺序执行到 chapter_end 就跳走，排在它后面的事件永远跑不到 —— 校验器
- * 会报这条，但更好的做法是压根不给作者把东西拖到那儿的机会。
- */
-const tailIndex = computed(() => {
-  const list = store.chapter?.events ?? []
-  const last = list.length - 1
-  return last >= 0 && typeAt(last) === 'chapter_end' ? last : list.length
-})
+const isChapterEnd = (row: FoldedRow) =>
+  row.kind === 'event' && typeAt(row.index) === 'chapter_end'
 
-/** 章节结束固定在最后一条，不参与拖拽 */
-const canDrag = (row: FoldedRow) =>
-  !(row.kind === 'event' && typeAt(row.index) === 'chapter_end')
+const rowStart = (row: FoldedRow) => (row.kind === 'group' ? row.from : row.index)
+const rowSpan = (row: FoldedRow) => (row.kind === 'group' ? row.to - row.from : 1)
 
-const dragging = ref<{ from: number; count: number } | null>(null)
-const dropAt = ref<number | null>(null)
+const canMoveUp = (row: FoldedRow) => rowStart(row) > 0
 
-const isDragged = (row: FoldedRow) => dragging.value?.from === rowStart(row)
-
-const startDrag = (row: FoldedRow, e: DragEvent) => {
-  if (!canDrag(row)) return
-  dragging.value = { from: rowStart(row), count: rowSpan(row) }
-  if (e.dataTransfer) {
-    e.dataTransfer.effectAllowed = 'move'
-    e.dataTransfer.setData('text/plain', String(rowStart(row)))
-  }
+const canMoveDown = (row: FoldedRow) => {
+  const end = rowStart(row) + rowSpan(row)
+  const total = store.chapter?.events.length ?? 0
+  // 不能越过 chapter_end
+  const lastIdx = total > 0 && typeAt(total - 1) === 'chapter_end' ? total - 1 : total
+  return end < lastIdx
 }
 
-const endDrag = () => {
-  dragging.value = null
-  dropAt.value = null
+const moveUp = (row: FoldedRow) => {
+  const from = rowStart(row)
+  store.moveEventRange(from, rowSpan(row), from - 1)
 }
 
-const finishDrag = () => {
-  const d = dragging.value
-  const at = dropAt.value
-  endDrag()
-  if (!d || at === null) return
-  store.moveEventRange(d.from, d.count, Math.min(at, tailIndex.value))
+const moveDown = (row: FoldedRow) => {
+  const from = rowStart(row)
+  store.moveEventRange(from, rowSpan(row), from + 1)
 }
 
-/**
- * 换章节先收起全部，再按当前选中项展开所在块。
- *
- * 合成一个 watcher —— 拆成两个的话「按 selectedEvent 展开」会被
- * 「换章节清空」覆盖掉（两个 watcher 按创建顺序执行）。
- */
+// ---- 分组折叠 ----
+
 watch(
   [() => store.chapter?.id, () => store.selectedEvent],
   ([id], [prevId]) => {
@@ -284,9 +243,5 @@ const insert = (typeKey: string) => {
   background: #2b3a4a;
   border: 2px solid #94a3b8;
   transform: rotate(45deg);
-}
-/* 拖拽落点指示：var(--accent-color) 在 Tailwind v4 任意值里编译不可靠，保留在 scoped 块 */
-.draggable-row.drop-before {
-  box-shadow: inset 0 2px 0 var(--accent-color);
 }
 </style>

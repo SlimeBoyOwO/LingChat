@@ -108,7 +108,10 @@ const captureGameState = (): GameSnapshot => ({
   currentStatus: gameStore.currentStatus,
   dialogHistory: [...gameStore.dialogHistory],
   command: gameStore.command,
-  gameRoles: { ...gameStore.gameRoles },
+  // 深拷贝每个角色对象（含嵌套的 clothes/bodyPart），JSON 序列化确保完全切断
+  // 共享引用。浅拷贝 { ...role } 仍会共用嵌套对象，试玩期间修改 clothes 等会污染快照。
+  gameRoles: JSON.parse(JSON.stringify(gameStore.gameRoles)),
+  initialized: gameStore.initialized,
 })
 
 const restoreGameState = (s: GameSnapshot) => {
@@ -189,6 +192,9 @@ watch(
   () => store.previewing,
   async (on) => {
     if (on) {
+      // 先清掉上一轮试玩可能残留在事件队列里的事件（如 show_character），
+      // 否则新试玩开始后它们还会被处理，把旧角色注入到当前舞台。
+      eventQueue.clear()
       snapshot = captureGameState()
       sceneSnapshot = captureSceneState()
       // 从干净的舞台开始，而不是继承主界面此刻的立绘和台词。

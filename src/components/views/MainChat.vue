@@ -105,12 +105,16 @@ const runInitialization = async () => {
   try {
     await gameStore.initializeGame()
   } catch (error) {
-    console.log(error)
+    console.error('[MainChat] 初始化游戏失败:', error)
+    uiStore.showWarning({ title: '初始化失败', message: '请尝试重新进入自由对话' })
   }
 }
 
 // 初始化游戏信息
 onMounted(() => {
+  // 每次进入自由对话都恢复事件队列——编辑器试玩结束后 clear() 会把 paused 置 true，
+  // 而 resume 只在首次加载的 LoadingTransition 里被调用，返回时走不到那里。
+  eventQueue.resume()
   if (!gameStore.initialized) {
     runInitialization()
   }

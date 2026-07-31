@@ -167,7 +167,20 @@
       :class="hintClass"
     >
       {{ field.hint }}
+      <button
+        v-if="field.key === 'condition' && condSyntax"
+        class="ml-1 text-brand cursor-pointer"
+        @click="showCondHelp = !showCondHelp"
+      >{{ showCondHelp ? '收起' : '更多语法 →' }}</button>
     </p>
+    <div
+      v-if="field.key === 'condition' && showCondHelp && condSyntax"
+      class="mt-1 rounded border border-white/10 bg-black/20 p-2 text-xs leading-relaxed text-white/50"
+    >
+      <p class="mb-1 text-white/70">支持：<span class="text-white/90">{{ condSyntax.supported?.join(' · ') }}</span></p>
+      <p class="mb-1 text-yellow-200/60">不支持：{{ condSyntax.unsupported?.join(' ') }}</p>
+      <p class="text-white/40">{{ condSyntax.note }}</p>
+    </div>
     <p
       v-for="(d, i) in diagnostics"
       :key="i"
@@ -180,7 +193,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { Toggle } from '@/components/base'
 import { EMOTION_CONFIG_EMO } from '@/controllers/emotion/config'
@@ -203,6 +216,9 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{ (e: 'update', value: unknown): void }>()
+
+const showCondHelp = ref(false)
+const condSyntax = computed(() => store.schema?.conditionSyntax)
 
 const store = useScriptEditorStore()
 

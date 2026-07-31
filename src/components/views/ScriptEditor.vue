@@ -101,10 +101,10 @@
           <button
             class="inline-flex items-center gap-1 border border-white/10 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 bg-white/6 transition-all duration-200 hover:enabled:text-white hover:enabled:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
             :disabled="!store.canRedo"
-            title="重做（Ctrl / ⌘ + Shift + Z）"
+            title="恢复（Ctrl / ⌘ + Shift + Z）"
             @click="store.redo()"
           >
-            ↪ 重做
+            ↪ 恢复
           </button>
         </template>
         <button
@@ -1302,7 +1302,7 @@ const FOLD_HINT =
 const SHORTCUTS: { keys: string; desc: string }[] = [
   { keys: 'Ctrl / ⌘ + S', desc: '立刻保存（平时是改完自动存，这条是给不放心的人的）' },
   { keys: 'Ctrl / ⌘ + Z', desc: '撤销' },
-  { keys: 'Ctrl / ⌘ + Shift + Z', desc: '重做（还原刚才撤销的操作，Ctrl+Y 也行）' },
+  { keys: 'Ctrl / ⌘ + Shift + Z', desc: '恢复刚才撤销的操作（Ctrl+Y 也行）' },
   { keys: 'Ctrl / ⌘ + D', desc: '复制选中的事件' },
   { keys: 'Ctrl / ⌘ + Enter', desc: '从当前位置试玩' },
   { keys: 'Delete', desc: '删除选中的事件' },

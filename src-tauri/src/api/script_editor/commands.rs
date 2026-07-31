@@ -1417,6 +1417,10 @@ impl PreviewSession {
             .map_err(|e| format!("载入主角失败: {}", e))?;
         gs.main_role_id = Some(main_id);
         gs.current_role_id = Some(main_id);
+        // 清空在场角色——试玩期间只该有主角一个人在台上。不做这步的话，自由对话
+        // 里在场的人物会残留在试玩中，影响立绘站位和引擎上下文（issue #19）。
+        gs.present_role_ids.clear();
+        gs.onstage_role_ids.clear();
         gs.onstage_role(main_id); // 不做这步立绘不会出现
         // 玩家名（绑定角色卡里的 settings.user_name）。缺了它 %player% 替换为空、
         // 前端玩家气泡也会显示空名（issue #8）。读不到就保持原值，不阻断试玩。
