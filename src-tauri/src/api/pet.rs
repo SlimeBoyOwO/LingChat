@@ -34,6 +34,9 @@ pub fn update_solid_regions(rects: Vec<Rect>, state: tauri::State<'_, HitTestSta
 }
 
 #[tauri::command]
+// scale/app_handle 只在桌面分支（cfg(desktop) 内调整窗口）使用，
+// 安卓/iOS 编译时视为未使用——用 cfg_attr 消除该平台上的警告
+#[cfg_attr(not(desktop), allow(unused_variables))]
 pub fn set_pet_mode(
     enable: bool,
     scale: Option<f64>,
