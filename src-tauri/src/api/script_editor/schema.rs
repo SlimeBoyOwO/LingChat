@@ -367,7 +367,7 @@ pub fn build_schema() -> ScriptSchema {
             fields: vec![FieldSpec::new("effect", "特效", FieldKind::Select)
                 .required()
                 .options(effect_options())
-                .hint("严格区分大小写；只有这几个值有效，其余一律清空特效")],
+                .hint("从下拉里选；选「无特效」会清空当前特效")],
         },
         EventSpec {
             type_key: "present_pic",
@@ -387,9 +387,13 @@ pub fn build_schema() -> ScriptSchema {
             label: "背景音乐",
             category: "声音",
             color: "#fb923c",
-            fields: vec![FieldSpec::new("musicPath", "音乐", FieldKind::Asset)
-                .required()
-                .asset("music")],
+            fields: vec![
+                FieldSpec::new("musicPath", "音乐", FieldKind::Asset)
+                    .required()
+                    .asset("music"),
+                FieldSpec::new("playbackSpeed", "播放速度", FieldKind::Number)
+                    .hint("1.0 = 原速；留空同 1.0。范围建议 0.5–2.0，超出可能失真"),
+            ],
         },
         EventSpec {
             type_key: "sound",

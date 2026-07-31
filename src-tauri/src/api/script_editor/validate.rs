@@ -420,11 +420,31 @@ pub fn validate(
             }
 
             // 逐类型细查
-            match ty {
+             match ty {
                 "background" | "present_pic" | "music" | "sound" | "ambient" => {
                     check_asset(
                         data_dir, script_dir, obj, ty, cid, i, &mut diags,
                     );
+                    // music 事件的播放速度：超范围会失真或被浏览器拒绝，提前告警
+                    if ty == "music" {
+                        if let Some(speed) = obj.get("playbackSpeed").and_then(|v| v.as_f64()) {
+                            if speed <= 0.0 || speed > 4.0 {
+                                diags.push(
+                                    Diagnostic::event(
+                                        Severity::Warn,
+                                        "music.bad_speed",
+                                        cid,
+                                        i,
+                                        format!(
+                                            "播放速度 {} 超出建议范围（0–4）。≤0 无效，>2 通常会失真",
+                                            speed
+                                        ),
+                                    )
+                                    .with_field("playbackSpeed"),
+                                );
+                            }
+                        }
+                    }
                 }
                 "background_effect" => {
                     let effect = obj.get("effect").and_then(|v| v.as_str()).unwrap_or("");
@@ -434,21 +454,36 @@ pub fn validate(
                         let hint = KNOWN_EFFECTS
                             .iter()
                             .find(|k| k.eq_ignore_ascii_case(effect));
-                        let msg = match hint {
-                            Some(correct) => format!(
-                                "特效「{}」大小写不对，实际不会渲染任何粒子；应为「{}」",
-                                effect, correct
-                            ),
-                            None => format!(
-                                "未知特效「{}」，实际会清空当前特效；可用值：{}",
-                                effect,
-                                KNOWN_EFFECTS.join(" / ")
-                            ),
-                        };
-                        diags.push(
-                            Diagnostic::event(Severity::Error, "effect.invalid", cid, i, msg)
+                        // 大小写不对 → 打开章节时前端会自动纠错为规范写法，故只给 Info；
+                        // 真未知特效 → 前端无法纠错，给 Warn（上游：纠不能纠错都 warning 即可）
+                        match hint {
+                            Some(correct) => diags.push(
+                                Diagnostic::event(
+                                    Severity::Info,
+                                    "effect.case",
+                                    cid,
+                                    i,
+                                    format!(
+                                        "特效「{}」大小写不对；在编辑器打开本章节时会自动纠正为「{}」",
+                                        effect, correct
+                                    ),
+                                )
                                 .with_field("effect"),
-                        );
+                            ),
+                            None => diags.push(
+                                Diagnostic::event(
+                                    Severity::Warn,
+                                    "effect.unknown",
+                                    cid,
+                                    i,
+                                    format!(
+                                        "特效「{}」不是内置特效，引擎会清空当前特效。可从编辑器的特效下拉里选已支持的项",
+                                        effect
+                                    ),
+                                )
+                                .with_field("effect"),
+                            ),
+                        }
                     }
                 }
                 "choices" => {

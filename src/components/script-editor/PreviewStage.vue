@@ -47,9 +47,13 @@ import GameExtraUI from '@/components/game/standard/GameExtraUI.vue'
 import { eventQueue } from '@/core/events/event-queue'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 import { useGameStore } from '@/stores/modules/game'
+import { useUIStore } from '@/stores/modules/ui/ui'
+import { useSettingsStore } from '@/stores/modules/settings'
 
 const store = useScriptEditorStore()
 const gameStore = useGameStore()
+const uiStore = useUIStore()
+const settingsStore = useSettingsStore()
 
 const props = defineProps<{ fromChapter?: string }>()
 
@@ -116,6 +120,62 @@ const restoreGameState = (s: GameSnapshot) => {
 }
 
 /**
+ * 试玩期间会被脚本事件（background/music/background_effect/present_pic/sound/ambient）
+ * 改写的「场景渲染态」。这些不在 gameStore，而在 uiStore + settingsStore：
+ * - 背景图、粒子特效存在 **settingsStore.display**（且 settingsStore 是 persist 的），
+ *   不还原会写进 localStorage、跨试玩/跨自由对话长期泄漏；
+ * - 其余（过渡时长、BGM 轨与速度、插图、音效、环境音轨）在 uiStore。
+ *
+ * 【还原断言】试玩结束（previewing=false）必须把这一整族还原回试玩前快照，
+ * 否则：粒子特效不清空、BGM 不停、背景图/插图/音效串到自由对话或下一次试玩。
+ * 新增任何会被脚本事件改写的渲染态字段时，务必同步加进这里存/还。
+ */
+type SceneSnapshot = {
+  // settingsStore.display（持久化，必须还原）
+  background: string
+  backgroundEffect: string
+  // uiStore
+  backgroundTransition: number
+  backgroundMusic: string
+  bgMusicPlaybackRate: number
+  presentPic: string
+  presentPicScale: number
+  // currentSoundEffect 不存：它是「值变化即播放」的一次性触发型字段，
+  // 还原成试玩前的路径会误重播；试玩结束直接清成 'None'（见 restoreSceneState）。
+  ambientTracks: typeof uiStore.ambientTracks
+}
+
+let sceneSnapshot: SceneSnapshot | null = null
+
+const captureSceneState = (): SceneSnapshot => ({
+  background: settingsStore.display.currentBackground,
+  backgroundEffect: settingsStore.display.backgroundEffect,
+  backgroundTransition: uiStore.currentBackgroundTransition,
+  backgroundMusic: uiStore.currentBackgroundMusic,
+  bgMusicPlaybackRate: uiStore.bgMusicPlaybackRate,
+  presentPic: uiStore.currentPresentPic,
+  presentPicScale: uiStore.currentPresentPicScale,
+  // 深拷贝：ambientTracks 元素是对象，浅拷贝会与试玩期间的操作互相串改
+  ambientTracks: uiStore.ambientTracks.map((t) => ({ ...t })),
+})
+
+const restoreSceneState = (s: SceneSnapshot) => {
+  // settingsStore：直接写字段（与 setCurrentBackground/setBackgroundEffect 等价，但还原走直写更直接）
+  settingsStore.display.currentBackground = s.background
+  settingsStore.display.backgroundEffect = s.backgroundEffect
+  // uiStore
+  uiStore.currentBackgroundTransition = s.backgroundTransition
+  uiStore.currentBackgroundMusic = s.backgroundMusic
+  uiStore.bgMusicPlaybackRate = s.bgMusicPlaybackRate
+  uiStore.currentPresentPic = s.presentPic
+  uiStore.currentPresentPicScale = s.presentPicScale
+  // 音效是触发型字段，直接清成 'None'：GameBackground 的 watch 见 'None' 不会播放，
+  // 既不误重播试玩前的音效，也清掉试玩留下的脏路径
+  uiStore.currentSoundEffect = 'None'
+  uiStore.ambientTracks = s.ambientTracks
+}
+
+/**
  * eventQueue 初始是 paused 的 —— 正式游玩里由 LoadingTransition 完成时 resume。
  * 编辑器没有那道转场，所以在预览打开时自己放行；关闭时 clear()，它会同时
  * 清空队列并把 paused 置回 true，免得残留事件泄漏到下一次试玩。
@@ -125,6 +185,7 @@ watch(
   async (on) => {
     if (on) {
       snapshot = captureGameState()
+      sceneSnapshot = captureSceneState()
       // 从干净的舞台开始，而不是继承主界面此刻的立绘和台词
       gameStore.presentRoleIds = []
       gameStore.dialogHistory = []
@@ -171,6 +232,12 @@ watch(
       if (snapshot) {
         restoreGameState(snapshot)
         snapshot = null
+      }
+      // 还原场景渲染态：清掉试玩留下的背景图/粒子特效/BGM/插图/音效/环境音，
+      // 否则会跨试玩、跨自由对话泄漏（settingsStore.display 还是 persist 的）。
+      if (sceneSnapshot) {
+        restoreSceneState(sceneSnapshot)
+        sceneSnapshot = null
       }
     }
   },

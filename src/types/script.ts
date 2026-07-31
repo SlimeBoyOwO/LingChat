@@ -80,6 +80,8 @@ export interface ScriptSoundEvent extends ScriptEvent {
 export interface ScriptMusicEvent extends ScriptEvent {
   type: 'music'
   musicPath: string
+  /** 播放速度倍率（1.0 原速）；未设置时前端按 1.0 处理 */
+  playbackSpeed?: number
 }
 
 /** 环境音事件 —— 循环持续的场景音效，与 BGM 共存 */

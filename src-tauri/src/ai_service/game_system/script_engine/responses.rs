@@ -71,6 +71,9 @@ pub struct BackgroundEffectPayload {
 #[serde(rename_all = "camelCase")]
 pub struct MusicPayload {
     pub music_path: String,
+    /// 播放速度倍率（1.0 原速）；None 表示未设置，前端按 1.0 处理
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub playback_speed: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -926,6 +926,7 @@ import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { Button, Icon, Toggle } from '@/components/base'
 import { MenuPage, MenuItem } from '@/components/ui'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
+import { useGameStore } from '@/stores/modules/game'
 import { createScript, openScriptFolder } from '@/api/services/script-editor'
 import type { AssetFile, AssetKind, AssetScope, Diagnostic } from '@/api/services/script-editor'
 import ChapterFlow from '@/components/script-editor/ChapterFlow.vue'
@@ -935,6 +936,7 @@ import PreviewStage from '@/components/script-editor/PreviewStage.vue'
 
 const router = useRouter()
 const store = useScriptEditorStore()
+const gameStore = useGameStore()
 
 type TabKey = 'flow' | 'config' | 'characters' | 'assets' | 'validate'
 
@@ -1248,6 +1250,10 @@ const leave = async () => {
   await store.flushPendingSave()
   // 先落盘再同步，顺序不能反：引擎重扫的是磁盘，没写完就同步等于同步了旧内容
   await store.syncEngine()
+  // 退出编辑器前标记 game 未初始化 —— MainChat 据此决定重跑 initializeGame。
+  // 否则从编辑器回自由对话时 gameStore.initialized=true 已设，不会重新 init，
+  // 编辑器里可能已污染的 presentRoleIds/mainRoleId/gameRoles 直接带入自由对话。
+  gameStore.initialized = false
   void router.push('/')
 }
 
@@ -1335,6 +1341,8 @@ onUnmounted(() => {
   navObserver = null
   void store.stopPreview()
   void store.flushPendingSave()
+  // 同上：编辑器卸载时标记 game 未初始化，下次进自由对话触发完整 init
+  gameStore.initialized = false
 })
 </script>
 

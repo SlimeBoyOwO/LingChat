@@ -41,6 +41,8 @@ interface UIState {
   bgMusicMode: 'loop-list' | 'loop-single' | 'random'
   bgMusicPaused: boolean
   bgMusicStoped: boolean
+  /** 背景音乐播放速度倍率（1.0 原速），由剧本 music 事件的 playbackSpeed 设置 */
+  bgMusicPlaybackRate: number
 
   currentSoundEffect: string
   currentAvatarAudio: string
@@ -102,6 +104,7 @@ export const useUIStore = defineStore('ui', {
     bgMusicMode: 'loop-single',
     bgMusicPaused: false,
     bgMusicStoped: false,
+    bgMusicPlaybackRate: 1,
 
     currentSoundEffect: 'None',
     currentAvatarAudio: 'None',

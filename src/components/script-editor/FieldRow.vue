@@ -231,7 +231,9 @@ const isComposite = computed(() =>
 const selectOptions = computed<{ value: string; label: string }[]>(() => {
   switch (props.field.kind) {
     case 'select':
-      return (props.field.options ?? []).map((o) => ({ value: o, label: o }))
+      return (props.field.options ?? []).map((o) =>
+        typeof o === 'string' ? { value: o, label: o } : o,
+      )
     case 'character':
       return store.characterOptions.map((o) => ({
         value: o,

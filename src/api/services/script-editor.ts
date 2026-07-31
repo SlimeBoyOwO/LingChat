@@ -34,7 +34,8 @@ export interface FieldSpec {
   kind: FieldKind
   required: boolean
   assetKind?: AssetKind
-  options?: string[]
+  /** 下拉候选项：字符串或 {value,label}（后者用于显示中文、写入英文 key，如粒子特效） */
+  options?: (string | { value: string; label: string })[]
   placeholder?: string
   hint?: string
   enabled: boolean
