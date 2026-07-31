@@ -631,12 +631,24 @@ fn check_character_personas(
             .and_then(|v| v.as_str())
             .filter(|s| !s.trim().is_empty())
             .unwrap_or(&folder);
-        let key = settings
+        // script_role_key 是剧本 NPC 的硬要求：引擎 register_script_roles 缺它就跳过加载。
+        // 编辑器创建/导入角色时会强制写入，但手改/旧数据可能漏掉，这里提前告警。
+        let role_key_raw = settings
             .get("script_role_key")
             .and_then(|v| v.as_str())
-            .map(|x| x.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| folder.clone());
+            .map(|x| x.trim().to_string());
+        let has_role_key = role_key_raw.as_ref().map(|s| !s.is_empty()).unwrap_or(false);
+        if !has_role_key {
+            diags.push(Diagnostic::script(
+                Severity::Warn,
+                "character.no_role_key",
+                format!(
+                    "角色「{}」缺少 script_role_key，引擎不会加载它（剧本 NPC 必须显式声明该字段）。请在 settings.yml 里补上。",
+                    display
+                ),
+            ));
+        }
+        let key = role_key_raw.unwrap_or_else(|| folder.clone());
         let empty = settings
             .get("system_prompt")
             .map(|v| match v.as_str() {

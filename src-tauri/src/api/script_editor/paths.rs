@@ -123,19 +123,16 @@ pub fn resolve_new_script_dir(key: &str) -> Result<PathBuf, String> {
     }
 
     // 只做纯路径校验，不建任何目录 —— 「解析路径」不该有副作用。
-    // 目标和父目录都可能还不存在，所以沿着祖先往上找第一个已存在的目录来做前缀校验。
-    let mut probe = dir.as_path();
-    loop {
-        match probe.parent() {
-            Some(parent) => {
-                if parent.is_dir() {
-                    crate::api::validate_path_in_base(&parent.to_path_buf(), &scripts_root())?;
-                    break;
-                }
-                probe = parent;
-            }
-            None => return Err(format!("剧本 key 无法定位到 scripts/ 之内: '{}'", key)),
-        }
+    // 早先用 canonicalize 做前缀校验：它要求基目录已存在，而新建剧本时
+    // scripts/（乃至 game_data/）很可能还没建，打包版里 data 目录就在 exe
+    // 旁边、首次创建前根本没有 scripts/，于是 canonicalize 报 os error 3
+    // 「系统找不到指定的路径」，新建剧本永远失败。
+    // split_key 已经挡掉了 .. / 绝对路径 / 盘符 / 分隔符，拼出来的 dir 不可能
+    // 逃出 scripts_root，所以词法 starts_with 校验就足够（与 resolve_chapter_file
+    // 对不存在路径的处理一致），不再依赖任何目录必须已存在。
+    let root = scripts_root();
+    if !dir.starts_with(&root) {
+        return Err(format!("剧本 key 逃出了 scripts/ 目录: '{}'", key));
     }
     Ok(dir)
 }

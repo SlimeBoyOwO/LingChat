@@ -92,8 +92,6 @@ interface State {
   level: 'flow' | 'chapter'
   tab: 'flow' | 'config' | 'characters' | 'assets' | 'validate'
   foldCompounds: boolean
-  /** 试玩时要不要真调 LLM。默认关 —— 调流程不该按 token 计费 */
-  previewUseLlm: boolean
 }
 
 const emptyAssets = (): AssetIndex => ({
@@ -131,7 +129,6 @@ export const useScriptEditorStore = defineStore('script-editor', {
     level: 'flow',
     tab: 'flow',
     foldCompounds: true,
-    previewUseLlm: false,
   }),
 
   // 只持久化 UI 偏好。用白名单式的 exclude 很容易漏 —— 新增 state 字段会
@@ -787,7 +784,7 @@ export const useScriptEditorStore = defineStore('script-editor', {
         return false
       }
       try {
-        await api.startPreview(key, fromChapter, this.previewUseLlm)
+        await api.startPreview(key, fromChapter)
         this.previewing = true
         await this.refreshScripts()
         return true

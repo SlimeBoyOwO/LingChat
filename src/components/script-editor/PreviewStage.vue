@@ -26,18 +26,7 @@
         <div class="bar">
           <span class="badge">试玩中</span>
           <span class="meta">{{ label }}</span>
-          <span
-            class="llm"
-            :class="store.previewUseLlm ? 'llm-live' : 'llm-dry'"
-            >{{
-              store.previewUseLlm ? 'AI 已开启 · 按 token 计费' : 'AI 已关闭 · 出占位文本'
-            }}</span
-          >
-          <span class="tip">
-            试玩为调试用：不记通关、不解锁羁绊冒险<span v-if="!store.previewUseLlm"
-              >、不消耗 token、不写持久记忆</span
-            >
-          </span>
+          <span class="tip">试玩为调试用：不记通关、不解锁羁绊冒险。会真调 LLM（按 token 计费）</span>
           <button
             class="stop"
             title="Esc"
@@ -222,22 +211,6 @@ watch(
   font-size: 0.78rem;
   color: #fff;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
-}
-.llm {
-  border-radius: 99px;
-  padding: 2px 9px;
-  font-size: 0.66rem;
-  white-space: nowrap;
-}
-.llm-live {
-  color: #fcd34d;
-  border: 1px solid rgba(251, 191, 36, 0.4);
-  background: rgba(251, 191, 36, 0.14);
-}
-.llm-dry {
-  color: rgba(255, 255, 255, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.08);
 }
 .tip {
   font-size: 0.7rem;

@@ -1,4 +1,4 @@
-//! AI dialogue event — sets character and generates an AI reply via MessageGenerator.
+//! AI 对话事件 —— 设定角色，并通过 MessageGenerator 生成 AI 回复。
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -49,37 +49,19 @@ impl ScriptEvent for AIDialogueEvent {
             .clone()
             .ok_or_else(|| anyhow!("ScriptStatus 未设置"))?;
 
-        let (role_id, role_display_name) = {
+        let role_id = {
             let mut gs = ctx.game_status.lock().await;
             let role = script_function::get_role(&mut *gs, ctx.db, &script_status, &self.character)
                 .await?;
-            let id = role.role_id.ok_or_else(|| anyhow!("角色 ID 未设置"))?;
-            let dn = role.display_name.clone();
-            (id, dn)
+            role.role_id.ok_or_else(|| anyhow!("角色 ID 未设置"))?
         };
 
-        // Set as current character
+        // 设为当前角色
         ctx.game_status.lock().await.current_role_id = Some(role_id);
-
-        // 编辑器试玩且作者关掉了 LLM：出一条占位台词就走，不花 token。
-        // 放在注入 prompt 之前 —— 那条 prompt 只是给 LLM 看的，不调 LLM 就别往台词表里塞。
-        if ctx.dry_run_ai {
-            return script_function::emit_ai_placeholder(
-                ctx.app,
-                ctx.db,
-                &ctx.game_status,
-                role_id,
-                role_display_name.as_deref().unwrap_or("AI"),
-                "试玩已关闭 LLM",
-                self.prompt.as_deref(),
-            )
-            .await
-            .map(|()| None);
-        }
 
         tracing::info!("[AIDialogueEvent] 开始执行");
 
-        // Inject prompt as SYSTEM line if provided
+        // 若提供了 prompt，作为临时系统旁白台词注入
         // TODO: 这里的 prompt 是暂时的，应该标记为临时 prompt，并且在代码逻辑中在AI回复后清除这部分提示词。
         if let Some(ref prompt) = self.prompt {
             let sys_line = LineBase {
@@ -95,26 +77,17 @@ impl ScriptEvent for AIDialogueEvent {
                 .await?;
         }
 
-        // Delegate AI response to MessageGenerator
+        // 委托 MessageGenerator 生成回复
         let state = ctx.app.state::<AppState>();
         let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm).await;
         let llm = match llm {
             Some(llm) => llm,
             None => {
-                // 原先是静默 return —— 没配 LLM 的玩家会看到剧情凭空跳过一段，
-                // 像 bug 而不像「有个设置没填」。现在出一条能看见的占位。
-                tracing::warn!("[AIDialogueEvent] LLM 未配置，改为占位台词");
-                return script_function::emit_ai_placeholder(
-                    ctx.app,
-                    ctx.db,
-                    &ctx.game_status,
-                    role_id,
-                    role_display_name.as_deref().unwrap_or("AI"),
-                    "尚未配置 LLM",
-                    self.prompt.as_deref(),
-                )
-                .await
-                .map(|()| None);
+                // LLM 未配置：AI 对话事件无法生成。按上游要求直接终止剧本，
+                // 不再 fallback 到任何占位/默认文本——那会让剧本以错误逻辑继续跑。
+                return Err(anyhow!(
+                    "尚未配置大模型，无法执行「AI 对话」事件，剧本终止。请先在设置里配置并选择模型。"
+                ));
             }
         };
 

@@ -330,27 +330,29 @@ impl ScriptManager {
                 serde_yaml::from_str(&content)
                     .with_context(|| format!("无法解析角色设定: {:?}", settings_path))?;
 
-            // Single source of truth for the role key: the explicit
-            // `script_role_key` if the author set one, otherwise the folder name
-            // (which is what scripts reference in `character:`).
-            let role_key = settings
+            // 剧本角色必须显式带 script_role_key —— 它在数据库里把「剧本 NPC」与
+            // game_data/characters/ 的主角色区分开。缺了它就不能加载（上游硬要求），
+            // 不能再用目录名回退替代，否则数据库角色记录会混乱。
+            // 官方剧本均无 characters/ 目录，故不受影响；编辑器创建/导入角色时已强制写入。
+            let role_key = match settings
                 .script_role_key
                 .as_deref()
-                .filter(|s| !s.trim().is_empty())
-                .unwrap_or(&role_folder);
-
-            if role_key != role_folder {
-                tracing::info!(
-                    "[ScriptManager] 角色 {:?} 使用自定义 script_role_key='{}'，剧本里需写 character: {}",
-                    role_folder,
-                    role_key,
-                    role_key
-                );
-            }
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+            {
+                Some(k) => k.to_string(),
+                None => {
+                    tracing::warn!(
+                        "[ScriptManager] 角色 {:?} 缺少 script_role_key，跳过加载（剧本 NPC 必须显式声明该字段）",
+                        role_folder
+                    );
+                    continue;
+                }
+            };
 
             // Check if role already exists in DB — same key that creation uses.
             let path_key = script.path_key();
-            let existing = RoleRepo::get_role_by_script_keys(ctx.db, &path_key, role_key).await?;
+            let existing = RoleRepo::get_role_by_script_keys(ctx.db, &path_key, &role_key).await?;
 
             if existing.is_some() {
                 tracing::info!(
@@ -367,7 +369,7 @@ impl ScriptManager {
                 &settings.ai_name,
                 RoleType::Npc,
                 Some(&path_key),
-                Some(role_key),
+                Some(&role_key),
                 Some(&role_folder),
             )
             .await?;

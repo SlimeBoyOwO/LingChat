@@ -1,5 +1,5 @@
-//! Choice event — presents branching options to the user, waits for selection,
-//! then evaluates conditions and executes actions for the matched option.
+//! 选项事件 —— 向用户展示分支选项，等待选择后，
+//! 对匹配的选项求值条件并执行其动作。
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -29,19 +29,6 @@ impl ChoiceEvent {
             .cloned()
             .unwrap_or_default();
 
-        // 选项级 `next` 不存在：只有 chapter_end 的 options 支持 next。
-        // 作者写了不会报错也不会生效，跳转直接失效，属于最容易踩的静默失败之一。
-        for (i, opt) in options.iter().enumerate() {
-            if let Some(next) = opt.get("next").and_then(|v| v.as_str()) {
-                tracing::warn!(
-                    "[ChoiceEvent] 第 {} 个选项写了 next: '{}'，但 choices 不支持选项级跳转，\
-                     该字段被忽略；请改用 set_var + chapter_end 的 branching",
-                    i + 1,
-                    next
-                );
-            }
-        }
-
         Self {
             options,
             allow_free: data
@@ -55,7 +42,7 @@ impl ChoiceEvent {
 #[async_trait]
 impl ScriptEvent for ChoiceEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
-        // Build choice labels
+        // 构建选项文案列表
         let choices: Vec<String> = self
             .options
             .iter()
@@ -63,10 +50,9 @@ impl ScriptEvent for ChoiceEvent {
             .map(|s| s.to_string())
             .collect();
 
-        // Set up oneshot channel and store sender (brief lock).
-        // `choice_allow_free` lets `script_submit_input` route free-typed text here
-        // instead of rejecting it — without it an `allow_free: true` choice can
-        // never be resolved and the script blocks forever.
+        // 建立 oneshot 通道并存入 sender（短暂持锁）。
+        // `choice_allow_free` 让 `script_submit_input` 把自由输入的文本转投到这里，
+        // 而不是拒绝——否则 `allow_free: true` 的选项永远无法解决，剧本永久阻塞。
         let rx = {
             let (tx, rx) = tokio::sync::oneshot::channel();
             let mut ch = ctx.channels.lock().await;
@@ -75,22 +61,22 @@ impl ScriptEvent for ChoiceEvent {
             rx
         };
 
-        // Emit choice event to frontend
+        // 向前端发出选项事件
         let payload = ChoicePayload {
             choices: choices.clone(),
             allow_free: self.allow_free,
         };
         let _ = emit(ctx.app, SCRIPT_CHOICE, &payload);
 
-        // Await user choice — no locks held
+        // 等待用户选择——不持有任何锁
         let user_choice = rx.await.map_err(|_| anyhow!("用户选择通道已关闭"))?;
 
-        // The choice is resolved; stop accepting free text on its behalf.
+        // 选项已解决；停止替它接受自由输入。
         ctx.channels.lock().await.choice_allow_free = false;
 
         tracing::info!("[ChoiceEvent] 用户选择: {}", user_choice);
 
-        // Clone out script_status to avoid double borrow
+        // 克隆出 script_status 以避免双重借用
         let mut script_status = ctx
             .game_status
             .lock()
@@ -111,11 +97,11 @@ impl ScriptEvent for ChoiceEvent {
             .await?
         };
 
-        // Write back potentially modified script_status
+        // 写回可能被修改的 script_status
         ctx.game_status.lock().await.script_status = Some(script_status);
 
         if !matched {
-            // Add raw input as USER line if no option matched
+            // 没有选项命中时，把原始输入作为 USER 台词写入
             let mut gs = ctx.game_status.lock().await;
             let line = LineBase {
                 content: user_choice,

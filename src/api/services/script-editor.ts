@@ -311,11 +311,10 @@ export const previewReadiness = (key: string) =>
 
 /**
  * 在编辑器里直接试玩。内部会先 rescan，fromChapter 留空则从开场章节开始。
- *
- * useLlm=false 时 AI 事件出固定占位文本，不花 token —— 调流程时不需要真生成。
+ * 试玩会真调 LLM（与正式游玩一致）；LLM 未配置时，遇到 AI 事件会终止剧本。
  */
-export const startPreview = (key: string, fromChapter: string | undefined, useLlm: boolean) =>
-  invoke<void>('editor_start_preview', { key, fromChapter, useLlm })
+export const startPreview = (key: string, fromChapter: string | undefined) =>
+  invoke<void>('editor_start_preview', { key, fromChapter })
 
 /** 中止试玩 */
 export const stopPreview = () => invoke<void>('editor_stop_preview')

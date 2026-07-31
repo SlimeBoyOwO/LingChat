@@ -105,23 +105,6 @@
           快捷键
         </button>
         <template v-if="store.detail">
-          <label
-            class="llm-toggle"
-            :title="
-              store.previewing
-                ? '试玩进行中无法切换。请先结束试玩，再拨动开关后重新开跑（AI 开关只在试玩启动时生效）'
-                : store.previewUseLlm
-                  ? 'AI 对话会真的请求模型，按 token 计费'
-                  : 'AI 对话出固定占位文本，不消耗 token —— 调流程时用这个'
-            "
-          >
-            <Toggle
-              :checked="store.previewUseLlm"
-              :disabled="store.previewing"
-              @change="(v: boolean) => (store.previewUseLlm = v)"
-            />
-            试玩用 AI
-          </label>
           <button
             class="chip primary"
             title="Ctrl / ⌘ + Enter"
@@ -1441,16 +1424,6 @@ onUnmounted(() => {
   font-size: 0.66rem;
   font-weight: 600;
   color: #fcd34d;
-}
-
-.llm-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.72rem;
-  white-space: nowrap;
-  color: rgba(255, 255, 255, 0.55);
-  cursor: pointer;
 }
 
 /* 全局角色库的可选行 */

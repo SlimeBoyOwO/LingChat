@@ -1281,13 +1281,12 @@ pub async fn editor_rescan_scripts(app: AppHandle) -> Result<usize, String> {
 /// 2. 不调用 `handle_adventure_completion`，不会解锁后续羁绊冒险、不发成就。
 ///
 /// 因此这里刻意不用 `execute_script`，而是自己组合它内部那三个 `pub` 步骤。
-/// `from_chapter` 为 `None` 时从开场章节开始；`use_llm` 为 `false` 时 AI 事件出占位。
+/// `from_chapter` 为 `None` 时从开场章节开始。试玩会真调 LLM；LLM 未配置时遇到 AI 事件即终止剧本。
 #[tauri::command]
 pub async fn editor_start_preview(
     app: AppHandle,
     key: String,
     from_chapter: Option<String>,
-    use_llm: bool,
 ) -> Result<(), String> {
     // 先把磁盘状态同步进引擎
     editor_rescan_scripts(app.clone()).await?;
@@ -1349,22 +1348,11 @@ pub async fn editor_start_preview(
     }
 
     // 备份整个会话状态，并按「刚进游戏」的样子把试玩场次搭好
-    let mut session = PreviewSession::begin(&db, &data_dir, &game_status, &script).await?;
-
-    // 关 AI 试玩时，把共享的 chat.llm 槽位临时清空。RoleManager 与 chat.llm 是同一个
-    // Arc，持久记忆的后台压缩（check_and_trigger_auto_update）读到槽位为空会跳过，
-    // 否则 dry-run 期间仍会后台调 LLM 烧 token（issue #5）。ai_dialogue / free_dialogue
-    // 自己在 dry_run 时就出占位、根本不碰槽位，所以不受影响。开 AI 时不动。
-    if !use_llm {
-        let state = app.state::<AppState>();
-        let saved = crate::ai_service::llm::slot_snapshot(&state.chat.llm).await;
-        *state.chat.llm.write().await = None;
-        session.saved_llm = saved;
-    }
+    let session = PreviewSession::begin(&db, &data_dir, &game_status, &script).await?;
 
     // 快照托管给 AppState：试玩任务自然结束时还原一次，editor_stop_preview 兜底
     // 再 take 一次（为空即跳过）。这样无论「跑完 / 报错 / 被中止」哪条路，
-    // 共享 GameStatus 都能回到试玩前，不会污染玩家自由对话的上下文（issue #5）。
+    // 共享 GameStatus 都能回到试玩前，不会污染玩家自由对话的上下文。
     {
         let state = app.state::<AppState>();
         *state.pending_preview_restore.lock().await = Some(session);
@@ -1384,7 +1372,6 @@ pub async fn editor_start_preview(
             config: &cfg,
             llm: llm.as_ref(),
             channels,
-            dry_run_ai: !use_llm,
         };
         use crate::ai_service::game_system::script_engine::ScriptManager;
 
@@ -1443,10 +1430,6 @@ pub struct PreviewSession {
     script_status: Option<Box<ScriptStatus>>,
     /// 玩家名。begin 会按绑定角色卡覆盖它，必须单独存还原（scene 快照不含 player）
     user_name: String,
-    /// 关 AI 试玩时，把共享的 chat.llm 槽位临时清空、把原来的客户端存这里。
-    /// 持久记忆的 check_and_trigger_auto_update 读到槽位为空会跳过 LLM 压缩，
-    /// 这样 dry-run 才真的不花 token（issue #5）。None 表示没动过槽位。
-    saved_llm: Option<Arc<crate::ai_service::llm::LlmClient>>,
 }
 
 impl PreviewSession {
@@ -1467,7 +1450,6 @@ impl PreviewSession {
             current_role_id: gs.current_role_id,
             script_status: gs.script_status.clone().map(Box::new),
             user_name: gs.player.user_name.clone(),
-            saved_llm: None,
         };
 
         // ---- 按「刚进游戏」的样子搭场次，对齐 init_game_status 的三件事 ----
@@ -1510,12 +1492,7 @@ impl PreviewSession {
 
     /// 尽力还原，任何一步失败都只记日志 —— 收尾阶段再抛错没有接收方，
     /// 而且半途放弃只会让残留更多。
-    async fn restore(
-        self,
-        db: &DatabaseConnection,
-        game_status: &Arc<Mutex<GameStatus>>,
-        chat_llm: &crate::ai_service::llm::LlmSlot,
-    ) {
+    async fn restore(self, db: &DatabaseConnection, game_status: &Arc<Mutex<GameStatus>>) {
         let mut gs = game_status.lock().await;
         gs.line_list.truncate(self.line_len);
         gs.apply_snapshot(&self.scene);
@@ -1526,12 +1503,6 @@ impl PreviewSession {
         // 台词表变短了，角色记忆要按新的列表重建，否则里面还留着试玩的内容
         if let Err(e) = gs.refresh_memories(db).await {
             tracing::warn!("[ScriptEditor] 还原后刷新记忆失败: {}", e);
-        }
-        drop(gs);
-        // 关 AI 试玩时把共享 LLM 槽位清空过（掐断持久记忆的后台压缩），现在还回去。
-        // 放在 refresh_memories 之后：还原记忆时槽位仍为空，记忆库会跳过，不会反触发 LLM。
-        if let Some(llm) = self.saved_llm {
-            *chat_llm.write().await = Some(llm);
         }
     }
 }
@@ -1554,8 +1525,7 @@ async fn apply_pending_restore(app: &AppHandle) {
     let state = app.state::<AppState>();
     let db = state.db.clone();
     let game_status = state.ai_service.lock().await.game_status.clone();
-    let chat_llm = state.chat.llm.clone();
-    session.restore(&db, &game_status, &chat_llm).await;
+    session.restore(&db, &game_status).await;
 }
 
 /// 试玩时 `MAIN` 应该解析成谁。
