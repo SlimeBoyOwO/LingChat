@@ -5,16 +5,19 @@
     不给背景就直接透出桌面。Credits.vue 同理显式加了 bg-[#0a0a0c]。
     这里用渐变而不是背景图，避免依赖 Git LFS 资源。
   -->
-  <div class="editor-root">
+  <div class="editor-root relative w-full h-full overflow-hidden">
     <div class="bg-layer"></div>
 
     <!-- 顶栏：与 SettingsNav 同构 -->
-    <div class="snav">
-      <span class="logo">LingChat 剧本编辑器</span>
-      <nav ref="navEl">
+    <div class="flex w-full items-center justify-between px-5 py-2">
+      <span class="ml-5 text-[0.95rem] font-bold tracking-[0.5px] text-brand whitespace-nowrap">LingChat 剧本编辑器</span>
+      <nav
+        ref="navEl"
+        class="relative flex h-full w-full flex-nowrap items-center justify-center gap-1 overflow-x-auto overflow-y-hidden px-2"
+      >
         <div
           ref="indicatorEl"
-          class="indicator"
+          class="absolute bottom-0 left-0 z-10 h-1 w-0 rounded-sm bg-brand shadow-[0_0_10px_rgba(121,217,255,0.4)]"
         ></div>
         <Button
           v-for="t in tabs"
@@ -29,7 +32,7 @@
           <p class="hidden xl:block">{{ t.label }}</p>
           <span
             v-if="t.key === 'validate' && store.report && store.report.errorCount > 0"
-            class="nav-badge"
+            class="ml-1 rounded-full px-[5px] text-[0.6rem] text-white bg-red-500"
             >{{ store.report.errorCount }}</span
           >
         </Button>
@@ -37,16 +40,16 @@
       <Icon
         icon="close"
         :size="40"
-        class="close-btn"
+        class="flex items-center justify-center rounded-full p-1.5 text-white cursor-pointer transition-all duration-300 ease-in-out hover:text-brand hover:bg-white/10 hover:rotate-90"
         @click="leave"
       />
     </div>
 
     <!-- 面包屑 -->
-    <div class="crumb">
+    <div class="flex items-center gap-2 px-8 pb-1 text-[0.8rem] text-white/55">
       <button
         v-if="store.detail"
-        class="link"
+        class="text-brand hover:underline"
         @click="store.closeScript()"
       >
         ‹ 剧本列表
@@ -54,34 +57,41 @@
       <span v-else>首页</span>
 
       <template v-if="store.detail">
-        <span class="sep">›</span>
+        <span class="opacity-40">›</span>
         <button
           v-if="store.level === 'chapter'"
-          class="link"
+          class="text-brand hover:underline"
           @click="store.backToFlow()"
         >
           {{ store.detail.package.scriptName }}
         </button>
-        <b v-else>{{ store.detail.package.scriptName }}</b>
+        <b
+          v-else
+          class="font-semibold text-white"
+          >{{ store.detail.package.scriptName }}</b
+        >
 
         <template v-if="store.level === 'chapter' && store.chapter">
-          <span class="sep">›</span>
-          <b>{{ store.chapter.name || store.chapter.id }}</b>
-          <span class="dim">{{ store.chapter.id }}.yaml</span>
+          <span class="opacity-40">›</span>
+          <b class="font-semibold text-white">{{ store.chapter.name || store.chapter.id }}</b>
+          <span class="text-[0.72rem] opacity-35">{{ store.chapter.id }}.yaml</span>
         </template>
       </template>
 
-      <span class="right">
+      <span class="flex items-center gap-3 ml-auto">
         <span
           v-if="store.detail"
-          class="save-state"
+          class="inline-flex items-center gap-[5px] text-[0.75rem] text-white/50"
         >
-          <i :class="store.dirty ? 'pending' : 'clean'"></i>
+          <i
+            class="inline-block w-1.5 h-1.5 rounded-full"
+            :class="store.dirty ? 'bg-amber-300' : 'bg-green-400'"
+          ></i>
           {{ saveLabel }}
         </span>
         <template v-if="store.level === 'chapter'">
           <button
-            class="chip"
+            class="inline-flex items-center gap-1 border border-white/10 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 bg-white/6 transition-all duration-200 hover:enabled:text-white hover:enabled:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
             :disabled="!store.canUndo"
             title="Ctrl / ⌘ + Z"
             @click="store.undo()"
@@ -89,7 +99,7 @@
             撤销
           </button>
           <button
-            class="chip"
+            class="inline-flex items-center gap-1 border border-white/10 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 bg-white/6 transition-all duration-200 hover:enabled:text-white hover:enabled:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
             :disabled="!store.canRedo"
             title="Ctrl / ⌘ + Shift + Z"
             @click="store.redo()"
@@ -98,7 +108,7 @@
           </button>
         </template>
         <button
-          class="chip"
+          class="inline-flex items-center gap-1 border border-white/10 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 bg-white/6 transition-all duration-200 hover:enabled:text-white hover:enabled:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
           title="查看全部快捷键（? 键）"
           @click="shortcutHelp = true"
         >
@@ -106,7 +116,7 @@
         </button>
         <template v-if="store.detail">
           <button
-            class="chip primary"
+            class="inline-flex items-center gap-1 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap transition-all duration-200 border border-brand/45 text-brand bg-brand/14 hover:bg-brand/24"
             title="Ctrl / ⌘ + Enter"
             @click="playtest"
           >
@@ -120,14 +130,14 @@
          一个卡住不动的画面困惑一阵 —— 那正是这条横幅要省掉的时间。 -->
     <div
       v-if="store.detail && store.readiness && !store.readiness.ok"
-      class="warnbar"
+      class="flex items-center gap-2.5 mx-5 mb-2 border border-amber-300/30 rounded-lg px-3 py-[7px] text-[0.76rem] leading-[1.7] text-amber-100/90 bg-amber-300/10"
     >
-      <span class="wb-tag">试玩会卡住</span>
+      <span class="shrink-0 border border-amber-300/40 rounded-full px-2 py-px text-[0.66rem] font-semibold text-amber-300">试玩会卡住</span>
       <span>{{ store.readiness.reason }}</span>
     </div>
 
     <!-- 主体 -->
-    <div class="body">
+    <div class="flex h-[calc(100%-5.5rem)] min-h-0 flex-col">
       <!-- ============ 剧本列表 ============ -->
       <MenuPage v-if="!store.detail">
         <MenuItem title="选择要编辑的剧本">
@@ -140,13 +150,13 @@
 
           <p
             v-if="store.loading"
-            class="empty"
+            class="py-8 text-center text-[0.85rem] text-white/45"
           >
             正在读取…
           </p>
           <p
             v-else-if="store.scripts.length === 0"
-            class="empty"
+            class="py-8 text-center text-[0.85rem] text-white/45"
           >
             还没有任何剧本，点下面新建一个
           </p>
@@ -154,24 +164,24 @@
           <div
             v-for="s in store.scripts"
             :key="s.key"
-            class="script-card"
+            class="w-full border border-white/10 rounded-[10px] px-[13px] py-[11px] mb-2 bg-white/6 transition-all duration-200 cursor-pointer hover:border-brand hover:bg-[rgba(121,217,255,0.08)] group"
             @click="store.openScript(s.key)"
           >
             <div class="flex items-baseline gap-2">
               <span class="font-semibold text-white">{{ s.scriptName }}</span>
               <span
                 v-if="s.isAdventure"
-                class="tag"
+                class="border border-brand/35 rounded-full px-[7px] text-[0.62rem] text-brand bg-brand/12"
                 >羁绊冒险</span
               >
               <span
                 v-if="!s.loadedByEngine"
-                class="tag warn"
+                class="border border-amber-300/35 rounded-full px-[7px] text-[0.62rem] text-amber-300 bg-amber-300/12"
                 >未加载</span
               >
               <span class="ml-auto text-xs text-white/40">{{ s.chapterCount }} 章</span>
               <button
-                class="card-del"
+                class="rounded px-[5px] text-[11px] leading-[1.4] text-white/25 opacity-0 transition-all duration-150 group-hover:opacity-100 hover:text-red-300 hover:bg-red-400/15"
                 title="删除剧本（移到回收目录）"
                 @click.stop="store.deleteScript(s.key, s.scriptName)"
               >
@@ -201,21 +211,21 @@
               :size="20"
             />
           </template>
-          <div class="toolbar">
+          <div class="flex flex-wrap items-center gap-2 mb-3">
             <button
-              class="chip"
+              class="inline-flex items-center gap-1 border border-white/10 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 bg-white/6 transition-all duration-200 hover:enabled:text-white hover:enabled:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
               @click="modal = 'chapter'"
             >
               ＋ 新建章节
             </button>
             <button
-              class="chip"
+              class="inline-flex items-center gap-1 border border-white/10 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 bg-white/6 transition-all duration-200 hover:enabled:text-white hover:enabled:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
               @click="store.runValidation()"
             >
               重新校验
             </button>
             <button
-              class="chip"
+              class="inline-flex items-center gap-1 border border-white/10 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 bg-white/6 transition-all duration-200 hover:enabled:text-white hover:enabled:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
               @click="openFolder"
             >
               打开剧本目录
@@ -228,9 +238,9 @@
       <!-- ============ 章节编辑 ============ -->
       <div
         v-else-if="store.tab === 'flow' && store.level === 'chapter'"
-        class="editcols"
+        class="flex w-[94%] min-h-0 flex-1 gap-5 mx-auto px-3 py-4"
       >
-        <div class="col-main">
+        <div class="flex min-w-0 flex-1 flex-col">
           <MenuItem
             title="事件时间线"
             class="fill"
@@ -249,7 +259,7 @@
                 @change="onRename"
               />
               <label
-                class="inline-toggle"
+                class="inline-flex items-center gap-2 text-[0.8rem] whitespace-nowrap text-white/70"
                 :title="FOLD_HINT"
               >
                 <Toggle
@@ -262,13 +272,13 @@
                 {{ store.chapter?.events.length ?? 0 }} 个事件
               </span>
             </div>
-            <div class="scroll-body">
+            <div class="min-h-0 flex-1 overflow-y-auto pr-1">
               <ChapterTimeline />
             </div>
           </MenuItem>
         </div>
 
-        <div class="col-side">
+        <div class="flex min-h-0 flex-[0_0_340px] flex-col">
           <MenuItem
             title="事件属性"
             class="fill"
@@ -279,7 +289,7 @@
                 :size="20"
               />
             </template>
-            <div class="scroll-body">
+            <div class="min-h-0 flex-1 overflow-y-auto pr-1">
               <EventPropertyPanel />
             </div>
           </MenuItem>
@@ -296,24 +306,24 @@
             />
           </template>
 
-          <p class="notice">
-            改写 <code>story_config.yaml</code> 会丢掉文件里的 YAML 注释（六个官方剧本的
-            config 都带中文注释）。保存前会自动留一份 <code>.bak</code>。
+          <p class="mb-[0.9rem] rounded-xl border border-white/10 bg-black/16 px-[0.85rem] py-[0.7rem] text-[0.76rem] leading-[1.85] text-white/60">
+            改写 <code class="font-mono text-brand">story_config.yaml</code> 会丢掉文件里的 YAML 注释（六个官方剧本的
+            config 都带中文注释）。保存前会自动留一份 <code class="font-mono text-brand">.bak</code>。
           </p>
 
           <div
             v-for="f in store.schema?.storyConfigFields ?? []"
             :key="f.key"
-            class="field"
+            class="mb-4"
           >
-            <label class="f-label">
+            <label class="inline-flex items-center font-medium text-brand text-[0.9rem]">
               {{ f.label }}<span
                 v-if="f.required"
-                class="req"
+                class="ml-0.5 text-[0.7rem] text-red-400"
                 >＊</span
               >
             </label>
-            <p class="f-key">{{ f.key }}</p>
+            <p class="my-1 mb-2 text-[0.8rem] text-gray-300">{{ f.key }}</p>
             <select
               v-if="f.kind === 'chapter'"
               class="glass-input"
@@ -342,15 +352,15 @@
             />
             <p
               v-if="f.hint"
-              class="f-hint"
+              class="mt-[0.3rem] text-[0.72rem] leading-[1.7] text-white/40 [&_code]:font-mono [&_code]:text-brand"
             >
               {{ f.hint }}
             </p>
           </div>
 
           <!-- 羁绊冒险 -->
-          <div class="section">
-            <label class="inline-toggle mb-2">
+          <div class="my-4 rounded-xl border border-white/10 bg-black/15 p-4">
+            <label class="inline-flex items-center gap-2 text-[0.8rem] whitespace-nowrap text-white/70 mb-2">
               <Toggle
                 :checked="isAdventure"
                 @change="toggleAdventure"
@@ -358,29 +368,29 @@
               这是某个角色的羁绊冒险
             </label>
             <template v-if="isAdventure">
-              <div class="field">
-                <label class="f-label">绑定角色目录名</label>
-                <p class="f-key">adventure.bound_character_folder</p>
+              <div class="mb-4">
+                <label class="inline-flex items-center font-medium text-brand text-[0.9rem]">绑定角色目录名</label>
+                <p class="my-1 mb-2 text-[0.8rem] text-gray-300">adventure.bound_character_folder</p>
                 <input
                   class="glass-input"
                   :value="adventureField('bound_character_folder')"
                   @change="(e) => onAdventureText('bound_character_folder', e)"
                 />
               </div>
-              <div class="field">
-                <label class="f-label">排序</label>
-                <p class="f-key">adventure.order</p>
+              <div class="mb-4">
+                <label class="inline-flex items-center font-medium text-brand text-[0.9rem]">排序</label>
+                <p class="my-1 mb-2 text-[0.8rem] text-gray-300">adventure.order</p>
                 <input
                   class="glass-input"
                   type="number"
                   :value="adventureField('order')"
                   @change="(e) => onAdventureNumber('order', e)"
                 />
-                <p class="f-hint">决定在角色卡里的显示顺序</p>
+                <p class="mt-[0.3rem] text-[0.72rem] leading-[1.7] text-white/40">决定在角色卡里的显示顺序</p>
               </div>
-              <p class="f-hint">
-                解锁条件（<code>unlock_conditions</code>）目前保持文件里的原值不动，
-                下一轮补可视化编辑。<code>trigger.mode</code> 引擎没有任何消费者，
+              <p class="mt-[0.3rem] text-[0.72rem] leading-[1.7] text-white/40 [&_code]:font-mono [&_code]:text-brand">
+                解锁条件（<code class="font-mono text-brand">unlock_conditions</code>）目前保持文件里的原值不动，
+                下一轮补可视化编辑。<code class="font-mono text-brand">trigger.mode</code> 引擎没有任何消费者，
                 因此不在这里暴露，但读写时原样保留。
               </p>
             </template>
@@ -406,46 +416,47 @@
             />
           </template>
 
-          <p class="notice">
-            剧本里用 <code>character: &lt;下面的引用名&gt;</code> 指代角色；写
-            <code>MAIN</code> 表示当前主角（羁绊剧本里就是绑定的那位）。
-            <b>引擎只在本剧本的 <code>characters/</code> 里找人</b>，所以想用全局角色库里
+          <p class="mb-[0.9rem] rounded-xl border border-white/10 bg-black/16 px-[0.85rem] py-[0.7rem] text-[0.76rem] leading-[1.85] text-white/60">
+            剧本里用 <code class="font-mono text-brand">character: &lt;下面的引用名&gt;</code> 指代角色；写
+            <code class="font-mono text-brand">MAIN</code> 表示当前主角（羁绊剧本里就是绑定的那位）。
+            <b class="font-semibold text-white/85">引擎只在本剧本的 <code class="font-mono text-brand">characters/</code> 里找人</b>，所以想用全局角色库里
             已有的人设，得先「导入」一份到这里 —— 导入复制的是人设文件，立绘仍读全局那份，
             不会让剧本目录白白变大。
           </p>
 
           <p
             v-if="store.characters.length === 0"
-            class="empty"
+            class="py-8 text-center text-[0.85rem] text-white/45"
           >
             还没有剧本内角色
           </p>
           <div
             v-for="c in store.characters"
             :key="c.folder"
-            class="row-card char-card"
+            class="w-full border border-white/10 rounded-[10px] px-[13px] py-[11px] mb-2 bg-white/6 transition-all duration-200 flex items-center group"
           >
             <!-- 立绘缩略图：本地 avatar 优先，没有回退全局；都没有时占位，与
                  引擎运行时同一个查找顺序，避免「编辑器看着有、游戏里没有」 -->
-            <div class="char-thumb">
+            <div class="char-thumb shrink-0 w-11 h-11 rounded-full overflow-hidden border-[1.5px] border-brand/35">
               <img
                 v-if="c.previewImage"
                 :src="assetUrl(c.previewImage)"
                 :alt="c.aiName"
+                class="w-full h-full object-cover object-[top_center]"
                 loading="lazy"
               />
               <span
                 v-else
-                class="char-thumb-ph"
-              >无立绘</span>
+                class="flex items-center justify-center w-full h-full text-[0.56rem] text-white/35"
+                >无立绘</span>
             </div>
-            <div class="char-info">
+            <div class="flex min-w-0 flex-1 flex-col gap-0.5">
               <div class="flex items-baseline gap-2">
                 <span class="font-semibold text-white">{{ c.aiName }}</span>
-                <code class="ref">character: {{ c.roleKey }}</code>
+                <code class="font-mono text-brand">character: {{ c.roleKey }}</code>
                 <span
                   v-if="c.emotions.length === 0 && c.globalAvatar"
-                  class="char-badge"
+                  class="shrink-0 border border-brand/40 rounded-full px-[7px] py-px text-[0.6rem] text-brand bg-brand/12"
                   title="本剧本没复制立绘，但全局角色库里有；引擎会自动用全局那份"
                   >立绘读自全局</span
                 >
@@ -469,7 +480,7 @@
               </p>
             </div>
             <button
-              class="char-del"
+              class="shrink-0 rounded px-[5px] text-[11px] text-white/25 opacity-0 transition-all duration-150 group-hover:opacity-100 hover:text-red-300 hover:bg-red-400/15"
               title="删除角色（移到 .trash/）"
               @click="store.deleteCharacter(c.folder, c.aiName)"
             >
@@ -504,73 +515,73 @@
             />
           </template>
 
-          <p class="notice">
-            引擎查找素材的顺序是<b>先本剧本，再全局</b>，所以两处都能被找到，区别在于：
-            <b>剧本素材</b>随剧本一起分发，别的剧本看不到；<b>全局素材</b>所有剧本共享，
+          <p class="mb-[0.9rem] rounded-xl border border-white/10 bg-black/16 px-[0.85rem] py-[0.7rem] text-[0.76rem] leading-[1.85] text-white/60">
+            引擎查找素材的顺序是<b class="font-semibold text-white/85">先本剧本，再全局</b>，所以两处都能被找到，区别在于：
+            <b class="font-semibold text-white/85">剧本素材</b>随剧本一起分发，别的剧本看不到；<b class="font-semibold text-white/85">全局素材</b>所有剧本共享，
             但导出剧本时不会带走。
           </p>
 
           <div
             v-for="k in assetKinds"
             :key="k.key"
-            class="asset-group"
+            class="mb-[1.1rem] border-b border-white/[0.07] pb-[0.9rem]"
           >
-            <div class="asset-head">
-              <span class="asset-title">{{ k.label }}</span>
+            <div class="flex items-center gap-2 mb-[0.6rem]">
+              <span class="text-[0.85rem] font-semibold text-white">{{ k.label }}</span>
               <button
-                class="chip"
+                class="inline-flex items-center gap-1 border border-white/10 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 bg-white/6 transition-all duration-200 hover:enabled:text-white hover:enabled:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40 ml-auto"
                 @click="importAsset(k.key, 'script')"
               >
                 导入到本剧本
               </button>
               <button
                 v-if="k.key !== 'sound'"
-                class="chip"
+                class="inline-flex items-center gap-1 border border-white/10 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 bg-white/6 transition-all duration-200 hover:enabled:text-white hover:enabled:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
                 @click="importAsset(k.key, 'global')"
               >
                 导入为全局
               </button>
               <span
                 v-if="k.key === 'sound'"
-                class="asset-local-only"
+                class="ml-auto text-[0.66rem] text-white/40"
                 >音效只属于本剧本，没有全局目录</span
               >
             </div>
-            <div class="asset-cols">
+            <div class="grid grid-cols-2 gap-4 has-[>:only-child]:grid-cols-1">
               <div
                 v-for="col in scopesFor(k.key)"
                 :key="col"
               >
-                <p class="asset-sub">
+                <p class="mb-[0.35rem] text-[0.7rem] text-white/40">
                   {{ col === 'script' ? '本剧本' : '全局' }} ·
                   {{ filesOf(col, k.key).length }}
                 </p>
                 <p
                   v-if="filesOf(col, k.key).length === 0"
-                  class="asset-empty"
+                  class="text-[0.72rem] text-white/25"
                 >
                   无
                 </p>
                 <div
                   v-for="f in filesOf(col, k.key)"
                   :key="f.path"
-                  class="asset-card"
-                  :class="{ global: col === 'global' }"
+                  class="relative flex items-center gap-[9px] mb-1.5 border border-white/10 rounded-lg px-[9px] py-[7px] bg-white/4 transition-all duration-150 hover:border-white/[0.22] hover:bg-white/7 group"
+                  :class="{ 'border-purple-400/[0.22] bg-purple-400/7': col === 'global' }"
                 >
                   <!-- 图片直接出缩略图；音频给一个原生播放器，够用且零依赖 -->
                   <img
                     v-if="isImageKind(k.key)"
-                    class="asset-thumb"
+                    class="asset-thumb shrink-0 w-14 h-10 rounded-[5px] object-cover"
                     :src="assetUrl(f.path)"
                     :alt="f.name"
                     loading="lazy"
                   />
-                  <div class="asset-meta">
-                    <span class="asset-name">{{ f.name }}</span>
-                    <span class="asset-size">{{ humanSize(f.size) }}</span>
+                  <div class="flex min-w-0 flex-1 flex-col gap-[3px]">
+                    <span class="overflow-hidden text-[0.74rem] text-ellipsis whitespace-nowrap text-white/80">{{ f.name }}</span>
+                    <span class="text-[0.64rem] text-white/35">{{ humanSize(f.size) }}</span>
                     <audio
                       v-if="!isImageKind(k.key)"
-                      class="asset-audio"
+                      class="w-full h-[26px]"
                       controls
                       preload="none"
                       controlslist="nodownload noremoteplayback"
@@ -578,7 +589,7 @@
                     ></audio>
                   </div>
                   <button
-                    class="asset-del"
+                    class="shrink-0 rounded px-[5px] text-[11px] text-white/25 opacity-0 transition-all duration-150 group-hover:opacity-100 hover:text-red-300 hover:bg-red-400/15"
                     title="删除（移到 .trash/）"
                     @click="store.deleteAsset(k.key, col, f.name)"
                   >
@@ -601,32 +612,32 @@
             />
           </template>
 
-          <div class="toolbar">
+          <div class="flex flex-wrap items-center gap-2 mb-3">
             <button
-              class="chip"
+              class="inline-flex items-center gap-1 border border-white/10 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 bg-white/6 transition-all duration-200 hover:enabled:text-white hover:enabled:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
               @click="store.runValidation()"
             >
               重新校验
             </button>
             <span
               v-if="store.report"
-              class="counts"
+              class="text-[0.78rem] text-white/50 [&_b]:font-semibold"
             >
-              <b class="err">{{ store.report.errorCount }}</b> 错误 ·
-              <b class="warn">{{ store.report.warnCount }}</b> 警告 ·
-              <b class="info">{{ store.report.infoCount }}</b> 提示
+              <b class="text-red-300">{{ store.report.errorCount }}</b> 错误 ·
+              <b class="text-amber-300">{{ store.report.warnCount }}</b> 警告 ·
+              <b class="text-white/50">{{ store.report.infoCount }}</b> 提示
             </span>
           </div>
 
           <p
             v-if="!store.report"
-            class="empty"
+            class="py-8 text-center text-[0.85rem] text-white/45"
           >
             正在校验…
           </p>
           <p
             v-else-if="store.report.diagnostics.length === 0"
-            class="ok-banner"
+            class="rounded-xl border border-green-400/30 bg-green-400/10 px-[0.9rem] py-[0.9rem] text-[0.82rem] text-green-300"
           >
             没有发现问题，这个剧本可以正常跑起来。
           </p>
@@ -635,20 +646,22 @@
             <!-- 剧本级问题 -->
             <div
               v-if="store.scriptDiagnostics.length"
-              class="diag-group"
+              class="mb-3 rounded-[10px] border border-white/10 bg-black/15 overflow-hidden"
             >
-              <div class="diag-head">
-                <span class="diag-title">剧本整体</span>
-                <span class="diag-file">story_config.yaml</span>
+              <div class="flex items-center gap-[0.6rem] border-b border-white/[0.07] px-[0.8rem] py-[0.55rem]">
+                <span class="text-[0.82rem] font-semibold text-white">剧本整体</span>
+                <span class="font-mono text-[0.66rem] text-white/30">story_config.yaml</span>
               </div>
               <div
                 v-for="(d, i) in store.scriptDiagnostics"
                 :key="i"
-                class="diag"
-                :class="d.severity"
+                class="flex items-start gap-2 px-[0.8rem] py-[0.45rem] text-[0.76rem] leading-[1.75] text-white/75"
               >
-                <span class="dot"></span>
-                <span class="msg">{{ d.message }}</span>
+                <span
+                  class="shrink-0 w-1.5 h-1.5 mt-[0.55rem] rounded-full"
+                  :class="{ 'bg-red-400': d.severity === 'error', 'bg-amber-400': d.severity === 'warn', 'bg-white/30': d.severity === 'info' }"
+                ></span>
+                <span class="flex-1">{{ d.message }}</span>
               </div>
             </div>
 
@@ -656,36 +669,36 @@
             <div
               v-for="c in store.chapters"
               :key="c.id"
-              class="diag-group"
-              :class="{ clean: !chapterHas(c.id) }"
+              class="mb-3 rounded-[10px] border border-white/10 bg-black/15 overflow-hidden"
+              :class="{ 'opacity-55': !chapterHas(c.id) }"
             >
-              <div class="diag-head">
-                <span class="diag-title">{{ c.name || c.id }}</span>
-                <span class="diag-file">{{ c.id }}.yaml</span>
-                <span class="diag-counts">
+              <div class="flex items-center gap-[0.6rem] border-b border-white/[0.07] px-[0.8rem] py-[0.55rem]">
+                <span class="text-[0.82rem] font-semibold text-white">{{ c.name || c.id }}</span>
+                <span class="font-mono text-[0.66rem] text-white/30">{{ c.id }}.yaml</span>
+                <span class="flex gap-[0.6rem] ml-auto text-[0.7rem] [&_b]:font-semibold">
                   <b
                     v-if="store.diagnosticsByChapter[c.id]?.errors"
-                    class="err"
+                    class="text-red-300"
                     >{{ store.diagnosticsByChapter[c.id].errors }} 错误</b
                   >
                   <b
                     v-if="store.diagnosticsByChapter[c.id]?.warns"
-                    class="warn"
+                    class="text-amber-300"
                     >{{ store.diagnosticsByChapter[c.id].warns }} 警告</b
                   >
                   <b
                     v-if="store.diagnosticsByChapter[c.id]?.infos"
-                    class="info"
+                    class="text-white/50"
                     >{{ store.diagnosticsByChapter[c.id].infos }} 提示</b
                   >
                   <span
                     v-if="!chapterHas(c.id)"
-                    class="pass"
+                    class="text-green-300"
                     >通过</span
                   >
                 </span>
                 <button
-                  class="chip"
+                  class="inline-flex items-center gap-1 border border-white/10 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 bg-white/6 transition-all duration-200 hover:enabled:text-white hover:enabled:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
                   @click="store.openChapter(c.id)"
                 >
                   打开
@@ -695,15 +708,17 @@
               <div
                 v-for="(d, i) in diagnosticsOf(c.id)"
                 :key="i"
-                class="diag clickable"
-                :class="d.severity"
+                class="flex items-start gap-2 px-[0.8rem] py-[0.45rem] text-[0.76rem] leading-[1.75] text-white/75 cursor-pointer hover:bg-white/5"
                 @click="jumpTo(d)"
               >
-                <span class="dot"></span>
-                <span class="msg">{{ d.message }}</span>
+                <span
+                  class="shrink-0 w-1.5 h-1.5 mt-[0.55rem] rounded-full"
+                  :class="{ 'bg-red-400': d.severity === 'error', 'bg-amber-400': d.severity === 'warn', 'bg-white/30': d.severity === 'info' }"
+                ></span>
+                <span class="flex-1">{{ d.message }}</span>
                 <span
                   v-if="d.eventIndex !== undefined"
-                  class="loc"
+                  class="shrink-0 text-[0.68rem] whitespace-nowrap text-brand opacity-70"
                   >第 {{ d.eventIndex + 1 }} 个事件 →</span
                 >
               </div>
@@ -718,17 +733,22 @@
 
     <!-- ============ 弹窗（自己写，深色）============ -->
     <Teleport to="body">
-      <Transition name="modal">
+      <Transition
+        enter-active-class="transition-opacity duration-200 ease"
+        leave-active-class="transition-opacity duration-200 ease"
+        enter-from-class="opacity-0"
+        leave-to-class="opacity-0"
+      >
         <div
           v-if="modal"
-          class="modal-mask"
+          class="fixed inset-0 z-[9999] flex items-center justify-center p-4 backdrop-blur-md bg-black/55"
           @click.self="modal = null"
         >
-          <div class="modal">
-            <div class="modal-head">
-              <h4>{{ modalTitle }}</h4>
+          <div class="w-[min(440px,92vw)] max-h-[86vh] overflow-y-auto border border-white/12.5 rounded-xl py-4 px-[18px] pb-[18px] bg-[rgba(12,20,30,0.86)] backdrop-blur-lg backdrop-saturate-[1.4] shadow-[0_8px_32px_rgba(0,0,0,0.45),inset_0_1px_1px_rgba(255,255,255,0.06)]">
+            <div class="flex items-center gap-2 border-b-2 border-brand pb-2 mb-4">
+              <h4 class="font-semibold text-white">{{ modalTitle }}</h4>
               <button
-                class="modal-x"
+                class="ml-auto text-white/50 transition-all duration-300 hover:text-brand hover:rotate-90"
                 @click="modal = null"
               >
                 ✕
@@ -736,23 +756,23 @@
             </div>
 
             <template v-if="modal === 'script'">
-              <div class="field">
-                <label class="f-label">剧本名</label>
+              <div class="mb-4">
+                <label class="inline-flex items-center font-medium text-brand text-[0.9rem]">剧本名</label>
                 <input
                   v-model="scriptForm.folderName"
                   class="glass-input"
                   placeholder="例如：一起看星星"
                 />
-                <p class="f-hint">同时作为目录名。羁绊冒险用目录名作全局主键，不能重名。</p>
+                <p class="mt-[0.3rem] text-[0.72rem] leading-[1.7] text-white/40">同时作为目录名。羁绊冒险用目录名作全局主键，不能重名。</p>
               </div>
-              <div class="field">
-                <label class="f-label">简介</label>
+              <div class="mb-4">
+                <label class="inline-flex items-center font-medium text-brand text-[0.9rem]">简介</label>
                 <textarea
                   v-model="scriptForm.description"
                   class="glass-input min-h-16"
                 ></textarea>
               </div>
-              <label class="inline-toggle">
+              <label class="inline-flex items-center gap-2 text-[0.8rem] whitespace-nowrap text-white/70">
                 <Toggle
                   :checked="scriptForm.isAdventure"
                   @change="(v: boolean) => (scriptForm.isAdventure = v)"
@@ -761,9 +781,9 @@
               </label>
               <div
                 v-if="scriptForm.isAdventure"
-                class="field mt-2"
+                class="mb-4 mt-2"
               >
-                <label class="f-label">绑定角色的目录名</label>
+                <label class="inline-flex items-center font-medium text-brand text-[0.9rem]">绑定角色的目录名</label>
                 <input
                   v-model="scriptForm.boundCharacterFolder"
                   class="glass-input"
@@ -773,22 +793,22 @@
             </template>
 
             <template v-else-if="modal === 'chapter'">
-              <div class="field">
-                <label class="f-label">章节文件名</label>
+              <div class="mb-4">
+                <label class="inline-flex items-center font-medium text-brand text-[0.9rem]">章节文件名</label>
                 <input
                   v-model="chapterForm.id"
                   class="glass-input"
                   placeholder="main2，或 Intro/intro2 放进子目录"
                 />
               </div>
-              <div class="field">
-                <label class="f-label">显示名</label>
+              <div class="mb-4">
+                <label class="inline-flex items-center font-medium text-brand text-[0.9rem]">显示名</label>
                 <input
                   v-model="chapterForm.name"
                   class="glass-input"
                   placeholder="例如：2 樱花的公园"
                 />
-                <p class="f-hint">新章节自带一条「章节结束」，免得一保存就报缺少结束事件。</p>
+                <p class="mt-[0.3rem] text-[0.72rem] leading-[1.7] text-white/40">新章节自带一条「章节结束」，免得一保存就报缺少结束事件。</p>
               </div>
             </template>
 
@@ -796,19 +816,24 @@
             <template v-else-if="modal === 'importChar'">
               <p
                 v-if="store.globalCharacters.length === 0"
-                class="empty"
+                class="py-8 text-center text-[0.85rem] text-white/45"
               >
                 全局角色库（game_data/characters/）是空的
               </p>
               <div
                 v-for="g in store.globalCharacters"
                 :key="g.folder"
-                class="pick-row"
-                :class="{ picked: importForm.folder === g.folder, used: g.alreadyInScript }"
+                :class="[
+                  'flex items-baseline gap-2 mb-1.5 border rounded-lg px-[11px] py-[9px] bg-white/5 transition-all duration-150',
+                  g.alreadyInScript
+                    ? 'cursor-default border-white/10 opacity-45'
+                    : 'cursor-pointer border-white/10 hover:border-brand hover:bg-[rgba(121,217,255,0.08)]',
+                  importForm.folder === g.folder && !g.alreadyInScript ? 'border-brand bg-brand/16' : '',
+                ]"
                 @click="g.alreadyInScript || (importForm.folder = g.folder)"
               >
                 <span class="font-semibold text-white">{{ g.aiName }}</span>
-                <code class="ref">{{ g.folder }}</code>
+                <code class="font-mono text-brand">{{ g.folder }}</code>
                 <span
                   v-if="g.alreadyInScript"
                   class="ml-auto text-xs text-white/35"
@@ -821,60 +846,60 @@
                 >
               </div>
 
-              <label class="inline-toggle mt-3">
+              <label class="inline-flex items-center gap-2 text-[0.8rem] whitespace-nowrap text-white/70 mt-3">
                 <Toggle
                   :checked="importForm.withAvatar"
                   @change="(v: boolean) => (importForm.withAvatar = v)"
                 />
                 连立绘一起复制
               </label>
-              <p class="f-hint">
+              <p class="mt-[0.3rem] text-[0.72rem] leading-[1.7] text-white/40 [&_code]:font-mono [&_code]:text-brand">
                 默认不复制：引擎找立绘时本来就先看
-                <code>game_data/characters/&lt;同名目录&gt;/avatar</code>，会自动命中，
-                复制一份只是让剧本目录变大。只有打算把剧本单独发给<b>没有这个角色</b>的人时，
+                <code class="font-mono text-brand">game_data/characters/&lt;同名目录&gt;/avatar</code>，会自动命中，
+                复制一份只是让剧本目录变大。只有打算把剧本单独发给<b class="font-semibold text-white/85">没有这个角色</b>的人时，
                 才需要勾上。
               </p>
             </template>
 
             <template v-else>
-              <div class="field">
-                <label class="f-label">角色目录名</label>
+              <div class="mb-4">
+                <label class="inline-flex items-center font-medium text-brand text-[0.9rem]">角色目录名</label>
                 <input
                   v-model="charForm.folder"
                   class="glass-input"
                   placeholder="剧本里会写 character: 这个名字"
                 />
               </div>
-              <div class="field">
-                <label class="f-label">显示名</label>
+              <div class="mb-4">
+                <label class="inline-flex items-center font-medium text-brand text-[0.9rem]">显示名</label>
                 <input
                   v-model="charForm.aiName"
                   class="glass-input"
                 />
               </div>
-              <div class="field">
-                <label class="f-label">人物设定</label>
+              <div class="mb-4">
+                <label class="inline-flex items-center font-medium text-brand text-[0.9rem]">人物设定</label>
                 <textarea
                   v-model="charForm.systemPrompt"
                   class="glass-input min-h-24"
                   placeholder="这个角色的性格、说话方式、与主角的关系…"
                 ></textarea>
               </div>
-              <p class="f-hint">
-                创建后请把立绘放进 <code>characters/&lt;目录名&gt;/avatar/</code>，
-                文件名用情绪名（如 <code>正常.png</code>）。
+              <p class="mt-[0.3rem] text-[0.72rem] leading-[1.7] text-white/40 [&_code]:font-mono [&_code]:text-brand">
+                创建后请把立绘放进 <code class="font-mono text-brand">characters/&lt;目录名&gt;/avatar/</code>，
+                文件名用情绪名（如 <code class="font-mono text-brand">正常.png</code>）。
               </p>
             </template>
 
-            <div class="modal-foot">
+            <div class="flex justify-end gap-2 mt-5">
               <button
-                class="chip"
+                class="inline-flex items-center gap-1 border border-white/10 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 bg-white/6 transition-all duration-200 hover:enabled:text-white hover:enabled:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
                 @click="modal = null"
               >
                 取消
               </button>
               <button
-                class="chip primary"
+                class="inline-flex items-center gap-1 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap transition-all duration-200 border border-brand/45 text-brand bg-brand/14 hover:bg-brand/24"
                 @click="confirmModal"
               >
                 确定
@@ -887,17 +912,22 @@
 
     <!-- ============ 快捷键表 ============ -->
     <Teleport to="body">
-      <Transition name="modal">
+      <Transition
+        enter-active-class="transition-opacity duration-200 ease"
+        leave-active-class="transition-opacity duration-200 ease"
+        enter-from-class="opacity-0"
+        leave-to-class="opacity-0"
+      >
         <div
           v-if="shortcutHelp"
-          class="modal-mask"
+          class="fixed inset-0 z-[9999] flex items-center justify-center p-4 backdrop-blur-md bg-black/55"
           @click.self="shortcutHelp = false"
         >
-          <div class="modal">
-            <div class="modal-head">
-              <h4>快捷键</h4>
+          <div class="w-[min(440px,92vw)] max-h-[86vh] overflow-y-auto border border-white/12.5 rounded-xl py-4 px-[18px] pb-[18px] bg-[rgba(12,20,30,0.86)] backdrop-blur-lg backdrop-saturate-[1.4] shadow-[0_8px_32px_rgba(0,0,0,0.45),inset_0_1px_1px_rgba(255,255,255,0.06)]">
+            <div class="flex items-center gap-2 border-b-2 border-brand pb-2 mb-4">
+              <h4 class="font-semibold text-white">快捷键</h4>
               <button
-                class="modal-x"
+                class="ml-auto text-white/50 transition-all duration-300 hover:text-brand hover:rotate-90"
                 @click="shortcutHelp = false"
               >
                 ✕
@@ -906,9 +936,9 @@
             <div
               v-for="s in SHORTCUTS"
               :key="s.keys"
-              class="sc-row"
+              class="flex items-baseline gap-3 py-1.5 text-[0.78rem] leading-[1.8] text-white/70 border-t border-white/[0.06] [&:first-child]:border-t-0"
             >
-              <kbd>{{ s.keys }}</kbd>
+              <kbd class="shrink-0 min-w-[148px] border border-white/[0.14] rounded-[5px] px-2 py-0.5 font-mono text-[0.7rem] text-brand bg-white/5">{{ s.keys }}</kbd>
               <span>{{ s.desc }}</span>
             </div>
           </div>
@@ -1347,14 +1377,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.editor-root {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-}
-
-/* 独立路由必须自带背景，窗口是 transparent 的 */
+/* 复杂渐变/伪元素/Vue :deep() 无法用 Tailwind 表达，保留在 scoped 块中 */
 .bg-layer {
   position: absolute;
   inset: 0;
@@ -1368,755 +1391,17 @@ onUnmounted(() => {
   position: relative;
   z-index: 1;
 }
-
-/* ---- 顶栏 ---- */
-.snav {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.5rem 1.25rem;
-}
-.logo {
-  margin-left: 1.25rem;
-  font-size: 0.95rem;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  color: var(--accent-color);
-  white-space: nowrap;
-}
-.snav nav {
-  position: relative;
-  display: flex;
-  height: 100%;
-  width: 100%;
-  flex-wrap: nowrap;
-  align-items: center;
-  justify-content: center;
-  gap: 0.25rem;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 0 0.5rem;
-}
-.indicator {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  z-index: 10;
-  height: 0.25rem;
-  width: 0;
-  border-radius: 0.25rem;
-  background: var(--accent-color);
-  box-shadow: 0 0 10px rgba(121, 217, 255, 0.4);
-}
-/* 试玩前置条件不满足的横幅。用黄色而不是红色：剧本本身没错，
-   只是当前环境跑不起来，作者不该以为自己写坏了什么。 */
-.warnbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0 1.25rem 0.5rem;
-  border: 1px solid rgba(251, 191, 36, 0.3);
-  border-radius: 8px;
-  padding: 7px 12px;
-  font-size: 0.76rem;
-  line-height: 1.7;
-  color: rgba(253, 230, 138, 0.9);
-  background: rgba(251, 191, 36, 0.1);
-}
-.wb-tag {
-  flex-shrink: 0;
-  border: 1px solid rgba(251, 191, 36, 0.4);
-  border-radius: 99px;
-  padding: 1px 8px;
-  font-size: 0.66rem;
-  font-weight: 600;
-  color: #fcd34d;
-}
-
-/* 全局角色库的可选行 */
-.pick-row {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 9px 11px;
-  cursor: pointer;
-  background: rgba(255, 255, 255, 0.05);
-  transition: all 0.15s;
-}
-.pick-row:hover {
-  border-color: var(--accent-color);
-  background: rgba(121, 217, 255, 0.08);
-}
-.pick-row.picked {
-  border-color: var(--accent-color);
-  background: rgba(121, 217, 255, 0.16);
-}
-.pick-row.used {
-  cursor: default;
-  opacity: 0.45;
-}
-.pick-row.used:hover {
-  border-color: rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.05);
-}
-
-/* 快捷键表 */
-.sc-row {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  padding: 6px 0;
-  font-size: 0.78rem;
-  line-height: 1.8;
-  color: rgba(255, 255, 255, 0.7);
-}
-.sc-row + .sc-row {
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-}
-.sc-row kbd {
-  flex: 0 0 auto;
-  min-width: 148px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 5px;
-  padding: 2px 8px;
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 0.7rem;
-  color: var(--accent-color);
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.nav-badge {
-  margin-left: 4px;
-  border-radius: 99px;
-  padding: 0 5px;
-  font-size: 0.6rem;
-  color: #fff;
-  background: #ef4444;
-}
-.close-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 9999px;
-  padding: 0.375rem;
-  color: #fff;
-  cursor: pointer;
-  transition: all 0.3s ease-in-out;
-}
-.close-btn:hover {
-  color: var(--accent-color);
-  background: rgba(255, 255, 255, 0.1);
-  transform: rotate(90deg);
-}
-
-/* ---- 面包屑 ---- */
-.crumb {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0 2rem 0.25rem;
-  font-size: 0.8rem;
-  color: rgba(255, 255, 255, 0.55);
-}
-.crumb b {
-  font-weight: 600;
-  color: #fff;
-}
-.crumb .link {
-  color: var(--accent-color);
-}
-.crumb .link:hover {
-  text-decoration: underline;
-}
-.crumb .sep {
-  opacity: 0.4;
-}
-.crumb .dim {
-  font-size: 0.72rem;
-  opacity: 0.35;
-}
-.crumb .right {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-left: auto;
-}
-.save-state {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.5);
-}
-.save-state i {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-}
-.save-state i.clean {
-  background: #4ade80;
-}
-.save-state i.pending {
-  background: #fcd34d;
-}
-
-/* ---- 主体 ---- */
-.body {
-  display: flex;
-  height: calc(100% - 5.5rem);
-  min-height: 0;
-  flex-direction: column;
-}
-.editcols {
-  display: flex;
-  width: 94%;
-  min-height: 0;
-  flex: 1;
-  gap: 1.25rem;
-  margin: 0 auto;
-  padding: 1rem 0.75rem;
-}
-.col-main {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  flex-direction: column;
-}
-.col-side {
-  display: flex;
-  min-height: 0;
-  flex: 0 0 340px;
-  flex-direction: column;
-}
-.fill {
-  display: flex;
-  height: 100%;
-  min-height: 0;
-  flex-direction: column;
-}
-.scroll-body {
-  min-height: 0;
-  flex: 1;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-/* MenuItem 的 .content 默认只有 width:100%，在 .fill（flex 列）里不会收缩，
-   于是它按内容撑高、溢出 .fill，.scroll-body 的 overflow-y:auto 就形同虚设——
-   事件属性一多就超出屏幕且滚不动。只在编辑器用到的 .fill 下把 .content 也补成
-   可收缩的 flex 列，不动共享组件 MenuItem 本体（其它设置页不受影响）。 */
+/* MenuItem 的 .content 默认只有 width:100%，在 .fill（flex 列）里不会收缩 */
 .fill :deep(.content) {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
-
-.toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-}
-.empty {
-  padding: 2rem 0;
-  text-align: center;
-  font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.45);
-}
-.notice {
-  margin-bottom: 0.9rem;
-  border-radius: 0.75rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(0, 0, 0, 0.16);
-  padding: 0.7rem 0.85rem;
-  font-size: 0.76rem;
-  line-height: 1.85;
-  color: rgba(255, 255, 255, 0.6);
-}
-.notice b {
-  color: rgba(255, 255, 255, 0.85);
-}
-.notice code,
-.f-hint code,
-.ref {
-  font-family: ui-monospace, Menlo, monospace;
-  color: var(--accent-color);
-}
-
-/* ---- 卡片 ---- */
-.script-card,
-.row-card {
-  width: 100%;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  padding: 11px 13px;
-  margin-bottom: 8px;
-  background: rgba(255, 255, 255, 0.06);
-  transition: all 0.2s;
-}
-.script-card {
-  cursor: pointer;
-}
-.script-card:hover {
-  border-color: var(--accent-color);
-  background: rgba(121, 217, 255, 0.08);
-}
-/* 与 ChapterFlow 的删除按钮同样的处理：默认隐形，hover 卡片才出现，
-   免得一列叉号看着像随手就能点 */
-.card-del {
-  border-radius: 4px;
-  padding: 0 5px;
-  font-size: 11px;
-  line-height: 1.4;
-  color: rgba(255, 255, 255, 0.25);
-  opacity: 0;
-  transition: all 0.15s;
-}
-.script-card:hover .card-del {
-  opacity: 1;
-}
-.card-del:hover {
-  color: #fca5a5;
-  background: rgba(248, 113, 113, 0.15);
-}
-.tag {
-  border: 1px solid rgba(121, 217, 255, 0.35);
-  border-radius: 99px;
-  padding: 0 7px;
-  font-size: 0.62rem;
-  color: var(--accent-color);
-  background: rgba(121, 217, 255, 0.12);
-}
-.tag.warn {
-  color: #fcd34d;
-  border-color: rgba(251, 191, 36, 0.35);
-  background: rgba(251, 191, 36, 0.12);
-}
-
-/* ---- 表单 ---- */
-.field {
-  margin-bottom: 1rem;
-}
-.f-label {
-  display: inline-flex;
-  align-items: center;
-  font-weight: 500;
-  color: var(--accent-color);
-  font-size: 0.9rem;
-}
-.f-label .req {
-  margin-left: 2px;
-  font-size: 0.7rem;
-  color: #f87171;
-}
-.f-key {
-  margin: 0.25rem 0 0.5rem;
-  font-size: 0.8rem;
-  color: #d1d5db;
-}
-.f-hint {
-  margin-top: 0.3rem;
-  font-size: 0.72rem;
-  line-height: 1.7;
-  color: rgba(255, 255, 255, 0.4);
-}
-.section {
-  margin: 1rem 0;
-  border-radius: 0.75rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(0, 0, 0, 0.15);
-  padding: 1rem;
-}
-.inline-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.8rem;
-  white-space: nowrap;
-  color: rgba(255, 255, 255, 0.7);
-}
-
-/* ---- 素材 ---- */
-.asset-group {
-  margin-bottom: 1.1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-  padding-bottom: 0.9rem;
-}
-.asset-head {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.6rem;
-}
-.asset-title {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #fff;
-}
-.asset-head .chip {
-  margin-left: 0;
-}
-.asset-head .chip:first-of-type {
-  margin-left: auto;
-}
-.asset-cols {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-}
-/* 音效只有「本剧本」一列（issue #6），单列铺满，别留半边空白 */
-.asset-cols:has(> :only-child) {
-  grid-template-columns: 1fr;
-}
-.asset-local-only {
-  margin-left: auto;
-  font-size: 0.66rem;
-  color: rgba(255, 255, 255, 0.4);
-}
-.asset-sub {
-  margin-bottom: 0.35rem;
-  font-size: 0.7rem;
-  color: rgba(255, 255, 255, 0.4);
-}
-.asset-empty {
-  font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.25);
-}
-/* 一条素材：缩略图 / 音频播放器 + 名字 + 体积 + 删除 */
-.asset-card {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  margin-bottom: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 7px 9px;
-  background: rgba(255, 255, 255, 0.04);
-  transition: all 0.15s;
-}
-.asset-card:hover {
-  border-color: rgba(255, 255, 255, 0.22);
-  background: rgba(255, 255, 255, 0.07);
-}
-.asset-card.global {
-  border-color: rgba(167, 139, 250, 0.22);
-  background: rgba(167, 139, 250, 0.07);
-}
-/* 棋盘底纹：透明立绘 / 带透明通道的插图不至于糊成一片黑 */
-.asset-thumb {
-  flex: 0 0 auto;
-  width: 56px;
-  height: 40px;
-  border-radius: 5px;
-  object-fit: cover;
-  background:
-    repeating-conic-gradient(rgba(255, 255, 255, 0.08) 0% 25%, transparent 0% 50%) 0 0 / 10px 10px;
-}
-.asset-meta {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  flex-direction: column;
-  gap: 3px;
-}
-.asset-name {
-  overflow: hidden;
-  font-size: 0.74rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: rgba(255, 255, 255, 0.8);
-}
-.asset-size {
-  font-size: 0.64rem;
-  color: rgba(255, 255, 255, 0.35);
-}
-.asset-audio {
-  width: 100%;
-  height: 26px;
-}
-.asset-del {
-  flex: 0 0 auto;
-  border-radius: 4px;
-  padding: 1px 5px;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.25);
-  opacity: 0;
-  transition: all 0.15s;
-}
-.asset-card:hover .asset-del {
-  opacity: 1;
-}
-.asset-del:hover {
-  color: #fca5a5;
-  background: rgba(248, 113, 113, 0.15);
-}
-
-/* ---- 角色卡片（参照素材卡，但缩略图竖向、更小） ---- */
-.char-card {
-  align-items: center;
-}
-/* 圆形头像，与游戏配置的角色列表同一观感（CharacterCard） */
+/* 棋盘底纹：透明图片不至于糊成一片黑 */
+.asset-thumb,
 .char-thumb {
-  flex: 0 0 auto;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  overflow: hidden;
-  border: 1.5px solid rgba(121, 217, 255, 0.35);
   background:
     repeating-conic-gradient(rgba(255, 255, 255, 0.08) 0% 25%, transparent 0% 50%) 0 0 / 10px 10px;
-}
-.char-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: top center; /* 立绘通常头在上方，圆形裁顶才能露出脸 */
-}
-.char-thumb-ph {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  font-size: 0.56rem;
-  color: rgba(255, 255, 255, 0.35);
-}
-.char-info {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  flex-direction: column;
-  gap: 2px;
-}
-.char-badge {
-  flex: 0 0 auto;
-  border: 1px solid rgba(121, 217, 255, 0.4);
-  border-radius: 99px;
-  padding: 1px 7px;
-  font-size: 0.6rem;
-  color: var(--accent-color);
-  background: rgba(121, 217, 255, 0.12);
-}
-.char-del {
-  flex: 0 0 auto;
-  border-radius: 4px;
-  padding: 1px 5px;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.25);
-  opacity: 0;
-  transition: all 0.15s;
-}
-.char-card:hover .char-del {
-  opacity: 1;
-}
-.char-del:hover {
-  color: #fca5a5;
-  background: rgba(248, 113, 113, 0.15);
-}
-
-/* ---- 校验页 ---- */
-.counts {
-  font-size: 0.78rem;
-  color: rgba(255, 255, 255, 0.5);
-}
-.counts b,
-.diag-counts b {
-  font-weight: 600;
-}
-.err {
-  color: #fca5a5;
-}
-.warn {
-  color: #fcd34d;
-}
-.info {
-  color: rgba(255, 255, 255, 0.5);
-}
-.ok-banner {
-  border-radius: 0.75rem;
-  border: 1px solid rgba(74, 222, 128, 0.3);
-  background: rgba(74, 222, 128, 0.1);
-  padding: 0.9rem;
-  font-size: 0.82rem;
-  color: #86efac;
-}
-.diag-group {
-  margin-bottom: 0.75rem;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(0, 0, 0, 0.15);
-  overflow: hidden;
-}
-.diag-group.clean {
-  opacity: 0.55;
-}
-.diag-head {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-  padding: 0.55rem 0.8rem;
-}
-.diag-title {
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: #fff;
-}
-.diag-file {
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 0.66rem;
-  color: rgba(255, 255, 255, 0.3);
-}
-.diag-counts {
-  display: flex;
-  gap: 0.6rem;
-  margin-left: auto;
-  font-size: 0.7rem;
-}
-.pass {
-  color: #86efac;
-}
-.diag {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-  padding: 0.45rem 0.8rem;
-  font-size: 0.76rem;
-  line-height: 1.75;
-  color: rgba(255, 255, 255, 0.75);
-}
-.diag.clickable {
-  cursor: pointer;
-}
-.diag.clickable:hover {
-  background: rgba(255, 255, 255, 0.05);
-}
-.diag .dot {
-  flex: 0 0 auto;
-  width: 6px;
-  height: 6px;
-  margin-top: 0.55rem;
-  border-radius: 50%;
-}
-.diag.error .dot {
-  background: #f87171;
-}
-.diag.warn .dot {
-  background: #fbbf24;
-}
-.diag.info .dot {
-  background: rgba(255, 255, 255, 0.3);
-}
-.diag .msg {
-  flex: 1;
-}
-.diag .loc {
-  flex: 0 0 auto;
-  font-size: 0.68rem;
-  white-space: nowrap;
-  color: var(--accent-color);
-  opacity: 0.7;
-}
-
-/* ---- chip ---- */
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 0.5rem;
-  padding: 0.3rem 0.75rem;
-  font-size: 0.8rem;
-  white-space: nowrap;
-  color: rgba(255, 255, 255, 0.7);
-  background: rgba(255, 255, 255, 0.06);
-  transition: all 0.2s;
-}
-.chip:hover:not(:disabled) {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.12);
-}
-.chip:disabled {
-  cursor: not-allowed;
-  opacity: 0.4;
-}
-.chip.primary {
-  border-color: rgba(121, 217, 255, 0.45);
-  color: var(--accent-color);
-  background: rgba(121, 217, 255, 0.14);
-}
-.chip.primary:hover {
-  background: rgba(121, 217, 255, 0.24);
-}
-
-/* ---- 弹窗 ---- */
-.modal-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-  backdrop-filter: blur(6px);
-  background: rgba(0, 0, 0, 0.55);
-}
-/* 与「插入事件」面板同一套：同一个深蓝底、同样的亚克力模糊、同样的内高光。
-   之前这里是 rgba(30,41,59,.97) 的不透明面板，跟旁边一比像另一个应用的窗口。 */
-.modal {
-  width: min(440px, 92vw);
-  max-height: 86vh;
-  overflow-y: auto;
-  border: 1px solid rgba(255, 255, 255, 0.125);
-  border-radius: 12px;
-  padding: 16px 18px 18px;
-  background: rgba(12, 20, 30, 0.86);
-  backdrop-filter: blur(18px) saturate(140%);
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.45),
-    inset 0 1px 1px rgba(255, 255, 255, 0.06);
-}
-.modal-head {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  border-bottom: 2px solid var(--accent-color);
-  padding-bottom: 0.5rem;
-  margin-bottom: 1rem;
-}
-.modal-head h4 {
-  font-weight: 600;
-  color: #fff;
-}
-.modal-x {
-  margin-left: auto;
-  color: rgba(255, 255, 255, 0.5);
-  transition: all 0.3s;
-}
-.modal-x:hover {
-  color: var(--accent-color);
-  transform: rotate(90deg);
-}
-.modal-foot {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  margin-top: 1.25rem;
-}
-
-.modal-enter-active,
-.modal-leave-active {
-  transition: opacity 0.2s ease;
-}
-.modal-enter-from,
-.modal-leave-to {
-  opacity: 0;
 }
 </style>

@@ -115,14 +115,14 @@
           </option>
         </select>
         <button
-          class="import-btn"
+          class="shrink-0 border border-white/[0.1] rounded-lg px-[0.7rem] text-[0.78rem] whitespace-nowrap text-white/[0.7] bg-white/[0.06] transition-all hover:text-white hover:bg-white/[0.14]"
           title="导入到本剧本 —— 随剧本一起分发，别的剧本看不到"
           @click="pickAsset('script')"
         >
           导入
         </button>
         <button
-          class="import-btn global"
+          class="shrink-0 rounded-lg px-[0.7rem] text-[0.78rem] whitespace-nowrap transition-all border border-[rgba(167,139,250,0.3)] text-[#c4b5fd] bg-[rgba(167,139,250,0.1)] hover:bg-[rgba(167,139,250,0.22)]"
           title="导入为全局素材 —— 所有剧本共享，但导出剧本时不会带走"
           @click="pickAsset('global')"
         >
@@ -326,29 +326,3 @@ const pickAsset = async (scope: AssetScope) => {
   if (saved) emit('update', saved)
 }
 </script>
-
-<style scoped>
-.import-btn {
-  flex-shrink: 0;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 0.5rem;
-  padding: 0 0.7rem;
-  font-size: 0.78rem;
-  white-space: nowrap;
-  color: rgba(255, 255, 255, 0.7);
-  background: rgba(255, 255, 255, 0.06);
-  transition: all 0.2s;
-}
-.import-btn:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.14);
-}
-.import-btn.global {
-  border-color: rgba(167, 139, 250, 0.3);
-  color: #c4b5fd;
-  background: rgba(167, 139, 250, 0.1);
-}
-.import-btn.global:hover {
-  background: rgba(167, 139, 250, 0.22);
-}
-</style>

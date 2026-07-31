@@ -10,13 +10,13 @@
         <div class="mb-1.5 flex items-center gap-2">
           <span class="text-xs text-white/40">{{ i + 1 }}</span>
           <input
-            class="mini-input"
+            class="w-full min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
             placeholder="选项文案（留空＝匹配任意输入的兜底项，必须放最后）"
             :value="str(opt.text)"
             @change="(e) => patch(i, 'text', val(e))"
           />
           <button
-            class="mini-btn"
+            class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all hover:text-[#fca5a5] hover:bg-[rgba(248,113,113,0.15)]"
             title="删除这个选项"
             @click="removeRow(i)"
           >
@@ -30,7 +30,7 @@
           class="mt-1 flex items-center gap-2 pl-6"
         >
           <select
-            class="mini-input w-32 shrink-0"
+            class="w-full min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)] w-32 shrink-0"
             :value="str(act.type)"
             @change="(e) => patchAction(i, ai, 'type', val(e))"
           >
@@ -43,13 +43,13 @@
             </option>
           </select>
           <input
-            class="mini-input"
+            class="w-full min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
             :placeholder="actionPlaceholder(str(act.type))"
             :value="str(act.content)"
             @change="(e) => patchAction(i, ai, 'content', val(e))"
           />
           <button
-            class="mini-btn"
+            class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all hover:text-[#fca5a5] hover:bg-[rgba(248,113,113,0.15)]"
             @click="removeAction(i, ai)"
           >
             ✕
@@ -83,13 +83,13 @@
         <div class="mb-1.5 flex items-center gap-2">
           <span class="shrink-0 text-xs text-white/40">若</span>
           <input
-            class="mini-input"
+            class="w-full min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
             placeholder="条件，如 route == shop（留空＝无条件命中）"
             :value="str(opt.condition)"
             @change="(e) => patch(i, 'condition', val(e))"
           />
           <button
-            class="mini-btn"
+            class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all hover:text-[#fca5a5] hover:bg-[rgba(248,113,113,0.15)]"
             @click="removeRow(i)"
           >
             ✕
@@ -98,7 +98,7 @@
         <div class="flex items-center gap-2 pl-6">
           <span class="shrink-0 text-xs text-white/40">跳到</span>
           <select
-            class="mini-input"
+            class="w-full min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
             :value="str(opt.next)"
             @change="(e) => patch(i, 'next', val(e))"
           >
@@ -126,7 +126,7 @@
         >
           <span class="shrink-0 text-xs text-white/40">AI 识别名</span>
           <input
-            class="mini-input"
+            class="w-full min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
             placeholder="给 AI 看的分支名称"
             :value="str(opt.name)"
             @change="(e) => patch(i, 'name', val(e))"
@@ -156,13 +156,13 @@
         <div class="mb-1.5 flex items-center gap-2">
           <span class="shrink-0 text-xs text-white/40">若</span>
           <input
-            class="mini-input"
+            class="w-full min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
             placeholder="条件（留空＝总是执行）"
             :value="str(opt.condition)"
             @change="(e) => patch(i, 'condition', val(e))"
           />
           <button
-            class="mini-btn"
+            class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all hover:text-[#fca5a5] hover:bg-[rgba(248,113,113,0.15)]"
             @click="removeRow(i)"
           >
             ✕
@@ -174,13 +174,13 @@
           class="mt-1 flex items-center gap-2 pl-6"
         >
           <input
-            class="mini-input font-mono"
+            class="w-full min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)] font-mono"
             placeholder="affection += 1"
             :value="str(act.content)"
             @change="(e) => patchAction(i, ai, 'content', val(e))"
           />
           <button
-            class="mini-btn"
+            class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all hover:text-[#fca5a5] hover:bg-[rgba(248,113,113,0.15)]"
             @click="removeAction(i, ai)"
           >
             ✕
@@ -292,35 +292,9 @@ const removeAction = (i: number, ai: number) => {
 </script>
 
 <style scoped>
-.mini-input {
-  width: 100%;
-  min-width: 0;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 0.375rem;
-  background: rgba(0, 0, 0, 0.25);
-  padding: 0.375rem 0.5rem;
-  font-size: 0.75rem;
-  color: #fff;
-  transition: all 0.2s;
-}
-.mini-input:focus {
-  outline: none;
-  border-color: var(--accent-color);
-}
-.mini-input option {
+/* select 里的 option 无法用 class 直接打进去，保留本文件唯一一条 scoped 规则 */
+select option {
   background: #16202c;
   color: #fff;
-}
-.mini-btn {
-  flex: 0 0 auto;
-  border-radius: 0.375rem;
-  padding: 0.25rem 0.375rem;
-  font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.35);
-  transition: all 0.2s;
-}
-.mini-btn:hover {
-  color: #fca5a5;
-  background: rgba(248, 113, 113, 0.15);
 }
 </style>

@@ -1,22 +1,25 @@
 <template>
-  <div class="tli">
+  <div class="relative">
     <span
-      class="dot"
+      class="absolute -left-[21px] top-3 w-[9px] h-[9px] rounded-full border-2 border-[#2b3a4a]"
       :style="{ background: spec?.color ?? '#64748b' }"
     ></span>
     <span
       v-if="conditionText"
-      class="cond"
+      class="absolute -left-[21px] -top-[7px] border border-[rgba(251,191,36,0.32)] rounded-[3px] px-[5px] font-mono text-[9px] whitespace-nowrap text-[#fcd34d] bg-[rgba(251,191,36,0.16)]"
       >若 {{ conditionText }}</span
     >
 
     <div
-      class="evrow"
-      :class="{ sel: index === store.selectedEvent }"
+      class="group flex items-start gap-2 rounded-lg border border-transparent px-[9px] py-1.5 transition-all hover:bg-white/[0.07]"
+      :class="{
+        '!border-[rgba(121,217,255,0.4)] !bg-[rgba(121,217,255,0.12)]':
+          index === store.selectedEvent,
+      }"
       @click="store.selectedEvent = index"
     >
       <span
-        class="badge"
+        class="shrink-0 rounded-[5px] border px-[7px] py-0.5 text-[0.7rem] font-medium leading-[1.5] whitespace-nowrap"
         :style="{
           color: spec?.color,
           borderColor: (spec?.color ?? '#64748b') + '55',
@@ -26,14 +29,14 @@
         {{ spec?.label ?? eventType }}
       </span>
 
-      <span class="etext">
+      <span class="min-w-0 flex-1 overflow-hidden truncate text-[0.78rem] leading-[1.7] text-white/[0.72]">
         <template
           v-for="(part, i) in highlighted"
           :key="i"
         >
           <span
             v-if="part.token"
-            class="tok"
+            class="text-[var(--accent-color)] opacity-80"
             >{{ part.text }}</span
           >
           <template v-else>{{ part.text }}</template>
@@ -42,29 +45,29 @@
 
       <span
         v-if="errorCount"
-        class="flag flag-bad"
+        class="shrink-0 rounded px-[5px] py-px text-[0.62rem] leading-[1.6] whitespace-nowrap border border-[rgba(248,113,113,0.35)] text-[#fca5a5] bg-[rgba(248,113,113,0.15)]"
         >{{ errorCount }} 个错误</span
       >
       <span
         v-else-if="warnCount"
-        class="flag flag-warn"
+        class="shrink-0 rounded px-[5px] py-px text-[0.62rem] leading-[1.6] whitespace-nowrap border border-[rgba(251,191,36,0.3)] text-[#fcd34d] bg-[rgba(251,191,36,0.15)]"
         >{{ warnCount }} 个提醒</span
       >
       <span
         v-if="event.duration !== undefined"
-        class="flag flag-warn"
+        class="shrink-0 rounded px-[5px] py-px text-[0.62rem] leading-[1.6] whitespace-nowrap border border-[rgba(251,191,36,0.3)] text-[#fcd34d] bg-[rgba(251,191,36,0.15)]"
         >duration 无效</span
       >
 
       <button
-        class="act"
+        class="shrink-0 rounded px-[3px] text-[11px] leading-[1.7] text-white/25 opacity-0 transition-all group-hover:opacity-100 hover:text-[var(--accent-color)] hover:bg-white/[0.1]"
         title="复制"
         @click.stop="store.duplicateEvent(index)"
       >
         ⧉
       </button>
       <button
-        class="act act-del"
+        class="shrink-0 rounded px-[3px] text-[11px] leading-[1.7] text-white/25 opacity-0 transition-all group-hover:opacity-100 hover:text-[#fca5a5] hover:bg-[rgba(248,113,113,0.15)]"
         title="删除"
         @click.stop="store.removeEvent(index)"
       >
@@ -119,114 +122,3 @@ const highlighted = computed(() => {
   return parts
 })
 </script>
-
-<style scoped>
-.tli {
-  position: relative;
-}
-.dot {
-  position: absolute;
-  left: -21px;
-  top: 12px;
-  width: 9px;
-  height: 9px;
-  border: 2px solid #2b3a4a;
-  border-radius: 50%;
-}
-.cond {
-  position: absolute;
-  left: -21px;
-  top: -7px;
-  border: 1px solid rgba(251, 191, 36, 0.32);
-  border-radius: 3px;
-  padding: 0 5px;
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 9px;
-  white-space: nowrap;
-  color: #fcd34d;
-  background: rgba(251, 191, 36, 0.16);
-}
-
-.evrow {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  padding: 6px 9px;
-  transition: all 0.15s;
-}
-.evrow:hover {
-  background: rgba(255, 255, 255, 0.07);
-}
-.evrow.sel {
-  border-color: rgba(121, 217, 255, 0.4);
-  background: rgba(121, 217, 255, 0.12);
-}
-
-.act {
-  flex: 0 0 auto;
-  border-radius: 4px;
-  padding: 0 3px;
-  font-size: 11px;
-  line-height: 1.7;
-  color: rgba(255, 255, 255, 0.25);
-  opacity: 0;
-  transition: all 0.15s;
-}
-.evrow:hover .act {
-  opacity: 1;
-}
-.act:hover {
-  color: var(--accent-color);
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.act-del:hover {
-  color: #fca5a5;
-  background: rgba(248, 113, 113, 0.15);
-}
-
-.badge {
-  flex: 0 0 auto;
-  border: 1px solid;
-  border-radius: 5px;
-  padding: 2px 7px;
-  font-size: 0.7rem;
-  font-weight: 500;
-  line-height: 1.5;
-  white-space: nowrap;
-}
-.etext {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  font-size: 0.78rem;
-  line-height: 1.7;
-  color: rgba(255, 255, 255, 0.72);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.tok {
-  color: var(--accent-color);
-  opacity: 0.8;
-}
-.flag {
-  flex: 0 0 auto;
-  border-radius: 4px;
-  padding: 1px 5px;
-  font-size: 0.62rem;
-  line-height: 1.6;
-  white-space: nowrap;
-}
-.flag-bad {
-  color: #fca5a5;
-  border: 1px solid rgba(248, 113, 113, 0.35);
-  background: rgba(248, 113, 113, 0.15);
-}
-.flag-warn {
-  color: #fcd34d;
-  border: 1px solid rgba(251, 191, 36, 0.3);
-  background: rgba(251, 191, 36, 0.15);
-}
-</style>

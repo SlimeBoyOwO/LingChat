@@ -1,9 +1,14 @@
 <template>
   <Teleport to="body">
-    <Transition name="preview">
+    <Transition
+      enter-active-class="transition-opacity duration-[0.25s] ease-[cubic-bezier(0.18,0.89,0.32,1)]"
+      leave-active-class="transition-opacity duration-[0.25s] ease-[cubic-bezier(0.18,0.89,0.32,1)]"
+      enter-from-class="opacity-0"
+      leave-to-class="opacity-0"
+    >
       <div
         v-if="store.previewing"
-        class="stage"
+        class="fixed inset-0 z-[9990] overflow-hidden bg-black"
       >
         <!--
           `main-box` 是 MainChat 里的全局类（那个 <style> 没有 scoped），这里直接
@@ -23,12 +28,12 @@
         </div>
 
         <!-- 预览专属的顶栏，明确「这是试玩」而不是真在玩 -->
-        <div class="bar">
-          <span class="badge">试玩中</span>
-          <span class="meta">{{ label }}</span>
-          <span class="tip">试玩为调试用：不记通关、不解锁羁绊冒险。会真调 LLM（按 token 计费）</span>
+        <div class="absolute inset-x-0 top-0 z-[10000] flex items-center gap-3 bg-[linear-gradient(180deg,rgba(0,0,0,0.55),transparent)] px-4 py-2">
+          <span class="rounded-full border border-[rgba(121,217,255,0.5)] bg-[rgba(121,217,255,0.15)] px-2.5 py-0.5 text-[0.72rem] font-semibold text-[var(--accent-color)]">试玩中</span>
+          <span class="text-[0.78rem] text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.6)]">{{ label }}</span>
+          <span class="text-[0.7rem] text-white/[0.6] [text-shadow:0_1px_3px_rgba(0,0,0,0.6)]">试玩为调试用：不记通关、不解锁羁绊冒险。会真调 LLM（按 token 计费）</span>
           <button
-            class="stop"
+            class="ml-auto rounded-lg border border-[rgba(248,113,113,0.45)] bg-[rgba(248,113,113,0.16)] px-[14px] py-[5px] text-[0.76rem] text-[#fca5a5] backdrop-blur-[8px] transition-all hover:text-white hover:bg-[rgba(248,113,113,0.32)]"
             title="Esc"
             @click="store.stopPreview()"
           >
@@ -243,69 +248,3 @@ watch(
   },
 )
 </script>
-
-<style scoped>
-.stage {
-  position: fixed;
-  inset: 0;
-  z-index: 9990;
-  overflow: hidden;
-  background: #000;
-}
-
-.bar {
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  z-index: 10000;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 16px;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.55), transparent);
-}
-.badge {
-  border: 1px solid rgba(121, 217, 255, 0.5);
-  border-radius: 99px;
-  padding: 2px 10px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--accent-color);
-  background: rgba(121, 217, 255, 0.15);
-}
-.meta {
-  font-size: 0.78rem;
-  color: #fff;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
-}
-.tip {
-  font-size: 0.7rem;
-  color: rgba(255, 255, 255, 0.6);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
-}
-.stop {
-  margin-left: auto;
-  border: 1px solid rgba(248, 113, 113, 0.45);
-  border-radius: 0.5rem;
-  padding: 5px 14px;
-  font-size: 0.76rem;
-  color: #fca5a5;
-  background: rgba(248, 113, 113, 0.16);
-  backdrop-filter: blur(8px);
-  transition: all 0.2s;
-}
-.stop:hover {
-  color: #fff;
-  background: rgba(248, 113, 113, 0.32);
-}
-
-.preview-enter-active,
-.preview-leave-active {
-  transition: opacity 0.25s cubic-bezier(0.18, 0.89, 0.32, 1);
-}
-.preview-enter-from,
-.preview-leave-to {
-  opacity: 0;
-}
-</style>

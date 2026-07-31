@@ -1,6 +1,6 @@
 <template>
   <div
-    class="rail"
+    class="rail relative pl-[22px]"
     @dragend="endDrag"
   >
     <template
@@ -11,8 +11,8 @@
            useZoom 的 CSS zoom 会让 getBoundingClientRect 和鼠标坐标对不上，
            而「悬停哪行就插哪行前面」根本不需要坐标。 -->
       <div
-        class="slot"
-        :class="{ on: dropAt === rowStart(row) && dragging !== null }"
+        class="h-0.5 my-px rounded-sm transition-all duration-[120ms]"
+        :class="{ 'h-1.5 bg-brand shadow-[0_0_8px_rgba(121,217,255,0.6)]': dropAt === rowStart(row) && dragging !== null }"
         @dragover.prevent="dropAt = rowStart(row)"
         @drop.prevent="finishDrag"
       ></div>
@@ -21,10 +21,10 @@
            上松手根本不触发（issue #1）。现在行容器本身也是落点——悬停哪行就把
            dropAt 设成"插到它前面"，与上方 .slot 同一套语义。落点高亮用顶部描边。 -->
       <div
-        class="draggable"
+        class="cursor-grab active:cursor-grabbing"
         :class="{
-          ghost: isDragged(row),
-          'drop-before':
+          'opacity-35': isDragged(row),
+          'shadow-[inset_0_2px_0_var(--accent-color)]':
             dropAt === rowStart(row) && dragging !== null && !isDragged(row),
         }"
         :draggable="canDrag(row)"
@@ -35,28 +35,28 @@
         <!-- 复合块：默认折叠成一行 -->
         <div
           v-if="row.kind === 'group'"
-          class="grp"
+          class="grp group relative my-[3px] overflow-hidden border border-white/[0.13] rounded-[9px] bg-black/16"
           :class="{ open: expanded[row.key] }"
         >
           <div
-            class="ghead"
+            class="flex items-center gap-2 px-[9px] py-[7px] cursor-pointer transition-colors duration-150 hover:bg-white/5"
             @click="toggle(row.key)"
           >
-            <span class="chev">›</span>
-            <span class="badge-group">{{ row.label }}</span>
-            <span class="etext">{{ row.summary }}</span>
+            <span class="w-3.5 text-[0.8rem] text-white/40 transition-transform duration-200 group-[.open]:rotate-90">›</span>
+            <span class="shrink-0 border border-white/25 rounded-[5px] px-[7px] py-0.5 text-[0.7rem] font-medium leading-[1.5] whitespace-nowrap text-slate-300 bg-white/7">{{ row.label }}</span>
+            <span class="flex-1 min-w-0 overflow-hidden text-[0.78rem] leading-[1.7] text-white/[0.72] truncate">{{ row.summary }}</span>
             <span
               v-if="groupHasError(row)"
-              class="flag-bad"
+              class="shrink-0 border border-red-400/35 rounded px-[5px] py-px text-[0.62rem] leading-[1.6] whitespace-nowrap text-red-300 bg-red-400/15"
               >含错误</span
             >
-            <span class="gcount">{{ row.to - row.from }} 个事件</span>
+            <span class="text-[0.66rem] whitespace-nowrap text-white/[0.38]">{{ row.to - row.from }} 个事件</span>
           </div>
           <div
             v-if="expanded[row.key]"
-            class="gbody"
+            class="px-1.5 pb-1.5 border-t border-white/[0.08]"
           >
-            <div class="rail rail-nested">
+            <div class="rail-nested pl-4">
               <EventRow
                 v-for="item in row.items"
                 :key="item.index"
@@ -78,14 +78,14 @@
 
     <!-- 末尾落点。有「章节结束」时插在它前面 —— 它必须留在最后一条 -->
     <div
-      class="slot"
-      :class="{ on: dropAt === tailIndex && dragging !== null }"
+      class="h-0.5 my-px rounded-sm transition-all duration-[120ms]"
+      :class="{ 'h-1.5 bg-brand shadow-[0_0_8px_rgba(121,217,255,0.6)]': dropAt === tailIndex && dragging !== null }"
       @dragover.prevent="dropAt = tailIndex"
       @drop.prevent="finishDrag"
     ></div>
 
     <button
-      class="addev"
+      class="mt-2 -ml-[22px] w-[calc(100%+22px)] border border-dashed border-white/18 rounded-lg p-[7px] text-[0.78rem] text-white/45 transition-all duration-150 hover:border-brand hover:text-brand hover:bg-[rgba(121,217,255,0.05)]"
       @click="paletteOpen = true"
     >
       ＋ 插入事件（{{ store.schema?.events.length ?? 0 }} 种全部可选，插在「章节结束」之前）
@@ -93,17 +93,22 @@
 
     <!-- 事件类型选择面板 -->
     <Teleport to="body">
-      <Transition name="modal">
+      <Transition
+        enter-active-class="transition-opacity duration-200 ease"
+        leave-active-class="transition-opacity duration-200 ease"
+        enter-from-class="opacity-0"
+        leave-to-class="opacity-0"
+      >
         <div
           v-if="paletteOpen"
-          class="palette-mask"
+          class="fixed inset-0 z-[9999] flex items-center justify-center backdrop-blur-md bg-black/55"
           @click.self="paletteOpen = false"
         >
-          <div class="palette">
-            <div class="phead">
-              <h4>插入事件</h4>
+          <div class="w-[min(560px,92vw)] max-h-[80vh] overflow-y-auto border border-white/12.5 rounded-xl py-4 px-[18px] pb-[18px] bg-[rgba(12,20,30,0.86)] backdrop-blur-lg backdrop-saturate-[1.4] shadow-[0_8px_32px_rgba(0,0,0,0.45),inset_0_1px_1px_rgba(255,255,255,0.06)]">
+            <div class="flex items-center mb-3.5 pb-2 border-b-2 border-brand">
+              <h4 class="text-[0.95rem] font-semibold text-white">插入事件</h4>
               <button
-                class="pclose"
+                class="ml-auto text-[0.85rem] text-white/50 cursor-pointer transition-all duration-200 hover:text-brand hover:rotate-90"
                 @click="paletteOpen = false"
               >
                 ✕
@@ -112,14 +117,14 @@
             <div
               v-for="(group, cat) in groupedSpecs"
               :key="cat"
-              class="pcat"
+              class="mt-3.5 first:mt-0"
             >
-              <p class="pcat-title">{{ cat }}</p>
-              <div class="pgrid">
+              <p class="mb-[7px] text-[0.7rem] tracking-[0.5px] text-white/[0.38]">{{ cat }}</p>
+              <div class="grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] gap-[7px]">
                 <button
                   v-for="spec in group"
                   :key="spec.typeKey"
-                  class="pitem"
+                  class="border border-white/10 rounded-lg px-2.5 py-2 text-[0.8rem] text-white/[0.78] bg-white/5 transition-all duration-150 ease-in-out hover:border-brand hover:text-white hover:bg-[rgba(121,217,255,0.14)] hover:-translate-y-px"
                   @click="insert(spec.typeKey)"
                 >
                   {{ spec.label }}
@@ -253,10 +258,8 @@ const insert = (typeKey: string) => {
 </script>
 
 <style scoped>
-.rail {
-  position: relative;
-  padding-left: 22px;
-}
+/* 伪元素无法用 Tailwind 工具类表达，保留在 scoped 块中 */
+/* 时间轴竖线 */
 .rail::before {
   content: '';
   position: absolute;
@@ -266,47 +269,11 @@ const insert = (typeKey: string) => {
   width: 1px;
   background: rgba(255, 255, 255, 0.14);
 }
-.rail-nested {
-  padding-left: 16px;
-}
+/* 嵌套时间轴偏移 */
 .rail-nested::before {
   left: -1px;
 }
-
-/* 落点。平时是 2px 的透明缝，拖动中才亮起来，所以静止时完全看不见它 */
-.slot {
-  height: 2px;
-  margin: 1px 0;
-  border-radius: 2px;
-  transition: all 0.12s;
-}
-.slot.on {
-  height: 6px;
-  background: var(--accent-color);
-  box-shadow: 0 0 8px rgba(121, 217, 255, 0.6);
-}
-.draggable {
-  cursor: grab;
-}
-.draggable:active {
-  cursor: grabbing;
-}
-.draggable.drop-before {
-  box-shadow: inset 0 2px 0 var(--accent-color);
-}
-.draggable.ghost {
-  opacity: 0.35;
-}
-
-.grp {
-  position: relative;
-  margin: 3px 0;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.13);
-  border-radius: 9px;
-  background: rgba(0, 0, 0, 0.16);
-}
-/* 复合块在时间轴上用空心菱形锚点，与单事件的实心圆区分 */
+/* 复合块在时间轴上的菱形锚点 */
 .grp::before {
   content: '';
   position: absolute;
@@ -317,176 +284,5 @@ const insert = (typeKey: string) => {
   background: #2b3a4a;
   border: 2px solid #94a3b8;
   transform: rotate(45deg);
-}
-.ghead {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 9px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.ghead:hover {
-  background: rgba(255, 255, 255, 0.05);
-}
-.chev {
-  width: 0.8rem;
-  font-size: 0.8rem;
-  color: rgba(255, 255, 255, 0.4);
-  transition: transform 0.2s;
-}
-.grp.open .chev {
-  transform: rotate(90deg);
-}
-.gbody {
-  padding: 0 6px 6px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-.gcount {
-  font-size: 0.66rem;
-  white-space: nowrap;
-  color: rgba(255, 255, 255, 0.38);
-}
-
-/* 复合块的头部长得像一条事件行，所以下面几条与 EventRow 里的同名规则形状相近。
-   刻意不抽成全局类：`.badge` / `.flag` / `.etext` 这种名字放到全局 CSS 里
-   撞名的概率极高，代价比抄两行样式大得多。这里只留实际用到的那一档
-   （EventRow 的 .badge 需要基类是因为颜色由 :style 逐事件注入，这边是固定灰）。 */
-.badge-group {
-  flex: 0 0 auto;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 5px;
-  padding: 2px 7px;
-  font-size: 0.7rem;
-  font-weight: 500;
-  line-height: 1.5;
-  white-space: nowrap;
-  color: #cbd5e1;
-  background: rgba(255, 255, 255, 0.07);
-}
-.etext {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  font-size: 0.78rem;
-  line-height: 1.7;
-  color: rgba(255, 255, 255, 0.72);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.flag-bad {
-  flex: 0 0 auto;
-  border: 1px solid rgba(248, 113, 113, 0.35);
-  border-radius: 4px;
-  padding: 1px 5px;
-  font-size: 0.62rem;
-  line-height: 1.6;
-  color: #fca5a5;
-  background: rgba(248, 113, 113, 0.15);
-}
-
-.addev {
-  margin-top: 8px;
-  margin-left: -22px;
-  width: calc(100% + 22px);
-  border: 1px dashed rgba(255, 255, 255, 0.18);
-  border-radius: 8px;
-  padding: 7px;
-  font-size: 0.78rem;
-  color: rgba(255, 255, 255, 0.45);
-  transition: all 0.15s;
-}
-.addev:hover {
-  border-color: var(--accent-color);
-  color: var(--accent-color);
-  background: rgba(121, 217, 255, 0.05);
-}
-
-/* ---- 插入事件面板 ----
-   与编辑器其余部分同一套：深色玻璃底 + brand 下划线标题 + 悬停高亮。
-   按钮不再按事件类型上色 —— 十几个饱和色块摆在一起既吵又没有信息量，
-   分类标题已经把「这是哪一类」说清楚了。 */
-.palette-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  backdrop-filter: blur(6px);
-  background: rgba(0, 0, 0, 0.55);
-}
-.palette {
-  width: min(560px, 92vw);
-  max-height: 80vh;
-  overflow-y: auto;
-  border: 1px solid rgba(255, 255, 255, 0.125);
-  border-radius: 12px;
-  padding: 16px 18px 18px;
-  background: rgba(12, 20, 30, 0.86);
-  backdrop-filter: blur(18px) saturate(140%);
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.45),
-    inset 0 1px 1px rgba(255, 255, 255, 0.06);
-}
-.phead {
-  display: flex;
-  align-items: center;
-  margin-bottom: 14px;
-  padding-bottom: 8px;
-  border-bottom: 2px solid var(--accent-color);
-}
-.phead h4 {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: #fff;
-}
-.pclose {
-  margin-left: auto;
-  font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.5);
-  transition: all 0.2s;
-}
-.pclose:hover {
-  color: var(--accent-color);
-  transform: rotate(90deg);
-}
-.pcat + .pcat {
-  margin-top: 14px;
-}
-.pcat-title {
-  margin-bottom: 7px;
-  font-size: 0.7rem;
-  letter-spacing: 0.5px;
-  color: rgba(255, 255, 255, 0.38);
-}
-.pgrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
-  gap: 7px;
-}
-.pitem {
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 0.8rem;
-  color: rgba(255, 255, 255, 0.78);
-  background: rgba(255, 255, 255, 0.05);
-  transition: all 0.15s ease-in-out;
-}
-.pitem:hover {
-  border-color: var(--accent-color);
-  color: #fff;
-  background: rgba(121, 217, 255, 0.14);
-  transform: translateY(-1px);
-}
-
-.modal-enter-active,
-.modal-leave-active {
-  transition: opacity 0.2s ease;
-}
-.modal-enter-from,
-.modal-leave-to {
-  opacity: 0;
 }
 </style>

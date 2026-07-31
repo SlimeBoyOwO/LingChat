@@ -1,8 +1,8 @@
 <template>
-  <div class="flow">
+  <div class="flex flex-col items-center pt-[18px] px-2 pb-6">
     <p
       v-if="!store.report"
-      class="hint"
+      class="max-w-[560px] mt-[26px] text-xs leading-[1.9] text-white/40"
     >
       正在读取章节跳转关系…
     </p>
@@ -11,62 +11,65 @@
       <div
         v-for="(row, ri) in rows"
         :key="row.key"
-        class="rowbox"
+        class="flex w-full flex-col items-center"
       >
         <!-- 层与层之间的连线。分支层上方画一个分叉提示 -->
         <div
           v-if="ri > 0"
-          class="conn"
+          class="conn relative w-px h-[34px] bg-brand/55"
           :class="{ fork: row.nodes.length > 1 }"
         >
           <span
             v-if="row.inboundLabels.length"
-            class="conn-label"
+            class="absolute left-2.5 top-1/2 -translate-y-1/2 font-mono text-[9.5px] whitespace-nowrap text-white/50"
             >{{ row.inboundLabels.join(' / ') }}</span
           >
         </div>
 
-        <div class="layer">
+        <div class="flex flex-wrap justify-center gap-[18px] w-full">
           <div
             v-for="node in row.nodes"
             :key="node.id"
-            class="cnode"
-            :class="{ entry: node.isIntro, orphan: node.isOrphan }"
+            class="relative flex-[1_1_300px] max-w-[460px] border border-white/12.5 rounded-xl px-3.5 py-3 cursor-pointer bg-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.1),inset_0_1px_1px_rgba(255,255,255,0.1)] transition-all duration-200 ease-in-out hover:border-brand hover:-translate-y-0.5 hover:shadow-[0_6px_18px_rgba(121,217,255,0.22)] group"
+            :class="{ 'border-green-400/50': node.isIntro, 'border-dashed border-amber-300/50': node.isOrphan }"
             @click="open(node.id)"
           >
-            <span class="cid">
+            <span
+              class="absolute -top-2 left-3 border rounded px-1.5 py-px font-mono text-[9.5px] bg-[#16202c]"
+              :class="node.isIntro ? 'text-green-400 border-green-400/40' : node.isOrphan ? 'text-amber-300 border-amber-300/40' : 'text-white/50 border-white/[0.14]'"
+            >
               {{ leaf(node.id) }}.yaml{{ node.isIntro ? ' · 开场' : ''
               }}{{ node.isOrphan ? ' · 无人进入' : '' }}
             </span>
 
-            <div class="crow">
-              <span class="ct">{{ node.name || node.id }}</span>
-              <span class="cm">{{ node.eventCount }} 个事件</span>
+            <div class="flex items-baseline gap-2">
+              <span class="text-[0.88rem] font-semibold text-white">{{ node.name || node.id }}</span>
+              <span class="ml-auto text-[0.7rem] whitespace-nowrap text-white/45">{{ node.eventCount }} 个事件</span>
             </div>
 
-            <div class="cfoot">
+            <div class="flex items-center gap-1.5 mt-2 min-h-4">
               <span
                 v-if="node.errors"
-                class="tag tag-err"
+                class="rounded px-[6px] py-px text-[0.64rem] whitespace-nowrap text-red-300 border border-red-400/35 bg-red-400/15"
                 >{{ node.errors }} 个错误</span
               >
               <span
                 v-else-if="node.warns"
-                class="tag tag-warn"
+                class="rounded px-[6px] py-px text-[0.64rem] whitespace-nowrap text-amber-300 border border-amber-300/30 bg-amber-300/15"
                 >{{ node.warns }} 个提醒</span
               >
               <span
                 v-if="node.endType && node.endType !== 'linear'"
-                class="tag tag-branch"
+                class="rounded px-[6px] py-px text-[0.64rem] whitespace-nowrap text-purple-300 border border-purple-400/35 bg-purple-400/15"
                 >{{ node.endType === 'branching' ? '条件分支' : 'AI 判定分支' }}</span
               >
               <span
                 v-if="node.isOrphan"
-                class="tag tag-warn"
+                class="rounded px-[6px] py-px text-[0.64rem] whitespace-nowrap text-amber-300 border border-amber-300/30 bg-amber-300/15"
                 >玩家走不到</span
               >
               <button
-                class="del"
+                class="ml-auto rounded px-[5px] py-px text-[11px] text-white/25 opacity-0 transition-all duration-150 group-hover:opacity-100 hover:text-red-300 hover:bg-red-400/15"
                 title="删除章节"
                 @click.stop="store.deleteChapter(node.id)"
               >
@@ -77,10 +80,10 @@
         </div>
       </div>
 
-      <div class="conn"></div>
-      <div class="endcap">剧本结束</div>
+      <div class="conn relative w-px h-[34px] bg-brand/55"></div>
+      <div class="border border-dashed border-white/25 rounded-full px-3.5 py-[5px] text-[0.72rem] whitespace-nowrap text-white/50">剧本结束</div>
 
-      <p class="hint">
+      <p class="max-w-[560px] mt-[26px] text-xs leading-[1.9] text-white/40 [&_b]:text-white/65 [&_code]:font-mono [&_code]:text-brand">
         这张图是<b>读出来的，不是排出来的</b> —— 连线来自每章最后那条「章节结束」，
         章节的先后也由它决定。要改走向，进对应章节改那条事件的
         <code>下一章</code>；改完这里会跟着变。
@@ -209,30 +212,8 @@ const rows = computed<FlowRow[]>(() => {
 </script>
 
 <style scoped>
-.flow {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 18px 8px 24px;
-}
-
-/* v-for 的每一层包一层容器。
-   这里必须是「flex 列 + 居中」：不加的话它是普通块元素，里面那根 1px 宽的
-   .conn 会贴到容器左边缘，于是箭头全跑到章节卡片的左侧去了。 */
-.rowbox {
-  display: flex;
-  width: 100%;
-  flex-direction: column;
-  align-items: center;
-}
-
-/* 层与层之间的竖直连线 + 箭头 */
-.conn {
-  position: relative;
-  width: 1px;
-  height: 34px;
-  background: rgba(121, 217, 255, 0.55);
-}
+/* 伪元素无法用 Tailwind 工具类表达，保留在 scoped 块中 */
+/* 层间连线末端的三角箭头 */
 .conn::after {
   content: '';
   position: absolute;
@@ -242,7 +223,7 @@ const rows = computed<FlowRow[]>(() => {
   border-right: 4.5px solid transparent;
   border-top: 8px solid rgba(121, 217, 255, 0.6);
 }
-/* 分叉：横一道短线示意「这里分开了」 */
+/* 分叉层上方的横线 */
 .conn.fork::before {
   content: '';
   position: absolute;
@@ -251,157 +232,5 @@ const rows = computed<FlowRow[]>(() => {
   width: 120px;
   height: 1px;
   background: rgba(121, 217, 255, 0.35);
-}
-.conn-label {
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 9.5px;
-  white-space: nowrap;
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.layer {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 18px;
-  width: 100%;
-}
-
-.cnode {
-  position: relative;
-  flex: 1 1 300px;
-  max-width: 460px;
-  border: 1px solid rgba(255, 255, 255, 0.125);
-  border-radius: 12px;
-  padding: 12px 14px;
-  cursor: pointer;
-  background: rgba(255, 255, 255, 0.1);
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.1),
-    inset 0 1px 1px rgba(255, 255, 255, 0.1);
-  transition: all 0.2s ease-in-out;
-}
-.cnode:hover {
-  border-color: var(--accent-color);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgba(121, 217, 255, 0.22);
-}
-.cnode.entry {
-  border-color: rgba(74, 222, 128, 0.5);
-}
-.cnode.entry .cid {
-  color: #4ade80;
-  border-color: rgba(74, 222, 128, 0.4);
-}
-.cnode.orphan {
-  border-style: dashed;
-  border-color: rgba(251, 191, 36, 0.5);
-}
-.cnode.orphan .cid {
-  color: #fcd34d;
-  border-color: rgba(251, 191, 36, 0.4);
-}
-
-.cid {
-  position: absolute;
-  top: -8px;
-  left: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 4px;
-  padding: 1px 6px;
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 9.5px;
-  color: rgba(255, 255, 255, 0.5);
-  background: #16202c;
-}
-
-.crow {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-.ct {
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: #fff;
-}
-.cm {
-  margin-left: auto;
-  font-size: 0.7rem;
-  white-space: nowrap;
-  color: rgba(255, 255, 255, 0.45);
-}
-
-.cfoot {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 8px;
-  min-height: 1rem;
-}
-.tag {
-  border-radius: 4px;
-  padding: 1px 6px;
-  font-size: 0.64rem;
-  white-space: nowrap;
-}
-.tag-err {
-  color: #fca5a5;
-  border: 1px solid rgba(248, 113, 113, 0.35);
-  background: rgba(248, 113, 113, 0.15);
-}
-.tag-warn {
-  color: #fcd34d;
-  border: 1px solid rgba(251, 191, 36, 0.3);
-  background: rgba(251, 191, 36, 0.15);
-}
-.tag-branch {
-  color: #c4b5fd;
-  border: 1px solid rgba(167, 139, 250, 0.35);
-  background: rgba(167, 139, 250, 0.15);
-}
-.del {
-  margin-left: auto;
-  border-radius: 4px;
-  padding: 1px 5px;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.25);
-  opacity: 0;
-  transition: all 0.15s;
-}
-.cnode:hover .del {
-  opacity: 1;
-}
-.del:hover {
-  color: #fca5a5;
-  background: rgba(248, 113, 113, 0.15);
-}
-
-.endcap {
-  border: 1px dashed rgba(255, 255, 255, 0.25);
-  border-radius: 99px;
-  padding: 5px 14px;
-  font-size: 0.72rem;
-  white-space: nowrap;
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.hint {
-  max-width: 560px;
-  margin-top: 26px;
-  font-size: 0.75rem;
-  line-height: 1.9;
-  color: rgba(255, 255, 255, 0.4);
-}
-.hint b {
-  color: rgba(255, 255, 255, 0.65);
-}
-.hint code {
-  font-family: ui-monospace, Menlo, monospace;
-  color: var(--accent-color);
 }
 </style>

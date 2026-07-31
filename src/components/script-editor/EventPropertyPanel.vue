@@ -158,5 +158,3 @@ const onTypeChange = (e: Event) => {
 }
 </script>
 
-<style scoped>
-</style>
