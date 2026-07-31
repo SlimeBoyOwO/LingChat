@@ -3,7 +3,7 @@
     <!-- 底部左侧触发按钮（用定位容器包裹，避免 .nav 的 position:relative 覆盖 fixed） -->
     <div
       v-if="!uiStore.showSettings"
-      class="fixed bottom-6 left-6 z-[1000]"
+      class="fixed bottom-[calc(24px+var(--safe-area-inset-bottom))] left-6 z-[1000]"
     >
       <Button
         type="nav"
@@ -29,7 +29,7 @@
       <div
         v-if="panelVisible"
         ref="panelRef"
-        class="fixed bottom-16 left-4 w-[520px] max-h-[80vh] overflow-y-auto bg-[#12121c]/75 backdrop-blur-[20px] border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)] rounded-3xl p-4 text-white box-border z-[1000] custom-scrollbar"
+        class="fixed bottom-[calc(64px+var(--safe-area-inset-bottom))] left-4 w-[520px] max-h-[80vh] overflow-y-auto bg-[#12121c]/75 backdrop-blur-[20px] border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)] rounded-3xl p-4 text-white box-border z-[1000] custom-scrollbar"
       >
         <!-- ===== BGM 区域 ===== -->
         <div class="mb-4">

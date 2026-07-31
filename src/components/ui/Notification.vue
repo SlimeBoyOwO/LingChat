@@ -38,7 +38,8 @@ const typeClass = computed(() => `notification-${uiStore.notification.type}`)
 @reference "tailwindcss";
 
 .notification {
-  @apply fixed top-5 left-0 z-[10000];
+  @apply fixed left-0 z-[10000];
+  top: calc(20px + var(--safe-area-inset-top));
   @apply flex items-center gap-4;
   @apply px-6 py-4 min-w-80 max-w-[480px];
 
