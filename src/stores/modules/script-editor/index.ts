@@ -42,6 +42,7 @@ export const useScriptEditorStore = defineStore(
         'redoStack',
         'report',
         'previewing',
+        'previewGeneration',
         'readiness',
         'globalCharacters',
         'assetFiles',

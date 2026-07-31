@@ -581,6 +581,12 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
   async function startPreview(fromChapter?: string): Promise<boolean> {
     const key = g.scriptKey.value
     if (!key) return false
+    // 剧本自然跑完后 previewing 仍是 true（试玩界面停留在终场），此时再点试玩
+    // 不会触发 PreviewStage 的 watch（true→true），上一轮的立绘/台词会直接带进
+    // 新一轮。先停掉一轮，让 watch 完整走一遍 快照/清理/还原 再开新场。
+    if (s.previewing.value) {
+      await stopPreview()
+    }
     await flushPendingSave()
     await runValidation()
     if (g.hasBlockingErrors.value) {
@@ -599,8 +605,9 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
       return false
     }
     try {
-      await api.startPreview(key, fromChapter)
+      const info = await api.startPreview(key, fromChapter)
       s.previewing.value = true
+      s.previewGeneration.value = info.generation
       await refreshScripts()
       return true
     } catch (e) {
@@ -624,6 +631,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
   async function stopPreview() {
     if (!s.previewing.value) return
     s.previewing.value = false
+    s.previewGeneration.value = null
     try {
       await api.stopPreview()
     } catch (e) {

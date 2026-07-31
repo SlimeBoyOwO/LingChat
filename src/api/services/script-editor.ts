@@ -313,15 +313,14 @@ export const previewReadiness = (key: string) =>
 /**
  * 在编辑器里直接试玩。内部会先 rescan，fromChapter 留空则从开场章节开始。
  * 试玩会真调 LLM（与正式游玩一致）；LLM 未配置时，遇到 AI 事件会终止剧本。
+ * 返回本轮试玩的会话代号（generation）：前端据此丢弃上一轮试玩迟到的 ai:reply，
+ * 防止快速连玩时旧一轮的流式片段串进新一轮。
  */
 export const startPreview = (key: string, fromChapter: string | undefined) =>
-  invoke<void>('editor_start_preview', { key, fromChapter })
+  invoke<{ generation: number }>('editor_start_preview', { key, fromChapter })
 
 /** 中止试玩 */
 export const stopPreview = () => invoke<void>('editor_stop_preview')
-
-/** 离开编辑器时重置游戏会话（清空台词/在场角色/player_entered，主角色重新上台） */
-export const resetGameStatus = () => invoke<void>('editor_reset_game_status')
 
 export const createCharacter = (
   key: string,

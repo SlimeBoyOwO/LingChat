@@ -980,23 +980,22 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { Button, Icon, Toggle } from '@/components/base'
 import { MenuPage, MenuItem } from '@/components/ui'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
-import { useGameStore } from '@/stores/modules/game'
-import { createScript, openScriptFolder, resetGameStatus } from '@/api/services/script-editor'
+import { createScript, openScriptFolder } from '@/api/services/script-editor'
 import type { AssetFile, AssetKind, AssetScope, Diagnostic } from '@/api/services/script-editor'
 import ChapterFlow from '@/components/script-editor/ChapterFlow.vue'
 import ChapterTimeline from '@/components/script-editor/ChapterTimeline.vue'
 import EventPropertyPanel from '@/components/script-editor/EventPropertyPanel.vue'
 import PreviewStage from '@/components/script-editor/PreviewStage.vue'
+import { eventQueue } from '@/core/events/event-queue'
 
 const router = useRouter()
 const store = useScriptEditorStore()
-const gameStore = useGameStore()
 
 type TabKey = 'flow' | 'config' | 'characters' | 'assets' | 'validate'
 
@@ -1324,27 +1323,48 @@ const SHORTCUTS: { keys: string; desc: string }[] = [
   { keys: '?', desc: '打开这张表' },
 ]
 
-const leave = async () => {
-  await store.stopPreview()
-  await store.flushPendingSave()
-  // 先落盘再同步，顺序不能反：引擎重扫的是磁盘，没写完就同步等于同步了旧内容
-  await store.syncEngine()
-  // 方案 B：离开编辑器这个明确边界时，让后端把游戏会话整体重置回「刚进游戏」
-  // 的样子（清空台词/在场角色/player_entered）。试玩「快照+还原」在多次进出后
-  // 存在竞态窗口（超时中止后晚到的 AI 响应可能写回脏数据），与其继续打补丁，
-  // 不如在边界上全量重置 —— 代价是编辑器往返会丢自由对话历史，换取零残留。
+/**
+ * 离开编辑器前的统一清理。试玩对自由对话的隔离是「快照 + 还原」：后端
+ * PreviewSession 与前端 PreviewStage 各存/还一份状态，这里负责在导航放行前
+ * 把两边的还原跑完，并排空事件队列。
+ *
+ * 关键点：必须 await 完成才放行导航。此前清理放在 onUnmounted（异步、路由不等待），
+ * MainChat 会先挂载并 resume 事件队列/读取尚未还原的 line_list，试玩内容就串进
+ * 自由对话（历史显示 + AI 上下文）。路由守卫能阻塞导航，从根上消除这个竞态。
+ *
+ * 幂等：用模块级标志避免与 ✕ leave() / onUnmounted 重复执行。
+ */
+let exitCleaned = false
+const cleanupBeforeExit = async () => {
+  if (exitCleaned) return
+  exitCleaned = true
   try {
-    await resetGameStatus()
-  } catch (e) {
-    store.notifyError('重置游戏状态失败', e)
+    await store.stopPreview()
+  } catch {
+    /* 停止试玩失败不阻断离开 */
   }
-  // 主动清空试玩期间会被污染的字段——即使 initializeGame 尚未跑完或失败，
-  // 前端至少不会显示错误的立绘、对话历史和场景。
-  gameStore.gameRoles = {}
-  gameStore.presentRoleIds = []
-  gameStore.dialogHistory = []
-  gameStore.currentScene = null
-  gameStore.initialized = false
+  // 兜底排空：stopPreview 的清理早于后端任务收尾，IPC 迟到的事件可能在
+  // 还原之后才入队（队列已暂停），不排空的话 MainChat 挂载 resume 时会被消费
+  eventQueue.clear()
+  try {
+    await store.flushPendingSave()
+  } catch {
+    /* 保存失败不阻断离开 */
+  }
+  // 先落盘再同步，顺序不能反：引擎重扫的是磁盘，没写完就同步等于同步了旧内容
+  try {
+    await store.syncEngine()
+  } catch {
+    /* 同步失败不阻断离开 */
+  }
+}
+
+// 任何离开编辑器的导航（✕、路由跳走、返回手势等）都先完成清理再放行，
+// 保证 MainChat 挂载时后端已还原、事件队列干净。
+onBeforeRouteLeave(cleanupBeforeExit)
+
+const leave = async () => {
+  // 清理统一由路由守卫完成，这里只负责导航
   void router.push('/')
 }
 
@@ -1433,24 +1453,11 @@ onUnmounted(async () => {
   document.removeEventListener('click', onDocClick)
   navObserver?.disconnect()
   navObserver = null
-  // 等待试玩完全停止（含后端恢复）再标记未初始化，避免 MainChat 随后立即
-  // 挂载时读到后端尚未还原的脏 line_list。
-  try {
-    await store.stopPreview()
-  } catch {
-    /* stopPreview 抛错不阻断清理 */
-  }
-  void store.flushPendingSave()
-  // 同 leave()：非 ✕ 退出路径（路由跳走等）也把游戏会话全量重置，保证
-  // 回自由对话时不会带着试玩残留。resetGameStatus 幂等，重复调用无害。
-  try {
-    await resetGameStatus()
-  } catch {
-    /* 重置失败不阻断卸载 */
-  }
+  // 兜底清理：正常情况下路由守卫已 await 完成清理（exitCleaned=true），
+  // 这里只在守卫因异常未跑完时补一次，保证试玩停止且游戏会话还原
+  await cleanupBeforeExit()
   // 退出编辑器时关闭已打开的剧本——下次从主菜单进入时回到剧本列表
   store.closeScript()
-  gameStore.initialized = false
 })
 </script>
 

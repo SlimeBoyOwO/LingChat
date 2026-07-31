@@ -44,6 +44,9 @@ interface State {
   redoStack: UndoFrame[]
   report: ValidationReport | null
   previewing: boolean
+  /** 当前试玩的会话代号（后端 GameStatus.preview_generation 的快照），
+   *  用于丢弃上一轮试玩迟到的 ai:reply 事件；null 表示不在试玩中 */
+  previewGeneration: number | null
   readiness: PreviewReadiness | null
   globalCharacters: GlobalCharacter[]
   assetFiles: { script: AssetFileIndex | null; global: AssetFileIndex | null }
@@ -88,6 +91,7 @@ export const useEditorState = () => {
   const report = ref<ValidationReport | null>(null)
 
   const previewing = ref(false)
+  const previewGeneration = ref<number | null>(null)
   const readiness = ref<PreviewReadiness | null>(null)
   const globalCharacters = ref<GlobalCharacter[]>([])
   const assetFiles = ref<{ script: AssetFileIndex | null; global: AssetFileIndex | null }>({
@@ -114,6 +118,7 @@ export const useEditorState = () => {
     redoStack,
     report,
     previewing,
+    previewGeneration,
     readiness,
     globalCharacters,
     assetFiles,

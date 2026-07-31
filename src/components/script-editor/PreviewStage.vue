@@ -164,8 +164,13 @@ type SceneSnapshot = {
   // 不还原的话回自由对话仍显示错误的角色身份
   showCharacterTitle: string
   showCharacterSubtitle: string
+  // 台词/情绪/动作文本：dialogue-processor 试玩期间逐句改写，纯展示字段，还回原值
+  showCharacterLine: string
+  showCharacterEmotion: string
+  showCharacterMotionText: string
   // currentSoundEffect 不存：它是「值变化即播放」的一次性触发型字段，
   // 还原成试玩前的路径会误重播；试玩结束直接清成 'None'（见 restoreSceneState）。
+  // currentAvatarAudio 同理（角色语音也是值变化即播），一并只清不存。
   ambientTracks: typeof uiStore.ambientTracks
 }
 
@@ -181,6 +186,9 @@ const captureSceneState = (): SceneSnapshot => ({
   presentPicScale: uiStore.currentPresentPicScale,
   showCharacterTitle: uiStore.showCharacterTitle,
   showCharacterSubtitle: uiStore.showCharacterSubtitle,
+  showCharacterLine: uiStore.showCharacterLine,
+  showCharacterEmotion: uiStore.showCharacterEmotion,
+  showCharacterMotionText: uiStore.showCharacterMotionText,
   // 深拷贝：ambientTracks 元素是对象，浅拷贝会与试玩期间的操作互相串改
   ambientTracks: uiStore.ambientTracks.map((t) => ({ ...t })),
 })
@@ -197,9 +205,14 @@ const restoreSceneState = (s: SceneSnapshot) => {
   uiStore.currentPresentPicScale = s.presentPicScale
   uiStore.showCharacterTitle = s.showCharacterTitle
   uiStore.showCharacterSubtitle = s.showCharacterSubtitle
+  uiStore.showCharacterLine = s.showCharacterLine
+  uiStore.showCharacterEmotion = s.showCharacterEmotion
+  uiStore.showCharacterMotionText = s.showCharacterMotionText
   // 音效是触发型字段，直接清成 'None'：GameBackground 的 watch 见 'None' 不会播放，
   // 既不误重播试玩前的音效，也清掉试玩留下的脏路径
   uiStore.currentSoundEffect = 'None'
+  // 角色语音同理：还原成试玩前的路径会误重播自由对话最后一句，直接清 'None'
+  uiStore.currentAvatarAudio = 'None'
   uiStore.ambientTracks = s.ambientTracks
 }
 
