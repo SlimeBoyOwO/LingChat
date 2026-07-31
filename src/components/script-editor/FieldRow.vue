@@ -171,14 +171,23 @@
         v-if="field.key === 'condition' && condSyntax"
         class="ml-1 text-brand cursor-pointer"
         @click="showCondHelp = !showCondHelp"
-      >{{ showCondHelp ? '收起' : '更多语法 →' }}</button>
+      >{{ showCondHelp ? '收起 ▲' : '怎么写条件？' }}</button>
     </p>
     <div
       v-if="field.key === 'condition' && showCondHelp && condSyntax"
       class="mt-1 rounded border border-white/10 bg-black/20 p-2 text-xs leading-relaxed text-white/50"
     >
-      <p class="mb-1 text-white/70">支持：<span class="text-white/90">{{ condSyntax.supported?.join(' · ') }}</span></p>
-      <p class="mb-1 text-yellow-200/60">不支持：{{ condSyntax.unsupported?.join(' ') }}</p>
+      <p class="mb-1 text-white/80"><b>怎么用条件来控制故事走向？</b></p>
+      <p class="mb-1">
+        先在你的剧本里用「设置变量」事件定义几个变量（如 <code class="text-brand">route</code>、<code class="text-brand">flag</code>），
+        然后在这里写判断。举个例子：
+      </p>
+      <p class="mb-1 text-white/60">
+        • <span class="text-brand">{{ condSyntax.supported?.[0] }}</span>——比如让玩家从商店出来后分支跳转<br>
+        • <span class="text-brand">{{ condSyntax.supported?.[1] }}</span>——比如在不走商店路线时跳过这段<br>
+        • <span class="text-brand">{{ condSyntax.supported?.[2] }}</span>——直接用变量名判断"有没有存过这个值"
+      </p>
+      <p class="mb-1 text-yellow-200/60">以下写法会<b>永远不成立</b>（不报错，只是条件永远为假）：{{ condSyntax.unsupported?.join(' ') }}。</p>
       <p class="text-white/40">{{ condSyntax.note }}</p>
     </div>
     <p

@@ -67,6 +67,18 @@
         ⧉
       </button>
       <button
+        v-if="canMoveUp"
+        class="shrink-0 rounded px-[3px] text-[11px] leading-[1.7] text-white/25 opacity-0 transition-all group-hover:opacity-100 hover:text-white/60 hover:bg-white/[0.1]"
+        title="上移"
+        @click.stop="store.moveEvent(index, index - 1)"
+      >▲</button>
+      <button
+        v-if="canMoveDown"
+        class="shrink-0 rounded px-[3px] text-[11px] leading-[1.7] text-white/25 opacity-0 transition-all group-hover:opacity-100 hover:text-white/60 hover:bg-white/[0.1]"
+        title="下移"
+        @click.stop="store.moveEvent(index, index + 1)"
+      >▼</button>
+      <button
         class="shrink-0 rounded px-[3px] text-[11px] leading-[1.7] text-white/25 opacity-0 transition-all group-hover:opacity-100 hover:text-[#fca5a5] hover:bg-[rgba(248,113,113,0.15)]"
         title="删除"
         @click.stop="store.removeEvent(index)"
@@ -121,4 +133,12 @@ const highlighted = computed(() => {
   if (rest) parts.push({ text: rest, token: false })
   return parts
 })
+
+const isChapterEnd = computed(() => props.event.type === 'chapter_end')
+const lastMovableIdx = computed(() => {
+  const total = store.chapter?.events.length ?? 0
+  return total > 0 && store.chapter?.events[total - 1]?.type === 'chapter_end' ? total - 2 : total - 1
+})
+const canMoveUp = computed(() => !isChapterEnd.value && props.index > 0)
+const canMoveDown = computed(() => !isChapterEnd.value && props.index < lastMovableIdx.value)
 </script>

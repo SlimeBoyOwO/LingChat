@@ -530,6 +530,7 @@ pub fn run() {
             api::script_editor::editor_list_global_characters,
             api::script_editor::editor_import_global_character,
             api::script_editor::editor_stop_preview,
+            api::script_editor::editor_reset_game_status,
             api::script_editor::editor_open_script_folder,
             api::pet::update_solid_regions,
             api::pet::set_pet_mode,

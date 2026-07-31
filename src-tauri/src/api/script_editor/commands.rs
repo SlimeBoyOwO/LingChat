@@ -1747,6 +1747,24 @@ pub async fn editor_stop_preview(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// 离开编辑器时把游戏会话整体重置回「刚进游戏」的样子。
+///
+/// 编辑器内的试玩通过「快照 + 还原」隔离，但多次进出后还原链路存在
+/// 竞态窗口（如试玩任务被超时中止时，晚到的 AI 响应可能把剧本台词写回
+/// 已还原的 line_list）。与其继续在还原上打补丁，不如在离开编辑器这个
+/// 明确边界上直接全量重置：清空 line_list / 在场角色 / player_entered，
+/// 主角色重新上台。代价是编辑前后台往返会丢掉自由对话的历史 —— 这是
+/// 有意取舍，换取零残留的确定性。
+#[tauri::command]
+pub async fn editor_reset_game_status(app: AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let mut service = state.ai_service.lock().await;
+    service
+        .init_game_status()
+        .await
+        .map_err(|e| format!("重置游戏状态失败: {}", e))
+}
+
 /// 在系统文件管理器里打开剧本目录。
 #[tauri::command]
 pub fn editor_open_script_folder(key: String) -> Result<(), String> {

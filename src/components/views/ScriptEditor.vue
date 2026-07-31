@@ -590,16 +590,25 @@
                         controlslist="nodownload noremoteplayback"
                         :src="assetUrl(f.path)"
                       ></audio>
-                      <div class="flex shrink-0 items-center gap-0.5">
+                      <div class="relative shrink-0">
                         <button
-                          v-for="rate in [0.5, 0.75, 1, 1.25, 1.5, 2]"
-                          :key="rate"
-                          class="shrink-0 rounded px-1 py-0.5 text-[0.6rem] border transition-all"
-                          :class="audioRates[f.path] === rate
-                            ? 'border-brand/40 text-brand bg-brand/10'
-                            : 'border-white/10 text-white/40 hover:text-white/70 hover:border-white/20'"
-                          @click="setRate(f.path, rate)"
-                        >{{ rate }}×</button>
+                          class="rounded px-1.5 py-0.5 text-[0.6rem] border border-white/10 text-white/40 hover:text-white/70 hover:border-white/20 transition-colors"
+                          title="播放速度"
+                          @click.stop.prevent="speedMenu = speedMenu === f.path ? null : f.path"
+                        >{{ audioRates[f.path] ?? 1 }}× ▾</button>
+                        <div
+                          v-if="speedMenu === f.path"
+                          class="absolute bottom-full right-0 mb-1 z-20 rounded border border-white/[0.14] bg-[#16202c] shadow-lg py-0.5 flex flex-col"
+                          @click.stop
+                        >
+                          <button
+                            v-for="rate in [0.5, 0.75, 1, 1.25, 1.5, 2]"
+                            :key="rate"
+                            class="px-2 py-0.5 text-[0.6rem] text-left whitespace-nowrap transition-colors hover:bg-white/10"
+                            :class="(audioRates[f.path] ?? 1) === rate ? 'text-brand' : 'text-white/60'"
+                            @click="setRate(f.path, rate); speedMenu = null"
+                          >{{ rate }}×</button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -978,7 +987,7 @@ import { Button, Icon, Toggle } from '@/components/base'
 import { MenuPage, MenuItem } from '@/components/ui'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 import { useGameStore } from '@/stores/modules/game'
-import { createScript, openScriptFolder } from '@/api/services/script-editor'
+import { createScript, openScriptFolder, resetGameStatus } from '@/api/services/script-editor'
 import type { AssetFile, AssetKind, AssetScope, Diagnostic } from '@/api/services/script-editor'
 import ChapterFlow from '@/components/script-editor/ChapterFlow.vue'
 import ChapterTimeline from '@/components/script-editor/ChapterTimeline.vue'
@@ -1033,10 +1042,13 @@ const humanSize = (n: number) => {
 
 // ---- 素材音频播放速度 ----
 const audioEls: Record<string, HTMLAudioElement | null> = {}
-const audioRates: Record<string, number> = {}
+const audioRates = reactive<Record<string, number>>({})
+const speedMenu = ref<string | null>(null)
 const setAudioRef = (path: string) => (el: unknown) => {
   audioEls[path] = el as HTMLAudioElement | null
+  if (!(path in audioRates)) audioRates[path] = 1
 }
+const onDocClick = () => { speedMenu.value = null }
 const setRate = (path: string, rate: number) => {
   const a = audioEls[path]
   if (a) {
@@ -1317,9 +1329,21 @@ const leave = async () => {
   await store.flushPendingSave()
   // 先落盘再同步，顺序不能反：引擎重扫的是磁盘，没写完就同步等于同步了旧内容
   await store.syncEngine()
-  // 退出编辑器前标记 game 未初始化 —— MainChat 据此决定重跑 initializeGame。
-  // 否则从编辑器回自由对话时 gameStore.initialized=true 已设，不会重新 init，
-  // 编辑器里可能已污染的 presentRoleIds/mainRoleId/gameRoles 直接带入自由对话。
+  // 方案 B：离开编辑器这个明确边界时，让后端把游戏会话整体重置回「刚进游戏」
+  // 的样子（清空台词/在场角色/player_entered）。试玩「快照+还原」在多次进出后
+  // 存在竞态窗口（超时中止后晚到的 AI 响应可能写回脏数据），与其继续打补丁，
+  // 不如在边界上全量重置 —— 代价是编辑器往返会丢自由对话历史，换取零残留。
+  try {
+    await resetGameStatus()
+  } catch (e) {
+    store.notifyError('重置游戏状态失败', e)
+  }
+  // 主动清空试玩期间会被污染的字段——即使 initializeGame 尚未跑完或失败，
+  // 前端至少不会显示错误的立绘、对话历史和场景。
+  gameStore.gameRoles = {}
+  gameStore.presentRoleIds = []
+  gameStore.dialogHistory = []
+  gameStore.currentScene = null
   gameStore.initialized = false
   void router.push('/')
 }
@@ -1397,6 +1421,8 @@ const onKey = (e: KeyboardEvent) => {
 
 onMounted(async () => {
   window.addEventListener('keydown', onKey)
+  // 点击素材卡片外的区域关闭速度菜单
+  document.addEventListener('click', onDocClick)
   await store.init()
   await moveIndicator(false)
   observeNav()
@@ -1404,6 +1430,7 @@ onMounted(async () => {
 
 onUnmounted(async () => {
   window.removeEventListener('keydown', onKey)
+  document.removeEventListener('click', onDocClick)
   navObserver?.disconnect()
   navObserver = null
   // 等待试玩完全停止（含后端恢复）再标记未初始化，避免 MainChat 随后立即
@@ -1414,6 +1441,13 @@ onUnmounted(async () => {
     /* stopPreview 抛错不阻断清理 */
   }
   void store.flushPendingSave()
+  // 同 leave()：非 ✕ 退出路径（路由跳走等）也把游戏会话全量重置，保证
+  // 回自由对话时不会带着试玩残留。resetGameStatus 幂等，重复调用无害。
+  try {
+    await resetGameStatus()
+  } catch {
+    /* 重置失败不阻断卸载 */
+  }
   // 退出编辑器时关闭已打开的剧本——下次从主菜单进入时回到剧本列表
   store.closeScript()
   gameStore.initialized = false

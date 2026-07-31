@@ -4,28 +4,8 @@
       v-for="(row, ri) in rows"
       :key="row.key"
     >
-      <div
-        class="flex items-start gap-1"
-      >
-        <!-- ↑↓ 移动按钮。CSS zoom 会破坏 HTML5 拖放事件分发（Chromium 已知 bug，
-             多轮迭代都失败在同一原因），改为稳定可靠的箭头按钮。 -->
-        <div class="flex shrink-0 flex-col gap-0.5 pt-[3px]">
-          <button
-            v-if="canMoveUp(row) && !isChapterEnd(row)"
-            class="rounded px-0.5 py-0 text-[0.55rem] leading-none text-white/25 hover:text-white/60 transition-colors"
-            title="上移"
-            @click="moveUp(row)"
-          >▲</button>
-          <button
-            v-if="canMoveDown(row) && !isChapterEnd(row)"
-            class="rounded px-0.5 py-0 text-[0.55rem] leading-none text-white/25 hover:text-white/60 transition-colors"
-            title="下移"
-            @click="moveDown(row)"
-          >▼</button>
-        </div>
-
-        <div class="min-w-0 flex-1">
-          <!-- 复合块：默认折叠成一行 -->
+      <div class="min-w-0 flex-1">
+        <!-- 复合块：默认折叠成一行 -->
           <div
             v-if="row.kind === 'group'"
             class="grp group relative my-[3px] overflow-hidden border border-white/[0.13] rounded-[9px] bg-black/16"
@@ -44,6 +24,19 @@
                 >含错误</span
               >
               <span class="text-[0.66rem] whitespace-nowrap text-white/[0.38]">{{ row.to - row.from }} 个事件</span>
+              <!-- 复合块整段移动：与 EventRow 的 ▲▼ 同一套操作语义（moveEventRange） -->
+              <button
+                v-if="canMoveUp(row)"
+                class="shrink-0 rounded px-[3px] text-[11px] leading-[1.7] text-white/25 opacity-0 transition-all group-hover:opacity-100 hover:text-white/60 hover:bg-white/[0.1]"
+                title="上移"
+                @click.stop="moveUp(row)"
+              >▲</button>
+              <button
+                v-if="canMoveDown(row)"
+                class="shrink-0 rounded px-[3px] text-[11px] leading-[1.7] text-white/25 opacity-0 transition-all group-hover:opacity-100 hover:text-white/60 hover:bg-white/[0.1]"
+                title="下移"
+                @click.stop="moveDown(row)"
+              >▼</button>
             </div>
             <div
               v-if="expanded[row.key]"
@@ -67,7 +60,6 @@
             :event="row.event"
           />
         </div>
-      </div>
     </template>
 
     <button
@@ -151,15 +143,12 @@ const groupedSpecs = computed(() => {
   return out
 })
 
-// ---- 事件排序（↑↓ 箭头按钮） ----
+// ---- 复合块整段移动（▲▼） ----
 
 const typeAt = (i: number) => {
   const t = store.chapter?.events[i]?.type
   return typeof t === 'string' ? t : ''
 }
-
-const isChapterEnd = (row: FoldedRow) =>
-  row.kind === 'event' && typeAt(row.index) === 'chapter_end'
 
 const rowStart = (row: FoldedRow) => (row.kind === 'group' ? row.from : row.index)
 const rowSpan = (row: FoldedRow) => (row.kind === 'group' ? row.to - row.from : 1)

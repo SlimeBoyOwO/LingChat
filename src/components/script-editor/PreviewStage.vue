@@ -231,6 +231,9 @@ watch(
         gameStore.currentInteractRoleId = id
         gameStore.presentRoleIds = [id]
         if (r.userName) gameStore.userName = r.userName
+        // 试玩中玩家副标题用玩家名作兜底，避免 player 事件的 displaySubtitle 为空时字幕丢失；
+        // 玩家名也为空时用「玩家」保底，保证字幕栏始终有内容
+        gameStore.userSubtitle = r.userName || gameStore.userSubtitle || '玩家'
         // 预载主角的立绘/名字到 gameRoles，否则第一句台词前画面是空的
         try {
           await gameStore.getOrCreateGameRole(id)
