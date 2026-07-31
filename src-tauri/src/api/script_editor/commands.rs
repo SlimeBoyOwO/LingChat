@@ -1389,6 +1389,9 @@ pub struct PreviewSession {
     script_status: Option<Box<ScriptStatus>>,
     /// 玩家名。begin 会按绑定角色卡覆盖它，必须单独存还原（scene 快照不含 player）
     user_name: String,
+    /// 玩家副标题。试玩期间剧本 settings 里可能覆盖它，还原时一并回退，
+    /// 否则不同角色的副标题会混搭到自由对话
+    user_subtitle: String,
 }
 
 impl PreviewSession {
@@ -1409,6 +1412,7 @@ impl PreviewSession {
             current_role_id: gs.current_role_id,
             script_status: gs.script_status.clone().map(Box::new),
             user_name: gs.player.user_name.clone(),
+            user_subtitle: gs.player.user_subtitle.clone(),
         };
 
         // ---- 按「刚进游戏」的样子搭场次，对齐 init_game_status 的三件事 ----
@@ -1463,6 +1467,7 @@ impl PreviewSession {
         gs.current_role_id = self.current_role_id;
         gs.script_status = self.script_status.map(|b| *b);
         gs.player.user_name = self.user_name;
+        gs.player.user_subtitle = self.user_subtitle;
         // 台词表变短了，角色记忆要按新的列表重建，否则里面还留着试玩的内容
         if let Err(e) = gs.refresh_memories(db).await {
             tracing::warn!("[ScriptEditor] 还原后刷新记忆失败: {}", e);

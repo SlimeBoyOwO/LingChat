@@ -88,12 +88,19 @@ type GameSnapshot = {
   currentInteractRoleId: number | null
   mainRoleId: number
   userName: string
+  /** 玩家副标题（试玩时可能被剧本/角色卡覆盖），退出时还原，否则不同角色标题混搭 */
+  userSubtitle: string
+  /** 当前场景（光照/滤镜作用域），脚本场景会影响后续自由对话立绘可见性 */
+  currentScene: typeof gameStore.currentScene
   currentLine: string
   currentStatus: typeof gameStore.currentStatus
   dialogHistory: typeof gameStore.dialogHistory
   command: string | null
   /** 试玩会往角色缓存里塞剧本角色，退出时要还回原样，否则回自由对话立绘会串/消失 */
   gameRoles: typeof gameStore.gameRoles
+  /** 标记游戏是否已初始化。MainChat 据此决定是否重跑 initializeGame，
+   *  退出编辑器时会在 leave() 里设为 false，这里存一下保持语义一致 */
+  initialized: boolean
 }
 
 let snapshot: GameSnapshot | null = null
@@ -104,6 +111,8 @@ const captureGameState = (): GameSnapshot => ({
   currentInteractRoleId: gameStore.currentInteractRoleId,
   mainRoleId: gameStore.mainRoleId,
   userName: gameStore.userName,
+  userSubtitle: gameStore.userSubtitle,
+  currentScene: gameStore.currentScene,
   currentLine: gameStore.currentLine,
   currentStatus: gameStore.currentStatus,
   dialogHistory: [...gameStore.dialogHistory],
@@ -120,11 +129,14 @@ const restoreGameState = (s: GameSnapshot) => {
   gameStore.currentInteractRoleId = s.currentInteractRoleId
   gameStore.mainRoleId = s.mainRoleId
   gameStore.userName = s.userName
+  gameStore.userSubtitle = s.userSubtitle
+  gameStore.currentScene = s.currentScene
   gameStore.currentLine = s.currentLine
   gameStore.currentStatus = s.currentStatus
   gameStore.dialogHistory = s.dialogHistory
   gameStore.command = s.command
   gameStore.gameRoles = s.gameRoles
+  gameStore.initialized = s.initialized
 }
 
 /**
@@ -148,6 +160,10 @@ type SceneSnapshot = {
   bgMusicPlaybackRate: number
   presentPic: string
   presentPicScale: number
+  // 角色标题/副标题：试玩期间脚本对话会把它们改成剧本 NPC 的名字，
+  // 不还原的话回自由对话仍显示错误的角色身份
+  showCharacterTitle: string
+  showCharacterSubtitle: string
   // currentSoundEffect 不存：它是「值变化即播放」的一次性触发型字段，
   // 还原成试玩前的路径会误重播；试玩结束直接清成 'None'（见 restoreSceneState）。
   ambientTracks: typeof uiStore.ambientTracks
@@ -163,6 +179,8 @@ const captureSceneState = (): SceneSnapshot => ({
   bgMusicPlaybackRate: uiStore.bgMusicPlaybackRate,
   presentPic: uiStore.currentPresentPic,
   presentPicScale: uiStore.currentPresentPicScale,
+  showCharacterTitle: uiStore.showCharacterTitle,
+  showCharacterSubtitle: uiStore.showCharacterSubtitle,
   // 深拷贝：ambientTracks 元素是对象，浅拷贝会与试玩期间的操作互相串改
   ambientTracks: uiStore.ambientTracks.map((t) => ({ ...t })),
 })
@@ -177,6 +195,8 @@ const restoreSceneState = (s: SceneSnapshot) => {
   uiStore.bgMusicPlaybackRate = s.bgMusicPlaybackRate
   uiStore.currentPresentPic = s.presentPic
   uiStore.currentPresentPicScale = s.presentPicScale
+  uiStore.showCharacterTitle = s.showCharacterTitle
+  uiStore.showCharacterSubtitle = s.showCharacterSubtitle
   // 音效是触发型字段，直接清成 'None'：GameBackground 的 watch 见 'None' 不会播放，
   // 既不误重播试玩前的音效，也清掉试玩留下的脏路径
   uiStore.currentSoundEffect = 'None'
