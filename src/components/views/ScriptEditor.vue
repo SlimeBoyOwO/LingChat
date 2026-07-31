@@ -584,7 +584,7 @@
                     <div v-if="!isImageKind(k.key)" class="flex items-center gap-2">
                       <audio
                         :ref="setAudioRef(f.path)"
-                        class="flex-1 h-[26px] min-w-0"
+                        class="asset-audio flex-1 h-[26px] min-w-0"
                         controls
                         preload="none"
                         controlslist="nodownload noremoteplayback"
@@ -1481,5 +1481,11 @@ onUnmounted(async () => {
 .char-thumb {
   background:
     repeating-conic-gradient(rgba(255, 255, 255, 0.08) 0% 25%, transparent 0% 50%) 0 0 / 10px 10px;
+}
+/* 隐藏 Chromium 原生音频控件的「更多选项」溢出菜单（内含播放速度/循环播放）。
+   速度调节已由右侧自制的 {rate}× ▾ 按钮提供，原生菜单是残留入口；
+   仅在 Chromium（WebView2/Chrome）存在该伪元素，其他平台无此菜单，无副作用 */
+.asset-audio::-webkit-media-controls-overflow-button {
+  display: none;
 }
 </style>
