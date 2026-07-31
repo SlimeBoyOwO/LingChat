@@ -14,6 +14,7 @@
       />
       <button
         class="flex items-center justify-center rounded-full bg-black/5 p-1 text-white/60 transition-all hover:rotate-90 hover:bg-white/10 hover:text-white"
+        title="角色设置"
         @click.stop="openSettingsModal"
       >
         <Settings :size="24" />
