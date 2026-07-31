@@ -44,7 +44,7 @@ impl ScriptLayout {
     }
 }
 
-pub fn scripts_root() -> PathBuf {
+fn scripts_root() -> PathBuf {
     game_data_dir().join("scripts")
 }
 
@@ -202,7 +202,7 @@ pub fn enumerate_script_keys() -> Vec<String> {
             continue;
         }
         let name1 = e1.file_name().to_string_lossy().to_string();
-        // 与 walk_chapters 同理：挡掉 .script_trash 之类的内部目录
+        // 跳过点号开头的目录（如 .tmp 临时目录、旧回收目录残留等）
         if name1.starts_with('.') {
             continue;
         }
@@ -285,11 +285,8 @@ fn walk_chapters(dir: &Path, prefix: &str, out: &mut Vec<String>) {
         let path = e.path();
         let name = e.file_name().to_string_lossy().to_string();
 
-        // 跳过点号开头的一切。`Chapters/.trash/` 里是删除章节的副本，
-        // 它们的 file_stem 形如 "main.1700000000"，扩展名仍是 .yaml —— 不挡住
-        // 就会被当成真章节，既污染章节列表和「下一章」下拉，也会给校验器的
-        // 可达性分析贡献虚假入边（每删一章多一条永久假警告）。
-        // 同时顺手挡掉编辑器写盘用的 .<name>.tmp 临时文件。
+        // 跳过点号开头的一切：编辑器写盘用的 .<name>.tmp 临时文件、
+        // 旧回收目录的残留等，不应被当成正经章节。
         if name.starts_with('.') {
             continue;
         }

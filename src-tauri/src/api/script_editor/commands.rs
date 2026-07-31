@@ -535,50 +535,24 @@ pub fn editor_delete_chapter(key: String, chapter_id: String) -> Result<(), Stri
     let dir = paths::resolve_script_dir(&key)?;
     let file = paths::resolve_chapter_file(&dir, &chapter_id, true)?;
 
-    // 不真删：移到 Chapters/.trash/ 下带时间戳的副本。
-    // 章节里可能是作者几个小时的工作量，误删不可逆是不可接受的。
-    let trash = dir.join("Chapters").join(".trash");
-    std::fs::create_dir_all(&trash).map_err(|e| format!("无法创建回收目录: {}", e))?;
-
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let flat = chapter_id.replace('/', "__");
-    let dest = trash.join(format!("{}.{}.yaml", flat, stamp));
-
-    std::fs::rename(&file, &dest)
-        .or_else(|_| std::fs::copy(&file, &dest).map(|_| ()).and_then(|_| std::fs::remove_file(&file)))
-        .map_err(|e| format!("删除章节失败: {}", e))?;
+    std::fs::remove_file(&file).map_err(|e| format!("删除章节失败: {}", e))?;
     Ok(())
 }
 
 /// 删除剧本内一个角色（整个 `characters/<folder>/` 目录）。
 ///
-/// 与章节、素材一样**不真删**：移到 `characters/.trash/<folder>.<时间戳>/`。
-/// 角色的人设和立绘都是作者的工作量，误删不可返是不可接受的；移进 .trash 后
-/// 校验器会把它当成不存在，被引用的角色会变成一条 `character.unknown` 诊断，
-/// 正好提示作者剧本里还有地方在引用它。
+/// 删除后校验器会把它当成不存在，被引用的角色会变成一条 `character.unknown` 诊断，
+/// 提示作者剧本里还有地方在引用它。
 #[tauri::command]
 pub fn editor_delete_character(key: String, folder: String) -> Result<(), String> {
     let dir = paths::resolve_script_dir(&key)?;
-    // folder 是用户输入的目录名，先走 sanitize 挡掉 ../ 之类的穿越
     let safe = paths::sanitize_folder_name(&folder)?;
     let target = dir.join("characters").join(&safe);
     if !target.exists() {
         return Err(format!("角色目录不存在: characters/{}", safe));
     }
 
-    let trash = dir.join("characters").join(".trash");
-    std::fs::create_dir_all(&trash).map_err(|e| format!("无法创建回收目录: {}", e))?;
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let dest = trash.join(format!("{}.{}", safe, stamp));
-
-    // .trash 就在 characters/ 下，与目标同卷，rename 必定成功（跨卷才需要回退到递归拷贝）
-    std::fs::rename(&target, &dest).map_err(|e| format!("删除角色失败: {}", e))?;
+    std::fs::remove_dir_all(&target).map_err(|e| format!("删除角色失败: {}", e))?;
     Ok(())
 }
 
@@ -707,23 +681,7 @@ pub async fn editor_create_script(
 pub fn editor_delete_script(key: String) -> Result<(), String> {
     let dir = paths::resolve_script_dir(&key)?;
 
-    // 同样不真删：整包移到 game_data/.script_trash/
-    let trash = game_data_dir().join(".script_trash");
-    std::fs::create_dir_all(&trash).map_err(|e| format!("无法创建回收目录: {}", e))?;
-
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let dest = trash.join(format!("{}.{}", key.replace('/', "__"), stamp));
-
-    // 与 editor_delete_chapter 保持一致：rename 跨设备会失败，退回「复制目录树 + 删原目录」
-    if std::fs::rename(&dir, &dest).is_err() {
-        copy_dir_recursive(&dir, &dest)
-            .map_err(|e| format!("复制剧本到回收目录失败: {}。剧本仍在原处", e))?;
-        std::fs::remove_dir_all(&dir)
-            .map_err(|e| format!("剧本已复制到回收目录，但删除原目录失败: {}", e))?;
-    }
+    std::fs::remove_dir_all(&dir).map_err(|e| format!("删除剧本失败: {}", e))?;
     Ok(())
 }
 
@@ -904,9 +862,7 @@ pub fn editor_list_asset_files(key: String, scope: AssetScope) -> Result<AssetFi
 
 /// 删除一个素材文件。
 ///
-/// 与章节、剧本一样**不真删**：移到同级的 `.trash/` 下带时间戳的副本。素材可能
-/// 是作者画了半天的图，而且删掉之后剧本里的引用会变成校验器的一条 `asset.missing`，
-/// 想反悔时得能捡回来。
+/// 删掉之后剧本里的引用会变成校验器的一条 `asset.missing` 诊断。
 #[tauri::command]
 pub fn editor_delete_asset(
     key: String,
@@ -914,7 +870,6 @@ pub fn editor_delete_asset(
     scope: AssetScope,
     name: String,
 ) -> Result<(), String> {
-    // 名字来自前端列表，仍然过一遍清洗：这是个会删文件的命令
     let name = paths::sanitize_file_name(&name)?;
 
     let files = editor_list_asset_files(key, scope)?;
@@ -932,25 +887,7 @@ pub fn editor_delete_asset(
         .ok_or_else(|| format!("找不到素材「{}」", name))?;
     let path = PathBuf::from(&target.path);
 
-    let trash = path
-        .parent()
-        .ok_or_else(|| "素材路径异常".to_string())?
-        .join(".trash");
-    std::fs::create_dir_all(&trash).map_err(|e| format!("无法创建回收目录: {}", e))?;
-
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let dest = trash.join(format!("{}.{}", stamp, name));
-
-    std::fs::rename(&path, &dest)
-        .or_else(|_| {
-            std::fs::copy(&path, &dest)
-                .map(|_| ())
-                .and_then(|_| std::fs::remove_file(&path))
-        })
-        .map_err(|e| format!("删除素材失败: {}", e))?;
+    std::fs::remove_file(&path).map_err(|e| format!("删除素材失败: {}", e))?;
     Ok(())
 }
 
@@ -1334,13 +1271,19 @@ pub async fn editor_start_preview(
         // 多个剧本的 story_config.yaml 写同一个名字时会互相覆盖。
         // 这里把 hashmap 返回的 script_path 与实际目录比对，不匹配说明读到了别的剧本，
         // 直接拒绝启动，并把双方路径打出来让作者看到。
-        let canonical_path = dir
+        // 双方都 canonicalize 后再比——Windows 上 canonicalize 会给路径加 \\?\ 前缀，
+        // 而 script.script_path 存在 HashMap 里时不带这个前缀，简单字符串比对会误报。
+        let resolved_dir = dir
             .canonicalize()
             .unwrap_or_else(|_| dir.clone());
-        if script.script_path != canonical_path {
+        let resolved_script = script
+            .script_path
+            .canonicalize()
+            .unwrap_or_else(|_| script.script_path.clone());
+        if resolved_script != resolved_dir {
             return Err(format!(
                 "剧本路径不匹配：请求 {} 但引擎返回的是 {}。可能原因：多个剧本的 story_config.yaml 里 script_name 重名，后扫的覆盖了前面的。",
-                canonical_path.display(),
+                resolved_dir.display(),
                 script.script_path.display(),
             ));
         }

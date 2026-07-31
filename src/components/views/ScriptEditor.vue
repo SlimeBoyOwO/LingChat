@@ -581,14 +581,27 @@
                   <div class="flex min-w-0 flex-1 flex-col gap-[3px]">
                     <span class="overflow-hidden text-[0.74rem] text-ellipsis whitespace-nowrap text-white/80">{{ f.name }}</span>
                     <span class="text-[0.64rem] text-white/35">{{ humanSize(f.size) }}</span>
-                    <audio
-                      v-if="!isImageKind(k.key)"
-                      class="w-full h-[26px]"
-                      controls
-                      preload="none"
-                      controlslist="nodownload noremoteplayback"
-                      :src="assetUrl(f.path)"
-                    ></audio>
+                    <div v-if="!isImageKind(k.key)" class="flex items-center gap-2">
+                      <audio
+                        :ref="setAudioRef(f.path)"
+                        class="flex-1 h-[26px] min-w-0"
+                        controls
+                        preload="none"
+                        controlslist="nodownload noremoteplayback"
+                        :src="assetUrl(f.path)"
+                      ></audio>
+                      <div class="flex shrink-0 items-center gap-0.5">
+                        <button
+                          v-for="rate in [0.5, 0.75, 1, 1.25, 1.5, 2]"
+                          :key="rate"
+                          class="shrink-0 rounded px-1 py-0.5 text-[0.6rem] border transition-all"
+                          :class="audioRates[f.path] === rate
+                            ? 'border-brand/40 text-brand bg-brand/10'
+                            : 'border-white/10 text-white/40 hover:text-white/70 hover:border-white/20'"
+                          @click="setRate(f.path, rate)"
+                        >{{ rate }}×</button>
+                      </div>
+                    </div>
                   </div>
                   <button
                     class="shrink-0 rounded px-[5px] text-[11px] text-white/25 opacity-0 transition-all duration-150 group-hover:opacity-100 hover:text-red-300 hover:bg-red-400/15"
@@ -743,9 +756,10 @@
       >
         <div
           v-if="modal"
-          class="fixed inset-0 z-[9999] flex items-center justify-center p-4 backdrop-blur-md bg-black/55"
+          class="modal-mask fixed inset-0 z-[9999] flex items-center justify-center p-4 backdrop-blur-md bg-black/55"
           @click.self="modal = null"
         >
+          <!-- 主弹窗 -->
           <div class="w-[min(440px,92vw)] max-h-[86vh] overflow-y-auto border border-white/12.5 rounded-xl py-4 px-[18px] pb-[18px] bg-[rgba(12,20,30,0.86)] backdrop-blur-lg backdrop-saturate-[1.4] shadow-[0_8px_32px_rgba(0,0,0,0.45),inset_0_1px_1px_rgba(255,255,255,0.06)]">
             <div class="flex items-center gap-2 border-b-2 border-brand pb-2 mb-4">
               <h4 class="font-semibold text-white">{{ modalTitle }}</h4>
@@ -830,9 +844,9 @@
                   g.alreadyInScript
                     ? 'cursor-default border-white/10 opacity-45'
                     : 'cursor-pointer border-white/10 hover:border-brand hover:bg-[rgba(121,217,255,0.08)]',
-                  importForm.folder === g.folder && !g.alreadyInScript ? '!border-brand bg-brand/20 ring-1 ring-brand/30' : '',
+                  importForm.folders.has(g.folder) && !g.alreadyInScript ? '!border-brand bg-brand/20 ring-1 ring-brand/30' : '',
                 ]"
-                @click="g.alreadyInScript || (importForm.folder = g.folder)"
+                @click="g.alreadyInScript ? null : importForm.folders.has(g.folder) ? importForm.folders.delete(g.folder) : importForm.folders.add(g.folder)"
               >
                 <span class="font-semibold text-white">{{ g.aiName }}</span>
                 <code class="font-mono text-brand">{{ g.folder }}</code>
@@ -845,6 +859,11 @@
                   v-else-if="!g.hasAvatar"
                   class="ml-auto text-xs text-yellow-200"
                   >没有立绘</span
+                >
+                <span
+                  v-if="importForm.folders.has(g.folder)"
+                  class="ml-auto text-xs text-brand"
+                  >已选 ✓</span
                 >
               </div>
 
@@ -922,7 +941,7 @@
       >
         <div
           v-if="shortcutHelp"
-          class="fixed inset-0 z-[9999] flex items-center justify-center p-4 backdrop-blur-md bg-black/55"
+          class="modal-mask fixed inset-0 z-[9999] flex items-center justify-center p-4 backdrop-blur-md bg-black/55"
           @click.self="shortcutHelp = false"
         >
           <div class="w-[min(440px,92vw)] max-h-[86vh] overflow-y-auto border border-white/12.5 rounded-xl py-4 px-[18px] pb-[18px] bg-[rgba(12,20,30,0.86)] backdrop-blur-lg backdrop-saturate-[1.4] shadow-[0_8px_32px_rgba(0,0,0,0.45),inset_0_1px_1px_rgba(255,255,255,0.06)]">
@@ -1010,6 +1029,20 @@ const humanSize = (n: number) => {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`
   return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+
+// ---- 素材音频播放速度 ----
+const audioEls: Record<string, HTMLAudioElement | null> = {}
+const audioRates: Record<string, number> = {}
+const setAudioRef = (path: string) => (el: unknown) => {
+  audioEls[path] = el as HTMLAudioElement | null
+}
+const setRate = (path: string, rate: number) => {
+  const a = audioEls[path]
+  if (a) {
+    a.playbackRate = rate
+    audioRates[path] = rate
+  }
 }
 
 // ---- nav 指示条（与 SettingsNav 同一套做法）----
@@ -1186,7 +1219,7 @@ const importAsset = async (kind: AssetKind, scope: AssetScope) => {
 // ---- 弹窗 ----
 const modal = ref<'script' | 'chapter' | 'character' | 'importChar' | null>(null)
 
-const importForm = reactive({ folder: '', withAvatar: false })
+const importForm = reactive({ folders: new Set<string>(), withAvatar: false })
 
 const MODAL_TITLES: Record<string, string> = {
   script: '新建剧本',
@@ -1230,9 +1263,11 @@ const confirmModal = async () => {
     await store.createCharacter(charForm.folder, charForm.aiName, charForm.systemPrompt)
     Object.assign(charForm, { folder: '', aiName: '', systemPrompt: '' })
   } else if (which === 'importChar') {
-    if (!importForm.folder) return
-    await store.importGlobalCharacter(importForm.folder, importForm.withAvatar)
-    importForm.folder = ''
+    if (importForm.folders.size === 0) return
+    for (const folder of importForm.folders) {
+      await store.importGlobalCharacter(folder, importForm.withAvatar)
+    }
+    importForm.folders.clear()
   }
 }
 

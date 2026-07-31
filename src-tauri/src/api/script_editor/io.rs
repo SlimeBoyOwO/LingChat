@@ -52,7 +52,7 @@ pub fn ensure_parent_dir(path: &Path) -> Result<(), String> {
 ///
 /// 只保留最近一份 —— 真正的历史由编辑器的撤销栈负责，`.bak` 只是防「写坏了
 /// 而且已经关掉编辑器」这一种情况。
-pub fn backup_if_exists(path: &Path) -> Result<(), String> {
+fn backup_if_exists(path: &Path) -> Result<(), String> {
     if !path.is_file() {
         return Ok(());
     }
@@ -66,7 +66,7 @@ pub fn backup_if_exists(path: &Path) -> Result<(), String> {
 /// 原子写：同目录临时文件 → fsync → rename。
 ///
 /// 临时文件必须与目标同目录，否则 rename 可能跨设备而退化成非原子的复制。
-pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
+fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let dir = path
         .parent()
         .ok_or_else(|| format!("目标路径没有父目录: {:?}", path))?;

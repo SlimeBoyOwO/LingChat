@@ -29,7 +29,7 @@ export interface UndoFrame {
 }
 
 /** 状态的「值形状」（非响应式视图），仅作类型/文档用；运行期见 useEditorState */
-export interface State {
+interface State {
   schema: ScriptSchema | null
   scripts: ScriptPackage[]
   loading: boolean

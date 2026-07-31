@@ -11,7 +11,7 @@ import { invoke } from '@tauri-apps/api/core'
 // schema（由 Rust 导出，驱动全部表单与校验）
 // ============================================================
 
-export type FieldKind =
+type FieldKind =
   | 'text'
   | 'textarea'
   | 'number'
@@ -49,20 +49,20 @@ export interface EventSpec {
   fields: FieldSpec[]
 }
 
-export interface ActionSpec {
+interface ActionSpec {
   typeKey: string
   label: string
   hint: string
   allowedIn: string[]
 }
 
-export interface UnlockConditionSpec {
+interface UnlockConditionSpec {
   typeKey: string
   label: string
   fields: FieldSpec[]
 }
 
-export interface ConditionSyntax {
+interface ConditionSyntax {
   supported: string[]
   unsupported: string[]
   note: string
@@ -82,7 +82,7 @@ export interface ScriptSchema {
 // 剧本包
 // ============================================================
 
-export type ScriptLayout = 'character' | 'standalone' | 'flat'
+type ScriptLayout = 'character' | 'standalone' | 'flat'
 
 export interface ScriptPackage {
   key: string
@@ -148,7 +148,7 @@ export interface ChapterContent {
 // 校验
 // ============================================================
 
-export type Severity = 'error' | 'warn' | 'info'
+type Severity = 'error' | 'warn' | 'info'
 
 export interface Diagnostic {
   severity: Severity

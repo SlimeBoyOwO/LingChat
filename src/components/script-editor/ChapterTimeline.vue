@@ -21,10 +21,10 @@
            上松手根本不触发（issue #1）。现在行容器本身也是落点——悬停哪行就把
            dropAt 设成"插到它前面"，与上方 .slot 同一套语义。落点高亮用顶部描边。 -->
       <div
-        class="cursor-grab active:cursor-grabbing"
+        class="cursor-grab active:cursor-grabbing draggable-row"
         :class="{
           'opacity-35': isDragged(row),
-          'shadow-[inset_0_2px_0_var(--accent-color)]':
+          'drop-before':
             dropAt === rowStart(row) && dragging !== null && !isDragged(row),
         }"
         :draggable="canDrag(row)"
@@ -101,7 +101,7 @@
       >
         <div
           v-if="paletteOpen"
-          class="fixed inset-0 z-[9999] flex items-center justify-center backdrop-blur-md bg-black/55"
+          class="modal-mask fixed inset-0 z-[9999] flex items-center justify-center backdrop-blur-md bg-black/55"
           @click.self="paletteOpen = false"
         >
           <div class="w-[min(560px,92vw)] max-h-[80vh] overflow-y-auto border border-white/12.5 rounded-xl py-4 px-[18px] pb-[18px] bg-[rgba(12,20,30,0.86)] backdrop-blur-lg backdrop-saturate-[1.4] shadow-[0_8px_32px_rgba(0,0,0,0.45),inset_0_1px_1px_rgba(255,255,255,0.06)]">
@@ -284,5 +284,9 @@ const insert = (typeKey: string) => {
   background: #2b3a4a;
   border: 2px solid #94a3b8;
   transform: rotate(45deg);
+}
+/* 拖拽落点指示：var(--accent-color) 在 Tailwind v4 任意值里编译不可靠，保留在 scoped 块 */
+.draggable-row.drop-before {
+  box-shadow: inset 0 2px 0 var(--accent-color);
 }
 </style>
