@@ -18,6 +18,24 @@
   --animate-fade-in-up: fadeInUp 0.8s ease-out forwards;
 }
 
+/* ─── 刘海屏安全区变量 ──────────────────────────────────── */
+/* 优先使用原生注入的 --safe-area-inset-*, 回退到 env(), 再回退到 0px */
+:root {
+  --safe-area-inset-top: env(safe-area-inset-top, 0px);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-inset-left: env(safe-area-inset-left, 0px);
+  --safe-area-inset-right: env(safe-area-inset-right, 0px);
+}
+
+/* ─── 安全区快捷工具类 ─────────────────────────────────── */
+.pt-safe { padding-top: var(--safe-area-inset-top); }
+.pb-safe { padding-bottom: var(--safe-area-inset-bottom); }
+.pl-safe { padding-left: var(--safe-area-inset-left); }
+.pr-safe { padding-right: var(--safe-area-inset-right); }
+/* 带 gap 的变体（给状态栏/Home Indicator 额外留 8px 呼吸空间） */
+.pt-safe-gap { padding-top: calc(8px + var(--safe-area-inset-top)); }
+.pb-safe-gap { padding-bottom: calc(8px + var(--safe-area-inset-bottom)); }
+
 @keyframes spin {
   0% {
     transform: rotate(0deg);
