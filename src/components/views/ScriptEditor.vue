@@ -1365,13 +1365,18 @@ onMounted(async () => {
   observeNav()
 })
 
-onUnmounted(() => {
+onUnmounted(async () => {
   window.removeEventListener('keydown', onKey)
   navObserver?.disconnect()
   navObserver = null
-  void store.stopPreview()
+  // 等待试玩完全停止（含后端恢复）再标记未初始化，避免 MainChat 随后立即
+  // 挂载时读到后端尚未还原的脏 line_list。
+  try {
+    await store.stopPreview()
+  } catch {
+    /* stopPreview 抛错不阻断清理 */
+  }
   void store.flushPendingSave()
-  // 同上：编辑器卸载时标记 game 未初始化，下次进自由对话触发完整 init
   gameStore.initialized = false
 })
 </script>

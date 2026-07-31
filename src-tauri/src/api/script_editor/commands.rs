@@ -1329,6 +1329,22 @@ pub async fn editor_start_preview(
                 )
             })?
             .clone();
+
+        // 防御同名 script_name 导致的串读：HashMap 用 script_name 作 key，
+        // 多个剧本的 story_config.yaml 写同一个名字时会互相覆盖。
+        // 这里把 hashmap 返回的 script_path 与实际目录比对，不匹配说明读到了别的剧本，
+        // 直接拒绝启动，并把双方路径打出来让作者看到。
+        let canonical_path = dir
+            .canonicalize()
+            .unwrap_or_else(|_| dir.clone());
+        if script.script_path != canonical_path {
+            return Err(format!(
+                "剧本路径不匹配：请求 {} 但引擎返回的是 {}。可能原因：多个剧本的 story_config.yaml 里 script_name 重名，后扫的覆盖了前面的。",
+                canonical_path.display(),
+                script.script_path.display(),
+            ));
+        }
+
         (
             script,
             service.game_status.clone(),
