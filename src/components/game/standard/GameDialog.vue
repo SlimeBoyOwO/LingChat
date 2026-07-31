@@ -293,6 +293,20 @@ function writeInlineHtml(_element: HTMLElement, text: string): void {
   }
 }
 
+// 立即把当前台词写入显示元素（不经过打字动画；供挂载恢复使用）
+function renderLineInstant(line: string) {
+  currentDisplayedText.value = line
+  if (settingsStore.text.inlineMotionText) {
+    const text = uiStore.showCharacterMotionText
+      ? line + '\n' + uiStore.showCharacterMotionText
+      : line
+    if (inlineDisplayRef.value) writeInlineHtml(inlineDisplayRef.value, text)
+  } else if (textareaRef.value) {
+    textareaRef.value.value = line
+    inputMessage.value = line // 与 v-model 同步，防止重渲染把值重置为空
+  }
+}
+
 // 标准模式 TypeWriter（textarea）
 const {
   startTyping: startTextTyping,
@@ -535,6 +549,12 @@ let unlistenScreenshot: (() => void) | null = null
 let unlistenCancelled: (() => void) | null = null
 
 onMounted(async () => {
+  // 模式切换重挂载：立即从 store 恢复当前台词（不重播打字动画）
+  const restoreLine = uiStore.showCharacterLine
+  if (restoreLine && restoreLine !== '' && gameStore.currentStatus !== 'input') {
+    renderLineInstant(restoreLine)
+  }
+
   document.addEventListener('contextmenu', handleDialogShow)
   // 初始化语音识别对象
   speechRecognition = initSpeechRecognition()
