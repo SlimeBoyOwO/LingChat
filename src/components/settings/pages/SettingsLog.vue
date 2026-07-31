@@ -29,6 +29,15 @@
 
             <button
               class="icon-btn"
+              :class="{ active: autoScroll }"
+              title="自动滚动到底部"
+              @click="toggleAutoScroll"
+            >
+              <ArrowDown :size="14" />
+            </button>
+
+            <button
+              class="icon-btn"
               :class="{ active: paused }"
               :title="paused ? '继续' : '暂停'"
               @click="paused = !paused"
@@ -48,6 +57,7 @@
           ref="logContainer"
           class="log-area scrollbar-thin flex-1 min-h-0 overflow-y-auto rounded-xl px-3 py-3"
           :style="{ scrollbarColor: 'var(--accent-color, #79d9ff) transparent' }"
+          @scroll="handleScroll"
         >
           <div
             v-if="filteredLogs.length === 0"
@@ -90,7 +100,7 @@ import { invoke } from '@tauri-apps/api/core'
 import type { UnlistenFn } from '@tauri-apps/api/event'
 import { MenuPage, MenuItem } from '../../ui'
 import { useUIStore } from '@/stores/modules/ui/ui'
-import { ScrollText, Pause, Play, Trash2 } from 'lucide-vue-next'
+import { ScrollText, Pause, Play, Trash2, ArrowDown } from 'lucide-vue-next'
 
 const uiStore = useUIStore()
 
@@ -115,6 +125,7 @@ const logs = ref<LogEntry[]>([])
 const visibleLevels = ref(new Set<string>(levels.map((l) => l.key)))
 const paused = ref(false)
 const pendingCount = ref(0)
+const autoScroll = ref(true)
 const logContainer = ref<HTMLElement | null>(null)
 let unlisten: UnlistenFn | null = null
 
@@ -142,12 +153,28 @@ function clearLogs() {
   pendingCount.value = 0
 }
 
-function scrollToBottom() {
+function scrollToBottom(force = false) {
+  if (!force && !autoScroll.value) return
   nextTick(() => {
     if (logContainer.value) {
       logContainer.value.scrollTop = logContainer.value.scrollHeight
     }
   })
+}
+
+function toggleAutoScroll() {
+  autoScroll.value = !autoScroll.value
+  if (autoScroll.value) {
+    scrollToBottom(true)
+  }
+}
+
+// 用户向上滚动时暂停自动滚动，回到底部时恢复
+function handleScroll() {
+  const el = logContainer.value
+  if (!el) return
+  const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+  autoScroll.value = atBottom
 }
 
 onMounted(async () => {
@@ -249,13 +276,12 @@ watch(paused, (now) => {
   font-size: 13px;
   line-height: 1.7;
   max-height: 70vh;
+  overflow-x: hidden;
 }
 
-/* Log line */
+/* Log line — 终端式布局：元信息内联，长文本折行后占满整行宽度 */
 .log-line {
-  display: flex;
-  gap: 10px;
-  align-items: baseline;
+  display: block;
   padding: 1px 0;
   border-radius: 2px;
 }
@@ -265,7 +291,8 @@ watch(paused, (now) => {
 
 /* Timestamp */
 .timestamp {
-  flex-shrink: 0;
+  display: inline-block;
+  margin-right: 10px;
   min-width: 88px;
   color: rgba(255, 255, 255, 0.28);
   font-size: 12px;
@@ -274,7 +301,8 @@ watch(paused, (now) => {
 
 /* Level badge */
 .level-tag {
-  flex-shrink: 0;
+  display: inline-block;
+  margin-right: 10px;
   width: 38px;
   font-size: 10px;
   font-weight: 700;
@@ -306,19 +334,23 @@ watch(paused, (now) => {
 
 /* Target module path */
 .target {
-  flex-shrink: 0;
+  display: inline;
+  margin-right: 10px;
   color: rgba(255, 255, 255, 0.4);
   font-size: 12px;
+  overflow-wrap: anywhere;
 }
 .target::after {
   content: ':';
 }
 
-/* Message */
+/* Message — 内联流式排列，折行后像终端一样占满整行 */
 .message {
+  display: inline;
   color: rgba(255, 255, 255, 0.85);
-  word-break: break-all;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* Per-level message color tint */
@@ -332,11 +364,8 @@ watch(paused, (now) => {
   color: rgba(255, 255, 255, 0.45);
 }
 
-/* Narrow screen: two-row log layout */
+/* Narrow screen: 时间戳等元信息更紧凑 */
 .log-line--narrow {
-  flex-wrap: wrap;
-  column-gap: 10px;
-  row-gap: 1px;
   padding: 2px 0;
 }
 .log-line--narrow .target::after {
