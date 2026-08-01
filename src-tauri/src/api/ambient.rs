@@ -189,7 +189,7 @@ pub async fn delete_ambient(app: AppHandle, url: String) -> Result<Vec<AmbientIt
 #[tauri::command]
 pub fn save_ambient_state(app: tauri::AppHandle, tracks_json: String) -> Result<(), String> {
     let store = app
-        .store(crate::config::STORE_FILE)
+        .store(crate::config::store_path())
         .map_err(|e| format!("打开存储失败: {e}"))?;
     store.set(
         crate::config::session::LAST_AMBIENT_TRACKS.to_string(),

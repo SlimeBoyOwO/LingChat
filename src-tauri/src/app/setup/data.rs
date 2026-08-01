@@ -47,6 +47,31 @@ pub async fn bootstrap(app: &tauri::App<tauri::Wry>) -> Result<(DatabaseConnecti
     // 迁移旧的主动视觉独立配置（VD_*）→ 大模型管理中的视觉模型角色
     migrate_legacy_vision_keys(&app.handle());
 
+    // 迁移旧的 settings.json（从 tauri-plugin-store 默认路径 → DATA_DIR）
+    // 解决 Android 上内部存储 (/data/data/...) 与外部存储不同目录的配置丢失问题
+    {
+        use tauri::Manager;
+        let new_path = crate::config::store_path();
+        for base_dir in [
+            app.path().app_data_dir().ok(),
+            app.path().app_local_data_dir().ok(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            let old_path = base_dir.join("settings.json");
+            if old_path != new_path && old_path.exists() && !new_path.exists() {
+                tracing::info!("迁移 settings.json: {:?} → {:?}", old_path, new_path);
+                if let Err(e) = std::fs::rename(&old_path, &new_path) {
+                    tracing::warn!("迁移 settings.json 失败: {:#}", e);
+                }
+            }
+        }
+    }
+    // settings.json 写坏兜底：tauri-plugin-store 的 save() 是 fs::write 直接写（非原子），
+    // 外部存储写盘被杀会损坏文件 → 空 store 覆盖 → 配置"离奇重置"。启动时若损坏且有 .bak 则恢复。
+    crate::config::recover_settings_if_corrupted();
+
     // 提前加载配置 + 构建 LlmClient（AIService 的子成员 GameRoleManager 需要它）
     let app_config = AppConfig::load(&app.handle()).unwrap_or_default();
     tracing::info!(
