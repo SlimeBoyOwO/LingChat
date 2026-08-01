@@ -1,9 +1,17 @@
 <template>
   <!-- 日志已弹出到独立窗口：显示占位提示 -->
-  <div v-if="!standalone && popped" class="popped-placeholder">
+  <div
+    v-if="!standalone && popped"
+    class="flex-1 min-h-0 max-h-[70vh] flex flex-col items-center justify-center gap-3.5 border border-dashed border-white/20 rounded-xl bg-black/40 text-white/55 px-4 py-8"
+  >
     <PictureInPicture2 :size="36" />
-    <div class="popped-text">日志已弹出到独立窗口，请在独立窗口中查看</div>
-    <button class="popback-btn" @click="popoutWindow">聚焦日志窗口</button>
+    <div class="text-sm text-center leading-loose">日志已弹出到独立窗口，请在独立窗口中查看</div>
+    <button
+      class="px-4 py-1.5 rounded-lg border-none bg-(--accent-color,#79d9ff) text-[#0b2530] text-[13px] font-semibold cursor-pointer transition-all duration-200 hover:-translate-y-px hover:shadow-[0_4px_10px_rgba(121,217,255,0.4)]"
+      @click="popoutWindow"
+    >
+      聚焦日志窗口
+    </button>
   </div>
 
   <div v-else class="flex flex-col h-full min-h-0">
@@ -13,8 +21,12 @@
         <button
           v-for="lvl in levels"
           :key="lvl.key"
-          class="filter-btn"
-          :class="{ active: isLevelVisible(lvl.key) }"
+          class="text-[11px] font-semibold px-2.5 py-[3px] rounded-md border border-transparent bg-[#e9ecef] text-[#495057] cursor-pointer transition-all duration-200 tracking-[0.3px] hover:bg-(--accent-color,#79d9ff) hover:text-white hover:-translate-y-px hover:shadow-[0_4px_10px_rgba(121,217,255,0.4)]"
+          :class="
+            isLevelVisible(lvl.key)
+              ? 'bg-(--lvl-bg)! border-(--lvl-color)! text-(--lvl-color)! hover:bg-(--lvl-color)! hover:text-white!'
+              : ''
+          "
           :style="{
             '--lvl-color': lvl.color,
             '--lvl-bg': lvl.color + '22',
@@ -29,8 +41,8 @@
         <span class="text-sm text-gray-400">{{ visibleCount }} / {{ logs.length }}</span>
 
         <button
-          v-if="!standalone"
-          class="icon-btn"
+          v-if="!standalone && canPopout"
+          :class="ICON_BTN"
           title="弹出独立窗口"
           @click="popoutWindow"
         >
@@ -38,8 +50,8 @@
         </button>
 
         <button
-          class="icon-btn"
-          :class="{ active: autoOpen }"
+          v-if="canPopout"
+          :class="[ICON_BTN, autoOpen && ICON_BTN_ACTIVE]"
           title="启动时自动打开日志窗口"
           @click="toggleAutoOpen"
         >
@@ -47,8 +59,7 @@
         </button>
 
         <button
-          class="icon-btn"
-          :class="{ active: autoScroll }"
+          :class="[ICON_BTN, autoScroll && ICON_BTN_ACTIVE]"
           title="自动滚动到底部"
           @click="toggleAutoScroll"
         >
@@ -56,8 +67,7 @@
         </button>
 
         <button
-          class="icon-btn"
-          :class="{ active: paused }"
+          :class="[ICON_BTN, paused && ICON_BTN_ACTIVE]"
           :title="paused ? '继续' : '暂停'"
           @click="paused = !paused"
         >
@@ -65,7 +75,7 @@
           <Play v-else :size="14" />
         </button>
 
-        <button class="icon-btn" title="清空" @click="clearLogs">
+        <button :class="ICON_BTN" title="清空" @click="clearLogs">
           <Trash2 :size="14" />
         </button>
       </div>
@@ -74,8 +84,8 @@
     <!-- Log area -->
     <div
       ref="logContainer"
-      class="log-area scrollbar-thin flex-1 min-h-0 overflow-y-auto rounded-xl px-3 py-3"
-      :class="{ 'log-area--standalone': standalone }"
+      class="scrollbar-thin flex-1 min-h-0 overflow-y-auto overflow-x-hidden rounded-xl px-3 py-3 bg-black/65 border border-white/10 backdrop-blur-md text-[13px] leading-[1.7] font-['Cascadia_Code','Fira_Code','JetBrains_Mono','Consolas',monospace]"
+      :class="standalone ? 'max-h-none' : 'max-h-[70vh]'"
       :style="{ scrollbarColor: 'var(--accent-color, #79d9ff) transparent' }"
       @scroll="handleScroll"
     >
@@ -87,17 +97,30 @@
       </div>
 
       <template v-for="(entry, _idx) in filteredLogs" :key="_idx">
+        <!-- 终端式布局：元信息内联，长文本折行后占满整行宽度 -->
         <div
-          :class="[
-            'log-line',
-            entry.level.toLowerCase(),
-            { 'log-line--narrow': uiStore.isNarrowScreen },
-          ]"
+          class="block py-px rounded-sm hover:bg-white/[0.04]"
+          :class="{ 'py-0.5': uiStore.isNarrowScreen }"
         >
-          <span class="timestamp">{{ entry.timestamp }}</span>
-          <span :class="['level-tag', entry.level.toLowerCase()]">{{ entry.level }}</span>
-          <span class="target">{{ entry.target }}</span>
-          <span class="message" :class="{ 'w-full': uiStore.isNarrowScreen }">{{ entry.message }}</span>
+          <span
+            class="inline-block mr-2.5 min-w-[88px] text-white/30 text-xs tabular-nums"
+            >{{ entry.timestamp }}</span
+          >
+          <span
+            class="inline-block mr-2.5 w-[38px] text-[10px] font-bold text-center rounded-[3px] px-1 leading-[18px]"
+            :class="levelTagClass(entry.level)"
+            >{{ entry.level }}</span
+          >
+          <span
+            class="inline mr-2.5 text-white/40 text-xs wrap-anywhere"
+            :class="uiStore.isNarrowScreen ? 'after:content-none' : `after:content-[':']`"
+            >{{ entry.target }}</span
+          >
+          <span
+            class="inline text-white/85 whitespace-pre-wrap wrap-anywhere break-words"
+            :class="[messageTintClass(entry.level), { 'w-full': uiStore.isNarrowScreen }]"
+            >{{ entry.message }}</span
+          >
         </div>
       </template>
 
@@ -117,12 +140,16 @@ import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import type { UnlistenFn } from '@tauri-apps/api/event'
 import { useUIStore } from '@/stores/modules/ui/ui'
+import { isAndroid } from '@/utils/platform'
 import { Pause, Play, Trash2, ArrowDown, PictureInPicture2, Rocket } from 'lucide-vue-next'
 
 // standalone=true 时渲染在独立日志窗口里（隐藏“弹出独立窗口”按钮）
 const props = withDefaults(defineProps<{ standalone?: boolean }>(), { standalone: false })
 
 const uiStore = useUIStore()
+
+// 移动端（Android WebView）不支持多窗口，隐藏弹窗相关按钮
+const canPopout = !isAndroid()
 
 interface LogEntry {
   timestamp: string
@@ -138,6 +165,27 @@ const levels = [
   { key: 'DEBUG', label: 'DEBG', color: '#61afef' },
   { key: 'TRACE', label: 'TRCE', color: '#c678dd' },
 ]
+
+// 等级徽章 / 消息染色（静态类名，保证 Tailwind 能扫描到）
+const LEVEL_TAG_CLASSES: Record<string, string> = {
+  error: 'text-[#f44747] bg-[rgba(244,71,71,0.14)]',
+  warn: 'text-[#e5c07b] bg-[rgba(229,192,123,0.12)]',
+  info: 'text-[#98c379] bg-[rgba(152,195,121,0.1)]',
+  debug: 'text-[#61afef] bg-[rgba(97,175,239,0.12)]',
+  trace: 'text-[#c678dd] bg-[rgba(198,120,221,0.1)]',
+}
+const MESSAGE_TINT_CLASSES: Record<string, string> = {
+  error: 'text-[#fca5a5]!',
+  warn: 'text-[#fde68a]!',
+  trace: 'text-[rgba(255,255,255,0.45)]!',
+}
+const levelTagClass = (level: string) => LEVEL_TAG_CLASSES[level.toLowerCase()] ?? ''
+const messageTintClass = (level: string) => MESSAGE_TINT_CLASSES[level.toLowerCase()] ?? ''
+
+// 工具栏图标按钮（Tailwind 类，提取常量避免重复）
+const ICON_BTN =
+  'flex items-center justify-center w-7 h-7 rounded-md border-none bg-white/[0.08] text-white/60 cursor-pointer transition-all duration-200 hover:bg-white/15 hover:text-white'
+const ICON_BTN_ACTIVE = 'bg-[rgba(121,217,255,0.2)]! text-(--accent-color,#79d9ff)!'
 
 const MAX_LOGS = 5000
 const AUTO_OPEN_KEY = 'lingchat_log_window_auto_open'
@@ -262,203 +310,3 @@ watch(paused, (now) => {
 })
 </script>
 
-<style scoped>
-/* 已弹出到独立窗口时的占位提示 */
-.popped-placeholder {
-  flex: 1;
-  min-height: 0;
-  max-height: 70vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  border: 1px dashed rgba(255, 255, 255, 0.22);
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.4);
-  color: rgba(255, 255, 255, 0.55);
-  padding: 32px 16px;
-}
-.popped-text {
-  font-size: 14px;
-  text-align: center;
-  line-height: 1.8;
-}
-.popback-btn {
-  padding: 6px 16px;
-  border-radius: 8px;
-  border: none;
-  background: var(--accent-color, #79d9ff);
-  color: #0b2530;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-.popback-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 10px rgba(121, 217, 255, 0.4);
-}
-
-/* Filter level buttons — matching the project's button style */
-.filter-btn {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 3px 10px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: #e9ecef;
-  color: #495057;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  letter-spacing: 0.3px;
-}
-.filter-btn:hover {
-  background: var(--accent-color, #79d9ff);
-  color: #fff;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 10px rgba(121, 217, 255, 0.4);
-}
-.filter-btn.active {
-  background: var(--lvl-bg);
-  border-color: var(--lvl-color);
-  color: var(--lvl-color);
-}
-.filter-btn.active:hover {
-  background: var(--lvl-color);
-  color: #fff;
-}
-
-/* Icon buttons */
-.icon-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: none;
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.6);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-.icon-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
-  color: #fff;
-}
-.icon-btn.active {
-  background: rgba(121, 217, 255, 0.2);
-  color: var(--accent-color, #79d9ff);
-}
-
-/* Log area — glass-morphism matching project style */
-.log-area {
-  background: rgba(0, 0, 0, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur-md;
-  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
-  font-size: 13px;
-  line-height: 1.7;
-  max-height: 70vh;
-  overflow-x: hidden;
-}
-
-/* 独立窗口模式：日志区占满整个窗口高度 */
-.log-area--standalone {
-  max-height: none;
-}
-
-/* Log line — 终端式布局：元信息内联，长文本折行后占满整行宽度 */
-.log-line {
-  display: block;
-  padding: 1px 0;
-  border-radius: 2px;
-}
-.log-line:hover {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-/* Timestamp */
-.timestamp {
-  display: inline-block;
-  margin-right: 10px;
-  min-width: 88px;
-  color: rgba(255, 255, 255, 0.28);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Level badge */
-.level-tag {
-  display: inline-block;
-  margin-right: 10px;
-  width: 38px;
-  font-size: 10px;
-  font-weight: 700;
-  text-align: center;
-  border-radius: 3px;
-  padding: 0 4px;
-  line-height: 18px;
-}
-.level-tag.error {
-  color: #f44747;
-  background: rgba(244, 71, 71, 0.14);
-}
-.level-tag.warn {
-  color: #e5c07b;
-  background: rgba(229, 192, 123, 0.12);
-}
-.level-tag.info {
-  color: #98c379;
-  background: rgba(152, 195, 121, 0.1);
-}
-.level-tag.debug {
-  color: #61afef;
-  background: rgba(97, 175, 239, 0.12);
-}
-.level-tag.trace {
-  color: #c678dd;
-  background: rgba(198, 120, 221, 0.1);
-}
-
-/* Target module path */
-.target {
-  display: inline;
-  margin-right: 10px;
-  color: rgba(255, 255, 255, 0.4);
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
-.target::after {
-  content: ':';
-}
-
-/* Message — 内联流式排列，折行后像终端一样占满整行 */
-.message {
-  display: inline;
-  color: rgba(255, 255, 255, 0.85);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-/* Per-level message color tint */
-.log-line.error .message {
-  color: #fca5a5;
-}
-.log-line.warn .message {
-  color: #fde68a;
-}
-.log-line.trace .message {
-  color: rgba(255, 255, 255, 0.45);
-}
-
-/* Narrow screen: 时间戳等元信息更紧凑 */
-.log-line--narrow {
-  padding: 2px 0;
-}
-.log-line--narrow .target::after {
-  content: none;
-}
-</style>
