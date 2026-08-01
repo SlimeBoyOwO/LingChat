@@ -49,6 +49,10 @@ impl LocalTtsEngine {
 
     /// Initialize the holder from on-disk DeBerta + tokenizer bytes.
     pub async fn init(&self, paths: &LocalTtsPaths) -> std::result::Result<(), String> {
+        // 与 unload_all/load_voice/synthesize 保持一致，整个 init 过程串行化，
+        // 避免与 unload_all 并发导致关闭后引擎被复活、或被 synthesize 放回的旧 holder 覆盖。
+        let _serialize_guard = self.serialize.lock().await;
+
         let bert = tokio::fs::read(paths.deberta_dir().join("deberta.onnx"))
             .await
             .map_err(|e| format!("read deberta: {e}"))?;
@@ -161,6 +165,14 @@ impl LocalTtsEngine {
         let mut guard = self.holder.lock().await;
         *guard = Some(holder);
         result
+    }
+
+    /// 卸载全部 voice 模型与引擎（DeBERTa/tokenizer/所有 session），释放内存。
+    /// 关闭本地 TTS 时调用；重新启用需重新 `init`。
+    pub async fn unload_all(&self) {
+        let _serialize_guard = self.serialize.lock().await;
+        let mut guard = self.holder.lock().await;
+        *guard = None;
     }
 }
 

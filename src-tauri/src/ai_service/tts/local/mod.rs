@@ -126,7 +126,7 @@ pub fn tts_local_get_enabled(
 }
 
 #[tauri::command]
-pub fn tts_local_set_enabled(
+pub async fn tts_local_set_enabled(
     app: AppHandle,
     switch: State<'_, LocalTtsSwitch>,
     local_state: State<'_, LocalTtsState>,
@@ -149,6 +149,20 @@ pub fn tts_local_set_enabled(
     }
 
     switch.set_enabled(enabled);
+
+    // 关闭时卸载全部模型与引擎释放内存；重新启用时若 DeBERTa 已安装则重建引擎
+    if enabled {
+        if !local_state.engine.is_ready().await
+            && local_state.paths.asset_present("deberta")
+        {
+            if let Err(e) = local_state.engine.init(&local_state.paths).await {
+                tracing::error!("重新启用本地 TTS 时初始化引擎失败: {e}");
+            }
+        }
+    } else {
+        local_state.engine.unload_all().await;
+    }
+
     Ok(LocalTtsSwitchStatus {
         configured_enabled: enabled,
         effective_enabled: enabled,
