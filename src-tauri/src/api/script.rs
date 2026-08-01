@@ -83,15 +83,20 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
     let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm).await;
     let achievement_manager = state.achievement_manager.clone();
 
-    // Lock AIService briefly to validate and extract needed data
+    // Lock AIService briefly to validate, start a fresh session, and extract needed data
     let (script, game_status, config, is_running) = {
-        let service = ai_service.lock().await;
+        let mut service = ai_service.lock().await;
         let script = service
             .script_manager
             .all_scripts
             .get(&script_name)
             .ok_or_else(|| format!("剧本不存在: '{}'", script_name))?
             .clone();
+
+        // 剧本单开：开新世界（新自动槽 + active_save_id），顶替自由对话成为唯一"当前进行"，
+        // 剧本台词写进剧本自己的槽，不和自由对话混。旧自由对话槽留在存档列表（不再自动保存）。
+        crate::api::game::begin_new_progress(&mut *service, &db, &app).await?;
+
         let game_status = service.game_status.clone();
         let config = service.config.clone();
         let is_running = service.script_manager.is_running.clone();

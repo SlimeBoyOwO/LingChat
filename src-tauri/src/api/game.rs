@@ -356,29 +356,32 @@ pub async fn init_game(app: AppHandle) -> Result<WebInitData, String> {
     build_web_init_data(&service, &app).await
 }
 
-#[tauri::command]
-pub async fn start_new_game(app: AppHandle) -> Result<WebInitData, String> {
-    let state = app.state::<AppState>();
-    let mut service = state.ai_service.lock().await;
+/// galgame 语义：开新世界/开新剧本 = 清空当前进行、建当前角色的新自动槽、设 active_save_id，
+/// 并记录 per-role last_save_id + 当前角色（供主菜单"继续游戏"定位）。
+/// 自由对话（start_new_game）与剧本模式（start_script）共用——进剧本也是单开一局，
+/// 顶替旧进行成为唯一"当前"（旧槽留在存档列表，不再参与自动保存）。
+/// 羁绊冒险/独立冒险按设计混在自由对话会话里，不调用本函数。
+pub(crate) async fn begin_new_progress(
+    service: &mut crate::ai_service::service::AIService,
+    db: &DatabaseConnection,
+    app: &AppHandle,
+) -> Result<i32, String> {
     service
         .init_game_status()
         .await
         .map_err(|e| format!("初始化新游戏失败: {}", e))?;
 
-    let main_role_id = {
-        let gs = service.game_status.lock().await;
-        gs.main_role_id
-    };
+    let main_role_id = service.game_status.lock().await.main_role_id;
 
-    // 开新游戏 = 新建一个存档槽（不覆盖上次会话的自动槽），新对话写进它
-    let save_id = SaveRepo::create_auto_save_slot(&state.db, main_role_id)
+    // 开新世界 = 新建一个存档槽（不覆盖上次会话的自动槽），新内容写进它
+    let save_id = SaveRepo::create_auto_save_slot(db, main_role_id)
         .await
         .map_err(|e| format!("创建新存档槽失败: {}", e))?;
     service.game_status.lock().await.active_save_id = Some(save_id);
 
-    // 记录当前角色 + 当前进行，供主菜单"继续游戏"定位
+    // 记录当前角色 + 当前进行
     if let Some(rid) = main_role_id {
-        crate::config::set_last_save_id(&app, rid, save_id);
+        crate::config::set_last_save_id(app, rid, save_id);
         if let Ok(store) = app.store(crate::config::store_path()) {
             store.set(
                 crate::config::keys::LAST_CHARACTER_ID.to_string(),
@@ -387,7 +390,14 @@ pub async fn start_new_game(app: AppHandle) -> Result<WebInitData, String> {
             let _ = store.save();
         }
     }
+    Ok(save_id)
+}
 
+#[tauri::command]
+pub async fn start_new_game(app: AppHandle) -> Result<WebInitData, String> {
+    let state = app.state::<AppState>();
+    let mut service = state.ai_service.lock().await;
+    let _save_id = begin_new_progress(&mut *service, &state.db, &app).await?;
     build_web_init_data(&service, &app).await
 }
 
