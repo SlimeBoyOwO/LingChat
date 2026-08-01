@@ -25,8 +25,8 @@ export default {
     "settingsWindowTitle": "設置"
   },
   "credits": {
-    "escExit": "ESC 退出",
-    "letterTitle": "來自靈靈感謝の書❤",
+    "escExit": "ESC 閃人",
+    "letterTitle": "嚟自靈靈嘅感謝信❤",
     "heading": "致謝",
     "sections": {
       "planDesign": "策劃 & 設計",
@@ -34,15 +34,15 @@ export default {
       "vitsTraining": "語音模型訓練",
       "visualArts": "視覺藝術",
       "characterDesign": "人物設計",
-      "communityWiki": "社區管理 & 維基搭建",
+      "communityWiki": "社群管理 & 維基搭建",
       "packing": "軟件打包",
       "specialThanks": "特別鳴謝",
-      "feedback": "反饋提供者",
-      "issueProviders": "Issue提供者",
-      "characterCreators": "創意工坊作者們",
-      "bilibiliFans": "B站粉絲們",
-      "donators": "贊助者們",
-      "moreover": "還有..."
+      "feedback": "報料嘅朋友們",
+      "issueProviders": "開Issue嘅朋友們",
+      "characterCreators": "創意工坊嘅作者們",
+      "bilibiliFans": "B站嘅Fans們",
+      "donators": "課金大佬們",
+      "moreover": "仲有..."
     },
     "you": "你"
   },
