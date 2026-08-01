@@ -108,6 +108,14 @@ onMounted(async () => {
   // 初始化 UI Store（加载角色 tips）
   initUIStore()
 
+  // 启动时自动弹出独立日志窗口（仅主窗口触发，开关在日志页设置）
+  if (
+    getCurrentWindow().label === 'main' &&
+    localStorage.getItem('lingchat_log_window_auto_open') === '1'
+  ) {
+    invoke('open_log_window').catch((e) => console.error('自动打开日志窗口失败:', e))
+  }
+
   // 预加载 LLM 提供商配置，避免主界面因 store 未加载而误判未选择模型
   const llmStore = useLlmProvidersStore()
   llmStore.load().catch((e) => console.error('加载 LLM 提供商失败:', e))

@@ -27,6 +27,12 @@ initializeTauriEventListeners();
 
 app.use(pinia);
 app.use(router);
+
+// 独立日志窗口：通过 index.html?window=log 打开时直接进入日志路由
+if (new URLSearchParams(window.location.search).get('window') === 'log') {
+  router.replace('/log-window');
+}
+
 app.mount("#app");
 
 // 延迟执行 CPU 画质自适应，确保 pinia store 已就绪
