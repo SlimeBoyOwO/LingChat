@@ -14,6 +14,7 @@ const props = withDefaults(
     stopped?: boolean
     duration?: number // 淡入淡出时长 (毫秒)
     loop?: boolean // 是否循环播放
+    rate?: number // 播放速度倍率（1.0 原速），由剧本 music 事件的 playbackSpeed 控制
   }>(),
   {
     src: '',
@@ -22,6 +23,7 @@ const props = withDefaults(
     stopped: false,
     duration: 800,
     loop: false,
+    rate: 1,
   },
 )
 
@@ -31,6 +33,13 @@ const emit = defineEmits<{
 
 const audio1 = ref<HTMLAudioElement | null>(null)
 const audio2 = ref<HTMLAudioElement | null>(null)
+
+/** 设置播放速度。HTML audio.playbackRate 可随时改、立即生效；非法值兜底为 1 */
+const applyRate = (el: HTMLAudioElement | null) => {
+  if (!el) return
+  const r = props.rate
+  el.playbackRate = typeof r === 'number' && r > 0 ? r : 1
+}
 
 let activeIndex = 1 // 1 或 2，表示当前主音频
 let fadeIntervalId: ReturnType<typeof setInterval> | null = null
@@ -94,6 +103,7 @@ const crossFadeTo = async (newUrl: string | null | undefined) => {
   nextAudio.src = newUrl
   nextAudio.load()
   nextAudio.volume = Math.min(0.1, props.volume / 100)
+  applyRate(nextAudio) // 新轨道沿用当前播放速度
 
   // 只要没有被手动暂停或停止，就尝试播放备用轨道
   if (!props.paused && !props.stopped) {
@@ -142,6 +152,7 @@ onMounted(() => {
   if (props.src && props.src !== 'None' && audio1.value) {
     audio1.value.src = props.src
     audio1.value.volume = props.volume / 100
+    applyRate(audio1.value)
     if (!props.paused && !props.stopped) {
       audio1.value.play().catch((e) => console.warn('初始化播放失败:', e))
     }
@@ -164,6 +175,15 @@ watch(
       const activeAudio = activeIndex === 1 ? audio1.value : audio2.value
       if (activeAudio) activeAudio.volume = newVol / 100
     }
+  },
+)
+
+// 监听播放速度变化（剧本可在运行中调速）
+watch(
+  () => props.rate,
+  () => {
+    const activeAudio = activeIndex === 1 ? audio1.value : audio2.value
+    applyRate(activeAudio)
   },
 )
 

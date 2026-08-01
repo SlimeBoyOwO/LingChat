@@ -81,3 +81,27 @@
     0 8px 32px rgba(0, 0, 0, 0.1),
     inset 0 1px 1px rgba(255, 255, 255, 0.1);
 }
+
+/* 玻璃态输入框。与 .glass-effect 同类：一处定义，避免每个用到表单的组件
+   各抄一份。剧本编辑器的三个组件原先是逐字相同的三份。 */
+.glass-input {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0.625rem 0.75rem;
+  font-size: 0.875rem;
+  color: #fff;
+  backdrop-filter: blur(20px) saturate(150%);
+  transition: all 0.2s;
+}
+.glass-input:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(121, 217, 255, 0.2);
+}
+.glass-input option,
+.glass-input optgroup {
+  background: #16202c;
+  color: #fff;
+}

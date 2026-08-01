@@ -3,6 +3,7 @@
 //! Replaces Python `ScriptFunction` static methods and parts of `Function` YAML/string utilities.
 
 use anyhow::{anyhow, Result};
+use rand::Rng;
 use regex::Regex;
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
@@ -108,9 +109,10 @@ pub fn parse_value(s: &str) -> Result<Value> {
             if max < min {
                 return Err(anyhow!("random max({}) < min({})", max, min));
             }
-            // Simple deterministic "random" using path-based hash — in practice
-            // we use rand crate, but keep it simple for script vars.
-            let val = min + ((max - min) / 2); // midpoint as fallback
+            // Inclusive on both ends, matching what `random(1, 6)` reads like.
+            // This used to return the midpoint `min + (max - min) / 2`, i.e. the
+            // same constant every time — `random(1, 6)` was always 3.
+            let val = rand::thread_rng().gen_range(min..=max);
             return Ok(Value::Number(val.into()));
         }
     }
@@ -157,33 +159,41 @@ pub fn parse_value(s: &str) -> Result<Value> {
 pub fn apply_variable_action(op: VarOp, current: Option<&Value>, value: Value) -> Value {
     match op {
         VarOp::Assign => value,
-        VarOp::Add => {
-            if let (Some(Value::Number(cur)), Value::Number(val)) = (current, &value) {
-                if let (Some(cur_f), Some(val_f)) = (cur.as_f64(), val.as_f64()) {
-                    if let Some(result) = serde_json::Number::from_f64(cur_f + val_f) {
-                        return Value::Number(result);
-                    }
-                }
-                if let (Some(cur_i), Some(val_i)) = (cur.as_i64(), val.as_i64()) {
-                    return Value::Number((cur_i + val_i).into());
-                }
+        VarOp::Add => arithmetic(current, value, i64::checked_add, |a, b| a + b),
+        VarOp::Sub => arithmetic(current, value, i64::checked_sub, |a, b| a - b),
+    }
+}
+
+/// Shared body of `+=` / `-=`.
+///
+/// Both sides must already be numbers; anything else degrades to plain
+/// assignment, which is the pre-existing contract (`count += 1` on an unset
+/// variable yields `1`).
+///
+/// Integers stay integers. The old code tried the `f64` branch first, so
+/// `1 += 1` produced `Number(2.0)`, which stringifies to `"2.0"`. Because
+/// `evaluate_condition` compares stringified values, a subsequent
+/// `count == 2` then silently evaluated to false. Integer overflow falls
+/// through to the float branch instead of panicking.
+fn arithmetic(
+    current: Option<&Value>,
+    value: Value,
+    int_op: fn(i64, i64) -> Option<i64>,
+    float_op: fn(f64, f64) -> f64,
+) -> Value {
+    if let (Some(Value::Number(cur)), Value::Number(val)) = (current, &value) {
+        if let (Some(a), Some(b)) = (cur.as_i64(), val.as_i64()) {
+            if let Some(result) = int_op(a, b) {
+                return Value::Number(result.into());
             }
-            value
         }
-        VarOp::Sub => {
-            if let (Some(Value::Number(cur)), Value::Number(val)) = (current, &value) {
-                if let (Some(cur_f), Some(val_f)) = (cur.as_f64(), val.as_f64()) {
-                    if let Some(result) = serde_json::Number::from_f64(cur_f - val_f) {
-                        return Value::Number(result);
-                    }
-                }
-                if let (Some(cur_i), Some(val_i)) = (cur.as_i64(), val.as_i64()) {
-                    return Value::Number((cur_i - val_i).into());
-                }
+        if let (Some(a), Some(b)) = (cur.as_f64(), val.as_f64()) {
+            if let Some(result) = serde_json::Number::from_f64(float_op(a, b)) {
+                return Value::Number(result);
             }
-            value
         }
     }
+    value
 }
 
 // ============================================================
@@ -304,4 +314,126 @@ pub async fn handle_actions(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{apply_variable_action, parse_value, parse_variable_action, VarOp};
+    use serde_json::{json, Value};
+
+    // ---------- parse_variable_action ----------
+
+    #[test]
+    fn parses_the_three_operators() {
+        let (op, name, val) = parse_variable_action("flag = true").unwrap();
+        assert_eq!((op, name.as_str(), val), (VarOp::Assign, "flag", json!(true)));
+
+        let (op, name, val) = parse_variable_action("count += 1").unwrap();
+        assert_eq!((op, name.as_str(), val), (VarOp::Add, "count", json!(1)));
+
+        let (op, name, val) = parse_variable_action("  hp -= 5  ").unwrap();
+        assert_eq!((op, name.as_str(), val), (VarOp::Sub, "hp", json!(5)));
+    }
+
+    #[test]
+    fn rejects_unsupported_syntax() {
+        // No `*=` / `/=`, and a bare expression is not an assignment.
+        assert!(parse_variable_action("count *= 2").is_err());
+        assert!(parse_variable_action("count").is_err());
+        assert!(parse_variable_action("").is_err());
+    }
+
+    // ---------- parse_value ----------
+
+    #[test]
+    fn parses_scalars() {
+        assert_eq!(parse_value("true").unwrap(), json!(true));
+        assert_eq!(parse_value("FALSE").unwrap(), json!(false));
+        assert_eq!(parse_value("null").unwrap(), Value::Null);
+        assert_eq!(parse_value("none").unwrap(), Value::Null);
+        assert_eq!(parse_value("42").unwrap(), json!(42));
+        assert_eq!(parse_value("-7").unwrap(), json!(-7));
+        assert_eq!(parse_value("1.5").unwrap(), json!(1.5));
+        assert_eq!(parse_value("shop").unwrap(), json!("shop"));
+        assert_eq!(parse_value("\"shop\"").unwrap(), json!("shop"));
+        assert_eq!(parse_value("'shop'").unwrap(), json!("shop"));
+    }
+
+    /// `random(min, max)` used to return the midpoint constant, so
+    /// `random(1, 6)` was always `3`. It must now actually vary and stay in range.
+    #[test]
+    fn random_is_random_and_inclusive() {
+        let mut seen = std::collections::HashSet::new();
+        for _ in 0..400 {
+            let v = parse_value("random(1, 6)").unwrap();
+            let n = v.as_i64().expect("random 应返回整数");
+            assert!((1..=6).contains(&n), "random(1, 6) 越界: {}", n);
+            seen.insert(n);
+        }
+        assert!(
+            seen.len() > 1,
+            "random(1, 6) 在 400 次采样里只出现了 {:?}，说明并没有随机",
+            seen
+        );
+        // Both ends must be reachable.
+        assert_eq!(parse_value("random(3, 3)").unwrap(), json!(3));
+    }
+
+    #[test]
+    fn random_rejects_bad_bounds() {
+        assert!(parse_value("random(5, 1)").is_err());
+        assert!(parse_value("random(a, b)").is_err());
+        // Not two arguments → falls through and is treated as a plain string.
+        assert_eq!(parse_value("random(1)").unwrap(), json!("random(1)"));
+    }
+
+    // ---------- apply_variable_action ----------
+
+    /// Regression guard: integers must stay integers, otherwise the stringified
+    /// comparison in `evaluate_condition` sees "2.0" and `count == 2` fails.
+    #[test]
+    fn integer_arithmetic_stays_integral() {
+        let one = json!(1);
+        let r = apply_variable_action(VarOp::Add, Some(&one), json!(1));
+        assert_eq!(r, json!(2));
+        assert_eq!(r.to_string(), "2");
+
+        let r = apply_variable_action(VarOp::Sub, Some(&json!(10)), json!(3));
+        assert_eq!(r, json!(7));
+        assert_eq!(r.to_string(), "7");
+    }
+
+    #[test]
+    fn float_operands_still_use_float_math() {
+        let r = apply_variable_action(VarOp::Add, Some(&json!(1.5)), json!(1));
+        assert_eq!(r.as_f64(), Some(2.5));
+    }
+
+    #[test]
+    fn unset_or_non_numeric_degrades_to_assignment() {
+        assert_eq!(apply_variable_action(VarOp::Add, None, json!(1)), json!(1));
+        assert_eq!(
+            apply_variable_action(VarOp::Add, Some(&json!("abc")), json!(1)),
+            json!(1)
+        );
+        assert_eq!(
+            apply_variable_action(VarOp::Sub, Some(&json!(5)), json!("x")),
+            json!("x")
+        );
+    }
+
+    #[test]
+    fn assign_ignores_the_current_value() {
+        assert_eq!(
+            apply_variable_action(VarOp::Assign, Some(&json!(99)), json!("shop")),
+            json!("shop")
+        );
+    }
+
+    /// Overflow must not panic; it degrades to the float branch.
+    #[test]
+    fn integer_overflow_does_not_panic() {
+        let r = apply_variable_action(VarOp::Add, Some(&json!(i64::MAX)), json!(1));
+        assert!(r.is_number());
+    }
 }

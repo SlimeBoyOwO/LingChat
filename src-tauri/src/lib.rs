@@ -70,6 +70,16 @@ pub struct InnerAppState {
     pub auto_save_manager:
         Arc<tokio::sync::Mutex<ai_service::game_system::auto_save::AutoSaveManager>>,
     pub god_agent: Option<Arc<GodAgentCore>>,
+    /// 剧本编辑器「试玩」当前在跑的后台任务句柄。
+    ///
+    /// `editor_stop_preview` 会先唤醒被剧本阻塞的通道、把 `is_running` 置 false，
+    /// 再立即 abort 这个句柄并还原共享 `GameStatus`。试玩任务即使被中止，其游离
+    /// 流式任务（publisher/consumer）的迟到写入也会被 `preview_generation` 守卫
+    /// 丢弃，`ai:reply` 则带 `preview_gen` 代号由前端比对丢弃（issue #5）。
+    pub preview_task: Arc<tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    /// 试玩开始时拍下的会话快照，供收尾时一次性还原。`Option::take` 保证幂等：
+    /// 任务自然结束先还原、`editor_stop_preview` 兜底再 take 一次为空即跳过。
+    pub pending_preview_restore: Arc<tokio::sync::Mutex<Option<api::script_editor::PreviewSession>>>,
 }
 
 /// AppState 在 Tauri 中 manage 的状态句柄。
@@ -320,6 +330,8 @@ pub fn run() {
                     screenshot_capture,
                     auto_save_manager: auto_save_manager.clone(),
                     god_agent,
+                    preview_task: Arc::new(tokio::sync::Mutex::new(None)),
+                    pending_preview_restore: Arc::new(tokio::sync::Mutex::new(None)),
                 });
             }
 
@@ -494,6 +506,31 @@ pub fn run() {
             api::script::start_script,
             api::script::script_submit_input,
             api::script::script_submit_choice,
+            // ── 剧本编辑器 ──
+            api::script_editor::editor_get_schema,
+            api::script_editor::editor_list_scripts,
+            api::script_editor::editor_read_script,
+            api::script_editor::editor_read_chapter,
+            api::script_editor::editor_validate_script,
+            api::script_editor::editor_write_chapter,
+            api::script_editor::editor_write_story_config,
+            api::script_editor::editor_create_chapter,
+            api::script_editor::editor_delete_chapter,
+            api::script_editor::editor_delete_character,
+            api::script_editor::editor_create_script,
+            api::script_editor::editor_delete_script,
+            api::script_editor::editor_upload_asset,
+            api::script_editor::editor_create_character,
+            api::script_editor::editor_list_global_assets,
+            api::script_editor::editor_list_asset_files,
+            api::script_editor::editor_delete_asset,
+            api::script_editor::editor_rescan_scripts,
+            api::script_editor::editor_start_preview,
+            api::script_editor::editor_preview_readiness,
+            api::script_editor::editor_list_global_characters,
+            api::script_editor::editor_import_global_character,
+            api::script_editor::editor_stop_preview,
+            api::script_editor::editor_open_script_folder,
             api::pet::update_solid_regions,
             api::pet::set_pet_mode,
             api::schedule::get_schedules,

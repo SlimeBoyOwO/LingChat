@@ -614,14 +614,27 @@ function send() {
 
   // In script mode, submit input to the script engine; otherwise use chat
   if (gameStore.runningScript) {
-    invoke('script_submit_input', { input: text }).catch((error) => {
-      console.error('发送脚本输入失败:', error)
-      gameStore.currentStatus = 'input'
-    })
-    gameStore.runningScript.choices = []
-    if (gameStore.runningScript.freeDialogueInfo.isFreeDialogue) {
-      gameStore.runningScript.freeDialogueInfo.currentRound++
-    }
+    const script = gameStore.runningScript
+    const wasChoice = script.choices.length > 0
+    // 只有提交成功才清空选项。以前是无条件清空的：allow_free 为 false 时后端
+    // 会拒绝这次输入，而选项按钮已经消失、引擎仍在等待选择，玩家彻底卡死。
+    invoke('script_submit_input', { input: text })
+      .then(() => {
+        script.choices = []
+        if (script.freeDialogueInfo.isFreeDialogue) {
+          script.freeDialogueInfo.currentRound++
+        }
+      })
+      .catch((error) => {
+        console.error('发送脚本输入失败:', error)
+        gameStore.currentStatus = 'input'
+        uiStore.showNotification({
+          type: 'warning',
+          title: wasChoice ? '请点击一个选项' : '当前无法输入',
+          message: String(error),
+          skipTipsCheck: true,
+        })
+      })
   } else {
     invoke('send_chat_message', {
       text,

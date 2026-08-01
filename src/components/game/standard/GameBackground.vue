@@ -65,6 +65,7 @@
     :volume="uiStore.backgroundVolume"
     :paused="uiStore.bgMusicPaused"
     :stopped="uiStore.bgMusicStoped"
+    :rate="uiStore.bgMusicPlaybackRate"
     :duration="800"
     :loop="uiStore.bgMusicMode === 'loop-single'"
     @ended="handleTrackEnd"
