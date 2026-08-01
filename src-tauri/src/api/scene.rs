@@ -252,7 +252,7 @@ pub async fn select_scene(app: AppHandle, scene_id: Option<String>) -> Result<()
     gs.current_scene_id = scene_id.clone();
 
     // 持久化到 store，便于下次启动恢复
-    if let Ok(store) = app.store(crate::config::STORE_FILE) {
+    if let Ok(store) = app.store(crate::config::store_path()) {
         let val = match &scene_id {
             Some(id) => serde_json::Value::String(id.clone()),
             None => serde_json::Value::Null,
@@ -272,7 +272,7 @@ pub async fn set_scene_awareness(app: AppHandle, enabled: bool) -> Result<(), St
     gs.scene_awareness_enabled = enabled;
 
     // 持久化到 store
-    if let Ok(store) = app.store(crate::config::STORE_FILE) {
+    if let Ok(store) = app.store(crate::config::store_path()) {
         store.set(
             crate::config::session::SCENE_AWARENESS_ENABLED.to_string(),
             serde_json::Value::Bool(enabled),

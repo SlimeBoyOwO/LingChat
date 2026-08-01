@@ -463,7 +463,7 @@ pub async fn select_clothes(
     let db = &state.db;
 
     // 持久化该角色的服装选择（按角色 ID 存储）
-    if let Ok(store) = app.store(config::STORE_FILE) {
+    if let Ok(store) = app.store(config::store_path()) {
         let key = config::session::last_clothes_key(role_id);
         store.set(key, JsonValue::String(clothes_name.clone()));
         let _ = store.save();

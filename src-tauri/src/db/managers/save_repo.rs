@@ -8,18 +8,21 @@ use crate::db::entities::{line, line_perception, memory_bank, running_script, sa
 
 pub struct SaveRepo;
 
+/// 自动存档槽的标题前缀（与 auto_save.rs 保持一致）。
+pub const AUTO_SAVE_PREFIX: &str = "自动存档";
+
 // ========== Save CRUD ==========
 
 impl SaveRepo {
-    pub async fn count_saves(db: &DatabaseConnection) -> Result<u64> {
+    pub async fn count_saves<C: ConnectionTrait>(db: &C) -> Result<u64> {
         save::Entity::find()
             .count(db)
             .await
             .map_err(|e| anyhow!("{e}"))
     }
 
-    pub async fn list_saves(
-        db: &DatabaseConnection,
+    pub async fn list_saves<C: ConnectionTrait>(
+        db: &C,
         page: u64,
         page_size: u64,
     ) -> Result<Vec<save::Model>> {
@@ -33,8 +36,8 @@ impl SaveRepo {
             .map_err(|e| anyhow!("{e}"))
     }
 
-    pub async fn get_save_by_id(
-        db: &DatabaseConnection,
+    pub async fn get_save_by_id<C: ConnectionTrait>(
+        db: &C,
         save_id: i32,
     ) -> Result<Option<save::Model>> {
         save::Entity::find_by_id(save_id)
@@ -43,20 +46,7 @@ impl SaveRepo {
             .map_err(|e| anyhow!("{e}"))
     }
 
-    /// Find the most recent save whose title starts with the given prefix.
-    pub async fn find_save_by_title_prefix(
-        db: &DatabaseConnection,
-        prefix: &str,
-    ) -> Result<Option<save::Model>> {
-        save::Entity::find()
-            .filter(save::Column::Title.like(&format!("{}%", prefix)))
-            .order_by_desc(save::Column::UpdateDate)
-            .one(db)
-            .await
-            .map_err(|e| anyhow!("{e}"))
-    }
-
-    pub async fn create_save(db: &DatabaseConnection, title: &str) -> Result<save::Model> {
+    pub async fn create_save<C: ConnectionTrait>(db: &C, title: &str) -> Result<save::Model> {
         let now = Utc::now().naive_utc();
         let active = save::ActiveModel {
             title: Set(title.to_string()),
@@ -68,8 +58,8 @@ impl SaveRepo {
         active.insert(db).await.map_err(|e| anyhow!("{e}"))
     }
 
-    pub async fn update_save_title(
-        db: &DatabaseConnection,
+    pub async fn update_save_title<C: ConnectionTrait>(
+        db: &C,
         save_id: i32,
         title: &str,
     ) -> Result<()> {
@@ -85,8 +75,8 @@ impl SaveRepo {
         Ok(())
     }
 
-    pub async fn update_save_status(
-        db: &DatabaseConnection,
+    pub async fn update_save_status<C: ConnectionTrait>(
+        db: &C,
         save_id: i32,
         status_json: &str,
     ) -> Result<()> {
@@ -102,8 +92,8 @@ impl SaveRepo {
         Ok(())
     }
 
-    pub async fn update_save_main_role(
-        db: &DatabaseConnection,
+    pub async fn update_save_main_role<C: ConnectionTrait>(
+        db: &C,
         save_id: i32,
         role_id: Option<i32>,
     ) -> Result<()> {
@@ -119,8 +109,8 @@ impl SaveRepo {
         Ok(())
     }
 
-    pub async fn update_save_last_message(
-        db: &DatabaseConnection,
+    pub async fn update_save_last_message<C: ConnectionTrait>(
+        db: &C,
         save_id: i32,
         last_message_id: Option<i32>,
     ) -> Result<()> {
@@ -136,8 +126,8 @@ impl SaveRepo {
         Ok(())
     }
 
-    pub async fn update_save_running_script(
-        db: &DatabaseConnection,
+    pub async fn update_save_running_script<C: ConnectionTrait>(
+        db: &C,
         save_id: i32,
         running_script_id: Option<i32>,
     ) -> Result<()> {
@@ -153,7 +143,7 @@ impl SaveRepo {
         Ok(())
     }
 
-    pub async fn delete_save(db: &DatabaseConnection, save_id: i32) -> Result<bool> {
+    pub async fn delete_save<C: ConnectionTrait>(db: &C, save_id: i32) -> Result<bool> {
         // Delete all line_perception rows for this save's lines
         let line_ids: Vec<i32> = line::Entity::find()
             .select_only()
@@ -192,7 +182,10 @@ impl SaveRepo {
 impl SaveRepo {
     /// Reconstruct ordered line list by walking `parent_line_id` chain
     /// from `save.last_message_id` backwards, then reversing.
-    pub async fn get_line_list(db: &DatabaseConnection, save_id: i32) -> Result<Vec<line::Model>> {
+    pub async fn get_line_list<C: ConnectionTrait>(
+        db: &C,
+        save_id: i32,
+    ) -> Result<Vec<line::Model>> {
         let all_lines = line::Entity::find()
             .filter(line::Column::SaveId.eq(save_id))
             .all(db)
@@ -219,11 +212,29 @@ impl SaveRepo {
         }
 
         history.reverse();
+
+        // 兜底：链回溯不全（存档损坏/历史残留，如安卓上被杀留下半截写）时，
+        // 按 id 升序全量读，避免静默截断丢台词。正常存档两边数量相等，不受影响。
+        if history.len() != lines_map.len() {
+            tracing::warn!(
+                "[Save] 存档 {} 台词链不完整（chain={}, total={}），已按 id 升序兜底读取",
+                save_id,
+                history.len(),
+                lines_map.len()
+            );
+            let mut all: Vec<line::Model> = lines_map.into_values().collect();
+            all.sort_by_key(|l| l.id);
+            return Ok(all);
+        }
+
         Ok(history)
     }
 
     /// Convert DB lines to `GameLine` with perception data batch-fetched.
-    pub async fn get_gameline_list(db: &DatabaseConnection, save_id: i32) -> Result<Vec<GameLine>> {
+    pub async fn get_gameline_list<C: ConnectionTrait>(
+        db: &C,
+        save_id: i32,
+    ) -> Result<Vec<GameLine>> {
         let lines = Self::get_line_list(db, save_id).await?;
 
         if lines.is_empty() {
@@ -247,7 +258,7 @@ impl SaveRepo {
             .into_iter()
             .map(|db_line| {
                 let perceived = perception_map.get(&db_line.id).cloned().unwrap_or_default();
-                Ok(GameLine {
+                GameLine {
                     base: crate::ai_service::types::LineBase {
                         id: Some(db_line.id),
                         content: db_line.content,
@@ -256,16 +267,16 @@ impl SaveRepo {
                         tts_content: db_line.tts_content,
                         action_content: db_line.action_content,
                         thinking: db_line.thinking,
-                        audio_file: db_line.audio_file,
                         tool_call: db_line.tool_call,
+                        audio_file: db_line.audio_file,
                         attribute: LineAttributeExt(db_line.attribute),
                         sender_role_id: db_line.sender_role_id,
                         display_name: db_line.display_name,
                     },
                     perceived_role_ids: perceived,
-                })
+                }
             })
-            .collect::<Result<Vec<_>>>()?;
+            .collect();
 
         Ok(game_lines)
     }
@@ -277,8 +288,8 @@ impl SaveRepo {
     /// Port of Python `SaveManager.sync_lines`. Walks DB line chain and
     /// input `GameLine` list in lockstep, finds the divergence point, then
     /// deletes stale DB lines and inserts new input lines after that point.
-    pub async fn sync_lines(
-        db: &DatabaseConnection,
+    pub async fn sync_lines<C: ConnectionTrait>(
+        db: &C,
         save_id: i32,
         input_lines: &[GameLine],
     ) -> Result<()> {
@@ -311,10 +322,10 @@ impl SaveRepo {
                         active.predicted_emotion = Set(input_line.base.predicted_emotion.clone());
                         active.tts_content = Set(input_line.base.tts_content.clone());
                         active.action_content = Set(input_line.base.action_content.clone());
-                        active.audio_file = Set(input_line.base.audio_file.clone());
                         active.thinking = Set(input_line.base.thinking.clone());
-                        active.display_name = Set(input_line.base.display_name.clone());
                         active.tool_call = Set(input_line.base.tool_call.clone());
+                        active.audio_file = Set(input_line.base.audio_file.clone());
+                        active.display_name = Set(input_line.base.display_name.clone());
                         active.update(db).await.map_err(|e| anyhow!("{e}"))?;
                     }
                     continue;
@@ -375,9 +386,9 @@ impl SaveRepo {
                     predicted_emotion: Set(input_line.base.predicted_emotion.clone()),
                     tts_content: Set(input_line.base.tts_content.clone()),
                     action_content: Set(input_line.base.action_content.clone()),
-                    audio_file: Set(input_line.base.audio_file.clone()),
                     thinking: Set(input_line.base.thinking.clone()),
                     tool_call: Set(input_line.base.tool_call.clone()),
+                    audio_file: Set(input_line.base.audio_file.clone()),
                     save_id: Set(save_id),
                     parent_line_id: Set(parent_id),
                     ..Default::default()
@@ -419,8 +430,8 @@ impl SaveRepo {
 
 impl SaveRepo {
     #[allow(dead_code)]
-    pub async fn upsert_memory_bank(
-        db: &DatabaseConnection,
+    pub async fn upsert_memory_bank<C: ConnectionTrait>(
+        db: &C,
         save_id: i32,
         role_id: Option<i32>,
         info_json: &str,
@@ -447,8 +458,8 @@ impl SaveRepo {
     }
 
     #[allow(dead_code)]
-    pub async fn get_memory_banks(
-        db: &DatabaseConnection,
+    pub async fn get_memory_banks<C: ConnectionTrait>(
+        db: &C,
         save_id: i32,
     ) -> Result<Vec<memory_bank::Model>> {
         memory_bank::Entity::find()
@@ -458,7 +469,10 @@ impl SaveRepo {
             .map_err(|e| anyhow!("{e}"))
     }
 
-    pub async fn delete_memory_banks_by_save(db: &DatabaseConnection, save_id: i32) -> Result<()> {
+    pub async fn delete_memory_banks_by_save<C: ConnectionTrait>(
+        db: &C,
+        save_id: i32,
+    ) -> Result<()> {
         memory_bank::Entity::delete_many()
             .filter(memory_bank::Column::SaveId.eq(save_id))
             .exec(db)
@@ -471,8 +485,8 @@ impl SaveRepo {
 // ========== Running Script ==========
 
 impl SaveRepo {
-    pub async fn get_running_script(
-        db: &DatabaseConnection,
+    pub async fn get_running_script<C: ConnectionTrait>(
+        db: &C,
         script_id: i32,
     ) -> Result<Option<running_script::Model>> {
         running_script::Entity::find_by_id(script_id)
@@ -481,8 +495,8 @@ impl SaveRepo {
             .map_err(|e| anyhow!("{e}"))
     }
 
-    pub async fn upsert_running_script(
-        db: &DatabaseConnection,
+    pub async fn upsert_running_script<C: ConnectionTrait>(
+        db: &C,
         save_id: i32,
         script_folder: &str,
         variable_info: &str,
@@ -528,7 +542,10 @@ impl SaveRepo {
         Ok(inserted.id)
     }
 
-    pub async fn delete_running_script(db: &DatabaseConnection, script_id: i32) -> Result<()> {
+    pub async fn delete_running_script<C: ConnectionTrait>(
+        db: &C,
+        script_id: i32,
+    ) -> Result<()> {
         running_script::Entity::delete_by_id(script_id)
             .exec(db)
             .await
@@ -537,3 +554,57 @@ impl SaveRepo {
     }
 }
 
+// ========== Auto-save Slot ==========
+
+impl SaveRepo {
+    /// 按主角角色查找"自动存档"槽位（标题前缀 + main_role_id），跨角色隔离。
+    /// 每个角色各自一个自动槽，避免切换角色后串档/覆盖旧角色进度。
+    pub async fn find_auto_save_slot<C: ConnectionTrait>(
+        db: &C,
+        main_role_id: Option<i32>,
+    ) -> Result<Option<save::Model>> {
+        let mut query = save::Entity::find()
+            .filter(save::Column::Title.like(&format!("{}%", AUTO_SAVE_PREFIX)));
+        if let Some(rid) = main_role_id {
+            query = query.filter(save::Column::MainRoleId.eq(rid));
+        } else {
+            query = query.filter(save::Column::MainRoleId.is_null());
+        }
+        query
+            .order_by_desc(save::Column::UpdateDate)
+            .one(db)
+            .await
+            .map_err(|e| anyhow!("{e}"))
+    }
+
+    /// 找到或创建当前角色的"自动存档"槽位，不重命名。
+    /// 逐条落盘与周期自动存档共用，保证整个会话复用同一个存档槽。
+    pub async fn find_or_create_auto_save_slot<C: ConnectionTrait>(
+        db: &C,
+        main_role_id: Option<i32>,
+    ) -> Result<i32> {
+        if let Some(existing) = Self::find_auto_save_slot(db, main_role_id).await? {
+            return Ok(existing.id);
+        }
+        let model = Self::create_save(db, AUTO_SAVE_PREFIX).await?;
+        Self::update_save_main_role(db, model.id, main_role_id).await?;
+        Ok(model.id)
+    }
+
+    /// 总是创建一个新的"自动存档"槽（开新游戏用）。
+    /// 与 `find_or_create_auto_save_slot` 不同：不查找旧槽，保证新游戏的对话写入
+    /// 全新的存档，不覆盖上次会话的自动槽（galgame New Game 不吞 Continue）。
+    pub async fn create_auto_save_slot<C: ConnectionTrait>(
+        db: &C,
+        main_role_id: Option<i32>,
+    ) -> Result<i32> {
+        let title = format!(
+            "{} {}",
+            AUTO_SAVE_PREFIX,
+            chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
+        );
+        let model = Self::create_save(db, &title).await?;
+        Self::update_save_main_role(db, model.id, main_role_id).await?;
+        Ok(model.id)
+    }
+}

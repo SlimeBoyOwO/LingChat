@@ -35,6 +35,7 @@
         <MainMenuOptions
           v-if="menuState === 'main'"
           @start-game="showGameModeMenu"
+          @continue-game="handleContinueGame"
           @open-settings="handleOpenSettings"
           @open-credits="handleOpenCredits"
         />
@@ -124,15 +125,13 @@ function goToGithub() {
 
 const handleContinueGame = async () => {
   try {
-    const { saves } = await invoke<{ saves: Array<{ id: number }>; total: number }>(
-      'list_saves',
-      { page: 1, pageSize: 1 },
-    )
-    if (!saves || saves.length === 0) {
-      uiStore.showWarning({ title: '提示', message: '没有存档记录，请先创建存档' })
+    // galgame 语义：继续 = 回到"当前进行"（per-role last_save_id），不是读最新一条
+    const saveId = await invoke<number | null>('get_last_save_id')
+    if (!saveId) {
+      uiStore.showWarning({ title: '提示', message: '没有可继续的存档，请先开始游戏' })
       return
     }
-    const gameInfo = await invoke<WebInitData>('load_save', { saveId: saves[0].id })
+    const gameInfo = await invoke<WebInitData>('load_save', { saveId })
     const gameStore = useGameStore()
     applyWebInitData(gameStore.$state, gameInfo)
     router.push('/chat')

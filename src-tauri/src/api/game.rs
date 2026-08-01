@@ -16,6 +16,7 @@ use crate::config::{self, AppConfig};
 use crate::db::entities::line;
 use crate::db::entities::line::LineAttribute;
 use crate::db::managers::role_repo::RoleRepo;
+use crate::db::managers::save_repo::SaveRepo;
 use crate::utils::prompt::{sys_prompt_builder_by_settings, PromptOptions, PromptRole};
 use crate::AppState;
 
@@ -307,8 +308,84 @@ pub async fn get_tts_cache_info(app: AppHandle) -> Result<serde_json::Value, Str
 
 #[tauri::command]
 pub async fn init_game(app: AppHandle) -> Result<WebInitData, String> {
+    // 启动自动恢复：galgame 语义下，重开应回到"当前进行"（上次会话），
+    // 而不是空会话。恢复失败回落空会话，不阻塞启动。
+    // 角色定位：优先 settings 的 LAST_CHARACTER_ID；没有则回退当前 game_status 主角
+    //（走"开始游戏"用默认角色时该 key 可能尚未写入）。
+    let role_id = match crate::config::get_last_character_id(&app) {
+        Some(rid) => Some(rid),
+        None => {
+            let state = app.state::<AppState>();
+            let rid = {
+                let service = state.ai_service.lock().await;
+                let gs = service.game_status.lock().await;
+                gs.main_role_id
+            };
+            drop(state);
+            rid
+        }
+    };
+    if let Some(role_id) = role_id {
+        // 优先 last_save_id；迁移兼容：旧版本没有该 key 时，回退到当前角色的自动槽，
+        // 让升级后第一次启动也能直接回到上次对话（否则要手动读档一次才会写 last_save_id）。
+        let save_id = if let Some(sid) = crate::config::get_last_save_id(&app, role_id) {
+            Some(sid)
+        } else {
+            let state = app.state::<AppState>();
+            match SaveRepo::find_auto_save_slot(&state.db, Some(role_id)).await {
+                Ok(Some(m)) => Some(m.id),
+                _ => None,
+            }
+        };
+        if let Some(save_id) = save_id {
+            match crate::api::save::load_save(app.clone(), save_id).await {
+                Ok(data) => return Ok(data),
+                Err(e) => tracing::warn!(
+                    "[init_game] 恢复上次会话失败（save_id={}），回落空会话: {}",
+                    save_id,
+                    e
+                ),
+            }
+        }
+    }
+
     let state = app.state::<AppState>();
     let service = state.ai_service.lock().await;
+    build_web_init_data(&service, &app).await
+}
+
+#[tauri::command]
+pub async fn start_new_game(app: AppHandle) -> Result<WebInitData, String> {
+    let state = app.state::<AppState>();
+    let mut service = state.ai_service.lock().await;
+    service
+        .init_game_status()
+        .await
+        .map_err(|e| format!("初始化新游戏失败: {}", e))?;
+
+    let main_role_id = {
+        let gs = service.game_status.lock().await;
+        gs.main_role_id
+    };
+
+    // 开新游戏 = 新建一个存档槽（不覆盖上次会话的自动槽），新对话写进它
+    let save_id = SaveRepo::create_auto_save_slot(&state.db, main_role_id)
+        .await
+        .map_err(|e| format!("创建新存档槽失败: {}", e))?;
+    service.game_status.lock().await.active_save_id = Some(save_id);
+
+    // 记录当前角色 + 当前进行，供主菜单"继续游戏"定位
+    if let Some(rid) = main_role_id {
+        crate::config::set_last_save_id(&app, rid, save_id);
+        if let Ok(store) = app.store(crate::config::store_path()) {
+            store.set(
+                crate::config::keys::LAST_CHARACTER_ID.to_string(),
+                JsonValue::Number((rid as i64).into()),
+            );
+            let _ = store.save();
+        }
+    }
+
     build_web_init_data(&service, &app).await
 }
 
@@ -352,7 +429,7 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
     }
 
     // 4. 持久化上次游玩的角色 ID
-    if let Ok(store) = app.store(config::STORE_FILE) {
+    if let Ok(store) = app.store(config::store_path()) {
         store.set(
             config::session::LAST_CHARACTER_ID.to_string(),
             JsonValue::Number((character_id as i64).into()),
@@ -468,7 +545,7 @@ pub(crate) async fn build_web_init_data(
 
         // 若无当前场景，尝试从 store 恢复上次选择的场景
         if sid.is_none() {
-            if let Ok(store) = app.store(config::STORE_FILE) {
+            if let Ok(store) = app.store(config::store_path()) {
                 if let Some(v) = store.get(config::session::LAST_SCENE_ID) {
                     if let Some(id) = v.as_str() {
                         sid = Some(id.to_string());
@@ -503,7 +580,7 @@ pub(crate) async fn build_web_init_data(
         }
 
         // 从 store 恢复场景感知开关
-        if let Ok(store) = app.store(config::STORE_FILE) {
+        if let Ok(store) = app.store(config::store_path()) {
             if let Some(v) = store.get(config::session::SCENE_AWARENESS_ENABLED) {
                 gs.scene_awareness_enabled = v.as_bool().unwrap_or(true);
             }
@@ -539,7 +616,7 @@ pub(crate) async fn build_web_init_data(
 
     // 从 session store 恢复上次会话状态（服装、音乐、环境音）
     let (last_bgm_track, last_bgm_paused, last_bgm_mode, last_ambient_tracks) = {
-        let store = app.store(config::STORE_FILE).ok();
+        let store = app.store(config::store_path()).ok();
         let read_str = |key: &str| -> Option<String> {
             store
                 .as_ref()

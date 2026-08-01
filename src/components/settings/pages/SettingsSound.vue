@@ -59,9 +59,9 @@
       </template>
 
       <!-- 音乐控制台 -->
-      <div class="flex gap-3 bg-white/5 border border-white/10 rounded-xl p-4 backdrop-blur-md">
+      <div class="flex gap-3 bg-white/5 border border-white/10 rounded-xl p-4 backdrop-blur-md max-[640px]:flex-col max-[640px]:gap-2">
         <div
-          class="flex w-[60%] items-center justify-between text-sm font-medium text-gray-200 bg-black/20 px-3 py-2 rounded-lg"
+          class="flex w-[60%] items-center justify-between text-sm font-medium text-gray-200 bg-black/20 px-3 py-2 rounded-lg max-[640px]:w-full"
         >
           <span class="flex items-center gap-2 truncate">
             <Music :size="16" class="text-purple-400 shrink-0" />
@@ -72,7 +72,7 @@
           }}</span>
         </div>
 
-        <div class="flex w-[40%] items-center gap-2">
+        <div class="flex w-[40%] items-center gap-2 max-[640px]:w-full max-[640px]:flex-wrap">
           <Button
             type="big"
             @click="handlePlayPause"

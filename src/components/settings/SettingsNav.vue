@@ -1,5 +1,5 @@
 <template>
-  <div class="w-full h-full flex items-center justify-between relative px-5 py-2">
+  <div class="w-full h-full flex items-center justify-between relative px-5 pt-[env(safe-area-inset-top)] pb-2">
     <img src="@/assets/images/LingChatLogo.png" alt="Logo" class="w-20 ml-5 hidden xl:block" />
     <nav
       ref="navContainer"
@@ -7,7 +7,7 @@
     >
       <div
         ref="indicator"
-        class="absolute bottom-0 left-0 w-0 h-1 bg-brand rounded z-10 shadow-[0_0_10px_rgba(121,217,255,0.4)]"
+        class="absolute top-0 left-0 w-0 h-1 bg-brand rounded z-10 shadow-[0_0_10px_rgba(121,217,255,0.4)]"
       ></div>
       <Button
         ref="characterBtn"

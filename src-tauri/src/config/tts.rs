@@ -129,7 +129,7 @@ impl Default for TtsConfig {
 impl TtsConfig {
     /// 从 `settings.json` 加载 TTS 配置，缺失项使用默认值。
     pub fn load(app: &AppHandle) -> Self {
-        let store = app.store(super::STORE_FILE).ok();
+        let store = app.store(super::store_path()).ok();
         Self::from_store(store.as_deref())
     }
 

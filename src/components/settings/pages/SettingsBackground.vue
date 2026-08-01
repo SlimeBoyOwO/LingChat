@@ -195,7 +195,7 @@
         <Sparkles :size="20" />
       </template>
       <div class="flex flex-col gap-4 p-2">
-        <div class="flex items-center gap-4">
+        <div class="flex items-center gap-4 max-[640px]:flex-col max-[640px]:items-stretch max-[640px]:gap-2">
           <span class="text-sm font-medium text-white/90 min-w-30">流星帧率 (FPS)</span>
           <Slider
             v-model="meteorFps"
@@ -219,7 +219,7 @@
           />
         </div>
 
-        <div class="flex items-center gap-4">
+        <div class="flex items-center gap-4 max-[640px]:flex-col max-[640px]:items-stretch max-[640px]:gap-2">
           <span class="text-sm font-medium text-white/90 min-w-30">星星帧率 (FPS)</span>
           <Slider
             v-model="starsFps"

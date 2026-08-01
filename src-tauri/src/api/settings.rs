@@ -42,6 +42,8 @@ pub fn save_settings(app: AppHandle, values: BTreeMap<String, String>) -> Result
     }
 
     let store = config::settings_store(&app).map_err(|e| e.to_string())?;
+    // 写前备份，避免外部存储写盘损坏后配置"离奇重置"
+    config::backup_settings_file(&app);
 
     for (key, value) in &values {
         let json_value = if value == "true" {
