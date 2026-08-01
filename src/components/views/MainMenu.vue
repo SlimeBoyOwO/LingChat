@@ -35,7 +35,6 @@
         <MainMenuOptions
           v-if="menuState === 'main'"
           @start-game="showGameModeMenu"
-          @continue-game="handleContinueGame"
           @open-settings="handleOpenSettings"
           @open-credits="handleOpenCredits"
         />
@@ -47,6 +46,7 @@
           v-if="menuState === 'gameMode'"
           @back="backToMainMenu"
           @open-scripts="showScriptModeMenu"
+          @go-save="handleGoSave"
           :loadingScripts="loadingScripts"
           :scripts="scripts"
         />
@@ -76,10 +76,6 @@ import { SettingsPanel as Settings } from '../settings/'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { useSettingsStore } from '../../stores/modules/settings'
 import { getScriptList, type ScriptSummary } from '@/api/services/script-info'
-import { invoke } from '@tauri-apps/api/core'
-import { useGameStore } from '../../stores/modules/game'
-import { applyWebInitData } from '../../stores/modules/game/actions'
-import type { WebInitData } from '@/api/services/game-info'
 import MeteorAnimation from '../game/standard/animations/MeteorAnimation.vue'
 import StarAnimation from '../game/standard/animations/StarAnimation.vue'
 import { useParallaxAnimation } from '../game/standard/animations/ParallaxAnimation'
@@ -123,22 +119,9 @@ function goToGithub() {
   window.open('https://github.com/SlimeBoyOwO/LingChat', '_blank')
 }
 
-const handleContinueGame = async () => {
-  try {
-    // galgame 语义：继续 = 回到"当前进行"（per-role last_save_id），不是读最新一条
-    const saveId = await invoke<number | null>('get_last_save_id')
-    if (!saveId) {
-      uiStore.showWarning({ title: '提示', message: '没有可继续的存档，请先开始游戏' })
-      return
-    }
-    const gameInfo = await invoke<WebInitData>('load_save', { saveId })
-    const gameStore = useGameStore()
-    applyWebInitData(gameStore.$state, gameInfo)
-    router.push('/chat')
-  } catch (error) {
-    console.error('继续游戏失败:', error)
-    uiStore.showError({ title: '继续失败', message: '未创建存档或系统问题' })
-  }
+// 自由对话里"否 → 前往存档页"：直接复用打开设置并定位到存档 tab
+function handleGoSave() {
+  handleOpenSettings('save')
 }
 
 function handleOpenSettings(tab?: string) {

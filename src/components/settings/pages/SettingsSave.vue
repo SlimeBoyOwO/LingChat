@@ -1,6 +1,6 @@
 <template>
   <MenuPage>
-    <MenuItem title="创建新存档（会记录当前对话）">
+    <MenuItem title="创建备份/书签（把当前对话另存为一格书签，不改变当前进行）">
       <template #header>
         <PencilLine :size="20" />
       </template>
@@ -136,6 +136,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { MenuPage, MenuItem } from '../../ui'
 import { Input } from '../../base'
 import { useGameStore } from '../../../stores/modules/game'
@@ -160,6 +161,7 @@ interface CreateSaveResponse {
 const gameStore = useGameStore()
 const uiStore = useUIStore()
 const dialogStore = useDialogStore()
+const router = useRouter()
 
 const saves = ref<SaveInfo[]>([])
 const newSaveTitle = ref('')
@@ -277,6 +279,9 @@ const handleLoadSave = async (saveId: number) => {
     const gameInfo = await invoke<WebInitData>('load_save', { saveId })
     applyWebInitData(gameStore.$state, gameInfo)
     uiStore.showSuccess({ title: '加载成功', message: '存档已加载' })
+    // 读档即进入游戏：关设置面板，直接跳对话页
+    uiStore.toggleSettings(false)
+    router.push('/chat')
   } catch (e: any) {
     console.error('读取存档失败:', e)
     uiStore.showError({

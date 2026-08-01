@@ -116,14 +116,21 @@ let touchStartY = 0
 let touchOnHorizontalScrollable = false
 let isSwipeAnimating = false
 
-// 判断触摸起点是否在"可横向滚动"区域内（如日志页横向滚动），是则不触发切换
-function isInsideHorizontalScrollable(el: Element | null): boolean {
+// 判断触摸起点是否在"可滚动"容器内（纵向列表如存档/日志、横向表格等）。
+// 是则不触发页面切换——用户可能在拖动内容或滚动条，不该切页。
+// 只排除"确实有溢出可滚"的容器：内容不满的页面（无可滚动区域）仍可滑动切换。
+function isInsideScrollable(el: Element | null): boolean {
   while (el && el !== contentRef.value) {
+    // 数值调节滑块（原生 range / 自定义 Slider）→ 拖动它不该切页
+    if (el.tagName === 'INPUT' && (el as HTMLInputElement).type === 'range') return true
     const s = getComputedStyle(el)
     const canScrollX =
       (s.overflowX === 'auto' || s.overflowX === 'scroll') &&
       el.scrollWidth > el.clientWidth + 4
-    if (canScrollX) return true
+    const canScrollY =
+      (s.overflowY === 'auto' || s.overflowY === 'scroll') &&
+      el.scrollHeight > el.clientHeight + 4
+    if (canScrollX || canScrollY) return true
     el = el.parentElement
   }
   return false
@@ -132,7 +139,7 @@ function isInsideHorizontalScrollable(el: Element | null): boolean {
 const onTouchStart = (e: TouchEvent) => {
   touchStartX = e.touches[0].clientX
   touchStartY = e.touches[0].clientY
-  touchOnHorizontalScrollable = isInsideHorizontalScrollable(e.target as Element)
+  touchOnHorizontalScrollable = isInsideScrollable(e.target as Element)
 }
 
 const onTouchEnd = (e: TouchEvent) => {
@@ -153,14 +160,26 @@ const onTouchEnd = (e: TouchEvent) => {
   if (nextIdx < 0) nextIdx = TABS.length - 1
   if (nextIdx >= TABS.length) nextIdx = 0
 
-  // 推入推出转场：方向跟随滑动
-  transitionName.value = dx < 0 ? 'slide-left' : 'slide-right'
   isSwipeAnimating = true
   uiStore.setSettingsTab(TABS[nextIdx])
   setTimeout(() => {
     isSwipeAnimating = false
   }, 400)
 }
+
+// 转场方向跟随 tab 顺序：前进 → slide-left（新页从右进），后退 → slide-right。
+// 滑动切换与导航栏点击统一走这里；首尾 wrap 处理（末→首 视为前进，首→末 视为后退）。
+watch(
+  () => uiStore.currentSettingsTab,
+  (newTab, oldTab) => {
+    if (!oldTab) return
+    const prevIdx = TABS.indexOf(oldTab as (typeof TABS)[number])
+    const nextIdx = TABS.indexOf(newTab as (typeof TABS)[number])
+    if (prevIdx < 0 || nextIdx < 0) return
+    const forward = nextIdx > prevIdx || (prevIdx === TABS.length - 1 && nextIdx === 0)
+    transitionName.value = forward ? 'slide-left' : 'slide-right'
+  },
+)
 
 // 2. 定义事件处理函数
 // 当 A 组件发来 "remove-more-menu-from-a" 事件时

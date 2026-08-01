@@ -279,6 +279,8 @@ const initIndicator = () => {
 
   if (activeButton?.$el) {
     moveIndicator(activeButton.$el)
+    // 滑动切换时激活项可能被滚出视野 → 滚回可视区（窄屏横向导航跟随）
+    activeButton.$el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
   }
 }
 
