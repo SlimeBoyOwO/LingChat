@@ -24,6 +24,7 @@ export const DEFAULT_SETTINGS = {
     achievementVolume: 80, // 成就音量
     ambientVolume: 70, // 环境音音量
     chatEffectSound: true, // 对话音效开关
+    outputDeviceId: '', // 输出音频设备（'' = 跟随系统默认）
   },
   // 显示设置
   display: {
@@ -62,6 +63,7 @@ export interface AudioSettings {
   achievementVolume: number
   ambientVolume: number
   chatEffectSound: boolean
+  outputDeviceId: string
 }
 export interface DisplaySettings {
   currentBackground: string
