@@ -12,6 +12,7 @@
 <script setup lang="ts">
 import { StartItem } from '../base'
 import { invoke } from '@tauri-apps/api/core'
+import { useDialogStore } from '@/stores/modules/ui/dialog'
 
 const emit = defineEmits<{
   (e: 'start-game'): void
@@ -21,7 +22,13 @@ const emit = defineEmits<{
 }>()
 
 // 退出游戏
-function exitGame() {
-  invoke('exit_app')
+// 先弹确认框，确认后用 Rust 端 exit_app 命令（app.exit()），桌面和 Android 都有效，
+// 避免手机上误触退出丢失进度。
+async function exitGame() {
+  const dialogStore = useDialogStore()
+  const ok = await dialogStore.confirm('确定要退出游戏吗？', '退出确认')
+  if (ok) {
+    invoke('exit_app')
+  }
 }
 </script>
