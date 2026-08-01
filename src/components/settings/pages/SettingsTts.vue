@@ -35,14 +35,16 @@
           <div class="flex items-center gap-2">
             <span
               class="h-[9px] w-[9px] shrink-0 rounded-full"
-              :class="status?.ready
-                ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.5)]'
-                : 'bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.45)]'"
+              :class="engineLoading
+                ? 'bg-amber-300 shadow-[0_0_8px_rgba(252,211,77,0.5)]'
+                : status?.ready
+                  ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.5)]'
+                  : 'bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.45)]'"
             ></span>
             <div>
               <p class="text-xs text-white/45">本地引擎</p>
               <p class="text-sm font-medium text-white">
-                {{ status?.ready ? '已就绪' : '未就绪' }}
+                {{ engineLoading ? '加载中' : status?.ready ? '已就绪' : '未就绪' }}
               </p>
             </div>
           </div>
@@ -367,6 +369,8 @@ const catalog = ref<readonly CatalogAsset[]>([])
 const status = ref<TtsLocalStatus | null>(null)
 const snapshot = ref<TtsLocalInstallSnapshot>({ assets: [], voices: [] })
 const loading = ref(false)
+// 引擎初始化（加载 DeBERTa ONNX）耗时数秒，期间用黄色"加载中"提示
+const engineLoading = ref(false)
 const busyAction = ref<string | null>(null)
 const importVoiceId = ref('')
 const styleVectorsTarget = ref('')
@@ -616,18 +620,26 @@ async function loadLocalTtsSwitch(): Promise<void> {
 async function saveLocalTtsSwitch(): Promise<void> {
   savingLocalTts.value = true
   try {
+    // 开启时后端会同步 init 引擎（加载 DeBERTa 需数秒），期间显示"加载中"
+    if (localTtsEnabled.value) engineLoading.value = true
     const switchStatus = await TtsLocal.setEnabled(localTtsEnabled.value)
     localTtsEnabled.value = switchStatus.effective_enabled
+    // 开关命令会同步初始化/卸载引擎，刷新 status 让 ready 反映真实状态，
+    // 否则试听区域会一直停留在旧的"未就绪"禁用态。
+    await refreshAll()
     notice.value = {
       kind: 'success',
       text: localTtsEnabled.value
-        ? '本地 TTS 已启用，新配置将在下次调用或重启后生效。'
+        ? status.value?.ready
+          ? '本地 TTS 已启用。'
+          : '本地 TTS 已启用，但引擎未就绪（缺少 DeBERTa 模型或分词器，请先下载）。'
         : '本地 TTS 已关闭，如需使用云端TTS，请将角色语音切换为“云端”并重启应用。',
     }
   } catch (error) {
     localTtsEnabled.value = !localTtsEnabled.value
     notice.value = { kind: 'error', text: `保存本地 TTS 开关失败：${errorText(error)}` }
   } finally {
+    engineLoading.value = false
     savingLocalTts.value = false
   }
 }
