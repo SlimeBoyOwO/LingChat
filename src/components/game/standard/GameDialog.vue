@@ -551,7 +551,7 @@ let unlistenCancelled: (() => void) | null = null
 onMounted(async () => {
   // 模式切换重挂载：立即从 store 恢复当前台词（不重播打字动画）
   const restoreLine = uiStore.showCharacterLine
-  if (restoreLine && restoreLine !== '' && gameStore.currentStatus !== 'input') {
+  if (restoreLine && restoreLine !== '' && gameStore.currentStatus === 'responding') {
     renderLineInstant(restoreLine)
   }
 

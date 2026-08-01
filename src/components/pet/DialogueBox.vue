@@ -91,7 +91,7 @@ watch([() => uiStore.showCharacterLine, () => gameStore.currentStatus], ([newLin
 // 模式切换重挂载：立即从 store 恢复当前台词（不重播打字动画）
 onMounted(() => {
   const line = uiStore.showCharacterLine
-  if (line && line !== '' && gameStore.currentStatus !== 'input' && textareaRef.value) {
+  if (line && line !== '' && gameStore.currentStatus === 'responding' && textareaRef.value) {
     textareaRef.value.textContent = line
     currentDisplayedText.value = line
   }
