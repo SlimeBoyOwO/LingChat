@@ -96,7 +96,7 @@ export default {
   },
   "save": {
     "create": {
-      "title": "開新存檔（會記低而家嘅對話）",
+      "title": "建立備份/書籤（將當前對話另存為書籤，唔會改變當前進行）",
       "placeholder": "入個存檔名",
       "creating": "創建緊...",
       "button": "創建"

@@ -47,6 +47,7 @@
           v-if="menuState === 'gameMode'"
           @back="backToMainMenu"
           @open-scripts="showScriptModeMenu"
+          @go-save="handleGoSave"
           :loadingScripts="loadingScripts"
           :scripts="scripts"
         />
@@ -76,10 +77,6 @@ import { SettingsPanel as Settings } from '../settings/'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { useSettingsStore } from '../../stores/modules/settings'
 import { getScriptList, type ScriptSummary } from '@/api/services/script-info'
-import { invoke } from '@tauri-apps/api/core'
-import { useGameStore } from '../../stores/modules/game'
-import { applyWebInitData } from '../../stores/modules/game/actions'
-import type { WebInitData } from '@/api/services/game-info'
 import MeteorAnimation from '../game/standard/animations/MeteorAnimation.vue'
 import StarAnimation from '../game/standard/animations/StarAnimation.vue'
 import { useParallaxAnimation } from '../game/standard/animations/ParallaxAnimation'
@@ -125,30 +122,10 @@ function goToGithub() {
   window.open('https://github.com/SlimeBoyOwO/LingChat', '_blank')
 }
 
-const handleContinueGame = async () => {
-  try {
-    const { saves } = await invoke<{ saves: Array<{ id: number }>; total: number }>(
-      'list_saves',
-      { page: 1, pageSize: 1 },
-    )
-    if (!saves || saves.length === 0) {
-      uiStore.showWarning({
-        title: t('views.mainMenu.noSaveTitle'),
-        message: t('views.mainMenu.noSaveMessage'),
-      })
-      return
-    }
-    const gameInfo = await invoke<WebInitData>('load_save', { saveId: saves[0].id })
-    const gameStore = useGameStore()
-    applyWebInitData(gameStore.$state, gameInfo)
-    router.push('/chat')
-  } catch (error) {
-    console.error('继续游戏失败:', error)
-    uiStore.showError({
-      title: t('views.mainMenu.continueFailTitle'),
-      message: t('views.mainMenu.continueFailMessage'),
-    })
-  }
+// 自由对话里"否 → 前往存档页"：直接复用打开设置并定位到存档 tab
+function handleGoSave() {
+  handleOpenSettings('save')
+
 }
 
 function handleOpenSettings(tab?: string) {

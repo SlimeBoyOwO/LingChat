@@ -95,7 +95,7 @@ export default {
   },
   save: {
     create: {
-      title: '新規セーブ（現在の会話を記録します）',
+      title: 'バックアップ/ブックマークを作成（現在の会話をブックマークとして保存し、現在の進行は変えません）',
       placeholder: 'セーブ名を入力',
       creating: '作成中...',
       button: '作成',

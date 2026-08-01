@@ -96,7 +96,7 @@ export default {
   },
   save: {
     create: {
-      title: "Create New Save (records the current conversation)",
+      title: "Create Backup / Bookmark (saves the current conversation as a bookmark, doesn't change current progress)",
       placeholder: "Enter a save name",
       creating: "Creating...",
       button: "Create",

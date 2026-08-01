@@ -137,6 +137,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { MenuPage, MenuItem } from '../../ui'
 import { Input } from '../../base'
 import { useGameStore } from '../../../stores/modules/game'
@@ -162,6 +163,7 @@ const gameStore = useGameStore()
 const uiStore = useUIStore()
 const dialogStore = useDialogStore()
 const { t } = useI18n()
+const router = useRouter()
 
 const saves = ref<SaveInfo[]>([])
 const newSaveTitle = ref('')
@@ -279,6 +281,9 @@ const handleLoadSave = async (saveId: number) => {
     const gameInfo = await invoke<WebInitData>('load_save', { saveId })
     applyWebInitData(gameStore.$state, gameInfo)
     uiStore.showSuccess({ title: t('settings.save.msg.loadSuccessTitle'), message: t('settings.save.msg.loadSuccessMsg') })
+    // 读档即进入游戏：关设置面板，直接跳对话页
+    uiStore.toggleSettings(false)
+    router.push('/chat')
   } catch (e: any) {
     console.error('读取存档失败:', e)
     uiStore.showError({
