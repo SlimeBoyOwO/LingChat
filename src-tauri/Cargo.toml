@@ -14,6 +14,11 @@ edition = "2021"
 name = "ling_chat_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# 移动端（Android/iOS）构建时必须启用：让 webview 从应用内嵌资产加载前端
+# （不走 devUrl）。桌面端不受影响。
+custom-protocol = ["tauri/custom-protocol"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -42,6 +47,13 @@ serde_yaml = "0.9"
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
 reqwest = { version = "0.13", features = ["json", "query", "stream", "rustls", "system-proxy"], default-features = false }
+# 用 webpki-roots（内置 Mozilla CA）构造 rustls ClientConfig 注入 reqwest，
+# 绕开 reqwest 0.13 默认的 rustls-platform-verifier（Android 上需显式初始化，
+# 未初始化会 TLS panic）。版本与 reqwest 0.13.3 的 rustls 依赖保持一致（0.23）。
+# aws-lc-rs：与 reqwest 0.13.3 的 provider 一致（否则 rustls 无法自动确定
+# CryptoProvider，TLS 握手会 panic）。
+rustls = { version = "0.23", features = ["aws-lc-rs"] }
+webpki-roots = "0.26"
 futures-util = "0.3"
 async-stream = "0.3"
 bytes = "1"
