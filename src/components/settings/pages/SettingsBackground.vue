@@ -342,6 +342,7 @@ import {
   generateBackgroundImage,
   openBackgroundsFolder,
 } from '../../../api/services/background'
+import { unlockAchievement } from '../../../api/services/achievement'
 import {
   getCpuInfo,
   redetectCpu,
@@ -464,6 +465,15 @@ const isSceneSelected = (sceneId: string): boolean => {
 }
 
 const handleSceneClick = async (scene: SceneInfo) => {
+  // 点击当前已激活的场景则取消选中，背景默认为透明
+  if (gameStore.currentScene?.id === scene.id) {
+    gameStore.clearCurrentScene()
+    uiStore.setCurrentBackground('')
+    unlockAchievement('see_through').catch(console.error)
+    await fetchScenes()
+    return
+  }
+
   // 无描述时提醒用户
   if (!scene.scene_description?.trim()) {
     uiStore.showInfo({

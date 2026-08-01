@@ -19,6 +19,7 @@ static DEFAULT_ACHIEVEMENTS: LazyLock<HashMap<&'static str, AchievementDef>> =
                     img_url: None,
                     audio_url: None,
                     duration: None,
+                    hidden: false,
                 },
             ),
             (
@@ -31,6 +32,7 @@ static DEFAULT_ACHIEVEMENTS: LazyLock<HashMap<&'static str, AchievementDef>> =
                     img_url: None,
                     audio_url: None,
                     duration: None,
+                    hidden: false,
                 },
             ),
             (
@@ -43,6 +45,7 @@ static DEFAULT_ACHIEVEMENTS: LazyLock<HashMap<&'static str, AchievementDef>> =
                     img_url: None,
                     audio_url: None,
                     duration: None,
+                    hidden: false,
                 },
             ),
             (
@@ -55,6 +58,20 @@ static DEFAULT_ACHIEVEMENTS: LazyLock<HashMap<&'static str, AchievementDef>> =
                     img_url: None,
                     audio_url: None,
                     duration: None,
+                    hidden: false,
+                },
+            ),
+            (
+                "see_through",
+                AchievementDef {
+                    title: "看穿一切".into(),
+                    description: "背景一透明，感觉整个人都被你看透了。……算了，就允许你看一会儿吧。\n（实验性透明，有bug也是很正常的）".into(),
+                    ach_type: "rare".into(),
+                    target_progress: 1,
+                    img_url: None,
+                    audio_url: None,
+                    duration: Some(6000),
+                    hidden: true,
                 },
             ),
         ])
@@ -131,10 +148,9 @@ impl AchievementManager {
                     unlocked_at: None,
                     current_progress: 0,
                 });
-            result.insert(
-                id.to_string(),
-                Achievement::from_parts(id.to_string(), def, &state),
-            );
+            let mut ach = Achievement::from_parts(id.to_string(), def, &state);
+            Self::mask_hidden(&mut ach, def, &state);
+            result.insert(id.to_string(), ach);
         }
         for (id, def) in &self.dynamic_achievements {
             let state = self
@@ -146,9 +162,19 @@ impl AchievementManager {
                     unlocked_at: None,
                     current_progress: 0,
                 });
-            result.insert(id.clone(), Achievement::from_parts(id.clone(), def, &state));
+            let mut ach = Achievement::from_parts(id.clone(), def, &state);
+            Self::mask_hidden(&mut ach, def, &state);
+            result.insert(id.clone(), ach);
         }
         result
+    }
+
+    /// 隐藏成就未解锁时，对其标题/描述脱敏
+    fn mask_hidden(ach: &mut Achievement, def: &AchievementDef, state: &AchievementState) {
+        if def.hidden && !state.unlocked {
+            ach.title = "???".to_string();
+            ach.description = "达成特定条件后解锁".to_string();
+        }
     }
 
     /// 注册动态成就（如冒险的 completion_achievements）

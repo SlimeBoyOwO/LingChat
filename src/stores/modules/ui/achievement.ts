@@ -17,6 +17,7 @@ export interface Achievement {
   unlocked_at?: string
   current_progress?: number
   target_progress?: number
+  hidden?: boolean
 }
 
 interface AchievementState {
@@ -115,6 +116,9 @@ export const useAchievementStore = defineStore('achievement', {
           this.allAchievements[id].unlocked = true
           this.allAchievements[id].unlocked_at = new Date().toISOString()
           this.allAchievements[id].current_progress = this.allAchievements[id].target_progress
+          // 隐藏成就解锁时同步真实标题/描述
+          if (title) this.allAchievements[id].title = title
+          if (description) this.allAchievements[id].description = description
         }
 
         this.queue.push({
