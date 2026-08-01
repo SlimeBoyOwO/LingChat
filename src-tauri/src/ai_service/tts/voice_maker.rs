@@ -21,8 +21,7 @@ use crate::ai_service::tts::adapters::sbv2::Sbv2Adapter;
 use crate::ai_service::tts::adapters::sbv2api::Sbv2ApiAdapter;
 use crate::ai_service::tts::adapters::vits::VitsAdapter;
 use crate::ai_service::tts::local::adapter::LocalTtsAdapter;
-use crate::ai_service::tts::local::engine::LocalTtsEngine;
-use crate::ai_service::tts::local::paths::LocalTtsPaths;
+use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::tts::provider::TtsProvider;
 use crate::ai_service::types::VoiceModel;
 use crate::config::tts::TtsConfig;
@@ -50,11 +49,9 @@ pub struct VoiceMaker {
     audio_format: String,
     availability: TtsAvailability,
     tts_config: TtsConfig,
-    /// Local TTS engine (in-process SBV2). Set once at startup so the
-    /// `sbv2_local` adapter can lazy-init the DeBerta holder + voice.
-    local_tts_engine: Option<Arc<LocalTtsEngine>>,
-    local_tts_paths: Option<LocalTtsPaths>,
-    local_tts_switch: Option<crate::ai_service::tts::local::LocalTtsSwitch>,
+    /// Local TTS 共享运行时（进程内引擎 + 路径 + 全局开关）。由
+    /// `build_voice_maker` 注入一次，`sbv2_local` 适配器惰性引导时使用。
+    local_runtime: Option<LocalTtsRuntime>,
     local_cloud_fallback: Option<LocalCloudFallback>,
 }
 
@@ -134,31 +131,15 @@ impl VoiceMaker {
             audio_format,
             availability: TtsAvailability::default(),
             tts_config,
-            local_tts_engine: None,
-            local_tts_paths: None,
-            local_tts_switch: None,
+            local_runtime: None,
             local_cloud_fallback: None,
         }
     }
 
-    /// Inject the in-process local TTS engine and resolved paths so the
-    /// `sbv2_local` adapter can lazy-init its holder + voice. Called from
-    /// `build_voice_maker` once per character registration.
-    pub fn set_local_tts_engine(
-        &mut self,
-        engine: Option<Arc<LocalTtsEngine>>,
-        paths: Option<LocalTtsPaths>,
-    ) {
-        self.local_tts_engine = engine;
-        self.local_tts_paths = paths;
-    }
-
-    pub fn set_local_tts_switch(
-        &mut self,
-        local_tts_switch: Option<crate::ai_service::tts::local::LocalTtsSwitch>,
-    ) {
-        self.local_tts_switch = local_tts_switch.clone();
-        self.provider.set_local_tts_switch(local_tts_switch);
+    /// 注入本地 TTS 共享运行时。由 `build_voice_maker` 在角色注册时调用，
+    /// `sbv2_local` 适配器惰性引导及云端 fallback 判断都依赖它。
+    pub fn set_local_runtime(&mut self, local_runtime: Option<LocalTtsRuntime>) {
+        self.local_runtime = local_runtime;
     }
 
     pub fn set_lang(&mut self, lang: impl Into<String>) {
@@ -286,24 +267,18 @@ impl VoiceMaker {
                     }),
                     _ => None,
                 };
-                let engine = match &self.local_tts_engine {
-                    Some(e) => e.clone(),
+                let runtime = match &self.local_runtime {
+                    Some(runtime) => runtime.clone(),
                     None => {
                         tracing::warn!(
-                            "sbv2_local 已选择但本地 TTS 引擎未注入；chat 路由将返回错误"
+                            "sbv2_local 已选择但本地 TTS 运行时未注入；chat 路由将返回错误"
                         );
                         self.provider.disable();
                         return Ok(());
                     }
                 };
-                let paths = match &self.local_tts_paths {
-                    Some(p) => p.clone(),
-                    None => {
-                        tracing::warn!("sbv2_local 路径未配置");
-                        self.provider.disable();
-                        return Ok(());
-                    }
-                };
+                let engine = runtime.engine;
+                let paths = runtime.paths;
                 let voice_id = cfg.sbv2_local_voice_id.clone().unwrap_or_default();
                 let speaker_id = cfg.sbv2_local_speaker_id.unwrap_or(0);
                 let style_id = cfg.sbv2_local_style_id.unwrap_or(0);
@@ -470,9 +445,9 @@ impl VoiceMaker {
 
         let use_cloud_fallback = self.tts_type == "localsbv2api"
             && self
-                .local_tts_switch
+                .local_runtime
                 .as_ref()
-                .is_some_and(|switch| !switch.is_enabled());
+                .is_some_and(|runtime| !runtime.is_enabled());
         let fallback_adapter = if use_cloud_fallback {
             tracing::info!(
                 "角色配置为 localsbv2api，但本地 TTS 已被全局禁用，改用独立配置的云端 fallback"
@@ -536,19 +511,23 @@ impl VoiceMaker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ai_service::tts::local::engine::LocalTtsEngine;
+    use crate::ai_service::tts::local::paths::LocalTtsPaths;
+    use crate::ai_service::tts::local::LocalTtsSwitch;
 
     #[test]
     fn local_mode_defers_cloud_fallback_adapter_creation() {
         let mut maker = VoiceMaker::new(PathBuf::from("voice"), "wav", TtsConfig::default());
-        maker.set_local_tts_engine(
-            Some(Arc::new(LocalTtsEngine::new())),
-            Some(LocalTtsPaths {
+        maker.set_local_runtime(Some(LocalTtsRuntime::new(
+            Arc::new(LocalTtsEngine::new()),
+            LocalTtsPaths {
                 root: PathBuf::from("tts-local"),
                 assets: PathBuf::from("tts-local/assets"),
                 voices: PathBuf::from("tts-local/voices"),
                 cache: PathBuf::from("cache"),
-            }),
-        );
+            },
+            LocalTtsSwitch::new(true),
+        )));
         let cfg = VoiceModel {
             sbv2api_name: Some("ordinary-cloud-model".into()),
             sbv2api_speaker_id: Some("99".into()),

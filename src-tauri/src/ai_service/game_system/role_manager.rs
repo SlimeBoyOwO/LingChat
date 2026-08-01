@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use sea_orm::DatabaseConnection;
@@ -9,8 +8,7 @@ use crate::ai_service::game_system::memory_builder::MemoryBuilder;
 use crate::ai_service::game_system::persistent_memory_system::PersistentMemorySystem;
 use crate::ai_service::llm::LlmSlot;
 use crate::ai_service::tts::VoiceMaker;
-use crate::ai_service::tts::local::engine::LocalTtsEngine;
-use crate::ai_service::tts::local::paths::LocalTtsPaths;
+use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::types::{CharacterSettings, GameLine, GameMemoryBank, GameRole, LlmMessage};
 use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
@@ -30,12 +28,9 @@ pub struct GameRoleManager {
     memory_bank_systems: HashMap<i32, PersistentMemorySystem>,
     /// TTS 引擎配置（适配器 URL、音频格式等）。
     tts_config: TtsConfig,
-    /// 本地 TTS 进程内引擎（SBV2）。转发给每个 VoiceMaker，
-    /// 使 `sbv2_local` 适配器可以惰性初始化 DeBerta holder 和语音。
-    local_tts_engine: Option<Arc<LocalTtsEngine>>,
-    /// 本地 TTS 资源的文件系统布局。与引擎一起转发。
-    local_tts_paths: Option<LocalTtsPaths>,
-    local_tts_switch: Option<crate::ai_service::tts::local::LocalTtsSwitch>,
+    /// 本地 TTS 共享运行时（进程内引擎 + 路径 + 全局开关）。
+    /// 转发给每个 VoiceMaker，使 `sbv2_local` 适配器可以惰性引导。
+    local_tts: Option<LocalTtsRuntime>,
     /// 全局永久记忆开关（来自 `AppConfig::use_persistent_memory`）。
     use_persistent_memory: bool,
     /// 触发记忆摘要的新消息数（来自 `AppConfig::memory_update_interval`）。
@@ -51,9 +46,7 @@ impl GameRoleManager {
         data_dir: PathBuf,
         llm: LlmSlot,
         tts_config: TtsConfig,
-        local_tts_engine: Option<Arc<LocalTtsEngine>>,
-        local_tts_paths: Option<LocalTtsPaths>,
-        local_tts_switch: Option<crate::ai_service::tts::local::LocalTtsSwitch>,
+        local_tts: Option<LocalTtsRuntime>,
         use_persistent_memory: bool,
         memory_update_interval: u32,
         memory_recent_window: u32,
@@ -64,9 +57,7 @@ impl GameRoleManager {
             llm,
             memory_bank_systems: HashMap::new(),
             tts_config,
-            local_tts_engine,
-            local_tts_paths,
-            local_tts_switch,
+            local_tts,
             use_persistent_memory,
             memory_update_interval,
             memory_recent_window,
@@ -81,18 +72,6 @@ impl GameRoleManager {
 
     pub fn set_character_clothes_override(&mut self, role_id: i32, clothes: String) {
         self.clothes_overrides.insert(role_id, clothes);
-    }
-
-    /// 注入进程内本地 TTS 引擎和已解析的路径。在 `lib.rs` 中
-    /// `LocalTtsState` 构造完成后立即调用一次，使后续构建的每个
-    /// VoiceMaker 都能获取到。
-    pub fn set_local_tts_engine(
-        &mut self,
-        engine: Option<Arc<LocalTtsEngine>>,
-        paths: Option<LocalTtsPaths>,
-    ) {
-        self.local_tts_engine = engine;
-        self.local_tts_paths = paths;
     }
 
     /// 获取角色；若未加载则从 DB 惰性注册。
@@ -163,9 +142,7 @@ impl GameRoleManager {
             &settings,
             resource_path.as_deref(),
             &self.tts_config,
-            self.local_tts_engine.as_ref(),
-            self.local_tts_paths.as_ref(),
-            self.local_tts_switch.as_ref(),
+            self.local_tts.as_ref(),
         );
 
         tracing::info!(
@@ -465,9 +442,7 @@ impl GameRoleManager {
             settings,
             resource_path.as_deref(),
             &self.tts_config,
-            self.local_tts_engine.as_ref(),
-            self.local_tts_paths.as_ref(),
-            self.local_tts_switch.as_ref(),
+            self.local_tts.as_ref(),
         );
         let voice_maker_ready = voice_maker.is_some();
 
@@ -612,9 +587,7 @@ fn build_voice_maker(
     settings: &CharacterSettings,
     resource_path: Option<&str>,
     tts_config: &TtsConfig,
-    local_tts_engine: Option<&Arc<LocalTtsEngine>>,
-    local_tts_paths: Option<&LocalTtsPaths>,
-    local_tts_switch: Option<&crate::ai_service::tts::local::LocalTtsSwitch>,
+    local_tts: Option<&LocalTtsRuntime>,
 ) -> Option<VoiceMaker> {
     let tts_type = settings.tts_type.as_deref().unwrap_or("").trim();
     if tts_type.is_empty() {
@@ -635,8 +608,7 @@ fn build_voice_maker(
 
     let temp_dir = data_dir.join("voice");
     let mut vm = VoiceMaker::new(temp_dir, audio_format, tts_config.clone());
-    vm.set_local_tts_engine(local_tts_engine.cloned(), local_tts_paths.cloned());
-    vm.set_local_tts_switch(local_tts_switch.cloned());
+    vm.set_local_runtime(local_tts.cloned());
     vm.set_lang(&lang);
     if let Some(p) = resource_path {
         vm.set_character_path(Some(resolve_character_path(data_dir, p)));

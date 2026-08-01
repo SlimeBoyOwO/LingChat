@@ -19,8 +19,7 @@ use crate::ai_service::llm::provider_config::{
 use crate::ai_service::llm::LlmSlot;
 use crate::ai_service::message_system::processor::{MessageProcessor, ProcessorOptions};
 use crate::ai_service::service::{AIService, SharedAIService};
-use crate::ai_service::tts::local::engine::LocalTtsEngine;
-use crate::ai_service::tts::local::paths::LocalTtsPaths;
+use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::translator::Translator;
 use crate::ai_service::types::CharacterSettings;
 use crate::config::{self, AppConfig};
@@ -31,9 +30,7 @@ use crate::ChatComponents;
 
 pub async fn initialize(
     app: &App,
-    local_tts_engine: Option<Arc<LocalTtsEngine>>,
-    local_tts_paths: Option<LocalTtsPaths>,
-    local_tts_switch: Option<crate::ai_service::tts::local::LocalTtsSwitch>,
+    local_tts: Option<LocalTtsRuntime>,
 ) -> Result<(DatabaseConnection, SharedAIService, ChatComponents)> {
     // init_data_dir 已经在 Tauri 设置闭包中提前调用过了
     // （参见 lib.rs），因此在此函数运行之前，缓存的数据目录就已经对
@@ -82,9 +79,7 @@ pub async fn initialize(
         data_dir.clone(),
         llm.clone(),
         app_config.tts.clone(),
-        local_tts_engine,
-        local_tts_paths,
-        local_tts_switch,
+        local_tts,
         app_config.use_persistent_memory,
         app_config.memory_update_interval,
         app_config.memory_recent_window,

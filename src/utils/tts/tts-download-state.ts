@@ -1,4 +1,4 @@
-import type { CatalogAsset } from '@/api/services/tts-catalog'
+import type { CatalogAsset } from '@/api/services/tts/tts-catalog'
 
 export interface VoiceInstalledSnapshot {
   voice_id: string

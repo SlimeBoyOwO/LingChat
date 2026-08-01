@@ -6,6 +6,7 @@ pub mod model_manager;
 pub mod package;
 pub mod paths;
 pub mod registry;
+pub mod setup;
 
 mod download;
 mod saf_bridge;
@@ -74,6 +75,34 @@ use crate::config;
 #[derive(Clone, Debug)]
 pub struct LocalTtsSwitch {
     enabled: Arc<AtomicBool>,
+}
+
+/// 本地 TTS 进程内引擎的共享运行时依赖。三合一后作为单个参数
+/// 从 lib.rs → init → AIService → RoleManager → VoiceMaker 传递，
+/// 避免把 engine/paths/switch 三个散装字段逐层展开。
+#[derive(Clone, Debug)]
+pub struct LocalTtsRuntime {
+    pub engine: Arc<LocalTtsEngine>,
+    pub paths: LocalTtsPaths,
+    pub switch: LocalTtsSwitch,
+}
+
+impl LocalTtsRuntime {
+    pub fn new(
+        engine: Arc<LocalTtsEngine>,
+        paths: LocalTtsPaths,
+        switch: LocalTtsSwitch,
+    ) -> Self {
+        Self {
+            engine,
+            paths,
+            switch,
+        }
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.switch.is_enabled()
+    }
 }
 
 impl LocalTtsSwitch {

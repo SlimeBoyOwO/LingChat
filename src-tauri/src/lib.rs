@@ -12,12 +12,10 @@ mod resource_sync;
 pub mod utils;
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use chrono::Local;
 use sea_orm::DatabaseConnection;
-use tauri::{Emitter, Manager};
-use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+use tauri::Manager;
 use tracing_subscriber::fmt::time::FormatTime;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -228,55 +226,16 @@ pub fn run() {
             app.manage(utils::cpu_perf::CpuDetectionCache::new());
             app.manage(api::role_archive::RoleArchiveState::default());
 
-            // 本地 TTS（SBV2 进程内实现）。解析路径、确保磁盘布局，
-            // 如果已安装 DeBerta 配对则自动初始化引擎。
-            let tts_paths = ai_service::tts::local::paths::LocalTtsPaths::resolve(
-                &app.handle(),
-                init::static_copy::get_data_dir().clone(),
-            )
-            .map_err(|e| format!("LocalTtsPaths::resolve: {e}"))?;
-            let local_tts_paths_available = match tts_paths.ensure() {
-                Ok(()) => true,
-                Err(e) => {
-                    tracing::error!(
-                        target: "tts_local",
-                        "failed to create local TTS data directories: {e}"
-                    );
-                    // 显示错误对话框
-                    app.dialog()
-                        .message(format!(
-                            "无法创建本地 TTS 数据目录，本次启动将停用本地 TTS。\n\n请检查磁盘空间和数据目录权限。\n\n详细错误：{e}"
-                        ))
-                        .title("本地 TTS 初始化失败")
-                        .kind(MessageDialogKind::Error)
-                        .show(|_| {});
-                    false
-                }
-            };
-            let local_state = ai_service::tts::local::LocalTtsState::new(tts_paths);
-            // `enable_local_tts` 直接存储在 `features.enable_local_tts` 下
-            //（前端通过 `getEnvConfigByKey` 读取）；AppConfig 不拥有此字段。
-            // 在此读取一次，以便进程内引擎以用户选择的状态启动。
-            let local_tts_switch = ai_service::tts::local::LocalTtsSwitch::new(
-                local_tts_paths_available && load_enable_local_tts(&app.handle()),
-            );
-            app.manage(local_tts_switch.clone());
-            let local_engine = local_state.engine.clone();
-            let local_paths = local_state.paths.clone();
-            app.manage(local_state);
-
             // Android 修复：Tauri 在 setup 闭包执行前已创建 webview 窗口，前端 invoke
             // 命令会在 IPC runtime worker 上立即 dispatch；如果 AppState 还没 manage
             // 就会 panic "state() called before manage()"。所以 setup 一开始就 manage
             // 一个空壳 AppState，init::initialize 完成后用真实值 fill。
             app.manage(AppState::empty());
             let rt = tokio::runtime::Runtime::new()?;
-            let (db, ai_service, chat) = rt.block_on(init::initialize(
-                app,
-                Some(local_engine.clone()),
-                Some(local_paths.clone()),
-                Some(local_tts_switch.clone()),
-            ))?;
+            // 本地 TTS（SBV2 进程内实现）：解析路径、注册 State/开关并收敛运行时。
+            let local_tts = ai_service::tts::local::setup::bootstrap(app)?;
+            let (db, ai_service, chat) =
+                rt.block_on(init::initialize(app, Some(local_tts.runtime.clone())))?;
 
             // 初始化文件日志（从设置读取开关和保留天数）
             {
@@ -406,50 +365,7 @@ pub fn run() {
             // 延迟加载 DeBerta 直到应用主体挂载完成；
             // 如果在加载完成前有聊天请求到达，LocalTtsAdapter 的惰性引导仍然会运行，
             // 因此首次消息延迟是启动时加载的代价。
-            let preload = app.handle().clone();
-            let preload_engine = local_engine.clone();
-            let preload_paths = local_paths.clone();
-            let preload_switch = local_tts_switch.clone();
-            tauri::async_runtime::spawn(async move {
-                tokio::task::yield_now().await;
-                if !preload_switch.is_enabled() {
-                    tracing::info!(target: "tts_local", "local tts disabled, skipping preload");
-                    return;
-                }
-                if !preload_paths.asset_present("deberta") {
-                    tracing::info!(
-                        target: "tts_local",
-                        "local tts assets missing, skipping preload"
-                    );
-                    return;
-                }
-                if preload_engine.is_ready().await {
-                    return;
-                }
-                match tokio::time::timeout(
-                    Duration::from_secs(15),
-                    preload_engine.init(&preload_paths),
-                )
-                .await
-                {
-                    Ok(Ok(())) => {
-                        tracing::info!(target: "tts_local", "deberta preloaded in background");
-                        let _ = preload.emit("tts://engine-ready", ());
-                    }
-                    Ok(Err(e)) => {
-                        tracing::warn!(
-                            target: "tts_local",
-                            "deberta preload failed (first synthesize will retry): {e}"
-                        );
-                    }
-                    Err(_) => {
-                        tracing::warn!(
-                            target: "tts_local",
-                            "deberta preload timed out after 15 seconds (first synthesize will retry)"
-                        );
-                    }
-                }
-            });
+            ai_service::tts::local::setup::spawn_preload(&app.handle(), &local_tts);
 
             // 启动 Windows 鼠标轮询点击穿透循环
             let window = app
@@ -680,11 +596,3 @@ fn exit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
-/// 从设置存储中直接读取 `features.enable_local_tts`。
-///
-/// 专用的本地 TTS IPC 持久化此键并一起更新运行时开关。
-/// AppConfig 特意不拥有此字段，因为它是运行时门控，而非结构性设置。
-/// 缺失值默认为 `false`，与首次启动的云端 TTS 行为一致。
-fn load_enable_local_tts(app: &tauri::AppHandle) -> bool {
-    ai_service::tts::local::load_configured_enabled(app)
-}

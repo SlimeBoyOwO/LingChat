@@ -1,12 +1,12 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
-import type { AssetKind, CatalogAsset } from '@/api/services/tts-catalog'
+import type { AssetKind, CatalogAsset } from '@/api/services/tts/tts-catalog'
 import {
   createProgressBus,
   type DownloadProgress,
   type ProgressListener,
-} from '@/api/services/download-progress'
+} from '@/api/services/tts/download-progress'
 
 export type { AssetKind, CatalogAsset, DownloadProgress }
 

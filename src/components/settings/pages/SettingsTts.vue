@@ -347,15 +347,15 @@ import {
 } from 'lucide-vue-next'
 import { MenuItem, MenuPage } from '@/components/ui'
 import { useDialogStore } from '@/stores/modules/ui/dialog'
-import * as TtsLocal from '@/api/services/tts-local'
-import { speedToLengthScale } from '@/utils/tts-speed'
-import { catalogRowState } from '@/utils/tts-download-state'
+import * as TtsLocal from '@/api/services/tts/tts-local'
+import { speedToLengthScale } from '@/utils/tts/tts-speed'
+import { catalogRowState } from '@/utils/tts/tts-download-state'
 import type {
   CatalogAsset,
   TtsLocalInstallSnapshot,
   TtsLocalStatus,
   VoiceRecord,
-} from '@/api/services/tts-local'
+} from '@/api/services/tts/tts-local'
 
 const dialogStore = useDialogStore()
 const catalog = ref<readonly CatalogAsset[]>([])

@@ -202,7 +202,7 @@ import { computed, onUnmounted, ref, watch } from 'vue'
 import { getRoleSettings, updateRoleSettings } from '../../../api/services/character'
 import { Icon } from '../../base'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
-import * as TtsLocal from '../../../api/services/tts-local'
+import * as TtsLocal from '../../../api/services/tts/tts-local'
 
 const props = defineProps<{
   visible: boolean
