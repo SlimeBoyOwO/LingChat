@@ -147,7 +147,7 @@ impl AppConfig {
     /// 从 settings.json 加载配置，缺失项回退到 `Self::default()`。
     pub fn load(app: &AppHandle) -> Result<Self> {
         let store = app
-            .store(super::STORE_FILE)
+            .store(super::store_path())
             .context("Failed to open settings store")?;
 
         let default = Self::default();

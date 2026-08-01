@@ -94,3 +94,10 @@ pub const LOG_ENABLE: &str = "log.enable";
 pub const LOG_RETENTION_DAYS: &str = "log.retention_days";
 /// 是否记录 LLM 请求体到文件（完整请求 JSON，默认关闭）
 pub const LOG_LLM_REQUEST_BODY: &str = "log.llm_request_body";
+
+// ========== 游戏状态（存档系统） ==========
+/// 上次游玩的角色 ID（启动时自动恢复）
+pub const LAST_CHARACTER_ID: &str = "game.last_character_id";
+/// 各角色"当前进行"存档 id 前缀（key = game.last_save_id_<roleId>，galgame 语义：
+/// 自动保存永远写当前进行槽，重开/继续时恢复它）
+pub const LAST_SAVE_ID_PREFIX: &str = "game.last_save_id_";

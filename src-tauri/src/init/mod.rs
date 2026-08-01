@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use sea_orm::DatabaseConnection;
-use tauri::App;
+use tauri::{App, Manager};
 use tauri_plugin_store::StoreExt;
 use tokio::sync::Mutex;
 
@@ -57,6 +57,34 @@ pub async fn initialize(
     // 迁移旧的主动视觉独立配置（VD_*）→ 大模型管理中的视觉模型角色
     migrate_legacy_vision_keys(&app.handle());
 
+    // 迁移旧的 settings.json（从 tauri-plugin-store 默认路径 → DATA_DIR）
+    // 解决 Android 上内部存储 (/data/data/...) 与外部存储不同目录的配置丢失问题
+    {
+        let new_path = crate::config::store_path();
+        for base_dir in [
+            app.path().app_data_dir().ok(),
+            app.path().app_local_data_dir().ok(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            let old_path = base_dir.join("settings.json");
+            if old_path != new_path && old_path.exists() && !new_path.exists() {
+                tracing::info!(
+                    "迁移 settings.json: {:?} → {:?}",
+                    old_path,
+                    new_path
+                );
+                if let Err(e) = std::fs::rename(&old_path, &new_path) {
+                    tracing::warn!("迁移 settings.json 失败: {:#}", e);
+                }
+            }
+        }
+    }
+    // settings.json 写坏兜底：tauri-plugin-store 的 save() 是 fs::write 直接写（非原子），
+    // 外部存储写盘被杀会损坏文件 → 空 store 覆盖 → 配置"离奇重置"。启动时若损坏且有 .bak 则恢复。
+    crate::config::recover_settings_if_corrupted();
+
     // 提前加载配置 + 构建 LlmClient（AIService 的子成员 GameRoleManager 需要它）
     let app_config = AppConfig::load(&app.handle()).unwrap_or_default();
 
@@ -92,7 +120,7 @@ pub async fn initialize(
     // 从 session store 读取各角色的上次服装，注入 GameRoleManager
     {
         let mut overrides = HashMap::new();
-        if let Ok(store) = app.store(config::STORE_FILE) {
+        if let Ok(store) = app.store(config::store_path()) {
             if let Some(cid) = character_id {
                 let key = config::session::last_clothes_key(cid);
                 if let Some(clothes) = store
@@ -198,8 +226,8 @@ async fn load_default_character(
 ) -> Result<CharacterSettings> {
     // 1. 尝试从 settings store 读取上次游玩的角色 ID
     let store = app
-        .store(config::STORE_FILE)
-        .unwrap_or_else(|_| app.handle().store(config::STORE_FILE).unwrap());
+        .store(config::store_path())
+        .unwrap_or_else(|_| app.handle().store(config::store_path()).unwrap());
     if let Some(last_id) = store
         .get(config::session::LAST_CHARACTER_ID)
         .and_then(|v| v.as_i64())

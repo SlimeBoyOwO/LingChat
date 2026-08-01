@@ -147,6 +147,8 @@ impl AIService {
         gs.onstage_role_ids.clear();
         gs.present_role_ids.clear();
         gs.player_entered = false;
+        // 开新世界：清掉当前进行标记，避免新角色的台词写进旧角色的存档
+        gs.active_save_id = None;
 
         let system_line = LineBase {
             content: self.ai_prompt.clone(),
