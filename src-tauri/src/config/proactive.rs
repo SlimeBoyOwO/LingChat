@@ -46,7 +46,7 @@ impl Default for ProactiveConfig {
 impl ProactiveConfig {
     /// 从 settings.json 加载主动对话配置，缺失项回退到 `Self::default()`。
     pub fn load(app: &AppHandle) -> Self {
-        let store = app.store(super::STORE_FILE).ok();
+        let store = app.store(super::store_path()).ok();
         let default = Self::default();
 
         let get_bool = |key: &str, default: bool| -> bool {

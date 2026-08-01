@@ -181,3 +181,8 @@ pub const CAST_DIALOG_FONT_SIZE: &str = "cast.dialog_font_size";
 pub const CAST_DIALOG_BG_OPACITY: &str = "cast.dialog_bg_opacity";
 /// 投屏隐藏对话框（默认 false）：开启后对话层整层 display:none，只保留背景与角色舞台。
 pub const CAST_DIALOG_HIDDEN: &str = "cast.dialog_hidden";
+
+// ========== 游戏状态（存档系统） ==========
+/// 各角色"当前进行"存档 id 前缀（key = game.last_save_id_<roleId>，galgame 语义：
+/// 自动保存永远写当前进行槽，重开/继续时恢复它）
+pub const LAST_SAVE_ID_PREFIX: &str = "game.last_save_id_";
