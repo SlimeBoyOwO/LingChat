@@ -1,7 +1,7 @@
 <template>
   <MenuPage>
     <!-- 独立剧本部分 -->
-    <MenuItem title="独立剧本">
+    <MenuItem :title="$t('settings.adventure.standalone.title')">
       <template #header>
         <FileText :size="20" />
       </template>
@@ -14,7 +14,7 @@
         <div
           class="w-12 h-12 border-4 border-brand border-t-transparent rounded-full animate-spin mb-2"
         ></div>
-        <p>加载中...</p>
+        <p>{{ $t('settings.shared.loading') }}</p>
       </div>
 
       <div
@@ -24,8 +24,8 @@
         <div class="w-20 h-20 flex items-center justify-center rounded-full bg-gray-800/50 mb-4">
           <FileText :size="40" class="text-gray-500" />
         </div>
-        <p class="text-lg mb-2">暂无独立剧本</p>
-        <p class="text-sm text-gray-500 mb-6">独立剧本是无需选择角色即可游玩的剧本</p>
+        <p class="text-lg mb-2">{{ $t('settings.adventure.standalone.empty') }}</p>
+        <p class="text-sm text-gray-500 mb-6">{{ $t('settings.adventure.standalone.emptyDesc') }}</p>
       </div>
 
       <div v-else class="space-y-4">
@@ -40,21 +40,21 @@
               <span
                 class="px-3 py-1 rounded-full text-xs font-medium bg-brand/20 text-brand border border-brand/30"
               >
-                独立剧本
+                {{ $t('settings.adventure.standalone.badge') }}
               </span>
             </div>
 
             <p v-if="script.description" class="text-sm text-gray-300 mb-4 line-clamp-3 flex-1">
               {{ script.description }}
             </p>
-            <p v-else class="text-sm text-gray-500 mb-4 italic">暂无描述</p>
+            <p v-else class="text-sm text-gray-500 mb-4 italic">{{ $t('settings.adventure.standalone.noDesc') }}</p>
 
             <div class="flex items-center justify-between mt-auto">
               <span v-if="script.intro_chapter" class="text-xs text-gray-400">
-                章节选择（待做）: {{ script.intro_chapter }}
+                {{ $t('settings.adventure.standalone.chapterSelect', { chapter: script.intro_chapter }) }}
               </span>
               <Button type="select" size="sm" @click.stop="startStandaloneScript(script)">
-                开始游玩
+                {{ $t('settings.adventure.standalone.play') }}
               </Button>
             </div>
           </div>
@@ -63,7 +63,7 @@
     </MenuItem>
 
     <!-- 羁绊冒险部分 -->
-    <MenuItem title="羁绊冒险（测试中）">
+    <MenuItem :title="$t('settings.adventure.bond.title')">
       <template #header>
         <Book :size="20" />
       </template>
@@ -76,9 +76,9 @@
         <div class="w-20 h-20 flex items-center justify-center rounded-full bg-gray-800/50 mb-4">
           <Book :size="40" class="text-gray-500" />
         </div>
-        <p class="text-lg mb-2">请先在角色页面选择一个角色</p>
-        <p class="text-sm text-gray-500 mb-6">选择角色后即可查看其羁绊冒险</p>
-        <Button type="big" @click="goToCharacterTab"> 前往角色页面 </Button>
+        <p class="text-lg mb-2">{{ $t('settings.adventure.bond.noCharacter') }}</p>
+        <p class="text-sm text-gray-500 mb-6">{{ $t('settings.adventure.bond.noCharacterDesc') }}</p>
+        <Button type="big" @click="goToCharacterTab"> {{ $t('settings.adventure.bond.goCharacter') }} </Button>
       </div>
 
       <!-- 如果已选中角色 -->
@@ -87,16 +87,16 @@
           <img
             :src="currentCharacterAvatar"
             class="w-16 h-16 rounded-full object-cover border-2 border-indigo-500/50"
-            alt="角色头像"
+            :alt="$t('settings.adventure.bond.avatarAlt')"
           />
           <div class="flex-1 min-w-0">
             <h3 class="text-xl font-bold text-white truncate">{{ currentCharacter.roleName }}</h3>
             <p class="text-gray-400 text-sm truncate">
-              {{ currentCharacter.roleSubTitle || '暂无副标题' }}
+              {{ currentCharacter.roleSubTitle || $t('settings.adventure.bond.noSubtitle') }}
             </p>
           </div>
           <div class="shrink-0">
-            <Button type="big" @click="goToCharacterTab"> 切换角色 </Button>
+            <Button type="big" @click="goToCharacterTab"> {{ $t('settings.adventure.bond.switchCharacter') }} </Button>
           </div>
         </div>
 
@@ -106,19 +106,19 @@
       </div>
     </MenuItem>
 
-    <MenuItem title="创意工坊" size="small">
+    <MenuItem :title="$t('settings.adventure.workshop.title')" size="small">
       <template #header>
         <Birdhouse :size="20" />
       </template>
-      <Button type="big" @click="openCreativeWeb">进入创意工坊</Button>
+      <Button type="big" @click="openCreativeWeb">{{ $t('settings.adventure.workshop.enter') }}</Button>
     </MenuItem>
 
-    <MenuItem title="创建自己的剧本" size="small">
+    <MenuItem :title="$t('settings.adventure.createScript.title')" size="small">
       <template #header>
         <UserPlus :size="20" />
       </template>
       <div class="space-y-2">
-        <Button type="big" @click="openGuideWeb">访问指南网站</Button>
+        <Button type="big" @click="openGuideWeb">{{ $t('settings.adventure.createScript.guide') }}</Button>
       </div>
     </MenuItem>
   </MenuPage>

@@ -25,6 +25,7 @@ import AchievementToast from './components/ui/AchievementToast.vue'
 import AdventureUnlockNotify from './components/ui/AdventureUnlockNotify.vue'
 import AppDialog from './components/ui/AppDialog.vue'
 import { initUIStore } from './stores/modules/ui/ui'
+import { i18n } from './locales'
 import { useSettingsStore } from './stores/modules/settings'
 import { useLlmProvidersStore } from './stores/modules/llm-providers'
 import { useAchievementStore } from './stores/modules/ui/achievement'
@@ -151,7 +152,10 @@ onMounted(async () => {
       userConfirmedExit = false
 
       if (route.path === '/chat') {
-        const confirmed = await dialogStore.confirm('确定要退出程序吗？', '退出确认')
+        const confirmed = await dialogStore.confirm(
+          i18n.global.t('common.exitMessage'),
+          i18n.global.t('common.exitTitle'),
+        )
         if (!confirmed) return // 用户取消，窗口保持打开
       }
 

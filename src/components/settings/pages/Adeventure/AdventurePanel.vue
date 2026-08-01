@@ -2,7 +2,7 @@
   <div class="w-full h-full flex flex-col bg-gray-900/50 rounded-lg p-4">
     <!-- Header -->
     <div class="flex items-center justify-between mb-4 pb-3 border-b border-gray-700">
-      <h3 class="text-lg font-bold text-white">冒险总览</h3>
+      <h3 class="text-lg font-bold text-white">{{ $t('settings.adventurePanel.header.title') }}</h3>
       <span class="text-sm text-gray-400">{{ completedCount }} / {{ totalCount }}</span>
     </div>
 
@@ -11,7 +11,7 @@
       <div
         class="w-8 h-8 border-4 border-brand border-t-transparent rounded-full animate-spin mb-2"
       ></div>
-      <p>加载中...</p>
+      <p>{{ $t('settings.shared.loading') }}</p>
     </div>
 
     <!-- Empty State -->
@@ -19,7 +19,7 @@
       v-else-if="adventures.length === 0"
       class="flex flex-col items-center justify-center py-12 text-gray-400"
     >
-      <p>暂无羁绊冒险</p>
+      <p>{{ $t('settings.adventurePanel.empty.noAdventures') }}</p>
     </div>
 
     <!-- Adventure Graph -->
@@ -31,7 +31,7 @@
         <button
           @click="zoomIn"
           class="w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 text-white transition-colors"
-          title="放大"
+          :title="$t('settings.adventurePanel.zoom.zoomIn')"
         >
           <svg
             class="w-5 h-5"
@@ -48,7 +48,7 @@
         <button
           @click="zoomOut"
           class="w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 text-white transition-colors"
-          title="缩小"
+          :title="$t('settings.adventurePanel.zoom.zoomOut')"
         >
           <svg
             class="w-5 h-5"
@@ -62,7 +62,7 @@
         <button
           @click="resetZoom"
           class="w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 text-white transition-colors"
-          title="重置"
+          :title="$t('settings.adventurePanel.zoom.reset')"
         >
           <svg
             class="w-5 h-5"
@@ -168,7 +168,7 @@
                 </div>
                 <div v-else class="flex items-center gap-1 mt-2 text-xs text-gray-500">
                   <div v-if="adventure.recommand_start">
-                    <span>💡推荐开始：</span>
+                    <span>💡{{ $t('settings.adventurePanel.node.recommendStart') }}</span>
                     <span>{{ adventure.recommand_start }}</span>
                   </div>
                 </div>
@@ -193,6 +193,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAdventureStore } from '@/stores/modules/adventure'
 import type { AdventureInfo } from '@/api/services/adventure'
 import { useGameStore } from '@/stores/modules/game'
@@ -213,6 +214,7 @@ interface Connection {
 
 const gameStore = useGameStore()
 const uiStore = useUIStore()
+const { t } = useI18n()
 
 const props = defineProps<Props>()
 const adventureStore = useAdventureStore()
@@ -434,24 +436,28 @@ const getBadgeClass = (status: string) => {
 const getStatusText = (status: string) => {
   switch (status) {
     case 'completed':
-      return '已完成'
+      return t('settings.adventurePanel.status.completed')
     case 'in_progress':
-      return '进行中'
+      return t('settings.adventurePanel.status.inProgress')
     case 'unlocked':
-      return '可游玩'
+      return t('settings.adventurePanel.status.unlocked')
     default:
-      return '未解锁'
+      return t('settings.adventurePanel.status.locked')
   }
 }
 
 const getUnlockHint = (adventure: AdventureInfo): string => {
-  if (!adventure.unlock_conditions || adventure.unlock_conditions.length === 0) return '自动解锁'
+  if (!adventure.unlock_conditions || adventure.unlock_conditions.length === 0)
+    return t('settings.adventurePanel.unlock.autoUnlock')
   const hints: string[] = []
   for (const cond of adventure.unlock_conditions) {
-    if (cond.type === 'chat_count') hints.push(`对话${cond.threshold}次`)
+    if (cond.type === 'chat_count')
+      hints.push(t('settings.adventurePanel.unlock.chatCount', { count: cond.threshold }))
     else if (cond.type === 'time_range') hints.push(`${cond.start_hour}:00-${cond.end_hour}:00`)
-    else if (cond.type === 'adventure_completed') hints.push('完成前置冒险')
-    else if (cond.type === 'achievement_unlocked') hints.push('解锁特定成就')
+    else if (cond.type === 'adventure_completed')
+      hints.push(t('settings.adventurePanel.unlock.prereqAdventure'))
+    else if (cond.type === 'achievement_unlocked')
+      hints.push(t('settings.adventurePanel.unlock.achievement'))
   }
   return hints.join(' · ')
 }

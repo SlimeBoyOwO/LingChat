@@ -1,6 +1,6 @@
 <template>
   <MenuPage>
-    <MenuItem title="日志" size="large">
+    <MenuItem :title="$t('settings.log.title')" size="large">
       <template #header>
         <ScrollText :size="20" />
       </template>

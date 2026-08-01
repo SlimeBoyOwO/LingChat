@@ -10,13 +10,13 @@
           class="text-xl font-black tracking-wide mb-1 transition-colors"
           :class="isDarkMode ? 'text-slate-100' : 'text-slate-800'"
         >
-          主动对话行为
+          {{ $t('pet.window.title') }}
         </h2>
         <p
           class="text-xs font-medium transition-colors"
           :class="isDarkMode ? 'text-slate-400' : 'text-slate-500'"
         >
-          基于桌面环境感知的主动系统与日程策略配置
+          {{ $t('pet.window.desc') }}
         </p>
       </div>
       <span
@@ -56,7 +56,7 @@
             class="font-bold text-[15px] transition-colors"
             :class="isDarkMode ? 'text-slate-200' : 'text-slate-700'"
           >
-            重载并应用配置
+            {{ $t('pet.window.applyTitle') }}
           </h3>
           <p
             class="text-xs transition-colors"
@@ -71,7 +71,7 @@
           >
             {{
               saveStatus.message ||
-              "点击保存后，将向底层服务同步最新环境变量并重启主动系统。"
+              $t('pet.window.applyDesc')
             }}
           </p>
         </div>
@@ -87,7 +87,7 @@
           "
         >
           <Save class="w-5 h-5 mr-2" />
-          保存
+          {{ $t('pet.window.save') }}
         </button>
       </div>
     </div>
@@ -96,6 +96,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, reactive } from "vue";
+import { useI18n } from "vue-i18n";
 import { Save } from "lucide-vue-next";
 import {
   getEnvConfigByKey,
@@ -110,6 +111,7 @@ defineProps<{
 }>();
 
 const settings = ref<Record<string, ConfigItem>>({});
+const { t } = useI18n();
 const saveStatus = reactive({
   message: "",
   color: "#10b981", // 成功颜色
@@ -121,7 +123,7 @@ const saveSettings = async () => {
     formData[key] = config.value;
   });
 
-  saveStatus.message = "正在保存...";
+  saveStatus.message = t("pet.window.saving");
   saveStatus.color = "#6366f1"; // 靛蓝色提示
 
   try {
@@ -130,7 +132,7 @@ const saveSettings = async () => {
     reloadProactiveSystem();
     await loadConfig();
   } catch (error: any) {
-    saveStatus.message = `错误: ${error.message}`;
+    saveStatus.message = t("pet.window.error", { message: error.message });
     saveStatus.color = "#ef4444";
   } finally {
     setTimeout(() => {

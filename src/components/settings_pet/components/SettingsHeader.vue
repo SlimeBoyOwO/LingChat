@@ -19,7 +19,7 @@
           <span
             class="text-[13px] font-black transition-colors"
             :class="isDarkMode ? 'text-slate-400' : 'text-slate-600'"
-            >控制台</span
+            >{{ $t('pet.header.console') }}</span
           >
         </h1>
         <p

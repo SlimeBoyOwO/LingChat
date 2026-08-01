@@ -5,12 +5,12 @@
     class="flex-1 min-h-0 max-h-[70vh] flex flex-col items-center justify-center gap-3.5 border border-dashed border-white/20 rounded-xl bg-black/40 text-white/55 px-4 py-8"
   >
     <PictureInPicture2 :size="36" />
-    <div class="text-sm text-center leading-loose">日志已弹出到独立窗口，请在独立窗口中查看</div>
+    <div class="text-sm text-center leading-loose">{{ $t('settings.log.poppedOut') }}</div>
     <button
       class="px-4 py-1.5 rounded-lg border-none bg-(--accent-color,#79d9ff) text-[#0b2530] text-[13px] font-semibold cursor-pointer transition-all duration-200 hover:-translate-y-px hover:shadow-[0_4px_10px_rgba(121,217,255,0.4)]"
       @click="popoutWindow"
     >
-      聚焦日志窗口
+      {{ $t('settings.log.focusLog') }}
     </button>
   </div>
 
@@ -43,7 +43,7 @@
         <button
           v-if="!standalone && canPopout"
           :class="ICON_BTN"
-          title="弹出独立窗口"
+          :title="$t('settings.log.popout')"
           @click="popoutWindow"
         >
           <PictureInPicture2 :size="14" />
@@ -52,7 +52,7 @@
         <button
           v-if="canPopout"
           :class="[ICON_BTN, autoOpen && ICON_BTN_ACTIVE]"
-          title="启动时自动打开日志窗口"
+          :title="$t('settings.log.autoOpen')"
           @click="toggleAutoOpen"
         >
           <Rocket :size="14" />
@@ -60,7 +60,7 @@
 
         <button
           :class="[ICON_BTN, autoScroll && ICON_BTN_ACTIVE]"
-          title="自动滚动到底部"
+          :title="$t('settings.log.autoScroll')"
           @click="toggleAutoScroll"
         >
           <ArrowDown :size="14" />
@@ -68,14 +68,14 @@
 
         <button
           :class="[ICON_BTN, paused && ICON_BTN_ACTIVE]"
-          :title="paused ? '继续' : '暂停'"
+          :title="paused ? $t('settings.log.resume') : $t('settings.log.pause')"
           @click="paused = !paused"
         >
           <Pause v-if="!paused" :size="14" />
           <Play v-else :size="14" />
         </button>
 
-        <button :class="ICON_BTN" title="清空" @click="clearLogs">
+        <button :class="ICON_BTN" :title="$t('settings.log.clear')" @click="clearLogs">
           <Trash2 :size="14" />
         </button>
       </div>
@@ -93,7 +93,7 @@
         v-if="filteredLogs.length === 0"
         class="flex flex-1 items-center justify-center py-10"
       >
-        <div class="text-center text-xl font-bold text-gray-100 opacity-60">暂无日志</div>
+        <div class="text-center text-xl font-bold text-gray-100 opacity-60">{{ $t('settings.log.empty') }}</div>
       </div>
 
       <template v-for="(entry, _idx) in filteredLogs" :key="_idx">
@@ -128,7 +128,7 @@
         v-if="paused && pendingCount > 0"
         class="mt-3 pt-3 border-t border-dashed border-yellow-500/30 text-center text-sm text-yellow-400"
       >
-        已暂停 — {{ pendingCount }} 条新日志
+        {{ $t('settings.log.paused', { count: pendingCount }) }}
       </div>
     </div>
   </div>
@@ -309,4 +309,3 @@ watch(paused, (now) => {
   }
 })
 </script>
-

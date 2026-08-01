@@ -3,7 +3,7 @@
     <div class="w-full flex items-center pb-2 mb-4 border-b-2 border-brand space-x-2">
       <slot name="header"></slot>
       <div class="title-wrapper">
-        <h4>{{ title }}</h4>
+        <h4>{{ displayTitle }}</h4>
       </div>
     </div>
     <div class="content">
@@ -13,10 +13,15 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
+
 const props = defineProps({
   title: {
     type: String,
-    default: '默认标题',
+    default: '',
   },
   size: {
     type: String as () => 'small' | 'large',
@@ -24,6 +29,8 @@ const props = defineProps({
     validator: (value: string) => ['small', 'large'].includes(value),
   },
 })
+
+const displayTitle = computed(() => props.title || t('ui.menuItem.defaultTitle'))
 </script>
 
 <style scoped>

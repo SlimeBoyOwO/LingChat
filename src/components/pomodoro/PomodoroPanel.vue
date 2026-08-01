@@ -11,7 +11,7 @@
     >
       <span class="text-xl">🍅</span>
       <h3 class="text-lg font-bold m-0 hidden xl:block">
-        番茄钟
+        {{ $t('ui.pomodoro.title') }}
         <span v-if="isRunning" class="ml-1 text-sm font-normal tabular-nums opacity-80">
           {{ minutes }}:{{ seconds }}
         </span>
@@ -63,7 +63,7 @@
               <div
                 class="h-6 flex items-center justify-center mb-1 cursor-pointer group pointer-events-auto"
                 @click="startEditLabel"
-                title="点击修改名称"
+                :title="$t('ui.pomodoro.editName')"
               >
                 <span
                   v-if="!editingLabel"
@@ -91,7 +91,7 @@
                 {{ statusText }}
               </div>
               <div class="text-[11px] text-white/50">
-                第 {{ cycleIndex }} / {{ cyclesTotal }} 轮
+                {{ $t('ui.pomodoro.cycleInfo', { current: cycleIndex, total: cyclesTotal }) }}
               </div>
             </div>
           </div>
@@ -102,7 +102,7 @@
             class="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center cursor-pointer transition-all duration-200 text-white hover:bg-white/20 hover:scale-105 active:scale-95"
             :class="{ 'opacity-30 pointer-events-none bg-transparent shadow-none': isRunning }"
             @click="start"
-            title="开始"
+            :title="$t('ui.pomodoro.start')"
           >
             <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
               <path d="M8 5v14l11-7z" />
@@ -113,7 +113,7 @@
             class="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center cursor-pointer transition-all duration-200 text-white hover:bg-white/20 hover:scale-105 active:scale-95"
             :class="{ 'opacity-30 pointer-events-none bg-transparent shadow-none': !isRunning }"
             @click="pause"
-            title="暂停"
+            :title="$t('ui.pomodoro.pause')"
           >
             <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
               <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
@@ -123,7 +123,7 @@
           <div
             class="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center cursor-pointer transition-all duration-200 text-white hover:bg-white/20 hover:scale-105 active:scale-95"
             @click="reset"
-            title="重置"
+            :title="$t('ui.pomodoro.reset')"
           >
             <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
               <path
@@ -135,7 +135,7 @@
 
         <div class="flex justify-between w-full pt-4 border-t border-white/10">
           <div class="flex flex-col items-center flex-1">
-            <span class="text-[11px] text-white/50 mb-1.5">专注</span>
+            <span class="text-[11px] text-white/50 mb-1.5">{{ $t('ui.pomodoro.work') }}</span>
             <div class="flex items-center justify-center relative h-6">
               <input
                 type="number"
@@ -166,7 +166,7 @@
           </div>
 
           <div class="flex flex-col items-center flex-1">
-            <span class="text-[11px] text-white/50 mb-1.5">休息</span>
+            <span class="text-[11px] text-white/50 mb-1.5">{{ $t('ui.pomodoro.break') }}</span>
             <div class="flex items-center justify-center relative h-6">
               <input
                 type="number"
@@ -197,7 +197,7 @@
           </div>
 
           <div class="flex flex-col items-center flex-1">
-            <span class="text-[11px] text-white/50 mb-1.5">循环</span>
+            <span class="text-[11px] text-white/50 mb-1.5">{{ $t('ui.pomodoro.cycles') }}</span>
             <div class="flex items-center justify-center relative h-6">
               <input
                 type="number"
@@ -205,7 +205,7 @@
                 v-model.number="cyclesInput"
                 @change="applyCycles"
               />
-              <span class="text-[11px] text-white/50 pointer-events-none ml-0.5 mr-1">次</span>
+              <span class="text-[11px] text-white/50 pointer-events-none ml-0.5 mr-1">{{ $t('ui.pomodoro.cycleUnit') }}</span>
               <div class="flex flex-col justify-center h-full gap-0.5">
                 <div
                   class="flex items-center justify-center cursor-pointer opacity-60 hover:opacity-100 h-2.5 active:scale-90 transition-transform"
@@ -238,7 +238,9 @@ import Button from '../base/widget/Button.vue'
 import { useGameStore } from '../../stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { invoke } from '@tauri-apps/api/core'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const gameStore = useGameStore()
 const uiStore = useUIStore()
 
@@ -263,7 +265,9 @@ const DEFAULT_CYCLES_TOTAL = 2
 const enabled = ref(false)
 const isRunning = ref(false)
 const mode = ref<Mode>('work')
-const workLabel = ref('工作')
+// 用户自定义的专注标签；为空时跟随界面语言显示默认文案
+const customWorkLabel = ref('')
+const workLabel = computed(() => customWorkLabel.value || t('ui.pomodoro.defaultWorkLabel'))
 const editingLabel = ref(false)
 const workLabelDraft = ref('')
 
@@ -316,15 +320,15 @@ const progressStyle = computed(() => ({
 
 const statusText = computed(() => {
   if (isRunning.value) {
-    return mode.value === 'work' ? '专注中' : '休息中'
+    return mode.value === 'work' ? t('ui.pomodoro.statusWorking') : t('ui.pomodoro.statusBreaking')
   }
   if (justCompleted.value) {
-    return '已完成'
+    return t('ui.pomodoro.statusCompleted')
   }
   // 从未启动过的初始状态才算空闲，停在半途中属于暂停
   const isPristine =
     remainingMs.value === currentTotalMs.value && cycleIndex.value === 1 && mode.value === 'work'
-  return isPristine ? '空闲中' : '已暂停'
+  return isPristine ? t('ui.pomodoro.statusIdle') : t('ui.pomodoro.statusPaused')
 })
 
 const pendingPrompts = ref<string[]>([])
@@ -396,7 +400,7 @@ function persistState() {
   localStorage.setItem(STORAGE_KEY_CYCLES_TOTAL, JSON.stringify(cyclesTotal.value))
   localStorage.setItem(STORAGE_KEY_WORK_MS, JSON.stringify(workDurationMs.value))
   localStorage.setItem(STORAGE_KEY_BREAK_MS, JSON.stringify(breakDurationMs.value))
-  localStorage.setItem(STORAGE_KEY_WORK_LABEL, workLabel.value)
+  localStorage.setItem(STORAGE_KEY_WORK_LABEL, customWorkLabel.value)
   localStorage.setItem(STORAGE_KEY_PHASE_END_AT, JSON.stringify(phaseEndAt.value))
   localStorage.setItem(STORAGE_KEY_COMPLETED, JSON.stringify(justCompleted.value))
 }
@@ -578,7 +582,8 @@ function startEditLabel() {
 }
 function commitEditLabel() {
   const v = workLabelDraft.value.trim()
-  workLabel.value = v || '工作'
+  // 清空则恢复为跟随界面语言的默认文案
+  customWorkLabel.value = v
   editingLabel.value = false
   persistState()
 }
@@ -645,7 +650,7 @@ onMounted(() => {
     const savedBreakMs = JSON.parse(
       localStorage.getItem(STORAGE_KEY_BREAK_MS) || String(DEFAULT_BREAK_MS),
     )
-    const savedWorkLabel = localStorage.getItem(STORAGE_KEY_WORK_LABEL) || '工作'
+    const savedWorkLabel = localStorage.getItem(STORAGE_KEY_WORK_LABEL) || ''
     const savedPhaseEndAt = JSON.parse(localStorage.getItem(STORAGE_KEY_PHASE_END_AT) || '0')
     const savedCompleted = JSON.parse(localStorage.getItem(STORAGE_KEY_COMPLETED) || 'false')
 
@@ -656,7 +661,8 @@ onMounted(() => {
     cycleIndex.value = Number.isFinite(savedCycleIdx) ? savedCycleIdx : 1
     mode.value = savedMode === 'break' ? 'break' : 'work'
     remainingMs.value = Number.isFinite(savedRemaining) ? savedRemaining : workDurationMs.value
-    workLabel.value = savedWorkLabel || '工作'
+    // 旧版默认文案"工作"视为未自定义，迁移后跟随界面语言
+    customWorkLabel.value = savedWorkLabel === '工作' ? '' : savedWorkLabel
     justCompleted.value = !!savedCompleted
     // 不再要求面板处于展开状态：折叠状态下退出，下次启动计时也在后台恢复
     isRunning.value = !!savedRunning && (savedPhaseEndAt > 0 || savedRemaining > 0)

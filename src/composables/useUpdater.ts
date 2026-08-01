@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import { check } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { invoke } from '@tauri-apps/api/core'
+import { i18n } from '@/locales'
 
 // ─── 类型定义 ────────────────────────────────────────────────
 
@@ -73,7 +74,7 @@ export function useUpdater() {
       phase.value = 'error'
       // 提取有意义的部分（去掉冗长的 URL 和底层错误堆栈）
       if (msg.includes('error sending request')) {
-        errorMessage.value = '网络连接失败，无法访问更新服务器。请检查网络后重试。'
+        errorMessage.value = i18n.global.t('stores.updater.networkError')
       } else {
         errorMessage.value = msg.length > 200 ? msg.slice(0, 200) : msg
       }
@@ -86,7 +87,7 @@ export function useUpdater() {
     try {
       const update = await check()
       if (!update?.available) {
-        errorMessage.value = '没有可用的更新'
+        errorMessage.value = i18n.global.t('stores.updater.noUpdateAvailable')
         phase.value = 'error'
         return
       }

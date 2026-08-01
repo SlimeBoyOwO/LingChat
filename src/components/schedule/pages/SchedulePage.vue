@@ -3,7 +3,7 @@
   <div v-if="uiStore.scheduleView === 'schedule_groups'">
     <div v-if="Object.keys(scheduleGroups).length === 0" class="text-center py-20 text-slate-300">
       <Inbox class="w-10 h-10 mx-auto mb-4 opacity-20" />
-      <p>还没有日程主题，点击右上角新建一个吧</p>
+      <p>{{ $t('ui.schedulePage.emptyGroups') }}</p>
     </div>
     <div v-else class="grid grid-cols-1 sm:grid-cols-1 lg:grid-cols-2 gap-6">
       <div
@@ -32,7 +32,7 @@
         <div
           class="mt-6 pt-4 border-t border-slate-50 flex justify-between items-center text-xs font-bold text-brand"
         >
-          <span>{{ group.items.length }} 个日程</span>
+          <span>{{ $t('ui.schedulePage.itemCount', { count: group.items.length }) }}</span>
           <ArrowRight :size="16" />
         </div>
       </div>
@@ -43,7 +43,7 @@
   <div v-if="uiStore.scheduleView === 'schedule_detail'" class="max-w-3xl mx-auto space-y-4">
     <div v-if="activeGroup.items.length === 0" class="text-center py-20 text-slate-300">
       <Inbox class="w-10 h-10 mx-auto mb-4 opacity-20" />
-      <p>还没有日程，点击右上角新建一个吧</p>
+      <p>{{ $t('ui.schedulePage.emptyItems') }}</p>
     </div>
     <div
       v-for="(item, idx) in activeGroup.items"
@@ -74,12 +74,12 @@
     <template v-if="uiStore.scheduleView === 'schedule_groups'">
       <input
         v-model="formData.groupTitle"
-        placeholder="主题名称"
+        :placeholder="$t('ui.schedulePage.groupNamePlaceholder')"
         class="w-full px-5 py-4 rounded-2xl border-none bg-slate-100 outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all"
       />
       <textarea
         v-model="formData.groupDesc"
-        placeholder="描述..."
+        :placeholder="$t('ui.schedulePage.groupDescPlaceholder')"
         rows="3"
         class="w-full px-5 py-4 rounded-2xl border-none bg-slate-100 outline-none resize-none focus:ring-2 focus:ring-cyan-500/50 transition-all"
       ></textarea>
@@ -89,7 +89,7 @@
     <template v-else>
       <input
         v-model="formData.itemName"
-        placeholder="活动名称"
+        :placeholder="$t('ui.schedulePage.itemNamePlaceholder')"
         class="w-full px-5 py-4 rounded-2xl border-none bg-slate-100 outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all"
       />
       <input
@@ -99,7 +99,7 @@
       />
       <textarea
         v-model="formData.itemContent"
-        placeholder="指令详情..."
+        :placeholder="$t('ui.schedulePage.itemContentPlaceholder')"
         rows="2"
         class="w-full px-5 py-4 rounded-2xl border-none bg-slate-100 outline-none resize-none focus:ring-2 focus:ring-cyan-500/50 transition-all"
       ></textarea>
@@ -112,9 +112,11 @@ import { ref, computed, reactive, watch, onMounted } from 'vue'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { ArrowRight, Trash2, FolderKanban, Inbox } from 'lucide-vue-next'
 import { getSchedules, saveSchedules } from '@/api/services/schedule'
+import { useI18n } from 'vue-i18n'
 
 import BaseModal from '@/components/ui/BaseModal.vue'
 
+const { t } = useI18n()
 const uiStore = useUIStore()
 
 // 数据存储
@@ -202,7 +204,7 @@ const formData = reactive({
 
 // 动态标题
 const modalTitle = computed(() => {
-  return uiStore.scheduleView === 'schedule_groups' ? '新建日程主题' : '新建具体日程'
+  return uiStore.scheduleView === 'schedule_groups' ? t('ui.schedulePage.newGroup') : t('ui.schedulePage.newItem')
 })
 
 // 父组件调用的方法

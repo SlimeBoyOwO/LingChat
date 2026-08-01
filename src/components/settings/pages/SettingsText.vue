@@ -1,7 +1,7 @@
 <template>
   <div class="settings-text-container">
     <MenuPage>
-      <MenuItem title="界面字体">
+      <MenuItem :title="$t('settings.text.font.title')">
         <template #header>
           <Type :size="20" />
         </template>
@@ -10,10 +10,10 @@
             v-model="fontFamily"
             class="flex-none min-w-32 max-w-48 cursor-pointer bg-white/10 text-white border border-white/20 rounded-lg pl-3 pr-8 py-2 text-sm outline-none focus:border-(--accent-color) transition-colors appearance-none"
             @change="onFontChange"
-            title="选择界面显示字体"
+            :title="$t('settings.text.font.selectHint')"
           >
-            <option value="">软件默认</option>
-            <optgroup v-if="importedFonts.length > 0" label="已导入">
+            <option value="">{{ $t('settings.text.font.default') }}</option>
+            <optgroup v-if="importedFonts.length > 0" :label="$t('settings.text.font.imported')">
               <option
                 v-for="f in importedFonts"
                 :key="f.name"
@@ -24,7 +24,7 @@
               </option>
             </optgroup>
             <option v-if="importedFonts.length > 0" disabled>──────────</option>
-            <option v-if="fontsLoading" value="" disabled>加载字体中…</option>
+            <option v-if="fontsLoading" value="" disabled>{{ $t('settings.text.font.loading') }}</option>
             <option
               v-for="f in systemFonts"
               :key="f"
@@ -37,56 +37,56 @@
           <button
             class="flex-none flex items-center justify-center bg-white/10 text-white border border-white/20 rounded-lg px-[0.6rem] py-[0.35rem] cursor-pointer transition-colors hover:border-(--accent-color) hover:bg-white/20 active:bg-white/30"
             @click="handleImportFont"
-            title="导入字体文件 (.ttf / .woff2)"
+            :title="$t('settings.text.font.importTitle')"
           >
             <Import :size="18" />
           </button>
           <div class="font-demo" :style="{ fontFamily: demoFontFamily }">
-            字体演示 Font Sample 123
+            {{ $t('settings.text.font.demo') }}
           </div>
         </div>
       </MenuItem>
 
-      <MenuItem title="文字显示速度">
+      <MenuItem :title="$t('settings.text.speed.title')">
         <template #header>
           <Zap :size="20" />
         </template>
-        <Slider @change="textSpeedChange" v-model="textSpeed">慢/快</Slider>
+        <Slider @change="textSpeedChange" v-model="textSpeed">{{ $t('settings.text.speed.label') }}</Slider>
       </MenuItem>
 
-      <MenuItem title="显示文字样本">
+      <MenuItem :title="$t('settings.text.sample.title')">
         <template #header>
           <ClipboardList :size="20" />
         </template>
-        <Text :speed="textSpeedSample">Ling Chat: 测试文本显示速度</Text>
+        <Text :speed="textSpeedSample">{{ $t('settings.text.sample.demo') }}</Text>
       </MenuItem>
 
-      <MenuItem title="内联动作文本" size="small">
+      <MenuItem :title="$t('settings.text.inlineMotion.title')" size="small">
         <template #header>
           <AlignJustify :size="20" />
         </template>
         <Toggle :checked="settingsStore.text.inlineMotionText" @change="toggleInlineMotionText">
-          开启后动作文本将与台词同时显示，无需二次点击
+          {{ $t('settings.text.inlineMotion.desc') }}
         </Toggle>
       </MenuItem>
 
-      <MenuItem title="久坐喝水提醒" size="small">
+      <MenuItem :title="$t('settings.text.sedentary.title')" size="small">
         <template #header>
           <GlassWater :size="20" />
         </template>
         <Toggle :checked="settingsStore.text.sedentaryReminder" @change="toggleSedentaryReminder">
-          开启后每40分钟发送提醒一下久坐哦，只是健康小助手捏
+          {{ $t('settings.text.sedentary.desc') }}
         </Toggle>
       </MenuItem>
 
-      <MenuItem title="启用永久记忆" size="small">
+      <MenuItem :title="$t('settings.text.memory.title')" size="small">
         <div v-for="setting in envSettings" :key="setting.key" class="">
           <!-- 使用 SettingItem 组件渲染不同类型的输入控件 -->
           <Toggle
             :checked="setting.value.toLowerCase() === 'true'"
             @change="handleMemorySettingChange($event, setting)"
           >
-            开启后记忆将会自动压缩
+            {{ $t('settings.text.memory.desc') }}
           </Toggle>
         </div>
         <template #header>
@@ -94,27 +94,27 @@
         </template>
       </MenuItem>
 
-      <MenuItem title="语音音效开关" size="small">
+      <MenuItem :title="$t('settings.text.voiceSound.title')" size="small">
         <template #header>
           <Earth :size="20" />
         </template>
-        <Toggle @change="voiceSound">启用无vits时的对话音效</Toggle>
+        <Toggle @change="voiceSound">{{ $t('settings.text.voiceSound.desc') }}</Toggle>
       </MenuItem>
 
-      <MenuItem title="语音推理引擎下载（SBV2）" size="small">
+      <MenuItem :title="$t('settings.text.engineDownload.title')" size="small">
         <template #header>
           <Download :size="20" />
         </template>
         <div class="flex gap-3">
           <Button
             type="big"
-            title="CPU 推理使用的是 SBV2-API，需要在 settings.yml 中把 sbv2 换成 sbv2api，人物设定也能改"
+            :title="$t('settings.text.engineDownload.cpuHint')"
             @click="
               openWebsite(
                 'https://www.modelscope.cn/models/lingchat-research-studio/SBV2-API/files',
               )
             "
-            >CPU推理</Button
+            >{{ $t('settings.text.engineDownload.cpu') }}</Button
           >
           <Button
             type="big"
@@ -123,79 +123,81 @@
                 'https://www.modelscope.cn/models/lingchat-research-studio/Style-Bert-VITS2-CUDA/files',
               )
             "
-            >N卡推理</Button
+            >{{ $t('settings.text.engineDownload.nvidia') }}</Button
           >
           <Button
             type="big"
-            title="A 卡推理使用的是 SBV2-API，需要在 settings.yml 中把 sbv2 换成 sbv2api，人物设定也能改"
+            :title="$t('settings.text.engineDownload.amdHint')"
             @click="
               openWebsite(
                 'https://www.modelscope.cn/models/lingchat-research-studio/SBV2-API/files',
               )
             "
-            >A卡推理</Button
+            >{{ $t('settings.text.engineDownload.amd') }}</Button
           >
         </div>
       </MenuItem>
 
-      <MenuItem title="返回主菜单" size="small">
+      <MenuItem :title="$t('settings.text.back.title')" size="small">
         <template #header>
           <ArrowBigLeft :size="20" />
         </template>
         <div class="flex gap-3">
-          <Button type="big" @click="returnToMain">返回主菜单</Button>
-          <Button type="big" @click="refreshTTS">刷新TTS服务</Button>
+          <Button type="big" @click="returnToMain">{{ $t('settings.text.back.button') }}</Button>
+          <Button type="big" @click="refreshTTS">{{ $t('settings.text.back.refreshTts') }}</Button>
           <Button v-if="isFreeDialogMode" type="big" variant="danger" @click="handleClearHistory"
-            >清除历史对话</Button
+            >{{ $t('settings.text.back.clearHistory') }}</Button
           >
         </div>
       </MenuItem>
 
       <!-- ─── 语音缓存 ──────────────────────────────── -->
-      <MenuItem title="语音缓存" size="small">
+      <MenuItem :title="$t('settings.text.ttsCache.title')" size="small">
         <template #header>
           <HardDrive :size="20" />
         </template>
         <div class="space-y-2 w-full">
           <div class="flex items-center justify-between text-base">
-            <span class="text-gray-50">当前缓存</span>
+            <span class="text-gray-50">{{ $t('settings.text.ttsCache.current') }}</span>
             <span class="text-gray-50 font-medium">{{ ttsCacheSize }}</span>
           </div>
-          <div class="text-gray-50/70 text-xs">{{ ttsCacheFiles }} 个文件</div>
+          <div class="text-gray-50/70 text-xs">
+            {{ $t('settings.text.ttsCache.files', { count: ttsCacheFiles }) }}
+          </div>
           <div
             v-if="lastCleanupInfo && lastCleanupInfo.deleted > 0"
             class="text-emerald-300/90 text-xs"
           >
-            最近已自动清理 {{ lastCleanupInfo.deleted }} 个孤立语音文件
+            {{ $t('settings.text.ttsCache.lastCleanup', { count: lastCleanupInfo.deleted }) }}
           </div>
           <div class="text-gray-50/70 text-xs">
-            其中孤立文件 {{ ttsOrphanFiles }} 个（{{ ttsOrphanSize }}）
+            {{ $t('settings.text.ttsCache.orphan', { count: ttsOrphanFiles, size: ttsOrphanSize }) }}
           </div>
           <div class="flex gap-3 pt-1">
             <Button type="big" @click="checkTtsCache">
-              <RefreshCw :size="16" class="mr-1" /> 检查缓存
+              <RefreshCw :size="16" class="mr-1" /> {{ $t('settings.text.ttsCache.check') }}
             </Button>
             <Button type="big" @click="handleClearTtsCache">
-              <Trash2 :size="16" class="mr-1" /> 清理孤立语音缓存
+              <Trash2 :size="16" class="mr-1" /> {{ $t('settings.text.ttsCache.clean') }}
             </Button>
           </div>
         </div>
       </MenuItem>
 
       <!-- ─── 版本更新 ──────────────────────────────── -->
-      <MenuItem title="版本更新" size="small">
+      <MenuItem :title="$t('settings.text.update.title')" size="small">
         <template #header>
           <RefreshCw :size="20" :class="{ 'animate-spin': updateChecking }" />
         </template>
         <div class="space-y-2 w-full">
           <!-- 程序版本 -->
           <div class="flex items-center justify-between text-base">
-            <span class="text-gray-50">程序版本</span>
+            <span class="text-gray-50">{{ $t('settings.text.update.appVersion') }}</span>
             <span class="text-gray-50">v{{ currentAppVersion }}</span>
           </div>
           <!-- 数据版本 -->
           <div class="flex items-center justify-between text-base">
-            <span class="text-gray-50">数据版本</span>
+            <span class="text-gray-50">{{ $t('settings.text.update.dataVersion') }}</span>
             <span class="text-gray-50">v{{ currentDataVersion }}</span>
           </div>
           <!-- 状态文字（内联显示，不用 modal） -->
@@ -218,7 +220,7 @@
               @click="handleCheckUpdate"
               :disabled="updateChecking || updatePhase === 'downloading'"
             >
-              {{ updateChecking ? '检查中...' : '检查程序更新' }}
+              {{ updateChecking ? $t('settings.text.update.checking') : $t('settings.text.update.checkButton') }}
             </Button>
             <Button
               v-if="updateAvailable"
@@ -227,14 +229,14 @@
               :disabled="updatePhase === 'downloading'"
               @click="handleInstallUpdate"
             >
-              {{ updatePhase === 'downloading' ? '下载中...' : `更新到 v${updateLatestVersion}` }}
+              {{ updatePhase === 'downloading' ? $t('settings.text.update.downloading') : $t('settings.text.update.updateTo', { version: updateLatestVersion }) }}
             </Button>
             <Button
               v-if="resourceSyncAvailable && updatePhase !== 'downloading'"
               type="big"
               @click="handleCheckResourceSync"
             >
-              同步数据
+              {{ $t('settings.text.update.syncData') }}
             </Button>
           </div>
           <!-- 资源同步对话框 -->
@@ -250,17 +252,16 @@
       </MenuItem>
 
       <!-- ─── 局域网同步 ──────────────────────────────── -->
-      <MenuItem title="局域网数据同步" size="small">
+      <MenuItem :title="$t('settings.text.lanSync.title')" size="small">
         <template #header>
           <Wifi :size="20" />
         </template>
         <div class="space-y-2 w-full">
           <p class="text-gray-50/70 text-sm">
-            在同一局域网内的设备之间同步 data
-            文件夹（游戏存档、语音、截图等）。手机和电脑版互通必备~
+            {{ $t('settings.text.lanSync.desc') }}
           </p>
           <div class="flex gap-3 pt-1">
-            <Button type="big" @click="openLanSync"> 打开局域网同步 </Button>
+            <Button type="big" @click="openLanSync"> {{ $t('settings.text.lanSync.open') }} </Button>
           </div>
           <!-- 局域网同步对话框 -->
           <LanSyncDialog
@@ -294,13 +295,13 @@
         </div>
       </MenuItem>
       <!-- ─── 相关文档 ──────────────────────────────── -->
-      <MenuItem title="了解 LingChat 的相关文档" size="small">
+      <MenuItem :title="$t('settings.text.docs.title')" size="small">
         <template #header>
           <BookOpen :size="20" />
         </template>
         <div class="space-y-2 w-full">
           <p class="text-gray-50/70 text-sm">
-            如果你有任何疑惑，可以跳转到这里查看软件的自定义玩法，问题解决，功能列表！
+            {{ $t('settings.text.docs.desc') }}
           </p>
           <div class="flex gap-3 pt-1">
             <Button
@@ -310,7 +311,7 @@
                   'https://slimeboyowo.github.io/LingBlog/blog/projects/ling-chat/develop/Style-Bert-VITS2%E6%A8%A1%E5%9E%8B%E8%AE%AD%E7%BB%83%E6%95%99%E7%A8%8B',
                 )
               "
-              >查看文档</Button
+              >{{ $t('settings.text.docs.button') }}</Button
             >
           </div>
         </div>
@@ -322,6 +323,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { MenuPage, MenuItem } from '../../ui'
 import { Slider, Text, Toggle, Button } from '../../base'
 import { useUIStore } from '../../../stores/modules/ui/ui'
@@ -371,6 +373,7 @@ import LanSyncDialog from '@/components/LanSyncDialog.vue'
 import type { DialogView } from '@/types/lanSync'
 
 const router = useRouter()
+const { t } = useI18n()
 const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
 const gameStore = useGameStore()
@@ -416,11 +419,13 @@ const updateAvailable = computed(
 )
 
 const updateStatusText = computed(() => {
-  if (updatePhase.value === 'checking') return '正在检查更新...'
-  if (updatePhase.value === 'downloading') return `正在下载更新... ${downloadProgress.value}%`
-  if (updatePhase.value === 'complete') return '更新完成，即将重启...'
-  if (updatePhase.value === 'error') return updateErrorMessage.value || '检查更新失败'
-  if (updateAvailable.value) return '发现新版本可用！'
+  if (updatePhase.value === 'checking') return t('settings.text.update.statusChecking')
+  if (updatePhase.value === 'downloading')
+    return t('settings.text.update.statusDownloading', { progress: downloadProgress.value })
+  if (updatePhase.value === 'complete') return t('settings.text.update.statusComplete')
+  if (updatePhase.value === 'error')
+    return updateErrorMessage.value || t('settings.text.update.statusError')
+  if (updateAvailable.value) return t('settings.text.update.statusAvailable')
   return ''
 })
 
@@ -566,9 +571,8 @@ const returnToMain = () => {
 }
 
 const handleClearHistory = async () => {
-  const confirmed = await dialogStore.confirm(
-    '清除历史对话将丢失当前所有对话记录，建议先存档。\n\n是否已存档或确认清除？',
-  )
+  // 提示用户保存
+  const confirmed = await dialogStore.confirm(t('settings.text.clearHistory.confirm'))
   if (!confirmed) return
 
   try {
@@ -591,16 +595,16 @@ const handleClearHistory = async () => {
 
     uiStore.showNotification({
       type: 'success',
-      title: '清除成功',
-      message: '对话历史已清除',
+      title: t('settings.text.clearHistory.successTitle'),
+      message: t('settings.text.clearHistory.successMessage'),
       duration: 3000,
       skipTipsCheck: true,
     })
   } catch (error: any) {
     uiStore.showNotification({
       type: 'error',
-      title: '清除失败',
-      message: error.message || '清除历史对话失败',
+      title: t('settings.text.clearHistory.errorTitle'),
+      message: error.message || t('settings.text.clearHistory.errorMessage'),
       duration: 3000,
       skipTipsCheck: true,
     })
@@ -768,9 +772,9 @@ const openWebsite = (url: string) => {
 const refreshTTS = async () => {
   try {
     await reactivateTTS()
-    await dialogStore.alert('刷新TTS成功，将会在TTS可用的时候自动调用')
+    await dialogStore.alert(t('settings.text.refreshTts.success'))
   } catch (error) {
-    await dialogStore.alert('刷新TTS失败')
+    await dialogStore.alert(t('settings.text.refreshTts.error'))
   }
 }
 
@@ -780,7 +784,9 @@ const handleClearTtsCache = async () => {
     await checkTtsCache()
     uiStore.showNotification({
       type: result.success ? 'success' : 'warning',
-      title: result.success ? '清理成功' : '清理完成',
+      title: result.success
+        ? t('settings.text.ttsCache.cleanSuccess')
+        : t('settings.text.ttsCache.cleanDone'),
       message: result.message,
       duration: 3000,
       skipTipsCheck: true,
@@ -788,8 +794,8 @@ const handleClearTtsCache = async () => {
   } catch (error: any) {
     uiStore.showNotification({
       type: 'error',
-      title: '清理失败',
-      message: error.message || '清理TTS缓存失败',
+      title: t('settings.text.ttsCache.cleanErrorTitle'),
+      message: error.message || t('settings.text.ttsCache.cleanErrorMessage'),
       duration: 3000,
       skipTipsCheck: true,
     })
@@ -810,10 +816,10 @@ async function checkTtsCache() {
     ttsOrphanSize.value = formatBytes(result.orphan_size)
   } catch (error: any) {
     console.error('获取TTS缓存信息失败:', error)
-    ttsCacheSize.value = '未知'
+    ttsCacheSize.value = t('settings.text.ttsCache.unknown')
     ttsCacheFiles.value = 0
     ttsOrphanFiles.value = 0
-    ttsOrphanSize.value = '未知'
+    ttsOrphanSize.value = t('settings.text.ttsCache.unknown')
   }
 }
 

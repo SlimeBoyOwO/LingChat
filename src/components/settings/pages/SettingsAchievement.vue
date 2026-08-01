@@ -1,6 +1,6 @@
 <template>
   <MenuPage>
-    <MenuItem title="成就列表（实验）">
+    <MenuItem :title="$t('settings.achievement.title')">
       <template #header>
         <Award :size="20" />
       </template>
@@ -40,14 +40,14 @@
                 class="text-base font-bold truncate tracking-wide"
                 :class="achievement.unlocked ? 'text-white text-shadow-sm' : 'text-white/90'"
               >
-                {{ achievement.title }}
+                {{ achievementTitle(achievement) }}
               </h3>
               <span
                 v-if="achievement.unlocked"
                 class="text-[10px] px-2 py-0.5 rounded-full border backdrop-blur-md shadow-sm font-medium"
                 :class="getBadgeClass(achievement)"
               >
-                {{ achievement.type === 'rare' ? '稀有' : '普通' }}
+                {{ achievement.type === 'rare' ? $t('settings.achievement.rare') : $t('settings.achievement.normal') }}
               </span>
             </div>
 
@@ -55,7 +55,7 @@
               class="text-xs line-clamp-2 h-8 leading-4 mb-2 transition-colors duration-300"
               :class="achievement.unlocked ? 'text-gray-200' : 'text-white/70'"
             >
-              {{ achievement.description }}
+              {{ achievementDescription(achievement) }}
             </p>
 
             <!-- Progress Bar -->
@@ -89,6 +89,7 @@
 import { computed, onMounted } from 'vue'
 import { MenuPage, MenuItem } from '../../ui'
 import { useAchievementStore } from '@/stores/modules/ui/achievement'
+import { achievementTitle, achievementDescription } from '@/utils/achievement-i18n'
 import Icon from '@/components/base/widget/Icon.vue'
 import { Award } from 'lucide-vue-next'
 

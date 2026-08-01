@@ -14,6 +14,8 @@ export interface GameMessage {
   userMessageSeq?: number
   /** 该轮生成的思考链（仅每轮最后一条回复消息有值） */
   thinking?: string
+  /** 该台词的第二语言（日语）译文，日文界面下显示 */
+  ttsText?: string
 }
 
 export interface FreeDialogueInfo {

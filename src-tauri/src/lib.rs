@@ -471,6 +471,7 @@ pub fn run() {
             api::music::upload_music,
             api::music::delete_music,
             api::music::save_bgm_state,
+            api::locale::get_locale_messages,
             api::ambient::get_ambient_list,
             api::ambient::upload_ambient,
             api::ambient::delete_ambient,
