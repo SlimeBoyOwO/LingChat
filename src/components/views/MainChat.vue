@@ -228,7 +228,7 @@ watch(
 #menu-panel {
   display: flex;
   position: fixed;
-  top: calc(15px + var(--safe-area-inset-top));
+  top: 15px;
   right: 20px;
   z-index: 1000;
 }
