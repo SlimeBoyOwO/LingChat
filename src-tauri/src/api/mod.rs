@@ -7,6 +7,7 @@ pub mod character;
 pub mod chat;
 pub mod font;
 pub mod game;
+pub mod locale;
 pub mod music;
 pub mod pet;
 pub mod save;

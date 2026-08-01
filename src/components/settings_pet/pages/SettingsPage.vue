@@ -65,6 +65,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 // 替换为你项目中实际存在的 store 路径
 import {
@@ -92,6 +93,7 @@ const DARK_MODE_KEY = 'lingchat-dark-mode'
 const appWindow = getCurrentWindow()
 const settingsStore = useSettingsStore()
 const gameStore = useGameStore()
+const { t } = useI18n()
 
 const isMaximized = ref(false)
 const activeTab = ref<'pet' | 'interaction' | 'window' | 'todo'>('pet')
@@ -124,27 +126,27 @@ type TabItem = {
   en: string
 }
 
-const tabs = [
-  { key: 'pet', label: '桌宠设置', icon: Ruler, en: 'PET CONFIG' } as TabItem,
+const tabs = computed(() => [
+  { key: 'pet', label: t('pet.tabs.pet'), icon: Ruler, en: 'PET CONFIG' } as TabItem,
   {
     key: 'interaction',
-    label: '历史对话',
+    label: t('pet.tabs.interaction'),
     icon: Book,
     en: 'HISTORY DIALOGUE',
   } as TabItem,
   {
     key: 'todo',
-    label: '待办事项',
+    label: t('pet.tabs.todo'),
     icon: CheckCircle2,
     en: 'TODO LIST',
   } as TabItem,
   {
     key: 'window',
-    label: '主动对话',
+    label: t('pet.tabs.window'),
     icon: Cat,
     en: 'PROACTIVE SYSTEM',
   } as TabItem,
-]
+])
 
 const petScale = computed(() => settingsStore.pet.scale)
 const petVolume = computed(() => settingsStore.characterVolume)

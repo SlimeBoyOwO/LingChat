@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="relative flex items-center justify-center w-full h-full group">
     <!-- 缩放与尺寸控制层 (无位移) -->
     <div
@@ -8,8 +8,8 @@
       <!-- 设置按钮 -->
       <button
         type="button"
-        aria-label="打开设置"
-        title="设置"
+        :aria-label="$t('views.pet.stage.openSettingsAria')"
+        :title="$t('views.pet.stage.settings')"
         class="absolute top-1 -left-3.5 z-40 w-8 h-8 rounded-full bg-neutral-950/60 backdrop-blur-xl border border-white/10 text-white flex items-center justify-center opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 hover:bg-cyan-500/80 hover:text-white hover:scale-110 shadow-[0_4px_12px_rgba(0,0,0,0.3)] transition-all duration-300"
         @click.stop="handleOpenSettings"
       >
@@ -19,8 +19,8 @@
       <!-- 自动按钮 -->
       <button
         type="button"
-        aria-label="打开自动对话"
-        title="自动"
+        :aria-label="$t('views.pet.stage.openAutoAria')"
+        :title="$t('views.pet.stage.auto')"
         class="absolute top-10 -left-3.5 z-40 w-8 h-8 rounded-full bg-neutral-950/60 backdrop-blur-xl border border-white/10 text-white flex items-center justify-center opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 hover:bg-cyan-500/80 hover:text-white hover:scale-110 shadow-[0_4px_12px_rgba(0,0,0,0.3)] transition-all duration-300"
         :class="{ '!bg-cyan-500/80 !border-cyan-400/50': uiStore.autoMode }"
         @click.stop="handleSwitchAutoMode"
@@ -32,8 +32,8 @@
       <!-- 返回主页按钮 -->
       <button
         type="button"
-        aria-label="返回主页"
-        title="返回主页"
+        :aria-label="$t('views.pet.stage.backHome')"
+        :title="$t('views.pet.stage.backHome')"
         class="absolute top-19 -left-3.5 z-40 w-8 h-8 rounded-full bg-neutral-950/60 backdrop-blur-xl border border-white/10 text-white flex items-center justify-center opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 hover:bg-cyan-500/80 hover:text-white hover:scale-110 shadow-[0_4px_12px_rgba(0,0,0,0.3)] transition-all duration-300"
         @click.stop="handleExitPetMode"
       >
@@ -75,6 +75,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { getVoiceAudio } from '@/api/services/game-info'
 import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
@@ -84,6 +85,7 @@ import { isAndroid } from '@/utils/platform'
 import RoleAvatar from './GameRoleAvatar.vue'
 import { Play, Pause, Settings, LogOut, Camera } from 'lucide-vue-next'
 
+const { t } = useI18n()
 const gameStore = useGameStore()
 const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
@@ -120,12 +122,12 @@ const {
 const titleText = computed(() => {
   if (isAndroid()) {
     return hasScreenshot.value
-      ? '点击重新拍照'
-      : '拍照或选图提问'
+      ? t('views.pet.stage.retakePhoto')
+      : t('views.pet.stage.photoOrImage')
   }
   return hasScreenshot.value
-    ? '点击重新截图，右键取消截图'
-    : '截图提问'
+    ? t('views.pet.stage.retakeScreenshot')
+    : t('views.pet.stage.screenshotAsk')
 })
 
 onMounted(() => initScreenshot())

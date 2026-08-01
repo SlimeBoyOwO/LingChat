@@ -1,4 +1,4 @@
-﻿<!--
+<!--
   ImageSourcePicker
 
   Android 端的"截屏"功能入口 —— 弹出一个底部 sheet 让用户选拍照或从相册选图。
@@ -27,11 +27,11 @@
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="选择图片来源"
+          :aria-label="$t('ui.imageSourcePicker.title')"
           class="relative w-full max-w-md mx-3 mb-6 rounded-2xl bg-neutral-900/95 border border-white/10 shadow-2xl overflow-hidden"
         >
           <div class="px-5 pt-5 pb-2 text-white/90 text-sm font-medium">
-            选择图片来源
+            {{ $t('ui.imageSourcePicker.title') }}
           </div>
 
           <button
@@ -41,8 +41,8 @@
           >
             <Camera :size="20" class="text-cyan-400 shrink-0" />
             <div class="flex-1">
-              <div class="text-base">拍照</div>
-              <div class="text-xs text-white/50">使用相机拍摄一张新图片</div>
+              <div class="text-base">{{ $t('ui.imageSourcePicker.camera') }}</div>
+              <div class="text-xs text-white/50">{{ $t('ui.imageSourcePicker.cameraDesc') }}</div>
             </div>
           </button>
 
@@ -53,8 +53,8 @@
           >
             <Image :size="20" class="text-cyan-400 shrink-0" />
             <div class="flex-1">
-              <div class="text-base">从相册选择</div>
-              <div class="text-xs text-white/50">从设备相册中选一张图片</div>
+              <div class="text-base">{{ $t('ui.imageSourcePicker.gallery') }}</div>
+              <div class="text-xs text-white/50">{{ $t('ui.imageSourcePicker.galleryDesc') }}</div>
             </div>
           </button>
 
@@ -63,7 +63,7 @@
             class="w-full px-5 py-3 text-white/70 text-sm hover:bg-white/10 active:bg-white/15 transition-colors border-t border-white/10"
             @click="onCancel"
           >
-            取消
+            {{ $t('ui.imageSourcePicker.cancel') }}
           </button>
         </div>
       </div>

@@ -1,6 +1,6 @@
 <template>
   <MenuPage>
-    <MenuItem title="创意工坊">
+    <MenuItem :title="$t('settings.workshop.title')">
       <template #header>
         <Icon icon="package" :size="20" />
       </template>
@@ -14,7 +14,7 @@
               :class="{ active: selectedCategory === null }"
               @click="selectCategory(null)"
             >
-              全部
+              {{ $t('settings.workshop.all') }}
             </button>
             <button
               v-for="cat in categories"
@@ -41,21 +41,21 @@
               :class="{ active: sortMode === 'hot' }"
               @click="sortMode = 'hot'"
             >
-              热度
+              {{ $t('settings.workshop.hot') }}
             </button>
             <button
               class="sort-btn"
               :class="{ active: sortMode === 'newest' }"
               @click="sortMode = 'newest'"
             >
-              最新
+              {{ $t('settings.workshop.newest') }}
             </button>
           </div>
         </div>
 
         <!-- Loading -->
         <div v-if="loading" class="flex items-center justify-center py-12">
-          <p class="text-white/60">正在加载讨论列表...</p>
+          <p class="text-white/60">{{ $t('settings.workshop.loadingList') }}</p>
         </div>
 
         <!-- Error -->
@@ -65,13 +65,13 @@
             class="px-5 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors border border-white/10"
             @click="load"
           >
-            重试
+            {{ $t('settings.workshop.retry') }}
           </button>
         </div>
 
         <!-- Empty -->
         <div v-else-if="discussions.length === 0" class="flex items-center justify-center py-12">
-          <p class="text-white/50">暂无讨论内容</p>
+          <p class="text-white/50">{{ $t('settings.workshop.empty') }}</p>
         </div>
 
         <!-- Filtered empty -->
@@ -79,7 +79,7 @@
           v-else-if="filteredDiscussions.length === 0"
           class="flex items-center justify-center py-12"
         >
-          <p class="text-white/50">该分类下暂无内容</p>
+          <p class="text-white/50">{{ $t('settings.workshop.emptyCategory') }}</p>
         </div>
 
         <!-- Discussion cards section -->
@@ -91,9 +91,9 @@
           >
             <span class="text-base">💡</span>
             <span>
-              当前无法获取 Discussion 热度（upvote）数据，列表按 👍 表情数排序。 在<strong
-                >高级设置 → 创意工坊</strong
-              >中填入 GitHub Token 即可获取精确的 upvote 热度。
+              {{ $t('settings.workshop.upvoteHint1') }}<strong
+                >{{ $t('settings.workshop.upvoteHintLink') }}</strong
+              >{{ $t('settings.workshop.upvoteHint2') }}
             </span>
           </div>
 
@@ -189,7 +189,7 @@
                   <!-- Upvotes -->
                   <span
                     class="flex items-center gap-1"
-                    :title="discussion.has_upvotes ? 'upvote 热度' : '👍 表情数'"
+                    :title="discussion.has_upvotes ? $t('settings.workshop.upvoteTitle') : $t('settings.workshop.reactionTitle')"
                   >
                     <ThumbsUp :size="12" />
                     {{ discussion.has_upvotes ? discussion.upvotes : discussion.reactions_upvotes }}
@@ -197,7 +197,7 @@
                   <!-- Author -->
                   <span class="flex items-center gap-1">
                     <User :size="12" />
-                    {{ discussion.author?.login ?? '未知' }}
+                    {{ discussion.author?.login ?? $t('settings.workshop.unknownAuthor') }}
                   </span>
                   <!-- Time -->
                   <span class="flex items-center gap-1 ml-auto">
@@ -217,17 +217,17 @@
             :disabled="currentPage <= 1"
             @click="currentPage--"
           >
-            上一页
+            {{ $t('settings.shared.prevPage') }}
           </button>
           <span class="text-base font-medium text-white/60">
-            第 {{ currentPage }} / {{ totalPages }} 页
+            {{ $t('settings.shared.pageOf', { current: currentPage, total: totalPages }) }}
           </span>
           <button
             class="px-5 py-2 text-base font-medium border-none rounded-lg cursor-pointer bg-white/8 text-white/60 transition-all duration-200 hover:bg-white/15 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
             :disabled="currentPage >= totalPages"
             @click="currentPage++"
           >
-            下一页
+            {{ $t('settings.shared.nextPage') }}
           </button>
         </div>
 
@@ -237,7 +237,7 @@
             class="px-5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 hover:text-white/70 text-sm transition-all border border-white/5 hover:border-white/15"
             @click="load"
           >
-            刷新列表
+            {{ $t('settings.workshop.refreshList') }}
           </button>
         </div>
       </div>
@@ -247,6 +247,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { MenuPage, MenuItem } from '../../ui'
 import Icon from '@/components/base/widget/Icon.vue'
 import { fetchDiscussions, type Discussion } from '@/api/services/workshop'
@@ -262,6 +263,7 @@ const error = ref<string | null>(null)
 const selectedCategory = ref<string | null>(null)
 const currentPage = ref(1)
 const sortMode = ref<'hot' | 'newest'>('hot')
+const { t } = useI18n()
 const ITEMS_PER_PAGE = 10
 
 // ── Category colors ───────────────────────────────────────────
@@ -361,7 +363,7 @@ watch(sortMode, () => {
 
 function getDisplayDescription(d: Discussion): string {
   if (d.description) return d.description
-  if (!d.body) return '暂无描述'
+  if (!d.body) return t('settings.workshop.noDesc')
   const plain = d.body
     .replace(/[#*`>\[\]()!|\\]/g, '')
     .replace(/\s+/g, ' ')
@@ -375,15 +377,15 @@ function formatTime(iso: string): string {
   const then = new Date(iso).getTime()
   const diff = now - then
   const mins = Math.floor(diff / 60000)
-  if (mins < 1) return '刚刚'
-  if (mins < 60) return `${mins} 分钟前`
+  if (mins < 1) return t('settings.workshop.time.justNow')
+  if (mins < 60) return t('settings.workshop.time.minutesAgo', { n: mins })
   const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours} 小时前`
+  if (hours < 24) return t('settings.workshop.time.hoursAgo', { n: hours })
   const days = Math.floor(hours / 24)
-  if (days < 30) return `${days} 天前`
+  if (days < 30) return t('settings.workshop.time.daysAgo', { n: days })
   const months = Math.floor(days / 30)
-  if (months < 12) return `${months} 个月前`
-  return `${Math.floor(months / 12)} 年前`
+  if (months < 12) return t('settings.workshop.time.monthsAgo', { n: months })
+  return t('settings.workshop.time.yearsAgo', { n: Math.floor(months / 12) })
 }
 
 function openDiscussion(url: string) {
@@ -400,7 +402,7 @@ async function load() {
     currentPage.value = 1
   } catch (e: unknown) {
     const err = e as { message?: string }
-    error.value = typeof e === 'string' ? e : err?.message || '加载失败'
+    error.value = typeof e === 'string' ? e : err?.message || t('settings.workshop.loadFailed')
   } finally {
     loading.value = false
   }

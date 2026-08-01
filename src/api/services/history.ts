@@ -11,4 +11,3 @@ export interface GameLine {
   display_name?: string | null
   perceived_role_ids: number[]
 }
-

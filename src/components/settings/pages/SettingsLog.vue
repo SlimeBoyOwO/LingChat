@@ -1,6 +1,6 @@
 <template>
   <MenuPage>
-    <MenuItem title="日志" size="large">
+    <MenuItem :title="$t('settings.log.title')" size="large">
       <template #header>
         <ScrollText :size="20" />
       </template>
@@ -30,14 +30,14 @@
             <button
               class="icon-btn"
               :class="{ active: paused }"
-              :title="paused ? '继续' : '暂停'"
+              :title="paused ? $t('settings.log.resume') : $t('settings.log.pause')"
               @click="paused = !paused"
             >
               <Pause v-if="!paused" :size="14" />
               <Play v-else :size="14" />
             </button>
 
-            <button class="icon-btn" title="清空" @click="clearLogs">
+            <button class="icon-btn" :title="$t('settings.log.clear')" @click="clearLogs">
               <Trash2 :size="14" />
             </button>
           </div>
@@ -53,7 +53,7 @@
             v-if="filteredLogs.length === 0"
             class="flex flex-1 items-center justify-center py-10"
           >
-            <div class="text-center text-xl font-bold text-gray-100 opacity-60">暂无日志</div>
+            <div class="text-center text-xl font-bold text-gray-100 opacity-60">{{ $t('settings.log.empty') }}</div>
           </div>
 
           <template v-for="(entry, _idx) in filteredLogs" :key="_idx">
@@ -75,7 +75,7 @@
             v-if="paused && pendingCount > 0"
             class="mt-3 pt-3 border-t border-dashed border-yellow-500/30 text-center text-sm text-yellow-400"
           >
-            已暂停 — {{ pendingCount }} 条新日志
+            {{ $t('settings.log.paused', { count: pendingCount }) }}
           </div>
         </div>
       </div>

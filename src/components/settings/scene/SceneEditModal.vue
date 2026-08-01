@@ -15,7 +15,7 @@
             <!-- Header -->
             <div class="p-4 flex items-center justify-between bg-white/10 border-b border-white/10 shrink-0">
               <h3 class="text-lg font-bold text-white leading-none">
-                {{ mode === 'create' ? '添加场景' : '更新场景' }}
+                {{ mode === 'create' ? $t('settings.sceneEdit.title.create') : $t('settings.sceneEdit.title.update') }}
               </h3>
               <button
                 @click="$emit('close')"
@@ -32,11 +32,11 @@
               <!-- 场景名称 -->
               <section>
                 <label class="flex items-center gap-2 text-xs font-bold text-gray-200/90 tracking-widest uppercase mb-1.5 opacity-80">
-                  <span class="w-1 h-3 bg-orange-500 rounded-full"></span> 场景名称
+                  <span class="w-1 h-3 bg-orange-500 rounded-full"></span> {{ $t('settings.sceneEdit.label.sceneName') }}
                 </label>
                 <input
                   v-model="formData.sceneName"
-                  placeholder="例如：海边日落"
+                  :placeholder="$t('settings.sceneEdit.placeholder.sceneName')"
                   class="w-full px-3 py-2 rounded-xl border border-white/10 bg-black/40 text-white text-sm placeholder-white/30 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400/50 focus:outline-none transition-all"
                 />
               </section>
@@ -44,14 +44,14 @@
               <!-- 场景图片 -->
               <section>
                 <label class="flex items-center gap-2 text-xs font-bold text-gray-200/90 tracking-widest uppercase mb-1.5 opacity-80">
-                  <span class="w-1 h-3 bg-indigo-500 rounded-full"></span> 场景图片
+                  <span class="w-1 h-3 bg-indigo-500 rounded-full"></span> {{ $t('settings.sceneEdit.label.sceneImage') }}
                 </label>
                 <div class="flex gap-2">
                   <select
                     v-model="formData.sceneImage"
                     class="flex-1 px-3 py-2 rounded-xl border border-white/10 bg-black/40 text-white text-sm focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400/50 focus:outline-none transition-all appearance-none"
                   >
-                    <option value="" class="bg-slate-800 text-white/50">选择背景图片</option>
+                    <option value="" class="bg-slate-800 text-white/50">{{ $t('settings.sceneEdit.option.selectBackground') }}</option>
                     <option
                       v-for="bg in backgrounds"
                       :key="bg.url"
@@ -65,7 +65,7 @@
                     @click="$emit('upload')"
                     class="bg-white/10! hover:bg-white/20! text-white! border border-white/20 whitespace-nowrap px-4 text-sm! rounded-xl"
                   >
-                    上传
+                    {{ $t('settings.sceneEdit.button.upload') }}
                   </Button>
                 </div>
               </section>
@@ -73,11 +73,11 @@
               <!-- 场景描述 -->
               <section>
                 <label class="flex items-center gap-2 text-xs font-bold text-gray-200/90 tracking-widest uppercase mb-1.5 opacity-80">
-                  <span class="w-1 h-3 bg-emerald-500 rounded-full"></span> 场景描述
+                  <span class="w-1 h-3 bg-emerald-500 rounded-full"></span> {{ $t('settings.sceneEdit.label.sceneDescription') }}
                 </label>
                 <textarea
                   v-model="formData.sceneDescription"
-                  placeholder="描述场景的环境、氛围、光线等"
+                  :placeholder="$t('settings.sceneEdit.placeholder.sceneDescription')"
                   rows="2"
                   class="w-full px-3 py-2 rounded-xl border border-white/10 bg-black/40 text-white text-sm placeholder-white/30 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400/50 focus:outline-none transition-all resize-none"
                 ></textarea>
@@ -90,7 +90,7 @@
                   class="w-full flex items-center justify-between gap-2 text-xs font-bold text-gray-200/90 tracking-widest uppercase mb-1.5 opacity-80 hover:opacity-100 transition-opacity"
                 >
                   <span class="flex items-center gap-2">
-                    <span class="w-1 h-3 bg-purple-500 rounded-full"></span> 光影参数
+                    <span class="w-1 h-3 bg-purple-500 rounded-full"></span> {{ $t('settings.sceneEdit.lighting.title') }}
                   </span>
                   <svg
                     :class="['w-3.5 h-3.5 transition-transform', showLighting ? 'rotate-90' : '']"
@@ -103,17 +103,17 @@
                 <div v-show="showLighting" class="space-y-2.5 pl-3">
                   <label class="flex items-center gap-2 cursor-pointer">
                     <input v-model="formData.lightingEnabled" type="checkbox" class="w-3.5 h-3.5 rounded accent-purple-500" />
-                    <span class="text-xs text-white/70">为此场景启用光影参数</span>
+                    <span class="text-xs text-white/70">{{ $t('settings.sceneEdit.lighting.enableForScene') }}</span>
                   </label>
 
                   <template v-if="formData.lightingEnabled">
                     <label class="flex items-center gap-2 cursor-pointer pl-4">
                       <input v-model="formData.overlayEnabled" type="checkbox" class="w-3.5 h-3.5 rounded accent-amber-500" />
-                      <span class="text-xs text-white/70">启用光照叠加层</span>
+                      <span class="text-xs text-white/70">{{ $t('settings.sceneEdit.lighting.enableOverlay') }}</span>
                     </label>
 
                     <!-- ======== 角色滤镜 ======== -->
-                    <div class="text-[11px] font-bold text-white/40 uppercase tracking-wider pt-1">角色滤镜</div>
+                    <div class="text-[11px] font-bold text-white/40 uppercase tracking-wider pt-1">{{ $t('settings.sceneEdit.filter.character') }}</div>
 
                     <div v-for="s in charFilterSliders" :key="'char-'+s.key" class="flex items-center gap-2">
                       <span class="text-[11px] text-white/50 w-16 shrink-0">{{ s.label }}</span>
@@ -130,13 +130,13 @@
                     </div>
 
                     <div class="flex items-center gap-3">
-                      <span class="text-[11px] text-white/50 shrink-0">发光色</span>
+                      <span class="text-[11px] text-white/50 shrink-0">{{ $t('settings.sceneEdit.label.glowColor') }}</span>
                       <input v-model="formData.charGlowColor" type="color" class="w-6 h-6 rounded cursor-pointer border-0 bg-transparent shrink-0" />
                       <span class="text-[11px] text-white/30 truncate">{{ formData.charGlowColor }}</span>
                     </div>
 
                     <!-- ======== 背景滤镜 ======== -->
-                    <div class="text-[11px] font-bold text-white/40 uppercase tracking-wider pt-1">背景滤镜</div>
+                    <div class="text-[11px] font-bold text-white/40 uppercase tracking-wider pt-1">{{ $t('settings.sceneEdit.filter.background') }}</div>
 
                     <div v-for="s in bgFilterSliders" :key="'bg-'+s.key" class="flex items-center gap-2">
                       <span class="text-[11px] text-white/50 w-16 shrink-0">{{ s.label }}</span>
@@ -153,17 +153,17 @@
                     </div>
 
                     <div class="flex items-center gap-3">
-                      <span class="text-[11px] text-white/50 shrink-0">发光色</span>
+                      <span class="text-[11px] text-white/50 shrink-0">{{ $t('settings.sceneEdit.label.glowColor') }}</span>
                       <input v-model="formData.bgGlowColor" type="color" class="w-6 h-6 rounded cursor-pointer border-0 bg-transparent shrink-0" />
                       <span class="text-[11px] text-white/30 truncate">{{ formData.bgGlowColor }}</span>
                     </div>
 
                     <!-- ======== 光照叠加（仅 overlayEnabled 时显示） ======== -->
                     <template v-if="formData.overlayEnabled">
-                      <div class="text-[11px] font-bold text-white/40 uppercase tracking-wider pt-1">光照叠加</div>
+                      <div class="text-[11px] font-bold text-white/40 uppercase tracking-wider pt-1">{{ $t('settings.sceneEdit.overlay.title') }}</div>
 
                       <div class="flex items-center gap-3">
-                        <span class="text-[11px] text-white/50 shrink-0">混合</span>
+                        <span class="text-[11px] text-white/50 shrink-0">{{ $t('settings.sceneEdit.overlay.blend') }}</span>
                         <select v-model="formData.blendMode" class="flex-1 px-2 py-1 rounded-lg border border-white/10 bg-black/40 text-white text-[11px] focus:outline-none focus:ring-1 focus:ring-purple-400/50">
                           <option value="normal">Normal</option>
                           <option value="multiply">Multiply</option>
@@ -192,12 +192,12 @@
                       </div>
 
                       <div class="flex items-center gap-3">
-                        <span class="text-[11px] text-white/50 shrink-0">中心色</span>
+                        <span class="text-[11px] text-white/50 shrink-0">{{ $t('settings.sceneEdit.overlay.centerColor') }}</span>
                         <input v-model="formData.overlayColor1" type="color" class="w-6 h-6 rounded cursor-pointer border-0 bg-transparent shrink-0" />
                         <span class="text-[11px] text-white/30 truncate">{{ formData.overlayColor1 }}</span>
                       </div>
                       <div class="flex items-center gap-3">
-                        <span class="text-[11px] text-white/50 shrink-0">边缘色</span>
+                        <span class="text-[11px] text-white/50 shrink-0">{{ $t('settings.sceneEdit.overlay.edgeColor') }}</span>
                         <input v-model="formData.overlayColor2" type="color" class="w-6 h-6 rounded cursor-pointer border-0 bg-transparent shrink-0" />
                         <span class="text-[11px] text-white/30 truncate">{{ formData.overlayColor2 }}</span>
                       </div>
@@ -217,11 +217,11 @@
                       </div>
 
                       <div class="flex items-center gap-3">
-                        <span class="text-[11px] text-white/50 shrink-0">作用目标</span>
+                        <span class="text-[11px] text-white/50 shrink-0">{{ $t('settings.sceneEdit.overlay.target') }}</span>
                         <select v-model="formData.overlayTarget" class="flex-1 px-2 py-1 rounded-lg border border-white/10 bg-black/40 text-white text-[11px] focus:outline-none focus:ring-1 focus:ring-purple-400/50">
-                          <option value="both">角色 + 背景</option>
-                          <option value="character">仅角色</option>
-                          <option value="background">仅背景</option>
+                          <option value="both">{{ $t('settings.sceneEdit.overlayTarget.both') }}</option>
+                          <option value="character">{{ $t('settings.sceneEdit.overlayTarget.character') }}</option>
+                          <option value="background">{{ $t('settings.sceneEdit.overlayTarget.background') }}</option>
                         </select>
                       </div>
                     </template>
@@ -230,7 +230,7 @@
                       @click="resetLighting"
                       class="text-[11px] text-white/40 hover:text-white/80 underline transition-colors"
                     >
-                      重置为默认值
+                      {{ $t('settings.sceneEdit.button.resetDefault') }}
                     </button>
                   </template>
                 </div>
@@ -243,21 +243,21 @@
                 @click="$emit('close')"
                 class="bg-transparent! text-white/70! hover:text-white! hover:bg-white/10! border border-white/20 text-sm!"
               >
-                取消
+                {{ $t('settings.sceneEdit.button.cancel') }}
               </Button>
               <Button
                 @click="handleSubmit"
                 :disabled="!formData.sceneName.trim()"
                 class="bg-indigo-500! hover:bg-indigo-400! border-none shadow-[0_0_10px_rgba(99,102,241,0.5)] disabled:opacity-50 disabled:shadow-none min-w-[70px] text-white text-sm!"
               >
-                {{ mode === 'create' ? '创建' : '更新' }}
+                {{ mode === 'create' ? $t('settings.sceneEdit.button.create') : $t('settings.sceneEdit.button.update') }}
               </Button>
             </div>
           </div>
 
           <!-- ====== 右栏：实时预览 ====== -->
           <div class="flex-1 flex flex-col bg-black/20 p-5 min-w-0">
-            <span class="text-xs font-bold text-white/40 uppercase tracking-widest mb-3 shrink-0">实时预览</span>
+            <span class="text-xs font-bold text-white/40 uppercase tracking-widest mb-3 shrink-0">{{ $t('settings.sceneEdit.preview.title') }}</span>
             <div class="flex-1 relative rounded-xl overflow-hidden border border-white/10 bg-slate-800/50 flex items-center justify-center min-h-0">
               <!-- 背景图（应用背景滤镜） -->
               <img
@@ -281,13 +281,13 @@
               ></div>
               <!-- 占位 -->
               <div v-if="!selectedBackgroundPreview" class="text-white/20 text-sm">
-                选择背景图片后显示预览
+                {{ $t('settings.sceneEdit.preview.placeholder') }}
               </div>
             </div>
             <!-- 信息标签 -->
             <div class="mt-2 flex gap-3 text-xs text-white/40 shrink-0">
-              <span v-if="formData.lightingEnabled && formData.overlayEnabled && formData.blendMode !== 'normal'">叠加混合: {{ formData.blendMode }}</span>
-              <span v-if="previewAvatarUrl">已加载角色立绘</span>
+              <span v-if="formData.lightingEnabled && formData.overlayEnabled && formData.blendMode !== 'normal'">{{ $t('settings.sceneEdit.preview.blendMode', { mode: formData.blendMode }) }}</span>
+              <span v-if="previewAvatarUrl">{{ $t('settings.sceneEdit.preview.avatarLoaded') }}</span>
             </div>
           </div>
         </div>
@@ -298,6 +298,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { Button } from '../../base'
 import { useGameStore } from '../../../stores/modules/game'
@@ -331,6 +332,7 @@ const emit = defineEmits<{
 }>()
 
 const gameStore = useGameStore()
+const { t } = useI18n()
 
 // ---- defaults ----
 
@@ -426,31 +428,31 @@ interface SliderDef {
   unit: string
 }
 
-const charFilterSliders: SliderDef[] = [
-  { key: 'charBrightness', label: '亮度', min: 0.3, max: 2.2, step: 0.01, color: '#8b5cf6', unit: '' },
-  { key: 'charContrast', label: '对比度', min: 0.5, max: 2.0, step: 0.01, color: '#8b5cf6', unit: '' },
-  { key: 'charSaturation', label: '饱和度', min: 0.0, max: 2.5, step: 0.01, color: '#8b5cf6', unit: '' },
-  { key: 'charSepia', label: '暖色调', min: 0.0, max: 1.0, step: 0.01, color: '#8b5cf6', unit: '' },
-  { key: 'charGlowRadius', label: '发光半径', min: 0, max: 50, step: 1, color: '#f59e0b', unit: 'px' },
-]
+const charFilterSliders = computed<SliderDef[]>(() => [
+  { key: 'charBrightness', label: t('settings.sceneEdit.slider.brightness'), min: 0.3, max: 2.2, step: 0.01, color: '#8b5cf6', unit: '' },
+  { key: 'charContrast', label: t('settings.sceneEdit.slider.contrast'), min: 0.5, max: 2.0, step: 0.01, color: '#8b5cf6', unit: '' },
+  { key: 'charSaturation', label: t('settings.sceneEdit.slider.saturation'), min: 0.0, max: 2.5, step: 0.01, color: '#8b5cf6', unit: '' },
+  { key: 'charSepia', label: t('settings.sceneEdit.slider.sepia'), min: 0.0, max: 1.0, step: 0.01, color: '#8b5cf6', unit: '' },
+  { key: 'charGlowRadius', label: t('settings.sceneEdit.slider.glowRadius'), min: 0, max: 50, step: 1, color: '#f59e0b', unit: 'px' },
+])
 
-const bgFilterSliders: SliderDef[] = [
-  { key: 'bgBrightness', label: '亮度', min: 0.3, max: 2.2, step: 0.01, color: '#06b6d4', unit: '' },
-  { key: 'bgContrast', label: '对比度', min: 0.5, max: 2.0, step: 0.01, color: '#06b6d4', unit: '' },
-  { key: 'bgSaturation', label: '饱和度', min: 0.0, max: 2.5, step: 0.01, color: '#06b6d4', unit: '' },
-  { key: 'bgSepia', label: '暖色调', min: 0.0, max: 1.0, step: 0.01, color: '#06b6d4', unit: '' },
-  { key: 'bgGlowRadius', label: '发光半径', min: 0, max: 50, step: 1, color: '#f59e0b', unit: 'px' },
-]
+const bgFilterSliders = computed<SliderDef[]>(() => [
+  { key: 'bgBrightness', label: t('settings.sceneEdit.slider.brightness'), min: 0.3, max: 2.2, step: 0.01, color: '#06b6d4', unit: '' },
+  { key: 'bgContrast', label: t('settings.sceneEdit.slider.contrast'), min: 0.5, max: 2.0, step: 0.01, color: '#06b6d4', unit: '' },
+  { key: 'bgSaturation', label: t('settings.sceneEdit.slider.saturation'), min: 0.0, max: 2.5, step: 0.01, color: '#06b6d4', unit: '' },
+  { key: 'bgSepia', label: t('settings.sceneEdit.slider.sepia'), min: 0.0, max: 1.0, step: 0.01, color: '#06b6d4', unit: '' },
+  { key: 'bgGlowRadius', label: t('settings.sceneEdit.slider.glowRadius'), min: 0, max: 50, step: 1, color: '#f59e0b', unit: 'px' },
+])
 
-const overlaySliders: SliderDef[] = [
-  { key: 'lightX', label: '光源 X', min: 0, max: 100, step: 1, color: '#fbbf24', unit: '%' },
-  { key: 'lightY', label: '光源 Y', min: 0, max: 100, step: 1, color: '#fbbf24', unit: '%' },
-]
+const overlaySliders = computed<SliderDef[]>(() => [
+  { key: 'lightX', label: t('settings.sceneEdit.slider.lightX'), min: 0, max: 100, step: 1, color: '#fbbf24', unit: '%' },
+  { key: 'lightY', label: t('settings.sceneEdit.slider.lightY'), min: 0, max: 100, step: 1, color: '#fbbf24', unit: '%' },
+])
 
-const overlayExtraSliders: SliderDef[] = [
-  { key: 'overlayRadius', label: '光照半径', min: 10, max: 100, step: 1, color: '#fbbf24', unit: '%' },
-  { key: 'overlayOpacity', label: '光照强度', min: 0, max: 100, step: 1, color: '#fbbf24', unit: '%' },
-]
+const overlayExtraSliders = computed<SliderDef[]>(() => [
+  { key: 'overlayRadius', label: t('settings.sceneEdit.slider.overlayRadius'), min: 10, max: 100, step: 1, color: '#fbbf24', unit: '%' },
+  { key: 'overlayOpacity', label: t('settings.sceneEdit.slider.overlayOpacity'), min: 0, max: 100, step: 1, color: '#fbbf24', unit: '%' },
+])
 
 // ---- sub-state ----
 

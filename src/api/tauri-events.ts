@@ -5,6 +5,7 @@ import type { ScriptEventType } from '../types'
 import { useAdventureStore } from '../stores/modules/adventure'
 import { useUIStore } from '../stores/modules/ui/ui'
 import { useGameStore } from '../stores/modules/game'
+import { i18n } from '@/locales'
 import { useScriptEditorStore } from '../stores/modules/script-editor'
 
 function asEvent(payload: unknown, overrides: Partial<ScriptEventType>): ScriptEventType {
@@ -131,8 +132,8 @@ export function initializeTauriEventListeners() {
 
     useUIStore().showNotification({
       type: 'info',
-      title: '自动存档',
-      message: `已于 ${payload.timestamp} 自动保存`,
+      title: i18n.global.t('api.events.autoSave.title'),
+      message: i18n.global.t('api.events.autoSave.message', { time: payload.timestamp }),
       duration: 2500,
       skipTipsCheck: true,
     })
