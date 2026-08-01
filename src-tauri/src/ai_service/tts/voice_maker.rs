@@ -314,6 +314,12 @@ impl VoiceMaker {
                 }
             }
             "indextts2" => {
+                // IndexTTS2 仅支持中/英文：角色若残留日语配置（旧版本可选），
+                // 兜底为中文，避免日语文本被直接送去合成。
+                if self.lang == "ja" {
+                    tracing::warn!("IndexTTS2 不支持日语，voice_lang 已从 ja 兜底为 zh");
+                    self.lang = "zh".to_string();
+                }
                 self.provider.indextts = Some(Arc::new(IndexTtsAdapter::new(
                     self.tts_config.indextts_api_url.clone(),
                 )));
@@ -369,7 +375,9 @@ impl VoiceMaker {
             let Some(text) = segment_text_for_lang(&self.lang, seg).map(str::to_owned) else {
                 continue;
             };
-            let emo = String::new();
+            // 将情绪分类器的预测标签传给 TTS 适配器（目前仅 IndexTTS2 消费 emo，
+            // 其余适配器忽略该参数，行为不变）
+            let emo = seg.predicted.clone();
 
             let file_name = if seg.voice_file.is_empty() {
                 format!(

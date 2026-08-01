@@ -898,6 +898,8 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
         let svc = state.ai_service.lock().await;
         svc.game_status.clone()
     };
+    // 捕获当前试玩代号（自由对话恒等，行为不变）
+    let preview_generation = game_status.lock().await.preview_generation;
 
     let deps = GeneratorDeps {
         source: GeneratorSource::EntryGreeting,
@@ -911,6 +913,8 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
         concurrency,
         god_agent: state.god_agent.clone(),
         suppress_thinking: true,
+        generation: preview_generation,
+        is_preview: false,
     };
 
     let generator = MessageGenerator::new(deps);

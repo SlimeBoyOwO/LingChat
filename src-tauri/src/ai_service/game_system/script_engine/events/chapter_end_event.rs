@@ -1,9 +1,9 @@
-//! Chapter end event — determines the next chapter.
+//! 章节结束事件 —— 决定下一章。
 //!
-//! Three sub-types:
-//! - `linear`: returns the `next_chapter` / `next` field directly
-//! - `branching`: evaluates conditions on `script_status.vars` to choose a branch
-//! - `ai_judged`: calls LLM to decide among named options (stub — needs LLM integration)
+//! 三种子类型：
+//! - `linear`：直接返回 `next_chapter` / `next` 字段
+//! - `branching`：对 `script_status.vars` 求值条件来选择分支
+//! - `ai_judged`：调用 LLM 在命名选项中决定（需 LLM）
 
 use std::sync::Arc;
 
@@ -58,7 +58,7 @@ impl ChapterEndEvent {
 #[async_trait]
 impl ScriptEvent for ChapterEndEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
-        // Verify script_status exists (brief lock)
+        // 校验 script_status 存在（短暂持锁）
         {
             let gs = ctx.game_status.lock().await;
             if gs.script_status.is_none() {
@@ -85,7 +85,7 @@ impl ScriptEvent for ChapterEndEvent {
                         }
                     }
                 }
-                // Check for default option
+                // 检查 default 选项
                 if result == "end" {
                     for opt in &self.options {
                         if opt
@@ -102,14 +102,14 @@ impl ScriptEvent for ChapterEndEvent {
                 result
             }
             "ai_judged" => {
-                // Try LLM-based judgment
-                let llm = ctx.llm.cloned();
-                if let Some(llm) = llm {
-                    self.call_llm_for_judgment(&llm, ctx).await?
-                } else {
-                    tracing::warn!("[ChapterEndEvent] ai_judged 需要 LLM 但未配置，默认 end");
-                    "end".to_string()
-                }
+                // AI 判断走向：必须调 LLM。LLM 不可用就终止剧本，不再回落到任何
+                // 默认分支——那会让剧本以错误逻辑继续跑（上游复核明确要求）。
+                let llm = ctx.llm.clone().ok_or_else(|| {
+                    anyhow!(
+                        "「AI 判断」章节结束需要大模型判断走向，但 LLM 不可用，剧本终止。请先配置并选择模型。"
+                    )
+                })?;
+                self.call_llm_for_judgment(&llm, ctx).await?
             }
             _ => {
                 tracing::warn!(
@@ -134,20 +134,20 @@ impl ScriptEvent for ChapterEndEvent {
 }
 
 impl ChapterEndEvent {
-    /// Call LLM to judge the next chapter based on a prompt and named options.
+    /// 调用 LLM，依据 prompt 与命名选项判断下一章。
     async fn call_llm_for_judgment(
         &self,
         llm: &Arc<LlmClient>,
         ctx: &mut ScriptContext<'_>,
     ) -> Result<String> {
-        // Collect option names for the prompt
+        // 收集选项名供 prompt 使用
         let option_names: Vec<&str> = self
             .options
             .iter()
             .filter_map(|opt| opt.get("name").and_then(|v| v.as_str()))
             .collect();
 
-        // Build conversation context from current role's memory
+        // 用当前角色的记忆构建对话上下文
         let conv_text = {
             let mut gs = ctx.game_status.lock().await;
             gs.refresh_memories(ctx.db).await?;
@@ -196,12 +196,12 @@ impl ChapterEndEvent {
         let response = response.trim().to_string();
         tracing::info!("[ChapterEndEvent] LLM 判断结果: '{}'", response);
 
-        // Match response against option names (substring match)
+        // 把回复与选项名匹配（子串匹配）
         if let Some(next) = match_ai_response_options(&response, &self.options) {
             return Ok(next);
         }
 
-        // Fallback: first option's next
+        // 兜底：取第一个选项的 next
         if let Some(first) = self.options.first() {
             if let Some(next) = first.get("next").and_then(|v| v.as_str()) {
                 return Ok(next.to_string());

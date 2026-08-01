@@ -312,6 +312,7 @@ const schemas: Record<string, FieldSchema[]> = {
         { label: 'gsv', value: 'gsv' },
         { label: 'aivis', value: 'aivis' },
         { label: 'opentts', value: 'opentts' },
+        { label: 'indextts2', value: 'indextts2' },
       ],
     },
 
@@ -321,13 +322,13 @@ const schemas: Record<string, FieldSchema[]> = {
       type: 'select',
       realtime: true,
       options: [
-        { label: '日语', value: 'ja' },
+        { label: '日语', value: 'ja', visibleIf: (s) => s.tts_type !== 'indextts2' },
         { label: '中文', value: 'zh' },
         {
           label: '英语',
           value: 'en',
           visibleIf: (s) =>
-            s.tts_type === 'gsv' || s.tts_type === 'opentts' || s.tts_type === 'sbv2',
+            ['gsv', 'opentts', 'sbv2', 'indextts2'].includes(s.tts_type),
         },
         {
           label: '韩语',
@@ -543,6 +544,16 @@ const handleClose = () => {
 
 const handleFieldChange = async (field: FieldSchema) => {
   if (!field.realtime || !props.roleId) return
+
+  // IndexTTS2 仅支持中/英文：切换到该类型时，把残留的日语重置为中文，
+  // 避免日语选项被隐藏后旧值仍然生效。
+  if (
+    field.key === 'tts_type' &&
+    localSettings.value.tts_type === 'indextts2' &&
+    localSettings.value.voice_lang === 'ja'
+  ) {
+    localSettings.value.voice_lang = 'zh'
+  }
 
   try {
     // 后端会同时保存 settings.yml 并重建已加载角色的 VoiceMaker。

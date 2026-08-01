@@ -9,6 +9,9 @@ const MainMenu = () => import('../components/views/MainMenu.vue')
 const PetMode = () => import('../components/views/PetMode.vue')
 const Second = () => import('../components/views/Second.vue')
 const LogWindow = () => import('../components/views/LogWindow.vue')
+// 剧本编辑器体量较大，必须懒加载 —— 项目没有配 manualChunks，
+// 非懒加载的 view 会整个进主 chunk
+const ScriptEditor = () => import('../components/views/ScriptEditor.vue')
 
 // 1. 定义路由表
 const routes = [
@@ -41,6 +44,11 @@ const routes = [
     path: '/log-window',
     name: 'LogWindow',
     component: LogWindow,
+  },
+  {
+    path: '/script-editor',
+    name: 'ScriptEditor',
+    component: ScriptEditor,
   },
 ]
 

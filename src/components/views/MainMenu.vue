@@ -37,6 +37,7 @@
           @start-game="showGameModeMenu"
           @open-settings="handleOpenSettings"
           @open-credits="handleOpenCredits"
+          @open-script-editor="() => router.push('/script-editor')"
         />
       </Transition>
 

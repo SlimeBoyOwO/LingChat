@@ -80,6 +80,8 @@ export interface ScriptSoundEvent extends ScriptEvent {
 export interface ScriptMusicEvent extends ScriptEvent {
   type: 'music'
   musicPath: string
+  /** 播放速度倍率（1.0 原速）；未设置时前端按 1.0 处理 */
+  playbackSpeed?: number
 }
 
 /** 环境音事件 —— 循环持续的场景音效，与 BGM 共存 */
@@ -115,6 +117,8 @@ export interface ScriptChoiceEvent extends ScriptEvent {
 }
 export interface ScriptEndEvent extends ScriptEvent {
   type: 'script_end'
+  /** false 表示剧本是因为出错被中止的，不应记为完成 */
+  completed?: boolean
 }
 
 export interface ScriptErrorEvent extends ScriptEvent {

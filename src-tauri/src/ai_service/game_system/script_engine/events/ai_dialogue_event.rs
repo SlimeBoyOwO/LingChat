@@ -1,4 +1,4 @@
-//! AI dialogue event — sets character and generates an AI reply via MessageGenerator.
+//! AI 对话事件 —— 设定角色，并通过 MessageGenerator 生成 AI 回复。
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -49,21 +49,19 @@ impl ScriptEvent for AIDialogueEvent {
             .clone()
             .ok_or_else(|| anyhow!("ScriptStatus 未设置"))?;
 
-        let (role_id, _role_display_name) = {
+        let role_id = {
             let mut gs = ctx.game_status.lock().await;
             let role = script_function::get_role(&mut *gs, ctx.db, &script_status, &self.character)
                 .await?;
-            let id = role.role_id.ok_or_else(|| anyhow!("角色 ID 未设置"))?;
-            let dn = role.display_name.clone();
-            (id, dn)
+            role.role_id.ok_or_else(|| anyhow!("角色 ID 未设置"))?
         };
 
-        // Set as current character
+        // 设为当前角色
         ctx.game_status.lock().await.current_role_id = Some(role_id);
 
         tracing::info!("[AIDialogueEvent] 开始执行");
 
-        // Inject prompt as SYSTEM line if provided
+        // 若提供了 prompt，作为临时系统旁白台词注入
         // TODO: 这里的 prompt 是暂时的，应该标记为临时 prompt，并且在代码逻辑中在AI回复后清除这部分提示词。
         if let Some(ref prompt) = self.prompt {
             let sys_line = LineBase {
@@ -79,14 +77,17 @@ impl ScriptEvent for AIDialogueEvent {
                 .await?;
         }
 
-        // Delegate AI response to MessageGenerator
+        // 委托 MessageGenerator 生成回复
         let state = ctx.app.state::<AppState>();
         let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm).await;
         let llm = match llm {
             Some(llm) => llm,
             None => {
-                tracing::warn!("[AIDialogueEvent] LLM 未配置，跳过 AI 对话");
-                return Ok(None);
+                // LLM 未配置：AI 对话事件无法生成。按上游要求直接终止剧本，
+                // 不再 fallback 到任何占位/默认文本——那会让剧本以错误逻辑继续跑。
+                return Err(anyhow!(
+                    "尚未配置大模型，无法执行「AI 对话」事件，剧本终止。请先在设置里配置并选择模型。"
+                ));
             }
         };
 
@@ -102,6 +103,9 @@ impl ScriptEvent for AIDialogueEvent {
             concurrency: 1,
             god_agent: None,
             suppress_thinking: false,
+            // 捕获当前试玩代号：中止后游离任务再写会被 add_assistant_line 的守卫丢弃
+            generation: ctx.game_status.lock().await.preview_generation,
+            is_preview: ctx.is_preview,
         };
 
         let generator = MessageGenerator::new(deps);
