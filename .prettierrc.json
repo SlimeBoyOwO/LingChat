@@ -5,9 +5,6 @@
   "trailingComma": "all",
   "singleAttributePerLine": true,
   "tabWidth": 2,
-  "plugins": [
-    "prettier-plugin-classnames",
-    "prettier-plugin-tailwindcss"
-  ],
+  "plugins": ["prettier-plugin-tailwindcss", "prettier-plugin-classnames"],
   "classnamesPrintWidth": 0
 }

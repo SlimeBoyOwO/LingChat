@@ -1,14 +1,25 @@
 <template>
-  <nav class="flex flex-col items-stretch">
-    <StartItem @click="startFreeDialogue">自由对话模式</StartItem>
-    <StartItem @click="startStoryMode">剧情模式</StartItem>
-    <StartItem disabled>小游戏（开发中）</StartItem>
-    <StartItem @click="() => emit('back')">返回</StartItem>
-  </nav>
+  <StartList>
+    <StartLine>
+      <StartItem @click="startFreeDialogue">自由对话模式</StartItem>
+    </StartLine>
+
+    <StartLine>
+      <StartItem @click="startStoryMode">剧情模式</StartItem>
+    </StartLine>
+
+    <StartLine>
+      <StartItem disabled>小游戏（开发中）</StartItem>
+    </StartLine>
+
+    <StartLine>
+      <StartItem @click="() => emit('back')">返回</StartItem>
+    </StartLine>
+  </StartList>
 </template>
 
 <script setup lang="ts">
-import { StartItem } from '../base'
+import { StartItem, StartLine, StartList } from '../base'
 import { useRouter } from 'vue-router'
 import { useGameStore } from '@/stores/modules/game'
 

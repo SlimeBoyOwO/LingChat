@@ -8,10 +8,16 @@
     <Save v-else-if="currentPage === 'save'" />
 
     <!-- 背景层（最底层） -->
-    <div class="video-background" ref="bgRef"></div>
+    <div
+      class="video-background"
+      ref="bgRef"
+    ></div>
 
     <!-- 流星层（SVG动画） -->
-    <MeteorAnimation :meteors-enabled="meteorsEnabled" :meteor-fps="meteorFps" />
+    <MeteorAnimation
+      :meteors-enabled="meteorsEnabled"
+      :meteor-fps="meteorFps"
+    />
 
     <!-- 星星粒子层（位于背景和人物之间） -->
     <StarAnimation
@@ -21,7 +27,12 @@
     />
 
     <!-- 人物图层（位于星星之上，菜单之下） -->
-    <img class="character-image" ref="charRef" src="../../assets/images/alona.png" alt="人物" />
+    <img
+      class="character-image"
+      ref="charRef"
+      src="../../assets/images/alona.png"
+      alt="人物"
+    />
 
     <!-- 菜单容器，绑定鼠标移动和移出事件实现视差 -->
     <StartPage
@@ -37,6 +48,7 @@
           @start-game="showGameModeMenu"
           @open-settings="handleOpenSettings"
           @open-credits="handleOpenCredits"
+          @open-workshop="showWorkshopMenu"
           @open-script-editor="() => router.push('/script-editor')"
         />
       </Transition>
@@ -61,14 +73,23 @@
         />
       </Transition>
 
+      <!-- 创意工坊菜单 -->
+      <Transition name="slide-right">
+        <WorkshopOptions
+          v-if="menuState === 'workshop'"
+          @back="backToMainMenu"
+          :scripts="scripts"
+        />
+      </Transition>
+
       <StartLogo @click="goToGithub" />
     </StartPage>
   </div>
 </template>
 
 <script setup lang="ts">
-import { StartPage, StartLogo } from './menu/base'
-import { MainMenuOptions, GameModeOptions, ScriptModeOptions } from './menu/page'
+import { StartLogo, StartPage } from './menu/base'
+import { WorkshopOptions, GameModeOptions, MainMenuOptions, ScriptModeOptions } from './menu/page'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { MainChat } from './'
@@ -90,7 +111,7 @@ const settingsStore = useSettingsStore()
 
 // 页面与菜单状态
 const currentPage = ref('mainMenu')
-const menuState = ref<'main' | 'gameMode' | 'scriptMode'>('main')
+const menuState = ref<'main' | 'gameMode' | 'scriptMode' | 'workshop'>('main')
 const scripts = ref<ScriptSummary[]>([])
 const loadingScripts = ref(false)
 const starsEnabled = computed(() => settingsStore.mainMenuStarsEnabled)
@@ -119,16 +140,19 @@ function backToMainMenu() {
 function showScriptModeMenu() {
   menuState.value = 'scriptMode'
 }
+function showWorkshopMenu() {
+  menuState.value = 'workshop'
+}
 function goToGithub() {
   window.open('https://github.com/SlimeBoyOwO/LingChat', '_blank')
 }
 
 const handleContinueGame = async () => {
   try {
-    const { saves } = await invoke<{ saves: Array<{ id: number }>; total: number }>(
-      'list_saves',
-      { page: 1, pageSize: 1 },
-    )
+    const { saves } = await invoke<{ saves: Array<{ id: number }>; total: number }>('list_saves', {
+      page: 1,
+      pageSize: 1,
+    })
     if (!saves || saves.length === 0) {
       uiStore.showWarning({ title: '提示', message: '没有存档记录，请先创建存档' })
       return
