@@ -62,6 +62,12 @@ interface UIState {
   viewportWidth: number
   viewportHeight: number
 
+  // 刘海屏安全区（px，由 CSS env() 或原生注入的变量提供）
+  safeAreaInsetTop: number
+  safeAreaInsetBottom: number
+  safeAreaInsetLeft: number
+  safeAreaInsetRight: number
+
   // Schedule 相关状态
   scheduleView: string
 
@@ -114,6 +120,12 @@ export const useUIStore = defineStore('ui', {
     // 视口响应式追踪
     viewportWidth: window.innerWidth,
     viewportHeight: window.innerHeight,
+
+    // 刘海屏安全区（会在 initUIStore 中从 CSS 变量同步）
+    safeAreaInsetTop: 0,
+    safeAreaInsetBottom: 0,
+    safeAreaInsetLeft: 0,
+    safeAreaInsetRight: 0,
 
     // Schedule 相关状态
     scheduleView: 'schedule_groups',
@@ -569,10 +581,22 @@ export function initUIStore() {
 
   const store = useUIStore()
 
+  // 从 CSS 变量同步安全区值（由 Android 原生 / iOS env() 注入）
+  function syncSafeArea() {
+    const style = getComputedStyle(document.documentElement)
+    const parsePx = (val: string) => Math.round(parseFloat(val) || 0)
+    store.safeAreaInsetTop = parsePx(style.getPropertyValue('--safe-area-inset-top'))
+    store.safeAreaInsetBottom = parsePx(style.getPropertyValue('--safe-area-inset-bottom'))
+    store.safeAreaInsetLeft = parsePx(style.getPropertyValue('--safe-area-inset-left'))
+    store.safeAreaInsetRight = parsePx(style.getPropertyValue('--safe-area-inset-right'))
+  }
+  syncSafeArea()
+
   // 全局唯一 resize 监听：更新视口尺寸供所有组件复用
   window.addEventListener('resize', () => {
     store.viewportWidth = window.innerWidth
     store.viewportHeight = window.innerHeight
+    syncSafeArea()
   })
 
   const settingsStore = useSettingsStore()

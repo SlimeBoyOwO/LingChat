@@ -2,7 +2,7 @@
   <transition @before-enter="beforeEnter" @enter="enter" @before-leave="beforeLeave" @leave="leave">
     <div
       v-if="isVisible"
-      class="fixed bottom-6 left-0 pointer-events-auto z-1000 drop-shadow-[0_8px_12px_rgba(0,0,0,0.25)]"
+      class="fixed bottom-[calc(24px+var(--safe-area-inset-bottom))] left-0 pointer-events-auto z-1000 drop-shadow-[0_8px_12px_rgba(0,0,0,0.25)]"
     >
       <div
         class="relative flex items-center gap-1 pl-4 pr-5 py-2 bg-slate-900/40 backdrop-blur-md overflow-hidden rounded-tr-xl"

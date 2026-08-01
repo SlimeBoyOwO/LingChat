@@ -4,7 +4,7 @@
       <div
         v-if="visible"
         :data-phase="state.phase"
-        class="bar fixed bottom-8 right-8 z-[9999] flex items-center gap-4 p-4 min-w-[340px] max-w-[440px] overflow-hidden rounded-xl backdrop-blur-[20px]"
+        class="bar fixed bottom-[calc(32px+var(--safe-area-inset-bottom))] right-8 z-[9999] flex items-center gap-4 p-4 min-w-[340px] max-w-[440px] overflow-hidden rounded-xl backdrop-blur-[20px]"
       >
         <div
           v-if="state.phase !== 'cancelled'"
