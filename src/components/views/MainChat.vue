@@ -111,6 +111,14 @@ const runInitialization = async () => {
 
 // 初始化游戏信息
 onMounted(() => {
+  // 每次进入对话都恢复事件队列：eventQueue 初始 paused=true，resume 只在首次加载的
+  // LoadingTransition 动画里（onLoadingComplete）调用。二次启动/从其他页返回时
+  // showLoading=false 走不到那里，队列保持暂停 → AI 台词/回复全部排队不处理，对话"废"掉。
+  // 首次加载时不能在这里 resume：AI 开场白必须等 LoadingTransition 动画结束
+  // （onLoadingComplete 里 resume），否则会在开场动画遮罩后面提前播。
+  if (!showLoading.value) {
+    eventQueue.resume()
+  }
   if (!gameStore.initialized) {
     runInitialization()
   }
