@@ -1,8 +1,7 @@
 <template>
   <StartList>
-    <StartLine>
+    <StartLine v-for="(script, index) in currentPageScripts">
       <StartItem
-        v-for="(script, index) in currentPageScripts"
         :key="script.script_name"
         @click="selectScript(script)"
       >
@@ -14,31 +13,33 @@
       <StartItem
         v-for="n in pageSize - currentPageScripts.length"
         :key="'placeholder-' + n"
-        disabled
+        disabled="true"
       >
         {{ '\u00A0' }}
       </StartItem>
     </StartLine>
-
     <!-- 分页控制 -->
     <StartLine>
       <StartItem
         @click="currentPage--"
         :disabled="currentPage === 1"
-        ><</StartItem
       >
+        <
+      </StartItem>
       <StartItem
-        disabled
+        disabled="true"
         style="font-size: 28px"
-        >{{ currentPage }} / {{ totalPages }}</StartItem
       >
+        {{ currentPage }} / {{ totalPages }}
+      </StartItem>
       <StartItem
         @click="currentPage++"
         :disabled="currentPage === totalPages"
-        >></StartItem
       >
+        >
+      </StartItem>
       <!-- 返回按钮 -->
-      <StartItem @click="backToGameModeMenu">返回</StartItem>
+      <StartItem @click="emit('back')">返回</StartItem>
     </StartLine>
   </StartList>
 </template>
@@ -73,10 +74,6 @@ const selectScript = async (script: ScriptSummary) => {
   gameStore.enterStoryMode(script.script_name)
 
   await startScript(script.script_name)
-}
-
-const backToGameModeMenu = () => {
-  emit('back')
 }
 
 const totalPages = computed(() => {

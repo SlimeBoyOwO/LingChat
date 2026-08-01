@@ -5,15 +5,15 @@
     </StartLine>
 
     <StartLine>
-      <StartItem @click="startStoryMode">剧情模式</StartItem>
+      <StartItem @click="emit('open-scripts')">剧情演绎模式</StartItem>
     </StartLine>
 
     <StartLine>
-      <StartItem disabled>小游戏（开发中）</StartItem>
+      <StartItem disabled="true">游戏互动模式（开发中）</StartItem>
     </StartLine>
 
     <StartLine>
-      <StartItem @click="() => emit('back')">返回</StartItem>
+      <StartItem @click="emit('back')">返回</StartItem>
     </StartLine>
   </StartList>
 </template>
@@ -34,11 +34,5 @@ const gameStore = useGameStore()
 const startFreeDialogue = () => {
   gameStore.exitStoryMode()
   router.push('/chat')
-}
-
-// 前端进入剧情模式（开发中）
-
-const startStoryMode = async () => {
-  emit('open-scripts')
 }
 </script>
