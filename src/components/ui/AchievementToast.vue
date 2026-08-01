@@ -93,8 +93,9 @@ watch(
 @reference "tailwindcss";
 
 .achievement-toast {
-  @apply fixed bottom-8 right-8 z-[9999];
+  @apply fixed right-8 z-[9999];
   @apply flex items-center gap-4;
+  bottom: calc(32px + var(--safe-area-inset-bottom));
   @apply p-4 min-w-[320px] max-w-[400px];
   @apply overflow-hidden;
   @apply rounded-xl;
