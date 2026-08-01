@@ -62,6 +62,13 @@ pub struct GeneratorDeps {
     pub god_agent: Option<Arc<GodAgentCore>>,
     /// 抑制 ai:thinking 事件。用于系统触发的后台生成（如入场问候）。
     pub suppress_thinking: bool,
+    /// 构建 deps 时捕获的 `GameStatus.preview_generation`。写入台词前比对，
+    /// 不一致说明本轮生成已过期（试玩被中止后游离任务仍在写），丢弃写入。
+    /// 自由对话的代号恒为当前值，比对恒等，行为不变。
+    pub generation: u64,
+    /// 是否运行在编辑器试玩中。为 true 时回复带 `preview_gen` 标记，
+    /// 前端据此丢弃中止后迟到的流式回复。
+    pub is_preview: bool,
 }
 
 /// `process_message` 各步骤间传递的用户消息上下文。
@@ -611,6 +618,8 @@ fn parse_segments(deps: &GeneratorDeps, sentence: &str) -> Vec<EmotionSegment> {
 fn tts_translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static str> {
     match (tts_type, voice_lang) {
         ("gsv" | "opentts" | "sbv2", "en") => Some("en"),
+        // IndexTTS2 官方支持中/英文：voice_lang=en 时先翻译成英文再合成
+        ("indextts2", "en") => Some("en"),
         ("gsv" | "opentts", "ko") => Some("ko"),
         _ => None,
     }
@@ -741,12 +750,28 @@ async fn build_reply_response(
     response.original_message = user_message.to_string();
     response.is_final = is_final;
     response.user_message_seq = user_message_seq;
+    // 试玩标记：前端据此丢弃中止后迟到的流式回复（非试玩为 None，不序列化）
+    response.preview_gen = if deps.is_preview { Some(deps.generation) } else { None };
 
     Ok(response)
 }
 
 /// Step D: 将 assistant LINE 写入 GameStatus。
 async fn add_assistant_line(deps: &GeneratorDeps, response: &ReplyResponse) -> Result<()> {
+    // 试玩代号守卫：试玩任务被中止后，游离的 consumer 任务仍会带着旧代号继续
+    // 生成句子。此时 GameStatus 可能已还原回自由对话，写入会把试玩台词漏进
+    // 自由对话的上下文与历史。捕获代号与当前值不一致即丢弃整条（含记忆同步）。
+    {
+        let gs = deps.game_status.lock().await;
+        if gs.preview_generation != deps.generation {
+            tracing::warn!(
+                "[Generator] 丢弃过期试玩回复（代号 {} != 当前 {}），试玩已结束",
+                deps.generation,
+                gs.preview_generation
+            );
+            return Ok(());
+        }
+    }
     let line = LineBase {
         content: response.message.clone(),
         sender_role_id: response.role_id,

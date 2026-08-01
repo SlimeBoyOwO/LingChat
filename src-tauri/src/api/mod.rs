@@ -15,6 +15,7 @@ pub mod scene;
 pub mod schedule;
 pub mod screenshot;
 pub mod script;
+pub mod script_editor;
 pub mod settings;
 pub mod workshop;
 

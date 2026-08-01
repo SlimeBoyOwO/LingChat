@@ -83,6 +83,13 @@ impl ScriptEvent for DialogueEvent {
         let emotion = self.emotion.clone().unwrap_or_default();
 
         // Emit via ai:reply (reuses the existing dialogue event processor)
+        // 试玩中该事件同样 emit ai:reply：带上当前试玩代号，前端据此丢弃
+        // 试玩中止后迟到的固定台词（与 ai_dialogue 的 preview_gen 语义一致）
+        let preview_gen = if ctx.is_preview {
+            Some(ctx.game_status.lock().await.preview_generation)
+        } else {
+            None
+        };
         let payload = ReplyResponse {
             type_: "reply".to_string(),
             duration: -1.0,
@@ -100,6 +107,7 @@ impl ScriptEvent for DialogueEvent {
             display_subtitle: Some(display_subtitle),
             user_message_seq: None,
             thinking: None,
+            preview_gen,
         };
         let _ = emit(ctx.app, "ai:reply", &payload);
 

@@ -107,13 +107,16 @@ class MouseSpark {
 
     this.onMouseDown = (e: MouseEvent) => {
       if (!settingsStore.clickAnimationEnabled) return
+      // 弹窗/模态框/对话框打开时不触发光标特效，避免特效穿透到弹窗上层
+      if ((e.target as HTMLElement)?.closest('.modal-mask, .blur-overlay')) return
       this.isDown = true
       this.lastPos = getPos(e)
       this.createEffects(this.lastPos.x, this.lastPos.y)
     }
-
     this.onMouseMove = (e: MouseEvent) => {
       if (!settingsStore.globalMouseTrailEnabled) return
+      // 同理：弹窗打开时不画轨迹
+      if ((e.target as HTMLElement)?.closest('.modal-mask, .blur-overlay')) return
       const p = getPos(e)
       const prev = this.lastPos
       if (!prev) {

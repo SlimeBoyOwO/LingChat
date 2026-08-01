@@ -45,6 +45,8 @@ pub async fn send_chat_message(
     };
 
     let user_name = game_status.lock().await.player.user_name.clone();
+    // 捕获当前试玩代号（自由对话恒等，行为不变）
+    let preview_generation = game_status.lock().await.preview_generation;
 
     // 发送思考事件
     events::emit_thinking(&app, true);
@@ -92,6 +94,8 @@ pub async fn send_chat_message(
         concurrency,
         god_agent: state.god_agent.clone(),
         suppress_thinking: false,
+        generation: preview_generation,
+        is_preview: false,
     };
 
     // Notify proactive system of user input
@@ -329,11 +333,15 @@ pub async fn trigger_ai_response(app: AppHandle) -> Result<(), String> {
         .ok_or_else(|| "LLM 未配置".to_string())?;
     let concurrency = AppConfig::load(&app).map(|c| c.consumers as usize).unwrap_or(1).max(1);
     let gs = { let svc = state.ai_service.lock().await; svc.game_status.clone() };
+    // 捕获当前试玩代号（自由对话恒等，行为不变）
+    let preview_generation = gs.lock().await.preview_generation;
     let deps = GeneratorDeps {
         source: GeneratorSource::Proactive,
         app: app.clone(), db: state.db.clone(), game_status: gs,
         processor: state.chat.processor.clone(), translator: state.chat.translator.clone(),
         llm, tool_registry: state.tool_registry.clone(), concurrency, god_agent: state.god_agent.clone(), suppress_thinking: false,
+        generation: preview_generation,
+        is_preview: false,
     };
     let gen_lock = state.generation_lock.clone();
     tokio::spawn(async move {

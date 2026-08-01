@@ -1,7 +1,6 @@
-//! Free dialogue event — multi-round free conversation within a script.
+//! 自由对话事件 —— 剧本内的多轮自由对话。
 //!
-//! Emits free_dialogue start/stop boundaries, waits for input each round,
-//! and delegates AI generation to MessageGenerator.
+//! 发出 free_dialogue 开始/结束边界，每轮等待输入，并把 AI 生成委托给 MessageGenerator。
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -48,10 +47,15 @@ impl FreeDialogueEvent {
             .to_string();
 
         Self {
+            // 与 dialogue / ai_dialogue / modify_character 对齐。
+            // 原默认值是 "default"，而 get_role 只把字面量 "MAIN" 解析成主角，
+            // 其余值一律去 DB 查 script_role_key —— 从来没有角色叫 "default"，
+            // 所以省略 character 时必然报「角色 default 未在数据库中找到」。
+            // 官方 5 处 free_dialogue 都显式写了 character，改默认值不影响它们。
             character: data
                 .get("character")
                 .and_then(|v| v.as_str())
-                .unwrap_or("default")
+                .unwrap_or("MAIN")
                 .to_string(),
             hint: data
                 .get("hint")
@@ -85,16 +89,14 @@ impl ScriptEvent for FreeDialogueEvent {
             .clone()
             .ok_or_else(|| anyhow!("ScriptStatus 未设置"))?;
 
-        let (role_id, _role_display_name) = {
+        let role_id = {
             let mut gs = ctx.game_status.lock().await;
             let role = script_function::get_role(&mut *gs, ctx.db, &script_status, &self.character)
                 .await?;
-            let id = role.role_id.ok_or_else(|| anyhow!("角色 ID 未设置"))?;
-            let dn = role.display_name.clone();
-            (id, dn)
+            role.role_id.ok_or_else(|| anyhow!("角色 ID 未设置"))?
         };
 
-        // Set as current character
+        // 设为当前角色
         ctx.game_status.lock().await.current_role_id = Some(role_id);
 
         // ---- 发送自由对话开始事件 ----
@@ -106,25 +108,32 @@ impl ScriptEvent for FreeDialogueEvent {
         let _ = emit(ctx.app, SCRIPT_FREE_DIALOGUE, &start_payload);
 
         // ---- 构建 MessageGenerator（复用以提高性能） ----
+        // LLM 未配置则直接终止剧本：自由对话需要 AI 判断何时收尾，没有 LLM 会
+        // 陷入「玩家反复输入、永远收不了尾」的死循环（PR1 修的正是这个死锁），
+        // 不能像现在这样静默跳过 AI 回复把剧本带偏（上游要求致命错误立即终止）。
         let generator = {
             let state = ctx.app.state::<AppState>();
             let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm).await;
-            llm.map(|llm| {
-                let deps = GeneratorDeps {
-                    source: GeneratorSource::ScriptFreeDialogue,
-                    app: ctx.app.clone(),
-                    db: ctx.db.clone(),
-                    game_status: ctx.game_status.clone(),
-                    processor: state.chat.processor.clone(),
-                    translator: state.chat.translator.clone(),
-                    llm,
-                    tool_registry: state.tool_registry.clone(),
-                    concurrency: 1,
-                    god_agent: None,
-                    suppress_thinking: false,
-                };
-                MessageGenerator::new(deps)
-            })
+            let llm = llm.ok_or_else(|| {
+                anyhow!("尚未配置大模型，无法执行「自由对话」事件，剧本终止。请先在设置里配置并选择模型。")
+            })?;
+            let deps = GeneratorDeps {
+                source: GeneratorSource::ScriptFreeDialogue,
+                app: ctx.app.clone(),
+                db: ctx.db.clone(),
+                game_status: ctx.game_status.clone(),
+                processor: state.chat.processor.clone(),
+                translator: state.chat.translator.clone(),
+                llm,
+                tool_registry: state.tool_registry.clone(),
+                concurrency: 1,
+                god_agent: None,
+                suppress_thinking: false,
+                // 试玩中跑的自由对话也属于试玩场次：捕获当前代号，迟到写入会被守卫丢弃
+                generation: ctx.game_status.lock().await.preview_generation,
+                is_preview: ctx.is_preview,
+            };
+            MessageGenerator::new(deps)
         };
 
         // ---- 替换 prompt 中的占位符 ----
@@ -208,11 +217,7 @@ impl ScriptEvent for FreeDialogueEvent {
             }
 
             // ---- 调用 AI 生成回复 ----
-            if let Some(ref generator) = generator {
-                generator.process_message(None).await?;
-            } else {
-                tracing::warn!("[FreeDialogueEvent] LLM 未配置，跳过 AI 回复");
-            }
+            generator.process_message(None).await?;
 
             if is_last_round {
                 break;

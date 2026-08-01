@@ -1,7 +1,7 @@
 <template>
   <nav class="flex flex-col items-stretch">
     <StartItem @click="startFreeDialogue">{{ $t('views.menu.freeDialogue') }}</StartItem>
-    <StartItem @click="startStoryMode" disabled>{{ $t('views.menu.storyMode') }}</StartItem>
+    <StartItem @click="startStoryMode">{{ $t('views.menu.storyMode') }}</StartItem>
     <StartItem disabled>{{ $t('views.menu.miniGame') }}</StartItem>
     <StartItem @click="() => emit('back')">{{ $t('views.menu.back') }}</StartItem>
   </nav>

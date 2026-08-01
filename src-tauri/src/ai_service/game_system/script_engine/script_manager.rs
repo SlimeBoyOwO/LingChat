@@ -207,16 +207,7 @@ impl ScriptManager {
 
         self.is_running.store(true, Ordering::SeqCst);
 
-        // Initialize: register roles, set script_status, load player
-        Self::init_script(&script, ctx).await?;
-
-        // Run the chapter loop
-        Self::run_script(ctx).await?;
-
-        // Cleanup
-        Self::on_script_end(ctx, &self.is_running).await?;
-
-        Ok(())
+        Self::run_to_completion(&script, ctx, &self.is_running).await
     }
 
     /// Execute a script from start to finish without needing `&self`.
@@ -228,10 +219,43 @@ impl ScriptManager {
         is_running: &AtomicBool,
     ) -> Result<()> {
         is_running.store(true, Ordering::SeqCst);
-        Self::init_script(script, ctx).await?;
-        Self::run_script(ctx).await?;
-        Self::on_script_end(ctx, is_running).await?;
-        Ok(())
+        Self::run_to_completion(script, ctx, is_running).await
+    }
+
+    /// Init → run → teardown, with teardown guaranteed on the error path.
+    ///
+    /// The previous code chained `?` between the three steps, so any failure
+    /// skipped `on_script_end`: `is_running` stayed `true`, `script_status`
+    /// stayed `Some(..)`, `script:end` was never emitted and the frontend froze
+    /// in story mode with no way out. Callers only logged the error.
+    async fn run_to_completion(
+        script: &ScriptStatus,
+        ctx: &mut ScriptContext<'_>,
+        is_running: &AtomicBool,
+    ) -> Result<()> {
+        // Deliberately sequential rather than an `async { .. }.await` block:
+        // an async block would capture `ctx: &mut _` by move, leaving it
+        // unusable for the teardown below.
+        let mut outcome = Self::init_script(script, ctx).await;
+        if outcome.is_ok() {
+            outcome = Self::run_script(ctx).await;
+        }
+
+        if let Err(e) = &outcome {
+            tracing::error!("[ScriptManager] 剧本 '{}' 执行失败: {:#}", script.name, e);
+            // Surface it before teardown: emits `ai:error` + `status:reset`,
+            // both of which the frontend already listens for.
+            crate::ai_service::message_system::events::emit_error(ctx.app, e);
+        }
+
+        // A failed run must not be recorded as completed — that would unlock
+        // follow-up adventures the player never actually finished.
+        let completed = outcome.is_ok();
+        if let Err(e) = Self::on_script_end(ctx, is_running, completed).await {
+            tracing::error!("[ScriptManager] 剧本收尾失败: {:#}", e);
+        }
+
+        outcome
     }
 
     /// Initialize a script: register its roles, set script_status, load player info.
@@ -286,21 +310,13 @@ impl ScriptManager {
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
 
-            // Check if role already exists in DB
-            let path_key = script.path_key();
-            let existing =
-                RoleRepo::get_role_by_script_keys(ctx.db, &path_key, &role_folder).await?;
-
-            if existing.is_some() {
-                tracing::info!(
-                    "[ScriptManager] 角色已存在: script={}, role={}",
-                    path_key,
-                    role_folder
-                );
-                continue;
-            }
-
-            // Read settings.yml for this character
+            // Read settings.yml BEFORE the existence check: the lookup key comes
+            // out of it. Previously the check used `role_folder` while creation
+            // passed `settings.script_role_key`, so whenever settings.yml omitted
+            // that field the two disagreed — `find_or_create_role` skipped its
+            // own lookup (it needs Some(script_role_key)) and inserted a fresh
+            // duplicate row on *every* script start, while `character: <folder>`
+            // in the YAML could never resolve to any of them.
             let settings_path = path.join("settings.yml");
             if !settings_path.exists() {
                 tracing::warn!("[ScriptManager] 角色缺少 settings.yml: {:?}", settings_path);
@@ -314,13 +330,46 @@ impl ScriptManager {
                 serde_yaml::from_str(&content)
                     .with_context(|| format!("无法解析角色设定: {:?}", settings_path))?;
 
+            // 剧本角色必须显式带 script_role_key —— 它在数据库里把「剧本 NPC」与
+            // game_data/characters/ 的主角色区分开。缺了它就不能加载（上游硬要求），
+            // 不能再用目录名回退替代，否则数据库角色记录会混乱。
+            // 官方剧本均无 characters/ 目录，故不受影响；编辑器创建/导入角色时已强制写入。
+            let role_key = match settings
+                .script_role_key
+                .as_deref()
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+            {
+                Some(k) => k.to_string(),
+                None => {
+                    tracing::warn!(
+                        "[ScriptManager] 角色 {:?} 缺少 script_role_key，跳过加载（剧本 NPC 必须显式声明该字段）",
+                        role_folder
+                    );
+                    continue;
+                }
+            };
+
+            // Check if role already exists in DB — same key that creation uses.
+            let path_key = script.path_key();
+            let existing = RoleRepo::get_role_by_script_keys(ctx.db, &path_key, &role_key).await?;
+
+            if existing.is_some() {
+                tracing::info!(
+                    "[ScriptManager] 角色已存在: script={}, role_key={}",
+                    path_key,
+                    role_key
+                );
+                continue;
+            }
+
             // Register role in DB via RoleRepo
             let role_id = RoleRepo::find_or_create_role(
                 ctx.db,
                 &settings.ai_name,
                 RoleType::Npc,
                 Some(&path_key),
-                settings.script_role_key.as_deref(),
+                Some(&role_key),
                 Some(&role_folder),
             )
             .await?;
@@ -330,7 +379,7 @@ impl ScriptManager {
                 settings.ai_name,
                 role_id,
                 path_key,
-                role_folder
+                role_key
             );
 
             // Load the role into RoleManager
@@ -428,11 +477,23 @@ impl ScriptManager {
 
     /// Cleanup after script ends: emit script_end event, clear script_status,
     /// mark adventures complete.
-    pub async fn on_script_end(ctx: &mut ScriptContext<'_>, is_running: &AtomicBool) -> Result<()> {
-        tracing::info!("[ScriptManager] 剧本结束");
+    /// Tear down the running script.
+    ///
+    /// `completed` records whether the run finished normally. Only a completed
+    /// run is added to `completed_scripts` (which gates adventure unlocks);
+    /// a run that ended in an error still gets fully torn down so the UI is
+    /// released, but is not credited to the player.
+    pub async fn on_script_end(
+        ctx: &mut ScriptContext<'_>,
+        is_running: &AtomicBool,
+        completed: bool,
+    ) -> Result<()> {
+        tracing::info!("[ScriptManager] 剧本结束 (completed={})", completed);
 
-        // Emit script_end event
-        let _ = emit(ctx.app, SCRIPT_END, &ScriptEndPayload {});
+        // Emit script_end event. This is what releases the frontend from story
+        // mode, so it must fire on the error path too — but flagged so the
+        // client does not mark the adventure as completed.
+        let _ = emit(ctx.app, SCRIPT_END, &ScriptEndPayload { completed });
 
         // Extract data under one lock, then mutate under a second lock.
         // tokio::sync::Mutex is NOT reentrant — nesting lock().await deadlocks.
@@ -448,9 +509,13 @@ impl ScriptManager {
         {
             let mut gs = ctx.game_status.lock().await;
             if let Some(folder) = folder {
-                gs.completed_scripts.insert(folder.clone());
-                if is_adventure {
-                    tracing::info!("[ScriptManager] 羁绊冒险完成: {}", folder);
+                if completed {
+                    gs.completed_scripts.insert(folder.clone());
+                    if is_adventure {
+                        tracing::info!("[ScriptManager] 羁绊冒险完成: {}", folder);
+                    }
+                } else {
+                    tracing::warn!("[ScriptManager] 剧本未正常结束，不记为已完成: {}", folder);
                 }
             }
             gs.script_status = None;

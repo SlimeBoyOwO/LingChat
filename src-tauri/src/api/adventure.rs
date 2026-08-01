@@ -211,6 +211,7 @@ pub async fn start_adventure(app: AppHandle, adventure_folder: String) -> Result
             config: &config,
             llm: llm.as_ref(),
             channels,
+            is_preview: false,
         };
 
         match ScriptManager::execute_script(&script, &mut ctx, &is_running).await {

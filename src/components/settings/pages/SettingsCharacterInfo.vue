@@ -314,6 +314,7 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
         { label: 'gsv', value: 'gsv' },
         { label: 'aivis', value: 'aivis' },
         { label: 'opentts', value: 'opentts' },
+        { label: 'indextts2', value: 'indextts2' },
       ],
     },
 
@@ -323,12 +324,16 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
       type: 'select',
       realtime: true,
       options: [
-        { label: t('settings.characterInfo.voiceLangOptions.ja'), value: 'ja' },
+        {
+          label: t('settings.characterInfo.voiceLangOptions.ja'),
+          value: 'ja',
+          visibleIf: (s) => s.tts_type !== 'indextts2',
+        },
         { label: t('settings.characterInfo.voiceLangOptions.zh'), value: 'zh' },
         {
           label: t('settings.characterInfo.voiceLangOptions.en'),
           value: 'en',
-          visibleIf: (s) => ['gsv', 'sbv2', 'opentts'].includes(s.tts_type),
+          visibleIf: (s) => ['gsv', 'opentts', 'sbv2', 'indextts2'].includes(s.tts_type),
         },
         {
           label: t('settings.characterInfo.voiceLangOptions.ko'),
@@ -554,6 +559,16 @@ const handleClose = () => {
 
 const handleFieldChange = async (field: FieldSchema) => {
   if (!field.realtime || !props.roleId) return
+
+  // IndexTTS2 仅支持中/英文：切换到该类型时，把残留的日语重置为中文，
+  // 避免日语选项被隐藏后旧值仍然生效。
+  if (
+    field.key === 'tts_type' &&
+    localSettings.value.tts_type === 'indextts2' &&
+    localSettings.value.voice_lang === 'ja'
+  ) {
+    localSettings.value.voice_lang = 'zh'
+  }
 
   try {
     // 后端会同时保存 settings.yml 并重建已加载角色的 VoiceMaker。
