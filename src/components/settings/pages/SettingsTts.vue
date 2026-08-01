@@ -33,7 +33,12 @@
           </label>
           <div class="h-8 w-px bg-white/10"></div>
           <div class="flex items-center gap-2">
-            <span class="status-dot" :class="status?.ready ? 'ready' : 'blocked'"></span>
+            <span
+              class="h-[9px] w-[9px] shrink-0 rounded-full"
+              :class="status?.ready
+                ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.5)]'
+                : 'bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.45)]'"
+            ></span>
             <div>
               <p class="text-xs text-white/45">本地引擎</p>
               <p class="text-sm font-medium text-white">
@@ -54,7 +59,7 @@
             <p class="text-sm font-medium text-white">{{ snapshot.voices.length }} 个</p>
           </div>
           <button
-            class="icon-button ml-auto"
+            class="ml-auto inline-flex h-[34px] w-[34px] items-center justify-center gap-[7px] rounded-md border border-white/15 bg-white/5 text-white/80 transition-colors duration-200 enabled:hover:border-cyan-300/40 enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-40"
             title="刷新状态"
             :disabled="loading"
             @click="refreshAll"
@@ -80,10 +85,10 @@
         </p>
 
         <section>
-          <div class="section-heading">
+          <div class="mb-3 flex items-center justify-between gap-3">
             <div>
-              <h3>模型下载</h3>
-              <p>从 ModelScope 一键拉取本地 TTS 所需的全部资产</p>
+              <h3 class="text-sm font-semibold text-white">模型下载</h3>
+              <p class="mt-0.5 text-xs text-white/45">从 ModelScope 一键拉取本地 TTS 所需的全部资产</p>
             </div>
             <FileDown :size="18" class="text-white/40" />
           </div>
@@ -102,7 +107,7 @@
                   </p>
                 </div>
                 <button
-                  class="action-button shrink-0"
+                  class="inline-flex min-h-9 shrink-0 items-center justify-center gap-[7px] rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[13px] text-white/80 transition-colors duration-200 enabled:hover:border-cyan-300/40 enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-40"
                   :disabled="downloadingId === asset.id || rowState(asset.id) === 'installed'"
                   @click="triggerDownload(asset.id)"
                 >
@@ -133,17 +138,17 @@
         </section>
 
         <section>
-          <div class="section-heading">
+          <div class="mb-3 flex items-center justify-between gap-3">
             <div>
-              <h3>本地导入</h3>
-              <p>支持原始模型文件、ZIP 和 7z 压缩包</p>
+              <h3 class="text-sm font-semibold text-white">本地导入</h3>
+              <p class="mt-0.5 text-xs text-white/45">支持原始模型文件、ZIP 和 7z 压缩包</p>
             </div>
             <HardDriveDownload :size="18" class="text-white/40" />
           </div>
 
           <div class="grid grid-cols-1 gap-3 lg:grid-cols-3">
             <button
-              class="action-button"
+              class="inline-flex min-h-9 items-center justify-center gap-[7px] rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[13px] text-white/80 transition-colors duration-200 enabled:hover:border-cyan-300/40 enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-40"
               :disabled="busyAction !== null"
               @click="pickSharedAsset('deberta')"
             >
@@ -151,7 +156,7 @@
               <span>导入 DeBERTa</span>
             </button>
             <button
-              class="action-button"
+              class="inline-flex min-h-9 items-center justify-center gap-[7px] rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[13px] text-white/80 transition-colors duration-200 enabled:hover:border-cyan-300/40 enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-40"
               :disabled="busyAction !== null"
               @click="pickSharedAsset('deberta-tokenizer')"
             >
@@ -161,13 +166,13 @@
             <div class="flex min-w-0 gap-2">
               <input
                 v-model="importVoiceId"
-                class="field min-w-0 flex-1"
+                class="w-full min-w-0 flex-1 rounded-md border border-white/15 bg-black/25 px-2.5 py-2 text-[13px] text-white outline-none transition-colors focus:border-cyan-300/65 disabled:cursor-not-allowed disabled:opacity-45"
                 maxlength="64"
                 placeholder="语音 ID（可选）"
                 aria-label="导入语音 ID"
               />
               <button
-                class="action-button shrink-0"
+                class="inline-flex min-h-9 shrink-0 items-center justify-center gap-[7px] rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[13px] text-white/80 transition-colors duration-200 enabled:hover:border-cyan-300/40 enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-40"
                 :disabled="busyAction !== null"
                 @click="pickVoice"
               >
@@ -179,10 +184,10 @@
         </section>
 
         <section v-if="voicesMissingStyleVectors.length > 0">
-          <div class="section-heading">
+          <div class="mb-3 flex items-center justify-between gap-3">
             <div>
-              <h3>补齐 style_vectors</h3>
-              <p>.onnx 语音需要同名的 style_vectors.json 才能在本地 TTS 中启用</p>
+              <h3 class="text-sm font-semibold text-white">补齐 style_vectors</h3>
+              <p class="mt-0.5 text-xs text-white/45">.onnx 语音需要同名的 style_vectors.json 才能在本地 TTS 中启用</p>
             </div>
             <Wand2 :size="18" class="text-white/40" />
           </div>
@@ -190,7 +195,7 @@
           <div class="flex min-w-0 flex-wrap items-center gap-2">
             <select
               v-model="styleVectorsTarget"
-              class="field h-9 min-w-0 flex-1 sm:max-w-72"
+              class="h-9 w-full min-w-0 flex-1 rounded-md border border-white/15 bg-black/25 px-2.5 py-2 text-[13px] text-white outline-none transition-colors focus:border-cyan-300/65 disabled:cursor-not-allowed disabled:opacity-45 sm:max-w-72"
               :disabled="busyAction !== null"
             >
               <option value="">选择需要补齐的语音</option>
@@ -203,7 +208,7 @@
               </option>
             </select>
             <button
-              class="action-button shrink-0"
+              class="inline-flex min-h-9 shrink-0 items-center justify-center gap-[7px] rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[13px] text-white/80 transition-colors duration-200 enabled:hover:border-cyan-300/40 enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-40"
               :disabled="busyAction !== null || !styleVectorsTarget"
               @click="pickStyleVectors"
             >
@@ -214,15 +219,15 @@
         </section>
 
         <section>
-          <div class="section-heading">
+          <div class="mb-3 flex items-center justify-between gap-3">
             <div>
-              <h3>已安装语音</h3>
-              <p>{{ snapshot.voices.length }} 个可用人物模型</p>
+              <h3 class="text-sm font-semibold text-white">已安装语音</h3>
+              <p class="mt-0.5 text-xs text-white/45">{{ snapshot.voices.length }} 个可用人物模型</p>
             </div>
             <ListMusic :size="18" class="text-white/40" />
           </div>
 
-          <div v-if="snapshot.voices.length === 0" class="empty-state">暂无人物语音</div>
+          <div v-if="snapshot.voices.length === 0" class="border-y border-white/10 py-[22px] text-center text-[13px] text-white/40">暂无人物语音</div>
           <div v-else class="divide-y divide-white/8 border-y border-white/10">
             <div
               v-for="voice in snapshot.voices"
@@ -239,23 +244,23 @@
                 <p class="mt-1 flex items-center gap-1.5 text-[11px]">
                   <span
                     v-if="voice.kind === 'sbv2'"
-                    class="kind-badge"
+                    class="shrink-0 rounded border border-cyan-300/25 bg-cyan-600/10 px-1 py-px text-[10px] text-cyan-50/75"
                     title=".sbv2 已内置 style_vectors"
                   >style_vectors 已内置</span>
                   <span
                     v-else-if="voice.has_style_vectors"
-                    class="kind-badge"
+                    class="shrink-0 rounded border border-cyan-300/25 bg-cyan-600/10 px-1 py-px text-[10px] text-cyan-50/75"
                     title="已找到同名的 style_vectors.json"
                   >style_vectors 已配</span>
                   <span
                     v-else
-                    class="kind-badge kind-badge-warn"
+                    class="shrink-0 rounded border border-cyan-300/25 bg-cyan-600/10 px-1 py-px text-[10px] text-cyan-50/75 border-red-400/35! bg-red-400/10! text-red-200!"
                     title="缺少 style_vectors.json，需在下方补齐后才能在本地 TTS 中启用该语音"
                   >缺 style_vectors</span>
                 </p>
               </div>
               <button
-                class="icon-button danger"
+                class="inline-flex h-[34px] w-[34px] items-center justify-center gap-[7px] rounded-md border border-white/15 bg-white/5 text-white/80 transition-colors duration-200 enabled:hover:border-cyan-300/40 enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-40 enabled:hover:border-red-400/50! enabled:hover:bg-red-400/10! enabled:hover:text-red-300!"
                 title="删除语音"
                 :disabled="busyAction !== null"
                 @click="removeVoice(voice)"
@@ -267,10 +272,10 @@
         </section>
 
         <section>
-          <div class="section-heading">
+          <div class="mb-3 flex items-center justify-between gap-3">
             <div>
-              <h3>试听</h3>
-              <p>输入内容并选择已安装的人物语音</p>
+              <h3 class="text-sm font-semibold text-white">试听</h3>
+              <p class="mt-0.5 text-xs text-white/45">输入内容并选择已安装的人物语音</p>
             </div>
             <Volume2 :size="18" class="text-white/40" />
           </div>
@@ -278,36 +283,36 @@
           <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_17rem]">
             <textarea
               v-model="previewText"
-              class="field min-h-28 resize-y"
+              class="min-h-28 w-full resize-y rounded-md border border-white/15 bg-black/25 px-2.5 py-2 text-[13px] text-white outline-none transition-colors focus:border-cyan-300/65 disabled:cursor-not-allowed disabled:opacity-45"
               maxlength="500"
               placeholder="输入试听文本"
               :disabled="!status?.ready"
             ></textarea>
 
             <div class="flex flex-col gap-3">
-              <label class="control-label">
+              <label class="flex flex-col gap-1.5 text-xs text-white/60">
                 <span>语音模型</span>
-                <select v-model="previewVoice" class="field h-9" :disabled="!status?.ready">
+                <select v-model="previewVoice" class="h-9 w-full rounded-md border border-white/15 bg-black/25 px-2.5 py-2 text-[13px] text-white outline-none transition-colors focus:border-cyan-300/65 disabled:cursor-not-allowed disabled:opacity-45" :disabled="!status?.ready">
                   <option value="">请选择</option>
                   <option v-for="voice in snapshot.voices" :key="voice.voice_id" :value="voice.voice_id">
                     {{ voice.display_name || voice.voice_id }}
                   </option>
                 </select>
               </label>
-              <label class="control-label">
+              <label class="flex flex-col gap-1.5 text-xs text-white/60">
                 <span>长度倍率 {{ previewSpeed.toFixed(2) }}（1.0 = 正常）</span>
-                <input v-model.number="previewSpeed" type="range" min="0.5" max="2" step="0.05" />
+                <input v-model.number="previewSpeed" type="range" min="0.5" max="2" step="0.05" class="accent-cyan-300" />
               </label>
-              <label class="control-label">
+              <label class="flex flex-col gap-1.5 text-xs text-white/60">
                 <span>随机度 {{ previewSdp.toFixed(2) }}</span>
-                <input v-model.number="previewSdp" type="range" min="0" max="1" step="0.05" />
+                <input v-model.number="previewSdp" type="range" min="0" max="1" step="0.05" class="accent-cyan-300" />
               </label>
             </div>
           </div>
 
           <div class="mt-4 flex flex-wrap items-center gap-3">
             <button
-              class="primary-button"
+              class="inline-flex min-h-9 items-center justify-center gap-[7px] rounded-md border border-cyan-300/40 bg-cyan-600/35 px-3.5 py-2 text-[13px] font-semibold text-cyan-50 transition-colors duration-200 enabled:hover:bg-cyan-600/50 disabled:cursor-not-allowed disabled:opacity-40"
               :disabled="!canPreview || previewing"
               @click="runPreview"
             >
@@ -728,158 +733,3 @@ async function triggerDownload(assetId: string): Promise<void> {
 }
 </script>
 
-<style scoped>
-.section-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.section-heading h3 {
-  color: white;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.section-heading p {
-  margin-top: 2px;
-  color: rgba(255, 255, 255, 0.45);
-  font-size: 12px;
-}
-
-.status-dot {
-  width: 9px;
-  height: 9px;
-  flex: none;
-  border-radius: 50%;
-}
-
-.status-dot.ready {
-  background: #6ee7b7;
-  box-shadow: 0 0 8px rgba(110, 231, 183, 0.5);
-}
-
-.status-dot.blocked {
-  background: #f87171;
-  box-shadow: 0 0 8px rgba(248, 113, 113, 0.45);
-}
-
-.field {
-  width: 100%;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.24);
-  padding: 8px 10px;
-  color: white;
-  font-size: 13px;
-  outline: none;
-}
-
-.field:focus {
-  border-color: rgba(103, 232, 249, 0.65);
-}
-
-.field:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-
-.action-button,
-.primary-button,
-.icon-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 6px;
-  color: rgba(255, 255, 255, 0.82);
-  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
-}
-
-.action-button {
-  min-height: 36px;
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.06);
-  font-size: 13px;
-}
-
-.primary-button {
-  min-height: 36px;
-  padding: 8px 14px;
-  border-color: rgba(103, 232, 249, 0.38);
-  background: rgba(8, 145, 178, 0.35);
-  color: #cffafe;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.icon-button {
-  width: 34px;
-  height: 34px;
-  flex: none;
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.action-button:hover:not(:disabled),
-.icon-button:hover:not(:disabled) {
-  border-color: rgba(103, 232, 249, 0.4);
-  background: rgba(103, 232, 249, 0.12);
-  color: #cffafe;
-}
-
-.primary-button:hover:not(:disabled) {
-  background: rgba(8, 145, 178, 0.52);
-}
-
-.icon-button.danger:hover:not(:disabled) {
-  border-color: rgba(248, 113, 113, 0.45);
-  background: rgba(248, 113, 113, 0.12);
-  color: #fca5a5;
-}
-
-.action-button:disabled,
-.primary-button:disabled,
-.icon-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.42;
-}
-
-.kind-badge {
-  flex: none;
-  border: 1px solid rgba(103, 232, 249, 0.22);
-  border-radius: 4px;
-  background: rgba(8, 145, 178, 0.12);
-  padding: 1px 5px;
-  color: rgba(207, 250, 254, 0.75);
-  font-size: 10px;
-}
-
-.empty-state {
-.kind-badge-warn {
-  border-color: rgba(248, 113, 113, 0.35);
-  background: rgba(248, 113, 113, 0.1);
-  color: #fecaca;
-}
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 22px 0;
-  text-align: center;
-  color: rgba(255, 255, 255, 0.42);
-  font-size: 13px;
-}
-
-.control-label {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  color: rgba(255, 255, 255, 0.62);
-  font-size: 12px;
-}
-
-input[type='range'] {
-  accent-color: #67e8f9;
-}
-</style>
