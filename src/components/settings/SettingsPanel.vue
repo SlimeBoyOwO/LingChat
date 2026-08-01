@@ -123,14 +123,16 @@ function isInsideScrollable(el: Element | null): boolean {
   while (el && el !== contentRef.value) {
     // 数值调节滑块（原生 range / 自定义 Slider）→ 拖动它不该切页
     if (el.tagName === 'INPUT' && (el as HTMLInputElement).type === 'range') return true
+    // 横向可滚动容器（如日志页横向表格）→ 拖动横向内容不该切页。
+    // 竖向滚动容器不在此列：竖向滚动由 onTouchEnd 的 |dx| <= |dy| 判断兜底，
+    // 竖向列表里做"明显横向"滑动仍可切页。
     const s = getComputedStyle(el)
-    const canScrollX =
+    if (
       (s.overflowX === 'auto' || s.overflowX === 'scroll') &&
       el.scrollWidth > el.clientWidth + 4
-    const canScrollY =
-      (s.overflowY === 'auto' || s.overflowY === 'scroll') &&
-      el.scrollHeight > el.clientHeight + 4
-    if (canScrollX || canScrollY) return true
+    ) {
+      return true
+    }
     el = el.parentElement
   }
   return false
