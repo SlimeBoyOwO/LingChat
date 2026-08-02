@@ -378,6 +378,16 @@ export default {
       save: '変更を保存',
       saving: '保存中...',
     },
+    delete: {
+      button: 'キャラクターを削除',
+      confirmTitle: 'キャラクターを削除',
+      confirmMessage: 'キャラクター「{title}」を削除しますか？\nこの操作で、このキャラクターのすべてのセーブデータ・記憶・キャラクターファイルが削除されます。\n\nこの操作は取り消せません。',
+      successTitle: '削除完了',
+      successMessage: 'キャラクター「{title}」を削除しました',
+      failTitle: '削除失敗',
+      systemProtected: 'システム保護キャラクターのため削除できません',
+      onstage: 'このキャラクターは場にいるため、退場してから削除してください',
+    },
     messages: {
       realtimeUpdateFailed: '{label} のリアルタイム更新に失敗しました。コンソールログを確認してください',
       saveFailed: '保存に失敗しました。コンソールログを確認してください',

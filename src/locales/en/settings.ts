@@ -379,6 +379,17 @@ export default {
       save: "Save Changes",
       saving: "Saving...",
     },
+    delete: {
+      button: "Delete Character",
+      confirmTitle: "Delete Character",
+      confirmMessage:
+        "Delete character \"{title}\"?\nThis will also delete all saves, memories, and character files of this character.\n\nThis action cannot be undone.",
+      successTitle: "Deleted",
+      successMessage: "Character \"{title}\" has been deleted",
+      failTitle: "Delete Failed",
+      systemProtected: "System-protected character, cannot be deleted",
+      onstage: "This character is on stage, please remove it first",
+    },
     messages: {
       realtimeUpdateFailed: "Real-time update of {label} failed. Check the console logs",
       saveFailed: "Save failed. Check the console logs",

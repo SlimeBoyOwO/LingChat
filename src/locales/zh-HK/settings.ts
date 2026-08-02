@@ -379,6 +379,16 @@ export default {
       "save": "儲存更改",
       "saving": "儲存緊..."
     },
+    "delete": {
+      "button": "刪除角色",
+      "confirmTitle": "刪除角色",
+      "confirmMessage": "確定要刪除角色「{title}」嗎？\n此操作會同時刪除該角色的所有存檔、記憶和角色檔案。\n\n此操作不可復原。",
+      "successTitle": "刪除成功",
+      "successMessage": "角色「{title}」已刪除",
+      "failTitle": "刪除失敗",
+      "systemProtected": "系統保護角色，無法刪除",
+      "onstage": "該角色在場，請退場後刪除"
+    },
     "messages": {
       "realtimeUpdateFailed": "即時更新 {label} 失敗，睇下控制台日誌",
       "saveFailed": "儲存失敗，睇下控制台日誌"

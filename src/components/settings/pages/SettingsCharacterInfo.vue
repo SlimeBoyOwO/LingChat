@@ -176,7 +176,7 @@
           <div class="flex items-center">
             <button
               :disabled="deleteState.disabled"
-              :title="deleteState.disabled ? deleteState.reason : '删除角色'"
+              :title="deleteState.disabled ? deleteState.reason : t('settings.characterInfo.delete.button')"
               :class="[
                 'px-4 py-2 rounded-[20px] text-sm font-medium transition-all duration-200 border',
                 deleteState.disabled
@@ -204,7 +204,7 @@
                   <line x1="10" y1="11" x2="10" y2="17"></line>
                   <line x1="14" y1="11" x2="14" y2="17"></line>
                 </svg>
-                删除角色
+                {{ t('settings.characterInfo.delete.button') }}
               </span>
             </button>
           </div>
@@ -271,15 +271,15 @@ const installedVoices = ref<TtsLocal.VoiceRecord[]>([])
 
 // 删除按钮可用性：系统保护角色 / 在场角色不可删
 const deleteState = computed(() => {
-  if (!props.roleId) return { disabled: true, reason: '无角色' }
+  if (!props.roleId) return { disabled: true, reason: t('settings.characterInfo.delete.systemProtected') }
   if (isSystemProtectedRole(props.roleId)) {
-    return { disabled: true, reason: '系统保护角色，无法删除' }
+    return { disabled: true, reason: t('settings.characterInfo.delete.systemProtected') }
   }
   const onstage =
     gameStore.mainRoleId === props.roleId ||
     gameStore.presentRoleIds.includes(props.roleId)
   if (onstage) {
-    return { disabled: true, reason: '该角色在场，请退场后删除' }
+    return { disabled: true, reason: t('settings.characterInfo.delete.onstage') }
   }
   return { disabled: false, reason: '' }
 })
@@ -289,10 +289,8 @@ const handleDelete = async () => {
   if (!props.roleId || deleteState.value.disabled) return
 
   const confirmed = await dialogStore.confirm(
-    `确定要删除角色「${props.title ?? '该角色'}」吗？\n` +
-      `此操作会同时删除该角色的所有存档，记忆和角色文件。\n\n` +
-      `此操作不可撤销。`,
-    '删除角色',
+    t('settings.characterInfo.delete.confirmMessage', { title: props.title ?? t('settings.characterInfo.delete.button') }),
+    t('settings.characterInfo.delete.confirmTitle'),
   )
   if (!confirmed) return
 
@@ -302,8 +300,10 @@ const handleDelete = async () => {
 
     // 删除成功
     uiStore.showSuccess({
-      title: '删除成功',
-      message: `角色「${props.title ?? '该角色'}」已删除`,
+      title: t('settings.characterInfo.delete.successTitle'),
+      message: t('settings.characterInfo.delete.successMessage', {
+        title: props.title ?? t('settings.characterInfo.delete.button'),
+      }),
     })
 
     // 通知父组件刷新列表 + 关闭弹窗
@@ -312,7 +312,7 @@ const handleDelete = async () => {
   } catch (error: any) {
     console.error('[SettingsCharacterInfo] 删除角色失败:', error)
     uiStore.showError({
-      title: '删除失败',
+      title: t('settings.characterInfo.delete.failTitle'),
       message: typeof error === 'string' ? error : error?.message || '未知错误',
     })
   } finally {

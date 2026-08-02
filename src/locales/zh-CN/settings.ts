@@ -379,6 +379,16 @@ export default {
       save: '保存更改',
       saving: '保存中...',
     },
+    delete: {
+      button: '删除角色',
+      confirmTitle: '删除角色',
+      confirmMessage: '确定要删除角色「{title}」吗？\n此操作会同时删除该角色的所有存档，记忆和角色文件。\n\n此操作不可撤销。',
+      successTitle: '删除成功',
+      successMessage: '角色「{title}」已删除',
+      failTitle: '删除失败',
+      systemProtected: '系统保护角色，无法删除',
+      onstage: '该角色在场，请退场后删除',
+    },
     messages: {
       realtimeUpdateFailed: '实时更新 {label} 失败，请检查控制台日志',
       saveFailed: '保存失败，请检查控制台日志',
