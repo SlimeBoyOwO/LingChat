@@ -1,7 +1,6 @@
 <template>
   <nav class="flex flex-col items-stretch">
     <StartItem @click="() => emit('start-game')">{{ $t('views.menu.startGame') }}</StartItem>
-    <StartItem @click="() => emit('open-settings', 'save')">{{ $t('views.menu.continueGame') }}</StartItem>
     <StartItem @click="() => emit('open-script-editor')">{{ $t('views.menu.scriptEditor') }}</StartItem>
     <StartItem @click="() => emit('open-settings')">{{ $t('views.menu.gameConfig') }}</StartItem>
     <StartItem @click="() => emit('open-credits')">{{ $t('views.menu.credits') }}</StartItem>

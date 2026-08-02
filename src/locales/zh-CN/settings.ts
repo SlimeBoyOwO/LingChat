@@ -101,7 +101,7 @@ export default {
   },
   save: {
     create: {
-      title: '创建新存档（会记录当前对话）',
+      title: '创建备份/书签（把当前对话另存为一格书签，不改变当前进行）',
       placeholder: '输入存档名称',
       creating: '创建中...',
       button: '创建',
