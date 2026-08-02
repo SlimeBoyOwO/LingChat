@@ -18,7 +18,7 @@
         <div class="truncate
                     text-[calc(12px*var(--pet-ui-scale,1))] font-semibold leading-snug
                     text-white/95">
-          {{ uiStore.notification.title || '通知' }}
+          {{ uiStore.notification.title || $t('views.pet.notification.defaultTitle') }}
         </div>
         <div class="line-clamp-2
                     text-[calc(11px*var(--pet-ui-scale,1))] leading-snug

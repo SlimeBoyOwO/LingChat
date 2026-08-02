@@ -32,6 +32,21 @@ pub struct GenaiProvider {
     _reasoning_effort: Option<String>,
 }
 
+/// 规范化 base_url：确保以 `/` 结尾。
+///
+/// genai 的 OpenAI 兼容 adapter 用 `Url::join("chat/completions")` 拼接路径
+/// （不是字符串拼接）。若 base_url 不以 `/` 结尾（如 `https://api.deepseek.com/v1`），
+/// `v1` 会被当作"文件"替换掉，拼出 `https://api.deepseek.com/chat/completions` → 404。
+///
+/// 修复：在传给 genai 前补上尾斜杠（`https://api.deepseek.com/v1/`）。
+fn normalize_base_url(raw: &str) -> String {
+    let trimmed = raw.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return raw.to_string();
+    }
+    format!("{trimmed}/")
+}
+
 impl GenaiProvider {
     pub fn new(cfg: &LlmConfig, http: Client) -> Result<Self> {
         let model = cfg.model.clone();
@@ -40,10 +55,11 @@ impl GenaiProvider {
         match cfg.provider.to_lowercase().as_str() {
             "deepseek" => {
                 let key = cfg.api_key.clone();
+                // 默认 base_url 以 `/` 结尾；用户配置经 normalize 补尾斜杠
                 let base = if cfg.base_url.is_empty() {
                     "https://api.deepseek.com/".to_string()
                 } else {
-                    cfg.base_url.clone()
+                    normalize_base_url(&cfg.base_url)
                 };
                 builder = builder
                     .with_adapter_kind(AdapterKind::DeepSeek)
@@ -59,7 +75,7 @@ impl GenaiProvider {
                     .with_adapter_kind(AdapterKind::OpenAI)
                     .with_auth_resolver_fn(move |_| Ok(Some(AuthData::from_single(key))));
                 if !cfg.base_url.is_empty() {
-                    let base = cfg.base_url.clone();
+                    let base = normalize_base_url(&cfg.base_url);
                     builder =
                         builder.with_service_target_resolver_fn(move |mut t: ServiceTarget| {
                             t.endpoint = Endpoint::from_owned(base);
@@ -71,7 +87,7 @@ impl GenaiProvider {
                 builder = builder
                     .with_adapter_kind(AdapterKind::OpenAI)
                     .with_service_target_resolver_fn(|mut t: ServiceTarget| {
-                        t.endpoint = Endpoint::from_owned("http://localhost:1234/v1".to_string());
+                        t.endpoint = Endpoint::from_owned("http://localhost:1234/v1/".to_string());
                         Ok(t)
                     });
             }
@@ -81,7 +97,7 @@ impl GenaiProvider {
                     .with_adapter_kind(AdapterKind::Gemini)
                     .with_auth_resolver_fn(move |_| Ok(Some(AuthData::from_single(key))));
                 if !cfg.base_url.is_empty() {
-                    let base = cfg.base_url.clone();
+                    let base = normalize_base_url(&cfg.base_url);
                     builder =
                         builder.with_service_target_resolver_fn(move |mut t: ServiceTarget| {
                             t.endpoint = Endpoint::from_owned(base);

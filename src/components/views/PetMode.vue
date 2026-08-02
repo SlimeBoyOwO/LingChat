@@ -53,6 +53,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
@@ -69,6 +70,7 @@ import GameRolesStage from '../pet/GameRolesStage.vue'
 import DragArea from '../pet/DragArea.vue'
 import { BASE_AVATAR_SIZE, CHAT_BASE_H, DIALOG_MAX_BASE } from '../pet/constants'
 
+const { t } = useI18n()
 const router = useRouter()
 const gameStore = useGameStore()
 const settingsStore = useSettingsStore()
@@ -269,7 +271,7 @@ const handleOpenSettings = async () => {
 
     const webview = new WebviewWindow('settings', {
       url: '/second',
-      title: '设置',
+      title: t('views.petMode.settingsWindowTitle'),
       width: 1200,
       height: 800,
       resizable: true,

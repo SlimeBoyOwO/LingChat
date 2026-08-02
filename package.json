@@ -17,7 +17,7 @@
     "7zip-min": "^3.0.1",
     "@tailwindcss/vite": "^4.3.0",
     "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-dialog": "^2.7.1",
+    "@tauri-apps/plugin-dialog": "^2.7.2",
     "@tauri-apps/plugin-fs": "^2.5.1",
     "@tauri-apps/plugin-notification": "^2",
     "@tauri-apps/plugin-opener": "^2",
@@ -25,10 +25,12 @@
     "@tauri-apps/plugin-updater": "^2",
     "axios": "^1.16.0",
     "lucide-vue-next": "^1.0.0",
+    "opencc-js": "^1.4.1",
     "pinia": "^3.0.4",
     "tailwindcss": "^4.3.0",
     "tauri-plugin-screenshots-api": "file:./src-tauri/plugins/tauri-plugin-screenshots",
     "vue": "^3.5.13",
+    "vue-i18n": "^10.0.8",
     "vue-router": "^5.0.6"
   },
   "devDependencies": {

@@ -1,0 +1,69 @@
+# User-defined permission mappings for the local TTS Tauri commands.
+#
+# Tauri 2's ACL identifier rules (see tauri-utils 2.9 identifier.rs) require
+# permission identifiers to be lowercase ASCII with hyphens only - underscores
+# are not accepted. The Rust Tauri commands are defined in snake_case
+# (`tts_local_status`, etc.) so the auto-generated permission identifier
+# `tts_local_status:default` would be invalid. We therefore expose each
+# command through a kebab-case user-defined permission and reference that
+# identifier from `capabilities/default.json`.
+
+[[permission]]
+identifier = "tts-local-get-enabled"
+description = "Read the persisted and effective local TTS switch state."
+commands.allow = ["tts_local_get_enabled"]
+commands.deny = []
+
+[[permission]]
+identifier = "tts-local-set-enabled"
+description = "Persist and apply the local TTS switch state."
+commands.allow = ["tts_local_set_enabled"]
+commands.deny = []
+
+[[permission]]
+identifier = "tts-local-status"
+description = "Return local TTS engine status (readiness, deberta presence, installed voice count)."
+commands.allow = ["tts_local_status"]
+commands.deny = []
+
+[[permission]]
+identifier = "tts-local-list-catalog"
+description = "List the curated SBV2 model catalog (DeBERTa + voice entries)."
+commands.allow = ["tts_local_list_catalog"]
+commands.deny = []
+
+[[permission]]
+identifier = "tts-local-list-installed"
+description = "List TTS assets and voices currently installed under the data directory."
+commands.allow = ["tts_local_list_installed"]
+commands.deny = []
+
+[[permission]]
+identifier = "tts-local-import-from-path"
+description = "Import a local TTS voice (file or archive) into the data directory."
+commands.allow = ["tts_local_import_from_path"]
+commands.deny = []
+
+[[permission]]
+identifier = "tts-local-download"
+description = "Download a TTS asset (DeBERTa model or voice) from the curated catalog."
+commands.allow = ["tts_local_download"]
+commands.deny = []
+
+[[permission]]
+identifier = "tts-local-delete-voice"
+description = "Delete an installed TTS voice from disk."
+commands.allow = ["tts_local_delete_voice"]
+commands.deny = []
+
+[[permission]]
+identifier = "tts-local-synthesize-preview"
+description = "Synthesize a preview clip with the local TTS engine (deberta + voice required)."
+commands.allow = ["tts_local_synthesize_preview"]
+commands.deny = []
+
+[[permission]]
+identifier = "tts-local-import-style-vectors"
+description = "Import a style_vectors.json file into an existing voice directory (model.onnx form only)."
+commands.allow = ["tts_local_import_style_vectors"]
+commands.deny = []

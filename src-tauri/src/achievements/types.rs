@@ -9,6 +9,9 @@ pub struct AchievementDef {
     pub ach_type: String, // "common" | "rare" | "adventure"
     #[serde(default)]
     pub target_progress: u32,
+    /// 隐藏成就：解锁前不展示真实标题/描述
+    #[serde(default)]
+    pub hidden: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub img_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -39,6 +42,9 @@ pub struct Achievement {
     pub unlocked_at: Option<String>,
     pub current_progress: u32,
     pub target_progress: u32,
+    /// 隐藏成就：解锁前不展示真实标题/描述
+    #[serde(default)]
+    pub hidden: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub img_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -59,6 +65,7 @@ impl Achievement {
             unlocked_at: state.unlocked_at.clone(),
             current_progress: state.current_progress,
             target_progress: def.target_progress,
+            hidden: def.hidden,
             img_url: def.img_url.clone(),
             audio_url: def.audio_url.clone(),
             duration: def.duration,

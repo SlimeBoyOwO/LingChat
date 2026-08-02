@@ -8,5 +8,19 @@
   },
   "prettier.requireConfig": true,
   "prettier.useEditorConfig": false,
-  "prettier.configPath": "./.prettierrc.json"
+  "prettier.configPath": "./.prettierrc.json",
+  "i18n-ally.localesPaths": ["src/locales"],
+  "i18n-ally.pathMatcher": "{locale}/{namespace}.ts",
+  "i18n-ally.namespace": true,
+  "i18n-ally.keystyle": "nested",
+  "i18n-ally.sourceLanguage": "zh-CN",
+  "i18n-ally.displayLanguages": ["zh-CN", "zh-HK", "ja", "en"],
+  "i18n-ally.enabledParsers": ["ts", "json"],
+  "i18n-ally.parsers.typescript.compilerOptions": {
+    "moduleResolution": "node"
+  },
+  "i18n-ally.ignoreFiles": ["src/locales/index.ts", "src/locales/*/index.ts"],
+  "i18n-ally.enabledFrameworks": ["vue"],
+  "i18n-ally.indent": 2,
+  "i18n-ally.translate.fallbackToSourceLanguage": true
 }

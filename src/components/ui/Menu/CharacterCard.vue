@@ -49,7 +49,7 @@
           </div>
         </div>
         <p class="line-clamp-3 text-base leading-relaxed text-gray-200/90 opacity-80">
-          {{ info || '暂无角色介绍' }}
+          {{ info || $t('ui.characterCard.noInfo') }}
         </p>
       </div>
 
@@ -58,7 +58,7 @@
           @click="showDetailModal"
           class="rounded-full border border-white/10 bg-white/10 px-4 py-1.5 text-xs font-semibold text-white transition-all hover:bg-white/20"
         >
-          详情
+          {{ $t('ui.characterCard.detail') }}
         </button>
         <!-- 加入/退场 切换按钮 -->
         <button
@@ -66,21 +66,21 @@
           @click="joinScene"
           class="rounded-full border border-cyan-400 bg-cyan-500/80 px-4 py-1.5 text-xs font-semibold text-white shadow-lg shadow-cyan-500/20 transition-all hover:bg-cyan-500"
         >
-          加入
+          {{ $t('ui.characterCard.join') }}
         </button>
         <button
           v-else-if="!isSelected()"
           @click="leaveScene"
           class="rounded-full border border-red-400 bg-red-500/80 px-4 py-1.5 text-xs font-semibold text-white shadow-lg shadow-red-500/20 transition-all hover:bg-red-500"
         >
-          退场
+          {{ $t('ui.characterCard.leave') }}
         </button>
         <button
           v-else
           disabled
           class="cursor-not-allowed rounded-full border border-cyan-400/50 bg-cyan-500/50 px-4 py-1.5 text-xs font-semibold text-cyan-200 shadow-lg transition-all"
         >
-          已在场
+          {{ $t('ui.characterCard.inScene') }}
         </button>
         <button
           @click="selectCharacter"
@@ -91,7 +91,7 @@
               : 'border-indigo-500 bg-indigo-600/80 text-white shadow-indigo-500/20 hover:bg-indigo-500',
           ]"
         >
-          {{ isSelected() ? '√ 已选中' : '选择' }}
+          {{ isSelected() ? $t('ui.characterCard.selected') : $t('ui.characterCard.select') }}
         </button>
       </div>
     </div>
@@ -114,7 +114,7 @@
           />
           <div class="flex-1">
             <h2 class="text-2xl leading-none font-bold text-white">{{ name }}</h2>
-            <p class="mt-1 text-sm tracking-tighter text-indigo-300">角色档案与外观配置</p>
+            <p class="mt-1 text-sm tracking-tighter text-indigo-300">{{ $t('ui.characterCard.detailSubtitle') }}</p>
           </div>
           <button
             @click="closeDetailModal"
@@ -130,33 +130,33 @@
         <div class="flex-1 space-y-8 overflow-y-auto p-6">
           <section>
             <h3 class="mb-4 flex items-center gap-2 font-bold text-white">
-              <span class="h-4 w-1 rounded-full bg-orange-500"></span> 基础信息
+              <span class="h-4 w-1 rounded-full bg-orange-500"></span> {{ $t('ui.characterCard.basicInfo') }}
             </h3>
             <div
               class="mb-3 text-sm font-bold tracking-widest text-gray-200/90 uppercase opacity-80"
             >
-              名称：{{ name }}
+              {{ $t('ui.characterCard.nameLabel') }}{{ name }}
             </div>
             <div
               class="mb-3 text-sm font-medium tracking-widest text-gray-200/90 uppercase opacity-80"
             >
-              所属：{{ subName }}
+              {{ $t('ui.characterCard.belongLabel') }}{{ subName }}
             </div>
             <div
               class="mb-1 text-sm font-medium tracking-widest text-gray-200/90 uppercase opacity-80"
             >
-              介绍：
+              {{ $t('ui.characterCard.infoLabel') }}
             </div>
             <p
               class="mb-3 text-sm font-medium tracking-widest text-gray-200/90 uppercase opacity-80"
             >
-              {{ info || '暂无角色介绍' }}
+              {{ info || $t('ui.characterCard.noInfo') }}
             </p>
           </section>
 
           <section>
             <h3 class="mb-4 flex items-center gap-2 font-bold text-white">
-              <span class="h-4 w-1 rounded-full bg-indigo-500"></span> 可选服装
+              <span class="h-4 w-1 rounded-full bg-indigo-500"></span> {{ $t('ui.characterCard.outfits') }}
             </h3>
             <div
               v-if="clothes?.length"
@@ -194,7 +194,7 @@
               v-else
               class="rounded-xl bg-white/5 p-4 text-center text-sm text-white/40 italic"
             >
-              暂无可用服装
+              {{ $t('ui.characterCard.noOutfits') }}
             </div>
           </section>
         </div>
@@ -213,6 +213,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { Icon } from '../../base'
 import SettingsCharacterInfo from '@/components/settings/pages/SettingsCharacterInfo.vue'
@@ -253,6 +254,7 @@ const emit = defineEmits(['saved'])
 const isDetailVisible = ref(false)
 const isSettingsModalVisible = ref(false)
 
+const { t } = useI18n()
 const gameStore = useGameStore()
 const dialogStore = useDialogStore()
 
@@ -265,9 +267,7 @@ const showDetailModal = () => (isDetailVisible.value = true)
 const closeDetailModal = () => (isDetailVisible.value = false)
 
 const selectCharacter = async () => {
-  const confirmed = await dialogStore.confirm(
-    '切换角色会导致当前角色记忆清空，有需要的话不要忘记存档哦',
-  )
+  const confirmed = await dialogStore.confirm(t('ui.characterCard.confirmSwitch'))
   if (!confirmed) return
 
   try {

@@ -10,7 +10,7 @@
             : 'text-white/60 hover:text-white/80'"
           @click="advanceTab = 'menu'"
         >
-          主菜单
+          {{ $t('advance.tabs.menu') }}
         </button>
         <button
           class="px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200"
@@ -19,7 +19,16 @@
             : 'text-white/60 hover:text-white/80'"
           @click="advanceTab = 'llm'"
         >
-          大模型管理
+          {{ $t('advance.tabs.llm') }}
+        </button>
+        <button
+          class="px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200"
+          :class="advanceTab === 'tts'
+            ? 'bg-brand text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
+            : 'text-white/60 hover:text-white/80'"
+          @click="advanceTab = 'tts'"
+        >
+          本地 TTS
         </button>
         <button
           class="px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200"
@@ -28,7 +37,7 @@
             : 'text-white/60 hover:text-white/80'"
           @click="advanceTab = 'other'"
         >
-          其他高级设置
+          {{ $t('advance.tabs.other') }}
         </button>
       </div>
 
@@ -40,6 +49,11 @@
       <!-- ====== 大模型管理 ====== -->
       <div v-else-if="advanceTab === 'llm'" class="flex-1 min-h-0">
         <SettingsLlmProviders />
+      </div>
+
+      <!-- ====== 本地 TTS ====== -->
+      <div v-else-if="advanceTab === 'tts'" class="flex-1 min-h-0">
+        <SettingsTts />
       </div>
 
       <!-- ====== 其他高级设置 ====== -->
@@ -58,9 +72,10 @@ import { ref } from 'vue'
 import { MenuPage } from '../../ui'
 import SettingsLlmProviders from './SettingsLlmProviders.vue'
 import SettingsAdvanceMenu from './SettingsAdvanceMenu.vue'
+import SettingsTts from './SettingsTts.vue'
 import SettingsAdvanceOther from './SettingsAdvanceOther.vue'
 
-const advanceTab = ref<'menu' | 'llm' | 'other'>('menu')
+const advanceTab = ref<'menu' | 'llm' | 'tts' | 'other'>('menu')
 
 const advanceOtherRef = ref<InstanceType<typeof SettingsAdvanceOther> | null>(null)
 

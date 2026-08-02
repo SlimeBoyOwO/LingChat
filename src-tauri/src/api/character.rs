@@ -1,4 +1,4 @@
-﻿use std::collections::HashMap;
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -376,6 +376,64 @@ pub fn get_character_file(file_path: String) -> Result<String, String> {
     Ok(canon.to_string_lossy().into_owned())
 }
 
+/// Enumerate every script package directory on disk.
+///
+/// Mirrors the three layouts `ScriptManager::scan_scripts` accepts:
+/// `scripts/character/<角色>/<剧本>/`, `scripts/standalone/<剧本>/` and the
+/// legacy flat `scripts/<剧本>/`. The avatar lookup used to only walk one level,
+/// so a script NPC living under the two-level `character/<角色>/<剧本>/` layout —
+/// which is what every 羁绊冒险 uses — could never have its portrait found.
+fn script_package_dirs() -> Vec<PathBuf> {
+    let scripts_dir = game_data_dir().join("scripts");
+    let mut out = Vec::new();
+
+    let Ok(level1) = fs::read_dir(&scripts_dir) else {
+        return out;
+    };
+
+    for entry in level1.flatten() {
+        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+
+        match name.as_str() {
+            // scripts/character/<角色>/<剧本>/ —— 需要再下钻两级
+            "character" => {
+                if let Ok(roles) = fs::read_dir(&path) {
+                    for role in roles.flatten() {
+                        if !role.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                            continue;
+                        }
+                        if let Ok(scripts) = fs::read_dir(role.path()) {
+                            for s in scripts.flatten() {
+                                if s.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                                    out.push(s.path());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // scripts/standalone/<剧本>/ —— 再下钻一级
+            "standalone" => {
+                if let Ok(scripts) = fs::read_dir(&path) {
+                    for s in scripts.flatten() {
+                        if s.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                            out.push(s.path());
+                        }
+                    }
+                }
+            }
+            // scripts/<剧本>/ —— 兼容布局，目录本身就是剧本包
+            _ => out.push(path),
+        }
+    }
+
+    out
+}
+
 #[tauri::command]
 pub fn get_avatar_file(
     character_folder: String,
@@ -398,21 +456,14 @@ pub fn get_avatar_file(
         candidate_bases.push(main_avatar);
     }
 
-    // 2. NPC/脚本角色: scripts/*/characters/{folder}/avatar
-    let scripts_dir = game_data_dir().join("scripts");
-    if let Ok(entries) = fs::read_dir(&scripts_dir) {
-        for entry in entries.flatten() {
-            if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                continue;
-            }
-            let npc_avatar = entry
-                .path()
-                .join("characters")
-                .join(&character_folder)
-                .join("avatar");
-            if npc_avatar.exists() {
-                candidate_bases.push(npc_avatar);
-            }
+    // 2. NPC/脚本角色: <剧本目录>/characters/{folder}/avatar
+    for script_dir in script_package_dirs() {
+        let npc_avatar = script_dir
+            .join("characters")
+            .join(&character_folder)
+            .join("avatar");
+        if npc_avatar.exists() {
+            candidate_bases.push(npc_avatar);
         }
     }
 

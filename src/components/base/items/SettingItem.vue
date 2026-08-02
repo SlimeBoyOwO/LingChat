@@ -20,7 +20,7 @@
     <label
       class="inline-flex items-center cursor-pointer font-medium text-brand"
       :for="setting.key"
-      >{{ setting.description || '支持多行输入' }}</label
+      >{{ setting.description || $t('ui.settingItem.multilineHint') }}</label
     >
     <p class="text-sm mt-1 mb-2 text-gray-300">
       {{ setting.key }}
@@ -56,7 +56,7 @@
         type="button"
         class="px-4 py-2.5 bg-brand text-white rounded-lg hover:bg-[#0056b3] transition-colors duration-200 whitespace-nowrap"
       >
-        浏览
+        {{ $t('ui.settingItem.browse') }}
       </button>
     </div>
     <div v-else-if="setting.type === 'number'">

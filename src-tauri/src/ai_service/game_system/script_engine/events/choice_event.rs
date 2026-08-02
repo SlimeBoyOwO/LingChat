@@ -1,5 +1,5 @@
-//! Choice event — presents branching options to the user, waits for selection,
-//! then evaluates conditions and executes actions for the matched option.
+//! 选项事件 —— 向用户展示分支选项，等待选择后，
+//! 对匹配的选项求值条件并执行其动作。
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -23,12 +23,14 @@ pub struct ChoiceEvent {
 
 impl ChoiceEvent {
     fn from_event_data(data: &Value) -> Self {
+        let options: Vec<Value> = data
+            .get("options")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
         Self {
-            options: data
-                .get("options")
-                .and_then(|v| v.as_array())
-                .cloned()
-                .unwrap_or_default(),
+            options,
             allow_free: data
                 .get("allow_free")
                 .and_then(|v| v.as_bool())
@@ -40,7 +42,7 @@ impl ChoiceEvent {
 #[async_trait]
 impl ScriptEvent for ChoiceEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
-        // Build choice labels
+        // 构建选项文案列表
         let choices: Vec<String> = self
             .options
             .iter()
@@ -48,27 +50,33 @@ impl ScriptEvent for ChoiceEvent {
             .map(|s| s.to_string())
             .collect();
 
-        // Set up oneshot channel and store sender (brief lock)
+        // 建立 oneshot 通道并存入 sender（短暂持锁）。
+        // `choice_allow_free` 让 `script_submit_input` 把自由输入的文本转投到这里，
+        // 而不是拒绝——否则 `allow_free: true` 的选项永远无法解决，剧本永久阻塞。
         let rx = {
             let (tx, rx) = tokio::sync::oneshot::channel();
             let mut ch = ctx.channels.lock().await;
             ch.choice_tx = Some(tx);
+            ch.choice_allow_free = self.allow_free;
             rx
         };
 
-        // Emit choice event to frontend
+        // 向前端发出选项事件
         let payload = ChoicePayload {
             choices: choices.clone(),
             allow_free: self.allow_free,
         };
         let _ = emit(ctx.app, SCRIPT_CHOICE, &payload);
 
-        // Await user choice — no locks held
+        // 等待用户选择——不持有任何锁
         let user_choice = rx.await.map_err(|_| anyhow!("用户选择通道已关闭"))?;
+
+        // 选项已解决；停止替它接受自由输入。
+        ctx.channels.lock().await.choice_allow_free = false;
 
         tracing::info!("[ChoiceEvent] 用户选择: {}", user_choice);
 
-        // Clone out script_status to avoid double borrow
+        // 克隆出 script_status 以避免双重借用
         let mut script_status = ctx
             .game_status
             .lock()
@@ -89,11 +97,11 @@ impl ScriptEvent for ChoiceEvent {
             .await?
         };
 
-        // Write back potentially modified script_status
+        // 写回可能被修改的 script_status
         ctx.game_status.lock().await.script_status = Some(script_status);
 
         if !matched {
-            // Add raw input as USER line if no option matched
+            // 没有选项命中时，把原始输入作为 USER 台词写入
             let mut gs = ctx.game_status.lock().await;
             let line = LineBase {
                 content: user_choice,

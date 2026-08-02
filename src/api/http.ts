@@ -7,6 +7,7 @@ import type {
 } from 'axios'
 import { useUIStore } from '../stores/modules/ui/ui'
 import { getApiBaseUrl } from '../config/backend'
+import { i18n } from '@/locales'
 
 // 定义响应数据的通用结构
 interface ApiResponse<T = any> {
@@ -79,7 +80,7 @@ http.interceptors.response.use(
       if (response.data.code === 200) {
         return response.data.data
       } else {
-        const error: AppError = new Error(response.data.message || '请求失败')
+        const error: AppError = new Error(response.data.message || i18n.global.t('api.http.requestFailed'))
         error.code = response.data.code
         return Promise.reject(error)
       }
@@ -99,7 +100,7 @@ http.interceptors.response.use(
     const statusCode = error.response?.status
 
     // 提取错误消息
-    const errorMessage = responseData.message || responseData.detail || error.message || '网络错误'
+    const errorMessage = responseData.message || responseData.detail || error.message || i18n.global.t('api.http.networkError')
 
     // 静默请求：不弹出错误通知（用于日志上报等非关键链路）
     const silent = (error.config as AxiosRequestConfig | undefined)?.silent
@@ -114,7 +115,7 @@ http.interceptors.response.use(
 
     // 安全访问响应数据
     const responseDataTyped = (error.response?.data as ApiResponse) || {}
-    const errorMsg = responseDataTyped.message || error.message || '网络错误'
+    const errorMsg = responseDataTyped.message || error.message || i18n.global.t('api.http.networkError')
 
     const enhancedError: AppError = new Error(errorMsg)
     enhancedError.status = error.response?.status

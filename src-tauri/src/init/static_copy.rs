@@ -41,6 +41,7 @@ fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
 
 #[cfg(target_os = "ios")]
 fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
+    use tauri::Manager;
     // iOS 继续使用沙盒路径
     app.path()
         .app_data_dir()
@@ -132,6 +133,7 @@ fn seed_desktop(
 #[cfg(any(target_os = "android", target_os = "ios"))]
 fn seed_via_fs_plugin(app: &tauri::AppHandle, data_dir: &std::path::Path) -> anyhow::Result<()> {
     use anyhow::Context;
+    use tauri::Manager;
     use tauri_plugin_fs::FsExt;
 
     let resource_dir = app

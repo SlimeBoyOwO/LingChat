@@ -5,15 +5,37 @@ import type { ScriptEventType } from '../types'
 import { useAdventureStore } from '../stores/modules/adventure'
 import { useUIStore } from '../stores/modules/ui/ui'
 import { useGameStore } from '../stores/modules/game'
+import { i18n } from '@/locales'
+import { useScriptEditorStore } from '../stores/modules/script-editor'
 
 function asEvent(payload: unknown, overrides: Partial<ScriptEventType>): ScriptEventType {
   return { ...(payload as Record<string, unknown>), ...overrides } as unknown as ScriptEventType
 }
 
+/**
+ * 试玩事件的迟到丢弃。
+ *
+ * 试玩中止后，后端游离的流式任务（publisher/consumer）可能还会 emit 几条
+ * ai:reply（如 TTS 仍在生成时的句子），它们经 IPC 到达前端时试玩可能已结束、
+ * 甚至新一轮试玩已开始。这类事件必须丢弃，否则会串进自由对话历史或新一轮试玩。
+ *
+ * 判定规则：事件带 previewGen（试玩专用字段）时，仅当「当前在试玩 且 代号与
+ * 本轮一致」才收；不带该字段的是自由对话/正式剧本回复，永远放行。
+ */
+function isStalePreviewReply(payload: Record<string, unknown>): boolean {
+  const gen = payload.previewGen
+  if (typeof gen !== 'number') return false
+  const store = useScriptEditorStore()
+  return !store.previewing || store.previewGeneration !== gen
+}
+
 export function initializeTauriEventListeners() {
   listen('ai:reply', (event) => {
+    const payload = event.payload as Record<string, unknown>
+    // 试玩中止后迟到的流式回复：直接丢弃，不放进事件队列
+    if (isStalePreviewReply(payload)) return
     console.log('[Tauri] ai:reply', event.payload)
-    eventQueue.addEvent(asEvent(event.payload, { type: 'reply', duration: -1 }))
+    eventQueue.addEvent(asEvent(payload, { type: 'reply', duration: -1 }))
   })
 
   listen('ai:thinking', (event) => {
@@ -110,8 +132,8 @@ export function initializeTauriEventListeners() {
 
     useUIStore().showNotification({
       type: 'info',
-      title: '自动存档',
-      message: `已于 ${payload.timestamp} 自动保存`,
+      title: i18n.global.t('api.events.autoSave.title'),
+      message: i18n.global.t('api.events.autoSave.message', { time: payload.timestamp }),
       duration: 2500,
       skipTipsCheck: true,
     })

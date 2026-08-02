@@ -18,5 +18,9 @@ export default class MusicProcessor implements IEventProcessor {
     }
 
     uiStore.currentBackgroundMusic = url
+    // 播放速度：未设置时回退 1.0（原速）。music 事件可逐段调速
+    uiStore.bgMusicPlaybackRate = event.playbackSpeed ?? 1
+
+    uiStore.bgMusicPaused = false
   }
 }

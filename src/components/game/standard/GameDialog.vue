@@ -1,19 +1,22 @@
 <template>
   <div
-    class="relative flex justify-center w-full z-2 p-3.75 backdrop-blur-[1px] transition-all duration-200 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] bg-linear-to-t from-[rgba(0,14,39,0.7)] to-[rgba(0,14,39,0.6)] before:content-[''] before:absolute before:-top-10 before:left-0 before:right-0 before:h-10 before:bg-linear-to-b before:from-transparent before:via-[rgba(0,14,39,0.3)] before:to-[rgba(0,14,39,0.6)] before:pointer-events-none scrollbar-thin [scrollbar-color:var(--accent-color)_transparent]"
+    class="relative z-2 flex w-full scrollbar-thin [scrollbar-color:var(--accent-color)_transparent] justify-center bg-linear-to-t from-[rgba(0,14,39,0.7)] to-[rgba(0,14,39,0.6)] p-3.75 backdrop-blur-[1px] transition-all duration-200 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] before:pointer-events-none before:absolute before:-top-10 before:right-0 before:left-0 before:h-10 before:bg-linear-to-b before:from-transparent before:via-[rgba(0,14,39,0.3)] before:to-[rgba(0,14,39,0.6)] before:content-['']"
     :class="{
-      'opacity-0 z-[-1]! overflow-hidden duration-500! ease-linear before:opacity-0 before:duration-1000!':
+      'z-[-1]! overflow-hidden opacity-0 duration-500! ease-linear before:opacity-0 before:duration-1000!':
         isHidden,
       'max-h-[40vh]': !uiStore.isNarrowScreen,
     }"
   >
-    <div :style="{ width: containerWidth + '%' }" class="relative">
+    <div
+      :style="{ width: containerWidth + '%' }"
+      class="relative"
+    >
       <div class="overflow-y-auto">
         <!-- 标题栏 -->
-        <div class="flex items-baseline mb-2">
+        <div class="mb-2 flex items-baseline">
           <!-- 角色名称 -->
           <div
-            class="text-2xl font-bold text-white mr-3.75 font-[inherit] text-shadow-[inherit]"
+            class="mr-3.75 font-[inherit] text-2xl font-bold text-white text-shadow-[inherit]"
             :class="{
               'min-w-0 overflow-hidden text-ellipsis whitespace-nowrap': uiStore.isNarrowScreen,
             }"
@@ -22,138 +25,171 @@
           </div>
           <div
             v-show="!uiStore.isNarrowScreen"
-            class="text-xl font-bold text-[#6eb4ff] font-[inherit] text-shadow-[inherit]"
+            class="font-[inherit] text-xl font-bold text-[#6eb4ff] text-shadow-[inherit]"
           >
             <div id="character-sub">{{ uiStore.showCharacterSubtitle }}</div>
           </div>
 
           <!-- 情绪标签 -->
           <div
-            class="text-xl font-bold text-[#ff77dd] font-[inherit] text-shadow-[inherit] shrink-0 mx-4"
+            class="mx-4 shrink-0 font-[inherit] text-xl font-bold text-[#ff77dd] text-shadow-[inherit]"
           >
             <div id="character-emotion">{{ uiStore.showCharacterEmotion }}</div>
           </div>
 
           <!-- 操作按钮组配置 -->
-          <div class="flex items-baseline ml-auto min-w-0">
+          <div class="ml-auto flex min-w-0 items-baseline">
             <!-- 桌面端：直接显示所有操作按钮 -->
             <template v-if="!isMobile">
               <!-- 操作按钮组 -->
               <div
-                class="overflow-x-auto custom-scroll"
-                :class="uiStore.isNarrowScreen ? 'flex-1 min-w-0' : 'shrink-0'"
+                class="custom-scroll overflow-x-auto"
+                :class="uiStore.isNarrowScreen ? 'min-w-0 flex-1' : 'shrink-0'"
               >
                 <div class="flex whitespace-nowrap">
                   <Button
                     type="nav"
                     icon="background"
-                    title="场景设置"
+                    :title="$t('game.dialog.sceneSettings')"
                     @click="openSceneSettings"
                   ></Button>
                   <Button
                     type="nav"
                     icon="hand"
-                    title="触摸模式"
+                    :title="$t('game.dialog.touchMode')"
                     @click="toggleTouchMode"
                     @contextmenu.prevent="exitTouchMode"
                   ></Button>
-                  <Button type="nav" icon="history" title="历史记录" @click="openHistory"></Button>
+                  <Button
+                    type="nav"
+                    icon="history"
+                    :title="$t('game.dialog.history')"
+                    @click="openHistory"
+                  ></Button>
 
                   <!-- 语音输入按钮 -->
                   <Button
                     type="nav"
                     icon="mic"
-                    :title="isRecording ? '录音中，点击停止' : '语音输入'"
-                    :class="{ 'text-red-500 animate-pulse': isRecording }"
+                    :title="
+                      isRecording ? $t('game.dialog.recordingStop') : $t('game.dialog.voiceInput')
+                    "
+                    :class="{ 'animate-pulse text-red-500': isRecording }"
                     @click="toggleRecording"
                   ></Button>
 
-                  <div class="relative inline-flex group">
+                  <div class="group relative inline-flex">
                     <div
                       v-if="hasScreenshot"
-                      class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50"
+                      class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
                     >
                       <img
                         :src="'data:image/jpeg;base64,' + screenshotBase64"
-                        class="max-w-96 max-h-64 rounded-lg shadow-lg border-2 object-contain"
+                        class="max-h-64 max-w-96 rounded-lg border-2 object-contain shadow-lg"
                         style="border-color: var(--accent-color); background: #000"
                       />
                     </div>
                     <Button
                       type="nav"
                       icon="camera"
-                      :title="hasScreenshot ? '点击重新截图，右键取消截图' : '截图提问'"
+                      :title="
+                        hasScreenshot
+                          ? $t('game.dialog.screenshotRetake')
+                          : $t('game.dialog.screenshotAsk')
+                      "
                       :style="hasScreenshot ? { color: 'var(--accent-color)' } : {}"
                       @click="startScreenshot"
                       @contextmenu.prevent="clearScreenshot"
                     ></Button>
                   </div>
 
-                  <Button type="nav" icon="close" title="关闭对话" @click="removeDialog"></Button>
+                  <Button
+                    type="nav"
+                    icon="close"
+                    :title="$t('game.dialog.closeDialog')"
+                    @click="removeDialog"
+                  ></Button>
                 </div>
               </div>
             </template>
 
             <!-- 移动端：箭头折叠按钮 + 关闭按钮 -->
-            <div v-if="isMobile" class="flex items-baseline gap-1">
+            <div
+              v-if="isMobile"
+              class="flex items-baseline gap-1"
+            >
               <button
                 class="mobile-toggle-btn"
                 :class="{ 'is-open': showMobileMenu }"
-                title="更多操作"
+                :title="$t('game.dialog.moreActions')"
                 @click="showMobileMenu = !showMobileMenu"
               >
                 ▲
               </button>
-              <Button type="nav" icon="close" title="关闭对话" @click="removeDialog"></Button>
+              <Button
+                type="nav"
+                icon="close"
+                :title="$t('game.dialog.closeDialog')"
+                @click="removeDialog"
+              ></Button>
             </div>
           </div>
         </div>
 
         <!-- 移动端：折叠菜单下拉面板 -->
         <Transition name="mobile-menu">
-          <div v-if="isMobile && showMobileMenu" class="mobile-menu-dropdown">
-            <div class="overflow-x-auto custom-scroll flex whitespace-nowrap gap-1 pb-1">
+          <div
+            v-if="isMobile && showMobileMenu"
+            class="mobile-menu-dropdown"
+          >
+            <div class="custom-scroll flex gap-1 overflow-x-auto pb-1 whitespace-nowrap">
               <Button
                 type="nav"
                 icon="background"
-                title="场景设置"
+                :title="$t('game.dialog.sceneSettings')"
                 @click="onMobileMenuAction(openSceneSettings)"
               ></Button>
               <Button
                 type="nav"
                 icon="hand"
-                title="触摸模式"
+                :title="$t('game.dialog.touchMode')"
                 @click="onMobileMenuAction(toggleTouchMode)"
                 @contextmenu.prevent="exitTouchMode"
               ></Button>
               <Button
                 type="nav"
                 icon="history"
-                title="历史记录"
+                :title="$t('game.dialog.history')"
                 @click="onMobileMenuAction(openHistory)"
               ></Button>
               <Button
                 type="nav"
                 icon="mic"
-                :title="isRecording ? '录音中，点击停止' : '语音输入'"
-                :class="{ 'text-red-500 animate-pulse': isRecording }"
+                :title="
+                  isRecording ? $t('game.dialog.recordingStop') : $t('game.dialog.voiceInput')
+                "
+                :class="{ 'animate-pulse text-red-500': isRecording }"
                 @click="onMobileMenuAction(toggleRecording)"
               ></Button>
-              <div class="relative inline-flex group">
+              <div class="group relative inline-flex">
                 <div
                   v-if="hasScreenshot"
-                  class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50"
+                  class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
                 >
                   <img
                     :src="'data:image/jpeg;base64,' + screenshotBase64"
-                    class="max-w-96 max-h-64 rounded-lg shadow-lg border-2 object-contain"
+                    class="max-h-64 max-w-96 rounded-lg border-2 object-contain shadow-lg"
                     style="border-color: var(--accent-color); background: #000"
                   />
                 </div>
                 <Button
                   type="nav"
                   icon="camera"
-                  :title="hasScreenshot ? '点击重新截图，右键取消截图' : '截图提问'"
+                  :title="
+                    hasScreenshot
+                      ? $t('game.dialog.screenshotRetake')
+                      : $t('game.dialog.screenshotAsk')
+                  "
                   :style="hasScreenshot ? { color: 'var(--accent-color)' } : {}"
                   @click="onMobileMenuAction(startScreenshot)"
                   @contextmenu.prevent="onMobileMenuAction(clearScreenshot)"
@@ -164,18 +200,18 @@
         </Transition>
 
         <!-- 分割线 -->
-        <div class="h-px bg-white/30 my-1.5"></div>
+        <div class="my-1.5 h-px bg-white/30"></div>
 
         <!-- 输入区 -->
         <div
-          class="flex flex-col whitespace-pre-line w-full min-h-10 bg-transparent border-none text-white text-xl font-bold resize-none my-1.25 outline-none transition-all duration-300"
+          class="my-1.25 flex min-h-10 w-full resize-none flex-col border-none bg-transparent text-xl font-bold whitespace-pre-line text-white transition-all duration-300 outline-none"
         >
           <!-- 内联动作文本显示区（仅内联模式+回应状态时可见） -->
           <div
             v-show="isInlineDisplayMode"
             ref="inlineDisplayRef"
             tabindex="0"
-            class="inline-motion-display flex-1 min-h-30 max-h-[50vh] bg-transparent border-none text-xl font-bold resize-none my-1.25 outline-none whitespace-pre-line font-[inherit] text-shadow-[inherit] overflow-y-auto"
+            class="inline-motion-display my-1.25 max-h-[50vh] min-h-30 flex-1 resize-none overflow-y-auto border-none bg-transparent font-[inherit] text-xl font-bold whitespace-pre-line outline-none text-shadow-[inherit]"
             @keydown.enter.exact.prevent="sendOrContinue"
           ></div>
 
@@ -184,7 +220,7 @@
             v-show="!isInlineDisplayMode"
             id="inputMessage"
             ref="textareaRef"
-            class="flex-1 min-h-30 max-h-[50vh] bg-transparent border-none text-white text-xl font-bold resize-none my-1.25 outline-none transition-all duration-300 placeholder:text-white/50 placeholder:shadow-none font-[inherit] text-shadow-[inherit]"
+            class="my-1.25 max-h-[50vh] min-h-30 flex-1 resize-none border-none bg-transparent font-[inherit] text-xl font-bold text-white transition-all duration-300 outline-none text-shadow-[inherit] placeholder:text-white/50 placeholder:shadow-none"
             :class="textareaMotionClass"
             :placeholder="placeholderText"
             v-model="inputMessage"
@@ -196,7 +232,7 @@
       <!-- 发送按钮（内层右侧外部） -->
       <button
         id="sendButton"
-        class="absolute right-0 bottom-0 translate-x-full bg-transparent text-[#04bcff] border-none px-2 py-2 rounded-[5px] cursor-pointer transition-all duration-300 text-sm font-bold hover:bg-transparent hover:text-[rgba(136,255,251,0.827)] disabled:bg-[#333] disabled:cursor-not-allowed disabled:opacity-70 font-[inherit] text-shadow-[inherit]"
+        class="absolute right-0 bottom-0 translate-x-full cursor-pointer rounded-[5px] border-none bg-transparent px-2 py-2 font-[inherit] text-sm font-bold text-[#04bcff] transition-all duration-300 text-shadow-[inherit] hover:bg-transparent hover:text-[rgba(136,255,251,0.827)] disabled:cursor-not-allowed disabled:bg-[#333] disabled:opacity-70"
         :disabled="isSending"
         @click="sendOrContinue"
       >
@@ -208,6 +244,7 @@
 
 <script setup lang="ts">
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Button } from '../../base'
 import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
@@ -222,6 +259,7 @@ import { listen } from '@tauri-apps/api/event'
 import { setInputHasText } from '../../../composables/useCanDeliver'
 
 const inputMessage = ref('')
+const { t } = useI18n()
 // 输入框内容变化 → 通知 can_deliver 追踪
 watch(inputMessage, (val) => setInputHasText(Boolean(val.trim())), { immediate: true })
 const isShowingMotionText = ref(false)
@@ -290,6 +328,20 @@ function writeInlineHtml(_element: HTMLElement, text: string): void {
     inlineDisplayRef.value.innerHTML = `<br><span class="motion-text-gray">${motion}</span>`
   } else {
     inlineDisplayRef.value.innerHTML = `<span style="color:#fff">${escapeHtml(text)}</span>`
+  }
+}
+
+// 立即把当前台词写入显示元素（不经过打字动画；供挂载恢复使用）
+function renderLineInstant(line: string) {
+  currentDisplayedText.value = line
+  if (settingsStore.text.inlineMotionText) {
+    const text = uiStore.showCharacterMotionText
+      ? line + '\n' + uiStore.showCharacterMotionText
+      : line
+    if (inlineDisplayRef.value) writeInlineHtml(inlineDisplayRef.value, text)
+  } else if (textareaRef.value) {
+    textareaRef.value.value = line
+    inputMessage.value = line // 与 v-model 同步，防止重渲染把值重置为空
   }
 }
 
@@ -369,28 +421,28 @@ const exitTouchMode = () => {
 const placeholderText = computed(() => {
   // 如果正在录音，优先展示实时的语音内容，如果没有内容则展示正在聆听
   if (isRecording.value) {
-    return interimText.value || '正在聆听...'
+    return interimText.value || t('game.dialog.listening')
   }
 
   switch (gameStore.currentStatus) {
     case 'input':
-      return uiStore.showPlayerHintLine || '在这里输入消息...'
+      return uiStore.showPlayerHintLine || t('game.dialog.inputPlaceholder')
     case 'thinking':
       const currentInteractRole = gameStore.currentInteractRole
       if (currentInteractRole) {
         const baseMessage = currentInteractRole.thinkMessage
         if (gameStore.thinkingLength > 0) {
-          return `${baseMessage}（已深度思考 ${gameStore.thinkingLength} 字）`
+          return `${baseMessage}${t('game.dialog.thinkingDepth', { count: gameStore.thinkingLength })}`
         }
         return baseMessage
       } else {
-        return '等待回应中...'
+        return t('game.dialog.waitingResponse')
       }
     case 'responding':
     case 'presenting':
       return ''
     default:
-      return '在这里输入消息...'
+      return t('game.dialog.inputPlaceholder')
   }
 })
 
@@ -403,7 +455,7 @@ watch(
     if (newStatus === 'thinking') {
       const currentInteractRole = gameStore.currentInteractRole
       if (currentInteractRole) {
-        currentInteractRole.emotion = 'AI思考'
+        //currentInteractRole.emotion = 'AI思考'
         uiStore.showCharacterTitle = currentInteractRole.roleName
         uiStore.showCharacterSubtitle = currentInteractRole.roleSubTitle
       }
@@ -514,9 +566,7 @@ const initSpeechRecognition = () => {
 
 const toggleRecording = async () => {
   if (!speechRecognition) {
-    await dialogStore.alert(
-      '您的浏览器不支持语音输入功能，建议使用最新版的 Chrome 或 Edge 浏览器。',
-    )
+    await dialogStore.alert(t('game.dialog.speechNotSupported'))
     return
   }
   if (isRecording.value) {
@@ -524,7 +574,7 @@ const toggleRecording = async () => {
   } else {
     // 如果不在允许输入的阶段，阻止录音
     if (gameStore.currentStatus !== 'input') {
-      await dialogStore.alert('当前状态不允许输入，请稍候再试。')
+      await dialogStore.alert(t('game.dialog.inputNotAllowed'))
       return
     }
     speechRecognition.start()
@@ -535,6 +585,12 @@ let unlistenScreenshot: (() => void) | null = null
 let unlistenCancelled: (() => void) | null = null
 
 onMounted(async () => {
+  // 模式切换重挂载：立即从 store 恢复当前台词（不重播打字动画）
+  const restoreLine = uiStore.showCharacterLine
+  if (restoreLine && restoreLine !== '' && gameStore.currentStatus === 'responding') {
+    renderLineInstant(restoreLine)
+  }
+
   document.addEventListener('contextmenu', handleDialogShow)
   // 初始化语音识别对象
   speechRecognition = initSpeechRecognition()
@@ -572,7 +628,7 @@ async function startScreenshot() {
   } catch (error) {
     console.error('启动截图失败:', error)
     isCapturing.value = false
-    await dialogStore.alert('截图功能初始化失败，请重试')
+    await dialogStore.alert(t('game.dialog.screenshotFailed'))
   }
 }
 
@@ -599,8 +655,8 @@ function send() {
   if (!llmStore.chatProviderId) {
     uiStore.showNotification({
       type: 'warning',
-      title: '提示',
-      message: '还没选择对话模型呢，笨蛋！去高级设置里配置并选择模型就好啦，切换后自动生效哦！',
+      title: t('game.dialog.noModelTitle'),
+      message: t('game.dialog.noModelMessage'),
       skipTipsCheck: true,
     })
     return
@@ -614,14 +670,27 @@ function send() {
 
   // In script mode, submit input to the script engine; otherwise use chat
   if (gameStore.runningScript) {
-    invoke('script_submit_input', { input: text }).catch((error) => {
-      console.error('发送脚本输入失败:', error)
-      gameStore.currentStatus = 'input'
-    })
-    gameStore.runningScript.choices = []
-    if (gameStore.runningScript.freeDialogueInfo.isFreeDialogue) {
-      gameStore.runningScript.freeDialogueInfo.currentRound++
-    }
+    const script = gameStore.runningScript
+    const wasChoice = script.choices.length > 0
+    // 只有提交成功才清空选项。以前是无条件清空的：allow_free 为 false 时后端
+    // 会拒绝这次输入，而选项按钮已经消失、引擎仍在等待选择，玩家彻底卡死。
+    invoke('script_submit_input', { input: text })
+      .then(() => {
+        script.choices = []
+        if (script.freeDialogueInfo.isFreeDialogue) {
+          script.freeDialogueInfo.currentRound++
+        }
+      })
+      .catch((error) => {
+        console.error('发送脚本输入失败:', error)
+        gameStore.currentStatus = 'input'
+        uiStore.showNotification({
+          type: 'warning',
+          title: wasChoice ? '请点击一个选项' : '当前无法输入',
+          message: String(error),
+          skipTipsCheck: true,
+        })
+      })
   } else {
     invoke('send_chat_message', {
       text,
@@ -642,11 +711,12 @@ function continueDialog(isPlayerTrigger: boolean): boolean {
   // 内联动作文本模式：第一次点击跳过打字动画，第二次推进事件队列
   if (settingsStore.text.inlineMotionText) {
     if (isInlineTyping.value) {
-      finishInlineTyping()
+      finishInlineTyping() // 这个函数有 bug，打字动画会结束，但是不会显示最终完整的字
       return false // 先跳到末尾，不推进
     }
     const needWait = eventQueue.continue()
     if (!needWait) {
+      uiStore.showCharacterMotionText = '' // 清空内联动作文本
       if (isPlayerTrigger) emit('player-continued')
       emit('dialog-proceed')
     }

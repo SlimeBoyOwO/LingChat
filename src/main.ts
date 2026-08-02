@@ -6,6 +6,7 @@ import { initializeTauriEventListeners } from "./api/tauri-events";
 import App from "./App.vue";
 import "./assets/styles/base.css";
 import "./assets/styles/variables.css";
+import { i18n } from "./locales";
 
 // WebSocket handlers 保留用于未来剧本模式参考
 // import "./api/websocket/handlers/script-handler";
@@ -27,7 +28,14 @@ initializeEventProcessors();
 initializeTauriEventListeners();
 
 app.use(pinia);
+app.use(i18n);
 app.use(router);
+
+// 独立日志窗口：通过 index.html?window=log 打开时直接进入日志路由
+if (new URLSearchParams(window.location.search).get('window') === 'log') {
+  router.replace('/log-window');
+}
+
 app.mount("#app");
 
 // 初始化全局音频输出设备管理器（需 pinia 就绪）

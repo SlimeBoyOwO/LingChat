@@ -37,6 +37,7 @@ export const DEFAULT_SETTINGS = {
     meteorFps: 30, // 流星动画帧率
     starsFps: 30, // 星星动画帧率
     sceneAwarenessEnabled: true, // 场景感知开关
+    locale: 'zh-CN', // 界面显示语言（i18n，'zh-CN' / 'ja'）
   },
   // 角色设置
   character: {
@@ -75,6 +76,7 @@ export interface DisplaySettings {
   meteorFps: number
   starsFps: number
   sceneAwarenessEnabled: boolean
+  locale: string
 }
 
 export interface CharacterSettings {
@@ -129,6 +131,8 @@ export const useSettingsStore = defineStore('settings', {
     meteorFps: (state) => state.display.meteorFps,
     starsFps: (state) => state.display.starsFps,
     sceneAwarenessEnabled: (state) => state.display.sceneAwarenessEnabled,
+    // 界面显示语言（i18n）
+    uiLocale: (state) => state.display.locale,
     // 各音量
     characterVolume: (state) => state.audio.characterVolume,
     bubbleVolume: (state) => state.audio.bubbleVolume,
@@ -284,6 +288,11 @@ export const useSettingsStore = defineStore('settings', {
     setSceneAwarenessEnabled(enabled: boolean) {
       this.display.sceneAwarenessEnabled = enabled
       setSceneAwareness(enabled)
+    },
+
+    // 设置界面显示语言（i18n）
+    setUiLocale(locale: string) {
+      this.display.locale = locale
     },
 
     // 设置角色文件夹

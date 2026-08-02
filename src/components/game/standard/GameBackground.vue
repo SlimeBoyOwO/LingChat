@@ -1,6 +1,7 @@
 <template>
   <!-- 背景图 + 背景光照滤镜 -->
   <div
+    v-if="backgroundSrc"
     class="absolute inset-0"
     :style="bgLightingFilter"
   >
@@ -11,42 +12,45 @@
       position="center center"
       object-fit="cover"
       :duration="uiStore.currentBackgroundTransition"
-    >
-      <StarField
-        ref="starfieldRef"
-        v-if="uiStore.currentBackgroundEffect === 'StarField'"
-        :enabled="starfieldEnabled"
-        :star-count="starCount"
-        :scroll-speed="scrollSpeed"
-        :colors="starColors"
-        :style="`z-index:${BACKGROUND_ZINDEX}`"
-        @ready="onStarfieldReady"
-      />
-      <Rain
-        v-if="uiStore.currentBackgroundEffect === 'Rain'"
-        :enabled="rainEnabled"
-        :intensity="rainIntensity"
-        :style="`z-index:${BACKGROUND_ZINDEX}`"
-      />
-      <Sakura
-        v-if="uiStore.currentBackgroundEffect === 'Sakura'"
-        :enabled="true"
-        :intensity="1.5"
-        :style="`z-index:${BACKGROUND_ZINDEX}`"
-      />
-      <Snow
-        v-if="uiStore.currentBackgroundEffect === 'Snow'"
-        :intensity="snowIntensity"
-        :enabled="true"
-        :style="`z-index:${BACKGROUND_ZINDEX}`"
-      />
-      <Fireworks
-        v-if="uiStore.currentBackgroundEffect === 'Fireworks'"
-        :enabled="true"
-        :intensity="1.5"
-        :style="`z-index:${BACKGROUND_ZINDEX}`"
-      />
-    </ImageAcrossFade>
+    />
+  </div>
+
+  <!-- 粒子特效层：独立于背景图，透明背景时依然显示 -->
+  <div class="pointer-events-none absolute inset-0">
+    <StarField
+      ref="starfieldRef"
+      v-if="uiStore.currentBackgroundEffect === 'StarField'"
+      :enabled="starfieldEnabled"
+      :star-count="starCount"
+      :scroll-speed="scrollSpeed"
+      :colors="starColors"
+      :style="`z-index:${BACKGROUND_ZINDEX}`"
+      @ready="onStarfieldReady"
+    />
+    <Rain
+      v-if="uiStore.currentBackgroundEffect === 'Rain'"
+      :enabled="rainEnabled"
+      :intensity="rainIntensity"
+      :style="`z-index:${BACKGROUND_ZINDEX}`"
+    />
+    <Sakura
+      v-if="uiStore.currentBackgroundEffect === 'Sakura'"
+      :enabled="true"
+      :intensity="1.5"
+      :style="`z-index:${BACKGROUND_ZINDEX}`"
+    />
+    <Snow
+      v-if="uiStore.currentBackgroundEffect === 'Snow'"
+      :intensity="snowIntensity"
+      :enabled="true"
+      :style="`z-index:${BACKGROUND_ZINDEX}`"
+    />
+    <Fireworks
+      v-if="uiStore.currentBackgroundEffect === 'Fireworks'"
+      :enabled="true"
+      :intensity="1.5"
+      :style="`z-index:${BACKGROUND_ZINDEX}`"
+    />
   </div>
 
   <!-- 背景光照叠加层（在背景上方、角色下方） -->
@@ -65,6 +69,7 @@
     :volume="uiStore.backgroundVolume"
     :paused="uiStore.bgMusicPaused"
     :stopped="uiStore.bgMusicStoped"
+    :rate="uiStore.bgMusicPlaybackRate"
     :duration="800"
     :loop="uiStore.bgMusicMode === 'loop-single'"
     @ended="handleTrackEnd"
@@ -110,7 +115,7 @@ const backgroundSrc = computed(() => {
     bg.startsWith('@/') ||
     bg.startsWith('data:')
   ) {
-    return bg || '@/assets/images/default_bg.jpg'
+    return bg || ''
   }
   return convertFileSrc(bg)
 })

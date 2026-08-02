@@ -9,13 +9,13 @@
           class="text-xl font-black tracking-wide mb-1 flex items-center gap-2 transition-colors"
           :class="isDarkMode ? 'text-slate-100' : 'text-slate-800'"
         >
-          桌宠体型设置
+          {{ $t('pet.petTab.title') }}
         </h2>
         <p
           class="text-xs font-medium transition-colors"
           :class="isDarkMode ? 'text-slate-400' : 'text-slate-500'"
         >
-          调整助手主体、输入框与对话框的缩放比例
+          {{ $t('pet.petTab.desc') }}
         </p>
       </div>
       <span
@@ -54,11 +54,11 @@
             <MessageSquare class="w-5 h-5" />
           </div>
           <h3 class="font-bold text-lg" :class="isDarkMode ? 'text-slate-200' : 'text-slate-800'">
-            陪伴模式
+            {{ $t('pet.petTab.modeNormal') }}
           </h3>
         </div>
         <p class="text-xs" :class="isDarkMode ? 'text-slate-400' : 'text-slate-500'">
-          正常的桌宠陪伴模式捏
+          {{ $t('pet.petTab.modeNormalDesc') }}
         </p>
       </div>
 
@@ -90,11 +90,11 @@
             <Gamepad2 class="w-5 h-5" />
           </div>
           <h3 class="font-bold text-lg" :class="isDarkMode ? 'text-slate-200' : 'text-slate-800'">
-            游戏模式
+            {{ $t('pet.petTab.modeGame') }}
           </h3>
         </div>
         <p class="text-xs" :class="isDarkMode ? 'text-slate-400' : 'text-slate-500'">
-          可以让ta更多的感知你的屏幕
+          {{ $t('pet.petTab.modeGameDesc') }}
         </p>
       </div>
     </div>
@@ -114,7 +114,7 @@
           :class="isDarkMode ? 'text-slate-200' : 'text-slate-800'"
         >
           <Volume2 class="w-5 h-5 text-sky-500" />
-          桌宠大小设置
+          {{ $t('pet.petTab.scaleTitle') }}
         </h3>
         <div class="flex items-end gap-3 mb-6">
           <div class="text-4xl font-bold text-sky-500 tracking-tighter">
@@ -161,7 +161,7 @@
             class="px-5 py-2 bg-sky-500 text-white font-bold text-[13px] rounded-lg transition-all hover:bg-sky-400 active:scale-95 flex items-center gap-2 shadow-[0_4px_12px_rgba(56,189,248,0.25)] hover:shadow-[0_6px_16px_rgba(56,189,248,0.35)]"
           >
             <RotateCcw class="w-4 h-4" />
-            恢复默认尺寸
+            {{ $t('pet.petTab.scaleReset') }}
           </button>
         </div>
       </div>
@@ -182,7 +182,7 @@
           :class="isDarkMode ? 'text-slate-200' : 'text-slate-800'"
         >
           <Sparkles class="w-5 h-5 text-sky-500" />
-          背景粒子效果 (无粒子更流畅)
+          {{ $t('pet.petTab.particleTitle') }}
         </h3>
 
         <div class="flex gap-3">
@@ -223,7 +223,7 @@
           :class="isDarkMode ? 'text-slate-200' : 'text-slate-800'"
         >
           <Volume2 class="w-5 h-5 text-sky-500" />
-          桌宠音量大小
+          {{ $t('pet.petTab.volumeTitle') }}
         </h3>
         <div class="flex items-end gap-3 mb-6">
           <div class="text-4xl font-bold text-sky-500 tracking-tighter">
@@ -270,7 +270,7 @@
             class="px-5 py-2 bg-sky-500 text-white font-bold text-[13px] rounded-lg transition-all hover:bg-sky-400 active:scale-95 flex items-center gap-2 shadow-[0_4px_12px_rgba(56,189,248,0.25)] hover:shadow-[0_6px_16px_rgba(56,189,248,0.35)]"
           >
             <RotateCcw class="w-4 h-4" />
-            恢复默认音量
+            {{ $t('pet.petTab.volumeReset') }}
           </button>
         </div>
       </div>
@@ -280,6 +280,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   Ruler,
   RotateCcw,
@@ -310,6 +311,7 @@ const emit = defineEmits<{
 }>()
 
 const uiStore = useUIStore()
+const { t } = useI18n()
 
 const currentMode = ref('normal')
 const selectMode = (mode: string) => {
@@ -319,11 +321,11 @@ const selectMode = (mode: string) => {
 
 const currentParticle = computed(() => uiStore.currentBackgroundEffect)
 
-const particleOptions = [
-  { label: '无', value: 'None', icon: Ban },
-  { label: '星空', value: 'StarField', icon: Stars },
-  { label: '星辉', value: 'BA', icon: Sun },
-]
+const particleOptions = computed(() => [
+  { label: t('pet.petTab.particleNone'), value: 'None', icon: Ban },
+  { label: t('pet.petTab.particleStarField'), value: 'StarField', icon: Stars },
+  { label: t('pet.petTab.particleBA'), value: 'BA', icon: Sun },
+])
 
 const selectParticle = async (value: string) => {
   uiStore.setBackgroundEffect(value)

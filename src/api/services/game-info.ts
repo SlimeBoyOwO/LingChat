@@ -38,6 +38,8 @@ export interface GameLineInit {
   user_message_seq: number | null
   /** 该轮生成的思考链（仅每轮最后一条 assistant 行有值） */
   thinking: string | null
+  /** 该台词的第二语言（日语）译文，供日文界面显示 */
+  tts_content: string | null
 }
 
 // 2. 定义完整的初始化数据接口 (对应 Rust WebInitData)

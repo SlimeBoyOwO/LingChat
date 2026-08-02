@@ -56,7 +56,7 @@ impl ScriptEvent for NarrationEvent {
         // Add as ASSISTANT line (keep the original text with newlines)
         let line = LineBase {
             content: self.text.clone(),
-            attribute: LineAttributeExt(LineAttribute::Assistant),
+            attribute: LineAttributeExt(LineAttribute::User),
             display_name: self.display_name.clone().or_else(|| Some("旁白".into())),
             ..Default::default()
         };

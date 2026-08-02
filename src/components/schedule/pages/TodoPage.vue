@@ -24,7 +24,7 @@
               {{ group.title }}
             </h4>
             <p class="text-[10px] text-white uppercase font-bold">
-              {{ group.todos.length }} 项任务
+              {{ $t('ui.todoPage.taskCount', { count: group.todos.length }) }}
             </p>
           </div>
         </div>
@@ -36,13 +36,13 @@
     <div class="space-y-4">
       <h3 class="text-xs font-black text-slate-50 uppercase tracking-[0.2em] flex items-center">
         <Zap class="w-3 h-3 mr-2 text-amber-400" />
-        全局进行中 (按优先级)
+        {{ $t('ui.todoPage.globalPending') }}
       </h3>
       <div
         v-if="globalPendingTodos.length === 0"
         class="text-center py-10 rounded-3xl border border-dashed border-slate-200 text-brand text-xl font-blod"
       >
-        暂时没有进行中的任务
+        {{ $t('ui.todoPage.noPending') }}
       </div>
       <div
         v-for="todo in globalPendingTodos"
@@ -83,7 +83,7 @@
       >
         <component :is="showCompleted ? ChevronDown : ChevronRight" class="w-4 h-4" />
         <span class="text-[10px] font-black uppercase tracking-widest"
-          >已完成历史 ({{ globalCompletedTodos.length }})</span
+          >{{ $t('ui.todoPage.completedHistory', { count: globalCompletedTodos.length }) }}</span
         >
       </button>
       <div v-if="showCompleted" class="space-y-2">
@@ -107,7 +107,7 @@
             @click.stop="undoComplete(todo)"
             class="text-[10px] text-cyan-600 font-bold hover:underline"
           >
-            撤回
+            {{ $t('ui.todoPage.undo') }}
           </button>
         </div>
       </div>
@@ -118,7 +118,7 @@
   <div v-if="uiStore.scheduleView === 'todo_detail'" class="max-w-2xl mx-auto space-y-4">
     <div v-if="activeTodoGroup.todos.length === 0" class="text-center py-20 text-slate-300">
       <Inbox class="w-10 h-10 mx-auto mb-4 opacity-20" />
-      <p>还没有任务，点击右上角新建一个吧</p>
+      <p>{{ $t('ui.todoPage.emptyDetail') }}</p>
     </div>
     <div
       v-for="(todo, idx) in activeTodoGroup.todos"
@@ -166,7 +166,7 @@
     <template v-if="uiStore.scheduleView === 'todo_groups'">
       <input
         v-model="formData.groupTitle"
-        placeholder="项目名称 (例如: 学校任务)"
+        :placeholder="$t('ui.todoPage.groupNamePlaceholder')"
         class="w-full px-5 py-4 rounded-2xl border-none bg-slate-100 outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all"
       />
     </template>
@@ -175,11 +175,11 @@
     <template v-else>
       <input
         v-model="formData.todoText"
-        placeholder="任务内容"
+        :placeholder="$t('ui.todoPage.taskContentPlaceholder')"
         class="w-full px-5 py-4 rounded-2xl border-none bg-slate-100 outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all"
       />
       <div class="flex items-center space-x-3 p-2 bg-slate-50 rounded-2xl">
-        <span class="text-xs font-bold text-slate-400 uppercase pl-2">优先级:</span>
+        <span class="text-xs font-bold text-slate-400 uppercase pl-2">{{ $t('ui.todoPage.priorityLabel') }}</span>
         <button
           v-for="s in 5"
           :key="'prio-' + s"
@@ -213,7 +213,9 @@ import {
 import { getSchedules, saveSchedules } from '@/api/services/schedule'
 
 import BaseModal from '@/components/ui/BaseModal.vue'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const uiStore = useUIStore()
 
 const showCompleted = ref(false)
@@ -370,7 +372,7 @@ const formData = reactive({
 })
 
 const modalTitle = computed(() => {
-  return uiStore.scheduleView === 'todo_groups' ? '新建任务组' : '新建待办任务'
+  return uiStore.scheduleView === 'todo_groups' ? t('ui.todoPage.newGroup') : t('ui.todoPage.newTask')
 })
 
 const handleCreate = () => {

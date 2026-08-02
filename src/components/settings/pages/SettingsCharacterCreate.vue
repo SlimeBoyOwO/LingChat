@@ -12,8 +12,10 @@
         <div class="h-full flex flex-col">
           <div class="px-6 py-4 border-b border-white/10 flex items-center justify-between">
             <div>
-              <h2 class="text-xl font-semibold tracking-wide">创建人物</h2>
-              <p class="text-sm text-white/60">填写设定并上传头像与 20 个情绪立绘</p>
+              <h2 class="text-xl font-semibold tracking-wide">
+                {{ $t('settings.characterCreate.header.title') }}
+              </h2>
+              <p class="text-sm text-white/60">{{ $t('settings.characterCreate.header.subtitle') }}</p>
             </div>
             <button
               class="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 transition"
@@ -45,43 +47,43 @@
             <section v-if="activeStep === 'basic'" class="space-y-4">
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="space-y-2">
-                  <label class="text-sm text-white/70">角色目录名 *</label>
+                  <label class="text-sm text-white/70">{{ $t('settings.characterCreate.form.resourceFolder') }} *</label>
                   <input
                     v-model="form.resource_folder"
                     type="text"
-                    placeholder="例如: my_new_character"
+                    :placeholder="$t('settings.characterCreate.form.resourceFolderPlaceholder')"
                     class="w-full rounded-xl bg-white/10 border border-white/20 px-3 py-2 focus:outline-none focus:border-amber-300/70"
                   />
                 </div>
                 <div class="space-y-2">
-                  <label class="text-sm text-white/70">角色标题 *</label>
+                  <label class="text-sm text-white/70">{{ $t('settings.characterCreate.form.title') }} *</label>
                   <input
                     v-model="form.title"
                     type="text"
-                    placeholder="显示在角色列表中的标题"
+                    :placeholder="$t('settings.characterCreate.form.titlePlaceholder')"
                     class="w-full rounded-xl bg-white/10 border border-white/20 px-3 py-2 focus:outline-none focus:border-amber-300/70"
                   />
                 </div>
                 <div class="space-y-2">
-                  <label class="text-sm text-white/70">AI 名称 *</label>
+                  <label class="text-sm text-white/70">{{ $t('settings.characterCreate.form.aiName') }} *</label>
                   <input
                     v-model="form.ai_name"
                     type="text"
-                    placeholder="角色对话名称"
+                    :placeholder="$t('settings.characterCreate.form.aiNamePlaceholder')"
                     class="w-full rounded-xl bg-white/10 border border-white/20 px-3 py-2 focus:outline-none focus:border-amber-300/70"
                   />
                 </div>
                 <div class="space-y-2">
-                  <label class="text-sm text-white/70">AI 副标题</label>
+                  <label class="text-sm text-white/70">{{ $t('settings.characterCreate.form.aiSubtitle') }}</label>
                   <input
                     v-model="form.ai_subtitle"
                     type="text"
-                    placeholder="例如: 守夜人 / 学园偶像"
+                    :placeholder="$t('settings.characterCreate.form.aiSubtitlePlaceholder')"
                     class="w-full rounded-xl bg-white/10 border border-white/20 px-3 py-2 focus:outline-none focus:border-amber-300/70"
                   />
                 </div>
                 <div class="space-y-2">
-                  <label class="text-sm text-white/70">用户名称</label>
+                  <label class="text-sm text-white/70">{{ $t('settings.characterCreate.form.userName') }}</label>
                   <input
                     v-model="form.user_name"
                     type="text"
@@ -89,7 +91,7 @@
                   />
                 </div>
                 <div class="space-y-2">
-                  <label class="text-sm text-white/70">用户副标题</label>
+                  <label class="text-sm text-white/70">{{ $t('settings.characterCreate.form.userSubtitle') }}</label>
                   <input
                     v-model="form.user_subtitle"
                     type="text"
@@ -98,11 +100,11 @@
                 </div>
               </div>
               <div class="space-y-2">
-                <label class="text-sm text-white/70">角色简介</label>
+                <label class="text-sm text-white/70">{{ $t('settings.characterCreate.form.info') }}</label>
                 <textarea
                   v-model="form.info"
                   rows="4"
-                  placeholder="可选：用于角色介绍展示"
+                  :placeholder="$t('settings.characterCreate.form.infoPlaceholder')"
                   class="w-full rounded-xl bg-white/10 border border-white/20 px-3 py-2 focus:outline-none focus:border-amber-300/70"
                 ></textarea>
               </div>
@@ -118,11 +120,10 @@
                 "
               >
                 <div class="text-sm font-medium">
-                  已上传 {{ uploadedEmotionCount }}/20 情绪 +
-                  {{ avatarFile ? '头像已上传' : '头像未上传' }}
+                  {{ avatarStatusText }}
                 </div>
                 <div v-if="missingEmotionNames.length > 0" class="text-xs mt-1 text-rose-200/90">
-                  缺少：{{ missingEmotionNames.join('、') }}
+                  {{ $t('settings.characterCreate.avatar.missing', { names: missingEmotionLabels }) }}
                 </div>
               </div>
 
@@ -140,8 +141,8 @@
                   @drop.prevent="onAvatarDrop"
                 >
                   <div class="text-xs text-white/80 flex justify-between">
-                    <span>头像 *</span>
-                    <span>{{ avatarFile ? '已上传' : '未上传' }}</span>
+                    <span>{{ $t('settings.characterCreate.avatar.avatarLabel') }} *</span>
+                    <span>{{ avatarFile ? $t('settings.characterCreate.avatar.uploaded') : $t('settings.characterCreate.avatar.notUploaded') }}</span>
                   </div>
                   <div
                     class="aspect-square rounded-xl overflow-hidden bg-slate-900/60 border border-white/10"
@@ -156,7 +157,7 @@
                       v-else
                       class="h-full w-full flex items-center justify-center text-xs text-white/40"
                     >
-                      点击或拖拽上传
+                      {{ $t('settings.characterCreate.avatar.dropHint') }}
                     </div>
                   </div>
                   <input type="file" accept="image/*" class="hidden" @change="onAvatarChange" />
@@ -177,8 +178,8 @@
                   @drop.prevent="(event) => onEmotionDrop(emotion, event)"
                 >
                   <div class="text-xs text-white/80 flex justify-between">
-                    <span>{{ emotion }} *</span>
-                    <span>{{ emotionFiles[emotion] ? '已上传' : '未上传' }}</span>
+                    <span>{{ emotionLabel(emotion) }} *</span>
+                    <span>{{ emotionFiles[emotion] ? $t('settings.characterCreate.avatar.uploaded') : $t('settings.characterCreate.avatar.notUploaded') }}</span>
                   </div>
                   <div
                     class="aspect-square rounded-xl overflow-hidden bg-slate-900/60 border border-white/10"
@@ -193,7 +194,7 @@
                       v-else
                       class="h-full w-full flex items-center justify-center text-xs text-white/40"
                     >
-                      点击或拖拽上传
+                      {{ $t('settings.characterCreate.avatar.dropHint') }}
                     </div>
                   </div>
                   <input
@@ -211,13 +212,13 @@
                 class="w-full md:w-auto rounded-xl px-4 py-2 bg-white/10 hover:bg-white/20 transition"
                 @click="showAdvanced = !showAdvanced"
               >
-                {{ showAdvanced ? '收起高级设置' : '展开高级设置' }}
+                {{ showAdvanced ? $t('settings.characterCreate.advanced.collapse') : $t('settings.characterCreate.advanced.expand') }}
               </button>
 
               <div v-if="showAdvanced" class="space-y-4">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div class="space-y-2">
-                    <label class="text-sm text-white/70">缩放</label>
+                    <label class="text-sm text-white/70">{{ $t('settings.characterCreate.advanced.scale') }}</label>
                     <input
                       v-model.number="form.scale"
                       type="number"
@@ -226,7 +227,7 @@
                     />
                   </div>
                   <div class="space-y-2">
-                    <label class="text-sm text-white/70">偏移</label>
+                    <label class="text-sm text-white/70">{{ $t('settings.characterCreate.advanced.offset') }}</label>
                     <input
                       v-model.number="form.offset"
                       type="number"
@@ -234,7 +235,7 @@
                     />
                   </div>
                   <div class="space-y-2">
-                    <label class="text-sm text-white/70">气泡顶部距离</label>
+                    <label class="text-sm text-white/70">{{ $t('settings.characterCreate.advanced.bubbleTop') }}</label>
                     <input
                       v-model.number="form.bubble_top"
                       type="number"
@@ -242,7 +243,7 @@
                     />
                   </div>
                   <div class="space-y-2">
-                    <label class="text-sm text-white/70">气泡左侧距离</label>
+                    <label class="text-sm text-white/70">{{ $t('settings.characterCreate.advanced.bubbleLeft') }}</label>
                     <input
                       v-model.number="form.bubble_left"
                       type="number"
@@ -252,7 +253,7 @@
                 </div>
 
                 <div class="space-y-2">
-                  <label class="text-sm text-white/70">思考提示文本</label>
+                  <label class="text-sm text-white/70">{{ $t('settings.characterCreate.advanced.thinkingMessage') }}</label>
                   <input
                     v-model="form.thinking_message"
                     type="text"
@@ -261,23 +262,25 @@
                 </div>
 
                 <div class="space-y-2">
-                  <label class="text-sm text-white/70">TTS 类型</label>
+                  <label class="text-sm text-white/70">{{ $t('settings.characterCreate.advanced.ttsType') }}</label>
                   <select
                     v-model="form.tts_type"
                     class="w-full rounded-xl bg-white/10 border border-white/20 px-3 py-2"
                   >
-                    <option value="">不设置</option>
+                    <option value="">{{ $t('settings.characterCreate.advanced.ttsNone') }}</option>
                     <option value="sva">sva</option>
                     <option value="sbv2">sbv2</option>
                     <option value="bv2">bv2</option>
                     <option value="sbv2api">sbv2api</option>
                     <option value="gsv">gsv</option>
                     <option value="aivis">aivis</option>
+                    <option value="localsbv2api">localsbv2api</option>
+                    <option value="indextts2">indextts2</option>
                   </select>
                 </div>
 
                 <div class="space-y-2">
-                  <label class="text-sm text-white/70">系统提示词</label>
+                  <label class="text-sm text-white/70">{{ $t('settings.characterCreate.advanced.systemPrompt') }}</label>
                   <textarea
                     v-model="form.system_prompt"
                     rows="6"
@@ -285,7 +288,7 @@
                   ></textarea>
                 </div>
                 <div class="space-y-2">
-                  <label class="text-sm text-white/70">对话示例</label>
+                  <label class="text-sm text-white/70">{{ $t('settings.characterCreate.advanced.systemPromptExample') }}</label>
                   <textarea
                     v-model="form.system_prompt_example"
                     rows="5"
@@ -293,7 +296,7 @@
                   ></textarea>
                 </div>
                 <div class="space-y-2">
-                  <label class="text-sm text-white/70">旧版兼容示例</label>
+                  <label class="text-sm text-white/70">{{ $t('settings.characterCreate.advanced.systemPromptExampleOld') }}</label>
                   <textarea
                     v-model="form.system_prompt_example_old"
                     rows="4"
@@ -312,7 +315,7 @@
                 @click="prevStep"
                 :disabled="activeStep === 'basic'"
               >
-                上一步
+                {{ $t('settings.characterCreate.footer.prevStep') }}
               </button>
               <button
                 v-if="activeStep !== 'advanced'"
@@ -323,7 +326,7 @@
                   (activeStep === 'avatar' && !isAvatarComplete)
                 "
               >
-                下一步
+                {{ $t('settings.characterCreate.footer.nextStep') }}
               </button>
               <button
                 v-else
@@ -331,7 +334,7 @@
                 :disabled="!canSubmit"
                 @click="submitCreate"
               >
-                {{ creating ? '创建中...' : '确认创建' }}
+                {{ creating ? $t('settings.characterCreate.footer.creating') : $t('settings.characterCreate.footer.confirmCreate') }}
               </button>
             </div>
           </div>
@@ -343,6 +346,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { createCharacter } from '@/api/services/character'
 
 type StepId = 'basic' | 'avatar' | 'advanced'
@@ -401,11 +405,42 @@ const EMOTION_SLOTS = [
   '正常',
 ] as const
 
-const steps: { id: StepId; label: string }[] = [
-  { id: 'basic', label: '基础信息' },
-  { id: 'avatar', label: '立绘上传' },
-  { id: 'advanced', label: '高级设置' },
-]
+const { t } = useI18n()
+
+// 情绪槽位名称是后端协议字段，不能改动；仅通过该映射做界面显示的本地化
+const EMOTION_KEY_MAP: Record<string, string> = {
+  兴奋: 'excited',
+  厌恶: 'disgusted',
+  哭泣: 'crying',
+  害怕: 'scared',
+  害羞: 'shy',
+  平静: 'calm',
+  心动: 'heartFlutter',
+  惊讶: 'surprised',
+  慌张: 'flustered',
+  担心: 'worried',
+  无奈: 'helpless',
+  生气: 'angry',
+  疑惑: 'confused',
+  紧张: 'nervous',
+  自信: 'confident',
+  认真: 'serious',
+  调皮: 'playful',
+  难为情: 'embarrassed',
+  高兴: 'happy',
+  正常: 'normal',
+}
+
+const emotionLabel = (emotion: string) => {
+  const slug = EMOTION_KEY_MAP[emotion]
+  return slug ? t(`settings.characterCreate.emotions.${slug}`) : emotion
+}
+
+const steps = computed<{ id: StepId; label: string }[]>(() => [
+  { id: 'basic', label: t('settings.characterCreate.steps.basic') },
+  { id: 'avatar', label: t('settings.characterCreate.steps.avatar') },
+  { id: 'advanced', label: t('settings.characterCreate.steps.advanced') },
+])
 
 const activeStep = ref<StepId>('basic')
 const showAdvanced = ref(false)
@@ -507,6 +542,20 @@ const uploadedEmotionCount = computed(() => {
   return EMOTION_SLOTS.filter((emotion) => emotionFiles[emotion]).length
 })
 
+const missingEmotionLabels = computed(() => {
+  return missingEmotionNames.value.map(emotionLabel).join('、')
+})
+
+const avatarStatusText = computed(() => {
+  const avatarText = avatarFile.value
+    ? t('settings.characterCreate.avatar.avatarUploaded')
+    : t('settings.characterCreate.avatar.avatarNotUploaded')
+  return t('settings.characterCreate.avatar.uploadedStatus', {
+    count: uploadedEmotionCount.value,
+    avatar: avatarText,
+  })
+})
+
 const isAvatarComplete = computed(() => {
   return Boolean(avatarFile.value) && missingEmotionNames.value.length === 0
 })
@@ -601,7 +650,7 @@ const nextStep = () => {
   errorMessage.value = ''
   if (activeStep.value === 'basic') {
     if (!isBasicComplete.value) {
-      errorMessage.value = '请先填写目录名、角色标题和 AI 名称'
+      errorMessage.value = t('settings.characterCreate.errors.basicIncomplete')
       return
     }
     activeStep.value = 'avatar'
@@ -609,7 +658,7 @@ const nextStep = () => {
   }
   if (activeStep.value === 'avatar') {
     if (!isAvatarComplete.value) {
-      errorMessage.value = '请上传头像和全部 20 个情绪立绘'
+      errorMessage.value = t('settings.characterCreate.errors.avatarIncomplete')
       return
     }
     activeStep.value = 'advanced'
@@ -649,7 +698,9 @@ const submitCreate = async () => {
     for (const emotion of EMOTION_SLOTS) {
       const emotionFile = emotionFiles[emotion]
       if (!emotionFile) {
-        throw new Error(`缺少情绪文件：${emotion}`)
+        throw new Error(
+          t('settings.characterCreate.errors.missingEmotionFile', { name: emotionLabel(emotion) }),
+        )
       }
       formData.append('emotion_names', emotion)
       formData.append('emotion_files', emotionFile)
@@ -659,7 +710,7 @@ const submitCreate = async () => {
     emit('created', response.data)
     emit('close')
   } catch (error: any) {
-    errorMessage.value = error?.message || '创建失败'
+    errorMessage.value = error?.message || t('settings.characterCreate.errors.createFailed')
   } finally {
     creating.value = false
   }

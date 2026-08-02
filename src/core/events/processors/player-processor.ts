@@ -16,7 +16,9 @@ export default class PlayerProcessor implements IEventProcessor {
     gameStore.currentStatus = 'responding'
 
     const displayName = event.displayName ? event.displayName : gameStore.userName
-    const displaySubtitle = event.displaySubtitle ? event.displaySubtitle : gameStore.userSubtitle
+    const displaySubtitle = event.displaySubtitle
+      ? event.displaySubtitle
+      : gameStore.userSubtitle || gameStore.userName
 
     gameStore.appendGameMessage({
       type: 'message',

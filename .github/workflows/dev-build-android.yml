@@ -8,6 +8,11 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    env:
+      CARGO_PROFILE_RELEASE_OPT_LEVEL: "0"
+      CARGO_PROFILE_RELEASE_STRIP: "true"
+
     steps:
       - uses: actions/checkout@v4
 
@@ -19,12 +24,6 @@ jobs:
         with:
           node-version: 24
           cache: 'pnpm'
-
-      - name: 设置 pnpm store 缓存
-        uses: actions/cache@v4
-        with:
-          path: ~/.pnpm-store
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: 安装 Rust
         uses: dtolnay/rust-toolchain@stable
@@ -39,7 +38,8 @@ jobs:
         with:
           workspaces: ./src-tauri
           cache-targets: true
-          shared-key: ${{ runner.os }}-main-pnpm-tauri-build-android
+          shared-key: ${{ runner.os }}-dev-pnpm-tauri-build-android
+          cache-on-failure: true
 
       - name: 安装 Linux 依赖 (Ubuntu)
         run: |
@@ -78,7 +78,7 @@ jobs:
           java-version: '21'
 
       - name: pnpm 安装依赖
-        run: pnpm i
+        run: pnpm i --frozen-lockfile
 
       - name: 生成图标
         run: |
@@ -88,6 +88,16 @@ jobs:
       - name: 准备 Android 项目
         run: |
           pnpm android:prepare
+
+      - name: 缓存 Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('src-tauri/gen/android/**/*.gradle*', 'src-tauri/gen/android/**/gradle-wrapper.properties', 'src-tauri/gen/android/gradle/libs.versions.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
 
       - name: 配置 Android 签名
         run: |

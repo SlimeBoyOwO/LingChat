@@ -33,7 +33,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
 import { useGameStore } from '../../stores/modules/game'
 import { eventQueue } from '../../core/events/event-queue'
 import { useUIStore } from '../../stores/modules/ui/ui'
@@ -85,6 +85,15 @@ watch([() => uiStore.showCharacterLine, () => gameStore.currentStatus], ([newLin
   } else if (newStatus === 'input') {
     stopTyping()
     currentDisplayedText.value = ''
+  }
+})
+
+// 模式切换重挂载：立即从 store 恢复当前台词（不重播打字动画）
+onMounted(() => {
+  const line = uiStore.showCharacterLine
+  if (line && line !== '' && gameStore.currentStatus === 'responding' && textareaRef.value) {
+    textareaRef.value.textContent = line
+    currentDisplayedText.value = line
   }
 })
 

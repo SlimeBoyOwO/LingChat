@@ -1,4 +1,4 @@
-//! 角色级 `VoiceMaker`，对应 Python `ling_chat/core/ai_service/voice_maker.py`。
+//! 角色级 `VoiceMaker`
 //!
 //! 职责：
 //! - 根据 `VoiceModel` 配置检测每种 TTS 的可用性
@@ -6,7 +6,7 @@
 //! - `generate_voice_files(segments)`：并发为每段生成音频到磁盘
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use anyhow::Result;
 use futures_util::future::join_all;
@@ -20,6 +20,8 @@ use crate::ai_service::tts::adapters::opentts::OpenTtsAdapter;
 use crate::ai_service::tts::adapters::sbv2::Sbv2Adapter;
 use crate::ai_service::tts::adapters::sbv2api::Sbv2ApiAdapter;
 use crate::ai_service::tts::adapters::vits::VitsAdapter;
+use crate::ai_service::tts::local::adapter::LocalTtsAdapter;
+use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::tts::provider::TtsProvider;
 use crate::ai_service::types::VoiceModel;
 use crate::config::tts::TtsConfig;
@@ -34,6 +36,7 @@ pub struct TtsAvailability {
     pub gsv: bool,
     pub aivis: bool,
     pub opentts: bool,
+    pub sbv2_local: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -46,6 +49,31 @@ pub struct VoiceMaker {
     audio_format: String,
     availability: TtsAvailability,
     tts_config: TtsConfig,
+    /// Local TTS 共享运行时（进程内引擎 + 路径 + 全局开关）。由
+    /// `build_voice_maker` 注入一次，`sbv2_local` 适配器惰性引导时使用。
+    local_runtime: Option<LocalTtsRuntime>,
+    local_cloud_fallback: Option<LocalCloudFallback>,
+}
+
+#[derive(Clone, Debug)]
+struct LocalCloudFallback {
+    model_name: String,
+    speaker_id: i32,
+    adapter: Arc<OnceLock<Arc<Sbv2ApiAdapter>>>,
+}
+
+impl LocalCloudFallback {
+    fn adapter(&self, api_url: &str) -> Arc<Sbv2ApiAdapter> {
+        self.adapter
+            .get_or_init(|| {
+                Arc::new(Sbv2ApiAdapter::new(
+                    api_url.to_string(),
+                    self.model_name.clone(),
+                    self.speaker_id,
+                ))
+            })
+            .clone()
+    }
 }
 
 fn non_empty(s: &Option<String>) -> bool {
@@ -103,7 +131,15 @@ impl VoiceMaker {
             audio_format,
             availability: TtsAvailability::default(),
             tts_config,
+            local_runtime: None,
+            local_cloud_fallback: None,
         }
+    }
+
+    /// 注入本地 TTS 共享运行时。由 `build_voice_maker` 在角色注册时调用，
+    /// `sbv2_local` 适配器惰性引导及云端 fallback 判断都依赖它。
+    pub fn set_local_runtime(&mut self, local_runtime: Option<LocalTtsRuntime>) {
+        self.local_runtime = local_runtime;
     }
 
     pub fn set_lang(&mut self, lang: impl Into<String>) {
@@ -150,6 +186,8 @@ impl VoiceMaker {
         // OpenTTS 可用性：角色级 voice 优先，全局 TTS 配置兜底，任一非空即可用
         let opentts =
             non_empty(&cfg.opentts_voice) || !self.tts_config.opentts_voice.trim().is_empty();
+        // Local SBV2 only needs a voice_id; engine readiness is checked later
+        let sbv2_local = non_empty(&cfg.sbv2_local_voice_id);
 
         self.availability = TtsAvailability {
             sva,
@@ -159,15 +197,15 @@ impl VoiceMaker {
             gsv,
             aivis,
             opentts,
+            sbv2_local,
         };
     }
 
-    /// 按当前 `tts_type` 初始化对应 adapter。对应 Python `set_tts_settings`。
-    ///
-    /// `name` 用于 GSV 参考音频查找；其它类型可传空串。
+    /// 按当前 `tts_type` 初始化对应 adapter。
     pub fn set_tts_settings(&mut self, cfg: &VoiceModel, tts_type: &str, name: &str) -> Result<()> {
         self.check_tts_availability(cfg);
         self.tts_type = tts_type.to_string();
+        self.local_cloud_fallback = None;
 
         match tts_type {
             "sva-vits" if self.availability.sva => {
@@ -212,6 +250,50 @@ impl VoiceMaker {
                     id,
                 )));
             }
+            "localsbv2api" if self.availability.sbv2_local => {
+                self.provider.sbv2api = None;
+                self.local_cloud_fallback = match (
+                    cfg.sbv2_local_cloud_fallback_model
+                        .clone()
+                        .filter(|v| !v.trim().is_empty()),
+                    cfg.sbv2_local_cloud_fallback_speaker_id
+                        .as_deref()
+                        .and_then(|v| v.parse::<i32>().ok()),
+                ) {
+                    (Some(model_name), Some(speaker_id)) => Some(LocalCloudFallback {
+                        model_name,
+                        speaker_id,
+                        adapter: Arc::new(OnceLock::new()),
+                    }),
+                    _ => None,
+                };
+                let runtime = match &self.local_runtime {
+                    Some(runtime) => runtime.clone(),
+                    None => {
+                        tracing::warn!(
+                            "sbv2_local 已选择但本地 TTS 运行时未注入；chat 路由将返回错误"
+                        );
+                        self.provider.disable();
+                        return Ok(());
+                    }
+                };
+                let engine = runtime.engine;
+                let paths = runtime.paths;
+                let voice_id = cfg.sbv2_local_voice_id.clone().unwrap_or_default();
+                let speaker_id = cfg.sbv2_local_speaker_id.unwrap_or(0);
+                let style_id = cfg.sbv2_local_style_id.unwrap_or(0);
+                let length_scale = cfg.sbv2_local_length_scale.unwrap_or(1.0);
+                let sdp_ratio = cfg.sbv2_local_sdp_ratio.unwrap_or(0.0);
+                self.provider.sbv2_local = Some(Arc::new(LocalTtsAdapter::with_params(
+                    engine,
+                    voice_id,
+                    style_id,
+                    speaker_id,
+                    sdp_ratio,
+                    length_scale,
+                    paths,
+                )));
+            }
             "sva-bv2" if self.availability.bv2 => {
                 let id = cfg
                     .bv2_speaker_id
@@ -226,7 +308,6 @@ impl VoiceMaker {
                 )));
             }
             "gsv" if self.availability.gsv => {
-                // 参考音频：character_path/voice/<gsv_voice_filename>
                 let ref_audio_path = match (&self.character_path, &cfg.gsv_voice_filename) {
                     (Some(base), Some(name_)) if !name_.is_empty() => {
                         base.join("voice").join(name_).to_string_lossy().to_string()
@@ -314,6 +395,12 @@ impl VoiceMaker {
                 }
             }
             "indextts2" => {
+                // IndexTTS2 仅支持中/英文：角色若残留日语配置（旧版本可选），
+                // 兜底为中文，避免日语文本被直接送去合成。
+                if self.lang == "ja" {
+                    tracing::warn!("IndexTTS2 不支持日语，voice_lang 已从 ja 兜底为 zh");
+                    self.lang = "zh".to_string();
+                }
                 self.provider.indextts = Some(Arc::new(IndexTtsAdapter::new(
                     self.tts_config.indextts_api_url.clone(),
                 )));
@@ -335,7 +422,6 @@ impl VoiceMaker {
         lang: impl Into<String>,
     ) {
         self.lang = lang.into();
-        // 清空已有 provider，按新语言重新初始化
         self.provider = TtsProvider::new(&self.audio_format);
         if let Err(e) = self.set_tts_settings(cfg, tts_type, name) {
             tracing::warn!("切换语音语言后重新初始化 TTS 失败: {e}");
@@ -343,6 +429,7 @@ impl VoiceMaker {
             tracing::info!("语音语言已切换为: {}, tts_type: {}", self.lang, tts_type);
         }
     }
+
     pub async fn generate_voice_files(&self, segments: &mut [EmotionSegment]) {
         if self.tts_type.is_empty() {
             return;
@@ -362,14 +449,30 @@ impl VoiceMaker {
         }
         tokio::fs::create_dir_all(&self.temp_dir).await.ok();
 
+        let use_cloud_fallback = self.tts_type == "localsbv2api"
+            && self
+                .local_runtime
+                .as_ref()
+                .is_some_and(|runtime| !runtime.is_enabled());
+        let fallback_adapter = if use_cloud_fallback {
+            tracing::info!(
+                "角色配置为 localsbv2api，但本地 TTS 已被全局禁用，改用独立配置的云端 fallback"
+            );
+            self.local_cloud_fallback
+                .as_ref()
+                .map(|fallback| fallback.adapter(&self.tts_config.sbv2api_api_url))
+        } else {
+            None
+        };
+
         let mut futs = Vec::new();
         for seg in segments.iter_mut() {
-            // 严格按当前设置语言选择文本；跨语言生成容易导致 TTS 输出异常，
-            // 因此目标语言无文本时直接跳过该片段的语音生成。
             let Some(text) = segment_text_for_lang(&self.lang, seg).map(str::to_owned) else {
                 continue;
             };
-            let emo = String::new();
+            // 将情绪分类器的预测标签传给 TTS 适配器（目前仅 IndexTTS2 消费 emo，
+            // 其余适配器忽略该参数，行为不变）
+            let emo = seg.predicted.clone();
 
             let file_name = if seg.voice_file.is_empty() {
                 format!(
@@ -384,8 +487,19 @@ impl VoiceMaker {
             let file_path = self.temp_dir.join(&file_name);
             seg.voice_file = file_path.to_string_lossy().to_string();
 
-            let provider = self.provider.clone();
-            let tts_type = self.tts_type.clone();
+            let mut provider = self.provider.clone();
+            let tts_type = if use_cloud_fallback {
+                if let Some(adapter) = fallback_adapter.clone() {
+                    provider.sbv2api = Some(adapter);
+                } else {
+                    tracing::warn!(
+                        "本地 TTS 已禁用，但角色未配置完整的云端 fallback 模型与说话人 ID"
+                    );
+                }
+                "sbv2api".to_string()
+            } else {
+                self.tts_type.clone()
+            };
             let index = seg.index;
             futs.push(async move {
                 if let Err(e) = provider
@@ -399,5 +513,46 @@ impl VoiceMaker {
         if !futs.is_empty() {
             join_all(futs).await;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ai_service::tts::local::engine::LocalTtsEngine;
+    use crate::ai_service::tts::local::paths::LocalTtsPaths;
+    use crate::ai_service::tts::local::LocalTtsSwitch;
+
+    #[test]
+    fn local_mode_defers_cloud_fallback_adapter_creation() {
+        let mut maker = VoiceMaker::new(PathBuf::from("voice"), "wav", TtsConfig::default());
+        maker.set_local_runtime(Some(LocalTtsRuntime::new(
+            Arc::new(LocalTtsEngine::new()),
+            LocalTtsPaths {
+                root: PathBuf::from("tts-local"),
+                assets: PathBuf::from("tts-local/assets"),
+                voices: PathBuf::from("tts-local/voices"),
+                cache: PathBuf::from("cache"),
+            },
+            LocalTtsSwitch::new(true),
+        )));
+        let cfg = VoiceModel {
+            sbv2api_name: Some("ordinary-cloud-model".into()),
+            sbv2api_speaker_id: Some("99".into()),
+            sbv2_local_voice_id: Some("local-voice".into()),
+            sbv2_local_cloud_fallback_model: Some("fallback-model".into()),
+            sbv2_local_cloud_fallback_speaker_id: Some("7".into()),
+            ..VoiceModel::default()
+        };
+
+        maker
+            .set_tts_settings(&cfg, "localsbv2api", "test")
+            .unwrap();
+
+        assert!(maker.provider.sbv2api.is_none());
+        let fallback = maker.local_cloud_fallback.as_ref().unwrap();
+        assert_eq!(fallback.model_name, "fallback-model");
+        assert_eq!(fallback.speaker_id, 7);
+        assert!(fallback.adapter.get().is_none());
     }
 }

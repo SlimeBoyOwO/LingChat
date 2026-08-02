@@ -1,39 +1,29 @@
 <template>
-  <button class="start-item" v-bind="$attrs">
+  <button
+    v-bind="$attrs"
+    class="bg-transparent
+      text-white
+      border-none
+      mt-[15px]
+      p-[5px]
+      text-[clamp(40px,4vw,72px)]
+      font-['Maoken_Assorted_Sans',-apple-system,BlinkMacSystemFont,'Segoe_UI',Roboto,'Helvetica_Neue',Arial,sans-serif]
+      cursor-pointer
+      text-justify
+      whitespace-nowrap
+      text-shadow-[0_2px_4px_rgba(0,0,0,0.3)]
+      transition-all
+      duration-300
+      ease-[cubic-bezier(0.18,0.89,0.32,1.28)]
+      hover:not-disabled:text-[#f0f0f0]
+      hover:not-disabled:text-shadow-[0_0_6px_rgba(255,255,255,0.4)]
+      hover:not-disabled:-translate-y-2
+      hover:not-disabled:scale-105
+      disabled:opacity-50
+      disabled:cursor-not-allowed
+      hover:disabled:text-white
+      hover:disabled:text-shadow-[0_2px_4px_rgba(0,0,0,0.5)]"
+  >
     <slot />
   </button>
 </template>
-
-<style scoped>
-.start-item {
-  background: transparent;
-  color: white;
-  border: none;
-  margin-top: 15px;
-  padding: 5px;
-  font-size: clamp(40px, 4vw, 72px);
-  font-family: 'Maoken Assorted Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    'Helvetica Neue', Arial, sans-serif;
-  cursor: pointer;
-  text-align: justify;
-  white-space: nowrap;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-  transition: all 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
-}
-
-.start-item:hover:not(:disabled) {
-  color: #f0f0f0;
-  text-shadow: 0 0 6px rgba(255, 255, 255, 0.4);
-  transform: translateY(-8px) scale(1.05);
-}
-
-.start-item:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.start-item:hover:disabled {
-  color: white;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-}
-</style>

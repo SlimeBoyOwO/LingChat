@@ -7,6 +7,7 @@ pub mod character;
 pub mod chat;
 pub mod font;
 pub mod game;
+pub mod locale;
 pub mod music;
 pub mod pet;
 pub mod save;
@@ -14,6 +15,7 @@ pub mod scene;
 pub mod schedule;
 pub mod screenshot;
 pub mod script;
+pub mod script_editor;
 pub mod settings;
 pub mod workshop;
 

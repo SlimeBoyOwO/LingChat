@@ -22,7 +22,7 @@
         class="flex items-center gap-1 mt-2 text-sm px-5"
         style="color: white; -webkit-text-stroke: 1px black; paint-order: stroke fill"
       >
-        💡 这里的设置重启软件生效哦！
+        {{ $t('settings.advanceOther.restartHint') }}
       </div>
 
       <div
@@ -32,7 +32,7 @@
       >
         <span
           class="text-base font-bold px-3.75 py-2.5 block rounded-lg mb-1 text-brand bg-white/10 backdrop-blur-xl backdrop-saturate-150 border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.1),inset_0_1px_1px_rgba(255,255,255,0.1)]"
-        >{{ categoryName }}</span>
+        >{{ catLabel(categoryName) }}</span>
         <a
           v-for="(, subcategoryName) in categoryData.subcategories"
           :key="subcategoryName"
@@ -43,7 +43,7 @@
           }"
           @click.prevent="selectSubcategory(categoryName, subcategoryName.toString())"
         >
-          {{ subcategoryName }}
+          {{ subLabel(subcategoryName) }}
         </a>
       </div>
     </nav>
@@ -64,18 +64,18 @@
         @click="narrowViewLevel = 'menu'"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-        返回设置列表
+        {{ $t('settings.advanceOther.backToList') }}
       </button>
       <div v-if="selectedSubcategory" class="w-full active">
         <div class="pt-2.5 overflow-auto">
           <header class="pb-4 mb-6 border-b border-brand">
             <h2 class="m-0 text-2xl text-brand font-semibold">
-              {{ activeSelection.subcategory }}
+              {{ subLabel(activeSelection.subcategory ?? '') }}
             </h2>
             <p class="mt-2 text-base">
               {{
-                selectedSubcategory.description ||
-                `修改 ${activeSelection.subcategory} 的相关配置`
+                subDesc(activeSelection.subcategory ?? '', selectedSubcategory.description) ||
+                $t('settings.advanceOther.subcategoryDesc', { name: subLabel(activeSelection.subcategory ?? '') })
               }}
             </p>
           </header>
@@ -87,7 +87,7 @@
               class="mb-6"
             >
               <SettingItem
-                :setting="setting"
+                :setting="localizedSetting(setting)"
                 @update:value="(value) => (setting.value = value)"
               />
             </div>
@@ -97,13 +97,13 @@
             v-if="activeSelection.category === 'TTS 配置'"
             class="mb-6 rounded-xl border border-white/10 bg-black/15 p-4"
           >
-            <h3 class="mb-1 text-base font-semibold text-white">TTS 连接控制</h3>
+            <h3 class="mb-1 text-base font-semibold text-white">{{ $t('settings.advanceOther.ttsControl.title') }}</h3>
             <p class="mb-3 text-sm leading-6 text-white/65">
-              TTS 服务重启后，可在这里解除离线状态并让下一次语音立即重新连接。模型、语言或接口参数错误导致的 HTTP 400 仍需修正对应配置。
+              {{ $t('settings.advanceOther.ttsControl.desc') }}
             </p>
             <Button type="big" :disabled="isReconnectingTts" @click="forceReconnectTts">
               <RefreshCw :size="18" :class="{ 'animate-spin': isReconnectingTts }" />
-              {{ isReconnectingTts ? '正在重新连接…' : '强制重新连接 TTS' }}
+              {{ isReconnectingTts ? $t('settings.advanceOther.ttsControl.reconnecting') : $t('settings.advanceOther.ttsControl.forceReconnect') }}
             </Button>
             <p
               v-if="reconnectStatus.message"
@@ -122,7 +122,7 @@
             <button
               class="bg-transparent border-none text-white cursor-pointer p-0 m-0 w-full h-full"
             >
-              保存
+              {{ $t('settings.advanceOther.saveButton') }}
             </button>
             <p
               :class="saveStatus.colorClass"
@@ -136,8 +136,8 @@
       <div v-else-if="!isLoading && !Object.keys(configData).length" class="w-full active">
         <div class="advanced-settings-container">
           <header>
-            <h2 class="adv-title">加载失败</h2>
-            <p class="adv-description">无法加载配置或配置为空。</p>
+            <h2 class="adv-title">{{ $t('settings.advanceOther.loadFailed') }}</h2>
+            <p class="adv-description">{{ $t('settings.advanceOther.loadFailedDesc') }}</p>
           </header>
         </div>
       </div>
@@ -147,6 +147,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, reactive, watch, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import SettingItem from '@/components/base/items/SettingItem.vue'
 import { Button } from '@/components/base'
@@ -157,6 +158,26 @@ import { RefreshCw } from 'lucide-vue-next'
 
 // --- 响应式状态定义 ---
 const uiStore = useUIStore()
+const { t, te } = useI18n()
+
+// 后端配置树的分类/子类/设置项描述均为中文（config/tree.rs），
+// 这里按名称/键查 i18n 词条做界面日文化；查不到时回退后端原文。
+const catLabel = (name: string) =>
+  te(`settings.advanceOther.categories.${name}`) ? t(`settings.advanceOther.categories.${name}`) : name
+const subLabel = (name: string) =>
+  te(`settings.advanceOther.subcategories.${name}`)
+    ? t(`settings.advanceOther.subcategories.${name}`)
+    : name
+const subDesc = (name: string, fallback: string) =>
+  te(`settings.advanceOther.subcategoryDescs.${name}`)
+    ? t(`settings.advanceOther.subcategoryDescs.${name}`)
+    : fallback
+const localizedSetting = (setting: any) => ({
+  ...setting,
+  description: te(`settings.advanceOther.fields.${setting.key}`)
+    ? t(`settings.advanceOther.fields.${setting.key}`)
+    : setting.description,
+})
 const narrowViewLevel = ref<'menu' | 'content'>('menu')
 const isLoading = ref(false)
 const configData = ref<Record<string, any>>({})
@@ -226,7 +247,7 @@ const saveSettings = async () => {
 
     await loadConfig(false)
   } catch (error: any) {
-    saveStatus.message = `错误: ${error.message}`
+    saveStatus.message = t('settings.advanceOther.msg.error', { error: error.message })
     saveStatus.colorClass = 'text-red-500'
   } finally {
     isLoading.value = false
@@ -240,7 +261,7 @@ const forceReconnectTts = async () => {
   if (isReconnectingTts.value) return
 
   isReconnectingTts.value = true
-  reconnectStatus.message = '正在重新启用 TTS 服务…'
+  reconnectStatus.message = t('settings.advanceOther.msg.ttsReactivating')
   reconnectStatus.colorClass = 'text-white/70'
   if (reconnectStatusTimer) {
     clearTimeout(reconnectStatusTimer)
@@ -249,11 +270,11 @@ const forceReconnectTts = async () => {
 
   try {
     await reactivateTTS()
-    reconnectStatus.message = 'TTS 已重新启用，下一次语音会立即重试连接。'
+    reconnectStatus.message = t('settings.advanceOther.msg.ttsReactivated')
     reconnectStatus.colorClass = 'text-green-400'
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error)
-    reconnectStatus.message = `重新连接失败：${message}`
+    reconnectStatus.message = t('settings.advanceOther.msg.ttsReconnectFailed', { error: message })
     reconnectStatus.colorClass = 'text-red-400'
   } finally {
     isReconnectingTts.value = false
@@ -283,7 +304,7 @@ const loadConfig = async (selectFirst = true) => {
     }
   } catch (error: any) {
     console.error(error)
-    saveStatus.message = `加载配置失败: ${error.message}`
+    saveStatus.message = t('settings.advanceOther.msg.loadConfigFailed', { error: error.message })
     saveStatus.colorClass = 'text-red-500'
   } finally {
     isLoading.value = false

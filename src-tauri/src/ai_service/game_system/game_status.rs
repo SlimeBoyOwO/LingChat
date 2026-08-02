@@ -49,6 +49,13 @@ pub struct GameStatus {
     /// 当前激活的存档 ID（用于 MemoryBank 持久化/载入/自动压缩）
     pub active_save_id: Option<i32>,
 
+    /// 试玩会话代号。每次试玩「进来备份 / 走时还原」都会递增；
+    /// 消息生成管线在写入台词前比对捕获值与当前值，不一致即视为已过期
+    /// （试玩任务被中止后，游离的流式任务可能仍在写）——直接丢弃，保证
+    /// 试玩内容不会漏进已还原的自由对话会话。自由对话本身不递增，恒等比对，
+    /// 行为不受影响。
+    pub preview_generation: u64,
+
     /// 标记玩家是否已在本会话中入场（内存标记，重启重置）。
     /// 用于防止重复触发入场问候。
     pub player_entered: bool,
@@ -78,6 +85,7 @@ impl GameStatus {
             last_dialog_time: None,
             script_status: None,
             active_save_id: None,
+            preview_generation: 0,
             player_entered: false,
             scene_awareness_enabled: true,
         }
