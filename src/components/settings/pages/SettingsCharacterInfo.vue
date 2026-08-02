@@ -283,10 +283,11 @@ interface FieldSchema {
   parent?: string
 }
 
-const fieldOptions = (field: FieldSchema) => {
-  return (field.options || []).filter(
-    (option) => !option.visibleIf || option.visibleIf(localSettings.value),
-  )
+const resolveFieldOptions = (field: FieldSchema) => {
+  const options: FieldOption[] = field.dynamicOptions
+    ? field.dynamicOptions()
+    : (field.options ?? [])
+  return options.filter((option) => !option.visibleIf || option.visibleIf(localSettings.value))
 }
 
 const schemas = computed<Record<string, FieldSchema[]>>(() => ({
@@ -350,7 +351,7 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
         {
           label: t('settings.characterInfo.voiceLangOptions.en'),
           value: 'en',
-          visibleIf: (s) => ['gsv', 'opentts', 'sbv2', 'indextts2'].includes(s.tts_type),
+          visibleIf: (s) => ['gsv', 'opentts', 'sbv2', 'sbv2api', 'indextts2'].includes(s.tts_type),
         },
         {
           label: t('settings.characterInfo.voiceLangOptions.ko'),
@@ -546,13 +547,6 @@ const currentTabConfig = computed(() => schemas.value[activeTab.value])
 const currentTabFields = computed(() => {
   return currentTabConfig.value || []
 })
-
-const resolveFieldOptions = (field: FieldSchema) => {
-  if (field.dynamicOptions) {
-    return field.dynamicOptions()
-  }
-  return field.options ?? []
-}
 
 const ensureVoiceModels = () => {
   if (
