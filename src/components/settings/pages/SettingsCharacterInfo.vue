@@ -199,7 +199,6 @@
 
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
-import {  onUnmounted, ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getRoleSettings, updateRoleSettings } from '../../../api/services/character'
 import { Icon } from '../../base'

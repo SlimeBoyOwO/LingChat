@@ -40,8 +40,8 @@
       </StartItem>
       <!-- 返回按钮 -->
       <StartItem @click="emit('back')">{{ $t('views.menu.back') }}</StartItem>
-    </div>
-  </nav>
+    </StartLine>
+  </StartList>
 </template>
 
 <script setup lang="ts">
