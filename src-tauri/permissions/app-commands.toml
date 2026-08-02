@@ -139,5 +139,18 @@ commands.allow = [
   "editor_import_global_character",
   "editor_stop_preview",
   "editor_open_script_folder",
+  "editor_agent_get_settings",
+  "editor_agent_save_settings",
+  "editor_agent_get_default_dirs",
+  "editor_agent_list_skills",
+  "editor_agent_read_skill",
+  "editor_agent_create_conversation",
+  "editor_agent_list_conversations",
+  "editor_agent_delete_conversation",
+  "editor_agent_get_messages",
+  "editor_agent_clear_conversation",
+  "editor_agent_start_chat",
+  "editor_agent_stop_chat",
+  "editor_agent_resolve_approval",
 ]
 commands.deny = []
