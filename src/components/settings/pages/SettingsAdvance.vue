@@ -10,7 +10,7 @@
             : 'text-white/60 hover:text-white/80'"
           @click="advanceTab = 'menu'"
         >
-          主菜单
+          {{ $t('advance.tabs.menu') }}
         </button>
         <button
           class="px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200"
@@ -19,7 +19,7 @@
             : 'text-white/60 hover:text-white/80'"
           @click="advanceTab = 'llm'"
         >
-          大模型管理
+          {{ $t('advance.tabs.llm') }}
         </button>
         <button
           class="px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200"
@@ -37,7 +37,7 @@
             : 'text-white/60 hover:text-white/80'"
           @click="advanceTab = 'other'"
         >
-          其他高级设置
+          {{ $t('advance.tabs.other') }}
         </button>
       </div>
 

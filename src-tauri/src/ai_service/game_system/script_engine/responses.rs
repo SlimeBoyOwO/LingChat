@@ -71,6 +71,9 @@ pub struct BackgroundEffectPayload {
 #[serde(rename_all = "camelCase")]
 pub struct MusicPayload {
     pub music_path: String,
+    /// 播放速度倍率（1.0 原速）；None 表示未设置，前端按 1.0 处理
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub playback_speed: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -145,4 +148,9 @@ pub struct FreeDialoguePayload {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ScriptEndPayload {}
+pub struct ScriptEndPayload {
+    /// `false` when the script was torn down because of an error rather than
+    /// reaching its end. The frontend must not credit the player with an
+    /// adventure completion in that case.
+    pub completed: bool,
+}

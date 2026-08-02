@@ -10,7 +10,7 @@
       "
     >
       <div class="flex items-center justify-between mb-4 shrink-0">
-        <h3 class="text-white text-base font-semibold">已配置的模型</h3>
+        <h3 class="text-white text-base font-semibold">{{ $t('settings.llmProviders.list.title') }}</h3>
         <div class="flex items-center gap-2">
           <button
             class="px-4 py-2 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg text-sm font-medium hover:bg-amber-500/30 transition-colors flex items-center gap-1.5"
@@ -29,19 +29,19 @@
                 d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
               />
             </svg>
-            重启软件
+            {{ $t('settings.llmProviders.list.restartApp') }}
           </button>
           <button
             class="px-4 py-2 bg-brand text-white rounded-lg text-sm font-medium hover:bg-brand/80 transition-colors"
             @click="startAdd"
           >
-            + 添加模型
+            + {{ $t('settings.llmProviders.list.addModel') }}
           </button>
         </div>
       </div>
 
       <div v-if="store.providers.length === 0" class="text-white/50 text-base py-8 text-center">
-        暂无配置的模型，点击"添加模型"开始配置
+        {{ $t('settings.llmProviders.list.empty') }}
       </div>
       <div v-else class="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0">
         <div
@@ -55,13 +55,13 @@
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-1">
               <span class="text-[15px] font-semibold text-white truncate">{{
-                p.label || '(未命名)'
+                p.label || $t('settings.llmProviders.list.unnamed')
               }}</span>
               <span class="text-xs px-2 py-0.5 rounded bg-brand/20 text-brand/90">{{
                 p.provider
               }}</span>
             </div>
-            <div class="text-sm text-white/40 truncate">{{ p.model || '未设置模型' }}</div>
+            <div class="text-sm text-white/40 truncate">{{ p.model || $t('settings.llmProviders.list.modelNotSet') }}</div>
           </div>
 
           <!-- Role badges -->
@@ -69,12 +69,12 @@
             <span
               v-if="store.chatProviderId === p.id"
               class="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-300 border border-green-500/30"
-              >对话</span
+              >{{ $t('settings.llmProviders.role.chat') }}</span
             >
             <span
               v-if="store.translateProviderId === p.id"
               class="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30"
-              >翻译</span
+              >{{ $t('settings.llmProviders.role.translate') }}</span
             >
             <span
               v-if="store.godAgentProviderId === p.id"
@@ -84,7 +84,7 @@
             <span
               v-if="store.visionProviderId === p.id"
               class="text-xs px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30"
-              >视觉</span
+              >{{ $t('settings.llmProviders.role.vision') }}</span
             >
           </div>
 
@@ -94,19 +94,19 @@
               class="px-3 py-1.5 text-sm rounded-lg bg-white/10 text-white/70 hover:bg-white/20 hover:text-white transition-colors"
               @click="startEdit(p)"
             >
-              编辑
+              {{ $t('settings.llmProviders.action.edit') }}
             </button>
             <button
               class="px-3 py-1.5 text-sm rounded-lg bg-white/10 text-white/70 hover:bg-blue-500/20 hover:text-blue-300 transition-colors"
               @click="startTest(p)"
             >
-              测试
+              {{ $t('settings.llmProviders.action.test') }}
             </button>
             <button
               class="px-3 py-1.5 text-sm rounded-lg bg-white/10 text-white/70 hover:bg-red-500/20 hover:text-red-300 transition-colors"
               @click="confirmDelete(p)"
             >
-              删除
+              {{ $t('settings.llmProviders.action.delete') }}
             </button>
           </div>
         </div>
@@ -116,21 +116,21 @@
       <div class="mt-4 pt-4 border-t border-white/10 shrink-0">
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div class="flex flex-col gap-1.5">
-            <label class="text-xs font-medium text-white/60">对话模型</label>
+            <label class="text-xs font-medium text-white/60">{{ $t('settings.llmProviders.role.chatModel') }}</label>
             <div class="relative">
               <select
                 :value="store.chatProviderId"
                 @change="onChatRoleChange(($event.target as HTMLSelectElement).value)"
                 class="w-full appearance-none pl-3 pr-8 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors cursor-pointer"
               >
-                <option :value="null" class="bg-gray-800 text-white">未选择</option>
+                <option :value="null" class="bg-gray-800 text-white">{{ $t('settings.llmProviders.role.notSelected') }}</option>
                 <option
                   v-for="p in store.providers"
                   :key="p.id"
                   :value="p.id"
                   class="bg-gray-800 text-white"
                 >
-                  {{ p.label || p.model || '(未命名)' }}
+                  {{ p.label || p.model || $t('settings.llmProviders.list.unnamed') }}
                 </option>
               </select>
               <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5">
@@ -151,21 +151,21 @@
             </div>
           </div>
           <div class="flex flex-col gap-1.5">
-            <label class="text-xs font-medium text-white/60">翻译模型</label>
+            <label class="text-xs font-medium text-white/60">{{ $t('settings.llmProviders.role.translateModel') }}</label>
             <div class="relative">
               <select
                 :value="store.translateProviderId ?? '__follow__'"
                 @change="onTranslateRoleChange(($event.target as HTMLSelectElement).value)"
                 class="w-full appearance-none pl-3 pr-8 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors cursor-pointer"
               >
-                <option value="__follow__" class="bg-gray-800 text-white">跟随对话模型</option>
+                <option value="__follow__" class="bg-gray-800 text-white">{{ $t('settings.llmProviders.role.followChat') }}</option>
                 <option
                   v-for="p in store.providers"
                   :key="p.id"
                   :value="p.id"
                   class="bg-gray-800 text-white"
                 >
-                  {{ p.label || p.model || '(未命名)' }}
+                  {{ p.label || p.model || $t('settings.llmProviders.list.unnamed') }}
                 </option>
               </select>
               <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5">
@@ -186,21 +186,21 @@
             </div>
           </div>
           <div class="flex flex-col gap-1.5">
-            <label class="text-xs font-medium text-white/60">上帝Agent</label>
+            <label class="text-xs font-medium text-white/60">{{ $t('settings.llmProviders.role.godAgent') }}</label>
             <div class="relative">
               <select
                 :value="store.godAgentProviderId ?? '__follow__'"
                 @change="onGodAgentRoleChange(($event.target as HTMLSelectElement).value)"
                 class="w-full appearance-none pl-3 pr-8 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors cursor-pointer"
               >
-                <option value="__follow__" class="bg-gray-800 text-white">跟随对话模型</option>
+                <option value="__follow__" class="bg-gray-800 text-white">{{ $t('settings.llmProviders.role.followChat') }}</option>
                 <option
                   v-for="p in store.providers"
                   :key="p.id"
                   :value="p.id"
                   class="bg-gray-800 text-white"
                 >
-                  {{ p.label || p.model || '(未命名)' }}
+                  {{ p.label || p.model || $t('settings.llmProviders.list.unnamed') }}
                 </option>
               </select>
               <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5">
@@ -221,21 +221,21 @@
             </div>
           </div>
           <div class="flex flex-col gap-1.5">
-            <label class="text-xs font-medium text-white/60">视觉模型</label>
+            <label class="text-xs font-medium text-white/60">{{ $t('settings.llmProviders.role.visionModel') }}</label>
             <div class="relative">
               <select
                 :value="store.visionProviderId ?? '__follow__'"
                 @change="onVisionRoleChange(($event.target as HTMLSelectElement).value)"
                 class="w-full appearance-none pl-3 pr-8 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors cursor-pointer"
               >
-                <option value="__follow__" class="bg-gray-800 text-white">跟随对话模型</option>
+                <option value="__follow__" class="bg-gray-800 text-white">{{ $t('settings.llmProviders.role.followChat') }}</option>
                 <option
                   v-for="p in store.providers"
                   :key="p.id"
                   :value="p.id"
                   class="bg-gray-800 text-white"
                 >
-                  {{ p.label || p.model || '(未命名)' }}
+                  {{ p.label || p.model || $t('settings.llmProviders.list.unnamed') }}
                 </option>
               </select>
               <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5">
@@ -290,17 +290,21 @@
                   d="M15 19l-7-7 7-7"
                 />
               </svg>
-              返回模型列表
+              {{ $t('settings.llmProviders.panel.backToList') }}
             </button>
           </template>
           <template v-else>
             <h3 class="text-white text-base font-semibold">
               <template v-if="sidePanel === 'edit'">{{
-                editing.id ? '编辑模型' : '添加模型'
+                editing.id
+                  ? $t('settings.llmProviders.panel.editTitle')
+                  : $t('settings.llmProviders.panel.addTitle')
               }}</template>
-              <template v-else
-                >测试 {{ testProvider?.label || testProvider?.model || '' }}</template
-              >
+              <template v-else>{{
+                $t('settings.llmProviders.panel.testTitle', {
+                  name: testProvider?.label || testProvider?.model || '',
+                })
+              }}</template>
             </h3>
             <button
               class="text-white/50 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10"
@@ -326,7 +330,7 @@
           >
             <!-- Presets -->
             <div class="flex flex-col gap-2">
-              <label class="text-xs font-medium text-white/60">预设（快速配置）</label>
+              <label class="text-xs font-medium text-white/60">{{ $t('settings.llmProviders.form.presets') }}</label>
               <div class="flex flex-wrap gap-2">
                 <button
                   v-for="preset in presets"
@@ -349,18 +353,18 @@
 
             <!-- Label -->
             <div class="flex flex-col gap-1">
-              <label class="text-xs font-medium text-white/60">名称</label>
+              <label class="text-xs font-medium text-white/60">{{ $t('settings.llmProviders.form.label') }}</label>
               <input
                 v-model="editing.label"
                 type="text"
-                placeholder="例如: DeepSeek V3"
+                :placeholder="$t('settings.llmProviders.form.labelPlaceholder')"
                 class="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors placeholder:text-white/20"
               />
             </div>
 
             <!-- Provider type -->
             <div class="flex flex-col gap-1">
-              <label class="text-xs font-medium text-white/60">提供商类型</label>
+              <label class="text-xs font-medium text-white/60">{{ $t('settings.llmProviders.form.providerType') }}</label>
               <div class="relative">
                 <select
                   v-model="editing.provider"
@@ -369,9 +373,9 @@
                 >
                   <option value="deepseek" class="bg-gray-800 text-white">DeepSeek</option>
                   <option value="openai" class="bg-gray-800 text-white">
-                    OpenAI 兼容
+                    {{ $t('settings.llmProviders.form.providerOpenai') }}
                   </option>
-                  <option value="lmstudio" class="bg-gray-800 text-white">LM Studio（本地）</option>
+                  <option value="lmstudio" class="bg-gray-800 text-white">{{ $t('settings.llmProviders.form.providerLmstudio') }}</option>
                   <option value="gemini" class="bg-gray-800 text-white">Gemini</option>
                   <option value="kimicode" class="bg-gray-800 text-white">
                     Kimi Code (kimi-for-coding)
@@ -399,14 +403,14 @@
 
             <!-- Model -->
             <div v-if="editing.provider !== 'kimicode'" class="flex flex-col gap-1">
-              <label class="text-xs font-medium text-white/60">模型名称</label>
+              <label class="text-xs font-medium text-white/60">{{ $t('settings.llmProviders.form.modelName') }}</label>
               <input
                 v-model="editing.model"
                 type="text"
                 :placeholder="
                   editing.provider === 'lmstudio'
-                    ? '如: llama-3.2-3b-instruct'
-                    : '如: gpt-4o'
+                    ? $t('settings.llmProviders.form.modelPlaceholderLmstudio')
+                    : $t('settings.llmProviders.form.modelPlaceholderDefault')
                 "
                 class="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors placeholder:text-white/20"
               />
@@ -414,7 +418,7 @@
 
             <!-- Kimi Code model discovery -->
             <div v-else class="flex flex-col gap-1">
-              <label class="text-xs font-medium text-white/60">模型名称</label>
+              <label class="text-xs font-medium text-white/60">{{ $t('settings.llmProviders.form.modelName') }}</label>
               <div class="flex gap-2">
                 <div v-if="availableModels.length > 0" class="relative flex-1 min-w-0">
                   <select
@@ -461,7 +465,7 @@
                   :disabled="loadingModels || !editing.api_key.trim()"
                   @click="fetchProviderModels"
                 >
-                  {{ loadingModels ? '获取中...' : '自动获取' }}
+                  {{ loadingModels ? $t('settings.llmProviders.form.fetchingModels') : $t('settings.llmProviders.form.fetchModels') }}
                 </button>
               </div>
               <p
@@ -475,13 +479,13 @@
 
             <!-- Reasoning effort（按模型能力显示） -->
             <div v-if="showReasoningEffort" class="flex flex-col gap-1">
-              <label class="text-xs font-medium text-white/60">推理深度（部分模型支持）</label>
+              <label class="text-xs font-medium text-white/60">{{ $t('settings.llmProviders.form.reasoningEffort') }}</label>
               <div class="relative">
                 <select
                   v-model="editing.reasoning_effort"
                   class="w-full appearance-none pl-3 pr-8 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors cursor-pointer"
                 >
-                  <option :value="null" class="bg-gray-800 text-white">默认（跟随模型）</option>
+                  <option :value="null" class="bg-gray-800 text-white">{{ $t('settings.llmProviders.form.reasoningDefault') }}</option>
                   <option
                     v-for="effort in reasoningEffortOptions"
                     :key="effort"
@@ -513,7 +517,7 @@
 
             <!-- API Key -->
             <div class="flex flex-col gap-1">
-              <label class="text-xs font-medium text-white/60">API 密钥</label>
+              <label class="text-xs font-medium text-white/60">{{ $t('settings.llmProviders.form.apiKey') }}</label>
               <input
                 v-model="editing.api_key"
                 type="password"
@@ -524,7 +528,7 @@
 
             <!-- Base URL -->
             <div v-if="editing.provider !== 'kimicode'" class="flex flex-col gap-1">
-              <label class="text-xs font-medium text-white/60">API 地址</label>
+              <label class="text-xs font-medium text-white/60">{{ $t('settings.llmProviders.form.baseUrl') }}</label>
               <input
                 v-model="editing.base_url"
                 type="text"
@@ -542,7 +546,7 @@
 
             <!-- Temperature -->
             <div class="flex flex-col gap-1">
-              <label class="text-xs font-medium text-white/60">Temperature（留空使用默认）</label>
+              <label class="text-xs font-medium text-white/60">{{ $t('settings.llmProviders.form.temperature') }}</label>
               <input
                 v-model.number="editing.temperature"
                 type="number"
@@ -555,7 +559,7 @@
 
             <!-- Top P -->
             <div class="flex flex-col gap-1">
-              <label class="text-xs font-medium text-white/60">Top P（留空使用默认）</label>
+              <label class="text-xs font-medium text-white/60">{{ $t('settings.llmProviders.form.topP') }}</label>
               <input
                 v-model.number="editing.top_p"
                 type="number"
@@ -568,7 +572,7 @@
 
             <!-- Enable thinking -->
             <label class="flex items-center gap-3 cursor-pointer">
-              <span class="text-xs font-medium text-white/60">启用思考链（部分模型支持）</span>
+              <span class="text-xs font-medium text-white/60">{{ $t('settings.llmProviders.form.enableThinking') }}</span>
               <div class="relative">
                 <input v-model="editing.enable_thinking" type="checkbox" class="sr-only peer" />
                 <div
@@ -586,14 +590,14 @@
                 type="submit"
                 class="px-5 py-2 bg-brand text-white rounded-lg text-sm font-medium hover:bg-brand/80 transition-colors"
               >
-                保存
+                {{ $t('settings.llmProviders.form.save') }}
               </button>
               <button
                 type="button"
                 class="px-5 py-2 bg-white/10 text-white/70 rounded-lg text-sm hover:bg-white/20 transition-colors"
                 @click="closePanel"
               >
-                取消
+                {{ $t('settings.llmProviders.form.cancel') }}
               </button>
             </div>
 
@@ -614,7 +618,7 @@
               <input
                 v-model="testMessage"
                 type="text"
-                placeholder="输入测试消息..."
+                :placeholder="$t('settings.llmProviders.test.placeholder')"
                 class="flex-1 px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm outline-none focus:border-brand transition-colors placeholder:text-white/20"
                 @keydown.enter="doTest"
               />
@@ -623,7 +627,7 @@
                 :disabled="testing || !testMessage.trim()"
                 @click="doTest"
               >
-                {{ testing ? '测试中...' : '发送' }}
+                {{ testing ? $t('settings.llmProviders.test.testing') : $t('settings.llmProviders.test.send') }}
               </button>
             </div>
 
@@ -634,7 +638,7 @@
                 <div
                   class="w-4 h-4 border-2 border-white/20 border-t-brand rounded-full animate-spin"
                 ></div>
-                等待响应...
+                {{ $t('settings.llmProviders.test.waiting') }}
               </div>
               <div v-else-if="testError" class="text-red-400 text-sm whitespace-pre-wrap">
                 {{ testError }}
@@ -645,7 +649,7 @@
               >
                 {{ testResponse }}
               </div>
-              <div v-else class="text-white/30 text-sm">输入消息并点击发送，测试模型响应</div>
+              <div v-else class="text-white/30 text-sm">{{ $t('settings.llmProviders.test.hint') }}</div>
             </div>
           </div>
         </template>
@@ -665,9 +669,11 @@ import {
   type LlmModelInfo,
   type LlmProviderConfig,
 } from '@/api/services/llm-providers'
+import { useI18n } from 'vue-i18n'
 
 const store = useLlmProvidersStore()
 const uiStore = useUIStore()
+const { t } = useI18n()
 
 // ---- 预设 ----
 interface LlmPreset {
@@ -790,14 +796,14 @@ const reasoningEffortOptions = computed<string[]>(() => {
 })
 const showReasoningEffort = computed(() => reasoningEffortOptions.value.length > 0)
 
-const EFFORT_LABELS: Record<string, string> = {
-  low: 'Low（低）',
-  medium: 'Medium（中）',
-  high: 'High（高）',
-  max: 'Max（最强）',
-}
 function effortLabel(effort: string): string {
-  return EFFORT_LABELS[effort] ?? effort
+  const labels: Record<string, string> = {
+    low: t('settings.llmProviders.form.effortLow'),
+    medium: t('settings.llmProviders.form.effortMedium'),
+    high: t('settings.llmProviders.form.effortHigh'),
+    max: t('settings.llmProviders.form.effortMax'),
+  }
+  return labels[effort] ?? effort
 }
 
 // 切到不可调档的模型/提供商时清掉已选档位，避免残留值被静默发往其他模型；
@@ -877,18 +883,19 @@ function startEdit(p: LlmProviderConfig) {
 }
 
 function confirmDelete(p: LlmProviderConfig) {
-  if (!confirm(`确定删除模型 "${p.label || p.model || '(未命名)'}"？`)) return
+  const name = p.label || p.model || t('settings.llmProviders.list.unnamed')
+  if (!confirm(t('settings.llmProviders.msg.confirmDelete', { name }))) return
   deleteProvider(p.id)
 }
 
 async function deleteProvider(id: string) {
   try {
     await store.deleteProvider(id)
-    saveMessage.value = '已删除'
+    saveMessage.value = t('settings.llmProviders.msg.deleted')
     saveError.value = false
     if (editing.id === id) closePanel()
   } catch (e: any) {
-    saveMessage.value = `删除失败: ${e}`
+    saveMessage.value = t('settings.llmProviders.msg.deleteFailed', { error: e })
     saveError.value = true
   }
 }
@@ -898,7 +905,7 @@ async function saveCurrent() {
   saveError.value = false
   try {
     await store.saveProvider({ ...editing })
-    saveMessage.value = '保存成功！'
+    saveMessage.value = t('settings.llmProviders.msg.saveSuccess')
     const saved = store.providers.find(
       (p) => p.label === editing.label && p.model === editing.model,
     )
@@ -906,7 +913,7 @@ async function saveCurrent() {
       editing.id = saved.id
     }
   } catch (e: any) {
-    saveMessage.value = `保存失败: ${e}`
+    saveMessage.value = t('settings.llmProviders.msg.saveFailed', { error: e })
     saveError.value = true
   }
 }
@@ -914,7 +921,7 @@ async function saveCurrent() {
 async function fetchProviderModels() {
   if (loadingModels.value) return
   if (!editing.api_key.trim()) {
-    modelsMessage.value = '请先填写 API 密钥'
+    modelsMessage.value = t('settings.llmProviders.msg.apiKeyRequired')
     modelsError.value = true
     return
   }
@@ -928,12 +935,12 @@ async function fetchProviderModels() {
     if (!models.some((model) => model.id === editing.model)) {
       editing.model = models[0]?.id ?? editing.model
     }
-    modelsMessage.value = `已获取 ${models.length} 个可用模型`
+    modelsMessage.value = t('settings.llmProviders.msg.modelsFetched', { count: models.length })
   } catch (error: any) {
     availableModels.value = []
-    modelsMessage.value = `获取失败: ${
-      typeof error === 'string' ? error : error?.message || JSON.stringify(error)
-    }`
+    modelsMessage.value = t('settings.llmProviders.msg.fetchFailed', {
+      error: typeof error === 'string' ? error : error?.message || JSON.stringify(error),
+    })
     modelsError.value = true
   } finally {
     loadingModels.value = false
@@ -943,10 +950,10 @@ async function fetchProviderModels() {
 async function onChatRoleChange(value: string) {
   try {
     await store.assignRole('chat', value || null)
-    saveMessage.value = '对话模型已切换并生效！'
+    saveMessage.value = t('settings.llmProviders.msg.chatSwitched')
     saveError.value = false
   } catch (e: any) {
-    saveMessage.value = `切换失败: ${e}`
+    saveMessage.value = t('settings.llmProviders.msg.switchFailed', { error: e })
     saveError.value = true
     console.error('Failed to set chat role:', e)
   }
@@ -955,10 +962,10 @@ async function onChatRoleChange(value: string) {
 async function onTranslateRoleChange(value: string) {
   try {
     await store.assignRole('translate', value === '__follow__' ? null : value)
-    saveMessage.value = '翻译模型已切换并生效！'
+    saveMessage.value = t('settings.llmProviders.msg.translateSwitched')
     saveError.value = false
   } catch (e: any) {
-    saveMessage.value = `切换失败: ${e}`
+    saveMessage.value = t('settings.llmProviders.msg.switchFailed', { error: e })
     saveError.value = true
     console.error('Failed to set translate role:', e)
   }
@@ -967,10 +974,10 @@ async function onTranslateRoleChange(value: string) {
 async function onGodAgentRoleChange(value: string) {
   try {
     await store.assignRole('god_agent', value === '__follow__' ? null : value)
-    saveMessage.value = '上帝Agent已切换并生效！'
+    saveMessage.value = t('settings.llmProviders.msg.godAgentSwitched')
     saveError.value = false
   } catch (e: any) {
-    saveMessage.value = `切换失败: ${e}`
+    saveMessage.value = t('settings.llmProviders.msg.switchFailed', { error: e })
     saveError.value = true
     console.error('Failed to set god_agent role:', e)
   }

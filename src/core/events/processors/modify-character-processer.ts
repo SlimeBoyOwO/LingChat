@@ -23,7 +23,9 @@ export default class ModifyCharacterProcessor implements IEventProcessor {
         switch (event.action) {
           case 'show_character':
             role.show = false // 确保之前是不显示的 TODO 不知道这个有没有必要加
-            gameStore.presentRoleIds.push(event.characterId)
+            if (!gameStore.presentRoleIds.includes(event.characterId)) {
+              gameStore.presentRoleIds.push(event.characterId)
+            }
             role.show = true
             break
           case 'hide_character':

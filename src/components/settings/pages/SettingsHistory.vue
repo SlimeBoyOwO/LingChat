@@ -1,6 +1,6 @@
 <template>
   <MenuPage>
-    <MenuItem title="历史对话">
+    <MenuItem :title="$t('settings.history.title')">
       <template #header>
         <History :size="20" />
       </template>
@@ -9,7 +9,7 @@
           <div
             class="py-10 text-center text-2xl font-bold text-gray-100 [text-shadow:0_0_5px_rgba(255,255,255,0.5)]"
           >
-            暂无历史记录，去和ta聊聊天叭(*^▽^*)
+            {{ $t('settings.history.empty') }}
           </div>
         </div>
 
@@ -31,10 +31,10 @@
                   <button
                     v-if="item.userMessageSeq !== undefined"
                     class="shrink-0 cursor-pointer rounded border border-white/10 bg-transparent px-2 py-0.5 text-xs text-white/40 transition-all duration-200 hover:border-red-400/50 hover:bg-red-500/20 hover:text-white"
-                    title="回溯到此消息之前（将清除此消息及之后所有对话）"
+                    :title="$t('settings.history.backtrackTip')"
                     @click.stop="handleBacktrack(item.userMessageSeq!)"
                   >
-                    回溯
+                    {{ $t('settings.history.backtrack') }}
                   </button>
                 </div>
                 <div v-if="item.thinking" class="mb-1">
@@ -43,7 +43,7 @@
                     @click.stop="toggleThinking(i)"
                   >
                     <span>{{ isThinkingExpanded(i) ? '▼' : '▶' }}</span>
-                    <span>思考过程（{{ item.thinking.length }} 字）</span>
+                    <span>{{ $t('settings.history.thinking', { count: item.thinking.length }) }}</span>
                   </button>
                   <div
                     v-if="isThinkingExpanded(i)"
@@ -70,7 +70,7 @@
                     <button
                       v-if="seg.type !== 'action' && entry.audioFile"
                       class="mt-0.5 inline-flex h-5.5 w-5.5 shrink-0 cursor-pointer items-center justify-center rounded border-0 bg-[rgba(121,217,255,0.15)] text-(--accent-color,#79d9ff) transition-all duration-200 hover:bg-[rgba(121,217,255,0.35)] hover:text-white"
-                      title="播放语音"
+                      :title="$t('settings.history.playVoice')"
                       @click="playAudio(entry.audioFile)"
                     >
                       <Volume2 :size="16" />
@@ -90,17 +90,17 @@
               :disabled="currentPage === 1"
               @click="currentPage--"
             >
-              上一页
+              {{ $t('settings.shared.prevPage') }}
             </button>
             <span class="text-base font-medium text-gray-100">
-              第 {{ currentPage }} 页 / 共 {{ totalPages }} 页
+              {{ $t('settings.shared.pageOfTotal', { current: currentPage, total: totalPages }) }}
             </span>
             <button
               class="cursor-pointer rounded-lg border-0 bg-[#e9ecef] px-4 py-1.5 text-sm font-medium text-[#495057] transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40 hover:not-disabled:bg-(--accent-color,#79d9ff) hover:not-disabled:text-white hover:not-disabled:-translate-y-0.5 hover:not-disabled:shadow-[0_4px_10px_rgba(121,217,255,0.4)]"
               :disabled="currentPage >= totalPages"
               @click="currentPage++"
             >
-              下一页
+              {{ $t('settings.shared.nextPage') }}
             </button>
           </div>
 
@@ -114,6 +114,7 @@
 <script setup lang="ts">
 // 1. 从 vue 中引入 ref 和 watch
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { MenuPage, MenuItem } from '../../ui'
 import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
@@ -123,6 +124,7 @@ import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { History, Volume2 } from 'lucide-vue-next'
 import { getVoiceAudio } from '@/api/services/game-info'
 import { invoke } from '@tauri-apps/api/core'
+import { hkify } from '@/locales'
 import type { GameLineInit } from '@/api/services/game-info'
 
 interface Segment {
@@ -149,6 +151,7 @@ interface HistoryBlock {
 const gameStore = useGameStore()
 const uiStore = useUIStore()
 const dialogStore = useDialogStore()
+const { t, locale } = useI18n()
 const audioRef = ref<HTMLAudioElement>()
 const contentRef = ref<HTMLDivElement>()
 
@@ -201,10 +204,14 @@ const groupedHistory = computed<HistoryBlock[]>(() => {
       ? ''
       : msg.displayName ||
         (msg.type === 'message'
-          ? gameStore.userName || gameStore.mainRole?.roleName || '你'
-          : '谜之音')
+          ? gameStore.userName || gameStore.mainRole?.roleName || t('settings.history.you')
+          : t('settings.history.mysteryVoice'))
 
-    const segments = parseSegments(msg.content, msg.motionText, isNarration)
+    // 日文界面且存在日语译文时显示日语译文；繁体（香港）界面下转繁体显示
+    const segments =
+      locale.value === 'ja' && msg.ttsText
+        ? [{ type: 'dialogue' as const, text: msg.ttsText }]
+        : parseSegments(hkify(msg.content), hkify(msg.motionText), isNarration)
 
     const entry: LineEntry = {
       segments,
@@ -275,8 +282,8 @@ function parseSegments(
 
 async function handleBacktrack(messageSeq: number) {
   const confirmed = await dialogStore.confirm(
-    '确定要回溯到此对话吗？此操作将清除该消息及之后的所有对话，且不可撤销。',
-    '回溯确认',
+    t('settings.history.backtrackConfirm'),
+    t('settings.history.backtrackConfirmTitle'),
   )
   if (!confirmed) return
 
@@ -300,6 +307,7 @@ async function handleBacktrack(messageSeq: number) {
           perceived_role_ids: l.perceived_role_ids,
           user_message_seq: l.user_message_seq,
           thinking: l.thinking ?? null,
+          tts_content: l.tts_content ?? null,
         }),
       ),
     )
@@ -307,7 +315,7 @@ async function handleBacktrack(messageSeq: number) {
     gameStore.setGameMessages(messages)
   } catch (error: any) {
     console.error('回溯对话失败:', error)
-    await dialogStore.alert('回溯失败：' + (typeof error === 'string' ? error : error.message))
+    await dialogStore.alert(t('settings.history.backtrackFailed', { error: typeof error === 'string' ? error : error.message }))
   }
 }
 

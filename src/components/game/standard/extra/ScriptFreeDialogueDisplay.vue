@@ -26,7 +26,7 @@
           <span
             class="text-xl md:text-2xl font-bold text-white tracking-[0.2em] drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)] text-shadow-glow"
           >
-            进入自由对话
+            {{ $t('game.freeDialogue.banner') }}
           </span>
 
           <!-- 右侧反向旋转星光 -->
@@ -61,7 +61,7 @@
         <div class="flex items-center gap-4">
           <!-- 轮次信息 -->
           <div v-if="freeDialogueInfo.maxRounds > 0" class="flex items-center gap-1.5">
-            <span class="text-[13px] text-gray-400">回合</span>
+            <span class="text-[13px] text-gray-400">{{ $t('game.freeDialogue.round') }}</span>
             <div class="flex items-baseline gap-0.5">
               <span class="text-base font-bold text-white">{{
                 freeDialogueInfo.currentRound
@@ -80,7 +80,7 @@
 
           <!-- 结束词提示 -->
           <div v-if="freeDialogueInfo.endLine" class="flex items-center gap-1.5">
-            <span class="text-[13px] text-gray-400">结束词</span>
+            <span class="text-[13px] text-gray-400">{{ $t('game.freeDialogue.endWord') }}</span>
             <span class="text-[13px] font-medium text-brand">
               "{{ freeDialogueInfo.endLine }}"
             </span>

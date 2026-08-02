@@ -115,6 +115,8 @@ pub struct GameLineInit {
     pub user_message_seq: Option<u32>,
     /// 该轮生成的思考链（仅每轮最后一条 assistant 行有值）。
     pub thinking: Option<String>,
+    /// 该台词的第二语言（日语）译文，供日文界面显示；无译文时为 None。
+    pub tts_content: Option<String>,
 }
 
 // ========== Tauri 命令 ==========
@@ -461,6 +463,7 @@ pub(crate) async fn build_web_init_data(
                 perceived_role_ids: gl.perceived_role_ids.clone(),
                 user_message_seq: seq,
                 thinking: gl.base.thinking.clone(),
+                tts_content: gl.base.tts_content.clone(),
             })
             .collect();
 
@@ -898,6 +901,8 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
         let svc = state.ai_service.lock().await;
         svc.game_status.clone()
     };
+    // 捕获当前试玩代号（自由对话恒等，行为不变）
+    let preview_generation = game_status.lock().await.preview_generation;
 
     let deps = GeneratorDeps {
         source: GeneratorSource::EntryGreeting,
@@ -911,6 +916,8 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
         concurrency,
         god_agent: state.god_agent.clone(),
         suppress_thinking: true,
+        generation: preview_generation,
+        is_preview: false,
     };
 
     let generator = MessageGenerator::new(deps);

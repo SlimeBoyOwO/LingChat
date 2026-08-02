@@ -237,9 +237,11 @@ impl ProactiveSystem {
         events::emit_thinking(&self.app, true);
 
         let generator = {
-            let game_status = {
+            let (game_status, preview_generation) = {
                 let svc = self.ai_service.lock().await;
-                svc.game_status.clone()
+                let gs = svc.game_status.clone();
+                let gen = gs.lock().await.preview_generation;
+                (gs, gen)
             };
             let deps = GeneratorDeps {
                 source: GeneratorSource::Proactive,
@@ -255,6 +257,9 @@ impl ProactiveSystem {
                 concurrency: 1,
                 god_agent: None,
                 suppress_thinking: false,
+                // 捕获当前试玩代号（自由对话恒等，行为不变）
+                generation: preview_generation,
+                is_preview: false,
             };
             MessageGenerator::new(deps)
         };

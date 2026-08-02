@@ -62,6 +62,13 @@ pub struct GeneratorDeps {
     pub god_agent: Option<Arc<GodAgentCore>>,
     /// 抑制 ai:thinking 事件。用于系统触发的后台生成（如入场问候）。
     pub suppress_thinking: bool,
+    /// 构建 deps 时捕获的 `GameStatus.preview_generation`。写入台词前比对，
+    /// 不一致说明本轮生成已过期（试玩被中止后游离任务仍在写），丢弃写入。
+    /// 自由对话的代号恒为当前值，比对恒等，行为不变。
+    pub generation: u64,
+    /// 是否运行在编辑器试玩中。为 true 时回复带 `preview_gen` 标记，
+    /// 前端据此丢弃中止后迟到的流式回复。
+    pub is_preview: bool,
 }
 
 /// `process_message` 各步骤间传递的用户消息上下文。
@@ -110,7 +117,7 @@ impl MessageGenerator {
 
         loop {
             // 取当前角色记忆（每轮重新获取，因为 current_role_id 可能已变化）
-            let (context, tool_context_anchor) = self.get_current_context().await?;
+            let context = self.get_current_context().await?;
             if context.is_empty() {
                 break;
             }
@@ -122,7 +129,7 @@ impl MessageGenerator {
                 None
             };
             let round_acc = self
-                .execute_pipeline(context, tool_context_anchor, &original_msg, round_msg_seq)
+                .execute_pipeline(context, &original_msg, round_msg_seq)
                 .await?;
             accumulated.push_str(&round_acc);
 
@@ -224,22 +231,20 @@ impl MessageGenerator {
     }
 
     /// Step 2: 根据 current_role_id 获取当前角色的 memory 上下文。
-    async fn get_current_context(&self) -> Result<(Vec<LlmMessage>, Option<usize>)> {
+    async fn get_current_context(&self) -> Result<Vec<LlmMessage>> {
         let mut gs = self.deps.game_status.lock().await;
         let Some(rid) = gs.current_role_id else {
             tracing::error!("生成消息的时候没有当前角色，取消生成");
-            return Ok((Vec::new(), None));
+            return Ok(Vec::new());
         };
-        let tool_context_anchor = gs.line_list.len().checked_sub(1);
         let role = gs.get_role(&self.deps.db, rid).await?;
-        Ok((role.memory.clone(), tool_context_anchor))
+        Ok(role.memory.clone())
     }
 
     /// Step 3: 启动 LLM 流管道，统一处理 thinking emit 与错误分发。
     async fn execute_pipeline(
         &self,
         context: Vec<LlmMessage>,
-        tool_context_anchor: Option<usize>,
         user_message: &str,
         user_msg_seq: Option<u32>,
     ) -> Result<String> {
@@ -250,7 +255,6 @@ impl MessageGenerator {
         match self
             .run_pipeline(
                 context,
-                tool_context_anchor,
                 user_message.to_string(),
                 user_msg_seq,
             )
@@ -405,7 +409,6 @@ impl MessageGenerator {
     async fn run_pipeline(
         &self,
         context: Vec<LlmMessage>,
-        tool_context_anchor: Option<usize>,
         user_message: String,
         user_message_seq: Option<u32>,
     ) -> Result<String> {
@@ -429,7 +432,7 @@ impl MessageGenerator {
         .await?;
         if !tool_loop_result.tool_messages.is_empty() {
             let mut gs = self.deps.game_status.lock().await;
-            let insert_pos = tool_context_anchor.map(|i| i + 1).unwrap_or(gs.line_list.len());
+            let insert_pos = gs.line_list.len();
             let perceived: Vec<i32> = gs.present_role_ids.iter().copied().collect();
 
             for msg in tool_loop_result.tool_messages.iter().rev() {
@@ -615,6 +618,8 @@ fn parse_segments(deps: &GeneratorDeps, sentence: &str) -> Vec<EmotionSegment> {
 fn tts_translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static str> {
     match (tts_type, voice_lang) {
         ("gsv" | "opentts" | "sbv2", "en") => Some("en"),
+        // IndexTTS2 官方支持中/英文：voice_lang=en 时先翻译成英文再合成
+        ("indextts2", "en") => Some("en"),
         ("gsv" | "opentts", "ko") => Some("ko"),
         _ => None,
     }
@@ -745,12 +750,28 @@ async fn build_reply_response(
     response.original_message = user_message.to_string();
     response.is_final = is_final;
     response.user_message_seq = user_message_seq;
+    // 试玩标记：前端据此丢弃中止后迟到的流式回复（非试玩为 None，不序列化）
+    response.preview_gen = if deps.is_preview { Some(deps.generation) } else { None };
 
     Ok(response)
 }
 
 /// Step D: 将 assistant LINE 写入 GameStatus。
 async fn add_assistant_line(deps: &GeneratorDeps, response: &ReplyResponse) -> Result<()> {
+    // 试玩代号守卫：试玩任务被中止后，游离的 consumer 任务仍会带着旧代号继续
+    // 生成句子。此时 GameStatus 可能已还原回自由对话，写入会把试玩台词漏进
+    // 自由对话的上下文与历史。捕获代号与当前值不一致即丢弃整条（含记忆同步）。
+    {
+        let gs = deps.game_status.lock().await;
+        if gs.preview_generation != deps.generation {
+            tracing::warn!(
+                "[Generator] 丢弃过期试玩回复（代号 {} != 当前 {}），试玩已结束",
+                deps.generation,
+                gs.preview_generation
+            );
+            return Ok(());
+        }
+    }
     let line = LineBase {
         content: response.message.clone(),
         sender_role_id: response.role_id,

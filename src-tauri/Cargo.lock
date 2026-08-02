@@ -3831,6 +3831,7 @@ dependencies = [
  "regex",
  "reqwest 0.13.3",
  "sbv2_core",
+ "rustls",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -3857,6 +3858,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "webpki-roots 0.26.11",
  "windows 0.62.2",
  "zip 2.4.2",
 ]
@@ -6381,6 +6383,7 @@ version = "1.0.149"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "83fc039473c5595ace860d8c4fafa220ff474b3fc6bfdb4293327f1a37e94d86"
 dependencies = [
+ "indexmap 2.14.0",
  "itoa",
  "memchr",
  "serde",

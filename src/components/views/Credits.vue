@@ -14,10 +14,10 @@
     >
       <!-- 右上角ESC退出提示 -->
       <div class="absolute top-6 right-6 text-white opacity-50 text-sm tracking-wider">
-        ESC 退出
+        {{ $t('views.credits.escExit') }}
       </div>
       <div class="text-center text-white animate-[pulse_3s_infinite]">
-        <p class="text-[2.2em] font-light tracking-[2px] mb-2">来自灵灵感谢の书❤</p>
+        <p class="text-[2.2em] font-light tracking-[2px] mb-2">{{ $t('views.credits.letterTitle') }}</p>
         <span class="text-[1.1em] opacity-70 tracking-[4px] uppercase"
           >A Letter For LingChat❤</span
         >
@@ -58,7 +58,7 @@
             class="w-1/2 max-w-100 object-contain mx-auto mb-6"
             alt="Logo"
           />
-          <h1 class="text-[3.5em] text-[#00e5ff] font-normal tracking-[5px]">致谢</h1>
+          <h1 class="text-[3.5em] text-[#00e5ff] font-normal tracking-[5px]">{{ $t('views.credits.heading') }}</h1>
           <p class="text-[1.2em] text-[#ebfafb] opacity-70 tracking-[8px] uppercase mt-2">
             CREDITS
           </p>
@@ -75,8 +75,8 @@
 
           <!-- 标准双语名单 (两列对齐) -->
           <div v-else-if="section.layout === 'normal'" class="flex flex-col items-center mb-15">
-            <h2 class="text-[2.2em] text-[#00e5ff] font-light mb-2">{{ section.title }}</h2>
-            <p class="text-[1em] text-white opacity-60 mb-6.25">{{ section.enTitle }}</p>
+            <h2 class="text-[2.2em] text-[#00e5ff] font-light mb-2">{{ sectionTitle(section) }}</h2>
+            <p class="text-[1em] text-white opacity-60 mb-6.25">{{ sectionSubtitle(section) }}</p>
             <div
               v-for="(item, i) in section.items"
               :key="i"
@@ -96,8 +96,8 @@
             v-else-if="section.layout === 'grid-2'"
             class="flex flex-col items-center mb-15 w-full"
           >
-            <h2 class="text-[2.2em] text-[#00e5ff] font-light mb-2">{{ section.title }}</h2>
-            <p class="text-[1em] text-white opacity-60 mb-6.25">{{ section.enTitle }}</p>
+            <h2 class="text-[2.2em] text-[#00e5ff] font-light mb-2">{{ sectionTitle(section) }}</h2>
+            <p class="text-[1em] text-white opacity-60 mb-6.25">{{ sectionSubtitle(section) }}</p>
             <div class="grid grid-cols-2 gap-y-4 gap-x-12 w-[60%] justify-items-center">
               <div
                 v-for="(item, i) in section.items"
@@ -121,8 +121,8 @@
             v-else-if="section.layout === 'grid-4'"
             class="flex flex-col items-center mb-15 w-full"
           >
-            <h2 class="text-[2.2em] text-[#00e5ff] font-light mb-2">{{ section.title }}</h2>
-            <p class="text-[1em] text-white opacity-60 mb-6.25">{{ section.enTitle }}</p>
+            <h2 class="text-[2.2em] text-[#00e5ff] font-light mb-2">{{ sectionTitle(section) }}</h2>
+            <p class="text-[1em] text-white opacity-60 mb-6.25">{{ sectionSubtitle(section) }}</p>
             <div class="grid grid-cols-4 gap-y-6 gap-x-8 w-[80%] max-w-200 justify-items-center">
               <div v-for="(item, i) in section.items" :key="i">
                 <p class="text-[1.5em] leading-[1.8] font-light whitespace-nowrap overflow-visible">
@@ -134,19 +134,19 @@
 
           <!-- 孤立文本 (如赞助者们等结尾长串) -->
           <div v-else-if="section.layout === 'single'" class="flex flex-col items-center mb-4">
-            <p class="text-[1.5em] leading-[1.8] font-light">{{ section.title }}</p>
-            <p class="text-[1em] opacity-80 leading-[1.8] font-light">{{ section.enTitle }}</p>
+            <p class="text-[1.5em] leading-[1.8] font-light">{{ sectionTitle(section) }}</p>
+            <p class="text-[1em] opacity-80 leading-[1.8] font-light">{{ sectionSubtitle(section) }}</p>
           </div>
 
           <!-- 特殊结尾 (还有...你) -->
           <div v-else-if="section.layout === 'special'" class="flex flex-col items-center mb-15">
             <div class="h-[60vh]"></div>
-            <h2 class="text-[2.2em] text-[#00e5ff] font-light mb-2">{{ section.title }}</h2>
-            <p class="text-[1em] text-white opacity-60 mb-20">{{ section.enTitle }}</p>
+            <h2 class="text-[2.2em] text-[#00e5ff] font-light mb-2">{{ sectionTitle(section) }}</h2>
+            <p class="text-[1em] text-white opacity-60 mb-20">{{ sectionSubtitle(section) }}</p>
             <div class="h-[60vh]"></div>
-            <p class="text-[1.5em] leading-[1.8] font-light">{{ section.items?.[0]?.name }}</p>
+            <p class="text-[1.5em] leading-[1.8] font-light">{{ $t('views.credits.you') }}</p>
             <p class="text-[1em] opacity-80 leading-[1.8] font-light">
-              {{ section.items?.[0]?.enName }}
+              {{ isEn ? section.items?.[0]?.name : section.items?.[0]?.enName }}
             </p>
 
             <!-- 留出足够的滚动长尾 -->
@@ -158,11 +158,42 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import StarField from '../game/standard/particles/StarField.vue'
 
 const router = useRouter()
+const { t, locale } = useI18n()
+// t 的键类型是字面量联合，动态拼接的 key 需要降级为 string 调用
+const tRaw = t as unknown as (key: string) => string
+
+// 英文界面下主副标题互换（主标题显示英文、副标题显示中文），其余界面保持 本地化主标题+英文副标题
+const isEn = computed(() => locale.value === 'en')
+
+// 各区块英文副标题 → 语言包 key（views.credits.sections.<key>）
+const SECTION_I18N_KEYS: Record<string, string> = {
+  'Project Lead & Designer': 'planDesign',
+  Programming: 'programming',
+  'Vits Model Training': 'vitsTraining',
+  'Visual Arts': 'visualArts',
+  'Character Design': 'characterDesign',
+  'Community Management & Wiki Constructing': 'communityWiki',
+  'Software Packing': 'packing',
+  'Special Thanks': 'specialThanks',
+  'Feedback Providers': 'feedback',
+  'Issue Providers': 'issueProviders',
+  'Character Creators': 'characterCreators',
+  'Bilibili Subscribers': 'bilibiliFans',
+  Donators: 'donators',
+  'Moreover...': 'moreover',
+}
+
+const sectionTitle = (section: any) => {
+  const key = SECTION_I18N_KEYS[section.enTitle]
+  return key ? tRaw(`views.credits.sections.${key}`) : section.title
+}
+const sectionSubtitle = (section: any) => (isEn.value ? section.title : section.enTitle)
 
 const isStarted = ref(false)
 const bgm = ref<HTMLAudioElement | null>(null)

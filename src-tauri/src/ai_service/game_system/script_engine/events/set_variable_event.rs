@@ -77,6 +77,13 @@ impl ScriptEvent for SetVariableEvent {
                         } else {
                             tracing::warn!("[SetVariableEvent] 无法解析操作: '{}'", content);
                         }
+                    } else {
+                        // 这里只实现 set_var。`choices` 的 handle_actions 还支持
+                        // add_line，作者很容易以为两处通用 —— 原先写错会被静默丢弃。
+                        tracing::warn!(
+                            "[SetVariableEvent] 忽略不支持的动作类型 '{}'（此事件仅支持 set_var）",
+                            action_type
+                        );
                     }
                 }
             }

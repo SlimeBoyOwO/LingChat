@@ -149,6 +149,7 @@ impl AIService {
         gs.line_list.clear();
         gs.onstage_role_ids.clear();
         gs.present_role_ids.clear();
+        gs.player_entered = false;
 
         let system_line = LineBase {
             content: self.ai_prompt.clone(),

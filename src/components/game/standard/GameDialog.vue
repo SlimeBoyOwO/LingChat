@@ -47,23 +47,23 @@
                   <Button
                     type="nav"
                     icon="background"
-                    title="场景设置"
+                    :title="$t('game.dialog.sceneSettings')"
                     @click="openSceneSettings"
                   ></Button>
                   <Button
                     type="nav"
                     icon="hand"
-                    title="触摸模式"
+                    :title="$t('game.dialog.touchMode')"
                     @click="toggleTouchMode"
                     @contextmenu.prevent="exitTouchMode"
                   ></Button>
-                  <Button type="nav" icon="history" title="历史记录" @click="openHistory"></Button>
+                  <Button type="nav" icon="history" :title="$t('game.dialog.history')" @click="openHistory"></Button>
 
                   <!-- 语音输入按钮 -->
                   <Button
                     type="nav"
                     icon="mic"
-                    :title="isRecording ? '录音中，点击停止' : '语音输入'"
+                    :title="isRecording ? $t('game.dialog.recordingStop') : $t('game.dialog.voiceInput')"
                     :class="{ 'text-red-500 animate-pulse': isRecording }"
                     @click="toggleRecording"
                   ></Button>
@@ -82,14 +82,14 @@
                     <Button
                       type="nav"
                       icon="camera"
-                      :title="hasScreenshot ? '点击重新截图，右键取消截图' : '截图提问'"
+                      :title="hasScreenshot ? $t('game.dialog.screenshotRetake') : $t('game.dialog.screenshotAsk')"
                       :style="hasScreenshot ? { color: 'var(--accent-color)' } : {}"
                       @click="startScreenshot"
                       @contextmenu.prevent="clearScreenshot"
                     ></Button>
                   </div>
 
-                  <Button type="nav" icon="close" title="关闭对话" @click="removeDialog"></Button>
+                  <Button type="nav" icon="close" :title="$t('game.dialog.closeDialog')" @click="removeDialog"></Button>
                 </div>
               </div>
             </template>
@@ -99,12 +99,12 @@
               <button
                 class="mobile-toggle-btn"
                 :class="{ 'is-open': showMobileMenu }"
-                title="更多操作"
+                :title="$t('game.dialog.moreActions')"
                 @click="showMobileMenu = !showMobileMenu"
               >
                 ▲
               </button>
-              <Button type="nav" icon="close" title="关闭对话" @click="removeDialog"></Button>
+              <Button type="nav" icon="close" :title="$t('game.dialog.closeDialog')" @click="removeDialog"></Button>
             </div>
           </div>
         </div>
@@ -116,26 +116,26 @@
               <Button
                 type="nav"
                 icon="background"
-                title="场景设置"
+                :title="$t('game.dialog.sceneSettings')"
                 @click="onMobileMenuAction(openSceneSettings)"
               ></Button>
               <Button
                 type="nav"
                 icon="hand"
-                title="触摸模式"
+                :title="$t('game.dialog.touchMode')"
                 @click="onMobileMenuAction(toggleTouchMode)"
                 @contextmenu.prevent="exitTouchMode"
               ></Button>
               <Button
                 type="nav"
                 icon="history"
-                title="历史记录"
+                :title="$t('game.dialog.history')"
                 @click="onMobileMenuAction(openHistory)"
               ></Button>
               <Button
                 type="nav"
                 icon="mic"
-                :title="isRecording ? '录音中，点击停止' : '语音输入'"
+                :title="isRecording ? $t('game.dialog.recordingStop') : $t('game.dialog.voiceInput')"
                 :class="{ 'text-red-500 animate-pulse': isRecording }"
                 @click="onMobileMenuAction(toggleRecording)"
               ></Button>
@@ -153,7 +153,7 @@
                 <Button
                   type="nav"
                   icon="camera"
-                  :title="hasScreenshot ? '点击重新截图，右键取消截图' : '截图提问'"
+                  :title="hasScreenshot ? $t('game.dialog.screenshotRetake') : $t('game.dialog.screenshotAsk')"
                   :style="hasScreenshot ? { color: 'var(--accent-color)' } : {}"
                   @click="onMobileMenuAction(startScreenshot)"
                   @contextmenu.prevent="onMobileMenuAction(clearScreenshot)"
@@ -208,6 +208,7 @@
 
 <script setup lang="ts">
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Button } from '../../base'
 import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
@@ -222,6 +223,7 @@ import { listen } from '@tauri-apps/api/event'
 import { setInputHasText } from '../../../composables/useCanDeliver'
 
 const inputMessage = ref('')
+const { t } = useI18n()
 // 输入框内容变化 → 通知 can_deliver 追踪
 watch(inputMessage, (val) => setInputHasText(Boolean(val.trim())), { immediate: true })
 const isShowingMotionText = ref(false)
@@ -290,6 +292,20 @@ function writeInlineHtml(_element: HTMLElement, text: string): void {
     inlineDisplayRef.value.innerHTML = `<br><span class="motion-text-gray">${motion}</span>`
   } else {
     inlineDisplayRef.value.innerHTML = `<span style="color:#fff">${escapeHtml(text)}</span>`
+  }
+}
+
+// 立即把当前台词写入显示元素（不经过打字动画；供挂载恢复使用）
+function renderLineInstant(line: string) {
+  currentDisplayedText.value = line
+  if (settingsStore.text.inlineMotionText) {
+    const text = uiStore.showCharacterMotionText
+      ? line + '\n' + uiStore.showCharacterMotionText
+      : line
+    if (inlineDisplayRef.value) writeInlineHtml(inlineDisplayRef.value, text)
+  } else if (textareaRef.value) {
+    textareaRef.value.value = line
+    inputMessage.value = line // 与 v-model 同步，防止重渲染把值重置为空
   }
 }
 
@@ -369,28 +385,28 @@ const exitTouchMode = () => {
 const placeholderText = computed(() => {
   // 如果正在录音，优先展示实时的语音内容，如果没有内容则展示正在聆听
   if (isRecording.value) {
-    return interimText.value || '正在聆听...'
+    return interimText.value || t('game.dialog.listening')
   }
 
   switch (gameStore.currentStatus) {
     case 'input':
-      return uiStore.showPlayerHintLine || '在这里输入消息...'
+      return uiStore.showPlayerHintLine || t('game.dialog.inputPlaceholder')
     case 'thinking':
       const currentInteractRole = gameStore.currentInteractRole
       if (currentInteractRole) {
         const baseMessage = currentInteractRole.thinkMessage
         if (gameStore.thinkingLength > 0) {
-          return `${baseMessage}（已深度思考 ${gameStore.thinkingLength} 字）`
+          return `${baseMessage}${t('game.dialog.thinkingDepth', { count: gameStore.thinkingLength })}`
         }
         return baseMessage
       } else {
-        return '等待回应中...'
+        return t('game.dialog.waitingResponse')
       }
     case 'responding':
     case 'presenting':
       return ''
     default:
-      return '在这里输入消息...'
+      return t('game.dialog.inputPlaceholder')
   }
 })
 
@@ -403,7 +419,7 @@ watch(
     if (newStatus === 'thinking') {
       const currentInteractRole = gameStore.currentInteractRole
       if (currentInteractRole) {
-        currentInteractRole.emotion = 'AI思考'
+        //currentInteractRole.emotion = 'AI思考'
         uiStore.showCharacterTitle = currentInteractRole.roleName
         uiStore.showCharacterSubtitle = currentInteractRole.roleSubTitle
       }
@@ -514,9 +530,7 @@ const initSpeechRecognition = () => {
 
 const toggleRecording = async () => {
   if (!speechRecognition) {
-    await dialogStore.alert(
-      '您的浏览器不支持语音输入功能，建议使用最新版的 Chrome 或 Edge 浏览器。',
-    )
+    await dialogStore.alert(t('game.dialog.speechNotSupported'))
     return
   }
   if (isRecording.value) {
@@ -524,7 +538,7 @@ const toggleRecording = async () => {
   } else {
     // 如果不在允许输入的阶段，阻止录音
     if (gameStore.currentStatus !== 'input') {
-      await dialogStore.alert('当前状态不允许输入，请稍候再试。')
+      await dialogStore.alert(t('game.dialog.inputNotAllowed'))
       return
     }
     speechRecognition.start()
@@ -535,6 +549,12 @@ let unlistenScreenshot: (() => void) | null = null
 let unlistenCancelled: (() => void) | null = null
 
 onMounted(async () => {
+  // 模式切换重挂载：立即从 store 恢复当前台词（不重播打字动画）
+  const restoreLine = uiStore.showCharacterLine
+  if (restoreLine && restoreLine !== '' && gameStore.currentStatus === 'responding') {
+    renderLineInstant(restoreLine)
+  }
+
   document.addEventListener('contextmenu', handleDialogShow)
   // 初始化语音识别对象
   speechRecognition = initSpeechRecognition()
@@ -572,7 +592,7 @@ async function startScreenshot() {
   } catch (error) {
     console.error('启动截图失败:', error)
     isCapturing.value = false
-    await dialogStore.alert('截图功能初始化失败，请重试')
+    await dialogStore.alert(t('game.dialog.screenshotFailed'))
   }
 }
 
@@ -599,8 +619,8 @@ function send() {
   if (!llmStore.chatProviderId) {
     uiStore.showNotification({
       type: 'warning',
-      title: '提示',
-      message: '还没选择对话模型呢，笨蛋！去高级设置里配置并选择模型就好啦，切换后自动生效哦！',
+      title: t('game.dialog.noModelTitle'),
+      message: t('game.dialog.noModelMessage'),
       skipTipsCheck: true,
     })
     return
@@ -614,14 +634,27 @@ function send() {
 
   // In script mode, submit input to the script engine; otherwise use chat
   if (gameStore.runningScript) {
-    invoke('script_submit_input', { input: text }).catch((error) => {
-      console.error('发送脚本输入失败:', error)
-      gameStore.currentStatus = 'input'
-    })
-    gameStore.runningScript.choices = []
-    if (gameStore.runningScript.freeDialogueInfo.isFreeDialogue) {
-      gameStore.runningScript.freeDialogueInfo.currentRound++
-    }
+    const script = gameStore.runningScript
+    const wasChoice = script.choices.length > 0
+    // 只有提交成功才清空选项。以前是无条件清空的：allow_free 为 false 时后端
+    // 会拒绝这次输入，而选项按钮已经消失、引擎仍在等待选择，玩家彻底卡死。
+    invoke('script_submit_input', { input: text })
+      .then(() => {
+        script.choices = []
+        if (script.freeDialogueInfo.isFreeDialogue) {
+          script.freeDialogueInfo.currentRound++
+        }
+      })
+      .catch((error) => {
+        console.error('发送脚本输入失败:', error)
+        gameStore.currentStatus = 'input'
+        uiStore.showNotification({
+          type: 'warning',
+          title: wasChoice ? '请点击一个选项' : '当前无法输入',
+          message: String(error),
+          skipTipsCheck: true,
+        })
+      })
   } else {
     invoke('send_chat_message', {
       text,

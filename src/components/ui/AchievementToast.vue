@@ -11,7 +11,7 @@
         <img
           v-if="store.current.imgUrl"
           :src="store.current.imgUrl"
-          alt="成就图标"
+          :alt="$t('ui.achievementToast.iconAlt')"
           class="icon-image"
         />
         <div v-else class="default-icon">
@@ -39,8 +39,8 @@
         <div class="achievement-header">
           <span class="achievement-label">{{ typeLabel }}</span>
         </div>
-        <div class="achievement-title">{{ store.current.title }}</div>
-        <div class="achievement-description">{{ store.current.description }}</div>
+        <div class="achievement-title">{{ currentTitle }}</div>
+        <div class="achievement-description">{{ currentDescription }}</div>
       </div>
 
       <div class="progress-bar-container">
@@ -57,8 +57,11 @@
 import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAchievementStore } from '../../stores/modules/ui/achievement'
+import { achievementTitle, achievementDescription } from '@/utils/achievement-i18n'
 import { useUIStore } from '../../stores/modules/ui/ui'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const store = useAchievementStore()
 const uiStore = useUIStore()
 const route = useRoute()
@@ -71,8 +74,14 @@ const typeClass = computed(() => {
 })
 
 const typeLabel = computed(() => {
-  return store.current?.type === 'rare' ? '稀有成就' : '成就解锁'
+  return store.current?.type === 'rare' ? t('ui.achievementToast.rare') : t('ui.achievementToast.unlocked')
 })
+
+// 内置成就显示本地化文案；剧本动态成就回退后端原文
+const currentTitle = computed(() => (store.current ? achievementTitle(store.current) : ''))
+const currentDescription = computed(() =>
+  store.current ? achievementDescription(store.current) : '',
+)
 
 // 播放音效逻辑
 watch(
@@ -93,8 +102,9 @@ watch(
 @reference "tailwindcss";
 
 .achievement-toast {
-  @apply fixed bottom-8 right-8 z-[9999];
+  @apply fixed right-8 z-[9999];
   @apply flex items-center gap-4;
+  bottom: calc(32px + var(--safe-area-inset-bottom));
   @apply p-4 min-w-[320px] max-w-[400px];
   @apply overflow-hidden;
   @apply rounded-xl;

@@ -14,10 +14,10 @@
       <!-- 文字内容区域 -->
       <div class="notification-content">
         <div class="notification-title">
-          {{ uiStore.notification.title || '[通知标题]' }}
+          {{ uiStore.notification.title || $t('ui.notification.titlePlaceholder') }}
         </div>
         <div class="notification-message">
-          {{ uiStore.notification.message || '[通知内容]' }}
+          {{ uiStore.notification.message || $t('ui.notification.messagePlaceholder') }}
         </div>
       </div>
     </div>
@@ -38,7 +38,8 @@ const typeClass = computed(() => `notification-${uiStore.notification.type}`)
 @reference "tailwindcss";
 
 .notification {
-  @apply fixed top-5 left-0 z-[10000];
+  @apply fixed left-0 z-[10000];
+  top: calc(20px + var(--safe-area-inset-top));
   @apply flex items-center gap-4;
   @apply px-6 py-4 min-w-80 max-w-[480px];
 

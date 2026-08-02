@@ -145,7 +145,9 @@ data/game_data/musics/**
 # 忽略 game_data/scripts/ 目录下的所有内容，但保留指定的剧本文件
 data/game_data/scripts/**
 !data/game_data/scripts/
-!data/game_data/scripts/character/
+data/game_data/scripts/character/**
+!data/game_data/scripts/character/诺一钦灵/
+!data/game_data/scripts/character/风雪/
 !data/game_data/scripts/standalone/
 data/game_data/scripts/standalone/**
 !data/game_data/scripts/character/**

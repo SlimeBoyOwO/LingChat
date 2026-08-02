@@ -15,7 +15,7 @@
               @click="activePage = 'todo_groups'"
               class="p-1 rounded-md transition-colors hover:bg-slate-500/20"
               :class="isDarkMode ? 'text-slate-300' : 'text-slate-600'"
-              title="返回分组列表"
+              :title="$t('pet.todo.backToGroups')"
             >
               <ArrowLeft class="w-5 h-5" />
             </button>
@@ -24,7 +24,7 @@
               class="text-xl font-black tracking-wide transition-colors"
               :class="isDarkMode ? 'text-slate-100' : 'text-slate-800'"
             >
-              {{ activePage === 'todo_groups' ? '待办任务总览' : activeTodoGroup.title }}
+              {{ activePage === 'todo_groups' ? $t('pet.todo.groupsTitle') : activeTodoGroup.title }}
             </h2>
           </div>
           <p
@@ -33,8 +33,8 @@
           >
             {{
               activePage === 'todo_groups'
-                ? '管理您的任务分组与全局进度'
-                : '管理当前分组下的所有任务'
+                ? $t('pet.todo.groupsDesc')
+                : $t('pet.todo.detailDesc')
             }}
           </p>
         </div>
@@ -48,7 +48,7 @@
           "
         >
           <Cross class="w-3.5 h-3.5" />
-          <span>新建</span>
+          <span>{{ $t('pet.todo.create') }}</span>
         </button>
         <span
           class="text-4xl font-bold italic select-none font-mono transition-colors uppercase"
@@ -116,7 +116,7 @@
                   class="text-xs mt-1 leading-relaxed transition-colors mt-auto font-mono"
                   :class="isDarkMode ? 'text-slate-400' : 'text-slate-500'"
                 >
-                  {{ group.todos.length }} 项任务
+                  {{ $t('pet.todo.taskCount', { count: group.todos.length }) }}
                 </p>
               </div>
             </div>
@@ -133,7 +133,7 @@
                 class="text-xs font-bold font-mono tracking-widest uppercase"
                 :class="isDarkMode ? 'text-slate-300' : 'text-slate-600'"
               >
-                全局进行中
+                {{ $t('pet.todo.globalPending') }}
               </h3>
             </div>
 
@@ -142,7 +142,7 @@
               class="text-center py-8 text-xs font-medium"
               :class="isDarkMode ? 'text-slate-500' : 'text-slate-400'"
             >
-              暂时没有进行中的任务，很闲哦！
+              {{ $t('pet.todo.noPending') }}
             </div>
 
             <!-- 任务行卡片化 -->
@@ -219,7 +219,7 @@
             >
               <component :is="showCompleted ? ChevronDown : ChevronRight" class="w-4 h-4" />
               <span class="text-[10px] font-bold font-mono uppercase tracking-widest">
-                已完成历史 ({{ globalCompletedTodos.length }})
+                {{ $t('pet.todo.completedHistory', { count: globalCompletedTodos.length }) }}
               </span>
             </button>
 
@@ -277,7 +277,7 @@
             :class="isDarkMode ? 'text-slate-500' : 'text-slate-400'"
           >
             <Inbox class="w-12 h-12 mb-4 opacity-50" />
-            <p class="text-sm font-medium">还没有任务，点击右上角新建一个吧</p>
+            <p class="text-sm font-medium">{{ $t('pet.todo.emptyGroup') }}</p>
           </div>
 
           <div
@@ -366,7 +366,7 @@
           >
           <input
             v-model="formData.groupTitle"
-            placeholder="项目名称 (例如: 学校任务)"
+            :placeholder="$t('pet.todo.groupNamePlaceholder')"
             class="w-full px-3 py-2.5 border rounded-lg text-sm transition-all duration-200 focus:outline-none"
             :class="
               isDarkMode
@@ -387,7 +387,7 @@
             >
             <input
               v-model="formData.todoText"
-              placeholder="任务内容"
+              :placeholder="$t('pet.todo.taskContentPlaceholder')"
               class="w-full px-3 py-2.5 border rounded-lg text-sm transition-all duration-200 focus:outline-none"
               :class="
                 isDarkMode
@@ -406,7 +406,7 @@
             <span
               class="text-[10px] font-bold font-mono uppercase tracking-wider"
               :class="isDarkMode ? 'text-slate-400' : 'text-slate-500'"
-              >优先级 PRIORITY</span
+              >{{ $t('pet.todo.priority') }}</span
             >
             <div class="flex items-center ml-auto gap-1">
               <button
@@ -436,6 +436,7 @@
 
 <script setup lang="ts">
 import { ref, computed, reactive, watch, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   Trash2,
   Star,
@@ -460,6 +461,7 @@ defineProps<{
 const showCompleted = ref(false)
 const selectedTodoGroupId = ref<string | null>(null)
 const initialized = ref(false)
+const { t } = useI18n()
 
 const activePage = ref<'todo_detail' | 'todo_groups'>('todo_groups')
 
@@ -605,7 +607,7 @@ const formData = reactive({
 })
 
 const modalTitle = computed(() => {
-  return activePage.value === 'todo_groups' ? '新建任务组' : '新建待办任务'
+  return activePage.value === 'todo_groups' ? t('pet.todo.newGroup') : t('pet.todo.newTask')
 })
 
 const handleCreate = () => {

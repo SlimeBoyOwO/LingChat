@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { i18n } from '@/locales'
 
 interface DialogState {
   isOpen: boolean
@@ -26,7 +27,7 @@ export const useDialogStore = defineStore('dialog', {
       return new Promise<void>((resolve) => {
         this.isOpen = true
         this.type = 'alert'
-        this.title = title || '提示'
+        this.title = title || i18n.global.t('stores.dialog.alertTitle')
         this.message = message
         this.resolvePromise = resolve
       })
@@ -39,7 +40,7 @@ export const useDialogStore = defineStore('dialog', {
       return new Promise<boolean>((resolve) => {
         this.isOpen = true
         this.type = 'confirm'
-        this.title = title || '确认'
+        this.title = title || i18n.global.t('stores.dialog.confirmTitle')
         this.message = message
         this.resolvePromise = resolve
       })

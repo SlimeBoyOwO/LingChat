@@ -3,7 +3,7 @@
     <img src="@/assets/images/LingChatLogo.png" alt="Logo" class="w-20 ml-5 hidden xl:block" />
     <nav
       ref="navContainer"
-      class="relative w-full flex flex-nowrap items-center justify-start gap-1 h-full ease-in-out duration-100 xl:justify-center overflow-x-auto overflow-y-hidden px-2 custom-scroll"
+      class="relative w-full flex flex-nowrap items-center justify-start gap-1 h-full ease-in-out duration-100 xl:[justify-content:safe_center] overflow-x-auto overflow-y-hidden px-2 custom-scroll"
     >
       <div
         ref="indicator"
@@ -12,78 +12,87 @@
       <Button
         ref="characterBtn"
         type="nav"
+        class="shrink-0"
         icon="character"
         @click="() => switchTab('character', 'characterBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'character' }"
       >
-        <p class="hidden xl:block">角色</p>
+        <p class="hidden xl:block whitespace-nowrap">{{ $t('nav.character') }}</p>
       </Button>
       <Button
         ref="adventureBtn"
         type="nav"
+        class="shrink-0"
         icon="adventure"
         @click="() => switchTab('adventure', 'adventureBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'adventure' }"
       >
-        <p class="hidden xl:block">羁绊</p>
+        <p class="hidden xl:block whitespace-nowrap">{{ $t('nav.adventure') }}</p>
       </Button>
       <Button
         ref="textBtn"
         type="nav"
+        class="shrink-0"
         icon="text"
         @click="() => switchTab('text', 'textBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'text' }"
       >
-        <p class="hidden xl:block">通用</p>
+        <p class="hidden xl:block whitespace-nowrap">{{ $t('nav.text') }}</p>
       </Button>
       <Button
         ref="backgroundBtn"
         type="nav"
+        class="shrink-0"
         icon="background"
         @click="() => switchTab('background', 'backgroundBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'background' }"
       >
-        <p class="hidden xl:block">背景</p>
+        <p class="hidden xl:block whitespace-nowrap">{{ $t('nav.background') }}</p>
       </Button>
       <Button
         ref="soundBtn"
         type="nav"
+        class="shrink-0"
         icon="sound"
         @click="() => switchTab('sound', 'soundBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'sound' }"
       >
-        <p class="hidden xl:block">声音</p>
+        <p class="hidden xl:block whitespace-nowrap">{{ $t('nav.sound') }}</p>
       </Button>
       <Button
         ref="historyBtn"
         type="nav"
+        class="shrink-0"
         icon="history"
         @click="() => switchTab('history', 'historyBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'history' }"
       >
-        <p class="hidden xl:block">对话历史</p>
+        <p class="hidden xl:block whitespace-nowrap">{{ $t('nav.history') }}</p>
       </Button>
       <Button
         ref="achievementBtn"
         type="nav"
+        class="shrink-0"
         icon="achievement"
         @click="() => switchTab('achievement', 'achievementBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'achievement' }"
       >
-        <p class="hidden xl:block">成就</p>
+        <p class="hidden xl:block whitespace-nowrap">{{ $t('nav.achievement') }}</p>
       </Button>
       <Button
         ref="saveBtn"
         type="nav"
+        class="shrink-0"
         icon="save"
         @click="() => switchTab('save', 'saveBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'save' }"
       >
-        <p class="hidden xl:block">存档</p>
+        <p class="hidden xl:block whitespace-nowrap">{{ $t('nav.save') }}</p>
       </Button>
       <Button
         ref="advanceBtn"
         type="nav"
+        class="shrink-0"
         icon="advance"
         @click="
           () => {
@@ -93,25 +102,27 @@
         "
         :class="{ active: uiStore.currentSettingsTab === 'advance' }"
       >
-        <p class="hidden xl:block">高级设置</p>
+        <p class="hidden xl:block whitespace-nowrap">{{ $t('nav.advance') }}</p>
       </Button>
       <Button
         ref="logBtn"
         type="nav"
+        class="shrink-0"
         icon="log"
         @click="() => switchTab('log', 'logBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'log' }"
       >
-        <p class="hidden xl:block">日志</p>
+        <p class="hidden xl:block whitespace-nowrap">{{ $t('nav.log') }}</p>
       </Button>
       <Button
         ref="workshopBtn"
         type="nav"
+        class="shrink-0"
         icon="package"
         @click="() => switchTab('workshop', 'workshopBtn')"
         :class="{ active: uiStore.currentSettingsTab === 'workshop' }"
       >
-        <p class="hidden xl:block">创意工坊</p>
+        <p class="hidden xl:block whitespace-nowrap">{{ $t('nav.workshop') }}</p>
       </Button>
     </nav>
     <Icon

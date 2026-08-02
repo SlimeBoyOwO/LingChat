@@ -1,5 +1,5 @@
 <template>
-  <div class="message" :title="`情感: ${emotionTag}`">
+  <div class="message" :title="$t('settings.history.emotionTitle', { tag: emotionTag })">
     <span class="name">{{ name }}</span>
     <span class="symbol">:&nbsp</span>
     <span class="content">{{ content }}{{ action_content ? ` (${action_content})` : '' }}</span>

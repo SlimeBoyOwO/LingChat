@@ -17,6 +17,7 @@ use crate::ai_service::message_system::events::emit;
 
 pub struct MusicEvent {
     music_path: String,
+    playback_speed: Option<f64>,
 }
 
 impl MusicEvent {
@@ -27,6 +28,7 @@ impl MusicEvent {
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string(),
+            playback_speed: data.get("playbackSpeed").and_then(|v| v.as_f64()),
         }
     }
 }
@@ -54,6 +56,7 @@ impl ScriptEvent for MusicEvent {
 
         let payload = MusicPayload {
             music_path: resolved,
+            playback_speed: self.playback_speed,
         };
         let _ = emit(ctx.app, SCRIPT_MUSIC, &payload);
 

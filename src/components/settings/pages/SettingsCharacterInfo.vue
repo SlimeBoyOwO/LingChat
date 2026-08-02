@@ -21,9 +21,9 @@
             </div>
             <div>
               <h2 class="text-xl font-bold m-0 drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]">
-                {{ title }} - 配置编辑
+                {{ $t('settings.characterInfo.header.title', { title }) }}
               </h2>
-              <p class="text-sm text-white/50 m-0">修改角色的详细设置</p>
+              <p class="text-sm text-white/50 m-0">{{ $t('settings.characterInfo.header.subtitle') }}</p>
             </div>
           </div>
           <button
@@ -123,12 +123,12 @@
               <!-- Clothes Tab (custom UI, outside data-driven block) -->
               <div v-if="activeTab === 'clothes'" class="space-y-4">
                 <div class="flex items-center justify-between">
-                  <h3 class="text-sm font-bold text-white/70">服装列表</h3>
+                  <h3 class="text-sm font-bold text-white/70">{{ $t('settings.characterInfo.clothes.listTitle') }}</h3>
                   <button
                     class="px-3 py-1.5 rounded-lg border-none bg-[#5e72e4] text-white text-xs cursor-pointer hover:bg-[#4a5acf] transition-colors"
                     @click="addClothesItem"
                   >
-                    + 添加服装
+                    + {{ $t('settings.characterInfo.clothes.add') }}
                   </button>
                 </div>
                 <div
@@ -137,7 +137,7 @@
                   class="p-4 bg-white/5 rounded-xl border border-white/10 space-y-3"
                 >
                   <div class="flex items-center justify-between">
-                    <span class="text-sm font-medium text-white/80">服装 #{{ idx + 1 }}</span>
+                    <span class="text-sm font-medium text-white/80">{{ $t('settings.characterInfo.clothes.item', { index: idx + 1 }) }}</span>
                     <button
                       class="w-6 h-6 rounded-full border-none bg-red-500/20 text-red-400 cursor-pointer text-xs hover:bg-red-500/40 transition-colors"
                       @click="removeClothesItem(idx)"
@@ -163,7 +163,7 @@
                   </div>
                 </div>
                 <div v-if="clothesList.length === 0" class="text-sm text-white/40 text-center py-8">
-                  暂无服装配置，点击"添加服装"创建
+                  {{ $t('settings.characterInfo.clothes.empty') }}
                 </div>
               </div>
             </div>
@@ -178,7 +178,7 @@
             class="px-5 py-2 rounded-[20px] text-sm font-medium cursor-pointer transition-all duration-200 border-none bg-white/10 text-white hover:bg-white/20"
             @click="handleClose"
           >
-            取消
+            {{ $t('settings.characterInfo.footer.cancel') }}
           </button>
           <button
             class="px-5 py-2 rounded-[20px] text-sm font-medium cursor-pointer transition-all duration-200 border-none bg-[#5e72e4] text-white disabled:opacity-60 disabled:cursor-not-allowed hover:enabled:bg-[#4a5acf] hover:enabled:-translate-y-px hover:enabled:shadow-[0_4px_12px_rgba(94,114,228,0.3)]"
@@ -189,7 +189,7 @@
               v-if="saving"
               class="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"
             ></span>
-            {{ saving ? '保存中...' : '保存更改' }}
+            {{ saving ? $t('settings.characterInfo.footer.saving') : $t('settings.characterInfo.footer.save') }}
           </button>
         </div>
       </div>
@@ -199,6 +199,8 @@
 
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
+import {  onUnmounted, ref, watch, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { getRoleSettings, updateRoleSettings } from '../../../api/services/character'
 import { Icon } from '../../base'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
@@ -216,6 +218,7 @@ const activeTab = ref('basic')
 const loading = ref(false)
 const saving = ref(false)
 const dialogStore = useDialogStore()
+const { t } = useI18n()
 const localSettings = ref<any>({})
 const installedVoices = ref<TtsLocal.VoiceRecord[]>([])
 
@@ -229,14 +232,14 @@ async function refreshLocalVoices(): Promise<void> {
   }
 }
 
-const tabs = [
-  { id: 'basic', label: '基本信息' },
-  { id: 'prompts', label: '提示词' },
-  { id: 'visuals', label: '视觉效果' },
-  { id: 'clothes', label: '服装' },
-  { id: 'pet', label: '桌宠' },
-  { id: 'voice', label: '语音设置' },
-]
+const tabs = computed(() => [
+  { id: 'basic', label: t('settings.characterInfo.tabs.basic') },
+  { id: 'prompts', label: t('settings.characterInfo.tabs.prompts') },
+  { id: 'visuals', label: t('settings.characterInfo.tabs.visuals') },
+  { id: 'clothes', label: t('settings.characterInfo.tabs.clothes') },
+  { id: 'pet', label: t('settings.characterInfo.tabs.pet') },
+  { id: 'voice', label: t('settings.characterInfo.tabs.voice') },
+])
 
 const voiceModelKeys = [
   'sva_speaker_id',
@@ -287,37 +290,37 @@ const fieldOptions = (field: FieldSchema) => {
   )
 }
 
-const schemas: Record<string, FieldSchema[]> = {
+const schemas = computed<Record<string, FieldSchema[]>>(() => ({
   basic: [
-    { key: 'ai_name', label: 'AI 名称', type: 'text' },
-    { key: 'ai_subtitle', label: 'AI 副标题', type: 'text' },
-    { key: 'user_name', label: '用户名称', type: 'text' },
-    { key: 'user_subtitle', label: '用户副标题', type: 'text' },
-    { key: 'title', label: '角色标题', type: 'text' },
-    { key: 'info', label: '角色介绍', type: 'textarea', rows: 4 },
+    { key: 'ai_name', label: t('settings.characterInfo.fields.aiName'), type: 'text' },
+    { key: 'ai_subtitle', label: t('settings.characterInfo.fields.aiSubtitle'), type: 'text' },
+    { key: 'user_name', label: t('settings.characterInfo.fields.userName'), type: 'text' },
+    { key: 'user_subtitle', label: t('settings.characterInfo.fields.userSubtitle'), type: 'text' },
+    { key: 'title', label: t('settings.characterInfo.fields.title'), type: 'text' },
+    { key: 'info', label: t('settings.characterInfo.fields.info'), type: 'textarea', rows: 4 },
   ],
   prompts: [
-    { key: 'system_prompt', label: '系统提示词', type: 'textarea', rows: 10 },
-    { key: 'system_prompt_example', label: '对话示例', type: 'textarea', rows: 6 },
-    { key: 'system_prompt_example_old', label: '旧版兼容对话示例', type: 'textarea', rows: 4 },
+    { key: 'system_prompt', label: t('settings.characterInfo.fields.systemPrompt'), type: 'textarea', rows: 10 },
+    { key: 'system_prompt_example', label: t('settings.characterInfo.fields.systemPromptExample'), type: 'textarea', rows: 6 },
+    { key: 'system_prompt_example_old', label: t('settings.characterInfo.fields.systemPromptExampleOld'), type: 'textarea', rows: 4 },
   ],
   visuals: [
-    { key: 'scale', label: '缩放', type: 'number', step: '0.01' },
-    { key: 'offset_x', label: '水平偏移', type: 'number', step: '0.1' },
-    { key: 'offset_y', label: '垂直偏移', type: 'number', step: '0.1' },
-    { key: 'bubble_top', label: '气泡顶部距离', type: 'number' },
-    { key: 'bubble_left', label: '气泡左侧距离', type: 'number' },
-    { key: 'thinking_message', label: '思考消息文本', type: 'text' },
+    { key: 'scale', label: t('settings.characterInfo.fields.scale'), type: 'number', step: '0.01' },
+    { key: 'offset_x', label: t('settings.characterInfo.fields.offsetX'), type: 'number', step: '0.1' },
+    { key: 'offset_y', label: t('settings.characterInfo.fields.offsetY'), type: 'number', step: '0.1' },
+    { key: 'bubble_top', label: t('settings.characterInfo.fields.bubbleTop'), type: 'number' },
+    { key: 'bubble_left', label: t('settings.characterInfo.fields.bubbleLeft'), type: 'number' },
+    { key: 'thinking_message', label: t('settings.characterInfo.fields.thinkingMessage'), type: 'text' },
   ],
   pet: [
-    { key: 'scale_p', label: '桌宠缩放', type: 'number', step: '0.01' },
-    { key: 'offset_x_p', label: '桌宠水平偏移', type: 'number', step: '0.1' },
-    { key: 'offset_y_p', label: '桌宠垂直偏移', type: 'number', step: '0.1' },
+    { key: 'scale_p', label: t('settings.characterInfo.fields.scaleP'), type: 'number', step: '0.01' },
+    { key: 'offset_x_p', label: t('settings.characterInfo.fields.offsetXP'), type: 'number', step: '0.1' },
+    { key: 'offset_y_p', label: t('settings.characterInfo.fields.offsetYP'), type: 'number', step: '0.1' },
   ],
   voice: [
     {
       key: 'tts_type',
-      label: 'TTS 类型',
+      label: t('settings.characterInfo.fields.ttsType'),
       type: 'select',
       realtime: true,
       options: [
@@ -329,27 +332,31 @@ const schemas: Record<string, FieldSchema[]> = {
         { label: 'aivis', value: 'aivis' },
         { label: 'opentts', value: 'opentts' },
         { label: '本地 SBV2 API', value: 'localsbv2api' },
+        { label: 'indextts2', value: 'indextts2' },
       ],
     },
 
     {
       key: 'voice_lang',
-      label: '语音语言',
+      label: t('settings.characterInfo.fields.voiceLang'),
       type: 'select',
       realtime: true,
       options: [
-        { label: '日语', value: 'ja' },
-        { label: '中文', value: 'zh' },
         {
-          label: '英语',
+          label: t('settings.characterInfo.voiceLangOptions.ja'),
+          value: 'ja',
+          visibleIf: (s) => s.tts_type !== 'indextts2',
+        },
+        { label: t('settings.characterInfo.voiceLangOptions.zh'), value: 'zh' },
+        {
+          label: t('settings.characterInfo.voiceLangOptions.en'),
           value: 'en',
-          visibleIf: (s) =>
-            s.tts_type === 'gsv' || s.tts_type === 'opentts' || s.tts_type === 'sbv2',
+          visibleIf: (s) => ['gsv', 'opentts', 'sbv2', 'indextts2'].includes(s.tts_type),
         },
         {
-          label: '韩语',
+          label: t('settings.characterInfo.voiceLangOptions.ko'),
           value: 'ko',
-          visibleIf: (s) => s.tts_type === 'gsv' || s.tts_type === 'opentts',
+          visibleIf: (s) => ['gsv', 'opentts'].includes(s.tts_type),
         },
       ],
     },
@@ -438,6 +445,16 @@ const schemas: Record<string, FieldSchema[]> = {
     },
 
     {
+      key: 'opentts_voice',
+      label: t('settings.characterInfo.fields.openttsVoice'),
+      type: 'text',
+      isVoiceModel: true,
+      realtime: true,
+      placeholder: t('settings.characterInfo.placeholders.openttsVoice'),
+      visibleIf: (s) => s.tts_type === 'opentts',
+    },
+
+    {
       key: 'aivis_model_uuid',
       label: 'aivis_model_uuid',
       type: 'text',
@@ -520,11 +537,11 @@ const schemas: Record<string, FieldSchema[]> = {
       visibleIf: (s) => s.tts_type === 'opentts',
     },
   ],
-}
+}))
 
 // --- Computed Properties ---
 
-const currentTabConfig = computed(() => schemas[activeTab.value])
+const currentTabConfig = computed(() => schemas.value[activeTab.value])
 
 // voice model 子区域已移除，所有字段统一在主表单渲染
 const currentTabFields = computed(() => {
@@ -674,17 +691,27 @@ const handleClose = () => {
 const handleFieldChange = (field: FieldSchema) => {
   if (!field.realtime || !props.roleId) return
 
+  // tauri-refactor 分支的逻辑：indextts2 类型时重置日语
+  if (
+    field.key === 'tts_type' &&
+    localSettings.value.tts_type === 'indextts2' &&
+    localSettings.value.voice_lang === 'ja'
+  ) {
+    localSettings.value.voice_lang = 'zh'
+  }
+
+  // 防抖逻辑
   const roleId = props.roleId
   clearRealtimeSaveTimer()
   realtimeSaveTimer = setTimeout(async () => {
     realtimeSaveTimer = null
     if (!props.visible || props.roleId !== roleId) return
     try {
-      // 后端会同时保存 settings.yml 并重建已加载角色的 VoiceMaker。
       await updateRoleSettings(roleId, localSettings.value)
     } catch (e) {
       console.error(`实时更新 ${field.key} 失败:`, e)
-      await dialogStore.alert(`实时更新 ${field.label} 失败，请检查控制台日志`)
+      // 使用国际化
+      await dialogStore.alert(t('settings.characterInfo.messages.realtimeUpdateFailed', { label: field.label }))
     }
   }, REALTIME_SAVE_DEBOUNCE_MS)
 }
@@ -699,7 +726,7 @@ const saveSettings = async () => {
     emit('close')
   } catch (e) {
     console.error('Failed to save settings', e)
-    await dialogStore.alert('保存失败，请检查控制台日志')
+    await dialogStore.alert(t('settings.characterInfo.messages.saveFailed'))
   } finally {
     saving.value = false
   }
