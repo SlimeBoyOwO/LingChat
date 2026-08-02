@@ -41,7 +41,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'pnpm' # 已自动缓存 pnpm store，无需额外 actions/cache
+          cache: 'pnpm'
 
       - name: 签出 lfs 文件
         run: git lfs pull
@@ -56,7 +56,7 @@ jobs:
         with:
           workspaces: ./src-tauri
           cache-targets: true
-          shared-key: ${{ runner.os }}-main-pnpm-tauri-build-android
+          shared-key: ${{ runner.os }}-release-pnpm-tauri-build-android
           cache-on-failure: true
 
       - name: 安装 Linux 依赖 (Ubuntu)

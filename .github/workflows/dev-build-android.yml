@@ -38,7 +38,7 @@ jobs:
         with:
           workspaces: ./src-tauri
           cache-targets: true
-          shared-key: ${{ runner.os }}-main-pnpm-tauri-build-android
+          shared-key: ${{ runner.os }}-dev-pnpm-tauri-build-android
           cache-on-failure: true
 
       - name: 安装 Linux 依赖 (Ubuntu)
