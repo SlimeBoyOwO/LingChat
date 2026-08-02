@@ -25,12 +25,8 @@ jobs:
     permissions:
       contents: write
 
-    # 冷编译大头在 cargo（依赖全量编译 ~60min）。
-    # 用 env 覆盖 release profile 加速，不改 Cargo.toml（本地构建不受影响）。
-    # opt-level 3→2：编译快 20-30%，代价是运行时性能略降（对开发版可接受）。
-    # 正式 Release 若在意性能，可拆一个不带这些覆盖的 job/单独 workflow。
     env:
-      CARGO_PROFILE_RELEASE_OPT_LEVEL: "2"
+      CARGO_PROFILE_RELEASE_OPT_LEVEL: "s"
       CARGO_PROFILE_RELEASE_STRIP: "true"
 
     steps:
@@ -61,7 +57,6 @@ jobs:
           workspaces: ./src-tauri
           cache-targets: true
           shared-key: ${{ runner.os }}-main-pnpm-tauri-build-android
-          # 编译失败也保存已编好的依赖缓存，下次迭代不用全量重编（默认 false 会白烧一轮）
           cache-on-failure: true
 
       - name: 安装 Linux 依赖 (Ubuntu)
@@ -101,7 +96,7 @@ jobs:
           java-version: '21'
 
       - name: pnpm 安装依赖
-        run: pnpm i --frozen-lockfile # 跳过解析，更快更确定
+        run: pnpm i --frozen-lockfile
 
       - name: 生成图标
         run: |
@@ -111,7 +106,6 @@ jobs:
       - name: 准备 Android 项目
         run: pnpm android:prepare
 
-      # gradle 依赖在 android:prepare 之后才生成（src-tauri/gen/android），缓存放这里
       - name: 缓存 Gradle
         uses: actions/cache@v4
         with:
@@ -121,16 +115,6 @@ jobs:
           key: ${{ runner.os }}-gradle-${{ hashFiles('src-tauri/gen/android/**/*.gradle*', 'src-tauri/gen/android/**/gradle-wrapper.properties', 'src-tauri/gen/android/gradle/libs.versions.toml') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
-
-      # tauri android 会通过 sdkmanager 装缺的 NDK/build-tools 到 /usr/local/lib/android/sdk，
-      # 缓存它省掉每次数 GB 下载。注意体积（repo 缓存上限 10GB），若与 Rust 缓存冲突可去掉。
-      - name: 缓存 Android SDK/NDK
-        uses: actions/cache@v4
-        with:
-          path: /usr/local/lib/android/sdk
-          key: ${{ runner.os }}-android-sdk-${{ hashFiles('src-tauri/gen/android/app/build.gradle.kts') }}
-          restore-keys: |
-            ${{ runner.os }}-android-sdk-
 
       - name: 配置 Android 签名
         run: |
