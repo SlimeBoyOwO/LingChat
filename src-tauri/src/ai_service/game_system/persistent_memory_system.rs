@@ -1,12 +1,18 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
+
+use anyhow::Result;
 
 use tokio::sync::Mutex;
 
 use crate::ai_service::game_system::memory_builder::MemoryBuilder;
 use crate::ai_service::llm::{slot_snapshot, LlmClient, LlmSlot};
 use crate::ai_service::types::{GameLine, GameMemoryBank, GameRole, LlmMessage};
+
+/// 压缩失败后的重试冷却时长。失败不推进指针，但为避免 LLM 故障期间每轮对话
+/// 都白打 4 段压缩请求，冷却期（60s，对齐 Operit 轮询间隔）内不再触发。
+const RETRY_COOLDOWN_MS: u64 = 60_000;
 
 // ── 中文压缩提示词（与 Python PersistentMemorySystem._init_prompts 完全一致） ──
 
@@ -92,6 +98,11 @@ pub struct PersistentMemorySystem {
     is_updating: Arc<AtomicBool>,
     has_pending: Arc<AtomicBool>,
 
+    /// 最近一次压缩失败的时间戳（unix 毫秒），0 = 无失败。用于重试冷却。
+    last_failure_at_ms: Arc<AtomicU64>,
+    /// 连续失败次数（诊断日志用，成功后清零）。
+    fail_count: Arc<AtomicU32>,
+
     pub enabled: bool,
     update_interval: usize,
     recent_window: usize,
@@ -116,6 +127,8 @@ impl PersistentMemorySystem {
             memory_bank: Arc::new(Mutex::new(initial_bank.clone())),
             is_updating: Arc::new(AtomicBool::new(false)),
             has_pending: Arc::new(AtomicBool::new(false)),
+            last_failure_at_ms: Arc::new(AtomicU64::new(0)),
+            fail_count: Arc::new(AtomicU32::new(0)),
             enabled,
             update_interval,
             recent_window,
@@ -174,8 +187,11 @@ impl PersistentMemorySystem {
     }
 
     /// 从 DB 加载后重置内部缓存（丢弃任何待处理的过期更新）。
+    /// 同时清失败状态：指针仍停在 DB 中的旧位置，重试从新会话重新计时。
     pub async fn reset_from(&self, bank: &GameMemoryBank) {
         self.has_pending.store(false, Ordering::Release);
+        self.last_failure_at_ms.store(0, Ordering::Release);
+        self.fail_count.store(0, Ordering::Release);
         let mut mb = self.memory_bank.lock().await;
         *mb = bank.clone();
     }
@@ -189,6 +205,13 @@ impl PersistentMemorySystem {
             return;
         }
         if self.is_updating.load(Ordering::Acquire) {
+            return;
+        }
+
+        // 失败重试冷却：压缩失败后不推进指针（下轮对话仍会重试同一批），
+        // 但冷却期内不再触发，避免 LLM 故障时每轮对话都白打 4 段压缩请求。
+        let last_fail = self.last_failure_at_ms.load(Ordering::Acquire);
+        if last_fail != 0 && current_time_ms() - last_fail < RETRY_COOLDOWN_MS {
             return;
         }
 
@@ -243,16 +266,29 @@ impl PersistentMemorySystem {
         let prompts = self.section_prompts.clone();
         let is_updating = self.is_updating.clone();
         let has_pending = self.has_pending.clone();
+        let last_failure_at_ms = self.last_failure_at_ms.clone();
+        let fail_count = self.fail_count.clone();
         let role_id = self.role_id;
         let ai_name = self.ai_name.clone();
 
         tokio::spawn(async move {
+            // 记录一次失败并复位 is_updating。失败不推进指针 → 下轮对话重试同一批。
+            let record_failure = || {
+                last_failure_at_ms.store(current_time_ms(), Ordering::Release);
+                fail_count.fetch_add(1, Ordering::AcqRel);
+                is_updating.store(false, Ordering::Release);
+            };
+
             // 从槽位读取当前 LLM 客户端快照（支持热切换后使用新模型）
             let llm = match slot_snapshot(&llm_slot).await {
                 Some(client) => client,
                 None => {
-                    tracing::warn!("MemoryBank: LLM 槽位为空，跳过本次更新");
-                    is_updating.store(false, Ordering::Release);
+                    tracing::warn!(
+                        "MemoryBank: role_id={} LLM 槽位为空，跳过本次更新（第 {} 次失败）",
+                        role_id,
+                        fail_count.load(Ordering::Acquire) + 1
+                    );
+                    record_failure();
                     return;
                 }
             };
@@ -296,17 +332,42 @@ impl PersistentMemorySystem {
                 ),
             );
 
-            // 写回
+            // 4 段必须全部成功才写回并推进指针；任一失败则整批重试。
+            let results = [st, lt, ui, pr];
+            if let Some((key, err)) = results
+                .iter()
+                .enumerate()
+                .find_map(|(i, r)| match r {
+                    Err(e) => Some((["short_term", "long_term", "user_info", "promises"][i], e)),
+                    Ok(_) => None,
+                })
+            {
+                let count = fail_count.load(Ordering::Acquire) + 1;
+                tracing::warn!(
+                    "MemoryBank: role_id={} 分段压缩失败 (key={}): {}（第 {} 次失败，指针不移动，冷却后重试）",
+                    role_id,
+                    key,
+                    err,
+                    count,
+                );
+                record_failure();
+                return;
+            }
+
+            // 全部成功：写回 + 推进指针 + 清失败状态
+            let [st, lt, ui, pr] = results;
             {
                 let mut bank = mb.lock().await;
-                bank.data.short_term = st;
-                bank.data.long_term = lt;
-                bank.data.user_info = ui;
-                bank.data.promises = pr;
+                bank.data.short_term = st.unwrap();
+                bank.data.long_term = lt.unwrap();
+                bank.data.user_info = ui.unwrap();
+                bank.data.promises = pr.unwrap();
                 bank.meta.last_processed_global_idx = target_idx;
                 bank.meta.updated_at = now_str();
             }
 
+            last_failure_at_ms.store(0, Ordering::Release);
+            fail_count.store(0, Ordering::Release);
             is_updating.store(false, Ordering::Release);
             has_pending.store(true, Ordering::Release);
             tracing::info!(
@@ -317,6 +378,7 @@ impl PersistentMemorySystem {
         });
     }
 
+    /// 返回 `Ok(新内容)` 或传播 LLM 错误。调用方负责失败重试（不推进指针）。
     async fn update_section(
         llm: &Arc<LlmClient>,
         prompts: &HashMap<String, String>,
@@ -324,10 +386,10 @@ impl PersistentMemorySystem {
         key: &str,
         old_content: &str,
         _ai_name: &str,
-    ) -> String {
+    ) -> Result<String> {
         let prompt_req = match prompts.get(key) {
             Some(p) => p,
-            None => return old_content.to_string(),
+            None => return Ok(old_content.to_string()), // 配置缺失不是失败，保留旧内容
         };
 
         let full_prompt = format!(
@@ -337,19 +399,12 @@ impl PersistentMemorySystem {
 
         let messages = vec![LlmMessage::user(full_prompt)];
 
-        match llm.complete(&messages).await {
-            Ok(response) => {
-                let cleaned = response.trim();
-                if cleaned.is_empty() {
-                    old_content.to_string()
-                } else {
-                    cleaned.to_string()
-                }
-            }
-            Err(e) => {
-                tracing::warn!("MemoryBank 分段压缩失败 (key={}): {}", key, e);
-                old_content.to_string()
-            }
+        let response = llm.complete(&messages).await?;
+        let cleaned = response.trim();
+        if cleaned.is_empty() {
+            Ok(old_content.to_string())
+        } else {
+            Ok(cleaned.to_string())
         }
     }
 
@@ -407,4 +462,8 @@ impl PersistentMemorySystem {
 
 fn now_str() -> String {
     chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
+}
+
+fn current_time_ms() -> u64 {
+    chrono::Utc::now().timestamp_millis() as u64
 }
