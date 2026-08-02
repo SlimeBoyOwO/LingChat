@@ -49,8 +49,8 @@
 
         <!-- Content -->
         <div class="flex-1 overflow-hidden flex flex-row">
-          <!-- Sidebar -->
-          <div class="w-48 bg-black/10 flex flex-col gap-2 p-4 border-r border-white/10">
+          <!-- Sidebar (vertical scrollable for narrow viewports) -->
+          <div class="w-44 shrink-0 bg-black/10 flex flex-col gap-2 p-3 border-r border-white/10 overflow-y-auto tab-sidebar-scroll">
             <button
               v-for="tab in tabs"
               :key="tab.id"
@@ -109,8 +109,7 @@
                       @change="handleFieldChange(field)"
                     >
                       <option
-                        v-for="opt in fieldOptions(field)"
-                        :key="opt.value"
+                        v-for="opt in resolveFieldOptions(field)"                        :key="opt.value"
                         :value="opt.value"
                         class="bg-[#333] text-white"
                       >
@@ -199,11 +198,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
+import {  onUnmounted, ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getRoleSettings, updateRoleSettings } from '../../../api/services/character'
 import { Icon } from '../../base'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
+import * as TtsLocal from '../../../api/services/tts/tts-local'
 
 const props = defineProps<{
   visible: boolean
@@ -219,6 +220,17 @@ const saving = ref(false)
 const dialogStore = useDialogStore()
 const { t } = useI18n()
 const localSettings = ref<any>({})
+const installedVoices = ref<TtsLocal.VoiceRecord[]>([])
+
+async function refreshLocalVoices(): Promise<void> {
+  try {
+    const snapshot = await TtsLocal.listInstalled()
+    installedVoices.value = snapshot.voices
+  } catch (error) {
+    console.warn('refreshLocalVoices failed', error)
+    installedVoices.value = []
+  }
+}
 
 const tabs = computed(() => [
   { id: 'basic', label: t('settings.characterInfo.tabs.basic') },
@@ -262,9 +274,14 @@ interface FieldSchema {
   step?: string
   placeholder?: string
   options?: FieldOption[]
+  // Dynamic options computed from refs/state. Overrides options when set.
+  dynamicOptions?: () => { label: string; value: string }[]
   visibleIf?: (settings: any) => boolean
   isVoiceModel?: boolean
   realtime?: boolean
+  // When set, the field reads/writes into localSettings.value[parent][key].
+  // The parent object is auto-initialised to {} on first write if missing.
+  parent?: string
 }
 
 const fieldOptions = (field: FieldSchema) => {
@@ -314,6 +331,7 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
         { label: 'gsv', value: 'gsv' },
         { label: 'aivis', value: 'aivis' },
         { label: 'opentts', value: 'opentts' },
+        { label: '本地 SBV2 API', value: 'localsbv2api' },
         { label: 'indextts2', value: 'indextts2' },
       ],
     },
@@ -444,6 +462,71 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
       visibleIf: (s) => s.tts_type === 'aivis',
     },
 
+    // --- Local SBV2 (localsbv2api) ---
+    {
+      key: 'sbv2_local_voice_id',
+      parent: 'voice_models',
+      label: '本地语音 ID',
+      type: 'select',
+      dynamicOptions: () =>
+        installedVoices.value.length === 0
+          ? [{ label: '未安装本地模型（请先在 TTS 设置中导入）', value: '' }]
+          : installedVoices.value.map((voice) => ({
+              label: voice.display_name
+                ? `${voice.display_name} (${voice.voice_id})`
+                : voice.voice_id,
+              value: voice.voice_id,
+            })),
+      visibleIf: (s) => s.tts_type === 'localsbv2api',
+    },
+    {
+      key: 'sbv2_local_speaker_id',
+      parent: 'voice_models',
+      label: '说话人 ID',
+      type: 'number',
+      step: '1',
+      visibleIf: (s) => s.tts_type === 'localsbv2api',
+    },
+    {
+      key: 'sbv2_local_style_id',
+      parent: 'voice_models',
+      label: '风格 ID',
+      type: 'number',
+      step: '1',
+      visibleIf: (s) => s.tts_type === 'localsbv2api',
+    },
+    {
+      key: 'sbv2_local_length_scale',
+      parent: 'voice_models',
+      label: '长度缩放 (length_scale)',
+      type: 'number',
+      step: '0.05',
+      visibleIf: (s) => s.tts_type === 'localsbv2api',
+    },
+    {
+      key: 'sbv2_local_sdp_ratio',
+      parent: 'voice_models',
+      label: 'SDP 噪声比',
+      type: 'number',
+      step: '0.05',
+      visibleIf: (s) => s.tts_type === 'localsbv2api',
+    },
+    {
+      key: 'sbv2_local_cloud_fallback_model',
+      parent: 'voice_models',
+      label: '本地 TTS 云端备用模型',
+      type: 'text',
+      placeholder: '本地 TTS 关闭时使用，可留空',
+      visibleIf: (s) => s.tts_type === 'localsbv2api',
+    },
+    {
+      key: 'sbv2_local_cloud_fallback_speaker_id',
+      parent: 'voice_models',
+      label: '本地 TTS 云端备用说话人 ID',
+      type: 'text',
+      placeholder: '本地 TTS 关闭时使用，可留空',
+      visibleIf: (s) => s.tts_type === 'localsbv2api',
+    },
     {
       key: 'opentts_voice',
       label: 'OpenTTS 音色标识',
@@ -465,10 +548,17 @@ const currentTabFields = computed(() => {
   return currentTabConfig.value || []
 })
 
+const resolveFieldOptions = (field: FieldSchema) => {
+  if (field.dynamicOptions) {
+    return field.dynamicOptions()
+  }
+  return field.options ?? []
+}
+
 const ensureVoiceModels = () => {
   if (
     !localSettings.value.voice_models ||
-    typeof localSettings.value.voice_models !== 'object' ||
+    typeof localSettings.value.voice_models !== "object" ||
     Array.isArray(localSettings.value.voice_models)
   ) {
     localSettings.value.voice_models = {}
@@ -490,16 +580,31 @@ const migrateLegacyVoiceModelFields = () => {
 const fieldModel = (field: FieldSchema) => {
   return computed({
     get: () => {
-      const target = field.isVoiceModel ? ensureVoiceModels() : localSettings.value
+      let target: any
+      if (field.parent) {
+        const parentObj = localSettings.value[field.parent]
+        target = (parentObj && typeof parentObj === "object") ? parentObj : (localSettings.value[field.parent] = {})
+      } else if (field.isVoiceModel) {
+        target = ensureVoiceModels()
+      } else {
+        target = localSettings.value
+      }
       return target[field.key]
     },
-    set: (val) => {
-      const target = field.isVoiceModel ? ensureVoiceModels() : localSettings.value
-      if (field.type === 'number') {
-        target[field.key] = Number(val)
+    set: (val: any) => {
+      const coerced = field.type === "number" ? Number(val) : val
+      let target: any
+      if (field.parent) {
+        if (!localSettings.value[field.parent] || typeof localSettings.value[field.parent] !== "object") {
+          localSettings.value[field.parent] = {}
+        }
+        target = localSettings.value[field.parent]
+      } else if (field.isVoiceModel) {
+        target = ensureVoiceModels()
       } else {
-        target[field.key] = val
+        target = localSettings.value
       }
+      target[field.key] = coerced
     },
   })
 }
@@ -534,6 +639,9 @@ const removeClothesItem = (idx: number) => {
 watch(
   () => props.visible,
   async (newVal) => {
+    if (!newVal) {
+      clearRealtimeSaveTimer()
+    }
     if (newVal && props.roleId) {
       loading.value = true
       try {
@@ -553,15 +661,37 @@ watch(
   },
 )
 
+// Refresh installed local voices whenever the voice tab is shown while the
+// dialog is visible. The dropdown only matters when tts_type=localsbv2api,
+// but loading early keeps things simple and the list is cheap to fetch.
+watch(
+  () => [props.visible, activeTab.value, localSettings.value.tts_type],
+  ([visible, tab, ttsType]) => {
+    if (visible && tab === 'voice' && ttsType === 'localsbv2api') {
+      void refreshLocalVoices()
+    }
+  },
+)
+
+const REALTIME_SAVE_DEBOUNCE_MS = 300
+let realtimeSaveTimer: ReturnType<typeof setTimeout> | null = null
+
+const clearRealtimeSaveTimer = () => {
+  if (realtimeSaveTimer !== null) {
+    clearTimeout(realtimeSaveTimer)
+    realtimeSaveTimer = null
+  }
+}
+
 const handleClose = () => {
+  clearRealtimeSaveTimer()
   emit('close')
 }
 
-const handleFieldChange = async (field: FieldSchema) => {
+const handleFieldChange = (field: FieldSchema) => {
   if (!field.realtime || !props.roleId) return
 
-  // IndexTTS2 仅支持中/英文：切换到该类型时，把残留的日语重置为中文，
-  // 避免日语选项被隐藏后旧值仍然生效。
+  // tauri-refactor 分支的逻辑：indextts2 类型时重置日语
   if (
     field.key === 'tts_type' &&
     localSettings.value.tts_type === 'indextts2' &&
@@ -570,17 +700,25 @@ const handleFieldChange = async (field: FieldSchema) => {
     localSettings.value.voice_lang = 'zh'
   }
 
-  try {
-    // 后端会同时保存 settings.yml 并重建已加载角色的 VoiceMaker。
-    await updateRoleSettings(props.roleId, localSettings.value)
-  } catch (e) {
-    console.error(`实时更新 ${field.key} 失败:`, e)
-    await dialogStore.alert(t('settings.characterInfo.messages.realtimeUpdateFailed', { label: field.label }))
-  }
+  // 防抖逻辑
+  const roleId = props.roleId
+  clearRealtimeSaveTimer()
+  realtimeSaveTimer = setTimeout(async () => {
+    realtimeSaveTimer = null
+    if (!props.visible || props.roleId !== roleId) return
+    try {
+      await updateRoleSettings(roleId, localSettings.value)
+    } catch (e) {
+      console.error(`实时更新 ${field.key} 失败:`, e)
+      // 使用国际化
+      await dialogStore.alert(t('settings.characterInfo.messages.realtimeUpdateFailed', { label: field.label }))
+    }
+  }, REALTIME_SAVE_DEBOUNCE_MS)
 }
 
 const saveSettings = async () => {
   if (!props.roleId) return
+  clearRealtimeSaveTimer()
   saving.value = true
   try {
     await updateRoleSettings(props.roleId, localSettings.value)
@@ -593,10 +731,31 @@ const saveSettings = async () => {
     saving.value = false
   }
 }
+
+onUnmounted(clearRealtimeSaveTimer)
 </script>
 
 <style scoped>
 /* 表单控件 :focus 选中状态 */
+/* Vertical sidebar: thin custom scrollbar (Webkit + Firefox). */
+.tab-sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+.tab-sidebar-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.tab-sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.tab-sidebar-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+}
+.tab-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.32);
+}
+
 .form-control:focus {
   border-color: #79d9ff;
   background: rgba(0, 0, 0, 0.3);

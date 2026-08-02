@@ -45,6 +45,7 @@ pub struct TtsProvider {
     pub sva: Option<Arc<VitsAdapter>>,
     pub sbv2: Option<Arc<Sbv2Adapter>>,
     pub sbv2api: Option<Arc<Sbv2ApiAdapter>>,
+    pub sbv2_local: Option<Arc<crate::ai_service::tts::local::adapter::LocalTtsAdapter>>,
     pub bv2: Option<Arc<Bv2Adapter>>,
     pub gsv: Option<Arc<GsvAdapter>>,
     pub aivis: Option<Arc<AivisAdapter>>,
@@ -61,6 +62,7 @@ impl Default for TtsProvider {
             sva: None,
             sbv2: None,
             sbv2api: None,
+            sbv2_local: None,
             bv2: None,
             gsv: None,
             aivis: None,
@@ -79,6 +81,7 @@ impl std::fmt::Debug for TtsProvider {
             .field("sva", &self.sva.is_some())
             .field("sbv2", &self.sbv2.is_some())
             .field("sbv2api", &self.sbv2api.is_some())
+            .field("sbv2_local", &self.sbv2_local.is_some())
             .field("bv2", &self.bv2.is_some())
             .field("gsv", &self.gsv.is_some())
             .field("aivis", &self.aivis.is_some())
@@ -157,6 +160,10 @@ impl TtsProvider {
                 .sbv2api
                 .clone()
                 .ok_or_else(|| anyhow!("sbv2-api 适配器未初始化"))?,
+            "localsbv2api" => self
+                .sbv2_local
+                .clone()
+                .ok_or_else(|| anyhow!("SBV2 local 适配器未初始化"))?,
             "sva-bv2" => self
                 .bv2
                 .clone()

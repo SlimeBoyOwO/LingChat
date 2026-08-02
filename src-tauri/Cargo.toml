@@ -1,6 +1,7 @@
 [package]
 name = "ling_chat"
 version = "0.4.6"
+default-run = "ling_chat"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -61,7 +62,9 @@ regex = "1"
 genai = "0.6"
 uuid = { version = "1", features = ["v4"] }
 async-trait = "0.1"
-ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "download-binaries", "tls-native"] }
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "ndarray", "download-binaries"] }
+
+sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = ["std"] }
 once_cell = "1"
 base64 = "0.22"
 rand = "0.8"
@@ -73,7 +76,7 @@ sha2 = "0.10"
 tempfile = "3"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
-# ─── LAN Sync ────────────────────────────────────────────────
+# LAN Sync
 axum = { version = "0.7", features = ["tokio"] }
 mdns-sd = "0.11"
 if-addrs = "0.13"
@@ -85,5 +88,3 @@ tauri-plugin-process = "2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_Graphics_Gdi"] }
-
-

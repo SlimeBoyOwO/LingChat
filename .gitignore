@@ -59,6 +59,8 @@ ling_chat_pal/
 node_modules/
 build/
 dist/
+target/
+
 ling_chat/static/frontend/
 # Tauri auto-generated files
 # src-tauri/gen/android/ 已取消忽略（通过下级 .gitignore 控制具体排除项）
@@ -83,6 +85,8 @@ src-tauri/icons/ios/*.png
 # Android 自动生成的资源
 src-tauri/gen/android/app/src/main/assets/
 src-tauri/gen/android/app/src/main/res/mipmap-*/ic_launcher*.png
+
+**/.cargo/**
 
 # ============================================================
 #          特定项目文件 (Project Specific Files)
@@ -160,3 +164,7 @@ data/game_data/scripts/standalone/**
 .claude
 CLAUDE.md
 AGENTS.md
+
+# 本地 APK build 路径
+prev-build-*/
+
