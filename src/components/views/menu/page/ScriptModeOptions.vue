@@ -1,32 +1,52 @@
 <template>
-  <nav class="flex flex-col items-stretch">
-    <StartItem
-      v-for="(script, index) in currentPageScripts"
-      :key="script.script_name"
-      @click="selectScript(script)"
-    >
-      {{ script.script_name }}
-    </StartItem>
+  <StartList>
+    <StartLine v-for="(script, index) in currentPageScripts">
+      <StartItem
+        :key="script.script_name"
+        @click="selectScript(script)"
+      >
+        {{ script.script_name }}
+      </StartItem>
+    </StartLine>
 
-    <!-- 占位 -->
-    <StartItem v-for="n in pageSize - currentPageScripts.length" :key="'placeholder-' + n" disabled>
-      {{ '\u00A0' }}
-    </StartItem>
-
+    <StartLine>
+      <StartItem
+        v-for="n in pageSize - currentPageScripts.length"
+        :key="'placeholder-' + n"
+        disabled="true"
+      >
+        {{ '\u00A0' }}
+      </StartItem>
+    </StartLine>
     <!-- 分页控制 -->
-    <div>
-      <StartItem @click="currentPage--" :disabled="currentPage === 1"><</StartItem>
-      <StartItem disabled style="font-size: 28px">{{ currentPage }} / {{ totalPages }}</StartItem>
-      <StartItem @click="currentPage++" :disabled="currentPage === totalPages">></StartItem>
+    <StartLine>
+      <StartItem
+        @click="currentPage--"
+        :disabled="currentPage === 1"
+      >
+        <
+      </StartItem>
+      <StartItem
+        disabled="true"
+        style="font-size: 28px"
+      >
+        {{ currentPage }} / {{ totalPages }}
+      </StartItem>
+      <StartItem
+        @click="currentPage++"
+        :disabled="currentPage === totalPages"
+      >
+        >
+      </StartItem>
       <!-- 返回按钮 -->
-      <StartItem @click="backToGameModeMenu">{{ $t('views.menu.back') }}</StartItem>
+      <StartItem @click="emit('back')">{{ $t('views.menu.back') }}</StartItem>
     </div>
   </nav>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { StartItem } from '../base'
+import { StartItem, StartLine, StartList } from '../base'
 import { useRouter } from 'vue-router'
 import { type ScriptSummary, startScript } from '@/api/services/script-info'
 import { useGameStore } from '@/stores/modules/game'
@@ -54,10 +74,6 @@ const selectScript = async (script: ScriptSummary) => {
   gameStore.enterStoryMode(script.script_name)
 
   await startScript(script.script_name)
-}
-
-const backToGameModeMenu = () => {
-  emit('back')
 }
 
 const totalPages = computed(() => {
