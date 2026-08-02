@@ -52,19 +52,20 @@
         <p class="text-white/50 text-sm leading-relaxed mb-3">
           {{ $t('advance.menu.languageDesc') }}
         </p>
-        <div class="flex gap-2">
-          <button
+        <select
+          :value="locale"
+          class="w-full cursor-pointer rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80 transition-all duration-200 hover:border-white/30 hover:text-white focus:border-[rgba(121,217,255,0.6)] focus:outline-none"
+          @change="setLocale(($event.target as HTMLSelectElement).value as AppLocale)"
+        >
+          <option
             v-for="opt in SUPPORTED_LOCALES"
             :key="opt.value"
-            class="flex-1 cursor-pointer rounded-lg border px-3 py-1.5 text-sm transition-all duration-200"
-            :class="locale === opt.value
-              ? 'border-[rgba(121,217,255,0.6)] bg-[rgba(121,217,255,0.2)] text-white'
-              : 'border-white/10 bg-white/5 text-white/50 hover:border-white/30 hover:text-white/80'"
-            @click="setLocale(opt.value)"
+            :value="opt.value"
+            class="bg-slate-800 text-white"
           >
             {{ opt.label }}
-          </button>
-        </div>
+          </option>
+        </select>
       </MenuItem>
     </div>
   </div>
@@ -75,7 +76,7 @@ import { AudioLines, Cpu, SlidersHorizontal, Languages } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { MenuItem } from '../../ui'
 import { Button } from '../../base'
-import { SUPPORTED_LOCALES, setLocale } from '@/locales'
+import { SUPPORTED_LOCALES, setLocale, type AppLocale } from '@/locales'
 
 const { locale } = useI18n()
 
