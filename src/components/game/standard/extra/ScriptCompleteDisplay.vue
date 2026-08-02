@@ -74,7 +74,7 @@
           </h2>
 
           <!-- 底部中文提示 (稍微淡化) -->
-          <span class="text-white/50 text-xs tracking-[0.3em] mt-3"> 本次剧本已完成 </span>
+          <span class="text-white/50 text-xs tracking-[0.3em] mt-3"> {{ $t('game.scriptComplete.hint') }} </span>
         </div>
       </div>
     </div>

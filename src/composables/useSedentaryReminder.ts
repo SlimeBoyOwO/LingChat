@@ -13,10 +13,9 @@ import {
   requestPermission,
 } from '@tauri-apps/plugin-notification'
 import { useSettingsStore } from '@/stores/modules/settings'
+import { i18n } from '@/locales'
 
 const REMINDER_INTERVAL_MS = 40 * 60 * 1000 // 40 分钟
-const NOTIFICATION_TITLE = 'LingChat 久坐提醒'
-const NOTIFICATION_BODY = '久坐时间有点长，记得活动一下哦'
 const APP_ICON_PATH = '/pictures/icons/icon.ico'
 const AUDIO_PATH = '/audio_effects/生气.wav'
 
@@ -52,8 +51,8 @@ async function showReminderNotification(): Promise<void> {
     playReminderSound()
 
     await sendNotification({
-      title: NOTIFICATION_TITLE,
-      body: NOTIFICATION_BODY,
+      title: i18n.global.t('stores.sedentaryReminder.notificationTitle'),
+      body: i18n.global.t('stores.sedentaryReminder.notificationBody'),
       icon: APP_ICON_PATH,
     })
   } catch (e) {

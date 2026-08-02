@@ -274,6 +274,7 @@ export function convertInitLines(lines: GameLineInit[]): GameMessage[] {
       timestamp: Date.now(),
       userMessageSeq: line.user_message_seq ?? undefined,
       thinking: line.thinking || undefined,
+      ttsText: line.tts_content || undefined,
     }
   })
 }

@@ -39,9 +39,9 @@
         >
       </StartItem>
       <!-- 返回按钮 -->
-      <StartItem @click="emit('back')">返回</StartItem>
-    </StartLine>
-  </StartList>
+      <StartItem @click="emit('back')">{{ $t('views.menu.back') }}</StartItem>
+    </div>
+  </nav>
 </template>
 
 <script setup lang="ts">

@@ -22,7 +22,7 @@
           <span class="block text-[11px] font-bold mb-0.5 uppercase tracking-wider transition-colors"
             :class="isDarkMode ? 'text-slate-500' : 'text-slate-400'">Ling Ling</span>
           <strong class="block text-[13px] font-black transition-colors"
-            :class="isDarkMode ? 'text-slate-200' : 'text-slate-700'">小灵设置站</strong>
+            :class="isDarkMode ? 'text-slate-200' : 'text-slate-700'">{{ $t('pet.sidebar.title') }}</strong>
         </div>
       </div>
     </div>

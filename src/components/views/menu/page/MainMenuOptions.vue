@@ -1,22 +1,22 @@
 <template>
   <StartList>
     <StartLine>
-      <StartItem @click="() => emit('start-game')">开始游戏</StartItem>
+      <StartItem @click="() => emit('start-game')">{{ $t('views.menu.startGame') }}</StartItem>
     </StartLine>
     <StartLine>
-      <StartItem @click="() => emit('open-settings', 'save')">继续游戏</StartItem>
+      <StartItem @click="() => emit('open-settings', 'save')">{{ $t('views.menu.continueGame') }}</StartItem>
     </StartLine>
     <StartLine :mobile="false">
-      <StartItem @click="() => emit('open-workshop')">创意工坊</StartItem>
+      <StartItem @click="() => emit('open-workshop')">{{ $t('views.menu.scriptEditor') }}</StartItem>
     </StartLine>
     <StartLine>
-      <StartItem @click="() => emit('open-settings')">游戏配置</StartItem>
+      <StartItem @click="() => emit('open-settings')">{{ $t('views.menu.gameConfig') }}</StartItem>
     </StartLine>
     <StartLine>
-      <StartItem @click="() => emit('open-credits')">致谢名单</StartItem>
+      <StartItem @click="() => emit('open-credits')">{{ $t('views.menu.credits') }}</StartItem>
     </StartLine>
     <StartLine>
-      <StartItem @click="invoke('exit_app')">退出游戏</StartItem>
+      <StartItem @click="invoke('exit_app')">{{ $t('views.menu.exitGame') }}</StartItem>
     </StartLine>
   </StartList>
 </template>

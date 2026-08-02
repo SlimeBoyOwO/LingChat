@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import http from '../http'
 import type { Character, CharacterSelectParams } from '../../types'
 import type { WebInitData } from './game-info'
+import { i18n } from '@/locales'
 
 interface CharacterSelectResponse {
   success: boolean
@@ -28,7 +29,7 @@ export const characterGetAll = async (
     const data = await invoke('get_character_list', { page, pageSize })
     return data as CharacterPageResult
   } catch (error: any) {
-    throw new Error(typeof error === 'string' ? error : '获取角色列表失败')
+    throw new Error(typeof error === 'string' ? error : i18n.global.t('api.character.getListFailed'))
   }
 }
 
@@ -39,7 +40,7 @@ export const characterSelect = async (
     const response = await http.post('/v1/chat/character/select_character', params)
     return response
   } catch (error: any) {
-    throw new Error(error.response?.data?.detail || '角色选择失败')
+    throw new Error(error.response?.data?.detail || i18n.global.t('api.character.selectFailed'))
   }
 }
 
@@ -49,7 +50,7 @@ export const selectCharacter = async (characterId: number): Promise<WebInitData>
     const data = await invoke<WebInitData>('select_character', { characterId })
     return data
   } catch (error: any) {
-    throw new Error(typeof error === 'string' ? error : '角色切换失败')
+    throw new Error(typeof error === 'string' ? error : i18n.global.t('api.character.switchFailed'))
   }
 }
 
@@ -87,7 +88,7 @@ export const getRoleSettings = async (roleId: number): Promise<any> => {
   try {
     return await invoke('get_role_settings', { roleId })
   } catch (error: any) {
-    throw new Error(typeof error === 'string' ? error : '获取角色配置失败')
+    throw new Error(typeof error === 'string' ? error : i18n.global.t('api.character.getSettingsFailed'))
   }
 }
 
@@ -95,7 +96,7 @@ export const updateRoleSettings = async (roleId: number, settings: any): Promise
   try {
     return await invoke('update_role_settings', { roleId, settings })
   } catch (error: any) {
-    throw new Error(typeof error === 'string' ? error : '更新角色配置失败')
+    throw new Error(typeof error === 'string' ? error : i18n.global.t('api.character.updateSettingsFailed'))
   }
 }
 
@@ -113,7 +114,7 @@ export const createCharacter = async (formData: FormData): Promise<CreateCharact
     const response = await http.post('/v1/chat/character/create', formData)
     return response
   } catch (error: any) {
-    throw new Error(error.response?.data?.detail || '创建角色失败')
+    throw new Error(error.response?.data?.detail || i18n.global.t('api.character.createFailed'))
   }
 }
 
@@ -131,7 +132,7 @@ export const selectClothes = async (
     console.log(data)
     return data as SelectClothesResponse
   } catch (error: any) {
-    throw new Error(typeof error === 'string' ? error : '选择衣服失败')
+    throw new Error(typeof error === 'string' ? error : i18n.global.t('api.character.selectClothesFailed'))
   }
 }
 

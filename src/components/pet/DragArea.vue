@@ -15,7 +15,7 @@ defineProps<{
         <div class="absolute inset-0 rounded-full border border-cyan-300/30 animate-pulse" style="animation-delay: 0.3s"></div>
         <!-- 内容 -->
         <span class="relative text-xl font-bold text-cyan-300 drop-shadow-[0_0_8px_rgba(6,182,212,0.5)]">
-          松开投喂
+          {{ $t('views.dragDrop') }}
         </span>
       </div>
     <slot></slot>

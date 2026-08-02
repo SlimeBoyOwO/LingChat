@@ -1,19 +1,19 @@
 <template>
   <StartList>
     <StartLine>
-      <StartItem @click="startFreeDialogue">自由对话模式</StartItem>
+      <StartItem @click="startFreeDialogue">{{ $t('views.menu.freeDialogue') }}</StartItem>
     </StartLine>
 
     <StartLine>
-      <StartItem @click="emit('open-scripts')">剧情演绎模式</StartItem>
+      <StartItem @click="emit('open-scripts')">{{ $t('views.menu.storyMode') }}</StartItem>
     </StartLine>
 
     <StartLine>
-      <StartItem disabled="true">游戏互动模式（开发中）</StartItem>
+      <StartItem disabled="true">{{ $t('views.menu.miniGame') }}</StartItem>
     </StartLine>
 
     <StartLine>
-      <StartItem @click="emit('back')">返回</StartItem>
+      <StartItem @click="emit('back')">{{ $t('views.menu.back') }}</StartItem>
     </StartLine>
   </StartList>
 </template>

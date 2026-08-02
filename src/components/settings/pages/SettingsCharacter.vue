@@ -1,6 +1,6 @@
 <template>
   <MenuPage>
-    <MenuItem title="角色列表（切换角色会开始全新对话）">
+    <MenuItem :title="$t('settings.character.list.title')">
       <template #header>
         <Rabbit :size="20" />
       </template>
@@ -27,63 +27,63 @@
           :disabled="currentPage <= 1"
           @click="changePage(currentPage - 1)"
         >
-          上一页
+          {{ $t('settings.shared.prevPage') }}
         </button>
         <span class="text-sm font-medium text-white/80"
-          >第 {{ currentPage }} / {{ totalPages }} 页</span
+          >{{ $t('settings.shared.pageOf', { current: currentPage, total: totalPages }) }}</span
         >
         <button
           class="px-4 py-1.5 text-sm font-medium border-none rounded-lg cursor-pointer bg-[#e9ecef] text-[#495057] transition-all duration-200 hover:bg-(--accent-color) hover:text-white hover:-translate-y-0.5 hover:shadow-[0_4px_10px_rgba(121,217,255,0.4)] disabled:opacity-40 disabled:cursor-not-allowed"
           :disabled="currentPage >= totalPages"
           @click="changePage(currentPage + 1)"
         >
-          下一页
+          {{ $t('settings.shared.nextPage') }}
         </button>
       </div>
     </MenuItem>
     <RoleArchiveProgress />
 
-    <MenuItem title="打开人物文件夹" size="small">
+    <MenuItem :title="$t('settings.character.openFolder.title')" size="small">
       <template #header>
         <FolderOpen :size="20" />
       </template>
       <div class="space-y-2">
-        <Button type="big" @click="openCharacterFolder">打开人物文件夹</Button>
+        <Button type="big" @click="openCharacterFolder">{{ $t('settings.character.openFolder.button') }}</Button>
       </div>
     </MenuItem>
 
-    <MenuItem title="从压缩包导入角色 (.zip / .7z)" size="small">
+    <MenuItem :title="$t('settings.character.import.title')" size="small">
       <template #header>
         <PackageOpen :size="20" />
       </template>
       <div class="space-y-2">
         <div class="flex flex-col gap-1.5">
-          <label class="text-xs text-white/60 font-medium">同名冲突策略</label>
+          <label class="text-xs text-white/60 font-medium">{{ $t('settings.character.import.conflictPolicy') }}</label>
           <select
             v-model="conflictPolicy"
             class="bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-white text-sm outline-none transition-all duration-200"
           >
-            <option value="rename">自动重命名（默认）</option>
-            <option value="skip">跳过已存在的</option>
-            <option value="overwrite">覆盖已存在的</option>
+            <option value="rename">{{ $t('settings.character.import.policyRename') }}</option>
+            <option value="skip">{{ $t('settings.character.import.policySkip') }}</option>
+            <option value="overwrite">{{ $t('settings.character.import.policyOverwrite') }}</option>
           </select>
         </div>
-        <Button type="big" @click="handleImport">选择压缩包导入</Button>
+        <Button type="big" @click="handleImport">{{ $t('settings.character.import.button') }}</Button>
       </div>
     </MenuItem>
 
-    <MenuItem title="刷新人物列表" size="small">
+    <MenuItem :title="$t('settings.character.refresh.title')" size="small">
       <template #header>
         <RefreshCcw :size="20" />
       </template>
-      <Button type="big" @click="refreshCharacters">点我刷新</Button>
+      <Button type="big" @click="refreshCharacters">{{ $t('settings.character.refresh.button') }}</Button>
     </MenuItem>
 
-    <MenuItem title="创意工坊" size="small">
+    <MenuItem :title="$t('settings.character.workshop.title')" size="small">
       <template #header>
         <Birdhouse :size="20" />
       </template>
-      <Button type="big" @click="openCreativeWeb">进入创意工坊</Button>
+      <Button type="big" @click="openCreativeWeb">{{ $t('settings.character.workshop.enter') }}</Button>
     </MenuItem>
 
   </MenuPage>
@@ -91,6 +91,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Birdhouse, FolderOpen, PackageOpen, Rabbit, RefreshCcw } from 'lucide-vue-next'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { invoke } from '@tauri-apps/api/core'
@@ -124,6 +125,7 @@ const totalPages = ref(1)
 const gameStore = useGameStore()
 const uiStore = useUIStore()
 const dialogStore = useDialogStore()
+const { t } = useI18n()
 
 const mapCharacter = (char: ApiCharacter): CharacterCardData => {
   return {
@@ -131,7 +133,7 @@ const mapCharacter = (char: ApiCharacter): CharacterCardData => {
     title: char.title,
     name: char.name,
     subName: char.sub_name,
-    info: char.info || '暂无角色描述',
+    info: char.info || t('settings.character.list.noDesc'),
     avatar: char.avatar_path ? convertFileSrc(char.avatar_path) : '',
     clothes: char.clothes
       ? char.clothes.map((clothes: Clothes) => ({

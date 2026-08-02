@@ -312,6 +312,7 @@ pub async fn rollback_conversation(
             perceived_role_ids: gl.perceived_role_ids.clone(),
             user_message_seq: seq,
             thinking: gl.base.thinking.clone(),
+            tts_content: gl.base.tts_content.clone(),
         })
         .collect();
 
