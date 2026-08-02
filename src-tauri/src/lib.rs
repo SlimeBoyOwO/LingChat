@@ -88,6 +88,8 @@ pub struct InnerAppState {
         Arc<tokio::sync::Mutex<ai_service::game_system::auto_save::AutoSaveManager>>,
     /// 上帝 Agent（多人对话编排器，可选）。
     pub god_agent: Option<Arc<GodAgentCore>>,
+    /// Skill Agent（剧本编辑器 AI 助手）共享状态。
+    pub skill_agent: Arc<ai_service::skill_agent::SkillAgentState>,
     /// 剧本编辑器「试玩」当前在跑的后台任务句柄。
     ///
     /// `editor_stop_preview` 会先唤醒被剧本阻塞的通道、把 `is_running` 置 false，
@@ -353,6 +355,11 @@ pub fn run() {
                 Arc::new(GodAgentCore::new(slot, config))
             });
 
+            // Skill Agent：确保技能库目录存在（兜底，不阻断启动）
+            if let Err(e) = ai_service::skill_agent::ensure_skills_dir(&api::data_dir()) {
+                tracing::warn!("Skill Agent 技能库目录初始化失败: {}", e);
+            }
+
             // 填充 AppState
             {
                 let state = app.state::<AppState>();
@@ -369,6 +376,7 @@ pub fn run() {
                     screenshot_capture,
                     auto_save_manager: auto_save_manager.clone(),
                     god_agent,
+                    skill_agent: Arc::new(ai_service::skill_agent::SkillAgentState::default()),
                     preview_task: Arc::new(tokio::sync::Mutex::new(None)),
                     pending_preview_restore: Arc::new(tokio::sync::Mutex::new(None)),
                 });
@@ -580,6 +588,20 @@ pub fn run() {
             api::script_editor::editor_import_global_character,
             api::script_editor::editor_stop_preview,
             api::script_editor::editor_open_script_folder,
+            // ── 剧本编辑器 · AI 助手（Skill Agent）──
+            api::script_editor::agent::editor_agent_get_settings,
+            api::script_editor::agent::editor_agent_save_settings,
+            api::script_editor::agent::editor_agent_get_default_dirs,
+            api::script_editor::agent::editor_agent_list_skills,
+            api::script_editor::agent::editor_agent_read_skill,
+            api::script_editor::agent::editor_agent_create_conversation,
+            api::script_editor::agent::editor_agent_list_conversations,
+            api::script_editor::agent::editor_agent_delete_conversation,
+            api::script_editor::agent::editor_agent_get_messages,
+            api::script_editor::agent::editor_agent_clear_conversation,
+            api::script_editor::agent::editor_agent_start_chat,
+            api::script_editor::agent::editor_agent_stop_chat,
+            api::script_editor::agent::editor_agent_resolve_approval,
             api::pet::update_solid_regions,
             api::pet::set_pet_mode,
             api::schedule::get_schedules,

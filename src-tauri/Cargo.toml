@@ -82,6 +82,9 @@ mdns-sd = "0.11"
 if-addrs = "0.13"
 tokio-util = { version = "0.7", features = ["io"] }
 
+# Skill Agent：命令输出在中文 Windows 上是 GBK，需要回退解码
+encoding_rs = "0.8"
+
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"

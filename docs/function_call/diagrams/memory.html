@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>记忆构建与台词表联合 · 数据流图</title>
+<style>
+  :root {
+    --bg: #0f1720;
+    --panel: #16202c;
+    --panel-2: #1b2430;
+    --border: #2a3a4a;
+    --text: #e6edf3;
+    --muted: #8b98a5;
+    --brand: #79d9ff;
+    --rust: #f4a261;
+    --vue: #34d399;
+    --db: #a78bfa;
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --tool: #f472b6;
+  }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; padding: 24px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  .wrap { max-width: 1340px; margin: 0 auto; }
+  svg { width: 100%; height: auto; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 16px; font-size: 12.5px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  text { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>AI 记忆构建 —— 存储 / 提取 / 闭环</h1>
+  <p class="sub">PR #523 · 存储靠台词表（line 表），提取靠 MemoryBuilder，构建产物 = role.memory = 给 LLM 的上下文</p>
+
+  <svg viewBox="0 0 1320 1160" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#79d9ff" />
+      </marker>
+      <marker id="arrowPink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#f472b6" />
+      </marker>
+      <marker id="arrowGray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#8b98a5" />
+      </marker>
+      <marker id="arrowVue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#34d399" />
+      </marker>
+      <marker id="arrowDb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#a78bfa" />
+      </marker>
+    </defs>
+
+    <!-- ================= 存储：台词表 ================= -->
+    <text x="40" y="36" font-size="14" font-weight="700" fill="#a78bfa">① 存储 · 系统台词表（line 表）= 历史真相源</text>
+
+    <!-- 台词表盒子 -->
+    <rect x="40" y="52" width="400" height="470" rx="10" fill="#1c1a16" stroke="#a78bfa" />
+    <text x="60" y="78" font-size="12.5" font-weight="700" fill="#a78bfa">line_list / line 表（按时间序）</text>
+
+    <!-- 行 1：玩家 -->
+    <rect x="60" y="92" width="360" height="44" rx="6" fill="#16202c" stroke="#2a3a4a" />
+    <text x="76" y="110" font-size="10" font-weight="600" fill="#e6edf3">[user] 现在几点了？</text>
+    <text x="76" y="126" font-size="8.5" fill="#8b98a5">attribute=user · sender=玩家</text>
+
+    <!-- 行 2：assistant + tool_call -->
+    <rect x="60" y="146" width="360" height="72" rx="6" fill="#16202c" stroke="#f472b6" />
+    <text x="76" y="164" font-size="10" font-weight="600" fill="#f472b6">[assistant] 好的，我来查一下。</text>
+    <text x="76" y="182" font-size="8.5" fill="#8b98a5">tool_call = JSON ↓</text>
+    <rect x="90" y="190" width="310" height="22" rx="4" fill="#101820" stroke="#f472b6" stroke-opacity="0.4" />
+    <text x="245" y="205" text-anchor="middle" font-size="8" fill="#f472b6" font-family="Consolas, monospace">[{"id":"call_1","function":{"name":"get_current_time","arguments":"{}"}}]</text>
+
+    <!-- 行 3：tool -->
+    <rect x="60" y="228" width="360" height="66" rx="6" fill="#16202c" stroke="#f472b6" />
+    <text x="76" y="246" font-size="10" font-weight="600" fill="#f472b6">[tool] 工具返回结果（新属性）</text>
+    <text x="76" y="264" font-size="8.5" fill="#8b98a5">content = { tool_call_id, result } ↓</text>
+    <rect x="90" y="272" width="310" height="18" rx="4" fill="#101820" stroke="#f472b6" stroke-opacity="0.4" />
+    <text x="245" y="285" text-anchor="middle" font-size="8" fill="#f472b6" font-family="Consolas, monospace">{"tool_call_id":"call_1","result":{"local_time":"2026-08-02T14:30Z","timezone":"local"}}</text>
+
+    <!-- 行 4：最终回复 -->
+    <rect x="60" y="304" width="360" height="44" rx="6" fill="#16202c" stroke="#2a3a4a" />
+    <text x="76" y="322" font-size="10" font-weight="600" fill="#e6edf3">[assistant] 现在是 2026-08-02 14:30。</text>
+    <text x="76" y="338" font-size="8.5" fill="#8b98a5">最终回复（走 add_assistant_line，含试玩代号守卫）</text>
+
+    <!-- 其他行 -->
+    <rect x="60" y="358" width="360" height="34" rx="6" fill="#16202c" stroke="#2a3a4a" stroke-opacity="0.6" />
+    <text x="76" y="380" font-size="9" fill="#8b98a5">[user] …… 普通对话继续追加</text>
+    <rect x="60" y="402" width="360" height="34" rx="6" fill="#16202c" stroke="#2a3a4a" stroke-opacity="0.6" />
+    <text x="76" y="424" font-size="9" fill="#8b98a5">[assistant] ……</text>
+
+    <!-- 底部信息 -->
+    <rect x="60" y="446" width="360" height="62" rx="6" fill="#101820" stroke="#a78bfa" stroke-opacity="0.4" />
+    <text x="76" y="466" font-size="9.5" fill="#a78bfa">持久化：save_repo 读写存档时同步 tool_call 列</text>
+    <text x="76" y="484" font-size="9.5" fill="#a78bfa">迁移：m20260727_add_line_tool_call（TEXT 列）</text>
+    <text x="76" y="502" font-size="9.5" fill="#a78bfa">玩家不可见：前端过滤 attribute === 'tool'</text>
+
+    <!-- ================= 提取：MemoryBuilder ================= -->
+    <text x="520" y="36" font-size="14" font-weight="700" fill="#34d399">② 提取 · MemoryBuilder.build(line_list)</text>
+    <rect x="520" y="52" width="340" height="470" rx="10" fill="#1b2430" stroke="#34d399" />
+
+    <text x="540" y="80" font-size="11.5" font-weight="700" fill="#34d399">逐行遍历，按 attribute 分发</text>
+
+    <rect x="540" y="92" width="300" height="58" rx="6" fill="#16202c" stroke="#34d399" stroke-opacity="0.5" />
+    <text x="556" y="112" font-size="10" font-weight="600" fill="#e6edf3">[assistant] + tool_call 字段</text>
+    <text x="556" y="130" font-size="9" fill="#8b98a5">解析 tool_call → push LlmMessage{ role:"assistant", tool_calls }</text>
+    <text x="556" y="144" font-size="9" fill="#8b98a5">兼容旧版：content 里 \n\n 前段是 JSON</text>
+
+    <rect x="540" y="162" width="300" height="58" rx="6" fill="#16202c" stroke="#34d399" stroke-opacity="0.5" />
+    <text x="556" y="182" font-size="10" font-weight="600" fill="#e6edf3">[tool] 行</text>
+    <text x="556" y="200" font-size="9" fill="#8b98a5">解析 {tool_call_id, result}</text>
+    <text x="556" y="216" font-size="9" fill="#8b98a5">→ push LlmMessage{ role:"tool", content: result, tool_call_id }</text>
+
+    <rect x="540" y="232" width="300" height="58" rx="6" fill="#16202c" stroke="#2a3a4a" />
+    <text x="556" y="252" font-size="10" font-weight="600" fill="#e6edf3">[system] 目标角色人设</text>
+    <text x="556" y="270" font-size="9" fill="#8b98a5">→ push LlmMessage::system（多条去重，仅保留首条）</text>
+    <text x="556" y="286" font-size="9" fill="#8b98a5">工具行先 flush 掉相邻缓冲，独立成消息</text>
+
+    <rect x="540" y="302" width="300" height="58" rx="6" fill="#16202c" stroke="#2a3a4a" />
+    <text x="556" y="322" font-size="10" font-weight="600" fill="#e6edf3">[assistant] 角色自己（无 tool_call）</text>
+    <text x="556" y="340" font-size="9" fill="#8b98a5">缓冲 → 富化（情绪/TTS/动作）→ assistant</text>
+    <text x="556" y="356" font-size="9" fill="#8b98a5">连续多条合并为一条</text>
+
+    <rect x="540" y="372" width="300" height="58" rx="6" fill="#16202c" stroke="#2a3a4a" />
+    <text x="556" y="392" font-size="10" font-weight="600" fill="#e6edf3">[user] / 其他角色</text>
+    <text x="556" y="410" font-size="9" fill="#8b98a5">is_target（本角色发言或在场）才纳入</text>
+    <text x="556" y="426" font-size="9" fill="#8b98a5">合并为 user 消息（context {…} + 玩家语段）</text>
+
+    <rect x="540" y="446" width="300" height="62" rx="6" fill="#101820" stroke="#34d399" stroke-opacity="0.5" />
+    <text x="556" y="466" font-size="10" font-weight="600" fill="#34d399">输出：Vec&lt;LlmMessage&gt;（OpenAI 格式）</text>
+    <text x="556" y="484" font-size="9" fill="#8b98a5">工具历史被「原样还原」成 assistant(tool_calls)</text>
+    <text x="556" y="500" font-size="9" fill="#8b98a5">+ tool(结果)，顺序与台词表一致</text>
+
+    <!-- 台词表 → MemoryBuilder 箭头 -->
+    <line x1="440" y1="280" x2="518" y2="280" stroke="#34d399" stroke-width="1.6" marker-end="url(#arrowVue)" />
+
+    <!-- ================= 构建：role.memory ================= -->
+    <text x="940" y="36" font-size="14" font-weight="700" fill="#79d9ff">③ 构建 · role.memory 生命周期</text>
+
+    <rect x="940" y="52" width="330" height="62" rx="9" fill="#1b2430" stroke="#79d9ff" />
+    <text x="960" y="74" font-size="11" font-weight="700" fill="#79d9ff">sync_memories / refresh_memories</text>
+    <text x="960" y="92" font-size="9" fill="#8b98a5">line_list 变化 → 收集涉及角色（sender / perceived）</text>
+    <text x="960" y="106" font-size="9" fill="#8b98a5">→ 对每个角色整体重建 memory</text>
+
+    <rect x="940" y="126" width="330" height="60" rx="9" fill="#16202c" stroke="#79d9ff" stroke-opacity="0.6" />
+    <text x="960" y="148" font-size="11" font-weight="600" fill="#e6edf3">角色.memory = MemoryBuilder{ target_role_id }.build(line_list)</text>
+    <text x="960" y="166" font-size="9" fill="#8b98a5">全量重建，不增量追加 —— 记忆与台词表严格一致</text>
+    <text x="960" y="180" font-size="9" fill="#8b98a5">（可选 recent_n：只重建最近 N 条）</text>
+
+    <line x1="940" y1="205" x2="940" y2="232" stroke="#79d9ff" stroke-width="1.5" marker-end="url(#arrow)" />
+    <rect x="940" y="234" width="330" height="56" rx="9" fill="#1b2430" stroke="#34d399" />
+    <text x="960" y="256" font-size="11" font-weight="700" fill="#34d399">生成时：get_current_context()</text>
+    <text x="960" y="274" font-size="9" fill="#8b98a5">= 当前角色.memory.clone() → 交给 stream_with_tool_loop</text>
+    <text x="960" y="288" font-size="9" fill="#8b98a5">作为 messages 起点（工具历史已在内）</text>
+
+    <line x1="940" y1="310" x2="940" y2="337" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow)" />
+    <rect x="940" y="339" width="330" height="56" rx="9" fill="#1b2430" stroke="#79d9ff" />
+    <text x="960" y="361" font-size="11" font-weight="700" fill="#79d9ff">生成后：run_pipeline 第③步</text>
+    <text x="960" y="379" font-size="9" fill="#8b98a5">tool_messages 写回 line_list（插入台词表）</text>
+    <text x="960" y="393" font-size="9" fill="#8b98a5">→ 再 refresh_memories → 回到 sync_memories</text>
+
+    <rect x="940" y="407" width="330" height="115" rx="9" fill="#1c1a16" stroke="#2a3a4a" />
+    <text x="960" y="429" font-size="11" font-weight="700" fill="#8b98a5">跨轮 / 跨角色的连贯性</text>
+    <text x="960" y="451" font-size="9.5" fill="#e6edf3">God Agent 模式 process_message 循环多次：</text>
+    <text x="960" y="469" font-size="9.5" fill="#e6edf3">每轮 run_pipeline 都先落台词表再刷新记忆，</text>
+    <text x="960" y="487" font-size="9.5" fill="#e6edf3">后一轮角色读到的记忆已包含前一轮的</text>
+    <text x="960" y="503" font-size="9.5" fill="#e6edf3">工具调用过程 —— 工具历史跨角色连贯。</text>
+    <text x="960" y="519" font-size="9" fill="#8b98a5">MemoryBank（持久记忆摘要）不纳入工具历史</text>
+
+    <!-- 闭环箭头：role.memory → 台词表 -->
+    <path d="M 940 390 L 870 390 L 870 280 L 518 280" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#arrowDb)" />
+    <text x="876" y="340" font-size="9.5" fill="#a78bfa">写回（第③步 · 每次生成）</text>
+    <path d="M 440 470 L 690 470 L 690 520 L 760 520" fill="none" stroke="#8b98a5" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#arrowGray)" />
+    <text x="660" y="512" font-size="9" fill="#8b98a5">save_repo 持久化</text>
+    <rect x="760" y="498" width="180" height="44" rx="8" fill="#1c1a16" stroke="#a78bfa" stroke-opacity="0.5" />
+    <text x="850" y="517" text-anchor="middle" font-size="10" font-weight="600" fill="#a78bfa">game_database.db</text>
+    <text x="850" y="533" text-anchor="middle" font-size="8.5" fill="#8b98a5">存档读写覆盖 tool_call 列</text>
+
+    <!-- ================= 底部完整例子 ================= -->
+    <text x="40" y="576" font-size="14" font-weight="700" fill="#f472b6">④ 一次「查时间」的完整闭环</text>
+    <rect x="40" y="590" width="1230" height="150" rx="10" fill="#16202c" stroke="#f472b6" stroke-opacity="0.35" />
+
+    <rect x="60" y="612" width="220" height="52" rx="7" fill="#1b2430" stroke="#2a3a4a" />
+    <text x="170" y="634" text-anchor="middle" font-size="10" font-weight="600" fill="#e6edf3">① 玩家提问</text>
+    <text x="170" y="652" text-anchor="middle" font-size="8.5" fill="#8b98a5">「现在几点了？」入台词表</text>
+    <line x1="280" y1="638" x2="320" y2="638" stroke="#f472b6" stroke-width="1.4" marker-end="url(#arrowPink)" />
+
+    <rect x="322" y="612" width="230" height="52" rx="7" fill="#1b2430" stroke="#2a3a4a" />
+    <text x="437" y="634" text-anchor="middle" font-size="10" font-weight="600" fill="#e6edf3">② 读记忆 + 工具循环</text>
+    <text x="437" y="652" text-anchor="middle" font-size="8.5" fill="#8b98a5">role.memory → LLM 要 get_current_time</text>
+    <line x1="552" y1="638" x2="592" y2="638" stroke="#f472b6" stroke-width="1.4" marker-end="url(#arrowPink)" />
+
+    <rect x="594" y="612" width="230" height="52" rx="7" fill="#1b2430" stroke="#2a3a4a" />
+    <text x="709" y="634" text-anchor="middle" font-size="10" font-weight="600" fill="#e6edf3">③ 执行工具 + 回填</text>
+    <text x="709" y="652" text-anchor="middle" font-size="8.5" fill="#8b98a5">executor 执行 → tool 消息回填再请求</text>
+    <line x1="824" y1="638" x2="864" y2="638" stroke="#f472b6" stroke-width="1.4" marker-end="url(#arrowPink)" />
+
+    <rect x="866" y="612" width="240" height="52" rx="7" fill="#1b2430" stroke="#2a3a4a" />
+    <text x="986" y="634" text-anchor="middle" font-size="10" font-weight="600" fill="#e6edf3">④ 落台词表 + 重建记忆</text>
+    <text x="986" y="652" text-anchor="middle" font-size="8.5" fill="#8b98a5">assistant(tool_call) + tool 行 → refresh_memories</text>
+    <line x1="1106" y1="638" x2="1146" y2="638" stroke="#f472b6" stroke-width="1.4" marker-end="url(#arrowPink)" />
+
+    <rect x="1148" y="612" width="110" height="52" rx="7" fill="#1b2430" stroke="#2a3a4a" />
+    <text x="1203" y="634" text-anchor="middle" font-size="10" font-weight="600" fill="#e6edf3">⑤ 回复</text>
+    <text x="1203" y="652" text-anchor="middle" font-size="8.5" fill="#8b98a5">最终回复入表</text>
+
+    <text x="60" y="696" font-size="10" fill="#8b98a5">下次玩家问任何事 → ⑥ get_current_context 读 role.memory：模型「记得自己查过时间」，能自然接「我刚才看过了，现在是……」</text>
+    <text x="60" y="716" font-size="10" fill="#8b98a5">记忆范围刻意不含 MemoryBank 摘要：工具调用属于短期上下文，不属于「该长期记住的角色设定」。</text>
+  </svg>
+
+  <div class="legend">
+    <span><span class="dot" style="background:#a78bfa"></span>存储（台词表 / 持久化）</span>
+    <span><span class="dot" style="background:#34d399"></span>提取（MemoryBuilder）</span>
+    <span><span class="dot" style="background:#79d9ff"></span>构建（role.memory）</span>
+    <span><span class="dot" style="background:#f472b6"></span>工具调用闭环</span>
+    <span><span class="dot" style="background:#8b98a5"></span>虚线 = 状态 / 持久化</span>
+  </div>
+</div>
+</body>
+</html>

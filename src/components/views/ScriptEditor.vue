@@ -26,7 +26,9 @@
           type="nav"
           :icon="t.icon"
           :active="store.tab === t.key"
-          :disabled="!store.detail && t.key !== 'flow'"
+          :disabled="
+            !store.detail && !['flow', 'agent-chat', 'agent-settings'].includes(t.key)
+          "
           @click="switchTab(t.key)"
         >
           <p class="hidden xl:block">{{ t.label }}</p>
@@ -626,6 +628,18 @@
         </MenuItem>
       </MenuPage>
 
+      <!-- ============ AI 助手（Skill Agent） ============ -->
+      <div
+        v-else-if="store.tab === 'agent-chat'"
+        class="flex w-[96%] min-h-0 flex-1 gap-5 mx-auto px-3 py-4"
+      >
+        <AgentChatPanel />
+      </div>
+
+      <MenuPage v-else-if="store.tab === 'agent-settings'">
+        <AgentSettingsPanel />
+      </MenuPage>
+
       <!-- ============ 校验（整页，不再用抽屉）============ -->
       <MenuPage v-else>
         <MenuItem title="校验">
@@ -992,23 +1006,34 @@ import ChapterFlow from '@/components/script-editor/ChapterFlow.vue'
 import ChapterTimeline from '@/components/script-editor/ChapterTimeline.vue'
 import EventPropertyPanel from '@/components/script-editor/EventPropertyPanel.vue'
 import PreviewStage from '@/components/script-editor/PreviewStage.vue'
+import AgentChatPanel from '@/components/script-editor/agent/AgentChatPanel.vue'
+import AgentSettingsPanel from '@/components/script-editor/agent/AgentSettingsPanel.vue'
 import { eventQueue } from '@/core/events/event-queue'
 
 const router = useRouter()
 const store = useScriptEditorStore()
 
-type TabKey = 'flow' | 'config' | 'characters' | 'assets' | 'validate'
+type TabKey =
+  | 'flow'
+  | 'config'
+  | 'characters'
+  | 'assets'
+  | 'validate'
+  | 'agent-chat'
+  | 'agent-settings'
 
 const tabs: {
   key: TabKey
   label: string
-  icon: 'adventure' | 'setting' | 'character' | 'background' | 'achievement'
+  icon: 'adventure' | 'setting' | 'character' | 'background' | 'achievement' | 'bot' | 'sliders'
 }[] = [
   { key: 'flow', label: '章节流程', icon: 'adventure' },
   { key: 'config', label: '剧本设置', icon: 'setting' },
   { key: 'characters', label: '角色', icon: 'character' },
   { key: 'assets', label: '素材', icon: 'background' },
   { key: 'validate', label: '校验', icon: 'achievement' },
+  { key: 'agent-chat', label: 'AI 助手', icon: 'bot' },
+  { key: 'agent-settings', label: '助手设置', icon: 'sliders' },
 ]
 
 const assetKinds: { key: AssetKind; label: string }[] = [
@@ -1114,7 +1139,7 @@ const observeNav = () => {
 }
 
 const switchTab = (key: TabKey) => {
-  if (!store.detail && key !== 'flow') return
+  if (!store.detail && key !== 'flow' && key !== 'agent-chat' && key !== 'agent-settings') return
   store.tab = key
   if (key === 'validate') void store.runValidation()
   if (key === 'assets') {
