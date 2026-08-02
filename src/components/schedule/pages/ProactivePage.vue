@@ -12,8 +12,9 @@
     <div class="flex gap-2 align-text-bottom w-auto h-auto items-center">
       <div
         class="w-18 px-5 py-2.5 bg-brand text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-colors duration-200 hover:bg-[#0056b3]"
+        @click="saveSettings"
       >
-        <button @click="saveSettings">{{ $t('ui.proactivePage.save') }}</button>
+        {{ $t('ui.proactivePage.save') }}
       </div>
       <p :style="{ color: saveStatus.color }">
         {{ saveStatus.message }}
@@ -36,7 +37,7 @@ const uiStore = useUIStore()
 const settings = ref<Record<string, ConfigItem>>({})
 const saveStatus = reactive({
   message: '',
-  color: 'var(--success-color)',
+  color: '#4ade80',
 })
 
 const saveSettings = async () => {
@@ -49,9 +50,11 @@ const saveSettings = async () => {
   saveStatus.message = ''
 
   try {
-    saveStatus.message = (await saveEnvConfigSettings(formData)).message
-    saveStatus.color = 'var(--success-color)'
-    reloadProactiveSystem()
+    await saveEnvConfigSettings(formData)
+    // 保存成功后实时重载主动系统，让新配置立即生效
+    await reloadProactiveSystem()
+    saveStatus.message = t('ui.proactivePage.success')
+    saveStatus.color = '#4ade80'
 
     await loadConfig()
   } catch (error: any) {
