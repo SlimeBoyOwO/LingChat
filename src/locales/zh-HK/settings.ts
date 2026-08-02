@@ -92,7 +92,12 @@ export default {
     "pause": "暫停",
     "clear": "清空",
     "empty": "冇日誌",
-    "paused": "暫停咗 — {count} 條新日誌"
+    "paused": "暫停咗 — {count} 條新日誌",
+    "autoScroll": "自動捲動到最底",
+    "popout": "彈出獨立窗口",
+    "autoOpen": "啟動時自動開啟日誌窗口",
+    "poppedOut": "日誌已彈出到獨立窗口，請喺獨立窗口睇",
+    "focusLog": "聚焦日誌窗口"
   },
   "save": {
     "create": {

@@ -93,6 +93,11 @@ export default {
     clear: '清空',
     empty: '暂无日志',
     paused: '已暂停 — {count} 条新日志',
+    autoScroll: '自动滚动到底部',
+    popout: '弹出独立窗口',
+    autoOpen: '启动时自动打开日志窗口',
+    poppedOut: '日志已弹出到独立窗口，请在独立窗口中查看',
+    focusLog: '聚焦日志窗口',
   },
   save: {
     create: {

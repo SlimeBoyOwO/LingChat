@@ -431,6 +431,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             utils::log_bridge::get_log_history,
+            utils::log_bridge::open_log_window,
+            utils::log_bridge::is_log_window_open,
             api::settings::get_settings_tree,
             api::settings::save_settings,
             api::settings::get_setting_by_key,

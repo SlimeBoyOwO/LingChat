@@ -93,6 +93,11 @@ export default {
     clear: "Clear",
     empty: "No logs yet",
     paused: "Paused — {count} new log entries",
+    autoScroll: "Auto-scroll to bottom",
+    popout: "Pop out to separate window",
+    autoOpen: "Open log window on startup",
+    poppedOut: "Logs have been popped out to a separate window",
+    focusLog: "Focus log window",
   },
   save: {
     create: {

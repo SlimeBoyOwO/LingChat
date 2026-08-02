@@ -92,6 +92,11 @@ export default {
     clear: 'クリア',
     empty: 'ログはありません',
     paused: '一時停止中 — 新着ログ {count} 件',
+    autoScroll: '自動で最下部へスクロール',
+    popout: '別ウィンドウで開く',
+    autoOpen: '起動時にログウィンドウを開く',
+    poppedOut: 'ログは別ウィンドウに表示されています',
+    focusLog: 'ログウィンドウを表示',
   },
   save: {
     create: {
