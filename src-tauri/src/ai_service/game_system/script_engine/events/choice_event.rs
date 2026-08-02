@@ -107,7 +107,8 @@ impl ScriptEvent for ChoiceEvent {
                 content: user_choice,
                 attribute: LineAttributeExt(LineAttribute::User),
                 display_name: Some(gs.player.user_name.clone()),
-                sender_role_id: gs.main_role_id,
+                // 玩家台词一律标 sender_role_id=0（玩家），与 handle_user_message 对齐
+                sender_role_id: Some(0),
                 ..Default::default()
             };
             gs.add_line(ctx.db, line).await?;

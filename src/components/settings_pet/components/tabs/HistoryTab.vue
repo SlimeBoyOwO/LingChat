@@ -60,7 +60,7 @@
                   {{ item.displayName }}
                 </span>
                 <button
-                  v-if="item.userMessageSeq !== undefined"
+                  v-if="typeof item.userMessageSeq === 'number' && !gameStore.runningScript"
                   class="shrink-0 cursor-pointer rounded border border-white/10 bg-transparent px-2 py-0.5 text-xs text-white/40 transition-all duration-200 hover:border-red-400/50 hover:bg-red-500/20 hover:text-white"
                   :title="$t('pet.history.backtrackTitle')"
                   @click.stop="handleBacktrack(item.userMessageSeq!)"

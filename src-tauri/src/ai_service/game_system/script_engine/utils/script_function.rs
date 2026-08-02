@@ -296,6 +296,8 @@ pub async fn handle_actions(
                     content,
                     attribute: LineAttributeExt(LineAttribute::User),
                     display_name: Some(game_status.player.user_name.clone()),
+                    // 玩家台词一律标 sender_role_id=0（玩家），与 handle_user_message 对齐
+                    sender_role_id: Some(0),
                     ..Default::default()
                 };
                 game_status.add_line(db, line).await?;

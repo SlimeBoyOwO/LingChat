@@ -45,8 +45,11 @@ export default class DialogueProcessor implements IEventProcessor {
       ttsText: event.ttsText,
     })
 
-    // 回溯更新最近一条没有序号标记的用户消息（前端发送消息时尚未拿到序号）
-    if (event.userMessageSeq !== undefined) {
+    // 回溯更新最近一条没有序号标记的用户消息（前端发送消息时尚未拿到序号）。
+    // 只接受 number：主动对话 / 剧本 ai_dialogue / God Agent 第 2+ 轮的回复没有
+    // 用户触发，event.userMessageSeq 是 undefined（后端 None 不序列化）；若传 null，
+    // 这里不能把它当有效序号写进用户消息，否则回溯会拿到 null。
+    if (typeof event.userMessageSeq === 'number') {
       const history = gameStore.dialogHistory
       for (let i = history.length - 1; i >= 0; i--) {
         if (history[i].type === 'message' && history[i].userMessageSeq === undefined) {

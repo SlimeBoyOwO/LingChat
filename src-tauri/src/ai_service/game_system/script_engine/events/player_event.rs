@@ -51,7 +51,8 @@ impl ScriptEvent for PlayerEvent {
             content: self.text.clone(),
             attribute: LineAttributeExt(LineAttribute::User),
             display_name: Some(display_name),
-            sender_role_id: ctx.game_status.lock().await.main_role_id,
+            // 玩家台词一律标 sender_role_id=0（玩家），与 handle_user_message 对齐
+            sender_role_id: Some(0),
             ..Default::default()
         };
         ctx.game_status.lock().await.add_line(ctx.db, line).await?;

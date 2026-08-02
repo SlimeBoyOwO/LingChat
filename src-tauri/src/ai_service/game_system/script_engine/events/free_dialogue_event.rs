@@ -183,6 +183,8 @@ impl ScriptEvent for FreeDialogueEvent {
                     content: user_input.clone(),
                     attribute: LineAttributeExt(LineAttribute::User),
                     display_name: Some(gs.player.user_name.clone()),
+                    // 玩家台词一律标 sender_role_id=0（玩家），与 handle_user_message 对齐
+                    sender_role_id: Some(0),
                     ..Default::default()
                 };
                 gs.add_line(ctx.db, line).await?;

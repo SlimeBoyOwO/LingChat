@@ -53,15 +53,17 @@ impl ScriptEvent for InputEvent {
         tracing::info!("[InputEvent] 收到用户输入: {}", user_input);
 
         // Add USER line — read fields under a single lock to avoid deadlock
-        let (user_name, main_role_id) = {
+        let user_name = {
             let gs = ctx.game_status.lock().await;
-            (gs.player.user_name.clone(), gs.main_role_id)
+            gs.player.user_name.clone()
         };
         let line = LineBase {
             content: user_input,
             attribute: LineAttributeExt(LineAttribute::User),
             display_name: Some(user_name),
-            sender_role_id: main_role_id,
+            // 玩家台词一律标 sender_role_id=0（玩家），与 handle_user_message 对齐；
+            // 否则 MemoryBuilder 会把玩家的话当钦灵自己说的，导致回合错乱、模型自导自演。
+            sender_role_id: Some(0),
             ..Default::default()
         };
         ctx.game_status.lock().await.add_line(ctx.db, line).await?;
