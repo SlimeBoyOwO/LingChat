@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI 工具调用总体架构 · 数据流图</title>
+<style>
+  :root {
+    --bg: #0f1720;
+    --panel: #16202c;
+    --panel-2: #1b2430;
+    --border: #2a3a4a;
+    --text: #e6edf3;
+    --muted: #8b98a5;
+    --brand: #79d9ff;
+    --rust: #f4a261;
+    --vue: #34d399;
+    --db: #a78bfa;
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --tool: #f472b6;
+  }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; padding: 24px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  .wrap { max-width: 1340px; margin: 0 auto; }
+  svg { width: 100%; height: auto; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 16px; font-size: 12.5px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  text { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>AI 工具调用总体架构 —— 数据流图</h1>
+  <p class="sub">PR #523 · 生成管线 → 工具循环 → Provider → 执行器 → 台词表 → 记忆，下一轮生成时记忆里已有工具历史</p>
+
+  <svg viewBox="0 0 1320 1080" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#79d9ff" />
+      </marker>
+      <marker id="arrowPink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#f472b6" />
+      </marker>
+      <marker id="arrowGray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#8b98a5" />
+      </marker>
+      <marker id="arrowRust" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#f4a261" />
+      </marker>
+    </defs>
+
+    <!-- ================= 触发层 ================= -->
+    <text x="40" y="40" font-size="13.5" font-weight="700" fill="#34d399">① 生成触发层 · GeneratorDeps{ source, tool_registry }</text>
+    <rect x="30" y="50" width="205" height="52" rx="8" fill="#16202c" stroke="#34d399" stroke-opacity="0.5" />
+    <text x="132" y="70" text-anchor="middle" font-size="11.5" font-weight="600" fill="#e6edf3">chat.rs</text>
+    <text x="132" y="86" text-anchor="middle" font-size="9.5" fill="#8b98a5">UserChat · Proactive</text>
+    <rect x="250" y="50" width="205" height="52" rx="8" fill="#16202c" stroke="#34d399" stroke-opacity="0.5" />
+    <text x="352" y="70" text-anchor="middle" font-size="11.5" font-weight="600" fill="#e6edf3">script 事件</text>
+    <text x="352" y="86" text-anchor="middle" font-size="9.5" fill="#8b98a5">AiDialogue · FreeDialogue</text>
+    <rect x="470" y="50" width="205" height="52" rx="8" fill="#16202c" stroke="#34d399" stroke-opacity="0.5" />
+    <text x="572" y="70" text-anchor="middle" font-size="11.5" font-weight="600" fill="#e6edf3">主动系统</text>
+    <text x="572" y="86" text-anchor="middle" font-size="9.5" fill="#8b98a5">Proactive</text>
+    <rect x="690" y="50" width="205" height="52" rx="8" fill="#16202c" stroke="#34d399" stroke-opacity="0.5" />
+    <text x="792" y="70" text-anchor="middle" font-size="11.5" font-weight="600" fill="#e6edf3">入场问候</text>
+    <text x="792" y="86" text-anchor="middle" font-size="9.5" fill="#8b98a5">EntryGreeting</text>
+
+    <!-- ================= 生成管线 ================= -->
+    <line x1="352" y1="102" x2="352" y2="150" stroke="#79d9ff" stroke-width="1.6" marker-end="url(#arrow)" />
+    <text x="360" y="130" font-size="10.5" fill="#8b98a5">process_message</text>
+    <rect x="170" y="152" width="360" height="64" rx="10" fill="#1b2430" stroke="#79d9ff" />
+    <text x="350" y="176" text-anchor="middle" font-size="13" font-weight="700" fill="#79d9ff">MessageGenerator.process_message</text>
+    <text x="350" y="196" text-anchor="middle" font-size="10" fill="#8b98a5">get_current_context() 读当前角色 role.memory → run_pipeline()</text>
+
+    <!-- 工具循环 -->
+    <line x1="350" y1="216" x2="350" y2="270" stroke="#79d9ff" stroke-width="1.6" marker-end="url(#arrow)" />
+    <rect x="150" y="272" width="400" height="150" rx="10" fill="#16202c" stroke="#f472b6" />
+    <text x="350" y="296" text-anchor="middle" font-size="13" font-weight="700" fill="#f472b6">② tools/tool_loop.rs · stream_with_tool_loop</text>
+    <text x="350" y="316" text-anchor="middle" font-size="10" fill="#8b98a5">最多 MAX_TOOL_ROUNDS = 3 轮</text>
+
+    <rect x="170" y="330" width="170" height="72" rx="8" fill="#1b2430" stroke="#f472b6" stroke-opacity="0.55" />
+    <text x="255" y="352" text-anchor="middle" font-size="11" font-weight="600" fill="#e6edf3">流式请求带 tools</text>
+    <text x="255" y="368" text-anchor="middle" font-size="9.5" fill="#8b98a5">complete_stream_with_tools</text>
+    <text x="255" y="382" text-anchor="middle" font-size="9.5" fill="#8b98a5">收集 ToolCalls + 透传 Content</text>
+    <text x="255" y="396" text-anchor="middle" font-size="9.5" fill="#8b98a5">(content channel)</text>
+
+    <rect x="360" y="330" width="170" height="72" rx="8" fill="#1b2430" stroke="#f472b6" stroke-opacity="0.55" />
+    <text x="445" y="352" text-anchor="middle" font-size="11" font-weight="600" fill="#e6edf3">执行 + 回填</text>
+    <text x="445" y="368" text-anchor="middle" font-size="9.5" fill="#8b98a5">executor.execute(每个 call)</text>
+    <text x="445" y="382" text-anchor="middle" font-size="9.5" fill="#8b98a5">assistant(tool_calls) + tool(结果)</text>
+    <text x="445" y="396" text-anchor="middle" font-size="9.5" fill="#8b98a5">回填 messages 再请求下一轮</text>
+
+    <!-- 无工具调用返回 -->
+    <text x="350" y="414" text-anchor="middle" font-size="9.5" fill="#8b98a5">无工具调用 → 关闭 channel → 返回合并内容流 ToolLoopResult{ stream, tool_messages }</text>
+
+    <!-- 权限侧 -->
+    <line x1="550" y1="300" x2="620" y2="300" stroke="#f4a261" stroke-width="1.6" marker-end="url(#arrowRust)" />
+    <rect x="620" y="272" width="280" height="88" rx="10" fill="#1c1a16" stroke="#f4a261" stroke-opacity="0.6" />
+    <text x="760" y="296" text-anchor="middle" font-size="12" font-weight="700" fill="#f4a261">tools/registry.rs · ToolRegistry</text>
+    <text x="760" y="315" text-anchor="middle" font-size="9.5" fill="#8b98a5">allowed_tools(source, role_name)</text>
+    <text x="760" y="331" text-anchor="middle" font-size="9.5" fill="#8b98a5">definitions_for_allowed() → 下发定义</text>
+    <text x="760" y="347" text-anchor="middle" font-size="9.5" fill="#8b98a5">ToolContext{ allowed_tools } → 执行复核</text>
+    <line x1="760" y1="360" x2="760" y2="408" stroke="#f4a261" stroke-width="1.5" stroke-dasharray="4 3" />
+    <rect x="630" y="410" width="260" height="58" rx="8" fill="#1c1a16" stroke="#f4a261" stroke-opacity="0.5" />
+    <text x="760" y="434" text-anchor="middle" font-size="11" font-weight="600" fill="#f4a261">permissions.rs</text>
+    <text x="760" y="452" text-anchor="middle" font-size="9.5" fill="#8b98a5">「场景组 × 角色组」矩阵 → tool_permissions.toml</text>
+
+    <!-- ================= LLM 层 ================= -->
+    <line x1="350" y1="422" x2="350" y2="476" stroke="#79d9ff" stroke-width="1.6" marker-end="url(#arrow)" />
+    <rect x="150" y="478" width="400" height="108" rx="10" fill="#1b2430" stroke="#79d9ff" />
+    <text x="350" y="502" text-anchor="middle" font-size="13" font-weight="700" fill="#79d9ff">③ LLM 层 · LlmClient → LlmProvider</text>
+    <text x="350" y="520" text-anchor="middle" font-size="10" fill="#8b98a5">LlmChunk::{ Content, Reasoning, ToolCalls } · ToolDefinition · LlmMessage</text>
+
+    <rect x="170" y="536" width="170" height="38" rx="7" fill="#16202c" stroke="#34d399" stroke-opacity="0.5" />
+    <text x="255" y="558" text-anchor="middle" font-size="10.5" font-weight="600" fill="#34d399">genai_provider</text>
+    <text x="255" y="571" text-anchor="middle" font-size="8.5" fill="#8b98a5">supports_streaming_tools ✅</text>
+
+    <rect x="360" y="536" width="170" height="38" rx="7" fill="#16202c" stroke="#a78bfa" stroke-opacity="0.5" />
+    <text x="445" y="558" text-anchor="middle" font-size="10.5" font-weight="600" fill="#a78bfa">kimi_code</text>
+    <text x="445" y="571" text-anchor="middle" font-size="8.5" fill="#8b98a5">非流式 complete_with_tools · 供 God Agent</text>
+
+    <!-- ================= 写入 + 记忆 ================= -->
+    <line x1="350" y1="586" x2="350" y2="640" stroke="#79d9ff" stroke-width="1.6" marker-end="url(#arrow)" />
+    <rect x="150" y="642" width="400" height="120" rx="10" fill="#16202c" stroke="#a78bfa" />
+    <text x="350" y="666" text-anchor="middle" font-size="13" font-weight="700" fill="#a78bfa">④ 台词表联合 · run_pipeline 第③步</text>
+    <text x="350" y="686" text-anchor="middle" font-size="10" fill="#8b98a5">tool_messages 按序写入 line_list（insert_pos 处）</text>
+    <rect x="170" y="698" width="176" height="52" rx="7" fill="#1b2430" stroke="#a78bfa" stroke-opacity="0.5" />
+    <text x="258" y="718" text-anchor="middle" font-size="10" font-weight="600" fill="#e6edf3">assistant 行</text>
+    <text x="258" y="734" text-anchor="middle" font-size="8.5" fill="#8b98a5">content=间隙文本 · tool_call=JSON</text>
+    <rect x="356" y="698" width="176" height="52" rx="7" fill="#1b2430" stroke="#a78bfa" stroke-opacity="0.5" />
+    <text x="444" y="718" text-anchor="middle" font-size="10" font-weight="600" fill="#e6edf3">tool 行（新属性）</text>
+    <text x="444" y="734" text-anchor="middle" font-size="8.5" fill="#8b98a5">content={tool_call_id, result} · 玩家不可见</text>
+
+    <!-- 记忆 -->
+    <line x1="350" y1="762" x2="350" y2="816" stroke="#a78bfa" stroke-width="1.6" marker-end="url(#arrow)" />
+    <rect x="150" y="818" width="400" height="120" rx="10" fill="#1b2430" stroke="#34d399" />
+    <text x="350" y="842" text-anchor="middle" font-size="13" font-weight="700" fill="#34d399">⑤ 记忆构建 · refresh_memories → MemoryBuilder</text>
+    <text x="350" y="862" text-anchor="middle" font-size="10" fill="#8b98a5">sync_memories 按 line_list 整体重建每个角色的 role.memory</text>
+    <rect x="170" y="876" width="176" height="52" rx="7" fill="#16202c" stroke="#34d399" stroke-opacity="0.5" />
+    <text x="258" y="896" text-anchor="middle" font-size="10" font-weight="600" fill="#e6edf3">还原 assistant(tool_calls)</text>
+    <text x="258" y="912" text-anchor="middle" font-size="8.5" fill="#8b98a5">tool_call 字段 / 旧版 \n\n 兼容</text>
+    <rect x="356" y="876" width="176" height="52" rx="7" fill="#16202c" stroke="#34d399" stroke-opacity="0.5" />
+    <text x="444" y="896" text-anchor="middle" font-size="10" font-weight="600" fill="#e6edf3">还原 tool(结果)</text>
+    <text x="444" y="912" text-anchor="middle" font-size="8.5" fill="#8b98a5">role=tool · tool_call_id 回填</text>
+
+    <!-- 闭环回生成管线 -->
+    <path d="M 590 878 L 640 878 L 640 180 L 535 180" fill="none" stroke="#34d399" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#arrow)" />
+    <text x="647" y="540" font-size="10" fill="#34d399" transform="rotate(90 647 540)">下一轮生成：get_current_context 读 role.memory（含工具历史）</text>
+
+    <!-- ================= 磁盘 ================= -->
+    <line x1="760" y1="468" x2="760" y2="530" stroke="#f4a261" stroke-width="1.5" stroke-dasharray="4 3" />
+    <rect x="630" y="532" width="260" height="52" rx="8" fill="#1c1a16" stroke="#f4a261" stroke-opacity="0.5" />
+    <text x="760" y="556" text-anchor="middle" font-size="11" font-weight="600" fill="#f4a261">磁盘 · tool_permissions.toml</text>
+    <text x="760" y="572" text-anchor="middle" font-size="9" fill="#8b98a5">&lt;data_dir&gt; 原子写（.tmp → rename）· 无前端 UI</text>
+
+    <!-- line 表数据库 -->
+    <rect x="150" y="966" width="400" height="52" rx="8" fill="#1c1a16" stroke="#a78bfa" stroke-opacity="0.5" />
+    <text x="350" y="990" text-anchor="middle" font-size="11" font-weight="600" fill="#a78bfa">磁盘 · line 表（save_repo 持久化 tool_call 列）</text>
+    <text x="350" y="1006" text-anchor="middle" font-size="9" fill="#8b98a5">m20260727_add_line_tool_call 迁移 · 存档读写覆盖</text>
+    <line x1="350" y1="938" x2="350" y2="964" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arrow)" />
+  </svg>
+
+  <div class="legend">
+    <span><span class="dot" style="background:#34d399"></span>生成触发 / 记忆</span>
+    <span><span class="dot" style="background:#f472b6"></span>工具循环（本 PR 核心）</span>
+    <span><span class="dot" style="background:#79d9ff"></span>生成管线 / LLM 层</span>
+    <span><span class="dot" style="background:#a78bfa"></span>台词表联合 / 持久化</span>
+    <span><span class="dot" style="background:#f4a261"></span>权限管理（注册表 / 配置）</span>
+    <span><span class="dot" style="background:#8b98a5"></span>虚线 = 状态 / 回读</span>
+  </div>
+</div>
+</body>
+</html>

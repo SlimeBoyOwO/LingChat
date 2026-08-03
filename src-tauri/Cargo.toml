@@ -82,9 +82,19 @@ mdns-sd = "0.11"
 if-addrs = "0.13"
 tokio-util = { version = "0.7", features = ["io"] }
 
+# Skill Agent：命令输出在中文 Windows 上是 GBK，需要回退解码
+encoding_rs = "0.8"
+
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_Graphics_Gdi"] }
+
+# 本地补丁：esaxx-rs 0.1.10 上游 build.rs 硬编码 .static_crt(true)（/MT 静态 CRT），
+# 与 ort（onnxruntime，/MD 动态 CRT）在同一链接里混用，导致 MSVC 报
+# LNK2005/LNK2038/LNK4098。这里改用本地副本编译为 /MD，二者统一为动态 CRT。
+# 详见 patches/esaxx-rs/build.rs 的注释。
+[patch.crates-io]
+esaxx-rs = { path = "patches/esaxx-rs" }

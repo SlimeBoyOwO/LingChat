@@ -16,7 +16,9 @@
   </div>
 
   <!-- 粒子特效层：独立于背景图，透明背景时依然显示 -->
-  <div class="pointer-events-none absolute inset-0">
+  <!-- isolation: isolate 建立独立层叠上下文，把粒子组件内部的 z-index 限制在本层内，
+       防止其逃逸到根层叠上下文盖过 UI 面板 -->
+  <div class="pointer-events-none absolute inset-0" style="isolation: isolate">
     <StarField
       ref="starfieldRef"
       v-if="uiStore.currentBackgroundEffect === 'StarField'"

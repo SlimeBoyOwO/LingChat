@@ -20,6 +20,7 @@
 //! - **所有写入都是原子的**，且覆盖前留 `.bak`。
 //! - **任何来自前端的路径都必须过 [`paths`] 的校验**，命令层不自己拼路径。
 
+pub mod agent;
 pub mod commands;
 pub mod io;
 pub mod paths;

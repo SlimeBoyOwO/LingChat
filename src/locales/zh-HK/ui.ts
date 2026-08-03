@@ -120,6 +120,7 @@ export default {
   },
   "proactivePage": {
     "save": "儲存",
+    "success": "已儲存成功",
     "error": "錯誤: {message}"
   },
   "calendarPage": {

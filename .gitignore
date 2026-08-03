@@ -151,6 +151,11 @@ data/game_data/scripts/character/**
 !data/game_data/scripts/standalone/
 data/game_data/scripts/standalone/**
 !data/game_data/scripts/character/**
+# Skill Agent 技能库（AI 助手读取的 SKILL.md 技能）
+data/game_data/skills/**
+!data/game_data/skills/
+!data/game_data/skills/**/
+!data/game_data/skills/**/*
 
 # ============================================================
 #        文档和其他工具 (Documentation & Other Tools)

@@ -7,10 +7,11 @@
 
   <!-- 全局通知组件（直接从 uiStore 读取状态） -->
   <!-- 与桌宠专用通知组件区分开 -->
-  <Notification v-if="route.path !== '/pet'" />
-  <AchievementToast />
-  <AdventureUnlockNotify />
-  <AppDialog />
+  <!-- 弹窗类组件仅主窗口挂载：日志等独立窗口复用 App.vue，不重复弹出 -->
+  <Notification v-if="isMainWindow && route.path !== '/pet'" />
+  <AchievementToast v-if="isMainWindow" />
+  <AdventureUnlockNotify v-if="isMainWindow" />
+  <AppDialog v-if="isMainWindow" />
 </template>
 
 <script setup lang="ts">
@@ -70,6 +71,9 @@ void getImportedFonts().then((fonts) => {
 // ─── 键盘处理 ────────────────────────────────────────────────
 
 const route = useRoute()
+
+// 仅主窗口挂载全局弹窗（通知/成就/对话确认），日志窗口等复用 App.vue 的窗口不弹
+const isMainWindow = getCurrentWindow().label === 'main'
 
 const handleKeyDown = async (event: KeyboardEvent) => {
   if (event.key === 'F11') {

@@ -120,6 +120,7 @@ export default {
   },
   proactivePage: {
     save: "Save",
+    success: "Saved successfully",
     error: "Error: {message}",
   },
   calendarPage: {
