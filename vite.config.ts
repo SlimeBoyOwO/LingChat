@@ -34,7 +34,9 @@ export default defineConfig(async () => ({
       : undefined,
     watch: {
       // 3. tell Vite to ignore watching some files
-      ignored: ['**/src-tauri/**', '**/.venv/**', '**/target/**'],
+      // data/ 是运行时数据目录（角色立绘、音乐等），导入/播放时会临时占用文件，
+      // 被 vite watch 会触发 EBUSY 崩溃，必须排除。
+      ignored: ['**/src-tauri/**', '**/.venv/**', '**/target/**', '**/data/**'],
     },
   },
 
