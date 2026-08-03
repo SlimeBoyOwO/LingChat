@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 use tauri::{Emitter, Manager};
 
-use crate::achievements::types::AchievementDef;
+use crate::achievements::types::{Achievement, AchievementDef};
 use crate::AppState;
 use crate::ai_service::game_system::script_engine::events::{
     parse_duration, register_event, ScriptContext, ScriptEvent,
@@ -54,12 +54,47 @@ impl ScriptEvent for UnlockAchievementEvent {
             return Err(anyhow!("成就事件必须填写标题和描述，才能创建这个成就"));
         }
 
-        // 试玩是临时会话，不污染玩家的真实成就存档
+        let state = ctx.app.state::<AppState>();
+
+        // 试玩是临时会话：不写玩家存档，但模拟一次解锁广播——作者在编辑器里
+        // 就能看到成就事件的效果（toast 照常弹出；成就页仍显示未解锁，不结算）。
         if ctx.is_preview {
+            {
+                let mut mgr = state.achievement_manager.lock().await;
+                mgr.register_achievement(
+                    id.to_string(),
+                    AchievementDef {
+                        title: title.to_string(),
+                        description: description.to_string(),
+                        ach_type: "adventure".into(),
+                        target_progress: 1,
+                        hidden: false,
+                        img_url: None,
+                        audio_url: None,
+                        duration: None,
+                    },
+                );
+            }
+            let simulated = Achievement {
+                id: id.to_string(),
+                title: title.to_string(),
+                description: description.to_string(),
+                ach_type: "adventure".into(),
+                unlocked: true,
+                unlocked_at: None,
+                current_progress: 1,
+                target_progress: 1,
+                hidden: false,
+                img_url: None,
+                audio_url: None,
+                duration: None,
+            };
+            ctx.app
+                .emit("achievement:unlocked", &simulated)
+                .map_err(|e| anyhow!("发送成就事件失败: {}", e))?;
             return Ok(None);
         }
 
-        let state = ctx.app.state::<AppState>();
         let unlocked = {
             let mut mgr = state.achievement_manager.lock().await;
             // 动态注册：成就键名全应用唯一。编辑器校验器已拦截「与内置成就重名」
