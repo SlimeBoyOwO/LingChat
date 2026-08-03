@@ -48,6 +48,8 @@ let defaultDeviceLabel = ''
 /** 已注册的活动媒体元素 / AudioContext（切换设备时重新应用） */
 const elements = new Set<HTMLMediaElement>()
 const contexts = new Set<AudioContext>()
+/** setSinkId 曾失败（元素未就绪/缺激活）、待重试的元素；就绪后或交互时自动重试 */
+const pendingElements = new Set<HTMLMediaElement>()
 
 function canSetSink(target: unknown): target is SinkTarget {
   return !!target && typeof (target as SinkTarget).setSinkId === 'function'
@@ -60,6 +62,7 @@ async function applyToElement(el: HTMLMediaElement) {
   const resumeTime = el.currentTime
   try {
     await el.setSinkId!(id)
+    pendingElements.delete(el)
     console.debug('[audio-device] setSinkId 成功:', id, 'src:', (el as HTMLAudioElement).src)
     // 跨音频端点类型（如蓝牙↔有线）切换时，Chromium 不会自动重建正在播放的音频流，
     // 需要重启元素（重新加载资源）才会让新设备生效；这里仅对正在播放的元素做重启
@@ -68,20 +71,32 @@ async function applyToElement(el: HTMLMediaElement) {
     }
   } catch (e: any) {
     const name = e && e.name
+    pendingElements.add(el)
+    // 等元素媒体就绪后自动重试（动态创建的 audio 在 src 加载前 setSinkId 可能报 NotFoundError）
+    scheduleElementRetry(el)
     if (name === 'NotAllowedError' || name === 'SecurityError') {
-      // 缺少用户激活 → 排队，待首次交互时重试
+      // 缺少用户激活 → 待首次交互时重试
       pendingSink = true
       installActivationFlush()
     } else {
-      // 设备已拔出或 ID 不被接受 → 回退系统默认
-      console.warn('[audio-device] setSinkId 失败，回退默认:', id, name, e)
-      try {
-        await el.setSinkId!('')
-      } catch {
-        /* 忽略 */
-      }
+      // 元素未就绪等情况 → 就绪前先快速重试一次（src 已存在时多半能立即成功）
+      console.warn('[audio-device] setSinkId 待重试（元素可能未就绪）:', id, name, e)
+      queueMicrotask(() => {
+        if (pendingElements.has(el)) applyToElement(el)
+      })
     }
   }
+}
+
+/** 元素媒体就绪后自动重试一次 setSinkId（一次性监听） */
+function scheduleElementRetry(el: HTMLMediaElement) {
+  el.addEventListener(
+    'loadedmetadata',
+    () => {
+      if (pendingElements.has(el)) applyToElement(el)
+    },
+    { once: true },
+  )
 }
 
 /** 重启正在播放的音频元素，强制在新设备上重建音频流 */
@@ -142,11 +157,13 @@ function installActivationFlush() {
 }
 
 async function flushPendingSinks() {
-  if (!pendingSink) return
+  if (!pendingSink && pendingElements.size === 0) return
   pendingSink = false
   const targets: Promise<void>[] = []
   elements.forEach((el) => targets.push(applyToElement(el)))
   contexts.forEach((ctx) => targets.push(applyToContext(ctx)))
+  // 曾失败的元素一并重试
+  pendingElements.forEach((el) => targets.push(applyToElement(el)))
   await Promise.allSettled(targets)
 }
 
@@ -213,10 +230,18 @@ function installPlayPatch() {
   ;(HTMLMediaElement.prototype as any).play = function (this: HTMLMediaElement) {
     const el = this
     if (canSetSink(el) && currentDeviceId.value) {
-      // 先应用设备（幂等、失败忽略），再继续播放
-      const sinkPromise = Promise.resolve(el.setSinkId!(currentDeviceId.value)).catch(
-        () => undefined,
-      )
+      // 先应用设备（幂等）；失败则排队重试（元素就绪/下次交互），再继续播放
+      const sinkPromise = Promise.resolve()
+        .then(() => el.setSinkId!(currentDeviceId.value))
+        .catch((e: any) => {
+          const name = e && e.name
+          pendingElements.add(el)
+          scheduleElementRetry(el)
+          if (name === 'NotAllowedError' || name === 'SecurityError') {
+            pendingSink = true
+            installActivationFlush()
+          }
+        })
       return sinkPromise.then(() => originalPlay.call(el))
     }
     return originalPlay.call(el)

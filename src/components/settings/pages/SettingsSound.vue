@@ -465,7 +465,6 @@ interface MusicItem {
 }
 
 const musicList = ref<MusicItem[]>([])
-const currentMusicName = ref(t('settings.sound.bgm.noMusicSelected'))
 
 // 批量上传状态
 const selectedFiles = ref<File[]>([])
@@ -522,15 +521,14 @@ const inferMusicNameFromUrl = (musicUrl: string): string => {
   return fileName.replace(/\.[^/.]+$/, '') || fileName
 }
 
-const syncCurrentMusicName = () => {
+// 当前音乐名：computed 依赖 uiStore.currentBackgroundMusic / musicList / locale，
+// 切歌、删歌或切换语言时会自动重新求值（无需手动同步）
+const currentMusicName = computed(() => {
   const currentUrl = uiStore.currentBackgroundMusic
-  if (!currentUrl || currentUrl === 'None') {
-    currentMusicName.value = t('settings.sound.bgm.noMusicSelected')
-    return
-  }
+  if (!currentUrl || currentUrl === 'None') return t('settings.sound.bgm.noMusicSelected')
   const matched = musicList.value.find((item) => item.url === currentUrl)
-  currentMusicName.value = matched?.name || inferMusicNameFromUrl(currentUrl)
-}
+  return matched?.name || inferMusicNameFromUrl(currentUrl)
+})
 
 // 音量更新逻辑
 const updateCharacterVolume = (value: number) => {
@@ -678,13 +676,7 @@ watch(
   },
 )
 
-watch(
-  () => uiStore.currentBackgroundMusic,
-  () => {
-    syncCurrentMusicName()
-    // 确保本地播放器的 URL 实时跟随 Store
-  },
-)
+// currentMusicName 已改为 computed，自动依赖 uiStore.currentBackgroundMusic，无需手动 watch 同步
 
 // 监听播放器状态控制本地播放器
 watch(
@@ -728,7 +720,6 @@ const playAchievementTestSound = () => {
 
 const loadMusicList = async () => {
   musicList.value = await musicGetAll()
-  syncCurrentMusicName()
 }
 
 const deleteMusic = async (music: MusicItem) => {
@@ -741,7 +732,6 @@ const deleteMusic = async (music: MusicItem) => {
 
     if (uiStore.currentBackgroundMusic === deletedMusicUrl) {
       uiStore.currentBackgroundMusic = 'None'
-      currentMusicName.value = t('settings.sound.bgm.noMusicSelected')
       await setCurrentBackgroundMusic('None')
 
       if (backgroundAudioPlayer.value) {
@@ -794,7 +784,6 @@ const playPauseButtonText = computed(() => (!uiStore.bgMusicPaused ? t('settings
 
 const playMusic = async (music: MusicItem) => {
   let musicUrl = music.url
-  currentMusicName.value = music.name
 
   // 单曲循环的逻辑要更特殊一点
   // if (uiStore.bgMusicMode === 'loop-single') {
@@ -864,8 +853,6 @@ onMounted(async () => {
       }
     }
   }
-
-  syncCurrentMusicName()
 })
 </script>
 
