@@ -232,7 +232,7 @@ pub fn delete_imported_font(name: String) -> Result<(), String> {
     let file_path = api::fonts_dir().join(&safe_name);
 
     // 安全校验：确保路径在 fonts_dir 内
-    api::validate_path_in_base(&file_path, &api::fonts_dir())?;
+    crate::utils::path::validate_path_in_base(&file_path, &api::fonts_dir())?;
 
     if !file_path.exists() {
         return Err(format!("字体文件不存在: {}", safe_name));

@@ -364,7 +364,7 @@ pub fn get_character_file(file_path: String) -> Result<String, String> {
     let base = characters_dir();
     let resolved = base.join(&file_path);
 
-    super::validate_path_in_base(&resolved, &base)?;
+    crate::utils::path::validate_path_in_base(&resolved, &base)?;
 
     if !resolved.exists() {
         return Err(format!("角色文件不存在: {}", file_path));

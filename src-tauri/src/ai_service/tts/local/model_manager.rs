@@ -104,7 +104,7 @@ pub fn delete_voice(
     if !p.exists() {
         return Ok(());
     }
-    crate::api::validate_path_in_base(&p, &paths.voices)?;
+    crate::utils::path::validate_path_in_base(&p, &paths.voices)?;
     std::fs::remove_dir_all(&p).map_err(|e| format!("remove_dir_all: {e}"))
 }
 

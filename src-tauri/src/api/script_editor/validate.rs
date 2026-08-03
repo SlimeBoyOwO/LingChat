@@ -23,8 +23,8 @@ use crate::ai_service::game_system::script_engine::utils::media::{
 };
 use crate::ai_service::game_system::script_engine::utils::script_function::parse_variable_action;
 
-use super::io;
-use super::paths;
+use crate::utils::yaml_file;
+use crate::utils::script_paths as paths;
 use super::schema::build_schema;
 
 /// 诊断级别。
@@ -196,7 +196,7 @@ pub fn validate(
     let common_keys: HashSet<&str> = schema.common_fields.iter().map(|f| f.key).collect();
 
     // ---------- story_config ----------
-    let config = match io::read_story_config(script_dir) {
+    let config = match yaml_file::read_story_config(script_dir) {
         Ok(c) => c,
         Err(e) => {
             diags.push(Diagnostic::script(Severity::Error, "config.unreadable", e));
@@ -283,14 +283,14 @@ pub fn validate(
                 continue;
             }
         };
-        let raw = match io::read_yaml_as_json(&file) {
+        let raw = match yaml_file::read_yaml_as_json(&file) {
             Ok(v) => v,
             Err(e) => {
                 diags.push(Diagnostic::chapter(Severity::Error, "chapter.parse_failed", cid, e));
                 continue;
             }
         };
-        let doc = match io::ChapterDoc::from_json(raw) {
+        let doc = match yaml_file::ChapterDoc::from_json(raw) {
             Ok(d) => d,
             Err(e) => {
                 diags.push(Diagnostic::chapter(Severity::Error, "chapter.bad_shape", cid, e));

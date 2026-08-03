@@ -22,8 +22,8 @@ use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use super::io::{self, ChapterDoc};
-use super::paths::{self, ScriptLayout};
+use crate::utils::yaml_file::{self, ChapterDoc};
+use crate::utils::script_paths::{self as paths, ScriptLayout};
 use super::schema::{build_schema, ScriptSchema};
 use super::validate::{self, ValidationReport};
 
@@ -160,7 +160,7 @@ pub struct WriteChapterRequest {
 fn read_package(key: &str, loaded_names: &HashSet<String>) -> Result<ScriptPackage, String> {
     let dir = paths::resolve_script_dir(key)?;
     let layout = paths::layout_of(key)?;
-    let config = io::read_story_config(&dir)?;
+    let config = yaml_file::read_story_config(&dir)?;
 
     let folder_name = dir
         .file_name()
@@ -372,7 +372,7 @@ fn chapter_summaries(script_dir: &Path) -> Vec<ChapterSummary> {
         .into_iter()
         .map(|id| {
             let (name, event_count) = match paths::resolve_chapter_file(script_dir, &id, true)
-                .and_then(|f| io::read_yaml_as_json(&f))
+                .and_then(|f| yaml_file::read_yaml_as_json(&f))
                 .and_then(ChapterDoc::from_json)
             {
                 Ok(doc) => (doc.name, doc.events.len()),
@@ -422,7 +422,7 @@ pub async fn editor_read_script(app: AppHandle, key: String) -> Result<ScriptDet
     let dir = paths::resolve_script_dir(&key)?;
     Ok(ScriptDetail {
         package: read_package(&key, &loaded)?,
-        story_config: io::read_story_config(&dir)?,
+        story_config: yaml_file::read_story_config(&dir)?,
         chapters: chapter_summaries(&dir),
         assets: read_asset_index(&dir),
         characters: read_characters(&dir),
@@ -433,7 +433,7 @@ pub async fn editor_read_script(app: AppHandle, key: String) -> Result<ScriptDet
 pub fn editor_read_chapter(key: String, chapter_id: String) -> Result<ChapterContent, String> {
     let dir = paths::resolve_script_dir(&key)?;
     let file = paths::resolve_chapter_file(&dir, &chapter_id, true)?;
-    let doc = ChapterDoc::from_json(io::read_yaml_as_json(&file)?)?;
+    let doc = ChapterDoc::from_json(yaml_file::read_yaml_as_json(&file)?)?;
     Ok(ChapterContent {
         id: chapter_id,
         name: doc.name,
@@ -450,7 +450,7 @@ pub fn editor_validate_script(key: String) -> Result<ValidationReport, String> {
     let mut names: HashMap<String, String> = HashMap::new();
     for other in paths::enumerate_script_keys() {
         if let Ok(d) = paths::resolve_script_dir(&other) {
-            if let Ok(cfg) = io::read_story_config(&d) {
+            if let Ok(cfg) = yaml_file::read_story_config(&d) {
                 if let Some(n) = cfg.get("script_name").and_then(|v| v.as_str()) {
                     let n = n.trim();
                     if !n.is_empty() {
@@ -477,13 +477,13 @@ pub fn editor_write_chapter(req: WriteChapterRequest) -> Result<(), String> {
         events: req.events,
         extra: req.extra,
     };
-    io::write_json_as_yaml(&file, &doc.to_json())
+    yaml_file::write_json_as_yaml(&file, &doc.to_json())
 }
 
 #[tauri::command]
 pub fn editor_write_story_config(key: String, config: JsonValue) -> Result<(), String> {
     let dir = paths::resolve_script_dir(&key)?;
-    io::write_story_config(&dir, &config)
+    yaml_file::write_story_config(&dir, &config)
 }
 
 #[tauri::command]
@@ -503,7 +503,7 @@ pub fn editor_create_chapter(
     if file.exists() {
         return Err(format!("章节已存在: '{}'", chapter_id));
     }
-    io::ensure_parent_dir(&file)?;
+    yaml_file::ensure_parent_dir(&file)?;
 
     let trimmed = name.trim();
     let doc = ChapterDoc {
@@ -520,7 +520,7 @@ pub fn editor_create_chapter(
         })],
         extra: Map::new(),
     };
-    io::write_json_as_yaml(&file, &doc.to_json())?;
+    yaml_file::write_json_as_yaml(&file, &doc.to_json())?;
 
     Ok(ChapterContent {
         id: chapter_id,
@@ -654,11 +654,11 @@ pub async fn editor_create_script(
     settings.insert("user_name".into(), JsonValue::String(String::new()));
     cfg.insert("script_settings".into(), JsonValue::Object(settings));
 
-    io::write_story_config(&dir, &JsonValue::Object(cfg))?;
+    yaml_file::write_story_config(&dir, &JsonValue::Object(cfg))?;
 
     // 开场章节
     let intro_file = paths::resolve_chapter_file(&dir, &intro, false)?;
-    io::ensure_parent_dir(&intro_file)?;
+    yaml_file::ensure_parent_dir(&intro_file)?;
     let first = ChapterDoc {
         name: Some("第一章".to_string()),
         events: vec![
@@ -671,7 +671,7 @@ pub async fn editor_create_script(
         ],
         extra: Map::new(),
     };
-    io::write_json_as_yaml(&intro_file, &first.to_json())?;
+    yaml_file::write_json_as_yaml(&intro_file, &first.to_json())?;
 
     let loaded = loaded_script_names(&app).await;
     read_package(&key, &loaded)
@@ -998,7 +998,7 @@ pub fn editor_create_character(
         JsonValue::String(system_prompt.trim().to_string()),
     );
 
-    io::write_json_as_yaml(
+    yaml_file::write_json_as_yaml(
         &char_dir.join("settings.yml"),
         &JsonValue::Object(settings),
     )?;
@@ -1125,7 +1125,7 @@ pub fn editor_import_global_character(
     obj.remove("script_key");
     obj.insert("script_role_key".into(), JsonValue::String(folder.clone()));
 
-    io::write_json_as_yaml(&dest.join("settings.yml"), &settings)?;
+    yaml_file::write_json_as_yaml(&dest.join("settings.yml"), &settings)?;
 
     if with_avatar {
         let avatar = src.join("avatar");
@@ -1240,7 +1240,7 @@ pub async fn editor_start_preview(
 
     let state = app.state::<AppState>();
     let dir = paths::resolve_script_dir(&key)?;
-    let config_name = io::read_story_config(&dir)?
+    let config_name = yaml_file::read_story_config(&dir)?
         .get("script_name")
         .and_then(|v| v.as_str())
         .map(|s| s.trim().to_string())
@@ -1673,7 +1673,7 @@ pub async fn editor_preview_readiness(
     key: String,
 ) -> Result<PreviewReadiness, String> {
     let dir = paths::resolve_script_dir(&key)?;
-    let cfg = io::read_story_config(&dir)?;
+    let cfg = yaml_file::read_story_config(&dir)?;
     let bound = cfg
         .get("adventure")
         .and_then(|a| a.get("bound_character_folder"))
