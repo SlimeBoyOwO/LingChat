@@ -54,7 +54,7 @@ fn build_script_block(sandbox_dir: &Path, script_key: Option<&str>) -> String {
     let Some(key) = script_key else {
         return String::new();
     };
-    match crate::api::script_editor::paths::resolve_script_dir(key) {
+    match crate::utils::script_paths::resolve_script_dir(key) {
         Ok(dir) => {
             let rel = dir.strip_prefix(sandbox_dir).unwrap_or(&dir);
             format!(

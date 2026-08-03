@@ -11,12 +11,15 @@
 //! 编辑器用「剧本 key」指代一个剧本包 —— 即相对 `scripts/` 的路径，统一用 `/`
 //! 作分隔符，例如 `character/诺一钦灵/想出去玩啦`。key 由后端枚举产出，前端
 //! 只做透传，任何进入文件系统的 key 都必须先过 [`resolve_script_dir`]。
+//!
+//! 原为 `api/script_editor/paths.rs`，迁到 utils 后剧本路径解析逻辑与 API
+//! 命令层解耦，任何需要访问剧本包的模块都能复用。
 
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::api::game_data_dir;
+use crate::utils::path::validate_path_in_base;
 
 /// 保留的一级目录名 —— 它们本身不是剧本包。
 const RESERVED_TOP_LEVEL: [&str; 2] = ["character", "standalone"];
@@ -45,7 +48,9 @@ impl ScriptLayout {
 }
 
 fn scripts_root() -> PathBuf {
-    game_data_dir().join("scripts")
+    crate::init::static_copy::get_data_dir()
+        .join("game_data")
+        .join("scripts")
 }
 
 /// 把 key 拆成段，同时拒绝一切可疑内容。
@@ -103,7 +108,7 @@ pub fn resolve_script_dir(key: &str) -> Result<PathBuf, String> {
         return Err(format!("剧本不存在: '{}'", key));
     }
     // canonicalize 之后再确认前缀，防御符号链接
-    crate::api::validate_path_in_base(&dir, &scripts_root())?;
+    validate_path_in_base(&dir, &scripts_root())?;
     Ok(dir)
 }
 
@@ -171,12 +176,12 @@ pub fn resolve_chapter_file(
         if !file.is_file() {
             return Err(format!("章节不存在: '{}'", chapter_id));
         }
-        crate::api::validate_path_in_base(&file, &chapters_dir)?;
+        validate_path_in_base(&file, &chapters_dir)?;
     } else {
         // 同样不建目录。子目录可能还不存在，所以对 Chapters/ 本身做前缀校验，
         // 再用字符串前缀确认拼出来的路径没有逃出去（父目录不存在时无法 canonicalize）。
         if chapters_dir.is_dir() {
-            crate::api::validate_path_in_base(&chapters_dir, &script_dir.to_path_buf())?;
+            validate_path_in_base(&chapters_dir, script_dir)?;
         }
         if !file.starts_with(&chapters_dir) {
             return Err(format!("章节 id 逃出了 Chapters/ 目录: '{}'", chapter_id));

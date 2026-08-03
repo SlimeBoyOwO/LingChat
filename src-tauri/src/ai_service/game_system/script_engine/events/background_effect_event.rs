@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    register_event, ScriptContext, ScriptEvent,
+    parse_duration, register_event, ScriptContext, ScriptEvent,
 };
 use crate::ai_service::game_system::script_engine::responses::{
     event_names::SCRIPT_BACKGROUND_EFFECT, BackgroundEffectPayload,
@@ -24,6 +24,7 @@ const CLEARING_EFFECTS: [&str; 3] = ["none", "None", ""];
 
 pub struct BackgroundEffectEvent {
     effect: String,
+    duration: Option<f64>,
 }
 
 impl BackgroundEffectEvent {
@@ -57,7 +58,10 @@ impl BackgroundEffectEvent {
             }
         }
 
-        Self { effect }
+        Self {
+            effect,
+            duration: parse_duration(data),
+        }
     }
 }
 
@@ -68,6 +72,7 @@ impl ScriptEvent for BackgroundEffectEvent {
 
         let payload = BackgroundEffectPayload {
             effect: self.effect.clone(),
+            duration: self.duration,
         };
         let _ = emit(ctx.app, SCRIPT_BACKGROUND_EFFECT, &payload);
 
@@ -76,6 +81,10 @@ impl ScriptEvent for BackgroundEffectEvent {
 
     fn event_type() -> &'static str {
         "background_effect"
+    }
+
+    fn duration(&self) -> Option<f64> {
+        self.duration
     }
 }
 

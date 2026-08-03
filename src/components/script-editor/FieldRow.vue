@@ -143,12 +143,22 @@
       </p>
     </div>
 
+    <!-- 触发条件：结构化「变量 + 关系 + 值」表单，无需手写语法。
+         说明由下方 schema 的 hint 承担，隐藏编辑器自带的顶部行，避免重复 -->
+    <ConditionEditor
+      v-else-if="field.kind === 'condition'"
+      :model-value="asText"
+      :variables="store.variables"
+      :hint="''"
+      @update:model-value="(v: string) => emit('update', v)"
+    />
+
     <!-- 复合编辑器：选项 / 分支 / 赋值组 -->
     <CompositeField
       v-else-if="isComposite"
       :field="field"
       :value="value"
-      :needs-name="needsBranchName"
+      :branch-mode="branchMode"
       @update="(v: unknown) => emit('update', v)"
     />
 
@@ -167,29 +177,7 @@
       :class="hintClass"
     >
       {{ field.hint }}
-      <button
-        v-if="field.key === 'condition' && condSyntax"
-        class="ml-1 text-brand cursor-pointer"
-        @click="showCondHelp = !showCondHelp"
-      >{{ showCondHelp ? '收起 ▲' : '怎么写条件？' }}</button>
     </p>
-    <div
-      v-if="field.key === 'condition' && showCondHelp && condSyntax"
-      class="mt-1 rounded border border-white/10 bg-black/20 p-2 text-xs leading-relaxed text-white/50"
-    >
-      <p class="mb-1 text-white/80"><b>怎么用条件来控制故事走向？</b></p>
-      <p class="mb-1">
-        先在你的剧本里用「设置变量」事件定义几个变量（如 <code class="text-brand">route</code>、<code class="text-brand">flag</code>），
-        然后在这里写判断。举个例子：
-      </p>
-      <p class="mb-1 text-white/60">
-        • <span class="text-brand">{{ condSyntax.supported?.[0] }}</span>——比如让玩家从商店出来后分支跳转<br>
-        • <span class="text-brand">{{ condSyntax.supported?.[1] }}</span>——比如在不走商店路线时跳过这段<br>
-        • <span class="text-brand">{{ condSyntax.supported?.[2] }}</span>——直接用变量名判断"有没有存过这个值"
-      </p>
-      <p class="mb-1 text-yellow-200/60">以下写法会<b>永远不成立</b>（不报错，只是条件永远为假）：{{ condSyntax.unsupported?.join(' ') }}。</p>
-      <p class="text-white/40">{{ condSyntax.note }}</p>
-    </div>
     <p
       v-for="(d, i) in diagnostics"
       :key="i"
@@ -202,7 +190,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { Toggle } from '@/components/base'
 import { EMOTION_CONFIG_EMO } from '@/controllers/emotion/config'
@@ -215,6 +203,7 @@ import type {
   ScriptEventData,
 } from '@/api/services/script-editor'
 import CompositeField from './CompositeField.vue'
+import ConditionEditor from './ConditionEditor.vue'
 
 const props = defineProps<{
   field: FieldSpec
@@ -225,9 +214,6 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{ (e: 'update', value: unknown): void }>()
-
-const showCondHelp = ref(false)
-const condSyntax = computed(() => store.schema?.conditionSyntax)
 
 const store = useScriptEditorStore()
 
@@ -256,9 +242,12 @@ const isComposite = computed(() =>
 const selectOptions = computed<{ value: string; label: string }[]>(() => {
   switch (props.field.kind) {
     case 'select':
-      return (props.field.options ?? []).map((o) =>
-        typeof o === 'string' ? { value: o, label: o } : o,
-      )
+      // 有 option_labels 用显示名（值仍是引擎认的原文），否则直接显示原文。
+      // Rust 侧序列化出来的一定是字符串，这里收窄类型免得 TS 抱怨。
+      return (props.field.options ?? []).map((o, idx) => ({
+        value: typeof o === 'string' ? o : o.value,
+        label: typeof o === 'string' ? (props.field.optionLabels?.[idx] ?? o) : o.label,
+      }))
     case 'character':
       return store.characterOptions.map((o) => ({
         value: o,
@@ -293,8 +282,16 @@ const globalOnly = computed<string[]>(() => {
 
 const assetOptions = computed<string[]>(() => [...scriptAssets.value, ...globalOnly.value])
 
-/** 分支列表里是否需要「AI 识别名」—— 只有 ai_judged 用得到 */
-const needsBranchName = computed(() => props.event?.end_type === 'ai_judged')
+/**
+ * 分支列表显示模式：按 end_type 决定分支编辑器给作者看「条件」还是「AI 识别名」。
+ * - branching → 条件（引擎按 condition 选分支）
+ * - ai_judged → AI 识别名（引擎按 name 选分支），条件不读
+ * linear 或未设置时无分支，给 undefined 由 CompositeField 兜底为 branching。
+ */
+const branchMode = computed<'branching' | 'ai_judged' | undefined>(() => {
+  const et = props.event?.end_type
+  return et === 'ai_judged' ? 'ai_judged' : et === 'branching' ? 'branching' : undefined
+})
 
 const hintClass = computed(() =>
   /⚠|不生效|不会|无效|卡死/.test(props.field.hint ?? '') ? 'text-yellow-200' : 'text-white/40',

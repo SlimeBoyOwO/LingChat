@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    register_event, ScriptContext, ScriptEvent,
+    parse_duration, register_event, ScriptContext, ScriptEvent,
 };
 use crate::ai_service::game_system::script_engine::responses::{
     event_names::SCRIPT_PRESENT_PIC, PresentPicPayload,
@@ -18,6 +18,7 @@ use crate::ai_service::message_system::events::emit;
 pub struct PresentPicEvent {
     image_path: String,
     scale: f64,
+    duration: Option<f64>,
 }
 
 impl PresentPicEvent {
@@ -29,6 +30,7 @@ impl PresentPicEvent {
                 .unwrap_or("")
                 .to_string(),
             scale: data.get("scale").and_then(|v| v.as_f64()).unwrap_or(1.0),
+            duration: parse_duration(data),
         }
     }
 }
@@ -57,6 +59,7 @@ impl ScriptEvent for PresentPicEvent {
         let payload = PresentPicPayload {
             image_path: resolved,
             scale: self.scale,
+            duration: self.duration,
         };
         let _ = emit(ctx.app, SCRIPT_PRESENT_PIC, &payload);
 
@@ -65,6 +68,10 @@ impl ScriptEvent for PresentPicEvent {
 
     fn event_type() -> &'static str {
         "present_pic"
+    }
+
+    fn duration(&self) -> Option<f64> {
+        self.duration
     }
 }
 

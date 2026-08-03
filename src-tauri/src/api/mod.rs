@@ -58,28 +58,6 @@ pub(crate) fn fonts_dir() -> PathBuf {
     data_dir().join("fonts")
 }
 
-/// 路径穿越防护：验证 canonical 路径是否以预期的基础目录开头
-pub(crate) fn validate_path_in_base(resolved: &PathBuf, base: &PathBuf) -> Result<(), String> {
-    let canon_resolved = resolved
-        .canonicalize()
-        .map_err(|e| format!("路径解析失败: {} - 路径: {:?}", e, resolved))?;
-
-    let canon_base = base
-        .canonicalize()
-        .map_err(|e| format!("基础目录解析失败: {} - 路径: {:?}", e, base))?;
-
-    if !canon_resolved.starts_with(&canon_base) {
-        return Err(format!(
-            "非法路径：试图访问基础目录之外的文件\n\
-             请求路径: {:?}\n\
-             规范路径: {:?}\n\
-             基础目录: {:?}\n\
-             规范基础目录: {:?}",
-            resolved, canon_resolved, base, canon_base
-        ));
-    }
-    Ok(())
-}
 
 // ========== 主动对话系统指令 ==========
 

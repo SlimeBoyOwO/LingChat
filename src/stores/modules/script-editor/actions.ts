@@ -8,6 +8,7 @@
  * 模块级可变量（saveTimer/revision/…）仍放模块级：单一 store 实例，不需 per-instance。
  */
 import * as api from '@/api/services/script-editor'
+import * as achievementApi from '@/api/services/achievement'
 import type {
   AssetKind,
   AssetScope,
@@ -101,6 +102,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
       s.level.value = 'flow'
       s.tab.value = 'flow'
       void refreshGlobalCharacters()
+      void loadAchievements()
       void checkReadiness()
       await runValidation()
     } catch (e) {
@@ -788,6 +790,18 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     }
   }
 
+  /** 拉取全局成就列表（id → 标题），供成就下拉选项；失败静默，下拉会变空 */
+  async function loadAchievements() {
+    try {
+      const list = await achievementApi.getAchievementList()
+      s.achievements.value = Object.fromEntries(
+        Object.entries(list).map(([id, a]) => [id, a.title ?? id]),
+      )
+    } catch (e) {
+      console.warn('读取成就列表失败:', e)
+    }
+  }
+
   /**
    * 从全局角色库导入一个角色。
    *
@@ -887,6 +901,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     refreshAssetFiles,
     deleteAsset,
     refreshGlobalCharacters,
+    loadAchievements,
     importGlobalCharacter,
     saveStoryConfig,
     notifyOk,

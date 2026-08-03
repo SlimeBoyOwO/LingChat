@@ -41,6 +41,8 @@ pub fn init_event_registry() {
     events::set_variable_event::register();
     // 注册环境音事件处理器
     events::ambient_event::register();
+    // 注册成就解锁事件处理器
+    events::achievement_event::register();
 
     tracing::info!("[ScriptEngine] 所有事件处理器已注册");
 }

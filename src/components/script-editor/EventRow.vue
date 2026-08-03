@@ -43,6 +43,15 @@
         </template>
       </span>
 
+      <!-- 变量摘要：行内右侧角标。变量多时折叠成「N 个变量」，点击展开/收起完整列表 -->
+      <span
+        v-if="varBadge"
+        class="shrink-0 max-w-[10rem] truncate cursor-pointer rounded px-[5px] py-px text-[0.62rem] leading-[1.6] whitespace-nowrap border border-[rgba(34,211,238,0.35)] text-[#67e8f9] bg-[rgba(34,211,238,0.14)] transition-all hover:bg-[rgba(34,211,238,0.25)]"
+        :title="varBadge"
+        @click="varExpanded = !varExpanded"
+        >{{ varBadgeLabel }}</span
+      >
+
       <span
         v-if="errorCount"
         class="shrink-0 rounded px-[5px] py-px text-[0.62rem] leading-[1.6] whitespace-nowrap border border-[rgba(248,113,113,0.35)] text-[#fca5a5] bg-[rgba(248,113,113,0.15)]"
@@ -52,11 +61,6 @@
         v-else-if="warnCount"
         class="shrink-0 rounded px-[5px] py-px text-[0.62rem] leading-[1.6] whitespace-nowrap border border-[rgba(251,191,36,0.3)] text-[#fcd34d] bg-[rgba(251,191,36,0.15)]"
         >{{ warnCount }} 个提醒</span
-      >
-      <span
-        v-if="event.duration !== undefined"
-        class="shrink-0 rounded px-[5px] py-px text-[0.62rem] leading-[1.6] whitespace-nowrap border border-[rgba(251,191,36,0.3)] text-[#fcd34d] bg-[rgba(251,191,36,0.15)]"
-        >duration 无效</span
       >
 
       <button
@@ -90,7 +94,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 import { eventSummary } from '@/composables/useEventFolding'
 import type { ScriptEventData } from '@/api/services/script-editor'
@@ -113,6 +117,63 @@ const conditionText = computed(() =>
     ? (props.event.condition as string)
     : '',
 )
+
+/**
+ * 变量相关角标：把「写了变量」的事件一眼标出来，方便在长章节里快速定位。
+ * - set_variable：赋值组里所有被写过的变量名（去重）
+ * - 其它事件：子结构（choices 选项 / 章节分支 / 赋值组）里的条件或赋值变量
+ * 只取变量名本身，不拼整条表达式，避免角标过长。
+ */
+const varNames = computed<string[]>(() => [...new Set(collectVars())])
+
+/** 变量名收集：set_variable 取所有被写过的变量；choices 取选项条件里的变量 */
+const collectVars = (): string[] => {
+  const ev = props.event
+  const t = eventType.value
+
+  const condVars = (cond: unknown): string[] => {
+    if (typeof cond !== 'string') return []
+    const s = cond.trim()
+    if (!s) return []
+    const varName = s.split(/\s*[!=]+\s*/)[0].trim()
+    return varName ? [varName] : []
+  }
+
+  if (t === 'set_variable') {
+    const opts = Array.isArray(ev.options) ? (ev.options as Record<string, unknown>[]) : []
+    const out: string[] = []
+    for (const o of opts) {
+      out.push(...condVars(o.condition))
+      for (const a of Array.isArray(o.actions) ? (o.actions as Record<string, unknown>[]) : []) {
+        const c = a.content
+        if (typeof c === 'string') {
+          const m = /^\s*(\S+)\s*(?:=|\+=|-=)/.exec(c)
+          if (m) out.push(m[1])
+        }
+      }
+    }
+    return out
+  }
+  // choices 选项里的条件；分支/赋值组的条件在摘要里已有，这里补上顶层没有的
+  if (t === 'choices') {
+    const opts = Array.isArray(ev.options) ? (ev.options as Record<string, unknown>[]) : []
+    return opts.flatMap((o) => condVars(o.condition))
+  }
+  return []
+}
+
+/** 角标完整文本（含 ⚙ 前缀），展开时显示它 */
+const varBadge = computed(() =>
+  varNames.value.length ? `⚙ ${varNames.value.join(', ')}` : '',
+)
+
+/** 变量多时默认折叠成「N 个变量」，点击展开 */
+const varExpanded = ref(false)
+
+const varBadgeLabel = computed(() => {
+  if (varExpanded.value || varNames.value.length <= 1) return varBadge.value
+  return `⚙ ${varNames.value.length} 个变量`
+})
 
 const diagnostics = computed(() => store.chapterDiagnostics[props.index] ?? [])
 const errorCount = computed(() => diagnostics.value.filter((d) => d.severity === 'error').length)

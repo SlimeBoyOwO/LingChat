@@ -51,6 +51,9 @@ pub enum FieldKind {
     BranchOptions,
     /// `set_variable` 的赋值组（专用编辑器）
     VarOptions,
+    /// 触发条件：结构化「变量 + 关系 + 值」表单，序列化为 `var == 值` / `var != 值` / 裸变量
+    /// （引擎的 evaluate_condition 只认这三种写法，结构化让作者写不出不支持的语法）
+    Condition,
     /// 遗留字段：只展示、不可编辑、保存时原样保留
     Deprecated,
 }
@@ -69,6 +72,11 @@ pub struct FieldSpec {
     /// `kind == Select` 的候选项
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub options: Vec<String>,
+    /// 与 `options` 对齐的显示名（可空）。比如 action 的选项值必须写引擎认的
+    /// `show_character`，但下拉里想给作者看「show_character（显示角色）」。
+    /// 空列表时前端直接显示 `options` 原文。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub option_labels: Vec<String>,
     /// 缺省值的人类可读描述（不是真正的默认值，仅作占位提示）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub placeholder: Option<&'static str>,
@@ -87,6 +95,7 @@ impl FieldSpec {
             required: false,
             asset_kind: None,
             options: Vec::new(),
+            option_labels: Vec::new(),
             placeholder: None,
             hint: None,
             enabled: true,
@@ -106,6 +115,10 @@ impl FieldSpec {
     }
     fn options<I: IntoIterator<Item = S>, S: Into<String>>(mut self, opts: I) -> Self {
         self.options = opts.into_iter().map(Into::into).collect();
+        self
+    }
+    fn option_labels<I: IntoIterator<Item = S>, S: Into<String>>(mut self, labels: I) -> Self {
+        self.option_labels = labels.into_iter().map(Into::into).collect();
         self
     }
     fn asset(mut self, kind: &'static str) -> Self {
@@ -137,7 +150,7 @@ pub struct EventSpec {
 pub struct ScriptSchema {
     /// 16 种事件
     pub events: Vec<EventSpec>,
-    /// 所有事件共有的字段（condition / duration）
+    /// 所有事件共有的字段（触发条件 / 事件间隔）
     pub common_fields: Vec<FieldSpec>,
     /// `story_config.yaml` 的字段
     pub story_config_fields: Vec<FieldSpec>,
@@ -209,7 +222,7 @@ pub fn build_schema() -> ScriptSchema {
             fields: vec![
                 FieldSpec::new("text", "旁白文本", FieldKind::Textarea)
                     .required()
-                    .hint("按换行拆成多条依次显示，空行会被丢弃"),
+                    .hint("多行会逐行依次显示，空行被跳过"),
                 FieldSpec::new("displayName", "说话人标签", FieldKind::Text)
                     .placeholder("旁白"),
             ],
@@ -265,7 +278,7 @@ pub fn build_schema() -> ScriptSchema {
                     .hint("留空或 ≤0 表示不限轮数，此时唯一出口是玩家输入包含结束语"),
                 FieldSpec::new("end_line", "结束语", FieldKind::Text)
                     .placeholder("结束")
-                    .hint("玩家输入**包含**该串即结束（子串匹配，不是完全相等）"),
+                    .hint("玩家输入里出现这个文字就会结束对话（比如「结束」）"),
                 FieldSpec::new("prompt", "每轮剧情提示", FieldKind::Textarea),
                 FieldSpec::new("end_prompt", "末轮剧情提示", FieldKind::Textarea),
             ],
@@ -291,7 +304,7 @@ pub fn build_schema() -> ScriptSchema {
             color: "#60a5fa",
             fields: vec![FieldSpec::new("hint", "输入框提示", FieldKind::Text)
                 .placeholder("请输入...")
-                .hint("留空字符串会得到空提示，不会回落默认值")],
+                .hint("不填时输入框显示默认提示「请输入...」")],
         },
         // ---------- 流程 ----------
         EventSpec {
@@ -337,7 +350,7 @@ pub fn build_schema() -> ScriptSchema {
                 character_field(),
                 FieldSpec::new("action", "动作", FieldKind::Select)
                     .options(["show_character", "hide_character"])
-                    .hint("引擎只识别这两个"),
+                    .option_labels(["show_character（显示角色）", "hide_character（隐藏角色）"]),
                 emotion_field(),
                 FieldSpec::new("clothes", "服装", FieldKind::Text)
                     .hint("对应 avatar/<服装>/ 子目录；留空或 default 表示不进子目录"),
@@ -424,24 +437,44 @@ pub fn build_schema() -> ScriptSchema {
                 FieldSpec::new("fade", "淡入淡出", FieldKind::Bool),
             ],
         },
+        // ---------- 成就 ----------
+        EventSpec {
+            type_key: "unlock_achievement",
+            label: "解锁成就",
+            category: "成就",
+            color: "#fbbf24",
+            fields: vec![
+                FieldSpec::new("achievement_id", "成就键名", FieldKind::Text)
+                    .required()
+                    .placeholder("如：summer_star")
+                    .hint("给这个成就起的英文标识，不能与内置成就或本剧本其他成就重名（校验器会提示）"),
+                FieldSpec::new("title", "成就标题", FieldKind::Text)
+                    .required()
+                    .placeholder("如：夏日之星")
+                    .hint("玩家在成就列表里看到的成就名字"),
+                FieldSpec::new("description", "成就描述", FieldKind::Textarea)
+                    .required()
+                    .hint("达成条件说明，展示给玩家看"),
+            ],
+        },
     ];
 
     let common_fields = vec![
-        FieldSpec::new("condition", "触发条件", FieldKind::Text)
-            .placeholder("留空则总是触发")
-            .hint("只支持 var == 值 / var != 值 / 裸变量真值"),
-        FieldSpec::new("duration", "duration", FieldKind::Deprecated)
-            .disabled("遗留字段，引擎从不读取。保存时原样保留，不会丢数据"),
+        FieldSpec::new("condition", "触发条件", FieldKind::Condition)
+            .hint("设置条件后，只有满足条件时本事件才会执行；留空则必定触发"),
+        FieldSpec::new("duration", "事件间隔（秒）", FieldKind::Number)
+            .placeholder("留空或负数 = 等玩家点击")
+            .hint("事件展示后自动等待 N 秒再继续，作为事件之间的 CD；留空或填负数表示等玩家点击后才继续"),
     ];
 
     let story_config_fields = vec![
         FieldSpec::new("script_name", "剧本名", FieldKind::Text)
             .required()
-            .hint("全局唯一。重名会导致其中一个剧本在列表里被覆盖"),
+            .hint("全局唯一，重名会导致其中一个剧本在列表里被覆盖"),
         FieldSpec::new("description", "简介", FieldKind::Textarea),
         FieldSpec::new("recommand_start", "推荐开始时机", FieldKind::Text)
             .placeholder("例如：好感度达到 30 之后")
-            .hint("纯展示文案，给玩家在冒险列表里看的提示，引擎不会据此做任何判断（字段名少一个 m 是历史拼写）"),
+            .hint("展示给玩家看的推荐时机说明，仅作展示，不影响剧情判断"),
         FieldSpec::new("intro_chapter", "开场章节", FieldKind::Chapter).required(),
     ];
 
@@ -481,7 +514,7 @@ pub fn build_schema() -> ScriptSchema {
             label: "已完成某个羁绊冒险",
             fields: vec![FieldSpec::new("adventure_folder", "剧本目录名", FieldKind::Text)
                 .required()
-                .hint("填目标剧本的**目录名**，不是显示名")],
+                .hint("填目标剧本的目录名（不是显示名）")],
         },
         UnlockConditionSpec {
             type_key: "achievement_unlocked",
@@ -510,7 +543,7 @@ pub fn build_schema() -> ScriptSchema {
         condition_syntax: ConditionSyntax {
             supported: vec!["var == 值", "var != 值", "var（真值判断）"],
             unsupported: vec![">", "<", ">=", "<=", "&&", "||", "!", "括号", "算术"],
-            note: "比较是字符串比较。未定义的变量：== 恒假、!= 恒真。写 hp >= 5 不会报错，但会被当成一个名叫 \"hp >= 5\" 的变量去查，结果恒假。",
+            note: "比较是按文字逐个比对的。没赋过值的变量不会正常运作，先用「设置变量」给它赋个值再比较。注意「大于/小于」这类比较不支持：写 hp >= 5 不会报错，但会被当成一个名叫 \"hp >= 5\" 的变量去查，结果不会正常运作。",
         },
     }
 }
@@ -526,7 +559,7 @@ mod tests {
     /// 对照表：任何一侧增删事件都会让这个测试失败，逼着两边同步。
     #[test]
     fn schema_covers_every_registered_event_type() {
-        const ENGINE_EVENT_TYPES: [&str; 16] = [
+        const ENGINE_EVENT_TYPES: [&str; 17] = [
             "narration",
             "player",
             "dialogue",
@@ -543,6 +576,7 @@ mod tests {
             "music",
             "sound",
             "ambient",
+            "unlock_achievement",
         ];
 
         let schema = build_schema();
@@ -553,7 +587,7 @@ mod tests {
         let extra: Vec<_> = in_schema.difference(&in_engine).collect();
         assert!(missing.is_empty(), "schema 缺少事件类型: {:?}", missing);
         assert!(extra.is_empty(), "schema 有引擎不认识的事件类型: {:?}", extra);
-        assert_eq!(schema.events.len(), 16);
+        assert_eq!(schema.events.len(), 17);
     }
 
     #[test]
@@ -604,18 +638,33 @@ mod tests {
         }
     }
 
-    /// duration 必须以「不可编辑」的形态出现 —— 既让作者知道它存在，
-    /// 又不给他们填一个不生效的值。
+    /// option_labels 若提供，长度必须与 options 一致，否则前端会错位显示
     #[test]
-    fn duration_is_exposed_but_disabled() {
+    fn option_labels_match_options_length() {
+        for e in build_schema().events {
+            for f in &e.fields {
+                assert!(
+                    f.option_labels.is_empty() || f.option_labels.len() == f.options.len(),
+                    "{}.{} 的 option_labels 长度与 options 不一致",
+                    e.type_key,
+                    f.key
+                );
+            }
+        }
+    }
+
+    /// duration 是所有事件继承基础事件得到的「事件间隔」字段：可编辑（Number），
+    /// 引擎会读取并传给前端实现事件间 CD。留空/负数 = 等玩家点击。
+    #[test]
+    fn duration_is_exposed_and_editable() {
         let schema = build_schema();
         let d = schema
             .common_fields
             .iter()
             .find(|f| f.key == "duration")
-            .expect("common_fields 应包含 duration");
-        assert!(!d.enabled);
-        assert!(matches!(d.kind, FieldKind::Deprecated));
+            .expect("common_fields 应包含 duration（基础事件字段）");
+        assert!(d.enabled, "duration 应可编辑");
+        assert!(matches!(d.kind, FieldKind::Number));
     }
 
     #[test]

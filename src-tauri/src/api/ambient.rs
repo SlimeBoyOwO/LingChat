@@ -3,7 +3,9 @@ use std::fs;
 use serde::{Deserialize, Serialize};
 use tauri_plugin_store::StoreExt;
 
-use super::{ambient_dir, validate_path_in_base};
+use crate::utils::path::validate_path_in_base;
+
+use super::ambient_dir;
 
 // ========== 响应类型 ==========
 

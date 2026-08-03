@@ -1,4 +1,5 @@
 import type { SceneInfo } from '@/api/services/scene' // 导入场景类型
+import type { ScriptChoiceItem } from '@/types/script'
 
 export interface GameMessage {
   type: 'message' | 'reply'
@@ -28,7 +29,7 @@ export interface FreeDialogueInfo {
 export interface ScriptInfo {
   scriptName: string
   currentChapterName: string
-  choices: string[]
+  choices: ScriptChoiceItem[]
   isRunning: boolean
   freeDialogueInfo: FreeDialogueInfo
 }

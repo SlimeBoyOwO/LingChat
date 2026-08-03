@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    register_event, ScriptContext, ScriptEvent,
+    parse_duration, register_event, ScriptContext, ScriptEvent,
 };
 use crate::ai_service::game_system::script_engine::utils::script_function;
 use crate::ai_service::message_system::events::emit;
@@ -19,6 +19,7 @@ pub struct DialogueEvent {
     display_name: Option<String>,
     display_subtitle: Option<String>,
     emotion: Option<String>,
+    duration: Option<f64>,
 }
 
 impl DialogueEvent {
@@ -46,6 +47,7 @@ impl DialogueEvent {
                 .get("emotion")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
+            duration: parse_duration(data),
         }
     }
 }
@@ -92,7 +94,7 @@ impl ScriptEvent for DialogueEvent {
         };
         let payload = ReplyResponse {
             type_: "reply".to_string(),
-            duration: -1.0,
+            duration: self.duration.unwrap_or(-1.0),
             is_final: true,
             character: Some(self.character.clone()),
             role_id: Some(role_id),
@@ -127,6 +129,10 @@ impl ScriptEvent for DialogueEvent {
 
     fn event_type() -> &'static str {
         "dialogue"
+    }
+
+    fn duration(&self) -> Option<f64> {
+        self.duration
     }
 }
 

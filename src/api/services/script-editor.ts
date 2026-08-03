@@ -24,6 +24,7 @@ type FieldKind =
   | 'choice_options'
   | 'branch_options'
   | 'var_options'
+  | 'condition'
   | 'deprecated'
 
 export type AssetKind = 'background' | 'music' | 'sound' | 'ambient' | 'pic'
@@ -36,6 +37,8 @@ export interface FieldSpec {
   assetKind?: AssetKind
   /** 下拉候选项：字符串或 {value,label}（后者用于显示中文、写入英文 key，如粒子特效） */
   options?: (string | { value: string; label: string })[]
+  /** 与 options 对齐的显示名（来自 Rust schema 的 option_labels），有则优先显示 */
+  optionLabels?: string[]
   placeholder?: string
   hint?: string
   enabled: boolean
@@ -49,20 +52,20 @@ export interface EventSpec {
   fields: FieldSpec[]
 }
 
-interface ActionSpec {
+export interface ActionSpec {
   typeKey: string
   label: string
   hint: string
   allowedIn: string[]
 }
 
-interface UnlockConditionSpec {
+export interface UnlockConditionSpec {
   typeKey: string
   label: string
   fields: FieldSpec[]
 }
 
-interface ConditionSyntax {
+export interface ConditionSyntax {
   supported: string[]
   unsupported: string[]
   note: string

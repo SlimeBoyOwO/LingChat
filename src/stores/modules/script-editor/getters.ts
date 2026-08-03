@@ -94,6 +94,9 @@ export const useEditorGetters = (s: StateRefs) => {
     (s.report.value?.diagnostics ?? []).filter((d) => !d.chapter),
   )
 
+  /** 全剧本出现过的变量名，供变量编辑器做输入补全 */
+  const variables = computed<string[]>(() => s.report.value?.variables ?? [])
+
   const hasBlockingErrors = computed(() => (s.report.value?.errorCount ?? 0) > 0)
 
   return {
@@ -111,6 +114,7 @@ export const useEditorGetters = (s: StateRefs) => {
     chapterDiagnostics,
     diagnosticsByChapter,
     scriptDiagnostics,
+    variables,
     hasBlockingErrors,
   }
 }

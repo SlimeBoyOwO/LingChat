@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    register_event, ScriptContext, ScriptEvent,
+    parse_duration, register_event, ScriptContext, ScriptEvent,
 };
 use crate::ai_service::game_system::script_engine::responses::{
     event_names::SCRIPT_MODIFY_CHARACTER, ModifyCharacterPayload,
@@ -19,6 +19,7 @@ pub struct ModifyCharacterEvent {
     action: Option<String>,
     clothes: Option<String>,
     perceive: Option<bool>,
+    duration: Option<f64>,
 }
 
 impl ModifyCharacterEvent {
@@ -42,6 +43,7 @@ impl ModifyCharacterEvent {
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
             perceive: data.get("perceive").and_then(loose_bool),
+            duration: parse_duration(data),
         }
     }
 }
@@ -138,6 +140,7 @@ impl ScriptEvent for ModifyCharacterEvent {
             emotion: self.emotion.clone(),
             action: self.action.clone(),
             clothes: self.clothes.clone(),
+            duration: self.duration,
         };
         let _ = emit(ctx.app, SCRIPT_MODIFY_CHARACTER, &payload);
 
@@ -152,6 +155,10 @@ impl ScriptEvent for ModifyCharacterEvent {
 
     fn event_type() -> &'static str {
         "modify_character"
+    }
+
+    fn duration(&self) -> Option<f64> {
+        self.duration
     }
 }
 
