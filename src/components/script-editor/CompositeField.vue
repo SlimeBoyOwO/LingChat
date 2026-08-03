@@ -24,7 +24,8 @@
           </button>
         </div>
 
-        <!-- 选项级条件（引擎支持 options[].condition）：默认收起，点「＋ 条件」才展开 -->
+        <!-- 选项级条件（引擎支持 options[].condition）：默认收起，点「＋ 条件」才展开。
+             说明在卡片底部统一给出，这里隐藏编辑器自带的顶部行 -->
         <div
           v-if="conditionOpen(i)"
           class="mt-1 flex items-center gap-2 pl-6"
@@ -34,6 +35,7 @@
             class="flex-1 min-w-0"
             :model-value="str(opt.condition)"
             :variables="store.variables"
+            :hint="''"
             @update:model-value="(v: string) => patch(i, 'condition', v)"
           />
           <button
@@ -48,10 +50,10 @@
           v-if="conditionOpen(i)"
           class="mt-1 flex items-center gap-2 pl-6"
         >
-          <span class="shrink-0 text-xs text-white/40">锁定提示</span>
+          <span class="shrink-0 text-xs text-white/40">不可选提示</span>
           <input
             class="flex-1 min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
-            placeholder="条件不满足时显示的提示，如：好感度不足"
+            placeholder="如：好感度不足"
             :value="str(opt.lock_hint)"
             @change="(e) => patch(i, 'lock_hint', val(e))"
           />
@@ -69,6 +71,7 @@
             class="flex-1 min-w-0"
             :model-value="str(act.content)"
             :variables="store.variables"
+            :hint="''"
             @update:model-value="(v: string) => patchAction(i, ai, 'content', v)"
           />
           <div
@@ -76,7 +79,7 @@
             class="flex-1 min-w-0 rounded-md border border-yellow-300/25 bg-yellow-300/10 px-2 py-1.5"
           >
             <p class="text-xs text-yellow-200">
-              旧版字段（name/value/op），引擎只认 content 表达式，这段会被静默跳过
+              旧版本遗留下来的写法，运行时会被跳过。点下面按钮转成新格式。
             </p>
             <button
               class="mt-1 text-xs text-brand hover:underline"
@@ -104,6 +107,7 @@
         <!-- 独立动作按钮：追加玩家台词 / 设置变量 / 条件 -->
         <div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 ml-6">
           <button
+            v-if="!hasAddLine(i)"
             class="text-xs text-brand hover:underline"
             @click="addAction(i, 'add_line')"
           >
@@ -132,9 +136,14 @@
       >
         ＋ 添加选项
       </button>
-      <p class="mt-2 text-xs text-white/40">
-        追加玩家台词：以玩家名义写入对话历史，AI 能看到；设置变量：选完表达式即生效（如 flag = warm）。
-      </p>
+      <!-- 三个动作的说明各自成段：条件 / 追加玩家台词 / 设置变量 -->
+      <div class="mt-2 space-y-1 text-xs leading-[1.7] text-white/40">
+        <p>
+          条件：设置条件后，只有满足条件才可选择该选项；不满足时选项会变灰，点它会显示下方填的「不可选提示」，可提示玩家为什么该项无法选择。
+        </p>
+        <p>追加玩家台词：以玩家名义将台词补入AI上下文。</p>
+        <p>设置变量：表明该选项对世界线产生了何种影响。</p>
+      </div>
     </template>
 
     <!-- ============ chapter_end 的分支 ============ -->
@@ -253,7 +262,7 @@
             class="flex-1 min-w-0 rounded-md border border-yellow-300/25 bg-yellow-300/10 px-2 py-1.5"
           >
             <p class="text-xs text-yellow-200">
-              旧版字段（name/value/op），引擎只认 content 表达式，这段会被静默跳过
+              旧版本遗留下来的写法，运行时会被跳过。点下面按钮转成新格式。
             </p>
             <button
               class="mt-1 text-xs text-brand hover:underline"
@@ -319,6 +328,9 @@ const str = (v: unknown) => (typeof v === 'string' ? v : v === undefined ? '' : 
 const val = (e: Event) => (e.target as HTMLInputElement | HTMLSelectElement).value
 
 const actions = (opt: Row): Row[] => (Array.isArray(opt.actions) ? (opt.actions as Row[]) : [])
+
+/** 该选项是否已有一条「追加玩家台词」——有则隐藏对应按钮（每条选项最多一句玩家台词有意义） */
+const hasAddLine = (i: number) => actions(rows.value[i]).some((a) => a.type === 'add_line')
 
 /**
  * 分支编辑器模式。父组件在 end_type 为 ai_judged 时传 ai_judged，否则传

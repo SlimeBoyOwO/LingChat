@@ -120,7 +120,8 @@ const groupedSpecs = computed(() => {
 })
 
 /**
- * 通用字段（触发条件）。duration 已从 schema 移除、彻底不暴露。
+ * 通用字段：触发条件 / 事件间隔（duration）——所有事件类型共有，
+ * 定义在 schema 的 common_fields，此处原样透出。
  */
 const commonFieldsToShow = computed<FieldSpec[]>(() => store.schema?.commonFields ?? [])
 

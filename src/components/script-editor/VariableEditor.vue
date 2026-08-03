@@ -1,6 +1,10 @@
 <template>
   <div>
-    <p class="mb-1.5 text-xs text-white/35">赋值用——把变量改成这个值，供后续「触发条件」判断</p>
+    <!-- 顶部说明行：传空串隐藏（说明已由父级承担时）；不传用默认通俗文案 -->
+    <p
+      v-if="displayHint"
+      class="mb-1.5 text-xs text-white/35"
+    >{{ displayHint }}</p>
 
     <!-- 无法解析的旧写法（如只写了 name/value/op 的旧形状）：只读展示 + 提供「清空重填」 -->
     <div v-if="parseError">
@@ -121,11 +125,20 @@ const props = defineProps<{
   modelValue: string
   /** 已知变量名，供 datalist 补全 */
   variables: string[]
+  /** 顶部说明行文案：传空串隐藏（说明由父级承担时）；不传用默认通俗文案 */
+  hint?: string
 }>()
 
 const emit = defineEmits<{ (e: 'update:modelValue', value: string): void }>()
 
 const uid = useId()
+
+/** 默认文案覆盖各场景的共性语义；父级有更贴切的说明时可覆盖或隐藏 */
+const displayHint = computed(() =>
+  props.hint === undefined
+    ? '这一条会把变量改成这个值，后面的条件判断会读到它'
+    : props.hint,
+)
 
 /**
  * 内部草稿：编辑期间先落在本地，只有构成完整表达式（buildVarAction 非空）才

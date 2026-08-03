@@ -589,7 +589,7 @@ pub async fn editor_create_script(
         .any(|k| k.rsplit('/').next() == Some(folder.as_str()))
     {
         return Err(format!(
-            "已存在同名剧本目录「{}」。羁绊冒险用目录名作全局主键，不能重名",
+            "已存在同名剧本目录「{}」，剧本名不能重名哦",
             folder
         ));
     }

@@ -9,11 +9,6 @@
       class="absolute -left-[21px] -top-[7px] border border-[rgba(251,191,36,0.32)] rounded-[3px] px-[5px] font-mono text-[9px] whitespace-nowrap text-[#fcd34d] bg-[rgba(251,191,36,0.16)]"
       >若 {{ conditionText }}</span
     >
-    <span
-      v-if="varBadge"
-      class="absolute -left-[21px] bottom-[2px] border border-[rgba(34,211,238,0.35)] rounded-[3px] px-[5px] font-mono text-[9px] whitespace-nowrap text-[#67e8f9] bg-[rgba(34,211,238,0.14)]"
-      >{{ varBadge }}</span
-    >
 
     <div
       class="group flex items-start gap-2 rounded-lg border border-transparent px-[9px] py-1.5 transition-all hover:bg-white/[0.07]"
@@ -47,6 +42,15 @@
           <template v-else>{{ part.text }}</template>
         </template>
       </span>
+
+      <!-- 变量摘要：行内右侧角标。变量多时折叠成「N 个变量」，点击展开/收起完整列表 -->
+      <span
+        v-if="varBadge"
+        class="shrink-0 max-w-[10rem] truncate cursor-pointer rounded px-[5px] py-px text-[0.62rem] leading-[1.6] whitespace-nowrap border border-[rgba(34,211,238,0.35)] text-[#67e8f9] bg-[rgba(34,211,238,0.14)] transition-all hover:bg-[rgba(34,211,238,0.25)]"
+        :title="varBadge"
+        @click="varExpanded = !varExpanded"
+        >{{ varBadgeLabel }}</span
+      >
 
       <span
         v-if="errorCount"
@@ -90,7 +94,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 import { eventSummary } from '@/composables/useEventFolding'
 import type { ScriptEventData } from '@/api/services/script-editor'
@@ -120,7 +124,10 @@ const conditionText = computed(() =>
  * - 其它事件：子结构（choices 选项 / 章节分支 / 赋值组）里的条件或赋值变量
  * 只取变量名本身，不拼整条表达式，避免角标过长。
  */
-const varBadge = computed(() => {
+const varNames = computed<string[]>(() => [...new Set(collectVars())])
+
+/** 变量名收集：set_variable 取所有被写过的变量；choices 取选项条件里的变量 */
+const collectVars = (): string[] => {
   const ev = props.event
   const t = eventType.value
 
@@ -132,32 +139,40 @@ const varBadge = computed(() => {
     return varName ? [varName] : []
   }
 
-  const collect = (): string[] => {
-    if (t === 'set_variable') {
-      const opts = Array.isArray(ev.options) ? (ev.options as Record<string, unknown>[]) : []
-      const out: string[] = []
-      for (const o of opts) {
-        out.push(...condVars(o.condition))
-        for (const a of Array.isArray(o.actions) ? (o.actions as Record<string, unknown>[]) : []) {
-          const c = a.content
-          if (typeof c === 'string') {
-            const m = /^\s*(\S+)\s*(?:=|\+=|-=)/.exec(c)
-            if (m) out.push(m[1])
-          }
+  if (t === 'set_variable') {
+    const opts = Array.isArray(ev.options) ? (ev.options as Record<string, unknown>[]) : []
+    const out: string[] = []
+    for (const o of opts) {
+      out.push(...condVars(o.condition))
+      for (const a of Array.isArray(o.actions) ? (o.actions as Record<string, unknown>[]) : []) {
+        const c = a.content
+        if (typeof c === 'string') {
+          const m = /^\s*(\S+)\s*(?:=|\+=|-=)/.exec(c)
+          if (m) out.push(m[1])
         }
       }
-      return out
     }
-    // choices 选项里的条件；分支/赋值组的条件在摘要里已有，这里补上顶层没有的
-    if (t === 'choices') {
-      const opts = Array.isArray(ev.options) ? (ev.options as Record<string, unknown>[]) : []
-      return opts.flatMap((o) => condVars(o.condition))
-    }
-    return []
+    return out
   }
+  // choices 选项里的条件；分支/赋值组的条件在摘要里已有，这里补上顶层没有的
+  if (t === 'choices') {
+    const opts = Array.isArray(ev.options) ? (ev.options as Record<string, unknown>[]) : []
+    return opts.flatMap((o) => condVars(o.condition))
+  }
+  return []
+}
 
-  const vars = [...new Set(collect())]
-  return vars.length ? `⚙ ${vars.join(', ')}` : ''
+/** 角标完整文本（含 ⚙ 前缀），展开时显示它 */
+const varBadge = computed(() =>
+  varNames.value.length ? `⚙ ${varNames.value.join(', ')}` : '',
+)
+
+/** 变量多时默认折叠成「N 个变量」，点击展开 */
+const varExpanded = ref(false)
+
+const varBadgeLabel = computed(() => {
+  if (varExpanded.value || varNames.value.length <= 1) return varBadge.value
+  return `⚙ ${varNames.value.length} 个变量`
 })
 
 const diagnostics = computed(() => store.chapterDiagnostics[props.index] ?? [])

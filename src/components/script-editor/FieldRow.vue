@@ -143,11 +143,13 @@
       </p>
     </div>
 
-    <!-- 触发条件：结构化「变量 + 关系 + 值」表单，无需手写语法 -->
+    <!-- 触发条件：结构化「变量 + 关系 + 值」表单，无需手写语法。
+         说明由下方 schema 的 hint 承担，隐藏编辑器自带的顶部行，避免重复 -->
     <ConditionEditor
       v-else-if="field.kind === 'condition'"
       :model-value="asText"
       :variables="store.variables"
+      :hint="''"
       @update:model-value="(v: string) => emit('update', v)"
     />
 

@@ -582,7 +582,7 @@ pub fn validate(
             Severity::Warn,
             "variable.never_set",
             format!(
-                "条件里用到变量「{}」，但整个剧本都没有给它赋值过。没赋值的变量，用「等于」比较时永远不成立、用「不等于」比较时永远成立",
+                "条件里用到的变量「{}」从未被赋过值，所以「等于」永远不成立、「不等于」永远成立。请检查变量名是否正确，或先添加「设置变量」事件给它赋值",
                 v
             ),
         ));
@@ -866,7 +866,7 @@ fn check_condition(
                 cid,
                 i,
                 format!(
-                    "条件里用了不支持的运算符「{}」。只支持「变量 == 值」「变量 != 值」或单独一个变量判断真假——写了别的不会按你的意思执行（未定义变量：== 恒假、!= 恒真）",
+                    "条件里用了不支持的运算符「{}」。只支持「变量 == 值」「变量 != 值」或单独一个变量判断真假——写了别的不会按你的意思执行（没赋过值的变量：比「等于」永远不成立，比「不等于」永远成立）",
                     op
                 ),
             )
@@ -951,7 +951,7 @@ fn check_actions(
                             "action.legacy_shape",
                             cid,
                             i,
-                            "set_var 用了旧版字段 name/value/op，引擎只认 content 表达式（如 flag = warm / count += 1），这段会被静默跳过".to_string(),
+                            "这条设置变量是旧版本遗留下来的写法，运行时会被跳过。请改写成「变量名 等于/加/减 值」的形式，如 flag = warm".to_string(),
                         ));
                     } else {
                         diags.push(Diagnostic::event(
@@ -1122,14 +1122,14 @@ fn check_choices(
         if let Some(c) = oo.get("condition").and_then(|v| v.as_str()) {
             check_condition(c, cid, i, diags, vars_read);
         } else if oo.contains_key("lock_hint") {
-            // 锁提示只在条件不满足时才会展示；没有条件则选项永远可选，lock_hint 是白写
+            // 不可选提示只在条件不满足时才会展示；没有条件则选项永远可选，这句提示是白写
             diags.push(Diagnostic::event(
                 Severity::Info,
                 "choices.lock_hint_without_condition",
                 cid,
                 i,
                 format!(
-                    "第 {} 个选项写了锁定提示（lock_hint）但没有条件，该选项不会锁定，提示不会被看到",
+                    "第 {} 个选项填了不可选提示，但没有设置条件——选项不会变灰，这句提示永远不会显示",
                     oi + 1
                 ),
             ));

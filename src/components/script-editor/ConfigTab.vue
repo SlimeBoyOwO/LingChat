@@ -46,6 +46,12 @@ const onAdventureText = (k: string, e: Event) =>
 const onAdventureNumber = (k: string, e: Event) =>
   setAdventure(k, Number((e.target as HTMLInputElement).value) || 0)
 
+/** 全局角色目录名集合，供「绑定角色」下拉判断当前值是否还在角色库里 */
+const knownBoundFolders = computed(() => new Set(store.globalCharacters.map((g) => g.folder)))
+
+/** 当前已填的绑定角色；老剧本可能手填过角色库外的目录名，下拉里补一个选项原样保留 */
+const currentBound = computed(() => adventureField('bound_character_folder'))
+
 const toggleAdventure = (on: boolean) => {
   if (on) {
     setAdventure('is_adventure', true)
@@ -200,13 +206,35 @@ const saveConfig = () => {
         </label>
         <template v-if="isAdventure">
           <div class="mb-4">
-            <label class="inline-flex items-center font-medium text-brand text-[0.9rem]">绑定角色目录名</label>
+            <label class="inline-flex items-center font-medium text-brand text-[0.9rem]">绑定角色</label>
             <p class="my-1 mb-2 text-[0.8rem] text-gray-300">adventure.bound_character_folder</p>
-            <input
+            <!-- 下拉直选全局角色库的人物；角色多时浏览器自带滚动，不会溢出 -->
+            <select
               class="glass-input"
-              :value="adventureField('bound_character_folder')"
+              :value="currentBound"
               @change="(e) => onAdventureText('bound_character_folder', e)"
-            />
+            >
+              <option value="">（不设置）</option>
+              <option
+                v-if="currentBound && !knownBoundFolders.has(currentBound)"
+                :value="currentBound"
+              >
+                {{ currentBound }}
+              </option>
+              <option
+                v-for="g in store.globalCharacters"
+                :key="g.folder"
+                :value="g.folder"
+              >
+                {{ g.aiName }}（{{ g.folder }}）
+              </option>
+            </select>
+            <p
+              v-if="store.globalCharacters.length === 0"
+              class="mt-[0.3rem] text-[0.72rem] leading-[1.7] text-yellow-200"
+            >
+              全局角色库是空的，请先在角色卡创建主角
+            </p>
           </div>
           <div class="mb-4">
             <label class="inline-flex items-center font-medium text-brand text-[0.9rem]">排序</label>
@@ -284,7 +312,6 @@ const saveConfig = () => {
             </button>
             <p class="mt-2 text-[0.72rem] leading-[1.7] text-white/40">
               支持的类型：累计聊天条数 / 处于时间段内 / 已完成某个羁绊冒险 / 已解锁某个成就。
-              <code class="font-mono text-brand">trigger.mode</code> 是旧版配置，引擎不读取，会原样保留。
             </p>
           </div>
         </template>

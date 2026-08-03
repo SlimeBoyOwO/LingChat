@@ -278,7 +278,7 @@ pub fn build_schema() -> ScriptSchema {
                     .hint("留空或 ≤0 表示不限轮数，此时唯一出口是玩家输入包含结束语"),
                 FieldSpec::new("end_line", "结束语", FieldKind::Text)
                     .placeholder("结束")
-                    .hint("玩家输入**包含**该串即结束（子串匹配，不是完全相等）"),
+                    .hint("玩家输入里出现这个文字就会结束对话（比如「结束」）"),
                 FieldSpec::new("prompt", "每轮剧情提示", FieldKind::Textarea),
                 FieldSpec::new("end_prompt", "末轮剧情提示", FieldKind::Textarea),
             ],
@@ -441,7 +441,7 @@ pub fn build_schema() -> ScriptSchema {
 
     let common_fields = vec![
         FieldSpec::new("condition", "触发条件", FieldKind::Condition)
-            .hint("满足条件时本事件才执行，不满足直接跳过——常用来做分支剧情；留空表示总是触发"),
+            .hint("设置条件后，只有满足条件时本事件才会执行；留空则必定触发"),
         FieldSpec::new("duration", "事件间隔（秒）", FieldKind::Number)
             .placeholder("留空或负数 = 等玩家点击")
             .hint("事件展示后自动等待 N 秒再继续，作为事件之间的 CD；留空或填负数表示等玩家点击后才继续"),
@@ -494,7 +494,7 @@ pub fn build_schema() -> ScriptSchema {
             label: "已完成某个羁绊冒险",
             fields: vec![FieldSpec::new("adventure_folder", "剧本目录名", FieldKind::Text)
                 .required()
-                .hint("填目标剧本的**目录名**，不是显示名")],
+                .hint("填目标剧本的目录名（不是显示名）")],
         },
         UnlockConditionSpec {
             type_key: "achievement_unlocked",
@@ -523,7 +523,7 @@ pub fn build_schema() -> ScriptSchema {
         condition_syntax: ConditionSyntax {
             supported: vec!["var == 值", "var != 值", "var（真值判断）"],
             unsupported: vec![">", "<", ">=", "<=", "&&", "||", "!", "括号", "算术"],
-            note: "比较是字符串比较。未定义的变量：== 恒假、!= 恒真。写 hp >= 5 不会报错，但会被当成一个名叫 \"hp >= 5\" 的变量去查，结果恒假。",
+            note: "比较是按文字逐个比对的。没赋过值的变量：比「等于」永远不成立，比「不等于」永远成立。注意「大于/小于」这类比较不支持：写 hp >= 5 不会报错，但会被当成一个名叫 \"hp >= 5\" 的变量去查，结果永远不成立。",
         },
     }
 }

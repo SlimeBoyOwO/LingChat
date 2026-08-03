@@ -1,6 +1,10 @@
 <template>
   <div>
-    <p class="mb-1.5 text-xs text-white/35">判断用——满足条件本事件才执行，只读变量不改动它</p>
+    <!-- 顶部说明行：传空串隐藏（说明已由父级承担时）；不传用默认通俗文案 -->
+    <p
+      v-if="displayHint"
+      class="mb-1.5 text-xs text-white/35"
+    >{{ displayHint }}</p>
 
     <!-- 无法解析的旧写法：只读展示 + 交给校验器解释，提供「清空重填」入口 -->
     <div v-if="parseError">
@@ -70,11 +74,20 @@ const props = defineProps<{
   modelValue: string
   /** 已知变量名，供 datalist 补全 */
   variables: string[]
+  /** 顶部说明行文案：传空串隐藏（说明由父级承担时）；不传用默认通俗文案 */
+  hint?: string
 }>()
 
 const emit = defineEmits<{ (e: 'update:modelValue', value: string): void }>()
 
 const uid = useId()
+
+/** 默认文案覆盖各场景的共性语义；父级有更贴切的说明时可覆盖或隐藏 */
+const displayHint = computed(() =>
+  props.hint === undefined
+    ? '设置条件后，只有满足条件这一项才会生效；条件只做判断，不会改动变量'
+    : props.hint,
+)
 
 /**
  * 内部草稿：编辑期间先落在本地，只有构成完整表达式（buildCondition 非空）才

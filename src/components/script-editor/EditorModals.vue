@@ -97,7 +97,7 @@ const confirmModal = async () => {
                 class="glass-input"
                 placeholder="例如：一起看星星"
               />
-              <p class="mt-[0.3rem] text-[0.72rem] leading-[1.7] text-white/40">同时作为目录名。羁绊冒险用目录名作全局主键，不能重名。</p>
+              <p class="mt-[0.3rem] text-[0.72rem] leading-[1.7] text-white/40">同时作为文件目录名，羁绊冒险不能重名哦</p>
             </div>
             <div class="mb-4">
               <label class="inline-flex items-center font-medium text-brand text-[0.9rem]">简介</label>
@@ -117,12 +117,32 @@ const confirmModal = async () => {
               v-if="scriptForm.isAdventure"
               class="mb-4 mt-2"
             >
-              <label class="inline-flex items-center font-medium text-brand text-[0.9rem]">绑定角色的目录名</label>
-              <input
+              <label class="inline-flex items-center font-medium text-brand text-[0.9rem]">绑定角色</label>
+              <!-- 下拉直选全局角色库的人物，不手写目录名；角色多时浏览器自带滚动 -->
+              <select
                 v-model="scriptForm.boundCharacterFolder"
                 class="glass-input"
-                placeholder="game_data/characters/ 下的目录名"
-              />
+              >
+                <option
+                  value=""
+                  disabled
+                >
+                  （选择角色）
+                </option>
+                <option
+                  v-for="g in store.globalCharacters"
+                  :key="g.folder"
+                  :value="g.folder"
+                >
+                  {{ g.aiName }}（{{ g.folder }}）
+                </option>
+              </select>
+              <p
+                v-if="store.globalCharacters.length === 0"
+                class="mt-[0.3rem] text-[0.72rem] leading-[1.7] text-yellow-200"
+              >
+                全局角色库（game_data/characters/）是空的，请先在角色卡创建主角
+              </p>
             </div>
           </template>
 
@@ -238,7 +258,8 @@ const confirmModal = async () => {
               取消
             </button>
             <button
-              class="inline-flex items-center gap-1 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap transition-all duration-200 border border-brand/45 text-brand bg-brand/14 hover:bg-brand/24"
+              class="inline-flex items-center gap-1 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap transition-all duration-200 border border-brand/45 text-brand bg-brand/14 hover:bg-brand/24 disabled:cursor-not-allowed disabled:opacity-40"
+              :disabled="modal === 'script' && scriptForm.isAdventure && !scriptForm.boundCharacterFolder"
               @click="confirmModal"
             >
               确定
