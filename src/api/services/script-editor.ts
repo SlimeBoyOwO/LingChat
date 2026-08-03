@@ -24,6 +24,7 @@ type FieldKind =
   | 'choice_options'
   | 'branch_options'
   | 'var_options'
+  | 'condition'
   | 'deprecated'
 
 export type AssetKind = 'background' | 'music' | 'sound' | 'ambient' | 'pic'
