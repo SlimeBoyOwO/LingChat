@@ -28,8 +28,7 @@
   - `character` → `'MAIN'`，`select` → 第一个候选，`bool` → `false`
   - `chapter_end` → 自动补 `next_chapter: 'end'`（否则一插入就报「linear 但没写下一章」）；
 - **换事件类型**（`replaceEvent`）不是简单改 `type`：按「字段名相同 **且** 控件类型相同」保留旧值。只比字段名会把 `choices.options`（`[{text, actions}]`）原样搬进 `set_variable.options`（`[{condition, actions}]`），语义完全不同 —— 复合类型之间一律不继承；
-- `FieldRow` 按 `FieldKind` 渲染控件；`select` 的候选项归属各异（固定表 / 情绪表 / 章节列表 / 角色列表），`asset` 渲染「下拉 + 剧本内导入 + 全局导入」，并**合并**剧本内与全局素材（引擎查找顺序是先剧本内再全局，两处都能被找到）；
-- **变量 / 条件结构化表单**（`FieldKind::Condition` + 复合编辑器内的 `ConditionEditor` / `VariableEditor`）：作者不用手写 `route == shop`、`flag = warm` 这类表达式，而是「变量名 + 关系（为真/等于/不等于）+ 值」或「变量名 + 运算（设/加/减）+ 值类型（文本/数字/布尔/随机数）」。底层仍序列化为引擎认的字符串（解析镜像 `evaluate_condition` / `parse_variable_action`，见 `src/utils/scriptVar.ts`），校验器 / 引擎零改动；`>`、`&&` 等不成立的写法在表单里根本输不出来。无法解析的旧写法（如旧版 `name/value/op` 形状、`hp > 5`）只读展示，交给校验器诊断。`choices` 的选项级 `condition` 也在这轮补上了可视化编辑。
+- `FieldRow` 按 `FieldKind` 渲染控件；`select` 的候选项归属各异（固定表 / 情绪表 / 章节列表 / 角色列表），`asset` 渲染「下拉 + 剧本内导入 + 全局导入」，并**合并**剧本内与全局素材（引擎查找顺序是先剧本内再全局，两处都能被找到）。
 
 可选 `bool` 字段用**三态下拉**（不设置 / 开启 / 关闭）而不是两态开关：引擎对这类字段的默认值往往不是 `false`（比如环境音的 `loop` / `fade` 默认 `true`），两态开关会让「没写过这个字段」和「显式写了 false」长得一模一样。
 

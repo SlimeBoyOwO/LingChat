@@ -58,8 +58,8 @@ PR #540 的目标：
 |---|---|
 | `src/api/script_editor/mod.rs` | 模块入口与分层说明 |
 | `src/api/script_editor/schema.rs` | 16 种事件字段的单一真相源，导出给前端 |
-| `src/utils/script_paths.rs` | 剧本 key ⇄ 磁盘路径、三种布局、穿越防护、名称合法性 |
-| `src/utils/yaml_file.rs` | YAML ⇄ JSON、原子写、`.bak` 备份、章节文档归一 |
+| `src/api/script_editor/paths.rs` | 剧本 key ⇄ 磁盘路径、三种布局、穿越防护、名称合法性 |
+| `src/api/script_editor/io.rs` | YAML ⇄ JSON、原子写、`.bak` 备份、章节文档归一 |
 | `src/api/script_editor/validate.rs` | 校验器：把引擎静默失败变成诊断 |
 | `src/api/script_editor/commands.rs` | Tauri 命令层（`editor_*` 前缀） |
 
@@ -69,11 +69,7 @@ PR #540 的目标：
 |---|---|
 | `api/services/script-editor.ts` | 纯 invoke 封装 + 类型 |
 | `stores/modules/script-editor/{state,getters,actions,index}.ts` | setup 风格 Pinia store |
-| `components/views/ScriptEditor.vue` | 主视图（tab 分发 / 试玩 / 弹窗 / 快捷键，框架保留） |
-| `components/script-editor/EditorHeader.vue` | 顶栏 nav 指示条 / 面包屑 / 撤销重做试玩快捷键按钮 |
-| `components/script-editor/{ScriptListPanel,ConfigTab,CharactersTab,AssetsTab,ValidateTab}.vue` | 五个页签面板 |
-| `components/script-editor/FlowTab.vue` | 章节流程图 + 章节编辑双栏 |
-| `components/script-editor/{EditorModals,ShortcutHelpPanel}.vue` | 弹窗 / 快捷键表 |
+| `components/views/ScriptEditor.vue` | 主视图（五个页签 / 试玩 / 弹窗 / 快捷键） |
 | `components/script-editor/*.vue` | ChapterFlow / ChapterTimeline / EventPropertyPanel / FieldRow / CompositeField / EventRow / PreviewStage |
 | `composables/useEventFolding.ts` | 转场与 AI 互动轮次的折叠逻辑 |
 | `api/tauri-events.ts` | `isStalePreviewReply` 迟到事件丢弃 |
