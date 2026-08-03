@@ -13,11 +13,12 @@
         :key="row.key"
         class="flex w-full flex-col items-center"
       >
-        <!-- 层与层之间的连线。分支层上方画一个分叉提示 -->
+        <!-- 层与层之间的连线。分支层上方画一个分叉提示。
+             末尾的三角箭头用 after: 变体；分叉层的横线用 fork 条件追加 before: -->
         <div
           v-if="ri > 0"
-          class="conn relative w-px h-[34px] bg-brand/55"
-          :class="{ fork: row.nodes.length > 1 }"
+          class="conn relative w-px h-[34px] bg-brand/55 after:content-[''] after:absolute after:left-[-4px] after:bottom-0 after:border-l-[4.5px] after:border-r-[4.5px] after:border-t-[8px] after:border-l-transparent after:border-r-transparent after:border-t-[rgba(121,217,255,0.6)]"
+          :class="row.nodes.length > 1 ? 'fork before:content-[\'\'] before:absolute before:top-1/2 before:left-[-60px] before:w-[120px] before:h-px before:bg-[rgba(121,217,255,0.35)]' : ''"
         >
           <span
             v-if="row.inboundLabels.length"
@@ -80,7 +81,7 @@
         </div>
       </div>
 
-      <div class="conn relative w-px h-[34px] bg-brand/55"></div>
+      <div class="conn relative w-px h-[34px] bg-brand/55 after:content-[''] after:absolute after:left-[-4px] after:bottom-0 after:border-l-[4.5px] after:border-r-[4.5px] after:border-t-[8px] after:border-l-transparent after:border-r-transparent after:border-t-[rgba(121,217,255,0.6)]"></div>
       <div class="border border-dashed border-white/25 rounded-full px-3.5 py-[5px] text-[0.72rem] whitespace-nowrap text-white/50">剧本结束</div>
 
       <p class="max-w-[560px] mt-[26px] text-xs leading-[1.9] text-white/40 [&_b]:text-white/65 [&_code]:font-mono [&_code]:text-brand">
@@ -211,26 +212,3 @@ const rows = computed<FlowRow[]>(() => {
 
 </script>
 
-<style scoped>
-/* 伪元素无法用 Tailwind 工具类表达，保留在 scoped 块中 */
-/* 层间连线末端的三角箭头 */
-.conn::after {
-  content: '';
-  position: absolute;
-  left: -4px;
-  bottom: 0;
-  border-left: 4.5px solid transparent;
-  border-right: 4.5px solid transparent;
-  border-top: 8px solid rgba(121, 217, 255, 0.6);
-}
-/* 分叉层上方的横线 */
-.conn.fork::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: -60px;
-  width: 120px;
-  height: 1px;
-  background: rgba(121, 217, 255, 0.35);
-}
-</style>
