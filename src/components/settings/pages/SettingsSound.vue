@@ -38,7 +38,7 @@
       <Slider @change="updateAmbientVolume" v-model="ambientVolume"> {{ $t('settings.sound.slider.weakStrong') }} </Slider>
     </MenuItem>
 
-    <!-- 声音测试（放在音量滑块下方、环境音管理上方） -->
+    <!-- 声音测试 -->
     <MenuItem :title="$t('settings.sound.test.title')" size="small">
       <template #header>
         <FlaskConical :size="20" class="text-pink-400" />
@@ -555,7 +555,7 @@ const uploadAmbientFiles = async () => {
   }
   const allowedExts = ['.mp3', '.wav', '.flac', '.ogg', '.m4a']
   try {
-    // 串行上传（传源文件路径，Rust 侧复制 —— 不走 IPC 传大文件，避免卡顿）
+    // 串行上传（仅传源文件路径，Rust 侧复制）
     for (const path of selectedAmbientPaths.value) {
       // content:// URI 文件名是 URL 编码的，解码后才是真实文件名
       const fileName = decodePathFileName(path)
@@ -702,9 +702,9 @@ const uploadMusic = async () => {
   const allowedExts = ['.mp3', '.wav', '.flac', '.webm', '.weba', '.ogg', '.m4a']
 
   try {
-    // 串行上传（传源文件路径，Rust 侧复制 —— 不走 IPC 传大文件，避免卡顿）
+    // 串行上传（仅传源文件路径，Rust 侧复制）
     for (const path of selectedPaths.value) {
-      // content:// URI 文件名是 URL 编码的（如 %E5%8B%BE），解码后才是真实文件名
+      // content:// URI 文件名是 URL 编码的，解码后才是真实文件名
       const fileName = decodePathFileName(path)
       const fileExt = fileName.slice(fileName.lastIndexOf('.')).toLowerCase()
       if (!allowedExts.includes(fileExt)) {
@@ -762,7 +762,7 @@ const handleStop = () => {
   }
 }
 
-// 打开系统文件对话框选择音乐（拿路径，避免读文件进内存）
+// 打开系统文件对话框选择音乐（仅拿路径）
 const triggerFileUpload = async () => {
   const selected = await openDialog({
     multiple: true,
