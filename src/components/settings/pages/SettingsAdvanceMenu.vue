@@ -1,5 +1,5 @@
 <template>
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-5 p-2">
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 p-2">
     <!-- 大模型管理 -->
     <div class="cursor-pointer transition-all duration-300" @click="emit('navigate', 'llm')">
       <MenuItem :title="$t('advance.menu.llmTitle')" size="large">
@@ -12,6 +12,19 @@
         <Button type="big" icon="advance" :icon_size="18">
           {{ $t('advance.menu.llmButton') }}
         </Button>
+      </MenuItem>
+    </div>
+
+    <!-- 本地 TTS -->
+    <div class="cursor-pointer transition-all duration-300" @click="emit('navigate', 'tts')">
+      <MenuItem :title="$t('advance.menu.ttsTitle')" size="large">
+        <template #header>
+          <AudioLines :size="20" />
+        </template>
+        <p class="text-white/50 text-sm leading-relaxed mb-3">
+          {{ $t('advance.menu.ttsDesc') }}
+        </p>
+        <Button type="big" icon="mic" :icon_size="18"> {{ $t('advance.menu.ttsButton') }} </Button>
       </MenuItem>
     </div>
 
@@ -39,34 +52,35 @@
         <p class="text-white/50 text-sm leading-relaxed mb-3">
           {{ $t('advance.menu.languageDesc') }}
         </p>
-        <div class="flex gap-2">
-          <button
+        <select
+          :value="locale"
+          class="w-full cursor-pointer rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80 transition-all duration-200 hover:border-white/30 hover:text-white focus:border-[rgba(121,217,255,0.6)] focus:outline-none"
+          @change="setLocale(($event.target as HTMLSelectElement).value as AppLocale)"
+        >
+          <option
             v-for="opt in SUPPORTED_LOCALES"
             :key="opt.value"
-            class="flex-1 cursor-pointer rounded-lg border px-3 py-1.5 text-sm transition-all duration-200"
-            :class="locale === opt.value
-              ? 'border-[rgba(121,217,255,0.6)] bg-[rgba(121,217,255,0.2)] text-white'
-              : 'border-white/10 bg-white/5 text-white/50 hover:border-white/30 hover:text-white/80'"
-            @click="setLocale(opt.value)"
+            :value="opt.value"
+            class="bg-slate-800 text-white"
           >
             {{ opt.label }}
-          </button>
-        </div>
+          </option>
+        </select>
       </MenuItem>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Cpu, SlidersHorizontal, Languages } from 'lucide-vue-next'
+import { AudioLines, Cpu, SlidersHorizontal, Languages } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { MenuItem } from '../../ui'
 import { Button } from '../../base'
-import { SUPPORTED_LOCALES, setLocale } from '@/locales'
+import { SUPPORTED_LOCALES, setLocale, type AppLocale } from '@/locales'
 
 const { locale } = useI18n()
 
 const emit = defineEmits<{
-  navigate: [tab: 'llm' | 'other']
+  navigate: [tab: 'llm' | 'tts' | 'other']
 }>()
 </script>

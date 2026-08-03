@@ -51,7 +51,14 @@ interface State {
   globalCharacters: GlobalCharacter[]
   assetFiles: { script: AssetFileIndex | null; global: AssetFileIndex | null }
   level: 'flow' | 'chapter'
-  tab: 'flow' | 'config' | 'characters' | 'assets' | 'validate'
+  tab:
+    | 'flow'
+    | 'config'
+    | 'characters'
+    | 'assets'
+    | 'validate'
+    | 'agent-chat'
+    | 'agent-settings'
   foldCompounds: boolean
 }
 

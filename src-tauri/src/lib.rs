@@ -30,6 +30,7 @@ use ai_service::service::SharedAIService;
 use ai_service::tools::registry::ToolRegistry;
 use ai_service::translator::Translator;
 
+/// 本地时间格式化器，用于日志输出的时间戳。
 struct LocalTimer;
 
 impl FormatTime for LocalTimer {
@@ -38,10 +39,14 @@ impl FormatTime for LocalTimer {
     }
 }
 
+/// 聊天组件集合。
+///
+/// 包含聊天主 LLM 槽位、消息处理器和翻译器。
 pub struct ChatComponents {
     /// 聊天主 LLM 槽位（支持运行时热切换）。
     /// 槽位本身始终存在，内部值可能为 None（表示尚未配置模型）。
     pub llm: LlmSlot,
+    /// 消息处理器，负责处理聊天消息的流转。
     pub processor: Arc<MessageProcessor>,
     /// 翻译 LLM 槽位（支持运行时热切换）。
     pub translator: Arc<Translator>,
@@ -50,26 +55,41 @@ pub struct ChatComponents {
 /// 截图流程中的临时状态（全屏捕获 + 覆盖窗口标签）。
 #[derive(Default)]
 pub struct ScreenshotCaptureState {
+    /// 全屏截图的 Base64 编码数据。
     pub full_capture_base64: Option<String>,
+    /// 覆盖窗口的标签文本。
     pub overlay_label: Option<String>,
 }
 
-/// AppState 内部数据,init::initialize 完成后所有字段填充。
+/// AppState 内部数据，init::initialize 完成后所有字段填充。
 pub struct InnerAppState {
+    /// 数据库连接实例。
     pub db: DatabaseConnection,
+    /// AI 服务共享实例。
     pub ai_service: SharedAIService,
+    /// 聊天组件。
     pub chat: ChatComponents,
+    /// 脚本引擎通道。
     pub script_channels: ai_service::game_system::script_engine::SharedScriptChannels,
+    /// 生成锁，用于控制并发生成。
     pub generation_lock: Arc<tokio::sync::Mutex<()>>,
+    /// 主动系统实例（可选）。
     pub tool_registry: Arc<ToolRegistry>,
     pub proactive_system:
         Option<Arc<tokio::sync::Mutex<ai_service::proactive_system::ProactiveSystem>>>,
+    /// 成就管理器。
     pub achievement_manager: Arc<tokio::sync::Mutex<achievements::manager::AchievementManager>>,
+    /// 屏幕分析器。
     pub screen_analyzer: Arc<tokio::sync::Mutex<ScreenAnalyzer>>,
+    /// 截图捕获状态。
     pub screenshot_capture: Arc<tokio::sync::Mutex<ScreenshotCaptureState>>,
+    /// 自动存档管理器。
     pub auto_save_manager:
         Arc<tokio::sync::Mutex<ai_service::game_system::auto_save::AutoSaveManager>>,
+    /// 上帝 Agent（多人对话编排器，可选）。
     pub god_agent: Option<Arc<GodAgentCore>>,
+    /// Skill Agent（剧本编辑器 AI 助手）共享状态。
+    pub skill_agent: Arc<ai_service::skill_agent::SkillAgentState>,
     /// 剧本编辑器「试玩」当前在跑的后台任务句柄。
     ///
     /// `editor_stop_preview` 会先唤醒被剧本阻塞的通道、把 `is_running` 置 false，
@@ -84,20 +104,20 @@ pub struct InnerAppState {
 
 /// AppState 在 Tauri 中 manage 的状态句柄。
 ///
-/// **Android 修复**: Tauri 在 setup 闭包执行前就已经创建了 webview 窗口(见
-/// `tauri::app::setup()`),前端 JS 一旦加载就会立刻 invoke 命令。如果用户的 setup
-/// 闭包还在执行 init::initialize 时,前端命令 `init_game` 在 IPC runtime worker 上
+/// **Android 修复**: Tauri 在 setup 闭包执行前就已经创建了 webview 窗口（见
+/// `tauri::app::setup()`），前端 JS 一旦加载就会立刻 invoke 命令。如果用户的 setup
+/// 闭包还在执行 init::initialize 时，前端命令 `init_game` 在 IPC runtime worker 上
 /// 被 dispatch 后调用 `state::<AppState>()` 就会 panic with
 /// "state() called before manage()"。
 ///
-/// 解决方案: setup 闭包**最开始**就 manage 一个空壳 AppState,
-/// init::initialize 完成后用真实值填充。`ArcSwap` 提供 lock-free 读写,
-/// `Deref` 让所有原有访问代码保持不变。
+/// 解决方案：setup 闭包**最开始**就 manage 一个空壳 AppState，
+/// init::initialize 完成后用真实值填充。`OnceLock` 提供一次性写入。
 pub struct AppState {
     inner: std::sync::OnceLock<InnerAppState>,
 }
 
 impl AppState {
+    /// 创建一个空的 AppState 实例。
     pub fn empty() -> Self {
         Self {
             inner: std::sync::OnceLock::new(),
@@ -154,11 +174,13 @@ impl std::ops::Deref for AppState {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 配置日志过滤器
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,ling_chat_lib=info"))
         .add_directive("sqlx=warn".parse().unwrap())
         .add_directive("genai=error".parse().unwrap());
 
+    // 初始化日志系统
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::fmt::layer()
@@ -175,6 +197,7 @@ pub fn run() {
         )
         .init();
 
+    // 设置 WebView2 颜色配置文件（强制使用线性 sRGB）
     #[allow(deprecated)]
     unsafe {
         std::env::set_var(
@@ -183,6 +206,7 @@ pub fn run() {
         );
     }
 
+    // 构建 Tauri 应用
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -192,6 +216,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_android_fs::init());
 
+    // 桌面端额外插件
     #[cfg(desktop)]
     let builder = builder
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -199,21 +224,30 @@ pub fn run() {
 
     builder
         .setup(|app| {
+            // 设置日志桥接的应用句柄
             utils::log_bridge::set_app_handle(app.handle().clone());
 
+            // 提前初始化数据目录缓存，以便在 init::initialize 之前
+            // 将其传递给独立的本地 TTS crate。
+            init::static_copy::init_data_dir(&app.handle());
+
+            // 管理各种状态
             app.manage(api::pet::HitTestState::default());
             app.manage(resource_sync::ResourceSyncState::default());
             app.manage(lan_sync::LanSyncState::default());
             app.manage(utils::cpu_perf::CpuDetectionCache::new());
             app.manage(api::role_archive::RoleArchiveState::default());
 
-            // Android 修复: Tauri 在 setup 闭包执行前已创建 webview 窗口,前端 invoke
-            // 命令会在 IPC runtime worker 上立即 dispatch;如果 AppState 还没 manage
+            // Android 修复：Tauri 在 setup 闭包执行前已创建 webview 窗口，前端 invoke
+            // 命令会在 IPC runtime worker 上立即 dispatch；如果 AppState 还没 manage
             // 就会 panic "state() called before manage()"。所以 setup 一开始就 manage
-            // 一个空壳 AppState,init::initialize 完成后用真实值 fill。
+            // 一个空壳 AppState，init::initialize 完成后用真实值 fill。
             app.manage(AppState::empty());
             let rt = tokio::runtime::Runtime::new()?;
-            let (db, ai_service, chat) = rt.block_on(init::initialize(app))?;
+            // 本地 TTS（SBV2 进程内实现）：解析路径、注册 State/开关并收敛运行时。
+            let local_tts = ai_service::tts::local::setup::bootstrap(app)?;
+            let (db, ai_service, chat) =
+                rt.block_on(init::initialize(app, Some(local_tts.runtime.clone())))?;
 
             // 初始化文件日志（从设置读取开关和保留天数）
             {
@@ -256,16 +290,18 @@ pub fn run() {
                 }
             }
 
+            // 创建脚本引擎通道
             let script_channels = std::sync::Arc::new(tokio::sync::Mutex::new(
                 ai_service::game_system::script_engine::ScriptChannels::new(),
             ));
 
+            // 创建生成锁
             let generation_lock = std::sync::Arc::new(tokio::sync::Mutex::new(()));
             let role_names = rt
                 .block_on(db::managers::role_repo::RoleRepo::get_all_tool_role_names(&db))?;
             let tool_registry = Arc::new(ai_service::tools::built_in_registry(role_names)?);
 
-            // Create proactive system
+            // 创建主动系统
             let proactive = std::sync::Arc::new(tokio::sync::Mutex::new(
                 ai_service::proactive_system::ProactiveSystem::new(
                     app.handle().clone(),
@@ -281,24 +317,28 @@ pub fn run() {
                 ),
             ));
 
-            // Start proactive system loop on Tauri's runtime (NOT rt — rt is dropped when setup returns)
+            // 在 Tauri 运行时上启动主动系统循环
             let proactive_clone = proactive.clone();
             tauri::async_runtime::spawn(async move {
                 ai_service::proactive_system::ProactiveSystem::start(proactive_clone).await;
             });
 
+            // 创建成就管理器
             let achievement_manager = std::sync::Arc::new(tokio::sync::Mutex::new(
                 achievements::manager::AchievementManager::new(&api::data_dir()),
             ));
 
+            // 创建屏幕分析器
             let screen_analyzer = {
                 let sa_config = ScreenAnalyzerConfig::resolve(&app.handle());
                 std::sync::Arc::new(tokio::sync::Mutex::new(ScreenAnalyzer::new(sa_config)))
             };
 
+            // 创建截图捕获状态
             let screenshot_capture =
                 std::sync::Arc::new(tokio::sync::Mutex::new(ScreenshotCaptureState::default()));
 
+            // 创建自动存档管理器
             let auto_save_manager = std::sync::Arc::new(tokio::sync::Mutex::new(
                 ai_service::game_system::auto_save::AutoSaveManager::new(
                     app.handle().clone(),
@@ -315,6 +355,12 @@ pub fn run() {
                 Arc::new(GodAgentCore::new(slot, config))
             });
 
+            // Skill Agent：确保技能库目录存在（兜底，不阻断启动）
+            if let Err(e) = ai_service::skill_agent::ensure_skills_dir(&api::data_dir()) {
+                tracing::warn!("Skill Agent 技能库目录初始化失败: {}", e);
+            }
+
+            // 填充 AppState
             {
                 let state = app.state::<AppState>();
                 state.fill(InnerAppState {
@@ -330,24 +376,30 @@ pub fn run() {
                     screenshot_capture,
                     auto_save_manager: auto_save_manager.clone(),
                     god_agent,
+                    skill_agent: Arc::new(ai_service::skill_agent::SkillAgentState::default()),
                     preview_task: Arc::new(tokio::sync::Mutex::new(None)),
                     pending_preview_restore: Arc::new(tokio::sync::Mutex::new(None)),
                 });
             }
 
-            // Spawn Windows mouse polling click-through loop
+            // 延迟加载 DeBerta 直到应用主体挂载完成；
+            // 如果在加载完成前有聊天请求到达，LocalTtsAdapter 的惰性引导仍然会运行，
+            // 因此首次消息延迟是启动时加载的代价。
+            ai_service::tts::local::setup::spawn_preload(&app.handle(), &local_tts);
+
+            // 启动 Windows 鼠标轮询点击穿透循环
             let window = app
                 .get_webview_window("main")
                 .ok_or_else(|| tauri::Error::AssetNotFound("main window not found".to_string()))?;
 
-            // Set up close handler for exit auto-save
+            // 设置退出自动存档的关闭处理器
             ai_service::game_system::auto_save::AutoSaveManager::setup_close_handler(
                 app.handle().clone(),
                 window.clone(),
                 auto_save_manager.clone(),
             );
 
-            // Start periodic auto-save loop (every 5 minutes)
+            // 启动定期自动存档循环（每 5 分钟）
             tauri::async_runtime::spawn(async move {
                 ai_service::game_system::auto_save::AutoSaveManager::run_periodic(
                     auto_save_manager,
@@ -355,6 +407,7 @@ pub fn run() {
                 .await;
             });
 
+            // Windows 点击穿透逻辑
             let hit_test_state = app.state::<api::pet::HitTestState>();
             let rects_arc = hit_test_state.solid_rects.clone();
             let enabled_arc = hit_test_state.enabled.clone();
@@ -429,8 +482,11 @@ pub fn run() {
 
             Ok(())
         })
+        // 注册所有 API 命令
         .invoke_handler(tauri::generate_handler![
             utils::log_bridge::get_log_history,
+            utils::log_bridge::open_log_window,
+            utils::log_bridge::is_log_window_open,
             api::settings::get_settings_tree,
             api::settings::save_settings,
             api::settings::get_setting_by_key,
@@ -453,6 +509,7 @@ pub fn run() {
             api::character::get_avatar_file,
             api::character::select_clothes,
             api::character::update_role_settings,
+            api::character::delete_character,
             api::character::open_characters_folder,
             api::background::get_background_list,
             api::background::get_background_file,
@@ -532,6 +589,20 @@ pub fn run() {
             api::script_editor::editor_import_global_character,
             api::script_editor::editor_stop_preview,
             api::script_editor::editor_open_script_folder,
+            // ── 剧本编辑器 · AI 助手（Skill Agent）──
+            api::script_editor::agent::editor_agent_get_settings,
+            api::script_editor::agent::editor_agent_save_settings,
+            api::script_editor::agent::editor_agent_get_default_dirs,
+            api::script_editor::agent::editor_agent_list_skills,
+            api::script_editor::agent::editor_agent_read_skill,
+            api::script_editor::agent::editor_agent_create_conversation,
+            api::script_editor::agent::editor_agent_list_conversations,
+            api::script_editor::agent::editor_agent_delete_conversation,
+            api::script_editor::agent::editor_agent_get_messages,
+            api::script_editor::agent::editor_agent_clear_conversation,
+            api::script_editor::agent::editor_agent_start_chat,
+            api::script_editor::agent::editor_agent_stop_chat,
+            api::script_editor::agent::editor_agent_resolve_approval,
             api::pet::update_solid_regions,
             api::pet::set_pet_mode,
             api::schedule::get_schedules,
@@ -565,6 +636,17 @@ pub fn run() {
             api::role_archive::rescan_roles,
             api::role_archive::export_role,
             api::role_archive::export_role_to_path,
+            // 本地 TTS 相关命令
+            ai_service::tts::local::tts_local_status,
+            ai_service::tts::local::tts_local_list_catalog,
+            ai_service::tts::local::tts_local_list_installed,
+            ai_service::tts::local::tts_local_import_from_path,
+            ai_service::tts::local::tts_local_download,
+            ai_service::tts::local::tts_local_delete_voice,
+            ai_service::tts::local::tts_local_import_style_vectors,
+            ai_service::tts::local::tts_local_synthesize_preview,
+            ai_service::tts::local::tts_local_get_enabled,
+            ai_service::tts::local::tts_local_set_enabled,
             exit_app,
         ])
         .run(tauri::generate_context!())
@@ -576,3 +658,4 @@ pub fn run() {
 fn exit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
+

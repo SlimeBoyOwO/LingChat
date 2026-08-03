@@ -7,10 +7,11 @@
 
   <!-- 全局通知组件（直接从 uiStore 读取状态） -->
   <!-- 与桌宠专用通知组件区分开 -->
-  <Notification v-if="route.path !== '/pet'" />
-  <AchievementToast />
-  <AdventureUnlockNotify />
-  <AppDialog />
+  <!-- 弹窗类组件仅主窗口挂载：日志等独立窗口复用 App.vue，不重复弹出 -->
+  <Notification v-if="isMainWindow && route.path !== '/pet'" />
+  <AchievementToast v-if="isMainWindow" />
+  <AdventureUnlockNotify v-if="isMainWindow" />
+  <AppDialog v-if="isMainWindow" />
 </template>
 
 <script setup lang="ts">
@@ -71,6 +72,9 @@ void getImportedFonts().then((fonts) => {
 
 const route = useRoute()
 
+// 仅主窗口挂载全局弹窗（通知/成就/对话确认），日志窗口等复用 App.vue 的窗口不弹
+const isMainWindow = getCurrentWindow().label === 'main'
+
 const handleKeyDown = async (event: KeyboardEvent) => {
   if (event.key === 'F11') {
     event.preventDefault()
@@ -108,6 +112,14 @@ function tryExit() {
 onMounted(async () => {
   // 初始化 UI Store（加载角色 tips）
   initUIStore()
+
+  // 启动时自动弹出独立日志窗口（仅主窗口触发，开关在日志页设置）
+  if (
+    getCurrentWindow().label === 'main' &&
+    localStorage.getItem('lingchat_log_window_auto_open') === '1'
+  ) {
+    invoke('open_log_window').catch((e) => console.error('自动打开日志窗口失败:', e))
+  }
 
   // 预加载 LLM 提供商配置，避免主界面因 store 未加载而误判未选择模型
   const llmStore = useLlmProvidersStore()

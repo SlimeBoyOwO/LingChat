@@ -1,4 +1,4 @@
-﻿//! 用户主动截图功能：全屏捕获 → 覆盖窗口框选 → 裁剪结果回传。
+//! 用户主动截图功能：全屏捕获 → 覆盖窗口框选 → 裁剪结果回传。
 
 use tauri::{AppHandle, Emitter, Manager};
 #[cfg(desktop)]

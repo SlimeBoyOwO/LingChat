@@ -52,7 +52,7 @@
             </div>
 
             <p
-              class="text-xs line-clamp-2 h-8 leading-4 mb-2 transition-colors duration-300"
+              class="text-xs leading-4 mb-2 whitespace-pre-line transition-colors duration-300"
               :class="achievement.unlocked ? 'text-gray-200' : 'text-white/70'"
             >
               {{ achievementDescription(achievement) }}
@@ -75,7 +75,7 @@
                 class="text-[10px] font-mono"
                 :class="achievement.unlocked ? 'text-gray-200' : 'text-white/60'"
               >
-                {{ achievement.current_progress }} / {{ achievement.target_progress }}
+                {{ achievement.hidden ? '???' : `${achievement.current_progress} / ${achievement.target_progress}` }}
               </span>
             </div>
           </div>
@@ -100,6 +100,11 @@ const achievementsList = computed(() => {
     // 已解锁的排在前面
     if (a.unlocked && !b.unlocked) return -1
     if (!a.unlocked && b.unlocked) return 1
+    // 未解锁的隐藏成就排最后
+    if (!a.unlocked && !b.unlocked) {
+      if (a.hidden && !b.hidden) return 1
+      if (!a.hidden && b.hidden) return -1
+    }
     // 如果都解锁了，稀有的排前面
     if (a.unlocked && b.unlocked) {
       if (a.type === 'rare' && b.type !== 'rare') return -1
@@ -111,6 +116,10 @@ const achievementsList = computed(() => {
 
 const getCardClass = (ach: any) => {
   if (!ach.unlocked) {
+    // 未解锁的隐藏成就：神秘紫色
+    if (ach.hidden) {
+      return 'bg-linear-to-br from-purple-900/30 to-black/60 border-purple-400/40 opacity-80 hover:bg-white/5 backdrop-blur-md'
+    }
     // 未解锁：稍微亮一点的背景以提升对比度
     return 'bg-black/30 border-white/10 backdrop-blur-md opacity-90 hover:bg-white/5 transition-all'
   }
@@ -123,7 +132,10 @@ const getCardClass = (ach: any) => {
 }
 
 const getIconClass = (ach: any) => {
-  if (!ach.unlocked) return 'border-white/20 bg-white/5 text-white/30'
+  if (!ach.unlocked) {
+    if (ach.hidden) return 'border-purple-400/40 bg-purple-400/10 text-purple-300'
+    return 'border-white/20 bg-white/5 text-white/30'
+  }
 
   if (ach.type === 'rare') {
     return 'border-yellow-400 bg-yellow-400/20 text-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.4)]'
@@ -132,7 +144,10 @@ const getIconClass = (ach: any) => {
 }
 
 const getIconSvgClass = (ach: any) => {
-  if (!ach.unlocked) return 'text-white/40'
+  if (!ach.unlocked) {
+    if (ach.hidden) return 'text-purple-300/80'
+    return 'text-white/40'
+  }
   if (ach.type === 'rare') return 'text-yellow-400 drop-shadow-[0_0_4px_rgba(250,204,21,0.8)]'
   return 'text-emerald-400 drop-shadow-[0_0_4px_rgba(52,211,153,0.6)]'
 }
@@ -147,6 +162,7 @@ const getProgressClass = (ach: any) => {
     if (ach.type === 'rare') return 'bg-linear-to-r from-yellow-600 to-yellow-300'
     return 'bg-linear-to-r from-emerald-600 to-emerald-300'
   }
+  if (ach.hidden) return 'bg-linear-to-r from-purple-600 to-purple-300'
   return 'bg-white/40'
 }
 

@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>扩展新工具函数 · 步骤流程图</title>
+<style>
+  :root {
+    --bg: #0f1720;
+    --panel: #16202c;
+    --panel-2: #1b2430;
+    --border: #2a3a4a;
+    --text: #e6edf3;
+    --muted: #8b98a5;
+    --brand: #79d9ff;
+    --rust: #f4a261;
+    --vue: #34d399;
+    --db: #a78bfa;
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --tool: #f472b6;
+  }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; padding: 24px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  .wrap { max-width: 1340px; margin: 0 auto; }
+  svg { width: 100%; height: auto; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 16px; font-size: 12.5px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  text { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>如何扩展新的工具函数 —— 步骤流程</h1>
+  <p class="sub">PR #523 · 实现 Tool trait → 注册 → 配置权限 → 测试；不动 LLM 层、不动权限核心、不动台词表与记忆</p>
+
+  <svg viewBox="0 0 1320 1180" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#79d9ff" />
+      </marker>
+      <marker id="arrowGray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#8b98a5" />
+      </marker>
+      <marker id="arrowRust" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#f4a261" />
+      </marker>
+    </defs>
+
+    <!-- ================= 第 1 步 ================= -->
+    <text x="40" y="40" font-size="14" font-weight="700" fill="#34d399">第 1 步 · 实现 Tool trait（新建 tools/my_tool.rs）</text>
+
+    <rect x="40" y="56" width="620" height="190" rx="9" fill="#16202c" stroke="#34d399" stroke-opacity="0.5" />
+    <text x="60" y="84" font-size="11" font-weight="700" fill="#34d399">impl Tool for MyTool</text>
+    <text x="60" y="112" font-size="10.5" fill="#e6edf3" font-family="Consolas, monospace">fn definition(&amp;self) -&gt; ToolDefinition</text>
+    <text x="60" y="134" font-size="10.5" fill="#e6edf3" font-family="Consolas, monospace">  ToolDefinition::new("my_tool",</text>
+    <text x="60" y="152" font-size="10.5" fill="#8b98a5" font-family="Consolas, monospace">    "用途描述…", json!({...}))  // JSON Schema 参数</text>
+    <text x="60" y="180" font-size="10.5" fill="#e6edf3" font-family="Consolas, monospace">async fn execute(&amp;self, ctx: &amp;ToolContext,</text>
+    <text x="60" y="198" font-size="10.5" fill="#e6edf3" font-family="Consolas, monospace">    arguments: Value) -&gt; Result&lt;ToolResult, ToolError&gt;</text>
+    <text x="60" y="226" font-size="9.5" fill="#8b98a5">必须 Send + Sync（Arc&lt;dyn Tool&gt; 共享）· execute 可 await 任意 IO，但有 2s 超时</text>
+
+    <!-- 代码要点框 -->
+    <rect x="700" y="56" width="560" height="190" rx="9" fill="#1c1a16" stroke="#f4a261" stroke-opacity="0.5" />
+    <text x="720" y="84" font-size="11" font-weight="700" fill="#f4a261">编写要点</text>
+    <text x="720" y="112" font-size="10.5" fill="#e6edf3">· definition 参数用 additionalProperties:false，防 LLM 传多余参数；</text>
+    <text x="720" y="138" font-size="10.5" fill="#e6edf3">· description 越具体 LLM 越会用对；</text>
+    <text x="720" y="164" font-size="10.5" fill="#e6edf3">· execute 校验参数（缺必填 → Err(InvalidArguments)），不 panic；</text>
+    <text x="720" y="190" font-size="10.5" fill="#e6edf3">· 失败返回 ToolError（执行器统一编码回填给 LLM）；</text>
+    <text x="720" y="216" font-size="10.5" fill="#e6edf3">· 参考模板：tools/clock.rs（内置 get_current_time）。</text>
+
+    <line x1="350" y1="246" x2="350" y2="284" stroke="#34d399" stroke-width="1.6" marker-end="url(#arrow)" />
+
+    <!-- ================= 第 2 步 ================= -->
+    <text x="40" y="304" font-size="14" font-weight="700" fill="#f472b6">第 2 步 · 注册（tools/mod.rs · built_in_registry）</text>
+    <rect x="40" y="320" width="620" height="120" rx="9" fill="#16202c" stroke="#f472b6" stroke-opacity="0.5" />
+    <text x="60" y="348" font-size="11" font-weight="700" fill="#f472b6">built_in_registry()</text>
+    <text x="60" y="376" font-size="10.5" fill="#e6edf3" font-family="Consolas, monospace">let mut registry = ToolRegistry::new();</text>
+    <text x="60" y="398" font-size="10.5" fill="#e6edf3" font-family="Consolas, monospace">registry.register(Arc::new(CurrentTimeTool))?;</text>
+    <text x="60" y="420" font-size="10.5" fill="#f472b6" font-family="Consolas, monospace">registry.register(Arc::new(MyTool))?;   // ← 新增</text>
+    <text x="60" y="442" font-size="9.5" fill="#8b98a5">权限配置随注册自动带出工具名（load_or_create 的 tool_names 来自 definitions）</text>
+
+    <rect x="700" y="320" width="560" height="120" rx="9" fill="#1c1a16" stroke="#f4a261" stroke-opacity="0.5" />
+    <text x="720" y="348" font-size="11" font-weight="700" fill="#f4a261">注意</text>
+    <text x="720" y="376" font-size="10.5" fill="#e6edf3">· 工具名全局唯一（snake_case）；重名 register 直接报错，启动即失败；</text>
+    <text x="720" y="402" font-size="10.5" fill="#e6edf3">· 注册顺序 = 下发顺序（LLM 看到的工具列表顺序稳定）；</text>
+    <text x="720" y="428" font-size="10.5" fill="#e6edf3">· 改名要清理 tool_permissions.toml 里对旧名的显式引用。</text>
+
+    <line x1="350" y1="440" x2="350" y2="478" stroke="#f472b6" stroke-width="1.6" marker-end="url(#arrow)" />
+
+    <!-- ================= 第 3 步 ================= -->
+    <text x="40" y="498" font-size="14" font-weight="700" fill="#f4a261">第 3 步 · 配置权限（tool_permissions.toml 或 Rust API）</text>
+    <rect x="40" y="514" width="620" height="210" rx="9" fill="#1c1a16" stroke="#f4a261" stroke-opacity="0.55" />
+    <text x="60" y="542" font-size="11" font-weight="700" fill="#f4a261">默认情况</text>
+    <text x="60" y="568" font-size="10.5" fill="#e6edf3">· default 角色组 enabled=false → 新角色 / 未归组角色无任何工具；</text>
+    <text x="60" y="590" font-size="10.5" fill="#e6edf3">· scene_admin（UserChat）all_tools=true 自动包含新工具；</text>
+    <text x="60" y="612" font-size="10.5" fill="#e6edf3">· scene_normal（Proactive / 自由对话）tools=[...] 显式列表需手动补。</text>
+    <text x="60" y="646" font-size="11" font-weight="700" fill="#f4a261">示例：把角色「诺一」放进行 devs 组，只给两个工具</text>
+    <text x="60" y="674" font-size="10" fill="#e6edf3" font-family="Consolas, monospace">[role_groups.devs]</text>
+    <text x="60" y="692" font-size="10" fill="#e6edf3" font-family="Consolas, monospace">enabled = true</text>
+    <text x="60" y="710" font-size="10" fill="#e6edf3" font-family="Consolas, monospace">tools = ["get_current_time", "my_tool"]</text>
+    <text x="60" y="728" font-size="10" fill="#e6edf3" font-family="Consolas, monospace">roles = ["诺一"]</text>
+
+    <rect x="700" y="514" width="560" height="210" rx="9" fill="#1c1a16" stroke="#f4a261" stroke-opacity="0.5" />
+    <text x="720" y="542" font-size="11" font-weight="700" fill="#f4a261">Rust API 方式</text>
+    <text x="720" y="570" font-size="10.5" fill="#e6edf3" font-family="Consolas, monospace">create_role_group("devs", GroupPermission{</text>
+    <text x="720" y="590" font-size="10.5" fill="#8b98a5" font-family="Consolas, monospace">  enabled: true,</text>
+    <text x="720" y="610" font-size="10.5" fill="#8b98a5" font-family="Consolas, monospace">  tools: ["my_tool", ...].into_iter().collect(),</text>
+    <text x="720" y="630" font-size="10.5" fill="#8b98a5" font-family="Consolas, monospace">  ..Default::default() })</text>
+    <text x="720" y="652" font-size="10.5" fill="#e6edf3" font-family="Consolas, monospace">add_role_to_group("devs", "诺一")?</text>
+    <text x="720" y="678" font-size="10" fill="#8b98a5">也可 set_scene_group / delete_role_group / remove_role_from_group</text>
+    <text x="720" y="694" font-size="10" fill="#8b98a5">改完 TOML / API 即时生效（每轮现算，无缓存）</text>
+
+    <line x1="350" y1="724" x2="350" y2="762" stroke="#f4a261" stroke-width="1.6" marker-end="url(#arrow)" />
+
+    <!-- ================= 第 4 步 ================= -->
+    <text x="40" y="782" font-size="14" font-weight="700" fill="#79d9ff">第 4 步 · 测试与验证</text>
+    <rect x="40" y="798" width="620" height="130" rx="9" fill="#1b2430" stroke="#79d9ff" stroke-opacity="0.5" />
+    <text x="60" y="826" font-size="11" font-weight="700" fill="#79d9ff">单测（参考 clock.rs / executor.rs）</text>
+    <text x="60" y="852" font-size="10.5" fill="#e6edf3">· definition：additionalProperties=false、工具名正确；</text>
+    <text x="60" y="874" font-size="10.5" fill="#e6edf3">· execute 成功路径：断言返回 JSON 字段；</text>
+    <text x="60" y="896" font-size="10.5" fill="#e6edf3">· execute 失败路径：传非法参数断言 InvalidArguments；</text>
+    <text x="60" y="918" font-size="10.5" fill="#e6edf3">· 集成：注册假工具走 ToolExecutor 验证稳定错误码 / 超时。</text>
+
+    <rect x="700" y="798" width="560" height="130" rx="9" fill="#1b2430" stroke="#79d9ff" stroke-opacity="0.5" />
+    <text x="720" y="826" font-size="11" font-weight="700" fill="#79d9ff">运行验证（常见问题定位）</text>
+    <text x="720" y="852" font-size="10.5" fill="#e6edf3">· LLM 看不到工具 → 注册了吗 / provider 支持流式工具吗 / 权限放行了吗；</text>
+    <text x="720" y="874" font-size="10.5" fill="#e6edf3">· 工具被调用但对话里没有 → 结果行是 LineAttribute::Tool（玩家不可见，正常）；</text>
+    <text x="720" y="896" font-size="10.5" fill="#e6edf3">· 模型忘了刚查的东西 → 检查是否落台词表 + refresh_memories。</text>
+    <text x="720" y="918" font-size="10.5" fill="#8b98a5">只支持 genai 系流式工具；Kimi Code 聊天路径不下发工具。</text>
+
+    <!-- ================= 底部总结 ================= -->
+    <line x1="350" y1="928" x2="350" y2="960" stroke="#79d9ff" stroke-width="1.6" marker-end="url(#arrow)" />
+    <rect x="40" y="962" width="1220" height="150" rx="10" fill="#16202c" stroke="#34d399" stroke-opacity="0.4" />
+    <text x="60" y="990" font-size="12" font-weight="700" fill="#34d399">你要写什么 / 不用动什么</text>
+    <text x="60" y="1016" font-size="10.5" fill="#e6edf3">✅ 要写：一个实现 Tool trait 的文件（definition + execute）→ 一行注册 → 一段权限配置 → 一组测试。</text>
+    <text x="60" y="1040" font-size="10.5" fill="#e6edf3">✅ 会自动生效：工具定义自动进 definitions（权限放行时）、结果自动进台词表 + 记忆、错误自动回填给 LLM。</text>
+    <text x="60" y="1064" font-size="10.5" fill="#e6edf3">✅ 可复用：ToolContext.allows 二次校验、ToolError 稳定编码、2s 超时、错误 JSON 回填 —— 全都由执行器统一处理。</text>
+    <text x="60" y="1088" font-size="10.5" fill="#8b98a5">❌ 不用动：LlmProvider / genai / kimi_code、permissions.rs 核心、MemoryBuilder、台词表结构与迁移。</text>
+    <text x="60" y="1110" font-size="10" fill="#8b98a5">若要「某类工具结果长期记住」：那是 MemoryBank 摘要策略的事（见 memory.md §6），不属于工具层。</text>
+  </svg>
+
+  <div class="legend">
+    <span><span class="dot" style="background:#34d399"></span>实现 / 测试</span>
+    <span><span class="dot" style="background:#f472b6"></span>注册</span>
+    <span><span class="dot" style="background:#f4a261"></span>权限配置</span>
+    <span><span class="dot" style="background:#79d9ff"></span>验证</span>
+  </div>
+</div>
+</body>
+</html>

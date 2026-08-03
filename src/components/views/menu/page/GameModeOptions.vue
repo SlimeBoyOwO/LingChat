@@ -1,14 +1,25 @@
 <template>
-  <nav class="flex flex-col items-stretch">
-    <StartItem @click="startFreeDialogue">{{ $t('views.menu.freeDialogue') }}</StartItem>
-    <StartItem @click="startStoryMode">{{ $t('views.menu.storyMode') }}</StartItem>
-    <StartItem disabled>{{ $t('views.menu.miniGame') }}</StartItem>
-    <StartItem @click="() => emit('back')">{{ $t('views.menu.back') }}</StartItem>
-  </nav>
+  <StartList>
+    <StartLine>
+      <StartItem @click="startFreeDialogue">{{ $t('views.menu.freeDialogue') }}</StartItem>
+    </StartLine>
+
+    <StartLine>
+      <StartItem @click="emit('open-scripts')">{{ $t('views.menu.storyMode') }}</StartItem>
+    </StartLine>
+
+    <StartLine>
+      <StartItem disabled="true">{{ $t('views.menu.miniGame') }}</StartItem>
+    </StartLine>
+
+    <StartLine>
+      <StartItem @click="emit('back')">{{ $t('views.menu.back') }}</StartItem>
+    </StartLine>
+  </StartList>
 </template>
 
 <script setup lang="ts">
-import { StartItem } from '../base'
+import { StartItem, StartLine, StartList } from '../base'
 import { useRouter } from 'vue-router'
 import { useGameStore } from '@/stores/modules/game'
 
@@ -23,11 +34,5 @@ const gameStore = useGameStore()
 const startFreeDialogue = () => {
   gameStore.exitStoryMode()
   router.push('/chat')
-}
-
-// 前端进入剧情模式（开发中）
-
-const startStoryMode = async () => {
-  emit('open-scripts')
 }
 </script>

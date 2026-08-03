@@ -1,29 +1,39 @@
 <template>
-  <nav class="flex flex-col items-stretch">
-    <StartItem @click="() => emit('start-game')">{{ $t('views.menu.startGame') }}</StartItem>
-    <StartItem @click="() => emit('open-settings', 'save')">{{ $t('views.menu.continueGame') }}</StartItem>
-    <StartItem @click="() => emit('open-script-editor')">{{ $t('views.menu.scriptEditor') }}</StartItem>
-    <StartItem @click="() => emit('open-settings')">{{ $t('views.menu.gameConfig') }}</StartItem>
-    <StartItem @click="() => emit('open-credits')">{{ $t('views.menu.credits') }}</StartItem>
-    <StartItem @click="exitGame">{{ $t('views.menu.exitGame') }}</StartItem>
-  </nav>
+  <StartList>
+    <StartLine>
+      <StartItem @click="() => emit('start-game')">{{ $t('views.menu.startGame') }}</StartItem>
+    </StartLine>
+    <StartLine>
+      <StartItem @click="() => emit('open-settings', 'save')">{{ $t('views.menu.continueGame') }}</StartItem>
+    </StartLine>
+    <StartLine :mobile="false">
+      <StartItem @click="() => emit('open-workshop')">{{ $t('views.menu.scriptEditor') }}</StartItem>
+    </StartLine>
+    <StartLine>
+      <StartItem @click="() => emit('open-settings')">{{ $t('views.menu.gameConfig') }}</StartItem>
+    </StartLine>
+    <StartLine>
+      <StartItem @click="() => emit('open-credits')">{{ $t('views.menu.credits') }}</StartItem>
+    </StartLine>
+    <StartLine>
+      <StartItem @click="exitGame">{{ $t('views.menu.exitGame') }}</StartItem>
+    </StartLine>
+  </StartList>
 </template>
 
 <script setup lang="ts">
-import { StartItem } from '../base'
 import { invoke } from '@tauri-apps/api/core'
-import { useDialogStore } from '@/stores/modules/ui/dialog'
+import { useDialogStore } from '@/stores/modules/ui/dialog'  // 保留 Current
+import { StartItem, StartLine, StartList } from '../base'    // 保留 Incoming
 
 const emit = defineEmits<{
   (e: 'start-game'): void
   (e: 'open-settings', tab?: string): void
   (e: 'open-credits'): void
-  (e: 'open-script-editor'): void
+  (e: 'open-workshop'): void
 }>()
 
-// 退出游戏
-// 先弹确认框，确认后用 Rust 端 exit_app 命令（app.exit()），桌面和 Android 都有效，
-// 避免手机上误触退出丢失进度。
+// 保留 Current 的退出逻辑
 async function exitGame() {
   const dialogStore = useDialogStore()
   const ok = await dialogStore.confirm('确定要退出游戏吗？', '退出确认')

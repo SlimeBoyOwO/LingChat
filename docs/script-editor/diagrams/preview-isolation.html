@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>试玩隔离机制 · 时序图</title>
+<style>
+  :root { --bg:#0f1720; --panel:#16202c; --border:#2a3a4a; --text:#e6edf3; --muted:#8b98a5; --brand:#79d9ff; }
+  body{margin:0;background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft YaHei",sans-serif;padding:24px;}
+  h1{font-size:20px;margin:0 0 4px;} .sub{color:var(--muted);font-size:13px;margin-bottom:18px;}
+  .wrap{max-width:1280px;margin:0 auto;} svg{width:100%;height:auto;display:block;}
+  text{font-family:"Segoe UI","Microsoft YaHei",sans-serif;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>试玩隔离机制 —— 时序图</h1>
+  <p class="sub">三层隔离：① 后端 PreviewSession 整体快照/还原；② preview_generation 代号守卫丢弃孤儿写入；③ 前端 PreviewStage 双份快照 + 事件队列清空。路由守卫等待全部还原完成后才放行导航。</p>
+
+  <svg viewBox="0 0 1280 1240" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#79d9ff"/></marker>
+      <marker id="aR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f87171"/></marker>
+      <marker id="aO" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4ade80"/></marker>
+      <marker id="aG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8b98a5"/></marker>
+    </defs>
+
+    <!-- ===== 泳道 ===== -->
+    <g font-size="11.5" font-weight="700">
+      <rect x="30" y="40" width="150" height="30" rx="6" fill="#1b2430" stroke="#34d399" stroke-opacity="0.5"/>
+      <text x="105" y="60" text-anchor="middle" fill="#34d399">编辑器（前端）</text>
+      <rect x="240" y="40" width="150" height="30" rx="6" fill="#1b2430" stroke="#79d9ff" stroke-opacity="0.5"/>
+      <text x="315" y="60" text-anchor="middle" fill="#79d9ff">后端 · 命令层</text>
+      <rect x="450" y="40" width="150" height="30" rx="6" fill="#1b2430" stroke="#f4a261" stroke-opacity="0.5"/>
+      <text x="525" y="60" text-anchor="middle" fill="#f4a261">GameStatus</text>
+      <rect x="660" y="40" width="170" height="30" rx="6" fill="#1b2430" stroke="#e879f9" stroke-opacity="0.5"/>
+      <text x="745" y="60" text-anchor="middle" fill="#e879f9">生成管线 Generator</text>
+      <rect x="890" y="40" width="170" height="30" rx="6" fill="#1b2430" stroke="#a78bfa" stroke-opacity="0.5"/>
+      <text x="975" y="60" text-anchor="middle" fill="#a78bfa">eventQueue / 前端渲染</text>
+      <rect x="1120" y="40" width="140" height="30" rx="6" fill="#1b2430" stroke="#4ade80" stroke-opacity="0.5"/>
+      <text x="1190" y="60" text-anchor="middle" fill="#4ade80">路由守卫</text>
+    </g>
+
+    <!-- 生命线 -->
+    <g stroke="#8b98a5" stroke-width="1.1" stroke-dasharray="3 5" opacity="0.7">
+      <line x1="105" y1="70" x2="105" y2="1210"/>
+      <line x1="315" y1="70" x2="315" y2="1210"/>
+      <line x1="525" y1="70" x2="525" y2="1210"/>
+      <line x1="745" y1="70" x2="745" y2="1210"/>
+      <line x1="975" y1="70" x2="975" y2="1210"/>
+      <line x1="1190" y1="70" x2="1190" y2="1210"/>
+    </g>
+
+    <!-- ============ 阶段 1：启动 ============ -->
+    <g font-size="11">
+      <text x="105" y="100" fill="#8b98a5" font-weight="600">· 启动阶段</text>
+
+      <line x1="105" y1="118" x2="315" y2="118" stroke="#79d9ff" stroke-width="1.4" marker-end="url(#a)"/>
+      <text x="210" y="110" text-anchor="middle" fill="#e6edf3" font-size="10.5">startPreview(key)</text>
+
+      <line x1="315" y1="138" x2="315" y2="156" stroke="#f4a261" stroke-width="1.2"/>
+      <rect x="260" y="158" width="110" height="40" rx="6" fill="#241f17" stroke="#f4a261" stroke-opacity="0.5"/>
+      <text x="315" y="175" text-anchor="middle" fill="#e6edf3" font-size="10">rescan（增量 merge）</text>
+      <text x="315" y="190" text-anchor="middle" fill="#8b98a5" font-size="9">保留运行进度</text>
+
+      <line x1="315" y1="216" x2="525" y2="216" stroke="#f4a261" stroke-width="1.4" marker-end="url(#a)"/>
+      <text x="420" y="208" text-anchor="middle" fill="#e6edf3" font-size="10.5">resolve_preview_main_role</text>
+      <line x1="525" y1="216" x2="315" y2="216" stroke="#f4a261" stroke-width="1.4" marker-end="url(#a)"/>
+      <text x="420" y="236" text-anchor="middle" fill="#8b98a5" font-size="10">MAIN：羁绊→bound_character_folder</text>
+      <text x="420" y="252" text-anchor="middle" fill="#8b98a5" font-size="10">独立剧本→沿用当前主角</text>
+
+      <line x1="315" y1="270" x2="525" y2="270" stroke="#f4a261" stroke-width="1.4" marker-end="url(#a)"/>
+      <text x="420" y="262" text-anchor="middle" fill="#e6edf3" font-size="10.5">PreviewSession::begin 快照</text>
+      <line x1="525" y1="288" x2="315" y2="288" stroke="#f4a261" stroke-width="1.4" marker-end="url(#a)"/>
+      <rect x="250" y="290" width="130" height="66" rx="6" fill="#16202c" stroke="#f4a261" stroke-opacity="0.4"/>
+      <text x="315" y="308" text-anchor="middle" fill="#e6edf3" font-size="9.5">存：line_len · scene 快照</text>
+      <text x="315" y="324" text-anchor="middle" fill="#e6edf3" font-size="9.5">main/current role · script_status</text>
+      <text x="315" y="340" text-anchor="middle" fill="#e6edf3" font-size="9.5">user_name/subtitle</text>
+      <text x="315" y="356" text-anchor="middle" fill="#8b98a5" font-size="9">generation = ++preview_generation</text>
+
+      <!-- 搭场子 -->
+      <line x1="315" y1="374" x2="525" y2="374" stroke="#4ade80" stroke-width="1.3" marker-end="url(#aO)"/>
+      <text x="420" y="366" text-anchor="middle" fill="#4ade80" font-size="10.5">按「刚进游戏」搭场子</text>
+      <line x1="525" y1="392" x2="315" y2="392" stroke="#4ade80" stroke-width="1.3" marker-end="url(#aO)"/>
+      <text x="420" y="416" text-anchor="middle" fill="#8b98a5" font-size="10">清空在场角色 → 只留主角 onstage</text>
+      <text x="420" y="432" text-anchor="middle" fill="#8b98a5" font-size="10">写主角人设 SYSTEM 台词</text>
+
+      <line x1="315" y1="452" x2="105" y2="452" stroke="#79d9ff" stroke-width="1.4" marker-end="url(#a)"/>
+      <text x="210" y="444" text-anchor="middle" fill="#e6edf3" font-size="10.5">返回 { generation }</text>
+    </g>
+
+    <!-- ============ 阶段 2：前端快照 ============ -->
+    <g font-size="11">
+      <line x1="105" y1="470" x2="975" y2="470" stroke="#4ade80" stroke-width="1.3" marker-end="url(#aO)"/>
+      <text x="460" y="462" text-anchor="middle" fill="#4ade80" font-size="10.5">previewing = true → PreviewStage watch 触发</text>
+
+      <rect x="360" y="486" width="260" height="74" rx="6" fill="#101c28" stroke="#34d399" stroke-opacity="0.45"/>
+      <text x="490" y="506" text-anchor="middle" fill="#e6edf3" font-size="10">前端双快照 + 清场</text>
+      <text x="490" y="524" text-anchor="middle" fill="#8b98a5" font-size="9.5">gameStore 快照（立绘/台词/角色缓存…）</text>
+      <text x="490" y="542" text-anchor="middle" fill="#8b98a5" font-size="9.5">场景渲染快照（settingsStore + uiStore）</text>
+      <text x="490" y="560" text-anchor="middle" fill="#8b98a5" font-size="9.5">eventQueue.clear() → resume()</text>
+
+      <line x1="975" y1="578" x2="105" y2="578" stroke="#4ade80" stroke-width="1.2" marker-end="url(#aO)"/>
+    </g>
+
+    <!-- ============ 阶段 3：试玩运行 ============ -->
+    <g font-size="11">
+      <text x="105" y="612" fill="#8b98a5" font-weight="600">· 试玩运行（复用真引擎）</text>
+
+      <rect x="60" y="630" width="460" height="92" rx="8" fill="#241f17" stroke="#f4a261" stroke-opacity="0.5"/>
+      <text x="290" y="652" text-anchor="middle" fill="#e6edf3" font-size="11">tokio::spawn：init_script → run_script → on_script_end(completed=false)</text>
+      <text x="290" y="674" text-anchor="middle" fill="#8b98a5" font-size="9.5">事件执行过程中，ai_dialogue / free_dialogue 捕获</text>
+      <text x="290" y="692" text-anchor="middle" fill="#8b98a5" font-size="9.5">「当前 preview_generation」到 GeneratorDeps.generation，is_preview = true</text>
+      <text x="290" y="710" text-anchor="middle" fill="#8b98a5" font-size="9.5">回复带 preview_gen 标记，逐句写入 line_list</text>
+
+      <line x1="745" y1="668" x2="525" y2="668" stroke="#e879f9" stroke-width="1.4" marker-end="url(#a)"/>
+      <text x="640" y="660" text-anchor="middle" fill="#e879f9" font-size="10">生成回复（捕获代号 G）</text>
+      <line x1="525" y1="668" x2="745" y2="668" stroke="#e879f9" stroke-width="1.4" marker-end="url(#a)"/>
+      <text x="640" y="686" text-anchor="middle" fill="#8b98a5" font-size="9.5">add_assistant_line 比对：代号一致 → 写入</text>
+
+      <line x1="745" y1="712" x2="975" y2="712" stroke="#e879f9" stroke-width="1.4" marker-end="url(#a)"/>
+      <text x="860" y="704" text-anchor="middle" fill="#e879f9" font-size="10">emit ai:reply { preview_gen }</text>
+      <text x="860" y="726" text-anchor="middle" fill="#8b98a5" font-size="9.5">isStalePreviewReply：当前在试玩且代号一致 → 入队</text>
+    </g>
+
+    <!-- ============ 阶段 4：中止场景 ============ -->
+    <g font-size="11">
+      <text x="105" y="786" fill="#8b98a5" font-weight="600">· 中止 / 结束场景（重点：迟到事件）</text>
+
+      <line x1="105" y1="806" x2="315" y2="806" stroke="#79d9ff" stroke-width="1.4" marker-end="url(#a)"/>
+      <text x="210" y="798" text-anchor="middle" fill="#e6edf3" font-size="10.5">stopPreview()（或试玩自然跑完）</text>
+
+      <line x1="315" y1="826" x2="525" y2="826" stroke="#f87171" stroke-width="1.4" marker-end="url(#aR)"/>
+      <text x="420" y="818" text-anchor="middle" fill="#f87171" font-size="10">abort 任务 + 立即还原</text>
+      <line x1="525" y1="844" x2="315" y2="844" stroke="#f87171" stroke-width="1.4" marker-end="url(#aR)"/>
+
+      <rect x="240" y="850" width="150" height="80" rx="6" fill="#16202c" stroke="#f87171" stroke-opacity="0.4"/>
+      <text x="315" y="870" text-anchor="middle" fill="#f87171" font-size="10">PreviewSession::restore</text>
+      <text x="315" y="888" text-anchor="middle" fill="#8b98a5" font-size="9.5">truncate line_list</text>
+      <text x="315" y="904" text-anchor="middle" fill="#8b98a5" font-size="9.5">apply_snapshot + 三字段</text>
+      <text x="315" y="920" text-anchor="middle" fill="#8b98a5" font-size="9.5">refresh_memories</text>
+      <text x="315" y="936" text-anchor="middle" fill="#f87171" font-size="9">再 ++preview_generation → 代号过期</text>
+
+      <line x1="105" y1="952" x2="975" y2="952" stroke="#4ade80" stroke-width="1.2" marker-end="url(#aO)"/>
+      <text x="540" y="944" text-anchor="middle" fill="#4ade80" font-size="10.5">前端 restoreGameState + restoreSceneState + eventQueue.clear()</text>
+    </g>
+
+    <!-- 迟到事件丢弃 -->
+    <g font-size="11">
+      <rect x="700" y="976" width="300" height="120" rx="8" fill="#2a1a2a" stroke="#e879f9" stroke-width="1.4"/>
+      <text x="850" y="1000" text-anchor="middle" fill="#e879f9" font-size="11.5" font-weight="700">被中止任务的游离流式任务</text>
+      <text x="712" y="1022" font-size="10" fill="#e6edf3">仍持有旧代号 G，继续生成并尝试写入：</text>
+      <line x1="745" y1="1040" x2="525" y2="1040" stroke="#e879f9" stroke-width="1.2" marker-end="url(#aR)" stroke-dasharray="5 4"/>
+      <text x="620" y="1052" text-anchor="middle" fill="#f87171" font-size="9.5">add_assistant_line 守卫：G ≠ 当前代号</text>
+      <text x="620" y="1068" text-anchor="middle" fill="#f87171" font-size="9.5">→ 整条丢弃（含记忆同步）</text>
+      <line x1="745" y1="1086" x2="975" y2="1086" stroke="#e879f9" stroke-width="1.2" marker-end="url(#aR)" stroke-dasharray="5 4"/>
+      <text x="860" y="1074" text-anchor="middle" fill="#f87171" font-size="9.5">emit ai:reply { preview_gen: G }</text>
+      <text x="860" y="1090" text-anchor="middle" fill="#f87171" font-size="9.5">前端：!previewing 或代号不一致 → 丢弃</text>
+    </g>
+
+    <!-- 路由守卫 -->
+    <g font-size="11">
+      <line x1="105" y1="1120" x2="1190" y2="1120" stroke="#4ade80" stroke-width="1.3" marker-end="url(#aO)"/>
+      <text x="620" y="1112" text-anchor="middle" fill="#4ade80" font-size="10.5">导航离开 → onBeforeRouteLeave(cleanupBeforeExit) 阻塞</text>
+      <rect x="980" y="1136" width="250" height="66" rx="6" fill="#101c28" stroke="#4ade80" stroke-opacity="0.5"/>
+      <text x="1105" y="1156" text-anchor="middle" fill="#4ade80" font-size="10" font-weight="600">顺序 await：</text>
+      <text x="1105" y="1174" text-anchor="middle" fill="#8b98a5" font-size="9.5">stopPreview（后端还原完成）→</text>
+      <text x="1105" y="1190" text-anchor="middle" fill="#8b98a5" font-size="9.5">eventQueue.clear → flushPendingSave → syncEngine</text>
+      <text x="540" y="1200" text-anchor="middle" fill="#8b98a5" font-size="9.5">确保 MainChat 挂载时后端已还原、队列干净 —— 消除竞态</text>
+    </g>
+  </svg>
+</div>
+</body>
+</html>

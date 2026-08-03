@@ -38,7 +38,7 @@
       <Slider @change="updateAmbientVolume" v-model="ambientVolume"> {{ $t('settings.sound.slider.weakStrong') }} </Slider>
     </MenuItem>
 
-    <!-- 声音测试（放在音量滑块下方、环境音管理上方） -->
+    <!-- 声音测试 -->
     <MenuItem :title="$t('settings.sound.test.title')" size="small">
       <template #header>
         <FlaskConical :size="20" class="text-pink-400" />
@@ -138,27 +138,18 @@
         >
           <UploadCloud :size="18" /> {{ $t('settings.sound.bgm.add') }}
         </Button>
-        <!-- 修改为支持 multiple 多选 -->
-        <input
-          ref="fileInput"
-          type="file"
-          multiple
-          @change="handleFileSelect"
-          accept=".mp3,.wav,.flac,.webm,.weba,.ogg,.m4a"
-          class="hidden"
-        />
         <div class="flex-1 flex items-center justify-between gap-2">
-          <span class="text-xs text-gray-400 truncate w-24" v-if="selectedFiles.length > 0">
-            {{ $t('settings.sound.common.selectedCount', { count: selectedFiles.length }) }}
+          <span class="text-xs text-gray-400 truncate w-24" v-if="selectedPaths.length > 0">
+            {{ $t('settings.sound.common.selectedCount', { count: selectedPaths.length }) }}
           </span>
           <span class="text-xs text-gray-500 truncate w-24" v-else>{{ $t('settings.sound.common.noSelection') }}</span>
 
           <Button
             type="big"
             @click="uploadMusic"
-            :disabled="selectedFiles.length === 0"
+            :disabled="selectedPaths.length === 0"
             class="flex-1"
-            :class="{ 'opacity-50 cursor-not-allowed': selectedFiles.length === 0 }"
+            :class="{ 'opacity-50 cursor-not-allowed': selectedPaths.length === 0 }"
           >
             {{ $t('settings.sound.common.confirmUpload') }}
           </Button>
@@ -219,25 +210,17 @@
         >
           <UploadCloud :size="16" /> {{ $t('settings.sound.ambient.add') }}
         </Button>
-        <input
-          ref="ambientFileInput"
-          type="file"
-          multiple
-          @change="handleAmbientFileSelect"
-          accept=".mp3,.wav,.flac,.ogg,.m4a"
-          class="hidden"
-        />
         <div class="flex-1 flex items-center justify-between gap-2">
-          <span class="text-xs text-gray-400 truncate w-24" v-if="selectedAmbientFiles.length > 0">
-            {{ $t('settings.sound.common.selectedCount', { count: selectedAmbientFiles.length }) }}
+          <span class="text-xs text-gray-400 truncate w-24" v-if="selectedAmbientPaths.length > 0">
+            {{ $t('settings.sound.common.selectedCount', { count: selectedAmbientPaths.length }) }}
           </span>
           <span class="text-xs text-gray-500 truncate w-24" v-else>{{ $t('settings.sound.common.noSelection') }}</span>
           <Button
             type="big"
             @click="uploadAmbientFiles"
-            :disabled="selectedAmbientFiles.length === 0"
+            :disabled="selectedAmbientPaths.length === 0"
             class="flex-1"
-            :class="{ 'opacity-50 cursor-not-allowed': selectedAmbientFiles.length === 0 }"
+            :class="{ 'opacity-50 cursor-not-allowed': selectedAmbientPaths.length === 0 }"
           >
             {{ $t('settings.sound.common.confirmUpload') }}
           </Button>
@@ -318,6 +301,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { Button, Slider } from '../../base'
 import { MenuItem, MenuPage } from '../../ui'
 import {
@@ -394,8 +378,7 @@ const musicList = ref<MusicItem[]>([])
 const currentMusicName = ref(t('settings.sound.bgm.noMusicSelected'))
 
 // 批量上传状态
-const selectedFiles = ref<File[]>([])
-const fileInput = ref<HTMLInputElement | null>(null)
+const selectedPaths = ref<string[]>([])
 
 // 播放模式设定 (loop-list: 列表循环, loop-single: 单曲循环, random: 随机)
 type PlaybackMode = 'loop-list' | 'loop-single' | 'random'
@@ -488,8 +471,7 @@ const maxAmbientTracks = 8
 
 // 环境音文件库条目（服务端存储）
 const ambientFileList = ref<AmbientItem[]>([])
-const selectedAmbientFiles = ref<File[]>([])
-const ambientFileInput = ref<HTMLInputElement | null>(null)
+const selectedAmbientPaths = ref<string[]>([])
 
 // 从文件URL推断显示名称
 const inferTrackName = (src: string): string => {
@@ -515,8 +497,45 @@ const stopAllAmbient = () => {
 }
 
 // 触发环境音文件选择
-const triggerAmbientUpload = () => {
-  ambientFileInput.value?.click()
+// 打开系统文件对话框选择环境音（拿路径，避免读文件进内存）
+const triggerAmbientUpload = async () => {
+  const selected = await openDialog({
+    multiple: true,
+    filters: [{ name: 'Ambient', extensions: ['mp3', 'wav', 'flac', 'ogg', 'm4a'] }],
+  })
+  if (!selected) return
+  selectedAmbientPaths.value = extractDialogPaths(selected)
+}
+
+/**
+ * 从 openDialog 的返回中提取文件路径列表。
+ *
+ * 桌面端返回：string（单选）或 string[]（多选）
+ * Android 返回：{ files: string[] }（SAF content:// URI）
+ * 兼容两种格式，过滤空值。
+ */
+const extractDialogPaths = (selected: unknown): string[] => {
+  const raw = Array.isArray(selected)
+    ? selected
+    : selected && typeof selected === 'object' && 'files' in (selected as any)
+      ? (selected as any).files
+      : [selected]
+  return raw
+    .map((p: any) => (typeof p === 'string' ? p : p?.path))
+    .filter((p: any) => typeof p === 'string' && p.length > 0)
+}
+
+/**
+ * 从文件路径提取文件名，兼容 content:// URI（URL 编码）。
+ * decodeURIComponent 遇到非法 % 序列会抛 URIError，这里兜底返回原值。
+ */
+const decodePathFileName = (path: string): string => {
+  const last = path.split(/[\\/]/).pop() || path
+  try {
+    return decodeURIComponent(last).split('?')[0]
+  } catch {
+    return last.split('?')[0]
+  }
 }
 
 // 从服务端加载环境音列表
@@ -528,34 +547,23 @@ const loadAmbientList = async () => {
   }
 }
 
-// 处理环境音文件选择（暂存文件，等待确认上传）
-const handleAmbientFileSelect = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  if (target.files && target.files.length > 0) {
-    selectedAmbientFiles.value = Array.from(target.files)
-  } else {
-    selectedAmbientFiles.value = []
-  }
-  target.value = ''
-}
-
 // 确认上传已选环境音文件到服务端
 const uploadAmbientFiles = async () => {
-  if (selectedAmbientFiles.value.length === 0) {
+  if (selectedAmbientPaths.value.length === 0) {
     await dialogStore.alert(t('settings.sound.ambient.selectFilesFirst'))
     return
   }
   const allowedExts = ['.mp3', '.wav', '.flac', '.ogg', '.m4a']
   try {
-    await Promise.all(
-      selectedAmbientFiles.value.map(async (file) => {
-        const fileExt = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
-        if (!allowedExts.includes(fileExt)) throw new Error(t('settings.sound.common.unsupportedFormat', { name: file.name }))
-        const buf = await file.arrayBuffer()
-        await ambientUpload(file.name, new Uint8Array(buf))
-      }),
-    )
-    selectedAmbientFiles.value = []
+    // 串行上传（仅传源文件路径，Rust 侧复制）
+    for (const path of selectedAmbientPaths.value) {
+      // content:// URI 文件名是 URL 编码的，解码后才是真实文件名
+      const fileName = decodePathFileName(path)
+      const fileExt = fileName.slice(fileName.lastIndexOf('.')).toLowerCase()
+      if (!allowedExts.includes(fileExt)) throw new Error(t('settings.sound.common.unsupportedFormat', { name: fileName }))
+      await ambientUpload(path, fileName)
+    }
+    selectedAmbientPaths.value = []
     await loadAmbientList()
   } catch (error: any) {
     console.error('上传环境音失败:', error)
@@ -686,7 +694,7 @@ const deleteMusic = async (music: MusicItem) => {
 
 // 批量上传逻辑
 const uploadMusic = async () => {
-  if (selectedFiles.value.length === 0) {
+  if (selectedPaths.value.length === 0) {
     await dialogStore.alert(t('settings.sound.bgm.selectFilesFirst'))
     return
   }
@@ -694,20 +702,18 @@ const uploadMusic = async () => {
   const allowedExts = ['.mp3', '.wav', '.flac', '.webm', '.weba', '.ogg', '.m4a']
 
   try {
-    // 使用 Promise.all 进行并发上传
-    await Promise.all(
-      selectedFiles.value.map(async (file) => {
-        const fileExt = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
-        if (!allowedExts.includes(fileExt)) {
-          throw new Error(t('settings.sound.common.unsupportedFormat', { name: file.name }))
-        }
-        const buf = await file.arrayBuffer()
-        await musicUpload(file.name, new Uint8Array(buf))
-      }),
-    )
+    // 串行上传（仅传源文件路径，Rust 侧复制）
+    for (const path of selectedPaths.value) {
+      // content:// URI 文件名是 URL 编码的，解码后才是真实文件名
+      const fileName = decodePathFileName(path)
+      const fileExt = fileName.slice(fileName.lastIndexOf('.')).toLowerCase()
+      if (!allowedExts.includes(fileExt)) {
+        throw new Error(t('settings.sound.common.unsupportedFormat', { name: fileName }))
+      }
+      await musicUpload(path, fileName)
+    }
 
-    selectedFiles.value = []
-    if (fileInput.value) fileInput.value.value = ''
+    selectedPaths.value = []
     await loadMusicList()
     // alert('音乐上传成功') // 可选提示
   } catch (error: any) {
@@ -756,18 +762,16 @@ const handleStop = () => {
   }
 }
 
-const triggerFileUpload = () => {
-  fileInput.value?.click()
-}
-
-// 处理多文件选择
-const handleFileSelect = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  if (target.files && target.files.length > 0) {
-    selectedFiles.value = Array.from(target.files)
-  } else {
-    selectedFiles.value = []
-  }
+// 打开系统文件对话框选择音乐（仅拿路径）
+const triggerFileUpload = async () => {
+  const selected = await openDialog({
+    multiple: true,
+    filters: [
+      { name: 'Music', extensions: ['mp3', 'wav', 'flac', 'webm', 'weba', 'ogg', 'm4a'] },
+    ],
+  })
+  if (!selected) return
+  selectedPaths.value = extractDialogPaths(selected)
 }
 
 onMounted(async () => {

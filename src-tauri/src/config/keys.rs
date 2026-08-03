@@ -42,6 +42,9 @@ pub const USE_PERSISTENT_MEMORY: &str = "features.use_persistent_memory";
 pub const MEMORY_UPDATE_INTERVAL: &str = "features.memory_update_interval";
 pub const MEMORY_RECENT_WINDOW: &str = "features.memory_recent_window";
 
+// ========== TTS 本地引擎 ==========
+pub const ENABLE_LOCAL_TTS: &str = "features.enable_local_tts";
+
 // ========== TTS 适配器后端 URL ==========
 pub const SIMPLE_VITS_API_URL: &str = "tts.simple_vits_api_url";
 pub const BV2_API_URL: &str = "tts.bv2_api_url";
@@ -82,6 +85,20 @@ pub const ENABLE_IMPORTANT_DAY_REMINDER: &str = "ENABLE_IMPORTANT_DAY_REMINDER";
 // ========== 上帝 Agent（God Agent）多人对话 ==========
 pub const GOD_AGENT_MAX_CONSECUTIVE_NPC: &str = "god_agent.max_consecutive_npc";
 pub const GOD_AGENT_RECENT_WINDOW: &str = "god_agent.recent_window";
+
+// ========== Skill Agent（剧本编辑器 AI 助手） ==========
+/// Skill Agent 使用的 LLM provider ID；空表示跟随聊天主 LLM。
+pub const AGENT_PROVIDER_ID: &str = "agent.provider_id";
+/// Skill Agent 文件操作沙箱根目录；空表示默认 data/。
+pub const AGENT_SANDBOX_DIR: &str = "agent.sandbox_dir";
+/// execute_command 是否自动审批（无需用户确认）。
+pub const AGENT_AUTO_APPROVE_COMMANDS: &str = "agent.auto_approve_commands";
+/// 是否允许文件工具访问沙箱之外的任意路径。
+pub const AGENT_ALLOW_ANY_PATH: &str = "agent.allow_any_path";
+/// 单次对话的工具调用轮数上限。
+pub const AGENT_MAX_TOOL_ROUNDS: &str = "agent.max_tool_rounds";
+/// 自定义系统提示（可覆盖内置默认提示；技能列表与剧本上下文始终追加）。
+pub const AGENT_SYSTEM_PROMPT: &str = "agent.system_prompt";
 
 // ========== 创意工坊 ==========
 /// GitHub Personal Access Token（可选，用于 GraphQL 获取 upvote 数）

@@ -24,7 +24,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    
+
+    env:
+      CARGO_PROFILE_RELEASE_OPT_LEVEL: "s"
+      CARGO_PROFILE_RELEASE_STRIP: "true"
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,12 +46,6 @@ jobs:
       - name: 签出 lfs 文件
         run: git lfs pull
 
-      - name: 设置 pnpm store 缓存
-        uses: actions/cache@v4
-        with:
-          path: ~/.pnpm-store
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
-
       - name: 安装 Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -58,7 +56,8 @@ jobs:
         with:
           workspaces: ./src-tauri
           cache-targets: true
-          shared-key: ${{ runner.os }}-main-pnpm-tauri-build-android
+          shared-key: ${{ runner.os }}-release-pnpm-tauri-build-android
+          cache-on-failure: true
 
       - name: 安装 Linux 依赖 (Ubuntu)
         run: |
@@ -97,7 +96,7 @@ jobs:
           java-version: '21'
 
       - name: pnpm 安装依赖
-        run: pnpm i
+        run: pnpm i --frozen-lockfile
 
       - name: 生成图标
         run: |
@@ -106,6 +105,16 @@ jobs:
 
       - name: 准备 Android 项目
         run: pnpm android:prepare
+
+      - name: 缓存 Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('src-tauri/gen/android/**/*.gradle*', 'src-tauri/gen/android/**/gradle-wrapper.properties', 'src-tauri/gen/android/gradle/libs.versions.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
 
       - name: 配置 Android 签名
         run: |
@@ -124,7 +133,7 @@ jobs:
           VERSION="${{ github.event.inputs.tag_name }}"
           APK_DIR="src-tauri/gen/android/app/build/outputs/apk/universal/release"
           ORIGINAL_APK="$APK_DIR/app-universal-release-unsigned.apk"
-          
+
           if [[ -f "$ORIGINAL_APK" ]]; then
             NEW_NAME="LingChat-${VERSION}-universal.apk"
             mv "$ORIGINAL_APK" "$APK_DIR/$NEW_NAME"
@@ -137,9 +146,9 @@ jobs:
         run: |
           VERSION="${{ github.event.inputs.tag_name }}"
           APK_PATH="src-tauri/gen/android/app/build/outputs/apk/universal/release/LingChat-${VERSION}-universal.apk"
-          
+
           APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner 2>/dev/null | head -1)
-          
+
           $APKSIGNER sign \
             --ks $HOME/upload-keystore.p12 \
             --ks-key-alias ${{ secrets.ANDROID_KEY_ALIAS }} \
@@ -153,23 +162,23 @@ jobs:
         run: |
           TAG="${{ github.event.inputs.tag_name }}"
           APK_PATH="src-tauri/gen/android/app/build/outputs/apk/universal/release/LingChat-${TAG}-universal.apk"
-          
+
           if gh release view "$TAG" &>/dev/null; then
             echo "📦 Release $TAG 已存在，上传 APK..."
             gh release upload "$TAG" "$APK_PATH" --clobber
           else
             echo "✨ 创建新 Release: $TAG"
-            
+
             CMD="gh release create \"$TAG\" \"$APK_PATH\" --generate-notes"
-            
+
             if [[ -n "${{ github.event.inputs.release_title }}" ]]; then
               CMD="$CMD --title \"${{ github.event.inputs.release_title }}\""
             fi
-            
+
             if [[ "${{ github.event.inputs.is_prerelease }}" == "true" ]]; then
               CMD="$CMD --prerelease"
             fi
-            
+
             eval $CMD
           fi
         env:

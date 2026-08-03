@@ -119,6 +119,7 @@ export default {
   },
   proactivePage: {
     save: '保存',
+    success: '已保存成功',
     error: '错误: {message}',
   },
   calendarPage: {

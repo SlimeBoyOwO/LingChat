@@ -97,7 +97,7 @@ watch(
     if (newStatus === 'thinking') {
       const currentInteractRole = gameStore.currentInteractRole
       if (currentInteractRole) {
-        currentInteractRole.emotion = 'AI思考'
+        // 思考态不再写入 'AI思考' 伪情感，避免立绘组件因 emotion 残留而无法加载
         uiStore.showCharacterTitle = currentInteractRole.roleName
         uiStore.showCharacterSubtitle = currentInteractRole.roleSubTitle
       }

@@ -1,0 +1,23 @@
+# LingChat 剧本 NPC 角色模板
+# 用法：复制到 <剧本目录>/characters/<角色文件夹>/settings.yml
+# 最简单的方式：复制官方角色卡 + 添加 script_role_key 字段
+
+ai_name: 角色名
+ai_subtitle: 副标题
+body_part: null
+bubble_left: 25
+bubble_top: 5
+character_folder: 角色文件夹名
+
+# ★ 关键：剧本内唯一 id，剧本事件中用该 id 调用角色
+script_role_key: unique_role_key
+
+# 人设（可选）
+system_prompt: |
+  这里是角色的人设系统提示。
+system_prompt_example: |
+  这里是人设示例对话。
+
+info: 角色简介
+user_name: 对玩家的称呼
+clothes: 默认服装

@@ -1,0 +1,7 @@
+# 最小可运行剧本模板
+# 复制本目录内容到游戏 data/game_data/scripts/standalone/<剧本名>/ 下即可运行
+# 注意：文件夹名必须与 script_name 一致！
+
+script_name: '最小剧本示例'
+intro_chapter: '01.yaml'
+description: '这是一个最小可运行剧本，展示最基础的事件用法。'

@@ -1,0 +1,11 @@
+# LingChat 剧本配置文件模板
+# 用法：复制到 <剧本目录>/story_config.yaml，并替换占位内容
+# 注意：script_name 必须与剧本文件夹名完全一致！
+
+script_name: '你的剧本名'
+intro_chapter: '01.yaml'
+description: '在这里填写剧本描述'
+
+# ===== 可选：羁绊冒险配置（仅角色卡下剧本需要）=====
+# adventure:
+#   ...
