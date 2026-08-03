@@ -282,6 +282,9 @@ pub fn validate(
     let mut edges: Vec<ChapterEdge> = Vec::new();
     let mut vars_written: BTreeSet<String> = BTreeSet::new();
     let mut vars_read: BTreeSet<String> = BTreeSet::new();
+    // 「解锁成就」事件的键名：内置成就集合 + 本剧本已出现的键名（成就键名必须唯一）
+    let builtin_achievement_ids = crate::achievements::manager::builtin_achievement_ids();
+    let mut achievement_ids: HashMap<String, ()> = HashMap::new();
 
     for cid in &chapter_ids {
         let file = match paths::resolve_chapter_file(script_dir, cid, true) {
@@ -360,6 +363,39 @@ pub fn validate(
                     continue;
                 }
             };
+
+            // 成就事件的键名唯一性：内置成就与本剧本内都不能重名（重名会覆盖旧定义）
+            if ty == "unlock_achievement" {
+                if let Some(ach_id) = obj.get("achievement_id").and_then(|v| v.as_str()) {
+                    let id = ach_id.trim();
+                    if !id.is_empty() {
+                        if builtin_achievement_ids.iter().any(|b| *b == id) {
+                            diags.push(
+                                Diagnostic::event(
+                                    Severity::Error,
+                                    "achievement.id_conflicts_builtin",
+                                    cid,
+                                    i,
+                                    format!("「{}」和内置成就重名，会覆盖它的定义，请换个键名", id),
+                                )
+                                .with_field("achievement_id"),
+                            );
+                        }
+                        if achievement_ids.insert(id.to_string(), ()).is_some() {
+                            diags.push(
+                                Diagnostic::event(
+                                    Severity::Error,
+                                    "achievement.id_duplicated",
+                                    cid,
+                                    i,
+                                    format!("本剧本里已有成就「{}」，成就键名不能重复，请换个键名", id),
+                                )
+                                .with_field("achievement_id"),
+                            );
+                        }
+                    }
+                }
+            }
 
             // 必填字段
             for f in fields {

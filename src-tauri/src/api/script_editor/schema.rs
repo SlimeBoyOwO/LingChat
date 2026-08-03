@@ -447,7 +447,7 @@ pub fn build_schema() -> ScriptSchema {
                 FieldSpec::new("achievement_id", "成就键名", FieldKind::Text)
                     .required()
                     .placeholder("如：summer_star")
-                    .hint("给这个成就起的英文标识，全应用内唯一。运行到这条事件时会新建这个成就（重名会覆盖旧定义）"),
+                    .hint("给这个成就起的英文标识，不能与内置成就或本剧本其他成就重名（校验器会提示）"),
                 FieldSpec::new("title", "成就标题", FieldKind::Text)
                     .required()
                     .placeholder("如：夏日之星")

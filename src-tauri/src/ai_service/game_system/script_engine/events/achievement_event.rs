@@ -62,7 +62,9 @@ impl ScriptEvent for UnlockAchievementEvent {
         let state = ctx.app.state::<AppState>();
         let unlocked = {
             let mut mgr = state.achievement_manager.lock().await;
-            // 动态注册：成就键名全应用唯一，重名会覆盖之前的定义
+            // 动态注册：成就键名全应用唯一。编辑器校验器已拦截「与内置成就重名」
+            // 和「本剧本内重复」，这里仍保持注册语义作为兜底；重复执行同一事件
+            // 时 unlock 幂等（已解锁直接返回 None），不会重复广播。
             mgr.register_achievement(
                 id.to_string(),
                 AchievementDef {
