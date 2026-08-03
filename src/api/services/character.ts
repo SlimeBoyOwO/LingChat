@@ -147,3 +147,24 @@ export const getAvatarFile = async (
 ): Promise<string> => {
   return invoke('get_avatar_file', { characterFolder, emotion: '头像', clothesName })
 }
+
+// ========== 角色删除 ==========
+
+/**
+ * 删除一个 main 类型角色。
+ * @param roleId 要删除的角色 ID
+ * @param deleteResourceFolder 是否同时删除物理资源目录 game_data/characters/{folder}
+ */
+export const deleteCharacter = async (
+  roleId: number,
+  deleteResourceFolder: boolean,
+): Promise<void> => {
+  try {
+    await invoke('delete_character', {
+      roleId,
+      deleteResourceFolder,
+    })
+  } catch (error: any) {
+    throw new Error(typeof error === 'string' ? error : '删除角色失败')
+  }
+}

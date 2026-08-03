@@ -1,5 +1,4 @@
 use std::fs;
-use std::io::Write;
 
 use serde::{Deserialize, Serialize};
 use tauri_plugin_store::StoreExt;
@@ -97,12 +96,7 @@ pub fn get_music_file(filename: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn upload_music(file_name: String, file_data: Vec<u8>) -> Result<Vec<MusicItemInfo>, String> {
-    let music_dir = music_dir();
-    if !music_dir.exists() {
-        fs::create_dir_all(&music_dir).map_err(|e| format!("创建音乐目录失败: {}", e))?;
-    }
-
+pub async fn upload_music(app: tauri::AppHandle, path: String, file_name: String) -> Result<(), String> {
     // 安全检查：只保留文件名，防止路径遍历
     let safe_name = std::path::Path::new(&file_name)
         .file_name()
@@ -110,13 +104,30 @@ pub fn upload_music(file_name: String, file_data: Vec<u8>) -> Result<Vec<MusicIt
         .to_string_lossy()
         .into_owned();
 
-    let file_path = music_dir.join(&safe_name);
-    let mut f = fs::File::create(&file_path).map_err(|e| format!("创建文件失败: {}", e))?;
-    f.write_all(&file_data)
-        .map_err(|e| format!("写入文件失败: {}", e))?;
-    f.flush().map_err(|e| format!("刷新文件失败: {}", e))?;
+    let music_dir = music_dir();
+    if !music_dir.exists() {
+        tokio::fs::create_dir_all(&music_dir)
+            .await
+            .map_err(|e| format!("创建音乐目录失败: {}", e))?;
+    }
 
-    get_music_list()
+    let file_path = music_dir.join(&safe_name);
+
+    if path.starts_with("content://") {
+        // Android SAF：content:// URI 直接复制到目标文件（不经 IPC 传大文件）
+        use tauri_plugin_android_fs::{AndroidFsExt, FsUri};
+        app.android_fs_async()
+            .copy(&FsUri::from_uri(&path), &FsUri::from_path(&file_path))
+            .await
+            .map_err(|e| format!("SAF 复制音乐失败: {}", e))?;
+    } else {
+        // 桌面端：Rust 直接复制源文件
+        tokio::fs::copy(std::path::PathBuf::from(&path), &file_path)
+            .await
+            .map_err(|e| format!("复制文件失败: {}", e))?;
+    }
+
+    Ok(())
 }
 
 /// 删除指定音乐文件

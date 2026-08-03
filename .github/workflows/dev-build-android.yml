@@ -10,8 +10,8 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      CARGO_PROFILE_RELEASE_OPT_LEVEL: "0"
-      CARGO_PROFILE_RELEASE_STRIP: "true"
+      CARGO_PROFILE_RELEASE_OPT_LEVEL: '0'
+      CARGO_PROFILE_RELEASE_STRIP: 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +28,8 @@ jobs:
       - name: 安装 Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android
+          targets:
+            aarch64-linux-android
             #  armv7-linux-androideabi
             #  i686-linux-android
             #  x86_64-linux-android
@@ -107,17 +108,15 @@ jobs:
           keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
           password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           EOF
-          
+
       - name: 构建 Android APK
         run: pnpm android:build
-        
+
       - name: 手动签名 APK
         run: |
           VERSION="${{ github.event.inputs.tag_name }}"
           APK_PATH="src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk"
-          
           APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner 2>/dev/null | head -1)
-          
           $APKSIGNER sign \
             --ks $HOME/upload-keystore.p12 \
             --ks-key-alias ${{ secrets.ANDROID_KEY_ALIAS }} \

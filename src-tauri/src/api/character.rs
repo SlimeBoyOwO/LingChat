@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
 use crate::ai_service::types::CharacterSettings;
@@ -260,8 +260,10 @@ pub async fn get_character_list(
     let total = all_roles.len() as i64;
     let total_pages = ((total as f64) / (page_size as f64)).ceil() as i32;
     let start = ((page - 1) * page_size).max(0) as usize;
+    // 防御：start 可能 > len（极端：page 远超 total_pages），反向切片会 panic。
+    // 这里把 start 钳制到 len，使切片返回空数组而不是崩溃。
+    let start = start.min(all_roles.len());
     let end = (start + page_size as usize).min(all_roles.len());
-
     let page_roles = &all_roles[start..end];
 
     // Pre-compute adventure counts for all characters on this page
@@ -631,4 +633,87 @@ pub fn open_characters_folder() -> Result<(), String> {
 
     let path_str = char_dir.to_string_lossy().into_owned();
     open_folder(&path_str)
+}
+
+// ========== 角色删除 ==========
+
+/// 删除一个 main 类型角色（含关联存档、记忆、对话历史、物理资源目录）。
+///
+/// 校验链：
+/// 1. 角色存在
+/// 2. 不在系统保护列表（id ∈ {0, 1, 2}）
+/// 3. role_type == Main（NPC 由剧本管，system/user 不允许删）
+/// 4. 不在场（game_status.present_role_ids / current_role_id / main_role_id / onstage_role_ids 任一命中即拒绝）
+///
+/// 删除顺序：先物理资源（可选，用户确认），再 DB 级联（事务）。若失败：
+/// - 物理失败：整体放弃，DB 不动
+/// - DB 失败：物理已删但下次 rescan 会重新入库（可恢复）
+#[tauri::command]
+pub async fn delete_character(
+    app: AppHandle,
+    role_id: i32,
+    delete_resource_folder: bool,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let db = &state.db;
+
+    // ---- 1. 角色存在性 ----
+    let role = RoleRepo::get_role_by_id(db, role_id)
+        .await
+        .map_err(|e| format!("查询角色失败: {}", e))?
+        .ok_or_else(|| format!("角色 {} 不存在", role_id))?;
+
+    // ---- 2. 系统保护 ----
+    if RoleRepo::is_system_protected_role(role_id) {
+        return Err("无法删除".to_string());
+    }
+
+    // ---- 3. 角色类型校验 ----
+    if role.role_type != RoleType::Main {
+        return Err("只能删除 main 类型的主角色".to_string());
+    }
+
+    // ---- 4. 在场校验（后端权威） ----
+    {
+        let service = state.ai_service.lock().await;
+        let gs = service.game_status.lock().await;
+        let onstage = gs.present_role_ids.contains(&role_id)
+            || gs.current_role_id == Some(role_id)
+            || gs.main_role_id == Some(role_id)
+            || gs.onstage_role_ids.contains(&role_id);
+        if onstage {
+            return Err(format!(
+                "角色「{}」正在对话中，无法删除",
+                role.name
+            ));
+        }
+    }
+
+    // ---- 5. 先删物理资源（可选） ----
+    if delete_resource_folder {
+        if let Some(folder) = &role.resource_folder {
+            let base = characters_dir();
+            let target = base.join(folder);
+            // 路径穿越防护
+            super::validate_path_in_base(&target, &base)?;
+            if target.exists() {
+                if let Err(e) = fs::remove_dir_all(&target) {
+                    return Err(format!("删除资源目录失败: {}", e));
+                }
+            }
+        }
+    }
+
+    // ---- 6. DB 级联删除（事务） ----
+    let deleted = RoleRepo::delete_main_role(db, role_id)
+        .await
+        .map_err(|e| format!("删除角色失败: {}", e))?;
+    if !deleted {
+        return Err(format!("角色 {} 不存在或已被删除", role_id));
+    }
+
+    // ---- 7. 广播角色列表更新事件 ----
+    let _ = app.emit("role:list-updated", ());
+
+    Ok(())
 }

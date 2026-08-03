@@ -17,14 +17,14 @@
 
     <!-- 本地 TTS -->
     <div class="cursor-pointer transition-all duration-300" @click="emit('navigate', 'tts')">
-      <MenuItem title="本地 TTS" size="large">
+      <MenuItem :title="$t('advance.menu.ttsTitle')" size="large">
         <template #header>
           <AudioLines :size="20" />
         </template>
         <p class="text-white/50 text-sm leading-relaxed mb-3">
-          导入 DeBERTa 模型、分词器和人物语音，离线使用本地 TTS 引擎
+          {{ $t('advance.menu.ttsDesc') }}
         </p>
-        <Button type="big" icon="mic" :icon_size="18"> 进入本地 TTS 界面 </Button>
+        <Button type="big" icon="mic" :icon_size="18"> {{ $t('advance.menu.ttsButton') }} </Button>
       </MenuItem>
     </div>
 

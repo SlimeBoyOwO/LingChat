@@ -80,10 +80,9 @@
                   :key="index"
                   class="flex flex-col gap-2"
                 >
-                  <template v-if="!field.visibleIf || field.visibleIf(localSettings)">
-                    <label :for="field.key" class="text-[13px] text-white/60 font-medium"
-                      >{{ field.label }} ({{ field.key }})</label
-                    >
+                  <label :for="field.key" class="text-[13px] text-white/60 font-medium"
+                    >{{ field.label }} ({{ field.key }})</label
+                  >
                     <input
                       v-if="field.type === 'text' || field.type === 'number'"
                       :id="field.key"
@@ -116,7 +115,6 @@
                         {{ opt.label }}
                       </option>
                     </select>
-                  </template>
                 </div>
               </div>
 
@@ -172,25 +170,65 @@
 
         <!-- Footer -->
         <div
-          class="p-4 border-t border-white/10 flex justify-end gap-3 bg-[linear-gradient(180deg,rgba(255,255,255,0.05)_0%,rgba(255,255,255,0.1)_100%)]"
+          class="p-4 border-t border-white/10 flex justify-between gap-3 bg-[linear-gradient(180deg,rgba(255,255,255,0.05)_0%,rgba(255,255,255,0.1)_100%)]"
         >
-          <button
-            class="px-5 py-2 rounded-[20px] text-sm font-medium cursor-pointer transition-all duration-200 border-none bg-white/10 text-white hover:bg-white/20"
-            @click="handleClose"
-          >
-            {{ $t('settings.characterInfo.footer.cancel') }}
-          </button>
-          <button
-            class="px-5 py-2 rounded-[20px] text-sm font-medium cursor-pointer transition-all duration-200 border-none bg-[#5e72e4] text-white disabled:opacity-60 disabled:cursor-not-allowed hover:enabled:bg-[#4a5acf] hover:enabled:-translate-y-px hover:enabled:shadow-[0_4px_12px_rgba(94,114,228,0.3)]"
-            :disabled="saving"
-            @click="saveSettings"
-          >
-            <span
-              v-if="saving"
-              class="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"
-            ></span>
-            {{ saving ? $t('settings.characterInfo.footer.saving') : $t('settings.characterInfo.footer.save') }}
-          </button>
+          <!-- 危险操作区（左侧）：删除角色 -->
+          <div class="flex items-center">
+            <button
+              :disabled="deleteState.disabled"
+              :title="deleteState.disabled ? deleteState.reason : t('settings.characterInfo.delete.button')"
+              :class="[
+                'px-4 py-2 rounded-[20px] text-sm font-medium transition-all duration-200 border',
+                deleteState.disabled
+                  ? 'cursor-not-allowed border-white/10 bg-white/5 text-white/25'
+                  : 'border-red-400/30 bg-red-500/15 text-red-200 hover:bg-red-500/30 hover:-translate-y-px hover:shadow-[0_4px_12px_rgba(239,68,68,0.3)]',
+              ]"
+              @click="deleteState.disabled ? null : handleDelete()"
+            >
+              <span class="inline-flex items-center gap-1.5">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path
+                    d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+                  ></path>
+                  <line x1="10" y1="11" x2="10" y2="17"></line>
+                  <line x1="14" y1="11" x2="14" y2="17"></line>
+                </svg>
+                {{ t('settings.characterInfo.delete.button') }}
+              </span>
+            </button>
+          </div>
+
+          <!-- 普通操作（右侧）：取消/保存 -->
+          <div class="flex gap-3">
+            <button
+              class="px-5 py-2 rounded-[20px] text-sm font-medium cursor-pointer transition-all duration-200 border-none bg-white/10 text-white hover:bg-white/20"
+              @click="handleClose"
+            >
+              {{ $t('settings.characterInfo.footer.cancel') }}
+            </button>
+            <button
+              class="px-5 py-2 rounded-[20px] text-sm font-medium cursor-pointer transition-all duration-200 border-none bg-[#5e72e4] text-white disabled:opacity-60 disabled:cursor-not-allowed hover:enabled:bg-[#4a5acf] hover:enabled:-translate-y-px hover:enabled:shadow-[0_4px_12px_rgba(94,114,228,0.3)]"
+              :disabled="saving"
+              @click="saveSettings"
+            >
+              <span
+                v-if="saving"
+                class="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"
+              ></span>
+              {{ saving ? $t('settings.characterInfo.footer.saving') : $t('settings.characterInfo.footer.save') }}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -200,9 +238,16 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { getRoleSettings, updateRoleSettings } from '../../../api/services/character'
+import {
+  deleteCharacter as deleteCharacterApi,
+  getRoleSettings,
+  updateRoleSettings,
+} from '../../../api/services/character'
 import { Icon } from '../../base'
+import { isSystemProtectedRole } from '@/constants/character'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
+import { useGameStore } from '@/stores/modules/game'
+import { useUIStore } from '@/stores/modules/ui/ui'
 import * as TtsLocal from '../../../api/services/tts/tts-local'
 
 const props = defineProps<{
@@ -216,10 +261,64 @@ const emit = defineEmits(['close', 'saved'])
 const activeTab = ref('basic')
 const loading = ref(false)
 const saving = ref(false)
+const deleting = ref(false)
 const dialogStore = useDialogStore()
 const { t } = useI18n()
+const uiStore = useUIStore()
+const gameStore = useGameStore()
 const localSettings = ref<any>({})
 const installedVoices = ref<TtsLocal.VoiceRecord[]>([])
+
+// 删除按钮可用性：系统保护角色 / 在场角色不可删
+const deleteState = computed(() => {
+  if (!props.roleId) return { disabled: true, reason: t('settings.characterInfo.delete.systemProtected') }
+  if (isSystemProtectedRole(props.roleId)) {
+    return { disabled: true, reason: t('settings.characterInfo.delete.systemProtected') }
+  }
+  const onstage =
+    gameStore.mainRoleId === props.roleId ||
+    gameStore.presentRoleIds.includes(props.roleId)
+  if (onstage) {
+    return { disabled: true, reason: t('settings.characterInfo.delete.onstage') }
+  }
+  return { disabled: false, reason: '' }
+})
+
+// 单次 confirm，三件全删（DB + 存档 + 记忆 + 物理文件），避免二次 confirm 三态歧义
+const handleDelete = async () => {
+  if (!props.roleId || deleteState.value.disabled) return
+
+  const confirmed = await dialogStore.confirm(
+    t('settings.characterInfo.delete.confirmMessage', { title: props.title ?? t('settings.characterInfo.delete.button') }),
+    t('settings.characterInfo.delete.confirmTitle'),
+  )
+  if (!confirmed) return
+
+  deleting.value = true
+  try {
+    await deleteCharacterApi(props.roleId, true)
+
+    // 删除成功
+    uiStore.showSuccess({
+      title: t('settings.characterInfo.delete.successTitle'),
+      message: t('settings.characterInfo.delete.successMessage', {
+        title: props.title ?? t('settings.characterInfo.delete.button'),
+      }),
+    })
+
+    // 通知父组件刷新列表 + 关闭弹窗
+    emit('saved')
+    emit('close')
+  } catch (error: any) {
+    console.error('[SettingsCharacterInfo] 删除角色失败:', error)
+    uiStore.showError({
+      title: t('settings.characterInfo.delete.failTitle'),
+      message: typeof error === 'string' ? error : error?.message || '未知错误',
+    })
+  } finally {
+    deleting.value = false
+  }
+}
 
 async function refreshLocalVoices(): Promise<void> {
   try {
@@ -331,7 +430,7 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
         { label: 'gsv', value: 'gsv' },
         { label: 'aivis', value: 'aivis' },
         { label: 'opentts', value: 'opentts' },
-        { label: '本地 SBV2 API', value: 'localsbv2api' },
+        { label: t('settings.characterInfo.fields.localSbv2Api'), value: 'localsbv2api' },
         { label: 'indextts2', value: 'indextts2' },
       ],
     },
@@ -466,11 +565,11 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
     {
       key: 'sbv2_local_voice_id',
       parent: 'voice_models',
-      label: '本地语音 ID',
+      label: t('settings.characterInfo.fields.localVoiceId'),
       type: 'select',
       dynamicOptions: () =>
         installedVoices.value.length === 0
-          ? [{ label: '未安装本地模型（请先在 TTS 设置中导入）', value: '' }]
+          ? [{ label: t('settings.characterInfo.fields.noLocalModel'), value: '' }]
           : installedVoices.value.map((voice) => ({
               label: voice.display_name
                 ? `${voice.display_name} (${voice.voice_id})`
@@ -482,7 +581,7 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
     {
       key: 'sbv2_local_speaker_id',
       parent: 'voice_models',
-      label: '说话人 ID',
+      label: t('settings.characterInfo.fields.speakerId'),
       type: 'number',
       step: '1',
       visibleIf: (s) => s.tts_type === 'localsbv2api',
@@ -490,7 +589,7 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
     {
       key: 'sbv2_local_style_id',
       parent: 'voice_models',
-      label: '风格 ID',
+      label: t('settings.characterInfo.fields.styleId'),
       type: 'number',
       step: '1',
       visibleIf: (s) => s.tts_type === 'localsbv2api',
@@ -498,7 +597,7 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
     {
       key: 'sbv2_local_length_scale',
       parent: 'voice_models',
-      label: '长度缩放 (length_scale)',
+      label: t('settings.characterInfo.fields.lengthScale'),
       type: 'number',
       step: '0.05',
       visibleIf: (s) => s.tts_type === 'localsbv2api',
@@ -506,7 +605,7 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
     {
       key: 'sbv2_local_sdp_ratio',
       parent: 'voice_models',
-      label: 'SDP 噪声比',
+      label: t('settings.characterInfo.fields.sdpRatio'),
       type: 'number',
       step: '0.05',
       visibleIf: (s) => s.tts_type === 'localsbv2api',
@@ -514,26 +613,26 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
     {
       key: 'sbv2_local_cloud_fallback_model',
       parent: 'voice_models',
-      label: '本地 TTS 云端备用模型',
+      label: t('settings.characterInfo.fields.cloudFallbackModel'),
       type: 'text',
-      placeholder: '本地 TTS 关闭时使用，可留空',
+      placeholder: t('settings.characterInfo.fields.cloudFallbackPlaceholder'),
       visibleIf: (s) => s.tts_type === 'localsbv2api',
     },
     {
       key: 'sbv2_local_cloud_fallback_speaker_id',
       parent: 'voice_models',
-      label: '本地 TTS 云端备用说话人 ID',
+      label: t('settings.characterInfo.fields.cloudFallbackSpeakerId'),
       type: 'text',
-      placeholder: '本地 TTS 关闭时使用，可留空',
+      placeholder: t('settings.characterInfo.fields.cloudFallbackPlaceholder'),
       visibleIf: (s) => s.tts_type === 'localsbv2api',
     },
     {
       key: 'opentts_voice',
-      label: 'OpenTTS 音色标识',
+      label: t('settings.characterInfo.fields.openttsVoiceLabel'),
       type: 'text',
       isVoiceModel: true,
       realtime: true,
-      placeholder: '留空则使用高级设置中的全局音色标识',
+      placeholder: t('settings.characterInfo.fields.openttsVoicePlaceholder'),
       visibleIf: (s) => s.tts_type === 'opentts',
     },
   ],
@@ -545,7 +644,9 @@ const currentTabConfig = computed(() => schemas.value[activeTab.value])
 
 // voice model 子区域已移除，所有字段统一在主表单渲染
 const currentTabFields = computed(() => {
-  return currentTabConfig.value || []
+  const fields = currentTabConfig.value || []
+  // 过滤掉当前不可见的字段（visibleIf 为 false），避免留下空 div 占位
+  return fields.filter((field) => !field.visibleIf || field.visibleIf(localSettings.value))
 })
 
 const ensureVoiceModels = () => {

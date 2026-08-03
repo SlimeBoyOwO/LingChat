@@ -108,7 +108,8 @@ pub async fn execute_command(
         std::path::PathBuf::from(cwd.trim())
     };
 
-    let output = if cfg!(windows) {
+    #[cfg(windows)]
+    let output = {
         // raw_arg 原样传命令，避免 std 自动加引号被 cmd.exe 自己的一套引号规则弄坏内层引号
         tokio::process::Command::new("cmd")
             .arg("/C")
@@ -116,7 +117,9 @@ pub async fn execute_command(
             .current_dir(cwd_path)
             .output()
             .await
-    } else {
+    };
+    #[cfg(not(windows))]
+    let output = {
         tokio::process::Command::new("sh")
             .arg("-c")
             .arg(command)

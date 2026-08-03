@@ -509,6 +509,7 @@ pub fn run() {
             api::character::get_avatar_file,
             api::character::select_clothes,
             api::character::update_role_settings,
+            api::character::delete_character,
             api::character::open_characters_folder,
             api::background::get_background_list,
             api::background::get_background_file,

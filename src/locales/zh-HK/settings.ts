@@ -344,6 +344,19 @@ export default {
       "offsetYP": "桌寵垂直偏移",
       "ttsType": "TTS 類型",
       "voiceLang": "語音語言",
+      "localVoiceId": "本地語音 ID",
+      "noLocalModel": "未安裝本機模型（請先在 TTS 設定中匯入）",
+      "speakerId": "說話人 ID",
+      "styleId": "風格 ID",
+      "lengthScale": "長度縮放 (length_scale)",
+      "sdpRatio": "SDP 噪聲比",
+      "cloudFallbackModel": "本地 TTS 雲端備用模型",
+      "cloudFallbackSpeakerId": "本地 TTS 雲端備用說話人 ID",
+      "cloudFallbackPlaceholder": "本地 TTS 關閉時使用，可留空",
+      "openttsVoicePlaceholder": "留空則使用進階設定中的全域音色標識",
+      "localSbv2Api": "本地 SBV2 API",
+      "openttsVoiceLabel": "OpenTTS 音色標識",
+
       "openttsVoice": "OpenTTS 音色標識"
     },
     "placeholders": {
@@ -365,6 +378,16 @@ export default {
       "cancel": "取消",
       "save": "儲存更改",
       "saving": "儲存緊..."
+    },
+    "delete": {
+      "button": "刪除角色",
+      "confirmTitle": "刪除角色",
+      "confirmMessage": "確定要刪除角色「{title}」嗎？\n此操作會同時刪除該角色的所有存檔、記憶和角色檔案。\n\n此操作不可復原。",
+      "successTitle": "刪除成功",
+      "successMessage": "角色「{title}」已刪除",
+      "failTitle": "刪除失敗",
+      "systemProtected": "系統保護角色，無法刪除",
+      "onstage": "該角色在場，請退場後刪除"
     },
     "messages": {
       "realtimeUpdateFailed": "即時更新 {label} 失敗，睇下控制台日誌",
@@ -820,5 +843,90 @@ export default {
       "godAgentSwitched": "上帝Agent轉咗，已經生效！",
       "switchFailed": "切換失敗: {error}"
     }
-  }
-}
+  },
+  "tts": {
+    "title": "本地 TTS",
+    "switch": {
+      "label": "全域本地 TTS",
+      "enabled": "已啟用",
+      "disabled": "已關閉，使用雲端 TTS"
+    },
+    "engine": {
+      "label": "本地引擎",
+      "loading": "載入中",
+      "ready": "已就緒",
+      "notReady": "未就緒"
+    },
+    "deberta": {
+      "label": "DeBERTa 與分詞器",
+      "installed": "已安裝",
+      "missing": "缺失",
+      "warning": "缺少 DeBERTa 模型或分詞器，人物語音無法載入，也無法試聽。"
+    },
+    "voices": {
+      "label": "人物語音",
+      "count": "{count} 個"
+    },
+    "refresh": "重新整理狀態",
+    "download": {
+      "title": "模型下載",
+      "subtitle": "從 ModelScope 一鍵拉取本地 TTS 所需的全部檔案",
+      "installed": "已安裝",
+      "downloading": "下載中",
+      "retry": "重試下載",
+      "start": "下載"
+    },
+    "import": {
+      "title": "本機匯入",
+      "subtitle": "支援原始模型檔案、ZIP 和 7z 壓縮檔",
+      "deberta": "匯入 DeBERTa",
+      "tokenizer": "匯入分詞器",
+      "voice": "匯入語音",
+      "voiceIdPlaceholder": "語音 ID（可選）"
+    },
+    "styleVectors": {
+      "title": "補齊 style_vectors",
+      "subtitle": ".onnx 語音需要同名的 style_vectors.json 才能在本地 TTS 中啟用",
+      "placeholder": "選擇需要補齊的語音",
+      "import": "匯入 style_vectors",
+      "builtin": "style_vectors 已內建",
+      "configured": "style_vectors 已配置",
+      "missing": "缺少 style_vectors"
+    },
+    "installed": {
+      "title": "已安裝語音",
+      "subtitle": "{count} 個可用人物模型",
+      "empty": "暫無人物語音",
+      "deleteVoice": "刪除語音"
+    },
+    "preview": {
+      "title": "試聽",
+      "subtitle": "輸入內容並選擇已安裝的人物語音",
+      "placeholder": "輸入試聽文字",
+      "voiceModel": "語音模型",
+      "select": "請選擇",
+      "lengthScale": "長度倍率 {value}（1.0 = 正常）",
+      "randomness": "隨機度 {value}",
+      "generating": "生成中",
+      "generate": "生成試聽"
+    },
+    "messages": {
+      "readStatusFailed": "讀取本地 TTS 狀態失敗：{error}",
+      "importSuccessDeberta": "DeBERTa 已匯入",
+      "importSuccessTokenizer": "分詞器已匯入",
+      "importFailed": "匯入失敗：{error}",
+      "importVoiceSuccess": "語音 {voiceId} 已匯入",
+      "styleVectorsNeedSelect": "請先選擇需要補齊 style_vectors 的語音",
+      "styleVectorsSuccess": "{target} 的 style_vectors 已匯入",
+      "deleteConfirm": "確定刪除語音「{name}」嗎？",
+      "deleteConfirmTitle": "刪除本地語音",
+      "deleteSuccess": "語音已刪除",
+      "deleteFailed": "刪除失敗：{error}",
+      "previewFailed": "試聽失敗：{error}",
+      "readSwitchFailed": "讀取本地 TTS 開關失敗：{error}",
+      "switchEnabled": "本地 TTS 已啟用。",
+      "switchEnabledNotReady": "本地 TTS 已啟用，但引擎未就緒（缺少 DeBERTa 模型或分詞器，請先下載）。",
+      "switchDisabled": "本地 TTS 已關閉，如需使用雲端 TTS，請將角色語音切換為「雲端」並重新啟動應用程式。",
+      "saveSwitchFailed": "儲存本地 TTS 開關失敗：{error}"
+    }
+  },}

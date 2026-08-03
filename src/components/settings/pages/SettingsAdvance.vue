@@ -28,7 +28,7 @@
             : 'text-white/60 hover:text-white/80'"
           @click="advanceTab = 'tts'"
         >
-          本地 TTS
+          {{ $t('advance.tabs.tts') }}
         </button>
         <button
           class="px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200"
