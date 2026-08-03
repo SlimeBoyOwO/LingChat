@@ -437,6 +437,26 @@ pub fn build_schema() -> ScriptSchema {
                 FieldSpec::new("fade", "淡入淡出", FieldKind::Bool),
             ],
         },
+        // ---------- 成就 ----------
+        EventSpec {
+            type_key: "unlock_achievement",
+            label: "解锁成就",
+            category: "成就",
+            color: "#fbbf24",
+            fields: vec![
+                FieldSpec::new("achievement_id", "成就键名", FieldKind::Text)
+                    .required()
+                    .placeholder("如：summer_star")
+                    .hint("给这个成就起的英文标识，全应用内唯一。运行到这条事件时会新建这个成就（重名会覆盖旧定义）"),
+                FieldSpec::new("title", "成就标题", FieldKind::Text)
+                    .required()
+                    .placeholder("如：夏日之星")
+                    .hint("玩家在成就列表里看到的成就名字"),
+                FieldSpec::new("description", "成就描述", FieldKind::Textarea)
+                    .required()
+                    .hint("达成条件说明，展示给玩家看"),
+            ],
+        },
     ];
 
     let common_fields = vec![
@@ -523,7 +543,7 @@ pub fn build_schema() -> ScriptSchema {
         condition_syntax: ConditionSyntax {
             supported: vec!["var == 值", "var != 值", "var（真值判断）"],
             unsupported: vec![">", "<", ">=", "<=", "&&", "||", "!", "括号", "算术"],
-            note: "比较是按文字逐个比对的。没赋过值的变量：比「等于」永远不成立，比「不等于」永远成立。注意「大于/小于」这类比较不支持：写 hp >= 5 不会报错，但会被当成一个名叫 \"hp >= 5\" 的变量去查，结果永远不成立。",
+            note: "比较是按文字逐个比对的。没赋过值的变量不会正常运作，先用「设置变量」给它赋个值再比较。注意「大于/小于」这类比较不支持：写 hp >= 5 不会报错，但会被当成一个名叫 \"hp >= 5\" 的变量去查，结果不会正常运作。",
         },
     }
 }
@@ -539,7 +559,7 @@ mod tests {
     /// 对照表：任何一侧增删事件都会让这个测试失败，逼着两边同步。
     #[test]
     fn schema_covers_every_registered_event_type() {
-        const ENGINE_EVENT_TYPES: [&str; 16] = [
+        const ENGINE_EVENT_TYPES: [&str; 17] = [
             "narration",
             "player",
             "dialogue",
@@ -556,6 +576,7 @@ mod tests {
             "music",
             "sound",
             "ambient",
+            "unlock_achievement",
         ];
 
         let schema = build_schema();
@@ -566,7 +587,7 @@ mod tests {
         let extra: Vec<_> = in_schema.difference(&in_engine).collect();
         assert!(missing.is_empty(), "schema 缺少事件类型: {:?}", missing);
         assert!(extra.is_empty(), "schema 有引擎不认识的事件类型: {:?}", extra);
-        assert_eq!(schema.events.len(), 16);
+        assert_eq!(schema.events.len(), 17);
     }
 
     #[test]

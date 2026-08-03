@@ -87,6 +87,18 @@ const condField = (cond: Record<string, unknown>, key: string) => {
   return v === undefined || v === null ? '' : String(v)
 }
 
+/** 可供前置的羁绊冒险（排除当前剧本自己）：显示名（目录名），值 = 目录名（引擎按它匹配完成记录） */
+const adventureOptions = computed(() =>
+  store.scripts
+    .filter((p) => p.isAdventure && p.folderName !== store.detail?.package.folderName)
+    .map((p) => ({
+      value: p.folderName,
+      label: p.scriptName ? `${p.scriptName}（${p.folderName}）` : p.folderName,
+    })),
+)
+
+const adventureOptionValues = computed(() => adventureOptions.value.map((o) => o.value))
+
 const onCondType = (i: number, e: Event) => {
   const t = (e.target as HTMLSelectElement).value
   const next = [...conditions.value]
@@ -142,11 +154,6 @@ const saveConfig = () => {
           :size="20"
         />
       </template>
-
-      <p class="mb-[0.9rem] rounded-xl border border-white/10 bg-black/16 px-[0.85rem] py-[0.7rem] text-[0.76rem] leading-[1.85] text-white/60">
-        改写 <code class="font-mono text-brand">story_config.yaml</code> 会丢掉文件里的 YAML 注释（六个官方剧本的
-        config 都带中文注释）。保存前会自动留一份 <code class="font-mono text-brand">.bak</code>。
-      </p>
 
       <div
         v-for="f in store.schema?.storyConfigFields ?? []"
@@ -295,6 +302,50 @@ const saveConfig = () => {
                   :value="condField(cond, f.key)"
                   @change="(e) => onCondNumber(i, f.key, e)"
                 />
+                <!-- 成就条件：下拉直选已有成就，不用记英文键名 -->
+                <select
+                  v-else-if="f.key === 'achievement_id' && String(cond.type ?? '') === 'achievement_unlocked'"
+                  class="flex-1 min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
+                  :value="condField(cond, f.key)"
+                  @change="(e) => onCondField(i, f.key, (e.target as HTMLSelectElement).value)"
+                >
+                  <option value="">（不设置）</option>
+                  <option
+                    v-if="condField(cond, f.key) && !(condField(cond, f.key) in store.achievements)"
+                    :value="condField(cond, f.key)"
+                  >
+                    {{ condField(cond, f.key) }}
+                  </option>
+                  <option
+                    v-for="(title, id) in store.achievements"
+                    :key="id"
+                    :value="id"
+                  >
+                    {{ title }}（{{ id }}）
+                  </option>
+                </select>
+                <!-- 冒险前置条件：下拉直选其他羁绊冒险 -->
+                <select
+                  v-else-if="f.key === 'adventure_folder' && String(cond.type ?? '') === 'adventure_completed'"
+                  class="flex-1 min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
+                  :value="condField(cond, f.key)"
+                  @change="(e) => onCondField(i, f.key, (e.target as HTMLSelectElement).value)"
+                >
+                  <option value="">（不设置）</option>
+                  <option
+                    v-if="condField(cond, f.key) && !adventureOptionValues.includes(condField(cond, f.key))"
+                    :value="condField(cond, f.key)"
+                  >
+                    {{ condField(cond, f.key) }}
+                  </option>
+                  <option
+                    v-for="o in adventureOptions"
+                    :key="o.value"
+                    :value="o.value"
+                  >
+                    {{ o.label }}
+                  </option>
+                </select>
                 <input
                   v-else
                   class="flex-1 min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"

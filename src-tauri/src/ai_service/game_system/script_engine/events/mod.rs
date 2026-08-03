@@ -5,6 +5,7 @@
 //! 再由 `create_event()` 按 type 查找。
 
 // 事件处理器子模块
+pub mod achievement_event;
 pub mod ai_dialogue_event;
 pub mod ambient_event;
 pub mod background_effect_event;

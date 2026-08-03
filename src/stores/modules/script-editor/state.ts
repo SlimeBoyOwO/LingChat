@@ -49,6 +49,8 @@ interface State {
   previewGeneration: number | null
   readiness: PreviewReadiness | null
   globalCharacters: GlobalCharacter[]
+  /** 全局成就列表（成就 id → 标题），供解锁条件/成就事件的成就下拉选项 */
+  achievements: Record<string, string>
   assetFiles: { script: AssetFileIndex | null; global: AssetFileIndex | null }
   level: 'flow' | 'chapter'
   tab:
@@ -101,6 +103,7 @@ export const useEditorState = () => {
   const previewGeneration = ref<number | null>(null)
   const readiness = ref<PreviewReadiness | null>(null)
   const globalCharacters = ref<GlobalCharacter[]>([])
+  const achievements = ref<Record<string, string>>({})
   const assetFiles = ref<{ script: AssetFileIndex | null; global: AssetFileIndex | null }>({
     script: null,
     global: null,
@@ -128,6 +131,7 @@ export const useEditorState = () => {
     previewGeneration,
     readiness,
     globalCharacters,
+    achievements,
     assetFiles,
     level,
     tab,
