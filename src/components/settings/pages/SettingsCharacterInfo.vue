@@ -80,10 +80,9 @@
                   :key="index"
                   class="flex flex-col gap-2"
                 >
-                  <template v-if="!field.visibleIf || field.visibleIf(localSettings)">
-                    <label :for="field.key" class="text-[13px] text-white/60 font-medium"
-                      >{{ field.label }} ({{ field.key }})</label
-                    >
+                  <label :for="field.key" class="text-[13px] text-white/60 font-medium"
+                    >{{ field.label }} ({{ field.key }})</label
+                  >
                     <input
                       v-if="field.type === 'text' || field.type === 'number'"
                       :id="field.key"
@@ -116,7 +115,6 @@
                         {{ opt.label }}
                       </option>
                     </select>
-                  </template>
                 </div>
               </div>
 
@@ -331,7 +329,7 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
         { label: 'gsv', value: 'gsv' },
         { label: 'aivis', value: 'aivis' },
         { label: 'opentts', value: 'opentts' },
-        { label: '本地 SBV2 API', value: 'localsbv2api' },
+        { label: t('settings.characterInfo.fields.localSbv2Api'), value: 'localsbv2api' },
         { label: 'indextts2', value: 'indextts2' },
       ],
     },
@@ -466,11 +464,11 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
     {
       key: 'sbv2_local_voice_id',
       parent: 'voice_models',
-      label: '本地语音 ID',
+      label: t('settings.characterInfo.fields.localVoiceId'),
       type: 'select',
       dynamicOptions: () =>
         installedVoices.value.length === 0
-          ? [{ label: '未安装本地模型（请先在 TTS 设置中导入）', value: '' }]
+          ? [{ label: t('settings.characterInfo.fields.noLocalModel'), value: '' }]
           : installedVoices.value.map((voice) => ({
               label: voice.display_name
                 ? `${voice.display_name} (${voice.voice_id})`
@@ -482,7 +480,7 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
     {
       key: 'sbv2_local_speaker_id',
       parent: 'voice_models',
-      label: '说话人 ID',
+      label: t('settings.characterInfo.fields.speakerId'),
       type: 'number',
       step: '1',
       visibleIf: (s) => s.tts_type === 'localsbv2api',
@@ -490,7 +488,7 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
     {
       key: 'sbv2_local_style_id',
       parent: 'voice_models',
-      label: '风格 ID',
+      label: t('settings.characterInfo.fields.styleId'),
       type: 'number',
       step: '1',
       visibleIf: (s) => s.tts_type === 'localsbv2api',
@@ -498,7 +496,7 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
     {
       key: 'sbv2_local_length_scale',
       parent: 'voice_models',
-      label: '长度缩放 (length_scale)',
+      label: t('settings.characterInfo.fields.lengthScale'),
       type: 'number',
       step: '0.05',
       visibleIf: (s) => s.tts_type === 'localsbv2api',
@@ -506,7 +504,7 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
     {
       key: 'sbv2_local_sdp_ratio',
       parent: 'voice_models',
-      label: 'SDP 噪声比',
+      label: t('settings.characterInfo.fields.sdpRatio'),
       type: 'number',
       step: '0.05',
       visibleIf: (s) => s.tts_type === 'localsbv2api',
@@ -514,26 +512,26 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
     {
       key: 'sbv2_local_cloud_fallback_model',
       parent: 'voice_models',
-      label: '本地 TTS 云端备用模型',
+      label: t('settings.characterInfo.fields.cloudFallbackModel'),
       type: 'text',
-      placeholder: '本地 TTS 关闭时使用，可留空',
+      placeholder: t('settings.characterInfo.fields.cloudFallbackPlaceholder'),
       visibleIf: (s) => s.tts_type === 'localsbv2api',
     },
     {
       key: 'sbv2_local_cloud_fallback_speaker_id',
       parent: 'voice_models',
-      label: '本地 TTS 云端备用说话人 ID',
+      label: t('settings.characterInfo.fields.cloudFallbackSpeakerId'),
       type: 'text',
-      placeholder: '本地 TTS 关闭时使用，可留空',
+      placeholder: t('settings.characterInfo.fields.cloudFallbackPlaceholder'),
       visibleIf: (s) => s.tts_type === 'localsbv2api',
     },
     {
       key: 'opentts_voice',
-      label: 'OpenTTS 音色标识',
+      label: t('settings.characterInfo.fields.openttsVoiceLabel'),
       type: 'text',
       isVoiceModel: true,
       realtime: true,
-      placeholder: '留空则使用高级设置中的全局音色标识',
+      placeholder: t('settings.characterInfo.fields.openttsVoicePlaceholder'),
       visibleIf: (s) => s.tts_type === 'opentts',
     },
   ],
@@ -545,7 +543,9 @@ const currentTabConfig = computed(() => schemas.value[activeTab.value])
 
 // voice model 子区域已移除，所有字段统一在主表单渲染
 const currentTabFields = computed(() => {
-  return currentTabConfig.value || []
+  const fields = currentTabConfig.value || []
+  // 过滤掉当前不可见的字段（visibleIf 为 false），避免留下空 div 占位
+  return fields.filter((field) => !field.visibleIf || field.visibleIf(localSettings.value))
 })
 
 const ensureVoiceModels = () => {
