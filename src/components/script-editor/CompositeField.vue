@@ -24,8 +24,11 @@
           </button>
         </div>
 
-        <!-- 选项级条件（引擎支持 options[].condition，这里补上此前缺失的可视化编辑） -->
-        <div class="mt-1 flex items-center gap-2 pl-6">
+        <!-- 选项级条件（引擎支持 options[].condition）：默认收起，点「＋ 条件」才展开 -->
+        <div
+          v-if="conditionOpen(i)"
+          class="mt-1 flex items-center gap-2 pl-6"
+        >
           <span class="shrink-0 text-xs text-white/40">条件</span>
           <ConditionEditor
             class="flex-1 min-w-0"
@@ -33,26 +36,22 @@
             :variables="store.variables"
             @update:model-value="(v: string) => patch(i, 'condition', v)"
           />
+          <button
+            class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all hover:text-[#fca5a5] hover:bg-[rgba(248,113,113,0.15)]"
+            title="移除条件"
+            @click="closeCondition(i)"
+          >
+            ✕
+          </button>
         </div>
 
+        <!-- 选项动作：每类动作独立按钮添加，不用下拉 -->
         <div
           v-for="(act, ai) in actions(opt)"
           :key="ai"
           class="mt-1 flex items-center gap-2 pl-6"
         >
-          <select
-            class="w-32 shrink-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
-            :value="str(act.type)"
-            @change="(e) => patchAction(i, ai, 'type', val(e))"
-          >
-            <option
-              v-for="a in allowedActions"
-              :key="a.typeKey"
-              :value="a.typeKey"
-            >
-              {{ a.label }}
-            </option>
-          </select>
+          <span class="shrink-0 text-xs text-white/40">{{ actionLabel(str(act.type)) }}</span>
           <VariableEditor
             v-if="act.type === 'set_var' && !legacySetVar(act)"
             class="flex-1 min-w-0"
@@ -63,11 +62,16 @@
           <div
             v-else-if="legacySetVar(act)"
             class="flex-1 min-w-0 rounded-md border border-yellow-300/25 bg-yellow-300/10 px-2 py-1.5"
-            title="旧版字段（name/value/op），引擎只认 content 表达式，这段会被静默跳过"
           >
             <p class="text-xs text-yellow-200">
-              旧版字段（name/value/op）：{{ legacySetVarValue(act) }}
+              旧版字段（name/value/op），引擎只认 content 表达式，这段会被静默跳过
             </p>
+            <button
+              class="mt-1 text-xs text-brand hover:underline"
+              @click="convertLegacy(i, ai)"
+            >
+              一键转为新格式
+            </button>
           </div>
           <input
             v-else
@@ -78,18 +82,35 @@
           />
           <button
             class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all hover:text-[#fca5a5] hover:bg-[rgba(248,113,113,0.15)]"
+            title="删除这个动作"
             @click="removeAction(i, ai)"
           >
             ✕
           </button>
         </div>
 
-        <button
-          class="mt-1.5 ml-6 text-xs text-brand hover:underline"
-          @click="addAction(i)"
-        >
-          ＋ 添加动作
-        </button>
+        <!-- 独立动作按钮：追加玩家台词 / 设置变量 / 条件 -->
+        <div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 ml-6">
+          <button
+            class="text-xs text-brand hover:underline"
+            @click="addAction(i, 'add_line')"
+          >
+            ＋ 追加玩家台词
+          </button>
+          <button
+            class="text-xs text-brand hover:underline"
+            @click="addAction(i, 'set_var')"
+          >
+            ＋ 设置变量
+          </button>
+          <button
+            v-if="!conditionOpen(i)"
+            class="text-xs text-white/40 transition-all hover:text-brand"
+            @click="openCondition(i)"
+          >
+            ＋ 条件
+          </button>
+        </div>
       </div>
 
       <button
@@ -99,6 +120,9 @@
       >
         ＋ 添加选项
       </button>
+      <p class="mt-2 text-xs text-white/40">
+        追加玩家台词：以玩家名义写入对话历史，AI 能看到；设置变量：选完表达式即生效（如 flag = warm）。
+      </p>
     </template>
 
     <!-- ============ chapter_end 的分支 ============ -->
@@ -211,11 +235,16 @@
           <div
             v-else-if="legacySetVar(act)"
             class="flex-1 min-w-0 rounded-md border border-yellow-300/25 bg-yellow-300/10 px-2 py-1.5"
-            title="旧版字段（name/value/op），引擎只认 content 表达式，这段会被静默跳过"
           >
             <p class="text-xs text-yellow-200">
-              旧版字段（name/value/op）：{{ legacySetVarValue(act) }}
+              旧版字段（name/value/op），引擎只认 content 表达式，这段会被静默跳过
             </p>
+            <button
+              class="mt-1 text-xs text-brand hover:underline"
+              @click="convertLegacy(i, ai)"
+            >
+              一键转为新格式
+            </button>
           </div>
           <button
             class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all hover:text-[#fca5a5] hover:bg-[rgba(248,113,113,0.15)]"
@@ -247,7 +276,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { reactive } from 'vue'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 import type { FieldSpec } from '@/api/services/script-editor'
 import ConditionEditor from './ConditionEditor.vue'
@@ -278,21 +307,43 @@ const actions = (opt: Row): Row[] => (Array.isArray(opt.actions) ? (opt.actions 
 /**
  * 命中「旧原型形状」的 set_var 动作：只写了 name/value/op、没有 content 表达式。
  * 引擎只读 content，这类动作会被静默跳过（校验器也会报 action.legacy_shape）。
- * 编辑器里只读展示，提示作者改写成新格式。
+ * 编辑器里只读展示，提供「一键转为新格式」入口。
  */
 const legacySetVar = (act: Row) =>
   act.type === 'set_var' &&
   !(typeof act.content === 'string' && act.content.trim()) &&
   Boolean(act.name || act.value || act.op)
 
-const legacySetVarValue = (act: Row) =>
-  [act.name, act.value, act.op].filter((v) => v !== undefined && v !== null && v !== '').join(' ')
+/** 把旧版 name/value/op 合并成 content 表达式（name op value），并清掉旧字段 */
+const convertLegacy = (i: number, ai: number) => {
+  const next = clone()
+  const list = Array.isArray(next[i]?.actions) ? (next[i].actions as Row[]) : []
+  const act = list[ai]
+  if (!act) return
+  const expr = [act.name, act.op, act.value].filter((v) => typeof v === 'string').join(' ').trim()
+  if (!expr) return
+  act.content = expr
+  delete act.name
+  delete act.value
+  delete act.op
+  commit(next)
+}
 
-/** set_variable 只支持 set_var —— 引擎里 add_line 会被静默丢弃 */
-const allowedActions = computed(() => {
-  const owner = props.field.kind === 'var_options' ? 'set_variable' : 'choices'
-  return (store.schema?.actionTypes ?? []).filter((a) => a.allowedIn.includes(owner))
-})
+/** choices 选项的条件行是否展开：已有条件 或 作者点过「＋ 条件」 */
+const conditionOpenState = reactive<Record<number, boolean>>({})
+const conditionOpen = (i: number) => {
+  const has = typeof rows.value[i]?.condition === 'string' && str(rows.value[i]?.condition).trim() !== ''
+  return has || conditionOpenState[i] === true
+}
+const openCondition = (i: number) => {
+  conditionOpenState[i] = true
+}
+const closeCondition = (i: number) => {
+  conditionOpenState[i] = false
+  patch(i, 'condition', '')
+}
+
+const actionLabel = (type: string) => (type === 'set_var' ? '设置变量' : '追加玩家台词')
 
 const actionPlaceholder = (type: string) =>
   type === 'set_var' ? 'affection += 1' : '写入对话历史的一句玩家台词'

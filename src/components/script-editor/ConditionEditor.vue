@@ -23,12 +23,12 @@
         class="w-32 min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
         :list="uid"
         placeholder="变量名"
-        :value="part.var"
+        :value="draft.var"
         @change="onVar"
       />
       <select
         class="shrink-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
-        :value="part.rel"
+        :value="draft.rel"
         @change="onRel"
       >
         <option value="truthy">为真（判断存没存过）</option>
@@ -36,16 +36,16 @@
         <option value="neq">不等于</option>
       </select>
       <input
-        v-if="part.rel !== 'truthy'"
+        v-if="draft.rel !== 'truthy'"
         class="w-32 min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
         placeholder="值"
-        :value="part.value"
+        :value="draft.value"
         @change="onValue"
       />
       <p
-        v-if="part.rel !== 'truthy' && !part.value.trim()"
+        v-if="draft.rel !== 'truthy' && !draft.value.trim()"
         class="shrink-0 text-xs text-white/35"
-      >未填值＝未设置条件</p>
+      >填上值后条件才生效</p>
     </div>
 
     <datalist :id="uid">
@@ -59,7 +59,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, reactive, watch } from 'vue'
 import { useId } from 'vue'
 import { buildCondition, parseCondition, type ConditionParts, type ConditionRel } from '@/utils/scriptVar'
 
@@ -74,32 +74,60 @@ const emit = defineEmits<{ (e: 'update:modelValue', value: string): void }>()
 
 const uid = useId()
 
+/**
+ * 内部草稿：编辑期间先落在本地，只有构成完整表达式（buildCondition 非空）才
+ * 写回 modelValue。否则「选了等于但还没填值」这种中间态会被父级当成空值
+ * 删键，整个表单被重置——这是之前「选了关系后输入框消失、无法保存」的根因。
+ */
+const draft = reactive<ConditionParts>(
+  parseCondition(props.modelValue) ?? { var: '', rel: 'truthy', value: '' },
+)
+
+/** 外部值变化（撤销/重做/清空重填/切换事件）时同步草稿，但正在编辑时不打断输入 */
+watch(
+  () => props.modelValue,
+  (v) => {
+    const parsed = parseCondition(v)
+    if (parsed) {
+      draft.var = parsed.var
+      draft.rel = parsed.rel
+      draft.value = parsed.value
+    } else if (!v || !v.trim()) {
+      // 外部清空（如「清空重填」）→ 重置表单
+      draft.var = ''
+      draft.rel = 'truthy'
+      draft.value = ''
+    }
+  },
+)
+
 /** 非空但解析不出结构化 → 只读展示。空串（未设置）走正常空表单。 */
 const parseError = computed(() => {
   const s = (props.modelValue ?? '').trim()
   return s !== '' && parseCondition(props.modelValue) === null
 })
 
-const part = computed<ConditionParts>(
-  () => parseCondition(props.modelValue) ?? { var: '', rel: 'truthy', value: '' },
-)
-
-const commit = (next: ConditionParts) => emit('update:modelValue', buildCondition(next))
+/** 只有表达式完整才写回；不完整时保留草稿，等作者继续填 */
+const commit = () => {
+  const s = buildCondition(draft)
+  if (s) emit('update:modelValue', s)
+}
 
 /** 清空重填：旧写法解析不出结构化表单，提供显式入口删掉它，再让作者重新选 */
 const clear = () => emit('update:modelValue', '')
 
 const onVar = (e: Event) => {
-  const v = (e.target as HTMLInputElement).value
-  commit({ ...part.value, var: v })
+  draft.var = (e.target as HTMLInputElement).value
+  commit()
 }
 
 const onValue = (e: Event) => {
-  const v = (e.target as HTMLInputElement).value
-  commit({ ...part.value, value: v })
+  draft.value = (e.target as HTMLInputElement).value
+  commit()
 }
 
 const onRel = (e: Event) => {
-  commit({ ...part.value, rel: (e.target as HTMLSelectElement).value as ConditionRel })
+  draft.rel = (e.target as HTMLSelectElement).value as ConditionRel
+  commit()
 }
 </script>

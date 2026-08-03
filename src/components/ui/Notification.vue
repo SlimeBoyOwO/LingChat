@@ -17,7 +17,7 @@
           {{ uiStore.notification.title || $t('ui.notification.titlePlaceholder') }}
         </div>
         <div class="notification-message">
-          {{ uiStore.notification.message || $t('ui.notification.messagePlaceholder') }}
+          <template v-if="uiStore.notification.message">{{ uiStore.notification.message }}</template>
         </div>
       </div>
     </div>

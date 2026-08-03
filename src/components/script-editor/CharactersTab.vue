@@ -26,13 +26,12 @@ const assetUrl = (path: string) => convertFileSrc(path)
       </template>
 
       <p class="mb-[0.9rem] rounded-xl border border-white/10 bg-black/16 px-[0.85rem] py-[0.7rem] text-[0.76rem] leading-[1.85] text-white/60">
-        剧本里用 <code class="font-mono text-brand">character: &lt;下面的引用名&gt;</code> 指代角色；写
-        <code class="font-mono text-brand">MAIN</code> 表示当前主角（羁绊剧本里就是绑定的那位）。
-        <b class="font-semibold text-white/85">引擎只在本剧本的 <code class="font-mono text-brand">characters/</code> 里找人</b>，所以想用全局角色库里
-        已有的人设，得先「导入」一份到这里 —— 导入复制的是人设文件，立绘仍读全局那份，
-        不会让剧本目录白白变大。
-        <br /><span class="font-semibold text-amber-300">提示：</span>羁绊剧本里 <code class="font-mono text-brand">character: MAIN</code> 绑定的角色
-        <b class="font-semibold text-white/85">不需要导入</b>，引擎会直接从全局角色库读取它的人设和立绘。
+        这里管理<b class="font-semibold text-white/85">只有这个剧本用得上的角色</b>。剧本里用
+        <code class="font-mono text-brand">character: &lt;引用名&gt;</code> 指代；写
+        <code class="font-mono text-brand">MAIN</code> 表示当前主角（羁绊剧本里就是绑定的那位，不需要导入，
+        引擎直接从全局角色库读取）。
+        <br />想用全局角色库里已有的人设，点下方「从全局角色库导入」复制一份到本剧本；
+        立绘仍读全局那份，不会让剧本目录白白变大。
       </p>
 
       <p

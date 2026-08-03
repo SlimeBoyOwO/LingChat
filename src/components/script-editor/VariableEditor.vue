@@ -23,12 +23,12 @@
         class="w-24 min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
         :list="uid"
         placeholder="变量名"
-        :value="part.var"
+        :value="draft.var"
         @change="onVar"
       />
       <select
         class="shrink-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
-        :value="part.op"
+        :value="draft.op"
         @change="onOp"
       >
         <option value="=">设为</option>
@@ -37,7 +37,7 @@
       </select>
       <select
         class="shrink-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
-        :value="part.kind"
+        :value="draft.kind"
         @change="onKind"
       >
         <option value="text">文本</option>
@@ -47,35 +47,35 @@
       </select>
 
       <input
-        v-if="part.kind === 'text'"
+        v-if="draft.kind === 'text'"
         class="w-32 min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
         placeholder="值"
-        :value="part.value"
+        :value="draft.value"
         @change="onValue"
       />
       <input
-        v-else-if="part.kind === 'number'"
+        v-else-if="draft.kind === 'number'"
         class="w-24 min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
         type="number"
         placeholder="数值"
-        :value="part.value"
+        :value="draft.value"
         @change="onValue"
       />
       <select
-        v-else-if="part.kind === 'bool'"
+        v-else-if="draft.kind === 'bool'"
         class="shrink-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
-        :value="part.value === 'true' ? 'true' : 'false'"
+        :value="draft.value === 'true' ? 'true' : 'false'"
         @change="onBool"
       >
         <option value="true">真（true）</option>
         <option value="false">假（false）</option>
       </select>
-      <template v-else-if="part.kind === 'random'">
+      <template v-else-if="draft.kind === 'random'">
         <input
           class="w-16 min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
           type="number"
           placeholder="最小"
-          :value="String(part.randomMin ?? '')"
+          :value="String(draft.randomMin ?? '')"
           @change="onRandomMin"
         />
         <span class="shrink-0 text-xs text-white/40">到</span>
@@ -83,12 +83,12 @@
           class="w-16 min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
           type="number"
           placeholder="最大"
-          :value="String(part.randomMax ?? '')"
+          :value="String(draft.randomMax ?? '')"
           @change="onRandomMax"
         />
       </template>
       <p
-        v-if="!part.var.trim() || (part.kind !== 'bool' && part.kind !== 'random' && !part.value.trim())"
+        v-if="!draft.var.trim() || (draft.kind !== 'bool' && draft.kind !== 'random' && !draft.value.trim())"
         class="shrink-0 text-xs text-white/35"
       >填完整才算设置</p>
     </div>
@@ -104,7 +104,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, reactive, watch } from 'vue'
 import { useId } from 'vue'
 import {
   buildVarAction,
@@ -125,33 +125,82 @@ const emit = defineEmits<{ (e: 'update:modelValue', value: string): void }>()
 
 const uid = useId()
 
+/**
+ * 内部草稿：编辑期间先落在本地，只有构成完整表达式（buildVarAction 非空）才
+ * 写回 modelValue。否则「选了运算符但还没填值」这种中间态会被父级当成空值
+ * 删键，整个表单被重置——这是之前「选了操作后输入框消失、无法保存」的根因。
+ */
+const draft = reactive<VarParts>(
+  parseVarAction(props.modelValue) ?? { var: '', op: '=', kind: 'text', value: '' },
+)
+
+/** 外部值变化（撤销/重做/清空重填/切换事件）时同步草稿，但正在编辑时不打断输入 */
+watch(
+  () => props.modelValue,
+  (v) => {
+    const parsed = parseVarAction(v)
+    if (parsed) {
+      draft.var = parsed.var
+      draft.op = parsed.op
+      draft.kind = parsed.kind
+      draft.value = parsed.value
+      draft.randomMin = parsed.randomMin
+      draft.randomMax = parsed.randomMax
+    } else if (!v || !v.trim()) {
+      // 外部清空（如「清空重填」）→ 重置表单
+      draft.var = ''
+      draft.op = '='
+      draft.kind = 'text'
+      draft.value = ''
+      draft.randomMin = undefined
+      draft.randomMax = undefined
+    }
+  },
+)
+
 const parseError = computed(() => {
   const s = (props.modelValue ?? '').trim()
   return s !== '' && parseVarAction(props.modelValue) === null
 })
 
-const part = computed<VarParts>(
-  () => parseVarAction(props.modelValue) ?? { var: '', op: '=', kind: 'text', value: '' },
-)
-
-const commit = (next: VarParts) => emit('update:modelValue', buildVarAction(next))
+/** 只有表达式完整才写回；不完整时保留草稿，等作者继续填 */
+const commit = () => {
+  const s = buildVarAction(draft)
+  if (s) emit('update:modelValue', s)
+}
 
 /** 清空重填：旧写法解析不出结构化表单，提供显式入口删掉它，再让作者重新填 */
 const clear = () => emit('update:modelValue', '')
 
-const onVar = (e: Event) => commit({ ...part.value, var: (e.target as HTMLInputElement).value })
-const onValue = (e: Event) => commit({ ...part.value, value: (e.target as HTMLInputElement).value })
-const onBool = (e: Event) => commit({ ...part.value, value: (e.target as HTMLSelectElement).value })
-const onOp = (e: Event) => commit({ ...part.value, op: (e.target as HTMLSelectElement).value as VarOp })
-const onKind = (e: Event) =>
-  commit({ ...part.value, kind: (e.target as HTMLSelectElement).value as VarValueKind })
+const onVar = (e: Event) => {
+  draft.var = (e.target as HTMLInputElement).value
+  commit()
+}
+const onValue = (e: Event) => {
+  draft.value = (e.target as HTMLInputElement).value
+  commit()
+}
+const onBool = (e: Event) => {
+  draft.value = (e.target as HTMLSelectElement).value
+  commit()
+}
+const onOp = (e: Event) => {
+  draft.op = (e.target as HTMLSelectElement).value as VarOp
+  commit()
+}
+const onKind = (e: Event) => {
+  draft.kind = (e.target as HTMLSelectElement).value as VarValueKind
+  commit()
+}
 
 const onRandomMin = (e: Event) => {
   const n = Number((e.target as HTMLInputElement).value)
-  commit({ ...part.value, randomMin: Number.isFinite(n) ? n : undefined })
+  draft.randomMin = Number.isFinite(n) ? n : undefined
+  commit()
 }
 const onRandomMax = (e: Event) => {
   const n = Number((e.target as HTMLInputElement).value)
-  commit({ ...part.value, randomMax: Number.isFinite(n) ? n : undefined })
+  draft.randomMax = Number.isFinite(n) ? n : undefined
+  commit()
 }
 </script>

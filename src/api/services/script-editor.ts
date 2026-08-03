@@ -37,6 +37,8 @@ export interface FieldSpec {
   assetKind?: AssetKind
   /** 下拉候选项：字符串或 {value,label}（后者用于显示中文、写入英文 key，如粒子特效） */
   options?: (string | { value: string; label: string })[]
+  /** 与 options 对齐的显示名（来自 Rust schema 的 option_labels），有则优先显示 */
+  optionLabels?: string[]
   placeholder?: string
   hint?: string
   enabled: boolean

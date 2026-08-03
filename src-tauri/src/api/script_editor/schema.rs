@@ -72,6 +72,11 @@ pub struct FieldSpec {
     /// `kind == Select` 的候选项
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub options: Vec<String>,
+    /// 与 `options` 对齐的显示名（可空）。比如 action 的选项值必须写引擎认的
+    /// `show_character`，但下拉里想给作者看「show_character（显示角色）」。
+    /// 空列表时前端直接显示 `options` 原文。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub option_labels: Vec<String>,
     /// 缺省值的人类可读描述（不是真正的默认值，仅作占位提示）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub placeholder: Option<&'static str>,
@@ -90,6 +95,7 @@ impl FieldSpec {
             required: false,
             asset_kind: None,
             options: Vec::new(),
+            option_labels: Vec::new(),
             placeholder: None,
             hint: None,
             enabled: true,
@@ -109,6 +115,10 @@ impl FieldSpec {
     }
     fn options<I: IntoIterator<Item = S>, S: Into<String>>(mut self, opts: I) -> Self {
         self.options = opts.into_iter().map(Into::into).collect();
+        self
+    }
+    fn option_labels<I: IntoIterator<Item = S>, S: Into<String>>(mut self, labels: I) -> Self {
+        self.option_labels = labels.into_iter().map(Into::into).collect();
         self
     }
     fn asset(mut self, kind: &'static str) -> Self {
@@ -212,7 +222,7 @@ pub fn build_schema() -> ScriptSchema {
             fields: vec![
                 FieldSpec::new("text", "旁白文本", FieldKind::Textarea)
                     .required()
-                    .hint("按换行拆成多条依次显示，空行会被丢弃"),
+                    .hint("多行会逐行依次显示，空行被跳过"),
                 FieldSpec::new("displayName", "说话人标签", FieldKind::Text)
                     .placeholder("旁白"),
             ],
@@ -294,7 +304,7 @@ pub fn build_schema() -> ScriptSchema {
             color: "#60a5fa",
             fields: vec![FieldSpec::new("hint", "输入框提示", FieldKind::Text)
                 .placeholder("请输入...")
-                .hint("留空字符串会得到空提示，不会回落默认值")],
+                .hint("不填时输入框显示默认提示「请输入...」")],
         },
         // ---------- 流程 ----------
         EventSpec {
@@ -340,7 +350,7 @@ pub fn build_schema() -> ScriptSchema {
                 character_field(),
                 FieldSpec::new("action", "动作", FieldKind::Select)
                     .options(["show_character", "hide_character"])
-                    .hint("引擎只识别这两个"),
+                    .option_labels(["show_character（显示角色）", "hide_character（隐藏角色）"]),
                 emotion_field(),
                 FieldSpec::new("clothes", "服装", FieldKind::Text)
                     .hint("对应 avatar/<服装>/ 子目录；留空或 default 表示不进子目录"),
@@ -431,19 +441,19 @@ pub fn build_schema() -> ScriptSchema {
 
     let common_fields = vec![
         FieldSpec::new("condition", "触发条件", FieldKind::Condition)
-            .hint("选一个变量和关系即可，无需手写语法；留空表示总是触发"),
+            .hint("满足条件时本事件才执行，不满足直接跳过——常用来做分支剧情；留空表示总是触发"),
         FieldSpec::new("duration", "duration", FieldKind::Deprecated)
-            .disabled("遗留字段，引擎从不读取。保存时原样保留，不会丢数据"),
+            .disabled("旧版自动播放间隔字段，引擎已不再读取，写了不生效。保存时原样保留，不会丢数据"),
     ];
 
     let story_config_fields = vec![
         FieldSpec::new("script_name", "剧本名", FieldKind::Text)
             .required()
-            .hint("全局唯一。重名会导致其中一个剧本在列表里被覆盖"),
+            .hint("全局唯一，重名会导致其中一个剧本在列表里被覆盖"),
         FieldSpec::new("description", "简介", FieldKind::Textarea),
         FieldSpec::new("recommand_start", "推荐开始时机", FieldKind::Text)
             .placeholder("例如：好感度达到 30 之后")
-            .hint("纯展示文案，给玩家在冒险列表里看的提示，引擎不会据此做任何判断（字段名少一个 m 是历史拼写）"),
+            .hint("展示给玩家看的推荐时机说明，仅作展示，不影响剧情判断"),
         FieldSpec::new("intro_chapter", "开场章节", FieldKind::Chapter).required(),
     ];
 
@@ -603,6 +613,21 @@ mod tests {
         assert_eq!(field.options.len(), KNOWN_EFFECTS.len() + 1);
         for k in KNOWN_EFFECTS {
             assert!(field.options.iter().any(|o| o == k), "缺少特效 {}", k);
+        }
+    }
+
+    /// option_labels 若提供，长度必须与 options 一致，否则前端会错位显示
+    #[test]
+    fn option_labels_match_options_length() {
+        for e in build_schema().events {
+            for f in &e.fields {
+                assert!(
+                    f.option_labels.is_empty() || f.option_labels.len() == f.options.len(),
+                    "{}.{} 的 option_labels 长度与 options 不一致",
+                    e.type_key,
+                    f.key
+                );
+            }
         }
     }
 

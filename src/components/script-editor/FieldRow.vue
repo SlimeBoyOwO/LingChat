@@ -240,9 +240,12 @@ const isComposite = computed(() =>
 const selectOptions = computed<{ value: string; label: string }[]>(() => {
   switch (props.field.kind) {
     case 'select':
-      return (props.field.options ?? []).map((o) =>
-        typeof o === 'string' ? { value: o, label: o } : o,
-      )
+      // 有 option_labels 用显示名（值仍是引擎认的原文），否则直接显示原文。
+      // Rust 侧序列化出来的一定是字符串，这里收窄类型免得 TS 抱怨。
+      return (props.field.options ?? []).map((o, idx) => ({
+        value: typeof o === 'string' ? o : o.value,
+        label: typeof o === 'string' ? (props.field.optionLabels?.[idx] ?? o) : o.label,
+      }))
     case 'character':
       return store.characterOptions.map((o) => ({
         value: o,

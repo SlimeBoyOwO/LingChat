@@ -9,6 +9,11 @@
       class="absolute -left-[21px] -top-[7px] border border-[rgba(251,191,36,0.32)] rounded-[3px] px-[5px] font-mono text-[9px] whitespace-nowrap text-[#fcd34d] bg-[rgba(251,191,36,0.16)]"
       >若 {{ conditionText }}</span
     >
+    <span
+      v-if="varBadge"
+      class="absolute -left-[21px] bottom-[2px] border border-[rgba(34,211,238,0.35)] rounded-[3px] px-[5px] font-mono text-[9px] whitespace-nowrap text-[#67e8f9] bg-[rgba(34,211,238,0.14)]"
+      >{{ varBadge }}</span
+    >
 
     <div
       class="group flex items-start gap-2 rounded-lg border border-transparent px-[9px] py-1.5 transition-all hover:bg-white/[0.07]"
@@ -113,6 +118,52 @@ const conditionText = computed(() =>
     ? (props.event.condition as string)
     : '',
 )
+
+/**
+ * 变量相关角标：把「写了变量」的事件一眼标出来，方便在长章节里快速定位。
+ * - set_variable：赋值组里所有被写过的变量名（去重）
+ * - 其它事件：子结构（choices 选项 / 章节分支 / 赋值组）里的条件或赋值变量
+ * 只取变量名本身，不拼整条表达式，避免角标过长。
+ */
+const varBadge = computed(() => {
+  const ev = props.event
+  const t = eventType.value
+
+  const condVars = (cond: unknown): string[] => {
+    if (typeof cond !== 'string') return []
+    const s = cond.trim()
+    if (!s) return []
+    const varName = s.split(/\s*[!=]+\s*/)[0].trim()
+    return varName ? [varName] : []
+  }
+
+  const collect = (): string[] => {
+    if (t === 'set_variable') {
+      const opts = Array.isArray(ev.options) ? (ev.options as Record<string, unknown>[]) : []
+      const out: string[] = []
+      for (const o of opts) {
+        out.push(...condVars(o.condition))
+        for (const a of Array.isArray(o.actions) ? (o.actions as Record<string, unknown>[]) : []) {
+          const c = a.content
+          if (typeof c === 'string') {
+            const m = /^\s*(\S+)\s*(?:=|\+=|-=)/.exec(c)
+            if (m) out.push(m[1])
+          }
+        }
+      }
+      return out
+    }
+    // choices 选项里的条件；分支/赋值组的条件在摘要里已有，这里补上顶层没有的
+    if (t === 'choices') {
+      const opts = Array.isArray(ev.options) ? (ev.options as Record<string, unknown>[]) : []
+      return opts.flatMap((o) => condVars(o.condition))
+    }
+    return []
+  }
+
+  const vars = [...new Set(collect())]
+  return vars.length ? `⚙ ${vars.join(', ')}` : ''
+})
 
 const diagnostics = computed(() => store.chapterDiagnostics[props.index] ?? [])
 const errorCount = computed(() => diagnostics.value.filter((d) => d.severity === 'error').length)

@@ -34,7 +34,7 @@
 
       <!-- 类型专属字段 -->
       <FieldRow
-        v-for="field in spec?.fields ?? []"
+        v-for="field in visibleFields"
         :key="field.key"
         :field="field"
         :value="event[field.key]"
@@ -91,6 +91,24 @@ const eventType = computed(() =>
 )
 
 const spec = computed<EventSpec | undefined>(() => store.eventSpecs[eventType.value])
+
+/**
+ * chapter_end 按结束方式联动显示字段：
+ * - linear    → 只留 next_chapter（引擎只读 next/next_chapter，分支和 AI 提示都不看）
+ * - branching → 只看分支，AI 判定提示不显示
+ * - ai_judged → 分支 + AI 判定提示都显示
+ * 隐藏的字段值不会丢，切换结束方式后自动回来。
+ */
+const visibleFields = computed<FieldSpec[]>(() => {
+  const fields = spec.value?.fields ?? []
+  if (eventType.value !== 'chapter_end') return fields
+  const et = typeof event.value?.end_type === 'string' ? event.value.end_type : 'linear'
+  return fields.filter((f) => {
+    if (f.key === 'options') return et === 'branching' || et === 'ai_judged'
+    if (f.key === 'prompt') return et === 'ai_judged'
+    return true
+  })
+})
 
 /** 按 schema 的 category 分组，与「添加事件」面板保持一致 */
 const groupedSpecs = computed(() => {
