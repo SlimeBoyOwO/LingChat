@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    register_event, ScriptContext, ScriptEvent,
+    parse_duration, register_event, ScriptContext, ScriptEvent,
 };
 use crate::ai_service::game_system::script_engine::responses::{
     event_names::SCRIPT_INPUT, InputPayload,
@@ -16,6 +16,7 @@ use crate::db::entities::line::LineAttribute;
 
 pub struct InputEvent {
     hint: String,
+    duration: Option<f64>,
 }
 
 impl InputEvent {
@@ -26,6 +27,7 @@ impl InputEvent {
                 .and_then(|v| v.as_str())
                 .unwrap_or("请输入...")
                 .to_string(),
+            duration: parse_duration(data),
         }
     }
 }
@@ -44,6 +46,7 @@ impl ScriptEvent for InputEvent {
         // Emit input event to frontend
         let payload = InputPayload {
             hint: self.hint.clone(),
+            duration: self.duration,
         };
         let _ = emit(ctx.app, SCRIPT_INPUT, &payload);
 
@@ -73,6 +76,10 @@ impl ScriptEvent for InputEvent {
 
     fn event_type() -> &'static str {
         "input"
+    }
+
+    fn duration(&self) -> Option<f64> {
+        self.duration
     }
 }
 

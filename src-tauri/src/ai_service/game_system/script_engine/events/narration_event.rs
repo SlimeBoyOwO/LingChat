@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    register_event, ScriptContext, ScriptEvent,
+    parse_duration, register_event, ScriptContext, ScriptEvent,
 };
 use crate::ai_service::game_system::script_engine::responses::{
     event_names::SCRIPT_NARRATION, NarrationPayload,
@@ -17,6 +17,7 @@ use crate::db::entities::line::LineAttribute;
 pub struct NarrationEvent {
     text: String,
     display_name: Option<String>,
+    duration: Option<f64>,
 }
 
 impl NarrationEvent {
@@ -31,6 +32,7 @@ impl NarrationEvent {
                 .get("displayName")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
+            duration: parse_duration(data),
         }
     }
 }
@@ -49,6 +51,7 @@ impl ScriptEvent for NarrationEvent {
             let payload = NarrationPayload {
                 text: line.to_string(),
                 display_name: self.display_name.clone(),
+                duration: self.duration,
             };
             let _ = emit(ctx.app, SCRIPT_NARRATION, &payload);
         }
@@ -67,6 +70,10 @@ impl ScriptEvent for NarrationEvent {
 
     fn event_type() -> &'static str {
         "narration"
+    }
+
+    fn duration(&self) -> Option<f64> {
+        self.duration
     }
 }
 

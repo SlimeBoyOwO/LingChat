@@ -25,6 +25,16 @@ const jumpTo = async (d: Diagnostic) => {
   }
   if (d.eventIndex !== undefined) store.selectedEvent = d.eventIndex
 }
+
+/** 章节头部的「打开」：与 jumpTo 一样要先切到流程页，否则打开结果看不到 */
+const openChapterFromValidate = async (chapterId: string) => {
+  store.tab = 'flow'
+  if (store.chapter?.id !== chapterId) {
+    await store.openChapter(chapterId)
+  } else {
+    store.level = 'chapter'
+  }
+}
 </script>
 
 <template>
@@ -124,7 +134,7 @@ const jumpTo = async (d: Diagnostic) => {
             </span>
             <button
               class="inline-flex items-center gap-1 border border-white/10 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 bg-white/6 transition-all duration-200 hover:enabled:text-white hover:enabled:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
-              @click="store.openChapter(c.id)"
+              @click="openChapterFromValidate(c.id)"
             >
               打开
             </button>

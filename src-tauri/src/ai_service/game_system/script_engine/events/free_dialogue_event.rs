@@ -8,7 +8,7 @@ use serde_json::Value;
 use tauri::Manager;
 
 use crate::ai_service::game_system::script_engine::events::{
-    register_event, ScriptContext, ScriptEvent,
+    parse_duration, register_event, ScriptContext, ScriptEvent,
 };
 use crate::ai_service::game_system::script_engine::responses::{
     event_names::{SCRIPT_FREE_DIALOGUE, SCRIPT_INPUT},
@@ -31,6 +31,7 @@ pub struct FreeDialogueEvent {
     end_line: String,
     dialog_prompt: String,
     end_prompt: String,
+    duration: Option<f64>,
 }
 
 impl FreeDialogueEvent {
@@ -73,6 +74,7 @@ impl FreeDialogueEvent {
                 .to_string(),
             dialog_prompt,
             end_prompt,
+            duration: parse_duration(data),
         }
     }
 }
@@ -104,6 +106,7 @@ impl ScriptEvent for FreeDialogueEvent {
             switch: true,
             max_rounds: self.max_rounds,
             end_line: self.end_line.clone(),
+            duration: self.duration,
         };
         let _ = emit(ctx.app, SCRIPT_FREE_DIALOGUE, &start_payload);
 
@@ -171,6 +174,7 @@ impl ScriptEvent for FreeDialogueEvent {
             };
             let payload = InputPayload {
                 hint: self.hint.clone(),
+                duration: self.duration,
             };
             let _ = emit(ctx.app, SCRIPT_INPUT, &payload);
 
@@ -229,6 +233,7 @@ impl ScriptEvent for FreeDialogueEvent {
             switch: false,
             max_rounds: self.max_rounds,
             end_line: self.end_line.clone(),
+            duration: self.duration,
         };
         let _ = emit(ctx.app, SCRIPT_FREE_DIALOGUE, &end_payload);
 
@@ -237,6 +242,10 @@ impl ScriptEvent for FreeDialogueEvent {
 
     fn event_type() -> &'static str {
         "free_dialogue"
+    }
+
+    fn duration(&self) -> Option<f64> {
+        self.duration
     }
 }
 

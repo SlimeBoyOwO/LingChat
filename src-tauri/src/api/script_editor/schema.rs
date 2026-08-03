@@ -150,7 +150,7 @@ pub struct EventSpec {
 pub struct ScriptSchema {
     /// 16 种事件
     pub events: Vec<EventSpec>,
-    /// 所有事件共有的字段（触发条件）
+    /// 所有事件共有的字段（触发条件 / 事件间隔）
     pub common_fields: Vec<FieldSpec>,
     /// `story_config.yaml` 的字段
     pub story_config_fields: Vec<FieldSpec>,
@@ -442,6 +442,9 @@ pub fn build_schema() -> ScriptSchema {
     let common_fields = vec![
         FieldSpec::new("condition", "触发条件", FieldKind::Condition)
             .hint("满足条件时本事件才执行，不满足直接跳过——常用来做分支剧情；留空表示总是触发"),
+        FieldSpec::new("duration", "事件间隔（秒）", FieldKind::Number)
+            .placeholder("留空或负数 = 等玩家点击")
+            .hint("事件展示后自动等待 N 秒再继续，作为事件之间的 CD；留空或填负数表示等玩家点击后才继续"),
     ];
 
     let story_config_fields = vec![
@@ -629,23 +632,18 @@ mod tests {
         }
     }
 
-    /// duration 是废弃字段（引擎从不读取），连「只读展示」都不给 —— 避免作者看到
-    /// 一个没法编辑的输入框，只会添困惑。官方剧本里的残留 duration 会被静默保留。
+    /// duration 是所有事件继承基础事件得到的「事件间隔」字段：可编辑（Number），
+    /// 引擎会读取并传给前端实现事件间 CD。留空/负数 = 等玩家点击。
     #[test]
-    fn duration_is_not_exposed() {
+    fn duration_is_exposed_and_editable() {
         let schema = build_schema();
         let d = schema
             .common_fields
             .iter()
-            .find(|f| f.key == "duration");
-        assert!(
-            d.is_none(),
-            "common_fields 不应包含 duration：废弃字段不该暴露给作者"
-        );
-        let in_any_event = schema.events.iter().any(|e| {
-            e.fields.iter().any(|f| f.key == "duration")
-        });
-        assert!(!in_any_event, "任一事件 schema 也不应包含 duration");
+            .find(|f| f.key == "duration")
+            .expect("common_fields 应包含 duration（基础事件字段）");
+        assert!(d.enabled, "duration 应可编辑");
+        assert!(matches!(d.kind, FieldKind::Number));
     }
 
     #[test]

@@ -37,6 +37,9 @@ pub struct NarrationPayload {
     pub text: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
+    /// 事件间隔（秒），来自 YAML 的 `duration`；None = 前端按类型默认节奏
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -45,6 +48,8 @@ pub struct PlayerPayload {
     pub text: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -59,12 +64,16 @@ pub struct BackgroundPayload {
     pub image_path: String,
     #[serde(default)]
     pub transition: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackgroundEffectPayload {
     pub effect: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -74,12 +83,16 @@ pub struct MusicPayload {
     /// 播放速度倍率（1.0 原速）；None 表示未设置，前端按 1.0 处理
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub playback_speed: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SoundPayload {
     pub sound_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -95,6 +108,8 @@ pub struct AmbientPayload {
     /// 是否启用淡入淡出，默认 true
     #[serde(default = "default_true")]
     pub fade: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -103,6 +118,8 @@ pub struct PresentPicPayload {
     pub image_path: String,
     #[serde(default = "default_scale")]
     pub scale: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
 }
 
 #[allow(dead_code)]
@@ -120,12 +137,16 @@ pub struct ModifyCharacterPayload {
     pub action: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub clothes: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InputPayload {
     pub hint: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
 }
 
 /// 单个选项：文案 + 是否因条件不满足而不可选 + 不可选时的提示（lock_hint）。
@@ -148,6 +169,8 @@ pub struct ChoicePayload {
     #[serde(default)]
     #[serde(rename = "allowFree")]
     pub allow_free: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -157,6 +180,8 @@ pub struct FreeDialoguePayload {
     pub switch: bool,
     pub max_rounds: i32,
     pub end_line: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]

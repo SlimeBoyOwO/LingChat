@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    evaluate_condition, register_event, ScriptContext, ScriptEvent,
+    evaluate_condition, parse_duration, register_event, ScriptContext, ScriptEvent,
 };
 use crate::ai_service::game_system::script_engine::responses::{
     event_names::SCRIPT_CHOICE, ChoiceItem, ChoicePayload,
@@ -19,6 +19,7 @@ use crate::db::entities::line::LineAttribute;
 pub struct ChoiceEvent {
     options: Vec<Value>,
     allow_free: bool,
+    duration: Option<f64>,
 }
 
 impl ChoiceEvent {
@@ -35,6 +36,7 @@ impl ChoiceEvent {
                 .get("allow_free")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false),
+            duration: parse_duration(data),
         }
     }
 }
@@ -94,6 +96,7 @@ impl ScriptEvent for ChoiceEvent {
         let payload = ChoicePayload {
             choices,
             allow_free: self.allow_free,
+            duration: self.duration,
         };
         let _ = emit(ctx.app, SCRIPT_CHOICE, &payload);
 
@@ -147,6 +150,10 @@ impl ScriptEvent for ChoiceEvent {
 
     fn event_type() -> &'static str {
         "choices"
+    }
+
+    fn duration(&self) -> Option<f64> {
+        self.duration
     }
 }
 

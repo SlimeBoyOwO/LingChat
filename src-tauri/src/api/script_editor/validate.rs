@@ -408,7 +408,7 @@ pub fn validate(
             }
 
             // 遗留字段（schema 里 enabled == false 的通用字段）。
-            // 由 schema 驱动而不是硬编码 "duration"，这样加第二个遗留字段只改 schema.rs
+            // 由 schema 驱动而不是硬编码字段名，这样加第二个遗留字段只改 schema.rs
             for f in schema.common_fields.iter().filter(|f| !f.enabled) {
                 if obj.contains_key(f.key) {
                     diags.push(
