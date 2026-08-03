@@ -35,6 +35,17 @@ export const DEFAULT_SETTINGS = {
     meteorFps: 30, // 流星动画帧率
     starsFps: 30, // 星星动画帧率
     sceneAwarenessEnabled: true, // 场景感知开关
+    // ── 对话框外观（自定义） ──
+    dialogBackgroundImage: null as string | null, // 自定义背景图文件名（存于 data/backgrounds/）
+    dialogOpacity: 70, // 对话框背景不透明度 0-100
+    dialogBlur: 2, // 对话框背景模糊度 0-20 px
+    dialogGradientColor: '#000e27', // 对话框渐变底色（HEX）
+    dialogBorderRadius: 8, // 对话框圆角 0-32 px
+    dialogTextColor: '#ffffff', // 对话框文字色（HEX）
+    // ── 对话框交互行为 ──
+    dialogScrollHistoryEnabled: true, // 鼠标滚轮查看历史记录
+    dialogSpacebarHideEnabled: true, // 空格键隐藏/显示对话框
+    dialogAutoHideOnThinkEnabled: true, // AI 思考时自动隐藏对话框
   },
   // 角色设置
   character: {
@@ -71,6 +82,17 @@ export interface DisplaySettings {
   meteorFps: number
   starsFps: number
   sceneAwarenessEnabled: boolean
+  // ── 对话框外观 ──
+  dialogBackgroundImage: string | null
+  dialogOpacity: number
+  dialogBlur: number
+  dialogGradientColor: string
+  dialogBorderRadius: number
+  dialogTextColor: string
+  // ── 对话框交互行为 ──
+  dialogScrollHistoryEnabled: boolean
+  dialogSpacebarHideEnabled: boolean
+  dialogAutoHideOnThinkEnabled: boolean
 }
 
 export interface CharacterSettings {
@@ -125,6 +147,17 @@ export const useSettingsStore = defineStore('settings', {
     meteorFps: (state) => state.display.meteorFps,
     starsFps: (state) => state.display.starsFps,
     sceneAwarenessEnabled: (state) => state.display.sceneAwarenessEnabled,
+    // ── 对话框外观 getter ──
+    dialogBackgroundImage: (state) => state.display.dialogBackgroundImage,
+    dialogOpacity: (state) => state.display.dialogOpacity,
+    dialogBlur: (state) => state.display.dialogBlur,
+    dialogGradientColor: (state) => state.display.dialogGradientColor,
+    dialogBorderRadius: (state) => state.display.dialogBorderRadius,
+    dialogTextColor: (state) => state.display.dialogTextColor,
+    // ── 对话框交互行为 getter ──
+    dialogScrollHistoryEnabled: (state) => state.display.dialogScrollHistoryEnabled,
+    dialogSpacebarHideEnabled: (state) => state.display.dialogSpacebarHideEnabled,
+    dialogAutoHideOnThinkEnabled: (state) => state.display.dialogAutoHideOnThinkEnabled,
     // 各音量
     characterVolume: (state) => state.audio.characterVolume,
     bubbleVolume: (state) => state.audio.bubbleVolume,
@@ -293,6 +326,36 @@ export const useSettingsStore = defineStore('settings', {
         this.pet = { scale: 1.0 }
       }
       this.pet.scale = scale
+    },
+
+    // ── 对话框外观 setter ──
+    setDialogBackgroundImage(filename: string | null) {
+      this.display.dialogBackgroundImage = filename
+    },
+    setDialogOpacity(opacity: number) {
+      this.display.dialogOpacity = Math.max(0, Math.min(100, opacity))
+    },
+    setDialogBlur(blur: number) {
+      this.display.dialogBlur = Math.max(0, Math.min(20, blur))
+    },
+    setDialogGradientColor(color: string) {
+      this.display.dialogGradientColor = color
+    },
+    setDialogBorderRadius(radius: number) {
+      this.display.dialogBorderRadius = Math.max(0, Math.min(32, radius))
+    },
+    setDialogTextColor(color: string) {
+      this.display.dialogTextColor = color
+    },
+    // ── 对话框交互行为 setter ──
+    setDialogScrollHistoryEnabled(enabled: boolean) {
+      this.display.dialogScrollHistoryEnabled = enabled
+    },
+    setDialogSpacebarHideEnabled(enabled: boolean) {
+      this.display.dialogSpacebarHideEnabled = enabled
+    },
+    setDialogAutoHideOnThinkEnabled(enabled: boolean) {
+      this.display.dialogAutoHideOnThinkEnabled = enabled
     },
   },
 

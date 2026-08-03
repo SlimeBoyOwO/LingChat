@@ -245,6 +245,212 @@
       </div>
     </MenuItem>
 
+    <!-- ========== 对话框外观（自定义） ========== -->
+    <MenuItem title="对话框外观" size="large">
+      <template #header>
+        <MessageSquare :size="20" />
+      </template>
+
+      <div class="flex flex-col gap-5 p-2">
+        <!-- 提示 -->
+        <div class="text-xs text-white/50 leading-relaxed">
+          自定义主界面底部对话框（消息显示 + 输入框区域）的外观。设置会自动保存。
+        </div>
+
+        <!-- 自定义背景图 -->
+        <div class="flex flex-col gap-2">
+          <span class="text-sm font-medium text-white/90">自定义背景图</span>
+          <div class="flex items-center gap-3">
+            <div
+              v-if="dialogPreviewBg"
+              class="w-24 h-14 rounded-lg border border-white/20 overflow-hidden bg-black/30 shrink-0"
+            >
+              <img :src="dialogPreviewBg" class="w-full h-full object-cover" alt="预览" />
+            </div>
+            <div
+              v-else
+              class="w-24 h-14 rounded-lg border border-dashed border-white/20 flex items-center justify-center text-white/30 text-xs shrink-0"
+            >
+              暂无图片
+            </div>
+            <button
+              class="px-4 py-1.5 rounded-full text-sm font-bold transition-all border shadow-lg bg-white/10 border-white/20 text-white/80 hover:bg-white/20"
+              @click="triggerDialogImageUpload"
+            >
+              {{ dialogPreviewBg ? '更换' : '上传图片' }}
+            </button>
+            <button
+              v-if="dialogPreviewBg"
+              class="px-4 py-1.5 rounded-full text-sm font-bold transition-all border shadow-lg bg-red-500/20 border-red-500/30 text-red-300 hover:bg-red-500/30"
+              @click="clearDialogImage"
+            >
+              清除
+            </button>
+            <span class="text-xs text-white/40 ml-auto">建议 &lt; 1MB（存到本地）</span>
+          </div>
+          <input
+            type="file"
+            ref="dialogImageInput"
+            @change="handleDialogImageUpload"
+            accept=".jpg,.jpeg,.png,.webp,.bmp,.gif"
+            style="display: none"
+          />
+        </div>
+
+        <!-- 透明度 -->
+        <div class="flex items-center gap-4">
+          <span class="text-sm font-medium text-white/90 min-w-22">背景透明度</span>
+          <Slider
+            v-model="dialogOpacity"
+            :min="0"
+            :max="100"
+            :step="1"
+            accent-color="#6eb4ff"
+            @change="settingsStore.setDialogOpacity($event)"
+            class="flex-1"
+          >
+            <template #left>{{ dialogOpacity }}%</template>
+          </Slider>
+        </div>
+
+        <!-- 模糊度 -->
+        <div class="flex items-center gap-4">
+          <span class="text-sm font-medium text-white/90 min-w-22">背景模糊</span>
+          <Slider
+            v-model="dialogBlur"
+            :min="0"
+            :max="20"
+            :step="1"
+            accent-color="#a78bfa"
+            @change="settingsStore.setDialogBlur($event)"
+            class="flex-1"
+          >
+            <template #left>{{ dialogBlur }}px</template>
+          </Slider>
+        </div>
+
+        <!-- 圆角 -->
+        <div class="flex items-center gap-4">
+          <span class="text-sm font-medium text-white/90 min-w-22">圆角大小</span>
+          <Slider
+            v-model="dialogBorderRadius"
+            :min="0"
+            :max="32"
+            :step="1"
+            accent-color="#f472b6"
+            @change="settingsStore.setDialogBorderRadius($event)"
+            class="flex-1"
+          >
+            <template #left>{{ dialogBorderRadius }}px</template>
+          </Slider>
+        </div>
+
+        <!-- 渐变色 -->
+        <div class="flex items-center gap-4">
+          <span class="text-sm font-medium text-white/90 min-w-22">渐变底色</span>
+          <input
+            v-model="dialogGradientColor"
+            @input="settingsStore.setDialogGradientColor(($event.target as HTMLInputElement).value)"
+            type="color"
+            class="w-10 h-10 rounded-lg cursor-pointer border-2 border-white/20 bg-transparent shrink-0"
+          />
+          <input
+            v-model="dialogGradientColor"
+            @change="settingsStore.setDialogGradientColor(($event.target as HTMLInputElement).value)"
+            type="text"
+            class="flex-1 px-3 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+            placeholder="#000e27"
+          />
+          <button
+            class="px-3 py-1.5 rounded-full text-xs font-bold transition-all border bg-white/5 border-white/15 text-white/60 hover:bg-white/10 hover:text-white/80"
+            @click="resetDialogGradientColor"
+            title="重置为默认深蓝"
+          >
+            默认
+          </button>
+        </div>
+
+        <!-- 文字色 -->
+        <div class="flex items-center gap-4">
+          <span class="text-sm font-medium text-white/90 min-w-22">文字颜色</span>
+          <input
+            v-model="dialogTextColor"
+            @input="settingsStore.setDialogTextColor(($event.target as HTMLInputElement).value)"
+            type="color"
+            class="w-10 h-10 rounded-lg cursor-pointer border-2 border-white/20 bg-transparent shrink-0"
+          />
+          <input
+            v-model="dialogTextColor"
+            @change="settingsStore.setDialogTextColor(($event.target as HTMLInputElement).value)"
+            type="text"
+            class="flex-1 px-3 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+            placeholder="#ffffff"
+          />
+          <button
+            class="px-3 py-1.5 rounded-full text-xs font-bold transition-all border bg-white/5 border-white/15 text-white/60 hover:bg-white/10 hover:text-white/80"
+            @click="resetDialogTextColor"
+            title="重置为白色"
+          >
+            默认
+          </button>
+        </div>
+
+        <!-- 实时预览 -->
+        <div class="flex flex-col gap-2 pt-2">
+          <span class="text-sm font-medium text-white/90">实时预览</span>
+          <div
+            class="relative overflow-hidden border border-white/20"
+            :style="dialogPreviewStyle"
+          >
+            <img
+              v-if="dialogPreviewBg"
+              :src="dialogPreviewBg"
+              class="absolute inset-0 w-full h-full object-cover pointer-events-none"
+              :style="{ borderRadius: dialogBorderRadius + 'px' }"
+              alt=""
+            />
+            <div class="relative px-4 py-3">
+              <div class="text-base font-bold mb-1">莱姆 Bilibili</div>
+              <div class="text-xs opacity-70">在这里输入消息…</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 全部重置 -->
+        <div class="flex items-center gap-3 pt-2 border-t border-white/10">
+          <button
+            class="px-4 py-1.5 rounded-full text-sm font-bold transition-all border bg-red-500/10 border-red-500/30 text-red-300 hover:bg-red-500/20"
+            @click="resetDialogAppearance"
+          >
+            全部重置外观为默认
+          </button>
+        </div>
+
+        <!-- ── 对话框交互行为（自定义） ── -->
+        <div class="flex flex-col gap-3 pt-4 mt-2 border-t border-white/10">
+          <span class="text-sm font-semibold text-white/90">交互行为</span>
+          <Toggle
+            :checked="scrollHistoryEnabled"
+            @change="settingsStore.setDialogScrollHistoryEnabled($event)"
+          >
+            滚轮查看历史记录（向上滚打开历史面板）
+          </Toggle>
+          <Toggle
+            :checked="spacebarHideEnabled"
+            @change="settingsStore.setDialogSpacebarHideEnabled($event)"
+          >
+            空格键隐藏/显示对话框
+          </Toggle>
+          <Toggle
+            :checked="autoHideOnThinkEnabled"
+            @change="settingsStore.setDialogAutoHideOnThinkEnabled($event)"
+          >
+            AI 思考时自动隐藏（完成后带回显示，带过渡动画）
+          </Toggle>
+        </div>
+      </div>
+    </MenuItem>
+
     <MenuItem title="CPU 性能检测" size="large">
       <template #header>
         <Cpu :size="20" />
@@ -348,9 +554,37 @@ import {
   type CpuInfo,
   type PerfTier,
 } from '../../../api/services/cpu-perf'
-import { Image, PictureInPicture, Sparkles, Settings, Wand2, Wrench, Cpu } from 'lucide-vue-next'
+import {
+  Image,
+  PictureInPicture,
+  Sparkles,
+  Settings,
+  Wand2,
+  Wrench,
+  Cpu,
+  MessageSquare,
+} from 'lucide-vue-next'
 import SceneEditModal from '../scene/SceneEditModal.vue'
 import { useUserStore } from '../../../stores/modules/user/user'
+
+// ─── 对话框外观（自定义）辅助 ────────────────────────────
+function hexToRgbaLocal(hex: string, alpha: number): string {
+  const fallback = `rgba(0, 14, 39, ${alpha / 100})`
+  if (!hex || typeof hex !== 'string') return fallback
+  let h = hex.trim().replace('#', '')
+  if (h.length === 3) {
+    h = h
+      .split('')
+      .map((c) => c + c)
+      .join('')
+  }
+  if (!/^[0-9a-fA-F]{6}$/.test(h)) return fallback
+  const r = parseInt(h.substring(0, 2), 16)
+  const g = parseInt(h.substring(2, 4), 16)
+  const b = parseInt(h.substring(4, 6), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha / 100})`
+}
+// ────────────────────────────────────────────────────────
 
 const gameStore = useGameStore()
 const uiStore = useUIStore()
@@ -363,6 +597,9 @@ const mainMenuMeteorsEnabled = computed(() => settingsStore.mainMenuMeteorsEnabl
 const globalMouseTrailEnabled = computed(() => settingsStore.globalMouseTrailEnabled)
 const clickAnimationEnabled = computed(() => settingsStore.clickAnimationEnabled)
 const sceneAwarenessEnabled = computed(() => settingsStore.sceneAwarenessEnabled)
+const scrollHistoryEnabled = computed(() => settingsStore.dialogScrollHistoryEnabled)
+const spacebarHideEnabled = computed(() => settingsStore.dialogSpacebarHideEnabled)
+const autoHideOnThinkEnabled = computed(() => settingsStore.dialogAutoHideOnThinkEnabled)
 const meteorFps = computed({
   get: () => settingsStore.meteorFps,
   set: (value: number) => {
@@ -714,4 +951,122 @@ function handleStarsInputEnter() {
 watch(starsFps, (newValue) => {
   starsFpsInput.value = newValue
 })
+
+// ─── 对话框外观（自定义）逻辑 ────────────────────────────
+// 双向绑定的本地 ref（v-model 需要）
+const dialogOpacity = ref(settingsStore.dialogOpacity)
+const dialogBlur = ref(settingsStore.dialogBlur)
+const dialogBorderRadius = ref(settingsStore.dialogBorderRadius)
+const dialogGradientColor = ref(settingsStore.dialogGradientColor)
+const dialogTextColor = ref(settingsStore.dialogTextColor)
+// 同步 store → ref
+watch(
+  () => settingsStore.dialogOpacity,
+  (v) => (dialogOpacity.value = v),
+)
+watch(
+  () => settingsStore.dialogBlur,
+  (v) => (dialogBlur.value = v),
+)
+watch(
+  () => settingsStore.dialogBorderRadius,
+  (v) => (dialogBorderRadius.value = v),
+)
+watch(
+  () => settingsStore.dialogGradientColor,
+  (v) => (dialogGradientColor.value = v),
+)
+watch(
+  () => settingsStore.dialogTextColor,
+  (v) => (dialogTextColor.value = v),
+)
+
+// 背景图（base64 存到 settings，data URL 直接用于 <img> src）
+const dialogImageInput = ref<HTMLInputElement | null>(null)
+const dialogPreviewBg = computed<string | null>(() => settingsStore.dialogBackgroundImage)
+
+function triggerDialogImageUpload() {
+  dialogImageInput.value?.click()
+}
+
+async function handleDialogImageUpload(event: Event) {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (!file) return
+
+  // 限制 2MB（base64 后约 2.7MB，避免 localStorage 满）
+  if (file.size > 2 * 1024 * 1024) {
+    await dialogStore.alert('图片太大，请选择小于 2MB 的图片')
+    if (target) target.value = ''
+    return
+  }
+
+  const fileName = file.name.toLowerCase()
+  const allowedExts = ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif']
+  if (!allowedExts.some((ext) => fileName.endsWith(ext))) {
+    await dialogStore.alert('请上传支持的图片格式: ' + allowedExts.join(', '))
+    if (target) target.value = ''
+    return
+  }
+
+  try {
+    const dataUrl = await readFileAsDataURL(file)
+    settingsStore.setDialogBackgroundImage(dataUrl)
+    if (target) target.value = ''
+  } catch (error) {
+    console.error('读取图片失败', error)
+    await dialogStore.alert('读取图片失败，请重试')
+    if (target) target.value = ''
+  }
+}
+
+function readFileAsDataURL(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(new Error('文件读取失败'))
+    reader.readAsDataURL(file)
+  })
+}
+
+function clearDialogImage() {
+  settingsStore.setDialogBackgroundImage(null)
+}
+
+function resetDialogGradientColor() {
+  settingsStore.setDialogGradientColor('#000e27')
+}
+
+function resetDialogTextColor() {
+  settingsStore.setDialogTextColor('#ffffff')
+}
+
+function resetDialogAppearance() {
+  settingsStore.setDialogBackgroundImage(null)
+  settingsStore.setDialogOpacity(70)
+  settingsStore.setDialogBlur(2)
+  settingsStore.setDialogGradientColor('#000e27')
+  settingsStore.setDialogBorderRadius(8)
+  settingsStore.setDialogTextColor('#ffffff')
+}
+
+// 实时预览样式（与 GameDialog 中一致）
+const dialogPreviewStyle = computed(() => {
+  const opacity = dialogOpacity.value
+  const blur = dialogBlur.value
+  const color = dialogGradientColor.value
+  const radius = dialogBorderRadius.value
+  const textColor = dialogTextColor.value
+  const topRgba = hexToRgbaLocal(color, Math.max(opacity - 5, 0))
+  const bottomRgba = hexToRgbaLocal(color, Math.max(opacity, 0))
+  return {
+    background: `linear-gradient(to top, ${topRgba}, ${bottomRgba})`,
+    color: textColor,
+    borderRadius: `${radius}px`,
+    backdropFilter: blur > 0 ? `blur(${blur}px)` : undefined,
+    WebkitBackdropFilter: blur > 0 ? `blur(${blur}px)` : undefined,
+    minHeight: '64px',
+  } as Record<string, string>
+})
+// ────────────────────────────────────────────────────────
 </script>

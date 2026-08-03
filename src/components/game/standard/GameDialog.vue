@@ -1,12 +1,21 @@
 <template>
   <div
-    class="relative flex justify-center w-full z-2 p-3.75 backdrop-blur-[1px] transition-all duration-200 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] bg-linear-to-t from-[rgba(0,14,39,0.7)] to-[rgba(0,14,39,0.6)] before:content-[''] before:absolute before:-top-10 before:left-0 before:right-0 before:h-10 before:bg-linear-to-b before:from-transparent before:via-[rgba(0,14,39,0.3)] before:to-[rgba(0,14,39,0.6)] before:pointer-events-none scrollbar-thin [scrollbar-color:var(--accent-color)_transparent]"
+    class="dialog-container relative flex justify-center w-full z-2 p-3.75 transition-all duration-200 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] before:content-[''] before:absolute before:-top-10 before:left-0 before:right-0 before:h-10 before:pointer-events-none scrollbar-thin [scrollbar-color:var(--accent-color)_transparent]"
     :class="{
       'opacity-0 z-[-1]! overflow-hidden duration-500! ease-linear before:opacity-0 before:duration-1000!':
         isHidden,
       'max-h-[40vh]': !uiStore.isNarrowScreen,
     }"
+    :style="dialogContainerStyle"
+    @wheel="onDialogWheel"
   >
+    <!-- 自定义背景图（可选） -->
+    <img
+      v-if="dialogBackgroundUrl"
+      :src="dialogBackgroundUrl"
+      class="dialog-custom-bg pointer-events-none absolute inset-0 w-full h-full object-cover"
+      alt=""
+    />
     <div :style="{ width: containerWidth + '%' }" class="relative">
       <div class="overflow-y-auto">
         <!-- 标题栏 -->
@@ -166,6 +175,31 @@
         <!-- 分割线 -->
         <div class="h-px bg-white/30 my-1.5"></div>
 
+        <!-- ── 历史记录 peek 面板（滚轮触发） ── -->
+        <Transition name="history-peek">
+          <div
+            v-if="isHistoryPeek"
+            ref="historyPeekRef"
+            class="history-peek-viewer"
+            @wheel.passive="onHistoryPeekWheel"
+          >
+            <div v-if="recentHistory.length === 0" class="text-white/40 text-center py-2 text-sm">
+              暂无历史记录
+            </div>
+            <div
+              v-for="(msg, idx) in recentHistory"
+              :key="idx"
+              class="history-peek-msg"
+              :class="{ 'is-latest': idx === recentHistory.length - 1 }"
+            >
+              <span class="history-peek-name" :class="{ 'is-user': msg.type === 'message' }">
+                {{ msg.displayName }}：
+              </span>
+              <span class="history-peek-content">{{ msg.content }}</span>
+            </div>
+          </div>
+        </Transition>
+
         <!-- 输入区 -->
         <div
           class="flex flex-col whitespace-pre-line w-full min-h-10 bg-transparent border-none text-white text-xl font-bold resize-none my-1.25 outline-none transition-all duration-300"
@@ -207,7 +241,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
+import { ref, watch, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { Button } from '../../base'
 import { useGameStore } from '../../../stores/modules/game'
 import { useUIStore } from '../../../stores/modules/ui/ui'
@@ -220,6 +254,57 @@ import { eventQueue } from '../../../core/events/event-queue'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { setInputHasText } from '../../../composables/useCanDeliver'
+
+// ─── 对话框外观（自定义） ─────────────────────────────────
+// HEX 颜色 → rgba 字符串，alpha 为 0-100
+function hexToRgba(hex: string, alpha: number): string {
+  const fallback = `rgba(0, 14, 39, ${alpha / 100})`
+  if (!hex || typeof hex !== 'string') return fallback
+  let h = hex.trim().replace('#', '')
+  if (h.length === 3) {
+    h = h
+      .split('')
+      .map((c) => c + c)
+      .join('')
+  }
+  if (!/^[0-9a-fA-F]{6}$/.test(h)) return fallback
+  const r = parseInt(h.substring(0, 2), 16)
+  const g = parseInt(h.substring(2, 4), 16)
+  const b = parseInt(h.substring(4, 6), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha / 100})`
+}
+
+// 对话框整体容器的动态样式（颜色 / 圆角 / 模糊 / 文字色）
+const dialogContainerStyle = computed(() => {
+  const opacity = settingsStore.dialogOpacity // 0-100
+  const blur = settingsStore.dialogBlur // 0-20 px
+  const color = settingsStore.dialogGradientColor
+  const radius = settingsStore.dialogBorderRadius
+  const textColor = settingsStore.dialogTextColor
+
+  // 顶部 / 底部颜色 = 同一色相，底部略亮（透明度更高）
+  const topRgba = hexToRgba(color, Math.max(opacity - 5, 0))
+  const bottomRgba = hexToRgba(color, Math.max(opacity, 0))
+  const middleRgba = hexToRgba(color, Math.max(Math.round(opacity * 0.6), 0))
+  const gradientMain = `linear-gradient(to top, ${topRgba}, ${bottomRgba})`
+  const gradientBefore = `linear-gradient(to bottom, transparent, ${middleRgba}, ${bottomRgba})`
+
+  return {
+    background: gradientMain,
+    color: textColor,
+    borderRadius: `${radius}px`,
+    backdropFilter: blur > 0 ? `blur(${blur}px)` : undefined,
+    WebkitBackdropFilter: blur > 0 ? `blur(${blur}px)` : undefined,
+    // before 伪元素的渐变（通过 CSS 自定义属性传过去）
+    '--dialog-before-bg': gradientBefore,
+  } as Record<string, string>
+})
+
+// 对话框背景图（用户上传的 base64 data URL，直接用于 <img> src）
+const dialogBackgroundUrl = computed<string | null>(() => {
+  return settingsStore.dialogBackgroundImage
+})
+// ────────────────────────────────────────────────────────
 
 const inputMessage = ref('')
 // 输入框内容变化 → 通知 can_deliver 追踪
@@ -542,6 +627,8 @@ onMounted(async () => {
   updateContainerWidth()
   // 监听窗口大小变化
   window.addEventListener('resize', updateContainerWidth)
+  // 空格键全局监听（仅在对话框设置启用时生效）
+  window.addEventListener('keydown', onSpacebarKeydown)
 
   // 监听截图完成事件
   unlistenScreenshot = await listen<{ base64: string }>('screenshot:captured', (event) => {
@@ -560,6 +647,7 @@ onMounted(async () => {
 onUnmounted(() => {
   document.removeEventListener('contextmenu', handleDialogShow)
   window.removeEventListener('resize', updateContainerWidth)
+  window.removeEventListener('keydown', onSpacebarKeydown)
   if (unlistenScreenshot) unlistenScreenshot()
   if (unlistenCancelled) unlistenCancelled()
 })
@@ -684,9 +772,109 @@ defineExpose({
   continueDialog,
   isTyping, // 统一 computed：内联模式用 div 实例，否则用 textarea 实例
 })
+
+// ─── 滚轮查看历史 ──────────────────────────────────────────
+const isHistoryPeek = ref(false)
+const historyPeekRef = ref<HTMLDivElement | null>(null)
+const recentHistory = computed(() => {
+  // 取最近 10 条
+  const all = gameStore.dialogHistory || []
+  return all.slice(-10)
+})
+
+// 在 dialog 容器上滚轮时的处理
+function onDialogWheel(e: WheelEvent) {
+  if (!settingsStore.dialogScrollHistoryEnabled) return
+  // 用户在输入区滚动时（打字框/按钮组）不触发 peek，让原生滚动处理
+  // 检查滚动目标是否是历史面板自身，是的话让它自然滚动
+  if (isHistoryPeek.value) {
+    // 历史面板已经显示，让面板自己滚动
+    return
+  }
+  // 向上滚（deltaY < 0）→ 打开历史 peek
+  if (e.deltaY < 0) {
+    isHistoryPeek.value = true
+    nextTick(() => {
+      // 滚动到面板底部（最新消息）
+      if (historyPeekRef.value) {
+        historyPeekRef.value.scrollTop = historyPeekRef.value.scrollHeight
+      }
+    })
+  }
+}
+
+// 在历史面板内滚轮时的处理：到底后再向下滚 → 关闭面板
+function onHistoryPeekWheel(e: WheelEvent) {
+  if (!historyPeekRef.value) return
+  // nextTick 让 scrollHeight 更新
+  nextTick(() => {
+    const el = historyPeekRef.value
+    if (!el) return
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 5
+    if (atBottom && e.deltaY > 0) {
+      isHistoryPeek.value = false
+    }
+  })
+}
+// ──────────────────────────────────────────────────────────
+
+// ─── 空格键隐藏对话框 ──────────────────────────────────────
+function onSpacebarKeydown(e: KeyboardEvent) {
+  if (!settingsStore.dialogSpacebarHideEnabled) return
+  // 只响应 Space（不带任何修饰键）
+  if (e.code !== 'Space' || e.ctrlKey || e.altKey || e.shiftKey || e.metaKey) return
+  // 如果焦点在输入元素（textarea / input / contenteditable）则不拦截
+  const target = e.target as HTMLElement | null
+  if (target) {
+    const tag = target.tagName?.toLowerCase()
+    if (tag === 'textarea' || tag === 'input' || target.isContentEditable) {
+      return
+    }
+  }
+  e.preventDefault()
+  isHidden.value = !isHidden.value
+  // 用户手动切换后清除 auto-hide 标记
+  wasAutoHidden.value = false
+}
+// ──────────────────────────────────────────────────────────
+
+// ─── AI 思考时自动隐藏 ──────────────────────────────────────
+const wasAutoHidden = ref(false)
+watch(
+  () => gameStore.currentStatus,
+  (newStatus) => {
+    if (!settingsStore.dialogAutoHideOnThinkEnabled) return
+    if (newStatus === 'thinking') {
+      // 思考中：自动隐藏（除非用户手动隐藏过，保持隐藏状态）
+      if (!isHidden.value) {
+        isHidden.value = true
+        wasAutoHidden.value = true
+      }
+    } else if (wasAutoHidden.value) {
+      // 思考结束：是自动隐藏状态才恢复显示
+      isHidden.value = false
+      wasAutoHidden.value = false
+    }
+  },
+)
+// ──────────────────────────────────────────────────────────
 </script>
 
 <style scoped>
+/* 对话框容器：::before 渐变（由 --dialog-before-bg CSS 变量驱动） */
+.dialog-container::before {
+  background: var(--dialog-before-bg);
+}
+
+/* 自定义背景图：跟随父容器圆角 */
+.dialog-custom-bg {
+  border-radius: inherit;
+  z-index: 0;
+}
+.dialog-container > .relative {
+  z-index: 1;
+}
+
 /* 内联显示 div：外观与 textarea 一致，支持 innerHTML 混色 */
 .inline-motion-display {
   color: #9ca3af; /* fallback：极端情况下 div 直接显示文字时用灰色 */
@@ -781,4 +969,98 @@ defineExpose({
     border-top-width: 1px;
   }
 }
+
+/* ─── 历史记录 peek 面板 ─────────────────────────────── */
+.history-peek-viewer {
+  max-height: 30vh;
+  overflow-y: auto;
+  padding: 8px 12px;
+  margin: 4px 0 8px;
+  border-radius: 8px;
+  background: rgba(0, 14, 39, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent-color) transparent;
+}
+.history-peek-viewer::-webkit-scrollbar {
+  width: 6px;
+}
+.history-peek-viewer::-webkit-scrollbar-thumb {
+  background: var(--accent-color);
+  border-radius: 3px;
+}
+
+.history-peek-msg {
+  padding: 6px 0;
+  font-size: 16px;
+  line-height: 1.55;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.history-peek-msg:last-child {
+  border-bottom: none;
+}
+.history-peek-msg.is-latest {
+  background: rgba(121, 217, 255, 0.08);
+  border-radius: 6px;
+  padding-left: 8px;
+  padding-right: 8px;
+  border-bottom: none;
+  margin-top: 4px;
+}
+.history-peek-name {
+  color: var(--accent-color, #6eb4ff);
+  font-weight: bold;
+  margin-right: 4px;
+}
+.history-peek-name.is-user {
+  color: #ffaa6e;
+}
+.history-peek-content {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* 历史面板进出场动画 */
+.history-peek-enter-active {
+  animation: history-peek-in 0.25s ease-out;
+  overflow: hidden;
+}
+.history-peek-leave-active {
+  animation: history-peek-out 0.2s ease-in;
+  overflow: hidden;
+}
+@keyframes history-peek-in {
+  from {
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 30vh;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    margin-top: 4px;
+    margin-bottom: 8px;
+  }
+}
+@keyframes history-peek-out {
+  from {
+    opacity: 1;
+    max-height: 30vh;
+  }
+  to {
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+}
+/* ─────────────────────────────────────────────────── */
 </style>

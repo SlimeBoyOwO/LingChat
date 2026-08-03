@@ -1,0 +1,535 @@
+diff --git a/src/components/game/standard/GameDialog.vue b/src/components/game/standard/GameDialog.vue
+index c95b504..02996b5 100644
+--- a/src/components/game/standard/GameDialog.vue
++++ b/src/components/game/standard/GameDialog.vue
+@@ -1,12 +1,20 @@
+ <template>
+   <div
+-    class="relative flex justify-center w-full z-2 p-3.75 backdrop-blur-[1px] transition-all duration-200 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] bg-linear-to-t from-[rgba(0,14,39,0.7)] to-[rgba(0,14,39,0.6)] before:content-[''] before:absolute before:-top-10 before:left-0 before:right-0 before:h-10 before:bg-linear-to-b before:from-transparent before:via-[rgba(0,14,39,0.3)] before:to-[rgba(0,14,39,0.6)] before:pointer-events-none scrollbar-thin [scrollbar-color:var(--accent-color)_transparent]"
++    class="dialog-container relative flex justify-center w-full z-2 p-3.75 transition-all duration-200 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] before:content-[''] before:absolute before:-top-10 before:left-0 before:right-0 before:h-10 before:pointer-events-none scrollbar-thin [scrollbar-color:var(--accent-color)_transparent]"
+     :class="{
+       'opacity-0 z-[-1]! overflow-hidden duration-500! ease-linear before:opacity-0 before:duration-1000!':
+         isHidden,
+       'max-h-[40vh]': !uiStore.isNarrowScreen,
+     }"
++    :style="dialogContainerStyle"
+   >
++    <!-- 自定义背景图（可选） -->
++    <img
++      v-if="dialogBackgroundUrl"
++      :src="dialogBackgroundUrl"
++      class="dialog-custom-bg pointer-events-none absolute inset-0 w-full h-full object-cover"
++      alt=""
++    />
+     <div :style="{ width: containerWidth + '%' }" class="relative">
+       <div class="overflow-y-auto">
+         <!-- 标题栏 -->
+@@ -221,6 +229,57 @@ import { invoke } from '@tauri-apps/api/core'
+ import { listen } from '@tauri-apps/api/event'
+ import { setInputHasText } from '../../../composables/useCanDeliver'
+ 
++// ─── 对话框外观（自定义） ─────────────────────────────────
++// HEX 颜色 → rgba 字符串，alpha 为 0-100
++function hexToRgba(hex: string, alpha: number): string {
++  const fallback = `rgba(0, 14, 39, ${alpha / 100})`
++  if (!hex || typeof hex !== 'string') return fallback
++  let h = hex.trim().replace('#', '')
++  if (h.length === 3) {
++    h = h
++      .split('')
++      .map((c) => c + c)
++      .join('')
++  }
++  if (!/^[0-9a-fA-F]{6}$/.test(h)) return fallback
++  const r = parseInt(h.substring(0, 2), 16)
++  const g = parseInt(h.substring(2, 4), 16)
++  const b = parseInt(h.substring(4, 6), 16)
++  return `rgba(${r}, ${g}, ${b}, ${alpha / 100})`
++}
++
++// 对话框整体容器的动态样式（颜色 / 圆角 / 模糊 / 文字色）
++const dialogContainerStyle = computed(() => {
++  const opacity = settingsStore.dialogOpacity // 0-100
++  const blur = settingsStore.dialogBlur // 0-20 px
++  const color = settingsStore.dialogGradientColor
++  const radius = settingsStore.dialogBorderRadius
++  const textColor = settingsStore.dialogTextColor
++
++  // 顶部 / 底部颜色 = 同一色相，底部略亮（透明度更高）
++  const topRgba = hexToRgba(color, Math.max(opacity - 5, 0))
++  const bottomRgba = hexToRgba(color, Math.max(opacity, 0))
++  const middleRgba = hexToRgba(color, Math.max(Math.round(opacity * 0.6), 0))
++  const gradientMain = `linear-gradient(to top, ${topRgba}, ${bottomRgba})`
++  const gradientBefore = `linear-gradient(to bottom, transparent, ${middleRgba}, ${bottomRgba})`
++
++  return {
++    background: gradientMain,
++    color: textColor,
++    borderRadius: `${radius}px`,
++    backdropFilter: blur > 0 ? `blur(${blur}px)` : undefined,
++    WebkitBackdropFilter: blur > 0 ? `blur(${blur}px)` : undefined,
++    // before 伪元素的渐变（通过 CSS 自定义属性传过去）
++    '--dialog-before-bg': gradientBefore,
++  } as Record<string, string>
++})
++
++// 对话框背景图（用户上传的 base64 data URL，直接用于 <img> src）
++const dialogBackgroundUrl = computed<string | null>(() => {
++  return settingsStore.dialogBackgroundImage
++})
++// ────────────────────────────────────────────────────────
++
+ const inputMessage = ref('')
+ // 输入框内容变化 → 通知 can_deliver 追踪
+ watch(inputMessage, (val) => setInputHasText(Boolean(val.trim())), { immediate: true })
+@@ -687,6 +746,20 @@ defineExpose({
+ </script>
+ 
+ <style scoped>
++/* 对话框容器：::before 渐变（由 --dialog-before-bg CSS 变量驱动） */
++.dialog-container::before {
++  background: var(--dialog-before-bg);
++}
++
++/* 自定义背景图：跟随父容器圆角 */
++.dialog-custom-bg {
++  border-radius: inherit;
++  z-index: 0;
++}
++.dialog-container > .relative {
++  z-index: 1;
++}
++
+ /* 内联显示 div：外观与 textarea 一致，支持 innerHTML 混色 */
+ .inline-motion-display {
+   color: #9ca3af; /* fallback：极端情况下 div 直接显示文字时用灰色 */
+diff --git a/src/components/settings/pages/SettingsBackground.vue b/src/components/settings/pages/SettingsBackground.vue
+index e668011..94f37d1 100644
+--- a/src/components/settings/pages/SettingsBackground.vue
++++ b/src/components/settings/pages/SettingsBackground.vue
+@@ -245,6 +245,189 @@
+       </div>
+     </MenuItem>
+ 
++    <!-- ========== 对话框外观（自定义） ========== -->
++    <MenuItem title="对话框外观" size="large">
++      <template #header>
++        <MessageSquare :size="20" />
++      </template>
++
++      <div class="flex flex-col gap-5 p-2">
++        <!-- 提示 -->
++        <div class="text-xs text-white/50 leading-relaxed">
++          自定义主界面底部对话框（消息显示 + 输入框区域）的外观。设置会自动保存。
++        </div>
++
++        <!-- 自定义背景图 -->
++        <div class="flex flex-col gap-2">
++          <span class="text-sm font-medium text-white/90">自定义背景图</span>
++          <div class="flex items-center gap-3">
++            <div
++              v-if="dialogPreviewBg"
++              class="w-24 h-14 rounded-lg border border-white/20 overflow-hidden bg-black/30 shrink-0"
++            >
++              <img :src="dialogPreviewBg" class="w-full h-full object-cover" alt="预览" />
++            </div>
++            <div
++              v-else
++              class="w-24 h-14 rounded-lg border border-dashed border-white/20 flex items-center justify-center text-white/30 text-xs shrink-0"
++            >
++              暂无图片
++            </div>
++            <button
++              class="px-4 py-1.5 rounded-full text-sm font-bold transition-all border shadow-lg bg-white/10 border-white/20 text-white/80 hover:bg-white/20"
++              @click="triggerDialogImageUpload"
++            >
++              {{ dialogPreviewBg ? '更换' : '上传图片' }}
++            </button>
++            <button
++              v-if="dialogPreviewBg"
++              class="px-4 py-1.5 rounded-full text-sm font-bold transition-all border shadow-lg bg-red-500/20 border-red-500/30 text-red-300 hover:bg-red-500/30"
++              @click="clearDialogImage"
++            >
++              清除
++            </button>
++            <span class="text-xs text-white/40 ml-auto">建议 &lt; 1MB（存到本地）</span>
++          </div>
++          <input
++            type="file"
++            ref="dialogImageInput"
++            @change="handleDialogImageUpload"
++            accept=".jpg,.jpeg,.png,.webp,.bmp,.gif"
++            style="display: none"
++          />
++        </div>
++
++        <!-- 透明度 -->
++        <div class="flex items-center gap-4">
++          <span class="text-sm font-medium text-white/90 min-w-22">背景透明度</span>
++          <Slider
++            v-model="dialogOpacity"
++            :min="0"
++            :max="100"
++            :step="1"
++            accent-color="#6eb4ff"
++            @change="settingsStore.setDialogOpacity($event)"
++            class="flex-1"
++          >
++            <template #left>{{ dialogOpacity }}%</template>
++          </Slider>
++        </div>
++
++        <!-- 模糊度 -->
++        <div class="flex items-center gap-4">
++          <span class="text-sm font-medium text-white/90 min-w-22">背景模糊</span>
++          <Slider
++            v-model="dialogBlur"
++            :min="0"
++            :max="20"
++            :step="1"
++            accent-color="#a78bfa"
++            @change="settingsStore.setDialogBlur($event)"
++            class="flex-1"
++          >
++            <template #left>{{ dialogBlur }}px</template>
++          </Slider>
++        </div>
++
++        <!-- 圆角 -->
++        <div class="flex items-center gap-4">
++          <span class="text-sm font-medium text-white/90 min-w-22">圆角大小</span>
++          <Slider
++            v-model="dialogBorderRadius"
++            :min="0"
++            :max="32"
++            :step="1"
++            accent-color="#f472b6"
++            @change="settingsStore.setDialogBorderRadius($event)"
++            class="flex-1"
++          >
++            <template #left>{{ dialogBorderRadius }}px</template>
++          </Slider>
++        </div>
++
++        <!-- 渐变色 -->
++        <div class="flex items-center gap-4">
++          <span class="text-sm font-medium text-white/90 min-w-22">渐变底色</span>
++          <input
++            v-model="dialogGradientColor"
++            @input="settingsStore.setDialogGradientColor(($event.target as HTMLInputElement).value)"
++            type="color"
++            class="w-10 h-10 rounded-lg cursor-pointer border-2 border-white/20 bg-transparent shrink-0"
++          />
++          <input
++            v-model="dialogGradientColor"
++            @change="settingsStore.setDialogGradientColor(($event.target as HTMLInputElement).value)"
++            type="text"
++            class="flex-1 px-3 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
++            placeholder="#000e27"
++          />
++          <button
++            class="px-3 py-1.5 rounded-full text-xs font-bold transition-all border bg-white/5 border-white/15 text-white/60 hover:bg-white/10 hover:text-white/80"
++            @click="resetDialogGradientColor"
++            title="重置为默认深蓝"
++          >
++            默认
++          </button>
++        </div>
++
++        <!-- 文字色 -->
++        <div class="flex items-center gap-4">
++          <span class="text-sm font-medium text-white/90 min-w-22">文字颜色</span>
++          <input
++            v-model="dialogTextColor"
++            @input="settingsStore.setDialogTextColor(($event.target as HTMLInputElement).value)"
++            type="color"
++            class="w-10 h-10 rounded-lg cursor-pointer border-2 border-white/20 bg-transparent shrink-0"
++          />
++          <input
++            v-model="dialogTextColor"
++            @change="settingsStore.setDialogTextColor(($event.target as HTMLInputElement).value)"
++            type="text"
++            class="flex-1 px-3 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
++            placeholder="#ffffff"
++          />
++          <button
++            class="px-3 py-1.5 rounded-full text-xs font-bold transition-all border bg-white/5 border-white/15 text-white/60 hover:bg-white/10 hover:text-white/80"
++            @click="resetDialogTextColor"
++            title="重置为白色"
++          >
++            默认
++          </button>
++        </div>
++
++        <!-- 实时预览 -->
++        <div class="flex flex-col gap-2 pt-2">
++          <span class="text-sm font-medium text-white/90">实时预览</span>
++          <div
++            class="relative overflow-hidden border border-white/20"
++            :style="dialogPreviewStyle"
++          >
++            <img
++              v-if="dialogPreviewBg"
++              :src="dialogPreviewBg"
++              class="absolute inset-0 w-full h-full object-cover pointer-events-none"
++              :style="{ borderRadius: dialogBorderRadius + 'px' }"
++              alt=""
++            />
++            <div class="relative px-4 py-3">
++              <div class="text-base font-bold mb-1">莱姆 Bilibili</div>
++              <div class="text-xs opacity-70">在这里输入消息…</div>
++            </div>
++          </div>
++        </div>
++
++        <!-- 全部重置 -->
++        <div class="flex items-center gap-3 pt-2 border-t border-white/10">
++          <button
++            class="px-4 py-1.5 rounded-full text-sm font-bold transition-all border bg-red-500/10 border-red-500/30 text-red-300 hover:bg-red-500/20"
++            @click="resetDialogAppearance"
++          >
++            全部重置为默认
++          </button>
++        </div>
++      </div>
++    </MenuItem>
++
+     <MenuItem title="CPU 性能检测" size="large">
+       <template #header>
+         <Cpu :size="20" />
+@@ -348,10 +531,38 @@ import {
+   type CpuInfo,
+   type PerfTier,
+ } from '../../../api/services/cpu-perf'
+-import { Image, PictureInPicture, Sparkles, Settings, Wand2, Wrench, Cpu } from 'lucide-vue-next'
++import {
++  Image,
++  PictureInPicture,
++  Sparkles,
++  Settings,
++  Wand2,
++  Wrench,
++  Cpu,
++  MessageSquare,
++} from 'lucide-vue-next'
+ import SceneEditModal from '../scene/SceneEditModal.vue'
+ import { useUserStore } from '../../../stores/modules/user/user'
+ 
++// ─── 对话框外观（自定义）辅助 ────────────────────────────
++function hexToRgbaLocal(hex: string, alpha: number): string {
++  const fallback = `rgba(0, 14, 39, ${alpha / 100})`
++  if (!hex || typeof hex !== 'string') return fallback
++  let h = hex.trim().replace('#', '')
++  if (h.length === 3) {
++    h = h
++      .split('')
++      .map((c) => c + c)
++      .join('')
++  }
++  if (!/^[0-9a-fA-F]{6}$/.test(h)) return fallback
++  const r = parseInt(h.substring(0, 2), 16)
++  const g = parseInt(h.substring(2, 4), 16)
++  const b = parseInt(h.substring(4, 6), 16)
++  return `rgba(${r}, ${g}, ${b}, ${alpha / 100})`
++}
++// ────────────────────────────────────────────────────────
++
+ const gameStore = useGameStore()
+ const uiStore = useUIStore()
+ const settingsStore = useSettingsStore()
+@@ -714,4 +925,122 @@ function handleStarsInputEnter() {
+ watch(starsFps, (newValue) => {
+   starsFpsInput.value = newValue
+ })
++
++// ─── 对话框外观（自定义）逻辑 ────────────────────────────
++// 双向绑定的本地 ref（v-model 需要）
++const dialogOpacity = ref(settingsStore.dialogOpacity)
++const dialogBlur = ref(settingsStore.dialogBlur)
++const dialogBorderRadius = ref(settingsStore.dialogBorderRadius)
++const dialogGradientColor = ref(settingsStore.dialogGradientColor)
++const dialogTextColor = ref(settingsStore.dialogTextColor)
++// 同步 store → ref
++watch(
++  () => settingsStore.dialogOpacity,
++  (v) => (dialogOpacity.value = v),
++)
++watch(
++  () => settingsStore.dialogBlur,
++  (v) => (dialogBlur.value = v),
++)
++watch(
++  () => settingsStore.dialogBorderRadius,
++  (v) => (dialogBorderRadius.value = v),
++)
++watch(
++  () => settingsStore.dialogGradientColor,
++  (v) => (dialogGradientColor.value = v),
++)
++watch(
++  () => settingsStore.dialogTextColor,
++  (v) => (dialogTextColor.value = v),
++)
++
++// 背景图（base64 存到 settings，data URL 直接用于 <img> src）
++const dialogImageInput = ref<HTMLInputElement | null>(null)
++const dialogPreviewBg = computed<string | null>(() => settingsStore.dialogBackgroundImage)
++
++function triggerDialogImageUpload() {
++  dialogImageInput.value?.click()
++}
++
++async function handleDialogImageUpload(event: Event) {
++  const target = event.target as HTMLInputElement
++  const file = target.files?.[0]
++  if (!file) return
++
++  // 限制 2MB（base64 后约 2.7MB，避免 localStorage 满）
++  if (file.size > 2 * 1024 * 1024) {
++    await dialogStore.alert('图片太大，请选择小于 2MB 的图片')
++    if (target) target.value = ''
++    return
++  }
++
++  const fileName = file.name.toLowerCase()
++  const allowedExts = ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif']
++  if (!allowedExts.some((ext) => fileName.endsWith(ext))) {
++    await dialogStore.alert('请上传支持的图片格式: ' + allowedExts.join(', '))
++    if (target) target.value = ''
++    return
++  }
++
++  try {
++    const dataUrl = await readFileAsDataURL(file)
++    settingsStore.setDialogBackgroundImage(dataUrl)
++    if (target) target.value = ''
++  } catch (error) {
++    console.error('读取图片失败', error)
++    await dialogStore.alert('读取图片失败，请重试')
++    if (target) target.value = ''
++  }
++}
++
++function readFileAsDataURL(file: File): Promise<string> {
++  return new Promise((resolve, reject) => {
++    const reader = new FileReader()
++    reader.onload = () => resolve(String(reader.result))
++    reader.onerror = () => reject(new Error('文件读取失败'))
++    reader.readAsDataURL(file)
++  })
++}
++
++function clearDialogImage() {
++  settingsStore.setDialogBackgroundImage(null)
++}
++
++function resetDialogGradientColor() {
++  settingsStore.setDialogGradientColor('#000e27')
++}
++
++function resetDialogTextColor() {
++  settingsStore.setDialogTextColor('#ffffff')
++}
++
++function resetDialogAppearance() {
++  settingsStore.setDialogBackgroundImage(null)
++  settingsStore.setDialogOpacity(70)
++  settingsStore.setDialogBlur(2)
++  settingsStore.setDialogGradientColor('#000e27')
++  settingsStore.setDialogBorderRadius(8)
++  settingsStore.setDialogTextColor('#ffffff')
++}
++
++// 实时预览样式（与 GameDialog 中一致）
++const dialogPreviewStyle = computed(() => {
++  const opacity = dialogOpacity.value
++  const blur = dialogBlur.value
++  const color = dialogGradientColor.value
++  const radius = dialogBorderRadius.value
++  const textColor = dialogTextColor.value
++  const topRgba = hexToRgbaLocal(color, Math.max(opacity - 5, 0))
++  const bottomRgba = hexToRgbaLocal(color, Math.max(opacity, 0))
++  return {
++    background: `linear-gradient(to top, ${topRgba}, ${bottomRgba})`,
++    color: textColor,
++    borderRadius: `${radius}px`,
++    backdropFilter: blur > 0 ? `blur(${blur}px)` : undefined,
++    WebkitBackdropFilter: blur > 0 ? `blur(${blur}px)` : undefined,
++    minHeight: '64px',
++  } as Record<string, string>
++})
++// ────────────────────────────────────────────────────────
+ </script>
+diff --git a/src/stores/modules/settings/index.ts b/src/stores/modules/settings/index.ts
+index f54fb5f..e918e0b 100644
+--- a/src/stores/modules/settings/index.ts
++++ b/src/stores/modules/settings/index.ts
+@@ -35,6 +35,13 @@ export const DEFAULT_SETTINGS = {
+     meteorFps: 30, // 流星动画帧率
+     starsFps: 30, // 星星动画帧率
+     sceneAwarenessEnabled: true, // 场景感知开关
++    // ── 对话框外观（自定义） ──
++    dialogBackgroundImage: null as string | null, // 自定义背景图文件名（存于 data/backgrounds/）
++    dialogOpacity: 70, // 对话框背景不透明度 0-100
++    dialogBlur: 2, // 对话框背景模糊度 0-20 px
++    dialogGradientColor: '#000e27', // 对话框渐变底色（HEX）
++    dialogBorderRadius: 8, // 对话框圆角 0-32 px
++    dialogTextColor: '#ffffff', // 对话框文字色（HEX）
+   },
+   // 角色设置
+   character: {
+@@ -71,6 +78,13 @@ export interface DisplaySettings {
+   meteorFps: number
+   starsFps: number
+   sceneAwarenessEnabled: boolean
++  // ── 对话框外观 ──
++  dialogBackgroundImage: string | null
++  dialogOpacity: number
++  dialogBlur: number
++  dialogGradientColor: string
++  dialogBorderRadius: number
++  dialogTextColor: string
+ }
+ 
+ export interface CharacterSettings {
+@@ -125,6 +139,13 @@ export const useSettingsStore = defineStore('settings', {
+     meteorFps: (state) => state.display.meteorFps,
+     starsFps: (state) => state.display.starsFps,
+     sceneAwarenessEnabled: (state) => state.display.sceneAwarenessEnabled,
++    // ── 对话框外观 getter ──
++    dialogBackgroundImage: (state) => state.display.dialogBackgroundImage,
++    dialogOpacity: (state) => state.display.dialogOpacity,
++    dialogBlur: (state) => state.display.dialogBlur,
++    dialogGradientColor: (state) => state.display.dialogGradientColor,
++    dialogBorderRadius: (state) => state.display.dialogBorderRadius,
++    dialogTextColor: (state) => state.display.dialogTextColor,
+     // 各音量
+     characterVolume: (state) => state.audio.characterVolume,
+     bubbleVolume: (state) => state.audio.bubbleVolume,
+@@ -294,6 +315,26 @@ export const useSettingsStore = defineStore('settings', {
+       }
+       this.pet.scale = scale
+     },
++
++    // ── 对话框外观 setter ──
++    setDialogBackgroundImage(filename: string | null) {
++      this.display.dialogBackgroundImage = filename
++    },
++    setDialogOpacity(opacity: number) {
++      this.display.dialogOpacity = Math.max(0, Math.min(100, opacity))
++    },
++    setDialogBlur(blur: number) {
++      this.display.dialogBlur = Math.max(0, Math.min(20, blur))
++    },
++    setDialogGradientColor(color: string) {
++      this.display.dialogGradientColor = color
++    },
++    setDialogBorderRadius(radius: number) {
++      this.display.dialogBorderRadius = Math.max(0, Math.min(32, radius))
++    },
++    setDialogTextColor(color: string) {
++      this.display.dialogTextColor = color
++    },
+   },
+ 
+   // 启用持久化

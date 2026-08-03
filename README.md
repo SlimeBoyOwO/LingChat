@@ -1,217 +1,114 @@
-<div align="center">
+# LingChat 对话框外观自定义补丁
 
-<img src="https://github.com/user-attachments/assets/ffccbe79-87ed-4dbc-8e60-f400efbbab26" width="1000" style="border-radius: 12px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);" alt="official_gif">
+## ⚠️ 重要前提
 
-[![OS Support](https://img.shields.io/badge/OS-Windows%20|%20Linux%20|%20macOS-blue?style=flat-square&logo=windows)](https://github.com/SlimeBoyOwO/LingChat)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](http://makeapullrequest.com)
+**这个补丁是源码补丁，不能直接覆盖到 `G:\Lingchat\ling_chat.exe`。**
 
-**LingChat - 一个灵动の人工智能聊天陪伴助手**
+LingChat 是用 **Tauri + Vite + TypeScript** 构建的桌面应用。`ling_chat.exe` 是已编译的二进制文件，无法直接修改。要使用本补丁，你需要：
 
-[📥 下载最新版本](https://github.com/SlimeBoyOwO/LingChat/releases) · [🐛 报告 Bug](https://github.com/SlimeBoyOwO/LingChat/issues) · [📖 源代码使用教程](https://github.com/SlimeBoyOwO/LingChat/blob/develop/others/document/%E6%BA%90%E4%BB%A3%E7%A0%81%E4%BD%BF%E7%94%A8.md)
+1. 从 [GitHub](https://github.com/myh1011/LingChat) 克隆完整源码
+2. 把本补丁的 3 个文件覆盖到对应路径
+3. 重新构建出新的 `LingChat.exe`（约需 10-30 分钟）
 
-</div>
+构建需要的工具：
+- **Node.js** ≥ 18（[下载](https://nodejs.org)）
+- **Rust** 工具链（[下载](https://rustup.rs)）
+- **pnpm**（`npm install -g pnpm`）
+- **Tauri CLI 依赖**（Windows：Microsoft C++ Build Tools + WebView2）
 
----
+## 改动概览
 
-## 🖥️ 快速指引 & 社区支持
+本补丁在「设置 → 背景」标签页里新增了一个**「对话框外观」**区块，允许自定义主界面底部对话框（消息显示 + 输入框区域）的外观。
 
-<table width="100%">
-  <tr>
-    <!-- 左侧：跨 4 行显示图片 -->
-    <td rowspan="4" width="20%" align="center" valign="middle">
-      <img src="https://github.com/user-attachments/assets/a7db1801-a209-4948-abf2-7409b00e5017" width="100%" style="border-radius: 8px; max-width: 260px;" alt="preview_image" />
-    </td>
-    <!-- 右侧：表格表头 -->
-    <th align="left">📌 资源直达</th>
-    <th align="left">🔗 链接</th>
-    <th align="left">说明</th>
-  </tr>
-  <tr>
-    <!-- 右侧：第一行数据 -->
-    <td><b>安装互助群</b></td>
-    <td><b>QQ群：1055935861</b></td>
-    <td>纯安装问题请加此群，目前通过二维码进入。</td>
-  </tr>
-  <tr>
-    <!-- 右侧：第二行数据 -->
-    <td><b>代码报错求助</b></td>
-    <td><a href="https://github.com/SlimeBoyOwO/LingChat/blob/main/README-help.md">👉 帮助文档-代码报错</a></td>
-    <td>遇到终端或后台代码红字报错时查看。</td>
-  </tr>
-  <tr>
-    <!-- 右侧：第三行数据 -->
-    <td><b>截图报错求助</b></td>
-    <td><a href="https://github.com/SlimeBoyOwO/LingChat/blob/develop/others/document/Q&A.md">👉 帮助文档-截图报错</a></td>
-    <td>遇到弹窗或画面显示异常时查看。</td>
-  </tr>
-</table>
+### 新增的 6 项可调参数
 
----
+| 参数 | 范围 | 默认 | 说明 |
+|------|------|------|------|
+| 自定义背景图 | 图片文件 ≤ 2MB | 无 | 上传一张图片作为对话框底图（base64 存到 localStorage） |
+| 背景透明度 | 0 - 100% | 70% | 控制渐变底色的不透明度 |
+| 背景模糊 | 0 - 20 px | 2 px | 毛玻璃模糊强度（0 = 关闭） |
+| 圆角大小 | 0 - 32 px | 8 px | 对话框的圆角 |
+| 渐变底色 | HEX 颜色 | `#000e27`（深蓝） | 选色器 + 文本框双输入 |
+| 文字颜色 | HEX 颜色 | `#ffffff` | 对话框内文字色 |
 
-## 核心功能列表
+所有设置**自动保存**到 `localStorage`，下次启动自动恢复。底部还有"实时预览"和"全部重置为默认"按钮。
 
-我们致力于提供最沉浸、最自由的 AI 陪伴体验。
+## 文件清单
 
-1. 🧠 永久记忆与独立存档：每个存档拥有独立永久记忆，可自由体验不同对话风格。
-2. 💓 自研情绪识别模型：自动判定 AI 每次对话的情绪，告别机械式回复。
-3. 👀 视觉感受与主动窥屏：自动识别桌面状态（工作/游戏/挂机），AI 会主动关心你。
-4. 🐱 完全自定义角色：支持导入自己的 OC 或喜欢的游戏人物，开启专属对话。
-5. 🌸 服装切换与互动：支持切换角色服装，并加入摸摸角色等趣味互动功能。
-6. ✨ 动态 UI 与沉浸式体验：表情、动作、气泡随 AI 情绪改变，搭配不同背景与音乐聊天。
-7. 🎧 真实语音与音效陪伴：支持接入 VITS 语音服务或对话音效，用耳语调动真心。
-8. 📜 多角色剧本与羁绊系统：支持导入剧本进行多角色对话，为角色编写羁绊剧情并解锁成就。
-9. 🍅 内置效率工具：自带番茄钟、日程、待办清单，AI 会根据状态贴心提醒。
+```
+lingchat-patch/
+├── dialog-appearance.patch         # 535 行 unified diff 补丁（一键应用）
+└── src/
+    ├── components/
+    │   ├── settings/pages/
+    │   │   └── SettingsBackground.vue    # 新增「对话框外观」区块
+    │   └── game/standard/
+    │       └── GameDialog.vue            # 改造主界面对话框使用动态样式
+    └── stores/modules/settings/
+        └── index.ts                      # 新增 6 个 display 设置字段
+```
 
----
+## 使用方法
 
-## 📸 实机画面展示
+### 方法 A：用 unified diff 一键应用（推荐）
 
-<table width="100%">
-  <tr>
-    <td align="center" width="50%">
-      <h4>✨ Galgame 同款气泡+表情+动作+语音</h4>
-    </td>
-    <td align="center" width="50%">
-      <h4>🐝 支持感知+自定义背景，服装，时间，剧情等</h4>
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="50%">
-      <img src="https://github.com/user-attachments/assets/c4da6d49-131f-4938-b11c-78d89e0c3a34" width="100%" style="border-radius: 8px; max-width: 450px;" alt="实机截图1" />
-    </td>
-    <td align="center" width="50%">
-      <img src="https://github.com/user-attachments/assets/58cca016-cc60-4682-bd80-7880a2ee23bf" width="100%" style="border-radius: 8px; max-width: 450px;" alt="实机截图4" />
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="50%">
-      <h4>🐈 随时切换桌宠模式，主动对话与屏幕感知</h4>
-    </td>
-    <td align="center" width="50%">
-      <h4>🍈 允许自定义任何人物，设计羁绊剧情并游玩剧本</h4>
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="50%">
-      <img src="https://github.com/user-attachments/assets/aae9ac5d-1aa4-40d3-a36b-0a0a6073c230" width="100%" style="border-radius: 8px; max-width: 450px;" alt="实机截图1" />
-    </td>
-    <td align="center" width="50%">
-      <img src="https://github.com/user-attachments/assets/1638e3b1-92aa-48e1-bfb1-fd19f20aa4b6" width="100%" style="border-radius: 8px; max-width: 450px;" alt="实机截图2" />
-    </td>
-  </tr>
-</table>
+```bash
+# 在克隆好的 lingchat 源码根目录执行
+cd path/to/LingChat
+git apply --check ../dialog-appearance.patch   # 先 dry-run 验证
+git apply ../dialog-appearance.patch
+```
 
----
+如果 `git apply` 报错（可能因为源版本不一致），可以改用方法 B。
 
-## 🚀 快速上手指南
+### 方法 B：手动覆盖 3 个文件
 
-### 🔧 准备工作
+把 `lingchat-patch/src/` 下的 3 个文件复制到源码对应位置：
 
-> [!NOTE]
-> **API 申请：** 在 [DeepSeek 官方网站](https://platform.platform.com/) 或其他大模型平台申请属于你的 API 密钥，并确保账户内有余额。
+```
+源码路径                                                    ←  补丁路径
+src/components/settings/pages/SettingsBackground.vue       ←  lingchat-patch/src/components/settings/pages/SettingsBackground.vue
+src/components/game/standard/GameDialog.vue                ←  lingchat-patch/src/components/game/standard/GameDialog.vue
+src/stores/modules/settings/index.ts                      ←  lingchat-patch/src/stores/modules/settings/index.ts
+```
 
-### 📦 第一步：下载与安装
+## 重新构建
 
-1. 根据你的系统选择合适的版本：
-   - 💻 **Win10 64位及以上**：请下载最新版 `v0.4.5`。
-   - 💻 **32位或老旧机器**：请前往 [Issues #379](https://github.com/SlimeBoyOwO/LingChat/issues/379) 下载兼容版（如 `LingChat v0.4.0-pre Python3.8 win32.7z`）。
-2. 在 [Releases](https://github.com/SlimeBoyOwO/LingChat/releases) 页面下载 `LingChat vX.X.X.7z`压缩包。
-3. 安装或解压后，双击 `LingChat.exe` 运行。
+```bash
+# 1. 安装依赖
+pnpm install
 
-> [!WARNING]  
-> 解压后如果发现 `LingChat.exe` 不见了，通常是被 Windows Defender 误杀了。请进入 **Windows 安全中心 -> 病毒和威胁防护** 允许该文件运行。
+# 2. 开发模式验证（热重载，推荐先跑这个）
+pnpm dev
 
-### ⚙️ 第二步：首次启动配置
+# 3. 正式构建（产出新的 LingChat.exe）
+pnpm tauri build
+```
 
-1. 启动程序后，点击**开始游戏**。
-2. 打开右上角菜单，进入**高级设置**。
-3. 点击右上角的**大模型提供商**，添加自己的大模型信息：**大模型类型**、**API Key** 及 **模型信息**。
-4. 滑动到底部保存配置，重新启动即可使用！
+构建产物路径（Windows）：`src-tauri/target/release/bundle/`
 
----
+## 兼容性
 
-## 🧩 扩展功能配置
+- 适用于 LingChat v0.4.7（当前 `main` 分支）
+- 旧版本：若 settings store 的 `display` 类别下缺少 6 个新字段，**会自动用默认值填充**（`persist.ts` 用了 `deepMerge` 合并），不会破坏现有设置
+- 已有数据迁移：用户已有的 `lingchat-settings` localStorage 数据完全保留
 
-<details>
-<summary><b>🎧 配置 Vits 语音功能（点击展开）</b></summary><br>
+## 实现原理（技术向）
 
-1. 启动游戏后，在菜单【文字】部分找到语音引擎的下载链接，下载后缀为 `.7z` 的对应版本。
-2. 解压后，双击 `..01 启动API服务.bat` 即可开始使用。
-3. **性能提示**：如果你是核显或老电脑，单句语音生成可能需要 1 分钟；拥有 GPU 的设备可在 1 秒内生成。核显用户若遇大量报错可能无法使用此功能。
-4. **自定义角色使用**：若想给自定义角色使用语音，需在 `game_data/characters/<角色名>/settings.txt` 中修改 `model_name` 参数为导入模型的名称。
-</details>
+1. **持久化**：在 Pinia `useSettingsStore` 的 `display` 类别下新增 6 个字段，通过插件 `persist: true` 自动同步到 `localStorage`。
+2. **响应式**：`GameDialog.vue` 用 `computed` 把这些字段组装成 CSS 内联样式 `background / backdropFilter / borderRadius / color`，配合 `v-if` 控制背景图。
+3. **图片存储**：用户上传的图片用 `FileReader.readAsDataURL` 转 base64，存到 settings 字段。优点是无需后端命令、跨重启保留；限制是 ≤ 2MB。
+4. **渐变色**：`hexToRgba` 工具函数把 HEX + 透明度转成 `rgba()`，再组装 `linear-gradient`。
 
-<details>
-<summary><b>👁️ 配置视觉大模型功能（点击展开）</b></summary><br>
+## 已知限制
 
-1. 在通义千问等平台获取视觉模型 API 👉 [阿里云视觉模型 API 获取](https://bailian.console.aliyun.com/?tab=api#/api)
-   _(注：阿里云 API 默认赠送额度，且对于本项目绝对够用)_
-2. 在主页进入【日程】->【主动对话】。
-3. 填入 `VD_API_KEY`，如需更换其他模型可填写对应的 `base_url` 和 `model_name`。
-4. 保存后重启软件。
-5. **如何触发**：在聊天中发送 `“看桌面”` 或 `“看看我的桌面”`。配置主动对话后，AI 将拥有主动观察你在干什么的能力（_注意不要在玩黄油时被抓包哦 *^▽^*_）。
-</details>
+- **图片不能 > 2MB**（base64 后约 2.7MB，localStorage 上限 5-10MB）
+- **没有做实时缩放/裁剪**，如果图片比例不对，会被 `object-cover` 裁剪
+- **不支持 GIF 动图**（会被作为静态图显示）
 
-<details>
-<summary><b>🧪 加入最新版测试与开发（点击展开）</b></summary><br>
+## 反馈
 
-- 我们会随时将更新推送到 [`develop` 分支](https://github.com/SlimeBoyOwO/LingChat/tree/develop)，并在 [Issues](https://github.com/SlimeBoyOwO/LingChat/issues) 发布开发日志。
-- 你可以参考 [源代码使用教程](https://github.com/SlimeBoyOwO/LingChat/blob/develop/others/document/%E6%BA%90%E4%BB%A3%E7%A0%81%E4%BD%BF%E7%94%A8.md) 随时获取最新的开发版更新。
-- _注：开发版可能不稳定，欢迎随时提交 Bug 反馈！_
-</details>
-
----
-
-## 🔗 致谢与开源灵感
-
-本项目的实现离不开这些优秀开源作品的先驱者，送上由衷的致谢 🌼：
-
-- **[Zcchat](https://github.com/Zao-chen/ZcChat)**：本项目的灵感来源，提供了优秀的 `Vits` 模型和人物素材。（请去给他们点个 Star 吧 ❤）
-- **[Simple-Vits-API](https://github.com/Artrajz/vits-simple-api)**：实现了简单易用的 VITS 语音合成 API。
-- **[Style-Bert-VITS2](https://github.com/litagin02/Style-Bert-VITS2)**：实现了 Bert-VITS 的语音合成与训练，极少数据量也能达到完美效果！
-- **[ProgrammingVTuberLogos](https://github.com/Aikoyori/ProgrammingVTuberLogos)**：提供了超可爱的标题风格灵感。
-- **[Emotion Training](https://github.com/SlimeBoyOwO/Emotion-Model-Trainer)**：用于实现 18 种短句情绪识别的人工智能模型训练。
-
----
-
-## 🌸 写在最后
-
-- 本项目为了快速开发使用了一些 AI 辅助工具，如有不足欢迎在 Issues 中指出！
-- 感谢一路结识的开发者们，大家都是**香软可爱**又厉害的大佬们~ 如果你有开发意向，欢迎联系我（开发者群号藏在 GitHub 中 ❤）。
-- 这个项目最初是一个超小型学习项目，现在虽然变得庞大并应用了更多的软件工程架构思想，但依然非常欢迎大家以此作为学习的参考 (qwq)。
-
-<details>
-<summary><b>⚠️ 免责声明与素材版权说明</b></summary>
-
-> - **素材来源：** 气泡与音效素材、初始界面来源于《碧蓝档案》；对话哔哔音效来源于《Undertale》，**请勿商用**。
-> - **立绘版权：** 默认人物立绘由开发者本人绘制，请勿乱用、商用或用于奇怪的地方。
-> - **责任声明：** 请对 AI 生成的内容及您的使用行为负责，不要肆意传播不良信息。
-> - **数据调查：** 我们秉持完全自愿原则，您可以在 [Ling Chat 硬件调查](https://dash.myhblog.dpdns.org/) 中查看匿名调查数据。
-
-</details>
-
----
-
-## 💌 特别感谢
-
-感谢这些为 LingChat 贡献代码，一直支持项目走下去的贡献者们~ ❤️
-
-<a href="https://github.com/SlimeBoyOwO/LingChat/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=SlimeBoyOwO/LingChat" />
-</a>
-
-## ⭐️ 喜欢这个项目吗？请给我们点一个 Star！
-
-**这是我们提升影响力和持续维护的最大动力！**
-
-<a href="https://star-history.com/#moeru-ai/airi&Date">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=SlimeBoyOwO/LingChat&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=SlimeBoyOwO/LingChat&type=Date" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=SlimeBoyOwO/LingChat&type=Date" />
-  </picture>
-</a>
-
-> 如果你对开发 AI 感兴趣，加入我们开发者群~ ： 798012738
-
-_© LingChat 制作团队_
+如有问题，请附带：
+- LingChat 版本号
+- 浏览器/系统信息
+- 复现步骤和截图
