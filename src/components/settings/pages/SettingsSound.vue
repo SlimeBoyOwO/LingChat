@@ -1,7 +1,7 @@
 <template>
   <MenuPage>
     <!-- 输出音频设备切换（顶部） -->
-    <MenuItem title="输出音频设备">
+    <MenuItem :title="$t('settings.sound.device.title')">
       <template #header>
         <Speaker :size="20" class="text-amber-400" />
       </template>
@@ -12,41 +12,35 @@
             class="output-device-select flex-1 min-w-0 cursor-pointer bg-white/10 text-white border border-white/20 rounded-lg pl-3 pr-8 py-2 text-sm outline-none focus:border-(--accent-color) transition-colors appearance-none"
             style="color-scheme: dark"
             @change="onOutputDeviceChange"
-            title="选择音频输出设备"
+            :title="$t('settings.sound.device.selectTitle')"
           >
-            <option value="">系统默认</option>
+            <option value="">{{ $t('settings.sound.device.systemDefault') }}</option>
             <option v-for="d in outputDevices" :key="d.deviceId" :value="d.deviceId">
-              {{ d.label }}{{ d.isDefault ? '（当前默认）' : '' }}
+              {{ d.label }}{{ d.isDefault ? $t('settings.sound.device.currentDefault') : '' }}
             </option>
           </select>
           <button
+            v-if="!labelsAvailable"
             type="button"
             class="flex-none inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg bg-white/10 text-white border border-white/20 cursor-pointer text-sm transition-colors hover:border-(--accent-color) hover:bg-white/20 active:bg-white/30"
-            @click="refreshOutputDevices"
-            title="重新扫描音频设备"
+            @click="requestDeviceLabelsAndRefresh"
+            :title="permissionDenied ? $t('settings.sound.device.retryLabels') : $t('settings.sound.device.getLabels')"
           >
-            <RefreshCw :size="15" /> 刷新
+            <ScanLine :size="15" /> {{ permissionDenied ? $t('settings.sound.device.retryLabels') : $t('settings.sound.device.getLabels') }}
           </button>
         </div>
 
         <div class="w-full">
           <span class="block text-xs text-gray-300 truncate">{{ currentDeviceLabel }}</span>
-        </div>
-
-        <div v-if="!labelsAvailable" class="flex flex-col gap-1.5">
-          <button
-            type="button"
-            class="w-full inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg bg-white/10 text-white border border-white/20 cursor-pointer text-sm transition-colors hover:border-(--accent-color) hover:bg-white/20 active:bg-white/30"
-            @click="requestDeviceLabelsAndRefresh"
+          <p
+            v-if="!labelsAvailable && permissionDenied"
+            class="text-xs text-amber-400/80 leading-snug mt-1"
           >
-            <ScanLine :size="15" /> {{ permissionDenied ? '重新获取设备名称' : '获取设备名称' }}
-          </button>
-          <p v-if="permissionDenied" class="text-xs text-amber-400/80 leading-snug">
-            未获得授权，无法显示设备名，可在系统设置中允许后重试
+            {{ $t('settings.sound.device.labelsDenied') }}
           </p>
         </div>
       </div>
-      <p v-else class="text-xs text-gray-400">当前环境不支持切换输出音频设备</p>
+      <p v-else class="text-xs text-gray-400">{{ $t('settings.sound.device.unsupported') }}</p>
     </MenuItem>
 
     <!-- 音量控制部分 -->
@@ -409,7 +403,6 @@ import {
   Wind,
   X,
   Speaker,
-  RefreshCw,
   ScanLine,
 } from 'lucide-vue-next'
 
@@ -443,18 +436,16 @@ const ambientVolume = computed({
 
 // ========== 输出音频设备（设置顶部） ==========
 const currentDeviceLabel = computed(() => {
-  if (!currentDeviceId.value) return '当前使用系统默认输出设备'
+  if (!currentDeviceId.value) return t('settings.sound.device.usingSystemDefault')
   const found = outputDevices.value.find((d) => d.deviceId === currentDeviceId.value)
-  return found ? `当前输出：${found.label}` : '当前输出设备不可用（已回退系统默认）'
+  return found
+    ? t('settings.sound.device.currentOutput', { label: found.label })
+    : t('settings.sound.device.unavailableFallback')
 })
 
 const onOutputDeviceChange = async (e: Event) => {
   const target = e.target as HTMLSelectElement
   await setDevice(target.value)
-}
-
-const refreshOutputDevices = async () => {
-  await refreshDevices(true)
 }
 
 const requestDeviceLabelsAndRefresh = async () => {

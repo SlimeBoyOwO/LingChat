@@ -695,6 +695,19 @@ export default {
       "bubble": "測試氣泡",
       "achievement": "測試成就"
     },
+    "device": {
+      "title": "輸出音頻設備",
+      "selectTitle": "揀音頻輸出設備",
+      "systemDefault": "系統默認",
+      "currentDefault": "（依家默認）",
+      "getLabels": "攞設備名",
+      "retryLabels": "重新攞設備名",
+      "usingSystemDefault": "依家用緊系統默認輸出設備",
+      "currentOutput": "依家輸出：{label}",
+      "unavailableFallback": "輸出設備唔可用（已退回系統默認）",
+      "labelsDenied": "冇攞到授權，顯示唔到設備名，可以喺系統設定允許咗再試",
+      "unsupported": "呢個環境唔支持切換音頻輸出設備"
+    },
     "bgm": {
       "title": "背景音樂設定",
       "stop": "停",
