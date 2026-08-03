@@ -1,5 +1,7 @@
 <template>
   <div>
+    <p class="mb-1.5 text-xs text-white/35">赋值用——把变量改成这个值，供后续「触发条件」判断</p>
+
     <!-- 无法解析的旧写法（如只写了 name/value/op 的旧形状）：只读展示 + 提供「清空重填」 -->
     <div v-if="parseError">
       <div class="flex items-center gap-2">

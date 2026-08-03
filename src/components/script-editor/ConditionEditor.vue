@@ -1,5 +1,7 @@
 <template>
   <div>
+    <p class="mb-1.5 text-xs text-white/35">判断用——满足条件本事件才执行，只读变量不改动它</p>
+
     <!-- 无法解析的旧写法：只读展示 + 交给校验器解释，提供「清空重填」入口 -->
     <div v-if="parseError">
       <div class="flex items-center gap-2">

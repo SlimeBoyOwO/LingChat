@@ -156,7 +156,7 @@
       v-else-if="isComposite"
       :field="field"
       :value="value"
-      :needs-name="needsBranchName"
+      :branch-mode="branchMode"
       @update="(v: unknown) => emit('update', v)"
     />
 
@@ -280,8 +280,16 @@ const globalOnly = computed<string[]>(() => {
 
 const assetOptions = computed<string[]>(() => [...scriptAssets.value, ...globalOnly.value])
 
-/** 分支列表里是否需要「AI 识别名」—— 只有 ai_judged 用得到 */
-const needsBranchName = computed(() => props.event?.end_type === 'ai_judged')
+/**
+ * 分支列表显示模式：按 end_type 决定分支编辑器给作者看「条件」还是「AI 识别名」。
+ * - branching → 条件（引擎按 condition 选分支）
+ * - ai_judged → AI 识别名（引擎按 name 选分支），条件不读
+ * linear 或未设置时无分支，给 undefined 由 CompositeField 兜底为 branching。
+ */
+const branchMode = computed<'branching' | 'ai_judged' | undefined>(() => {
+  const et = props.event?.end_type
+  return et === 'ai_judged' ? 'ai_judged' : et === 'branching' ? 'branching' : undefined
+})
 
 const hintClass = computed(() =>
   /⚠|不生效|不会|无效|卡死/.test(props.field.hint ?? '') ? 'text-yellow-200' : 'text-white/40',

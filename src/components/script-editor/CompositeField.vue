@@ -132,7 +132,10 @@
         :key="i"
         class="mb-2 rounded-lg bg-white/6 p-2.5 last:mb-0"
       >
-        <div class="mb-1.5 flex items-center gap-2">
+        <div
+          v-if="!isAiJudged"
+          class="mb-1.5 flex items-center gap-2"
+        >
           <span class="shrink-0 text-xs text-white/40">若</span>
           <ConditionEditor
             class="flex-1 min-w-0"
@@ -140,12 +143,6 @@
             :variables="store.variables"
             @update:model-value="(v: string) => patch(i, 'condition', v)"
           />
-          <button
-            class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all hover:text-[#fca5a5] hover:bg-[rgba(248,113,113,0.15)]"
-            @click="removeRow(i)"
-          >
-            ✕
-          </button>
         </div>
         <div class="flex items-center gap-2 pl-6">
           <span class="shrink-0 text-xs text-white/40">跳到</span>
@@ -171,9 +168,16 @@
             />
             兜底
           </label>
+          <button
+            class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all hover:text-[#fca5a5] hover:bg-[rgba(248,113,113,0.15)]"
+            title="删除这个分支"
+            @click="removeRow(i)"
+          >
+            ✕
+          </button>
         </div>
         <div
-          v-if="needsName"
+          v-if="isAiJudged"
           class="mt-1.5 flex items-center gap-2 pl-6"
         >
           <span class="shrink-0 text-xs text-white/40">AI 识别名</span>
@@ -276,7 +280,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { computed, reactive } from 'vue'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 import type { FieldSpec } from '@/api/services/script-editor'
 import ConditionEditor from './ConditionEditor.vue'
@@ -287,8 +291,8 @@ type Row = Record<string, unknown>
 const props = defineProps<{
   field: FieldSpec
   value: unknown
-  /** ai_judged 时分支需要 name，由父组件按 end_type 传入 */
-  needsName?: boolean
+  /** 分支编辑器的显示模式，由父组件按 chapter_end 的 end_type 传入 */
+  branchMode?: 'branching' | 'ai_judged'
 }>()
 
 const emit = defineEmits<{ (e: 'update', value: unknown): void }>()
@@ -303,6 +307,12 @@ const str = (v: unknown) => (typeof v === 'string' ? v : v === undefined ? '' : 
 const val = (e: Event) => (e.target as HTMLInputElement | HTMLSelectElement).value
 
 const actions = (opt: Row): Row[] => (Array.isArray(opt.actions) ? (opt.actions as Row[]) : [])
+
+/**
+ * 分支编辑器模式。父组件在 end_type 为 ai_judged 时传 ai_judged，否则传
+ * branching（linear 不显示分支，走不到这里）。null 兜底为 branching。
+ */
+const isAiJudged = computed(() => props.branchMode === 'ai_judged')
 
 /**
  * 命中「旧原型形状」的 set_var 动作：只写了 name/value/op、没有 content 表达式。

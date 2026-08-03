@@ -58,11 +58,6 @@
         class="shrink-0 rounded px-[5px] py-px text-[0.62rem] leading-[1.6] whitespace-nowrap border border-[rgba(251,191,36,0.3)] text-[#fcd34d] bg-[rgba(251,191,36,0.15)]"
         >{{ warnCount }} 个提醒</span
       >
-      <span
-        v-if="event.duration !== undefined"
-        class="shrink-0 rounded px-[5px] py-px text-[0.62rem] leading-[1.6] whitespace-nowrap border border-[rgba(251,191,36,0.3)] text-[#fcd34d] bg-[rgba(251,191,36,0.15)]"
-        >duration 无效</span
-      >
 
       <button
         class="shrink-0 rounded px-[3px] text-[11px] leading-[1.7] text-white/25 opacity-0 transition-all group-hover:opacity-100 hover:text-[var(--accent-color)] hover:bg-white/[0.1]"

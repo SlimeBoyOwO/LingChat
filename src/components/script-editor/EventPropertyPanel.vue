@@ -120,14 +120,9 @@ const groupedSpecs = computed(() => {
 })
 
 /**
- * duration 只在事件真的带了它的时候才显示。
- * 它是遗留字段，对没写过它的事件不该出现在表单里。
+ * 通用字段（触发条件）。duration 已从 schema 移除、彻底不暴露。
  */
-const commonFieldsToShow = computed<FieldSpec[]>(() =>
-  (store.schema?.commonFields ?? []).filter(
-    (f) => f.key !== 'duration' || event.value?.duration !== undefined,
-  ),
-)
+const commonFieldsToShow = computed<FieldSpec[]>(() => store.schema?.commonFields ?? [])
 
 const eventDiagnostics = computed<Diagnostic[]>(
   () => store.chapterDiagnostics[store.selectedEvent] ?? [],
