@@ -1,6 +1,6 @@
 <template>
   <MenuPage>
-    <MenuItem title="本地 TTS" size="large">
+    <MenuItem :title="t('settings.tts.title')" size="large">
       <template #header>
         <AudioLines :size="20" class="text-cyan-300" />
       </template>
@@ -25,9 +25,9 @@
               ></span>
             </span>
             <span>
-              <span class="block text-xs text-white/45">全局本地 TTS</span>
+              <span class="block text-xs text-white/45">{{ t('settings.tts.switch.label') }}</span>
               <span class="block text-sm font-medium text-white">
-                {{ localTtsEnabled ? '已启用' : '已关闭，使用云端 TTS' }}
+                {{ localTtsEnabled ? t('settings.tts.switch.enabled') : t('settings.tts.switch.disabled') }}
               </span>
             </span>
           </label>
@@ -42,27 +42,27 @@
                   : 'bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.45)]'"
             ></span>
             <div>
-              <p class="text-xs text-white/45">本地引擎</p>
+              <p class="text-xs text-white/45">{{ t('settings.tts.engine.label') }}</p>
               <p class="text-sm font-medium text-white">
-                {{ engineLoading ? '加载中' : status?.ready ? '已就绪' : '未就绪' }}
+                {{ engineLoading ? t('settings.tts.engine.loading') : status?.ready ? t('settings.tts.engine.ready') : t('settings.tts.engine.notReady') }}
               </p>
             </div>
           </div>
           <div class="h-8 w-px bg-white/10"></div>
           <div>
-            <p class="text-xs text-white/45">DeBERTa 与分词器</p>
+            <p class="text-xs text-white/45">{{ t('settings.tts.deberta.label') }}</p>
             <p class="text-sm font-medium" :class="status?.deberta_installed ? 'text-emerald-300' : 'text-red-300'">
-              {{ status?.deberta_installed ? '已安装' : '缺失' }}
+              {{ status?.deberta_installed ? t('settings.tts.deberta.installed') : t('settings.tts.deberta.missing') }}
             </p>
           </div>
           <div class="h-8 w-px bg-white/10"></div>
           <div>
-            <p class="text-xs text-white/45">人物语音</p>
-            <p class="text-sm font-medium text-white">{{ snapshot.voices.length }} 个</p>
+            <p class="text-xs text-white/45">{{ t('settings.tts.voices.label') }}</p>
+            <p class="text-sm font-medium text-white">{{ t('settings.tts.voices.count', { count: snapshot.voices.length }) }}</p>
           </div>
           <button
             class="ml-auto inline-flex h-[34px] w-[34px] items-center justify-center gap-[7px] rounded-md border border-white/15 bg-white/5 text-white/80 transition-colors duration-200 enabled:hover:border-cyan-300/40 enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-40"
-            title="刷新状态"
+            :title="t('settings.tts.refresh')"
             :disabled="loading"
             @click="refreshAll"
           >
@@ -75,7 +75,7 @@
           class="flex items-start gap-3 border-l-2 border-red-400 bg-red-500/8 px-4 py-3 text-sm text-red-100"
         >
           <CircleAlert :size="18" class="mt-0.5 shrink-0 text-red-300" />
-          <span>缺少 DeBERTa 模型或分词器，人物语音不能载入，也不能试听。</span>
+          <span>{{ t('settings.tts.deberta.warning') }}</span>
         </div>
 
         <p
@@ -89,8 +89,8 @@
         <section>
           <div class="mb-3 flex items-center justify-between gap-3">
             <div>
-              <h3 class="text-sm font-semibold text-white">模型下载</h3>
-              <p class="mt-0.5 text-xs text-white/45">从 ModelScope 一键拉取本地 TTS 所需的全部资产</p>
+              <h3 class="text-sm font-semibold text-white">{{ t('settings.tts.download.title') }}</h3>
+              <p class="mt-0.5 text-xs text-white/45">{{ t('settings.tts.download.subtitle') }}</p>
             </div>
             <FileDown :size="18" class="text-white/40" />
           </div>
@@ -142,8 +142,8 @@
         <section>
           <div class="mb-3 flex items-center justify-between gap-3">
             <div>
-              <h3 class="text-sm font-semibold text-white">本地导入</h3>
-              <p class="mt-0.5 text-xs text-white/45">支持原始模型文件、ZIP 和 7z 压缩包</p>
+              <h3 class="text-sm font-semibold text-white">{{ t('settings.tts.import.title') }}</h3>
+              <p class="mt-0.5 text-xs text-white/45">{{ t('settings.tts.import.subtitle') }}</p>
             </div>
             <HardDriveDownload :size="18" class="text-white/40" />
           </div>
@@ -155,7 +155,7 @@
               @click="pickSharedAsset('deberta')"
             >
               <FileUp :size="17" />
-              <span>导入 DeBERTa</span>
+              <span>{{ t('settings.tts.import.deberta') }}</span>
             </button>
             <button
               class="inline-flex min-h-9 items-center justify-center gap-[7px] rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[13px] text-white/80 transition-colors duration-200 enabled:hover:border-cyan-300/40 enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-40"
@@ -163,15 +163,15 @@
               @click="pickSharedAsset('deberta-tokenizer')"
             >
               <FileJson :size="17" />
-              <span>导入分词器</span>
+              <span>{{ t('settings.tts.import.tokenizer') }}</span>
             </button>
             <div class="flex min-w-0 gap-2">
               <input
                 v-model="importVoiceId"
                 class="w-full min-w-0 flex-1 rounded-md border border-white/15 bg-black/25 px-2.5 py-2 text-[13px] text-white outline-none transition-colors focus:border-cyan-300/65 disabled:cursor-not-allowed disabled:opacity-45"
                 maxlength="64"
-                placeholder="语音 ID（可选）"
-                aria-label="导入语音 ID"
+                :placeholder="t('settings.tts.import.voiceIdPlaceholder')"
+                :aria-label="t('settings.tts.import.voiceIdPlaceholder')"
               />
               <button
                 class="inline-flex min-h-9 shrink-0 items-center justify-center gap-[7px] rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[13px] text-white/80 transition-colors duration-200 enabled:hover:border-cyan-300/40 enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-40"
@@ -179,7 +179,7 @@
                 @click="pickVoice"
               >
                 <FileArchive :size="17" />
-                <span>导入语音</span>
+                <span>{{ t('settings.tts.import.voice') }}</span>
               </button>
             </div>
           </div>
@@ -188,8 +188,8 @@
         <section v-if="voicesMissingStyleVectors.length > 0">
           <div class="mb-3 flex items-center justify-between gap-3">
             <div>
-              <h3 class="text-sm font-semibold text-white">补齐 style_vectors</h3>
-              <p class="mt-0.5 text-xs text-white/45">.onnx 语音需要同名的 style_vectors.json 才能在本地 TTS 中启用</p>
+              <h3 class="text-sm font-semibold text-white">{{ t('settings.tts.styleVectors.title') }}</h3>
+              <p class="mt-0.5 text-xs text-white/45">{{ t('settings.tts.styleVectors.subtitle') }}</p>
             </div>
             <Wand2 :size="18" class="text-white/40" />
           </div>
@@ -200,7 +200,7 @@
               class="h-9 w-full min-w-0 flex-1 rounded-md border border-white/15 bg-black/25 px-2.5 py-2 text-[13px] text-white outline-none transition-colors focus:border-cyan-300/65 disabled:cursor-not-allowed disabled:opacity-45 sm:max-w-72"
               :disabled="busyAction !== null"
             >
-              <option value="">选择需要补齐的语音</option>
+              <option value="">{{ t('settings.tts.styleVectors.placeholder') }}</option>
               <option
                 v-for="voice in voicesMissingStyleVectors"
                 :key="voice.voice_id"
@@ -215,7 +215,7 @@
               @click="pickStyleVectors"
             >
               <FileJson :size="17" />
-              <span>导入 style_vectors</span>
+              <span>{{ t('settings.tts.styleVectors.import') }}</span>
             </button>
           </div>
         </section>
@@ -223,13 +223,13 @@
         <section>
           <div class="mb-3 flex items-center justify-between gap-3">
             <div>
-              <h3 class="text-sm font-semibold text-white">已安装语音</h3>
-              <p class="mt-0.5 text-xs text-white/45">{{ snapshot.voices.length }} 个可用人物模型</p>
+              <h3 class="text-sm font-semibold text-white">{{ t('settings.tts.installed.title') }}</h3>
+              <p class="mt-0.5 text-xs text-white/45">{{ t('settings.tts.installed.subtitle', { count: snapshot.voices.length }) }}</p>
             </div>
             <ListMusic :size="18" class="text-white/40" />
           </div>
 
-          <div v-if="snapshot.voices.length === 0" class="border-y border-white/10 py-[22px] text-center text-[13px] text-white/40">暂无人物语音</div>
+          <div v-if="snapshot.voices.length === 0" class="border-y border-white/10 py-[22px] text-center text-[13px] text-white/40">{{ t('settings.tts.installed.empty') }}</div>
           <div v-else class="divide-y divide-white/8 border-y border-white/10">
             <div
               v-for="voice in snapshot.voices"
@@ -247,23 +247,23 @@
                   <span
                     v-if="voice.kind === 'sbv2'"
                     class="shrink-0 rounded border border-cyan-300/25 bg-cyan-600/10 px-1 py-px text-[10px] text-cyan-50/75"
-                    title=".sbv2 已内置 style_vectors"
-                  >style_vectors 已内置</span>
+                    :title="t('settings.tts.styleVectors.builtin')"
+                  >{{ t('settings.tts.styleVectors.builtin') }}</span>
                   <span
                     v-else-if="voice.has_style_vectors"
                     class="shrink-0 rounded border border-cyan-300/25 bg-cyan-600/10 px-1 py-px text-[10px] text-cyan-50/75"
-                    title="已找到同名的 style_vectors.json"
-                  >style_vectors 已配</span>
+                    :title="t('settings.tts.styleVectors.configured')"
+                  >{{ t('settings.tts.styleVectors.configured') }}</span>
                   <span
                     v-else
                     class="shrink-0 rounded border border-cyan-300/25 bg-cyan-600/10 px-1 py-px text-[10px] text-cyan-50/75 border-red-400/35! bg-red-400/10! text-red-200!"
-                    title="缺少 style_vectors.json，需在下方补齐后才能在本地 TTS 中启用该语音"
-                  >缺 style_vectors</span>
+                    :title="t('settings.tts.styleVectors.missing')"
+                  >{{ t('settings.tts.styleVectors.missing') }}</span>
                 </p>
               </div>
               <button
                 class="inline-flex h-[34px] w-[34px] items-center justify-center gap-[7px] rounded-md border border-white/15 bg-white/5 text-white/80 transition-colors duration-200 enabled:hover:border-cyan-300/40 enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50 disabled:cursor-not-allowed disabled:opacity-40 enabled:hover:border-red-400/50! enabled:hover:bg-red-400/10! enabled:hover:text-red-300!"
-                title="删除语音"
+                :title="t('settings.tts.installed.deleteVoice')"
                 :disabled="busyAction !== null"
                 @click="removeVoice(voice)"
               >
@@ -276,8 +276,8 @@
         <section>
           <div class="mb-3 flex items-center justify-between gap-3">
             <div>
-              <h3 class="text-sm font-semibold text-white">试听</h3>
-              <p class="mt-0.5 text-xs text-white/45">输入内容并选择已安装的人物语音</p>
+              <h3 class="text-sm font-semibold text-white">{{ t('settings.tts.preview.title') }}</h3>
+              <p class="mt-0.5 text-xs text-white/45">{{ t('settings.tts.preview.subtitle') }}</p>
             </div>
             <Volume2 :size="18" class="text-white/40" />
           </div>
@@ -287,26 +287,26 @@
               v-model="previewText"
               class="min-h-28 w-full resize-y rounded-md border border-white/15 bg-black/25 px-2.5 py-2 text-[13px] text-white outline-none transition-colors focus:border-cyan-300/65 disabled:cursor-not-allowed disabled:opacity-45"
               maxlength="500"
-              placeholder="输入试听文本"
+              :placeholder="t('settings.tts.preview.placeholder')"
               :disabled="!status?.ready"
             ></textarea>
 
             <div class="flex flex-col gap-3">
               <label class="flex flex-col gap-1.5 text-xs text-white/60">
-                <span>语音模型</span>
+                <span>{{ t('settings.tts.preview.voiceModel') }}</span>
                 <select v-model="previewVoice" class="h-9 w-full rounded-md border border-white/15 bg-black/25 px-2.5 py-2 text-[13px] text-white outline-none transition-colors focus:border-cyan-300/65 disabled:cursor-not-allowed disabled:opacity-45" :disabled="!status?.ready">
-                  <option value="">请选择</option>
+                  <option value="">{{ t('settings.tts.preview.select') }}</option>
                   <option v-for="voice in snapshot.voices" :key="voice.voice_id" :value="voice.voice_id">
                     {{ voice.display_name || voice.voice_id }}
                   </option>
                 </select>
               </label>
               <label class="flex flex-col gap-1.5 text-xs text-white/60">
-                <span>长度倍率 {{ previewSpeed.toFixed(2) }}（1.0 = 正常）</span>
+                <span>{{ t('settings.tts.preview.lengthScale', { value: previewSpeed.toFixed(2) }) }}</span>
                 <input v-model.number="previewSpeed" type="range" min="0.5" max="2" step="0.05" class="accent-cyan-300" />
               </label>
               <label class="flex flex-col gap-1.5 text-xs text-white/60">
-                <span>随机度 {{ previewSdp.toFixed(2) }}</span>
+                <span>{{ t('settings.tts.preview.randomness', { value: previewSdp.toFixed(2) }) }}</span>
                 <input v-model.number="previewSdp" type="range" min="0" max="1" step="0.05" class="accent-cyan-300" />
               </label>
             </div>
@@ -320,7 +320,7 @@
             >
               <LoaderCircle v-if="previewing" :size="16" class="animate-spin" />
               <Play v-else :size="16" />
-              {{ previewing ? '生成中' : '生成试听' }}
+              {{ previewing ? t('settings.tts.preview.generating') : t('settings.tts.preview.generate') }}
             </button>
             <audio ref="audioRef" controls class="h-9 min-w-0 flex-1" />
           </div>
@@ -332,6 +332,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import type { DialogFilter } from '@tauri-apps/plugin-dialog'
@@ -365,6 +366,7 @@ import type {
 } from '@/api/services/tts/tts-local'
 
 const dialogStore = useDialogStore()
+const { t } = useI18n()
 const catalog = ref<readonly CatalogAsset[]>([])
 const status = ref<TtsLocalStatus | null>(null)
 const snapshot = ref<TtsLocalInstallSnapshot>({ assets: [], voices: [] })
@@ -483,7 +485,7 @@ async function refreshAll(): Promise<void> {
       previewVoice.value = nextSnapshot.voices[0]?.voice_id ?? ''
     }
   } catch (error) {
-    notice.value = { kind: 'error', text: `读取本地 TTS 状态失败：${errorText(error)}` }
+    notice.value = { kind: 'error', text: `${t('settings.tts.messages.readStatusFailed', { error: errorText(error) })}` }
   } finally {
     loading.value = false
   }
@@ -505,10 +507,10 @@ async function pickSharedAsset(assetId: 'deberta' | 'deberta-tokenizer'): Promis
   notice.value = null
   try {
     await TtsLocal.importFromPath(path, { assetId })
-    notice.value = { kind: 'success', text: assetId === 'deberta' ? 'DeBERTa 已导入' : '分词器已导入' }
+    notice.value = { kind: 'success', text: assetId === 'deberta' ? t('settings.tts.messages.importSuccessDeberta') : t('settings.tts.messages.importSuccessTokenizer') }
     await refreshAll()
   } catch (error) {
-    notice.value = { kind: 'error', text: `导入失败：${errorText(error)}` }
+    notice.value = { kind: 'error', text: `${t('settings.tts.messages.importFailed', { error: errorText(error) })}` }
   } finally {
     busyAction.value = null
   }
@@ -528,10 +530,10 @@ async function pickVoice(): Promise<void> {
     const voiceId = normalizeVoiceId(importVoiceId.value.trim() || path)
     await TtsLocal.importFromPath(path, { voiceId })
     importVoiceId.value = ''
-    notice.value = { kind: 'success', text: `语音 ${voiceId} 已导入` }
+    notice.value = { kind: 'success', text: `${t('settings.tts.messages.importVoiceSuccess', { voiceId })}` }
     await refreshAll()
   } catch (error) {
-    notice.value = { kind: 'error', text: `导入失败：${errorText(error)}` }
+    notice.value = { kind: 'error', text: `${t('settings.tts.messages.importFailed', { error: errorText(error) })}` }
   } finally {
     busyAction.value = null
   }
@@ -539,7 +541,7 @@ async function pickVoice(): Promise<void> {
 
 async function pickStyleVectors(): Promise<void> {
   if (!styleVectorsTarget.value) {
-    notice.value = { kind: 'error', text: '请先选择需要补齐 style_vectors 的语音' }
+    notice.value = { kind: 'error', text: t('settings.tts.messages.styleVectorsNeedSelect') }
     return
   }
   const selection = await open({
@@ -554,10 +556,10 @@ async function pickStyleVectors(): Promise<void> {
   notice.value = null
   try {
     await TtsLocal.importStyleVectors(target, path)
-    notice.value = { kind: 'success', text: `${target} 的 style_vectors 已导入` }
+    notice.value = { kind: 'success', text: `${t('settings.tts.messages.styleVectorsSuccess', { target })}` }
     await refreshAll()
   } catch (error) {
-    notice.value = { kind: 'error', text: `导入失败：${errorText(error)}` }
+    notice.value = { kind: 'error', text: `${t('settings.tts.messages.importFailed', { error: errorText(error) })}` }
   } finally {
     busyAction.value = null
   }
@@ -565,8 +567,8 @@ async function pickStyleVectors(): Promise<void> {
 
 async function removeVoice(voice: VoiceRecord): Promise<void> {
   const confirmed = await dialogStore.confirm(
-    `确定删除语音“${voice.display_name || voice.voice_id}”吗？`,
-    '删除本地语音',
+    `${t('settings.tts.messages.deleteConfirm', { name: voice.display_name || voice.voice_id })}`,
+    t('settings.tts.messages.deleteConfirmTitle'),
   )
   if (!confirmed) return
 
@@ -574,10 +576,10 @@ async function removeVoice(voice: VoiceRecord): Promise<void> {
   notice.value = null
   try {
     await TtsLocal.deleteVoice(voice.voice_id)
-    notice.value = { kind: 'success', text: '语音已删除' }
+    notice.value = { kind: 'success', text: t('settings.tts.messages.deleteSuccess') }
     await refreshAll()
   } catch (error) {
-    notice.value = { kind: 'error', text: `删除失败：${errorText(error)}` }
+    notice.value = { kind: 'error', text: `${t('settings.tts.messages.deleteFailed', { error: errorText(error) })}` }
   } finally {
     busyAction.value = null
   }
@@ -602,7 +604,7 @@ async function runPreview(): Promise<void> {
       await audioRef.value.play()
     }
   } catch (error) {
-    notice.value = { kind: 'error', text: `试听失败：${errorText(error)}` }
+    notice.value = { kind: 'error', text: `${t('settings.tts.messages.previewFailed', { error: errorText(error) })}` }
   } finally {
     previewing.value = false
   }
@@ -613,7 +615,7 @@ async function loadLocalTtsSwitch(): Promise<void> {
     const switchStatus = await TtsLocal.getEnabled()
     localTtsEnabled.value = switchStatus.effective_enabled
   } catch (error) {
-    notice.value = { kind: 'error', text: `读取本地 TTS 开关失败：${errorText(error)}` }
+    notice.value = { kind: 'error', text: `${t('settings.tts.messages.readSwitchFailed', { error: errorText(error) })}` }
   }
 }
 
@@ -631,13 +633,13 @@ async function saveLocalTtsSwitch(): Promise<void> {
       kind: 'success',
       text: localTtsEnabled.value
         ? status.value?.ready
-          ? '本地 TTS 已启用。'
-          : '本地 TTS 已启用，但引擎未就绪（缺少 DeBERTa 模型或分词器，请先下载）。'
-        : '本地 TTS 已关闭，如需使用云端TTS，请将角色语音切换为“云端”并重启应用。',
+          ? t('settings.tts.messages.switchEnabled')
+          : t('settings.tts.messages.switchEnabledNotReady')
+        : t('settings.tts.messages.switchDisabled'),
     }
   } catch (error) {
     localTtsEnabled.value = !localTtsEnabled.value
-    notice.value = { kind: 'error', text: `保存本地 TTS 开关失败：${errorText(error)}` }
+    notice.value = { kind: 'error', text: `${t('settings.tts.messages.saveSwitchFailed', { error: errorText(error) })}` }
   } finally {
     engineLoading.value = false
     savingLocalTts.value = false
@@ -658,10 +660,10 @@ function rowState(assetId: string) {
 
 function rowLabel(assetId: string): string {
   const state = rowState(assetId)
-  if (state === 'installed') return '已安装'
-  if (state === 'downloading') return '下载中'
-  if (state === 'error') return '重试下载'
-  return '下载'
+  if (state === 'installed') return t('settings.tts.download.installed')
+  if (state === 'downloading') return t('settings.tts.download.downloading')
+  if (state === 'error') return t('settings.tts.download.retry')
+  return t('settings.tts.download.start')
 }
 
 watch(
