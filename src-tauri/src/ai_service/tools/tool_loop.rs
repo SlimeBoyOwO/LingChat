@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use futures_util::{stream, StreamExt};
+use tauri::AppHandle;
 use tokio::sync::mpsc;
 
 use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmClient};
@@ -63,8 +64,9 @@ pub async fn stream_with_tool_loop(
     messages: Vec<LlmMessage>,
     source: GeneratorSource,
     role_name: Option<String>,
+    app: &AppHandle,
 ) -> Result<ToolLoopResult> {
-    stream_with_tool_loop_with_provider(llm, registry, messages, source, role_name).await
+    stream_with_tool_loop_with_provider(llm, registry, messages, source, role_name, app).await
 }
 
 async fn stream_with_tool_loop_with_provider(
@@ -73,6 +75,7 @@ async fn stream_with_tool_loop_with_provider(
     mut messages: Vec<LlmMessage>,
     source: GeneratorSource,
     role_name: Option<String>,
+    app: &AppHandle,
 ) -> Result<ToolLoopResult> {
     let allowed = registry.allowed_tools(source, role_name.as_deref());
     let definitions = registry.definitions_for_allowed(&allowed);
@@ -87,7 +90,7 @@ async fn stream_with_tool_loop_with_provider(
     }
 
     let executor = ToolExecutor::new(registry);
-    let context = ToolContext::new(allowed);
+    let context = ToolContext::new(allowed).with_app(app.clone());
     let mut tool_messages = Vec::new();
 
     // 用 channel 把每轮的 Content chunk 实时透传出去，最终 stream 包含所有轮次的内容
@@ -164,10 +167,7 @@ async fn stream_with_tool_loop_with_provider(
 /// 将 mpsc receiver 转为 ChunkStream。
 fn content_rx_stream(rx: mpsc::UnboundedReceiver<LlmChunk>) -> ChunkStream {
     Box::pin(stream::unfold(rx, |mut rx| async move {
-        match rx.recv().await {
-            Some(chunk) => Some((Ok(chunk), rx)),
-            None => None,
-        }
+        rx.recv().await.map(|chunk| (Ok(chunk), rx))
     }))
 }
 

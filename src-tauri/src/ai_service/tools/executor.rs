@@ -1,7 +1,9 @@
 use std::collections::HashSet;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::Value;
+use tauri::AppHandle;
 use thiserror::Error;
 
 use crate::ai_service::types::ToolDefinition;
@@ -12,15 +14,33 @@ use super::registry::ToolRegistry;
 #[derive(Clone, Debug, Default)]
 pub struct ToolContext {
     pub allowed_tools: HashSet<String>,
+    /// 用于访问 AppState 共享状态的句柄；测试等无宿主环境时为 `None`。
+    pub app: Option<AppHandle>,
 }
 
 impl ToolContext {
     pub fn new(allowed_tools: HashSet<String>) -> Self {
-        Self { allowed_tools }
+        Self {
+            allowed_tools,
+            app: None,
+        }
+    }
+
+    /// 绑定 AppHandle，供工具访问 db / ai_service / game_status 等共享状态。
+    pub fn with_app(mut self, app: AppHandle) -> Self {
+        self.app = Some(app);
+        self
     }
 
     pub fn allows(&self, name: &str) -> bool {
         self.allowed_tools.contains(name)
+    }
+
+    /// 取 AppHandle，用于访问 AppState 共享状态。无宿主环境（单元测试）时报错。
+    pub fn require_app(&self) -> Result<AppHandle, ToolError> {
+        self.app
+            .clone()
+            .ok_or_else(|| ToolError::Execution("当前调用上下文没有宿主环境（AppHandle）".into()))
     }
 }
 
@@ -41,6 +61,11 @@ pub enum ToolError {
 pub trait Tool: Send + Sync {
     /// 返回提供给 LLM 的工具定义。
     fn definition(&self) -> ToolDefinition;
+
+    /// 自定义执行超时；返回 `None` 时使用执行器默认超时（2 秒）。
+    fn timeout_hint(&self) -> Option<Duration> {
+        None
+    }
 
     /// 使用解析后的 JSON object 参数执行工具。
     async fn execute(
@@ -84,7 +109,8 @@ impl<'a> ToolExecutor<'a> {
             }
         };
 
-        match tokio::time::timeout(self.timeout, tool.execute(context, arguments)).await {
+        let timeout = tool.timeout_hint().unwrap_or(self.timeout);
+        match tokio::time::timeout(timeout, tool.execute(context, arguments)).await {
             Ok(Ok(result)) => serde_json::to_string(&result).unwrap_or_else(|error| {
                 tracing::error!(tool = name, "工具结果序列化失败: {error}");
                 error_result("serialization_error", "工具结果无法序列化")
@@ -95,7 +121,7 @@ impl<'a> ToolExecutor<'a> {
             }
             Err(_) => {
                 tracing::warn!(tool = name, "工具执行超时");
-                error_result("timeout", "工具执行超过 2 秒")
+                error_result("timeout", "工具执行超时")
             }
         }
     }

@@ -55,6 +55,10 @@ impl From<GeneratorSource> for GeneratorSourceKey {
 /// 权限配置根。
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct ToolPermissionConfig {
+    /// 软件当前可用的全部工具名。**仅用于展示**，运行时不被本模块读取、
+    /// 也不参与权限计算；每次初始化直接覆盖为最新列表。
+    #[serde(default)]
+    pub available_tools: Vec<String>,
     /// 调用来源 → 场景组 的映射，可自定义。
     #[serde(default)]
     pub scene_mapping: HashMap<GeneratorSourceKey, String>,
@@ -117,6 +121,11 @@ impl Default for GroupPermission {
 // ─── ToolPermissionConfig ───
 
 impl ToolPermissionConfig {
+    /// 覆盖当前可用工具展示列表（仅写入配置，不影响权限计算）。
+    pub fn set_available_tools(&mut self, tools: Vec<String>) {
+        self.available_tools = tools;
+    }
+
     pub fn load_or_create(data_dir: &Path, tool_names: impl IntoIterator<Item = String>) -> Result<Self> {
         let path = data_dir.join(CONFIG_FILE_NAME);
         if path.exists() {
@@ -270,7 +279,7 @@ impl ToolPermissionConfig {
             return Err(format!("角色组 '{group}' 不存在"));
         }
         // 从所有其他组移除
-        for (_, g) in &mut self.role_groups {
+        for g in self.role_groups.values_mut() {
             g.roles.remove(role);
         }
         self.role_groups.get_mut(group).unwrap().roles.insert(role.to_string());
@@ -347,6 +356,7 @@ impl ToolPermissionConfig {
         );
 
         Self {
+            available_tools: Vec::new(),
             scene_mapping,
             scene_groups,
             role_groups,
@@ -360,7 +370,7 @@ impl ToolPermissionConfig {
             .with_context(|| format!("解析工具权限配置失败: {}", path.display()))
     }
 
-    fn save(&self, path: &Path) -> Result<()> {
+    pub fn save(&self, path: &Path) -> Result<()> {
         let tmp = path.with_extension("tmp");
         let text = toml::to_string_pretty(self).context("序列化工具权限配置失败")?;
         fs::write(&tmp, text)
@@ -377,4 +387,31 @@ const fn default_enabled() -> bool {
 
 fn is_false(b: &bool) -> bool {
     !b
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// available_tools 仅作展示，必须序列化到 TOML 最前面。
+    #[test]
+    fn available_tools_serialized_first() {
+        let config = ToolPermissionConfig {
+            available_tools: vec!["get_current_time".into(), "schedule_add_todo".into()],
+            ..Default::default()
+        };
+        let toml_str = toml::to_string(&config).unwrap();
+        assert!(toml_str.starts_with("available_tools = [\"get_current_time\", \"schedule_add_todo\"]\n"));
+    }
+
+    /// 旧配置无 available_tools 字段时也能正常反序列化（serde default）。
+    #[test]
+    fn deserializes_legacy_config_without_available_tools() {
+        let legacy = r#"
+[scene_mapping]
+user_chat = "scene_admin"
+"#;
+        let config: ToolPermissionConfig = toml::from_str(legacy).unwrap();
+        assert!(config.available_tools.is_empty());
+    }
 }

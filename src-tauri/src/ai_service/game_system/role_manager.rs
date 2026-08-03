@@ -97,6 +97,15 @@ impl GameRoleManager {
         self.loaded_roles.get_mut(&role_id)
     }
 
+    /// 返回指定角色记忆库的"系统记忆文本"（ta的信息 / 约定 / 长期经历）。
+    /// 记忆系统未启用或角色未加载时返回空字符串。供 memory.get_current 工具调用。
+    pub async fn get_role_memory_text(&self, role_id: i32) -> String {
+        match self.memory_bank_systems.get(&role_id) {
+            Some(sys) if sys.is_enabled() => sys.get_system_memory_text().await,
+            _ => String::new(),
+        }
+    }
+
     pub fn reset_roles(&mut self) {
         self.loaded_roles.clear();
         self.memory_bank_systems.clear();

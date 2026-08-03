@@ -428,6 +428,7 @@ impl MessageGenerator {
             context,
             self.deps.source,
             role_name,
+            &self.deps.app,
         )
         .await?;
         if !tool_loop_result.tool_messages.is_empty() {
