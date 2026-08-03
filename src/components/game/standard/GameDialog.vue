@@ -1,11 +1,13 @@
 <template>
   <div
-    class="relative z-2 flex w-full scrollbar-thin [scrollbar-color:var(--accent-color)_transparent] justify-center bg-linear-to-t from-[rgba(0,14,39,0.7)] to-[rgba(0,14,39,0.6)] p-3.75 backdrop-blur-[1px] transition-all duration-200 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] before:pointer-events-none before:absolute before:-top-10 before:right-0 before:left-0 before:h-10 before:bg-linear-to-b before:from-transparent before:via-[rgba(0,14,39,0.3)] before:to-[rgba(0,14,39,0.6)] before:content-['']"
+    class="relative z-2 flex w-full scrollbar-thin [scrollbar-color:var(--accent-color)_transparent] justify-center p-3.75 transition-all duration-200 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] before:pointer-events-none before:absolute before:-top-10 before:right-0 before:left-0 before:h-10 before:bg-linear-to-b before:from-transparent before:via-[rgba(0,14,39,0.3)] before:to-[rgba(0,14,39,0.6)] before:content-['']"
     :class="{
       'z-[-1]! overflow-hidden opacity-0 duration-500! ease-linear before:opacity-0 before:duration-1000!':
         isHidden,
       'max-h-[40vh]': !uiStore.isNarrowScreen,
     }"
+    :style="dialogWrapperStyle"
+    @wheel="handleWheelHistory"
   >
     <div
       :style="{ width: containerWidth + '%' }"
@@ -16,10 +18,11 @@
         <div class="mb-2 flex items-baseline">
           <!-- 角色名称 -->
           <div
-            class="mr-3.75 font-[inherit] text-2xl font-bold text-white text-shadow-[inherit]"
+            class="mr-3.75 font-[inherit] text-2xl font-bold text-shadow-[inherit]"
             :class="{
               'min-w-0 overflow-hidden text-ellipsis whitespace-nowrap': uiStore.isNarrowScreen,
             }"
+            :style="{ color: dialogTextColorValue }"
           >
             <div id="character">{{ uiStore.showCharacterTitle }}</div>
           </div>
@@ -206,27 +209,29 @@
         <div
           class="my-1.25 flex min-h-10 w-full resize-none flex-col border-none bg-transparent text-xl font-bold whitespace-pre-line text-white transition-all duration-300 outline-none"
         >
-          <!-- 内联动作文本显示区（仅内联模式+回应状态时可见） -->
-          <div
-            v-show="isInlineDisplayMode"
-            ref="inlineDisplayRef"
-            tabindex="0"
-            class="inline-motion-display my-1.25 max-h-[50vh] min-h-30 flex-1 resize-none overflow-y-auto border-none bg-transparent font-[inherit] text-xl font-bold whitespace-pre-line outline-none text-shadow-[inherit]"
-            @keydown.enter.exact.prevent="sendOrContinue"
-          ></div>
+        <!-- 内联动作文本显示区（仅内联模式+回应状态时可见） -->
+        <div
+          v-show="isInlineDisplayMode"
+          ref="inlineDisplayRef"
+          tabindex="0"
+          class="inline-motion-display my-1.25 max-h-[50vh] min-h-30 flex-1 resize-none overflow-y-auto border-none bg-transparent font-[inherit] text-xl font-bold whitespace-pre-line outline-none text-shadow-[inherit]"
+          :style="{ color: dialogTextColorValue }"
+          @keydown.enter.exact.prevent="sendOrContinue"
+        ></div>
 
-          <!-- 标准 textarea（输入模式或非内联显示模式） -->
-          <textarea
-            v-show="!isInlineDisplayMode"
-            id="inputMessage"
-            ref="textareaRef"
-            class="my-1.25 max-h-[50vh] min-h-30 flex-1 resize-none border-none bg-transparent font-[inherit] text-xl font-bold text-white transition-all duration-300 outline-none text-shadow-[inherit] placeholder:text-white/50 placeholder:shadow-none"
-            :class="textareaMotionClass"
-            :placeholder="placeholderText"
-            v-model="inputMessage"
-            @keydown.enter.exact.prevent="sendOrContinue"
-            :readonly="!isInputEnabled"
-          ></textarea>
+        <!-- 标准 textarea（输入模式或非内联显示模式） -->
+        <textarea
+          v-show="!isInlineDisplayMode"
+          id="inputMessage"
+          ref="textareaRef"
+          class="my-1.25 max-h-[50vh] min-h-30 flex-1 resize-none border-none bg-transparent font-[inherit] text-xl font-bold transition-all duration-300 outline-none text-shadow-[inherit] placeholder:text-white/50 placeholder:shadow-none"
+          :class="textareaMotionClass"
+          :placeholder="placeholderText"
+          :style="{ color: dialogTextColorValue }"
+          v-model="inputMessage"
+          @keydown.enter.exact.prevent="sendOrContinue"
+          :readonly="!isInputEnabled"
+        ></textarea>
         </div>
       </div>
       <!-- 发送按钮（内层右侧外部） -->
@@ -749,6 +754,94 @@ function continueDialog(isPlayerTrigger: boolean): boolean {
 function removeDialog(e: Event) {
   isHidden.value = true
 }
+
+// ── 对话框外观（响应 settings store） ──
+
+const dialogBgImage = computed(() => settingsStore.dialogBackgroundImage)
+const dialogOpacity = computed(() => settingsStore.dialogOpacity)
+const dialogBlur = computed(() => settingsStore.dialogBlur)
+const dialogBorderRadius = computed(() => settingsStore.dialogBorderRadius)
+const dialogGradientColor = computed(() => settingsStore.dialogGradientColor)
+const dialogTextColorValue = computed(() => settingsStore.dialogTextColor)
+const dialogScrollHistoryEnabled = computed(() => settingsStore.dialogScrollHistoryEnabled)
+const dialogSpacebarHideEnabled = computed(() => settingsStore.dialogSpacebarHideEnabled)
+const dialogAutoHideOnThinkEnabled = computed(() => settingsStore.dialogAutoHideOnThinkEnabled)
+
+function hexToRgba(hex: string, alpha: number): string {
+  const m = hex.replace('#', '').match(/^([0-9a-fA-F]{6})$/)
+  if (!m) return `rgba(0,14,39,${alpha})`
+  const r = parseInt(m[1]!.substring(0, 2), 16)
+  const g = parseInt(m[1]!.substring(2, 4), 16)
+  const b = parseInt(m[1]!.substring(4, 6), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+const dialogWrapperStyle = computed(() => {
+  const hasImage = Boolean(dialogBgImage.value)
+  const style: Record<string, string> = {
+    color: dialogTextColorValue.value,
+    borderRadius: dialogBorderRadius.value + 'px',
+  }
+  if (hasImage) {
+    // 使用用户图片
+    style.backgroundImage = `url(${dialogBgImage.value})`
+    style.backgroundSize = 'cover'
+    style.backgroundPosition = 'center'
+    style.backdropFilter = `blur(${dialogBlur.value}px)`
+    // 当有图时降低基础底色，依赖图片自身
+    style.backgroundColor = 'rgba(0,0,0,0.2)'
+  } else {
+    // 使用纯渐变色
+    style.background = `linear-gradient(to top, ${hexToRgba(dialogGradientColor.value, dialogOpacity.value)}, ${hexToRgba(dialogGradientColor.value, Math.max(0, dialogOpacity.value - 0.1))})`
+    style.backdropFilter = 'none'
+  }
+  return style
+})
+
+// 滚轮查看历史记录
+function handleWheelHistory(e: WheelEvent) {
+  if (!dialogScrollHistoryEnabled.value) return
+  // 向上滚(deltaY < 0) 打开历史面板
+  if (e.deltaY < -10) {
+    uiStore.toggleSettings(true)
+    uiStore.setSettingsTab('history')
+  }
+}
+
+// 空格键隐藏/显示对话框
+function handleKeydown(e: KeyboardEvent) {
+  if (!dialogSpacebarHideEnabled.value) return
+  // 在输入框中不触发
+  const target = e.target as HTMLElement
+  if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+    return
+  }
+  if (e.code === 'Space') {
+    e.preventDefault()
+    isHidden.value = !isHidden.value
+  }
+}
+
+// AI 思考时自动隐藏
+watch(
+  () => gameStore.currentStatus,
+  (newStatus) => {
+    if (!dialogAutoHideOnThinkEnabled.value) return
+    if (newStatus === 'thinking') {
+      isHidden.value = true
+    } else if (newStatus === 'idle' || newStatus === 'responding') {
+      // 思考完成时恢复显示（带过渡动画）
+      isHidden.value = false
+    }
+  },
+)
+
+onMounted(() => {
+  document.addEventListener('keydown', handleKeydown)
+})
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown)
+})
 
 defineExpose({
   continueDialog,
