@@ -72,8 +72,8 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeRouteLeave, onMounted, onUnmounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { onMounted, onUnmounted, ref } from 'vue'
+import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { MenuPage } from '@/components/ui'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 import EditorHeader from '@/components/script-editor/EditorHeader.vue'
