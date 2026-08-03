@@ -62,9 +62,9 @@ regex = "1"
 genai = "0.6"
 uuid = { version = "1", features = ["v4"] }
 async-trait = "0.1"
-ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "ndarray", "download-binaries"] }
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "ndarray", "load-dynamic"] }
 
-sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = ["std"] }
+sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = ["dynamic"] }
 once_cell = "1"
 base64 = "0.22"
 rand = "0.8"

@@ -11,6 +11,8 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({ inheritAttrs: false })
+
 interface Props {
   mobile?: boolean
 }

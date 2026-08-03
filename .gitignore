@@ -59,6 +59,7 @@ ling_chat_pal/
 node_modules/
 build/
 dist/
+dist_old_*/
 target/
 
 ling_chat/static/frontend/
