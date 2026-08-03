@@ -52,20 +52,20 @@ export interface EventSpec {
   fields: FieldSpec[]
 }
 
-interface ActionSpec {
+export interface ActionSpec {
   typeKey: string
   label: string
   hint: string
   allowedIn: string[]
 }
 
-interface UnlockConditionSpec {
+export interface UnlockConditionSpec {
   typeKey: string
   label: string
   fields: FieldSpec[]
 }
 
-interface ConditionSyntax {
+export interface ConditionSyntax {
   supported: string[]
   unsupported: string[]
   note: string
