@@ -51,6 +51,9 @@ pub enum FieldKind {
     BranchOptions,
     /// `set_variable` 的赋值组（专用编辑器）
     VarOptions,
+    /// 触发条件：结构化「变量 + 关系 + 值」表单，序列化为 `var == 值` / `var != 值` / 裸变量
+    /// （引擎的 evaluate_condition 只认这三种写法，结构化让作者写不出不支持的语法）
+    Condition,
     /// 遗留字段：只展示、不可编辑、保存时原样保留
     Deprecated,
 }
@@ -427,9 +430,8 @@ pub fn build_schema() -> ScriptSchema {
     ];
 
     let common_fields = vec![
-        FieldSpec::new("condition", "触发条件", FieldKind::Text)
-            .placeholder("留空则总是触发")
-            .hint("只支持 var == 值 / var != 值 / 裸变量真值"),
+        FieldSpec::new("condition", "触发条件", FieldKind::Condition)
+            .hint("选一个变量和关系即可，无需手写语法；留空表示总是触发"),
         FieldSpec::new("duration", "duration", FieldKind::Deprecated)
             .disabled("遗留字段，引擎从不读取。保存时原样保留，不会丢数据"),
     ];

@@ -446,15 +446,15 @@ pub fn editor_read_chapter(key: String, chapter_id: String) -> Result<ChapterCon
 pub fn editor_validate_script(key: String) -> Result<ValidationReport, String> {
     let dir = paths::resolve_script_dir(&key)?;
 
-    // 收集其他剧本的 script_name 用于查重
-    let mut names: HashMap<String, String> = HashMap::new();
+    // 收集其他剧本的 script_name 用于查重（同名剧本都收进来，重名时一次列全）
+    let mut names: HashMap<String, Vec<String>> = HashMap::new();
     for other in paths::enumerate_script_keys() {
         if let Ok(d) = paths::resolve_script_dir(&other) {
             if let Ok(cfg) = yaml_file::read_story_config(&d) {
                 if let Some(n) = cfg.get("script_name").and_then(|v| v.as_str()) {
                     let n = n.trim();
                     if !n.is_empty() {
-                        names.insert(n.to_string(), other.clone());
+                        names.entry(n.to_string()).or_default().push(other.clone());
                     }
                 }
             }

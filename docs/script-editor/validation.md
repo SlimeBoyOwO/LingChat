@@ -84,7 +84,7 @@ ValidationReport
 | `event.not_a_map` | error | 事件不是键值映射 |
 | `event.missing_type` | error | 缺 `type` 字段 |
 | `event.unknown_type` | error | 未知事件类型，运行到这里整个剧本中断 |
-| `field.required_missing` | error | 缺必填字段 |
+| `field.required_missing` | error | 缺必填字段（**但** `dialogue/ai_dialogue/free_dialogue/modify_character` 的 `character`、`chapter_end` 的 `end_type` 引擎有默认值，缺失照常运行，校验器跳过它们） |
 | `field.unknown` | warn | 未知字段（很可能是拼错），会被静默忽略 |
 | `field.inert` | info | 遗留字段（`duration` 等 `enabled == false` 的通用字段），引擎从不读取 |
 | `condition.unsupported_operator` | error | 用了 `&& || >= <= > < ! ( )`（长运算符优先匹配） |
@@ -101,8 +101,9 @@ ValidationReport
 |---|---|---|
 | `asset.missing` | error | `resolve_script_media` 找不到素材（运行时只静默清空画面/声音） |
 | `music.bad_speed` | warn | 播放速度 ≤0 或 >4（>2 通常失真） |
+| `ambient.no_path` | warn | 播放（`stop` 为假/缺省）但没给 `ambientPath`，运行时只发空事件、没有声音 |
 
-`ambient` 有个刻意例外：`stop: true` 或路径为空时跳过路径解析（留空表示「停掉全部轨道」，标成必填会让这种正常用法被误判）。
+`ambient` 有个刻意例外：`stop: true` 时跳过路径解析（留空表示「停掉全部轨道」，标成必填会让这种正常用法被误判）；而**播放但路径为空**是作者漏填，单独报 `ambient.no_path`。
 
 **`background_effect`：**
 
@@ -117,7 +118,8 @@ ValidationReport
 |---|---|---|
 | `choices.empty` | error | 选项列表为空 |
 | `choices.option_not_a_map` | error | 选项不是键值映射 |
-| `choices.catch_all_not_last` | warn | 无文案的兜底项没放最后（会吞掉后面的选项） |
+| `choices.catch_all_not_last` | warn | 无文案**且无条件**的兜底项没放最后（引擎 `process_options` 先求值 condition，只有无条件兜底才确定会吞掉后面的选项） |
+| `choices.catch_all_conditional` | info | 无文案但带条件的兜底项没放最后：条件满足时会吞选项，不满足才会轮到后面 |
 | `choices.duplicate_text` | warn | 文案重复，后一个永远选不到 |
 | `choices.placeholder_in_text` | warn | 文案里有 `%player%`（引擎只替换顶层字段） |
 | `choices.option_next_ignored` | error | 选项写了 `next`（choices 不支持选项级跳转，该字段被完全忽略） |
@@ -127,10 +129,18 @@ ValidationReport
 | 诊断码 | 级别 | 触发 |
 |---|---|---|
 | `action.not_a_map` | error | action 不是键值映射 |
-| `action.bad_expression` | error | `set_var` 表达式无法解析（只支持 `= += -=` 三个运算符） |
+| `action.bad_expression` | error | `set_var` 的 `content` 表达式无法解析（只支持 `= += -=` 三个运算符） |
+| `action.legacy_shape` | error | `set_var` 只写了旧版 `name/value/op`、没有 `content` 表达式（引擎只读 content，这段会被静默跳过） |
+| `action.empty_expression` | error | `set_var` 的 `content` 为空且无旧字段，表达式未填写 |
 | `action.not_supported_here` | warn | 在 `set_variable` 里写了 `add_line`（该事件只处理 set_var） |
 | `action.empty_content` | warn | `add_line` 内容为空 |
 | `action.unknown_type` | warn | 未知动作类型 |
+
+**`modify_character`：**
+
+| 诊断码 | 级别 | 触发 |
+|---|---|---|
+| `character.action_unknown` | warn | `action` 不是 `show_character` / `hide_character`，引擎静默忽略 |
 
 **`set_variable`：**
 
@@ -159,8 +169,8 @@ ValidationReport
 
 `chapter_end` 的专项检查较细：
 
-- **linear**：`next` 与 `next_chapter` 并存 → `chapter_end.both_next_fields · warn`（引擎只优先用 `next`）；都没写 → `chapter_end.no_next · warn`（直接结束整个剧本）；`next` 是遗留字段（Deprecated），编辑器只展示不给编辑；
-- **branching / ai_judged**：缺 options / 空 options → `chapter_end.no_options · error`；分支写成选项形状（`text/actions`）→ `chapter_end.choice_shaped_option · error`（**检测原型形状**）；分支无条件 → `branch_no_condition · warn`；分支无 `next` → `branch_no_next · error`；无 `default` 兜底 → `no_default_branch · warn`；`ai_judged` 分支缺 `name` → `ai_option_no_name · warn`；未知 `end_type` → `chapter_end.unknown_end_type · error`；
+- **linear**：`next` 与 `next_chapter` 并存 → `chapter_end.both_next_fields · warn`（引擎只优先用 `next`）；都没写 → `chapter_end.no_next · warn`（直接结束整个剧本）；`next` 是遗留字段（Deprecated），编辑器只展示不给编辑；指向 `end.yaml` → `chapter_end.end_suffix · error`（引擎只认字面量 `end`，`end.yaml` 会去读 `Chapters/end.yaml`）；
+- **branching / ai_judged**：缺 options / 空 options → `chapter_end.no_options · error`；分支写成选项形状（`text/actions`）→ `chapter_end.choice_shaped_option · error`（**检测原型形状**）；分支无条件 → `branch_no_condition · warn`（引擎对「无条件且带 next」的分支才确定吞掉后面）；分支无 `next` → `branch_no_next · warn`（引擎会跳过它继续尝试后面的分支，只有全落空才走 default/end，所以不是 error）；无 `default` 兜底 → `no_default_branch · warn`；`ai_judged` 分支缺 `name` → `ai_option_no_name · warn`（`default: true` 的兜底分支无需 name，不误报）；`ai_judged` 分支写了 `condition` → `chapter_end.ai_condition_ignored · info`（引擎只按 name 匹配，条件被忽略）；未知 `end_type` → `chapter_end.unknown_end_type · error`；
 - 位置：`chapter_end` 不在最后 → `chapter_end.not_last · warn`（后面的事件永远不会执行）。
 
 **章节图的边就是前端流程图的连线**：在这之前流程图只是把章节按文件名字典序排了一列，箭头表达的是「章节 id 的字母顺序」而不是真实跳转 —— 看起来对但完全不对。现在 `ChapterEdge { from, to, is_end, label, end_type }` 由校验器从每章最后一条 `chapter_end` 反推，前端据此画真连线，并据此判断能否拖拽重排（分支章节后端拒绝重排）。
@@ -184,9 +194,9 @@ ValidationReport
 诊断码是**稳定的机器可读字符串**，带类型前缀，前端据此做跳转 / 过滤：
 
 ```
-config.* / chapter.* / event.* / field.* / asset.* / music.* / effect.*
-choices.* / action.* / set_variable.* / free_dialogue.* / chapter_end.*
-graph.* / variable.*
+config.* / chapter.* / event.* / field.* / condition.* / asset.* / ambient.*
+music.* / effect.* / character.* / choices.* / action.* / set_variable.*
+free_dialogue.* / chapter_end.* / graph.* / variable.*
 ```
 
 一个设计细节：`Severity` 原先是 `&'static str`，写错一个 `"warning"` 能编译、能序列化、排序落到兜底分支、前端当成 info —— **全链路静默**。改成 enum 让编译器兜住。
@@ -210,4 +220,5 @@ graph.* / variable.*
 - `choices` 的选项级 `next`、文案重复、兜底没放最后、action 类型写成 `set_variable`（引擎只认 `set_var`）、文案里的 `%player%`；
 - `set_variable` 的原型形状（`{name, value}`）；
 - `chapter_end` 分支写成选项形状、悬空目标、`end` 是合法终点；
-- 图的孤儿与环（`a→b→a` 环 + 两个不可达章节）。
+- 图的孤儿与环（`a→b→a` 环 + 两个不可达章节）；
+- **本次新增**：`set_var` 旧版 `name/value/op` 形状 → `action.legacy_shape`（不再误报空表达式）、空表达式、合法表达式收集；ai_judged default 兜底分支不误报缺 name；带引擎默认值的必填字段跳过；带条件/无条件的空文案兜底选项；ambient 播放无路径；modify_character 未知动作；ai_judged 分支 condition 被忽略；无 next 分支为 warn；`end.yaml` 边界。

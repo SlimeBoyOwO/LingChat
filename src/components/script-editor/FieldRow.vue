@@ -143,6 +143,14 @@
       </p>
     </div>
 
+    <!-- 触发条件：结构化「变量 + 关系 + 值」表单，无需手写语法 -->
+    <ConditionEditor
+      v-else-if="field.kind === 'condition'"
+      :model-value="asText"
+      :variables="store.variables"
+      @update:model-value="(v: string) => emit('update', v)"
+    />
+
     <!-- 复合编辑器：选项 / 分支 / 赋值组 -->
     <CompositeField
       v-else-if="isComposite"
@@ -167,29 +175,7 @@
       :class="hintClass"
     >
       {{ field.hint }}
-      <button
-        v-if="field.key === 'condition' && condSyntax"
-        class="ml-1 text-brand cursor-pointer"
-        @click="showCondHelp = !showCondHelp"
-      >{{ showCondHelp ? '收起 ▲' : '怎么写条件？' }}</button>
     </p>
-    <div
-      v-if="field.key === 'condition' && showCondHelp && condSyntax"
-      class="mt-1 rounded border border-white/10 bg-black/20 p-2 text-xs leading-relaxed text-white/50"
-    >
-      <p class="mb-1 text-white/80"><b>怎么用条件来控制故事走向？</b></p>
-      <p class="mb-1">
-        先在你的剧本里用「设置变量」事件定义几个变量（如 <code class="text-brand">route</code>、<code class="text-brand">flag</code>），
-        然后在这里写判断。举个例子：
-      </p>
-      <p class="mb-1 text-white/60">
-        • <span class="text-brand">{{ condSyntax.supported?.[0] }}</span>——比如让玩家从商店出来后分支跳转<br>
-        • <span class="text-brand">{{ condSyntax.supported?.[1] }}</span>——比如在不走商店路线时跳过这段<br>
-        • <span class="text-brand">{{ condSyntax.supported?.[2] }}</span>——直接用变量名判断"有没有存过这个值"
-      </p>
-      <p class="mb-1 text-yellow-200/60">以下写法会<b>永远不成立</b>（不报错，只是条件永远为假）：{{ condSyntax.unsupported?.join(' ') }}。</p>
-      <p class="text-white/40">{{ condSyntax.note }}</p>
-    </div>
     <p
       v-for="(d, i) in diagnostics"
       :key="i"
@@ -202,7 +188,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { Toggle } from '@/components/base'
 import { EMOTION_CONFIG_EMO } from '@/controllers/emotion/config'
@@ -215,6 +201,7 @@ import type {
   ScriptEventData,
 } from '@/api/services/script-editor'
 import CompositeField from './CompositeField.vue'
+import ConditionEditor from './ConditionEditor.vue'
 
 const props = defineProps<{
   field: FieldSpec
@@ -225,9 +212,6 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{ (e: 'update', value: unknown): void }>()
-
-const showCondHelp = ref(false)
-const condSyntax = computed(() => store.schema?.conditionSyntax)
 
 const store = useScriptEditorStore()
 

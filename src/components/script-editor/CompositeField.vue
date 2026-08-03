@@ -24,6 +24,17 @@
           </button>
         </div>
 
+        <!-- 选项级条件（引擎支持 options[].condition，这里补上此前缺失的可视化编辑） -->
+        <div class="mt-1 flex items-center gap-2 pl-6">
+          <span class="shrink-0 text-xs text-white/40">条件</span>
+          <ConditionEditor
+            class="flex-1 min-w-0"
+            :model-value="str(opt.condition)"
+            :variables="store.variables"
+            @update:model-value="(v: string) => patch(i, 'condition', v)"
+          />
+        </div>
+
         <div
           v-for="(act, ai) in actions(opt)"
           :key="ai"
@@ -42,8 +53,25 @@
               {{ a.label }}
             </option>
           </select>
+          <VariableEditor
+            v-if="act.type === 'set_var' && !legacySetVar(act)"
+            class="flex-1 min-w-0"
+            :model-value="str(act.content)"
+            :variables="store.variables"
+            @update:model-value="(v: string) => patchAction(i, ai, 'content', v)"
+          />
+          <div
+            v-else-if="legacySetVar(act)"
+            class="flex-1 min-w-0 rounded-md border border-yellow-300/25 bg-yellow-300/10 px-2 py-1.5"
+            title="旧版字段（name/value/op），引擎只认 content 表达式，这段会被静默跳过"
+          >
+            <p class="text-xs text-yellow-200">
+              旧版字段（name/value/op）：{{ legacySetVarValue(act) }}
+            </p>
+          </div>
           <input
-            class="w-full min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
+            v-else
+            class="flex-1 min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
             :placeholder="actionPlaceholder(str(act.type))"
             :value="str(act.content)"
             @change="(e) => patchAction(i, ai, 'content', val(e))"
@@ -82,11 +110,11 @@
       >
         <div class="mb-1.5 flex items-center gap-2">
           <span class="shrink-0 text-xs text-white/40">若</span>
-          <input
-            class="w-full min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
-            placeholder="条件，如 route == shop（留空＝无条件命中）"
-            :value="str(opt.condition)"
-            @change="(e) => patch(i, 'condition', val(e))"
+          <ConditionEditor
+            class="flex-1 min-w-0"
+            :model-value="str(opt.condition)"
+            :variables="store.variables"
+            @update:model-value="(v: string) => patch(i, 'condition', v)"
           />
           <button
             class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all hover:text-[#fca5a5] hover:bg-[rgba(248,113,113,0.15)]"
@@ -155,11 +183,11 @@
       >
         <div class="mb-1.5 flex items-center gap-2">
           <span class="shrink-0 text-xs text-white/40">若</span>
-          <input
-            class="w-full min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
-            placeholder="条件（留空＝总是执行）"
-            :value="str(opt.condition)"
-            @change="(e) => patch(i, 'condition', val(e))"
+          <ConditionEditor
+            class="w-full min-w-0"
+            :model-value="str(opt.condition)"
+            :variables="store.variables"
+            @update:model-value="(v: string) => patch(i, 'condition', v)"
           />
           <button
             class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all hover:text-[#fca5a5] hover:bg-[rgba(248,113,113,0.15)]"
@@ -173,12 +201,22 @@
           :key="ai"
           class="mt-1 flex items-center gap-2 pl-6"
         >
-          <input
-            class="w-full min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)] font-mono"
-            placeholder="affection += 1"
-            :value="str(act.content)"
-            @change="(e) => patchAction(i, ai, 'content', val(e))"
+          <VariableEditor
+            v-if="act.type === 'set_var' && !legacySetVar(act)"
+            class="flex-1 min-w-0"
+            :model-value="str(act.content)"
+            :variables="store.variables"
+            @update:model-value="(v: string) => patchAction(i, ai, 'content', v)"
           />
+          <div
+            v-else-if="legacySetVar(act)"
+            class="flex-1 min-w-0 rounded-md border border-yellow-300/25 bg-yellow-300/10 px-2 py-1.5"
+            title="旧版字段（name/value/op），引擎只认 content 表达式，这段会被静默跳过"
+          >
+            <p class="text-xs text-yellow-200">
+              旧版字段（name/value/op）：{{ legacySetVarValue(act) }}
+            </p>
+          </div>
           <button
             class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all hover:text-[#fca5a5] hover:bg-[rgba(248,113,113,0.15)]"
             @click="removeAction(i, ai)"
@@ -212,6 +250,8 @@
 import { computed } from 'vue'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 import type { FieldSpec } from '@/api/services/script-editor'
+import ConditionEditor from './ConditionEditor.vue'
+import VariableEditor from './VariableEditor.vue'
 
 type Row = Record<string, unknown>
 
@@ -234,6 +274,19 @@ const str = (v: unknown) => (typeof v === 'string' ? v : v === undefined ? '' : 
 const val = (e: Event) => (e.target as HTMLInputElement | HTMLSelectElement).value
 
 const actions = (opt: Row): Row[] => (Array.isArray(opt.actions) ? (opt.actions as Row[]) : [])
+
+/**
+ * 命中「旧原型形状」的 set_var 动作：只写了 name/value/op、没有 content 表达式。
+ * 引擎只读 content，这类动作会被静默跳过（校验器也会报 action.legacy_shape）。
+ * 编辑器里只读展示，提示作者改写成新格式。
+ */
+const legacySetVar = (act: Row) =>
+  act.type === 'set_var' &&
+  !(typeof act.content === 'string' && act.content.trim()) &&
+  Boolean(act.name || act.value || act.op)
+
+const legacySetVarValue = (act: Row) =>
+  [act.name, act.value, act.op].filter((v) => v !== undefined && v !== null && v !== '').join(' ')
 
 /** set_variable 只支持 set_var —— 引擎里 add_line 会被静默丢弃 */
 const allowedActions = computed(() => {
