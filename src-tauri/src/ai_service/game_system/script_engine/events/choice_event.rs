@@ -6,10 +6,10 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    register_event, ScriptContext, ScriptEvent,
+    evaluate_condition, register_event, ScriptContext, ScriptEvent,
 };
 use crate::ai_service::game_system::script_engine::responses::{
-    event_names::SCRIPT_CHOICE, ChoicePayload,
+    event_names::SCRIPT_CHOICE, ChoiceItem, ChoicePayload,
 };
 use crate::ai_service::game_system::script_engine::utils::script_function;
 use crate::ai_service::message_system::events::emit;
@@ -42,12 +42,41 @@ impl ChoiceEvent {
 #[async_trait]
 impl ScriptEvent for ChoiceEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
-        // 构建选项文案列表
-        let choices: Vec<String> = self
+        // 读取当前变量，用于逐项判断选项是否因条件不满足而锁定（短暂持锁）。
+        // 与 process_options 的 continue 逻辑保持一致：条件不满足的选项永远不被匹配。
+        let vars = ctx
+            .game_status
+            .lock()
+            .await
+            .script_status
+            .clone()
+            .map(|s| s.vars);
+
+        // 构建选项列表：条件不满足的选项标记 disabled，并带上作者写的 lock_hint。
+        // 没有文案的兜底选项不会发给前端（玩家看不到，仅后端匹配用），与旧行为一致。
+        let choices: Vec<ChoiceItem> = self
             .options
             .iter()
-            .filter_map(|o| o.get("text").and_then(|v| v.as_str()))
-            .map(|s| s.to_string())
+            .filter_map(|o| {
+                let text = o.get("text").and_then(|v| v.as_str())?.to_string();
+                let mut item = ChoiceItem {
+                    text,
+                    disabled: false,
+                    reason: None,
+                };
+                // 只有 script_status 存在（剧本运行中）才可能求值条件；早期事件没有它
+                if let Some(ref vars) = vars {
+                    let condition = o.get("condition").and_then(|v| v.as_str()).unwrap_or("");
+                    if !condition.is_empty() && !evaluate_condition(condition, vars) {
+                        item.disabled = true;
+                        item.reason = o
+                            .get("lock_hint")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+                    }
+                }
+                Some(item)
+            })
             .collect();
 
         // 建立 oneshot 通道并存入 sender（短暂持锁）。
@@ -63,7 +92,7 @@ impl ScriptEvent for ChoiceEvent {
 
         // 向前端发出选项事件
         let payload = ChoicePayload {
-            choices: choices.clone(),
+            choices,
             allow_free: self.allow_free,
         };
         let _ = emit(ctx.app, SCRIPT_CHOICE, &payload);

@@ -1121,6 +1121,18 @@ fn check_choices(
 
         if let Some(c) = oo.get("condition").and_then(|v| v.as_str()) {
             check_condition(c, cid, i, diags, vars_read);
+        } else if oo.contains_key("lock_hint") {
+            // 锁提示只在条件不满足时才会展示；没有条件则选项永远可选，lock_hint 是白写
+            diags.push(Diagnostic::event(
+                Severity::Info,
+                "choices.lock_hint_without_condition",
+                cid,
+                i,
+                format!(
+                    "第 {} 个选项写了锁定提示（lock_hint）但没有条件，该选项不会锁定，提示不会被看到",
+                    oi + 1
+                ),
+            ));
         }
 
         if let Some(actions) = oo.get("actions").and_then(|v| v.as_array()) {

@@ -44,6 +44,18 @@
             ✕
           </button>
         </div>
+        <div
+          v-if="conditionOpen(i)"
+          class="mt-1 flex items-center gap-2 pl-6"
+        >
+          <span class="shrink-0 text-xs text-white/40">锁定提示</span>
+          <input
+            class="flex-1 min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
+            placeholder="条件不满足时显示的提示，如：好感度不足"
+            :value="str(opt.lock_hint)"
+            @change="(e) => patch(i, 'lock_hint', val(e))"
+          />
+        </div>
 
         <!-- 选项动作：每类动作独立按钮添加，不用下拉 -->
         <div

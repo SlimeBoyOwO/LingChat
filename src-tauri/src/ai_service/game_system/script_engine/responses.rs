@@ -128,10 +128,23 @@ pub struct InputPayload {
     pub hint: String,
 }
 
+/// 单个选项：文案 + 是否因条件不满足而不可选 + 不可选时的提示（lock_hint）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChoiceItem {
+    pub text: String,
+    /// 条件不满足时为 true，前端应灰显并禁止点击
+    #[serde(default)]
+    pub disabled: bool,
+    /// 作者写的锁定提示文案（lock_hint）；没有时前端给默认文案
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChoicePayload {
-    pub choices: Vec<String>,
+    pub choices: Vec<ChoiceItem>,
     #[serde(default)]
     #[serde(rename = "allowFree")]
     pub allow_free: bool,
