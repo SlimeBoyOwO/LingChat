@@ -682,10 +682,7 @@ pub async fn delete_character(
             || gs.main_role_id == Some(role_id)
             || gs.onstage_role_ids.contains(&role_id);
         if onstage {
-            return Err(format!(
-                "角色「{}」正在对话中，无法删除",
-                role.name
-            ));
+            return Err(format!("角色「{}」正在对话中，无法删除", role.name));
         }
     }
 
@@ -695,7 +692,7 @@ pub async fn delete_character(
             let base = characters_dir();
             let target = base.join(folder);
             // 路径穿越防护
-            super::validate_path_in_base(&target, &base)?;
+            crate::utils::path::validate_path_in_base(&target, &base)?;
             if target.exists() {
                 if let Err(e) = fs::remove_dir_all(&target) {
                     return Err(format!("删除资源目录失败: {}", e));

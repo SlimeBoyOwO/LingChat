@@ -23,8 +23,8 @@ pub struct SkillAgentConfig {
     pub auto_approve_commands: bool,
     /// 是否允许文件工具访问沙箱之外的任意路径。
     pub allow_any_path: bool,
-    /// 单次对话的工具调用轮数上限。
-    pub max_tool_rounds: usize,
+    /// 单次对话的工具调用轮数上限；-1 表示无上限。
+    pub max_tool_rounds: i32,
     /// 自定义系统提示；None 使用内置默认提示（技能列表与剧本上下文始终追加）。
     pub system_prompt: Option<String>,
 }
@@ -36,7 +36,7 @@ impl Default for SkillAgentConfig {
             sandbox_dir: None,
             auto_approve_commands: false,
             allow_any_path: false,
-            max_tool_rounds: 20,
+            max_tool_rounds: -1,
             system_prompt: None,
         }
     }
@@ -67,9 +67,8 @@ impl SkillAgentConfig {
                 .unwrap_or(false),
             max_tool_rounds: store
                 .get(keys::AGENT_MAX_TOOL_ROUNDS)
-                .and_then(|v| v.as_u64().map(|n| n as usize))
-                .unwrap_or(20)
-                .max(1),
+                .and_then(|v| v.as_i64().map(|n| n as i32))
+                .unwrap_or(-1),
             system_prompt: str_opt(keys::AGENT_SYSTEM_PROMPT),
         }
     }

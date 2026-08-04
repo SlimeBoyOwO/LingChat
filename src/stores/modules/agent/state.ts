@@ -53,7 +53,7 @@ export const emptySettings = (): AgentSettings => ({
   sandboxDir: null,
   autoApproveCommands: false,
   allowAnyPath: false,
-  maxToolRounds: 20,
+  maxToolRounds: -1, // -1 = 无上限
   systemPrompt: null,
 })
 

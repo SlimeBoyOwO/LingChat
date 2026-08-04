@@ -2,7 +2,7 @@
   <div class="flex w-full flex-col gap-4">
     <div class="flex items-center justify-between">
       <p class="text-[0.78rem] text-white/50">
-        配置 AI 助手使用的模型、安全策略与文件沙箱范围。保存后下一次对话生效。
+        配置剧本导师使用的模型、安全策略与文件沙箱范围。保存后下一次对话生效。
       </p>
       <button
         class="inline-flex items-center gap-1 rounded-lg border border-brand/45 bg-brand/14 px-4 py-1.5 text-[0.82rem] text-brand transition-colors hover:bg-brand/24"
@@ -64,7 +64,7 @@
           v-if="store.settings.allowAnyPath"
           class="-mt-2 rounded-lg border border-red-400/35 bg-red-400/12 px-3 py-2 text-[0.74rem] text-red-300"
         >
-          ⚠ 开启后 AI 助手可读写沙箱之外的任意文件，风险极高。仅在可信场景使用。
+          ⚠ 开启后剧本导师可读写沙箱之外的任意文件，风险极高。仅在可信场景使用。
         </p>
         <p v-else class="-mt-2 text-[0.72rem] text-white/40">
           关闭时文件操作被限制在沙箱根目录内。开启后 AI 可访问沙箱之外的任意路径。
@@ -94,11 +94,10 @@
           <input
             v-model.number="store.settings.maxToolRounds"
             type="number"
-            min="1"
-            max="40"
+            min="-1"
             class="glass-input w-28 py-1.5 text-center"
           />
-          <span class="text-[0.72rem] text-white/40">1–40，默认 20</span>
+          <span class="text-[0.72rem] text-white/40">-1 表示无上限（默认）</span>
         </div>
 
         <div>

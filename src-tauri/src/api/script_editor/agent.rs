@@ -19,10 +19,6 @@ use crate::config::keys;
 use crate::db::entities::skill_agent_conversation;
 use crate::AppState;
 
-/// 单次注入 LLM 的历史消息窗口上限（超出后裁剪旧消息）。
-/// 与 run_chat 内部的消息裁剪上限一致，避免首轮请求就超上下文。
-const MAX_HISTORY: usize = 60;
-
 // ==================== DTO ====================
 
 /// Agent 设置（前端可读写；沙箱目录为空表示默认 `data/`）。
@@ -33,7 +29,8 @@ pub struct AgentSettings {
     pub sandbox_dir: Option<String>,
     pub auto_approve_commands: bool,
     pub allow_any_path: bool,
-    pub max_tool_rounds: usize,
+    /// 工具调用轮数上限；-1 表示无上限。
+    pub max_tool_rounds: i32,
     pub system_prompt: Option<String>,
 }
 
@@ -86,19 +83,6 @@ fn conv_to_info(c: &skill_agent_conversation::Model) -> ConversationInfo {
         created_at: c.created_at.to_string(),
         updated_at: c.updated_at.to_string(),
     }
-}
-
-/// 保留最近 `max` 条历史；裁剪边界不落在 `role:"tool"` 上，
-/// 并把其所属 assistant→tool 整组包含进来，避免 DeepSeek 400。
-fn trim_history(history: &mut Vec<LlmMessage>, max: usize) {
-    if history.len() <= max {
-        return;
-    }
-    let mut start = history.len() - max;
-    while start > 0 && history[start].role == "tool" {
-        start -= 1;
-    }
-    history.drain(..start);
 }
 
 // ==================== 设置 ====================
@@ -274,12 +258,11 @@ pub async fn editor_agent_start_chat(
         .map(db::message_to_llm)
         .collect::<Vec<_>>();
 
-    // 追加用户消息并持久化
+    // 追加用户消息并持久化，再并入本轮上下文（必须，否则 LLM 看不到这条提问）。
+    // 历史完整保留、不裁剪：模型需要看到全部上下文。
     let user_msg = LlmMessage::user(message.trim());
     db::insert_message(&state.db, conversation_id, &user_msg).await?;
-
-    // 历史过长时裁剪（保留尾部窗口，不切 tool 组）
-    trim_history(&mut history, MAX_HISTORY);
+    history.push(user_msg);
 
     let ctx = SkillAgentRunContext {
         conversation_id,
@@ -299,7 +282,14 @@ pub async fn editor_agent_start_chat(
     let handle = tauri::async_runtime::spawn(async move {
         let _ = run_chat(ctx, history, cancelled).await;
     });
+    // 先中止上一个仍在跑的任务（如卡在命令审批等待中），再挂新任务。
+    // 否则两个 run_chat 并发：旧任务可能稍后才把上一轮的 tool 结果落库，
+    // 插到新会话消息之间，制造出「assistant(tool_calls) 缺 tool 回应」的
+    // 畸形历史，下一次调用直接 400。
     let mut task_guard = state.skill_agent.task.lock().await;
+    if let Some(prev) = task_guard.take() {
+        prev.abort();
+    }
     *task_guard = Some(handle);
 
     let _ = db::touch_conversation(&state.db, conversation_id).await;

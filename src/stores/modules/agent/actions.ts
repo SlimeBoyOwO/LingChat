@@ -306,7 +306,7 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     uiStore.showNotification({
       type: 'success',
       title: '设置已保存',
-      message: 'AI 助手设置已保存，下次对话生效。',
+      message: '剧本导师设置已保存，下次对话生效。',
       skipTipsCheck: true,
     })
   }

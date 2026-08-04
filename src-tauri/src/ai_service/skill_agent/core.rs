@@ -1,8 +1,11 @@
 //! Skill Agent 核心：多轮工具调用循环。
 //!
-//! 复刻 ling_chat_agent `llm.rs` 的循环结构（`parse_tool_args` / `safe_drain_to` /
-//! 逐轮回填 / 轮数上限），但把 DeepSeek 直连 SSE 替换为 LingChat 的 `LlmClient`
+//! 复刻 ling_chat_agent `llm.rs` 的循环结构（`parse_tool_args` / 逐轮回填 /
+//! 轮数上限，-1 为无上限），但把 DeepSeek 直连 SSE 替换为 LingChat 的 `LlmClient`
 //! （流式 provider 走 `complete_stream_with_tools`，非流式走 `complete_with_tools`）。
+//! 历史与工具结果完整保留、不做裁剪：保证模型看到全部上下文。
+//! 仅对从 DB 重载的历史做 `sanitize_history` 规整，修复上一轮中断遗留的
+//! 「assistant(tool_calls) 缺 tool 回应」畸形轮次（否则 OpenAI 校验直接 400）。
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -133,14 +136,70 @@ fn parse_tool_args(raw: &str) -> Value {
     args
 }
 
-/// 消息裁剪的边界选择：确保裁剪点之后的第一条不是 `role:"tool"`，
-/// 否则 assistant 的 tool_calls 被裁掉而 tool 结果残留，DeepSeek 会报 400。
-fn safe_drain_to(messages: &[LlmMessage], drain_to: usize) -> usize {
-    let mut d = drain_to.min(messages.len());
-    while d < messages.len() && messages[d].role == "tool" {
-        d += 1;
+// ---------- 历史规整 ----------
+
+/// 规整从 DB 加载的历史，修复/丢弃不完整的工具轮次。
+///
+/// 背景：某轮生成 `assistant(tool_calls)` 后、对应 `tool` 结果全部落库前，若运行被
+/// 中断（用户点停止、崩溃、DB 写失败），DB 里会留下「带 tool_calls 却没有工具回应」
+/// 的孤立 assistant。OpenAI 接口校验会直接 400：带 `tool_calls` 的 assistant 消息
+/// 必须被紧随的 tool 消息逐一回应（insufficient tool messages following tool_calls）。
+///
+/// 这里把这种残缺轮次降级为纯文本 assistant（保留正文、去掉 tool_calls），并丢弃
+/// 无主的孤立 tool 消息，保证任何一次重载后的请求都合法。完整轮次原样保留。
+pub fn sanitize_history(history: Vec<LlmMessage>) -> Vec<LlmMessage> {
+    let mut out = Vec::with_capacity(history.len());
+    let mut i = 0usize;
+    while i < history.len() {
+        let msg = &history[i];
+
+        if msg.role == "assistant" && msg.tool_calls.is_some() {
+            let expected: Vec<String> = msg
+                .tool_calls
+                .as_ref()
+                .map(|tcs| tcs.iter().map(|tc| tc.id.clone()).collect())
+                .unwrap_or_default();
+
+            // 从下一条起连续收集紧随其后的 tool 回应
+            let mut j = i + 1;
+            let mut actual: Vec<String> = Vec::new();
+            while j < history.len() && history[j].role == "tool" {
+                if let Some(id) = history[j].tool_call_id.clone() {
+                    actual.push(id);
+                }
+                j += 1;
+            }
+
+            // 完整：每个期望的 tool_call_id 都有回应
+            let complete = !expected.is_empty() && expected.iter().all(|id| actual.contains(id));
+
+            if complete {
+                out.push(msg.clone());
+                // 只搬运匹配期望 id 的回应，多出来的孤立 tool 一并丢弃
+                for k in (i + 1)..j {
+                    let t = &history[k];
+                    if let Some(id) = t.tool_call_id.as_ref() {
+                        if expected.contains(id) {
+                            out.push(t.clone());
+                        }
+                    }
+                }
+            } else {
+                // 残缺轮次：降级为纯文本 assistant，保留正文
+                let mut fixed = msg.clone();
+                fixed.tool_calls = None;
+                out.push(fixed);
+            }
+            i = j;
+        } else if msg.role == "tool" {
+            // 无主 tool（前面没有待回应的 assistant）→ 丢弃
+            i += 1;
+        } else {
+            out.push(msg.clone());
+            i += 1;
+        }
     }
-    d
+    out
 }
 
 // ---------- 主循环 ----------
@@ -173,9 +232,17 @@ pub async fn run_chat(
 
     let mut messages: Vec<LlmMessage> = Vec::with_capacity(history.len() + 1);
     messages.push(LlmMessage::system(system_prompt));
-    messages.extend(history);
+    // 历史先规整再并入：DB 里可能残留上一轮中断产生的「无 tool 回应的 assistant
+    // (tool_calls)」，不处理会触发 OpenAI 400（insufficient tool messages）。
+    messages.extend(sanitize_history(history));
 
-    let max_rounds = ctx.config.max_tool_rounds.max(1);
+    // -1 表示无上限（保留全部上下文与工具轮次）；否则为有限轮数，至少 1 轮。
+    // 无上限时用 usize::MAX 作区间上界，`round == max_rounds - 1` 的下限检查永不触发。
+    let max_rounds: usize = if ctx.config.max_tool_rounds < 0 {
+        usize::MAX
+    } else {
+        (ctx.config.max_tool_rounds as usize).max(1)
+    };
     let mut turn_prompt_tokens: u64 = 0;
     let mut turn_completion_tokens: u64 = 0;
 
@@ -283,12 +350,6 @@ pub async fn run_chat(
             let _ = db::insert_message(&ctx.db, ctx.conversation_id, &tool_msg).await;
         }
 
-        // 历史过长时裁剪，但绝不切断 assistant→tool 整组
-        if messages.len() > 60 {
-            let drain_to = safe_drain_to(&messages, messages.len() - 50);
-            messages.drain(1..drain_to);
-        }
-
         if round == max_rounds - 1 {
             let _ = ctx.channel.send(SkillAgentEvent::Error {
                 message: format!("已达到最大工具调用轮数（{}），已停止", max_rounds),
@@ -387,6 +448,93 @@ async fn stream_completion(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ai_service::types::{FunctionCall, ToolCall};
+
+    fn tc(id: &str, name: &str) -> ToolCall {
+        ToolCall {
+            id: id.to_string(),
+            type_: "function".to_string(),
+            function: FunctionCall {
+                name: name.to_string(),
+                arguments: "{}".to_string(),
+            },
+        }
+    }
+
+    #[test]
+    fn sanitize_history_keeps_complete_rounds_untouched() {
+        let history = vec![
+            LlmMessage::user("写个剧本"),
+            {
+                let mut m = LlmMessage::assistant("先查技能");
+                m.tool_calls = Some(vec![tc("a", "read_skill")]);
+                m
+            },
+            LlmMessage::tool_result("a", "技能内容"),
+            LlmMessage::assistant("完成"),
+        ];
+        let fixed = sanitize_history(history.clone());
+        assert_eq!(fixed.len(), history.len());
+        assert!(fixed[1].tool_calls.is_some());
+        assert_eq!(fixed[2].tool_call_id.as_deref(), Some("a"));
+    }
+
+    #[test]
+    fn sanitize_history_repairs_orphaned_assistant_tool_calls() {
+        // 上一轮中断：assistant 带 tool_calls，但没有 tool 回应，直接跟了一条 user。
+        // 这正是触发 OpenAI 400 的场景。
+        let history = vec![
+            LlmMessage::user("继续"),
+            {
+                let mut m = LlmMessage::assistant("准备执行命令");
+                m.tool_calls = Some(vec![tc("orphan", "execute_command")]);
+                m
+            },
+            LlmMessage::user("新的提问"),
+        ];
+        let fixed = sanitize_history(history);
+        assert_eq!(fixed.len(), 3);
+        // 孤立 assistant 降级为纯文本：保留正文、去掉 tool_calls
+        assert_eq!(fixed[1].role, "assistant");
+        assert!(fixed[1].tool_calls.is_none());
+        assert_eq!(fixed[1].content, "准备执行命令");
+        // user 消息原样保留
+        assert_eq!(fixed[2].role, "user");
+        assert_eq!(fixed[2].content, "新的提问");
+    }
+
+    #[test]
+    fn sanitize_history_drops_unmatched_tool_responses() {
+        // 回应 id 与 assistant 的 tool_calls 不匹配 → 整轮视为残缺
+        let history = vec![
+            LlmMessage::user("a"),
+            {
+                let mut m = LlmMessage::assistant("");
+                m.tool_calls = Some(vec![tc("x", "read_file")]);
+                m
+            },
+            LlmMessage::tool_result("y", "不该出现的回应"),
+            LlmMessage::assistant("继续"),
+        ];
+        let fixed = sanitize_history(history);
+        // 残缺 assistant 被降级，错配的 tool 被丢弃
+        assert_eq!(fixed.len(), 3);
+        assert!(fixed[1].tool_calls.is_none());
+        assert!(fixed.iter().all(|m| m.role != "tool"));
+    }
+
+    #[test]
+    fn sanitize_history_drops_dangling_tool_without_assistant() {
+        let history = vec![
+            LlmMessage::user("a"),
+            LlmMessage::tool_result("ghost", "孤儿工具结果"),
+            LlmMessage::assistant("正常回复"),
+        ];
+        let fixed = sanitize_history(history);
+        assert_eq!(fixed.len(), 2);
+        assert_eq!(fixed[0].role, "user");
+        assert_eq!(fixed[1].role, "assistant");
+    }
 
     #[test]
     fn parse_tool_args_normalizes_nonstandard_shapes() {
@@ -409,25 +557,4 @@ mod tests {
         assert_eq!(v, serde_json::json!({}));
     }
 
-    #[test]
-    fn safe_drain_to_never_cuts_through_tool_results() {
-        let mk = |role: &str| LlmMessage {
-            role: role.into(),
-            content: String::new(),
-            tool_calls: None,
-            tool_call_id: None,
-        };
-        let msgs = vec![
-            mk("system"),
-            mk("user"),
-            mk("assistant"),
-            mk("tool"),
-            mk("tool"),
-            mk("assistant"),
-        ];
-        assert_eq!(safe_drain_to(&msgs, 3), 5);
-        assert_eq!(safe_drain_to(&msgs, 5), 5);
-        assert_eq!(safe_drain_to(&msgs, 1), 1);
-        assert_eq!(safe_drain_to(&msgs, 99), 6);
-    }
 }
