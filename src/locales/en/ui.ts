@@ -122,6 +122,14 @@ export default {
     goToSettings: "Open Tool Settings",
     clearHistory: "Clear History",
     otherToolsTitle: "Other Tools",
+    nav: {
+      schedule: "Schedule",
+      memory: "Notes & Memory",
+      character: "Characters",
+      scene: "Scenes",
+      status: "Status",
+      clock: "Current Time",
+    },
     otherToolsHint: "Once enabled, they can use these tools on their own while chatting (applies after saving)",
     groups: {
       schedule: "Schedule & To-dos (view, add, update, delete)",

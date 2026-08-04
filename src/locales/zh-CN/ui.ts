@@ -121,6 +121,14 @@ export default {
     goToSettings: '前往工具配置',
     clearHistory: '清空记录',
     otherToolsTitle: '其他工具',
+    nav: {
+      schedule: '日程与待办',
+      memory: '笔记与记忆',
+      character: '角色切换',
+      scene: '场景切换',
+      status: '状态查询',
+      clock: '当前时间',
+    },
     otherToolsHint: '开启后 ta 就能在聊天时主动使用这些工具哦（保存后生效）',
     groups: {
       schedule: '日程与待办（查日程、加/改/删待办）',

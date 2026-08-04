@@ -1,107 +1,124 @@
 <template>
-  <!-- 高级设置 → 工具配置：网页搜索等聊天工具的设置 -->
-  <div class="h-full overflow-y-auto custom-scrollbar p-2">
-    <h2 class="text-2xl text-brand font-semibold pb-4 mb-6 border-b border-brand">
-      {{ $t('ui.toolCalls.webSearchTitle') }}
-    </h2>
+  <!-- 高级设置 → 工具配置：左侧导航列表 + 右侧内容 -->
+  <div class="flex flex-col md:grid md:grid-cols-[min(28%,240px)_1fr] h-full min-h-0">
+    <!-- 左侧导航 -->
+    <nav class="flex flex-col gap-1 overflow-y-auto py-2 pr-0 md:pr-4 md:border-r border-brand/40">
+      <a
+        v-for="item in navItems"
+        :key="item"
+        href="#"
+        class="block px-5 py-3 no-underline rounded-lg text-white transition-colors duration-200 relative z-10 adv-nav-link hover:bg-gray-200 hover:text-black active:text-white active:font-bold"
+        :class="{ 'bg-brand/30 font-bold': selected === item }"
+        @click.prevent="selected = item"
+      >
+        {{ navLabel(item) }}
+      </a>
+    </nav>
 
-    <div class="mb-6">
-      <div class="flex items-center gap-3 py-2.5 px-1">
-        <Toggle
-          :checked="form.web_search.enabled"
-          @change="(value: boolean) => (form.web_search.enabled = value)"
-        />
-        <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.enableWebSearch') }}</p>
-      </div>
+    <!-- 右侧内容 -->
+    <main class="h-full overflow-y-auto custom-scrollbar px-2 md:px-6 py-2">
+      <!-- ===== 网页搜索 ===== -->
+      <div v-if="selected === 'web_search'">
+        <h2 class="text-2xl text-brand font-semibold pb-4 mb-6 border-b border-brand">
+          {{ $t('ui.toolCalls.webSearchTitle') }}
+        </h2>
 
-      <div class="flex items-center gap-3 py-2.5 px-1">
-        <Toggle
-          :checked="form.web_search.use_builtin"
-          @change="(value: boolean) => (form.web_search.use_builtin = value)"
-        />
-        <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.useBuiltin') }}</p>
-      </div>
+        <div class="flex items-center gap-3 py-2.5 px-1">
+          <Toggle
+            :checked="form.web_search.enabled"
+            @change="(value: boolean) => (form.web_search.enabled = value)"
+          />
+          <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.enableWebSearch') }}</p>
+        </div>
 
-      <p v-if="form.web_search.use_builtin" class="text-sm text-gray-400 px-1 mb-2">
-        {{ $t('ui.toolCalls.builtinHint') }}
-      </p>
+        <div class="flex items-center gap-3 py-2.5 px-1">
+          <Toggle
+            :checked="form.web_search.use_builtin"
+            @change="(value: boolean) => (form.web_search.use_builtin = value)"
+          />
+          <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.useBuiltin') }}</p>
+        </div>
 
-      <div class="flex items-center gap-3 py-2.5 px-1">
-        <Toggle
-          :checked="form.web_search.hide_search_results"
-          @change="(value: boolean) => (form.web_search.hide_search_results = value)"
-        />
-        <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.hideSearchResults') }}</p>
-      </div>
+        <p v-if="form.web_search.use_builtin" class="text-sm text-gray-400 px-1 mb-2">
+          {{ $t('ui.toolCalls.builtinHint') }}
+        </p>
 
-      <template v-if="!form.web_search.use_builtin">
-        <label class="inline-flex items-center font-medium text-brand mt-2">
-          {{ $t('ui.toolCalls.apiKey') }}
-        </label>
-        <p class="text-sm mt-1 mb-2 text-gray-300">Moonshot API Key</p>
+        <template v-if="!form.web_search.use_builtin">
+          <label class="inline-flex items-center font-medium text-brand mt-2">
+            {{ $t('ui.toolCalls.apiKey') }}
+          </label>
+          <p class="text-sm mt-1 mb-2 text-gray-300">Moonshot API Key</p>
+          <input
+            type="password"
+            v-model="form.web_search.api_key"
+            :placeholder="$t('ui.toolCalls.apiKeyPlaceholder')"
+            class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+          />
+
+          <label class="inline-flex items-center font-medium text-brand mt-4">
+            {{ $t('ui.toolCalls.baseUrl') }}
+          </label>
+          <input
+            type="text"
+            v-model="form.web_search.base_url"
+            placeholder="https://api.kimi.com/coding/v1/search"
+            class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+          />
+
+          <label class="inline-flex items-center font-medium text-brand mt-4">
+            {{ $t('ui.toolCalls.maxResults') }}
+          </label>
+          <input
+            type="number"
+            v-model.number="form.web_search.max_results"
+            min="1"
+            max="20"
+            step="1"
+            class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+          />
+        </template>
+
+        <div class="flex items-center gap-3 py-2.5 px-1">
+          <Toggle
+            :checked="form.web_search.hide_search_results"
+            @change="(value: boolean) => (form.web_search.hide_search_results = value)"
+          />
+          <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.hideSearchResults') }}</p>
+        </div>
+
+        <div class="flex items-center gap-3 py-2.5 px-1 mt-2">
+          <Toggle
+            :checked="form.web_search.proxy_enabled"
+            @change="(value: boolean) => (form.web_search.proxy_enabled = value)"
+          />
+          <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.proxyEnable') }}</p>
+        </div>
         <input
-          type="password"
-          v-model="form.web_search.api_key"
-          :placeholder="$t('ui.toolCalls.apiKeyPlaceholder')"
+          v-if="form.web_search.proxy_enabled"
+          type="text"
+          v-model="form.web_search.proxy_addr"
+          placeholder="http://127.0.0.1:10808"
           class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
         />
-
-        <label class="inline-flex items-center font-medium text-brand mt-4">
-          {{ $t('ui.toolCalls.baseUrl') }}
-        </label>
-        <input
-          type="text"
-          v-model="form.web_search.base_url"
-          placeholder="https://api.kimi.com/coding/v1/search"
-          class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
-        />
-
-        <label class="inline-flex items-center font-medium text-brand mt-4">
-          {{ $t('ui.toolCalls.maxResults') }}
-        </label>
-        <input
-          type="number"
-          v-model.number="form.web_search.max_results"
-          min="1"
-          max="20"
-          step="1"
-          class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
-        />
-      </template>
-
-      <div class="flex items-center gap-3 py-2.5 px-1 mt-2">
-        <Toggle
-          :checked="form.web_search.proxy_enabled"
-          @change="(value: boolean) => (form.web_search.proxy_enabled = value)"
-        />
-        <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.proxyEnable') }}</p>
-      </div>
-      <input
-        v-if="form.web_search.proxy_enabled"
-        type="text"
-        v-model="form.web_search.proxy_addr"
-        placeholder="http://127.0.0.1:10808"
-        class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
-      />
-
-      <!-- 其他工具（分组开关） -->
-      <h2 class="text-2xl text-brand font-semibold pb-4 mt-8 mb-4 border-b border-brand">
-        {{ $t('ui.toolCalls.otherToolsTitle') }}
-      </h2>
-      <p class="text-sm text-gray-400 mb-2 px-1">{{ $t('ui.toolCalls.otherToolsHint') }}</p>
-      <div
-        v-for="group in TOOL_GROUP_KEYS"
-        :key="group"
-        class="flex items-center gap-3 py-2.5 px-1"
-      >
-        <Toggle
-          :checked="form.groups[group] ?? false"
-          @change="(value: boolean) => (form.groups[group] = value)"
-        />
-        <p class="text-sm text-gray-300">{{ $t(`ui.toolCalls.groups.${group}`) }}</p>
       </div>
 
-      <div class="flex gap-2 items-center mt-4">
+      <!-- ===== 其他工具组 ===== -->
+      <div v-else>
+        <h2 class="text-2xl text-brand font-semibold pb-4 mb-6 border-b border-brand">
+          {{ navLabel(selected) }}
+        </h2>
+        <p class="text-sm text-gray-400 mb-4 px-1">{{ $t('ui.toolCalls.otherToolsHint') }}</p>
+        <div class="flex items-center gap-3 py-2.5 px-1">
+          <Toggle
+            :checked="form.groups[selected] ?? false"
+            @change="(value: boolean) => (form.groups[selected] = value)"
+          />
+          <p class="text-sm text-gray-300">{{ $t(`ui.toolCalls.groups.${selected}`) }}</p>
+        </div>
+      </div>
+
+      <!-- 保存/测试操作区 -->
+      <div class="flex gap-2 items-center mt-6">
         <div
           class="w-18 px-5 py-2.5 bg-brand text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-colors duration-200 hover:bg-[#0056b3]"
           @click="saveSettings"
@@ -109,6 +126,7 @@
           {{ $t('ui.toolCalls.save') }}
         </div>
         <div
+          v-if="selected === 'web_search'"
           class="px-5 py-2.5 bg-white/10 text-white border border-white/20 rounded-lg cursor-pointer text-sm font-medium transition-colors duration-200 hover:bg-white/20"
           @click="runTest"
         >
@@ -116,7 +134,7 @@
         </div>
         <p class="text-sm" :style="{ color: status.color }">{{ status.message }}</p>
       </div>
-    </div>
+    </main>
   </div>
 </template>
 
@@ -132,7 +150,19 @@ import {
 } from '@/api/services/tool-settings'
 import Toggle from '@/components/base/widget/Toggle.vue'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
+
+/** 当前选中的设置项：'web_search' 或工具组名 */
+const selected = ref<string>('web_search')
+
+const navItems = ['web_search', ...TOOL_GROUP_KEYS] as const
+
+const navLabel = (item: string) =>
+  item === 'web_search'
+    ? t('ui.toolCalls.webSearchTitle')
+    : te(`ui.toolCalls.nav.${item}`)
+      ? t(`ui.toolCalls.nav.${item}`)
+      : t(`ui.toolCalls.groups.${item}`)
 
 const form = reactive<ToolSettings>({
   web_search: {

@@ -121,6 +121,14 @@ export default {
     goToSettings: 'ツール設定を開く',
     clearHistory: '履歴をクリア',
     otherToolsTitle: 'その他のツール',
+    nav: {
+      schedule: 'スケジュール',
+      memory: 'メモと記憶',
+      character: 'キャラ切替',
+      scene: 'シーン切替',
+      status: 'ステータス',
+      clock: '現在時刻',
+    },
     otherToolsHint: 'オンにすると、あの子がチャット中にこれらのツールを自分で使えるようになるよ（保存後に有効）',
     groups: {
       schedule: 'スケジュールと ToDo（確認・追加・更新・削除）',

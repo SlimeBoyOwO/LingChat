@@ -122,6 +122,14 @@ export default {
     "goToSettings": "前往工具設定",
     "clearHistory": "清空記錄",
     "otherToolsTitle": "其他工具",
+    "nav": {
+      "schedule": "日程同待辦",
+      "memory": "筆記同記憶",
+      "character": "角色切換",
+      "scene": "場景切換",
+      "status": "狀態查詢",
+      "clock": "目前時間"
+    },
     "otherToolsHint": "開咗之後 ta 傾偈嗰陣就可以主動用呢啲工具㗎啦（儲存後生效）",
     "groups": {
       "schedule": "日程同待辦（查日程、加/改/刪待辦）",
