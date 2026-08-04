@@ -154,20 +154,28 @@ impl WebSearchTool {
         }
         match cfg.provider.as_str() {
             "bocha" => self.execute_bocha_search(query, cfg).await,
+            "custom" => self.execute_kimi_endpoint(query, cfg).await,
             _ => self.execute_kimi_endpoint(query, cfg).await,
         }
     }
 
     /// 独立端点模式 · Kimi 系 /search（body 为 text_query）。
+    /// "kimi" 固定用官方端点；"custom" 使用用户填写的 base_url。
     async fn execute_kimi_endpoint(
         &self,
         query: &str,
         cfg: &WebSearchSettings,
     ) -> Result<ToolResult, ToolError> {
-        let base_url = if cfg.base_url.trim().is_empty() {
-            "https://api.kimi.com/coding/v1/search"
+        let base_url = if cfg.provider == "custom" {
+            let url = cfg.base_url.trim();
+            if url.is_empty() {
+                return Err(ToolError::Execution(
+                    "自定义端点模式需要填写搜索服务地址".into(),
+                ));
+            }
+            url
         } else {
-            cfg.base_url.trim()
+            "https://api.kimi.com/coding/v1/search"
         };
         let client = Self::build_client(cfg)?;
         let response = client
@@ -210,11 +218,7 @@ impl WebSearchTool {
         query: &str,
         cfg: &WebSearchSettings,
     ) -> Result<ToolResult, ToolError> {
-        let base_url = if cfg.base_url.trim().is_empty() {
-            "https://api.bochaai.com/v1/web-search"
-        } else {
-            cfg.base_url.trim()
-        };
+        let base_url = "https://api.bochaai.com/v1/web-search";
         let client = Self::build_client(cfg)?;
         let response = client
             .post(base_url)

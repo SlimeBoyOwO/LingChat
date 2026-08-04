@@ -105,6 +105,8 @@ export default {
     builtinHint: "Search runs server-side on your current chat model API (must be Kimi/Moonshot) — it just uses your existing chat key, no separate signup needed",
     apiKey: "API Key",
     provider: "Search Provider",
+    providerCustom: "Custom Endpoint",
+    customHint: 'Custom endpoints must be compatible with the Kimi /search protocol (POST JSON: {"text_query": "..."})',
     apiKeyPlaceholder: "Enter your Moonshot API Key",
     baseUrl: "Search Service URL",
     proxyEnable: "Access the search service via proxy (e.g. v2rayN)",

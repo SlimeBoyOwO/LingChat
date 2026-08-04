@@ -104,6 +104,8 @@ export default {
     builtinHint: '搜索由当前聊天模型 API（需为 Kimi/Moonshot）在服务端执行，用现有的聊天 Key 即可，无需单独申请',
     apiKey: 'API Key',
     provider: '搜索提供商',
+    providerCustom: '自定义端点',
+    customHint: '自定义端点需兼容 Kimi /search 协议（POST JSON: {"text_query": "..."}）',
     apiKeyPlaceholder: '填入 Moonshot API Key',
     baseUrl: '搜索服务地址',
     proxyEnable: '通过代理访问搜索服务（如 v2rayN）',

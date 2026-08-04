@@ -49,11 +49,13 @@
           </label>
           <select
             v-model="form.web_search.provider"
-            @change="onProviderChange"
             class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200 cursor-pointer"
           >
             <option value="kimi" class="bg-slate-800 text-white">Kimi /search</option>
             <option value="bocha" class="bg-slate-800 text-white">BoCha 博查</option>
+            <option value="custom" class="bg-slate-800 text-white">
+              {{ $t('ui.toolCalls.providerCustom') }}
+            </option>
           </select>
 
           <label class="inline-flex items-center font-medium text-brand mt-4">
@@ -67,15 +69,21 @@
             class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
           />
 
-          <label class="inline-flex items-center font-medium text-brand mt-4">
-            {{ $t('ui.toolCalls.baseUrl') }}
-          </label>
-          <input
-            type="text"
-            v-model="form.web_search.base_url"
-            :placeholder="defaultBaseUrl"
-            class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
-          />
+          <!-- 仅自定义模式显示地址栏；kimi/bocha 固定使用官方端点 -->
+          <template v-if="form.web_search.provider === 'custom'">
+            <label class="inline-flex items-center font-medium text-brand mt-4">
+              {{ $t('ui.toolCalls.baseUrl') }}
+            </label>
+            <p class="text-sm mt-1 mb-2 text-gray-300">
+              {{ $t('ui.toolCalls.customHint') }}
+            </p>
+            <input
+              type="text"
+              v-model="form.web_search.base_url"
+              placeholder="https://api.kimi.com/coding/v1/search"
+              class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+            />
+          </template>
 
           <label class="inline-flex items-center font-medium text-brand mt-4">
             {{ $t('ui.toolCalls.maxResults') }}
@@ -191,32 +199,15 @@ const form = reactive<ToolSettings>({
   groups: {},
 })
 
-/** 各 provider 的默认端点（留空即默认，与后端一致） */
-const PROVIDER_DEFAULTS: Record<string, { baseUrl: string; keyHint: string }> = {
-  kimi: {
-    baseUrl: 'https://api.kimi.com/coding/v1/search',
-    keyHint: 'Kimi API Key',
-  },
-  bocha: {
-    baseUrl: 'https://api.bochaai.com/v1/web-search',
-    keyHint: 'BoCha API Key',
-  },
+/** 各 provider 的 Key 提示（端点由后端固定，仅 custom 需要用户填地址） */
+const PROVIDER_KEY_HINTS: Record<string, string> = {
+  kimi: 'Kimi API Key',
+  bocha: 'BoCha API Key',
 }
 
-const defaultBaseUrl = computed(
-  () => PROVIDER_DEFAULTS[form.web_search.provider]?.baseUrl ?? '',
-)
 const apiKeyHint = computed(
-  () => PROVIDER_DEFAULTS[form.web_search.provider]?.keyHint ?? 'API Key',
+  () => PROVIDER_KEY_HINTS[form.web_search.provider] ?? 'API Key',
 )
-
-/** 切换 provider 时，若地址为空或仍是上一个默认地址则自动换成新默认 */
-const onProviderChange = () => {
-  const known = Object.values(PROVIDER_DEFAULTS).map((d) => d.baseUrl)
-  if (!form.web_search.base_url || known.includes(form.web_search.base_url)) {
-    form.web_search.base_url = defaultBaseUrl.value
-  }
-}
 
 const status = reactive({ message: '', color: '#4ade80' })
 const testing = ref(false)

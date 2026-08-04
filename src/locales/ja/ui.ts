@@ -104,6 +104,8 @@ export default {
     builtinHint: '検索は現在のチャットモデル API（Kimi/Moonshot が必要）のサーバー側で実行されるよ。今のチャット Key だけで使えるから、別途申請は不要だよ',
     apiKey: 'API Key',
     provider: '検索プロバイダー',
+    providerCustom: 'カスタム端点',
+    customHint: 'カスタム端点は Kimi /search プロトコル互換が必要（POST JSON: {"text_query": "..."}）',
     apiKeyPlaceholder: 'Moonshot API Key を入力',
     baseUrl: '検索サービス URL',
     proxyEnable: 'プロキシ経由で検索サービスにアクセス（v2rayN など）',

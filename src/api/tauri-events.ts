@@ -249,13 +249,22 @@ export function initializeTauriEventListeners() {
 
   // === God Agent multi-dialogue event ===
 
-  listen('character:switch', (event) => {
+  listen('character:switch', async (event) => {
     const payload = event.payload as { type: string; roleId: number; characterName: string }
     console.log('[Tauri] character:switch', payload)
     const gameStore = useGameStore()
+    const uiStore = useUIStore()
+    // 先确保角色数据已加载（立绘/名字都从这里取）
+    const role = await gameStore.getOrCreateGameRole(payload.roleId)
     gameStore.currentInteractRoleId = payload.roleId
-    // Ensure the role is loaded in gameRoles
-    gameStore.getOrCreateGameRole(payload.roleId)
+    // 新角色不在场时才替换舞台（多人场景下 God Agent 只会选在场角色，不进这分支）；
+    // 用替换而非 push，避免标准模式舞台出现两个角色、桌宠不生效
+    if (!gameStore.presentRoleIds.includes(payload.roleId)) {
+      gameStore.presentRoleIds = [payload.roleId]
+    }
+    // 同步主界面/桌宠标题（对话中名字由 currentInteractRole 驱动，已覆盖）
+    uiStore.showCharacterTitle = role.roleName
+    uiStore.showCharacterSubtitle = role.roleSubTitle
   })
 
   console.log('[Tauri] Event listeners initialized (ai + ai:thinking_progress + tts:cleanup + adventure + auto-save + 13 script events + character:switch)')
