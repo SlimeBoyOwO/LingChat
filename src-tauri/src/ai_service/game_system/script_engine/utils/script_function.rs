@@ -296,6 +296,7 @@ pub async fn handle_actions(
                     content,
                     attribute: LineAttributeExt(LineAttribute::User),
                     display_name: Some(game_status.player.user_name.clone()),
+                    sender_role_id: Some(0),
                     ..Default::default()
                 };
                 game_status.add_line(db, line).await?;
@@ -326,7 +327,10 @@ mod tests {
     #[test]
     fn parses_the_three_operators() {
         let (op, name, val) = parse_variable_action("flag = true").unwrap();
-        assert_eq!((op, name.as_str(), val), (VarOp::Assign, "flag", json!(true)));
+        assert_eq!(
+            (op, name.as_str(), val),
+            (VarOp::Assign, "flag", json!(true))
+        );
 
         let (op, name, val) = parse_variable_action("count += 1").unwrap();
         assert_eq!((op, name.as_str(), val), (VarOp::Add, "count", json!(1)));

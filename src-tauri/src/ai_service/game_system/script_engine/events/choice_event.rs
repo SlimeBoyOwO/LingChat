@@ -139,7 +139,7 @@ impl ScriptEvent for ChoiceEvent {
                 content: user_choice,
                 attribute: LineAttributeExt(LineAttribute::User),
                 display_name: Some(gs.player.user_name.clone()),
-                sender_role_id: gs.main_role_id,
+                sender_role_id: Some(0),
                 ..Default::default()
             };
             gs.add_line(ctx.db, line).await?;
