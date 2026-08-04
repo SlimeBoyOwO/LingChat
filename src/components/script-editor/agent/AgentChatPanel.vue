@@ -111,6 +111,99 @@
       >
         清空当前对话
       </button>
+
+      <!-- Token 用量（窗口左下角；折叠卡片） -->
+      <div
+        class="shrink-0
+          rounded-xl
+          border
+          border-white/10
+          bg-white/5
+          px-3
+          py-2.5"
+      >
+        <button
+          class="flex
+            w-full
+            items-center
+            justify-between
+            gap-2
+            text-left"
+          :title="usageOpen ? '收起用量明细' : '展开用量明细'"
+          @click="usageOpen = !usageOpen"
+        >
+          <span
+            class="inline-flex
+              items-center
+              gap-1.5
+              text-[0.72rem]
+              text-white/50"
+          >
+            <Icon icon="advance" :size="13" class="text-brand" />
+            Token 用量
+          </span>
+          <span class="font-mono
+            text-[0.78rem]
+            text-brand">{{ store.totalTokens.toLocaleString() }}</span>
+          <span class="text-[0.6rem]
+            text-white/30">{{ usageOpen ? '▾' : '▸' }}</span>
+        </button>
+
+        <div
+          v-if="usageOpen"
+          class="mt-2
+            flex
+            flex-col
+            gap-1.5
+            border-t
+            border-white/10
+            pt-2"
+        >
+          <template v-if="store.lastUsage">
+            <div class="grid
+              grid-cols-3
+              gap-1
+              text-center">
+              <div class="rounded-md
+                bg-white/5
+                py-1">
+                <div class="text-[0.6rem]
+                  text-white/40">输入</div>
+                <div class="font-mono
+                  text-[0.72rem]
+                  text-white/85">{{ store.lastUsage.prompt_tokens.toLocaleString() }}</div>
+              </div>
+              <div class="rounded-md
+                bg-white/5
+                py-1">
+                <div class="text-[0.6rem]
+                  text-white/40">输出</div>
+                <div class="font-mono
+                  text-[0.72rem]
+                  text-white/85">{{ store.lastUsage.completion_tokens.toLocaleString() }}</div>
+              </div>
+              <div class="rounded-md
+                bg-white/5
+                py-1">
+                <div class="text-[0.6rem]
+                  text-white/40">本轮</div>
+                <div class="font-mono
+                  text-[0.72rem]
+                  text-brand">{{ store.lastUsage.total_tokens.toLocaleString() }}</div>
+              </div>
+            </div>
+            <div class="text-[0.62rem]
+              text-white/35">累计 {{ store.totalTokens.toLocaleString() }} · 本次运行</div>
+          </template>
+          <p
+            v-else
+            class="text-[0.68rem]
+              text-white/35"
+          >
+            暂无用量数据，发送消息后显示。
+          </p>
+        </div>
+      </div>
     </aside>
 
     <!-- 右栏：聊天 -->
@@ -204,20 +297,15 @@
                 <div
                   v-if="round.content"
                   class="max-w-[92%]
-                    whitespace-pre-wrap
-                    break-words
                     rounded-2xl
                     rounded-tl-sm
                     border
                     border-white/10
                     bg-white/8
                     px-3.5
-                    py-2.5
-                    text-[0.86rem]
-                    leading-relaxed
-                    text-white/85"
+                    py-2.5"
                 >
-                  {{ round.content }}
+                  <MarkdownText :content="round.content" />
                 </div>
                 <AgentToolCard
                   v-for="run in round.toolRuns"
@@ -289,16 +377,19 @@
             ref="inputEl"
             v-model="draft"
             rows="1"
-            class="max-h-32
+            class="max-h-40
               flex-1
-              resize-none
+              resize-y
               bg-transparent
               text-[0.86rem]
+              leading-relaxed
               text-white
               outline-none
-              placeholder:text-white/35"
-            placeholder="让 AI 助手写剧本、改文件、执行命令…（Enter 发送，Shift+Enter 换行）"
+              placeholder:text-white/35
+              [field-sizing:content]"
+            placeholder="让剧本导师写剧本、改文件、执行命令…（Enter 发送，Shift+Enter 换行）"
             :disabled="store.sending"
+            @input="autoResizeInput"
             @keydown.enter.exact.prevent="send"
             @compositionstart="composing = true"
             @compositionend="composing = false"
@@ -356,14 +447,35 @@ import { nextTick, onMounted, ref, watch } from 'vue'
 import { Icon } from '@/components/base'
 import { useAgentStore } from '@/stores/modules/agent'
 import AgentToolCard from './AgentToolCard.vue'
+import MarkdownText from './MarkdownText.vue'
 import type { ConversationInfo } from '@/api/services/agent'
 
 const store = useAgentStore()
 
 const draft = ref('')
 const composing = ref(false)
+/** 左下角 Token 用量卡片是否展开明细。 */
+const usageOpen = ref(false)
 const scroller = ref<HTMLElement | null>(null)
 const inputEl = ref<HTMLTextAreaElement | null>(null)
+
+/**
+ * 输入框随内容自动增高。
+ * 优先用原生 `field-sizing: content`（WebView2 基于新版 Chromium，原生支持，且
+ * 与 `resize-y` 手动拖动天然兼容：拖出的内联高度优先于内容尺寸）；不支持的旧
+ * 内核退回 JS 量高。两个路径都不写死高度上限（max-h-40 由 CSS 封顶，超出滚动）。
+ */
+const MAX_INPUT_HEIGHT = 160
+const fieldSizingSupported =
+  typeof CSS !== 'undefined' && CSS.supports('field-sizing', 'content')
+
+function autoResizeInput() {
+  if (fieldSizingSupported) return
+  const el = inputEl.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${Math.min(el.scrollHeight, MAX_INPUT_HEIGHT)}px`
+}
 
 function scrollToBottom() {
   nextTick(() => {
@@ -387,6 +499,8 @@ async function send() {
   const text = draft.value
   if (composing.value || store.streaming || !text.trim()) return
   draft.value = ''
+  // 清空后把高度收回去（field-sizing 原生会自动收，这里给 JS 兜底路径）
+  void nextTick(autoResizeInput)
   await store.sendMessage(text)
 }
 

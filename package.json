@@ -25,6 +25,7 @@
     "@tauri-apps/plugin-updater": "^2",
     "axios": "^1.16.0",
     "lucide-vue-next": "^1.0.0",
+    "marked": "^18.0.7",
     "opencc-js": "^1.4.1",
     "pinia": "^3.0.4",
     "tailwindcss": "^4.3.0",
