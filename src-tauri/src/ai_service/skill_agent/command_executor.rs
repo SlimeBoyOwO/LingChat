@@ -140,6 +140,7 @@ pub async fn execute_command(
 mod tests {
     /// `cmd /C python script.py "pink dark neon"` 必须原样保留带引号参数。
     /// 没有 raw_arg 时 std 会对整串自动加引号，cmd.exe 的引号规则会剥掉内层引号。
+    #[cfg(windows)]
     #[test]
     fn cmd_preserves_quoted_args_with_raw_arg() {
         use std::os::windows::process::CommandExt;
