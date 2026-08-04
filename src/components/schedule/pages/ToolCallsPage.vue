@@ -16,9 +16,19 @@
       </div>
     </div>
 
-    <!-- 调用提示（最近记录） -->
+    <!-- 调用提示（最近记录，最多 50 条） -->
     <div>
-      <h3 class="text-brand font-bold mb-2">{{ $t('ui.toolCalls.historyTitle') }}</h3>
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="text-brand font-bold">{{ $t('ui.toolCalls.historyTitle') }}</h3>
+        <button
+          v-if="recentToolCalls.length > 0"
+          class="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white/70 border border-white/20 rounded-lg cursor-pointer transition-colors duration-200 hover:bg-white/10 hover:text-white"
+          @click="clearToolCallRecords"
+        >
+          <Trash2 :size="14" />
+          {{ $t('ui.toolCalls.clearHistory') }}
+        </button>
+      </div>
       <p v-if="recentToolCalls.length === 0" class="text-sm text-gray-400">
         {{ $t('ui.toolCalls.historyEmpty') }}
       </p>
@@ -44,8 +54,8 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { useUIStore } from '@/stores/modules/ui/ui'
-import { recentToolCalls } from '@/api/services/tool-settings'
-import { CheckCircle2, XCircle, Wrench } from 'lucide-vue-next'
+import { recentToolCalls, clearToolCallRecords } from '@/api/services/tool-settings'
+import { CheckCircle2, XCircle, Wrench, Trash2 } from 'lucide-vue-next'
 
 const { t } = useI18n()
 const uiStore = useUIStore()

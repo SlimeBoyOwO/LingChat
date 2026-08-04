@@ -28,7 +28,7 @@ export interface ToolCallRecord {
   time: string
 }
 
-const MAX_HISTORY = 20
+const MAX_HISTORY = 50
 
 /** 最近的工具调用记录（内存态，最新在前），供「工具调用」页面展示。 */
 export const recentToolCalls = ref<ToolCallRecord[]>([])
@@ -38,6 +38,11 @@ export function pushToolCallRecord(record: ToolCallRecord) {
   if (recentToolCalls.value.length > MAX_HISTORY) {
     recentToolCalls.value.length = MAX_HISTORY
   }
+}
+
+/** 清空工具调用记录。 */
+export function clearToolCallRecords() {
+  recentToolCalls.value = []
 }
 
 export function getToolSettings(): Promise<ToolSettings> {

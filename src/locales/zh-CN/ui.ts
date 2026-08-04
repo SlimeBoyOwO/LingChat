@@ -119,6 +119,7 @@ export default {
     callFailed: '工具调用失败',
     settingsMovedHint: '网页搜索等工具的设置已经搬到「高级设置 → 工具配置」啦',
     goToSettings: '前往工具配置',
+    clearHistory: '清空记录',
   },
   todoPage: {
     taskCount: '{count} 项任务',

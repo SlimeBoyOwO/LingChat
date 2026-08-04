@@ -119,6 +119,7 @@ export default {
     callFailed: 'ツール呼び出し失敗',
     settingsMovedHint: 'ウェブ検索などのツール設定は「詳細設定 → ツール設定」に移動したよ',
     goToSettings: 'ツール設定を開く',
+    clearHistory: '履歴をクリア',
   },
   todoPage: {
     taskCount: '{count} 件のタスク',

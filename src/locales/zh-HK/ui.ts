@@ -119,7 +119,8 @@ export default {
     "callSuccess": "工具調用成功",
     "callFailed": "工具調用失敗",
     "settingsMovedHint": "網頁搜尋等工具嘅設定已經搬咗去「進階設定 → 工具設定」啦",
-    "goToSettings": "前往工具設定"
+    "goToSettings": "前往工具設定",
+    "clearHistory": "清空記錄"
   },
   "todoPage": {
     "taskCount": "{count} 項任務",

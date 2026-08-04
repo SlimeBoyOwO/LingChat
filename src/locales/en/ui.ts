@@ -120,6 +120,7 @@ export default {
     callFailed: "Tool Call Failed",
     settingsMovedHint: "Tool settings like web search have moved to \"Advanced Settings → Tool Settings\"",
     goToSettings: "Open Tool Settings",
+    clearHistory: "Clear History",
   },
   todoPage: {
     taskCount: "{count} tasks",
