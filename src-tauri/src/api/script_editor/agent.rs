@@ -32,6 +32,8 @@ pub struct AgentSettings {
     /// 工具调用轮数上限；-1 表示无上限。
     pub max_tool_rounds: i32,
     pub system_prompt: Option<String>,
+    /// 思考模式覆盖；None 表示跟随 provider 默认（独立于主对话 LLM 设置）。
+    pub enable_thinking: Option<bool>,
 }
 
 /// 技能内容（设置面板预览 SKILL.md 用）。
@@ -99,6 +101,7 @@ pub async fn editor_agent_get_settings(app: AppHandle) -> AgentSettings {
         allow_any_path: config.allow_any_path,
         max_tool_rounds: config.max_tool_rounds,
         system_prompt: config.system_prompt,
+        enable_thinking: config.enable_thinking,
     }
 }
 
@@ -132,6 +135,12 @@ pub async fn editor_agent_save_settings(
         serde_json::json!(settings.max_tool_rounds),
     );
     set_str(keys::AGENT_SYSTEM_PROMPT, &settings.system_prompt);
+    store.set(
+        keys::AGENT_ENABLE_THINKING.to_string(),
+        settings
+            .enable_thinking
+            .map_or(serde_json::Value::Null, |v| serde_json::json!(v)),
+    );
     store
         .save()
         .map_err(|e| format!("保存设置失败: {}", e))?;

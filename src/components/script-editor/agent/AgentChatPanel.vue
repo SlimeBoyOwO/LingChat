@@ -294,8 +294,14 @@
                   flex-col
                   gap-2"
               >
+                <!-- 思考/规划块：有思考链，或该轮以工具调用结尾（正文是工具前叙述） -->
+                <AgentThinkingBlock
+                  v-if="thinkingText(round)"
+                  :text="thinkingText(round)"
+                />
+                <!-- 普通回复气泡：纯文本且无工具调用（最终答复） -->
                 <div
-                  v-if="round.content"
+                  v-else-if="round.content"
                   class="max-w-[92%]
                     rounded-2xl
                     rounded-tl-sm
@@ -446,14 +452,29 @@
 import { nextTick, onMounted, ref, watch } from 'vue'
 import { Icon } from '@/components/base'
 import { useAgentStore } from '@/stores/modules/agent'
+import AgentThinkingBlock from './AgentThinkingBlock.vue'
 import AgentToolCard from './AgentToolCard.vue'
 import MarkdownText from './MarkdownText.vue'
 import type { ConversationInfo } from '@/api/services/agent'
+import type { ChatRound } from '@/stores/modules/agent/state'
 
 const store = useAgentStore()
 
 const draft = ref('')
 const composing = ref(false)
+
+/**
+ * 一轮是否算「思考/规划」及其展示文本：
+ * - 该轮携带思考链（thinking 模式开启）→ 显示思考链；
+ * - 该轮以工具调用结尾 → 正文即工具前的叙述，一并放入思考块；
+ * - 纯文本且无工具调用（最终答复）→ 走普通气泡。
+ */
+function thinkingText(round: ChatRound): string {
+  const parts = [round.reasoning, round.toolRuns.length > 0 ? round.content : null]
+    .filter((s): s is string => !!s)
+  return parts.join('\n\n')
+}
+
 /** 左下角 Token 用量卡片是否展开明细。 */
 const usageOpen = ref(false)
 const scroller = ref<HTMLElement | null>(null)

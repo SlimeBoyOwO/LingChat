@@ -6,7 +6,7 @@ use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
 
 use crate::ai_service::llm::provider_config::{
-    build_llm_client_from_provider, load_providers, load_role_assignment,
+    build_llm_client_from_provider, load_providers, load_role_assignment, LlmProviderConfig,
 };
 use crate::ai_service::llm::LlmClient;
 use crate::api::{data_dir, game_data_dir};
@@ -27,6 +27,8 @@ pub struct SkillAgentConfig {
     pub max_tool_rounds: i32,
     /// 自定义系统提示；None 使用内置默认提示（技能列表与剧本上下文始终追加）。
     pub system_prompt: Option<String>,
+    /// 思考模式覆盖；None 表示跟随 provider 默认（独立于主对话 LLM 设置）。
+    pub enable_thinking: Option<bool>,
 }
 
 impl Default for SkillAgentConfig {
@@ -38,6 +40,7 @@ impl Default for SkillAgentConfig {
             allow_any_path: false,
             max_tool_rounds: -1,
             system_prompt: None,
+            enable_thinking: None,
         }
     }
 }
@@ -70,6 +73,9 @@ impl SkillAgentConfig {
                 .and_then(|v| v.as_i64().map(|n| n as i32))
                 .unwrap_or(-1),
             system_prompt: str_opt(keys::AGENT_SYSTEM_PROMPT),
+            enable_thinking: store
+                .get(keys::AGENT_ENABLE_THINKING)
+                .and_then(|v| v.as_bool()),
         }
     }
 
@@ -91,12 +97,22 @@ pub fn resolve_skill_agent_provider(app: &AppHandle) -> Option<LlmClient> {
     let config = SkillAgentConfig::load(app);
     let assignment = load_role_assignment(app);
 
+    // 构建客户端时套用 agent 的思考模式覆盖：克隆 provider 配置、改 enable_thinking，
+    // 只影响本次 agent 的 client，不触碰 llm.providers 存储（主对话设置不受影响）。
+    let build_client = |p: &LlmProviderConfig| {
+        let mut cfg = p.clone();
+        if let Some(v) = config.enable_thinking {
+            cfg.enable_thinking = v;
+        }
+        build_llm_client_from_provider(app, &cfg)
+    };
+
     // 1. 显式指定的 agent provider
     if let Some(ref id) = config.provider_id {
         let providers = load_providers(app);
         if let Some(p) = providers.iter().find(|p| &p.id == id && p.is_usable()) {
             tracing::info!("Skill Agent 使用专用 LLM: {} ({})", p.label, p.id);
-            return build_llm_client_from_provider(app, p);
+            return build_client(p);
         }
     }
 
@@ -105,7 +121,7 @@ pub fn resolve_skill_agent_provider(app: &AppHandle) -> Option<LlmClient> {
         let providers = load_providers(app);
         if let Some(p) = providers.iter().find(|p| &p.id == id && p.is_usable()) {
             tracing::info!("Skill Agent fallback 到聊天 LLM: {} ({})", p.label, p.id);
-            return build_llm_client_from_provider(app, p);
+            return build_client(p);
         }
     }
 
@@ -113,7 +129,7 @@ pub fn resolve_skill_agent_provider(app: &AppHandle) -> Option<LlmClient> {
     let providers = load_providers(app);
     if let Some(p) = providers.iter().find(|p| p.is_usable()) {
         tracing::info!("Skill Agent 使用第一个可用 LLM: {} ({})", p.label, p.id);
-        return build_llm_client_from_provider(app, p);
+        return build_client(p);
     }
 
     tracing::warn!("Skill Agent 未找到可用 LLM");

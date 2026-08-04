@@ -102,6 +102,20 @@
 
         <div>
           <label class="mb-1.5 inline-flex items-center font-medium text-brand text-[0.9rem]">
+            思考模式
+          </label>
+          <select v-model="enableThinkingValue" class="glass-input w-full py-2">
+            <option :value="null">跟随模型默认</option>
+            <option :value="true">开启</option>
+            <option :value="false">关闭</option>
+          </select>
+          <p class="mt-1 text-[0.72rem] text-white/40">
+            独立于主对话的 LLM 设置；开启后模型思考链会以折叠「思考/规划…」块显示。
+          </p>
+        </div>
+
+        <div>
+          <label class="mb-1.5 inline-flex items-center font-medium text-brand text-[0.9rem]">
             自定义系统提示（可选）
           </label>
           <textarea
@@ -175,6 +189,14 @@ const systemPromptText = computed({
   get: () => store.settings.systemPrompt ?? '',
   set: (v: string) => {
     store.settings.systemPrompt = v.trim() ? v : null
+  },
+})
+
+/** 思考模式三态：null=跟随模型默认 / true=开启 / false=关闭。 */
+const enableThinkingValue = computed({
+  get: () => store.settings.enableThinking,
+  set: (v: boolean | null) => {
+    store.settings.enableThinking = v
   },
 })
 

@@ -26,9 +26,12 @@ export interface ToolRun {
   rawArgs?: string
 }
 
-/** 一条 assistant 回复的片段：流式文本 + 随后的工具调用。 */
+/** 一条 assistant 回复的片段：思考链 + 流式文本 + 随后的工具调用。 */
 export interface ChatRound {
+  /** 回复正文（工具调用前的叙述也在这里）。 */
   content: string
+  /** 思考链（thinking 模式开启时才有；不落库，仅实时显示）。 */
+  reasoning?: string
   toolRuns: ToolRun[]
 }
 
@@ -55,6 +58,7 @@ export const emptySettings = (): AgentSettings => ({
   allowAnyPath: false,
   maxToolRounds: -1, // -1 = 无上限
   systemPrompt: null,
+  enableThinking: null, // null = 跟随模型 provider 默认
 })
 
 export function useAgentState() {

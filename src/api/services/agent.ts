@@ -19,6 +19,8 @@ export interface AgentSettings {
   allowAnyPath: boolean
   maxToolRounds: number
   systemPrompt: string | null
+  /** 思考模式覆盖；null 表示跟随模型 provider 默认（独立于主对话 LLM 设置）。 */
+  enableThinking: boolean | null
 }
 
 /** 发现的技能。 */

@@ -99,6 +99,8 @@ pub const AGENT_ALLOW_ANY_PATH: &str = "agent.allow_any_path";
 pub const AGENT_MAX_TOOL_ROUNDS: &str = "agent.max_tool_rounds";
 /// 自定义系统提示（可覆盖内置默认提示；技能列表与剧本上下文始终追加）。
 pub const AGENT_SYSTEM_PROMPT: &str = "agent.system_prompt";
+/// 思考模式覆盖；未设置表示跟随 provider 默认（独立于主对话 LLM 设置）。
+pub const AGENT_ENABLE_THINKING: &str = "agent.enable_thinking";
 
 // ========== 创意工坊 ==========
 /// GitHub Personal Access Token（可选，用于 GraphQL 获取 upvote 数）
