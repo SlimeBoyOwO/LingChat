@@ -13,7 +13,7 @@
 
 import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, copyFileSync, rmSync, readdirSync, statSync, writeFileSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, copyFileSync, rmSync, renameSync, readdirSync, statSync, writeFileSync, readFileSync } from "node:fs";
 import { join, dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -25,7 +25,12 @@ const stagingDir = join(srcTauri, ".bundled_resources");
 // ─── 清理旧的 staging 目录 ──────────────────────────────────
 
 if (existsSync(stagingDir)) {
-  rmSync(stagingDir, { recursive: true });
+  try {
+    rmSync(stagingDir, { recursive: true });
+  } catch {
+    // safe-delete may block bulk deletion; rename old dir as fallback
+    renameSync(stagingDir, stagingDir + '_old_' + Date.now());
+  }
 }
 mkdirSync(stagingDir, { recursive: true });
 

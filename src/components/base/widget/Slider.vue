@@ -8,7 +8,8 @@
       :min="min"
       :max="max"
       :step="step"
-      v-model="value"
+      :value="value"
+      @input="onInput"
       @change="$emit('change', Number(value))"
     />
     <span
@@ -57,13 +58,32 @@ const props = defineProps({
 })
 
 // 定义组件事件
-const emit = defineEmits(['change', 'input'])
+const emit = defineEmits(['change', 'input', 'update:modelValue'])
 
 // 获取插槽内容
 const slots: Slots = useSlots()
 
 // 使用计算属性处理v-model绑定
 const value = ref(Number(props.modelValue))
+
+// 同步外部 modelValue 变化到内部 ref
+watch(
+  () => props.modelValue,
+  (newVal) => {
+    const n = Number(newVal)
+    if (n !== value.value) {
+      value.value = n
+    }
+  }
+)
+
+// input 事件处理：更新内部值并 emit update:modelValue
+function onInput(e: Event) {
+  const target = e.target as HTMLInputElement
+  value.value = Number(target.value)
+  emit('update:modelValue', value.value)
+  emit('input', value.value)
+}
 
 // 分别设置滑块两端内容
 const leftLabel = computed(() => {

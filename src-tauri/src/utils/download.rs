@@ -157,11 +157,28 @@ pub async fn download_to_file(
 /// - 600 秒超时
 /// - 最多 10 次重定向
 /// - 标准 User-Agent
+/// - 使用 webpki-roots（Mozilla CA）注入 rustls ClientConfig，
+///   绕开 rustls-platform-verifier（Android 上未初始化会 TLS panic/hang）
 pub fn build_download_client() -> Result<reqwest::Client, String> {
+    use std::sync::Arc;
+
+    let mut roots = rustls::RootCertStore::empty();
+    roots
+        .roots
+        .extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    let tls_config = rustls::ClientConfig::builder_with_provider(Arc::new(
+        rustls::crypto::aws_lc_rs::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .map_err(|e| format!("rustls protocol config: {e}"))?
+    .with_root_certificates(Arc::new(roots))
+    .with_no_client_auth();
+
     reqwest::Client::builder()
         .timeout(Duration::from_secs(600))
-        .user_agent("LingChat/0.4.6")
+        .user_agent("LingChat/0.4.7")
         .redirect(reqwest::redirect::Policy::limited(10))
+        .tls_backend_preconfigured(tls_config)
         .build()
         .map_err(|e| format!("build http client: {e}"))
 }

@@ -37,6 +37,16 @@ export const DEFAULT_SETTINGS = {
     starsFps: 30, // 星星动画帧率
     sceneAwarenessEnabled: true, // 场景感知开关
     locale: 'zh-CN', // 界面显示语言（i18n，'zh-CN' / 'ja'）
+    // 对话框外观（自定义）
+    dialogBackgroundImage: '', // 自定义背景图 base64/dataURL；空字符串=无图
+    dialogOpacity: 0.7, // 背景透明度（0-1）
+    dialogBlur: 8, // 背景模糊（px）
+    dialogBorderRadius: 16, // 圆角（px）
+    dialogGradientColor: '#000e27', // 渐变底色
+    dialogTextColor: '#ffffff', // 文字颜色
+    dialogScrollHistoryEnabled: true, // 滚轮向上查看历史记录
+    dialogSpacebarHideEnabled: true, // 空格键隐藏/显示对话框
+    dialogAutoHideOnThinkEnabled: true, // AI 思考时自动隐藏
   },
   // 角色设置
   character: {
@@ -73,8 +83,18 @@ export interface DisplaySettings {
   clickAnimationEnabled: boolean
   meteorFps: number
   starsFps: number
-  sceneAwarenessEnabled: boolean
-  locale: string
+    sceneAwarenessEnabled: boolean
+    locale: string
+    // 对话框外观
+    dialogBackgroundImage: string
+    dialogOpacity: number
+    dialogBlur: number
+    dialogBorderRadius: number
+    dialogGradientColor: string
+    dialogTextColor: string
+    dialogScrollHistoryEnabled: boolean
+    dialogSpacebarHideEnabled: boolean
+    dialogAutoHideOnThinkEnabled: boolean
 }
 
 export interface CharacterSettings {
@@ -131,6 +151,16 @@ export const useSettingsStore = defineStore('settings', {
     sceneAwarenessEnabled: (state) => state.display.sceneAwarenessEnabled,
     // 界面显示语言（i18n）
     uiLocale: (state) => state.display.locale,
+    // 对话框外观
+    dialogBackgroundImage: (state) => state.display.dialogBackgroundImage,
+    dialogOpacity: (state) => state.display.dialogOpacity,
+    dialogBlur: (state) => state.display.dialogBlur,
+    dialogBorderRadius: (state) => state.display.dialogBorderRadius,
+    dialogGradientColor: (state) => state.display.dialogGradientColor,
+    dialogTextColor: (state) => state.display.dialogTextColor,
+    dialogScrollHistoryEnabled: (state) => state.display.dialogScrollHistoryEnabled,
+    dialogSpacebarHideEnabled: (state) => state.display.dialogSpacebarHideEnabled,
+    dialogAutoHideOnThinkEnabled: (state) => state.display.dialogAutoHideOnThinkEnabled,
     // 各音量
     characterVolume: (state) => state.audio.characterVolume,
     bubbleVolume: (state) => state.audio.bubbleVolume,
@@ -291,6 +321,48 @@ export const useSettingsStore = defineStore('settings', {
     // 设置界面显示语言（i18n）
     setUiLocale(locale: string) {
       this.display.locale = locale
+    },
+
+    // ===== 对话框外观 =====
+    setDialogBackgroundImage(image: string) {
+      this.display.dialogBackgroundImage = image
+    },
+    setDialogOpacity(opacity: number) {
+      this.display.dialogOpacity = Math.min(1, Math.max(0, opacity))
+    },
+    setDialogBlur(blur: number) {
+      this.display.dialogBlur = Math.max(0, blur)
+    },
+    setDialogBorderRadius(radius: number) {
+      this.display.dialogBorderRadius = Math.max(0, radius)
+    },
+    setDialogGradientColor(color: string) {
+      this.display.dialogGradientColor = color
+    },
+    setDialogTextColor(color: string) {
+      this.display.dialogTextColor = color
+    },
+    setDialogScrollHistoryEnabled(enabled: boolean) {
+      this.display.dialogScrollHistoryEnabled = enabled
+    },
+    setDialogSpacebarHideEnabled(enabled: boolean) {
+      this.display.dialogSpacebarHideEnabled = enabled
+    },
+    setDialogAutoHideOnThinkEnabled(enabled: boolean) {
+      this.display.dialogAutoHideOnThinkEnabled = enabled
+    },
+    // 全部重置为默认
+    resetDialogAppearance() {
+      const d = DEFAULT_SETTINGS.display
+      this.display.dialogBackgroundImage = d.dialogBackgroundImage
+      this.display.dialogOpacity = d.dialogOpacity
+      this.display.dialogBlur = d.dialogBlur
+      this.display.dialogBorderRadius = d.dialogBorderRadius
+      this.display.dialogGradientColor = d.dialogGradientColor
+      this.display.dialogTextColor = d.dialogTextColor
+      this.display.dialogScrollHistoryEnabled = d.dialogScrollHistoryEnabled
+      this.display.dialogSpacebarHideEnabled = d.dialogSpacebarHideEnabled
+      this.display.dialogAutoHideOnThinkEnabled = d.dialogAutoHideOnThinkEnabled
     },
 
     // 设置角色文件夹
