@@ -569,6 +569,16 @@ impl MessageGenerator {
             }
         }
 
+        // 空回复兜底：模型流没有任何正文时，主动通知前端并重置状态，
+        // 否则界面会一直停在「思考中」
+        if acc.trim().is_empty() {
+            tracing::warn!("LLM 流未产生任何正文内容，重置前端状态");
+            events::emit_error(
+                &self.deps.app,
+                &anyhow::anyhow!("模型没有返回任何内容，请再试一次"),
+            );
+        }
+
         Ok(acc)
     }
 }

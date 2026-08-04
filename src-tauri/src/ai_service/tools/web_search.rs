@@ -141,7 +141,7 @@ impl WebSearchTool {
         out
     }
 
-    /// 独立 Moonshot `/search` 端点模式。
+    /// 独立搜索端点模式：按 provider 分发（kimi / bocha）。
     async fn execute_search_endpoint(
         &self,
         query: &str,
@@ -149,13 +149,29 @@ impl WebSearchTool {
     ) -> Result<ToolResult, ToolError> {
         if cfg.api_key.trim().is_empty() {
             return Err(ToolError::Execution(
-                "网页搜索未配置 API Key，请用户在「日程 → 工具调用」设置页填写，或改用「模型 API 内置联网」模式".into(),
+                "网页搜索未配置 API Key，请用户在「高级设置 → 工具配置」填写，或改用「模型 API 内置联网」模式".into(),
             ));
         }
+        match cfg.provider.as_str() {
+            "bocha" => self.execute_bocha_search(query, cfg).await,
+            _ => self.execute_kimi_endpoint(query, cfg).await,
+        }
+    }
 
+    /// 独立端点模式 · Kimi 系 /search（body 为 text_query）。
+    async fn execute_kimi_endpoint(
+        &self,
+        query: &str,
+        cfg: &WebSearchSettings,
+    ) -> Result<ToolResult, ToolError> {
+        let base_url = if cfg.base_url.trim().is_empty() {
+            "https://api.kimi.com/coding/v1/search"
+        } else {
+            cfg.base_url.trim()
+        };
         let client = Self::build_client(cfg)?;
         let response = client
-            .post(cfg.base_url.trim())
+            .post(base_url)
             // kimi coding 搜索端点对 UA 有白名单；对其他服务无副作用
             .header(reqwest::header::USER_AGENT, "claude-code/2.0.0")
             .bearer_auth(cfg.api_key.trim())
@@ -178,6 +194,68 @@ impl WebSearchTool {
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default();
+
+        let text = Self::format_results(query, &results, cfg.max_results.max(1), cfg.hide_search_results);
+        Ok(serde_json::json!({
+            "ok": true,
+            "query": query,
+            "result_count": results.len().min(cfg.max_results.max(1)),
+            "text": text,
+        }))
+    }
+
+    /// 独立端点模式 · BoCha 博查（参考 AstrBot 的 web_search_bocha 实现）。
+    async fn execute_bocha_search(
+        &self,
+        query: &str,
+        cfg: &WebSearchSettings,
+    ) -> Result<ToolResult, ToolError> {
+        let base_url = if cfg.base_url.trim().is_empty() {
+            "https://api.bochaai.com/v1/web-search"
+        } else {
+            cfg.base_url.trim()
+        };
+        let client = Self::build_client(cfg)?;
+        let response = client
+            .post(base_url)
+            .bearer_auth(cfg.api_key.trim())
+            .json(&serde_json::json!({
+                "query": query,
+                "count": cfg.max_results.max(1),
+                "summary": true,
+            }))
+            .send()
+            .await
+            .map_err(classify_request_error)?;
+
+        let status = response.status();
+        if !status.is_success() {
+            return Err(ToolError::Execution(http_error_message(status, response).await));
+        }
+
+        let payload: Value = response
+            .json()
+            .await
+            .map_err(|e| ToolError::Execution(format!("搜索结果解析失败: {e}")))?;
+        let rows = payload
+            .pointer("/data/webPages/value")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        // 统一成 format_results 认识的字段（summary 比 snippet 更完整，优先）
+        let results: Vec<Value> = rows
+            .iter()
+            .map(|item| {
+                let get = |key: &str| item.get(key).and_then(Value::as_str).unwrap_or("");
+                serde_json::json!({
+                    "title": get("name"),
+                    "url": get("url"),
+                    "site_name": get("siteName"),
+                    "date": get("datePublished"),
+                    "snippet": if get("summary").is_empty() { get("snippet") } else { get("summary") },
+                })
+            })
+            .collect();
 
         let text = Self::format_results(query, &results, cfg.max_results.max(1), cfg.hide_search_results);
         Ok(serde_json::json!({

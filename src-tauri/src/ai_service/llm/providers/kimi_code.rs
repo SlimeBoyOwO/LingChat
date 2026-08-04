@@ -630,8 +630,10 @@ impl KimiCodeProvider {
                 tracing::info!("[Kimi-Code Thinking] {}", thinking_buffer);
                 yield LlmChunk::Reasoning(thinking_buffer.clone());
             }
-            // 兜底：text 为空时使用 thinking
-            if text_buffer.is_empty() && !thinking_buffer.is_empty() {
+            // 兜底：text 为空时使用 thinking。
+            // 但本轮若包含工具调用（tool_use 块），thinking 只是决策过程，
+            // 不能当正文下发——否则会污染工具闭环的 assistant 消息与下游句子解析。
+            if text_buffer.is_empty() && !thinking_buffer.is_empty() && tool_blocks.is_empty() {
                 tracing::info!("[Kimi-Code] text 为空，使用 thinking 作为回复");
                 for line in thinking_buffer.lines() {
                     yield LlmChunk::Content(line.to_string());

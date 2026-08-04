@@ -45,13 +45,25 @@
 
         <template v-if="!form.web_search.use_builtin">
           <label class="inline-flex items-center font-medium text-brand mt-2">
+            {{ $t('ui.toolCalls.provider') }}
+          </label>
+          <select
+            v-model="form.web_search.provider"
+            @change="onProviderChange"
+            class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200 cursor-pointer"
+          >
+            <option value="kimi" class="bg-slate-800 text-white">Kimi /search</option>
+            <option value="bocha" class="bg-slate-800 text-white">BoCha 博查</option>
+          </select>
+
+          <label class="inline-flex items-center font-medium text-brand mt-4">
             {{ $t('ui.toolCalls.apiKey') }}
           </label>
-          <p class="text-sm mt-1 mb-2 text-gray-300">Moonshot API Key</p>
+          <p class="text-sm mt-1 mb-2 text-gray-300">{{ apiKeyHint }}</p>
           <input
             type="password"
             v-model="form.web_search.api_key"
-            :placeholder="$t('ui.toolCalls.apiKeyPlaceholder')"
+            :placeholder="apiKeyHint"
             class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
           />
 
@@ -61,7 +73,7 @@
           <input
             type="text"
             v-model="form.web_search.base_url"
-            placeholder="https://api.kimi.com/coding/v1/search"
+            :placeholder="defaultBaseUrl"
             class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
           />
 
@@ -139,7 +151,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   getToolSettings,
@@ -168,8 +180,9 @@ const form = reactive<ToolSettings>({
   web_search: {
     enabled: false,
     use_builtin: true,
+    provider: 'kimi',
     api_key: '',
-    base_url: 'https://api.kimi.com/coding/v1/search',
+    base_url: '',
     proxy_enabled: false,
     proxy_addr: 'http://127.0.0.1:10808',
     max_results: 8,
@@ -177,6 +190,33 @@ const form = reactive<ToolSettings>({
   },
   groups: {},
 })
+
+/** 各 provider 的默认端点（留空即默认，与后端一致） */
+const PROVIDER_DEFAULTS: Record<string, { baseUrl: string; keyHint: string }> = {
+  kimi: {
+    baseUrl: 'https://api.kimi.com/coding/v1/search',
+    keyHint: 'Kimi API Key',
+  },
+  bocha: {
+    baseUrl: 'https://api.bochaai.com/v1/web-search',
+    keyHint: 'BoCha API Key',
+  },
+}
+
+const defaultBaseUrl = computed(
+  () => PROVIDER_DEFAULTS[form.web_search.provider]?.baseUrl ?? '',
+)
+const apiKeyHint = computed(
+  () => PROVIDER_DEFAULTS[form.web_search.provider]?.keyHint ?? 'API Key',
+)
+
+/** 切换 provider 时，若地址为空或仍是上一个默认地址则自动换成新默认 */
+const onProviderChange = () => {
+  const known = Object.values(PROVIDER_DEFAULTS).map((d) => d.baseUrl)
+  if (!form.web_search.base_url || known.includes(form.web_search.base_url)) {
+    form.web_search.base_url = defaultBaseUrl.value
+  }
+}
 
 const status = reactive({ message: '', color: '#4ade80' })
 const testing = ref(false)

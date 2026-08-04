@@ -104,6 +104,7 @@ export default {
     "hideSearchResults": "隱藏搜尋結果（ta 回答嗰陣唔會顯示來源同網址）",
     "builtinHint": "搜尋由目前嘅聊天模型 API（需要係 Kimi/Moonshot）喺服務端執行，用現有嘅聊天 Key 就得，唔使單獨申請",
     "apiKey": "API Key",
+    "provider": "搜尋供應商",
     "apiKeyPlaceholder": "填入 Moonshot API Key",
     "baseUrl": "搜尋服務地址",
     "proxyEnable": "透過代理存取搜尋服務（如 v2rayN）",

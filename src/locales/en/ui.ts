@@ -104,6 +104,7 @@ export default {
     hideSearchResults: "Hide search results (no sources or URLs shown in their replies)",
     builtinHint: "Search runs server-side on your current chat model API (must be Kimi/Moonshot) — it just uses your existing chat key, no separate signup needed",
     apiKey: "API Key",
+    provider: "Search Provider",
     apiKeyPlaceholder: "Enter your Moonshot API Key",
     baseUrl: "Search Service URL",
     proxyEnable: "Access the search service via proxy (e.g. v2rayN)",

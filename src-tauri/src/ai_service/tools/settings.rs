@@ -52,9 +52,14 @@ pub struct WebSearchSettings {
     pub enabled: bool,
     /// 为 true 时使用「模型 API 内置联网」：复用聊天模型的 API（Moonshot/Kimi），
     /// 由服务端执行 $web_search，无需单独的搜索 API Key；
-    /// 为 false 时使用独立 Moonshot `/search` 端点 + api_key。
+    /// 为 false 时使用独立搜索端点 + api_key。
     pub use_builtin: bool,
-    /// Moonshot API Key（Bearer 认证，仅 use_builtin = false 时需要）。
+    /// 独立端点模式的搜索服务提供商：
+    /// "kimi"（Kimi Code 同款 /v1/search，body 为 text_query）
+    /// "bocha"（BoCha 博查 https://api.bochaai.com/v1/web-search）
+    /// 仅在 use_builtin = false 时生效。
+    pub provider: String,
+    /// API Key（Bearer 认证，仅 use_builtin = false 时需要）。
     pub api_key: String,
     /// 搜索端点（仅 use_builtin = false 时使用）。
     pub base_url: String,
@@ -74,6 +79,7 @@ impl Default for WebSearchSettings {
         Self {
             enabled: false,
             use_builtin: true,
+            provider: "kimi".to_string(),
             api_key: String::new(),
             base_url: "https://api.kimi.com/coding/v1/search".to_string(),
             proxy_enabled: false,

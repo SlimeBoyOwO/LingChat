@@ -7,6 +7,8 @@ export interface WebSearchSettings {
   enabled: boolean
   /** true = 模型 API 内置联网（免 Key）；false = 独立搜索端点 + api_key */
   use_builtin: boolean
+  /** 独立端点模式的搜索提供商："kimi" | "bocha" */
+  provider: string
   api_key: string
   base_url: string
   proxy_enabled: boolean

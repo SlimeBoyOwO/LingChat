@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use serde_json::{json, Value};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 use crate::ai_service::types::ToolDefinition;
 use crate::db::managers::role_repo::RoleRepo;
@@ -86,9 +86,36 @@ impl Tool for CharacterSwitch {
             as i32;
 
         let app = context.require_app()?;
+        let state = app.state::<AppState>();
+
+        // 校验角色存在并取出名称（否则静默切到不存在的 id，前端无感知）
+        let roles = RoleRepo::get_all_main_roles(&state.db)
+            .await
+            .map_err(|e| ToolError::Execution(format!("查询角色列表失败: {e}")))?;
+        let Some(role) = roles.iter().find(|r| r.id == role_id) else {
+            let available: Vec<String> = roles.iter().map(|r| format!("{}={}", r.id, r.name)).collect();
+            return Err(ToolError::Execution(format!(
+                "角色 id {role_id} 不存在，可用角色: {}",
+                available.join(", ")
+            )));
+        };
+        let role_name = role.name.clone();
+
         let gs = game_status_handle(&app).await;
         let mut gs = gs.lock().await;
         gs.current_role_id = Some(role_id);
-        Ok(json!({"ok": true, "role_id": role_id}))
+        drop(gs);
+
+        // 通知前端当前对话角色已切换（与 God Agent 切换使用同一事件）
+        let payload = json!({
+            "type": "character_switch",
+            "roleId": role_id,
+            "characterName": role_name,
+        });
+        if let Err(e) = app.emit("character:switch", &payload) {
+            tracing::warn!("emit character:switch 失败: {e}");
+        }
+
+        Ok(json!({"ok": true, "role_id": role_id, "name": role_name}))
     }
 }
