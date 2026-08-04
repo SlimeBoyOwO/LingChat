@@ -695,7 +695,7 @@ pub async fn delete_character(
             let base = characters_dir();
             let target = base.join(folder);
             // 路径穿越防护
-            super::validate_path_in_base(&target, &base)?;
+            crate::utils::path::validate_path_in_base(&target, &base)?;
             if target.exists() {
                 if let Err(e) = fs::remove_dir_all(&target) {
                     return Err(format!("删除资源目录失败: {}", e));
