@@ -84,6 +84,8 @@ export function initializeTauriEventListeners() {
       ok: boolean
       summary: string
       error: string | null
+      arguments: string
+      result: string
     }
     console.log('[Tauri] ai:tool_call', payload)
     pushToolCallRecord({

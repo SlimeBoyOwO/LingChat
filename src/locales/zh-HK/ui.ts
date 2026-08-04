@@ -124,6 +124,9 @@ export default {
     "settingsMovedHint": "網頁搜尋等工具嘅設定已經搬咗去「進階設定 → 工具設定」啦",
     "goToSettings": "前往工具設定",
     "clearHistory": "清空記錄",
+    "detailArgs": "調用參數",
+    "detailResult": "返回結果",
+    "noArgs": "（無參數）",
     "otherToolsTitle": "其他工具",
     "nav": {
       "schedule": "日程同待辦",

@@ -244,11 +244,16 @@ fn emit_tool_call_event(app: &AppHandle, tool: &str, arguments: &str, result: &s
                 .map(|s| s.to_string())
         })
         .unwrap_or_else(|| arguments.chars().take(100).collect());
+    // 参数与结果详情（截断）供前端展开查看完整输出。
+    let arguments_detail: String = arguments.chars().take(1000).collect();
+    let result_detail: String = result.chars().take(1000).collect();
     let payload = serde_json::json!({
         "tool": tool,
         "ok": ok,
         "summary": summary,
         "error": error,
+        "arguments": arguments_detail,
+        "result": result_detail,
     });
     if let Err(e) = app.emit(event_names::AI_TOOL_CALL, &payload) {
         tracing::warn!("emit ai:tool_call 失败: {e}");

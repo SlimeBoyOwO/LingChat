@@ -123,6 +123,9 @@ export default {
     settingsMovedHint: 'ウェブ検索などのツール設定は「詳細設定 → ツール設定」に移動したよ',
     goToSettings: 'ツール設定を開く',
     clearHistory: '履歴をクリア',
+    detailArgs: '呼び出し引数',
+    detailResult: '返却結果',
+    noArgs: '（引数なし）',
     otherToolsTitle: 'その他のツール',
     nav: {
       schedule: 'スケジュール',

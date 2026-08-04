@@ -36,15 +36,40 @@
         <li
           v-for="(record, index) in recentToolCalls"
           :key="index"
-          class="flex items-center gap-3 text-sm bg-white/5 rounded-lg px-3 py-2"
+          class="text-sm bg-white/5 rounded-lg px-3 py-2 cursor-pointer transition-colors duration-200 hover:bg-white/10"
+          @click="toggleExpand(index)"
         >
-          <CheckCircle2 v-if="record.ok" :size="16" class="text-green-400 shrink-0" />
-          <XCircle v-else :size="16" class="text-red-400 shrink-0" />
-          <span class="text-gray-400 shrink-0">{{ record.time }}</span>
-          <span class="text-brand shrink-0">{{ toolLabel(record.tool) }}</span>
-          <span class="text-white truncate">{{
-            record.ok ? record.summary : record.error || record.summary
-          }}</span>
+          <div class="flex items-center gap-3">
+            <CheckCircle2 v-if="record.ok" :size="16" class="text-green-400 shrink-0" />
+            <XCircle v-else :size="16" class="text-red-400 shrink-0" />
+            <span class="text-gray-400 shrink-0">{{ record.time }}</span>
+            <span class="text-brand shrink-0">{{ toolLabel(record.tool) }}</span>
+            <span class="text-white truncate">{{
+              record.ok ? displaySummary(record) : record.error || displaySummary(record)
+            }}</span>
+            <ChevronDown
+              :size="14"
+              class="ml-auto shrink-0 text-gray-400 transition-transform duration-200"
+              :class="{ 'rotate-180': expandedIndex === index }"
+            />
+          </div>
+          <!-- 展开详情：调用参数与返回结果 -->
+          <div v-if="expandedIndex === index" class="mt-2 space-y-2 border-t border-white/10 pt-2">
+            <div>
+              <p class="text-xs text-gray-400 mb-1">{{ $t('ui.toolCalls.detailArgs') }}</p>
+              <pre
+                class="text-xs text-white/80 bg-black/30 rounded p-2 whitespace-pre-wrap break-all max-h-40 overflow-y-auto"
+                >{{ prettyJson(record.arguments) }}</pre
+              >
+            </div>
+            <div>
+              <p class="text-xs text-gray-400 mb-1">{{ $t('ui.toolCalls.detailResult') }}</p>
+              <pre
+                class="text-xs text-white/80 bg-black/30 rounded p-2 whitespace-pre-wrap break-all max-h-60 overflow-y-auto"
+                >{{ prettyJson(record.result) }}</pre
+              >
+            </div>
+          </div>
         </li>
       </ul>
     </div>
@@ -52,13 +77,43 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useUIStore } from '@/stores/modules/ui/ui'
-import { recentToolCalls, clearToolCallRecords, toolDisplayName } from '@/api/services/tool-settings'
-import { CheckCircle2, XCircle, Wrench, Trash2 } from 'lucide-vue-next'
+import {
+  recentToolCalls,
+  clearToolCallRecords,
+  toolDisplayName,
+  type ToolCallRecord,
+} from '@/api/services/tool-settings'
+import { CheckCircle2, XCircle, Wrench, Trash2, ChevronDown } from 'lucide-vue-next'
+import { i18n } from '@/locales'
 
 const uiStore = useUIStore()
 
 const toolLabel = toolDisplayName
+
+// 展开详情：同一时间只展开一条记录
+const expandedIndex = ref<number | null>(null)
+
+const toggleExpand = (index: number) => {
+  expandedIndex.value = expandedIndex.value === index ? null : index
+}
+
+// 无参工具的摘要会退化成 "{}"，显示为友好文案
+const displaySummary = (record: ToolCallRecord) => {
+  const summary = record.summary.trim()
+  return summary === '{}' || summary === '' ? i18n.global.t('ui.toolCalls.noArgs') : record.summary
+}
+
+// 尝试把 JSON 字符串格式化展示，失败则原样返回
+const prettyJson = (raw: string) => {
+  if (!raw) return '—'
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2)
+  } catch {
+    return raw
+  }
+}
 
 // 跳转到「高级设置 → 工具配置」子标签（打开设置面板会自动遮住日程弹窗）
 const goToToolSettings = () => {

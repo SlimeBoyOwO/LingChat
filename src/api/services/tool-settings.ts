@@ -39,6 +39,10 @@ export interface ToolCallRecord {
   ok: boolean
   summary: string
   error: string | null
+  /** 调用参数（截断至 1000 字符），用于展开详情 */
+  arguments: string
+  /** 工具返回结果（截断至 1000 字符），用于展开详情 */
+  result: string
   time: string
 }
 

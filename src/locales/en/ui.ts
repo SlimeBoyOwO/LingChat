@@ -124,6 +124,9 @@ export default {
     settingsMovedHint: "Tool settings like web search have moved to \"Advanced Settings → Tool Settings\"",
     goToSettings: "Open Tool Settings",
     clearHistory: "Clear History",
+    detailArgs: "Arguments",
+    detailResult: "Result",
+    noArgs: "(no arguments)",
     otherToolsTitle: "Other Tools",
     nav: {
       schedule: "Schedule",

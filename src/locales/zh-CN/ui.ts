@@ -123,6 +123,9 @@ export default {
     settingsMovedHint: '网页搜索等工具的设置已经搬到「高级设置 → 工具配置」啦',
     goToSettings: '前往工具配置',
     clearHistory: '清空记录',
+    detailArgs: '调用参数',
+    detailResult: '返回结果',
+    noArgs: '（无参数）',
     otherToolsTitle: '其他工具',
     nav: {
       schedule: '日程与待办',
