@@ -7,7 +7,7 @@ import { useUIStore } from '../stores/modules/ui/ui'
 import { useGameStore } from '../stores/modules/game'
 import { i18n } from '@/locales'
 import { useScriptEditorStore } from '../stores/modules/script-editor'
-import { pushToolCallRecord } from './services/tool-settings'
+import { pushToolCallRecord, toolDisplayName } from './services/tool-settings'
 
 function asEvent(
   payload: unknown,
@@ -90,8 +90,7 @@ export function initializeTauriEventListeners() {
       ...payload,
       time: new Date().toLocaleTimeString(),
     })
-    const toolLabel =
-      payload.tool === 'web_search' ? i18n.global.t('ui.toolCalls.webSearchTitle') : payload.tool
+    const toolLabel = toolDisplayName(payload.tool)
     const uiStore = useUIStore()
     if (payload.ok) {
       uiStore.showNotification({

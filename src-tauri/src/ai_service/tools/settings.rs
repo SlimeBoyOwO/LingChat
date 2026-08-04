@@ -11,7 +11,38 @@ use std::sync::{Arc, RwLock};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
+use super::permissions::ToolPermissionConfig;
+
 pub const SETTINGS_FILE_NAME: &str = "tool_settings.toml";
+
+/// 工具分组 → 组内工具注册名。
+/// 设置页按组开关，权限同步时组内工具一起放开/收回。
+/// web_search 不在此列：它有独立的 enabled + 配置就绪判断。
+pub const TOOL_GROUPS: &[(&str, &[&str])] = &[
+    (
+        "schedule",
+        &[
+            "schedule_get_all",
+            "schedule_add_todo",
+            "schedule_update_todo",
+            "schedule_delete_todo",
+        ],
+    ),
+    (
+        "memory",
+        &[
+            "memory_get_current",
+            "memory_get_notes",
+            "memory_add_note",
+            "memory_update_note",
+            "memory_delete_note",
+        ],
+    ),
+    ("character", &["character_list", "character_switch"]),
+    ("scene", &["scene_list", "scene_switch"]),
+    ("status", &["status_get_current", "status_get_scene"]),
+    ("clock", &["get_current_time"]),
+];
 
 /// 网页搜索工具配置。
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -65,6 +96,21 @@ impl WebSearchSettings {
 #[serde(default)]
 pub struct ToolSettings {
     pub web_search: WebSearchSettings,
+    /// 分组开关：组名（见 `TOOL_GROUPS`）→ 是否启用，缺省关闭。
+    pub groups: std::collections::HashMap<String, bool>,
+}
+
+impl ToolSettings {
+    /// 把用户配置同步到权限矩阵的 default 角色组。
+    pub fn sync_to_permissions(&self, permissions: &mut ToolPermissionConfig) {
+        permissions.set_tool_allowed_for_default_group("web_search", self.web_search.is_ready());
+        for (group, tools) in TOOL_GROUPS {
+            let enabled = self.groups.get(*group).copied().unwrap_or(false);
+            for tool in *tools {
+                permissions.set_tool_allowed_for_default_group(tool, enabled);
+            }
+        }
+    }
 }
 
 impl ToolSettings {

@@ -120,7 +120,36 @@ export default {
     "callFailed": "工具調用失敗",
     "settingsMovedHint": "網頁搜尋等工具嘅設定已經搬咗去「進階設定 → 工具設定」啦",
     "goToSettings": "前往工具設定",
-    "clearHistory": "清空記錄"
+    "clearHistory": "清空記錄",
+    "otherToolsTitle": "其他工具",
+    "otherToolsHint": "開咗之後 ta 傾偈嗰陣就可以主動用呢啲工具㗎啦（儲存後生效）",
+    "groups": {
+      "schedule": "日程同待辦（查日程、加/改/刪待辦）",
+      "memory": "筆記同記憶（ta 自己嘅小本本）",
+      "character": "角色切換（列出/切換在場角色）",
+      "scene": "場景切換（列出/切換場景）",
+      "status": "狀態查詢（目前狀態/場景狀態）",
+      "clock": "目前時間（查詢裝置本地時間）"
+    },
+    "tools": {
+      "web_search": "網頁搜尋",
+      "get_current_time": "目前時間",
+      "schedule_get_all": "查詢日程",
+      "schedule_add_todo": "新增待辦",
+      "schedule_update_todo": "更新待辦",
+      "schedule_delete_todo": "刪除待辦",
+      "memory_get_current": "讀取記憶",
+      "memory_get_notes": "讀取筆記",
+      "memory_add_note": "寫筆記",
+      "memory_update_note": "更新筆記",
+      "memory_delete_note": "刪除筆記",
+      "character_list": "角色列表",
+      "character_switch": "切換角色",
+      "scene_list": "場景列表",
+      "scene_switch": "切換場景",
+      "status_get_current": "目前狀態",
+      "status_get_scene": "場景狀態"
+    }
   },
   "todoPage": {
     "taskCount": "{count} 項任務",

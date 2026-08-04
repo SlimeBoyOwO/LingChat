@@ -84,6 +84,23 @@
         class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
       />
 
+      <!-- 其他工具（分组开关） -->
+      <h2 class="text-2xl text-brand font-semibold pb-4 mt-8 mb-4 border-b border-brand">
+        {{ $t('ui.toolCalls.otherToolsTitle') }}
+      </h2>
+      <p class="text-sm text-gray-400 mb-2 px-1">{{ $t('ui.toolCalls.otherToolsHint') }}</p>
+      <div
+        v-for="group in TOOL_GROUP_KEYS"
+        :key="group"
+        class="flex items-center gap-3 py-2.5 px-1"
+      >
+        <Toggle
+          :checked="form.groups[group] ?? false"
+          @change="(value: boolean) => (form.groups[group] = value)"
+        />
+        <p class="text-sm text-gray-300">{{ $t(`ui.toolCalls.groups.${group}`) }}</p>
+      </div>
+
       <div class="flex gap-2 items-center mt-4">
         <div
           class="w-18 px-5 py-2.5 bg-brand text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-colors duration-200 hover:bg-[#0056b3]"
@@ -110,6 +127,7 @@ import {
   getToolSettings,
   saveToolSettings,
   testWebSearch,
+  TOOL_GROUP_KEYS,
   type ToolSettings,
 } from '@/api/services/tool-settings'
 import Toggle from '@/components/base/widget/Toggle.vue'
@@ -127,6 +145,7 @@ const form = reactive<ToolSettings>({
     max_results: 8,
     hide_search_results: false,
   },
+  groups: {},
 })
 
 const status = reactive({ message: '', color: '#4ade80' })
@@ -171,6 +190,7 @@ onMounted(async () => {
   try {
     const settings = await getToolSettings()
     Object.assign(form.web_search, settings.web_search)
+    Object.assign(form.groups, settings.groups ?? {})
   } catch (error) {
     console.error('加载工具配置失败:', error)
   }

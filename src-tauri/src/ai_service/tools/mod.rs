@@ -97,10 +97,9 @@ pub fn built_in_registry(
         &data_dir,
         role_names.into_iter().map(|(_, name)| name),
     )?;
-    // 启动时按用户配置同步网页搜索权限：已启用且配置就绪时，
-    // 确保 default 角色组放开 web_search（新建配置的 default 组默认关闭）。
-    let web_search_ready = tool_settings.get().web_search.is_ready();
-    permissions.set_tool_allowed_for_default_group("web_search", web_search_ready);
+    // 启动时按用户配置同步各工具权限：已启用的工具组/web_search 放开给
+    // default 角色组（新建配置的 default 组默认关闭）。
+    tool_settings.get().sync_to_permissions(&mut permissions);
     // 覆盖写 available_tools 展示列表（仅展示，运行时不被读取）
     permissions.save(&data_dir.join(CONFIG_FILE_NAME))?;
     registry.set_permissions(permissions);

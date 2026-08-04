@@ -52,16 +52,13 @@
 </template>
 
 <script setup lang="ts">
-import { useI18n } from 'vue-i18n'
 import { useUIStore } from '@/stores/modules/ui/ui'
-import { recentToolCalls, clearToolCallRecords } from '@/api/services/tool-settings'
+import { recentToolCalls, clearToolCallRecords, toolDisplayName } from '@/api/services/tool-settings'
 import { CheckCircle2, XCircle, Wrench, Trash2 } from 'lucide-vue-next'
 
-const { t } = useI18n()
 const uiStore = useUIStore()
 
-const toolLabel = (tool: string) =>
-  tool === 'web_search' ? t('ui.toolCalls.webSearchTitle') : tool
+const toolLabel = toolDisplayName
 
 // 跳转到「高级设置 → 工具配置」子标签（打开设置面板会自动遮住日程弹窗）
 const goToToolSettings = () => {

@@ -29,9 +29,9 @@ pub async fn save_tool_settings(
     settings.save(&data_dir).map_err(|e| e.to_string())?;
     state.tool_settings.update(settings.clone());
 
-    let web_search_ready = settings.web_search.is_ready();
+    // 同步权限矩阵：启用的工具组/web_search 放开给 default 角色组，关闭的收回
     state.tool_registry.update_permissions(|permissions| {
-        permissions.set_tool_allowed_for_default_group("web_search", web_search_ready);
+        settings.sync_to_permissions(permissions);
         if let Err(e) = permissions.save(&data_dir.join(CONFIG_FILE_NAME)) {
             tracing::warn!("保存工具权限配置失败: {e}");
         }

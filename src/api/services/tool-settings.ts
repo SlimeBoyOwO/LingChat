@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { ref } from 'vue'
+import { i18n } from '@/locales'
 
 /** 网页搜索工具配置（与后端 WebSearchSettings 对应，字段保持 snake_case）。 */
 export interface WebSearchSettings {
@@ -17,6 +18,17 @@ export interface WebSearchSettings {
 
 export interface ToolSettings {
   web_search: WebSearchSettings
+  /** 分组开关：组名 → 是否启用（schedule/memory/character/scene/status/clock） */
+  groups: Record<string, boolean>
+}
+
+/** 「其他工具」分组（与后端 TOOL_GROUPS 对齐；web_search 有独立设置区） */
+export const TOOL_GROUP_KEYS = ['schedule', 'memory', 'character', 'scene', 'status', 'clock'] as const
+
+/** 工具的界面友好名（通知与调用记录用），查不到翻译时回退原始名。 */
+export function toolDisplayName(tool: string): string {
+  const key = `ui.toolCalls.tools.${tool}`
+  return i18n.global.te(key) ? i18n.global.t(key) : tool
 }
 
 /** 后端 `ai:tool_call` 事件的载荷 + 前端补充的时间戳。 */
