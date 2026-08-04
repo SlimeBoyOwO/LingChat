@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use serde_json::{json, Value};
+use tauri::Emitter;
 use tauri_plugin_store::StoreExt;
 
 use crate::ai_service::game_system::scene_store::SceneStore;
@@ -92,18 +93,16 @@ impl Tool for SceneSwitch {
         let scenes = store
             .load_all()
             .map_err(|e| ToolError::Execution(format!("加载场景失败: {e}")))?;
-        let scene_id = match (&id, &name) {
-            (Some(i), _) => scenes.iter().find(|s| &s.id == i).map(|s| s.id.clone()),
-            (_, Some(n)) => scenes
-                .iter()
-                .find(|s| &s.name == n)
-                .map(|s| s.id.clone()),
+        let scene = match (&id, &name) {
+            (Some(i), _) => scenes.iter().find(|s| &s.id == i),
+            (_, Some(n)) => scenes.iter().find(|s| &s.name == n),
             _ => None,
         };
-        let Some(scene_id) = scene_id else {
+        let Some(scene) = scene.cloned() else {
             let what = id.or(name).unwrap_or_default();
             return Err(ToolError::Execution(format!("未找到场景: {what}")));
         };
+        let scene_id = scene.id.clone();
 
         let app = context.require_app()?;
         let gs = game_status_handle(&app).await;
@@ -117,6 +116,26 @@ impl Tool for SceneSwitch {
                 serde_json::Value::String(scene_id.clone()),
             );
             let _ = store.save();
+        }
+        drop(gs);
+
+        // select_scene 命令由前端自己更新 Pinia；LLM 工具没有这个调用方，必须主动
+        // 广播完整场景资料，否则后端 ID 已变化但画面/背景仍停留在旧场景。
+        let background = crate::api::scene::normalize_background(&scene.background);
+        let payload = json!({
+            "type": "scene_switch",
+            "scene": {
+                "id": scene.id,
+                "scene_name": scene.name,
+                "scene_description": scene.description,
+                "background": if background.is_empty() { Value::Null } else { json!(background) },
+                "lighting": scene.lighting,
+                "created_at": scene.created_at,
+                "updated_at": scene.updated_at,
+            }
+        });
+        if let Err(e) = app.emit("scene:switch", &payload) {
+            tracing::warn!("emit scene:switch 失败: {e}");
         }
 
         Ok(json!({"ok": true, "scene_id": scene_id}))

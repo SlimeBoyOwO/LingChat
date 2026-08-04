@@ -16,7 +16,7 @@ use crate::db::managers::role_repo::RoleRepo;
 use crate::AppState;
 
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
-use super::{ensure_no_args, game_status_handle};
+use super::{atomic_replace, ensure_no_args, game_status_handle};
 
 // ─── 手动笔记：按角色独立存储 ───
 
@@ -55,15 +55,14 @@ fn sanitize_role_name(name: &str) -> String {
     }
 }
 
-fn load_role_notes(display_name: &str) -> Vec<Note> {
+fn load_role_notes(display_name: &str) -> Result<Vec<Note>, String> {
     let path = role_notes_path(display_name);
     if !path.exists() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
-    fs::read_to_string(&path)
-        .ok()
-        .and_then(|content| serde_json::from_str(&content).ok())
-        .unwrap_or_default()
+    let content = fs::read_to_string(&path)
+        .map_err(|e| format!("读取角色 {display_name} 的笔记失败: {e}"))?;
+    serde_json::from_str(&content).map_err(|e| format!("解析角色 {display_name} 的笔记失败: {e}"))
 }
 
 /// 原子写入角色笔记（.tmp + rename）。
@@ -72,11 +71,9 @@ fn save_role_notes(display_name: &str, notes: &[Note]) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("创建笔记目录失败: {e}"))?;
     }
-    let content = serde_json::to_string_pretty(notes).map_err(|e| format!("序列化笔记失败: {e}"))?;
-    let tmp = path.with_extension("tmp");
-    fs::write(&tmp, content).map_err(|e| format!("写入笔记临时文件失败: {e}"))?;
-    fs::rename(&tmp, &path).map_err(|e| format!("保存笔记失败: {e}"))?;
-    Ok(())
+    let content =
+        serde_json::to_string_pretty(notes).map_err(|e| format!("序列化笔记失败: {e}"))?;
+    atomic_replace(&path, content.as_bytes()).map_err(|e| format!("保存笔记失败: {e}"))
 }
 
 /// 取当前对话角色的权威展示名（display_name），与权限系统使用同一个名字来源。
@@ -109,7 +106,8 @@ async fn resolve_display_name(db: &DatabaseConnection, given: &str) -> Result<St
         .await
         .map_err(|e| ToolError::Execution(format!("查询角色列表失败: {e}")))?;
     for role in &roles {
-        let dn = read_character_settings(role.resource_folder.as_deref().unwrap_or_default()).ai_name;
+        let dn =
+            read_character_settings(role.resource_folder.as_deref().unwrap_or_default()).ai_name;
         if dn == given || dn.trim() == given {
             return Ok(dn);
         }
@@ -117,24 +115,30 @@ async fn resolve_display_name(db: &DatabaseConnection, given: &str) -> Result<St
     // 兜底：按 DB 角色名匹配，仍返回该角色的 ai_name
     for role in &roles {
         if role.name == given {
-            return Ok(
-                read_character_settings(role.resource_folder.as_deref().unwrap_or_default()).ai_name,
-            );
+            return Ok(read_character_settings(
+                role.resource_folder.as_deref().unwrap_or_default(),
+            )
+            .ai_name);
         }
     }
     Err(ToolError::Execution(format!("未找到角色: {given}")))
 }
 
-fn parse_tags(value: Option<&Value>) -> Vec<String> {
-    value
-        .and_then(Value::as_array)
-        .map(|arr| {
-            arr.iter()
-                .filter_map(Value::as_str)
-                .map(str::to_string)
-                .collect()
-        })
-        .unwrap_or_default()
+fn parse_tags(value: Option<&Value>, tool: &str) -> Result<Option<Vec<String>>, ToolError> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let array = value
+        .as_array()
+        .ok_or_else(|| ToolError::InvalidArguments(format!("{tool} 的 tags 必须是字符串数组")))?;
+    let mut tags = Vec::with_capacity(array.len());
+    for value in array {
+        let tag = value.as_str().ok_or_else(|| {
+            ToolError::InvalidArguments(format!("{tool} 的 tags 必须全部是字符串"))
+        })?;
+        tags.push(tag.to_string());
+    }
+    Ok(Some(tags))
 }
 
 fn require_object<'a>(
@@ -146,10 +150,17 @@ fn require_object<'a>(
         .ok_or_else(|| ToolError::InvalidArguments(format!("{tool} 参数必须是 JSON object")))
 }
 
+fn apply_note_update(note: &mut Note, content: Option<String>, tags: Option<Vec<String>>) {
+    if let Some(content) = content {
+        note.content = content;
+    }
+    if let Some(tags) = tags {
+        note.tags = tags;
+    }
+}
+
 /// 取当前角色的权威名，供写操作定位笔记文件。返回后不持有锁。
-async fn current_role_name_for_write(
-    context: &ToolContext,
-) -> Result<String, ToolError> {
+async fn current_role_name_for_write(context: &ToolContext) -> Result<String, ToolError> {
     let app = context.require_app()?;
     let state = app.state::<AppState>();
     let db = state.db.clone();
@@ -226,18 +237,19 @@ impl Tool for GetNotes {
         context: &ToolContext,
         arguments: Value,
     ) -> Result<ToolResult, ToolError> {
+        let obj = require_object(&arguments, "memory_get_notes")?;
         let app = context.require_app()?;
         let state = app.state::<AppState>();
         let db = state.db.clone();
 
-        let notes = if let Some(role_name) = arguments.get("role").and_then(Value::as_str) {
+        let notes = if let Some(role_name) = obj.get("role").and_then(Value::as_str) {
             let dn = resolve_display_name(&db, role_name).await?;
-            load_role_notes(&dn)
+            load_role_notes(&dn).map_err(ToolError::Execution)?
         } else {
             let gs = game_status_handle(&app).await;
             let mut gs = gs.lock().await;
             let dn = current_display_name(&mut gs, &db).await?;
-            load_role_notes(&dn)
+            load_role_notes(&dn).map_err(ToolError::Execution)?
         };
         Ok(json!(notes))
     }
@@ -280,10 +292,10 @@ impl Tool for AddNote {
                 "memory_add_note 的 content 不能为空".into(),
             ));
         }
-        let tags = parse_tags(obj.get("tags"));
+        let tags = parse_tags(obj.get("tags"), "memory_add_note")?.unwrap_or_default();
 
         let role_name = current_role_name_for_write(context).await?;
-        let mut notes = load_role_notes(&role_name);
+        let mut notes = load_role_notes(&role_name).map_err(ToolError::Execution)?;
         let note = Note {
             id: Uuid::new_v4().to_string(),
             content,
@@ -337,18 +349,28 @@ impl Tool for UpdateNote {
                 "memory_update_note 至少需要 content/tags 中的一项".into(),
             ));
         }
-        let content = obj.get("content").and_then(Value::as_str).map(str::to_string);
-        let tags = parse_tags(obj.get("tags"));
+        let content = match obj.get("content") {
+            Some(value) => {
+                let content = value.as_str().ok_or_else(|| {
+                    ToolError::InvalidArguments("memory_update_note 的 content 必须是字符串".into())
+                })?;
+                if content.trim().is_empty() {
+                    return Err(ToolError::InvalidArguments(
+                        "memory_update_note 的 content 不能为空".into(),
+                    ));
+                }
+                Some(content.to_string())
+            }
+            None => None,
+        };
+        let tags = parse_tags(obj.get("tags"), "memory_update_note")?;
 
         let role_name = current_role_name_for_write(context).await?;
-        let mut notes = load_role_notes(&role_name);
+        let mut notes = load_role_notes(&role_name).map_err(ToolError::Execution)?;
         let Some(note) = notes.iter_mut().find(|n| n.id == id) else {
             return Err(ToolError::Execution(format!("笔记 {id} 不存在")));
         };
-        if let Some(c) = content {
-            note.content = c;
-        }
-        note.tags = tags;
+        apply_note_update(note, content, tags);
         save_role_notes(&role_name, &notes).map_err(ToolError::Execution)?;
         Ok(json!({"ok": true, "id": id}))
     }
@@ -387,7 +409,7 @@ impl Tool for DeleteNote {
             .ok_or_else(|| ToolError::InvalidArguments("memory_delete_note 需要 id".into()))?;
 
         let role_name = current_role_name_for_write(context).await?;
-        let mut notes = load_role_notes(&role_name);
+        let mut notes = load_role_notes(&role_name).map_err(ToolError::Execution)?;
         let before = notes.len();
         notes.retain(|n| n.id != id);
         if notes.len() == before {
@@ -437,10 +459,26 @@ mod tests {
     }
 
     #[test]
-    fn parse_tags_handles_missing_and_bad() {
-        assert!(parse_tags(None).is_empty());
-        assert!(parse_tags(Some(&json!("not_array"))).is_empty());
-        let tags = parse_tags(Some(&json!(["a", "b"])));
+    fn parse_tags_distinguishes_missing_empty_and_invalid() {
+        assert_eq!(parse_tags(None, "test").unwrap(), None);
+        assert!(parse_tags(Some(&json!("not_array")), "test").is_err());
+        assert!(parse_tags(Some(&json!(["a", 2])), "test").is_err());
+        let tags = parse_tags(Some(&json!(["a", "b"])), "test")
+            .unwrap()
+            .unwrap();
         assert_eq!(tags, vec!["a".to_string(), "b".to_string()]);
+    }
+
+    #[test]
+    fn content_only_update_preserves_existing_tags() {
+        let mut note = Note {
+            id: "abc".into(),
+            content: "旧内容".into(),
+            tags: vec!["重要".into()],
+            created_at: "2026-08-02T00:00:00Z".into(),
+        };
+        apply_note_update(&mut note, Some("新内容".into()), None);
+        assert_eq!(note.content, "新内容");
+        assert_eq!(note.tags, vec!["重要"]);
     }
 }

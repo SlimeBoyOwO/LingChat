@@ -8,6 +8,7 @@ import { useGameStore } from '../stores/modules/game'
 import { i18n } from '@/locales'
 import { useScriptEditorStore } from '../stores/modules/script-editor'
 import { pushToolCallRecord, toolDisplayName } from './services/tool-settings'
+import type { SceneInfo } from './services/scene'
 
 function asEvent(
   payload: unknown,
@@ -16,8 +17,7 @@ function asEvent(
   const p = payload as Record<string, unknown>
   // 优先用引擎从 YAML 读到的 duration；没写才用各事件类型的默认值。
   // 默认值语义：-1 = 等玩家点击继续；0 = 立即继续（不等待）。
-  const duration =
-    typeof p.duration === 'number' ? p.duration : defaults.defaultDuration
+  const duration = typeof p.duration === 'number' ? p.duration : defaults.defaultDuration
   return {
     ...p,
     type: defaults.type,
@@ -240,7 +240,9 @@ export function initializeTauriEventListeners() {
 
   listen('script:end', (event) => {
     console.log('[Tauri] script:end', event.payload)
-    eventQueue.addEvent(asEvent(event.payload, { type: 'script_end', defaultDuration: 0, isFinal: true }))
+    eventQueue.addEvent(
+      asEvent(event.payload, { type: 'script_end', defaultDuration: 0, isFinal: true }),
+    )
   })
 
   listen('script:free-dialogue', (event) => {
@@ -267,5 +269,18 @@ export function initializeTauriEventListeners() {
     uiStore.showCharacterSubtitle = role.roleSubTitle
   })
 
-  console.log('[Tauri] Event listeners initialized (ai + ai:thinking_progress + tts:cleanup + adventure + auto-save + 13 script events + character:switch)')
+  // === LLM scene tool event ===
+
+  listen('scene:switch', (event) => {
+    const payload = event.payload as { type: string; scene: SceneInfo }
+    console.log('[Tauri] scene:switch', payload)
+    const gameStore = useGameStore()
+    const uiStore = useUIStore()
+    gameStore.setCurrentScene(payload.scene)
+    uiStore.setCurrentBackground(payload.scene.background ?? '')
+  })
+
+  console.log(
+    '[Tauri] Event listeners initialized (ai + ai:thinking_progress + tts:cleanup + adventure + auto-save + 13 script events + character:switch + scene:switch)',
+  )
 }

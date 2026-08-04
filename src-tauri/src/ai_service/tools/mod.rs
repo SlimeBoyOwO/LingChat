@@ -11,6 +11,8 @@ pub mod status;
 pub mod tool_loop;
 pub mod web_search;
 
+use std::io::Write;
+use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -23,9 +25,9 @@ use crate::AppState;
 
 use character::{CharacterList, CharacterSwitch};
 use clock::CurrentTimeTool;
-use permissions::CONFIG_FILE_NAME;
 use memory::{AddNote, DeleteNote, GetCurrentMemory, GetNotes, UpdateNote};
 use permissions::ToolPermissionConfig;
+use permissions::CONFIG_FILE_NAME;
 use registry::ToolRegistry;
 use scene::{SceneList, SceneSwitch};
 use schedule::{AddTodo, DeleteTodo, GetAllSchedule, UpdateTodo};
@@ -51,6 +53,30 @@ pub(crate) fn ensure_no_args(arguments: &Value, tool: &str) -> Result<(), String
     if !obj.is_empty() {
         return Err(format!("{tool} 不接受参数"));
     }
+    Ok(())
+}
+
+/// 将内容写到同目录临时文件，再原子替换目标文件。
+/// `tempfile::persist` 在 Windows 上也支持覆盖已有目标，避免普通 `fs::rename`
+/// 导致工具第一次写入成功、后续更新全部失败。
+pub(crate) fn atomic_replace(path: &Path, content: &[u8]) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("目标路径没有父目录: {}", path.display()))?;
+    std::fs::create_dir_all(parent)
+        .map_err(|e| format!("创建目录 {} 失败: {e}", parent.display()))?;
+    let mut temporary =
+        tempfile::NamedTempFile::new_in(parent).map_err(|e| format!("创建临时文件失败: {e}"))?;
+    temporary
+        .write_all(content)
+        .map_err(|e| format!("写入临时文件失败: {e}"))?;
+    temporary
+        .as_file()
+        .sync_all()
+        .map_err(|e| format!("同步临时文件失败: {e}"))?;
+    temporary
+        .persist(path)
+        .map_err(|e| format!("替换 {} 失败: {}", path.display(), e.error))?;
     Ok(())
 }
 
@@ -93,10 +119,7 @@ pub fn built_in_registry(
             .map(|definition| definition.function.name)
             .collect(),
     );
-    permissions.initialize_characters(
-        &data_dir,
-        role_names.into_iter().map(|(_, name)| name),
-    )?;
+    permissions.initialize_characters(&data_dir, role_names.into_iter().map(|(_, name)| name))?;
     // 启动时按用户配置同步各工具权限：已启用的工具组/web_search 放开给
     // default 角色组（新建配置的 default 组默认关闭）。
     tool_settings.get().sync_to_permissions(&mut permissions);
@@ -104,4 +127,63 @@ pub fn built_in_registry(
     permissions.save(&data_dir.join(CONFIG_FILE_NAME))?;
     registry.set_permissions(permissions);
     Ok(registry)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use super::executor::Tool;
+    use super::*;
+
+    #[test]
+    fn atomic_replace_overwrites_existing_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("tool-data.json");
+        atomic_replace(&path, b"first").unwrap();
+        atomic_replace(&path, b"second").unwrap();
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "second");
+    }
+
+    #[test]
+    fn all_non_network_tool_schemas_are_strict_objects_and_uniquely_named() {
+        let definitions = vec![
+            CurrentTimeTool.definition(),
+            GetAllSchedule.definition(),
+            AddTodo.definition(),
+            UpdateTodo.definition(),
+            DeleteTodo.definition(),
+            GetCurrentMemory.definition(),
+            GetNotes.definition(),
+            AddNote.definition(),
+            UpdateNote.definition(),
+            DeleteNote.definition(),
+            CurrentStatus.definition(),
+            SceneStatus.definition(),
+            SceneList.definition(),
+            SceneSwitch.definition(),
+            CharacterList.definition(),
+            CharacterSwitch.definition(),
+        ];
+        let mut names: HashSet<String> = HashSet::new();
+        for definition in &definitions {
+            assert!(names.insert(definition.function.name.clone()));
+            assert_eq!(definition.function.parameters["type"], "object");
+            assert_eq!(
+                definition.function.parameters["additionalProperties"], false,
+                "{} must reject unknown arguments",
+                definition.function.name
+            );
+            assert!(definition.function.parameters["properties"].is_object());
+            assert!(definition.function.parameters["required"].is_array());
+        }
+        assert_eq!(definitions.len(), 16);
+
+        let grouped: HashSet<&str> = settings::TOOL_GROUPS
+            .iter()
+            .flat_map(|(_, tools)| tools.iter().copied())
+            .collect();
+        assert_eq!(grouped.len(), 16);
+        assert!(names.iter().all(|name| grouped.contains(name.as_str())));
+    }
 }

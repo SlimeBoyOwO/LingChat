@@ -35,11 +35,13 @@ impl Tool for CurrentStatus {
         let app = context.require_app()?;
         let gs = game_status_handle(&app).await;
         let gs = gs.lock().await;
+        let mut present_role_ids: Vec<i32> = gs.present_role_ids.iter().copied().collect();
+        present_role_ids.sort_unstable();
         Ok(json!({
             "player": gs.player.user_name,
             "current_role_id": gs.current_role_id,
             "onstage_role_ids": gs.onstage_role_ids,
-            "present_role_ids": gs.present_role_ids.iter().collect::<Vec<_>>(),
+            "present_role_ids": present_role_ids,
             "main_role_id": gs.main_role_id,
             "background": gs.background,
             "present_pic": gs.present_pic,

@@ -43,11 +43,38 @@ impl WebSearchTool {
         Self { settings, app }
     }
 
+    fn tool_definition(cfg: &WebSearchSettings) -> ToolDefinition {
+        let description = if cfg.hide_search_results {
+            "联网搜索网页信息。当用户询问新闻时事、你不确定的事实、或明确要求查资料时使用。\
+             返回内容已按用户设置隐藏来源与网址，请把事实自然融入回答，不要编造或输出链接。"
+        } else {
+            "联网搜索网页信息。当用户询问新闻时事、你不确定的事实、或明确要求查资料时使用。\
+             返回联网搜索得到的摘要，回答时必须以来源链接标注出处。"
+        };
+        ToolDefinition::new(
+            "web_search",
+            description,
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "搜索关键词"
+                    }
+                },
+                "required": ["query"],
+                "additionalProperties": false
+            }),
+        )
+    }
+
     /// 构建带统一 TLS 配置（webpki-roots，绕开 platform-verifier）的 HTTP 客户端。
     /// 与 `llm/factory.rs::build_http_client` 保持一致；按需叠加代理。
     fn build_client(cfg: &WebSearchSettings) -> Result<Client, ToolError> {
         let mut roots = rustls::RootCertStore::empty();
-        roots.roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        roots
+            .roots
+            .extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
         let tls_config = rustls::ClientConfig::builder_with_provider(Arc::new(
             rustls::crypto::aws_lc_rs::default_provider(),
         ))
@@ -90,7 +117,13 @@ impl WebSearchTool {
     fn format_results(query: &str, results: &[Value], max_results: usize, hide: bool) -> String {
         let mut out = String::new();
         for item in results.iter().take(max_results) {
-            let get = |key: &str| item.get(key).and_then(Value::as_str).unwrap_or("").trim().to_string();
+            let get = |key: &str| {
+                item.get(key)
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .trim()
+                    .to_string()
+            };
             let title = get("title");
             let url = get("url");
             if title.is_empty() && url.is_empty() {
@@ -190,7 +223,9 @@ impl WebSearchTool {
 
         let status = response.status();
         if !status.is_success() {
-            return Err(ToolError::Execution(http_error_message(status, response).await));
+            return Err(ToolError::Execution(
+                http_error_message(status, response).await,
+            ));
         }
 
         let payload: Value = response
@@ -203,7 +238,12 @@ impl WebSearchTool {
             .cloned()
             .unwrap_or_default();
 
-        let text = Self::format_results(query, &results, cfg.max_results.max(1), cfg.hide_search_results);
+        let text = Self::format_results(
+            query,
+            &results,
+            cfg.max_results.max(1),
+            cfg.hide_search_results,
+        );
         Ok(serde_json::json!({
             "ok": true,
             "query": query,
@@ -234,7 +274,9 @@ impl WebSearchTool {
 
         let status = response.status();
         if !status.is_success() {
-            return Err(ToolError::Execution(http_error_message(status, response).await));
+            return Err(ToolError::Execution(
+                http_error_message(status, response).await,
+            ));
         }
 
         let payload: Value = response
@@ -261,7 +303,12 @@ impl WebSearchTool {
             })
             .collect();
 
-        let text = Self::format_results(query, &results, cfg.max_results.max(1), cfg.hide_search_results);
+        let text = Self::format_results(
+            query,
+            &results,
+            cfg.max_results.max(1),
+            cfg.hide_search_results,
+        );
         Ok(serde_json::json!({
             "ok": true,
             "query": query,
@@ -303,7 +350,9 @@ impl WebSearchTool {
 
         let status = response.status();
         if !status.is_success() {
-            return Err(ToolError::Execution(http_error_message(status, response).await));
+            return Err(ToolError::Execution(
+                http_error_message(status, response).await,
+            ));
         }
 
         let payload: Value = response
@@ -316,7 +365,12 @@ impl WebSearchTool {
             .cloned()
             .unwrap_or_default();
 
-        let text = Self::format_results(query, &results, cfg.max_results.max(1), cfg.hide_search_results);
+        let text = Self::format_results(
+            query,
+            &results,
+            cfg.max_results.max(1),
+            cfg.hide_search_results,
+        );
         Ok(serde_json::json!({
             "ok": true,
             "query": query,
@@ -389,7 +443,9 @@ impl WebSearchTool {
 
             let status = response.status();
             if !status.is_success() {
-                return Err(ToolError::Execution(http_error_message(status, response).await));
+                return Err(ToolError::Execution(
+                    http_error_message(status, response).await,
+                ));
             }
 
             let payload: Value = response
@@ -402,7 +458,9 @@ impl WebSearchTool {
                 .and_then(|choices| choices.first())
                 .and_then(|choice| choice.get("message"))
             else {
-                return Err(ToolError::Execution("搜索响应缺少 choices[0].message".into()));
+                return Err(ToolError::Execution(
+                    "搜索响应缺少 choices[0].message".into(),
+                ));
             };
 
             let tool_calls = message.get("tool_calls").and_then(Value::as_array);
@@ -483,22 +541,7 @@ async fn http_error_message(status: reqwest::StatusCode, response: reqwest::Resp
 #[async_trait]
 impl Tool for WebSearchTool {
     fn definition(&self) -> ToolDefinition {
-        ToolDefinition::new(
-            "web_search",
-            "联网搜索网页信息。当用户询问新闻时事、你不确定的事实、或明确要求查资料时使用。\
-             返回联网搜索得到的摘要，回答时必须以来源链接标注出处。",
-            serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "搜索关键词"
-                    }
-                },
-                "required": ["query"],
-                "additionalProperties": false
-            }),
-        )
+        Self::tool_definition(&self.settings.get().web_search)
     }
 
     fn timeout_hint(&self) -> Option<Duration> {
@@ -513,7 +556,7 @@ impl Tool for WebSearchTool {
         let cfg = self.settings.get().web_search;
         if !cfg.enabled {
             return Err(ToolError::Execution(
-                "网页搜索未启用，请用户在「日程 → 工具调用」设置页开启".into(),
+                "网页搜索未启用，请用户在「高级设置 → 工具设置 → 网页搜索」开启".into(),
             ));
         }
 
@@ -596,5 +639,21 @@ mod tests {
         truncate_output(&mut text);
         assert!(text.contains("已截断"));
         assert!(text.chars().count() <= MAX_OUTPUT_CHARS + 20);
+    }
+
+    #[test]
+    fn definition_matches_source_visibility_setting() {
+        let mut cfg = WebSearchSettings::default();
+        let visible = WebSearchTool::tool_definition(&cfg);
+        assert_eq!(
+            visible.function.parameters["required"],
+            serde_json::json!(["query"])
+        );
+        assert!(visible.function.description.contains("来源链接"));
+
+        cfg.hide_search_results = true;
+        let hidden = WebSearchTool::tool_definition(&cfg);
+        assert!(hidden.function.description.contains("不要编造或输出链接"));
+        assert!(!hidden.function.description.contains("必须以来源链接"));
     }
 }

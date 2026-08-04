@@ -93,7 +93,10 @@ impl<'a> ToolExecutor<'a> {
     /// 执行指定工具，并将可恢复错误编码为稳定 JSON。
     pub async fn execute(&self, name: &str, arguments: &str, context: &ToolContext) -> String {
         if !context.allows(name) {
-            return error_result("tool_not_allowed", format!("当前调用上下文不允许工具: {name}"));
+            return error_result(
+                "tool_not_allowed",
+                format!("当前调用上下文不允许工具: {name}"),
+            );
         }
 
         let Some(tool) = self.registry.get(name) else {
@@ -108,6 +111,10 @@ impl<'a> ToolExecutor<'a> {
                 return error_result("invalid_json", format!("工具参数不是合法 JSON: {error}"));
             }
         };
+        let definition = tool.definition();
+        if let Err(error) = validate_value(name, &definition.function.parameters, &arguments) {
+            return error_result("invalid_arguments", error);
+        }
 
         let timeout = tool.timeout_hint().unwrap_or(self.timeout);
         match tokio::time::timeout(timeout, tool.execute(context, arguments)).await {
@@ -130,6 +137,66 @@ impl<'a> ToolExecutor<'a> {
     fn with_timeout(registry: &'a ToolRegistry, timeout: std::time::Duration) -> Self {
         Self { registry, timeout }
     }
+}
+
+/// 校验当前工具定义使用到的 JSON Schema 子集。所有内置工具只依赖 object、
+/// string、integer、number、boolean、array/items、required 与
+/// additionalProperties；在执行器统一校验，避免每个工具各自静默忽略类型错误。
+fn validate_value(path: &str, schema: &Value, value: &Value) -> Result<(), String> {
+    let Some(expected) = schema.get("type").and_then(Value::as_str) else {
+        return Ok(());
+    };
+    match expected {
+        "object" => {
+            let object = value
+                .as_object()
+                .ok_or_else(|| format!("{path} 必须是 object"))?;
+            let properties = schema
+                .get("properties")
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default();
+            if let Some(required) = schema.get("required").and_then(Value::as_array) {
+                for key in required.iter().filter_map(Value::as_str) {
+                    if !object.contains_key(key) {
+                        return Err(format!("{path} 缺少必填字段 {key}"));
+                    }
+                }
+            }
+            if schema.get("additionalProperties").and_then(Value::as_bool) == Some(false) {
+                if let Some(key) = object.keys().find(|key| !properties.contains_key(*key)) {
+                    return Err(format!("{path} 包含未知字段 {key}"));
+                }
+            }
+            for (key, child) in object {
+                if let Some(child_schema) = properties.get(key) {
+                    validate_value(&format!("{path}.{key}"), child_schema, child)?;
+                }
+            }
+        }
+        "array" => {
+            let array = value
+                .as_array()
+                .ok_or_else(|| format!("{path} 必须是 array"))?;
+            if let Some(item_schema) = schema.get("items") {
+                for (index, item) in array.iter().enumerate() {
+                    validate_value(&format!("{path}[{index}]"), item_schema, item)?;
+                }
+            }
+        }
+        "string" if !value.is_string() => return Err(format!("{path} 必须是 string")),
+        "integer"
+            if !value
+                .as_number()
+                .is_some_and(|number| number.is_i64() || number.is_u64()) =>
+        {
+            return Err(format!("{path} 必须是 integer"));
+        }
+        "number" if !value.is_number() => return Err(format!("{path} 必须是 number")),
+        "boolean" if !value.is_boolean() => return Err(format!("{path} 必须是 boolean")),
+        _ => {}
+    }
+    Ok(())
 }
 
 /// 构造稳定的工具错误 JSON。
@@ -158,6 +225,39 @@ mod tests {
                 .map(|s| s.to_string())
                 .collect(),
         )
+    }
+
+    #[test]
+    fn validates_declared_argument_schema() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "tags": {"type": "array", "items": {"type": "string"}}
+            },
+            "required": ["name"],
+            "additionalProperties": false
+        });
+        assert!(validate_value(
+            "test",
+            &schema,
+            &serde_json::json!({"name": "松子", "tags": ["cat"]})
+        )
+        .is_ok());
+        assert!(validate_value("test", &schema, &serde_json::json!({})).is_err());
+        assert!(validate_value("test", &schema, &serde_json::json!({"name": 1})).is_err());
+        assert!(validate_value(
+            "test",
+            &schema,
+            &serde_json::json!({"name": "松子", "tags": [1]})
+        )
+        .is_err());
+        assert!(validate_value(
+            "test",
+            &schema,
+            &serde_json::json!({"name": "松子", "extra": true})
+        )
+        .is_err());
     }
 
     struct EchoTool;
@@ -252,4 +352,3 @@ mod tests {
         assert!(result.contains("timeout"));
     }
 }
-
