@@ -58,19 +58,18 @@
             </option>
           </select>
 
-          <label class="inline-flex items-center font-medium text-brand mt-4">
-            {{ $t('ui.toolCalls.apiKey') }}
-          </label>
-          <p class="text-sm mt-1 mb-2 text-gray-300">{{ apiKeyHint }}</p>
-          <input
-            type="password"
-            v-model="form.web_search.api_key"
-            :placeholder="apiKeyHint"
-            class="w-full px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
-          />
-
-          <!-- 仅自定义模式显示地址栏；kimi/bocha 固定使用官方端点 -->
+          <!-- Kimi/BoCha 隐藏认证区块；仅自定义端点显示 API Key 与地址字段 -->
           <template v-if="form.web_search.provider === 'custom'">
+            <label class="inline-flex items-center font-medium text-brand mt-4">
+              {{ $t('ui.toolCalls.apiKey') }}
+            </label>
+            <input
+              type="password"
+              v-model="form.web_search.api_key"
+              :placeholder="$t('ui.toolCalls.apiKeyPlaceholder')"
+              class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+            />
+
             <label class="inline-flex items-center font-medium text-brand mt-4">
               {{ $t('ui.toolCalls.baseUrl') }}
             </label>
@@ -159,7 +158,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, computed, onMounted } from 'vue'
+import { reactive, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   getToolSettings,
@@ -198,16 +197,6 @@ const form = reactive<ToolSettings>({
   },
   groups: {},
 })
-
-/** 各 provider 的 Key 提示（端点由后端固定，仅 custom 需要用户填地址） */
-const PROVIDER_KEY_HINTS: Record<string, string> = {
-  kimi: 'Kimi API Key',
-  bocha: 'BoCha API Key',
-}
-
-const apiKeyHint = computed(
-  () => PROVIDER_KEY_HINTS[form.web_search.provider] ?? 'API Key',
-)
 
 const status = reactive({ message: '', color: '#4ade80' })
 const testing = ref(false)
