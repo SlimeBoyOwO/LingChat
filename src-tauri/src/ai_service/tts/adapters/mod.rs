@@ -26,7 +26,13 @@ use std::time::Duration;
 /// 共享 HTTP 客户端（全局连接池 + 统一超时 + 环境变量代理）。
 pub(crate) fn http_client() -> &'static Client {
     static CLIENT: Lazy<Client> = Lazy::new(|| {
-        let mut builder = Client::builder().timeout(Duration::from_secs(30));
+        // TLS 用 webpki-roots（见 crate::utils::tls::build_tls_config），
+        // 绕开 rustls-platform-verifier 在 Android 上的 TLS panic
+        let tls_config = crate::utils::tls::build_tls_config().expect("TLS 配置失败");
+
+        let mut builder = Client::builder()
+            .timeout(Duration::from_secs(30))
+            .tls_backend_preconfigured(tls_config);
 
         // 兼容 Python openai/httpx 行为：读取 HTTP_PROXY / HTTPS_PROXY 环境变量
         if let Ok(proxy_url) = std::env::var("HTTPS_PROXY").or_else(|_| std::env::var("https_proxy")) {

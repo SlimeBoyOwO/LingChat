@@ -157,20 +157,10 @@ pub async fn download_to_file(
 /// - 600 秒超时
 /// - 最多 10 次重定向
 /// - 标准 User-Agent
+/// - TLS 用 webpki-roots（见 [`crate::utils::tls::build_tls_config`]），
+///   绕开 rustls-platform-verifier 在 Android 上的 TLS panic
 pub fn build_download_client() -> Result<reqwest::Client, String> {
-    // 与 ai_service/llm/factory.rs 的 TLS 修复一致：reqwest 0.13 默认用
-    // rustls-platform-verifier 验证系统证书，Android 上未显式初始化会 TLS panic，
-    // 导致下载请求崩溃（无进度、无响应）。改用 webpki-roots 内置 Mozilla CA。
-    let mut roots = rustls::RootCertStore::empty();
-    roots.roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-    let tls_config = rustls::ClientConfig::builder_with_provider(Arc::new(
-        rustls::crypto::aws_lc_rs::default_provider(),
-    ))
-    .with_safe_default_protocol_versions()
-    .map_err(|e| format!("rustls 协议版本配置失败: {e}"))?
-    .with_root_certificates(Arc::new(roots))
-    .with_no_client_auth();
-
+    let tls_config = crate::utils::tls::build_tls_config()?;
     reqwest::Client::builder()
         .timeout(Duration::from_secs(600))
         .user_agent("LingChat/0.4.6")
