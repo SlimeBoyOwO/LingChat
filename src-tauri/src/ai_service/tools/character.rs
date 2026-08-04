@@ -104,6 +104,11 @@ impl Tool for CharacterSwitch {
         let gs = game_status_handle(&app).await;
         let mut gs = gs.lock().await;
         gs.current_role_id = Some(role_id);
+        // 预加载新角色到 role_manager（人设/记忆/回复构建都依赖 get_loaded），
+        // 否则下一轮回复取不到角色信息，会被前端当作未初始化角色丢弃
+        if let Err(e) = gs.get_role(&state.db, role_id).await {
+            tracing::warn!("预加载切换后的角色失败: {e}");
+        }
         drop(gs);
 
         // 通知前端当前对话角色已切换（与 God Agent 切换使用同一事件）

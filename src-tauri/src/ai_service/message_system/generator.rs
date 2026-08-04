@@ -728,16 +728,20 @@ async fn build_reply_response(
     // 从 GameStatus 取当前角色信息
     let role_info: Option<(Option<String>, Option<i32>)> = {
         let gs = deps.game_status.lock().await;
-        gs.current_role_id.and_then(|rid| {
-            gs.role_manager
+        gs.current_role_id.map(|rid| {
+            // 角色未加载（如工具刚切换）时也保留 rid，
+            // 让前端能按 role_id 自行加载，而不是丢成 None 被丢弃
+            let name = gs
+                .role_manager
                 .get_loaded(rid)
-                .map(|role| (role.display_name.clone(), role.role_id))
+                .and_then(|role| role.display_name.clone());
+            (name, Some(rid))
         })
     };
 
     let first = &segments[0];
     let (character, role_id) = match role_info {
-        Some((name, rid)) => (name, rid),
+        Some((name, rid)) => (name.or(first.character.clone()), rid),
         None => (first.character.clone(), first.role_id),
     };
 
