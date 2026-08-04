@@ -26,6 +26,12 @@ use crate::ai_service::types::{FunctionCall, LlmMessage, ToolCall, ToolDefinitio
 /// 取消标志，跨 chat 运行共享。
 pub type CancelFlag = Arc<AtomicBool>;
 
+/// 截断自动续跑时推给模型的纠正提示。只进内存 `messages`，不落库。
+const CORRECTIVE_HINT: &str = "（系统提示：你上一条回复因输出长度上限被截断且未调用任何工具。请直接调用 write_file / execute_command 完成当前任务，不要再叙述计划。）";
+
+/// 截断自动续跑预算：最多补一次生成；再次截断仍无工具调用则按现状收尾。
+const RECOVERY_BUDGET: usize = 1;
+
 /// 单次对话运行上下文。
 pub struct SkillAgentRunContext {
     pub conversation_id: i32,
@@ -245,6 +251,8 @@ pub async fn run_chat(
     };
     let mut turn_prompt_tokens: u64 = 0;
     let mut turn_completion_tokens: u64 = 0;
+    // 截断自动续跑预算（最多补一次生成）
+    let mut recovery_budget: usize = RECOVERY_BUDGET;
 
     for round in 0..max_rounds {
         if cancelled.load(Ordering::SeqCst) {
@@ -255,7 +263,7 @@ pub async fn run_chat(
         }
 
         let defs = tools::tool_definitions();
-        let (assistant_text, tool_calls, usage) =
+        let (assistant_text, tool_calls, finish_reason, usage) =
             match stream_completion(&ctx, &messages, &defs, &cancelled).await {
                 Ok(r) => r,
                 Err(e) => {
@@ -268,6 +276,19 @@ pub async fn run_chat(
 
         // 无工具调用 → 完成
         if tool_calls.is_empty() {
+            // 被输出长度上限截断（finish_reason=max_tokens）且未取消 → 推一条纠正提示
+            // 自动续跑一次。纠正提示只进内存 messages，不落库，用户界面无感知。
+            let truncated = finish_reason.as_deref() == Some("max_tokens");
+            let was_cancelled = cancelled.load(Ordering::SeqCst);
+            if truncated && !was_cancelled && recovery_budget > 0 {
+                recovery_budget -= 1;
+                let _ = ctx.channel.send(SkillAgentEvent::Status {
+                    content: "检测到回复被截断，正在让模型继续…".into(),
+                });
+                messages.push(LlmMessage::user(CORRECTIVE_HINT));
+                continue;
+            }
+
             let final_msg = LlmMessage::assistant(&assistant_text);
             let _ = db::insert_message(&ctx.db, ctx.conversation_id, &final_msg).await;
             let usage = if turn_prompt_tokens + turn_completion_tokens > 0 {
@@ -368,10 +389,12 @@ async fn stream_completion(
     messages: &[LlmMessage],
     defs: &[ToolDefinition],
     cancelled: &CancelFlag,
-) -> Result<(String, Vec<AccumToolCall>, Usage), String> {
+) -> Result<(String, Vec<AccumToolCall>, Option<String>, Usage), String> {
     let llm = &ctx.llm;
     let mut text_out = String::new();
     let usage = Usage::default();
+    // 最后一次 StreamEnd 携带的归一化停止原因（"stop" / "max_tokens" / …）。
+    let mut finish_reason: Option<String> = None;
     let mut tool_map: HashMap<usize, AccumToolCall> = HashMap::new();
 
     if llm.supports_streaming_tools() {
@@ -405,6 +428,9 @@ async fn stream_completion(
                             },
                         );
                     }
+                }
+                LlmChunk::StreamEnd { reason } => {
+                    finish_reason = reason;
                 }
             }
         }
@@ -442,7 +468,7 @@ async fn stream_completion(
             tc.id = format!("call_{}_{}", std::process::id(), tc.index);
         }
     }
-    Ok((text_out, tool_calls, usage))
+    Ok((text_out, tool_calls, finish_reason, usage))
 }
 
 #[cfg(test)]
