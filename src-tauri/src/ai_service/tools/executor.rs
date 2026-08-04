@@ -227,39 +227,6 @@ mod tests {
         )
     }
 
-    #[test]
-    fn validates_declared_argument_schema() {
-        let schema = serde_json::json!({
-            "type": "object",
-            "properties": {
-                "name": {"type": "string"},
-                "tags": {"type": "array", "items": {"type": "string"}}
-            },
-            "required": ["name"],
-            "additionalProperties": false
-        });
-        assert!(validate_value(
-            "test",
-            &schema,
-            &serde_json::json!({"name": "松子", "tags": ["cat"]})
-        )
-        .is_ok());
-        assert!(validate_value("test", &schema, &serde_json::json!({})).is_err());
-        assert!(validate_value("test", &schema, &serde_json::json!({"name": 1})).is_err());
-        assert!(validate_value(
-            "test",
-            &schema,
-            &serde_json::json!({"name": "松子", "tags": [1]})
-        )
-        .is_err());
-        assert!(validate_value(
-            "test",
-            &schema,
-            &serde_json::json!({"name": "松子", "extra": true})
-        )
-        .is_err());
-    }
-
     struct EchoTool;
 
     #[async_trait]

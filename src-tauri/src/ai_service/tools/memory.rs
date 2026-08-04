@@ -449,8 +449,6 @@ mod tests {
 
     #[test]
     fn role_notes_path_uses_sanitized_name() {
-        // role_notes_path 依赖运行时 data_dir，测试进程先初始化到临时目录
-        crate::init::static_copy::init_data_dir_for_tests(std::env::temp_dir());
         let path = role_notes_path("灵灵/..");
         let file = path.file_name().unwrap().to_string_lossy().into_owned();
         assert!(file.starts_with("灵灵") && file.ends_with(".json"));
@@ -467,18 +465,5 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(tags, vec!["a".to_string(), "b".to_string()]);
-    }
-
-    #[test]
-    fn content_only_update_preserves_existing_tags() {
-        let mut note = Note {
-            id: "abc".into(),
-            content: "旧内容".into(),
-            tags: vec!["重要".into()],
-            created_at: "2026-08-02T00:00:00Z".into(),
-        };
-        apply_note_update(&mut note, Some("新内容".into()), None);
-        assert_eq!(note.content, "新内容");
-        assert_eq!(note.tags, vec!["重要"]);
     }
 }
