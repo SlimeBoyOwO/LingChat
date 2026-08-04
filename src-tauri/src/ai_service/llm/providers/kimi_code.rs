@@ -465,7 +465,39 @@ impl LlmProvider for KimiCodeProvider {
     }
 
     async fn complete_stream(&self, http: &Client, messages: &[LlmMessage]) -> Result<ChunkStream> {
-        let body = self.build_request(messages, true, None, None)?;
+        self.stream_impl(http, messages, None).await
+    }
+
+    /// Kimi-Code 支持 Anthropic SSE 的原生流式 function calling。
+    fn supports_streaming_tools(&self) -> bool {
+        true
+    }
+
+    async fn complete_stream_with_tools(
+        &self,
+        http: &Client,
+        messages: &[LlmMessage],
+        tools: &[ToolDefinition],
+        _tool_choice: Option<&str>,
+    ) -> Result<ChunkStream> {
+        self.stream_impl(http, messages, Some(tools)).await
+    }
+}
+
+impl KimiCodeProvider {
+    /// 统一的流式实现：Anthropic SSE 解析。
+    ///
+    /// 除文本/思考增量外，还处理工具调用块：
+    /// `content_block_start`(tool_use) 登记 id/name，
+    /// `content_block_delta`(input_json_delta) 累积 partial_json，
+    /// 流结束时一次性以 `LlmChunk::ToolCalls` 抛出（与 genai provider 的语义一致）。
+    async fn stream_impl(
+        &self,
+        http: &Client,
+        messages: &[LlmMessage],
+        tools: Option<&[ToolDefinition]>,
+    ) -> Result<ChunkStream> {
+        let body = self.build_request(messages, true, tools, None)?;
         crate::utils::llm_request_logger::log_request_body(
             "kimicode",
             &serde_json::to_value(&body).unwrap_or_default(),
@@ -490,6 +522,9 @@ impl LlmProvider for KimiCodeProvider {
             let mut thinking_buffer = String::new();
             let mut text_buffer = String::new();
             let mut last_flush_len: usize = 0;
+            // 流式工具调用累积：块 index → (id, name, partial_json)
+            let mut tool_blocks: std::collections::BTreeMap<usize, (String, String, String)> =
+                std::collections::BTreeMap::new();
             let mut bs = byte_stream;
             while let Some(item) = bs.next().await {
                 let chunk = item.map_err(|e| anyhow!("Kimi-Code 流式读取失败: {e}"))?;
@@ -520,6 +555,10 @@ impl LlmProvider for KimiCodeProvider {
                                     yield LlmChunk::Content(line.to_string());
                                 }
                             }
+                            // 抛出累积完成的工具调用
+                            if !tool_blocks.is_empty() {
+                                yield LlmChunk::ToolCalls(collect_tool_calls(std::mem::take(&mut tool_blocks)));
+                            }
                             return;
                         }
                         if data.is_empty() { continue; }
@@ -544,9 +583,30 @@ impl LlmProvider for KimiCodeProvider {
                                             thinking_buffer.push_str(&thinking);
                                         }
                                     }
+                                    if let Some(partial) = delta.partial_json {
+                                        let idx = parsed.index.unwrap_or(0);
+                                        if let Some(block) = tool_blocks.get_mut(&idx) {
+                                            block.2.push_str(&partial);
+                                        }
+                                    }
                                 }
                             }
-                            "content_block_start" | "content_block_stop" | "message_start" | "message_delta" | "message_stop" => {
+                            "content_block_start" => {
+                                if let Some(block) = parsed.content_block {
+                                    if block.type_ == "tool_use" {
+                                        let idx = parsed.index.unwrap_or(0);
+                                        tool_blocks.insert(
+                                            idx,
+                                            (
+                                                block.id.unwrap_or_default(),
+                                                block.name.unwrap_or_default(),
+                                                String::new(),
+                                            ),
+                                        );
+                                    }
+                                }
+                            }
+                            "content_block_stop" | "message_start" | "message_delta" | "message_stop" => {
                                 tracing::debug!("[Kimi-Code SSE] type={}, delta={:?}", parsed.type_, parsed.delta);
                             }
                             other => {
@@ -577,10 +637,35 @@ impl LlmProvider for KimiCodeProvider {
                     yield LlmChunk::Content(line.to_string());
                 }
             }
+            // 流正常结束时抛出累积完成的工具调用
+            if !tool_blocks.is_empty() {
+                yield LlmChunk::ToolCalls(collect_tool_calls(std::mem::take(&mut tool_blocks)));
+            }
         };
 
         Ok(Box::pin(stream))
     }
+}
+
+/// 把流式累积的工具块组装成 ToolCall 列表（按块 index 升序）。
+fn collect_tool_calls(
+    blocks: std::collections::BTreeMap<usize, (String, String, String)>,
+) -> Vec<crate::ai_service::types::ToolCall> {
+    blocks
+        .into_values()
+        .map(|(id, name, arguments)| crate::ai_service::types::ToolCall {
+            id,
+            type_: "function".to_string(),
+            function: crate::ai_service::types::FunctionCall {
+                name,
+                arguments: if arguments.trim().is_empty() {
+                    "{}".to_string()
+                } else {
+                    arguments
+                },
+            },
+        })
+        .collect()
 }
 
 // ============================================================
@@ -681,6 +766,12 @@ struct ContentBlock {
 struct MessagesStreamChunk {
     #[serde(rename = "type")]
     type_: String,
+    /// 内容块序号（content_block_start/delta/stop 携带）。
+    #[serde(default)]
+    index: Option<usize>,
+    /// content_block_start 携带的块本体（tool_use 的 id/name 在这里）。
+    #[serde(default)]
+    content_block: Option<ContentBlock>,
     #[serde(default)]
     delta: Option<MessageDelta>,
 }
@@ -691,6 +782,9 @@ struct MessageDelta {
     text: Option<String>,
     #[serde(default)]
     thinking: Option<String>,
+    /// input_json_delta：流式工具调用参数的 JSON 片段。
+    #[serde(default)]
+    partial_json: Option<String>,
 }
 
 #[cfg(test)]

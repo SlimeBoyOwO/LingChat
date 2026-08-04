@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- 测试二进制专用 manifest：声明 comctl32 v6 依赖。
+     正式 exe 由 tauri-build 自动嵌入 manifest，但 cargo test 的 lib 测试二进制
+     不会嵌入，导致加载 comctl32 v5（缺少 TaskDialogIndirect 入口）而启动即崩
+     （0xc0000139 STATUS_ENTRYPOINT_NOT_FOUND）。build.rs 通过
+     cargo:rustc-link-arg-tests 仅对测试目标嵌入本文件。 -->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity
+        type="win32"
+        name="Microsoft.Windows.Common-Controls"
+        version="6.0.0.0"
+        processorArchitecture="*"
+        publicKeyToken="6595b64144ccf1df"
+        language="*" />
+    </dependentAssembly>
+  </dependency>
+</assembly>

@@ -20,6 +20,8 @@ pub mod event_names {
     pub const TTS_CLEANUP: &str = "tts:cleanup";
     /// AI 侧错误（鉴权失败 / 网络错误等）。
     pub const AI_ERROR: &str = "ai:error";
+    /// 工具调用结果（成功/失败、工具名、参数摘要）。
+    pub const AI_TOOL_CALL: &str = "ai:tool_call";
     /// 强制将前端状态重置为 `input`。
     pub const STATUS_RESET: &str = "status:reset";
 }

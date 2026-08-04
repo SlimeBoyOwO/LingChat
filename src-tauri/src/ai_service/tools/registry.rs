@@ -22,7 +22,8 @@ pub enum RegistryError {
 pub struct ToolRegistry {
     tools: HashMap<String, Arc<dyn Tool>>,
     order: Vec<String>,
-    permissions: ToolPermissionConfig,
+    /// 权限矩阵；RwLock 支持运行时热更新（如设置页开关工具）。
+    permissions: std::sync::RwLock<ToolPermissionConfig>,
 }
 
 impl ToolRegistry {
@@ -33,7 +34,13 @@ impl ToolRegistry {
 
     /// 用持久化权限配置覆盖默认权限。
     pub fn set_permissions(&mut self, permissions: ToolPermissionConfig) {
-        self.permissions = permissions;
+        *self.permissions.get_mut().expect("权限锁已中毒") = permissions;
+    }
+
+    /// 运行时修改权限配置（调用方负责持久化）。
+    pub fn update_permissions(&self, f: impl FnOnce(&mut ToolPermissionConfig)) {
+        let mut guard = self.permissions.write().expect("权限锁已中毒");
+        f(&mut guard);
     }
 
     /// 注册工具；重复名称会失败。
@@ -94,7 +101,10 @@ impl ToolRegistry {
             .into_iter()
             .map(|d| d.function.name)
             .collect();
-        self.permissions.allowed_tools(source, role_name, &all_names)
+        self.permissions
+            .read()
+            .expect("权限锁已中毒")
+            .allowed_tools(source, role_name, &all_names)
     }
 }
 

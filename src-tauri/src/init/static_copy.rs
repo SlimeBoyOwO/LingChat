@@ -16,6 +16,13 @@ pub fn get_data_dir() -> &'static PathBuf {
         .expect("data_dir not initialized — call init_data_dir first")
 }
 
+/// 测试专用：直接设置 data 目录（测试进程没有 AppHandle）。
+/// 重复调用时静默忽略，方便多个测试各自尝试初始化。
+#[cfg(test)]
+pub fn init_data_dir_for_tests(dir: PathBuf) {
+    let _ = DATA_DIR.set(dir);
+}
+
 /// 解析 data 目录路径。
 ///
 /// 优先级：

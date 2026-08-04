@@ -6,8 +6,10 @@ pub mod permissions;
 pub mod registry;
 pub mod scene;
 pub mod schedule;
+pub mod settings;
 pub mod status;
 pub mod tool_loop;
+pub mod web_search;
 
 use std::sync::Arc;
 
@@ -27,7 +29,9 @@ use permissions::ToolPermissionConfig;
 use registry::ToolRegistry;
 use scene::{SceneList, SceneSwitch};
 use schedule::{AddTodo, DeleteTodo, GetAllSchedule, UpdateTodo};
+use settings::SharedToolSettings;
 use status::{CurrentStatus, SceneStatus};
+use web_search::WebSearchTool;
 
 /// 从 AppHandle 获取共享的 `GameStatus` 句柄。
 ///
@@ -53,9 +57,12 @@ pub(crate) fn ensure_no_args(arguments: &Value, tool: &str) -> Result<(), String
 /// 创建并注册所有内置聊天工具。
 pub fn built_in_registry(
     role_names: impl IntoIterator<Item = (String, String)>,
+    tool_settings: SharedToolSettings,
+    app: tauri::AppHandle,
 ) -> Result<ToolRegistry> {
     let mut registry = ToolRegistry::new();
     registry.register(Arc::new(CurrentTimeTool))?;
+    registry.register(Arc::new(WebSearchTool::new(tool_settings.clone(), app)))?;
     registry.register(Arc::new(GetAllSchedule))?;
     registry.register(Arc::new(AddTodo))?;
     registry.register(Arc::new(UpdateTodo))?;
@@ -90,6 +97,10 @@ pub fn built_in_registry(
         &data_dir,
         role_names.into_iter().map(|(_, name)| name),
     )?;
+    // 启动时按用户配置同步网页搜索权限：已启用且配置就绪时，
+    // 确保 default 角色组放开 web_search（新建配置的 default 组默认关闭）。
+    let web_search_ready = tool_settings.get().web_search.is_ready();
+    permissions.set_tool_allowed_for_default_group("web_search", web_search_ready);
     // 覆盖写 available_tools 展示列表（仅展示，运行时不被读取）
     permissions.save(&data_dir.join(CONFIG_FILE_NAME))?;
     registry.set_permissions(permissions);

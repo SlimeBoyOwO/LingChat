@@ -92,3 +92,9 @@ tauri-plugin-process = "2"
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_Graphics_Gdi"] }
 
+
+# esaxx-rs 强制静态 CRT (/MT) 会在 Windows 下与 ort 等库冲突（LNK2038/LNK2005）。
+# 仓库已自带 patches/esaxx-rs（唯一改动：build.rs 去掉 .static_crt(true)，
+# 改用动态 CRT /MD），这里把它接到 [patch] 上真正生效。
+[patch.crates-io]
+esaxx-rs = { path = "patches/esaxx-rs" }

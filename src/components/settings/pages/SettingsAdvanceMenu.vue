@@ -43,6 +43,21 @@
       </MenuItem>
     </div>
 
+    <!-- 工具配置 -->
+    <div class="cursor-pointer transition-all duration-300" @click="emit('navigate', 'tools')">
+      <MenuItem :title="$t('advance.menu.toolsTitle')" size="large">
+        <template #header>
+          <Wrench :size="20" />
+        </template>
+        <p class="text-white/50 text-sm leading-relaxed mb-3">
+          {{ $t('advance.menu.toolsDesc') }}
+        </p>
+        <Button type="big" icon="setting" :icon_size="18">
+          {{ $t('advance.menu.toolsButton') }}
+        </Button>
+      </MenuItem>
+    </div>
+
     <!-- 界面语言 -->
     <div class="transition-all duration-300">
       <MenuItem :title="$t('advance.menu.languageTitle')" size="large">
@@ -72,7 +87,7 @@
 </template>
 
 <script setup lang="ts">
-import { AudioLines, Cpu, SlidersHorizontal, Languages } from 'lucide-vue-next'
+import { AudioLines, Cpu, SlidersHorizontal, Languages, Wrench } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { MenuItem } from '../../ui'
 import { Button } from '../../base'
@@ -81,6 +96,6 @@ import { SUPPORTED_LOCALES, setLocale, type AppLocale } from '@/locales'
 const { locale } = useI18n()
 
 const emit = defineEmits<{
-  navigate: [tab: 'llm' | 'tts' | 'other']
+  navigate: [tab: 'llm' | 'tts' | 'other' | 'tools']
 }>()
 </script>

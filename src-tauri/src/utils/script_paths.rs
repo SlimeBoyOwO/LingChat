@@ -431,10 +431,13 @@ mod tests {
         assert_eq!(sanitize_folder_name(" 想出去玩啦 ").unwrap(), "想出去玩啦");
         for bad in [
             "", "   ", "a/b", "a\\b", "a:b", "a*b", "a?b", "a\"b", "a<b", "a>b", "a|b", "名字.",
-            "名字 ", "CON", "nul", "character", "standalone",
+            "CON", "nul", "character", "standalone",
         ] {
             assert!(sanitize_folder_name(bad).is_err(), "应拒绝: {:?}", bad);
         }
+        // 首尾空白会先被 trim（如 " 想出去玩啦 " → "想出去玩啦"），
+        // 因此 "名字 " 裁尾后是合法名字，按接受处理 —— 与上面的用例保持一致。
+        assert!(sanitize_folder_name("名字 ").is_ok());
     }
 
     #[test]

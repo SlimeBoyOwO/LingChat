@@ -7,6 +7,7 @@ import { useUIStore } from '../stores/modules/ui/ui'
 import { useGameStore } from '../stores/modules/game'
 import { i18n } from '@/locales'
 import { useScriptEditorStore } from '../stores/modules/script-editor'
+import { pushToolCallRecord } from './services/tool-settings'
 
 function asEvent(
   payload: unknown,
@@ -74,6 +75,41 @@ export function initializeTauriEventListeners() {
       error_code: (p.error_code as string) ?? 'default_error',
       message: (p.detail as string) ?? '',
     } as ScriptEventType)
+  })
+
+  // 工具调用结果：记入「工具调用」页面历史 + 左上角弹通知
+  listen('ai:tool_call', (event) => {
+    const payload = event.payload as {
+      tool: string
+      ok: boolean
+      summary: string
+      error: string | null
+    }
+    console.log('[Tauri] ai:tool_call', payload)
+    pushToolCallRecord({
+      ...payload,
+      time: new Date().toLocaleTimeString(),
+    })
+    const toolLabel =
+      payload.tool === 'web_search' ? i18n.global.t('ui.toolCalls.webSearchTitle') : payload.tool
+    const uiStore = useUIStore()
+    if (payload.ok) {
+      uiStore.showNotification({
+        type: 'success',
+        title: i18n.global.t('ui.toolCalls.callSuccess'),
+        message: `${toolLabel}：${payload.summary}`,
+        duration: 3000,
+        skipTipsCheck: true,
+      })
+    } else {
+      uiStore.showNotification({
+        type: 'warning',
+        title: i18n.global.t('ui.toolCalls.callFailed'),
+        message: payload.error || toolLabel,
+        duration: 4000,
+        skipTipsCheck: true,
+      })
+    }
   })
 
   listen('status:reset', (event) => {

@@ -75,6 +75,8 @@ pub struct InnerAppState {
     pub generation_lock: Arc<tokio::sync::Mutex<()>>,
     /// 主动系统实例（可选）。
     pub tool_registry: Arc<ToolRegistry>,
+    /// 聊天工具的用户配置（网页搜索 API Key、代理等），热更新共享句柄。
+    pub tool_settings: ai_service::tools::settings::SharedToolSettings,
     pub proactive_system:
         Option<Arc<tokio::sync::Mutex<ai_service::proactive_system::ProactiveSystem>>>,
     /// 成就管理器。
@@ -299,7 +301,14 @@ pub fn run() {
             let generation_lock = std::sync::Arc::new(tokio::sync::Mutex::new(()));
             let role_names = rt
                 .block_on(db::managers::role_repo::RoleRepo::get_all_tool_role_names(&db))?;
-            let tool_registry = Arc::new(ai_service::tools::built_in_registry(role_names)?);
+            let tool_settings = ai_service::tools::settings::SharedToolSettings::new(
+                ai_service::tools::settings::ToolSettings::load_or_create(&api::data_dir())?,
+            );
+            let tool_registry = Arc::new(ai_service::tools::built_in_registry(
+                role_names,
+                tool_settings.clone(),
+                app.handle().clone(),
+            )?);
 
             // 创建主动系统
             let proactive = std::sync::Arc::new(tokio::sync::Mutex::new(
@@ -370,6 +379,7 @@ pub fn run() {
                     script_channels,
                     generation_lock,
                     tool_registry,
+                    tool_settings,
                     proactive_system: Some(proactive),
                     achievement_manager,
                     screen_analyzer,
@@ -609,6 +619,9 @@ pub fn run() {
             api::schedule::save_schedules,
             api::schedule::reload_proactive_system,
             api::proactive_set_can_deliver,
+            api::tool_settings::get_tool_settings,
+            api::tool_settings::save_tool_settings,
+            api::tool_settings::test_web_search,
             api::achievement::get_achievement_list,
             api::achievement::unlock_achievement,
             api::adventure::list_character_adventures,

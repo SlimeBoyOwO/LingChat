@@ -48,6 +48,13 @@
           <Cat :size="18" />
           <span>{{ $t('ui.scheduleContent.navProactive') }}</span>
         </button>
+        <button
+          class="w-full flex items-center space-x-6 px-5 py-3 no-underline rounded-lg text-white transition-colors duration-200 relative z-10 adv-nav-link hover:bg-gray-200 hover:text-black active:text-white active:font-bold"
+          @click="changeView('tool_calls')"
+        >
+          <Wrench :size="18" />
+          <span>{{ $t('ui.scheduleContent.navToolCalls') }}</span>
+        </button>
       </nav>
 
       <div class="mt-auto mb-6 p-4 bg-cyan-50/10 rounded-2xl border border-cyan-500/20">
@@ -106,7 +113,7 @@
         </div>
 
         <button
-          v-show="!uiStore.scheduleView.startsWith('proactive')"
+          v-show="!uiStore.scheduleView.startsWith('proactive') && !uiStore.scheduleView.startsWith('tool_calls')"
           @click="triggerCreate"
           class="bg-cyan-500 hover:bg-cyan-600 text-white rounded-xl shadow-lg transition-all flex items-center shrink-0"
           :class="uiStore.isNarrowScreen ? 'px-3 py-2 text-sm space-x-1' : 'px-5 py-2.5 space-x-2'"
@@ -131,6 +138,9 @@
         <CalendarPage ref="calendarRef" />
 
         <ProactivePage ref="proactiveRef" />
+
+        <!--工具调用设置界面-->
+        <ToolCallsPage />
       </div>
     </main>
   </div>
@@ -144,6 +154,7 @@ import TodoPage from '@/components/schedule/pages/TodoPage.vue'
 import SchedulePage from '@/components/schedule/pages/SchedulePage.vue'
 import CalendarPage from '@/components/schedule/pages/CalendarPage.vue'
 import ProactivePage from '@/components/schedule/pages/ProactivePage.vue'
+import ToolCallsPage from '@/components/schedule/pages/ToolCallsPage.vue'
 import {
   Layers,
   CheckCircle2,
@@ -152,6 +163,7 @@ import {
   Cat,
   ChevronLeft,
   Sparkles,
+  Wrench,
 } from 'lucide-vue-next'
 
 type Variant = 'settings' | 'popup'
@@ -187,6 +199,11 @@ const titleInfo = computed(() => {
     return {
       title: t('ui.scheduleContent.titleProactive'),
       subtitle: t('ui.scheduleContent.subtitleProactive'),
+    }
+  } else if (currentView.startsWith('tool_calls')) {
+    return {
+      title: t('ui.scheduleContent.titleToolCalls'),
+      subtitle: t('ui.scheduleContent.subtitleToolCalls'),
     }
   } else if (currentView.startsWith('calendar')) {
     return {

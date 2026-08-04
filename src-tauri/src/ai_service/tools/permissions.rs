@@ -107,6 +107,24 @@ pub struct GroupPermission {
     pub roles: HashSet<String>,
 }
 
+/// 授权/收回 default 角色组对某个工具的访问（供工具设置页开关使用）。
+impl ToolPermissionConfig {
+    /// `allowed = true`：确保 default 角色组启用且包含该工具；
+    /// `allowed = false`：仅从 default 组工具列表移除，不动组的启用状态与其他工具。
+    pub fn set_tool_allowed_for_default_group(&mut self, tool: &str, allowed: bool) {
+        let group = self
+            .role_groups
+            .entry(DEFAULT_ROLE_GROUP.to_string())
+            .or_default();
+        if allowed {
+            group.enabled = true;
+            group.tools.insert(tool.to_string());
+        } else {
+            group.tools.remove(tool);
+        }
+    }
+}
+
 impl Default for GroupPermission {
     fn default() -> Self {
         Self {

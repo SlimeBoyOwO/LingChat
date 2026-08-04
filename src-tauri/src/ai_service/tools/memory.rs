@@ -427,6 +427,8 @@ mod tests {
 
     #[test]
     fn role_notes_path_uses_sanitized_name() {
+        // role_notes_path 依赖运行时 data_dir，测试进程先初始化到临时目录
+        crate::init::static_copy::init_data_dir_for_tests(std::env::temp_dir());
         let path = role_notes_path("灵灵/..");
         let file = path.file_name().unwrap().to_string_lossy().into_owned();
         assert!(file.starts_with("灵灵") && file.ends_with(".json"));
