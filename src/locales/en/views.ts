@@ -54,7 +54,7 @@ export default {
     exitGame: "Exit Game",
     freeDialogue: "Free Chat Mode",
     storyMode: "Story Mode",
-    scriptEditor: "Script Editor",
+    scriptEditor: "Workshop",
     miniGame: "Mini Games (In Development)",
     back: "Back",
   },
