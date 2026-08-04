@@ -159,5 +159,10 @@ commands.allow = [
   "editor_agent_start_chat",
   "editor_agent_stop_chat",
   "editor_agent_resolve_approval",
+  "plugin_list",
+  "plugin_set_enabled",
+  "plugin_save_config",
+  "plugin_reload",
+  "plugin_delete",
 ]
 commands.deny = []

@@ -124,6 +124,16 @@
       >
         <p class="hidden xl:block whitespace-nowrap">{{ $t('nav.workshop') }}</p>
       </Button>
+      <Button
+        ref="pluginsBtn"
+        type="nav"
+        class="shrink-0"
+        icon="package"
+        @click="() => switchTab('plugins', 'pluginsBtn')"
+        :class="{ active: uiStore.currentSettingsTab === 'plugins' }"
+      >
+        <p class="hidden xl:block whitespace-nowrap">{{ $t('nav.plugins') }}</p>
+      </Button>
     </nav>
     <Icon
       icon="close"
@@ -167,6 +177,7 @@ const updateBtn = ref<ButtonRef | null>(null)
 const adventureBtn = ref<ButtonRef | null>(null)
 const logBtn = ref<ButtonRef | null>(null)
 const workshopBtn = ref<ButtonRef | null>(null)
+const pluginsBtn = ref<ButtonRef | null>(null)
 
 // 设置可重设的值（使用 ref 存储，确保响应式或跨函数访问）
 const oldRefName = ref('textBtn')
@@ -187,6 +198,7 @@ const handleIndicatorMove = (currentRefName: string) => {
     adventureBtn,
     logBtn,
     workshopBtn,
+    pluginsBtn,
   }[currentRefName]
 
   if (buttonRef?.value?.$el) {
@@ -285,6 +297,9 @@ const initIndicator = () => {
       break
     case 'workshop':
       activeButton = workshopBtn.value
+      break
+    case 'plugins':
+      activeButton = pluginsBtn.value
       break
   }
 

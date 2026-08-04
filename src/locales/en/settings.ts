@@ -282,6 +282,15 @@ export default {
       yearsAgo: "{n} years ago",
     },
   },
+  plugins: {
+    title: "Plugins",
+    envHint: "Environment variables (read from the process):",
+    envFromProcess: "from process env",
+    saveConfig: "Save",
+    empty: "No plugins found. Put a plugin folder in data/plugins/",
+    delete: "Delete",
+    deleteConfirm: "Delete plugin \"{name}\"? This removes the plugin folder and cannot be undone.",
+  },
   adventurePanel: {
     header: {
       title: "Adventure Overview",

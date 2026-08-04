@@ -281,6 +281,15 @@ export default {
       yearsAgo: '{n} 年前',
     },
   },
+  plugins: {
+    title: 'プラグイン',
+    envHint: '環境変数（プロセスから読取）：',
+    envFromProcess: 'プロセス環境から',
+    saveConfig: '保存',
+    empty: 'プラグインが見つかりません。data/plugins/ にプラグインフォルダを置いてください',
+    delete: '削除',
+    deleteConfirm: 'プラグイン「{name}」を削除しますか？プラグインフォルダごと削除され、元に戻せません',
+  },
   adventurePanel: {
     header: {
       title: 'アドベンチャー概要',

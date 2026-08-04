@@ -282,6 +282,15 @@ export default {
       yearsAgo: '{n} 年前',
     },
   },
+  plugins: {
+    title: '插件',
+    envHint: '环境变量（从进程读取）：',
+    envFromProcess: '来自进程环境',
+    saveConfig: '保存',
+    empty: '未找到插件。请将插件文件夹放入 data/plugins/ 目录',
+    delete: '删除',
+    deleteConfirm: '确定要删除插件「{name}」吗？会删除插件目录，不可恢复',
+  },
   adventurePanel: {
     header: {
       title: '冒险总览',

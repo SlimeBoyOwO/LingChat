@@ -10,5 +10,6 @@ export default {
   "save": "存檔",
   "advance": "進階設定",
   "log": "日誌",
-  "workshop": "創意工坊"
+  "workshop": "創意工坊",
+  "plugins": "插件"
 }

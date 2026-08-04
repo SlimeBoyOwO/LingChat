@@ -10,4 +10,5 @@ export default {
   advance: '高级设置',
   log: '日志',
   workshop: '创意工坊',
+  plugins: '插件',
 }
