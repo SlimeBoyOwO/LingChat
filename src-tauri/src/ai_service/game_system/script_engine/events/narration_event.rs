@@ -13,6 +13,7 @@ use crate::ai_service::game_system::script_engine::responses::{
 use crate::ai_service::message_system::events::emit;
 use crate::ai_service::types::{LineAttributeExt, LineBase};
 use crate::db::entities::line::LineAttribute;
+use crate::utils::prompt::PromptRole;
 
 pub struct NarrationEvent {
     text: String,
@@ -58,7 +59,7 @@ impl ScriptEvent for NarrationEvent {
 
         // Add as ASSISTANT line (keep the original text with newlines)
         let line = LineBase {
-            content: self.text.clone(),
+            content: PromptRole::Narrator.build_prompt(&self.text.clone()),
             attribute: LineAttributeExt(LineAttribute::User),
             display_name: self.display_name.clone().or_else(|| Some("旁白".into())),
             ..Default::default()

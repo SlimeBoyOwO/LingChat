@@ -64,7 +64,7 @@ impl ScriptEvent for InputEvent {
             content: user_input,
             attribute: LineAttributeExt(LineAttribute::User),
             display_name: Some(user_name),
-            sender_role_id: main_role_id,
+            sender_role_id: Some(0),
             ..Default::default()
         };
         ctx.game_status.lock().await.add_line(ctx.db, line).await?;
