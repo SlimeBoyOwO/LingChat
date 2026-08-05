@@ -15,6 +15,7 @@ import { i18n } from "./locales";
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import router from "./router";
 import { autoConfigureCpuPerformance } from "./api/services/cpu-perf";
+import { initAudioOutputManager } from "./utils/audioOutputManager";
 
 // 仅主窗口启动时清除加载过渡标记，避免设置窗口等其他窗口误清除
 if (getCurrentWindow().label === 'main') {
@@ -36,6 +37,9 @@ if (new URLSearchParams(window.location.search).get('window') === 'log') {
 }
 
 app.mount("#app");
+
+// 初始化全局音频输出设备管理器（需 pinia 就绪）
+initAudioOutputManager();
 
 // 延迟执行 CPU 画质自适应，确保 pinia store 已就绪
 setTimeout(autoConfigureCpuPerformance, 1000);
