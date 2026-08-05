@@ -58,17 +58,19 @@
             </option>
           </select>
 
-          <!-- Kimi/BoCha 隐藏认证区块；仅自定义端点显示 API Key 与地址字段 -->
+          <!-- 独立端点模式下 kimi/bocha/custom 后端都强制校验 API Key，始终显示输入框 -->
+          <label class="inline-flex items-center font-medium text-brand mt-4">
+            {{ $t('ui.toolCalls.apiKey') }}
+          </label>
+          <input
+            type="password"
+            v-model="form.web_search.api_key"
+            :placeholder="$t('ui.toolCalls.apiKeyPlaceholder')"
+            class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
+          />
+
+          <!-- 仅自定义端点需要填写地址；kimi/bocha 使用各自的固定端点 -->
           <template v-if="form.web_search.provider === 'custom'">
-            <label class="inline-flex items-center font-medium text-brand mt-4">
-              {{ $t('ui.toolCalls.apiKey') }}
-            </label>
-            <input
-              type="password"
-              v-model="form.web_search.api_key"
-              :placeholder="$t('ui.toolCalls.apiKeyPlaceholder')"
-              class="w-full mt-2 px-3 py-2.5 border rounded-lg text-sm text-white bg-white/10 backdrop-blur-xl backdrop-saturate-150 border-white/10 shadow-glass focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all duration-200"
-            />
 
             <label class="inline-flex items-center font-medium text-brand mt-4">
               {{ $t('ui.toolCalls.baseUrl') }}
