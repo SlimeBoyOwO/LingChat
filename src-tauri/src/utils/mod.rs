@@ -9,4 +9,5 @@ pub mod path;
 pub mod prompt;
 pub mod script_paths;
 pub mod system;
+pub mod tls;
 pub mod yaml_file;

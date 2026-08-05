@@ -216,9 +216,13 @@ fn enrich_discussions(discussions: &mut [Discussion]) {
 // ─── HTTP Client ────────────────────────────────────────────────
 
 fn build_client() -> Result<reqwest::Client, String> {
+    // TLS 用 webpki-roots（见 crate::utils::tls::build_tls_config），
+    // 绕开 rustls-platform-verifier 在 Android 上的 TLS panic
+    let tls_config = crate::utils::tls::build_tls_config()?;
     reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .user_agent("LingChat-Workshop/1.0")
+        .tls_backend_preconfigured(tls_config)
         .build()
         .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))
 }
