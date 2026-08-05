@@ -54,7 +54,7 @@ export default {
     "exitGame": "退出遊戲",
     "freeDialogue": "自由傾偈模式",
     "storyMode": "劇情模式",
-    "scriptEditor": "劇本編輯器",
+    "scriptEditor": "創意工坊",
     "miniGame": "小遊戲（開發緊）",
     "back": "返回"
   },

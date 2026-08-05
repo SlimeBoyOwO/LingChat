@@ -282,6 +282,15 @@ export default {
       "yearsAgo": "{n} 年前"
     }
   },
+  "plugins": {
+    "title": "插件",
+    "envHint": "環境變數（從進程讀取）：",
+    "envFromProcess": "來自進程環境",
+    "saveConfig": "儲存",
+    "empty": "未搵到插件。請將插件資料夾放入 data/plugins/ 目錄",
+    "delete": "刪除",
+    "deleteConfirm": "確定要刪除插件「{name}」嗎？會刪除插件目錄，不可恢復"
+  },
   "adventurePanel": {
     "header": {
       "title": "冒險總覽"
@@ -717,6 +726,19 @@ export default {
       "character": "測試角色",
       "bubble": "測試氣泡",
       "achievement": "測試成就"
+    },
+    "device": {
+      "title": "輸出音頻設備",
+      "selectTitle": "揀音頻輸出設備",
+      "systemDefault": "系統默認",
+      "currentDefault": "（依家默認）",
+      "getLabels": "攞設備名",
+      "retryLabels": "重新攞設備名",
+      "usingSystemDefault": "依家用緊系統默認輸出設備",
+      "currentOutput": "依家輸出：{label}",
+      "unavailableFallback": "輸出設備唔可用（已退回系統默認）",
+      "labelsDenied": "冇攞到授權，顯示唔到設備名，可以喺系統設定允許咗再試",
+      "unsupported": "呢個環境唔支持切換音頻輸出設備"
     },
     "bgm": {
       "title": "背景音樂設定",

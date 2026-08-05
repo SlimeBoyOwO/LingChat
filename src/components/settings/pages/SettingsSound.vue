@@ -1,5 +1,48 @@
 <template>
   <MenuPage>
+    <!-- 输出音频设备切换（顶部） -->
+    <MenuItem :title="$t('settings.sound.device.title')">
+      <template #header>
+        <Speaker :size="20" class="text-amber-400" />
+      </template>
+      <div v-if="audioOutputSupported" class="flex flex-col gap-2 w-full">
+        <div class="flex items-stretch gap-2 w-full">
+          <select
+            :value="currentDeviceId"
+            class="output-device-select flex-1 min-w-0 cursor-pointer bg-white/10 text-white border border-white/20 rounded-lg pl-3 pr-8 py-2 text-sm outline-none focus:border-(--accent-color) transition-colors appearance-none"
+            style="color-scheme: dark"
+            @change="onOutputDeviceChange"
+            :title="$t('settings.sound.device.selectTitle')"
+          >
+            <option value="">{{ $t('settings.sound.device.systemDefault') }}</option>
+            <option v-for="d in outputDevices" :key="d.deviceId" :value="d.deviceId">
+              {{ d.label }}{{ d.isDefault ? $t('settings.sound.device.currentDefault') : '' }}
+            </option>
+          </select>
+          <button
+            v-if="!labelsAvailable"
+            type="button"
+            class="flex-none inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg bg-white/10 text-white border border-white/20 cursor-pointer text-sm transition-colors hover:border-(--accent-color) hover:bg-white/20 active:bg-white/30"
+            @click="requestDeviceLabelsAndRefresh"
+            :title="permissionDenied ? $t('settings.sound.device.retryLabels') : $t('settings.sound.device.getLabels')"
+          >
+            <ScanLine :size="15" /> {{ permissionDenied ? $t('settings.sound.device.retryLabels') : $t('settings.sound.device.getLabels') }}
+          </button>
+        </div>
+
+        <div class="w-full">
+          <span class="block text-xs text-gray-300 truncate">{{ currentDeviceLabel }}</span>
+          <p
+            v-if="!labelsAvailable && permissionDenied"
+            class="text-xs text-amber-400/80 leading-snug mt-1"
+          >
+            {{ $t('settings.sound.device.labelsDenied') }}
+          </p>
+        </div>
+      </div>
+      <p v-else class="text-xs text-gray-400">{{ $t('settings.sound.device.unsupported') }}</p>
+    </MenuItem>
+
     <!-- 音量控制部分 -->
     <MenuItem :title="$t('settings.sound.volume.character')" size="small">
       <template #header>
@@ -315,6 +358,16 @@ import { useUIStore } from '../../../stores/modules/ui/ui'
 import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { useSettingsStore } from '../../../stores/modules/settings'
 import {
+  currentDeviceId,
+  devices as outputDevices,
+  labelsAvailable,
+  permissionDenied,
+  refreshDevices,
+  requestDeviceLabels,
+  setDevice,
+  supported as audioOutputSupported,
+} from '../../../utils/audioOutputManager'
+import {
   AudioLines,
   FlaskConical,
   MessageCircle,
@@ -333,6 +386,8 @@ import {
   CloudRain,
   Wind,
   X,
+  Speaker,
+  ScanLine,
 } from 'lucide-vue-next'
 
 const uiStore = useUIStore()
@@ -363,6 +418,25 @@ const ambientVolume = computed({
   set: (val: number) => settingsStore.update('audio.ambientVolume', val),
 })
 
+// ========== 输出音频设备（设置顶部） ==========
+const currentDeviceLabel = computed(() => {
+  if (!currentDeviceId.value) return t('settings.sound.device.usingSystemDefault')
+  const found = outputDevices.value.find((d) => d.deviceId === currentDeviceId.value)
+  return found
+    ? t('settings.sound.device.currentOutput', { label: found.label })
+    : t('settings.sound.device.unavailableFallback')
+})
+
+const onOutputDeviceChange = async (e: Event) => {
+  const target = e.target as HTMLSelectElement
+  await setDevice(target.value)
+}
+
+const requestDeviceLabelsAndRefresh = async () => {
+  await requestDeviceLabels(true)
+  await refreshDevices(false)
+}
+
 // 音频引用
 const characterTestPlayer = ref<HTMLAudioElement | null>(null)
 const bubbleTestPlayer = ref<HTMLAudioElement | null>(null)
@@ -375,7 +449,6 @@ interface MusicItem {
 }
 
 const musicList = ref<MusicItem[]>([])
-const currentMusicName = ref(t('settings.sound.bgm.noMusicSelected'))
 
 // 批量上传状态
 const selectedPaths = ref<string[]>([])
@@ -431,15 +504,14 @@ const inferMusicNameFromUrl = (musicUrl: string): string => {
   return fileName.replace(/\.[^/.]+$/, '') || fileName
 }
 
-const syncCurrentMusicName = () => {
+// 当前音乐名：computed 依赖 uiStore.currentBackgroundMusic / musicList / locale，
+// 切歌、删歌或切换语言时会自动重新求值（无需手动同步）
+const currentMusicName = computed(() => {
   const currentUrl = uiStore.currentBackgroundMusic
-  if (!currentUrl || currentUrl === 'None') {
-    currentMusicName.value = t('settings.sound.bgm.noMusicSelected')
-    return
-  }
+  if (!currentUrl || currentUrl === 'None') return t('settings.sound.bgm.noMusicSelected')
   const matched = musicList.value.find((item) => item.url === currentUrl)
-  currentMusicName.value = matched?.name || inferMusicNameFromUrl(currentUrl)
-}
+  return matched?.name || inferMusicNameFromUrl(currentUrl)
+})
 
 // 音量更新逻辑
 const updateCharacterVolume = (value: number) => {
@@ -612,13 +684,7 @@ watch(
   },
 )
 
-watch(
-  () => uiStore.currentBackgroundMusic,
-  () => {
-    syncCurrentMusicName()
-    // 确保本地播放器的 URL 实时跟随 Store
-  },
-)
+// currentMusicName 已改为 computed，自动依赖 uiStore.currentBackgroundMusic，无需手动 watch 同步
 
 // 监听播放器状态控制本地播放器
 watch(
@@ -662,7 +728,6 @@ const playAchievementTestSound = () => {
 
 const loadMusicList = async () => {
   musicList.value = await musicGetAll()
-  syncCurrentMusicName()
 }
 
 const deleteMusic = async (music: MusicItem) => {
@@ -675,7 +740,6 @@ const deleteMusic = async (music: MusicItem) => {
 
     if (uiStore.currentBackgroundMusic === deletedMusicUrl) {
       uiStore.currentBackgroundMusic = 'None'
-      currentMusicName.value = t('settings.sound.bgm.noMusicSelected')
       await setCurrentBackgroundMusic('None')
 
       if (backgroundAudioPlayer.value) {
@@ -726,7 +790,6 @@ const playPauseButtonText = computed(() => (!uiStore.bgMusicPaused ? t('settings
 
 const playMusic = async (music: MusicItem) => {
   let musicUrl = music.url
-  currentMusicName.value = music.name
 
   // 单曲循环的逻辑要更特殊一点
   // if (uiStore.bgMusicMode === 'loop-single') {
@@ -794,12 +857,24 @@ onMounted(async () => {
       }
     }
   }
-
-  syncCurrentMusicName()
 })
 </script>
 
 <style>
+/* 原生 select 下拉弹层跟随深色主题，避免白底白字 */
+.output-device-select {
+  color-scheme: dark;
+}
+/* 显式设置选项背景，兜底 color-scheme 未生效的情况 */
+.output-device-select option {
+  background-color: #1e1e2e;
+  color: #e2e8f0;
+}
+.output-device-select option:checked {
+  background-color: #3b82f6;
+  color: #ffffff;
+}
+
 /* 仅保留无法用简短 Tailwind 涵盖的自定义滚动条样式 */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;

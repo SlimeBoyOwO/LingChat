@@ -282,6 +282,15 @@ export default {
       yearsAgo: "{n} years ago",
     },
   },
+  plugins: {
+    title: "Plugins",
+    envHint: "Environment variables (read from the process):",
+    envFromProcess: "from process env",
+    saveConfig: "Save",
+    empty: "No plugins found. Put a plugin folder in data/plugins/",
+    delete: "Delete",
+    deleteConfirm: "Delete plugin \"{name}\"? This removes the plugin folder and cannot be undone.",
+  },
   adventurePanel: {
     header: {
       title: "Adventure Overview",
@@ -718,6 +727,19 @@ export default {
       character: "Test Character",
       bubble: "Test Bubble",
       achievement: "Test Achievement",
+    },
+    device: {
+      title: "Audio Output Device",
+      selectTitle: "Select audio output device",
+      systemDefault: "System Default",
+      currentDefault: " (Default)",
+      getLabels: "Get Device Names",
+      retryLabels: "Retry Getting Names",
+      usingSystemDefault: "Currently using the system default output device",
+      currentOutput: "Current output: {label}",
+      unavailableFallback: "Output device unavailable (reverted to system default)",
+      labelsDenied: "Permission not granted — can't show device names. Allow it in system settings and retry",
+      unsupported: "Switching audio output devices is not supported in this environment",
     },
     bgm: {
       title: "Background Music Settings",

@@ -86,7 +86,7 @@ pub fn built_in_registry(
     tool_settings: SharedToolSettings,
     app: tauri::AppHandle,
 ) -> Result<ToolRegistry> {
-    let mut registry = ToolRegistry::new();
+    let registry = ToolRegistry::new();
     registry.register(Arc::new(CurrentTimeTool))?;
     registry.register(Arc::new(WebSearchTool::new(tool_settings.clone(), app)))?;
     registry.register(Arc::new(GetAllSchedule))?;
