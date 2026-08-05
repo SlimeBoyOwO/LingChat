@@ -157,6 +157,10 @@ data/game_data/skills/**
 !data/game_data/skills/**/
 !data/game_data/skills/**/*
 
+# 插件，仅示例插件保留
+data/plugins/*
+!data/plugins/tavily/
+
 # ============================================================
 #        文档和其他工具 (Documentation & Other Tools)
 # ============================================================
