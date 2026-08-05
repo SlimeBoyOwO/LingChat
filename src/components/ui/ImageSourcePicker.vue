@@ -109,8 +109,13 @@ function onEsc() {
 
 // 用户切到后台(扣 home / 拉下通知中心 / 弹出权限框等)时自动 cancel,
 // 避免 useScreenshot.isCapturing 永远卡 true。
+// 仅在 picker 会话真正打开时取消,桌面端 isOpen 恒为 false,不会误触发 cancel_screenshot。
 function onVisibilityChange() {
-  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+  if (
+    typeof document !== 'undefined' &&
+    document.visibilityState === 'hidden' &&
+    isOpen.value
+  ) {
     cancel()
   }
 }
@@ -131,8 +136,9 @@ onMounted(() => {
 })
 
 // 路由切换 / 父组件卸载时兜底 cancel,防止 isCapturing 卡死。
+// 仅当 picker 会话真正打开时才取消,避免桌面端切路由误触发 cancel_screenshot。
 onBeforeUnmount(() => {
-  cancel()
+  if (isOpen.value) cancel()
 })
 
 onUnmounted(() => {
