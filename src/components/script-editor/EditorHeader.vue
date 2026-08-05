@@ -19,11 +19,20 @@ type TabKey =
   | 'validate'
   | 'agent-chat'
   | 'agent-settings'
+  | 'appearance'
 
 const tabs: {
   key: TabKey
   label: string
-  icon: 'adventure' | 'setting' | 'character' | 'background' | 'achievement' | 'bot' | 'sliders'
+  icon:
+    | 'adventure'
+    | 'setting'
+    | 'character'
+    | 'background'
+    | 'achievement'
+    | 'bot'
+    | 'sliders'
+    | 'palette'
 }[] = [
   { key: 'flow', label: '章节流程', icon: 'adventure' },
   { key: 'config', label: '剧本设置', icon: 'setting' },
@@ -32,6 +41,7 @@ const tabs: {
   { key: 'validate', label: '校验', icon: 'achievement' },
   { key: 'agent-chat', label: 'AI 助手', icon: 'bot' },
   { key: 'agent-settings', label: '助手设置', icon: 'sliders' },
+  { key: 'appearance', label: '外观', icon: 'palette' },
 ]
 
 // ---- nav 指示条（与 SettingsNav 同一套做法）----
@@ -78,8 +88,14 @@ const moveIndicator = async (animate = true) => {
   bar.style.width = `${box.width}px`
 }
 
-watch(() => store.tab, () => moveIndicator())
-watch(() => store.detail?.package.key, () => moveIndicator())
+watch(
+  () => store.tab,
+  () => moveIndicator(),
+)
+watch(
+  () => store.detail?.package.key,
+  () => moveIndicator(),
+)
 
 let navObserver: ResizeObserver | null = null
 
@@ -92,7 +108,7 @@ const observeNav = () => {
 }
 
 const switchTab = (key: TabKey) => {
-  if (!store.detail && key !== 'flow' && key !== 'agent-chat' && key !== 'agent-settings') return
+  if (!store.detail && !['flow', 'agent-chat', 'agent-settings', 'appearance'].includes(key)) return
   store.tab = key
   if (key === 'validate') void store.runValidation()
   if (key === 'assets') {
@@ -110,9 +126,10 @@ const saveLabel = computed(() => {
   if (store.dirty) return '有未保存改动'
   if (store.lastSavedAt) {
     const d = new Date(store.lastSavedAt)
-    return `已自动保存 · ${String(d.getHours()).padStart(2, '0')}:${String(
-      d.getMinutes(),
-    ).padStart(2, '0')}`
+    return `已自动保存 · ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(
+      2,
+      '0',
+    )}`
   }
   return '已保存'
 })
@@ -131,15 +148,45 @@ onUnmounted(() => {
 <template>
   <div>
     <!-- 顶栏：与 SettingsNav 同构 -->
-    <div class="flex w-full items-center justify-between px-5 py-2">
-      <span class="ml-5 text-[0.95rem] font-bold tracking-[0.5px] text-brand whitespace-nowrap">LingChat 剧本编辑器</span>
+    <div class="flex
+      w-full
+      items-center
+      justify-between
+      px-5
+      py-2">
+      <span class="ml-5
+        text-[0.95rem]
+        font-bold
+        tracking-[0.5px]
+        text-brand
+        whitespace-nowrap"
+        >LingChat 剧本编辑器</span
+      >
       <nav
         ref="navEl"
-        class="relative flex h-full w-full flex-nowrap items-center justify-center gap-1 overflow-x-auto overflow-y-hidden px-2"
+        class="relative
+          flex
+          h-full
+          w-full
+          flex-nowrap
+          items-center
+          justify-center
+          gap-1
+          overflow-x-auto
+          overflow-y-hidden
+          px-2"
       >
         <div
           ref="indicatorEl"
-          class="absolute bottom-0 left-0 z-10 h-1 w-0 rounded-sm bg-brand shadow-[0_0_10px_rgba(121,217,255,0.4)]"
+          class="absolute
+            bottom-0
+            left-0
+            z-10
+            h-1
+            w-0
+            rounded-sm
+            bg-brand
+            shadow-[0_0_10px_rgba(121,217,255,0.4)]"
         ></div>
         <Button
           v-for="t in tabs"
@@ -149,14 +196,20 @@ onUnmounted(() => {
           :icon="t.icon"
           :active="store.tab === t.key"
           :disabled="
-            !store.detail && !['flow', 'agent-chat', 'agent-settings'].includes(t.key)
+            !store.detail && !['flow', 'agent-chat', 'agent-settings', 'appearance'].includes(t.key)
           "
           @click="switchTab(t.key)"
         >
-          <p class="hidden xl:block">{{ t.label }}</p>
+          <p class="hidden
+            xl:block">{{ t.label }}</p>
           <span
             v-if="t.key === 'validate' && store.report && store.report.errorCount > 0"
-            class="ml-1 rounded-full px-[5px] text-[0.6rem] text-white bg-red-500"
+            class="ml-1
+              rounded-full
+              px-[5px]
+              text-[0.6rem]
+              text-white
+              bg-red-500"
             >{{ store.report.errorCount }}</span
           >
         </Button>
@@ -164,16 +217,35 @@ onUnmounted(() => {
       <Icon
         icon="close"
         :size="40"
-        class="flex items-center justify-center rounded-full p-1.5 text-white cursor-pointer transition-all duration-300 ease-in-out hover:text-brand hover:bg-white/10 hover:rotate-90"
+        class="flex
+          items-center
+          justify-center
+          rounded-full
+          p-1.5
+          text-white
+          cursor-pointer
+          transition-all
+          duration-300
+          ease-in-out
+          hover:text-brand
+          hover:bg-white/10
+          hover:rotate-90"
         @click="emit('leave')"
       />
     </div>
 
     <!-- 面包屑 -->
-    <div class="flex items-center gap-2 px-8 pb-1 text-[0.8rem] text-white/55">
+    <div class="flex
+      items-center
+      gap-2
+      px-8
+      pb-1
+      text-[0.8rem]
+      text-white/55">
       <button
         v-if="store.detail"
-        class="text-brand hover:underline"
+        class="text-brand
+          hover:underline"
         @click="store.closeScript()"
       >
         ‹ 剧本列表
@@ -184,38 +256,69 @@ onUnmounted(() => {
         <span class="opacity-40">›</span>
         <button
           v-if="store.level === 'chapter'"
-          class="text-brand hover:underline"
+          class="text-brand
+            hover:underline"
           @click="store.backToFlow()"
         >
           {{ store.detail.package.scriptName }}
         </button>
         <b
           v-else
-          class="font-semibold text-white"
+          class="font-semibold
+            text-white"
           >{{ store.detail.package.scriptName }}</b
         >
 
         <template v-if="store.level === 'chapter' && store.chapter">
           <span class="opacity-40">›</span>
-          <b class="font-semibold text-white">{{ store.chapter.name || store.chapter.id }}</b>
-          <span class="text-[0.72rem] opacity-35">{{ store.chapter.id }}.yaml</span>
+          <b class="font-semibold
+            text-white">{{ store.chapter.name || store.chapter.id }}</b>
+          <span class="text-[0.72rem]
+            opacity-35">{{ store.chapter.id }}.yaml</span>
         </template>
       </template>
 
-      <span class="flex items-center gap-3 ml-auto">
+      <span class="flex
+        items-center
+        gap-3
+        ml-auto">
         <span
           v-if="store.detail"
-          class="inline-flex items-center gap-[5px] text-[0.75rem] text-white/50"
+          class="inline-flex
+            items-center
+            gap-[5px]
+            text-[0.75rem]
+            text-white/50"
         >
           <i
-            class="inline-block w-1.5 h-1.5 rounded-full"
+            class="inline-block
+              w-1.5
+              h-1.5
+              rounded-full"
             :class="store.dirty ? 'bg-amber-300' : 'bg-green-400'"
           ></i>
           {{ saveLabel }}
         </span>
         <template v-if="store.level === 'chapter'">
           <button
-            class="inline-flex items-center gap-1 border border-white/10 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 bg-white/6 transition-all duration-200 hover:enabled:text-white hover:enabled:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
+            class="inline-flex
+              items-center
+              gap-1
+              border
+              border-white/10
+              rounded-lg
+              px-3
+              py-[0.3rem]
+              text-[0.8rem]
+              whitespace-nowrap
+              text-white/70
+              bg-white/6
+              transition-all
+              duration-200
+              hover:enabled:text-white
+              hover:enabled:bg-white/[0.12]
+              disabled:cursor-not-allowed
+              disabled:opacity-40"
             :disabled="!store.canUndo"
             title="撤销（Ctrl / ⌘ + Z）"
             @click="store.undo()"
@@ -223,7 +326,24 @@ onUnmounted(() => {
             ↩ 撤销
           </button>
           <button
-            class="inline-flex items-center gap-1 border border-white/10 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 bg-white/6 transition-all duration-200 hover:enabled:text-white hover:enabled:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
+            class="inline-flex
+              items-center
+              gap-1
+              border
+              border-white/10
+              rounded-lg
+              px-3
+              py-[0.3rem]
+              text-[0.8rem]
+              whitespace-nowrap
+              text-white/70
+              bg-white/6
+              transition-all
+              duration-200
+              hover:enabled:text-white
+              hover:enabled:bg-white/[0.12]
+              disabled:cursor-not-allowed
+              disabled:opacity-40"
             :disabled="!store.canRedo"
             title="恢复（Ctrl / ⌘ + Shift + Z）"
             @click="store.redo()"
@@ -232,7 +352,24 @@ onUnmounted(() => {
           </button>
         </template>
         <button
-          class="inline-flex items-center gap-1 border border-white/10 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 bg-white/6 transition-all duration-200 hover:enabled:text-white hover:enabled:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
+          class="inline-flex
+            items-center
+            gap-1
+            border
+            border-white/10
+            rounded-lg
+            px-3
+            py-[0.3rem]
+            text-[0.8rem]
+            whitespace-nowrap
+            text-white/70
+            bg-white/6
+            transition-all
+            duration-200
+            hover:enabled:text-white
+            hover:enabled:bg-white/[0.12]
+            disabled:cursor-not-allowed
+            disabled:opacity-40"
           title="查看全部快捷键（? 键）"
           @click="emit('toggle-shortcut-help')"
         >
@@ -240,7 +377,21 @@ onUnmounted(() => {
         </button>
         <template v-if="store.detail">
           <button
-            class="inline-flex items-center gap-1 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap transition-all duration-200 border border-brand/45 text-brand bg-brand/14 hover:bg-brand/24"
+            class="inline-flex
+              items-center
+              gap-1
+              rounded-lg
+              px-3
+              py-[0.3rem]
+              text-[0.8rem]
+              whitespace-nowrap
+              transition-all
+              duration-200
+              border
+              border-brand/45
+              text-brand
+              bg-brand/14
+              hover:bg-brand/24"
             title="Ctrl / ⌘ + Enter"
             @click="emit('playtest')"
           >
@@ -254,9 +405,33 @@ onUnmounted(() => {
          一个卡住不动的画面困惑一阵 —— 那正是这条横幅要省掉的时间。 -->
     <div
       v-if="store.detail && store.readiness && !store.readiness.ok"
-      class="flex items-center gap-2.5 mx-5 mb-2 border border-amber-300/30 rounded-lg px-3 py-[7px] text-[0.76rem] leading-[1.7] text-amber-100/90 bg-amber-300/10"
+      class="flex
+        items-center
+        gap-2.5
+        mx-5
+        mb-2
+        border
+        border-amber-300/30
+        rounded-lg
+        px-3
+        py-[7px]
+        text-[0.76rem]
+        leading-[1.7]
+        text-amber-100/90
+        bg-amber-300/10"
     >
-      <span class="shrink-0 border border-amber-300/40 rounded-full px-2 py-px text-[0.66rem] font-semibold text-amber-300">试玩会卡住</span>
+      <span
+        class="shrink-0
+          border
+          border-amber-300/40
+          rounded-full
+          px-2
+          py-px
+          text-[0.66rem]
+          font-semibold
+          text-amber-300"
+        >试玩会卡住</span
+      >
       <span>{{ store.readiness.reason }}</span>
     </div>
   </div>

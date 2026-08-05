@@ -135,6 +135,8 @@ commands.allow = [
   "editor_create_script",
   "editor_delete_script",
   "editor_upload_asset",
+  "editor_upload_editor_bg",
+  "editor_upload_editor_bg_data",
   "editor_create_character",
   "editor_list_global_assets",
   "editor_list_asset_files",

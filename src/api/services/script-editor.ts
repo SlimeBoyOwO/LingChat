@@ -249,6 +249,21 @@ export type AssetScope = 'script' | 'global'
 export const uploadAsset = (key: string, kind: AssetKind, scope: AssetScope, srcPath: string) =>
   invoke<string>('editor_upload_asset', { key, kind, scope, srcPath })
 
+/**
+ * 上传编辑器自定义背景。只传源文件路径，由 Rust 复制到数据目录（与 uploadAsset
+ * 同一模式，见其后注释）；返回绝对路径，用 convertFileSrc 转 asset URL 显示。
+ * 重复导入覆盖旧图，'editorBg.path = ""' 即恢复默认背景。
+ */
+export const uploadEditorBg = (srcPath: string) =>
+  invoke<string>('editor_upload_editor_bg', { srcPath })
+
+/**
+ * 上传裁剪后的编辑器背景：dataUrl（data:image/webp;base64,...）由前端 cropperjs
+ * 裁剪输出，`name` 为输出文件名（原名去扩展名 + `_crop.webp`），后端解码落盘。
+ */
+export const uploadEditorBgData = (dataUrl: string, name: string) =>
+  invoke<string>('editor_upload_editor_bg_data', { data: dataUrl, name })
+
 /** 全局素材（game_data/backgrounds、musics、ambient） */
 export const listGlobalAssets = () => invoke<AssetIndex>('editor_list_global_assets')
 
@@ -271,6 +286,16 @@ export interface AssetFileIndex {
 /** 列素材（带路径与体积）。与只给文件名的两个命令并存，那两个喂下拉框 */
 export const listAssetFiles = (key: string, scope: AssetScope) =>
   invoke<AssetFileIndex>('editor_list_asset_files', { key, scope })
+
+/**
+ * 全局背景库（game_data/backgrounds）的文件列表，带绝对路径。
+ * 复用 editor_list_asset_files 的 global 落点：该落点不校验剧本 key，传空串即可。
+ * 供外观页「从已有背景选择」使用，选中即直接设为编辑器背景。
+ */
+export const listGlobalBackgrounds = () =>
+  invoke<AssetFileIndex>('editor_list_asset_files', { key: '', scope: 'global' }).then(
+    (idx) => idx.background,
+  )
 
 /** 删除素材。与章节、剧本一致，移到同级 .trash/ 而不是真删 */
 export const deleteAsset = (key: string, kind: AssetKind, scope: AssetScope, name: string) =>
