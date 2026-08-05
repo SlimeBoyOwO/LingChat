@@ -20,7 +20,13 @@ import { useUIStore } from '@/stores/modules/ui/ui'
 import { useDialogStore } from '@/stores/modules/ui/dialog'
 import { firstVisibleIndex } from '@/composables/useEventFolding'
 import { eventQueue } from '@/core/events/event-queue'
-import { AUTOSAVE_DELAY, UNDO_LIMIT, VALIDATE_DELAY, useEditorState } from './state'
+import {
+  AUTOSAVE_DELAY,
+  DEFAULT_EDITOR_BG,
+  UNDO_LIMIT,
+  VALIDATE_DELAY,
+  useEditorState,
+} from './state'
 import type { UndoFrame } from './state'
 import { useEditorGetters } from './getters'
 import { particleEffectOptions, canonicalEffectKey } from '@/components/game/standard/particles'
@@ -32,7 +38,9 @@ type Getters = ReturnType<typeof useEditorGetters>
  * 把 schema 里由后端常量驱动的下拉，改由前端注册表驱动。
  * 目前只有「背景特效」：用前端粒子注册表覆盖该字段 options，新增粒子只改前端。
  */
-function applyFrontendOverrides(schema: { events: { typeKey: string; fields: { key: string; options?: unknown[] }[] }[] } | null) {
+function applyFrontendOverrides(
+  schema: { events: { typeKey: string; fields: { key: string; options?: unknown[] }[] }[] } | null,
+) {
   if (!schema) return
   const effectField = schema.events
     .find((e) => e.typeKey === 'background_effect')
@@ -672,14 +680,61 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
       }
       // 素材页开着的时候要跟着变，否则刚导进来的图不出现在列表里
       if (s.assetFiles.value.script || s.assetFiles.value.global) void refreshAssetFiles()
-      notifyOk(
-        scope === 'global' ? '已导入为全局素材' : '已导入为剧本素材',
-        saved,
-      )
+      notifyOk(scope === 'global' ? '已导入为全局素材' : '已导入为剧本素材', saved)
       return saved
     } catch (e) {
       notifyError('导入素材失败', e)
       return null
+    }
+  }
+
+  /**
+   * 上传编辑器自定义背景。成功后将 `editorBg.path` 指向复制后的文件
+   * （Rust 落盘在数据目录），返回该路径；`path` 为空串表示用默认背景。
+   */
+  async function uploadEditorBg(srcPath: string): Promise<string | null> {
+    try {
+      const saved = await api.uploadEditorBg(srcPath)
+      setEditorBgPath(saved)
+      notifyOk('背景图已设置', '可在「外观」页调整模糊与压暗')
+      return saved
+    } catch (e) {
+      notifyError('设置背景图失败', e)
+      return null
+    }
+  }
+
+  /** 设置编辑器背景路径并自增版本号：asset URL 相同而内容变化时，`?v=` 参数强制绕过缓存 */
+  function setEditorBgPath(path: string) {
+    s.editorBg.value = { ...s.editorBg.value, path }
+    s.bgVersion.value += 1
+  }
+
+  /** 上传裁剪后的编辑器背景（cropperjs 输出 base64），成功后更新 path 并自增版本号 */
+  async function uploadEditorBgData(dataUrl: string, name: string): Promise<string | null> {
+    try {
+      const saved = await api.uploadEditorBgData(dataUrl, name)
+      setEditorBgPath(saved)
+      notifyOk('背景图已设置', '可在「外观」页调整模糊与压暗')
+      return saved
+    } catch (e) {
+      notifyError('设置背景图失败', e)
+      return null
+    }
+  }
+
+  /** 恢复默认背景（path 置空 + 版本自增，同上规避缓存） */
+  function resetEditorBg() {
+    s.editorBg.value = { ...DEFAULT_EDITOR_BG }
+    s.bgVersion.value += 1
+  }
+
+  /** 刷新全局背景库列表（game_data/backgrounds），供外观页「从已有背景选择」 */
+  async function refreshGlobalBgFiles() {
+    try {
+      s.globalBgFiles.value = await api.listGlobalBackgrounds()
+    } catch (e) {
+      notifyError('加载全局背景列表失败', e)
     }
   }
 
@@ -714,9 +769,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     if (!ok) return
     try {
       await api.deleteCharacter(key, folder)
-      s.detail.value.characters = s.detail.value.characters.filter(
-        (c) => c.folder !== folder,
-      )
+      s.detail.value.characters = s.detail.value.characters.filter((c) => c.folder !== folder)
       void refreshGlobalCharacters()
       await runValidation()
       notifyOk('角色已删除', `${displayName} 已被永久删除`)
@@ -745,9 +798,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     if (!key) return
     const dialog = useDialogStore()
     const where =
-      scope === 'global'
-        ? '（全局素材）删掉之后所有引用它的剧本都会找不到文件。'
-        : '（本剧本素材）'
+      scope === 'global' ? '（全局素材）删掉之后所有引用它的剧本都会找不到文件。' : '（本剧本素材）'
     const ok = await dialog.confirm(
       `确定删除「${name}」吗？\n\n${where}\n如果还有事件在引用它，删完校验会报「素材找不到」。`,
       '删除素材',
@@ -756,11 +807,7 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     try {
       await api.deleteAsset(key, kind, scope, name)
       // 三份列表都要刷：素材页的详情、属性面板下拉用的剧本内清单与全局清单
-      await Promise.all([
-        refreshAssetFiles(),
-        refreshGlobalAssets(),
-        reloadDetailAssets(),
-      ])
+      await Promise.all([refreshAssetFiles(), refreshGlobalAssets(), reloadDetailAssets()])
       await runValidation()
       notifyOk('素材已删除', `${name} 已被永久删除`)
     } catch (e) {
@@ -896,6 +943,11 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     startPreview,
     stopPreview,
     uploadAsset,
+    uploadEditorBg,
+    uploadEditorBgData,
+    setEditorBgPath,
+    resetEditorBg,
+    refreshGlobalBgFiles,
     createCharacter,
     deleteCharacter,
     refreshAssetFiles,
