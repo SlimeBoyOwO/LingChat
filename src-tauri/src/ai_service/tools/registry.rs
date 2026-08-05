@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::path::Path;
+use std::sync::{Arc, RwLock};
 
 use thiserror::Error;
 
@@ -18,11 +19,14 @@ pub enum RegistryError {
 }
 
 /// 应用级聊天工具注册表。
+///
+/// 内部使用 `RwLock`，支持运行期热注册/热注销（插件启用/禁用），
+/// 对外方法全部为 `&self`。
 #[derive(Default)]
 pub struct ToolRegistry {
-    tools: HashMap<String, Arc<dyn Tool>>,
-    order: Vec<String>,
-    permissions: ToolPermissionConfig,
+    tools: RwLock<HashMap<String, Arc<dyn Tool>>>,
+    order: RwLock<Vec<String>>,
+    permissions: RwLock<ToolPermissionConfig>,
 }
 
 impl ToolRegistry {
@@ -32,31 +36,49 @@ impl ToolRegistry {
     }
 
     /// 用持久化权限配置覆盖默认权限。
-    pub fn set_permissions(&mut self, permissions: ToolPermissionConfig) {
-        self.permissions = permissions;
+    pub fn set_permissions(&self, permissions: ToolPermissionConfig) {
+        *self.permissions.write().unwrap() = permissions;
+    }
+
+    /// 返回当前权限配置的克隆（供权限页读取）。
+    pub fn permissions(&self) -> ToolPermissionConfig {
+        self.permissions.read().unwrap().clone()
     }
 
     /// 注册工具；重复名称会失败。
-    pub fn register(&mut self, tool: Arc<dyn Tool>) -> Result<(), RegistryError> {
+    pub fn register(&self, tool: Arc<dyn Tool>) -> Result<(), RegistryError> {
         let name = tool.definition().function.name;
-        if self.tools.contains_key(&name) {
+        let mut tools = self.tools.write().unwrap();
+        if tools.contains_key(&name) {
             return Err(RegistryError::DuplicateName(name));
         }
-        self.order.push(name.clone());
-        self.tools.insert(name, tool);
+        self.order.write().unwrap().push(name.clone());
+        tools.insert(name, tool);
         Ok(())
+    }
+
+    /// 注销工具；不存在的工具忽略。
+    pub fn unregister(&self, name: &str) {
+        let mut tools = self.tools.write().unwrap();
+        if tools.remove(name).is_some() {
+            let mut order = self.order.write().unwrap();
+            order.retain(|n| n != name);
+        }
     }
 
     /// 按名称查找工具。
     pub fn get(&self, name: &str) -> Option<Arc<dyn Tool>> {
-        self.tools.get(name).cloned()
+        self.tools.read().unwrap().get(name).cloned()
     }
 
     /// 按注册顺序返回工具定义快照。
     pub fn definitions(&self) -> Vec<ToolDefinition> {
+        let tools = self.tools.read().unwrap();
         self.order
+            .read()
+            .unwrap()
             .iter()
-            .filter_map(|name| self.tools.get(name))
+            .filter_map(|name| tools.get(name))
             .map(|tool| tool.definition())
             .collect()
     }
@@ -66,10 +88,13 @@ impl ToolRegistry {
         &self,
         allowed: &std::collections::HashSet<String>,
     ) -> Vec<ToolDefinition> {
+        let tools = self.tools.read().unwrap();
         self.order
+            .read()
+            .unwrap()
             .iter()
             .filter(|name| allowed.contains(*name))
-            .filter_map(|name| self.tools.get(name))
+            .filter_map(|name| tools.get(name))
             .map(|tool| tool.definition())
             .collect()
     }
@@ -90,11 +115,49 @@ impl ToolRegistry {
         source: GeneratorSource,
         role_name: Option<&str>,
     ) -> std::collections::HashSet<String> {
-        let all_names: std::collections::HashSet<String> = self.definitions()
+        let all_names: std::collections::HashSet<String> = self
+            .definitions()
             .into_iter()
             .map(|d| d.function.name)
             .collect();
-        self.permissions.allowed_tools(source, role_name, &all_names)
+        self.permissions
+            .read()
+            .unwrap()
+            .allowed_tools(source, role_name, &all_names)
+    }
+
+    /// 把插件工具名并入 available_tools 展示列表（不落盘）。
+    pub fn add_available_tools(&self, names: &[String]) {
+        let mut perms = self.permissions.write().unwrap();
+        let mut merged: std::collections::HashSet<String> =
+            perms.available_tools.iter().cloned().collect();
+        merged.extend(names.iter().cloned());
+        perms.available_tools = merged.into_iter().collect();
+    }
+
+    /// 从 available_tools 展示列表移除插件工具名（插件禁用时调用，不落盘）。
+    pub fn remove_available_tools(&self, names: &[String]) {
+        let mut perms = self.permissions.write().unwrap();
+        let mut set: std::collections::HashSet<String> =
+            perms.available_tools.iter().cloned().collect();
+        for name in names {
+            set.remove(name);
+        }
+        perms.available_tools = set.into_iter().collect();
+    }
+
+    /// 把当前权限配置落盘到 data_dir/tool_permissions.toml。
+    ///
+    /// 用原子 tmp+rename 模式（与 permissions.rs 内部一致）。
+    pub fn save_permissions(&self, data_dir: &Path) -> anyhow::Result<()> {
+        let perms = self.permissions.read().unwrap();
+        let path = data_dir.join(super::permissions::CONFIG_FILE_NAME);
+        perms.save(&path)
+    }
+
+    /// 返回 available_tools 展示列表（供前端权限页/插件页读取）。
+    pub fn available_tools(&self) -> Vec<String> {
+        self.permissions.read().unwrap().available_tools.clone()
     }
 }
 
@@ -106,12 +169,24 @@ mod tests {
     /// 验证注册、发现与重复名称保护。
     #[test]
     fn registers_tools_in_stable_order() {
-        let mut registry = ToolRegistry::new();
+        let registry = ToolRegistry::new();
         registry.register(Arc::new(CurrentTimeTool)).unwrap();
         assert!(registry.get("get_current_time").is_some());
         assert_eq!(registry.definitions()[0].function.name, "get_current_time");
         assert!(registry.register(Arc::new(CurrentTimeTool)).is_err());
         assert!(registry.get("missing").is_none());
     }
-}
 
+    /// 验证注销后不可见且不破坏其余顺序。
+    #[test]
+    fn unregisters_tools() {
+        let registry = ToolRegistry::new();
+        registry.register(Arc::new(CurrentTimeTool)).unwrap();
+        registry.unregister("get_current_time");
+        assert!(registry.get("get_current_time").is_none());
+        assert!(registry.definitions().is_empty());
+        // 重新注册应成功（名称已释放）
+        registry.register(Arc::new(CurrentTimeTool)).unwrap();
+        assert!(registry.get("get_current_time").is_some());
+    }
+}

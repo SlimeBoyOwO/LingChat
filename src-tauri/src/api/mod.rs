@@ -10,6 +10,7 @@ pub mod game;
 pub mod locale;
 pub mod music;
 pub mod pet;
+pub mod plugins;
 pub mod save;
 pub mod scene;
 pub mod schedule;

@@ -282,6 +282,15 @@ export default {
       "yearsAgo": "{n} 年前"
     }
   },
+  "plugins": {
+    "title": "插件",
+    "envHint": "環境變數（從進程讀取）：",
+    "envFromProcess": "來自進程環境",
+    "saveConfig": "儲存",
+    "empty": "未搵到插件。請將插件資料夾放入 data/plugins/ 目錄",
+    "delete": "刪除",
+    "deleteConfirm": "確定要刪除插件「{name}」嗎？會刪除插件目錄，不可恢復"
+  },
   "adventurePanel": {
     "header": {
       "title": "冒險總覽"

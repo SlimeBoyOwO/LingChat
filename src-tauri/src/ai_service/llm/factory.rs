@@ -16,7 +16,7 @@ use super::{LlmClient, LlmConfig};
 ///
 /// 这里改用 `webpki-roots`（内置 Mozilla CA 根证书）构造 rustls ClientConfig
 /// 注入 reqwest，绕开 platform-verifier —— 全平台一致，无需任何初始化。
-fn build_http_client(timeout_secs: u64) -> Result<Client> {
+pub(crate) fn build_http_client(timeout_secs: u64) -> Result<Client> {
     // 依赖树里 aws-lc-rs 和 ring 两个 provider 都被启用（reqwest 用 aws-lc，
     // 其他传递依赖用 ring），rustls 无法自动确定用哪个。
     // 用 builder_with_provider 显式指定 aws-lc-rs，不依赖全局 CryptoProvider

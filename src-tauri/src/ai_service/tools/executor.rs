@@ -207,7 +207,7 @@ mod tests {
     /// 验证执行器可执行合法工具并稳定返回错误。
     #[tokio::test]
     async fn executes_and_encodes_recoverable_errors() {
-        let mut registry = ToolRegistry::new();
+        let registry = ToolRegistry::new();
         registry.register(Arc::new(EchoTool)).unwrap();
         let executor = ToolExecutor::new(&registry);
         let ctx = test_context();
@@ -230,7 +230,7 @@ mod tests {
     /// 验证工具主动失败会被编码为可回填结果。
     #[tokio::test]
     async fn encodes_tool_errors() {
-        let mut registry = ToolRegistry::new();
+        let registry = ToolRegistry::new();
         registry.register(Arc::new(ErrorTool)).unwrap();
         let executor = ToolExecutor::new(&registry);
         let ctx = test_context();
@@ -243,7 +243,7 @@ mod tests {
     /// 验证超过执行期限的工具会返回超时结果。
     #[tokio::test]
     async fn encodes_timeouts() {
-        let mut registry = ToolRegistry::new();
+        let registry = ToolRegistry::new();
         registry.register(Arc::new(SlowTool)).unwrap();
         let executor = ToolExecutor::with_timeout(&registry, std::time::Duration::from_millis(1));
         let ctx = test_context();
