@@ -17,7 +17,7 @@ use super::{LlmClient, LlmConfig};
 /// 这里改用 webpki-roots（内置 Mozilla CA 根证书）构造 rustls ClientConfig
 /// 注入 reqwest（见 `utils::tls::build_tls_config`），绕开 platform-verifier
 /// —— 全平台一致，无需任何初始化。
-fn build_http_client(timeout_secs: u64) -> Result<Client> {
+pub(crate) fn build_http_client(timeout_secs: u64) -> Result<Client> {
     let tls_config = build_tls_config().map_err(anyhow::Error::msg)?;
     Client::builder()
         .read_timeout(Duration::from_secs(timeout_secs))

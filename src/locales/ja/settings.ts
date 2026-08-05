@@ -281,6 +281,15 @@ export default {
       yearsAgo: '{n} 年前',
     },
   },
+  plugins: {
+    title: 'プラグイン',
+    envHint: '環境変数（プロセスから読取）：',
+    envFromProcess: 'プロセス環境から',
+    saveConfig: '保存',
+    empty: 'プラグインが見つかりません。data/plugins/ にプラグインフォルダを置いてください',
+    delete: '削除',
+    deleteConfirm: 'プラグイン「{name}」を削除しますか？プラグインフォルダごと削除され、元に戻せません',
+  },
   adventurePanel: {
     header: {
       title: 'アドベンチャー概要',
@@ -716,6 +725,19 @@ export default {
       character: 'キャラクターをテスト',
       bubble: '吹き出しをテスト',
       achievement: '実績をテスト',
+    },
+    device: {
+      title: '音声出力デバイス',
+      selectTitle: '音声出力デバイスを選択',
+      systemDefault: 'システムデフォルト',
+      currentDefault: '（現在のデフォルト）',
+      getLabels: 'デバイス名を取得',
+      retryLabels: 'デバイス名を再取得',
+      usingSystemDefault: '現在システムデフォルトの出力デバイスを使用中',
+      currentOutput: '現在の出力：{label}',
+      unavailableFallback: '出力デバイスが利用できません（システムデフォルトに戻しました）',
+      labelsDenied: '権限がありません。デバイス名を表示できません。システム設定で許可してから再試行してください',
+      unsupported: 'この環境では音声出力デバイスの切り替えをサポートしていません',
     },
     bgm: {
       title: '背景音楽設定',

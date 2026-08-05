@@ -53,7 +53,7 @@ export default {
     exitGame: 'ゲーム終了',
     freeDialogue: 'フリー会話モード',
     storyMode: 'ストーリーモード',
-    scriptEditor: 'シナリオエディタ',
+    scriptEditor: 'クリエイティブ工房',
     miniGame: 'ミニゲーム（開発中）',
     back: '戻る',
   },

@@ -54,7 +54,7 @@ pub(crate) fn ensure_no_args(arguments: &Value, tool: &str) -> Result<(), String
 pub fn built_in_registry(
     role_names: impl IntoIterator<Item = (String, String)>,
 ) -> Result<ToolRegistry> {
-    let mut registry = ToolRegistry::new();
+    let registry = ToolRegistry::new();
     registry.register(Arc::new(CurrentTimeTool))?;
     registry.register(Arc::new(GetAllSchedule))?;
     registry.register(Arc::new(AddTodo))?;

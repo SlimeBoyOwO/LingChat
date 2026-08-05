@@ -282,6 +282,15 @@ export default {
       yearsAgo: '{n} 年前',
     },
   },
+  plugins: {
+    title: '插件',
+    envHint: '环境变量（从进程读取）：',
+    envFromProcess: '来自进程环境',
+    saveConfig: '保存',
+    empty: '未找到插件。请将插件文件夹放入 data/plugins/ 目录',
+    delete: '删除',
+    deleteConfirm: '确定要删除插件「{name}」吗？会删除插件目录，不可恢复',
+  },
   adventurePanel: {
     header: {
       title: '冒险总览',
@@ -717,6 +726,19 @@ export default {
       character: '测试角色',
       bubble: '测试气泡',
       achievement: '测试成就',
+    },
+    device: {
+      title: '输出音频设备',
+      selectTitle: '选择音频输出设备',
+      systemDefault: '系统默认',
+      currentDefault: '（当前默认）',
+      getLabels: '获取设备名称',
+      retryLabels: '重新获取设备名称',
+      usingSystemDefault: '当前使用系统默认输出设备',
+      currentOutput: '当前输出：{label}',
+      unavailableFallback: '当前输出设备不可用（已回退系统默认）',
+      labelsDenied: '未获得授权，无法显示设备名，可在系统设置中允许后重试',
+      unsupported: '当前环境不支持切换输出音频设备',
     },
     bgm: {
       title: '背景音乐设置',

@@ -3,7 +3,7 @@
 //! 对标 Python 版 `ling_chat/core/llm_providers/` 的工厂+ABC 模式。
 //! `LlmClient` 是薄包装，具体协议由 `LlmProvider` trait 实现处理。
 
-mod factory;
+pub(crate) mod factory;
 mod provider;
 pub mod provider_config;
 mod providers;
@@ -74,6 +74,9 @@ pub enum LlmChunk {
     Reasoning(String),
     /// 一轮流式请求结束后得到的完整工具调用，仅供工具闭环内部消费。
     ToolCalls(Vec<crate::ai_service::types::ToolCall>),
+    /// 流终止信号：归一化停止原因（"stop" / "max_tokens" / "tool_calls" / …）。
+    /// 由 provider 在流末尾发射，消费方按需忽略（剧本导师用它检测截断）。
+    StreamEnd { reason: Option<String> },
 }
 
 pub type ChunkStream = Pin<Box<dyn Stream<Item = Result<LlmChunk>> + Send>>;

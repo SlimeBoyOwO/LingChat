@@ -84,7 +84,7 @@ export class TypeWriter {
       if (!uiStore.enableChatEffectSound || !this.audioContext || this.soundBuffers.length === 0) {
         return
       }
-      if (uiStore.currentAvatarAudio !== 'None') return
+      if (uiStore.currentAvatarAudio !== 'None' && uiStore.showCharacterTitle !== '') return
 
       // Ensure context is running (may have been suspended by browser policy)
       if (this.audioContext.state === 'suspended') {
@@ -162,7 +162,10 @@ export class TypeWriter {
           this.textBuffer += text.charAt(i)
           if (this.writeFn) {
             this.writeFn(this.element, this.textBuffer)
-          } else if (this.element instanceof HTMLInputElement || this.element instanceof HTMLTextAreaElement) {
+          } else if (
+            this.element instanceof HTMLInputElement ||
+            this.element instanceof HTMLTextAreaElement
+          ) {
             this.element.value = this.textBuffer
           }
           if (this.onTextUpdateCallback) {
@@ -179,7 +182,10 @@ export class TypeWriter {
           const maxDelay = 200
           const minDelay = 10
           const randomVariation = this.speed * 0.2
-          const delay = maxDelay - ((this.speed - 1) / 99) * (maxDelay - minDelay) + Math.random() * randomVariation
+          const delay =
+            maxDelay -
+            ((this.speed - 1) / 99) * (maxDelay - minDelay) +
+            Math.random() * randomVariation
 
           this.timer = setTimeout(typing, delay)
         } else {
@@ -217,7 +223,10 @@ export class TypeWriter {
   public clear(): void {
     if (this.writeFn) {
       this.writeFn(this.element, '')
-    } else if (this.element instanceof HTMLInputElement || this.element instanceof HTMLTextAreaElement) {
+    } else if (
+      this.element instanceof HTMLInputElement ||
+      this.element instanceof HTMLTextAreaElement
+    ) {
       this.element.value = ''
     }
     this.textBuffer = ''
