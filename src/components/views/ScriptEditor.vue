@@ -3,14 +3,30 @@
     背景层必须自己造。窗口是 transparent: true（tauri.conf.json），设置面板之所以
     能透出画面是因为它盖在 MainChat 上；/script-editor 是独立路由，底下什么都没有，
     不给背景就直接透出桌面。Credits.vue 同理显式加了 bg-[#0a0a0c]。
-    这里用渐变而不是背景图，避免依赖 Git LFS 资源。
+
+    结构：bg-layer（渐变兜底）→ bg-image（背景图，模糊+压暗）→ bg-dim-mask（可调遮罩）。
+    默认背景图是主菜单同款的 background2.png —— 它是 Git LFS 资产，无 LFS 的
+    开发环境读出来是 131 字节指针，加载失败时浏览器自动跳过该图层露出渐变，
+    因此本地开发看到兜底渐变、CI 构建产物看到真实图，两种环境都不会破图。
   -->
   <div class="editor-root
     relative
     w-full
     h-full
     overflow-hidden">
-    <div class="bg-layer"></div>
+    <div
+      class="bg-layer"
+      :style="{
+        '--bg-blur': `${store.editorBg.blur}px`,
+        '--bg-dim': String(store.editorBg.dim),
+      }"
+    >
+      <div
+        class="bg-image"
+        :style="{ backgroundImage: `url(${bgImageSrc})` }"
+      ></div>
+      <div class="bg-dim-mask"></div>
+    </div>
 
     <EditorHeader
       @playtest="playtest"
@@ -101,6 +117,11 @@
         <AgentSettingsPanel />
       </MenuPage>
 
+      <!-- ============ 外观（背景/模糊/压暗） ============ -->
+      <MenuPage v-else-if="store.tab === 'appearance'">
+        <AppearanceTab />
+      </MenuPage>
+
       <!-- ============ 校验 ============ -->
       <ValidateTab v-else />
     </div>
@@ -120,7 +141,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { MenuPage } from '@/components/ui'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
@@ -135,278 +156,23 @@ import EditorModals from '@/components/script-editor/EditorModals.vue'
 import ShortcutHelpPanel from '@/components/script-editor/ShortcutHelpPanel.vue'
 import AgentChatPanel from '@/components/script-editor/agent/AgentChatPanel.vue'
 import AgentSettingsPanel from '@/components/script-editor/agent/AgentSettingsPanel.vue'
+import AppearanceTab from '@/components/script-editor/AppearanceTab.vue'
 import PreviewStage from '@/components/script-editor/PreviewStage.vue'
 import { eventQueue } from '@/core/events/event-queue'
-import { AssetKind, AssetScope, AssetFile, Diagnostic } from '@/api/services/script-editor'
 import { convertFileSrc } from '@tauri-apps/api/core'
-import { open as openDialog } from '@tauri-apps/plugin-dialog'
+// 默认背景与主菜单同款。Git LFS 资产：无 LFS 环境读出来是 131 字节指针，
+// 背景图加载失败会露出渐变兜底层（见模板注释），构建产物则是真实图。
+import defaultBg from '@/assets/images/background2.png'
 
 const router = useRouter()
 const store = useScriptEditorStore()
 
-type TabKey =
-  | 'flow'
-  | 'config'
-  | 'characters'
-  | 'assets'
-  | 'validate'
-  | 'agent-chat'
-  | 'agent-settings'
-
-const tabs: {
-  key: TabKey
-  label: string
-  icon: 'adventure' | 'setting' | 'character' | 'background' | 'achievement' | 'bot' | 'sliders'
-}[] = [
-  { key: 'flow', label: '章节流程', icon: 'adventure' },
-  { key: 'config', label: '剧本设置', icon: 'setting' },
-  { key: 'characters', label: '角色', icon: 'character' },
-  { key: 'assets', label: '素材', icon: 'background' },
-  { key: 'validate', label: '校验', icon: 'achievement' },
-  { key: 'agent-chat', label: '剧本导师', icon: 'bot' },
-  { key: 'agent-settings', label: '导师设置', icon: 'sliders' },
-]
-
-const assetKinds: { key: AssetKind; label: string }[] = [
-  { key: 'background', label: '背景图' },
-  { key: 'pic', label: '插图' },
-  { key: 'music', label: '背景音乐' },
-  { key: 'sound', label: '音效' },
-  { key: 'ambient', label: '环境音' },
-]
-
-// ---- 素材页 ----
-
-const isImageKind = (k: AssetKind) => k === 'background' || k === 'pic'
-
-/** 绝对路径 → webview 能加载的 asset URL，与 GameBackground / GameRoleAvatar 同一套 */
-const assetUrl = (path: string) => convertFileSrc(path)
-
-const filesOf = (scope: AssetScope, kind: AssetKind): AssetFile[] =>
-  store.assetFiles[scope]?.[kind] ?? []
-
-// 音效没有全局目录（issue #6），只展示「本剧本」一列；其余素材仍是「本剧本 + 全局」
-const scopesFor = (kind: AssetKind): AssetScope[] =>
-  kind === 'sound' ? ['script'] : ['script', 'global']
-
-const humanSize = (n: number) => {
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`
-  return `${(n / 1024 / 1024).toFixed(1)} MB`
-}
-
-// ---- 素材音频播放速度 ----
-const audioEls: Record<string, HTMLAudioElement | null> = {}
-const audioRates = reactive<Record<string, number>>({})
-const speedMenu = ref<string | null>(null)
-const setAudioRef = (path: string) => (el: unknown) => {
-  audioEls[path] = el as HTMLAudioElement | null
-  if (!(path in audioRates)) audioRates[path] = 1
-}
-const onDocClick = () => {
-  speedMenu.value = null
-}
-const setRate = (path: string, rate: number) => {
-  const a = audioEls[path]
-  if (a) {
-    a.playbackRate = rate
-    audioRates[path] = rate
-  }
-}
-
-// ---- nav 指示条（与 SettingsNav 同一套做法）----
-const navEl = ref<HTMLElement | null>(null)
-const indicatorEl = ref<HTMLElement | null>(null)
-const tabRefs: Record<string, HTMLElement | null> = {}
-
-const setTabRef = (key: string, el: unknown) => {
-  tabRefs[key] = (el as { $el?: HTMLElement } | null)?.$el ?? null
-}
-
-/**
- * 指示条定位。
- *
- * 之前它经常停在空白处，原因是位置只在「切标签」和「换剧本」时算一次，而
- * 按钮宽度会在别的时刻变：校验跑完后「校验」上多一个错误数角标、窗口跨过
- * xl 断点时文字标签整体显隐、字体加载完成后每个字的宽度都变。nav 是
- * `justify-content: center`，任何一个按钮变宽都会把**所有**按钮推走，于是
- * 上一次算出来的 left 就落到了两个按钮中间的空当里。
- *
- * 所以这里不再指望「在正确的时刻算一次」，而是让尺寸变化自己来触发重算：
- * ResizeObserver 同时盯着 nav 和每一个按钮。另外用 getBoundingClientRect
- * 相对 nav 求差而不是 offsetLeft —— 后者依赖 offsetParent 恰好是 nav，
- * 一旦有人给中间层加了 position 就会静默偏移。
- */
-const moveIndicator = async (animate = true) => {
-  await nextTick()
-  const bar = indicatorEl.value
-  const nav = navEl.value
-  if (!bar || !nav) return
-  const target = tabRefs[store.tab]
-  bar.style.transition = animate
-    ? 'left 0.3s cubic-bezier(0.18, 0.89, 0.32, 1), width 0.3s cubic-bezier(0.18, 0.89, 0.32, 1)'
-    : 'none'
-  if (!target) {
-    // 目标不在了就收起来。早先这里是直接 return，于是指示条保持在上一次的
-    // 位置不动 —— 那正是「出现在空白处」最刺眼的一种。
-    bar.style.width = '0px'
-    return
-  }
-  const navBox = nav.getBoundingClientRect()
-  const box = target.getBoundingClientRect()
-  bar.style.left = `${box.left - navBox.left + nav.scrollLeft}px`
-  bar.style.width = `${box.width}px`
-}
-
-watch(
-  () => store.tab,
-  () => moveIndicator(),
+/** 编辑器背景图源：自定义时用 asset URL，默认时用内置背景图。
+ *  追加 `?v=` 版本号做缓存击穿：同扩展名覆盖上传时 asset URL 不变，
+ *  asset protocol 无缓存头，WebView 启发式缓存会显示旧图，版本号强制重新请求。 */
+const bgImageSrc = computed(() =>
+  store.editorBg.path ? `${convertFileSrc(store.editorBg.path)}?v=${store.bgVersion}` : defaultBg,
 )
-watch(
-  () => store.detail?.package.key,
-  () => moveIndicator(),
-)
-
-let navObserver: ResizeObserver | null = null
-
-const observeNav = () => {
-  if (typeof ResizeObserver === 'undefined' || !navEl.value) return
-  // 不加动画：这类重算是「布局变了跟着修正」，滑一下反而像在乱动
-  navObserver = new ResizeObserver(() => void moveIndicator(false))
-  navObserver.observe(navEl.value)
-  for (const el of Object.values(tabRefs)) if (el) navObserver.observe(el)
-}
-
-const switchTab = (key: TabKey) => {
-  if (!store.detail && key !== 'flow' && key !== 'agent-chat' && key !== 'agent-settings') return
-  store.tab = key
-  if (key === 'validate') void store.runValidation()
-  if (key === 'assets') {
-    void store.refreshGlobalAssets()
-    void store.refreshAssetFiles()
-  }
-  if (key === 'characters') void store.refreshGlobalCharacters()
-  if (key === 'flow') {
-    // 有剧本：回到流程图时强制走一遍「落盘 → 重新校验」，图上画的才是磁盘里的真状态
-    if (store.detail && store.level === 'flow') void store.backToFlow()
-    // 无剧本：AI 助手可能刚写好新剧本，回来时刷新列表让它出现
-    else if (!store.detail) void store.refreshScripts()
-  }
-}
-
-// ---- 面包屑 ----
-/** 没打开剧本时，顶部面包屑按当前 tab 显示所在区块（AI 助手无剧本也能进） */
-const noDetailTitle = computed(() => {
-  switch (store.tab) {
-    case 'agent-chat':
-      return '剧本导师'
-    case 'agent-settings':
-      return '导师设置'
-    default:
-      return '剧本列表'
-  }
-})
-
-const saveLabel = computed(() => {
-  if (store.saving) return '正在保存…'
-  if (store.dirty) return '有未保存改动'
-  if (store.lastSavedAt) {
-    const d = new Date(store.lastSavedAt)
-    return `已自动保存 · ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(
-      2,
-      '0',
-    )}`
-  }
-  return '已保存'
-})
-
-// ---- 校验页 ----
-const diagnosticsOf = (chapterId: string) =>
-  (store.report?.diagnostics ?? []).filter((d) => d.chapter === chapterId)
-
-const chapterHas = (chapterId: string) => diagnosticsOf(chapterId).length > 0
-
-const jumpTo = async (d: Diagnostic) => {
-  if (!d.chapter) {
-    store.tab = 'config'
-    return
-  }
-  store.tab = 'flow'
-  if (store.chapter?.id !== d.chapter) {
-    // openChapter 可能失败（读盘出错），失败时不要把 selectedEvent 设成别的章节的下标
-    if (!(await store.openChapter(d.chapter))) return
-  } else {
-    store.level = 'chapter'
-  }
-  if (d.eventIndex !== undefined) store.selectedEvent = d.eventIndex
-}
-
-// ---- 剧本设置 ----
-const configDraft = reactive<Record<string, unknown>>({})
-
-watch(
-  () => store.detail?.storyConfig,
-  (cfg) => {
-    for (const k of Object.keys(configDraft)) delete configDraft[k]
-    Object.assign(configDraft, JSON.parse(JSON.stringify(cfg ?? {})))
-  },
-  { immediate: true, deep: false },
-)
-
-const setConfig = (key: string, value: unknown) => {
-  configDraft[key] = value
-}
-
-const adventureObj = computed<Record<string, unknown>>(() => {
-  const a = configDraft.adventure
-  return a && typeof a === 'object' ? (a as Record<string, unknown>) : {}
-})
-
-const isAdventure = computed(() => adventureObj.value.is_adventure === true)
-
-const adventureField = (k: string) => {
-  const v = adventureObj.value[k]
-  return v === undefined || v === null ? '' : String(v)
-}
-
-const setAdventure = (k: string, v: unknown) => {
-  const next = { ...adventureObj.value, [k]: v }
-  configDraft.adventure = next
-}
-
-/** 抽出来是因为内联写法要带 `(e.target as HTMLInputElement)`，模板里读起来太吵 */
-const onAdventureText = (k: string, e: Event) =>
-  setAdventure(k, (e.target as HTMLInputElement).value)
-
-const onAdventureNumber = (k: string, e: Event) =>
-  setAdventure(k, Number((e.target as HTMLInputElement).value) || 0)
-
-const toggleAdventure = (on: boolean) => {
-  if (on) {
-    setAdventure('is_adventure', true)
-  } else {
-    // 关掉只改标志，其余字段原样留着 —— 作者可能只是临时关掉
-    setAdventure('is_adventure', false)
-  }
-}
-
-const saveConfig = () => {
-  void store.saveStoryConfig(JSON.parse(JSON.stringify(configDraft)))
-}
-
-// ---- 素材导入 ----
-const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif']
-const AUDIO_EXT = ['mp3', 'wav', 'ogg', 'flac', 'm4a']
-
-const importAsset = async (kind: AssetKind, scope: AssetScope) => {
-  const isImage = kind === 'background' || kind === 'pic'
-  const picked = await openDialog({
-    multiple: false,
-    filters: [{ name: isImage ? '图片' : '音频', extensions: isImage ? IMAGE_EXT : AUDIO_EXT }],
-  })
-  if (typeof picked !== 'string') return
-  await store.uploadAsset(kind, scope, picked)
-}
 
 // ---- 弹窗 ----
 const modal = ref<'script' | 'chapter' | 'character' | 'importChar' | null>(null)
@@ -562,10 +328,30 @@ onUnmounted(async () => {
   position: absolute;
   inset: 0;
   z-index: 0;
+  overflow: hidden;
+  /* 渐变兜底：背景图缺失（无 LFS 的本地环境）或加载失败时露出的底色，
+     与改造前的实现一致 */
   background:
     radial-gradient(900px 500px at 78% 12%, rgba(121, 217, 255, 0.1), transparent 62%),
     radial-gradient(700px 600px at 15% 88%, rgba(90, 140, 190, 0.12), transparent 64%),
     linear-gradient(168deg, #101a26 0%, #16202c 45%, #1b2430 100%);
+}
+.bg-image {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  /* 默认背景图亮度过高（主菜单那张，亮度均值 ~211/255），直接铺白字没法读，
+     固定压暗再叠加可调模糊；模糊半径由滑块写入 --bg-blur */
+  filter: brightness(0.35) blur(var(--bg-blur, 12px));
+  /* 放大一点，避免模糊后四周露出透明边缘 */
+  transform: scale(1.02);
+}
+.bg-dim-mask {
+  position: absolute;
+  inset: 0;
+  /* 压暗遮罩不随图模糊；不透明度由滑块写入 --bg-dim */
+  background: rgba(0, 0, 0, var(--bg-dim, 0.3));
 }
 .editor-root > *:not(.bg-layer) {
   position: relative;

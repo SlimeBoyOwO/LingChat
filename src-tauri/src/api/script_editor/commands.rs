@@ -8,6 +8,8 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+// base64 0.21+ 的 decode 是 Engine trait 方法，必须引入 trait 才能调用
+use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value as JsonValue};
 use tauri::{AppHandle, Manager};
@@ -946,6 +948,86 @@ pub fn editor_upload_asset(
     }
     std::fs::copy(src, &target).map_err(|e| format!("复制素材失败: {}", e))?;
     Ok(name)
+}
+
+/// 上传编辑器自定义背景。
+///
+/// 与 `editor_upload_asset` 同一模式：只收**源文件路径**，由 Rust 复制 —— 用户从
+/// 任意位置选的文件不在 fs scope 内，大图走 IPC 又会 OOM。
+///
+/// 落盘为 `<data_dir>/editor/<清洗后的原文件名>`，保留用户原名便于识别；复制前
+/// 清空整个 `editor/` 目录（该目录专属于编辑器背景），磁盘上始终只有当前一张。
+#[tauri::command]
+pub fn editor_upload_editor_bg(src_path: String) -> Result<String, String> {
+    let src = Path::new(&src_path);
+    if !src.is_file() {
+        return Err(format!("源文件不存在: {}", src_path));
+    }
+
+    let ext = src
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    let allowed = ["png", "jpg", "jpeg", "webp", "bmp", "gif"];
+    if !allowed.contains(&ext.as_str()) {
+        return Err(format!(
+            "不支持的文件类型 .{}；背景图支持: {}",
+            ext,
+            allowed.join(" / ")
+        ));
+    }
+
+    // 只取文件名，杜绝用源路径拼出目标路径；保留原名，清洗掉非法字符
+    let raw_name = src
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .ok_or_else(|| "无法从源路径取出文件名".to_string())?;
+    let name = paths::sanitize_file_name(&raw_name)?;
+
+    let dir = data_dir().join("editor");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("无法创建背景目录: {}", e))?;
+    clear_editor_bg_dir(&dir)?;
+    let target = dir.join(&name);
+    std::fs::copy(src, &target).map_err(|e| format!("复制背景图失败: {}", e))?;
+    Ok(target.to_string_lossy().to_string())
+}
+
+/// 上传裁剪后的编辑器背景（base64 形式）。
+///
+/// 裁剪在浏览器端完成（cropperjs → canvas → webp），这里只负责解码落盘；
+/// `name` 为前端生成的输出文件名（原名去扩展名 + `_crop.webp`），同样做清洗。
+#[tauri::command]
+pub fn editor_upload_editor_bg_data(data: String, name: String) -> Result<String, String> {
+    // 兼容 data:image/webp;base64, 前缀与纯 base64 两种输入
+    let b64 = data.split(',').next_back().unwrap_or(&data).trim();
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .map_err(|e| format!("背景图数据解码失败: {}", e))?;
+    if bytes.len() < 4 {
+        return Err("背景图数据无效".to_string());
+    }
+
+    let name = paths::sanitize_file_name(&name)?;
+    let dir = data_dir().join("editor");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("无法创建背景目录: {}", e))?;
+    clear_editor_bg_dir(&dir)?;
+    let target = dir.join(&name);
+    std::fs::write(&target, &bytes).map_err(|e| format!("写入背景图失败: {}", e))?;
+    Ok(target.to_string_lossy().to_string())
+}
+
+/// 清空编辑器背景目录下的所有文件。
+///
+/// 该目录只属于「编辑器背景」一个功能，同一时刻磁盘上只允许存在当前这一张，
+/// 换扩展名/换文件名上传时旧文件必须被清掉，否则形成"覆盖不干净"的残留。
+fn clear_editor_bg_dir(dir: &Path) -> Result<(), String> {
+    for entry in std::fs::read_dir(dir).map_err(|e| format!("无法读取背景目录: {}", e))? {
+        let entry = entry.map_err(|e| format!("读取背景目录失败: {}", e))?;
+        if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            std::fs::remove_file(entry.path()).map_err(|e| format!("清理旧背景图失败: {}", e))?;
+        }
+    }
+    Ok(())
 }
 
 /// 递归复制目录，供 rename 跨设备失败时兜底。

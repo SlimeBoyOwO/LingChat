@@ -7,6 +7,7 @@
  */
 import { ref } from 'vue'
 import type {
+  AssetFile,
   AssetIndex,
   ChapterContent,
   GlobalCharacter,
@@ -18,6 +19,18 @@ import type {
   AssetFileIndex,
 } from '@/api/services/script-editor'
 import type { ScriptEventData } from '@/api/services/script-editor'
+
+/** 编辑器外观偏好（背景图 + 模糊/压暗），持久化于 script-editor-ui */
+export interface EditorBg {
+  /** 自定义背景绝对路径；'' 表示用内置默认背景（background2.png，加载失败回退渐变） */
+  path: string
+  /** 背景模糊半径（px） */
+  blur: number
+  /** 压暗遮罩不透明度（0~1） */
+  dim: number
+}
+
+export const DEFAULT_EDITOR_BG: EditorBg = { path: '', blur: 12, dim: 0.3 }
 
 /** 撤销栈里的一帧：某个章节某一时刻的完整事件列表 */
 export interface UndoFrame {
@@ -61,7 +74,13 @@ interface State {
     | 'validate'
     | 'agent-chat'
     | 'agent-settings'
+    | 'appearance'
   foldCompounds: boolean
+  editorBg: EditorBg
+  /** 背景图版本号：path 变更时自增，用于 asset URL 缓存击穿（不持久化） */
+  bgVersion: number
+  /** 全局背景库文件列表（game_data/backgrounds，带绝对路径），供外观页选择 */
+  globalBgFiles: AssetFile[]
 }
 
 /** 撤销栈深度上限 */
@@ -112,6 +131,9 @@ export const useEditorState = () => {
   const level = ref<State['level']>('flow')
   const tab = ref<State['tab']>('flow')
   const foldCompounds = ref(true)
+  const editorBg = ref<EditorBg>({ ...DEFAULT_EDITOR_BG })
+  const bgVersion = ref(0)
+  const globalBgFiles = ref<AssetFile[]>([])
 
   return {
     schema,
@@ -136,5 +158,8 @@ export const useEditorState = () => {
     level,
     tab,
     foldCompounds,
+    editorBg,
+    bgVersion,
+    globalBgFiles,
   }
 }
