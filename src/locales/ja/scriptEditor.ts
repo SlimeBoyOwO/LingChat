@@ -25,19 +25,24 @@ export default {
     tabAppearance: '外観',
   },
   scriptList: {
+    title: 'シナリオ一覧',
     delete: 'シナリオを削除（ゴミ箱ディレクトリへ移動）',
+    loading: '読み込み中…',
+    empty: 'シナリオがまだありません。下の新規作成ボタンから作ってください',
+    adventure: '絆アドベンチャー',
+    notLoaded: '未ロード',
+    chapters: '{count} 章',
+    newScript: '＋ 新規シナリオ',
     noDescription: '（説明なし）',
     deleteConfirmTitle: 'シナリオの削除',
     deleteConfirm:
       'シナリオ「{name}」を削除しますか？\n\nディレクトリ全体（章・素材・キャラクター）が完全に削除され、復元できません。\nキャラクターの絆アドベンチャーの場合、キャラクターカードからも消えます。',
-    deleted: 'シナリオを削除しました',
-    deletedDesc: '{name} を完全に削除しました',
   },
   chapterFlow: {
     deleteChapter: '章を削除',
     loading: '章の遷移関係を読み込み中…',
     intro: '冒頭',
-    orphan: '進入不可',
+    orphan: '流入なし',
     events: '{count} 個のイベント',
     errors: '{count} 個のエラー',
     warns: '{count} 個の警告',
@@ -47,23 +52,56 @@ export default {
     end: 'シナリオ終了',
     guideTitle: 'この図は',
     guideStrong: '読み出したもので、並べたものではない',
-    guideBody: '—— 接続は各章最後の「章の終了」イベントに由来し、章の順序もそれで決まります。',
+    guideBody: '── 接続は各章最後の「章の終了」イベントに由来し、章の順序もそれで決まります。',
     guideNext: '次の章',
     guideTail: 'を変更すると、ここも連動して変わります。',
   },
   chapterTimeline: {
     hasError: 'エラーあり',
     events: '{count} 個のイベント',
+    insertEvent: '＋ イベントを挿入（{count} 種類すべて選択可、「章終了」の前に挿入）',
+    insertEventTitle: 'イベントを挿入',
   },
   config: {
     menuTitle: 'シナリオ設定',
     deleteCondition: 'この条件を削除',
   },
+  configTab: {
+    prefixLabel: '{name}（{folder}）',
+    requiredMark: '＊',
+    isAdventure: 'これはあるキャラクターの絆アドベンチャー',
+    boundCharacter: 'バインドするキャラクター',
+    notSet: '（未設定）',
+    emptyGlobalCharacters:
+      'グローバルキャラクターライブラリが空です。先にキャラクターカードで主人公を作成してください',
+    order: '順序',
+    orderHint:
+      '数値が小さいほど先に表示され、キャラクターカードでの絆アドベンチャーの並び順を決めます',
+    unlockConditions: '解放条件',
+    unlockHint:
+      'プレイヤーが<b>すべて</b>の条件を満たすと、キャラクターカードで冒険が解放されます。条件なしならデフォルトで常に表示されます。',
+    addUnlockCondition: '解放条件を追加',
+    unlockTypesHint: '対応する種類：累計チャット数 / 時間帯内 / 絆アドベンチャー完了 / 実績解除。',
+    save: 'スクリプト設定を保存',
+  },
+
   characters: {
     menuTitle: 'シナリオ内キャラクター',
+    empty:
+      'まだシナリオ内キャラクターがいません。下の新規作成か、グローバルキャラクターライブラリからのインポートで追加できます',
     noLocalAvatar:
       'このシナリオには立ち絵をコピーしていませんが、グローバルキャラクターライブラリにあります。エンジンが自動でそちらを使います',
     clothes: ' · {count} 着の衣装',
+    intro:
+      'ここでは<b class=\"font-semibold text-white/85\">このシナリオ専用のキャラクター</b>を管理します。シナリオ内では <code>character: &lt;参照名&gt;</code> で指定します。<code>MAIN</code> は現在の主人公を表します（絆アドベンチャーでは紐付けられたキャラクターです。インポート不要で、エンジンがグローバルキャラクターライブラリから直接読み込みます）。<br />グローバルキャラクターライブラリに既にある人設を使いたい場合は、下の「グローバルキャラクターライブラリからインポート」でコピーしてください。立ち絵はグローバルのものが使われるため、シナリオのディレクトリは大きくなりません。',
+    noPortrait: '立ち絵なし',
+    usesGlobalAvatar: '立ち絵はグローバル参照',
+    emotions: '{count} 個の表情',
+    noPortraitWarn:
+      'このシナリオにもグローバルキャラクターライブラリにも立ち絵がありません。台詞内では表示されません',
+    newCharacter: '＋ 新規キャラクター',
+    importCharacter: '↓ グローバルキャラクターライブラリからインポート',
+    emotionSep: '、',
     delete: 'キャラクターを削除（.trash/ へ移動）',
   },
   assets: {
@@ -73,14 +111,29 @@ export default {
     kindMusic: 'BGM',
     kindSound: '効果音',
     kindAmbient: '環境音',
-    hint: 'エンジンは素材を<b class="font-semibold text-white/85">まずこのシナリオ、次にグローバル</b>の順で探すため、どちらでも見つかります。違いは：<b class="font-semibold text-white/85">シナリオ素材</b>はシナリオと一緒に配布され、他のシナリオからは見えません；<b class="font-semibold text-white/85">グローバル素材</b>は全シナリオで共有されますが、シナリオの書き出しには含まれません。',
+    hint: 'エンジンは素材を<b class="font-semibold text-white/85">まずこのシナリオ、次にグローバル</b>の順で探すため、どちらでも見つかります。違いは：<b class="font-semibold text-white/85">シナリオ素材</b>はシナリオと一緒に配布され、他のシナリオからは見えません。<b class="font-semibold text-white/85">グローバル素材</b>は全シナリオで共有されますが、シナリオの書き出しには含まれません。',
     scriptScope: 'このシナリオ',
+    none: 'なし',
     globalScope: 'グローバル',
     soundHint: '効果音はこのシナリオ専用で、グローバルディレクトリはありません',
+    importScript: 'シナリオへインポート',
+    importGlobal: 'グローバルへインポート',
     speed: '再生速度',
     delete: '削除（.trash/ へ移動）',
   },
-  validate: {},
+  validate: {
+    menuTitle: 'シナリオ検証',
+    revalidate: '再検証',
+    errors: 'エラー',
+    warns: '警告',
+    infos: '情報',
+    checking: '検証中…',
+    clean: '問題は見つかりませんでした。このシナリオはそのまま実行できます。',
+    scriptLevel: 'シナリオ全体',
+    passed: '通過',
+    open: '開く',
+    eventJump: '第 {index} 個目のイベント',
+  },
   appearance: {
     menuTitle: '背景画像',
     intro: 'エディタの背景と遮蔽効果。変更は即時反映され、自動保存されます。',
@@ -112,6 +165,10 @@ export default {
   },
   eventProperty: {
     emptyHint: '左側でイベントを選択してください',
+    eventType: 'イベントタイプ',
+    eventCount: '全 {count} 種類のイベントから選択可能',
+    commonFields: 'すべてのイベント共通',
+    hasProblems: 'このイベントに問題があります',
   },
   eventRow: {
     conditionPrefix: '条件 {condition} の場合',
@@ -124,6 +181,10 @@ export default {
   fieldRow: {
     yamlKey: 'YAML フィールド名：{key}',
     optional: '任意',
+    notSetDefault: '（未設定・エンジン既定値を使用）',
+    noAssetsHint:
+      '利用可能な素材がありません。「インポート」はこのスクリプトへ、「グローバル」は game_data に置かれ全スクリプトで共有されます。',
+    globalOnlyHint: 'うち {count} 個はグローバル素材ライブラリから',
     on: 'オン',
     off: 'オフ',
     importScript:
@@ -135,16 +196,36 @@ export default {
     audio: '音声',
   },
   flowTab: {
+    chapterName: '章の表示名（空欄ならファイル名を使用）',
+
     foldHint:
       '公式シナリオでは「キャラ退場 → 背景 → キャラ登場」の転換と、「AI 発言 → プレイヤー入力待ち → AI 発言」のやり取りが頻出します。展開するとそれぞれ一行に折りたたまれ、長い章では行数が半分近く減ります。折りたたまれた行にはどの背景に切り替え、どのプロンプトを使うかが書かれます。',
+    newChapter: '＋ 新規章を作成',
+    openFolder: 'シナリオのフォルダを開く',
+    expandProps: 'プロパティパネルを一時的に拡大',
+    collapseProps: 'プロパティパネルを戻す',
+    foldToggle: '転換などの固定コンボを折りたたむ',
     menuTitle: '章の流れ',
     timeline: 'イベントタイムライン',
-    chapterName: '章の表示名（空欄ならファイル名を使用）',
     eventProps: 'イベントプロパティ',
   },
   composite: {
     deleteAction: 'このアクションを削除',
     deleteOption: 'この選択肢を削除',
+    ifPrefix: 'もし',
+    jumpPrefix: 'ジャンプ先',
+    notSelected: '（未選択）',
+    fallback: '兜底',
+    aiAlias: 'AI 識別名',
+    addBranch: '＋ 分岐を追加',
+    branchHelp:
+      '順序が優先度です。すべての条件を満たさずフォールバック分岐もない場合、スクリプトはそのまま終了します。',
+    addAssignment: '代入を追加',
+    addAssignmentGroup: '代入グループを追加',
+    assignmentHelp:
+      '演算子は = / += / -= のみです。選択肢と違い、ここでは条件を満たしたグループがすべて実行されます。',
+    removeCondition: 'この条件を削除',
+    lockHintPlaceholder: 'ロック時のヒント：条件を満たさないときにプレイヤーへ表示する説明',
     fallbackLabel:
       '選択肢テキスト（空欄はフォールバック：プレイヤー入力がどの選択肢にも一致しない場合に使用——最後に置くこと）',
     condition: '条件',
@@ -152,10 +233,10 @@ export default {
     legacyNotice:
       '旧バージョンの書き方で、実行時にスキップされます。下のボタンで新しい形式に変換できます。',
     convert: '新しい形式に変換',
-    addPlayerLine: '＋ プレイヤーのセリフを追加',
-    addVariable: '＋ 変数を設定',
-    addCondition: '＋ 条件',
-    addOption: '＋ 選択肢を追加',
+    addPlayerLine: 'プレイヤーのセリフを追加',
+    addVariable: '変数を設定',
+    addCondition: '条件',
+    addOption: '選択肢を追加',
     conditionHelp:
       '条件：設定すると、その条件を満たす場合のみこの選択肢を選べます。満たさない場合はグレー表示になり、タップすると「選択不可時のヒント」が表示されます。',
     playerLineHelp:
@@ -181,6 +262,7 @@ export default {
     help: '条件を設定すると、満たす場合のみこの項目が有効になります。条件は判定のみで、変数は変更しません',
   },
   variable: {
+    fillToApply: 'すべて入力して初めて設定されます',
     max: '最大',
     min: '最小',
     clear: 'クリアして入力し直す',
@@ -195,10 +277,11 @@ export default {
     typeRandom: '乱数',
     true: '真（true）',
     false: '偽（false）',
-    rangeTo: 'から',
+    rangeTo: 'まで',
     help: 'この項目は変数をこの値に変更します。後続の条件判定がこの値を読み取ります',
   },
   editorModals: {
+    confirm: '確定',
     newScript: '新しいシナリオ',
     newChapter: '新しい章',
     newCharacter: '新しいキャラクター',
@@ -211,10 +294,9 @@ export default {
     selectCharacter: '（キャラクターを選択）',
     emptyCharacters:
       'グローバルキャラクターライブラリ（game_data/characters/）が空です。まずキャラクターカードで主人公を作成してください',
-    chapterName: '章の表示名',
     chapterNameExample: '例：2 桜の公園',
     characterFolder: 'キャラクターディレクトリ名',
-    characterFolderHint: 'シナリオには character: この名前で書かれます',
+    characterFolderHint: 'シナリオ内では character: この名前のように書きます',
     characterPrompt: 'キャラクター設定',
     characterPromptHint: 'このキャラクターの性格、話し方、主人公との関係…',
     descriptionPlaceholder: '例：星を一緒に見る',
@@ -254,6 +336,11 @@ export default {
     player: 'プレイヤー',
   },
   agentChat: {
+    usageEmpty: '使用量データはまだありません。メッセージを送信すると表示されます。',
+    loading: '読み込み中…',
+    thinking: '考え中…',
+    stop: '停止',
+    send: '送信',
     expandUsage: '使用量詳細を開く',
     collapseUsage: '使用量詳細を閉じる',
     newConversation: '新しい会話',
@@ -271,6 +358,7 @@ export default {
     deleteConfirm: '会話「{title}」とすべてのメッセージを削除しますか？',
   },
   agentSettings: {
+    model: '使用するモデル',
     intro:
       'シナリオライターのモデル、セキュリティポリシー、ファイルサンドボックス範囲を設定します。保存後、次の会話から有効です。',
     save: '設定を保存',
@@ -330,7 +418,7 @@ export default {
     label: '思考/計画…',
   },
   scriptEditor: {
-    playtestBlocked: '試遊が止まります',
+    playtestBlocked: '試遊がハングする可能性があります',
   },
   notify: {
     openFolderFailed: 'フォルダを開けませんでした',
@@ -340,6 +428,20 @@ export default {
     characterDeleted: 'キャラクターを削除しました',
     characterDeletedDesc: '{name} を完全に削除しました',
     characterDeleteFailed: 'キャラクターの削除に失敗',
+    characterDeleteTitle: 'キャラクターの削除',
+    characterDeleteConfirm:
+      'キャラクター「{name}」を削除しますか？\n\nディレクトリ全体（設定・立ち絵）が完全に削除され、復元できません。\n参照している台詞は検証エラーになります。',
+    assetDeleteTitle: '素材の削除',
+    assetDeleteConfirm:
+      '「{name}」を削除しますか？\n\n{scopeTag}\nイベントが参照している場合、削除後の検証で「素材が見つかりません」と表示されます。',
+    assetGlobalNote:
+      '（グローバル素材）削除すると、参照しているすべてのシナリオでファイルが見つからなくなります。',
+    assetScriptNote: '（このシナリオの素材）',
+    characterImported: 'キャラクター「{name}」をインポートしました',
+    characterImportedWithAvatar:
+      '立ち絵もコピーされたので、シナリオ単体で配布できます。シナリオ内では character: {key} と書きます',
+    characterImportedNoAvatar:
+      '立ち絵はグローバルのものが使われます。シナリオ内では character: {key} と書きます',
     assetDeleted: '素材を削除しました',
     assetDeletedDesc: '{name} を完全に削除しました',
     assetDeleteFailed: '素材の削除に失敗',
@@ -349,11 +451,8 @@ export default {
     newScriptFailed: '新しいシナリオの作成に失敗',
     schemaFailed: 'イベント定義を読み込めません',
     listFailed: 'シナリオ一覧を読み込めません',
-    globalAssetsFailed: 'グローバル素材の読み込みに失敗: {err}',
     openFailed: 'シナリオを開けませんでした',
-    deleteTitle: 'シナリオの削除',
     deleteFailed: 'シナリオの削除に失敗',
-    syncFailed: 'エンジンへのシナリオ同期に失敗。アプリの再起動が必要かもしれません: {err}',
     chapterOpenFailed: '章を開けませんでした',
     autosaveFailed: '自動保存に失敗。変更はエディタに残っています',
     chapterCreated: '章を作成しました',
@@ -369,8 +468,6 @@ export default {
     previewNeedFix: '試遊の前にまだ不足があります',
     previewNoMain: '主人公が未確定です',
     previewStartFailed: '試遊の開始に失敗',
-    previewCheckFailed: '試遊の事前チェックに失敗: {err}',
-    previewStopFailed: '試遊の停止に失敗: {err}',
     assetImportedGlobal: 'グローバル素材としてインポートしました',
     assetImportedScript: 'シナリオ素材としてインポートしました',
     assetImportFailed: '素材のインポートに失敗',

@@ -25,46 +25,85 @@ export default {
     tabAppearance: 'Appearance',
   },
   scriptList: {
+    title: 'Script list',
     delete: 'Delete script (move to trash)',
+    loading: 'Loading\u2026',
+    empty: 'No scripts yet \u2014 create one below',
+    adventure: 'Bond adventure',
+    notLoaded: 'Not loaded',
+    chapters: '{count} chapters',
+    newScript: '＋ New script',
     noDescription: '(no description)',
     deleteConfirmTitle: 'Delete Script',
     deleteConfirm:
       'Delete script "{name}"?\n\nThe entire directory (chapters, assets, characters) will be permanently removed and cannot be restored.\nIf it is a character\u2019s bond adventure, it will also disappear from the character card.',
-    deleted: 'Script deleted',
-    deletedDesc: '{name} has been permanently deleted',
   },
   chapterFlow: {
     deleteChapter: 'Delete chapter',
     loading: 'Reading chapter transitions…',
-    intro: 'opening',
-    orphan: 'no entry',
+    intro: 'Opening',
+    orphan: 'no incoming links',
     events: '{count} events',
     errors: '{count} errors',
     warns: '{count} warnings',
-    branching: 'conditional branch',
+    branching: 'Conditional branch',
     aiJudged: 'AI-judged branch',
     unreachable: 'Unreachable',
     end: 'Script end',
     guideTitle: 'This graph is',
-    guideStrong: 'read out, not arranged',
+    guideStrong: 'derived from the data, not hand-arranged',
     guideBody:
-      '\u2014\u2014 Connections come from the "chapter end" event at the end of each chapter, which also decides the chapter order.',
+      '\u2014 Connections come from the "chapter end" event at the end of each chapter, which also decides the chapter order. To change it, edit that event\'s',
     guideNext: 'next chapter',
     guideTail: ' to change the flow; this graph updates accordingly.',
   },
   chapterTimeline: {
     hasError: 'has errors',
     events: '{count} events',
+    insertEvent:
+      '＋ Insert event ({count} types available, inserted before \u201cchapter end\u201d)',
+    insertEventTitle: 'Insert event',
   },
   config: {
     menuTitle: 'Script Settings',
     deleteCondition: 'Delete this condition',
   },
+  configTab: {
+    prefixLabel: '{name} ({folder})',
+    requiredMark: '＊',
+    isAdventure: "This is a character's bond adventure",
+    boundCharacter: 'Bound character',
+    notSet: '(Not set)',
+    emptyGlobalCharacters:
+      'The global character library is empty \u2014 create a protagonist in the character card first',
+    order: 'Order',
+    orderHint:
+      "Smaller numbers appear first; this decides the bond adventure's position on the character card",
+    unlockConditions: 'Unlock conditions',
+    unlockHint:
+      'The adventure only unlocks on the character card when the player meets <b>all</b> conditions; without conditions it stays visible by default.',
+    addUnlockCondition: 'Add unlock condition',
+    unlockTypesHint:
+      'Supported types: accumulated chat count / within a time period / completed a bond adventure / unlocked an achievement.',
+    save: 'Save script settings',
+  },
+
   characters: {
     menuTitle: 'Script characters',
+    empty: 'No script characters yet \u2014 create one below or import from the global library',
     noLocalAvatar:
       'No portrait copied into this script, but the global library has one; the engine will use it automatically',
     clothes: ' · {count} outfits',
+    intro:
+      'Manage <b class=\"font-semibold text-white/85\">characters used only by this script</b>. Reference them in the script with <code>character: &lt;name&gt;</code>; writing <code>MAIN</code> means the current protagonist (in a bond adventure, that\'s the bound character \u2014 no import needed, the engine reads the global library directly).<br />To reuse an existing persona from the global library, use \u201cImport from the global library\u201d below to copy it here; the portrait still comes from the global copy, so the script folder stays lean.',
+    noPortrait: 'No portrait',
+    usesGlobalAvatar: 'Portrait from global',
+    emotions: '{count} emotions',
+    noPortraitWarn:
+      'Neither this script nor the global library has a portrait for this character; it will not appear in dialogue',
+    newCharacter: '＋ New character',
+    importCharacter: '↓ Import from global library',
+    emotionSep: ', ',
     delete: 'Delete character (move to .trash/)',
   },
   assets: {
@@ -74,14 +113,29 @@ export default {
     kindMusic: 'BGM',
     kindSound: 'Sound',
     kindAmbient: 'Ambient',
-    hint: 'The engine looks up assets <b class="font-semibold text-white/85">in the script first, then globally</b>, so either location works. The difference: <b class="font-semibold text-white/85">script assets</b> are distributed with the script and invisible to others; <b class="font-semibold text-white/85">global assets</b> are shared by all scripts but not included when exporting.',
+    hint: 'The engine looks up assets <b class="font-semibold text-white/85">in the script first, then globally</b>, so either location works. The difference: <b class="font-semibold text-white/85">script assets</b> are distributed with the script and invisible to other scripts; <b class="font-semibold text-white/85">global assets</b> are shared by all scripts but not included when exporting.',
     scriptScope: 'Script',
+    none: 'None',
     globalScope: 'Global',
     soundHint: 'Sound effects belong to this script only; there is no global folder',
+    importScript: 'Import to script',
+    importGlobal: 'Import global',
     speed: 'Playback speed',
     delete: 'Delete (move to .trash/)',
   },
-  validate: {},
+  validate: {
+    menuTitle: 'Validation',
+    revalidate: 'Re-validate',
+    errors: 'Errors',
+    warns: 'Warnings',
+    infos: 'Info',
+    checking: 'Validating\u2026',
+    clean: 'No issues found \u2014 this script is ready to run.',
+    scriptLevel: 'Script level',
+    passed: 'Passed',
+    open: 'Open',
+    eventJump: 'Event {index}',
+  },
   appearance: {
     menuTitle: 'Background',
     intro:
@@ -114,6 +168,10 @@ export default {
   },
   eventProperty: {
     emptyHint: 'Select an event on the left',
+    eventType: 'Event type',
+    eventCount: '{count} event types to choose from',
+    commonFields: 'Common to all events',
+    hasProblems: 'This event has problems',
   },
   eventRow: {
     conditionPrefix: 'If {condition}',
@@ -125,7 +183,11 @@ export default {
   },
   fieldRow: {
     yamlKey: 'YAML field: {key}',
-    optional: 'optional',
+    optional: 'Optional',
+    notSetDefault: '(Not set \u00b7 use engine default)',
+    noAssetsHint:
+      'No assets available. \u201cImport\u201d puts files in this script, \u201cGlobal\u201d in game_data for all scripts to share.',
+    globalOnlyHint: '{count} of them are from the global asset library',
     on: 'On',
     off: 'Off',
     importScript: 'Import to this script \u2014 distributed with the script, invisible to others',
@@ -135,16 +197,36 @@ export default {
     audio: 'Audio',
   },
   flowTab: {
+    chapterName: 'Chapter display name (leave empty to use the file name)',
+
     foldHint:
       'Official scripts repeatedly use two fixed patterns: the "character exit → background → character enter" transition, and the "AI speaks → wait for player input → AI speaks" exchange. When enabled they each collapse into one line, cutting long chapters nearly in half; the collapsed line shows which background it switches to and which prompt it uses.',
-    menuTitle: 'Chapters',
+    newChapter: '＋ New chapter',
+    openFolder: 'Open script folder',
+    expandProps: 'Temporarily expand the panel',
+    collapseProps: 'Collapse the panel',
+    foldToggle: 'Collapse fixed combos (transitions, etc.)',
+    menuTitle: 'Chapter flow',
     timeline: 'Event Timeline',
-    chapterName: 'Chapter display name (leave empty to use the file name)',
     eventProps: 'Event Properties',
   },
   composite: {
     deleteAction: 'Delete this action',
     deleteOption: 'Delete this option',
+    ifPrefix: 'If',
+    jumpPrefix: 'Go to',
+    notSelected: '(Not selected)',
+    fallback: 'Fallback',
+    aiAlias: 'AI identifier',
+    addBranch: '＋ Add branch',
+    branchHelp:
+      'Order is priority. If no condition matches and there is no fallback branch, the script ends directly.',
+    addAssignment: 'Add assignment',
+    addAssignmentGroup: 'Add assignment group',
+    assignmentHelp:
+      'Only = / += / -= are supported. Unlike options, every group whose condition matches will run.',
+    removeCondition: 'Remove this condition',
+    lockHintPlaceholder: 'Locked hint: what the player sees when the condition is not met',
     fallbackLabel:
       'Option text (leave empty as a fallback used when the player input matches no option — must be last)',
     condition: 'Condition',
@@ -152,10 +234,10 @@ export default {
     legacyNotice:
       'This is a legacy format and is skipped at runtime. Use the button below to convert it.',
     convert: 'Convert to new format',
-    addPlayerLine: '\uff0b Append player line',
-    addVariable: '\uff0b Set variable',
-    addCondition: '\uff0b Add condition',
-    addOption: '\uff0b Add option',
+    addPlayerLine: 'Append player line',
+    addVariable: 'Set variable',
+    addCondition: 'Add condition',
+    addOption: 'Add option',
     conditionHelp:
       'Condition: when set, the option is selectable only if the condition holds; otherwise it is greyed out and tapping it shows the "disabled hint" below.',
     playerLineHelp: 'Append player line: adds a line to the AI context in the player\u2019s voice.',
@@ -179,6 +261,7 @@ export default {
     help: 'A condition only decides whether this item applies; it never modifies variables',
   },
   variable: {
+    fillToApply: 'Fill in completely to apply',
     max: 'Max',
     min: 'Min',
     clear: 'Clear and refill',
@@ -197,6 +280,7 @@ export default {
     help: 'This entry changes the variable to this value; later conditions read it',
   },
   editorModals: {
+    confirm: 'Confirm',
     newScript: 'New Script',
     newChapter: 'New Chapter',
     newCharacter: 'New Character',
@@ -209,7 +293,6 @@ export default {
     selectCharacter: '(choose character)',
     emptyCharacters:
       'The global library (game_data/characters/) is empty \u2014 create the protagonist in the character card first',
-    chapterName: 'Chapter display name',
     chapterNameExample: 'e.g. 2 Sakura Park',
     characterFolder: 'Character folder name',
     characterFolderHint: 'The script will reference character: this name',
@@ -252,6 +335,11 @@ export default {
     player: 'Player',
   },
   agentChat: {
+    usageEmpty: 'No usage data yet. Send a message to see it.',
+    loading: 'Loading\u2026',
+    thinking: 'Thinking\u2026',
+    stop: 'Stop',
+    send: 'Send',
     expandUsage: 'Expand usage details',
     collapseUsage: 'Collapse usage details',
     newConversation: 'New conversation',
@@ -269,6 +357,7 @@ export default {
     deleteConfirm: 'Delete conversation "{title}" and all its messages?',
   },
   agentSettings: {
+    model: 'Model to use',
     intro:
       'Configure the model, security policy and file sandbox for the script coach. Takes effect from the next conversation.',
     save: 'Save settings',
@@ -337,6 +426,20 @@ export default {
     characterDeleted: 'Character deleted',
     characterDeletedDesc: '{name} has been permanently deleted',
     characterDeleteFailed: 'Failed to delete character',
+    characterDeleteTitle: 'Delete Character',
+    characterDeleteConfirm:
+      'Delete character \u201c{name}\u201d?\n\nThe entire directory (persona, portraits) will be permanently removed and cannot be restored.\nLines still referencing it will show validation errors.',
+    assetDeleteTitle: 'Delete Asset',
+    assetDeleteConfirm:
+      'Delete \u201c{name}\u201d?\n\n{scopeTag}\nIf any event still references it, validation will report \u201casset not found\u201d after deletion.',
+    assetGlobalNote:
+      '(Global asset) Deleting it means every script that references it will lose the file.',
+    assetScriptNote: '(Script asset)',
+    characterImported: 'Character \u201c{name}\u201d imported',
+    characterImportedWithAvatar:
+      'A copy of the portrait was included, so the script can be distributed standalone. Reference it in the script with character: {key}',
+    characterImportedNoAvatar:
+      'The portrait still comes from the global copy. Reference it in the script with character: {key}',
     assetDeleted: 'Asset deleted',
     assetDeletedDesc: '{name} has been permanently deleted',
     assetDeleteFailed: 'Failed to delete asset',
@@ -346,11 +449,8 @@ export default {
     newScriptFailed: 'Failed to create script',
     schemaFailed: 'Failed to read event definitions',
     listFailed: 'Failed to read script list',
-    globalAssetsFailed: 'Failed to load global assets: {err}',
     openFailed: 'Failed to open script',
-    deleteTitle: 'Delete Script',
     deleteFailed: 'Failed to delete script',
-    syncFailed: 'Failed to sync script to engine; an app restart may be needed: {err}',
     chapterOpenFailed: 'Failed to open chapter',
     autosaveFailed: 'Auto-save failed; your changes are still in the editor',
     chapterCreated: 'Chapter created',
@@ -366,8 +466,6 @@ export default {
     previewNeedFix: 'One more step before playtest',
     previewNoMain: 'Protagonist not determined',
     previewStartFailed: 'Failed to start playtest',
-    previewCheckFailed: 'Playtest readiness check failed: {err}',
-    previewStopFailed: 'Failed to stop playtest: {err}',
     assetImportedGlobal: 'Imported as a global asset',
     assetImportedScript: 'Imported as a script asset',
     assetImportFailed: 'Failed to import asset',

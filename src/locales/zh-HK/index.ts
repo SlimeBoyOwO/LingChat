@@ -1,4 +1,4 @@
-// 本文件由 scripts/generate-zh-hk.mjs 自动生成，请勿手改
+// 本文件由 scripts/generate-zh-hk.mjs 自动生成（后续 scriptEditor 等手写模块为手工维护，重新生成前注意保留）
 import advance from './advance'
 import api from './api'
 import scriptEditor from './scriptEditor'
@@ -15,6 +15,7 @@ import views from './views'
 export default {
   advance,
   api,
+  scriptEditor,
   common,
   game,
   misc,
