@@ -93,7 +93,9 @@ const adventureOptions = computed(() =>
     .filter((p) => p.isAdventure && p.folderName !== store.detail?.package.folderName)
     .map((p) => ({
       value: p.folderName,
-      label: p.scriptName ? `${p.scriptName}（${p.folderName}）` : p.folderName,
+      label: p.scriptName
+        ? t('scriptEditor.configTab.prefixLabel', { name: p.scriptName, folder: p.folderName })
+        : p.folderName,
     })),
 )
 
@@ -171,7 +173,7 @@ const saveConfig = () => {
             class="ml-0.5
               text-[0.7rem]
               text-red-400"
-            >＊</span
+            >{{ t('scriptEditor.configTab.requiredMark') }}</span
           >
         </label>
         <p class="my-1
@@ -238,7 +240,7 @@ const saveConfig = () => {
             :checked="isAdventure"
             @change="toggleAdventure"
           />
-          这是某个角色的羁绊冒险
+          {{ t('scriptEditor.configTab.isAdventure') }}
         </label>
         <template v-if="isAdventure">
           <div class="mb-4">
@@ -246,9 +248,9 @@ const saveConfig = () => {
               items-center
               font-medium
               text-brand
-              text-[0.9rem]"
-              >绑定角色</label
-            >
+              text-[0.9rem]">{{
+              t('scriptEditor.configTab.boundCharacter')
+            }}</label>
             <p class="my-1
               mb-2
               text-[0.8rem]
@@ -259,7 +261,7 @@ const saveConfig = () => {
               :value="currentBound"
               @change="(e) => onAdventureText('bound_character_folder', e)"
             >
-              <option value="">（不设置）</option>
+              <option value="">{{ t('scriptEditor.configTab.notSet') }}</option>
               <option
                 v-if="currentBound && !knownBoundFolders.has(currentBound)"
                 :value="currentBound"
@@ -271,7 +273,7 @@ const saveConfig = () => {
                 :key="g.folder"
                 :value="g.folder"
               >
-                {{ g.aiName }}（{{ g.folder }}）
+                {{ t('scriptEditor.configTab.prefixLabel', { name: g.aiName, folder: g.folder }) }}
               </option>
             </select>
             <p
@@ -281,7 +283,7 @@ const saveConfig = () => {
                 leading-[1.7]
                 text-yellow-200"
             >
-              全局角色库是空的，请先在角色卡创建主角
+              {{ t('scriptEditor.configTab.emptyGlobalCharacters') }}
             </p>
           </div>
           <div class="mb-4">
@@ -289,9 +291,9 @@ const saveConfig = () => {
               items-center
               font-medium
               text-brand
-              text-[0.9rem]"
-              >排序</label
-            >
+              text-[0.9rem]">{{
+              t('scriptEditor.configTab.order')
+            }}</label>
             <p class="my-1
               mb-2
               text-[0.8rem]
@@ -306,7 +308,7 @@ const saveConfig = () => {
               text-[0.72rem]
               leading-[1.7]
               text-white/40">
-              数值越小越靠前显示，决定羁绊冒险在角色卡上的排列顺序
+              {{ t('scriptEditor.configTab.orderHint') }}
             </p>
           </div>
 
@@ -316,21 +318,22 @@ const saveConfig = () => {
               items-center
               font-medium
               text-brand
-              text-[0.9rem]"
-              >解锁条件</label
-            >
+              text-[0.9rem]">{{
+              t('scriptEditor.configTab.unlockConditions')
+            }}</label>
             <p class="my-1
               mb-2
               text-[0.8rem]
               text-gray-300">adventure.unlock_conditions</p>
-            <p class="mb-2
-              text-[0.72rem]
-              leading-[1.7]
-              text-white/40">
-              玩家要满足<b class="font-semibold
-                text-white/80">全部</b
-              >条件，冒险才会在角色卡上解锁；不设条件则默认一直可见。
-            </p>
+            <p
+              class="mb-2
+                text-[0.72rem]
+                leading-[1.7]
+                text-white/40
+                [&_b]:font-semibold
+                [&_b]:text-white/85"
+              v-html="t('scriptEditor.configTab.unlockHint')"
+            ></p>
             <div
               v-for="(cond, i) in conditions"
               :key="i"
@@ -423,7 +426,7 @@ const saveConfig = () => {
                   :value="condField(cond, f.key)"
                   @change="(e) => onCondField(i, f.key, (e.target as HTMLSelectElement).value)"
                 >
-                  <option value="">（不设置）</option>
+                  <option value="">{{ t('scriptEditor.configTab.notSet') }}</option>
                   <option
                     v-if="condField(cond, f.key) && !(condField(cond, f.key) in store.achievements)"
                     :value="condField(cond, f.key)"
@@ -460,7 +463,7 @@ const saveConfig = () => {
                   :value="condField(cond, f.key)"
                   @change="(e) => onCondField(i, f.key, (e.target as HTMLSelectElement).value)"
                 >
-                  <option value="">（不设置）</option>
+                  <option value="">{{ t('scriptEditor.configTab.notSet') }}</option>
                   <option
                     v-if="
                       condField(cond, f.key) &&
@@ -514,13 +517,13 @@ const saveConfig = () => {
                 hover:text-brand"
               @click="addCondition"
             >
-              ＋ 添加解锁条件
+              ＋ {{ t('scriptEditor.configTab.addUnlockCondition') }}
             </button>
             <p class="mt-2
               text-[0.72rem]
               leading-[1.7]
               text-white/40">
-              支持的类型：累计聊天条数 / 处于时间段内 / 已完成某个羁绊冒险 / 已解锁某个成就。
+              {{ t('scriptEditor.configTab.unlockTypesHint') }}
             </p>
           </div>
         </template>
@@ -531,7 +534,7 @@ const saveConfig = () => {
         class="mt-4"
         @click="saveConfig"
       >
-        保存剧本设置
+        {{ t('scriptEditor.configTab.save') }}
       </Button>
     </MenuItem>
   </MenuPage>

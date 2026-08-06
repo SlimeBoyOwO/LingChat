@@ -27,7 +27,7 @@ const store = useScriptEditorStore()
           text-[0.85rem]
           text-white/45"
       >
-        正在读取…
+        {{ t('scriptEditor.scriptList.loading') }}
       </p>
       <p
         v-else-if="store.scripts.length === 0"
@@ -36,7 +36,7 @@ const store = useScriptEditorStore()
           text-[0.85rem]
           text-white/45"
       >
-        还没有任何剧本，点下面新建一个
+        {{ t('scriptEditor.scriptList.empty') }}
       </p>
 
       <div
@@ -72,7 +72,7 @@ const store = useScriptEditorStore()
               text-[0.62rem]
               text-brand
               bg-brand/12"
-            >羁绊冒险</span
+            >{{ t('scriptEditor.scriptList.adventure') }}</span
           >
           <span
             v-if="!s.loadedByEngine"
@@ -83,11 +83,13 @@ const store = useScriptEditorStore()
               text-[0.62rem]
               text-amber-300
               bg-amber-300/12"
-            >未加载</span
+            >{{ t('scriptEditor.scriptList.notLoaded') }}</span
           >
           <span class="ml-auto
             text-xs
-            text-white/40">{{ s.chapterCount }} 章</span>
+            text-white/40">{{
+            t('scriptEditor.scriptList.chapters', { count: s.chapterCount })
+          }}</span>
           <button
             class="rounded
               px-[5px]
@@ -122,7 +124,7 @@ const store = useScriptEditorStore()
         class="mt-4"
         @click="emit('new-script')"
       >
-        ＋ 新建剧本
+        {{ t('scriptEditor.scriptList.newScript') }}
       </Button>
     </MenuItem>
   </MenuPage>

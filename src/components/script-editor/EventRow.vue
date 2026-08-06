@@ -125,7 +125,7 @@
           border-[rgba(248,113,113,0.35)]
           text-[#fca5a5]
           bg-[rgba(248,113,113,0.15)]"
-        >{{ errorCount }} 个错误</span
+        >{{ t('scriptEditor.chapterFlow.errors', { count: errorCount }) }}</span
       >
       <span
         v-else-if="warnCount"
@@ -140,7 +140,7 @@
           border-[rgba(251,191,36,0.3)]
           text-[#fcd34d]
           bg-[rgba(251,191,36,0.15)]"
-        >{{ warnCount }} 个提醒</span
+        >{{ t('scriptEditor.chapterFlow.warns', { count: warnCount }) }}</span
       >
 
       <button

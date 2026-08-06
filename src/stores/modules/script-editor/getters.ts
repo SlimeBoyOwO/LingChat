@@ -6,6 +6,7 @@
  * 避免跨 getter 调用。
  */
 import { computed } from 'vue'
+import { i18n } from '@/locales'
 import type {
   AssetIndex,
   ChapterEdge,
@@ -19,6 +20,8 @@ import { emptyAssets, useEditorState } from './state'
 type StateRefs = ReturnType<typeof useEditorState>
 
 export const useEditorGetters = (s: StateRefs) => {
+  /** 章节下拉选项文案（剧本结束）走 i18n */
+  const t = i18n.global.t
   const scriptKey = computed(() => s.detail.value?.package.key ?? null)
 
   const chapters = computed<ChapterSummary[]>(() => s.detail.value?.chapters ?? [])
@@ -46,7 +49,7 @@ export const useEditorGetters = (s: StateRefs) => {
       value: c.id,
       label: c.name ? `${c.name}（${c.id}）` : c.id,
     }))
-    list.push({ value: 'end', label: '▸ 剧本结束' })
+    list.push({ value: 'end', label: `▸ ${t('scriptEditor.chapterFlow.end')}` })
     return list
   })
 

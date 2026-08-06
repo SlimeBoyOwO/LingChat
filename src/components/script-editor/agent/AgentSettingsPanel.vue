@@ -49,9 +49,9 @@
             items-center
             font-medium
             text-brand
-            text-[0.9rem]"
-            >使用的模型</label
-          >
+            text-[0.9rem]">{{
+            t('scriptEditor.agentSettings.model')
+          }}</label>
           <select
             v-model="providerId"
             class="glass-input
@@ -68,13 +68,12 @@
               {{ p.label }}（{{ p.provider }} · {{ p.model }}）
             </option>
           </select>
-          <p class="mt-1
-            text-[0.72rem]
-            text-white/40">
-            留空则使用「LLM 设置」中配置的主对话模型。可在<strong class="text-white/60"
-              >设置 → LLM 多供应商</strong
-            >中添加模型。
-          </p>
+          <p
+            class="mt-1
+              text-[0.72rem]
+              text-white/40"
+            v-html="t('scriptEditor.agentSettings.modelHint')"
+          ></p>
         </div>
       </div>
     </MenuItem>
@@ -97,11 +96,12 @@
         >
           <span class="text-[0.86rem]">{{ t('scriptEditor.agentSettings.autoApprove') }}</span>
         </Toggle>
-        <p class="-mt-2
-          text-[0.72rem]
-          text-white/40">
+        <p
+          class="-mt-2
+            text-[0.72rem]
+            text-white/40"
           v-html="t('scriptEditor.agentSettings.autoApproveHint')"
-        </p>
+        ></p>
 
         <Toggle
           :checked="store.settings.allowAnyPath"
@@ -120,17 +120,15 @@
             py-2
             text-[0.74rem]
             text-red-300"
-        >
           v-html="t('scriptEditor.agentSettings.allowAnyPathWarn')"
-        </p>
+        ></p>
         <p
           v-else
           class="-mt-2
             text-[0.72rem]
             text-white/40"
-        >
           v-html="t('scriptEditor.agentSettings.allowAnyPathHint')"
-        </p>
+        ></p>
 
         <div class="rounded-lg
           border
@@ -140,7 +138,9 @@
           py-2.5">
           <div class="mb-1
             text-[0.72rem]
-            text-white/45">文件沙箱根目录</div>
+            text-white/45">
+            {{ t('scriptEditor.agentSettings.sandbox') }}
+          </div>
           <div class="font-mono
             text-[0.78rem]
             text-white/85">
@@ -190,7 +190,9 @@
               text-center"
           />
           <span class="text-[0.72rem]
-            text-white/40">-1 表示无上限（默认）</span>
+            text-white/40">{{
+            t('scriptEditor.agentSettings.unlimited')
+          }}</span>
         </div>
 
         <div>
@@ -208,15 +210,16 @@
               w-full
               py-2"
           >
-            <option :value="null">跟随模型默认</option>
-            <option :value="true">开启</option>
-            <option :value="false">关闭</option>
+            <option :value="null">{{ t('scriptEditor.agentSettings.thinkingFollow') }}</option>
+            <option :value="true">{{ t('scriptEditor.agentSettings.thinkingOn') }}</option>
+            <option :value="false">{{ t('scriptEditor.agentSettings.thinkingOff') }}</option>
           </select>
-          <p class="mt-1
-            text-[0.72rem]
-            text-white/40">
+          <p
+            class="mt-1
+              text-[0.72rem]
+              text-white/40"
             v-html="t('scriptEditor.agentSettings.thinkingHint')"
-          </p>
+          ></p>
         </div>
 
         <div>
@@ -237,11 +240,12 @@
               leading-relaxed"
             :placeholder="t('scriptEditor.agentSettings.systemPromptPlaceholder')"
           ></textarea>
-          <p class="mt-1
-            text-[0.72rem]
-            text-white/40">
+          <p
+            class="mt-1
+              text-[0.72rem]
+              text-white/40"
             v-html="t('scriptEditor.agentSettings.systemPromptHint')"
-          </p>
+          ></p>
         </div>
       </div>
     </MenuItem>
@@ -293,7 +297,7 @@
             <span class="truncate
               text-[0.72rem]
               text-white/45">{{
-              s.description || '（无描述）'
+              s.description || t('scriptEditor.agentSettings.noDescription')
             }}</span>
           </span>
           <span class="text-[0.7rem]

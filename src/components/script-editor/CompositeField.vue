@@ -226,7 +226,7 @@
               hover:underline"
             @click="addAction(i, 'add_line')"
           >
-            {{ t('scriptEditor.composite.addPlayerLine') }}
+            ＋ {{ t('scriptEditor.composite.addPlayerLine') }}
           </button>
           <button
             class="text-xs
@@ -234,7 +234,7 @@
               hover:underline"
             @click="addAction(i, 'set_var')"
           >
-            {{ t('scriptEditor.composite.addVariable') }}
+            ＋ {{ t('scriptEditor.composite.addVariable') }}
           </button>
           <button
             v-if="!conditionOpen(i)"
@@ -244,7 +244,7 @@
               hover:text-brand"
             @click="openCondition(i)"
           >
-            {{ t('scriptEditor.composite.addCondition') }}
+            ＋ {{ t('scriptEditor.composite.addCondition') }}
           </button>
         </div>
       </div>
@@ -264,7 +264,7 @@
           hover:text-brand"
         @click="addRow({ text: '', actions: [] })"
       >
-        {{ t('scriptEditor.composite.addOption') }}
+        ＋ {{ t('scriptEditor.composite.addOption') }}
       </button>
       <!-- 三个动作的说明各自成段：条件 / 追加玩家台词 / 设置变量 -->
       <div class="mt-2
@@ -300,7 +300,9 @@
         >
           <span class="shrink-0
             text-xs
-            text-white/40">若</span>
+            text-white/40">{{
+            t('scriptEditor.composite.ifPrefix')
+          }}</span>
           <ConditionEditor
             class="flex-1
               min-w-0"
@@ -315,7 +317,9 @@
           pl-6">
           <span class="shrink-0
             text-xs
-            text-white/40">跳到</span>
+            text-white/40">{{
+            t('scriptEditor.composite.jumpPrefix')
+          }}</span>
           <select
             class="w-full
               min-w-0
@@ -333,7 +337,7 @@
             :value="str(opt.next)"
             @change="(e) => patch(i, 'next', val(e))"
           >
-            <option value="">（未选择）</option>
+            <option value="">{{ t('scriptEditor.composite.notSelected') }}</option>
             <option
               v-for="c in store.chapterOptions"
               :key="c.value"
@@ -357,7 +361,7 @@
               :checked="opt.default === true"
               @change="(e) => patch(i, 'default', (e.target as HTMLInputElement).checked)"
             />
-            兜底
+            {{ t('scriptEditor.composite.fallback') }}
           </label>
           <button
             class="shrink-0
@@ -385,7 +389,9 @@
         >
           <span class="shrink-0
             text-xs
-            text-white/40">AI 识别名</span>
+            text-white/40">{{
+            t('scriptEditor.composite.aiAlias')
+          }}</span>
           <input
             class="w-full
               min-w-0
@@ -422,12 +428,12 @@
           hover:text-brand"
         @click="addRow({ condition: '', next: '' })"
       >
-        ＋ 添加分支
+        {{ t('scriptEditor.composite.addBranch') }}
       </button>
       <p class="mt-2
         text-xs
         text-white/40">
-        顺序即优先级。所有条件都不满足且没有兜底分支时，剧本会直接结束。
+        {{ t('scriptEditor.composite.branchHelp') }}
       </p>
     </template>
 
@@ -448,7 +454,9 @@
           gap-2">
           <span class="shrink-0
             text-xs
-            text-white/40">若</span>
+            text-white/40">{{
+            t('scriptEditor.composite.ifPrefix')
+          }}</span>
           <ConditionEditor
             class="w-full
               min-w-0"
@@ -536,7 +544,7 @@
             hover:underline"
           @click="addAction(i, 'set_var')"
         >
-          ＋ 添加赋值
+          ＋ {{ t('scriptEditor.composite.addAssignment') }}
         </button>
       </div>
 
@@ -555,12 +563,12 @@
           hover:text-brand"
         @click="addRow({ actions: [{ type: 'set_var', content: '' }] })"
       >
-        ＋ 添加赋值组
+        ＋ {{ t('scriptEditor.composite.addAssignmentGroup') }}
       </button>
       <p class="mt-2
         text-xs
         text-white/40">
-        运算符只有 = / += / -=。与选项不同，这里所有满足条件的组都会执行。
+        {{ t('scriptEditor.composite.assignmentHelp') }}
       </p>
     </template>
   </div>
@@ -649,7 +657,7 @@ const closeCondition = (i: number) => {
 
 const actionLabel = (type: string) =>
   type === 'set_var'
-    ? t('scriptEditor.composite.addVariable').replace('＋ ', '')
+    ? t('scriptEditor.composite.addVariable')
     : t('scriptEditor.composite.playerLine')
 
 const actionPlaceholder = (type: string) =>

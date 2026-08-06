@@ -140,7 +140,7 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
               ml-auto"
             @click="importAsset(k.key, 'script')"
           >
-            {{ t('scriptEditor.fieldRow.importScript') }}
+            {{ t('scriptEditor.assets.importScript') }}
           </button>
           <button
             v-if="k.key !== 'sound'"
@@ -164,7 +164,7 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
               disabled:opacity-40"
             @click="importAsset(k.key, 'global')"
           >
-            {{ t('scriptEditor.fieldRow.importGlobal') }}
+            {{ t('scriptEditor.assets.importGlobal') }}
           </button>
           <span
             v-if="k.key === 'sound'"
@@ -198,7 +198,7 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
               class="text-[0.72rem]
                 text-white/25"
             >
-              无
+              {{ t('scriptEditor.assets.none') }}
             </p>
             <div
               v-for="f in filesOf(col, k.key)"
@@ -315,7 +315,10 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
                           transition-colors
                           hover:bg-white/10"
                         :class="(audioRates[f.path] ?? 1) === rate ? 'text-brand' : 'text-white/60'"
-                        @click="setRate(f.path, rate); speedMenu = null"
+                        @click="() => {
+                          setRate(f.path, rate)
+                          speedMenu = null
+                        }"
                       >
                         {{ rate }}×
                       </button>

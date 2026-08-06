@@ -325,7 +325,7 @@ onUnmounted(() => {
             :title="t('scriptEditor.editorHeader.undo')"
             @click="store.undo()"
           >
-            ↩ 撤销
+            ↩ {{ t('scriptEditor.editorHeader.undo') }}
           </button>
           <button
             class="inline-flex
@@ -350,7 +350,7 @@ onUnmounted(() => {
             :title="t('scriptEditor.editorHeader.redo')"
             @click="store.redo()"
           >
-            ↪ 恢复
+            ↪ {{ t('scriptEditor.editorHeader.redo') }}
           </button>
         </template>
         <button
@@ -375,7 +375,7 @@ onUnmounted(() => {
           :title="t('scriptEditor.editorHeader.shortcut')"
           @click="emit('toggle-shortcut-help')"
         >
-          快捷键
+          {{ t('scriptEditor.editorHeader.shortcut') }}
         </button>
         <template v-if="store.detail">
           <button
@@ -436,7 +436,7 @@ onUnmounted(() => {
           text-[0.66rem]
           font-semibold
           text-amber-300"
-        >试玩会卡住</span
+        >{{ t('scriptEditor.scriptEditor.playtestBlocked') }}</span
       >
       <span>{{ store.readiness.reason }}</span>
     </div>

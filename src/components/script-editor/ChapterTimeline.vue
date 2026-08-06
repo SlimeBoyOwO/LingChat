@@ -102,7 +102,7 @@
                 group-hover:opacity-100
                 hover:text-white/60
                 hover:bg-white/[0.1]"
-              :title="t('scriptEditor.chapterTimeline.moveUp')"
+              :title="t('scriptEditor.eventRow.moveUp')"
               @click.stop="moveUp(row)"
             >
               ▲
@@ -120,7 +120,7 @@
                 group-hover:opacity-100
                 hover:text-white/60
                 hover:bg-white/[0.1]"
-              :title="t('scriptEditor.chapterTimeline.moveDown')"
+              :title="t('scriptEditor.eventRow.moveDown')"
               @click.stop="moveDown(row)"
             >
               ▼
@@ -172,7 +172,11 @@
         hover:bg-[rgba(121,217,255,0.05)]"
       @click="paletteOpen = true"
     >
-      ＋ 插入事件（{{ store.schema?.events.length ?? 0 }} 种全部可选，插在「章节结束」之前）
+      {{
+        t('scriptEditor.chapterTimeline.insertEvent', {
+          count: store.schema?.events.length ?? 0,
+        })
+      }}
     </button>
 
     <!-- 事件类型选择面板 -->
@@ -219,7 +223,9 @@
               border-brand">
               <h4 class="text-[0.95rem]
                 font-semibold
-                text-white">插入事件</h4>
+                text-white">
+                {{ t('scriptEditor.chapterTimeline.insertEventTitle') }}
+              </h4>
               <button
                 class="ml-auto
                   text-[0.85rem]

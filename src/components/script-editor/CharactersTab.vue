@@ -37,18 +37,13 @@ const assetUrl = (path: string) => convertFileSrc(path)
           py-[0.7rem]
           text-[0.76rem]
           leading-[1.85]
-          text-white/60"
-      >
-        这里管理<b class="font-semibold
-          text-white/85">只有这个剧本用得上的角色</b>。剧本里用
-        <code class="font-mono
-          text-brand">character: &lt;引用名&gt;</code> 指代；写
-        <code class="font-mono
-          text-brand">MAIN</code>
-        表示当前主角（羁绊剧本里就是绑定的那位，不需要导入， 引擎直接从全局角色库读取）。
-        <br />想用全局角色库里已有的人设，点下方「从全局角色库导入」复制一份到本剧本；
-        立绘仍读全局那份，不会让剧本目录白白变大。
-      </p>
+          text-white/60
+          [&_b]:font-semibold
+          [&_b]:text-white/85
+          [&_code]:font-mono
+          [&_code]:text-brand"
+        v-html="t('scriptEditor.characters.intro')"
+      ></p>
 
       <p
         v-if="store.characters.length === 0"
@@ -107,7 +102,7 @@ const assetUrl = (path: string) => convertFileSrc(path)
               h-full
               text-[0.56rem]
               text-white/35"
-            >无立绘</span
+            >{{ t('scriptEditor.characters.noPortrait') }}</span
           >
         </div>
         <div class="flex
@@ -134,12 +129,13 @@ const assetUrl = (path: string) => convertFileSrc(path)
                 text-brand
                 bg-brand/12"
               :title="t('scriptEditor.characters.noLocalAvatar')"
-              >立绘读自全局</span
+              >{{ t('scriptEditor.characters.usesGlobalAvatar') }}</span
             >
             <span class="ml-auto
               text-xs
               text-white/40">
-              {{ c.emotions.length }} 个表情{{
+              {{ t('scriptEditor.characters.emotions', { count: c.emotions.length })
+              }}{{
                 c.clothes.length
                   ? t('scriptEditor.characters.clothes', { count: c.clothes.length })
                   : ''
@@ -152,7 +148,7 @@ const assetUrl = (path: string) => convertFileSrc(path)
               text-xs
               text-yellow-200"
           >
-            本剧本与全局角色库都没有这个角色的立绘，台词里它不会显示
+            {{ t('scriptEditor.characters.noPortraitWarn') }}
           </p>
           <p
             v-else
@@ -160,7 +156,8 @@ const assetUrl = (path: string) => convertFileSrc(path)
               text-xs
               text-white/40"
           >
-            {{ c.emotions.slice(0, 12).join('、') }}{{ c.emotions.length > 12 ? ' …' : '' }}
+            {{ c.emotions.slice(0, 12).join(t('scriptEditor.characters.emotionSep'))
+            }}{{ c.emotions.length > 12 ? ' …' : '' }}
           </p>
         </div>
         <button
@@ -190,13 +187,13 @@ const assetUrl = (path: string) => convertFileSrc(path)
           type="big"
           @click="emit('new-character')"
         >
-          ＋ 新建角色
+          {{ t('scriptEditor.characters.newCharacter') }}
         </Button>
         <Button
           type="big"
           @click="emit('import-character')"
         >
-          ↓ 从全局角色库导入
+          {{ t('scriptEditor.characters.importCharacter') }}
         </Button>
       </div>
     </MenuItem>

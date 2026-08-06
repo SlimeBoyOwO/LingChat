@@ -17,7 +17,9 @@
         <label class="inline-flex
           items-center
           font-medium
-          text-brand">事件类型</label>
+          text-brand">{{
+          t('scriptEditor.eventProperty.eventType')
+        }}</label>
         <select
           class="glass-input"
           :value="eventType"
@@ -40,7 +42,9 @@
         <p class="mt-1
           text-xs
           text-white/40">
-          共 {{ store.schema?.events.length ?? 0 }} 种事件可选
+          {{
+            t('scriptEditor.eventProperty.eventCount', { count: store.schema?.events.length ?? 0 })
+          }}
         </p>
       </div>
 
@@ -63,7 +67,9 @@
         <p class="mb-2
           text-xs
           tracking-wide
-          text-white/35">所有事件通用</p>
+          text-white/35">
+          {{ t('scriptEditor.eventProperty.commonFields') }}
+        </p>
         <FieldRow
           v-for="field in commonFieldsToShow"
           :key="field.key"
@@ -87,7 +93,9 @@
         <p class="mb-2
           text-sm
           font-semibold
-          text-white">这个事件有问题</p>
+          text-white">
+          {{ t('scriptEditor.eventProperty.hasProblems') }}
+        </p>
         <div
           v-for="(d, i) in eventDiagnostics"
           :key="i"

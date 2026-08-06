@@ -13,7 +13,7 @@
         v-if="field.required"
         class="text-xs
           text-red-400"
-        >＊</span
+        >{{ t('scriptEditor.configTab.requiredMark') }}</span
       >
       <span
         v-else
@@ -82,7 +82,7 @@
       :value="value === true ? 'true' : value === false ? 'false' : ''"
       @change="onTriState"
     >
-      <option value="">（不设置 · 用引擎默认值）</option>
+      <option value="">{{ t('scriptEditor.fieldRow.notSetDefault') }}</option>
       <option value="true">{{ t('scriptEditor.fieldRow.on') }}</option>
       <option value="false">{{ t('scriptEditor.fieldRow.off') }}</option>
     </select>
@@ -98,7 +98,7 @@
         v-if="!field.required"
         value=""
       >
-        （不设置）
+        {{ t('scriptEditor.configTab.notSet') }}
       </option>
       <option
         v-for="opt in selectOptions"
@@ -122,7 +122,7 @@
             v-if="!field.required"
             value=""
           >
-            （不设置）
+            {{ t('scriptEditor.configTab.notSet') }}
           </option>
           <option
             v-for="name in assetOptions"
@@ -148,7 +148,7 @@
           :title="t('scriptEditor.fieldRow.importScript')"
           @click="pickAsset('script')"
         >
-          导入
+          {{ t('scriptEditor.assets.importScript') }}
         </button>
         <button
           class="shrink-0
@@ -165,7 +165,7 @@
           :title="t('scriptEditor.fieldRow.importGlobal')"
           @click="pickAsset('global')"
         >
-          全局
+          {{ t('scriptEditor.assets.importGlobal') }}
         </button>
       </div>
       <p
@@ -174,7 +174,7 @@
           text-xs
           text-yellow-200"
       >
-        没有可用素材。「导入」放进本剧本，「全局」放进 game_data 供所有剧本共享。
+        {{ t('scriptEditor.fieldRow.noAssetsHint') }}
       </p>
       <p
         v-else-if="globalOnly.length"
@@ -182,7 +182,7 @@
           text-xs
           text-white/35"
       >
-        其中 {{ globalOnly.length }} 个来自全局素材库
+        {{ t('scriptEditor.fieldRow.globalOnlyHint', { count: globalOnly.length }) }}
       </p>
     </div>
 
@@ -343,7 +343,7 @@ const branchMode = computed<'branching' | 'ai_judged' | undefined>(() => {
 })
 
 const hintClass = computed(() =>
-  /⚠|不生效|不会|无效|卡死/.test(props.field.hint ?? '') ? 'text-yellow-200' : 'text-white/40',
+  /⚠/.test(props.field.hint ?? '') ? 'text-yellow-200' : 'text-white/40',
 )
 
 const onText = (e: Event) => emit('update', (e.target as HTMLInputElement).value)

@@ -33,11 +33,9 @@
           px-5
           py-3">
           <h4 class="font-semibold
-            text-white">裁剪背景图</h4>
+            text-white">{{ t('scriptEditor.imageCrop.title') }}</h4>
           <span class="text-[0.7rem]
-            text-white/45"
-            >选区比例与编辑器窗口一致，框内即最终显示效果</span
-          >
+            text-white/45">{{ t('scriptEditor.imageCrop.hint') }}</span>
         </div>
 
         <div class="relative

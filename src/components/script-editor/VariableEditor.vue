@@ -233,7 +233,7 @@
           text-xs
           text-white/35"
       >
-        填完整才算设置
+        {{ t('scriptEditor.variable.fillToApply') }}
       </p>
     </div>
 

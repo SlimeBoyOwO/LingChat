@@ -140,10 +140,8 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
   async function deleteScript(key: string, displayName: string) {
     const dialog = useDialogStore()
     const ok = await dialog.confirm(
-      `确定删除剧本「${displayName}」吗？\n\n` +
-        '整个目录（章节、素材、角色）将被永久删除，无法恢复。' +
-        '若它是某个角色的羁绊冒险，角色卡上也会消失。',
-      '删除剧本',
+      t('scriptEditor.scriptList.deleteConfirm', { name: displayName }),
+      t('scriptEditor.scriptList.deleteConfirmTitle'),
     )
     if (!ok) return
     try {
@@ -530,8 +528,8 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     if (!key || !s.detail.value) return
     const dialog = useDialogStore()
     const ok = await dialog.confirm(
-      `确定删除章节「${chapterId}」吗？\n\n文件将被永久删除，指向它的跳转会断链。`,
-      '删除章节',
+      t('scriptEditor.notify.chapterDeleteConfirm', { id: chapterId }),
+      t('scriptEditor.notify.chapterDeleteTitle'),
     )
     if (!ok) return
     try {
@@ -779,10 +777,8 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     if (!key || !s.detail.value) return
     const dialog = useDialogStore()
     const ok = await dialog.confirm(
-      `确定删除角色「${displayName}」吗？\n\n` +
-        '整个目录（人设、立绘）将被永久删除，无法恢复。' +
-        '仍在引用它的台词会显示为校验错误。',
-      '删除角色',
+      t('scriptEditor.notify.characterDeleteConfirm', { name: displayName }),
+      t('scriptEditor.notify.characterDeleteTitle'),
     )
     if (!ok) return
     try {
@@ -818,11 +814,13 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
     const key = g.scriptKey.value
     if (!key) return
     const dialog = useDialogStore()
-    const where =
-      scope === 'global' ? '（全局素材）删掉之后所有引用它的剧本都会找不到文件。' : '（本剧本素材）'
+    const scopeTag =
+      scope === 'global'
+        ? t('scriptEditor.notify.assetGlobalNote')
+        : t('scriptEditor.notify.assetScriptNote')
     const ok = await dialog.confirm(
-      `确定删除「${name}」吗？\n\n${where}\n如果还有事件在引用它，删完校验会报「素材找不到」。`,
-      '删除素材',
+      t('scriptEditor.notify.assetDeleteConfirm', { name, scopeTag }),
+      t('scriptEditor.notify.assetDeleteTitle'),
     )
     if (!ok) return
     try {
@@ -889,10 +887,10 @@ export const useEditorActions = (s: StateRefs, g: Getters) => {
       s.detail.value.characters.sort((a, b) => a.folder.localeCompare(b.folder))
       await refreshGlobalCharacters()
       notifyOk(
-        `已导入角色「${c.aiName}」`,
+        t('scriptEditor.notify.characterImported', { name: c.aiName }),
         withAvatar
-          ? `立绘也复制了一份，剧本可以单独分发。剧本里写 character: ${c.roleKey}`
-          : `立绘仍读全局那份。剧本里写 character: ${c.roleKey}`,
+          ? t('scriptEditor.notify.characterImportedWithAvatar', { key: c.roleKey })
+          : t('scriptEditor.notify.characterImportedNoAvatar', { key: c.roleKey }),
       )
     } catch (e) {
       notifyError(t('scriptEditor.notify.characterImportFailed'), e)

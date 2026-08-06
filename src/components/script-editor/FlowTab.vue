@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Icon, Toggle } from '@/components/base'
 import { MenuPage, MenuItem } from '@/components/ui'
@@ -16,6 +16,18 @@ const store = useScriptEditorStore()
 
 /** 抽成常量纯粹是因为 title 内联会超出 100 列的行宽 */
 const FOLD_HINT = computed(() => t('scriptEditor.flowTab.foldHint'))
+
+/**
+ * 事件属性栏临时展开：默认 340px，展开时覆盖时间线（其余区域毛玻璃模糊），
+ * 便于长字段的输入与全览；点遮罩或头部按钮即可回归。退出章节编辑时自动收起。
+ */
+const propsExpanded = ref(false)
+watch(
+  () => store.level,
+  (level) => {
+    if (level !== 'chapter') propsExpanded.value = false
+  },
+)
 
 const onRename = (e: Event) => store.setChapterName((e.target as HTMLInputElement).value)
 
@@ -65,7 +77,7 @@ const openFolder = async () => {
             disabled:opacity-40"
           @click="emit('new-chapter')"
         >
-          ＋ 新建章节
+          {{ t('scriptEditor.flowTab.newChapter') }}
         </button>
         <button
           class="inline-flex
@@ -88,7 +100,7 @@ const openFolder = async () => {
             disabled:opacity-40"
           @click="store.runValidation()"
         >
-          重新校验
+          {{ t('scriptEditor.validate.revalidate') }}
         </button>
         <button
           class="inline-flex
@@ -111,7 +123,7 @@ const openFolder = async () => {
             disabled:opacity-40"
           @click="openFolder"
         >
-          打开剧本目录
+          {{ t('scriptEditor.flowTab.openFolder') }}
         </button>
       </div>
       <ChapterFlow />
@@ -121,7 +133,8 @@ const openFolder = async () => {
   <!-- ============ 章节编辑 ============ -->
   <div
     v-else
-    class="flex
+    class="relative
+      flex
       w-[94%]
       min-h-0
       flex-1
@@ -172,12 +185,12 @@ const openFolder = async () => {
               :checked="store.foldCompounds"
               @change="(v: boolean) => (store.foldCompounds = v)"
             />
-            合并转场等固定组合
+            {{ t('scriptEditor.flowTab.foldToggle') }}
           </label>
           <span class="shrink-0
             text-xs
             text-white/40">
-            {{ store.chapter?.events.length ?? 0 }} 个事件
+            {{ t('scriptEditor.chapterFlow.events', { count: store.chapter?.events.length ?? 0 }) }}
           </span>
         </div>
         <div class="min-h-0
@@ -189,10 +202,31 @@ const openFolder = async () => {
       </MenuItem>
     </div>
 
-    <div class="flex
-      min-h-0
-      flex-[0_0_340px]
-      flex-col">
+    <!-- 展开态遮罩：盖住并模糊时间线，点击即收起 -->
+    <Transition name="props-mask">
+      <div
+        v-if="propsExpanded"
+        class="absolute
+          inset-0
+          z-10
+          rounded-xl
+          backdrop-blur-sm
+          bg-black/45"
+        @click="propsExpanded = false"
+      ></div>
+    </Transition>
+
+    <div
+      class="relative
+        z-20
+        flex
+        min-h-0
+        flex-col
+        transition-[flex-basis]
+        duration-300
+        ease-out"
+      :class="propsExpanded ? 'flex-[0_0_min(760px,78%)]' : 'flex-[0_0_340px]'"
+    >
       <MenuItem
         :title="t('scriptEditor.flowTab.eventProps')"
         class="fill
@@ -206,6 +240,27 @@ const openFolder = async () => {
             icon="setting"
             :size="20"
           />
+          <button
+            class="inline-flex
+              items-center
+              justify-center
+              w-6
+              h-6
+              rounded-md
+              text-[0.7rem]
+              text-white/40
+              transition-colors
+              hover:text-brand
+              hover:bg-white/10"
+            :title="
+              propsExpanded
+                ? t('scriptEditor.flowTab.collapseProps')
+                : t('scriptEditor.flowTab.expandProps')
+            "
+            @click="propsExpanded = !propsExpanded"
+          >
+            {{ propsExpanded ? '⤡' : '⤢' }}
+          </button>
         </template>
         <div class="min-h-0
           flex-1
@@ -225,5 +280,15 @@ const openFolder = async () => {
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* 遮罩淡入淡出 */
+.props-mask-enter-active,
+.props-mask-leave-active {
+  transition: opacity 0.3s ease;
+}
+.props-mask-enter-from,
+.props-mask-leave-to {
+  opacity: 0;
 }
 </style>

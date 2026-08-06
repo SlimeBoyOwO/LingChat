@@ -54,7 +54,7 @@
               text-[0.72rem]
               font-semibold
               text-[var(--accent-color)]"
-            >试玩中</span
+            >{{ t('scriptEditor.previewStage.playing') }}</span
           >
           <span class="text-[0.78rem]
             text-white
@@ -63,9 +63,9 @@
           }}</span>
           <span class="text-[0.7rem]
             text-white/[0.6]
-            [text-shadow:0_1px_3px_rgba(0,0,0,0.6)]"
-            >试玩为调试用：不记通关、不解锁羁绊冒险。会真调 LLM（按 token 计费）</span
-          >
+            [text-shadow:0_1px_3px_rgba(0,0,0,0.6)]">{{
+            t('scriptEditor.previewStage.debugNotice')
+          }}</span>
           <button
             class="ml-auto
               rounded-lg

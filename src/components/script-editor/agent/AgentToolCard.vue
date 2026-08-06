@@ -76,7 +76,9 @@
         {{ t('scriptEditor.agentTool.deny') }}
       </button>
       <span class="text-[0.7rem]
-        text-white/40">命令执行前需要你的确认（120 秒内有效）</span>
+        text-white/40">{{
+        t('scriptEditor.agentTool.approvalHint')
+      }}</span>
     </div>
 
     <!-- 参数 / 结果，点击展开 -->
@@ -115,7 +117,7 @@
       >
         <div class="mb-1
           text-[0.68rem]
-          text-white/40">参数</div>
+          text-white/40">{{ t('scriptEditor.agentTool.args') }}</div>
         <pre
           class="max-h-40
             overflow-y-auto
@@ -137,7 +139,9 @@
       >
         <div class="mb-1
           text-[0.68rem]
-          text-white/40">结果</div>
+          text-white/40">
+          {{ t('scriptEditor.agentTool.result') }}
+        </div>
         <pre
           class="max-h-52
             overflow-y-auto

@@ -41,7 +41,7 @@ const openChapterFromValidate = async (chapterId: string) => {
 
 <template>
   <MenuPage>
-    <MenuItem :title="t('scriptEditor.validateTab.menuTitle')">
+    <MenuItem :title="t('scriptEditor.validate.menuTitle')">
       <template #header>
         <Icon
           icon="achievement"
@@ -75,7 +75,7 @@ const openChapterFromValidate = async (chapterId: string) => {
             disabled:opacity-40"
           @click="store.runValidation()"
         >
-          重新校验
+          {{ t('scriptEditor.validate.revalidate') }}
         </button>
         <span
           v-if="store.report"
@@ -84,11 +84,11 @@ const openChapterFromValidate = async (chapterId: string) => {
             [&_b]:font-semibold"
         >
           <b class="text-red-300">{{ store.report.errorCount }}</b>
-          {{ t('scriptEditor.validateTab.errors') }} ·
+          {{ t('scriptEditor.validate.errors') }} ·
           <b class="text-amber-300">{{ store.report.warnCount }}</b>
-          {{ t('scriptEditor.validateTab.warns') }} ·
+          {{ t('scriptEditor.validate.warns') }} ·
           <b class="text-white/50">{{ store.report.infoCount }}</b>
-          {{ t('scriptEditor.validateTab.infos') }}
+          {{ t('scriptEditor.validate.infos') }}
         </span>
       </div>
 
@@ -99,7 +99,7 @@ const openChapterFromValidate = async (chapterId: string) => {
           text-[0.85rem]
           text-white/45"
       >
-        正在校验…
+        {{ t('scriptEditor.validate.checking') }}
       </p>
       <p
         v-else-if="store.report.diagnostics.length === 0"
@@ -112,7 +112,7 @@ const openChapterFromValidate = async (chapterId: string) => {
           text-[0.82rem]
           text-green-300"
       >
-        没有发现问题，这个剧本可以正常跑起来。
+        {{ t('scriptEditor.validate.clean') }}
       </p>
 
       <template v-else>
@@ -138,7 +138,7 @@ const openChapterFromValidate = async (chapterId: string) => {
             <span class="text-[0.82rem]
               font-semibold
               text-white">{{
-              t('scriptEditor.validateTab.scriptLevel')
+              t('scriptEditor.validate.scriptLevel')
             }}</span>
             <span class="font-mono
               text-[0.66rem]
@@ -207,22 +207,25 @@ const openChapterFromValidate = async (chapterId: string) => {
               <b
                 v-if="store.diagnosticsByChapter[c.id]?.errors"
                 class="text-red-300"
-                >{{ store.diagnosticsByChapter[c.id].errors }} 错误</b
+                >{{ store.diagnosticsByChapter[c.id].errors }}
+                {{ t('scriptEditor.validate.errors') }}</b
               >
               <b
                 v-if="store.diagnosticsByChapter[c.id]?.warns"
                 class="text-amber-300"
-                >{{ store.diagnosticsByChapter[c.id].warns }} 警告</b
+                >{{ store.diagnosticsByChapter[c.id].warns }}
+                {{ t('scriptEditor.validate.warns') }}</b
               >
               <b
                 v-if="store.diagnosticsByChapter[c.id]?.infos"
                 class="text-white/50"
-                >{{ store.diagnosticsByChapter[c.id].infos }} 提示</b
+                >{{ store.diagnosticsByChapter[c.id].infos }}
+                {{ t('scriptEditor.validate.infos') }}</b
               >
               <span
                 v-if="!chapterHas(c.id)"
                 class="text-green-300"
-                >通过</span
+                >{{ t('scriptEditor.validate.passed') }}</span
               >
             </span>
             <button
@@ -246,7 +249,7 @@ const openChapterFromValidate = async (chapterId: string) => {
                 disabled:opacity-40"
               @click="openChapterFromValidate(c.id)"
             >
-              打开
+              {{ t('scriptEditor.validate.open') }}
             </button>
           </div>
 
@@ -285,7 +288,7 @@ const openChapterFromValidate = async (chapterId: string) => {
                 whitespace-nowrap
                 text-brand
                 opacity-70"
-              >第 {{ d.eventIndex + 1 }} 个事件 →</span
+              >{{ t('scriptEditor.validate.eventJump', { index: d.eventIndex + 1 }) }} →</span
             >
           </div>
         </div>

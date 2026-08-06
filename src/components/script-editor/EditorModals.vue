@@ -229,9 +229,9 @@ const confirmModal = async () => {
                 items-center
                 font-medium
                 text-brand
-                text-[0.9rem]"
-                >章节文件名</label
-              >
+                text-[0.9rem]">{{
+                t('scriptEditor.editorModals.chapterFileName')
+              }}</label>
               <input
                 v-model="chapterForm.id"
                 class="glass-input"
@@ -243,9 +243,9 @@ const confirmModal = async () => {
                 items-center
                 font-medium
                 text-brand
-                text-[0.9rem]"
-                >显示名</label
-              >
+                text-[0.9rem]">{{
+                t('scriptEditor.editorModals.displayName')
+              }}</label>
               <input
                 v-model="chapterForm.name"
                 class="glass-input"
@@ -255,7 +255,7 @@ const confirmModal = async () => {
                 text-[0.72rem]
                 leading-[1.7]
                 text-white/40">
-                新章节自带一条「章节结束」，免得一保存就报缺少结束事件。
+                {{ t('scriptEditor.editorModals.chapterEndNote') }}
               </p>
             </div>
           </template>
@@ -269,7 +269,7 @@ const confirmModal = async () => {
                 text-[0.85rem]
                 text-white/45"
             >
-              全局角色库（game_data/characters/）是空的
+              {{ t('scriptEditor.editorModals.emptyCharacters') }}
             </p>
             <div
               v-for="g in store.globalCharacters"
@@ -358,16 +358,8 @@ const confirmModal = async () => {
                 text-white/40
                 [&_code]:font-mono
                 [&_code]:text-brand"
-            >
-              默认不复制：引擎找立绘时本来就先看
-              <code class="font-mono
-                text-brand">game_data/characters/&lt;同名目录&gt;/avatar</code
-              >，会自动命中， 复制一份只是让剧本目录变大。只有打算把剧本单独发给<b
-                class="font-semibold
-                  text-white/85"
-                >没有这个角色</b
-              >的人时， 才需要勾上。
-            </p>
+              v-html="t('scriptEditor.editorModals.avatarCopyHint')"
+            ></p>
           </template>
 
           <template v-else>
@@ -390,9 +382,9 @@ const confirmModal = async () => {
                 items-center
                 font-medium
                 text-brand
-                text-[0.9rem]"
-                >显示名</label
-              >
+                text-[0.9rem]">{{
+                t('scriptEditor.editorModals.displayName')
+              }}</label>
               <input
                 v-model="charForm.aiName"
                 class="glass-input"
@@ -403,9 +395,9 @@ const confirmModal = async () => {
                 items-center
                 font-medium
                 text-brand
-                text-[0.9rem]"
-                >人物设定</label
-              >
+                text-[0.9rem]">{{
+                t('scriptEditor.editorModals.characterPrompt')
+              }}</label>
               <textarea
                 v-model="charForm.systemPrompt"
                 class="glass-input
@@ -420,13 +412,8 @@ const confirmModal = async () => {
                 text-white/40
                 [&_code]:font-mono
                 [&_code]:text-brand"
-            >
-              创建后请把立绘放进
-              <code class="font-mono
-                text-brand">characters/&lt;目录名&gt;/avatar/</code>，
-              文件名用情绪名（如 <code class="font-mono
-                text-brand">正常.png</code>）。
-            </p>
+              v-html="t('scriptEditor.editorModals.avatarPlaceHint')"
+            ></p>
           </template>
 
           <div class="flex
@@ -479,7 +466,7 @@ const confirmModal = async () => {
               "
               @click="confirmModal"
             >
-              确定
+              {{ t('scriptEditor.editorModals.confirm') }}
             </button>
           </div>
         </div>

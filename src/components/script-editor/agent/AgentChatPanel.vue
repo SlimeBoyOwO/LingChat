@@ -32,7 +32,8 @@
         @click="store.createConversation()"
       >
         <span class="text-[1rem]
-          leading-none">＋</span> 新建对话
+          leading-none">＋</span>
+        {{ t('scriptEditor.agentChat.newConversation') }}
       </button>
 
       <div class="flex
@@ -174,7 +175,9 @@
                 bg-white/5
                 py-1">
                 <div class="text-[0.6rem]
-                  text-white/40">输入</div>
+                  text-white/40">
+                  {{ t('scriptEditor.agentChat.input') }}
+                </div>
                 <div class="font-mono
                   text-[0.72rem]
                   text-white/85">
@@ -185,7 +188,9 @@
                 bg-white/5
                 py-1">
                 <div class="text-[0.6rem]
-                  text-white/40">输出</div>
+                  text-white/40">
+                  {{ t('scriptEditor.agentChat.output') }}
+                </div>
                 <div class="font-mono
                   text-[0.72rem]
                   text-white/85">
@@ -196,7 +201,9 @@
                 bg-white/5
                 py-1">
                 <div class="text-[0.6rem]
-                  text-white/40">本轮</div>
+                  text-white/40">
+                  {{ t('scriptEditor.agentChat.currentRound') }}
+                </div>
                 <div class="font-mono
                   text-[0.72rem]
                   text-brand">
@@ -218,7 +225,7 @@
             class="text-[0.68rem]
               text-white/35"
           >
-            暂无用量数据，发送消息后显示。
+            {{ t('scriptEditor.agentChat.usageEmpty') }}
           </p>
         </div>
       </div>
@@ -256,7 +263,7 @@
             text-[0.82rem]
             text-white/40"
         >
-          加载中…
+          {{ t('scriptEditor.agentChat.loading') }}
         </div>
         <div
           v-else-if="!store.currentId"
@@ -352,7 +359,7 @@
                 class="text-[0.78rem]
                   text-white/40"
               >
-                思考中…
+                {{ t('scriptEditor.agentChat.thinking') }}
               </div>
             </div>
           </template>
@@ -436,7 +443,7 @@
               hover:bg-red-400/25"
             @click="store.cancel()"
           >
-            停止
+            {{ t('scriptEditor.agentChat.stop') }}
           </button>
           <button
             v-else
@@ -458,7 +465,7 @@
             :disabled="!draft.trim() || store.sending"
             @click="send"
           >
-            发送
+            {{ t('scriptEditor.agentChat.send') }}
           </button>
         </div>
       </div>
