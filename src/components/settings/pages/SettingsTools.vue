@@ -146,6 +146,16 @@
         <p v-if="form.file_ops_allow_any_path" class="text-sm text-amber-400 px-1 mb-2">
           {{ $t('ui.toolCalls.fileOpsAllowAnyPathHint') }}
         </p>
+        <div class="flex items-center gap-3 py-2.5 px-1">
+          <Toggle
+            :checked="form.file_delete_auto_approve"
+            @change="(value: boolean) => (form.file_delete_auto_approve = value)"
+          />
+          <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.fileDeleteAutoApprove') }}</p>
+        </div>
+        <p v-if="form.file_delete_auto_approve" class="text-sm text-amber-400 px-1 mb-2">
+          {{ $t('ui.toolCalls.fileDeleteAutoApproveHint') }}
+        </p>
       </div>
 
       <!-- ===== 命令执行 ===== -->
@@ -250,6 +260,7 @@ const form = reactive<ToolSettings>({
   },
   groups: {},
   command_auto_approve: false,
+  file_delete_auto_approve: false,
   file_ops_allow_any_path: false,
 })
 
@@ -297,6 +308,7 @@ onMounted(async () => {
     Object.assign(form.web_search, settings.web_search)
     Object.assign(form.groups, settings.groups ?? {})
     form.command_auto_approve = settings.command_auto_approve ?? false
+    form.file_delete_auto_approve = settings.file_delete_auto_approve ?? false
     form.file_ops_allow_any_path = settings.file_ops_allow_any_path ?? false
   } catch (error) {
     console.error('加载工具配置失败:', error)

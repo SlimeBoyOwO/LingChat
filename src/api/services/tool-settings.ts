@@ -24,6 +24,8 @@ export interface ToolSettings {
   groups: Record<string, boolean>
   /** 命令执行：免确认直接运行 shell（危险，默认关闭） */
   command_auto_approve: boolean
+  /** 删除文件：免确认直接删除（危险，默认关闭） */
+  file_delete_auto_approve: boolean
   /** 文件操作：允许访问沙箱（data/）之外的路径（默认关闭） */
   file_ops_allow_any_path: boolean
 }

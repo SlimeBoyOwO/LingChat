@@ -73,3 +73,25 @@ pub async fn resolve_command_approval(
         None => Err("审批请求不存在或已过期".into()),
     }
 }
+
+/// 主聊天 `delete_file` 的审批回调：前端确认后把决定送回等待中的删除工具。
+#[tauri::command]
+pub async fn resolve_file_delete_approval(
+    app: tauri::AppHandle,
+    request_id: String,
+    approved: bool,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let request = state
+        .chat_file_delete_approvals
+        .lock()
+        .await
+        .remove(&request_id);
+    match request {
+        Some(request) => {
+            let _ = request.tx.send(approved);
+            Ok(())
+        }
+        None => Err("删除审批请求不存在或已过期".into()),
+    }
+}

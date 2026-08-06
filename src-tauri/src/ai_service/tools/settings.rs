@@ -120,6 +120,8 @@ pub struct ToolSettings {
     pub groups: std::collections::HashMap<String, bool>,
     /// 命令执行：免审批直接运行 shell（危险，仅在信任当前角色/模型时开启）。
     pub command_auto_approve: bool,
+    /// 删除文件：免审批直接删除（危险；缺省 false，旧配置升级后仍会弹窗）。
+    pub file_delete_auto_approve: bool,
     /// 文件操作：允许访问文件沙箱（默认 data/）之外的任意路径。
     pub file_ops_allow_any_path: bool,
 }
@@ -182,5 +184,20 @@ impl SharedToolSettings {
     /// 整体替换配置，立即对所有工具生效。
     pub fn update(&self, settings: ToolSettings) {
         *self.0.write().expect("工具配置锁已中毒") = settings;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_settings_keep_delete_confirmation_enabled() {
+        let legacy = r#"
+command_auto_approve = false
+file_ops_allow_any_path = false
+"#;
+        let settings: ToolSettings = toml::from_str(legacy).unwrap();
+        assert!(!settings.file_delete_auto_approve);
     }
 }

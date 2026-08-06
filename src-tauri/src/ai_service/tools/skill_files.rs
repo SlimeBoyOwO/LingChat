@@ -14,9 +14,9 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
-use tauri::{Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
-use crate::ai_service::skill_agent::command_executor::{self, ApprovalRequest};
+use crate::ai_service::skill_agent::command_executor::{self, ApprovalMap, ApprovalRequest};
 use crate::ai_service::skill_agent::config::SkillAgentConfig;
 use crate::ai_service::skill_agent::file_tools::{FileTools, MAX_GREP_RESULTS};
 use crate::ai_service::skill_agent::skills;
@@ -29,6 +29,7 @@ use super::settings::SharedToolSettings;
 
 const SKILL_TOOL_TIMEOUT: Duration = Duration::from_secs(5);
 const FILE_TOOL_TIMEOUT: Duration = Duration::from_secs(15);
+const DELETE_FILE_TOOL_TIMEOUT: Duration = Duration::from_secs(135);
 
 /// 从工具上下文加载 skill agent 配置（沙箱目录 / 任意路径开关）。
 fn load_config(context: &ToolContext) -> Result<SkillAgentConfig, ToolError> {
@@ -65,6 +66,47 @@ where
     tokio::task::spawn_blocking(work)
         .await
         .map_err(|error| ToolError::Execution(format!("文件工具后台任务异常: {error}")))?
+}
+
+/// 发送主聊天审批事件并等待用户决定。审批请求自身 120 秒超时，调用工具的
+/// `timeout_hint` 必须留出额外清理时间。
+async fn request_user_approval(
+    app: &AppHandle,
+    approvals: ApprovalMap,
+    event: &str,
+    mut payload: Value,
+    action: &str,
+) -> Result<(), ToolError> {
+    let request_id = command_executor::new_request_id();
+    let object = payload
+        .as_object_mut()
+        .ok_or_else(|| ToolError::Execution("审批事件载荷必须是 JSON object".into()))?;
+    object.insert("request_id".into(), Value::String(request_id.clone()));
+
+    let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
+    approvals
+        .lock()
+        .await
+        .insert(request_id.clone(), ApprovalRequest { tx });
+    if let Err(error) = app.emit(event, payload) {
+        approvals.lock().await.remove(&request_id);
+        return Err(ToolError::Execution(format!(
+            "无法发送{action}审批请求: {error}"
+        )));
+    }
+
+    let decision = tokio::time::timeout(Duration::from_secs(120), rx).await;
+    approvals.lock().await.remove(&request_id);
+    match decision {
+        Ok(Ok(true)) => Ok(()),
+        Ok(Ok(false)) => Err(ToolError::Execution(format!("{action}已被用户拒绝"))),
+        Ok(Err(_)) => Err(ToolError::Execution(format!(
+            "审批通道已关闭，{action}未执行"
+        ))),
+        Err(_) => Err(ToolError::Execution(format!(
+            "{action}审批超时（120 秒），已自动拒绝"
+        ))),
+    }
 }
 
 /// list_skills：列出技能库中全部可用技能。
@@ -253,23 +295,87 @@ file_tool!(
     }
 );
 
-file_tool!(
-    DeleteFile,
-    "delete_file",
-    "删除一个文件。",
-    json!({
-        "type": "object",
-        "properties": {
-            "path": {"type": "string", "description": "要删除的文件路径"}
-        },
-        "required": ["path"],
-        "additionalProperties": false
-    }),
-    |ft: &FileTools, args: &Value| {
-        let path = arg_str(args, "path")?;
-        exec(ft.delete_file(path))
+/// delete_file：默认在真正删除前弹窗显示解析后的目标路径并等待确认。
+pub struct DeleteFile {
+    settings: SharedToolSettings,
+}
+
+impl DeleteFile {
+    pub fn new(settings: SharedToolSettings) -> Self {
+        Self { settings }
     }
-);
+}
+
+#[async_trait]
+impl Tool for DeleteFile {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition::new(
+            "delete_file",
+            "删除一个文件。默认会先向用户显示目标路径并请求确认；用户拒绝或审批超时则不会删除。",
+            json!({
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "要删除的文件路径"}
+                },
+                "required": ["path"],
+                "additionalProperties": false
+            }),
+        )
+    }
+
+    fn timeout_hint(&self) -> Option<Duration> {
+        Some(DELETE_FILE_TOOL_TIMEOUT)
+    }
+
+    async fn execute(
+        &self,
+        context: &ToolContext,
+        arguments: Value,
+    ) -> Result<ToolResult, ToolError> {
+        let app = context.require_app()?;
+        let path = arg_str(&arguments, "path")?.to_string();
+        let config = SkillAgentConfig::load(&app);
+        let ft = file_tools(&config, &self.settings);
+
+        // 审批前先做同样的沙箱/类型检查，确保弹窗展示真实且允许访问的目标。
+        let checked_ft = ft.clone();
+        let checked_path = path.clone();
+        let display_path = tokio::task::spawn_blocking(move || {
+            let target = checked_ft
+                .sanitize(&checked_path)
+                .map_err(|error| ToolError::Execution(error.to_string()))?;
+            let metadata = std::fs::symlink_metadata(&target).map_err(|_| {
+                ToolError::Execution(format!("文件不存在: {}", target.display()))
+            })?;
+            if metadata.file_type().is_dir() {
+                return Err(ToolError::Execution(format!(
+                    "delete_file 只能删除文件，不能删除目录: {}",
+                    target.display()
+                )));
+            }
+            Ok(target.display().to_string())
+        })
+        .await
+        .map_err(|error| ToolError::Execution(format!("删除目标检查异常: {error}")))??;
+
+        if !self.settings.get().file_delete_auto_approve {
+            let approvals = app
+                .state::<AppState>()
+                .chat_file_delete_approvals
+                .clone();
+            request_user_approval(
+                &app,
+                approvals,
+                "chat:file_delete_approval",
+                json!({ "path": display_path }),
+                "文件删除",
+            )
+            .await?;
+        }
+
+        run_blocking(move || exec(ft.delete_file(&path))).await
+    }
+}
 
 file_tool!(
     EditFile,
@@ -445,52 +551,21 @@ impl Tool for ExecuteCommand {
         let sandbox_dir = config.resolve_sandbox_dir();
 
         if !self.settings.get().command_auto_approve {
-            let state = app.state::<AppState>();
-            let request_id = command_executor::new_request_id();
-            let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
-            state
-                .chat_command_approvals
-                .lock()
-                .await
-                .insert(request_id.clone(), ApprovalRequest { tx });
-            if let Err(error) = app.emit(
+            let approvals = app.state::<AppState>().chat_command_approvals.clone();
+            request_user_approval(
+                &app,
+                approvals,
                 "chat:command_approval",
                 json!({
-                    "request_id": request_id,
                     "command": command,
                     "cwd": cwd,
                     "uac": uac,
                     "run_in_background": run_in_background,
                     "description": description,
                 }),
-            ) {
-                state
-                    .chat_command_approvals
-                    .lock()
-                    .await
-                    .remove(&request_id);
-                return Err(ToolError::Execution(format!(
-                    "无法发送命令审批请求: {error}"
-                )));
-            }
-            let decision = tokio::time::timeout(Duration::from_secs(120), rx).await;
-            state
-                .chat_command_approvals
-                .lock()
-                .await
-                .remove(&request_id);
-            match decision {
-                Ok(Ok(true)) => {}
-                Ok(Ok(false)) => return Err(ToolError::Execution("命令已被用户拒绝".into())),
-                Ok(Err(_)) => {
-                    return Err(ToolError::Execution("审批通道已关闭，命令未执行".into()))
-                }
-                Err(_) => {
-                    return Err(ToolError::Execution(
-                        "命令审批超时（120 秒），已自动拒绝".into(),
-                    ))
-                }
-            }
+                "命令",
+            )
+            .await?;
         }
 
         if run_in_background {
@@ -561,6 +636,7 @@ mod tests {
             assert!(definition.function.parameters["properties"].is_object());
             let expected_timeout = match definition.function.name.as_str() {
                 "list_skills" | "read_skill" => SKILL_TOOL_TIMEOUT,
+                "delete_file" => DELETE_FILE_TOOL_TIMEOUT,
                 "execute_command" => Duration::from_secs(430),
                 _ => FILE_TOOL_TIMEOUT,
             };
@@ -585,5 +661,13 @@ mod tests {
             "string"
         );
         assert_eq!(tool.timeout_hint(), Some(Duration::from_secs(430)));
+    }
+
+    #[test]
+    fn delete_file_schema_reserves_time_for_user_approval() {
+        let tool = DeleteFile::new(SharedToolSettings::new(ToolSettings::default()));
+        let definition = tool.definition();
+        assert!(definition.function.description.contains("请求确认"));
+        assert_eq!(tool.timeout_hint(), Some(DELETE_FILE_TOOL_TIMEOUT));
     }
 }

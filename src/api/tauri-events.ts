@@ -154,6 +154,28 @@ export function initializeTauriEventListeners() {
     }
   })
 
+  // 主聊天 delete_file 审批：先显示后端解析并校验过的真实路径，再把决定回传给工具。
+  listen('chat:file_delete_approval', async (event) => {
+    const payload = event.payload as {
+      request_id: string
+      path: string
+    }
+    console.log('[Tauri] chat:file_delete_approval', payload)
+    const dialogStore = useDialogStore()
+    const approved = await dialogStore.confirm(
+      i18n.global.t('ui.toolCalls.fileDeleteApprovalMessage', { path: payload.path }),
+      i18n.global.t('ui.toolCalls.fileDeleteApprovalTitle'),
+    )
+    try {
+      await invoke('resolve_file_delete_approval', {
+        requestId: payload.request_id,
+        approved,
+      })
+    } catch (e) {
+      console.warn('[Tauri] 回传删除审批结果失败（可能已超时）:', e)
+    }
+  })
+
   listen('status:reset', (event) => {
     console.log('[Tauri] status:reset', event.payload)
     eventQueue.addEvent(asEvent(event.payload, { type: 'status_reset', defaultDuration: 0 }))
