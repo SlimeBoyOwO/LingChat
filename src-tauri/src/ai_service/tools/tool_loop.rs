@@ -23,6 +23,7 @@ const MAX_PERSISTED_TOOL_RESULT_CHARS: usize = 32_000;
 const MAX_PERSISTED_SINGLE_TOOL_RESULT_CHARS: usize = 12_000;
 const TOOL_RESULT_TRUNCATION_MARKER: &str = "\n...[工具结果过长，长期记忆已截断]";
 const FINAL_SYNTHESIS_PROMPT: &str = "工具调用已达到本轮上限。请停止调用工具，基于已有工具结果直接给出最终答复；如仍有未完成事项，请明确说明。";
+const TOOL_USE_POLICY_PROMPT: &str = "你可以调用本请求随附的工具。用户要求执行文件读写/删除、命令运行、角色或场景切换等实际操作时，必须先真正调用相应工具，并在收到工具结果后再说明结果。绝不能只在思考中计划调用，或在没有成功工具结果时声称已经执行、删除、写入、切换或完成。需要用户确认的危险操作会由应用弹窗处理，请直接发起工具调用，不要用文字假装已经操作；如果工具失败、被拒绝或没有调用，必须明确说明操作尚未完成。";
 
 /// 工具消息收集槽：流消费过程中由闭环填充，消费完毕后调用方取走。
 pub type ToolMessageSink = Arc<Mutex<Vec<LlmMessage>>>;
@@ -72,6 +73,9 @@ pub async fn stream_with_tool_loop(
     let stream = async_stream::try_stream! {
         let executor = ToolExecutor::new(&registry);
         let mut messages = messages;
+        // 角色人设经常要求先给出演出文本，部分模型会因此只口头宣称完成操作。
+        // 该临时系统消息只用于本次请求，不写入长期记忆，并明确工具结果才是事实依据。
+        messages.insert(0, LlmMessage::system(TOOL_USE_POLICY_PROMPT));
         // 切换到一个原本不在场的角色时，它的历史记忆不会包含触发切换的用户消息；
         // 保留这一条，重建上下文后补回，避免新角色只看到孤立的 tool_result。
         let active_user_message = messages

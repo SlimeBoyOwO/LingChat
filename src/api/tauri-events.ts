@@ -1,5 +1,6 @@
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { eventQueue } from '../core/events/event-queue'
 import type { ScriptEventType } from '../types'
 import { useAdventureStore } from '../stores/modules/adventure'
@@ -51,6 +52,8 @@ function isStalePreviewReply(payload: Record<string, unknown>): boolean {
 }
 
 export function initializeTauriEventListeners() {
+  const listenMainWindow = getCurrentWindow().label === 'main' ? listen : null
+
   listen('ai:reply', (event) => {
     const payload = event.payload as Record<string, unknown>
     // 试玩中止后迟到的流式回复：直接丢弃，不放进事件队列
@@ -126,8 +129,9 @@ export function initializeTauriEventListeners() {
     }
   })
 
+  // 审批框只在主窗口挂载；独立日志窗口等不能消费审批事件。
   // 主聊天 execute_command 审批：弹确认框，把用户决定回传给等待中的工具
-  listen('chat:command_approval', async (event) => {
+  listenMainWindow?.('chat:command_approval', async (event) => {
     const payload = event.payload as {
       request_id: string
       command: string
@@ -152,7 +156,7 @@ export function initializeTauriEventListeners() {
   })
 
   // execute_command 中识别到删除操作时使用独立危险确认；回传到删除审批队列。
-  listen('chat:command_delete_approval', async (event) => {
+  listenMainWindow?.('chat:command_delete_approval', async (event) => {
     const payload = event.payload as {
       request_id: string
       command: string
@@ -180,7 +184,7 @@ export function initializeTauriEventListeners() {
   })
 
   // 主聊天 delete_file 审批：先显示后端解析并校验过的真实路径，再把决定回传给工具。
-  listen('chat:file_delete_approval', async (event) => {
+  listenMainWindow?.('chat:file_delete_approval', async (event) => {
     const payload = event.payload as {
       request_id: string
       path: string

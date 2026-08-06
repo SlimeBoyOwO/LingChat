@@ -88,7 +88,15 @@ async fn request_user_approval(
         .lock()
         .await
         .insert(request_id.clone(), ApprovalRequest { tx });
-    if let Err(error) = app.emit(event, payload) {
+    // 审批框只挂载在主窗口。使用全局广播会让日志/截图等独立窗口也收到事件，
+    // 这些窗口没有 AppDialog，回调会一直等待并最终触发 120 秒超时。
+    if app.get_webview_window("main").is_none() {
+        approvals.lock().await.remove(&request_id);
+        return Err(ToolError::Execution(format!(
+            "无法发送{action}审批请求: 主窗口不可用"
+        )));
+    }
+    if let Err(error) = app.emit_to("main", event, payload) {
         approvals.lock().await.remove(&request_id);
         return Err(ToolError::Execution(format!(
             "无法发送{action}审批请求: {error}"
