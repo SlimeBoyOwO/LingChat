@@ -6,7 +6,7 @@
         gap-1.5
         font-medium
         text-brand"
-      :title="`YAML 字段名：${field.key}`"
+      :title="t('scriptEditor.fieldRow.yamlKey', { key: field.key })"
     >
       {{ field.label }}
       <span

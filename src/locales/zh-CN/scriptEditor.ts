@@ -5,6 +5,10 @@
 export default {
   editorHeader: {
     title: 'LingChat 剧本编辑器',
+    saving: '正在保存…',
+    dirty: '有未保存改动',
+    savedAt: '已自动保存 · {time}',
+    saved: '已保存',
     backToList: '‹ 剧本列表',
     home: '首页',
     undo: '撤销（Ctrl / ⌘ + Z）',
@@ -31,6 +35,7 @@ export default {
     deletedDesc: '{name} 已被永久删除',
   },
   chapterFlow: {
+    deleteChapter: '删除章节',
     loading: '正在读取章节跳转关系…',
     intro: '开场',
     orphan: '无人进入',
@@ -53,14 +58,17 @@ export default {
     events: '{count} 个事件',
   },
   config: {
+    menuTitle: '剧本设置',
     deleteCondition: '删除这个条件',
   },
   characters: {
+    menuTitle: '剧本内角色',
     noLocalAvatar: '本剧本没复制立绘，但全局角色库里有；引擎会自动用全局那份',
     clothes: ' · {count} 套服装',
     delete: '删除角色（移到 .trash/）',
   },
   assets: {
+    menuTitle: '素材',
     kindBackground: '背景图',
     kindPic: '插图',
     kindMusic: '背景音乐',
@@ -84,6 +92,7 @@ export default {
     // 校验页文案集中在 ValidateTab/validate 相关组件中
   },
   appearance: {
+    menuTitle: '背景图',
     intro: '编辑器背景与遮挡效果，改动即时生效并自动保存。',
     current: '当前背景',
     builtin: '内置默认背景（主菜单同款）',
@@ -104,6 +113,7 @@ export default {
     dark: '深暗',
   },
   imageCrop: {
+    previewAlt: '背景裁剪预览',
     title: '裁剪背景图',
     hint: '选区比例与编辑器窗口一致，框内即最终显示效果',
     cancel: '取消',
@@ -121,6 +131,7 @@ export default {
     vars: '⚙ {count} 个变量',
   },
   fieldRow: {
+    yamlKey: 'YAML 字段名：{key}',
     optional: '可选',
     on: '开启',
     off: '关闭',
@@ -131,11 +142,17 @@ export default {
     audio: '音频',
   },
   flowTab: {
+    foldHint:
+      '官方剧本里反复出现两组固定写法：「角色退场 → 背景 → 角色出场」的转场，和「AI 说 → 等玩家输入 → AI 说」的一轮互动。打开后它们各折成一行，长章节能少掉近一半行数；折起来的那行会写明这段切到哪个背景、用的什么提示。',
+    menuTitle: '章节流程',
     timeline: '事件时间线',
     chapterName: '章节显示名（留空则用文件名）',
     eventProps: '事件属性',
   },
   composite: {
+    deleteAction: '删除这个动作',
+    deleteOption: '删除这个选项',
+    fallbackLabel: '选项文案（留空作为兜底，玩家输入不匹配任何选项时用这一条——必须放在最后）',
     condition: '条件',
     disabledHint: '不可选提示',
     legacyNotice: '旧版本遗留下来的写法，运行时会被跳过。点下面按钮转成新格式。',
@@ -155,6 +172,8 @@ export default {
     playerLinePlaceholder: '写入对话历史的一句玩家台词',
   },
   condition: {
+    varValue: '值',
+    varName: '变量名',
     clear: '清空重填',
     invalidNotice:
       '这段条件不是支持的写法（校验器会提示原因）。点「清空重填」后用下面的表单重新选择。',
@@ -165,6 +184,8 @@ export default {
     help: '设置条件后，只有满足条件这一项才会生效；条件只做判断，不会改动变量',
   },
   variable: {
+    max: '最大',
+    min: '最小',
     clear: '清空重填',
     invalidNotice:
       '这段赋值不是支持的写法（校验器会提示原因）。点「清空重填」后用下面的表单重新填写。',
@@ -233,7 +254,11 @@ export default {
     player: '玩家',
   },
   agentChat: {
+    expandUsage: '展开用量明细',
+    collapseUsage: '收起用量明细',
     newConversation: '新建对话',
+    empty: '还没有对话，点左侧「新建对话」开始',
+    deleteConversation: '删除此对话',
     conversationTitle: '对话 {id}',
     clearConversation: '清空当前对话',
     tokenUsage: 'Token 用量',
@@ -301,6 +326,19 @@ export default {
     playtestBlocked: '试玩会卡住',
   },
   notify: {
+    openFolderFailed: '打开目录失败',
+    scriptDeleted: '剧本已删除',
+    scriptDeletedDesc: '{name} 已被永久删除',
+    characterCreateFailed: '创建角色失败',
+    characterDeleted: '角色已删除',
+    characterDeletedDesc: '{name} 已被永久删除',
+    characterDeleteFailed: '删除角色失败',
+    assetDeleted: '素材已删除',
+    assetDeletedDesc: '{name} 已被永久删除',
+    assetDeleteFailed: '删除素材失败',
+    characterImportFailed: '导入角色失败',
+    configSaved: '剧本设置已保存',
+    configSaveFailed: '保存剧本设置失败',
     newScriptFailed: '新建剧本失败',
     schemaFailed: '无法读取事件定义',
     listFailed: '无法读取剧本列表',

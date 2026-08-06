@@ -76,7 +76,7 @@
           focus:outline-none
           focus:border-[var(--accent-color)]"
         :list="uid"
-        placeholder="变量名"
+        :placeholder="t('scriptEditor.condition.varName')"
         :value="draft.var"
         @change="onVar"
       />
@@ -115,7 +115,7 @@
           transition-all
           focus:outline-none
           focus:border-[var(--accent-color)]"
-        placeholder="值"
+        :placeholder="t('scriptEditor.condition.varValue')"
         :value="draft.value"
         @change="onValue"
       />

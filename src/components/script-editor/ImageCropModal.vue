@@ -49,7 +49,7 @@
             ref="imgEl"
             :src="imgSrc"
             class="max-w-full"
-            alt="背景裁剪预览"
+            :alt="t('scriptEditor.imageCrop.previewAlt')"
           />
         </div>
 

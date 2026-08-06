@@ -41,7 +41,7 @@ const openChapterFromValidate = async (chapterId: string) => {
 
 <template>
   <MenuPage>
-    <MenuItem title="校验">
+    <MenuItem :title="t('scriptEditor.validateTab.menuTitle')">
       <template #header>
         <Icon
           icon="achievement"

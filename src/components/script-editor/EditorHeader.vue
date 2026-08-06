@@ -125,16 +125,14 @@ const switchTab = (key: TabKey) => {
 
 // ---- 面包屑 ----
 const saveLabel = computed(() => {
-  if (store.saving) return '正在保存…'
-  if (store.dirty) return '有未保存改动'
+  if (store.saving) return t('scriptEditor.editorHeader.saving')
+  if (store.dirty) return t('scriptEditor.editorHeader.dirty')
   if (store.lastSavedAt) {
     const d = new Date(store.lastSavedAt)
-    return `已自动保存 · ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(
-      2,
-      '0',
-    )}`
+    const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+    return t('scriptEditor.editorHeader.savedAt', { time })
   }
-  return '已保存'
+  return t('scriptEditor.editorHeader.saved')
 })
 
 onMounted(async () => {

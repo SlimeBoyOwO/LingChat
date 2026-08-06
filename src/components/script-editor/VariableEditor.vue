@@ -76,7 +76,7 @@
           focus:outline-none
           focus:border-[var(--accent-color)]"
         :list="uid"
-        placeholder="变量名"
+        :placeholder="t('scriptEditor.condition.varName')"
         :value="draft.var"
         @change="onVar"
       />
@@ -137,7 +137,7 @@
           transition-all
           focus:outline-none
           focus:border-[var(--accent-color)]"
-        placeholder="值"
+        :placeholder="t('scriptEditor.condition.varValue')"
         :value="draft.value"
         @change="onValue"
       />
@@ -157,7 +157,7 @@
           focus:outline-none
           focus:border-[var(--accent-color)]"
         type="number"
-        placeholder="数值"
+        :placeholder="t('scriptEditor.variable.typeNumber')"
         :value="draft.value"
         @change="onValue"
       />
@@ -197,7 +197,7 @@
             focus:outline-none
             focus:border-[var(--accent-color)]"
           type="number"
-          placeholder="最小"
+          :placeholder="t('scriptEditor.variable.min')"
           :value="String(draft.randomMin ?? '')"
           @change="onRandomMin"
         />
@@ -219,7 +219,7 @@
             focus:outline-none
             focus:border-[var(--accent-color)]"
           type="number"
-          placeholder="最大"
+          :placeholder="t('scriptEditor.variable.max')"
           :value="String(draft.randomMax ?? '')"
           @change="onRandomMax"
         />
@@ -275,7 +275,7 @@ const uid = useId()
 
 /** 默认文案覆盖各场景的共性语义；父级有更贴切的说明时可覆盖或隐藏 */
 const displayHint = computed(() =>
-  props.hint === undefined ? '这一条会把变量改成这个值，后面的条件判断会读到它' : props.hint,
+  props.hint === undefined ? t('scriptEditor.variable.help') : props.hint,
 )
 
 /**

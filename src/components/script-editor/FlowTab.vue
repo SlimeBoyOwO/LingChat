@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Icon, Toggle } from '@/components/base'
 import { MenuPage, MenuItem } from '@/components/ui'
@@ -14,10 +15,7 @@ const { t } = useI18n()
 const store = useScriptEditorStore()
 
 /** 抽成常量纯粹是因为 title 内联会超出 100 列的行宽 */
-const FOLD_HINT =
-  '官方剧本里反复出现两组固定写法：「角色退场 → 背景 → 角色出场」的转场，' +
-  '和「AI 说 → 等玩家输入 → AI 说」的一轮互动。打开后它们各折成一行，' +
-  '长章节能少掉近一半行数；折起来的那行会写明这段切到哪个背景、用的什么提示。'
+const FOLD_HINT = computed(() => t('scriptEditor.flowTab.foldHint'))
 
 const onRename = (e: Event) => store.setChapterName((e.target as HTMLInputElement).value)
 
@@ -26,7 +24,7 @@ const openFolder = async () => {
   try {
     await openScriptFolder(store.scriptKey)
   } catch (err) {
-    store.notifyError('打开目录失败', err)
+    store.notifyError(t('scriptEditor.notify.openFolderFailed'), err)
   }
 }
 </script>
@@ -34,7 +32,7 @@ const openFolder = async () => {
 <template>
   <!-- ============ 章节流程 ============ -->
   <MenuPage v-if="store.level === 'flow'">
-    <MenuItem title="章节流程">
+    <MenuItem :title="t('scriptEditor.flowTab.menuTitle')">
       <template #header>
         <Icon
           icon="adventure"

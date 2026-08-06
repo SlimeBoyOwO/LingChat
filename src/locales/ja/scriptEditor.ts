@@ -4,6 +4,10 @@
 export default {
   editorHeader: {
     title: 'LingChat シナリオエディタ',
+    saving: '保存中…',
+    dirty: '未保存の変更あり',
+    savedAt: '自動保存済み · {time}',
+    saved: '保存済み',
     backToList: '‹ シナリオ一覧',
     home: 'ホーム',
     undo: '元に戻す（Ctrl / ⌘ + Z）',
@@ -30,6 +34,7 @@ export default {
     deletedDesc: '{name} を完全に削除しました',
   },
   chapterFlow: {
+    deleteChapter: '章を削除',
     loading: '章の遷移関係を読み込み中…',
     intro: '冒頭',
     orphan: '進入不可',
@@ -51,15 +56,18 @@ export default {
     events: '{count} 個のイベント',
   },
   config: {
+    menuTitle: 'シナリオ設定',
     deleteCondition: 'この条件を削除',
   },
   characters: {
+    menuTitle: 'シナリオ内キャラクター',
     noLocalAvatar:
       'このシナリオには立ち絵をコピーしていませんが、グローバルキャラクターライブラリにあります。エンジンが自動でそちらを使います',
     clothes: ' · {count} 着の衣装',
     delete: 'キャラクターを削除（.trash/ へ移動）',
   },
   assets: {
+    menuTitle: '素材',
     kindBackground: '背景画像',
     kindPic: 'イラスト',
     kindMusic: 'BGM',
@@ -74,6 +82,7 @@ export default {
   },
   validate: {},
   appearance: {
+    menuTitle: '背景画像',
     intro: 'エディタの背景と遮蔽効果。変更は即時反映され、自動保存されます。',
     current: '現在の背景',
     builtin: '内蔵デフォルト背景（メインメニューと同じ）',
@@ -95,6 +104,7 @@ export default {
     dark: '暗い',
   },
   imageCrop: {
+    previewAlt: '背景画像のトリミングプレビュー',
     title: '背景画像のトリミング',
     hint: '選択範囲の比率はエディタウィンドウと同じです。枠内が最終表示になります',
     cancel: 'キャンセル',
@@ -112,6 +122,7 @@ export default {
     vars: '⚙ {count} 個の変数',
   },
   fieldRow: {
+    yamlKey: 'YAML フィールド名：{key}',
     optional: '任意',
     on: 'オン',
     off: 'オフ',
@@ -124,11 +135,18 @@ export default {
     audio: '音声',
   },
   flowTab: {
+    foldHint:
+      '公式シナリオでは「キャラ退場 → 背景 → キャラ登場」の転換と、「AI 発言 → プレイヤー入力待ち → AI 発言」のやり取りが頻出します。展開するとそれぞれ一行に折りたたまれ、長い章では行数が半分近く減ります。折りたたまれた行にはどの背景に切り替え、どのプロンプトを使うかが書かれます。',
+    menuTitle: '章の流れ',
     timeline: 'イベントタイムライン',
     chapterName: '章の表示名（空欄ならファイル名を使用）',
     eventProps: 'イベントプロパティ',
   },
   composite: {
+    deleteAction: 'このアクションを削除',
+    deleteOption: 'この選択肢を削除',
+    fallbackLabel:
+      '選択肢テキスト（空欄はフォールバック：プレイヤー入力がどの選択肢にも一致しない場合に使用——最後に置くこと）',
     condition: '条件',
     disabledHint: '選択不可時のヒント',
     legacyNotice:
@@ -151,6 +169,8 @@ export default {
     playerLinePlaceholder: '会話履歴に書き込むプレイヤーのセリフ',
   },
   condition: {
+    varValue: '値',
+    varName: '変数名',
     clear: 'クリアして入力し直す',
     invalidNotice:
       'この条件はサポートされていない書き方です（検証が原因を表示します）。「クリアして入力し直す」で下のフォームから再選択してください。',
@@ -161,6 +181,8 @@ export default {
     help: '条件を設定すると、満たす場合のみこの項目が有効になります。条件は判定のみで、変数は変更しません',
   },
   variable: {
+    max: '最大',
+    min: '最小',
     clear: 'クリアして入力し直す',
     invalidNotice:
       'この代入はサポートされていない書き方です（検証が原因を表示します）。「クリアして入力し直す」で下のフォームから再入力してください。',
@@ -232,7 +254,11 @@ export default {
     player: 'プレイヤー',
   },
   agentChat: {
+    expandUsage: '使用量詳細を開く',
+    collapseUsage: '使用量詳細を閉じる',
     newConversation: '新しい会話',
+    empty: '会話がまだありません。左側の「新しい会話」から始めてください',
+    deleteConversation: 'この会話を削除',
     conversationTitle: '会話 {id}',
     clearConversation: '現在の会話をクリア',
     tokenUsage: 'トークン使用量',
@@ -307,6 +333,19 @@ export default {
     playtestBlocked: '試遊が止まります',
   },
   notify: {
+    openFolderFailed: 'フォルダを開けませんでした',
+    scriptDeleted: 'シナリオを削除しました',
+    scriptDeletedDesc: '{name} を完全に削除しました',
+    characterCreateFailed: 'キャラクターの作成に失敗',
+    characterDeleted: 'キャラクターを削除しました',
+    characterDeletedDesc: '{name} を完全に削除しました',
+    characterDeleteFailed: 'キャラクターの削除に失敗',
+    assetDeleted: '素材を削除しました',
+    assetDeletedDesc: '{name} を完全に削除しました',
+    assetDeleteFailed: '素材の削除に失敗',
+    characterImportFailed: 'キャラクターのインポートに失敗',
+    configSaved: 'シナリオ設定を保存しました',
+    configSaveFailed: 'シナリオ設定の保存に失敗',
     newScriptFailed: '新しいシナリオの作成に失敗',
     schemaFailed: 'イベント定義を読み込めません',
     listFailed: 'シナリオ一覧を読み込めません',

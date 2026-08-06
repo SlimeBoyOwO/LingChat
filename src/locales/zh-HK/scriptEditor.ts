@@ -4,6 +4,10 @@
 export default {
   editorHeader: {
     title: 'LingChat 劇本編輯器',
+    saving: '正在保存…',
+    dirty: '有未保存改動',
+    savedAt: '已自動保存 · {time}',
+    saved: '已保存',
     backToList: '‹ 劇本列表',
     home: '首頁',
     undo: '復原（Ctrl / ⌘ + Z）',
@@ -30,6 +34,7 @@ export default {
     deletedDesc: '{name} 已被永久刪除',
   },
   chapterFlow: {
+    deleteChapter: '刪除章節',
     loading: '正在讀取章節跳轉關係…',
     intro: '開場',
     orphan: '無人進入',
@@ -52,14 +57,17 @@ export default {
     events: '{count} 個事件',
   },
   config: {
+    menuTitle: '劇本設定',
     deleteCondition: '刪除這個條件',
   },
   characters: {
+    menuTitle: '劇本內角色',
     noLocalAvatar: '本劇本沒複製立繪，但全局角色庫裡有；引擎會自動用全局那份',
     clothes: ' · {count} 套服裝',
     delete: '刪除角色（移到 .trash/）',
   },
   assets: {
+    menuTitle: '素材',
     kindBackground: '背景圖',
     kindPic: '插圖',
     kindMusic: '背景音樂',
@@ -74,6 +82,7 @@ export default {
   },
   validate: {},
   appearance: {
+    menuTitle: '背景圖',
     intro: '編輯器背景與遮擋效果，改動即時生效並自動保存。',
     current: '當前背景',
     builtin: '內置默認背景（主菜單同款）',
@@ -94,6 +103,7 @@ export default {
     dark: '深暗',
   },
   imageCrop: {
+    previewAlt: '背景裁剪預覽',
     title: '裁剪背景圖',
     hint: '選區比例與編輯器窗口一致，框內即最終顯示效果',
     cancel: '取消',
@@ -111,6 +121,7 @@ export default {
     vars: '⚙ {count} 個變量',
   },
   fieldRow: {
+    yamlKey: 'YAML 字段名：{key}',
     optional: '可選',
     on: '開啟',
     off: '關閉',
@@ -121,11 +132,17 @@ export default {
     audio: '音頻',
   },
   flowTab: {
+    foldHint:
+      '官方劇本裡反覆出現兩組固定寫法：「角色退場 → 背景 → 角色出場」的轉場，和「AI 說 → 等玩家輸入 → AI 說」的一輪互動。打開後它們各折成一行，長章節能少掉近一半行數；折起來的那行會寫明這段切到哪個背景、用的什麼提示。',
+    menuTitle: '章節流程',
     timeline: '事件時間線',
     chapterName: '章節顯示名（留空則用文件名）',
     eventProps: '事件屬性',
   },
   composite: {
+    deleteAction: '刪除這個動作',
+    deleteOption: '刪除這個選項',
+    fallbackLabel: '選項文案（留空作為兜底，玩家輸入不匹配任何選項時用這一條——必須放在最後）',
     condition: '條件',
     disabledHint: '不可選提示',
     legacyNotice: '舊版本遺留下來的寫法，運行時會被跳過。點下面按鈕轉成新格式。',
@@ -145,6 +162,8 @@ export default {
     playerLinePlaceholder: '寫入對話歷史的一句玩家台詞',
   },
   condition: {
+    varValue: '值',
+    varName: '變量名',
     clear: '清空重填',
     invalidNotice:
       '這段條件不是支持的寫法（校驗器會提示原因）。點「清空重填」後用下面的表單重新選擇。',
@@ -155,6 +174,8 @@ export default {
     help: '設置條件後，只有滿足條件這一項才會生效；條件只做判斷，不會改動變量',
   },
   variable: {
+    max: '最大',
+    min: '最小',
     clear: '清空重填',
     invalidNotice:
       '這段賦值不是支持的寫法（校驗器會提示原因）。點「清空重填」後用下面的表單重新填寫。',
@@ -223,7 +244,11 @@ export default {
     player: '玩家',
   },
   agentChat: {
+    expandUsage: '展開用量明細',
+    collapseUsage: '收起用量明細',
     newConversation: '新建對話',
+    empty: '還沒有對話，點左側「新建對話」開始',
+    deleteConversation: '刪除此對話',
     conversationTitle: '對話 {id}',
     clearConversation: '清空當前對話',
     tokenUsage: 'Token 用量',
@@ -291,6 +316,19 @@ export default {
     playtestBlocked: '試玩會卡住',
   },
   notify: {
+    openFolderFailed: '打開目錄失敗',
+    scriptDeleted: '劇本已刪除',
+    scriptDeletedDesc: '{name} 已被永久刪除',
+    characterCreateFailed: '創建角色失敗',
+    characterDeleted: '角色已刪除',
+    characterDeletedDesc: '{name} 已被永久刪除',
+    characterDeleteFailed: '刪除角色失敗',
+    assetDeleted: '素材已刪除',
+    assetDeletedDesc: '{name} 已被永久刪除',
+    assetDeleteFailed: '刪除素材失敗',
+    characterImportFailed: '導入角色失敗',
+    configSaved: '劇本設置已保存',
+    configSaveFailed: '保存劇本設置失敗',
     newScriptFailed: '新建劇本失敗',
     schemaFailed: '無法讀取事件定義',
     listFailed: '無法讀取劇本列表',

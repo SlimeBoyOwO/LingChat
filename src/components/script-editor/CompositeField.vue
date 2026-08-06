@@ -35,7 +35,7 @@
               transition-all
               focus:outline-none
               focus:border-[var(--accent-color)]"
-            placeholder="选项文案（留空作为兜底，玩家输入不匹配任何选项时用这一条——必须放在最后）"
+            :placeholder="t('scriptEditor.composite.fallbackLabel')"
             :value="str(opt.text)"
             @change="(e) => patch(i, 'text', val(e))"
           />
@@ -49,7 +49,7 @@
               transition-all
               hover:text-[#fca5a5]
               hover:bg-[rgba(248,113,113,0.15)]"
-            title="删除这个选项"
+            :title="t('scriptEditor.composite.deleteOption')"
             @click="removeRow(i)"
           >
             ✕
@@ -204,7 +204,7 @@
               transition-all
               hover:text-[#fca5a5]
               hover:bg-[rgba(248,113,113,0.15)]"
-            title="删除这个动作"
+            :title="t('scriptEditor.composite.deleteAction')"
             @click="removeAction(i, ai)"
           >
             ✕

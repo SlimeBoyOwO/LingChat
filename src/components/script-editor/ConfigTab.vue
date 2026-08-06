@@ -147,7 +147,7 @@ const saveConfig = () => {
 
 <template>
   <MenuPage>
-    <MenuItem title="剧本设置">
+    <MenuItem :title="t('scriptEditor.config.menuTitle')">
       <template #header>
         <Icon
           icon="setting"

@@ -220,7 +220,7 @@
                   group-hover:opacity-100
                   hover:text-red-300
                   hover:bg-red-400/15"
-                title="删除章节"
+                :title="t('scriptEditor.chapterFlow.deleteChapter')"
                 @click.stop="store.deleteChapter(node.id)"
               >
                 ✕

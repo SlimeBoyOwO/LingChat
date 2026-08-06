@@ -102,7 +102,7 @@
                 group-hover:opacity-100
                 hover:text-white/60
                 hover:bg-white/[0.1]"
-              title="上移"
+              :title="t('scriptEditor.chapterTimeline.moveUp')"
               @click.stop="moveUp(row)"
             >
               ▲
@@ -120,7 +120,7 @@
                 group-hover:opacity-100
                 hover:text-white/60
                 hover:bg-white/[0.1]"
-              title="下移"
+              :title="t('scriptEditor.chapterTimeline.moveDown')"
               @click.stop="moveDown(row)"
             >
               ▼

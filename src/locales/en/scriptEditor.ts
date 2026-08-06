@@ -4,6 +4,10 @@
 export default {
   editorHeader: {
     title: 'LingChat Script Editor',
+    saving: 'Saving…',
+    dirty: 'Unsaved changes',
+    savedAt: 'Auto-saved · {time}',
+    saved: 'Saved',
     backToList: '‹ Scripts',
     home: 'Home',
     undo: 'Undo (Ctrl / ⌘ + Z)',
@@ -30,6 +34,7 @@ export default {
     deletedDesc: '{name} has been permanently deleted',
   },
   chapterFlow: {
+    deleteChapter: 'Delete chapter',
     loading: 'Reading chapter transitions…',
     intro: 'opening',
     orphan: 'no entry',
@@ -52,15 +57,18 @@ export default {
     events: '{count} events',
   },
   config: {
+    menuTitle: 'Script Settings',
     deleteCondition: 'Delete this condition',
   },
   characters: {
+    menuTitle: 'Script characters',
     noLocalAvatar:
       'No portrait copied into this script, but the global library has one; the engine will use it automatically',
     clothes: ' · {count} outfits',
     delete: 'Delete character (move to .trash/)',
   },
   assets: {
+    menuTitle: 'Assets',
     kindBackground: 'Background',
     kindPic: 'Illustration',
     kindMusic: 'BGM',
@@ -75,6 +83,7 @@ export default {
   },
   validate: {},
   appearance: {
+    menuTitle: 'Background',
     intro:
       'Editor background and overlay effects. Changes take effect instantly and are saved automatically.',
     current: 'Current background',
@@ -97,6 +106,7 @@ export default {
     dark: 'Dark',
   },
   imageCrop: {
+    previewAlt: 'Background crop preview',
     title: 'Crop Background',
     hint: 'The crop box matches the editor window ratio; what\u2019s inside is exactly what you get',
     cancel: 'Cancel',
@@ -114,6 +124,7 @@ export default {
     vars: '\u2699 {count} variables',
   },
   fieldRow: {
+    yamlKey: 'YAML field: {key}',
     optional: 'optional',
     on: 'On',
     off: 'Off',
@@ -124,11 +135,18 @@ export default {
     audio: 'Audio',
   },
   flowTab: {
+    foldHint:
+      'Official scripts repeatedly use two fixed patterns: the "character exit → background → character enter" transition, and the "AI speaks → wait for player input → AI speaks" exchange. When enabled they each collapse into one line, cutting long chapters nearly in half; the collapsed line shows which background it switches to and which prompt it uses.',
+    menuTitle: 'Chapters',
     timeline: 'Event Timeline',
     chapterName: 'Chapter display name (leave empty to use the file name)',
     eventProps: 'Event Properties',
   },
   composite: {
+    deleteAction: 'Delete this action',
+    deleteOption: 'Delete this option',
+    fallbackLabel:
+      'Option text (leave empty as a fallback used when the player input matches no option — must be last)',
     condition: 'Condition',
     disabledHint: 'Disabled hint',
     legacyNotice:
@@ -149,6 +167,8 @@ export default {
     playerLinePlaceholder: 'A player line to append to the conversation history',
   },
   condition: {
+    varValue: 'Value',
+    varName: 'Variable',
     clear: 'Clear and refill',
     invalidNotice:
       'This condition uses an unsupported syntax (the validator will explain). Click "Clear and refill" to rebuild it with the form below.',
@@ -159,6 +179,8 @@ export default {
     help: 'A condition only decides whether this item applies; it never modifies variables',
   },
   variable: {
+    max: 'Max',
+    min: 'Min',
     clear: 'Clear and refill',
     invalidNotice:
       'This assignment uses an unsupported syntax (the validator will explain). Click "Clear and refill" to rewrite it with the form below.',
@@ -230,7 +252,11 @@ export default {
     player: 'Player',
   },
   agentChat: {
+    expandUsage: 'Expand usage details',
+    collapseUsage: 'Collapse usage details',
     newConversation: 'New conversation',
+    empty: 'No conversations yet — start one with "New conversation" on the left',
+    deleteConversation: 'Delete this conversation',
     conversationTitle: 'Conversation {id}',
     clearConversation: 'Clear current conversation',
     tokenUsage: 'Token usage',
@@ -304,6 +330,19 @@ export default {
     playtestBlocked: 'Playtest will hang',
   },
   notify: {
+    openFolderFailed: 'Failed to open folder',
+    scriptDeleted: 'Script deleted',
+    scriptDeletedDesc: '{name} has been permanently deleted',
+    characterCreateFailed: 'Failed to create character',
+    characterDeleted: 'Character deleted',
+    characterDeletedDesc: '{name} has been permanently deleted',
+    characterDeleteFailed: 'Failed to delete character',
+    assetDeleted: 'Asset deleted',
+    assetDeletedDesc: '{name} has been permanently deleted',
+    assetDeleteFailed: 'Failed to delete asset',
+    characterImportFailed: 'Failed to import character',
+    configSaved: 'Script settings saved',
+    configSaveFailed: 'Failed to save script settings',
     newScriptFailed: 'Failed to create script',
     schemaFailed: 'Failed to read event definitions',
     listFailed: 'Failed to read script list',

@@ -12,7 +12,7 @@ const store = useScriptEditorStore()
 
 <template>
   <MenuPage>
-    <MenuItem title="选择要编辑的剧本">
+    <MenuItem :title="t('scriptEditor.scriptList.title')">
       <template #header>
         <Icon
           icon="package"

@@ -63,7 +63,12 @@ const importAsset = async (kind: AssetKind, scope: AssetScope) => {
   const isImage = kind === 'background' || kind === 'pic'
   const picked = await openDialog({
     multiple: false,
-    filters: [{ name: isImage ? '图片' : '音频', extensions: isImage ? IMAGE_EXT : AUDIO_EXT }],
+    filters: [
+      {
+        name: isImage ? t('scriptEditor.fieldRow.image') : t('scriptEditor.fieldRow.audio'),
+        extensions: isImage ? IMAGE_EXT : AUDIO_EXT,
+      },
+    ],
   })
   if (typeof picked !== 'string') return
   await store.uploadAsset(kind, scope, picked)
@@ -76,7 +81,7 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
 
 <template>
   <MenuPage>
-    <MenuItem title="素材">
+    <MenuItem :title="t('scriptEditor.assets.menuTitle')">
       <template #header>
         <Icon
           icon="background"
@@ -310,10 +315,7 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
                           transition-colors
                           hover:bg-white/10"
                         :class="(audioRates[f.path] ?? 1) === rate ? 'text-brand' : 'text-white/60'"
-                        @click="
-                          setRate(f.path, rate)
-                          speedMenu = null
-                        "
+                        @click="setRate(f.path, rate); speedMenu = null"
                       >
                         {{ rate }}×
                       </button>

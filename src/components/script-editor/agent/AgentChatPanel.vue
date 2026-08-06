@@ -71,13 +71,13 @@
             <span class="truncate
               text-[0.8rem]
               text-white/85">{{
-              c.title || `对话 ${c.id}`
+              c.title || t('scriptEditor.agentChat.conversationTitle', { id: c.id })
             }}</span>
             <span
               class="opacity-0
                 transition-opacity
                 group-hover:opacity-100"
-              :title="'删除此对话'"
+              :title="t('scriptEditor.agentChat.deleteConversation')"
               @click.stop="removeConversation(c)"
             >
               <Icon
@@ -109,19 +109,17 @@
           hover:text-white/70"
         @click="store.clearConversation()"
       >
-        清空当前对话
+        {{ t('scriptEditor.agentChat.clearConversation') }}
       </button>
 
       <!-- Token 用量（窗口左下角；折叠卡片） -->
-      <div
-        class="shrink-0
-          rounded-xl
-          border
-          border-white/10
-          bg-white/5
-          px-3
-          py-2.5"
-      >
+      <div class="shrink-0
+        rounded-xl
+        border
+        border-white/10
+        bg-white/5
+        px-3
+        py-2.5">
         <button
           class="flex
             w-full
@@ -129,22 +127,30 @@
             justify-between
             gap-2
             text-left"
-          :title="usageOpen ? '收起用量明细' : '展开用量明细'"
+          :title="
+            usageOpen
+              ? t('scriptEditor.agentChat.collapseUsage')
+              : t('scriptEditor.agentChat.expandUsage')
+          "
           @click="usageOpen = !usageOpen"
         >
-          <span
-            class="inline-flex
-              items-center
-              gap-1.5
-              text-[0.72rem]
-              text-white/50"
-          >
-            <Icon icon="advance" :size="13" class="text-brand" />
-            Token 用量
+          <span class="inline-flex
+            items-center
+            gap-1.5
+            text-[0.72rem]
+            text-white/50">
+            <Icon
+              icon="advance"
+              :size="13"
+              class="text-brand"
+            />
+            {{ t('scriptEditor.agentChat.tokenUsage') }}
           </span>
           <span class="font-mono
             text-[0.78rem]
-            text-brand">{{ store.totalTokens.toLocaleString() }}</span>
+            text-brand">{{
+            store.totalTokens.toLocaleString()
+          }}</span>
           <span class="text-[0.6rem]
             text-white/30">{{ usageOpen ? '▾' : '▸' }}</span>
         </button>
@@ -171,7 +177,9 @@
                   text-white/40">输入</div>
                 <div class="font-mono
                   text-[0.72rem]
-                  text-white/85">{{ store.lastUsage.prompt_tokens.toLocaleString() }}</div>
+                  text-white/85">
+                  {{ store.lastUsage.prompt_tokens.toLocaleString() }}
+                </div>
               </div>
               <div class="rounded-md
                 bg-white/5
@@ -180,7 +188,9 @@
                   text-white/40">输出</div>
                 <div class="font-mono
                   text-[0.72rem]
-                  text-white/85">{{ store.lastUsage.completion_tokens.toLocaleString() }}</div>
+                  text-white/85">
+                  {{ store.lastUsage.completion_tokens.toLocaleString() }}
+                </div>
               </div>
               <div class="rounded-md
                 bg-white/5
@@ -189,11 +199,19 @@
                   text-white/40">本轮</div>
                 <div class="font-mono
                   text-[0.72rem]
-                  text-brand">{{ store.lastUsage.total_tokens.toLocaleString() }}</div>
+                  text-brand">
+                  {{ store.lastUsage.total_tokens.toLocaleString() }}
+                </div>
               </div>
             </div>
             <div class="text-[0.62rem]
-              text-white/35">累计 {{ store.totalTokens.toLocaleString() }} · 本次运行</div>
+              text-white/35">
+              {{
+                t('scriptEditor.agentChat.totalTokens', {
+                  count: store.totalTokens.toLocaleString(),
+                })
+              }}
+            </div>
           </template>
           <p
             v-else
@@ -247,7 +265,7 @@
             text-[0.82rem]
             text-white/40"
         >
-          还没有对话，点左侧「新建对话」开始
+          {{ t('scriptEditor.agentChat.empty') }}
         </div>
 
         <template v-else>
@@ -393,7 +411,7 @@
               outline-none
               placeholder:text-white/35
               [field-sizing:content]"
-            placeholder="让剧本导师写剧本、改文件、执行命令…（Enter 发送，Shift+Enter 换行）"
+            :placeholder="t('scriptEditor.agentChat.placeholder')"
             :disabled="store.sending"
             @input="autoResizeInput"
             @keydown.enter.exact.prevent="send"
@@ -450,6 +468,7 @@
 
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Icon } from '@/components/base'
 import { useAgentStore } from '@/stores/modules/agent'
 import AgentThinkingBlock from './AgentThinkingBlock.vue'
@@ -458,6 +477,7 @@ import MarkdownText from './MarkdownText.vue'
 import type { ConversationInfo } from '@/api/services/agent'
 import type { ChatRound } from '@/stores/modules/agent/state'
 
+const { t } = useI18n()
 const store = useAgentStore()
 
 const draft = ref('')
@@ -470,8 +490,9 @@ const composing = ref(false)
  * - 纯文本且无工具调用（最终答复）→ 走普通气泡。
  */
 function thinkingText(round: ChatRound): string {
-  const parts = [round.reasoning, round.toolRuns.length > 0 ? round.content : null]
-    .filter((s): s is string => !!s)
+  const parts = [round.reasoning, round.toolRuns.length > 0 ? round.content : null].filter(
+    (s): s is string => !!s,
+  )
   return parts.join('\n\n')
 }
 
@@ -487,8 +508,7 @@ const inputEl = ref<HTMLTextAreaElement | null>(null)
  * 内核退回 JS 量高。两个路径都不写死高度上限（max-h-40 由 CSS 封顶，超出滚动）。
  */
 const MAX_INPUT_HEIGHT = 160
-const fieldSizingSupported =
-  typeof CSS !== 'undefined' && CSS.supports('field-sizing', 'content')
+const fieldSizingSupported = typeof CSS !== 'undefined' && CSS.supports('field-sizing', 'content')
 
 function autoResizeInput() {
   if (fieldSizingSupported) return
@@ -526,7 +546,14 @@ async function send() {
 }
 
 async function removeConversation(c: ConversationInfo) {
-  if (!window.confirm(`确定删除对话「${c.title || `对话 ${c.id}`}」及其全部消息吗？`)) return
+  if (
+    !window.confirm(
+      t('scriptEditor.agentChat.deleteConfirm', {
+        title: c.title || t('scriptEditor.agentChat.conversationTitle', { id: c.id }),
+      }),
+    )
+  )
+    return
   await store.deleteConversation(c.id)
 }
 </script>

@@ -19,7 +19,7 @@ const assetUrl = (path: string) => convertFileSrc(path)
 
 <template>
   <MenuPage>
-    <MenuItem title="剧本内角色">
+    <MenuItem :title="t('scriptEditor.characters.menuTitle')">
       <template #header>
         <Icon
           icon="character"
@@ -57,7 +57,7 @@ const assetUrl = (path: string) => convertFileSrc(path)
           text-[0.85rem]
           text-white/45"
       >
-        还没有剧本内角色
+        {{ t('scriptEditor.characters.empty') }}
       </p>
       <div
         v-for="c in store.characters"

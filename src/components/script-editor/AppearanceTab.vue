@@ -11,7 +11,7 @@
     </div>
 
     <!-- 背景图 -->
-    <MenuItem title="背景图">
+    <MenuItem :title="t('scriptEditor.appearance.menuTitle')">
       <template #header>
         <Icon
           icon="background"
@@ -169,7 +169,7 @@
     </MenuItem>
 
     <!-- 视觉效果 -->
-    <MenuItem title="视觉效果">
+    <MenuItem :title="t('scriptEditor.appearance.visual')">
       <template #header>
         <Icon
           icon="sliders"
@@ -289,7 +289,7 @@ const humanSize = (n: number) => {
 const pickImage = async () => {
   const picked = await openDialog({
     multiple: false,
-    filters: [{ name: '图片', extensions: IMAGE_EXT }],
+    filters: [{ name: t('scriptEditor.fieldRow.image'), extensions: IMAGE_EXT }],
   })
   if (typeof picked !== 'string' || !picked) return
   cropSrc.value = picked
