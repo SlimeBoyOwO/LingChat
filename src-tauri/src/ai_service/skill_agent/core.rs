@@ -432,6 +432,9 @@ async fn stream_completion(
                 LlmChunk::StreamEnd { reason } => {
                     finish_reason = reason;
                 }
+                LlmChunk::ToolCallProgress { .. } => {
+                    // 剧本编辑器的 agent 会话不需要参数生成进度提示
+                }
             }
         }
     } else {

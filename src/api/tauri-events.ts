@@ -10,6 +10,7 @@ import { i18n } from '@/locales'
 import { useScriptEditorStore } from '../stores/modules/script-editor'
 import {
   handleToolActivity,
+  handleToolCallProgress,
   interruptToolActivities,
   pushToolCallRecord,
   toolDisplayName,
@@ -93,6 +94,11 @@ export function initializeTauriEventListeners() {
   listen('ai:tool_activity', (event) => {
     const payload = event.payload as ToolActivityEvent
     handleToolActivity(payload)
+  })
+
+  // 工具调用参数流式生成进度：顶栏实时显示「正在生成…N 字」
+  listen('ai:tool_call_progress', (event) => {
+    handleToolCallProgress(event.payload as { tool: string; chars: number })
   })
 
   // 工具调用结果：记入「工具调用」页面历史 + 左上角弹通知

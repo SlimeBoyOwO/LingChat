@@ -74,6 +74,9 @@ pub enum LlmChunk {
     Reasoning(String),
     /// 一轮流式请求结束后得到的完整工具调用，仅供工具闭环内部消费。
     ToolCalls(Vec<crate::ai_service::types::ToolCall>),
+    /// 工具调用参数的流式生成进度（工具名 + 已生成字符数）。
+    /// 仅用于前端实时状态提示（如「正在写入：写入文件（N 字）」），不进正文/记忆。
+    ToolCallProgress { name: String, chars: usize },
     /// 流终止信号：归一化停止原因（"stop" / "max_tokens" / "tool_calls" / …）。
     /// 由 provider 在流末尾发射，消费方按需忽略（剧本导师用它检测截断）。
     StreamEnd { reason: Option<String> },

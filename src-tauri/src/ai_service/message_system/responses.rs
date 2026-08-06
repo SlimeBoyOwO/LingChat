@@ -24,6 +24,8 @@ pub mod event_names {
     pub const AI_TOOL_CALL: &str = "ai:tool_call";
     /// 工具执行生命周期（started/finished），供顶栏显示实时调用状态。
     pub const AI_TOOL_ACTIVITY: &str = "ai:tool_activity";
+    /// 工具调用参数的流式生成进度（工具名 + 已生成字符数），供顶栏实时显示。
+    pub const AI_TOOL_CALL_PROGRESS: &str = "ai:tool_call_progress";
     /// 强制将前端状态重置为 `input`。
     pub const STATUS_RESET: &str = "status:reset";
 }

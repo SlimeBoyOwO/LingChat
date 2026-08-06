@@ -595,6 +595,11 @@ impl KimiCodeProvider {
                                         let idx = parsed.index.unwrap_or(0);
                                         if let Some(block) = tool_blocks.get_mut(&idx) {
                                             block.2.push_str(&partial);
+                                            // 实时汇报参数生成进度（驱动前端「正在写入…N 字」提示）
+                                            yield LlmChunk::ToolCallProgress {
+                                                name: block.1.clone(),
+                                                chars: block.2.chars().count(),
+                                            };
                                         }
                                     }
                                 }
@@ -603,14 +608,17 @@ impl KimiCodeProvider {
                                 if let Some(block) = parsed.content_block {
                                     if block.type_ == "tool_use" {
                                         let idx = parsed.index.unwrap_or(0);
+                                        let name = block.name.unwrap_or_default();
                                         tool_blocks.insert(
                                             idx,
                                             (
                                                 block.id.unwrap_or_default(),
-                                                block.name.unwrap_or_default(),
+                                                name.clone(),
                                                 String::new(),
                                             ),
                                         );
+                                        // 工具块一开始就让前端亮出「正在生成」状态
+                                        yield LlmChunk::ToolCallProgress { name, chars: 0 };
                                     }
                                 }
                             }

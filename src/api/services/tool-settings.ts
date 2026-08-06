@@ -84,6 +84,15 @@ export interface ToolActivityState {
 /** 顶栏正在显示的工具活动；结束状态短暂停留后自动淡出。 */
 export const currentToolActivity = ref<ToolActivityState | null>(null)
 
+/** 工具调用参数的流式生成进度（顶栏「正在生成…N 字」实时提示）。 */
+export const toolCallPreparing = ref<{ tool: string; chars: number } | null>(null)
+
+/** 接收后端参数生成进度事件（工具块开始与每个参数增量都会触发）。 */
+export function handleToolCallProgress(payload: { tool: string; chars: number }) {
+  if (!payload.tool?.trim()) return
+  toolCallPreparing.value = { tool: payload.tool, chars: payload.chars }
+}
+
 // 后台命令最长运行 60 分钟，再留 5 分钟给事件投递与系统休眠恢复。
 const ACTIVE_WATCHDOG_MS = 65 * 60 * 1000
 const FINISHED_VISIBLE_MS = 2200
@@ -152,6 +161,8 @@ export function handleToolActivity(event: ToolActivityEvent) {
   if (!event.call_id?.trim() || !event.tool?.trim()) return
 
   if (event.phase === 'started') {
+    // 参数已合并完整、进入执行阶段：清掉「正在生成」进度提示
+    toolCallPreparing.value = null
     clearFinishedTimer()
     clearWatchdog(event.call_id)
     const activity: ToolActivityState = {
@@ -190,6 +201,7 @@ export function handleToolActivity(event: ToolActivityEvent) {
 
 /** AI 请求异常结束时清理前台调用；已脱离当前生成的后台命令继续保留。 */
 export function interruptToolActivities() {
+  toolCallPreparing.value = null
   const visible = currentToolActivity.value
   for (const [callId, activity] of [...activeToolCalls.entries()]) {
     if (isBackgroundCommand(activity)) continue

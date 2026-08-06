@@ -87,6 +87,7 @@ export default {
     updating: "Updating: {tool}",
     switching: "Switching: {tool}",
     calling: "Calling: {tool}",
+    preparing: "Generating: {tool} ({chars} chars)",
     completed: "Completed: {tool}",
     failed: "Failed: {tool}",
   },

@@ -86,6 +86,7 @@ export default {
     updating: '正在更新：{tool}',
     switching: '正在切换：{tool}',
     calling: '正在调用：{tool}',
+    preparing: '正在生成：{tool}（{chars} 字）',
     completed: '已完成：{tool}',
     failed: '调用失败：{tool}',
   },

@@ -117,6 +117,10 @@ pub async fn stream_with_tool_loop(
             while let Some(chunk) = response_stream.next().await {
                 match chunk? {
                     LlmChunk::ToolCalls(calls) => tool_calls.extend(calls),
+                    LlmChunk::ToolCallProgress { name, chars } => {
+                        // 参数生成进度直接转为前端事件，不进正文流
+                        emit_tool_call_progress_event(&app, &name, chars);
+                    }
                     LlmChunk::Content(text) => {
                         round_text.push_str(&text);
                         // 实时透传，保持下游流式体验
@@ -314,6 +318,17 @@ pub(crate) fn emit_tool_activity_event(
     });
     if let Err(error) = app.emit(event_names::AI_TOOL_ACTIVITY, &payload) {
         tracing::warn!("emit ai:tool_activity 失败: {error}");
+    }
+}
+
+/// 工具调用参数的流式生成进度：驱动前端顶栏「正在写入… N 字」实时提示。
+pub(crate) fn emit_tool_call_progress_event(app: &AppHandle, tool: &str, chars: usize) {
+    let payload = serde_json::json!({
+        "tool": tool,
+        "chars": chars,
+    });
+    if let Err(error) = app.emit(event_names::AI_TOOL_CALL_PROGRESS, &payload) {
+        tracing::warn!("emit ai:tool_call_progress 失败: {error}");
     }
 }
 
