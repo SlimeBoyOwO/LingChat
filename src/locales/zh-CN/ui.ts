@@ -75,6 +75,19 @@ export default {
   schedulePanel: {
     title: '日程',
   },
+  toolActivity: {
+    reading: '正在读取：{target}',
+    writing: '正在写入：{target}',
+    editing: '正在编辑：{target}',
+    deleting: '正在删除：{target}',
+    searching: '正在搜索：{target}',
+    executing: '正在执行：{tool}',
+    updating: '正在更新：{tool}',
+    switching: '正在切换：{tool}',
+    calling: '正在调用：{tool}',
+    completed: '已完成：{tool}',
+    failed: '调用失败：{tool}',
+  },
   scheduleContent: {
     navSchedule: '日程主题',
     navTodo: '待办事项',

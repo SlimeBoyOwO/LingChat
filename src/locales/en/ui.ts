@@ -76,6 +76,19 @@ export default {
   schedulePanel: {
     title: "Schedule",
   },
+  toolActivity: {
+    reading: "Reading: {target}",
+    writing: "Writing: {target}",
+    editing: "Editing: {target}",
+    deleting: "Deleting: {target}",
+    searching: "Searching: {target}",
+    executing: "Running: {tool}",
+    updating: "Updating: {tool}",
+    switching: "Switching: {tool}",
+    calling: "Calling: {tool}",
+    completed: "Completed: {tool}",
+    failed: "Failed: {tool}",
+  },
   scheduleContent: {
     navSchedule: "Schedule Themes",
     navTodo: "To-Do List",

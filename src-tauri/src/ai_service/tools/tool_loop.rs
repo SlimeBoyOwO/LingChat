@@ -138,11 +138,33 @@ pub async fn stream_with_tool_loop(
             let mut character_switched = false;
             for call in calls {
                 tracing::info!(tool = call.function.name, call_id = call.id, "执行聊天工具");
+                emit_tool_activity_event(
+                    &app,
+                    &call.id,
+                    &call.function.name,
+                    &call.function.arguments,
+                    "started",
+                    None,
+                );
                 let result = executor
                     .execute(&call.function.name, &call.function.arguments, &context)
                     .await;
-                emit_tool_call_event(&app, &call.function.name, &call.function.arguments, &result);
-                if call.function.name == "character_switch" && tool_result_succeeded(&result) {
+                let succeeded = emit_tool_call_event(
+                    &app,
+                    &call.id,
+                    &call.function.name,
+                    &call.function.arguments,
+                    &result,
+                );
+                emit_tool_activity_event(
+                    &app,
+                    &call.id,
+                    &call.function.name,
+                    &call.function.arguments,
+                    "finished",
+                    Some(succeeded),
+                );
+                if call.function.name == "character_switch" && succeeded {
                     character_switched = true;
                 }
                 let tool_result = LlmMessage::tool_result(call.id, result);
@@ -191,13 +213,6 @@ async fn current_role_context(app: &AppHandle) -> Result<(Vec<LlmMessage>, Optio
     Ok((role.memory.clone(), role.display_name.clone()))
 }
 
-fn tool_result_succeeded(result: &str) -> bool {
-    match serde_json::from_str::<serde_json::Value>(result) {
-        Ok(value) => value.get("ok").and_then(|ok| ok.as_bool()).unwrap_or(true),
-        Err(_) => false,
-    }
-}
-
 fn rebase_after_character_switch(
     mut refreshed: Vec<LlmMessage>,
     active_user: Option<&LlmMessage>,
@@ -218,8 +233,37 @@ fn rebase_after_character_switch(
     refreshed
 }
 
+/// 向前端广播工具开始/结束事件，call_id 用于正确处理连续或并发调用。
+fn emit_tool_activity_event(
+    app: &AppHandle,
+    call_id: &str,
+    tool: &str,
+    arguments: &str,
+    phase: &str,
+    ok: Option<bool>,
+) {
+    let arguments_detail: String = arguments.chars().take(1000).collect();
+    let payload = serde_json::json!({
+        "call_id": call_id,
+        "tool": tool,
+        "phase": phase,
+        "ok": ok,
+        "arguments": arguments_detail,
+    });
+    if let Err(error) = app.emit(event_names::AI_TOOL_ACTIVITY, &payload) {
+        tracing::warn!("emit ai:tool_activity 失败: {error}");
+    }
+}
+
 /// 工具执行后向前端广播 `ai:tool_call` 事件（用于调用提示/通知）。
-fn emit_tool_call_event(app: &AppHandle, tool: &str, arguments: &str, result: &str) {
+/// 返回与事件一致的成功状态，供生命周期提示和角色切换判断复用。
+fn emit_tool_call_event(
+    app: &AppHandle,
+    call_id: &str,
+    tool: &str,
+    arguments: &str,
+    result: &str,
+) -> bool {
     // executor 的可恢复错误统一编码为 {"ok": false, "error": {...}}；
     // 成功结果没有 "ok" 字段（或显式 "ok": true）。
     let parsed = serde_json::from_str::<serde_json::Value>(result).ok();
@@ -250,6 +294,7 @@ fn emit_tool_call_event(app: &AppHandle, tool: &str, arguments: &str, result: &s
     let arguments_detail: String = arguments.chars().take(1000).collect();
     let result_detail: String = result.chars().take(1000).collect();
     let payload = serde_json::json!({
+        "call_id": call_id,
         "tool": tool,
         "ok": ok,
         "summary": summary,
@@ -260,6 +305,7 @@ fn emit_tool_call_event(app: &AppHandle, tool: &str, arguments: &str, result: &s
     if let Err(e) = app.emit(event_names::AI_TOOL_CALL, &payload) {
         tracing::warn!("emit ai:tool_call 失败: {e}");
     }
+    ok
 }
 
 fn presentation_stream(stream: ChunkStream) -> ChunkStream {

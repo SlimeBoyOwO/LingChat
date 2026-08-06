@@ -49,6 +49,7 @@ export function toolDisplayName(tool: string): string {
 
 /** 后端 `ai:tool_call` 事件的载荷 + 前端补充的时间戳。 */
 export interface ToolCallRecord {
+  call_id?: string
   tool: string
   ok: boolean
   summary: string
@@ -58,6 +59,126 @@ export interface ToolCallRecord {
   /** 工具返回结果（截断至 1000 字符），用于展开详情 */
   result: string
   time: string
+}
+
+export interface ToolActivityEvent {
+  call_id: string
+  tool: string
+  phase: 'started' | 'finished'
+  ok?: boolean | null
+  arguments: string
+}
+
+export interface ToolActivityState {
+  callId: string
+  tool: string
+  arguments: string
+  status: 'running' | 'success' | 'failure'
+  sequence: number
+}
+
+/** 顶栏正在显示的工具活动；结束状态短暂停留后自动淡出。 */
+export const currentToolActivity = ref<ToolActivityState | null>(null)
+
+const ACTIVE_WATCHDOG_MS = 8 * 60 * 1000
+const FINISHED_VISIBLE_MS = 2200
+const activeToolCalls = new Map<string, ToolActivityState>()
+const watchdogTimers = new Map<string, ReturnType<typeof setTimeout>>()
+let sequence = 0
+let finishedClearTimer: ReturnType<typeof setTimeout> | null = null
+
+function clearFinishedTimer() {
+  if (finishedClearTimer !== null) {
+    clearTimeout(finishedClearTimer)
+    finishedClearTimer = null
+  }
+}
+
+function clearWatchdog(callId: string) {
+  const timer = watchdogTimers.get(callId)
+  if (timer !== undefined) clearTimeout(timer)
+  watchdogTimers.delete(callId)
+}
+
+function latestActiveTool(): ToolActivityState | null {
+  let latest: ToolActivityState | null = null
+  for (const activity of activeToolCalls.values()) {
+    if (latest === null || activity.sequence > latest.sequence) latest = activity
+  }
+  return latest
+}
+
+function showFinished(activity: ToolActivityState, ok: boolean) {
+  const next = latestActiveTool()
+  if (next) {
+    currentToolActivity.value = next
+    return
+  }
+
+  const finished: ToolActivityState = {
+    ...activity,
+    status: ok ? 'success' : 'failure',
+  }
+  currentToolActivity.value = finished
+  clearFinishedTimer()
+  finishedClearTimer = setTimeout(() => {
+    if (
+      currentToolActivity.value?.callId === finished.callId &&
+      currentToolActivity.value.status !== 'running'
+    ) {
+      currentToolActivity.value = null
+    }
+    finishedClearTimer = null
+  }, FINISHED_VISIBLE_MS)
+}
+
+/** 接收后端生命周期事件，并正确处理连续/重叠的工具调用。 */
+export function handleToolActivity(event: ToolActivityEvent) {
+  if (!event.call_id?.trim() || !event.tool?.trim()) return
+
+  if (event.phase === 'started') {
+    clearFinishedTimer()
+    clearWatchdog(event.call_id)
+    const activity: ToolActivityState = {
+      callId: event.call_id,
+      tool: event.tool,
+      arguments: event.arguments || '{}',
+      status: 'running',
+      sequence: ++sequence,
+    }
+    activeToolCalls.set(event.call_id, activity)
+    currentToolActivity.value = activity
+    watchdogTimers.set(
+      event.call_id,
+      setTimeout(() => {
+        const stale = activeToolCalls.get(event.call_id)
+        if (!stale || stale.sequence !== activity.sequence) return
+        activeToolCalls.delete(event.call_id)
+        watchdogTimers.delete(event.call_id)
+        showFinished(stale, false)
+      }, ACTIVE_WATCHDOG_MS),
+    )
+    return
+  }
+
+  const activity = activeToolCalls.get(event.call_id) ?? {
+    callId: event.call_id,
+    tool: event.tool,
+    arguments: event.arguments || '{}',
+    status: 'running' as const,
+    sequence: ++sequence,
+  }
+  clearWatchdog(event.call_id)
+  activeToolCalls.delete(event.call_id)
+  showFinished(activity, event.ok !== false)
+}
+
+/** AI 请求异常结束时，避免顶栏残留永久“正在调用”。 */
+export function interruptToolActivities() {
+  const visible = currentToolActivity.value
+  for (const callId of [...watchdogTimers.keys()]) clearWatchdog(callId)
+  activeToolCalls.clear()
+  if (visible?.status === 'running') showFinished(visible, false)
 }
 
 const MAX_HISTORY = 50

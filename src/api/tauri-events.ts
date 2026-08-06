@@ -7,7 +7,13 @@ import { useUIStore } from '../stores/modules/ui/ui'
 import { useGameStore } from '../stores/modules/game'
 import { i18n } from '@/locales'
 import { useScriptEditorStore } from '../stores/modules/script-editor'
-import { pushToolCallRecord, toolDisplayName } from './services/tool-settings'
+import {
+  handleToolActivity,
+  interruptToolActivities,
+  pushToolCallRecord,
+  toolDisplayName,
+  type ToolActivityEvent,
+} from './services/tool-settings'
 import { useDialogStore } from '../stores/modules/ui/dialog'
 import type { SceneInfo } from './services/scene'
 
@@ -70,12 +76,20 @@ export function initializeTauriEventListeners() {
   listen('ai:error', (event) => {
     const p = event.payload as Record<string, unknown>
     console.log('[Tauri] ai:error', p)
+    interruptToolActivities()
     eventQueue.addEvent({
       type: 'error',
       duration: 0,
       error_code: (p.error_code as string) ?? 'default_error',
       message: (p.detail as string) ?? '',
     } as ScriptEventType)
+  })
+
+  // 工具执行生命周期：驱动自由对话顶栏的实时状态，不写入历史记录。
+  listen('ai:tool_activity', (event) => {
+    const payload = event.payload as ToolActivityEvent
+    console.log('[Tauri] ai:tool_activity', payload)
+    handleToolActivity(payload)
   })
 
   // 工具调用结果：记入「工具调用」页面历史 + 左上角弹通知

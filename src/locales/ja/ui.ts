@@ -75,6 +75,19 @@ export default {
   schedulePanel: {
     title: 'スケジュール',
   },
+  toolActivity: {
+    reading: '読み込み中：{target}',
+    writing: '書き込み中：{target}',
+    editing: '編集中：{target}',
+    deleting: '削除中：{target}',
+    searching: '検索中：{target}',
+    executing: '実行中：{tool}',
+    updating: '更新中：{tool}',
+    switching: '切り替え中：{tool}',
+    calling: 'ツール呼び出し中：{tool}',
+    completed: '完了：{tool}',
+    failed: '呼び出し失敗：{tool}',
+  },
   scheduleContent: {
     navSchedule: 'スケジュールテーマ',
     navTodo: 'ToDo',

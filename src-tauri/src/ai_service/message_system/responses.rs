@@ -22,6 +22,8 @@ pub mod event_names {
     pub const AI_ERROR: &str = "ai:error";
     /// 工具调用结果（成功/失败、工具名、参数摘要）。
     pub const AI_TOOL_CALL: &str = "ai:tool_call";
+    /// 工具执行生命周期（started/finished），供顶栏显示实时调用状态。
+    pub const AI_TOOL_ACTIVITY: &str = "ai:tool_activity";
     /// 强制将前端状态重置为 `input`。
     pub const STATUS_RESET: &str = "status:reset";
 }

@@ -76,6 +76,19 @@ export default {
   "schedulePanel": {
     "title": "日程"
   },
+  "toolActivity": {
+    "reading": "正在讀取：{target}",
+    "writing": "正在寫入：{target}",
+    "editing": "正在編輯：{target}",
+    "deleting": "正在刪除：{target}",
+    "searching": "正在搜尋：{target}",
+    "executing": "正在執行：{tool}",
+    "updating": "正在更新：{tool}",
+    "switching": "正在切換：{tool}",
+    "calling": "正在調用：{tool}",
+    "completed": "已完成：{tool}",
+    "failed": "調用失敗：{tool}"
+  },
   "scheduleContent": {
     "navSchedule": "日程主題",
     "navTodo": "待辦事項",
