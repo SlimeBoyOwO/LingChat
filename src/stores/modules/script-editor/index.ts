@@ -48,6 +48,7 @@ export const useScriptEditorStore = defineStore(
         'assetFiles',
         'bgVersion',
         'globalBgFiles',
+        'propsExpanded',
       ],
     },
   },

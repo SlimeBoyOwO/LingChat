@@ -7,11 +7,11 @@
       items-center
       justify-between">
       <p class="text-[0.78rem]
-        text-white/50">编辑器背景与遮挡效果，改动即时生效并自动保存。</p>
+        text-white/50">{{ t('scriptEditor.appearance.intro') }}</p>
     </div>
 
     <!-- 背景图 -->
-    <MenuItem title="背景图">
+    <MenuItem :title="t('scriptEditor.appearance.menuTitle')">
       <template #header>
         <Icon
           icon="background"
@@ -30,7 +30,9 @@
           py-2.5">
           <div class="mb-1
             text-[0.72rem]
-            text-white/45">当前背景</div>
+            text-white/45">
+            {{ t('scriptEditor.appearance.current') }}
+          </div>
           <div class="flex
             items-center
             gap-2
@@ -71,7 +73,7 @@
               icon="background"
               :size="14"
             />
-            选择图片…
+            {{ t('scriptEditor.appearance.pick') }}
           </button>
           <button
             class="inline-flex
@@ -89,7 +91,7 @@
               transition-colors
               hover:bg-white/[0.12]
               hover:text-white"
-            title="恢复为内置默认背景"
+            :title="t('scriptEditor.appearance.resetTitle')"
             :disabled="!store.editorBg.path"
             @click="store.resetEditorBg()"
           >
@@ -97,20 +99,22 @@
               icon="history"
               :size="14"
             />
-            恢复默认
+            {{ t('scriptEditor.appearance.reset') }}
           </button>
         </div>
         <p class="text-[0.72rem]
           leading-relaxed
           text-white/40">
-          默认背景与主菜单同款；自定义图片会复制到应用数据目录，本地文件可随时移动。选择图片后可在裁剪弹窗中调整范围。
+          {{ t('scriptEditor.appearance.resetDesc') }}{{ t('scriptEditor.appearance.pickHint') }}
         </p>
 
         <!-- 从已有背景选择 -->
         <div>
           <div class="mb-1.5
             text-[0.72rem]
-            text-white/45">从已有背景选择</div>
+            text-white/45">
+            {{ t('scriptEditor.appearance.fromLibrary') }}
+          </div>
           <div class="flex
             flex-col
             gap-1.5">
@@ -157,7 +161,7 @@
               class="text-[0.72rem]
                 text-white/35"
             >
-              （暂无全局背景，可在素材页导入）
+              {{ t('scriptEditor.appearance.emptyLibrary') }}
             </p>
           </div>
         </div>
@@ -165,7 +169,7 @@
     </MenuItem>
 
     <!-- 视觉效果 -->
-    <MenuItem title="视觉效果">
+    <MenuItem :title="t('scriptEditor.appearance.visual')">
       <template #header>
         <Icon
           icon="sliders"
@@ -186,7 +190,7 @@
               font-medium
               text-white/80"
           >
-            模糊
+            {{ t('scriptEditor.appearance.blur') }}
           </label>
           <Slider
             :model-value="store.editorBg.blur"
@@ -195,7 +199,7 @@
             :step="1"
             @change="onBlurChange"
           >
-            清晰/柔和
+            {{ t('scriptEditor.appearance.clear') }}/{{ t('scriptEditor.appearance.soft') }}
           </Slider>
         </div>
 
@@ -209,7 +213,7 @@
               font-medium
               text-white/80"
           >
-            压暗遮罩
+            {{ t('scriptEditor.appearance.dim') }}
           </label>
           <Slider
             :model-value="dimPercent"
@@ -218,13 +222,13 @@
             :step="1"
             @change="onDimChange"
           >
-            明亮/深暗
+            {{ t('scriptEditor.appearance.bright') }}/{{ t('scriptEditor.appearance.dark') }}
           </Slider>
           <p class="mt-1
             text-[0.72rem]
             leading-relaxed
             text-white/40">
-            调节背景上方的黑色遮罩，保证文字与面板可读。
+            {{ t('scriptEditor.appearance.dimHint') }}
           </p>
         </div>
       </div>
@@ -242,12 +246,14 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { Icon, Slider } from '@/components/base'
 import { MenuItem } from '@/components/ui'
 import ImageCropModal from '@/components/script-editor/ImageCropModal.vue'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 
+const { t } = useI18n()
 const store = useScriptEditorStore()
 
 const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif']
@@ -258,7 +264,7 @@ const cropSrc = ref<string | null>(null)
 /** 当前背景显示名：自定义时取落盘文件名，默认时说明内置背景 */
 const bgFileName = computed(() => {
   const path = store.editorBg.path
-  if (!path) return '内置默认背景（主菜单同款）'
+  if (!path) return t('scriptEditor.appearance.builtin')
   return path.split(/[\\/]/).pop() || path
 })
 
@@ -283,7 +289,7 @@ const humanSize = (n: number) => {
 const pickImage = async () => {
   const picked = await openDialog({
     multiple: false,
-    filters: [{ name: '图片', extensions: IMAGE_EXT }],
+    filters: [{ name: t('scriptEditor.fieldRow.image'), extensions: IMAGE_EXT }],
   })
   if (typeof picked !== 'string' || !picked) return
   cropSrc.value = picked

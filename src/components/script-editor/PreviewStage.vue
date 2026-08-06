@@ -8,7 +8,11 @@
     >
       <div
         v-if="store.previewing"
-        class="fixed inset-0 z-[9990] overflow-hidden bg-black"
+        class="fixed
+          inset-0
+          z-[9990]
+          overflow-hidden
+          bg-black"
       >
         <!--
           `main-box` 是 MainChat 里的全局类（那个 <style> 没有 scoped），这里直接
@@ -28,16 +32,58 @@
         </div>
 
         <!-- 预览专属的顶栏，明确「这是试玩」而不是真在玩 -->
-        <div class="absolute inset-x-0 top-0 z-[10000] flex items-center gap-3 bg-[linear-gradient(180deg,rgba(0,0,0,0.55),transparent)] px-4 py-2">
-          <span class="rounded-full border border-[rgba(121,217,255,0.5)] bg-[rgba(121,217,255,0.15)] px-2.5 py-0.5 text-[0.72rem] font-semibold text-[var(--accent-color)]">试玩中</span>
-          <span class="text-[0.78rem] text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.6)]">{{ label }}</span>
-          <span class="text-[0.7rem] text-white/[0.6] [text-shadow:0_1px_3px_rgba(0,0,0,0.6)]">试玩为调试用：不记通关、不解锁羁绊冒险。会真调 LLM（按 token 计费）</span>
+        <div
+          class="absolute
+            inset-x-0
+            top-0
+            z-[10000]
+            flex
+            items-center
+            gap-3
+            bg-[linear-gradient(180deg,rgba(0,0,0,0.55),transparent)]
+            px-4
+            py-2"
+        >
+          <span
+            class="rounded-full
+              border
+              border-[rgba(121,217,255,0.5)]
+              bg-[rgba(121,217,255,0.15)]
+              px-2.5
+              py-0.5
+              text-[0.72rem]
+              font-semibold
+              text-[var(--accent-color)]"
+            >{{ t('scriptEditor.previewStage.playing') }}</span
+          >
+          <span class="text-[0.78rem]
+            text-white
+            [text-shadow:0_1px_3px_rgba(0,0,0,0.6)]">{{
+            label
+          }}</span>
+          <span class="text-[0.7rem]
+            text-white/[0.6]
+            [text-shadow:0_1px_3px_rgba(0,0,0,0.6)]">{{
+            t('scriptEditor.previewStage.debugNotice')
+          }}</span>
           <button
-            class="ml-auto rounded-lg border border-[rgba(248,113,113,0.45)] bg-[rgba(248,113,113,0.16)] px-[14px] py-[5px] text-[0.76rem] text-[#fca5a5] backdrop-blur-[8px] transition-all hover:text-white hover:bg-[rgba(248,113,113,0.32)]"
+            class="ml-auto
+              rounded-lg
+              border
+              border-[rgba(248,113,113,0.45)]
+              bg-[rgba(248,113,113,0.16)]
+              px-[14px]
+              py-[5px]
+              text-[0.76rem]
+              text-[#fca5a5]
+              backdrop-blur-[8px]
+              transition-all
+              hover:text-white
+              hover:bg-[rgba(248,113,113,0.32)]"
             title="Esc"
             @click="store.stopPreview()"
           >
-            结束试玩
+            {{ t('scriptEditor.previewStage.stop') }}
           </button>
         </div>
       </div>
@@ -47,6 +93,7 @@
 
 <script setup lang="ts">
 import { computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { GameBackground, GameDialog, GameRolesStage } from '@/components/game/standard'
 import GameExtraUI from '@/components/game/standard/GameExtraUI.vue'
 import { eventQueue } from '@/core/events/event-queue'
@@ -55,6 +102,7 @@ import { useGameStore } from '@/stores/modules/game'
 import { useUIStore } from '@/stores/modules/ui/ui'
 import { useSettingsStore } from '@/stores/modules/settings'
 
+const { t } = useI18n()
 const store = useScriptEditorStore()
 const gameStore = useGameStore()
 const uiStore = useUIStore()
@@ -64,7 +112,8 @@ const props = defineProps<{ fromChapter?: string }>()
 
 const label = computed(() => {
   const parts = [store.detail?.package.scriptName ?? '']
-  if (props.fromChapter) parts.push(`从「${props.fromChapter}」开始`)
+  if (props.fromChapter)
+    parts.push(t('scriptEditor.previewStage.fromChapter', { chapter: props.fromChapter }))
   // 把 MAIN 解析成了谁直接写出来 —— 羁绊剧本里演错人是最难自己看出来的一类问题
   const who = store.readiness?.mainRoleName
   if (who) parts.push(`MAIN = ${who}`)
@@ -266,7 +315,8 @@ watch(
         if (r.userName) gameStore.userName = r.userName
         // 试玩中玩家副标题用玩家名作兜底，避免 player 事件的 displaySubtitle 为空时字幕丢失；
         // 玩家名也为空时用「玩家」保底，保证字幕栏始终有内容
-        gameStore.userSubtitle = r.userName || gameStore.userSubtitle || '玩家'
+        gameStore.userSubtitle =
+          r.userName || gameStore.userSubtitle || t('scriptEditor.previewStage.player')
         // 预载主角的立绘/名字到 gameRoles，否则第一句台词前画面是空的
         try {
           await gameStore.getOrCreateGameRole(id)

@@ -63,67 +63,29 @@
           text-[0.66rem]
           font-semibold
           text-amber-300"
-        >试玩会卡住</span
+        >{{ t('scriptEditor.scriptEditor.playtestBlocked') }}</span
       >
       <span>{{ store.readiness.reason }}</span>
     </div>
 
-    <!-- 主体 -->
-    <div class="flex
+    <!-- 主体：Tab 切换复用设置面板的推入推出过渡，方向随 Tab 顺序前进/后退 -->
+    <div class="relative
       h-[calc(100%-5.5rem)]
-      min-h-0
-      flex-col">
-      <!-- ============ 剧本列表 ============ -->
-      <ScriptListPanel
-        v-if="!store.detail && store.tab === 'flow'"
-        @new-script="openModal('script')"
-      />
-
-      <!-- ============ 章节流程 / 章节编辑 ============ -->
-      <FlowTab
-        v-else-if="store.tab === 'flow'"
-        @new-chapter="openModal('chapter')"
-      />
-
-      <!-- ============ 剧本设置 ============ -->
-      <ConfigTab v-else-if="store.tab === 'config'" />
-
-      <!-- ============ 角色 ============ -->
-      <CharactersTab
-        v-else-if="store.tab === 'characters'"
-        @new-character="openModal('character')"
-        @import-character="openModal('importChar')"
-      />
-
-      <!-- ============ 素材 ============ -->
-      <AssetsTab v-else-if="store.tab === 'assets'" />
-
-      <!-- ============ AI 助手（Skill Agent） ============ -->
-      <div
-        v-else-if="store.tab === 'agent-chat'"
-        class="flex
-          w-[96%]
-          min-h-0
-          flex-1
-          gap-5
-          mx-auto
-          px-3
-          py-4"
-      >
-        <AgentChatPanel />
-      </div>
-
-      <MenuPage v-else-if="store.tab === 'agent-settings'">
-        <AgentSettingsPanel />
-      </MenuPage>
-
-      <!-- ============ 外观（背景/模糊/压暗） ============ -->
-      <MenuPage v-else-if="store.tab === 'appearance'">
-        <AppearanceTab />
-      </MenuPage>
-
-      <!-- ============ 校验 ============ -->
-      <ValidateTab v-else />
+      min-h-0">
+      <Transition :name="transitionName">
+        <KeepAlive>
+          <component
+            :is="currentTabComponent"
+            :key="tabKey"
+            class="absolute
+              inset-0"
+            @new-script="openModal('script')"
+            @new-chapter="openModal('chapter')"
+            @new-character="openModal('character')"
+            @import-character="openModal('importChar')"
+          />
+        </KeepAlive>
+      </Transition>
     </div>
 
     <!-- 试玩层 -->
@@ -141,7 +103,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, defineComponent, h, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import type { Component } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { MenuPage } from '@/components/ui'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
@@ -160,10 +124,14 @@ import AppearanceTab from '@/components/script-editor/AppearanceTab.vue'
 import PreviewStage from '@/components/script-editor/PreviewStage.vue'
 import { eventQueue } from '@/core/events/event-queue'
 import { convertFileSrc } from '@tauri-apps/api/core'
+import { useSettingsStore } from '@/stores/modules/settings'
+import type { ShortcutAction } from '@/utils/shortcuts'
+import { bindingMatches } from '@/utils/shortcuts'
 // 默认背景与主菜单同款。Git LFS 资产：无 LFS 环境读出来是 131 字节指针，
 // 背景图加载失败会露出渐变兜底层（见模板注释），构建产物则是真实图。
 import defaultBg from '@/assets/images/background2.png'
 
+const { t } = useI18n()
 const router = useRouter()
 const store = useScriptEditorStore()
 
@@ -179,6 +147,78 @@ const modal = ref<'script' | 'chapter' | 'character' | 'importChar' | null>(null
 const openModal = (which: 'script' | 'chapter' | 'character' | 'importChar') => {
   modal.value = which
 }
+
+// ---- Tab 切换（复用设置面板的推入推出过渡） ----
+type TabKey =
+  | 'flow'
+  | 'config'
+  | 'characters'
+  | 'assets'
+  | 'validate'
+  | 'agent-chat'
+  | 'agent-settings'
+  | 'appearance'
+
+/** Tab 顺序（与 EditorHeader 导航一致），用于计算切换方向 */
+const TABS: TabKey[] = [
+  'flow',
+  'config',
+  'characters',
+  'assets',
+  'validate',
+  'agent-chat',
+  'agent-settings',
+  'appearance',
+]
+
+// component :is 需要单组件，三个非 MenuPage 根的 Tab 在此保留原有外层布局：
+// agent-chat 的居中容器；agent-settings / appearance 的 MenuPage 包装
+const agentChatTab = defineComponent({
+  name: 'AgentChatTab',
+  render: () =>
+    h('div', { class: 'flex w-[96%] min-h-0 flex-1 gap-5 mx-auto px-3 py-4' }, h(AgentChatPanel)),
+})
+const menuTab = (inner: Component) =>
+  defineComponent({
+    name: 'MenuTab',
+    render: () => h(MenuPage, null, () => h(inner)),
+  })
+
+const tabComponents: Record<TabKey, Component> = {
+  flow: FlowTab, // 实际按 detail 动态切换，见 currentTabComponent
+  config: ConfigTab,
+  characters: CharactersTab,
+  assets: AssetsTab,
+  validate: ValidateTab,
+  'agent-chat': agentChatTab,
+  'agent-settings': menuTab(AgentSettingsPanel),
+  appearance: menuTab(AppearanceTab),
+}
+
+/** flow Tab 在无剧本时是剧本列表、有剧本时是章节流程，需按 detail 动态取组件 */
+const currentTabComponent = computed<Component>(() => {
+  if (store.tab === 'flow') return store.detail ? FlowTab : ScriptListPanel
+  return tabComponents[store.tab]
+})
+
+/** flow 分支的 key 含 detail 状态：打开/关闭剧本时正确重建对应实例 */
+const tabKey = computed(() =>
+  store.tab === 'flow' ? (store.detail ? 'flow-detail' : 'flow-list') : store.tab,
+)
+
+/** 转场方向：前进 → slide-left（新页从右进），后退 → slide-right；首尾 wrap 视为前进 */
+const transitionName = ref<'slide-left' | 'slide-right'>('slide-left')
+watch(
+  () => store.tab,
+  (newTab, oldTab) => {
+    if (!oldTab) return
+    const prevIdx = TABS.indexOf(oldTab as TabKey)
+    const nextIdx = TABS.indexOf(newTab as TabKey)
+    if (prevIdx < 0 || nextIdx < 0) return
+    const forward = nextIdx > prevIdx || (prevIdx === TABS.length - 1 && nextIdx === 0)
+    transitionName.value = forward ? 'slide-left' : 'slide-right'
+  },
+)
 
 // ---- 快捷键表 ----
 const shortcutHelp = ref(false)
@@ -236,18 +276,20 @@ const leave = async () => {
   void router.push('/')
 }
 
-// ---- 快捷键 ----
+// ---- 快捷键（键位可自定义，见 ShortcutHelpPanel / settings.shortcuts） ----
+const settings = useSettingsStore()
+
 const onKey = (e: KeyboardEvent) => {
   // 在输入框里让位给浏览器原生行为，否则作者想撤销一个词却把整个事件列表
   // 回退了一帧，而且刚敲的字（还没 change 提交）会一起消失。
   const el = e.target as HTMLElement | null
   const typing =
     !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
-  const mod = e.ctrlKey || e.metaKey
-  const k = e.key.toLowerCase()
 
-  // Esc 与 ? 不带修饰键，先处理
-  if (e.key === 'Escape') {
+  const hit = (action: ShortcutAction) => bindingMatches(settings.shortcuts[action], e)
+
+  // Esc 与快捷键表切换不带修饰键且语义特殊，先行处理
+  if (hit('esc')) {
     if (store.previewing) {
       void store.stopPreview()
     } else if (shortcutHelp.value) {
@@ -257,7 +299,7 @@ const onKey = (e: KeyboardEvent) => {
     }
     return
   }
-  if (!mod && !typing && (e.key === '?' || (e.key === '/' && e.shiftKey))) {
+  if (!typing && hit('shortcutHelp')) {
     e.preventDefault()
     shortcutHelp.value = !shortcutHelp.value
     return
@@ -266,27 +308,38 @@ const onKey = (e: KeyboardEvent) => {
   // 试玩期间键盘归游戏，编辑器不抢
   if (store.previewing) return
 
-  if (mod && k === 's') {
+  // 保存允许在输入框里触发（写作中随手保存）
+  if (hit('save')) {
     e.preventDefault()
     void store.save()
     return
   }
   if (typing) return
 
-  if (mod) {
-    if (k === 'z' && !e.shiftKey) {
-      e.preventDefault()
-      store.undo()
-    } else if ((k === 'z' && e.shiftKey) || k === 'y') {
-      e.preventDefault()
-      store.redo()
-    } else if (k === 'd') {
-      e.preventDefault()
-      if (store.chapter) store.duplicateEvent(store.selectedEvent)
-    } else if (e.key === 'Enter') {
-      e.preventDefault()
-      void playtest()
-    }
+  if (hit('redo')) {
+    e.preventDefault()
+    store.redo()
+    return
+  }
+  if (hit('undo')) {
+    e.preventDefault()
+    store.undo()
+    return
+  }
+  if (hit('copyEvent')) {
+    e.preventDefault()
+    if (store.chapter) store.duplicateEvent(store.selectedEvent)
+    return
+  }
+  if (hit('playtest')) {
+    e.preventDefault()
+    void playtest()
+    return
+  }
+  // 展开/收起事件属性栏（章节编辑页才有意义）
+  if (hit('expandProps') && store.level === 'chapter') {
+    e.preventDefault()
+    store.propsExpanded = !store.propsExpanded
     return
   }
 
@@ -294,21 +347,23 @@ const onKey = (e: KeyboardEvent) => {
   if (store.level !== 'chapter' || !store.chapter) return
   const last = store.chapter.events.length - 1
 
-  if (e.key === 'Delete') {
+  if (hit('deleteEvent')) {
     e.preventDefault()
     store.removeEvent(store.selectedEvent)
-  } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+  } else if (hit('moveCursor') || hit('moveEvent')) {
     e.preventDefault()
     const step = e.key === 'ArrowUp' ? -1 : 1
     const to = store.selectedEvent + step
     if (to < 0 || to > last) return
-    if (e.altKey) store.moveEvent(store.selectedEvent, to)
+    if (hit('moveEvent')) store.moveEvent(store.selectedEvent, to)
     else store.selectedEvent = to
   }
 }
 
 onMounted(async () => {
   window.addEventListener('keydown', onKey)
+  // 快捷键持久化数据可能被旧版捕获逻辑写坏（如 Ctrl+S 被绑成单独 S），启动时校验回退
+  settings.ensureValidShortcuts()
   await store.init()
 })
 
@@ -356,5 +411,33 @@ onUnmounted(async () => {
 .editor-root > *:not(.bg-layer) {
   position: relative;
   z-index: 1;
+}
+
+/* ========== Tab 切换推入推出过渡（与设置面板同一套动画） ==========
+ * 只用 transform、不用 opacity：编辑器背景层带 blur 滤镜，动画里叠加
+ * 透明度变化会让 WebView 合成器在滤镜层上重绘，输入框区域会闪白
+ * （设置面板没有 blur 背景层，不受影响）。
+ */
+.slide-left-enter-active,
+.slide-left-leave-active,
+.slide-right-enter-active,
+.slide-right-leave-active {
+  transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* 左滑 → 下一项：新页从右侧推入，旧页向左滑出 */
+.slide-left-enter-from {
+  transform: translateX(100%);
+}
+.slide-left-leave-to {
+  transform: translateX(-25%);
+}
+
+/* 右滑 → 上一项：新页从左侧推入，旧页向右滑出 */
+.slide-right-enter-from {
+  transform: translateX(-100%);
+}
+.slide-right-leave-to {
+  transform: translateX(25%);
 }
 </style>

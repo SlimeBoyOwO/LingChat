@@ -1,26 +1,35 @@
 <template>
   <div class="mb-4">
     <label
-      class="inline-flex items-center gap-1.5 font-medium text-brand"
-      :title="`YAML 字段名：${field.key}`"
+      class="inline-flex
+        items-center
+        gap-1.5
+        font-medium
+        text-brand"
+      :title="t('scriptEditor.fieldRow.yamlKey', { key: field.key })"
     >
-      {{ field.label }}
+      {{ fieldLabelOf(field, eventType) }}
       <span
         v-if="field.required"
-        class="text-xs text-red-400"
-        >＊</span
+        class="text-xs
+          text-red-400"
+        >{{ t('scriptEditor.configTab.requiredMark') }}</span
       >
       <span
         v-else
-        class="ml-auto text-xs font-normal text-white/35"
-        >可选</span
+        class="ml-auto
+          text-xs
+          font-normal
+          text-white/35"
+        >{{ t('scriptEditor.fieldRow.optional') }}</span
       >
     </label>
 
     <!-- 遗留字段：只展示，不给编辑 -->
     <template v-if="field.kind === 'deprecated' || !field.enabled">
       <input
-        class="glass-input opacity-45"
+        class="glass-input
+          opacity-45"
         :value="asText"
         disabled
       />
@@ -29,9 +38,12 @@
     <!-- 多行文本 -->
     <textarea
       v-else-if="field.kind === 'textarea'"
-      class="glass-input min-h-20 resize-y leading-relaxed"
+      class="glass-input
+        min-h-20
+        resize-y
+        leading-relaxed"
       :value="asText"
-      :placeholder="field.placeholder"
+      :placeholder="fieldPlaceholderOf(field, eventType)"
       @change="onText"
     ></textarea>
 
@@ -41,7 +53,7 @@
       class="glass-input"
       type="number"
       :value="asText"
-      :placeholder="field.placeholder"
+      :placeholder="fieldPlaceholderOf(field, eventType)"
       @change="onNumber"
     />
 
@@ -51,13 +63,18 @@
          作者点一下再点回来就悄悄改变了行为。 -->
     <div
       v-else-if="field.kind === 'bool' && field.required"
-      class="flex items-center gap-2"
+      class="flex
+        items-center
+        gap-2"
     >
       <Toggle
         :checked="value === true"
         @change="(v: boolean) => emit('update', v)"
       />
-      <span class="text-sm text-white/70">{{ value === true ? '开启' : '关闭' }}</span>
+      <span class="text-sm
+        text-white/70">{{
+        value === true ? t('scriptEditor.fieldRow.on') : t('scriptEditor.fieldRow.off')
+      }}</span>
     </div>
     <select
       v-else-if="field.kind === 'bool'"
@@ -65,9 +82,9 @@
       :value="value === true ? 'true' : value === false ? 'false' : ''"
       @change="onTriState"
     >
-      <option value="">（不设置 · 用引擎默认值）</option>
-      <option value="true">开启</option>
-      <option value="false">关闭</option>
+      <option value="">{{ t('scriptEditor.fieldRow.notSetDefault') }}</option>
+      <option value="true">{{ t('scriptEditor.fieldRow.on') }}</option>
+      <option value="false">{{ t('scriptEditor.fieldRow.off') }}</option>
     </select>
 
     <!-- 固定候选 / 角色 / 情绪 / 章节 -->
@@ -81,7 +98,7 @@
         v-if="!field.required"
         value=""
       >
-        （不设置）
+        {{ t('scriptEditor.configTab.notSet') }}
       </option>
       <option
         v-for="opt in selectOptions"
@@ -94,7 +111,8 @@
 
     <!-- 素材：下拉 + 导入 -->
     <div v-else-if="field.kind === 'asset'">
-      <div class="flex gap-2">
+      <div class="flex
+        gap-2">
         <select
           class="glass-input"
           :value="asText"
@@ -104,7 +122,7 @@
             v-if="!field.required"
             value=""
           >
-            （不设置）
+            {{ t('scriptEditor.configTab.notSet') }}
           </option>
           <option
             v-for="name in assetOptions"
@@ -115,31 +133,56 @@
           </option>
         </select>
         <button
-          class="shrink-0 border border-white/[0.1] rounded-lg px-[0.7rem] text-[0.78rem] whitespace-nowrap text-white/[0.7] bg-white/[0.06] transition-all hover:text-white hover:bg-white/[0.14]"
-          title="导入到本剧本 —— 随剧本一起分发，别的剧本看不到"
+          class="shrink-0
+            border
+            border-white/[0.1]
+            rounded-lg
+            px-[0.7rem]
+            text-[0.78rem]
+            whitespace-nowrap
+            text-white/[0.7]
+            bg-white/[0.06]
+            transition-all
+            hover:text-white
+            hover:bg-white/[0.14]"
+          :title="t('scriptEditor.fieldRow.importScript')"
           @click="pickAsset('script')"
         >
-          导入
+          {{ t('scriptEditor.assets.importScript') }}
         </button>
         <button
-          class="shrink-0 rounded-lg px-[0.7rem] text-[0.78rem] whitespace-nowrap transition-all border border-[rgba(167,139,250,0.3)] text-[#c4b5fd] bg-[rgba(167,139,250,0.1)] hover:bg-[rgba(167,139,250,0.22)]"
-          title="导入为全局素材 —— 所有剧本共享，但导出剧本时不会带走"
+          class="shrink-0
+            rounded-lg
+            px-[0.7rem]
+            text-[0.78rem]
+            whitespace-nowrap
+            transition-all
+            border
+            border-[rgba(167,139,250,0.3)]
+            text-[#c4b5fd]
+            bg-[rgba(167,139,250,0.1)]
+            hover:bg-[rgba(167,139,250,0.22)]"
+          :title="t('scriptEditor.fieldRow.importGlobal')"
           @click="pickAsset('global')"
         >
-          全局
+          {{ t('scriptEditor.assets.importGlobal') }}
         </button>
       </div>
       <p
         v-if="assetOptions.length === 0"
-        class="mt-1 text-xs text-yellow-200"
+        class="mt-1
+          text-xs
+          text-yellow-200"
       >
-        没有可用素材。「导入」放进本剧本，「全局」放进 game_data 供所有剧本共享。
+        {{ t('scriptEditor.fieldRow.noAssetsHint') }}
       </p>
       <p
         v-else-if="globalOnly.length"
-        class="mt-1 text-xs text-white/35"
+        class="mt-1
+          text-xs
+          text-white/35"
       >
-        其中 {{ globalOnly.length }} 个来自全局素材库
+        {{ t('scriptEditor.fieldRow.globalOnlyHint', { count: globalOnly.length }) }}
       </p>
     </div>
 
@@ -167,21 +210,25 @@
       v-else
       class="glass-input"
       :value="asText"
-      :placeholder="field.placeholder"
+      :placeholder="fieldPlaceholderOf(field, eventType)"
       @change="onText"
     />
 
     <p
       v-if="field.hint"
-      class="mt-1 text-xs leading-relaxed"
+      class="mt-1
+        text-xs
+        leading-relaxed"
       :class="hintClass"
     >
-      {{ field.hint }}
+      {{ fieldHintOf(field, eventType) }}
     </p>
     <p
       v-for="(d, i) in diagnostics"
       :key="i"
-      class="mt-1 text-xs leading-relaxed"
+      class="mt-1
+        text-xs
+        leading-relaxed"
       :class="d.severity === 'error' ? 'text-red-300' : 'text-yellow-200'"
     >
       {{ d.message }}
@@ -191,9 +238,18 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { Toggle } from '@/components/base'
 import { EMOTION_CONFIG_EMO } from '@/controllers/emotion/config'
+import {
+  emotionLabelOf,
+  fieldHintOf,
+  fieldLabelOf,
+  fieldPlaceholderOf,
+  optionLabelOf,
+  particleLabelOf,
+} from '@/locales/schema-i18n'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 import type {
   AssetKind,
@@ -205,6 +261,7 @@ import type {
 import CompositeField from './CompositeField.vue'
 import ConditionEditor from './ConditionEditor.vue'
 
+const { t } = useI18n()
 const props = defineProps<{
   field: FieldSpec
   value: unknown
@@ -223,6 +280,11 @@ const asText = computed(() => {
   if (typeof v === 'object') return ''
   return String(v)
 })
+
+/** 当前事件类型（schema 词条映射用）；无 event 时为 undefined，按 fieldKey 查通用表 */
+const eventType = computed(() =>
+  typeof props.event?.type === 'string' ? props.event.type : undefined,
+)
 
 const isSelectLike = computed(() =>
   ['select', 'character', 'emotion', 'chapter'].includes(props.field.kind),
@@ -244,17 +306,20 @@ const selectOptions = computed<{ value: string; label: string }[]>(() => {
     case 'select':
       // 有 option_labels 用显示名（值仍是引擎认的原文），否则直接显示原文。
       // Rust 侧序列化出来的一定是字符串，这里收窄类型免得 TS 抱怨。
-      return (props.field.options ?? []).map((o, idx) => ({
-        value: typeof o === 'string' ? o : o.value,
-        label: typeof o === 'string' ? (props.field.optionLabels?.[idx] ?? o) : o.label,
-      }))
+      return (props.field.options ?? []).map((o, idx) => {
+        const value = typeof o === 'string' ? o : o.value
+        const raw = typeof o === 'string' ? (props.field.optionLabels?.[idx] ?? o) : o.label
+        // 背景特效：options 已被前端覆盖为粒子表，label 是前端中文 → 走粒子词条
+        if (props.field.key === 'effect') return { value, label: particleLabelOf(value, raw) }
+        return { value, label: optionLabelOf(props.field, eventType.value, value, idx) }
+      })
     case 'character':
       return store.characterOptions.map((o) => ({
         value: o,
-        label: o === 'MAIN' ? 'MAIN（当前主角）' : o,
+        label: o === 'MAIN' ? t('scriptEditor.fieldRow.mainRole') : o,
       }))
     case 'emotion':
-      return Object.keys(EMOTION_CONFIG_EMO).map((o) => ({ value: o, label: o }))
+      return Object.keys(EMOTION_CONFIG_EMO).map((o) => ({ value: o, label: emotionLabelOf(o) }))
     case 'chapter':
       return store.chapterOptions
     default:
@@ -294,7 +359,7 @@ const branchMode = computed<'branching' | 'ai_judged' | undefined>(() => {
 })
 
 const hintClass = computed(() =>
-  /⚠|不生效|不会|无效|卡死/.test(props.field.hint ?? '') ? 'text-yellow-200' : 'text-white/40',
+  /⚠/.test(props.field.hint ?? '') ? 'text-yellow-200' : 'text-white/40',
 )
 
 const onText = (e: Event) => emit('update', (e.target as HTMLInputElement).value)
@@ -336,7 +401,7 @@ const pickAsset = async (scope: AssetScope) => {
     multiple: false,
     filters: [
       {
-        name: isImage ? '图片' : '音频',
+        name: isImage ? t('scriptEditor.fieldRow.image') : t('scriptEditor.fieldRow.audio'),
         extensions: isImage ? IMAGE_EXT : AUDIO_EXT,
       },
     ],

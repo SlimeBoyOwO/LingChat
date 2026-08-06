@@ -33,11 +33,9 @@
           px-5
           py-3">
           <h4 class="font-semibold
-            text-white">裁剪背景图</h4>
+            text-white">{{ t('scriptEditor.imageCrop.title') }}</h4>
           <span class="text-[0.7rem]
-            text-white/45"
-            >选区比例与编辑器窗口一致，框内即最终显示效果</span
-          >
+            text-white/45">{{ t('scriptEditor.imageCrop.hint') }}</span>
         </div>
 
         <div class="relative
@@ -49,7 +47,7 @@
             ref="imgEl"
             :src="imgSrc"
             class="max-w-full"
-            alt="背景裁剪预览"
+            :alt="t('scriptEditor.imageCrop.previewAlt')"
           />
         </div>
 
@@ -73,7 +71,7 @@
               hover:text-white"
             @click="emit('cancel')"
           >
-            取消
+            {{ t('scriptEditor.imageCrop.cancel') }}
           </button>
           <button
             class="rounded-lg
@@ -88,7 +86,7 @@
               hover:bg-brand/24"
             @click="confirm"
           >
-            确认使用
+            {{ t('scriptEditor.imageCrop.confirm') }}
           </button>
         </div>
       </div>
@@ -98,9 +96,12 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Cropper from 'cropperjs'
 import 'cropperjs/dist/cropper.css'
 import { convertFileSrc } from '@tauri-apps/api/core'
+
+const { t } = useI18n()
 
 const props = defineProps<{ srcPath: string }>()
 const emit = defineEmits<{

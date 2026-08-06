@@ -3,55 +3,130 @@
     <!-- 顶部说明行：传空串隐藏（说明已由父级承担时）；不传用默认通俗文案 -->
     <p
       v-if="displayHint"
-      class="mb-1.5 text-xs text-white/35"
-    >{{ displayHint }}</p>
+      class="mb-1.5
+        text-xs
+        text-white/35"
+    >
+      {{ displayHint }}
+    </p>
 
     <!-- 无法解析的旧写法：只读展示 + 交给校验器解释，提供「清空重填」入口 -->
     <div v-if="parseError">
-      <div class="flex items-center gap-2">
+      <div class="flex
+        items-center
+        gap-2">
         <input
-          class="flex-1 min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white/50 opacity-70"
+          class="flex-1
+            min-w-0
+            border
+            border-white/[0.1]
+            rounded-md
+            bg-black/[0.25]
+            px-2
+            py-1.5
+            text-xs
+            text-white/50
+            opacity-70"
           :value="modelValue"
           readonly
         />
         <button
-          class="shrink-0 rounded-md border border-white/[0.1] px-2 py-1.5 text-xs text-white/[0.7] transition-all hover:text-white hover:bg-white/[0.12]"
+          class="shrink-0
+            rounded-md
+            border
+            border-white/[0.1]
+            px-2
+            py-1.5
+            text-xs
+            text-white/[0.7]
+            transition-all
+            hover:text-white
+            hover:bg-white/[0.12]"
           @click="clear"
-        >清空重填</button>
+        >
+          {{ t('scriptEditor.condition.clear') }}
+        </button>
       </div>
-      <p class="mt-1 text-xs text-yellow-200">
-        这段条件不是支持的写法（校验器会提示原因）。点「清空重填」后用下面的表单重新选择。
+      <p class="mt-1
+        text-xs
+        text-yellow-200">
+        {{ t('scriptEditor.condition.invalidNotice') }}
       </p>
     </div>
 
-    <div v-else class="flex flex-wrap items-center gap-2">
+    <div
+      v-else
+      class="flex
+        flex-wrap
+        items-center
+        gap-2"
+    >
       <input
-        class="w-32 min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
+        class="w-32
+          min-w-0
+          border
+          border-white/[0.1]
+          rounded-md
+          bg-black/[0.25]
+          px-2
+          py-1.5
+          text-xs
+          text-white
+          transition-all
+          focus:outline-none
+          focus:border-[var(--accent-color)]"
         :list="uid"
-        placeholder="变量名"
+        :placeholder="t('scriptEditor.condition.varName')"
         :value="draft.var"
         @change="onVar"
       />
       <select
-        class="shrink-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
+        class="shrink-0
+          border
+          border-white/[0.1]
+          rounded-md
+          bg-black/[0.25]
+          px-2
+          py-1.5
+          text-xs
+          text-white
+          transition-all
+          focus:outline-none
+          focus:border-[var(--accent-color)]"
         :value="draft.rel"
         @change="onRel"
       >
-        <option value="truthy">为真（判断存没存过）</option>
-        <option value="eq">等于</option>
-        <option value="neq">不等于</option>
+        <option value="truthy">{{ t('scriptEditor.condition.operatorSet') }}</option>
+        <option value="eq">{{ t('scriptEditor.condition.operatorEq') }}</option>
+        <option value="neq">{{ t('scriptEditor.condition.operatorNeq') }}</option>
       </select>
       <input
         v-if="draft.rel !== 'truthy'"
-        class="w-32 min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
-        placeholder="值"
+        class="w-32
+          min-w-0
+          border
+          border-white/[0.1]
+          rounded-md
+          bg-black/[0.25]
+          px-2
+          py-1.5
+          text-xs
+          text-white
+          transition-all
+          focus:outline-none
+          focus:border-[var(--accent-color)]"
+        :placeholder="t('scriptEditor.condition.varValue')"
         :value="draft.value"
         @change="onValue"
       />
       <p
         v-if="draft.rel !== 'truthy' && !draft.value.trim()"
-        class="shrink-0 text-xs text-white/35"
-      >填上值后条件才生效</p>
+        class="shrink-0
+          text-xs
+          text-white/35"
+      >
+        {{ t('scriptEditor.condition.valueHint') }}
+      </p>
     </div>
 
     <datalist :id="uid">
@@ -66,9 +141,16 @@
 
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useId } from 'vue'
-import { buildCondition, parseCondition, type ConditionParts, type ConditionRel } from '@/utils/scriptVar'
+import {
+  buildCondition,
+  parseCondition,
+  type ConditionParts,
+  type ConditionRel,
+} from '@/utils/scriptVar'
 
+const { t } = useI18n()
 const props = defineProps<{
   /** 条件字符串（引擎格式），如 route == shop / flag / 空串 */
   modelValue: string
@@ -84,9 +166,7 @@ const uid = useId()
 
 /** 默认文案覆盖各场景的共性语义；父级有更贴切的说明时可覆盖或隐藏 */
 const displayHint = computed(() =>
-  props.hint === undefined
-    ? '设置条件后，只有满足条件这一项才会生效；条件只做判断，不会改动变量'
-    : props.hint,
+  props.hint === undefined ? t('scriptEditor.condition.help') : props.hint,
 )
 
 /**

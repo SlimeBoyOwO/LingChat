@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Button, Icon } from '@/components/base'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
+import { useSettingsStore } from '@/stores/modules/settings'
+import { formatBinding } from '@/utils/shortcuts'
+
+const { t } = useI18n()
 
 const emit = defineEmits<{
   playtest: []
@@ -10,6 +15,7 @@ const emit = defineEmits<{
 }>()
 
 const store = useScriptEditorStore()
+const settings = useSettingsStore()
 
 type TabKey =
   | 'flow'
@@ -34,14 +40,14 @@ const tabs: {
     | 'sliders'
     | 'palette'
 }[] = [
-  { key: 'flow', label: '章节流程', icon: 'adventure' },
-  { key: 'config', label: '剧本设置', icon: 'setting' },
-  { key: 'characters', label: '角色', icon: 'character' },
-  { key: 'assets', label: '素材', icon: 'background' },
-  { key: 'validate', label: '校验', icon: 'achievement' },
-  { key: 'agent-chat', label: 'AI 助手', icon: 'bot' },
-  { key: 'agent-settings', label: '助手设置', icon: 'sliders' },
-  { key: 'appearance', label: '外观', icon: 'palette' },
+  { key: 'flow', label: 'scriptEditor.editorHeader.tabFlow', icon: 'adventure' },
+  { key: 'config', label: 'scriptEditor.editorHeader.tabConfig', icon: 'setting' },
+  { key: 'characters', label: 'scriptEditor.editorHeader.tabCharacters', icon: 'character' },
+  { key: 'assets', label: 'scriptEditor.editorHeader.tabAssets', icon: 'background' },
+  { key: 'validate', label: 'scriptEditor.editorHeader.tabValidate', icon: 'achievement' },
+  { key: 'agent-chat', label: 'scriptEditor.editorHeader.tabAgentChat', icon: 'bot' },
+  { key: 'agent-settings', label: 'scriptEditor.editorHeader.tabAgentSettings', icon: 'sliders' },
+  { key: 'appearance', label: 'scriptEditor.editorHeader.tabAppearance', icon: 'palette' },
 ]
 
 // ---- nav 指示条（与 SettingsNav 同一套做法）----
@@ -122,16 +128,14 @@ const switchTab = (key: TabKey) => {
 
 // ---- 面包屑 ----
 const saveLabel = computed(() => {
-  if (store.saving) return '正在保存…'
-  if (store.dirty) return '有未保存改动'
+  if (store.saving) return t('scriptEditor.editorHeader.saving')
+  if (store.dirty) return t('scriptEditor.editorHeader.dirty')
   if (store.lastSavedAt) {
     const d = new Date(store.lastSavedAt)
-    return `已自动保存 · ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(
-      2,
-      '0',
-    )}`
+    const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+    return t('scriptEditor.editorHeader.savedAt', { time })
   }
-  return '已保存'
+  return t('scriptEditor.editorHeader.saved')
 })
 
 onMounted(async () => {
@@ -159,9 +163,9 @@ onUnmounted(() => {
         font-bold
         tracking-[0.5px]
         text-brand
-        whitespace-nowrap"
-        >LingChat 剧本编辑器</span
-      >
+        whitespace-nowrap">{{
+        t('scriptEditor.editorHeader.title')
+      }}</span>
       <nav
         ref="navEl"
         class="relative
@@ -189,21 +193,22 @@ onUnmounted(() => {
             shadow-[0_0_10px_rgba(121,217,255,0.4)]"
         ></div>
         <Button
-          v-for="t in tabs"
-          :key="t.key"
-          :ref="(el: unknown) => setTabRef(t.key, el)"
+          v-for="tab in tabs"
+          :key="tab.key"
+          :ref="(el: unknown) => setTabRef(tab.key, el)"
           type="nav"
-          :icon="t.icon"
-          :active="store.tab === t.key"
+          :icon="tab.icon"
+          :active="store.tab === tab.key"
           :disabled="
-            !store.detail && !['flow', 'agent-chat', 'agent-settings', 'appearance'].includes(t.key)
+            !store.detail &&
+            !['flow', 'agent-chat', 'agent-settings', 'appearance'].includes(tab.key)
           "
-          @click="switchTab(t.key)"
+          @click="switchTab(tab.key)"
         >
           <p class="hidden
-            xl:block">{{ t.label }}</p>
+            xl:block">{{ t(tab.label) }}</p>
           <span
-            v-if="t.key === 'validate' && store.report && store.report.errorCount > 0"
+            v-if="tab.key === 'validate' && store.report && store.report.errorCount > 0"
             class="ml-1
               rounded-full
               px-[5px]
@@ -248,9 +253,9 @@ onUnmounted(() => {
           hover:underline"
         @click="store.closeScript()"
       >
-        ‹ 剧本列表
+        {{ t('scriptEditor.editorHeader.backToList') }}
       </button>
-      <span v-else>首页</span>
+      <span v-else>{{ t('scriptEditor.editorHeader.home') }}</span>
 
       <template v-if="store.detail">
         <span class="opacity-40">›</span>
@@ -320,10 +325,10 @@ onUnmounted(() => {
               disabled:cursor-not-allowed
               disabled:opacity-40"
             :disabled="!store.canUndo"
-            title="撤销（Ctrl / ⌘ + Z）"
+            :title="`${t('scriptEditor.editorHeader.undo')} (${formatBinding(settings.shortcuts.undo)})`"
             @click="store.undo()"
           >
-            ↩ 撤销
+            ↩ {{ t('scriptEditor.editorHeader.undo') }}
           </button>
           <button
             class="inline-flex
@@ -345,10 +350,10 @@ onUnmounted(() => {
               disabled:cursor-not-allowed
               disabled:opacity-40"
             :disabled="!store.canRedo"
-            title="恢复（Ctrl / ⌘ + Shift + Z）"
+            :title="`${t('scriptEditor.editorHeader.redo')} (${formatBinding(settings.shortcuts.redo)})`"
             @click="store.redo()"
           >
-            ↪ 恢复
+            ↪ {{ t('scriptEditor.editorHeader.redo') }}
           </button>
         </template>
         <button
@@ -370,10 +375,10 @@ onUnmounted(() => {
             hover:enabled:bg-white/[0.12]
             disabled:cursor-not-allowed
             disabled:opacity-40"
-          title="查看全部快捷键（? 键）"
+          :title="`${t('scriptEditor.editorHeader.shortcut')} (${formatBinding(settings.shortcuts.shortcutHelp)})`"
           @click="emit('toggle-shortcut-help')"
         >
-          快捷键
+          {{ t('scriptEditor.editorHeader.shortcut') }}
         </button>
         <template v-if="store.detail">
           <button
@@ -392,10 +397,14 @@ onUnmounted(() => {
               text-brand
               bg-brand/14
               hover:bg-brand/24"
-            title="Ctrl / ⌘ + Enter"
+            :title="formatBinding(settings.shortcuts.playtest)"
             @click="emit('playtest')"
           >
-            {{ store.level === 'chapter' ? '从本章试玩' : '从开场试玩' }}
+            {{
+              store.level === 'chapter'
+                ? t('scriptEditor.editorHeader.playtestFromChapter')
+                : t('scriptEditor.editorHeader.playtestFromStart')
+            }}
           </button>
         </template>
       </span>
@@ -430,7 +439,7 @@ onUnmounted(() => {
           text-[0.66rem]
           font-semibold
           text-amber-300"
-        >试玩会卡住</span
+        >{{ t('scriptEditor.scriptEditor.playtestBlocked') }}</span
       >
       <span>{{ store.readiness.reason }}</span>
     </div>

@@ -42,5 +42,9 @@ function onClick(e: MouseEvent) {
 </script>
 
 <template>
-  <div class="markdown-body" v-html="html" @click="onClick"></div>
+  <div
+    class="markdown-body"
+    v-html="html"
+    @click="onClick"
+  ></div>
 </template>

@@ -1,72 +1,182 @@
 <template>
-  <div class="rail relative pl-[22px]">
+  <div class="rail
+    relative
+    pl-[22px]">
     <template
       v-for="(row, ri) in rows"
       :key="row.key"
     >
-      <div class="min-w-0 flex-1">
+      <div class="min-w-0
+        flex-1">
         <!-- 复合块：默认折叠成一行 -->
+        <div
+          v-if="row.kind === 'group'"
+          class="grp
+            group
+            relative
+            my-[3px]
+            overflow-hidden
+            border
+            border-white/[0.13]
+            rounded-[9px]
+            bg-black/16"
+          :class="{ open: expanded[row.key] }"
+        >
           <div
-            v-if="row.kind === 'group'"
-            class="grp group relative my-[3px] overflow-hidden border border-white/[0.13] rounded-[9px] bg-black/16"
-            :class="{ open: expanded[row.key] }"
+            class="flex
+              items-center
+              gap-2
+              px-[9px]
+              py-[7px]
+              cursor-pointer
+              transition-colors
+              duration-150
+              hover:bg-white/5"
+            @click="toggle(row.key)"
           >
-            <div
-              class="flex items-center gap-2 px-[9px] py-[7px] cursor-pointer transition-colors duration-150 hover:bg-white/5"
-              @click="toggle(row.key)"
+            <span
+              class="w-3.5
+                text-[0.8rem]
+                text-white/40
+                transition-transform
+                duration-200
+                group-[.open]:rotate-90"
+              >›</span
             >
-              <span class="w-3.5 text-[0.8rem] text-white/40 transition-transform duration-200 group-[.open]:rotate-90">›</span>
-              <span class="shrink-0 border border-white/25 rounded-[5px] px-[7px] py-0.5 text-[0.7rem] font-medium leading-[1.5] whitespace-nowrap text-slate-300 bg-white/7">{{ row.label }}</span>
-              <span class="flex-1 min-w-0 overflow-hidden text-[0.78rem] leading-[1.7] text-white/[0.72] truncate">{{ row.summary }}</span>
-              <span
-                v-if="groupHasError(row)"
-                class="shrink-0 border border-red-400/35 rounded px-[5px] py-px text-[0.62rem] leading-[1.6] whitespace-nowrap text-red-300 bg-red-400/15"
-                >含错误</span
-              >
-              <span class="text-[0.66rem] whitespace-nowrap text-white/[0.38]">{{ row.to - row.from }} 个事件</span>
-              <!-- 复合块整段移动：与 EventRow 的 ▲▼ 同一套操作语义（moveEventRange） -->
-              <button
-                v-if="canMoveUp(row)"
-                class="shrink-0 rounded px-[3px] text-[11px] leading-[1.7] text-white/25 opacity-0 transition-all group-hover:opacity-100 hover:text-white/60 hover:bg-white/[0.1]"
-                title="上移"
-                @click.stop="moveUp(row)"
-              >▲</button>
-              <button
-                v-if="canMoveDown(row)"
-                class="shrink-0 rounded px-[3px] text-[11px] leading-[1.7] text-white/25 opacity-0 transition-all group-hover:opacity-100 hover:text-white/60 hover:bg-white/[0.1]"
-                title="下移"
-                @click.stop="moveDown(row)"
-              >▼</button>
-            </div>
-            <div
-              v-if="expanded[row.key]"
-              class="px-1.5 pb-1.5 border-t border-white/[0.08]"
+            <span
+              class="shrink-0
+                border
+                border-white/25
+                rounded-[5px]
+                px-[7px]
+                py-0.5
+                text-[0.7rem]
+                font-medium
+                leading-[1.5]
+                whitespace-nowrap
+                text-slate-300
+                bg-white/7"
+              >{{ row.label }}</span
             >
-              <div class="rail-nested pl-4">
-                <EventRow
-                  v-for="item in row.items"
-                  :key="item.index"
-                  :index="item.index"
-                  :event="item.event"
-                />
-              </div>
+            <span
+              class="flex-1
+                min-w-0
+                overflow-hidden
+                text-[0.78rem]
+                leading-[1.7]
+                text-white/[0.72]
+                truncate"
+              >{{ row.summary }}</span
+            >
+            <span
+              v-if="groupHasError(row)"
+              class="shrink-0
+                border
+                border-red-400/35
+                rounded
+                px-[5px]
+                py-px
+                text-[0.62rem]
+                leading-[1.6]
+                whitespace-nowrap
+                text-red-300
+                bg-red-400/15"
+              >{{ t('scriptEditor.chapterTimeline.hasError') }}</span
+            >
+            <span class="text-[0.66rem]
+              whitespace-nowrap
+              text-white/[0.38]">{{
+              t('scriptEditor.chapterTimeline.events', { count: row.to - row.from })
+            }}</span>
+            <!-- 复合块整段移动：与 EventRow 的 ▲▼ 同一套操作语义（moveEventRange） -->
+            <button
+              v-if="canMoveUp(row)"
+              class="shrink-0
+                rounded
+                px-[3px]
+                text-[11px]
+                leading-[1.7]
+                text-white/25
+                opacity-0
+                transition-all
+                group-hover:opacity-100
+                hover:text-white/60
+                hover:bg-white/[0.1]"
+              :title="t('scriptEditor.eventRow.moveUp')"
+              @click.stop="moveUp(row)"
+            >
+              ▲
+            </button>
+            <button
+              v-if="canMoveDown(row)"
+              class="shrink-0
+                rounded
+                px-[3px]
+                text-[11px]
+                leading-[1.7]
+                text-white/25
+                opacity-0
+                transition-all
+                group-hover:opacity-100
+                hover:text-white/60
+                hover:bg-white/[0.1]"
+              :title="t('scriptEditor.eventRow.moveDown')"
+              @click.stop="moveDown(row)"
+            >
+              ▼
+            </button>
+          </div>
+          <div
+            v-if="expanded[row.key]"
+            class="px-1.5
+              pb-1.5
+              border-t
+              border-white/[0.08]"
+          >
+            <div class="rail-nested
+              pl-4">
+              <EventRow
+                v-for="item in row.items"
+                :key="item.index"
+                :index="item.index"
+                :event="item.event"
+              />
             </div>
           </div>
-
-          <!-- 单个事件 -->
-          <EventRow
-            v-else
-            :index="row.index"
-            :event="row.event"
-          />
         </div>
+
+        <!-- 单个事件 -->
+        <EventRow
+          v-else
+          :index="row.index"
+          :event="row.event"
+        />
+      </div>
     </template>
 
     <button
-      class="mt-2 -ml-[22px] w-[calc(100%+22px)] border border-dashed border-white/18 rounded-lg p-[7px] text-[0.78rem] text-white/45 transition-all duration-150 hover:border-brand hover:text-brand hover:bg-[rgba(121,217,255,0.05)]"
+      class="mt-2
+        -ml-[22px]
+        w-[calc(100%+22px)]
+        border
+        border-dashed
+        border-white/18
+        rounded-lg
+        p-[7px]
+        text-[0.78rem]
+        text-white/45
+        transition-all
+        duration-150
+        hover:border-brand
+        hover:text-brand
+        hover:bg-[rgba(121,217,255,0.05)]"
       @click="paletteOpen = true"
     >
-      ＋ 插入事件（{{ store.schema?.events.length ?? 0 }} 种全部可选，插在「章节结束」之前）
+      {{
+        t('scriptEditor.chapterTimeline.insertEvent', {
+          count: store.schema?.events.length ?? 0,
+        })
+      }}
     </button>
 
     <!-- 事件类型选择面板 -->
@@ -79,14 +189,52 @@
       >
         <div
           v-if="paletteOpen"
-          class="modal-mask fixed inset-0 z-[9999] flex items-center justify-center backdrop-blur-md bg-black/55"
+          class="modal-mask
+            fixed
+            inset-0
+            z-[9999]
+            flex
+            items-center
+            justify-center
+            backdrop-blur-md
+            bg-black/55"
           @click.self="paletteOpen = false"
         >
-          <div class="w-[min(560px,92vw)] max-h-[80vh] overflow-y-auto border border-white/12.5 rounded-xl py-4 px-[18px] pb-[18px] bg-[rgba(12,20,30,0.86)] backdrop-blur-lg backdrop-saturate-[1.4] shadow-[0_8px_32px_rgba(0,0,0,0.45),inset_0_1px_1px_rgba(255,255,255,0.06)]">
-            <div class="flex items-center mb-3.5 pb-2 border-b-2 border-brand">
-              <h4 class="text-[0.95rem] font-semibold text-white">插入事件</h4>
+          <div
+            class="w-[min(560px,92vw)]
+              max-h-[80vh]
+              overflow-y-auto
+              border
+              border-white/12.5
+              rounded-xl
+              py-4
+              px-[18px]
+              pb-[18px]
+              bg-[rgba(12,20,30,0.86)]
+              backdrop-blur-lg
+              backdrop-saturate-[1.4]
+              shadow-[0_8px_32px_rgba(0,0,0,0.45),inset_0_1px_1px_rgba(255,255,255,0.06)]"
+          >
+            <div class="flex
+              items-center
+              mb-3.5
+              pb-2
+              border-b-2
+              border-brand">
+              <h4 class="text-[0.95rem]
+                font-semibold
+                text-white">
+                {{ t('scriptEditor.chapterTimeline.insertEventTitle') }}
+              </h4>
               <button
-                class="ml-auto text-[0.85rem] text-white/50 cursor-pointer transition-all duration-200 hover:text-brand hover:rotate-90"
+                class="ml-auto
+                  text-[0.85rem]
+                  text-white/50
+                  cursor-pointer
+                  transition-all
+                  duration-200
+                  hover:text-brand
+                  hover:rotate-90"
                 @click="paletteOpen = false"
               >
                 ✕
@@ -95,17 +243,39 @@
             <div
               v-for="(group, cat) in groupedSpecs"
               :key="cat"
-              class="mt-3.5 first:mt-0"
+              class="mt-3.5
+                first:mt-0"
             >
-              <p class="mb-[7px] text-[0.7rem] tracking-[0.5px] text-white/[0.38]">{{ cat }}</p>
-              <div class="grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] gap-[7px]">
+              <p class="mb-[7px]
+                text-[0.7rem]
+                tracking-[0.5px]
+                text-white/[0.38]">
+                {{ categoryLabelOf(cat) }}
+              </p>
+              <div class="grid
+                grid-cols-[repeat(auto-fill,minmax(104px,1fr))]
+                gap-[7px]">
                 <button
                   v-for="spec in group"
                   :key="spec.typeKey"
-                  class="border border-white/10 rounded-lg px-2.5 py-2 text-[0.8rem] text-white/[0.78] bg-white/5 transition-all duration-150 ease-in-out hover:border-brand hover:text-white hover:bg-[rgba(121,217,255,0.14)] hover:-translate-y-px"
+                  class="border
+                    border-white/10
+                    rounded-lg
+                    px-2.5
+                    py-2
+                    text-[0.8rem]
+                    text-white/[0.78]
+                    bg-white/5
+                    transition-all
+                    duration-150
+                    ease-in-out
+                    hover:border-brand
+                    hover:text-white
+                    hover:bg-[rgba(121,217,255,0.14)]
+                    hover:-translate-y-px"
                   @click="insert(spec.typeKey)"
                 >
-                  {{ spec.label }}
+                  {{ eventLabelOf(spec) }}
                 </button>
               </div>
             </div>
@@ -118,6 +288,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 import {
   foldEvents,
@@ -127,7 +298,9 @@ import {
 } from '@/composables/useEventFolding'
 import type { EventSpec } from '@/api/services/script-editor'
 import EventRow from './EventRow.vue'
+import { categoryLabelOf, eventLabelOf } from '@/locales/schema-i18n'
 
+const { t } = useI18n()
 const store = useScriptEditorStore()
 
 const paletteOpen = ref(false)
