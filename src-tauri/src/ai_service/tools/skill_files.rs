@@ -102,11 +102,15 @@ async fn request_user_approval(
             "无法发送{action}审批请求: {error}"
         )));
     }
+    tracing::info!("[approval] 已向主窗口发送审批事件: event={event} request_id={request_id}");
 
     let decision = tokio::time::timeout(Duration::from_secs(120), rx).await;
     approvals.lock().await.remove(&request_id);
     match decision {
-        Ok(Ok(true)) => Ok(()),
+        Ok(Ok(true)) => {
+            tracing::info!("[approval] 用户已批准: request_id={request_id}");
+            Ok(())
+        }
         Ok(Ok(false)) => Err(ToolError::Execution(format!("{action}已被用户拒绝"))),
         Ok(Err(_)) => Err(ToolError::Execution(format!(
             "审批通道已关闭，{action}未执行"
