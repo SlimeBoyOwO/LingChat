@@ -120,6 +120,8 @@ pub struct ToolSettings {
     pub groups: std::collections::HashMap<String, bool>,
     /// 命令执行：免审批直接运行 shell（危险，仅在信任当前角色/模型时开启）。
     pub command_auto_approve: bool,
+    /// 命令执行：识别到删除操作时免审批继续执行（危险；缺省 false）。
+    pub command_delete_auto_approve: bool,
     /// 删除文件：免审批直接删除（危险；缺省 false，旧配置升级后仍会弹窗）。
     pub file_delete_auto_approve: bool,
     /// 文件操作：允许访问文件沙箱（默认 data/）之外的任意路径。
@@ -161,8 +163,7 @@ impl ToolSettings {
         let text = toml::to_string_pretty(self).context("序列化工具配置失败")?;
         fs::write(&tmp, text)
             .with_context(|| format!("写入工具配置临时文件失败: {}", tmp.display()))?;
-        fs::rename(&tmp, &path)
-            .with_context(|| format!("保存工具配置失败: {}", path.display()))?;
+        fs::rename(&tmp, &path).with_context(|| format!("保存工具配置失败: {}", path.display()))?;
         Ok(())
     }
 }
@@ -198,6 +199,7 @@ command_auto_approve = false
 file_ops_allow_any_path = false
 "#;
         let settings: ToolSettings = toml::from_str(legacy).unwrap();
+        assert!(!settings.command_delete_auto_approve);
         assert!(!settings.file_delete_auto_approve);
     }
 }

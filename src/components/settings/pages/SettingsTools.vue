@@ -182,6 +182,16 @@
         <p v-if="form.command_auto_approve" class="text-sm text-amber-400 px-1 mb-2">
           {{ $t('ui.toolCalls.commandAutoApproveHint') }}
         </p>
+        <div class="flex items-center gap-3 py-2.5 px-1">
+          <Toggle
+            :checked="form.command_delete_auto_approve"
+            @change="(value: boolean) => (form.command_delete_auto_approve = value)"
+          />
+          <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.commandDeleteAutoApprove') }}</p>
+        </div>
+        <p v-if="form.command_delete_auto_approve" class="text-sm text-amber-400 px-1 mb-2">
+          {{ $t('ui.toolCalls.commandDeleteAutoApproveHint') }}
+        </p>
       </div>
 
       <!-- ===== 其他工具组 ===== -->
@@ -260,6 +270,7 @@ const form = reactive<ToolSettings>({
   },
   groups: {},
   command_auto_approve: false,
+  command_delete_auto_approve: false,
   file_delete_auto_approve: false,
   file_ops_allow_any_path: false,
 })
@@ -308,6 +319,7 @@ onMounted(async () => {
     Object.assign(form.web_search, settings.web_search)
     Object.assign(form.groups, settings.groups ?? {})
     form.command_auto_approve = settings.command_auto_approve ?? false
+    form.command_delete_auto_approve = settings.command_delete_auto_approve ?? false
     form.file_delete_auto_approve = settings.file_delete_auto_approve ?? false
     form.file_ops_allow_any_path = settings.file_ops_allow_any_path ?? false
   } catch (error) {

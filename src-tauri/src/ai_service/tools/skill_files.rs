@@ -603,7 +603,7 @@ impl Tool for ExecuteCommand {
         let settings = self.settings.get();
         let is_delete_command = command_may_delete_files(command);
 
-        if is_delete_command && !settings.file_delete_auto_approve {
+        if is_delete_command && !settings.command_delete_auto_approve {
             let approvals = app.state::<AppState>().chat_file_delete_approvals.clone();
             request_user_approval(
                 &app,
