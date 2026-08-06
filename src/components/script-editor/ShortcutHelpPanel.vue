@@ -1,22 +1,92 @@
 <script setup lang="ts">
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useSettingsStore } from '@/stores/modules/settings'
+import {
+  DEFAULT_SHORTCUTS,
+  SHORTCUT_ACTIONS,
+  bindingsEqual,
+  bindingFromEvent,
+  formatBinding,
+  type ShortcutAction,
+  type ShortcutBinding,
+} from '@/utils/shortcuts'
 
 const { t } = useI18n()
-defineProps<{ visible: boolean }>()
+const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ close: [] }>()
 
-const SHORTCUTS: { keys: string; desc: string }[] = [
-  { keys: 'Ctrl / ⌘ + S', desc: 'scriptEditor.shortcutHelp.save' },
-  { keys: 'Ctrl / ⌘ + Z', desc: 'scriptEditor.shortcutHelp.undo' },
-  { keys: 'Ctrl / ⌘ + Shift + Z', desc: 'scriptEditor.shortcutHelp.redo' },
-  { keys: 'Ctrl / ⌘ + D', desc: 'scriptEditor.shortcutHelp.copyEvent' },
-  { keys: 'Ctrl / ⌘ + Enter', desc: 'scriptEditor.shortcutHelp.playtest' },
-  { keys: 'Delete', desc: 'scriptEditor.shortcutHelp.deleteEvent' },
-  { keys: '↑ / ↓', desc: 'scriptEditor.shortcutHelp.moveCursor' },
-  { keys: 'Alt + ↑ / ↓', desc: 'scriptEditor.shortcutHelp.moveEvent' },
-  { keys: 'Esc', desc: 'scriptEditor.shortcutHelp.esc' },
-  { keys: '?', desc: 'scriptEditor.shortcutHelp.openTable' },
-]
+const settings = useSettingsStore()
+
+/** 动作 → 描述词条 key（与 shortcutHelp 段一致） */
+const DESC_KEYS: Record<ShortcutAction, string> = {
+  save: 'scriptEditor.shortcutHelp.save',
+  undo: 'scriptEditor.shortcutHelp.undo',
+  redo: 'scriptEditor.shortcutHelp.redo',
+  copyEvent: 'scriptEditor.shortcutHelp.copyEvent',
+  playtest: 'scriptEditor.shortcutHelp.playtest',
+  deleteEvent: 'scriptEditor.shortcutHelp.deleteEvent',
+  moveCursor: 'scriptEditor.shortcutHelp.moveCursor',
+  moveEvent: 'scriptEditor.shortcutHelp.moveEvent',
+  esc: 'scriptEditor.shortcutHelp.esc',
+  shortcutHelp: 'scriptEditor.shortcutHelp.openTable',
+  expandProps: 'scriptEditor.shortcutHelp.expandProps',
+}
+
+// ---- 捕获模式：点击某行后监听下一次 keydown 作为新键位 ----
+const recording = ref<ShortcutAction | null>(null)
+const conflictName = ref<string>('')
+
+const onCaptureKey = (e: KeyboardEvent) => {
+  if (!recording.value) return
+  e.preventDefault()
+  e.stopPropagation()
+  const binding = bindingFromEvent(e)
+  // Esc 取消捕获
+  if (!binding) {
+    recording.value = null
+    conflictName.value = ''
+    return
+  }
+  // 冲突检测：其他动作已占用同一组合则拒绝
+  const clash = SHORTCUT_ACTIONS.find(
+    (a) => a !== recording.value && bindingsEqual(settings.shortcuts[a], binding),
+  )
+  if (clash) {
+    conflictName.value = t(DESC_KEYS[clash])
+    return
+  }
+  settings.update(`shortcuts.${recording.value}`, binding)
+  recording.value = null
+  conflictName.value = ''
+}
+
+watch(
+  () => props.visible,
+  (v) => {
+    // 面板关闭时清掉捕获态，避免残留监听
+    if (!v) {
+      recording.value = null
+      conflictName.value = ''
+    }
+  },
+)
+
+onUnmounted(() => {
+  recording.value = null
+})
+
+// 面板打开且处于捕获模式时挂全局监听
+watch(recording, (v) => {
+  if (v) window.addEventListener('keydown', onCaptureKey, true)
+  else window.removeEventListener('keydown', onCaptureKey, true)
+})
+
+const restoreDefaults = () => {
+  settings.update('shortcuts', { ...DEFAULT_SHORTCUTS })
+}
+
+const rowBinding = (a: ShortcutAction) => settings.shortcuts[a] as ShortcutBinding
 </script>
 
 <template>
@@ -42,7 +112,7 @@ const SHORTCUTS: { keys: string; desc: string }[] = [
         @click.self="emit('close')"
       >
         <div
-          class="w-[min(440px,92vw)]
+          class="w-[min(460px,92vw)]
             max-h-[86vh]
             overflow-y-auto
             border
@@ -77,11 +147,19 @@ const SHORTCUTS: { keys: string; desc: string }[] = [
               ✕
             </button>
           </div>
+
+          <p class="mb-3
+            text-[0.72rem]
+            leading-[1.7]
+            text-white/40">
+            {{ t('scriptEditor.shortcutHelp.customizeHint') }}
+          </p>
+
           <div
-            v-for="s in SHORTCUTS"
-            :key="s.keys"
+            v-for="a in SHORTCUT_ACTIONS"
+            :key="a"
             class="flex
-              items-baseline
+              items-center
               gap-3
               py-1.5
               text-[0.78rem]
@@ -90,6 +168,13 @@ const SHORTCUTS: { keys: string; desc: string }[] = [
               border-t
               border-white/[0.06]
               [&:first-child]:border-t-0"
+            :class="
+              recording === a
+                ? 'text-brand'
+                : `cursor-pointer
+                  hover:text-white`
+            "
+            @click="recording = a"
           >
             <kbd
               class="shrink-0
@@ -103,9 +188,49 @@ const SHORTCUTS: { keys: string; desc: string }[] = [
                 text-[0.7rem]
                 text-brand
                 bg-white/5"
-              >{{ s.keys }}</kbd
             >
-            <span>{{ t(s.desc) }}</span>
+              {{
+                recording === a
+                  ? t('scriptEditor.shortcutHelp.recording')
+                  : formatBinding(rowBinding(a))
+              }}
+            </kbd>
+            <span class="min-w-0
+              flex-1">{{ t(DESC_KEYS[a]) }}</span>
+            <span
+              v-if="recording === a && conflictName"
+              class="shrink-0
+                text-[0.68rem]
+                text-yellow-300"
+            >
+              {{ t('scriptEditor.shortcutHelp.conflict', { name: conflictName }) }}
+            </span>
+          </div>
+
+          <div class="flex
+            justify-end
+            mt-4">
+            <button
+              class="inline-flex
+                items-center
+                gap-1
+                border
+                border-white/10
+                rounded-lg
+                px-3
+                py-[0.3rem]
+                text-[0.78rem]
+                whitespace-nowrap
+                text-white/70
+                bg-white/6
+                transition-all
+                duration-200
+                hover:enabled:text-white
+                hover:enabled:bg-white/[0.12]"
+              @click="restoreDefaults"
+            >
+              {{ t('scriptEditor.shortcutHelp.restoreDefault') }}
+            </button>
           </div>
         </div>
       </div>

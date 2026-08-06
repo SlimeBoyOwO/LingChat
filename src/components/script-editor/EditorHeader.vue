@@ -3,6 +3,8 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Button, Icon } from '@/components/base'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
+import { useSettingsStore } from '@/stores/modules/settings'
+import { formatBinding } from '@/utils/shortcuts'
 
 const { t } = useI18n()
 
@@ -13,6 +15,7 @@ const emit = defineEmits<{
 }>()
 
 const store = useScriptEditorStore()
+const settings = useSettingsStore()
 
 type TabKey =
   | 'flow'
@@ -322,7 +325,7 @@ onUnmounted(() => {
               disabled:cursor-not-allowed
               disabled:opacity-40"
             :disabled="!store.canUndo"
-            :title="t('scriptEditor.editorHeader.undo')"
+            :title="`${t('scriptEditor.editorHeader.undo')} (${formatBinding(settings.shortcuts.undo)})`"
             @click="store.undo()"
           >
             ↩ {{ t('scriptEditor.editorHeader.undo') }}
@@ -347,7 +350,7 @@ onUnmounted(() => {
               disabled:cursor-not-allowed
               disabled:opacity-40"
             :disabled="!store.canRedo"
-            :title="t('scriptEditor.editorHeader.redo')"
+            :title="`${t('scriptEditor.editorHeader.redo')} (${formatBinding(settings.shortcuts.redo)})`"
             @click="store.redo()"
           >
             ↪ {{ t('scriptEditor.editorHeader.redo') }}
@@ -372,7 +375,7 @@ onUnmounted(() => {
             hover:enabled:bg-white/[0.12]
             disabled:cursor-not-allowed
             disabled:opacity-40"
-          :title="t('scriptEditor.editorHeader.shortcut')"
+          :title="`${t('scriptEditor.editorHeader.shortcut')} (${formatBinding(settings.shortcuts.shortcutHelp)})`"
           @click="emit('toggle-shortcut-help')"
         >
           {{ t('scriptEditor.editorHeader.shortcut') }}
@@ -394,7 +397,7 @@ onUnmounted(() => {
               text-brand
               bg-brand/14
               hover:bg-brand/24"
-            title="Ctrl / ⌘ + Enter"
+            :title="formatBinding(settings.shortcuts.playtest)"
             @click="emit('playtest')"
           >
             {{

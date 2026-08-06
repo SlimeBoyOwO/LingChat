@@ -124,6 +124,9 @@ import AppearanceTab from '@/components/script-editor/AppearanceTab.vue'
 import PreviewStage from '@/components/script-editor/PreviewStage.vue'
 import { eventQueue } from '@/core/events/event-queue'
 import { convertFileSrc } from '@tauri-apps/api/core'
+import { useSettingsStore } from '@/stores/modules/settings'
+import type { ShortcutAction } from '@/utils/shortcuts'
+import { bindingMatches } from '@/utils/shortcuts'
 // 默认背景与主菜单同款。Git LFS 资产：无 LFS 环境读出来是 131 字节指针，
 // 背景图加载失败会露出渐变兜底层（见模板注释），构建产物则是真实图。
 import defaultBg from '@/assets/images/background2.png'
@@ -273,18 +276,20 @@ const leave = async () => {
   void router.push('/')
 }
 
-// ---- 快捷键 ----
+// ---- 快捷键（键位可自定义，见 ShortcutHelpPanel / settings.shortcuts） ----
+const settings = useSettingsStore()
+
 const onKey = (e: KeyboardEvent) => {
   // 在输入框里让位给浏览器原生行为，否则作者想撤销一个词却把整个事件列表
   // 回退了一帧，而且刚敲的字（还没 change 提交）会一起消失。
   const el = e.target as HTMLElement | null
   const typing =
     !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
-  const mod = e.ctrlKey || e.metaKey
-  const k = e.key.toLowerCase()
 
-  // Esc 与 ? 不带修饰键，先处理
-  if (e.key === 'Escape') {
+  const hit = (action: ShortcutAction) => bindingMatches(settings.shortcuts[action], e)
+
+  // Esc 与快捷键表切换不带修饰键且语义特殊，先行处理
+  if (hit('esc')) {
     if (store.previewing) {
       void store.stopPreview()
     } else if (shortcutHelp.value) {
@@ -294,7 +299,7 @@ const onKey = (e: KeyboardEvent) => {
     }
     return
   }
-  if (!mod && !typing && (e.key === '?' || (e.key === '/' && e.shiftKey))) {
+  if (!typing && hit('shortcutHelp')) {
     e.preventDefault()
     shortcutHelp.value = !shortcutHelp.value
     return
@@ -303,27 +308,38 @@ const onKey = (e: KeyboardEvent) => {
   // 试玩期间键盘归游戏，编辑器不抢
   if (store.previewing) return
 
-  if (mod && k === 's') {
+  // 保存允许在输入框里触发（写作中随手保存）
+  if (hit('save')) {
     e.preventDefault()
     void store.save()
     return
   }
   if (typing) return
 
-  if (mod) {
-    if (k === 'z' && !e.shiftKey) {
-      e.preventDefault()
-      store.undo()
-    } else if ((k === 'z' && e.shiftKey) || k === 'y') {
-      e.preventDefault()
-      store.redo()
-    } else if (k === 'd') {
-      e.preventDefault()
-      if (store.chapter) store.duplicateEvent(store.selectedEvent)
-    } else if (e.key === 'Enter') {
-      e.preventDefault()
-      void playtest()
-    }
+  if (hit('redo')) {
+    e.preventDefault()
+    store.redo()
+    return
+  }
+  if (hit('undo')) {
+    e.preventDefault()
+    store.undo()
+    return
+  }
+  if (hit('copyEvent')) {
+    e.preventDefault()
+    if (store.chapter) store.duplicateEvent(store.selectedEvent)
+    return
+  }
+  if (hit('playtest')) {
+    e.preventDefault()
+    void playtest()
+    return
+  }
+  // 展开/收起事件属性栏（章节编辑页才有意义）
+  if (hit('expandProps') && store.level === 'chapter') {
+    e.preventDefault()
+    store.propsExpanded = !store.propsExpanded
     return
   }
 
@@ -331,15 +347,15 @@ const onKey = (e: KeyboardEvent) => {
   if (store.level !== 'chapter' || !store.chapter) return
   const last = store.chapter.events.length - 1
 
-  if (e.key === 'Delete') {
+  if (hit('deleteEvent')) {
     e.preventDefault()
     store.removeEvent(store.selectedEvent)
-  } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+  } else if (hit('moveCursor') || hit('moveEvent')) {
     e.preventDefault()
     const step = e.key === 'ArrowUp' ? -1 : 1
     const to = store.selectedEvent + step
     if (to < 0 || to > last) return
-    if (e.altKey) store.moveEvent(store.selectedEvent, to)
+    if (hit('moveEvent')) store.moveEvent(store.selectedEvent, to)
     else store.selectedEvent = to
   }
 }
