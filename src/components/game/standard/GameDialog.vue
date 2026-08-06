@@ -829,7 +829,7 @@ watch(
     if (!dialogAutoHideOnThinkEnabled.value) return
     if (newStatus === 'thinking') {
       isHidden.value = true
-    } else if (newStatus === 'idle' || newStatus === 'responding') {
+    } else if (newStatus === 'input' || newStatus === 'responding') {
       // 思考完成时恢复显示（带过渡动画）
       isHidden.value = false
     }
