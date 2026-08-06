@@ -79,8 +79,10 @@
             :key="tabKey"
             class="absolute
               inset-0"
-            @new-script="isListTab ? () => openModal('script') : undefined"
-            @new-chapter="isFlowTab ? () => openModal('chapter') : undefined"
+            @new-script="openModal('script')"
+            @new-chapter="openModal('chapter')"
+            @new-character="openModal('character')"
+            @import-character="openModal('importChar')"
           />
         </KeepAlive>
       </Transition>
@@ -200,9 +202,6 @@ const currentTabComponent = computed<Component>(() => {
 const tabKey = computed(() =>
   store.tab === 'flow' ? (store.detail ? 'flow-detail' : 'flow-list') : store.tab,
 )
-
-const isListTab = computed(() => store.tab === 'flow' && !store.detail)
-const isFlowTab = computed(() => store.tab === 'flow' && !!store.detail)
 
 /** 转场方向：前进 → slide-left（新页从右进），后退 → slide-right；首尾 wrap 视为前进 */
 const transitionName = ref<'slide-left' | 'slide-right'>('slide-left')
@@ -396,33 +395,31 @@ onUnmounted(async () => {
   z-index: 1;
 }
 
-/* ========== Tab 切换推入推出过渡（与设置面板同一套动画） ========== */
+/* ========== Tab 切换推入推出过渡（与设置面板同一套动画） ==========
+ * 只用 transform、不用 opacity：编辑器背景层带 blur 滤镜，动画里叠加
+ * 透明度变化会让 WebView 合成器在滤镜层上重绘，输入框区域会闪白
+ * （设置面板没有 blur 背景层，不受影响）。
+ */
 .slide-left-enter-active,
 .slide-left-leave-active,
 .slide-right-enter-active,
 .slide-right-leave-active {
-  transition:
-    transform 0.32s cubic-bezier(0.32, 0.72, 0, 1),
-    opacity 0.32s ease;
+  transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 /* 左滑 → 下一项：新页从右侧推入，旧页向左滑出 */
 .slide-left-enter-from {
   transform: translateX(100%);
-  opacity: 0.4;
 }
 .slide-left-leave-to {
   transform: translateX(-25%);
-  opacity: 0;
 }
 
 /* 右滑 → 上一项：新页从左侧推入，旧页向右滑出 */
 .slide-right-enter-from {
   transform: translateX(-100%);
-  opacity: 0.4;
 }
 .slide-right-leave-to {
   transform: translateX(25%);
-  opacity: 0;
 }
 </style>
