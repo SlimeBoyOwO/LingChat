@@ -135,6 +135,8 @@ export default {
       scene: "Scenes",
       status: "Status",
       clock: "Current Time",
+      skills: "Skills",
+      file_ops: "File Operations",
     },
     otherToolsHint: "Once enabled, they can use these tools on their own while chatting (applies after saving)",
     groups: {
@@ -144,6 +146,8 @@ export default {
       scene: "Scene Switching (list/switch scenes)",
       status: "Status Queries (current/scene status)",
       clock: "Current Time (device local time)",
+      skills: "Skills (let them read skill instructions)",
+      file_ops: "File Operations (list/read/write/delete files in the data sandbox)",
     },
     tools: {
       web_search: "Web Search",
@@ -163,6 +167,12 @@ export default {
       scene_switch: "Switch Scene",
       status_get_current: "Current Status",
       status_get_scene: "Scene Status",
+      list_skills: "List Skills",
+      read_skill: "Read Skill",
+      list_files: "List Files",
+      read_file: "Read File",
+      write_file: "Write File",
+      delete_file: "Delete File",
     },
   },
   todoPage: {

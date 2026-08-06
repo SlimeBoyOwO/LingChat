@@ -134,6 +134,8 @@ export default {
       scene: '场景切换',
       status: '状态查询',
       clock: '当前时间',
+      skills: '技能库',
+      file_ops: '文件操作',
     },
     otherToolsHint: '开启后 ta 就能在聊天时主动使用这些工具哦（保存后生效）',
     groups: {
@@ -143,6 +145,8 @@ export default {
       scene: '场景切换（列出/切换场景）',
       status: '状态查询（当前状态/场景状态）',
       clock: '当前时间（查询设备本地时间）',
+      skills: '技能库（让ta读取技能指令，学会新技能）',
+      file_ops: '文件操作（沙箱内列/读/写/删文件，限 data 目录）',
     },
     tools: {
       web_search: '网页搜索',
@@ -162,6 +166,12 @@ export default {
       scene_switch: '切换场景',
       status_get_current: '当前状态',
       status_get_scene: '场景状态',
+      list_skills: '列出技能',
+      read_skill: '读取技能',
+      list_files: '列出文件',
+      read_file: '读取文件',
+      write_file: '写入文件',
+      delete_file: '删除文件',
     },
   },
   todoPage: {

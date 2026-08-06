@@ -134,7 +134,9 @@ export default {
       "character": "角色切換",
       "scene": "場景切換",
       "status": "狀態查詢",
-      "clock": "目前時間"
+      "clock": "目前時間",
+      "skills": "技能庫",
+      "file_ops": "檔案操作"
     },
     "otherToolsHint": "開咗之後 ta 傾偈嗰陣就可以主動用呢啲工具㗎啦（儲存後生效）",
     "groups": {
@@ -143,7 +145,9 @@ export default {
       "character": "角色切換（列出/切換在場角色）",
       "scene": "場景切換（列出/切換場景）",
       "status": "狀態查詢（目前狀態/場景狀態）",
-      "clock": "目前時間（查詢裝置本地時間）"
+      "clock": "目前時間（查詢裝置本地時間）",
+      "skills": "技能庫（等ta讀取技能指令，學會新技能）",
+      "file_ops": "檔案操作（沙箱內列/讀/寫/刪檔案，限 data 目錄）"
     },
     "tools": {
       "web_search": "網頁搜尋",
@@ -162,7 +166,13 @@ export default {
       "scene_list": "場景列表",
       "scene_switch": "切換場景",
       "status_get_current": "目前狀態",
-      "status_get_scene": "場景狀態"
+      "status_get_scene": "場景狀態",
+      "list_skills": "列出技能",
+      "read_skill": "讀取技能",
+      "list_files": "列出檔案",
+      "read_file": "讀取檔案",
+      "write_file": "寫入檔案",
+      "delete_file": "刪除檔案"
     }
   },
   "todoPage": {

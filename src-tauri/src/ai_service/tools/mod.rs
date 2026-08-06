@@ -7,6 +7,7 @@ pub mod registry;
 pub mod scene;
 pub mod schedule;
 pub mod settings;
+pub mod skill_files;
 pub mod status;
 pub mod tool_loop;
 pub mod web_search;
@@ -32,6 +33,7 @@ use registry::ToolRegistry;
 use scene::{SceneList, SceneSwitch};
 use schedule::{AddTodo, DeleteTodo, GetAllSchedule, UpdateTodo};
 use settings::SharedToolSettings;
+use skill_files::{DeleteFile, ListFiles, ListSkills, ReadFile, ReadSkill, WriteFile};
 use status::{CurrentStatus, SceneStatus};
 use web_search::WebSearchTool;
 
@@ -104,6 +106,12 @@ pub fn built_in_registry(
     registry.register(Arc::new(SceneSwitch))?;
     registry.register(Arc::new(CharacterList))?;
     registry.register(Arc::new(CharacterSwitch))?;
+    registry.register(Arc::new(ListSkills))?;
+    registry.register(Arc::new(ReadSkill))?;
+    registry.register(Arc::new(ListFiles))?;
+    registry.register(Arc::new(ReadFile))?;
+    registry.register(Arc::new(WriteFile))?;
+    registry.register(Arc::new(DeleteFile))?;
     let data_dir = crate::api::data_dir();
     let mut permissions = ToolPermissionConfig::load_or_create(
         &data_dir,

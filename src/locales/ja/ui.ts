@@ -134,6 +134,8 @@ export default {
       scene: 'シーン切替',
       status: 'ステータス',
       clock: '現在時刻',
+      skills: 'スキル',
+      file_ops: 'ファイル操作',
     },
     otherToolsHint: 'オンにすると、あの子がチャット中にこれらのツールを自分で使えるようになるよ（保存後に有効）',
     groups: {
@@ -143,6 +145,8 @@ export default {
       scene: 'シーン切替（一覧・切替）',
       status: 'ステータス確認（現在/シーンの状態）',
       clock: '現在時刻（デバイスのローカル時刻）',
+      skills: 'スキル（スキル指示を読み込んで新しいことができるように）',
+      file_ops: 'ファイル操作（data サンドボックス内の一覧/読取/書込/削除）',
     },
     tools: {
       web_search: 'ウェブ検索',
@@ -162,6 +166,12 @@ export default {
       scene_switch: 'シーン切替',
       status_get_current: '現在の状態',
       status_get_scene: 'シーンの状態',
+      list_skills: 'スキル一覧',
+      read_skill: 'スキル読込',
+      list_files: 'ファイル一覧',
+      read_file: 'ファイル読取',
+      write_file: 'ファイル書込',
+      delete_file: 'ファイル削除',
     },
   },
   todoPage: {

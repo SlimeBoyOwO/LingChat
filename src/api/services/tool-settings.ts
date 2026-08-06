@@ -25,7 +25,16 @@ export interface ToolSettings {
 }
 
 /** 「其他工具」分组（与后端 TOOL_GROUPS 对齐；web_search 有独立设置区） */
-export const TOOL_GROUP_KEYS = ['schedule', 'memory', 'character', 'scene', 'status', 'clock'] as const
+export const TOOL_GROUP_KEYS = [
+  'schedule',
+  'memory',
+  'character',
+  'scene',
+  'status',
+  'clock',
+  'skills',
+  'file_ops',
+] as const
 
 /** 工具的界面友好名（通知与调用记录用），查不到翻译时回退原始名。 */
 export function toolDisplayName(tool: string): string {

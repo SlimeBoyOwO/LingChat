@@ -42,6 +42,11 @@ pub const TOOL_GROUPS: &[(&str, &[&str])] = &[
     ("scene", &["scene_list", "scene_switch"]),
     ("status", &["status_get_current", "status_get_scene"]),
     ("clock", &["get_current_time"]),
+    ("skills", &["list_skills", "read_skill"]),
+    (
+        "file_ops",
+        &["list_files", "read_file", "write_file", "delete_file"],
+    ),
 ];
 
 /// 网页搜索工具配置。
