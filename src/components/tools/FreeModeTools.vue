@@ -6,7 +6,6 @@
   >
     <PomodoroPanel />
     <SchedulePanel />
-    <ToolActivityStatus />
   </div>
 </template>
 
@@ -15,7 +14,6 @@ import { computed } from 'vue'
 import { useGameStore } from '@/stores/modules/game'
 import PomodoroPanel from '@/components/pomodoro/PomodoroPanel.vue'
 import SchedulePanel from '@/components/schedule/SchedulePanel.vue'
-import ToolActivityStatus from '@/components/tools/ToolActivityStatus.vue'
 
 const gameStore = useGameStore()
 

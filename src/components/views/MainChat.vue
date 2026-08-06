@@ -16,6 +16,7 @@
 
     <!-- 原有的菜单按钮 -->
     <div id="menu-panel">
+      <ToolActivityStatus v-if="!(gameStore.runningScript && gameStore.runningScript.isRunning)" />
       <Button
         type="nav"
         icon="play"
@@ -51,6 +52,7 @@
 import { onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import FreeModeTools from '@/components/tools/FreeModeTools.vue'
+import ToolActivityStatus from '@/components/tools/ToolActivityStatus.vue'
 import { useUIStore } from '../../stores/modules/ui/ui'
 import { useGameStore } from '../../stores/modules/game'
 import { GameBackground, GameRolesStage } from '../game/standard'

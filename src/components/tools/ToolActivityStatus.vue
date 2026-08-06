@@ -11,6 +11,7 @@
       :key="`${activity.callId}-${activity.status}`"
       class="hidden
         pointer-events-none
+        mr-2
         h-10
         min-w-0
         max-w-[min(36vw,28rem)]
