@@ -3,6 +3,7 @@ export default {
   tabs: {
     menu: "Main Menu",
     llm: "LLM Management",
+    tools: "Tool Settings",
     other: "Other Advanced Settings",
     tts: "Local TTS",
   },
@@ -10,6 +11,9 @@ export default {
     llmTitle: "LLM Management",
     llmDesc: "Configure and manage AI LLM providers — add, edit, and test model connection parameters",
     llmButton: "Open LLM Management",
+    toolsTitle: "Tool Settings",
+    toolsDesc: "Configure the tools AI can use, like web search (looking things up online)",
+    toolsButton: "Open Tool Settings",
     ttsTitle: "Local TTS",
     ttsDesc: "Import DeBERTa models, tokenizers and character voices to use the local TTS engine offline",
     ttsButton: "Enter Local TTS",

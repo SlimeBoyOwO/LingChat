@@ -107,6 +107,24 @@ pub struct GroupPermission {
     pub roles: HashSet<String>,
 }
 
+/// 授权/收回 default 角色组对某个工具的访问（供工具设置页开关使用）。
+impl ToolPermissionConfig {
+    /// `allowed = true`：确保 default 角色组启用且包含该工具；
+    /// `allowed = false`：仅从 default 组工具列表移除，不动组的启用状态与其他工具。
+    pub fn set_tool_allowed_for_default_group(&mut self, tool: &str, allowed: bool) {
+        let group = self
+            .role_groups
+            .entry(DEFAULT_ROLE_GROUP.to_string())
+            .or_default();
+        if allowed {
+            group.enabled = true;
+            group.tools.insert(tool.to_string());
+        } else {
+            group.tools.remove(tool);
+        }
+    }
+}
+
 impl Default for GroupPermission {
     fn default() -> Self {
         Self {
@@ -371,11 +389,9 @@ impl ToolPermissionConfig {
     }
 
     pub fn save(&self, path: &Path) -> Result<()> {
-        let tmp = path.with_extension("tmp");
         let text = toml::to_string_pretty(self).context("序列化工具权限配置失败")?;
-        fs::write(&tmp, text)
-            .with_context(|| format!("写入工具权限临时配置失败: {}", tmp.display()))?;
-        fs::rename(&tmp, path)
+        super::atomic_replace(path, text.as_bytes())
+            .map_err(anyhow::Error::msg)
             .with_context(|| format!("保存工具权限配置失败: {}", path.display()))?;
         Ok(())
     }
@@ -413,5 +429,18 @@ user_chat = "scene_admin"
 "#;
         let config: ToolPermissionConfig = toml::from_str(legacy).unwrap();
         assert!(config.available_tools.is_empty());
+    }
+
+    #[test]
+    fn save_can_replace_existing_permission_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("permissions.toml");
+        let mut config = ToolPermissionConfig::default();
+        config.save(&path).unwrap();
+        config.available_tools = vec!["get_current_time".into()];
+        config.save(&path).unwrap();
+
+        let loaded = ToolPermissionConfig::load(&path).unwrap();
+        assert_eq!(loaded.available_tools, vec!["get_current_time"]);
     }
 }

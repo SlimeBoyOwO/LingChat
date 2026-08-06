@@ -1,5 +1,6 @@
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { eventQueue } from '../core/events/event-queue'
 import type { ScriptEventType } from '../types'
 import { useAdventureStore } from '../stores/modules/adventure'
@@ -7,6 +8,15 @@ import { useUIStore } from '../stores/modules/ui/ui'
 import { useGameStore } from '../stores/modules/game'
 import { i18n } from '@/locales'
 import { useScriptEditorStore } from '../stores/modules/script-editor'
+import {
+  handleToolActivity,
+  interruptToolActivities,
+  pushToolCallRecord,
+  toolDisplayName,
+  type ToolActivityEvent,
+} from './services/tool-settings'
+import { useDialogStore } from '../stores/modules/ui/dialog'
+import type { SceneInfo } from './services/scene'
 
 function asEvent(
   payload: unknown,
@@ -15,8 +25,7 @@ function asEvent(
   const p = payload as Record<string, unknown>
   // 优先用引擎从 YAML 读到的 duration；没写才用各事件类型的默认值。
   // 默认值语义：-1 = 等玩家点击继续；0 = 立即继续（不等待）。
-  const duration =
-    typeof p.duration === 'number' ? p.duration : defaults.defaultDuration
+  const duration = typeof p.duration === 'number' ? p.duration : defaults.defaultDuration
   return {
     ...p,
     type: defaults.type,
@@ -43,6 +52,9 @@ function isStalePreviewReply(payload: Record<string, unknown>): boolean {
 }
 
 export function initializeTauriEventListeners() {
+  const currentWindow = getCurrentWindow()
+  const mainWindow = currentWindow.label === 'main' ? currentWindow : null
+
   listen('ai:reply', (event) => {
     const payload = event.payload as Record<string, unknown>
     // 试玩中止后迟到的流式回复：直接丢弃，不放进事件队列
@@ -68,12 +80,129 @@ export function initializeTauriEventListeners() {
   listen('ai:error', (event) => {
     const p = event.payload as Record<string, unknown>
     console.log('[Tauri] ai:error', p)
+    interruptToolActivities()
     eventQueue.addEvent({
       type: 'error',
       duration: 0,
       error_code: (p.error_code as string) ?? 'default_error',
       message: (p.detail as string) ?? '',
     } as ScriptEventType)
+  })
+
+  // 工具执行生命周期：驱动自由对话顶栏的实时状态，不写入历史记录。
+  listen('ai:tool_activity', (event) => {
+    const payload = event.payload as ToolActivityEvent
+    handleToolActivity(payload)
+  })
+
+  // 工具调用结果：记入「工具调用」页面历史 + 左上角弹通知
+  listen('ai:tool_call', (event) => {
+    const payload = event.payload as {
+      tool: string
+      ok: boolean
+      summary: string
+      error: string | null
+      arguments: string
+      result: string
+    }
+    pushToolCallRecord({
+      ...payload,
+      time: new Date().toLocaleTimeString(),
+    })
+    const toolLabel = toolDisplayName(payload.tool)
+    const uiStore = useUIStore()
+    if (payload.ok) {
+      uiStore.showNotification({
+        type: 'success',
+        title: i18n.global.t('ui.toolCalls.callSuccess'),
+        message: `${toolLabel}：${payload.summary}`,
+        duration: 3000,
+        skipTipsCheck: true,
+      })
+    } else {
+      uiStore.showNotification({
+        type: 'warning',
+        title: i18n.global.t('ui.toolCalls.callFailed'),
+        message: payload.error || toolLabel,
+        duration: 4000,
+        skipTipsCheck: true,
+      })
+    }
+  })
+
+  // 审批框只在主窗口挂载；独立日志窗口等不能消费审批事件。
+  // 主聊天 execute_command 审批：弹确认框，把用户决定回传给等待中的工具
+  mainWindow?.listen('chat:command_approval', async (event) => {
+    const payload = event.payload as {
+      request_id: string
+      command: string
+      cwd: string
+      uac: boolean
+    }
+    const dialogStore = useDialogStore()
+    const message =
+      i18n.global.t('ui.toolCalls.approvalMessage', {
+        command: payload.command,
+        cwd: payload.cwd || i18n.global.t('ui.toolCalls.approvalDefaultCwd'),
+      }) + (payload.uac ? `\n\n${i18n.global.t('ui.toolCalls.approvalUac')}` : '')
+    const approved = await dialogStore.confirm(
+      message,
+      i18n.global.t('ui.toolCalls.approvalTitle'),
+    )
+    try {
+      await invoke('resolve_command_approval', { requestId: payload.request_id, approved })
+    } catch (e) {
+      console.warn('[Tauri] 回传命令审批结果失败（可能已超时）:', e)
+    }
+  })
+
+  // execute_command 中识别到删除操作时使用独立危险确认；回传到删除审批队列。
+  mainWindow?.listen('chat:command_delete_approval', async (event) => {
+    const payload = event.payload as {
+      request_id: string
+      command: string
+      cwd: string
+      uac: boolean
+    }
+    const dialogStore = useDialogStore()
+    const message =
+      i18n.global.t('ui.toolCalls.commandDeleteApprovalMessage', {
+        command: payload.command,
+        cwd: payload.cwd || i18n.global.t('ui.toolCalls.approvalDefaultCwd'),
+      }) + (payload.uac ? `\n\n${i18n.global.t('ui.toolCalls.approvalUac')}` : '')
+    const approved = await dialogStore.confirm(
+      message,
+      i18n.global.t('ui.toolCalls.commandDeleteApprovalTitle'),
+    )
+    try {
+      await invoke('resolve_file_delete_approval', {
+        requestId: payload.request_id,
+        approved,
+      })
+    } catch (e) {
+      console.warn('[Tauri] 回传删除命令审批结果失败（可能已超时）:', e)
+    }
+  })
+
+  // 主聊天 delete_file 审批：先显示后端解析并校验过的真实路径，再把决定回传给工具。
+  mainWindow?.listen('chat:file_delete_approval', async (event) => {
+    const payload = event.payload as {
+      request_id: string
+      path: string
+    }
+    const dialogStore = useDialogStore()
+    const approved = await dialogStore.confirm(
+      i18n.global.t('ui.toolCalls.fileDeleteApprovalMessage', { path: payload.path }),
+      i18n.global.t('ui.toolCalls.fileDeleteApprovalTitle'),
+    )
+    try {
+      await invoke('resolve_file_delete_approval', {
+        requestId: payload.request_id,
+        approved,
+      })
+    } catch (e) {
+      console.warn('[Tauri] 回传删除审批结果失败（可能已超时）:', e)
+    }
   })
 
   listen('status:reset', (event) => {
@@ -205,7 +334,9 @@ export function initializeTauriEventListeners() {
 
   listen('script:end', (event) => {
     console.log('[Tauri] script:end', event.payload)
-    eventQueue.addEvent(asEvent(event.payload, { type: 'script_end', defaultDuration: 0, isFinal: true }))
+    eventQueue.addEvent(
+      asEvent(event.payload, { type: 'script_end', defaultDuration: 0, isFinal: true }),
+    )
   })
 
   listen('script:free-dialogue', (event) => {
@@ -214,14 +345,36 @@ export function initializeTauriEventListeners() {
 
   // === God Agent multi-dialogue event ===
 
-  listen('character:switch', (event) => {
+  listen('character:switch', async (event) => {
     const payload = event.payload as { type: string; roleId: number; characterName: string }
     console.log('[Tauri] character:switch', payload)
     const gameStore = useGameStore()
+    const uiStore = useUIStore()
+    // 先确保角色数据已加载（立绘/名字都从这里取）
+    const role = await gameStore.getOrCreateGameRole(payload.roleId)
     gameStore.currentInteractRoleId = payload.roleId
-    // Ensure the role is loaded in gameRoles
-    gameStore.getOrCreateGameRole(payload.roleId)
+    // 新角色不在场时才替换舞台（多人场景下 God Agent 只会选在场角色，不进这分支）；
+    // 用替换而非 push，避免标准模式舞台出现两个角色、桌宠不生效
+    if (!gameStore.presentRoleIds.includes(payload.roleId)) {
+      gameStore.presentRoleIds = [payload.roleId]
+    }
+    // 同步主界面/桌宠标题（对话中名字由 currentInteractRole 驱动，已覆盖）
+    uiStore.showCharacterTitle = role.roleName
+    uiStore.showCharacterSubtitle = role.roleSubTitle
   })
 
-  console.log('[Tauri] Event listeners initialized (ai + ai:thinking_progress + tts:cleanup + adventure + auto-save + 13 script events + character:switch)')
+  // === LLM scene tool event ===
+
+  listen('scene:switch', (event) => {
+    const payload = event.payload as { type: string; scene: SceneInfo }
+    console.log('[Tauri] scene:switch', payload)
+    const gameStore = useGameStore()
+    const uiStore = useUIStore()
+    gameStore.setCurrentScene(payload.scene)
+    uiStore.setCurrentBackground(payload.scene.background ?? '')
+  })
+
+  console.log(
+    '[Tauri] Event listeners initialized (ai + ai:thinking_progress + tts:cleanup + adventure + auto-save + 13 script events + character:switch + scene:switch)',
+  )
 }

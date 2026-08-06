@@ -151,6 +151,17 @@ impl MessageGenerator {
         Ok(accumulated)
     }
 
+    /// 把后台工具完成通知作为仅对 LLM 可见的临时 user context 触发新一轮回复。
+    /// 通知不会写成玩家台词，避免界面和历史中出现伪造的用户消息。
+    pub async fn process_notification(&self, notification: String) -> Result<String> {
+        let mut context = self.get_current_context().await?;
+        if context.is_empty() {
+            return Ok(String::new());
+        }
+        context.push(LlmMessage::user(notification));
+        self.execute_pipeline(context, "", None).await
+    }
+
     // ============================================================
     // 子步骤
     // ============================================================
@@ -431,43 +442,14 @@ impl MessageGenerator {
             &self.deps.app,
         )
         .await?;
-        if !tool_loop_result.tool_messages.is_empty() {
-            let mut gs = self.deps.game_status.lock().await;
-            let insert_pos = gs.line_list.len();
-            let perceived: Vec<i32> = gs.present_role_ids.iter().copied().collect();
-
-            for msg in tool_loop_result.tool_messages.iter().rev() {
-                let (attribute, content, tool_call) = match msg.role.as_str() {
-                    "assistant" => {
-                        let tool_call = msg.tool_calls.as_ref().map(|calls| {
-                            serde_json::to_string(calls).unwrap_or_default()
-                        });
-                        (LineAttribute::Assistant, msg.content.clone(), tool_call)
-                    },
-                    "tool" => (
-                        LineAttribute::Tool,
-                        serde_json::to_string(&serde_json::json!({
-                            "tool_call_id": msg.tool_call_id,
-                            "result": serde_json::from_str::<serde_json::Value>(&msg.content)
-                                .unwrap_or(serde_json::Value::String(msg.content.clone())),
-                        })).unwrap_or_default(),
-                        None,
-                    ),
-                    _ => continue,
-                };
-                let line = LineBase {
-                    content,
-                    tool_call,
-                    attribute: LineAttributeExt(attribute),
-                    sender_role_id: None,
-                    display_name: None,
-                    ..Default::default()
-                };
-                gs.line_list
-                    .insert(insert_pos, GameLine::from_base(line, perceived.clone()));
-            }
-            gs.refresh_memories(&self.deps.db).await?;
-        }
+        // 惰性工具闭环：工具消息在流消费过程中才逐渐收集完整。
+        // 先记下回填位置（当前台词末尾，即本轮助手回复写入之前），
+        // 待流消费完毕后统一插入，保持「用户 → 工具消息 → 助手回复」的顺序。
+        let tool_insert_pos = {
+            let gs = self.deps.game_status.lock().await;
+            gs.line_list.len()
+        };
+        let tool_messages = tool_loop_result.tool_messages;
         let llm_stream = tool_loop_result.stream;
 
         let (sentence_tx, sentence_rx) =
@@ -554,6 +536,59 @@ impl MessageGenerator {
             let _ = t.await;
         }
         let _ = publisher.await;
+
+        // 流已消费完毕，工具消息收集完整：回填到助手回复之前的位置
+        let tool_msgs = std::mem::take(&mut *tool_messages.lock().await);
+        if !tool_msgs.is_empty() {
+            let mut gs = self.deps.game_status.lock().await;
+            // 试玩代号守卫：试玩中止后丢弃迟到回填，与 add_assistant_line 行为一致
+            if gs.preview_generation == self.deps.generation {
+                let insert_pos = tool_insert_pos.min(gs.line_list.len());
+                let perceived: Vec<i32> = gs.present_role_ids.iter().copied().collect();
+
+                for msg in tool_msgs.iter().rev() {
+                    let (attribute, content, tool_call) = match msg.role.as_str() {
+                        "assistant" => {
+                            let tool_call = msg.tool_calls.as_ref().map(|calls| {
+                                serde_json::to_string(calls).unwrap_or_default()
+                            });
+                            (LineAttribute::Assistant, msg.content.clone(), tool_call)
+                        },
+                        "tool" => (
+                            LineAttribute::Tool,
+                            serde_json::to_string(&serde_json::json!({
+                                "tool_call_id": msg.tool_call_id,
+                                "result": serde_json::from_str::<serde_json::Value>(&msg.content)
+                                    .unwrap_or(serde_json::Value::String(msg.content.clone())),
+                            })).unwrap_or_default(),
+                            None,
+                        ),
+                        _ => continue,
+                    };
+                    let line = LineBase {
+                        content,
+                        tool_call,
+                        attribute: LineAttributeExt(attribute),
+                        sender_role_id: None,
+                        display_name: None,
+                        ..Default::default()
+                    };
+                    gs.line_list
+                        .insert(insert_pos, GameLine::from_base(line, perceived.clone()));
+                }
+                gs.refresh_memories(&self.deps.db).await?;
+            }
+        }
+
+        // 空回复兜底：模型流没有任何正文时，主动通知前端并重置状态，
+        // 否则界面会一直停在「思考中」
+        if acc.trim().is_empty() {
+            tracing::warn!("LLM 流未产生任何正文内容，重置前端状态");
+            events::emit_error(
+                &self.deps.app,
+                &anyhow::anyhow!("模型没有返回任何内容，请再试一次"),
+            );
+        }
 
         Ok(acc)
     }
@@ -647,6 +682,7 @@ fn needs_japanese_translation(segments: &[EmotionSegment]) -> bool {
     })
 }
 
+
 /// Step B: 翻译与语音生成。
 async fn enrich_segments(deps: &GeneratorDeps, segments: &mut [EmotionSegment]) -> Result<()> {
     let (voice_maker, tts_type, voice_lang) = {
@@ -683,8 +719,6 @@ async fn enrich_segments(deps: &GeneratorDeps, segments: &mut [EmotionSegment]) 
                 segment.japanese_text.clear();
             }
         }
-    } else if segments[0].japanese_text.is_empty() {
-        deps.translator.translate_segments(segments, false).await?;
     }
 
     if let Some(vm) = voice_maker {
@@ -705,16 +739,20 @@ async fn build_reply_response(
     // 从 GameStatus 取当前角色信息
     let role_info: Option<(Option<String>, Option<i32>)> = {
         let gs = deps.game_status.lock().await;
-        gs.current_role_id.and_then(|rid| {
-            gs.role_manager
+        gs.current_role_id.map(|rid| {
+            // 角色未加载（如工具刚切换）时也保留 rid，
+            // 让前端能按 role_id 自行加载，而不是丢成 None 被丢弃
+            let name = gs
+                .role_manager
                 .get_loaded(rid)
-                .map(|role| (role.display_name.clone(), role.role_id))
+                .and_then(|role| role.display_name.clone());
+            (name, Some(rid))
         })
     };
 
     let first = &segments[0];
     let (character, role_id) = match role_info {
-        Some((name, rid)) => (name, rid),
+        Some((name, rid)) => (name.or(first.character.clone()), rid),
         None => (first.character.clone(), first.role_id),
     };
 

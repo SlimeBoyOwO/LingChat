@@ -76,6 +76,8 @@ pub struct InnerAppState {
     pub generation_lock: Arc<tokio::sync::Mutex<()>>,
     /// 主动系统实例（可选）。
     pub tool_registry: Arc<ToolRegistry>,
+    /// 聊天工具的用户配置（网页搜索 API Key、代理等），热更新共享句柄。
+    pub tool_settings: ai_service::tools::settings::SharedToolSettings,
     /// 插件管理器（扫描/启停/配置）。
     pub plugin_manager: Arc<plugins::PluginManager>,
     pub proactive_system:
@@ -93,6 +95,13 @@ pub struct InnerAppState {
     pub god_agent: Option<Arc<GodAgentCore>>,
     /// Skill Agent（剧本编辑器 AI 助手）共享状态。
     pub skill_agent: Arc<ai_service::skill_agent::SkillAgentState>,
+    /// 主聊天 `execute_command` 工具的待审批命令请求（request_id → oneshot）。
+    pub chat_command_approvals: ai_service::skill_agent::ApprovalMap,
+    /// 主聊天 `delete_file` 工具的待审批删除请求（request_id → oneshot）。
+    pub chat_file_delete_approvals: ai_service::skill_agent::ApprovalMap,
+    /// 主聊天后台命令的并发槽位与任务 ID 分配器。
+    pub background_commands:
+        Arc<ai_service::tools::background_command::BackgroundCommandManager>,
     /// 剧本编辑器「试玩」当前在跑的后台任务句柄。
     ///
     /// `editor_stop_preview` 会先唤醒被剧本阻塞的通道、把 `is_running` 置 false，
@@ -302,7 +311,14 @@ pub fn run() {
             let generation_lock = std::sync::Arc::new(tokio::sync::Mutex::new(()));
             let role_names = rt
                 .block_on(db::managers::role_repo::RoleRepo::get_all_tool_role_names(&db))?;
-            let tool_registry = Arc::new(ai_service::tools::built_in_registry(role_names)?);
+            let tool_settings = ai_service::tools::settings::SharedToolSettings::new(
+                ai_service::tools::settings::ToolSettings::load_or_create(&api::data_dir())?,
+            );
+            let tool_registry = Arc::new(ai_service::tools::built_in_registry(
+                role_names,
+                tool_settings.clone(),
+                app.handle().clone(),
+            )?);
 
             // 插件系统：确保 data/plugins 目录存在并扫描加载插件（工具注册进 registry）
             let data_dir = api::data_dir();
@@ -388,6 +404,7 @@ pub fn run() {
                     script_channels,
                     generation_lock,
                     tool_registry,
+                    tool_settings,
                     plugin_manager,
                     proactive_system: Some(proactive),
                     achievement_manager,
@@ -396,6 +413,11 @@ pub fn run() {
                     auto_save_manager: auto_save_manager.clone(),
                     god_agent,
                     skill_agent: Arc::new(ai_service::skill_agent::SkillAgentState::default()),
+                    chat_command_approvals: Default::default(),
+                    chat_file_delete_approvals: Default::default(),
+                    background_commands: Arc::new(
+                        ai_service::tools::background_command::BackgroundCommandManager::default(),
+                    ),
                     preview_task: Arc::new(tokio::sync::Mutex::new(None)),
                     pending_preview_restore: Arc::new(tokio::sync::Mutex::new(None)),
                 });
@@ -635,6 +657,11 @@ pub fn run() {
             api::schedule::save_schedules,
             api::schedule::reload_proactive_system,
             api::proactive_set_can_deliver,
+            api::tool_settings::get_tool_settings,
+            api::tool_settings::save_tool_settings,
+            api::tool_settings::test_web_search,
+            api::tool_settings::resolve_command_approval,
+            api::tool_settings::resolve_file_delete_approval,
             api::achievement::get_achievement_list,
             api::achievement::unlock_achievement,
             api::adventure::list_character_adventures,
@@ -684,4 +711,3 @@ pub fn run() {
 fn exit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
-

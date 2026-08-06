@@ -45,6 +45,12 @@ impl ToolRegistry {
         self.permissions.read().unwrap().clone()
     }
 
+    /// 运行时修改权限配置（调用方负责持久化）。
+    pub fn update_permissions(&self, f: impl FnOnce(&mut ToolPermissionConfig)) {
+        let mut guard = self.permissions.write().expect("权限锁已中毒");
+        f(&mut guard);
+    }
+
     /// 注册工具；重复名称会失败。
     pub fn register(&self, tool: Arc<dyn Tool>) -> Result<(), RegistryError> {
         let name = tool.definition().function.name;

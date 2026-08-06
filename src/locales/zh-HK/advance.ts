@@ -3,6 +3,7 @@ export default {
   tabs: {
     menu: '主菜單',
     llm: '大模型管理',
+    tools: '工具設定',
     other: '其他進階設定',
     tts: '本地 TTS',
   },
@@ -10,6 +11,9 @@ export default {
     llmTitle: '大模型管理',
     llmDesc: '喺呢度設定同管理 AI 大模型供應商，加新嘅、改返舊嘅、試下模型連接參數都得',
     llmButton: '入去大模型管理界面',
+    toolsTitle: '工具設定',
+    toolsDesc: '設定 AI 可以用嘅工具，例如網頁搜尋（上網查資料）',
+    toolsButton: '入去工具設定界面',
     ttsTitle: '本地 TTS',
     ttsDesc: '匯入 DeBERTa 模型、分詞器和人物語音，離線使用本地 TTS 引擎',
     ttsButton: '進入本地 TTS 介面',
