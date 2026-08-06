@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { Icon, Toggle } from '@/components/base'
 import { MenuPage, MenuItem } from '@/components/ui'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
@@ -9,6 +10,7 @@ import { openScriptFolder } from '@/api/services/script-editor'
 
 const emit = defineEmits<{ 'new-chapter': [] }>()
 
+const { t } = useI18n()
 const store = useScriptEditorStore()
 
 /** 抽成常量纯粹是因为 title 内联会超出 100 列的行宽 */
@@ -39,21 +41,76 @@ const openFolder = async () => {
           :size="20"
         />
       </template>
-      <div class="flex flex-wrap items-center gap-2 mb-3">
+      <div class="flex
+        flex-wrap
+        items-center
+        gap-2
+        mb-3">
         <button
-          class="inline-flex items-center gap-1 border border-white/10 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 bg-white/6 transition-all duration-200 hover:enabled:text-white hover:enabled:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
+          class="inline-flex
+            items-center
+            gap-1
+            border
+            border-white/10
+            rounded-lg
+            px-3
+            py-[0.3rem]
+            text-[0.8rem]
+            whitespace-nowrap
+            text-white/70
+            bg-white/6
+            transition-all
+            duration-200
+            hover:enabled:text-white
+            hover:enabled:bg-white/[0.12]
+            disabled:cursor-not-allowed
+            disabled:opacity-40"
           @click="emit('new-chapter')"
         >
           ＋ 新建章节
         </button>
         <button
-          class="inline-flex items-center gap-1 border border-white/10 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 bg-white/6 transition-all duration-200 hover:enabled:text-white hover:enabled:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
+          class="inline-flex
+            items-center
+            gap-1
+            border
+            border-white/10
+            rounded-lg
+            px-3
+            py-[0.3rem]
+            text-[0.8rem]
+            whitespace-nowrap
+            text-white/70
+            bg-white/6
+            transition-all
+            duration-200
+            hover:enabled:text-white
+            hover:enabled:bg-white/[0.12]
+            disabled:cursor-not-allowed
+            disabled:opacity-40"
           @click="store.runValidation()"
         >
           重新校验
         </button>
         <button
-          class="inline-flex items-center gap-1 border border-white/10 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 bg-white/6 transition-all duration-200 hover:enabled:text-white hover:enabled:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
+          class="inline-flex
+            items-center
+            gap-1
+            border
+            border-white/10
+            rounded-lg
+            px-3
+            py-[0.3rem]
+            text-[0.8rem]
+            whitespace-nowrap
+            text-white/70
+            bg-white/6
+            transition-all
+            duration-200
+            hover:enabled:text-white
+            hover:enabled:bg-white/[0.12]
+            disabled:cursor-not-allowed
+            disabled:opacity-40"
           @click="openFolder"
         >
           打开剧本目录
@@ -66,12 +123,26 @@ const openFolder = async () => {
   <!-- ============ 章节编辑 ============ -->
   <div
     v-else
-    class="flex w-[94%] min-h-0 flex-1 gap-5 mx-auto px-3 py-4"
+    class="flex
+      w-[94%]
+      min-h-0
+      flex-1
+      gap-5
+      mx-auto
+      px-3
+      py-4"
   >
-    <div class="flex min-w-0 flex-1 flex-col">
+    <div class="flex
+      min-w-0
+      flex-1
+      flex-col">
       <MenuItem
-        title="事件时间线"
-        class="fill flex h-full min-h-0 flex-col"
+        :title="t('scriptEditor.flowTab.timeline')"
+        class="fill
+          flex
+          h-full
+          min-h-0
+          flex-col"
       >
         <template #header>
           <Icon
@@ -79,15 +150,24 @@ const openFolder = async () => {
             :size="20"
           />
         </template>
-        <div class="mb-2 flex items-center gap-2">
+        <div class="mb-2
+          flex
+          items-center
+          gap-2">
           <input
-            class="glass-input flex-1"
-            placeholder="章节显示名（留空则用文件名）"
+            class="glass-input
+              flex-1"
+            :placeholder="t('scriptEditor.flowTab.chapterName')"
             :value="store.chapter?.name ?? ''"
             @change="onRename"
           />
           <label
-            class="inline-flex items-center gap-2 text-[0.8rem] whitespace-nowrap text-white/70"
+            class="inline-flex
+              items-center
+              gap-2
+              text-[0.8rem]
+              whitespace-nowrap
+              text-white/70"
             :title="FOLD_HINT"
           >
             <Toggle
@@ -96,20 +176,32 @@ const openFolder = async () => {
             />
             合并转场等固定组合
           </label>
-          <span class="shrink-0 text-xs text-white/40">
+          <span class="shrink-0
+            text-xs
+            text-white/40">
             {{ store.chapter?.events.length ?? 0 }} 个事件
           </span>
         </div>
-        <div class="min-h-0 flex-1 overflow-y-auto pr-1">
+        <div class="min-h-0
+          flex-1
+          overflow-y-auto
+          pr-1">
           <ChapterTimeline />
         </div>
       </MenuItem>
     </div>
 
-    <div class="flex min-h-0 flex-[0_0_340px] flex-col">
+    <div class="flex
+      min-h-0
+      flex-[0_0_340px]
+      flex-col">
       <MenuItem
-        title="事件属性"
-        class="fill flex h-full min-h-0 flex-col"
+        :title="t('scriptEditor.flowTab.eventProps')"
+        class="fill
+          flex
+          h-full
+          min-h-0
+          flex-col"
       >
         <template #header>
           <Icon
@@ -117,7 +209,10 @@ const openFolder = async () => {
             :size="20"
           />
         </template>
-        <div class="min-h-0 flex-1 overflow-y-auto pr-1">
+        <div class="min-h-0
+          flex-1
+          overflow-y-auto
+          pr-1">
           <EventPropertyPanel />
         </div>
       </MenuItem>

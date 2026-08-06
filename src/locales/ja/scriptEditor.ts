@@ -54,16 +54,21 @@ export default {
     deleteCondition: 'この条件を削除',
   },
   characters: {
-    noLocalAvatar: 'このシナリオには立ち絵をコピーしていませんが、グローバルキャラクターライブラリにあります。エンジンが自動でそちらを使います',
+    noLocalAvatar:
+      'このシナリオには立ち絵をコピーしていませんが、グローバルキャラクターライブラリにあります。エンジンが自動でそちらを使います',
     clothes: ' · {count} 着の衣装',
     delete: 'キャラクターを削除（.trash/ へ移動）',
   },
   assets: {
-    hint: 'エンジンは素材を<b>まずこのシナリオ、次にグローバル</b>の順で探すため、どちらでも見つかります。違いは：',
+    kindBackground: '背景画像',
+    kindPic: 'イラスト',
+    kindMusic: 'BGM',
+    kindSound: '効果音',
+    kindAmbient: '環境音',
+    hint: 'エンジンは素材を<b class="font-semibold text-white/85">まずこのシナリオ、次にグローバル</b>の順で探すため、どちらでも見つかります。違いは：<b class="font-semibold text-white/85">シナリオ素材</b>はシナリオと一緒に配布され、他のシナリオからは見えません；<b class="font-semibold text-white/85">グローバル素材</b>は全シナリオで共有されますが、シナリオの書き出しには含まれません。',
     scriptScope: 'このシナリオ',
     globalScope: 'グローバル',
-    scriptAssets: '>シナリオ素材</b>はシナリオと一緒に配布され、他のシナリオからは見えません。<b class=',
-    globalAssets: '>グローバル素材</b>は全シナリオで共有されますが、シナリオの書き出しには含まれません',
+    soundHint: '効果音はこのシナリオ専用で、グローバルディレクトリはありません',
     speed: '再生速度',
     delete: '削除（.trash/ へ移動）',
   },
@@ -76,7 +81,8 @@ export default {
     pickHint: '画像を選ぶと、トリミングダイアログで範囲を調整できます',
     reset: 'デフォルトに戻す',
     resetTitle: '内蔵デフォルト背景に戻す',
-    resetDesc: 'デフォルト背景はメインメニューと同じです。カスタム画像はアプリデータディレクトリにコピーされ、元ファイルは移動しても問題ありません。',
+    resetDesc:
+      'デフォルト背景はメインメニューと同じです。カスタム画像はアプリデータディレクトリにコピーされ、元ファイルは移動しても問題ありません。',
     fromLibrary: '既存の背景から選択',
     emptyLibrary: '（グローバル背景がありません。素材ページでインポートできます）',
     visual: '視覚効果',
@@ -109,8 +115,10 @@ export default {
     optional: '任意',
     on: 'オン',
     off: 'オフ',
-    importScript: 'このシナリオにインポート —— シナリオと一緒に配布され、他のシナリオからは見えません',
-    importGlobal: 'グローバル素材としてインポート —— 全シナリオで共有されますが、書き出しには含まれません',
+    importScript:
+      'このシナリオにインポート —— シナリオと一緒に配布され、他のシナリオからは見えません',
+    importGlobal:
+      'グローバル素材としてインポート —— 全シナリオで共有されますが、書き出しには含まれません',
     mainRole: 'MAIN（現在の主人公）',
     image: '画像',
     audio: '音声',
@@ -123,7 +131,8 @@ export default {
   composite: {
     condition: '条件',
     disabledHint: '選択不可時のヒント',
-    legacyNotice: '旧バージョンの書き方で、実行時にスキップされます。下のボタンで新しい形式に変換できます。',
+    legacyNotice:
+      '旧バージョンの書き方で、実行時にスキップされます。下のボタンで新しい形式に変換できます。',
     convert: '新しい形式に変換',
     addPlayerLine: '＋ プレイヤーのセリフを追加',
     addVariable: '＋ 変数を設定',
@@ -131,9 +140,11 @@ export default {
     addOption: '＋ 選択肢を追加',
     conditionHelp:
       '条件：設定すると、その条件を満たす場合のみこの選択肢を選べます。満たさない場合はグレー表示になり、タップすると「選択不可時のヒント」が表示されます。',
-    playerLineHelp: 'プレイヤーのセリフを追加：プレイヤー名義で AI のコンテキストにセリフを補足します。',
+    playerLineHelp:
+      'プレイヤーのセリフを追加：プレイヤー名義で AI のコンテキストにセリフを補足します。',
     variableHelp: '変数を設定：この選択肢が世界線に与える影響を示します。',
-    elseBranch: 'どの条件分岐も満たさない場合に進むルート。未設定だとシナリオはそのまま終了します。',
+    elseBranch:
+      'どの条件分岐も満たさない場合に進むルート。未設定だとシナリオはそのまま終了します。',
     deleteBranch: 'この分岐を削除',
     branchName: 'AI に見せる分岐名',
     playerLine: 'プレイヤーのセリフを追加',
@@ -141,7 +152,8 @@ export default {
   },
   condition: {
     clear: 'クリアして入力し直す',
-    invalidNotice: 'この条件はサポートされていない書き方です（検証が原因を表示します）。「クリアして入力し直す」で下のフォームから再選択してください。',
+    invalidNotice:
+      'この条件はサポートされていない書き方です（検証が原因を表示します）。「クリアして入力し直す」で下のフォームから再選択してください。',
     operatorSet: '真である（設定済みか判定）',
     operatorEq: '等しい',
     operatorNeq: '等しくない',
@@ -150,7 +162,8 @@ export default {
   },
   variable: {
     clear: 'クリアして入力し直す',
-    invalidNotice: 'この代入はサポートされていない書き方です（検証が原因を表示します）。「クリアして入力し直す」で下のフォームから再入力してください。',
+    invalidNotice:
+      'この代入はサポートされていない書き方です（検証が原因を表示します）。「クリアして入力し直す」で下のフォームから再入力してください。',
     opSet: 'に設定',
     opAdd: '加算',
     opSub: '減算',
@@ -174,7 +187,8 @@ export default {
     isAdventure: 'これはキャラクターの絆アドベンチャー',
     boundCharacter: '連携キャラクター',
     selectCharacter: '（キャラクターを選択）',
-    emptyCharacters: 'グローバルキャラクターライブラリ（game_data/characters/）が空です。まずキャラクターカードで主人公を作成してください',
+    emptyCharacters:
+      'グローバルキャラクターライブラリ（game_data/characters/）が空です。まずキャラクターカードで主人公を作成してください',
     chapterId: '章 ID（ファイル名）',
     chapterIdHint: '例：main、Intro/intro（サブディレクトリ可）',
     chapterName: '章の表示名',
@@ -189,7 +203,8 @@ export default {
   },
   previewStage: {
     playing: '試遊中',
-    debugNotice: '試遊はデバッグ用です：クリア記録なし、絆アドベンチャーも解放されません。実際に LLM を呼び出します（トークン課金）',
+    debugNotice:
+      '試遊はデバッグ用です：クリア記録なし、絆アドベンチャーも解放されません。実際に LLM を呼び出します（トークン課金）',
     stop: '試遊を終了',
     fromChapter: '「{chapter}」から開始',
     player: 'プレイヤー',
@@ -203,21 +218,27 @@ export default {
     output: '出力',
     currentRound: '今回',
     totalTokens: '累計 {count} · 今回の実行',
-    placeholder: 'シナリオライターにシナリオ作成、ファイル編集、コマンド実行などを依頼…（Enter で送信、Shift+Enter で改行）',
+    placeholder:
+      'シナリオライターにシナリオ作成、ファイル編集、コマンド実行などを依頼…（Enter で送信、Shift+Enter で改行）',
     deleteConfirm: '会話「{title}」とすべてのメッセージを削除しますか？',
   },
   agentSettings: {
-    intro: 'シナリオライターのモデル、セキュリティポリシー、ファイルサンドボックス範囲を設定します。保存後、次の会話から有効です。',
+    intro:
+      'シナリオライターのモデル、セキュリティポリシー、ファイルサンドボックス範囲を設定します。保存後、次の会話から有効です。',
     save: '設定を保存',
     llmModel: 'LLM モデル',
-    modelHint: '空欄の場合は「LLM 設定」で構成したメインモデルを使用します。<strong class="text-white/60">設定 → LLM マルチプロバイダー</strong>でモデルを追加できます。',
+    modelHint:
+      '空欄の場合は「LLM 設定」で構成したメインモデルを使用します。<strong class="text-white/60">設定 → LLM マルチプロバイダー</strong>でモデルを追加できます。',
     followMain: 'メインの会話モデルに従う（推奨）',
     security: 'コマンドとパスセキュリティ',
     autoApprove: 'コマンドを自動実行（確認なし）',
-    autoApproveHint: '有効にすると <code class="font-mono text-brand">execute_command</code> の承認を求めずに直接実行します。オフ推奨。',
+    autoApproveHint:
+      '有効にすると <code class="font-mono text-brand">execute_command</code> の承認を求めずに直接実行します。オフ推奨。',
     allowAnyPath: '任意パスを許可',
-    allowAnyPathWarn: '⚠ 有効にするとライターがサンドボックス外の任意ファイルを読み書きできます。リスクが非常に高いため、信頼できる場面でのみ使用してください。',
-    allowAnyPathHint: 'オフの間はファイル操作がサンドボックスルート内に制限されます。オンにすると AI が外部パスにもアクセスできます。',
+    allowAnyPathWarn:
+      '⚠ 有効にするとライターがサンドボックス外の任意ファイルを読み書きできます。リスクが非常に高いため、信頼できる場面でのみ使用してください。',
+    allowAnyPathHint:
+      'オフの間はファイル操作がサンドボックスルート内に制限されます。オンにすると AI が外部パスにもアクセスできます。',
     sandbox: 'ファイルサンドボックスルート',
     sandboxDefault: '（デフォルト data/）',
     sandboxHint:
@@ -229,12 +250,16 @@ export default {
     thinkingFollow: 'モデルデフォルトに従う',
     thinkingOn: 'オン',
     thinkingOff: 'オフ',
-    thinkingHint: 'メイン会話の LLM 設定とは独立。オンにするとモデルの思考チェーンが折りたたみの「思考/計画…」ブロックで表示されます。',
+    thinkingHint:
+      'メイン会話の LLM 設定とは独立。オンにするとモデルの思考チェーンが折りたたみの「思考/計画…」ブロックで表示されます。',
     systemPrompt: 'カスタムシステムプロンプト（任意）',
-    systemPromptPlaceholder: '空欄の場合は内蔵のデフォルトプロンプトを使用。スキル一覧と現在のシナリオ情報は常に自動で追加されます。',
-    systemPromptHint: 'デフォルトプロンプトに好み（口調、出力形式など）を追加できます。スキル一覧とシナリオコンテキストには影響しません。',
+    systemPromptPlaceholder:
+      '空欄の場合は内蔵のデフォルトプロンプトを使用。スキル一覧と現在のシナリオ情報は常に自動で追加されます。',
+    systemPromptHint:
+      'デフォルトプロンプトに好み（口調、出力形式など）を追加できます。スキル一覧とシナリオコンテキストには影響しません。',
     skills: 'スキルライブラリ',
-    skillsHint: 'ライターは SKILL.md スキル指示を読んでシナリオを作成します。スキルディレクトリ：{dir}',
+    skillsHint:
+      'ライターは SKILL.md スキル指示を読んでシナリオを作成します。スキルディレクトリ：{dir}',
     noDescription: '（説明なし）',
     readSkillFailed: 'スキルの読み込みに失敗: {err}',
     loadProvidersFailed: 'LLM プロバイダー一覧の読み込みに失敗: {err}',
@@ -272,11 +297,13 @@ export default {
     chapterCreated: '章を作成しました',
     chapterCreateFailed: '章の作成に失敗',
     chapterDeleteTitle: '章の削除',
-    chapterDeleteConfirm: '章「{id}」を削除しますか？\n\nファイルは完全に削除され、この章へのジャンプは切断されます。',
+    chapterDeleteConfirm:
+      '章「{id}」を削除しますか？\n\nファイルは完全に削除され、この章へのジャンプは切断されます。',
     chapterDeleteFailed: '章の削除に失敗',
     validateFailed: '検証に失敗',
     validateUnresolved: '未解決の問題があります',
-    validateUnresolvedDesc: '{count} 個のエラーがあるとシナリオを実行できません。先に修正してから試遊してください',
+    validateUnresolvedDesc:
+      '{count} 個のエラーがあるとシナリオを実行できません。先に修正してから試遊してください',
     previewNeedFix: '試遊の前にまだ不足があります',
     previewNoMain: '主人公が未確定です',
     previewStartFailed: '試遊の開始に失敗',

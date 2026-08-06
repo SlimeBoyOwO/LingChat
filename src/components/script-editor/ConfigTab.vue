@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Button, Icon, Toggle } from '@/components/base'
 import { MenuPage, MenuItem } from '@/components/ui'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 import type { UnlockConditionSpec } from '@/api/services/script-editor'
 
+const { t } = useI18n()
 const store = useScriptEditorStore()
 
 const configDraft = reactive<Record<string, unknown>>({})
@@ -65,9 +67,7 @@ const toggleAdventure = (on: boolean) => {
 // 解锁条件可视化编辑
 // ========================================================
 
-const unlockSpecs = computed<UnlockConditionSpec[]>(
-  () => store.schema?.unlockConditionTypes ?? [],
-)
+const unlockSpecs = computed<UnlockConditionSpec[]>(() => store.schema?.unlockConditionTypes ?? [])
 
 /** 当前编辑中的解锁条件（YAML 未配置时为空数组） */
 const conditions = computed<Record<string, unknown>[]>(() => {
@@ -160,14 +160,24 @@ const saveConfig = () => {
         :key="f.key"
         class="mb-4"
       >
-        <label class="inline-flex items-center font-medium text-brand text-[0.9rem]">
-          {{ f.label }}<span
+        <label class="inline-flex
+          items-center
+          font-medium
+          text-brand
+          text-[0.9rem]">
+          {{ f.label
+          }}<span
             v-if="f.required"
-            class="ml-0.5 text-[0.7rem] text-red-400"
+            class="ml-0.5
+              text-[0.7rem]
+              text-red-400"
             >＊</span
           >
         </label>
-        <p class="my-1 mb-2 text-[0.8rem] text-gray-300">{{ f.key }}</p>
+        <p class="my-1
+          mb-2
+          text-[0.8rem]
+          text-gray-300">{{ f.key }}</p>
         <select
           v-if="f.kind === 'chapter'"
           class="glass-input"
@@ -184,7 +194,8 @@ const saveConfig = () => {
         </select>
         <textarea
           v-else-if="f.kind === 'textarea'"
-          class="glass-input min-h-16"
+          class="glass-input
+            min-h-16"
           :value="String(configDraft[f.key] ?? '')"
           @change="(e) => setConfig(f.key, (e.target as HTMLTextAreaElement).value)"
         ></textarea>
@@ -196,15 +207,33 @@ const saveConfig = () => {
         />
         <p
           v-if="f.hint"
-          class="mt-[0.3rem] text-[0.72rem] leading-[1.7] text-white/40 [&_code]:font-mono [&_code]:text-brand"
+          class="mt-[0.3rem]
+            text-[0.72rem]
+            leading-[1.7]
+            text-white/40
+            [&_code]:font-mono
+            [&_code]:text-brand"
         >
           {{ f.hint }}
         </p>
       </div>
 
       <!-- 羁绊冒险 -->
-      <div class="my-4 rounded-xl border border-white/10 bg-black/15 p-4">
-        <label class="inline-flex items-center gap-2 text-[0.8rem] whitespace-nowrap text-white/70 mb-2">
+      <div class="my-4
+        rounded-xl
+        border
+        border-white/10
+        bg-black/15
+        p-4">
+        <label
+          class="inline-flex
+            items-center
+            gap-2
+            text-[0.8rem]
+            whitespace-nowrap
+            text-white/70
+            mb-2"
+        >
           <Toggle
             :checked="isAdventure"
             @change="toggleAdventure"
@@ -213,8 +242,17 @@ const saveConfig = () => {
         </label>
         <template v-if="isAdventure">
           <div class="mb-4">
-            <label class="inline-flex items-center font-medium text-brand text-[0.9rem]">绑定角色</label>
-            <p class="my-1 mb-2 text-[0.8rem] text-gray-300">adventure.bound_character_folder</p>
+            <label class="inline-flex
+              items-center
+              font-medium
+              text-brand
+              text-[0.9rem]"
+              >绑定角色</label
+            >
+            <p class="my-1
+              mb-2
+              text-[0.8rem]
+              text-gray-300">adventure.bound_character_folder</p>
             <!-- 下拉直选全局角色库的人物；角色多时浏览器自带滚动，不会溢出 -->
             <select
               class="glass-input"
@@ -238,36 +276,72 @@ const saveConfig = () => {
             </select>
             <p
               v-if="store.globalCharacters.length === 0"
-              class="mt-[0.3rem] text-[0.72rem] leading-[1.7] text-yellow-200"
+              class="mt-[0.3rem]
+                text-[0.72rem]
+                leading-[1.7]
+                text-yellow-200"
             >
               全局角色库是空的，请先在角色卡创建主角
             </p>
           </div>
           <div class="mb-4">
-            <label class="inline-flex items-center font-medium text-brand text-[0.9rem]">排序</label>
-            <p class="my-1 mb-2 text-[0.8rem] text-gray-300">adventure.order</p>
+            <label class="inline-flex
+              items-center
+              font-medium
+              text-brand
+              text-[0.9rem]"
+              >排序</label
+            >
+            <p class="my-1
+              mb-2
+              text-[0.8rem]
+              text-gray-300">adventure.order</p>
             <input
               class="glass-input"
               type="number"
               :value="adventureField('order')"
               @change="(e) => onAdventureNumber('order', e)"
             />
-            <p class="mt-[0.3rem] text-[0.72rem] leading-[1.7] text-white/40">数值越小越靠前显示，决定羁绊冒险在角色卡上的排列顺序</p>
+            <p class="mt-[0.3rem]
+              text-[0.72rem]
+              leading-[1.7]
+              text-white/40">
+              数值越小越靠前显示，决定羁绊冒险在角色卡上的排列顺序
+            </p>
           </div>
 
           <!-- 解锁条件：可视化编辑 -->
           <div class="mb-4">
-            <label class="inline-flex items-center font-medium text-brand text-[0.9rem]">解锁条件</label>
-            <p class="my-1 mb-2 text-[0.8rem] text-gray-300">adventure.unlock_conditions</p>
-            <p class="mb-2 text-[0.72rem] leading-[1.7] text-white/40">
-              玩家要满足<b class="font-semibold text-white/80">全部</b>条件，冒险才会在角色卡上解锁；不设条件则默认一直可见。
+            <label class="inline-flex
+              items-center
+              font-medium
+              text-brand
+              text-[0.9rem]"
+              >解锁条件</label
+            >
+            <p class="my-1
+              mb-2
+              text-[0.8rem]
+              text-gray-300">adventure.unlock_conditions</p>
+            <p class="mb-2
+              text-[0.72rem]
+              leading-[1.7]
+              text-white/40">
+              玩家要满足<b class="font-semibold
+                text-white/80">全部</b
+              >条件，冒险才会在角色卡上解锁；不设条件则默认一直可见。
             </p>
             <div
               v-for="(cond, i) in conditions"
               :key="i"
-              class="mb-2 rounded-lg bg-white/6 p-2.5"
+              class="mb-2
+                rounded-lg
+                bg-white/6
+                p-2.5"
             >
-              <div class="flex items-center gap-2">
+              <div class="flex
+                items-center
+                gap-2">
                 <select
                   class="glass-input"
                   :value="String(cond.type ?? '')"
@@ -282,8 +356,16 @@ const saveConfig = () => {
                   </option>
                 </select>
                 <button
-                  class="shrink-0 rounded-md px-1.5 py-1 text-xs text-white/[0.35] transition-all hover:text-[#fca5a5] hover:bg-[rgba(248,113,113,0.15)]"
-                  title="删除这个条件"
+                  class="shrink-0
+                    rounded-md
+                    px-1.5
+                    py-1
+                    text-xs
+                    text-white/[0.35]
+                    transition-all
+                    hover:text-[#fca5a5]
+                    hover:bg-[rgba(248,113,113,0.15)]"
+                  :title="t('scriptEditor.config.deleteCondition')"
                   @click="removeCondition(i)"
                 >
                   ✕
@@ -292,20 +374,52 @@ const saveConfig = () => {
               <div
                 v-for="f in unlockSpecByType.get(String(cond.type ?? ''))?.fields ?? []"
                 :key="f.key"
-                class="mt-2 flex items-center gap-2 pl-6"
+                class="mt-2
+                  flex
+                  items-center
+                  gap-2
+                  pl-6"
               >
-                <span class="shrink-0 text-xs text-white/40">{{ f.label }}</span>
+                <span class="shrink-0
+                  text-xs
+                  text-white/40">{{ f.label }}</span>
                 <input
                   v-if="f.kind === 'number'"
-                  class="w-24 min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
+                  class="w-24
+                    min-w-0
+                    border
+                    border-white/[0.1]
+                    rounded-md
+                    bg-black/[0.25]
+                    px-2
+                    py-1.5
+                    text-xs
+                    text-white
+                    transition-all
+                    focus:outline-none
+                    focus:border-[var(--accent-color)]"
                   type="number"
                   :value="condField(cond, f.key)"
                   @change="(e) => onCondNumber(i, f.key, e)"
                 />
                 <!-- 成就条件：下拉直选已有成就，不用记英文键名 -->
                 <select
-                  v-else-if="f.key === 'achievement_id' && String(cond.type ?? '') === 'achievement_unlocked'"
-                  class="flex-1 min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
+                  v-else-if="
+                    f.key === 'achievement_id' && String(cond.type ?? '') === 'achievement_unlocked'
+                  "
+                  class="flex-1
+                    min-w-0
+                    border
+                    border-white/[0.1]
+                    rounded-md
+                    bg-black/[0.25]
+                    px-2
+                    py-1.5
+                    text-xs
+                    text-white
+                    transition-all
+                    focus:outline-none
+                    focus:border-[var(--accent-color)]"
                   :value="condField(cond, f.key)"
                   @change="(e) => onCondField(i, f.key, (e.target as HTMLSelectElement).value)"
                 >
@@ -326,14 +440,32 @@ const saveConfig = () => {
                 </select>
                 <!-- 冒险前置条件：下拉直选其他羁绊冒险 -->
                 <select
-                  v-else-if="f.key === 'adventure_folder' && String(cond.type ?? '') === 'adventure_completed'"
-                  class="flex-1 min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
+                  v-else-if="
+                    f.key === 'adventure_folder' &&
+                    String(cond.type ?? '') === 'adventure_completed'
+                  "
+                  class="flex-1
+                    min-w-0
+                    border
+                    border-white/[0.1]
+                    rounded-md
+                    bg-black/[0.25]
+                    px-2
+                    py-1.5
+                    text-xs
+                    text-white
+                    transition-all
+                    focus:outline-none
+                    focus:border-[var(--accent-color)]"
                   :value="condField(cond, f.key)"
                   @change="(e) => onCondField(i, f.key, (e.target as HTMLSelectElement).value)"
                 >
                   <option value="">（不设置）</option>
                   <option
-                    v-if="condField(cond, f.key) && !adventureOptionValues.includes(condField(cond, f.key))"
+                    v-if="
+                      condField(cond, f.key) &&
+                      !adventureOptionValues.includes(condField(cond, f.key))
+                    "
                     :value="condField(cond, f.key)"
                   >
                     {{ condField(cond, f.key) }}
@@ -348,7 +480,19 @@ const saveConfig = () => {
                 </select>
                 <input
                   v-else
-                  class="flex-1 min-w-0 border border-white/[0.1] rounded-md bg-black/[0.25] px-2 py-1.5 text-xs text-white transition-all focus:outline-none focus:border-[var(--accent-color)]"
+                  class="flex-1
+                    min-w-0
+                    border
+                    border-white/[0.1]
+                    rounded-md
+                    bg-black/[0.25]
+                    px-2
+                    py-1.5
+                    text-xs
+                    text-white
+                    transition-all
+                    focus:outline-none
+                    focus:border-[var(--accent-color)]"
                   :placeholder="f.placeholder ?? f.hint"
                   :value="condField(cond, f.key)"
                   @change="(e) => onCondField(i, f.key, (e.target as HTMLInputElement).value)"
@@ -356,12 +500,26 @@ const saveConfig = () => {
               </div>
             </div>
             <button
-              class="mt-1 rounded-lg border border-dashed border-white/15 px-3 py-1.5 text-xs text-white/45 transition-all hover:border-brand hover:text-brand"
+              class="mt-1
+                rounded-lg
+                border
+                border-dashed
+                border-white/15
+                px-3
+                py-1.5
+                text-xs
+                text-white/45
+                transition-all
+                hover:border-brand
+                hover:text-brand"
               @click="addCondition"
             >
               ＋ 添加解锁条件
             </button>
-            <p class="mt-2 text-[0.72rem] leading-[1.7] text-white/40">
+            <p class="mt-2
+              text-[0.72rem]
+              leading-[1.7]
+              text-white/40">
               支持的类型：累计聊天条数 / 处于时间段内 / 已完成某个羁绊冒险 / 已解锁某个成就。
             </p>
           </div>

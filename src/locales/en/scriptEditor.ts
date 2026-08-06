@@ -55,29 +55,36 @@ export default {
     deleteCondition: 'Delete this condition',
   },
   characters: {
-    noLocalAvatar: 'No portrait copied into this script, but the global library has one; the engine will use it automatically',
+    noLocalAvatar:
+      'No portrait copied into this script, but the global library has one; the engine will use it automatically',
     clothes: ' · {count} outfits',
     delete: 'Delete character (move to .trash/)',
   },
   assets: {
-    hint: 'The engine looks up assets <b>in the script first, then globally</b>, so either location works. The difference:',
+    kindBackground: 'Background',
+    kindPic: 'Illustration',
+    kindMusic: 'BGM',
+    kindSound: 'Sound',
+    kindAmbient: 'Ambient',
+    hint: 'The engine looks up assets <b class="font-semibold text-white/85">in the script first, then globally</b>, so either location works. The difference: <b class="font-semibold text-white/85">script assets</b> are distributed with the script and invisible to others; <b class="font-semibold text-white/85">global assets</b> are shared by all scripts but not included when exporting.',
     scriptScope: 'Script',
     globalScope: 'Global',
-    scriptAssets: '>Script assets</b> are distributed with the script and invisible to others;<b class=',
-    globalAssets: '>Global assets</b> are shared by all scripts but not included when exporting',
+    soundHint: 'Sound effects belong to this script only; there is no global folder',
     speed: 'Playback speed',
     delete: 'Delete (move to .trash/)',
   },
   validate: {},
   appearance: {
-    intro: 'Editor background and overlay effects. Changes take effect instantly and are saved automatically.',
+    intro:
+      'Editor background and overlay effects. Changes take effect instantly and are saved automatically.',
     current: 'Current background',
     builtin: 'Built-in default (same as main menu)',
     pick: 'Choose image…',
     pickHint: 'After picking, you can adjust the crop in the dialog',
     reset: 'Reset to default',
     resetTitle: 'Reset to the built-in default background',
-    resetDesc: 'The default matches the main menu; custom images are copied into the app data folder, so the original file can be moved freely.',
+    resetDesc:
+      'The default matches the main menu; custom images are copied into the app data folder, so the original file can be moved freely.',
     fromLibrary: 'Choose from existing backgrounds',
     emptyLibrary: '(No global backgrounds yet \u2014 import them on the Assets page)',
     visual: 'Visual Effects',
@@ -124,7 +131,8 @@ export default {
   composite: {
     condition: 'Condition',
     disabledHint: 'Disabled hint',
-    legacyNotice: 'This is a legacy format and is skipped at runtime. Use the button below to convert it.',
+    legacyNotice:
+      'This is a legacy format and is skipped at runtime. Use the button below to convert it.',
     convert: 'Convert to new format',
     addPlayerLine: '\uff0b Append player line',
     addVariable: '\uff0b Set variable',
@@ -142,7 +150,8 @@ export default {
   },
   condition: {
     clear: 'Clear and refill',
-    invalidNotice: 'This condition uses an unsupported syntax (the validator will explain). Click "Clear and refill" to rebuild it with the form below.',
+    invalidNotice:
+      'This condition uses an unsupported syntax (the validator will explain). Click "Clear and refill" to rebuild it with the form below.',
     operatorSet: 'is true (whether set)',
     operatorEq: 'equals',
     operatorNeq: 'not equals',
@@ -151,7 +160,8 @@ export default {
   },
   variable: {
     clear: 'Clear and refill',
-    invalidNotice: 'This assignment uses an unsupported syntax (the validator will explain). Click "Clear and refill" to rewrite it with the form below.',
+    invalidNotice:
+      'This assignment uses an unsupported syntax (the validator will explain). Click "Clear and refill" to rewrite it with the form below.',
     opSet: 'Set to',
     opAdd: 'Add',
     opSub: 'Subtract',
@@ -175,7 +185,8 @@ export default {
     isAdventure: 'This is a character\u2019s bond adventure',
     boundCharacter: 'Bound character',
     selectCharacter: '(choose character)',
-    emptyCharacters: 'The global library (game_data/characters/) is empty \u2014 create the protagonist in the character card first',
+    emptyCharacters:
+      'The global library (game_data/characters/) is empty \u2014 create the protagonist in the character card first',
     chapterId: 'Chapter ID (file name)',
     chapterIdHint: 'e.g. main, or Intro/intro in a subfolder',
     chapterName: 'Chapter display name',
@@ -190,7 +201,8 @@ export default {
   },
   previewStage: {
     playing: 'Playtesting',
-    debugNotice: 'Playtest is for debugging: no completion records, no adventure unlocks. It really calls the LLM (billed by token)',
+    debugNotice:
+      'Playtest is for debugging: no completion records, no adventure unlocks. It really calls the LLM (billed by token)',
     stop: 'Stop playtest',
     fromChapter: 'Starting from "{chapter}"',
     player: 'Player',
@@ -204,21 +216,27 @@ export default {
     output: 'Output',
     currentRound: 'This round',
     totalTokens: '{count} total \u00b7 this run',
-    placeholder: 'Ask the script coach to write scripts, edit files, run commands\u2026 (Enter to send, Shift+Enter for newline)',
+    placeholder:
+      'Ask the script coach to write scripts, edit files, run commands\u2026 (Enter to send, Shift+Enter for newline)',
     deleteConfirm: 'Delete conversation "{title}" and all its messages?',
   },
   agentSettings: {
-    intro: 'Configure the model, security policy and file sandbox for the script coach. Takes effect from the next conversation.',
+    intro:
+      'Configure the model, security policy and file sandbox for the script coach. Takes effect from the next conversation.',
     save: 'Save settings',
     llmModel: 'LLM Model',
-    modelHint: 'Leave empty to use the main model from \u201cLLM Settings\u201d. Add models in <strong class="text-white/60">Settings \u2192 LLM Providers</strong>.',
+    modelHint:
+      'Leave empty to use the main model from \u201cLLM Settings\u201d. Add models in <strong class="text-white/60">Settings \u2192 LLM Providers</strong>.',
     followMain: 'Follow the main conversation model (recommended)',
     security: 'Command & Path Security',
     autoApprove: 'Auto-run commands (no confirmation)',
-    autoApproveHint: 'When enabled, <code class="font-mono text-brand">execute_command</code> runs directly without approval. Keep it off.',
+    autoApproveHint:
+      'When enabled, <code class="font-mono text-brand">execute_command</code> runs directly without approval. Keep it off.',
     allowAnyPath: 'Allow any path',
-    allowAnyPathWarn: '\u26a0 Enabling lets the coach read/write files outside the sandbox \u2014 high risk. Only for trusted scenarios.',
-    allowAnyPathHint: 'When off, file operations are confined to the sandbox root. When on, the AI can access any path.',
+    allowAnyPathWarn:
+      '\u26a0 Enabling lets the coach read/write files outside the sandbox \u2014 high risk. Only for trusted scenarios.',
+    allowAnyPathHint:
+      'When off, file operations are confined to the sandbox root. When on, the AI can access any path.',
     sandbox: 'File sandbox root',
     sandboxDefault: '(default data/)',
     sandboxHint:
@@ -230,10 +248,13 @@ export default {
     thinkingFollow: 'Follow model default',
     thinkingOn: 'On',
     thinkingOff: 'Off',
-    thinkingHint: 'Independent from the main chat LLM settings; when on, the model\u2019s chain of thought shows in a collapsible "Thinking/planning\u2026" block.',
+    thinkingHint:
+      'Independent from the main chat LLM settings; when on, the model\u2019s chain of thought shows in a collapsible "Thinking/planning\u2026" block.',
     systemPrompt: 'Custom system prompt (optional)',
-    systemPromptPlaceholder: 'Leave empty for the built-in prompt. The skill list and current script info are always appended automatically.',
-    systemPromptHint: 'Add your preferences (tone, output format) on top of the default prompt. Skills and script context are unaffected.',
+    systemPromptPlaceholder:
+      'Leave empty for the built-in prompt. The skill list and current script info are always appended automatically.',
+    systemPromptHint:
+      'Add your preferences (tone, output format) on top of the default prompt. Skills and script context are unaffected.',
     skills: 'Skills',
     skillsHint: 'The coach reads SKILL.md instructions to write scripts. Skills directory: {dir}',
     noDescription: '(no description)',
@@ -273,11 +294,13 @@ export default {
     chapterCreated: 'Chapter created',
     chapterCreateFailed: 'Failed to create chapter',
     chapterDeleteTitle: 'Delete Chapter',
-    chapterDeleteConfirm: 'Delete chapter "{id}"?\n\nThe file will be permanently removed and jumps to it will break.',
+    chapterDeleteConfirm:
+      'Delete chapter "{id}"?\n\nThe file will be permanently removed and jumps to it will break.',
     chapterDeleteFailed: 'Failed to delete chapter',
     validateFailed: 'Validation failed',
     validateUnresolved: 'There are unresolved issues',
-    validateUnresolvedDesc: '{count} errors would prevent the script from running \u2014 fix them before playtesting',
+    validateUnresolvedDesc:
+      '{count} errors would prevent the script from running \u2014 fix them before playtesting',
     previewNeedFix: 'One more step before playtest',
     previewNoMain: 'Protagonist not determined',
     previewStartFailed: 'Failed to start playtest',

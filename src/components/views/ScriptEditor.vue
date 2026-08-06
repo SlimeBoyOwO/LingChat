@@ -63,7 +63,7 @@
           text-[0.66rem]
           font-semibold
           text-amber-300"
-        >试玩会卡住</span
+        >{{ t('scriptEditor.scriptEditor.playtestBlocked') }}</span
       >
       <span>{{ store.readiness.reason }}</span>
     </div>
@@ -102,6 +102,7 @@
 
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { Component } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { MenuPage } from '@/components/ui'
@@ -125,6 +126,7 @@ import { convertFileSrc } from '@tauri-apps/api/core'
 // 背景图加载失败会露出渐变兜底层（见模板注释），构建产物则是真实图。
 import defaultBg from '@/assets/images/background2.png'
 
+const { t } = useI18n()
 const router = useRouter()
 const store = useScriptEditorStore()
 

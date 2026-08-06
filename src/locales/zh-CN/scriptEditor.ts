@@ -61,11 +61,15 @@ export default {
     delete: '删除角色（移到 .trash/）',
   },
   assets: {
-    hint: '引擎查找素材的顺序是<b>先本剧本，再全局</b>，所以两处都能被找到，区别在于：',
+    kindBackground: '背景图',
+    kindPic: '插图',
+    kindMusic: '背景音乐',
+    kindSound: '音效',
+    kindAmbient: '环境音',
+    hint: '引擎查找素材的顺序是<b class="font-semibold text-white/85">先本剧本，再全局</b>，所以两处都能被找到，区别在于：<b class="font-semibold text-white/85">剧本素材</b>随剧本一起分发，别的剧本看不到；<b class="font-semibold text-white/85">全局素材</b>所有剧本共享，但导出剧本时不会带走。',
     scriptScope: '本剧本',
     globalScope: '全局',
-    scriptAssets: '>剧本素材</b>随剧本一起分发，别的剧本看不到；<b class=',
-    globalAssets: '>全局素材</b>所有剧本共享，但导出剧本时不会带走',
+    soundHint: '音效只属于本剧本，没有全局目录',
     speed: '播放速度',
     delete: '删除（移到 .trash/）',
   },
@@ -145,7 +149,8 @@ export default {
   },
   condition: {
     clear: '清空重填',
-    invalidNotice: '这段条件不是支持的写法（校验器会提示原因）。点「清空重填」后用下面的表单重新选择。',
+    invalidNotice:
+      '这段条件不是支持的写法（校验器会提示原因）。点「清空重填」后用下面的表单重新选择。',
     operatorSet: '为真（判断存没存过）',
     operatorEq: '等于',
     operatorNeq: '不等于',
@@ -154,7 +159,8 @@ export default {
   },
   variable: {
     clear: '清空重填',
-    invalidNotice: '这段赋值不是支持的写法（校验器会提示原因）。点「清空重填」后用下面的表单重新填写。',
+    invalidNotice:
+      '这段赋值不是支持的写法（校验器会提示原因）。点「清空重填」后用下面的表单重新填写。',
     opSet: '设为',
     opAdd: '加',
     opSub: '减',
@@ -214,7 +220,8 @@ export default {
     intro: '配置剧本导师使用的模型、安全策略与文件沙箱范围。保存后下一次对话生效。',
     save: '保存设置',
     llmModel: 'LLM 模型',
-    modelHint: '留空则使用「LLM 设置」中配置的主对话模型。可在<strong class="text-white/60">设置 → LLM 多供应商</strong>中添加模型。',
+    modelHint:
+      '留空则使用「LLM 设置」中配置的主对话模型。可在<strong class="text-white/60">设置 → LLM 多供应商</strong>中添加模型。',
     followMain: '跟随主对话模型（推荐）',
     security: '命令与路径安全',
     autoApprove: '命令自动执行（无需确认）',
@@ -237,7 +244,8 @@ export default {
     thinkingHint: '独立于主对话的 LLM 设置；开启后模型思考链会以折叠「思考/规划…」块显示。',
     systemPrompt: '自定义系统提示（可选）',
     systemPromptPlaceholder: '留空使用内置默认提示。技能列表与当前剧本信息始终会自动追加。',
-    systemPromptHint: '在默认提示的基础上可补充你的偏好（如语气、产出格式）。技能列表与剧本上下文不受影响。',
+    systemPromptHint:
+      '在默认提示的基础上可补充你的偏好（如语气、产出格式）。技能列表与剧本上下文不受影响。',
     skills: '技能库',
     skillsHint: '助手通过读取 SKILL.md 技能指令来编写剧本。技能目录：{dir}',
     noDescription: '（无描述）',

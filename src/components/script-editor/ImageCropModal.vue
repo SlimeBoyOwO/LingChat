@@ -73,7 +73,7 @@
               hover:text-white"
             @click="emit('cancel')"
           >
-            取消
+            {{ t('scriptEditor.imageCrop.cancel') }}
           </button>
           <button
             class="rounded-lg
@@ -88,7 +88,7 @@
               hover:bg-brand/24"
             @click="confirm"
           >
-            确认使用
+            {{ t('scriptEditor.imageCrop.confirm') }}
           </button>
         </div>
       </div>
@@ -98,9 +98,12 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Cropper from 'cropperjs'
 import 'cropperjs/dist/cropper.css'
 import { convertFileSrc } from '@tauri-apps/api/core'
+
+const { t } = useI18n()
 
 const props = defineProps<{ srcPath: string }>()
 const emit = defineEmits<{
