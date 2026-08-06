@@ -211,7 +211,9 @@ impl PersistentMemorySystem {
         // 失败重试冷却：压缩失败后不推进指针（下轮对话仍会重试同一批），
         // 但冷却期内不再触发，避免 LLM 故障时每轮对话都白打 4 段压缩请求。
         let last_fail = self.last_failure_at_ms.load(Ordering::Acquire);
-        if last_fail != 0 && current_time_ms() - last_fail < RETRY_COOLDOWN_MS {
+        // saturating_sub：系统时钟回拨（NTP 校准等）时避免 u64 下溢导致 Debug panic /
+        // Release 回绕使冷却失效。
+        if last_fail != 0 && current_time_ms().saturating_sub(last_fail) < RETRY_COOLDOWN_MS {
             return;
         }
 
@@ -402,10 +404,11 @@ impl PersistentMemorySystem {
         let response = llm.complete(&messages).await?;
         let cleaned = response.trim();
         if cleaned.is_empty() {
-            Ok(old_content.to_string())
-        } else {
-            Ok(cleaned.to_string())
+            // 空响应视为失败：部分 provider 故障时可能返回空串。若按成功处理，
+            // 会把空内容写回并推进指针，静默丢弃该批对话，违背重试语义。
+            return Err(anyhow::anyhow!("LLM 返回空内容"));
         }
+        Ok(cleaned.to_string())
     }
 
     /// 构建用于压缩的对话文本 + 该角色可见台词计数。
@@ -466,4 +469,88 @@ fn now_str() -> String {
 
 fn current_time_ms() -> u64 {
     chrono::Utc::now().timestamp_millis() as u64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ai_service::types::LineBase;
+
+    /// 构造一条由指定角色发送的可见台词（默认 attribute 是 System，会被计数逻辑跳过）。
+    fn make_line(role_id: i32, content: &str) -> GameLine {
+        use crate::ai_service::types::LineAttributeExt;
+        use crate::db::entities::line::LineAttribute;
+
+        let mut base = LineBase::default();
+        base.sender_role_id = Some(role_id);
+        base.content = content.to_string();
+        base.attribute = LineAttributeExt(LineAttribute::User);
+        GameLine::from_base(base, Vec::new())
+    }
+
+    /// 构造测试用实例：role_id=1，LLM 槽位为空（后台压缩必失败）。
+    fn make_sys(update_interval: usize) -> (PersistentMemorySystem, Arc<Mutex<GameMemoryBank>>) {
+        let bank = GameMemoryBank::default();
+        let slot: LlmSlot = Arc::new(tokio::sync::RwLock::new(None));
+        let sys =
+            PersistentMemorySystem::new(1, &bank, slot, true, update_interval, 2, "测试角色");
+        let mb = sys.memory_bank.clone();
+        (sys, mb)
+    }
+
+    /// 轮询等待后台压缩任务结束（is_updating 复位），最多让出 1000 次。
+    async fn wait_for_idle(sys: &PersistentMemorySystem) {
+        for _ in 0..1000 {
+            if !sys.is_updating.load(Ordering::Acquire) {
+                return;
+            }
+            tokio::task::yield_now().await;
+        }
+        panic!("后台压缩任务未在预期时间内结束");
+    }
+
+    #[tokio::test]
+    async fn below_threshold_does_not_trigger() {
+        let (sys, _bank) = make_sys(10);
+        let lines = vec![make_line(1, "你好呀")];
+        sys.check_and_trigger_auto_update(&lines);
+        // 可见台词 1 条 < 阈值 10，不应触发，也不应移动指针
+        assert!(!sys.is_updating.load(Ordering::Acquire));
+        assert_eq!(sys.fail_count.load(Ordering::Acquire), 0);
+    }
+
+    #[tokio::test]
+    async fn reaching_threshold_triggers_background_compress() {
+        let (sys, _bank) = make_sys(1);
+        let lines = vec![make_line(1, "你好呀"), make_line(1, "今天天气真不错")];
+        sys.check_and_trigger_auto_update(&lines);
+        wait_for_idle(&sys).await;
+        // 空 LLM 槽位使压缩任务走失败路径：fail_count 递增证明任务确实被触发
+        assert_eq!(sys.fail_count.load(Ordering::Acquire), 1);
+    }
+
+    #[tokio::test]
+    async fn failure_keeps_pointer_and_records_cooldown() {
+        let (sys, bank) = make_sys(1);
+        let lines = vec![make_line(1, "你好呀"), make_line(1, "今天天气真不错")];
+        sys.check_and_trigger_auto_update(&lines);
+        wait_for_idle(&sys).await;
+        // 失败时指针不移动，供下轮对话重试同一批
+        assert_eq!(bank.lock().await.meta.last_processed_global_idx, 0);
+        // 冷却与失败计数均已记录
+        assert_ne!(sys.last_failure_at_ms.load(Ordering::Acquire), 0);
+        assert_eq!(sys.fail_count.load(Ordering::Acquire), 1);
+    }
+
+    #[tokio::test]
+    async fn cooldown_blocks_retry_after_failure() {
+        let (sys, _bank) = make_sys(1);
+        // 模拟 1 秒前刚失败：仍在 60s 冷却期内，不应再次触发
+        sys.last_failure_at_ms
+            .store(current_time_ms() - 1_000, Ordering::Release);
+        let lines = vec![make_line(1, "你好呀"), make_line(1, "今天天气真不错")];
+        sys.check_and_trigger_auto_update(&lines);
+        assert!(!sys.is_updating.load(Ordering::Acquire));
+        assert_eq!(sys.fail_count.load(Ordering::Acquire), 0);
+    }
 }
