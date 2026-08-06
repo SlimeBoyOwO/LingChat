@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { Icon } from '@/components/base'
 import { MenuPage, MenuItem } from '@/components/ui'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 import type { Diagnostic } from '@/api/services/script-editor'
 
+const { t } = useI18n()
 const store = useScriptEditorStore()
 
 const diagnosticsOf = (chapterId: string) =>
@@ -47,32 +49,68 @@ const openChapterFromValidate = async (chapterId: string) => {
         />
       </template>
 
-      <div class="flex flex-wrap items-center gap-2 mb-3">
+      <div class="flex
+        flex-wrap
+        items-center
+        gap-2
+        mb-3">
         <button
-          class="inline-flex items-center gap-1 border border-white/10 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 bg-white/6 transition-all duration-200 hover:enabled:text-white hover:enabled:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
+          class="inline-flex
+            items-center
+            gap-1
+            border
+            border-white/10
+            rounded-lg
+            px-3
+            py-[0.3rem]
+            text-[0.8rem]
+            whitespace-nowrap
+            text-white/70
+            bg-white/6
+            transition-all
+            duration-200
+            hover:enabled:text-white
+            hover:enabled:bg-white/[0.12]
+            disabled:cursor-not-allowed
+            disabled:opacity-40"
           @click="store.runValidation()"
         >
           重新校验
         </button>
         <span
           v-if="store.report"
-          class="text-[0.78rem] text-white/50 [&_b]:font-semibold"
+          class="text-[0.78rem]
+            text-white/50
+            [&_b]:font-semibold"
         >
-          <b class="text-red-300">{{ store.report.errorCount }}</b> 错误 ·
-          <b class="text-amber-300">{{ store.report.warnCount }}</b> 警告 ·
-          <b class="text-white/50">{{ store.report.infoCount }}</b> 提示
+          <b class="text-red-300">{{ store.report.errorCount }}</b>
+          {{ t('scriptEditor.validateTab.errors') }} ·
+          <b class="text-amber-300">{{ store.report.warnCount }}</b>
+          {{ t('scriptEditor.validateTab.warns') }} ·
+          <b class="text-white/50">{{ store.report.infoCount }}</b>
+          {{ t('scriptEditor.validateTab.infos') }}
         </span>
       </div>
 
       <p
         v-if="!store.report"
-        class="py-8 text-center text-[0.85rem] text-white/45"
+        class="py-8
+          text-center
+          text-[0.85rem]
+          text-white/45"
       >
         正在校验…
       </p>
       <p
         v-else-if="store.report.diagnostics.length === 0"
-        class="rounded-xl border border-green-400/30 bg-green-400/10 px-[0.9rem] py-[0.9rem] text-[0.82rem] text-green-300"
+        class="rounded-xl
+          border
+          border-green-400/30
+          bg-green-400/10
+          px-[0.9rem]
+          py-[0.9rem]
+          text-[0.82rem]
+          text-green-300"
       >
         没有发现问题，这个剧本可以正常跑起来。
       </p>
@@ -81,20 +119,54 @@ const openChapterFromValidate = async (chapterId: string) => {
         <!-- 剧本级问题 -->
         <div
           v-if="store.scriptDiagnostics.length"
-          class="mb-3 rounded-[10px] border border-white/10 bg-black/15 overflow-hidden"
+          class="mb-3
+            rounded-[10px]
+            border
+            border-white/10
+            bg-black/15
+            overflow-hidden"
         >
-          <div class="flex items-center gap-[0.6rem] border-b border-white/[0.07] px-[0.8rem] py-[0.55rem]">
-            <span class="text-[0.82rem] font-semibold text-white">剧本整体</span>
-            <span class="font-mono text-[0.66rem] text-white/30">story_config.yaml</span>
+          <div
+            class="flex
+              items-center
+              gap-[0.6rem]
+              border-b
+              border-white/[0.07]
+              px-[0.8rem]
+              py-[0.55rem]"
+          >
+            <span class="text-[0.82rem]
+              font-semibold
+              text-white">{{
+              t('scriptEditor.validateTab.scriptLevel')
+            }}</span>
+            <span class="font-mono
+              text-[0.66rem]
+              text-white/30">story_config.yaml</span>
           </div>
           <div
             v-for="(d, i) in store.scriptDiagnostics"
             :key="i"
-            class="flex items-start gap-2 px-[0.8rem] py-[0.45rem] text-[0.76rem] leading-[1.75] text-white/75"
+            class="flex
+              items-start
+              gap-2
+              px-[0.8rem]
+              py-[0.45rem]
+              text-[0.76rem]
+              leading-[1.75]
+              text-white/75"
           >
             <span
-              class="shrink-0 w-1.5 h-1.5 mt-[0.55rem] rounded-full"
-              :class="{ 'bg-red-400': d.severity === 'error', 'bg-amber-400': d.severity === 'warn', 'bg-white/30': d.severity === 'info' }"
+              class="shrink-0
+                w-1.5
+                h-1.5
+                mt-[0.55rem]
+                rounded-full"
+              :class="{
+                'bg-red-400': d.severity === 'error',
+                'bg-amber-400': d.severity === 'warn',
+                'bg-white/30': d.severity === 'info',
+              }"
             ></span>
             <span class="flex-1">{{ d.message }}</span>
           </div>
@@ -104,13 +176,34 @@ const openChapterFromValidate = async (chapterId: string) => {
         <div
           v-for="c in store.chapters"
           :key="c.id"
-          class="mb-3 rounded-[10px] border border-white/10 bg-black/15 overflow-hidden"
+          class="mb-3
+            rounded-[10px]
+            border
+            border-white/10
+            bg-black/15
+            overflow-hidden"
           :class="{ 'opacity-55': !chapterHas(c.id) }"
         >
-          <div class="flex items-center gap-[0.6rem] border-b border-white/[0.07] px-[0.8rem] py-[0.55rem]">
-            <span class="text-[0.82rem] font-semibold text-white">{{ c.name || c.id }}</span>
-            <span class="font-mono text-[0.66rem] text-white/30">{{ c.id }}.yaml</span>
-            <span class="flex gap-[0.6rem] ml-auto text-[0.7rem] [&_b]:font-semibold">
+          <div
+            class="flex
+              items-center
+              gap-[0.6rem]
+              border-b
+              border-white/[0.07]
+              px-[0.8rem]
+              py-[0.55rem]"
+          >
+            <span class="text-[0.82rem]
+              font-semibold
+              text-white">{{ c.name || c.id }}</span>
+            <span class="font-mono
+              text-[0.66rem]
+              text-white/30">{{ c.id }}.yaml</span>
+            <span class="flex
+              gap-[0.6rem]
+              ml-auto
+              text-[0.7rem]
+              [&_b]:font-semibold">
               <b
                 v-if="store.diagnosticsByChapter[c.id]?.errors"
                 class="text-red-300"
@@ -133,7 +226,24 @@ const openChapterFromValidate = async (chapterId: string) => {
               >
             </span>
             <button
-              class="inline-flex items-center gap-1 border border-white/10 rounded-lg px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 bg-white/6 transition-all duration-200 hover:enabled:text-white hover:enabled:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
+              class="inline-flex
+                items-center
+                gap-1
+                border
+                border-white/10
+                rounded-lg
+                px-3
+                py-[0.3rem]
+                text-[0.8rem]
+                whitespace-nowrap
+                text-white/70
+                bg-white/6
+                transition-all
+                duration-200
+                hover:enabled:text-white
+                hover:enabled:bg-white/[0.12]
+                disabled:cursor-not-allowed
+                disabled:opacity-40"
               @click="openChapterFromValidate(c.id)"
             >
               打开
@@ -143,17 +253,38 @@ const openChapterFromValidate = async (chapterId: string) => {
           <div
             v-for="(d, i) in diagnosticsOf(c.id)"
             :key="i"
-            class="flex items-start gap-2 px-[0.8rem] py-[0.45rem] text-[0.76rem] leading-[1.75] text-white/75 cursor-pointer hover:bg-white/5"
+            class="flex
+              items-start
+              gap-2
+              px-[0.8rem]
+              py-[0.45rem]
+              text-[0.76rem]
+              leading-[1.75]
+              text-white/75
+              cursor-pointer
+              hover:bg-white/5"
             @click="jumpTo(d)"
           >
             <span
-              class="shrink-0 w-1.5 h-1.5 mt-[0.55rem] rounded-full"
-              :class="{ 'bg-red-400': d.severity === 'error', 'bg-amber-400': d.severity === 'warn', 'bg-white/30': d.severity === 'info' }"
+              class="shrink-0
+                w-1.5
+                h-1.5
+                mt-[0.55rem]
+                rounded-full"
+              :class="{
+                'bg-red-400': d.severity === 'error',
+                'bg-amber-400': d.severity === 'warn',
+                'bg-white/30': d.severity === 'info',
+              }"
             ></span>
             <span class="flex-1">{{ d.message }}</span>
             <span
               v-if="d.eventIndex !== undefined"
-              class="shrink-0 text-[0.68rem] whitespace-nowrap text-brand opacity-70"
+              class="shrink-0
+                text-[0.68rem]
+                whitespace-nowrap
+                text-brand
+                opacity-70"
               >第 {{ d.eventIndex + 1 }} 个事件 →</span
             >
           </div>

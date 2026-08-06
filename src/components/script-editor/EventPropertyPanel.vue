@@ -1,13 +1,23 @@
 <template>
-  <div class="flex flex-col gap-1">
+  <div class="flex
+    flex-col
+    gap-1">
     <template v-if="!event">
-      <p class="py-8 text-center text-sm text-white/40">在左侧选中一个事件</p>
+      <p class="py-8
+        text-center
+        text-sm
+        text-white/40">
+        {{ t('scriptEditor.eventProperty.emptyHint') }}
+      </p>
     </template>
 
     <template v-else>
       <!-- 事件类型 -->
       <div class="mb-4">
-        <label class="inline-flex items-center font-medium text-brand">事件类型</label>
+        <label class="inline-flex
+          items-center
+          font-medium
+          text-brand">事件类型</label>
         <select
           class="glass-input"
           :value="eventType"
@@ -27,7 +37,9 @@
             </option>
           </optgroup>
         </select>
-        <p class="mt-1 text-xs text-white/40">
+        <p class="mt-1
+          text-xs
+          text-white/40">
           共 {{ store.schema?.events.length ?? 0 }} 种事件可选
         </p>
       </div>
@@ -44,8 +56,14 @@
       />
 
       <!-- 通用字段 -->
-      <div class="my-3 border-t border-white/10 pt-3">
-        <p class="mb-2 text-xs tracking-wide text-white/35">所有事件通用</p>
+      <div class="my-3
+        border-t
+        border-white/10
+        pt-3">
+        <p class="mb-2
+          text-xs
+          tracking-wide
+          text-white/35">所有事件通用</p>
         <FieldRow
           v-for="field in commonFieldsToShow"
           :key="field.key"
@@ -60,13 +78,23 @@
       <!-- 本事件上的诊断 -->
       <div
         v-if="eventDiagnostics.length"
-        class="rounded-xl border border-white/10 bg-black/15 p-4"
+        class="rounded-xl
+          border
+          border-white/10
+          bg-black/15
+          p-4"
       >
-        <p class="mb-2 text-sm font-semibold text-white">这个事件有问题</p>
+        <p class="mb-2
+          text-sm
+          font-semibold
+          text-white">这个事件有问题</p>
         <div
           v-for="(d, i) in eventDiagnostics"
           :key="i"
-          class="mb-2 text-xs leading-relaxed last:mb-0"
+          class="mb-2
+            text-xs
+            leading-relaxed
+            last:mb-0"
           :class="severityClass(d.severity)"
         >
           {{ d.message }}
@@ -78,10 +106,12 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 import type { Diagnostic, EventSpec, FieldSpec } from '@/api/services/script-editor'
 import FieldRow from './FieldRow.vue'
 
+const { t } = useI18n()
 const store = useScriptEditorStore()
 
 const event = computed(() => store.chapter?.events[store.selectedEvent])
@@ -171,4 +201,3 @@ const onTypeChange = (e: Event) => {
   store.replaceEvent(store.selectedEvent, rebuilt)
 }
 </script>
-

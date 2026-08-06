@@ -1,76 +1,225 @@
 <template>
-  <div class="flex flex-col items-center pt-[18px] px-2 pb-6">
+  <div class="flex
+    flex-col
+    items-center
+    pt-[18px]
+    px-2
+    pb-6">
     <p
       v-if="!store.report"
-      class="max-w-[560px] mt-[26px] text-xs leading-[1.9] text-white/40"
+      class="max-w-[560px]
+        mt-[26px]
+        text-xs
+        leading-[1.9]
+        text-white/40"
     >
-      正在读取章节跳转关系…
+      {{ t('scriptEditor.chapterFlow.loading') }}
     </p>
 
     <template v-else>
       <div
         v-for="(row, ri) in rows"
         :key="row.key"
-        class="flex w-full flex-col items-center"
+        class="flex
+          w-full
+          flex-col
+          items-center"
       >
         <!-- 层与层之间的连线。分支层上方画一个分叉提示。
              末尾的三角箭头用 after: 变体；分叉层的横线用 fork 条件追加 before: -->
         <div
           v-if="ri > 0"
-          class="conn relative w-px h-[34px] bg-brand/55 after:content-[''] after:absolute after:left-[-4px] after:bottom-0 after:border-l-[4.5px] after:border-r-[4.5px] after:border-t-[8px] after:border-l-transparent after:border-r-transparent after:border-t-[rgba(121,217,255,0.6)]"
-          :class="row.nodes.length > 1 ? 'fork before:content-[\'\'] before:absolute before:top-1/2 before:left-[-60px] before:w-[120px] before:h-px before:bg-[rgba(121,217,255,0.35)]' : ''"
+          class="conn
+            relative
+            w-px
+            h-[34px]
+            bg-brand/55
+            after:content-['']
+            after:absolute
+            after:left-[-4px]
+            after:bottom-0
+            after:border-l-[4.5px]
+            after:border-r-[4.5px]
+            after:border-t-[8px]
+            after:border-l-transparent
+            after:border-r-transparent
+            after:border-t-[rgba(121,217,255,0.6)]"
+          :class="
+            row.nodes.length > 1
+              ? `fork
+                before:content-[\'\']
+                before:absolute
+                before:top-1/2
+                before:left-[-60px]
+                before:w-[120px]
+                before:h-px
+                before:bg-[rgba(121,217,255,0.35)]`
+              : ''
+          "
         >
           <span
             v-if="row.inboundLabels.length"
-            class="absolute left-2.5 top-1/2 -translate-y-1/2 font-mono text-[9.5px] whitespace-nowrap text-white/50"
+            class="absolute
+              left-2.5
+              top-1/2
+              -translate-y-1/2
+              font-mono
+              text-[9.5px]
+              whitespace-nowrap
+              text-white/50"
             >{{ row.inboundLabels.join(' / ') }}</span
           >
         </div>
 
-        <div class="flex flex-wrap justify-center gap-[18px] w-full">
+        <div class="flex
+          flex-wrap
+          justify-center
+          gap-[18px]
+          w-full">
           <div
             v-for="node in row.nodes"
             :key="node.id"
-            class="relative flex-[1_1_300px] max-w-[460px] border border-white/12.5 rounded-xl px-3.5 py-3 cursor-pointer bg-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.1),inset_0_1px_1px_rgba(255,255,255,0.1)] transition-all duration-200 ease-in-out hover:border-brand hover:-translate-y-0.5 hover:shadow-[0_6px_18px_rgba(121,217,255,0.22)] group"
-            :class="{ 'border-green-400/50': node.isIntro, 'border-dashed border-amber-300/50': node.isOrphan }"
+            class="relative
+              flex-[1_1_300px]
+              max-w-[460px]
+              border
+              border-white/12.5
+              rounded-xl
+              px-3.5
+              py-3
+              cursor-pointer
+              bg-white/10
+              shadow-[0_8px_32px_rgba(0,0,0,0.1),inset_0_1px_1px_rgba(255,255,255,0.1)]
+              transition-all
+              duration-200
+              ease-in-out
+              hover:border-brand
+              hover:-translate-y-0.5
+              hover:shadow-[0_6px_18px_rgba(121,217,255,0.22)]
+              group"
+            :class="{
+              'border-green-400/50': node.isIntro,
+              [`border-dashed
+              border-amber-300/50`]: node.isOrphan,
+            }"
             @click="open(node.id)"
           >
             <span
-              class="absolute -top-2 left-3 border rounded px-1.5 py-px font-mono text-[9.5px] bg-[#16202c]"
-              :class="node.isIntro ? 'text-green-400 border-green-400/40' : node.isOrphan ? 'text-amber-300 border-amber-300/40' : 'text-white/50 border-white/[0.14]'"
+              class="absolute
+                -top-2
+                left-3
+                border
+                rounded
+                px-1.5
+                py-px
+                font-mono
+                text-[9.5px]
+                bg-[#16202c]"
+              :class="
+                node.isIntro
+                  ? `text-green-400
+                    border-green-400/40`
+                  : node.isOrphan
+                    ? `text-amber-300
+                      border-amber-300/40`
+                    : `text-white/50
+                      border-white/[0.14]`
+              "
             >
-              {{ leaf(node.id) }}.yaml{{ node.isIntro ? ' · 开场' : ''
-              }}{{ node.isOrphan ? ' · 无人进入' : '' }}
+              {{ leaf(node.id) }}.yaml{{ node.isIntro ? t('scriptEditor.chapterFlow.intro') : ''
+              }}{{ node.isOrphan ? t('scriptEditor.chapterFlow.orphan') : '' }}
             </span>
 
-            <div class="flex items-baseline gap-2">
-              <span class="text-[0.88rem] font-semibold text-white">{{ node.name || node.id }}</span>
-              <span class="ml-auto text-[0.7rem] whitespace-nowrap text-white/45">{{ node.eventCount }} 个事件</span>
+            <div class="flex
+              items-baseline
+              gap-2">
+              <span class="text-[0.88rem]
+                font-semibold
+                text-white">{{
+                node.name || node.id
+              }}</span>
+              <span class="ml-auto
+                text-[0.7rem]
+                whitespace-nowrap
+                text-white/45">{{
+                t('scriptEditor.chapterFlow.events', { count: node.eventCount })
+              }}</span>
             </div>
 
-            <div class="flex items-center gap-1.5 mt-2 min-h-4">
+            <div class="flex
+              items-center
+              gap-1.5
+              mt-2
+              min-h-4">
               <span
                 v-if="node.errors"
-                class="rounded px-[6px] py-px text-[0.64rem] whitespace-nowrap text-red-300 border border-red-400/35 bg-red-400/15"
-                >{{ node.errors }} 个错误</span
+                class="rounded
+                  px-[6px]
+                  py-px
+                  text-[0.64rem]
+                  whitespace-nowrap
+                  text-red-300
+                  border
+                  border-red-400/35
+                  bg-red-400/15"
+                >{{ t('scriptEditor.chapterFlow.errors', { count: node.errors }) }}</span
               >
               <span
                 v-else-if="node.warns"
-                class="rounded px-[6px] py-px text-[0.64rem] whitespace-nowrap text-amber-300 border border-amber-300/30 bg-amber-300/15"
-                >{{ node.warns }} 个提醒</span
+                class="rounded
+                  px-[6px]
+                  py-px
+                  text-[0.64rem]
+                  whitespace-nowrap
+                  text-amber-300
+                  border
+                  border-amber-300/30
+                  bg-amber-300/15"
+                >{{ t('scriptEditor.chapterFlow.warns', { count: node.warns }) }}</span
               >
               <span
                 v-if="node.endType && node.endType !== 'linear'"
-                class="rounded px-[6px] py-px text-[0.64rem] whitespace-nowrap text-purple-300 border border-purple-400/35 bg-purple-400/15"
-                >{{ node.endType === 'branching' ? '条件分支' : 'AI 判定分支' }}</span
+                class="rounded
+                  px-[6px]
+                  py-px
+                  text-[0.64rem]
+                  whitespace-nowrap
+                  text-purple-300
+                  border
+                  border-purple-400/35
+                  bg-purple-400/15"
+                >{{
+                  node.endType === 'branching'
+                    ? t('scriptEditor.chapterFlow.branching')
+                    : t('scriptEditor.chapterFlow.aiJudged')
+                }}</span
               >
               <span
                 v-if="node.isOrphan"
-                class="rounded px-[6px] py-px text-[0.64rem] whitespace-nowrap text-amber-300 border border-amber-300/30 bg-amber-300/15"
-                >玩家走不到</span
+                class="rounded
+                  px-[6px]
+                  py-px
+                  text-[0.64rem]
+                  whitespace-nowrap
+                  text-amber-300
+                  border
+                  border-amber-300/30
+                  bg-amber-300/15"
+                >{{ t('scriptEditor.chapterFlow.unreachable') }}</span
               >
               <button
-                class="ml-auto rounded px-[5px] py-px text-[11px] text-white/25 opacity-0 transition-all duration-150 group-hover:opacity-100 hover:text-red-300 hover:bg-red-400/15"
+                class="ml-auto
+                  rounded
+                  px-[5px]
+                  py-px
+                  text-[11px]
+                  text-white/25
+                  opacity-0
+                  transition-all
+                  duration-150
+                  group-hover:opacity-100
+                  hover:text-red-300
+                  hover:bg-red-400/15"
                 title="删除章节"
                 @click.stop="store.deleteChapter(node.id)"
               >
@@ -81,13 +230,52 @@
         </div>
       </div>
 
-      <div class="conn relative w-px h-[34px] bg-brand/55 after:content-[''] after:absolute after:left-[-4px] after:bottom-0 after:border-l-[4.5px] after:border-r-[4.5px] after:border-t-[8px] after:border-l-transparent after:border-r-transparent after:border-t-[rgba(121,217,255,0.6)]"></div>
-      <div class="border border-dashed border-white/25 rounded-full px-3.5 py-[5px] text-[0.72rem] whitespace-nowrap text-white/50">剧本结束</div>
+      <div
+        class="conn
+          relative
+          w-px
+          h-[34px]
+          bg-brand/55
+          after:content-['']
+          after:absolute
+          after:left-[-4px]
+          after:bottom-0
+          after:border-l-[4.5px]
+          after:border-r-[4.5px]
+          after:border-t-[8px]
+          after:border-l-transparent
+          after:border-r-transparent
+          after:border-t-[rgba(121,217,255,0.6)]"
+      ></div>
+      <div
+        class="border
+          border-dashed
+          border-white/25
+          rounded-full
+          px-3.5
+          py-[5px]
+          text-[0.72rem]
+          whitespace-nowrap
+          text-white/50"
+      >
+        {{ t('scriptEditor.chapterFlow.end') }}
+      </div>
 
-      <p class="max-w-[560px] mt-[26px] text-xs leading-[1.9] text-white/40 [&_b]:text-white/65 [&_code]:font-mono [&_code]:text-brand">
-        这张图是<b>读出来的，不是排出来的</b> —— 连线来自每章最后那条「章节结束」，
-        章节的先后也由它决定。要改走向，进对应章节改那条事件的
-        <code>下一章</code>；改完这里会跟着变。
+      <p
+        class="max-w-[560px]
+          mt-[26px]
+          text-xs
+          leading-[1.9]
+          text-white/40
+          [&_b]:text-white/65
+          [&_code]:font-mono
+          [&_code]:text-brand"
+      >
+        {{ t('scriptEditor.chapterFlow.guideTitle')
+        }}<b>{{ t('scriptEditor.chapterFlow.guideStrong') }}</b>
+        {{ t('scriptEditor.chapterFlow.guideBody') }}
+        <code>{{ t('scriptEditor.chapterFlow.guideNext') }}</code
+        >{{ t('scriptEditor.chapterFlow.guideTail') }}
       </p>
     </template>
   </div>
@@ -95,6 +283,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 
 interface FlowNode {
@@ -116,6 +305,7 @@ interface FlowRow {
   inboundLabels: string[]
 }
 
+const { t } = useI18n()
 const store = useScriptEditorStore()
 
 const leaf = (id: string) => (id.includes('/') ? id.slice(id.lastIndexOf('/') + 1) : id)
@@ -209,6 +399,4 @@ const rows = computed<FlowRow[]>(() => {
 
   return out
 })
-
 </script>
-
