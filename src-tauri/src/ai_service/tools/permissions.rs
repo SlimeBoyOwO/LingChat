@@ -196,6 +196,14 @@ impl ToolPermissionConfig {
     ) -> HashSet<String> {
         // 1. 查映射找到场景组名（映射不存在时回退到 scene_default）
         let key: GeneratorSourceKey = source.into();
+        // 剧本模式（剧本 AI 对话 / 剧本自由对话）一律不注册工具：
+        // 避免角色在剧本演出中调用 skills/tools 破坏剧情（维护者要求）。
+        if matches!(
+            key,
+            GeneratorSourceKey::ScriptAiDialogue | GeneratorSourceKey::ScriptFreeDialogue
+        ) {
+            return HashSet::new();
+        }
         let scene_group_name = self.scene_mapping.get(&key).map(|s| s.as_str()).unwrap_or("scene_default");
         let Some(scene) = self.scene_groups.get(scene_group_name) else {
             return HashSet::new();
@@ -442,5 +450,40 @@ user_chat = "scene_admin"
 
         let loaded = ToolPermissionConfig::load(&path).unwrap();
         assert_eq!(loaded.available_tools, vec!["get_current_time"]);
+    }
+
+    /// 剧本模式（剧本 AI 对话 / 剧本自由对话）即使配置了 all_tools 也必须返回空集。
+    #[test]
+    fn script_mode_sources_never_get_tools() {
+        let mut scene_groups = HashMap::new();
+        scene_groups.insert(
+            "scene_admin".to_string(),
+            ToolPermission {
+                enabled: true,
+                tools: HashSet::new(),
+                all_tools: true,
+            },
+        );
+        let mut scene_mapping = HashMap::new();
+        scene_mapping.insert(GeneratorSourceKey::ScriptAiDialogue, "scene_admin".to_string());
+        scene_mapping.insert(GeneratorSourceKey::ScriptFreeDialogue, "scene_admin".to_string());
+        let config = ToolPermissionConfig {
+            scene_mapping,
+            scene_groups,
+            ..Default::default()
+        };
+        let all_names: HashSet<String> = ["web_search".to_string(), "execute_command".to_string()]
+            .into_iter()
+            .collect();
+
+        for source in [
+            GeneratorSource::ScriptAiDialogue,
+            GeneratorSource::ScriptFreeDialogue,
+        ] {
+            assert!(
+                config.allowed_tools(source, Some("钦灵"), &all_names).is_empty(),
+                "{source:?} 不应获得任何工具"
+            );
+        }
     }
 }

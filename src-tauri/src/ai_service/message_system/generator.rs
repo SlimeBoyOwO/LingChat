@@ -423,6 +423,16 @@ impl MessageGenerator {
         user_message: String,
         user_message_seq: Option<u32>,
     ) -> Result<String> {
+        // 剧本模式不携带工具记忆：丢弃工具结果消息，带 tool_calls 的 assistant
+        // 消息退化为纯文本台词，保持剧情上下文干净（与工具注册禁用配套）。
+        let context = if matches!(
+            self.deps.source,
+            GeneratorSource::ScriptAiDialogue | GeneratorSource::ScriptFreeDialogue
+        ) {
+            strip_tool_messages(context)
+        } else {
+            context
+        };
         let role_name = {
             let mut gs = self.deps.game_status.lock().await;
             let Some(role_id) = gs.current_role_id else {
@@ -597,6 +607,28 @@ impl MessageGenerator {
 // ============================================================
 // consumer 句子处理
 // ============================================================
+
+/// 剧本模式上下文净化：移除工具调用相关的消息。
+/// - `role == "tool"` 的工具结果消息直接丢弃；
+/// - 带 `tool_calls` 的 assistant 消息去掉 tool_calls 退化为纯文本台词，
+///   纯工具调用（无正文）的消息整体丢弃。
+fn strip_tool_messages(messages: Vec<LlmMessage>) -> Vec<LlmMessage> {
+    messages
+        .into_iter()
+        .filter_map(|mut message| match message.role.as_str() {
+            "tool" => None,
+            "assistant" if message.tool_calls.is_some() => {
+                message.tool_calls = None;
+                if message.content.trim().is_empty() {
+                    None
+                } else {
+                    Some(message)
+                }
+            }
+            _ => Some(message),
+        })
+        .collect()
+}
 
 /// 处理单个句子：解析 → 富化 → 构建响应 → 保存行。
 async fn consume_sentence(
@@ -827,4 +859,49 @@ async fn add_assistant_line(deps: &GeneratorDeps, response: &ReplyResponse) -> R
     let mut gs = deps.game_status.lock().await;
     gs.add_line(&deps.db, line).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ai_service::types::{FunctionCall, ToolCall};
+
+    fn tool_call() -> ToolCall {
+        ToolCall {
+            id: "call-1".into(),
+            type_: "function".into(),
+            function: FunctionCall {
+                name: "write_file".into(),
+                arguments: "{}".into(),
+            },
+        }
+    }
+
+    #[test]
+    fn strip_tool_messages_removes_tool_artifacts() {
+        let messages = vec![
+            LlmMessage::system("人设"),
+            LlmMessage::assistant("我来看看文件哦"),
+            LlmMessage {
+                role: "assistant".into(),
+                content: "先读取一下参考文件".into(),
+                tool_calls: Some(vec![tool_call()]),
+                tool_call_id: None,
+            },
+            LlmMessage::tool_result("call-1", "{\"ok\":true}"),
+            LlmMessage::tool(vec![tool_call()]), // 无正文纯工具调用
+            LlmMessage::user("继续"),
+        ];
+
+        let stripped = strip_tool_messages(messages);
+
+        let roles: Vec<&str> = stripped.iter().map(|m| m.role.as_str()).collect();
+        assert_eq!(roles, vec!["system", "assistant", "assistant", "user"]);
+        // 带 tool_calls 的 assistant 退化为纯文本台词
+        assert_eq!(stripped[2].content, "先读取一下参考文件");
+        assert!(stripped[2].tool_calls.is_none());
+        // 不含任何 tool 角色消息与 tool_calls 残留
+        assert!(stripped.iter().all(|m| m.role != "tool"));
+        assert!(stripped.iter().all(|m| m.tool_calls.is_none()));
+    }
 }
