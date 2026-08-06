@@ -1,6 +1,7 @@
 // 本文件由 scripts/generate-zh-hk.mjs 自动生成，请勿手改
 import advance from './advance'
 import api from './api'
+import scriptEditor from './scriptEditor'
 import common from './common'
 import game from './game'
 import misc from './misc'

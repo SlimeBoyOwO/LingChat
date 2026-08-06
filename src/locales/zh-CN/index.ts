@@ -8,6 +8,7 @@ import pet from './pet'
 import stores from './stores'
 import ui from './ui'
 import api from './api'
+import scriptEditor from './scriptEditor'
 import misc from './misc'
 
 export default {
@@ -21,5 +22,6 @@ export default {
   stores,
   ui,
   api,
+  scriptEditor,
   misc,
 }
