@@ -28,14 +28,14 @@
           <optgroup
             v-for="(group, cat) in groupedSpecs"
             :key="cat"
-            :label="cat"
+            :label="categoryLabelOf(cat)"
           >
             <option
               v-for="s in group"
               :key="s.typeKey"
               :value="s.typeKey"
             >
-              {{ s.label }}（{{ s.typeKey }}）
+              {{ eventLabelOf(s) }}（{{ s.typeKey }}）
             </option>
           </optgroup>
         </select>
@@ -118,6 +118,7 @@ import { useI18n } from 'vue-i18n'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 import type { Diagnostic, EventSpec, FieldSpec } from '@/api/services/script-editor'
 import FieldRow from './FieldRow.vue'
+import { categoryLabelOf, eventLabelOf } from '@/utils/schema-i18n'
 
 const { t } = useI18n()
 const store = useScriptEditorStore()

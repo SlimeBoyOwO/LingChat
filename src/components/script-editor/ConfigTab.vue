@@ -4,6 +4,13 @@ import { useI18n } from 'vue-i18n'
 import { Button, Icon, Toggle } from '@/components/base'
 import { MenuPage, MenuItem } from '@/components/ui'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
+import {
+  storyFieldHintOf,
+  storyFieldLabelOf,
+  unlockFieldLabelOf,
+  unlockFieldPlaceholderOf,
+  unlockTypeLabelOf,
+} from '@/utils/schema-i18n'
 import type { UnlockConditionSpec } from '@/api/services/script-editor'
 
 const { t } = useI18n()
@@ -167,7 +174,7 @@ const saveConfig = () => {
           font-medium
           text-brand
           text-[0.9rem]">
-          {{ f.label
+          {{ storyFieldLabelOf(f)
           }}<span
             v-if="f.required"
             class="ml-0.5
@@ -216,7 +223,7 @@ const saveConfig = () => {
             [&_code]:font-mono
             [&_code]:text-brand"
         >
-          {{ f.hint }}
+          {{ storyFieldHintOf(f) }}
         </p>
       </div>
 
@@ -355,7 +362,7 @@ const saveConfig = () => {
                     :key="s.typeKey"
                     :value="s.typeKey"
                   >
-                    {{ s.label }}
+                    {{ unlockTypeLabelOf(s) }}
                   </option>
                 </select>
                 <button
@@ -385,7 +392,7 @@ const saveConfig = () => {
               >
                 <span class="shrink-0
                   text-xs
-                  text-white/40">{{ f.label }}</span>
+                  text-white/40">{{ unlockFieldLabelOf(f) }}</span>
                 <input
                   v-if="f.kind === 'number'"
                   class="w-24
@@ -496,7 +503,7 @@ const saveConfig = () => {
                     transition-all
                     focus:outline-none
                     focus:border-[var(--accent-color)]"
-                  :placeholder="f.placeholder ?? f.hint"
+                  :placeholder="unlockFieldPlaceholderOf(f)"
                   :value="condField(cond, f.key)"
                   @change="(e) => onCondField(i, f.key, (e.target as HTMLInputElement).value)"
                 />

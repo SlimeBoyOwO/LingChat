@@ -249,7 +249,9 @@
               <p class="mb-[7px]
                 text-[0.7rem]
                 tracking-[0.5px]
-                text-white/[0.38]">{{ cat }}</p>
+                text-white/[0.38]">
+                {{ categoryLabelOf(cat) }}
+              </p>
               <div class="grid
                 grid-cols-[repeat(auto-fill,minmax(104px,1fr))]
                 gap-[7px]">
@@ -273,7 +275,7 @@
                     hover:-translate-y-px"
                   @click="insert(spec.typeKey)"
                 >
-                  {{ spec.label }}
+                  {{ eventLabelOf(spec) }}
                 </button>
               </div>
             </div>
@@ -296,6 +298,7 @@ import {
 } from '@/composables/useEventFolding'
 import type { EventSpec } from '@/api/services/script-editor'
 import EventRow from './EventRow.vue'
+import { categoryLabelOf, eventLabelOf } from '@/utils/schema-i18n'
 
 const { t } = useI18n()
 const store = useScriptEditorStore()

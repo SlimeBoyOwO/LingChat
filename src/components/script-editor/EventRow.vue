@@ -62,7 +62,7 @@
           background: (spec?.color ?? '#64748b') + '14',
         }"
       >
-        {{ spec?.label ?? eventType }}
+        {{ spec ? eventLabelOf(spec) : eventType }}
       </span>
 
       <span
@@ -223,6 +223,7 @@ import { useI18n } from 'vue-i18n'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 import { eventSummary } from '@/composables/useEventFolding'
 import type { ScriptEventData } from '@/api/services/script-editor'
+import { eventLabelOf } from '@/utils/schema-i18n'
 
 const { t } = useI18n()
 const props = defineProps<{

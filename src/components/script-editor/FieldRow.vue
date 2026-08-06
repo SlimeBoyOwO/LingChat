@@ -8,7 +8,7 @@
         text-brand"
       :title="t('scriptEditor.fieldRow.yamlKey', { key: field.key })"
     >
-      {{ field.label }}
+      {{ fieldLabelOf(field, eventType) }}
       <span
         v-if="field.required"
         class="text-xs
@@ -43,7 +43,7 @@
         resize-y
         leading-relaxed"
       :value="asText"
-      :placeholder="field.placeholder"
+      :placeholder="fieldPlaceholderOf(field, eventType)"
       @change="onText"
     ></textarea>
 
@@ -53,7 +53,7 @@
       class="glass-input"
       type="number"
       :value="asText"
-      :placeholder="field.placeholder"
+      :placeholder="fieldPlaceholderOf(field, eventType)"
       @change="onNumber"
     />
 
@@ -210,7 +210,7 @@
       v-else
       class="glass-input"
       :value="asText"
-      :placeholder="field.placeholder"
+      :placeholder="fieldPlaceholderOf(field, eventType)"
       @change="onText"
     />
 
@@ -221,7 +221,7 @@
         leading-relaxed"
       :class="hintClass"
     >
-      {{ field.hint }}
+      {{ fieldHintOf(field, eventType) }}
     </p>
     <p
       v-for="(d, i) in diagnostics"
@@ -242,6 +242,14 @@ import { useI18n } from 'vue-i18n'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { Toggle } from '@/components/base'
 import { EMOTION_CONFIG_EMO } from '@/controllers/emotion/config'
+import {
+  emotionLabelOf,
+  fieldHintOf,
+  fieldLabelOf,
+  fieldPlaceholderOf,
+  optionLabelOf,
+  particleLabelOf,
+} from '@/utils/schema-i18n'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 import type {
   AssetKind,
@@ -273,6 +281,11 @@ const asText = computed(() => {
   return String(v)
 })
 
+/** 当前事件类型（schema 词条映射用）；无 event 时为 undefined，按 fieldKey 查通用表 */
+const eventType = computed(() =>
+  typeof props.event?.type === 'string' ? props.event.type : undefined,
+)
+
 const isSelectLike = computed(() =>
   ['select', 'character', 'emotion', 'chapter'].includes(props.field.kind),
 )
@@ -293,17 +306,20 @@ const selectOptions = computed<{ value: string; label: string }[]>(() => {
     case 'select':
       // 有 option_labels 用显示名（值仍是引擎认的原文），否则直接显示原文。
       // Rust 侧序列化出来的一定是字符串，这里收窄类型免得 TS 抱怨。
-      return (props.field.options ?? []).map((o, idx) => ({
-        value: typeof o === 'string' ? o : o.value,
-        label: typeof o === 'string' ? (props.field.optionLabels?.[idx] ?? o) : o.label,
-      }))
+      return (props.field.options ?? []).map((o, idx) => {
+        const value = typeof o === 'string' ? o : o.value
+        const raw = typeof o === 'string' ? (props.field.optionLabels?.[idx] ?? o) : o.label
+        // 背景特效：options 已被前端覆盖为粒子表，label 是前端中文 → 走粒子词条
+        if (props.field.key === 'effect') return { value, label: particleLabelOf(value, raw) }
+        return { value, label: optionLabelOf(props.field, eventType.value, value, idx) }
+      })
     case 'character':
       return store.characterOptions.map((o) => ({
         value: o,
         label: o === 'MAIN' ? t('scriptEditor.fieldRow.mainRole') : o,
       }))
     case 'emotion':
-      return Object.keys(EMOTION_CONFIG_EMO).map((o) => ({ value: o, label: o }))
+      return Object.keys(EMOTION_CONFIG_EMO).map((o) => ({ value: o, label: emotionLabelOf(o) }))
     case 'chapter':
       return store.chapterOptions
     default:
