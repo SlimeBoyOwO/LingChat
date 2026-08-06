@@ -15,7 +15,9 @@ use crate::AppState;
 use super::executor::{ToolContext, ToolExecutor};
 use super::registry::ToolRegistry;
 
-const MAX_TOOL_ROUNDS: usize = 3;
+// Code/file tasks often need read -> edit -> verify cycles. Three rounds prematurely stopped
+// providers that emit one tool call per turn; eight remains bounded while allowing a useful loop.
+const MAX_TOOL_ROUNDS: usize = 8;
 
 /// 工具消息收集槽：流消费过程中由闭环填充，消费完毕后调用方取走。
 pub type ToolMessageSink = Arc<Mutex<Vec<LlmMessage>>>;

@@ -9,7 +9,6 @@
 //! `uac=true` 时以管理员权限运行（Windows 弹系统 UAC 框）。
 //! 不含 `validate_script`（剧本编辑器会话专用）。
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -18,13 +17,16 @@ use tauri::{Emitter, Manager};
 
 use crate::ai_service::skill_agent::command_executor::{self, ApprovalRequest};
 use crate::ai_service::skill_agent::config::SkillAgentConfig;
-use crate::ai_service::skill_agent::file_tools::FileTools;
+use crate::ai_service::skill_agent::file_tools::{FileTools, MAX_GREP_RESULTS};
 use crate::ai_service::skill_agent::skills;
 use crate::ai_service::types::ToolDefinition;
 use crate::AppState;
 
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
 use super::settings::SharedToolSettings;
+
+const SKILL_TOOL_TIMEOUT: Duration = Duration::from_secs(5);
+const FILE_TOOL_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// 从工具上下文加载 skill agent 配置（沙箱目录 / 任意路径开关）。
 fn load_config(context: &ToolContext) -> Result<SkillAgentConfig, ToolError> {
@@ -54,6 +56,15 @@ fn exec(result: anyhow::Result<String>) -> Result<ToolResult, ToolError> {
         .map_err(|e| ToolError::Execution(e.to_string()))
 }
 
+async fn run_blocking<F>(work: F) -> Result<ToolResult, ToolError>
+where
+    F: FnOnce() -> Result<ToolResult, ToolError> + Send + 'static,
+{
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|error| ToolError::Execution(format!("文件工具后台任务异常: {error}")))?
+}
+
 /// list_skills：列出技能库中全部可用技能。
 pub struct ListSkills;
 
@@ -63,13 +74,20 @@ impl Tool for ListSkills {
         ToolDefinition::new(
             "list_skills",
             "列出所有可用技能的名称、描述与位置。",
-            json!({"type": "object", "properties": {}}),
+            json!({"type": "object", "properties": {}, "additionalProperties": false}),
         )
+    }
+
+    fn timeout_hint(&self) -> Option<Duration> {
+        Some(SKILL_TOOL_TIMEOUT)
     }
 
     async fn execute(&self, context: &ToolContext, _: Value) -> Result<ToolResult, ToolError> {
         let config = load_config(context)?;
-        let found = skills::find_all_skills(&config.resolve_skills_dir());
+        let skills_dir = config.resolve_skills_dir();
+        let found = tokio::task::spawn_blocking(move || skills::find_all_skills(&skills_dir))
+            .await
+            .map_err(|error| ToolError::Execution(format!("技能扫描后台任务异常: {error}")))?;
         if found.is_empty() {
             return Ok(json!({ "ok": true, "output": "没有已安装的技能。" }));
         }
@@ -96,15 +114,28 @@ impl Tool for ReadSkill {
                 "properties": {
                     "name": {"type": "string", "description": "要加载的技能名（kebab-case）"}
                 },
-                "required": ["name"]
+                "required": ["name"],
+                "additionalProperties": false
             }),
         )
     }
 
-    async fn execute(&self, context: &ToolContext, arguments: Value) -> Result<ToolResult, ToolError> {
+    fn timeout_hint(&self) -> Option<Duration> {
+        Some(SKILL_TOOL_TIMEOUT)
+    }
+
+    async fn execute(
+        &self,
+        context: &ToolContext,
+        arguments: Value,
+    ) -> Result<ToolResult, ToolError> {
         let config = load_config(context)?;
-        let name = arg_str(&arguments, "name")?;
-        match skills::find_skill(&config.resolve_skills_dir(), name) {
+        let name = arg_str(&arguments, "name")?.to_string();
+        let skills_dir = config.resolve_skills_dir();
+        let found = tokio::task::spawn_blocking(move || skills::find_skill(&skills_dir, &name))
+            .await
+            .map_err(|error| ToolError::Execution(format!("技能读取后台任务异常: {error}")))?;
+        match found {
             Some(res) => Ok(json!({
                 "ok": true,
                 "output": format!(
@@ -115,7 +146,9 @@ impl Tool for ReadSkill {
                     res.name
                 ),
             })),
-            None => Err(ToolError::Execution(format!("未找到技能: {name}"))),
+            None => Err(ToolError::Execution(
+                "未找到技能，或技能名称/文件不安全".into(),
+            )),
         }
     }
 }
@@ -139,11 +172,19 @@ macro_rules! file_tool {
                 ToolDefinition::new($tool_name, $desc, $schema)
             }
 
-            async fn execute(&self, context: &ToolContext, arguments: Value) -> Result<ToolResult, ToolError> {
+            fn timeout_hint(&self) -> Option<Duration> {
+                Some(FILE_TOOL_TIMEOUT)
+            }
+
+            async fn execute(
+                &self,
+                context: &ToolContext,
+                arguments: Value,
+            ) -> Result<ToolResult, ToolError> {
                 let config = load_config(context)?;
                 let ft = file_tools(&config, &self.settings);
                 let run: fn(&FileTools, &Value) -> Result<ToolResult, ToolError> = $body;
-                run(&ft, &arguments)
+                run_blocking(move || run(&ft, &arguments)).await
             }
         }
     };
@@ -158,7 +199,8 @@ file_tool!(
         "properties": {
             "path": {"type": "string", "description": "目录路径，绝对路径或相对于文件沙箱根目录"}
         },
-        "required": ["path"]
+        "required": ["path"],
+        "additionalProperties": false
     }),
     |ft: &FileTools, args: &Value| {
         let path = arg_str(args, "path")?;
@@ -175,7 +217,8 @@ file_tool!(
         "properties": {
             "path": {"type": "string", "description": "文件路径，绝对路径或相对于文件沙箱根目录"}
         },
-        "required": ["path"]
+        "required": ["path"],
+        "additionalProperties": false
     }),
     |ft: &FileTools, args: &Value| {
         let path = arg_str(args, "path")?;
@@ -194,7 +237,8 @@ file_tool!(
             "content": {"type": "string", "description": "要写入的内容（append=true 时为要追加的内容）"},
             "append": {"type": "boolean", "description": "true 表示追加到已有文件末尾，仅用于修复被截断的写入"}
         },
-        "required": ["path", "content"]
+        "required": ["path", "content"],
+        "additionalProperties": false
     }),
     |ft: &FileTools, args: &Value| {
         let path = arg_str(args, "path")?;
@@ -216,7 +260,8 @@ file_tool!(
         "properties": {
             "path": {"type": "string", "description": "要删除的文件路径"}
         },
-        "required": ["path"]
+        "required": ["path"],
+        "additionalProperties": false
     }),
     |ft: &FileTools, args: &Value| {
         let path = arg_str(args, "path")?;
@@ -236,7 +281,8 @@ file_tool!(
             "new_string": {"type": "string", "description": "替换成的新文本"},
             "replace_all": {"type": "boolean", "description": "true 时替换全部匹配处"}
         },
-        "required": ["path", "old_string", "new_string"]
+        "required": ["path", "old_string", "new_string"],
+        "additionalProperties": false
     }),
     |ft: &FileTools, args: &Value| {
         let path = arg_str(args, "path")?;
@@ -263,7 +309,8 @@ file_tool!(
             "path": {"type": "string", "description": "要搜索的目录，绝对路径或相对于文件沙箱根目录"},
             "pattern": {"type": "string", "description": "文件名通配符，如 *.txt、report_????.csv"}
         },
-        "required": ["path", "pattern"]
+        "required": ["path", "pattern"],
+        "additionalProperties": false
     }),
     |ft: &FileTools, args: &Value| {
         let path = arg_str(args, "path")?;
@@ -283,7 +330,8 @@ file_tool!(
             "pattern": {"type": "string", "description": "正则表达式"},
             "max_results": {"type": "integer", "description": "最多返回多少条匹配（默认 50，上限 100）"}
         },
-        "required": ["path", "pattern"]
+        "required": ["path", "pattern"],
+        "additionalProperties": false
     }),
     |ft: &FileTools, args: &Value| {
         let path = arg_str(args, "path")?;
@@ -291,7 +339,7 @@ file_tool!(
         let max_results = args
             .get("max_results")
             .and_then(Value::as_u64)
-            .map(|n| n as usize)
+            .map(|n| n.min(MAX_GREP_RESULTS as u64) as usize)
             .unwrap_or(50);
         exec(ft.grep_files(path, pattern, max_results))
     }
@@ -319,23 +367,39 @@ impl Tool for ExecuteCommand {
                 "properties": {
                     "command": {"type": "string", "description": "要运行的 shell 命令"},
                     "cwd": {"type": "string", "description": "工作目录，绝对路径或相对于文件沙箱根目录。留空表示沙箱根目录。"},
-                    "uac": {"type": "boolean", "description": "true 时请求管理员权限运行（仅 Windows，弹 UAC 确认框）"}
+                    "uac": {"type": "boolean", "description": "true 时请求管理员权限运行（仅 Windows，弹 UAC 确认框）"},
+                    "timeout_seconds": {"type": "integer", "description": "命令最长运行秒数（默认 60，最小 1，最大 300）"}
                 },
-                "required": ["command"]
+                "required": ["command"],
+                "additionalProperties": false
             }),
         )
     }
 
     fn timeout_hint(&self) -> Option<Duration> {
-        // 覆盖审批等待（120s）+ 命令运行时间
-        Some(Duration::from_secs(300))
+        // 覆盖审批等待（120s）+ 最大命令时间（300s）+ 清理余量。
+        Some(Duration::from_secs(430))
     }
 
-    async fn execute(&self, context: &ToolContext, arguments: Value) -> Result<ToolResult, ToolError> {
+    async fn execute(
+        &self,
+        context: &ToolContext,
+        arguments: Value,
+    ) -> Result<ToolResult, ToolError> {
         let app = context.require_app()?;
         let command = arg_str(&arguments, "command")?;
         let cwd = arguments.get("cwd").and_then(Value::as_str).unwrap_or("");
-        let uac = arguments.get("uac").and_then(Value::as_bool).unwrap_or(false);
+        let uac = arguments
+            .get("uac")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let timeout = Duration::from_secs(
+            arguments
+                .get("timeout_seconds")
+                .and_then(Value::as_u64)
+                .unwrap_or(command_executor::DEFAULT_COMMAND_TIMEOUT.as_secs())
+                .clamp(1, command_executor::MAX_COMMAND_TIMEOUT.as_secs()),
+        );
         let config = SkillAgentConfig::load(&app);
         let sandbox_dir = config.resolve_sandbox_dir();
 
@@ -348,7 +412,7 @@ impl Tool for ExecuteCommand {
                 .lock()
                 .await
                 .insert(request_id.clone(), ApprovalRequest { tx });
-            let _ = app.emit(
+            if let Err(error) = app.emit(
                 "chat:command_approval",
                 json!({
                     "request_id": request_id,
@@ -356,13 +420,28 @@ impl Tool for ExecuteCommand {
                     "cwd": cwd,
                     "uac": uac,
                 }),
-            );
+            ) {
+                state
+                    .chat_command_approvals
+                    .lock()
+                    .await
+                    .remove(&request_id);
+                return Err(ToolError::Execution(format!(
+                    "无法发送命令审批请求: {error}"
+                )));
+            }
             let decision = tokio::time::timeout(Duration::from_secs(120), rx).await;
-            state.chat_command_approvals.lock().await.remove(&request_id);
+            state
+                .chat_command_approvals
+                .lock()
+                .await
+                .remove(&request_id);
             match decision {
                 Ok(Ok(true)) => {}
                 Ok(Ok(false)) => return Err(ToolError::Execution("命令已被用户拒绝".into())),
-                Ok(Err(_)) => return Err(ToolError::Execution("审批通道已关闭，命令未执行".into())),
+                Ok(Err(_)) => {
+                    return Err(ToolError::Execution("审批通道已关闭，命令未执行".into()))
+                }
                 Err(_) => {
                     return Err(ToolError::Execution(
                         "命令审批超时（120 秒），已自动拒绝".into(),
@@ -372,9 +451,16 @@ impl Tool for ExecuteCommand {
         }
 
         let result = if uac {
-            command_executor::run_shell_command_elevated(&sandbox_dir, command, cwd).await
+            command_executor::run_shell_command_elevated_with_timeout(
+                &sandbox_dir,
+                command,
+                cwd,
+                timeout,
+            )
+            .await
         } else {
-            command_executor::run_shell_command(&sandbox_dir, command, cwd).await
+            command_executor::run_shell_command_with_timeout(&sandbox_dir, command, cwd, timeout)
+                .await
         };
         match result {
             Ok(out) => Ok(json!({
@@ -384,5 +470,57 @@ impl Tool for ExecuteCommand {
             })),
             Err(e) => Err(ToolError::Execution(e.to_string())),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ai_service::tools::settings::ToolSettings;
+
+    #[test]
+    fn code_tool_schemas_are_strict_openai_objects() {
+        let settings = SharedToolSettings::new(ToolSettings::default());
+        let tools: Vec<Box<dyn Tool>> = vec![
+            Box::new(ListSkills),
+            Box::new(ReadSkill),
+            Box::new(ListFiles::new(settings.clone())),
+            Box::new(ReadFile::new(settings.clone())),
+            Box::new(WriteFile::new(settings.clone())),
+            Box::new(DeleteFile::new(settings.clone())),
+            Box::new(EditFile::new(settings.clone())),
+            Box::new(SearchFiles::new(settings.clone())),
+            Box::new(GrepFiles::new(settings.clone())),
+            Box::new(ExecuteCommand::new(settings)),
+        ];
+
+        for tool in tools {
+            let definition = tool.definition();
+            assert_eq!(definition.type_, "function");
+            assert_eq!(definition.function.parameters["type"], "object");
+            assert_eq!(
+                definition.function.parameters["additionalProperties"], false,
+                "{} must reject unknown arguments",
+                definition.function.name
+            );
+            assert!(definition.function.parameters["properties"].is_object());
+            let expected_timeout = match definition.function.name.as_str() {
+                "list_skills" | "read_skill" => SKILL_TOOL_TIMEOUT,
+                "execute_command" => Duration::from_secs(430),
+                _ => FILE_TOOL_TIMEOUT,
+            };
+            assert_eq!(tool.timeout_hint(), Some(expected_timeout));
+        }
+    }
+
+    #[test]
+    fn command_schema_exposes_bounded_timeout() {
+        let tool = ExecuteCommand::new(SharedToolSettings::new(ToolSettings::default()));
+        let definition = tool.definition();
+        assert_eq!(
+            definition.function.parameters["properties"]["timeout_seconds"]["type"],
+            "integer"
+        );
+        assert_eq!(tool.timeout_hint(), Some(Duration::from_secs(430)));
     }
 }

@@ -1,15 +1,25 @@
-//! Shell 命令执行与用户审批。
+//! Shell command execution, user approval, timeout and output bounds.
 
 use crate::ai_service::skill_agent::events::SkillAgentEvent;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::Path;
-use std::sync::atomic::AtomicU64;
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
+use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::sync::{oneshot, Mutex};
+use tokio::io::{AsyncRead, AsyncReadExt};
+use tokio::sync::{oneshot, Mutex, Notify};
 
-/// 一个等待用户决策的审批请求。
+pub const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
+pub const MAX_COMMAND_TIMEOUT: Duration = Duration::from_secs(300);
+const MAX_COMMAND_OUTPUT_BYTES: usize = 1024 * 1024;
+const OUTPUT_DRAIN_GRACE: Duration = Duration::from_millis(400);
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// A command waiting for the user's decision.
 pub struct ApprovalRequest {
     pub tx: oneshot::Sender<bool>,
 }
@@ -25,7 +35,7 @@ pub struct CommandOutput {
     pub exit_code: i32,
 }
 
-/// 子进程输出解码：中文 Windows 上命令输出通常是 GBK/CP936，非 UTF-8 时回退 GBK。
+/// Windows command output is often GBK/CP936 rather than UTF-8.
 fn decode_console_output(bytes: &[u8]) -> String {
     if let Ok(s) = std::str::from_utf8(bytes) {
         return s.to_string();
@@ -35,8 +45,7 @@ fn decode_console_output(bytes: &[u8]) -> String {
 
 impl CommandOutput {
     pub fn to_prompt_string(&self) -> String {
-        let mut out = String::new();
-        out.push_str(&format!("退出码: {}\n", self.exit_code));
+        let mut out = format!("退出码: {}\n", self.exit_code);
         if !self.stdout.trim().is_empty() {
             out.push_str(&format!("stdout:\n{}\n", self.stdout));
         }
@@ -55,110 +64,357 @@ pub fn new_request_id() -> String {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis();
-    let n = REQUEST_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    format!("req-{}-{}", ts, n)
+    let n = REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("req-{ts}-{n}")
 }
 
-/// 运行 shell 命令（不含审批）。Windows 用 `cmd /C`，POSIX 用 `sh -c`。
+/// Run a command with the default timeout.
 pub async fn run_shell_command(
     sandbox_dir: &Path,
     command: &str,
     cwd: &str,
 ) -> anyhow::Result<CommandOutput> {
-    let cwd_path = if cwd.trim().is_empty() {
-        sandbox_dir.to_path_buf()
-    } else {
-        std::path::PathBuf::from(cwd.trim())
-    };
-
-    #[cfg(windows)]
-    let output = {
-        // raw_arg 原样传命令，避免 std 自动加引号被 cmd.exe 自己的一套引号规则弄坏内层引号
-        tokio::process::Command::new("cmd")
-            .arg("/C")
-            .raw_arg(std::ffi::OsStr::new(command))
-            .current_dir(cwd_path)
-            .output()
-            .await
-    };
-    #[cfg(not(windows))]
-    let output = {
-        tokio::process::Command::new("sh")
-            .arg("-c")
-            .arg(command)
-            .current_dir(cwd_path)
-            .output()
-            .await
-    };
-
-    let output = output.map_err(|e| anyhow::anyhow!("无法执行命令: {}", e))?;
-    Ok(CommandOutput {
-        stdout: decode_console_output(&output.stdout),
-        stderr: decode_console_output(&output.stderr),
-        exit_code: output.status.code().unwrap_or(-1),
-    })
+    run_shell_command_with_timeout(sandbox_dir, command, cwd, DEFAULT_COMMAND_TIMEOUT).await
 }
 
-/// 以管理员权限运行命令（仅 Windows）：把命令包装进临时 .bat 捕获输出与退出码，
-/// 再用 PowerShell `Start-Process -Verb RunAs` 触发系统 UAC 确认框并等待结束。
-/// 用户在 UAC 框点「否」时返回错误。
-#[cfg(windows)]
-pub async fn run_shell_command_elevated(
+/// Run a shell command with bounded time and output.
+///
+/// The shell process is the lifecycle boundary. A successfully detached descendant may continue
+/// running, but cannot keep this future alive merely by inheriting stdout/stderr handles. On
+/// timeout or runaway output, the process tree is terminated best-effort.
+pub async fn run_shell_command_with_timeout(
     sandbox_dir: &Path,
     command: &str,
     cwd: &str,
+    timeout: Duration,
 ) -> anyhow::Result<CommandOutput> {
-    let cwd_path = if cwd.trim().is_empty() {
+    run_shell_command_with_limits(
+        sandbox_dir,
+        command,
+        cwd,
+        clamp_command_timeout(timeout),
+        MAX_COMMAND_OUTPUT_BYTES,
+    )
+    .await
+}
+
+async fn run_shell_command_with_limits(
+    sandbox_dir: &Path,
+    command: &str,
+    cwd: &str,
+    timeout: Duration,
+    output_limit: usize,
+) -> anyhow::Result<CommandOutput> {
+    if command.trim().is_empty() {
+        anyhow::bail!("命令不能为空");
+    }
+    let cwd_path = resolve_working_directory(sandbox_dir, cwd)?;
+
+    #[cfg(windows)]
+    let mut process = {
+        let mut process = tokio::process::Command::new("cmd");
+        // raw_arg keeps cmd.exe's nested quoting intact.
+        process
+            .arg("/D")
+            .arg("/C")
+            .raw_arg(std::ffi::OsStr::new(command))
+            .creation_flags(CREATE_NO_WINDOW);
+        process
+    };
+    #[cfg(not(windows))]
+    let mut process = {
+        use std::os::unix::process::CommandExt;
+
+        let mut process = tokio::process::Command::new("sh");
+        process.arg("-c").arg(command).process_group(0);
+        process
+    };
+
+    process
+        .current_dir(cwd_path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+
+    let mut child = process
+        .spawn()
+        .map_err(|e| anyhow::anyhow!("无法执行命令: {e}"))?;
+    let mut cancellation_guard = ProcessTreeCancellationGuard::new(child.id());
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("无法捕获命令 stdout"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("无法捕获命令 stderr"))?;
+
+    let stdout_buf = Arc::new(StdMutex::new(Vec::new()));
+    let stderr_buf = Arc::new(StdMutex::new(Vec::new()));
+    let total = Arc::new(AtomicUsize::new(0));
+    let exceeded = Arc::new(AtomicBool::new(false));
+    let output_exceeded = Arc::new(Notify::new());
+    let mut stdout_task = tokio::spawn(capture_pipe(
+        stdout,
+        Arc::clone(&stdout_buf),
+        Arc::clone(&total),
+        Arc::clone(&exceeded),
+        Arc::clone(&output_exceeded),
+        output_limit,
+    ));
+    let mut stderr_task = tokio::spawn(capture_pipe(
+        stderr,
+        Arc::clone(&stderr_buf),
+        Arc::clone(&total),
+        Arc::clone(&exceeded),
+        Arc::clone(&output_exceeded),
+        output_limit,
+    ));
+
+    enum Completion {
+        Exited(std::process::ExitStatus),
+        TimedOut,
+        OutputLimit,
+    }
+
+    let completion = tokio::select! {
+        biased;
+        _ = output_exceeded.notified() => Completion::OutputLimit,
+        _ = tokio::time::sleep(timeout) => Completion::TimedOut,
+        status = child.wait() => Completion::Exited(
+            status.map_err(|e| anyhow::anyhow!("等待命令结束失败: {e}"))?
+        ),
+    };
+
+    if !matches!(completion, Completion::Exited(_)) {
+        terminate_process_tree(&mut child).await;
+    }
+    cancellation_guard.disarm();
+    finish_capture(&mut stdout_task, &mut stderr_task).await;
+
+    let partial = CommandOutput {
+        stdout: decode_console_output(&clone_capture(&stdout_buf)),
+        stderr: decode_console_output(&clone_capture(&stderr_buf)),
+        exit_code: -1,
+    };
+
+    match completion {
+        Completion::TimedOut => anyhow::bail!(
+            "命令执行超时（{} 秒），已终止进程树。\n{}",
+            timeout.as_secs_f32(),
+            partial.to_prompt_string()
+        ),
+        Completion::OutputLimit => anyhow::bail!(
+            "命令输出超过 {output_limit} 字节，已终止进程树；请将大量输出重定向到文件。\n{}",
+            partial.to_prompt_string()
+        ),
+        Completion::Exited(status) => Ok(CommandOutput {
+            stdout: partial.stdout,
+            stderr: partial.stderr,
+            exit_code: status.code().unwrap_or(-1),
+        }),
+    }
+}
+
+fn clamp_command_timeout(timeout: Duration) -> Duration {
+    timeout.max(Duration::from_secs(1)).min(MAX_COMMAND_TIMEOUT)
+}
+
+fn resolve_working_directory(sandbox_dir: &Path, cwd: &str) -> anyhow::Result<PathBuf> {
+    let requested = cwd.trim();
+    let path = if requested.is_empty() {
         sandbox_dir.to_path_buf()
     } else {
-        std::path::PathBuf::from(cwd.trim())
+        let path = PathBuf::from(requested);
+        if path.is_absolute() {
+            path
+        } else {
+            sandbox_dir.join(path)
+        }
     };
-    let stamp = format!("lingchat_uac_{}", new_request_id());
-    let dir = std::env::temp_dir();
-    let bat = dir.join(format!("{stamp}.bat"));
-    let out_f = dir.join(format!("{stamp}.out"));
-    let err_f = dir.join(format!("{stamp}.err"));
-    let code_f = dir.join(format!("{stamp}.code"));
+    if !path.is_dir() {
+        anyhow::bail!("工作目录不存在或不是目录: {}", path.display());
+    }
+    Ok(path)
+}
 
-    // chcp 65001：把控制台代码页切到 UTF-8，避免命令里的中文按 ANSI 解析乱码
+async fn capture_pipe<R: AsyncRead + Unpin>(
+    mut pipe: R,
+    buffer: Arc<StdMutex<Vec<u8>>>,
+    total: Arc<AtomicUsize>,
+    exceeded: Arc<AtomicBool>,
+    notify: Arc<Notify>,
+    limit: usize,
+) {
+    let mut chunk = [0u8; 8192];
+    loop {
+        let read = match pipe.read(&mut chunk).await {
+            Ok(0) | Err(_) => return,
+            Ok(read) => read,
+        };
+        let previous = total.fetch_add(read, Ordering::Relaxed);
+        let keep = limit.saturating_sub(previous).min(read);
+        if keep > 0 {
+            if let Ok(mut captured) = buffer.lock() {
+                captured.extend_from_slice(&chunk[..keep]);
+            }
+        }
+        if previous.saturating_add(read) > limit && !exceeded.swap(true, Ordering::AcqRel) {
+            notify.notify_one();
+        }
+    }
+}
+
+async fn finish_capture(
+    stdout_task: &mut tokio::task::JoinHandle<()>,
+    stderr_task: &mut tokio::task::JoinHandle<()>,
+) {
+    if tokio::time::timeout(OUTPUT_DRAIN_GRACE, async {
+        let _ = (&mut *stdout_task).await;
+        let _ = (&mut *stderr_task).await;
+    })
+    .await
+    .is_err()
+    {
+        stdout_task.abort();
+        stderr_task.abort();
+    }
+}
+
+fn clone_capture(buffer: &StdMutex<Vec<u8>>) -> Vec<u8> {
+    buffer.lock().map(|bytes| bytes.clone()).unwrap_or_default()
+}
+
+async fn terminate_process_tree(child: &mut tokio::process::Child) {
+    #[cfg(windows)]
+    if let Some(pid) = child.id() {
+        let mut taskkill = tokio::process::Command::new("taskkill");
+        taskkill
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .creation_flags(CREATE_NO_WINDOW)
+            .kill_on_drop(true);
+        let _ = tokio::time::timeout(Duration::from_secs(5), taskkill.status()).await;
+    }
+
+    #[cfg(not(windows))]
+    if let Some(pid) = child.id() {
+        let process_group = format!("-{pid}");
+        let mut kill = tokio::process::Command::new("kill");
+        kill.args(["-KILL", "--", &process_group])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .kill_on_drop(true);
+        let _ = tokio::time::timeout(Duration::from_secs(5), kill.status()).await;
+    }
+
+    let _ = child.kill().await;
+    let _ = tokio::time::timeout(Duration::from_secs(5), child.wait()).await;
+}
+
+/// Async cancellation drops the command future, so there is no opportunity to await cleanup.
+/// Run the OS tree-kill command before `Child::kill_on_drop` removes the shell process. This
+/// intentionally blocks only during cancellation: detaching taskkill races with child drop and can
+/// lose the parent/descendant relationship before taskkill inspects it.
+struct ProcessTreeCancellationGuard {
+    pid: Option<u32>,
+}
+
+impl ProcessTreeCancellationGuard {
+    fn new(pid: Option<u32>) -> Self {
+        Self { pid }
+    }
+
+    fn disarm(&mut self) {
+        self.pid = None;
+    }
+}
+
+impl Drop for ProcessTreeCancellationGuard {
+    fn drop(&mut self) {
+        let Some(pid) = self.pid else { return };
+
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+
+            let _ = std::process::Command::new("taskkill")
+                .args(["/PID", &pid.to_string(), "/T", "/F"])
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .creation_flags(CREATE_NO_WINDOW)
+                .status();
+        }
+
+        #[cfg(not(windows))]
+        {
+            let _ = std::process::Command::new("kill")
+                .args(["-KILL", "--", &format!("-{pid}")])
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
+    }
+}
+
+#[cfg(windows)]
+pub async fn run_shell_command_elevated_with_timeout(
+    sandbox_dir: &Path,
+    command: &str,
+    cwd: &str,
+    timeout: Duration,
+) -> anyhow::Result<CommandOutput> {
+    let timeout = clamp_command_timeout(timeout);
+    let cwd_path = resolve_working_directory(sandbox_dir, cwd)?;
+    let temp = ElevatedTempFiles::new();
     let bat_content = format!(
         "@echo off\r\nchcp 65001 >nul\r\ncd /d \"{}\"\r\n{} > \"{}\" 2> \"{}\"\r\necho %ERRORLEVEL% > \"{}\"\r\n",
         cwd_path.display(),
         command,
-        out_f.display(),
-        err_f.display(),
-        code_f.display()
+        temp.stdout.display(),
+        temp.stderr.display(),
+        temp.exit_code.display()
     );
-    std::fs::write(&bat, &bat_content)?;
+    std::fs::write(&temp.script, bat_content)?;
 
+    // Process::WaitForExit waits for the elevated cmd process itself. Start-Process -Wait also
+    // waits for descendants and would reproduce the inherited-handle hang.
     let ps = format!(
-        "Start-Process -FilePath cmd.exe -ArgumentList '/C','\"{}\"' -Verb RunAs -Wait",
-        bat.display()
+        "$p = Start-Process -FilePath cmd.exe -ArgumentList '/D','/C','\"{}\"' -Verb RunAs -PassThru; $p.WaitForExit(); exit $p.ExitCode",
+        temp.script.display()
     );
-    let result = tokio::process::Command::new("powershell")
+    let mut process = tokio::process::Command::new("powershell");
+    process
         .args(["-NoProfile", "-Command", &ps])
-        .output()
-        .await;
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .creation_flags(CREATE_NO_WINDOW)
+        .kill_on_drop(true);
 
-    let read_lossy = |p: &Path| -> String {
-        std::fs::read(p)
-            .map(|b| decode_console_output(&b))
-            .unwrap_or_default()
+    let output = match tokio::time::timeout(timeout, process.output()).await {
+        Ok(result) => result.map_err(|e| anyhow::anyhow!("无法启动提权进程: {e}"))?,
+        Err(_) => anyhow::bail!(
+            "提权命令在 {} 秒内未结束；已停止等待，请检查是否仍有 UAC 窗口或后台进程。",
+            timeout.as_secs()
+        ),
     };
-    let stdout = read_lossy(&out_f);
-    let stderr = read_lossy(&err_f);
-    let exit_code = std::fs::read_to_string(&code_f)
+
+    let stdout = read_limited_output(&temp.stdout)?;
+    let stderr = read_limited_output(&temp.stderr)?;
+    let exit_code = std::fs::read_to_string(&temp.exit_code)
         .ok()
         .and_then(|s| s.trim().parse::<i32>().ok())
         .unwrap_or(-1);
-    for p in [&bat, &out_f, &err_f, &code_f] {
-        let _ = std::fs::remove_file(p);
-    }
-
-    let output = result.map_err(|e| anyhow::anyhow!("无法启动提权进程: {}", e))?;
     if !output.status.success() && stdout.is_empty() && exit_code == -1 {
         anyhow::bail!(
-            "提权执行失败（用户可能在 UAC 框点了「否」）: {}",
+            "提权执行失败（用户可能在 UAC 窗口选择了“否”）: {}",
             decode_console_output(&output.stderr)
         );
     }
@@ -169,17 +425,67 @@ pub async fn run_shell_command_elevated(
     })
 }
 
+#[cfg(windows)]
+struct ElevatedTempFiles {
+    script: PathBuf,
+    stdout: PathBuf,
+    stderr: PathBuf,
+    exit_code: PathBuf,
+}
+
+#[cfg(windows)]
+impl ElevatedTempFiles {
+    fn new() -> Self {
+        let prefix = std::env::temp_dir().join(format!("lingchat_uac_{}", new_request_id()));
+        Self {
+            script: prefix.with_extension("bat"),
+            stdout: prefix.with_extension("out"),
+            stderr: prefix.with_extension("err"),
+            exit_code: prefix.with_extension("code"),
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for ElevatedTempFiles {
+    fn drop(&mut self) {
+        for path in [&self.script, &self.stdout, &self.stderr, &self.exit_code] {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+#[cfg(windows)]
+fn read_limited_output(path: &Path) -> anyhow::Result<String> {
+    use std::io::Read;
+
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return Ok(String::new());
+    };
+    let mut bytes = Vec::new();
+    file.by_ref()
+        .take((MAX_COMMAND_OUTPUT_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > MAX_COMMAND_OUTPUT_BYTES {
+        anyhow::bail!(
+            "提权命令输出超过 {} 字节；请将大量输出重定向到文件",
+            MAX_COMMAND_OUTPUT_BYTES
+        );
+    }
+    Ok(decode_console_output(&bytes))
+}
+
 #[cfg(not(windows))]
-pub async fn run_shell_command_elevated(
+pub async fn run_shell_command_elevated_with_timeout(
     _sandbox_dir: &Path,
     _command: &str,
     _cwd: &str,
+    _timeout: Duration,
 ) -> anyhow::Result<CommandOutput> {
     anyhow::bail!("UAC 提权仅支持 Windows 平台")
 }
 
-/// 运行 shell 命令。Windows 用 `cmd /C`，POSIX 用 `sh -c`。
-/// 需要审批时（auto_approve=false）发 PendingApproval 事件并等待用户决定（120s 超时自动拒绝）。
+/// Script-agent command execution with its existing approval channel.
 #[allow(clippy::too_many_arguments)]
 pub async fn execute_command(
     channel: &tauri::ipc::Channel<SkillAgentEvent>,
@@ -204,15 +510,17 @@ pub async fn execute_command(
             .await
             .insert(request_id.clone(), ApprovalRequest { tx });
 
-        let _ = channel.send(SkillAgentEvent::PendingApproval {
+        if let Err(error) = channel.send(SkillAgentEvent::PendingApproval {
             request_id: request_id.clone(),
             tool: "execute_command".into(),
             args,
-        });
+        }) {
+            approvals.lock().await.remove(&request_id);
+            anyhow::bail!("无法发送命令审批请求: {error}");
+        }
 
         let decision = tokio::time::timeout(Duration::from_secs(120), rx).await;
         approvals.lock().await.remove(&request_id);
-
         match decision {
             Ok(Ok(true)) => tracing::debug!("[skill_agent] approval granted: {}", request_id),
             Ok(Ok(false)) => anyhow::bail!("命令已被用户拒绝"),
@@ -226,38 +534,177 @@ pub async fn execute_command(
 
 #[cfg(test)]
 mod tests {
-    /// `cmd /C python script.py "pink dark neon"` 必须原样保留带引号参数。
-    /// 没有 raw_arg 时 std 会对整串自动加引号，cmd.exe 的引号规则会剥掉内层引号。
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::Instant;
+
+    static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new() -> Self {
+            let id = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!(
+                "lingchat_command_test_{}_{}",
+                std::process::id(),
+                id
+            ));
+            std::fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     #[cfg(windows)]
-    #[test]
-    fn cmd_preserves_quoted_args_with_raw_arg() {
-        use std::os::windows::process::CommandExt;
-
-        let script = std::env::temp_dir().join("lingchat_quote_test.py");
-        std::fs::write(
-            &script,
-            "import sys\nprint(repr(sys.argv[1:]))\n",
-        )
-        .unwrap();
-
-        let cmd = format!(
-            "python {} \"pink dark neon\" --domain color -n 3",
-            script.to_string_lossy()
+    #[tokio::test]
+    async fn command_preserves_quoted_args() {
+        let temp = TempDir::new();
+        let script = temp.0.join("quote test.py");
+        std::fs::write(&script, "import sys\nprint(repr(sys.argv[1:]))\n").unwrap();
+        let command = format!(
+            "python \"{}\" \"pink dark neon\" --domain color -n 3",
+            script.display()
         );
-        let out = std::process::Command::new("cmd")
-            .arg("/C")
-            .raw_arg(std::ffi::OsStr::new(&cmd))
-            .output()
-            .expect("run cmd");
-
-        let _ = std::fs::remove_file(&script);
-
-        let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+        let out = run_shell_command(&temp.0, &command, "").await.unwrap();
+        assert_eq!(out.exit_code, 0, "{}", out.to_prompt_string());
         assert!(
-            stdout.contains("['pink dark neon', '--domain', 'color', '-n', '3']"),
-            "quoted arg was mangled.\nstdout: {}\nstderr: {}",
-            stdout,
-            String::from_utf8_lossy(&out.stderr)
+            out.stdout
+                .contains("['pink dark neon', '--domain', 'color', '-n', '3']"),
+            "{}",
+            out.to_prompt_string()
         );
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn relative_cwd_is_resolved_from_sandbox() {
+        let temp = TempDir::new();
+        let nested = temp.0.join("nested");
+        std::fs::create_dir_all(&nested).unwrap();
+        let out = run_shell_command(&temp.0, "cd", "nested").await.unwrap();
+        assert_eq!(
+            PathBuf::from(out.stdout.trim()).canonicalize().unwrap(),
+            nested.canonicalize().unwrap()
+        );
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn inherited_output_handle_does_not_block_completion() {
+        let temp = TempDir::new();
+        let command = "powershell -NoProfile -Command \"$p = Start-Process powershell -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 5' -NoNewWindow -PassThru; $p.Id\"";
+        let started = Instant::now();
+        let out = run_shell_command_with_timeout(&temp.0, command, "", Duration::from_secs(8))
+            .await
+            .unwrap();
+        let elapsed = started.elapsed();
+        if let Ok(pid) = out.stdout.trim().parse::<u32>() {
+            let _ = std::process::Command::new("taskkill")
+                .args(["/PID", &pid.to_string(), "/T", "/F"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "inherited pipe delayed completion for {elapsed:?}"
+        );
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn timeout_terminates_command() {
+        let temp = TempDir::new();
+        let started = Instant::now();
+        let error = run_shell_command_with_limits(
+            &temp.0,
+            "powershell -NoProfile -Command \"Start-Sleep -Seconds 5\"",
+            "",
+            Duration::from_millis(200),
+            4096,
+        )
+        .await
+        .unwrap_err();
+        assert!(error.to_string().contains("超时"));
+        assert!(started.elapsed() < Duration::from_secs(3));
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn runaway_output_is_stopped() {
+        let temp = TempDir::new();
+        let error = run_shell_command_with_limits(
+            &temp.0,
+            "powershell -NoProfile -Command \"[Console]::Out.Write('x' * 8192); Start-Sleep -Seconds 5\"",
+            "",
+            Duration::from_secs(8),
+            1024,
+        )
+        .await
+        .unwrap_err();
+        assert!(error.to_string().contains("输出超过"));
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn cancelling_future_terminates_process_tree() {
+        let temp = TempDir::new();
+        let pid_file = temp.0.join("child.pid");
+        let command = format!(
+            "powershell -NoProfile -Command \"$p = Start-Process powershell -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 30' -NoNewWindow -PassThru; Set-Content -LiteralPath '{}' -Value $p.Id; Start-Sleep -Seconds 30\"",
+            pid_file.display()
+        );
+        let sandbox = temp.0.clone();
+        let task = tokio::spawn(async move {
+            run_shell_command_with_timeout(&sandbox, &command, "", Duration::from_secs(60)).await
+        });
+
+        for _ in 0..100 {
+            if pid_file.is_file() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        let pid = std::fs::read_to_string(&pid_file)
+            .expect("child pid file")
+            .trim()
+            .parse::<u32>()
+            .expect("child pid");
+        task.abort();
+        let _ = task.await;
+
+        let mut still_running = true;
+        for _ in 0..100 {
+            if !process_exists(pid) {
+                still_running = false;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        if still_running {
+            let _ = std::process::Command::new("taskkill")
+                .args(["/PID", &pid.to_string(), "/T", "/F"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
+        assert!(!still_running, "cancelled command left child process {pid}");
+    }
+
+    #[cfg(windows)]
+    fn process_exists(pid: u32) -> bool {
+        let Ok(output) = std::process::Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
+            .output()
+        else {
+            return false;
+        };
+        String::from_utf8_lossy(&output.stdout).contains(&format!("\"{pid}\""))
     }
 }
