@@ -154,6 +154,35 @@ export function initializeTauriEventListeners() {
     }
   })
 
+  // execute_command 中识别到删除操作时使用独立危险确认；回传到删除审批队列。
+  listen('chat:command_delete_approval', async (event) => {
+    const payload = event.payload as {
+      request_id: string
+      command: string
+      cwd: string
+      uac: boolean
+    }
+    console.log('[Tauri] chat:command_delete_approval', payload)
+    const dialogStore = useDialogStore()
+    const message =
+      i18n.global.t('ui.toolCalls.commandDeleteApprovalMessage', {
+        command: payload.command,
+        cwd: payload.cwd || i18n.global.t('ui.toolCalls.approvalDefaultCwd'),
+      }) + (payload.uac ? `\n\n${i18n.global.t('ui.toolCalls.approvalUac')}` : '')
+    const approved = await dialogStore.confirm(
+      message,
+      i18n.global.t('ui.toolCalls.commandDeleteApprovalTitle'),
+    )
+    try {
+      await invoke('resolve_file_delete_approval', {
+        requestId: payload.request_id,
+        approved,
+      })
+    } catch (e) {
+      console.warn('[Tauri] 回传删除命令审批结果失败（可能已超时）:', e)
+    }
+  })
+
   // 主聊天 delete_file 审批：先显示后端解析并校验过的真实路径，再把决定回传给工具。
   listen('chat:file_delete_approval', async (event) => {
     const payload = event.payload as {

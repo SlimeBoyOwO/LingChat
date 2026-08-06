@@ -344,9 +344,8 @@ impl Tool for DeleteFile {
             let target = checked_ft
                 .sanitize(&checked_path)
                 .map_err(|error| ToolError::Execution(error.to_string()))?;
-            let metadata = std::fs::symlink_metadata(&target).map_err(|_| {
-                ToolError::Execution(format!("文件不存在: {}", target.display()))
-            })?;
+            let metadata = std::fs::symlink_metadata(&target)
+                .map_err(|_| ToolError::Execution(format!("文件不存在: {}", target.display())))?;
             if metadata.file_type().is_dir() {
                 return Err(ToolError::Execution(format!(
                     "delete_file 只能删除文件，不能删除目录: {}",
@@ -359,10 +358,7 @@ impl Tool for DeleteFile {
         .map_err(|error| ToolError::Execution(format!("删除目标检查异常: {error}")))??;
 
         if !self.settings.get().file_delete_auto_approve {
-            let approvals = app
-                .state::<AppState>()
-                .chat_file_delete_approvals
-                .clone();
+            let approvals = app.state::<AppState>().chat_file_delete_approvals.clone();
             request_user_approval(
                 &app,
                 approvals,
@@ -452,6 +448,61 @@ file_tool!(
         exec(ft.grep_files(path, pattern, max_results))
     }
 );
+
+/// 保守识别常见的文件删除命令。任意 shell/程序都可能间接删除文件，因此这里
+/// 优先避免漏报；误报只会多要求一次用户确认，不会改变命令内容。
+fn command_may_delete_files(command: &str) -> bool {
+    let normalized = command.to_ascii_lowercase();
+    let tokens = normalized
+        .split(|ch: char| !(ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.')))
+        .filter(|token| !token.is_empty())
+        .collect::<Vec<_>>();
+
+    if tokens.iter().any(|token| {
+        matches!(
+            *token,
+            "del"
+                | "del.exe"
+                | "erase"
+                | "erase.exe"
+                | "rd"
+                | "rd.exe"
+                | "rmdir"
+                | "rmdir.exe"
+                | "rm"
+                | "rm.exe"
+                | "ri"
+                | "unlink"
+                | "unlink.exe"
+                | "shred"
+                | "shred.exe"
+                | "sdelete"
+                | "sdelete.exe"
+                | "rimraf"
+                | "rimraf.cmd"
+                | "truncate"
+                | "truncate.exe"
+                | "remove-item"
+                | "clear-content"
+                | "-delete"
+                | "--delete"
+        )
+    }) {
+        return true;
+    }
+
+    (tokens.contains(&"git") || tokens.contains(&"git.exe"))
+        && (tokens.contains(&"rm") || tokens.contains(&"clean"))
+        || (tokens.contains(&"robocopy") || tokens.contains(&"robocopy.exe"))
+            && tokens.contains(&"mir")
+        || normalized.contains("os.remove(")
+        || normalized.contains("os.unlink(")
+        || normalized.contains("os.rmdir(")
+        || normalized.contains("shutil.rmtree(")
+        || normalized.contains(".unlink(")
+        || normalized.contains("file.delete(")
+        || normalized.contains("directory.delete(")
+}
 
 /// execute_command：在本机运行 shell 命令（默认需用户弹窗确认，可后台运行或 UAC 提权）。
 pub struct ExecuteCommand {
@@ -549,8 +600,26 @@ impl Tool for ExecuteCommand {
         );
         let config = SkillAgentConfig::load(&app);
         let sandbox_dir = config.resolve_sandbox_dir();
+        let settings = self.settings.get();
+        let is_delete_command = command_may_delete_files(command);
 
-        if !self.settings.get().command_auto_approve {
+        if is_delete_command && !settings.file_delete_auto_approve {
+            let approvals = app.state::<AppState>().chat_file_delete_approvals.clone();
+            request_user_approval(
+                &app,
+                approvals,
+                "chat:command_delete_approval",
+                json!({
+                    "command": command,
+                    "cwd": cwd,
+                    "uac": uac,
+                    "run_in_background": run_in_background,
+                    "description": description,
+                }),
+                "删除命令",
+            )
+            .await?;
+        } else if !settings.command_auto_approve {
             let approvals = app.state::<AppState>().chat_command_approvals.clone();
             request_user_approval(
                 &app,
@@ -669,5 +738,32 @@ mod tests {
         let definition = tool.definition();
         assert!(definition.function.description.contains("请求确认"));
         assert_eq!(tool.timeout_hint(), Some(DELETE_FILE_TOOL_TIMEOUT));
+    }
+
+    #[test]
+    fn detects_common_file_deletion_commands() {
+        for command in [
+            r#"cmd /c del /q "C:\temp\old.txt""#,
+            r#"powershell -NoProfile -Command "Remove-Item -LiteralPath 'C:\temp\old.txt'""#,
+            "rm -rf ./build",
+            "git clean -fdx",
+            "find . -name '*.tmp' -delete",
+            "python -c \"import shutil; shutil.rmtree('build')\"",
+            "robocopy empty target /MIR",
+        ] {
+            assert!(command_may_delete_files(command), "not detected: {command}");
+        }
+
+        for command in [
+            "Get-ChildItem -Force",
+            "cargo test --lib",
+            "git status --short",
+            "python -c \"print('hello')\"",
+        ] {
+            assert!(
+                !command_may_delete_files(command),
+                "false positive: {command}"
+            );
+        }
     }
 }
