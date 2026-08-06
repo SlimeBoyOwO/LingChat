@@ -1,8 +1,8 @@
-//! Background command tasks for the main chat tool loop.
+//! 主对话工具循环的后台命令任务。
 //!
-//! A background command returns a task ID immediately. When the process exits, the bounded
-//! result is broadcast to the UI and appended to a model-only notification turn. This mirrors
-//! Kimi Code's detached-task workflow without adding a forged player line to chat history.
+//! 后台命令会立即返回任务 ID。进程退出时，受限的结果会广播给 UI，
+//! 并追加到一个仅模型可见的通知回合。这复刻了 Kimi Code 的分离式任务工作流，
+//! 且不会向对话历史里伪造玩家发言。
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -29,7 +29,7 @@ pub use command_executor::{DEFAULT_BACKGROUND_COMMAND_TIMEOUT, MAX_BACKGROUND_CO
 const MAX_CONCURRENT_BACKGROUND_COMMANDS: usize = 4;
 const NOTIFICATION_OUTPUT_CHARS: usize = 12_000;
 
-/// Concurrency slots and task ID allocation shared by every main-chat command tool instance.
+/// 每个主对话命令工具实例共享的并发槽位与任务 ID 分配器。
 pub struct BackgroundCommandManager {
     slots: Arc<Semaphore>,
     next_id: AtomicU64,
@@ -64,7 +64,7 @@ impl BackgroundCommandManager {
     }
 }
 
-/// Start a detached command and return its task metadata without waiting for completion.
+/// 启动一个分离的命令，不等待完成，直接返回其任务元数据。
 pub async fn start_background_command(
     app: AppHandle,
     sandbox_dir: PathBuf,
@@ -133,7 +133,7 @@ pub async fn start_background_command(
             Some(succeeded),
         );
 
-        // Release the command slot before waiting for the current model generation to finish.
+        // 在等待当前模型生成结束之前，先释放命令槽位。
         drop(permit);
 
         let notification = model_notification(&command, &cwd, &completion);

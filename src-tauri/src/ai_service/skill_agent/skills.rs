@@ -263,7 +263,7 @@ mod tests {
         let outside = temp.path().join("outside.md");
         fs::write(&outside, "---\ndescription: secret\n---\n").unwrap();
         if symlink_file(&outside, skill_dir.join("SKILL.md")).is_err() {
-            // Creating symlinks can require Developer Mode or elevated test permissions.
+            // 创建符号链接可能需要开发者模式或提权的测试权限。
             return;
         }
 

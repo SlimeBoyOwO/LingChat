@@ -1,4 +1,4 @@
-//! Shell command execution, user approval, timeout and output bounds.
+//! Shell 命令执行、用户审批、超时与输出上限。
 
 use crate::ai_service::skill_agent::events::SkillAgentEvent;
 use serde::{Deserialize, Serialize};
@@ -21,7 +21,7 @@ const OUTPUT_DRAIN_GRACE: Duration = Duration::from_millis(400);
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-/// A command waiting for the user's decision.
+/// 等待用户审批决定的命令。
 pub struct ApprovalRequest {
     pub tx: oneshot::Sender<bool>,
 }
@@ -37,7 +37,7 @@ pub struct CommandOutput {
     pub exit_code: i32,
 }
 
-/// Windows command output is often GBK/CP936 rather than UTF-8.
+/// Windows 命令输出通常是 GBK/CP936 而非 UTF-8。
 fn decode_console_output(bytes: &[u8]) -> String {
     if let Ok(s) = std::str::from_utf8(bytes) {
         return s.to_string();
@@ -70,7 +70,7 @@ pub fn new_request_id() -> String {
     format!("req-{ts}-{n}")
 }
 
-/// Run a command with the default timeout.
+/// 以默认超时运行命令。
 pub async fn run_shell_command(
     sandbox_dir: &Path,
     command: &str,
@@ -79,11 +79,11 @@ pub async fn run_shell_command(
     run_shell_command_with_timeout(sandbox_dir, command, cwd, DEFAULT_COMMAND_TIMEOUT).await
 }
 
-/// Run a shell command with bounded time and output.
+/// 以受限的时间和输出运行 shell 命令。
 ///
-/// The shell process is the lifecycle boundary. A successfully detached descendant may continue
-/// running, but cannot keep this future alive merely by inheriting stdout/stderr handles. On
-/// timeout or runaway output, the process tree is terminated best-effort.
+/// shell 进程是生命周期边界。成功分离的后代进程可以继续运行，
+/// 但仅凭继承 stdout/stderr 句柄无法让这个 future 保持存活。
+/// 超时或输出失控时，进程树会被尽力终止。
 pub async fn run_shell_command_with_timeout(
     sandbox_dir: &Path,
     command: &str,
@@ -100,10 +100,10 @@ pub async fn run_shell_command_with_timeout(
     .await
 }
 
-/// Run a detached chat command with the larger, explicitly bounded background timeout.
+/// 以更大且明确受限的后台超时，运行分离的对话命令。
 ///
-/// This is intentionally separate from [`run_shell_command_with_timeout`] so foreground
-/// callers keep the existing five-minute ceiling.
+/// 特意与 [`run_shell_command_with_timeout`] 分开，
+/// 让前台调用方保留原有的五分钟上限。
 pub async fn run_shell_command_in_background_with_timeout(
     sandbox_dir: &Path,
     command: &str,
@@ -135,7 +135,7 @@ async fn run_shell_command_with_limits(
     #[cfg(windows)]
     let mut process = {
         let mut process = tokio::process::Command::new("cmd");
-        // raw_arg keeps cmd.exe's nested quoting intact.
+        // raw_arg 能保持 cmd.exe 的嵌套引号原样不被破坏。
         process
             .arg("/D")
             .arg("/C")
@@ -342,10 +342,10 @@ async fn terminate_process_tree(child: &mut tokio::process::Child) {
     let _ = tokio::time::timeout(Duration::from_secs(5), child.wait()).await;
 }
 
-/// Async cancellation drops the command future, so there is no opportunity to await cleanup.
-/// Run the OS tree-kill command before `Child::kill_on_drop` removes the shell process. This
-/// intentionally blocks only during cancellation: detaching taskkill races with child drop and can
-/// lose the parent/descendant relationship before taskkill inspects it.
+/// 异步取消会直接 drop 命令 future，没有机会再等待清理。
+/// 要在 `Child::kill_on_drop` 移除 shell 进程之前运行操作系统的进程树终止命令。
+/// 这里特意只在取消时阻塞：分离的 taskkill 会与子进程 drop 竞争，
+/// 可能在 taskkill 检查之前就丢失父子进程关系。
 struct ProcessTreeCancellationGuard {
     pid: Option<u32>,
 }
@@ -410,9 +410,9 @@ pub async fn run_shell_command_elevated_with_timeout(
     std::fs::write(&temp.script, bat_content)?;
     std::fs::write(&temp.guard, b"running")?;
 
-    // The elevated watchdog owns termination of the elevated cmd tree. A medium-integrity
-    // launcher cannot reliably taskkill a high-integrity child, so timeout/cancellation removes
-    // the guard file and lets this elevated process perform cleanup at the same integrity level.
+    // 提权后的 cmd 进程树由提权 watchdog 负责终止。中等完整性的启动器
+    // 无法可靠地 taskkill 高完整性子进程，因此超时/取消时只移除哨兵文件，
+    // 让这个提权进程在同等完整性级别下执行清理。
     let watchdog = format!(
         "$ErrorActionPreference = 'Stop'\r\n\
          $guard = '{}'\r\n\
@@ -434,8 +434,8 @@ pub async fn run_shell_command_elevated_with_timeout(
     );
     std::fs::write(&temp.watchdog, watchdog)?;
 
-    // Process::WaitForExit waits for the elevated watchdog itself. Start-Process -Wait also waits
-    // for descendants and would reproduce the inherited-handle hang.
+    // Process::WaitForExit 只等待提权 watchdog 本身。
+    // Start-Process -Wait 还会等待后代进程，会复现句柄继承导致的挂起。
     let ps = format!(
         "$p = Start-Process -FilePath powershell.exe -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','\"{}\"' -Verb RunAs -PassThru; $p.WaitForExit(); exit $p.ExitCode",
         temp.watchdog.display()
@@ -546,7 +546,7 @@ async fn cancel_elevated_process(guard_path: &Path, pid_path: &Path) {
     }
     let Some(pid) = pid else { return };
 
-    // Give the elevated watchdog one polling interval to perform privileged cleanup first.
+    // 先给提权 watchdog 一个轮询间隔，让它优先执行特权清理。
     tokio::time::sleep(Duration::from_millis(300)).await;
 
     let mut taskkill = tokio::process::Command::new("taskkill");
@@ -559,8 +559,8 @@ async fn cancel_elevated_process(guard_path: &Path, pid_path: &Path) {
         .kill_on_drop(true);
     match tokio::time::timeout(Duration::from_secs(5), taskkill.status()).await {
         Ok(Ok(status)) if status.success() => {}
-        // The watchdog may already have removed the process; a non-zero fallback is therefore
-        // diagnostic only and not treated as a second user-visible failure.
+        // watchdog 可能已经终止了进程；因此非零的兜底结果仅作诊断，
+        // 不视为第二次面向用户的失败。
         Ok(Ok(status)) => tracing::debug!(pid, ?status, "提权 watchdog 已接管或兜底终止失败"),
         Ok(Err(error)) => tracing::warn!(pid, %error, "无法启动 taskkill 清理提权进程"),
         Err(_) => tracing::warn!(pid, "终止超时的提权进程失败：taskkill 超时"),
@@ -597,7 +597,7 @@ pub async fn run_shell_command_elevated_with_timeout(
     anyhow::bail!("UAC 提权仅支持 Windows 平台")
 }
 
-/// Script-agent command execution with its existing approval channel.
+/// 剧本代理的命令执行，沿用其现有的审批通道。
 #[allow(clippy::too_many_arguments)]
 pub async fn execute_command(
     channel: &tauri::ipc::Channel<SkillAgentEvent>,

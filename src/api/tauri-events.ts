@@ -363,7 +363,7 @@ export function initializeTauriEventListeners() {
     uiStore.showCharacterSubtitle = role.roleSubTitle
   })
 
-  // === LLM scene tool event ===
+  // === LLM 场景工具事件 ===
 
   listen('scene:switch', (event) => {
     const payload = event.payload as { type: string; scene: SceneInfo }

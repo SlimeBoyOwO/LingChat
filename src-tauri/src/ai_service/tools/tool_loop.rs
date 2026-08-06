@@ -15,8 +15,8 @@ use crate::AppState;
 use super::executor::{ToolContext, ToolExecutor};
 use super::registry::ToolRegistry;
 
-// Code/file tasks often need read -> edit -> verify cycles. Three rounds prematurely stopped
-// providers that emit one tool call per turn; eight remains bounded while allowing a useful loop.
+// 代码/文件任务常需要 读取 -> 修改 -> 验证 的循环。三轮会过早打断
+// 每轮只发一个工具调用的 provider；八轮既有上限又能保证循环可用。
 const MAX_TOOL_ROUNDS: usize = 8;
 /// 工具结果会写入角色长期记忆；限制单轮会话累计量，避免大文件/命令输出永久撑大上下文。
 const MAX_PERSISTED_TOOL_RESULT_CHARS: usize = 32_000;

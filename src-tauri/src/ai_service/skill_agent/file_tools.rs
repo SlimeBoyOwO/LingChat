@@ -1,4 +1,4 @@
-//! File tools exposed to the LLM, bounded by a sandbox unless explicitly disabled.
+//! 暴露给 LLM 的文件工具，除非显式关闭，否则一律受沙箱约束。
 
 use std::ffi::OsString;
 use std::path::{Component, Path, PathBuf};
@@ -10,8 +10,8 @@ const MAX_WALK_FILES: usize = 500;
 const MAX_GREP_FILE_BYTES: u64 = 1024 * 1024;
 pub const MAX_GREP_RESULTS: usize = 100;
 
-/// Write beside the destination, flush the complete content, then atomically replace it.
-/// This prevents a cancelled or interrupted LLM tool call from leaving a half-written file.
+/// 先写入目标旁的临时文件，完整刷盘后，再原子地替换目标文件。
+/// 这能避免被取消或中断的 LLM 工具调用留下写了一半的文件。
 fn atomic_write(path: &Path, content: &[u8]) -> anyhow::Result<()> {
     use std::io::Write;
 
@@ -36,8 +36,8 @@ pub struct FileTools {
 }
 
 impl FileTools {
-    /// Resolve a path while preserving missing suffixes and resolving the deepest existing
-    /// ancestor. This prevents `..`, symlinks and Windows junctions from escaping the sandbox.
+    /// 解析路径：保留不存在的后缀部分，并解析最深一层存在的祖先目录。
+    /// 这能防止 `..`、符号链接和 Windows junction 逃出沙箱。
     pub fn sanitize(&self, path: &str) -> anyhow::Result<PathBuf> {
         let requested = PathBuf::from(path.trim());
         let joined = if requested.is_absolute() {
@@ -124,7 +124,7 @@ impl FileTools {
         Ok(out)
     }
 
-    /// Write a complete file, or append only when explicitly requested.
+    /// 写入完整文件；仅在显式要求时才追加。
     pub fn write_file(&self, path: &str, content: &str, append: bool) -> anyhow::Result<String> {
         let file = self.sanitize(path)?;
         if let Some(parent) = file.parent() {
@@ -159,7 +159,7 @@ impl FileTools {
         Ok(format!("已删除 {}", file.display()))
     }
 
-    /// Replace text exactly; `old_string` must be unique unless `replace_all=true`.
+    /// 精确替换文本；除非 `replace_all=true`，否则 `old_string` 必须唯一。
     pub fn edit_file(
         &self,
         path: &str,
@@ -197,7 +197,7 @@ impl FileTools {
         ))
     }
 
-    /// Recursively search file names with a case-insensitive `*` / `?` wildcard.
+    /// 以大小写不敏感的 `*` / `?` 通配符递归搜索文件名。
     pub fn search_files(&self, path: &str, pattern: &str) -> anyhow::Result<String> {
         let dir = self.sanitize(path)?;
         if !dir.is_dir() {
@@ -230,7 +230,7 @@ impl FileTools {
         ))
     }
 
-    /// Search text files with a regular expression and return `file:line: content` entries.
+    /// 用正则表达式搜索文本文件，返回 `文件:行号: 内容` 条目。
     pub fn grep_files(
         &self,
         path: &str,
@@ -303,7 +303,7 @@ impl FileTools {
     }
 }
 
-/// Collect regular files deterministically. Symlinks/junctions are never followed.
+/// 确定性地收集普通文件。绝不跟随符号链接/junction。
 fn walk_files(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) -> bool {
     if depth > MAX_WALK_DEPTH || out.len() >= MAX_WALK_FILES {
         return true;
@@ -367,7 +367,7 @@ fn wildcard_match(pattern: &str, name: &str) -> bool {
     pattern_index == pattern.len()
 }
 
-/// Canonicalize the deepest existing ancestor, append the missing suffix, then normalize it.
+/// 规范化最深存在的祖先目录，拼接缺失的后缀，再做归一化。
 fn canonicalize_allow_missing(path: &Path) -> anyhow::Result<PathBuf> {
     let mut ancestor = path.to_path_buf();
     let mut suffix = Vec::<OsString>::new();
@@ -515,7 +515,7 @@ mod tests {
         let outside = TempDir::new("outside");
         std::fs::write(outside.0.join("secret.txt"), "secret").unwrap();
         if symlink_dir(&outside.0, root.0.join("outside-link")).is_err() {
-            // Creating symlinks can require Developer Mode or elevated test permissions.
+            // 创建符号链接可能需要开发者模式或提权的测试权限。
             return;
         }
         let file_tools = tools(&root.0);
