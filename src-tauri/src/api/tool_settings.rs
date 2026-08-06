@@ -59,6 +59,7 @@ pub async fn resolve_command_approval(
     request_id: String,
     approved: bool,
 ) -> Result<(), String> {
+    tracing::info!("[approval] resolve_command_approval 收到回传: request_id={request_id} approved={approved}");
     let state = app.state::<AppState>();
     let request = state
         .chat_command_approvals
@@ -70,7 +71,10 @@ pub async fn resolve_command_approval(
             let _ = request.tx.send(approved);
             Ok(())
         }
-        None => Err("审批请求不存在或已过期".into()),
+        None => {
+            tracing::warn!("[approval] resolve_command_approval 未找到请求: request_id={request_id}");
+            Err("审批请求不存在或已过期".into())
+        }
     }
 }
 
@@ -81,6 +85,7 @@ pub async fn resolve_file_delete_approval(
     request_id: String,
     approved: bool,
 ) -> Result<(), String> {
+    tracing::info!("[approval] resolve_file_delete_approval 收到回传: request_id={request_id} approved={approved}");
     let state = app.state::<AppState>();
     let request = state
         .chat_file_delete_approvals
@@ -92,6 +97,9 @@ pub async fn resolve_file_delete_approval(
             let _ = request.tx.send(approved);
             Ok(())
         }
-        None => Err("删除审批请求不存在或已过期".into()),
+        None => {
+            tracing::warn!("[approval] resolve_file_delete_approval 未找到请求: request_id={request_id}");
+            Err("删除审批请求不存在或已过期".into())
+        }
     }
 }
