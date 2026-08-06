@@ -48,7 +48,9 @@ pub struct ReplyResponse {
     pub display_name: Option<String>,
     pub display_subtitle: Option<String>,
     /// 触发此回复的用户消息序号（1-indexed，由 sender_role_id == Some(0) 计数得出）。
-    /// `None` 表示主动对话等非用户触发的回复。
+    /// `None` 表示主动对话等非用户触发的回复。`None` 时不序列化该字段，
+    /// 避免前端把 `null` 当成有效序号回填进用户消息、导致回溯传 null 报错。
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub user_message_seq: Option<u32>,
     /// 本轮生成的思考链全文（仅最后一帧 is_final=true 时携带）。
     pub thinking: Option<String>,
