@@ -10,7 +10,7 @@ import {
   unlockFieldLabelOf,
   unlockFieldPlaceholderOf,
   unlockTypeLabelOf,
-} from '@/utils/schema-i18n'
+} from '@/locales/schema-i18n'
 import type { UnlockConditionSpec } from '@/api/services/script-editor'
 
 const { t } = useI18n()

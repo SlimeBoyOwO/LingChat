@@ -249,7 +249,7 @@ import {
   fieldPlaceholderOf,
   optionLabelOf,
   particleLabelOf,
-} from '@/utils/schema-i18n'
+} from '@/locales/schema-i18n'
 import { useScriptEditorStore } from '@/stores/modules/script-editor'
 import type {
   AssetKind,

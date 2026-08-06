@@ -315,10 +315,12 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
                           transition-colors
                           hover:bg-white/10"
                         :class="(audioRates[f.path] ?? 1) === rate ? 'text-brand' : 'text-white/60'"
-                        @click="() => {
-                          setRate(f.path, rate)
-                          speedMenu = null
-                        }"
+                        @click="
+                          () => {
+                            setRate(f.path, rate)
+                            speedMenu = null
+                          }
+                        "
                       >
                         {{ rate }}×
                       </button>

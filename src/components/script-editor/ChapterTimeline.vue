@@ -298,7 +298,7 @@ import {
 } from '@/composables/useEventFolding'
 import type { EventSpec } from '@/api/services/script-editor'
 import EventRow from './EventRow.vue'
-import { categoryLabelOf, eventLabelOf } from '@/utils/schema-i18n'
+import { categoryLabelOf, eventLabelOf } from '@/locales/schema-i18n'
 
 const { t } = useI18n()
 const store = useScriptEditorStore()
