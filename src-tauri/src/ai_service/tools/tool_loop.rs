@@ -23,6 +23,9 @@ const MAX_PERSISTED_TOOL_RESULT_CHARS: usize = 32_000;
 const MAX_PERSISTED_SINGLE_TOOL_RESULT_CHARS: usize = 12_000;
 const TOOL_RESULT_TRUNCATION_MARKER: &str = "\n...[工具结果过长，长期记忆已截断]";
 const FINAL_SYNTHESIS_PROMPT: &str = "工具调用已达到本轮上限。请停止调用工具，基于已有工具结果直接给出最终答复；如仍有未完成事项，请明确说明。";
+/// 工具结果返回后的续写引导。部分模型会把上一轮台词当作已结束回合而重新开场，
+/// 导致同一句话在多轮工具调用间被反复复读；显式要求接着上文继续、禁止重复。
+const CONTINUATION_PROMPT: &str = "工具结果已返回。请接着你上一条回复的内容继续，绝对不要重复之前已经发送过的台词、动作描写或翻译行；直接基于工具结果汇报结果或进行下一步。";
 const TOOL_USE_POLICY_PROMPT: &str = "你可以调用本请求随附的工具。用户要求执行文件读写/删除、命令运行、角色或场景切换等实际操作时，必须先真正调用相应工具，并在收到工具结果后再说明结果。绝不能只在思考中计划调用，或在没有成功工具结果时声称已经执行、删除、写入、切换或完成。需要用户确认的危险操作会由应用弹窗处理，请直接发起工具调用，不要用文字假装已经操作；如果工具失败、被拒绝或没有调用，必须明确说明操作尚未完成。";
 
 /// 工具消息收集槽：流消费过程中由闭环填充，消费完毕后调用方取走。
@@ -207,6 +210,7 @@ pub async fn stream_with_tool_loop(
                 active_role_name = refreshed_name;
             } else {
                 messages.extend(round_messages.clone());
+                messages.push(LlmMessage::system(CONTINUATION_PROMPT));
             }
 
             let persisted_messages = bounded_tool_history(

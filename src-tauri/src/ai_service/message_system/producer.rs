@@ -57,6 +57,9 @@ impl StreamProducer {
         let mut buffer = String::new();
         let mut sentence = String::new();
         let mut sentence_index: usize = 0;
+        // 本轮回复内已投递句子的归一化集合：模型在多轮工具调用间容易把
+        // 开场白复读一遍，逐字重复的句子直接丢弃（短句豁免，避免误伤语气词）。
+        let mut seen_sentences = std::collections::HashSet::new();
 
         while let Some(item) = self.llm_stream.next().await {
             let chunk = item?;
@@ -107,6 +110,7 @@ impl StreamProducer {
                                 &mut sentence,
                                 &mut sentence_index,
                                 false,
+                                &mut seen_sentences,
                             )
                             .await?;
                         } else {
@@ -145,6 +149,7 @@ impl StreamProducer {
                                     &mut sentence,
                                     &mut sentence_index,
                                     false,
+                                    &mut seen_sentences,
                                 )
                                 .await?;
                             } else {
@@ -210,13 +215,60 @@ impl StreamProducer {
         sentence: &mut String,
         sentence_index: &mut usize,
         is_final: bool,
+        seen: &mut std::collections::HashSet<String>,
     ) -> Result<()> {
         let s = std::mem::take(sentence);
+        // 复读去重：非最终句与本轮已投递句子逐字重复（忽略空白差异）时丢弃。
+        // 丢弃时不消耗索引，保证 publisher 收到的索引仍然连续；最终句始终放行，
+        // 确保前端一定能收到 is_final 完成信号。
+        if !is_final && Self::is_duplicate(seen, &s) {
+            tracing::info!("[dedupe] 丢弃复读句子: {:.40}", s);
+            return Ok(());
+        }
         let idx = *sentence_index;
         *sentence_index += 1;
         tx.send((s, idx, is_final))
             .await
             .map_err(|_| anyhow::anyhow!("sentence channel closed"))?;
         Ok(())
+    }
+
+    /// 判断句子是否是本轮回复内的逐字复读（忽略所有空白字符）。
+    /// 归一化后不足 8 个字符的短句不去重，避免误伤「嗯」「好哒」等合法重复。
+    fn is_duplicate(seen: &mut std::collections::HashSet<String>, sentence: &str) -> bool {
+        let normalized: String = sentence.chars().filter(|c| !c.is_whitespace()).collect();
+        if normalized.chars().count() < 8 {
+            return false;
+        }
+        !seen.insert(normalized)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn duplicate_detection_ignores_whitespace() {
+        let mut seen = std::collections::HashSet::new();
+        let first = "【高兴】\n好哒用户酱，进入工程创建阶段～\n<わかりました>";
+        assert!(!StreamProducer::is_duplicate(&mut seen, first));
+        // 逐字复读（仅空白有差异）会被识别并丢弃
+        let repeated = "【高兴】 好哒用户酱，进入工程创建阶段～ \n<わかりました>\n";
+        assert!(StreamProducer::is_duplicate(&mut seen, repeated));
+    }
+
+    #[test]
+    fn short_sentences_are_exempt() {
+        let mut seen = std::collections::HashSet::new();
+        assert!(!StreamProducer::is_duplicate(&mut seen, "【高兴】嗯"));
+        assert!(!StreamProducer::is_duplicate(&mut seen, "【高兴】嗯"));
+    }
+
+    #[test]
+    fn distinct_sentences_pass() {
+        let mut seen = std::collections::HashSet::new();
+        assert!(!StreamProducer::is_duplicate(&mut seen, "【认真】先读取参考文件再动手写"));
+        assert!(!StreamProducer::is_duplicate(&mut seen, "【高兴】已经写好落盘啦"));
     }
 }
