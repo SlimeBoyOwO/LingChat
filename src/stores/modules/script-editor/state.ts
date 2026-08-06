@@ -81,6 +81,10 @@ interface State {
   bgVersion: number
   /** 全局背景库文件列表（game_data/backgrounds，带绝对路径），供外观页选择 */
   globalBgFiles: AssetFile[]
+  /** 事件属性栏是否展开（临时态，不持久化；Ctrl+Space / 边缘手柄切换） */
+  propsExpanded: boolean
+  /** 事件属性栏展开时的宽度（px，拖拽手柄调整后记忆，持久化） */
+  propsWidth: number
 }
 
 /** 撤销栈深度上限 */
@@ -134,6 +138,8 @@ export const useEditorState = () => {
   const editorBg = ref<EditorBg>({ ...DEFAULT_EDITOR_BG })
   const bgVersion = ref(0)
   const globalBgFiles = ref<AssetFile[]>([])
+  const propsExpanded = ref(false)
+  const propsWidth = ref(720)
 
   return {
     schema,
@@ -161,5 +167,7 @@ export const useEditorState = () => {
     editorBg,
     bgVersion,
     globalBgFiles,
+    propsExpanded,
+    propsWidth,
   }
 }

@@ -17,15 +17,50 @@ const store = useScriptEditorStore()
 /** 抽成常量纯粹是因为 title 内联会超出 100 列的行宽 */
 const FOLD_HINT = computed(() => t('scriptEditor.flowTab.foldHint'))
 
+/** 属性栏拖拽宽度钳制：最小 360px，最大不超过编辑器宽度的 88% */
+const GRIP_MIN = 360
+const GRIP_MAX_RATIO = 0.88
+
+// 章节编辑容器 ref，拖拽时取它的宽度计算上限
+const editorWrap = ref<HTMLElement | null>(null)
+
 /**
- * 事件属性栏临时展开：默认 340px，展开时覆盖时间线（其余区域毛玻璃模糊），
- * 便于长字段的输入与全览；点遮罩或头部按钮即可回归。退出章节编辑时自动收起。
+ * 属性栏边缘竖条手柄：单击展开/折叠，按住拖拽调宽度。
+ * 用 pointer 事件区分单击与拖拽（移动超 4px 视为拖拽），拖拽结果写入
+ * store.propsWidth（持久化），展开/折叠状态是临时态不持久化。
  */
-const propsExpanded = ref(false)
+let gripStartX = 0
+let gripStartW = 0
+let gripDragging = false
+
+const onGripDown = (e: PointerEvent) => {
+  gripStartX = e.clientX
+  gripStartW = store.propsExpanded ? store.propsWidth : 340
+  gripDragging = false
+  const onMove = (ev: PointerEvent) => {
+    const delta = gripStartX - ev.clientX
+    if (!gripDragging && Math.abs(delta) > 4) gripDragging = true
+    if (!gripDragging) return
+    const wrap = editorWrap.value
+    const maxW = wrap ? Math.max(GRIP_MIN, Math.floor(wrap.clientWidth * GRIP_MAX_RATIO)) : 1200
+    store.propsExpanded = true
+    store.propsWidth = Math.min(maxW, Math.max(GRIP_MIN, gripStartW + delta))
+  }
+  const onUp = () => {
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', onUp)
+    // 没有进入拖拽就是单击 → 切换展开/折叠
+    if (!gripDragging) store.propsExpanded = !store.propsExpanded
+  }
+  window.addEventListener('pointermove', onMove)
+  window.addEventListener('pointerup', onUp)
+}
+
+/** 退出章节编辑时自动收起属性栏 */
 watch(
   () => store.level,
   (level) => {
-    if (level !== 'chapter') propsExpanded.value = false
+    if (level !== 'chapter') store.propsExpanded = false
   },
 )
 
@@ -131,10 +166,13 @@ const openFolder = async () => {
   </MenuPage>
 
   <!-- ============ 章节编辑 ============ -->
+  <!-- 注意：这里不能加 relative —— 组件根元素会收到 <component> fallthrough 的
+       absolute inset-0，两个 position 类并存时 CSS 里 relative 在后会胜出，
+       元素从「撑满容器」塌缩为「内容高度」，内部滚动链就断了 -->
   <div
     v-else
-    class="relative
-      flex
+    ref="editorWrap"
+    class="flex
       w-[94%]
       min-h-0
       flex-1
@@ -202,31 +240,46 @@ const openFolder = async () => {
       </MenuItem>
     </div>
 
-    <!-- 展开态遮罩：盖住并模糊时间线，点击即收起 -->
-    <Transition name="props-mask">
-      <div
-        v-if="propsExpanded"
-        class="absolute
-          inset-0
-          z-10
-          rounded-xl
-          backdrop-blur-sm
-          bg-black/45"
-        @click="propsExpanded = false"
-      ></div>
-    </Transition>
-
+    <!-- 属性栏：展开时不遮挡时间线（并行查看），宽度由边缘手柄拖拽记忆 -->
     <div
       class="relative
-        z-20
         flex
         min-h-0
         flex-col
         transition-[flex-basis]
         duration-300
         ease-out"
-      :class="propsExpanded ? 'flex-[0_0_min(760px,78%)]' : 'flex-[0_0_340px]'"
+      :style="store.propsExpanded ? { flexBasis: `${store.propsWidth}px` } : { flexBasis: '340px' }"
     >
+      <!-- 边缘竖条手柄：单击展开/折叠，按住拖拽调宽度 -->
+      <div
+        class="group/grip
+          absolute
+          left-0
+          top-0
+          bottom-0
+          z-30
+          w-2
+          -translate-x-1/2
+          cursor-ew-resize
+          touch-none"
+        :title="t('scriptEditor.flowTab.propsGrip')"
+        @pointerdown="onGripDown"
+      >
+        <div
+          class="absolute
+            left-1/2
+            top-1/2
+            h-10
+            w-[3px]
+            -translate-x-1/2
+            -translate-y-1/2
+            rounded-full
+            bg-white/20
+            transition-colors
+            group-hover/grip:bg-brand"
+        ></div>
+      </div>
       <MenuItem
         :title="t('scriptEditor.flowTab.eventProps')"
         class="fill
@@ -240,27 +293,6 @@ const openFolder = async () => {
             icon="setting"
             :size="20"
           />
-          <button
-            class="inline-flex
-              items-center
-              justify-center
-              w-6
-              h-6
-              rounded-md
-              text-[0.7rem]
-              text-white/40
-              transition-colors
-              hover:text-brand
-              hover:bg-white/10"
-            :title="
-              propsExpanded
-                ? t('scriptEditor.flowTab.collapseProps')
-                : t('scriptEditor.flowTab.expandProps')
-            "
-            @click="propsExpanded = !propsExpanded"
-          >
-            {{ propsExpanded ? '⤡' : '⤢' }}
-          </button>
         </template>
         <div class="min-h-0
           flex-1
@@ -280,15 +312,5 @@ const openFolder = async () => {
   min-height: 0;
   display: flex;
   flex-direction: column;
-}
-
-/* 遮罩淡入淡出 */
-.props-mask-enter-active,
-.props-mask-leave-active {
-  transition: opacity 0.3s ease;
-}
-.props-mask-enter-from,
-.props-mask-leave-to {
-  opacity: 0;
 }
 </style>
