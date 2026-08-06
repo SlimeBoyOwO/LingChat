@@ -494,6 +494,8 @@ export default {
       'Click a row to rebind its shortcut (Esc to cancel). Defaults contain no Command (\u2318); on macOS you can bind \u2318 yourself. Ctrl+Space may be captured by IMEs on some layouts.',
     recording: 'Press new keys\u2026 (Esc to cancel)',
     conflict: 'Already used by \u201c{name}\u201d',
+    singleKeyBlocked:
+      'A plain character key alone is not allowed \u2014 combine it with Ctrl/Alt/Shift/\u2318',
     restoreDefault: 'Restore defaults',
   },
   previewStage: {

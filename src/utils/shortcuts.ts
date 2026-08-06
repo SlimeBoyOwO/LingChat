@@ -105,13 +105,26 @@ export const formatBinding = (b: ShortcutBinding): string => {
 }
 
 /**
- * 从键盘事件解析绑定（捕获模式用）。返回 null 表示取消（Esc 或纯修饰键）。
- * 注意：解析结果包含按下时的全部修饰键，用户按 ⌘+S 就会得到 meta:true。
+ * 捕获模式的按键解析结果。
+ * - bind：普通键（含当时按下的修饰键）→ 完成绑定
+ * - ignore：纯修饰键（Ctrl/Alt/Shift/Meta）→ 组合键进行中，继续等待
+ * - cancel：Esc → 用户取消捕获
+ * - blocked：无任何修饰键的普通字符键（字母/数字/空格）→ 拒绝，
+ *   这类键在编辑器里承担输入用途，误绑会让组合键失效（如把 Ctrl+S
+ *   绑成单独的 S，之后 Ctrl+S 严格匹配失败、S 又误触保存）
  */
-export const bindingFromEvent = (e: KeyboardEvent): ShortcutBinding | null => {
-  if (e.key === 'Escape') return null
-  if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return null
-  return {
+export type CaptureResult =
+  | { kind: 'bind'; binding: ShortcutBinding }
+  | { kind: 'ignore' }
+  | { kind: 'cancel' }
+  | { kind: 'blocked' }
+
+const isPlainCharKey = (key: string) => /^[a-z0-9 ]$/.test(key)
+
+export const captureFromEvent = (e: KeyboardEvent): CaptureResult => {
+  if (e.key === 'Escape') return { kind: 'cancel' }
+  if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return { kind: 'ignore' }
+  const binding: ShortcutBinding = {
     key: e.key.toLowerCase(),
     ctrl: e.ctrlKey || undefined,
     // '?' 由 Shift+/ 产生，shift 修饰不单独记录（见 bindingMatches）
@@ -119,4 +132,34 @@ export const bindingFromEvent = (e: KeyboardEvent): ShortcutBinding | null => {
     shift: e.key === '?' ? undefined : e.shiftKey || undefined,
     meta: e.metaKey || undefined,
   }
+  if (
+    isPlainCharKey(binding.key) &&
+    !binding.ctrl &&
+    !binding.alt &&
+    !binding.shift &&
+    !binding.meta
+  ) {
+    return { kind: 'blocked' }
+  }
+  return { kind: 'bind', binding }
+}
+
+/** 绑定数据形状校验（持久化数据可能被旧版本写坏，非法项回退默认） */
+export const isValidBinding = (b: unknown): b is ShortcutBinding =>
+  !!b &&
+  typeof b === 'object' &&
+  typeof (b as ShortcutBinding).key === 'string' &&
+  (b as ShortcutBinding).key.length > 0 &&
+  !['Control', 'Alt', 'Shift', 'Meta', 'Escape'].includes((b as ShortcutBinding).key)
+
+/** 整表校验：非法项用默认键位补齐，合法项保留（用户自定义不被重置） */
+export const sanitizeShortcuts = (
+  rec: Partial<Record<ShortcutAction, ShortcutBinding>>,
+): Record<ShortcutAction, ShortcutBinding> => {
+  const out = { ...DEFAULT_SHORTCUTS }
+  for (const a of SHORTCUT_ACTIONS) {
+    const b = rec[a]
+    if (isValidBinding(b)) out[a] = b
+  }
+  return out
 }

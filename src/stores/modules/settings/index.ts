@@ -6,7 +6,7 @@ import { setCurrentBackground } from '@/api/services/background'
 import { setSceneAwareness } from '@/api/services/scene'
 import { defineStore } from 'pinia'
 import type { ShortcutAction, ShortcutBinding } from '@/utils/shortcuts'
-import { DEFAULT_SHORTCUTS } from '@/utils/shortcuts'
+import { DEFAULT_SHORTCUTS, sanitizeShortcuts } from '@/utils/shortcuts'
 
 // 默认设置值
 export const DEFAULT_SETTINGS = {
@@ -150,6 +150,12 @@ export const useSettingsStore = defineStore('settings', {
   },
 
   actions: {
+    // 校验快捷键数据：旧版本捕获逻辑可能写入非法绑定（如把 Ctrl+S 绑成单独的 S），
+    // 非法项回退默认。编辑器挂载时调用一次，幂等。
+    ensureValidShortcuts() {
+      this.shortcuts = sanitizeShortcuts(this.shortcuts)
+    },
+
     // 更新设置值（支持路径）
     update(path: string, value: unknown) {
       const keys = path.split('.')

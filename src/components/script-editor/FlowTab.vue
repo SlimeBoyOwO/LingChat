@@ -270,7 +270,7 @@ const openFolder = async () => {
           class="absolute
             left-1/2
             top-1/2
-            h-10
+            h-20
             w-[3px]
             -translate-x-1/2
             -translate-y-1/2

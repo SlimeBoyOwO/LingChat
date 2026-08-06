@@ -495,6 +495,8 @@ export default {
       '行をクリックするとそのショートカットを再設定できます（Esc でキャンセル）。デフォルトは Command（⌘）を含みません。macOS では ⌘ に変更可能。Ctrl+Space は中国語入力メソッドに奪われる場合があります。',
     recording: '新しいキーを押してください…（Esc でキャンセル）',
     conflict: '「{name}」が使用中です',
+    singleKeyBlocked:
+      '通常の文字キー単独では登録できません。Ctrl/Alt/Shift/⌘ と組み合わせてください',
     restoreDefault: 'デフォルトに戻す',
   },
   previewStage: {

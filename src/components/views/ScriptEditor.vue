@@ -362,6 +362,8 @@ const onKey = (e: KeyboardEvent) => {
 
 onMounted(async () => {
   window.addEventListener('keydown', onKey)
+  // 快捷键持久化数据可能被旧版捕获逻辑写坏（如 Ctrl+S 被绑成单独 S），启动时校验回退
+  settings.ensureValidShortcuts()
   await store.init()
 })
 

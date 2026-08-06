@@ -6,7 +6,7 @@ import {
   DEFAULT_SHORTCUTS,
   SHORTCUT_ACTIONS,
   bindingsEqual,
-  bindingFromEvent,
+  captureFromEvent,
   formatBinding,
   type ShortcutAction,
   type ShortcutBinding,
@@ -36,18 +36,29 @@ const DESC_KEYS: Record<ShortcutAction, string> = {
 // ---- 捕获模式：点击某行后监听下一次 keydown 作为新键位 ----
 const recording = ref<ShortcutAction | null>(null)
 const conflictName = ref<string>('')
+const singleKeyBlocked = ref(false)
 
 const onCaptureKey = (e: KeyboardEvent) => {
   if (!recording.value) return
   e.preventDefault()
   e.stopPropagation()
-  const binding = bindingFromEvent(e)
+  const result = captureFromEvent(e)
+  // 纯修饰键：组合键进行中，继续等待（不取消、不绑定）
+  if (result.kind === 'ignore') return
   // Esc 取消捕获
-  if (!binding) {
+  if (result.kind === 'cancel') {
     recording.value = null
     conflictName.value = ''
+    singleKeyBlocked.value = false
     return
   }
+  // 无修饰的普通字符键：拒绝并提示，保持捕获让用户重新按
+  if (result.kind === 'blocked') {
+    singleKeyBlocked.value = true
+    return
+  }
+  const binding = result.binding
+  singleKeyBlocked.value = false
   // 冲突检测：其他动作已占用同一组合则拒绝
   const clash = SHORTCUT_ACTIONS.find(
     (a) => a !== recording.value && bindingsEqual(settings.shortcuts[a], binding),
@@ -68,6 +79,7 @@ watch(
     if (!v) {
       recording.value = null
       conflictName.value = ''
+      singleKeyBlocked.value = false
     }
   },
 )
@@ -204,6 +216,14 @@ const rowBinding = (a: ShortcutAction) => settings.shortcuts[a] as ShortcutBindi
                 text-yellow-300"
             >
               {{ t('scriptEditor.shortcutHelp.conflict', { name: conflictName }) }}
+            </span>
+            <span
+              v-else-if="recording === a && singleKeyBlocked"
+              class="shrink-0
+                text-[0.68rem]
+                text-yellow-300"
+            >
+              {{ t('scriptEditor.shortcutHelp.singleKeyBlocked') }}
             </span>
           </div>
 
