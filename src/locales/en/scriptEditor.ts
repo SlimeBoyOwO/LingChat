@@ -491,7 +491,7 @@ export default {
     openTable: 'Open this table',
     expandProps: 'Expand/collapse the event properties panel',
     customizeHint:
-      'Click a row to rebind its shortcut (Esc to cancel). Defaults contain no Command (\u2318); on macOS you can bind \u2318 yourself. Ctrl+Space may be captured by IMEs on some layouts.',
+      'Click a row to rebind its shortcut (Esc to cancel). Defaults contain no Command (\u2318); on macOS you can bind \u2318 yourself. Ctrl+E toggles the panel.',
     recording: 'Press new keys\u2026 (Esc to cancel)',
     conflict: 'Already used by \u201c{name}\u201d',
     singleKeyBlocked:

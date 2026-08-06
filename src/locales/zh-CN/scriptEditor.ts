@@ -463,7 +463,7 @@ export default {
     openTable: '打开这张表',
     expandProps: '展开/收起事件属性栏',
     customizeHint:
-      '点击某一行即可重新绑定它的快捷键；按 Esc 取消。默认键位不含 Command（⌘），macOS 可自行绑定；Ctrl+Space 展开属性栏可能被中文输入法占用。',
+      '点击某一行即可重新绑定它的快捷键；按 Esc 取消。默认键位不含 Command（⌘），macOS 可自行绑定；Ctrl+E 展开/折叠属性栏。',
     recording: '按下新快捷键…（Esc 取消）',
     conflict: '已被「{name}」占用',
     singleKeyBlocked: '不能只绑定普通字符键，请搭配 Ctrl/Alt/Shift/⌘',

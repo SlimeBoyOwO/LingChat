@@ -492,7 +492,7 @@ export default {
     openTable: 'この表を開く',
     expandProps: 'イベントプロパティパネルを展開/折りたたむ',
     customizeHint:
-      '行をクリックするとそのショートカットを再設定できます（Esc でキャンセル）。デフォルトは Command（⌘）を含みません。macOS では ⌘ に変更可能。Ctrl+Space は中国語入力メソッドに奪われる場合があります。',
+      '行をクリックするとそのショートカットを再設定できます（Esc でキャンセル）。デフォルトは Command（⌘）を含みません。macOS では ⌘ に変更可能。Ctrl+E でパネルを展開/折りたたみます。',
     recording: '新しいキーを押してください…（Esc でキャンセル）',
     conflict: '「{name}」が使用中です',
     singleKeyBlocked:

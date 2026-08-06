@@ -57,7 +57,7 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutAction, ShortcutBinding> = {
   moveEvent: { key: 'arrowup', alt: true },
   esc: { key: 'escape' },
   shortcutHelp: { key: '?' },
-  expandProps: { key: ' ', ctrl: true },
+  expandProps: { key: 'e', ctrl: true },
 }
 
 const isDirKey = (key: string) => key === 'arrowup' || key === 'arrowdown'

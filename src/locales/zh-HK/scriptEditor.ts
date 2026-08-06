@@ -461,7 +461,7 @@ export default {
     openTable: '打開這張表',
     expandProps: '展開/收起事件屬性欄',
     customizeHint:
-      '點擊某一行即可重新綁定它的快捷鍵；按 Esc 取消。默認鍵位不含 Command（⌘），macOS 可自行綁定；Ctrl+Space 展開屬性欄可能被中文輸入法佔用。',
+      '點擊某一行即可重新綁定它的快捷鍵；按 Esc 取消。默認鍵位不含 Command（⌘），macOS 可自行綁定；Ctrl+E 展開/摺疊屬性欄。',
     recording: '按下新快捷鍵…（Esc 取消）',
     conflict: '已被「{name}」佔用',
     singleKeyBlocked: '不能只綁定普通字符鍵，請搭配 Ctrl/Alt/Shift/⌘',
