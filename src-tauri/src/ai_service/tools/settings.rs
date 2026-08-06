@@ -159,11 +159,10 @@ impl ToolSettings {
     /// 原子写入 `data/tool_settings.toml`。
     pub fn save(&self, data_dir: &Path) -> Result<()> {
         let path = data_dir.join(SETTINGS_FILE_NAME);
-        let tmp = path.with_extension("tmp");
         let text = toml::to_string_pretty(self).context("序列化工具配置失败")?;
-        fs::write(&tmp, text)
-            .with_context(|| format!("写入工具配置临时文件失败: {}", tmp.display()))?;
-        fs::rename(&tmp, &path).with_context(|| format!("保存工具配置失败: {}", path.display()))?;
+        super::atomic_replace(&path, text.as_bytes())
+            .map_err(anyhow::Error::msg)
+            .with_context(|| format!("保存工具配置失败: {}", path.display()))?;
         Ok(())
     }
 }
@@ -201,5 +200,17 @@ file_ops_allow_any_path = false
         let settings: ToolSettings = toml::from_str(legacy).unwrap();
         assert!(!settings.command_delete_auto_approve);
         assert!(!settings.file_delete_auto_approve);
+    }
+
+    #[test]
+    fn save_can_replace_existing_settings_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut settings = ToolSettings::default();
+        settings.save(dir.path()).unwrap();
+        settings.command_auto_approve = true;
+        settings.save(dir.path()).unwrap();
+
+        let loaded = ToolSettings::load_or_create(dir.path()).unwrap();
+        assert!(loaded.command_auto_approve);
     }
 }

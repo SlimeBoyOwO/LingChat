@@ -408,12 +408,37 @@ pub async fn run_shell_command_elevated_with_timeout(
         temp.exit_code.display()
     );
     std::fs::write(&temp.script, bat_content)?;
+    std::fs::write(&temp.guard, b"running")?;
 
-    // Process::WaitForExit waits for the elevated cmd process itself. Start-Process -Wait also
-    // waits for descendants and would reproduce the inherited-handle hang.
+    // The elevated watchdog owns termination of the elevated cmd tree. A medium-integrity
+    // launcher cannot reliably taskkill a high-integrity child, so timeout/cancellation removes
+    // the guard file and lets this elevated process perform cleanup at the same integrity level.
+    let watchdog = format!(
+        "$ErrorActionPreference = 'Stop'\r\n\
+         $guard = '{}'\r\n\
+         if (-not (Test-Path -LiteralPath $guard)) {{ exit 124 }}\r\n\
+         $p = Start-Process -FilePath cmd.exe -ArgumentList '/D','/C','\"{}\"' -PassThru\r\n\
+         Set-Content -LiteralPath '{}' -Value $p.Id -NoNewline\r\n\
+         while (-not $p.HasExited) {{\r\n\
+           if (-not (Test-Path -LiteralPath $guard)) {{\r\n\
+             & taskkill.exe /PID $p.Id /T /F | Out-Null\r\n\
+             exit 124\r\n\
+           }}\r\n\
+           Start-Sleep -Milliseconds 200\r\n\
+           $p.Refresh()\r\n\
+         }}\r\n\
+         exit $p.ExitCode\r\n",
+        powershell_single_quoted_path(&temp.guard),
+        temp.script.display(),
+        powershell_single_quoted_path(&temp.pid),
+    );
+    std::fs::write(&temp.watchdog, watchdog)?;
+
+    // Process::WaitForExit waits for the elevated watchdog itself. Start-Process -Wait also waits
+    // for descendants and would reproduce the inherited-handle hang.
     let ps = format!(
-        "$p = Start-Process -FilePath cmd.exe -ArgumentList '/D','/C','\"{}\"' -Verb RunAs -PassThru; $p.WaitForExit(); exit $p.ExitCode",
-        temp.script.display()
+        "$p = Start-Process -FilePath powershell.exe -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','\"{}\"' -Verb RunAs -PassThru; $p.WaitForExit(); exit $p.ExitCode",
+        temp.watchdog.display()
     );
     let mut process = tokio::process::Command::new("powershell");
     process
@@ -426,10 +451,13 @@ pub async fn run_shell_command_elevated_with_timeout(
 
     let output = match tokio::time::timeout(timeout, process.output()).await {
         Ok(result) => result.map_err(|e| anyhow::anyhow!("无法启动提权进程: {e}"))?,
-        Err(_) => anyhow::bail!(
-            "提权命令在 {} 秒内未结束；已停止等待，请检查是否仍有 UAC 窗口或后台进程。",
-            timeout.as_secs()
-        ),
+        Err(_) => {
+            cancel_elevated_process(&temp.guard, &temp.pid).await;
+            anyhow::bail!(
+                "提权命令在 {} 秒内未结束；已发送取消信号并尝试终止已启动的提权进程。",
+                timeout.as_secs()
+            )
+        }
     };
 
     let stdout = read_limited_output(&temp.stdout)?;
@@ -454,9 +482,12 @@ pub async fn run_shell_command_elevated_with_timeout(
 #[cfg(windows)]
 struct ElevatedTempFiles {
     script: PathBuf,
+    watchdog: PathBuf,
+    guard: PathBuf,
     stdout: PathBuf,
     stderr: PathBuf,
     exit_code: PathBuf,
+    pid: PathBuf,
 }
 
 #[cfg(windows)]
@@ -465,9 +496,12 @@ impl ElevatedTempFiles {
         let prefix = std::env::temp_dir().join(format!("lingchat_uac_{}", new_request_id()));
         Self {
             script: prefix.with_extension("bat"),
+            watchdog: prefix.with_extension("ps1"),
+            guard: prefix.with_extension("guard"),
             stdout: prefix.with_extension("out"),
             stderr: prefix.with_extension("err"),
             exit_code: prefix.with_extension("code"),
+            pid: prefix.with_extension("pid"),
         }
     }
 }
@@ -475,9 +509,61 @@ impl ElevatedTempFiles {
 #[cfg(windows)]
 impl Drop for ElevatedTempFiles {
     fn drop(&mut self) {
-        for path in [&self.script, &self.stdout, &self.stderr, &self.exit_code] {
+        for path in [
+            &self.script,
+            &self.watchdog,
+            &self.guard,
+            &self.stdout,
+            &self.stderr,
+            &self.exit_code,
+            &self.pid,
+        ] {
             let _ = std::fs::remove_file(path);
         }
+    }
+}
+
+#[cfg(windows)]
+fn powershell_single_quoted_path(path: &Path) -> String {
+    path.to_string_lossy().replace("'", "''")
+}
+
+/// 删除哨兵后，提权 watchdog 会在同等权限下终止命令树；taskkill 是 watchdog
+/// 未能正常运行时的最后兜底。若用户仍停留在 UAC 窗口，PID 文件不存在，之后即使
+/// 接受 UAC，watchdog 也会先发现哨兵缺失并拒绝启动命令。
+#[cfg(windows)]
+async fn cancel_elevated_process(guard_path: &Path, pid_path: &Path) {
+    let _ = std::fs::remove_file(guard_path);
+    let mut pid = None;
+    for _ in 0..10 {
+        pid = std::fs::read_to_string(pid_path)
+            .ok()
+            .and_then(|value| value.trim().parse::<u32>().ok());
+        if pid.is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let Some(pid) = pid else { return };
+
+    // Give the elevated watchdog one polling interval to perform privileged cleanup first.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let mut taskkill = tokio::process::Command::new("taskkill");
+    taskkill
+        .args(["/PID", &pid.to_string(), "/T", "/F"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW)
+        .kill_on_drop(true);
+    match tokio::time::timeout(Duration::from_secs(5), taskkill.status()).await {
+        Ok(Ok(status)) if status.success() => {}
+        // The watchdog may already have removed the process; a non-zero fallback is therefore
+        // diagnostic only and not treated as a second user-visible failure.
+        Ok(Ok(status)) => tracing::debug!(pid, ?status, "提权 watchdog 已接管或兜底终止失败"),
+        Ok(Err(error)) => tracing::warn!(pid, %error, "无法启动 taskkill 清理提权进程"),
+        Err(_) => tracing::warn!(pid, "终止超时的提权进程失败：taskkill 超时"),
     }
 }
 

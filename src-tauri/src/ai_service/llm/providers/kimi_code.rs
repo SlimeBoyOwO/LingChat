@@ -427,13 +427,7 @@ impl LlmProvider for KimiCodeProvider {
         tools: &[ToolDefinition],
         tool_choice: Option<&str>,
     ) -> Result<LlmResponseWithTools> {
-        let tool_choice_value = tool_choice.map(|tc| {
-            if tc == "auto" || tc == "none" || tc == "required" {
-                serde_json::Value::String(tc.to_string())
-            } else {
-                serde_json::from_str(tc).unwrap_or(serde_json::Value::String("auto".to_string()))
-            }
-        });
+        let tool_choice_value = parse_tool_choice(tool_choice);
 
         let body = self.build_request(messages, false, Some(tools), tool_choice_value)?;
         crate::utils::llm_request_logger::log_request_body(
@@ -465,7 +459,7 @@ impl LlmProvider for KimiCodeProvider {
     }
 
     async fn complete_stream(&self, http: &Client, messages: &[LlmMessage]) -> Result<ChunkStream> {
-        self.stream_impl(http, messages, None).await
+        self.stream_impl(http, messages, None, None).await
     }
 
     /// Kimi-Code 支持 Anthropic SSE 的原生流式 function calling。
@@ -478,10 +472,23 @@ impl LlmProvider for KimiCodeProvider {
         http: &Client,
         messages: &[LlmMessage],
         tools: &[ToolDefinition],
-        _tool_choice: Option<&str>,
+        tool_choice: Option<&str>,
     ) -> Result<ChunkStream> {
-        self.stream_impl(http, messages, Some(tools)).await
+        let tool_choice_value = parse_tool_choice(tool_choice);
+        self.stream_impl(http, messages, Some(tools), tool_choice_value)
+            .await
     }
+}
+
+fn parse_tool_choice(tool_choice: Option<&str>) -> Option<serde_json::Value> {
+    tool_choice.map(|choice| {
+        if matches!(choice, "auto" | "none" | "required") {
+            serde_json::Value::String(choice.to_string())
+        } else {
+            serde_json::from_str(choice)
+                .unwrap_or_else(|_| serde_json::Value::String("auto".to_string()))
+        }
+    })
 }
 
 impl KimiCodeProvider {
@@ -496,8 +503,9 @@ impl KimiCodeProvider {
         http: &Client,
         messages: &[LlmMessage],
         tools: Option<&[ToolDefinition]>,
+        tool_choice: Option<serde_json::Value>,
     ) -> Result<ChunkStream> {
-        let body = self.build_request(messages, true, tools, None)?;
+        let body = self.build_request(messages, true, tools, tool_choice)?;
         crate::utils::llm_request_logger::log_request_body(
             "kimicode",
             &serde_json::to_value(&body).unwrap_or_default(),
@@ -546,10 +554,10 @@ impl KimiCodeProvider {
                             if !thinking_buffer.is_empty() {
                                 tracing::info!("[Kimi-Code Thinking] {}", thinking_buffer);
                                 yield LlmChunk::Reasoning(thinking_buffer.clone());
-                                thinking_buffer.clear();
                             }
                             // 如果 text 为空但 thinking 有内容，把 thinking 作为正式回复兜底
-                            if text_buffer.is_empty() && !thinking_buffer.is_empty() {
+                            // 工具调用轮的 thinking 只是决策过程，不能混入正文。
+                            if text_buffer.is_empty() && !thinking_buffer.is_empty() && tool_blocks.is_empty() {
                                 tracing::info!("[Kimi-Code] text 为空，使用 thinking 作为回复");
                                 for line in thinking_buffer.lines() {
                                     yield LlmChunk::Content(line.to_string());
@@ -882,5 +890,26 @@ mod tests {
             .unwrap_err();
         assert!(error.to_string().contains("缺少 id"));
     }
-}
 
+    #[test]
+    fn serializes_required_tool_choice_for_streaming_requests() {
+        let tool = ToolDefinition::new(
+            "get_current_time",
+            "读取时间",
+            serde_json::json!({"type": "object", "properties": {}}),
+        );
+        let provider = provider();
+        let messages = [LlmMessage::user("几点了")];
+        let tools = [tool];
+        let body = provider
+            .build_request(
+                &messages,
+                true,
+                Some(&tools),
+                parse_tool_choice(Some("required")),
+            )
+            .unwrap();
+        let value = serde_json::to_value(body).unwrap();
+        assert_eq!(value["tool_choice"]["type"], "any");
+    }
+}

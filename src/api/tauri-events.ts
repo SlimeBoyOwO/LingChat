@@ -88,7 +88,6 @@ export function initializeTauriEventListeners() {
   // 工具执行生命周期：驱动自由对话顶栏的实时状态，不写入历史记录。
   listen('ai:tool_activity', (event) => {
     const payload = event.payload as ToolActivityEvent
-    console.log('[Tauri] ai:tool_activity', payload)
     handleToolActivity(payload)
   })
 
@@ -102,7 +101,6 @@ export function initializeTauriEventListeners() {
       arguments: string
       result: string
     }
-    console.log('[Tauri] ai:tool_call', payload)
     pushToolCallRecord({
       ...payload,
       time: new Date().toLocaleTimeString(),
@@ -136,7 +134,6 @@ export function initializeTauriEventListeners() {
       cwd: string
       uac: boolean
     }
-    console.log('[Tauri] chat:command_approval', payload)
     const dialogStore = useDialogStore()
     const message =
       i18n.global.t('ui.toolCalls.approvalMessage', {
@@ -162,7 +159,6 @@ export function initializeTauriEventListeners() {
       cwd: string
       uac: boolean
     }
-    console.log('[Tauri] chat:command_delete_approval', payload)
     const dialogStore = useDialogStore()
     const message =
       i18n.global.t('ui.toolCalls.commandDeleteApprovalMessage', {
@@ -189,7 +185,6 @@ export function initializeTauriEventListeners() {
       request_id: string
       path: string
     }
-    console.log('[Tauri] chat:file_delete_approval', payload)
     const dialogStore = useDialogStore()
     const approved = await dialogStore.confirm(
       i18n.global.t('ui.toolCalls.fileDeleteApprovalMessage', { path: payload.path }),

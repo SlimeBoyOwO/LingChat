@@ -109,7 +109,7 @@ const target = computed(() => {
     const keys = ['search_files', 'grep_files', 'web_search'].includes(current.tool)
       ? ['query', 'pattern', 'path']
       : current.tool === 'execute_command'
-        ? ['description', 'command']
+        ? ['description']
         : ['path', 'name', 'text', 'query']
     for (const key of keys) {
       const value = args[key]

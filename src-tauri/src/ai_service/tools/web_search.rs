@@ -28,6 +28,8 @@ const SEARCH_TIMEOUT: Duration = Duration::from_secs(15);
 const BUILTIN_TIMEOUT: Duration = Duration::from_secs(90);
 /// 返回给模型的结果文本总量上限，避免把上下文塞爆。
 const MAX_OUTPUT_CHARS: usize = 20_000;
+/// 搜索词长度上限，避免异常参数放大请求体、日志与第三方计费。
+const MAX_QUERY_CHARS: usize = 500;
 /// 内置联网模式的最大 tool_calls 回显轮次。
 const MAX_BUILTIN_ROUNDS: usize = 3;
 
@@ -59,7 +61,8 @@ impl WebSearchTool {
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "搜索关键词"
+                        "description": "搜索关键词",
+                        "maxLength": MAX_QUERY_CHARS
                     }
                 },
                 "required": ["query"],
@@ -565,13 +568,30 @@ impl Tool for WebSearchTool {
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|q| !q.is_empty())
-            .ok_or_else(|| ToolError::InvalidArguments("缺少必填参数 query".into()))?
-            .to_string();
+            .ok_or_else(|| ToolError::InvalidArguments("缺少必填参数 query".into()))?;
+        let query = bounded_query(query);
 
         if cfg.use_builtin {
             self.execute_builtin(&query, &cfg).await
         } else {
             self.execute_search_endpoint(&query, &cfg).await
         }
+    }
+}
+
+fn bounded_query(query: &str) -> String {
+    query.chars().take(MAX_QUERY_CHARS).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn query_is_truncated_on_character_boundary() {
+        let query = "搜".repeat(MAX_QUERY_CHARS + 10);
+        let bounded = bounded_query(&query);
+        assert_eq!(bounded.chars().count(), MAX_QUERY_CHARS);
+        assert!(bounded.is_char_boundary(bounded.len()));
     }
 }

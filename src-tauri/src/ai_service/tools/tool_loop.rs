@@ -18,6 +18,11 @@ use super::registry::ToolRegistry;
 // Code/file tasks often need read -> edit -> verify cycles. Three rounds prematurely stopped
 // providers that emit one tool call per turn; eight remains bounded while allowing a useful loop.
 const MAX_TOOL_ROUNDS: usize = 8;
+/// 工具结果会写入角色长期记忆；限制单轮会话累计量，避免大文件/命令输出永久撑大上下文。
+const MAX_PERSISTED_TOOL_RESULT_CHARS: usize = 32_000;
+const MAX_PERSISTED_SINGLE_TOOL_RESULT_CHARS: usize = 12_000;
+const TOOL_RESULT_TRUNCATION_MARKER: &str = "\n...[工具结果过长，长期记忆已截断]";
+const FINAL_SYNTHESIS_PROMPT: &str = "工具调用已达到本轮上限。请停止调用工具，基于已有工具结果直接给出最终答复；如仍有未完成事项，请明确说明。";
 
 /// 工具消息收集槽：流消费过程中由闭环填充，消费完毕后调用方取走。
 pub type ToolMessageSink = Arc<Mutex<Vec<LlmMessage>>>;
@@ -75,13 +80,24 @@ pub async fn stream_with_tool_loop(
             .find(|message| message.role == "user")
             .cloned();
         let mut active_role_name = role_name;
+        let mut persisted_tool_result_chars = 0usize;
 
         for round in 0..=MAX_TOOL_ROUNDS {
             tracing::info!(round = round + 1, "开始流式聊天工具决策");
+            let final_synthesis = round == MAX_TOOL_ROUNDS;
+            if final_synthesis {
+                // 八轮工具执行完毕后保留一次不带工具定义的收尾生成，避免直接报错并
+                // 丢掉已经完成的工具结果。
+                messages.push(LlmMessage::system(FINAL_SYNTHESIS_PROMPT));
+            }
             // 角色可以在上一轮工具执行中发生变化。每轮按当前角色重新计算权限，
             // 防止切换后沿用旧角色的工具授权。
             let allowed = registry.allowed_tools(source, active_role_name.as_deref());
-            let definitions = registry.definitions_for_allowed(&allowed);
+            let definitions = if final_synthesis {
+                Vec::new()
+            } else {
+                registry.definitions_for_allowed(&allowed)
+            };
             let mut response_stream = if definitions.is_empty() {
                 llm.complete_stream(&messages).await?
             } else {
@@ -110,8 +126,12 @@ pub async fn stream_with_tool_loop(
                 // 本轮没有工具调用，工具闭环结束
                 return;
             }
-            if round == MAX_TOOL_ROUNDS {
-                Err(anyhow!("工具调用超过最大轮次 {MAX_TOOL_ROUNDS}"))?;
+            if final_synthesis {
+                tracing::warn!(
+                    count = tool_calls.len(),
+                    "无工具定义的最终收尾仍返回工具调用，已忽略"
+                );
+                return;
             }
 
             let calls = tool_calls;
@@ -185,7 +205,11 @@ pub async fn stream_with_tool_loop(
                 messages.extend(round_messages.clone());
             }
 
-            sink.lock().await.extend(round_messages);
+            let persisted_messages = bounded_tool_history(
+                &round_messages,
+                &mut persisted_tool_result_chars,
+            );
+            sink.lock().await.extend(persisted_messages);
         }
     };
 
@@ -193,6 +217,36 @@ pub async fn stream_with_tool_loop(
         stream: Box::pin(stream),
         tool_messages,
     })
+}
+
+/// 当前请求继续使用完整工具结果完成推理；只对写入角色长期记忆的副本做有界裁剪。
+/// 保留每条 tool_call_id 与对应消息，避免破坏 provider 的工具调用配对。
+fn bounded_tool_history(messages: &[LlmMessage], persisted_chars: &mut usize) -> Vec<LlmMessage> {
+    messages
+        .iter()
+        .cloned()
+        .map(|mut message| {
+            if message.role != "tool" {
+                return message;
+            }
+
+            let original_chars = message.content.chars().count();
+            let remaining = MAX_PERSISTED_TOOL_RESULT_CHARS.saturating_sub(*persisted_chars);
+            let limit = remaining.min(MAX_PERSISTED_SINGLE_TOOL_RESULT_CHARS);
+            if original_chars > limit {
+                let marker_chars = TOOL_RESULT_TRUNCATION_MARKER.chars().count();
+                if limit >= marker_chars {
+                    let preview_chars = limit - marker_chars;
+                    message.content = message.content.chars().take(preview_chars).collect();
+                    message.content.push_str(TOOL_RESULT_TRUNCATION_MARKER);
+                } else {
+                    message.content = TOOL_RESULT_TRUNCATION_MARKER.chars().take(limit).collect();
+                }
+            }
+            *persisted_chars = persisted_chars.saturating_add(message.content.chars().count());
+            message
+        })
+        .collect()
 }
 
 /// 读取 character_switch 完成后的角色记忆快照与权限名称。
@@ -318,4 +372,33 @@ fn presentation_stream(stream: ChunkStream) -> ChunkStream {
             chunk => Some(chunk),
         }
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn persisted_tool_results_are_bounded_and_keep_call_ids() {
+        let messages = vec![
+            LlmMessage::assistant("调用工具"),
+            LlmMessage::tool_result("call-1", "甲".repeat(20_000)),
+            LlmMessage::tool_result("call-2", "乙".repeat(30_000)),
+        ];
+        let mut persisted = 0;
+        let bounded = bounded_tool_history(&messages, &mut persisted);
+
+        assert_eq!(bounded[1].tool_call_id.as_deref(), Some("call-1"));
+        assert_eq!(bounded[2].tool_call_id.as_deref(), Some("call-2"));
+        assert!(bounded[1].content.contains(TOOL_RESULT_TRUNCATION_MARKER));
+        assert!(bounded[2].content.contains(TOOL_RESULT_TRUNCATION_MARKER));
+        assert!(bounded[1].content.chars().count() <= MAX_PERSISTED_SINGLE_TOOL_RESULT_CHARS);
+        let stored_chars: usize = bounded
+            .iter()
+            .filter(|message| message.role == "tool")
+            .map(|message| message.content.chars().count())
+            .sum();
+        assert!(stored_chars <= MAX_PERSISTED_TOOL_RESULT_CHARS);
+        assert!(persisted <= MAX_PERSISTED_TOOL_RESULT_CHARS);
+    }
 }
