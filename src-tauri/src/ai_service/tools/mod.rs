@@ -1,3 +1,4 @@
+pub mod background_command;
 pub mod character;
 pub mod clock;
 pub mod executor;

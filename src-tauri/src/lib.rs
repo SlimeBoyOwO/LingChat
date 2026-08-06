@@ -97,6 +97,9 @@ pub struct InnerAppState {
     pub skill_agent: Arc<ai_service::skill_agent::SkillAgentState>,
     /// 主聊天 `execute_command` 工具的待审批命令请求（request_id → oneshot）。
     pub chat_command_approvals: ai_service::skill_agent::ApprovalMap,
+    /// 主聊天后台命令的并发槽位与任务 ID 分配器。
+    pub background_commands:
+        Arc<ai_service::tools::background_command::BackgroundCommandManager>,
     /// 剧本编辑器「试玩」当前在跑的后台任务句柄。
     ///
     /// `editor_stop_preview` 会先唤醒被剧本阻塞的通道、把 `is_running` 置 false，
@@ -409,6 +412,9 @@ pub fn run() {
                     god_agent,
                     skill_agent: Arc::new(ai_service::skill_agent::SkillAgentState::default()),
                     chat_command_approvals: Default::default(),
+                    background_commands: Arc::new(
+                        ai_service::tools::background_command::BackgroundCommandManager::default(),
+                    ),
                     preview_task: Arc::new(tokio::sync::Mutex::new(None)),
                     pending_preview_restore: Arc::new(tokio::sync::Mutex::new(None)),
                 });
@@ -701,4 +707,3 @@ pub fn run() {
 fn exit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
-

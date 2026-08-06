@@ -80,7 +80,8 @@ export interface ToolActivityState {
 /** 顶栏正在显示的工具活动；结束状态短暂停留后自动淡出。 */
 export const currentToolActivity = ref<ToolActivityState | null>(null)
 
-const ACTIVE_WATCHDOG_MS = 8 * 60 * 1000
+// 后台命令最长运行 60 分钟，再留 5 分钟给事件投递与系统休眠恢复。
+const ACTIVE_WATCHDOG_MS = 65 * 60 * 1000
 const FINISHED_VISIBLE_MS = 2200
 const activeToolCalls = new Map<string, ToolActivityState>()
 const watchdogTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -106,6 +107,16 @@ function latestActiveTool(): ToolActivityState | null {
     if (latest === null || activity.sequence > latest.sequence) latest = activity
   }
   return latest
+}
+
+function isBackgroundCommand(activity: ToolActivityState): boolean {
+  if (activity.tool !== 'execute_command') return false
+  try {
+    const args = JSON.parse(activity.arguments) as Record<string, unknown>
+    return args.run_in_background === true
+  } catch {
+    return false
+  }
 }
 
 function showFinished(activity: ToolActivityState, ok: boolean) {
@@ -173,12 +184,20 @@ export function handleToolActivity(event: ToolActivityEvent) {
   showFinished(activity, event.ok !== false)
 }
 
-/** AI 请求异常结束时，避免顶栏残留永久“正在调用”。 */
+/** AI 请求异常结束时清理前台调用；已脱离当前生成的后台命令继续保留。 */
 export function interruptToolActivities() {
   const visible = currentToolActivity.value
-  for (const callId of [...watchdogTimers.keys()]) clearWatchdog(callId)
-  activeToolCalls.clear()
-  if (visible?.status === 'running') showFinished(visible, false)
+  for (const [callId, activity] of [...activeToolCalls.entries()]) {
+    if (isBackgroundCommand(activity)) continue
+    clearWatchdog(callId)
+    activeToolCalls.delete(callId)
+  }
+  const background = latestActiveTool()
+  if (background) {
+    currentToolActivity.value = background
+  } else if (visible?.status === 'running' && !isBackgroundCommand(visible)) {
+    showFinished(visible, false)
+  }
 }
 
 const MAX_HISTORY = 50

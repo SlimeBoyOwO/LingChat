@@ -107,7 +107,9 @@ const target = computed(() => {
     const args = JSON.parse(current.arguments) as Record<string, unknown>
     const keys = ['search_files', 'grep_files', 'web_search'].includes(current.tool)
       ? ['query', 'pattern', 'path']
-      : ['path', 'name', 'text', 'query']
+      : current.tool === 'execute_command'
+        ? ['description', 'command']
+        : ['path', 'name', 'text', 'query']
     for (const key of keys) {
       const value = args[key]
       if (typeof value === 'string' && value.trim()) return compact(value)
@@ -118,12 +120,26 @@ const target = computed(() => {
   return toolLabel.value
 })
 
-function runningKey(tool: string): string {
+function isBackgroundCommand(current: NonNullable<typeof activity.value>): boolean {
+  if (current.tool !== 'execute_command') return false
+  try {
+    const args = JSON.parse(current.arguments) as Record<string, unknown>
+    return args.run_in_background === true
+  } catch {
+    return false
+  }
+}
+
+function runningKey(current: NonNullable<typeof activity.value>): string {
+  const tool = current.tool
   if (tool === 'write_file') return 'writing'
   if (tool === 'edit_file') return 'editing'
   if (tool === 'delete_file') return 'deleting'
   if (['web_search', 'search_files', 'grep_files'].includes(tool)) return 'searching'
-  if (tool === 'execute_command') return 'executing'
+  if (tool === 'execute_command') {
+    if (isBackgroundCommand(current)) return 'backgroundExecuting'
+    return 'executing'
+  }
   if (updateTools.has(tool)) return 'updating'
   if (switchTools.has(tool)) return 'switching'
   if (readTools.has(tool)) return 'reading'
@@ -139,7 +155,7 @@ const statusText = computed(() => {
   if (current.status === 'failure') {
     return t('ui.toolActivity.failed', { tool: toolLabel.value })
   }
-  return t(`ui.toolActivity.${runningKey(current.tool)}`, {
+  return t(`ui.toolActivity.${runningKey(current)}`, {
     target: target.value,
     tool: toolLabel.value,
   })

@@ -83,6 +83,7 @@ export default {
     deleting: "Deleting: {target}",
     searching: "Searching: {target}",
     executing: "Running: {tool}",
+    backgroundExecuting: "Running in background: {target}",
     updating: "Updating: {tool}",
     switching: "Switching: {tool}",
     calling: "Calling: {tool}",

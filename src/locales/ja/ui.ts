@@ -82,6 +82,7 @@ export default {
     deleting: '削除中：{target}',
     searching: '検索中：{target}',
     executing: '実行中：{tool}',
+    backgroundExecuting: 'バックグラウンド実行中：{target}',
     updating: '更新中：{tool}',
     switching: '切り替え中：{tool}',
     calling: 'ツール呼び出し中：{tool}',

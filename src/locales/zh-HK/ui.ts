@@ -83,6 +83,7 @@ export default {
     "deleting": "正在刪除：{target}",
     "searching": "正在搜尋：{target}",
     "executing": "正在執行：{tool}",
+    "backgroundExecuting": "背景執行：{target}",
     "updating": "正在更新：{tool}",
     "switching": "正在切換：{tool}",
     "calling": "正在調用：{tool}",

@@ -13,6 +13,8 @@ use tokio::sync::{oneshot, Mutex, Notify};
 
 pub const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
 pub const MAX_COMMAND_TIMEOUT: Duration = Duration::from_secs(300);
+pub const DEFAULT_BACKGROUND_COMMAND_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+pub const MAX_BACKGROUND_COMMAND_TIMEOUT: Duration = Duration::from_secs(60 * 60);
 const MAX_COMMAND_OUTPUT_BYTES: usize = 1024 * 1024;
 const OUTPUT_DRAIN_GRACE: Duration = Duration::from_millis(400);
 
@@ -93,6 +95,26 @@ pub async fn run_shell_command_with_timeout(
         command,
         cwd,
         clamp_command_timeout(timeout),
+        MAX_COMMAND_OUTPUT_BYTES,
+    )
+    .await
+}
+
+/// Run a detached chat command with the larger, explicitly bounded background timeout.
+///
+/// This is intentionally separate from [`run_shell_command_with_timeout`] so foreground
+/// callers keep the existing five-minute ceiling.
+pub async fn run_shell_command_in_background_with_timeout(
+    sandbox_dir: &Path,
+    command: &str,
+    cwd: &str,
+    timeout: Duration,
+) -> anyhow::Result<CommandOutput> {
+    run_shell_command_with_limits(
+        sandbox_dir,
+        command,
+        cwd,
+        clamp_timeout(timeout, MAX_BACKGROUND_COMMAND_TIMEOUT),
         MAX_COMMAND_OUTPUT_BYTES,
     )
     .await
@@ -218,7 +240,11 @@ async fn run_shell_command_with_limits(
 }
 
 fn clamp_command_timeout(timeout: Duration) -> Duration {
-    timeout.max(Duration::from_secs(1)).min(MAX_COMMAND_TIMEOUT)
+    clamp_timeout(timeout, MAX_COMMAND_TIMEOUT)
+}
+
+fn clamp_timeout(timeout: Duration, maximum: Duration) -> Duration {
+    timeout.max(Duration::from_secs(1)).min(maximum)
 }
 
 fn resolve_working_directory(sandbox_dir: &Path, cwd: &str) -> anyhow::Result<PathBuf> {
@@ -591,6 +617,32 @@ mod tests {
         assert_eq!(
             PathBuf::from(out.stdout.trim()).canonicalize().unwrap(),
             nested.canonicalize().unwrap()
+        );
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn background_command_entry_executes_and_captures_output() {
+        let temp = TempDir::new();
+        let out = run_shell_command_in_background_with_timeout(
+            &temp.0,
+            "powershell -NoProfile -Command \"Start-Sleep -Milliseconds 50; Write-Output BG_OK\"",
+            "",
+            Duration::from_secs(2),
+        )
+        .await
+        .unwrap();
+        assert_eq!(out.exit_code, 0, "{}", out.to_prompt_string());
+        assert!(out.stdout.contains("BG_OK"), "{}", out.to_prompt_string());
+    }
+
+    #[test]
+    fn foreground_and_background_timeout_ceilings_remain_distinct() {
+        let oversized = Duration::from_secs(2 * 60 * 60);
+        assert_eq!(clamp_command_timeout(oversized), MAX_COMMAND_TIMEOUT);
+        assert_eq!(
+            clamp_timeout(oversized, MAX_BACKGROUND_COMMAND_TIMEOUT),
+            MAX_BACKGROUND_COMMAND_TIMEOUT
         );
     }
 

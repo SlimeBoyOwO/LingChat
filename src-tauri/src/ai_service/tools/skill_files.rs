@@ -6,7 +6,8 @@
 //! 「助手设置」的允许任意路径放开。
 //! `execute_command` 默认每次都要用户在前端弹窗确认（`chat:command_approval`
 //! 事件 + `resolve_command_approval` 回调），可在工具配置开启免确认；
-//! `uac=true` 时以管理员权限运行（Windows 弹系统 UAC 框）。
+//! `uac=true` 时以管理员权限运行（Windows 弹系统 UAC 框）；耗时任务可选择后台
+//! 运行，任务完成后会自动触发一轮仅对模型可见的结果通知。
 //! 不含 `validate_script`（剧本编辑器会话专用）。
 
 use std::time::Duration;
@@ -22,6 +23,7 @@ use crate::ai_service::skill_agent::skills;
 use crate::ai_service::types::ToolDefinition;
 use crate::AppState;
 
+use super::background_command;
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
 use super::settings::SharedToolSettings;
 
@@ -345,7 +347,7 @@ file_tool!(
     }
 );
 
-/// execute_command：在本机运行 shell 命令（默认需用户弹窗确认，可 UAC 提权）。
+/// execute_command：在本机运行 shell 命令（默认需用户弹窗确认，可后台运行或 UAC 提权）。
 pub struct ExecuteCommand {
     settings: SharedToolSettings,
 }
@@ -359,16 +361,25 @@ impl ExecuteCommand {
 #[async_trait]
 impl Tool for ExecuteCommand {
     fn definition(&self) -> ToolDefinition {
+        let shell_hint = if cfg!(windows) {
+            "当前运行环境是 Windows，命令由 cmd.exe /D /C 执行且没有交互输入；需要 PowerShell 语法时请显式调用 powershell -NoProfile -Command，延时请使用 PowerShell Start-Sleep 而不是依赖控制台输入的 timeout。"
+        } else {
+            "当前命令由 sh -c 执行。"
+        };
         ToolDefinition::new(
             "execute_command",
-            "在本机运行 shell 命令。执行前通常会弹窗请用户确认；uac=true 时以管理员权限运行（仅 Windows，会再弹系统 UAC 确认框）。看到输出后据此继续回答。",
+            format!(
+                "在本机运行 shell 命令。{shell_hint}执行前通常会弹窗请用户确认；uac=true 时以管理员权限运行（仅 Windows，会再弹系统 UAC 确认框）。耗时任务可设 run_in_background=true 并提供 description：工具会立即返回任务 ID，完成后自动通知，无需轮询。"
+            ),
             json!({
                 "type": "object",
                 "properties": {
                     "command": {"type": "string", "description": "要运行的 shell 命令"},
                     "cwd": {"type": "string", "description": "工作目录，绝对路径或相对于文件沙箱根目录。留空表示沙箱根目录。"},
                     "uac": {"type": "boolean", "description": "true 时请求管理员权限运行（仅 Windows，弹 UAC 确认框）"},
-                    "timeout_seconds": {"type": "integer", "description": "命令最长运行秒数（默认 60，最小 1，最大 300）"}
+                    "timeout_seconds": {"type": "integer", "description": "命令最长运行秒数（前台默认 60/最大 300；后台默认 600/最大 3600；最小 1）"},
+                    "run_in_background": {"type": "boolean", "description": "true 时在后台运行并立即返回任务 ID；完成后会自动通知模型，无需轮询。不能与 uac=true 同时使用"},
+                    "description": {"type": "string", "description": "后台任务的简短说明；run_in_background=true 时必填"}
                 },
                 "required": ["command"],
                 "additionalProperties": false
@@ -393,12 +404,42 @@ impl Tool for ExecuteCommand {
             .get("uac")
             .and_then(Value::as_bool)
             .unwrap_or(false);
+        let run_in_background = arguments
+            .get("run_in_background")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let description = arguments
+            .get("description")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim();
+        if run_in_background && description.is_empty() {
+            return Err(ToolError::InvalidArguments(
+                "run_in_background=true 时必须提供非空 description".into(),
+            ));
+        }
+        if run_in_background && uac {
+            return Err(ToolError::InvalidArguments(
+                "后台命令不支持 uac=true；需要提权时请以前台方式执行".into(),
+            ));
+        }
+        let (default_timeout, max_timeout) = if run_in_background {
+            (
+                background_command::DEFAULT_BACKGROUND_COMMAND_TIMEOUT,
+                background_command::MAX_BACKGROUND_COMMAND_TIMEOUT,
+            )
+        } else {
+            (
+                command_executor::DEFAULT_COMMAND_TIMEOUT,
+                command_executor::MAX_COMMAND_TIMEOUT,
+            )
+        };
         let timeout = Duration::from_secs(
             arguments
                 .get("timeout_seconds")
                 .and_then(Value::as_u64)
-                .unwrap_or(command_executor::DEFAULT_COMMAND_TIMEOUT.as_secs())
-                .clamp(1, command_executor::MAX_COMMAND_TIMEOUT.as_secs()),
+                .unwrap_or(default_timeout.as_secs())
+                .clamp(1, max_timeout.as_secs()),
         );
         let config = SkillAgentConfig::load(&app);
         let sandbox_dir = config.resolve_sandbox_dir();
@@ -419,6 +460,8 @@ impl Tool for ExecuteCommand {
                     "command": command,
                     "cwd": cwd,
                     "uac": uac,
+                    "run_in_background": run_in_background,
+                    "description": description,
                 }),
             ) {
                 state
@@ -448,6 +491,18 @@ impl Tool for ExecuteCommand {
                     ))
                 }
             }
+        }
+
+        if run_in_background {
+            return background_command::start_background_command(
+                app,
+                sandbox_dir,
+                command.to_string(),
+                cwd.to_string(),
+                description.to_string(),
+                timeout,
+            )
+            .await;
         }
 
         let result = if uac {
@@ -520,6 +575,14 @@ mod tests {
         assert_eq!(
             definition.function.parameters["properties"]["timeout_seconds"]["type"],
             "integer"
+        );
+        assert_eq!(
+            definition.function.parameters["properties"]["run_in_background"]["type"],
+            "boolean"
+        );
+        assert_eq!(
+            definition.function.parameters["properties"]["description"]["type"],
+            "string"
         );
         assert_eq!(tool.timeout_hint(), Some(Duration::from_secs(430)));
     }

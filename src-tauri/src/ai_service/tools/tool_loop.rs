@@ -234,7 +234,7 @@ fn rebase_after_character_switch(
 }
 
 /// 向前端广播工具开始/结束事件，call_id 用于正确处理连续或并发调用。
-fn emit_tool_activity_event(
+pub(crate) fn emit_tool_activity_event(
     app: &AppHandle,
     call_id: &str,
     tool: &str,
@@ -257,7 +257,7 @@ fn emit_tool_activity_event(
 
 /// 工具执行后向前端广播 `ai:tool_call` 事件（用于调用提示/通知）。
 /// 返回与事件一致的成功状态，供生命周期提示和角色切换判断复用。
-fn emit_tool_call_event(
+pub(crate) fn emit_tool_call_event(
     app: &AppHandle,
     call_id: &str,
     tool: &str,
