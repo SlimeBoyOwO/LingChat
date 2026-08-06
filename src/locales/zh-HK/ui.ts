@@ -136,9 +136,19 @@ export default {
       "status": "狀態查詢",
       "clock": "目前時間",
       "skills": "技能庫",
-      "file_ops": "檔案操作"
+      "file_ops": "檔案操作",
+      "command": "命令執行"
     },
     "otherToolsHint": "開咗之後 ta 傾偈嗰陣就可以主動用呢啲工具㗎啦（儲存後生效）",
+    "fileOpsAllowAnyPath": "允許存取沙箱外路徑（ta 可讀寫 data/ 以外嘅檔案）",
+    "fileOpsAllowAnyPathHint": "⚠ 開咗之後 ta 可以讀寫電腦上任何檔案，只係信任嘅角色/模型先好開",
+    "commandHint": "每次執行前都會彈窗請你確認命令內容；uac 參數可要求管理員權限（Windows 彈 UAC 框）",
+    "commandAutoApprove": "免確認自動執行（ta 跑命令前唔再彈窗）",
+    "commandAutoApproveHint": "⚠ 危險！開咗之後 ta 可以唔經你同意跑任何命令，務必謹慎",
+    "approvalTitle": "命令執行請求",
+    "approvalMessage": "ta 想喺你嘅電腦執行以下命令：\n\n{command}\n\n工作目錄：{cwd}\n\n允許執行嗎？",
+    "approvalUac": "⚠ 呢條命令仲要求咗管理員（UAC）權限，允許後系統會再彈 UAC 確認框",
+    "approvalDefaultCwd": "（預設沙箱目錄）",
     "groups": {
       "schedule": "日程同待辦（查日程、加/改/刪待辦）",
       "memory": "筆記同記憶（ta 自己嘅小本本）",
@@ -147,7 +157,8 @@ export default {
       "status": "狀態查詢（目前狀態/場景狀態）",
       "clock": "目前時間（查詢裝置本地時間）",
       "skills": "技能庫（等ta讀取技能指令，學會新技能）",
-      "file_ops": "檔案操作（沙箱內列/讀/寫/刪檔案，限 data 目錄）"
+      "file_ops": "檔案操作（沙箱內列/讀/寫/刪/改/搜檔案，限 data 目錄）",
+      "command": "命令執行（等ta喺呢部機跑 shell 命令）"
     },
     "tools": {
       "web_search": "網頁搜尋",
@@ -172,7 +183,11 @@ export default {
       "list_files": "列出檔案",
       "read_file": "讀取檔案",
       "write_file": "寫入檔案",
-      "delete_file": "刪除檔案"
+      "delete_file": "刪除檔案",
+      "edit_file": "編輯檔案",
+      "search_files": "搜尋檔案",
+      "grep_files": "搜尋內容",
+      "execute_command": "執行命令"
     }
   },
   "todoPage": {

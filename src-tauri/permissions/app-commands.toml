@@ -84,6 +84,7 @@ commands.allow = [
   "get_tool_settings",
   "save_tool_settings",
   "test_web_search",
+  "resolve_command_approval",
   "get_achievement_list",
   "unlock_achievement",
   "list_character_adventures",

@@ -59,6 +59,125 @@ pub fn new_request_id() -> String {
     format!("req-{}-{}", ts, n)
 }
 
+/// 运行 shell 命令（不含审批）。Windows 用 `cmd /C`，POSIX 用 `sh -c`。
+pub async fn run_shell_command(
+    sandbox_dir: &Path,
+    command: &str,
+    cwd: &str,
+) -> anyhow::Result<CommandOutput> {
+    let cwd_path = if cwd.trim().is_empty() {
+        sandbox_dir.to_path_buf()
+    } else {
+        std::path::PathBuf::from(cwd.trim())
+    };
+
+    #[cfg(windows)]
+    let output = {
+        // raw_arg 原样传命令，避免 std 自动加引号被 cmd.exe 自己的一套引号规则弄坏内层引号
+        tokio::process::Command::new("cmd")
+            .arg("/C")
+            .raw_arg(std::ffi::OsStr::new(command))
+            .current_dir(cwd_path)
+            .output()
+            .await
+    };
+    #[cfg(not(windows))]
+    let output = {
+        tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg(command)
+            .current_dir(cwd_path)
+            .output()
+            .await
+    };
+
+    let output = output.map_err(|e| anyhow::anyhow!("无法执行命令: {}", e))?;
+    Ok(CommandOutput {
+        stdout: decode_console_output(&output.stdout),
+        stderr: decode_console_output(&output.stderr),
+        exit_code: output.status.code().unwrap_or(-1),
+    })
+}
+
+/// 以管理员权限运行命令（仅 Windows）：把命令包装进临时 .bat 捕获输出与退出码，
+/// 再用 PowerShell `Start-Process -Verb RunAs` 触发系统 UAC 确认框并等待结束。
+/// 用户在 UAC 框点「否」时返回错误。
+#[cfg(windows)]
+pub async fn run_shell_command_elevated(
+    sandbox_dir: &Path,
+    command: &str,
+    cwd: &str,
+) -> anyhow::Result<CommandOutput> {
+    let cwd_path = if cwd.trim().is_empty() {
+        sandbox_dir.to_path_buf()
+    } else {
+        std::path::PathBuf::from(cwd.trim())
+    };
+    let stamp = format!("lingchat_uac_{}", new_request_id());
+    let dir = std::env::temp_dir();
+    let bat = dir.join(format!("{stamp}.bat"));
+    let out_f = dir.join(format!("{stamp}.out"));
+    let err_f = dir.join(format!("{stamp}.err"));
+    let code_f = dir.join(format!("{stamp}.code"));
+
+    // chcp 65001：把控制台代码页切到 UTF-8，避免命令里的中文按 ANSI 解析乱码
+    let bat_content = format!(
+        "@echo off\r\nchcp 65001 >nul\r\ncd /d \"{}\"\r\n{} > \"{}\" 2> \"{}\"\r\necho %ERRORLEVEL% > \"{}\"\r\n",
+        cwd_path.display(),
+        command,
+        out_f.display(),
+        err_f.display(),
+        code_f.display()
+    );
+    std::fs::write(&bat, &bat_content)?;
+
+    let ps = format!(
+        "Start-Process -FilePath cmd.exe -ArgumentList '/C','\"{}\"' -Verb RunAs -Wait",
+        bat.display()
+    );
+    let result = tokio::process::Command::new("powershell")
+        .args(["-NoProfile", "-Command", &ps])
+        .output()
+        .await;
+
+    let read_lossy = |p: &Path| -> String {
+        std::fs::read(p)
+            .map(|b| decode_console_output(&b))
+            .unwrap_or_default()
+    };
+    let stdout = read_lossy(&out_f);
+    let stderr = read_lossy(&err_f);
+    let exit_code = std::fs::read_to_string(&code_f)
+        .ok()
+        .and_then(|s| s.trim().parse::<i32>().ok())
+        .unwrap_or(-1);
+    for p in [&bat, &out_f, &err_f, &code_f] {
+        let _ = std::fs::remove_file(p);
+    }
+
+    let output = result.map_err(|e| anyhow::anyhow!("无法启动提权进程: {}", e))?;
+    if !output.status.success() && stdout.is_empty() && exit_code == -1 {
+        anyhow::bail!(
+            "提权执行失败（用户可能在 UAC 框点了「否」）: {}",
+            decode_console_output(&output.stderr)
+        );
+    }
+    Ok(CommandOutput {
+        stdout,
+        stderr,
+        exit_code,
+    })
+}
+
+#[cfg(not(windows))]
+pub async fn run_shell_command_elevated(
+    _sandbox_dir: &Path,
+    _command: &str,
+    _cwd: &str,
+) -> anyhow::Result<CommandOutput> {
+    anyhow::bail!("UAC 提权仅支持 Windows 平台")
+}
+
 /// 运行 shell 命令。Windows 用 `cmd /C`，POSIX 用 `sh -c`。
 /// 需要审批时（auto_approve=false）发 PendingApproval 事件并等待用户决定（120s 超时自动拒绝）。
 #[allow(clippy::too_many_arguments)]
@@ -102,38 +221,7 @@ pub async fn execute_command(
         }
     }
 
-    let cwd_path = if cwd.trim().is_empty() {
-        sandbox_dir.to_path_buf()
-    } else {
-        std::path::PathBuf::from(cwd.trim())
-    };
-
-    #[cfg(windows)]
-    let output = {
-        // raw_arg 原样传命令，避免 std 自动加引号被 cmd.exe 自己的一套引号规则弄坏内层引号
-        tokio::process::Command::new("cmd")
-            .arg("/C")
-            .raw_arg(std::ffi::OsStr::new(command))
-            .current_dir(cwd_path)
-            .output()
-            .await
-    };
-    #[cfg(not(windows))]
-    let output = {
-        tokio::process::Command::new("sh")
-            .arg("-c")
-            .arg(command)
-            .current_dir(cwd_path)
-            .output()
-            .await
-    };
-
-    let output = output.map_err(|e| anyhow::anyhow!("无法执行命令: {}", e))?;
-    Ok(CommandOutput {
-        stdout: decode_console_output(&output.stdout),
-        stderr: decode_console_output(&output.stderr),
-        exit_code: output.status.code().unwrap_or(-1),
-    })
+    run_shell_command(sandbox_dir, command, cwd).await
 }
 
 #[cfg(test)]

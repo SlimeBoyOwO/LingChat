@@ -33,7 +33,10 @@ use registry::ToolRegistry;
 use scene::{SceneList, SceneSwitch};
 use schedule::{AddTodo, DeleteTodo, GetAllSchedule, UpdateTodo};
 use settings::SharedToolSettings;
-use skill_files::{DeleteFile, ListFiles, ListSkills, ReadFile, ReadSkill, WriteFile};
+use skill_files::{
+    DeleteFile, EditFile, ExecuteCommand, GrepFiles, ListFiles, ListSkills, ReadFile, ReadSkill,
+    SearchFiles, WriteFile,
+};
 use status::{CurrentStatus, SceneStatus};
 use web_search::WebSearchTool;
 
@@ -108,10 +111,14 @@ pub fn built_in_registry(
     registry.register(Arc::new(CharacterSwitch))?;
     registry.register(Arc::new(ListSkills))?;
     registry.register(Arc::new(ReadSkill))?;
-    registry.register(Arc::new(ListFiles))?;
-    registry.register(Arc::new(ReadFile))?;
-    registry.register(Arc::new(WriteFile))?;
-    registry.register(Arc::new(DeleteFile))?;
+    registry.register(Arc::new(ListFiles::new(tool_settings.clone())))?;
+    registry.register(Arc::new(ReadFile::new(tool_settings.clone())))?;
+    registry.register(Arc::new(WriteFile::new(tool_settings.clone())))?;
+    registry.register(Arc::new(DeleteFile::new(tool_settings.clone())))?;
+    registry.register(Arc::new(EditFile::new(tool_settings.clone())))?;
+    registry.register(Arc::new(SearchFiles::new(tool_settings.clone())))?;
+    registry.register(Arc::new(GrepFiles::new(tool_settings.clone())))?;
+    registry.register(Arc::new(ExecuteCommand::new(tool_settings.clone())))?;
     let data_dir = crate::api::data_dir();
     let mut permissions = ToolPermissionConfig::load_or_create(
         &data_dir,

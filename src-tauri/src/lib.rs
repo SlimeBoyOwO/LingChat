@@ -95,6 +95,8 @@ pub struct InnerAppState {
     pub god_agent: Option<Arc<GodAgentCore>>,
     /// Skill Agent（剧本编辑器 AI 助手）共享状态。
     pub skill_agent: Arc<ai_service::skill_agent::SkillAgentState>,
+    /// 主聊天 `execute_command` 工具的待审批命令请求（request_id → oneshot）。
+    pub chat_command_approvals: ai_service::skill_agent::ApprovalMap,
     /// 剧本编辑器「试玩」当前在跑的后台任务句柄。
     ///
     /// `editor_stop_preview` 会先唤醒被剧本阻塞的通道、把 `is_running` 置 false，
@@ -406,6 +408,7 @@ pub fn run() {
                     auto_save_manager: auto_save_manager.clone(),
                     god_agent,
                     skill_agent: Arc::new(ai_service::skill_agent::SkillAgentState::default()),
+                    chat_command_approvals: Default::default(),
                     preview_task: Arc::new(tokio::sync::Mutex::new(None)),
                     pending_preview_restore: Arc::new(tokio::sync::Mutex::new(None)),
                 });
@@ -648,6 +651,7 @@ pub fn run() {
             api::tool_settings::get_tool_settings,
             api::tool_settings::save_tool_settings,
             api::tool_settings::test_web_search,
+            api::tool_settings::resolve_command_approval,
             api::achievement::get_achievement_list,
             api::achievement::unlock_achievement,
             api::adventure::list_character_adventures,

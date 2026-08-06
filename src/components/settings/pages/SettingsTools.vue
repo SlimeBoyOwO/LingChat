@@ -123,6 +123,57 @@
         />
       </div>
 
+      <!-- ===== 文件操作 ===== -->
+      <div v-else-if="selected === 'file_ops'">
+        <h2 class="text-2xl text-brand font-semibold pb-4 mb-6 border-b border-brand">
+          {{ navLabel(selected) }}
+        </h2>
+        <p class="text-sm text-gray-400 mb-4 px-1">{{ $t('ui.toolCalls.otherToolsHint') }}</p>
+        <div class="flex items-center gap-3 py-2.5 px-1">
+          <Toggle
+            :checked="form.groups[selected] ?? false"
+            @change="(value: boolean) => (form.groups[selected] = value)"
+          />
+          <p class="text-sm text-gray-300">{{ $t(`ui.toolCalls.groups.${selected}`) }}</p>
+        </div>
+        <div class="flex items-center gap-3 py-2.5 px-1">
+          <Toggle
+            :checked="form.file_ops_allow_any_path"
+            @change="(value: boolean) => (form.file_ops_allow_any_path = value)"
+          />
+          <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.fileOpsAllowAnyPath') }}</p>
+        </div>
+        <p v-if="form.file_ops_allow_any_path" class="text-sm text-amber-400 px-1 mb-2">
+          {{ $t('ui.toolCalls.fileOpsAllowAnyPathHint') }}
+        </p>
+      </div>
+
+      <!-- ===== 命令执行 ===== -->
+      <div v-else-if="selected === 'command'">
+        <h2 class="text-2xl text-brand font-semibold pb-4 mb-6 border-b border-brand">
+          {{ navLabel(selected) }}
+        </h2>
+        <p class="text-sm text-gray-400 mb-4 px-1">{{ $t('ui.toolCalls.otherToolsHint') }}</p>
+        <div class="flex items-center gap-3 py-2.5 px-1">
+          <Toggle
+            :checked="form.groups[selected] ?? false"
+            @change="(value: boolean) => (form.groups[selected] = value)"
+          />
+          <p class="text-sm text-gray-300">{{ $t(`ui.toolCalls.groups.${selected}`) }}</p>
+        </div>
+        <p class="text-sm text-gray-400 px-1 mb-2">{{ $t('ui.toolCalls.commandHint') }}</p>
+        <div class="flex items-center gap-3 py-2.5 px-1">
+          <Toggle
+            :checked="form.command_auto_approve"
+            @change="(value: boolean) => (form.command_auto_approve = value)"
+          />
+          <p class="text-sm text-gray-300">{{ $t('ui.toolCalls.commandAutoApprove') }}</p>
+        </div>
+        <p v-if="form.command_auto_approve" class="text-sm text-amber-400 px-1 mb-2">
+          {{ $t('ui.toolCalls.commandAutoApproveHint') }}
+        </p>
+      </div>
+
       <!-- ===== 其他工具组 ===== -->
       <div v-else>
         <h2 class="text-2xl text-brand font-semibold pb-4 mb-6 border-b border-brand">
@@ -198,6 +249,8 @@ const form = reactive<ToolSettings>({
     hide_search_results: false,
   },
   groups: {},
+  command_auto_approve: false,
+  file_ops_allow_any_path: false,
 })
 
 const status = reactive({ message: '', color: '#4ade80' })
@@ -243,6 +296,8 @@ onMounted(async () => {
     const settings = await getToolSettings()
     Object.assign(form.web_search, settings.web_search)
     Object.assign(form.groups, settings.groups ?? {})
+    form.command_auto_approve = settings.command_auto_approve ?? false
+    form.file_ops_allow_any_path = settings.file_ops_allow_any_path ?? false
   } catch (error) {
     console.error('加载工具配置失败:', error)
   }

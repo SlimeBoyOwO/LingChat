@@ -394,7 +394,7 @@ mod tests {
         assert!(s.contains("[校验报告] 剧本：standalone/x"));
         assert!(s.contains("[错误][config.duplicate_name]"));
         assert!(s.contains("[警告][graph.unreachable]"));
-        assert!(s.contains("章节「03」· 第 3 个事件"));
+        assert!(s.contains("章节「03」 · 第 3 个事件"));
         assert!(s.contains("校验未通过"));
     }
 

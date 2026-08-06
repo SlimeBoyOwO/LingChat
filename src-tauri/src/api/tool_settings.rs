@@ -51,3 +51,25 @@ pub async fn test_web_search(app: tauri::AppHandle, query: String) -> Result<Str
         .map_err(|e| e.to_string())?;
     Ok(result.to_string())
 }
+
+/// 主聊天 `execute_command` 的审批回调：前端弹窗后把用户决定送回等待中的工具。
+#[tauri::command]
+pub async fn resolve_command_approval(
+    app: tauri::AppHandle,
+    request_id: String,
+    approved: bool,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let request = state
+        .chat_command_approvals
+        .lock()
+        .await
+        .remove(&request_id);
+    match request {
+        Some(request) => {
+            let _ = request.tx.send(approved);
+            Ok(())
+        }
+        None => Err("审批请求不存在或已过期".into()),
+    }
+}

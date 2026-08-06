@@ -8,6 +8,7 @@ import { useGameStore } from '../stores/modules/game'
 import { i18n } from '@/locales'
 import { useScriptEditorStore } from '../stores/modules/script-editor'
 import { pushToolCallRecord, toolDisplayName } from './services/tool-settings'
+import { useDialogStore } from '../stores/modules/ui/dialog'
 import type { SceneInfo } from './services/scene'
 
 function asEvent(
@@ -110,6 +111,32 @@ export function initializeTauriEventListeners() {
         duration: 4000,
         skipTipsCheck: true,
       })
+    }
+  })
+
+  // 主聊天 execute_command 审批：弹确认框，把用户决定回传给等待中的工具
+  listen('chat:command_approval', async (event) => {
+    const payload = event.payload as {
+      request_id: string
+      command: string
+      cwd: string
+      uac: boolean
+    }
+    console.log('[Tauri] chat:command_approval', payload)
+    const dialogStore = useDialogStore()
+    const message =
+      i18n.global.t('ui.toolCalls.approvalMessage', {
+        command: payload.command,
+        cwd: payload.cwd || i18n.global.t('ui.toolCalls.approvalDefaultCwd'),
+      }) + (payload.uac ? `\n\n${i18n.global.t('ui.toolCalls.approvalUac')}` : '')
+    const approved = await dialogStore.confirm(
+      message,
+      i18n.global.t('ui.toolCalls.approvalTitle'),
+    )
+    try {
+      await invoke('resolve_command_approval', { requestId: payload.request_id, approved })
+    } catch (e) {
+      console.warn('[Tauri] 回传命令审批结果失败（可能已超时）:', e)
     }
   })
 

@@ -45,8 +45,17 @@ pub const TOOL_GROUPS: &[(&str, &[&str])] = &[
     ("skills", &["list_skills", "read_skill"]),
     (
         "file_ops",
-        &["list_files", "read_file", "write_file", "delete_file"],
+        &[
+            "list_files",
+            "read_file",
+            "write_file",
+            "delete_file",
+            "edit_file",
+            "search_files",
+            "grep_files",
+        ],
     ),
+    ("command", &["execute_command"]),
 ];
 
 /// 网页搜索工具配置。
@@ -109,6 +118,10 @@ pub struct ToolSettings {
     pub web_search: WebSearchSettings,
     /// 分组开关：组名（见 `TOOL_GROUPS`）→ 是否启用，缺省关闭。
     pub groups: std::collections::HashMap<String, bool>,
+    /// 命令执行：免审批直接运行 shell（危险，仅在信任当前角色/模型时开启）。
+    pub command_auto_approve: bool,
+    /// 文件操作：允许访问文件沙箱（默认 data/）之外的任意路径。
+    pub file_ops_allow_any_path: bool,
 }
 
 impl ToolSettings {

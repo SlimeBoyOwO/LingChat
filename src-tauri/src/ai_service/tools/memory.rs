@@ -449,6 +449,7 @@ mod tests {
 
     #[test]
     fn role_notes_path_uses_sanitized_name() {
+        crate::init::static_copy::init_data_dir_for_tests();
         let path = role_notes_path("灵灵/..");
         let file = path.file_name().unwrap().to_string_lossy().into_owned();
         assert!(file.starts_with("灵灵") && file.ends_with(".json"));
