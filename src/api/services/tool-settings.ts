@@ -93,6 +93,11 @@ export function handleToolCallProgress(payload: { tool: string; chars: number })
   toolCallPreparing.value = { tool: payload.tool, chars: payload.chars }
 }
 
+/** 清除「正在生成」进度提示（一轮 LLM 流结束 / 工具进入执行阶段 / 异常中断时调用）。 */
+export function clearToolCallPreparing() {
+  toolCallPreparing.value = null
+}
+
 // 后台命令最长运行 60 分钟，再留 5 分钟给事件投递与系统休眠恢复。
 const ACTIVE_WATCHDOG_MS = 65 * 60 * 1000
 const FINISHED_VISIBLE_MS = 2200
@@ -162,7 +167,7 @@ export function handleToolActivity(event: ToolActivityEvent) {
 
   if (event.phase === 'started') {
     // 参数已合并完整、进入执行阶段：清掉「正在生成」进度提示
-    toolCallPreparing.value = null
+    clearToolCallPreparing()
     clearFinishedTimer()
     clearWatchdog(event.call_id)
     const activity: ToolActivityState = {
@@ -201,7 +206,7 @@ export function handleToolActivity(event: ToolActivityEvent) {
 
 /** AI 请求异常结束时清理前台调用；已脱离当前生成的后台命令继续保留。 */
 export function interruptToolActivities() {
-  toolCallPreparing.value = null
+  clearToolCallPreparing()
   const visible = currentToolActivity.value
   for (const [callId, activity] of [...activeToolCalls.entries()]) {
     if (isBackgroundCommand(activity)) continue
