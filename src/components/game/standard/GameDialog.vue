@@ -257,6 +257,7 @@ import { useDialogStore } from '../../../stores/modules/ui/dialog'
 import { useSettingsStore } from '../../../stores/modules/settings'
 import { useLlmProvidersStore } from '../../../stores/modules/llm-providers'
 import { useTypeWriter } from '../../../composables/ui/useTypeWriter'
+import { useDialogAppearance } from '../../../composables/useDialogAppearance'
 import { escapeHtml } from '../../../utils/escapeHtml'
 import { eventQueue } from '../../../core/events/event-queue'
 import { invoke } from '@tauri-apps/api/core'
@@ -275,7 +276,15 @@ const uiStore = useUIStore()
 const dialogStore = useDialogStore()
 const settingsStore = useSettingsStore()
 const llmStore = useLlmProvidersStore()
-const isHidden = ref(false)
+
+// Dialog appearance managed by composable: useDialogAppearance
+const { isHidden, hide, dialogWrapperStyle, dialogTextColorValue, handleWheelHistory } =
+  useDialogAppearance({
+    openHistory: () => {
+      uiStore.toggleSettings(true)
+      uiStore.setSettingsTab('history')
+    },
+  })
 
 // 移动端按钮折叠状态（但是基于长宽比判断）
 const isMobile = ref(uiStore.aspectRatio <= 1)
@@ -751,97 +760,12 @@ function continueDialog(isPlayerTrigger: boolean): boolean {
   return needWait
 }
 
-function removeDialog(e: Event) {
-  isHidden.value = true
+function removeDialog(_e: Event) {
+  hide()
 }
 
 // ── 对话框外观（响应 settings store） ──
-
-const dialogBgImage = computed(() => settingsStore.dialogBackgroundImage)
-const dialogOpacity = computed(() => settingsStore.dialogOpacity)
-const dialogBlur = computed(() => settingsStore.dialogBlur)
-const dialogBorderRadius = computed(() => settingsStore.dialogBorderRadius)
-const dialogGradientColor = computed(() => settingsStore.dialogGradientColor)
-const dialogTextColorValue = computed(() => settingsStore.dialogTextColor)
-const dialogScrollHistoryEnabled = computed(() => settingsStore.dialogScrollHistoryEnabled)
-const dialogSpacebarHideEnabled = computed(() => settingsStore.dialogSpacebarHideEnabled)
-const dialogAutoHideOnThinkEnabled = computed(() => settingsStore.dialogAutoHideOnThinkEnabled)
-
-function hexToRgba(hex: string, alpha: number): string {
-  const m = hex.replace('#', '').match(/^([0-9a-fA-F]{6})$/)
-  if (!m) return `rgba(0,14,39,${alpha})`
-  const r = parseInt(m[1]!.substring(0, 2), 16)
-  const g = parseInt(m[1]!.substring(2, 4), 16)
-  const b = parseInt(m[1]!.substring(4, 6), 16)
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`
-}
-
-const dialogWrapperStyle = computed(() => {
-  const hasImage = Boolean(dialogBgImage.value)
-  const style: Record<string, string> = {
-    color: dialogTextColorValue.value,
-    borderRadius: dialogBorderRadius.value + 'px',
-  }
-  if (hasImage) {
-    // 使用用户图片
-    style.backgroundImage = `url(${dialogBgImage.value})`
-    style.backgroundSize = 'cover'
-    style.backgroundPosition = 'center'
-    style.backdropFilter = `blur(${dialogBlur.value}px)`
-    // 当有图时降低基础底色，依赖图片自身
-    style.backgroundColor = 'rgba(0,0,0,0.2)'
-  } else {
-    // 使用纯渐变色
-    style.background = `linear-gradient(to top, ${hexToRgba(dialogGradientColor.value, dialogOpacity.value)}, ${hexToRgba(dialogGradientColor.value, Math.max(0, dialogOpacity.value - 0.1))})`
-    style.backdropFilter = 'none'
-  }
-  return style
-})
-
-// 滚轮查看历史记录
-function handleWheelHistory(e: WheelEvent) {
-  if (!dialogScrollHistoryEnabled.value) return
-  // 向上滚(deltaY < 0) 打开历史面板
-  if (e.deltaY < -10) {
-    uiStore.toggleSettings(true)
-    uiStore.setSettingsTab('history')
-  }
-}
-
-// 空格键隐藏/显示对话框
-function handleKeydown(e: KeyboardEvent) {
-  if (!dialogSpacebarHideEnabled.value) return
-  // 在输入框中不触发
-  const target = e.target as HTMLElement
-  if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
-    return
-  }
-  if (e.code === 'Space') {
-    e.preventDefault()
-    isHidden.value = !isHidden.value
-  }
-}
-
-// AI 思考时自动隐藏
-watch(
-  () => gameStore.currentStatus,
-  (newStatus) => {
-    if (!dialogAutoHideOnThinkEnabled.value) return
-    if (newStatus === 'thinking') {
-      isHidden.value = true
-    } else if (newStatus === 'idle' || newStatus === 'responding') {
-      // 思考完成时恢复显示（带过渡动画）
-      isHidden.value = false
-    }
-  },
-)
-
-onMounted(() => {
-  document.addEventListener('keydown', handleKeydown)
-})
-onUnmounted(() => {
-  document.removeEventListener('keydown', handleKeydown)
-})
+// Dialog appearance logic extracted to composable: useDialogAppearance
 
 defineExpose({
   continueDialog,
