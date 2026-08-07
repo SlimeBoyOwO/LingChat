@@ -94,11 +94,9 @@ const openFolder = async () => {
     h-full
     min-h-0">
       <!-- 层级切换转场（流程图 ↔ 章节编辑）：与外层 tab 同一套 slide 动画；
-           out-in 避免两个文档流面板同屏互相挤压 -->
-      <Transition
-        :name="levelTransitionName"
-        mode="out-in"
-      >
+           默认模式进出同时进行，leave 面板 absolute 脱流（同 MainMenu），
+           避免两个文档流面板同屏互相挤压 -->
+      <Transition :name="levelTransitionName">
         <!-- ============ 章节流程 ============ -->
         <MenuPage v-if="store.level === 'flow'">
           <MenuItem :title="t('scriptEditor.flowTab.menuTitle')">
@@ -345,6 +343,14 @@ const openFolder = async () => {
 .slide-right-enter-active,
 .slide-right-leave-active {
   transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* 进出同时进行：leave 面板立即脱流并定死在外层容器上（同 MainMenu），
+ * 防止两个文档流面板同屏互相挤压、布局跳动 */
+.slide-left-leave-active,
+.slide-right-leave-active {
+  position: absolute;
+  inset: 0;
 }
 
 /* 左滑 → 进入章节编辑：新页从右侧推入，旧页向左滑出 */
