@@ -67,7 +67,7 @@ fn build_script_block(sandbox_dir: &Path, script_key: Option<&str>) -> String {
         Ok(dir) => {
             let rel = dir.strip_prefix(sandbox_dir).unwrap_or(&dir);
             format!(
-                "\n\n【当前剧本上下文】\n剧本 key：{}\n剧本目录：{}（相对于文件沙箱根 {}）\n\n工作之前，请先用 list_files / read_file 查看剧本中已有的内容，再决定如何编写或修改。",
+                "\n\n【当前剧本上下文】\n剧本 key：{}\n剧本目录：{}（相对于文件沙箱根 {}）\n\n工作之前，请先用 list_files / read_file 查看剧本中已有的内容，再决定如何编写或修改。\n剧本中的素材引用（imagePath / musicPath / soundPath / ambientPath）只写素材文件名本身（如 夜晚.webp），不要带 backgrounds/、musics/ 等类型目录前缀；引擎会按事件类型自动到对应目录查找。",
                 key,
                 rel.display(),
                 sandbox_dir.display()
