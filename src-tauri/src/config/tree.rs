@@ -282,6 +282,18 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         setting_type: "text".to_string(),
                     },
                     ConfigSetting {
+                        key: keys::FISH_S2_API_URL.to_string(),
+                        value: read_setting(app, keys::FISH_S2_API_URL, &tts_defaults.fish_s2_api_url),
+                        description: "Fish S2 API 地址".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::FISH_S2_VOICE.to_string(),
+                        value: read_setting(app, keys::FISH_S2_VOICE, &tts_defaults.fish_s2_voice),
+                        description: "Fish S2 默认音色标识".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
                         key: keys::OPENTTS_API_URL.to_string(),
                         value: read_setting(app, keys::OPENTTS_API_URL, &tts_defaults.opentts_api_url),
                         description: "OpenTTS API 地址（硅基流动）".to_string(),

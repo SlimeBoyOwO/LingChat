@@ -14,6 +14,7 @@ use futures_util::future::join_all;
 use crate::ai_service::message_system::processor::EmotionSegment;
 use crate::ai_service::tts::adapters::aivis::AivisAdapter;
 use crate::ai_service::tts::adapters::bv2::Bv2Adapter;
+use crate::ai_service::tts::adapters::fish_s2::FishS2Adapter;
 use crate::ai_service::tts::adapters::gsv::GsvAdapter;
 use crate::ai_service::tts::adapters::indextts::IndexTtsAdapter;
 use crate::ai_service::tts::adapters::opentts::OpenTtsAdapter;
@@ -36,6 +37,7 @@ pub struct TtsAvailability {
     pub gsv: bool,
     pub aivis: bool,
     pub opentts: bool,
+    pub fish_s2: bool,
     pub sbv2_local: bool,
 }
 
@@ -186,6 +188,9 @@ impl VoiceMaker {
         // OpenTTS 可用性：角色级 voice 优先，全局 TTS 配置兜底，任一非空即可用
         let opentts =
             non_empty(&cfg.opentts_voice) || !self.tts_config.opentts_voice.trim().is_empty();
+        // Fish S2 可使用角色级音色，也可回退到全局默认音色。
+        let fish_s2 =
+            non_empty(&cfg.fish_s2_voice) || !self.tts_config.fish_s2_voice.trim().is_empty();
         // Local SBV2 only needs a voice_id; engine readiness is checked later
         let sbv2_local = non_empty(&cfg.sbv2_local_voice_id);
 
@@ -197,6 +202,7 @@ impl VoiceMaker {
             gsv,
             aivis,
             opentts,
+            fish_s2,
             sbv2_local,
         };
     }
@@ -394,6 +400,23 @@ impl VoiceMaker {
                     }
                 }
             }
+            "fishs2" if self.availability.fish_s2 => {
+                // s2.cpp 固定返回 WAV；确保缓存文件扩展名与实际内容一致。
+                self.audio_format = "wav".to_string();
+                self.provider.audio_format = "wav".to_string();
+                let voice = if non_empty(&cfg.fish_s2_voice) {
+                    cfg.fish_s2_voice.clone().unwrap_or_default()
+                } else {
+                    self.tts_config.fish_s2_voice.clone()
+                };
+                match FishS2Adapter::new(self.tts_config.fish_s2_api_url.clone(), voice) {
+                    Ok(adapter) => self.provider.fish_s2 = Some(Arc::new(adapter)),
+                    Err(error) => {
+                        tracing::warn!("Fish S2 初始化失败: {error}");
+                        self.provider.disable();
+                    }
+                }
+            }
             "indextts2" => {
                 // IndexTTS2 仅支持中/英文：角色若残留日语配置（旧版本可选），
                 // 兜底为中文，避免日语文本被直接送去合成。
@@ -470,8 +493,8 @@ impl VoiceMaker {
             let Some(text) = segment_text_for_lang(&self.lang, seg).map(str::to_owned) else {
                 continue;
             };
-            // 将情绪分类器的预测标签传给 TTS 适配器（目前仅 IndexTTS2 消费 emo，
-            // 其余适配器忽略该参数，行为不变）
+            // 将情绪分类器的预测标签传给 TTS 适配器（IndexTTS2 与 Fish S2
+            // 会消费 emo，其余适配器忽略该参数）。
             let emo = seg.predicted.clone();
 
             let file_name = if seg.voice_file.is_empty() {

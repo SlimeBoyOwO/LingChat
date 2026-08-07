@@ -29,6 +29,7 @@ const LEGACY_VOICE_MODEL_FIELDS: &[&str] = &[
     "gsv_sovits_model_name",
     "aivis_model_uuid",
     "opentts_voice",
+    "fish_s2_voice",
 ];
 
 fn remove_legacy_voice_model_fields(settings: &mut CharacterSettings) {

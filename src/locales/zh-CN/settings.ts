@@ -229,6 +229,8 @@ export default {
         aivis_api_url: 'AIVIS 云 API 地址',
         aivis_api_key: 'AIVIS API 密钥（原环境变量 AIVIS_API_KRY）',
         indextts_api_url: 'IndexTTS2 API 地址',
+        fish_s2_api_url: 'Fish S2 API 地址',
+        fish_s2_voice: 'Fish S2 默认音色标识',
         opentts_api_url: 'OpenTTS API 地址（硅基流动）',
         opentts_api_key: 'OpenTTS API 密钥',
         opentts_model: 'OpenTTS 模型名称',
@@ -365,11 +367,14 @@ export default {
       openttsVoicePlaceholder: '留空则使用高级设置中的全局音色标识',
       localSbv2Api: '本地 SBV2 API',
       openttsVoiceLabel: 'OpenTTS 音色标识',
+      fishS2: 'Fish S2（本地 API）',
+      fishS2Voice: 'Fish S2 音色标识',
 
       openttsVoice: 'OpenTTS 音色标识',
     },
     placeholders: {
       openttsVoice: '留空则使用高级设置中的全局音色标识',
+      fishS2Voice: '留空则使用高级设置中的默认音色（paimeng）',
     },
     voiceLangOptions: {
       ja: '日语',

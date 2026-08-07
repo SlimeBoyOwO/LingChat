@@ -284,6 +284,7 @@ pub struct VoiceModel {
     pub gsv_sovits_model_name: Option<String>,
     pub aivis_model_uuid: Option<String>,
     pub opentts_voice: Option<String>,
+    pub fish_s2_voice: Option<String>,
     pub sbv2_local_voice_id: Option<String>,
     pub sbv2_local_speaker_id: Option<i64>,
     pub sbv2_local_style_id: Option<i32>,

@@ -7,11 +7,13 @@
 //! - [`vits`] — Simple-Vits-API VITS (`/voice/vits`)
 //! - [`gsv`] — GPT-SoVITS (`/tts`)
 //! - [`aivis`] — AIVIS Cloud API (`/v1/tts/synthesize`)
+//! - [`fish_s2`] — Fish Audio S2 / s2.cpp (`/generate`)
 //! - [`opentts`] — OpenAI TTS API (`/v1/audio/speech`)
 //! - [`indextts`] — IndexTTS2 presets (`/voice/indextts/presets`)
 
 pub mod aivis;
 pub mod bv2;
+pub mod fish_s2;
 pub mod gsv;
 pub mod indextts;
 pub mod opentts;
