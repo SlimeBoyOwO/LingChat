@@ -72,8 +72,8 @@
     <div class="relative
       h-[calc(100%-5.5rem)]
       min-h-0">
-      <Transition :name="shouldAnimate ? transitionName : ''">
-        <KeepAlive>
+      <Transition :name="transitionName">
+        <KeepAlive :max="8">
           <component
             :is="currentTabComponent"
             :key="tabKey"
@@ -201,10 +201,12 @@ const currentTabComponent = computed<Component>(() => {
   return tabComponents[store.tab]
 })
 
-/** flow 分支的 key 含 detail 状态：打开/关闭剧本时正确重建对应实例 */
-const tabKey = computed(() =>
-  store.tab === 'flow' ? (store.detail ? 'flow-detail' : 'flow-list') : store.tab,
-)
+/**  flow 分支的 key：detail + level 两维都要参与，否则 KeepAlive 缓存键会撞车。*/
+const tabKey = computed<string>(() => {
+  if (store.tab !== 'flow') return store.tab
+  if (!store.detail) return 'flow-list' // 剧本列表
+  return store.level === 'chapter' ? 'flow-chapter' : 'flow-chapters' // FlowTab：按 level 区分
+})
 
 /** 转场方向：前进 → slide-left（新页从右进），后退 → slide-right；首尾 wrap 视为前进 */
 const transitionName = ref<'slide-left' | 'slide-right'>('slide-left')
@@ -445,7 +447,7 @@ onUnmounted(async () => {
   transform: translateX(100%);
 }
 .slide-left-leave-to {
-  transform: translateX(-25%);
+  transform: translateX(-150%);
 }
 
 /* 右滑 → 上一项：新页从左侧推入，旧页向右滑出 */
@@ -453,6 +455,6 @@ onUnmounted(async () => {
   transform: translateX(-100%);
 }
 .slide-right-leave-to {
-  transform: translateX(25%);
+  transform: translateX(150%);
 }
 </style>
