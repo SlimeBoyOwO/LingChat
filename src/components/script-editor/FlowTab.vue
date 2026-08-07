@@ -24,6 +24,15 @@ const GRIP_MAX_RATIO = 0.88
 // 章节编辑容器 ref，拖拽时取它的宽度计算上限
 const editorWrap = ref<HTMLElement | null>(null)
 
+/** 层级切换转场方向：进入章节编辑（前进）→ slide-left；返回流程图（后退）→ slide-right */
+const levelTransitionName = ref<'slide-left' | 'slide-right'>('slide-left')
+watch(
+  () => store.level,
+  (level) => {
+    levelTransitionName.value = level === 'chapter' ? 'slide-left' : 'slide-right'
+  },
+)
+
 /**
  * 属性栏边缘竖条手柄：单击展开/折叠，按住拖拽调宽度。
  * 用 pointer 事件区分单击与拖拽（移动超 4px 视为拖拽），拖拽结果写入
@@ -84,231 +93,238 @@ const openFolder = async () => {
     flex-col
     h-full
     min-h-0">
-    <!-- ============ 章节流程 ============ -->
-    <MenuPage v-if="store.level === 'flow'">
-      <MenuItem :title="t('scriptEditor.flowTab.menuTitle')">
-        <template #header>
-          <Icon
-            icon="adventure"
-            :size="20"
-          />
-        </template>
-        <div class="flex
-          flex-wrap
-          items-center
-          gap-2
-          mb-3">
-          <button
-            class="inline-flex
-              items-center
-              gap-1
-              border
-              border-white/10
-              rounded-lg
-              px-3
-              py-[0.3rem]
-              text-[0.8rem]
-              whitespace-nowrap
-              text-white/70
-              bg-white/6
-              transition-all
-              duration-200
-              hover:enabled:text-white
-              hover:enabled:bg-white/[0.12]
-              disabled:cursor-not-allowed
-              disabled:opacity-40"
-            @click="emit('new-chapter')"
-          >
-            {{ t('scriptEditor.flowTab.newChapter') }}
-          </button>
-          <button
-            class="inline-flex
-              items-center
-              gap-1
-              border
-              border-white/10
-              rounded-lg
-              px-3
-              py-[0.3rem]
-              text-[0.8rem]
-              whitespace-nowrap
-              text-white/70
-              bg-white/6
-              transition-all
-              duration-200
-              hover:enabled:text-white
-              hover:enabled:bg-white/[0.12]
-              disabled:cursor-not-allowed
-              disabled:opacity-40"
-            @click="store.runValidation()"
-          >
-            {{ t('scriptEditor.validate.revalidate') }}
-          </button>
-          <button
-            class="inline-flex
-              items-center
-              gap-1
-              border
-              border-white/10
-              rounded-lg
-              px-3
-              py-[0.3rem]
-              text-[0.8rem]
-              whitespace-nowrap
-              text-white/70
-              bg-white/6
-              transition-all
-              duration-200
-              hover:enabled:text-white
-              hover:enabled:bg-white/[0.12]
-              disabled:cursor-not-allowed
-              disabled:opacity-40"
-            @click="openFolder"
-          >
-            {{ t('scriptEditor.flowTab.openFolder') }}
-          </button>
-        </div>
-        <ChapterFlow />
-      </MenuItem>
-    </MenuPage>
-
-    <!-- ============ 章节编辑 ============ -->
-    <!-- 高度靠外层单根容器（flex 列）的 flex-1 撑满；absolute inset-0
-         由 <component> fallthrough 到外层容器上，不再落在此 div -->
-    <div
-      v-else
-      ref="editorWrap"
-      class="flex
-        w-[94%]
-        min-h-0
-        flex-1
-        gap-5
-        mx-auto
-        px-3
-        py-4"
-    >
-      <div class="flex
-        min-w-0
-        flex-1
-        flex-col">
-        <MenuItem
-          :title="t('scriptEditor.flowTab.timeline')"
-          class="fill
-            flex
-            h-full
-            min-h-0
-            flex-col"
-        >
-          <template #header>
-            <Icon
-              icon="text"
-              :size="20"
-            />
-          </template>
-          <div class="mb-2
-            flex
-            items-center
-            gap-2">
-            <input
-              class="glass-input
-                flex-1"
-              :placeholder="t('scriptEditor.flowTab.chapterName')"
-              :value="store.chapter?.name ?? ''"
-              @change="onRename"
-            />
-            <label
-              class="inline-flex
-                items-center
-                gap-2
-                text-[0.8rem]
-                whitespace-nowrap
-                text-white/70"
-              :title="FOLD_HINT"
-            >
-              <Toggle
-                :checked="store.foldCompounds"
-                @change="(v: boolean) => (store.foldCompounds = v)"
-              />
-              {{ t('scriptEditor.flowTab.foldToggle') }}
-            </label>
-            <span class="shrink-0
-              text-xs
-              text-white/40">
-              {{ t('scriptEditor.chapterFlow.events', { count: store.chapter?.events.length ?? 0 }) }}
-            </span>
-          </div>
-          <div class="min-h-0
-            flex-1
-            overflow-y-auto
-            pr-1">
-            <ChapterTimeline />
-          </div>
-        </MenuItem>
-      </div>
-
-      <!-- 属性栏：展开时不遮挡时间线（并行查看），宽度由边缘手柄拖拽记忆 -->
-      <div
-        class="relative
-          flex
-          min-h-0
-          flex-col
-          transition-[flex-basis]
-          duration-300
-          ease-out"
-        :style="store.propsExpanded ? { flexBasis: `${store.propsWidth}px` } : { flexBasis: '340px' }"
+      <!-- 层级切换转场（流程图 ↔ 章节编辑）：与外层 tab 同一套 slide 动画；
+           out-in 避免两个文档流面板同屏互相挤压 -->
+      <Transition
+        :name="levelTransitionName"
+        mode="out-in"
       >
-        <!-- 边缘竖条手柄：单击展开/折叠，按住拖拽调宽度 -->
+        <!-- ============ 章节流程 ============ -->
+        <MenuPage v-if="store.level === 'flow'">
+          <MenuItem :title="t('scriptEditor.flowTab.menuTitle')">
+            <template #header>
+              <Icon
+                icon="adventure"
+                :size="20"
+              />
+            </template>
+            <div class="flex
+              flex-wrap
+              items-center
+              gap-2
+              mb-3">
+              <button
+                class="inline-flex
+                  items-center
+                  gap-1
+                  border
+                  border-white/10
+                  rounded-lg
+                  px-3
+                  py-[0.3rem]
+                  text-[0.8rem]
+                  whitespace-nowrap
+                  text-white/70
+                  bg-white/6
+                  transition-all
+                  duration-200
+                  hover:enabled:text-white
+                  hover:enabled:bg-white/[0.12]
+                  disabled:cursor-not-allowed
+                  disabled:opacity-40"
+                @click="emit('new-chapter')"
+              >
+                {{ t('scriptEditor.flowTab.newChapter') }}
+              </button>
+              <button
+                class="inline-flex
+                  items-center
+                  gap-1
+                  border
+                  border-white/10
+                  rounded-lg
+                  px-3
+                  py-[0.3rem]
+                  text-[0.8rem]
+                  whitespace-nowrap
+                  text-white/70
+                  bg-white/6
+                  transition-all
+                  duration-200
+                  hover:enabled:text-white
+                  hover:enabled:bg-white/[0.12]
+                  disabled:cursor-not-allowed
+                  disabled:opacity-40"
+                @click="store.runValidation()"
+              >
+                {{ t('scriptEditor.validate.revalidate') }}
+              </button>
+              <button
+                class="inline-flex
+                  items-center
+                  gap-1
+                  border
+                  border-white/10
+                  rounded-lg
+                  px-3
+                  py-[0.3rem]
+                  text-[0.8rem]
+                  whitespace-nowrap
+                  text-white/70
+                  bg-white/6
+                  transition-all
+                  duration-200
+                  hover:enabled:text-white
+                  hover:enabled:bg-white/[0.12]
+                  disabled:cursor-not-allowed
+                  disabled:opacity-40"
+                @click="openFolder"
+              >
+                {{ t('scriptEditor.flowTab.openFolder') }}
+              </button>
+            </div>
+            <ChapterFlow />
+          </MenuItem>
+        </MenuPage>
+
+        <!-- ============ 章节编辑 ============ -->
+        <!-- 高度靠外层单根容器（flex 列）的 flex-1 撑满；absolute inset-0
+             由 <component> fallthrough 到外层容器上，不再落在此 div -->
         <div
-          class="group/grip
-            absolute
-            left-0
-            top-0
-            bottom-0
-            z-30
-            w-2
-            -translate-x-1/2
-            cursor-ew-resize
-            touch-none"
-          :title="t('scriptEditor.flowTab.propsGrip')"
-          @pointerdown="onGripDown"
-        >
-          <div
-            class="absolute
-              left-1/2
-              top-1/2
-              h-20
-              w-[3px]
-              -translate-x-1/2
-              -translate-y-1/2
-              rounded-full
-              bg-white/20
-              transition-colors
-              group-hover/grip:bg-brand"
-          ></div>
-        </div>
-        <MenuItem
-          :title="t('scriptEditor.flowTab.eventProps')"
-          class="fill
-            flex
-            h-full
+          v-else
+          ref="editorWrap"
+          class="flex
+            w-[94%]
             min-h-0
-            flex-col"
-        >
-          <template #header>
-            <Icon
-              icon="setting"
-              :size="20"
-            />
-          </template>
-          <div class="min-h-0
             flex-1
-            overflow-y-auto
-            pr-1">
-            <EventPropertyPanel />
+            gap-5
+            mx-auto
+            px-3
+            py-4"
+        >
+          <div class="flex
+            min-w-0
+            flex-1
+            flex-col">
+            <MenuItem
+              :title="t('scriptEditor.flowTab.timeline')"
+              class="fill
+                flex
+                h-full
+                min-h-0
+                flex-col"
+            >
+              <template #header>
+                <Icon
+                  icon="text"
+                  :size="20"
+                />
+              </template>
+              <div class="mb-2
+                flex
+                items-center
+                gap-2">
+                <input
+                  class="glass-input
+                    flex-1"
+                  :placeholder="t('scriptEditor.flowTab.chapterName')"
+                  :value="store.chapter?.name ?? ''"
+                  @change="onRename"
+                />
+                <label
+                  class="inline-flex
+                    items-center
+                    gap-2
+                    text-[0.8rem]
+                    whitespace-nowrap
+                    text-white/70"
+                  :title="FOLD_HINT"
+                >
+                  <Toggle
+                    :checked="store.foldCompounds"
+                    @change="(v: boolean) => (store.foldCompounds = v)"
+                  />
+                  {{ t('scriptEditor.flowTab.foldToggle') }}
+                </label>
+                <span class="shrink-0
+                  text-xs
+                  text-white/40">
+                  {{ t('scriptEditor.chapterFlow.events', { count: store.chapter?.events.length ?? 0 }) }}
+                </span>
+              </div>
+              <div class="min-h-0
+                flex-1
+                overflow-y-auto
+                pr-1">
+                <ChapterTimeline />
+              </div>
+            </MenuItem>
           </div>
-        </MenuItem>
-      </div>
-    </div>
+
+          <!-- 属性栏：展开时不遮挡时间线（并行查看），宽度由边缘手柄拖拽记忆 -->
+          <div
+            class="relative
+              flex
+              min-h-0
+              flex-col
+              transition-[flex-basis]
+              duration-300
+              ease-out"
+            :style="store.propsExpanded ? { flexBasis: `${store.propsWidth}px` } : { flexBasis: '340px' }"
+          >
+            <!-- 边缘竖条手柄：单击展开/折叠，按住拖拽调宽度 -->
+            <div
+              class="group/grip
+                absolute
+                left-0
+                top-0
+                bottom-0
+                z-30
+                w-2
+                -translate-x-1/2
+                cursor-ew-resize
+                touch-none"
+              :title="t('scriptEditor.flowTab.propsGrip')"
+              @pointerdown="onGripDown"
+            >
+              <div
+                class="absolute
+                  left-1/2
+                  top-1/2
+                  h-20
+                  w-[3px]
+                  -translate-x-1/2
+                  -translate-y-1/2
+                  rounded-full
+                  bg-white/20
+                  transition-colors
+                  group-hover/grip:bg-brand"
+              ></div>
+            </div>
+            <MenuItem
+              :title="t('scriptEditor.flowTab.eventProps')"
+              class="fill
+                flex
+                h-full
+                min-h-0
+                flex-col"
+            >
+              <template #header>
+                <Icon
+                  icon="setting"
+                  :size="20"
+                />
+              </template>
+              <div class="min-h-0
+                flex-1
+                overflow-y-auto
+                pr-1">
+                <EventPropertyPanel />
+              </div>
+            </MenuItem>
+          </div>
+        </div>
+      </Transition>
   </div>
 </template>
 
@@ -319,5 +335,31 @@ const openFolder = async () => {
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* ========== 层级切换转场（与外层 tab / 设置面板同一套动画） ==========
+ * 只用 transform、不用 opacity：编辑器背景层带 blur 滤镜，动画里叠加
+ * 透明度变化会让 WebView 合成器在滤镜层上重绘，输入框区域会闪白 */
+.slide-left-enter-active,
+.slide-left-leave-active,
+.slide-right-enter-active,
+.slide-right-leave-active {
+  transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* 左滑 → 进入章节编辑：新页从右侧推入，旧页向左滑出 */
+.slide-left-enter-from {
+  transform: translateX(100%);
+}
+.slide-left-leave-to {
+  transform: translateX(-25%);
+}
+
+/* 右滑 → 返回流程图：新页从左侧推入，旧页向右滑出 */
+.slide-right-enter-from {
+  transform: translateX(-100%);
+}
+.slide-right-leave-to {
+  transform: translateX(25%);
 }
 </style>
